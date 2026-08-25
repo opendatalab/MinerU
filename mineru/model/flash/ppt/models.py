@@ -65,6 +65,17 @@ class PptEquationElement:
 
 
 @dataclass(frozen=True, slots=True)
+class PptChartElement:
+    """已经绑定到幻灯片 shape 的可编辑 OLE chart。"""
+
+    content: str
+    image_base64: str | None
+    bbox: tuple[float, float, float, float]
+    order: int
+    shape_offset: int
+
+
+@dataclass(frozen=True, slots=True)
 class PptTableCell:
     """表格原点单元格及其跨行跨列范围。"""
 
@@ -87,9 +98,7 @@ class PptTableElement:
     shape_offsets: frozenset[tuple[int, ...]]
 
 
-PptSlideElement: TypeAlias = (
-    PptTextElement | PptImageElement | PptEquationElement | PptTableElement
-)
+PptSlideElement: TypeAlias = PptTextElement | PptImageElement | PptEquationElement | PptChartElement | PptTableElement
 
 
 @dataclass(slots=True)

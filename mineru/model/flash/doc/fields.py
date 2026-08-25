@@ -34,12 +34,22 @@ def is_caption_field(instruction: str) -> bool:
     return field_keyword(instruction) == "SEQ"
 
 
+def is_chart_embed_field(instruction: str) -> bool:
+    """判断 EMBED 字段是否声明 Excel.Chart 或 MSGraph.Chart 对象。"""
+
+    tokens = _TOKEN_RE.findall(instruction.strip())
+    if len(tokens) < 2 or _unquote(tokens[0]).casefold() != "embed":
+        return False
+    prog_id = _unquote(tokens[1]).casefold()
+    return prog_id.startswith(("excel.chart", "msgraph.chart"))
+
+
 def _unquote(token: str) -> str:
     """解码字段引号内允许的反斜杠转义。"""
 
     if len(token) >= 2 and token[0] == token[-1] == '"':
         token = token[1:-1]
-    return token.replace(r'\"', '"').replace(r"\\", "\\")
+    return token.replace(r"\"", '"').replace(r"\\", "\\")
 
 
 def sanitize_hyperlink_target(target: str) -> str | None:

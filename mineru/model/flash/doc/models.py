@@ -71,7 +71,7 @@ class DocParagraph:
     cp_start: int
     cp_end: int
     runs: list[DocTextRun] = field(default_factory=list)
-    images: list[DocImagePayload] = field(default_factory=list)
+    images: list[DocVisualPayload] = field(default_factory=list)
     style_name: str = ""
     heading_level: int | None = None
     is_title: bool = False
@@ -96,6 +96,17 @@ class DocImagePayload:
     extension: str
     content_type: str
     equation_latex: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class DocChartPayload:
+    """一个可编辑 OLE chart 的 HTML 数据和可选预览图。"""
+
+    content: str
+    preview: DocImagePayload | None = None
+
+
+DocVisualPayload: TypeAlias = DocImagePayload | DocChartPayload
 
 
 @dataclass(slots=True)

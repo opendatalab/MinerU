@@ -22,7 +22,7 @@ from mineru.model.flash.xlsx.xlsx_converter import ExcelTable, XlsxConverter
 from mineru.model.office_stream import read_stream_bytes_from_start
 from mineru.types import BlockType
 
-from .models import XlsChart, XlsRichText, XlsSheet, XlsWorkbook
+from .models import XlsChart, XlsChartSheet, XlsRichText, XlsSheet, XlsWorkbook
 from .parser import parse_xls_workbook
 
 _XLS_EQUATION_STREAM_RE = re.compile(
@@ -62,13 +62,7 @@ def _inline_font(rich_text: XlsRichText, start: int) -> InlineFont | None:
                 i=style.italic,
                 u="single" if style.underline else None,
                 strike=style.strike,
-                vertAlign=(
-                    "superscript"
-                    if style.superscript
-                    else "subscript"
-                    if style.subscript
-                    else None
-                ),
+                vertAlign=("superscript" if style.superscript else "subscript" if style.subscript else None),
             )
     return None
 
@@ -138,16 +132,76 @@ class _XlsPageBuilder(XlsxConverter):
                 )
         return workbook
 
+    def _ensure_workbook(self) -> Workbook:
+        """惰性构造一次 openpyxl 适配工作簿。"""
+
+        workbook = getattr(self, "workbook", None)
+        if workbook is None:
+            workbook = self._build_openpyxl_workbook()
+            self.workbook = workbook
+        return workbook
+
+    def render_chart_selection(
+        self,
+        sheet_name: str,
+        rows: tuple[int, ...] | list[int],
+        cols: tuple[int, ...] | list[int],
+    ) -> str | None:
+        """把指定 worksheet 行列选择渲染为共享 chart HTML。"""
+
+        if not rows or not cols:
+            return None
+        grid_slots = len(rows) * len(cols)
+        self._grid_slots += grid_slots
+        if self._grid_slots > MAX_GRID_SLOTS:
+            raise LegacyOfficeResourceLimitError(f"workbook extent exceeds max_grid_slots={MAX_GRID_SLOTS}")
+        workbook = self._ensure_workbook()
+        if sheet_name not in workbook.sheetnames:
+            return None
+        sheet = workbook[sheet_name]
+        table = self._build_synthetic_table_from_sheet_selection(
+            sheet,
+            list(rows),
+            list(cols),
+        )
+        return self.excel_table_to_html(table)
+
+    def _chart_sheet_page(self, chart_sheet: XlsChartSheet) -> list[dict[str, Any]]:
+        """把独立 chart sheet 投影为仅含 chart block 的逻辑页。"""
+
+        if chart_sheet.source_sheet_name is None:
+            return []
+        content = self.render_chart_selection(
+            chart_sheet.source_sheet_name,
+            chart_sheet.source_rows,
+            chart_sheet.source_cols,
+        )
+        return [{"type": BlockType.CHART, "content": content}] if content else []
+
     def build_pages(self) -> list[list[dict[str, Any]]]:
-        """逐可见 worksheet 生成 page，并复用 XlsxModel 的标题规则。"""
+        """按原目录顺序生成可见 worksheet/chart sheet 页面。"""
 
         self.workbook = self._build_openpyxl_workbook()
-        sheet_pages: list[tuple[str, list[dict[str, Any]]]] = []
+        pages_by_name: dict[str, list[dict[str, Any]]] = {}
         for worksheet in self._iter_sheets_to_convert():
             self._active_xls_sheet = self._sheet_by_title.get(worksheet.title)
             self.cur_page = []
             self._convert_sheet(worksheet)
-            sheet_pages.append((worksheet.title, self.cur_page))
+            pages_by_name[worksheet.title] = self.cur_page
+
+        ordered_pages: list[tuple[int, int, str, list[dict[str, Any]]]] = []
+        for index, sheet in enumerate(self.workbook_model.sheets):
+            if not sheet.visible:
+                continue
+            order = sheet.order if sheet.order >= 0 else index
+            ordered_pages.append((order, 0, sheet.name, pages_by_name.get(sheet.name, [])))
+        for index, chart_sheet in enumerate(self.workbook_model.chart_sheets):
+            if not chart_sheet.visible:
+                continue
+            order = chart_sheet.order if chart_sheet.order >= 0 else len(ordered_pages) + index
+            ordered_pages.append((order, 1, chart_sheet.name, self._chart_sheet_page(chart_sheet)))
+        ordered_pages.sort(key=lambda item: (item[0], item[1]))
+        sheet_pages = [(name, page) for _order, _kind, name, page in ordered_pages]
         if self._should_emit_sheet_titles([page for _, page in sheet_pages]):
             self._prepend_sheet_titles(sheet_pages)
         return [page for _, page in sheet_pages]
@@ -193,29 +247,27 @@ class _XlsPageBuilder(XlsxConverter):
         tables = super()._find_data_tables(sheet)
         self._grid_slots += sum(table.num_rows * table.num_cols for table in tables)
         if self._grid_slots > MAX_GRID_SLOTS:
-            raise LegacyOfficeResourceLimitError(
-                f"workbook extent exceeds max_grid_slots={MAX_GRID_SLOTS}"
-            )
+            raise LegacyOfficeResourceLimitError(f"workbook extent exceeds max_grid_slots={MAX_GRID_SLOTS}")
         return tables
 
     def _chart_block(self, sheet: Worksheet, chart: XlsChart) -> dict[str, Any] | None:
-        """把简单 chart 引用转换成数据表，预览图片仅用于无数据 fallback。"""
+        """把简单 chart 引用转换成数据表，并保留可用预览图片。"""
 
         if chart.source_rows and chart.source_cols:
-            self._grid_slots += len(chart.source_rows) * len(chart.source_cols)
-            if self._grid_slots > MAX_GRID_SLOTS:
-                raise LegacyOfficeResourceLimitError(
-                    f"workbook extent exceeds max_grid_slots={MAX_GRID_SLOTS}"
-                )
-            table = self._build_synthetic_table_from_sheet_selection(
-                sheet,
-                list(chart.source_rows),
-                list(chart.source_cols),
+            content = self.render_chart_selection(
+                sheet.title,
+                chart.source_rows,
+                chart.source_cols,
             )
-            return {
+            if content is None:
+                return None
+            block = {
                 "type": BlockType.CHART,
-                "content": self.excel_table_to_html(table),
+                "content": content,
             }
+            if chart.image_base64:
+                block["image_base64"] = chart.image_base64
+            return block
         if chart.image_base64:
             return {
                 "type": BlockType.CHART,
@@ -253,6 +305,21 @@ class _XlsPageBuilder(XlsxConverter):
         return artifacts
 
 
+def render_xls_chart_html(
+    workbook: XlsWorkbook,
+    sheet_name: str,
+    rows: tuple[int, ...] | list[int],
+    cols: tuple[int, ...] | list[int],
+) -> str | None:
+    """为 DOC/PPT 嵌入式 chart 复用 XLS 的稳定 HTML 投影。"""
+
+    return _XlsPageBuilder(workbook).render_chart_selection(
+        sheet_name,
+        rows,
+        cols,
+    )
+
+
 class XlsConverter:
     """将 Excel 97–2003 OLE/BIFF 二进制流转换为 model-list。"""
 
@@ -262,7 +329,7 @@ class XlsConverter:
         self.pages: list[list[dict[str, Any]]] = []
 
     def convert(self, file_binary: BinaryIO) -> None:
-        """读取 Workbook/Book stream，解析 BIFF 并生成可见工作表页面。"""
+        """读取 Workbook/Book stream，解析 BIFF 并生成可见 sheet 页面。"""
 
         file_bytes = read_stream_bytes_from_start(file_binary)
         with BoundedOleReader(file_bytes) as ole:
@@ -279,4 +346,4 @@ class XlsConverter:
             )
         builder = _XlsPageBuilder(workbook)
         self.pages = builder.build_pages()
-        logger.debug("XLS parsing produced {} visible worksheet pages", len(self.pages))
+        logger.debug("XLS parsing produced {} visible sheet pages", len(self.pages))

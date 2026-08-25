@@ -14,6 +14,7 @@ from mineru.types import BlockType
 from mineru.utils.office_rich_text import OfficeRichTextSegment, build_rich_text_from_segments
 
 from .models import (
+    PptChartElement,
     PptEquationElement,
     PptImageElement,
     PptParagraph,
@@ -160,11 +161,7 @@ class PptConverter:
     def _table_cell_content(cls, cell: PptTableCell) -> str:
         """把表格单元格内的多个段落连接为 HTML 内容。"""
 
-        return "<br/>".join(
-            content
-            for paragraph in cell.paragraphs
-            if (content := cls._paragraph_content(paragraph))
-        )
+        return "<br/>".join(content for paragraph in cell.paragraphs if (content := cls._paragraph_content(paragraph)))
 
     @classmethod
     def _table_html(cls, table: PptTableElement) -> str:
@@ -199,7 +196,7 @@ class PptConverter:
     @classmethod
     def _element_blocks(
         cls,
-        element: PptTextElement | PptImageElement | PptEquationElement | PptTableElement,
+        element: PptTextElement | PptImageElement | PptEquationElement | PptChartElement | PptTableElement,
         *,
         slide_height: int,
         is_first_text_element: bool,
@@ -210,6 +207,14 @@ class PptConverter:
             return [{"type": BlockType.IMAGE, "image_base64": element.image_base64}]
         if isinstance(element, PptEquationElement):
             return [{"type": BlockType.EQUATION, "content": element.latex}]
+        if isinstance(element, PptChartElement):
+            block: dict[str, Any] = {
+                "type": BlockType.CHART,
+                "content": element.content,
+            }
+            if element.image_base64:
+                block["image_base64"] = element.image_base64
+            return [block]
         if isinstance(element, PptTableElement):
             return [{"type": BlockType.TABLE, "content": cls._table_html(element)}]
 

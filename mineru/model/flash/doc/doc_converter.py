@@ -16,8 +16,10 @@ from mineru.utils.office_rich_text import OfficeRichTextSegment, build_rich_text
 
 from .fib import parse_fib
 from mineru.model.flash.legacy_office.mtef import read_object_pool_equations
+from ..xls.embedded_chart import extract_embedded_chart_html
 from .models import (
     DocCharStyle,
+    DocChartPayload,
     DocDocument,
     DocElement,
     DocImage,
@@ -27,8 +29,31 @@ from .models import (
     DocTable,
     DocTableCell,
     DocTextRun,
+    DocVisualPayload,
 )
 from .parser import parse_doc_document
+
+_OBJECT_POOL_CHART_RE = re.compile(
+    r"^ObjectPool/_([0-9]+)/(?:Workbook|Book)$",
+    re.IGNORECASE,
+)
+
+
+def _read_object_pool_charts(ole: BoundedOleReader) -> dict[int, str]:
+    """读取 DOC ObjectPool 中带 Workbook/Book 的可编辑 chart。"""
+
+    charts: dict[int, str] = {}
+    for stream_name in ole.stream_names(prefix="ObjectPool/"):
+        match = _OBJECT_POOL_CHART_RE.match(stream_name)
+        if match is None:
+            continue
+        storage_id = int(match.group(1))
+        if storage_id in charts:
+            continue
+        content = extract_embedded_chart_html(ole.read_stream(stream_name))
+        if content:
+            charts[storage_id] = content
+    return charts
 
 
 class DocConverter:
@@ -57,12 +82,14 @@ class DocConverter:
                 table_stream = ole.read_stream(alternate, required=bool(fib.base.complex))
             data_stream = ole.read_stream("Data", required=False)
             native_equations = read_object_pool_equations(ole)
+            native_charts = _read_object_pool_charts(ole)
             document = parse_doc_document(
                 word_document,
                 table_stream,
                 data_stream,
                 fib,
                 native_equations=native_equations,
+                native_charts=native_charts,
             )
         self.pages = self._document_pages(document)
 
@@ -142,8 +169,19 @@ class DocConverter:
         )
 
     @classmethod
-    def _image_block(cls, payload: DocImagePayload) -> dict[str, Any] | None:
-        """把原始图片载荷转换为 equation 或 image block。"""
+    def _image_block(cls, payload: DocVisualPayload) -> dict[str, Any] | None:
+        """把图片、公式或 chart 载荷转换为对应 raw block。"""
+
+        if isinstance(payload, DocChartPayload):
+            block: dict[str, Any] = {
+                "type": BlockType.CHART,
+                "content": payload.content,
+            }
+            if payload.preview is not None:
+                image_base64 = cls._serialize_image(payload.preview)
+                if image_base64:
+                    block["image_base64"] = image_base64
+            return block
 
         if payload.equation_latex:
             return {
@@ -192,7 +230,7 @@ class DocConverter:
         content += "".join(
             f"<eq>{escape(payload.equation_latex, quote=False)}</eq>"
             for payload in paragraph.images
-            if payload.equation_latex
+            if isinstance(payload, DocImagePayload) and payload.equation_latex
         )
         if not content:
             return
@@ -233,7 +271,7 @@ class DocConverter:
         content += "".join(
             f"<eq>{escape(payload.equation_latex, quote=False)}</eq>"
             for payload in paragraph.images
-            if payload.equation_latex
+            if isinstance(payload, DocImagePayload) and payload.equation_latex
         )
         if not content and not paragraph.images:
             return identity or info.identity
@@ -281,16 +319,12 @@ class DocConverter:
         exact_label = list_info.label if list_info is not None and list_info.ordered else None
         if exact_label and (paragraph.is_title or paragraph.heading_level is not None):
             content = f"{escape(exact_label, quote=False)} {content}".strip()
-        if formula_runs and not ordinary_text and not (
-            paragraph.is_title
-            or paragraph.heading_level is not None
-            or paragraph.is_caption
-            or paragraph.is_code
+        if (
+            formula_runs
+            and not ordinary_text
+            and not (paragraph.is_title or paragraph.heading_level is not None or paragraph.is_caption or paragraph.is_code)
         ):
-            blocks.extend(
-                {"type": BlockType.EQUATION, "content": run.text}
-                for run in formula_runs
-            )
+            blocks.extend({"type": BlockType.EQUATION, "content": run.text} for run in formula_runs)
         elif content:
             if paragraph.is_title:
                 block: dict[str, Any] = {
@@ -344,10 +378,7 @@ class DocConverter:
                 result.append(f"</{stack.pop()}><{tag}>")
                 stack.append(tag)
             label = f"{escape(info.label)} " if info.label and info.ordered else ""
-            result.append(
-                f"<li>{label}{cls._rich_text(paragraph.runs)}"
-                f"{cls._cell_images_html(paragraph.images)}</li>"
-            )
+            result.append(f"<li>{label}{cls._rich_text(paragraph.runs)}{cls._cell_images_html(paragraph.images)}</li>")
         while stack:
             result.append(f"</{stack.pop()}>")
         return "".join(result)
@@ -366,16 +397,21 @@ class DocConverter:
     @classmethod
     def _cell_images_html(
         cls,
-        payloads: list[DocImagePayload],
+        payloads: list[DocVisualPayload],
     ) -> str:
         """把表格段落中的图片或 comment 公式序列化为内联 HTML。"""
 
         parts: list[str] = []
         for payload in payloads:
+            if isinstance(payload, DocChartPayload):
+                if payload.preview is not None:
+                    image = cls._serialize_image(payload.preview)
+                    if image:
+                        parts.append(f'<img src="{escape(image, quote=True)}"/>')
+                parts.append(payload.content)
+                continue
             if payload.equation_latex:
-                parts.append(
-                    f"<eq>{escape(payload.equation_latex, quote=False)}</eq>"
-                )
+                parts.append(f"<eq>{escape(payload.equation_latex, quote=False)}</eq>")
                 continue
             image = cls._serialize_image(payload)
             if image:
@@ -406,11 +442,7 @@ class DocConverter:
             elif isinstance(block, DocImage):
                 flush()
                 if block.payload.equation_latex:
-                    parts.append(
-                        "<eq>"
-                        f"{escape(block.payload.equation_latex, quote=False)}"
-                        "</eq>"
-                    )
+                    parts.append(f"<eq>{escape(block.payload.equation_latex, quote=False)}</eq>")
                     continue
                 image = cls._serialize_image(block.payload)
                 if image:
@@ -477,19 +509,21 @@ class DocConverter:
                 list_identity = None
                 cls._append_index_item(page, index_stack, element)
                 for payload in element.images:
-                    if payload.equation_latex:
+                    if isinstance(payload, DocImagePayload) and payload.equation_latex:
                         continue
                     image = cls._image_block(payload)
                     if image is not None:
                         page.append(image)
                 continue
             index_stack.clear()
-            if isinstance(element, DocParagraph) and element.list_info is not None and not (
-                element.is_title or element.heading_level is not None
+            if (
+                isinstance(element, DocParagraph)
+                and element.list_info is not None
+                and not (element.is_title or element.heading_level is not None)
             ):
                 list_identity = cls._append_list_item(page, list_stack, list_identity, element)
                 for payload in element.images:
-                    if payload.equation_latex:
+                    if isinstance(payload, DocImagePayload) and payload.equation_latex:
                         continue
                     image = cls._image_block(payload)
                     if image is not None:
@@ -498,17 +532,10 @@ class DocConverter:
             list_stack.clear()
             list_identity = None
             page.extend(cls._element_blocks(element))
+        page.extend({"type": BlockType.HEADER, "content": content} for content in cls._auxiliary_contents(section.headers))
+        page.extend({"type": BlockType.FOOTER, "content": content} for content in cls._auxiliary_contents(section.footers))
         page.extend(
-            {"type": BlockType.HEADER, "content": content}
-            for content in cls._auxiliary_contents(section.headers)
-        )
-        page.extend(
-            {"type": BlockType.FOOTER, "content": content}
-            for content in cls._auxiliary_contents(section.footers)
-        )
-        page.extend(
-            {"type": BlockType.PAGE_FOOTNOTE, "content": content}
-            for content in cls._auxiliary_contents(section.footnotes)
+            {"type": BlockType.PAGE_FOOTNOTE, "content": content} for content in cls._auxiliary_contents(section.footnotes)
         )
         return page
 

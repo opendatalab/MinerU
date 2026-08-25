@@ -81,6 +81,7 @@ class XlsSheet:
 
     name: str
     visible: bool
+    order: int = -1
     cells: dict[tuple[int, int], XlsCell] = field(default_factory=dict)
     merges: list[tuple[int, int, int, int]] = field(default_factory=list)
     images: list[XlsImage] = field(default_factory=list)
@@ -89,8 +90,22 @@ class XlsSheet:
     recovered: bool = False
 
 
+@dataclass(frozen=True, slots=True)
+class XlsChartSheet:
+    """一个独立 chart sheet 及其源工作表选择范围。"""
+
+    name: str
+    visible: bool
+    order: int
+    source_sheet_name: str | None
+    source_rows: tuple[int, ...] = ()
+    source_cols: tuple[int, ...] = ()
+
+
 @dataclass(slots=True)
 class XlsWorkbook:
     """Excel 97–2003 工作簿的内部分页表示。"""
 
     sheets: list[XlsSheet]
+    chart_sheets: list[XlsChartSheet] = field(default_factory=list)
+    active_sheet_index: int | None = None

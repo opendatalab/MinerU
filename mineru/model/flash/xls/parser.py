@@ -26,10 +26,11 @@ from mineru.model.flash.office.image_equation import (
     OfficeImageEquationDecoder,
 )
 
-from .chart import chart_source_axes
+from .chart import chart_source_axes, chart_source_selection
 from .models import (
     XlsCell,
     XlsChart,
+    XlsChartSheet,
     XlsEquation,
     XlsFontStyle,
     XlsImage,
@@ -90,6 +91,7 @@ TXO = 0x01B6
 HLINK = 0x01B8
 SUPBOOK = 0x01AE
 EXTERNSHEET = 0x0017
+WINDOW1 = 0x003D
 
 WORKBOOK_GLOBALS_SUBSTREAM = 0x0005
 WORKSHEET_SUBSTREAM = 0x0010
@@ -134,6 +136,7 @@ class _Globals:
     formats: list[_CellFormat] = field(default_factory=list)
     images: dict[int, OfficeImagePayload] = field(default_factory=dict)
     extern_sheets: list[int | None] = field(default_factory=list)
+    active_sheet_index: int | None = None
 
     def read_string(
         self,
@@ -351,6 +354,8 @@ def _read_globals(data: bytes, budget: RecordBudget) -> _Globals:
             internal_supbooks.append(_read_supbook(record.payload))
         elif record.record_type == EXTERNSHEET:
             extern_payloads.append(record.payload)
+        elif record.record_type == WINDOW1 and len(record.payload) >= 12:
+            globals_.active_sheet_index = get_u16(record.payload, 10)
 
     globals_.formats = [
         _CellFormat(
@@ -480,10 +485,7 @@ def _pict_embedding_storage(payload: bytes, picture_flags: int | None) -> str | 
     if len(formula) < 7 or int(get_u16(formula, 0) or 0) & 0x7FFF != 5:
         return None
     # ObjectParsedFormula 的四字节 unused 在部分生产器中省略，因此兼容两个合法落点。
-    if not any(
-        offset + 5 <= len(formula) and formula[offset] == 0x02
-        for offset in (6, 2)
-    ):
+    if not any(offset + 5 <= len(formula) and formula[offset] == 0x02 for offset in (6, 2)):
         return None
     location = get_u32(payload, formula_end)
     return f"MBD{int(location):08X}" if location is not None else None
@@ -523,11 +525,7 @@ def _read_obj(payload: bytes) -> _SheetObject | None:
         int(object_type),
         int(object_id),
         checked=checked,
-        embedding_storage=(
-            _pict_embedding_storage(picture_formula, picture_flags)
-            if picture_formula is not None
-            else None
-        ),
+        embedding_storage=(_pict_embedding_storage(picture_formula, picture_flags) if picture_formula is not None else None),
     )
 
 
@@ -722,9 +720,7 @@ def _bind_objects(
                 content_type=payload.content_type,
             )
             if image_latex:
-                sheet.equations.append(
-                    XlsEquation(row=row, col=col, latex=image_latex)
-                )
+                sheet.equations.append(XlsEquation(row=row, col=col, latex=image_latex))
                 continue
         if object_.object_type == OBJ_TEXTBOX and object_.text is not None:
             _append_cell_text(sheet, row, col, object_.text)
@@ -803,15 +799,12 @@ def _read_sheet(
     """解析一个 worksheet substream 并绑定其 drawing/chart 对象。"""
 
     first = record_at(data, offset, budget=budget)
-    if (
-        first is None
-        or first.record_type != BOF
-        or get_u16(first.payload, 2) != WORKSHEET_SUBSTREAM
-    ):
+    if first is None or first.record_type != BOF or get_u16(first.payload, 2) != WORKSHEET_SUBSTREAM:
         return None
     sheet = XlsSheet(
         name=descriptor.name,
         visible=descriptor.visible,
+        order=sheet_index,
         recovered=recovered,
     )
     cursor = first.next_offset
@@ -859,9 +852,7 @@ def _read_sheet(
         if record.record_type == MERGEDCELLS:
             count = min(int(get_u16(record.payload, 0) or 0), max(0, (len(record.payload) - 2) // 8))
             for index in range(count):
-                row_first, row_last, col_first, col_last = struct.unpack_from(
-                    "<4H", record.payload, 2 + index * 8
-                )
+                row_first, row_last, col_first, col_last = struct.unpack_from("<4H", record.payload, 2 + index * 8)
                 row_start, row_end = sorted((int(row_first), int(row_last)))
                 col_start, col_end = sorted((int(col_first), int(col_last)))
                 if col_start >= MAX_COLS or (row_start == row_end and col_start == col_end):
@@ -1059,11 +1050,52 @@ def _is_worksheet_offset(data: bytes, offset: int) -> bool:
     """判断 BoundSheet offset 是否精确指向 worksheet BOF。"""
 
     record = record_at(data, offset)
-    return bool(
-        record is not None
-        and record.record_type == BOF
-        and get_u16(record.payload, 2) == WORKSHEET_SUBSTREAM
-    )
+    return bool(record is not None and record.record_type == BOF and get_u16(record.payload, 2) == WORKSHEET_SUBSTREAM)
+
+
+def _parse_chart_sheets(
+    data: bytes,
+    globals_: _Globals,
+    *,
+    budget: RecordBudget,
+) -> list[XlsChartSheet]:
+    """解析独立 chart sheet，并把 BRAI 引用绑定到唯一 worksheet。"""
+
+    worksheet_names = {
+        index: descriptor.name for index, descriptor in enumerate(globals_.sheets) if descriptor.sheet_type == 0x00
+    }
+    chart_sheets: list[XlsChartSheet] = []
+    for order, descriptor in enumerate(globals_.sheets):
+        if descriptor.sheet_type != 0x02:
+            continue
+        first = record_at(data, descriptor.offset, budget=budget)
+        selection = None
+        if first is not None and first.record_type == BOF and get_u16(first.payload, 2) == CHART_SUBSTREAM:
+            records = list(
+                iter_records(
+                    data,
+                    start=descriptor.offset,
+                    stop_at_eof=True,
+                    budget=budget,
+                )
+            )
+            selection = chart_source_selection(
+                records,
+                current_sheet_index=order,
+                extern_sheets=globals_.extern_sheets,
+            )
+        source_name = worksheet_names.get(selection.sheet_index) if selection is not None else None
+        chart_sheets.append(
+            XlsChartSheet(
+                name=descriptor.name,
+                visible=descriptor.visible,
+                order=order,
+                source_sheet_name=source_name,
+                source_rows=(selection.rows if selection is not None and source_name is not None else ()),
+                source_cols=(selection.cols if selection is not None and source_name is not None else ()),
+            )
+        )
+    return chart_sheets
 
 
 def parse_xls_workbook(
@@ -1076,21 +1108,14 @@ def parse_xls_workbook(
     if not data:
         raise LegacyOfficeMalformedError("empty Workbook stream")
     budget = RecordBudget()
-    normalized_equations = {
-        storage.casefold(): latex
-        for storage, latex in (native_equations or {}).items()
-    }
+    normalized_equations = {storage.casefold(): latex for storage, latex in (native_equations or {}).items()}
     image_equation_decoder = OfficeImageEquationDecoder()
     globals_ = _read_globals(data, budget)
     candidates = _worksheet_bof_offsets(data)
     used_offsets: set[int] = set()
     sheets: list[XlsSheet] = []
 
-    descriptor_entries = [
-        (index, sheet)
-        for index, sheet in enumerate(globals_.sheets)
-        if sheet.sheet_type == 0x00
-    ]
+    descriptor_entries = [(index, sheet) for index, sheet in enumerate(globals_.sheets) if sheet.sheet_type == 0x00]
     if not descriptor_entries and candidates:
         descriptor_entries = [
             (
@@ -1128,6 +1153,7 @@ def parse_xls_workbook(
                 XlsSheet(
                     name=descriptor.name,
                     visible=descriptor.visible,
+                    order=sheet_index,
                     recovered=True,
                 )
             )
@@ -1149,9 +1175,14 @@ def parse_xls_workbook(
                 XlsSheet(
                     name=descriptor.name,
                     visible=descriptor.visible,
+                    order=sheet_index,
                     recovered=True,
                 )
             )
         else:
             sheets.append(parsed)
-    return XlsWorkbook(sheets=sheets)
+    return XlsWorkbook(
+        sheets=sheets,
+        chart_sheets=_parse_chart_sheets(data, globals_, budget=budget),
+        active_sheet_index=globals_.active_sheet_index,
+    )

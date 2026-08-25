@@ -14,6 +14,7 @@ import zlib
 from loguru import logger
 
 from mineru.model.flash.legacy_office import (
+    BoundedOleReader,
     LegacyOfficeEncryptedError,
     LegacyOfficeMalformedError,
     LegacyOfficeResourceLimitError,
@@ -35,8 +36,10 @@ from mineru.model.flash.office.image import serialize_office_image
 from mineru.model.flash.office.image_equation import (
     OfficeImageEquationDecoder,
 )
+from ..xls.embedded_chart import extract_embedded_chart_html_from_storage
 
 from .models import (
+    PptChartElement,
     PptEquationElement,
     PptImageElement,
     PptParagraph,
@@ -114,6 +117,11 @@ FOPT_TABLE_ROW_PROPERTIES = 0x03A0
 DEFAULT_SLIDE_WIDTH = 5760
 DEFAULT_SLIDE_HEIGHT = 4320
 _ALLOWED_LINK_SCHEMES = frozenset({"http", "https", "mailto"})
+_CFB_MAGIC = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
+_ZLIB_SYNC_FLUSH_SUFFIX = b"\x00\x00\xff\xff"
+_OLE_SUBTYPE_GRAPH = 0x0000_0004
+_OLE_SUBTYPE_EQUATION = 0x0000_0006
+_OLE_SUBTYPE_EXCEL_CHART = 0x0000_000E
 
 
 @dataclass(frozen=True, slots=True)
@@ -131,6 +139,14 @@ class _PersistLayout:
     document: PptRecord
     persist: dict[int, int]
     recovered: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class _EmbeddedOleObject:
+    """一个已按 exObjId 绑定并解压的 PPT OLE 对象。"""
+
+    subtype: int
+    storage: bytes
 
 
 @dataclass(frozen=True, slots=True)
@@ -274,9 +290,7 @@ def _locate_document(
                 raise LegacyOfficeMalformedError("PowerPoint UserEdit chain points to itself")
             edit_offset = int(previous or 0)
         else:
-            raise LegacyOfficeResourceLimitError(
-                f"UserEdit chain exceeds max_user_edit_chain={MAX_USER_EDIT_CHAIN}"
-            )
+            raise LegacyOfficeResourceLimitError(f"UserEdit chain exceeds max_user_edit_chain={MAX_USER_EDIT_CHAIN}")
         if document_persist_id is not None:
             document_offset = persist.get(int(document_persist_id))
             if document_offset is not None:
@@ -415,9 +429,7 @@ def _hyperlink_targets(document: PptRecord, budget: RecordBudget) -> dict[int, s
             continue
         safe_target = _safe_hyperlink_target(strings[-1])
         if safe_target is None:
-            logger.warning(
-                f"PPT_UNSAFE_HYPERLINK: hyperlink id={link_id} was downgraded"
-            )
+            logger.warning(f"PPT_UNSAFE_HYPERLINK: hyperlink id={link_id} was downgraded")
             continue
         result[int(link_id)] = safe_target
     return result
@@ -506,11 +518,7 @@ def _resolve_run(
         text=text,
         bold=explicit.bold if explicit.bold is not None else bool(master.bold),
         italic=explicit.italic if explicit.italic is not None else bool(master.italic),
-        underline=(
-            explicit.underline
-            if explicit.underline is not None
-            else bool(master.underline) or hyperlink is not None
-        ),
+        underline=(explicit.underline if explicit.underline is not None else bool(master.underline) or hyperlink is not None),
         strike=bool(explicit.strike),
         baseline=explicit.baseline if explicit.baseline is not None else master.baseline,
         hyperlink=hyperlink,
@@ -620,8 +628,7 @@ def _parse_text_contents(
             (
                 position
                 for position, candidate in enumerate(tail)
-                if candidate.record_type
-                in {RT_TEXT_CHARS_ATOM, RT_TEXT_BYTES_ATOM, RT_SLIDE_PERSIST_ATOM}
+                if candidate.record_type in {RT_TEXT_CHARS_ATOM, RT_TEXT_BYTES_ATOM, RT_SLIDE_PERSIST_ATOM}
             ),
             len(tail),
         )
@@ -630,11 +637,7 @@ def _parse_text_contents(
             (candidate for candidate in related if candidate.record_type == RT_STYLE_TEXT_PROP_ATOM),
             None,
         )
-        styles = (
-            parse_style_text(style_atom.payload, _utf16_width(text))
-            if style_atom is not None
-            else StyleRuns()
-        )
+        styles = parse_style_text(style_atom.payload, _utf16_width(text)) if style_atom is not None else StyleRuns()
         spans = _interactive_spans(related, hyperlinks, budget)
         paragraphs = _build_paragraphs(
             text,
@@ -777,13 +780,13 @@ def _shape_external_object_id(shape: PptRecord, budget: RecordBudget) -> int | N
     return None
 
 
-def _equation_object_references(
+def _embedded_object_references(
     document: PptRecord,
     budget: RecordBudget,
-) -> dict[int, int]:
-    """收集 Equation subtype 的 exObjId 到 persistIdRef 映射。"""
+) -> dict[int, tuple[int, int]]:
+    """收集支持的嵌入 OLE subtype、exObjId 与 persistIdRef。"""
 
-    references: dict[int, int] = {}
+    references: dict[int, tuple[int, int]] = {}
     for atom in iter_descendants(document, budget=budget):
         if atom.record_type != RT_EXTERNAL_OLE_OBJECT_ATOM or len(atom.payload) < 24:
             continue
@@ -793,11 +796,19 @@ def _equation_object_references(
         persist_id = get_u32(atom.payload, 16)
         if (
             object_type == 0
-            and object_subtype == 0x0000_0006
+            and object_subtype
+            in {
+                _OLE_SUBTYPE_GRAPH,
+                _OLE_SUBTYPE_EQUATION,
+                _OLE_SUBTYPE_EXCEL_CHART,
+            }
             and object_id
             and persist_id
         ):
-            references.setdefault(int(object_id), int(persist_id))
+            references.setdefault(
+                int(object_id),
+                (int(object_subtype), int(persist_id)),
+            )
     return references
 
 
@@ -808,53 +819,68 @@ def _decompress_ole_storage(record: PptRecord) -> bytes | None:
         return None
     if record.instance == 0:
         if len(record.payload) > MAX_ENTRY_BYTES:
-            raise LegacyOfficeResourceLimitError(
-                f"OLE object exceeds max_entry_bytes={MAX_ENTRY_BYTES}"
-            )
-        return record.payload
+            raise LegacyOfficeResourceLimitError(f"OLE object exceeds max_entry_bytes={MAX_ENTRY_BYTES}")
+        storage = record.payload
+        if not storage.startswith(_CFB_MAGIC):
+            return None
+        try:
+            with BoundedOleReader(storage):
+                pass
+        except ValueError:
+            return None
+        return storage
     if record.instance != 1 or len(record.payload) < 4:
         return None
     declared_size = int(get_u32(record.payload, 0) or 0)
     if declared_size <= 0:
         return None
     if declared_size > MAX_ENTRY_BYTES:
-        raise LegacyOfficeResourceLimitError(
-            f"OLE object exceeds max_entry_bytes={MAX_ENTRY_BYTES}"
-        )
+        raise LegacyOfficeResourceLimitError(f"OLE object exceeds max_entry_bytes={MAX_ENTRY_BYTES}")
     try:
         inflater = zlib.decompressobj(zlib.MAX_WBITS)
         storage = inflater.decompress(record.payload[4:], MAX_ENTRY_BYTES + 1)
         if len(storage) > MAX_ENTRY_BYTES:
-            raise LegacyOfficeResourceLimitError(
-                f"OLE object exceeds max_entry_bytes={MAX_ENTRY_BYTES}"
-            )
+            raise LegacyOfficeResourceLimitError(f"OLE object exceeds max_entry_bytes={MAX_ENTRY_BYTES}")
         storage += inflater.flush(MAX_ENTRY_BYTES + 1 - len(storage))
     except (ValueError, zlib.error):
         return None
     if len(storage) > MAX_ENTRY_BYTES:
-        raise LegacyOfficeResourceLimitError(
-            f"OLE object exceeds max_entry_bytes={MAX_ENTRY_BYTES}"
-        )
-    if not inflater.eof or len(storage) != declared_size:
+        raise LegacyOfficeResourceLimitError(f"OLE object exceeds max_entry_bytes={MAX_ENTRY_BYTES}")
+    if len(storage) != declared_size or inflater.unconsumed_tail:
+        return None
+    if not inflater.eof:
+        if not record.payload[4:].endswith(_ZLIB_SYNC_FLUSH_SUFFIX):
+            return None
+    elif inflater.unused_data:
+        return None
+    if not storage.startswith(_CFB_MAGIC):
+        return None
+    try:
+        with BoundedOleReader(storage):
+            pass
+    except ValueError:
         return None
     return storage
 
 
-def _equation_map(
+def _embedded_object_map(
     layout: _PersistLayout,
     data: bytes,
     budget: RecordBudget,
-) -> dict[int, str]:
-    """解析 PPT persist OLE storages 中可用的 Equation Native。"""
+) -> dict[int, _EmbeddedOleObject]:
+    """统一解压受支持的 PPT persist OLE storages 并共享资源预算。"""
 
-    equations: dict[int, str] = {}
+    objects: dict[int, _EmbeddedOleObject] = {}
     asset_total = 0
-    for object_id, persist_id in _equation_object_references(layout.document, budget).items():
+    for object_id, (subtype, persist_id) in _embedded_object_references(
+        layout.document,
+        budget,
+    ).items():
         offset = layout.persist.get(persist_id)
         record = record_at(data, offset, budget=budget) if offset is not None else None
         if record is None:
             logger.warning(
-                "PPT_MTEF_FALLBACK: exObjId={} persistIdRef={} is missing",
+                "PPT_OLE_FALLBACK: exObjId={} persistIdRef={} is missing",
                 object_id,
                 persist_id,
             )
@@ -862,16 +888,25 @@ def _equation_map(
         storage = _decompress_ole_storage(record)
         if storage is None:
             logger.warning(
-                "PPT_MTEF_FALLBACK: exObjId={} has an invalid OLE storage",
+                "PPT_OLE_FALLBACK: exObjId={} has an invalid OLE storage",
                 object_id,
             )
             continue
         asset_total += len(storage)
         if asset_total > MAX_ASSET_TOTAL_BYTES:
-            raise LegacyOfficeResourceLimitError(
-                f"embedded assets exceed max_asset_total_bytes={MAX_ASSET_TOTAL_BYTES}"
-            )
-        latex = decode_equation_object(storage)
+            raise LegacyOfficeResourceLimitError(f"embedded assets exceed max_asset_total_bytes={MAX_ASSET_TOTAL_BYTES}")
+        objects[object_id] = _EmbeddedOleObject(subtype=subtype, storage=storage)
+    return objects
+
+
+def _equation_map(objects: dict[int, _EmbeddedOleObject]) -> dict[int, str]:
+    """从共享 OLE 对象集合解析 Equation Native。"""
+
+    equations: dict[int, str] = {}
+    for object_id, embedded in objects.items():
+        if embedded.subtype != _OLE_SUBTYPE_EQUATION:
+            continue
+        latex = decode_equation_object(embedded.storage)
         if latex is None:
             logger.warning(
                 "PPT_MTEF_FALLBACK: exObjId={} has an invalid or unsupported Equation Native stream",
@@ -880,6 +915,24 @@ def _equation_map(
             continue
         equations[object_id] = latex
     return equations
+
+
+def _chart_map(objects: dict[int, _EmbeddedOleObject]) -> dict[int, str]:
+    """从共享 OLE 对象集合解析 Excel.Chart 与 MSGraph.Chart 数据表。"""
+
+    charts: dict[int, str] = {}
+    for object_id, embedded in objects.items():
+        if embedded.subtype not in {_OLE_SUBTYPE_GRAPH, _OLE_SUBTYPE_EXCEL_CHART}:
+            continue
+        content = extract_embedded_chart_html_from_storage(embedded.storage)
+        if content is None:
+            logger.warning(
+                "PPT_CHART_FALLBACK: exObjId={} has no supported chart datasheet",
+                object_id,
+            )
+            continue
+        charts[object_id] = content
+    return charts
 
 
 def _shape_complex_properties(shape: PptRecord, budget: RecordBudget) -> dict[int, bytes]:
@@ -999,11 +1052,7 @@ def _group_space(
 
     children = _direct_children(group_shape, budget)
     fspgr = next(
-        (
-            child
-            for child in children
-            if child.record_type == RT_OFFICEART_FSPGR and len(child.payload) >= 16
-        ),
+        (child for child in children if child.record_type == RT_OFFICEART_FSPGR and len(child.payload) >= 16),
         None,
     )
     if fspgr is None:
@@ -1115,11 +1164,7 @@ def _shape_text_content(
     """解析 shape 的 ClientTextbox，必要时回退到 OutlineTextRefAtom。"""
 
     textbox = next(
-        (
-            child
-            for child in _direct_children(shape.record, budget)
-            if child.record_type == RT_OFFICEART_CLIENT_TEXTBOX
-        ),
+        (child for child in _direct_children(shape.record, budget) if child.record_type == RT_OFFICEART_CLIENT_TEXTBOX),
         None,
     )
     if textbox is None:
@@ -1129,17 +1174,13 @@ def _shape_text_content(
     if contents:
         return _apply_shape_numbering(contents[0], shape.record, budget)
     reference = next(
-        (
-            child
-            for child in textbox_records
-            if child.record_type == RT_OUTLINE_TEXT_REF_ATOM and len(child.payload) >= 4
-        ),
+        (child for child in textbox_records if child.record_type == RT_OUTLINE_TEXT_REF_ATOM and len(child.payload) >= 4),
         None,
     )
     if reference is None:
         return None
     index = int(get_u32(reference.payload, 0) or 0)
-    for candidate in ((index, index - 1) if index else (0,)):
+    for candidate in (index, index - 1) if index else (0,):
         if 0 <= candidate < len(external_text):
             return _apply_shape_numbering(external_text[candidate], shape.record, budget)
     return None
@@ -1223,11 +1264,7 @@ def _shape_numbering_styles(
             continue
         children = list(iter_records(tag.payload, budget=budget))
         marker = next(
-            (
-                child
-                for child in children
-                if child.record_type == RT_CSTRING and utf16_text(child.payload) == "___PPT9"
-            ),
+            (child for child in children if child.record_type == RT_CSTRING and utf16_text(child.payload) == "___PPT9"),
             None,
         )
         blob = next((child for child in children if child.record_type == 0x138B), None)
@@ -1413,11 +1450,7 @@ def _picture_map(
 
     result: dict[int, _ImagePayload] = {}
     asset_total = 0
-    bse_records = [
-        record
-        for record in iter_descendants(document, budget=budget)
-        if record.record_type == RT_OFFICEART_BSE
-    ]
+    bse_records = [record for record in iter_descendants(document, budget=budget) if record.record_type == RT_OFFICEART_BSE]
     for index, bse in enumerate(bse_records[:MAX_PICTURE_RECORDS], start=1):
         decoded = None
         picture_offset = get_u32(bse.payload, 28)
@@ -1434,14 +1467,10 @@ def _picture_map(
             continue
         asset_total += len(decoded.data)
         if asset_total > MAX_ASSET_TOTAL_BYTES:
-            raise LegacyOfficeResourceLimitError(
-                f"embedded assets exceed max_asset_total_bytes={MAX_ASSET_TOTAL_BYTES}"
-            )
+            raise LegacyOfficeResourceLimitError(f"embedded assets exceed max_asset_total_bytes={MAX_ASSET_TOTAL_BYTES}")
         result[index] = decoded
     if len(bse_records) > MAX_PICTURE_RECORDS:
-        logger.warning(
-            f"PPT_PICTURE_LIMIT: ignored BSE records after {MAX_PICTURE_RECORDS}"
-        )
+        logger.warning(f"PPT_PICTURE_LIMIT: ignored BSE records after {MAX_PICTURE_RECORDS}")
     return result
 
 
@@ -1458,9 +1487,7 @@ def _image_from_shape(
         return None
     image = image_map.get(int(reference))
     if image is None:
-        logger.warning(
-            f"PPT_IMAGE_REFERENCE_MISSING: shape={shape.key}, pib={reference}"
-        )
+        logger.warning(f"PPT_IMAGE_REFERENCE_MISSING: shape={shape.key}, pib={reference}")
         return None
     latex = equation_decoder.decode(
         image.data,
@@ -1480,9 +1507,7 @@ def _image_from_shape(
         content_type=image.content_type,
     )
     if not data_uri:
-        logger.warning(
-            f"PPT_IMAGE_UNSUPPORTED: shape={shape.key}, type={image.content_type}"
-        )
+        logger.warning(f"PPT_IMAGE_UNSUPPORTED: shape={shape.key}, type={image.content_type}")
         return None
     return PptImageElement(
         image_base64=data_uri,
@@ -1515,12 +1540,13 @@ def _slide_elements(
     hyperlinks: dict[int, str],
     image_map: dict[int, _ImagePayload],
     equation_map: dict[int, str],
+    chart_map: dict[int, str],
     image_equation_decoder: OfficeImageEquationDecoder,
     slide_width: int,
     slide_height: int,
     budget: RecordBudget,
-) -> list[PptTextElement | PptImageElement | PptEquationElement | PptTableElement]:
-    """把一张 slide 的 shapes 转换为文本、表格和图片语义元素。"""
+) -> list[PptTextElement | PptImageElement | PptEquationElement | PptChartElement | PptTableElement]:
+    """把一张 slide 的 shapes 转换为文本、表格、chart 和图片元素。"""
 
     collection = _collect_shapes(slide, budget)
     tables: list[PptTableElement] = []
@@ -1546,13 +1572,29 @@ def _slide_elements(
         tables.append(table)
         consumed_keys.update(shape.key for shape in group.shapes)
 
-    elements: list[
-        PptTextElement | PptImageElement | PptEquationElement | PptTableElement
-    ] = list(tables)
+    elements: list[PptTextElement | PptImageElement | PptEquationElement | PptChartElement | PptTableElement] = list(tables)
     for shape in collection.shapes:
         if shape.key in consumed_keys or _is_background_shape(shape.record, budget):
             continue
         external_object_id = _shape_external_object_id(shape.record, budget)
+        chart = chart_map.get(external_object_id or 0)
+        if chart:
+            preview = _image_from_shape(
+                shape,
+                image_map,
+                image_equation_decoder,
+                budget,
+            )
+            elements.append(
+                PptChartElement(
+                    content=chart,
+                    image_base64=(preview.image_base64 if isinstance(preview, PptImageElement) else None),
+                    bbox=shape.bbox,
+                    order=shape.order,
+                    shape_offset=shape.order,
+                )
+            )
+            continue
         equation = equation_map.get(external_object_id or 0)
         if equation:
             elements.append(
@@ -1761,9 +1803,7 @@ def parse_ppt_document(
     if current_user:
         record_type = get_u16(current_user, 2)
         if record_type not in {None, 0x0FF6}:
-            raise LegacyOfficeMalformedError(
-                "PowerPoint 95 or earlier Current User stream is unsupported"
-            )
+            raise LegacyOfficeMalformedError("PowerPoint 95 or earlier Current User stream is unsupported")
         if get_u32(current_user, 12) == 0xF3D1_C4DF:
             raise LegacyOfficeEncryptedError("password-protected PPT is unsupported")
 
@@ -1777,17 +1817,16 @@ def parse_ppt_document(
         for _ in iter_descendants(root_record, budget=budget):
             pass
     layout = _locate_document(powerpoint_document, current_user, budget)
-    if any(
-        child.record_type == RT_CRYPT_SESSION10_CONTAINER
-        for child in iter_descendants(layout.document, budget=budget)
-    ):
+    if any(child.record_type == RT_CRYPT_SESSION10_CONTAINER for child in iter_descendants(layout.document, budget=budget)):
         raise LegacyOfficeEncryptedError("encrypted PPT record stream is unsupported")
 
     width, height = _presentation_size(layout.document, budget)
     hyperlinks = _hyperlink_targets(layout.document, budget)
     image_map = _picture_map(layout.document, pictures, budget)
     image_equation_decoder = OfficeImageEquationDecoder()
-    native_equations = _equation_map(layout, powerpoint_document, budget)
+    embedded_objects = _embedded_object_map(layout, powerpoint_document, budget)
+    native_equations = _equation_map(embedded_objects)
+    native_charts = _chart_map(embedded_objects)
     master_map, fallback_master = _collect_masters(
         layout,
         powerpoint_document,
@@ -1814,21 +1853,13 @@ def parse_ppt_document(
             notes = unbound_notes[unbound_note_index]
             unbound_note_index += 1
         if offset is None or offset in resolved_offsets:
-            logger.warning(
-                f"PPT_SLIDE_MISSING: persist_ref={reference}, slide_id={slide_id}"
-            )
-            slides.append(
-                PptSlide(slide_id=slide_id or None, notes=list(notes or []))
-            )
+            logger.warning(f"PPT_SLIDE_MISSING: persist_ref={reference}, slide_id={slide_id}")
+            slides.append(PptSlide(slide_id=slide_id or None, notes=list(notes or [])))
             continue
         slide = record_at(powerpoint_document, offset, budget=budget)
         if slide is None or slide.record_type != RT_SLIDE:
-            logger.warning(
-                f"PPT_SLIDE_MALFORMED: persist_ref={reference}, slide_id={slide_id}"
-            )
-            slides.append(
-                PptSlide(slide_id=slide_id or None, notes=list(notes or []))
-            )
+            logger.warning(f"PPT_SLIDE_MALFORMED: persist_ref={reference}, slide_id={slide_id}")
+            slides.append(PptSlide(slide_id=slide_id or None, notes=list(notes or [])))
             continue
         resolved_offsets.add(offset)
         resolved_slide_count += 1
@@ -1850,6 +1881,7 @@ def parse_ppt_document(
                     hyperlinks,
                     image_map,
                     native_equations,
+                    native_charts,
                     image_equation_decoder,
                     width,
                     height,
@@ -1876,6 +1908,7 @@ def parse_ppt_document(
                         hyperlinks,
                         image_map,
                         native_equations,
+                        native_charts,
                         image_equation_decoder,
                         width,
                         height,

@@ -30,12 +30,13 @@ from .fib import (
     FCLCB_STSHF,
     FileInformationBlock,
 )
-from .fields import apply_field_result, field_keyword, is_toc_field
+from .fields import apply_field_result, field_keyword, is_chart_embed_field, is_toc_field
 from .formatting import FormattingRuns, parse_formatting_runs
 from .images import ImageStore, floating_pictures, inline_picture
 from .lists import ListTables, parse_list_tables
 from .models import (
     DocCharStyle,
+    DocChartPayload,
     DocDocument,
     DocElement,
     DocImage,
@@ -47,6 +48,7 @@ from .models import (
     DocTableFormat,
     DocTableRow,
     DocTextRun,
+    DocVisualPayload,
 )
 from .pieces import Piece, TextStream, codec_for_lid, extract_text, legacy_single_piece, parse_clx
 from .records import DocBudget, bounded_slice, parse_plc
@@ -69,6 +71,8 @@ class _FieldFrame:
     transparent: bool = False
     runs: list[DocTextRun] = field(default_factory=list)
     native_formula: bool = False
+    native_chart: str | None = None
+    native_chart_emitted: bool = False
 
 
 @dataclass(slots=True)
@@ -95,6 +99,7 @@ class _Assembler:
         image_store: ImageStore,
         budget: DocBudget,
         native_equations: dict[int, str] | None = None,
+        native_charts: dict[int, str] | None = None,
     ) -> None:
         """保存解析上下文；每个 story 开始时会重置字段栈。"""
 
@@ -108,6 +113,7 @@ class _Assembler:
         self.image_store = image_store
         self.budget = budget
         self.native_equations = native_equations or {}
+        self.native_charts = native_charts or {}
         self._fields: list[_FieldFrame] = []
 
     def _piece_prm(self, char_index: int) -> bytes:
@@ -202,7 +208,12 @@ class _Assembler:
             paragraph_keywords.add(keyword)
         frame.transparent = is_toc_field(frame.instruction)
 
-    def _field_end(self, visible: list[DocTextRun], paragraph_keywords: set[str]) -> None:
+    def _field_end(
+        self,
+        visible: list[DocTextRun],
+        paragraph_keywords: set[str],
+        visuals: list[DocVisualPayload],
+    ) -> None:
         """关闭字段，把缓存结果绑定链接后放回父上下文。"""
 
         if not self._fields:
@@ -213,18 +224,17 @@ class _Assembler:
             paragraph_keywords.add(keyword)
         if frame.transparent:
             return
+        if frame.native_chart is not None:
+            if not frame.native_chart_emitted:
+                visuals.append(DocChartPayload(content=frame.native_chart))
+            return
         for run in apply_field_result(frame.instruction, frame.runs):
             self._push_visible_run(visible, run)
 
     def _paragraph_anchor(self, cp_start: int, cp_end: int) -> str | None:
         """返回段落范围内优先级最高的书签起点。"""
 
-        candidates = [
-            name
-            for cp, names in self.bookmarks.items()
-            if cp_start <= cp < cp_end
-            for name in names
-        ]
+        candidates = [name for cp, names in self.bookmarks.items() if cp_start <= cp < cp_end for name in names]
         if not candidates:
             return None
         return next((name for name in candidates if name.startswith("_Toc")), candidates[0])
@@ -238,7 +248,7 @@ class _Assembler:
         fc: int,
         terminator: str,
         runs: list[DocTextRun],
-        images: list,
+        images: list[DocVisualPayload],
         keywords: set[str],
     ) -> DocParagraph | None:
         """把段落终止字符上的 PAPX 解析为完整语义段落。"""
@@ -293,7 +303,7 @@ class _Assembler:
         end_index = self.text.index_of_cp(cp_end)
         paragraphs: list[DocParagraph] = []
         visible: list[DocTextRun] = []
-        images: list = []
+        images: list[DocVisualPayload] = []
         keywords: set[str] = set()
         paragraph_start = cp_start
         for char_index in range(start_index, min(end_index, len(self.text.chars))):
@@ -308,12 +318,15 @@ class _Assembler:
                 character_run = self.formatting.character_at(fc)
                 location = chpx_picture_location(character_run.grpprl) if character_run is not None else None
                 formula = self.native_equations.get(location) if location is not None else None
+                chart = self.native_charts.get(location) if location is not None else None
+                if chart is not None and self._fields and is_chart_embed_field(self._fields[-1].instruction):
+                    self._fields[-1].native_chart = chart
                 if formula is not None and self._fields:
                     self._fields[-1].native_formula = True
                     self._push_visible_run(visible, DocTextRun(formula, formula=True))
                 continue
             if char == "\x15":
-                self._field_end(visible, keywords)
+                self._field_end(visible, keywords, images)
                 continue
             if cp in refs:
                 self._push_visible_run(
@@ -344,6 +357,10 @@ class _Assembler:
                     continue
                 character_run = self.formatting.character_at(fc)
                 location = chpx_picture_location(character_run.grpprl) if character_run is not None else None
+                chart_frame = next(
+                    (frame for frame in reversed(self._fields) if frame.native_chart is not None),
+                    None,
+                )
                 if location is not None:
                     payload = inline_picture(
                         self.data_stream,
@@ -351,9 +368,20 @@ class _Assembler:
                         store=self.image_store,
                         budget=self.budget,
                     )
-                    if payload is not None:
+                    if chart_frame is not None:
+                        images.append(
+                            DocChartPayload(
+                                content=chart_frame.native_chart or "",
+                                preview=payload,
+                            )
+                        )
+                        chart_frame.native_chart_emitted = True
+                    elif payload is not None:
                         if all(existing is not payload for existing in images):
                             images.append(payload)
+                elif chart_frame is not None:
+                    images.append(DocChartPayload(content=chart_frame.native_chart or ""))
+                    chart_frame.native_chart_emitted = True
                 continue
             if char == "\x0b":
                 char = "\n"
@@ -569,9 +597,7 @@ def _distribute_sections(
         cp = element.cp if isinstance(element, DocImage) else element.cp_start
         target = sections[-1]
         for section in sections:
-            if section.cp_start <= cp < section.cp_end or (
-                section is sections[-1] and cp == section.cp_end
-            ):
+            if section.cp_start <= cp < section.cp_end or (section is sections[-1] and cp == section.cp_end):
                 target = section
                 break
         target.elements.append(element)
@@ -698,6 +724,7 @@ def parse_doc_document(
     fib: FileInformationBlock,
     *,
     native_equations: dict[int, str] | None = None,
+    native_charts: dict[int, str] | None = None,
 ) -> DocDocument:
     """解析三个核心 streams 并返回逐 section 语义文档。"""
 
@@ -808,6 +835,7 @@ def parse_doc_document(
         image_store=store,
         budget=budget,
         native_equations=native_equations,
+        native_charts=native_charts,
     )
     main_paragraphs = assembler.paragraphs(0, fib.ccp_text, note_refs=note_refs)
     shape_pair = fib.pair(FCLCB_SHAPE_MAIN)
