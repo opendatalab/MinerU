@@ -221,15 +221,30 @@ async def _hydrate_job_output_files(
             if route is None or isinstance(route.metadata.get("payload"), dict):
                 continue
             worker = pool.get(route.worker_id)
-            response = await request_upstream(
-                pool,
-                worker,
-                "GET",
-                f"/v1/files/{route.upstream_id}",
-                request=request,
-            )
-            metadata = json_or_error(response)
+            try:
+                response = await request_upstream(
+                    pool,
+                    worker,
+                    "GET",
+                    f"/v1/files/{route.upstream_id}",
+                    request=request,
+                )
+                if response.status_code >= 400:
+                    route.metadata["hydration_error"] = {
+                        "status_code": response.status_code,
+                        "message": response.text,
+                    }
+                    continue
+                metadata = json_or_error(response)
+            except RouterProxyError as exc:
+                route.metadata["hydration_error"] = {
+                    "status_code": exc.status_code,
+                    "code": exc.code,
+                    "message": exc.message,
+                }
+                continue
             rewrite_file_payload(metadata, worker, registry)
+            route.metadata.pop("hydration_error", None)
 
 
 async def _finalize_terminal_job(
@@ -396,10 +411,19 @@ def create_app(
     async def upload_content(upload_id: str, request: Request) -> Response:
         """把上传内容流式暂存到 Router，再写入 upload 所属 worker。"""
         route = _route_or_404(registry, "upload", upload_id)
+        upload_payload = route.metadata.get("payload")
+        upload_status = upload_payload.get("status") if isinstance(upload_payload, dict) else None
+        if source_store.is_bound_upload(upload_id) or upload_status == "completed":
+            raise RouterProxyError(409, "upload_already_completed", f"Upload {upload_id} is already completed")
+        if upload_status == "canceled":
+            raise RouterProxyError(409, "upload_already_canceled", f"Upload {upload_id} is already canceled")
         worker = pool.get(route.worker_id)
         declared = route.metadata.get("declared") if isinstance(route.metadata.get("declared"), dict) else {}
         mime_type = str(declared.get("mime_type") or request.headers.get("content-type") or "application/octet-stream")
-        stored = await source_store.stage_upload(upload_id, request.stream(), mime_type=mime_type)
+        try:
+            stored = await source_store.stage_upload(upload_id, request.stream(), mime_type=mime_type)
+        except ValueError as exc:
+            raise RouterProxyError(409, "upload_not_writable", str(exc)) from exc
         declared_bytes = declared.get("bytes")
         if isinstance(declared_bytes, int) and stored.bytes != declared_bytes:
             source_store.discard_upload(upload_id)

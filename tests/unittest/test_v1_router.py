@@ -9,10 +9,11 @@ from pathlib import Path
 from typing import Any
 
 import httpx
+import pytest
 from fastapi.testclient import TestClient
 
 from mineru.kit.router import RouterSettings, create_app
-from mineru.kit.router.workers import ManagedLocalWorker
+from mineru.kit.router.workers import ManagedLocalWorker, worker_base_url, worker_connect_host
 from mineru.parser.api_server import create_app as create_api_server_app
 
 
@@ -454,6 +455,61 @@ def test_router_discards_staged_upload_with_wrong_sha256() -> None:
         assert next(iter(upstream.uploads.values()))["content"] == b""
 
 
+def test_completed_upload_rejects_content_rewrite_without_touching_bound_source() -> None:
+    """验证 completed Upload 的后续 PUT 返回 409 且绑定源文件保持不可变。"""
+    upstream = _FakeV1Upstream("worker-a", ("standard",))
+    router_app, _ = _make_router(upstream)
+    original = b"original"
+
+    with TestClient(router_app) as client:
+        created = client.post(
+            "/v1/uploads",
+            json={
+                "filename": "input.pdf",
+                "bytes": len(original),
+                "mime_type": "application/pdf",
+                "purpose": "parse",
+            },
+        )
+        upload_id = created.json()["id"]
+        client.put(f"/v1/uploads/{upload_id}/content", content=original)
+        completed = client.post(f"/v1/uploads/{upload_id}/complete", json={})
+        file_id = completed.json()["file"]["id"]
+        stored = router_app.state.source_store.find_file(file_id)
+        assert stored is not None
+
+        rewritten = client.put(f"/v1/uploads/{upload_id}/content", content=b"modified")
+
+        assert rewritten.status_code == 409
+        assert rewritten.json()["error"]["code"] == "upload_already_completed"
+        assert stored.path.read_bytes() == original
+
+
+def test_terminal_job_read_survives_deleted_output_metadata() -> None:
+    """验证 output 删除后 hydration 失败不会阻断 completed Job 读取。"""
+    upstream = _FakeV1Upstream("worker-a", ("standard",))
+    router_app, _ = _make_router(upstream)
+
+    with TestClient(router_app) as client:
+        file_id = _upload_file(client, token="output-delete", content=b"pdf")
+        created = client.post(
+            "/v1/parse/jobs",
+            json={"tier": "standard", "files": [{"source": {"type": "file_id", "file_id": file_id}}]},
+        )
+        job_id = created.json()["job_id"]
+        completed = client.get(f"/v1/parse/jobs/{job_id}")
+        output_id = completed.json()["files"][0]["output_files"]["markdown"]["file_id"]
+        assert client.delete(f"/v1/files/{output_id}").status_code == 200
+
+        reread = client.get(f"/v1/parse/jobs/{job_id}")
+
+        assert reread.status_code == 200
+        assert reread.json()["status"] == "completed"
+        replacement_output_id = reread.json()["files"][0]["output_files"]["markdown"]["file_id"]
+        replacement_route = router_app.state.registry.get("file", replacement_output_id)
+        assert replacement_route.metadata["hydration_error"]["status_code"] == 404
+
+
 def test_router_reclaims_cross_worker_copy_when_job_is_canceled() -> None:
     """验证取消 Job 时立即删除并解除 cross-worker 输入副本。"""
     first = _FakeV1Upstream("worker-a", ("standard",))
@@ -569,6 +625,26 @@ def test_managed_router_worker_builds_new_api_server_command(tmp_path: Path) -> 
     assert ["--concurrency", "3"] == command[command.index("--concurrency") : command.index("--concurrency") + 2]
     assert "--preload-models" in command
     assert "mineru.cli_old" not in " ".join(command)
+
+
+@pytest.mark.parametrize(
+    ("bind_host", "expected_connect_host", "expected_url"),
+    [
+        ("", "127.0.0.1", "http://127.0.0.1:18000"),
+        ("0.0.0.0", "127.0.0.1", "http://127.0.0.1:18000"),
+        ("127.0.0.1", "127.0.0.1", "http://127.0.0.1:18000"),
+        ("::", "::1", "http://[::1]:18000"),
+        ("::1", "::1", "http://[::1]:18000"),
+    ],
+)
+def test_managed_worker_formats_connectable_ipv4_and_ipv6_urls(
+    bind_host: str,
+    expected_connect_host: str,
+    expected_url: str,
+) -> None:
+    """验证 wildcard、IPv4 与 IPv6 worker 地址生成合法可连接 URL。"""
+    assert worker_connect_host(bind_host) == expected_connect_host
+    assert worker_base_url(bind_host, 18000) == expected_url
 
 
 def test_managed_router_worker_uses_control_shutdown() -> None:

@@ -66,6 +66,7 @@ class SourceFileStore:
         self._root = Path(self._temp_dir.name)
         self._uploads: dict[str, StoredSourceFile] = {}
         self._files: dict[str, StoredSourceFile] = {}
+        self._bound_uploads: set[str] = set()
 
     async def stage_upload(
         self,
@@ -75,6 +76,8 @@ class SourceFileStore:
         mime_type: str,
     ) -> StoredSourceFile:
         """流式写入一个公共 Upload 的输入字节，并计算实际大小与 SHA256。"""
+        if upload_id in self._bound_uploads:
+            raise ValueError(f"Upload {upload_id} is already bound to a completed file")
         path = self._root / "uploads" / upload_id
         path.parent.mkdir(parents=True, exist_ok=True)
         hasher = hashlib.sha256()
@@ -102,7 +105,12 @@ class SourceFileStore:
         """把已完成 Upload 的暂存输入绑定到 Router 公共 File。"""
         stored = self._uploads.pop(upload_id)
         self._files[file_id] = stored
+        self._bound_uploads.add(upload_id)
         return stored
+
+    def is_bound_upload(self, upload_id: str) -> bool:
+        """判断 Upload 的暂存路径是否已经绑定到完成后的公共 File。"""
+        return upload_id in self._bound_uploads
 
     def find_upload(self, upload_id: str) -> StoredSourceFile | None:
         """读取公共 Upload 对应的私有暂存输入，不存在时返回 None。"""
@@ -114,6 +122,8 @@ class SourceFileStore:
 
     def discard_upload(self, upload_id: str) -> None:
         """删除取消或失败 Upload 的私有暂存输入。"""
+        if upload_id in self._bound_uploads:
+            return
         stored = self._uploads.pop(upload_id, None)
         if stored is not None:
             stored.path.unlink(missing_ok=True)
@@ -128,6 +138,7 @@ class SourceFileStore:
         """清理当前 Router 进程的全部暂存输入。"""
         self._uploads.clear()
         self._files.clear()
+        self._bound_uploads.clear()
         self._temp_dir.cleanup()
 
 

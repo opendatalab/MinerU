@@ -36,9 +36,30 @@ def normalize_base_url(url: str) -> str:
     return normalized
 
 
+def worker_connect_host(bind_host: str) -> str:
+    """把 worker 监听地址转换成 Router 可主动连接的 loopback 地址。"""
+    normalized = str(bind_host).strip()
+    if normalized.startswith("[") and normalized.endswith("]"):
+        normalized = normalized[1:-1]
+    if normalized in {"", "0.0.0.0"}:
+        return "127.0.0.1"
+    if normalized == "::":
+        return "::1"
+    return normalized
+
+
+def worker_base_url(bind_host: str, port: int) -> str:
+    """构造托管 worker 的可连接 HTTP URL，并为 IPv6 literal 添加方括号。"""
+    connect_host = worker_connect_host(bind_host)
+    authority = f"[{connect_host}]" if ":" in connect_host else connect_host
+    return f"http://{authority}:{port}"
+
+
 def reserve_local_port(host: str) -> int:
     """在指定 host 上申请一个当前可用的本地 TCP 端口。"""
-    bind_host = "127.0.0.1" if host in {"0.0.0.0", "::", ""} else host
+    bind_host = str(host).strip() or "127.0.0.1"
+    if bind_host.startswith("[") and bind_host.endswith("]"):
+        bind_host = bind_host[1:-1]
     family = socket.AF_INET6 if ":" in bind_host else socket.AF_INET
     with socket.socket(family, socket.SOCK_STREAM) as sock:
         sock.bind((bind_host, 0))
@@ -166,8 +187,7 @@ class ManagedLocalWorker:
         upload_dir = Path(self.temp_dir.name) / "uploads"
         upload_dir.mkdir(parents=True, exist_ok=True)
         port = reserve_local_port(self.host)
-        connect_host = "127.0.0.1" if self.host in {"0.0.0.0", "::", ""} else self.host
-        self.base_url = f"http://{connect_host}:{port}"
+        self.base_url = worker_base_url(self.host, port)
         env = utf8_subprocess_env()
         if self.gpu is not None:
             env[visible_device_env_name()] = self.gpu
@@ -442,4 +462,6 @@ __all__ = [
     "WorkerState",
     "normalize_base_url",
     "parse_local_gpus",
+    "worker_base_url",
+    "worker_connect_host",
 ]
