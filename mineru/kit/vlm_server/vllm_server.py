@@ -7,7 +7,7 @@ from ...model.vlm.engine_utils import (
     mod_kwargs_by_device_type,
     set_default_gpu_memory_utilization,
 )
-from ...utils.model_registry import MINERU_2_5_PRO_2605_1_2B
+from ...model.registry import MINERU_2_5_PRO_2605_1_2B
 
 from vllm.entrypoints.cli.main import main as vllm_main
 

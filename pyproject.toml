@@ -139,7 +139,7 @@ namespaces = false
 [tool.setuptools.package-data]
 "mineru" = ["resources/**"]
 "mineru.doclib.migrations" = ["*.sql"]
-"mineru.model.utils.pytorchocr.utils" = ["resources/**"]
+"mineru.model._internal.pytorchocr.utils" = ["resources/**"]
 
 [tool.setuptools]
 include-package-data = true

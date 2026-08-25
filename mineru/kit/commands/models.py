@@ -6,7 +6,7 @@ import typer
 
 from ...config import config, get_config_file_exists, get_config_file_path, get_config_source
 from ...types import DEPLOYMENT_TIERS
-from ...utils.model_registry import (
+from ...model.registry import (
     MODEL_REPOS,
     ModelRepo,
     get_model_repo,
@@ -15,7 +15,7 @@ from ...utils.model_registry import (
     resolve_model_stack,
     validate_model_tier,
 )
-from ...utils.models_download_utils import (
+from ...model.download import (
     DOWNLOAD_MODEL_SOURCES,
     MODEL_SOURCE_ENV_VAR,
     download_model_repo,

@@ -9,7 +9,7 @@ import uvicorn
 from fastapi import FastAPI, HTTPException, Request
 from mineru_vl_utils.mlx_compat import load_mlx_model
 
-from ...utils.model_registry import MINERU_2_5_PRO_2605_1_2B
+from ...model.registry import MINERU_2_5_PRO_2605_1_2B
 
 
 async def _resolve_result(value: Any) -> Any:

@@ -10,20 +10,14 @@ import numpy as np
 import yaml
 from loguru import logger
 
-from mineru.model.ocr.seal_crop import CropByPolys, SortPolyBoxes
-from mineru.utils.config_reader import get_device
-from ...utils.model_registry import PDF_EXTRACT_KIT
-from mineru.utils.ocr_language import normalize_ocr_model_lang
-from mineru.utils.ocr_utils import (
-    check_img,
-    preprocess_image,
-    sorted_boxes,
-    merge_det_boxes,
-    update_det_boxes,
-    get_rotate_crop_image_for_text_rec,
-)
-from mineru.model.utils.tools.infer.predict_system import TextSystem
-from mineru.model.utils.tools.infer import pytorchocr_utility as utility
+from ..registry import PDF_EXTRACT_KIT
+from ..runtime.device import get_device
+from .._internal.pytorchocr.infer import pytorchocr_utility as utility
+from .._internal.pytorchocr.infer.predict_system import TextSystem
+from .geometry import merge_det_boxes, sorted_boxes, update_det_boxes
+from .image import check_img, get_rotate_crop_image_for_text_rec, preprocess_image
+from .language import normalize_ocr_model_lang
+from .seal_crop import CropByPolys, SortPolyBoxes
 import argparse
 
 
@@ -38,7 +32,7 @@ def get_model_params(lang, config):
         raise Exception (f'Language {lang} not supported')
 
 
-root_dir = os.path.join(Path(__file__).resolve().parent.parent, 'utils')
+PYTORCHOCR_RESOURCE_DIR = Path(__file__).resolve().parents[1] / "_internal" / "pytorchocr" / "utils" / "resources"
 DEFAULT_SEAL_DEBUG_DIR = os.path.join(
     Path(__file__).resolve().parents[3],
     'output_images',
@@ -57,7 +51,7 @@ class PytorchPaddleOCR(TextSystem):
         self.enable_merge_det_boxes = kwargs.get("enable_merge_det_boxes", True)
 
         device = get_device()
-        models_config_path = os.path.join(root_dir, 'pytorchocr', 'utils', 'resources', 'models_config.yml')
+        models_config_path = PYTORCHOCR_RESOURCE_DIR / "models_config.yml"
         with open(models_config_path, encoding='utf-8') as file:
             config = yaml.safe_load(file)
             self.lang = normalize_ocr_model_lang(
@@ -70,7 +64,7 @@ class PytorchPaddleOCR(TextSystem):
         rec_model_path = str(PDF_EXTRACT_KIT.pytorch_paddle.path(rec).ensure())
         kwargs['det_model_path'] = det_model_path
         kwargs['rec_model_path'] = rec_model_path
-        kwargs['rec_char_dict_path'] = os.path.join(root_dir, 'pytorchocr', 'utils', 'resources', 'dict', dict_file)
+        kwargs['rec_char_dict_path'] = str(PYTORCHOCR_RESOURCE_DIR / "dict" / dict_file)
         kwargs['rec_batch_num'] = 6
         if self.is_seal:
             # Seal detector 的 BatchNorm 统计量会在 fp16 下溢出，初始化时固定使用 fp32。

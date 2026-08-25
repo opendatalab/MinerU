@@ -19,7 +19,7 @@ from loguru import logger
 from PIL import Image
 from tqdm import tqdm
 
-from ..utils.onnxruntime_provider import ort_session
+from ..runtime.onnx import ort_session
 from .pp_doclayout_v2_base import PP_DOCLAYOUT_V2_LABELS, PPDocLayoutV2PostProcessor
 
 __all__ = ["PPDocLayoutV2LayoutModelONNX"]
@@ -207,12 +207,12 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.model is None:
-        from ...utils.model_registry import PP_DOCLAYOUT_V2_ONNX
+        from ..registry import PP_DOCLAYOUT_V2_ONNX
 
         args.model = str(PP_DOCLAYOUT_V2_ONNX.onnx.ensure())
 
     if args.device is None:
-        from ...utils.config_reader import get_device
+        from ..runtime.device import get_device
 
         args.device = get_device()
 

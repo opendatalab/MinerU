@@ -9,7 +9,7 @@ from typing import Literal
 import typer
 from loguru import logger
 
-from ...utils.check_sys_env import is_mac_os_version_supported
+from ...utils.platform import is_mac_os_version_supported
 from ..errors import exit_with_message
 
 

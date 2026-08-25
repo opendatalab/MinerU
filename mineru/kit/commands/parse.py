@@ -10,7 +10,7 @@ from ...filetypes import ensure_tier_supported_for_parse_extension, is_flash_onl
 from ...parser import MinerUApiParser
 from ...parser import parse as local_parse
 from ...types import Tier
-from ...utils.backend_options import normalize_backend
+from ...parser.tier import normalize_backend
 from ..common import (
     build_remote_api_url,
     effective_local_tier_and_backend,

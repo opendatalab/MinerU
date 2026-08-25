@@ -3,11 +3,10 @@ from __future__ import annotations
 
 import base64
 import binascii
+import hashlib
 from pathlib import Path, PureWindowsPath
 import re
 import xml.etree.ElementTree as ElementTree
-
-from .hash_utils import str_sha256
 
 INLINE_IMAGE_DATA_URI_RE = re.compile(r"data:image/([^;\"']+);base64,([^\"']+)", re.DOTALL)
 
@@ -90,7 +89,7 @@ class ImagePayloadCache:
         else:
             ext = normalize_image_extension(image_format)
             payload_key = base64.b64encode(img_bytes).decode("ascii")
-            img_path = f"{str_sha256(payload_key)}.{ext}"
+            img_path = f"{hashlib.sha256(payload_key.encode('utf-8')).hexdigest()}.{ext}"
         self._images[img_path] = img_bytes
         return img_path
 

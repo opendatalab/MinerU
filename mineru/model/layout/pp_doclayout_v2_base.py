@@ -18,7 +18,7 @@ from typing import Dict, List, Optional, Sequence, Tuple, Union
 import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 
-from ...utils.bbox_utils import normalize_to_int_bbox
+from ...utils.geometry import normalize_to_int_bbox
 
 DEFAULT_IMAGE_SIZE = (800, 800)
 DEFAULT_RESCALE_FACTOR = 1.0 / 255.0

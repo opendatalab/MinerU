@@ -6,9 +6,9 @@ from typing import Any, Literal
 from loguru import logger
 from packaging import version
 
-from ...utils.check_sys_env import is_linux_environment, is_windows_environment
-from ...utils.config_reader import get_device
-from ...utils.model_utils import get_vram
+from ...utils.platform import is_linux_environment, is_windows_environment
+from ..runtime.device import get_device
+from ..runtime.memory import get_vram
 
 
 def enable_custom_logits_processors() -> bool:
