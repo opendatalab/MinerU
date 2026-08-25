@@ -48,6 +48,15 @@ class StoredSourceFile:
     mime_type: str
 
 
+@dataclass(frozen=True)
+class CopiedInputFile:
+    """记录一个 Job 为 cross-worker 执行创建的目标 worker 输入副本。"""
+
+    source_public_id: str
+    worker_id: str
+    upstream_file_id: str
+
+
 class SourceFileStore:
     """在 Router 临时目录中保存可供 cross-worker 重传的输入字节。"""
 
@@ -186,6 +195,10 @@ class ResourceRegistry:
         """把同一公共资源在另一 worker 中的复制标识绑定到现有记录。"""
         self._by_upstream[(route.kind, worker_id, upstream_id)] = route
 
+    def remove_upstream_alias(self, kind: ResourceKind, *, worker_id: str, upstream_id: str) -> None:
+        """删除 cross-worker 副本对应的反向 alias，不影响公共资源主映射。"""
+        self._by_upstream.pop((kind, worker_id, upstream_id), None)
+
     def list(self, kind: ResourceKind) -> list[ResourceRoute]:
         """按注册顺序返回指定类型的全部资源路由。"""
         return list(self._by_public[kind].values())
@@ -204,6 +217,7 @@ class ResourceRegistry:
 
 
 __all__ = [
+    "CopiedInputFile",
     "ResourceKind",
     "ResourceRegistry",
     "ResourceRoute",

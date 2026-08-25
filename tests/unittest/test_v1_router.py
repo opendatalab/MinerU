@@ -30,6 +30,7 @@ class _FakeV1Upstream:
     jobs: dict[str, dict[str, Any]] = field(default_factory=dict)
     fail_jobs: bool = False
     source_download_attempts: int = 0
+    fail_file_delete_once: set[str] = field(default_factory=set)
 
     async def handle(self, request: httpx.Request) -> httpx.Response:
         """按请求 path/method 返回真实 V1 shape 或测试错误。"""
@@ -137,6 +138,9 @@ class _FakeV1Upstream:
                 request=request,
             )
         if request.method == "DELETE":
+            if file_id in self.fail_file_delete_once:
+                self.fail_file_delete_once.remove(file_id)
+                return self._response(request, 500, self._error("delete_failed", file_id))
             self.files.pop(file_id)
             return self._response(request, 200, {"id": file_id, "object": "file", "deleted": True})
         return self._response(request, 200, {key: value for key, value in file_record.items() if key != "content"})
@@ -296,6 +300,19 @@ def _upload_file(client: TestClient, *, token: str, content: bytes) -> str:
     return complete.json()["file"]["id"]
 
 
+def _upload_files_on_distinct_workers(client: TestClient, router_app: Any) -> list[str]:
+    """上传文件直到获得分别归属两个 worker 的公共 file IDs。"""
+    files_by_worker: dict[str, str] = {}
+    for index in range(20):
+        public_file_id = _upload_file(client, token=f"distinct-{index}", content=f"pdf-{index}".encode())
+        route = router_app.state.registry.get("file", public_file_id)
+        files_by_worker.setdefault(route.worker_id, public_file_id)
+        if len(files_by_worker) == 2:
+            break
+    assert len(files_by_worker) == 2
+    return list(files_by_worker.values())
+
+
 def test_v1_router_aggregates_capabilities_and_routes_cross_worker_job() -> None:
     """验证完整 V1 主链、跨 worker 输入复制和公共资源 ID 重写。"""
     first = _FakeV1Upstream("worker-a", ("basic", "standard"))
@@ -339,6 +356,12 @@ def test_v1_router_aggregates_capabilities_and_routes_cross_worker_job() -> None
         assert created.status_code == 202, created.text
         assert [item["file_id"] for item in created.json()["files"]] == public_file_ids
         job_id = created.json()["job_id"]
+        job_route = router_app.state.registry.get("job", job_id)
+        copied_inputs = list(job_route.metadata.get("copied_inputs") or [])
+        assert len(copied_inputs) == 1
+        copied_upstream_id = copied_inputs[0].upstream_file_id
+        target = first if job_route.worker_id == "remote-1" else second
+        assert copied_upstream_id in target.files
 
         completed = client.get(f"/v1/parse/jobs/{job_id}")
         assert completed.status_code == 200
@@ -347,19 +370,23 @@ def test_v1_router_aggregates_capabilities_and_routes_cross_worker_job() -> None
         output_id = completed.json()["files"][0]["output_files"]["markdown"]["file_id"]
         assert output_id.startswith("file-")
         assert client.get(f"/v1/files/{output_id}/content").content == b"result"
+        assert job_route.metadata.get("copied_inputs") is None
+        assert copied_upstream_id not in target.files
 
         job_list = client.get("/v1/parse/jobs").json()
         file_list = client.get("/v1/files").json()
         usage = client.get("/v1/usage").json()
         assert [item["job_id"] for item in job_list["data"]] == [job_id]
         assert {item["id"] for item in file_list["data"]}.issuperset(set(public_file_ids))
+        assert output_id in {item["id"] for item in file_list["data"]}
         assert usage["current"]["jobs_created"] == 1
         assert usage["current"]["files_processed"] == 2
 
     selected_job = first.jobs or second.jobs
     submitted_files = [entry["source"]["file_id"] for entry in next(iter(selected_job.values()))["body"]["files"]]
     selected_files = first.files if first.jobs else second.files
-    assert all(file_id in selected_files for file_id in submitted_files)
+    assert copied_upstream_id in submitted_files
+    assert copied_upstream_id not in selected_files
     assert first.source_download_attempts == 0
     assert second.source_download_attempts == 0
     assert staged_path is not None
@@ -425,6 +452,76 @@ def test_router_discards_staged_upload_with_wrong_sha256() -> None:
         assert uploaded.json()["error"]["code"] == "upload_sha256_mismatch"
         assert router_app.state.source_store.find_upload(upload_id) is None
         assert next(iter(upstream.uploads.values()))["content"] == b""
+
+
+def test_router_reclaims_cross_worker_copy_when_job_is_canceled() -> None:
+    """验证取消 Job 时立即删除并解除 cross-worker 输入副本。"""
+    first = _FakeV1Upstream("worker-a", ("standard",))
+    second = _FakeV1Upstream("worker-b", ("standard",))
+    router_app, _ = _make_router(first, second)
+
+    with TestClient(router_app) as client:
+        public_file_ids = _upload_files_on_distinct_workers(client, router_app)
+        created = client.post(
+            "/v1/parse/jobs",
+            json={
+                "tier": "standard",
+                "files": [{"source": {"type": "file_id", "file_id": file_id}} for file_id in public_file_ids],
+            },
+        )
+        job_id = created.json()["job_id"]
+        job_route = router_app.state.registry.get("job", job_id)
+        copied = list(job_route.metadata["copied_inputs"])
+        assert len(copied) == 1
+        target = first if copied[0].worker_id == "remote-1" else second
+        assert copied[0].upstream_file_id in target.files
+
+        canceled = client.delete(f"/v1/parse/jobs/{job_id}")
+
+        assert canceled.status_code == 200
+        assert copied[0].upstream_file_id not in target.files
+        assert job_route.metadata.get("copied_inputs") is None
+        assert (
+            router_app.state.registry.find_upstream(
+                "file",
+                copied[0].worker_id,
+                copied[0].upstream_file_id,
+            )
+            is None
+        )
+
+
+def test_public_source_delete_retries_terminal_copy_cleanup() -> None:
+    """验证终态清理失败后，删除公共源文件会重试目标副本回收。"""
+    first = _FakeV1Upstream("worker-a", ("standard",))
+    second = _FakeV1Upstream("worker-b", ("standard",))
+    router_app, _ = _make_router(first, second)
+
+    with TestClient(router_app) as client:
+        public_file_ids = _upload_files_on_distinct_workers(client, router_app)
+        created = client.post(
+            "/v1/parse/jobs",
+            json={
+                "tier": "standard",
+                "files": [{"source": {"type": "file_id", "file_id": file_id}} for file_id in public_file_ids],
+            },
+        )
+        job_id = created.json()["job_id"]
+        job_route = router_app.state.registry.get("job", job_id)
+        copied = list(job_route.metadata["copied_inputs"])
+        target = first if copied[0].worker_id == "remote-1" else second
+        target.fail_file_delete_once.add(copied[0].upstream_file_id)
+
+        completed = client.get(f"/v1/parse/jobs/{job_id}")
+        assert completed.status_code == 200
+        assert copied[0].upstream_file_id in target.files
+        assert job_route.metadata.get("copied_inputs") == copied
+
+        deleted = client.delete(f"/v1/files/{copied[0].source_public_id}")
+
+        assert deleted.status_code == 200
+        assert copied[0].upstream_file_id not in target.files
+        assert job_route.metadata.get("copied_inputs") is None
 
 
 def test_v1_router_reports_capability_transport_and_resource_errors() -> None:

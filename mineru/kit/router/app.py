@@ -26,7 +26,14 @@ from .proxy import (
     router_error_response,
     stream_upstream,
 )
-from .resources import ResourceKind, ResourceRegistry, ResourceRoute, SourceFileStore, stored_file_chunks
+from .resources import (
+    CopiedInputFile,
+    ResourceKind,
+    ResourceRegistry,
+    ResourceRoute,
+    SourceFileStore,
+    stored_file_chunks,
+)
 from .workers import RouterSettings, WorkerPool, WorkerState
 
 
@@ -159,24 +166,97 @@ def _usage_payload(request: Request, registry: ResourceRegistry, pool: WorkerPoo
 
 
 async def _cleanup_copied_files(
-    worker: WorkerState,
-    upstream_file_ids: list[str],
+    copied_files: list[CopiedInputFile],
     *,
     request: Request,
     pool: WorkerPool,
-) -> None:
-    """在 job 创建失败时尽力删除已经复制到目标 worker 的临时输入。"""
-    for upstream_file_id in upstream_file_ids:
+    registry: ResourceRegistry,
+) -> list[CopiedInputFile]:
+    """幂等删除 cross-worker 输入副本，返回等待后续重试的失败项。"""
+    pending: list[CopiedInputFile] = []
+    for copied_file in copied_files:
+        worker = pool.get(copied_file.worker_id)
         try:
-            await request_upstream(
+            response = await request_upstream(
                 pool,
                 worker,
                 "DELETE",
-                f"/v1/files/{upstream_file_id}",
+                f"/v1/files/{copied_file.upstream_file_id}",
                 request=request,
             )
         except RouterProxyError:
+            pending.append(copied_file)
             continue
+        if response.status_code not in {200, 204, 404}:
+            pending.append(copied_file)
+            continue
+        registry.remove_upstream_alias(
+            "file",
+            worker_id=copied_file.worker_id,
+            upstream_id=copied_file.upstream_file_id,
+        )
+    return pending
+
+
+async def _hydrate_job_output_files(
+    payload: dict[str, Any],
+    *,
+    request: Request,
+    pool: WorkerPool,
+    registry: ResourceRegistry,
+) -> None:
+    """读取 Job output files 的完整元数据，使其立即进入 `/v1/files`。"""
+    seen_public_ids: set[str] = set()
+    for file_result in payload.get("files") or []:
+        if not isinstance(file_result, dict) or not isinstance(file_result.get("output_files"), dict):
+            continue
+        for output in file_result["output_files"].values():
+            if not isinstance(output, dict) or not isinstance(output.get("file_id"), str):
+                continue
+            public_file_id = output["file_id"]
+            if public_file_id in seen_public_ids:
+                continue
+            seen_public_ids.add(public_file_id)
+            route = registry.find("file", public_file_id)
+            if route is None or isinstance(route.metadata.get("payload"), dict):
+                continue
+            worker = pool.get(route.worker_id)
+            response = await request_upstream(
+                pool,
+                worker,
+                "GET",
+                f"/v1/files/{route.upstream_id}",
+                request=request,
+            )
+            metadata = json_or_error(response)
+            rewrite_file_payload(metadata, worker, registry)
+
+
+async def _finalize_terminal_job(
+    route: ResourceRoute,
+    payload: dict[str, Any],
+    *,
+    request: Request,
+    pool: WorkerPool,
+    registry: ResourceRegistry,
+) -> None:
+    """在 Job 终态补齐 outputs，并回收或保留待重试的输入副本。"""
+    if payload.get("status") not in {"completed", "partial", "failed", "canceled"}:
+        return
+    try:
+        await _hydrate_job_output_files(payload, request=request, pool=pool, registry=registry)
+    finally:
+        copied_files = list(route.metadata.get("copied_inputs") or [])
+        pending = await _cleanup_copied_files(
+            copied_files,
+            request=request,
+            pool=pool,
+            registry=registry,
+        )
+        if pending:
+            route.metadata["copied_inputs"] = pending
+        else:
+            route.metadata.pop("copied_inputs", None)
 
 
 def create_app(
@@ -434,6 +514,30 @@ def create_app(
         result = _successful_json(upstream)
         if isinstance(result, Response):
             return result
+        for job_route in registry.list("job"):
+            copied_inputs = list(job_route.metadata.get("copied_inputs") or [])
+            matching = [item for item in copied_inputs if item.source_public_id == file_id]
+            if not matching:
+                continue
+            job_payload = job_route.metadata.get("payload")
+            if not isinstance(job_payload, dict) or job_payload.get("status") not in {
+                "completed",
+                "partial",
+                "failed",
+                "canceled",
+            }:
+                continue
+            pending = await _cleanup_copied_files(
+                matching,
+                request=request,
+                pool=pool,
+                registry=registry,
+            )
+            unrelated = [item for item in copied_inputs if item.source_public_id != file_id]
+            if unrelated or pending:
+                job_route.metadata["copied_inputs"] = [*unrelated, *pending]
+            else:
+                job_route.metadata.pop("copied_inputs", None)
         registry.remove("file", file_id)
         source_store.delete_file(file_id)
         result["id"] = file_id
@@ -479,7 +583,7 @@ def create_app(
         if worker is None:
             raise RouterProxyError(503, "quality_tier_unavailable", f"No healthy upstream supports tier '{tier}'")
         input_aliases: dict[str, str] = {}
-        copied_file_ids: list[str] = []
+        copied_files: list[CopiedInputFile] = []
         try:
             for source, route in file_routes:
                 target_file_id = route.upstream_id
@@ -492,26 +596,56 @@ def create_app(
                         registry=registry,
                         source_store=source_store,
                     )
-                    copied_file_ids.append(target_file_id)
+                    copied_files.append(
+                        CopiedInputFile(
+                            source_public_id=route.public_id,
+                            worker_id=worker.worker_id,
+                            upstream_file_id=target_file_id,
+                        )
+                    )
                 input_aliases[target_file_id] = route.public_id
                 source["file_id"] = target_file_id
             upstream = await request_upstream(pool, worker, "POST", "/v1/parse/jobs", request=request, json_body=body)
         except RouterProxyError:
-            await _cleanup_copied_files(worker, copied_file_ids, request=request, pool=pool)
+            await _cleanup_copied_files(
+                copied_files,
+                request=request,
+                pool=pool,
+                registry=registry,
+            )
             raise
         result = _successful_json(upstream)
         if isinstance(result, Response):
-            await _cleanup_copied_files(worker, copied_file_ids, request=request, pool=pool)
+            await _cleanup_copied_files(
+                copied_files,
+                request=request,
+                pool=pool,
+                registry=registry,
+            )
             return result
         upstream_job_id = result.get("job_id")
         if not isinstance(upstream_job_id, str):
+            await _cleanup_copied_files(
+                copied_files,
+                request=request,
+                pool=pool,
+                registry=registry,
+            )
             raise RouterProxyError(502, "invalid_upstream_response", "Created job did not return a job_id")
         job_route = registry.register("job", worker_id=worker.worker_id, upstream_id=upstream_job_id)
         job_route.metadata["input_aliases"] = input_aliases
+        job_route.metadata["copied_inputs"] = copied_files
         job_route.metadata["active_counted"] = True
         pool.mark_job_started(worker.worker_id)
         rewritten = rewrite_job_payload(result, worker, registry, pool)
         job_route.metadata["payload"] = copy.deepcopy(rewritten)
+        await _finalize_terminal_job(
+            job_route,
+            rewritten,
+            request=request,
+            pool=pool,
+            registry=registry,
+        )
         return JSONResponse(rewritten, status_code=upstream.status_code)
 
     @application.get("/v1/parse/jobs")
@@ -541,7 +675,15 @@ def create_app(
         result = _successful_json(upstream)
         if isinstance(result, Response):
             return result
-        return JSONResponse(rewrite_job_payload(result, worker, registry, pool), status_code=upstream.status_code)
+        rewritten = rewrite_job_payload(result, worker, registry, pool)
+        await _finalize_terminal_job(
+            route,
+            rewritten,
+            request=request,
+            pool=pool,
+            registry=registry,
+        )
+        return JSONResponse(rewritten, status_code=upstream.status_code)
 
     @application.delete("/v1/parse/jobs/{job_id}")
     async def cancel_job(job_id: str, request: Request) -> Response:
@@ -558,6 +700,13 @@ def create_app(
         payload = route.metadata.get("payload")
         if isinstance(payload, dict):
             payload["status"] = "canceled"
+            await _finalize_terminal_job(
+                route,
+                payload,
+                request=request,
+                pool=pool,
+                registry=registry,
+            )
         return JSONResponse(result, status_code=upstream.status_code)
 
     @application.get("/v1/usage")
