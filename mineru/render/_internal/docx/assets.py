@@ -11,9 +11,9 @@ from urllib.parse import urlsplit
 
 from PIL import Image, UnidentifiedImageError
 
-from mineru.render.contracts import AssetResolver
-from mineru.types import ImagePayloadBlock
-from mineru.utils.image_payload import parse_image_data_uri_strict, validate_image_sidecar_path
+from ...contracts import AssetResolver
+from ....types import ImagePayloadBlock
+from ....utils.image_payload import parse_image_data_uri_strict, validate_image_sidecar_path
 
 _PIL_FORMAT_EXTENSIONS = {
     "BMP": "bmp",

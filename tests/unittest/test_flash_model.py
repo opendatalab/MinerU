@@ -6,8 +6,8 @@ from unittest.mock import MagicMock
 import pytest
 
 from mineru.model.flash import PdfModel
-from mineru.model.flash.native_pdf import pipeline
-from mineru.utils.pdf_document import PDFDocument
+from mineru.model.flash.pdf import pipeline
+from mineru.model.flash.pdf.document import PDFDocument
 
 
 def test_pdf_model_predict_returns_native_model_list_without_owning_document(

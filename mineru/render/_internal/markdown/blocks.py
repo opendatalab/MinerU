@@ -6,20 +6,24 @@ from __future__ import annotations
 import html
 import re
 
-from mineru.config import LatexDelimitersConfig
-from mineru.render._internal.common.index import strip_index_page_tail
-from mineru.render._internal.common.list_items import has_markdown_unordered_marker, reference_list_needs_bullets
-from mineru.render._internal.common.planner import PlannedBlock
-from mineru.render._internal.markdown.assets import build_markdown_image, resolve_image_source
-from mineru.render._internal.markdown.escaping import escape_standalone_marker_rule, escape_text_block_markdown_prefix
-from mineru.render._internal.markdown.inline import (
+from ....config import LatexDelimitersConfig
+from ..common.index import strip_index_page_tail
+from ..common.list_items import has_markdown_unordered_marker, reference_list_needs_bullets
+from ..common.planner import PlannedBlock
+from .assets import build_markdown_image, resolve_image_source
+from .escaping import escape_standalone_marker_rule, escape_text_block_markdown_prefix
+from .inline import (
     render_inline_content,
     render_internal_link,
     render_joined_inline_contents,
 )
-from mineru.render._internal.markdown.table import format_embedded_html, render_html_table
-from mineru.render.image import ImageRenderer
-from mineru.types import (
+from .table import (
+    _strip_embedded_images,
+    format_embedded_html,
+    render_html_table,
+)
+from ...contracts import ImageRenderer
+from ....types import (
     RAW_ALGORITHM,
     BlockType,
     ChartAnnotationBlock,
@@ -169,6 +173,7 @@ def _render_list(block: ListBlock, delimiters: LatexDelimitersConfig, depth: int
             lines.extend(f"{indent}{line}" for line in item_lines)
     return "\n".join(lines)
 
+
 def _render_index(block: IndexBlock, delimiters: LatexDelimitersConfig, depth: int = 0) -> str:
     """递归渲染目录列表，并给标题叶子添加内部 anchor 链接。"""
     lines: list[str] = []
@@ -186,6 +191,7 @@ def _render_index(block: IndexBlock, delimiters: LatexDelimitersConfig, depth: i
             label = render_internal_link(label, child.anchor)
         lines.append(f"{'    ' * depth}- {label}")
     return "\n".join(lines)
+
 
 def _render_image_block(
     block: ImageBlock,
@@ -367,7 +373,12 @@ def _render_table_body(
     parent_block: TableBlock,
 ) -> str:
     """按 HTML、空间投影文本、image_renderer、图片的优先级渲染表格主体。"""
-    rendered_content = _render_table_content(block, delimiters, asset_base_url)
+    rendered_content = _render_table_content(
+        block,
+        delimiters,
+        asset_base_url,
+        strip_embedded_images=image_renderer is not None,
+    )
     if rendered_content:
         return rendered_content
     if image_renderer is not None:
@@ -382,18 +393,21 @@ def _render_table_content(
     block: TableBodyBlock,
     delimiters: LatexDelimitersConfig,
     asset_base_url: str,
+    *,
+    strip_embedded_images: bool = False,
 ) -> str:
     """渲染表格结构内容，不执行空内容时的图片回退。"""
-    if not block.content:
+    content = _strip_embedded_images(block.content) if strip_embedded_images else block.content
+    if not content:
         return ""
     html_table = render_html_table(
-        block.content,
+        content,
         asset_base_url=asset_base_url,
         delimiters=delimiters,
     )
     if html_table is not None:
         return html_table
-    return _render_fenced_content(block.content)
+    return _render_fenced_content(content)
 
 
 def _render_code_block(block: CodeBlock, delimiters: LatexDelimitersConfig) -> str:

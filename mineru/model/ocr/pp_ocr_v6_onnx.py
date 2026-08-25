@@ -28,15 +28,9 @@ from loguru import logger
 from shapely.geometry import Polygon
 from tqdm import tqdm
 
-from ...utils.ocr_utils import (
-    check_img,
-    get_rotate_crop_image_for_text_rec,
-    merge_det_boxes,
-    preprocess_image,
-    sorted_boxes,
-    update_det_boxes,
-)
-from ..utils.onnxruntime_provider import ort_session
+from ..runtime.onnx import ort_session
+from .geometry import merge_det_boxes, sorted_boxes, update_det_boxes
+from .image import check_img, get_rotate_crop_image_for_text_rec, preprocess_image
 
 __all__ = ["PPOCRv6ONNX"]
 
@@ -589,7 +583,7 @@ if __name__ == "__main__":
 
     # 默认从 model_registry 获取路径
     if args.det is None or args.rec is None:
-        from ...utils.model_registry import PP_OCR_V6_SMALL_DET_ONNX, PP_OCR_V6_SMALL_REC_ONNX
+        from ..registry import PP_OCR_V6_SMALL_DET_ONNX, PP_OCR_V6_SMALL_REC_ONNX
 
         if args.det is None:
             args.det = str(PP_OCR_V6_SMALL_DET_ONNX.onnx.ensure())
@@ -598,7 +592,7 @@ if __name__ == "__main__":
     if args.dict is None:
         # rec 的 dict 内嵌在 inference.yml 里，但我们直接用 ModelScope 下载的 dict
         # 从 rec 的 model_registry config path 读取
-        from ...utils.model_registry import PP_OCR_V6_SMALL_REC_ONNX
+        from ..registry import PP_OCR_V6_SMALL_REC_ONNX
 
         rec_dir = PP_OCR_V6_SMALL_REC_ONNX.onnx.local_path().parent
         # 尝试从 inference.yml 提取 dict，或使用内置的

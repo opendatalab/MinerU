@@ -10,8 +10,8 @@ import cv2
 import numpy as np
 from loguru import logger
 
-from mineru.types import BBox
-from mineru.utils.bbox_utils import normalize_to_int_bbox
+from ....types import BBox
+from ....utils.geometry import normalize_to_int_bbox
 
 
 def _normalize_page_size(page_image: Any) -> tuple[int, int]:

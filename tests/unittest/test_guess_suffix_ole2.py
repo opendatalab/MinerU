@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from mineru.utils.guess_suffix_or_lang import (
+from mineru.parser.file_type import (
     _guess_ole2_suffix_by_bytes,
     guess_suffix_by_bytes,
 )

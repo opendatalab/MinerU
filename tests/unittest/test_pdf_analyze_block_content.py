@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from pathlib import Path
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -10,26 +9,16 @@ from mineru_vl_utils.structs import ContentBlock as VlmContentBlock
 from mineru_vl_utils.structs import ExtractResult
 
 from mineru.backend import analyze
-from mineru.backend.analysis.pdf import constants, formulas, layout, normalization, ocr, pipeline, tables, window
+from mineru.backend.analysis.pdf import constants, layout, normalization, ocr, pipeline, window
 from mineru.backend.analysis.pdf.text import content as text_content
-from mineru.backend.analysis.pdf.text import styles as text_styles
 from mineru.backend.analysis.pdf.text.models import _AnalyzeLine, _AnalyzeSpan
-from mineru.types import RAW_ALGORITHM, RAW_CAPTION, RAW_FOOTNOTE, RAW_FORMULA_NUMBER
+from mineru.backend.postprocess import document as postprocess_document
+from mineru.types import RAW_ALGORITHM, RAW_CAPTION, RAW_FOOTNOTE
 from mineru.backend.analysis.pdf.text.native import (
     POST_OCR_FALLBACK_CONTENT_KEY,
     POST_OCR_FALLBACK_SCORE_KEY,
 )
-from mineru.model.flash import PdfModel
-from mineru.render._internal.common.inline import (
-    inline_plain_text,
-    parse_inline_content,
-)
 from mineru.types import BlockType, ContentType, MiddleJson, ModelJson
-from mineru.utils.pdf_document import PDFDocument
-
-
-_PROJECT_ROOT = Path(__file__).resolve().parents[2]
-_SYNTHETIC_CJK_PDF_PATH = _PROJECT_ROOT / "tests" / "unittest" / "pdfs" / "native_cjk_layout_synthetic.pdf"
 
 
 def _build_text_lines(*contents: str) -> list[_AnalyzeLine]:
@@ -192,6 +181,7 @@ def test_doc_analyze_converts_vlm_results_before_downstream_processing(
         return window_model_list
 
     xhigh_normalizer = MagicMock(wraps=layout._normalize_xhigh_vlm_blocks)
+    native_table_priority = MagicMock(return_value=MagicMock(total=0))
     monkeypatch.setattr(pipeline, "PDFDocument", MagicMock(return_value=fake_document))
     monkeypatch.setattr(pipeline, "HybridLocalModelContextSingleton", MagicMock(return_value=hybrid_singleton))
     monkeypatch.setattr(
@@ -211,6 +201,7 @@ def test_doc_analyze_converts_vlm_results_before_downstream_processing(
         MagicMock(return_value=[{"img_pil": page_image, "scale": 1.0}]),
     )
     monkeypatch.setattr(window, "_process_text_and_formulas", fake_process_text_and_formulas)
+    monkeypatch.setattr(window, "_apply_native_txt_table_priority", native_table_priority)
     monkeypatch.setattr(window, "_normalize_xhigh_vlm_blocks", xhigh_normalizer)
     monkeypatch.setattr(window, "_apply_seal_ocr", MagicMock())
     monkeypatch.setattr(window, "_supplement_missing_image_block_containers", MagicMock())
@@ -223,7 +214,7 @@ def test_doc_analyze_converts_vlm_results_before_downstream_processing(
         parse_mode=parse_mode,  # type: ignore[arg-type]
         mineru_version="test",
     )
-    monkeypatch.setattr(analyze, "model_json_to_middle_json", MagicMock(return_value=expected_middle_json))
+    monkeypatch.setattr(postprocess_document, "model_json_to_middle_json", MagicMock(return_value=expected_middle_json))
     monkeypatch.setattr(pipeline, "clean_memory", MagicMock())
 
     middle_json, model_json = analyze.doc_analyze(
@@ -262,6 +253,11 @@ def test_doc_analyze_converts_vlm_results_before_downstream_processing(
         xhigh_normalizer.assert_not_called()
         vlm_predictor.batch_extract_with_layout.assert_called_once()
         vlm_predictor.batch_two_step_extract.assert_not_called()
+
+    if effort == "high" and parse_mode == "txt":
+        native_table_priority.assert_called_once()
+    else:
+        native_table_priority.assert_not_called()
 
 
 def test_xhigh_vlm_blocks_normalize_visual_annotation_types() -> None:
@@ -556,10 +552,7 @@ def test_text_content_joins_three_line_url_with_accumulated_context() -> None:
         BlockType.TEXT,
     )
 
-    assert content == (
-        "Code at "
-        "https://github.com/google-research/tapas/blob/master/TABLEFORMER.md"
-    )
+    assert content == ("Code at https://github.com/google-research/tapas/blob/master/TABLEFORMER.md")
 
 
 @pytest.mark.parametrize("block_type", [BlockType.CODE, RAW_ALGORITHM])
@@ -592,188 +585,53 @@ def test_existing_index_content_is_not_overwritten() -> None:
     assert "lines" not in block
 
 
-def test_low_txt_visual_runs_split_distant_text_before_layout_matching(
+def test_process_flash_ocr_runs_detection_recognition_content_and_tables(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """验证 Low/TXT 在版面匹配前按 Flash 字符间隙拆开同一粗行。"""
-
-    chars = [
-        {"char": "L", "bbox": (5.0, 10.0, 9.0, 20.0)},
-        {"char": "e", "bbox": (9.0, 10.0, 13.0, 20.0)},
-        {"char": "f", "bbox": (13.0, 10.0, 17.0, 20.0)},
-        {"char": "t", "bbox": (17.0, 10.0, 21.0, 20.0)},
-        {"char": " ", "bbox": (21.0, 10.0, 25.0, 20.0)},
-        {"char": "R", "bbox": (70.0, 10.0, 74.0, 20.0)},
-        {"char": "i", "bbox": (74.0, 10.0, 78.0, 20.0)},
-        {"char": "g", "bbox": (78.0, 10.0, 82.0, 20.0)},
-        {"char": "h", "bbox": (82.0, 10.0, 86.0, 20.0)},
-        {"char": "t", "bbox": (86.0, 10.0, 90.0, 20.0)},
-    ]
-    pdf_lines = [
-        {
-            "bbox": (5.0, 10.0, 90.0, 20.0),
-            "rotation": 0.0,
-            "spans": [
-                {
-                    "text": "Left Right",
-                    "bbox": (5.0, 10.0, 90.0, 20.0),
-                    "rotation": 0.0,
-                    "chars": chars,
-                }
-            ],
-        }
-    ]
-    pdf_page = MagicMock()
-    pdf_page.size = (100.0, 100.0)
-    pdf_page.rotation = 0
-    pdf_page.get_chars.return_value = []
-    pdf_page.get_drawing_lines.return_value = []
-    monkeypatch.setattr(text_styles, "get_lines_from_chars", lambda _chars: pdf_lines)
-
-    spans = tables._build_pdf_text_visual_run_spans(pdf_page)
-
-    assert [(span.content, span.bbox) for span in spans] == [
-        ("Left", (5.0, 10.0, 21.0, 20.0)),
-        ("Right", (70.0, 10.0, 90.0, 20.0)),
-    ]
-
-
-def test_low_txt_native_formula_contents_extract_body_and_number_independently() -> None:
-    """验证 Low/TXT 按独立 layout 框提取多行公式和编号，再复用统一合并逻辑。"""
-    chars = []
-    char_idx = 0
-    for text, top, left in (("x=1", 12.0, 12.0), ("y=2", 28.0, 12.0), ("（1）", 20.0, 76.0)):
-        for offset, char in enumerate(text):
-            chars.append(
-                {
-                    "char": char,
-                    "bbox": (
-                        left + offset * 4.0,
-                        top,
-                        left + (offset + 1) * 4.0,
-                        top + 8.0,
-                    ),
-                    "char_idx": char_idx,
-                }
-            )
-            char_idx += 1
-
-    pdf_page = MagicMock(size=(100.0, 100.0))
-    pdf_page.get_chars.return_value = chars
-    model_list = [
-        [
-            {
-                "type": BlockType.EQUATION,
-                "bbox": [0.1, 0.1, 0.6, 0.4],
-                "angle": 0,
-            },
-            {
-                "type": RAW_FORMULA_NUMBER,
-                "bbox": [0.74, 0.18, 0.9, 0.3],
-                "angle": 0,
-            },
-        ]
-    ]
-
-    window._fill_low_txt_native_formula_contents([pdf_page], model_list)
-
-    pdf_page.get_chars.assert_called_once_with()
-    assert model_list[0][0]["content"] == "x=1\ny=2"
-    assert model_list[0][1]["content"] == "（1）"
-
-    optimized = formulas.optimize_hybrid_formula_number_blocks(model_list[0])
-
-    assert optimized == [
-        {
-            "type": BlockType.EQUATION,
-            "bbox": [0.1, 0.1, 0.9, 0.4],
-            "angle": 0,
-            "content": "x=1\ny=2\\tag{1}",
-        }
-    ]
-
-
-def test_low_txt_native_formula_contents_preserve_existing_and_skip_invalid_or_empty() -> None:
-    """验证已有公式内容不覆盖，无效框或空字符区域不会写入伪内容。"""
-    pdf_page = MagicMock(size=(100.0, 100.0))
-    pdf_page.get_chars.return_value = [
-        {
-            "char": "X",
-            "bbox": (12.0, 12.0, 20.0, 20.0),
-            "char_idx": 0,
-        }
-    ]
-    model_list = [
-        [
-            {
-                "type": BlockType.EQUATION,
-                "bbox": [0.1, 0.1, 0.3, 0.3],
-                "content": "existing",
-            },
-            {
-                "type": RAW_FORMULA_NUMBER,
-                "bbox": [0.8, 0.2, 0.7, 0.3],
-            },
-            {
-                "type": BlockType.EQUATION,
-                "bbox": [0.6, 0.6, 0.8, 0.8],
-            },
-        ]
-    ]
-
-    window._fill_low_txt_native_formula_contents([pdf_page], model_list)
-
-    pdf_page.get_chars.assert_called_once_with()
-    assert model_list[0][0]["content"] == "existing"
-    assert "content" not in model_list[0][1]
-    assert "content" not in model_list[0][2]
-
-
-def test_process_low_txt_fills_native_formulas_after_table_cleanup(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """验证 Low/TXT 先清理表内公式，再只为剩余 layout 公式回填原生内容。"""
+    """验证 Flash OCR 依次执行检测、识别、正文回填和表格投影。"""
     events: list[str] = []
-    pdf_page = MagicMock(size=(100.0, 100.0))
-    model_list = [[{"type": BlockType.EQUATION, "bbox": [0.1, 0.1, 0.5, 0.2]}]]
+    image = Image.new("RGB", (10, 10), "white")
+    images_list = [{"img_pil": image, "scale": 1.0}]
+    pdf_pages = [MagicMock(size=(10.0, 10.0))]
+    model_list = [[{"type": BlockType.TEXT, "bbox": [0.1, 0.1, 0.9, 0.9]}]]
+    ocr_res_list = [[{"text": "Flash OCR"}]]
+    local_model_context = MagicMock()
+    validate_inputs = MagicMock(side_effect=lambda *_args: events.append("validate"))
+    ocr_det = MagicMock(side_effect=lambda *_args: events.append("det") or ocr_res_list)
+    apply_ocr_rec = MagicMock(side_effect=lambda *_args: events.append("rec"))
+    fill_content = MagicMock(side_effect=lambda *_args: events.append("content") or model_list)
+    fill_tables = MagicMock(side_effect=lambda *_args: events.append("tables"))
+    monkeypatch.setattr(window, "_validate_text_formula_window_inputs", validate_inputs)
+    monkeypatch.setattr(window, "_ocr_det", ocr_det)
+    monkeypatch.setattr(window, "_apply_ocr_rec_results", apply_ocr_rec)
+    monkeypatch.setattr(window, "_fill_window_block_content_and_lines", fill_content)
+    monkeypatch.setattr(window, "_fill_flash_ocr_table_contents", fill_tables)
 
-    monkeypatch.setattr(
-        window,
-        "_build_pdf_text_visual_run_data",
-        lambda _page: ([], [], []),
-    )
+    try:
+        result = window._process_flash_ocr(
+            images_list,
+            pdf_pages,
+            model_list,
+            local_model_context,
+            [[]],
+        )
+    finally:
+        image.close()
 
-    def fake_fill_low_table_contents(*_args: object) -> None:
-        """模拟表格阶段认领并清理当前公式。"""
-        events.append("fill_tables")
-        model_list[0].clear()
-
-    def fake_fill_native_formulas(
-        _pdf_pages: object,
-        current_model_list: list[list[dict[str, object]]],
-    ) -> None:
-        """确认原生公式回填收到的是表格清理后的块列表。"""
-        events.append("fill_formulas")
-        assert current_model_list == [[]]
-
-    monkeypatch.setattr(window, "_fill_low_table_contents", fake_fill_low_table_contents)
-    monkeypatch.setattr(window, "_fill_low_txt_native_formula_contents", fake_fill_native_formulas)
-
-    result = window._process_low_text(
-        [{"img_pil": object(), "scale": 1.0}],
-        [pdf_page],
+    assert result is model_list
+    assert events == ["validate", "det", "rec", "content", "tables"]
+    assert ocr_det.call_args.args[4] is True
+    assert ocr_det.call_args.args[5] == constants.PIPELINE_DET_TYPE
+    assert fill_content.call_args.args[5] == "ocr"
+    fill_tables.assert_called_once_with(
+        images_list,
         model_list,
-        "txt",
-        MagicMock(),
-        [[]],
+        local_model_context,
     )
-
-    assert result == [[]]
-    assert events == ["fill_tables", "fill_formulas"]
 
 
 def test_existing_text_content_is_preserved_while_lines_are_refreshed() -> None:
-    """验证 Low/TXT 只补空正文，已有 VLM 内容不覆盖但仍写入真实行框。"""
+    """验证文本回填只补空正文，已有内容不覆盖但仍写入真实行框。"""
 
     block = {"type": BlockType.TEXT, "content": "existing content"}
 
@@ -785,45 +643,3 @@ def test_existing_text_content_is_preserved_while_lines_are_refreshed() -> None:
 
     assert block["content"] == "existing content"
     assert block["lines"] == [{"bbox": [0.0, 0.0, 0.5, 0.01]}]
-
-
-def test_synthetic_cjk_low_visual_runs_keep_index_line_structure() -> None:
-    """验证 Low/TXT 的 Flash visual run 拆分不会破坏合成 PDF 的 24 行目录。"""
-
-    document = PDFDocument(_SYNTHETIC_CJK_PDF_PATH.read_bytes())
-    try:
-        page = document[1]
-        page_size = tuple(float(value) for value in page.size)
-        index_block = {
-            "type": BlockType.INDEX,
-            "bbox": [0.109, 0.11, 0.874, 0.832],
-            "angle": 0,
-            "content": "",
-        }
-        block_lines = text_content._group_page_spans_by_block(
-            [index_block],
-            tables._build_pdf_text_visual_run_spans(page),
-            page_size,
-            {BlockType.INDEX},
-        )
-
-        assert len(block_lines[0]) == 24
-        text_content._apply_block_content_and_line_metadata(
-            [index_block],
-            block_lines,
-            page_size,
-        )
-
-        flash_index_block = next(block for block in PdfModel().predict(document)[1] if block.get("type") == BlockType.INDEX)
-        flash_content = inline_plain_text(
-            parse_inline_content(str(flash_index_block["content"]))
-        )
-        assert index_block["content"] == flash_content
-        assert len(str(index_block["content"]).splitlines()) == 24
-        assert str(index_block["content"]).splitlines()[0] == "1 合成章节 1 1"
-        assert str(index_block["content"]).splitlines()[-1] == "24 合成章节 24 24"
-        assert index_block["type"] == BlockType.INDEX
-        assert index_block["bbox"] == [0.109, 0.11, 0.874, 0.832]
-        assert index_block["angle"] == 0
-    finally:
-        document.close()

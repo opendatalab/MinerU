@@ -8,9 +8,9 @@ import re
 from collections.abc import Callable
 from typing import Any
 
-from mineru.types import BBox, BlockType, RAW_PHONETIC
-from mineru.utils.bbox_utils import calculate_overlap_area_2_minbox_area_ratio
-from mineru.utils.text_utils import full_to_half_exclude_marks
+from ....types import BBox, BlockType, RAW_PHONETIC
+from ....utils.geometry import calculate_overlap_area_2_minbox_area_ratio
+from ....utils.text import full_to_half_exclude_marks
 
 from .constants import (
     LAYOUT_TITLE_SPLIT_OVERLAP_THRESHOLD,

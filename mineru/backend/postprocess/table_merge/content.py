@@ -7,7 +7,7 @@ from copy import deepcopy
 
 from bs4 import Tag
 
-from mineru.types import BlockType
+from ....types import BlockType
 
 from .blocks import (
     _build_post_body_child_index,

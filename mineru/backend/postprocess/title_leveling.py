@@ -7,8 +7,8 @@ import asyncio
 import json
 from typing import Any
 
-from mineru.types import DocTitleBlock, PageInfo, ParagraphTitleBlock
-from mineru.render._internal.common.inline import inline_plain_text, parse_inline_content
+from ...types import DocTitleBlock, PageInfo, ParagraphTitleBlock
+from .inline import inline_plain_text, parse_inline_content
 
 from .llm_client import LLMAidedClient
 

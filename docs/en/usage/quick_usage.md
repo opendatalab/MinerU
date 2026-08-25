@@ -88,13 +88,14 @@ If you need to adjust parsing options through custom parameters, you can also ch
 
 - Use `mineru-router` for multi-service / multi-GPU orchestration:
   ```bash
-  mineru-router --host 0.0.0.0 --port 8002 --local-gpus auto
+  mineru-router --host 0.0.0.0 --port 8002 --local-gpus auto --worker-tier standard
   ```
   >[!TIP]
   >
-  >- `mineru-router` exposes the same `/health`, `/tasks`, `/file_parse`, `/tasks/{task_id}`, and `/tasks/{task_id}/result` interface set as `mineru-api`.
-  >- Repeat `--upstream-url` to aggregate multiple existing `mineru-api` services, or use `--local-gpus` to launch local workers automatically.
-  >- `--enable-vlm-preload true` only applies to router-managed local workers. It does not preload remote services passed through `--upstream-url`.
+  >- `mineru-router` and `mineru-kit router` expose the complete `/v1/*` API and no longer expose `/tasks` or `/file_parse`.
+  >- Repeat `--upstream-url` to aggregate multiple existing V1 api-server services, or use `--local-gpus` to launch `mineru-kit api-server` workers automatically.
+  >- Use `--preload-models` for router-managed workers; remote upstreams keep their own startup configuration.
+  >- Unknown model-engine arguments are not forwarded by Router.
   >- It is intended for advanced multi-service, multi-GPU, and unified-entry deployments.
 
 - Using `http-client/server` method:
@@ -111,7 +112,7 @@ If you need to adjust parsing options through custom parameters, you can also ch
   >Legacy `vlm-http-client` input is accepted for compatibility and maps to `hybrid-http-client` with `--effort high`.
 
 > [!NOTE]
-> All officially supported `vllm/lmdeploy` parameters can be passed to MinerU through command line arguments, including the following commands: `mineru`, `mineru-openai-server`, `mineru-gradio`, `mineru-api`, `mineru-router`.
+> Model-engine parameters apply only to commands that explicitly declare them. `mineru-router` accepts documented Router/worker options and does not forward unknown arguments.
 > We have compiled some commonly used parameters and usage methods for `vllm/lmdeploy`, which can be found in the documentation [Advanced Command Line Parameters](./advanced_cli_parameters.md).
 
 ## Configuring LLM-aided post-processing with config.yaml

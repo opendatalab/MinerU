@@ -8,7 +8,7 @@ import httpx
 
 from mineru.cli_old import api_client as _api_client
 from mineru.cli_old.common import image_suffixes, office_suffixes, pdf_suffixes
-from mineru.utils.guess_suffix_or_lang import guess_suffix_by_path
+from mineru.parser.file_type import guess_suffix_by_path
 
 SUPPORTED_INPUT_SUFFIXES = set(pdf_suffixes + image_suffixes + office_suffixes)
 

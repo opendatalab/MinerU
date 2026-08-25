@@ -307,7 +307,7 @@ def test_structured_content_keeps_chart_content_separate_from_base64_source(
             }
         }
     )
-    monkeypatch.setattr("mineru.render.structured_content.config", configured)
+    monkeypatch.setattr("mineru.render._internal.structured_content.renderer.config", configured)
     chart = ChartBlock(
         type="chart",
         index=0,
@@ -353,7 +353,7 @@ def test_structured_content_renders_equation_as_raw_latex_with_single_image_sour
             }
         }
     )
-    monkeypatch.setattr("mineru.render.structured_content.config", configured)
+    monkeypatch.setattr("mineru.render._internal.structured_content.renderer.config", configured)
     middle = _middle(
         _page(
             0,

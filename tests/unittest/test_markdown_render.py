@@ -583,7 +583,7 @@ def test_equation_uses_content_then_image_fallback(monkeypatch: pytest.MonkeyPat
             }
         }
     )
-    monkeypatch.setattr("mineru.render.markdown.config", configured)
+    monkeypatch.setattr("mineru.render._internal.markdown.renderer.config", configured)
     middle = _middle(
         _page(
             0,

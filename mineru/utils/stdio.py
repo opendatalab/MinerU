@@ -1,4 +1,5 @@
-"""Standard stream configuration helpers."""
+# Copyright (c) Opendatalab. All rights reserved.
+"""标准流与子进程 UTF-8 环境配置。"""
 
 from __future__ import annotations
 

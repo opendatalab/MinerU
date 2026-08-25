@@ -12,8 +12,8 @@ from bs4 import BeautifulSoup
 from loguru import logger
 from PIL import Image
 
-from mineru.utils.image_utils import calculate_contrast
-from .....utils.model_registry import PDF_EXTRACT_KIT
+from .....utils.image import calculate_contrast
+from ....registry import PDF_EXTRACT_KIT
 
 from .table_recover import TableRecover
 from .table_structure_unet import TSRUnet

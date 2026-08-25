@@ -45,12 +45,12 @@ from ..filetypes import (
     file_type_for_extension,
     is_flash_only_parse_extension,
 )
-from ..render.writer import DataWriter
+from .writer import DataWriter
 from ..types import SERVER_TIERS, TIERS_BY_SERVER_TIER, DeploymentTier, PageInfo, ServerTier, Tier, select_default_quality_tier
-from ..utils.backend_options import effort_for_tier
+from .tier import effort_for_tier
 from ..utils.image_payload import validate_image_sidecar_path
-from ..utils.managed_process_control import ManagedProcessControlWatcher
-from ..utils.ocr_language import PUBLIC_OCR_LANGUAGES, validate_public_ocr_lang
+from .process_control import ManagedProcessControlWatcher
+from ..model.ocr.language import PUBLIC_OCR_LANGUAGES, validate_public_ocr_lang
 from ..utils.stdio import configure_standard_streams
 from ..version import __version__
 from . import parse_async
@@ -1329,8 +1329,6 @@ async def _run_job(
     req: CreateJobRequest,
     file_store: FileStore,
     *,
-    server_backend: str,
-    language: str,
     ocr_mode: str,
     image_analysis: bool,
     url_timeout: int = 60,
@@ -1818,12 +1816,10 @@ async def create_job(
     )
 
     rec = job_store.create(body, file_store)
-    backend = runtime.backend
     url_timeout_val: int = request.app.state.url_timeout
     allow_local_source_val: bool = request.app.state.allow_local_source
     max_inline_bytes_val: int = request.app.state.max_inline_bytes
     allow_http_source_val: bool = request.app.state.allow_http_source
-    language_val: str = request.app.state.language
     ocr_mode_val: str = request.app.state.ocr_mode
     image_analysis_val: bool = request.app.state.image_analysis
 
@@ -1834,8 +1830,6 @@ async def create_job(
                 rec,
                 body,
                 file_store,
-                server_backend=backend,
-                language=language_val,
                 ocr_mode=ocr_mode_val,
                 image_analysis=image_analysis_val,
                 url_timeout=url_timeout_val,
@@ -2052,8 +2046,8 @@ def _classify_model_preload_error(exc: Exception) -> tuple[str, str]:
 
 def _preload_local_models(language: str) -> None:
     # TODO: fix import
-    from ..backend.local_model_runtime import HybridLocalModelContextSingleton
-    from ..model.model_types import AtomicModelName
+    from ..model.runtime.contracts import AtomicModelName
+    from ..model.runtime.hybrid import HybridLocalModelContextSingleton
 
     context = HybridLocalModelContextSingleton().get_model()
     manager = context.atom_model_manager
@@ -2069,7 +2063,7 @@ def _preload_server_models(tier: DeploymentTier, *, language: str) -> _ModelPrel
         _preload_local_models(language)
         return _ModelPreloadResult(tier=tier, engine="hybrid-local")
 
-    from ..utils.engine_utils import get_vlm_engine
+    from ..model.vlm.selector import get_vlm_engine
 
     engine = get_vlm_engine("auto", is_async=True)
     from ..model.vlm.runtime import ModelSingleton

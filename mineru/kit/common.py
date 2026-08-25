@@ -8,7 +8,7 @@ from typing import Literal, TypeAlias
 
 from ..filetypes import PARSEABLE_EXTENSIONS
 from ..parser.base import ParseResult
-from ..render.writer import FileBasedDataWriter
+from ..parser.writer import FileBasedDataWriter
 from ..types import Tier
 from ..utils.image_payload import validate_image_sidecar_path
 

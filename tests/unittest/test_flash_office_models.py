@@ -11,17 +11,17 @@ from unittest.mock import MagicMock
 import pytest
 
 import mineru.model.flash as flash_models
-import mineru.model.flash.model as flat_model_module
+import mineru.model.flash.models as flat_model_module
 from mineru.model.flash import DocModel, DocxModel, PdfModel, PptModel, PptxModel, XlsModel, XlsxModel
-from mineru.model.flash.doc import doc_converter as doc_converter_module
-from mineru.model.flash.docx import docx_converter as docx_converter_module
-from mineru.model.flash.docx import main as docx_main
-from mineru.model.flash.pptx import main as pptx_main
-from mineru.model.flash.pptx import pptx_converter as pptx_converter_module
-from mineru.model.flash.ppt import ppt_converter as ppt_converter_module
-from mineru.model.flash.xls import xls_converter as xls_converter_module
-from mineru.model.flash.xlsx import main as xlsx_main
-from mineru.model.flash.xlsx import xlsx_converter as xlsx_converter_module
+from mineru.model.flash.office.doc import doc_converter as doc_converter_module
+from mineru.model.flash.office.docx import docx_converter as docx_converter_module
+from mineru.model.flash.office.docx import main as docx_main
+from mineru.model.flash.office.pptx import main as pptx_main
+from mineru.model.flash.office.pptx import pptx_converter as pptx_converter_module
+from mineru.model.flash.office.ppt import ppt_converter as ppt_converter_module
+from mineru.model.flash.office.xls import xls_converter as xls_converter_module
+from mineru.model.flash.office.xlsx import main as xlsx_main
+from mineru.model.flash.office.xlsx import xlsx_converter as xlsx_converter_module
 
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -174,12 +174,12 @@ def test_models_are_exported_from_flash_root() -> None:
 @pytest.mark.parametrize(
     ("package_name", "model_name"),
     [
-        ("mineru.model.flash.doc", "DocModel"),
-        ("mineru.model.flash.docx", "DocxModel"),
-        ("mineru.model.flash.pptx", "PptxModel"),
-        ("mineru.model.flash.ppt", "PptModel"),
-        ("mineru.model.flash.xls", "XlsModel"),
-        ("mineru.model.flash.xlsx", "XlsxModel"),
+        ("mineru.model.flash.office.doc", "DocModel"),
+        ("mineru.model.flash.office.docx", "DocxModel"),
+        ("mineru.model.flash.office.pptx", "PptxModel"),
+        ("mineru.model.flash.office.ppt", "PptModel"),
+        ("mineru.model.flash.office.xls", "XlsModel"),
+        ("mineru.model.flash.office.xlsx", "XlsxModel"),
     ],
 )
 def test_office_subpackages_do_not_export_models(package_name: str, model_name: str) -> None:
@@ -198,13 +198,13 @@ def test_importing_pdf_model_does_not_load_office_converters() -> None:
             "import sys",
             "from mineru.model.flash import PdfModel",
             "assert PdfModel.__name__ == 'PdfModel'",
-            "assert 'mineru.model.flash.docx.docx_converter' not in sys.modules",
-            "assert 'mineru.model.flash.doc.doc_converter' not in sys.modules",
-            "assert 'mineru.model.flash.pptx.pptx_converter' not in sys.modules",
-            "assert 'mineru.model.flash.ppt.ppt_converter' not in sys.modules",
-            "assert 'mineru.model.flash.xls.xls_converter' not in sys.modules",
+            "assert 'mineru.model.flash.office.docx.docx_converter' not in sys.modules",
+            "assert 'mineru.model.flash.office.doc.doc_converter' not in sys.modules",
+            "assert 'mineru.model.flash.office.pptx.pptx_converter' not in sys.modules",
+            "assert 'mineru.model.flash.office.ppt.ppt_converter' not in sys.modules",
+            "assert 'mineru.model.flash.office.xls.xls_converter' not in sys.modules",
             "assert 'olefile' not in sys.modules",
-            "assert 'mineru.model.flash.xlsx.xlsx_converter' not in sys.modules",
+            "assert 'mineru.model.flash.office.xlsx.xlsx_converter' not in sys.modules",
         ]
     )
     result = subprocess.run(

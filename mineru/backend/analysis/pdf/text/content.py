@@ -9,18 +9,19 @@ import numpy as np
 from PIL import Image
 from pdftext.schema import Char
 
-from mineru.backend.local_model_runtime import HybridLocalModelContext, run_ocr_inference
-from mineru.types import BBox, BlockType, ContentType
-from mineru.utils.language import detect_lang
-from mineru.utils.ocr_utils import OcrConfidence, rotate_vertical_crop_if_needed
-from mineru.utils.pdf_document import PDFPage, get_lines_from_chars
-from mineru.utils.pdf_text_styles import (
+from .....model.runtime.hybrid import HybridLocalModelContext, run_ocr_inference
+from .....types import BBox, BlockType, ContentType
+from .....utils.language import detect_lang
+from .....model.ocr.image import rotate_vertical_crop_if_needed
+from .....model.ocr.results import OcrConfidence
+from .....model.flash.pdf.document import PDFPage, get_lines_from_chars
+from .....model.flash.pdf.text_styles import (
     PDFTextLinkLine,
     PDFTextStyleLine,
     apply_pdf_text_links,
     apply_pdf_text_styles,
 )
-from mineru.utils.text_utils import merge_text_line_contents
+from .....utils.text import merge_text_line_contents
 
 from ..constants import (
     CODE_CONTENT_BLOCK_TYPES,

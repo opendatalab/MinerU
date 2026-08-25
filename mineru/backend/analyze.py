@@ -4,19 +4,16 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Literal, cast
+from typing import cast
 
 from loguru import logger
 
-from mineru.backend.analysis.contracts import AnalyzeEffort, OfficeSuffix, ParseMode
-from mineru.backend.analysis.office import analyze_office
-from mineru.backend.analysis.pdf.pipeline import analyze_pdf
-from mineru.backend.postprocess.document import model_json_to_middle_json
-from mineru.config import config
-from mineru.types import MiddleJson, ModelJson
-from mineru.version import __version__ as mineru_version
+from .analysis.contracts import AnalyzeEffort, OfficeSuffix, ParseMode
+from ..config import config
+from ..types import FILE_SUFFIXES, FileSuffix, MiddleJson, ModelJson
+from ..version import __version__ as mineru_version
 
-_SUPPORTED_FILE_SUFFIXES = {"pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx"}
+_SUPPORTED_ANALYZE_EFFORTS = {"flash", "medium", "high", "xhigh"}
 
 
 def _log_infer_performance(file_suffix: str, page_count: int, elapsed: float) -> None:
@@ -30,24 +27,30 @@ def _log_infer_performance(file_suffix: str, page_count: int, elapsed: float) ->
 
 def doc_analyze(
     file_bytes: bytes,
-    effort: Literal["flash", "low", "medium", "high", "xhigh"] = "high",
-    parse_mode: Literal["auto", "txt", "ocr"] = "auto",
+    effort: AnalyzeEffort = "high",
+    parse_mode: ParseMode = "auto",
     image_analysis: bool = True,
     page_index_map: list[int] | None = None,
-    file_suffix: Literal["pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx"] = "pdf",
+    file_suffix: FileSuffix = "pdf",
 ) -> tuple[MiddleJson, ModelJson]:
     """生产严格 ModelJson，并在统一边界构造严格 MiddleJson。"""
-    if file_suffix not in _SUPPORTED_FILE_SUFFIXES:
+    if file_suffix not in FILE_SUFFIXES:
         raise ValueError(f"Unsupported file suffix: {file_suffix!r}")
+    if effort not in _SUPPORTED_ANALYZE_EFFORTS:
+        raise ValueError(f"Unsupported analyze effort: {effort}")
 
     if file_suffix == "pdf":
+        from .analysis.pdf.pipeline import analyze_pdf
+
         result = analyze_pdf(
             file_bytes,
-            effort=cast(AnalyzeEffort, effort),
-            parse_mode=cast(ParseMode, parse_mode),
+            effort=effort,
+            parse_mode=parse_mode,
             image_analysis=image_analysis,
         )
     else:
+        from .analysis.office import analyze_office
+
         result = analyze_office(file_bytes, cast(OfficeSuffix, file_suffix))
 
     _log_infer_performance(file_suffix, len(result.model_list), result.elapsed)
@@ -59,6 +62,8 @@ def doc_analyze(
         parse_mode=result.parse_mode,
         mineru_version=mineru_version,
     )
+    from .postprocess.document import model_json_to_middle_json
+
     middle_json = model_json_to_middle_json(
         model_json,
         llm_aided_config=config.llm_aided,
@@ -68,11 +73,11 @@ def doc_analyze(
 
 async def aio_doc_analyze(
     file_bytes: bytes,
-    effort: Literal["flash", "low", "medium", "high", "xhigh"] = "high",
-    parse_mode: Literal["auto", "txt", "ocr"] = "auto",
+    effort: AnalyzeEffort = "high",
+    parse_mode: ParseMode = "auto",
     image_analysis: bool = True,
     page_index_map: list[int] | None = None,
-    file_suffix: Literal["pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx"] = "pdf",
+    file_suffix: FileSuffix = "pdf",
 ) -> tuple[MiddleJson, ModelJson]:
     """在线程中执行统一文档分析，避免阻塞调用方事件循环。"""
     return await asyncio.to_thread(

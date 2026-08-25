@@ -127,6 +127,7 @@ License = "https://github.com/opendatalab/MinerU/blob/master/LICENSE.md"
 [project.scripts]
 mineru = "mineru.cli.main:main"
 mineru-kit = "mineru.kit.main:main"
+mineru-router = "mineru.kit.router.cli:main"
 mineru-gradio = "mineru.cli_old.gradio_app:main"
 
 [tool.setuptools.dynamic]
@@ -139,7 +140,7 @@ namespaces = false
 [tool.setuptools.package-data]
 "mineru" = ["resources/**"]
 "mineru.doclib.migrations" = ["*.sql"]
-"mineru.model.utils.pytorchocr.utils" = ["resources/**"]
+"mineru.model._internal.pytorchocr.utils" = ["resources/**"]
 
 [tool.setuptools]
 include-package-data = true

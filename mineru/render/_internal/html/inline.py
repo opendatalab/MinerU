@@ -9,7 +9,7 @@ import re
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
-from mineru.render._internal.common.inline import (
+from ....backend.postprocess.inline import (
     InlineEquation,
     InlineLink,
     InlineNode,
@@ -19,25 +19,19 @@ from mineru.render._internal.common.inline import (
     join_inline_contents,
     parse_inline_content,
 )
-from mineru.render._internal.html.sanitizer import sanitize_link_url
+from .sanitizer import sanitize_link_url
 
 
 _AUTOLINK_TLD_PATTERN = r"(?:[A-Za-z]{2,63}|xn--[A-Za-z0-9-]{2,59})"
-_AUTOLINK_DOMAIN_PATTERN = (
-    rf"(?:[A-Za-z0-9](?:[A-Za-z0-9-]{{0,61}}[A-Za-z0-9])?\.){{1,10}}{_AUTOLINK_TLD_PATTERN}"
-)
+_AUTOLINK_DOMAIN_PATTERN = rf"(?:[A-Za-z0-9](?:[A-Za-z0-9-]{{0,61}}[A-Za-z0-9])?\.){{1,10}}{_AUTOLINK_TLD_PATTERN}"
 _AUTOLINK_EMAIL_EDGE_PATTERN = r"[A-Za-z0-9!#$%&'*+/=?^_{|}~-]"
 _AUTOLINK_EMAIL_PATTERN = (
     rf"{_AUTOLINK_EMAIL_EDGE_PATTERN}"
     rf"(?:[A-Za-z0-9.!#$%&'*+/=?^_{{|}}~-]{{0,62}}{_AUTOLINK_EMAIL_EDGE_PATTERN})?"
     rf"@{_AUTOLINK_DOMAIN_PATTERN}"
 )
-_AUTOLINK_EXPLICIT_HOST_PATTERN = (
-    rf"(?:{_AUTOLINK_DOMAIN_PATTERN}|localhost|(?:\d{{1,3}}\.){{3}}\d{{1,3}}|\[[0-9A-Fa-f:.]+\])"
-)
-_AUTOLINK_URL_TAIL_PATTERN = (
-    r"(?::\d{1,5})?(?:[/?#](?:(?!https?://)[A-Za-z0-9._~:/?#\[\]@!$&()*+,;=%-])*)?"
-)
+_AUTOLINK_EXPLICIT_HOST_PATTERN = rf"(?:{_AUTOLINK_DOMAIN_PATTERN}|localhost|(?:\d{{1,3}}\.){{3}}\d{{1,3}}|\[[0-9A-Fa-f:.]+\])"
+_AUTOLINK_URL_TAIL_PATTERN = r"(?::\d{1,5})?(?:[/?#](?:(?!https?://)[A-Za-z0-9._~:/?#\[\]@!$&()*+,;=%-])*)?"
 _AUTOLINK_RE = re.compile(
     rf"(?:(?P<email>(?<![A-Za-z0-9._%+@-]){_AUTOLINK_EMAIL_PATTERN})"
     rf"|(?P<explicit>https?://{_AUTOLINK_EXPLICIT_HOST_PATTERN}{_AUTOLINK_URL_TAIL_PATTERN})"

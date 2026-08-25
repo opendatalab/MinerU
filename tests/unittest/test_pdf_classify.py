@@ -15,8 +15,8 @@ from pypdf.generic import (
     NumberObject,
 )
 
-from mineru.utils import pdf_classify
-from mineru.utils.pdf_document import PDFDocument
+from mineru.model.flash.pdf import classify as pdf_classify
+from mineru.model.flash.pdf.document import PDFDocument
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MIXED_ELEMENTS_PDF = REPO_ROOT / "demo" / "pdfs" / "mixed_elements_pages_07_10.pdf"
@@ -173,19 +173,6 @@ def test_mixed_elements_uses_exact_cid_counts_and_classifies_as_txt() -> None:
     ]
     with PDFDocument(pdf_bytes) as pdf_doc:
         assert pdf_doc.classify() == "txt"
-
-
-def test_public_cid_resource_signal_shape_remains_compatible() -> None:
-    """验证兼容接口仍只暴露资源存在性与逐页字体名。"""
-    pdf_bytes = MIXED_ELEMENTS_PDF.read_bytes()
-    signal = pdf_classify.get_cid_font_signal_pypdf(
-        pdf_bytes,
-        [0, 1, 2, 3],
-    )
-
-    assert set(signal) == {"triggered", "page_fonts"}
-    assert signal["triggered"] is True
-    assert "TimesNewRoman" in signal["page_fonts"][1]
 
 
 def test_dominant_bad_cid_font_still_classifies_as_ocr_with_same_name_resource() -> None:

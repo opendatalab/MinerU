@@ -6,8 +6,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from mineru.types import BlockType
-from mineru.utils.bbox_utils import calculate_overlap_area_in_bbox1_area_ratio
+from ...types import BlockType
+from ...utils.geometry import calculate_overlap_area_in_bbox1_area_ratio
 
 from .visual import _bbox_for_calculation
 

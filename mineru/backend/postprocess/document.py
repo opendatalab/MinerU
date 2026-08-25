@@ -3,8 +3,8 @@
 
 from __future__ import annotations
 
-from mineru.config import LLMAidedConfig
-from mineru.types import MiddleJson, ModelJson
+from ...config import LLMAidedConfig
+from ...types import MiddleJson, ModelJson
 
 from .llm_aided import apply_llm_aided_postprocess
 from .pages import model_json_to_pages

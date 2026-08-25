@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from mineru.utils.managed_process_control import (
+from mineru.parser.process_control import (
     CONTROL_ENV,
     ManagedProcessControl,
     ManagedProcessControlWatcher,
@@ -71,7 +71,7 @@ def test_managed_process_control_works_across_subprocess() -> None:
     child_code = """
 import sys
 import threading
-from mineru.utils.managed_process_control import ManagedProcessControlWatcher
+from mineru.parser.process_control import ManagedProcessControlWatcher
 
 shutdown = threading.Event()
 watcher = ManagedProcessControlWatcher.from_environment(shutdown.set)

@@ -11,31 +11,26 @@ import pytest
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
 from mineru.backend.postprocess.lists import fix_office_list_blocks
 from mineru.model.flash import DocModel
-from mineru.model.flash.doc.fields import sanitize_hyperlink_target
-from mineru.model.flash.doc.models import DocCharStyle, DocTableCell
-from mineru.model.flash.doc.parser import _RawTableRow, _materialize_table_rows
-from mineru.model.flash.doc.records import DocBudget
-from mineru.model.flash.doc.sprm import apply_character_sprms
-from mineru.model.flash.legacy_office import (
+from mineru.model.flash.office.doc.fields import sanitize_hyperlink_target
+from mineru.model.flash.office.doc.models import DocCharStyle, DocTableCell
+from mineru.model.flash.office.doc.parser import _RawTableRow, _materialize_table_rows
+from mineru.model.flash.office.doc.records import DocBudget
+from mineru.model.flash.office.doc.sprm import apply_character_sprms
+from mineru.model.flash.office.legacy import (
     LegacyOfficeEncryptedError,
     LegacyOfficeMalformedError,
     LegacyOfficeMissingPartError,
     LegacyOfficeResourceLimitError,
 )
-from mineru.types import BlockType, MiddleJson, ModelJson, TableBlock
+from mineru.parser import parse
+from mineru.types import BlockType, ChartBlock, MiddleJson, ModelJson, TableBlock
 
 from _legacy_doc_test_utils import build_doc, utf16_cp
 from _legacy_ppt_test_utils import _build_cfb
 
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
-_REAL_DOC = (
-    _PROJECT_ROOT
-    / "output"
-    / "office_roundtrip_research_20260824"
-    / "legacy"
-    / "docx_01.doc"
-)
+_REAL_DOC = _PROJECT_ROOT / "demo" / "office_docs" / "docx_01.doc"
 
 
 def test_doc_model_preserves_empty_sections_and_ignores_page_breaks() -> None:
@@ -109,10 +104,7 @@ def test_doc_footnote_reference_and_body_bind_to_reference_section() -> None:
 def test_doc_hyperlink_field_keeps_safe_target_and_drops_dangerous_target() -> None:
     """验证字段缓存结果保留，危险 URL 只降级为普通文本。"""
 
-    text = (
-        '\x13 HYPERLINK "https://example.test/a" \x14Safe\x15\r'
-        '\x13 HYPERLINK "javascript:alert(1)" \x14Danger\x15\r'
-    )
+    text = '\x13 HYPERLINK "https://example.test/a" \x14Safe\x15\r\x13 HYPERLINK "javascript:alert(1)" \x14Danger\x15\r'
     pages = DocModel().predict(BytesIO(build_doc(text)))
 
     assert "<url>https://example.test/a</url>" in pages[0][0]["content"]
@@ -172,15 +164,13 @@ def test_doc_exact_list_label_is_consumed_before_strict_projection() -> None:
         }
     ]
 
-    assert fix_office_list_blocks(blocks)[0]["content"] == [
-        {"type": BlockType.TEXT, "content": "IV. item"}
-    ]
+    assert fix_office_list_blocks(blocks)[0]["content"] == [{"type": BlockType.TEXT, "content": "IV. item"}]
 
 
 def test_doc_table_grid_materializes_colspan_and_rowspan() -> None:
     """验证 Word table edge 网格能同时恢复横向和纵向合并。"""
 
-    from mineru.model.flash.doc.models import DocTableCellFormat, DocTableFormat
+    from mineru.model.flash.office.doc.models import DocTableCellFormat, DocTableFormat
 
     first = DocTableCell(blocks=[])
     raw_rows = [
@@ -228,7 +218,7 @@ def test_doc_rejects_word95_encryption_rtf_and_missing_word_stream() -> None:
 def test_doc_budget_uses_stable_resource_limit(monkeypatch: pytest.MonkeyPatch) -> None:
     """验证 DOC 记录预算超过固定上限时使用共享错误类型。"""
 
-    import mineru.model.flash.doc.records as records
+    import mineru.model.flash.office.doc.records as records
 
     monkeypatch.setattr(records, "MAX_RECORDS", 1)
     budget = records.DocBudget()
@@ -253,29 +243,31 @@ def test_real_doc_recovers_sections_structure_and_sidecars(tmp_path: Path) -> No
     assert counts[BlockType.HEADER] == 4
     assert counts[BlockType.FOOTER] == 1
     assert counts[BlockType.IMAGE] >= 44
+    assert counts[BlockType.CHART] == 1
 
-    table_blocks = [
-        block
-        for page in middle.pages
-        for block in page.blocks
-        if isinstance(block, TableBlock)
-    ]
+    table_blocks = [block for page in middle.pages for block in page.blocks if isinstance(block, TableBlock)]
     assert len(table_blocks) == 8
     soups = [BeautifulSoup(block.content[0].content, "html.parser") for block in table_blocks]
     assert sum(max(len(soup.find_all("table")) - 1, 0) for soup in soups) == 3
     assert sum(len(soup.find_all("img")) for soup in soups) == 5
     assert any(len(soup.find_all("tr")) == 39 for soup in soups)
     assert any(
-        len(
-            [
-                cell
-                for cell in soup.find_all(["td", "th"])
-                if cell.has_attr("rowspan") or cell.has_attr("colspan")
-            ]
-        )
-        == 141
+        len([cell for cell in soup.find_all(["td", "th"]) if cell.has_attr("rowspan") or cell.has_attr("colspan")]) == 141
         for soup in soups
     )
+    chart = next(block for page in middle.pages for block in page.blocks if isinstance(block, ChartBlock))
+    chart_soup = BeautifulSoup(chart.content[0].content, "html.parser")
+    assert [
+        [cell.get_text(" ", strip=True) for cell in row.find_all(["th", "td"], recursive=False)]
+        for row in chart_soup.find_all("tr")
+    ] == [
+        ["列1", "系列 1", "系列 2", "系列 3"],
+        ["类别 1", "4.3", "2.4", "2"],
+        ["类别 2", "2.5", "4.4", "2"],
+        ["类别 3", "3.5", "1.8", "3"],
+        ["类别 4", "4.5", "2.8", "5"],
+    ]
+    assert chart.content[0].image_base64 is not None
 
     export = middle.export(tmp_path / "export")
     payload = export.middle_json.model_dump_json(exclude_none=True)
@@ -286,8 +278,13 @@ def test_real_doc_recovers_sections_structure_and_sidecars(tmp_path: Path) -> No
     assert "data:image/" not in payload
 
 
-def test_doc_does_not_add_parser_or_legacy_model_routes() -> None:
-    """验证 DOC 仅接入 Flash Backend Analyze，不暴露 parser 或旧模型路径。"""
+def test_doc_is_supported_by_public_parser(tmp_path: Path) -> None:
+    """验证公共 parser 通过统一 MinerUParser 路由 DOC。"""
 
-    assert not (_PROJECT_ROOT / "mineru" / "parser" / "doc.py").exists()
-    assert not (_PROJECT_ROOT / "mineru" / "model" / "doc").exists()
+    path = tmp_path / "sample.doc"
+    path.write_bytes(build_doc("Hello\r"))
+
+    result = parse(path, tier="flash")
+
+    assert result.middle_json.file_suffix == "doc"
+    assert result.pages[0].blocks[0].content == "Hello"

@@ -4,13 +4,13 @@ import numpy as np
 from PIL import Image
 from tqdm import tqdm
 
-from ....utils.model_registry import PDF_EXTRACT_KIT
-from ...utils.onnxruntime_provider import ort_session
+from ...registry import PDF_EXTRACT_KIT
+from ...runtime.onnx import ort_session
 
 
 class PaddleTableClsModel:
     def __init__(self):
-        from mineru.model.model_types import AtomicModelName
+        from ...runtime.contracts import AtomicModelName
 
         self.sess = ort_session(str(PDF_EXTRACT_KIT.paddle_table_cls.ensure()))
         self.less_length = 256

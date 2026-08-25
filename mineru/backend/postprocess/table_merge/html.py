@@ -7,7 +7,7 @@ from typing import Any
 
 from bs4 import BeautifulSoup, Tag
 
-from mineru.utils.text_utils import full_to_half
+from ....utils.text import full_to_half
 
 from .models import (
     MAX_HEADER_ROWS,

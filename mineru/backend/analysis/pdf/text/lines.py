@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from .....types import ContentType
-from .....utils.ocr_utils import _is_overlaps_x_exceeds_threshold, _is_overlaps_y_exceeds_threshold
+from .....model.ocr.geometry import _is_overlaps_x_exceeds_threshold, _is_overlaps_y_exceeds_threshold
 from .models import _AnalyzeLine, _AnalyzeSpan
 
 VERTICAL_SPAN_HEIGHT_TO_WIDTH_RATIO_THRESHOLD = 2

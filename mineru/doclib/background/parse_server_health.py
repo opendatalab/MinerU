@@ -19,7 +19,7 @@ import httpx
 from ...config import LogConfig, ManagedParseServerConfig, config
 from ...parser.api_client import should_trust_env_for_url
 from ...types import DEPLOYMENT_TIERS, TIERS, DeploymentTier, Tier
-from ...utils.managed_process_control import ManagedProcessControl
+from ...parser.process_control import ManagedProcessControl
 from ...utils.stdio import utf8_subprocess_env
 from ..config_defaults import CONFIG_DEFAULTS
 from ..remote_api import resolve_remote_api_key

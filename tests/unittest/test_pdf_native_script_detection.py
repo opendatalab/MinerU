@@ -9,7 +9,7 @@ from pdftext.schema import Bbox, Char
 from mineru.backend.analysis.pdf.text import native
 from mineru.backend.analysis.pdf.text.models import _AnalyzeSpan
 from mineru.types import ContentType
-from mineru.utils.pdf_document import PDFDocument
+from mineru.model.flash.pdf.document import PDFDocument
 
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]

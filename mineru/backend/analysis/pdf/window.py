@@ -9,23 +9,19 @@ from typing import Any, Literal
 import numpy as np
 from loguru import logger
 
-from mineru.backend.local_model_runtime import HybridLocalModelContext
-from mineru.types import RAW_FORMULA_NUMBER, BlockType
-from mineru.utils.config_reader import get_processing_window_size
-from mineru.utils.pdf_document import PDFDocument, PDFPage
-from mineru.utils.pdf_image_tools import load_images_from_pdf_bytes_range
-from mineru.utils.pdf_text_styles import apply_pdf_text_links, apply_pdf_text_styles
-from mineru.utils.spatial_text import project_pdf_spatial_text
+from ....model.runtime.hybrid import HybridLocalModelContext
+from ....model.flash.pdf.document import PDFDocument, PDFPage
+from .images import load_images_from_pdf_bytes_range
 
+from ..contracts import AnalyzeEffort
 from .constants import (
     BATCH_RATIO,
     LAYOUT_BASE_BATCH_SIZE,
     MFR_BASE_BATCH_SIZE,
     NOT_EXTRACT_TYPES,
     PIPELINE_DET_TYPE,
-    TITLE_BLOCK_TYPES,
 )
-from .geometry import _bbox_to_pixel_bbox, _normalize_page_size
+from .geometry import _normalize_page_size
 from .layout import (
     _build_vl_style_layout_blocks,
     _collect_table_items,
@@ -48,20 +44,34 @@ from .ocr import (
 )
 from .tables import (
     _apply_medium_table_recognition,
-    _build_pdf_text_visual_run_data,
-    _fill_low_table_contents,
+    _apply_native_txt_table_priority,
     _apply_table_orientations,
+    _fill_flash_ocr_table_contents,
+    _restore_native_high_table_blocks,
+    _split_native_high_table_blocks,
 )
 from .visuals import (
     _attach_visual_block_images,
     _supplement_missing_image_block_containers,
 )
 from .text.content import (
-    _apply_block_content_and_line_metadata,
     _fill_window_block_content_and_lines,
-    _group_page_spans_by_block,
     _validate_text_formula_window_inputs,
 )
+
+
+def _configured_window_size(default: int = 64) -> int:
+    """读取 PDF 分析窗口大小，非法配置回退到正整数默认值。"""
+    import os
+
+    raw_value = os.getenv("MINERU_PROCESSING_WINDOW_SIZE")
+    if raw_value is None:
+        return default
+    try:
+        return max(1, int(raw_value))
+    except ValueError:
+        logger.warning(f"Invalid MINERU_PROCESSING_WINDOW_SIZE value: {raw_value}, use default {default}")
+        return default
 
 
 @dataclass(frozen=True)
@@ -125,60 +135,14 @@ def _close_images(images_list: list[dict[str, Any]]) -> None:
                 pass
 
 
-def _fill_low_txt_native_formula_contents(
-    pdf_pages: list[PDFPage],
-    model_list: list[list[dict[str, Any]]],
-) -> None:
-    """按 Low layout 公式框从 PDF 字符层独立回填公式正文和编号。"""
-    if len(pdf_pages) != len(model_list):
-        raise ValueError(
-            "Low TXT native formula page count mismatch: "
-            f"pdf_pages={len(pdf_pages)}, model_list={len(model_list)}"
-        )
-
-    target_block_types = {BlockType.EQUATION, RAW_FORMULA_NUMBER}
-    for pdf_page, page_model_list in zip(pdf_pages, model_list):
-        page_size = tuple(float(value) for value in pdf_page.size)
-        pending_blocks: list[tuple[dict[str, Any], tuple[float, float, float, float]]] = []
-        for block_item in page_model_list:
-            if block_item.get("type") not in target_block_types:
-                continue
-            block_content = block_item.get("content")
-            has_nonempty_content = (
-                bool(block_content.strip())
-                if isinstance(block_content, str)
-                else bool(block_content)
-            )
-            if has_nonempty_content:
-                continue
-            block_bbox = _bbox_to_pixel_bbox(block_item.get("bbox"), page_size)
-            if block_bbox is not None:
-                pending_blocks.append((block_item, block_bbox))
-
-        if not pending_blocks:
-            continue
-
-        page_chars = pdf_page.get_chars()
-        for block_item, block_bbox in pending_blocks:
-            native_content = project_pdf_spatial_text(
-                page_chars,
-                block_bbox,
-                block_item.get("angle", 0),
-                preserve_blank_rows=False,
-            ).strip()
-            if native_content:
-                block_item["content"] = native_content
-
-
-def _process_low_text(
+def _process_flash_ocr(
     images_list: list[dict[str, Any]],
     pdf_pages: list[PDFPage],
     model_list: list[list[dict[str, Any]]],
-    parse_mode: Literal["txt", "ocr"],
     local_model_context: HybridLocalModelContext,
     images_layout_res: list[list[dict[str, Any]]],
 ) -> list[list[dict[str, Any]]]:
-    """使用 pdftext line 或本地 OCR 为 low layout block 填充文本内容。"""
+    """使用本地 OCR 为 Flash layout block 填充正文和表格内容。"""
     _validate_text_formula_window_inputs(
         images_list,
         pdf_pages,
@@ -186,69 +150,33 @@ def _process_low_text(
         images_layout_res,
     )
 
-    if parse_mode == "txt":
-        target_block_types = set(PIPELINE_DET_TYPE) | TITLE_BLOCK_TYPES | {BlockType.TEXT}
-        for pdf_page, page_model_list in zip(pdf_pages, model_list):
-            page_size = tuple(float(value) for value in pdf_page.size)
-            page_spans, style_lines, link_lines = _build_pdf_text_visual_run_data(
-                pdf_page
-            )
-            block_lines = _group_page_spans_by_block(
-                page_model_list,
-                page_spans,
-                page_size,
-                target_block_types,
-            )
-            _apply_block_content_and_line_metadata(
-                page_model_list,
-                block_lines,
-                page_size,
-            )
-            apply_pdf_text_links(
-                page_model_list,
-                link_lines,
-                page_size,
-            )
-            apply_pdf_text_styles(
-                page_model_list,
-                style_lines,
-                page_size,
-            )
-    elif parse_mode == "ocr":
-        images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
-        np_images = [np.asarray(pil_image).copy() for pil_image in images_pil_list]
-        empty_formula_list: list[list[dict[str, Any]]] = [[] for _ in model_list]
-        ocr_res_list = _ocr_det(
-            local_model_context,
-            np_images,
-            model_list,
-            empty_formula_list,
-            True,
-            PIPELINE_DET_TYPE,
-        )
-        _apply_ocr_rec_results(local_model_context, ocr_res_list)
-        model_list = _fill_window_block_content_and_lines(
-            images_list,
-            pdf_pages,
-            model_list,
-            empty_formula_list,
-            ocr_res_list,
-            parse_mode,
-            PIPELINE_DET_TYPE,
-            local_model_context,
-        )
-    else:
-        raise ValueError(f"Unsupported parse mode: {parse_mode}")
-
-    _fill_low_table_contents(
+    images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
+    np_images = [np.asarray(pil_image).copy() for pil_image in images_pil_list]
+    empty_formula_list: list[list[dict[str, Any]]] = [[] for _ in model_list]
+    ocr_res_list = _ocr_det(
+        local_model_context,
+        np_images,
+        model_list,
+        empty_formula_list,
+        True,
+        PIPELINE_DET_TYPE,
+    )
+    _apply_ocr_rec_results(local_model_context, ocr_res_list)
+    model_list = _fill_window_block_content_and_lines(
         images_list,
         pdf_pages,
         model_list,
-        parse_mode,
+        empty_formula_list,
+        ocr_res_list,
+        "ocr",
+        PIPELINE_DET_TYPE,
         local_model_context,
     )
-    if parse_mode == "txt":
-        _fill_low_txt_native_formula_contents(pdf_pages, model_list)
+    _fill_flash_ocr_table_contents(
+        images_list,
+        model_list,
+        local_model_context,
+    )
     return model_list
 
 
@@ -286,7 +214,7 @@ def _process_text_and_formulas(
     interline_enable = effort == "medium"
 
     # medium 识别行内和行间公式；high/xhigh 的 txt 路径只识别行内公式。
-    if mfr_enable:
+    if mfr_enable and any(mfd_res):
         images_formula_list = local_model_context.mfr_model.batch_predict(
             mfd_res,
             np_images,
@@ -351,7 +279,7 @@ def process_pdf_windows(
     file_bytes: bytes,
     document: PDFDocument,
     *,
-    effort: Literal["flash", "low", "medium", "high", "xhigh"],
+    effort: AnalyzeEffort,
     parse_mode: Literal["txt", "ocr"],
     image_analysis: bool,
     flash_txt_mode: bool,
@@ -363,11 +291,11 @@ def process_pdf_windows(
     model_list: list[list[dict[str, Any]]] = []
     if flash_txt_mode:
         # Flash 先对整份 PDF 生成完整 model_list，不依赖页面渲染和处理窗口。
-        from mineru.model.flash import PdfModel
+        from ....model.flash import PdfModel
 
         model_list = PdfModel().predict(document)
 
-    configured_window_size = get_processing_window_size(default=64)
+    configured_window_size = _configured_window_size(default=64)
     windows = _build_processing_windows(page_count, configured_window_size)
     _log_processing_window_plan(page_count, configured_window_size, len(windows))
 
@@ -389,13 +317,16 @@ def process_pdf_windows(
                 # Flash 仅切割当前窗口的外层列表，用于页图释放前原地补充视觉块裁图。
                 window_model_list = model_list[window.start : window.end + 1]
             else:
+                local_model_context = hybrid_model
+                if local_model_context is None:
+                    raise ValueError("Hybrid local model context is required outside Flash TXT mode")
                 np_images = [np.asarray(pil_image).copy() for pil_image in images_pil_list]
-                images_layout_res = hybrid_model.layout_model.batch_predict(
+                images_layout_res = local_model_context.layout_model.batch_predict(
                     images_pil_list, batch_size=min(8, BATCH_RATIO * LAYOUT_BASE_BATCH_SIZE)
                 )
 
                 # 使用小模型layout时对layout的表格做旋转检测
-                if effort in ["low", "medium", "high"]:
+                if effort in ["flash", "medium", "high"]:
                     table_items = _collect_table_items(images_layout_res, np_images)
                     if table_items:
                         _apply_table_orientations(
@@ -403,20 +334,57 @@ def process_pdf_windows(
                             parse_mode,
                             window_pages,
                             images_list,
-                            hybrid_model,
+                            local_model_context,
                         )
 
                 vl_style_layout_blocks = _build_vl_style_layout_blocks(images_layout_res, images_pil_list)
 
+                if parse_mode == "txt" and effort in {"medium", "high"}:
+                    native_table_summary = _apply_native_txt_table_priority(
+                        vl_style_layout_blocks,
+                        images_layout_res,
+                        window_pages,
+                        images_list,
+                        effort=effort,
+                    )
+                    if native_table_summary.total:
+                        native_table_stats = {
+                            "effort": effort,
+                            "total": native_table_summary.total,
+                            "accepted": native_table_summary.accepted,
+                            "complex_fallbacks": native_table_summary.complex_fallbacks,
+                            "rejected": native_table_summary.rejected,
+                            "errors": native_table_summary.errors,
+                            "removed_internal_text": native_table_summary.removed_internal_text,
+                            "removed_formula_blocks": native_table_summary.removed_formula_blocks,
+                            "removed_formula_layout_items": native_table_summary.removed_formula_layout_items,
+                        }
+                        logger.bind(native_table_priority=native_table_stats).info(
+                            "Hybrid native table priority. "
+                            f"effort={native_table_stats['effort']}, total={native_table_stats['total']}, "
+                            f"accepted={native_table_stats['accepted']}, "
+                            f"complex_fallbacks={native_table_stats['complex_fallbacks']}, "
+                            f"rejected={native_table_stats['rejected']}, "
+                            f"errors={native_table_stats['errors']}, "
+                            f"removed_internal_text={native_table_stats['removed_internal_text']}, "
+                            f"removed_formula_blocks={native_table_stats['removed_formula_blocks']}, "
+                            f"removed_formula_layout_items={native_table_stats['removed_formula_layout_items']}"
+                        )
+
                 if parse_mode == "txt":
-                    if effort in ["low", "medium"]:
+                    if effort == "medium":
                         window_model_list = vl_style_layout_blocks
                     elif effort == "high":
-                        window_model_list = vlm_predictor.batch_extract_with_layout(
+                        high_vlm_blocks, accepted_native_tables = _split_native_high_table_blocks(vl_style_layout_blocks)
+                        high_vlm_results = vlm_predictor.batch_extract_with_layout(
                             images=images_pil_list,
-                            blocks_list=vl_style_layout_blocks,
+                            blocks_list=high_vlm_blocks,
                             not_extract_list=NOT_EXTRACT_TYPES,
                             image_analysis=False,
+                        )
+                        window_model_list = _restore_native_high_table_blocks(
+                            high_vlm_results,
+                            accepted_native_tables,
                         )
                     elif effort == "xhigh":
                         window_model_list = vlm_predictor.batch_two_step_extract(
@@ -427,7 +395,7 @@ def process_pdf_windows(
                     else:
                         raise ValueError(f"Unsupported analyze effort: {effort}")
                 elif parse_mode == "ocr":
-                    if effort in ["low", "medium"]:
+                    if effort in ["flash", "medium"]:
                         window_model_list = vl_style_layout_blocks
                     elif effort == "high":
                         window_model_list = vlm_predictor.batch_extract_with_layout(
@@ -455,16 +423,15 @@ def process_pdf_windows(
                         [_normalize_page_size(image) for image in images_pil_list],
                     )
 
-                if effort == "low":
-                    window_model_list = _process_low_text(
+                if effort == "flash":
+                    window_model_list = _process_flash_ocr(
                         images_list,
                         window_pages,
                         window_model_list,
-                        parse_mode,
-                        hybrid_model,
+                        local_model_context,
                         images_layout_res,
                     )
-                    # low 在表内对象清理后复用统一公式编号合并，确保视觉裁图包含编号区域。
+                    # Flash OCR 在表内对象清理后复用统一公式编号合并，确保视觉裁图包含编号区域。
                     for page_model_list in window_model_list:
                         page_model_list[:] = optimize_hybrid_formula_number_blocks(page_model_list)
                 else:
@@ -474,12 +441,12 @@ def process_pdf_windows(
                         window_model_list,
                         parse_mode,
                         effort,
-                        hybrid_model,
+                        local_model_context,
                         images_layout_res,
                     )
 
                 if effort in {"medium", "high"}:
-                    _apply_seal_ocr(hybrid_model, window_model_list, np_images)
+                    _apply_seal_ocr(local_model_context, window_model_list, np_images)
                 elif effort == "xhigh":
                     _supplement_missing_image_block_containers(
                         window_model_list,

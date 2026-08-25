@@ -6,7 +6,7 @@ import inspect
 import pytest
 
 from mineru.model.flash import PdfModel
-from mineru.model.flash.native_pdf import (
+from mineru.model.flash.pdf import (
     auxiliary_text,
     formulas,
     geometry,
@@ -22,7 +22,7 @@ from mineru.model.flash.native_pdf import (
     titles,
     visual_annotations,
 )
-from mineru.utils.pdf_document import PDFImageInfo
+from mineru.model.flash.pdf.document import PDFImageInfo
 
 from _flash_pdf_test_utils import (
     _prepared_text_page,

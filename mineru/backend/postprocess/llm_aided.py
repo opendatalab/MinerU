@@ -7,8 +7,8 @@ import asyncio
 
 from loguru import logger
 
-from mineru.config import LLMAidedConfig
-from mineru.types import MiddleJson
+from ...config import LLMAidedConfig
+from ...types import MiddleJson
 
 from .llm_client import LLMAidedClient
 from .table_merge.llm_cell_merge import apply_llm_cross_page_cell_merge

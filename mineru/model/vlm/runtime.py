@@ -12,13 +12,12 @@ from contextlib import asynccontextmanager, contextmanager
 from typing import Any, AsyncIterator, Generator, Iterator, Literal
 
 from loguru import logger
-from mineru.utils.model_utils import get_vram
 from mineru_vl_utils import MinerUClient
 from packaging import version
 
-from ...utils.check_sys_env import is_mac_os_version_supported
-from ...utils.config_reader import get_device
-from ...utils.model_registry import MINERU_2_5_PRO_2605_1_2B, MINERU_2_5_PRO_2605_1_2B_GGUF
+from ...utils.platform import is_mac_os_version_supported
+from ..runtime.device import get_device
+from ..registry import MINERU_2_5_PRO_2605_1_2B, MINERU_2_5_PRO_2605_1_2B_GGUF
 from .engine_utils import (
     enable_custom_logits_processors,
     mod_kwargs_by_device_type,

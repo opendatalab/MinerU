@@ -69,7 +69,7 @@ MCP Server · LangChain / Dify / FastGPT 原生集成 · 10+ 国产算力适配 
 
 | 推理后端         | 适用场景                        |
 |--------------|-----------------------------|
-| hybrid-engine --effort low | 本地快速解析，不调用 VLM，CPU / GPU 均可运行 |
+| Flash tier | 本地快速解析，不调用 VLM，CPU / GPU 均可运行 |
 | hybrid-engine| 高精度，原生文本提取，低幻觉，支持 VLM 加速生态 |
 
 国产算力：昇腾 · 寒武纪 · 燧原 · 沐曦 · 摩尔线程 · 昆仑芯 · 天数智芯 · 瀚博 · 太初元碁 · 海光 · 平头哥
@@ -331,9 +331,9 @@ MinerU提供了便捷的docker部署方式，这有助于快速搭建环境并�
 ```bash
 mineru -p <input_path> -o <output_path>
 ```
-如果您的设备不满足GPU加速条件，可以使用 Hybrid low，以在不调用 VLM 的模式下运行:
+如果您的设备不满足GPU加速条件，可以显式使用 Flash tier，以在不调用 VLM 的模式下运行:
 ```bash
-mineru -p <input_path> -o <output_path> -b hybrid-engine --effort low
+mineru parse "<input_path>" --tier flash -o <output_path>
 ```
 
 当前 `mineru` 支持本地 `PDF / 图片 / DOCX / PPTX / XLSX` 文件或目录输入，并可通过命令行、API、WebUI、`mineru-router` 等多种方式进行文档解析，具体使用方法请参考[使用指南](https://opendatalab.github.io/MinerU/zh/usage/)。

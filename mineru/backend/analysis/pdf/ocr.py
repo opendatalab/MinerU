@@ -10,19 +10,13 @@ import cv2
 import numpy as np
 from tqdm import tqdm
 
-from mineru.backend.local_model_runtime import HybridLocalModelContext
-from mineru.types import BlockType
-from mineru.utils.bbox_utils import normalize_to_int_bbox
-from mineru.utils.model_utils import crop_img
-from mineru.utils.ocr_utils import (
-    OcrConfidence,
-    get_adjusted_mfdetrec_res,
-    get_ocr_result_list,
-    mask_formula_regions_for_ocr_det,
-    merge_det_boxes,
-    sorted_boxes,
-    update_det_boxes,
-)
+from ....model.runtime.hybrid import HybridLocalModelContext
+from ....types import BlockType
+from ....utils.geometry import normalize_to_int_bbox
+from .images import crop_img
+from ....model.ocr.geometry import merge_det_boxes, sorted_boxes, update_det_boxes
+from ....model.ocr.image import mask_formula_regions_for_ocr_det
+from ....model.ocr.results import OcrConfidence, get_adjusted_mfdetrec_res, get_ocr_result_list
 
 from .constants import (
     BATCH_RATIO,

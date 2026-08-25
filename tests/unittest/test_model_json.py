@@ -121,6 +121,33 @@ def test_model_json_requires_page_index_map_and_forbids_extra_fields() -> None:
         ModelJson.model_validate({**payload, "page_index_map": [], "unexpected": True})
 
 
+def test_strict_document_models_reject_removed_low_effort() -> None:
+    """验证 ModelJson 与 MiddleJson 的 schema 2.0 均不再接受 Low effort。"""
+    with pytest.raises(ValidationError, match="literal_error"):
+        ModelJson.model_validate(
+            {
+                "pages": [],
+                "page_index_map": [],
+                "file_suffix": "pdf",
+                "effort": "low",
+                "parse_mode": "ocr",
+                "mineru_version": "3.4.0",
+            }
+        )
+
+    with pytest.raises(ValidationError, match="literal_error"):
+        MiddleJson.model_validate(
+            {
+                "pages": [],
+                "is_full_document": True,
+                "file_suffix": "pdf",
+                "effort": "low",
+                "parse_mode": "ocr",
+                "mineru_version": "3.4.0",
+            }
+        )
+
+
 def test_middle_json_requires_and_serializes_full_document_flag() -> None:
     """验证 MiddleJson 将整本语义作为必填字段稳定序列化并往返。"""
     middle_json = MiddleJson(

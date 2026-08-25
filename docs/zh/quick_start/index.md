@@ -154,9 +154,9 @@ MinerU提供了便捷的docker部署方式，这有助于快速搭建环境并�
 ```bash
 mineru -p <input_path> -o <output_path>
 ```
-如果您的设备不满足GPU加速条件，可以使用 Hybrid low，以在不调用 VLM 的模式下运行:
+如果您的设备不满足GPU加速条件，可以显式使用 Flash tier，以在不调用 VLM 的模式下运行:
 ```bash
-mineru -p <input_path> -o <output_path> -b hybrid-engine --effort low
+mineru parse "<input_path>" --tier flash -o <output_path>
 ```
 
 当前 `mineru` 支持本地 `PDF / 图片 / DOCX / PPTX / XLSX` 文件或目录输入。

@@ -1558,12 +1558,12 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     if args.device is None:
-        from mineru.utils.config_reader import get_device
+        from ..runtime.device import get_device
 
         args.device = get_device()
 
     if args.model is None:
-        from ...utils.model_registry import PDF_EXTRACT_KIT
+        from ..registry import PDF_EXTRACT_KIT
 
         args.model = str(PDF_EXTRACT_KIT.pp_doclayout_v2.ensure())
 

@@ -16,8 +16,8 @@ from mineru.doclib import app as doclib_app
 from mineru.doclib.app import _assert_required_schema
 from mineru.doclib.core.db import DatabaseManager
 from mineru.doclib.server import _tail_log, _write_temp_asset
+from mineru.model import download as model_download
 from mineru.parser import tier as parser_tier
-from mineru.utils import model_registry
 from mineru.version import __version__
 
 
@@ -138,7 +138,7 @@ def test_config_set_managed_tier_rejects_missing_models(monkeypatch: pytest.Monk
 
     monkeypatch.setattr(doclib_app, "_create_background_task", _skip_background_task)
     monkeypatch.setattr("mineru.doclib.server.ensure_tier_runtime_dependencies", lambda tier: None)
-    monkeypatch.setattr(model_registry.config.model, "base_dir", str(tmp_path / "models"))
+    monkeypatch.setattr(model_download.config.model, "base_dir", str(tmp_path / "models"))
 
     cfg = PatchedConfig(doclib={"data_dir": str(tmp_path), "sqlite": {"path": str(tmp_path / "doclib.db")}})
     with TestClient(doclib_app.create_app(cfg)) as client:
@@ -161,7 +161,7 @@ def test_config_set_managed_advanced_is_rejected(monkeypatch: pytest.MonkeyPatch
 
     monkeypatch.setattr(doclib_app, "_create_background_task", _skip_background_task)
     monkeypatch.setattr("mineru.doclib.server.ensure_tier_runtime_dependencies", lambda tier: None)
-    monkeypatch.setattr(model_registry.config.model, "base_dir", str(tmp_path / "models"))
+    monkeypatch.setattr(model_download.config.model, "base_dir", str(tmp_path / "models"))
 
     cfg = PatchedConfig(doclib={"data_dir": str(tmp_path), "sqlite": {"path": str(tmp_path / "doclib.db")}})
     with TestClient(doclib_app.create_app(cfg)) as client:
@@ -181,7 +181,7 @@ def test_config_set_managed_mode_rejects_missing_models_for_current_tier(
 
     monkeypatch.setattr(doclib_app, "_create_background_task", _skip_background_task)
     monkeypatch.setattr("mineru.doclib.server.ensure_tier_runtime_dependencies", lambda tier: None)
-    monkeypatch.setattr(model_registry.config.model, "base_dir", str(tmp_path / "models"))
+    monkeypatch.setattr(model_download.config.model, "base_dir", str(tmp_path / "models"))
 
     cfg = PatchedConfig(doclib={"data_dir": str(tmp_path), "sqlite": {"path": str(tmp_path / "doclib.db")}})
     with TestClient(doclib_app.create_app(cfg)) as client:

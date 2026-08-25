@@ -88,13 +88,14 @@ mineru -p <input_path> -o <output_path>
 
 - 通过 `mineru-router` 进行多服务 / 多 GPU 编排：
   ```bash
-  mineru-router --host 0.0.0.0 --port 8002 --local-gpus auto
+  mineru-router --host 0.0.0.0 --port 8002 --local-gpus auto --worker-tier standard
   ```
   >[!TIP]
   >
-  >- `mineru-router` 对外暴露与 `mineru-api` 一致的 `/health`、`/tasks`、`/file_parse`、`/tasks/{task_id}`、`/tasks/{task_id}/result` 接口。
-  >- 可重复使用 `--upstream-url` 聚合多个已有 `mineru-api` 服务，也可通过 `--local-gpus` 自动拉起本地 worker。
-  >- `--enable-vlm-preload true` 仅作用于 router 托管的本地 worker，不会影响通过 `--upstream-url` 接入的远端服务。
+  >- `mineru-router` 与 `mineru-kit router` 都只暴露完整 `/v1/*` API，不再提供 `/tasks` 或 `/file_parse`。
+  >- 可重复使用 `--upstream-url` 聚合多个 V1 api-server，也可通过 `--local-gpus` 自动拉起 `mineru-kit api-server` worker。
+  >- `--preload-models` 只作用于 Router 托管的本地 worker，远端 upstream 保持自己的启动配置。
+  >- Router 不再透传未知模型引擎参数。
   >- 适用于多服务、多 GPU 和统一入口部署场景。
 
 - 使用`http-client/server`方式调用：
@@ -111,7 +112,7 @@ mineru -p <input_path> -o <output_path>
   >兼容旧输入 `vlm-http-client`，但会映射为 `hybrid-http-client` 且使用 `--effort high`。
 
 > [!NOTE]
-> 所有`vllm/lmdeploy`官方支持的参数都可用通过命令行参数传递给 MinerU，包括以下命令:`mineru`、`mineru-openai-server`、`mineru-gradio`、`mineru-api`、`mineru-router`，
+> 模型引擎参数只适用于显式声明它们的命令；`mineru-router` 仅接受文档列出的 Router/worker 参数，不透传未知参数。
 > 我们整理了一些`vllm/lmdeploy`使用中的常用参数和使用方法，可以在文档[命令行进阶参数](./advanced_cli_parameters.md)中获取。
 
 ## 使用 config.yaml 配置 LLM 辅助后处理

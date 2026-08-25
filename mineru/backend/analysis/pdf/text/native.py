@@ -17,10 +17,10 @@ from loguru import logger
 from pdftext.schema import Char
 
 from .....types import BBox, BlockType, ContentType
-from .....utils.image_utils import calculate_contrast
-from .....utils.pdf_document import PDFPage, get_lines_from_chars
-from .....utils.pdf_image_tools import get_crop_img
-from mineru.utils.bbox_utils import calculate_overlap_area_in_bbox1_area_ratio
+from .....utils.image import calculate_contrast
+from .....model.flash.pdf.document import PDFPage, get_lines_from_chars
+from ..images import get_crop_img
+from .....utils.geometry import calculate_overlap_area_in_bbox1_area_ratio
 from .models import _AnalyzeSpan
 
 MAX_NATIVE_TEXT_CHARS_PER_PAGE = 65535

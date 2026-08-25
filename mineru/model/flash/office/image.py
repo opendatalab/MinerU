@@ -9,8 +9,8 @@ from typing import Final
 from loguru import logger
 from PIL import Image, ImageDraw, ImageFont, UnidentifiedImageError
 
-from ....utils.check_sys_env import is_windows_environment
-from ....utils.pdf_reader import image_to_b64str
+from ....utils.platform import is_windows_environment
+from ..pdf.raster import image_to_b64str
 
 VECTOR_IMAGE_FORMATS = frozenset({"WMF", "EMF"})
 VECTOR_IMAGE_EXTENSIONS = frozenset({".wmf", ".emf"})

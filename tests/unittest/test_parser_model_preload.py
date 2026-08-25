@@ -11,13 +11,6 @@ import mineru.parser.api_server as api_server
 def test_preload_local_models_initializes_conditional_model_families(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[tuple[str, str | None]] = []
 
-    class _AtomicModel:
-        TableOrientationCls = "table-orientation"
-        TableCls = "table-classification"
-        WirelessTable = "wireless-table"
-        WiredTable = "wired-table"
-        OCR = "ocr"
-
     class _Manager:
         def get_atom_model(self, atom_model_name: str, **kwargs: str) -> object:
             calls.append((atom_model_name, kwargs.get("lang")))
@@ -27,23 +20,22 @@ def test_preload_local_models_initializes_conditional_model_families(monkeypatch
         atom_model_manager = _Manager()
 
     class _ContextSingleton:
-        def get_model(self, lang: str, formula_enable: bool) -> _Context:
-            calls.append(("context", lang if formula_enable else None))
+        def get_model(self) -> _Context:
+            calls.append(("context", None))
             return _Context()
 
-    fake_runtime = types.ModuleType("mineru.backend.local_model_runtime")
-    fake_runtime.AtomicModel = _AtomicModel
+    fake_runtime = types.ModuleType("mineru.model.runtime.hybrid")
     fake_runtime.HybridLocalModelContextSingleton = _ContextSingleton
-    monkeypatch.setitem(sys.modules, "mineru.backend.local_model_runtime", fake_runtime)
+    monkeypatch.setitem(sys.modules, "mineru.model.runtime.hybrid", fake_runtime)
 
     api_server._preload_local_models("ch")
 
     assert calls == [
-        ("context", "ch"),
-        ("table-orientation", None),
-        ("table-classification", None),
-        ("wireless-table", "ch"),
-        ("wired-table", "ch"),
+        ("context", None),
+        ("table_ori_cls", None),
+        ("table_cls", None),
+        ("wireless_table", "ch"),
+        ("wired_table", "ch"),
         ("ocr", "seal"),
     ]
 
@@ -62,7 +54,7 @@ def test_preload_standard_models_initializes_platform_engine_and_local_models(mo
     calls: list[object] = []
     monkeypatch.setattr(api_server, "_preload_local_models", lambda language: calls.append(("local", language)))
 
-    from mineru.utils import engine_utils
+    from mineru.model.vlm import selector as engine_utils
 
     monkeypatch.setattr(engine_utils, "get_vlm_engine", lambda inference_engine, is_async=False: "lmdeploy-engine")
 

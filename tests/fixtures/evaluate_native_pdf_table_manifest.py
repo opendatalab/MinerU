@@ -12,14 +12,14 @@ from collections import defaultdict
 from pathlib import Path, PureWindowsPath
 from typing import Any
 
-from mineru.utils.native_pdf_table import (
+from mineru.model.flash.pdf.table_recovery import (
     NativeTableInput,
     coerce_native_table_rectangles,
     coerce_native_table_rules,
     recover_native_pdf_table,
 )
-from mineru.utils.native_pdf_table.engine import diagnose_native_pdf_table
-from mineru.utils.pdf_document import PDFDocument
+from mineru.model.flash.pdf.table_recovery.engine import diagnose_native_pdf_table
+from mineru.model.flash.pdf.document import PDFDocument
 
 _DEFAULT_SOURCE_ROOT = Path(__file__).resolve().parents[1] / "unittest" / "pdfs" / "native_pdf_tables"
 
@@ -81,8 +81,8 @@ def _evaluate_entry(
         point_bbox = tuple(float(value) for value in entry["bbox_points"])
     else:
         bbox = entry["bbox"]
-        # Low TXT 使用整数化 PDFPage 尺寸还原归一化 layout bbox；评测必须复现
-        # 同一生产坐标边界，避免亚点级外缘生成幽灵轨道。
+        # layout bbox 使用整数化 PDFPage 尺寸还原；评测必须复现同一生产坐标边界，
+        # 避免亚点级外缘生成幽灵轨道。
         production_page_size = (int(page_size[0]), int(page_size[1]))
         point_bbox = tuple(
             bbox[index] * (production_page_size[0] if index % 2 == 0 else production_page_size[1]) for index in range(4)

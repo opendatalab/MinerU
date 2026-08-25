@@ -6,6 +6,7 @@ import inspect
 import threading
 from io import BytesIO
 from pathlib import Path
+from typing import get_args, get_type_hints
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -16,7 +17,7 @@ from mineru.backend import analyze
 from mineru.backend.analysis import office
 from mineru.backend.analysis.pdf import constants, formulas, normalization, pipeline, tables, visuals, window
 from mineru.types import RAW_ALGORITHM, RAW_CAPTION, RAW_FOOTNOTE, RAW_FORMULA_NUMBER, RAW_PHONETIC
-from mineru.types import BlockType, MiddleJson, ModelJson
+from mineru.types import FILE_SUFFIXES, BlockType, FileSuffix, MiddleJson, ModelJson
 from mineru.version import __version__ as mineru_version
 
 
@@ -948,10 +949,10 @@ def test_formula_number_optimizer_does_not_accept_legacy_interline_equation() ->
     ]
 
 
-def test_low_formula_number_merge_runs_before_visual_crop(
+def test_flash_ocr_formula_number_merge_runs_before_visual_crop(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """验证 low 在文本与表格处理后合并公式编号，并把扩框结果交给视觉裁图。"""
+    """验证 Flash OCR 在正文和表格处理后合并公式编号，并把扩框结果交给视觉裁图。"""
     fake_document = MagicMock()
     fake_document.page_count = 1
     fake_document.__getitem__.return_value = MagicMock(size=(100.0, 100.0))
@@ -976,20 +977,19 @@ def test_low_formula_number_merge_runs_before_visual_crop(
     optimize_call_count = 0
     original_optimizer = formulas.optimize_hybrid_formula_number_blocks
 
-    def fake_process_low_text(
+    def fake_process_flash_ocr(
         _images_list: object,
         _pdf_pages: object,
         model_list: list[list[dict[str, object]]],
-        _parse_mode: object,
         _hybrid_model: object,
         _images_layout_res: object,
     ) -> list[list[dict[str, object]]]:
-        """记录 low 文本与表格处理完成，并原样返回 layout block。"""
-        events.append("process_low")
+        """记录 Flash OCR 正文与表格处理完成，并原样返回 layout block。"""
+        events.append("process_flash_ocr")
         return model_list
 
     def tracked_optimizer(page_model_list: list[dict[str, object]]) -> list[dict[str, object]]:
-        """记录 low 公式编号合并次数，并调用真实合并实现。"""
+        """记录 Flash OCR 公式编号合并次数，并调用真实合并实现。"""
         nonlocal optimize_call_count
         optimize_call_count += 1
         events.append("optimize_formula_number")
@@ -1014,21 +1014,21 @@ def test_low_formula_number_merge_runs_before_visual_crop(
             ]
         ]
 
-    monkeypatch.setattr(window, "get_processing_window_size", lambda default: 1)
+    monkeypatch.setattr(window, "_configured_window_size", lambda default: 1)
     monkeypatch.setattr(
         window,
         "load_images_from_pdf_bytes_range",
         MagicMock(return_value=[{"img_pil": page_image}]),
     )
-    monkeypatch.setattr(window, "_process_low_text", fake_process_low_text)
+    monkeypatch.setattr(window, "_process_flash_ocr", fake_process_flash_ocr)
     monkeypatch.setattr(window, "optimize_hybrid_formula_number_blocks", tracked_optimizer)
     monkeypatch.setattr(window, "_attach_visual_block_images", fake_attach_visual_blocks)
 
     model_list = window.process_pdf_windows(
         b"fake-pdf",
         fake_document,
-        effort="low",
-        parse_mode="txt",
+        effort="flash",
+        parse_mode="ocr",
         image_analysis=True,
         flash_txt_mode=False,
         hybrid_model=hybrid_model,
@@ -1045,7 +1045,7 @@ def test_low_formula_number_merge_runs_before_visual_crop(
         ]
     ]
     assert optimize_call_count == 1
-    assert events == ["process_low", "optimize_formula_number", "attach_visual"]
+    assert events == ["process_flash_ocr", "optimize_formula_number", "attach_visual"]
     with pytest.raises(ValueError, match="closed image"):
         page_image.getpixel((0, 0))
 
@@ -1196,6 +1196,18 @@ def test_aio_doc_analyze_matches_sync_signature() -> None:
     assert async_signature.return_annotation == sync_signature.return_annotation
 
 
+def test_doc_analyze_effort_annotation_exposes_only_supported_values() -> None:
+    """验证同步和异步 Analyze 门面复用统一的 effort 与文件后缀类型。"""
+    expected_efforts = ("flash", "medium", "high", "xhigh")
+    expected_suffixes = ("pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx")
+    assert get_args(get_type_hints(analyze.doc_analyze)["effort"]) == expected_efforts
+    assert get_args(get_type_hints(analyze.aio_doc_analyze)["effort"]) == expected_efforts
+    assert get_args(FileSuffix) == expected_suffixes
+    assert get_args(get_type_hints(analyze.doc_analyze)["file_suffix"]) == expected_suffixes
+    assert get_args(get_type_hints(analyze.aio_doc_analyze)["file_suffix"]) == expected_suffixes
+    assert FILE_SUFFIXES == frozenset(expected_suffixes)
+
+
 def test_aio_doc_analyze_runs_sync_entrypoint_in_thread_and_forwards_arguments(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1289,7 +1301,7 @@ def test_doc_analyze_office_returns_model_json_without_pdf_processing(
     monkeypatch.setattr(office, "_OFFICE_MODEL_MAP", model_factories)
     monkeypatch.setattr(pipeline, "PDFDocument", pdf_document)
     monkeypatch.setattr(pipeline, "HybridLocalModelContextSingleton", hybrid_model_factory)
-    monkeypatch.setattr(window, "get_processing_window_size", window_size_reader)
+    monkeypatch.setattr(window, "_configured_window_size", window_size_reader)
     monkeypatch.setattr(window, "_build_processing_windows", window_builder)
     monkeypatch.setattr(window, "load_images_from_pdf_bytes_range", image_loader)
     monkeypatch.setattr(window, "_attach_visual_block_images", visual_image_attacher)
@@ -1353,11 +1365,49 @@ def test_doc_analyze_rejects_unsupported_suffix_before_resource_initialization(
         model_factory.assert_not_called()
 
 
+def test_doc_analyze_rejects_low_before_office_initialization(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证已移除的 Low effort 在创建 Office 模型前直接报错。"""
+    model_factories = {
+        suffix: MagicMock() for suffix in ("doc", "docx", "ppt", "pptx", "xls", "xlsx")
+    }
+    monkeypatch.setattr(office, "_OFFICE_MODEL_MAP", model_factories)
+
+    with pytest.raises(ValueError, match="Unsupported analyze effort: low"):
+        analyze.doc_analyze(
+            b"office-bytes",
+            effort="low",  # type: ignore[arg-type]
+            file_suffix="docx",
+        )
+
+    for model_factory in model_factories.values():
+        model_factory.assert_not_called()
+
+
+def test_analyze_pdf_rejects_low_before_document_initialization(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证 PDF 内部入口也会在创建文档前拒绝已移除的 Low effort。"""
+    pdf_document = MagicMock()
+    monkeypatch.setattr(pipeline, "PDFDocument", pdf_document)
+
+    with pytest.raises(ValueError, match="Unsupported analyze effort: low"):
+        pipeline.analyze_pdf(
+            b"pdf-bytes",
+            effort="low",  # type: ignore[arg-type]
+            parse_mode="ocr",
+        )
+
+    pdf_document.assert_not_called()
+
+
 @pytest.mark.parametrize(
-    ("effort", "parse_mode", "expected_message"),
+    ("effort", "parse_mode", "expected_message", "document_created"),
     [
-        ("turbo", "txt", "Unsupported analyze effort: turbo"),
-        ("low", "invalid", "parse_mode invalid is not supported"),
+        ("turbo", "txt", "Unsupported analyze effort: turbo", False),
+        ("low", "txt", "Unsupported analyze effort: low", False),
+        ("flash", "invalid", "parse_mode invalid is not supported", True),
     ],
 )
 def test_doc_analyze_rejects_invalid_pdf_modes_before_model_initialization(
@@ -1365,11 +1415,13 @@ def test_doc_analyze_rejects_invalid_pdf_modes_before_model_initialization(
     effort: str,
     parse_mode: str,
     expected_message: str,
+    document_created: bool,
 ) -> None:
     """验证非法 PDF effort/parse_mode 统一报 ValueError，且不初始化模型。"""
     fake_document = MagicMock()
+    pdf_document = MagicMock(return_value=fake_document)
     hybrid_model_factory = MagicMock()
-    monkeypatch.setattr(pipeline, "PDFDocument", MagicMock(return_value=fake_document))
+    monkeypatch.setattr(pipeline, "PDFDocument", pdf_document)
     monkeypatch.setattr(pipeline, "HybridLocalModelContextSingleton", hybrid_model_factory)
 
     with pytest.raises(ValueError, match=expected_message):
@@ -1379,20 +1431,30 @@ def test_doc_analyze_rejects_invalid_pdf_modes_before_model_initialization(
             parse_mode=parse_mode,  # type: ignore[arg-type]
         )
 
-    fake_document.close.assert_called_once_with()
+    if document_created:
+        pdf_document.assert_called_once_with(b"invalid-mode-pdf")
+        fake_document.close.assert_called_once_with()
+    else:
+        pdf_document.assert_not_called()
+        fake_document.close.assert_not_called()
     hybrid_model_factory.assert_not_called()
 
 
-def test_pdf_flash_ocr_routes_to_low_hybrid_pipeline(
+@pytest.mark.parametrize("parse_mode", ["ocr", "auto"])
+def test_pdf_flash_ocr_uses_local_ocr_without_vlm(
     monkeypatch: pytest.MonkeyPatch,
+    parse_mode: str,
 ) -> None:
-    """验证 Flash 遇到 OCR PDF 时降级为 Low，并把最终路由元数据带回门面。"""
+    """验证 Flash OCR 保持 Flash 元数据，复用本地 OCR 且不加载 VLM。"""
     fake_document = MagicMock()
+    fake_document.classify.return_value = "ocr"
     hybrid_model = MagicMock()
     hybrid_model.device = "cpu"
     hybrid_singleton = MagicMock()
     hybrid_singleton.get_model.return_value = hybrid_model
     process_pdf_windows = MagicMock(return_value=[])
+    load_vlm_runtime = MagicMock()
+    get_vlm_engine = MagicMock()
 
     monkeypatch.setattr(pipeline, "PDFDocument", MagicMock(return_value=fake_document))
     monkeypatch.setattr(
@@ -1402,17 +1464,67 @@ def test_pdf_flash_ocr_routes_to_low_hybrid_pipeline(
     )
     monkeypatch.setattr(pipeline, "process_pdf_windows", process_pdf_windows)
     monkeypatch.setattr(pipeline, "clean_memory", MagicMock())
+    monkeypatch.setattr(pipeline, "_load_vlm_runtime", load_vlm_runtime)
+    monkeypatch.setattr(pipeline, "get_vlm_engine", get_vlm_engine)
 
     result = pipeline.analyze_pdf(
         b"ocr-pdf",
         effort="flash",
-        parse_mode="ocr",
+        parse_mode=parse_mode,  # type: ignore[arg-type]
     )
 
-    assert result.effort == "low"
+    assert result.effort == "flash"
     assert result.parse_mode == "ocr"
-    assert process_pdf_windows.call_args.kwargs["effort"] == "low"
+    assert process_pdf_windows.call_args.kwargs["effort"] == "flash"
+    assert process_pdf_windows.call_args.kwargs["parse_mode"] == "ocr"
     assert process_pdf_windows.call_args.kwargs["flash_txt_mode"] is False
+    if parse_mode == "auto":
+        fake_document.classify.assert_called_once_with()
+    else:
+        fake_document.classify.assert_not_called()
+    load_vlm_runtime.assert_not_called()
+    get_vlm_engine.assert_not_called()
+
+
+@pytest.mark.parametrize("parse_mode", ["txt", "auto"])
+def test_pdf_flash_txt_skips_all_neural_model_loading(
+    monkeypatch: pytest.MonkeyPatch,
+    parse_mode: str,
+) -> None:
+    """验证显式或自动 TXT 的 Flash 全流程均不初始化 Hybrid、OCR、layout 或 VLM 模型。"""
+    fake_document = MagicMock()
+    fake_document.classify.return_value = "txt"
+    hybrid_model_factory = MagicMock()
+    load_vlm_runtime = MagicMock()
+    get_vlm_engine = MagicMock()
+    clean_memory = MagicMock()
+    process_pdf_windows = MagicMock(return_value=[])
+    monkeypatch.setattr(pipeline, "PDFDocument", MagicMock(return_value=fake_document))
+    monkeypatch.setattr(pipeline, "HybridLocalModelContextSingleton", hybrid_model_factory)
+    monkeypatch.setattr(pipeline, "_load_vlm_runtime", load_vlm_runtime)
+    monkeypatch.setattr(pipeline, "get_vlm_engine", get_vlm_engine)
+    monkeypatch.setattr(pipeline, "clean_memory", clean_memory)
+    monkeypatch.setattr(pipeline, "process_pdf_windows", process_pdf_windows)
+
+    result = pipeline.analyze_pdf(
+        b"txt-pdf",
+        effort="flash",
+        parse_mode=parse_mode,  # type: ignore[arg-type]
+    )
+
+    assert result.effort == "flash"
+    assert result.parse_mode == "txt"
+    assert process_pdf_windows.call_args.kwargs["effort"] == "flash"
+    assert process_pdf_windows.call_args.kwargs["parse_mode"] == "txt"
+    assert process_pdf_windows.call_args.kwargs["flash_txt_mode"] is True
+    if parse_mode == "auto":
+        fake_document.classify.assert_called_once_with()
+    else:
+        fake_document.classify.assert_not_called()
+    hybrid_model_factory.assert_not_called()
+    load_vlm_runtime.assert_not_called()
+    get_vlm_engine.assert_not_called()
+    clean_memory.assert_not_called()
 
 
 def test_pdf_infer_timer_excludes_hybrid_vlm_initialization_and_cleanup(
@@ -1534,7 +1646,7 @@ def test_pdf_analyze_releases_document_and_model_when_window_processing_fails(
     monkeypatch.setattr(pipeline, "clean_memory", clean_memory)
 
     with pytest.raises(RuntimeError, match="window failed"):
-        pipeline.analyze_pdf(b"broken-pdf", effort="low", parse_mode="txt")
+        pipeline.analyze_pdf(b"broken-pdf", effort="flash", parse_mode="ocr")
 
     fake_document.close.assert_called_once_with()
     clean_memory.assert_called_once_with("cpu")
@@ -1551,7 +1663,7 @@ def test_pdf_window_releases_rendered_images_when_layout_fails(
     hybrid_model = MagicMock()
     hybrid_model.layout_model.batch_predict.side_effect = RuntimeError("layout failed")
 
-    monkeypatch.setattr(window, "get_processing_window_size", lambda default: 1)
+    monkeypatch.setattr(window, "_configured_window_size", lambda default: 1)
     monkeypatch.setattr(
         window,
         "load_images_from_pdf_bytes_range",
@@ -1562,8 +1674,8 @@ def test_pdf_window_releases_rendered_images_when_layout_fails(
         window.process_pdf_windows(
             b"broken-pdf",
             fake_document,
-            effort="low",
-            parse_mode="txt",
+            effort="flash",
+            parse_mode="ocr",
             image_analysis=True,
             flash_txt_mode=False,
             hybrid_model=hybrid_model,
@@ -1761,7 +1873,7 @@ def test_doc_analyze_flash_returns_complete_model_json_and_typed_middle_json(mon
         return value
 
     monkeypatch.setattr(pipeline, "PDFDocument", lambda _: fake_pdf_doc)
-    monkeypatch.setattr(window, "get_processing_window_size", lambda default: 2)
+    monkeypatch.setattr(window, "_configured_window_size", lambda default: 2)
     monkeypatch.setattr(window, "load_images_from_pdf_bytes_range", fake_load_images_for_window)
     monkeypatch.setattr(window, "_attach_visual_block_images", tracked_attach_visual_block_images)
     monkeypatch.setattr(pipeline, "_normalize_pdf_model_list", tracked_normalize_model_list)

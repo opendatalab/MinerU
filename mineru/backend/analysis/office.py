@@ -6,7 +6,7 @@ from __future__ import annotations
 import time
 from io import BytesIO
 
-from mineru.model.flash import DocModel, DocxModel, PptModel, PptxModel, XlsModel, XlsxModel
+from ...model.flash import DocModel, DocxModel, PptModel, PptxModel, XlsModel, XlsxModel
 
 from .contracts import AnalysisResult, OfficeSuffix
 

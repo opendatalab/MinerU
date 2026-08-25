@@ -10,7 +10,6 @@ from zipfile import ZipFile
 
 import pytest
 
-from mineru.backend.analysis.pdf import window
 from mineru.backend.analysis.pdf.text import content as text_content
 from mineru.backend.analysis.pdf.text.models import _AnalyzeLine, _AnalyzeSpan
 from mineru.backend.analysis.pdf.text.native import txt_spans_extract
@@ -26,8 +25,8 @@ from mineru.types import (
     ModelJson,
     PageInfo,
 )
-from mineru.utils.pdf_document import PDFDocument, PDFLinkAnnotation
-from mineru.utils.pdf_text_styles import (
+from mineru.model.flash.pdf.document import PDFDocument, PDFLinkAnnotation
+from mineru.model.flash.pdf.text_styles import (
     PDF_FONT_FORCE_BOLD_FLAG,
     PDF_FONT_ITALIC_FLAG,
     PDFTextLinkLine,
@@ -1336,6 +1335,107 @@ def test_applies_style_to_plain_content_and_duplicate_second_line() -> None:
     assert blocks[0]["content"] == 'deleted <text style="strikethrough">deleted</text>'
 
 
+def test_applies_style_across_dehyphenated_line_boundary() -> None:
+    """验证行末断词符被正文回填删除后，两行粗体仍合并为完整区间。"""
+
+    blocks = [
+        {
+            "type": BlockType.TEXT,
+            "bbox": [0.0, 0.0, 1.0, 1.0],
+            "content": "Abstract—Stereo matching was designed for sequences.",
+        }
+    ]
+    lines = [
+        PDFTextStyleLine(
+            (10.0, 10.0, 90.0, 20.0),
+            "Abstract—Stereomatchingwasde-",
+            (PDFTextStyleRange(0, len("Abstract—Stereomatchingwasde-"), ("bold",)),),
+            10,
+        ),
+        PDFTextStyleLine(
+            (10.0, 30.0, 90.0, 40.0),
+            "signedforsequences.",
+            (PDFTextStyleRange(0, len("signedforsequences."), ("bold",)),),
+            11,
+        ),
+    ]
+
+    apply_pdf_text_styles(blocks, lines, (100.0, 100.0))
+
+    assert blocks[0]["content"] == (
+        '<text style="bold">Abstract—Stereo matching was designed for sequences.</text>'
+    )
+
+
+@pytest.mark.parametrize(
+    ("content", "first_text", "second_text", "second_source_index", "expected"),
+    [
+        (
+            "inter-national",
+            "inter-",
+            "national",
+            21,
+            '<text style="bold">inter-national</text>',
+        ),
+        (
+            "inter-National",
+            "inter-",
+            "National",
+            21,
+            '<text style="bold">inter-National</text>',
+        ),
+        (
+            "international",
+            "inter-",
+            "national",
+            22,
+            'inter<text style="bold">national</text>',
+        ),
+        (
+            "international international",
+            "inter-",
+            "national",
+            21,
+            'inter<text style="bold">national</text> international',
+        ),
+    ],
+)
+def test_style_dehyphenation_preserves_safe_boundaries(
+    content: str,
+    first_text: str,
+    second_text: str,
+    second_source_index: int,
+    expected: str,
+) -> None:
+    """验证保留连字符、大小写、非相邻行和重复候选均不会错误桥接。"""
+
+    blocks = [
+        {
+            "type": BlockType.TEXT,
+            "bbox": [0.0, 0.0, 1.0, 1.0],
+            "content": content,
+        }
+    ]
+    lines = [
+        PDFTextStyleLine(
+            (10.0, 10.0, 90.0, 20.0),
+            first_text,
+            (PDFTextStyleRange(0, len(first_text), ("bold",)),),
+            20,
+        ),
+        PDFTextStyleLine(
+            (10.0, 30.0, 90.0, 40.0),
+            second_text,
+            (PDFTextStyleRange(0, len(second_text), ("bold",)),),
+            second_source_index,
+        ),
+    ]
+
+    apply_pdf_text_styles(blocks, lines, (100.0, 100.0))
+
+    assert blocks[0]["content"] == expected
+
+
 def test_same_visual_row_style_runs_follow_source_order_despite_bbox_jitter() -> None:
     """验证同行 run 的细微顶边抖动不会把后方粗体片段提前映射。"""
 
@@ -2045,132 +2145,6 @@ def test_hybrid_txt_efforts_apply_dehyphenated_links(
         "txt",
         {BlockType.TEXT},
         MagicMock(),
-    )
-
-    assert model_list[0][0]["content"] == (
-        f"<hyperlink>international<url>{target}</url></hyperlink>"
-    )
-
-
-def test_low_txt_applies_styles_after_native_content_fill(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """验证 Low/TXT 在 block content 完成后应用相同的组合样式策略。"""
-
-    span = _AnalyzeSpan(
-        type=ContentType.TEXT,
-        bbox=(10.0, 10.0, 52.0, 20.0),
-        content="deleted",
-        score=1.0,
-    )
-    style_line = PDFTextStyleLine(
-        (10.0, 10.0, 52.0, 20.0),
-        "deleted",
-        (
-            PDFTextStyleRange(
-                0,
-                7,
-                ("bold", "italic", "underline", "strikethrough"),
-            ),
-        ),
-        0,
-    )
-    link_line = PDFTextLinkLine(
-        (10.0, 10.0, 52.0, 20.0),
-        "deleted",
-        (PDFTextLinkRange(0, 7, "https://low.example.test"),),
-        0,
-    )
-    monkeypatch.setattr(
-        window,
-        "_build_pdf_text_visual_run_data",
-        lambda _page: ([span], [style_line], [link_line]),
-    )
-    monkeypatch.setattr(window, "_fill_low_table_contents", lambda *_args: None)
-    monkeypatch.setattr(
-        window,
-        "_fill_low_txt_native_formula_contents",
-        lambda *_args: None,
-    )
-    model_list = [[{"type": BlockType.TEXT, "bbox": [0.1, 0.1, 0.52, 0.2], "content": ""}]]
-
-    window._process_low_text(
-        [{"img_pil": object(), "scale": 1.0}],
-        [MagicMock(size=(100.0, 100.0))],
-        model_list,
-        "txt",
-        MagicMock(),
-        [[]],
-    )
-
-    assert model_list[0][0]["content"] == (
-        '<hyperlink><text style="bold,strikethrough">deleted</text>'
-        "<url>https://low.example.test</url></hyperlink>"
-    )
-
-
-def test_low_txt_applies_dehyphenated_links_after_native_content_fill(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """验证 Low/TXT 在删除物理行断词符后恢复完整链接。"""
-
-    target = "https://low.example.test/dehyphenated"
-    spans = [
-        _AnalyzeSpan(
-            type=ContentType.TEXT,
-            bbox=(10.0, 10.0, 52.0, 20.0),
-            content="inter-",
-            score=1.0,
-        ),
-        _AnalyzeSpan(
-            type=ContentType.TEXT,
-            bbox=(10.0, 30.0, 52.0, 40.0),
-            content="national",
-            score=1.0,
-        ),
-    ]
-    link_lines = [
-        PDFTextLinkLine(
-            spans[0].bbox,
-            "inter-",
-            (PDFTextLinkRange(0, 6, target),),
-            0,
-        ),
-        PDFTextLinkLine(
-            spans[1].bbox,
-            "national",
-            (PDFTextLinkRange(0, 8, target),),
-            1,
-        ),
-    ]
-    monkeypatch.setattr(
-        window,
-        "_build_pdf_text_visual_run_data",
-        lambda _page: (spans, [], link_lines),
-    )
-    monkeypatch.setattr(window, "_fill_low_table_contents", lambda *_args: None)
-    monkeypatch.setattr(
-        window,
-        "_fill_low_txt_native_formula_contents",
-        lambda *_args: None,
-    )
-    model_list = [
-        [
-            {
-                "type": BlockType.TEXT,
-                "bbox": [0.1, 0.1, 0.52, 0.4],
-                "content": "",
-            }
-        ]
-    ]
-
-    window._process_low_text(
-        [{"img_pil": object(), "scale": 1.0}],
-        [MagicMock(size=(100.0, 100.0))],
-        model_list,
-        "txt",
-        MagicMock(),
-        [[]],
     )
 
     assert model_list[0][0]["content"] == (

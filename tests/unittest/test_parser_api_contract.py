@@ -5,13 +5,13 @@ import inspect
 import io
 import json
 import logging
-import os
 import subprocess
 import sys
 import types
 import zipfile
 from pathlib import Path
 from typing import Any
+from unittest.mock import patch
 
 import httpx
 import pytest
@@ -22,7 +22,6 @@ from pydantic import ValidationError
 import mineru.parser.api_client as api_client
 import mineru.parser.api_server as api_server
 import mineru.parser.tier as parser_tier
-from mineru.parser import parse, parse_async
 from mineru.parser.api_client import MinerUApiParser, _pages_from_middle_json, _parse_result_from_job, should_trust_env_for_url
 from mineru.parser.api_server import (
     _API_SERVER_LANGUAGES,
@@ -76,8 +75,20 @@ def _stub_api_server_dependency_preflight(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setattr(importlib, "import_module", lambda _module_name: object())
 
 
-def test_hybrid_analyze_import_does_not_require_vlm_utils() -> None:
-    """校验 Hybrid basic 所需模块导入阶段不再强依赖 VLM 工具包。"""
+def _full_middle_json(*pages: PageInfo) -> MiddleJson:
+    """构造未抽页的严格 MiddleJson 测试对象。"""
+    return MiddleJson(
+        pages=list(pages),
+        is_full_document=True,
+        file_suffix="pdf",
+        effort="medium",
+        parse_mode="txt",
+        mineru_version=__version__,
+    )
+
+
+def test_backend_analyze_import_does_not_require_vlm_utils() -> None:
+    """校验统一 backend 入口导入阶段不强依赖 VLM 工具包。"""
     repo_root = Path(__file__).resolve().parents[2]
     code = """
 import importlib.abc
@@ -93,7 +104,164 @@ class BlockVlmUtilsFinder(importlib.abc.MetaPathFinder):
 
 
 sys.meta_path.insert(0, BlockVlmUtilsFinder())
-import mineru.backend.hybrid.hybrid_analyze
+import mineru.backend.analyze
+print("ok")
+"""
+
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "ok"
+
+
+def test_dependency_preflight_does_not_load_hybrid_runtime_without_torch() -> None:
+    """校验 light stack 的依赖预检不会在检查前加载 Hybrid 与 Torch。"""
+    repo_root = Path(__file__).resolve().parents[2]
+    code = """
+import importlib.abc
+import os
+import sys
+
+os.environ["MINERU_MODEL_STACK"] = "light"
+
+
+class BlockTorchFinder(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        # 阻断 Torch 导入，验证依赖预检只加载轻量设备选择模块。
+        if fullname == "torch" or fullname.startswith("torch."):
+            raise ModuleNotFoundError(f"blocked Torch import: {fullname}", name=fullname)
+        return None
+
+
+sys.meta_path.insert(0, BlockTorchFinder())
+from mineru.parser.tier import required_modules_for_tier
+
+assert required_modules_for_tier("basic") == []
+assert "mineru.model.runtime.hybrid" not in sys.modules
+print("ok")
+"""
+
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "ok"
+
+
+def test_light_pdf_pipeline_import_does_not_require_torch() -> None:
+    """校验 light stack 首次加载 PDF pipeline 时不会导入 Torch。"""
+    repo_root = Path(__file__).resolve().parents[2]
+    code = """
+import builtins
+import importlib.util
+import os
+import sys
+
+os.environ["MINERU_MODEL_STACK"] = "light"
+real_import = builtins.__import__
+real_find_spec = importlib.util.find_spec
+
+
+def block_torch_import(name, globals=None, locals=None, fromlist=(), level=0):
+    # 阻断真实 Torch 导入，同时允许第三方依赖探测到“未安装”状态。
+    if name == "torch" or name.startswith("torch."):
+        raise ModuleNotFoundError(f"blocked Torch import: {name}", name=name)
+    return real_import(name, globals, locals, fromlist, level)
+
+
+def hide_torch_spec(name, package=None):
+    # 模拟 core 安装中不存在 Torch distribution，避免能力探测误判。
+    if name == "torch" or name.startswith("torch."):
+        return None
+    return real_find_spec(name, package)
+
+
+builtins.__import__ = block_torch_import
+importlib.util.find_spec = hide_torch_spec
+
+import mineru.model.runtime.hybrid
+import mineru.backend.analysis.pdf.pipeline
+
+assert not any(name == "torch" or name.startswith("torch.") for name in sys.modules)
+print("ok")
+"""
+
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "ok"
+
+
+def test_hybrid_context_does_not_resolve_full_weights_before_stack_selection() -> None:
+    """校验 Context 获取 Layout/MFR 时不提前解析 full-stack 权重路径。"""
+    from mineru.model.download import ModelPath
+    from mineru.model.runtime.contracts import AtomicModelName
+    from mineru.model.runtime.hybrid import HybridLocalModelContext
+
+    class _RecordingAtomManager:
+        """记录 Context 交给 atom model 分派器的参数。"""
+
+        def __init__(self) -> None:
+            """初始化原子模型请求列表。"""
+            self.calls: list[dict[str, Any]] = []
+
+        def get_atom_model(self, **kwargs: Any) -> dict[str, Any]:
+            """记录原子模型请求并原样返回。"""
+            self.calls.append(dict(kwargs))
+            return dict(kwargs)
+
+    context = object.__new__(HybridLocalModelContext)
+    manager = _RecordingAtomManager()
+    context.device = "cpu"
+    context.atom_model_manager = manager  # type: ignore[assignment]
+
+    with patch.object(ModelPath, "ensure", side_effect=AssertionError("full weight path resolved too early")):
+        context.get_layout_model()
+        context.get_mfr_model()
+
+    assert manager.calls == [
+        {"atom_model_name": AtomicModelName.Layout, "device": "cpu"},
+        {"atom_model_name": AtomicModelName.MFR, "device": "cpu"},
+    ]
+
+
+def test_public_parser_import_does_not_load_opencv() -> None:
+    """校验公共 parser 导入在无 libGL 的 headless 环境中不加载 OpenCV。"""
+    repo_root = Path(__file__).resolve().parents[2]
+    code = """
+import importlib.abc
+import sys
+
+
+class BlockCv2Finder(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        # 模拟 headless Linux 缺少 libGL 时 cv2 的导入错误。
+        if fullname == "cv2" or fullname.startswith("cv2."):
+            raise ImportError("libGL.so.1: cannot open shared object file: No such file or directory")
+        return None
+
+
+sys.meta_path.insert(0, BlockCv2Finder())
+import mineru.parser
+
+assert "cv2" not in sys.modules
 print("ok")
 """
 
@@ -118,7 +286,7 @@ import os
 os.environ["MINERU_ENABLE_LOCAL_MODEL_INFERENCE_LOCKS"] = "true"
 os.environ["MINERU_ENABLE_PIPELINE_INFERENCE_LOCKS"] = "false"
 
-from mineru.backend import local_model_runtime
+from mineru.model.runtime import hybrid as local_model_runtime
 
 assert hasattr(local_model_runtime, "HybridLocalModelContext")
 assert hasattr(local_model_runtime, "HybridLocalModelContextSingleton")
@@ -146,11 +314,10 @@ print("ok")
 
 def test_validate_effort_rejects_low_and_maps_legacy_backends() -> None:
     """校验 Hybrid effort 只接受 medium/high/xhigh 三档。"""
-    from mineru.utils.backend_options import (
+    from mineru.parser.tier import (
         HYBRID_EFFORT_CHOICES,
         effort_for_tier,
         resolve_backend_and_effort,
-        tier_for_effort,
         validate_effort,
     )
 
@@ -158,9 +325,6 @@ def test_validate_effort_rejects_low_and_maps_legacy_backends() -> None:
     assert effort_for_tier("basic") == "medium"
     assert effort_for_tier("standard") == "high"
     assert effort_for_tier("advanced") == "xhigh"
-    assert tier_for_effort("medium") == "basic"
-    assert tier_for_effort("high") == "standard"
-    assert tier_for_effort("xhigh") == "advanced"
     with pytest.raises(ValueError, match="Unsupported effort 'low'"):
         validate_effort("low")
     with pytest.raises(ValueError, match="Unsupported tier 'ultra'"):
@@ -719,7 +883,13 @@ def test_api_client_include_images_downloads_single_zip(monkeypatch: pytest.Monk
     page = PageInfo(page_idx=0, blocks=[image_block])
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
-        archive.writestr("middle_json.json", json.dumps(ParseResult(middle_json=MiddleJson(pages=[page], file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__), _image_cache=image_cache).to_dict(), ensure_ascii=False))
+        archive.writestr(
+            "middle_json.json",
+            json.dumps(
+                ParseResult(middle_json=_full_middle_json(page), _image_cache=image_cache).to_dict(),
+                ensure_ascii=False,
+            ),
+        )
         archive.writestr("images/chart.png", b"chart-bytes")
         archive.writestr("model_output.json", json.dumps([[{"raw": "model"}]], ensure_ascii=False, indent=4))
     download_calls: list[dict[str, object]] = []
@@ -1477,9 +1647,7 @@ def _table_body_content(blocks: list[object]) -> str:
 
 
 def test_legacy_pdf_info_fills_content_from_html_when_content_missing() -> None:
-    pages = _pages_from_middle_json(
-        {"pdf_info": [_legacy_page_with_spans([_legacy_span_with_html("<table></table>")])]}
-    )
+    pages = _pages_from_middle_json({"pdf_info": [_legacy_page_with_spans([_legacy_span_with_html("<table></table>")])]})
 
     assert _table_body_content(pages[0].blocks) == "<table></table>"
 
@@ -1496,9 +1664,7 @@ def test_legacy_pdf_info_leaves_content_untouched_when_html_missing_or_empty() -
     span_no_html: dict[str, Any] = {"type": "text", "bbox": [0, 0, 10, 10], "content": "keep"}
     span_empty_html: dict[str, Any] = {"type": "text", "bbox": [0, 0, 10, 10], "content": "keep", "html": ""}
 
-    pages = _pages_from_middle_json(
-        {"pdf_info": [_legacy_page_with_spans([span_no_html, span_empty_html])]}
-    )
+    pages = _pages_from_middle_json({"pdf_info": [_legacy_page_with_spans([span_no_html, span_empty_html])]})
 
     assert _table_body_content(pages[0].blocks) == "keep\nkeep"
 
@@ -1907,19 +2073,16 @@ def test_api_server_rendered_outputs_do_not_return_image_sidecars(
         content=[image_body],
     )
     parse_result = ParseResult(
-        middle_json=MiddleJson(
-            pages=[
+        middle_json=_full_middle_json(
             PageInfo(
                 page_idx=0,
                 blocks=[image_block],
             )
-        ],
-            file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__,
         ),
         _image_cache=image_cache,
-        )
+    )
 
-    async def fake_parse_async(*args, **kwargs) -> ParseResult:
+    async def fake_parse_async(*args: object, **kwargs: object) -> ParseResult:
         return parse_result
 
     monkeypatch.setattr("mineru.parser.api_server.parse_async", fake_parse_async)
@@ -1941,8 +2104,6 @@ def test_api_server_rendered_outputs_do_not_return_image_sidecars(
             rec,
             request,
             file_store,
-            server_backend="hybrid-engine",
-            language="ch",
             ocr_mode="auto",
             image_analysis=True,
             allow_local_source=True,
@@ -1962,7 +2123,7 @@ def test_api_server_run_job_normalizes_lightweight_file_tier_to_flash(
 
     async def fake_parse_async(*args: object, **kwargs: object) -> ParseResult:
         calls.append({"path": args[0], **kwargs})
-        return ParseResult(middle_json=MiddleJson(pages=[PageInfo(page_idx=0)], file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__))
+        return ParseResult(middle_json=_full_middle_json(PageInfo(page_idx=0)))
 
     monkeypatch.setattr("mineru.parser.api_server.parse_async", fake_parse_async)
     file_store = FileStore(tmp_path / "api-files")
@@ -1982,15 +2143,13 @@ def test_api_server_run_job_normalizes_lightweight_file_tier_to_flash(
             rec,
             request,
             file_store,
-            server_backend="hybrid-engine",
-            language="ch",
             ocr_mode="auto",
             image_analysis=True,
             allow_local_source=True,
         )
     )
 
-    assert [(call["tier"], call["backend"]) for call in calls] == [("flash", "flash")]
+    assert [call["tier"] for call in calls] == ["flash"]
     assert rec.tier == "standard"
     assert rec.files[0].status == "completed"
 
@@ -2003,7 +2162,7 @@ def test_api_server_accepts_lightweight_job_without_requested_quality_runtime(
     response_tier: str,
 ) -> None:
     async def fake_parse_async(*args: object, **kwargs: object) -> ParseResult:
-        return ParseResult(middle_json=MiddleJson(pages=[PageInfo(page_idx=0)], file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__))
+        return ParseResult(middle_json=_full_middle_json(PageInfo(page_idx=0)))
 
     monkeypatch.setattr("mineru.parser.api_server.parse_async", fake_parse_async)
     source = tmp_path / "demo.html"
@@ -2089,12 +2248,9 @@ def test_api_server_zip_includes_model_output_when_parse_result_has_it(
     model_output: list[object],
 ) -> None:
     parse_result = ParseResult(
-        middle_json=MiddleJson(
-            pages=[PageInfo(page_idx=0)],
-            file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__,
-        ),
+        middle_json=_full_middle_json(PageInfo(page_idx=0)),
         _model_output=model_output,
-        )
+    )
 
     async def fake_parse_async(*args: object, **kwargs: object) -> ParseResult:
         return parse_result
@@ -2118,8 +2274,6 @@ def test_api_server_zip_includes_model_output_when_parse_result_has_it(
             rec,
             request,
             file_store,
-            server_backend="hybrid-engine",
-            language="ch",
             ocr_mode="auto",
             image_analysis=True,
             allow_local_source=True,
@@ -2142,12 +2296,9 @@ def test_api_server_zip_rejects_unsafe_image_sidecar_path(
     tmp_path: Path,
 ) -> None:
     parse_result = ParseResult(
-        middle_json=MiddleJson(
-            pages=[PageInfo(page_idx=0)],
-            file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__,
-        ),
+        middle_json=_full_middle_json(PageInfo(page_idx=0)),
         _image_cache={"../escape.png": b"bad-image"},
-        )
+    )
 
     async def fake_parse_async(*args: object, **kwargs: object) -> ParseResult:
         return parse_result
@@ -2170,8 +2321,6 @@ def test_api_server_zip_rejects_unsafe_image_sidecar_path(
             rec,
             request,
             file_store,
-            server_backend="hybrid-engine",
-            language="ch",
             ocr_mode="auto",
             image_analysis=True,
             allow_local_source=True,
@@ -2188,12 +2337,9 @@ def test_api_server_zip_skips_model_output_when_parse_result_has_none(
     tmp_path: Path,
 ) -> None:
     parse_result = ParseResult(
-        middle_json=MiddleJson(
-            pages=[PageInfo(page_idx=0)],
-            file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__,
-        ),
+        middle_json=_full_middle_json(PageInfo(page_idx=0)),
         _model_output=None,
-        )
+    )
 
     async def fake_parse_async(*args: object, **kwargs: object) -> ParseResult:
         return parse_result
@@ -2217,8 +2363,6 @@ def test_api_server_zip_skips_model_output_when_parse_result_has_none(
             rec,
             request,
             file_store,
-            server_backend="hybrid-engine",
-            language="ch",
             ocr_mode="auto",
             image_analysis=True,
             allow_local_source=True,
@@ -2265,8 +2409,6 @@ def test_api_server_logs_traceback_when_job_file_fails(
                 rec,
                 request,
                 file_store,
-                server_backend="hybrid-engine",
-                language="ch",
                 ocr_mode="auto",
                 image_analysis=True,
                 allow_local_source=True,
@@ -2460,15 +2602,15 @@ def test_api_server_model_preload_is_opt_in_and_ignored_for_flash(tmp_path: Path
     assert calls == [("basic", "ch")]
 
 
-def test_api_server_standard_jobs_use_requested_tier_runtime(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """校验 Standard server 按每个 job 的 tier 选择 backend/effort，而不是复用全局默认值。"""
+def test_api_server_standard_jobs_use_requested_tier(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """校验 Standard server 把每个 job 请求的 tier 传给统一 parser。"""
     _stub_api_server_dependency_preflight(monkeypatch)
     calls: list[dict[str, object]] = []
 
     async def fake_parse_async(*args: object, **kwargs: object) -> ParseResult:
         """记录 API server 传给 parser 的 runtime 参数，并返回最小解析结果。"""
         calls.append(dict(kwargs))
-        return ParseResult(middle_json=MiddleJson(pages=[PageInfo(page_idx=0)], file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__))
+        return ParseResult(middle_json=_full_middle_json(PageInfo(page_idx=0)))
 
     monkeypatch.setattr("mineru.parser.api_server.parse_async", fake_parse_async)
     source = tmp_path / "demo.pdf"
@@ -2480,14 +2622,11 @@ def test_api_server_standard_jobs_use_requested_tier_runtime(tmp_path: Path, mon
     async def run_request(payload: dict[str, object]) -> dict[str, object]:
         request = CreateJobRequest.model_validate(payload)
         request.tier = request.tier or app.state.default_tier
-        runtime = app.state.tier_runtime_options[request.tier]
         rec = job_store.create(request, file_store)
         await api_server._run_job(
             rec,
             request,
             file_store,
-            server_backend=runtime.backend,
-            language=app.state.language,
             ocr_mode=app.state.ocr_mode,
             image_analysis=app.state.image_analysis,
             allow_local_source=app.state.allow_local_source,
@@ -2526,11 +2665,7 @@ def test_api_server_standard_jobs_use_requested_tier_runtime(tmp_path: Path, mon
     assert default_response["tier"] == "standard"
     assert basic_response["tier"] == "basic"
     assert advanced_response["tier"] == "advanced"
-    assert [(call["tier"], call["backend"]) for call in calls] == [
-        ("standard", "hybrid-engine"),
-        ("basic", "hybrid-engine"),
-        ("advanced", "hybrid-engine"),
-    ]
+    assert [call["tier"] for call in calls] == ["standard", "basic", "advanced"]
 
 
 def test_api_server_basic_rejects_advanced_request(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2599,7 +2734,7 @@ def test_api_server_skips_dependency_preflight_for_flash(monkeypatch: pytest.Mon
 def test_api_server_preflights_basic_tier_dependencies(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     imported_modules: list[str] = []
 
-    def fake_import_module(module_name: str):
+    def fake_import_module(module_name: str) -> object:
         imported_modules.append(module_name)
         return object()
 
@@ -2613,13 +2748,14 @@ def test_api_server_preflights_basic_tier_dependencies(monkeypatch: pytest.Monke
         "torch",
         "torchvision",
         "transformers",
+        "accelerate",
     ]
 
 
 def test_api_server_preflights_standard_tier_dependencies_for_platform(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     imported_modules: list[str] = []
 
-    def fake_import_module(module_name: str):
+    def fake_import_module(module_name: str) -> object:
         imported_modules.append(module_name)
         return object()
 
@@ -2646,7 +2782,7 @@ def test_api_server_preflights_standard_tier_dependencies_skip_mlx_on_intel_maco
 ) -> None:
     imported_modules: list[str] = []
 
-    def fake_import_module(module_name: str):
+    def fake_import_module(module_name: str) -> object:
         imported_modules.append(module_name)
         return object()
 
@@ -2667,7 +2803,7 @@ def test_api_server_preflights_standard_tier_dependencies_skip_mlx_on_intel_maco
 
 
 def test_api_server_preflight_rejects_missing_tier_dependency(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    def fake_import_module(module_name: str):
+    def fake_import_module(module_name: str) -> object:
         if module_name == "torch":
             raise ModuleNotFoundError("No module named 'torch'")
         return object()
@@ -2756,7 +2892,7 @@ def test_api_server_cli_rejects_backend_and_effort_options() -> None:
 def test_api_server_cli_defaults_to_all_quality_tiers(monkeypatch: pytest.MonkeyPatch) -> None:
     seen: dict[str, object] = {}
 
-    def _fake_run(server) -> None:
+    def _fake_run(server: Any) -> None:
         """记录无 --tier 启动后的默认 API server 能力，不启动真实服务。"""
         seen["tiers"] = [tier["id"] for tier in server.config.app.state.tiers]
         seen["default_tier"] = server.config.app.state.default_tier
@@ -2779,7 +2915,7 @@ def test_api_server_cli_defaults_to_all_quality_tiers(monkeypatch: pytest.Monkey
 def test_api_server_cli_accepts_single_tier_and_no_flash(monkeypatch: pytest.MonkeyPatch) -> None:
     seen: dict[str, object] = {}
 
-    def _fake_run(server) -> None:
+    def _fake_run(server: Any) -> None:
         """记录单个 --tier 与 --no-flash 启动后的 API server 能力列表。"""
         seen["tiers"] = [tier["id"] for tier in server.config.app.state.tiers]
         seen["default_tier"] = server.config.app.state.default_tier
@@ -2830,7 +2966,7 @@ def test_api_server_cli_rejects_flash_no_flash_conflict() -> None:
 def test_api_server_cli_normalizes_hidden_language_alias(monkeypatch: pytest.MonkeyPatch) -> None:
     seen: dict[str, str] = {}
 
-    def _fake_run(server) -> None:
+    def _fake_run(server: Any) -> None:
         """记录 Click CLI 创建出的应用语言配置，避免测试启动真实服务。"""
         seen["language"] = server.config.app.state.language
 

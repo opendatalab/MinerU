@@ -6,13 +6,13 @@ from typing import Any
 import pytest
 
 from mineru.model.flash import PdfModel
-from mineru.model.flash.native_pdf import code_blocks, models, pipeline
-from mineru.render._internal.common.inline import (
+from mineru.model.flash.pdf import code_blocks, models, pipeline
+from mineru.backend.postprocess.inline import (
     inline_plain_text,
     parse_inline_content,
 )
-from mineru.utils.pdf_document import PDFDocument, PDFPathInfo
-from mineru.utils.spatial_text import project_pdf_spatial_text
+from mineru.model.flash.pdf.document import PDFDocument, PDFPathInfo
+from mineru.model.flash.pdf.spatial_text import project_pdf_spatial_text
 
 from _flash_pdf_test_utils import _text_line
 

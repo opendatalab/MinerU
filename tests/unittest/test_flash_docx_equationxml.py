@@ -9,15 +9,15 @@ import pytest
 
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
 from mineru.model.flash import DocxModel
-from mineru.model.flash.docx.docx_converter import DocxConverter
-from mineru.model.flash.docx.equationxml import DocxEquationXmlDecoder
-from mineru.model.flash.legacy_office.errors import (
+from mineru.model.flash.office.docx.docx_converter import DocxConverter
+from mineru.model.flash.office.docx.equationxml import DocxEquationXmlDecoder
+from mineru.model.flash.office.legacy.errors import (
     LegacyOfficeResourceLimitError,
 )
 from mineru.render._internal.docx.math import latex_to_omml
 from mineru.types import BlockType, MiddleJson, ModelJson
 
-import mineru.model.flash.docx.equationxml as equationxml_module
+import mineru.model.flash.office.docx.equationxml as equationxml_module
 from _docx_equationxml_test_utils import (
     M_NS,
     WORD_2003_NS,

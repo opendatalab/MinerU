@@ -11,7 +11,7 @@ import numpy as np
 from loguru import logger
 from tqdm import tqdm
 
-from .....utils.model_registry import PDF_EXTRACT_KIT
+from ....registry import PDF_EXTRACT_KIT
 from .matcher import TableMatch
 from .table_structure import TableStructurer
 

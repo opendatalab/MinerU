@@ -7,8 +7,8 @@ from typing import Any, Sequence
 
 from pdftext.schema import Char
 
-from mineru.utils.pdf_document import PDFPage, get_lines_from_chars
-from mineru.utils.pdf_text_styles import (
+from .....model.flash.pdf.document import PDFPage, get_lines_from_chars
+from .....model.flash.pdf.text_styles import (
     PDFTextLinkLine,
     PDFTextStyleLine,
     detect_pdf_text_link_lines,
@@ -30,7 +30,7 @@ def build_pdf_native_visual_lines_and_styles(
     """一次读取当前页字符，构造视觉 run、文本样式和超链接证据。"""
 
     # 延迟导入避免 Hybrid 模块初始化时提前加载完整 Flash PDF 流水线。
-    from mineru.model.flash.native_pdf.native_text import _build_native_line_items
+    from .....model.flash.pdf.native_text import _build_native_line_items
 
     chars = page_chars if page_chars is not None else pdf_page.get_chars()
     line_items = _build_native_line_items(

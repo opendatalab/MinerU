@@ -4,7 +4,7 @@
 
 ### Parameter Passing Instructions
 > [!TIP]
-> - All officially supported vllm/lmdeploy parameters can be passed to MinerU through command line arguments, including the following commands: `mineru`, `mineru-openai-server`, `mineru-gradio`, `mineru-api`, `mineru-router`
+> - Router accepts only its documented worker options and no longer forwards arbitrary vllm/lmdeploy parameters. Configure those parameters on independently deployed upstream services.
 > - Command-line options support both `--foo value` and `--foo=value` forms
 > - If you want to learn more about `vllm` parameter usage, please refer to the [vllm official documentation](https://docs.vllm.ai/en/latest/cli/serve.html)
 > - If you want to learn more about `lmdeploy` parameter usage, please refer to the [lmdeploy official documentation](https://lmdeploy.readthedocs.io/en/latest/llm/api_server.html)
@@ -17,7 +17,7 @@
 >   ```bash
 >   CUDA_VISIBLE_DEVICES=1 mineru -p <input_path> -o <output_path>
 >   ```
-> - This method works for all command-line invocations, including `mineru`, `mineru-openai-server`, `mineru-gradio`, `mineru-api`, and `mineru-router`, and it applies to local Hybrid execution.
+> - This method applies to the model-serving and parsing commands documented below; it does not apply to `mineru-router`.
 
 ### Common Device Configuration Examples
 > [!TIP]

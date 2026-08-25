@@ -1,7 +1,7 @@
 # Copyright (c) Opendatalab. All rights reserved.
 """跨页表格延续文本与 caption 的轻量判定规则。"""
 
-from mineru.utils.text_utils import full_to_half
+from ....utils.text import full_to_half
 
 CONTINUATION_END_MARKERS = [
     "(续)",

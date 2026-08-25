@@ -20,7 +20,7 @@ from PIL import Image
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen.canvas import Canvas
 
-from mineru.utils import pdf_document
+from mineru.model.flash.pdf import document as pdf_document
 
 
 def test_pdf_page_exposes_path_infos_without_raw_pdfium_access() -> None:
@@ -556,7 +556,6 @@ def test_pdf_document_methods_keep_page_access_inside_pdfium_lock(monkeypatch: p
 def test_pdf_document_does_not_expose_legacy_compat_hooks() -> None:
     assert not hasattr(pdf_document, "pdf_page_to_image")
     assert not hasattr(pdf_document, "open_pdfium_document")
-    assert not hasattr(pdf_document, "get_text_quality_signal_pdfium")
     assert not hasattr(pdf_document.PDFDocument, "get_text_quality")
     assert pdf_document.PDFDocument._pdf_doc.fset is None
 

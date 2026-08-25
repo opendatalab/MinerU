@@ -24,7 +24,7 @@ from loguru import logger
 from PIL import Image, ImageOps
 from tqdm import tqdm
 
-from ..utils.onnxruntime_provider import ort_session
+from ..runtime.onnx import ort_session
 from .post_process import post_process_formula
 
 __all__ = ["PPFormulaNetPlusMONNX"]

@@ -10,16 +10,17 @@ import pytest
 
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
 from mineru.model.flash import XlsModel
-from mineru.model.flash.legacy_office import (
+from mineru.model.flash.office.legacy import (
     LegacyOfficeEncryptedError,
     LegacyOfficeMissingPartError,
     LegacyOfficeResourceLimitError,
 )
-from mineru.model.flash.legacy_office.limits import MAX_RECORDS
-from mineru.model.flash.xls import xls_converter as xls_converter_module
-from mineru.model.flash.xls import parser as xls_parser
-from mineru.model.flash.xls.number_format import format_number, format_text
-from mineru.model.flash.xls.records import RecordBudget
+from mineru.model.flash.office.legacy.limits import MAX_RECORDS
+from mineru.model.flash.office.xls import xls_converter as xls_converter_module
+from mineru.model.flash.office.xls import parser as xls_parser
+from mineru.model.flash.office.xls.number_format import format_number, format_text
+from mineru.model.flash.office.xls.records import RecordBudget
+from mineru.parser import parse
 from mineru.types import BlockType, ImageBlock, MiddleJson, ModelJson, TableBlock
 
 from _legacy_xls_test_utils import (
@@ -41,13 +42,7 @@ from _legacy_ppt_test_utils import _build_cfb
 
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
-_REAL_XLS = (
-    _PROJECT_ROOT
-    / "output"
-    / "office_roundtrip_research_20260824"
-    / "legacy"
-    / "xlsx_01.xls"
-)
+_REAL_XLS = _PROJECT_ROOT / "demo" / "office_docs" / "xlsx_01.xls"
 
 
 def test_xls_model_preserves_visible_empty_pages_and_skips_hidden_sheet() -> None:
@@ -116,11 +111,7 @@ def test_xls_formula_cache_merge_and_hyperlink_flow_into_table() -> None:
 def test_xls_rich_sst_uses_utf16_ranges_across_non_bmp_text() -> None:
     """验证非 BMP 字符的 UTF-16 rich run 边界不会偏移。"""
 
-    globals_records = (
-        font_record(bold=True)
-        + font_record(italic=True)
-        + rich_sst([("A😀B", [(0, 1), (3, 2)])])
-    )
+    globals_records = font_record(bold=True) + font_record(italic=True) + rich_sst([("A😀B", [(0, 1), (3, 2)])])
     pages = XlsModel().predict(
         BytesIO(
             build_xls(
@@ -138,11 +129,7 @@ def test_xls_rich_sst_uses_utf16_ranges_across_non_bmp_text() -> None:
 def test_xls_sst_character_data_can_cross_continue_records() -> None:
     """验证 SST 在字符中间切入 CONTINUE 后重读压缩标志并继续 rich runs。"""
 
-    globals_records = (
-        font_record(bold=True)
-        + font_record(italic=True)
-        + continued_rich_sst("A😀BC", [(0, 1), (3, 2)])
-    )
+    globals_records = font_record(bold=True) + font_record(italic=True) + continued_rich_sst("A😀BC", [(0, 1), (3, 2)])
     pages = XlsModel().predict(
         BytesIO(
             build_xls(
@@ -197,9 +184,7 @@ def test_xls_text_format_and_unsafe_hyperlink_fallback() -> None:
     )
     pages = XlsModel().predict(BytesIO(build_xls([SheetFixture("Data", records)])))
     assert pages == [[{"type": BlockType.TEXT, "content": "unsafe"}]]
-    assert xls_parser._sanitize_hyperlink_target("mailto:user@example.test") == (
-        "mailto:user@example.test"
-    )
+    assert xls_parser._sanitize_hyperlink_target("mailto:user@example.test") == ("mailto:user@example.test")
     assert xls_parser._sanitize_hyperlink_target("#Sheet2!A1") == "#Sheet2!A1"
     assert xls_parser._sanitize_hyperlink_target("../relative/path") == "../relative/path"
     assert xls_parser._sanitize_hyperlink_target("file:///tmp/local.xls") is None
@@ -242,9 +227,7 @@ def test_xls_encrypted_ooxml_marker_and_missing_workbook_are_stable_errors() -> 
 def test_xls_biff5_codepage_and_hidden_rows_columns_are_preserved() -> None:
     """验证 BIFF5 codepage 降级及用户选择的隐藏行列保留策略。"""
 
-    assert XlsModel().predict(BytesIO(build_biff5_xls("légacy"))) == [
-        [{"type": BlockType.TEXT, "content": "légacy"}]
-    ]
+    assert XlsModel().predict(BytesIO(build_biff5_xls("légacy"))) == [[{"type": BlockType.TEXT, "content": "légacy"}]]
 
     row = bytearray(16)
     struct.pack_into("<H", row, 0, 0)
@@ -252,11 +235,7 @@ def test_xls_biff5_codepage_and_hidden_rows_columns_are_preserved() -> None:
     colinfo = bytearray(12)
     struct.pack_into("<HH", colinfo, 0, 0, 0)
     colinfo[8] = 0x01
-    records = (
-        biff_record(0x0208, bytes(row))
-        + biff_record(0x007D, bytes(colinfo))
-        + label_cell(0, 0, "still visible")
-    )
+    records = biff_record(0x0208, bytes(row)) + biff_record(0x007D, bytes(colinfo)) + label_cell(0, 0, "still visible")
 
     assert XlsModel().predict(BytesIO(build_xls([SheetFixture("Data", records)]))) == [
         [{"type": BlockType.TEXT, "content": "still visible"}]
@@ -274,19 +253,19 @@ def test_xls_record_and_grid_limits_are_hard_failures(
 
     monkeypatch.setattr(xls_converter_module, "MAX_GRID_SLOTS", 0)
     with pytest.raises(LegacyOfficeResourceLimitError, match="max_grid_slots"):
-        XlsModel().predict(
-            BytesIO(build_xls([SheetFixture("Data", label_cell(0, 0, "value"))]))
-        )
+        XlsModel().predict(BytesIO(build_xls([SheetFixture("Data", label_cell(0, 0, "value"))])))
 
 
-def test_xls_is_not_routed_through_public_parser() -> None:
-    """验证实现范围没有新增 XlsParser 或 parser/CLI 路由。"""
+def test_xls_is_supported_by_public_parser(tmp_path: Path) -> None:
+    """验证公共 parser 通过统一 MinerUParser 路由 XLS。"""
 
-    office_source = (_PROJECT_ROOT / "mineru" / "parser" / "office.py").read_text(encoding="utf-8")
-    parser_source = (_PROJECT_ROOT / "mineru" / "parser" / "__init__.py").read_text(encoding="utf-8")
+    path = tmp_path / "sample.xls"
+    path.write_bytes(build_xls([SheetFixture("Data", label_cell(0, 0, "value"))]))
 
-    assert "class XlsParser" not in office_source
-    assert '"xls": XlsParser' not in parser_source
+    result = parse(path, tier="flash")
+
+    assert result.middle_json.file_suffix == "xls"
+    assert result.pages[0].blocks[0].content == "value"
 
 
 @pytest.mark.skipif(not _REAL_XLS.exists(), reason="real Office roundtrip fixture is local-only")
@@ -297,10 +276,7 @@ def test_real_xls_recovers_tables_charts_image_link_and_exports(tmp_path: Path) 
 
     assert len(model_json.pages) == len(middle_json.pages) == 3
     assert model_json.file_suffix == middle_json.file_suffix == "xls"
-    assert [
-        [block.get("type") for block in page]
-        for page in model_json.pages
-    ] == [
+    assert [[block.get("type") for block in page] for page in model_json.pages] == [
         [BlockType.PARAGRAPH_TITLE, BlockType.TABLE],
         [
             BlockType.PARAGRAPH_TITLE,
@@ -313,9 +289,7 @@ def test_real_xls_recovers_tables_charts_image_link_and_exports(tmp_path: Path) 
         [BlockType.PARAGRAPH_TITLE, BlockType.TABLE, BlockType.TABLE, BlockType.IMAGE],
     ]
 
-    page_one_table = next(
-        block for block in middle_json.pages[0].blocks if isinstance(block, TableBlock)
-    )
+    page_one_table = next(block for block in middle_json.pages[0].blocks if isinstance(block, TableBlock))
     page_one_soup = BeautifulSoup(page_one_table.content[0].content, "html.parser")
     page_one_rows = page_one_soup.find_all("tr")
     assert len(page_one_rows) == 9
@@ -325,33 +299,24 @@ def test_real_xls_recovers_tables_charts_image_link_and_exports(tmp_path: Path) 
     assert "#NAME?" in page_one_soup.get_text(" ", strip=True)
     assert "(x+a)^n" in page_one_soup.get_text(" ", strip=True)
 
-    chart_tables = [
-        block.content[0].content
-        for block in middle_json.pages[1].blocks
-        if block.type == BlockType.CHART
-    ]
+    chart_tables = [block.content[0].content for block in middle_json.pages[1].blocks if block.type == BlockType.CHART]
     assert [
         (
             len(BeautifulSoup(content, "html.parser").find_all("tr")),
             max(
-                len(row.find_all(["th", "td"], recursive=False))
-                for row in BeautifulSoup(content, "html.parser").find_all("tr")
+                len(row.find_all(["th", "td"], recursive=False)) for row in BeautifulSoup(content, "html.parser").find_all("tr")
             ),
         )
         for content in chart_tables
     ] == [(5, 2), (9, 4)]
 
-    page_three_tables = [
-        block for block in middle_json.pages[2].blocks if isinstance(block, TableBlock)
-    ]
+    page_three_tables = [block for block in middle_json.pages[2].blocks if isinstance(block, TableBlock)]
     assert len(page_three_tables) == 2
     assert all(
         len(
             [
                 cell
-                for cell in BeautifulSoup(table.content[0].content, "html.parser").find_all(
-                    ["th", "td"]
-                )
+                for cell in BeautifulSoup(table.content[0].content, "html.parser").find_all(["th", "td"])
                 if cell.has_attr("rowspan") or cell.has_attr("colspan")
             ]
         )

@@ -9,8 +9,8 @@ from typing import Any
 import numpy as np
 from loguru import logger
 
-from mineru.types import BBox, BlockType
-from mineru.utils.bbox_utils import (
+from ....types import BBox, BlockType
+from ....utils.geometry import (
     calculate_overlap_area_2_minbox_area_ratio,
     calculate_overlap_area_in_bbox1_area_ratio,
 )

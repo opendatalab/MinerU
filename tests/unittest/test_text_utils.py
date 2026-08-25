@@ -1,6 +1,6 @@
 import pytest
 
-from mineru.utils.text_utils import (
+from mineru.utils.text import (
     merge_text_line_contents,
     resolve_text_line_boundary,
 )

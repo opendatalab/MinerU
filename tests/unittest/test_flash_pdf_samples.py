@@ -13,7 +13,7 @@ from pypdf import PdfReader
 from mineru.backend.postprocess.page_blocks import process_page_blocks
 from mineru.backend.postprocess.pages import model_json_to_pages
 from mineru.model.flash import PdfModel
-from mineru.model.flash.native_pdf import (
+from mineru.model.flash.pdf import (
     formulas,
     geometry,
     graphics,
@@ -23,12 +23,12 @@ from mineru.model.flash.native_pdf import (
     tables,
 )
 from mineru.render import render_markdown
-from mineru.render._internal.common.inline import (
+from mineru.backend.postprocess.inline import (
     inline_plain_text,
     parse_inline_content,
 )
 from mineru.types import MiddleJson, ModelJson
-from mineru.utils.pdf_document import PDFDocument, get_lines_from_chars
+from mineru.model.flash.pdf.document import PDFDocument, get_lines_from_chars
 
 
 _PROJECT_ROOT = Path(__file__).parents[2]
@@ -554,11 +554,12 @@ def test_demo2_rejects_figure_grid_and_keeps_two_real_tables() -> None:
 
 
 def test_demo2_page1_forms_sixteen_blocks_and_keeps_figure_caption_separate() -> None:
-    """验证 demo2 首页正文自然聚合，六个 Figure 1 标签单块且 caption 独立。"""
+    """验证 demo2 首页正文、Abstract 粗体和 Figure 1 图文归属保持正确。"""
 
     page = _native_model_list("demo2.pdf")[0]
     graphic_block = next(block for block in page if "Left camera" in block["content"])
     caption_block = next(block for block in page if "Figure 1:" in block["content"])
+    abstract_block = next(block for block in page if _visible_content(block).startswith("Abstract—Stereo"))
 
     assert len(page) == 16
     assert not [block for block in page if block["type"] == "table"]
@@ -574,6 +575,28 @@ def test_demo2_page1_forms_sixteen_blocks_and_keeps_figure_caption_separate() ->
     assert graphic_block["bbox"] == [0.516, 0.311, 0.913, 0.442]
     copyright_block = next(block for block in page if block["content"].startswith("978-1-4673-5208-6"))
     assert copyright_block["type"] == "footer"
+    assert abstract_block["content"].startswith('<text style="bold">Abstract—Stereo')
+    assert abstract_block["content"].endswith("Middlebury stereo performance benchmark.</text>")
+    assert abstract_block["content"].count('<text style="bold">') == 1
+    assert "de<text" not in abstract_block["content"]
+
+    page_markdown = render_markdown(
+        MiddleJson(
+            pages=model_json_to_pages(_model_json([page], page_index_map=[0])),
+            is_full_document=False,
+            file_suffix="pdf",
+            effort="flash",
+            parse_mode="txt",
+            mineru_version="test",
+        )
+    )
+    abstract_markdown = next(
+        paragraph
+        for paragraph in page_markdown.split("\n\n")
+        if paragraph.startswith("**Abstract—Stereo")
+    )
+    assert abstract_markdown.endswith("Middlebury stereo performance benchmark.**")
+    assert abstract_markdown.count("**") == 2
 
 
 def test_demo2_pages2_to6_restore_paragraphs_formulas_and_reading_order() -> None:
@@ -871,7 +894,9 @@ def test_demo3_keeps_tables_and_covers_every_native_source_line() -> None:
     assert "Cong Yu. 2021. TURL:" in page10_first_reference["content"]
     assert "Jacob Devlin" not in page10_first_reference["content"]
     for page, source_lines in zip(model_list, source_lines_by_page, strict=True):
-        output_probe = _normalized_content_probe("".join(str(block.get("content") or "") for block in page))
+        output_probe = _normalized_content_probe(
+            "".join(_visible_content(block) for block in page)
+        )
         missing_lines = [
             line.text
             for line in source_lines
@@ -1698,7 +1723,9 @@ def test_caibao_table_reclaims_repeated_dates_but_keeps_real_marginals() -> None
         footers = [block for block in page if block["type"] == "footer"]
         page_numbers = [block for block in page if block["type"] == "page_number"]
         assert len(tables_on_page) == len(footers) == len(page_numbers) == 1
-        assert "2024 年 07 月" in str(tables_on_page[0]["content"])
+        assert "2024年07月" in _normalized_content_probe(
+            tables_on_page[0]["content"]
+        )
         assert _visible_content(footers[0]) == "免责声明和披露以及分析师声明是报告的一部分，请务必一起阅读。"
         assert "2024 年" not in _visible_content(footers[0])
         assert tables_on_page[0]["bbox"][3] < footers[0]["bbox"][1]

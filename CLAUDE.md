@@ -42,11 +42,11 @@ mineru 模块内部子模块之间的引用统一使用 **relative import**，�
 ```python
 # 正确 — relative import
 from .base import DocumentParser
-from ..utils.enum_class import MakeMode
+from ..render import RenderMode
 
 # 错误 — 项目内不允许 absolute import 引用自身模块
 from mineru.api.base import DocumentParser
-from mineru.utils.enum_class import MakeMode
+from mineru.render import RenderMode
 ```
 
 只引用外部第三方库时使用 absolute import（如 `from loguru import logger`）。
@@ -167,7 +167,7 @@ pr-5415 重构后，Middle JSON 已收敛为 schema 2.0 的统一结构，不再
 | `pages` | `list[PageInfo]` | 严格按 `page_idx` 升序的页面数组 |
 | `is_full_document` | `bool` | 是否整本文档解析（空 `page_index_map` 时为 `True`） |
 | `file_suffix` | `Literal["pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx"]` | 输入文件类型 |
-| `effort` | `Literal["flash", "low", "medium", "high", "xhigh"]` | 分析强度 |
+| `effort` | `Literal["flash", "medium", "high", "xhigh"]` | 分析强度 |
 | `parse_mode` | `Literal["txt", "ocr"]` | 解析模式 |
 | `mineru_version` | `str` | MinerU 版本号 |
 
@@ -199,7 +199,14 @@ pr-5415 重构后，Middle JSON 已收敛为 schema 2.0 的统一结构，不再
 - `RenderFormat.DOCX` → `render_docx`
 - `RenderFormat.STRUCTURED_CONTENT` → `render_structured_content`
 
-`render/_internal/` 下按目标格式分目录组织共享逻辑（`common/`/`markdown/`/`html/`/`docx/`）。不再有 `pipeline_union_make`/`vlm_union_make`/`office_union_make` 三套逻辑，`content_list` 格式和 `render_content_list` 函数已删除。
+`render/_internal/` 下按目标格式分目录组织共享逻辑（`common/`/`markdown/`/`html/`/`docx/`/`structured_content/`），顶层同名模块只是惰性公共门面。行内语义解析归 `backend/postprocess/inline.py`，renderer 只能单向依赖该模块和 `backend/postprocess/table_merge`。不再有 `pipeline_union_make`/`vlm_union_make`/`office_union_make` 三套逻辑，`content_list` 格式和 `render_content_list` 函数已删除。
+
+### 5.1 目录职责
+
+- `model/runtime/` 负责设备、显存、ONNX 与 Hybrid 本地模型生命周期；模型仓库和下载分别位于 `model/registry.py`、`model/download.py`。
+- `model/flash/pdf/` 负责 PDFDocument、PDFium、原生文本、样式和表格恢复；`model/flash/office/` 负责六类 Office 格式。
+- `utils/` 只保留 geometry、image、image payload、language/text、platform 和 stdio 等叶子能力；活动代码不得把业务实现重新放入 utils。
+- 稳定依赖方向为 `utils/types → model → backend → render → parser/kit/doclib`，禁止反向引用。
 
 ### 6. ParseResult 与 MiddleJson 的关系
 

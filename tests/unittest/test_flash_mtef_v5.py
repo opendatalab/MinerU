@@ -4,10 +4,10 @@ import struct
 
 import pytest
 
-from mineru.model.flash.legacy_office import mtef_v5 as mtef_v5_module
-from mineru.model.flash.legacy_office import mtef as mtef_module
-from mineru.model.flash.legacy_office.errors import LegacyOfficeResourceLimitError
-from mineru.model.flash.legacy_office.mtef import (
+from mineru.model.flash.office.legacy import mtef_v5 as mtef_v5_module
+from mineru.model.flash.office.legacy import mtef as mtef_module
+from mineru.model.flash.office.legacy.errors import LegacyOfficeResourceLimitError
+from mineru.model.flash.office.legacy.mtef import (
     decode_equation_native,
     decode_equation_object,
     decode_mtef,

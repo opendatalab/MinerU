@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from unittest.mock import Mock
+
 import pytest
 
 from mineru.config import LatexDelimitersConfig, config
+from mineru.render import ImageRenderer
 from mineru.render._internal.markdown.blocks import render_single_block
-from mineru.render.image import image_path_renderer
 from mineru.types import (
     BlockBase,
     BlockType,
@@ -45,25 +47,22 @@ def _image_block() -> ImageBlock:
     )
 
 
-def test_image_path_renderer_preserves_existing_relative_path_behavior() -> None:
-    block = _image_block()
-
-    assert image_path_renderer(block, img_bucket_path="images") == "![](images/internal/hash.jpg)"
-
-
 def test_pipeline_markdown_uses_custom_block_image_renderer_and_keeps_caption() -> None:
     block = _image_block()
+    renderer_mock = Mock(return_value="![Image block](doc:aaaaaaa/tier:standard/page:1/block:1)")
+    image_renderer: ImageRenderer = renderer_mock
 
     rendered = render_single_block(
         block,
         delimiters=_delimiters(),
         asset_base_url="",
-        image_renderer=lambda _block: "![Image block](doc:aaaaaaa/tier:standard/page:1/block:1)",
+        image_renderer=image_renderer,
     )
 
     assert "![Image block](doc:aaaaaaa/tier:standard/page:1/block:1)" in rendered
     assert "Figure caption" in rendered
     assert "internal/hash.jpg" not in rendered
+    renderer_mock.assert_called_once_with(block)
 
 
 def test_office_markdown_uses_custom_block_image_renderer_and_keeps_caption() -> None:
@@ -116,7 +115,12 @@ def test_pipeline_markdown_uses_custom_renderer_for_image_only_visual_blocks(
             ],
         )
 
-    rendered = render_single_block(block, delimiters=_delimiters(), asset_base_url="", image_renderer=lambda _block: "![Visual block](doc:locator)")
+    rendered = render_single_block(
+        block,
+        delimiters=_delimiters(),
+        asset_base_url="",
+        image_renderer=lambda _block: "![Visual block](doc:locator)",
+    )
 
     assert rendered == "![Visual block](doc:locator)"
 
@@ -130,7 +134,12 @@ def test_pipeline_markdown_uses_custom_renderer_for_image_only_formula() -> None
         image_path="internal/hash.jpg",
     )
 
-    rendered = render_single_block(block, delimiters=_delimiters(), asset_base_url="", image_renderer=lambda _block: "![Formula block](doc:locator)")
+    rendered = render_single_block(
+        block,
+        delimiters=_delimiters(),
+        asset_base_url="",
+        image_renderer=lambda _block: "![Formula block](doc:locator)",
+    )
 
     assert rendered == "![Formula block](doc:locator)"
 
@@ -152,13 +161,45 @@ def test_custom_renderer_removes_internal_images_from_structured_table_html() ->
         ],
     )
 
+    image_renderer = Mock(return_value="![Table block](doc:locator)")
     rendered = render_single_block(
         block,
         delimiters=_delimiters(),
         asset_base_url="",
-        image_renderer=lambda _block: "![Table block](doc:locator)",
+        image_renderer=image_renderer,
     )
 
     assert "Text" in rendered
     assert internal_path not in rendered
     assert "<img" not in rendered
+    assert block.content[0].content == html
+    image_renderer.assert_not_called()
+
+
+def test_custom_renderer_handles_table_html_containing_only_images() -> None:
+    internal_path = "internal/cell-image.png"
+    block = TableBlock(
+        type=BlockType.TABLE,
+        index=0,
+        bbox=(0.0, 0.0, 0.1, 0.1),
+        content=[
+            TableBodyBlock(
+                type=BlockType.TABLE_BODY,
+                index=0,
+                bbox=(0.0, 0.0, 0.1, 0.1),
+                content=f'<table><tr><td><img src="{internal_path}"></td></tr></table>',
+            )
+        ],
+    )
+    image_renderer = Mock(return_value="![Table block](doc:locator)")
+
+    rendered = render_single_block(
+        block,
+        delimiters=_delimiters(),
+        asset_base_url="",
+        image_renderer=image_renderer,
+    )
+
+    assert rendered == "![Table block](doc:locator)"
+    assert internal_path not in rendered
+    image_renderer.assert_called_once_with(block)

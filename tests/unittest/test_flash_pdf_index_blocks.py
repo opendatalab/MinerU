@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from mineru.model.flash.native_pdf import index_blocks
+from mineru.model.flash.pdf import index_blocks
 
 from _flash_pdf_test_utils import _text_line
 

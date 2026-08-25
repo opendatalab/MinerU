@@ -10,7 +10,7 @@ from PIL import Image, ImageOps
 from tokenizers import AddedToken
 from tokenizers import Tokenizer as TokenizerFast
 
-from mineru.model.mfr.post_process import post_process_formula
+from ..post_process import post_process_formula
 
 
 class UniMERNetImgDecode(object):

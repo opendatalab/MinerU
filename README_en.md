@@ -71,7 +71,7 @@ MCP Server · LangChain / Dify / FastGPT native integration · 10+ domestic AI c
 
 | Inference Backend | Best For |
 |------------------|---------|
-| hybrid-engine --effort low | Fast local parsing, no VLM calls, runs on CPU or GPU |
+| Flash tier       | Fast local parsing, no VLM calls, runs on CPU or GPU |
 | hybrid-engine    | High accuracy, native text extraction, low hallucination, supports VLM acceleration ecosystem |
 
 Domestic AI chips: Ascend · Cambricon · Enflame · MetaX · Moore Threads · Kunlunxin · Iluvatar · Hygon · Biren · T-Head
@@ -325,9 +325,9 @@ If your device meets the GPU acceleration requirements in the table above, you c
 ```bash
 mineru -p <input_path> -o <output_path>
 ```
-If your device does not meet the GPU acceleration requirements, you can use Hybrid low to run without VLM calls:
+If your device does not meet the GPU acceleration requirements, you can explicitly use the Flash tier to run without VLM calls:
 ```bash
-mineru -p <input_path> -o <output_path> -b hybrid-engine --effort low
+mineru parse "<input_path>" --tier flash -o <output_path>
 ```
 
 `mineru` currently supports local `PDF`, image, `DOCX`, `PPTX`, and `XLSX` file or directory inputs, and can be used for document parsing through the CLI, API, WebUI, and `mineru-router`. For detailed instructions, please refer to the [Usage Guide](https://opendatalab.github.io/MinerU/usage/).

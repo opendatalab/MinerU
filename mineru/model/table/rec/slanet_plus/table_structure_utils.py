@@ -21,7 +21,7 @@ import numpy as np
 from loguru import logger
 from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions
 
-from ....utils.onnxruntime_provider import ort_providers
+from ....runtime.onnx import ort_providers
 
 
 class OrtInferSession:

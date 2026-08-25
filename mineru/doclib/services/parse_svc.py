@@ -1394,7 +1394,7 @@ class ParseService:
             if not pages:
                 continue
 
-            from mineru.config import config
+            from ...config import config
             from ...render._internal.markdown.blocks import render_single_block
 
             delimiters = config.render.latex_delimiters

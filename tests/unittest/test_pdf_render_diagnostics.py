@@ -6,7 +6,7 @@ from typing import Any, cast
 import pytest
 from loguru import logger
 
-from mineru.utils import pdf_image_tools
+from mineru.backend.analysis.pdf import images as pdf_image_tools
 
 
 class _FakeProcess:

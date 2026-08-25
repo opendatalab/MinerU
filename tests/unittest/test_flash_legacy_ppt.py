@@ -11,19 +11,20 @@ from pydantic import ValidationError
 
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
 from mineru.model.flash import PptModel
-from mineru.model.flash.legacy_office import LegacyOfficeEncryptedError, LegacyOfficeResourceLimitError
-from mineru.model.flash.ppt import parser as ppt_parser
-from mineru.model.flash.ppt.models import PptPresentation, PptSlide
-from mineru.model.flash.ppt.ppt_converter import PptConverter
-from mineru.model.flash.ppt.records import PptRecord, RecordBudget
-from mineru.model.flash.ppt.style_text import CharacterRun, StyleRuns
-from mineru.types import BlockType, ImageBlock, MiddleJson, ModelJson, TableBlock
+from mineru.model.flash.office.legacy import LegacyOfficeEncryptedError, LegacyOfficeResourceLimitError
+from mineru.model.flash.office.ppt import parser as ppt_parser
+from mineru.model.flash.office.ppt.models import PptPresentation, PptSlide
+from mineru.model.flash.office.ppt.ppt_converter import PptConverter
+from mineru.model.flash.office.ppt.records import PptRecord, RecordBudget
+from mineru.model.flash.office.ppt.style_text import CharacterRun, StyleRuns
+from mineru.parser import parse
+from mineru.types import BlockType, ChartBlock, ImageBlock, MiddleJson, ModelJson, TableBlock
 
 from _legacy_ppt_test_utils import build_deep_nested_ppt, build_multimaster_ppt, build_sparse_notes_ppt
 
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
-_REAL_PPT = _PROJECT_ROOT / "output" / "office_roundtrip_research_20260824" / "legacy" / "pptx_01.ppt"
+_REAL_PPT = _PROJECT_ROOT / "demo" / "office_docs" / "pptx_01.ppt"
 
 
 def test_ppt_model_preserves_slide_pages_and_sparse_notes() -> None:
@@ -42,9 +43,7 @@ def test_ppt_model_preserves_slide_pages_and_sparse_notes() -> None:
 def test_ppt_converter_preserves_empty_slide_positions() -> None:
     """验证空白或隐藏 slide 仍在 model-list 中保留对应空页。"""
 
-    presentation = PptPresentation(
-        slides=[PptSlide(slide_id=1), PptSlide(slide_id=2, hidden=True)]
-    )
+    presentation = PptPresentation(slides=[PptSlide(slide_id=1), PptSlide(slide_id=2, hidden=True)])
 
     assert PptConverter._presentation_to_pages(presentation) == [[], []]
 
@@ -54,9 +53,7 @@ def test_backend_analyze_accepts_ppt_and_async_contract() -> None:
 
     file_bytes = build_sparse_notes_ppt()
     middle_json, model_json = doc_analyze(file_bytes, file_suffix="ppt")
-    async_middle_json, async_model_json = asyncio.run(
-        aio_doc_analyze(file_bytes, file_suffix="ppt")
-    )
+    async_middle_json, async_model_json = asyncio.run(aio_doc_analyze(file_bytes, file_suffix="ppt"))
 
     assert isinstance(model_json, ModelJson)
     assert isinstance(middle_json, MiddleJson)
@@ -133,14 +130,16 @@ def test_unimplemented_legacy_suffixes_remain_rejected(file_suffix: str) -> None
         )
 
 
-def test_ppt_is_not_routed_through_public_parser() -> None:
-    """验证实现范围没有新增 PptParser 或 mineru.parser.parse 路由。"""
+def test_ppt_is_supported_by_public_parser(tmp_path: Path) -> None:
+    """验证公共 parser 通过统一 MinerUParser 路由 PPT。"""
 
-    office_source = (_PROJECT_ROOT / "mineru" / "parser" / "office.py").read_text(encoding="utf-8")
-    parser_source = (_PROJECT_ROOT / "mineru" / "parser" / "__init__.py").read_text(encoding="utf-8")
+    path = tmp_path / "sample.ppt"
+    path.write_bytes(build_sparse_notes_ppt())
 
-    assert "class PptParser" not in office_source
-    assert '"ppt": PptParser' not in parser_source
+    result = parse(path, tier="flash")
+
+    assert result.middle_json.file_suffix == "ppt"
+    assert len(result.pages) == 2
 
 
 def test_safe_ppt_hyperlink_schemes_are_explicit() -> None:
@@ -156,9 +155,7 @@ def test_ppt_hyperlink_range_splits_utf16_and_style_boundaries() -> None:
     """验证非 BMP 字符的 UTF-16 链接范围可跨字符样式边界准确拆分。"""
 
     interactive_atom = struct.pack("<II8x", 0, 7)
-    container_payload = struct.pack(
-        "<HHI", 0, ppt_parser.RT_INTERACTIVE_INFO_ATOM, len(interactive_atom)
-    ) + interactive_atom
+    container_payload = struct.pack("<HHI", 0, ppt_parser.RT_INTERACTIVE_INFO_ATOM, len(interactive_atom)) + interactive_atom
     records = [
         PptRecord(
             offset=0,
@@ -192,10 +189,7 @@ def test_ppt_hyperlink_range_splits_utf16_and_style_boundaries() -> None:
         spans,
     )
 
-    assert [
-        (run.text, run.bold, run.italic, run.hyperlink)
-        for run in paragraphs[0].runs
-    ] == [
+    assert [(run.text, run.bold, run.italic, run.hyperlink) for run in paragraphs[0].runs] == [
         ("A", True, False, None),
         ("😀", True, False, "https://example.com"),
         ("B", False, True, "https://example.com"),
@@ -231,24 +225,34 @@ def test_real_ppt_recovers_table_notes_images_and_exports(tmp_path: Path) -> Non
             (3, 1, "R4"),
         ]
     )
-    assert [
-        block.content
-        for block in middle_json.pages[1].blocks
-        if block.type == BlockType.PAGE_FOOTNOTE
-    ] == ["Some notes on the second slide."]
-    assert [
-        block.content
-        for block in middle_json.pages[2].blocks
-        if block.type == BlockType.PAGE_FOOTNOTE
-    ] == ["Final notes on the third slide.", "Second line of notes."]
+    assert [block.content for block in middle_json.pages[1].blocks if block.type == BlockType.PAGE_FOOTNOTE] == [
+        "Some notes on the second slide."
+    ]
+    assert [block.content for block in middle_json.pages[2].blocks if block.type == BlockType.PAGE_FOOTNOTE] == [
+        "Final notes on the third slide.",
+        "Second line of notes.",
+    ]
     assert [sum(isinstance(block, ImageBlock) for block in page.blocks) for page in middle_json.pages] == [
         0,
         0,
         0,
         2,
-        1,
+        0,
         0,
     ]
+    chart = next(block for block in middle_json.pages[4].blocks if isinstance(block, ChartBlock))
+    chart_soup = BeautifulSoup(chart.content[0].content, "html.parser")
+    assert [
+        [cell.get_text(" ", strip=True) for cell in row.find_all(["th", "td"], recursive=False)]
+        for row in chart_soup.find_all("tr")
+    ] == [
+        ["", "系列 1", "系列 2", "系列 3"],
+        ["类别 1", "4.3", "2.4", "2"],
+        ["类别 2", "2.5", "4.4", "2"],
+        ["类别 3", "3.5", "1.8", "3"],
+        ["类别 4", "4.5", "2.8", "5"],
+    ]
+    assert chart.content[0].image_base64 is not None
 
     page_six_lists = [block for block in model_json.pages[5] if block.get("type") == BlockType.LIST]
     assert page_six_lists[0]["attribute"] == "ordered"

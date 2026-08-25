@@ -5,9 +5,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from mineru.backend.postprocess.table_merge import merge_table_content
-from mineru.render.contracts import RenderMode
-from mineru.types import (
+from ....backend.postprocess.table_merge import merge_table_content
+from ...contracts import RenderMode
+from ....types import (
     PAGE_AUXILIARY_BLOCK_TYPES,
     BlockType,
     ContinuableTextBlockBase,

@@ -7,8 +7,8 @@ import torch
 import yaml
 from tqdm import tqdm
 
-from mineru.model.utils.pytorchocr.base_ocr_v20 import BaseOCRV20
-from mineru.model.utils.tools.infer import pytorchocr_utility
+from ..._internal.pytorchocr.base_ocr_v20 import BaseOCRV20
+from ..._internal.pytorchocr.infer import pytorchocr_utility
 
 from ..utils import build_mfr_batch_groups
 from .processors import (
@@ -30,13 +30,13 @@ class FormulaRecognizer(BaseOCRV20):
             weight_dir,
             "PP-FormulaNet_plus-M.pth",
         )
-        self.yaml_path = os.path.join(
-            Path(__file__).parent.parent.parent,
-            "utils",
-            "pytorchocr",
-            "utils",
-            "resources",
-            "pp_formulanet_arch_config.yaml",
+        self.yaml_path = str(
+            Path(__file__).resolve().parents[2]
+            / "_internal"
+            / "pytorchocr"
+            / "utils"
+            / "resources"
+            / "pp_formulanet_arch_config.yaml"
         )
         self.infer_yaml_path = os.path.join(
             weight_dir,

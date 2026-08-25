@@ -6,31 +6,129 @@ import platform
 import sys
 from dataclasses import dataclass
 from importlib import metadata as importlib_metadata
+from typing import Final
 
 from ..types import DEPLOYMENT_TIERS, DeploymentTier, Tier, validate_tier
-from ..utils.backend_options import (
-    CANONICAL_HYBRID_ENGINE,
-    LEGACY_PIPELINE_BACKEND_ALIASES,
-    LEGACY_VLM_BACKEND_ALIASES,
-    SUPPORTED_BACKENDS,
-    effort_for_tier,
-    is_hybrid_backend,
-    normalize_backend,
-)
+
+CANONICAL_HYBRID_ENGINE: Final = "hybrid-engine"
+LOCAL_HYBRID_EFFORT: Final = "medium"
+LAYOUT_HYBRID_EFFORT: Final = "high"
+MAX_HYBRID_EFFORT: Final = "xhigh"
+DEFAULT_BACKEND: Final = CANONICAL_HYBRID_ENGINE
+DEFAULT_HYBRID_EFFORT: Final = LAYOUT_HYBRID_EFFORT
+DEFAULT_EFFORT: Final = DEFAULT_HYBRID_EFFORT
+HYBRID_EFFORT_HELP: Final = "Higher effort improves parsing quality but may be slower; medium is the fastest local Hybrid mode."
+LOCAL_BACKEND_CHOICES: Final[tuple[str, ...]] = (CANONICAL_HYBRID_ENGINE,)
+HTTP_CLIENT_BACKEND_CHOICES: Final[tuple[str, ...]] = ("hybrid-http-client",)
+PUBLIC_BACKEND_CHOICES: Final[tuple[str, ...]] = LOCAL_BACKEND_CHOICES + HTTP_CLIENT_BACKEND_CHOICES
+HYBRID_EFFORT_CHOICES: Final[tuple[str, ...]] = (LOCAL_HYBRID_EFFORT, LAYOUT_HYBRID_EFFORT, MAX_HYBRID_EFFORT)
+HYBRID_EFFORT_BY_TIER: Final[dict[str, str]] = {
+    "flash": "flash",
+    "basic": LOCAL_HYBRID_EFFORT,
+    "standard": LAYOUT_HYBRID_EFFORT,
+    "advanced": MAX_HYBRID_EFFORT,
+}
+BACKEND_SCHEMA_EXTRA: Final[dict[str, list[str]]] = {"enum": list(PUBLIC_BACKEND_CHOICES)}
+HYBRID_EFFORT_SCHEMA_EXTRA: Final[dict[str, list[str]]] = {"enum": list(HYBRID_EFFORT_CHOICES)}
+BACKEND_ALIASES: Final[dict[str, str]] = {
+    "hybrid-auto-engine": CANONICAL_HYBRID_ENGINE,
+    "pipeline": CANONICAL_HYBRID_ENGINE,
+    "vlm-engine": CANONICAL_HYBRID_ENGINE,
+    "vlm-auto-engine": CANONICAL_HYBRID_ENGINE,
+    "vlm-http-client": "hybrid-http-client",
+}
+LEGACY_PIPELINE_BACKEND_ALIASES: Final[frozenset[str]] = frozenset({"pipeline"})
+LEGACY_VLM_BACKEND_ALIASES: Final[frozenset[str]] = frozenset({"vlm-engine", "vlm-auto-engine", "vlm-http-client"})
+SUPPORTED_BACKENDS: Final[tuple[str, ...]] = PUBLIC_BACKEND_CHOICES + ("flash",)
+SUPPORTED_EFFORTS: Final[tuple[str, ...]] = HYBRID_EFFORT_CHOICES
+
+
+def normalize_backend(backend: str | None) -> str:
+    """规范化 backend 名称，并将旧 VLM backend 映射到 Hybrid backend。"""
+    normalized = (backend or "").strip()
+    if normalized in BACKEND_ALIASES:
+        return BACKEND_ALIASES[normalized]
+    if normalized in SUPPORTED_BACKENDS:
+        return normalized
+    raise ValueError(f"Unsupported backend '{backend}'. Supported backends: {', '.join(SUPPORTED_BACKENDS)}")
+
+
+def normalize_public_backend(backend: str | None) -> str:
+    """规范化公开 backend，同时拒绝 flash 和隐藏兼容选项。"""
+    normalized = (backend or "").strip()
+    if normalized in BACKEND_ALIASES:
+        return BACKEND_ALIASES[normalized]
+    if normalized in PUBLIC_BACKEND_CHOICES:
+        return normalized
+    raise ValueError(f"Unsupported backend '{backend}'. Supported backends: {', '.join(PUBLIC_BACKEND_CHOICES)}")
+
+
+def validate_effort(effort: str | None) -> str:
+    """校验 Hybrid effort 只使用 medium、high 或 xhigh。"""
+    normalized = (effort or DEFAULT_EFFORT).strip().lower()
+    if normalized in HYBRID_EFFORT_CHOICES:
+        return normalized
+    raise ValueError(f"Unsupported effort '{effort}'. Supported efforts: {', '.join(HYBRID_EFFORT_CHOICES)}")
+
+
+def effort_for_tier(tier: str | None) -> str:
+    """将公开 tier 映射为对应的 Hybrid effort。"""
+    normalized = (tier or "").strip().lower()
+    if normalized in HYBRID_EFFORT_BY_TIER:
+        return HYBRID_EFFORT_BY_TIER[normalized]
+    supported_tiers = ", ".join(HYBRID_EFFORT_BY_TIER)
+    raise ValueError(f"Unsupported tier '{tier}'. Supported hybrid tiers: {supported_tiers}")
+
+
+def resolve_backend_and_effort(backend: str | None, effort: str | None = None) -> tuple[str, str]:
+    """同时解析 backend 与 effort，并保留旧 backend 的质量档位语义。"""
+    raw_backend = (backend or "").strip()
+    resolved_backend = normalize_backend(raw_backend)
+    resolved_effort = validate_effort(effort)
+    if raw_backend in LEGACY_PIPELINE_BACKEND_ALIASES:
+        resolved_effort = LOCAL_HYBRID_EFFORT
+    elif raw_backend in LEGACY_VLM_BACKEND_ALIASES:
+        resolved_effort = MAX_HYBRID_EFFORT
+    return resolved_backend, resolved_effort
+
+
+def is_hybrid_backend(backend: str) -> bool:
+    """判断规范化后的 backend 是否属于 Hybrid 后端族。"""
+    return normalize_backend(backend).startswith("hybrid-")
+
 
 __all__ = [
+    "BACKEND_SCHEMA_EXTRA",
+    "CANONICAL_HYBRID_ENGINE",
+    "DEFAULT_BACKEND",
+    "DEFAULT_EFFORT",
+    "DEFAULT_HYBRID_EFFORT",
+    "HYBRID_EFFORT_CHOICES",
+    "HYBRID_EFFORT_HELP",
+    "HYBRID_EFFORT_SCHEMA_EXTRA",
+    "LEGACY_PIPELINE_BACKEND_ALIASES",
+    "LEGACY_VLM_BACKEND_ALIASES",
     "PARSER_BACKENDS",
+    "PUBLIC_BACKEND_CHOICES",
     "ParserRuntimeOptions",
+    "SUPPORTED_BACKENDS",
+    "SUPPORTED_EFFORTS",
     "TierDependencyError",
     "backend_for_tier",
     "ensure_tier_runtime_dependencies",
     "installed_distribution_name",
     "missing_modules_for_tier",
+    "effort_for_tier",
+    "is_hybrid_backend",
+    "normalize_backend",
+    "normalize_public_backend",
     "required_modules_for_tier",
     "resolve_runtime_options",
     "resolve_tier_and_backend",
     "runtime_options_for_tier",
     "tier_for_backend",
+    "resolve_backend_and_effort",
+    "validate_effort",
 ]
 
 PARSER_BACKENDS = SUPPORTED_BACKENDS
@@ -171,7 +269,7 @@ def runtime_options_for_tier(
 def required_modules_for_tier(tier: DeploymentTier) -> list[str]:
     if tier not in DEPLOYMENT_TIERS:
         raise ValueError(f"Unsupported deployment tier '{tier}'. Supported tiers: {', '.join(DEPLOYMENT_TIERS)}")
-    from ..utils.config_reader import get_model_stack
+    from ..model.runtime.device import get_model_stack
 
     stack = get_model_stack()
     if stack == "light":

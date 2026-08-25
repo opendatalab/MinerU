@@ -4,7 +4,7 @@
 
 ### 参数传递说明
 > [!TIP]
-> - 所有vllm/lmdeploy官方支持的参数都可用通过命令行参数传递给 MinerU，包括以下命令:`mineru`、`mineru-openai-server`、`mineru-gradio`、`mineru-api`、`mineru-router`
+> - Router 只接受已声明的 worker 参数，不再透传任意 vllm/lmdeploy 参数；这类参数应配置在独立部署的 upstream 服务上。
 > - 命令行参数同时支持 `--foo value` 与 `--foo=value` 两种写法
 > - 如果您想了解更多有关`vllm`的参数使用方法，请参考 [vllm官方文档](https://docs.vllm.ai/en/latest/cli/serve.html)
 > - 如果您想了解更多有关`lmdeploy`的参数使用方法，请参考 [lmdeploy官方文档](https://lmdeploy.readthedocs.io/en/latest/llm/api_server.html)
@@ -17,7 +17,7 @@
 >   ```bash
 >   CUDA_VISIBLE_DEVICES=1 mineru -p <input_path> -o <output_path>
 >   ```
-> - 这种指定方式对所有的命令行调用都有效，包括 `mineru`、`mineru-openai-server`、`mineru-gradio`、`mineru-api`和`mineru-router`，且对`pipeline`、`vlm`后端均适用。
+> - 这种指定方式适用于下文明确说明的模型服务与解析命令，不适用于 `mineru-router`。
 
 ### 常见设备配置示例
 > [!TIP]

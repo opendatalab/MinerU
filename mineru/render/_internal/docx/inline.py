@@ -17,7 +17,7 @@ from docx.shared import Pt, RGBColor
 from lxml import etree
 from loguru import logger
 
-from mineru.render._internal.common.inline import (
+from ....backend.postprocess.inline import (
     InlineEquation,
     InlineLink,
     InlineNode,
@@ -27,7 +27,7 @@ from mineru.render._internal.common.inline import (
     join_inline_contents,
     parse_inline_content,
 )
-from mineru.render._internal.docx.math import DocxFormulaError, latex_to_omml
+from .math import DocxFormulaError, latex_to_omml
 
 _BOOKMARK_SAFE_RE = re.compile(r"[^A-Za-z0-9_]+")
 _BOOKMARK_MAX_LENGTH = 40

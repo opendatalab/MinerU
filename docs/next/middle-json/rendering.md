@@ -28,7 +28,7 @@ markdown = render(
 
 | `RenderFormat` | Options | 返回类型 |
 | --- | --- | --- |
-| `MARKDOWN` | `MarkdownRenderOptions(mode, asset_base_url)` | `str` |
+| `MARKDOWN` | `MarkdownRenderOptions(mode, asset_base_url, image_renderer)` | `str` |
 | `HTML` | `HtmlRenderOptions(mode, asset_base_url, standalone, document_title)` | `str` |
 | `DOCX` | `DocxRenderOptions(mode, asset_resolver)` | `bytes` |
 | `STRUCTURED_CONTENT` | `StructuredContentRenderOptions(asset_base_url)` | `dict[str, Any]` |
@@ -65,6 +65,11 @@ backend 参数或旧 `Line/Span` renderer。渲染过程基于深拷贝，不修
 
 图片优先使用 `image_path`，缺失时使用 `image_base64` data URI。
 `asset_base_url` 只给相对 `image_path` 和 HTML 内相对 `img src` 添加前缀。
+
+`ImageRenderer` 是从 `mineru.render` 导出的 Block 级图片扩展契约。传入自定义 renderer 时，
+image block 及无结构内容的 table/chart/equation 可以改用调用方提供的图片引用；结构化 table
+仍保留文本或表格内容，但会移除由自定义 renderer 接管的内嵌 `<img>`。清理后只剩图片的
+table 会回退到自定义 renderer。
 
 ## 可编辑 DOCX
 

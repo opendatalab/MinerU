@@ -5,7 +5,7 @@ import sys
 from loguru import logger
 
 from ...model.vlm.engine_utils import set_lmdeploy_backend
-from ...utils.model_registry import MINERU_2_5_PRO_2605_1_2B
+from ...model.registry import MINERU_2_5_PRO_2605_1_2B
 
 
 def main() -> None:
