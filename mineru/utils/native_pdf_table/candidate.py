@@ -115,6 +115,21 @@ def _order_consistency(
     return ordered_pairs / comparable if comparable else 1.0
 
 
+def _count_split_tokens(
+    text: NativeTableText,
+    assignments: dict[int, int],
+) -> int:
+    """统计字符被分配到多个逻辑单元格的原子 token。"""
+
+    split_count = 0
+    for row in text.rows:
+        for token in row.tokens:
+            owners = {assignments[glyph_id] for glyph_id in token.glyph_ids if glyph_id in assignments}
+            if len(owners) > 1:
+                split_count += 1
+    return split_count
+
+
 def build_candidate(
     *,
     source: NativeTableCandidateSource,
@@ -128,6 +143,8 @@ def build_candidate(
     issues: tuple[str, ...] = (),
     allow_single_row: bool = False,
     allow_single_column: bool = False,
+    require_atomic_tokens: bool = False,
+    diagnostics: dict[str, object] | None = None,
 ) -> NativeTableCandidate | None:
     """校验网格、唯一分配字符并计算统一质量分。"""
 
@@ -138,6 +155,8 @@ def build_candidate(
         allow_single_row=allow_single_row,
         allow_single_column=allow_single_column,
     ):
+        if diagnostics is not None:
+            diagnostics["candidate_rejection_gate"] = "grid_specs"
         return None
     assignments: dict[int, int] = {}
     cell_glyphs: list[list[NativeTableGlyph]] = [[] for _ in specs]
@@ -153,7 +172,17 @@ def build_candidate(
     glyph_count = len(text.glyphs)
     text_capture = len(assignments) / glyph_count if glyph_count else 0.0
     ambiguous_ratio = ambiguous_count / glyph_count if glyph_count else 0.0
+    split_token_count = _count_split_tokens(text, assignments)
+    if diagnostics is not None:
+        diagnostics["token_split_count"] = split_token_count
+        diagnostics["ambiguous_glyph_ratio"] = ambiguous_ratio
     if text_capture < MIN_TEXT_CAPTURE or ambiguous_ratio > 0.02:
+        if diagnostics is not None:
+            diagnostics["candidate_rejection_gate"] = "text_assignment"
+        return None
+    if require_atomic_tokens and split_token_count:
+        if diagnostics is not None:
+            diagnostics["candidate_rejection_gate"] = "token_split"
         return None
     cells = tuple(
         NativeTableCell(
@@ -187,6 +216,8 @@ def build_candidate(
         normalized_column,
         order_consistency,
     )
+    if diagnostics is not None:
+        diagnostics["candidate_rejection_gate"] = None
     return NativeTableCandidate(
         source=source,
         rows=rows,

@@ -19,7 +19,7 @@ from .contracts import (
 )
 from .geometry import bbox_intersection, normalize_bbox
 from .text import build_native_table_text
-from .text_grid import build_text_candidates
+from .text_grid import build_text_candidates, diagnose_text_candidate_builds
 from .vector import (
     MAX_PRIMITIVES_PER_TABLE,
     build_vector_candidates,
@@ -50,6 +50,7 @@ class _CandidateEvaluation:
     generated_candidates: tuple[NativeTableCandidate, ...]
     candidates: tuple[NativeTableCandidate, ...]
     selected: NativeTableCandidate | None
+    physical_topology_conflict: bool
     first_rejection_gate: str | None
 
 
@@ -61,6 +62,45 @@ def _is_verified_line_candidate(candidate: NativeTableCandidate) -> bool:
         and candidate.score >= 0.95
         and "evidence=line_grid" in candidate.issues
         and "ambiguous_separator_ratio=0.0000" in candidate.issues
+    )
+
+
+def _is_verified_rect_candidate(candidate: NativeTableCandidate) -> bool:
+    """判断候选是否由无歧义矩形晶格独立验证。"""
+
+    return (
+        candidate.source == "vector_grid"
+        and candidate.score >= 0.95
+        and "evidence=rect_grid" in candidate.issues
+        and "ambiguous_separator_ratio=0.0000" in candidate.issues
+    )
+
+
+def _has_line_rect_topology_conflict(
+    candidates: Iterable[NativeTableCandidate],
+) -> bool:
+    """判断两类独立物理证据是否给出不同拓扑。"""
+
+    materialized = list(candidates)
+    line_candidates = [candidate for candidate in materialized if _is_verified_line_candidate(candidate)]
+    rect_candidates = [candidate for candidate in materialized if _is_verified_rect_candidate(candidate)]
+    return any(line.topology != rect.topology for line in line_candidates for rect in rect_candidates)
+
+
+def _has_attempted_line_rect_grid_conflict(
+    attempts: Iterable[dict[str, Any]],
+) -> bool:
+    """判断已恢复轨道的 line/rect 物理假设是否在行列数上冲突。"""
+
+    materialized = list(attempts)
+    line_grids = [attempt.get("grid") for attempt in materialized if attempt.get("evidence") == "line_grid"]
+    rect_grids = [attempt.get("grid") for attempt in materialized if attempt.get("evidence") == "rect_grid"]
+    return any(
+        isinstance(line, dict)
+        and isinstance(rect, dict)
+        and (line.get("rows"), line.get("cols")) != (rect.get("rows"), rect.get("cols"))
+        for line in line_grids
+        for rect in rect_grids
     )
 
 
@@ -178,6 +218,20 @@ def _has_alias_affected_physical_blank_row(
     return False
 
 
+def _has_physical_row_undercount(
+    vector_attempts: tuple[dict[str, Any], ...],
+) -> bool:
+    """判断 line-grid 及其有限轨道假设是否已发现物理行欠分割。"""
+
+    for attempt in vector_attempts:
+        if attempt.get("evidence") != "line_grid":
+            continue
+        hypotheses = [attempt, *attempt.get("track_hypotheses", [])]
+        if any(hypothesis.get("first_rejection_gate") == "physical_row_undercount" for hypothesis in hypotheses):
+            return True
+    return False
+
+
 def _table_primitive_count(table_input: NativeTableInput) -> int:
     """统计实际与目标表格相交的 drawing 和矩形数量。"""
 
@@ -199,6 +253,8 @@ def _select_candidate(
 
     accepted = [candidate for candidate in candidates if _passes_verified_threshold(candidate)]
     if not accepted:
+        return None
+    if _has_line_rect_topology_conflict(accepted):
         return None
     verified_line_candidates = [candidate for candidate in accepted if _is_verified_line_candidate(candidate)]
     if len(verified_line_candidates) == 1:
@@ -242,6 +298,7 @@ def _evaluate_native_pdf_table(
             (),
             (),
             None,
+            False,
             "input_geometry",
         )
     if primitive_count > MAX_PRIMITIVES_PER_TABLE:
@@ -251,6 +308,7 @@ def _evaluate_native_pdf_table(
             (),
             (),
             None,
+            False,
             "primitive_limit",
         )
     text = build_native_table_text(table_input)
@@ -261,20 +319,30 @@ def _evaluate_native_pdf_table(
             (),
             (),
             None,
+            False,
             "native_text",
         )
     vector_candidates = build_vector_candidates(table_input, text)
-    text_candidates = build_text_candidates(table_input, text) if len(text.rows) >= 2 else []
-    if not vector_candidates and text_candidates:
+    vector_attempts: tuple[dict[str, Any], ...] = ()
+    physical_topology_conflict = False
+    if any(_is_verified_rect_candidate(candidate) for candidate in vector_candidates):
         vector_attempts = diagnose_vector_candidate_builds(
             table_input,
             text,
         )
-        if _has_alias_affected_physical_blank_row(vector_attempts):
+        physical_topology_conflict = _has_attempted_line_rect_grid_conflict(vector_attempts)
+    text_candidates = build_text_candidates(table_input, text) if len(text.rows) >= 2 else []
+    if text_candidates and (not vector_candidates or physical_topology_conflict):
+        if not vector_attempts:
+            vector_attempts = diagnose_vector_candidate_builds(
+                table_input,
+                text,
+            )
+        if _has_alias_affected_physical_blank_row(vector_attempts) or _has_physical_row_undercount(vector_attempts):
             text_candidates = []
     generated_candidates = [*vector_candidates, *text_candidates]
     candidates = _remove_undercounted_vector_candidates(generated_candidates)
-    selected = _select_candidate(candidates)
+    selected = None if physical_topology_conflict else _select_candidate(candidates)
     if selected is not None:
         first_rejection_gate = None
     elif not generated_candidates:
@@ -291,6 +359,7 @@ def _evaluate_native_pdf_table(
         tuple(generated_candidates),
         tuple(candidates),
         selected,
+        physical_topology_conflict,
         first_rejection_gate,
     )
 
@@ -307,13 +376,36 @@ def diagnose_native_pdf_table(table_input: NativeTableInput) -> dict[str, Any]:
         if evaluation.text is not None
         else ()
     )
+    text_attempts = (
+        diagnose_text_candidate_builds(
+            table_input,
+            evaluation.text,
+        )
+        if evaluation.text is not None
+        else ()
+    )
     first_rejection_gate = evaluation.first_rejection_gate
     if first_rejection_gate == "candidate_generation":
+        text_attempt = next(
+            (
+                attempt
+                for attempt in text_attempts
+                if attempt.get("first_rejection_gate")
+                in {
+                    "dense_row_ambiguity",
+                    "header_requires_rowspan",
+                    "token_split",
+                }
+            ),
+            None,
+        )
         line_attempt = next(
             (attempt for attempt in vector_attempts if attempt.get("evidence") == "line_grid"),
             None,
         )
-        if line_attempt is not None and line_attempt.get("first_rejection_gate"):
+        if text_attempt is not None:
+            first_rejection_gate = "text_" + str(text_attempt["first_rejection_gate"])
+        elif line_attempt is not None and line_attempt.get("first_rejection_gate"):
             first_rejection_gate = "vector_" + str(line_attempt["first_rejection_gate"])
 
     def candidate_record(
@@ -363,7 +455,11 @@ def diagnose_native_pdf_table(table_input: NativeTableInput) -> dict[str, Any]:
         "glyph_count": len(evaluation.text.glyphs) if evaluation.text else 0,
         "visual_text_rows": len(evaluation.text.rows) if evaluation.text else 0,
         "first_rejection_gate": first_rejection_gate,
+        "line_rect_topology_conflict": (
+            evaluation.physical_topology_conflict or _has_line_rect_topology_conflict(evaluation.candidates)
+        ),
         "vector_attempts": list(vector_attempts),
+        "text_attempts": list(text_attempts),
         "generated_candidates": [candidate_record(candidate) for candidate in evaluation.generated_candidates],
         "removed_by_undercount": removed_candidates,
         "counterfactual_best": (candidate_record(counterfactual_best) if counterfactual_best is not None else None),

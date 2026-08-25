@@ -3,8 +3,11 @@
 
 from __future__ import annotations
 
+import math
 import statistics
 from collections import Counter
+from dataclasses import dataclass
+from typing import Any
 
 from .candidate import GridCellSpec, build_candidate
 from .contracts import (
@@ -23,6 +26,15 @@ from .geometry import (
 )
 
 MIN_COLUMN_ANCHOR_SUPPORT = 0.60
+
+
+@dataclass(frozen=True, slots=True)
+class _LogicalRowGrouping:
+    """保存视觉行分组结果及不宜自动合并的稠密行对。"""
+
+    rows: tuple[NativeTableTextRow, ...]
+    dense_ambiguities: tuple[tuple[int, int], ...]
+    subset_merges: tuple[tuple[int, int], ...]
 
 
 def _infer_target_column_count(text: NativeTableText) -> int | None:
@@ -177,30 +189,40 @@ def _group_logical_rows(
     table_input: NativeTableInput,
     text: NativeTableText,
     x_tracks: list[float],
-) -> tuple[NativeTableTextRow, ...]:
+) -> _LogicalRowGrouping:
     """保守合并同格内紧邻 continuation，避免 baseline 直接等同逻辑行。"""
 
     groups: list[list[NativeTableTextRow]] = []
     group_occupancy: list[set[int]] = []
+    dense_ambiguities: list[tuple[int, int]] = []
+    subset_merges: list[tuple[int, int]] = []
     maximum_gap = max(0.75, 0.40 * text.median_glyph_height)
+    target_cols = len(x_tracks) - 1
+    dense_column_count = max(2, math.ceil(MIN_COLUMN_ANCHOR_SUPPORT * target_cols))
     for row in text.rows:
         columns = _token_columns(row, x_tracks)
         occupancy = set(columns or [])
         if groups:
             previous = groups[-1][-1]
             gap = row.bbox[1] - previous.bbox[3]
-            can_continue = (
-                bool(occupancy)
-                and occupancy.issubset(group_occupancy[-1])
+            has_horizontal_rule = _has_horizontal_rule_between(
+                table_input,
+                previous,
+                row,
+            )
+            if (
+                occupancy == group_occupancy[-1]
+                and len(occupancy) >= dense_column_count
                 and gap <= maximum_gap
-                and not _has_horizontal_rule_between(
-                    table_input,
-                    previous,
-                    row,
-                )
+                and not has_horizontal_rule
+            ):
+                dense_ambiguities.append((previous.row_index, row.row_index))
+            can_continue = (
+                bool(occupancy) and occupancy < group_occupancy[-1] and gap <= maximum_gap and not has_horizontal_rule
             )
             if can_continue:
                 groups[-1].append(row)
+                subset_merges.append((previous.row_index, row.row_index))
                 continue
         groups.append([row])
         group_occupancy.append(occupancy)
@@ -220,7 +242,36 @@ def _group_logical_rows(
                 glyph_ids=tuple(glyph_id for row in group for glyph_id in row.glyph_ids),
             )
         )
-    return tuple(logical_rows)
+    return _LogicalRowGrouping(
+        rows=tuple(logical_rows),
+        dense_ambiguities=tuple(dense_ambiguities),
+        subset_merges=tuple(subset_merges),
+    )
+
+
+def _header_rows_are_representable(
+    rows: tuple[NativeTableTextRow, ...],
+    x_tracks: list[float],
+    first_dense_row: int,
+) -> bool:
+    """校验前导多层表头能否仅用当前 colspan 逻辑完整表达。"""
+
+    if first_dense_row < 1:
+        return True
+    all_columns = set(range(len(x_tracks) - 1))
+    for row_index in range(first_dense_row):
+        row = rows[row_index]
+        spans = _grouped_header_spans(row, rows[row_index + 1], x_tracks) if row_index + 1 < len(rows) else None
+        if spans is not None:
+            coverage = {col for start_col, end_col in spans for col in range(start_col, end_col + 1)}
+        else:
+            token_columns = _token_columns(row, x_tracks)
+            if token_columns is None:
+                return False
+            coverage = set(token_columns)
+        if coverage != all_columns:
+            return False
+    return True
 
 
 def _single_header_span(
@@ -411,37 +462,66 @@ def _build_aligned_candidate(
     require_three_rows: bool,
     require_three_cols: bool,
     physical_support: float,
+    diagnostics: dict[str, Any] | None = None,
 ) -> NativeTableCandidate | None:
     """按统一文本轨道构造 sparse、wireless 或 key-value 候选。"""
 
+    if diagnostics is not None:
+        diagnostics["source"] = source
+        diagnostics["raw_visual_rows"] = len(text.rows)
+
+    def reject(gate: str) -> None:
+        """记录文本候选的首个拒绝门。"""
+
+        if diagnostics is not None:
+            diagnostics["first_rejection_gate"] = gate
+        return None
+
     target_cols = _infer_target_column_count(text)
     if target_cols is None:
-        return None
+        return reject("column_count")
     if require_three_cols and target_cols < 3:
-        return None
+        return reject("column_count")
     if source == "key_value" and target_cols != 2:
-        return None
+        return reject("column_count")
     if require_three_rows and len(text.rows) < 3:
-        return None
+        return reject("row_count")
 
     table_bbox = normalize_bbox(table_input.table_bbox)
     if table_bbox is None:
-        return None
+        return reject("table_geometry")
     width, height = table_local_size(table_bbox, normalize_angle(table_input.angle))
     column_result = _infer_column_tracks(text, width, target_cols)
     if column_result is None:
-        return None
+        return reject("column_tracks")
     x_tracks, anchor_support, alignment_support = column_result
-    logical_rows = _group_logical_rows(
+    grouping = _group_logical_rows(
         table_input,
         text,
         x_tracks,
     )
+    logical_rows = grouping.rows
+    if diagnostics is not None:
+        diagnostics["logical_rows"] = len(logical_rows)
+        diagnostics["dense_row_ambiguities"] = [list(pair) for pair in grouping.dense_ambiguities]
+        diagnostics["subset_continuation_merges"] = [list(pair) for pair in grouping.subset_merges]
+    if grouping.dense_ambiguities:
+        return reject("dense_row_ambiguity")
     y_tracks = _infer_row_tracks(logical_rows, height)
     if y_tracks is None:
-        return None
+        return reject("row_tracks")
     dense_row_indices = [row.row_index for row in logical_rows if len(set(_token_columns(row, x_tracks) or [])) == target_cols]
     first_dense_row = min(dense_row_indices) if dense_row_indices else 0
+    header_representable = _header_rows_are_representable(
+        logical_rows,
+        x_tracks,
+        first_dense_row,
+    )
+    if diagnostics is not None:
+        diagnostics["first_dense_row"] = first_dense_row
+        diagnostics["header_representable"] = header_representable
+    if not header_representable:
+        return reject("header_requires_rowspan")
     specs_result = _build_text_grid_specs(
         logical_rows,
         x_tracks,
@@ -449,12 +529,12 @@ def _build_aligned_candidate(
         first_dense_row,
     )
     if specs_result is None:
-        return None
+        return reject("grid_specs")
     specs, row_stability = specs_result
     if row_stability < MIN_COLUMN_ANCHOR_SUPPORT:
-        return None
+        return reject("row_stability")
     structure_support = max(anchor_support, physical_support) if source == "sparse_grid" else alignment_support
-    return build_candidate(
+    candidate = build_candidate(
         source=source,
         rows=len(logical_rows),
         cols=target_cols,
@@ -463,18 +543,30 @@ def _build_aligned_candidate(
         structure_support=structure_support,
         row_stability=row_stability,
         column_stability=alignment_support,
+        require_atomic_tokens=True,
+        diagnostics=diagnostics,
     )
+    if candidate is None:
+        if diagnostics is not None and diagnostics.get("first_rejection_gate") is None:
+            diagnostics["first_rejection_gate"] = diagnostics.get("candidate_rejection_gate", "candidate_hard_gate")
+        return None
+    if diagnostics is not None:
+        diagnostics["first_rejection_gate"] = None
+        diagnostics["score"] = candidate.score
+    return candidate
 
 
 def build_text_candidates(
     table_input: NativeTableInput,
     text: NativeTableText,
+    diagnostics: list[dict[str, Any]] | None = None,
 ) -> list[NativeTableCandidate]:
     """同时生成少线、三列以上无线表和两列 key-value 候选。"""
 
     candidates: list[NativeTableCandidate] = []
     physical_support = _physical_sparse_evidence(table_input, text)
     if physical_support > 0:
+        sparse_diagnostics: dict[str, Any] | None = {} if diagnostics is not None else None
         sparse = _build_aligned_candidate(
             table_input=table_input,
             text=text,
@@ -482,10 +574,14 @@ def build_text_candidates(
             require_three_rows=False,
             require_three_cols=False,
             physical_support=physical_support,
+            diagnostics=sparse_diagnostics,
         )
+        if diagnostics is not None and sparse_diagnostics is not None:
+            diagnostics.append(sparse_diagnostics)
         if sparse is not None:
             candidates.append(sparse)
 
+    text_diagnostics: dict[str, Any] | None = {} if diagnostics is not None else None
     text_grid = _build_aligned_candidate(
         table_input=table_input,
         text=text,
@@ -493,10 +589,14 @@ def build_text_candidates(
         require_three_rows=True,
         require_three_cols=True,
         physical_support=0.0,
+        diagnostics=text_diagnostics,
     )
+    if diagnostics is not None and text_diagnostics is not None:
+        diagnostics.append(text_diagnostics)
     if text_grid is not None:
         candidates.append(text_grid)
 
+    key_value_diagnostics: dict[str, Any] | None = {} if diagnostics is not None else None
     key_value = _build_aligned_candidate(
         table_input=table_input,
         text=text,
@@ -504,10 +604,28 @@ def build_text_candidates(
         require_three_rows=True,
         require_three_cols=False,
         physical_support=0.0,
+        diagnostics=key_value_diagnostics,
     )
+    if diagnostics is not None and key_value_diagnostics is not None:
+        diagnostics.append(key_value_diagnostics)
     if key_value is not None:
         candidates.append(key_value)
     return candidates
+
+
+def diagnose_text_candidate_builds(
+    table_input: NativeTableInput,
+    text: NativeTableText,
+) -> tuple[dict[str, Any], ...]:
+    """重放文本候选构造并返回不含单元格全文的诊断。"""
+
+    diagnostics: list[dict[str, Any]] = []
+    build_text_candidates(
+        table_input,
+        text,
+        diagnostics=diagnostics,
+    )
+    return tuple(diagnostics)
 
 
 __all__ = ["build_text_candidates"]

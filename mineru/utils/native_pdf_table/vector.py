@@ -1084,6 +1084,60 @@ def _text_grid_stability(
     )
 
 
+def _physical_row_dense_baseline_pairs(
+    text: NativeTableText,
+    x_tracks: list[float],
+    y_tracks: list[float],
+) -> tuple[dict[str, object], ...]:
+    """识别同一物理行带内占用集合相同的多条稠密文本基线。"""
+
+    cols = len(x_tracks) - 1
+    dense_column_count = max(2, math.ceil(0.60 * cols))
+    rows_by_band: dict[int, list[tuple[int, tuple[int, ...]]]] = {row: [] for row in range(len(y_tracks) - 1)}
+    for text_row in text.rows:
+        center_y = (text_row.bbox[1] + text_row.bbox[3]) / 2.0
+        band = next(
+            (row for row, (top, bottom) in enumerate(zip(y_tracks, y_tracks[1:])) if top <= center_y <= bottom),
+            None,
+        )
+        if band is None:
+            continue
+        occupied_cols: set[int] = set()
+        for token in text_row.tokens:
+            center_x = (token.bbox[0] + token.bbox[2]) / 2.0
+            col = next(
+                (index for index, (left, right) in enumerate(zip(x_tracks, x_tracks[1:])) if left <= center_x <= right),
+                None,
+            )
+            if col is not None:
+                occupied_cols.add(col)
+        rows_by_band[band].append(
+            (
+                text_row.row_index,
+                tuple(sorted(occupied_cols)),
+            )
+        )
+
+    ambiguous_pairs: list[dict[str, object]] = []
+    for band, entries in rows_by_band.items():
+        nonempty_entries = [entry for entry in entries if entry[1]]
+        if (
+            len(nonempty_entries) < 2
+            or len(nonempty_entries[0][1]) < dense_column_count
+            or any(entry[1] != nonempty_entries[0][1] for entry in nonempty_entries[1:])
+        ):
+            continue
+        for previous, current in zip(nonempty_entries, nonempty_entries[1:]):
+            ambiguous_pairs.append(
+                {
+                    "physical_row": band,
+                    "visual_rows": [previous[0], current[0]],
+                    "occupied_cols": list(previous[1]),
+                }
+            )
+    return tuple(ambiguous_pairs)
+
+
 def _looks_like_single_column_tracks(
     x_tracks: list[float],
     local_width: float,
@@ -1359,8 +1413,23 @@ def _build_vector_candidate(
         return reject("track_count")
     rows = len(y_tracks) - 1
     cols = len(x_tracks) - 1
+    if diagnostics is not None:
+        diagnostics["grid"] = {"rows": rows, "cols": cols}
     if rows * cols > MAX_ATOMIC_CELLS:
         return reject("atomic_cell_limit")
+    dense_baseline_pairs = (
+        _physical_row_dense_baseline_pairs(
+            text,
+            x_tracks,
+            y_tracks,
+        )
+        if is_line_grid
+        else ()
+    )
+    if diagnostics is not None:
+        diagnostics["physical_row_dense_baseline_pairs"] = list(dense_baseline_pairs)
+    if dense_baseline_pairs:
+        return reject("physical_row_undercount")
 
     union_find = _UnionFind(rows * cols)
     separator_decisions: list[float] = []
@@ -1606,9 +1675,15 @@ def _build_vector_candidate(
         ),
         allow_single_row=is_single_row_shape,
         allow_single_column=is_single_column_shape,
+        diagnostics=diagnostics,
     )
     if candidate is None:
-        return reject("candidate_hard_gate")
+        candidate_gate = (
+            str(diagnostics.get("candidate_rejection_gate"))
+            if diagnostics is not None and diagnostics.get("candidate_rejection_gate")
+            else "candidate_hard_gate"
+        )
+        return reject(candidate_gate)
     if is_single_row_shape and (candidate.text_capture < 1.0 or candidate.order_consistency < 1.0):
         return reject("single_row_text_integrity")
     if is_single_column_shape and (candidate.text_capture < 1.0 or candidate.order_consistency < 1.0):

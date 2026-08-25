@@ -18,6 +18,7 @@ from mineru.utils.native_pdf_table import (
     coerce_native_table_rules,
     recover_native_pdf_table,
 )
+from mineru.utils.native_pdf_table.candidate import GridCellSpec, build_candidate
 from mineru.utils.native_pdf_table.contracts import NativeTableCandidate
 from mineru.utils.native_pdf_table.engine import (
     _remove_undercounted_vector_candidates,
@@ -346,7 +347,7 @@ def test_vector_grid_recovers_cells_and_escapes_html() -> None:
 
 
 def test_vector_grid_splits_one_pdf_text_run_by_character_boundary() -> None:
-    """验证同一原生文本对象横跨两列时仍按逐字符 bbox 唯一落格。"""
+    """验证物理列边界可将同一 PDF 文本对象按字符安全落格。"""
 
     table_input = NativeTableInput(
         table_bbox=(0.0, 0.0, 100.0, 60.0),
@@ -366,6 +367,49 @@ def test_vector_grid_splits_one_pdf_text_run_by_character_boundary() -> None:
 
     assert result is not None
     assert "<tr><td>A</td><td>B</td></tr>" in result.html
+
+
+def test_text_candidate_rejects_token_split_across_cell_boundary() -> None:
+    """验证纯文本轨道不将一个原子 token 分割到两个逻辑单元格。"""
+
+    table_input = NativeTableInput(
+        table_bbox=(0.0, 0.0, 100.0, 60.0),
+        page_size=(100.0, 60.0),
+        angle=0,
+        chars=_char_items(
+            [
+                ("AB", (45.0, 10.0, 55.0, 18.0)),
+                ("C", (10.0, 40.0, 15.0, 48.0)),
+                ("D", (60.0, 40.0, 65.0, 48.0)),
+            ]
+        ),
+    )
+    text = build_native_table_text(table_input)
+    assert text is not None
+    specs = (
+        GridCellSpec(0, 0, 1, 1, (0.0, 0.0, 50.0, 30.0)),
+        GridCellSpec(0, 1, 1, 1, (50.0, 0.0, 100.0, 30.0)),
+        GridCellSpec(1, 0, 1, 1, (0.0, 30.0, 50.0, 60.0)),
+        GridCellSpec(1, 1, 1, 1, (50.0, 30.0, 100.0, 60.0)),
+    )
+    diagnostics: dict[str, object] = {}
+
+    candidate = build_candidate(
+        source="text_grid",
+        rows=2,
+        cols=2,
+        specs=specs,
+        text=text,
+        structure_support=1.0,
+        row_stability=1.0,
+        column_stability=1.0,
+        require_atomic_tokens=True,
+        diagnostics=diagnostics,
+    )
+
+    assert candidate is None
+    assert diagnostics["candidate_rejection_gate"] == "token_split"
+    assert diagnostics["token_split_count"] == 1
 
 
 def test_vector_grid_accepts_open_outer_vertical_edges() -> None:
@@ -423,6 +467,52 @@ def test_single_long_rule_endpoint_does_not_create_global_column() -> None:
 
     assert result is not None
     assert (result.rows, result.cols) == (2, 2)
+
+
+def test_line_grid_rejects_multiple_dense_baselines_inside_one_physical_row() -> None:
+    """验证只有表头横线的强竖轨表不把多条数据基线压成一行。"""
+
+    rules = (
+        NativeTableRule((0.0, 0.0, 120.0, 1.0), 1.0, "horizontal"),
+        NativeTableRule((0.0, 19.5, 120.0, 20.5), 1.0, "horizontal"),
+        NativeTableRule((0.0, 59.0, 120.0, 60.0), 1.0, "horizontal"),
+        NativeTableRule((0.0, 0.0, 1.0, 60.0), 1.0, "vertical"),
+        NativeTableRule((39.5, 0.0, 40.5, 60.0), 1.0, "vertical"),
+        NativeTableRule((79.5, 0.0, 80.5, 60.0), 1.0, "vertical"),
+        NativeTableRule((119.0, 0.0, 120.0, 60.0), 1.0, "vertical"),
+    )
+    table_input = NativeTableInput(
+        table_bbox=(0.0, 0.0, 120.0, 60.0),
+        page_size=(120.0, 60.0),
+        angle=0,
+        chars=_char_items(
+            [
+                ("H1", (8.0, 5.0, 16.0, 13.0)),
+                ("H2", (48.0, 5.0, 56.0, 13.0)),
+                ("H3", (88.0, 5.0, 96.0, 13.0)),
+                ("A", (8.0, 27.0, 12.0, 35.0)),
+                ("1", (48.0, 27.0, 52.0, 35.0)),
+                ("2", (88.0, 27.0, 92.0, 35.0)),
+                ("B", (8.0, 42.0, 12.0, 50.0)),
+                ("3", (48.0, 42.0, 52.0, 50.0)),
+                ("4", (88.0, 42.0, 92.0, 50.0)),
+            ]
+        ),
+        drawing_lines=rules,
+    )
+
+    diagnostics = diagnose_native_pdf_table(table_input)
+
+    assert recover_native_pdf_table(table_input) is None
+    line_attempt = next(attempt for attempt in diagnostics["vector_attempts"] if attempt["evidence"] == "line_grid")
+    assert line_attempt["first_rejection_gate"] == "physical_row_undercount"
+    assert line_attempt["physical_row_dense_baseline_pairs"] == [
+        {
+            "physical_row": 1,
+            "visual_rows": [1, 2],
+            "occupied_cols": [0, 1, 2],
+        }
+    ]
 
 
 def test_vector_grid_joins_small_collinear_gaps() -> None:
@@ -1388,6 +1478,36 @@ def test_text_grid_groups_tight_subset_continuation_without_break() -> None:
     assert "<tr><td>A1A2</td><td>B1</td><td>C1</td></tr>" in result.html
 
 
+def test_text_grid_rejects_tight_equal_dense_baselines() -> None:
+    """验证紧邻且占用列相同的稠密基线不被冒充续行合并。"""
+
+    table_input = NativeTableInput(
+        table_bbox=(0.0, 0.0, 120.0, 75.0),
+        page_size=(120.0, 75.0),
+        angle=0,
+        chars=_char_items(
+            [
+                ("A1", (8.0, 5.0, 16.0, 13.0)),
+                ("B1", (48.0, 5.0, 56.0, 13.0)),
+                ("C1", (88.0, 5.0, 96.0, 13.0)),
+                ("A2", (8.0, 14.0, 16.0, 22.0)),
+                ("B2", (48.0, 14.0, 56.0, 22.0)),
+                ("C2", (88.0, 14.0, 96.0, 22.0)),
+                ("A3", (8.0, 50.0, 16.0, 58.0)),
+                ("B3", (48.0, 50.0, 56.0, 58.0)),
+                ("C3", (88.0, 50.0, 96.0, 58.0)),
+            ]
+        ),
+    )
+
+    diagnostics = diagnose_native_pdf_table(table_input)
+
+    assert recover_native_pdf_table(table_input) is None
+    text_attempt = next(attempt for attempt in diagnostics["text_attempts"] if attempt["source"] == "text_grid")
+    assert text_attempt["first_rejection_gate"] == "dense_row_ambiguity"
+    assert text_attempt["dense_row_ambiguities"] == [[0, 1]]
+
+
 def test_text_grid_accepts_right_aligned_numeric_columns() -> None:
     """验证数字宽度变化但右缘稳定时仍能恢复同一列结构。"""
 
@@ -1441,6 +1561,34 @@ def test_text_grid_recovers_conservative_multicolumn_header() -> None:
 
     assert result is not None
     assert '<td colspan="3">ABCDEFGHIJKLMNOPQR</td>' in result.html
+
+
+def test_text_grid_rejects_header_that_requires_rowspan() -> None:
+    """验证表头角落空缺且需要 rowspan 才能还原时不生成伪网格。"""
+
+    table_input = NativeTableInput(
+        table_bbox=(0.0, 0.0, 120.0, 90.0),
+        page_size=(120.0, 90.0),
+        angle=0,
+        chars=_char_items(
+            [
+                ("Metrics", (52.0, 5.0, 104.0, 13.0)),
+                ("Name", (8.0, 30.0, 24.0, 38.0)),
+                ("Q1", (48.0, 30.0, 56.0, 38.0)),
+                ("Q2", (88.0, 30.0, 96.0, 38.0)),
+                ("A", (8.0, 60.0, 12.0, 68.0)),
+                ("1", (48.0, 60.0, 52.0, 68.0)),
+                ("2", (88.0, 60.0, 92.0, 68.0)),
+            ]
+        ),
+    )
+
+    diagnostics = diagnose_native_pdf_table(table_input)
+
+    assert recover_native_pdf_table(table_input) is None
+    text_attempt = next(attempt for attempt in diagnostics["text_attempts"] if attempt["source"] == "text_grid")
+    assert text_attempt["first_rejection_gate"] == "header_requires_rowspan"
+    assert text_attempt["header_representable"] is False
 
 
 def test_key_value_candidate_handles_two_stable_columns() -> None:
@@ -1544,6 +1692,33 @@ def test_verified_line_grid_wins_conflicting_text_topology() -> None:
     text = _candidate(source="text_grid", rows=3, cols=4, score=1.0)
 
     assert _select_candidate([line, text]) is line
+
+
+def test_verified_line_and_rect_topology_conflict_abstains() -> None:
+    """验证两类独立物理证据拓扑不一致时不由 line-grid 抢占。"""
+
+    line = _candidate(
+        source="vector_grid",
+        rows=2,
+        cols=2,
+        score=1.0,
+        issues=(
+            "evidence=line_grid",
+            "ambiguous_separator_ratio=0.0000",
+        ),
+    )
+    rect = _candidate(
+        source="vector_grid",
+        rows=3,
+        cols=2,
+        score=1.0,
+        issues=(
+            "evidence=rect_grid",
+            "ambiguous_separator_ratio=0.0000",
+        ),
+    )
+
+    assert _select_candidate([line, rect]) is None
 
 
 def test_text_candidate_removes_significantly_undercounted_vector() -> None:
