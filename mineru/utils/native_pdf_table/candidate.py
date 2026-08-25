@@ -141,13 +141,17 @@ def _choose_cell_for_glyph_indexed(
     cols = len(index.x_tracks) - 1
     rows = len(index.y_tracks) - 1
     left_col = max(0, min(cols - 1, bisect_right(index.x_tracks, glyph.bbox[0]) - 1))
-    right_col = max(0, min(cols - 1, bisect_left(index.x_tracks, glyph.bbox[2])))
+    right_col = max(
+        0,
+        min(cols - 1, bisect_left(index.x_tracks, glyph.bbox[2]) - 1),
+    )
     top_row = max(0, min(rows - 1, bisect_right(index.y_tracks, glyph.bbox[1]) - 1))
-    bottom_row = max(0, min(rows - 1, bisect_left(index.y_tracks, glyph.bbox[3])))
+    bottom_row = max(
+        0,
+        min(rows - 1, bisect_left(index.y_tracks, glyph.bbox[3]) - 1),
+    )
     candidate_indices = {
-        index.owners[row][col]
-        for row in range(max(0, top_row - 1), min(rows, bottom_row + 2))
-        for col in range(max(0, left_col - 1), min(cols, right_col + 2))
+        index.owners[row][col] for row in range(top_row, bottom_row + 1) for col in range(left_col, right_col + 1)
     }
     overlaps = [(glyph_overlap_ratio(glyph, specs[cell_index].bbox), cell_index) for cell_index in candidate_indices]
     overlaps.sort(reverse=True)

@@ -135,24 +135,44 @@ def _assign_visual_rows(
     )
     rows: list[list[_PendingGlyph]] = []
     row_bboxes: list[BBox] = []
+    prefix_max_bottoms: list[float] = []
+    center_tolerance = max(0.75, median_height * 0.40)
     for glyph in sorted_glyphs:
         glyph_center_y = (glyph.bbox[1] + glyph.bbox[3]) / 2.0
         best_index: int | None = None
         best_distance = float("inf")
-        for row_index, row_bbox in enumerate(row_bboxes):
+        for row_index in range(len(row_bboxes) - 1, -1, -1):
+            row_bbox = row_bboxes[row_index]
             row_center_y = (row_bbox[1] + row_bbox[3]) / 2.0
             distance = abs(glyph_center_y - row_center_y)
             if (
-                _vertical_overlap_ratio(glyph.bbox, row_bbox) >= 0.45 or distance <= max(0.75, median_height * 0.40)
+                _vertical_overlap_ratio(glyph.bbox, row_bbox) >= 0.45 or distance <= center_tolerance
             ) and distance < best_distance:
                 best_index = row_index
                 best_distance = distance
+            if (
+                glyph_center_y >= row_center_y
+                and glyph_center_y - row_center_y > center_tolerance
+                and glyph.bbox[1] > prefix_max_bottoms[row_index]
+            ):
+                break
         if best_index is None:
             rows.append([glyph])
             row_bboxes.append(glyph.bbox)
+            prefix_max_bottoms.append(
+                max(
+                    prefix_max_bottoms[-1] if prefix_max_bottoms else glyph.bbox[3],
+                    glyph.bbox[3],
+                )
+            )
         else:
             rows[best_index].append(glyph)
             row_bboxes[best_index] = bbox_union([row_bboxes[best_index], glyph.bbox])
+            for row_index in range(best_index, len(row_bboxes)):
+                prefix_max_bottoms[row_index] = max(
+                    prefix_max_bottoms[row_index - 1] if row_index > 0 else row_bboxes[row_index][3],
+                    row_bboxes[row_index][3],
+                )
 
     ordered = sorted(
         zip(rows, row_bboxes),

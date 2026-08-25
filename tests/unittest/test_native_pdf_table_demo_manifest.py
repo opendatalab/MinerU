@@ -17,6 +17,7 @@ from mineru.utils.native_pdf_table import (
     coerce_native_table_rules,
     recover_native_pdf_table,
 )
+from mineru.utils.native_pdf_table.engine import diagnose_native_pdf_table
 from mineru.utils.pdf_document import PDFDocument
 
 
@@ -88,7 +89,7 @@ def _native_table_input(
             bottom * height,
         ),
         page_size=page.size,
-        angle=0,
+        angle=int(target.get("angle", 0) or 0),
         chars=tuple(page.get_chars()),
         drawing_lines=coerce_native_table_rules(page.get_drawing_lines()),
         rectangles=coerce_native_table_rectangles(page.get_path_infos()),
@@ -102,7 +103,7 @@ def _load_manifest() -> dict[str, Any]:
 
 
 def test_demo_sparse_table_confidence_manifest() -> None:
-    """验证少线目标逐格正确且全目录 HTML/投影总数保持固定。"""
+    """验证全部 demo 表格的逐格真值和保守回退保持固定。"""
 
     manifest = _load_manifest()
     source_root = _PROJECT_ROOT / manifest["source_root"]
@@ -135,20 +136,27 @@ def test_demo_sparse_table_confidence_manifest() -> None:
                 block = page_tables[target["table_index"]]
                 assert block["bbox"] == target["bbox"]
                 content = block["content"]
-                assert target["expected_output"] == "html"
-                assert _is_html_table(content)
-                assert _html_shape(content) == (target["rows"], target["cols"])
                 assert hashlib.sha256(content.encode("utf-8")).hexdigest() == target["content_sha256"]
-                if "cell_truth" in target:
-                    assert _html_cell_truth(content) == target["cell_truth"]
-                    result = recover_native_pdf_table(
-                        _native_table_input(
-                            pdf_document,
-                            target,
-                        )
+                table_input = _native_table_input(
+                    pdf_document,
+                    target,
+                )
+                if target["expected_output"] == "html":
+                    assert _is_html_table(content)
+                    assert _html_shape(content) == (
+                        target["rows"],
+                        target["cols"],
                     )
+                    assert _html_cell_truth(content) == target["cell_truth"]
+                    result = recover_native_pdf_table(table_input)
                     assert result is not None
                     assert result.source == target["expected_source"]
+                else:
+                    assert not _is_html_table(content)
+                    assert recover_native_pdf_table(table_input) is None
+                    diagnostics = diagnose_native_pdf_table(table_input)
+                    multiline_attempt = diagnostics["sparse_multiline_attempts"][0]
+                    assert multiline_attempt["first_rejection_gate"] == target["rejection_reason"]
 
     totals = manifest["totals"]
     assert observed_tables == totals["tables"]

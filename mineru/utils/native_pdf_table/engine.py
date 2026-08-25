@@ -22,6 +22,10 @@ from .sparse_hybrid import (
     build_sparse_hybrid_candidates,
     diagnose_sparse_hybrid_candidate_builds,
 )
+from .sparse_multiline import (
+    build_sparse_multiline_candidates,
+    diagnose_sparse_multiline_candidate_builds,
+)
 from .text import build_native_table_text
 from .text_grid import build_text_candidates, diagnose_text_candidate_builds
 from .vector import (
@@ -32,15 +36,17 @@ from .vector import (
 
 MIN_TOPOLOGY_SCORE_GAP = 0.05
 _SOURCE_PRIORITY = {
-    "vector_grid": 5,
-    "sparse_hybrid": 4,
-    "sparse_grid": 3,
-    "key_value": 2,
-    "text_grid": 1,
+    "vector_grid": 6,
+    "sparse_hybrid": 5,
+    "sparse_grid": 4,
+    "key_value": 3,
+    "text_grid": 2,
+    "sparse_multiline": 1,
 }
 _VERIFIED_SCORE_BY_SOURCE = {
     "vector_grid": 0.95,
     "sparse_hybrid": 0.98,
+    "sparse_multiline": 0.98,
     "sparse_grid": 0.95,
     "key_value": 0.95,
     "text_grid": 0.95,
@@ -354,14 +360,15 @@ def _evaluate_native_pdf_table(
             False,
             "native_text",
         )
-    vector_candidates = build_vector_candidates(table_input, text)
-    vector_attempts: tuple[dict[str, Any], ...] = ()
+    vector_attempt_records: list[dict[str, Any]] = []
+    vector_candidates = build_vector_candidates(
+        table_input,
+        text,
+        diagnostics=vector_attempt_records,
+    )
+    vector_attempts: tuple[dict[str, Any], ...] = tuple(vector_attempt_records)
     physical_topology_conflict = False
     if any(_is_verified_rect_candidate(candidate) for candidate in vector_candidates):
-        vector_attempts = diagnose_vector_candidate_builds(
-            table_input,
-            text,
-        )
         physical_topology_conflict = _has_attempted_line_rect_grid_conflict(vector_attempts)
         if (
             physical_topology_conflict
@@ -398,10 +405,26 @@ def _evaluate_native_pdf_table(
             )
         if _has_alias_affected_physical_blank_row(vector_attempts) or _has_physical_row_undercount(vector_attempts):
             text_candidates = []
-    generated_candidates = [
+    existing_generated_candidates = [
         *vector_candidates,
         *sparse_hybrid_candidates,
         *text_candidates,
+    ]
+    existing_candidates = _remove_undercounted_vector_candidates(existing_generated_candidates)
+    existing_verified = any(_passes_verified_threshold(candidate) for candidate in existing_candidates)
+    sparse_multiline_allowed = len(text.rows) >= 2 and not physical_topology_conflict and not existing_verified
+    if sparse_multiline_allowed:
+        if not vector_attempts:
+            vector_attempts = diagnose_vector_candidate_builds(
+                table_input,
+                text,
+            )
+        if _has_alias_affected_physical_blank_row(vector_attempts):
+            sparse_multiline_allowed = False
+    sparse_multiline_candidates = build_sparse_multiline_candidates(table_input, text) if sparse_multiline_allowed else []
+    generated_candidates = [
+        *existing_generated_candidates,
+        *sparse_multiline_candidates,
     ]
     candidates = _remove_undercounted_vector_candidates(generated_candidates)
     selected = None if physical_topology_conflict else _select_candidate(candidates)
@@ -454,6 +477,14 @@ def diagnose_native_pdf_table(table_input: NativeTableInput) -> dict[str, Any]:
         if evaluation.text is not None
         else ()
     )
+    sparse_multiline_attempts = (
+        diagnose_sparse_multiline_candidate_builds(
+            table_input,
+            evaluation.text,
+        )
+        if evaluation.text is not None
+        else ()
+    )
     first_rejection_gate = evaluation.first_rejection_gate
     if first_rejection_gate == "candidate_generation":
         text_attempt = next(
@@ -482,6 +513,11 @@ def diagnose_native_pdf_table(table_input: NativeTableInput) -> dict[str, Any]:
             first_rejection_gate = "sparse_hybrid_" + str(sparse_attempt["first_rejection_gate"])
         elif line_attempt is not None and line_attempt.get("first_rejection_gate"):
             first_rejection_gate = "vector_" + str(line_attempt["first_rejection_gate"])
+        elif multiline_attempt := next(
+            (attempt for attempt in sparse_multiline_attempts if attempt.get("first_rejection_gate")),
+            None,
+        ):
+            first_rejection_gate = "sparse_multiline_" + str(multiline_attempt["first_rejection_gate"])
 
     def candidate_record(
         candidate: NativeTableCandidate,
@@ -535,6 +571,7 @@ def diagnose_native_pdf_table(table_input: NativeTableInput) -> dict[str, Any]:
         ),
         "vector_attempts": list(vector_attempts),
         "sparse_hybrid_attempts": list(sparse_hybrid_attempts),
+        "sparse_multiline_attempts": list(sparse_multiline_attempts),
         "text_attempts": list(text_attempts),
         "generated_candidates": [candidate_record(candidate) for candidate in evaluation.generated_candidates],
         "removed_by_undercount": removed_candidates,

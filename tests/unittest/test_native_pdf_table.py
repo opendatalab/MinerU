@@ -1948,3 +1948,169 @@ def test_diagnostics_records_tracks_components_and_adoption() -> None:
     line_attempt = next(attempt for attempt in diagnostics["vector_attempts"] if attempt["evidence"] == "line_grid")
     assert line_attempt["first_rejection_gate"] is None
     assert line_attempt["grid"] == {"rows": 2, "cols": 2}
+
+
+def test_sparse_multiline_recovers_keyed_long_records() -> None:
+    """验证连续关键行和右列续行会合并为稳定长文本记录。"""
+
+    table_input = NativeTableInput(
+        table_bbox=(0.0, 0.0, 120.0, 145.0),
+        page_size=(120.0, 145.0),
+        angle=0,
+        chars=_char_items(
+            [
+                ("Name", (5.0, 5.0, 21.0, 13.0)),
+                ("Detail", (45.0, 5.0, 69.0, 13.0)),
+                ("Alpha", (5.0, 20.0, 25.0, 28.0)),
+                ("Title A", (45.0, 20.0, 73.0, 28.0)),
+                ("(A1)", (5.0, 30.0, 21.0, 38.0)),
+                ("body a1", (45.0, 30.0, 73.0, 38.0)),
+                ("body a2", (45.0, 40.0, 73.0, 48.0)),
+                ("body a3", (45.0, 50.0, 73.0, 58.0)),
+                ("Beta", (5.0, 65.0, 21.0, 73.0)),
+                ("Title B", (45.0, 65.0, 73.0, 73.0)),
+                ("(B1)", (5.0, 75.0, 21.0, 83.0)),
+                ("body b1", (45.0, 75.0, 73.0, 83.0)),
+                ("body b2", (45.0, 85.0, 73.0, 93.0)),
+                ("body b3", (45.0, 95.0, 73.0, 103.0)),
+                ("Gamma", (5.0, 110.0, 25.0, 118.0)),
+                ("Title C", (45.0, 110.0, 73.0, 118.0)),
+                ("(C1)", (5.0, 120.0, 21.0, 128.0)),
+                ("body c1", (45.0, 120.0, 73.0, 128.0)),
+                ("body c2", (45.0, 130.0, 73.0, 138.0)),
+            ]
+        ),
+        drawing_lines=(
+            NativeTableRule((0.0, 0.0, 120.0, 1.0), 1.0, "horizontal"),
+            NativeTableRule((0.0, 144.0, 120.0, 145.0), 1.0, "horizontal"),
+        ),
+    )
+
+    result = recover_native_pdf_table(table_input)
+
+    assert result is not None
+    assert result.source == "sparse_multiline"
+    assert (result.rows, result.cols) == (4, 2)
+    assert "<td>Alpha(A1)</td><td>Title Abody a1body a2body a3</td>" in result.html
+
+
+def test_sparse_multiline_recovers_filled_record_continuations() -> None:
+    """验证填充行带和关键列可恢复含续行的三列记录表。"""
+
+    rectangles = tuple(
+        NativeTableRectangle((left, top, right, bottom), 5, True, False)
+        for top, bottom in ((20.0, 36.0), (62.0, 78.0))
+        for left, right in ((0.0, 30.0), (30.0, 60.0), (60.0, 120.0))
+    )
+    table_input = NativeTableInput(
+        table_bbox=(0.0, 0.0, 120.0, 100.0),
+        page_size=(120.0, 100.0),
+        angle=0,
+        chars=_char_items(
+            [
+                ("Date", (5.0, 5.0, 21.0, 13.0)),
+                ("From", (35.0, 5.0, 51.0, 13.0)),
+                ("Title", (65.0, 5.0, 85.0, 13.0)),
+                ("D1", (5.0, 22.0, 13.0, 30.0)),
+                ("S1", (35.0, 22.0, 43.0, 30.0)),
+                ("A", (65.0, 22.0, 69.0, 30.0)),
+                ("A2", (65.0, 32.0, 73.0, 40.0)),
+                ("D2", (5.0, 47.0, 13.0, 55.0)),
+                ("S2", (35.0, 47.0, 43.0, 55.0)),
+                ("B", (65.0, 47.0, 69.0, 55.0)),
+                ("D3", (5.0, 67.0, 13.0, 75.0)),
+                ("S3", (35.0, 67.0, 43.0, 75.0)),
+                ("C", (65.0, 67.0, 69.0, 75.0)),
+                ("C2", (65.0, 79.0, 73.0, 87.0)),
+            ]
+        ),
+        drawing_lines=(
+            NativeTableRule((0.0, 0.0, 120.0, 1.0), 1.0, "horizontal"),
+            NativeTableRule((0.0, 99.0, 120.0, 100.0), 1.0, "horizontal"),
+        ),
+        rectangles=rectangles,
+    )
+
+    result = recover_native_pdf_table(table_input)
+
+    assert result is not None
+    assert result.source == "sparse_multiline"
+    assert (result.rows, result.cols) == (4, 3)
+    assert "<td>D1</td><td>S1</td><td>AA2</td>" in result.html
+
+
+def test_sparse_multiline_merges_one_level_multiline_header() -> None:
+    """验证没有局部分隔线时多条表头基线只形成一层表头。"""
+
+    table_input = NativeTableInput(
+        table_bbox=(0.0, 0.0, 120.0, 120.0),
+        page_size=(120.0, 120.0),
+        angle=0,
+        chars=_char_items(
+            [
+                ("Item", (5.0, 5.0, 21.0, 13.0)),
+                ("Value", (45.0, 5.0, 65.0, 13.0)),
+                ("Result", (85.0, 5.0, 109.0, 13.0)),
+                ("unit", (45.0, 16.0, 61.0, 24.0)),
+                ("flag", (85.0, 16.0, 101.0, 24.0)),
+                ("kg", (45.0, 27.0, 53.0, 35.0)),
+                ("ok", (85.0, 27.0, 93.0, 35.0)),
+                ("A", (5.0, 50.0, 9.0, 58.0)),
+                ("1", (45.0, 50.0, 49.0, 58.0)),
+                ("Y", (85.0, 50.0, 89.0, 58.0)),
+                ("B", (5.0, 75.0, 9.0, 83.0)),
+                ("2", (45.0, 75.0, 49.0, 83.0)),
+                ("N", (85.0, 75.0, 89.0, 83.0)),
+                ("C", (5.0, 100.0, 9.0, 108.0)),
+                ("3", (45.0, 100.0, 49.0, 108.0)),
+                ("Y", (85.0, 100.0, 89.0, 108.0)),
+            ]
+        ),
+        drawing_lines=(
+            NativeTableRule((0.0, 0.0, 120.0, 1.0), 1.0, "horizontal"),
+            NativeTableRule((0.0, 39.5, 120.0, 40.5), 1.0, "horizontal"),
+            NativeTableRule((0.0, 119.0, 120.0, 120.0), 1.0, "horizontal"),
+        ),
+    )
+
+    diagnostics = diagnose_native_pdf_table(table_input)
+
+    multiline_attempt = diagnostics["sparse_multiline_attempts"][0]
+    assert multiline_attempt["first_rejection_gate"] is None
+    assert multiline_attempt["grid"] == {"rows": 4, "cols": 3}
+    assert multiline_attempt["header_rows"] == 1
+
+
+def test_sparse_multiline_rejects_ambiguous_body_rowspan() -> None:
+    """验证无线正文首列空缺后再次出现时不猜测正文 rowspan。"""
+
+    table_input = NativeTableInput(
+        table_bbox=(0.0, 0.0, 120.0, 100.0),
+        page_size=(120.0, 100.0),
+        angle=0,
+        chars=_char_items(
+            [
+                ("Model", (5.0, 5.0, 25.0, 13.0)),
+                ("Param", (45.0, 5.0, 65.0, 13.0)),
+                ("Value", (85.0, 5.0, 105.0, 13.0)),
+                ("A", (5.0, 35.0, 9.0, 43.0)),
+                ("p1", (45.0, 35.0, 53.0, 43.0)),
+                ("1", (85.0, 35.0, 89.0, 43.0)),
+                ("p2", (45.0, 55.0, 53.0, 63.0)),
+                ("2", (85.0, 55.0, 89.0, 63.0)),
+                ("B", (5.0, 75.0, 9.0, 83.0)),
+                ("p3", (45.0, 75.0, 53.0, 83.0)),
+                ("3", (85.0, 75.0, 89.0, 83.0)),
+            ]
+        ),
+        drawing_lines=(
+            NativeTableRule((0.0, 0.0, 120.0, 1.0), 1.0, "horizontal"),
+            NativeTableRule((0.0, 19.5, 120.0, 20.5), 1.0, "horizontal"),
+            NativeTableRule((0.0, 99.0, 120.0, 100.0), 1.0, "horizontal"),
+        ),
+    )
+
+    diagnostics = diagnose_native_pdf_table(table_input)
+
+    multiline_attempt = diagnostics["sparse_multiline_attempts"][0]
+    assert multiline_attempt["first_rejection_gate"] == ("ambiguous_body_rowspan")

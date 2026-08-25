@@ -871,7 +871,9 @@ def test_demo3_keeps_tables_and_covers_every_native_source_line() -> None:
     assert "Cong Yu. 2021. TURL:" in page10_first_reference["content"]
     assert "Jacob Devlin" not in page10_first_reference["content"]
     for page, source_lines in zip(model_list, source_lines_by_page, strict=True):
-        output_probe = _normalized_content_probe("".join(str(block.get("content") or "") for block in page))
+        output_probe = _normalized_content_probe(
+            "".join(_visible_content(block) for block in page)
+        )
         missing_lines = [
             line.text
             for line in source_lines
@@ -1698,7 +1700,9 @@ def test_caibao_table_reclaims_repeated_dates_but_keeps_real_marginals() -> None
         footers = [block for block in page if block["type"] == "footer"]
         page_numbers = [block for block in page if block["type"] == "page_number"]
         assert len(tables_on_page) == len(footers) == len(page_numbers) == 1
-        assert "2024 年 07 月" in str(tables_on_page[0]["content"])
+        assert "2024年07月" in _normalized_content_probe(
+            tables_on_page[0]["content"]
+        )
         assert _visible_content(footers[0]) == "免责声明和披露以及分析师声明是报告的一部分，请务必一起阅读。"
         assert "2024 年" not in _visible_content(footers[0])
         assert tables_on_page[0]["bbox"][3] < footers[0]["bbox"][1]
