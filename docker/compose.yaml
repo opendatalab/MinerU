@@ -92,7 +92,7 @@ services:
       stack: 67108864
     ipc: host
     healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:8002/health || exit 1"]
+      test: ["CMD-SHELL", "curl -f http://localhost:8002/v1/health || exit 1"]
     deploy:
       resources:
         reservations:

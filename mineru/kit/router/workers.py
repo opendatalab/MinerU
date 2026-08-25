@@ -55,6 +55,23 @@ def worker_base_url(bind_host: str, port: int) -> str:
     return f"http://{authority}:{port}"
 
 
+def accelerator_device_count(device: str) -> int:
+    """惰性读取指定加速器 runtime 当前可见的设备数量。"""
+    try:
+        if device == "npu":
+            import torch_npu
+
+            return int(torch_npu.npu.device_count())
+        import torch
+
+        accelerator = torch.cuda if device == "cuda" else getattr(torch, device, None)
+        if accelerator is None or not hasattr(accelerator, "device_count"):
+            return 0
+        return int(accelerator.device_count())
+    except (ImportError, AttributeError, RuntimeError, TypeError, ValueError):
+        return 0
+
+
 def reserve_local_port(host: str) -> int:
     """在指定 host 上申请一个当前可用的本地 TCP 端口。"""
     bind_host = str(host).strip() or "127.0.0.1"
@@ -80,14 +97,23 @@ def parse_local_gpus(value: str) -> list[str | None]:
     for env_name in ("CUDA_VISIBLE_DEVICES", "ASCEND_RT_VISIBLE_DEVICES"):
         configured = os.getenv(env_name)
         if configured:
-            devices = [item.strip() for item in configured.split(",") if item.strip() and item.strip() != "-1"]
+            normalized_config = configured.strip().lower()
+            if normalized_config == "all":
+                break
+            devices = [
+                item.strip()
+                for item in configured.split(",")
+                if item.strip() and item.strip().lower() not in {"-1", "none", "void"}
+            ]
             if devices:
                 return devices
+            return [None]
 
     device = get_device().split(":", 1)[0]
     if device in {"cpu", "mps"}:
         return [None]
-    return ["0"]
+    device_count = accelerator_device_count(device)
+    return [str(index) for index in range(device_count)] if device_count > 0 else ["0"]
 
 
 def visible_device_env_name() -> str:
@@ -456,6 +482,7 @@ class WorkerPool:
 
 
 __all__ = [
+    "accelerator_device_count",
     "ManagedLocalWorker",
     "RouterSettings",
     "WorkerPool",

@@ -32,6 +32,7 @@ class ResourceRoute:
 
     kind: ResourceKind
     public_id: str
+    owner_scope: str
     worker_id: str
     upstream_id: str
     created_at: str = field(default_factory=utc_now_iso)
@@ -53,6 +54,7 @@ class CopiedInputFile:
     """记录一个 Job 为 cross-worker 执行创建的目标 worker 输入副本。"""
 
     source_public_id: str
+    owner_scope: str
     worker_id: str
     upstream_file_id: str
 
@@ -159,19 +161,20 @@ class ResourceRegistry:
             "file": {},
             "job": {},
         }
-        self._by_upstream: dict[tuple[ResourceKind, str, str], ResourceRoute] = {}
+        self._by_upstream: dict[tuple[ResourceKind, str, str, str], ResourceRoute] = {}
 
     def register(
         self,
         kind: ResourceKind,
         *,
+        owner_scope: str,
         worker_id: str,
         upstream_id: str,
         metadata: dict[str, Any] | None = None,
         public_id: str | None = None,
     ) -> ResourceRoute:
         """注册资源并复用同一 worker/upstream 标识已有的公共映射。"""
-        upstream_key = (kind, worker_id, upstream_id)
+        upstream_key = (kind, owner_scope, worker_id, upstream_id)
         existing = self._by_upstream.get(upstream_key)
         if existing is not None:
             if metadata is not None:
@@ -182,6 +185,7 @@ class ResourceRegistry:
         route = ResourceRoute(
             kind=kind,
             public_id=resolved_public_id,
+            owner_scope=owner_scope,
             worker_id=worker_id,
             upstream_id=upstream_id,
             metadata=dict(metadata or {}),
@@ -198,27 +202,43 @@ class ResourceRegistry:
         """按公共标识读取资源路由，不存在时返回 None。"""
         return self._by_public[kind].get(public_id)
 
-    def find_upstream(self, kind: ResourceKind, worker_id: str, upstream_id: str) -> ResourceRoute | None:
+    def find_upstream(
+        self,
+        kind: ResourceKind,
+        owner_scope: str,
+        worker_id: str,
+        upstream_id: str,
+    ) -> ResourceRoute | None:
         """按 worker 与 upstream 标识读取已有公共映射。"""
-        return self._by_upstream.get((kind, worker_id, upstream_id))
+        return self._by_upstream.get((kind, owner_scope, worker_id, upstream_id))
 
     def alias_upstream(self, route: ResourceRoute, *, worker_id: str, upstream_id: str) -> None:
         """把同一公共资源在另一 worker 中的复制标识绑定到现有记录。"""
-        self._by_upstream[(route.kind, worker_id, upstream_id)] = route
+        self._by_upstream[(route.kind, route.owner_scope, worker_id, upstream_id)] = route
 
-    def remove_upstream_alias(self, kind: ResourceKind, *, worker_id: str, upstream_id: str) -> None:
+    def remove_upstream_alias(
+        self,
+        kind: ResourceKind,
+        *,
+        owner_scope: str,
+        worker_id: str,
+        upstream_id: str,
+    ) -> None:
         """删除 cross-worker 副本对应的反向 alias，不影响公共资源主映射。"""
-        self._by_upstream.pop((kind, worker_id, upstream_id), None)
+        self._by_upstream.pop((kind, owner_scope, worker_id, upstream_id), None)
 
-    def list(self, kind: ResourceKind) -> list[ResourceRoute]:
-        """按注册顺序返回指定类型的全部资源路由。"""
-        return list(self._by_public[kind].values())
+    def list(self, kind: ResourceKind, *, owner_scope: str | None = None) -> list[ResourceRoute]:
+        """按注册顺序返回指定类型、可选调用方 scope 的资源路由。"""
+        routes = list(self._by_public[kind].values())
+        if owner_scope is None:
+            return routes
+        return [route for route in routes if route.owner_scope == owner_scope]
 
     def remove(self, kind: ResourceKind, public_id: str) -> ResourceRoute | None:
         """删除公共资源及其反向索引，并返回被删除的记录。"""
         route = self._by_public[kind].pop(public_id, None)
         if route is not None:
-            self._by_upstream.pop((kind, route.worker_id, route.upstream_id), None)
+            self._by_upstream.pop((kind, route.owner_scope, route.worker_id, route.upstream_id), None)
         return route
 
     @staticmethod

@@ -13,7 +13,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from mineru.kit.router import RouterSettings, create_app
-from mineru.kit.router.workers import ManagedLocalWorker, worker_base_url, worker_connect_host
+from mineru.kit.router.workers import ManagedLocalWorker, parse_local_gpus, worker_base_url, worker_connect_host
 from mineru.parser.api_server import create_app as create_api_server_app
 
 
@@ -301,15 +301,36 @@ def _upload_file(client: TestClient, *, token: str, content: bytes) -> str:
     return complete.json()["file"]["id"]
 
 
-def _upload_files_on_distinct_workers(client: TestClient, router_app: Any) -> list[str]:
-    """上传文件直到获得分别归属两个 worker 的公共 file IDs。"""
+def _upload_files_on_distinct_workers(
+    client: TestClient,
+    router_app: Any,
+    *,
+    token: str,
+) -> list[str]:
+    """在同一 caller scope 下轮换 upload worker，获得跨 worker 文件。"""
+    pool = router_app.state.worker_pool
+    original_select = pool.select
+    healthy_workers = pool.healthy_workers()
+    upload_index = 0
+
+    def _alternating_select(**kwargs: Any) -> Any:
+        """仅对带 affinity 的 Upload 选择轮换 worker，其他选择保持生产逻辑。"""
+        nonlocal upload_index
+        if kwargs.get("tier") is None and kwargs.get("affinity_key"):
+            worker = healthy_workers[upload_index % len(healthy_workers)]
+            upload_index += 1
+            return worker
+        return original_select(**kwargs)
+
+    pool.select = _alternating_select
     files_by_worker: dict[str, str] = {}
-    for index in range(20):
-        public_file_id = _upload_file(client, token=f"distinct-{index}", content=f"pdf-{index}".encode())
-        route = router_app.state.registry.get("file", public_file_id)
-        files_by_worker.setdefault(route.worker_id, public_file_id)
-        if len(files_by_worker) == 2:
-            break
+    try:
+        for index in range(2):
+            public_file_id = _upload_file(client, token=token, content=f"pdf-{index}".encode())
+            route = router_app.state.registry.get("file", public_file_id)
+            files_by_worker.setdefault(route.worker_id, public_file_id)
+    finally:
+        pool.select = original_select
     assert len(files_by_worker) == 2
     return list(files_by_worker.values())
 
@@ -320,6 +341,7 @@ def test_v1_router_aggregates_capabilities_and_routes_cross_worker_job() -> None
     second = _FakeV1Upstream("worker-b", ("standard", "advanced"))
     router_app, _ = _make_router(first, second)
     staged_path: Path | None = None
+    headers = {"authorization": "Bearer main-cross-worker"}
 
     with TestClient(router_app) as client:
         health = client.get("/v1/health")
@@ -332,15 +354,11 @@ def test_v1_router_aggregates_capabilities_and_routes_cross_worker_job() -> None
         assert [item["id"] for item in tiers.json()["data"]] == ["basic", "standard", "advanced"]
         assert {item["id"] for item in models.json()["data"]} == {"worker-a-model", "worker-b-model"}
 
-        files_by_worker: dict[str, str] = {}
-        for index in range(20):
-            public_file_id = _upload_file(client, token=f"user-{index}", content=f"pdf-{index}".encode())
-            route = router_app.state.registry.get("file", public_file_id)
-            files_by_worker.setdefault(route.worker_id, public_file_id)
-            if len(files_by_worker) == 2:
-                break
-        assert len(files_by_worker) == 2
-        public_file_ids = list(files_by_worker.values())
+        public_file_ids = _upload_files_on_distinct_workers(
+            client,
+            router_app,
+            token="main-cross-worker",
+        )
         stored = router_app.state.source_store.find_file(public_file_ids[0])
         assert stored is not None
         staged_path = stored.path
@@ -348,6 +366,7 @@ def test_v1_router_aggregates_capabilities_and_routes_cross_worker_job() -> None
 
         created = client.post(
             "/v1/parse/jobs",
+            headers=headers,
             json={
                 "tier": "standard",
                 "files": [{"source": {"type": "file_id", "file_id": file_id}} for file_id in public_file_ids],
@@ -364,19 +383,19 @@ def test_v1_router_aggregates_capabilities_and_routes_cross_worker_job() -> None
         target = first if job_route.worker_id == "remote-1" else second
         assert copied_upstream_id in target.files
 
-        completed = client.get(f"/v1/parse/jobs/{job_id}")
+        completed = client.get(f"/v1/parse/jobs/{job_id}", headers=headers)
         assert completed.status_code == 200
         assert completed.json()["status"] == "completed"
         assert [item["file_id"] for item in completed.json()["files"]] == public_file_ids
         output_id = completed.json()["files"][0]["output_files"]["markdown"]["file_id"]
         assert output_id.startswith("file-")
-        assert client.get(f"/v1/files/{output_id}/content").content == b"result"
+        assert client.get(f"/v1/files/{output_id}/content", headers=headers).content == b"result"
         assert job_route.metadata.get("copied_inputs") is None
         assert copied_upstream_id not in target.files
 
-        job_list = client.get("/v1/parse/jobs").json()
-        file_list = client.get("/v1/files").json()
-        usage = client.get("/v1/usage").json()
+        job_list = client.get("/v1/parse/jobs", headers=headers).json()
+        file_list = client.get("/v1/files", headers=headers).json()
+        usage = client.get("/v1/usage", headers=headers).json()
         assert [item["job_id"] for item in job_list["data"]] == [job_id]
         assert {item["id"] for item in file_list["data"]}.issuperset(set(public_file_ids))
         assert output_id in {item["id"] for item in file_list["data"]}
@@ -489,19 +508,21 @@ def test_terminal_job_read_survives_deleted_output_metadata() -> None:
     """验证 output 删除后 hydration 失败不会阻断 completed Job 读取。"""
     upstream = _FakeV1Upstream("worker-a", ("standard",))
     router_app, _ = _make_router(upstream)
+    headers = {"authorization": "Bearer output-delete"}
 
     with TestClient(router_app) as client:
         file_id = _upload_file(client, token="output-delete", content=b"pdf")
         created = client.post(
             "/v1/parse/jobs",
+            headers=headers,
             json={"tier": "standard", "files": [{"source": {"type": "file_id", "file_id": file_id}}]},
         )
         job_id = created.json()["job_id"]
-        completed = client.get(f"/v1/parse/jobs/{job_id}")
+        completed = client.get(f"/v1/parse/jobs/{job_id}", headers=headers)
         output_id = completed.json()["files"][0]["output_files"]["markdown"]["file_id"]
-        assert client.delete(f"/v1/files/{output_id}").status_code == 200
+        assert client.delete(f"/v1/files/{output_id}", headers=headers).status_code == 200
 
-        reread = client.get(f"/v1/parse/jobs/{job_id}")
+        reread = client.get(f"/v1/parse/jobs/{job_id}", headers=headers)
 
         assert reread.status_code == 200
         assert reread.json()["status"] == "completed"
@@ -510,16 +531,84 @@ def test_terminal_job_read_survives_deleted_output_metadata() -> None:
         assert replacement_route.metadata["hydration_error"]["status_code"] == 404
 
 
+def test_router_scopes_cached_resources_to_bearer_identity() -> None:
+    """验证 files、jobs、usage 与单资源访问按 bearer caller scope 隔离。"""
+    upstream = _FakeV1Upstream("worker-a", ("standard",))
+    router_app, _ = _make_router(upstream)
+    owner_headers = {"authorization": "Bearer tenant-a"}
+    other_headers = {"authorization": "Bearer tenant-b"}
+
+    with TestClient(router_app) as client:
+        file_id = _upload_file(client, token="tenant-a", content=b"pdf")
+        created = client.post(
+            "/v1/parse/jobs",
+            headers=owner_headers,
+            json={"tier": "standard", "files": [{"source": {"type": "file_id", "file_id": file_id}}]},
+        )
+        job_id = created.json()["job_id"]
+
+        assert [item["id"] for item in client.get("/v1/files", headers=owner_headers).json()["data"]] == [file_id]
+        assert [item["job_id"] for item in client.get("/v1/parse/jobs", headers=owner_headers).json()["data"]] == [job_id]
+        assert client.get("/v1/files", headers=other_headers).json()["data"] == []
+        assert client.get("/v1/parse/jobs", headers=other_headers).json()["data"] == []
+        assert client.get("/v1/files").json()["data"] == []
+        assert client.get("/v1/parse/jobs").json()["data"] == []
+        assert client.get("/v1/usage", headers=other_headers).json()["current"]["jobs_created"] == 0
+        assert client.get(f"/v1/files/{file_id}", headers=other_headers).status_code == 404
+        assert client.get(f"/v1/parse/jobs/{job_id}", headers=other_headers).status_code == 404
+
+
+def test_background_reconciler_finalizes_unpolled_cross_worker_job() -> None:
+    """验证无客户端轮询时后台 reconciliation 仍归还负载并回收副本。"""
+    first = _FakeV1Upstream("worker-a", ("standard",))
+    second = _FakeV1Upstream("worker-b", ("standard",))
+    router_app, _ = _make_router(first, second)
+    headers = {"authorization": "Bearer reconcile"}
+
+    with TestClient(router_app) as client:
+        file_ids = _upload_files_on_distinct_workers(client, router_app, token="reconcile")
+        created = client.post(
+            "/v1/parse/jobs",
+            headers=headers,
+            json={
+                "tier": "standard",
+                "files": [{"source": {"type": "file_id", "file_id": file_id}} for file_id in file_ids],
+            },
+        )
+        job_id = created.json()["job_id"]
+        route = router_app.state.registry.get("job", job_id)
+        worker = first if route.worker_id == "remote-1" else second
+        copied = list(route.metadata["copied_inputs"])
+
+        client.portal.call(router_app.state.reconcile_jobs_once)
+
+        assert route.metadata["payload"]["status"] == "completed"
+        assert route.metadata.get("active_counted") is None
+        assert route.metadata.get("copied_inputs") is None
+        assert route.metadata.get("upstream_headers") is None
+        assert router_app.state.worker_pool.get(route.worker_id).active_jobs == 0
+        assert copied[0].upstream_file_id not in worker.files
+        listed_ids = {item["id"] for item in client.get("/v1/files", headers=headers).json()["data"]}
+        output_id = route.metadata["payload"]["files"][0]["output_files"]["markdown"]["file_id"]
+        assert output_id in listed_ids
+
+
 def test_router_reclaims_cross_worker_copy_when_job_is_canceled() -> None:
     """验证取消 Job 时立即删除并解除 cross-worker 输入副本。"""
     first = _FakeV1Upstream("worker-a", ("standard",))
     second = _FakeV1Upstream("worker-b", ("standard",))
     router_app, _ = _make_router(first, second)
+    headers = {"authorization": "Bearer cancel-cross-worker"}
 
     with TestClient(router_app) as client:
-        public_file_ids = _upload_files_on_distinct_workers(client, router_app)
+        public_file_ids = _upload_files_on_distinct_workers(
+            client,
+            router_app,
+            token="cancel-cross-worker",
+        )
         created = client.post(
             "/v1/parse/jobs",
+            headers=headers,
             json={
                 "tier": "standard",
                 "files": [{"source": {"type": "file_id", "file_id": file_id}} for file_id in public_file_ids],
@@ -532,7 +621,7 @@ def test_router_reclaims_cross_worker_copy_when_job_is_canceled() -> None:
         target = first if copied[0].worker_id == "remote-1" else second
         assert copied[0].upstream_file_id in target.files
 
-        canceled = client.delete(f"/v1/parse/jobs/{job_id}")
+        canceled = client.delete(f"/v1/parse/jobs/{job_id}", headers=headers)
 
         assert canceled.status_code == 200
         assert copied[0].upstream_file_id not in target.files
@@ -540,6 +629,7 @@ def test_router_reclaims_cross_worker_copy_when_job_is_canceled() -> None:
         assert (
             router_app.state.registry.find_upstream(
                 "file",
+                copied[0].owner_scope,
                 copied[0].worker_id,
                 copied[0].upstream_file_id,
             )
@@ -552,11 +642,17 @@ def test_public_source_delete_retries_terminal_copy_cleanup() -> None:
     first = _FakeV1Upstream("worker-a", ("standard",))
     second = _FakeV1Upstream("worker-b", ("standard",))
     router_app, _ = _make_router(first, second)
+    headers = {"authorization": "Bearer delete-retry"}
 
     with TestClient(router_app) as client:
-        public_file_ids = _upload_files_on_distinct_workers(client, router_app)
+        public_file_ids = _upload_files_on_distinct_workers(
+            client,
+            router_app,
+            token="delete-retry",
+        )
         created = client.post(
             "/v1/parse/jobs",
+            headers=headers,
             json={
                 "tier": "standard",
                 "files": [{"source": {"type": "file_id", "file_id": file_id}} for file_id in public_file_ids],
@@ -568,12 +664,12 @@ def test_public_source_delete_retries_terminal_copy_cleanup() -> None:
         target = first if copied[0].worker_id == "remote-1" else second
         target.fail_file_delete_once.add(copied[0].upstream_file_id)
 
-        completed = client.get(f"/v1/parse/jobs/{job_id}")
+        completed = client.get(f"/v1/parse/jobs/{job_id}", headers=headers)
         assert completed.status_code == 200
         assert copied[0].upstream_file_id in target.files
         assert job_route.metadata.get("copied_inputs") == copied
 
-        deleted = client.delete(f"/v1/files/{copied[0].source_public_id}")
+        deleted = client.delete(f"/v1/files/{copied[0].source_public_id}", headers=headers)
 
         assert deleted.status_code == 200
         assert copied[0].upstream_file_id not in target.files
@@ -645,6 +741,34 @@ def test_managed_worker_formats_connectable_ipv4_and_ipv6_urls(
     """验证 wildcard、IPv4 与 IPv6 worker 地址生成合法可连接 URL。"""
     assert worker_connect_host(bind_host) == expected_connect_host
     assert worker_base_url(bind_host, 18000) == expected_url
+
+
+def test_auto_local_gpus_expands_visible_accelerator_count(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证 auto 在无显式设备 CSV 或值为 all 时枚举全部可见 GPU。"""
+    import mineru.kit.router.workers as workers
+
+    monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+    monkeypatch.delenv("ASCEND_RT_VISIBLE_DEVICES", raising=False)
+    monkeypatch.setattr(workers, "get_device", lambda: "cuda")
+    monkeypatch.setattr(workers, "accelerator_device_count", lambda _device: 4)
+    assert parse_local_gpus("auto") == ["0", "1", "2", "3"]
+
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "2,4")
+    assert parse_local_gpus("auto") == ["2", "4"]
+
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "all")
+    monkeypatch.setattr(workers, "accelerator_device_count", lambda _device: 3)
+    assert parse_local_gpus("auto") == ["0", "1", "2"]
+
+
+def test_compose_router_healthcheck_uses_v1_path() -> None:
+    """验证 Router Compose profile 只探测正式 `/v1/health`。"""
+    repo_root = Path(__file__).resolve().parents[2]
+    compose_text = (repo_root / "docker/compose.yaml").read_text(encoding="utf-8")
+    router_section = compose_text.split("  mineru-router:", 1)[1].split("  mineru-gradio:", 1)[0]
+
+    assert "http://localhost:8002/v1/health" in router_section
+    assert "http://localhost:8002/health" not in router_section
 
 
 def test_managed_router_worker_uses_control_shutdown() -> None:

@@ -3,7 +3,9 @@
 
 from __future__ import annotations
 
+import asyncio
 import copy
+import hashlib
 import time
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Literal
@@ -37,10 +39,29 @@ from .resources import (
 from .workers import RouterSettings, WorkerPool, WorkerState
 
 
-def _route_or_404(registry: ResourceRegistry, kind: ResourceKind, public_id: str) -> ResourceRoute:
-    """读取资源路由，不存在时返回稳定 V1 404 错误。"""
+def _caller_scope(request: Request) -> str:
+    """从 Authorization 派生不可逆的 Router 调用方资源 scope。"""
+    authorization = request.headers.get("authorization", "")
+    if not authorization:
+        return "anonymous"
+    return "auth:" + hashlib.sha256(authorization.encode("utf-8")).hexdigest()
+
+
+def _authorization_headers(request: Request) -> dict[str, str]:
+    """提取后台 Job reconciliation 需要的私有 upstream Authorization。"""
+    authorization = request.headers.get("authorization")
+    return {"authorization": authorization} if authorization else {}
+
+
+def _route_or_404(
+    registry: ResourceRegistry,
+    kind: ResourceKind,
+    public_id: str,
+    owner_scope: str,
+) -> ResourceRoute:
+    """读取当前调用方资源路由，不存在或 scope 不匹配时返回稳定 404。"""
     route = registry.find(kind, public_id)
-    if route is None:
+    if route is None or route.owner_scope != owner_scope:
         raise RouterProxyError(404, f"{kind}_not_found", f"{kind.title()} {public_id} not found")
     return route
 
@@ -70,6 +91,7 @@ def _healthy_worker_or_503(pool: WorkerPool) -> WorkerState:
 def _list_registered_files(
     registry: ResourceRegistry,
     *,
+    owner_scope: str,
     after: str | None,
     limit: int,
     order: Literal["asc", "desc"],
@@ -78,7 +100,7 @@ def _list_registered_files(
     """从 Router 注册表构造 V1 Files 列表与游标。"""
     data = [
         copy.deepcopy(route.metadata["payload"])
-        for route in registry.list("file")
+        for route in registry.list("file", owner_scope=owner_scope)
         if isinstance(route.metadata.get("payload"), dict)
         and (purpose is None or route.metadata["payload"].get("purpose") == purpose)
     ]
@@ -97,6 +119,7 @@ def _list_registered_files(
 def _list_registered_jobs(
     registry: ResourceRegistry,
     *,
+    owner_scope: str,
     status_filter: str | None,
     after: str | None,
     limit: int,
@@ -107,7 +130,7 @@ def _list_registered_jobs(
     allowed_statuses = set(status_filter.split(",")) if status_filter else None
     payloads = [
         copy.deepcopy(route.metadata["payload"])
-        for route in registry.list("job")
+        for route in registry.list("job", owner_scope=owner_scope)
         if isinstance(route.metadata.get("payload"), dict)
     ]
     payloads = [
@@ -136,9 +159,9 @@ def _list_registered_jobs(
     }
 
 
-def _usage_payload(request: Request, registry: ResourceRegistry, pool: WorkerPool) -> dict[str, Any]:
+def _usage_payload(request: Request, registry: ResourceRegistry, pool: WorkerPool, owner_scope: str) -> dict[str, Any]:
     """聚合当前 Router 进程观察到的 jobs/files 与 worker 并发上限。"""
-    jobs = [route.metadata.get("payload") or {} for route in registry.list("job")]
+    jobs = [route.metadata.get("payload") or {} for route in registry.list("job", owner_scope=owner_scope)]
     completed_jobs = [payload for payload in jobs if payload.get("status") in {"completed", "partial"}]
     files_processed = sum(
         1
@@ -168,9 +191,10 @@ def _usage_payload(request: Request, registry: ResourceRegistry, pool: WorkerPoo
 async def _cleanup_copied_files(
     copied_files: list[CopiedInputFile],
     *,
-    request: Request,
+    request: Request | None,
     pool: WorkerPool,
     registry: ResourceRegistry,
+    headers: dict[str, str] | None = None,
 ) -> list[CopiedInputFile]:
     """幂等删除 cross-worker 输入副本，返回等待后续重试的失败项。"""
     pending: list[CopiedInputFile] = []
@@ -183,6 +207,7 @@ async def _cleanup_copied_files(
                 "DELETE",
                 f"/v1/files/{copied_file.upstream_file_id}",
                 request=request,
+                headers=headers,
             )
         except RouterProxyError:
             pending.append(copied_file)
@@ -192,6 +217,7 @@ async def _cleanup_copied_files(
             continue
         registry.remove_upstream_alias(
             "file",
+            owner_scope=copied_file.owner_scope,
             worker_id=copied_file.worker_id,
             upstream_id=copied_file.upstream_file_id,
         )
@@ -201,9 +227,10 @@ async def _cleanup_copied_files(
 async def _hydrate_job_output_files(
     payload: dict[str, Any],
     *,
-    request: Request,
+    request: Request | None,
     pool: WorkerPool,
     registry: ResourceRegistry,
+    headers: dict[str, str] | None = None,
 ) -> None:
     """读取 Job output files 的完整元数据，使其立即进入 `/v1/files`。"""
     seen_public_ids: set[str] = set()
@@ -228,6 +255,7 @@ async def _hydrate_job_output_files(
                     "GET",
                     f"/v1/files/{route.upstream_id}",
                     request=request,
+                    headers=headers,
                 )
                 if response.status_code >= 400:
                     route.metadata["hydration_error"] = {
@@ -243,7 +271,7 @@ async def _hydrate_job_output_files(
                     "message": exc.message,
                 }
                 continue
-            rewrite_file_payload(metadata, worker, registry)
+            rewrite_file_payload(metadata, worker, registry, route.owner_scope)
             route.metadata.pop("hydration_error", None)
 
 
@@ -251,15 +279,22 @@ async def _finalize_terminal_job(
     route: ResourceRoute,
     payload: dict[str, Any],
     *,
-    request: Request,
+    request: Request | None,
     pool: WorkerPool,
     registry: ResourceRegistry,
+    headers: dict[str, str] | None = None,
 ) -> None:
     """在 Job 终态补齐 outputs，并回收或保留待重试的输入副本。"""
     if payload.get("status") not in {"completed", "partial", "failed", "canceled"}:
         return
     try:
-        await _hydrate_job_output_files(payload, request=request, pool=pool, registry=registry)
+        await _hydrate_job_output_files(
+            payload,
+            request=request,
+            pool=pool,
+            registry=registry,
+            headers=headers,
+        )
     finally:
         copied_files = list(route.metadata.get("copied_inputs") or [])
         pending = await _cleanup_copied_files(
@@ -267,11 +302,56 @@ async def _finalize_terminal_job(
             request=request,
             pool=pool,
             registry=registry,
+            headers=headers,
         )
         if pending:
             route.metadata["copied_inputs"] = pending
         else:
             route.metadata.pop("copied_inputs", None)
+            route.metadata.pop("upstream_headers", None)
+
+
+async def _reconcile_jobs_once(registry: ResourceRegistry, pool: WorkerPool) -> None:
+    """后台查询活动或待清理 Job，并统一执行终态资源收敛。"""
+    for route in registry.list("job"):
+        if not route.metadata.get("active_counted") and not route.metadata.get("copied_inputs"):
+            continue
+        worker = pool.get(route.worker_id)
+        headers = dict(route.metadata.get("upstream_headers") or {})
+        try:
+            response = await request_upstream(
+                pool,
+                worker,
+                "GET",
+                f"/v1/parse/jobs/{route.upstream_id}",
+                headers=headers,
+            )
+            if response.status_code >= 400:
+                continue
+            payload = json_or_error(response)
+            rewritten = rewrite_job_payload(payload, worker, registry, pool, route.owner_scope)
+            route.metadata["payload"] = copy.deepcopy(rewritten)
+            await _finalize_terminal_job(
+                route,
+                rewritten,
+                request=None,
+                pool=pool,
+                registry=registry,
+                headers=headers,
+            )
+        except RouterProxyError:
+            continue
+
+
+async def _job_reconcile_loop(
+    registry: ResourceRegistry,
+    pool: WorkerPool,
+    interval_seconds: float,
+) -> None:
+    """按固定间隔运行 Job reconciliation，单次失败不终止循环。"""
+    while True:
+        await asyncio.sleep(interval_seconds)
+        await _reconcile_jobs_once(registry, pool)
 
 
 def create_app(
@@ -289,10 +369,26 @@ def create_app(
     async def _lifespan(application: FastAPI) -> AsyncIterator[None]:
         """启动 worker pool，并在应用关闭时释放全部网络和子进程资源。"""
         application.state.started_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        reconcile_task: asyncio.Task[None] | None = None
         try:
             await pool.start()
+            if resolved_settings.worker_refresh_interval_seconds > 0:
+                reconcile_task = asyncio.create_task(
+                    _job_reconcile_loop(
+                        registry,
+                        pool,
+                        resolved_settings.worker_refresh_interval_seconds,
+                    ),
+                    name="mineru-v1-router-job-reconciler",
+                )
             yield
         finally:
+            if reconcile_task is not None:
+                reconcile_task.cancel()
+                try:
+                    await reconcile_task
+                except asyncio.CancelledError:
+                    pass
             await pool.close()
             source_store.close()
 
@@ -306,6 +402,12 @@ def create_app(
     application.state.source_store = source_store
     application.state.worker_pool = pool
     application.state.started_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+    async def _reconcile_once_for_state() -> None:
+        """向测试和诊断入口暴露一次显式 Job reconciliation。"""
+        await _reconcile_jobs_once(registry, pool)
+
+    application.state.reconcile_jobs_once = _reconcile_once_for_state
 
     @application.exception_handler(RouterProxyError)
     async def _router_error_handler(_request: Request, exc: RouterProxyError) -> JSONResponse:
@@ -376,6 +478,7 @@ def create_app(
     @application.post("/v1/uploads")
     async def create_upload(request: Request) -> Response:
         """按调用方 affinity 选择 worker 并创建 Router upload。"""
+        owner_scope = _caller_scope(request)
         worker = pool.select(tier=None, required_sources={"file_id"}, affinity_key=_affinity_key(request))
         if worker is None:
             raise RouterProxyError(503, "upstream_unavailable", "No upstream accepts file uploads")
@@ -389,28 +492,32 @@ def create_app(
         result = _successful_json(upstream)
         if isinstance(result, Response):
             return result
-        rewritten = rewrite_upload_payload(result, worker, registry)
+        rewritten = rewrite_upload_payload(result, worker, registry, owner_scope)
         if isinstance(body.get("sha256sum"), str):
             rewritten["sha256sum"] = body["sha256sum"]
-        route = _route_or_404(registry, "upload", str(rewritten["id"]))
+        route = _route_or_404(registry, "upload", str(rewritten["id"]), owner_scope)
         route.metadata["declared"] = copy.deepcopy(body)
         return JSONResponse(rewritten, status_code=upstream.status_code)
 
     @application.get("/v1/uploads/{upload_id}")
     async def get_upload(upload_id: str, request: Request) -> Response:
         """把 Router upload 查询路由到其所属 worker。"""
-        route = _route_or_404(registry, "upload", upload_id)
+        owner_scope = _caller_scope(request)
+        route = _route_or_404(registry, "upload", upload_id, owner_scope)
         worker = pool.get(route.worker_id)
         upstream = await request_upstream(pool, worker, "GET", f"/v1/uploads/{route.upstream_id}", request=request)
         result = _successful_json(upstream)
         if isinstance(result, Response):
             return result
-        return JSONResponse(rewrite_upload_payload(result, worker, registry), status_code=upstream.status_code)
+        return JSONResponse(
+            rewrite_upload_payload(result, worker, registry, owner_scope),
+            status_code=upstream.status_code,
+        )
 
     @application.put("/v1/uploads/{upload_id}/content")
     async def upload_content(upload_id: str, request: Request) -> Response:
         """把上传内容流式暂存到 Router，再写入 upload 所属 worker。"""
-        route = _route_or_404(registry, "upload", upload_id)
+        route = _route_or_404(registry, "upload", upload_id, _caller_scope(request))
         upload_payload = route.metadata.get("payload")
         upload_status = upload_payload.get("status") if isinstance(upload_payload, dict) else None
         if source_store.is_bound_upload(upload_id) or upload_status == "completed":
@@ -450,7 +557,8 @@ def create_app(
     @application.post("/v1/uploads/{upload_id}/complete")
     async def complete_upload(upload_id: str, request: Request) -> Response:
         """完成所属 worker 的 upload，并注册返回的 V1 file。"""
-        route = _route_or_404(registry, "upload", upload_id)
+        owner_scope = _caller_scope(request)
+        route = _route_or_404(registry, "upload", upload_id, owner_scope)
         worker = pool.get(route.worker_id)
         stored = source_store.find_upload(upload_id)
         if stored is None:
@@ -471,7 +579,7 @@ def create_app(
         result = _successful_json(upstream)
         if isinstance(result, Response):
             return result
-        rewritten = rewrite_upload_payload(result, worker, registry)
+        rewritten = rewrite_upload_payload(result, worker, registry, owner_scope)
         file_payload = rewritten.get("file")
         if not isinstance(file_payload, dict) or not isinstance(file_payload.get("id"), str):
             raise RouterProxyError(502, "invalid_upstream_response", "Completed upload did not return a file")
@@ -481,7 +589,8 @@ def create_app(
     @application.post("/v1/uploads/{upload_id}/cancel")
     async def cancel_upload(upload_id: str, request: Request) -> Response:
         """取消所属 worker 中尚未完成的 upload。"""
-        route = _route_or_404(registry, "upload", upload_id)
+        owner_scope = _caller_scope(request)
+        route = _route_or_404(registry, "upload", upload_id, owner_scope)
         worker = pool.get(route.worker_id)
         upstream = await request_upstream(
             pool,
@@ -494,33 +603,48 @@ def create_app(
         if isinstance(result, Response):
             return result
         source_store.discard_upload(upload_id)
-        return JSONResponse(rewrite_upload_payload(result, worker, registry), status_code=upstream.status_code)
+        return JSONResponse(
+            rewrite_upload_payload(result, worker, registry, owner_scope),
+            status_code=upstream.status_code,
+        )
 
     @application.get("/v1/files")
     async def list_files(
+        request: Request,
         after: str | None = None,
         limit: int = Query(default=100, ge=1, le=1000),
         order: Literal["asc", "desc"] = "desc",
         purpose: str | None = None,
     ) -> dict[str, Any]:
         """列出当前 Router 进程注册的 V1 files。"""
-        return _list_registered_files(registry, after=after, limit=limit, order=order, purpose=purpose)
+        return _list_registered_files(
+            registry,
+            owner_scope=_caller_scope(request),
+            after=after,
+            limit=limit,
+            order=order,
+            purpose=purpose,
+        )
 
     @application.get("/v1/files/{file_id}")
     async def get_file(file_id: str, request: Request) -> Response:
         """查询 Router file 所属 worker 的最新元数据。"""
-        route = _route_or_404(registry, "file", file_id)
+        owner_scope = _caller_scope(request)
+        route = _route_or_404(registry, "file", file_id, owner_scope)
         worker = pool.get(route.worker_id)
         upstream = await request_upstream(pool, worker, "GET", f"/v1/files/{route.upstream_id}", request=request)
         result = _successful_json(upstream)
         if isinstance(result, Response):
             return result
-        return JSONResponse(rewrite_file_payload(result, worker, registry), status_code=upstream.status_code)
+        return JSONResponse(
+            rewrite_file_payload(result, worker, registry, owner_scope),
+            status_code=upstream.status_code,
+        )
 
     @application.get("/v1/files/{file_id}/content")
     async def get_file_content(file_id: str, request: Request) -> Response:
         """流式代理 Router file 所属 worker 的内容。"""
-        route = _route_or_404(registry, "file", file_id)
+        route = _route_or_404(registry, "file", file_id, _caller_scope(request))
         return await stream_upstream(
             pool,
             pool.get(route.worker_id),
@@ -532,13 +656,14 @@ def create_app(
     @application.delete("/v1/files/{file_id}")
     async def delete_file(file_id: str, request: Request) -> Response:
         """删除所属 worker 的 file，并在成功后清除 Router 映射。"""
-        route = _route_or_404(registry, "file", file_id)
+        owner_scope = _caller_scope(request)
+        route = _route_or_404(registry, "file", file_id, owner_scope)
         worker = pool.get(route.worker_id)
         upstream = await request_upstream(pool, worker, "DELETE", f"/v1/files/{route.upstream_id}", request=request)
         result = _successful_json(upstream)
         if isinstance(result, Response):
             return result
-        for job_route in registry.list("job"):
+        for job_route in registry.list("job", owner_scope=owner_scope):
             copied_inputs = list(job_route.metadata.get("copied_inputs") or [])
             matching = [item for item in copied_inputs if item.source_public_id == file_id]
             if not matching:
@@ -570,6 +695,7 @@ def create_app(
     @application.post("/v1/parse/jobs")
     async def create_job(request: Request) -> Response:
         """选择匹配 tier/source 的 worker，迁移跨 worker files 后创建 V1 job。"""
+        owner_scope = _caller_scope(request)
         body = await request.json()
         if not isinstance(body, dict):
             raise RouterProxyError(400, "invalid_request", "Job request body must be an object")
@@ -596,7 +722,7 @@ def create_app(
                 public_file_id = source.get("file_id")
                 if not isinstance(public_file_id, str):
                     raise RouterProxyError(400, "invalid_request", "file_id source requires a string file_id")
-                file_routes.append((source, _route_or_404(registry, "file", public_file_id)))
+                file_routes.append((source, _route_or_404(registry, "file", public_file_id, owner_scope)))
         owner_ids = {route.worker_id for _, route in file_routes}
         preferred_worker_id = next(iter(owner_ids)) if len(owner_ids) == 1 else None
         worker = pool.select(
@@ -623,6 +749,7 @@ def create_app(
                     copied_files.append(
                         CopiedInputFile(
                             source_public_id=route.public_id,
+                            owner_scope=owner_scope,
                             worker_id=worker.worker_id,
                             upstream_file_id=target_file_id,
                         )
@@ -656,12 +783,18 @@ def create_app(
                 registry=registry,
             )
             raise RouterProxyError(502, "invalid_upstream_response", "Created job did not return a job_id")
-        job_route = registry.register("job", worker_id=worker.worker_id, upstream_id=upstream_job_id)
+        job_route = registry.register(
+            "job",
+            owner_scope=owner_scope,
+            worker_id=worker.worker_id,
+            upstream_id=upstream_job_id,
+        )
         job_route.metadata["input_aliases"] = input_aliases
         job_route.metadata["copied_inputs"] = copied_files
         job_route.metadata["active_counted"] = True
+        job_route.metadata["upstream_headers"] = _authorization_headers(request)
         pool.mark_job_started(worker.worker_id)
-        rewritten = rewrite_job_payload(result, worker, registry, pool)
+        rewritten = rewrite_job_payload(result, worker, registry, pool, owner_scope)
         job_route.metadata["payload"] = copy.deepcopy(rewritten)
         await _finalize_terminal_job(
             job_route,
@@ -674,6 +807,7 @@ def create_app(
 
     @application.get("/v1/parse/jobs")
     async def list_jobs(
+        request: Request,
         status_filter: str | None = Query(default=None, alias="status"),
         limit: int = Query(default=20, ge=1, le=100),
         after: str | None = None,
@@ -683,6 +817,7 @@ def create_app(
         """列出当前 Router 进程创建的 jobs。"""
         return _list_registered_jobs(
             registry,
+            owner_scope=_caller_scope(request),
             status_filter=status_filter,
             after=after,
             limit=limit,
@@ -693,13 +828,14 @@ def create_app(
     @application.get("/v1/parse/jobs/{job_id}")
     async def get_job(job_id: str, request: Request) -> Response:
         """查询 Router job 所属 worker 的最新状态并重写所有资源标识。"""
-        route = _route_or_404(registry, "job", job_id)
+        owner_scope = _caller_scope(request)
+        route = _route_or_404(registry, "job", job_id, owner_scope)
         worker = pool.get(route.worker_id)
         upstream = await request_upstream(pool, worker, "GET", f"/v1/parse/jobs/{route.upstream_id}", request=request)
         result = _successful_json(upstream)
         if isinstance(result, Response):
             return result
-        rewritten = rewrite_job_payload(result, worker, registry, pool)
+        rewritten = rewrite_job_payload(result, worker, registry, pool, owner_scope)
         await _finalize_terminal_job(
             route,
             rewritten,
@@ -712,7 +848,7 @@ def create_app(
     @application.delete("/v1/parse/jobs/{job_id}")
     async def cancel_job(job_id: str, request: Request) -> Response:
         """取消 Router job，并保持公共 job ID。"""
-        route = _route_or_404(registry, "job", job_id)
+        route = _route_or_404(registry, "job", job_id, _caller_scope(request))
         worker = pool.get(route.worker_id)
         upstream = await request_upstream(pool, worker, "DELETE", f"/v1/parse/jobs/{route.upstream_id}", request=request)
         result = _successful_json(upstream)
@@ -736,7 +872,7 @@ def create_app(
     @application.get("/v1/usage")
     async def usage(request: Request) -> dict[str, Any]:
         """返回当前 Router 进程聚合的 V1 usage。"""
-        return _usage_payload(request, registry, pool)
+        return _usage_payload(request, registry, pool, _caller_scope(request))
 
     return application
 

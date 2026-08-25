@@ -166,13 +166,19 @@ def rewrite_file_payload(
     payload: dict[str, Any],
     worker: WorkerState,
     registry: ResourceRegistry,
+    owner_scope: str,
 ) -> dict[str, Any]:
     """注册 upstream file 并把响应中的 file ID 改成 Router 公共 ID。"""
     rewritten = copy.deepcopy(payload)
     upstream_id = str(rewritten.get("id") or rewritten.get("file_id") or "")
     if not upstream_id:
         return rewritten
-    route = registry.register("file", worker_id=worker.worker_id, upstream_id=upstream_id)
+    route = registry.register(
+        "file",
+        owner_scope=owner_scope,
+        worker_id=worker.worker_id,
+        upstream_id=upstream_id,
+    )
     if "id" in rewritten:
         rewritten["id"] = route.public_id
     if "file_id" in rewritten:
@@ -185,18 +191,24 @@ def rewrite_upload_payload(
     payload: dict[str, Any],
     worker: WorkerState,
     registry: ResourceRegistry,
+    owner_scope: str,
 ) -> dict[str, Any]:
     """注册 upload 与完成后的 file，并重写 upload URL 和资源标识。"""
     rewritten = copy.deepcopy(payload)
     upstream_id = str(rewritten.get("id") or "")
     if not upstream_id:
         return rewritten
-    route = registry.register("upload", worker_id=worker.worker_id, upstream_id=upstream_id)
+    route = registry.register(
+        "upload",
+        owner_scope=owner_scope,
+        worker_id=worker.worker_id,
+        upstream_id=upstream_id,
+    )
     rewritten["id"] = route.public_id
     if rewritten.get("upload_url") is not None:
         rewritten["upload_url"] = f"/v1/uploads/{route.public_id}/content"
     if isinstance(rewritten.get("file"), dict):
-        rewritten["file"] = rewrite_file_payload(rewritten["file"], worker, registry)
+        rewritten["file"] = rewrite_file_payload(rewritten["file"], worker, registry, owner_scope)
     route.metadata["payload"] = copy.deepcopy(rewritten)
     return rewritten
 
@@ -206,13 +218,19 @@ def rewrite_job_payload(
     worker: WorkerState,
     registry: ResourceRegistry,
     pool: WorkerPool,
+    owner_scope: str,
 ) -> dict[str, Any]:
     """注册 job、输入/输出 files，重写 links，并在终态归还 worker 负载。"""
     rewritten = copy.deepcopy(payload)
     upstream_id = str(rewritten.get("job_id") or "")
     if not upstream_id:
         return rewritten
-    route = registry.register("job", worker_id=worker.worker_id, upstream_id=upstream_id)
+    route = registry.register(
+        "job",
+        owner_scope=owner_scope,
+        worker_id=worker.worker_id,
+        upstream_id=upstream_id,
+    )
     rewritten["job_id"] = route.public_id
     input_aliases = cast(dict[str, str], route.metadata.get("input_aliases") or {})
     for file_result in rewritten.get("files") or []:
@@ -224,7 +242,12 @@ def rewrite_job_payload(
             if alias is not None:
                 file_result["file_id"] = alias
             else:
-                file_route = registry.register("file", worker_id=worker.worker_id, upstream_id=upstream_file_id)
+                file_route = registry.register(
+                    "file",
+                    owner_scope=owner_scope,
+                    worker_id=worker.worker_id,
+                    upstream_id=upstream_file_id,
+                )
                 file_result["file_id"] = file_route.public_id
         output_files = file_result.get("output_files")
         if isinstance(output_files, dict):
@@ -233,6 +256,7 @@ def rewrite_job_payload(
                     continue
                 output_route = registry.register(
                     "file",
+                    owner_scope=owner_scope,
                     worker_id=worker.worker_id,
                     upstream_id=output["file_id"],
                 )
