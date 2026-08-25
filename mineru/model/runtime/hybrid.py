@@ -11,7 +11,6 @@ from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
-from ..mfr.pp_formulanet_plus_m.predict_formula import FormulaRecognizer
 from ..ocr.language import normalize_ocr_model_lang
 from ..table.cls.mineru_table_ori_cls import MineruTableOrientationClsModel
 from ..table.cls.paddle_table_cls import PaddleTableClsModel
@@ -21,6 +20,7 @@ from .contracts import AtomicModelName
 
 if TYPE_CHECKING:
     from ..layout.pp_doclayoutv2 import PPDocLayoutV2LayoutModel
+    from ..mfr.pp_formulanet_plus_m.predict_formula import FormulaRecognizer
     from ..mfr.unimernet.Unimernet import UnimernetModel
     from ..ocr.pytorch_paddle import PytorchPaddleOCR
 

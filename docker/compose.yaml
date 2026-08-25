@@ -78,13 +78,15 @@ services:
       - "8002"
       - --local-gpus
       - auto
-      # --allow-public-http-client  # Disabled by default; when binding to 0.0.0.0 or ::, this re-enables *-http-client backends and server_url. Enable only if you accept the SSRF risk.
+      - --worker-tier
+      - standard
+      - --worker-concurrency
+      - "1"
+      # --preload-models  # Preload models in router-managed mineru-kit api-server workers.
       # To aggregate existing mineru-api services instead of starting local workers:
       # --local-gpus none
       # --upstream-url http://mineru-api:8000
       # --upstream-url http://mineru-api-2:8000
-      # parameters for vllm-engine
-      # --gpu-memory-utilization 0.5  # If encountering VRAM shortage, reduce the KV cache size by this parameter; if VRAM issues persist, try lowering it further to `0.4` or below.
     ulimits:
       memlock: -1
       stack: 67108864

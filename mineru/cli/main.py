@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import typer
-from typer._click.core import Context
+from click.core import Context
 from typer.core import TyperGroup
 
 from ..utils.stdio import configure_standard_streams

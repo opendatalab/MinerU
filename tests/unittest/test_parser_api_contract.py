@@ -158,6 +158,56 @@ print("ok")
     assert result.stdout.strip() == "ok"
 
 
+def test_light_pdf_pipeline_import_does_not_require_torch() -> None:
+    """校验 light stack 首次加载 PDF pipeline 时不会导入 Torch。"""
+    repo_root = Path(__file__).resolve().parents[2]
+    code = """
+import builtins
+import importlib.util
+import os
+import sys
+
+os.environ["MINERU_MODEL_STACK"] = "light"
+real_import = builtins.__import__
+real_find_spec = importlib.util.find_spec
+
+
+def block_torch_import(name, globals=None, locals=None, fromlist=(), level=0):
+    # 阻断真实 Torch 导入，同时允许第三方依赖探测到“未安装”状态。
+    if name == "torch" or name.startswith("torch."):
+        raise ModuleNotFoundError(f"blocked Torch import: {name}", name=name)
+    return real_import(name, globals, locals, fromlist, level)
+
+
+def hide_torch_spec(name, package=None):
+    # 模拟 core 安装中不存在 Torch distribution，避免能力探测误判。
+    if name == "torch" or name.startswith("torch."):
+        return None
+    return real_find_spec(name, package)
+
+
+builtins.__import__ = block_torch_import
+importlib.util.find_spec = hide_torch_spec
+
+import mineru.model.runtime.hybrid
+import mineru.backend.analysis.pdf.pipeline
+
+assert not any(name == "torch" or name.startswith("torch.") for name in sys.modules)
+print("ok")
+"""
+
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "ok"
+
+
 def test_public_parser_import_does_not_load_opencv() -> None:
     """校验公共 parser 导入在无 libGL 的 headless 环境中不加载 OpenCV。"""
     repo_root = Path(__file__).resolve().parents[2]

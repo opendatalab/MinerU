@@ -228,6 +228,16 @@ def test_removed_private_module_paths_have_no_active_references() -> None:
     assert not offenders
 
 
+def test_mineru_kit_does_not_depend_on_cli_old() -> None:
+    """守卫正式 mineru-kit 命令与服务实现不再依赖待删除的 cli_old。"""
+    offenders: dict[str, list[str]] = {}
+    for path in (_PROJECT_ROOT / "mineru/kit").rglob("*.py"):
+        invalid = sorted(module for module in _resolved_imports(path) if module.startswith("mineru.cli_old"))
+        if invalid:
+            offenders[str(path.relative_to(_PROJECT_ROOT))] = invalid
+    assert not offenders
+
+
 def test_removed_private_module_paths_are_not_importable() -> None:
     """验证严格切换后不存在可被误用的旧私有模块壳。"""
     offenders: list[str] = []

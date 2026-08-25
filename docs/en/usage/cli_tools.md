@@ -87,11 +87,14 @@ Options:
   --local-gpus TEXT       Local GPU workers to launch: auto, none, or CSV such
                           as 0,1,2
   --worker-host TEXT      Host for router-managed workers (default: 127.0.0.1)
-  --enable-vlm-preload BOOLEAN
-                          Preload the local VLM model in router-managed
-                          mineru-api workers.
+  --worker-tier TEXT      Managed worker tier: flash, basic, standard
+  --worker-concurrency INTEGER
+                          Concurrency per managed worker
+  --preload-models        Preload models in managed workers
   --help                  Show this message and exit.
 ```
+
+`mineru-router` is a transition alias of `mineru-kit router`. Both commands expose only the MinerU V1 API and do not forward unknown worker arguments.
 
 ## Environment Variables Description
 

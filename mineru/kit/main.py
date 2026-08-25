@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import typer
-from typer._click.core import Context
+from click.core import Context
 from typer.core import TyperGroup
 
 from ..cli.version_command import show_version, version_cmd
@@ -57,7 +57,7 @@ app.add_typer(models.app, name="models")
 app.command("parse")(parse.parse_cmd)
 app.command("api-server")(api_server.api_server_cmd)
 app.command("vlm-server", context_settings=FORWARD_CONTEXT_SETTINGS)(vlm_server.vlm_server_cmd)
-app.command("router", context_settings=FORWARD_CONTEXT_SETTINGS)(router.router_cmd)
+app.command("router")(router.router_cmd)
 app.command("version")(version_cmd)
 
 

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import ast
 import asyncio
-import inspect
 import json
 import os
 import subprocess
@@ -26,8 +25,7 @@ from mineru.kit.commands import api_server, models, parse, router, vlm_server
 from mineru.kit.main import app
 from mineru.kit.vlm_server import mlx_vlm_server
 from mineru.parser.base import ParseResult
-from mineru.types import BlockType, MiddleJson, PageInfo
-from mineru.utils.image_payload import ImagePayloadCache
+from mineru.types import MiddleJson, PageInfo
 from mineru.model.registry import MODEL_COMPLETE_MARKER
 from mineru.version import __version__
 
@@ -224,33 +222,28 @@ print("ok")
     assert result.stdout.strip() == "ok"
 
 
-def test_cli_old_router_import_supports_upstream_only_without_local_dependencies() -> None:
+def test_v1_router_import_does_not_load_cli_old() -> None:
+    """校验正式 Router 与 mineru-kit 入口完全不依赖 cli_old。"""
     repo_root = Path(__file__).resolve().parents[2]
     code = """
 import importlib.abc
+import sys
 
 
-class BlockLocalPipelineFinder(importlib.abc.MetaPathFinder):
+class BlockCliOldFinder(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname, path=None, target=None):
-        if fullname in {"mineru.cli_old.common", "mineru.cli_old.vlm_preload"}:
-            raise ModuleNotFoundError(f"blocked local dependency import: {fullname}")
-        if fullname.startswith("mineru.backend.office."):
-            raise ModuleNotFoundError(f"blocked local dependency import: {fullname}")
+        # 阻断整个旧 CLI 包，验证新 Router 的静态依赖边界。
+        if fullname == "mineru.cli_old" or fullname.startswith("mineru.cli_old."):
+            raise ModuleNotFoundError(f"blocked cli_old import: {fullname}")
         return None
 
 
-import sys
-sys.meta_path.insert(0, BlockLocalPipelineFinder())
+sys.meta_path.insert(0, BlockCliOldFinder())
 
-from mineru.cli_old.router import RouterSettings, WorkerPool, create_app
+import mineru.kit.main
+from mineru.kit.router import RouterSettings, create_app
 
-settings = RouterSettings(upstream_urls=("http://127.0.0.1:8000",), local_gpus="none")
-create_app(settings)
-pool = WorkerPool(settings, object())
-servers = pool.servers
-assert len(servers) == 1
-assert servers[0].source == "remote"
-assert servers[0].local_server is None
+create_app(RouterSettings(local_gpus="none"))
 print("ok")
 """
 
@@ -267,26 +260,51 @@ print("ok")
 
 
 def test_router_upstream_only_worker_pool_builds_remote_server() -> None:
-    from mineru.cli_old.router import RouterSettings, WorkerPool
+    """校验新 WorkerPool 从 V1 upstream 发现能力且不创建本地 worker。"""
+    import httpx
+
+    from mineru.kit.router.workers import RouterSettings, WorkerPool
+
+    def _handler(request: httpx.Request) -> httpx.Response:
+        """返回 Router 能力发现所需的最小 V1 响应。"""
+        if request.url.path == "/v1/health":
+            return httpx.Response(200, json={"status": "ok", "features": {"sources": ["file_id"]}})
+        if request.url.path == "/v1/tiers":
+            return httpx.Response(200, json={"data": [{"id": "standard"}]})
+        if request.url.path == "/v1/models":
+            return httpx.Response(200, json={"data": [{"id": "model-a"}]})
+        return httpx.Response(404)
 
     settings = RouterSettings(upstream_urls=("http://mineru-api:8000",), local_gpus="none")
-    pool = WorkerPool(settings, object())
+    pool = WorkerPool(settings, transport=httpx.MockTransport(_handler))
 
-    assert [(server.server_id, server.source, server.base_url, server.local_server) for server in pool.servers] == [
-        ("remote-1", "remote", "http://mineru-api:8000", None),
+    async def _run() -> list[tuple[str, str, str, object, set[str]]]:
+        """启动、读取并关闭测试 WorkerPool。"""
+        await pool.start()
+        try:
+            return [
+                (worker.worker_id, worker.source, worker.base_url, worker.local_worker, set(worker.tiers))
+                for worker in pool.workers
+            ]
+        finally:
+            await pool.close()
+
+    assert asyncio.run(_run()) == [
+        ("remote-1", "remote", "http://mineru-api:8000", None, {"standard"}),
     ]
 
 
 def test_router_startup_with_no_servers_fails_health_check() -> None:
-    from mineru.cli_old.router import RouterSettings, create_app, startup_router_state
+    """校验未配置 worker 时应用可启动，但 V1 health 返回 503。"""
+    from mineru.kit.router import RouterSettings, create_app
 
-    app = create_app(RouterSettings(upstream_urls=(), local_gpus="none"))
+    router_app = create_app(RouterSettings(upstream_urls=(), local_gpus="none"))
 
-    async def _startup() -> None:
-        await startup_router_state(app, RouterSettings(upstream_urls=(), local_gpus="none"))
+    with TestClient(router_app) as client:
+        response = client.get("/v1/health")
 
-    with pytest.raises(RuntimeError, match="No healthy upstream MinerU API servers are available"):
-        asyncio.run(_startup())
+    assert response.status_code == 503
+    assert response.json()["error"]["code"] == "upstream_unavailable"
 
 
 def test_upload_filename_helper_import_boundary_is_explicit() -> None:
@@ -755,19 +773,20 @@ def test_mlx_vlm_server_adapter_patches_chat_template_sanitizer(monkeypatch: Any
     assert seen["prompt"] == [{"role": "user", "content": "Read this page."}]
 
 
-def test_router_forwards_known_and_extra_args(monkeypatch: Any) -> None:
+def test_router_uses_explicit_v1_worker_options_and_rejects_legacy_args(monkeypatch: Any) -> None:
+    """校验 Router 直接创建新应用，并拒绝旧参数和未知参数透传。"""
+    from mineru.kit.router import cli as router_cli
+
     seen: dict[str, Any] = {}
 
-    def _fake_main(*, args: list[str], prog_name: str, standalone_mode: bool) -> None:
-        seen["args"] = args
-        seen["prog_name"] = prog_name
-        seen["standalone_mode"] = standalone_mode
+    def _fake_run(application: Any, *, host: str, port: int, reload: bool) -> None:
+        """记录 Router 交给 uvicorn 的新应用与显式配置。"""
+        seen["settings"] = application.state.settings
+        seen["host"] = host
+        seen["port"] = port
+        seen["reload"] = reload
 
-    monkeypatch.setattr(
-        router,
-        "_load_old_router",
-        lambda: SimpleNamespace(main=SimpleNamespace(main=_fake_main)),
-    )
+    monkeypatch.setattr(router_cli.uvicorn, "run", _fake_run)
 
     result = runner.invoke(
         app,
@@ -777,36 +796,55 @@ def test_router_forwards_known_and_extra_args(monkeypatch: Any) -> None:
             "0.0.0.0",
             "--port",
             "8002",
-            "--allow-public-http-client",
             "--upstream-url",
             "http://mineru-api:8000",
             "--local-gpus",
             "none",
             "--worker-host",
             "127.0.0.1",
-            "--gpu-memory-utilization",
-            "0.5",
+            "--worker-tier",
+            "basic",
+            "--worker-concurrency",
+            "2",
+            "--preload-models",
         ],
     )
 
     assert result.exit_code == 0
-    assert seen["prog_name"] == "mineru-kit router"
-    assert seen["standalone_mode"] is False
-    assert seen["args"] == [
-        "--host",
-        "0.0.0.0",
-        "--port",
-        "8002",
-        "--allow-public-http-client",
-        "--upstream-url",
-        "http://mineru-api:8000",
-        "--local-gpus",
-        "none",
-        "--worker-host",
-        "127.0.0.1",
-        "--gpu-memory-utilization",
-        "0.5",
-    ]
+    assert seen["host"] == "0.0.0.0"
+    assert seen["port"] == 8002
+    assert seen["reload"] is False
+    assert seen["settings"].upstream_urls == ("http://mineru-api:8000",)
+    assert seen["settings"].local_gpus == "none"
+    assert seen["settings"].worker_tier == "basic"
+    assert seen["settings"].worker_concurrency == 2
+    assert seen["settings"].preload_models is True
+
+    legacy_result = runner.invoke(app, ["router", "--allow-public-http-client"])
+    unknown_result = runner.invoke(app, ["router", "--gpu-memory-utilization", "0.5"])
+    assert legacy_result.exit_code != 0
+    assert unknown_result.exit_code != 0
+
+
+def test_router_reload_uses_environment_factory(monkeypatch: pytest.MonkeyPatch) -> None:
+    """校验 reload 模式通过 factory 重建应用，不在 import 阶段创建连接。"""
+    from mineru.kit.router import cli as router_cli
+
+    seen: dict[str, Any] = {}
+
+    def _fake_run(target: str, **kwargs: Any) -> None:
+        """记录 Uvicorn reload 使用的 factory import string。"""
+        seen["target"] = target
+        seen.update(kwargs)
+
+    monkeypatch.setattr(router_cli.uvicorn, "run", _fake_run)
+
+    result = runner.invoke(app, ["router", "--reload", "--local-gpus", "none"])
+
+    assert result.exit_code == 0
+    assert seen["target"] == "mineru.kit.router.app:create_app_from_env"
+    assert seen["reload"] is True
+    assert seen["factory"] is True
 
 
 def test_parse_rejects_file_output_for_directory_input(tmp_path: Path) -> None:
@@ -1117,12 +1155,15 @@ def test_gradio_persists_page_ranged_origin_pdf_for_v1_preview(tmp_path: Path) -
     parse_result = ParseResult(
         middle_json=MiddleJson(
             pages=[
-            PageInfo(page_idx=0),
-            PageInfo(page_idx=1),
-        ],
-            file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__,
+                PageInfo(page_idx=0),
+                PageInfo(page_idx=1),
+            ],
+            file_suffix="pdf",
+            effort="medium",
+            parse_mode="txt",
+            mineru_version=__version__,
         )
-        )
+    )
     source = tmp_path / "demo.pdf"
     source.write_bytes(source_pdf.getvalue())
     extract_root = tmp_path / "extract"
@@ -1169,9 +1210,12 @@ def test_gradio_persists_image_origin_as_pdf_for_v1_preview(tmp_path: Path) -> N
     parse_result = ParseResult(
         middle_json=MiddleJson(
             pages=[PageInfo(page_idx=0)],
-            file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__,
+            file_suffix="pdf",
+            effort="medium",
+            parse_mode="txt",
+            mineru_version=__version__,
         )
-        )
+    )
     extract_root = tmp_path / "extract"
     archive_zip_path = tmp_path / "archive.zip"
 
@@ -1219,7 +1263,15 @@ def test_gradio_v1_job_reuses_page_range_for_api_and_origin_pdf(
 
         async def parse_async(self, file_path: str, *, page_range: str) -> ParseResult:
             calls["api_page_range"] = page_range
-            return ParseResult(middle_json=MiddleJson(pages=[PageInfo(page_idx=0)], file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__))
+            return ParseResult(
+                middle_json=MiddleJson(
+                    pages=[PageInfo(page_idx=0)],
+                    file_suffix="pdf",
+                    effort="medium",
+                    parse_mode="txt",
+                    mineru_version=__version__,
+                )
+            )
 
     async def _fake_server_health(_http_client: Any, api_url: str | None) -> Any:
         """模拟 v1 server 健康检查，只保留 Gradio 任务需要的字段。"""

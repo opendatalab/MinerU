@@ -78,11 +78,14 @@ Options:
   --upstream-url TEXT     现有 MinerU FastAPI 服务地址；可重复传入多个
   --local-gpus TEXT       本地 GPU worker 配置：auto、none 或 0,1,2 形式
   --worker-host TEXT      路由托管 worker 的监听地址（默认：127.0.0.1）
-  --enable-vlm-preload BOOLEAN
-                          在 router 托管的本地 mineru-api worker 中预加载本地
-                          VLM 模型
+  --worker-tier TEXT      托管 worker 档位：flash、basic、standard
+  --worker-concurrency INTEGER
+                          每个托管 worker 的并发数
+  --preload-models        在托管 worker 中预加载模型
   --help                  显示此帮助信息并退出
 ```
+
+`mineru-router` 是 `mineru-kit router` 的过渡别名。两个命令都只暴露 MinerU V1 API，并拒绝未知 worker 参数透传。
 
 ## 环境变量说明
 

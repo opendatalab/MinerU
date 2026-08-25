@@ -25,7 +25,7 @@
 | `mineru-kit parse` | 无状态文件/目录批处理解析 | [mineru-kit parse](mineru-kit-parse.md) |
 | `mineru-kit api-server` | 启动兼容统一 API 的本地解析服务 | [mineru-kit api-server](mineru-kit-api-server.md) |
 | `mineru-kit vlm-server` | 本地 VLM 服务，兼容 OpenAI Chat Completions 协议 | [mineru-kit vlm-server](mineru-kit-vlm-server.md) |
-| `mineru-kit router` | 启动路由服务，转发到已有 upstream 或管理本地 worker | 当前继承旧 router 实现 |
+| `mineru-kit router` | 启动 V1 路由服务，转发到已有 upstream 或管理本地 worker | 仅暴露 `/v1/*` |
 
 ## 3. 与 mineru 的边界
 
@@ -65,7 +65,10 @@
 
 当前 `mineru-kit router` 已确定：
 
-- 入口参数包括 `--host`、`--port`、`--reload`、`--allow-public-http-client`、`--upstream-url`、`--local-gpus`、`--worker-host`、`--enable-vlm-preload`。
-- `--upstream-url` 可重复，用于接入已有 MinerU FastAPI base URL。
+- 入口参数包括 `--host`、`--port`、`--reload`、`--upstream-url`、`--local-gpus`、`--worker-host`、`--worker-tier`、`--worker-concurrency`、`--preload-models`。
+- `--upstream-url` 可重复，用于接入已有 MinerU V1 API base URL。
 - `--local-gpus` 支持 `auto`、`none` 或 GPU CSV，例如 `0,1,2`。
-- 当前实现懒加载并转发到旧 router，未知额外参数继续透传到底层实现。
+- 本地 worker 统一启动 `mineru-kit api-server`；`--worker-tier` 默认 `standard`，`--worker-concurrency` 默认 `1`。
+- Router 完整代理 V1 health、models、tiers、uploads、files、parse jobs 与 usage；不再提供旧 `/tasks`、`/file_parse` 接口。
+- Router 只接受显式声明的参数，不再透传未知模型引擎参数；需要额外调优时应部署独立 upstream。
+- uploads、files 与 jobs 的公共路由状态保存在当前进程内，Router 重启后不保证旧公共 ID 继续可用。
