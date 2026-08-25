@@ -8,11 +8,11 @@ from typing import Any
 
 from pydantic import TypeAdapter
 
-from mineru.backend.postprocess.lists import fix_office_index_title_blocks, fix_office_paragraph_titles
-from mineru.backend.postprocess.page_blocks import process_page_blocks
-from mineru.backend.postprocess.paragraphs import merge_para_text_blocks
-from mineru.backend.postprocess.table_merge import merge_table
-from mineru.types import ModelJson, PageInfo
+from .lists import fix_office_index_title_blocks, fix_office_paragraph_titles
+from .page_blocks import process_page_blocks
+from .paragraphs import merge_para_text_blocks
+from .table_merge import merge_table
+from ...types import ModelJson, PageInfo
 
 PAGE_INFO_LIST_ADAPTER = TypeAdapter(list[PageInfo])
 

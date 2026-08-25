@@ -12,7 +12,7 @@ import json_repair
 from loguru import logger
 from openai import AsyncOpenAI
 
-from mineru.config import LLMAidedConfig
+from ...config import LLMAidedConfig
 
 ValidatedResult = TypeVar("ValidatedResult")
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import re
 
-from mineru.render._internal.common.inline import inline_plain_text, parse_inline_content
+from ....backend.postprocess.inline import inline_plain_text, parse_inline_content
 
 _INDEX_ROMAN_RE = re.compile(r"[ivxlcdm]+", re.IGNORECASE)
 

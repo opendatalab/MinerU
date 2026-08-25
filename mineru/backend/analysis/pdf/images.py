@@ -8,21 +8,49 @@ import threading
 import time
 from concurrent.futures import ALL_COMPLETED, Future, ProcessPoolExecutor, wait
 from concurrent.futures.process import BrokenProcessPool
-from io import BytesIO
+import math
 from typing import Any, Callable, Literal
 
 import numpy as np
 import pypdfium2 as pdfium
 from loguru import logger
-from PIL import Image, ImageOps
+from PIL import Image
 
-from ..types import BBox
-from .bbox_utils import normalize_to_int_bbox
-from .check_sys_env import is_windows_environment
-from .enum_class import ImageType
-from .os_env_config import get_load_images_threads, get_load_images_timeout
-from .pdf_reader import image_to_b64str, page_to_image
-from .pdfium_guard import close_pdfium_child, pdfium_guard
+from ....model.flash.pdf.pdfium import close_pdfium_child, pdfium_guard
+from ....model.flash.pdf.raster import image_to_b64str, page_to_image
+from ....types import BBox, IntBBox
+from ....utils.geometry import normalize_to_int_bbox
+from ....utils.platform import is_windows_environment
+
+
+class ImageType:
+    """限定 PDF 页面渲染支持的两种图像返回形态。"""
+
+    PIL = "pil_img"
+    BASE64 = "base64_img"
+
+
+def _positive_int_env(name: str, default: int) -> int:
+    """读取正整数环境变量，缺失或非法时返回默认值。"""
+    raw_value = os.getenv(name)
+    if raw_value is None:
+        return default
+    try:
+        value = int(raw_value)
+    except ValueError:
+        return default
+    return value if value > 0 else default
+
+
+def get_load_images_timeout() -> int:
+    """返回 PDF 批量渲染的超时秒数。"""
+    return _positive_int_env("MINERU_PDF_RENDER_TIMEOUT", 300)
+
+
+def get_load_images_threads() -> int:
+    """返回 PDF 批量渲染允许使用的进程数。"""
+    return _positive_int_env("MINERU_PDF_RENDER_THREADS", 3)
+
 
 DEFAULT_PDF_IMAGE_DPI = 200
 # DEFAULT_PDF_IMAGE_DPI = 144
@@ -34,6 +62,7 @@ PDF_RENDER_KILL_JOIN_TIMEOUT_SECONDS = 0.1
 
 _pdf_render_executor: ProcessPoolExecutor | None = None
 _pdf_render_executor_lock = threading.Lock()
+_pdf_render_atexit_registered = False
 _pdf_render_spawn_submit_lock = threading.Lock()
 _pdf_render_spawn_submit_executor_id: int | None = None
 _pdf_render_spawn_submit_count = 0
@@ -44,16 +73,7 @@ def pdf_page_to_image(
     dpi: int = DEFAULT_PDF_IMAGE_DPI,
     image_type: Literal["pil_img", "base64_img"] = ImageType.PIL,
 ) -> dict[str, Any]:
-    """Convert pdfium.PdfDocument to image, Then convert the image to base64.
-
-    Args:
-        page (_type_): pdfium.PdfPage
-        dpi (int, optional): reset the dpi of dpi. Defaults to DEFAULT_PDF_IMAGE_DPI.
-        image_type (ImageType, optional): The type of image to return. Defaults to ImageType.PIL.
-
-    Returns:
-        dict:  {'img_base64': str, 'img_pil': pil_img, 'scale': float }
-    """
+    """将单个 PDFium 页面渲染为 Pillow 图像或 base64 载荷。"""
     pil_img, scale = page_to_image(page, dpi=dpi)
     image_dict: dict[str, Any] = {"scale": scale}
     if image_type == ImageType.BASE64:
@@ -109,6 +129,7 @@ def _close_image_dicts(images_list: list[dict[str, Any]] | None) -> None:
 
 
 def _calculate_render_process_count(total_pages: int, threads: int, cpu_count: int | None = None) -> int:
+    """按页数、配置和 CPU 数量计算实际渲染进程数。"""
     requested_threads = max(1, threads)
     available_cpus = max(1, cpu_count if cpu_count is not None else (os.cpu_count() or 1))
     page_limited_threads = max(1, total_pages // MIN_PAGES_PER_RENDER_PROCESS)
@@ -125,6 +146,7 @@ def _build_render_page_ranges(
     end_page_id: int,
     process_count: int,
 ) -> list[tuple[int, int]]:
+    """把闭区间页范围均匀拆分为指定数量的子范围。"""
     total_pages = end_page_id - start_page_id + 1
     base_pages, remainder = divmod(total_pages, process_count)
     page_ranges = []
@@ -145,12 +167,14 @@ def _get_render_process_plan(
     threads: int,
     cpu_count: int | None = None,
 ) -> tuple[int, list[tuple[int, int]]]:
+    """同时返回实际进程数及其页面分片计划。"""
     total_pages = end_page_id - start_page_id + 1
     actual_threads = _calculate_render_process_count(total_pages, threads, cpu_count)
     return actual_threads, _build_render_page_ranges(start_page_id, end_page_id, actual_threads)
 
 
 def _get_pdf_render_pool_capacity(cpu_count: int | None = None) -> int:
+    """返回持久 PDF 渲染进程池的最大容量。"""
     available_cpus = max(1, cpu_count if cpu_count is not None else (os.cpu_count() or 1))
     configured_threads = max(1, get_load_images_threads())
     return min(
@@ -161,6 +185,7 @@ def _get_pdf_render_pool_capacity(cpu_count: int | None = None) -> int:
 
 
 def _exit_pdf_render_worker_when_parent_exits() -> None:
+    """等待父进程退出后立即终止孤立渲染 worker。"""
     parent = multiprocessing.parent_process()
     if parent is None:
         return
@@ -169,6 +194,7 @@ def _exit_pdf_render_worker_when_parent_exits() -> None:
 
 
 def _install_pdf_render_parent_exit_watcher() -> None:
+    """在渲染 worker 中安装父进程退出监听线程。"""
     watcher = threading.Thread(
         target=_exit_pdf_render_worker_when_parent_exits,
         name="mineru-pdf-render-parent-exit-watcher",
@@ -178,6 +204,7 @@ def _install_pdf_render_parent_exit_watcher() -> None:
 
 
 def _create_pdf_render_executor(max_workers: int) -> ProcessPoolExecutor:
+    """使用安全 multiprocessing 上下文创建 PDF 渲染进程池。"""
     if is_windows_environment():
         return ProcessPoolExecutor(max_workers=max_workers, initializer=_install_pdf_render_parent_exit_watcher)
 
@@ -234,6 +261,7 @@ def _submit_pdf_render_task(
 def _get_pdf_render_future_states(
     future_to_range: dict[Future[Any], tuple[int, int]],
 ) -> list[dict[str, Any]]:
+    """汇总每个渲染 Future 的页面范围和运行状态。"""
     states = []
     for future, (range_start, range_end) in future_to_range.items():
         try:
@@ -257,6 +285,7 @@ def _get_pdf_render_future_states(
 
 
 def _get_pdf_render_worker_states(executor: ProcessPoolExecutor) -> list[dict[str, Any]]:
+    """读取进程池 worker 的 pid、存活状态和退出码。"""
     try:
         process_map = getattr(executor, "_processes", None) or {}
         processes = list(process_map.values())
@@ -288,10 +317,14 @@ def _get_pdf_render_worker_states(executor: ProcessPoolExecutor) -> list[dict[st
 
 
 def _get_pdf_render_executor() -> ProcessPoolExecutor:
-    global _pdf_render_executor
+    """惰性创建并复用持久 PDF 渲染进程池。"""
+    global _pdf_render_atexit_registered, _pdf_render_executor
 
     with _pdf_render_executor_lock:
         if _pdf_render_executor is None:
+            if not _pdf_render_atexit_registered:
+                atexit.register(shutdown_pdf_render_executor)
+                _pdf_render_atexit_registered = True
             max_workers = _get_pdf_render_pool_capacity()
             _pdf_render_executor = _create_pdf_render_executor(max_workers=max_workers)
             logger.debug(f"Created persistent PDF render executor with max_workers={max_workers}")
@@ -303,6 +336,7 @@ def _recycle_pdf_render_executor(
     *,
     terminate_processes: bool,
 ) -> None:
+    """从全局缓存移除指定进程池并按需终止 worker。"""
     global _pdf_render_executor
 
     if executor is None:
@@ -324,6 +358,7 @@ def _recycle_pdf_render_executor(
 
 
 def shutdown_pdf_render_executor() -> None:
+    """关闭当前持久 PDF 渲染进程池。"""
     global _pdf_render_executor
 
     with _pdf_render_executor_lock:
@@ -337,9 +372,6 @@ def shutdown_pdf_render_executor() -> None:
         )
 
 
-atexit.register(shutdown_pdf_render_executor)
-
-
 def load_images_from_pdf_bytes_range(
     pdf_bytes: bytes,
     dpi: int = DEFAULT_PDF_IMAGE_DPI,
@@ -349,6 +381,7 @@ def load_images_from_pdf_bytes_range(
     timeout: int | None = None,
     threads: int | None = None,
 ) -> list[dict[str, Any]]:
+    """在持久进程池中批量渲染指定闭区间页面。"""
     if end_page_id < start_page_id:
         return []
 
@@ -500,6 +533,7 @@ def load_images_from_pdf_core(
     end_page_id: int | None = None,
     image_type: Literal["pil_img", "base64_img"] = ImageType.PIL,
 ) -> list[dict[str, Any]]:
+    """在当前进程中依次渲染 PDF 页面范围。"""
     images_list = []
     pdf_doc = None
     try:
@@ -527,7 +561,50 @@ def load_images_from_pdf_core(
     return images_list
 
 
+def _model_input_bbox(item: dict[str, Any]) -> IntBBox:
+    """把模型输入项的 bbox 向外取整为裁图整数坐标。"""
+    bbox = item["bbox"]
+    assert bbox is not None
+    xmin, ymin, xmax, ymax = [float(value) for value in bbox]
+    return math.floor(xmin), math.floor(ymin), math.ceil(xmax), math.ceil(ymax)
+
+
+def crop_img(
+    input_res: dict[str, Any],
+    input_img: Image.Image | np.ndarray,
+    crop_paste_x: int = 0,
+    crop_paste_y: int = 0,
+) -> tuple[Image.Image | np.ndarray, list[int]]:
+    """按模型 bbox 裁图并在四周补白，返回坐标回投所需参数。"""
+    crop_xmin, crop_ymin, crop_xmax, crop_ymax = _model_input_bbox(input_res)
+    crop_new_width = crop_xmax - crop_xmin + crop_paste_x * 2
+    crop_new_height = crop_ymax - crop_ymin + crop_paste_y * 2
+    if isinstance(input_img, np.ndarray):
+        return_image: Image.Image | np.ndarray = np.ones((crop_new_height, crop_new_width, 3), dtype=np.uint8) * 255
+        cropped_img = input_img[crop_ymin:crop_ymax, crop_xmin:crop_xmax]
+        return_image[
+            crop_paste_y : crop_paste_y + (crop_ymax - crop_ymin),
+            crop_paste_x : crop_paste_x + (crop_xmax - crop_xmin),
+        ] = cropped_img
+    else:
+        return_image = Image.new("RGB", (crop_new_width, crop_new_height), "white")
+        cropped_img = input_img.crop((crop_xmin, crop_ymin, crop_xmax, crop_ymax))
+        return_image.paste(cropped_img, (crop_paste_x, crop_paste_y))
+    useful_list = [
+        crop_paste_x,
+        crop_paste_y,
+        crop_xmin,
+        crop_ymin,
+        crop_xmax,
+        crop_ymax,
+        crop_new_width,
+        crop_new_height,
+    ]
+    return return_image, useful_list
+
+
 def get_crop_img(bbox: BBox, pil_img: Image.Image, scale: float = 2.0) -> Image.Image:
+    """按缩放 bbox 裁剪 Pillow 图像。"""
     scale_bbox = normalize_to_int_bbox([float(v) * scale for v in bbox])
     if scale_bbox is None:
         return pil_img.crop((0, 0, 0, 0))
@@ -535,6 +612,7 @@ def get_crop_img(bbox: BBox, pil_img: Image.Image, scale: float = 2.0) -> Image.
 
 
 def get_crop_np_img(bbox: BBox, input_img: Image.Image | np.ndarray, scale: float = 2.0) -> np.ndarray:
+    """按缩放 bbox 裁剪 Pillow 或 NumPy 图像并返回数组。"""
     if isinstance(input_img, Image.Image):
         np_img = np.asarray(input_img)
     elif isinstance(input_img, np.ndarray):
@@ -553,28 +631,13 @@ def get_crop_np_img(bbox: BBox, input_img: Image.Image | np.ndarray, scale: floa
     return np_img[scale_bbox[1] : scale_bbox[3], scale_bbox[0] : scale_bbox[2]]
 
 
-def images_bytes_to_pdf_bytes(image_bytes: bytes) -> bytes:
-    # 内存缓冲区
-    pdf_buffer = BytesIO()
-
-    # 载入并转换所有图像为 RGB 模式
-    image = Image.open(BytesIO(image_bytes))
-    # 根据 EXIF 信息自动转正（处理手机拍摄的带 Orientation 标记的图片）
-    image = ImageOps.exif_transpose(image) or image
-    # 只在必要时转换
-    if image.mode != "RGB":
-        image = image.convert("RGB")
-
-    # 第一张图保存为 PDF，其余追加
-    image.save(
-        pdf_buffer,
-        format="PDF",
-        resolution=DEFAULT_PDF_IMAGE_DPI,
-        quality=95,
-        subsampling=0,
-    )
-
-    # 获取 PDF bytes 并重置指针（可选）
-    pdf_bytes = pdf_buffer.getvalue()
-    pdf_buffer.close()
-    return pdf_bytes
+__all__ = [
+    "ImageType",
+    "crop_img",
+    "get_crop_img",
+    "get_crop_np_img",
+    "load_images_from_pdf_bytes_range",
+    "load_images_from_pdf_core",
+    "pdf_page_to_image",
+    "shutdown_pdf_render_executor",
+]

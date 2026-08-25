@@ -8,7 +8,7 @@ import json
 from dataclasses import dataclass
 from typing import Literal, cast
 
-from mineru.types import PageInfo, TableBlock, TableBodyBlock
+from ....types import PageInfo, TableBlock, TableBodyBlock
 
 from .html import build_row_rendered_cell_segments, build_table_state_from_html
 from .structure import _expand_header_count_by_rowspan, detect_table_headers

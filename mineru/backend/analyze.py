@@ -8,13 +8,10 @@ from typing import cast
 
 from loguru import logger
 
-from mineru.backend.analysis.contracts import AnalyzeEffort, OfficeSuffix, ParseMode
-from mineru.backend.analysis.office import analyze_office
-from mineru.backend.analysis.pdf.pipeline import analyze_pdf
-from mineru.backend.postprocess.document import model_json_to_middle_json
-from mineru.config import config
-from mineru.types import FILE_SUFFIXES, FileSuffix, MiddleJson, ModelJson
-from mineru.version import __version__ as mineru_version
+from .analysis.contracts import AnalyzeEffort, OfficeSuffix, ParseMode
+from ..config import config
+from ..types import FILE_SUFFIXES, FileSuffix, MiddleJson, ModelJson
+from ..version import __version__ as mineru_version
 
 _SUPPORTED_ANALYZE_EFFORTS = {"flash", "medium", "high", "xhigh"}
 
@@ -43,6 +40,8 @@ def doc_analyze(
         raise ValueError(f"Unsupported analyze effort: {effort}")
 
     if file_suffix == "pdf":
+        from .analysis.pdf.pipeline import analyze_pdf
+
         result = analyze_pdf(
             file_bytes,
             effort=effort,
@@ -50,6 +49,8 @@ def doc_analyze(
             image_analysis=image_analysis,
         )
     else:
+        from .analysis.office import analyze_office
+
         result = analyze_office(file_bytes, cast(OfficeSuffix, file_suffix))
 
     _log_infer_performance(file_suffix, len(result.model_list), result.elapsed)
@@ -61,6 +62,8 @@ def doc_analyze(
         parse_mode=result.parse_mode,
         mineru_version=mineru_version,
     )
+    from .postprocess.document import model_json_to_middle_json
+
     middle_json = model_json_to_middle_json(
         model_json,
         llm_aided_config=config.llm_aided,

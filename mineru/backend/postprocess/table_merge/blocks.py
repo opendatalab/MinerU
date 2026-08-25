@@ -8,7 +8,7 @@ from typing import Any
 
 from bs4 import BeautifulSoup
 
-from mineru.types import BlockType
+from ....types import BlockType
 
 from .html import _build_front_cache, _scan_rows
 from .models import (

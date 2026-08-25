@@ -7,7 +7,7 @@ from typing import Any
 
 from bs4 import Tag
 
-from mineru.types import BlockType
+from ....types import BlockType
 
 from .blocks import (
     _bbox_for_calculation,

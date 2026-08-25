@@ -39,9 +39,9 @@ from ..types import (
     _iter_child_blocks,
     select_highest_cached_tier,
 )
-from ..utils.model_registry import ModelRepo, model_repos_for_tier
-from ..utils.models_download_utils import verify_model_repo
-from ..utils.pdf_document import PDFDocument
+from ..model.download import verify_model_repo
+from ..model.registry import ModelRepo, model_repos_for_tier
+from ..model.flash.pdf.document import PDFDocument
 from ..version import __version__
 from .background.parse_server_health import get_health, get_managed_parse_server_tier
 from .base import AsyncDoclibInterface
@@ -2078,7 +2078,7 @@ def _page_markdown_blocks(
     short_id: str = "",
     tier: Tier = "standard",
 ) -> list[tuple[int, str]]:
-    from mineru.config import config
+    from ..config import config
 
     result: list[tuple[int, str]] = []
     image_renderer = _make_doclib_image_renderer(

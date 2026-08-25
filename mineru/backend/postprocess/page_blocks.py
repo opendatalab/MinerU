@@ -6,16 +6,16 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from mineru.types import (
+from ...types import (
     RAW_ALGORITHM,
     RAW_CAPTION,
     RAW_FOOTNOTE,
     BlockType,
     VISUAL_MAIN_TYPES,
 )
-from mineru.utils.guess_suffix_or_lang import guess_language_by_text
+from ...utils.language import guess_code_language
 
-from mineru.utils.text_utils import clean_isolated_formula
+from ...utils.text import clean_isolated_formula
 
 from .content import clean_content, code_content_clean
 from .lists import (
@@ -167,7 +167,7 @@ def _annotate_code_languages(code_blocks: list[BlockDict]) -> None:
             continue
         for sub_block in code_block["content"]:
             if sub_block.get("type") == BlockType.CODE_BODY:
-                code_block["guess_lang"] = guess_language_by_text(sub_block.get("content", ""))
+                code_block["guess_lang"] = guess_code_language(sub_block.get("content", ""))
                 break
 
 

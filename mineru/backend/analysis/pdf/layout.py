@@ -10,9 +10,9 @@ from typing import Any
 import numpy as np
 from PIL import Image
 
-from mineru.types import BBox, BlockType
-from mineru.utils.bbox_utils import normalize_to_int_bbox
-from mineru.utils.pdf_image_tools import get_crop_np_img
+from ....types import BBox, BlockType
+from ....utils.geometry import normalize_to_int_bbox
+from .images import get_crop_np_img
 
 from .geometry import _normalize_layout_bbox_to_unit, _normalize_page_size
 from .constants import (
@@ -24,7 +24,7 @@ from .constants import (
 
 def _load_vlm_runtime() -> dict[str, Any]:
     """按需加载 VLM runtime 组件，确保只有 high/extra_high 路径触发 VLM 依赖。"""
-    from mineru.model.vlm.runtime import (
+    from ....model.vlm.runtime import (
         ModelSingleton,
         _get_model_async,
         _maybe_enable_serial_execution,

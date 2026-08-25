@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import re
 
-from mineru.render._internal.html.inline import HtmlInlineResult, render_inline_content_html
+from .inline import HtmlInlineResult, render_inline_content_html
 
 _SEPARATOR_CELL_RE = re.compile(r"^:?-{3,}:?$")
 

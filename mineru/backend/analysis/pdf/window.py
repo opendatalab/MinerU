@@ -9,10 +9,9 @@ from typing import Any, Literal
 import numpy as np
 from loguru import logger
 
-from mineru.backend.local_model_runtime import HybridLocalModelContext
-from mineru.utils.config_reader import get_processing_window_size
-from mineru.utils.pdf_document import PDFDocument, PDFPage
-from mineru.utils.pdf_image_tools import load_images_from_pdf_bytes_range
+from ....model.runtime.hybrid import HybridLocalModelContext
+from ....model.flash.pdf.document import PDFDocument, PDFPage
+from .images import load_images_from_pdf_bytes_range
 
 from ..contracts import AnalyzeEffort
 from .constants import (
@@ -59,6 +58,20 @@ from .text.content import (
     _fill_window_block_content_and_lines,
     _validate_text_formula_window_inputs,
 )
+
+
+def _configured_window_size(default: int = 64) -> int:
+    """读取 PDF 分析窗口大小，非法配置回退到正整数默认值。"""
+    import os
+
+    raw_value = os.getenv("MINERU_PROCESSING_WINDOW_SIZE")
+    if raw_value is None:
+        return default
+    try:
+        return max(1, int(raw_value))
+    except ValueError:
+        logger.warning(f"Invalid MINERU_PROCESSING_WINDOW_SIZE value: {raw_value}, use default {default}")
+        return default
 
 
 @dataclass(frozen=True)
@@ -278,11 +291,11 @@ def process_pdf_windows(
     model_list: list[list[dict[str, Any]]] = []
     if flash_txt_mode:
         # Flash 先对整份 PDF 生成完整 model_list，不依赖页面渲染和处理窗口。
-        from mineru.model.flash import PdfModel
+        from ....model.flash import PdfModel
 
         model_list = PdfModel().predict(document)
 
-    configured_window_size = get_processing_window_size(default=64)
+    configured_window_size = _configured_window_size(default=64)
     windows = _build_processing_windows(page_count, configured_window_size)
     _log_processing_window_plan(page_count, configured_window_size, len(windows))
 
@@ -362,9 +375,7 @@ def process_pdf_windows(
                     if effort == "medium":
                         window_model_list = vl_style_layout_blocks
                     elif effort == "high":
-                        high_vlm_blocks, accepted_native_tables = _split_native_high_table_blocks(
-                            vl_style_layout_blocks
-                        )
+                        high_vlm_blocks, accepted_native_tables = _split_native_high_table_blocks(vl_style_layout_blocks)
                         high_vlm_results = vlm_predictor.batch_extract_with_layout(
                             images=images_pil_list,
                             blocks_list=high_vlm_blocks,

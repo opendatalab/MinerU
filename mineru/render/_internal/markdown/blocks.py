@@ -6,13 +6,13 @@ from __future__ import annotations
 import html
 import re
 
-from mineru.config import LatexDelimitersConfig
-from mineru.render._internal.common.index import strip_index_page_tail
-from mineru.render._internal.common.list_items import has_markdown_unordered_marker, reference_list_needs_bullets
-from mineru.render._internal.common.planner import PlannedBlock
-from mineru.render._internal.markdown.assets import build_markdown_image, resolve_image_source
-from mineru.render._internal.markdown.escaping import escape_standalone_marker_rule, escape_text_block_markdown_prefix
-from mineru.render._internal.markdown.inline import (
+from ....config import LatexDelimitersConfig
+from ..common.index import strip_index_page_tail
+from ..common.list_items import has_markdown_unordered_marker, reference_list_needs_bullets
+from ..common.planner import PlannedBlock
+from .assets import build_markdown_image, resolve_image_source
+from .escaping import escape_standalone_marker_rule, escape_text_block_markdown_prefix
+from .inline import (
     render_inline_content,
     render_internal_link,
     render_joined_inline_contents,
@@ -23,7 +23,7 @@ from .table import (
     render_html_table,
 )
 from ...contracts import ImageRenderer
-from mineru.types import (
+from ....types import (
     RAW_ALGORITHM,
     BlockType,
     ChartAnnotationBlock,

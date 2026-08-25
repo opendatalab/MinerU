@@ -3,21 +3,18 @@
 
 from __future__ import annotations
 
-import os
 import time
 from typing import Any, cast
 
-from mineru.backend.analysis.contracts import AnalysisResult, AnalyzeEffort, ParseMode, ResolvedParseMode
-from mineru.backend.local_model_runtime import HybridLocalModelContextSingleton
-from mineru.utils.engine_utils import get_vlm_engine
-from mineru.utils.model_utils import clean_memory
-from mineru.utils.pdf_document import PDFDocument
+from ..contracts import AnalysisResult, AnalyzeEffort, ParseMode, ResolvedParseMode
+from ....model.runtime.hybrid import HybridLocalModelContextSingleton
+from ....model.runtime.memory import clean_memory
+from ....model.vlm.selector import get_vlm_engine
+from ....model.flash.pdf.document import PDFDocument
 
 from .layout import _load_vlm_runtime
 from .normalization import _normalize_pdf_model_list
 from .window import process_pdf_windows
-
-os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
 
 _SUPPORTED_PDF_EFFORTS = {"flash", "medium", "high", "xhigh"}
 
@@ -29,6 +26,10 @@ def analyze_pdf(
     image_analysis: bool = True,
 ) -> AnalysisResult:
     """生产 PDF model-list，并返回最终路由元数据和精确推理耗时。"""
+    # 只在真实 PDF 分析开始时配置 MPS 回退，避免 import backend 修改进程环境。
+    import os
+
+    os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
     if effort not in _SUPPORTED_PDF_EFFORTS:
         raise ValueError(f"Unsupported analyze effort: {effort}")
 

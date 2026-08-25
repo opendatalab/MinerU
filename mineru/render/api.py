@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Any, Literal, overload
 
-from mineru.types import MiddleJson
+from ..types import MiddleJson
 
 from .contracts import (
     DocxRenderOptions,

@@ -13,22 +13,22 @@ import cv2
 import numpy as np
 from loguru import logger
 
-from ...local_model_runtime import HybridLocalModelContext, run_ocr_inference
-from ....model.model_types import AtomicModelName
+from ....model.runtime.hybrid import HybridLocalModelContext, run_ocr_inference
+from ....model.runtime.contracts import AtomicModelName
 from ....types import RAW_ALGORITHM, RAW_FORMULA_NUMBER, RAW_PHONETIC, BBox, BlockType
-from ....utils.bbox_utils import (
+from ....utils.geometry import (
     calculate_overlap_area_in_bbox1_area_ratio,
     normalize_to_int_bbox,
 )
-from ....utils.native_pdf_table import (
+from ....model.flash.pdf.table_recovery import (
     NativeTableInput,
     coerce_native_table_rectangles,
     coerce_native_table_rules,
     recover_native_pdf_table,
 )
-from ....utils.ocr_utils import mask_formula_regions_for_ocr_det
-from ....utils.pdf_document import PDFPage, get_lines_from_chars
-from ....utils.spatial_text import project_ocr_table_text
+from ....model.ocr.image import mask_formula_regions_for_ocr_det
+from ....model.flash.pdf.document import PDFPage, get_lines_from_chars
+from ....model.flash.pdf.spatial_text import project_ocr_table_text
 
 from .constants import (
     BATCH_RATIO,

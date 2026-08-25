@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ...filetypes import OFFICE_EXTENSIONS
-from ...utils.pdf_document import PDFDocument
+from ...model.flash.pdf.document import PDFDocument
 
 # Optional office doc support
 try:

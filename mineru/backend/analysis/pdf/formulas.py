@@ -10,10 +10,10 @@ import cv2
 import numpy as np
 from PIL import Image
 
-from mineru.backend.local_model_runtime import HybridLocalModelContext
-from mineru.utils.bbox_utils import normalize_to_int_bbox
-from mineru.utils.ocr_utils import get_rotate_crop_image_for_text_rec
-from mineru.utils.text_utils import build_tagged_formula_content
+from ....model.runtime.hybrid import HybridLocalModelContext
+from ....utils.geometry import normalize_to_int_bbox
+from ....model.ocr.image import get_rotate_crop_image_for_text_rec
+from ....utils.text import build_tagged_formula_content
 
 from ....types import RAW_FORMULA_NUMBER, BlockType
 

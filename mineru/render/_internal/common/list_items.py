@@ -7,8 +7,8 @@ from dataclasses import dataclass
 import re
 from typing import Literal, TypeAlias
 
-from mineru.render._internal.common.inline import inline_plain_text, parse_inline_content
-from mineru.types import BlockType, ListBlock
+from ....backend.postprocess.inline import inline_plain_text, parse_inline_content
+from ....types import BlockType, ListBlock
 
 ListItemKind: TypeAlias = Literal["unordered", "ordered", "explicit", "none"]
 OrderedListStyle: TypeAlias = Literal["decimal", "lower-alpha", "upper-alpha", "lower-roman", "upper-roman"]

@@ -6,7 +6,7 @@ from __future__ import annotations
 import re
 from urllib.parse import quote
 
-from mineru.types import ImagePayloadBlock
+from ....types import ImagePayloadBlock
 
 _HTML_IMAGE_SRC_RE = re.compile(
     r"(?P<prefix>\bsrc\s*=\s*)(?P<quote>[\"'])(?P<src>.*?)(?P=quote)",

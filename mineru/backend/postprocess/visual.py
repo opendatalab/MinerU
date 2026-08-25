@@ -13,8 +13,8 @@ from ...types import (
     VISUAL_RELATION_IGNORED_TYPES,
     VISUAL_TYPE_MAPPING,
 )
-from mineru.utils.bbox_utils import bbox_center_distance, bbox_distance
-from mineru.types import RAW_CAPTION, RAW_FOOTNOTE
+from ...utils.geometry import bbox_center_distance, bbox_distance
+from ...types import RAW_CAPTION, RAW_FOOTNOTE
 from .table_merge.rules import is_table_continuation_text
 
 INLINE_CAPTION_FRAGMENT_TYPES = {BlockType.TEXT, RAW_FOOTNOTE}

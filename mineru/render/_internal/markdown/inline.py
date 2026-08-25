@@ -6,8 +6,8 @@ from __future__ import annotations
 import html
 import re
 
-from mineru.config import LatexDelimitersConfig
-from mineru.render._internal.common.inline import (
+from ....config import LatexDelimitersConfig
+from ....backend.postprocess.inline import (
     InlineEquation,
     InlineLink,
     InlineNode,
@@ -17,7 +17,7 @@ from mineru.render._internal.common.inline import (
     join_inline_contents,
     parse_inline_content,
 )
-from mineru.render._internal.markdown.escaping import escape_conservative_markdown_text
+from .escaping import escape_conservative_markdown_text
 
 _ANGLE_TEXT_RE = re.compile(r"<[^<>\n]*>")
 _SIMPLE_STYLE_WRAPPERS = {

@@ -8,8 +8,8 @@ import re
 from dataclasses import dataclass
 from typing import TypeAlias, Union
 
-from mineru.utils.language import detect_lang
-from mineru.utils.text_utils import CJK_LANGS, resolve_text_line_boundary
+from ...utils.language import detect_lang
+from ...utils.text import CJK_LANGS, resolve_text_line_boundary
 
 _INLINE_START_RE = re.compile(
     r"<(?P<tag>eq|text|hyperlink|sup|sub|strong|b|em|i|s|u)(?P<attrs>\s[^<>]*?)?>",

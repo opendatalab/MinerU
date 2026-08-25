@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from mineru.types import BlockType
+from ....types import BlockType
 
 from .blocks import _get_or_create_table_state
 from .models import BlockDict, PageInfoDict, TableMergeState

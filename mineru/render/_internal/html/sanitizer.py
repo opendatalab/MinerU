@@ -10,7 +10,7 @@ from urllib.parse import quote, unquote, urlsplit
 import nh3
 from bs4 import BeautifulSoup, NavigableString, Tag
 
-from mineru.utils.image_payload import parse_image_data_uri_strict
+from ....utils.image_payload import parse_image_data_uri_strict
 
 
 _ALLOWED_TAGS = {

@@ -13,7 +13,7 @@ from ..backend.analyze import aio_doc_analyze, doc_analyze
 from ..errors import InvalidRequestError
 from ..filetypes import IMAGE_EXTENSIONS
 from ..types import FILE_SUFFIXES, FileSuffix, MiddleJson, ModelJson, PageInfo, Tier
-from ..utils.backend_options import effort_for_tier
+from .tier import effort_for_tier
 from .base import DocumentParser, ParseResult
 
 logger = logging.getLogger(__name__)
@@ -111,8 +111,8 @@ class MinerUParser(DocumentParser):
         )
 
     def _prepare_input(self, path: Path, page_range: str = "") -> _PreparedInput:
-        from ..utils.guess_suffix_or_lang import guess_suffix_by_path
-        from ..utils.pdf_document import PDFDocument
+        from .file_type import guess_suffix_by_path
+        from ..model.flash.pdf.document import PDFDocument
 
         file_name = path.stem
         file_bytes = path.read_bytes()
@@ -163,8 +163,8 @@ class MinerUParser(DocumentParser):
         if suffix != "pdf":
             return file_bytes, None, None
 
-        from ..utils.pdf_document import PDFDocument
-        from ..utils.pdf_page_id import parse_page_range
+        from ..model.flash.pdf.document import PDFDocument
+        from .page_range import parse_page_range
 
         doc = PDFDocument(file_bytes)
         page_indices = parse_page_range(page_range, doc.page_count)
@@ -178,7 +178,7 @@ class MinerUParser(DocumentParser):
         if page_indices == list(range(doc.page_count)):
             return file_bytes, None, None
 
-        from ..utils.pdfium_guard import safe_rewrite_pdf_bytes_with_pdfium_result
+        from ..model.flash.pdf.pdfium import safe_rewrite_pdf_bytes_with_pdfium_result
 
         rewrite_result = safe_rewrite_pdf_bytes_with_pdfium_result(file_bytes, page_indices=page_indices)
         if rewrite_result.used_original:

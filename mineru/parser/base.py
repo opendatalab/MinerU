@@ -10,10 +10,10 @@ from typing import Any, Literal
 
 from ..render import render_markdown, render_structured_content
 from ..render.contracts import ImageRenderer, RenderMode
-from ..render.writer import DataWriter
+from .writer import DataWriter
 from ..types import FileSuffix, MiddleJson, PageInfo
 from ..utils.image_payload import ImagePayloadCache
-from ..utils.pdf_document import PDFDocument
+from ..model.flash.pdf.document import PDFDocument
 
 MIDDLE_JSON_SCHEMA_VERSION: str = "2.0"
 _LEGACY_SCHEMA_VERSION: str = "1.0"
