@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import tomllib
 from dataclasses import dataclass, field
@@ -12,6 +13,7 @@ from fastapi.testclient import TestClient
 
 from mineru.kit.router import RouterSettings, create_app
 from mineru.kit.router.workers import ManagedLocalWorker
+from mineru.parser.api_server import create_app as create_api_server_app
 
 
 @dataclass
@@ -27,8 +29,9 @@ class _FakeV1Upstream:
     files: dict[str, dict[str, Any]] = field(default_factory=dict)
     jobs: dict[str, dict[str, Any]] = field(default_factory=dict)
     fail_jobs: bool = False
+    source_download_attempts: int = 0
 
-    def handle(self, request: httpx.Request) -> httpx.Response:
+    async def handle(self, request: httpx.Request) -> httpx.Response:
         """按请求 path/method 返回真实 V1 shape 或测试错误。"""
         path = request.url.path
         method = request.method
@@ -67,20 +70,20 @@ class _FakeV1Upstream:
         if path == "/v1/uploads" and method == "POST":
             self.upload_counter += 1
             upload_id = f"upload_{self.name}_{self.upload_counter}"
-            body = self._json_body(request)
+            body = await self._json_body(request)
             self.uploads[upload_id] = {**body, "content": b"", "status": "pending"}
             return self._response(request, 200, self._upload_payload(upload_id))
         if path.startswith("/v1/uploads/"):
-            return self._handle_upload(request)
+            return await self._handle_upload(request)
         if path.startswith("/v1/files/"):
             return self._handle_file(request)
         if path == "/v1/parse/jobs" and method == "POST":
-            return self._create_job(request)
+            return await self._create_job(request)
         if path.startswith("/v1/parse/jobs/"):
             return self._handle_job(request)
         return self._response(request, 404, self._error("not_found", path))
 
-    def _handle_upload(self, request: httpx.Request) -> httpx.Response:
+    async def _handle_upload(self, request: httpx.Request) -> httpx.Response:
         """处理 upload 查询、内容写入、完成和取消。"""
         parts = request.url.path.split("/")
         upload_id = parts[3]
@@ -89,7 +92,7 @@ class _FakeV1Upstream:
             return self._response(request, 404, self._error("upload_not_found", upload_id))
         action = parts[4] if len(parts) > 4 else ""
         if request.method == "PUT" and action == "content":
-            upload["content"] = request.read()
+            upload["content"] = await request.aread()
             return httpx.Response(200, request=request)
         if request.method == "POST" and action == "complete":
             upload["status"] = "completed"
@@ -120,6 +123,13 @@ class _FakeV1Upstream:
         if file_record is None:
             return self._response(request, 404, self._error("file_not_found", file_id))
         if len(parts) > 4 and parts[4] == "content":
+            if file_record["purpose"] != "parse_output":
+                self.source_download_attempts += 1
+                return self._response(
+                    request,
+                    403,
+                    self._error("feature_requires_api_key", "Source files cannot be downloaded"),
+                )
             return httpx.Response(
                 200,
                 content=file_record["content"],
@@ -131,11 +141,11 @@ class _FakeV1Upstream:
             return self._response(request, 200, {"id": file_id, "object": "file", "deleted": True})
         return self._response(request, 200, {key: value for key, value in file_record.items() if key != "content"})
 
-    def _create_job(self, request: httpx.Request) -> httpx.Response:
+    async def _create_job(self, request: httpx.Request) -> httpx.Response:
         """创建 queued job，并校验请求中的 file_id 已复制到当前 upstream。"""
         if self.fail_jobs:
             raise httpx.ConnectError("simulated disconnect", request=request)
-        body = self._json_body(request)
+        body = await self._json_body(request)
         for entry in body.get("files") or []:
             source = entry.get("source") or {}
             if source.get("type") == "file_id" and source.get("file_id") not in self.files:
@@ -226,9 +236,9 @@ class _FakeV1Upstream:
         return payload
 
     @staticmethod
-    def _json_body(request: httpx.Request) -> dict[str, Any]:
+    async def _json_body(request: httpx.Request) -> dict[str, Any]:
         """读取 MockTransport 请求中的 JSON object body。"""
-        body = request.read()
+        body = await request.aread()
         return json.loads(body.decode("utf-8")) if body else {}
 
     @staticmethod
@@ -248,9 +258,9 @@ def _make_router(
     """创建使用 host 分发 MockTransport 的 Router 应用。"""
     by_host = {upstream.name: upstream for upstream in upstreams}
 
-    def _handler(request: httpx.Request) -> httpx.Response:
+    async def _handler(request: httpx.Request) -> httpx.Response:
         """把请求交给 URL host 对应的 fake upstream。"""
-        return by_host[request.url.host].handle(request)
+        return await by_host[request.url.host].handle(request)
 
     settings = RouterSettings(
         upstream_urls=tuple(f"http://{upstream.name}" for upstream in upstreams),
@@ -263,13 +273,22 @@ def _make_router(
 def _upload_file(client: TestClient, *, token: str, content: bytes) -> str:
     """通过 Router 完成一次 V1 upload 并返回公共 file ID。"""
     headers = {"authorization": f"Bearer {token}"}
+    sha256sum = hashlib.sha256(content).hexdigest()
     create = client.post(
         "/v1/uploads",
         headers=headers,
-        json={"filename": f"{token}.pdf", "bytes": len(content), "mime_type": "application/pdf", "purpose": "parse"},
+        json={
+            "filename": f"{token}.pdf",
+            "bytes": len(content),
+            "mime_type": "application/pdf",
+            "purpose": "parse",
+            "sha256sum": sha256sum,
+        },
     )
     assert create.status_code == 200, create.text
     upload_id = create.json()["id"]
+    assert create.json()["status"] == "pending"
+    assert create.json()["sha256sum"] == sha256sum
     assert create.json()["upload_url"] == f"/v1/uploads/{upload_id}/content"
     assert client.put(f"/v1/uploads/{upload_id}/content", headers=headers, content=content).status_code == 200
     complete = client.post(f"/v1/uploads/{upload_id}/complete", headers=headers, json={})
@@ -282,6 +301,7 @@ def test_v1_router_aggregates_capabilities_and_routes_cross_worker_job() -> None
     first = _FakeV1Upstream("worker-a", ("basic", "standard"))
     second = _FakeV1Upstream("worker-b", ("standard", "advanced"))
     router_app, _ = _make_router(first, second)
+    staged_path: Path | None = None
 
     with TestClient(router_app) as client:
         health = client.get("/v1/health")
@@ -303,6 +323,10 @@ def test_v1_router_aggregates_capabilities_and_routes_cross_worker_job() -> None
                 break
         assert len(files_by_worker) == 2
         public_file_ids = list(files_by_worker.values())
+        stored = router_app.state.source_store.find_file(public_file_ids[0])
+        assert stored is not None
+        staged_path = stored.path
+        assert staged_path.is_file()
 
         created = client.post(
             "/v1/parse/jobs",
@@ -336,6 +360,71 @@ def test_v1_router_aggregates_capabilities_and_routes_cross_worker_job() -> None
     submitted_files = [entry["source"]["file_id"] for entry in next(iter(selected_job.values()))["body"]["files"]]
     selected_files = first.files if first.jobs else second.files
     assert all(file_id in selected_files for file_id in submitted_files)
+    assert first.source_download_attempts == 0
+    assert second.source_download_attempts == 0
+    assert staged_path is not None
+    assert not staged_path.exists()
+
+
+def test_real_v1_api_rejects_public_download_of_parse_source(tmp_path: Path) -> None:
+    """验证真实 api-server 保持普通 parse 输入不可公开下载的安全边界。"""
+    data = b"%PDF-1.7"
+    api_app = create_api_server_app(upload_dir=tmp_path, tier="flash")
+
+    with TestClient(api_app) as client:
+        created = client.post(
+            "/v1/uploads",
+            json={
+                "filename": "input.pdf",
+                "bytes": len(data),
+                "mime_type": "application/pdf",
+                "purpose": "parse",
+            },
+        )
+        upload_id = created.json()["id"]
+        uploaded = client.put(
+            f"/v1/uploads/{upload_id}/content",
+            content=data,
+            headers={"content-type": "application/octet-stream"},
+        )
+        completed = client.post(f"/v1/uploads/{upload_id}/complete", json={})
+        file_id = completed.json()["file"]["id"]
+        downloaded = client.get(f"/v1/files/{file_id}/content")
+
+    assert uploaded.status_code == 200
+    assert completed.json()["file"]["purpose"] == "parse"
+    assert downloaded.status_code == 403
+    assert downloaded.json()["error"]["message"] == "Source files cannot be downloaded"
+
+
+def test_router_discards_staged_upload_with_wrong_sha256() -> None:
+    """验证 Router 在 SHA256 不匹配时删除暂存输入且不转发字节。"""
+    upstream = _FakeV1Upstream("worker-a", ("standard",))
+    router_app, _ = _make_router(upstream)
+    expected_sha256 = hashlib.sha256(b"ok").hexdigest()
+
+    with TestClient(router_app) as client:
+        created = client.post(
+            "/v1/uploads",
+            json={
+                "filename": "input.pdf",
+                "bytes": 2,
+                "mime_type": "application/pdf",
+                "purpose": "parse",
+                "sha256sum": expected_sha256,
+            },
+        )
+        upload_id = created.json()["id"]
+        uploaded = client.put(
+            f"/v1/uploads/{upload_id}/content",
+            content=b"no",
+            headers={"content-type": "application/octet-stream"},
+        )
+
+        assert uploaded.status_code == 400
+        assert uploaded.json()["error"]["code"] == "upload_sha256_mismatch"
+        assert router_app.state.source_store.find_upload(upload_id) is None
+        assert next(iter(upstream.uploads.values()))["content"] == b""
 
 
 def test_v1_router_reports_capability_transport_and_resource_errors() -> None:

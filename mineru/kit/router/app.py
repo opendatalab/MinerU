@@ -26,7 +26,7 @@ from .proxy import (
     router_error_response,
     stream_upstream,
 )
-from .resources import ResourceKind, ResourceRegistry, ResourceRoute
+from .resources import ResourceKind, ResourceRegistry, ResourceRoute, SourceFileStore, stored_file_chunks
 from .workers import RouterSettings, WorkerPool, WorkerState
 
 
@@ -187,17 +187,19 @@ def create_app(
     """创建完整代理 MinerU V1 资源面的 Router FastAPI 应用。"""
     resolved_settings = settings or RouterSettings.from_env()
     registry = ResourceRegistry()
+    source_store = SourceFileStore()
     pool = WorkerPool(resolved_settings, transport=transport)
 
     @asynccontextmanager
     async def _lifespan(application: FastAPI) -> AsyncIterator[None]:
         """启动 worker pool，并在应用关闭时释放全部网络和子进程资源。"""
         application.state.started_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
-        await pool.start()
         try:
+            await pool.start()
             yield
         finally:
             await pool.close()
+            source_store.close()
 
     application = FastAPI(
         title="MinerU V1 Router",
@@ -206,6 +208,7 @@ def create_app(
     )
     application.state.settings = resolved_settings
     application.state.registry = registry
+    application.state.source_store = source_store
     application.state.worker_pool = pool
     application.state.started_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
@@ -282,11 +285,21 @@ def create_app(
         if worker is None:
             raise RouterProxyError(503, "upstream_unavailable", "No upstream accepts file uploads")
         body = await request.json()
-        upstream = await request_upstream(pool, worker, "POST", "/v1/uploads", request=request, json_body=body)
+        if not isinstance(body, dict):
+            raise RouterProxyError(400, "invalid_request", "Upload request body must be an object")
+        upstream_body = dict(body)
+        # Router 必须收到源字节才能跨 worker 转移，因此禁止 upstream 在 PUT 前按 sha256 提前完成。
+        upstream_body.pop("sha256sum", None)
+        upstream = await request_upstream(pool, worker, "POST", "/v1/uploads", request=request, json_body=upstream_body)
         result = _successful_json(upstream)
         if isinstance(result, Response):
             return result
-        return JSONResponse(rewrite_upload_payload(result, worker, registry), status_code=upstream.status_code)
+        rewritten = rewrite_upload_payload(result, worker, registry)
+        if isinstance(body.get("sha256sum"), str):
+            rewritten["sha256sum"] = body["sha256sum"]
+        route = _route_or_404(registry, "upload", str(rewritten["id"]))
+        route.metadata["declared"] = copy.deepcopy(body)
+        return JSONResponse(rewritten, status_code=upstream.status_code)
 
     @application.get("/v1/uploads/{upload_id}")
     async def get_upload(upload_id: str, request: Request) -> Response:
@@ -301,16 +314,32 @@ def create_app(
 
     @application.put("/v1/uploads/{upload_id}/content")
     async def upload_content(upload_id: str, request: Request) -> Response:
-        """把上传内容写入 upload 所属 worker。"""
+        """把上传内容流式暂存到 Router，再写入 upload 所属 worker。"""
         route = _route_or_404(registry, "upload", upload_id)
         worker = pool.get(route.worker_id)
+        declared = route.metadata.get("declared") if isinstance(route.metadata.get("declared"), dict) else {}
+        mime_type = str(declared.get("mime_type") or request.headers.get("content-type") or "application/octet-stream")
+        stored = await source_store.stage_upload(upload_id, request.stream(), mime_type=mime_type)
+        declared_bytes = declared.get("bytes")
+        if isinstance(declared_bytes, int) and stored.bytes != declared_bytes:
+            source_store.discard_upload(upload_id)
+            raise RouterProxyError(
+                400,
+                "upload_size_mismatch",
+                f"Expected {declared_bytes} upload bytes, received {stored.bytes}",
+            )
+        declared_sha256 = declared.get("sha256sum")
+        if isinstance(declared_sha256, str) and stored.sha256sum != declared_sha256:
+            source_store.discard_upload(upload_id)
+            raise RouterProxyError(400, "upload_sha256_mismatch", "Uploaded content SHA256 does not match request")
         upstream = await request_upstream(
             pool,
             worker,
             "PUT",
             f"/v1/uploads/{route.upstream_id}/content",
             request=request,
-            content=await request.body(),
+            content=stored_file_chunks(stored.path),
+            headers={"content-type": "application/octet-stream"},
         )
         return passthrough_response(upstream)
 
@@ -319,8 +348,14 @@ def create_app(
         """完成所属 worker 的 upload，并注册返回的 V1 file。"""
         route = _route_or_404(registry, "upload", upload_id)
         worker = pool.get(route.worker_id)
+        stored = source_store.find_upload(upload_id)
+        if stored is None:
+            raise RouterProxyError(409, "upload_not_ready", "Upload bytes have not been received by Router")
         raw_body = await request.body()
-        body = await request.json() if raw_body else None
+        body = await request.json() if raw_body else {}
+        if not isinstance(body, dict):
+            raise RouterProxyError(400, "invalid_request", "Upload complete body must be an object")
+        body.setdefault("sha256sum", stored.sha256sum)
         upstream = await request_upstream(
             pool,
             worker,
@@ -332,7 +367,12 @@ def create_app(
         result = _successful_json(upstream)
         if isinstance(result, Response):
             return result
-        return JSONResponse(rewrite_upload_payload(result, worker, registry), status_code=upstream.status_code)
+        rewritten = rewrite_upload_payload(result, worker, registry)
+        file_payload = rewritten.get("file")
+        if not isinstance(file_payload, dict) or not isinstance(file_payload.get("id"), str):
+            raise RouterProxyError(502, "invalid_upstream_response", "Completed upload did not return a file")
+        source_store.bind_file(upload_id, file_payload["id"])
+        return JSONResponse(rewritten, status_code=upstream.status_code)
 
     @application.post("/v1/uploads/{upload_id}/cancel")
     async def cancel_upload(upload_id: str, request: Request) -> Response:
@@ -349,6 +389,7 @@ def create_app(
         result = _successful_json(upstream)
         if isinstance(result, Response):
             return result
+        source_store.discard_upload(upload_id)
         return JSONResponse(rewrite_upload_payload(result, worker, registry), status_code=upstream.status_code)
 
     @application.get("/v1/files")
@@ -394,6 +435,7 @@ def create_app(
         if isinstance(result, Response):
             return result
         registry.remove("file", file_id)
+        source_store.delete_file(file_id)
         result["id"] = file_id
         return JSONResponse(result, status_code=upstream.status_code)
 
@@ -448,6 +490,7 @@ def create_app(
                         request=request,
                         pool=pool,
                         registry=registry,
+                        source_store=source_store,
                     )
                     copied_file_ids.append(target_file_id)
                 input_aliases[target_file_id] = route.public_id

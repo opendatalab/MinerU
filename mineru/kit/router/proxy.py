@@ -11,7 +11,7 @@ import httpx
 from fastapi import Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
-from .resources import ResourceRegistry, ResourceRoute
+from .resources import ResourceRegistry, ResourceRoute, SourceFileStore, stored_file_chunks
 from .workers import WorkerPool, WorkerState
 
 _HOP_BY_HOP_HEADERS = frozenset(
@@ -73,7 +73,7 @@ async def request_upstream(
     *,
     request: Request | None = None,
     json_body: Any = None,
-    content: bytes | None = None,
+    content: bytes | AsyncIterator[bytes] | None = None,
     headers: Mapping[str, str] | None = None,
 ) -> httpx.Response:
     """执行普通 upstream 请求，并把连接失败与超时转成稳定 Router 错误。"""
@@ -256,32 +256,53 @@ async def copy_file_to_worker(
     request: Request,
     pool: WorkerPool,
     registry: ResourceRegistry,
+    source_store: SourceFileStore,
 ) -> str:
-    """通过 V1 Files/Uploads API 把已有输入文件复制到目标 worker。"""
+    """优先使用 Router 私有暂存输入，通过 Upload API 复制到目标 worker。"""
     source = pool.get(route.worker_id)
-    metadata_response = await request_upstream(
-        pool,
-        source,
-        "GET",
-        f"/v1/files/{route.upstream_id}",
-        request=request,
-    )
-    metadata = json_or_error(metadata_response)
-    content_response = await request_upstream(
-        pool,
-        source,
-        "GET",
-        f"/v1/files/{route.upstream_id}/content",
-        request=request,
-    )
-    if content_response.status_code >= 400:
-        json_or_error(content_response)
+    metadata = route.metadata.get("payload")
+    if not isinstance(metadata, dict):
+        metadata_response = await request_upstream(
+            pool,
+            source,
+            "GET",
+            f"/v1/files/{route.upstream_id}",
+            request=request,
+        )
+        metadata = json_or_error(metadata_response)
+    stored = source_store.find_file(route.public_id)
+    if stored is not None:
+        content: bytes | AsyncIterator[bytes] = stored_file_chunks(stored.path)
+        content_size = stored.bytes
+        content_sha256 = stored.sha256sum
+        content_type = stored.mime_type
+    else:
+        if metadata.get("purpose") != "parse_output":
+            raise RouterProxyError(
+                409,
+                "source_file_unavailable",
+                f"Router source bytes for {route.public_id} are no longer available",
+            )
+        content_response = await request_upstream(
+            pool,
+            source,
+            "GET",
+            f"/v1/files/{route.upstream_id}/content",
+            request=request,
+        )
+        if content_response.status_code >= 400:
+            json_or_error(content_response)
+        content = content_response.content
+        content_size = len(content_response.content)
+        content_sha256 = str(metadata.get("sha256sum") or "")
+        content_type = content_response.headers.get("content-type") or "application/octet-stream"
+    purpose = metadata.get("purpose") if metadata.get("purpose") in {"parse", "input_image"} else "parse"
     create_payload = {
         "filename": metadata.get("filename") or "input.bin",
-        "bytes": len(content_response.content),
-        "mime_type": content_response.headers.get("content-type") or "application/octet-stream",
-        "purpose": metadata.get("purpose") or "parse",
-        **({"sha256sum": metadata["sha256sum"]} if metadata.get("sha256sum") else {}),
+        "bytes": content_size,
+        "mime_type": content_type,
+        "purpose": purpose,
+        **({"sha256sum": content_sha256} if content_sha256 else {}),
     }
     upload_response = await request_upstream(
         pool,
@@ -303,7 +324,7 @@ async def copy_file_to_worker(
         "PUT",
         f"/v1/uploads/{upload_id}/content",
         request=request,
-        content=content_response.content,
+        content=content,
         headers={"content-type": "application/octet-stream"},
     )
     if put_response.status_code >= 400:
@@ -314,7 +335,7 @@ async def copy_file_to_worker(
         "POST",
         f"/v1/uploads/{upload_id}/complete",
         request=request,
-        json_body={"sha256sum": metadata.get("sha256sum")} if metadata.get("sha256sum") else {},
+        json_body={"sha256sum": content_sha256} if content_sha256 else {},
     )
     complete_payload = json_or_error(complete_response)
     file_payload = complete_payload.get("file")

@@ -3,9 +3,13 @@
 
 from __future__ import annotations
 
+import hashlib
 import secrets
+import tempfile
+from collections.abc import AsyncIterator
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Literal
 
 ResourceKind = Literal["upload", "file", "job"]
@@ -32,6 +36,97 @@ class ResourceRoute:
     upstream_id: str
     created_at: str = field(default_factory=utc_now_iso)
     metadata: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class StoredSourceFile:
+    """记录 Router 私有暂存输入的路径、大小、哈希和媒体类型。"""
+
+    path: Path
+    bytes: int
+    sha256sum: str
+    mime_type: str
+
+
+class SourceFileStore:
+    """在 Router 临时目录中保存可供 cross-worker 重传的输入字节。"""
+
+    def __init__(self) -> None:
+        """创建由当前 Router 进程独占并在关闭时清理的临时目录。"""
+        self._temp_dir = tempfile.TemporaryDirectory(prefix="mineru-v1-router-sources-")
+        self._root = Path(self._temp_dir.name)
+        self._uploads: dict[str, StoredSourceFile] = {}
+        self._files: dict[str, StoredSourceFile] = {}
+
+    async def stage_upload(
+        self,
+        upload_id: str,
+        chunks: AsyncIterator[bytes],
+        *,
+        mime_type: str,
+    ) -> StoredSourceFile:
+        """流式写入一个公共 Upload 的输入字节，并计算实际大小与 SHA256。"""
+        path = self._root / "uploads" / upload_id
+        path.parent.mkdir(parents=True, exist_ok=True)
+        hasher = hashlib.sha256()
+        byte_count = 0
+        with path.open("wb") as output:
+            async for chunk in chunks:
+                if not chunk:
+                    continue
+                output.write(chunk)
+                hasher.update(chunk)
+                byte_count += len(chunk)
+        stored = StoredSourceFile(
+            path=path,
+            bytes=byte_count,
+            sha256sum=hasher.hexdigest(),
+            mime_type=mime_type,
+        )
+        previous = self._uploads.get(upload_id)
+        self._uploads[upload_id] = stored
+        if previous is not None and previous.path != path:
+            previous.path.unlink(missing_ok=True)
+        return stored
+
+    def bind_file(self, upload_id: str, file_id: str) -> StoredSourceFile:
+        """把已完成 Upload 的暂存输入绑定到 Router 公共 File。"""
+        stored = self._uploads.pop(upload_id)
+        self._files[file_id] = stored
+        return stored
+
+    def find_upload(self, upload_id: str) -> StoredSourceFile | None:
+        """读取公共 Upload 对应的私有暂存输入，不存在时返回 None。"""
+        return self._uploads.get(upload_id)
+
+    def find_file(self, file_id: str) -> StoredSourceFile | None:
+        """读取公共 File 对应的私有暂存输入，不存在时返回 None。"""
+        return self._files.get(file_id)
+
+    def discard_upload(self, upload_id: str) -> None:
+        """删除取消或失败 Upload 的私有暂存输入。"""
+        stored = self._uploads.pop(upload_id, None)
+        if stored is not None:
+            stored.path.unlink(missing_ok=True)
+
+    def delete_file(self, file_id: str) -> None:
+        """删除公共 File 绑定的私有暂存输入。"""
+        stored = self._files.pop(file_id, None)
+        if stored is not None:
+            stored.path.unlink(missing_ok=True)
+
+    def close(self) -> None:
+        """清理当前 Router 进程的全部暂存输入。"""
+        self._uploads.clear()
+        self._files.clear()
+        self._temp_dir.cleanup()
+
+
+async def stored_file_chunks(path: Path, chunk_size: int = 1024 * 1024) -> AsyncIterator[bytes]:
+    """按固定块大小异步迭代一个 Router 私有暂存文件。"""
+    with path.open("rb") as source:
+        while chunk := source.read(chunk_size):
+            yield chunk
 
 
 class ResourceRegistry:
@@ -108,4 +203,12 @@ class ResourceRegistry:
         return _PUBLIC_ID_PREFIXES[kind] + secrets.token_hex(12)
 
 
-__all__ = ["ResourceKind", "ResourceRegistry", "ResourceRoute", "utc_now_iso"]
+__all__ = [
+    "ResourceKind",
+    "ResourceRegistry",
+    "ResourceRoute",
+    "SourceFileStore",
+    "StoredSourceFile",
+    "stored_file_chunks",
+    "utc_now_iso",
+]
