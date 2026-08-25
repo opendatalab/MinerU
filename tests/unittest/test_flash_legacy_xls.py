@@ -10,16 +10,16 @@ import pytest
 
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
 from mineru.model.flash import XlsModel
-from mineru.model.flash.legacy_office import (
+from mineru.model.flash.office.legacy import (
     LegacyOfficeEncryptedError,
     LegacyOfficeMissingPartError,
     LegacyOfficeResourceLimitError,
 )
-from mineru.model.flash.legacy_office.limits import MAX_RECORDS
-from mineru.model.flash.xls import xls_converter as xls_converter_module
-from mineru.model.flash.xls import parser as xls_parser
-from mineru.model.flash.xls.number_format import format_number, format_text
-from mineru.model.flash.xls.records import RecordBudget
+from mineru.model.flash.office.legacy.limits import MAX_RECORDS
+from mineru.model.flash.office.xls import xls_converter as xls_converter_module
+from mineru.model.flash.office.xls import parser as xls_parser
+from mineru.model.flash.office.xls.number_format import format_number, format_text
+from mineru.model.flash.office.xls.records import RecordBudget
 from mineru.parser import parse
 from mineru.types import BlockType, ImageBlock, MiddleJson, ModelJson, TableBlock
 

@@ -12,6 +12,7 @@ from mineru.backend import analyze
 from mineru.backend.analysis.pdf import constants, layout, normalization, ocr, pipeline, window
 from mineru.backend.analysis.pdf.text import content as text_content
 from mineru.backend.analysis.pdf.text.models import _AnalyzeLine, _AnalyzeSpan
+from mineru.backend.postprocess import document as postprocess_document
 from mineru.types import RAW_ALGORITHM, RAW_CAPTION, RAW_FOOTNOTE
 from mineru.backend.analysis.pdf.text.native import (
     POST_OCR_FALLBACK_CONTENT_KEY,
@@ -213,7 +214,7 @@ def test_doc_analyze_converts_vlm_results_before_downstream_processing(
         parse_mode=parse_mode,  # type: ignore[arg-type]
         mineru_version="test",
     )
-    monkeypatch.setattr(analyze, "model_json_to_middle_json", MagicMock(return_value=expected_middle_json))
+    monkeypatch.setattr(postprocess_document, "model_json_to_middle_json", MagicMock(return_value=expected_middle_json))
     monkeypatch.setattr(pipeline, "clean_memory", MagicMock())
 
     middle_json, model_json = analyze.doc_analyze(
@@ -551,10 +552,7 @@ def test_text_content_joins_three_line_url_with_accumulated_context() -> None:
         BlockType.TEXT,
     )
 
-    assert content == (
-        "Code at "
-        "https://github.com/google-research/tapas/blob/master/TABLEFORMER.md"
-    )
+    assert content == ("Code at https://github.com/google-research/tapas/blob/master/TABLEFORMER.md")
 
 
 @pytest.mark.parametrize("block_type", [BlockType.CODE, RAW_ALGORITHM])

@@ -6,9 +6,9 @@ import zlib
 from bs4 import BeautifulSoup
 
 from mineru.backend.analyze import doc_analyze
-from mineru.model.flash.ppt import parser as ppt_parser
-from mineru.model.flash.ppt.records import PptRecord
-from mineru.model.flash.xls.embedded_chart import extract_embedded_chart_html
+from mineru.model.flash.office.ppt import parser as ppt_parser
+from mineru.model.flash.office.ppt.records import PptRecord
+from mineru.model.flash.office.xls.embedded_chart import extract_embedded_chart_html
 from mineru.types import BlockType, ChartBlock
 
 from _legacy_ppt_test_utils import _build_cfb

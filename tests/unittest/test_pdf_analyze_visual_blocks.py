@@ -1014,7 +1014,7 @@ def test_flash_ocr_formula_number_merge_runs_before_visual_crop(
             ]
         ]
 
-    monkeypatch.setattr(window, "get_processing_window_size", lambda default: 1)
+    monkeypatch.setattr(window, "_configured_window_size", lambda default: 1)
     monkeypatch.setattr(
         window,
         "load_images_from_pdf_bytes_range",
@@ -1301,7 +1301,7 @@ def test_doc_analyze_office_returns_model_json_without_pdf_processing(
     monkeypatch.setattr(office, "_OFFICE_MODEL_MAP", model_factories)
     monkeypatch.setattr(pipeline, "PDFDocument", pdf_document)
     monkeypatch.setattr(pipeline, "HybridLocalModelContextSingleton", hybrid_model_factory)
-    monkeypatch.setattr(window, "get_processing_window_size", window_size_reader)
+    monkeypatch.setattr(window, "_configured_window_size", window_size_reader)
     monkeypatch.setattr(window, "_build_processing_windows", window_builder)
     monkeypatch.setattr(window, "load_images_from_pdf_bytes_range", image_loader)
     monkeypatch.setattr(window, "_attach_visual_block_images", visual_image_attacher)
@@ -1663,7 +1663,7 @@ def test_pdf_window_releases_rendered_images_when_layout_fails(
     hybrid_model = MagicMock()
     hybrid_model.layout_model.batch_predict.side_effect = RuntimeError("layout failed")
 
-    monkeypatch.setattr(window, "get_processing_window_size", lambda default: 1)
+    monkeypatch.setattr(window, "_configured_window_size", lambda default: 1)
     monkeypatch.setattr(
         window,
         "load_images_from_pdf_bytes_range",
@@ -1873,7 +1873,7 @@ def test_doc_analyze_flash_returns_complete_model_json_and_typed_middle_json(mon
         return value
 
     monkeypatch.setattr(pipeline, "PDFDocument", lambda _: fake_pdf_doc)
-    monkeypatch.setattr(window, "get_processing_window_size", lambda default: 2)
+    monkeypatch.setattr(window, "_configured_window_size", lambda default: 2)
     monkeypatch.setattr(window, "load_images_from_pdf_bytes_range", fake_load_images_for_window)
     monkeypatch.setattr(window, "_attach_visual_block_images", tracked_attach_visual_block_images)
     monkeypatch.setattr(pipeline, "_normalize_pdf_model_list", tracked_normalize_model_list)

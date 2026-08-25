@@ -15,9 +15,9 @@ from mineru.model.flash import (
     XlsModel,
     XlsxModel,
 )
-from mineru.model.flash.docx.docx_converter import DocxConverter
-from mineru.model.flash.pptx.pptx_converter import PptxConverter
-from mineru.model.flash.xlsx.xlsx_converter import XlsxConverter
+from mineru.model.flash.office.docx.docx_converter import DocxConverter
+from mineru.model.flash.office.pptx.pptx_converter import PptxConverter
+from mineru.model.flash.office.xlsx.xlsx_converter import XlsxConverter
 from mineru.types import BlockType, MiddleJson, ModelJson
 
 from _docx_equationxml_test_utils import (

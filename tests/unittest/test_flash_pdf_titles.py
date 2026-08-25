@@ -4,7 +4,7 @@ import inspect
 
 import pytest
 
-from mineru.model.flash.native_pdf import (
+from mineru.model.flash.pdf import (
     line_layout,
     line_merging,
     text_blocks,

@@ -8,8 +8,8 @@ import pytest
 
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
 from mineru.model.flash import PptModel, XlsModel
-from mineru.model.flash.legacy_office import LegacyOfficeResourceLimitError
-from mineru.model.flash.legacy_office.limits import MAX_ENTRY_BYTES
+from mineru.model.flash.office.legacy import LegacyOfficeResourceLimitError
+from mineru.model.flash.office.legacy.limits import MAX_ENTRY_BYTES
 from mineru.types import BlockType, MiddleJson, ModelJson
 
 from _legacy_ppt_test_utils import build_equation_ppt

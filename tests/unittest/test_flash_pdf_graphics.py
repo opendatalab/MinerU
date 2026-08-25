@@ -5,12 +5,12 @@ import inspect
 import pytest
 
 
-from mineru.model.flash.native_pdf import (
+from mineru.model.flash.pdf import (
     graphics,
     models,
     pipeline,
 )
-from mineru.utils.pdf_document import PDFPathInfo
+from mineru.model.flash.pdf.document import PDFPathInfo
 
 
 from _flash_pdf_test_utils import (

@@ -11,12 +11,12 @@ from pydantic import ValidationError
 
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
 from mineru.model.flash import PptModel
-from mineru.model.flash.legacy_office import LegacyOfficeEncryptedError, LegacyOfficeResourceLimitError
-from mineru.model.flash.ppt import parser as ppt_parser
-from mineru.model.flash.ppt.models import PptPresentation, PptSlide
-from mineru.model.flash.ppt.ppt_converter import PptConverter
-from mineru.model.flash.ppt.records import PptRecord, RecordBudget
-from mineru.model.flash.ppt.style_text import CharacterRun, StyleRuns
+from mineru.model.flash.office.legacy import LegacyOfficeEncryptedError, LegacyOfficeResourceLimitError
+from mineru.model.flash.office.ppt import parser as ppt_parser
+from mineru.model.flash.office.ppt.models import PptPresentation, PptSlide
+from mineru.model.flash.office.ppt.ppt_converter import PptConverter
+from mineru.model.flash.office.ppt.records import PptRecord, RecordBudget
+from mineru.model.flash.office.ppt.style_text import CharacterRun, StyleRuns
 from mineru.parser import parse
 from mineru.types import BlockType, ChartBlock, ImageBlock, MiddleJson, ModelJson, TableBlock
 

@@ -5,7 +5,7 @@ from docx import Document
 from docx.oxml.ns import qn
 from lxml import etree
 
-from mineru.model.flash.docx.docx_converter import DocxConverter
+from mineru.model.flash.office.docx.docx_converter import DocxConverter
 
 
 NO_BREAK_HYPHEN = "‑"

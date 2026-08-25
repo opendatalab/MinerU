@@ -13,7 +13,7 @@ from pypdf import PdfReader
 from mineru.backend.postprocess.page_blocks import process_page_blocks
 from mineru.backend.postprocess.pages import model_json_to_pages
 from mineru.model.flash import PdfModel
-from mineru.model.flash.native_pdf import (
+from mineru.model.flash.pdf import (
     formulas,
     geometry,
     graphics,
@@ -23,12 +23,12 @@ from mineru.model.flash.native_pdf import (
     tables,
 )
 from mineru.render import render_markdown
-from mineru.render._internal.common.inline import (
+from mineru.backend.postprocess.inline import (
     inline_plain_text,
     parse_inline_content,
 )
 from mineru.types import MiddleJson, ModelJson
-from mineru.utils.pdf_document import PDFDocument, get_lines_from_chars
+from mineru.model.flash.pdf.document import PDFDocument, get_lines_from_chars
 
 
 _PROJECT_ROOT = Path(__file__).parents[2]

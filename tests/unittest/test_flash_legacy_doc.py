@@ -11,12 +11,12 @@ import pytest
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
 from mineru.backend.postprocess.lists import fix_office_list_blocks
 from mineru.model.flash import DocModel
-from mineru.model.flash.doc.fields import sanitize_hyperlink_target
-from mineru.model.flash.doc.models import DocCharStyle, DocTableCell
-from mineru.model.flash.doc.parser import _RawTableRow, _materialize_table_rows
-from mineru.model.flash.doc.records import DocBudget
-from mineru.model.flash.doc.sprm import apply_character_sprms
-from mineru.model.flash.legacy_office import (
+from mineru.model.flash.office.doc.fields import sanitize_hyperlink_target
+from mineru.model.flash.office.doc.models import DocCharStyle, DocTableCell
+from mineru.model.flash.office.doc.parser import _RawTableRow, _materialize_table_rows
+from mineru.model.flash.office.doc.records import DocBudget
+from mineru.model.flash.office.doc.sprm import apply_character_sprms
+from mineru.model.flash.office.legacy import (
     LegacyOfficeEncryptedError,
     LegacyOfficeMalformedError,
     LegacyOfficeMissingPartError,
@@ -170,7 +170,7 @@ def test_doc_exact_list_label_is_consumed_before_strict_projection() -> None:
 def test_doc_table_grid_materializes_colspan_and_rowspan() -> None:
     """验证 Word table edge 网格能同时恢复横向和纵向合并。"""
 
-    from mineru.model.flash.doc.models import DocTableCellFormat, DocTableFormat
+    from mineru.model.flash.office.doc.models import DocTableCellFormat, DocTableFormat
 
     first = DocTableCell(blocks=[])
     raw_rows = [
@@ -218,7 +218,7 @@ def test_doc_rejects_word95_encryption_rtf_and_missing_word_stream() -> None:
 def test_doc_budget_uses_stable_resource_limit(monkeypatch: pytest.MonkeyPatch) -> None:
     """验证 DOC 记录预算超过固定上限时使用共享错误类型。"""
 
-    import mineru.model.flash.doc.records as records
+    import mineru.model.flash.office.doc.records as records
 
     monkeypatch.setattr(records, "MAX_RECORDS", 1)
     budget = records.DocBudget()

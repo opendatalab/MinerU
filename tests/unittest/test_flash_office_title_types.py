@@ -9,7 +9,7 @@ from pptx import Presentation
 from pptx.enum.shapes import PP_PLACEHOLDER
 
 from mineru.model.flash import DocxModel, PptxModel, XlsxModel
-from mineru.model.flash.pptx.pptx_converter import (
+from mineru.model.flash.office.pptx.pptx_converter import (
     PptxConverter,
     _EFFECTIVE_ALL_BOLD_KEY,
     _EFFECTIVE_FONT_SIZE_KEY,

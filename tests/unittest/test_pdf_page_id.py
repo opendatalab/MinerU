@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from mineru.utils.pdf_page_id import parse_page_range
+from mineru.parser.page_range import parse_page_range
 
 
 def test_parse_page_range_empty_means_all_pages() -> None:

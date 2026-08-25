@@ -20,7 +20,7 @@ from PIL import Image
 from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen.canvas import Canvas
 
-from mineru.utils import pdf_document
+from mineru.model.flash.pdf import document as pdf_document
 
 
 def test_pdf_page_exposes_path_infos_without_raw_pdfium_access() -> None:

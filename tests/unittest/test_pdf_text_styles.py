@@ -25,8 +25,8 @@ from mineru.types import (
     ModelJson,
     PageInfo,
 )
-from mineru.utils.pdf_document import PDFDocument, PDFLinkAnnotation
-from mineru.utils.pdf_text_styles import (
+from mineru.model.flash.pdf.document import PDFDocument, PDFLinkAnnotation
+from mineru.model.flash.pdf.text_styles import (
     PDF_FONT_FORCE_BOLD_FLAG,
     PDF_FONT_ITALIC_FLAG,
     PDFTextLinkLine,

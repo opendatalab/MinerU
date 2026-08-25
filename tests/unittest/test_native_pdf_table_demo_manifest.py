@@ -11,14 +11,14 @@ from typing import Any
 from bs4 import BeautifulSoup
 
 from mineru.model.flash import PdfModel
-from mineru.utils.native_pdf_table import (
+from mineru.model.flash.pdf.table_recovery import (
     NativeTableInput,
     coerce_native_table_rectangles,
     coerce_native_table_rules,
     recover_native_pdf_table,
 )
-from mineru.utils.native_pdf_table.engine import diagnose_native_pdf_table
-from mineru.utils.pdf_document import PDFDocument
+from mineru.model.flash.pdf.table_recovery.engine import diagnose_native_pdf_table
+from mineru.model.flash.pdf.document import PDFDocument
 
 
 _PROJECT_ROOT = Path(__file__).parents[2]

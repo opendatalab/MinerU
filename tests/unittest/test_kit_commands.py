@@ -28,7 +28,7 @@ from mineru.kit.vlm_server import mlx_vlm_server
 from mineru.parser.base import ParseResult
 from mineru.types import BlockType, MiddleJson, PageInfo
 from mineru.utils.image_payload import ImagePayloadCache
-from mineru.utils.model_registry import MODEL_COMPLETE_MARKER
+from mineru.model.registry import MODEL_COMPLETE_MARKER
 from mineru.version import __version__
 
 runner = CliRunner()

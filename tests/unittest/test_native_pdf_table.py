@@ -9,7 +9,7 @@ from io import BytesIO
 import pytest
 from reportlab.pdfgen.canvas import Canvas
 
-from mineru.utils.native_pdf_table import (
+from mineru.model.flash.pdf.table_recovery import (
     NativeTableCell,
     NativeTableInput,
     NativeTableRectangle,
@@ -18,19 +18,19 @@ from mineru.utils.native_pdf_table import (
     coerce_native_table_rules,
     recover_native_pdf_table,
 )
-from mineru.utils.native_pdf_table.candidate import GridCellSpec, build_candidate
-from mineru.utils.native_pdf_table.contracts import NativeTableCandidate
-from mineru.utils.native_pdf_table.engine import (
+from mineru.model.flash.pdf.table_recovery.candidate import GridCellSpec, build_candidate
+from mineru.model.flash.pdf.table_recovery.contracts import NativeTableCandidate
+from mineru.model.flash.pdf.table_recovery.engine import (
     _remove_undercounted_vector_candidates,
     _select_candidate,
     diagnose_native_pdf_table,
 )
-from mineru.utils.native_pdf_table.text import build_native_table_text
-from mineru.utils.native_pdf_table.vector import (
+from mineru.model.flash.pdf.table_recovery.text import build_native_table_text
+from mineru.model.flash.pdf.table_recovery.vector import (
     MAX_PRIMITIVES_PER_TABLE,
     build_vector_candidates,
 )
-from mineru.utils.pdf_document import PDFDocument
+from mineru.model.flash.pdf.document import PDFDocument
 
 
 def _char_items(

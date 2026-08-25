@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from mineru.model.flash.native_pdf import (
+from mineru.model.flash.pdf import (
     geometry,
     pipeline,
     text_blocks,

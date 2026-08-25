@@ -128,7 +128,7 @@ import os
 os.environ["MINERU_ENABLE_LOCAL_MODEL_INFERENCE_LOCKS"] = "true"
 os.environ["MINERU_ENABLE_PIPELINE_INFERENCE_LOCKS"] = "false"
 
-from mineru.backend import local_model_runtime
+from mineru.model.runtime import hybrid as local_model_runtime
 
 assert hasattr(local_model_runtime, "HybridLocalModelContext")
 assert hasattr(local_model_runtime, "HybridLocalModelContextSingleton")
@@ -156,7 +156,7 @@ print("ok")
 
 def test_validate_effort_rejects_low_and_maps_legacy_backends() -> None:
     """校验 Hybrid effort 只接受 medium/high/xhigh 三档。"""
-    from mineru.utils.backend_options import (
+    from mineru.parser.tier import (
         HYBRID_EFFORT_CHOICES,
         effort_for_tier,
         resolve_backend_and_effort,

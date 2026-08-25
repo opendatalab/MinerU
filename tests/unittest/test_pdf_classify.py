@@ -15,8 +15,8 @@ from pypdf.generic import (
     NumberObject,
 )
 
-from mineru.utils import pdf_classify
-from mineru.utils.pdf_document import PDFDocument
+from mineru.model.flash.pdf import classify as pdf_classify
+from mineru.model.flash.pdf.document import PDFDocument
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 MIXED_ELEMENTS_PDF = REPO_ROOT / "demo" / "pdfs" / "mixed_elements_pages_07_10.pdf"
