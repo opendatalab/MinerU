@@ -119,6 +119,80 @@ print("ok")
     assert result.stdout.strip() == "ok"
 
 
+def test_dependency_preflight_does_not_load_hybrid_runtime_without_torch() -> None:
+    """校验 light stack 的依赖预检不会在检查前加载 Hybrid 与 Torch。"""
+    repo_root = Path(__file__).resolve().parents[2]
+    code = """
+import importlib.abc
+import os
+import sys
+
+os.environ["MINERU_MODEL_STACK"] = "light"
+
+
+class BlockTorchFinder(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        # 阻断 Torch 导入，验证依赖预检只加载轻量设备选择模块。
+        if fullname == "torch" or fullname.startswith("torch."):
+            raise ModuleNotFoundError(f"blocked Torch import: {fullname}", name=fullname)
+        return None
+
+
+sys.meta_path.insert(0, BlockTorchFinder())
+from mineru.parser.tier import required_modules_for_tier
+
+assert required_modules_for_tier("basic") == []
+assert "mineru.model.runtime.hybrid" not in sys.modules
+print("ok")
+"""
+
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "ok"
+
+
+def test_public_parser_import_does_not_load_opencv() -> None:
+    """校验公共 parser 导入在无 libGL 的 headless 环境中不加载 OpenCV。"""
+    repo_root = Path(__file__).resolve().parents[2]
+    code = """
+import importlib.abc
+import sys
+
+
+class BlockCv2Finder(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path=None, target=None):
+        # 模拟 headless Linux 缺少 libGL 时 cv2 的导入错误。
+        if fullname == "cv2" or fullname.startswith("cv2."):
+            raise ImportError("libGL.so.1: cannot open shared object file: No such file or directory")
+        return None
+
+
+sys.meta_path.insert(0, BlockCv2Finder())
+import mineru.parser
+
+assert "cv2" not in sys.modules
+print("ok")
+"""
+
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=repo_root,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "ok"
+
+
 def test_hybrid_local_runtime_uses_context_names_and_local_lock_env() -> None:
     """校验 Hybrid 本地模型运行时只暴露 context 命名，并优先读取新的本地锁环境变量。"""
     repo_root = Path(__file__).resolve().parents[2]

@@ -6,14 +6,16 @@ from abc import ABC, abstractmethod
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from ..render import render_markdown, render_structured_content
 from ..render.contracts import ImageRenderer, RenderMode
-from .writer import DataWriter
 from ..types import FileSuffix, MiddleJson, PageInfo
 from ..utils.image_payload import ImagePayloadCache
-from ..model.flash.pdf.document import PDFDocument
+from .writer import DataWriter
+
+if TYPE_CHECKING:
+    from ..model.flash.pdf.document import PDFDocument
 
 MIDDLE_JSON_SCHEMA_VERSION: str = "2.0"
 _LEGACY_SCHEMA_VERSION: str = "1.0"
