@@ -72,6 +72,7 @@ def test_parse_result_from_dict_restores_pages() -> None:
                 ],
             )
         ],
+            is_full_document=True,
             file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__,
         )
         )
@@ -85,7 +86,7 @@ def test_parse_result_from_dict_restores_pages() -> None:
 
 
 def test_parse_result_to_dict_includes_schema_version_without_meta() -> None:
-    result = ParseResult(middle_json=MiddleJson(pages=[PageInfo(page_idx=0)], file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__))
+    result = ParseResult(middle_json=MiddleJson(pages=[PageInfo(page_idx=0)], is_full_document=True, file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__))
 
     payload = result.to_dict()
 
@@ -124,12 +125,14 @@ def test_parse_result_from_json_restores_pages() -> None:
     restored = ParseResult.from_json(json.dumps(data))
 
     assert restored.to_dict() == ParseResult.from_dict(data).to_dict()
+    assert restored.middle_json.is_full_document is True
+    assert restored.middle_json.file_suffix == "pdf"
 
 
 def test_parse_result_export_pages_returns_defensive_copy_from_cache() -> None:
     img_bytes = b"defensive-table-image"
     page, image_cache, inline_image = _table_page_with_cached_inline_image(img_bytes)
-    result = ParseResult(middle_json=MiddleJson(pages=[page], file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__), _image_cache=image_cache)
+    result = ParseResult(middle_json=MiddleJson(pages=[page], is_full_document=True, file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__), _image_cache=image_cache)
     first_export = result.export_pages()
     first_export[0].blocks[0].content[0].content = "mutated by caller"
 
@@ -148,7 +151,7 @@ def test_parse_result_export_rewrites_inline_table_base64_images() -> None:
     img_bytes = b"table-image"
     page, image_cache, inline_image = _table_page_with_cached_inline_image(img_bytes)
 
-    result = ParseResult(middle_json=MiddleJson(pages=[page], file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__), _image_cache=image_cache)
+    result = ParseResult(middle_json=MiddleJson(pages=[page], is_full_document=True, file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__), _image_cache=image_cache)
     images = result.images()
     exported_page = result.export_pages()[0]
     exported_body = exported_page.blocks[0].content[0]

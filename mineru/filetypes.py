@@ -6,10 +6,8 @@ from .types import QUALITY_TIERS, Tier, validate_tier
 
 # ── file types ─────────────────────────────────────────────────────
 
-# Unsupported legacy Office formats:
-# "doc",
-# "xls",
-# "ppt",
+# Legacy Office binary formats (Word 97–2003 / Excel 97–2003 / PowerPoint 97–2003)
+# are natively parsed by mineru.model.flash.{doc,xls,ppt} converters.
 # Unsupported document/e-book/archive-like formats:
 # "epub",
 # "key",
@@ -27,7 +25,7 @@ PDF_EXTENSIONS: frozenset[str] = frozenset({"pdf"})
 
 IMAGE_EXTENSIONS: frozenset[str] = frozenset({"png", "jpg", "jpeg", "webp", "gif", "bmp", "tiff", "jp2"})
 
-OFFICE_EXTENSIONS: frozenset[str] = frozenset({"docx", "pptx", "xlsx"})
+OFFICE_EXTENSIONS: frozenset[str] = frozenset({"doc", "docx", "ppt", "pptx", "xls", "xlsx"})
 
 HTML_EXTENSIONS: frozenset[str] = frozenset({"html", "htm"})
 
@@ -62,8 +60,11 @@ TEXT_FILE_TYPES: frozenset[str] = frozenset(FILE_TYPE_BY_EXTENSION[ext] for ext 
 
 MIME_TYPE_BY_EXTENSION: dict[str, str] = {
     "pdf": "application/pdf",
+    "doc": "application/msword",
     "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "ppt": "application/vnd.ms-powerpoint",
     "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    "xls": "application/vnd.ms-excel",
     "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "html": "text/html",
     "htm": "text/html",
@@ -75,12 +76,6 @@ MIME_TYPE_BY_EXTENSION: dict[str, str] = {
     "gif": "image/gif",
     "bmp": "image/bmp",
     "tiff": "image/tiff",
-}
-
-LEGACY_OFFICE_EXTENSION_UPGRADES: dict[str, str] = {
-    "doc": "docx",
-    "ppt": "pptx",
-    "xls": "xlsx",
 }
 
 

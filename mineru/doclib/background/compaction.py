@@ -25,7 +25,7 @@ def _normalize_batch_pages(batch_payload: dict[str, Any]) -> list[dict[str, Any]
 
     2.0 batch：page 只有 page_idx + blocks，直接用。
     1.0 batch：page 含 preproc_blocks/para_blocks/discarded_blocks/page_size，
-    走 legacy_schema_adapter 回推为 raw model_list，再走 model_list_to_pages 转 2.0。
+    走 legacy_schema_adapter 回推为 raw model_list，再走 model_json_to_pages 转 2.0。
     """
     raw_pages = batch_payload.get("pages", [])
     if batch_payload.get("schema_version") == MIDDLE_JSON_SCHEMA_VERSION:
@@ -33,12 +33,27 @@ def _normalize_batch_pages(batch_payload: dict[str, Any]) -> list[dict[str, Any]
 
     # 1.0 batch：走 legacy 适配器转换
     from ...backend.postprocess.legacy_schema_adapter import legacy_page_to_model_list
-    from ...backend.postprocess.pages import model_list_to_pages
+    from ...backend.postprocess.pages import model_json_to_pages
+    from ...parser.base import (
+        _LEGACY_DEFAULT_EFFORT,
+        _LEGACY_DEFAULT_FILE_SUFFIX,
+        _LEGACY_DEFAULT_PARSE_MODE,
+    )
+    from ...types import ModelJson
+    from ...version import __version__ as mineru_version
 
     model_list = [legacy_page_to_model_list(page) for page in raw_pages]
     if not model_list or not any(model_list):
         return []
-    pages = model_list_to_pages(model_list)
+    model_json = ModelJson(
+        pages=model_list,
+        page_index_map=[],
+        file_suffix=_LEGACY_DEFAULT_FILE_SUFFIX,
+        effort=_LEGACY_DEFAULT_EFFORT,
+        parse_mode=_LEGACY_DEFAULT_PARSE_MODE,
+        mineru_version=mineru_version,
+    )
+    pages = model_json_to_pages(model_json)
     return [page.to_dict() for page in pages]
 
 

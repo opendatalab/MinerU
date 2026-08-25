@@ -13,7 +13,7 @@ MinerU has built-in command line tools that allow users to quickly use MinerU fo
 mineru -p <input_path> -o <output_path>
 ```
 > [!TIP]
->- `<input_path>`: Local `PDF` / image / `DOCX` / `PPTX` / `XLSX` file or directory
+>- `<input_path>`: Local `PDF` / image / `DOC`/`DOCX` / `PPT`/`PPTX` / `XLS`/`XLSX` file or directory
 >- `<output_path>`: Output directory
 >- Without `--api-url`, the CLI launches a temporary local `mineru-api`
 >- With `--api-url`, the CLI connects to an existing local or remote FastAPI service directly

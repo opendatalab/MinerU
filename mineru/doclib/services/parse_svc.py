@@ -17,7 +17,6 @@ from ...errors import InvalidRequestError, MineruError
 from ...filetypes import (
     IMAGE_EXTENSIONS,
     INGESTIBLE_EXTENSIONS,
-    LEGACY_OFFICE_EXTENSION_UPGRADES,
     OFFICE_EXTENSIONS,
     TEXT_EXTENSIONS,
     TIERED_PARSE_EXTENSIONS,
@@ -586,9 +585,9 @@ class ParseService:
         # Office: no page_count → default to 1
         page_count = metadata["page_count"]
         if page_count is None:
-            if ext in ("docx",):
+            if ext in ("doc", "docx"):
                 page_count = 1  # reflow docs
-            elif ext in ("pptx", "xlsx"):
+            elif ext in ("ppt", "pptx", "xls", "xlsx"):
                 page_count = 1  # will be updated by metadata extraction
 
         now = _now_ms()
@@ -1633,9 +1632,5 @@ def _safe_filename(page_range: str, done_at: int) -> str:
 
 
 def _unsupported_file_type_message(ext_or_name: str) -> str:
-    ext = ext_or_name.lower().lstrip(".")
-    upgrade_ext = LEGACY_OFFICE_EXTENSION_UPGRADES.get(ext)
-    if upgrade_ext:
-        return f".{ext} files are not supported; please convert to .{upgrade_ext}."
     display = ext_or_name if ext_or_name.startswith(".") else Path(ext_or_name).name
     return f"File type is not supported for parsing: {display}"

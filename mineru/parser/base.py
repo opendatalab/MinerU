@@ -18,7 +18,7 @@ from ..utils.pdf_document import PDFDocument
 
 MIDDLE_JSON_SCHEMA_VERSION: str = "2.0"
 _LEGACY_SCHEMA_VERSION: str = "1.0"
-_LEGACY_DEFAULT_FILE_SUFFIX: Literal["pdf", "docx", "pptx", "xlsx"] = "pdf"
+_LEGACY_DEFAULT_FILE_SUFFIX: Literal["pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx"] = "pdf"
 _LEGACY_DEFAULT_EFFORT: Literal["flash", "low", "medium", "high", "xhigh"] = "medium"
 _LEGACY_DEFAULT_PARSE_MODE: Literal["txt", "ocr"] = "txt"
 _PDF_RETAINED_PAGE_INDICES_KEY = "_pdf_retained_page_indices"
@@ -101,15 +101,27 @@ class ParseResult:
             raise ValueError("ParseResult JSON must contain a list field named pages.")
 
         from ..backend.postprocess.legacy_schema_adapter import legacy_page_to_model_list
-        from ..backend.postprocess.pages import model_list_to_pages
+        from ..backend.postprocess.pages import model_json_to_pages
+        from ..types import ModelJson
+        from ..version import __version__ as mineru_version
 
         model_list = [legacy_page_to_model_list(page) for page in raw_pages]
-        pages = model_list_to_pages(model_list) if model_list else []
-
-        from ..version import __version__ as mineru_version
+        if model_list:
+            model_json = ModelJson(
+                pages=model_list,
+                page_index_map=[],
+                file_suffix=_LEGACY_DEFAULT_FILE_SUFFIX,
+                effort=_LEGACY_DEFAULT_EFFORT,
+                parse_mode=_LEGACY_DEFAULT_PARSE_MODE,
+                mineru_version=mineru_version,
+            )
+            pages = model_json_to_pages(model_json)
+        else:
+            pages = []
 
         return MiddleJson(
             pages=pages,
+            is_full_document=True,
             file_suffix=_LEGACY_DEFAULT_FILE_SUFFIX,
             effort=_LEGACY_DEFAULT_EFFORT,
             parse_mode=_LEGACY_DEFAULT_PARSE_MODE,

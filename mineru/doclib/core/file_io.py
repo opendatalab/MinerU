@@ -200,4 +200,36 @@ async def _extract_office_meta(filepath: str, ext: str, result: dict) -> None:
                 if wb is not None:
                     wb.close()
 
+        elif ext in ("doc", "ppt", "xls"):
+            _extract_legacy_office_meta(filepath, result)
+
     await asyncio.to_thread(_extract)
+
+
+def _extract_legacy_office_meta(filepath: str, result: dict) -> None:
+    """用 olefile 提取 OLE2 SummaryInformation 属性。
+
+    旧 Office 二进制格式（doc/xls/ppt）无 python-docx/pptx/openpyxl 支持。
+    page_count 无法从 OLE 属性获取：doc 是 reflow 文档，xls workbook 无页数概念，
+    ppt 幻灯片数需深度解析 PowerPoint Document stream，由 parse_svc 默认值 1 兜底。
+    """
+    try:
+        import olefile  # type: ignore[import-untyped]
+    except ImportError:
+        return
+    ole = None
+    try:
+        ole = olefile.OleFileIO(filepath)
+    except Exception as exc:
+        raise MetadataExtractionError("open_failed", str(exc) or "Failed to open OLE2 document") from exc
+    try:
+        meta = ole.get_metadata()
+        result["title"] = meta.title or None
+        result["author"] = meta.author or None
+        result["subject"] = meta.subject or None
+        result["keywords"] = meta.keywords or None
+    except Exception as exc:
+        raise MetadataExtractionError("read_metadata_failed", str(exc) or "Failed to read OLE2 metadata") from exc
+    finally:
+        if ole is not None:
+            ole.close()

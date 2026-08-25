@@ -12,7 +12,7 @@ from typing import Any, Literal
 from ..backend.analyze import aio_doc_analyze, doc_analyze
 from ..errors import InvalidRequestError
 from ..filetypes import IMAGE_EXTENSIONS
-from ..types import MiddleJson, PageInfo, Tier
+from ..types import MiddleJson, ModelJson, PageInfo, Tier
 from ..utils.backend_options import effort_for_tier
 from .base import DocumentParser, ParseResult
 
@@ -20,8 +20,8 @@ logger = logging.getLogger(__name__)
 
 _Effort = Literal["flash", "low", "medium", "high", "xhigh"]
 _ParseMode = Literal["auto", "txt", "ocr"]
-_FileSuffix = Literal["pdf", "docx", "pptx", "xlsx"]
-_SUPPORTED_SUFFIXES: frozenset[str] = frozenset({"pdf", "docx", "pptx", "xlsx"})
+_FileSuffix = Literal["pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx"]
+_SUPPORTED_SUFFIXES: frozenset[str] = frozenset({"pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx"})
 
 
 @dataclass
@@ -94,7 +94,7 @@ class MinerUParser(DocumentParser):
             broken_page_indices=prepared.broken_page_indices,
         )
 
-    def _run_analysis(self, prepared: _PreparedInput) -> tuple[MiddleJson, Any]:
+    def _run_analysis(self, prepared: _PreparedInput) -> tuple[MiddleJson, ModelJson]:
         return doc_analyze(
             prepared.file_bytes,
             effort=self.effort,
@@ -104,7 +104,7 @@ class MinerUParser(DocumentParser):
             file_suffix=prepared.file_suffix,
         )
 
-    async def _arun_analysis(self, prepared: _PreparedInput) -> tuple[MiddleJson, Any]:
+    async def _arun_analysis(self, prepared: _PreparedInput) -> tuple[MiddleJson, ModelJson]:
         return await aio_doc_analyze(
             prepared.file_bytes,
             effort=self.effort,

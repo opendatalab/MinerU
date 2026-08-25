@@ -9,6 +9,7 @@ from magika import Magika
 
 DEFAULT_LANG = "txt"
 PDF_SIG_BYTES = b"%PDF"
+OLE2_SIG_BYTES = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
 OOXML_ROOT_RELS = "_rels/.rels"
 OOXML_CONTENT_TYPES = "[Content_Types].xml"
 OOXML_PACKAGE_REL_NS = "http://schemas.openxmlformats.org/package/2006/relationships"
@@ -18,6 +19,14 @@ OOXML_MAIN_CONTENT_TYPES = {
     ("application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"): "docx",
     ("application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"): "pptx",
     ("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"): "xlsx",
+}
+# OLE2 compound file 内部 stream 名 → 旧 Office 格式后缀
+# doc: WordDocument stream；xls: Workbook 或 Book stream；ppt: PowerPoint Document stream
+OLE2_STREAM_SUFFIX_MAP: dict[str, str] = {
+    "WordDocument": "doc",
+    "Workbook": "xls",
+    "Book": "xls",
+    "PowerPoint Document": "ppt",
 }
 magika = Magika()
 
@@ -155,10 +164,45 @@ def _guess_ooxml_suffix_by_path(file_path: Path) -> str | None:
         return None
 
 
+def _guess_ole2_suffix_by_bytes(file_bytes: bytes) -> str | None:
+    """用 OLE2 magic + olefile 内部 stream 区分 doc/xls/ppt。
+
+    olefile 是纯 Python 库且已是核心依赖（mineru.model.flash.legacy_office 使用）。
+    在 OOXML 识别失败后、Magika 兜底前插入此层，避免 Magika 对 OLE2 返回 unknown。
+    """
+    if len(file_bytes) < 8 or file_bytes[:8] != OLE2_SIG_BYTES:
+        return None
+    try:
+        import olefile  # type: ignore[import-untyped]
+
+        with olefile.OleFileIO(BytesIO(file_bytes)) as ole:
+            for stream_name in ole.listdir(streams=True):
+                name = "/".join(stream_name)
+                suffix = OLE2_STREAM_SUFFIX_MAP.get(name)
+                if suffix:
+                    return suffix
+    except Exception:
+        return None
+    return None
+
+
+def _guess_ole2_suffix_by_path(file_path: Path) -> str | None:
+    """从文件路径读取 OLE2 容器并识别旧 Office 格式。"""
+    try:
+        with open(file_path, "rb") as f:
+            return _guess_ole2_suffix_by_bytes(f.read())
+    except OSError:
+        return None
+
+
 def guess_suffix_by_bytes(file_bytes: bytes, file_path: str | None = None) -> str:
     ooxml_suffix = _guess_ooxml_suffix_by_bytes(file_bytes)
     if ooxml_suffix:
         return ooxml_suffix
+
+    ole2_suffix = _guess_ole2_suffix_by_bytes(file_bytes)
+    if ole2_suffix:
+        return ole2_suffix
 
     suffix = magika.identify_bytes(file_bytes).prediction.output.label
     if (
@@ -178,6 +222,10 @@ def guess_suffix_by_path(file_path: str | Path) -> str:
     ooxml_suffix = _guess_ooxml_suffix_by_path(file_path)
     if ooxml_suffix:
         return ooxml_suffix
+
+    ole2_suffix = _guess_ole2_suffix_by_path(file_path)
+    if ole2_suffix:
+        return ole2_suffix
 
     suffix = magika.identify_path(file_path).prediction.output.label
     if suffix in ["ai", "html"] and file_path.suffix.lower() in [".pdf"]:

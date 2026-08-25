@@ -13,7 +13,7 @@ MinerU内置了命令行工具，用户可以通过命令行快速使用MinerU�
 mineru -p <input_path> -o <output_path>
 ```
 > [!TIP]
-> - `<input_path>`：本地 `PDF` / 图片 / `DOCX` / `PPTX` / `XLSX` 文件或目录
+> - `<input_path>`：本地 `PDF` / 图片 / `DOC`/`DOCX` / `PPT`/`PPTX` / `XLS`/`XLSX` 文件或目录
 > - `<output_path>`：输出目录
 > - 未传 `--api-url` 时，CLI 会自动拉起本地临时 `mineru-api`
 > - 传入 `--api-url` 时，CLI 会直连远端或已有本地 FastAPI 服务
