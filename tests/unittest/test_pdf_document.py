@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from io import BytesIO
 from typing import Any
+from unittest.mock import MagicMock
 
 import pytest
 from pypdf import PdfReader, PdfWriter
@@ -20,6 +21,17 @@ from reportlab.lib.utils import ImageReader
 from reportlab.pdfgen.canvas import Canvas
 
 from mineru.utils import pdf_document
+
+
+def test_pdf_page_exposes_path_infos_without_raw_pdfium_access() -> None:
+    """验证 PDFPage 只读代理当前页 Path 摘要并保留页索引。"""
+
+    document = MagicMock()
+    expected = [MagicMock()]
+    document.get_page_path_infos.return_value = expected
+
+    assert pdf_document.PDFPage(document, 3).get_path_infos() is expected
+    document.get_page_path_infos.assert_called_once_with(3)
 
 
 def _build_drawing_pdf() -> bytes:

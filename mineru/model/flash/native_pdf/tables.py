@@ -10,7 +10,16 @@ import unicodedata
 from typing import Any, Literal
 
 from loguru import logger
+from pdftext.schema import Char
 
+from mineru.utils.native_pdf_table import (
+    NativeTableInput,
+    NativeTableRectangle,
+    NativeTableRule,
+    coerce_native_table_rectangles,
+    coerce_native_table_rules,
+    recover_native_pdf_table,
+)
 from mineru.utils.text_utils import merge_text_line_contents
 from mineru.utils.spatial_text import project_pdf_table_text
 from mineru.types import BBox
@@ -75,6 +84,37 @@ _FILLED_GRID_MIN_PAGE_AREA_RATIO = 0.005
 _FILLED_GRID_MAX_PAGE_AREA_RATIO = 0.25
 _FILLED_GRID_MIN_PAGE_WIDTH_RATIO = 0.12
 _FILLED_GRID_MIN_PAGE_HEIGHT_RATIO = 0.03
+
+
+def _recover_native_table_html(
+    source: _PageSource,
+    table_bbox: BBox,
+    angle: int,
+    chars: tuple[Char, ...] | None = None,
+    drawing_lines: tuple[NativeTableRule, ...] | None = None,
+    rectangles: tuple[NativeTableRectangle, ...] | None = None,
+) -> str:
+    """使用共享原生字符与绘图原语恢复高置信表格 HTML。"""
+
+    result = recover_native_pdf_table(
+        NativeTableInput(
+            table_bbox=table_bbox,
+            page_size=source.page_size,
+            angle=angle,
+            chars=chars if chars is not None else tuple(source.chars),
+            drawing_lines=(
+                drawing_lines
+                if drawing_lines is not None
+                else coerce_native_table_rules(source.drawing_lines)
+            ),
+            rectangles=(
+                rectangles
+                if rectangles is not None
+                else coerce_native_table_rectangles(source.path_infos)
+            ),
+        )
+    )
+    return result.html if result is not None else ""
 
 
 def _detect_table_candidates(
@@ -2014,6 +2054,9 @@ def _materialize_table_blocks(
     annotation_blocks: list[dict[str, Any]] = []
     accepted_candidate_bboxes: list[BBox] = []
     claimed: set[int] = set()
+    native_chars = tuple(source.chars)
+    native_rules = coerce_native_table_rules(source.drawing_lines)
+    native_rectangles = coerce_native_table_rectangles(source.path_infos)
     for candidate in sorted(candidates, key=lambda item: item.score, reverse=True):
         # 候选去重仍使用包含注释的完整框，不能因输出表体收缩而放行重复表格。
         if any(
@@ -2033,13 +2076,34 @@ def _materialize_table_blocks(
             candidate,
             failed_annotations,
         )
+        content = ""
         try:
-            # 使用完整原始字符流保留 PDF 物理换行；行索引仅负责表体与注释的所有权认领。
-            content = project_pdf_table_text(
-                source.chars,
+            content = _recover_native_table_html(
+                source,
                 body_bbox,
-                angle=candidate.angle,
+                candidate.angle,
+                native_chars,
+                native_rules,
+                native_rectangles,
             )
+        except Exception as exc:
+            logger.warning(
+                "Flash native table recovery failed and fell back to projection: "
+                f"bbox={candidate.bbox}, error={exc}"
+            )
+        if content:
+            logger.debug(
+                "Flash native table recovery accepted: "
+                f"bbox={body_bbox}, angle={candidate.angle}"
+            )
+        try:
+            if not content:
+                # 使用完整原始字符流保留 PDF 物理换行；行索引仅负责表体与注释的所有权认领。
+                content = project_pdf_table_text(
+                    source.chars,
+                    body_bbox,
+                    angle=candidate.angle,
+                )
         except Exception as exc:
             # 表体投影异常时同时撤销预构造注释，保持整组不输出、不认领。
             logger.warning(f"Flash table projection failed and rolled back: bbox={candidate.bbox}, error={exc}")
