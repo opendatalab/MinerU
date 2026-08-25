@@ -1,5 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
-"""表格方向检测、Medium/Low 表格识别与文本投影。"""
+"""表格方向检测、Medium 表格识别与 Flash OCR 文本投影。"""
 
 from __future__ import annotations
 
@@ -14,23 +14,14 @@ from loguru import logger
 
 from mineru.backend.local_model_runtime import HybridLocalModelContext, run_ocr_inference
 from mineru.model.model_types import AtomicModelName
-from mineru.types import RAW_FORMULA_NUMBER, BBox, BlockType, ContentType
+from mineru.types import RAW_FORMULA_NUMBER, BBox, BlockType
 from mineru.utils.bbox_utils import (
     calculate_overlap_area_in_bbox1_area_ratio,
     normalize_to_int_bbox,
 )
-from mineru.utils.native_pdf_table import (
-    NativeTableInput,
-    NativeTableRectangle,
-    NativeTableRule,
-    coerce_native_table_rectangles,
-    coerce_native_table_rules,
-    recover_native_pdf_table,
-)
 from mineru.utils.ocr_utils import mask_formula_regions_for_ocr_det
 from mineru.utils.pdf_document import PDFPage, get_lines_from_chars
-from mineru.utils.pdf_text_styles import PDFTextLinkLine, PDFTextStyleLine
-from mineru.utils.spatial_text import project_ocr_table_text, project_pdf_table_text
+from mineru.utils.spatial_text import project_ocr_table_text
 
 from .constants import (
     BATCH_RATIO,
@@ -39,7 +30,6 @@ from .constants import (
     TABLE_TEXT_ORIENTATION_ANGLES,
     TABLE_TEXT_ORIENTATION_MIN_DOMINANCE_RATIO,
     TABLE_TEXT_ORIENTATION_MIN_VALID_LINES,
-    _LOW_TXT_VISUAL_RUN_ANGLES,
 )
 from .geometry import (
     _bbox_to_pixel_bbox,
@@ -54,9 +44,7 @@ from .geometry import (
     _sidecar_bbox_to_page_bbox,
     _table_bbox_center,
 )
-from .text.models import _AnalyzeSpan
-from .text.native import __replace_ligatures, __replace_unicode, _is_supported_rotation
-from .text.styles import build_pdf_native_visual_lines_and_styles
+from .text.native import _is_supported_rotation
 
 
 def _apply_table_rotate_labels(
@@ -68,48 +56,6 @@ def _apply_table_rotate_labels(
         raise ValueError("Hybrid table orientation result count mismatch")
     for table_item, rotate_label in zip(table_items, rotate_labels):
         table_item["layout_item"]["angle"] = int(rotate_label or "0")
-
-
-def _visual_line_items_to_spans(line_items: list[Any]) -> list[_AnalyzeSpan]:
-    """把 Flash 视觉 run 转为 Hybrid 文本分配使用的私有 span。"""
-
-    page_spans: list[_AnalyzeSpan] = []
-    for line_item in line_items:
-        content = __replace_ligatures(__replace_unicode(line_item.text)).strip()
-        if not content:
-            continue
-        page_spans.append(
-            _AnalyzeSpan(
-                type=ContentType.TEXT,
-                bbox=line_item.bbox,
-                content=content,
-                score=1.0,
-            )
-        )
-    return page_spans
-
-
-def _build_pdf_text_visual_run_data(
-    pdf_page: PDFPage,
-) -> tuple[list[_AnalyzeSpan], list[PDFTextStyleLine], list[PDFTextLinkLine]]:
-    """一次构造 Low/TXT 视觉 span、文本样式和超链接证据。"""
-
-    _page_chars, line_items, style_lines, link_lines = (
-        build_pdf_native_visual_lines_and_styles(
-            pdf_page,
-            supported_angles=_LOW_TXT_VISUAL_RUN_ANGLES,
-        )
-    )
-    return _visual_line_items_to_spans(line_items), style_lines, link_lines
-
-
-def _build_pdf_text_visual_run_spans(pdf_page: PDFPage) -> list[_AnalyzeSpan]:
-    """将 Low/TXT 原生粗行按 Flash 字符间隙拆成可独立分配的视觉 run。"""
-
-    page_spans, _style_lines, _link_lines = _build_pdf_text_visual_run_data(
-        pdf_page
-    )
-    return page_spans
 
 
 def _detect_table_angle_from_pdf_lines(
@@ -262,7 +208,7 @@ def _select_table_owner(
     item_bbox: BBox,
     table_entries: list[dict[str, Any]],
 ) -> dict[str, Any] | None:
-    """为 low/medium 对象匹配所属表格，多表命中时选择交叠面积最大的表格。"""
+    """为本地 layout 对象匹配所属表格，多表命中时选择交叠面积最大的表格。"""
     center_x, center_y = _table_bbox_center(item_bbox)
     candidates: list[tuple[float, dict[str, Any]]] = []
     for table_entry in table_entries:
@@ -551,11 +497,11 @@ def _apply_medium_table_recognition(
             table_task["table_block"]["content"] = html_code
 
 
-def _remove_low_table_inner_blocks(
+def _remove_flash_ocr_table_inner_blocks(
     images_list: list[dict[str, Any]],
     model_list: list[list[dict[str, Any]]],
 ) -> None:
-    """按表格中心点归属规则移除 low 表内图片、公式和公式编号块。"""
+    """按表格中心点归属规则移除 Flash OCR 表内图片、公式和公式编号块。"""
     inner_block_types = {
         BlockType.IMAGE,
         BlockType.EQUATION,
@@ -585,14 +531,12 @@ def _remove_low_table_inner_blocks(
         page_model_list[:] = retained_blocks
 
 
-def _fill_low_table_contents(
+def _fill_flash_ocr_table_contents(
     images_list: list[dict[str, Any]],
-    pdf_pages: list[PDFPage],
     model_list: list[list[dict[str, Any]]],
-    parse_mode: Literal["txt", "ocr"],
     local_model_context: HybridLocalModelContext,
 ) -> None:
-    """为 Low 表格回填高置信原生 HTML 或空间投影文本。"""
+    """为 Flash OCR 表格回填 OCR 空间投影文本。"""
     table_entries: list[dict[str, Any]] = []
     for page_idx, page_model_list in enumerate(model_list):
         table_idx = 0
@@ -613,101 +557,7 @@ def _fill_low_table_contents(
         return
 
     # 表格一旦认领内部对象便立即从 model_list 删除，后续文本回填失败也不恢复。
-    _remove_low_table_inner_blocks(images_list, model_list)
-
-    if parse_mode == "txt":
-        page_chars_cache: dict[int, list[Any]] = {}
-        page_rules_cache: dict[int, tuple[NativeTableRule, ...]] = {}
-        page_rectangles_cache: dict[int, tuple[NativeTableRectangle, ...]] = {}
-        for table_entry in table_entries:
-            page_idx = table_entry["page_idx"]
-            table_idx = table_entry["table_idx"]
-            table_block = table_entry["block"]
-            try:
-                pdf_page = pdf_pages[page_idx]
-                page_width, page_height = pdf_page.size
-                table_bbox = _bbox_to_pixel_bbox(
-                    table_block.get("bbox"),
-                    (int(page_width), int(page_height)),
-                )
-                if table_bbox is None:
-                    raise ValueError("invalid table bbox")
-                if page_idx not in page_chars_cache:
-                    page_chars_cache[page_idx] = pdf_page.get_chars()
-                if page_idx not in page_rules_cache:
-                    try:
-                        page_rules_cache[page_idx] = coerce_native_table_rules(
-                            pdf_page.get_drawing_lines()
-                        )
-                    except Exception as exc:
-                        logger.warning(
-                            "Hybrid low native table drawing extraction failed: "
-                            f"page_idx={page_idx}, error={exc}"
-                        )
-                        page_rules_cache[page_idx] = ()
-                if page_idx not in page_rectangles_cache:
-                    try:
-                        page_rectangles_cache[page_idx] = (
-                            coerce_native_table_rectangles(
-                                pdf_page.get_path_infos()
-                            )
-                        )
-                    except Exception as exc:
-                        logger.warning(
-                            "Hybrid low native table path extraction failed: "
-                            f"page_idx={page_idx}, error={exc}"
-                        )
-                        page_rectangles_cache[page_idx] = ()
-
-                native_result = None
-                try:
-                    # PDFPage 字符和 drawing 已应用页面字典旋转；Low 的文本角度仍是
-                    # PDF 字符内禀角，因此仅在原生结构恢复入口补回页面旋转。
-                    native_angle = (
-                        _normalize_visual_block_angle(
-                            table_block.get("angle", 0)
-                        )
-                        + pdf_page.rotation
-                    ) % 360
-                    native_result = recover_native_pdf_table(
-                        NativeTableInput(
-                            table_bbox=table_bbox,
-                            page_size=(float(page_width), float(page_height)),
-                            angle=native_angle,
-                            chars=tuple(page_chars_cache[page_idx]),
-                            drawing_lines=page_rules_cache[page_idx],
-                            rectangles=page_rectangles_cache[page_idx],
-                        )
-                    )
-                except Exception as exc:
-                    logger.warning(
-                        "Hybrid low native table recovery failed and fell back to projection: "
-                        f"page_idx={page_idx}, table_idx={table_idx}, error={exc}"
-                    )
-                if native_result is not None:
-                    table_block["content"] = native_result.html
-                else:
-                    table_block["content"] = project_pdf_table_text(
-                        page_chars_cache[page_idx],
-                        table_bbox,
-                        table_block.get("angle", 0),
-                    )
-                if not table_block["content"]:
-                    logger.warning(
-                        "Hybrid low table text is empty: "
-                        f"parse_mode={parse_mode}, page_idx={page_idx}, "
-                        f"table_idx={table_idx}, bbox={table_block.get('bbox')}"
-                    )
-            except Exception as exc:
-                logger.warning(
-                    "Hybrid low table text failed: "
-                    f"parse_mode={parse_mode}, page_idx={page_idx}, "
-                    f"table_idx={table_idx}, bbox={table_block.get('bbox')}, error={exc}"
-                )
-        return
-
-    if parse_mode != "ocr":
-        raise ValueError(f"Unsupported parse mode: {parse_mode}")
+    _remove_flash_ocr_table_inner_blocks(images_list, model_list)
 
     try:
         table_ocr_model = local_model_context.get_ocr_model(
@@ -718,8 +568,8 @@ def _fill_low_table_contents(
     except Exception as exc:
         for table_entry in table_entries:
             logger.warning(
-                "Hybrid low table text failed: "
-                f"parse_mode={parse_mode}, page_idx={table_entry['page_idx']}, "
+                "Flash OCR table text failed: "
+                f"page_idx={table_entry['page_idx']}, "
                 f"table_idx={table_entry['table_idx']}, "
                 f"bbox={table_entry['block'].get('bbox')}, "
                 f"error=OCR model initialization failed: {exc}"
@@ -763,13 +613,13 @@ def _fill_low_table_contents(
             )
             if not table_block["content"]:
                 logger.warning(
-                    "Hybrid low table text is empty: "
-                    f"parse_mode={parse_mode}, page_idx={page_idx}, "
+                    "Flash OCR table text is empty: "
+                    f"page_idx={page_idx}, "
                     f"table_idx={table_idx}, bbox={table_block.get('bbox')}"
                 )
         except Exception as exc:
             logger.warning(
-                "Hybrid low table text failed: "
-                f"parse_mode={parse_mode}, page_idx={page_idx}, "
+                "Flash OCR table text failed: "
+                f"page_idx={page_idx}, "
                 f"table_idx={table_idx}, bbox={table_block.get('bbox')}, error={exc}"
             )

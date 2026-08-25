@@ -167,7 +167,7 @@ pr-5415 重构后，Middle JSON 已收敛为 schema 2.0 的统一结构，不再
 | `pages` | `list[PageInfo]` | 严格按 `page_idx` 升序的页面数组 |
 | `is_full_document` | `bool` | 是否整本文档解析（空 `page_index_map` 时为 `True`） |
 | `file_suffix` | `Literal["pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx"]` | 输入文件类型 |
-| `effort` | `Literal["flash", "low", "medium", "high", "xhigh"]` | 分析强度 |
+| `effort` | `Literal["flash", "medium", "high", "xhigh"]` | 分析强度 |
 | `parse_mode` | `Literal["txt", "ocr"]` | 解析模式 |
 | `mineru_version` | `str` | MinerU 版本号 |
 

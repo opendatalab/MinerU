@@ -6,7 +6,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Literal, TypeAlias
 
-AnalyzeEffort: TypeAlias = Literal["flash", "low", "medium", "high", "xhigh"]
+AnalyzeEffort: TypeAlias = Literal["flash", "medium", "high", "xhigh"]
 # 请求阶段允许自动分类，分析结果中的模式必须已经收敛为 txt 或 ocr。
 ParseMode: TypeAlias = Literal["auto", "txt", "ocr"]
 ResolvedParseMode: TypeAlias = Literal["txt", "ocr"]

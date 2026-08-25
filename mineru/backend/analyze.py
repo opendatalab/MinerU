@@ -17,6 +17,7 @@ from mineru.types import MiddleJson, ModelJson
 from mineru.version import __version__ as mineru_version
 
 _SUPPORTED_FILE_SUFFIXES = {"pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx"}
+_SUPPORTED_ANALYZE_EFFORTS = {"flash", "medium", "high", "xhigh"}
 
 
 def _log_infer_performance(file_suffix: str, page_count: int, elapsed: float) -> None:
@@ -30,8 +31,8 @@ def _log_infer_performance(file_suffix: str, page_count: int, elapsed: float) ->
 
 def doc_analyze(
     file_bytes: bytes,
-    effort: Literal["flash", "low", "medium", "high", "xhigh"] = "high",
-    parse_mode: Literal["auto", "txt", "ocr"] = "auto",
+    effort: AnalyzeEffort = "high",
+    parse_mode: ParseMode = "auto",
     image_analysis: bool = True,
     page_index_map: list[int] | None = None,
     file_suffix: Literal["pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx"] = "pdf",
@@ -39,12 +40,14 @@ def doc_analyze(
     """生产严格 ModelJson，并在统一边界构造严格 MiddleJson。"""
     if file_suffix not in _SUPPORTED_FILE_SUFFIXES:
         raise ValueError(f"Unsupported file suffix: {file_suffix!r}")
+    if effort not in _SUPPORTED_ANALYZE_EFFORTS:
+        raise ValueError(f"Unsupported analyze effort: {effort}")
 
     if file_suffix == "pdf":
         result = analyze_pdf(
             file_bytes,
-            effort=cast(AnalyzeEffort, effort),
-            parse_mode=cast(ParseMode, parse_mode),
+            effort=effort,
+            parse_mode=parse_mode,
             image_analysis=image_analysis,
         )
     else:
@@ -68,8 +71,8 @@ def doc_analyze(
 
 async def aio_doc_analyze(
     file_bytes: bytes,
-    effort: Literal["flash", "low", "medium", "high", "xhigh"] = "high",
-    parse_mode: Literal["auto", "txt", "ocr"] = "auto",
+    effort: AnalyzeEffort = "high",
+    parse_mode: ParseMode = "auto",
     image_analysis: bool = True,
     page_index_map: list[int] | None = None,
     file_suffix: Literal["pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx"] = "pdf",

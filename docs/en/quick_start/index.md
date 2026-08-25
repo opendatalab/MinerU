@@ -143,9 +143,9 @@ If your device meets the GPU acceleration requirements in the table above, you c
 ```bash
 mineru -p <input_path> -o <output_path>
 ```
-If your device does not meet the GPU acceleration requirements, you can use Hybrid low to run without VLM calls:
+If your device does not meet the GPU acceleration requirements, you can explicitly use the Flash tier to run without VLM calls:
 ```bash
-mineru -p <input_path> -o <output_path> -b hybrid-engine --effort low
+mineru parse "<input_path>" --tier flash -o <output_path>
 ```
 
 `mineru` currently supports local `PDF`, image, `DOCX`, `PPTX`, and `XLSX` file or directory inputs.

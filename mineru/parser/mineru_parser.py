@@ -18,7 +18,7 @@ from .base import DocumentParser, ParseResult
 
 logger = logging.getLogger(__name__)
 
-_Effort = Literal["flash", "low", "medium", "high", "xhigh"]
+_Effort = Literal["flash", "medium", "high", "xhigh"]
 _ParseMode = Literal["auto", "txt", "ocr"]
 _FileSuffix = Literal["pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx"]
 _SUPPORTED_SUFFIXES: frozenset[str] = frozenset({"pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx"})

@@ -81,8 +81,8 @@ def _evaluate_entry(
         point_bbox = tuple(float(value) for value in entry["bbox_points"])
     else:
         bbox = entry["bbox"]
-        # Low TXT 使用整数化 PDFPage 尺寸还原归一化 layout bbox；评测必须复现
-        # 同一生产坐标边界，避免亚点级外缘生成幽灵轨道。
+        # layout bbox 使用整数化 PDFPage 尺寸还原；评测必须复现同一生产坐标边界，
+        # 避免亚点级外缘生成幽灵轨道。
         production_page_size = (int(page_size[0]), int(page_size[1]))
         point_bbox = tuple(
             bbox[index] * (production_page_size[0] if index % 2 == 0 else production_page_size[1]) for index in range(4)

@@ -117,7 +117,7 @@ The following sections provide detailed descriptions of each file's purpose and 
 | `pages` | `list[PageInfo]` | Array of parsing results for each page, strictly increasing by `page_idx` |
 | `is_full_document` | `bool` | Whether the input is a full document (empty `page_index_map`) |
 | `file_suffix` | `string` | Input file type: `pdf`, `doc`, `docx`, `ppt`, `pptx`, `xls`, or `xlsx` |
-| `effort` | `string` | Analysis effort: `flash`, `low`, `medium`, `high`, or `xhigh` |
+| `effort` | `string` | Analysis effort: `flash`, `medium`, `high`, or `xhigh` |
 | `parse_mode` | `string` | Parse mode: `txt` or `ocr` |
 | `mineru_version` | `string` | MinerU version number |
 

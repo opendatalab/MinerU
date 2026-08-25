@@ -3,6 +3,7 @@ from dataclasses import fields
 import json
 
 import pytest
+from pydantic import ValidationError
 
 from mineru.parser.base import ParseResult
 from mineru.parser import MIDDLE_JSON_SCHEMA_VERSION
@@ -86,13 +87,38 @@ def test_parse_result_from_dict_restores_pages() -> None:
 
 
 def test_parse_result_to_dict_includes_schema_version_without_meta() -> None:
-    result = ParseResult(middle_json=MiddleJson(pages=[PageInfo(page_idx=0)], is_full_document=True, file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__))
+    result = ParseResult(
+        middle_json=MiddleJson(
+            pages=[PageInfo(page_idx=0)],
+            is_full_document=True,
+            file_suffix="pdf",
+            effort="medium",
+            parse_mode="txt",
+            mineru_version=__version__,
+        )
+    )
 
     payload = result.to_dict()
 
     assert payload["schema_version"] == MIDDLE_JSON_SCHEMA_VERSION
     assert "pages" in payload
     assert "_meta" not in payload
+
+
+def test_parse_result_rejects_schema_v2_low_effort() -> None:
+    """验证 schema 版本保持 2.0 时，旧 Low effort 载荷仍按新严格枚举失败。"""
+    with pytest.raises(ValidationError, match="literal_error"):
+        ParseResult.from_dict(
+            {
+                "schema_version": MIDDLE_JSON_SCHEMA_VERSION,
+                "pages": [],
+                "is_full_document": True,
+                "file_suffix": "pdf",
+                "effort": "low",
+                "parse_mode": "ocr",
+                "mineru_version": __version__,
+            }
+        )
 
 
 def test_parse_result_from_dict_rejects_missing_pages() -> None:
@@ -132,7 +158,17 @@ def test_parse_result_from_json_restores_pages() -> None:
 def test_parse_result_export_pages_returns_defensive_copy_from_cache() -> None:
     img_bytes = b"defensive-table-image"
     page, image_cache, inline_image = _table_page_with_cached_inline_image(img_bytes)
-    result = ParseResult(middle_json=MiddleJson(pages=[page], is_full_document=True, file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__), _image_cache=image_cache)
+    result = ParseResult(
+        middle_json=MiddleJson(
+            pages=[page],
+            is_full_document=True,
+            file_suffix="pdf",
+            effort="medium",
+            parse_mode="txt",
+            mineru_version=__version__,
+        ),
+        _image_cache=image_cache,
+    )
     first_export = result.export_pages()
     first_export[0].blocks[0].content[0].content = "mutated by caller"
 
@@ -151,7 +187,17 @@ def test_parse_result_export_rewrites_inline_table_base64_images() -> None:
     img_bytes = b"table-image"
     page, image_cache, inline_image = _table_page_with_cached_inline_image(img_bytes)
 
-    result = ParseResult(middle_json=MiddleJson(pages=[page], is_full_document=True, file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__), _image_cache=image_cache)
+    result = ParseResult(
+        middle_json=MiddleJson(
+            pages=[page],
+            is_full_document=True,
+            file_suffix="pdf",
+            effort="medium",
+            parse_mode="txt",
+            mineru_version=__version__,
+        ),
+        _image_cache=image_cache,
+    )
     images = result.images()
     exported_page = result.export_pages()[0]
     exported_body = exported_page.blocks[0].content[0]
