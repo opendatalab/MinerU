@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import Literal, cast
+from typing import cast
 
 from loguru import logger
 
@@ -13,10 +13,9 @@ from mineru.backend.analysis.office import analyze_office
 from mineru.backend.analysis.pdf.pipeline import analyze_pdf
 from mineru.backend.postprocess.document import model_json_to_middle_json
 from mineru.config import config
-from mineru.types import MiddleJson, ModelJson
+from mineru.types import FILE_SUFFIXES, FileSuffix, MiddleJson, ModelJson
 from mineru.version import __version__ as mineru_version
 
-_SUPPORTED_FILE_SUFFIXES = {"pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx"}
 _SUPPORTED_ANALYZE_EFFORTS = {"flash", "medium", "high", "xhigh"}
 
 
@@ -35,10 +34,10 @@ def doc_analyze(
     parse_mode: ParseMode = "auto",
     image_analysis: bool = True,
     page_index_map: list[int] | None = None,
-    file_suffix: Literal["pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx"] = "pdf",
+    file_suffix: FileSuffix = "pdf",
 ) -> tuple[MiddleJson, ModelJson]:
     """生产严格 ModelJson，并在统一边界构造严格 MiddleJson。"""
-    if file_suffix not in _SUPPORTED_FILE_SUFFIXES:
+    if file_suffix not in FILE_SUFFIXES:
         raise ValueError(f"Unsupported file suffix: {file_suffix!r}")
     if effort not in _SUPPORTED_ANALYZE_EFFORTS:
         raise ValueError(f"Unsupported analyze effort: {effort}")
@@ -75,7 +74,7 @@ async def aio_doc_analyze(
     parse_mode: ParseMode = "auto",
     image_analysis: bool = True,
     page_index_map: list[int] | None = None,
-    file_suffix: Literal["pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx"] = "pdf",
+    file_suffix: FileSuffix = "pdf",
 ) -> tuple[MiddleJson, ModelJson]:
     """在线程中执行统一文档分析，避免阻塞调用方事件循环。"""
     return await asyncio.to_thread(

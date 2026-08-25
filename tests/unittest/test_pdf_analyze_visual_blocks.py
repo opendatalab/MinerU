@@ -17,7 +17,7 @@ from mineru.backend import analyze
 from mineru.backend.analysis import office
 from mineru.backend.analysis.pdf import constants, formulas, normalization, pipeline, tables, visuals, window
 from mineru.types import RAW_ALGORITHM, RAW_CAPTION, RAW_FOOTNOTE, RAW_FORMULA_NUMBER, RAW_PHONETIC
-from mineru.types import BlockType, MiddleJson, ModelJson
+from mineru.types import FILE_SUFFIXES, BlockType, FileSuffix, MiddleJson, ModelJson
 from mineru.version import __version__ as mineru_version
 
 
@@ -1197,10 +1197,15 @@ def test_aio_doc_analyze_matches_sync_signature() -> None:
 
 
 def test_doc_analyze_effort_annotation_exposes_only_supported_values() -> None:
-    """验证同步和异步 Analyze 门面仅公开四个有效 effort。"""
+    """验证同步和异步 Analyze 门面复用统一的 effort 与文件后缀类型。"""
     expected_efforts = ("flash", "medium", "high", "xhigh")
+    expected_suffixes = ("pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx")
     assert get_args(get_type_hints(analyze.doc_analyze)["effort"]) == expected_efforts
     assert get_args(get_type_hints(analyze.aio_doc_analyze)["effort"]) == expected_efforts
+    assert get_args(FileSuffix) == expected_suffixes
+    assert get_args(get_type_hints(analyze.doc_analyze)["file_suffix"]) == expected_suffixes
+    assert get_args(get_type_hints(analyze.aio_doc_analyze)["file_suffix"]) == expected_suffixes
+    assert FILE_SUFFIXES == frozenset(expected_suffixes)
 
 
 def test_aio_doc_analyze_runs_sync_entrypoint_in_thread_and_forwards_arguments(

@@ -12,13 +12,13 @@ from ..render import render_markdown, render_structured_content
 from ..render.contracts import RenderMode
 from ..render.image import ImageRenderer
 from ..render.writer import DataWriter
-from ..types import MiddleJson, PageInfo
+from ..types import FileSuffix, MiddleJson, PageInfo
 from ..utils.image_payload import ImagePayloadCache
 from ..utils.pdf_document import PDFDocument
 
 MIDDLE_JSON_SCHEMA_VERSION: str = "2.0"
 _LEGACY_SCHEMA_VERSION: str = "1.0"
-_LEGACY_DEFAULT_FILE_SUFFIX: Literal["pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx"] = "pdf"
+_LEGACY_DEFAULT_FILE_SUFFIX: FileSuffix = "pdf"
 _LEGACY_DEFAULT_EFFORT: Literal["flash", "medium", "high", "xhigh"] = "medium"
 _LEGACY_DEFAULT_PARSE_MODE: Literal["txt", "ocr"] = "txt"
 _PDF_RETAINED_PAGE_INDICES_KEY = "_pdf_retained_page_indices"

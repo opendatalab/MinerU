@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from tempfile import NamedTemporaryFile
-from typing import Annotated, Any, ClassVar, Literal, TypeAlias, Union
+from typing import Annotated, Any, ClassVar, Literal, TypeAlias, Union, cast, get_args
 
 from pydantic import (
     BaseModel,
@@ -44,6 +44,9 @@ RAW_ONLY_BLOCK_TYPES = frozenset(
         RAW_PHONETIC,
     }
 )
+
+FileSuffix: TypeAlias = Literal["pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx"]
+FILE_SUFFIXES: frozenset[FileSuffix] = frozenset(cast(tuple[FileSuffix, ...], get_args(FileSuffix)))
 
 Tier = Literal[
     "flash",
@@ -742,7 +745,7 @@ class ModelJson(_StrictMiddleModel):
 
     pages: list[list[dict[str, Any]]]
     page_index_map: list[int]
-    file_suffix: Literal["pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx"]
+    file_suffix: FileSuffix
     effort: Literal["flash", "medium", "high", "xhigh"]
     parse_mode: Literal["txt", "ocr"]
     mineru_version: str = Field(min_length=1)
@@ -808,7 +811,7 @@ class MiddleJson(_StrictMiddleModel):
 
     pages: list[PageInfo]
     is_full_document: bool
-    file_suffix: Literal["pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx"]
+    file_suffix: FileSuffix
     effort: Literal["flash", "medium", "high", "xhigh"]
     parse_mode: Literal["txt", "ocr"]
     mineru_version: str = Field(min_length=1)

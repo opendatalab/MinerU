@@ -7,12 +7,12 @@ import logging
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 
 from ..backend.analyze import aio_doc_analyze, doc_analyze
 from ..errors import InvalidRequestError
 from ..filetypes import IMAGE_EXTENSIONS
-from ..types import MiddleJson, ModelJson, PageInfo, Tier
+from ..types import FILE_SUFFIXES, FileSuffix, MiddleJson, ModelJson, PageInfo, Tier
 from ..utils.backend_options import effort_for_tier
 from .base import DocumentParser, ParseResult
 
@@ -20,17 +20,13 @@ logger = logging.getLogger(__name__)
 
 _Effort = Literal["flash", "medium", "high", "xhigh"]
 _ParseMode = Literal["auto", "txt", "ocr"]
-_FileSuffix = Literal["pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx"]
-_SUPPORTED_SUFFIXES: frozenset[str] = frozenset({"pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx"})
-
-
 @dataclass
 class _PreparedInput:
     """记录文档输入准备结果，避免跨文档复用 parser 实例状态。"""
 
     file_name: str
     file_bytes: bytes
-    file_suffix: _FileSuffix
+    file_suffix: FileSuffix
     retained_page_indices: list[int] | None = None
     broken_page_indices: list[int] | None = None
 
@@ -147,12 +143,12 @@ class MinerUParser(DocumentParser):
             suffix,
             page_range,
         )
-        if suffix not in _SUPPORTED_SUFFIXES:
+        if suffix not in FILE_SUFFIXES:
             raise ValueError(f"Unsupported file type: {suffix or path.suffix or 'unknown'}")
         return _PreparedInput(
             file_name=file_name,
             file_bytes=file_bytes,
-            file_suffix=suffix,  # type: ignore[arg-type]
+            file_suffix=cast(FileSuffix, suffix),
             retained_page_indices=retained_page_indices,
             broken_page_indices=broken_page_indices,
         )
