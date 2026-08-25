@@ -1329,8 +1329,6 @@ async def _run_job(
     req: CreateJobRequest,
     file_store: FileStore,
     *,
-    server_backend: str,
-    language: str,
     ocr_mode: str,
     image_analysis: bool,
     url_timeout: int = 60,
@@ -1818,12 +1816,10 @@ async def create_job(
     )
 
     rec = job_store.create(body, file_store)
-    backend = runtime.backend
     url_timeout_val: int = request.app.state.url_timeout
     allow_local_source_val: bool = request.app.state.allow_local_source
     max_inline_bytes_val: int = request.app.state.max_inline_bytes
     allow_http_source_val: bool = request.app.state.allow_http_source
-    language_val: str = request.app.state.language
     ocr_mode_val: str = request.app.state.ocr_mode
     image_analysis_val: bool = request.app.state.image_analysis
 
@@ -1834,8 +1830,6 @@ async def create_job(
                 rec,
                 body,
                 file_store,
-                server_backend=backend,
-                language=language_val,
                 ocr_mode=ocr_mode_val,
                 image_analysis=image_analysis_val,
                 url_timeout=url_timeout_val,

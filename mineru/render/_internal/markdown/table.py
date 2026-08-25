@@ -9,8 +9,8 @@ import re
 from bs4 import BeautifulSoup
 from bs4.element import NavigableString, Tag
 
-from mineru.config import LatexDelimitersConfig
-from mineru.render._internal.markdown.assets import prefix_html_image_sources
+from ....config import LatexDelimitersConfig
+from .assets import prefix_html_image_sources
 
 _INLINE_EQ_RE = re.compile(r"<eq>(?P<latex>.*?)</eq>", re.IGNORECASE | re.DOTALL)
 _GFM_FORMULA_PIPE_RE = re.compile(r"(?P<slashes>\\*)\|")
@@ -53,6 +53,19 @@ _ALLOWED_INLINE_TAGS = {
 }
 
 
+def _strip_embedded_images(markup: str) -> str:
+    """移除自定义图片 renderer 接管的 HTML 图片，并识别清理后的空内容。"""
+    soup = BeautifulSoup(markup, "html.parser")
+    images = soup.find_all("img")
+    if not images:
+        return markup
+    for image in images:
+        image.decompose()
+    if not soup.get_text(strip=True):
+        return ""
+    return str(soup)
+
+
 def render_html_table(
     content: str,
     *,
@@ -85,11 +98,7 @@ def format_embedded_html(
 
     def _replace_inline_equation(match: re.Match[str]) -> str:
         """把单个 HTML eq 标签替换为配置的行内公式定界符。"""
-        return (
-            f" {delimiters.inline.left}"
-            f"{html.unescape(match.group('latex')).strip()}"
-            f"{delimiters.inline.right} "
-        )
+        return f" {delimiters.inline.left}{html.unescape(match.group('latex')).strip()}{delimiters.inline.right} "
 
     return _INLINE_EQ_RE.sub(_replace_inline_equation, prefixed)
 
@@ -129,9 +138,7 @@ def _convert_simple_table(table: Tag, delimiters: LatexDelimitersConfig) -> str 
         cells = row.find_all(("th", "td"), recursive=False)
         if not cells:
             return None
-        rendered_rows.append(
-            [_normalize_cell_text(_render_inline_children(cell, delimiters)) for cell in cells]
-        )
+        rendered_rows.append([_normalize_cell_text(_render_inline_children(cell, delimiters)) for cell in cells])
         header_flags.append([cell.name == "th" for cell in cells])
 
     width = max(len(row) for row in rendered_rows)
@@ -180,11 +187,7 @@ def _render_inline_children(node: Tag, delimiters: LatexDelimitersConfig) -> str
         elif name == "eq":
             latex = html.unescape(child.get_text()).strip()
             escaped_latex = _escape_gfm_formula_pipes(latex)
-            parts.append(
-                f"{delimiters.inline.left}{escaped_latex}{delimiters.inline.right}"
-                if escaped_latex
-                else ""
-            )
+            parts.append(f"{delimiters.inline.left}{escaped_latex}{delimiters.inline.right}" if escaped_latex else "")
         elif name == "a":
             href = str(child.get("href", "")).strip()
             parts.append(f"[{rendered}]({_escape_link_url(href)})" if href else rendered)
@@ -221,13 +224,7 @@ def _escape_gfm_formula_pipes(latex: str) -> str:
 
 def _escape_link_url(url: str) -> str:
     """转义 GFM 表格链接目标中的空格、反斜杠和括号。"""
-    return (
-        url.replace("\\", "%5C")
-        .replace(" ", "%20")
-        .replace("(", "%28")
-        .replace(")", "%29")
-        .replace("|", "%7C")
-    )
+    return url.replace("\\", "%5C").replace(" ", "%20").replace("(", "%28").replace(")", "%29").replace("|", "%7C")
 
 
 def _escape_cell_text(content: str) -> str:

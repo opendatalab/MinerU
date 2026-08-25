@@ -9,8 +9,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 from ..render import render_markdown, render_structured_content
-from ..render.contracts import RenderMode
-from ..render.image import ImageRenderer
+from ..render.contracts import ImageRenderer, RenderMode
 from ..render.writer import DataWriter
 from ..types import FileSuffix, MiddleJson, PageInfo
 from ..utils.image_payload import ImagePayloadCache

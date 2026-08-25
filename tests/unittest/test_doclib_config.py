@@ -72,7 +72,7 @@ doclib:
     assert data["doclib"]["sqlite"]["path"] == str(tmp_path / "data" / "doclib.db")
 
 
-def test_apply_env_overrides_uses_greedy_field_path_matching(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_collect_env_overrides_uses_greedy_field_path_matching(monkeypatch: pytest.MonkeyPatch) -> None:
     prefix = "TEST_MINERU_"
     monkeypatch.setenv("TEST_MINERU_DOCLIB_TCP_ENABLED", "true")
     monkeypatch.setenv("TEST_MINERU_DOCLIB_TCP_PORT", "15990")
@@ -157,7 +157,7 @@ def test_default_parse_server_health_check_interval_is_30_seconds() -> None:
     assert Config().doclib.parse_server_health_check_interval_sec == 30
 
 
-def test_apply_env_overrides_can_override_doclib_data_dir(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_collect_env_overrides_can_override_doclib_data_dir(monkeypatch: pytest.MonkeyPatch) -> None:
     prefix = "TEST_MINERU_"
     monkeypatch.setenv("MINERU_HOME", "/tmp/mineru-home")
     monkeypatch.setenv("TEST_MINERU_DOCLIB_DATA_DIR", "/tmp/ignored-data-dir")
@@ -220,8 +220,8 @@ def test_llm_aided_config_supports_environment_overrides(monkeypatch: pytest.Mon
     monkeypatch.setenv(f"{prefix}LLM_AIDED_FEATURES_TITLE_LEVELING", "true")
     monkeypatch.setenv(f"{prefix}LLM_AIDED_FEATURES_CROSS_PAGE_TABLE_CELL_MERGE", "true")
 
-    # _apply_env_overrides is changed, should fix this test case.
-    cfg = _apply_env_overrides(Config(), prefix=prefix)
+    overrides, _paths = _collect_env_overrides(prefix=prefix)
+    cfg = Config(**overrides)
 
     assert cfg.llm_aided.api_key == "env-secret"
     assert cfg.llm_aided.model == "env-model"

@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable, TypeAlias
 
-from .image import ImageRenderer
+from ..types import BlockBase
 
 
 class RenderFormat(str, Enum):
@@ -27,6 +27,7 @@ class RenderMode(str, Enum):
 
 
 AssetResolver: TypeAlias = Callable[[str], bytes]
+ImageRenderer: TypeAlias = Callable[[BlockBase], str]
 
 
 def _validate_mode(mode: object) -> None:
@@ -101,9 +102,7 @@ class StructuredContentRenderOptions:
         _validate_asset_base_url(self.asset_base_url)
 
 
-RenderOptions: TypeAlias = (
-    MarkdownRenderOptions | HtmlRenderOptions | DocxRenderOptions | StructuredContentRenderOptions
-)
+RenderOptions: TypeAlias = MarkdownRenderOptions | HtmlRenderOptions | DocxRenderOptions | StructuredContentRenderOptions
 RenderOutput: TypeAlias = str | bytes | dict[str, Any]
 
 
@@ -111,6 +110,7 @@ __all__ = [
     "AssetResolver",
     "DocxRenderOptions",
     "HtmlRenderOptions",
+    "ImageRenderer",
     "MarkdownRenderOptions",
     "RenderFormat",
     "RenderMode",
