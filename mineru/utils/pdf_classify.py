@@ -372,11 +372,6 @@ def _get_avg_cleaned_chars_per_page_from_samples(text_samples: list[dict[str, An
     return cleaned_total_chars / len(text_samples)
 
 
-def get_avg_cleaned_chars_per_page_pdfium(pdf_doc: pdfium.PdfDocument, page_indices: list[int]) -> float:
-    text_samples = _collect_pdfium_text_samples(pdf_doc, page_indices)
-    return _get_avg_cleaned_chars_per_page_from_samples(text_samples)
-
-
 def _get_text_quality_signal_from_samples(text_samples: list[dict[str, Any]]) -> dict[str, Any]:
     """基于已缓存的抽样页字符计数统计异常字符质量信号。"""
     total_chars = 0
@@ -406,11 +401,6 @@ def _get_text_quality_signal_from_samples(text_samples: list[dict[str, Any]]) ->
         "control_char_count": control_char_count,
         "private_use_char_count": private_use_char_count,
     }
-
-
-def get_text_quality_signal_pdfium(pdf_doc: pdfium.PdfDocument, page_indices: list[int]) -> dict[str, Any]:
-    text_samples = _collect_pdfium_text_samples(pdf_doc, page_indices)
-    return _get_text_quality_signal_from_samples(text_samples)
 
 
 def _get_unicode_map_error_signal_from_samples(text_samples: list[dict[str, Any]]) -> dict[str, Any]:
@@ -696,12 +686,6 @@ def _get_u72xx_text_signal_from_samples(text_samples: list[dict[str, Any]]) -> d
         "u72xx_count": u72xx_count,
         "u72xx_cjk_ratio": u72xx_cjk_ratio,
     }
-
-
-def get_u72xx_text_signal_pdfium(pdf_doc: pdfium.PdfDocument, page_indices: list[int]) -> dict[str, Any]:
-    """统计抽样页中扣除常用字后的 U+7280-U+72DF 字符占比，用于识别可疑 ToUnicode 映射。"""
-    text_samples = _collect_pdfium_text_samples(pdf_doc, page_indices)
-    return _get_u72xx_text_signal_from_samples(text_samples)
 
 
 def _get_sample_cleaned_text(text_sample: Any) -> str:
@@ -1120,19 +1104,6 @@ def _get_font_resource_signals_pypdf(
             "page_fonts": latin_charset_page_fonts,
         },
     }
-
-
-def get_cid_font_signal_pypdf(pdf_bytes: bytes, page_indices: list[int]) -> dict[str, Any]:
-    """兼容旧接口：返回抽样页无 ToUnicode 的 Identity CID 字体资源。"""
-    return _get_font_resource_signals_pypdf(
-        pdf_bytes,
-        page_indices,
-    )["cid_without_to_unicode"]
-
-
-def detect_cid_font_signal_pypdf(pdf_bytes: bytes, page_indices: list[int]) -> bool:
-    """兼容旧接口：只返回是否存在无 ToUnicode 的 Identity CID 字体资源。"""
-    return get_cid_font_signal_pypdf(pdf_bytes, page_indices)["triggered"]
 
 
 def _resolve_pdf_object(obj: Any) -> Any:

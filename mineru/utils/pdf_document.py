@@ -1,7 +1,6 @@
 # Copyright (c) Opendatalab. All rights reserved.
 from __future__ import annotations
 
-import asyncio
 import ctypes
 import hashlib
 import logging
@@ -23,10 +22,10 @@ from pdftext.schema import Bbox, Char, Line
 from PIL import Image, ImageOps
 
 from ..types import BBox, PageInfo
-from .pdf_classify import classify, get_sample_page_indices
-from .pdf_image_tools import get_crop_img, load_images_from_pdf_bytes_range
+from .pdf_classify import classify
+from .pdf_image_tools import get_crop_img
 from .pdf_reader import image_to_bytes
-from .pdfium_guard import _pdfium_lock, safe_rewrite_pdf_bytes_with_pdfium
+from .pdfium_guard import _pdfium_lock
 
 logger = logging.getLogger(__name__)
 
@@ -354,29 +353,6 @@ class PDFDocument:
         with self._open_page(page_idx) as page:
             return _page_to_image(page, scale, self.render_max_edge)
 
-    def render_pages(self, start: int = 0, end: int | None = None, *, scale: float | None = None) -> list[PDFPageImage]:
-        if end is None:
-            end = self.page_count - 1
-        if scale is None:
-            scale = self.render_scale
-        if scale <= 0:
-            raise ValueError("scale must be greater than 0")
-        results = load_images_from_pdf_bytes_range(
-            pdf_bytes=self.bytes,
-            dpi=max(1, int(round(scale * POINTS_PER_INCH))),
-            start_page_id=start,
-            end_page_id=end,
-        )
-        return [PDFPageImage(pil_image=r["img_pil"], scale=r["scale"]) for r in results]
-
-    async def render_page_async(self, page_idx: int, *, scale: float | None = None) -> PDFPageImage:
-        return await asyncio.to_thread(self.render_page, page_idx, scale=scale)
-
-    async def render_pages_async(
-        self, start: int = 0, end: int | None = None, *, scale: float | None = None
-    ) -> list[PDFPageImage]:
-        return await asyncio.to_thread(self.render_pages, start, end, scale=scale)
-
     # TODO: move
     def crop_image(self, bbox: BBox, page_idx: int, *, scale: float = 2) -> bytes:
         image = self.render_page(page_idx, scale=scale)
@@ -425,16 +401,6 @@ class PDFDocument:
     def get_page_lines(self, page_idx: int) -> list[Line]:
         chars = self.get_page_chars(page_idx)
         return get_lines_from_chars(chars)
-
-    def get_page_text(self, page_idx: int) -> str:
-        with self._open_page(page_idx) as page:
-            textpage = None
-            try:
-                textpage = page.get_textpage()
-                text = textpage.get_text_range()
-            finally:
-                _try_close(textpage)
-        return text or ""
 
     # ------------------------------------------------------------------ #
     #  Drawing geometry
@@ -530,35 +496,6 @@ class PDFDocument:
     def classify(self) -> Literal["ocr", "txt"]:
         pdf_class = classify(self._pdf_doc, self.bytes)
         return cast(Literal["ocr", "txt"], pdf_class)
-
-    # ------------------------------------------------------------------ #
-    #  Page extraction
-    # ------------------------------------------------------------------ #
-
-    # TODO: no caller
-    def extract_page_range(self, start: int, end: int) -> "PDFDocument":
-        new_bytes = safe_rewrite_pdf_bytes_with_pdfium(
-            self._pdf_bytes,
-            start_page_id=start,
-            end_page_id=end,
-        )
-        return PDFDocument(new_bytes)
-
-    # TODO: no caller
-    def sample_pages(self, max_pages: int = 3) -> "PDFDocument":
-        """按 PDF 分类抽样规则提取代表性页面，返回新的 PDFDocument。"""
-        if max_pages <= 0:
-            return PDFDocument(b"")
-
-        page_indices = get_sample_page_indices(self.page_count, max_pages)
-        if page_indices:
-            new_bytes = safe_rewrite_pdf_bytes_with_pdfium(
-                self._pdf_bytes,
-                page_indices=page_indices,
-            )
-            if new_bytes:
-                return PDFDocument(new_bytes)
-        return PDFDocument(b"")
 
     # ------------------------------------------------------------------ #
     #  Visualization

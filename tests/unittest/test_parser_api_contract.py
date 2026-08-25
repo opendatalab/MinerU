@@ -160,7 +160,6 @@ def test_validate_effort_rejects_low_and_maps_legacy_backends() -> None:
         HYBRID_EFFORT_CHOICES,
         effort_for_tier,
         resolve_backend_and_effort,
-        tier_for_effort,
         validate_effort,
     )
 
@@ -168,9 +167,6 @@ def test_validate_effort_rejects_low_and_maps_legacy_backends() -> None:
     assert effort_for_tier("basic") == "medium"
     assert effort_for_tier("standard") == "high"
     assert effort_for_tier("advanced") == "xhigh"
-    assert tier_for_effort("medium") == "basic"
-    assert tier_for_effort("high") == "standard"
-    assert tier_for_effort("xhigh") == "advanced"
     with pytest.raises(ValueError, match="Unsupported effort 'low'"):
         validate_effort("low")
     with pytest.raises(ValueError, match="Unsupported tier 'ultra'"):

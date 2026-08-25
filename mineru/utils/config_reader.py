@@ -1,32 +1,7 @@
 # Copyright (c) Opendatalab. All rights reserved.
-import json
 import os
-from typing import Any
 
 from loguru import logger
-
-# 定义配置文件名常量，保留给旧日志文案使用；实际读取路径通过函数动态解析环境变量。
-CONFIG_FILE_NAME = os.getenv("MINERU_TOOLS_CONFIG_JSON", "mineru.json")
-
-
-def get_tools_config_file_path() -> str:
-    """获取 MinerU 工具配置文件路径，支持环境变量指定绝对或相对路径。"""
-    config_file_name = os.getenv("MINERU_TOOLS_CONFIG_JSON", "mineru.json")
-    if os.path.isabs(config_file_name):
-        return config_file_name
-    return os.path.join(os.path.expanduser("~"), config_file_name)
-
-
-def read_config() -> dict[str, Any] | None:
-    config_file = get_tools_config_file_path()
-
-    if not os.path.exists(config_file):
-        # logger.warning(f'{config_file} not found, using default configuration')
-        return None
-    else:
-        with open(config_file, "r", encoding="utf-8") as f:
-            config = json.load(f)
-        return config
 
 
 def get_device() -> str:
@@ -94,12 +69,6 @@ def get_model_stack() -> str:
     return "light" if device == "cpu" else "full"
 
 
-def get_ocr_det_mask_inline_formula_enable(enable: bool) -> bool:
-    enable_env = os.getenv("MINERU_OCR_DET_MASK_INLINE_FORMULA_ENABLE")
-    enable = enable if enable_env is None else enable_env.lower() == "true"
-    return enable
-
-
 def get_processing_window_size(default: int = 64) -> int:
     value = os.getenv("MINERU_PROCESSING_WINDOW_SIZE")
     if value is None:
@@ -125,25 +94,3 @@ def get_max_concurrent_requests(default: int = 3) -> int:
     if max_concurrent_requests <= 0:
         raise ValueError(f"Invalid MINERU_API_MAX_CONCURRENT_REQUESTS value: {value}. Expected a positive integer.")
     return max_concurrent_requests
-
-
-def get_latex_delimiter_config() -> dict[str, Any] | None:
-    config = read_config()
-    if config is None:
-        return None
-    latex_delimiter_config = config.get("latex-delimiter-config", None)
-    if latex_delimiter_config is None:
-        # logger.warning(f"'latex-delimiter-config' not found in {CONFIG_FILE_NAME}, use 'None' as default")
-        return None
-    else:
-        return latex_delimiter_config
-
-
-def get_local_models_dir() -> dict[str, str] | None:
-    config = read_config()
-    if config is None:
-        return None
-    models_dir = config.get("models-dir")
-    if models_dir is None:
-        logger.warning(f"'models-dir' not found in {CONFIG_FILE_NAME}, use None as default")
-    return models_dir

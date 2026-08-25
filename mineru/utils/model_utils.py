@@ -2,7 +2,6 @@
 import gc
 import math
 import os
-import time
 from typing import Any
 
 import numpy as np
@@ -18,27 +17,6 @@ try:
 except ImportError:
     _TORCH_AVAILABLE = False
 
-TEXT_REGION_LABELS = {
-    "abstract",
-    "algorithm",
-    "aside_text",
-    "content",
-    "doc_title",
-    "figure_title",
-    "footer",
-    "footer_image",
-    "footnote",
-    "formula_number",
-    "header",
-    "header_image",
-    "number",
-    "paragraph_title",
-    "reference_content",
-    "text",
-    "vertical_text",
-    "vision_footnote",
-}
-
 
 def _get_bbox(item: dict[str, Any]) -> BBox:
     bbox = item["bbox"]
@@ -50,11 +28,6 @@ def _get_bbox(item: dict[str, Any]) -> BBox:
 def _get_int_bbox(item: dict[str, Any]) -> IntBBox:
     xmin, ymin, xmax, ymax = _get_bbox(item)
     return math.floor(xmin), math.floor(ymin), math.ceil(xmax), math.ceil(ymax)
-
-
-def _bbox_area(bbox: BBox | IntBBox) -> float:
-    xmin, ymin, xmax, ymax = bbox
-    return abs((xmax - xmin) * (ymax - ymin))
 
 
 def crop_img(
@@ -92,107 +65,6 @@ def crop_img(
     return return_image, return_list
 
 
-def get_bbox_and_area(block_with_poly: dict[str, Any]) -> tuple[BBox, float]:
-    """Extract coordinates and area from a table."""
-    xmin, ymin, xmax, ymax = _get_bbox(block_with_poly)
-    area = (xmax - xmin) * (ymax - ymin)
-    return (xmin, ymin, xmax, ymax), area
-
-
-def calculate_intersection(box1: BBox, box2: BBox) -> BBox | None:
-    """Calculate intersection coordinates between two boxes."""
-    intersection_xmin = max(box1[0], box2[0])
-    intersection_ymin = max(box1[1], box2[1])
-    intersection_xmax = min(box1[2], box2[2])
-    intersection_ymax = min(box1[3], box2[3])
-
-    # Check if intersection is valid
-    if intersection_xmax <= intersection_xmin or intersection_ymax <= intersection_ymin:
-        return None
-
-    return intersection_xmin, intersection_ymin, intersection_xmax, intersection_ymax
-
-
-def is_inside(small_box: BBox, big_box: BBox, small_area: float, overlap_threshold: float = 0.8) -> bool:
-    """Check if small_box is inside big_box by at least overlap_threshold."""
-    intersection = calculate_intersection(small_box, big_box)
-    if not intersection:
-        return False
-
-    intersection_xmin, intersection_ymin, intersection_xmax, intersection_ymax = intersection
-    intersection_area = (intersection_xmax - intersection_xmin) * (intersection_ymax - intersection_ymin)
-    # Check if overlap exceeds threshold
-    return intersection_area >= overlap_threshold * small_area
-
-
-def remove_nested_ocr_text_blocks(
-    ocr_res_list: list[dict[str, Any]],
-    layout_res: list[dict[str, Any]],
-    overlap_threshold: float = 0.8,
-    min_area_ratio: float = 1.01,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    """Remove OCR candidate text blocks that are contained by any larger layout block."""
-    if not ocr_res_list or len(layout_res) < 2:
-        return ocr_res_list, []
-
-    layout_info = [(block, get_bbox_and_area(block)) for block in layout_res]
-    blocks_to_remove = []
-
-    for text_block in ocr_res_list:
-        text_box, text_area = get_bbox_and_area(text_block)
-        for parent_block, (parent_box, parent_area) in layout_info:
-            if parent_block is text_block:
-                continue
-            if parent_area <= text_area * min_area_ratio:
-                continue
-            if is_inside(text_box, parent_box, text_area, overlap_threshold):
-                blocks_to_remove.append(text_block)
-                break
-
-    remove_ids = {id(block) for block in blocks_to_remove}
-    filtered_ocr_res_list = [block for block in ocr_res_list if id(block) not in remove_ids]
-    return filtered_ocr_res_list, blocks_to_remove
-
-
-def get_res_list_from_layout_res(
-    layout_res: list[dict[str, Any]], overlap_threshold: float = 0.8
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
-    """Extract OCR, table and other regions from layout results."""
-    ocr_res_list = []
-    text_res_list = []
-    table_res_list = []
-    single_page_mfdetrec_res = []
-
-    # Categorize regions
-    for i, res in enumerate(layout_res):
-        label = res.get("label")
-
-        if label in ["display_formula", "inline_formula"]:
-            xmin, ymin, xmax, ymax = _get_bbox(res)
-            single_page_mfdetrec_res.append(
-                {
-                    "bbox": [xmin, ymin, xmax, ymax],
-                }
-            )
-        elif label == "table":
-            table_res_list.append(res)
-        elif label in TEXT_REGION_LABELS:
-            text_res_list.append(res)
-
-    ocr_res_list.extend(text_res_list)
-
-    ocr_res_list, nested_text_need_remove = remove_nested_ocr_text_blocks(
-        ocr_res_list,
-        layout_res,
-        overlap_threshold=overlap_threshold,
-    )
-    nested_remove_ids = {id(res) for res in nested_text_need_remove}
-    if nested_remove_ids:
-        layout_res[:] = [res for res in layout_res if id(res) not in nested_remove_ids]
-
-    return ocr_res_list, table_res_list, single_page_mfdetrec_res
-
-
 def clean_memory(device: str = "cuda") -> None:
     if not _TORCH_AVAILABLE:
         gc.collect()
@@ -219,15 +91,6 @@ def clean_memory(device: str = "cuda") -> None:
         if torch.sdaa.is_available():  # type: ignore
             torch.sdaa.empty_cache()  # type: ignore
     gc.collect()
-
-
-def clean_vram(device: str, vram_threshold: int = 8) -> None:
-    total_memory = get_vram(device)
-    if total_memory and total_memory <= vram_threshold:
-        gc_start = time.time()
-        clean_memory(device)
-        gc_time = round(time.time() - gc_start, 2)
-        logger.debug(f"gc time: {gc_time}")
 
 
 def get_vram(device: str) -> int:

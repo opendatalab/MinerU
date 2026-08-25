@@ -556,7 +556,6 @@ def test_pdf_document_methods_keep_page_access_inside_pdfium_lock(monkeypatch: p
 def test_pdf_document_does_not_expose_legacy_compat_hooks() -> None:
     assert not hasattr(pdf_document, "pdf_page_to_image")
     assert not hasattr(pdf_document, "open_pdfium_document")
-    assert not hasattr(pdf_document, "get_text_quality_signal_pdfium")
     assert not hasattr(pdf_document.PDFDocument, "get_text_quality")
     assert pdf_document.PDFDocument._pdf_doc.fset is None
 

@@ -1,7 +1,6 @@
 # Copyright (c) Opendatalab. All rights reserved.
 from __future__ import annotations
 
-import asyncio
 import atexit
 import multiprocessing
 import os
@@ -445,27 +444,6 @@ def load_images_from_pdf_bytes_range(
                 executor,
                 terminate_processes=True,
             )
-
-
-async def aio_load_images_from_pdf_bytes_range(
-    pdf_bytes: bytes,
-    dpi: int = DEFAULT_PDF_IMAGE_DPI,
-    start_page_id: int = 0,
-    end_page_id: int = 0,
-    image_type: Literal["pil_img", "base64_img"] = ImageType.PIL,
-    timeout: int | None = None,
-    threads: int | None = None,
-) -> list[dict[str, Any]]:
-    return await asyncio.to_thread(
-        load_images_from_pdf_bytes_range,
-        pdf_bytes,
-        dpi=dpi,
-        start_page_id=start_page_id,
-        end_page_id=end_page_id,
-        image_type=image_type,
-        timeout=timeout,
-        threads=threads,
-    )
 
 
 def _terminate_executor_processes(executor: ProcessPoolExecutor) -> None:

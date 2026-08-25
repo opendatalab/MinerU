@@ -175,19 +175,6 @@ def test_mixed_elements_uses_exact_cid_counts_and_classifies_as_txt() -> None:
         assert pdf_doc.classify() == "txt"
 
 
-def test_public_cid_resource_signal_shape_remains_compatible() -> None:
-    """验证兼容接口仍只暴露资源存在性与逐页字体名。"""
-    pdf_bytes = MIXED_ELEMENTS_PDF.read_bytes()
-    signal = pdf_classify.get_cid_font_signal_pypdf(
-        pdf_bytes,
-        [0, 1, 2, 3],
-    )
-
-    assert set(signal) == {"triggered", "page_fonts"}
-    assert signal["triggered"] is True
-    assert "TimesNewRoman" in signal["page_fonts"][1]
-
-
 def test_dominant_bad_cid_font_still_classifies_as_ocr_with_same_name_resource() -> None:
     """验证同名正常字体存在时，大量实际使用的坏 CID 字体仍触发 OCR。"""
     pdf_bytes = _write_single_sample_page(

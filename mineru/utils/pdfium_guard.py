@@ -3,7 +3,7 @@ import threading
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from io import BytesIO
-from typing import Any, Callable, Iterator, Sequence, TypeVar
+from typing import Any, Iterator, Sequence, TypeVar
 
 from loguru import logger
 
