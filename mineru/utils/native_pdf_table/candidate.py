@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import html
+from bisect import bisect_left, bisect_right
 from dataclasses import dataclass
 
 from mineru.types import BBox
@@ -30,6 +31,15 @@ class GridCellSpec:
     rowspan: int
     colspan: int
     bbox: BBox
+
+
+@dataclass(frozen=True, slots=True)
+class _GridSpecIndex:
+    """保存规则网格的原子轨道和原子格到逻辑单元格映射。"""
+
+    x_tracks: tuple[float, ...]
+    y_tracks: tuple[float, ...]
+    owners: tuple[tuple[int, ...], ...]
 
 
 def _validate_grid_specs(
@@ -82,6 +92,75 @@ def _choose_cell_for_glyph(
             index
             for index, spec in enumerate(specs)
             if spec.bbox[0] <= center_x <= spec.bbox[2] and spec.bbox[1] <= center_y <= spec.bbox[3]
+        ]
+        return (containing[0], False) if len(containing) == 1 else (None, False)
+    ambiguous = len(overlaps) > 1 and overlaps[1][0] >= 0.45 and abs(best_ratio - overlaps[1][0]) <= 0.02
+    return best_index, ambiguous
+
+
+def _build_grid_spec_index(
+    rows: int,
+    cols: int,
+    specs: tuple[GridCellSpec, ...],
+) -> _GridSpecIndex | None:
+    """从完整矩形网格规格恢复原子轨道，供大表快速落格。"""
+
+    x_values: list[list[float]] = [[] for _ in range(cols + 1)]
+    y_values: list[list[float]] = [[] for _ in range(rows + 1)]
+    owners = [[-1 for _ in range(cols)] for _ in range(rows)]
+    for index, spec in enumerate(specs):
+        x_values[spec.col].append(spec.bbox[0])
+        x_values[spec.col + spec.colspan].append(spec.bbox[2])
+        y_values[spec.row].append(spec.bbox[1])
+        y_values[spec.row + spec.rowspan].append(spec.bbox[3])
+        for row in range(spec.row, spec.row + spec.rowspan):
+            for col in range(spec.col, spec.col + spec.colspan):
+                owners[row][col] = index
+    if any(not values for values in (*x_values, *y_values)) or any(owner < 0 for row in owners for owner in row):
+        return None
+    x_tracks = tuple(sum(values) / len(values) for values in x_values)
+    y_tracks = tuple(sum(values) / len(values) for values in y_values)
+    if any(current <= previous for previous, current in zip(x_tracks, x_tracks[1:])) or any(
+        current <= previous for previous, current in zip(y_tracks, y_tracks[1:])
+    ):
+        return None
+    return _GridSpecIndex(
+        x_tracks=x_tracks,
+        y_tracks=y_tracks,
+        owners=tuple(tuple(row) for row in owners),
+    )
+
+
+def _choose_cell_for_glyph_indexed(
+    glyph: NativeTableGlyph,
+    specs: tuple[GridCellSpec, ...],
+    index: _GridSpecIndex,
+) -> tuple[int | None, bool]:
+    """只在字符覆盖的邻近原子格中选择逻辑单元格。"""
+
+    cols = len(index.x_tracks) - 1
+    rows = len(index.y_tracks) - 1
+    left_col = max(0, min(cols - 1, bisect_right(index.x_tracks, glyph.bbox[0]) - 1))
+    right_col = max(0, min(cols - 1, bisect_left(index.x_tracks, glyph.bbox[2])))
+    top_row = max(0, min(rows - 1, bisect_right(index.y_tracks, glyph.bbox[1]) - 1))
+    bottom_row = max(0, min(rows - 1, bisect_left(index.y_tracks, glyph.bbox[3])))
+    candidate_indices = {
+        index.owners[row][col]
+        for row in range(max(0, top_row - 1), min(rows, bottom_row + 2))
+        for col in range(max(0, left_col - 1), min(cols, right_col + 2))
+    }
+    overlaps = [(glyph_overlap_ratio(glyph, specs[cell_index].bbox), cell_index) for cell_index in candidate_indices]
+    overlaps.sort(reverse=True)
+    if not overlaps:
+        return None, False
+    best_ratio, best_index = overlaps[0]
+    if best_ratio <= 0:
+        center_x, center_y = bbox_center(glyph.bbox)
+        containing = [
+            cell_index
+            for cell_index in candidate_indices
+            if specs[cell_index].bbox[0] <= center_x <= specs[cell_index].bbox[2]
+            and specs[cell_index].bbox[1] <= center_y <= specs[cell_index].bbox[3]
         ]
         return (containing[0], False) if len(containing) == 1 else (None, False)
     ambiguous = len(overlaps) > 1 and overlaps[1][0] >= 0.45 and abs(best_ratio - overlaps[1][0]) <= 0.02
@@ -144,6 +223,7 @@ def build_candidate(
     allow_single_row: bool = False,
     allow_single_column: bool = False,
     require_atomic_tokens: bool = False,
+    use_grid_index: bool = False,
     diagnostics: dict[str, object] | None = None,
 ) -> NativeTableCandidate | None:
     """校验网格、唯一分配字符并计算统一质量分。"""
@@ -161,8 +241,13 @@ def build_candidate(
     assignments: dict[int, int] = {}
     cell_glyphs: list[list[NativeTableGlyph]] = [[] for _ in specs]
     ambiguous_count = 0
+    grid_index = _build_grid_spec_index(rows, cols, specs) if use_grid_index else None
     for glyph in text.glyphs:
-        cell_index, ambiguous = _choose_cell_for_glyph(glyph, specs)
+        cell_index, ambiguous = (
+            _choose_cell_for_glyph_indexed(glyph, specs, grid_index)
+            if grid_index is not None
+            else _choose_cell_for_glyph(glyph, specs)
+        )
         if cell_index is None:
             continue
         assignments[glyph.glyph_id] = cell_index

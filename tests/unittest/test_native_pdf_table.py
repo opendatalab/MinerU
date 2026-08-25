@@ -264,6 +264,65 @@ def _rotated_single_column_input(angle: int) -> NativeTableInput:
     )
 
 
+def _rotated_sparse_hybrid_input(angle: int) -> NativeTableInput:
+    """构造四种标准旋转下仅有表头横线的三行三列表格。"""
+
+    page_width, page_height = 120.0, 90.0
+    local_width, local_height = (page_height, page_width) if angle in {90, 270} else (page_width, page_height)
+    x_tracks = (0.0, local_width / 3.0, 2.0 * local_width / 3.0, local_width)
+    header_boundary = 0.30 * local_height
+    local_rule_bboxes = [
+        (0.0, 0.0, local_width, 1.0),
+        (0.0, header_boundary - 0.5, local_width, header_boundary + 0.5),
+        (0.0, local_height - 1.0, local_width, local_height),
+        *((track - 0.5, 0.0, track + 0.5, local_height) for track in x_tracks),
+    ]
+    rules = tuple(
+        NativeTableRule(
+            page_bbox,
+            1.0,
+            "horizontal" if page_bbox[2] - page_bbox[0] >= page_bbox[3] - page_bbox[1] else "vertical",
+        )
+        for page_bbox in (
+            _local_to_page_bbox(
+                bbox,
+                page_width,
+                page_height,
+                angle,
+            )
+            for bbox in local_rule_bboxes
+        )
+    )
+    y_positions = (5.0, 0.42 * local_height, 0.70 * local_height)
+    entries = []
+    for row, values in enumerate((("H", "I", "J"), ("A", "1", "2"), ("B", "3", "4"))):
+        for col, value in enumerate(values):
+            local_bbox = (
+                x_tracks[col] + 5.0,
+                y_positions[row],
+                x_tracks[col] + 13.0,
+                y_positions[row] + 8.0,
+            )
+            entries.append(
+                (
+                    value,
+                    _local_to_page_bbox(
+                        local_bbox,
+                        page_width,
+                        page_height,
+                        angle,
+                    ),
+                )
+            )
+    return NativeTableInput(
+        table_bbox=(0.0, 0.0, page_width, page_height),
+        page_size=(page_width, page_height),
+        angle=angle,
+        chars=_char_items(entries),
+        drawing_lines=rules,
+    )
+
+
 def _candidate(
     *,
     source: str,
@@ -469,8 +528,8 @@ def test_single_long_rule_endpoint_does_not_create_global_column() -> None:
     assert (result.rows, result.cols) == (2, 2)
 
 
-def test_line_grid_rejects_multiple_dense_baselines_inside_one_physical_row() -> None:
-    """验证只有表头横线的强竖轨表不把多条数据基线压成一行。"""
+def test_sparse_hybrid_splits_dense_keyed_baselines_after_line_undercount() -> None:
+    """验证只有表头横线时按独立关键列把稠密正文基线恢复成多行。"""
 
     rules = (
         NativeTableRule((0.0, 0.0, 120.0, 1.0), 1.0, "horizontal"),
@@ -503,7 +562,12 @@ def test_line_grid_rejects_multiple_dense_baselines_inside_one_physical_row() ->
 
     diagnostics = diagnose_native_pdf_table(table_input)
 
-    assert recover_native_pdf_table(table_input) is None
+    result = recover_native_pdf_table(table_input)
+
+    assert result is not None
+    assert result.source == "sparse_hybrid"
+    assert (result.rows, result.cols) == (3, 3)
+    assert "<tr><td>B</td><td>3</td><td>4</td></tr>" in result.html
     line_attempt = next(attempt for attempt in diagnostics["vector_attempts"] if attempt["evidence"] == "line_grid")
     assert line_attempt["first_rejection_gate"] == "physical_row_undercount"
     assert line_attempt["physical_row_dense_baseline_pairs"] == [
@@ -513,6 +577,90 @@ def test_line_grid_rejects_multiple_dense_baselines_inside_one_physical_row() ->
             "occupied_cols": [0, 1, 2],
         }
     ]
+
+
+@pytest.mark.parametrize("angle", [0, 90, 180, 270])
+def test_sparse_hybrid_supports_standard_table_rotations(angle: int) -> None:
+    """验证竖线加视觉正文行的少线候选支持四种标准旋转。"""
+
+    result = recover_native_pdf_table(_rotated_sparse_hybrid_input(angle))
+
+    assert result is not None
+    assert result.source == "sparse_hybrid"
+    assert (result.rows, result.cols) == (3, 3)
+    assert "<tr><td>B</td><td>3</td><td>4</td></tr>" in result.html
+
+
+def test_sparse_hybrid_recovers_two_level_header_spans() -> None:
+    """验证局部表头横线恢复左侧 rowspan 和分组标题 colspan。"""
+
+    table_input = NativeTableInput(
+        table_bbox=(0.0, 0.0, 120.0, 100.0),
+        page_size=(120.0, 100.0),
+        angle=0,
+        chars=_char_items(
+            [
+                ("Site", (8.0, 5.0, 24.0, 13.0)),
+                ("Metrics", (60.0, 5.0, 88.0, 13.0)),
+                ("Q1", (48.0, 25.0, 56.0, 33.0)),
+                ("Q2", (88.0, 25.0, 96.0, 33.0)),
+                ("A", (8.0, 55.0, 12.0, 63.0)),
+                ("1", (48.0, 55.0, 52.0, 63.0)),
+                ("2", (88.0, 55.0, 92.0, 63.0)),
+                ("B", (8.0, 78.0, 12.0, 86.0)),
+                ("3", (48.0, 78.0, 52.0, 86.0)),
+                ("4", (88.0, 78.0, 92.0, 86.0)),
+            ]
+        ),
+        drawing_lines=(
+            NativeTableRule((0.0, 0.0, 120.0, 1.0), 1.0, "horizontal"),
+            NativeTableRule((30.0, 19.5, 120.0, 20.5), 1.0, "horizontal"),
+            NativeTableRule((0.0, 99.0, 120.0, 100.0), 1.0, "horizontal"),
+        ),
+    )
+
+    result = recover_native_pdf_table(table_input)
+
+    assert result is not None
+    assert result.source == "sparse_hybrid"
+    assert (result.rows, result.cols) == (4, 3)
+    assert '<td rowspan="2">Site</td><td colspan="2">Metrics</td>' in result.html
+    assert "<tr><td>Q1</td><td>Q2</td></tr>" in result.html
+
+
+def test_sparse_hybrid_rejects_ambiguous_partial_header_separator() -> None:
+    """验证表头横线只覆盖部分叶子列时不猜测 rowspan/colspan。"""
+
+    table_input = NativeTableInput(
+        table_bbox=(0.0, 0.0, 120.0, 100.0),
+        page_size=(120.0, 100.0),
+        angle=0,
+        chars=_char_items(
+            [
+                ("Site", (8.0, 5.0, 24.0, 13.0)),
+                ("Metrics", (60.0, 5.0, 88.0, 13.0)),
+                ("Q1", (48.0, 25.0, 56.0, 33.0)),
+                ("Q2", (88.0, 25.0, 96.0, 33.0)),
+                ("A", (8.0, 55.0, 12.0, 63.0)),
+                ("1", (48.0, 55.0, 52.0, 63.0)),
+                ("2", (88.0, 55.0, 92.0, 63.0)),
+                ("B", (8.0, 78.0, 12.0, 86.0)),
+                ("3", (48.0, 78.0, 52.0, 86.0)),
+                ("4", (88.0, 78.0, 92.0, 86.0)),
+            ]
+        ),
+        drawing_lines=(
+            NativeTableRule((0.0, 0.0, 120.0, 1.0), 1.0, "horizontal"),
+            NativeTableRule((40.0, 19.5, 120.0, 20.5), 1.0, "horizontal"),
+            NativeTableRule((0.0, 99.0, 120.0, 100.0), 1.0, "horizontal"),
+        ),
+    )
+
+    diagnostics = diagnose_native_pdf_table(table_input)
+
+    assert recover_native_pdf_table(table_input) is None
+    sparse_attempt = diagnostics["sparse_hybrid_attempts"][0]
+    assert sparse_attempt["first_rejection_gate"] == "header_topology"
 
 
 def test_vector_grid_joins_small_collinear_gaps() -> None:
@@ -1659,7 +1807,7 @@ def test_sparse_candidate_uses_rules_or_row_stripes(evidence: str) -> None:
     )
 
     assert result is not None
-    assert result.source == "sparse_grid"
+    assert result.source == ("sparse_hybrid" if evidence == "booktabs" else "sparse_grid")
 
 
 def test_candidate_conflict_with_close_scores_abstains() -> None:

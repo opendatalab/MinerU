@@ -12,6 +12,7 @@ from mineru.types import BBox
 
 NativeTableCandidateSource = Literal[
     "vector_grid",
+    "sparse_hybrid",
     "sparse_grid",
     "text_grid",
     "key_value",

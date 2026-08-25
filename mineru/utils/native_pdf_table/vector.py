@@ -1675,6 +1675,7 @@ def _build_vector_candidate(
         ),
         allow_single_row=is_single_row_shape,
         allow_single_column=is_single_column_shape,
+        use_grid_index=True,
         diagnostics=diagnostics,
     )
     if candidate is None:

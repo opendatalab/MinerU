@@ -56,4 +56,5 @@ debug_utils/
 _build/
 
 
-output/.coverage
+output/
+.coverage

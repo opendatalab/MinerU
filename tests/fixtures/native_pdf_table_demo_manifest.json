@@ -1,0 +1,8084 @@
+{
+  "schema_version": 2,
+  "manifest_version": "2026-08-25-demo-sparse-hybrid-v2",
+  "source_root": "demo/pdfs",
+  "totals": {
+    "documents": 14,
+    "pages": 104,
+    "tables": 44,
+    "expected_html": 18,
+    "expected_projection": 26,
+    "tracked_tables": 18,
+    "planned_sparse_targets": 10,
+    "additional_verified_sparse_tables": 3
+  },
+  "tables": [
+    {
+      "file": "caibao1.pdf",
+      "page_index": 0,
+      "table_index": 1,
+      "bbox": [
+        0.649,
+        0.319,
+        0.94,
+        0.404
+      ],
+      "expected_output": "html",
+      "expected_source": "sparse_hybrid",
+      "rows": 7,
+      "cols": 4,
+      "content_sha256": "c646f01282b250752f803e291598e1e19672640f904ff63392a5b13f8979145d",
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          2,
+          1
+        ]
+      ],
+      "cell_truth": [
+        {
+          "row": 0,
+          "col": 0,
+          "rowspan": 2,
+          "colspan": 1,
+          "text": "股票名称"
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "rowspan": 2,
+          "colspan": 1,
+          "text": "股票代码"
+        },
+        {
+          "row": 0,
+          "col": 2,
+          "rowspan": 2,
+          "colspan": 1,
+          "text": "目标价(当地币种)"
+        },
+        {
+          "row": 0,
+          "col": 3,
+          "rowspan": 2,
+          "colspan": 1,
+          "text": "投资评级"
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "比亚迪"
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "002594 CH"
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "317.02"
+        },
+        {
+          "row": 2,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "买入"
+        },
+        {
+          "row": 3,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "小鹏汽车-W"
+        },
+        {
+          "row": 3,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "9868 HK"
+        },
+        {
+          "row": 3,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "64.07"
+        },
+        {
+          "row": 3,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "买入"
+        },
+        {
+          "row": 4,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "科博达"
+        },
+        {
+          "row": 4,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "603786 CH"
+        },
+        {
+          "row": 4,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "83.44"
+        },
+        {
+          "row": 4,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "买入"
+        },
+        {
+          "row": 5,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "中鼎股份"
+        },
+        {
+          "row": 5,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "000887 CH"
+        },
+        {
+          "row": 5,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "16.94"
+        },
+        {
+          "row": 5,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "买入"
+        },
+        {
+          "row": 6,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "星宇股份"
+        },
+        {
+          "row": 6,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "601799 CH"
+        },
+        {
+          "row": 6,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "161.29"
+        },
+        {
+          "row": 6,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "买入"
+        }
+      ],
+      "truth_scope": "sparse_hybrid_verified",
+      "extra_verified": true
+    },
+    {
+      "file": "caibao1.pdf",
+      "page_index": 0,
+      "table_index": 2,
+      "bbox": [
+        0.647,
+        0.625,
+        0.94,
+        0.757
+      ],
+      "expected_output": "html",
+      "expected_source": "sparse_hybrid",
+      "rows": 11,
+      "cols": 3,
+      "content_sha256": "d4798ff76107ba7a6ff9bf922a42156886b555b60a1d4ff80103aa2ddbccd3ca",
+      "span_signature": [],
+      "cell_truth": [
+        {
+          "row": 0,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "股票名称"
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "股票代码"
+        },
+        {
+          "row": 0,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "涨跌幅(%)"
+        },
+        {
+          "row": 1,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "交运股份"
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "600676 CH"
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "32.59"
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "安凯客车"
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "000868 CH"
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "15.38"
+        },
+        {
+          "row": 3,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "金龙汽车"
+        },
+        {
+          "row": 3,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "600686 CH"
+        },
+        {
+          "row": 3,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "14.71"
+        },
+        {
+          "row": 4,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "继峰股份"
+        },
+        {
+          "row": 4,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "603997 CH"
+        },
+        {
+          "row": 4,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "13.21"
+        },
+        {
+          "row": 5,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "海马汽车"
+        },
+        {
+          "row": 5,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "000572 CH"
+        },
+        {
+          "row": 5,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "6.60"
+        },
+        {
+          "row": 6,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "美力科技"
+        },
+        {
+          "row": 6,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "300611 CH"
+        },
+        {
+          "row": 6,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "6.51"
+        },
+        {
+          "row": 7,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "北巴传媒"
+        },
+        {
+          "row": 7,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "600386 CH"
+        },
+        {
+          "row": 7,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "6.48"
+        },
+        {
+          "row": 8,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "电科芯片"
+        },
+        {
+          "row": 8,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "600877 CH"
+        },
+        {
+          "row": 8,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "6.16"
+        },
+        {
+          "row": 9,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "新大洲A"
+        },
+        {
+          "row": 9,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "000571 CH"
+        },
+        {
+          "row": 9,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "5.96"
+        },
+        {
+          "row": 10,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "上汽集团"
+        },
+        {
+          "row": 10,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "600104 CH"
+        },
+        {
+          "row": 10,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "4.72"
+        }
+      ],
+      "truth_scope": "sparse_hybrid_verified"
+    },
+    {
+      "file": "caibao1.pdf",
+      "page_index": 0,
+      "table_index": 3,
+      "bbox": [
+        0.647,
+        0.786,
+        0.94,
+        0.918
+      ],
+      "expected_output": "html",
+      "expected_source": "sparse_hybrid",
+      "rows": 11,
+      "cols": 3,
+      "content_sha256": "0f2e3e361472822881cfd78e70858d6879307e7ec330efd1501647858bae6015",
+      "span_signature": [],
+      "cell_truth": [
+        {
+          "row": 0,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "股票名称"
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "股票代码"
+        },
+        {
+          "row": 0,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "涨跌幅(%)"
+        },
+        {
+          "row": 1,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "广汇汽车"
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "600297 CH"
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "(18.75)"
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "东箭科技"
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "300978 CH"
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "(17.37)"
+        },
+        {
+          "row": 3,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "文灿股份"
+        },
+        {
+          "row": 3,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "603348 CH"
+        },
+        {
+          "row": 3,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "(14.89)"
+        },
+        {
+          "row": 4,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "标榜股份"
+        },
+        {
+          "row": 4,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "301181 CH"
+        },
+        {
+          "row": 4,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "(14.49)"
+        },
+        {
+          "row": 5,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "金钟股份"
+        },
+        {
+          "row": 5,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "301133 CH"
+        },
+        {
+          "row": 5,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "(14.05)"
+        },
+        {
+          "row": 6,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "宁波方正"
+        },
+        {
+          "row": 6,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "300998 CH"
+        },
+        {
+          "row": 6,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "(13.97)"
+        },
+        {
+          "row": 7,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "阿尔特"
+        },
+        {
+          "row": 7,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "300825 CH"
+        },
+        {
+          "row": 7,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "(13.90)"
+        },
+        {
+          "row": 8,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "博俊科技"
+        },
+        {
+          "row": 8,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "300926 CH"
+        },
+        {
+          "row": 8,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "(11.20)"
+        },
+        {
+          "row": 9,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "通用股份"
+        },
+        {
+          "row": 9,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "601500 CH"
+        },
+        {
+          "row": 9,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "(11.17)"
+        },
+        {
+          "row": 10,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "豪能股份"
+        },
+        {
+          "row": 10,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "603809 CH"
+        },
+        {
+          "row": 10,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "(10.86)"
+        }
+      ],
+      "truth_scope": "sparse_hybrid_verified"
+    },
+    {
+      "file": "caibao1.pdf",
+      "page_index": 5,
+      "table_index": 0,
+      "bbox": [
+        0.072,
+        0.287,
+        0.93,
+        0.673
+      ],
+      "expected_output": "html",
+      "expected_source": "sparse_hybrid",
+      "rows": 27,
+      "cols": 10,
+      "content_sha256": "b0fc98dfab48878ec6745e8c339e4ca969a8849c76de8ae48e7011ab4f05c836",
+      "span_signature": [],
+      "cell_truth": [
+        {
+          "row": 0,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "代码"
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "名称"
+        },
+        {
+          "row": 0,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2022/12/31"
+        },
+        {
+          "row": 0,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2023/3/31"
+        },
+        {
+          "row": 0,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2023/6/30"
+        },
+        {
+          "row": 0,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2023/9/29"
+        },
+        {
+          "row": 0,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2023/12/30"
+        },
+        {
+          "row": 0,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2024/7/12"
+        },
+        {
+          "row": 0,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2024/7/19"
+        },
+        {
+          "row": 0,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "上周变动方向"
+        },
+        {
+          "row": 1,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "600104.SH"
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "上汽集团"
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1.97"
+        },
+        {
+          "row": 1,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.08"
+        },
+        {
+          "row": 1,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1.83"
+        },
+        {
+          "row": 1,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.24"
+        },
+        {
+          "row": 1,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.03"
+        },
+        {
+          "row": 1,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.78"
+        },
+        {
+          "row": 1,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.80"
+        },
+        {
+          "row": 1,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "+0.02 pct"
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "601633.SH"
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "长城汽车"
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.75"
+        },
+        {
+          "row": 2,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.80"
+        },
+        {
+          "row": 2,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.76"
+        },
+        {
+          "row": 2,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.72"
+        },
+        {
+          "row": 2,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.88"
+        },
+        {
+          "row": 2,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1.45"
+        },
+        {
+          "row": 2,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1.58"
+        },
+        {
+          "row": 2,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "+0.13 pct"
+        },
+        {
+          "row": 3,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "000951.SZ"
+        },
+        {
+          "row": 3,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "中国重汽"
+        },
+        {
+          "row": 3,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1.24"
+        },
+        {
+          "row": 3,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "3.15"
+        },
+        {
+          "row": 3,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "7.12"
+        },
+        {
+          "row": 3,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "8.18"
+        },
+        {
+          "row": 3,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "4.90"
+        },
+        {
+          "row": 3,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1.87"
+        },
+        {
+          "row": 3,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1.74"
+        },
+        {
+          "row": 3,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "-0.13 pct"
+        },
+        {
+          "row": 4,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "000338.SZ"
+        },
+        {
+          "row": 4,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "潍柴动力"
+        },
+        {
+          "row": 4,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "6.17"
+        },
+        {
+          "row": 4,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "7.19"
+        },
+        {
+          "row": 4,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "8.15"
+        },
+        {
+          "row": 4,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "8.18"
+        },
+        {
+          "row": 4,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "8.62"
+        },
+        {
+          "row": 4,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "7.13"
+        },
+        {
+          "row": 4,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "6.61"
+        },
+        {
+          "row": 4,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "-0.52 pct"
+        },
+        {
+          "row": 5,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "600741.SH"
+        },
+        {
+          "row": 5,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "华域汽车"
+        },
+        {
+          "row": 5,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "7.15"
+        },
+        {
+          "row": 5,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "6.29"
+        },
+        {
+          "row": 5,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "6.76"
+        },
+        {
+          "row": 5,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "6.73"
+        },
+        {
+          "row": 5,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "6.50"
+        },
+        {
+          "row": 5,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "4.94"
+        },
+        {
+          "row": 5,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "4.94"
+        },
+        {
+          "row": 5,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "- pct"
+        },
+        {
+          "row": 6,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "002126.SZ"
+        },
+        {
+          "row": 6,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "银轮股份"
+        },
+        {
+          "row": 6,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.48"
+        },
+        {
+          "row": 6,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "4.24"
+        },
+        {
+          "row": 6,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.62"
+        },
+        {
+          "row": 6,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.99"
+        },
+        {
+          "row": 6,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.82"
+        },
+        {
+          "row": 6,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.73"
+        },
+        {
+          "row": 6,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.57"
+        },
+        {
+          "row": 6,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "-0.16 pct"
+        },
+        {
+          "row": 7,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "601799.SH"
+        },
+        {
+          "row": 7,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "星宇股份"
+        },
+        {
+          "row": 7,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "3.28"
+        },
+        {
+          "row": 7,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.95"
+        },
+        {
+          "row": 7,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.61"
+        },
+        {
+          "row": 7,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1.98"
+        },
+        {
+          "row": 7,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.51"
+        },
+        {
+          "row": 7,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "6.52"
+        },
+        {
+          "row": 7,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "6.62"
+        },
+        {
+          "row": 7,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "+0.10 pct"
+        },
+        {
+          "row": 8,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "002048.SZ"
+        },
+        {
+          "row": 8,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "宁波华翔"
+        },
+        {
+          "row": 8,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "5.10"
+        },
+        {
+          "row": 8,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "5.64"
+        },
+        {
+          "row": 8,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "6.07"
+        },
+        {
+          "row": 8,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "5.73"
+        },
+        {
+          "row": 8,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.02"
+        },
+        {
+          "row": 8,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.02"
+        },
+        {
+          "row": 8,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.00"
+        },
+        {
+          "row": 8,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "-0.02 pct"
+        },
+        {
+          "row": 9,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "002050.SZ"
+        },
+        {
+          "row": 9,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "三花智控"
+        },
+        {
+          "row": 9,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "15.25"
+        },
+        {
+          "row": 9,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "16.91"
+        },
+        {
+          "row": 9,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "16.34"
+        },
+        {
+          "row": 9,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "16.03"
+        },
+        {
+          "row": 9,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "15.52"
+        },
+        {
+          "row": 9,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "9.69"
+        },
+        {
+          "row": 9,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "9.85"
+        },
+        {
+          "row": 9,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "+0.15 pct"
+        },
+        {
+          "row": 10,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "600699.SH"
+        },
+        {
+          "row": 10,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "均胜电子"
+        },
+        {
+          "row": 10,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "3.96"
+        },
+        {
+          "row": 10,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "5.03"
+        },
+        {
+          "row": 10,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "3.00"
+        },
+        {
+          "row": 10,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.61"
+        },
+        {
+          "row": 10,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.92"
+        },
+        {
+          "row": 10,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.45"
+        },
+        {
+          "row": 10,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.68"
+        },
+        {
+          "row": 10,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "+0.23 pct"
+        },
+        {
+          "row": 11,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "000887.SZ"
+        },
+        {
+          "row": 11,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "中鼎股份"
+        },
+        {
+          "row": 11,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.08"
+        },
+        {
+          "row": 11,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.16"
+        },
+        {
+          "row": 11,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.44"
+        },
+        {
+          "row": 11,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.26"
+        },
+        {
+          "row": 11,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.17"
+        },
+        {
+          "row": 11,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "4.60"
+        },
+        {
+          "row": 11,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "4.24"
+        },
+        {
+          "row": 11,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "-0.36 pct"
+        },
+        {
+          "row": 12,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "002920.SZ"
+        },
+        {
+          "row": 12,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "德赛西威"
+        },
+        {
+          "row": 12,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "3.47"
+        },
+        {
+          "row": 12,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "3.59"
+        },
+        {
+          "row": 12,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "3.08"
+        },
+        {
+          "row": 12,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.82"
+        },
+        {
+          "row": 12,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.42"
+        },
+        {
+          "row": 12,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1.75"
+        },
+        {
+          "row": 12,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1.72"
+        },
+        {
+          "row": 12,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "-0.03 pct"
+        },
+        {
+          "row": 13,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "601689.SH"
+        },
+        {
+          "row": 13,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "拓普集团"
+        },
+        {
+          "row": 13,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.71"
+        },
+        {
+          "row": 13,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "4.22"
+        },
+        {
+          "row": 13,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "5.79"
+        },
+        {
+          "row": 13,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "4.50"
+        },
+        {
+          "row": 13,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "3.85"
+        },
+        {
+          "row": 13,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "3.87"
+        },
+        {
+          "row": 13,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "3.81"
+        },
+        {
+          "row": 13,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "-0.06 pct"
+        },
+        {
+          "row": 14,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "603305.SH"
+        },
+        {
+          "row": 14,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "旭升集团"
+        },
+        {
+          "row": 14,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1.28"
+        },
+        {
+          "row": 14,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.78"
+        },
+        {
+          "row": 14,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1.33"
+        },
+        {
+          "row": 14,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.91"
+        },
+        {
+          "row": 14,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.80"
+        },
+        {
+          "row": 14,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.99"
+        },
+        {
+          "row": 14,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.99"
+        },
+        {
+          "row": 14,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "+0.01 pct"
+        },
+        {
+          "row": 15,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "603596.SH"
+        },
+        {
+          "row": 15,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "伯特利"
+        },
+        {
+          "row": 15,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1.64"
+        },
+        {
+          "row": 15,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.47"
+        },
+        {
+          "row": 15,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.94"
+        },
+        {
+          "row": 15,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "4.01"
+        },
+        {
+          "row": 15,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "3.37"
+        },
+        {
+          "row": 15,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "8.32"
+        },
+        {
+          "row": 15,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "8.02"
+        },
+        {
+          "row": 15,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "-0.31 pct"
+        },
+        {
+          "row": 16,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "603982.SH"
+        },
+        {
+          "row": 16,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "泉峰汽车"
+        },
+        {
+          "row": 16,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.14"
+        },
+        {
+          "row": 16,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.31"
+        },
+        {
+          "row": 16,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.93"
+        },
+        {
+          "row": 16,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.77"
+        },
+        {
+          "row": 16,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.19"
+        },
+        {
+          "row": 16,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.25"
+        },
+        {
+          "row": 16,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.24"
+        },
+        {
+          "row": 16,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "-0.01 pct"
+        },
+        {
+          "row": 17,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "600933.SH"
+        },
+        {
+          "row": 17,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "爱柯迪"
+        },
+        {
+          "row": 17,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.60"
+        },
+        {
+          "row": 17,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1.71"
+        },
+        {
+          "row": 17,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1.07"
+        },
+        {
+          "row": 17,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.68"
+        },
+        {
+          "row": 17,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.69"
+        },
+        {
+          "row": 17,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.68"
+        },
+        {
+          "row": 17,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.56"
+        },
+        {
+          "row": 17,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "-0.12 pct"
+        },
+        {
+          "row": 18,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "603730.SH"
+        },
+        {
+          "row": 18,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "岱美股份"
+        },
+        {
+          "row": 18,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.54"
+        },
+        {
+          "row": 18,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.58"
+        },
+        {
+          "row": 18,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.62"
+        },
+        {
+          "row": 18,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1.04"
+        },
+        {
+          "row": 18,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.93"
+        },
+        {
+          "row": 18,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.69"
+        },
+        {
+          "row": 18,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.67"
+        },
+        {
+          "row": 18,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "-0.02 pct"
+        },
+        {
+          "row": 19,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "000581.SZ"
+        },
+        {
+          "row": 19,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "威孚高科"
+        },
+        {
+          "row": 19,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.35"
+        },
+        {
+          "row": 19,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "4.02"
+        },
+        {
+          "row": 19,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.87"
+        },
+        {
+          "row": 19,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.37"
+        },
+        {
+          "row": 19,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.13"
+        },
+        {
+          "row": 19,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "3.84"
+        },
+        {
+          "row": 19,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "3.52"
+        },
+        {
+          "row": 19,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "-0.32 pct"
+        },
+        {
+          "row": 20,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "000625.SZ"
+        },
+        {
+          "row": 20,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "长安汽车"
+        },
+        {
+          "row": 20,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1.73"
+        },
+        {
+          "row": 20,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1.79"
+        },
+        {
+          "row": 20,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.12"
+        },
+        {
+          "row": 20,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1.98"
+        },
+        {
+          "row": 20,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.84"
+        },
+        {
+          "row": 20,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.09"
+        },
+        {
+          "row": 20,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1.84"
+        },
+        {
+          "row": 20,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "-0.26 pct"
+        },
+        {
+          "row": 21,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "601965.SH"
+        },
+        {
+          "row": 21,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "中国汽研"
+        },
+        {
+          "row": 21,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.72"
+        },
+        {
+          "row": 21,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1.34"
+        },
+        {
+          "row": 21,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1.02"
+        },
+        {
+          "row": 21,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.79"
+        },
+        {
+          "row": 21,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.71"
+        },
+        {
+          "row": 21,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.70"
+        },
+        {
+          "row": 21,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.58"
+        },
+        {
+          "row": 21,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "-0.12 pct"
+        },
+        {
+          "row": 22,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "603786.SH"
+        },
+        {
+          "row": 22,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "科博达"
+        },
+        {
+          "row": 22,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.44"
+        },
+        {
+          "row": 22,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.61"
+        },
+        {
+          "row": 22,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.50"
+        },
+        {
+          "row": 22,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.55"
+        },
+        {
+          "row": 22,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.31"
+        },
+        {
+          "row": 22,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.42"
+        },
+        {
+          "row": 22,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.46"
+        },
+        {
+          "row": 22,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "+0.04 pct"
+        },
+        {
+          "row": 23,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "000800.SZ"
+        },
+        {
+          "row": 23,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "一汽解放"
+        },
+        {
+          "row": 23,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1.18"
+        },
+        {
+          "row": 23,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1.37"
+        },
+        {
+          "row": 23,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1.65"
+        },
+        {
+          "row": 23,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.07"
+        },
+        {
+          "row": 23,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1.35"
+        },
+        {
+          "row": 23,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1.28"
+        },
+        {
+          "row": 23,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1.27"
+        },
+        {
+          "row": 23,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "-0.01 pct"
+        },
+        {
+          "row": 24,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "600297.SH"
+        },
+        {
+          "row": 24,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "广汇汽车"
+        },
+        {
+          "row": 24,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.36"
+        },
+        {
+          "row": 24,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.41"
+        },
+        {
+          "row": 24,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.30"
+        },
+        {
+          "row": 24,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.26"
+        },
+        {
+          "row": 24,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.67"
+        },
+        {
+          "row": 24,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.75"
+        },
+        {
+          "row": 24,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.57"
+        },
+        {
+          "row": 24,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "-0.18 pct"
+        },
+        {
+          "row": 25,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "603997.SH"
+        },
+        {
+          "row": 25,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "继峰股份"
+        },
+        {
+          "row": 25,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.04"
+        },
+        {
+          "row": 25,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.14"
+        },
+        {
+          "row": 25,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.36"
+        },
+        {
+          "row": 25,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.25"
+        },
+        {
+          "row": 25,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.39"
+        },
+        {
+          "row": 25,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.80"
+        },
+        {
+          "row": 25,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.57"
+        },
+        {
+          "row": 25,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "-0.22 pct"
+        },
+        {
+          "row": 26,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "603179.SH"
+        },
+        {
+          "row": 26,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "新泉股份"
+        },
+        {
+          "row": 26,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.00"
+        },
+        {
+          "row": 26,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.09"
+        },
+        {
+          "row": 26,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.49"
+        },
+        {
+          "row": 26,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.65"
+        },
+        {
+          "row": 26,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.42"
+        },
+        {
+          "row": 26,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.48"
+        },
+        {
+          "row": 26,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.48"
+        },
+        {
+          "row": 26,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "- pct"
+        }
+      ],
+      "truth_scope": "sparse_hybrid_verified",
+      "extra_verified": true
+    },
+    {
+      "file": "caibao1.pdf",
+      "page_index": 6,
+      "table_index": 0,
+      "bbox": [
+        0.072,
+        0.094,
+        0.93,
+        0.48
+      ],
+      "expected_output": "html",
+      "expected_source": "sparse_hybrid",
+      "rows": 27,
+      "cols": 7,
+      "content_sha256": "45bd3bce73a874f4c6ec1409da6f87b0457f14b969269947cdde5fdd4b1e52af",
+      "span_signature": [],
+      "cell_truth": [
+        {
+          "row": 0,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": ""
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "简称"
+        },
+        {
+          "row": 0,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "质押总股数（万股）"
+        },
+        {
+          "row": 0,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "质押股占总股本比例"
+        },
+        {
+          "row": 0,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "质押股占大股东所持股比例"
+        },
+        {
+          "row": 0,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "大股东持股（万股）"
+        },
+        {
+          "row": 0,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "总股本（万股）"
+        },
+        {
+          "row": 1,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "600297.SH"
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "广汇汽车"
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "352,043"
+        },
+        {
+          "row": 1,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "42.5%"
+        },
+        {
+          "row": 1,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "81.6%"
+        },
+        {
+          "row": 1,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "431,394"
+        },
+        {
+          "row": 1,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "828,955"
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "600104.SH"
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "上汽集团"
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0"
+        },
+        {
+          "row": 2,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.0%"
+        },
+        {
+          "row": 2,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.0%"
+        },
+        {
+          "row": 2,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "979,776"
+        },
+        {
+          "row": 2,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1,157,530"
+        },
+        {
+          "row": 3,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "601633.SH"
+        },
+        {
+          "row": 3,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "长城汽车"
+        },
+        {
+          "row": 3,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "68,250"
+        },
+        {
+          "row": 3,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "8.0%"
+        },
+        {
+          "row": 3,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "8.7%"
+        },
+        {
+          "row": 3,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "786,212"
+        },
+        {
+          "row": 3,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "854,196"
+        },
+        {
+          "row": 4,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "000951.SZ"
+        },
+        {
+          "row": 4,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "中国重汽"
+        },
+        {
+          "row": 4,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0"
+        },
+        {
+          "row": 4,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.0%"
+        },
+        {
+          "row": 4,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.0%"
+        },
+        {
+          "row": 4,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "73,226"
+        },
+        {
+          "row": 4,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "117,487"
+        },
+        {
+          "row": 5,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "000338.SZ"
+        },
+        {
+          "row": 5,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "潍柴动力"
+        },
+        {
+          "row": 5,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0"
+        },
+        {
+          "row": 5,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.0%"
+        },
+        {
+          "row": 5,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.0%"
+        },
+        {
+          "row": 5,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "482,565"
+        },
+        {
+          "row": 5,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "872,656"
+        },
+        {
+          "row": 6,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "600741.SH"
+        },
+        {
+          "row": 6,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "华域汽车"
+        },
+        {
+          "row": 6,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0"
+        },
+        {
+          "row": 6,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.0%"
+        },
+        {
+          "row": 6,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.0%"
+        },
+        {
+          "row": 6,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "223,628"
+        },
+        {
+          "row": 6,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "315,272"
+        },
+        {
+          "row": 7,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "002126.SZ"
+        },
+        {
+          "row": 7,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "银轮股份"
+        },
+        {
+          "row": 7,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1,173"
+        },
+        {
+          "row": 7,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1.4%"
+        },
+        {
+          "row": 7,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "5.7%"
+        },
+        {
+          "row": 7,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "20,651"
+        },
+        {
+          "row": 7,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "82,767"
+        },
+        {
+          "row": 8,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "601799.SH"
+        },
+        {
+          "row": 8,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "星宇股份"
+        },
+        {
+          "row": 8,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0"
+        },
+        {
+          "row": 8,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.0%"
+        },
+        {
+          "row": 8,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.0%"
+        },
+        {
+          "row": 8,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "19,162"
+        },
+        {
+          "row": 8,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "28,568"
+        },
+        {
+          "row": 9,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "603179.SH"
+        },
+        {
+          "row": 9,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "新泉股份"
+        },
+        {
+          "row": 9,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1,800"
+        },
+        {
+          "row": 9,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "3.7%"
+        },
+        {
+          "row": 9,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "7.5%"
+        },
+        {
+          "row": 9,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "23,914"
+        },
+        {
+          "row": 9,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "48,730"
+        },
+        {
+          "row": 10,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "000887.SZ"
+        },
+        {
+          "row": 10,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "中鼎股份"
+        },
+        {
+          "row": 10,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "14,250"
+        },
+        {
+          "row": 10,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "10.8%"
+        },
+        {
+          "row": 10,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "21.4%"
+        },
+        {
+          "row": 10,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "66,460"
+        },
+        {
+          "row": 10,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "131,649"
+        },
+        {
+          "row": 11,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "603040.SH"
+        },
+        {
+          "row": 11,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "新坐标"
+        },
+        {
+          "row": 11,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0"
+        },
+        {
+          "row": 11,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.0%"
+        },
+        {
+          "row": 11,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.0%"
+        },
+        {
+          "row": 11,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "8,267"
+        },
+        {
+          "row": 11,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "13,511"
+        },
+        {
+          "row": 12,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "603730.SH"
+        },
+        {
+          "row": 12,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "岱美股份"
+        },
+        {
+          "row": 12,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0"
+        },
+        {
+          "row": 12,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.0%"
+        },
+        {
+          "row": 12,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.0%"
+        },
+        {
+          "row": 12,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "110,219"
+        },
+        {
+          "row": 12,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "165,276"
+        },
+        {
+          "row": 13,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "000581.SZ"
+        },
+        {
+          "row": 13,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "威孚高科"
+        },
+        {
+          "row": 13,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0"
+        },
+        {
+          "row": 13,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.0%"
+        },
+        {
+          "row": 13,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.0%"
+        },
+        {
+          "row": 13,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "42,050"
+        },
+        {
+          "row": 13,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "99,699"
+        },
+        {
+          "row": 14,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "601689.SH"
+        },
+        {
+          "row": 14,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "拓普集团"
+        },
+        {
+          "row": 14,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0"
+        },
+        {
+          "row": 14,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.0%"
+        },
+        {
+          "row": 14,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.0%"
+        },
+        {
+          "row": 14,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "80,144"
+        },
+        {
+          "row": 14,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "168,603"
+        },
+        {
+          "row": 15,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "000800.SZ"
+        },
+        {
+          "row": 15,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "一汽解放"
+        },
+        {
+          "row": 15,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0"
+        },
+        {
+          "row": 15,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.0%"
+        },
+        {
+          "row": 15,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.0%"
+        },
+        {
+          "row": 15,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "400,141"
+        },
+        {
+          "row": 15,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "462,386"
+        },
+        {
+          "row": 16,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "601965.SH"
+        },
+        {
+          "row": 16,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "中国汽研"
+        },
+        {
+          "row": 16,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0"
+        },
+        {
+          "row": 16,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.0%"
+        },
+        {
+          "row": 16,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.0%"
+        },
+        {
+          "row": 16,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "67,446"
+        },
+        {
+          "row": 16,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "100,329"
+        },
+        {
+          "row": 17,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "600933.SH"
+        },
+        {
+          "row": 17,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "爱柯迪"
+        },
+        {
+          "row": 17,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0"
+        },
+        {
+          "row": 17,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.0%"
+        },
+        {
+          "row": 17,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.0%"
+        },
+        {
+          "row": 17,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "48,754"
+        },
+        {
+          "row": 17,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "97,736"
+        },
+        {
+          "row": 18,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "603786.SH"
+        },
+        {
+          "row": 18,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "科博达"
+        },
+        {
+          "row": 18,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0"
+        },
+        {
+          "row": 18,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.0%"
+        },
+        {
+          "row": 18,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.0%"
+        },
+        {
+          "row": 18,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "34,449"
+        },
+        {
+          "row": 18,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "40,390"
+        },
+        {
+          "row": 19,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "002594.SZ"
+        },
+        {
+          "row": 19,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "比亚迪"
+        },
+        {
+          "row": 19,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "9,344"
+        },
+        {
+          "row": 19,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "3.2%"
+        },
+        {
+          "row": 19,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "4.2%"
+        },
+        {
+          "row": 19,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "223,065"
+        },
+        {
+          "row": 19,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "290,927"
+        },
+        {
+          "row": 20,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "603596.SH"
+        },
+        {
+          "row": 20,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "伯特利"
+        },
+        {
+          "row": 20,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "98"
+        },
+        {
+          "row": 20,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.2%"
+        },
+        {
+          "row": 20,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.4%"
+        },
+        {
+          "row": 20,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "23,196"
+        },
+        {
+          "row": 20,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "60,655"
+        },
+        {
+          "row": 21,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "002920.SZ"
+        },
+        {
+          "row": 21,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "德赛西威"
+        },
+        {
+          "row": 21,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0"
+        },
+        {
+          "row": 21,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.0%"
+        },
+        {
+          "row": 21,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.0%"
+        },
+        {
+          "row": 21,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "30,412"
+        },
+        {
+          "row": 21,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "55,501"
+        },
+        {
+          "row": 22,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "600699.SH"
+        },
+        {
+          "row": 22,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "均胜电子"
+        },
+        {
+          "row": 22,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "34,734"
+        },
+        {
+          "row": 22,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "24.7%"
+        },
+        {
+          "row": 22,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "50.8%"
+        },
+        {
+          "row": 22,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "68,411"
+        },
+        {
+          "row": 22,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "140,870"
+        },
+        {
+          "row": 23,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "603997.SH"
+        },
+        {
+          "row": 23,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "继峰股份"
+        },
+        {
+          "row": 23,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "22,700"
+        },
+        {
+          "row": 23,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "17.9%"
+        },
+        {
+          "row": 23,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "36.6%"
+        },
+        {
+          "row": 23,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "62,104"
+        },
+        {
+          "row": 23,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "126,608"
+        },
+        {
+          "row": 24,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "000625.SZ"
+        },
+        {
+          "row": 24,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "长安汽车"
+        },
+        {
+          "row": 24,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0"
+        },
+        {
+          "row": 24,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.0%"
+        },
+        {
+          "row": 24,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.0%"
+        },
+        {
+          "row": 24,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "481,579"
+        },
+        {
+          "row": 24,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "991,729"
+        },
+        {
+          "row": 25,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "002050.SZ"
+        },
+        {
+          "row": 25,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "三花智控"
+        },
+        {
+          "row": 25,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "15,000"
+        },
+        {
+          "row": 25,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "4.0%"
+        },
+        {
+          "row": 25,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "6.2%"
+        },
+        {
+          "row": 25,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "240,756"
+        },
+        {
+          "row": 25,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "373,262"
+        },
+        {
+          "row": 26,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "603305.SH"
+        },
+        {
+          "row": 26,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "旭升集团"
+        },
+        {
+          "row": 26,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0"
+        },
+        {
+          "row": 26,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.0%"
+        },
+        {
+          "row": 26,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.0%"
+        },
+        {
+          "row": 26,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "65,850"
+        },
+        {
+          "row": 26,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "93,321"
+        }
+      ],
+      "truth_scope": "sparse_hybrid_verified"
+    },
+    {
+      "file": "caibao1.pdf",
+      "page_index": 6,
+      "table_index": 1,
+      "bbox": [
+        0.265,
+        0.535,
+        0.929,
+        0.722
+      ],
+      "expected_output": "html",
+      "rows": 13,
+      "cols": 4,
+      "content_sha256": "234f90c7cc754393b85ebe9d18f00de2eaf7fa4833a856fcebad35d95c17e3c9"
+    },
+    {
+      "file": "caibao1.pdf",
+      "page_index": 7,
+      "table_index": 0,
+      "bbox": [
+        0.075,
+        0.122,
+        0.932,
+        0.224
+      ],
+      "expected_output": "html",
+      "expected_source": "sparse_hybrid",
+      "rows": 7,
+      "cols": 14,
+      "content_sha256": "c8d35b637a4f1a93c91dd3855ac22b6811f4965084119c5177786e737ae55705",
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          2,
+          1
+        ],
+        [
+          0,
+          4,
+          2,
+          1
+        ],
+        [
+          0,
+          5,
+          2,
+          1
+        ],
+        [
+          0,
+          6,
+          1,
+          4
+        ],
+        [
+          0,
+          10,
+          1,
+          4
+        ]
+      ],
+      "cell_truth": [
+        {
+          "row": 0,
+          "col": 0,
+          "rowspan": 2,
+          "colspan": 1,
+          "text": "股票名称"
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "rowspan": 2,
+          "colspan": 1,
+          "text": "股票代码"
+        },
+        {
+          "row": 0,
+          "col": 2,
+          "rowspan": 2,
+          "colspan": 1,
+          "text": "投资评级"
+        },
+        {
+          "row": 0,
+          "col": 3,
+          "rowspan": 2,
+          "colspan": 1,
+          "text": "最新收盘价(当地币种)"
+        },
+        {
+          "row": 0,
+          "col": 4,
+          "rowspan": 2,
+          "colspan": 1,
+          "text": "目标价(当地币种)"
+        },
+        {
+          "row": 0,
+          "col": 5,
+          "rowspan": 2,
+          "colspan": 1,
+          "text": "市值(百万)(当地币种)"
+        },
+        {
+          "row": 0,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 4,
+          "text": "EPS (元)"
+        },
+        {
+          "row": 0,
+          "col": 10,
+          "rowspan": 1,
+          "colspan": 4,
+          "text": "PE (倍)"
+        },
+        {
+          "row": 1,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2023"
+        },
+        {
+          "row": 1,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2024E"
+        },
+        {
+          "row": 1,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2025E"
+        },
+        {
+          "row": 1,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2026E"
+        },
+        {
+          "row": 1,
+          "col": 10,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2023"
+        },
+        {
+          "row": 1,
+          "col": 11,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2024E"
+        },
+        {
+          "row": 1,
+          "col": 12,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2025E"
+        },
+        {
+          "row": 1,
+          "col": 13,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2026E"
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "比亚迪"
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "002594 CH"
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "买入"
+        },
+        {
+          "row": 2,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "264.06"
+        },
+        {
+          "row": 2,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "317.02"
+        },
+        {
+          "row": 2,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "768,221"
+        },
+        {
+          "row": 2,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "10.33"
+        },
+        {
+          "row": 2,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "12.75"
+        },
+        {
+          "row": 2,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "16.23"
+        },
+        {
+          "row": 2,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "20.04"
+        },
+        {
+          "row": 2,
+          "col": 10,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "25.56"
+        },
+        {
+          "row": 2,
+          "col": 11,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "20.71"
+        },
+        {
+          "row": 2,
+          "col": 12,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "16.27"
+        },
+        {
+          "row": 2,
+          "col": 13,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "13.18"
+        },
+        {
+          "row": 3,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "小鹏汽车-W"
+        },
+        {
+          "row": 3,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "9868 HK"
+        },
+        {
+          "row": 3,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "买入"
+        },
+        {
+          "row": 3,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "32.40"
+        },
+        {
+          "row": 3,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "64.07"
+        },
+        {
+          "row": 3,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "61,317"
+        },
+        {
+          "row": 3,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "-5.49"
+        },
+        {
+          "row": 3,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "-3.38"
+        },
+        {
+          "row": 3,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "-1.41"
+        },
+        {
+          "row": 3,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.92"
+        },
+        {
+          "row": 3,
+          "col": 10,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "-5.39"
+        },
+        {
+          "row": 3,
+          "col": 11,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "-8.75"
+        },
+        {
+          "row": 3,
+          "col": 12,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "-20.98"
+        },
+        {
+          "row": 3,
+          "col": 13,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "32.16"
+        },
+        {
+          "row": 4,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "科博达"
+        },
+        {
+          "row": 4,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "603786 CH"
+        },
+        {
+          "row": 4,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "买入"
+        },
+        {
+          "row": 4,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "54.30"
+        },
+        {
+          "row": 4,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "83.44"
+        },
+        {
+          "row": 4,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "21,932"
+        },
+        {
+          "row": 4,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1.51"
+        },
+        {
+          "row": 4,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.11"
+        },
+        {
+          "row": 4,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.89"
+        },
+        {
+          "row": 4,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "3.71"
+        },
+        {
+          "row": 4,
+          "col": 10,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "35.96"
+        },
+        {
+          "row": 4,
+          "col": 11,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "25.73"
+        },
+        {
+          "row": 4,
+          "col": 12,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "18.79"
+        },
+        {
+          "row": 4,
+          "col": 13,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "14.64"
+        },
+        {
+          "row": 5,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "中鼎股份"
+        },
+        {
+          "row": 5,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "000887 CH"
+        },
+        {
+          "row": 5,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "买入"
+        },
+        {
+          "row": 5,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "12.45"
+        },
+        {
+          "row": 5,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "16.94"
+        },
+        {
+          "row": 5,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "16,390"
+        },
+        {
+          "row": 5,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.86"
+        },
+        {
+          "row": 5,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1.10"
+        },
+        {
+          "row": 5,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1.38"
+        },
+        {
+          "row": 5,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1.67"
+        },
+        {
+          "row": 5,
+          "col": 10,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "14.48"
+        },
+        {
+          "row": 5,
+          "col": 11,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "11.32"
+        },
+        {
+          "row": 5,
+          "col": 12,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "9.02"
+        },
+        {
+          "row": 5,
+          "col": 13,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "7.46"
+        },
+        {
+          "row": 6,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "星宇股份"
+        },
+        {
+          "row": 6,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "601799 CH"
+        },
+        {
+          "row": 6,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "买入"
+        },
+        {
+          "row": 6,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "128.00"
+        },
+        {
+          "row": 6,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "161.29"
+        },
+        {
+          "row": 6,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "36,567"
+        },
+        {
+          "row": 6,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "3.86"
+        },
+        {
+          "row": 6,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "5.62"
+        },
+        {
+          "row": 6,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "7.64"
+        },
+        {
+          "row": 6,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "9.88"
+        },
+        {
+          "row": 6,
+          "col": 10,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "33.16"
+        },
+        {
+          "row": 6,
+          "col": 11,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "22.78"
+        },
+        {
+          "row": 6,
+          "col": 12,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "16.75"
+        },
+        {
+          "row": 6,
+          "col": 13,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "12.96"
+        }
+      ],
+      "truth_scope": "sparse_hybrid_verified"
+    },
+    {
+      "file": "demo1.pdf",
+      "page_index": 5,
+      "table_index": 1,
+      "bbox": [
+        0.087,
+        0.697,
+        0.922,
+        0.876
+      ],
+      "expected_output": "html",
+      "expected_source": "sparse_hybrid",
+      "rows": 12,
+      "cols": 11,
+      "content_sha256": "94e6c2129bea6c00e170ce3704d2ace34ddc0c5ee8afdd6ec5f748e565679249",
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          1,
+          10
+        ]
+      ],
+      "cell_truth": [
+        {
+          "row": 0,
+          "col": 0,
+          "rowspan": 2,
+          "colspan": 1,
+          "text": "Site"
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 10,
+          "text": "Percentile"
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "10"
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "20"
+        },
+        {
+          "row": 1,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "30"
+        },
+        {
+          "row": 1,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "40"
+        },
+        {
+          "row": 1,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "50"
+        },
+        {
+          "row": 1,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "60"
+        },
+        {
+          "row": 1,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "70"
+        },
+        {
+          "row": 1,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "80"
+        },
+        {
+          "row": 1,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "90"
+        },
+        {
+          "row": 1,
+          "col": 10,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "100"
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "Traralgon Ck"
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.82"
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.85"
+        },
+        {
+          "row": 2,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.81"
+        },
+        {
+          "row": 2,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.81"
+        },
+        {
+          "row": 2,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.83"
+        },
+        {
+          "row": 2,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.78"
+        },
+        {
+          "row": 2,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.80"
+        },
+        {
+          "row": 2,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.77"
+        },
+        {
+          "row": 2,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.65"
+        },
+        {
+          "row": 2,
+          "col": 10,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.56"
+        },
+        {
+          "row": 3,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "Redhill"
+        },
+        {
+          "row": 3,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.90"
+        },
+        {
+          "row": 3,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.95"
+        },
+        {
+          "row": 3,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.82"
+        },
+        {
+          "row": 3,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.80"
+        },
+        {
+          "row": 3,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.92"
+        },
+        {
+          "row": 3,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.88"
+        },
+        {
+          "row": 3,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.89"
+        },
+        {
+          "row": 3,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.77"
+        },
+        {
+          "row": 3,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.65"
+        },
+        {
+          "row": 3,
+          "col": 10,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.42"
+        },
+        {
+          "row": 4,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "Pine Ck"
+        },
+        {
+          "row": 4,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.56"
+        },
+        {
+          "row": 4,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.76"
+        },
+        {
+          "row": 4,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.88"
+        },
+        {
+          "row": 4,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.99"
+        },
+        {
+          "row": 4,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.99"
+        },
+        {
+          "row": 4,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.99"
+        },
+        {
+          "row": 4,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.71"
+        },
+        {
+          "row": 4,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.99"
+        },
+        {
+          "row": 4,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "na"
+        },
+        {
+          "row": 4,
+          "col": 10,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "na"
+        },
+        {
+          "row": 5,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "Stewarts Ck 5"
+        },
+        {
+          "row": 5,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.82"
+        },
+        {
+          "row": 5,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.85"
+        },
+        {
+          "row": 5,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.81"
+        },
+        {
+          "row": 5,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.88"
+        },
+        {
+          "row": 5,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.87"
+        },
+        {
+          "row": 5,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.88"
+        },
+        {
+          "row": 5,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.88"
+        },
+        {
+          "row": 5,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "na"
+        },
+        {
+          "row": 5,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "na"
+        },
+        {
+          "row": 5,
+          "col": 10,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "na"
+        },
+        {
+          "row": 6,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "Glendhu 2"
+        },
+        {
+          "row": 6,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.76"
+        },
+        {
+          "row": 6,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.77"
+        },
+        {
+          "row": 6,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.82"
+        },
+        {
+          "row": 6,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.84"
+        },
+        {
+          "row": 6,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "ns"
+        },
+        {
+          "row": 6,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.87"
+        },
+        {
+          "row": 6,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.89"
+        },
+        {
+          "row": 6,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.90"
+        },
+        {
+          "row": 6,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.86"
+        },
+        {
+          "row": 6,
+          "col": 10,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.76"
+        },
+        {
+          "row": 7,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "Cathedral Peak 2"
+        },
+        {
+          "row": 7,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.83"
+        },
+        {
+          "row": 7,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.91"
+        },
+        {
+          "row": 7,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.93"
+        },
+        {
+          "row": 7,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.92"
+        },
+        {
+          "row": 7,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.81"
+        },
+        {
+          "row": 7,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.73"
+        },
+        {
+          "row": 7,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.89"
+        },
+        {
+          "row": 7,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.95"
+        },
+        {
+          "row": 7,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.96"
+        },
+        {
+          "row": 7,
+          "col": 10,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.95"
+        },
+        {
+          "row": 8,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "Cathedral Peak 3"
+        },
+        {
+          "row": 8,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.68"
+        },
+        {
+          "row": 8,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.75"
+        },
+        {
+          "row": 8,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.78"
+        },
+        {
+          "row": 8,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.91"
+        },
+        {
+          "row": 8,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.96"
+        },
+        {
+          "row": 8,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.95"
+        },
+        {
+          "row": 8,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.94"
+        },
+        {
+          "row": 8,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.81"
+        },
+        {
+          "row": 8,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.84"
+        },
+        {
+          "row": 8,
+          "col": 10,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.79"
+        },
+        {
+          "row": 9,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "Lambrechtsbos A"
+        },
+        {
+          "row": 9,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.71"
+        },
+        {
+          "row": 9,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.60"
+        },
+        {
+          "row": 9,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.57"
+        },
+        {
+          "row": 9,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.47"
+        },
+        {
+          "row": 9,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.47"
+        },
+        {
+          "row": 9,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.47"
+        },
+        {
+          "row": 9,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.47"
+        },
+        {
+          "row": 9,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.50"
+        },
+        {
+          "row": 9,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.49"
+        },
+        {
+          "row": 9,
+          "col": 10,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.51"
+        },
+        {
+          "row": 10,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "Lambrechtsbos B"
+        },
+        {
+          "row": 10,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.82"
+        },
+        {
+          "row": 10,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.76"
+        },
+        {
+          "row": 10,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.70"
+        },
+        {
+          "row": 10,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.66"
+        },
+        {
+          "row": 10,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.65"
+        },
+        {
+          "row": 10,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.65"
+        },
+        {
+          "row": 10,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.62"
+        },
+        {
+          "row": 10,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.59"
+        },
+        {
+          "row": 10,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.58"
+        },
+        {
+          "row": 10,
+          "col": 10,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.58"
+        },
+        {
+          "row": 11,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "Biesievlei"
+        },
+        {
+          "row": 11,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.96"
+        },
+        {
+          "row": 11,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.96"
+        },
+        {
+          "row": 11,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.90"
+        },
+        {
+          "row": 11,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.82"
+        },
+        {
+          "row": 11,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.81"
+        },
+        {
+          "row": 11,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.88"
+        },
+        {
+          "row": 11,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.92"
+        },
+        {
+          "row": 11,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.94"
+        },
+        {
+          "row": 11,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.91"
+        },
+        {
+          "row": 11,
+          "col": 10,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.81"
+        }
+      ],
+      "truth_scope": "sparse_hybrid_verified",
+      "extra_verified": true
+    },
+    {
+      "file": "demo1.pdf",
+      "page_index": 7,
+      "table_index": 0,
+      "bbox": [
+        0.087,
+        0.696,
+        0.922,
+        0.876
+      ],
+      "expected_output": "html",
+      "expected_source": "sparse_hybrid",
+      "rows": 12,
+      "cols": 11,
+      "content_sha256": "1a78cd653bbe87b609ec1debf29050ed93636cd9fe8ef6b609ca8542b35db4e9",
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          1,
+          10
+        ]
+      ],
+      "cell_truth": [
+        {
+          "row": 0,
+          "col": 0,
+          "rowspan": 2,
+          "colspan": 1,
+          "text": "Site"
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 10,
+          "text": "Percentile"
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "10"
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "20"
+        },
+        {
+          "row": 1,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "30"
+        },
+        {
+          "row": 1,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "40"
+        },
+        {
+          "row": 1,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "50"
+        },
+        {
+          "row": 1,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "60"
+        },
+        {
+          "row": 1,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "70"
+        },
+        {
+          "row": 1,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "80"
+        },
+        {
+          "row": 1,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "90"
+        },
+        {
+          "row": 1,
+          "col": 10,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "100"
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "Traralgon Ck"
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "9.68"
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "9.59"
+        },
+        {
+          "row": 2,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "9.99"
+        },
+        {
+          "row": 2,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "10.02"
+        },
+        {
+          "row": 2,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "4.92"
+        },
+        {
+          "row": 2,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "7.59"
+        },
+        {
+          "row": 2,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "4.92"
+        },
+        {
+          "row": 2,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "3.97"
+        },
+        {
+          "row": 2,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "4.39"
+        },
+        {
+          "row": 2,
+          "col": 10,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "5.97"
+        },
+        {
+          "row": 3,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "Redhill"
+        },
+        {
+          "row": 3,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "6.13"
+        },
+        {
+          "row": 3,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "6.07"
+        },
+        {
+          "row": 3,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "5.99"
+        },
+        {
+          "row": 3,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "5.99"
+        },
+        {
+          "row": 3,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "6.07"
+        },
+        {
+          "row": 3,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "6.04"
+        },
+        {
+          "row": 3,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "6.79"
+        },
+        {
+          "row": 3,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "6.81"
+        },
+        {
+          "row": 3,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "6.02"
+        },
+        {
+          "row": 3,
+          "col": 10,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "6.00"
+        },
+        {
+          "row": 4,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "Pine Ck"
+        },
+        {
+          "row": 4,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "9.87"
+        },
+        {
+          "row": 4,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "5.52"
+        },
+        {
+          "row": 4,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "5.45"
+        },
+        {
+          "row": 4,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "5.22"
+        },
+        {
+          "row": 4,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "5.69"
+        },
+        {
+          "row": 4,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "5.86"
+        },
+        {
+          "row": 4,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.64"
+        },
+        {
+          "row": 4,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1.25"
+        },
+        {
+          "row": 4,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "na"
+        },
+        {
+          "row": 4,
+          "col": 10,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "na"
+        },
+        {
+          "row": 5,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "Stewarts Ck 5"
+        },
+        {
+          "row": 5,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "6.49"
+        },
+        {
+          "row": 5,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "6.41"
+        },
+        {
+          "row": 5,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "6.09"
+        },
+        {
+          "row": 5,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "5.96"
+        },
+        {
+          "row": 5,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "3.89"
+        },
+        {
+          "row": 5,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "3.03"
+        },
+        {
+          "row": 5,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.31"
+        },
+        {
+          "row": 5,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "na"
+        },
+        {
+          "row": 5,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "na"
+        },
+        {
+          "row": 5,
+          "col": 10,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "na"
+        },
+        {
+          "row": 6,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "Glendhu 2"
+        },
+        {
+          "row": 6,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "19.59"
+        },
+        {
+          "row": 6,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.67"
+        },
+        {
+          "row": 6,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.24"
+        },
+        {
+          "row": 6,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.08"
+        },
+        {
+          "row": 6,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "ns"
+        },
+        {
+          "row": 6,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.06"
+        },
+        {
+          "row": 6,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.07"
+        },
+        {
+          "row": 6,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1.62"
+        },
+        {
+          "row": 6,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "6.63"
+        },
+        {
+          "row": 6,
+          "col": 10,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.02"
+        },
+        {
+          "row": 7,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "Cathedral Peak 2"
+        },
+        {
+          "row": 7,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "4.96"
+        },
+        {
+          "row": 7,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "3.92"
+        },
+        {
+          "row": 7,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "5.78"
+        },
+        {
+          "row": 7,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "7.68"
+        },
+        {
+          "row": 7,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "8.64"
+        },
+        {
+          "row": 7,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "8.95"
+        },
+        {
+          "row": 7,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "9.26"
+        },
+        {
+          "row": 7,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "9.08"
+        },
+        {
+          "row": 7,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "8.93"
+        },
+        {
+          "row": 7,
+          "col": 10,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "9.47"
+        },
+        {
+          "row": 8,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "Cathedral Peak 3"
+        },
+        {
+          "row": 8,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "14.13"
+        },
+        {
+          "row": 8,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "13.20"
+        },
+        {
+          "row": 8,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "7.02"
+        },
+        {
+          "row": 8,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "7.44"
+        },
+        {
+          "row": 8,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "9.01"
+        },
+        {
+          "row": 8,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "8.68"
+        },
+        {
+          "row": 8,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "8.87"
+        },
+        {
+          "row": 8,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "9.46"
+        },
+        {
+          "row": 8,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "8.16"
+        },
+        {
+          "row": 8,
+          "col": 10,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "6.98"
+        },
+        {
+          "row": 9,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "Lambrechtsbos A"
+        },
+        {
+          "row": 9,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "6.89"
+        },
+        {
+          "row": 9,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "6.87"
+        },
+        {
+          "row": 9,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "6.93"
+        },
+        {
+          "row": 9,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "6.89"
+        },
+        {
+          "row": 9,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "6.88"
+        },
+        {
+          "row": 9,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "6.97"
+        },
+        {
+          "row": 9,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "6.94"
+        },
+        {
+          "row": 9,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "6.93"
+        },
+        {
+          "row": 9,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "6.94"
+        },
+        {
+          "row": 9,
+          "col": 10,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "6.97"
+        },
+        {
+          "row": 10,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "Lambrechtsbos B"
+        },
+        {
+          "row": 10,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "14.52"
+        },
+        {
+          "row": 10,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "14.84"
+        },
+        {
+          "row": 10,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "14.89"
+        },
+        {
+          "row": 10,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "10.98"
+        },
+        {
+          "row": 10,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "6.89"
+        },
+        {
+          "row": 10,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "5.69"
+        },
+        {
+          "row": 10,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "5.55"
+        },
+        {
+          "row": 10,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "6.01"
+        },
+        {
+          "row": 10,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "6.23"
+        },
+        {
+          "row": 10,
+          "col": 10,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "6.29"
+        },
+        {
+          "row": 11,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "Biesievlei"
+        },
+        {
+          "row": 11,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "9.36"
+        },
+        {
+          "row": 11,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "9.17"
+        },
+        {
+          "row": 11,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "9.59"
+        },
+        {
+          "row": 11,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "10.32"
+        },
+        {
+          "row": 11,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "10.78"
+        },
+        {
+          "row": 11,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "10.46"
+        },
+        {
+          "row": 11,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "10.06"
+        },
+        {
+          "row": 11,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "10.08"
+        },
+        {
+          "row": 11,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "10"
+        },
+        {
+          "row": 11,
+          "col": 10,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "10.10"
+        }
+      ],
+      "truth_scope": "sparse_hybrid_verified"
+    },
+    {
+      "file": "demo2.pdf",
+      "page_index": 3,
+      "table_index": 0,
+      "bbox": [
+        0.539,
+        0.53,
+        0.891,
+        0.638
+      ],
+      "expected_output": "html",
+      "expected_source": "sparse_hybrid",
+      "rows": 9,
+      "cols": 3,
+      "content_sha256": "7c5a18775a22d2efac0d940971ba52c713ff75a23cb14208ec6eaa29d8e6137d",
+      "span_signature": [],
+      "cell_truth": [
+        {
+          "row": 0,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "Symbol"
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "Description"
+        },
+        {
+          "row": 0,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "Value"
+        },
+        {
+          "row": 1,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "ω"
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "Window size for cost aggregation"
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "33"
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "τ"
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "Color difference truncation value"
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "40"
+        },
+        {
+          "row": 3,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "γc"
+        },
+        {
+          "row": 3,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "Strength of grouping by color similarity 1"
+        },
+        {
+          "row": 3,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.03"
+        },
+        {
+          "row": 4,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "γg"
+        },
+        {
+          "row": 4,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "Strength of grouping by proximity 1"
+        },
+        {
+          "row": 4,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.03"
+        },
+        {
+          "row": 5,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "λ"
+        },
+        {
+          "row": 5,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "Temporal feedback coefficient"
+        },
+        {
+          "row": 5,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "varied"
+        },
+        {
+          "row": 6,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "γt"
+        },
+        {
+          "row": 6,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "Strength of temporal grouping"
+        },
+        {
+          "row": 6,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.01"
+        },
+        {
+          "row": 7,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "k"
+        },
+        {
+          "row": 7,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "Number of iterations in refinement stage"
+        },
+        {
+          "row": 7,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "3"
+        },
+        {
+          "row": 8,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "α"
+        },
+        {
+          "row": 8,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "Disparity difference penalty"
+        },
+        {
+          "row": 8,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "0.08"
+        }
+      ],
+      "truth_scope": "sparse_hybrid_verified"
+    },
+    {
+      "file": "demo2.pdf",
+      "page_index": 4,
+      "table_index": 0,
+      "bbox": [
+        0.52,
+        0.278,
+        0.91,
+        0.39
+      ],
+      "expected_output": "html",
+      "rows": 9,
+      "cols": 5,
+      "content_sha256": "0d2fbc3114bf3bc2f95bc4c17ba97652b73a6b57330d4fa52edf84c10e1918a7"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 0,
+      "table_index": 0,
+      "bbox": [
+        0.613,
+        0.267,
+        0.782,
+        0.304
+      ],
+      "expected_output": "html",
+      "expected_source": "vector_grid",
+      "rows": 3,
+      "cols": 2,
+      "content_sha256": "6f0c43497bb668fb86148cb518ba1118d4db118918731857eeaa10449bc5e3c9",
+      "span_signature": [],
+      "cell_truth": [
+        {
+          "row": 0,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "Title"
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "Length"
+        },
+        {
+          "row": 1,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "Screwed Up"
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "5:02"
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "Ghetto Queen"
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "5:00"
+        }
+      ],
+      "truth_scope": "sparse_hybrid_verified"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 0,
+      "table_index": 1,
+      "bbox": [
+        0.562,
+        0.424,
+        0.834,
+        0.474
+      ],
+      "expected_output": "html",
+      "rows": 4,
+      "cols": 4,
+      "content_sha256": "3ed90e245cfa2cf3e3b3d02ad08178f00e22947f5eca902cb14b94247f341225"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 5,
+      "table_index": 0,
+      "bbox": [
+        0.129,
+        0.084,
+        0.871,
+        0.275
+      ],
+      "expected_output": "html",
+      "expected_source": "sparse_hybrid",
+      "rows": 12,
+      "cols": 10,
+      "content_sha256": "db10d2560f690f11b585c9550cdf554cf057004c7c89d177aeccf3c17b8f90e4",
+      "span_signature": [
+        [
+          0,
+          1,
+          1,
+          5
+        ],
+        [
+          0,
+          6,
+          1,
+          4
+        ]
+      ],
+      "cell_truth": [
+        {
+          "row": 0,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": ""
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 5,
+          "text": "Before Perturb"
+        },
+        {
+          "row": 0,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 4,
+          "text": "After Perturb"
+        },
+        {
+          "row": 1,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": ""
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "dev"
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "test"
+        },
+        {
+          "row": 1,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "testsimple"
+        },
+        {
+          "row": 1,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "testcomplex"
+        },
+        {
+          "row": 1,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "testsmall"
+        },
+        {
+          "row": 1,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "test"
+        },
+        {
+          "row": 1,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "testsimple"
+        },
+        {
+          "row": 1,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "testcomplex"
+        },
+        {
+          "row": 1,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "testsmall"
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "Eisenschlos et al. (2020)"
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "81.0"
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "81.0"
+        },
+        {
+          "row": 2,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "92.3"
+        },
+        {
+          "row": 2,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "75.6"
+        },
+        {
+          "row": 2,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "83.9"
+        },
+        {
+          "row": 2,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "-"
+        },
+        {
+          "row": 2,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "-"
+        },
+        {
+          "row": 2,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "-"
+        },
+        {
+          "row": 2,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "-"
+        },
+        {
+          "row": 3,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "Eisenschlos et al. (2021)"
+        },
+        {
+          "row": 3,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "-"
+        },
+        {
+          "row": 3,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "81.4"
+        },
+        {
+          "row": 3,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "-"
+        },
+        {
+          "row": 3,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "-"
+        },
+        {
+          "row": 3,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "-"
+        },
+        {
+          "row": 3,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "-"
+        },
+        {
+          "row": 3,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "-"
+        },
+        {
+          "row": 3,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "-"
+        },
+        {
+          "row": 3,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "-"
+        },
+        {
+          "row": 4,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "TAPASBASE"
+        },
+        {
+          "row": 4,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "72.8"
+        },
+        {
+          "row": 4,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "72.3"
+        },
+        {
+          "row": 4,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "84.8"
+        },
+        {
+          "row": 4,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "66.2"
+        },
+        {
+          "row": 4,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "74.4"
+        },
+        {
+          "row": 4,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "71.2"
+        },
+        {
+          "row": 4,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "83.4"
+        },
+        {
+          "row": 4,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "65.2"
+        },
+        {
+          "row": 4,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "72.5"
+        },
+        {
+          "row": 5,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "TABLEFORMERBASE"
+        },
+        {
+          "row": 5,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "75.1"
+        },
+        {
+          "row": 5,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "75.0"
+        },
+        {
+          "row": 5,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "88.2"
+        },
+        {
+          "row": 5,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "68.5"
+        },
+        {
+          "row": 5,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "77.1"
+        },
+        {
+          "row": 5,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "75.0"
+        },
+        {
+          "row": 5,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "88.2"
+        },
+        {
+          "row": 5,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "68.5"
+        },
+        {
+          "row": 5,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "77.1"
+        },
+        {
+          "row": 6,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "TAPASLARGE"
+        },
+        {
+          "row": 6,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "74.7"
+        },
+        {
+          "row": 6,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "74.5"
+        },
+        {
+          "row": 6,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "86.6"
+        },
+        {
+          "row": 6,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "68.6"
+        },
+        {
+          "row": 6,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "76.8"
+        },
+        {
+          "row": 6,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "73.7"
+        },
+        {
+          "row": 6,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "86.0"
+        },
+        {
+          "row": 6,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "67.7"
+        },
+        {
+          "row": 6,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "76.1"
+        },
+        {
+          "row": 7,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "TABLEFORMERLARGE"
+        },
+        {
+          "row": 7,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "77.2"
+        },
+        {
+          "row": 7,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "77.0"
+        },
+        {
+          "row": 7,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "90.2"
+        },
+        {
+          "row": 7,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "70.5"
+        },
+        {
+          "row": 7,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "80.3"
+        },
+        {
+          "row": 7,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "77.0"
+        },
+        {
+          "row": 7,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "90.2"
+        },
+        {
+          "row": 7,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "70.5"
+        },
+        {
+          "row": 7,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "80.3"
+        },
+        {
+          "row": 8,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "TAPASBASE inter"
+        },
+        {
+          "row": 8,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "78.4"
+        },
+        {
+          "row": 8,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "77.9"
+        },
+        {
+          "row": 8,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "90.1"
+        },
+        {
+          "row": 8,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "71.9"
+        },
+        {
+          "row": 8,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "80.5"
+        },
+        {
+          "row": 8,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "76.8"
+        },
+        {
+          "row": 8,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "89.5"
+        },
+        {
+          "row": 8,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "70.5"
+        },
+        {
+          "row": 8,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "79.7"
+        },
+        {
+          "row": 9,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "TABLEFORMERBASE inter"
+        },
+        {
+          "row": 9,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "79.7"
+        },
+        {
+          "row": 9,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "79.2"
+        },
+        {
+          "row": 9,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "91.6"
+        },
+        {
+          "row": 9,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "73.1"
+        },
+        {
+          "row": 9,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "81.7"
+        },
+        {
+          "row": 9,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "79.2"
+        },
+        {
+          "row": 9,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "91.6"
+        },
+        {
+          "row": 9,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "73.1"
+        },
+        {
+          "row": 9,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "81.7"
+        },
+        {
+          "row": 10,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "TAPASLARGE inter"
+        },
+        {
+          "row": 10,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "80.6"
+        },
+        {
+          "row": 10,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "80.6"
+        },
+        {
+          "row": 10,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "92.0"
+        },
+        {
+          "row": 10,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "74.9"
+        },
+        {
+          "row": 10,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "83.1"
+        },
+        {
+          "row": 10,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "79.2"
+        },
+        {
+          "row": 10,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "91.7"
+        },
+        {
+          "row": 10,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "73.0"
+        },
+        {
+          "row": 10,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "83.0"
+        },
+        {
+          "row": 11,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "TABLEFORMERLARGE inter"
+        },
+        {
+          "row": 11,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "82.0"
+        },
+        {
+          "row": 11,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "81.6"
+        },
+        {
+          "row": 11,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "93.3"
+        },
+        {
+          "row": 11,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "75.9"
+        },
+        {
+          "row": 11,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "84.6"
+        },
+        {
+          "row": 11,
+          "col": 6,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "81.6"
+        },
+        {
+          "row": 11,
+          "col": 7,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "93.3"
+        },
+        {
+          "row": 11,
+          "col": 8,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "75.9"
+        },
+        {
+          "row": 11,
+          "col": 9,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "84.6"
+        }
+      ],
+      "truth_scope": "sparse_hybrid_verified"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 7,
+      "table_index": 1,
+      "bbox": [
+        0.514,
+        0.084,
+        0.881,
+        0.283
+      ],
+      "expected_output": "html",
+      "expected_source": "sparse_hybrid",
+      "rows": 15,
+      "cols": 3,
+      "content_sha256": "f25432428d565b97dd16ec037a6234a6f9e74985fdfd92bc97e10450edfdc6a2",
+      "span_signature": [],
+      "cell_truth": [
+        {
+          "row": 0,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": ""
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "ALL"
+        },
+        {
+          "row": 0,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "SEQ"
+        },
+        {
+          "row": 1,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "TABLEFORMERBASE"
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "62.1"
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "38.4"
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "- Same Row"
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "32.1"
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.8"
+        },
+        {
+          "row": 3,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "- Same Column"
+        },
+        {
+          "row": 3,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "62.1"
+        },
+        {
+          "row": 3,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "37.7"
+        },
+        {
+          "row": 4,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "- Same Cell"
+        },
+        {
+          "row": 4,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "61.8"
+        },
+        {
+          "row": 4,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "38.4"
+        },
+        {
+          "row": 5,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "- Cell to Column Header"
+        },
+        {
+          "row": 5,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "60.7"
+        },
+        {
+          "row": 5,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "36.6"
+        },
+        {
+          "row": 6,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "- Cell to Sentence"
+        },
+        {
+          "row": 6,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "60.5"
+        },
+        {
+          "row": 6,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "36.4"
+        },
+        {
+          "row": 7,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "- Header to Column Cell"
+        },
+        {
+          "row": 7,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "60.5"
+        },
+        {
+          "row": 7,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "35.8"
+        },
+        {
+          "row": 8,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "- Header to Other Header"
+        },
+        {
+          "row": 8,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "60.6"
+        },
+        {
+          "row": 8,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "35.8"
+        },
+        {
+          "row": 9,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "- Header to Same Header"
+        },
+        {
+          "row": 9,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "61.0"
+        },
+        {
+          "row": 9,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "36.9"
+        },
+        {
+          "row": 10,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "- Header to Sentence"
+        },
+        {
+          "row": 10,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "61.1"
+        },
+        {
+          "row": 10,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "36.3"
+        },
+        {
+          "row": 11,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "- Sentence to Cell"
+        },
+        {
+          "row": 11,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "60.8"
+        },
+        {
+          "row": 11,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "36.2"
+        },
+        {
+          "row": 12,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "- Sentence to Header"
+        },
+        {
+          "row": 12,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "61.0"
+        },
+        {
+          "row": 12,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "37.3"
+        },
+        {
+          "row": 13,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "- Sentence to Sentence"
+        },
+        {
+          "row": 13,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "60.0"
+        },
+        {
+          "row": 13,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "35.3"
+        },
+        {
+          "row": 14,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "- All Column Related (# 2, 4, 6)"
+        },
+        {
+          "row": 14,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "54.5"
+        },
+        {
+          "row": 14,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "29.3"
+        }
+      ],
+      "truth_scope": "sparse_hybrid_verified"
+    },
+    {
+      "file": "mixed_elements_pages_03_06.pdf",
+      "page_index": 2,
+      "table_index": 0,
+      "bbox": [
+        0.081,
+        0.093,
+        0.892,
+        0.172
+      ],
+      "expected_output": "html",
+      "expected_source": "sparse_hybrid",
+      "rows": 3,
+      "cols": 6,
+      "content_sha256": "1605146e64ef7be920fc778076bf4abdb744abf3123148327054bd3b6195ec9f",
+      "span_signature": [],
+      "cell_truth": [
+        {
+          "row": 0,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "Microstructure"
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "T0, K"
+        },
+        {
+          "row": 0,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "σ0, S K1/2/cm"
+        },
+        {
+          "row": 0,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "N(EF), eV-1 cm-3"
+        },
+        {
+          "row": 0,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "R, Å"
+        },
+        {
+          "row": 0,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "W, eV"
+        },
+        {
+          "row": 1,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "Amorphous"
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "5.80"
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "9.2 × 103"
+        },
+        {
+          "row": 1,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "8.05 × 1023"
+        },
+        {
+          "row": 1,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "10.5"
+        },
+        {
+          "row": 1,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1.28 × 10-4"
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "Microcrystalline (annealing at 500-520 K for 15 min)"
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "5.69"
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "7.2 × 104"
+        },
+        {
+          "row": 2,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "3.81 × 1026"
+        },
+        {
+          "row": 2,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.3"
+        },
+        {
+          "row": 2,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2.72 × 10-5"
+        }
+      ],
+      "truth_scope": "sparse_hybrid_verified"
+    },
+    {
+      "file": "mixed_elements_pages_07_10.pdf",
+      "page_index": 3,
+      "table_index": 0,
+      "bbox": [
+        0.112,
+        0.352,
+        0.47,
+        0.496
+      ],
+      "expected_output": "html",
+      "rows": 11,
+      "cols": 4,
+      "content_sha256": "110e749698e1ccdad658112b45f6b5924cbc4a6b6d6728ead0becfe07917b4cb"
+    },
+    {
+      "file": "mixed_elements_pages_07_10.pdf",
+      "page_index": 3,
+      "table_index": 1,
+      "bbox": [
+        0.121,
+        0.626,
+        0.461,
+        0.71
+      ],
+      "expected_output": "html",
+      "rows": 6,
+      "cols": 3,
+      "content_sha256": "cf6e545fb4f6bad3ee63ec6b17dfdc6ec5d2a33e2772772367d3cdc927f1a600"
+    }
+  ]
+}
