@@ -1298,6 +1298,59 @@ def _ranges_from_line_projection(
     return output
 
 
+def _lines_form_dehyphenated_continuation(
+    line: PDFTextEvidenceLine,
+    next_line: PDFTextEvidenceLine | None,
+) -> bool:
+    """判断相邻物理行是否符合正文回填使用的英文断词规则。"""
+
+    return bool(
+        next_line is not None
+        and next_line.source_index == line.source_index + 1
+        and line.text
+        and next_line.text
+        and is_hyphen_at_line_end(line.text)
+        and next_line.text[0].islower()
+    )
+
+
+def _match_line_without_terminal_hyphen(
+    projected_text: str,
+    line: PDFTextEvidenceLine,
+    next_line: PDFTextEvidenceLine | None,
+    start: int,
+) -> _LineProjectionMatch | None:
+    """将 block 已删除的行末断词符映射为空洞，歧义时拒绝匹配。"""
+
+    if not _lines_form_dehyphenated_continuation(line, next_line):
+        return None
+    candidate = line.text[:-1]
+    next_first_char = next_line.text[0] if next_line is not None else ""
+    occurrences = [
+        position
+        for position in _all_occurrences(projected_text, candidate, start)
+        if (
+            position + len(candidate) < len(projected_text)
+            and projected_text[position + len(candidate)] == next_first_char
+        )
+    ]
+    if len(occurrences) != 1:
+        logger.debug(
+            "Skip ambiguous PDF text dehyphenation mapping: "
+            f"line={line.text!r}, occurrences={len(occurrences)}"
+        )
+        return None
+    position = occurrences[0]
+    return _LineProjectionMatch(
+        start=position,
+        end=position + len(candidate),
+        source_to_projected=(
+            *range(position, position + len(candidate)),
+            None,
+        ),
+    )
+
+
 def _match_style_ranges(
     projected: Sequence[_ProjectedChar],
     lines: Sequence[PDFTextStyleLine],
@@ -1307,7 +1360,8 @@ def _match_style_ranges(
     projected_text = "".join(token.value for token in projected)
     output: list[PDFTextStyleRange] = []
     cursor = 0
-    for line in lines:
+    for line_index, line in enumerate(lines):
+        next_line = lines[line_index + 1] if line_index + 1 < len(lines) else None
         line_start = projected_text.find(line.text, cursor)
         if line_start >= 0:
             output.extend(
@@ -1328,6 +1382,18 @@ def _match_style_ranges(
         if formula_match is not None:
             output.extend(_ranges_from_line_projection(line, formula_match))
             cursor = formula_match.end
+            continue
+        dehyphenated_match = _match_line_without_terminal_hyphen(
+            projected_text,
+            line,
+            next_line,
+            cursor,
+        )
+        if dehyphenated_match is not None:
+            output.extend(
+                _ranges_from_line_projection(line, dehyphenated_match)
+            )
+            cursor = dehyphenated_match.end
             continue
         skipped_ranges: list[PDFTextStyleRange] = []
         for style_range in line.style_ranges:
@@ -1531,14 +1597,7 @@ def _link_lines_form_dehyphenated_continuation(
 ) -> bool:
     """判断相邻同 href 链接行是否符合文本回填的英文断词规则。"""
 
-    if (
-        next_line is None
-        or next_line.source_index != line.source_index + 1
-        or not line.text
-        or not next_line.text
-        or not is_hyphen_at_line_end(line.text)
-        or not next_line.text[0].islower()
-    ):
+    if not _lines_form_dehyphenated_continuation(line, next_line):
         return False
     tail_targets = {
         link_range.target
@@ -1563,30 +1622,11 @@ def _match_link_line_without_terminal_hyphen(
 
     if not _link_lines_form_dehyphenated_continuation(line, next_line):
         return None
-    candidate = line.text[:-1]
-    next_first_char = next_line.text[0] if next_line is not None else ""
-    occurrences = [
-        position
-        for position in _all_occurrences(projected_text, candidate, start)
-        if (
-            position + len(candidate) < len(projected_text)
-            and projected_text[position + len(candidate)] == next_first_char
-        )
-    ]
-    if len(occurrences) != 1:
-        logger.debug(
-            "Skip ambiguous PDF hyperlink dehyphenation mapping: "
-            f"line={line.text!r}, occurrences={len(occurrences)}"
-        )
-        return None
-    position = occurrences[0]
-    return _LineProjectionMatch(
-        start=position,
-        end=position + len(candidate),
-        source_to_projected=(
-            *range(position, position + len(candidate)),
-            None,
-        ),
+    return _match_line_without_terminal_hyphen(
+        projected_text,
+        line,
+        next_line,
+        start,
     )
 
 

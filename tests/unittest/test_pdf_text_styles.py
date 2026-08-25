@@ -1335,6 +1335,107 @@ def test_applies_style_to_plain_content_and_duplicate_second_line() -> None:
     assert blocks[0]["content"] == 'deleted <text style="strikethrough">deleted</text>'
 
 
+def test_applies_style_across_dehyphenated_line_boundary() -> None:
+    """验证行末断词符被正文回填删除后，两行粗体仍合并为完整区间。"""
+
+    blocks = [
+        {
+            "type": BlockType.TEXT,
+            "bbox": [0.0, 0.0, 1.0, 1.0],
+            "content": "Abstract—Stereo matching was designed for sequences.",
+        }
+    ]
+    lines = [
+        PDFTextStyleLine(
+            (10.0, 10.0, 90.0, 20.0),
+            "Abstract—Stereomatchingwasde-",
+            (PDFTextStyleRange(0, len("Abstract—Stereomatchingwasde-"), ("bold",)),),
+            10,
+        ),
+        PDFTextStyleLine(
+            (10.0, 30.0, 90.0, 40.0),
+            "signedforsequences.",
+            (PDFTextStyleRange(0, len("signedforsequences."), ("bold",)),),
+            11,
+        ),
+    ]
+
+    apply_pdf_text_styles(blocks, lines, (100.0, 100.0))
+
+    assert blocks[0]["content"] == (
+        '<text style="bold">Abstract—Stereo matching was designed for sequences.</text>'
+    )
+
+
+@pytest.mark.parametrize(
+    ("content", "first_text", "second_text", "second_source_index", "expected"),
+    [
+        (
+            "inter-national",
+            "inter-",
+            "national",
+            21,
+            '<text style="bold">inter-national</text>',
+        ),
+        (
+            "inter-National",
+            "inter-",
+            "National",
+            21,
+            '<text style="bold">inter-National</text>',
+        ),
+        (
+            "international",
+            "inter-",
+            "national",
+            22,
+            'inter<text style="bold">national</text>',
+        ),
+        (
+            "international international",
+            "inter-",
+            "national",
+            21,
+            'inter<text style="bold">national</text> international',
+        ),
+    ],
+)
+def test_style_dehyphenation_preserves_safe_boundaries(
+    content: str,
+    first_text: str,
+    second_text: str,
+    second_source_index: int,
+    expected: str,
+) -> None:
+    """验证保留连字符、大小写、非相邻行和重复候选均不会错误桥接。"""
+
+    blocks = [
+        {
+            "type": BlockType.TEXT,
+            "bbox": [0.0, 0.0, 1.0, 1.0],
+            "content": content,
+        }
+    ]
+    lines = [
+        PDFTextStyleLine(
+            (10.0, 10.0, 90.0, 20.0),
+            first_text,
+            (PDFTextStyleRange(0, len(first_text), ("bold",)),),
+            20,
+        ),
+        PDFTextStyleLine(
+            (10.0, 30.0, 90.0, 40.0),
+            second_text,
+            (PDFTextStyleRange(0, len(second_text), ("bold",)),),
+            second_source_index,
+        ),
+    ]
+
+    apply_pdf_text_styles(blocks, lines, (100.0, 100.0))
+
+    assert blocks[0]["content"] == expected
+
+
 def test_same_visual_row_style_runs_follow_source_order_despite_bbox_jitter() -> None:
     """验证同行 run 的细微顶边抖动不会把后方粗体片段提前映射。"""
 
