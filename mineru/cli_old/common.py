@@ -12,34 +12,35 @@ from typing import Any, Callable, Sequence
 
 from loguru import logger
 
-from mineru.backend.office.analyze import analyze as office_analyze
-from mineru.cli_old.visualization import select_pages_for_pdf_visualization
-from mineru.parser.base import ParseResult
-from mineru.render import render_content_list, render_markdown, render_structured_content
-from mineru.render.writer import FileBasedDataWriter
-from mineru.utils.backend_options import DEFAULT_BACKEND, DEFAULT_HYBRID_EFFORT, LOCAL_HYBRID_EFFORT, resolve_backend_and_effort
-from mineru.utils.draw_bbox import draw_layout_bbox, draw_span_bbox
-from mineru.utils.engine_utils import get_vlm_engine
-from mineru.utils.guess_suffix_or_lang import guess_suffix_by_bytes
-from mineru.utils.image_payload import ImagePayloadCache
-from mineru.utils.pdf_image_tools import images_bytes_to_pdf_bytes
-from mineru.utils.pdfium_guard import safe_rewrite_pdf_bytes_with_pdfium, safe_rewrite_pdf_bytes_with_pdfium_result
-
-from ..types import PageInfo
+from ..backend.office.analyze import analyze as office_analyze
+from ..filetypes import IMAGE_EXTENSIONS, OFFICE_EXTENSIONS, PDF_EXTENSIONS
+from ..parser.base import ParseResult
+from ..render import render_markdown, render_structured_content
+from ..render.writer import FileBasedDataWriter
+from ..types import MiddleJson, PageInfo
+from ..utils.backend_options import DEFAULT_BACKEND, DEFAULT_HYBRID_EFFORT, LOCAL_HYBRID_EFFORT, resolve_backend_and_effort
+from ..utils.draw_bbox import draw_layout_bbox, draw_span_bbox
+from ..utils.engine_utils import get_vlm_engine
+from ..utils.guess_suffix_or_lang import guess_suffix_by_bytes
+from ..utils.image_payload import ImagePayloadCache
+from ..utils.pdf_image_tools import images_bytes_to_pdf_bytes
+from ..utils.pdfium_guard import safe_rewrite_pdf_bytes_with_pdfium, safe_rewrite_pdf_bytes_with_pdfium_result
 from ..version import __version__
+from .visualization import select_pages_for_pdf_visualization
 
 os.environ["TORCH_CUDNN_V8_API_DISABLED"] = "1"
 if os.getenv("MINERU_LMDEPLOY_DEVICE", "") == "maca":
     import torch
+
     torch.backends.cudnn.enabled = False
 
 
-pdf_suffixes = ["pdf"]
-image_suffixes = ["png", "jpeg", "jp2", "webp", "gif", "bmp", "jpg", "tiff"]
+pdf_suffixes = sorted(PDF_EXTENSIONS)
+image_suffixes = sorted(IMAGE_EXTENSIONS)
 docx_suffixes = ["docx"]
 pptx_suffixes = ["pptx"]
 xlsx_suffixes = ["xlsx"]
-office_suffixes = docx_suffixes + pptx_suffixes + xlsx_suffixes
+office_suffixes = sorted(OFFICE_EXTENSIONS)
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 # Maximum UTF-8 byte length allowed for task stems used in filenames.
@@ -284,8 +285,16 @@ def _process_output(
             )
 
     image_dir = str(os.path.basename(local_image_dir))
+    from ..version import __version__ as mineru_version
+
     export_result = ParseResult(
-        pages=middle_json,
+        middle_json=MiddleJson(
+            pages=middle_json,
+            file_suffix="pdf",
+            effort="medium",
+            parse_mode="txt",
+            mineru_version=mineru_version,
+        ),
         _image_cache=image_cache,
         _retained_page_indices=retained_page_indices,
         _broken_page_indices=broken_page_indices,
@@ -314,12 +323,6 @@ def _process_output(
         )
 
     if f_dump_content_list:
-        content_list = render_content_list(get_public_render_pages(), image_dir)
-        md_writer.write_string(
-            f"{pdf_file_name}_content_list.json",
-            json.dumps(content_list, ensure_ascii=False, indent=4),
-        )
-
         structured_content = render_structured_content(get_public_render_pages(), image_dir)
         md_writer.write_string(
             f"{pdf_file_name}_structured_content.json",

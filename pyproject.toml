@@ -31,6 +31,8 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
+    "mineru-vl-utils>=1.2.1,<2",
+    "mineru-llama-cpp>=0.1.0,<1",
     "click>=8.1.7",
     "loguru>=0.7.2",
     "numpy>=1.21.6",
@@ -45,7 +47,8 @@ dependencies = [
     "reportlab",
     "pdftext>=0.6.3,<0.8.0",
     "modelscope>=1.26.0",
-    "huggingface-hub>=0.32.4",
+    "huggingface-hub[hf_xet]>=0.32.4",
+    "filelock>=3.0.0",
     "json-repair>=0.46.2",
     "latex2mathml>=3.81.0,<4",
     "opencv-python>=4.11.0.86",
@@ -54,7 +57,6 @@ dependencies = [
     "beautifulsoup4>=4.13.5,<5",
     "nh3>=0.3.6,<0.4",
     "magika>=0.6.2,<1.1.0",
-    "mineru-vl-utils>=1.2.1,<2",
     "python-docx>=1.2.0,<2",
     'pypptx-with-oxml>=1.0.3,<2',
     "mammoth>=1.11.0,<2",
@@ -73,6 +75,10 @@ dependencies = [
     "rich>=13.0.0",
     "jieba>=0.42.1",
     "onnxruntime>=1.17.0",
+    "ftfy>=6.3.1,<7",
+    "shapely>=2.0.7,<3",
+    "pyclipper>=1.3.0,<2",
+    "tokenizers>=0.22.0,<0.23.1",
 ]
 
 [project.optional-dependencies]
@@ -80,80 +86,35 @@ dev = [
     "lxml-stubs",
 ]
 test = [
-    "mineru[core]",
     "pytest",
     "pytest-cov",
     "coverage",
     "fuzzywuzzy",
     "tomli; python_version < '3.11'",
 ]
-standard = [
-    "ftfy>=6.3.1,<7",
-    "shapely>=2.0.7,<3",
-    "pyclipper>=1.3.0,<2",
+torch = [
     "six>=1.17.0,<2",
     "torch>=2.6.0,<3",
     "torchvision",
     "transformers>=4.57.3,<5.0.0",
-]
-medium = [
-    "mineru[standard]",
-]
-pro = [
-    "mineru[standard]",
     "accelerate>=1.5.1",
+    "safetensors>=0.4.0,<1",
+]
+full = [
+    "mineru[torch]",
     "vllm>=0.10.1.1,<0.22.0 ; sys_platform == 'linux'",
     "lmdeploy>=0.10.2,<0.12 ; sys_platform == 'win32'",
     "qwen-vl-utils>=0.0.14,<1 ; sys_platform == 'win32'",
-    "mlx<=0.31.1 ; sys_platform == 'darwin'",
-    "mlx-vlm>=0.3.3,<0.4 ; sys_platform == 'darwin'",
-]
-high = [
-    "mineru[pro]",
-]
-extra_high = [
-    "mineru[pro]",
-]
-
-vlm = [
-    "torch>=2.6.0,<3",
-    "transformers>=4.57.3,<5.0.0",
-    "accelerate>=1.5.1",
-]
-vllm = [
-    "vllm>=0.10.1.1,<0.22.0",
-]
-lmdeploy = [
-    "lmdeploy>=0.10.2,<0.12",
-    "qwen-vl-utils>=0.0.14,<1",
-]
-mlx = [
-    "mlx-vlm>=0.3.3,<0.4",
-    "mlx<=0.31.1",
-]
-pipeline = [
-    "ftfy>=6.3.1,<7",
-    "shapely>=2.0.7,<3",
-    "pyclipper>=1.3.0,<2",
-    "torch>=2.6.0,<3",
-    "torchvision",
-    "transformers>=4.57.3,<5.0.0",
-    "safetensors>=0.4.0,<1",
+    "mlx<=0.31.1 ; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "mlx-vlm>=0.3.3,<0.4 ; sys_platform == 'darwin' and platform_machine == 'arm64'",
 ]
 gradio = [
     "gradio>=5.49.1,!=6.0.0,!=6.0.1,!=6.0.2,!=6.1.0,!=6.2.0,!=6.3.0,!=6.4.0,!=6.5.0,!=6.5.1,!=6.6.0,!=6.7.0,<6.9.0",
     "gradio-pdf>=0.0.22",
 ]
-core = [
-    "mineru[vlm]",
-    "mineru[pipeline]",
-    "mineru[gradio]",
-]
 all = [
-    "mineru[core]",
-    "mineru[mlx] ; sys_platform == 'darwin'",
-    "mineru[vllm] ; sys_platform == 'linux'",
-    "mineru[lmdeploy] ; sys_platform == 'win32'",
+    "mineru[full]",
+    "mineru[gradio]",
 ]
 
 [project.urls]
@@ -164,8 +125,8 @@ issues = "https://github.com/opendatalab/MinerU/issues"
 License = "https://github.com/opendatalab/MinerU/blob/master/LICENSE.md"
 
 [project.scripts]
-mineru = "mineru.cli.main:app"
-mineru-kit = "mineru.kit.main:app"
+mineru = "mineru.cli.main:main"
+mineru-kit = "mineru.kit.main:main"
 mineru-gradio = "mineru.cli_old.gradio_app:main"
 
 [tool.setuptools.dynamic]
@@ -192,7 +153,6 @@ command_line = "-m pytest tests/unittest/test_e2e.py"
 source = ["mineru/"]
 omit = [
     "*/gradio_app.py",
-    "*/models_download.py",
     "*/fast_api.py",
     "*/cli/client.py",
     "*/vlm_vllm_server.py",

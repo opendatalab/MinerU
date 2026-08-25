@@ -18,7 +18,7 @@ from packaging import version
 
 from ...utils.check_sys_env import is_mac_os_version_supported
 from ...utils.config_reader import get_device
-from ...utils.models_download_utils import auto_download_and_get_model_root_path
+from ...utils.model_registry import MINERU_2_5_PRO_2605_1_2B, MINERU_2_5_PRO_2605_1_2B_GGUF
 from .engine_utils import (
     enable_custom_logits_processors,
     mod_kwargs_by_device_type,
@@ -43,6 +43,7 @@ class ModelSingleton:
         self,
         backend: Literal[
             "http-client",
+            "llama-cpp-engine",
             "transformers",
             "mlx-engine",
             "lmdeploy-engine",
@@ -62,6 +63,7 @@ class ModelSingleton:
                 vllm_llm = None
                 lmdeploy_engine = None
                 vllm_async_llm = None
+                llama_cpp_engine = None
                 batch_size = kwargs.get("batch_size", 0)  # for transformers backend only
                 max_concurrency = kwargs.get("max_concurrency", 100)  # for http-client backend only
                 http_timeout = kwargs.get("http_timeout", 600)  # for http-client backend only
@@ -80,8 +82,34 @@ class ModelSingleton:
                     if param in kwargs:
                         del kwargs[param]
                 if backend not in ["http-client"] and not model_path:
-                    model_path = auto_download_and_get_model_root_path("/", "vlm")
-                if backend == "transformers":
+                    model_path = str(MINERU_2_5_PRO_2605_1_2B.ensure())
+
+                if backend == "llama-cpp-engine":
+                    try:
+                        from mineru_llama_cpp import Engine
+                    except ImportError:
+                        raise ImportError("Please install mineru-llama-cpp to use the llama-cpp-engine backend.")
+
+                    # The GGUF repo carries two files: the main model and its
+                    # multi-modal projector (mmproj). ModelRepo.paths is
+                    # {"main": "...", "mmproj": "..."} — resolve each to its
+                    # absolute path under model_dir and hand both to Engine.
+                    repo = MINERU_2_5_PRO_2605_1_2B_GGUF
+                    model_dir = repo.ensure()
+                    model_gguf = model_dir / repo.paths["main"]
+                    mmproj_gguf = model_dir / repo.paths["mmproj"]
+
+                    # Engine-specific kwargs are pulled out of **kwargs so they
+                    # are not forwarded to MinerUClient (which doesn't accept
+                    # them). Defaults mirror Engine's own constructor defaults.
+                    engine_kwargs = {}
+                    for key in ("n_ctx_seq", "n_gpu_layers", "n_parallel", "verbosity", "n_threads"):
+                        if key in kwargs:
+                            engine_kwargs[key] = kwargs.pop(key)
+
+                    llama_cpp_engine = Engine(model_gguf, mmproj_gguf, **engine_kwargs)
+
+                elif backend == "transformers":
                     try:
                         from transformers import (
                             AutoProcessor,
@@ -234,6 +262,7 @@ class ModelSingleton:
                     lmdeploy_engine=lmdeploy_engine,
                     vllm_llm=vllm_llm,
                     vllm_async_llm=vllm_async_llm,
+                    llama_cpp_engine=llama_cpp_engine,
                     server_url=server_url,
                     batch_size=batch_size,
                     max_concurrency=max_concurrency,
@@ -252,6 +281,7 @@ class ModelSingleton:
                     "vllm_llm": vllm_llm,
                     "vllm_async_llm": vllm_async_llm,
                     "lmdeploy_engine": lmdeploy_engine,
+                    "llama_cpp_engine": llama_cpp_engine,
                 }
                 _maybe_enable_serial_execution(predictor, backend)
                 self._models[key] = predictor
@@ -273,6 +303,7 @@ class ModelSingleton:
 async def _get_model_async(
     backend: Literal[
         "http-client",
+        "llama-cpp-engine",
         "transformers",
         "mlx-engine",
         "lmdeploy-engine",
@@ -307,11 +338,11 @@ def _iter_shutdown_candidates(predictor: MinerUClient) -> Generator[object, None
         seen_ids.add(candidate_id)
         yield candidate
 
-    for key in ("vllm_llm", "vllm_async_llm", "lmdeploy_engine", "model"):
+    for key in ("vllm_llm", "vllm_async_llm", "lmdeploy_engine", "llama_cpp_engine", "model"):
         yield from _yield_candidate(runtime_handles.get(key))
 
     if client is not None:
-        for key in ("vllm_llm", "vllm_async_llm", "lmdeploy_engine", "model"):
+        for key in ("vllm_llm", "vllm_async_llm", "lmdeploy_engine", "llama_cpp_engine", "model"):
             yield from _yield_candidate(getattr(client, key, None))
 
 
@@ -366,7 +397,7 @@ def _clear_predictor_references(predictor: MinerUClient) -> None:
 
     client = getattr(predictor, "client", None)
     if client is not None:
-        for attr in ("vllm_llm", "vllm_async_llm", "lmdeploy_engine", "model", "processor"):
+        for attr in ("vllm_llm", "vllm_async_llm", "lmdeploy_engine", "llama_cpp_engine", "model", "processor"):
             if hasattr(client, attr):
                 setattr(client, attr, None)
 
@@ -418,4 +449,3 @@ async def aio_predictor_execution_guard(predictor: MinerUClient) -> AsyncIterato
         yield
     finally:
         lock.release()
-

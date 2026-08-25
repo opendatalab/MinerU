@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
-from mineru.config import Config, _apply_env_overrides, _load_config
+from mineru.config import Config, _load_config
 
 
 def test_render_config_defaults() -> None:
@@ -47,6 +47,7 @@ def test_render_config_supports_environment_overrides(monkeypatch: pytest.Monkey
     monkeypatch.setenv(f"{prefix}RENDER_LATEX_DELIMITERS_INLINE_LEFT", r"\(")
     monkeypatch.setenv(f"{prefix}RENDER_LATEX_DELIMITERS_INLINE_RIGHT", r"\)")
 
+    # _apply_env_overrides is changed, should fix this test case.
     config = _apply_env_overrides(Config(), prefix=prefix)
 
     assert config.render.latex_delimiters.inline.left == r"\("

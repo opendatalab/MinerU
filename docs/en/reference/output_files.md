@@ -55,9 +55,9 @@ The following sections provide detailed descriptions of each file's purpose and 
 ## Structured Data Files
 
 > [!IMPORTANT]
-> The current structured output contract uses `hybrid` and `office` backends. Legacy middle-json files marked with `_backend: "pipeline"` are no longer accepted by current readers.
+> The current structured output contract uses the unified `MinerUParser` with `tier` (flash/basic/standard/advanced) and `parse_mode` (txt/ocr) parameters. Legacy middle-json files marked with `_backend: "pipeline"`/`_backend: "hybrid"`/`_backend: "office"` are no longer accepted by current readers; use schema 2.0 `MiddleJson` instead.
 
-### Hybrid Local Model Output Results
+### Unified Model Output Results
 
 #### Model Inference Results (model.json)
 
@@ -110,288 +110,119 @@ The following sections provide detailed descriptions of each file's purpose and 
 
 **File naming format**: `{original_filename}_middle.json`
 
-##### Top-level Structure
+##### Top-level Structure (schema 2.0)
 
 | Field Name | Type | Description |
 |------------|------|-------------|
-| `pdf_info` | `list[dict]` | Array of parsing results for each page |
-| `_backend` | `string` | Parsing mode: `hybrid` or `office` |
-| `_version_name` | `string` | MinerU version number |
+| `pages` | `list[PageInfo]` | Array of parsing results for each page, strictly increasing by `page_idx` |
+| `file_suffix` | `string` | Input file type: `pdf`, `docx`, `pptx`, or `xlsx` |
+| `effort` | `string` | Analysis effort: `flash`, `low`, `medium`, `high`, or `xhigh` |
+| `parse_mode` | `string` | Parse mode: `txt` or `ocr` |
+| `mineru_version` | `string` | MinerU version number |
 
-##### Page Information Structure (pdf_info)
+Legacy fields `pdf_info`/`_backend`/`_version_name`/`_ocr_enable`/`_vlm_ocr_enable` are removed in schema 2.0.
+
+##### Page Information Structure (pages)
 
 | Field Name | Description |
 |------------|-------------|
-| `preproc_blocks` | Unsegmented intermediate results after PDF preprocessing |
 | `page_idx` | Page number, starting from 0 |
-| `page_size` | Page width and height `[width, height]` |
-| `images` | Image block information list |
-| `tables` | Table block information list |
-| `interline_equations` | Interline formula block information list |
-| `discarded_blocks` | Block information to be discarded |
-| `para_blocks` | Content block results after segmentation |
+| `blocks` | List of top-level page blocks (the only content field) |
+
+Legacy fields `preproc_blocks`/`para_blocks`/`page_size`/`images`/`tables`/`interline_equations`/`discarded_blocks`/`_layout_tree`/`layout_bboxes` are removed in schema 2.0 — all content is expressed in the `blocks` tree.
 
 ##### Block Structure Hierarchy
 
 ```
-Level 1 blocks (table | image | chart)
-└── Level 2 blocks
-    └── Lines
-        └── Spans
+Top-level page blocks (text | title | equation | image | table | chart | code | list | index | ...)
+└── Visual parent blocks (image | table | chart | code) contain child blocks
+    └── body block + optional caption/footnote blocks
 ```
 
-##### Level 1 Block Fields
+Leaf blocks (text, title, equation, etc.) carry `content: str` directly. Visual parent blocks (image, table, chart, code) carry `content: list[child blocks]`, where children include exactly one body plus optional caption/footnote. There are no independent `Line`/`Span` types in schema 2.0.
 
-| Field Name | Description |
-|------------|-------------|
-| `type` | Block type: `table`, `image`, or `chart` |
-| `bbox` | Rectangular box coordinates of the block `[x0, y0, x1, y1]` |
-| `blocks` | List of contained level 2 blocks |
-
-##### Level 2 Block Fields
+##### Common Block Fields
 
 | Field Name | Description |
 |------------|-------------|
 | `type` | Block type (see table below) |
-| `bbox` | Rectangular box coordinates of the block |
-| `lines` | List of contained line information |
+| `bbox` | Rectangular box coordinates of the block `[x0, y0, x1, y1]`, normalized to `[0, 1]` |
+| `index` | Block index for reading order (required for top-level blocks) |
+| `content` | For leaf blocks: a string; for visual parent blocks: a list of child blocks |
 
-##### Level 2 Block Types
+##### Block Types
 
 | Type | Description |
 |------|-------------|
-| `image_body` | Image body |
-| `image_caption` | Image caption text |
-| `image_footnote` | Image footnote |
-| `table_body` | Table body |
-| `table_caption` | Table caption text |
-| `table_footnote` | Table footnote |
-| `chart_body` | Chart body |
-| `chart_caption` | Chart caption text |
-| `chart_footnote` | Chart footnote |
-| `text` | Text block |
-| `title` | Title block |
-| `index` | Index block |
-| `list` | List block |
-| `interline_equation` | Interline formula block |
+| `text` | Text block (leaf, `content: str`) |
+| `doc_title` | Document title (level=1) |
+| `paragraph_title` | Paragraph title (level 2-6) |
+| `equation` | Display (interline) formula block (renamed from `interline_equation`) |
+| `image` | Image container; `content` includes `image_body` + optional `image_caption`/`image_footnote` |
+| `table` | Table container; `content` includes `table_body` + optional `table_caption`/`table_footnote` |
+| `chart` | Chart container; `content` includes `chart_body` + optional `chart_caption`/`chart_footnote` |
+| `code` | Code container; `content` includes `code_body` + optional `code_caption`/`code_footnote`; `sub_type` is `code` or `algorithm` |
+| `list` | List container; `content` is a list of `text`/`ref_text`/nested `list` blocks; `sub_type` is `text` or `ref_text` |
+| `index` | Index (table of contents) container; `content` is a list of `text`/`doc_title`/`paragraph_title`/nested `index` blocks |
+| `ref_text` | Reference / citation text block |
+| `header` / `footer` / `page_number` / `aside_text` / `page_footnote` | Page auxiliary blocks (leaf, `content: str`) |
 
-##### Line and Span Structure
-
-**Line fields**:
-- `bbox`: Rectangular box coordinates of the line
-- `spans`: List of contained spans
-
-**Span fields**:
-- `bbox`: Rectangular box coordinates of the span
-- `type`: Span type (`image`, `table`, `chart`, `text`, `inline_equation`, `interline_equation`)
-- `content` | `image_path`: Text content or image path
-
-##### Sample Data
+##### Sample Data (schema 2.0)
 
 ```json
 {
-    "pdf_info": [
+    "pages": [
         {
-            "preproc_blocks": [
-                {
-                    "type": "text",
-                    "bbox": [
-                        52,
-                        61.956024169921875,
-                        294,
-                        82.99800872802734
-                    ],
-                    "lines": [
-                        {
-                            "bbox": [
-                                52,
-                                61.956024169921875,
-                                294,
-                                72.0000228881836
-                            ],
-                            "spans": [
-                                {
-                                    "bbox": [
-                                        54.0,
-                                        61.956024169921875,
-                                        296.2261657714844,
-                                        72.0000228881836
-                                    ],
-                                    "content": "dependent on the service headway and the reliability of the departure ",
-                                    "type": "text",
-                                    "score": 1.0
-                                }
-                            ]
-                        }
-                    ]
-                }
-            ],
-            "layout_bboxes": [
-                {
-                    "layout_bbox": [
-                        52,
-                        61,
-                        294,
-                        731
-                    ],
-                    "layout_label": "V",
-                    "sub_layout": []
-                }
-            ],
             "page_idx": 0,
-            "page_size": [
-                612.0,
-                792.0
-            ],
-            "_layout_tree": [],
-            "images": [],
-            "tables": [],
-            "interline_equations": [],
-            "discarded_blocks": [],
-            "para_blocks": [
+            "blocks": [
+                {
+                    "type": "doc_title",
+                    "index": 0,
+                    "bbox": [0.45, 0.23, 0.55, 0.28],
+                    "content": "1 Introduction",
+                    "level": 1
+                },
                 {
                     "type": "text",
-                    "bbox": [
-                        52,
-                        61.956024169921875,
-                        294,
-                        82.99800872802734
-                    ],
-                    "lines": [
+                    "index": 1,
+                    "bbox": [0.08, 0.30, 0.46, 0.40],
+                    "content": "dependent on the service headway and the reliability of the departure"
+                },
+                {
+                    "type": "image",
+                    "index": 2,
+                    "bbox": [0.52, 0.30, 0.95, 0.55],
+                    "content": [
                         {
-                            "bbox": [
-                                52,
-                                61.956024169921875,
-                                294,
-                                72.0000228881836
-                            ],
-                            "spans": [
-                                {
-                                    "bbox": [
-                                        54.0,
-                                        61.956024169921875,
-                                        296.2261657714844,
-                                        72.0000228881836
-                                    ],
-                                    "content": "dependent on the service headway and the reliability of the departure ",
-                                    "type": "text",
-                                    "score": 1.0
-                                }
-                            ]
+                            "type": "image_body",
+                            "index": 2,
+                            "bbox": [0.52, 0.30, 0.95, 0.55],
+                            "content": "",
+                            "image_path": "images/page_0_image_body_2.png"
+                        },
+                        {
+                            "type": "image_caption",
+                            "index": 3,
+                            "bbox": [0.52, 0.56, 0.95, 0.58],
+                            "content": "Figure 1: Example figure"
                         }
-                    ]
+                    ],
+                    "sub_type": null
                 }
             ]
         }
     ],
-    "_backend": "hybrid",
-    "_version_name": "0.6.1"
+    "file_suffix": "pdf",
+    "effort": "high",
+    "parse_mode": "ocr",
+    "mineru_version": "1.x.x"
 }
 ```
 
 #### Content List (content_list.json)
 
-**File naming format**: `{original_filename}_content_list.json`
-
-##### Functionality
-
-This is a simplified version of `middle.json` that stores all readable content blocks in reading order as a flat structure, removing complex layout information for easier subsequent processing.
-
-##### Content Types
-
-| Type | Description |
-|------|-------------|
-| `image` | Image |
-| `table` | Table |
-| `chart` | Chart |
-| `text` | Text/Title |
-| `equation` | Interline formula |
-| `code` | Code block / algorithm block |
-| `list` | List / reference list |
-| `header` / `footer` / `page_number` / `aside_text` / `page_footnote` | Page auxiliary blocks |
-
-##### Text Level Identification
-
-Text levels are distinguished through the `text_level` field:
-
-- No `text_level` or `text_level: 0`: Body text
-- `text_level: 1`: Level 1 heading
-- `text_level: 2`: Level 2 heading
-- And so on...
-
-##### Common Fields
-
-- All content blocks include a `page_idx` field indicating the page number (starting from 0).
-- All content blocks include a `bbox` field representing the bounding box coordinates of the content block `[x0, y0, x1, y1]`, mapped to a range of 0-1000.
-- `code` entries use `sub_type` to distinguish `code` and `algorithm`, and may include fields such as `code_body`, `code_caption`, and `code_footnote`.
-- `list` entries may use `sub_type` to distinguish ordinary lists from reference-style lists.
-- `image` / `chart` entries may include an optional `sub_type` field to carry the visual subtype through downstream outputs.
-- Seal content is represented as an `image` entry with `sub_type: "seal"`.
-
-##### Sample Data
-
-```json
-[
-        {
-        "type": "text",
-        "text": "The response of flow duration curves to afforestation ",
-        "text_level": 1, 
-        "bbox": [
-            62,
-            480,
-            946,
-            904
-        ],
-        "page_idx": 0
-    },
-    {
-        "type": "image",
-        "img_path": "images/a8ecda1c69b27e4f79fce1589175a9d721cbdc1cf78b4cc06a015f3746f6b9d8.jpg",
-        "image_caption": [
-            "Fig. 1. Annual flow duration curves of daily flows from Pine Creek, Australia, 1989–2000. "
-        ],
-        "image_footnote": [],
-        "bbox": [
-            62,
-            480,
-            946,
-            904
-        ],
-        "page_idx": 1
-    },
-    {
-        "type": "equation",
-        "img_path": "images/181ea56ef185060d04bf4e274685f3e072e922e7b839f093d482c29bf89b71e8.jpg",
-        "text": "$$\nQ _ { \\% } = f ( P ) + g ( T )\n$$",
-        "text_format": "latex",
-        "bbox": [
-            62,
-            480,
-            946,
-            904
-        ],
-        "page_idx": 2
-    },
-    {
-        "type": "table",
-        "img_path": "images/e3cb413394a475e555807ffdad913435940ec637873d673ee1b039e3bc3496d0.jpg",
-        "table_caption": [
-            "Table 2 Significance of the rainfall and time terms "
-        ],
-        "table_footnote": [
-            "indicates that the rainfall term was significant at the $5 \\%$ level, $T$ indicates that the time term was significant at the $5 \\%$ level, \\* represents significance at the $10 \\%$ level, and na denotes too few data points for meaningful analysis. "
-        ],
-        "table_body": "<html><body><table><tr><td rowspan=\"2\">Site</td><td colspan=\"10\">Percentile</td></tr><tr><td>10</td><td>20</td><td>30</td><td>40</td><td>50</td><td>60</td><td>70</td><td>80</td><td>90</td><td>100</td></tr><tr><td>Traralgon Ck</td><td>P</td><td>P,*</td><td>P</td><td>P</td><td>P,</td><td>P,</td><td>P,</td><td>P,</td><td>P</td><td>P</td></tr><tr><td>Redhill</td><td>P,T</td><td>P,T</td><td>，*</td><td>**</td><td>P.T</td><td>P,*</td><td>P*</td><td>P*</td><td>*</td><td>，*</td></tr><tr><td>Pine Ck</td><td></td><td>P,T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>T</td><td>T</td><td>T</td><td>na</td><td>na</td></tr><tr><td>Stewarts Ck 5</td><td>P,T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>P.T</td><td>P.T</td><td>P,T</td><td>na</td><td>na</td><td>na</td></tr><tr><td>Glendhu 2</td><td>P</td><td>P,T</td><td>P,*</td><td>P,T</td><td>P.T</td><td>P,ns</td><td>P,T</td><td>P,T</td><td>P,T</td><td>P,T</td></tr><tr><td>Cathedral Peak 2</td><td>P,T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>*,T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>T</td></tr><tr><td>Cathedral Peak 3</td><td>P.T</td><td>P.T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>T</td></tr><tr><td>Lambrechtsbos A</td><td>P,T</td><td>P</td><td>P</td><td>P,T</td><td>*,T</td><td>*,T</td><td>*,T</td><td>*,T</td><td>*,T</td><td>T</td></tr><tr><td>Lambrechtsbos B</td><td>P,T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>T</td><td>T</td></tr><tr><td>Biesievlei</td><td>P,T</td><td>P.T</td><td>P,T</td><td>P,T</td><td>*,T</td><td>*,T</td><td>T</td><td>T</td><td>P,T</td><td>P,T</td></tr></table></body></html>",
-        "bbox": [
-            62,
-            480,
-            946,
-            904
-        ],  
-        "page_idx": 5
-    }
-]
-```
+> [!NOTE]
+> `content_list.json` is deprecated and no longer generated. Use `structured_content.json` for structured content output. See the [Common Structured Content](#common-structured-content-structured_contentjsondevelopment-version-subject-to-change) section below.
 
 ### Common Structured Content (structured_content.json)(development version, subject to change)
 
@@ -399,7 +230,7 @@ Text levels are distinguished through the `text_level` field:
 
 ##### Functionality
 
-`structured_content.json` is the new structured output added in 3.0. All backends now emit it in addition to the legacy `content_list.json`:
+`structured_content.json` is the new structured output added in 3.0:
 
 - The top level is grouped by page for page-oriented consumption
 - Each item uses a unified `type + content` structure for easier programmatic processing
@@ -469,7 +300,7 @@ exact styles are represented by the child `text` spans.
 ]
 ```
 
-### Hybrid Multimodal Output Results
+### Multimodal Model Output Results
 
 #### Model Inference Results (model.json)
 
@@ -543,66 +374,36 @@ exact styles are represented by the child `text` spans.
 
 **File naming format**: `{original_filename}_middle.json`
 
-Hybrid multimodal `middle.json` includes these extensions over the base block structure:
+In schema 2.0, the multimodal tier produces the same unified `MiddleJson` structure as other tiers. The block types below are part of the standard `blocks` tree (not extensions):
 
-- `list` becomes a second‑level block, a new field `sub_type` distinguishes list categories:
+- `list` is a container block; `content` holds child `text`/`ref_text`/nested `list` blocks; `sub_type` distinguishes list categories:
     * `text`: ordinary list
     * `ref_text`: reference / bibliography style list
-- New `code` block type with `sub_type`(a code block always has at least a `code_body`, it may optionally have a `code_caption`):
+- `code` is a container block; `content` holds a `code_body` plus optional `code_caption`/`code_footnote`; `sub_type` is:
     * `code`
     * `algorithm`
-- `discarded_blocks` may contain additional types: 
-    * `header`
-    * `footer`
-    * `page_number`
-    * `aside_text`
-    * `page_footnote`
-- All blocks include an `angle` field indicating rotation (one of `0, 90, 180, 270`).
+- Page auxiliary blocks (`header`, `footer`, `page_number`, `aside_text`, `page_footnote`) appear as top-level leaf blocks in `blocks` with `content: str` — there is no separate `discarded_blocks` field in schema 2.0.
+- All blocks may include an `angle` field indicating rotation (one of `0, 90, 180, 270`).
 
 ##### Examples
 - Example: list block
     ```json
     {
-      "bbox": [174,155,818,333],
       "type": "list",
-      "angle": 0,
+      "bbox": [0.068, 0.121, 0.319, 0.260],
       "index": 11,
-      "blocks": [
+      "content": [
         {
-          "bbox": [174,157,311,175],
           "type": "text",
-          "angle": 0,
-          "lines": [
-            {
-              "bbox": [174,157,311,175],
-                "spans": [
-                  {
-                    "bbox": [174,157,311,175],
-                    "type": "text",
-                    "content": "H.1 Introduction"
-                  }
-                ]
-            }
-          ],
-          "index": 3
+          "bbox": [0.068, 0.123, 0.122, 0.137],
+          "index": 3,
+          "content": "H.1 Introduction"
         },
         {
-          "bbox": [175,182,464,229],
           "type": "text",
-          "angle": 0,
-          "lines": [
-            {
-              "bbox": [175,182,464,229],
-              "spans": [
-                {
-                  "bbox": [175,182,464,229],
-                  "type": "text",
-                  "content": "H.2 Example: Divide by Zero without Exception Handling"
-                }
-              ]
-            }
-          ],
-          "index": 4
+          "bbox": [0.068, 0.142, 0.181, 0.179],
+          "index": 4,
+          "content": "H.2 Example: Divide by Zero without Exception Handling"
         }
       ],
       "sub_type": "text"
@@ -613,114 +414,31 @@ Hybrid multimodal `middle.json` includes these extensions over the base block st
     ```json
     {
       "type": "code",
-      "bbox": [114,780,885,1231],
-      "blocks": [
+      "bbox": [0.045, 0.610, 0.346, 0.964],
+      "index": 17,
+      "content": [
         {
-          "bbox": [114,780,885,1231],
-          "lines": [
-            {
-              "bbox": [114,780,885,1231],
-              "spans": [
-                {
-                  "bbox": [114,780,885,1231],
-                  "type": "text",
-                  "content": "1 // Fig. H.1: DivideByZeroNoExceptionHandling.java  \n2 // Integer division without exception handling.  \n3 import java.util.Scanner;  \n4  \n5 public class DivideByZeroNoExceptionHandling  \n6 {  \n7 // demonstrates throwing an exception when a divide-by-zero occurs  \n8 public static int quotient( int numerator, int denominator )  \n9 {  \n10 return numerator / denominator; // possible division by zero  \n11 } // end method quotient  \n12  \n13 public static void main(String[] args)  \n14 {  \n15 Scanner scanner = new Scanner(System.in); // scanner for input  \n16  \n17 System.out.print(\"Please enter an integer numerator: \");  \n18 int numerator = scanner.nextInt();  \n19 System.out.print(\"Please enter an integer denominator: \");  \n20 int denominator = scanner.nextInt();  \n21"
-                }
-              ]
-            }
-          ],
+          "type": "code_body",
+          "bbox": [0.045, 0.610, 0.346, 0.964],
           "index": 17,
-          "angle": 0,
-          "type": "code_body"
+          "content": "1 // Fig. H.1: DivideByZeroNoExceptionHandling.java  \n2 // Integer division without exception handling.  \n3 import java.util.Scanner;  \n4  \n5 public class DivideByZeroNoExceptionHandling  \n6 {  \n7 // demonstrates throwing an exception when a divide-by-zero occurs  \n8 public static int quotient( int numerator, int denominator )  \n9 {  \n10 return numerator / denominator; // possible division by zero  \n11 } // end method quotient  \n12  \n13 public static void main(String[] args)  \n14 {  \n15 Scanner scanner = new Scanner(System.in); // scanner for input  \n16  \n17 System.out.print(\"Please enter an integer numerator: \");  \n18 int numerator = scanner.nextInt();  \n19 System.out.print(\"Please enter an integer denominator: \");  \n20 int denominator = scanner.nextInt();  \n21"
         },
         {
-          "bbox": [867,160,1280,189],
-          "lines": [
-            {
-              "bbox": [867,160,1280,189],
-              "spans": [
-                {
-                  "bbox": [867,160,1280,189],
-                  "type": "text",
-                  "content": "Algorithm 1 Modules for MCTSteg"
-                }
-              ]
-            }
-          ],
+          "type": "code_caption",
+          "bbox": [0.339, 0.125, 0.500, 0.148],
           "index": 19,
-          "angle": 0,
-          "type": "code_caption"
+          "content": "Algorithm 1 Modules for MCTSteg"
         }
       ],
-      "index": 17,
-      "sub_type": "code"
+      "sub_type": "code",
+      "guess_lang": "java"
     }
     ```
 
 #### Content List (content_list.json)
 
-**File naming format**: `{original_filename}_content_list.json`
-
-Hybrid multimodal `content_list.json` includes these extensions:
-
-- New `code` type with `sub_type` (`code` | `algorithm`):
-    * Fields: `code_body` (string), optional `code_caption` (list of strings)
-- New `list` type with `sub_type` (`text` | `ref_text`):
-    * Field: `list_items` (array of strings)
-- `image` / `chart` entries may carry an optional `sub_type` field for visual subtype propagation.
-- `chart` entries may additionally expose `content`, `chart_caption`, and `chart_footnote` alongside `img_path`; `content` preserves the original Markdown table text.
-- All `discarded_blocks` entries are also output (e.g., headers, footers, page numbers, margin notes, page footnotes).
-- Existing types (`image`, `table`, `text`, `equation`) remain unchanged.
-- `bbox` still uses the 0–1000 normalized coordinate mapping.
-- Starting with 3.0, Hybrid multimodal output also emits `*_structured_content.json`; see the Structured Content section above for the shared structure.
-
-
-##### Examples
-Example: code (algorithm) entry
-```json
-{
-  "type": "code",
-  "sub_type": "algorithm",
-  "code_caption": ["Algorithm 1 Modules for MCTSteg"],
-  "code_body": "1: function GETCOORDINATE(d)  \n2:  $x \\gets d / l$ ,  $y \\gets d$  mod  $l$   \n3: return  $(x, y)$   \n4: end function  \n5: function BESTCHILD(v)  \n6:  $C \\gets$  child set of  $v$   \n7:  $v' \\gets \\arg \\max_{c \\in C} \\mathrm{UCTScore}(c)$   \n8:  $v'.n \\gets v'.n + 1$   \n9: return  $v'$   \n10: end function  \n11: function BACK PROPAGATE(v)  \n12: Calculate  $R$  using Equation 11  \n13: while  $v$  is not a root node do  \n14:  $v.r \\gets v.r + R$ ,  $v \\gets v.p$   \n15: end while  \n16: end function  \n17: function RANDOMSEARCH(v)  \n18: while  $v$  is not a leaf node do  \n19: Randomly select an untried action  $a \\in A(v)$   \n20: Create a new node  $v'$   \n21:  $(x, y) \\gets \\mathrm{GETCOORDINATE}(v'.d)$   \n22:  $v'.p \\gets v$ ,  $v'.d \\gets v.d + 1$ ,  $v'.\\Gamma \\gets v.\\Gamma$   \n23:  $v'.\\gamma_{x,y} \\gets a$   \n24: if  $a = -1$  then  \n25:  $v.lc \\gets v'$   \n26: else if  $a = 0$  then  \n27:  $v.mc \\gets v'$   \n28: else  \n29:  $v.rc \\gets v'$   \n30: end if  \n31:  $v \\gets v'$   \n32: end while  \n33: return  $v$   \n34: end function  \n35: function SEARCH(v)  \n36: while  $v$  is fully expanded do  \n37:  $v \\gets$  BESTCHILD(v)  \n38: end while  \n39: if  $v$  is not a leaf node then  \n40:  $v \\gets$  RANDOMSEARCH(v)  \n41: end if  \n42: return  $v$   \n43: end function",
-  "bbox": [510,87,881,740],
-  "page_idx": 0
-}
-```
-
-Example: list (text) entry
-```json
-{
-  "type": "list",
-  "sub_type": "text",
-  "list_items": [
-    "H.1 Introduction",
-    "H.2 Example: Divide by Zero without Exception Handling",
-    "H.3 Example: Divide by Zero with Exception Handling",
-    "H.4 Summary"
-  ],
-  "bbox": [174,155,818,333],
-  "page_idx": 0
-}
-```
-
-Example: discarded blocks output
-```json
-[
-  {
-    "type": "header",
-    "text": "Journal of Hydrology 310 (2005) 253-265",
-    "bbox": [363,164,623,177],
-    "page_idx": 0
-  },
-  {
-    "type": "page_footnote",
-    "text": "* Corresponding author. Address: Forest Science Centre, Department of Sustainability and Environment, P.O. Box 137, Heidelberg, Vic. 3084, Australia. Tel.: +61 3 9450 8719; fax: +61 3 9450 8644.",
-    "bbox": [71,815,915,841],
-    "page_idx": 0
-  }
-]
-```
+> [!NOTE]
+> `content_list.json` is deprecated and no longer generated. Use `structured_content.json` for structured content output. See the [Common Structured Content](#common-structured-content-structured_contentjsondevelopment-version-subject-to-change) section above for the shared structure.
 
 ## Summary
 
@@ -735,7 +453,6 @@ The above files constitute MinerU's complete output results. Users can choose ap
   
 - **Content extraction**: (Use simplified files):
     * *.md
-    * content_list.json
     * structured_content.json
   
 - **Secondary development**: (Use structured files):

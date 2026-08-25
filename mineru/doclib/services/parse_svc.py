@@ -14,20 +14,23 @@ from typing import Literal, cast
 from urllib.parse import urlparse
 
 from ...errors import InvalidRequestError, MineruError
-from ...parser.api_client import _V1APIError
-from ...parser.base import ParseResult
-from ...types import TIER_ORDER, PageInfo, Tier
-from ..constants import (
+from ...filetypes import (
     IMAGE_EXTENSIONS,
+    INGESTIBLE_EXTENSIONS,
     LEGACY_OFFICE_EXTENSION_UPGRADES,
     OFFICE_EXTENSIONS,
-    PARSEABLE_EXTENSIONS,
     TEXT_EXTENSIONS,
+    TIERED_PARSE_EXTENSIONS,
+    file_type_for_extension,
     is_office_temp_lock_file,
 )
+from ...parser.api_client import _APITransportError, _V1APIError
+from ...parser.base import ParseResult
+from ...types import QUALITY_TIERS, TIER_ORDER, PageInfo, Tier, select_default_quality_tier, select_parsing_rule_tier
 from ..core.db import DatabaseManager
 from ..core.file_io import FileStat, MetadataExtractionError, compute_sha256, extract_metadata, get_file_stat
 from ..core.fts import FTSManager
+from ..remote_api import resolve_remote_api_key
 from ..rows import DocRow, FileRow, ParseBatchRow, ParseRow, Sha256Row, ShortIdRow, WatchTargetRow
 from ..types import (
     FILE_STATUS_ACTIVE,
@@ -56,21 +59,13 @@ def _now_ms() -> int:
 class ParseFailure(MineruError):
     """Raised when a parse cannot be completed.  Carries an error code for the parses row."""
 
-    def __init__(self, code: str, message: str) -> None:
-        super().__init__(code, message)
+    def __init__(self, code: str, message: str, param: str | None = None) -> None:
+        super().__init__(code, message, param)
         self.message = message
 
 
 MAX_FTS_CHARS = 30_000
 FTS_HEAD_HALF = 15_000
-
-DOC_TYPE_BY_EXT = {
-    "md": "markdown",
-    "markdown": "markdown",
-    **dict.fromkeys(IMAGE_EXTENSIONS, "image"),
-}
-
-QUALITY_TIER_EXTENSIONS: set[str] = {"pdf", *IMAGE_EXTENSIONS}
 
 
 FileRefreshStatus = Literal["known", "new", "changed", "missing", "deleted", "unreachable", "unsupported", "error"]
@@ -86,6 +81,22 @@ class FileRefreshResult:
     @property
     def needs_ingest(self) -> bool:
         return self.file is not None and self.file.sha256 is None
+
+
+def _raise_refresh_error(refreshed: FileRefreshResult) -> None:
+    code = (
+        (refreshed.file.error_code if refreshed.file and refreshed.file.error_code else None)
+        or refreshed.error_code
+        or "ingest_failed"
+    )
+    message = (
+        (refreshed.file.error_msg if refreshed.file and refreshed.file.error_msg else None)
+        or refreshed.error_msg
+        or "File could not be ingested."
+    )
+    if code == "file_permission_denied":
+        raise InvalidRequestError(code, message, "path")
+    raise MineruError(code, message, "path")
 
 
 # ── range helpers ──────────────────────────────────────────────────
@@ -297,7 +308,7 @@ class ParseService:
         path = normalize_doclib_path(path)
         ext = Path(path).suffix.lower().lstrip(".")
         existing = cast(FileRow | None, await self.db.fetchone("SELECT * FROM files WHERE path=?", (path,)))
-        if ext not in PARSEABLE_EXTENSIONS or (ext in IMAGE_EXTENSIONS and not allow_images) or is_office_temp_lock_file(path):
+        if ext not in INGESTIBLE_EXTENSIONS or (ext in IMAGE_EXTENSIONS and not allow_images) or is_office_temp_lock_file(path):
             return FileRefreshResult(file=_file_info(existing), status="unsupported")
 
         try:
@@ -443,6 +454,8 @@ class ParseService:
         """Synchronously discover and ingest a source path when needed."""
         path = normalize_doclib_path(path)
         refreshed = await self.refresh_file(path, watch_id=watch_id, ensure_ingested=True, allow_images=allow_images)
+        if refreshed.status == "error":
+            _raise_refresh_error(refreshed)
         if refreshed.file is None or refreshed.status == "unsupported":
             return None
         return cast(FileRow | None, await self.db.fetchone("SELECT * FROM files WHERE path=?", (path,)))
@@ -484,7 +497,7 @@ class ParseService:
     async def _ingest_file(self, path: str, watch_id: int | None = None, *, allow_images: bool = False) -> FileRow | None:
         """Ingest implementation without telemetry wrapper."""
         ext = Path(path).suffix.lower().lstrip(".")
-        if ext not in PARSEABLE_EXTENSIONS or (ext in IMAGE_EXTENSIONS and not allow_images) or is_office_temp_lock_file(path):
+        if ext not in INGESTIBLE_EXTENSIONS or (ext in IMAGE_EXTENSIONS and not allow_images) or is_office_temp_lock_file(path):
             return None
 
         stat = await get_file_stat(path)
@@ -599,7 +612,7 @@ class ParseService:
             self.db,
             sha256=sha256,
             size_bytes=stat.size_bytes,
-            file_type=_file_type_from_ext(ext),
+            file_type=file_type_for_extension(ext),
             page_count=page_count,
             title=metadata["title"],
             author=metadata["author"],
@@ -629,23 +642,30 @@ class ParseService:
             text = await asyncio.to_thread(Path(path).read_text, encoding="utf-8", errors="replace")
             await self.fts.replace(
                 sha256=sha256,
-                tier="flash",
+                tier=None,
                 text=truncate_head_tail(text),
                 title=metadata["title"] or "",
                 author=metadata["author"] or "",
-                filename=filename,
             )
             return cast(FileRow | None, await self.db.fetchone("SELECT * FROM files WHERE path=?", (path,)))
 
         # determine tier and page_range for initial parse
         tier: Tier = "flash"
+        privacy = "local"
         initial_page_range = default_parse_range(page_count)
 
         # check parsing-rules
         matched = await self.config_svc.match_rules(path, RULE_TYPE_PARSING_RULE)
         if matched:
             rule = matched[0]
-            tier = rule.get("tier") or tier
+            rule_tier = cast(Tier | None, rule.get("tier"))
+            rule_remote = bool(rule.get("remote", False))
+            if ext in TIERED_PARSE_EXTENSIONS:
+                tier = rule_tier or _resolve_parsing_rule_default_tier(remote=rule_remote)
+                privacy = "remote" if rule_remote and tier != "flash" else "local"
+            else:
+                tier = "flash"
+                privacy = "local"
             rule_page_range = rule.get("page_range")
             if rule_page_range:
                 initial_page_range = expand_page_range(rule_page_range, page_count or 1)
@@ -657,8 +677,9 @@ class ParseService:
             (sha256, now, path),
         )
         await self.db.execute(
-            "INSERT INTO parses (sha256, tier, page_range, status, priority, created_at, updated_at) VALUES (?, ?, ?, ?, 0, ?, ?)",
-            (sha256, tier, parse_page_range, PARSE_STATUS_PENDING, now, now),
+            "INSERT INTO parses (sha256, tier, page_range, status, privacy, priority, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, 0, ?, ?)",
+            (sha256, tier, parse_page_range, PARSE_STATUS_PENDING, privacy, now, now),
         )
         await self._record_count("parse_task.created.count", dimensions={"tier": tier})
 
@@ -684,19 +705,7 @@ class ParseService:
         if refreshed.status in {"missing", "deleted", "unreachable"}:
             raise InvalidRequestError("file_not_found", f"File {path} not found.", "path")
         if refreshed.status == "error":
-            code = (
-                (refreshed.file.error_code if refreshed.file and refreshed.file.error_code else None)
-                or refreshed.error_code
-                or "ingest_failed"
-            )
-            message = (
-                (refreshed.file.error_msg if refreshed.file and refreshed.file.error_msg else None)
-                or refreshed.error_msg
-                or "File could not be ingested."
-            )
-            if code == "file_permission_denied":
-                raise InvalidRequestError(code, message, "path")
-            raise MineruError(code, message, "path")
+            _raise_refresh_error(refreshed)
         if refreshed.file is None:
             raise MineruError("ingest_failed", "File could not be ingested.", "path")
 
@@ -705,7 +714,11 @@ class ParseService:
             raise MineruError("ingest_failed", "File could not be ingested.", "path")
         sha256 = file_row["sha256"]
         if sha256 is None:
-            raise MineruError(file_row.get("error_code") or "ingest_failed", file_row.get("error_msg") or "File could not be ingested.", "path")
+            raise MineruError(
+                file_row.get("error_code") or "ingest_failed",
+                file_row.get("error_msg") or "File could not be ingested.",
+                "path",
+            )
         doc = cast(DocRow | None, await self.db.fetchone("SELECT * FROM docs WHERE sha256=?", (sha256,)))
         page_count = doc["page_count"] if doc else 1
         short_id = doc["short_id"] if doc else None
@@ -713,7 +726,13 @@ class ParseService:
         ext = file_row["ext"]
 
         # ── resolve tier (before cache check) ──
-        if remote and ext not in QUALITY_TIER_EXTENSIONS:
+        if ext in TEXT_EXTENSIONS:
+            raise InvalidRequestError(
+                "parse_not_required",
+                "Text files do not require MinerU parsing. Read the file directly.",
+                "path",
+            )
+        if remote and ext not in TIERED_PARSE_EXTENSIONS:
             raise InvalidRequestError(
                 "remote_unsupported_for_file_type",
                 f"Remote parsing is only supported for PDF and image files; '{ext}' files use local flash parsing.",
@@ -722,18 +741,16 @@ class ParseService:
         if remote and tier == "flash":
             raise InvalidRequestError(
                 "tier_unsupported_for_remote",
-                "--remote does not support tier 'flash'; use --tier medium, --tier high, or --tier extra_high.",
+                "--remote does not support tier 'flash'; use --tier basic, --tier standard, or --tier advanced.",
                 "tier",
             )
-        if tier in ("medium", "high", "extra_high") and ext not in QUALITY_TIER_EXTENSIONS:
+        if tier in QUALITY_TIERS and ext not in TIERED_PARSE_EXTENSIONS:
             raise InvalidRequestError(
                 "tier_unsupported_for_file_type",
                 f"Tier '{tier}' is only supported for PDF and image files; '{ext}' files use --tier flash.",
                 "tier",
             )
-        if ext in TEXT_EXTENSIONS:
-            return _text_response(sha256, short_id)
-        if ext in QUALITY_TIER_EXTENSIONS:
+        if ext in TIERED_PARSE_EXTENSIONS:
             requested_tier = tier or _resolve_default_tier(remote)
         else:
             requested_tier = "flash"
@@ -840,7 +857,7 @@ class ParseService:
         timeout = now - self.parse_lock_timeout_ms
         task = cast(
             ParseRow | None,
-            await self.db.fetchone(
+            await self.db.fetchone_write(
                 "UPDATE parses SET locked_at=?, status=? "
                 "WHERE id = ("
                 "  SELECT id FROM parses WHERE status=? "
@@ -902,7 +919,18 @@ class ParseService:
         server_dim = "local(flash)" if tier == "flash" else "unknown"
         try:
             if tier == "flash":
+                logger.debug(
+                    "Local flash parse started task_id=%s path=%s page_range=%s",
+                    task["id"],
+                    file_row["path"],
+                    page_range,
+                )
                 result = await self._parse_via_local(file_row, tier, page_range)
+                logger.debug(
+                    "Local flash parse completed task_id=%s elapsed_ms=%d",
+                    task["id"],
+                    _now_ms() - execute_start_ms,
+                )
             else:
                 result, via = await self._parse_via_api(file_row, tier, page_range, privacy)
                 server_dim = await self._telemetry_server_dim(via=via, tier=tier)
@@ -1070,7 +1098,19 @@ class ParseService:
             tier=resolved_tier,
             include_images=Path(file_row["path"]).suffix.lower().lstrip(".") in OFFICE_EXTENSIONS,
         )
-        result = await parser.parse_async(file_row["path"], page_range=page_range)
+        try:
+            result = await parser.parse_async(file_row["path"], page_range=page_range)
+        except _APITransportError as exc:
+            if via == "remote":
+                code = "remote_timeout" if exc.timed_out else "remote_unreachable"
+                target = "Remote API"
+            else:
+                code = "parse_server_unavailable"
+                target = "Local parse-server"
+            raise ParseFailure(
+                code,
+                f"{target} transport failed during {exc.stage} after {exc.attempts} attempt(s) ({type(exc.cause).__name__}).",
+            ) from exc
         _remap_api_result_pages_to_page_range(result, page_range)
         return result, via
 
@@ -1085,9 +1125,9 @@ class ParseService:
 
         health = get_health()
         if via == "remote":
-            supported = health.remote_supported_tiers
+            supported = health.remote.probe.tiers
         else:
-            supported = health.local_supported_tiers
+            supported = health.local.probe.tiers
 
         if not supported:
             raise ParseFailure("engine_unavailable", "Parse-server health status unknown, cannot validate tier")
@@ -1107,11 +1147,17 @@ class ParseService:
 
         if privacy == "remote":
             url = cast(str, await self.config_svc.get("parse_server.remote.url"))
-            api_key = (await self.config_svc.get("parse_server.remote.api_key")) or None
-            if not health.remote_healthy:
+            api_key = (await resolve_remote_api_key(self.config_svc)).value
+            if not health.remote.probe.healthy:
+                if health.remote.probe.error_code == "invalid_api_key":
+                    raise ParseFailure(
+                        "invalid_api_key",
+                        _probe_error_message("Remote parse-server authentication failed", health.remote.probe.error_msg),
+                        "parse_server.remote.api_key",
+                    )
                 # try fallback to local
                 local_mode = (await self.config_svc.get("parse_server.local.mode")) or "disabled"
-                if local_mode != "disabled" and health.local_healthy:
+                if local_mode != "disabled" and health.local.probe.healthy:
                     local_url = _local_parse_server_url(local_mode, health)
                     if local_url:
                         return local_url, api_key, "local"
@@ -1127,7 +1173,13 @@ class ParseService:
         if local_url is None:
             raise ParseFailure("engine_unavailable", "Local parse-server URL not configured.")
 
-        if not health.local_healthy:
+        if not health.local.probe.healthy:
+            if local_mode == "self_hosted" and health.local.probe.error_code == "invalid_api_key":
+                raise ParseFailure(
+                    "invalid_api_key",
+                    _probe_error_message("Local self-hosted parse-server authentication failed", health.local.probe.error_msg),
+                    "parse_server.local.self_hosted_api_key",
+                )
             raise ParseFailure("engine_unavailable", "Local parse-server is not ready. Please wait or check server status.")
 
         api_key = (await self.config_svc.get("parse_server.local.self_hosted_api_key")) or None
@@ -1294,7 +1346,6 @@ class ParseService:
             text=text,
             title=file_row.get("title") or "",
             author=file_row.get("author") or "",
-            filename=file_row["filename"],
         )
 
     async def _maybe_update_docs_meta(self, sha256: str, tier: Tier) -> None:
@@ -1344,16 +1395,28 @@ class ParseService:
             if not pages:
                 continue
 
-            from ...render import render_markdown
+            from mineru.config import config
+            from ...render._internal.markdown.blocks import render_single_block
 
-            text = truncate_head_tail(render_markdown(pages, add_markers=False))
+            delimiters = config.render.latex_delimiters
+            parts: list[str] = []
+            for page in pages:
+                for block in page.blocks:
+                    rendered = render_single_block(
+                        block,
+                        delimiters=delimiters,
+                        asset_base_url="",
+                        image_renderer=lambda _block: "",
+                    )
+                    if rendered and rendered.strip():
+                        parts.append(rendered.strip())
+            text = truncate_head_tail("\n\n".join(parts))
             await self.fts.replace(
                 sha256=sha256,
                 tier=tier,
                 text=text,
                 title=file_row.get("title") or "",
                 author=file_row.get("author") or "",
-                filename=file_row["filename"],
             )
             return
 
@@ -1364,24 +1427,44 @@ class ParseService:
 
 
 def _resolve_default_tier(remote: bool = False) -> Tier:
-    """从健康检查中选择最高可用质量 tier，顺序为 extra_high > high > medium。"""
+    """从健康检查中选择默认质量 tier，顺序为 standard > basic。"""
     from ..background.parse_server_health import get_health
 
     health = get_health()
-    supported = health.remote_supported_tiers if remote else health.local_supported_tiers
-    for candidate in ("extra_high", "high", "medium"):
-        if candidate in supported:
-            return candidate
+    probe = health.remote.probe if remote else health.local.probe
+    supported = probe.tiers
+    selected = select_default_quality_tier(supported)
+    if selected is not None:
+        return selected
+    if remote and probe.error_code == "invalid_api_key":
+        raise ParseFailure(
+            "invalid_api_key",
+            _probe_error_message("Remote parse-server authentication failed", probe.error_msg),
+            "parse_server.remote.api_key",
+        )
+    if not remote and health.local_mode == "self_hosted" and probe.error_code == "invalid_api_key":
+        raise ParseFailure(
+            "invalid_api_key",
+            _probe_error_message("Local self-hosted parse-server authentication failed", probe.error_msg),
+            "parse_server.local.self_hosted_api_key",
+        )
     actions = ["start a local parse-server"]
-    if not remote and health.remote_healthy and any(
-        tier in health.remote_supported_tiers for tier in ("extra_high", "high", "medium")
-    ):
+    if not remote and health.remote.probe.healthy and select_default_quality_tier(health.remote.probe.tiers) is not None:
         actions.append("use --remote")
     actions.append("explicitly pass --tier flash for text-only preview")
     raise ParseFailure(
         "quality_tier_unavailable",
-        f"No medium, high, or extra_high engine available. You can {_format_action_list(actions)}.",
+        f"No basic, standard, or advanced engine available. You can {_format_action_list(actions)}.",
     )
+
+
+def _resolve_parsing_rule_default_tier(remote: bool = False) -> Tier:
+    """Parsing-rule 是后台批量策略，允许 standard -> basic -> flash。"""
+    from ..background.parse_server_health import get_health
+
+    health = get_health()
+    supported = health.remote.probe.tiers if remote else health.local.probe.tiers
+    return select_parsing_rule_tier(supported)
 
 
 def _format_action_list(actions: list[str]) -> str:
@@ -1390,6 +1473,12 @@ def _format_action_list(actions: list[str]) -> str:
     if len(actions) == 2:
         return f"{actions[0]} or {actions[1]}"
     return f"{', '.join(actions[:-1])}, or {actions[-1]}"
+
+
+def _probe_error_message(prefix: str, error_msg: str | None) -> str:
+    if error_msg:
+        return f"{prefix}: {error_msg}"
+    return prefix
 
 
 def _json_file_exists_by_batch(data_dir: str, sha256: str, tier: Tier, batch: ParseRow) -> bool:
@@ -1462,21 +1551,6 @@ def _done_response(sha256: str, short_id: str | None, tier: Tier, page_range: st
     )
 
 
-def _text_response(sha256: str, short_id: str | None) -> ParseResponse:
-    return ParseResponse(
-        sha256=sha256,
-        short_id=short_id,
-        tier="flash",
-        page_range="1",
-        status=PARSE_STATUS_DONE,
-        cache_hit=False,
-        wait_parse_ids=[],
-        created_parse_ids=[],
-        reused_parse_ids=[],
-        tip="Plain text files do not require parsing.",
-    )
-
-
 def _parse_record_response(row: ParseRow) -> dict:
     error = None
     if row.get("error_code") or row.get("error_msg"):
@@ -1505,7 +1579,10 @@ def _remap_api_result_pages_to_page_range(result: ParseResult, page_range: str) 
     if len(requested_page_numbers) != len(result.pages):
         raise ParseFailure(
             "parse_page_remap_failed",
-            f"Parse result page count does not match requested page_range: requested={page_range}, returned={actual_page_numbers}",
+            (
+                "Parse result page count does not match requested page_range: "
+                f"requested={page_range}, returned={actual_page_numbers}"
+            ),
         )
     for page, page_no in zip(result.pages, requested_page_numbers, strict=True):
         page.page_idx = page_no - 1
@@ -1553,10 +1630,6 @@ def _file_info(row: FileRow | None) -> FileInfo | None:
 def _safe_filename(page_range: str, done_at: int) -> str:
     """Convert a page_range string + done_at to a filename."""
     return f"{page_range}_{done_at}.json" if done_at else page_range
-
-
-def _file_type_from_ext(ext: str) -> str:
-    return DOC_TYPE_BY_EXT.get(ext, ext or "unknown")
 
 
 def _unsupported_file_type_message(ext_or_name: str) -> str:

@@ -4,11 +4,11 @@ import sys
 
 from loguru import logger
 
-from mineru.model.vlm.engine_utils import set_lmdeploy_backend
-from mineru.utils.models_download_utils import auto_download_and_get_model_root_path
+from ...model.vlm.engine_utils import set_lmdeploy_backend
+from ...utils.model_registry import MINERU_2_5_PRO_2605_1_2B
 
 
-def main():
+def main() -> None:
     args = sys.argv[1:]
 
     has_port_arg = False
@@ -73,7 +73,7 @@ def main():
     args.extend(["--device", device_type])
     args.extend(["--backend", lm_backend])
 
-    model_path = auto_download_and_get_model_root_path("/", "vlm")
+    model_path = str(MINERU_2_5_PRO_2605_1_2B.ensure())
 
     # logger.debug(args)
 

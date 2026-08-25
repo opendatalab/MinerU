@@ -2,12 +2,12 @@
 
 状态: Draft
 读者: SDK 开发者、`mineru-kit` 开发者、核心开发者
-范围: 无状态解析工具层的公开入口、parser 类和目标契约
+范围: 无状态解析工具层的公开入口、统一 parser 类和目标契约
 来源: 由旧 SDK 底稿迁移整理而来；旧底稿已归档删除
 
 ## 定位
 
-`mineru.parser` 是无状态解析 SDK。它接受本地文件路径，按文件类型和 backend 选择具体 parser，返回 `ParseResult`。
+`mineru.parser` 是无状态解析 SDK。它接受本地文件路径，由统一的 `MinerUParser` 完成解析，返回 `ParseResult`。
 
 适用场景:
 
@@ -29,38 +29,58 @@
 
 | 名称 | 类型 | 说明 |
 |------|------|------|
-| `parse` | function | 根据文件后缀和 backend 分派到具体 parser。 |
-| `DocumentParser` | abstract class | 所有 parser 的统一接口。 |
+| `parse` | function | 根据文件后缀和参数构造 `MinerUParser` 并执行解析。 |
+| `parse_async` | function | `parse` 的异步版本。 |
+| `MinerUParser` | class | 统一解析器，支持 PDF/图片/DOCX/PPTX/XLSX。 |
 | `ParseResult` | dataclass | 解析结果对象。 |
-| `PdfFlashParser` | class | CPU-only PDF/image 快速解析。 |
-| `PdfPipelineParser` | class | 旧 SDK 兼容类，内部委托 Hybrid low。 |
-| `PdfVlmParser` | class | VLM backend。 |
-| `PdfHybridParser` | class | hybrid backend。 |
-| `DocxParser` | class | DOCX parser。 |
-| `PptxParser` | class | PPTX parser。 |
-| `XlsxParser` | class | XLSX parser。 |
-| `HtmlParser` | class | HTML parser。 |
 | `MinerUApiParser` | class | API-backed parser，详见 [API-backed Parser](api-parser.md)。 |
 
-## `parse()` 目标契约
+## `MinerUParser`
 
-目标公开签名:
+`MinerUParser` 是 `mineru.parser` 中唯一的本地解析器类。过去按文件类型/后端分散的多个 parser 类以及内部路由函数已统一合并到 `MinerUParser`。
+
+导入方式:
+
+```python
+from mineru.parser import MinerUParser
+```
+
+构造参数（关键字参数）:
+
+| 参数 | 类型 | 说明 |
+|------|------|------|
+| `tier` | `Literal["flash","basic","standard","advanced"]` | 解析投入档位，对应原 SDK 的 `effort` 概念。 |
+| `parse_mode` | `str` | 解析模式，对应原 SDK 的 `parse_mode`/`backend` 概念。 |
+| `image_analysis` | `bool` | 是否启用图片分析。对应原 SDK 的 `disable_image_analysis` 取反语义。 |
+
+`MinerUParser` 根据 `tier` / `parse_mode` / `image_analysis` 以及输入文件后缀，在内部选择具体的 PDF/Office 解析路径，不再要求调用方分别实例化不同 parser 类。
+
+支持输入:
+
+- PDF
+- 图片（PNG/JPEG 等）
+- DOCX
+- PPTX
+- XLSX
+
+## `parse()` / `parse_async()` 入口
+
+`parse()` 与 `parse_async()` 是面向用户的便捷函数。它们在内部直接构造 `MinerUParser`，不再经过额外路由函数。
+
+公开签名保持稳定:
 
 ```python
 from pathlib import Path
+from typing import Literal
 from mineru.parser import ParseResult
 
 def parse(
     path: str | Path,
     *,
-    tier: str | None = None,
-    backend: str | None = None,
-    language: str = "ch",
-    ocr_mode: str = "auto",
-    effort: str = "high",
-    disable_image_analysis: bool = False,
-    server_url: str | None = None,
-    page_range: str = "",
+    tier: Literal["flash","basic","standard","advanced"] | None = None,
+    parse_mode: str | None = None,
+    image_analysis: bool = False,
+    **kwargs,
 ) -> ParseResult: ...
 
 async def parse_async(...) -> ParseResult: ...
@@ -68,20 +88,15 @@ async def parse_async(...) -> ParseResult: ...
 
 设计规则:
 
-- `tier` 是面向用户的质量档位。
-- `backend` 是高级参数；显式传入时覆盖 `tier`。
-- `language`、`ocr_mode`、`effort`、`disable_image_analysis` 与 `mineru-kit api-server` 启动参数保持一致。
-- `page_range` 使用与 CLI/API 一致的页码表达。
-- `server_url` 只用于需要委托 VLM/remote backend 的情况，不能触发隐式远端上传。
+- `tier` / `parse_mode` / `image_analysis` 与 `MinerUParser` 的构造参数一致。
 - 返回值始终是 `ParseResult`。
+- `parse_async()` 默认可以通过线程池调用同步实现。
 
-`method`、`lang`、`image_analysis` 仅作为兼容参数保留；新增实现和文档应使用 `ocr_mode`、`language` 和 `disable_image_analysis`。
-
-`mineru-kit api-server` 内部应复用 `parse_async()`，避免在 server 层重复维护 parser dispatch 和 tier/backend 兼容规则。
+`mineru-kit api-server` 内部应复用 `parse_async()`，避免在 server 层重复维护 parser dispatch 和兼容规则。
 
 ## `DocumentParser`
 
-所有 parser 都应实现:
+`MinerUParser` 实现统一 parser 接口:
 
 ```python
 class DocumentParser:
@@ -99,32 +114,6 @@ class DocumentParser:
 - `parse_batch()` 默认按顺序解析；能批处理的 parser 可以覆盖。
 - parser 可以作为 context manager 使用，退出时调用 `close()`。
 
-## Parser 类
-
-| Parser | 输入 | 主要 backend | 说明 |
-|--------|------|--------------|------|
-| `PdfFlashParser` | PDF/image | flash | CPU-only，快速但质量最低，主要用于发现和索引。 |
-| `PdfPipelineParser` | PDF/image | hybrid low | 旧 SDK 兼容类，等价于 `PdfHybridParser(effort="low")`。 |
-| `PdfVlmParser` | PDF/image | VLM | VLM 解析，可通过 server URL 委托。 |
-| `PdfHybridParser` | PDF/image | hybrid | 本地小模型 + VLM 混合解析。 |
-| `DocxParser` | DOCX | office | Office 文档解析。 |
-| `PptxParser` | PPTX | office | Office 文档解析。 |
-| `XlsxParser` | XLSX | office | Office 文档解析。 |
-| `HtmlParser` | HTML/HTM | html | HTML 转结构化 blocks。 |
-
-## Tier 到 backend
-
-目标映射:
-
-| Tier | 默认 backend | 说明 |
-|------|--------------|------|
-| `flash` | `flash` | 快速 CPU-only。 |
-| `medium` | `hybrid-engine` + `effort="low"` | 消费级硬件可用的本地小模型组合。 |
-| `high` | hybrid 默认高质量 backend | 最高质量。 |
-| `extra_high` | hybrid backend + 更高 effort | 当前代码支持的专家档位，需显式请求。 |
-
-`tier=None` 表示使用默认选择策略，选择可用的最高非 `flash` tier。当前默认选择不自动升级到 `extra_high`；只有用户显式请求 `tier="flash"` / `tier="extra_high"` 或对应 backend 时，才返回这些非默认档位结果。
-
 ## 重依赖边界
 
 公开 import 不应触发 torch、transformers、模型权重或解析 server 启动。重依赖应在 parser 构造或执行时惰性加载。
@@ -132,29 +121,27 @@ class DocumentParser:
 目标:
 
 - `from mineru.parser import parse, ParseResult` 应足够轻。
-- `PdfPipelineParser` 仅作为旧 SDK 类名保留，内部走 Hybrid low，不再加载独立 pipeline backend。
-- `PdfVlmParser` / `PdfHybridParser` 只在执行 VLM/hybrid 时加载对应 backend。
-- Office parser 可以在构造时绑定 analyze function，但不应在模块 import 时加载重依赖。
+- `MinerUParser` 只在执行对应解析路径时加载重依赖，不应在模块 import 时加载。
 
 ## 示例
 
 ```python
 from mineru.parser import parse
 
-result = parse("report.pdf", tier="medium", page_range="1~5")
+result = parse("report.pdf", tier="basic", page_range="1~5")
 print(result.markdown())
 ```
 
 高级用法:
 
 ```python
-from mineru.parser import PdfHybridParser
+from mineru.parser import MinerUParser
 
-with PdfHybridParser(method="txt", lang="ch", effort="low") as parser:
+with MinerUParser(tier="basic") as parser:
     result = parser.parse("report.pdf", page_range="1~10")
     images = result.images()
 ```
 
 ## 未决问题
 
-`server_url` 归属、`parse_batch()` 进度回调等未决项集中维护在 [开放问题清单](../open-questions.md)。`parse()` 支持 `tier` 已作为目标契约写入正文。
+`parse_batch()` 进度回调等未决项集中维护在 [开放问题清单](../open-questions.md)。

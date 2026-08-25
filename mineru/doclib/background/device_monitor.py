@@ -20,7 +20,9 @@ from ..types import (
 
 
 class DeviceMonitor:
-    def __init__(self, db: DatabaseManager, config_svc: ConfigService, *, interval_sec: int, scan_svc: ScanService | None = None) -> None:
+    def __init__(
+        self, db: DatabaseManager, config_svc: ConfigService, *, interval_sec: int, scan_svc: ScanService | None = None
+    ) -> None:
         self.db = db
         self.config_svc = config_svc
         self.scan_svc = scan_svc

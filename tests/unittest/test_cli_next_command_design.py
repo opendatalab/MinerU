@@ -4,10 +4,15 @@ import json
 import os
 import shlex
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
+from io import StringIO
 from pathlib import Path
 from typing import Any
 
 import pytest
+from rich.console import Console
+from rich.text import Text
 from typer.main import get_command
 from typer.testing import CliRunner
 
@@ -45,6 +50,7 @@ from mineru.doclib.types import (
     ParseResponse,
     ScanListResponse,
     ScanInfo,
+    SearchFile,
     SearchResponse,
     SearchResult,
     ServerStatusResponse,
@@ -53,7 +59,8 @@ from mineru.doclib.types import (
     WatchInfo,
     WatchListResponse,
 )
-from mineru.errors import ServerNotRunningError
+from mineru.errors import MineruError, ServerNotRunningError
+from mineru.filetypes import FILE_TYPE_BY_EXTENSION
 from mineru.version import __version__
 
 
@@ -113,6 +120,15 @@ def test_version_command_prints_mineru_and_python_versions() -> None:
     assert f"Python version: {sys.version.split()[0]}" in result.output
 
 
+def test_root_version_option_matches_version_command() -> None:
+    option_result = runner.invoke(app, ["--version"])
+    command_result = runner.invoke(app, ["version"])
+
+    assert option_result.exit_code == 0
+    assert command_result.exit_code == 0
+    assert option_result.output == command_result.output
+
+
 def test_version_json_writes_single_json_object() -> None:
     result = runner.invoke(app, ["version", "--json"])
 
@@ -132,6 +148,7 @@ def test_root_commands_keep_product_order() -> None:
         "watch",
         "search",
         "find",
+        "usage",
         "list",
         "show",
         "telemetry",
@@ -148,6 +165,7 @@ def test_root_help_hides_typer_completion_options() -> None:
     result = runner.invoke(app, ["--help"])
 
     assert result.exit_code == 0
+    assert "--version" in result.output
     assert "--install-completion" not in result.output
     assert "--show-completion" not in result.output
 
@@ -166,31 +184,10 @@ def test_search_and_find_help_list_filter_values() -> None:
     assert search_result.exit_code == 0
     assert find_result.exit_code == 0
     assert "File type filter:" in search_result.output
-    for token in ("pdf", "image", "docx", "pptx", "xlsx", "html", "markdown", "csv", "rst", "tex", "txt"):
+    for token in dict.fromkeys(FILE_TYPE_BY_EXTENSION.values()):
         assert token in search_result.output
     assert "File extension filter:" in find_result.output
-    for token in (
-        "pdf",
-        "png",
-        "jpg",
-        "jpeg",
-        "jp2",
-        "webp",
-        "gif",
-        "bmp",
-        "tiff",
-        "docx",
-        "pptx",
-        "xlsx",
-        "html",
-        "htm",
-        "md",
-        "markdown",
-        "csv",
-        "rst",
-        "tex",
-        "txt",
-    ):
+    for token in FILE_TYPE_BY_EXTENSION:
         assert token in find_result.output
 
 
@@ -204,8 +201,8 @@ def test_print_error_uses_single_rich_render(monkeypatch: Any) -> None:
     monkeypatch.setattr(output_mod, "stderr_console", _Console())
 
     output_mod.print_error(
-        "No medium or high engine available. You can start a local parse-server, use --remote, or explicitly pass "
-        "--tier flash for text-only preview."
+        "No basic, standard, or advanced engine available. You can start a local parse-server, "
+        "use --remote, or explicitly pass --tier flash for text-only preview."
     )
 
     assert len(calls) == 1
@@ -243,19 +240,41 @@ def test_search_results_render_as_list_without_table() -> None:
                 SearchResult(
                     sha256="a" * 64,
                     short_id="aaaaaaa",
-                    filename="resume.pdf",
-                    tier="medium",
+                    tier="basic",
                     snippet="Python\nengineer",
-                    paths=["/tmp/resume.pdf"],
+                    files=[SearchFile(path="/tmp/resume.pdf", filename="resume.pdf", ext="pdf", status="active")],
                 )
             ],
         )
     )
 
     assert "Search results (1 total)" in rendered
-    assert "1. resume.pdf (/tmp/resume.pdf) Tier: medium" in rendered
+    assert "1. Document aaaaaaa Tier: basic" in rendered
+    assert "   Files:\n   /tmp/resume.pdf" in rendered
     assert "   Python  engineer" in rendered
     assert "Snippet:" not in rendered
+
+
+def test_search_text_result_omits_tier_label() -> None:
+    rendered = search_mod._render_search_results(
+        SearchResponse(
+            total=1,
+            query="python",
+            results=[
+                SearchResult(
+                    sha256="a" * 64,
+                    short_id="aaaaaaa",
+                    tier=None,
+                    snippet="Python notes",
+                    files=[SearchFile(path="/tmp/notes.txt", filename="notes.txt", ext="txt", status="active")],
+                )
+            ],
+        )
+    )
+
+    assert "1. Document aaaaaaa" in rendered
+    assert "Tier:" not in rendered
+    assert "/tmp/notes.txt" in rendered
 
 
 def test_search_result_snippet_preserves_fts_match_after_long_prefix() -> None:
@@ -267,13 +286,12 @@ def test_search_result_snippet_preserves_fts_match_after_long_prefix() -> None:
                 SearchResult(
                     sha256="a" * 64,
                     short_id="aaaaaaa",
-                    filename="deepseek.pdf",
                     tier="flash",
                     snippet=(
                         "...on each node. Under this constraint, our MoE training framework can nearly "
                         "achieve full computation-communication overlap. <mark>Token</mark> <mark>Dropping</mark>"
                     ),
-                    paths=["/tmp/deepseek.pdf"],
+                    files=[SearchFile(path="/tmp/deepseek.pdf", filename="deepseek.pdf", ext="pdf", status="active")],
                 )
             ],
         )
@@ -283,13 +301,63 @@ def test_search_result_snippet_preserves_fts_match_after_long_prefix() -> None:
     assert "<mark>Dropping</mark>" in rendered
 
 
+def test_search_results_render_active_files_then_inactive_fallback_and_orphan() -> None:
+    rendered = search_mod._render_search_results(
+        SearchResponse(
+            total=3,
+            query="needle",
+            results=[
+                SearchResult(
+                    sha256="a" * 64,
+                    short_id="aaaaaaa",
+                    title="Active document",
+                    tier="standard",
+                    snippet="active",
+                    files=[
+                        SearchFile(path="/tmp/deleted.pdf", filename="deleted.pdf", ext="pdf", status="deleted"),
+                        SearchFile(path="/tmp/active.pdf", filename="active.pdf", ext="pdf", status="active"),
+                    ],
+                ),
+                SearchResult(
+                    sha256="b" * 64,
+                    short_id="bbbbbbb",
+                    tier="basic",
+                    snippet="inactive",
+                    files=[
+                        SearchFile(
+                            path="/volume/unreachable.pdf",
+                            filename="unreachable.pdf",
+                            ext="pdf",
+                            status="unreachable",
+                        ),
+                        SearchFile(path="/tmp/old.pdf", filename="old.pdf", ext="pdf", status="deleted"),
+                    ],
+                ),
+                SearchResult(
+                    sha256="c" * 64,
+                    short_id="ccccccc",
+                    tier="flash",
+                    snippet="orphan",
+                    files=[],
+                ),
+            ],
+        )
+    )
+
+    assert "/tmp/active.pdf" in rendered
+    assert "/tmp/deleted.pdf" not in rendered
+    assert "/volume/unreachable.pdf (unreachable)" in rendered
+    assert "/tmp/old.pdf (deleted)" in rendered
+    assert "3. Document ccccccc Tier: flash\n   File no longer exists." in rendered
+
+
 def test_list_renderers_return_tables(monkeypatch: Any) -> None:
     monkeypatch.setattr(list_resources, "Table", _FakeTable)
     parse = ParseInfo(
         id=7,
         sha256="a" * 64,
         short_id="aaaaaaa",
-        tier="medium",
+        tier="basic",
         page_range="1~2",
         status="done",
         privacy="local",
@@ -337,7 +405,7 @@ def test_list_renderers_return_tables(monkeypatch: Any) -> None:
     docs_table = list_resources._render_list_docs(ListDocsResponse(docs=[doc], total=1, limit=50))
 
     assert parses_table.title == "Parses (1 total)"
-    assert ("7", "done", "medium", "1~2", "aaaaaaa") in parses_table.rows
+    assert ("7", "done", "basic", "1~2", "aaaaaaa") in parses_table.rows
     assert scans_table.title == "Scans (1 total)"
     assert ("8", "done", "manual", "/tmp/docs", "3", "2", "1") in scans_table.rows
     assert files_table.title == "Files (1 total)"
@@ -350,7 +418,7 @@ def test_config_and_rule_renderers_return_tables(monkeypatch: Any) -> None:
     monkeypatch.setattr(config, "Table", _FakeTable)
 
     config_table = config._render_config(
-        ConfigResponse(config={"parse.default_tier": "medium"}, sources={"parse.default_tier": "override"})
+        ConfigResponse(config={"parse.default_tier": "basic"}, sources={"parse.default_tier": "override"})
     )
     exclude_table = config._render_exclude_rules(
         ExcludeRuleListResponse(rules=[ExcludeRuleInfo(id=3, pattern="*.tmp", priority=10)])
@@ -358,17 +426,17 @@ def test_config_and_rule_renderers_return_tables(monkeypatch: Any) -> None:
     parsing_table = config._render_parsing_rules(
         ParsingRuleListResponse(
             rules=[
-                ParsingRuleInfo(id=4, pattern="*.pdf", tier="medium", page_range="1~2", remote=True, name="pdfs")
+                ParsingRuleInfo(id=4, pattern="*.pdf", tier="basic", page_range="1~2", remote=True, name="pdfs")
             ]
         )
     )
 
     assert config_table.title == "Config"
-    assert ("parse.default_tier", "medium", "override") in config_table.rows
+    assert ("parse.default_tier", "basic", "override") in config_table.rows
     assert exclude_table.title == "Exclude Rules"
     assert ("3", "*.tmp", "10") in exclude_table.rows
     assert parsing_table.title == "Parsing Rules"
-    assert ("4", "*.pdf", "medium", "1~2", "yes", "pdfs") in parsing_table.rows
+    assert ("4", "*.pdf", "basic", "1~2", "yes", "pdfs") in parsing_table.rows
 
 
 def test_watch_list_renderer_returns_table(monkeypatch: Any) -> None:
@@ -388,7 +456,7 @@ def test_show_detail_renderers_return_tables(monkeypatch: Any) -> None:
         id=9,
         sha256="a" * 64,
         short_id="aaaaaaa",
-        tier="high",
+        tier="standard",
         page_range="1",
         status="done",
         privacy="local",
@@ -423,7 +491,7 @@ def test_show_detail_renderers_return_tables(monkeypatch: Any) -> None:
     doc_table = show._render_doc_info(doc)
 
     assert parse_table.title == "Parse 9: done"
-    assert ("Tier", "high") in parse_table.rows
+    assert ("Tier", "standard") in parse_table.rows
     assert scan_table.title == "Scan 10: done"
     assert ("Seen", "4") in scan_table.rows
     assert doc_table.title == "Doc ddddddd"
@@ -452,7 +520,7 @@ def test_server_status_renders_separate_recent_log_panels(monkeypatch: Any) -> N
                 data_dir="/tmp/mineru",
                 sqlite_path="/tmp/doclib.db",
                 log_path="/tmp/doclib.log",
-                app_logs=["app\n"],
+                app_logs=["app [/Users/jinzhenj/.mineru]\n"],
                 access_logs=["access\n"],
                 stderr_logs=["stderr\n"],
                 stdout_logs=["stdout\n"],
@@ -471,8 +539,9 @@ def test_server_status_renders_separate_recent_log_panels(monkeypatch: Any) -> N
         "Recent Parse Server Stderr Logs",
         "Recent Parse Server Stdout Logs",
     ]
-    assert [panel["renderable"] for panel in panels] == [
-        "app",
+    assert all(isinstance(panel["renderable"], Text) for panel in panels)
+    assert [panel["renderable"].plain for panel in panels] == [
+        "app [/Users/jinzhenj/.mineru]",
         "access",
         "stderr",
         "stdout",
@@ -481,6 +550,32 @@ def test_server_status_renders_separate_recent_log_panels(monkeypatch: Any) -> N
     ]
     assert all(panel["border_style"] == "dim" for panel in panels)
     assert not any(getattr(item, "title", None) == "Recent Logs" for item in rendered)
+
+
+def test_server_status_renders_markup_like_log_text_literally() -> None:
+    rendered = list(
+        server._render_server_status(
+            ServerStatusResponse(
+                running=True,
+                pid=123,
+                uptime_seconds=1,
+                socket_path="/tmp/doclib.sock",
+                data_dir="/tmp/mineru",
+                sqlite_path="/tmp/doclib.db",
+                log_path="/tmp/doclib.log",
+                access_logs=["MinerU home [/Users/jinzhenj/.mineru]\n[bold]\n[/invalid]\n"],
+            )
+        )
+    )
+    panel = next(item for item in rendered if getattr(item, "title", None) == "Recent Access Logs")
+    output = StringIO()
+
+    Console(file=output, width=160, color_system=None).print(panel)
+
+    rendered_text = output.getvalue()
+    assert "MinerU home [/Users/jinzhenj/.mineru]" in rendered_text
+    assert "[bold]" in rendered_text
+    assert "[/invalid]" in rendered_text
 
 
 def test_telemetry_status_command_prints_installation_id(monkeypatch: Any) -> None:
@@ -623,13 +718,13 @@ def test_list_parses_passes_filters_to_doclib_client(monkeypatch: Any) -> None:
 
     result = runner.invoke(
         app,
-        ["list", "parses", "--status", "pending", "--tier", "medium", "--limit", "10", "--offset", "5", "--json"],
+        ["list", "parses", "--status", "pending", "--tier", "basic", "--limit", "10", "--offset", "5", "--json"],
     )
 
     assert result.exit_code == 0
     assert calls[-1] == (
         "list_parses",
-        {"status": "pending", "tier": "medium", "limit": 10, "offset": 5},
+        {"status": "pending", "tier": "basic", "limit": 10, "offset": 5},
     )
 
 
@@ -642,7 +737,7 @@ def test_parse_wait_ignores_failed_rows_outside_wait_ids(monkeypatch: Any, tmp_p
         id=2,
         sha256="a" * 64,
         short_id="aaaaaaa",
-        tier="high",
+        tier="standard",
         page_range="1~10",
         status="failed",
         privacy="remote",
@@ -655,7 +750,7 @@ def test_parse_wait_ignores_failed_rows_outside_wait_ids(monkeypatch: Any, tmp_p
         id=3,
         sha256="a" * 64,
         short_id="aaaaaaa",
-        tier="high",
+        tier="standard",
         page_range="1~10",
         status="done",
         privacy="remote",
@@ -672,7 +767,7 @@ def test_parse_wait_ignores_failed_rows_outside_wait_ids(monkeypatch: Any, tmp_p
         def ensure_parse(self, request: Any) -> ParseResponse:
             return ParseResponse(
                 sha256="a" * 64,
-                tier="high",
+                tier="standard",
                 page_range="1~10",
                 status="pending",
                 wait_parse_ids=[3],
@@ -687,7 +782,7 @@ def test_parse_wait_ignores_failed_rows_outside_wait_ids(monkeypatch: Any, tmp_p
             return DocContentResponse(
                 sha256="a" * 64,
                 short_id="aaaaaaa",
-                tier="high",
+                tier="standard",
                 format="markdown",
                 content="parsed",
                 request_scope=ContentRequestScope(page_range="1~10", after=None, limit=30000),
@@ -714,7 +809,7 @@ def test_parse_wait_json_maps_invalid_api_key_param(monkeypatch: Any, tmp_path: 
         id=3,
         sha256="a" * 64,
         short_id="aaaaaaa",
-        tier="pro",
+        tier="standard",
         page_range="1~1",
         status="failed",
         privacy="remote",
@@ -731,7 +826,7 @@ def test_parse_wait_json_maps_invalid_api_key_param(monkeypatch: Any, tmp_path: 
         def ensure_parse(self, request: Any) -> ParseResponse:
             return ParseResponse(
                 sha256="a" * 64,
-                tier="pro",
+                tier="standard",
                 page_range="1~1",
                 status="pending",
                 wait_parse_ids=[3],
@@ -741,7 +836,21 @@ def test_parse_wait_json_maps_invalid_api_key_param(monkeypatch: Any, tmp_path: 
         def list_parses(self, **kwargs: Any) -> ListParsesResponse:
             return ListParsesResponse(parses=[failed], total=1, limit=50, offset=0)
 
+    class _GuidanceClient:
+        def __init__(self, *, timeout: int) -> None:
+            assert timeout == 3
+
+        def get_config(self) -> ConfigResponse:
+            return ConfigResponse(
+                config={
+                    "parse_server.remote.url": "https://mineru.net/api",
+                    "parse_server.remote.api_key": "******",
+                },
+                sources={},
+            )
+
     monkeypatch.setattr(parse, "DoclibClient", _Client)
+    monkeypatch.setattr("mineru.cli.guidance.DoclibClient", _GuidanceClient)
     monkeypatch.setattr(parse.time, "sleep", lambda seconds: None)
 
     result = runner.invoke(app, ["parse", str(source), "--remote", "--wait", "1", "--json"])
@@ -751,6 +860,8 @@ def test_parse_wait_json_maps_invalid_api_key_param(monkeypatch: Any, tmp_path: 
     assert payload["error"]["type"] == "authentication_error"
     assert payload["error"]["code"] == "invalid_api_key"
     assert payload["error"]["param"] == "parse_server.remote.api_key"
+    assert payload["guidance"]["type"] == "configure_official_api_key"
+    assert payload["guidance"]["required"] is True
 
 
 def test_parse_wait_json_handles_failed_row_without_error_details(monkeypatch: Any, tmp_path: Path) -> None:
@@ -1076,14 +1187,14 @@ def test_parse_next_marker_omits_default_parse_context(monkeypatch: Any, tmp_pat
         def ensure_parse(self, request: Any) -> ParseResponse:
             assert request.tier is None
             assert request.remote is False
-            return ParseResponse(sha256="a" * 64, tier="medium", page_range="1~10", status="done", cache_hit=True)
+            return ParseResponse(sha256="a" * 64, tier="basic", page_range="1~10", status="done", cache_hit=True)
 
         def get_doc_content(self, *args: Any, **kwargs: Any) -> DocContentResponse:
             assert kwargs["limit"] == 30000
             return DocContentResponse(
                 sha256="a" * 64,
                 short_id="aaaaaaa",
-                tier="medium",
+                tier="basic",
                 format="markdown",
                 content="parsed",
                 request_scope=ContentRequestScope(page_range="1~10", limit=30000),
@@ -1127,6 +1238,69 @@ def test_parse_json_no_wait_wraps_parse_and_null_content(monkeypatch: Any, tmp_p
     assert payload["parse"]["status"] == "pending"
     assert payload["parse"]["wait_parse_ids"] == [3]
     assert payload["content"] is None
+
+
+def test_parse_no_wait_text_prints_parse_id_tracking_hint(monkeypatch: Any, tmp_path: Path) -> None:
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(b"%PDF-1.7\n")
+
+    class _Client:
+        def __init__(self, *, timeout: int) -> None:
+            assert timeout == 90
+
+        def ensure_parse(self, request: Any) -> ParseResponse:
+            return ParseResponse(
+                sha256="a" * 64,
+                tier="standard",
+                page_range="1~1",
+                status="pending",
+                wait_parse_ids=[4686],
+                created_parse_ids=[4686],
+            )
+
+    monkeypatch.setattr(parse, "DoclibClient", _Client)
+
+    result = runner.invoke(app, ["parse", str(source), "--tier", "standard", "--remote", "--no-wait"])
+
+    assert result.exit_code == 0
+    assert result.output == (
+        "Parse still in progress (tier=standard).\n"
+        "Parse ID: 4686\n"
+        "Check status: mineru show parse 4686\n"
+    )
+
+
+def test_parse_no_wait_text_prints_multiple_parse_id_tracking_hints(monkeypatch: Any, tmp_path: Path) -> None:
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(b"%PDF-1.7\n")
+
+    class _Client:
+        def __init__(self, *, timeout: int) -> None:
+            assert timeout == 90
+
+        def ensure_parse(self, request: Any) -> ParseResponse:
+            return ParseResponse(
+                sha256="a" * 64,
+                tier="standard",
+                page_range="1~2",
+                status="pending",
+                wait_parse_ids=[4686, 4687],
+                created_parse_ids=[4687],
+                reused_parse_ids=[4686],
+            )
+
+    monkeypatch.setattr(parse, "DoclibClient", _Client)
+
+    result = runner.invoke(app, ["parse", str(source), "--tier", "standard", "--remote", "--no-wait"])
+
+    assert result.exit_code == 0
+    assert result.output == (
+        "Parse still in progress (tier=standard).\n"
+        "Parse IDs: 4686, 4687\n"
+        "Check status:\n"
+        "  mineru show parse 4686\n"
+        "  mineru show parse 4687\n"
+    )
 
 
 def test_parse_expands_user_home_in_input_path(monkeypatch: Any, tmp_path: Path) -> None:
@@ -1370,7 +1544,11 @@ def test_parse_wait_timeout_text_returns_nonzero_exit(monkeypatch: Any, tmp_path
     result = runner.invoke(app, ["parse", str(source), "--tier", "flash", "--wait", "1"])
 
     assert result.exit_code == 1
-    assert "Parse still in progress" in result.output
+    assert result.output == (
+        "Parse still in progress after 1s (tier=flash).\n"
+        "Parse ID: 3\n"
+        "Check status: mineru show parse 3\n"
+    )
 
 
 def test_parse_wait_timeout_json_uses_latest_parsing_status(monkeypatch: Any, tmp_path: Path) -> None:
@@ -1431,7 +1609,7 @@ def test_parse_json_error_output_is_machine_readable(monkeypatch: Any, tmp_path:
 
         def ensure_parse(self, request: Any) -> ParseResponse:
             raise RuntimeError(
-                "('quality_tier_unavailable', 'No medium or high engine available. Use --tier flash.', None)"
+                "('quality_tier_unavailable', 'No basic, standard, or advanced engine available. Use --tier flash.', None)"
             )
 
     monkeypatch.setattr(parse, "DoclibClient", _Client)
@@ -1441,7 +1619,41 @@ def test_parse_json_error_output_is_machine_readable(monkeypatch: Any, tmp_path:
     assert result.exit_code == 1
     payload = json.loads(result.output)
     assert payload["error"]["code"] == "quality_tier_unavailable"
-    assert "No medium or high engine available" in payload["error"]["message"]
+    assert "No basic, standard, or advanced engine available" in payload["error"]["message"]
+
+
+@pytest.mark.parametrize("json_mode", [False, True])
+def test_parse_text_file_reports_parse_not_required(monkeypatch: Any, tmp_path: Path, json_mode: bool) -> None:
+    source = tmp_path / "demo.txt"
+    source.write_text("hello", encoding="utf-8")
+
+    class _Client:
+        def __init__(self, *, timeout: int) -> None:
+            assert timeout == 90
+
+        def ensure_parse(self, request: Any) -> ParseResponse:
+            assert request.path == str(source.resolve())
+            raise RuntimeError(
+                "('parse_not_required', 'Text files do not require MinerU parsing. Read the file directly.', 'path')"
+            )
+
+    monkeypatch.setattr(parse, "DoclibClient", _Client)
+    args = ["parse", str(source)]
+    if json_mode:
+        args.append("--json")
+
+    result = runner.invoke(app, args)
+
+    assert result.exit_code == 1
+    if json_mode:
+        payload = json.loads(result.output)
+        assert payload["error"]["type"] == "invalid_request_error"
+        assert payload["error"]["code"] == "parse_not_required"
+        assert payload["error"]["param"] == "path"
+        assert payload["error"]["message"].endswith("Read the file directly.")
+    else:
+        assert "Text files do not require MinerU parsing. Read the file directly." in result.output
+        assert "('parse_not_required'" not in result.output
 
 
 def test_parse_invalid_after_cursor_json_error_is_validation_error(monkeypatch: Any, tmp_path: Path) -> None:
@@ -1453,7 +1665,7 @@ def test_parse_invalid_after_cursor_json_error_is_validation_error(monkeypatch: 
             assert timeout == 31
 
         def ensure_parse(self, request: Any) -> ParseResponse:
-            return ParseResponse(sha256="a" * 64, tier="medium", page_range="1", status="done")
+            return ParseResponse(sha256="a" * 64, tier="basic", page_range="1", status="done")
 
         def get_doc_content(self, *args: Any, **kwargs: Any) -> DocContentResponse:
             raise RuntimeError(
@@ -1776,7 +1988,7 @@ def test_invalidate_normalizes_user_path_before_request(monkeypatch: Any, tmp_pa
     monkeypatch.setenv("HOME", str(home))
     monkeypatch.setattr(invalidate, "DoclibClient", _Client)
 
-    result = runner.invoke(app, ["invalidate", "~/docs/../docs/demo.pdf", "--tier", "medium"])
+    result = runner.invoke(app, ["invalidate", "~/docs/../docs/demo.pdf", "--tier", "basic"])
 
     assert result.exit_code == 0
     assert calls == [os.path.normpath(os.path.abspath(os.path.expanduser("~/docs/../docs/demo.pdf")))]
@@ -1801,6 +2013,29 @@ def test_invalidate_non_json_prints_message_not_error_tuple(monkeypatch: Any, tm
     assert result.exit_code == 1
     assert "Requested parsed content is not cached." in result.output
     assert "('not_cached'" not in result.output
+
+
+def test_invalidate_text_file_reports_parse_not_required(monkeypatch: Any, tmp_path: Path) -> None:
+    source = tmp_path / "demo.txt"
+    source.write_text("hello", encoding="utf-8")
+
+    class _Client:
+        def __init__(self, *, timeout: int) -> None:
+            assert timeout == 10
+
+        def invalidate(self, request: Any) -> None:
+            assert request.path == str(source.resolve())
+            raise RuntimeError(
+                "('parse_not_required', 'Text files do not require MinerU parsing. Read the file directly.', 'path')"
+            )
+
+    monkeypatch.setattr(invalidate, "DoclibClient", _Client)
+
+    result = runner.invoke(app, ["invalidate", str(source)])
+
+    assert result.exit_code == 1
+    assert "Text files do not require MinerU parsing. Read the file directly." in result.output
+    assert "('parse_not_required'" not in result.output
 
 
 def test_show_doc_expands_files(monkeypatch: Any) -> None:
@@ -1850,6 +2085,9 @@ def test_server_start_failure_points_to_log_and_does_not_discard_child_stderr(mo
     class _Proc:
         pid = 12345
 
+        def poll(self) -> int:
+            return 1
+
         def kill(self) -> None:
             popen_calls.append({"kill": True})
 
@@ -1858,6 +2096,7 @@ def test_server_start_failure_points_to_log_and_does_not_discard_child_stderr(mo
         assert kwargs["stdout"] is not server.subprocess.DEVNULL
         assert kwargs["stderr"] is not server.subprocess.DEVNULL
         assert kwargs["stdout"] is not kwargs["stderr"]
+        assert kwargs["env"]["PYTHONIOENCODING"] == "utf-8:backslashreplace"
         kwargs["stdout"].write("child stdout\n")
         kwargs["stdout"].flush()
         kwargs["stderr"].write("child failed\n")
@@ -1865,7 +2104,8 @@ def test_server_start_failure_points_to_log_and_does_not_discard_child_stderr(mo
         return _Proc()
 
     monkeypatch.setattr(server, "_server_running", lambda: False)
-    monkeypatch.setattr(server, "_wait_for_server", lambda: False)
+    monkeypatch.setattr(server, "_doclib_lock_available", lambda: True)
+    monkeypatch.setattr(server, "_wait_for_started_server", lambda proc: False)
     monkeypatch.setattr(server, "_socket_path", lambda: str(tmp_path / "doclib.sock"))
     monkeypatch.setattr(server, "_endpoint_path", lambda: str(tmp_path / "doclib.endpoint.json"))
     monkeypatch.setattr(server, "_server_log_path", lambda: str(log_path))
@@ -1884,7 +2124,32 @@ def test_server_start_failure_points_to_log_and_does_not_discard_child_stderr(mo
     assert "child failed\n" not in log_path.read_text(encoding="utf-8")
     assert "child stdout\n" in stdout_log_path.read_text(encoding="utf-8")
     assert "child failed\n" in stderr_log_path.read_text(encoding="utf-8")
-    assert popen_calls[-1] == {"kill": True}
+    assert {"kill": True} not in popen_calls
+
+
+def test_server_start_reports_starting_process_without_killing_it(monkeypatch: Any, tmp_path: Path) -> None:
+    class _Proc:
+        pid = 12345
+
+        def poll(self) -> None:
+            return None
+
+    def _popen(*args: Any, **kwargs: Any) -> _Proc:
+        return _Proc()
+
+    monkeypatch.setattr(server, "_server_running", lambda: False)
+    monkeypatch.setattr(server, "_doclib_lock_available", lambda: True)
+    monkeypatch.setattr(server, "_wait_for_started_server", lambda proc: False)
+    monkeypatch.setattr(server, "_server_log_path", lambda: str(tmp_path / "doclib.log"))
+    monkeypatch.setattr(server, "_server_stdout_log_path", lambda: str(tmp_path / "doclib.stdout.log"))
+    monkeypatch.setattr(server, "_server_stderr_log_path", lambda: str(tmp_path / "doclib.stderr.log"))
+    monkeypatch.setattr(server.subprocess, "Popen", _popen)
+
+    result = runner.invoke(app, ["server", "start"])
+
+    assert result.exit_code == 0
+    assert "Server is still starting (PID 12345)." in result.output
+    assert "Check status: mineru server status" in result.output
 
 
 def test_server_start_lock_blocks_concurrent_start(monkeypatch: Any, tmp_path: Path) -> None:
@@ -1899,6 +2164,135 @@ def test_server_start_lock_blocks_concurrent_start(monkeypatch: Any, tmp_path: P
                 pass
 
     assert not lock_path.exists()
+
+
+def test_server_start_leaves_stale_discovery_files_for_child_owner(monkeypatch: Any, tmp_path: Path) -> None:
+    socket_path = tmp_path / "doclib.sock"
+    endpoint_path = tmp_path / "doclib.endpoint.json"
+    socket_path.write_text("stale", encoding="utf-8")
+    endpoint_path.write_text("{}", encoding="utf-8")
+
+    class _Proc:
+        pid = 12345
+
+    def _popen(*args: Any, **kwargs: Any) -> _Proc:
+        assert socket_path.exists()
+        assert endpoint_path.exists()
+        return _Proc()
+
+    monkeypatch.setattr(server, "_server_running", lambda: False)
+    monkeypatch.setattr(server, "_doclib_lock_available", lambda: True)
+    monkeypatch.setattr(server, "_wait_for_started_server", lambda proc: True)
+    monkeypatch.setattr(server, "_socket_path", lambda: str(socket_path))
+    monkeypatch.setattr(server, "_endpoint_path", lambda: str(endpoint_path))
+    monkeypatch.setattr(server, "_server_start_lock_path", lambda: str(tmp_path / "doclib.start.lock"))
+    monkeypatch.setattr(server, "_server_log_path", lambda: str(tmp_path / "doclib.log"))
+    monkeypatch.setattr(server, "_server_stdout_log_path", lambda: str(tmp_path / "doclib.stdout.log"))
+    monkeypatch.setattr(server, "_server_stderr_log_path", lambda: str(tmp_path / "doclib.stderr.log"))
+    monkeypatch.setattr(server.subprocess, "Popen", _popen)
+
+    assert server._start() == "Server started (PID 12345)."
+
+
+def test_server_stop_leaves_stale_discovery_files_when_not_running(monkeypatch: Any, tmp_path: Path) -> None:
+    socket_path = tmp_path / "doclib.sock"
+    endpoint_path = tmp_path / "doclib.endpoint.json"
+    socket_path.write_text("stale", encoding="utf-8")
+    endpoint_path.write_text("{}", encoding="utf-8")
+    monkeypatch.setattr(server, "_server_running", lambda: False)
+    monkeypatch.setattr(server, "_doclib_lock_available", lambda: True)
+    monkeypatch.setattr(server, "_socket_path", lambda: str(socket_path))
+    monkeypatch.setattr(server, "_endpoint_path", lambda: str(endpoint_path))
+
+    assert server._stop() == "Server is not running."
+    assert socket_path.exists()
+    assert endpoint_path.exists()
+
+
+def test_server_start_rejects_unresponsive_home_owner(monkeypatch: Any, tmp_path: Path) -> None:
+    popen_calls: list[bool] = []
+
+    class _Endpoint:
+        version = 2
+        pid = 12345
+
+    monkeypatch.setattr(server, "_server_running", lambda: False)
+    monkeypatch.setattr(server, "_doclib_lock_available", lambda: False)
+    monkeypatch.setattr(server, "_server_start_lock_path", lambda: str(tmp_path / "doclib.start.lock"))
+    monkeypatch.setattr(server, "_server_log_path", lambda: str(tmp_path / "doclib.log"))
+    monkeypatch.setattr(server, "_server_stdout_log_path", lambda: str(tmp_path / "doclib.stdout.log"))
+    monkeypatch.setattr(server, "_server_stderr_log_path", lambda: str(tmp_path / "doclib.stderr.log"))
+    monkeypatch.setattr("mineru.doclib.instance_lock._mineru_home", lambda: str(tmp_path))
+    monkeypatch.setattr(
+        "mineru.doclib.instance_lock.read_endpoint_file",
+        lambda path: _Endpoint(),
+    )
+    monkeypatch.setattr(server.subprocess, "Popen", lambda *args, **kwargs: popen_calls.append(True))
+
+    with pytest.raises(MineruError) as exc_info:
+        server._start()
+
+    assert exc_info.value.code == "service_unavailable"
+    assert exc_info.value.message == (
+        f"MinerU home [{tmp_path}] is currently owned by another doclib server process (reported PID 12345)."
+    )
+    assert "doclib.lock" not in exc_info.value.message
+    assert popen_calls == []
+
+
+def test_wait_for_server_stop_requires_ownership_release(monkeypatch: Any) -> None:
+    events: list[str] = []
+
+    @contextmanager
+    def _home_lock() -> Iterator[None]:
+        events.append("lock")
+        yield
+
+    monkeypatch.setattr(server, "_server_running", lambda: False)
+    monkeypatch.setattr(server, "doclib_home_lock", _home_lock)
+
+    assert server._wait_for_server_stop(timeout=1) is True
+    assert events == ["lock"]
+
+
+def test_server_stop_waits_until_shutdown_completes(monkeypatch: Any) -> None:
+    events: list[str] = []
+
+    class _Client:
+        def __init__(self, *, timeout: int) -> None:
+            assert timeout == 5
+
+        def shutdown_server(self) -> None:
+            events.append("shutdown")
+
+    monkeypatch.setattr(server, "_server_running", lambda: True)
+    monkeypatch.setattr(server, "_wait_for_server_stop", lambda: events.append("wait") or True)
+    monkeypatch.setattr("mineru.doclib.client.DoclibClient", _Client)
+
+    assert server._stop() == "Server stopped."
+    assert events == ["shutdown", "wait"]
+
+
+def test_server_stop_timeout_does_not_start_replacement(monkeypatch: Any) -> None:
+    starts: list[bool] = []
+
+    class _Client:
+        def __init__(self, *, timeout: int) -> None:
+            pass
+
+        def shutdown_server(self) -> None:
+            pass
+
+    monkeypatch.setattr(server, "_server_running", lambda: True)
+    monkeypatch.setattr(server, "_wait_for_server_stop", lambda: False)
+    monkeypatch.setattr(server, "_start", lambda: starts.append(True) or "started")
+    monkeypatch.setattr("mineru.doclib.client.DoclibClient", _Client)
+
+    with pytest.raises(MineruError) as exc_info:
+        server._restart()
+
+    assert exc_info.value.code == "service_unavailable"
+    assert starts == []
 
 
 def test_parse_content_read_failure_exits_nonzero(monkeypatch: Any, tmp_path: Path) -> None:
@@ -1922,7 +2316,8 @@ def test_parse_content_read_failure_exits_nonzero(monkeypatch: Any, tmp_path: Pa
 
     assert result.exit_code == 1
     payload = json.loads(result.output)
-    assert payload["error"]["code"] == "api_error"
+    assert payload["error"]["type"] == "internal_error"
+    assert payload["error"]["code"] == "cli_internal_error"
     assert "content missing" in payload["error"]["message"]
     assert "Error:" not in result.output
 
@@ -2031,7 +2426,7 @@ def test_read_passes_locator_parameters_to_doclib_client(monkeypatch: Any) -> No
             return DocContentResponse(
                 sha256="a" * 64,
                 short_id="ab12cd3",
-                tier="medium",
+                tier="basic",
                 format="markdown",
                 content="hello",
                 request_scope=ContentRequestScope(locator=locator, context=kwargs["context"], limit=kwargs["limit"]),
@@ -2041,13 +2436,13 @@ def test_read_passes_locator_parameters_to_doclib_client(monkeypatch: Any) -> No
 
     result = runner.invoke(
         app,
-        ["read", "doc:ab12cd3/tier:medium/page:4", "--context", "2", "--limit", "123", "--format", "markdown"],
+        ["read", "doc:ab12cd3/tier:basic/page:4", "--context", "2", "--limit", "123", "--format", "markdown"],
     )
 
     assert result.exit_code == 0
     assert calls == [
         (
-            "doc:ab12cd3/tier:medium/page:4",
+            "doc:ab12cd3/tier:basic/page:4",
             {"context": 2, "limit": 123, "format": "markdown", "no_marker": False},
         )
     ]
@@ -2063,20 +2458,20 @@ def test_read_json_output_preserves_locator_next_request(monkeypatch: Any) -> No
             return DocContentResponse(
                 sha256="a" * 64,
                 short_id="ab12cd3",
-                tier="medium",
+                tier="basic",
                 format="markdown",
                 content="hello",
                 request_scope=ContentRequestScope(locator=locator, context=0, limit=30000),
-                next_request=ContentNextRequest(locator="doc:ab12cd3/tier:medium/page:5"),
+                next_request=ContentNextRequest(locator="doc:ab12cd3/tier:basic/page:5"),
             )
 
     monkeypatch.setattr(read, "DoclibClient", _Client)
 
-    result = runner.invoke(app, ["read", "doc:ab12cd3/tier:medium/page:4", "--json"])
+    result = runner.invoke(app, ["read", "doc:ab12cd3/tier:basic/page:4", "--json"])
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
-    assert payload["next_request"]["locator"] == "doc:ab12cd3/tier:medium/page:5"
+    assert payload["next_request"]["locator"] == "doc:ab12cd3/tier:basic/page:5"
 
 
 def test_read_markdown_output_separates_next_marker_with_blank_line(monkeypatch: Any) -> None:
@@ -2088,19 +2483,19 @@ def test_read_markdown_output_separates_next_marker_with_blank_line(monkeypatch:
             return DocContentResponse(
                 sha256="a" * 64,
                 short_id="ab12cd3",
-                tier="medium",
+                tier="basic",
                 format="markdown",
                 content="hello",
                 request_scope=ContentRequestScope(locator=locator, context=0, limit=30000),
-                next_request=ContentNextRequest(locator="doc:ab12cd3/tier:medium/page:5"),
+                next_request=ContentNextRequest(locator="doc:ab12cd3/tier:basic/page:5"),
             )
 
     monkeypatch.setattr(read, "DoclibClient", _Client)
 
-    result = runner.invoke(app, ["read", "doc:ab12cd3/tier:medium/page:4"])
+    result = runner.invoke(app, ["read", "doc:ab12cd3/tier:basic/page:4"])
 
     assert result.exit_code == 0
-    assert "hello\n\n<!-- Next: mineru read doc:ab12cd3/tier:medium/page:5 -->" in result.output
+    assert "hello\n\n<!-- Next: mineru read doc:ab12cd3/tier:basic/page:5 -->" in result.output
 
 
 def test_read_json_error_output_is_machine_readable(monkeypatch: Any) -> None:
@@ -2113,12 +2508,42 @@ def test_read_json_error_output_is_machine_readable(monkeypatch: Any) -> None:
 
     monkeypatch.setattr(read, "DoclibClient", _Client)
 
-    result = runner.invoke(app, ["read", "doc:ab12cd3/tier:medium/page:4", "--json"])
+    result = runner.invoke(app, ["read", "doc:ab12cd3/tier:basic/page:4", "--json"])
 
     assert result.exit_code == 1
     payload = json.loads(result.output)
     assert payload["error"]["code"] == "not_cached"
     assert "Error:" not in result.output
+
+
+@pytest.mark.parametrize("json_mode", [False, True])
+def test_read_text_locator_reports_parse_not_required(monkeypatch: Any, json_mode: bool) -> None:
+    class _Client:
+        def __init__(self, *, timeout: int) -> None:
+            assert timeout == 60
+
+        def read_content(self, locator: str, **kwargs: Any) -> DocContentResponse:
+            assert locator == "doc:ab12cd3/tier:flash"
+            raise RuntimeError(
+                "('parse_not_required', 'Text files do not require MinerU parsing. Read the file directly.', 'locator')"
+            )
+
+    monkeypatch.setattr(read, "DoclibClient", _Client)
+    args = ["read", "doc:ab12cd3/tier:flash"]
+    if json_mode:
+        args.append("--json")
+
+    result = runner.invoke(app, args)
+
+    assert result.exit_code == 1
+    if json_mode:
+        payload = json.loads(result.output)
+        assert payload["error"]["type"] == "invalid_request_error"
+        assert payload["error"]["code"] == "parse_not_required"
+        assert payload["error"]["param"] == "locator"
+    else:
+        assert "Text files do not require MinerU parsing. Read the file directly." in result.output
+        assert "('parse_not_required'" not in result.output
 
 
 def test_read_json_output_writes_markdown_file_and_returns_output_object(monkeypatch: Any, tmp_path: Path) -> None:
@@ -2132,7 +2557,7 @@ def test_read_json_output_writes_markdown_file_and_returns_output_object(monkeyp
             return DocContentResponse(
                 sha256="a" * 64,
                 short_id="ab12cd3",
-                tier="medium",
+                tier="basic",
                 format="markdown",
                 content="hello",
                 request_scope=ContentRequestScope(locator=locator, context=0, limit=30000),
@@ -2140,7 +2565,7 @@ def test_read_json_output_writes_markdown_file_and_returns_output_object(monkeyp
 
     monkeypatch.setattr(read, "DoclibClient", _Client)
 
-    result = runner.invoke(app, ["read", "doc:ab12cd3/tier:medium/page:4", "--output", str(output), "--json"])
+    result = runner.invoke(app, ["read", "doc:ab12cd3/tier:basic/page:4", "--output", str(output), "--json"])
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
@@ -2164,7 +2589,7 @@ def test_read_json_output_writes_image_file_and_returns_output_object(monkeypatc
             return DocContentResponse(
                 sha256="a" * 64,
                 short_id="ab12cd3",
-                tier="medium",
+                tier="basic",
                 format="image",
                 content="",
                 request_scope=ContentRequestScope(locator=locator, context=0, limit=30000),
@@ -2173,7 +2598,7 @@ def test_read_json_output_writes_image_file_and_returns_output_object(monkeypatc
 
     monkeypatch.setattr(read, "DoclibClient", _Client)
 
-    result = runner.invoke(app, ["read", "doc:ab12cd3/tier:medium/page:4", "--format", "image", "--output", str(output), "--json"])
+    result = runner.invoke(app, ["read", "doc:ab12cd3/tier:basic/page:4", "--format", "image", "--output", str(output), "--json"])
 
     assert result.exit_code == 0
     payload = json.loads(result.output)
@@ -2208,7 +2633,7 @@ def test_read_image_output_extension_selects_server_image_format(
             return DocContentResponse(
                 sha256="a" * 64,
                 short_id="ab12cd3",
-                tier="medium",
+                tier="basic",
                 format="image",
                 content="",
                 request_scope=ContentRequestScope(locator=locator, context=0, limit=30000),
@@ -2217,7 +2642,7 @@ def test_read_image_output_extension_selects_server_image_format(
 
     monkeypatch.setattr(read, "DoclibClient", _Client)
 
-    result = runner.invoke(app, ["read", "doc:ab12cd3/tier:medium/page:4", "--format", "image", "--output", str(output)])
+    result = runner.invoke(app, ["read", "doc:ab12cd3/tier:basic/page:4", "--format", "image", "--output", str(output)])
 
     assert result.exit_code == 0
     assert output.read_bytes() == b"image-bytes"
@@ -2234,7 +2659,7 @@ def test_read_image_output_rejects_unsupported_output_extension_before_client_ca
     monkeypatch.setattr(read, "DoclibClient", _Client)
     output = output_arg if output_arg == "-" else str(tmp_path / output_arg)
 
-    result = runner.invoke(app, ["read", "doc:ab12cd3/tier:medium/page:4", "--format", "image", "--output", output, "--json"])
+    result = runner.invoke(app, ["read", "doc:ab12cd3/tier:basic/page:4", "--format", "image", "--output", output, "--json"])
 
     assert result.exit_code == 1
     payload = json.loads(result.output)
@@ -2256,7 +2681,7 @@ def test_read_json_image_output_missing_asset_reports_error_envelope(monkeypatch
             return DocContentResponse(
                 sha256="a" * 64,
                 short_id="ab12cd3",
-                tier="medium",
+                tier="basic",
                 format="image",
                 content="",
                 request_scope=ContentRequestScope(locator=locator, context=0, limit=30000),
@@ -2265,7 +2690,7 @@ def test_read_json_image_output_missing_asset_reports_error_envelope(monkeypatch
 
     monkeypatch.setattr(read, "DoclibClient", _Client)
 
-    result = runner.invoke(app, ["read", "doc:ab12cd3/tier:medium/page:4", "--format", "image", "--output", str(output), "--json"])
+    result = runner.invoke(app, ["read", "doc:ab12cd3/tier:basic/page:4", "--format", "image", "--output", str(output), "--json"])
 
     assert result.exit_code == 1
     payload = json.loads(result.output)
@@ -2289,7 +2714,7 @@ def test_read_image_output_copies_server_asset_locally(monkeypatch: Any, tmp_pat
             return DocContentResponse(
                 sha256="a" * 64,
                 short_id="ab12cd3",
-                tier="medium",
+                tier="basic",
                 format="image",
                 content="",
                 request_scope=ContentRequestScope(locator=locator, context=0, limit=30000),
@@ -2298,7 +2723,7 @@ def test_read_image_output_copies_server_asset_locally(monkeypatch: Any, tmp_pat
 
     monkeypatch.setattr(read, "DoclibClient", _Client)
 
-    result = runner.invoke(app, ["read", "doc:ab12cd3/tier:medium/page:4", "--format", "image", "--output", str(output)])
+    result = runner.invoke(app, ["read", "doc:ab12cd3/tier:basic/page:4", "--format", "image", "--output", str(output)])
 
     assert result.exit_code == 0
     assert output.read_bytes() == b"png-bytes"
@@ -2312,7 +2737,7 @@ def test_search_json_error_output_is_machine_readable(monkeypatch: Any) -> None:
             assert timeout == 10
 
         def search(self, *args: Any, **kwargs: Any) -> Any:
-            raise RuntimeError("('quality_tier_unavailable', 'No medium or high engine available.', 'tier')")
+            raise RuntimeError("('quality_tier_unavailable', 'No basic, standard, or advanced engine available.', 'tier')")
 
     monkeypatch.setattr(search_mod, "DoclibClient", _Client)
 
@@ -2383,6 +2808,7 @@ def test_cleanup_temp_json_error_output_is_machine_readable(monkeypatch: Any) ->
 
 def test_server_status_json_not_running_returns_state_json(monkeypatch: Any) -> None:
     monkeypatch.setattr(server, "_server_running", lambda: False)
+    monkeypatch.setattr(server, "_doclib_lock_available", lambda: True)
     monkeypatch.setattr(server, "_socket_path", lambda: "/tmp/doclib.sock")
     monkeypatch.setattr(server.config.doclib, "data_dir", "~/.mineru")
     monkeypatch.setattr(server.config.doclib.sqlite, "path", "~/.mineru/doclib.db")
@@ -2404,3 +2830,28 @@ def test_server_status_json_not_running_returns_state_json(monkeypatch: Any) -> 
     assert payload["stderr_log_path"] == os.path.expanduser("~/.mineru/logs/doclib.stderr.log")
     assert payload["tcp"] == {"enabled": False, "host": None, "port": None}
     assert "Server is not running." not in result.output
+
+
+def test_server_status_json_reports_starting_without_endpoint_pid(monkeypatch: Any) -> None:
+    monkeypatch.setattr(server, "_server_running", lambda: False)
+    monkeypatch.setattr(server, "_doclib_lock_available", lambda: False)
+    monkeypatch.setattr(server, "read_endpoint_file", lambda path: None)
+
+    result = runner.invoke(app, ["server", "status", "--json"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload == {"status": "starting", "pid": None}
+
+
+def test_server_status_reports_starting_with_endpoint_pid(monkeypatch: Any) -> None:
+    endpoint = type("Endpoint", (), {"pid": 12345})()
+    monkeypatch.setattr(server, "_server_running", lambda: False)
+    monkeypatch.setattr(server, "_doclib_lock_available", lambda: False)
+    monkeypatch.setattr(server, "read_endpoint_file", lambda path: endpoint)
+
+    result = runner.invoke(app, ["server", "status"])
+
+    assert result.exit_code == 0
+    assert "Server is still starting (PID 12345)." in result.output
+    assert "Check again: mineru server status" in result.output

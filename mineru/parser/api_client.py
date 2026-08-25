@@ -13,15 +13,18 @@ import hashlib
 import io
 import ipaddress
 import json
+import logging
 import os
+import random
 import time
 import zipfile
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 from urllib.parse import urlparse
 
 import httpx
 
+from ..filetypes import mime_type_for_extension
 from ..types import PageInfo, Tier, validate_tier
 from ..utils.image_payload import validate_image_sidecar_path
 from .base import DocumentParser, ParseResult
@@ -29,6 +32,23 @@ from .base import DocumentParser, ParseResult
 _POLL_INTERVAL_SECONDS = 1
 _POLL_MAX_ATTEMPTS = 3600
 _TERMINAL_JOB_STATUSES = {"completed", "partial", "failed", "canceled"}
+_TRANSPORT_MAX_ATTEMPTS = 3
+_TRANSPORT_RETRY_BASE_DELAY_SECONDS = 0.25
+_TRANSPORT_RETRY_MAX_DELAY_SECONDS = 2.0
+
+logger = logging.getLogger("mineru.api_client")
+
+_RequestMethod = Literal["GET", "POST", "PUT"]
+
+
+class _APITransportError(Exception):
+    def __init__(self, *, stage: str, method: _RequestMethod, attempts: int, cause: httpx.TransportError) -> None:
+        self.stage = stage
+        self.method = method
+        self.attempts = attempts
+        self.cause = cause
+        self.timed_out = isinstance(cause, httpx.TimeoutException)
+        super().__init__(f"API transport failed during {stage} after {attempts} attempt(s) ({type(cause).__name__})")
 
 
 class MinerUApiParser(DocumentParser):
@@ -38,12 +58,12 @@ class MinerUApiParser(DocumentParser):
 
         # local deployment — uses ``local`` source only when the server advertises it.
         # Start the local server with --allow-local-source to skip upload.
-        parser = MinerUApiParser(api_url="http://localhost:8000", tier="medium")
+        parser = MinerUApiParser(api_url="http://localhost:8000", tier="basic")
 
         # cloud (remote)
         parser = MinerUApiParser(
             api_url="https://mineru.net/api", api_key="sk_...",
-            tier="high",
+            tier="standard",
         )
 
         result = parser.parse("report.pdf")
@@ -51,7 +71,7 @@ class MinerUApiParser(DocumentParser):
 
     Constructor parameters:
 
-    - ``tier`` → v1 ``tier`` (``"flash"`` / ``"medium"`` / ``"high"`` / ``"extra_high"``); ``None`` omits the field
+    - ``tier`` → v1 ``tier`` (``"flash"`` / ``"basic"`` / ``"standard"`` / ``"advanced"``); ``None`` omits the field
     - ``page_range`` → per-file v1 ``page_range``
     """
 
@@ -94,6 +114,30 @@ class MinerUApiParser(DocumentParser):
         payload = self._build_payload(await self._async_build_source(file_path), page_range)
         job = await self._async_do_parse(payload)
         return await self._async_build_result(job, file_path.name)
+
+    def get_usage(self) -> dict[str, Any]:
+        """Return usage and limits for the configured API identity."""
+        with httpx.Client(timeout=httpx.Timeout(30, connect=10), trust_env=self._trust_env) as cli:
+            response = _request_with_retry(
+                cli,
+                "GET",
+                f"{self._base_url}/v1/usage",
+                stage="usage query",
+                headers=self._headers(),
+            )
+            return self._check(response)
+
+    async def get_usage_async(self) -> dict[str, Any]:
+        """Asynchronous version of :meth:`get_usage`."""
+        async with httpx.AsyncClient(timeout=httpx.Timeout(30, connect=10), trust_env=self._trust_env) as cli:
+            response = await _async_request_with_retry(
+                cli,
+                "GET",
+                f"{self._base_url}/v1/usage",
+                stage="usage query",
+                headers=self._headers(),
+            )
+            return self._check(response)
 
     # ── payload construction ─────────────────────────────────────────
 
@@ -141,7 +185,13 @@ class MinerUApiParser(DocumentParser):
         if self._source_features is not None:
             return self._source_features
         with httpx.Client(timeout=httpx.Timeout(30, connect=10), trust_env=self._trust_env) as cli:
-            r = cli.get(f"{self._base_url}/v1/health", headers=self._headers())
+            r = _request_with_retry(
+                cli,
+                "GET",
+                f"{self._base_url}/v1/health",
+                stage="health discovery",
+                headers=self._headers(),
+            )
             health = self._check(r)
         self._source_features = _extract_feature_list(health, "sources")
         return self._source_features
@@ -150,7 +200,13 @@ class MinerUApiParser(DocumentParser):
         if self._source_features is not None:
             return self._source_features
         async with httpx.AsyncClient(timeout=httpx.Timeout(30, connect=10), trust_env=self._trust_env) as cli:
-            r = await cli.get(f"{self._base_url}/v1/health", headers=self._headers())
+            r = await _async_request_with_retry(
+                cli,
+                "GET",
+                f"{self._base_url}/v1/health",
+                stage="health discovery",
+                headers=self._headers(),
+            )
             health = self._check(r)
         self._source_features = _extract_feature_list(health, "sources")
         return self._source_features
@@ -203,13 +259,16 @@ class MinerUApiParser(DocumentParser):
         sha = _sha256_file(file_path)
 
         with httpx.Client(timeout=httpx.Timeout(120, connect=30), trust_env=self._trust_env) as cli:
-            r = cli.post(
+            r = _request_once(
+                cli,
+                "POST",
                 f"{self._base_url}/v1/uploads",
+                stage="upload creation",
                 headers=self._headers(),
-                json={
+                json_body={
                     "filename": file_path.name,
                     "bytes": size,
-                    "mime_type": _mime_type(file_path),
+                    "mime_type": mime_type_for_extension(file_path),
                     "purpose": "parse",
                     "sha256sum": sha,
                 },
@@ -223,14 +282,17 @@ class MinerUApiParser(DocumentParser):
             if upload_url.startswith("/"):
                 upload_url = f"{self._base_url}{upload_url}"
             with file_path.open("rb") as fh:
-                r2 = cli.put(upload_url, content=fh.read(), headers=upload_headers)
+                r2 = _request_with_retry(
+                    cli,
+                    "PUT",
+                    upload_url,
+                    stage="upload content",
+                    headers=upload_headers,
+                    content=fh.read(),
+                )
             self._check(r2)
 
-            r3 = cli.post(
-                f"{self._base_url}/v1/uploads/{resp['id']}/complete",
-                headers=self._headers(),
-            )
-            resp3 = self._check(r3)
+            resp3 = self._complete_upload(cli, str(resp["id"]))
             return resp3["file"]["id"]
 
     async def _async_upload(self, file_path: Path) -> str:
@@ -238,13 +300,16 @@ class MinerUApiParser(DocumentParser):
         sha = _sha256_file(file_path)
 
         async with httpx.AsyncClient(timeout=httpx.Timeout(120, connect=30), trust_env=self._trust_env) as cli:
-            r = await cli.post(
+            r = await _async_request_once(
+                cli,
+                "POST",
                 f"{self._base_url}/v1/uploads",
+                stage="upload creation",
                 headers=self._headers(),
-                json={
+                json_body={
                     "filename": file_path.name,
                     "bytes": size,
-                    "mime_type": _mime_type(file_path),
+                    "mime_type": mime_type_for_extension(file_path),
                     "purpose": "parse",
                     "sha256sum": sha,
                 },
@@ -258,21 +323,109 @@ class MinerUApiParser(DocumentParser):
             if upload_url.startswith("/"):
                 upload_url = f"{self._base_url}{upload_url}"
             data = file_path.read_bytes()
-            r2 = await cli.put(upload_url, content=data, headers=upload_headers)
+            r2 = await _async_request_with_retry(
+                cli,
+                "PUT",
+                upload_url,
+                stage="upload content",
+                headers=upload_headers,
+                content=data,
+            )
             self._check(r2)
 
-            r3 = await cli.post(
-                f"{self._base_url}/v1/uploads/{resp['id']}/complete",
-                headers=self._headers(),
-            )
-            resp3 = self._check(r3)
+            resp3 = await self._async_complete_upload(cli, str(resp["id"]))
             return resp3["file"]["id"]
+
+    def _complete_upload(self, cli: httpx.Client, upload_id: str) -> dict[str, Any]:
+        complete_url = f"{self._base_url}/v1/uploads/{upload_id}/complete"
+        last_transport_error: _APITransportError | None = None
+        for attempt in range(1, _TRANSPORT_MAX_ATTEMPTS + 1):
+            try:
+                response = _request_once(
+                    cli,
+                    "POST",
+                    complete_url,
+                    stage="upload completion",
+                    headers=self._headers(),
+                )
+                return self._check(response)
+            except _APITransportError as exc:
+                last_transport_error = exc
+            except _V1APIError as exc:
+                if exc.code != "upload_already_terminal":
+                    raise
+
+            upload = self._get_upload(cli, upload_id)
+            if upload.get("status") == "completed":
+                return upload
+            if attempt < _TRANSPORT_MAX_ATTEMPTS:
+                time.sleep(_transport_retry_delay(attempt))
+
+        if last_transport_error is not None:
+            raise last_transport_error
+        raise _V1APIError("upload_not_ready", f"Upload {upload_id} did not reach completed status")
+
+    async def _async_complete_upload(self, cli: httpx.AsyncClient, upload_id: str) -> dict[str, Any]:
+        complete_url = f"{self._base_url}/v1/uploads/{upload_id}/complete"
+        last_transport_error: _APITransportError | None = None
+        for attempt in range(1, _TRANSPORT_MAX_ATTEMPTS + 1):
+            try:
+                response = await _async_request_once(
+                    cli,
+                    "POST",
+                    complete_url,
+                    stage="upload completion",
+                    headers=self._headers(),
+                )
+                return self._check(response)
+            except _APITransportError as exc:
+                last_transport_error = exc
+            except _V1APIError as exc:
+                if exc.code != "upload_already_terminal":
+                    raise
+
+            upload = await self._async_get_upload(cli, upload_id)
+            if upload.get("status") == "completed":
+                return upload
+            if attempt < _TRANSPORT_MAX_ATTEMPTS:
+                await asyncio.sleep(_transport_retry_delay(attempt))
+
+        if last_transport_error is not None:
+            raise last_transport_error
+        raise _V1APIError("upload_not_ready", f"Upload {upload_id} did not reach completed status")
+
+    def _get_upload(self, cli: httpx.Client, upload_id: str) -> dict[str, Any]:
+        response = _request_with_retry(
+            cli,
+            "GET",
+            f"{self._base_url}/v1/uploads/{upload_id}",
+            stage="upload status",
+            headers=self._headers(),
+        )
+        return self._check(response)
+
+    async def _async_get_upload(self, cli: httpx.AsyncClient, upload_id: str) -> dict[str, Any]:
+        response = await _async_request_with_retry(
+            cli,
+            "GET",
+            f"{self._base_url}/v1/uploads/{upload_id}",
+            stage="upload status",
+            headers=self._headers(),
+        )
+        return self._check(response)
 
     # ── parse execution ──────────────────────────────────────────────
 
     def _do_parse(self, payload: dict[str, Any]) -> dict[str, Any]:
         with httpx.Client(timeout=httpx.Timeout(120, connect=30), trust_env=self._trust_env) as cli:
-            r = cli.post(f"{self._base_url}/v1/parse/jobs", headers=self._headers(), json=payload)
+            r = _request_once(
+                cli,
+                "POST",
+                f"{self._base_url}/v1/parse/jobs",
+                stage="job submission",
+                headers=self._headers(),
+                json_body=payload,
+            )
             job = self._check(r)
             if job.get("status") not in _TERMINAL_JOB_STATUSES:
                 job = self._poll(cli, job["job_id"])
@@ -280,7 +433,14 @@ class MinerUApiParser(DocumentParser):
 
     async def _async_do_parse(self, payload: dict[str, Any]) -> dict[str, Any]:
         async with httpx.AsyncClient(timeout=httpx.Timeout(120, connect=30), trust_env=self._trust_env) as cli:
-            r = await cli.post(f"{self._base_url}/v1/parse/jobs", headers=self._headers(), json=payload)
+            r = await _async_request_once(
+                cli,
+                "POST",
+                f"{self._base_url}/v1/parse/jobs",
+                stage="job submission",
+                headers=self._headers(),
+                json_body=payload,
+            )
             job = self._check(r)
             if job.get("status") not in _TERMINAL_JOB_STATUSES:
                 job = await self._async_poll(cli, job["job_id"])
@@ -289,7 +449,13 @@ class MinerUApiParser(DocumentParser):
     def _poll(self, cli: Any, job_id: str) -> dict[str, Any]:
         for _ in range(_POLL_MAX_ATTEMPTS):  # max 1 hour
             time.sleep(_POLL_INTERVAL_SECONDS)
-            r = cli.get(f"{self._base_url}/v1/parse/jobs/{job_id}", headers=self._headers())
+            r = _request_with_retry(
+                cli,
+                "GET",
+                f"{self._base_url}/v1/parse/jobs/{job_id}",
+                stage="job polling",
+                headers=self._headers(),
+            )
             job = self._check(r)
             if job.get("status") in _TERMINAL_JOB_STATUSES:
                 return job
@@ -298,7 +464,13 @@ class MinerUApiParser(DocumentParser):
     async def _async_poll(self, cli: Any, job_id: str) -> dict[str, Any]:
         for _ in range(_POLL_MAX_ATTEMPTS):
             await asyncio.sleep(_POLL_INTERVAL_SECONDS)
-            r = await cli.get(f"{self._base_url}/v1/parse/jobs/{job_id}", headers=self._headers())
+            r = await _async_request_with_retry(
+                cli,
+                "GET",
+                f"{self._base_url}/v1/parse/jobs/{job_id}",
+                stage="job polling",
+                headers=self._headers(),
+            )
             job = self._check(r)
             if job.get("status") in _TERMINAL_JOB_STATUSES:
                 return job
@@ -318,6 +490,196 @@ class MinerUApiParser(DocumentParser):
 # ═══════════════════════════════════════════════════════════════════════
 
 
+def _request_once(
+    client: httpx.Client,
+    method: _RequestMethod,
+    url: str,
+    *,
+    stage: str,
+    headers: dict[str, str],
+    json_body: dict[str, Any] | None = None,
+    content: bytes | None = None,
+) -> httpx.Response:
+    return _request(
+        client,
+        method,
+        url,
+        stage=stage,
+        headers=headers,
+        json_body=json_body,
+        content=content,
+        max_attempts=1,
+    )
+
+
+def _request_with_retry(
+    client: httpx.Client,
+    method: _RequestMethod,
+    url: str,
+    *,
+    stage: str,
+    headers: dict[str, str],
+    json_body: dict[str, Any] | None = None,
+    content: bytes | None = None,
+) -> httpx.Response:
+    return _request(
+        client,
+        method,
+        url,
+        stage=stage,
+        headers=headers,
+        json_body=json_body,
+        content=content,
+        max_attempts=_TRANSPORT_MAX_ATTEMPTS,
+    )
+
+
+def _request(
+    client: httpx.Client,
+    method: _RequestMethod,
+    url: str,
+    *,
+    stage: str,
+    headers: dict[str, str],
+    json_body: dict[str, Any] | None,
+    content: bytes | None,
+    max_attempts: int,
+) -> httpx.Response:
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return _send_request(client, method, url, headers=headers, json_body=json_body, content=content)
+        except httpx.TransportError as exc:
+            if attempt >= max_attempts:
+                raise _APITransportError(stage=stage, method=method, attempts=attempt, cause=exc) from exc
+            logger.warning(
+                "Retrying API transport request: stage=%s method=%s next_attempt=%s/%s error=%s",
+                stage,
+                method,
+                attempt + 1,
+                max_attempts,
+                type(exc).__name__,
+            )
+            time.sleep(_transport_retry_delay(attempt))
+    raise AssertionError("API transport retry loop exited unexpectedly")
+
+
+async def _async_request_once(
+    client: httpx.AsyncClient,
+    method: _RequestMethod,
+    url: str,
+    *,
+    stage: str,
+    headers: dict[str, str],
+    json_body: dict[str, Any] | None = None,
+    content: bytes | None = None,
+) -> httpx.Response:
+    return await _async_request(
+        client,
+        method,
+        url,
+        stage=stage,
+        headers=headers,
+        json_body=json_body,
+        content=content,
+        max_attempts=1,
+    )
+
+
+async def _async_request_with_retry(
+    client: httpx.AsyncClient,
+    method: _RequestMethod,
+    url: str,
+    *,
+    stage: str,
+    headers: dict[str, str],
+    json_body: dict[str, Any] | None = None,
+    content: bytes | None = None,
+) -> httpx.Response:
+    return await _async_request(
+        client,
+        method,
+        url,
+        stage=stage,
+        headers=headers,
+        json_body=json_body,
+        content=content,
+        max_attempts=_TRANSPORT_MAX_ATTEMPTS,
+    )
+
+
+async def _async_request(
+    client: httpx.AsyncClient,
+    method: _RequestMethod,
+    url: str,
+    *,
+    stage: str,
+    headers: dict[str, str],
+    json_body: dict[str, Any] | None,
+    content: bytes | None,
+    max_attempts: int,
+) -> httpx.Response:
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return await _async_send_request(client, method, url, headers=headers, json_body=json_body, content=content)
+        except httpx.TransportError as exc:
+            if attempt >= max_attempts:
+                raise _APITransportError(stage=stage, method=method, attempts=attempt, cause=exc) from exc
+            logger.warning(
+                "Retrying API transport request: stage=%s method=%s next_attempt=%s/%s error=%s",
+                stage,
+                method,
+                attempt + 1,
+                max_attempts,
+                type(exc).__name__,
+            )
+            await asyncio.sleep(_transport_retry_delay(attempt))
+    raise AssertionError("API transport retry loop exited unexpectedly")
+
+
+def _send_request(
+    client: httpx.Client,
+    method: _RequestMethod,
+    url: str,
+    *,
+    headers: dict[str, str],
+    json_body: dict[str, Any] | None,
+    content: bytes | None,
+) -> httpx.Response:
+    if method == "GET":
+        return client.get(url, headers=headers)
+    if method == "PUT":
+        return client.put(url, headers=headers, content=content or b"")
+    if json_body is None:
+        return client.post(url, headers=headers)
+    return client.post(url, headers=headers, json=json_body)
+
+
+async def _async_send_request(
+    client: httpx.AsyncClient,
+    method: _RequestMethod,
+    url: str,
+    *,
+    headers: dict[str, str],
+    json_body: dict[str, Any] | None,
+    content: bytes | None,
+) -> httpx.Response:
+    if method == "GET":
+        return await client.get(url, headers=headers)
+    if method == "PUT":
+        return await client.put(url, headers=headers, content=content or b"")
+    if json_body is None:
+        return await client.post(url, headers=headers)
+    return await client.post(url, headers=headers, json=json_body)
+
+
+def _transport_retry_delay(attempt: int) -> float:
+    exponential = min(
+        _TRANSPORT_RETRY_MAX_DELAY_SECONDS,
+        _TRANSPORT_RETRY_BASE_DELAY_SECONDS * (2 ** (attempt - 1)),
+    )
+    return exponential * (0.5 + random.random())
+
+
 def _sha256_file(path: Path) -> str:
     h = hashlib.sha256()
     with path.open("rb") as fh:
@@ -334,24 +696,6 @@ def _extract_feature_list(health: dict[str, Any], name: str) -> set[str]:
     if not isinstance(values, list):
         return set()
     return {item for item in values if isinstance(item, str)}
-
-
-def _mime_type(path: Path) -> str:
-    ext = path.suffix.lower()
-    return {
-        ".pdf": "application/pdf",
-        ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        ".pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        ".png": "image/png",
-        ".jpg": "image/jpeg",
-        ".jpeg": "image/jpeg",
-        ".jp2": "image/jp2",
-        ".webp": "image/webp",
-        ".gif": "image/gif",
-        ".bmp": "image/bmp",
-        ".tiff": "image/tiff",
-    }.get(ext, "application/octet-stream")
 
 
 def _parse_result_from_job(job: dict[str, Any], file_name: str, parser: MinerUApiParser) -> ParseResult:
@@ -399,13 +743,13 @@ def _extract_model_output_from_archive(archive: zipfile.ZipFile) -> Any | None:
     if local_name in names:
         model_output_name = local_name
     else:
-        staging_names = sorted(name for name in names if Path(name).name.endswith("_model.json"))
-        if not staging_names:
+        legacy_names = sorted(name for name in names if Path(name).name.endswith("_model.json"))
+        if not legacy_names:
             return None
-        if len(staging_names) > 1:
-            available = ", ".join(staging_names)
+        if len(legacy_names) > 1:
+            available = ", ".join(legacy_names)
             raise _V1APIError("invalid_model_output", f"ZIP output contained multiple model outputs: {available}")
-        model_output_name = staging_names[0]
+        model_output_name = legacy_names[0]
 
     raw = archive.read(model_output_name)
     try:
@@ -474,7 +818,7 @@ def _middle_json_zip_candidates() -> list[str]:
 
 
 def _read_middle_json_from_zip(archive: zipfile.ZipFile) -> dict[str, Any]:
-    """从本地 api_server 或 staging remote server 的 zip 中读取 middle_json。"""
+    """从本地 api_server 或 remote server 的 zip 中读取 middle_json。"""
     names = set(archive.namelist())
     for candidate in _middle_json_zip_candidates():
         if candidate not in names:
@@ -567,7 +911,13 @@ def _download_bytes(parser: MinerUApiParser, ref: dict[str, Any]) -> bytes:
         raise _V1APIError("invalid_response", "No file_id in output reference")
 
     with httpx.Client(timeout=httpx.Timeout(120, connect=30), follow_redirects=True, trust_env=parser._trust_env) as cli:
-        r = cli.get(f"{parser._base_url}/v1/files/{file_id}/content", headers=parser._headers())
+        r = _request_with_retry(
+            cli,
+            "GET",
+            f"{parser._base_url}/v1/files/{file_id}/content",
+            stage="output download",
+            headers=parser._headers(),
+        )
         _check_download_response(r)
         return r.content
 
@@ -580,7 +930,13 @@ async def _async_download_bytes(parser: MinerUApiParser, ref: dict[str, Any]) ->
     async with httpx.AsyncClient(
         timeout=httpx.Timeout(120, connect=30), follow_redirects=True, trust_env=parser._trust_env
     ) as cli:
-        r = await cli.get(f"{parser._base_url}/v1/files/{file_id}/content", headers=parser._headers())
+        r = await _async_request_with_retry(
+            cli,
+            "GET",
+            f"{parser._base_url}/v1/files/{file_id}/content",
+            stage="output download",
+            headers=parser._headers(),
+        )
         _check_download_response(r)
         return r.content
 
@@ -617,6 +973,45 @@ def _pages_from_middle_json(mid_json: dict[str, Any] | None) -> list[PageInfo]:
     return _parse_result_from_middle_json(mid_json).pages
 
 
+def _normalize_legacy_pdf_info_spans(pdf_info: Any) -> None:
+    """旧版 middle_json 的 span 可能用 html 字段携带 table/chart 等内容而不设 content。
+
+    Span.from_dict 只读取 dataclass 定义的字段，会丢弃 html，导致 content 为空。
+    在反序列化前把非空 html 回填到 content。
+    """
+    if not isinstance(pdf_info, list):
+        return
+    for page in pdf_info:
+        if not isinstance(page, dict):
+            continue
+        for key in ("preproc_blocks", "para_blocks", "discarded_blocks"):
+            blocks = page.get(key)
+            if isinstance(blocks, list):
+                _normalize_legacy_blocks(blocks)
+
+
+def _normalize_legacy_blocks(blocks: list[Any]) -> None:
+    for block in blocks:
+        if not isinstance(block, dict):
+            continue
+        lines = block.get("lines")
+        if isinstance(lines, list):
+            for line in lines:
+                if not isinstance(line, dict):
+                    continue
+                spans = line.get("spans")
+                if isinstance(spans, list):
+                    for span in spans:
+                        if not isinstance(span, dict):
+                            continue
+                        html = span.get("html")
+                        if isinstance(html, str) and html:
+                            span["content"] = html
+        children = block.get("blocks")
+        if isinstance(children, list):
+            _normalize_legacy_blocks(children)
+
+
 def _parse_result_from_middle_json(mid_json: dict[str, Any]) -> ParseResult:
     if isinstance(mid_json, dict):
         pages = mid_json.get("pages")
@@ -625,7 +1020,8 @@ def _parse_result_from_middle_json(mid_json: dict[str, Any]) -> ParseResult:
 
         pdf_info = mid_json.get("pdf_info")
         if isinstance(pdf_info, list):
-            # Staging JSON output may use the older pdf_info field instead of ParseResult pages.
+            # The official API may use the older pdf_info field instead of ParseResult pages.
+            _normalize_legacy_pdf_info_spans(pdf_info)
             compat_payload = dict(mid_json)
             compat_payload["pages"] = pdf_info
             return ParseResult.from_dict(compat_payload)
@@ -685,7 +1081,7 @@ def _structured_error(data: dict[str, Any]) -> dict[str, Any] | None:
 def _remote_auth_message(data: dict[str, Any]) -> str | None:
     msg_code = data.get("msgCode")
     msg = data.get("msg")
-    # Staging auth failures still use the legacy msgCode/msg payload instead of {"error": ...}.
+    # Official API auth failures may use the legacy msgCode/msg payload instead of {"error": ...}.
     if msg_code == "A0202":
         return str(msg or "user authenticate failed")
     if isinstance(msg, str) and "authenticate failed" in msg.lower():

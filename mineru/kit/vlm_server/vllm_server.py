@@ -2,14 +2,17 @@
 import os
 import sys
 
-from mineru.model.vlm.engine_utils import set_default_gpu_memory_utilization, enable_custom_logits_processors, \
-    mod_kwargs_by_device_type
-from mineru.utils.models_download_utils import auto_download_and_get_model_root_path
+from ...model.vlm.engine_utils import (
+    enable_custom_logits_processors,
+    mod_kwargs_by_device_type,
+    set_default_gpu_memory_utilization,
+)
+from ...utils.model_registry import MINERU_2_5_PRO_2605_1_2B
 
 from vllm.entrypoints.cli.main import main as vllm_main
 
 
-def main():
+def main() -> None:
     args = sys.argv[1:]
 
     has_port_arg = False
@@ -48,7 +51,7 @@ def main():
         gpu_memory_utilization = str(set_default_gpu_memory_utilization())
         args.extend(["--gpu-memory-utilization", gpu_memory_utilization])
     if not model_path:
-        model_path = auto_download_and_get_model_root_path("/", "vlm")
+        model_path = str(MINERU_2_5_PRO_2605_1_2B.ensure())
     if (not has_logits_processors_arg) and custom_logits_processors:
         args.extend(["--logits-processors", "mineru_vl_utils:MinerULogitsProcessor"])
 

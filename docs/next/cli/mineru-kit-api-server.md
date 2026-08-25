@@ -8,7 +8,7 @@
 
 ## 1. 定位
 
-`mineru-kit api-server` 是正式的 self-hosted parse-server 启动入口。当前一个进程可以通过重复 `--tier` 暴露一个或多个 tier；不传 `--tier` 时暴露 `flash`、`medium`、`high`、`extra_high`。
+`mineru-kit api-server` 是正式的 self-hosted parse-server 启动入口。`--tier` 是单值启动能力上限，只接受 `flash`、`basic` 或 `standard`；不传时默认以 `standard` 启动，并暴露全部四个请求 tier。
 
 `mineru doclib` 可以通过 HTTP 调用它执行解析任务。
 
@@ -43,15 +43,19 @@ api-server 必须提供能力发现接口，让 doclib 或客户端知道当前�
 
 裸 api-server 的请求默认 tier 由启动配置决定：
 
-| api-server 启动 tier | 请求未指定 tier 时 |
-|---------------------|--------------------|
-| 包含 `high` | `high` |
-| 不包含 `high` | 使用启动 tier 列表中的第一个 tier |
-| 未传 `--tier` | 暴露 `flash`、`medium`、`high`、`extra_high`，默认 `high` |
+| api-server 启动配置 | `/v1/tiers` | 请求未指定 tier 时 |
+|---------------------|-------------|--------------------|
+| `--tier flash` | `flash` | 返回 `quality_tier_unavailable`，除非请求显式传 `tier=flash` |
+| `--tier basic` | `flash`、`basic` | `basic` |
+| `--tier basic --no-flash` | `basic` | `basic` |
+| `--tier standard` 或未传 `--tier` | `flash`、`basic`、`standard`、`advanced` | `standard` |
+| `--tier standard --no-flash` | `basic`、`standard`、`advanced` | `standard` |
 
-因此，如果只以 `--tier flash` 启动裸 api-server，请求未指定 tier 时会使用 `flash`。doclib 的主动阅读默认选择策略应在调用 api-server 前解析为具体质量 tier，避免把用户主动阅读静默降级为 `flash`。
+因此，如果只以 `--tier flash` 启动裸 api-server，请求未指定 tier 时不应静默使用 `flash`。需要 `flash` 时调用方必须显式传 `tier=flash`；非 PDF/image 文件的批量归一规则见 [ADR-0024](../decisions/0024-file-type-tier-normalization.md)。
 
-如果用户需要在同一端口提供多个 tier，可以重复 `--tier`；如果不同 tier 需要不同硬件、并发或生命周期策略，则启动多个 api-server 进程并由 doclib 或上层配置分别管理 URL。
+`--no-flash` 会同时关闭 Flash 能力发现和执行。显式 Flash 请求以及 Office/HTML 等必须归一到 Flash 的输入都会被拒绝。`--tier flash --no-flash` 因为没有可用能力而启动失败。
+
+如果不同启动能力需要不同硬件、并发或生命周期策略，应启动多个 api-server 进程并由 doclib 或上层配置分别管理 URL。Doclib managed server 固定使用 `--no-flash`，因为 Flash 在 doclib 进程内执行。
 
 ## 4. self-hosted 与 managed
 
@@ -64,16 +68,19 @@ managed 是生命周期管理方式，不是用户直接执行的命令模式。
 
 ## 5. Usage
 
-api-server 启动时可使用 `--tier` 限定暴露档位；该选项可重复：
+api-server 启动时可使用单个 `--tier` 指定能力上限：
 
 ```bash
-mineru-kit api-server --tier medium --port 16580
-mineru-kit api-server --tier high --port 15982
-mineru-kit api-server --tier medium --tier high --port 8000
-mineru-kit api-server --tier high --language en --ocr-mode ocr --disable-image-analysis
+mineru-kit api-server --tier basic --port 16580
+mineru-kit api-server --tier standard --port 15982
+mineru-kit api-server --tier standard --no-flash --port 8000
+mineru-kit api-server --tier standard --preload-models
+mineru-kit api-server --tier standard --language en --ocr-mode ocr --disable-image-analysis
 ```
 
-未传 `--tier` 时暴露 `flash`、`medium`、`high`、`extra_high`；请求未指定 tier 时默认 `high`。
+未传 `--tier` 时暴露 `flash`、`basic`、`standard`、`advanced`；PDF/image 请求未指定 tier 时默认 `standard`。
+
+模型默认在首次解析时懒加载。`--preload-models` 会在 Basic 或 Standard 服务启动时提前加载所需模型，并在加载失败时让能力接口返回明确错误；Flash 没有本地模型，该参数对 Flash 无操作。Doclib managed parse-server 会自动启用模型预加载。
 
 启动完成后，HTTP API 不暴露 backend。`GET /v1/tiers` 也不新增 backend 字段；调用方如需推断实现，只能从 `current_model` 做弱推断。
 
@@ -84,7 +91,9 @@ mineru-kit api-server --tier high --language en --ocr-mode ocr --disable-image-a
 ### 稳定公开参数
 
 - host / port
-- tier，可重复
+- tier，单值 `flash` / `basic` / `standard`
+- no-flash
+- preload-models
 - API key
 
 ### 稳定解析参数
@@ -95,7 +104,9 @@ mineru-kit api-server --tier high --language en --ocr-mode ocr --disable-image-a
 - concurrency
 - upload-dir
 - url-timeout
-- max-wait
+- allow-local-source
+- max-inline-bytes
+- allow-http-source
 
 ### 专家参数
 

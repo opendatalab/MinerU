@@ -75,7 +75,7 @@
 仍需工作:
 
 1. 明确 VLM block 粒度与 Pipeline OCR 粒度的兼容语义。
-2. 统一 VLM-specific type 在 content_list / Agent citation 中的表达。
+2. 统一 VLM-specific type 在 structured_content / Agent citation 中的表达。
 3. 确认归一化坐标绝不进入 public Middle JSON。
 4. 确认 VLM/Hybrid 与 Pipeline 在统一 structured_content converter 下的字段一致性。
 
@@ -83,7 +83,7 @@
 
 - VLM 输出不出现归一化 bbox。
 - VLM 特有 block type 能被 renderer 和 Agent locator 识别。
-- 默认选择得到的 `high` 结果可以恢复为 `ParseResult`。
+- 默认选择得到的 `standard` 结果可以恢复为 `ParseResult`。
 
 ## Hybrid
 
@@ -146,21 +146,20 @@
 
 现状:
 
-- `HtmlParser` 已存在，但当前构造 `Span` / `Block` / `Line` 时存在与 dataclass 必填字段不一致的风险。
 - HTML 输出映射到单页 `PageInfo(page_idx=0)`。
 - page_size、bbox、index 策略尚未稳定。
 
 仍需工作:
 
-1. 修正 `HtmlParser` 所有 `Span` / `Line` / `Block` 构造，补齐 `bbox` 和 `index`。
+1. 修正 HTML 所有 `Span` / `Line` / `Block` 构造，补齐 `bbox` 和 `index`。
 2. 定义 HTML 的 page_size。可以为 `None`，但要明确。
 3. 为 DOM order 生成稳定 block index。
 4. 明确 HTML `img src`、table html、code block 的 locator 和隐私策略。
 
 验收:
 
-- HTML parser 单测覆盖常见标签。
-- HTML 输出可 render markdown/content_list。
+- HTML 单测覆盖常见标签。
+- HTML 输出可 render markdown/structured_content。
 - HTML 输出可通过 validator。
 
 ## 跨 backend 工作项

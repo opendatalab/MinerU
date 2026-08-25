@@ -43,7 +43,7 @@ def telemetry_disable(json_mode: bool = typer.Option(False, "--json", help="JSON
 
 @app.command("flush")
 def telemetry_flush(json_mode: bool = typer.Option(False, "--json", help="JSON output")) -> None:
-    """Flush pending telemetry now when telemetry is enabled."""
+    """Flush pending telemetry now when telemetry is enabled (or unset during prerelease)."""
     _run_action("flush", json_mode=json_mode)
 
 

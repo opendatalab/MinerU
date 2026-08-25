@@ -207,6 +207,7 @@ def _path_prefix(path: str) -> str:
     return path if path.endswith(os.sep) else path + os.sep
 
 
+# TODO
 def _is_watch_root(path: str, watches: list[WatchTargetRow]) -> bool:
     return any(watch["path"] == path for watch in watches)
 

@@ -69,7 +69,7 @@ MinerU VLM 的跨页单元格检测保持关闭。任一功能启用时，`api_k
 配置必须服务两个产品原则：
 
 - 隐私优先：任何配置都不能导致静默上传文档。
-- 质量优先：主动阅读未指定 tier 时使用默认选择策略，不能静默降级到 `flash`。
+- 质量优先：PDF/image 主动阅读未指定 tier 时使用默认选择策略，不能静默降级到 `flash`；Office/HTML 按实际能力归一为 `flash`；text 直接读取。
 
 ## 2. 两阶段配置模型
 
@@ -106,11 +106,15 @@ MinerU VLM 的跨页单元格检测保持关闭。任一功能启用时，`api_k
 | doclib | `doclib.parse_lock_timeout_sec` | `1800` | parse 锁超时 |
 | doclib | `doclib.scan_lock_timeout_sec` | `1800` | scan 锁超时 |
 | doclib | `doclib.compaction_interval_sec` | `3600` | compaction 间隔 |
-| doclib | `doclib.parse_server_health_check_interval_sec` | `60` | parse-server 健康检查间隔 |
+| doclib | `doclib.parse_server_health_check_interval_sec` | `30` | parse-server 健康检查间隔 |
 | doclib | `doclib.parse_server_probe_timeout_sec` | `10` | parse-server 探测超时 |
 | doclib | `doclib.parse_server_startup_grace_sec` | `30` | managed parse-server 启动宽限时间 |
+| doclib | `doclib.parse_server_startup_timeout_sec` | `600` | managed parse-server 启动硬超时；超时后进入重启策略 |
 | doclib | `doclib.parse_server_stop_timeout_sec` | `10` | managed parse-server 停止超时 |
 | sqlite | `doclib.sqlite.path` | `~/.mineru/doclib.db` | SQLite DB 路径 |
+| sqlite | `doclib.sqlite.busy_timeout_ms` | `5000` | SQLite 锁等待时间（毫秒） |
+| sqlite | `doclib.sqlite.lock_retry_attempts` | `3` | `SQLITE_BUSY` / `SQLITE_LOCKED` 的额外重试次数 |
+| sqlite | `doclib.sqlite.lock_retry_base_delay_ms` | `50` | SQLite 锁重试的指数退避初始延迟（毫秒） |
 | sqlite | `doclib.sqlite.mmap_size` | `268435456` | mmap size |
 | sqlite | `doclib.sqlite.cache_size` | `-20000` | SQLite cache size |
 | sqlite | `doclib.sqlite.wal_autocheckpoint` | `1000` | WAL checkpoint 阈值 |
@@ -132,7 +136,7 @@ MinerU VLM 的跨页单元格检测保持关闭。任一功能启用时，`api_k
 | `watches` 表 | watch 目录、可插拔设备状态 | 表结构 | 文件发现配置 |
 | `exclude_rules` 表 | exclude | 表结构 | 路径排除规则 |
 | `parsing_rules` 表 | parsing-rules | 表结构 | 路径解析规则 |
-| 当前命令显式参数 | `--tier high`、`--remote` | 不持久化 | 当前请求覆盖 |
+| 当前命令显式参数 | `--tier standard`、`--remote` | 不持久化 | 当前请求覆盖 |
 | 环境变量 | `MINERU_API_KEY` | 不持久化 | 临时凭证或 CI 覆盖 |
 | SDK client 参数 | `base_url`、`api_key` | 调用方决定 | 当前 client 实例 |
 
@@ -160,19 +164,19 @@ SDK client 显式参数属于当前调用方传入的请求上下文；当它最
 | key | 默认值 | 说明 |
 |-----|--------|------|
 | `parse_server.local.mode` | `disabled` | 本地 parse-server 模式 |
-| `parse_server.local.managed_tier` | `high` | managed 模式启动 tier |
-| `parse_server.remote.url` | 当前代码默认 `https://staging.mineru.org.cn/api` | 默认远端 API 地址；产品正式目标是 `https://mineru.net/api` |
+| `parse_server.local.managed_tier` | `standard` | managed 模式启动能力上限，只接受 `basic` 或 `standard`；Standard 同时提供 Advanced 请求能力 |
+| `parse_server.remote.url` | `https://mineru.net/api` | 默认远端 API 地址 |
 
 ## 5. Parse-server 配置
 
-parse-server 是 `medium` / `high` / `extra_high` 等质量 tier 的解析能力来源。它可以是本地独立进程，也可以是远端 `mineru.net/api` 或当前代码配置的 staging endpoint。
+parse-server 是 `basic` / `standard` / `advanced` 等质量 tier 的解析能力来源。它可以是本地独立进程，也可以是远端 `mineru.net/api`。
 
 ### 5.1 Local parse-server
 
 | key | 默认值 | 说明 |
 |-----|--------|------|
 | `parse_server.local.mode` | `disabled` | `disabled` / `managed` / `self_hosted` |
-| `parse_server.local.managed_tier` | `high` | managed 模式启动的 tier |
+| `parse_server.local.managed_tier` | `standard` | managed 模式启动的 tier |
 | `parse_server.local.self_hosted_url` | 无 | self-hosted parse-server URL |
 | `parse_server.local.self_hosted_api_key` | 无 | self-hosted API Key，可选 |
 
@@ -188,7 +192,7 @@ parse-server 是 `medium` / `high` / `extra_high` 等质量 tier 的解析能力
 
 | key | 默认值 | 说明 |
 |-----|--------|------|
-| `parse_server.remote.url` | 当前代码默认 `https://staging.mineru.org.cn/api` | 默认远端 API 地址；产品正式目标是 `https://mineru.net/api` |
+| `parse_server.remote.url` | `https://mineru.net/api` | 默认远端 API 地址 |
 | `parse_server.remote.api_key` | 无 | 远端 API Key |
 
 远端配置存在不等于允许上传。只有当前请求显式 `--remote`，或 parsing-rule 显式带 remote 语义时，才可以上传文档。
@@ -197,8 +201,10 @@ parse-server 是 `medium` / `high` / `extra_high` 等质量 tier 的解析能力
 
 API Key 读取优先级：
 
-1. SQLite config 中的 `parse_server.remote.api_key` 或 `parse_server.local.self_hosted_api_key`。
-2. 环境变量 `MINERU_API_KEY`，仅在对应 config API Key 未配置时作为默认值。
+1. Remote API 使用 SQLite config 中的 `parse_server.remote.api_key`。
+2. 未配置 Remote API Key 时，回退到环境变量 `MINERU_API_KEY`。
+
+`parse_server.local.self_hosted_api_key` 只读取自身的 SQLite config，不回退到 Remote API 的环境变量。
 
 环境变量适合无 tty 场景和 CI 的默认凭证，但运行中的 doclib server 会优先使用 `mineru config set`
 写入的运行时配置。环境变量不应改变是否允许 remote 上传的判断。
@@ -227,7 +233,7 @@ API Key 读取优先级：
 
 ```bash
 mineru config parse-server local.mode managed
-mineru config parse-server local.managed-tier medium
+mineru config parse-server local.managed-tier basic
 mineru config parse-server remote.api-key sk-...
 ```
 
@@ -267,17 +273,17 @@ Watch 用于自动发现文件和建立搜索索引。
 Parsing-rules 通过路径 glob 指定自动解析策略。
 
 ```bash
-mineru config parsing-rules add "*/论文/*" --tier medium --pages all
-mineru config parsing-rules add "*/合同/*" --tier high --remote
+mineru config parsing-rules add "*/论文/*" --tier basic --pages all
+mineru config parsing-rules add "*/合同/*" --tier standard --remote
 ```
 
 约束：
 
-- 规则必须显式指定 remote，才允许上传远端。
-- 规则命中的 tier 必须经过能力检查。
-- 能力不足时记录结构化错误，不静默降级到 `flash`。
-- 允许不指定 tier。执行时必须通过能力发现解析为实体 tier，并只记录实际使用的实体 tier。
-- 默认选择策略不能解析为 `flash`。
+- 对 PDF/image，规则必须显式指定 remote，才允许上传远端。
+- 对 PDF/image，规则命中的 tier 必须经过能力检查。
+- 对 PDF/image，规则未指定 tier 时按 `standard` -> `advanced` -> `basic` -> `flash` 选择，并只记录实际使用的实体 tier。
+- 对 Office/HTML，parsing-rule 的 tier 和 remote 不生效，实际按 `flash` 记录；text 只入库和索引，不创建 parse row。
+- 完整归一规则见 [ADR-0024](decisions/0024-file-type-tier-normalization.md)。
 
 ### 8.3 Exclude
 

@@ -1021,7 +1021,7 @@ async def run_orchestrated_cli(
     Hybrid parsing effort:
       medium: Local Hybrid processing without VLM calls. Image/chart analysis is disabled.
       high: Faster VLM parsing for most documents, balancing accuracy and efficiency. Image/chart analysis is disabled.
-      extra_high: Higher-accuracy parsing with image/chart analysis support, which may take longer.
+      xhigh: Higher-accuracy parsing with image/chart analysis support, which may take longer.
     Without effort specified, high will be used by default.
     Adapted only for the case where the backend is set to 'hybrid-*'.""",
 )

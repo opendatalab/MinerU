@@ -50,15 +50,18 @@
 | Tier | 类型 | 含义 |
 |------|------|------|
 | `flash` | 实体 tier | CPU-only、快速、低质量，用于 watch、发现和索引 |
-| `medium` | 实体 tier | 面向普通本地硬件的模型解析能力 |
-| `high` | 实体 tier | 当前最高质量解析能力，可来自 `mineru.net/api` 或高端本地硬件 |
+| `basic` | 实体 tier | 面向普通本地硬件的模型解析能力 |
+| `standard` | 实体 tier | 绝大多数场景足够好的高质量解析能力，可来自 `mineru.net/api` 或高端本地硬件 |
+| `advanced` | 实体 tier | 最高质量解析能力，比 `standard` 消耗更多算力和时间 |
 
 规范:
 
 - CLI/API/SDK 的用户可见参数应使用 `tier`。
 - CLI 不传 `--tier`、HTTP API 省略 `tier` 或传 JSON `null`、Python SDK 传 `None` 表示使用默认选择策略。
-- 任务入队、缓存目录、产物 metadata 应记录实际使用的实体 tier，即 `flash`、`medium` 或 `high`。
-- 默认选择策略永远不能解析为 `flash`。
+- 任务入队、缓存目录、产物 metadata 应记录实际使用的实体 tier，即 `flash`、`basic`、`standard` 或 `advanced`。
+- PDF/image 的默认选择策略不能解析为 `flash`；Office/HTML 这类仅支持 flash tier 的输入归一规则见 [ADR-0024](decisions/0024-file-type-tier-normalization.md)；text 直接读取。
+
+完整产品语义见 [解析 Tier](tiers.md)。
 
 ### 3.2 Backend
 
@@ -82,7 +85,7 @@
 - 对普通用户显示 `tier`，不要把 `backend` 作为主选择项。
 - `backend` 只应暴露在 kit 或核心开发层，例如 `mineru-kit parse --backend`。
 - Tool SDK 的直接 parser 可以接受专家 `backend` 参数；API-backed parser、Doclib SDK、doclib server API 和 v1 API 不应要求用户理解或选择 `backend`。
-- `mineru-kit api-server` 启动参数应优先使用 `--tier`；也可以暴露高级 `--backend` 覆盖，用于选择该进程内部加载的 parser backend。`--backend` 公开使用 `hybrid-*`，旧 `pipeline` / `vlm-*` 仅作为隐藏兼容输入。启动后的 HTTP API 只暴露 `tier`。
+- `mineru-kit api-server` 使用单值 `--tier flash|basic|standard` 表示能力上限，不暴露 `--backend`；启动后的 HTTP API 通过 `/v1/tiers` 发布展开后的请求 tier。
 - Middle JSON 中 `_meta.backend` 表示产物来源实现，不表示用户请求的 `tier`。
 - `backend` 不应承担隐私语义；隐私由 `privacy` / `remote` / `via` 描述。
 
@@ -108,11 +111,7 @@
 |--------|------|
 | `parse()` | Tool SDK 的便捷函数 |
 | `DocumentParser` | Parser 抽象接口 |
-| `PdfPipelineParser` | 旧 SDK 兼容类，内部委托 Hybrid low |
-| `PdfVlmParser` | 调用 VLM backend 的 parser |
-| `PdfHybridParser` | 调用 hybrid backend 的 parser |
-| `DocxParser` / `PptxParser` / `XlsxParser` | Office parser |
-| `HtmlParser` | HTML parser |
+| `MinerUParser` | 统一解析器，支持 PDF/图片/DOCX/PPTX/XLSX |
 | `MinerUApiParser` | 通过 v1 API 委托解析的 parser |
 
 规范:
@@ -156,7 +155,7 @@
 
 `parse-server` 是最终术语，中文统一为“解析服务”。它是无状态解析服务，提供 v1 Unified API，并且已经作为配置命名的一部分使用。
 
-它接收文件或本地路径，执行 `medium` / `high` 等解析能力，并返回解析任务与产物。它不管理长期文档库、watch、搜索索引或用户本地配置。
+它接收文件或本地路径，执行 `basic` / `standard` / `advanced` 等解析能力，并返回解析任务与产物。它不管理长期文档库、watch、搜索索引或用户本地配置。
 
 文档中推荐写法:
 
@@ -195,7 +194,7 @@ Local Parse Server 的 API 尽量兼容官方 v1 API，但可以简化 Webhook�
 
 `mineru.net API` 是 MinerU 官方远程 API。
 
-它是 v1 Unified API 的主线定义来源，也是当前 `high` tier 的默认远端能力来源。
+它是 v1 Unified API 的主线定义来源，也是当前 `standard` tier 的默认远端能力来源。
 
 不要把 `mineru.net API` 写成 `doclib API`。doclib 是本地产品服务，`mineru.net API` 是官方远程解析和对话 API。
 
@@ -356,7 +355,7 @@ Ingest 不等于 parse。Ingest 可以不产生完整 Middle JSON。
 - 生成 Middle JSON 和 render output。
 - 更新 parse 状态、缓存和内容索引。
 
-主动阅读场景下，未指定 tier 应使用默认选择策略，并至少解析到 `medium`。
+主动阅读场景下，未指定 tier 应使用默认选择策略，并解析到可用的非 `flash` 质量 tier。
 
 ## 8. 隐私与执行路径
 
@@ -501,7 +500,7 @@ Local Parse Server 默认不按公网 access level 做售卖或配额区分。
 |----------|------|
 | `tier` | 字段名、参数名、泛指解析档位 |
 | Tier | 章节标题或概念名 |
-| `flash` / `medium` / `high` | tier 枚举值 |
+| `flash` / `basic` / `standard` / `advanced` | tier 枚举值 |
 | parse-server | 最终术语，泛指解析服务 |
 | Local Parse Server | 本地解析服务 |
 | Remote Parse Server | 远端解析服务 |
@@ -543,7 +542,7 @@ Local Parse Server 默认不按公网 access level 做售卖或配额区分。
 | 不推荐说法 | 推荐说法 | 原因 |
 |------------|----------|------|
 | 默认 tier 是某个 engine | 默认选择策略 | 默认选择是一段选择逻辑，不是一个解析后端 |
-| High backend | `high` tier 或具体 backend | `high` 是解析档位，不是解析后端名称 |
+| Standard backend | `standard` tier 或具体 backend | `standard` 是解析档位，不是解析后端名称 |
 | Flash 是默认解析 | watch 默认 `flash`；主动阅读不指定 tier 时走默认选择策略 | 避免误解质量策略 |
 | parser server | parse-server | 服务类别统一写法 |
 | doclib API 等同 v1 API | doclib server API / v1 Unified API | 两者资源模型不同 |

@@ -6,18 +6,26 @@ from abc import ABC, abstractmethod
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
-from ..render import render_content_list, render_markdown, render_structured_content
+from ..render import render_markdown, render_structured_content
+from ..render.contracts import RenderMode
+from ..render.image import ImageRenderer
 from ..render.writer import DataWriter
-from ..types import PageInfo
+from ..types import MiddleJson, PageInfo
 from ..utils.image_payload import ImagePayloadCache
 from ..utils.pdf_document import PDFDocument
 
-MIDDLE_JSON_SCHEMA_VERSION: str = "1.0"
+MIDDLE_JSON_SCHEMA_VERSION: str = "2.0"
+_LEGACY_SCHEMA_VERSION: str = "1.0"
+_LEGACY_DEFAULT_FILE_SUFFIX: Literal["pdf", "docx", "pptx", "xlsx"] = "pdf"
+_LEGACY_DEFAULT_EFFORT: Literal["flash", "low", "medium", "high", "xhigh"] = "medium"
+_LEGACY_DEFAULT_PARSE_MODE: Literal["txt", "ocr"] = "txt"
 _PDF_RETAINED_PAGE_INDICES_KEY = "_pdf_retained_page_indices"
 _PDF_BROKEN_PAGE_INDICES_KEY = "_pdf_broken_page_indices"
-_SUPPORTED_MIDDLE_JSON_BACKENDS = {"hybrid", "office"}
+_TO_DICT_EXCLUDED_KEYS: frozenset[str] = frozenset(
+    {"schema_version", _PDF_RETAINED_PAGE_INDICES_KEY, _PDF_BROKEN_PAGE_INDICES_KEY}
+)
 
 
 def _parse_optional_int_list(value: Any) -> list[int] | None:
@@ -36,16 +44,21 @@ def _parse_optional_int_list(value: Any) -> list[int] | None:
 class ParseResult:
     """The parsed result of a document.
 
-    Holds the typed middle representation and exposes markdown / content-list
-    / images as lazily-computed methods.  Call ``save(writer)`` to persist.
+    Holds the typed middle representation and exposes markdown / structured
+    content / images as lazily-computed methods.  Call ``save(writer)`` to persist.
     """
 
-    pages: list[PageInfo]
+    middle_json: MiddleJson
     _pdf_doc: PDFDocument | None = None
     _model_output: Any = None
     _image_cache: ImagePayloadCache | dict[str, bytes] | None = None
     _retained_page_indices: list[int] | None = None
     _broken_page_indices: list[int] | None = None
+
+    @property
+    def pages(self) -> list[PageInfo]:
+        """顶层页面列表，委托给 MiddleJson。"""
+        return self.middle_json.pages
 
     def __post_init__(self) -> None:
         """规范化顶层图片缓存，确保 public middle_json 不再从 span 携带图片字节。"""
@@ -59,63 +72,58 @@ class ParseResult:
         if not isinstance(d, dict):
             raise ValueError("ParseResult.from_dict expects a dict.")
 
-        if "pages" not in d:
-            raise ValueError("ParseResult JSON must contain a list field named pages.")
-
-        raw_pages = d["pages"]
-        if not isinstance(raw_pages, list):
-            raise ValueError("ParseResult pages must be a list.")
-
-        root_backend = d.get("_backend")
-        if not isinstance(root_backend, str):
-            root_backend = None
-        elif root_backend not in _SUPPORTED_MIDDLE_JSON_BACKENDS:
-            raise ValueError(f"Unsupported middle json backend '{root_backend}'.")
-        pages: list[PageInfo] = []
-        for raw_page in raw_pages:
-            if not isinstance(raw_page, dict):
-                raise ValueError("ParseResult page entries must be dicts.")
-            page = PageInfo.from_dict(raw_page)
-            backend = raw_page.get("_backend")
-            if not isinstance(backend, str):
-                backend = root_backend
-            elif backend not in _SUPPORTED_MIDDLE_JSON_BACKENDS:
-                raise ValueError(f"Unsupported middle json backend '{backend}'.")
-            if backend is not None:
-                page._backend = backend
-            pages.append(page)
+        schema_version = d.get("schema_version", _LEGACY_SCHEMA_VERSION)
         retained_page_indices = _parse_optional_int_list(d.get(_PDF_RETAINED_PAGE_INDICES_KEY))
         broken_page_indices = _parse_optional_int_list(d.get(_PDF_BROKEN_PAGE_INDICES_KEY))
+
+        if schema_version == MIDDLE_JSON_SCHEMA_VERSION:
+            middle_json = ParseResult._build_middle_json_from_v2(d)
+        else:
+            middle_json = ParseResult._build_middle_json_from_legacy(d)
+
         return ParseResult(
-            pages=pages,
+            middle_json=middle_json,
             _retained_page_indices=retained_page_indices,
             _broken_page_indices=broken_page_indices,
         )
 
-    def to_dict(self, *, skip_defaults: bool = True) -> dict[str, Any]:
-        payload = {
-            "schema_version": MIDDLE_JSON_SCHEMA_VERSION,
-            "pages": [page.to_dict(skip_defaults=skip_defaults) for page in self.pages],
-        }
-        self._append_root_backend(payload, self.pages)
-        self._append_private_pdf_page_mapping(payload)
-        return payload
+    @staticmethod
+    def _build_middle_json_from_v2(d: dict[str, Any]) -> MiddleJson:
+        """从 2.0 schema 直接构造 MiddleJson，pages 与元数据字段齐全。"""
+        payload = {k: v for k, v in d.items() if k not in _TO_DICT_EXCLUDED_KEYS}
+        return MiddleJson.model_validate(payload)
 
     @staticmethod
-    def _append_root_backend(payload: dict[str, Any], pages: list[PageInfo]) -> None:
-        """在 envelope 级别保存统一 backend，避免 public page 字段暴露私有属性。"""
-        backend = next((page._backend for page in pages if page._backend), None)
-        if backend is None:
-            return
-        if all(page._backend in (None, backend) for page in pages):
-            payload["_backend"] = backend
+    def _build_middle_json_from_legacy(d: dict[str, Any]) -> MiddleJson:
+        """从 1.0 schema 兼容构造 MiddleJson，preproc_blocks 回推为 raw model_list 重走后处理。"""
+        raw_pages = d.get("pages")
+        if not isinstance(raw_pages, list):
+            raise ValueError("ParseResult JSON must contain a list field named pages.")
 
-    def _append_private_pdf_page_mapping(self, payload: dict[str, Any]) -> None:
-        """附加 PDF 重写页映射的内部元数据，供本地可视化按实际 PDF 页序绘制。"""
+        from ..backend.postprocess.legacy_schema_adapter import legacy_page_to_model_list
+        from ..backend.postprocess.pages import model_list_to_pages
+
+        model_list = [legacy_page_to_model_list(page) for page in raw_pages]
+        pages = model_list_to_pages(model_list) if model_list else []
+
+        from ..version import __version__ as mineru_version
+
+        return MiddleJson(
+            pages=pages,
+            file_suffix=_LEGACY_DEFAULT_FILE_SUFFIX,
+            effort=_LEGACY_DEFAULT_EFFORT,
+            parse_mode=_LEGACY_DEFAULT_PARSE_MODE,
+            mineru_version=mineru_version,
+        )
+
+    def to_dict(self, *, skip_defaults: bool = True) -> dict[str, Any]:
+        payload: dict[str, Any] = {"schema_version": MIDDLE_JSON_SCHEMA_VERSION}
+        payload.update(self.middle_json.to_dict(skip_defaults=skip_defaults))
         if self._retained_page_indices is not None:
             payload[_PDF_RETAINED_PAGE_INDICES_KEY] = list(self._retained_page_indices)
         if self._broken_page_indices:
             payload[_PDF_BROKEN_PAGE_INDICES_KEY] = list(self._broken_page_indices)
+        return payload
 
     @staticmethod
     def from_json(s: str) -> ParseResult:
@@ -127,27 +135,30 @@ class ParseResult:
     def to_json(self) -> str:
         return json.dumps(self.to_dict(), ensure_ascii=False, indent=4)
 
-    def _public_render_pages(self) -> list[PageInfo]:
-        """返回 public 渲染页；图片载荷已在 middle_json 生成阶段外置。"""
-        return self.pages
+    def markdown(
+        self,
+        *,
+        add_markers: bool = False,
+        mode: RenderMode | None = None,
+        asset_base_url: str = "",
+        image_renderer: ImageRenderer | None = None,
+    ) -> str:
+        if mode is None:
+            mode = RenderMode.FULL if add_markers else RenderMode.DEFAULT
+        return render_markdown(
+            self.middle_json,
+            mode=mode,
+            asset_base_url=asset_base_url,
+            image_renderer=image_renderer,
+        )
 
-    def markdown(self, *, add_markers: bool = False) -> str:
-        return render_markdown(self._public_render_pages(), add_markers=add_markers)
-
-    def content_list(self) -> list[dict[str, Any]]:
-        return render_content_list(self._public_render_pages())
-
-    def structured_content(self) -> list[list[dict[str, Any]]]:
-        return render_structured_content(self._public_render_pages())
+    def structured_content(self, *, asset_base_url: str = "") -> dict[str, Any]:
+        return render_structured_content(self.middle_json, asset_base_url=asset_base_url)
 
     def save(self, writer: DataWriter) -> None:
         writer.write_string("markdown.md", self.markdown())
         writer.write_string("middle_json.json", self.to_json())
 
-        writer.write_string(
-            "content_list.json",
-            json.dumps(self.content_list(), ensure_ascii=False, indent=4),
-        )
         writer.write_string(
             "structured_content.json",
             json.dumps(self.structured_content(), ensure_ascii=False, indent=4),

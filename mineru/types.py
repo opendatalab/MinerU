@@ -4,13 +4,21 @@ from __future__ import annotations
 import json
 import math
 import os
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Annotated, Any, ClassVar, Literal, TypeAlias, Union
 
-from pydantic import BaseModel, ConfigDict, Field, TypeAdapter, field_validator, model_validator
-
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    TypeAdapter,
+    field_validator,
+    model_validator,
+)
 
 # 这些字符串不能作为公开 Block.type discriminator，只用于 raw 阶段或 Block 内部枚举值。
 RawBlockType: TypeAlias = Literal[
@@ -39,35 +47,102 @@ RAW_ONLY_BLOCK_TYPES = frozenset(
 
 Tier = Literal[
     "flash",
-    "medium",
-    "high",
-    "extra_high",
+    "basic",
+    "standard",
+    "advanced",
 ]
 
-TIERS: set[Tier] = {
+TIERS: tuple[Tier, ...] = (
     "flash",
-    "medium",
-    "high",
-    "extra_high",
-}
+    "basic",
+    "standard",
+    "advanced",
+)
 
 TIER_ORDER: dict[Tier, int] = {
     "flash": 0,
-    "medium": 1,
-    "high": 2,
-    "extra_high": 3,
+    "basic": 1,
+    "standard": 2,
+    "advanced": 3,
 }
+
+ServerTier = Literal[
+    "flash",
+    "basic",
+    "standard",
+]
+
+SERVER_TIERS: tuple[ServerTier, ...] = (
+    "flash",
+    "basic",
+    "standard",
+)
+
+TIERS_BY_SERVER_TIER: dict[ServerTier, tuple[Tier, ...]] = {
+    "flash": ("flash",),
+    "basic": ("flash", "basic"),
+    "standard": ("flash", "basic", "standard", "advanced"),
+}
+
+DeploymentTier = Literal[
+    "basic",
+    "standard",
+]
+
+DEPLOYMENT_TIERS: tuple[DeploymentTier, ...] = (
+    "basic",
+    "standard",
+)
+
+
+DEFAULT_QUALITY_TIER_SELECTION_ORDER: tuple[Tier, ...] = ("standard", "basic")
+QUALITY_TIERS: frozenset[Tier] = frozenset(("basic", "standard", "advanced"))
+CACHED_TIER_SELECTION_ORDER: tuple[Tier, ...] = ("advanced", "standard", "basic", "flash")
+PARSING_RULE_TIER_SELECTION_ORDER: tuple[Tier, ...] = (*DEFAULT_QUALITY_TIER_SELECTION_ORDER, "flash")
 
 
 def validate_tier(tier: str | None) -> Tier:
-    """校验公开 tier 取值，保证入口只接受 flash/medium/high/extra_high。"""
+    """校验公开 tier 取值，保证入口只接受 flash/basic/standard/advanced。"""
     normalized = (tier or "").strip().lower()
     if normalized in TIERS:
         return normalized  # type: ignore[return-value]
     raise ValueError(f"Unsupported tier '{tier}'. Supported tiers: {', '.join(TIERS)}")
 
 
-class BlockType:
+def _validated_tier_set(available_tiers: Iterable[object] | str) -> set[Tier]:
+    if isinstance(available_tiers, str):
+        return {validate_tier(available_tiers)}
+    return {validate_tier(str(item)) for item in available_tiers}
+
+
+def select_default_quality_tier(available_tiers: Iterable[object] | str) -> Tier | None:
+    """Select the default quality tier from discovered parse-server capabilities."""
+    available = _validated_tier_set(available_tiers)
+    for candidate in DEFAULT_QUALITY_TIER_SELECTION_ORDER:
+        if candidate in available:
+            return candidate
+    return None
+
+
+def select_highest_cached_tier(available_tiers: Iterable[object] | str) -> Tier | None:
+    """Select the highest already-cached tier without creating a new parse."""
+    available = _validated_tier_set(available_tiers)
+    for candidate in CACHED_TIER_SELECTION_ORDER:
+        if candidate in available:
+            return candidate
+    return None
+
+
+def select_parsing_rule_tier(available_tiers: Iterable[object] | str | None = None) -> Tier:
+    """Select parsing-rule default tier, allowing flash as a final fallback."""
+    available = _validated_tier_set(available_tiers or PARSING_RULE_TIER_SELECTION_ORDER)
+    for candidate in PARSING_RULE_TIER_SELECTION_ORDER:
+        if candidate in available:
+            return candidate
+    return "flash"
+
+
+class BlockType(str, Enum):
     IMAGE = "image"
     IMAGE_BODY = "image_body"
     IMAGE_CAPTION = "image_caption"
@@ -105,6 +180,9 @@ class BlockType:
     # Added in pp_doclayout_v2
     DOC_TITLE = "doc_title"
     PARAGRAPH_TITLE = "paragraph_title"
+
+    def __str__(self) -> str:
+        return self.value
 
 
 class ContentType:
@@ -383,11 +461,11 @@ class ContinuableTextBlockBase(StringContentBlock):
 
 
 class TextBlock(ContinuableTextBlockBase):
-    type: Literal[BlockType.TEXT]
+    type: Literal[BlockType.TEXT]  # type: ignore[reportIncompatibleVariableOverride]
 
 
 class RefTextBlock(ContinuableTextBlockBase):
-    type: Literal[BlockType.REF_TEXT]
+    type: Literal[BlockType.REF_TEXT]  # type: ignore[reportIncompatibleVariableOverride]
 
 
 class TitleBlockBase(StringContentBlock):
@@ -398,19 +476,19 @@ class TitleBlockBase(StringContentBlock):
 
 
 class DocTitleBlock(TitleBlockBase):
-    type: Literal[BlockType.DOC_TITLE]
-    level: Literal[1]
+    type: Literal[BlockType.DOC_TITLE]  # type: ignore[reportIncompatibleVariableOverride]
+    level: int = Field(ge=1, le=1)
 
 
 class ParagraphTitleBlock(TitleBlockBase):
-    type: Literal[BlockType.PARAGRAPH_TITLE]
+    type: Literal[BlockType.PARAGRAPH_TITLE]  # type: ignore[reportIncompatibleVariableOverride]
     level: int = Field(ge=2, le=6)
 
 
 class PageAuxTextBlock(StringContentBlock):
     """页眉、页脚、页码、边栏和页脚注释的共享文本结构。"""
 
-    type: Literal[
+    type: Literal[  # type: ignore[reportIncompatibleVariableOverride]
         BlockType.HEADER,
         BlockType.FOOTER,
         BlockType.PAGE_NUMBER,
@@ -443,47 +521,47 @@ class ImagePayloadContentBlock(ImagePayloadBlock):
 
 
 class EquationBlock(ImagePayloadContentBlock):
-    type: Literal[BlockType.EQUATION]
+    type: Literal[BlockType.EQUATION]  # type: ignore[reportIncompatibleVariableOverride]
 
 
 class ImageBodyBlock(ImagePayloadContentBlock):
-    type: Literal[BlockType.IMAGE_BODY]
+    type: Literal[BlockType.IMAGE_BODY]  # type: ignore[reportIncompatibleVariableOverride]
 
 
 class TableBodyBlock(ImagePayloadContentBlock):
-    type: Literal[BlockType.TABLE_BODY]
+    type: Literal[BlockType.TABLE_BODY]  # type: ignore[reportIncompatibleVariableOverride]
 
 
 class ChartBodyBlock(ImagePayloadContentBlock):
-    type: Literal[BlockType.CHART_BODY]
+    type: Literal[BlockType.CHART_BODY]  # type: ignore[reportIncompatibleVariableOverride]
 
 
 class CodeBodyBlock(StringContentBlock):
-    type: Literal[BlockType.CODE_BODY]
+    type: Literal[BlockType.CODE_BODY]  # type: ignore[reportIncompatibleVariableOverride]
 
 
 class ImageAnnotationBlock(StringContentBlock):
     """图片标题与图片脚注的共享结构。"""
 
-    type: Literal[BlockType.IMAGE_CAPTION, BlockType.IMAGE_FOOTNOTE]
+    type: Literal[BlockType.IMAGE_CAPTION, BlockType.IMAGE_FOOTNOTE]  # type: ignore[reportIncompatibleVariableOverride]
 
 
 class TableAnnotationBlock(StringContentBlock):
     """表格标题与表格脚注的共享结构。"""
 
-    type: Literal[BlockType.TABLE_CAPTION, BlockType.TABLE_FOOTNOTE]
+    type: Literal[BlockType.TABLE_CAPTION, BlockType.TABLE_FOOTNOTE]  # type: ignore[reportIncompatibleVariableOverride]
 
 
 class ChartAnnotationBlock(StringContentBlock):
     """图表标题与图表脚注的共享结构。"""
 
-    type: Literal[BlockType.CHART_CAPTION, BlockType.CHART_FOOTNOTE]
+    type: Literal[BlockType.CHART_CAPTION, BlockType.CHART_FOOTNOTE]  # type: ignore[reportIncompatibleVariableOverride]
 
 
 class CodeAnnotationBlock(StringContentBlock):
     """代码标题与代码脚注的共享结构。"""
 
-    type: Literal[BlockType.CODE_CAPTION, BlockType.CODE_FOOTNOTE]
+    type: Literal[BlockType.CODE_CAPTION, BlockType.CODE_FOOTNOTE]  # type: ignore[reportIncompatibleVariableOverride]
 
 
 ListChildBlock: TypeAlias = Annotated[
@@ -493,7 +571,7 @@ ListChildBlock: TypeAlias = Annotated[
 
 
 class ListBlock(BlockBase):
-    type: Literal[BlockType.LIST]
+    type: Literal[BlockType.LIST]  # type: ignore[reportIncompatibleVariableOverride]
     content: list[ListChildBlock]
     sub_type: Literal[BlockType.TEXT, BlockType.REF_TEXT] | None = None
     continues_prev: bool | None = None
@@ -506,7 +584,7 @@ IndexChildBlock: TypeAlias = Annotated[
 
 
 class IndexBlock(BlockBase):
-    type: Literal[BlockType.INDEX]
+    type: Literal[BlockType.INDEX]  # type: ignore[reportIncompatibleVariableOverride]
     content: list[IndexChildBlock]
 
 
@@ -537,7 +615,7 @@ ImageChildBlock: TypeAlias = Annotated[
 
 
 class ImageBlock(_VisualBlockBase):
-    type: Literal[BlockType.IMAGE]
+    type: Literal[BlockType.IMAGE]  # type: ignore[reportIncompatibleVariableOverride]
     content: list[ImageChildBlock]
     sub_type: str | None = None
     _body_type: ClassVar[str] = BlockType.IMAGE_BODY
@@ -550,7 +628,7 @@ TableChildBlock: TypeAlias = Annotated[
 
 
 class TableBlock(_VisualBlockBase):
-    type: Literal[BlockType.TABLE]
+    type: Literal[BlockType.TABLE]  # type: ignore[reportIncompatibleVariableOverride]
     content: list[TableChildBlock]
     continues_prev: bool | None = None
     cell_merge: list[Literal[0, 1]] | None = None
@@ -564,7 +642,7 @@ ChartChildBlock: TypeAlias = Annotated[
 
 
 class ChartBlock(_VisualBlockBase):
-    type: Literal[BlockType.CHART]
+    type: Literal[BlockType.CHART]  # type: ignore[reportIncompatibleVariableOverride]
     content: list[ChartChildBlock]
     sub_type: str | None = None
     _body_type: ClassVar[str] = BlockType.CHART_BODY
@@ -577,7 +655,7 @@ CodeChildBlock: TypeAlias = Annotated[
 
 
 class CodeBlock(_VisualBlockBase):
-    type: Literal[BlockType.CODE]
+    type: Literal[BlockType.CODE]  # type: ignore[reportIncompatibleVariableOverride]
     content: list[CodeChildBlock]
     sub_type: Literal[BlockType.CODE, RAW_ALGORITHM]
     guess_lang: str | None = None
@@ -770,7 +848,7 @@ class MiddleJsonExportResult:
     image_paths: tuple[Path, ...]
 
 
-def _iter_page_blocks(blocks: list[Block]) -> list[BlockBase]:
+def _iter_page_blocks(blocks: Sequence[BlockBase]) -> list[BlockBase]:
     """按深度优先顺序展开页面 block 树，供图片外置统一遍历。"""
     result: list[BlockBase] = []
     pending: list[BlockBase] = list(reversed(blocks))
@@ -791,7 +869,10 @@ def _register_export_file(files: dict[str, bytes], relative_path: str, payload: 
 
 def _prepare_export_copy(middle_json: MiddleJson) -> tuple[MiddleJson, dict[str, bytes]]:
     """复制对象、解析直接及 HTML 图片，并回填副本中的相对路径。"""
-    from .utils.image_payload import INLINE_IMAGE_DATA_URI_RE, parse_image_data_uri_strict
+    from .utils.image_payload import (
+        INLINE_IMAGE_DATA_URI_RE,
+        parse_image_data_uri_strict,
+    )
 
     exported = middle_json.model_copy(deep=True)
     image_files: dict[str, bytes] = {}

@@ -2,15 +2,64 @@ from dataclasses import dataclass
 from typing import Literal
 
 from mineru.parser import MIDDLE_JSON_SCHEMA_VERSION
-from mineru.types import BLOCK_TYPES, EMPTY_BBOX, Block, BlockType, ContentType, Line, PageInfo, Span
+from mineru.types import (
+    BLOCK_TYPES,
+    BlockBase,
+    BlockType,
+    ImageAnnotationBlock,
+    ImageBlock,
+    ImageBodyBlock,
+    MiddleJson,
+    PageInfo,
+    ParagraphTitleBlock,
+    TextBlock,
+)
 
 IssueSeverity = Literal["error", "warning"]
 
-KNOWN_BLOCK_TYPES = BLOCK_TYPES | {"list_item"}
-TEXT_SPAN_TYPES = {ContentType.TEXT}
-IMAGE_SPAN_TYPES = {ContentType.IMAGE}
-TABLE_SPAN_TYPES = {ContentType.TABLE}
-EQUATION_SPAN_TYPES = {ContentType.EQUATION, ContentType.INLINE_EQUATION, ContentType.INTERLINE_EQUATION}
+KNOWN_BLOCK_TYPES = BLOCK_TYPES
+TEXT_CONTENT_BLOCK_TYPES = {
+    BlockType.TEXT,
+    BlockType.REF_TEXT,
+    BlockType.DOC_TITLE,
+    BlockType.PARAGRAPH_TITLE,
+    BlockType.EQUATION,
+    BlockType.TABLE_BODY,
+    BlockType.IMAGE_CAPTION,
+    BlockType.IMAGE_FOOTNOTE,
+    BlockType.TABLE_CAPTION,
+    BlockType.TABLE_FOOTNOTE,
+    BlockType.CHART_CAPTION,
+    BlockType.CHART_FOOTNOTE,
+    BlockType.CODE_BODY,
+    BlockType.CODE_CAPTION,
+    BlockType.CODE_FOOTNOTE,
+    BlockType.HEADER,
+    BlockType.FOOTER,
+    BlockType.PAGE_NUMBER,
+    BlockType.ASIDE_TEXT,
+    BlockType.PAGE_FOOTNOTE,
+}
+VISUAL_PARENT_TYPES = {
+    BlockType.IMAGE,
+    BlockType.TABLE,
+    BlockType.CHART,
+    BlockType.CODE,
+}
+VISUAL_BODY_TYPE_BY_PARENT = {
+    BlockType.IMAGE: BlockType.IMAGE_BODY,
+    BlockType.TABLE: BlockType.TABLE_BODY,
+    BlockType.CHART: BlockType.CHART_BODY,
+    BlockType.CODE: BlockType.CODE_BODY,
+}
+CONTAINER_BLOCK_TYPES = {
+    BlockType.IMAGE,
+    BlockType.TABLE,
+    BlockType.CHART,
+    BlockType.CODE,
+    BlockType.LIST,
+    BlockType.INDEX,
+}
 
 
 @dataclass(frozen=True)
@@ -19,10 +68,6 @@ class ValidationIssue:
     code: str
     path: str
     message: str
-
-
-def bbox_known(bbox: object) -> bool:
-    return _is_bbox(bbox) and tuple(float(v) for v in bbox) != EMPTY_BBOX
 
 
 def validate_pages(pages: list[PageInfo]) -> list[ValidationIssue]:
@@ -50,30 +95,14 @@ def validate_pages(pages: list[PageInfo]) -> list[ValidationIssue]:
         elif page.page_idx < 0:
             issues.append(_invalid_value(f"{page_path}.page_idx", "page_idx must be non-negative."))
 
-        page_size: tuple[float, float] | None = None
-        if _has_field(page, "page_size") and page.page_size is not None:
-            _validate_page_size(page.page_size, f"{page_path}.page_size", issues)
-            if _is_page_size(page.page_size):
-                page_size = (float(page.page_size[0]), float(page.page_size[1]))
+        if not _has_field(page, "blocks"):
+            issues.append(_missing(f"{page_path}.blocks"))
+            continue
+        if not isinstance(page.blocks, list):
+            issues.append(_invalid_type(f"{page_path}.blocks", "list"))
+            continue
 
-        if getattr(page, "_backend", None) is not None:
-            issues.append(
-                ValidationIssue(
-                    severity="warning",
-                    code="legacy_backend",
-                    path=f"{page_path}._backend",
-                    message="_backend is a legacy/internal page field.",
-                )
-            )
-
-        for attr in ("preproc_blocks", "para_blocks", "discarded_blocks"):
-            if not _has_field(page, attr):
-                continue
-            blocks = getattr(page, attr)
-            if not isinstance(blocks, list):
-                issues.append(_invalid_type(f"{page_path}.{attr}", "list"))
-                continue
-            _validate_block_list(blocks, f"{page_path}.{attr}", issues, page_size)
+        _validate_block_list(page.blocks, f"{page_path}.blocks", issues)
     return issues
 
 
@@ -81,17 +110,16 @@ def _validate_block_list(
     blocks: list[object],
     path: str,
     issues: list[ValidationIssue],
-    page_size: tuple[float, float] | None,
 ) -> None:
     seen_indexes: set[int] = set()
     previous_index: int | None = None
     for block_index, block in enumerate(blocks):
         block_path = f"{path}[{block_index}]"
-        if not isinstance(block, Block):
-            issues.append(_invalid_type(block_path, "Block"))
+        if not isinstance(block, BlockBase):
+            issues.append(_invalid_type(block_path, "BlockBase"))
             continue
 
-        if _has_field(block, "index") and _is_int(block.index):
+        if _has_field(block, "index") and block.index is not None and _is_int(block.index):
             if block.index in seen_indexes:
                 issues.append(
                     ValidationIssue(
@@ -113,95 +141,107 @@ def _validate_block_list(
                 )
             previous_index = block.index
 
-        _validate_block(block, block_path, issues, page_size)
+        _validate_block(block, block_path, issues)
 
 
-def _validate_block(block: Block, path: str, issues: list[ValidationIssue], page_size: tuple[float, float] | None) -> None:
-    for field_name in ("index", "type", "bbox"):
-        if not _has_field(block, field_name):
-            issues.append(_missing(f"{path}.{field_name}"))
-
-    if _has_field(block, "index") and not _is_int(block.index):
-        issues.append(_invalid_type(f"{path}.index", "int"))
-    elif _has_field(block, "index") and block.index < 0:
-        issues.append(_invalid_value(f"{path}.index", "block index must be non-negative."))
-
-    if _has_field(block, "type") and not isinstance(block.type, str):
+def _validate_block(block: BlockBase, path: str, issues: list[ValidationIssue]) -> None:
+    block_type = getattr(block, "type", None)
+    if not _has_field(block, "type"):
+        issues.append(_missing(f"{path}.type"))
+    elif not isinstance(block_type, str):
         issues.append(_invalid_type(f"{path}.type", "str"))
-    elif _has_field(block, "type") and block.type not in KNOWN_BLOCK_TYPES:
+    elif block_type not in KNOWN_BLOCK_TYPES:
         issues.append(
             ValidationIssue(
                 severity="error",
                 code="block_type_unknown",
                 path=f"{path}.type",
-                message=f"unknown block type: {block.type}",
+                message=f"unknown block type: {block_type}",
             )
         )
-    elif _has_field(block, "type") and block.type in {BlockType.DOC_TITLE, BlockType.PARAGRAPH_TITLE}:
+    elif block_type in {BlockType.DOC_TITLE, BlockType.PARAGRAPH_TITLE}:
         _validate_title_level(block, f"{path}.level", issues)
 
-    if _has_field(block, "bbox"):
-        _validate_bbox(block.bbox, f"{path}.bbox", issues, page_size)
+    if _has_field(block, "index") and block.index is not None and not _is_int(block.index):
+        issues.append(_invalid_type(f"{path}.index", "int"))
+    elif _has_field(block, "index") and block.index is not None and block.index < 0:
+        issues.append(_invalid_value(f"{path}.index", "block index must be non-negative."))
 
-    if not _has_field(block, "lines") and not _has_field(block, "blocks"):
-        issues.append(_missing(f"{path}.lines_or_blocks"))
+    if _has_field(block, "bbox") and block.bbox is not None:
+        _validate_bbox(block.bbox, f"{path}.bbox", issues)
 
-    if _has_field(block, "lines"):
-        if not isinstance(block.lines, list):
-            issues.append(_invalid_type(f"{path}.lines", "list"))
-        else:
-            for line_index, line in enumerate(block.lines):
-                line_path = f"{path}.lines[{line_index}]"
-                if not isinstance(line, Line):
-                    issues.append(_invalid_type(line_path, "Line"))
-                    continue
-                _validate_line(line, line_path, issues, page_size)
+    if block_type in TEXT_CONTENT_BLOCK_TYPES:
+        _validate_string_content(block, f"{path}.content", issues)
 
-    if _has_field(block, "blocks"):
-        if not isinstance(block.blocks, list):
-            issues.append(_invalid_type(f"{path}.blocks", "list"))
-        else:
-            _validate_block_list(block.blocks, f"{path}.blocks", issues, page_size)
+    if block_type in VISUAL_PARENT_TYPES:
+        _validate_visual_block_children(block, f"{path}.content", issues)
+
+    if block_type in CONTAINER_BLOCK_TYPES:
+        content = getattr(block, "content", None)
+        if isinstance(content, list):
+            _validate_block_list(content, f"{path}.content", issues)
 
 
-def _validate_line(line: Line, path: str, issues: list[ValidationIssue], page_size: tuple[float, float] | None) -> None:
-    if not _has_field(line, "bbox"):
-        issues.append(_missing(f"{path}.bbox"))
-    else:
-        _validate_bbox(line.bbox, f"{path}.bbox", issues, page_size)
-
-    if not _has_field(line, "spans"):
-        issues.append(_missing(f"{path}.spans"))
+def _validate_string_content(block: BlockBase, path: str, issues: list[ValidationIssue]) -> None:
+    content = getattr(block, "content", None)
+    block_type = getattr(block, "type", None)
+    if content is None:
+        issues.append(_missing(path))
         return
-    if not isinstance(line.spans, list):
-        issues.append(_invalid_type(f"{path}.spans", "list"))
+    if not isinstance(content, str):
+        issues.append(_invalid_type(path, "str"))
         return
-    for span_index, span in enumerate(line.spans):
-        span_path = f"{path}.spans[{span_index}]"
-        if not isinstance(span, Span):
-            issues.append(_invalid_type(span_path, "Span"))
-            continue
-        _validate_span(span, span_path, issues, page_size)
+    if not content:
+        issues.append(
+            ValidationIssue(
+                severity="warning",
+                code="block_content_missing",
+                path=path,
+                message=f"{block_type} block should provide content.",
+            )
+        )
 
 
-def _validate_span(span: Span, path: str, issues: list[ValidationIssue], page_size: tuple[float, float] | None) -> None:
-    for field_name in ("type", "bbox"):
-        if not _has_field(span, field_name):
-            issues.append(_missing(f"{path}.{field_name}"))
+def _validate_visual_block_children(block: BlockBase, path: str, issues: list[ValidationIssue]) -> None:
+    """Validate visual parent block has exactly one body, and body index equals parent index."""
+    content = getattr(block, "content", None)
+    block_type = getattr(block, "type", None)
+    if not isinstance(content, list):
+        issues.append(_invalid_type(path, "list"))
+        return
 
-    if _has_field(span, "type") and not isinstance(span.type, str):
-        issues.append(_invalid_type(f"{path}.type", "str"))
-    if _has_field(span, "bbox"):
-        _validate_bbox(span.bbox, f"{path}.bbox", issues, page_size)
-    if _has_field(span, "type") and isinstance(span.type, str):
-        _validate_span_content(span, path, issues)
+    body_type = VISUAL_BODY_TYPE_BY_PARENT.get(block_type)
+    if body_type is None:
+        return
+
+    bodies = [child for child in content if isinstance(child, BlockBase) and getattr(child, "type", None) == body_type]
+    if len(bodies) != 1:
+        issues.append(
+            ValidationIssue(
+                severity="error",
+                code="visual_block_body_count",
+                path=path,
+                message=f"{block_type} must contain exactly one {body_type}.",
+            )
+        )
+        return
+
+    body = bodies[0]
+    if block.index is not None and body.index is not None and block.index != body.index:
+        issues.append(
+            ValidationIssue(
+                severity="error",
+                code="visual_block_body_index_mismatch",
+                path=f"{path}[body].index",
+                message=f"{block_type} body index must equal parent index.",
+            )
+        )
 
 
 def _validate_bbox(
     bbox: object,
     path: str,
     issues: list[ValidationIssue],
-    page_size: tuple[float, float] | None = None,
 ) -> None:
     if not _is_bbox(bbox):
         issues.append(
@@ -215,56 +255,30 @@ def _validate_bbox(
         return
 
     x0, y0, x1, y1 = (float(v) for v in bbox)
-    if (x0, y0, x1, y1) == EMPTY_BBOX:
-        issues.append(
-            ValidationIssue(
-                severity="warning",
-                code="bbox_unknown",
-                path=path,
-                message="bbox is the unknown bbox sentinel.",
-            )
-        )
-        return
-    if x1 < x0 or y1 < y0:
+    if x1 <= x0 or y1 <= y0:
         issues.append(
             ValidationIssue(
                 severity="error",
                 code="bbox_invalid",
                 path=path,
-                message="bbox coordinates must satisfy x1 >= x0 and y1 >= y0.",
+                message="bbox coordinates must satisfy x1 > x0 and y1 > y0.",
             )
         )
         return
-    if page_size is not None:
-        page_w, page_h = page_size
-        if x0 < 0 or y0 < 0 or x1 > page_w or y1 > page_h:
-            issues.append(
-                ValidationIssue(
-                    severity="warning",
-                    code="bbox_out_of_page",
-                    path=path,
-                    message="bbox is outside page_size bounds.",
-                )
-            )
-
-
-def _validate_page_size(page_size: object, path: str, issues: list[ValidationIssue]) -> None:
-    if not _is_page_size(page_size):
+    if not all(0.0 <= v <= 1.0 for v in (x0, y0, x1, y1)):
         issues.append(
             ValidationIssue(
-                severity="error",
-                code="page_size_invalid",
+                severity="warning",
+                code="bbox_out_of_bounds",
                 path=path,
-                message="page_size must contain width and height.",
+                message="bbox values should be normalized to [0, 1].",
             )
         )
-        return
-    if float(page_size[0]) <= 0 or float(page_size[1]) <= 0:
-        issues.append(_invalid_value(path, "page_size width and height must be positive."))
 
 
-def _validate_title_level(block: Block, path: str, issues: list[ValidationIssue]) -> None:
-    if block.level is None:
+def _validate_title_level(block: BlockBase, path: str, issues: list[ValidationIssue]) -> None:
+    level = getattr(block, "level", None)
+    if level is None:
         issues.append(
             ValidationIssue(
                 severity="warning",
@@ -274,7 +288,7 @@ def _validate_title_level(block: Block, path: str, issues: list[ValidationIssue]
             )
         )
         return
-    if not _is_int(block.level) or block.level < 1:
+    if not _is_int(level) or level < 1:
         issues.append(
             ValidationIssue(
                 severity="error",
@@ -285,58 +299,11 @@ def _validate_title_level(block: Block, path: str, issues: list[ValidationIssue]
         )
 
 
-def _validate_span_content(span: Span, path: str, issues: list[ValidationIssue]) -> None:
-    if span.type in TEXT_SPAN_TYPES and not span.content:
-        issues.append(
-            ValidationIssue(
-                severity="warning",
-                code="span_content_missing",
-                path=f"{path}.content",
-                message="text span should provide content.",
-            )
-        )
-    elif span.type in IMAGE_SPAN_TYPES and not span.image_path:
-        issues.append(
-            ValidationIssue(
-                severity="warning",
-                code="span_image_missing",
-                path=path,
-                message="image span should provide image_path.",
-            )
-        )
-    elif span.type in TABLE_SPAN_TYPES and not span.content:
-        issues.append(
-            ValidationIssue(
-                severity="warning",
-                code="span_table_missing",
-                path=path,
-                message="table span should provide content.",
-            )
-        )
-    elif span.type in EQUATION_SPAN_TYPES and not span.content:
-        issues.append(
-            ValidationIssue(
-                severity="warning",
-                code="span_equation_missing",
-                path=path,
-                message="equation span should provide content.",
-            )
-        )
-
-
 def _is_bbox(bbox: object) -> bool:
     return (
         isinstance(bbox, tuple | list)
         and len(bbox) == 4
         and all(isinstance(v, int | float) and not isinstance(v, bool) for v in bbox)
-    )
-
-
-def _is_page_size(page_size: object) -> bool:
-    return (
-        isinstance(page_size, tuple | list)
-        and len(page_size) == 2
-        and all(isinstance(v, int | float) and not isinstance(v, bool) for v in page_size)
     )
 
 
@@ -382,25 +349,14 @@ def _issue_keys(issues):
 def _valid_page() -> PageInfo:
     return PageInfo(
         page_idx=0,
-        page_size=(100, 200),
-        para_blocks=[
-            Block(
-                index=0,
-                type="text",
-                bbox=(1.0, 2.0, 20.0, 30.0),
-                lines=[
-                    Line(
-                        bbox=(1.0, 2.0, 20.0, 30.0),
-                        spans=[Span(type="text", bbox=(1.0, 2.0, 20.0, 10.0), content="hello")],
-                    )
-                ],
-            )
+        blocks=[
+            TextBlock(type=BlockType.TEXT, index=0, bbox=(0.1, 0.1, 0.2, 0.2), content="hello"),
         ],
     )
 
 
 def test_middle_json_schema_version_is_public_constant() -> None:
-    assert MIDDLE_JSON_SCHEMA_VERSION == "1.0"
+    assert MIDDLE_JSON_SCHEMA_VERSION == "2.0"
 
 
 def test_validate_pages_accepts_valid_page_tree() -> None:
@@ -409,131 +365,162 @@ def test_validate_pages_accepts_valid_page_tree() -> None:
 
 def test_validate_pages_reports_missing_required_page_and_block_fields() -> None:
     page = _valid_page()
-    delattr(page, "page_idx")
-    delattr(page.para_blocks[0], "type")
+    page_no_idx = PageInfo.model_construct(blocks=page.blocks)
+    block_no_type = TextBlock.model_construct(index=0, content="hello", bbox=(0.1, 0.1, 0.2, 0.2))
+    page_no_type = PageInfo.model_construct(page_idx=0, blocks=[block_no_type])
 
-    issues = validate_pages([page])
+    issues = validate_pages([page_no_idx, page_no_type])
 
     assert ("error", "missing_required_field", "pages[0].page_idx") in _issue_keys(issues)
-    assert ("error", "missing_required_field", "pages[0].para_blocks[0].type") in _issue_keys(issues)
+    assert ("error", "missing_required_field", "pages[1].blocks[0].type") in _issue_keys(issues)
 
 
 def test_validate_pages_distinguishes_unknown_and_invalid_bbox() -> None:
-    page = _valid_page()
-    page.para_blocks[0].bbox = (0.0, 0.0, 0.0, 0.0)
-    page.para_blocks[0].lines[0].bbox = (3.0, 2.0, 1.0, 4.0)
+    """验证 bbox 坐标 x1 <= x0 或 y1 <= y0 时报 error。"""
+    invalid_bbox_block = TextBlock.model_construct(
+        type=BlockType.TEXT,
+        index=0,
+        content="hello",
+        bbox=(0.5, 0.1, 0.2, 0.2),  # x1 < x0
+    )
+    page = PageInfo.model_construct(page_idx=0, blocks=[invalid_bbox_block])
 
     issues = validate_pages([page])
 
-    assert ("warning", "bbox_unknown", "pages[0].para_blocks[0].bbox") in _issue_keys(issues)
-    assert ("error", "bbox_invalid", "pages[0].para_blocks[0].lines[0].bbox") in _issue_keys(issues)
+    assert ("error", "bbox_invalid", "pages[0].blocks[0].bbox") in _issue_keys(issues)
+
+
+def test_validate_pages_reports_bbox_out_of_bounds() -> None:
+    """验证 bbox 值超出 [0, 1] 范围时报 warning。"""
+    out_of_bounds_block = TextBlock.model_construct(
+        type=BlockType.TEXT,
+        index=0,
+        content="hello",
+        bbox=(0.1, 0.1, 1.5, 0.2),  # x1 > 1.0
+    )
+    page = PageInfo.model_construct(page_idx=0, blocks=[out_of_bounds_block])
+
+    issues = validate_pages([page])
+
+    assert ("warning", "bbox_out_of_bounds", "pages[0].blocks[0].bbox") in _issue_keys(issues)
 
 
 def test_validate_pages_recurses_into_child_blocks() -> None:
-    page = _valid_page()
-    page.para_blocks[0].blocks.append(
-        Block(
-            index=1,
-            type="text",
-            bbox=(2.0, 2.0, 10.0, 10.0),
-            lines=[Line(bbox=(0.0, 0.0, 0.0, 0.0), spans=[])],
-        )
+    """验证 visual parent block 的 content 子块也会被递归校验。"""
+    image_block = ImageBlock(
+        type=BlockType.IMAGE,
+        index=0,
+        bbox=(0.0, 0.0, 0.5, 0.5),
+        content=[
+            ImageBodyBlock(
+                type=BlockType.IMAGE_BODY,
+                index=0,
+                bbox=(0.0, 0.0, 0.5, 0.5),
+                content="",
+            ),
+        ],
     )
+    page = PageInfo(page_idx=0, blocks=[image_block])
 
     issues = validate_pages([page])
 
-    assert ("warning", "bbox_unknown", "pages[0].para_blocks[0].blocks[0].lines[0].bbox") in _issue_keys(issues)
+    # image_body 允许空 content，不应产生 content 警告
+    assert ("warning", "block_content_missing", "pages[0].blocks[0].content[0].content") not in _issue_keys(issues)
 
 
 def test_validate_pages_reports_wrong_node_types() -> None:
     page = _valid_page()
-    page.para_blocks[0].lines.append(object())  # type: ignore[arg-type]
+    page.blocks.append(object())  # type: ignore[arg-type]
 
     issues = validate_pages([object(), page])  # type: ignore[list-item]
 
     assert ("error", "invalid_type", "pages[0]") in _issue_keys(issues)
-    assert ("error", "invalid_type", "pages[1].para_blocks[0].lines[1]") in _issue_keys(issues)
+    assert ("error", "invalid_type", "pages[1].blocks[1]") in _issue_keys(issues)
 
 
 def test_validate_pages_reports_unknown_block_type_and_bad_title_level() -> None:
-    page = _valid_page()
-    page.para_blocks[0].type = "unknown_type"
-    page.para_blocks.append(
-        Block(
-            index=1,
-            type=BlockType.PARAGRAPH_TITLE,
-            bbox=(2.0, 2.0, 20.0, 20.0),
-            lines=[Line(bbox=(2.0, 2.0, 20.0, 20.0), spans=[])],
-            level=0,
-        )
+    bad_type_block = TextBlock.model_construct(type="unknown_type", index=0, content="hello", bbox=(0.1, 0.1, 0.2, 0.2))
+    bad_level_block = ParagraphTitleBlock.model_construct(
+        type=BlockType.PARAGRAPH_TITLE,
+        index=1,
+        content="section",
+        bbox=(0.1, 0.1, 0.2, 0.2),
+        level=0,
     )
+    page = PageInfo.model_construct(page_idx=0, blocks=[bad_type_block, bad_level_block])
 
     issues = validate_pages([page])
 
-    assert ("error", "block_type_unknown", "pages[0].para_blocks[0].type") in _issue_keys(issues)
-    assert ("error", "title_level_invalid", "pages[0].para_blocks[1].level") in _issue_keys(issues)
+    assert ("error", "block_type_unknown", "pages[0].blocks[0].type") in _issue_keys(issues)
+    assert ("error", "title_level_invalid", "pages[0].blocks[1].level") in _issue_keys(issues)
 
 
 def test_validate_pages_reports_block_index_order_and_duplicates() -> None:
-    page = _valid_page()
-    page.para_blocks.extend(
-        [
-            Block(index=2, type=BlockType.TEXT, bbox=(1.0, 1.0, 5.0, 5.0)),
-            Block(index=1, type=BlockType.TEXT, bbox=(1.0, 1.0, 5.0, 5.0)),
-            Block(index=1, type=BlockType.TEXT, bbox=(1.0, 1.0, 5.0, 5.0)),
-        ]
-    )
+    """验证 block index 乱序和重复会被报告。
 
-    issues = validate_pages([page])
-
-    assert ("warning", "block_index_out_of_order", "pages[0].para_blocks[2].index") in _issue_keys(issues)
-    assert ("error", "block_index_duplicate", "pages[0].para_blocks[3].index") in _issue_keys(issues)
-
-
-def test_validate_pages_reports_bbox_outside_page_size() -> None:
-    page = _valid_page()
-    page.para_blocks[0].bbox = (1.0, 2.0, 200.0, 30.0)
-
-    issues = validate_pages([page])
-
-    assert ("warning", "bbox_out_of_page", "pages[0].para_blocks[0].bbox") in _issue_keys(issues)
-
-
-def test_validate_pages_reports_span_content_contracts() -> None:
-    page = PageInfo(
+    PageInfo 顶层 index 在构造时已强制 unique+ascending，这里用 model_construct 绕过
+    Pydantic 校验来测试 validator 自身的检测能力。
+    """
+    page = PageInfo.model_construct(
         page_idx=0,
-        para_blocks=[
-            Block(
-                index=0,
-                type=BlockType.TEXT,
-                bbox=(1.0, 1.0, 10.0, 10.0),
-                lines=[
-                    Line(
-                        bbox=(1.0, 1.0, 10.0, 10.0),
-                        spans=[
-                            Span(type=ContentType.TEXT, bbox=(1.0, 1.0, 2.0, 2.0)),
-                            Span(type=ContentType.IMAGE, bbox=(2.0, 1.0, 3.0, 2.0)),
-                            Span(type=ContentType.TABLE, bbox=(3.0, 1.0, 4.0, 2.0)),
-                            Span(type=ContentType.INTERLINE_EQUATION, bbox=(4.0, 1.0, 5.0, 2.0)),
-                        ],
-                    )
-                ],
-            )
+        blocks=[
+            TextBlock(type=BlockType.TEXT, index=2, bbox=(0.1, 0.1, 0.2, 0.2), content="a"),
+            TextBlock(type=BlockType.TEXT, index=1, bbox=(0.1, 0.1, 0.2, 0.2), content="b"),
+            TextBlock(type=BlockType.TEXT, index=1, bbox=(0.1, 0.1, 0.2, 0.2), content="c"),
         ],
     )
 
     issues = validate_pages([page])
 
-    assert ("warning", "span_content_missing", "pages[0].para_blocks[0].lines[0].spans[0].content") in _issue_keys(issues)
-    assert ("warning", "span_image_missing", "pages[0].para_blocks[0].lines[0].spans[1]") in _issue_keys(issues)
-    assert ("warning", "span_table_missing", "pages[0].para_blocks[0].lines[0].spans[2]") in _issue_keys(issues)
-    assert ("warning", "span_equation_missing", "pages[0].para_blocks[0].lines[0].spans[3]") in _issue_keys(issues)
+    assert ("warning", "block_index_out_of_order", "pages[0].blocks[1].index") in _issue_keys(issues)
+    assert ("error", "block_index_duplicate", "pages[0].blocks[2].index") in _issue_keys(issues)
 
 
-def test_validate_pages_warns_legacy_page_backend() -> None:
-    page = _valid_page()
-    page._backend = "hybrid"
+def test_validate_pages_reports_string_content_contracts() -> None:
+    """验证字符串内容 block 的空 content 会触发 warning。"""
+    empty_text = TextBlock.model_construct(type=BlockType.TEXT, index=0, content="", bbox=(0.1, 0.1, 0.2, 0.2))
+    page = PageInfo(page_idx=0, blocks=[empty_text])
 
     issues = validate_pages([page])
 
-    assert ("warning", "legacy_backend", "pages[0]._backend") in _issue_keys(issues)
+    assert ("warning", "block_content_missing", "pages[0].blocks[0].content") in _issue_keys(issues)
+
+
+def test_validate_pages_reports_visual_block_body_count_mismatch() -> None:
+    """验证视觉父块必须有且仅有一个 body。
+
+    ImageBlock 构造时已强制 exactly-one-body，用 model_construct 绕过以测试 validator。
+    """
+    image_block = ImageBlock.model_construct(
+        type=BlockType.IMAGE,
+        index=0,
+        bbox=(0.0, 0.0, 0.5, 0.5),
+        content=[
+            ImageAnnotationBlock.model_construct(type=BlockType.IMAGE_CAPTION, index=1, content="caption", bbox=(0.0, 0.0, 0.5, 0.5)),
+        ],
+    )
+    page = PageInfo.model_construct(page_idx=0, blocks=[image_block])
+
+    issues = validate_pages([page])
+
+    assert ("error", "visual_block_body_count", "pages[0].blocks[0].content") in _issue_keys(issues)
+
+
+def test_validate_pages_reports_visual_block_body_index_mismatch() -> None:
+    """验证视觉父块 body index 必须等于 parent index。
+
+    ImageBlock 构造时已强制 body index == parent index，用 model_construct 绕过以测试 validator。
+    """
+    image_block = ImageBlock.model_construct(
+        type=BlockType.IMAGE,
+        index=0,
+        bbox=(0.0, 0.0, 0.5, 0.5),
+        content=[
+            ImageBodyBlock.model_construct(type=BlockType.IMAGE_BODY, index=5, content="", bbox=(0.0, 0.0, 0.5, 0.5)),
+        ],
+    )
+    page = PageInfo.model_construct(page_idx=0, blocks=[image_block])
+
+    issues = validate_pages([page])
+
+    assert ("error", "visual_block_body_index_mismatch", "pages[0].blocks[0].content[body].index") in _issue_keys(issues)

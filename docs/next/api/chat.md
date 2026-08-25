@@ -17,7 +17,7 @@ Chat Completions 和 Responses 面向细粒度文档理解场景，例如单张�
 
 ```json
 {
-  "model": "MinerU2.5-Pro-2604-1.2B",
+  "model": "MinerU2.5-Pro-2605-1.2B",
   "messages": [
     {
       "role": "user",
@@ -97,7 +97,7 @@ Chat Completions 和 Responses 面向细粒度文档理解场景，例如单张�
   "id": "chatcmpl-B9MBs8CjcvOU2jLn4n570S5qMJKcT",
   "object": "chat.completion",
   "created": 1741569952,
-  "model": "MinerU2.5-Pro-2604-1.2B",
+  "model": "MinerU2.5-Pro-2605-1.2B",
   "system_fingerprint": "fp_44709d6fcb",
   "choices": [
     {
@@ -137,9 +137,9 @@ Chat Completions 和 Responses 面向细粒度文档理解场景，例如单张�
 `stream=true` 时返回 SSE，每行 `data:` 后是一个 `chat.completion.chunk` JSON 对象，最后以 `data: [DONE]` 结束。
 
 ```text
-data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1694268190,"model":"MinerU2.5-Pro-2604-1.2B","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}
+data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1694268190,"model":"MinerU2.5-Pro-2605-1.2B","choices":[{"index":0,"delta":{"role":"assistant","content":""},"finish_reason":null}]}
 
-data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1694268190,"model":"MinerU2.5-Pro-2604-1.2B","choices":[{"index":0,"delta":{"content":"# 文本"},"finish_reason":null}]}
+data: {"id":"chatcmpl-123","object":"chat.completion.chunk","created":1694268190,"model":"MinerU2.5-Pro-2605-1.2B","choices":[{"index":0,"delta":{"content":"# 文本"},"finish_reason":null}]}
 
 data: [DONE]
 ```
@@ -178,7 +178,7 @@ Chat 错误:
 
 ```json
 {
-  "model": "MinerU2.5-Pro-2604-1.2B",
+  "model": "MinerU2.5-Pro-2605-1.2B",
   "input": [
     {
       "role": "user",
@@ -236,7 +236,7 @@ Content part:
   "object": "response",
   "created_at": 1741476542,
   "status": "completed",
-  "model": "MinerU2.5-Pro-2604-1.2B",
+  "model": "MinerU2.5-Pro-2605-1.2B",
   "output": [
     {
       "type": "message",

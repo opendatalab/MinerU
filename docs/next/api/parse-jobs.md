@@ -51,7 +51,7 @@ Job 状态:
 | 字段 | 类型 | 必填 | 默认 | 说明 |
 |------|------|:--:|------|------|
 | `files` | array | 是 | 无 | 至少 1 个，最多由 access level 决定。 |
-| `tier` | string 或 null | 否 | `null` | `medium`、`high` 或 `null`。省略或传 `null` 表示使用默认选择策略，选择当前可发现的最高质量非 `flash` tier。HTML 输入自动路由到 HTML 解析器。 |
+| `tier` | string 或 null | 否 | `null` | 当前服务支持的 tier 或 `null`。省略或传 `null` 表示使用默认选择策略；完整 tier 语义见 [解析 Tier](../tiers.md) 与 [ADR-0024](../decisions/0024-file-type-tier-normalization.md)。HTML 输入自动路由到 HTML 解析器。 |
 | `output_formats` | array | 否 | `["markdown"]` | 请求产物格式。 |
 | `callback` | object | 否 | `null` | Webhook 回调配置，官方 API registered 用户可用。 |
 
@@ -132,7 +132,6 @@ OCR 策略和图片分析能力由 `tier` 与服务端实际引擎自动决定�
 |------|----------|------|:--:|
 | `markdown` | 文本 | Markdown 文本。 | 否 |
 | `middle_json` | 文本 | 完整 Middle JSON，中间结构和高级调试。 | 否 |
-| `content_list` | 文本 | 扁平内容列表。 | 否 |
 | `structured_content` | 文本 | 面向 Agent 和新客户端的结构化内容 JSON。 | 否 |
 | `html` | 文本 | HTML 导出。 | 是 |
 | `latex` | 文本 | LaTeX 导出。 | 是 |
@@ -156,7 +155,7 @@ OCR 策略和图片分析能力由 `tier` 与服务端实际引擎自动决定�
   "job_id": "job_01HXYZ123ABCDEF",
   "status": "queued",
   "created_at": "2026-05-21T08:30:00Z",
-  "tier": "high",
+  "tier": "standard",
   "output_formats": ["markdown", "middle_json", "structured_content", "zip"],
   "access_level": "registered",
   "files": [
@@ -181,7 +180,7 @@ OCR 策略和图片分析能力由 `tier` 与服务端实际引擎自动决定�
 | `job_id` | string | Job ID。 |
 | `status` | string | 当前 job 状态。 |
 | `created_at` | string | ISO-8601 UTC。 |
-| `tier` | string | 本次 job 实际使用的 tier。请求省略或传 `null` 时，响应中返回解析后的实际 tier。 |
+| `tier` | string | 本次 job 的请求/解析 tier。请求省略或传 `null` 时，响应中返回解析后的 job tier；非 PDF/image 文件可能按 ADR-0024 在文件执行时归一为 `flash`，暂不暴露 file-level effective tier。 |
 | `output_formats` | array | 实际接受的输出格式。 |
 | `access_level` | string | `anonymous` 或 `registered`。 |
 | `files[]` | array | 输入文件的队列状态。 |
@@ -199,7 +198,7 @@ OCR 策略和图片分析能力由 `tier` 与服务端实际引擎自动决定�
   "created_at": "2026-05-21T08:30:00Z",
   "started_at": "2026-05-21T08:30:02Z",
   "finished_at": "2026-05-21T08:30:48Z",
-  "tier": "high",
+  "tier": "standard",
   "output_formats": ["markdown", "middle_json", "zip"],
   "access_level": "registered",
   "progress": {
@@ -214,7 +213,7 @@ OCR 策略和图片分析能力由 `tier` 与服务端实际引擎自动决定�
       "page_range": "1~12",
       "status": "completed",
       "parse": {
-        "model_used": "MinerU2.5-Pro-2604-1.2B",
+        "model_used": "MinerU2.5-Pro-2605-1.2B",
         "duration_ms": 8234,
         "parser_version": "3.1.14"
       },
@@ -342,15 +341,15 @@ OCR 策略和图片分析能力由 `tier` 与服务端实际引擎自动决定�
 | 404 | `file_not_found` | `file_id` 不存在或不可见。 |
 | 413 | `file_too_large` | 文件超过当前 access level 限制。 |
 | 429 | `rate_limit_exceeded` | 触发 parse 类限流。 |
-| 503 | `quality_tier_unavailable` | 请求的 `medium` / `high` 不可用，或默认选择策略找不到可用的非 `flash` tier。 |
+| 503 | `quality_tier_unavailable` | 请求的质量 tier 不可用，或 PDF/image 默认选择策略找不到可用的非 `flash` tier。 |
 
 ## 本地 Server 差异
 
 Local Parse Server 的任务 API 与官方 API 保持同一结构，但有以下实现差异:
 
 - 不支持 Webhook 时，`health.features.webhook` 必须为 `false`；收到 `callback` 时应返回 `400 invalid_request` 或明确忽略。
-- `health.features.output_formats` 必须反映本地 server 实际支持的输出格式；当前本地实现支持 `markdown`、`middle_json`、`content_list`、`structured_content` 和 `zip`。
+- `health.features.output_formats` 必须反映本地 server 实际支持的输出格式；当前本地实现支持 `markdown`、`middle_json`、`structured_content` 和 `zip`。
 - `health.features.sources` 必须反映本地 server 实际允许的 source 类型；只有启动时开启 `--allow-local-source` 才包含 `local`。
 - `local` source 可以不生成输入 `file_id`；响应中应保留 `name` 和文件级状态。
-- 省略 `tier` 或传 `null` 时，只能选择本地可发现的 `medium` 或 `high`，不能回退到 `flash`。
-- 如果只有 `flash` 可用，应返回 `quality_tier_unavailable`，而不是返回低质量解析结果。
+- 对 PDF/image，省略 `tier` 或传 `null` 时，只能按默认选择策略选择本地可发现的非 `flash` 质量 tier，不能回退到 `flash`；如果只有 `flash` 可用，应返回 `quality_tier_unavailable`。
+- 对 Office/HTML，API Server job 按批量规则处理，即使 job tier 是质量 tier，文件实际解析也按 `flash` 语义归一；text 不进入 parse job；暂不新增 file-level effective tier 字段。

@@ -13,7 +13,7 @@ CONSENT_UNSET: TelemetryConsentState = "unset"
 CONSENT_ENABLED: TelemetryConsentState = "enabled"
 CONSENT_DISABLED: TelemetryConsentState = "disabled"
 
-TELEMETRY_ENDPOINT = "https://staging.mineru.org.cn/metrics/v2/metrics"
+TELEMETRY_ENDPOINT = "https://mineru.net/metrics/v2/metrics"
 TELEMETRY_APP_KEY = "213a83db-44c8-4218-90c0-ded685cca86e"
 TELEMETRY_APP_SECRET = "sec_5f8d9a2b"
 TELEMETRY_API_VERSION = "v2"
@@ -54,12 +54,11 @@ DIM_TIER_VALUES = frozenset(
     {
         "default",
         "flash",
-        "medium",
-        "high",
-        "extra_high",
-        "medium(default)",
-        "high(default)",
-        "extra_high(default)",
+        "basic",
+        "standard",
+        "advanced",
+        "basic(default)",
+        "standard(default)",
         "unknown",
     }
 )
@@ -70,7 +69,20 @@ DIM_CONTENT_MODE_VALUES = frozenset({"read", "parse_output", "export", "unknown"
 DIM_OUTPUT_FORMAT_VALUES = frozenset({"markdown", "image", "other"})
 DIM_TRIGGER_VALUES = frozenset({"parse", "scan", "watch", "show", "background", "unknown"})
 DIM_RESULT_VALUES = frozenset(
-    {"seen", "refreshed", "new", "changed", "deleted", "unreachable", "error", "unsupported", "excluded", "hit", "miss", "unknown"}
+    {
+        "seen",
+        "refreshed",
+        "new",
+        "changed",
+        "deleted",
+        "unreachable",
+        "error",
+        "unsupported",
+        "excluded",
+        "hit",
+        "miss",
+        "unknown",
+    }
 )
 DIM_ERROR_CODE_VALUES = frozenset(
     {
@@ -199,7 +211,9 @@ METRIC_SPECS: dict[str, MetricSpec] = {
     "find.results_bucket.count": MetricSpec(REQ_CONTEXT | BUCKET),
     "content.request.count": MetricSpec(REQ_CONTEXT | frozenset({"content_mode", "output_format"})),
     "content.finished.count": MetricSpec(REQ_CONTEXT | STATUS | TIER | frozenset({"content_mode", "output_format"})),
-    "content.duration_bucket.count": MetricSpec(REQ_CONTEXT | STATUS | TIER | BUCKET | frozenset({"content_mode", "output_format"})),
+    "content.duration_bucket.count": MetricSpec(
+        REQ_CONTEXT | STATUS | TIER | BUCKET | frozenset({"content_mode", "output_format"})
+    ),
     "scan.request.count": MetricSpec(REQ_CONTEXT),
     "scan.finished.count": MetricSpec(STATUS),
     "scan.duration_bucket.count": MetricSpec(STATUS | BUCKET),

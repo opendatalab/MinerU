@@ -16,14 +16,20 @@ from typing import Any
 import click
 import pytest
 from fastapi.testclient import TestClient
+from typer.main import get_command
 from typer.testing import CliRunner
 
+import mineru.kit.main as kit_main
+from mineru.cli.main import app as mineru_app
+from mineru.cli.version_command import version_cmd
 from mineru.kit.commands import api_server, models, parse, router, vlm_server
 from mineru.kit.main import app
 from mineru.kit.vlm_server import mlx_vlm_server
 from mineru.parser.base import ParseResult
-from mineru.types import Block, BlockType, ContentType, Line, PageInfo, Span
+from mineru.types import BlockType, MiddleJson, PageInfo
 from mineru.utils.image_payload import ImagePayloadCache
+from mineru.utils.model_registry import MODEL_COMPLETE_MARKER
+from mineru.version import __version__
 
 runner = CliRunner()
 
@@ -32,6 +38,16 @@ _REMOVED_DISABLE_FORMULA_OPTION = "--disable-" + "formula"
 _REMOVED_TABLE_ENABLE_PARAM = "table" + "_enable"
 _REMOVED_FORMULA_ENABLE_PARAM = "formula" + "_enable"
 _REMOVED_INLINE_FORMULA_PARAM = "inline_" + _REMOVED_FORMULA_ENABLE_PARAM
+
+
+def test_kit_main_configures_standard_streams_before_running_app(monkeypatch: pytest.MonkeyPatch) -> None:
+    calls: list[str] = []
+    monkeypatch.setattr(kit_main, "configure_standard_streams", lambda: calls.append("configure"))
+    monkeypatch.setattr(kit_main, "app", lambda: calls.append("app"))
+
+    kit_main.main()
+
+    assert calls == ["configure", "app"]
 
 
 def _assert_unsafe_sidecar_error(output: str) -> None:
@@ -53,14 +69,90 @@ def test_kit_root_and_models_help() -> None:
     assert "api-server" in result.output
     assert "vlm-server" in result.output
     assert "router" in result.output
+    assert "version" in result.output
+
+
+def test_top_level_commands_register_implementation_callbacks_directly() -> None:
+    callbacks = {command.name: command.callback for command in app.registered_commands}
+
+    assert callbacks["parse"] is parse.parse_cmd
+    assert callbacks["api-server"] is api_server.api_server_cmd
+    assert callbacks["vlm-server"] is vlm_server.vlm_server_cmd
+    assert callbacks["router"] is router.router_cmd
+    assert callbacks["version"] is version_cmd
+
+
+@pytest.mark.parametrize(
+    ("command", "expected_options"),
+    [
+        ("parse", ("--output", "--format", "--tier")),
+        ("api-server", ("--host", "--port", "--tier", "--no-flash", "--preload-models")),
+        ("vlm-server", ("--engine",)),
+        ("router", ("--host", "--upstream-url", "--local-gpus")),
+        ("version", ("--json",)),
+    ],
+)
+def test_directly_registered_command_help(command: str, expected_options: tuple[str, ...]) -> None:
+    result = runner.invoke(app, [command, "--help"])
+
+    assert result.exit_code == 0
+    for option in expected_options:
+        assert option in result.output
 
 
 def test_kit_root_help_hides_typer_completion_options() -> None:
     result = runner.invoke(app, ["--help"])
 
     assert result.exit_code == 0
+    assert "--version" in result.output
     assert "--install-completion" not in result.output
     assert "--show-completion" not in result.output
+
+
+def test_kit_root_commands_keep_product_order() -> None:
+    command = get_command(app)
+
+    assert command.list_commands(None) == [
+        "parse",
+        "api-server",
+        "vlm-server",
+        "router",
+        "models",
+        "version",
+    ]
+
+
+def test_kit_version_command_matches_mineru() -> None:
+    kit_result = runner.invoke(app, ["version"])
+    mineru_result = runner.invoke(mineru_app, ["version"])
+
+    assert kit_result.exit_code == 0
+    assert mineru_result.exit_code == 0
+    assert kit_result.output == mineru_result.output
+    assert f"MinerU version: {__version__}" in kit_result.output
+    assert f"Python version: {sys.version.split()[0]}" in kit_result.output
+
+
+def test_kit_root_version_option_matches_version_command() -> None:
+    option_result = runner.invoke(app, ["--version"])
+    command_result = runner.invoke(app, ["version"])
+
+    assert option_result.exit_code == 0
+    assert command_result.exit_code == 0
+    assert option_result.output == command_result.output
+
+
+def test_kit_version_json_matches_mineru() -> None:
+    kit_result = runner.invoke(app, ["version", "--json"])
+    mineru_result = runner.invoke(mineru_app, ["version", "--json"])
+
+    assert kit_result.exit_code == 0
+    assert mineru_result.exit_code == 0
+    assert kit_result.output == mineru_result.output
+    assert json.loads(kit_result.output) == {
+        "mineru_version": __version__,
+        "python_version": sys.version.split()[0],
+    }
 
 
 def test_kit_root_show_completion_is_not_a_supported_option() -> None:
@@ -227,74 +319,110 @@ def test_upload_filename_helper_import_boundary_is_explicit() -> None:
     assert "normalize_upload_filename" in fast_api_upload_imports
 
 
-def test_models_download_pipeline(monkeypatch: Any) -> None:
-    monkeypatch.setattr(models, "_download_pipeline_models", lambda: "/tmp/pipeline")
-    monkeypatch.setattr(models, "_download_vlm_models", lambda: "/tmp/vlm")
-    monkeypatch.setattr(models, "_update_models_dir", lambda bundle, model_dir: Path(f"/tmp/{bundle}.json"))
+def test_models_download_tier_basic(monkeypatch: Any) -> None:
+    monkeypatch.setattr(models.config.model, "stack", "full")
+    captured: list[str] = []
 
-    result = runner.invoke(app, ["models", "download", "pipeline"])
+    def fake_download_model_repo(repo: Any, *, source: str | None = None, local_as_auto: bool = False) -> Path:
+        captured.append(repo.name)
+        return Path("/tmp/models") / repo.local_name
+
+    monkeypatch.setattr(models, "download_model_repo", fake_download_model_repo)
+
+    result = runner.invoke(app, ["models", "download", "--tier", "basic"])
 
     assert result.exit_code == 0
-    assert "Downloaded pipeline models" in result.output
+    assert captured == ["PDF-Extract-Kit-1.0"]
+    assert "Downloaded models for tier basic" in result.output
 
 
-def test_models_download_auto_source_resolves_before_download(monkeypatch: Any) -> None:
-    captured: dict[str, str] = {}
+def test_models_download_tier_standard(monkeypatch: Any) -> None:
+    monkeypatch.setattr(models.config.model, "stack", "full")
+    captured: list[str] = []
 
-    def fake_resolve_model_source(model_source: str | None = None, allow_auto: bool = False) -> str:
-        assert model_source == "auto"
-        assert allow_auto is True
-        return "modelscope"
+    def fake_download_model_repo(repo: Any, *, source: str | None = None, local_as_auto: bool = False) -> Path:
+        captured.append(repo.name)
+        return Path("/tmp/models") / repo.local_name
 
-    def fake_update_models_dir(bundle: str, model_dir: str) -> Path:
-        captured["bundle"] = bundle
-        captured["model_dir"] = model_dir
-        captured["effective_source"] = models.os.getenv(models.MODEL_SOURCE_ENV_VAR, "")
-        return Path(f"/tmp/{bundle}.json")
+    monkeypatch.setattr(models, "download_model_repo", fake_download_model_repo)
 
-    monkeypatch.delenv(models.MODEL_SOURCE_ENV_VAR, raising=False)
-    monkeypatch.setattr(models, "resolve_model_source", fake_resolve_model_source, raising=False)
-    monkeypatch.setattr(models, "_download_pipeline_models", lambda: "/tmp/pipeline")
-    monkeypatch.setattr(models, "_update_models_dir", fake_update_models_dir)
+    result = runner.invoke(app, ["models", "download", "--tier", "standard"])
 
-    result = runner.invoke(app, ["models", "download", "pipeline", "--source", "auto"])
+    assert result.exit_code == 0
+    assert captured == ["PDF-Extract-Kit-1.0", "MinerU2.5-Pro-2605-1.2B"]
+    assert "Downloaded models for tier standard" in result.output
+
+
+@pytest.mark.parametrize("tier", ["flash", "advanced"])
+def test_model_registry_rejects_non_model_tiers(tier: str) -> None:
+    with pytest.raises(ValueError, match="Supported model tiers: basic, standard"):
+        models.model_repos_for_tier(tier, stack="full")
+
+
+@pytest.mark.parametrize("command", ["download", "verify"])
+@pytest.mark.parametrize("tier", ["flash", "advanced"])
+def test_models_commands_reject_non_model_tiers(command: str, tier: str) -> None:
+    result = runner.invoke(app, ["models", command, "--tier", tier])
+
+    assert result.exit_code == 1
+    assert "Supported model tiers: basic, standard" in " ".join(result.output.split())
+
+
+def test_models_download_repo_uses_explicit_source(monkeypatch: Any) -> None:
+    captured: dict[str, Any] = {}
+
+    def fake_download_model_repo(repo: Any, *, source: str | None = None, local_as_auto: bool = False) -> Path:
+        captured["repo"] = repo.name
+        captured["source"] = source
+        captured["local_as_auto"] = local_as_auto
+        return Path("/tmp/models") / repo.local_name
+
+    monkeypatch.setattr(models, "download_model_repo", fake_download_model_repo)
+
+    result = runner.invoke(app, ["models", "download", "PDF-Extract-Kit-1.0", "--source", "auto"])
 
     assert result.exit_code == 0
     assert captured == {
-        "bundle": "pipeline",
-        "model_dir": "/tmp/pipeline",
-        "effective_source": "modelscope",
+        "repo": "PDF-Extract-Kit-1.0",
+        "source": "auto",
+        "local_as_auto": True,
     }
-    assert "Downloaded pipeline models from modelscope" in result.output
+    assert "Downloaded models for PDF-Extract-Kit-1.0" in result.output
 
 
 def test_models_show_and_verify(tmp_path: Path, monkeypatch: Any) -> None:
-    config = tmp_path / "mineru.json"
-    pipeline_root = tmp_path / "pipeline"
-    vlm_root = tmp_path / "vlm"
-    for rel in models.PIPELINE_MODEL_PATHS:
-        target = pipeline_root / rel
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text("x", encoding="utf-8")
-    for rel in models.VLM_MODEL_MARKERS:
-        target = vlm_root / rel
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text("x", encoding="utf-8")
-    config.write_text(
-        (f'{{\n  "models-dir": {{"pipeline": "{pipeline_root}", "vlm": "{vlm_root}"}},\n  "config_version": "1.3.1"\n}}\n'),
-        encoding="utf-8",
-    )
-    monkeypatch.setenv("MINERU_TOOLS_CONFIG_JSON", str(config))
+    base_dir = tmp_path / "models"
+    monkeypatch.setattr(models.config.model, "base_dir", str(base_dir))
+    monkeypatch.setattr(models.config.model, "stack", "full")
+    for repo in models.MODEL_REPOS:
+        if repo.download_mode == "full":
+            repo.local_dir().mkdir(parents=True, exist_ok=True)
+            (repo.local_dir() / MODEL_COMPLETE_MARKER).touch()
+            continue
+        for model_path in repo.required_paths():
+            target = repo.local_dir() / model_path.relative_path
+            if Path(model_path.relative_path).suffix:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text("x", encoding="utf-8")
+                continue
+            target.mkdir(parents=True, exist_ok=True)
+            (target / MODEL_COMPLETE_MARKER).touch()
 
     show_result = runner.invoke(app, ["models", "show"])
     verify_result = runner.invoke(app, ["models", "verify"])
 
     assert show_result.exit_code == 0
-    assert "pipeline.exists: True" in show_result.output
-    assert "vlm.exists: True" in show_result.output
+    assert "Config exists:" in show_result.output
+    assert "PDF-Extract-Kit-1.0: ready" in show_result.output
+    assert "MinerU2.5-Pro-2605-1.2B: ready" in show_result.output
+    assert "Model tiers:" in show_result.output
+    assert "  basic:" in show_result.output
+    assert "  standard:" in show_result.output
+    assert "  flash:" not in show_result.output
+    assert "  advanced:" not in show_result.output
     assert verify_result.exit_code == 0
-    assert "pipeline: ok" in verify_result.output
-    assert "vlm: ok" in verify_result.output
+    assert "PDF-Extract-Kit-1.0: ok" in verify_result.output
+    assert "MinerU2.5-Pro-2605-1.2B: ok" in verify_result.output
 
 
 def test_api_server_rejects_backend_and_effort_options() -> None:
@@ -319,38 +447,6 @@ def test_kit_commands_do_not_expose_formula_table_switches() -> None:
         assert _REMOVED_DISABLE_FORMULA_OPTION not in output
 
 
-def test_cli_old_api_form_builders_remove_formula_table_fields() -> None:
-    """校验旧 API client 表单构造不再声明或发送公式/表格开关。"""
-    from mineru.cli_old import api_client as old_api_client
-    from mineru.cli_old import client as old_client
-
-    for target in (old_api_client.build_parse_request_form_data, old_client.build_request_form_data):
-        parameters = inspect.signature(target).parameters
-        assert _REMOVED_FORMULA_ENABLE_PARAM not in parameters
-        assert _REMOVED_TABLE_ENABLE_PARAM not in parameters
-
-    data = old_api_client.build_parse_request_form_data(
-        lang_list=["ch"],
-        backend="hybrid-engine",
-        parse_method="auto",
-        server_url=None,
-        start_page_id=0,
-        end_page_id=None,
-        image_analysis=True,
-        effort="medium",
-        return_md=True,
-        return_middle_json=True,
-        return_model_output=True,
-        return_content_list=True,
-        return_images=True,
-        response_format_zip=False,
-        return_original_file=False,
-    )
-
-    assert _REMOVED_FORMULA_ENABLE_PARAM not in data
-    assert _REMOVED_TABLE_ENABLE_PARAM not in data
-
-
 def test_cli_old_api_request_models_remove_formula_table_fields() -> None:
     """校验旧 FastAPI 表单参数对象不再保存公式/表格开关。"""
     from mineru.cli_old import api_request as old_api_request
@@ -362,33 +458,32 @@ def test_cli_old_api_request_models_remove_formula_table_fields() -> None:
         assert _REMOVED_TABLE_ENABLE_PARAM not in annotations
 
 
-def test_api_server_forwards_repeated_tiers(monkeypatch: Any) -> None:
+def test_api_server_forwards_single_tier_and_no_flash(monkeypatch: Any) -> None:
     seen: dict[str, Any] = {}
 
     def _fake_main(*, args: list[str], prog_name: str, standalone_mode: bool) -> None:
-        """记录 mineru-kit api-server 对多 tier 启动参数的原样转发。"""
+        """记录 mineru-kit api-server 对启动能力参数的原样转发。"""
         seen["args"] = args
         seen["prog_name"] = prog_name
         seen["standalone_mode"] = standalone_mode
 
     monkeypatch.setattr(api_server.parser_api_server.main, "main", _fake_main)
 
-    result = runner.invoke(app, ["api-server", "--tier", "medium", "--tier", "extra_high"])
+    result = runner.invoke(app, ["api-server", "--tier", "standard", "--no-flash", "--preload-models"])
 
     assert result.exit_code == 0
     assert seen["prog_name"] == "mineru-kit api-server"
     assert seen["standalone_mode"] is False
-    assert [seen["args"][index + 1] for index, item in enumerate(seen["args"]) if item == "--tier"] == [
-        "medium",
-        "extra_high",
-    ]
+    assert [seen["args"][index + 1] for index, item in enumerate(seen["args"]) if item == "--tier"] == ["standard"]
+    assert "--no-flash" in seen["args"]
+    assert "--preload-models" in seen["args"]
 
 
-def test_api_server_without_tier_lets_parser_api_apply_all_tier_default(monkeypatch: Any) -> None:
+def test_api_server_without_tier_lets_parser_api_apply_standard_default(monkeypatch: Any) -> None:
     seen: dict[str, Any] = {}
 
     def _fake_main(*, args: list[str], prog_name: str, standalone_mode: bool) -> None:
-        """记录 mineru-kit api-server 默认参数，确认不再强制单 high tier。"""
+        """记录 mineru-kit api-server 默认参数，由底层应用 Standard 能力默认值。"""
         seen["args"] = args
         seen["prog_name"] = prog_name
         seen["standalone_mode"] = standalone_mode
@@ -401,6 +496,21 @@ def test_api_server_without_tier_lets_parser_api_apply_all_tier_default(monkeypa
     assert seen["prog_name"] == "mineru-kit api-server"
     assert seen["standalone_mode"] is False
     assert "--tier" not in seen["args"]
+    assert "--preload-models" not in seen["args"]
+
+
+def test_api_server_rejects_advanced_startup_tier() -> None:
+    result = runner.invoke(app, ["api-server", "--tier", "advanced"])
+
+    assert result.exit_code == 1
+    assert "Unsupported server tier 'advanced'" in result.output
+
+
+def test_api_server_rejects_flash_no_flash_conflict() -> None:
+    result = runner.invoke(app, ["api-server", "--tier", "flash", "--no-flash"])
+
+    assert result.exit_code == 1
+    assert "--tier flash cannot be combined with --no-flash" in result.output
 
 
 def test_api_server_normalizes_hidden_language_alias(monkeypatch: Any) -> None:
@@ -562,7 +672,7 @@ def test_mlx_vlm_server_adapter_defaults_to_mineru_vlm_model(monkeypatch: Any) -
     )
     monkeypatch.setitem(sys.modules, "mlx_vlm", SimpleNamespace(server=fake_mlx_server))
     monkeypatch.setitem(sys.modules, "mlx_vlm.server", fake_mlx_server)
-    monkeypatch.setattr(mlx_vlm_server, "auto_download_and_get_model_root_path", lambda path, repo_mode: "/models/mineru-vlm")
+    monkeypatch.setattr(mlx_vlm_server, "_default_model_id", lambda configured_model: "/models/mineru-vlm")
 
     client = TestClient(mlx_vlm_server.create_app())
     response = client.get("/v1/models")
@@ -741,7 +851,7 @@ def test_parse_single_file_markdown(monkeypatch: Any, tmp_path: Path) -> None:
     assert output.read_text(encoding="utf-8") == "# demo\n"
 
 
-def test_parse_forwards_backend_alias_and_effort(monkeypatch: Any, tmp_path: Path) -> None:
+def test_parse_forwards_backend_alias_and_tier(monkeypatch: Any, tmp_path: Path) -> None:
     source = tmp_path / "demo.pdf"
     output = tmp_path / "out.md"
     source.write_bytes(b"%PDF-1.7\n")
@@ -774,12 +884,66 @@ def test_parse_forwards_backend_alias_and_effort(monkeypatch: Any, tmp_path: Pat
 
     result = runner.invoke(
         app,
-        ["parse", str(source), "-o", str(output), "--backend", "hybrid-auto-engine", "--effort", "high"],
+        ["parse", str(source), "-o", str(output), "--backend", "hybrid-auto-engine", "--tier", "standard"],
     )
 
     assert result.exit_code == 0
     assert seen["backend"] == "hybrid-engine"
-    assert seen["effort"] == "high"
+    assert seen["tier"] == "standard"
+    assert "effort" not in seen
+
+
+def test_parse_rejects_single_office_input_with_quality_tier(monkeypatch: Any, tmp_path: Path) -> None:
+    source = tmp_path / "demo.docx"
+    output = tmp_path / "out.md"
+    source.write_bytes(b"docx")
+
+    def _fake_local_parse(*args: Any, **kwargs: Any) -> ParseResult:
+        pytest.fail("single lightweight input with quality tier should fail before parsing")
+
+    monkeypatch.setattr(parse, "local_parse", _fake_local_parse)
+
+    result = runner.invoke(app, ["parse", str(source), "-o", str(output), "--tier", "standard"])
+
+    assert result.exit_code == 1
+    assert "Tier 'standard' is only supported for PDF and image files" in " ".join(result.output.split())
+
+
+def test_parse_batch_normalizes_office_quality_tier_to_flash(monkeypatch: Any, tmp_path: Path) -> None:
+    pdf = tmp_path / "demo.pdf"
+    html = tmp_path / "page.html"
+    output = tmp_path / "out"
+    pdf.write_bytes(b"%PDF-1.7\n")
+    html.write_text("<p>content</p>", encoding="utf-8")
+    calls: list[dict[str, Any]] = []
+
+    class _Result:
+        def markdown(self) -> str:
+            return "# demo\n"
+
+        def images(self) -> dict[str, bytes]:
+            return {}
+
+        def to_json(self) -> str:
+            return '{"pages":[]}'
+
+        def save(self, writer: Any) -> None:
+            writer.write_string("markdown.md", self.markdown())
+            writer.write_string("middle_json.json", self.to_json())
+
+    def _fake_local_parse(path: Path, **kwargs: Any) -> _Result:
+        calls.append({"path": path, **kwargs})
+        return _Result()
+
+    monkeypatch.setattr(parse, "local_parse", _fake_local_parse)
+
+    result = runner.invoke(app, ["parse", str(pdf), str(html), "-o", str(output), "--tier", "standard"])
+
+    assert result.exit_code == 0
+    assert [(call["path"].name, call["tier"], call["backend"]) for call in calls] == [
+        ("demo.pdf", "standard", "hybrid-engine"),
+        ("page.html", "flash", "flash"),
+    ]
 
 
 def test_parse_remote_requests_image_cache(monkeypatch: Any, tmp_path: Path) -> None:
@@ -828,7 +992,7 @@ def test_parse_remote_requests_image_cache(monkeypatch: Any, tmp_path: Path) -> 
             "--api-key",
             "test-key",
             "--tier",
-            "high",
+            "standard",
             "--pages",
             "1",
         ],
@@ -839,7 +1003,7 @@ def test_parse_remote_requests_image_cache(monkeypatch: Any, tmp_path: Path) -> 
     assert seen == {
         "api_url": "http://localhost:8000/api",
         "api_key": "test-key",
-        "tier": "high",
+        "tier": "standard",
         "include_images": True,
         "path": source,
         "page_range": "1",
@@ -896,20 +1060,20 @@ def test_parse_rejects_removed_ch_lite_language(tmp_path: Path) -> None:
 def test_gradio_tier_selection_derives_v1_runtime() -> None:
     from mineru.cli_old import gradio_app
 
-    assert gradio_app.resolve_gradio_runtime_options("medium").as_kwargs() == {
-        "tier": "medium",
+    assert gradio_app.resolve_gradio_runtime_options("basic").as_kwargs() == {
+        "tier": "basic",
         "backend": "hybrid-engine",
         "effort": "medium",
     }
-    assert gradio_app.resolve_gradio_runtime_options("high").as_kwargs() == {
-        "tier": "high",
+    assert gradio_app.resolve_gradio_runtime_options("standard").as_kwargs() == {
+        "tier": "standard",
         "backend": "hybrid-engine",
         "effort": "high",
     }
-    assert gradio_app.resolve_gradio_runtime_options("extra_high").as_kwargs() == {
-        "tier": "extra_high",
+    assert gradio_app.resolve_gradio_runtime_options("advanced").as_kwargs() == {
+        "tier": "advanced",
         "backend": "hybrid-engine",
-        "effort": "extra_high",
+        "effort": "xhigh",
     }
 
 
@@ -919,16 +1083,16 @@ def test_gradio_extracts_supported_tiers_from_v1_tiers_payload() -> None:
     payload = {
         "data": [
             {"id": "flash"},
-            {"id": "extra_high"},
+            {"id": "advanced"},
             {"id": "experimental"},
-            {"id": "medium"},
-            {"id": "high"},
-            {"id": "extra_high"},
+            {"id": "basic"},
+            {"id": "standard"},
+            {"id": "advanced"},
         ]
     }
 
-    assert gradio_app.extract_v1_tier_choices(payload) == ("flash", "extra_high", "medium", "high")
-    assert gradio_app.default_v1_gradio_tier(("flash", "extra_high", "medium", "high")) == "high"
+    assert gradio_app.extract_v1_tier_choices(payload) == ("flash", "advanced", "basic", "standard")
+    assert gradio_app.default_v1_gradio_tier(("flash", "advanced", "basic", "standard")) == "standard"
 
 
 def test_gradio_rejects_v1_tiers_payload_without_supported_tiers() -> None:
@@ -936,75 +1100,6 @@ def test_gradio_rejects_v1_tiers_payload_without_supported_tiers() -> None:
 
     with pytest.raises(click.ClickException, match="did not advertise any supported tier"):
         gradio_app.extract_v1_tier_choices({"data": [{"id": "experimental"}]})
-
-
-def test_gradio_persists_v1_parse_result_for_preview_and_download(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    from mineru.cli_old import gradio_app
-
-    image_cache = ImagePayloadCache()
-    image_path = image_cache.register_bytes(b"figure-bytes", "png", image_path="figures/figure.png")
-    image_body = Block(
-        index=1,
-        type=BlockType.IMAGE_BODY,
-        bbox=(0, 0, 20, 20),
-        lines=[Line(bbox=(0, 0, 20, 20), spans=[Span(type=ContentType.IMAGE, bbox=(0, 0, 20, 20), image_path=image_path)])],
-    )
-    image_block = Block(index=0, type=BlockType.IMAGE, bbox=(0, 0, 20, 20), blocks=[image_body])
-    parse_result = ParseResult(
-        pages=[PageInfo(page_idx=0, page_size=(100, 100), para_blocks=[image_block], _backend="hybrid")],
-        _image_cache=image_cache,
-        _model_output=[[{"raw": "model"}]],
-    )
-    source = tmp_path / "demo.pdf"
-    source.write_bytes(b"%PDF-1.7\n")
-    extract_root = tmp_path / "extract"
-    archive_zip_path = tmp_path / "archive.zip"
-    visualization_calls: list[Any] = []
-
-    def fake_run_visualization_job(job: Any) -> Any:
-        """模拟 layout 可视化生成，避免本用例依赖真实 PDF 绘制。"""
-        visualization_calls.append(job)
-        layout_path = job.parse_dir / f"{job.document_stem}_layout.pdf"
-        layout_path.write_bytes(b"%PDF-1.7\n%layout\n")
-        return SimpleNamespace(status="finished", message="generated", generated_files=(layout_path.name,))
-
-    monkeypatch.setattr(gradio_app, "run_visualization_job", fake_run_visualization_job)
-
-    output = gradio_app.persist_v1_gradio_result(
-        parse_result=parse_result,
-        file_path=str(source),
-        extract_root=extract_root,
-        archive_zip_path=archive_zip_path,
-        backend="hybrid-engine",
-        effort="medium",
-        page_range="",
-    )
-
-    local_md_dir = extract_root / "demo"
-    assert output.file_name == "demo"
-    assert output.local_md_dir == local_md_dir
-    assert output.preview_pdf_path == local_md_dir / "demo_layout.pdf"
-    assert visualization_calls[0].document_stem == "demo"
-    assert visualization_calls[0].parse_dir == local_md_dir
-    assert visualization_calls[0].draw_span is False
-    assert (local_md_dir / "demo.md").read_text(encoding="utf-8") == "![](images/figures/figure.png)"
-    content_list = json.loads((local_md_dir / "demo_content_list.json").read_text(encoding="utf-8"))
-    assert content_list[0]["img_path"] == "images/figures/figure.png"
-    middle_json = json.loads((local_md_dir / "demo_middle.json").read_text(encoding="utf-8"))
-    assert middle_json["_backend"] == "hybrid"
-    assert middle_json["_version_name"]
-    assert json.loads((local_md_dir / "demo_model_output.json").read_text(encoding="utf-8")) == [[{"raw": "model"}]]
-    assert (local_md_dir / "images" / "figures" / "figure.png").read_bytes() == b"figure-bytes"
-    assert (local_md_dir / "demo_origin.pdf").read_bytes() == b"%PDF-1.7\n"
-    assert (local_md_dir / "demo_layout.pdf").read_bytes() == b"%PDF-1.7\n%layout\n"
-    assert archive_zip_path.is_file()
-    with zipfile.ZipFile(archive_zip_path) as archive:
-        assert "demo_layout.pdf" in archive.namelist()
-        assert "demo_model_output.json" in archive.namelist()
-        assert json.loads(archive.read("demo_model_output.json").decode("utf-8")) == [[{"raw": "model"}]]
 
 
 def test_gradio_persists_page_ranged_origin_pdf_for_v1_preview(tmp_path: Path) -> None:
@@ -1020,11 +1115,14 @@ def test_gradio_persists_page_ranged_origin_pdf_for_v1_preview(tmp_path: Path) -
     pdf_writer.write(source_pdf)
 
     parse_result = ParseResult(
-        pages=[
-            PageInfo(page_idx=0, page_size=(100, 100), _backend="hybrid"),
-            PageInfo(page_idx=1, page_size=(200, 200), _backend="hybrid"),
+        middle_json=MiddleJson(
+            pages=[
+            PageInfo(page_idx=0),
+            PageInfo(page_idx=1),
         ],
-    )
+            file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__,
+        )
+        )
     source = tmp_path / "demo.pdf"
     source.write_bytes(source_pdf.getvalue())
     extract_root = tmp_path / "extract"
@@ -1069,8 +1167,11 @@ def test_gradio_persists_image_origin_as_pdf_for_v1_preview(tmp_path: Path) -> N
     source = tmp_path / "ref-merge.png"
     Image.new("RGB", (64, 48), "white").save(source)
     parse_result = ParseResult(
-        pages=[PageInfo(page_idx=0, page_size=(64, 48), _backend="hybrid")],
-    )
+        middle_json=MiddleJson(
+            pages=[PageInfo(page_idx=0)],
+            file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__,
+        )
+        )
     extract_root = tmp_path / "extract"
     archive_zip_path = tmp_path / "archive.zip"
 
@@ -1118,7 +1219,7 @@ def test_gradio_v1_job_reuses_page_range_for_api_and_origin_pdf(
 
         async def parse_async(self, file_path: str, *, page_range: str) -> ParseResult:
             calls["api_page_range"] = page_range
-            return ParseResult(pages=[PageInfo(page_idx=0, page_size=(100, 100), _backend="hybrid")])
+            return ParseResult(middle_json=MiddleJson(pages=[PageInfo(page_idx=0)], file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__))
 
     async def _fake_server_health(_http_client: Any, api_url: str | None) -> Any:
         """模拟 v1 server 健康检查，只保留 Gradio 任务需要的字段。"""
@@ -1130,7 +1231,6 @@ def test_gradio_v1_job_reuses_page_range_for_api_and_origin_pdf(
         local_md_dir = tmp_path / "persisted"
         local_md_dir.mkdir()
         (local_md_dir / "demo.md").write_text("markdown", encoding="utf-8")
-        (local_md_dir / "demo_content_list.json").write_text("[]", encoding="utf-8")
         archive_zip_path = tmp_path / "demo.zip"
         archive_zip_path.write_bytes(b"zip")
         return SimpleNamespace(
@@ -1289,7 +1389,7 @@ def test_parse_forwards_flash_backend(monkeypatch: Any, tmp_path: Path) -> None:
     assert output.read_text(encoding="utf-8") == "# demo\n"
 
 
-def test_cli_old_legacy_vlm_branch_maps_to_hybrid_extra_high(monkeypatch: Any, tmp_path: Path) -> None:
+def test_cli_old_legacy_vlm_branch_maps_to_hybrid_xhigh(monkeypatch: Any, tmp_path: Path) -> None:
     from mineru.cli_old import common
 
     seen: dict[str, Any] = {}
@@ -1306,7 +1406,7 @@ def test_cli_old_legacy_vlm_branch_maps_to_hybrid_extra_high(monkeypatch: Any, t
     monkeypatch.setattr(common, "get_vlm_engine", lambda inference_engine="auto", is_async=False: "vllm-engine")
 
     def _fake_process_hybrid(*args: Any, **kwargs: Any) -> None:
-        """记录 legacy VLM 输入最终进入 Hybrid extra_high 分支。"""
+        """记录 legacy VLM 输入最终进入 Hybrid advanced 分支。"""
         seen["backend"] = args[3]
         seen["hybrid_backend"] = args[5]
         seen["kwargs"] = kwargs
@@ -1323,7 +1423,7 @@ def test_cli_old_legacy_vlm_branch_maps_to_hybrid_extra_high(monkeypatch: Any, t
     )
 
     assert seen["hybrid_backend"] == "vllm-engine"
-    assert seen["kwargs"]["effort"] == "extra_high"
+    assert seen["kwargs"]["effort"] == "xhigh"
     assert seen["kwargs"]["image_analysis"] is True
     assert not hasattr(common, "_process_vlm")
 
@@ -1384,11 +1484,11 @@ def test_cli_old_hybrid_medium_skips_vlm_engine_resolution(monkeypatch: Any, tmp
     monkeypatch.setattr(common, "ensure_backend_dependencies", lambda backend: None)
 
     def fail_get_vlm_engine(*_args: Any, **_kwargs: Any) -> str:
-        """Hybrid medium 不应触发 VLM engine 解析。"""
+        """Hybrid basic 不应触发 VLM engine 解析。"""
         raise AssertionError("medium effort should not resolve VLM engine")
 
     def _fake_process_hybrid(*args: Any, **kwargs: Any) -> None:
-        """记录 Hybrid medium 仍进入 Hybrid 处理分支。"""
+        """记录 Hybrid basic 仍进入 Hybrid 处理分支。"""
         seen["backend"] = args[5]
         seen["langs"] = list(args[3])
         seen["pdf_count"] = len(args[2])
@@ -1412,61 +1512,7 @@ def test_cli_old_hybrid_medium_skips_vlm_engine_resolution(monkeypatch: Any, tmp
     assert seen["kwargs"]["effort"] == "medium"
 
 
-def test_process_hybrid_medium_calls_analyzer_per_file(monkeypatch: Any, tmp_path: Path) -> None:
-    from mineru.cli_old import common
-
-    calls: list[bytes] = []
-    languages: list[str] = []
-    analyzer_kwargs: list[dict[str, Any]] = []
-    outputs: list[tuple[str, str, str]] = []
-
-    def fake_doc_analyze(pdf_bytes: bytes, **kwargs: Any) -> tuple[list[PageInfo], list[object], bool]:
-        """记录每个文件独立进入 Hybrid medium analyzer。"""
-        calls.append(pdf_bytes)
-        languages.append(kwargs["language"])
-        analyzer_kwargs.append(kwargs)
-        return [PageInfo(page_idx=0, _backend="hybrid")], [], False
-
-    monkeypatch.setattr(common, "_load_hybrid_analyze_entrypoint", lambda *_args, **_kwargs: fake_doc_analyze)
-    monkeypatch.setattr(
-        common,
-        "prepare_env",
-        lambda output_dir, pdf_file_name, method: (str(tmp_path / pdf_file_name / "images"), str(tmp_path / pdf_file_name)),
-    )
-    monkeypatch.setattr(common, "FileBasedDataWriter", lambda _path: object())
-    monkeypatch.setattr(
-        common,
-        "_process_output",
-        lambda middle_json, pdf_bytes, pdf_file_name, local_md_dir, local_image_dir, *_args, **_kwargs: outputs.append(
-            (pdf_file_name, local_md_dir, local_image_dir)
-        ),
-    )
-
-    common._process_hybrid(
-        output_dir=str(tmp_path),
-        pdf_file_names=["a.pdf", "b.pdf"],
-        pdf_bytes_list=[b"a", b"b"],
-        h_lang_list=["en", "en"],
-        parse_method="auto",
-        backend="engine",
-        f_draw_layout_bbox=False,
-        f_draw_span_bbox=False,
-        f_dump_md=True,
-        f_dump_middle_json=True,
-        f_dump_model_output=True,
-        f_dump_orig_pdf=True,
-        f_dump_content_list=True,
-        f_make_md_mode="mm_markdown",
-        effort="medium",
-    )
-
-    assert calls == [b"a", b"b"]
-    assert languages == ["en", "en"]
-    assert all(_REMOVED_INLINE_FORMULA_PARAM not in kwargs for kwargs in analyzer_kwargs)
-    assert [item[0] for item in outputs] == ["a.pdf", "b.pdf"]
-
-
-def test_cli_old_async_legacy_vlm_branch_maps_to_hybrid_extra_high(monkeypatch: Any, tmp_path: Path) -> None:
+def test_cli_old_async_legacy_vlm_branch_maps_to_hybrid_xhigh(monkeypatch: Any, tmp_path: Path) -> None:
     from mineru.cli_old import common
 
     seen: dict[str, Any] = {}
@@ -1483,7 +1529,7 @@ def test_cli_old_async_legacy_vlm_branch_maps_to_hybrid_extra_high(monkeypatch: 
     monkeypatch.setattr(common, "get_vlm_engine", lambda inference_engine="auto", is_async=True: "vllm-async-engine")
 
     async def _fake_async_process_hybrid(*args: Any, **kwargs: Any) -> None:
-        """记录异步 legacy VLM 输入最终进入 Hybrid extra_high 分支。"""
+        """记录异步 legacy VLM 输入最终进入 Hybrid advanced 分支。"""
         seen["backend"] = args[3]
         seen["hybrid_backend"] = args[5]
         seen["kwargs"] = kwargs
@@ -1502,7 +1548,7 @@ def test_cli_old_async_legacy_vlm_branch_maps_to_hybrid_extra_high(monkeypatch: 
     )
 
     assert seen["hybrid_backend"] == "vllm-async-engine"
-    assert seen["kwargs"]["effort"] == "extra_high"
+    assert seen["kwargs"]["effort"] == "xhigh"
     assert seen["kwargs"]["image_analysis"] is True
     assert not hasattr(common, "_async_process_vlm")
 
@@ -1756,3 +1802,171 @@ def test_parse_output_replaces_surrogate_chars(monkeypatch: Any, tmp_path: Path)
 
     assert result.exit_code == 0
     assert output.read_text(encoding="utf-8") == "before ? after\n"
+
+
+def test_models_download_tier_basic_light(monkeypatch: Any) -> None:
+    captured: list[str] = []
+
+    def fake_download_model_repo(repo: Any, *, source: str | None = None, local_as_auto: bool = False) -> Path:
+        captured.append(repo.name)
+        return Path("/tmp/models") / repo.local_name
+
+    monkeypatch.setattr(models, "download_model_repo", fake_download_model_repo)
+
+    result = runner.invoke(app, ["models", "download", "--tier", "basic", "--stack", "light"])
+
+    assert result.exit_code == 0
+    assert captured == [
+        "PP-DocLayoutV2_onnx",
+        "PP-OCRv6_small_det_onnx",
+        "PP-OCRv6_small_rec_onnx",
+        "PP-FormulaNet_plus-M_onnx",
+    ]
+    assert "Downloaded models for tier basic" in result.output
+
+
+def test_models_download_tier_standard_light(monkeypatch: Any) -> None:
+    captured: list[str] = []
+
+    def fake_download_model_repo(repo: Any, *, source: str | None = None, local_as_auto: bool = False) -> Path:
+        captured.append(repo.name)
+        return Path("/tmp/models") / repo.local_name
+
+    monkeypatch.setattr(models, "download_model_repo", fake_download_model_repo)
+
+    result = runner.invoke(app, ["models", "download", "--tier", "standard", "--stack", "light"])
+
+    assert result.exit_code == 0
+    assert captured == [
+        "PP-DocLayoutV2_onnx",
+        "PP-OCRv6_small_det_onnx",
+        "PP-OCRv6_small_rec_onnx",
+        "PP-FormulaNet_plus-M_onnx",
+        "MinerU2.5-Pro-2605-1.2B-GGUF",
+    ]
+
+
+def test_models_download_rejects_invalid_stack() -> None:
+    result = runner.invoke(app, ["models", "download", "--tier", "basic", "--stack", "torch"])
+
+    assert result.exit_code == 1
+    assert "Unsupported stack 'torch'" in " ".join(result.output.split())
+
+
+def test_models_download_repo_ignores_stack(monkeypatch: Any) -> None:
+    """传具体 repo 名时 --stack 应被忽略，repo 自身的 stack 字段决定行为。"""
+    captured: dict[str, Any] = {}
+
+    def fake_download_model_repo(repo: Any, *, source: str | None = None, local_as_auto: bool = False) -> Path:
+        captured["repo"] = repo.name
+        captured["stack"] = repo.stack
+        return Path("/tmp/models") / repo.local_name
+
+    monkeypatch.setattr(models, "download_model_repo", fake_download_model_repo)
+
+    result = runner.invoke(app, ["models", "download", "PP-DocLayoutV2_onnx", "--stack", "full"])
+
+    assert result.exit_code == 0
+    assert captured["repo"] == "PP-DocLayoutV2_onnx"
+    assert captured["stack"] == "light"
+    assert "Downloaded models for PP-DocLayoutV2_onnx" in result.output
+
+
+def test_models_show_displays_stack_fields(tmp_path: Path, monkeypatch: Any) -> None:
+    base_dir = tmp_path / "models"
+    monkeypatch.setattr(models.config.model, "base_dir", str(base_dir))
+    monkeypatch.setattr(models.config.model, "stack", "full")
+
+    result = runner.invoke(app, ["models", "show"])
+
+    assert result.exit_code == 0
+    assert "model.stack: full" in result.output
+    assert "Effective stack: full" in result.output
+    assert "[stack=full]" in result.output
+    assert "[stack=light]" in result.output
+
+
+def test_models_show_with_light_stack_filter(tmp_path: Path, monkeypatch: Any) -> None:
+    """--stack light 时 effective stack 解析为 light，tiers 部分按 light 显示。"""
+    base_dir = tmp_path / "models"
+    monkeypatch.setattr(models.config.model, "base_dir", str(base_dir))
+    monkeypatch.setattr(models.config.model, "stack", "full")
+
+    result = runner.invoke(app, ["models", "show", "--stack", "light"])
+
+    assert result.exit_code == 0
+    assert "Effective stack: light" in result.output
+    assert "PP-DocLayoutV2_onnx: " in result.output
+    assert "PDF-Extract-Kit-1.0: " in result.output
+
+
+def test_models_show_rejects_invalid_stack() -> None:
+    result = runner.invoke(app, ["models", "show", "--stack", "torch"])
+
+    assert result.exit_code == 1
+    assert "Unsupported stack 'torch'" in " ".join(result.output.split())
+
+
+def test_models_verify_filters_by_effective_stack_full(tmp_path: Path, monkeypatch: Any) -> None:
+    """config.model.stack=full 时，verify 默认只验证 full repos。"""
+    base_dir = tmp_path / "models"
+    monkeypatch.setattr(models.config.model, "base_dir", str(base_dir))
+    monkeypatch.setattr(models.config.model, "stack", "full")
+
+    # 仅把 full repos 设为 ready，light repos 不创建
+    for repo in models.MODEL_REPOS:
+        if repo.stack == "full":
+            if repo.download_mode == "full":
+                repo.local_dir().mkdir(parents=True, exist_ok=True)
+                (repo.local_dir() / MODEL_COMPLETE_MARKER).touch()
+                continue
+            for model_path in repo.required_paths():
+                target = repo.local_dir() / model_path.relative_path
+                if Path(model_path.relative_path).suffix:
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_text("x", encoding="utf-8")
+                else:
+                    target.mkdir(parents=True, exist_ok=True)
+                    (target / MODEL_COMPLETE_MARKER).touch()
+
+    result = runner.invoke(app, ["models", "verify"])
+
+    assert result.exit_code == 0
+    assert "PDF-Extract-Kit-1.0: ok" in result.output
+    assert "MinerU2.5-Pro-2605-1.2B: ok" in result.output
+    assert "PP-DocLayoutV2_onnx" not in result.output
+
+
+def test_models_verify_with_light_stack(tmp_path: Path, monkeypatch: Any) -> None:
+    """--stack light 时，verify 只验证 light repos。"""
+    base_dir = tmp_path / "models"
+    monkeypatch.setattr(models.config.model, "base_dir", str(base_dir))
+
+    result = runner.invoke(app, ["models", "verify", "--stack", "light"])
+
+    assert result.exit_code == 1  # light repos 未准备，应失败
+    assert "PP-DocLayoutV2_onnx: missing key paths" in " ".join(result.output.split())
+    assert "PDF-Extract-Kit-1.0" not in result.output
+
+
+def test_models_verify_repo_ignores_stack(tmp_path: Path, monkeypatch: Any) -> None:
+    """传具体 repo 名时 --stack 被忽略。"""
+    base_dir = tmp_path / "models"
+    monkeypatch.setattr(models.config.model, "base_dir", str(base_dir))
+
+    # PP-DocLayoutV2_onnx 是 download_mode=full，只需创建 marker 文件
+    repo = next(r for r in models.MODEL_REPOS if r.name == "PP-DocLayoutV2_onnx")
+    repo.local_dir().mkdir(parents=True, exist_ok=True)
+    (repo.local_dir() / MODEL_COMPLETE_MARKER).touch()
+
+    result = runner.invoke(app, ["models", "verify", "PP-DocLayoutV2_onnx", "--stack", "full"])
+
+    assert result.exit_code == 0
+    assert "PP-DocLayoutV2_onnx: ok" in result.output
+
+
+def test_models_verify_rejects_invalid_stack() -> None:
+    result = runner.invoke(app, ["models", "verify", "--stack", "torch"])
+
+    assert result.exit_code == 1
+    assert "Unsupported stack 'torch'" in " ".join(result.output.split())
