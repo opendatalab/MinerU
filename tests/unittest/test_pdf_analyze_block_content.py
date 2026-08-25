@@ -180,6 +180,7 @@ def test_doc_analyze_converts_vlm_results_before_downstream_processing(
         return window_model_list
 
     xhigh_normalizer = MagicMock(wraps=layout._normalize_xhigh_vlm_blocks)
+    native_table_priority = MagicMock(return_value=MagicMock(total=0))
     monkeypatch.setattr(pipeline, "PDFDocument", MagicMock(return_value=fake_document))
     monkeypatch.setattr(pipeline, "HybridLocalModelContextSingleton", MagicMock(return_value=hybrid_singleton))
     monkeypatch.setattr(
@@ -199,6 +200,7 @@ def test_doc_analyze_converts_vlm_results_before_downstream_processing(
         MagicMock(return_value=[{"img_pil": page_image, "scale": 1.0}]),
     )
     monkeypatch.setattr(window, "_process_text_and_formulas", fake_process_text_and_formulas)
+    monkeypatch.setattr(window, "_apply_native_txt_table_priority", native_table_priority)
     monkeypatch.setattr(window, "_normalize_xhigh_vlm_blocks", xhigh_normalizer)
     monkeypatch.setattr(window, "_apply_seal_ocr", MagicMock())
     monkeypatch.setattr(window, "_supplement_missing_image_block_containers", MagicMock())
@@ -250,6 +252,11 @@ def test_doc_analyze_converts_vlm_results_before_downstream_processing(
         xhigh_normalizer.assert_not_called()
         vlm_predictor.batch_extract_with_layout.assert_called_once()
         vlm_predictor.batch_two_step_extract.assert_not_called()
+
+    if effort == "high" and parse_mode == "txt":
+        native_table_priority.assert_called_once()
+    else:
+        native_table_priority.assert_not_called()
 
 
 def test_xhigh_vlm_blocks_normalize_visual_annotation_types() -> None:

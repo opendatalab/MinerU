@@ -45,8 +45,11 @@ from .ocr import (
 )
 from .tables import (
     _apply_medium_table_recognition,
+    _apply_native_txt_table_priority,
     _apply_table_orientations,
     _fill_flash_ocr_table_contents,
+    _restore_native_high_table_blocks,
+    _split_native_high_table_blocks,
 )
 from .visuals import (
     _attach_visual_block_images,
@@ -198,7 +201,7 @@ def _process_text_and_formulas(
     interline_enable = effort == "medium"
 
     # medium 识别行内和行间公式；high/xhigh 的 txt 路径只识别行内公式。
-    if mfr_enable:
+    if mfr_enable and any(mfd_res):
         images_formula_list = local_model_context.mfr_model.batch_predict(
             mfd_res,
             np_images,
@@ -323,15 +326,54 @@ def process_pdf_windows(
 
                 vl_style_layout_blocks = _build_vl_style_layout_blocks(images_layout_res, images_pil_list)
 
+                if parse_mode == "txt" and effort in {"medium", "high"}:
+                    native_table_summary = _apply_native_txt_table_priority(
+                        vl_style_layout_blocks,
+                        images_layout_res,
+                        window_pages,
+                        images_list,
+                        effort=effort,
+                    )
+                    if native_table_summary.total:
+                        native_table_stats = {
+                            "effort": effort,
+                            "total": native_table_summary.total,
+                            "accepted": native_table_summary.accepted,
+                            "complex_fallbacks": native_table_summary.complex_fallbacks,
+                            "rejected": native_table_summary.rejected,
+                            "errors": native_table_summary.errors,
+                            "removed_internal_text": native_table_summary.removed_internal_text,
+                            "removed_formula_blocks": native_table_summary.removed_formula_blocks,
+                            "removed_formula_layout_items": native_table_summary.removed_formula_layout_items,
+                        }
+                        logger.bind(native_table_priority=native_table_stats).info(
+                            "Hybrid native table priority. "
+                            f"effort={native_table_stats['effort']}, total={native_table_stats['total']}, "
+                            f"accepted={native_table_stats['accepted']}, "
+                            f"complex_fallbacks={native_table_stats['complex_fallbacks']}, "
+                            f"rejected={native_table_stats['rejected']}, "
+                            f"errors={native_table_stats['errors']}, "
+                            f"removed_internal_text={native_table_stats['removed_internal_text']}, "
+                            f"removed_formula_blocks={native_table_stats['removed_formula_blocks']}, "
+                            f"removed_formula_layout_items={native_table_stats['removed_formula_layout_items']}"
+                        )
+
                 if parse_mode == "txt":
                     if effort == "medium":
                         window_model_list = vl_style_layout_blocks
                     elif effort == "high":
-                        window_model_list = vlm_predictor.batch_extract_with_layout(
+                        high_vlm_blocks, accepted_native_tables = _split_native_high_table_blocks(
+                            vl_style_layout_blocks
+                        )
+                        high_vlm_results = vlm_predictor.batch_extract_with_layout(
                             images=images_pil_list,
-                            blocks_list=vl_style_layout_blocks,
+                            blocks_list=high_vlm_blocks,
                             not_extract_list=NOT_EXTRACT_TYPES,
                             image_analysis=False,
+                        )
+                        window_model_list = _restore_native_high_table_blocks(
+                            high_vlm_results,
+                            accepted_native_tables,
                         )
                     elif effort == "xhigh":
                         window_model_list = vlm_predictor.batch_two_step_extract(

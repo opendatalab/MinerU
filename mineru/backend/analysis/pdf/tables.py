@@ -6,22 +6,29 @@ from __future__ import annotations
 import html
 import math
 from collections import Counter
+from dataclasses import dataclass
 from typing import Any, Literal
 
 import cv2
 import numpy as np
 from loguru import logger
 
-from mineru.backend.local_model_runtime import HybridLocalModelContext, run_ocr_inference
-from mineru.model.model_types import AtomicModelName
-from mineru.types import RAW_FORMULA_NUMBER, BBox, BlockType
-from mineru.utils.bbox_utils import (
+from ...local_model_runtime import HybridLocalModelContext, run_ocr_inference
+from ....model.model_types import AtomicModelName
+from ....types import RAW_ALGORITHM, RAW_FORMULA_NUMBER, RAW_PHONETIC, BBox, BlockType
+from ....utils.bbox_utils import (
     calculate_overlap_area_in_bbox1_area_ratio,
     normalize_to_int_bbox,
 )
-from mineru.utils.ocr_utils import mask_formula_regions_for_ocr_det
-from mineru.utils.pdf_document import PDFPage, get_lines_from_chars
-from mineru.utils.spatial_text import project_ocr_table_text
+from ....utils.native_pdf_table import (
+    NativeTableInput,
+    coerce_native_table_rectangles,
+    coerce_native_table_rules,
+    recover_native_pdf_table,
+)
+from ....utils.ocr_utils import mask_formula_regions_for_ocr_det
+from ....utils.pdf_document import PDFPage, get_lines_from_chars
+from ....utils.spatial_text import project_ocr_table_text
 
 from .constants import (
     BATCH_RATIO,
@@ -45,6 +52,390 @@ from .geometry import (
     _table_bbox_center,
 )
 from .text.native import _is_supported_rotation
+
+
+_NATIVE_TABLE_ALWAYS_COMPLEX_BLOCK_TYPES = {
+    BlockType.IMAGE,
+    BlockType.CHART,
+    BlockType.CODE,
+    RAW_ALGORITHM,
+}
+_NATIVE_TABLE_FORMULA_BLOCK_TYPES = {
+    BlockType.EQUATION,
+    RAW_FORMULA_NUMBER,
+}
+_NATIVE_TABLE_INTERNAL_TEXT_BLOCK_TYPES = {
+    BlockType.TEXT,
+    BlockType.DOC_TITLE,
+    BlockType.PARAGRAPH_TITLE,
+    BlockType.ASIDE_TEXT,
+    BlockType.REF_TEXT,
+    BlockType.LIST,
+    BlockType.INDEX,
+    RAW_PHONETIC,
+}
+_NATIVE_TABLE_FORMULA_LAYOUT_LABELS = {"inline_formula", "display_formula", "formula_number"}
+_NATIVE_TABLE_INTERNAL_BLOCK_COVERAGE = 0.9
+_NATIVE_TABLE_OVERLAP_FALLBACK_COVERAGE = 0.8
+_NATIVE_HIGH_SOURCE_ORDER_KEY = "_native_table_source_order"
+
+
+@dataclass(frozen=True)
+class _NativeTablePrioritySummary:
+    """记录单个窗口内原生表格优先解析的稳定统计。"""
+
+    total: int = 0
+    accepted: int = 0
+    complex_fallbacks: int = 0
+    rejected: int = 0
+    errors: int = 0
+    removed_internal_text: int = 0
+    removed_formula_blocks: int = 0
+    removed_formula_layout_items: int = 0
+
+
+def _has_non_empty_table_content(block: dict[str, Any]) -> bool:
+    """判断表格块是否已经持有可直接输出的非空内容。"""
+
+    content = block.get("content")
+    return isinstance(content, str) and bool(content.strip())
+
+
+def _mark_native_table_complex_entries(
+    table_entries: list[dict[str, Any]],
+    page_blocks: list[dict[str, Any]],
+    layout_res: list[dict[str, Any]],
+    page_size: tuple[int, int],
+    *,
+    formula_is_complex: bool,
+) -> None:
+    """按现有归属几何标记含模型语义对象或重叠表格的候选。"""
+
+    for block in page_blocks:
+        block_type = block.get("type")
+        if block_type not in _NATIVE_TABLE_ALWAYS_COMPLEX_BLOCK_TYPES and not (
+            formula_is_complex and block_type in _NATIVE_TABLE_FORMULA_BLOCK_TYPES
+        ):
+            continue
+        block_bbox = _bbox_to_pixel_bbox(block.get("bbox"), page_size)
+        if block_bbox is None:
+            continue
+        owner = _select_table_owner(block_bbox, table_entries)
+        if owner is not None:
+            owner["complex_reasons"].add(str(block.get("type")))
+
+    if formula_is_complex:
+        # inline_formula 不会进入 VL-style block，High 必须从原始 layout 结果单独参与门控。
+        for layout_item in layout_res:
+            label = str(layout_item.get("label") or layout_item.get("type") or "")
+            if label not in _NATIVE_TABLE_FORMULA_LAYOUT_LABELS:
+                continue
+            formula_bbox = _bbox_to_pixel_bbox(layout_item.get("bbox"), page_size)
+            if formula_bbox is None:
+                continue
+            owner = _select_table_owner(formula_bbox, table_entries)
+            if owner is not None:
+                owner["complex_reasons"].add(label)
+
+    for entry_index, table_entry in enumerate(table_entries):
+        table_bbox = table_entry["table_bbox"]
+        for peer_entry in table_entries[entry_index + 1 :]:
+            peer_bbox = peer_entry["table_bbox"]
+            overlap_bbox = _table_bbox_intersection(table_bbox, peer_bbox)
+            if overlap_bbox is None:
+                continue
+            overlap_area = float(overlap_bbox[2] - overlap_bbox[0]) * float(overlap_bbox[3] - overlap_bbox[1])
+            table_area = float(table_bbox[2] - table_bbox[0]) * float(table_bbox[3] - table_bbox[1])
+            peer_area = float(peer_bbox[2] - peer_bbox[0]) * float(peer_bbox[3] - peer_bbox[1])
+            smaller_area = min(table_area, peer_area)
+            if smaller_area <= 0 or overlap_area / smaller_area < _NATIVE_TABLE_OVERLAP_FALLBACK_COVERAGE:
+                continue
+            table_entry["complex_reasons"].add("overlapping_table")
+            peer_entry["complex_reasons"].add("overlapping_table")
+
+
+def _remove_native_table_internal_text_blocks(
+    page_blocks: list[dict[str, Any]],
+    accepted_entries: list[dict[str, Any]],
+    page_size: tuple[int, int],
+) -> int:
+    """删除已被原生 HTML 完整吸收的重复正文块，并保留视觉注释。"""
+
+    if not accepted_entries:
+        return 0
+
+    removed_count = 0
+    retained_blocks: list[dict[str, Any]] = []
+    for block in page_blocks:
+        if block.get("type") not in _NATIVE_TABLE_INTERNAL_TEXT_BLOCK_TYPES:
+            retained_blocks.append(block)
+            continue
+        block_bbox = _bbox_to_pixel_bbox(block.get("bbox"), page_size)
+        if block_bbox is None:
+            retained_blocks.append(block)
+            continue
+        owner = _select_table_owner(block_bbox, accepted_entries)
+        if owner is None or calculate_overlap_area_in_bbox1_area_ratio(block_bbox, owner["table_bbox"]) < (
+            _NATIVE_TABLE_INTERNAL_BLOCK_COVERAGE
+        ):
+            retained_blocks.append(block)
+            continue
+        removed_count += 1
+
+    page_blocks[:] = retained_blocks
+    return removed_count
+
+
+def _remove_medium_native_table_formula_items(
+    page_blocks: list[dict[str, Any]],
+    layout_res: list[dict[str, Any]],
+    accepted_entries: list[dict[str, Any]],
+    page_size: tuple[int, int],
+) -> tuple[int, int]:
+    """原子删除 Medium 原生命中表内的公式 block 与原始 layout 项。"""
+
+    if not accepted_entries:
+        return 0, 0
+
+    removed_block_count = 0
+    retained_blocks: list[dict[str, Any]] = []
+    for block in page_blocks:
+        if block.get("type") not in _NATIVE_TABLE_FORMULA_BLOCK_TYPES:
+            retained_blocks.append(block)
+            continue
+        block_bbox = _bbox_to_pixel_bbox(block.get("bbox"), page_size)
+        if block_bbox is None or _select_table_owner(block_bbox, accepted_entries) is None:
+            retained_blocks.append(block)
+            continue
+        removed_block_count += 1
+    page_blocks[:] = retained_blocks
+
+    removed_layout_count = 0
+    retained_layout_items: list[dict[str, Any]] = []
+    for layout_item in layout_res:
+        label = str(layout_item.get("label") or layout_item.get("type") or "")
+        if label not in _NATIVE_TABLE_FORMULA_LAYOUT_LABELS:
+            retained_layout_items.append(layout_item)
+            continue
+        formula_bbox = _bbox_to_pixel_bbox(layout_item.get("bbox"), page_size)
+        if formula_bbox is None or _select_table_owner(formula_bbox, accepted_entries) is None:
+            retained_layout_items.append(layout_item)
+            continue
+        removed_layout_count += 1
+    layout_res[:] = retained_layout_items
+    return removed_block_count, removed_layout_count
+
+
+def _apply_native_txt_table_priority(
+    model_list: list[list[dict[str, Any]]],
+    images_layout_res: list[list[dict[str, Any]]],
+    pdf_pages: list[PDFPage],
+    images_list: list[dict[str, Any]],
+    *,
+    effort: Literal["medium", "high"],
+) -> _NativeTablePrioritySummary:
+    """在 Medium/High TXT 模型表格识别前回填高置信原生 HTML。"""
+
+    total = 0
+    accepted = 0
+    complex_fallbacks = 0
+    rejected = 0
+    errors = 0
+    removed_internal_text = 0
+    removed_formula_blocks = 0
+    removed_formula_layout_items = 0
+
+    for page_idx, (page_blocks, layout_res, pdf_page, image_dict) in enumerate(
+        zip(model_list, images_layout_res, pdf_pages, images_list, strict=True)
+    ):
+        page_size = _normalize_page_size(image_dict["img_pil"])
+        table_entries: list[dict[str, Any]] = []
+        for block in page_blocks:
+            if block.get("type") != BlockType.TABLE:
+                continue
+            total += 1
+            table_bbox = _bbox_to_pixel_bbox(block.get("bbox"), page_size)
+            if table_bbox is None:
+                rejected += 1
+                continue
+            table_entries.append(
+                {
+                    "table_block": block,
+                    "table_bbox": table_bbox,
+                    "complex_reasons": (
+                        {"rotated_table"}
+                        if _normalize_visual_block_angle(block.get("angle", 0)) != 0
+                        else set()
+                    ),
+                }
+            )
+
+        if not table_entries:
+            continue
+
+        _mark_native_table_complex_entries(
+            table_entries,
+            page_blocks,
+            layout_res,
+            page_size,
+            formula_is_complex=effort == "high",
+        )
+        for table_entry in table_entries:
+            if table_entry["complex_reasons"]:
+                logger.debug(
+                    "Hybrid native table kept model fallback for complex content: "
+                    f"page_idx={page_idx}, bbox={table_entry['table_block'].get('bbox')}, "
+                    f"reasons={sorted(table_entry['complex_reasons'])}"
+                )
+        eligible_entries = [entry for entry in table_entries if not entry["complex_reasons"]]
+        complex_fallbacks += len(table_entries) - len(eligible_entries)
+        if not eligible_entries:
+            continue
+
+        try:
+            native_chars = tuple(pdf_page.get_chars())
+            native_rules = coerce_native_table_rules(pdf_page.get_drawing_lines())
+            native_rectangles = coerce_native_table_rectangles(pdf_page.get_path_infos())
+            native_page_size = tuple(float(value) for value in pdf_page.size)
+            render_scale = float(image_dict.get("scale", 1.0) or 1.0)
+        except Exception as exc:
+            errors += len(eligible_entries)
+            logger.warning(
+                "Hybrid native table page primitives failed and kept model fallback: "
+                f"page_idx={page_idx}, tables={len(eligible_entries)}, error={exc}"
+            )
+            continue
+
+        accepted_entries: list[dict[str, Any]] = []
+        for table_entry in eligible_entries:
+            table_block = table_entry["table_block"]
+            table_bbox = _sidecar_bbox_to_page_bbox(
+                table_block.get("bbox"),
+                native_page_size,
+                render_scale,
+            )
+            if table_bbox is None:
+                rejected += 1
+                continue
+            try:
+                result = recover_native_pdf_table(
+                    NativeTableInput(
+                        table_bbox=table_bbox,
+                        page_size=native_page_size,
+                        angle=_normalize_visual_block_angle(table_block.get("angle", 0)),
+                        chars=native_chars,
+                        drawing_lines=native_rules,
+                        rectangles=native_rectangles,
+                    )
+                )
+            except Exception as exc:
+                errors += 1
+                logger.warning(
+                    "Hybrid native table recovery failed and kept model fallback: "
+                    f"page_idx={page_idx}, bbox={table_block.get('bbox')}, error={exc}"
+                )
+                continue
+            if result is None or not result.html.strip():
+                rejected += 1
+                logger.debug(
+                    "Hybrid native table rejected and kept model fallback: "
+                    f"page_idx={page_idx}, bbox={table_block.get('bbox')}"
+                )
+                continue
+            table_block["content"] = result.html
+            accepted_entries.append(table_entry)
+            accepted += 1
+            logger.debug(
+                "Hybrid native table accepted: "
+                f"page_idx={page_idx}, bbox={table_block.get('bbox')}, "
+                f"source={result.source}, confidence={result.confidence:.3f}"
+            )
+
+        if effort == "medium":
+            page_removed_formula_blocks, page_removed_formula_layout_items = (
+                _remove_medium_native_table_formula_items(
+                    page_blocks,
+                    layout_res,
+                    accepted_entries,
+                    page_size,
+                )
+            )
+            removed_formula_blocks += page_removed_formula_blocks
+            removed_formula_layout_items += page_removed_formula_layout_items
+
+        removed_internal_text += _remove_native_table_internal_text_blocks(
+            page_blocks,
+            accepted_entries,
+            page_size,
+        )
+
+    return _NativeTablePrioritySummary(
+        total=total,
+        accepted=accepted,
+        complex_fallbacks=complex_fallbacks,
+        rejected=rejected,
+        errors=errors,
+        removed_internal_text=removed_internal_text,
+        removed_formula_blocks=removed_formula_blocks,
+        removed_formula_layout_items=removed_formula_layout_items,
+    )
+
+
+def _split_native_high_table_blocks(
+    model_list: list[list[dict[str, Any]]],
+) -> tuple[list[list[dict[str, Any]]], list[list[dict[str, Any]]]]:
+    """从 High VLM 输入逐表移除原生命中项，并写入临时源顺序。"""
+
+    vlm_blocks_list: list[list[dict[str, Any]]] = []
+    accepted_tables_list: list[list[dict[str, Any]]] = []
+    for page_blocks in model_list:
+        accepted_tables = [
+            block
+            for block in page_blocks
+            if block.get("type") == BlockType.TABLE and _has_non_empty_table_content(block)
+        ]
+        if not accepted_tables:
+            vlm_blocks_list.append(page_blocks)
+            accepted_tables_list.append([])
+            continue
+
+        accepted_ids = {id(block) for block in accepted_tables}
+        vlm_blocks: list[dict[str, Any]] = []
+        for source_order, block in enumerate(page_blocks):
+            block[_NATIVE_HIGH_SOURCE_ORDER_KEY] = source_order
+            if id(block) not in accepted_ids:
+                vlm_blocks.append(block)
+        vlm_blocks_list.append(vlm_blocks)
+        accepted_tables_list.append(accepted_tables)
+    return vlm_blocks_list, accepted_tables_list
+
+
+def _restore_native_high_table_blocks(
+    vlm_results: list[Any],
+    accepted_tables_list: list[list[dict[str, Any]]],
+) -> list[list[Any]]:
+    """按临时源顺序把原生表格插回 High VLM 后处理结果。"""
+
+    if len(vlm_results) != len(accepted_tables_list):
+        raise ValueError("Hybrid high VLM result count does not match native table page count")
+
+    restored_pages: list[list[Any]] = []
+    for page_results, accepted_tables in zip(vlm_results, accepted_tables_list, strict=True):
+        restored_blocks = list(page_results)
+        for table_block in sorted(
+            accepted_tables,
+            key=lambda block: int(block[_NATIVE_HIGH_SOURCE_ORDER_KEY]),
+        ):
+            source_order = int(table_block[_NATIVE_HIGH_SOURCE_ORDER_KEY])
+            insert_at = len(restored_blocks)
+            for block_idx, block in enumerate(restored_blocks):
+                block_order = block.get(_NATIVE_HIGH_SOURCE_ORDER_KEY) if isinstance(block, dict) else None
+                if isinstance(block_order, int) and block_order > source_order:
+                    insert_at = block_idx
+                    break
+            restored_blocks.insert(insert_at, table_block)
+        restored_pages.append(restored_blocks)
+    return restored_pages
 
 
 def _apply_table_rotate_labels(
@@ -243,7 +634,7 @@ def _collect_medium_table_tasks(
         page_size = (image_w, image_h)
         table_entries: list[dict[str, Any]] = []
         for block in page_model_list:
-            if block.get("type") != BlockType.TABLE:
+            if block.get("type") != BlockType.TABLE or _has_non_empty_table_content(block):
                 continue
             pixel_bbox = _bbox_to_pixel_bbox(block.get("bbox"), page_size)
             table_bbox = normalize_to_int_bbox(pixel_bbox, image_size=(image_h, image_w))
