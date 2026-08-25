@@ -11,6 +11,7 @@ _CHINESE_DOCSTRING_EXTRA_PATHS = (
     "mineru/model/flash/office",
     "mineru/model/flash/xycut.py",
     "mineru/model/model_types.py",
+    "mineru/utils/native_pdf_table",
     "mineru/utils/spatial_text.py",
     "mineru/utils/text_utils.py",
 )

@@ -7,6 +7,7 @@ from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
+from bs4 import BeautifulSoup
 from pypdf import PdfReader
 
 from mineru.backend.postprocess.page_blocks import process_page_blocks
@@ -173,7 +174,22 @@ def _visible_content(value: Any) -> str:
     """返回 model block 或 content 字符串去除行内样式协议后的可见文本。"""
 
     content = value.get("content") if isinstance(value, dict) else value
+    if isinstance(content, str) and content.lstrip().lower().startswith("<table"):
+        content = BeautifulSoup(content, "html.parser").get_text(" ")
     return inline_plain_text(parse_inline_content(str(content or "")))
+
+
+def _html_table_rows(content: str) -> list[tuple[str, ...]]:
+    """读取原生结构恢复输出的 HTML 表格行与单元格纯文本。"""
+
+    soup = BeautifulSoup(content, "html.parser")
+    return [
+        tuple(
+            cell.get_text(" ")
+            for cell in row.find_all(["td", "th"], recursive=False)
+        )
+        for row in soup.find_all("tr")
+    ]
 
 
 def _normalized_content_probe(text: str) -> str:
@@ -746,15 +762,7 @@ def test_demo2_table_captions_and_numeric_footnotes_are_independent_blocks() -> 
         ("RealTimeGPU [5]", "Radeon XL1800", "52.8", "21", "9.82"),
         ("DCBGrid [19]", "Quadro FX 5800", "25.1", "10", "10.90"),
     ]
-    table2_lines = page5_table["content"].splitlines()
-    assert len(table2_lines) == len(expected_table2_rows)
-    for line, expected_cells in zip(
-        table2_lines,
-        expected_table2_rows,
-        strict=True,
-    ):
-        cell_offsets = [line.index(cell) for cell in expected_cells]
-        assert cell_offsets == sorted(cell_offsets)
+    assert _html_table_rows(page5_table["content"]) == expected_table2_rows
     assert "6.20CostFilter [10]" not in page5_table["content"]
     assert "ral stereo matching." not in residual_text
     assert "Millions of Disparity Estimates per Second." not in residual_text
@@ -1484,9 +1492,9 @@ def test_synthetic_flash_table_annotation_regressions() -> None:
         [0.121, 0.168, 0.877, 0.302],
         [0.121, 0.37, 0.877, 0.504],
     ]
-    assert [block["content"].splitlines()[0] for block in page2_tables] == [
-        "ITEM                         VALUE                       STATE",
-        "METRIC                          LOW                             HIGH",
+    assert [_html_table_rows(block["content"])[0] for block in page2_tables] == [
+        ("ITEM", "VALUE", "STATE"),
+        ("METRIC", "LOW", "HIGH"),
     ]
     assert [[child["type"] for child in group["content"]] for group in _grouped_visual_blocks(page2, "table")] == [
         ["table_caption", "table_body"],

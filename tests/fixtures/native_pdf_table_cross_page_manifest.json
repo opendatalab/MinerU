@@ -1,0 +1,8389 @@
+{
+  "schema_version": 5,
+  "manifest_version": "2026-08-25-v5-repository-fixtures",
+  "total_tables": 133,
+  "expected_html": 133,
+  "expected_projection": 0,
+  "performance_p95_limit_ms": 27.0,
+  "entries": [
+    {
+      "file": "conference_schedule_tables.pdf",
+      "page_index": 0,
+      "table_index": 0,
+      "bbox": [
+        0.092,
+        0.209,
+        0.928,
+        0.911
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 10,
+      "cols": 4,
+      "span_signature": [
+        [
+          1,
+          0,
+          1,
+          4
+        ],
+        [
+          3,
+          2,
+          2,
+          1
+        ],
+        [
+          3,
+          3,
+          4,
+          1
+        ],
+        [
+          5,
+          1,
+          1,
+          2
+        ],
+        [
+          7,
+          1,
+          1,
+          2
+        ],
+        [
+          8,
+          0,
+          2,
+          1
+        ]
+      ],
+      "text_sha256": "8b887f3be58a4bceac993857ec28c45f9639fa1d509d7391b9badd5576994ac7"
+    },
+    {
+      "file": "conference_schedule_tables.pdf",
+      "page_index": 1,
+      "table_index": 0,
+      "bbox": [
+        0.093,
+        0.089,
+        0.928,
+        0.895
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 5,
+      "cols": 4,
+      "span_signature": [
+        [
+          0,
+          0,
+          5,
+          1
+        ]
+      ],
+      "text_sha256": "e58fe41773b2f27073b3677aedd9a27e5eab6736a37ad83d5fa3a295ecd123b8"
+    },
+    {
+      "file": "conference_schedule_tables.pdf",
+      "page_index": 2,
+      "table_index": 0,
+      "bbox": [
+        0.092,
+        0.09,
+        0.929,
+        0.923
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 6,
+      "cols": 4,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          2,
+          1,
+          1,
+          3
+        ],
+        [
+          3,
+          0,
+          3,
+          1
+        ]
+      ],
+      "text_sha256": "c78c7fa48096ffa6de29e492e2944bdfb06662a231e6c14f8bcb4ac348c73665"
+    },
+    {
+      "file": "conference_schedule_tables.pdf",
+      "page_index": 3,
+      "table_index": 0,
+      "bbox": [
+        0.202,
+        0.09,
+        0.929,
+        0.909
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 6,
+      "cols": 3,
+      "span_signature": [],
+      "text_sha256": "2f9f38231f92a729661344f5cfa7ef43f6c3a406920a2d8297e53d5b9b922f32"
+    },
+    {
+      "file": "conference_schedule_tables.pdf",
+      "page_index": 4,
+      "table_index": 0,
+      "bbox": [
+        0.092,
+        0.09,
+        0.928,
+        0.909
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 8,
+      "cols": 4,
+      "span_signature": [
+        [
+          1,
+          0,
+          1,
+          4
+        ],
+        [
+          2,
+          2,
+          2,
+          1
+        ],
+        [
+          2,
+          3,
+          2,
+          1
+        ],
+        [
+          4,
+          1,
+          1,
+          3
+        ],
+        [
+          5,
+          0,
+          3,
+          1
+        ]
+      ],
+      "text_sha256": "41a3d96e4d4740039d93989d015c413e766f0fe3933a770c4e2f7977bd4d3daa"
+    },
+    {
+      "file": "conference_schedule_tables.pdf",
+      "page_index": 5,
+      "table_index": 0,
+      "bbox": [
+        0.158,
+        0.09,
+        0.931,
+        0.913
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 6,
+      "cols": 4,
+      "span_signature": [
+        [
+          0,
+          0,
+          6,
+          1
+        ]
+      ],
+      "text_sha256": "bf13feeccd3514cfe4ec76f4f5b7ba962f301906b6252290795bf7ab0646f8d9"
+    },
+    {
+      "file": "conference_schedule_tables.pdf",
+      "page_index": 6,
+      "table_index": 0,
+      "bbox": [
+        0.092,
+        0.09,
+        0.928,
+        0.9
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 6,
+      "cols": 4,
+      "span_signature": [
+        [
+          1,
+          1,
+          1,
+          2
+        ],
+        [
+          2,
+          0,
+          4,
+          1
+        ]
+      ],
+      "text_sha256": "c898bbdc23b8a7aee415515c0e38241146b3df36757d6577c7c0eac6790a6f0d"
+    },
+    {
+      "file": "conference_schedule_tables.pdf",
+      "page_index": 7,
+      "table_index": 0,
+      "bbox": [
+        0.092,
+        0.09,
+        0.929,
+        0.919
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 6,
+      "cols": 4,
+      "span_signature": [
+        [
+          0,
+          0,
+          5,
+          1
+        ]
+      ],
+      "text_sha256": "5024e9352d3e89138773621157357488c4480919f465ef0858454f9696b523cc"
+    },
+    {
+      "file": "conference_schedule_tables.pdf",
+      "page_index": 8,
+      "table_index": 0,
+      "bbox": [
+        0.092,
+        0.089,
+        0.928,
+        0.918
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 6,
+      "cols": 4,
+      "span_signature": [
+        [
+          0,
+          0,
+          6,
+          1
+        ]
+      ],
+      "text_sha256": "e69c3d0532acbdcfc2d359de1e847222482fe228126cf5d5d2192faa17501412"
+    },
+    {
+      "file": "conference_schedule_tables.pdf",
+      "page_index": 9,
+      "table_index": 0,
+      "bbox": [
+        0.092,
+        0.09,
+        0.928,
+        0.718
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 3,
+      "cols": 4,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ]
+      ],
+      "text_sha256": "c7850b320840870b9ab233498cc42cfbfe10681428ea2b9795e1ea6405772e91"
+    },
+    {
+      "file": "manufacturing_facilities_cross_page_table.pdf",
+      "page_index": 0,
+      "table_index": 0,
+      "bbox": [
+        0.046,
+        0.149,
+        0.952,
+        0.69
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 13,
+      "cols": 15,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          2,
+          1
+        ],
+        [
+          0,
+          4,
+          2,
+          1
+        ],
+        [
+          0,
+          5,
+          1,
+          4
+        ],
+        [
+          0,
+          9,
+          2,
+          1
+        ],
+        [
+          0,
+          10,
+          2,
+          1
+        ],
+        [
+          0,
+          11,
+          2,
+          1
+        ],
+        [
+          0,
+          12,
+          2,
+          1
+        ],
+        [
+          0,
+          13,
+          2,
+          1
+        ],
+        [
+          0,
+          14,
+          2,
+          1
+        ],
+        [
+          2,
+          0,
+          9,
+          1
+        ],
+        [
+          2,
+          1,
+          9,
+          1
+        ],
+        [
+          2,
+          2,
+          9,
+          1
+        ],
+        [
+          2,
+          10,
+          9,
+          1
+        ],
+        [
+          2,
+          11,
+          9,
+          1
+        ],
+        [
+          2,
+          12,
+          9,
+          1
+        ],
+        [
+          2,
+          13,
+          9,
+          1
+        ],
+        [
+          2,
+          14,
+          9,
+          1
+        ],
+        [
+          11,
+          0,
+          2,
+          1
+        ],
+        [
+          11,
+          1,
+          2,
+          1
+        ],
+        [
+          11,
+          2,
+          2,
+          1
+        ]
+      ],
+      "text_sha256": "d0e4429d94f793465108795e8b835dfaa5d9482a861ede79f09d8d76c2330e46"
+    },
+    {
+      "file": "manufacturing_facilities_cross_page_table.pdf",
+      "page_index": 1,
+      "table_index": 0,
+      "bbox": [
+        0.047,
+        0.149,
+        0.953,
+        0.68
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 12,
+      "cols": 15,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          2,
+          1
+        ],
+        [
+          0,
+          4,
+          2,
+          1
+        ],
+        [
+          0,
+          5,
+          1,
+          4
+        ],
+        [
+          0,
+          9,
+          2,
+          1
+        ],
+        [
+          0,
+          10,
+          2,
+          1
+        ],
+        [
+          0,
+          11,
+          2,
+          1
+        ],
+        [
+          0,
+          12,
+          2,
+          1
+        ],
+        [
+          0,
+          13,
+          2,
+          1
+        ],
+        [
+          0,
+          14,
+          2,
+          1
+        ],
+        [
+          2,
+          0,
+          10,
+          1
+        ],
+        [
+          2,
+          1,
+          9,
+          1
+        ],
+        [
+          2,
+          2,
+          9,
+          1
+        ]
+      ],
+      "text_sha256": "d45581f7a401d5bac5d5dc7d77b3a862d72252ad17bc86c1e6c21490e8bef9df"
+    },
+    {
+      "file": "procurement_document_blank_page_tables.pdf",
+      "page_index": 2,
+      "table_index": 0,
+      "bbox": [
+        0.169,
+        0.501,
+        0.828,
+        0.596
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 2,
+      "cols": 5,
+      "span_signature": [],
+      "text_sha256": "56201500eae3689cb69053ba3eb7439df814d6143f91dd40f98bff47221bf376"
+    },
+    {
+      "file": "procurement_document_blank_page_tables.pdf",
+      "page_index": 2,
+      "table_index": 1,
+      "bbox": [
+        0.144,
+        0.755,
+        0.853,
+        0.901
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 2,
+      "cols": 3,
+      "span_signature": [],
+      "text_sha256": "2c50430ff8e62a80a91343f0ef299f69cf9bd84b0831351a931f645b090989a6"
+    },
+    {
+      "file": "procurement_document_blank_page_tables.pdf",
+      "page_index": 3,
+      "table_index": 0,
+      "bbox": [
+        0.143,
+        0.091,
+        0.852,
+        0.219
+      ],
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "rows": 1,
+      "cols": 3,
+      "span_signature": [],
+      "text_sha256": "a6ff60c437ff5a76b820349ae9c4439d78b883d4292a76c1915a5f2afb15dc63"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 1,
+      "table_index": 0,
+      "bbox": [
+        0.047,
+        0.346,
+        0.951,
+        0.482
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 3,
+      "cols": 8,
+      "span_signature": [
+        [
+          1,
+          0,
+          2,
+          1
+        ],
+        [
+          1,
+          1,
+          2,
+          1
+        ],
+        [
+          1,
+          2,
+          2,
+          1
+        ]
+      ],
+      "text_sha256": "9d44bbed1883eeec0c5c2d644fb57e46161f47b2e849fa3dd11d3862eca6f64a"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 1,
+      "table_index": 1,
+      "bbox": [
+        0.05,
+        0.658,
+        0.952,
+        0.689
+      ],
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "rows": 1,
+      "cols": 10,
+      "span_signature": [],
+      "text_sha256": "85ebb40794f7aa7e77c782fd1ac20ef9c7a1819fb62a460c4a56d27c089bd455"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 2,
+      "table_index": 0,
+      "bbox": [
+        0.047,
+        0.15,
+        0.952,
+        0.678
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 12,
+      "cols": 13,
+      "span_signature": [
+        [
+          1,
+          0,
+          11,
+          1
+        ],
+        [
+          1,
+          1,
+          11,
+          1
+        ],
+        [
+          1,
+          2,
+          11,
+          1
+        ],
+        [
+          1,
+          3,
+          3,
+          1
+        ],
+        [
+          1,
+          4,
+          3,
+          1
+        ],
+        [
+          1,
+          12,
+          3,
+          1
+        ],
+        [
+          4,
+          3,
+          6,
+          1
+        ],
+        [
+          4,
+          4,
+          6,
+          1
+        ],
+        [
+          4,
+          12,
+          6,
+          1
+        ],
+        [
+          10,
+          3,
+          2,
+          1
+        ],
+        [
+          10,
+          4,
+          2,
+          1
+        ],
+        [
+          10,
+          12,
+          2,
+          1
+        ]
+      ],
+      "text_sha256": "ec07c9fadb35f5c3fdd63df1adaccd3346f3f6c27cc9067b0d41751645cc27fe"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 3,
+      "table_index": 0,
+      "bbox": [
+        0.047,
+        0.149,
+        0.951,
+        0.363
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 5,
+      "cols": 13,
+      "span_signature": [
+        [
+          0,
+          0,
+          5,
+          1
+        ],
+        [
+          0,
+          1,
+          5,
+          1
+        ],
+        [
+          0,
+          2,
+          5,
+          1
+        ],
+        [
+          0,
+          3,
+          2,
+          1
+        ],
+        [
+          0,
+          4,
+          2,
+          1
+        ],
+        [
+          0,
+          12,
+          2,
+          1
+        ],
+        [
+          2,
+          3,
+          2,
+          1
+        ],
+        [
+          2,
+          4,
+          2,
+          1
+        ],
+        [
+          2,
+          12,
+          2,
+          1
+        ]
+      ],
+      "text_sha256": "64f07274e5daf1e4326e2cfe4a924fde1f58b110919859267508e671a8021dc7"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 4,
+      "table_index": 0,
+      "bbox": [
+        0.077,
+        0.193,
+        0.921,
+        0.502
+      ],
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "target_reason": "localized_alias_blank_row",
+      "rows": 8,
+      "cols": 20,
+      "span_signature": [
+        [
+          0,
+          1,
+          1,
+          2
+        ],
+        [
+          0,
+          3,
+          1,
+          2
+        ],
+        [
+          0,
+          5,
+          1,
+          2
+        ],
+        [
+          0,
+          7,
+          1,
+          3
+        ],
+        [
+          0,
+          10,
+          1,
+          2
+        ],
+        [
+          0,
+          12,
+          1,
+          2
+        ],
+        [
+          0,
+          14,
+          1,
+          2
+        ],
+        [
+          0,
+          16,
+          1,
+          2
+        ],
+        [
+          0,
+          18,
+          1,
+          2
+        ],
+        [
+          1,
+          0,
+          1,
+          20
+        ],
+        [
+          2,
+          0,
+          3,
+          1
+        ],
+        [
+          2,
+          1,
+          3,
+          2
+        ],
+        [
+          2,
+          3,
+          3,
+          2
+        ],
+        [
+          2,
+          5,
+          1,
+          2
+        ],
+        [
+          2,
+          7,
+          1,
+          3
+        ],
+        [
+          2,
+          10,
+          1,
+          2
+        ],
+        [
+          2,
+          12,
+          1,
+          2
+        ],
+        [
+          2,
+          14,
+          1,
+          2
+        ],
+        [
+          2,
+          16,
+          1,
+          2
+        ],
+        [
+          2,
+          18,
+          1,
+          2
+        ],
+        [
+          3,
+          5,
+          1,
+          2
+        ],
+        [
+          3,
+          7,
+          1,
+          3
+        ],
+        [
+          3,
+          10,
+          1,
+          2
+        ],
+        [
+          3,
+          12,
+          1,
+          2
+        ],
+        [
+          3,
+          14,
+          1,
+          2
+        ],
+        [
+          3,
+          16,
+          1,
+          2
+        ],
+        [
+          3,
+          18,
+          1,
+          2
+        ],
+        [
+          4,
+          5,
+          1,
+          2
+        ],
+        [
+          4,
+          7,
+          1,
+          3
+        ],
+        [
+          4,
+          10,
+          1,
+          2
+        ],
+        [
+          4,
+          12,
+          1,
+          2
+        ],
+        [
+          4,
+          14,
+          1,
+          2
+        ],
+        [
+          4,
+          16,
+          1,
+          2
+        ],
+        [
+          4,
+          18,
+          1,
+          2
+        ],
+        [
+          5,
+          0,
+          1,
+          20
+        ],
+        [
+          6,
+          2,
+          1,
+          2
+        ],
+        [
+          6,
+          4,
+          1,
+          2
+        ],
+        [
+          6,
+          6,
+          1,
+          2
+        ],
+        [
+          6,
+          9,
+          1,
+          2
+        ],
+        [
+          6,
+          11,
+          1,
+          2
+        ],
+        [
+          6,
+          13,
+          1,
+          2
+        ],
+        [
+          6,
+          15,
+          1,
+          2
+        ],
+        [
+          6,
+          17,
+          1,
+          2
+        ],
+        [
+          7,
+          0,
+          1,
+          20
+        ]
+      ],
+      "text_sha256": "4a8cd5fa0282d84710832ac77a3d17f0c7777a9bb68eeeb5ad5efcc920a2f217"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 5,
+      "table_index": 0,
+      "bbox": [
+        0.032,
+        0.278,
+        0.967,
+        0.679
+      ],
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "rows": 5,
+      "cols": 19,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          2,
+          1
+        ],
+        [
+          0,
+          4,
+          2,
+          1
+        ],
+        [
+          0,
+          5,
+          2,
+          1
+        ],
+        [
+          0,
+          6,
+          2,
+          1
+        ],
+        [
+          0,
+          7,
+          2,
+          1
+        ],
+        [
+          0,
+          8,
+          1,
+          6
+        ],
+        [
+          0,
+          14,
+          2,
+          1
+        ],
+        [
+          0,
+          15,
+          2,
+          1
+        ],
+        [
+          0,
+          16,
+          2,
+          1
+        ],
+        [
+          0,
+          17,
+          2,
+          1
+        ],
+        [
+          0,
+          18,
+          2,
+          1
+        ],
+        [
+          2,
+          0,
+          3,
+          1
+        ],
+        [
+          2,
+          1,
+          3,
+          1
+        ],
+        [
+          2,
+          2,
+          3,
+          1
+        ],
+        [
+          2,
+          3,
+          3,
+          1
+        ],
+        [
+          2,
+          4,
+          3,
+          1
+        ]
+      ],
+      "text_sha256": "ac047b16952c0b278223180c89f1c4af1f8eb5e7b630b244f5eb33843b133c6c",
+      "target_reason": "canonical_track_alias"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 6,
+      "table_index": 0,
+      "bbox": [
+        0.032,
+        0.149,
+        0.967,
+        0.695
+      ],
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "rows": 7,
+      "cols": 19,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          2,
+          1
+        ],
+        [
+          0,
+          4,
+          2,
+          1
+        ],
+        [
+          0,
+          5,
+          2,
+          1
+        ],
+        [
+          0,
+          6,
+          2,
+          1
+        ],
+        [
+          0,
+          7,
+          2,
+          1
+        ],
+        [
+          0,
+          8,
+          1,
+          6
+        ],
+        [
+          0,
+          14,
+          2,
+          1
+        ],
+        [
+          0,
+          15,
+          2,
+          1
+        ],
+        [
+          0,
+          16,
+          2,
+          1
+        ],
+        [
+          0,
+          17,
+          2,
+          1
+        ],
+        [
+          0,
+          18,
+          2,
+          1
+        ],
+        [
+          2,
+          0,
+          2,
+          1
+        ],
+        [
+          2,
+          1,
+          2,
+          1
+        ],
+        [
+          2,
+          2,
+          2,
+          1
+        ],
+        [
+          2,
+          3,
+          2,
+          1
+        ],
+        [
+          2,
+          4,
+          2,
+          1
+        ],
+        [
+          4,
+          0,
+          3,
+          1
+        ],
+        [
+          4,
+          1,
+          3,
+          1
+        ],
+        [
+          4,
+          2,
+          3,
+          1
+        ],
+        [
+          4,
+          3,
+          3,
+          1
+        ],
+        [
+          4,
+          4,
+          3,
+          1
+        ]
+      ],
+      "text_sha256": "1ea46ec814021e97bd7637df48a3f3428f572b265b3c5e395c3d30dad4264b28",
+      "target_reason": "canonical_track_alias"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 7,
+      "table_index": 0,
+      "bbox": [
+        0.032,
+        0.149,
+        0.968,
+        0.682
+      ],
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "rows": 6,
+      "cols": 19,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          2,
+          1
+        ],
+        [
+          0,
+          4,
+          2,
+          1
+        ],
+        [
+          0,
+          5,
+          2,
+          1
+        ],
+        [
+          0,
+          6,
+          2,
+          1
+        ],
+        [
+          0,
+          7,
+          2,
+          1
+        ],
+        [
+          0,
+          8,
+          1,
+          6
+        ],
+        [
+          0,
+          14,
+          2,
+          1
+        ],
+        [
+          0,
+          15,
+          2,
+          1
+        ],
+        [
+          0,
+          16,
+          2,
+          1
+        ],
+        [
+          0,
+          17,
+          2,
+          1
+        ],
+        [
+          0,
+          18,
+          2,
+          1
+        ],
+        [
+          2,
+          0,
+          2,
+          1
+        ],
+        [
+          2,
+          1,
+          2,
+          1
+        ],
+        [
+          2,
+          2,
+          2,
+          1
+        ],
+        [
+          2,
+          3,
+          2,
+          1
+        ],
+        [
+          2,
+          4,
+          2,
+          1
+        ],
+        [
+          4,
+          0,
+          2,
+          1
+        ],
+        [
+          4,
+          1,
+          2,
+          1
+        ],
+        [
+          4,
+          2,
+          2,
+          1
+        ],
+        [
+          4,
+          3,
+          2,
+          1
+        ],
+        [
+          4,
+          4,
+          2,
+          1
+        ]
+      ],
+      "text_sha256": "cb53f1139e709f837b053a68b5281a8a4dec3f76b959f0c55c47d628bf610afc",
+      "target_reason": "canonical_track_alias"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 8,
+      "table_index": 0,
+      "bbox": [
+        0.032,
+        0.149,
+        0.967,
+        0.683
+      ],
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "rows": 6,
+      "cols": 19,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          2,
+          1
+        ],
+        [
+          0,
+          4,
+          2,
+          1
+        ],
+        [
+          0,
+          5,
+          2,
+          1
+        ],
+        [
+          0,
+          6,
+          2,
+          1
+        ],
+        [
+          0,
+          7,
+          2,
+          1
+        ],
+        [
+          0,
+          8,
+          1,
+          6
+        ],
+        [
+          0,
+          14,
+          2,
+          1
+        ],
+        [
+          0,
+          15,
+          2,
+          1
+        ],
+        [
+          0,
+          16,
+          2,
+          1
+        ],
+        [
+          0,
+          17,
+          2,
+          1
+        ],
+        [
+          0,
+          18,
+          2,
+          1
+        ],
+        [
+          2,
+          0,
+          2,
+          1
+        ],
+        [
+          2,
+          1,
+          2,
+          1
+        ],
+        [
+          2,
+          2,
+          2,
+          1
+        ],
+        [
+          2,
+          3,
+          2,
+          1
+        ],
+        [
+          2,
+          4,
+          2,
+          1
+        ],
+        [
+          4,
+          0,
+          2,
+          1
+        ],
+        [
+          4,
+          1,
+          2,
+          1
+        ],
+        [
+          4,
+          2,
+          2,
+          1
+        ],
+        [
+          4,
+          3,
+          2,
+          1
+        ],
+        [
+          4,
+          4,
+          2,
+          1
+        ]
+      ],
+      "text_sha256": "b62ba6922e38f41e192b8bd63aa181ec4b41906ad3b47b1258096e62138b20a6",
+      "target_reason": "canonical_track_alias"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 9,
+      "table_index": 0,
+      "bbox": [
+        0.032,
+        0.149,
+        0.967,
+        0.695
+      ],
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "rows": 7,
+      "cols": 19,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          2,
+          1
+        ],
+        [
+          0,
+          4,
+          2,
+          1
+        ],
+        [
+          0,
+          5,
+          2,
+          1
+        ],
+        [
+          0,
+          6,
+          2,
+          1
+        ],
+        [
+          0,
+          7,
+          2,
+          1
+        ],
+        [
+          0,
+          8,
+          1,
+          6
+        ],
+        [
+          0,
+          14,
+          2,
+          1
+        ],
+        [
+          0,
+          15,
+          2,
+          1
+        ],
+        [
+          0,
+          16,
+          2,
+          1
+        ],
+        [
+          0,
+          17,
+          2,
+          1
+        ],
+        [
+          0,
+          18,
+          2,
+          1
+        ],
+        [
+          2,
+          0,
+          3,
+          1
+        ],
+        [
+          2,
+          1,
+          3,
+          1
+        ],
+        [
+          2,
+          2,
+          3,
+          1
+        ],
+        [
+          2,
+          3,
+          3,
+          1
+        ],
+        [
+          2,
+          4,
+          3,
+          1
+        ],
+        [
+          5,
+          0,
+          2,
+          1
+        ],
+        [
+          5,
+          1,
+          2,
+          1
+        ],
+        [
+          5,
+          2,
+          2,
+          1
+        ],
+        [
+          5,
+          3,
+          2,
+          1
+        ],
+        [
+          5,
+          4,
+          2,
+          1
+        ]
+      ],
+      "text_sha256": "12e73efe0af627cf436fbfc4c303ecd43207dce0f3f7ce7172268f71aafd3c34",
+      "target_reason": "canonical_track_alias"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 10,
+      "table_index": 0,
+      "bbox": [
+        0.032,
+        0.149,
+        0.967,
+        0.695
+      ],
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "rows": 7,
+      "cols": 19,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          2,
+          1
+        ],
+        [
+          0,
+          4,
+          2,
+          1
+        ],
+        [
+          0,
+          5,
+          2,
+          1
+        ],
+        [
+          0,
+          6,
+          2,
+          1
+        ],
+        [
+          0,
+          7,
+          2,
+          1
+        ],
+        [
+          0,
+          8,
+          1,
+          6
+        ],
+        [
+          0,
+          14,
+          2,
+          1
+        ],
+        [
+          0,
+          15,
+          2,
+          1
+        ],
+        [
+          0,
+          16,
+          2,
+          1
+        ],
+        [
+          0,
+          17,
+          2,
+          1
+        ],
+        [
+          0,
+          18,
+          2,
+          1
+        ],
+        [
+          2,
+          0,
+          3,
+          1
+        ],
+        [
+          2,
+          1,
+          3,
+          1
+        ],
+        [
+          2,
+          2,
+          3,
+          1
+        ],
+        [
+          2,
+          3,
+          3,
+          1
+        ],
+        [
+          2,
+          4,
+          3,
+          1
+        ],
+        [
+          5,
+          0,
+          2,
+          1
+        ],
+        [
+          5,
+          1,
+          2,
+          1
+        ],
+        [
+          5,
+          2,
+          2,
+          1
+        ],
+        [
+          5,
+          3,
+          2,
+          1
+        ],
+        [
+          5,
+          4,
+          2,
+          1
+        ]
+      ],
+      "text_sha256": "36fddefb6c3e69d327637f7011372ef3cf17cfd61316653acfd590cbf2bfa74e",
+      "target_reason": "canonical_track_alias"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 11,
+      "table_index": 0,
+      "bbox": [
+        0.032,
+        0.149,
+        0.968,
+        0.683
+      ],
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "rows": 6,
+      "cols": 19,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          2,
+          1
+        ],
+        [
+          0,
+          4,
+          2,
+          1
+        ],
+        [
+          0,
+          5,
+          2,
+          1
+        ],
+        [
+          0,
+          6,
+          2,
+          1
+        ],
+        [
+          0,
+          7,
+          2,
+          1
+        ],
+        [
+          0,
+          8,
+          1,
+          6
+        ],
+        [
+          0,
+          14,
+          2,
+          1
+        ],
+        [
+          0,
+          15,
+          2,
+          1
+        ],
+        [
+          0,
+          16,
+          2,
+          1
+        ],
+        [
+          0,
+          17,
+          2,
+          1
+        ],
+        [
+          0,
+          18,
+          2,
+          1
+        ],
+        [
+          2,
+          0,
+          3,
+          1
+        ],
+        [
+          2,
+          1,
+          3,
+          1
+        ],
+        [
+          2,
+          2,
+          3,
+          1
+        ],
+        [
+          2,
+          3,
+          3,
+          1
+        ],
+        [
+          2,
+          4,
+          3,
+          1
+        ]
+      ],
+      "text_sha256": "06726eeb12cc2bb6fabc33b6da8efa57d66db4c103f817591cfb2a4b698d9a46",
+      "target_reason": "canonical_track_alias"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 12,
+      "table_index": 0,
+      "bbox": [
+        0.032,
+        0.149,
+        0.967,
+        0.683
+      ],
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "rows": 6,
+      "cols": 19,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          2,
+          1
+        ],
+        [
+          0,
+          4,
+          2,
+          1
+        ],
+        [
+          0,
+          5,
+          2,
+          1
+        ],
+        [
+          0,
+          6,
+          2,
+          1
+        ],
+        [
+          0,
+          7,
+          2,
+          1
+        ],
+        [
+          0,
+          8,
+          1,
+          6
+        ],
+        [
+          0,
+          14,
+          2,
+          1
+        ],
+        [
+          0,
+          15,
+          2,
+          1
+        ],
+        [
+          0,
+          16,
+          2,
+          1
+        ],
+        [
+          0,
+          17,
+          2,
+          1
+        ],
+        [
+          0,
+          18,
+          2,
+          1
+        ],
+        [
+          2,
+          0,
+          3,
+          1
+        ],
+        [
+          2,
+          1,
+          3,
+          1
+        ],
+        [
+          2,
+          2,
+          3,
+          1
+        ],
+        [
+          2,
+          3,
+          3,
+          1
+        ],
+        [
+          2,
+          4,
+          3,
+          1
+        ]
+      ],
+      "text_sha256": "36bbaa1f5e01cbebd709b54b23a18aa1d1075f0c3037cd495927df1d5f555dfc",
+      "target_reason": "canonical_track_alias"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 13,
+      "table_index": 0,
+      "bbox": [
+        0.032,
+        0.149,
+        0.967,
+        0.695
+      ],
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "rows": 7,
+      "cols": 19,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          2,
+          1
+        ],
+        [
+          0,
+          4,
+          2,
+          1
+        ],
+        [
+          0,
+          5,
+          2,
+          1
+        ],
+        [
+          0,
+          6,
+          2,
+          1
+        ],
+        [
+          0,
+          7,
+          2,
+          1
+        ],
+        [
+          0,
+          8,
+          1,
+          6
+        ],
+        [
+          0,
+          14,
+          2,
+          1
+        ],
+        [
+          0,
+          15,
+          2,
+          1
+        ],
+        [
+          0,
+          16,
+          2,
+          1
+        ],
+        [
+          0,
+          17,
+          2,
+          1
+        ],
+        [
+          0,
+          18,
+          2,
+          1
+        ],
+        [
+          2,
+          0,
+          4,
+          1
+        ],
+        [
+          2,
+          1,
+          4,
+          1
+        ],
+        [
+          2,
+          2,
+          4,
+          1
+        ],
+        [
+          2,
+          3,
+          4,
+          1
+        ],
+        [
+          2,
+          4,
+          4,
+          1
+        ]
+      ],
+      "text_sha256": "b816f259927cd8c8348a69fd8e344b014f1e672af195f269644122136145e5ce",
+      "target_reason": "canonical_track_alias"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 14,
+      "table_index": 0,
+      "bbox": [
+        0.032,
+        0.149,
+        0.967,
+        0.695
+      ],
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "rows": 7,
+      "cols": 19,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          2,
+          1
+        ],
+        [
+          0,
+          4,
+          2,
+          1
+        ],
+        [
+          0,
+          5,
+          2,
+          1
+        ],
+        [
+          0,
+          6,
+          2,
+          1
+        ],
+        [
+          0,
+          7,
+          2,
+          1
+        ],
+        [
+          0,
+          8,
+          1,
+          6
+        ],
+        [
+          0,
+          14,
+          2,
+          1
+        ],
+        [
+          0,
+          15,
+          2,
+          1
+        ],
+        [
+          0,
+          16,
+          2,
+          1
+        ],
+        [
+          0,
+          17,
+          2,
+          1
+        ],
+        [
+          0,
+          18,
+          2,
+          1
+        ],
+        [
+          2,
+          0,
+          4,
+          1
+        ],
+        [
+          2,
+          1,
+          4,
+          1
+        ],
+        [
+          2,
+          2,
+          4,
+          1
+        ],
+        [
+          2,
+          3,
+          4,
+          1
+        ],
+        [
+          2,
+          4,
+          4,
+          1
+        ]
+      ],
+      "text_sha256": "11733f9afbd79cd992af510aa155bdf9d38727465463e9ee3d462a52b417f00a",
+      "target_reason": "canonical_track_alias"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 15,
+      "table_index": 0,
+      "bbox": [
+        0.032,
+        0.149,
+        0.967,
+        0.694
+      ],
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "rows": 6,
+      "cols": 19,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          2,
+          1
+        ],
+        [
+          0,
+          4,
+          2,
+          1
+        ],
+        [
+          0,
+          5,
+          2,
+          1
+        ],
+        [
+          0,
+          6,
+          2,
+          1
+        ],
+        [
+          0,
+          7,
+          2,
+          1
+        ],
+        [
+          0,
+          8,
+          1,
+          6
+        ],
+        [
+          0,
+          14,
+          2,
+          1
+        ],
+        [
+          0,
+          15,
+          2,
+          1
+        ],
+        [
+          0,
+          16,
+          2,
+          1
+        ],
+        [
+          0,
+          17,
+          2,
+          1
+        ],
+        [
+          0,
+          18,
+          2,
+          1
+        ]
+      ],
+      "text_sha256": "446b54e6925f68c53bd6cdca0a9b65bf3c33e58ec52350b52df4b4d262b9d27e",
+      "target_reason": "canonical_track_alias"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 16,
+      "table_index": 0,
+      "bbox": [
+        0.031,
+        0.149,
+        0.967,
+        0.693
+      ],
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "rows": 6,
+      "cols": 19,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          2,
+          1
+        ],
+        [
+          0,
+          4,
+          2,
+          1
+        ],
+        [
+          0,
+          5,
+          2,
+          1
+        ],
+        [
+          0,
+          6,
+          2,
+          1
+        ],
+        [
+          0,
+          7,
+          2,
+          1
+        ],
+        [
+          0,
+          8,
+          1,
+          6
+        ],
+        [
+          0,
+          14,
+          2,
+          1
+        ],
+        [
+          0,
+          15,
+          2,
+          1
+        ],
+        [
+          0,
+          16,
+          2,
+          1
+        ],
+        [
+          0,
+          17,
+          2,
+          1
+        ],
+        [
+          0,
+          18,
+          2,
+          1
+        ]
+      ],
+      "text_sha256": "0b53fb535c7056e1886d44842a0fa3f9f9b54d3c6b5cd32c65806b3bb8293896",
+      "target_reason": "canonical_track_alias"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 17,
+      "table_index": 0,
+      "bbox": [
+        0.031,
+        0.149,
+        0.967,
+        0.693
+      ],
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "rows": 6,
+      "cols": 19,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          2,
+          1
+        ],
+        [
+          0,
+          4,
+          2,
+          1
+        ],
+        [
+          0,
+          5,
+          2,
+          1
+        ],
+        [
+          0,
+          6,
+          2,
+          1
+        ],
+        [
+          0,
+          7,
+          2,
+          1
+        ],
+        [
+          0,
+          8,
+          1,
+          6
+        ],
+        [
+          0,
+          14,
+          2,
+          1
+        ],
+        [
+          0,
+          15,
+          2,
+          1
+        ],
+        [
+          0,
+          16,
+          2,
+          1
+        ],
+        [
+          0,
+          17,
+          2,
+          1
+        ],
+        [
+          0,
+          18,
+          2,
+          1
+        ]
+      ],
+      "text_sha256": "8fd8a101e53cf232ac4a24f505617b18c2d3c75239661322c6c3a1dfbfdce044",
+      "target_reason": "canonical_track_alias"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 18,
+      "table_index": 0,
+      "bbox": [
+        0.031,
+        0.149,
+        0.967,
+        0.693
+      ],
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "rows": 6,
+      "cols": 19,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          2,
+          1
+        ],
+        [
+          0,
+          4,
+          2,
+          1
+        ],
+        [
+          0,
+          5,
+          2,
+          1
+        ],
+        [
+          0,
+          6,
+          2,
+          1
+        ],
+        [
+          0,
+          7,
+          2,
+          1
+        ],
+        [
+          0,
+          8,
+          1,
+          6
+        ],
+        [
+          0,
+          14,
+          2,
+          1
+        ],
+        [
+          0,
+          15,
+          2,
+          1
+        ],
+        [
+          0,
+          16,
+          2,
+          1
+        ],
+        [
+          0,
+          17,
+          2,
+          1
+        ],
+        [
+          0,
+          18,
+          2,
+          1
+        ]
+      ],
+      "text_sha256": "46395d286fb411ab8f180c43aa6a4124b24527d175b756f5221e3899c765012b",
+      "target_reason": "canonical_track_alias"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 19,
+      "table_index": 0,
+      "bbox": [
+        0.031,
+        0.149,
+        0.967,
+        0.694
+      ],
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "rows": 6,
+      "cols": 19,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          2,
+          1
+        ],
+        [
+          0,
+          4,
+          2,
+          1
+        ],
+        [
+          0,
+          5,
+          2,
+          1
+        ],
+        [
+          0,
+          6,
+          2,
+          1
+        ],
+        [
+          0,
+          7,
+          2,
+          1
+        ],
+        [
+          0,
+          8,
+          1,
+          6
+        ],
+        [
+          0,
+          14,
+          2,
+          1
+        ],
+        [
+          0,
+          15,
+          2,
+          1
+        ],
+        [
+          0,
+          16,
+          2,
+          1
+        ],
+        [
+          0,
+          17,
+          2,
+          1
+        ],
+        [
+          0,
+          18,
+          2,
+          1
+        ]
+      ],
+      "text_sha256": "0d5a51a80c1511330f104fb2ab52213ee68d93585ec1545630c4fe4e00864b39",
+      "target_reason": "canonical_track_alias"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 20,
+      "table_index": 0,
+      "bbox": [
+        0.031,
+        0.149,
+        0.967,
+        0.694
+      ],
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "rows": 6,
+      "cols": 19,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          2,
+          1
+        ],
+        [
+          0,
+          4,
+          2,
+          1
+        ],
+        [
+          0,
+          5,
+          2,
+          1
+        ],
+        [
+          0,
+          6,
+          2,
+          1
+        ],
+        [
+          0,
+          7,
+          2,
+          1
+        ],
+        [
+          0,
+          8,
+          1,
+          6
+        ],
+        [
+          0,
+          14,
+          2,
+          1
+        ],
+        [
+          0,
+          15,
+          2,
+          1
+        ],
+        [
+          0,
+          16,
+          2,
+          1
+        ],
+        [
+          0,
+          17,
+          2,
+          1
+        ],
+        [
+          0,
+          18,
+          2,
+          1
+        ]
+      ],
+      "text_sha256": "be15439fd1171187cd50829133251a3ebeb00350d7669517906a383b879bb752",
+      "target_reason": "canonical_track_alias"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 21,
+      "table_index": 0,
+      "bbox": [
+        0.032,
+        0.149,
+        0.967,
+        0.693
+      ],
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "rows": 6,
+      "cols": 19,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          2,
+          1
+        ],
+        [
+          0,
+          4,
+          2,
+          1
+        ],
+        [
+          0,
+          5,
+          2,
+          1
+        ],
+        [
+          0,
+          6,
+          2,
+          1
+        ],
+        [
+          0,
+          7,
+          2,
+          1
+        ],
+        [
+          0,
+          8,
+          1,
+          6
+        ],
+        [
+          0,
+          14,
+          2,
+          1
+        ],
+        [
+          0,
+          15,
+          2,
+          1
+        ],
+        [
+          0,
+          16,
+          2,
+          1
+        ],
+        [
+          0,
+          17,
+          2,
+          1
+        ],
+        [
+          0,
+          18,
+          2,
+          1
+        ]
+      ],
+      "text_sha256": "5467e9c755ae0b82d182c95556d3ff3bb389efb2d2b0c16e5ec00b2515f793cd",
+      "target_reason": "canonical_track_alias"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 22,
+      "table_index": 0,
+      "bbox": [
+        0.031,
+        0.149,
+        0.967,
+        0.693
+      ],
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "rows": 6,
+      "cols": 19,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          2,
+          1
+        ],
+        [
+          0,
+          4,
+          2,
+          1
+        ],
+        [
+          0,
+          5,
+          2,
+          1
+        ],
+        [
+          0,
+          6,
+          2,
+          1
+        ],
+        [
+          0,
+          7,
+          2,
+          1
+        ],
+        [
+          0,
+          8,
+          1,
+          6
+        ],
+        [
+          0,
+          14,
+          2,
+          1
+        ],
+        [
+          0,
+          15,
+          2,
+          1
+        ],
+        [
+          0,
+          16,
+          2,
+          1
+        ],
+        [
+          0,
+          17,
+          2,
+          1
+        ],
+        [
+          0,
+          18,
+          2,
+          1
+        ]
+      ],
+      "text_sha256": "a58a6179db6b1c6bacae3fc5b338242259e9d1eee3a1e964e1b5d1f1dba360c3",
+      "target_reason": "canonical_track_alias"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 23,
+      "table_index": 0,
+      "bbox": [
+        0.031,
+        0.149,
+        0.967,
+        0.693
+      ],
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "rows": 6,
+      "cols": 19,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          2,
+          1
+        ],
+        [
+          0,
+          4,
+          2,
+          1
+        ],
+        [
+          0,
+          5,
+          2,
+          1
+        ],
+        [
+          0,
+          6,
+          2,
+          1
+        ],
+        [
+          0,
+          7,
+          2,
+          1
+        ],
+        [
+          0,
+          8,
+          1,
+          6
+        ],
+        [
+          0,
+          14,
+          2,
+          1
+        ],
+        [
+          0,
+          15,
+          2,
+          1
+        ],
+        [
+          0,
+          16,
+          2,
+          1
+        ],
+        [
+          0,
+          17,
+          2,
+          1
+        ],
+        [
+          0,
+          18,
+          2,
+          1
+        ]
+      ],
+      "text_sha256": "a6f0c74060b981c6ac39beeb8ac1b5907ade247694b1fbd50b12e98401f1f490",
+      "target_reason": "canonical_track_alias"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 24,
+      "table_index": 0,
+      "bbox": [
+        0.031,
+        0.149,
+        0.967,
+        0.694
+      ],
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "rows": 6,
+      "cols": 19,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          2,
+          1
+        ],
+        [
+          0,
+          4,
+          2,
+          1
+        ],
+        [
+          0,
+          5,
+          2,
+          1
+        ],
+        [
+          0,
+          6,
+          2,
+          1
+        ],
+        [
+          0,
+          7,
+          2,
+          1
+        ],
+        [
+          0,
+          8,
+          1,
+          6
+        ],
+        [
+          0,
+          14,
+          2,
+          1
+        ],
+        [
+          0,
+          15,
+          2,
+          1
+        ],
+        [
+          0,
+          16,
+          2,
+          1
+        ],
+        [
+          0,
+          17,
+          2,
+          1
+        ],
+        [
+          0,
+          18,
+          2,
+          1
+        ]
+      ],
+      "text_sha256": "fa214a9e9f51e19d35fd32c9957df8788f93b9f3f5271d1f33ffff2f8f64e11e",
+      "target_reason": "canonical_track_alias"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 25,
+      "table_index": 0,
+      "bbox": [
+        0.031,
+        0.149,
+        0.967,
+        0.693
+      ],
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "rows": 6,
+      "cols": 19,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          2,
+          1
+        ],
+        [
+          0,
+          4,
+          2,
+          1
+        ],
+        [
+          0,
+          5,
+          2,
+          1
+        ],
+        [
+          0,
+          6,
+          2,
+          1
+        ],
+        [
+          0,
+          7,
+          2,
+          1
+        ],
+        [
+          0,
+          8,
+          1,
+          6
+        ],
+        [
+          0,
+          14,
+          2,
+          1
+        ],
+        [
+          0,
+          15,
+          2,
+          1
+        ],
+        [
+          0,
+          16,
+          2,
+          1
+        ],
+        [
+          0,
+          17,
+          2,
+          1
+        ],
+        [
+          0,
+          18,
+          2,
+          1
+        ]
+      ],
+      "text_sha256": "b5a6b192486bf9c4e9f2fdf6f9b5dc07039bd6a625cb984ba8a2fab84c79e09b",
+      "target_reason": "canonical_track_alias"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 26,
+      "table_index": 0,
+      "bbox": [
+        0.031,
+        0.149,
+        0.967,
+        0.693
+      ],
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "rows": 6,
+      "cols": 19,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          2,
+          1
+        ],
+        [
+          0,
+          4,
+          2,
+          1
+        ],
+        [
+          0,
+          5,
+          2,
+          1
+        ],
+        [
+          0,
+          6,
+          2,
+          1
+        ],
+        [
+          0,
+          7,
+          2,
+          1
+        ],
+        [
+          0,
+          8,
+          1,
+          6
+        ],
+        [
+          0,
+          14,
+          2,
+          1
+        ],
+        [
+          0,
+          15,
+          2,
+          1
+        ],
+        [
+          0,
+          16,
+          2,
+          1
+        ],
+        [
+          0,
+          17,
+          2,
+          1
+        ],
+        [
+          0,
+          18,
+          2,
+          1
+        ]
+      ],
+      "text_sha256": "7c9e5a1f6273156a6dd6f136f8ec0ec113c262bbe016bc03dd4674033d4f616f",
+      "target_reason": "canonical_track_alias"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 27,
+      "table_index": 0,
+      "bbox": [
+        0.031,
+        0.149,
+        0.967,
+        0.694
+      ],
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "rows": 6,
+      "cols": 19,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          2,
+          1
+        ],
+        [
+          0,
+          4,
+          2,
+          1
+        ],
+        [
+          0,
+          5,
+          2,
+          1
+        ],
+        [
+          0,
+          6,
+          2,
+          1
+        ],
+        [
+          0,
+          7,
+          2,
+          1
+        ],
+        [
+          0,
+          8,
+          1,
+          6
+        ],
+        [
+          0,
+          14,
+          2,
+          1
+        ],
+        [
+          0,
+          15,
+          2,
+          1
+        ],
+        [
+          0,
+          16,
+          2,
+          1
+        ],
+        [
+          0,
+          17,
+          2,
+          1
+        ],
+        [
+          0,
+          18,
+          2,
+          1
+        ]
+      ],
+      "text_sha256": "85f8ec979792391a44d868e74d3de26749bbcdeea7b8e5aaf3aba8792356ad1a",
+      "target_reason": "canonical_track_alias"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 28,
+      "table_index": 0,
+      "bbox": [
+        0.032,
+        0.149,
+        0.967,
+        0.471
+      ],
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "rows": 4,
+      "cols": 19,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          2,
+          1
+        ],
+        [
+          0,
+          4,
+          2,
+          1
+        ],
+        [
+          0,
+          5,
+          2,
+          1
+        ],
+        [
+          0,
+          6,
+          2,
+          1
+        ],
+        [
+          0,
+          7,
+          2,
+          1
+        ],
+        [
+          0,
+          8,
+          1,
+          6
+        ],
+        [
+          0,
+          14,
+          2,
+          1
+        ],
+        [
+          0,
+          15,
+          2,
+          1
+        ],
+        [
+          0,
+          16,
+          2,
+          1
+        ],
+        [
+          0,
+          17,
+          2,
+          1
+        ],
+        [
+          0,
+          18,
+          2,
+          1
+        ],
+        [
+          2,
+          0,
+          2,
+          1
+        ],
+        [
+          2,
+          1,
+          2,
+          1
+        ],
+        [
+          2,
+          2,
+          2,
+          1
+        ],
+        [
+          2,
+          3,
+          2,
+          1
+        ],
+        [
+          2,
+          4,
+          2,
+          1
+        ]
+      ],
+      "text_sha256": "3106f3317a87cba1a3683c6a91e3214658a7e7d2d3474317cf8fa73527515579",
+      "target_reason": "canonical_track_alias"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 30,
+      "table_index": 0,
+      "bbox": [
+        0.032,
+        0.174,
+        0.968,
+        0.679
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 3,
+      "cols": 20,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          1,
+          9
+        ],
+        [
+          0,
+          12,
+          2,
+          1
+        ],
+        [
+          0,
+          13,
+          2,
+          1
+        ],
+        [
+          0,
+          14,
+          2,
+          1
+        ],
+        [
+          0,
+          15,
+          2,
+          1
+        ],
+        [
+          0,
+          16,
+          2,
+          1
+        ],
+        [
+          0,
+          17,
+          2,
+          1
+        ],
+        [
+          0,
+          18,
+          2,
+          1
+        ],
+        [
+          0,
+          19,
+          2,
+          1
+        ]
+      ],
+      "text_sha256": "386799ed2a97572a7eba7f0e743c23e091acecc80c113bf9ee5dbb1856e2bcc4"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 31,
+      "table_index": 0,
+      "bbox": [
+        0.032,
+        0.149,
+        0.968,
+        0.693
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 4,
+      "cols": 20,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          1,
+          9
+        ],
+        [
+          0,
+          12,
+          2,
+          1
+        ],
+        [
+          0,
+          13,
+          2,
+          1
+        ],
+        [
+          0,
+          14,
+          2,
+          1
+        ],
+        [
+          0,
+          15,
+          2,
+          1
+        ],
+        [
+          0,
+          16,
+          2,
+          1
+        ],
+        [
+          0,
+          17,
+          2,
+          1
+        ],
+        [
+          0,
+          18,
+          2,
+          1
+        ],
+        [
+          0,
+          19,
+          2,
+          1
+        ],
+        [
+          2,
+          0,
+          2,
+          1
+        ]
+      ],
+      "text_sha256": "c3c89771d7cc6e352e98227bbe4a61d8ed38ed7b658a28952ad76ab1fc66e46d"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 32,
+      "table_index": 0,
+      "bbox": [
+        0.032,
+        0.149,
+        0.968,
+        0.693
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 5,
+      "cols": 20,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          1,
+          9
+        ],
+        [
+          0,
+          12,
+          2,
+          1
+        ],
+        [
+          0,
+          13,
+          2,
+          1
+        ],
+        [
+          0,
+          14,
+          2,
+          1
+        ],
+        [
+          0,
+          15,
+          2,
+          1
+        ],
+        [
+          0,
+          16,
+          2,
+          1
+        ],
+        [
+          0,
+          17,
+          2,
+          1
+        ],
+        [
+          0,
+          18,
+          2,
+          1
+        ],
+        [
+          0,
+          19,
+          2,
+          1
+        ],
+        [
+          2,
+          0,
+          2,
+          1
+        ]
+      ],
+      "text_sha256": "69a6452bf68db05ef551aa99cc507380c94ddd8bc59c4ca7397fa9be8dc6abc0"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 33,
+      "table_index": 0,
+      "bbox": [
+        0.031,
+        0.149,
+        0.968,
+        0.523
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 3,
+      "cols": 20,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          1,
+          9
+        ],
+        [
+          0,
+          12,
+          2,
+          1
+        ],
+        [
+          0,
+          13,
+          2,
+          1
+        ],
+        [
+          0,
+          14,
+          2,
+          1
+        ],
+        [
+          0,
+          15,
+          2,
+          1
+        ],
+        [
+          0,
+          16,
+          2,
+          1
+        ],
+        [
+          0,
+          17,
+          2,
+          1
+        ],
+        [
+          0,
+          18,
+          2,
+          1
+        ],
+        [
+          0,
+          19,
+          2,
+          1
+        ]
+      ],
+      "text_sha256": "d1fa7bda69e183d7576a8ee3783fd4a5fdc0e8fe1cc32b4c914f491c58917626"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 35,
+      "table_index": 0,
+      "bbox": [
+        0.077,
+        0.299,
+        0.921,
+        0.683
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 5,
+      "cols": 10,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          2,
+          1
+        ],
+        [
+          0,
+          4,
+          1,
+          2
+        ],
+        [
+          0,
+          6,
+          2,
+          1
+        ],
+        [
+          0,
+          7,
+          2,
+          1
+        ],
+        [
+          0,
+          8,
+          2,
+          1
+        ],
+        [
+          0,
+          9,
+          2,
+          1
+        ]
+      ],
+      "text_sha256": "26f3baff18adda46c5e72f613be50eaae6595828e04ff1d3819e8caa7be2b9f5"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 36,
+      "table_index": 0,
+      "bbox": [
+        0.076,
+        0.149,
+        0.921,
+        0.561
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 7,
+      "cols": 10,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          2,
+          1
+        ],
+        [
+          0,
+          4,
+          1,
+          2
+        ],
+        [
+          0,
+          6,
+          2,
+          1
+        ],
+        [
+          0,
+          7,
+          2,
+          1
+        ],
+        [
+          0,
+          8,
+          2,
+          1
+        ],
+        [
+          0,
+          9,
+          2,
+          1
+        ]
+      ],
+      "text_sha256": "69be1a0181d8a81f4da0a7395f369d1e6db51464846657eaa1548d737a4dd8e2"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 37,
+      "table_index": 0,
+      "bbox": [
+        0.077,
+        0.174,
+        0.922,
+        0.677
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 5,
+      "cols": 10,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          2,
+          1
+        ],
+        [
+          0,
+          4,
+          1,
+          3
+        ],
+        [
+          0,
+          7,
+          2,
+          1
+        ],
+        [
+          0,
+          8,
+          2,
+          1
+        ],
+        [
+          0,
+          9,
+          2,
+          1
+        ]
+      ],
+      "text_sha256": "4b2b93d8ef76e633407428348b65bfe55ea7e587b7a1368c1896c2202a13465e"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 38,
+      "table_index": 0,
+      "bbox": [
+        0.076,
+        0.15,
+        0.922,
+        0.679
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 6,
+      "cols": 10,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          2,
+          1
+        ],
+        [
+          0,
+          4,
+          1,
+          3
+        ],
+        [
+          0,
+          7,
+          2,
+          1
+        ],
+        [
+          0,
+          8,
+          2,
+          1
+        ],
+        [
+          0,
+          9,
+          2,
+          1
+        ]
+      ],
+      "text_sha256": "70264f91860ea5c8c1fa445083c2b24cefbc40772723d15483e224ec4738c893"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 39,
+      "table_index": 0,
+      "bbox": [
+        0.076,
+        0.15,
+        0.922,
+        0.679
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 6,
+      "cols": 10,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          2,
+          1
+        ],
+        [
+          0,
+          4,
+          1,
+          3
+        ],
+        [
+          0,
+          7,
+          2,
+          1
+        ],
+        [
+          0,
+          8,
+          2,
+          1
+        ],
+        [
+          0,
+          9,
+          2,
+          1
+        ]
+      ],
+      "text_sha256": "c629bf2983199a84c906318d9a6692d74f292b4c2ab53503bf4f1051b44ca6d0"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 40,
+      "table_index": 0,
+      "bbox": [
+        0.076,
+        0.149,
+        0.921,
+        0.548
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 6,
+      "cols": 10,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          2,
+          1
+        ],
+        [
+          0,
+          4,
+          1,
+          3
+        ],
+        [
+          0,
+          7,
+          2,
+          1
+        ],
+        [
+          0,
+          8,
+          2,
+          1
+        ],
+        [
+          0,
+          9,
+          2,
+          1
+        ]
+      ],
+      "text_sha256": "3d4b1caf73d4065fa3a1c122694f0b3810e7f73b08fa09a54afa52e48f442417"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 42,
+      "table_index": 0,
+      "bbox": [
+        0.068,
+        0.236,
+        0.93,
+        0.689
+      ],
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "rows": 8,
+      "cols": 13,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          2,
+          1
+        ],
+        [
+          0,
+          4,
+          2,
+          1
+        ],
+        [
+          0,
+          5,
+          2,
+          1
+        ],
+        [
+          0,
+          6,
+          1,
+          5
+        ],
+        [
+          0,
+          11,
+          2,
+          1
+        ],
+        [
+          0,
+          12,
+          2,
+          1
+        ],
+        [
+          2,
+          0,
+          1,
+          13
+        ]
+      ],
+      "text_sha256": "66191f7b01a8bd61d6840cc07827c1ae66cc149397051c23d96297b751a15dcf",
+      "target_reason": "canonical_track_alias"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 43,
+      "table_index": 0,
+      "bbox": [
+        0.068,
+        0.149,
+        0.93,
+        0.683
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 9,
+      "cols": 14,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          2
+        ],
+        [
+          0,
+          4,
+          2,
+          1
+        ],
+        [
+          0,
+          5,
+          2,
+          1
+        ],
+        [
+          0,
+          6,
+          2,
+          1
+        ],
+        [
+          0,
+          7,
+          1,
+          5
+        ],
+        [
+          0,
+          12,
+          2,
+          1
+        ],
+        [
+          0,
+          13,
+          2,
+          1
+        ],
+        [
+          2,
+          2,
+          1,
+          2
+        ],
+        [
+          3,
+          2,
+          1,
+          2
+        ],
+        [
+          4,
+          2,
+          1,
+          2
+        ],
+        [
+          5,
+          2,
+          1,
+          2
+        ],
+        [
+          6,
+          0,
+          3,
+          3
+        ],
+        [
+          6,
+          3,
+          1,
+          4
+        ],
+        [
+          7,
+          3,
+          1,
+          4
+        ],
+        [
+          8,
+          3,
+          1,
+          4
+        ]
+      ],
+      "text_sha256": "ebb899ba3f5eb926c83dda979f3c49460e19eacc5661698b7cd8a2882bb5d0cc"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 44,
+      "table_index": 0,
+      "bbox": [
+        0.068,
+        0.149,
+        0.93,
+        0.683
+      ],
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "rows": 9,
+      "cols": 14,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          2
+        ],
+        [
+          0,
+          4,
+          2,
+          1
+        ],
+        [
+          0,
+          5,
+          2,
+          1
+        ],
+        [
+          0,
+          6,
+          2,
+          1
+        ],
+        [
+          0,
+          7,
+          1,
+          5
+        ],
+        [
+          0,
+          12,
+          2,
+          1
+        ],
+        [
+          0,
+          13,
+          2,
+          1
+        ],
+        [
+          2,
+          0,
+          1,
+          3
+        ],
+        [
+          2,
+          3,
+          1,
+          4
+        ],
+        [
+          3,
+          0,
+          1,
+          14
+        ],
+        [
+          4,
+          2,
+          1,
+          2
+        ],
+        [
+          5,
+          2,
+          1,
+          2
+        ],
+        [
+          6,
+          2,
+          1,
+          2
+        ],
+        [
+          7,
+          2,
+          1,
+          2
+        ],
+        [
+          8,
+          2,
+          1,
+          2
+        ]
+      ],
+      "text_sha256": "589ce1f526396a66b06f9ab39abf2f0077c220d6114fb569a33fe151155f1ab2",
+      "target_reason": "canonical_track_alias"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 45,
+      "table_index": 0,
+      "bbox": [
+        0.069,
+        0.149,
+        0.93,
+        0.552
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 12,
+      "cols": 14,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          2
+        ],
+        [
+          0,
+          4,
+          2,
+          1
+        ],
+        [
+          0,
+          5,
+          2,
+          1
+        ],
+        [
+          0,
+          6,
+          2,
+          1
+        ],
+        [
+          0,
+          7,
+          1,
+          5
+        ],
+        [
+          0,
+          12,
+          2,
+          1
+        ],
+        [
+          0,
+          13,
+          2,
+          1
+        ],
+        [
+          2,
+          2,
+          1,
+          2
+        ],
+        [
+          3,
+          0,
+          4,
+          3
+        ],
+        [
+          3,
+          3,
+          1,
+          4
+        ],
+        [
+          4,
+          3,
+          1,
+          4
+        ],
+        [
+          5,
+          3,
+          1,
+          4
+        ],
+        [
+          6,
+          3,
+          1,
+          4
+        ],
+        [
+          7,
+          0,
+          1,
+          14
+        ],
+        [
+          8,
+          0,
+          4,
+          3
+        ],
+        [
+          8,
+          3,
+          1,
+          4
+        ],
+        [
+          9,
+          3,
+          1,
+          4
+        ],
+        [
+          10,
+          3,
+          1,
+          4
+        ],
+        [
+          11,
+          3,
+          1,
+          4
+        ]
+      ],
+      "text_sha256": "814854eed2f4961152ef1b17e2422d3cc92250abe8ffdcc8f496cc18c6db2660"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 46,
+      "table_index": 0,
+      "bbox": [
+        0.069,
+        0.149,
+        0.929,
+        0.585
+      ],
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "target_reason": "strong_single_column_line_grid",
+      "rows": 5,
+      "cols": 1,
+      "span_signature": [],
+      "text_sha256": "9a45006a8964a521e15842c4cf9b32e5ed7e22f2c9e03a3d50dc1f44572c624b"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 48,
+      "table_index": 0,
+      "bbox": [
+        0.046,
+        0.236,
+        0.953,
+        0.677
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 12,
+      "cols": 14,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          2,
+          1
+        ],
+        [
+          0,
+          4,
+          2,
+          1
+        ],
+        [
+          0,
+          5,
+          1,
+          2
+        ],
+        [
+          0,
+          7,
+          2,
+          1
+        ],
+        [
+          0,
+          8,
+          1,
+          5
+        ],
+        [
+          0,
+          13,
+          2,
+          1
+        ]
+      ],
+      "text_sha256": "dc7fa47d9a797d698f0c22c9662e5115cdc7fc54b32c6cd4d62cfbc1d6b646f1"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 49,
+      "table_index": 0,
+      "bbox": [
+        0.046,
+        0.149,
+        0.953,
+        0.689
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 20,
+      "cols": 14,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          2,
+          1
+        ],
+        [
+          0,
+          4,
+          2,
+          1
+        ],
+        [
+          0,
+          5,
+          1,
+          2
+        ],
+        [
+          0,
+          7,
+          2,
+          1
+        ],
+        [
+          0,
+          8,
+          1,
+          5
+        ],
+        [
+          0,
+          13,
+          2,
+          1
+        ]
+      ],
+      "text_sha256": "6ce730aa700d6d95ec6769e3155e79bad67166f2c2bbb598bba291555defb193"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 50,
+      "table_index": 0,
+      "bbox": [
+        0.046,
+        0.149,
+        0.952,
+        0.531
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 13,
+      "cols": 14,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          2,
+          1
+        ],
+        [
+          0,
+          4,
+          2,
+          1
+        ],
+        [
+          0,
+          5,
+          1,
+          2
+        ],
+        [
+          0,
+          7,
+          2,
+          1
+        ],
+        [
+          0,
+          8,
+          1,
+          5
+        ],
+        [
+          0,
+          13,
+          2,
+          1
+        ],
+        [
+          8,
+          0,
+          1,
+          14
+        ],
+        [
+          9,
+          0,
+          4,
+          3
+        ],
+        [
+          9,
+          3,
+          1,
+          5
+        ],
+        [
+          10,
+          3,
+          1,
+          5
+        ],
+        [
+          11,
+          3,
+          1,
+          5
+        ],
+        [
+          12,
+          3,
+          1,
+          5
+        ]
+      ],
+      "text_sha256": "1f273bf0778dc26d6a5331b6f3ff1d876dde83c476d1c9424b552650fd1b3897"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 51,
+      "table_index": 0,
+      "bbox": [
+        0.078,
+        0.279,
+        0.921,
+        0.478
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 5,
+      "cols": 7,
+      "span_signature": [],
+      "text_sha256": "dede35df351b7b9948a93309f53cca60fd1a2063ff9973d4d2d9555a1acfba3a"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 53,
+      "table_index": 0,
+      "bbox": [
+        0.09,
+        0.299,
+        0.909,
+        0.468
+      ],
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "target_reason": "physical_blank_row",
+      "rows": 3,
+      "cols": 13,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          1,
+          2
+        ],
+        [
+          0,
+          5,
+          2,
+          1
+        ],
+        [
+          0,
+          6,
+          2,
+          1
+        ],
+        [
+          0,
+          7,
+          2,
+          1
+        ],
+        [
+          0,
+          8,
+          1,
+          2
+        ],
+        [
+          0,
+          10,
+          1,
+          2
+        ],
+        [
+          0,
+          12,
+          2,
+          1
+        ],
+        [
+          2,
+          0,
+          1,
+          13
+        ]
+      ],
+      "text_sha256": "abc97a9378840af6fb20fd2e9c5ed38e575f45ed017c253600be37cdbdbe9d84"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 53,
+      "table_index": 1,
+      "bbox": [
+        0.08,
+        0.545,
+        0.918,
+        0.633
+      ],
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "target_reason": "physical_blank_row",
+      "rows": 3,
+      "cols": 7,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          1,
+          3
+        ],
+        [
+          0,
+          6,
+          2,
+          1
+        ],
+        [
+          2,
+          0,
+          1,
+          7
+        ]
+      ],
+      "text_sha256": "529d475596688e733e86c99402a47610179c2f168c2ba2fc1f4fda4980123be5"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 54,
+      "table_index": 0,
+      "bbox": [
+        0.09,
+        0.223,
+        0.909,
+        0.392
+      ],
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "target_reason": "physical_blank_row",
+      "rows": 3,
+      "cols": 13,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          1,
+          2
+        ],
+        [
+          0,
+          5,
+          2,
+          1
+        ],
+        [
+          0,
+          6,
+          2,
+          1
+        ],
+        [
+          0,
+          7,
+          2,
+          1
+        ],
+        [
+          0,
+          8,
+          1,
+          2
+        ],
+        [
+          0,
+          10,
+          1,
+          2
+        ],
+        [
+          0,
+          12,
+          2,
+          1
+        ],
+        [
+          2,
+          0,
+          1,
+          13
+        ]
+      ],
+      "text_sha256": "abc97a9378840af6fb20fd2e9c5ed38e575f45ed017c253600be37cdbdbe9d84"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 55,
+      "table_index": 0,
+      "bbox": [
+        0.089,
+        0.264,
+        0.909,
+        0.427
+      ],
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "target_reason": "physical_blank_row",
+      "rows": 3,
+      "cols": 12,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          1,
+          2
+        ],
+        [
+          0,
+          5,
+          2,
+          1
+        ],
+        [
+          0,
+          6,
+          2,
+          1
+        ],
+        [
+          0,
+          7,
+          2,
+          1
+        ],
+        [
+          0,
+          8,
+          1,
+          4
+        ],
+        [
+          2,
+          0,
+          1,
+          12
+        ]
+      ],
+      "text_sha256": "92c6304b4ec5b6eea640d14aed5ab12bee2580517e5ce4710490aaa52db072be"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 56,
+      "table_index": 0,
+      "bbox": [
+        0.091,
+        0.216,
+        0.907,
+        0.326
+      ],
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "target_reason": "physical_blank_row",
+      "rows": 3,
+      "cols": 10,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          2,
+          1
+        ],
+        [
+          0,
+          4,
+          1,
+          2
+        ],
+        [
+          0,
+          6,
+          2,
+          1
+        ],
+        [
+          0,
+          7,
+          2,
+          1
+        ],
+        [
+          0,
+          8,
+          2,
+          1
+        ],
+        [
+          0,
+          9,
+          2,
+          1
+        ],
+        [
+          2,
+          0,
+          1,
+          10
+        ]
+      ],
+      "text_sha256": "d8d6e0d1394542f6537e013fe923897065c3d59b9e8ccafcd979fcdc0d737e53"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 57,
+      "table_index": 0,
+      "bbox": [
+        0.077,
+        0.236,
+        0.922,
+        0.578
+      ],
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "target_reason": "physical_blank_row",
+      "rows": 13,
+      "cols": 11,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          2,
+          1
+        ],
+        [
+          0,
+          3,
+          2,
+          1
+        ],
+        [
+          0,
+          4,
+          2,
+          1
+        ],
+        [
+          0,
+          5,
+          1,
+          5
+        ],
+        [
+          0,
+          10,
+          2,
+          1
+        ],
+        [
+          2,
+          0,
+          1,
+          11
+        ],
+        [
+          3,
+          0,
+          1,
+          11
+        ],
+        [
+          4,
+          0,
+          2,
+          3
+        ],
+        [
+          4,
+          3,
+          1,
+          2
+        ],
+        [
+          5,
+          3,
+          1,
+          2
+        ],
+        [
+          6,
+          0,
+          1,
+          11
+        ],
+        [
+          7,
+          0,
+          1,
+          11
+        ],
+        [
+          8,
+          0,
+          2,
+          3
+        ],
+        [
+          8,
+          3,
+          1,
+          2
+        ],
+        [
+          9,
+          3,
+          1,
+          2
+        ],
+        [
+          10,
+          0,
+          1,
+          11
+        ],
+        [
+          11,
+          0,
+          2,
+          3
+        ],
+        [
+          11,
+          3,
+          1,
+          2
+        ],
+        [
+          12,
+          3,
+          1,
+          2
+        ]
+      ],
+      "text_sha256": "d600150e6ce968d53bff9ec6692f831e0a977c65fb666d1bf6dbb60e813b65b7"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 60,
+      "table_index": 0,
+      "bbox": [
+        0.081,
+        0.279,
+        0.917,
+        0.687
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 4,
+      "cols": 10,
+      "span_signature": [
+        [
+          0,
+          0,
+          1,
+          10
+        ]
+      ],
+      "text_sha256": "bf969fef10bf457290c223e2a3692b5e2dd0e9c4811e122e2180e1c7ed649e02"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 61,
+      "table_index": 0,
+      "bbox": [
+        0.081,
+        0.149,
+        0.917,
+        0.338
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 3,
+      "cols": 10,
+      "span_signature": [],
+      "text_sha256": "db7d286c0a705906d7b51e11454b5f9a86624fd5d0fe00077cf3c79c59f14961"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 61,
+      "table_index": 1,
+      "bbox": [
+        0.081,
+        0.412,
+        0.917,
+        0.68
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 8,
+      "cols": 14,
+      "span_signature": [
+        [
+          0,
+          0,
+          1,
+          8
+        ],
+        [
+          0,
+          8,
+          1,
+          6
+        ],
+        [
+          1,
+          0,
+          1,
+          14
+        ],
+        [
+          2,
+          0,
+          1,
+          3
+        ],
+        [
+          2,
+          3,
+          1,
+          5
+        ],
+        [
+          2,
+          8,
+          1,
+          3
+        ],
+        [
+          2,
+          11,
+          1,
+          3
+        ],
+        [
+          3,
+          0,
+          1,
+          3
+        ],
+        [
+          3,
+          3,
+          1,
+          5
+        ],
+        [
+          3,
+          8,
+          1,
+          3
+        ],
+        [
+          3,
+          11,
+          1,
+          3
+        ],
+        [
+          4,
+          0,
+          1,
+          3
+        ],
+        [
+          4,
+          3,
+          1,
+          5
+        ],
+        [
+          4,
+          8,
+          1,
+          3
+        ],
+        [
+          4,
+          11,
+          1,
+          3
+        ],
+        [
+          5,
+          0,
+          1,
+          3
+        ],
+        [
+          5,
+          3,
+          1,
+          2
+        ],
+        [
+          5,
+          5,
+          1,
+          2
+        ],
+        [
+          5,
+          8,
+          1,
+          3
+        ],
+        [
+          5,
+          11,
+          1,
+          3
+        ],
+        [
+          6,
+          0,
+          1,
+          14
+        ],
+        [
+          7,
+          2,
+          1,
+          2
+        ],
+        [
+          7,
+          4,
+          1,
+          2
+        ],
+        [
+          7,
+          6,
+          1,
+          2
+        ],
+        [
+          7,
+          10,
+          1,
+          2
+        ]
+      ],
+      "text_sha256": "822dea9bb19cd89b08f3c9f8f03363debbe1247bff042639386bacc3c6e91b45"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 62,
+      "table_index": 0,
+      "bbox": [
+        0.081,
+        0.149,
+        0.917,
+        0.397
+      ],
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "target_reason": "outer_edge_duplicate_track",
+      "rows": 4,
+      "cols": 10,
+      "span_signature": [
+        [
+          1,
+          0,
+          1,
+          10
+        ],
+        [
+          2,
+          0,
+          1,
+          10
+        ],
+        [
+          3,
+          0,
+          1,
+          10
+        ]
+      ],
+      "text_sha256": "2f7304ac1be915f56b615e8b28f27fb7cfecabe2da474dc7e3140e9340c649a6"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 62,
+      "table_index": 1,
+      "bbox": [
+        0.082,
+        0.435,
+        0.917,
+        0.672
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 7,
+      "cols": 6,
+      "span_signature": [
+        [
+          0,
+          0,
+          1,
+          4
+        ],
+        [
+          0,
+          4,
+          1,
+          2
+        ],
+        [
+          1,
+          0,
+          1,
+          6
+        ],
+        [
+          2,
+          1,
+          1,
+          3
+        ],
+        [
+          3,
+          1,
+          1,
+          3
+        ],
+        [
+          4,
+          1,
+          1,
+          3
+        ],
+        [
+          6,
+          0,
+          1,
+          6
+        ]
+      ],
+      "text_sha256": "d9b759e238855d66ac6e99a5ab296428c37eb307d86a209956f0fe809f3906be"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 63,
+      "table_index": 0,
+      "bbox": [
+        0.081,
+        0.149,
+        0.917,
+        0.401
+      ],
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "target_reason": "outer_edge_duplicate_track",
+      "rows": 5,
+      "cols": 10,
+      "span_signature": [
+        [
+          2,
+          0,
+          1,
+          10
+        ],
+        [
+          3,
+          0,
+          1,
+          10
+        ],
+        [
+          4,
+          0,
+          1,
+          10
+        ]
+      ],
+      "text_sha256": "8cfdf6818cb161bbe5cfe7bddf7fdbf219e63a23c815d0bc488005c144760611"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 63,
+      "table_index": 1,
+      "bbox": [
+        0.085,
+        0.542,
+        0.914,
+        0.674
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 4,
+      "cols": 4,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          4
+        ]
+      ],
+      "text_sha256": "d03cbdbbbb77e5d8dc54829f1734fa03999fb37c156187bc307d8c0623d0a714"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 64,
+      "table_index": 0,
+      "bbox": [
+        0.084,
+        0.15,
+        0.914,
+        0.661
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 12,
+      "cols": 6,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          2
+        ],
+        [
+          0,
+          2,
+          1,
+          4
+        ],
+        [
+          1,
+          2,
+          1,
+          2
+        ],
+        [
+          1,
+          4,
+          1,
+          2
+        ],
+        [
+          2,
+          0,
+          1,
+          2
+        ],
+        [
+          2,
+          2,
+          1,
+          2
+        ],
+        [
+          2,
+          4,
+          1,
+          2
+        ],
+        [
+          3,
+          0,
+          1,
+          6
+        ],
+        [
+          4,
+          0,
+          3,
+          1
+        ],
+        [
+          4,
+          1,
+          3,
+          1
+        ],
+        [
+          4,
+          2,
+          1,
+          4
+        ],
+        [
+          5,
+          3,
+          1,
+          3
+        ],
+        [
+          11,
+          4,
+          1,
+          2
+        ]
+      ],
+      "text_sha256": "aeab2147c34d8cc05b75b1d09adbb8340a759eafc92a08033a2cd55a4873b7d2"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 65,
+      "table_index": 0,
+      "bbox": [
+        0.083,
+        0.15,
+        0.914,
+        0.58
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 6,
+      "cols": 5,
+      "span_signature": [
+        [
+          4,
+          0,
+          1,
+          5
+        ],
+        [
+          5,
+          0,
+          1,
+          5
+        ]
+      ],
+      "text_sha256": "b32a8464e7faf5248d7ca378266f12df74bd887f9796b15df76847b74f1b7101"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 66,
+      "table_index": 0,
+      "bbox": [
+        0.056,
+        0.243,
+        0.942,
+        0.686
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 3,
+      "cols": 15,
+      "span_signature": [],
+      "text_sha256": "8a4e9961aa5a5435140c4f2739062038693204c0bb455a3f73653a226688e4bf"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 67,
+      "table_index": 0,
+      "bbox": [
+        0.056,
+        0.15,
+        0.943,
+        0.682
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 3,
+      "cols": 15,
+      "span_signature": [],
+      "text_sha256": "dd09406289c01d6df0c8e98a59333df322ba49c87bcb2c5bbebcecfc11313d50"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 68,
+      "table_index": 0,
+      "bbox": [
+        0.056,
+        0.149,
+        0.942,
+        0.683
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 4,
+      "cols": 15,
+      "span_signature": [],
+      "text_sha256": "4c886dafbc47f31e94ad48268f5ac10a1ac583a2371c311cce45b0a08582ae05"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 69,
+      "table_index": 0,
+      "bbox": [
+        0.056,
+        0.149,
+        0.943,
+        0.682
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 3,
+      "cols": 15,
+      "span_signature": [],
+      "text_sha256": "947e33095354f178a4a617202c37eeec86622c45fe7c809cd0980277f6659c25"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 70,
+      "table_index": 0,
+      "bbox": [
+        0.056,
+        0.15,
+        0.942,
+        0.683
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 3,
+      "cols": 15,
+      "span_signature": [],
+      "text_sha256": "1b4335d34b5b8c6b6ffbd4abe9cee1671e6477436f6373d02a136cff0b586530"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 71,
+      "table_index": 0,
+      "bbox": [
+        0.056,
+        0.149,
+        0.942,
+        0.684
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 4,
+      "cols": 15,
+      "span_signature": [],
+      "text_sha256": "0f82f933f03e9c97e8d130f3535487b55a5151c3e2ceecb531f1fa36870ae28e"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 72,
+      "table_index": 0,
+      "bbox": [
+        0.056,
+        0.15,
+        0.942,
+        0.682
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 3,
+      "cols": 15,
+      "span_signature": [],
+      "text_sha256": "950a2375cc33ec0dc035e36e95f27323d10eafdb4d52170b536670ebc9a6c02a"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 73,
+      "table_index": 0,
+      "bbox": [
+        0.056,
+        0.15,
+        0.942,
+        0.683
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 3,
+      "cols": 15,
+      "span_signature": [],
+      "text_sha256": "90a5186230e7044fc036d767a490f434d0f111ce1e9b32f7b91a20da63d6cb07"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 74,
+      "table_index": 0,
+      "bbox": [
+        0.055,
+        0.149,
+        0.942,
+        0.569
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 4,
+      "cols": 15,
+      "span_signature": [],
+      "text_sha256": "5a1820e2bc2758c78f996acee7601d16f1df0b503fe43aac0d218eea5dadf6f5"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 77,
+      "table_index": 0,
+      "bbox": [
+        0.14,
+        0.146,
+        0.857,
+        0.785
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 6,
+      "cols": 6,
+      "span_signature": [],
+      "text_sha256": "d7a93bbf6282ec895aeb7187f1b7ddc89adfccb67fb2f0f37e5642a81524f320"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 78,
+      "table_index": 0,
+      "bbox": [
+        0.141,
+        0.086,
+        0.857,
+        0.783
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 5,
+      "cols": 6,
+      "span_signature": [],
+      "text_sha256": "f751d0f566056aa4e8b7bad15e215a5966ddc9cf996de249cc18ec69f86a0aec"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 79,
+      "table_index": 0,
+      "bbox": [
+        0.141,
+        0.085,
+        0.857,
+        0.607
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 3,
+      "cols": 6,
+      "span_signature": [],
+      "text_sha256": "7898488bc258d80a2cba4111bc398aadaf6a5bbb02c7f28e5eddff5c09b47342"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 80,
+      "table_index": 0,
+      "bbox": [
+        0.047,
+        0.313,
+        0.951,
+        0.418
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 2,
+      "cols": 7,
+      "span_signature": [],
+      "text_sha256": "09cae9d74ed2ba7375634ae3e4cd3ff33151b2a292b2351d38c747fee58b8261"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 80,
+      "table_index": 1,
+      "bbox": [
+        0.048,
+        0.492,
+        0.951,
+        0.584
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 2,
+      "cols": 6,
+      "span_signature": [
+        [
+          1,
+          0,
+          1,
+          6
+        ]
+      ],
+      "text_sha256": "41b45c1961218c75b05f99045e659dd9f6dfdc59f6e94a3d6c6a7684ce66a6ef"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 81,
+      "table_index": 0,
+      "bbox": [
+        0.047,
+        0.15,
+        0.952,
+        0.242
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 2,
+      "cols": 6,
+      "span_signature": [
+        [
+          1,
+          0,
+          1,
+          6
+        ]
+      ],
+      "text_sha256": "a1ac37c84bb7b8913fa19c461706828805cd434bb59c9f0aea8e503e30d521ff"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 81,
+      "table_index": 1,
+      "bbox": [
+        0.047,
+        0.316,
+        0.951,
+        0.513
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 2,
+      "cols": 6,
+      "span_signature": [],
+      "text_sha256": "afc9d366a18c2ea698366a986f6a0e7edc916e0868030cf17241d7b736fbbc85"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 81,
+      "table_index": 2,
+      "bbox": [
+        0.047,
+        0.54,
+        0.952,
+        0.658
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 2,
+      "cols": 5,
+      "span_signature": [],
+      "text_sha256": "3f5f81a4031362e8d92dc9f5f6e78e1ef3842917e0563c9cfead89e038728d84"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 82,
+      "table_index": 0,
+      "bbox": [
+        0.047,
+        0.197,
+        0.951,
+        0.29
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 2,
+      "cols": 5,
+      "span_signature": [
+        [
+          1,
+          0,
+          1,
+          5
+        ]
+      ],
+      "text_sha256": "7d02fde92db7ffe3223491df45c34a88eb945d5118544f662d715a21e4de3bef"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 82,
+      "table_index": 1,
+      "bbox": [
+        0.047,
+        0.316,
+        0.952,
+        0.409
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 2,
+      "cols": 5,
+      "span_signature": [
+        [
+          1,
+          0,
+          1,
+          5
+        ]
+      ],
+      "text_sha256": "194763f985119aadf8aacba0a50a6c2a1e7fb8e5b899c5526ab3ba48aed4ae2c"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 82,
+      "table_index": 2,
+      "bbox": [
+        0.048,
+        0.482,
+        0.951,
+        0.574
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 2,
+      "cols": 5,
+      "span_signature": [
+        [
+          1,
+          0,
+          1,
+          5
+        ]
+      ],
+      "text_sha256": "7d60b1272dc37d43093a756350b38d3442bfe10d2336a6817f4c7bc2299bc59c"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 83,
+      "table_index": 0,
+      "bbox": [
+        0.051,
+        0.151,
+        0.947,
+        0.226
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 2,
+      "cols": 3,
+      "span_signature": [],
+      "text_sha256": "63877a6bc50f9424270d22e6397d432726c5ec0484f7e2d26e8cdb09dd55e943"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 84,
+      "table_index": 0,
+      "bbox": [
+        0.083,
+        0.15,
+        0.915,
+        0.232
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 2,
+      "cols": 6,
+      "span_signature": [
+        [
+          1,
+          0,
+          1,
+          6
+        ]
+      ],
+      "text_sha256": "d8e47a14def4de0ccd469f94f5a12a1669518bc77011639e2465631b8daa1a6d"
+    },
+    {
+      "file": "procurement_contract_tables.pdf",
+      "page_index": 0,
+      "table_index": 0,
+      "bbox": [
+        0.139,
+        0.489,
+        0.859,
+        0.569
+      ],
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "rows": 2,
+      "cols": 2,
+      "span_signature": [],
+      "text_sha256": "d43223bb1a67a3c0a843fe927e3d948eec05d03de577bd8b0e15fe6f99512fb9"
+    },
+    {
+      "file": "procurement_contract_tables.pdf",
+      "page_index": 0,
+      "table_index": 1,
+      "bbox": [
+        0.14,
+        0.828,
+        0.859,
+        0.898
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 3,
+      "cols": 3,
+      "span_signature": [
+        [
+          1,
+          0,
+          2,
+          1
+        ],
+        [
+          1,
+          1,
+          2,
+          1
+        ],
+        [
+          1,
+          2,
+          2,
+          1
+        ]
+      ],
+      "text_sha256": "832106596b6066321211c9862a508270740978bb39d994c0d33d2aaa5564e45b"
+    },
+    {
+      "file": "procurement_contract_tables.pdf",
+      "page_index": 1,
+      "table_index": 0,
+      "bbox": [
+        0.14,
+        0.083,
+        0.859,
+        0.401
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 5,
+      "cols": 4,
+      "span_signature": [
+        [
+          0,
+          1,
+          1,
+          2
+        ],
+        [
+          1,
+          0,
+          4,
+          1
+        ],
+        [
+          2,
+          1,
+          2,
+          1
+        ],
+        [
+          2,
+          2,
+          2,
+          1
+        ],
+        [
+          2,
+          3,
+          2,
+          1
+        ]
+      ],
+      "text_sha256": "e3c47adee3fd3bf7db7d317b1bcfcca2793e5f4ca9c479e9a93e97f03d530230"
+    },
+    {
+      "file": "procurement_contract_tables.pdf",
+      "page_index": 1,
+      "table_index": 1,
+      "bbox": [
+        0.137,
+        0.669,
+        0.857,
+        0.806
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 4,
+      "cols": 2,
+      "span_signature": [],
+      "text_sha256": "6060a2f4d6a27746f206f1f432b931d8fee5f99eaa4af146bdd788e9f217c47d"
+    },
+    {
+      "file": "annual_report_research_projects_table.pdf",
+      "page_index": 0,
+      "table_index": 0,
+      "bbox": [
+        0.083,
+        0.139,
+        0.898,
+        0.91
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 6,
+      "cols": 5,
+      "span_signature": [],
+      "text_sha256": "c9a0a360b9163e73a1233514f2ad4c29fd1d9971c6cf33364ff1601db16f060b"
+    },
+    {
+      "file": "annual_report_research_projects_table.pdf",
+      "page_index": 1,
+      "table_index": 0,
+      "bbox": [
+        0.084,
+        0.083,
+        0.897,
+        0.281
+      ],
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "rows": 1,
+      "cols": 5,
+      "span_signature": [],
+      "text_sha256": "2ef9fca3d29d3759a310c5a30916bb2995ac66b1b502e60238dd2e584a1830db"
+    },
+    {
+      "file": "annual_report_research_projects_table.pdf",
+      "page_index": 1,
+      "table_index": 1,
+      "bbox": [
+        0.084,
+        0.305,
+        0.897,
+        0.481
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 9,
+      "cols": 4,
+      "span_signature": [
+        [
+          3,
+          0,
+          1,
+          4
+        ],
+        [
+          6,
+          0,
+          1,
+          4
+        ]
+      ],
+      "text_sha256": "a2df13db67d4ae47aaf6b5e8035cd3d39a1c4f506ba3aa6ea2b6e9c0023549e8"
+    },
+    {
+      "file": "annual_report_research_projects_table.pdf",
+      "page_index": 1,
+      "table_index": 2,
+      "bbox": [
+        0.084,
+        0.505,
+        0.897,
+        0.631
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 5,
+      "cols": 4,
+      "span_signature": [],
+      "text_sha256": "547b1709643781f5b78e628ae41f9f482c92219b11badc57dccdd01291485e63"
+    },
+    {
+      "file": "annual_report_research_projects_table.pdf",
+      "page_index": 1,
+      "table_index": 3,
+      "bbox": [
+        0.084,
+        0.819,
+        0.897,
+        0.899
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 4,
+      "cols": 4,
+      "span_signature": [],
+      "text_sha256": "b0b7de04153947e0bcf15380d261f72de78a9ec68f0cbb2f775423f571573bf5"
+    },
+    {
+      "file": "annual_report_fundraising_projects_table.pdf",
+      "page_index": 0,
+      "table_index": 0,
+      "bbox": [
+        0.083,
+        0.085,
+        0.897,
+        0.91
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 14,
+      "cols": 11,
+      "span_signature": [
+        [
+          1,
+          0,
+          1,
+          11
+        ],
+        [
+          10,
+          0,
+          1,
+          11
+        ],
+        [
+          13,
+          1,
+          1,
+          10
+        ]
+      ],
+      "text_sha256": "7092c61dcc649d55840b9bf272d6a6b3695404cf6abd4de6c5747b6012cd9821"
+    },
+    {
+      "file": "annual_report_fundraising_projects_table.pdf",
+      "page_index": 1,
+      "table_index": 0,
+      "bbox": [
+        0.083,
+        0.083,
+        0.897,
+        0.898
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 12,
+      "cols": 2,
+      "span_signature": [
+        [
+          3,
+          0,
+          3,
+          1
+        ],
+        [
+          6,
+          0,
+          3,
+          1
+        ],
+        [
+          9,
+          0,
+          2,
+          1
+        ]
+      ],
+      "text_sha256": "79d3bee25a495158c12e63120a0f38c66d4f70f07168de58f3b3ffd5026bda16"
+    },
+    {
+      "file": "annual_report_management_roles_table.pdf",
+      "page_index": 0,
+      "table_index": 0,
+      "bbox": [
+        0.084,
+        0.575,
+        0.897,
+        0.696
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 3,
+      "cols": 6,
+      "span_signature": [],
+      "text_sha256": "a2257a9f4b6c73d96d48b7d5f5ea153282c144425210519d4b05ab474ec36175"
+    },
+    {
+      "file": "annual_report_management_roles_table.pdf",
+      "page_index": 0,
+      "table_index": 1,
+      "bbox": [
+        0.084,
+        0.741,
+        0.897,
+        0.907
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 6,
+      "cols": 6,
+      "span_signature": [],
+      "text_sha256": "b9bf1096012d98434c43318fc080b8ab24c64232718a6d82afc67ebcc5481338"
+    },
+    {
+      "file": "annual_report_management_roles_table.pdf",
+      "page_index": 1,
+      "table_index": 0,
+      "bbox": [
+        0.083,
+        0.084,
+        0.898,
+        0.881
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 24,
+      "cols": 6,
+      "span_signature": [
+        [
+          23,
+          1,
+          1,
+          5
+        ]
+      ],
+      "text_sha256": "1be9a3fe8f7d475326a69238903ade16209bca2ada1bd744f3645c37eddb8950"
+    },
+    {
+      "file": "quarterly_report_financial_tables.pdf",
+      "page_index": 0,
+      "table_index": 0,
+      "bbox": [
+        0.148,
+        0.088,
+        0.894,
+        0.335
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 6,
+      "cols": 5,
+      "span_signature": [
+        [
+          3,
+          2,
+          1,
+          2
+        ],
+        [
+          4,
+          2,
+          1,
+          2
+        ],
+        [
+          5,
+          2,
+          1,
+          2
+        ]
+      ],
+      "text_sha256": "0cb3edbf1b1b5f1a3feb6521b4d9acbde71c1d9205e406b019e1a9b72b14228b"
+    },
+    {
+      "file": "quarterly_report_financial_tables.pdf",
+      "page_index": 0,
+      "table_index": 1,
+      "bbox": [
+        0.148,
+        0.427,
+        0.894,
+        0.879
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 10,
+      "cols": 4,
+      "span_signature": [],
+      "text_sha256": "6dce9f81f9858da39dce0d0bf4cc166dbf514347c383877b4dfe8831514fadac"
+    },
+    {
+      "file": "quarterly_report_financial_tables.pdf",
+      "page_index": 1,
+      "table_index": 0,
+      "bbox": [
+        0.148,
+        0.089,
+        0.894,
+        0.676
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 17,
+      "cols": 4,
+      "span_signature": [],
+      "text_sha256": "2e5eb09dc9ca8c33568a23e95958773a4d2fab956e9be87b30691b81aa6c74be"
+    },
+    {
+      "file": "quarterly_report_financial_tables.pdf",
+      "page_index": 1,
+      "table_index": 1,
+      "bbox": [
+        0.149,
+        0.833,
+        0.893,
+        0.892
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 2,
+      "cols": 3,
+      "span_signature": [],
+      "text_sha256": "94867057db096b7d71f2b7f0d6d0ff8d1437de8ce151094ac623c1a753de6a92"
+    },
+    {
+      "file": "fund_manager_profile_table.pdf",
+      "page_index": 0,
+      "table_index": 0,
+      "bbox": [
+        0.127,
+        0.862,
+        0.872,
+        0.923
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 3,
+      "cols": 6,
+      "span_signature": [
+        [
+          0,
+          0,
+          2,
+          1
+        ],
+        [
+          0,
+          1,
+          2,
+          1
+        ],
+        [
+          0,
+          2,
+          1,
+          2
+        ],
+        [
+          0,
+          4,
+          2,
+          1
+        ],
+        [
+          0,
+          5,
+          2,
+          1
+        ]
+      ],
+      "text_sha256": "7bf9d4a2d906bec5baf64375e737dc4eb4d7f5097b60f019fde39dbd2a41198e"
+    },
+    {
+      "file": "fund_manager_profile_table.pdf",
+      "page_index": 1,
+      "table_index": 0,
+      "bbox": [
+        0.127,
+        0.084,
+        0.873,
+        0.457
+      ],
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "rows": 1,
+      "cols": 6,
+      "span_signature": [],
+      "text_sha256": "babbe430014e5944e51e9f25da1d520ef0439c5b40bd1097edc270adbd16f3e3"
+    },
+    {
+      "file": "fund_asset_and_transaction_tables.pdf",
+      "page_index": 0,
+      "table_index": 0,
+      "bbox": [
+        0.127,
+        0.344,
+        0.873,
+        0.502
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 8,
+      "cols": 3,
+      "span_signature": [],
+      "text_sha256": "51e058a89c37feffd56978170bc12e9d0187fba8034bc13c8ce7e6305c85f765"
+    },
+    {
+      "file": "fund_asset_and_transaction_tables.pdf",
+      "page_index": 0,
+      "table_index": 1,
+      "bbox": [
+        0.126,
+        0.629,
+        0.871,
+        0.912
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 3,
+      "cols": 5,
+      "span_signature": [],
+      "text_sha256": "d53eebe2b7d99c132553288faa2e8c640d7b42dd64f7871d768e4a207fb25a57"
+    },
+    {
+      "file": "fund_asset_and_transaction_tables.pdf",
+      "page_index": 1,
+      "table_index": 0,
+      "bbox": [
+        0.125,
+        0.083,
+        0.873,
+        0.699
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 3,
+      "cols": 5,
+      "span_signature": [],
+      "text_sha256": "48a2c768df7a1c9ff7f2c434c6c1dfee2283e1a0c8c485d838e999df6b09dba2"
+    },
+    {
+      "file": "fund_asset_and_transaction_tables.pdf",
+      "page_index": 1,
+      "table_index": 1,
+      "bbox": [
+        0.127,
+        0.799,
+        0.873,
+        0.917
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 3,
+      "cols": 6,
+      "span_signature": [],
+      "text_sha256": "142abff4014383f56e8fb81443fe19554f4c3e4960756d504c4a0670a20030e6"
+    },
+    {
+      "file": "engineering_process_restrictions_table.pdf",
+      "page_index": 0,
+      "table_index": 0,
+      "bbox": [
+        0.052,
+        0.131,
+        0.946,
+        0.919
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 10,
+      "cols": 7,
+      "span_signature": [
+        [
+          1,
+          0,
+          1,
+          6
+        ]
+      ],
+      "text_sha256": "03920f1c17f81c79754c045187daccba62c5e29249e5a6d44cdfa5869104af2f"
+    },
+    {
+      "file": "engineering_process_restrictions_table.pdf",
+      "page_index": 1,
+      "table_index": 0,
+      "bbox": [
+        0.052,
+        0.079,
+        0.946,
+        0.93
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 11,
+      "cols": 7,
+      "span_signature": [
+        [
+          3,
+          0,
+          2,
+          1
+        ],
+        [
+          3,
+          1,
+          2,
+          1
+        ],
+        [
+          3,
+          5,
+          2,
+          1
+        ],
+        [
+          3,
+          6,
+          2,
+          1
+        ],
+        [
+          5,
+          0,
+          1,
+          6
+        ]
+      ],
+      "text_sha256": "cf58d4b97f4f4f0aa18a51b2991e45044131e0b24de417f5af5c56195da8338c"
+    },
+    {
+      "file": "engineering_process_restrictions_table.pdf",
+      "page_index": 2,
+      "table_index": 0,
+      "bbox": [
+        0.052,
+        0.079,
+        0.946,
+        0.921
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 10,
+      "cols": 7,
+      "span_signature": [
+        [
+          8,
+          0,
+          1,
+          6
+        ]
+      ],
+      "text_sha256": "1ce8fcd3d6ce5f37ed5fc0a4bb8ec55ce1b93e612c5b593dc5b259e5a5f78e3a"
+    },
+    {
+      "file": "engineering_process_restrictions_table.pdf",
+      "page_index": 3,
+      "table_index": 0,
+      "bbox": [
+        0.052,
+        0.079,
+        0.946,
+        0.92
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 10,
+      "cols": 7,
+      "span_signature": [
+        [
+          8,
+          0,
+          1,
+          6
+        ]
+      ],
+      "text_sha256": "4d30eb5754ad23ffa49865ffc25388adea00e5357bedc743d3654cfb417f3038"
+    },
+    {
+      "file": "engineering_process_restrictions_table.pdf",
+      "page_index": 4,
+      "table_index": 0,
+      "bbox": [
+        0.052,
+        0.08,
+        0.947,
+        0.909
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 4,
+      "cols": 7,
+      "span_signature": [
+        [
+          1,
+          0,
+          1,
+          6
+        ]
+      ],
+      "text_sha256": "3a9cb6a16b0feb1c82f5c93f4406fb1215708142c725aa89aa5692733b44b967"
+    },
+    {
+      "file": "engineering_process_restrictions_table.pdf",
+      "page_index": 5,
+      "table_index": 0,
+      "bbox": [
+        0.052,
+        0.08,
+        0.946,
+        0.914
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 7,
+      "cols": 7,
+      "span_signature": [
+        [
+          2,
+          0,
+          3,
+          1
+        ],
+        [
+          2,
+          1,
+          3,
+          1
+        ],
+        [
+          2,
+          5,
+          3,
+          1
+        ],
+        [
+          2,
+          6,
+          3,
+          1
+        ],
+        [
+          5,
+          0,
+          2,
+          1
+        ],
+        [
+          5,
+          1,
+          2,
+          1
+        ],
+        [
+          5,
+          3,
+          2,
+          1
+        ],
+        [
+          5,
+          4,
+          2,
+          1
+        ],
+        [
+          5,
+          5,
+          2,
+          1
+        ],
+        [
+          5,
+          6,
+          2,
+          1
+        ]
+      ],
+      "text_sha256": "fb1dd5694f1e98481dce883905c377d940d2d262a06a43123befeed68037a5e1"
+    },
+    {
+      "file": "engineering_process_restrictions_table.pdf",
+      "page_index": 6,
+      "table_index": 0,
+      "bbox": [
+        0.052,
+        0.08,
+        0.946,
+        0.924
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 8,
+      "cols": 7,
+      "span_signature": [
+        [
+          1,
+          0,
+          3,
+          1
+        ],
+        [
+          1,
+          1,
+          3,
+          1
+        ],
+        [
+          1,
+          5,
+          3,
+          1
+        ],
+        [
+          1,
+          6,
+          3,
+          1
+        ]
+      ],
+      "text_sha256": "c79dc528a20e014af933f94a2ce051a54b3981d5c267c95cd1ed4bbf81ff5c9f"
+    },
+    {
+      "file": "engineering_process_restrictions_table.pdf",
+      "page_index": 7,
+      "table_index": 0,
+      "bbox": [
+        0.052,
+        0.079,
+        0.946,
+        0.924
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 10,
+      "cols": 7,
+      "span_signature": [
+        [
+          1,
+          0,
+          2,
+          1
+        ],
+        [
+          1,
+          1,
+          2,
+          1
+        ],
+        [
+          1,
+          5,
+          2,
+          1
+        ],
+        [
+          1,
+          6,
+          2,
+          1
+        ],
+        [
+          4,
+          0,
+          5,
+          1
+        ],
+        [
+          4,
+          1,
+          5,
+          1
+        ],
+        [
+          4,
+          5,
+          2,
+          1
+        ],
+        [
+          4,
+          6,
+          5,
+          1
+        ],
+        [
+          5,
+          2,
+          2,
+          1
+        ],
+        [
+          5,
+          4,
+          2,
+          1
+        ],
+        [
+          6,
+          5,
+          3,
+          1
+        ]
+      ],
+      "text_sha256": "ef769af78876fd1c41c729515ac2c86f847e81517d433386839ccaffb3af9abd"
+    },
+    {
+      "file": "engineering_process_restrictions_table.pdf",
+      "page_index": 8,
+      "table_index": 0,
+      "bbox": [
+        0.052,
+        0.079,
+        0.946,
+        0.925
+      ],
+      "expected_output": "html",
+      "review_status": "legacy_unverified",
+      "rows": 8,
+      "cols": 7,
+      "span_signature": [],
+      "text_sha256": "347dd5bc006f7f7545a522f067dec7352d83d7c5a96face2692a47712cd12cd7"
+    }
+  ],
+  "flash_targets": [
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 4,
+      "table_index": 0,
+      "bbox_points": [
+        65.8499984741211,
+        116.11700439453125,
+        776.0500106811523,
+        299.91700744628906
+      ],
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "target_reason": "localized_alias_blank_row",
+      "rows": 8,
+      "cols": 20,
+      "span_signature": [
+        [
+          0,
+          1,
+          1,
+          2
+        ],
+        [
+          0,
+          3,
+          1,
+          2
+        ],
+        [
+          0,
+          5,
+          1,
+          2
+        ],
+        [
+          0,
+          7,
+          1,
+          3
+        ],
+        [
+          0,
+          10,
+          1,
+          2
+        ],
+        [
+          0,
+          12,
+          1,
+          2
+        ],
+        [
+          0,
+          14,
+          1,
+          2
+        ],
+        [
+          0,
+          16,
+          1,
+          2
+        ],
+        [
+          0,
+          18,
+          1,
+          2
+        ],
+        [
+          1,
+          0,
+          1,
+          20
+        ],
+        [
+          2,
+          0,
+          3,
+          1
+        ],
+        [
+          2,
+          1,
+          3,
+          2
+        ],
+        [
+          2,
+          3,
+          3,
+          2
+        ],
+        [
+          2,
+          5,
+          1,
+          2
+        ],
+        [
+          2,
+          7,
+          1,
+          3
+        ],
+        [
+          2,
+          10,
+          1,
+          2
+        ],
+        [
+          2,
+          12,
+          1,
+          2
+        ],
+        [
+          2,
+          14,
+          1,
+          2
+        ],
+        [
+          2,
+          16,
+          1,
+          2
+        ],
+        [
+          2,
+          18,
+          1,
+          2
+        ],
+        [
+          3,
+          5,
+          1,
+          2
+        ],
+        [
+          3,
+          7,
+          1,
+          3
+        ],
+        [
+          3,
+          10,
+          1,
+          2
+        ],
+        [
+          3,
+          12,
+          1,
+          2
+        ],
+        [
+          3,
+          14,
+          1,
+          2
+        ],
+        [
+          3,
+          16,
+          1,
+          2
+        ],
+        [
+          3,
+          18,
+          1,
+          2
+        ],
+        [
+          4,
+          5,
+          1,
+          2
+        ],
+        [
+          4,
+          7,
+          1,
+          3
+        ],
+        [
+          4,
+          10,
+          1,
+          2
+        ],
+        [
+          4,
+          12,
+          1,
+          2
+        ],
+        [
+          4,
+          14,
+          1,
+          2
+        ],
+        [
+          4,
+          16,
+          1,
+          2
+        ],
+        [
+          4,
+          18,
+          1,
+          2
+        ],
+        [
+          5,
+          0,
+          1,
+          20
+        ],
+        [
+          6,
+          2,
+          1,
+          2
+        ],
+        [
+          6,
+          4,
+          1,
+          2
+        ],
+        [
+          6,
+          6,
+          1,
+          2
+        ],
+        [
+          6,
+          9,
+          1,
+          2
+        ],
+        [
+          6,
+          11,
+          1,
+          2
+        ],
+        [
+          6,
+          13,
+          1,
+          2
+        ],
+        [
+          6,
+          15,
+          1,
+          2
+        ],
+        [
+          6,
+          17,
+          1,
+          2
+        ],
+        [
+          7,
+          0,
+          1,
+          20
+        ]
+      ],
+      "text_sha256": "4a8cd5fa0282d84710832ac77a3d17f0c7777a9bb68eeeb5ad5efcc920a2f217"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 46,
+      "table_index": 0,
+      "bbox_points": [
+        58.29999923706055,
+        89.85000610351562,
+        783.5999870300293,
+        349.9499816894531
+      ],
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "target_reason": "strong_single_column_line_grid",
+      "rows": 5,
+      "cols": 1,
+      "span_signature": [],
+      "text_sha256": "9a45006a8964a521e15842c4cf9b32e5ed7e22f2c9e03a3d50dc1f44572c624b"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 52,
+      "table_index": 0,
+      "bbox_points": [
+        65.55000305175781,
+        89.85002136230469,
+        776.3499908447266,
+        191.13401794433594
+      ],
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "target_reason": "strong_single_column_line_grid",
+      "rows": 2,
+      "cols": 1,
+      "span_signature": [],
+      "text_sha256": "78f42aea1b91cdb6f9c10e211e0154cff1e0f13140731f47ebf6bfaa17099430"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 58,
+      "table_index": 0,
+      "bbox_points": [
+        65.8499984741211,
+        105.60000610351562,
+        769.0500106811523,
+        370.8340148925781
+      ],
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "target_reason": "strong_single_column_line_grid",
+      "rows": 6,
+      "cols": 1,
+      "span_signature": [],
+      "text_sha256": "064700a9efac905c389491468a41b894b19b743efda3afca52482411bcac11f0"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 62,
+      "table_index": 0,
+      "bbox_points": [
+        69.3499984741211,
+        90.0,
+        772.5500106811523,
+        237.0500030517578
+      ],
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "target_reason": "outer_edge_duplicate_track",
+      "rows": 4,
+      "cols": 10,
+      "span_signature": [
+        [
+          1,
+          0,
+          1,
+          10
+        ],
+        [
+          2,
+          0,
+          1,
+          10
+        ],
+        [
+          3,
+          0,
+          1,
+          10
+        ]
+      ],
+      "text_sha256": "2f7304ac1be915f56b615e8b28f27fb7cfecabe2da474dc7e3140e9340c649a6"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 63,
+      "table_index": 0,
+      "bbox_points": [
+        69.3499984741211,
+        90.0,
+        772.5500106811523,
+        239.5
+      ],
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "target_reason": "outer_edge_duplicate_track",
+      "rows": 5,
+      "cols": 10,
+      "span_signature": [
+        [
+          2,
+          0,
+          1,
+          10
+        ],
+        [
+          3,
+          0,
+          1,
+          10
+        ],
+        [
+          4,
+          0,
+          1,
+          10
+        ]
+      ],
+      "text_sha256": "8cfdf6818cb161bbe5cfe7bddf7fdbf219e63a23c815d0bc488005c144760611"
+    }
+  ],
+  "accuracy_scope": "targeted_only",
+  "target_verified_tables": 41,
+  "legacy_unverified_tables": 92
+}

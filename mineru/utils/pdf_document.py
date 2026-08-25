@@ -148,6 +148,11 @@ class PDFPage:
 
         return self.pdf_doc.get_page_drawing_lines(self._idx)
 
+    def get_path_infos(self) -> list[PDFPathInfo]:
+        """读取当前页及嵌套 Form 中已规范到视觉页面坐标的 Path 摘要。"""
+
+        return self.pdf_doc.get_page_path_infos(self._idx)
+
     def get_link_annotations(self) -> list[PDFLinkAnnotation]:
         """读取当前页已规范到视觉页面坐标的外部 URI Link 注解。"""
 

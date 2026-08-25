@@ -19,6 +19,14 @@ from mineru.utils.bbox_utils import (
     calculate_overlap_area_in_bbox1_area_ratio,
     normalize_to_int_bbox,
 )
+from mineru.utils.native_pdf_table import (
+    NativeTableInput,
+    NativeTableRectangle,
+    NativeTableRule,
+    coerce_native_table_rectangles,
+    coerce_native_table_rules,
+    recover_native_pdf_table,
+)
 from mineru.utils.ocr_utils import mask_formula_regions_for_ocr_det
 from mineru.utils.pdf_document import PDFPage, get_lines_from_chars
 from mineru.utils.pdf_text_styles import PDFTextLinkLine, PDFTextStyleLine
@@ -584,7 +592,7 @@ def _fill_low_table_contents(
     parse_mode: Literal["txt", "ocr"],
     local_model_context: HybridLocalModelContext,
 ) -> None:
-    """为 low 表格回填空间投影纯文本，单表失败时保留空内容并继续。"""
+    """为 Low 表格回填高置信原生 HTML 或空间投影文本。"""
     table_entries: list[dict[str, Any]] = []
     for page_idx, page_model_list in enumerate(model_list):
         table_idx = 0
@@ -609,6 +617,8 @@ def _fill_low_table_contents(
 
     if parse_mode == "txt":
         page_chars_cache: dict[int, list[Any]] = {}
+        page_rules_cache: dict[int, tuple[NativeTableRule, ...]] = {}
+        page_rectangles_cache: dict[int, tuple[NativeTableRectangle, ...]] = {}
         for table_entry in table_entries:
             page_idx = table_entry["page_idx"]
             table_idx = table_entry["table_idx"]
@@ -624,11 +634,64 @@ def _fill_low_table_contents(
                     raise ValueError("invalid table bbox")
                 if page_idx not in page_chars_cache:
                     page_chars_cache[page_idx] = pdf_page.get_chars()
-                table_block["content"] = project_pdf_table_text(
-                    page_chars_cache[page_idx],
-                    table_bbox,
-                    table_block.get("angle", 0),
-                )
+                if page_idx not in page_rules_cache:
+                    try:
+                        page_rules_cache[page_idx] = coerce_native_table_rules(
+                            pdf_page.get_drawing_lines()
+                        )
+                    except Exception as exc:
+                        logger.warning(
+                            "Hybrid low native table drawing extraction failed: "
+                            f"page_idx={page_idx}, error={exc}"
+                        )
+                        page_rules_cache[page_idx] = ()
+                if page_idx not in page_rectangles_cache:
+                    try:
+                        page_rectangles_cache[page_idx] = (
+                            coerce_native_table_rectangles(
+                                pdf_page.get_path_infos()
+                            )
+                        )
+                    except Exception as exc:
+                        logger.warning(
+                            "Hybrid low native table path extraction failed: "
+                            f"page_idx={page_idx}, error={exc}"
+                        )
+                        page_rectangles_cache[page_idx] = ()
+
+                native_result = None
+                try:
+                    # PDFPage 字符和 drawing 已应用页面字典旋转；Low 的文本角度仍是
+                    # PDF 字符内禀角，因此仅在原生结构恢复入口补回页面旋转。
+                    native_angle = (
+                        _normalize_visual_block_angle(
+                            table_block.get("angle", 0)
+                        )
+                        + pdf_page.rotation
+                    ) % 360
+                    native_result = recover_native_pdf_table(
+                        NativeTableInput(
+                            table_bbox=table_bbox,
+                            page_size=(float(page_width), float(page_height)),
+                            angle=native_angle,
+                            chars=tuple(page_chars_cache[page_idx]),
+                            drawing_lines=page_rules_cache[page_idx],
+                            rectangles=page_rectangles_cache[page_idx],
+                        )
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        "Hybrid low native table recovery failed and fell back to projection: "
+                        f"page_idx={page_idx}, table_idx={table_idx}, error={exc}"
+                    )
+                if native_result is not None:
+                    table_block["content"] = native_result.html
+                else:
+                    table_block["content"] = project_pdf_table_text(
+                        page_chars_cache[page_idx],
+                        table_bbox,
+                        table_block.get("angle", 0),
+                    )
                 if not table_block["content"]:
                     logger.warning(
                         "Hybrid low table text is empty: "
