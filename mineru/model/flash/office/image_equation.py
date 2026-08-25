@@ -11,15 +11,15 @@ import struct
 
 from loguru import logger
 
-from mineru.model.flash.legacy_office.errors import (
+from .legacy.errors import (
     LegacyOfficeResourceLimitError,
 )
-from mineru.model.flash.legacy_office.limits import (
+from .legacy.limits import (
     MAX_ASSET_TOTAL_BYTES,
     MAX_ENTRY_BYTES,
     MAX_PICTURE_RECORDS,
 )
-from mineru.model.flash.legacy_office.mtef import decode_mtef
+from .legacy.mtef import decode_mtef
 
 _PLACEABLE_WMF_MAGIC = b"\xd7\xcd\xc6\x9a"
 _META_ESCAPE = 0x0626
