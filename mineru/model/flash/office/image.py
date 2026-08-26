@@ -25,6 +25,7 @@ VECTOR_IMAGE_CONTENT_TYPES = frozenset(
     }
 )
 PIL_IMAGE_LOAD_ERRORS = (UnidentifiedImageError, OSError, SyntaxError)
+VECTOR_IMAGE_RENDER_DPI: Final = 144
 STANDARD_VECTOR_PLACEHOLDER_SIZE: Final = (320, 180)
 STANDARD_VECTOR_PLACEHOLDER_LINES: Final = (
     "WMF/EMF placeholder",
@@ -172,7 +173,7 @@ def serialize_vector_image_with_placeholder(pil_image: Image.Image, image_format
 
     if is_windows_environment():
         try:
-            pil_image.load()
+            pil_image.load(dpi=VECTOR_IMAGE_RENDER_DPI)
             return image_to_b64str(pil_image, image_format="PNG")
         except PIL_IMAGE_LOAD_ERRORS as e:
             logger.warning(f"Failed to render {image_format} image: {e}, size: {pil_image.size}. Using placeholder instead.")

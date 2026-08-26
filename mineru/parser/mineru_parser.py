@@ -1,5 +1,6 @@
 # Copyright (c) Opendatalab. All rights reserved.
 """统一文档解析器，委托 backend.analyze 处理 PDF、EPUB、图片、CSV 与 Office/RTF/ODF。"""
+
 from __future__ import annotations
 
 import asyncio
@@ -11,7 +12,7 @@ from typing import Any, Literal, cast
 
 from ..backend.analyze import aio_doc_analyze, doc_analyze
 from ..errors import InvalidRequestError
-from ..filetypes import IMAGE_EXTENSIONS
+from ..filetypes import IMAGE_EXTENSIONS, PAGE_RANGE_PARSE_EXTENSIONS
 from ..types import FILE_SUFFIXES, FileSuffix, MiddleJson, ModelJson, PageInfo, Tier
 from .tier import effort_for_tier
 from .base import DocumentParser, ParseResult
@@ -20,6 +21,8 @@ logger = logging.getLogger(__name__)
 
 _Effort = Literal["flash", "medium", "high", "xhigh"]
 _ParseMode = Literal["auto", "txt", "ocr"]
+
+
 @dataclass
 class _PreparedInput:
     """记录文档输入准备结果，避免跨文档复用 parser 实例状态。"""
@@ -116,6 +119,7 @@ class MinerUParser(DocumentParser):
         file_name = path.stem
         file_bytes = path.read_bytes()
         suffix = guess_suffix_by_path(path)
+        source_suffix = suffix
 
         if suffix in IMAGE_EXTENSIONS:
             from ..model.flash.pdf.document import PDFDocument
@@ -141,10 +145,10 @@ class MinerUParser(DocumentParser):
 
         if suffix not in FILE_SUFFIXES:
             raise ValueError(f"Unsupported file type: {suffix or path.suffix or 'unknown'}")
-        if suffix != "pdf" and page_range.strip():
+        if source_suffix not in PAGE_RANGE_PARSE_EXTENSIONS and page_range.strip():
             raise InvalidRequestError(
                 "page_range_invalid",
-                f"Page range is only supported for PDF files; '{suffix}' uses full-document parsing.",
+                f"Page range is only supported for PDF files; '{source_suffix}' uses full-document parsing.",
                 "page_range",
             )
         file_bytes, retained_page_indices, broken_page_indices = self._maybe_adjust_pdf_bytes(

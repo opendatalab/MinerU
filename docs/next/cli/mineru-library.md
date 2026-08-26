@@ -340,7 +340,7 @@ mineru config parsing-rules add "*/论文/*" --tier basic --pages all
 mineru config parsing-rules add "*/合同/*" --tier standard --remote
 ```
 
-parsing-rule 的 `tier`、`page_range` 和 `remote` 只适用于 PDF 和 image。EPUB、Office、HTML 和 CSV 命中规则时忽略这些字段，按 `flash` 整本解析，并且 parse row 记录为 `flash`；其它 text 只入库和索引，不创建 parse row。
+parsing-rule 的 `tier` 和 `remote` 适用于 PDF 和 image，但 `page_range` 只适用于 PDF。image 忽略 page_range 并整文件解析；EPUB、Office、HTML 和 CSV 命中规则时忽略 tier、page_range 和 remote，按 `flash` 整本解析，并且 parse row 记录为 `flash`；其它 text 只入库和索引，不创建 parse row。
 
 PDF/image 命中规则时，系统必须检查本地或远端能力是否支持对应 tier。rule 未指定 tier 时，按 `standard` -> `advanced` -> `basic` -> `flash` 选择可用 tier，并记录实际 tier。完整文件类型归一规则见 [ADR-0024](../decisions/0024-file-type-tier-normalization.md)。
 

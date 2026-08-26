@@ -873,7 +873,7 @@ Use this table for common error codes:
 | `file_type_unsupported` | Format unsupported | Report unsupported type |
 | `file_encrypted` | Password-protected file | Ask user for an unlocked copy |
 | `file_corrupted` | File cannot be read | Ask for a valid copy |
-| `page_range_invalid` | Bad PDF/image `--pages` value, or `--pages` used with a non-PDF Flash input | Correct the range or omit it for full-document parsing |
+| `page_range_invalid` | Bad PDF `--pages` value, or `--pages` used with any non-PDF input | Correct the PDF range or omit it for full-document parsing |
 | `parse_not_required` | The input is a directly readable text file | Read the source file directly; do not retry `mineru parse` |
 | `not_cached` / `cache_miss` | Requested cached content does not exist | Run `mineru parse` |
 

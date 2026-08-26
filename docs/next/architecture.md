@@ -256,7 +256,7 @@ watch 流程也调用同一发现/刷新步骤:
 1. CLI 或 SDK 调用 doclib `POST /parses`。
 2. `ParseService` 先执行文件发现/刷新，确认 path 当前状态。
 3. 如文件需要重新入库，则等待或同步完成入库，获得当前 `sha256`。
-4. 查询 `(sha256, tier)` 下已完成批次，判断 page_range 是否覆盖请求范围。
+4. 查询 `(sha256, tier)` 下已完成批次；PDF 判断 page_range 覆盖，非 PDF 只接受完整整文件 batch。
 5. 缓存命中则返回 `cache_hit=true` 和空 `wait_parse_ids`。
 6. 已有 active parse 覆盖的页复用并提升 `priority`。
 7. 未覆盖页插入新的 `parses` 记录，Agent 请求使用更高 `priority`。
@@ -412,8 +412,9 @@ Watch、parsing-rules 和 exclude 规则也由 CLI 写入 SQLite。Parsing-rules
 | 类型 | 策略 |
 |------|------|
 | 纯文本 | 直接读取，无需模型解析 |
+| Image | 按 tier 路由到默认选择 / flash / basic / standard / advanced，但整文件解析并拒绝显式 page_range |
 | EPUB / Office / HTML / CSV | 本地 CPU Flash 整本解析；显式 page_range 拒绝，EPUB 可增加首页目录 |
-| PDF / Image | 按 tier 路由到默认选择 / flash / basic / standard / advanced |
+| PDF | 按 tier 路由，并支持增量 page_range 解析和缓存 |
 
 ## 9. 错误与恢复
 

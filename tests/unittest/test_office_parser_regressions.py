@@ -1,4 +1,5 @@
 from pathlib import Path
+from unittest.mock import Mock
 
 from pytest import MonkeyPatch
 
@@ -43,6 +44,20 @@ def test_vector_image_part_skip_log_is_debug(monkeypatch: MonkeyPatch) -> None:
     assert len(fake_logger.debug_messages) == 1
     assert "Skipping WMF image part before Pillow load" in fake_logger.debug_messages[0]
     assert fake_logger.warning_messages == []
+
+
+def test_vector_image_windows_render_uses_144_dpi(monkeypatch: MonkeyPatch) -> None:
+    """验证 Windows 下 WMF/EMF 统一按 144 DPI 栅格化。"""
+
+    fake_image = Mock(format="WMF", size=(640, 360))
+    fake_encoder = Mock(return_value="data:image/png;base64,rendered")
+    monkeypatch.setattr(office_image, "is_windows_environment", lambda: True)
+    monkeypatch.setattr(office_image, "image_to_b64str", fake_encoder)
+
+    assert office_image.serialize_vector_image_with_placeholder(fake_image) == "data:image/png;base64,rendered"
+    fake_image.load.assert_called_once_with(dpi=office_image.VECTOR_IMAGE_RENDER_DPI)
+    fake_encoder.assert_called_once_with(fake_image, image_format="PNG")
+    assert office_image.VECTOR_IMAGE_RENDER_DPI == 144
 
 
 def test_docx_nested_ordered_lists_render_with_local_markers() -> None:

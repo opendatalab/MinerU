@@ -36,6 +36,8 @@ TEXT_EXTENSIONS: frozenset[str] = frozenset({"txt", "md", "markdown", "rst", "te
 
 TIERED_PARSE_EXTENSIONS: frozenset[str] = PDF_EXTENSIONS | IMAGE_EXTENSIONS
 
+PAGE_RANGE_PARSE_EXTENSIONS: frozenset[str] = PDF_EXTENSIONS
+
 FLASH_ONLY_PARSE_EXTENSIONS: frozenset[str] = OFFICE_EXTENSIONS | HTML_EXTENSIONS | CSV_EXTENSIONS | EPUB_EXTENSIONS
 
 PARSEABLE_EXTENSIONS: frozenset[str] = TIERED_PARSE_EXTENSIONS | FLASH_ONLY_PARSE_EXTENSIONS
@@ -123,6 +125,11 @@ def mime_type_for_extension(path_or_ext: str | Path, *, default: str = "applicat
 
 def is_tiered_parse_extension(path_or_ext: str | Path) -> bool:
     return normalize_parse_extension(path_or_ext) in TIERED_PARSE_EXTENSIONS
+
+
+def is_page_range_parse_extension(path_or_ext: str | Path) -> bool:
+    """仅允许 PDF 输入使用局部页范围解析。"""
+    return normalize_parse_extension(path_or_ext) in PAGE_RANGE_PARSE_EXTENSIONS
 
 
 def is_flash_only_parse_extension(path_or_ext: str | Path) -> bool:

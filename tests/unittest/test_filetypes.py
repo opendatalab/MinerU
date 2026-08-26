@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+from PIL import Image
+
+from mineru.errors import InvalidRequestError
 from mineru.filetypes import (
     CSV_EXTENSIONS,
     EPUB_EXTENSIONS,
@@ -11,15 +15,38 @@ from mineru.filetypes import (
     MIME_TYPE_BY_EXTENSION,
     ODF_EXTENSIONS,
     OFFICE_EXTENSIONS,
+    PAGE_RANGE_PARSE_EXTENSIONS,
     PARSEABLE_EXTENSIONS,
     TEXT_EXTENSIONS,
     is_flash_only_parse_extension,
+    is_page_range_parse_extension,
 )
 from mineru.kit.common import ensure_supported_inputs, expand_input_paths
+from mineru.parser import parse
 
 
 def test_office_extensions_includes_legacy_binary_formats() -> None:
     assert {"doc", "docx", "ppt", "pptx", "xls", "xlsx", "rtf"} <= OFFICE_EXTENSIONS
+
+
+def test_only_pdf_supports_page_range_parsing() -> None:
+    """验证分页能力与图片的质量 tier/remote 能力相互独立。"""
+    assert PAGE_RANGE_PARSE_EXTENSIONS == frozenset({"pdf"})
+    assert is_page_range_parse_extension("sample.pdf")
+    assert not is_page_range_parse_extension("sample.png")
+    assert not is_page_range_parse_extension("sample.epub")
+
+
+def test_image_parser_rejects_explicit_page_range(tmp_path: Path) -> None:
+    """验证图片在转为内部 PDF 之前按整文件契约拒绝 page_range。"""
+    source = tmp_path / "sample.png"
+    Image.new("RGB", (8, 8), "white").save(source)
+
+    with pytest.raises(InvalidRequestError) as exc_info:
+        parse(source, tier="flash", page_range="1")
+
+    assert exc_info.value.code == "page_range_invalid"
+    assert exc_info.value.param == "page_range"
 
 
 def test_legacy_office_extensions_are_parseable_and_ingestible() -> None:

@@ -19,6 +19,7 @@ from ...filetypes import (
     IMAGE_EXTENSIONS,
     INGESTIBLE_EXTENSIONS,
     OFFICE_EXTENSIONS,
+    PAGE_RANGE_PARSE_EXTENSIONS,
     TEXT_EXTENSIONS,
     TIERED_PARSE_EXTENSIONS,
     file_type_for_extension,
@@ -654,7 +655,9 @@ class ParseService:
         # determine tier and page_range for initial parse
         tier: Tier = "flash"
         privacy = "local"
-        initial_page_range = default_parse_range(page_count)
+        initial_page_range = (
+            default_parse_range(page_count) if ext in PAGE_RANGE_PARSE_EXTENSIONS else expand_page_range(None, page_count or 1)
+        )
 
         # check parsing-rules
         matched = await self.config_svc.match_rules(path, RULE_TYPE_PARSING_RULE)
@@ -669,7 +672,7 @@ class ParseService:
                 tier = "flash"
                 privacy = "local"
             rule_page_range = rule.get("page_range")
-            if rule_page_range and ext in TIERED_PARSE_EXTENSIONS:
+            if rule_page_range and ext in PAGE_RANGE_PARSE_EXTENSIONS:
                 initial_page_range = expand_page_range(rule_page_range, page_count or 1)
 
         # insert parse batch
@@ -734,10 +737,10 @@ class ParseService:
                 "Text files do not require MinerU parsing. Read the file directly.",
                 "path",
             )
-        if page_range and ext not in TIERED_PARSE_EXTENSIONS:
+        if page_range and ext not in PAGE_RANGE_PARSE_EXTENSIONS:
             raise InvalidRequestError(
                 "page_range_invalid",
-                f"Page range is only supported for PDF and image files; '{ext}' uses full-document parsing.",
+                f"Page range is only supported for PDF files; '{ext}' uses full-document parsing.",
                 "page_range",
             )
         if remote and ext not in TIERED_PARSE_EXTENSIONS:
@@ -764,8 +767,8 @@ class ParseService:
             requested_tier = "flash"
 
         # ── expand page range ──
-        default_page_range = default_parse_range(page_count)
-        requested_page_range_input = page_range or default_page_range
+        supports_page_range = ext in PAGE_RANGE_PARSE_EXTENSIONS
+        requested_page_range_input = page_range or (default_parse_range(page_count) if supports_page_range else None)
         request_page_range = expand_page_range(requested_page_range_input, page_count or 1)
         needed_page_numbers = parse_page_range_set(request_page_range)
 
@@ -778,13 +781,15 @@ class ParseService:
                     (sha256, requested_tier, PARSE_STATUS_DONE),
                 ),
             )
-            for batch in done_batches:
-                if not _json_file_exists_by_batch(self.data_dir, sha256, requested_tier, batch):
-                    continue  # JSON gone → cache invalid
-                covered_page_numbers = parse_page_range_set(batch["page_range"])
-                needed_page_numbers -= covered_page_numbers
-
-            if not needed_page_numbers:
+            valid_done_batches = [
+                batch for batch in done_batches if _json_file_exists_by_batch(self.data_dir, sha256, requested_tier, batch)
+            ]
+            if supports_page_range:
+                for batch in valid_done_batches:
+                    needed_page_numbers -= parse_page_range_set(batch["page_range"])
+                if not needed_page_numbers:
+                    return _done_response(sha256, short_id, requested_tier, request_page_range)
+            elif any(needed_page_numbers <= parse_page_range_set(batch["page_range"]) for batch in valid_done_batches):
                 return _done_response(sha256, short_id, requested_tier, request_page_range)
 
         # ── step 2: remove page numbers covered by pending/parsing batches ──
@@ -797,13 +802,17 @@ class ParseService:
             ),
         )
         if active_batches:
-            active_covered_page_numbers: set[int] = set()
-            for batch in active_batches:
-                covered_page_numbers = parse_page_range_set(batch["page_range"])
-                if needed_page_numbers & covered_page_numbers:
-                    reused_parse_ids.append(batch["id"])
-                active_covered_page_numbers |= covered_page_numbers
-            needed_page_numbers -= active_covered_page_numbers
+            if supports_page_range:
+                active_covered_page_numbers: set[int] = set()
+                for batch in active_batches:
+                    covered_page_numbers = parse_page_range_set(batch["page_range"])
+                    if needed_page_numbers & covered_page_numbers:
+                        reused_parse_ids.append(batch["id"])
+                    active_covered_page_numbers |= covered_page_numbers
+                needed_page_numbers -= active_covered_page_numbers
+            else:
+                reused_parse_ids = [batch["id"] for batch in active_batches]
+                needed_page_numbers.clear()
 
             # bump priority for reused in-progress batches
             now = _now_ms()
@@ -829,7 +838,7 @@ class ParseService:
                 )
 
         # ── step 3: enqueue remaining uncovered page numbers ──
-        uncovered_page_range = _page_numbers_to_range_str(needed_page_numbers)
+        uncovered_page_range = _page_numbers_to_range_str(needed_page_numbers) if supports_page_range else request_page_range
         now = _now_ms()
         parse_id = await self.db.execute_insert(
             "INSERT INTO parses (sha256, tier, page_range, status, privacy, priority, created_at, updated_at) "
@@ -918,6 +927,7 @@ class ParseService:
                 error_code="file_type_unsupported",
             )
             return False
+        file_ext = file_row.get("ext") or Path(file_row["path"]).suffix.lower().lstrip(".")
 
         output_dir = os.path.join(self.data_dir, "parsed", sha256[:2], sha256, tier)
 
@@ -993,9 +1003,16 @@ class ParseService:
             await self._record_parse_task_finished(task_start_ms, tier=tier, status="failed", error_code="parse_failed")
             return False
 
+        persisted_page_range = page_range
+        full_document_page_count: int | None = None
+        if file_ext not in PAGE_RANGE_PARSE_EXTENSIONS:
+            actual_page_numbers = {page.page_idx + 1 for page in result.pages}
+            persisted_page_range = _page_numbers_to_range_str(actual_page_numbers)
+            full_document_page_count = max(actual_page_numbers)
+
         # save per-batch JSON (markdown is generated on read from /docs/{doc_ref}/content)
         done_at_ms = _now_ms()
-        json_path = os.path.join(output_dir, _safe_filename(page_range, done_at_ms))
+        json_path = os.path.join(output_dir, _safe_filename(persisted_page_range, done_at_ms))
         write_start_ms = _now_ms()
         try:
             os.makedirs(output_dir, exist_ok=True)
@@ -1008,7 +1025,7 @@ class ParseService:
                 task["id"],
                 file_row["path"],
                 tier,
-                page_range,
+                persisted_page_range,
                 exc,
                 exc_info=(type(exc), exc, exc.__traceback__),
             )
@@ -1038,11 +1055,16 @@ class ParseService:
 
             # update docs metadata (tier-gated)
             await self._maybe_update_docs_meta(sha256, tier)
+            if full_document_page_count is not None:
+                await self.db.execute(
+                    "UPDATE docs SET page_count=?, updated_at=? WHERE sha256=?",
+                    (full_document_page_count, done_at_ms, sha256),
+                )
 
             # mark done
             await self.db.execute(
-                "UPDATE parses SET status=?, done_at=?, locked_at=NULL, via=?, updated_at=? WHERE id=?",
-                (PARSE_STATUS_DONE, done_at_ms, via, done_at_ms, task["id"]),
+                "UPDATE parses SET status=?, page_range=?, done_at=?, locked_at=NULL, via=?, updated_at=? WHERE id=?",
+                (PARSE_STATUS_DONE, persisted_page_range, done_at_ms, via, done_at_ms, task["id"]),
             )
         except Exception as exc:
             await self._fail_task(task["id"], "parse_json_write_failed", str(exc)[:500])
@@ -1077,7 +1099,8 @@ class ParseService:
         """Parse via local library call."""
         from ...parser import parse
 
-        parser_page_range = page_range if file_row["ext"] in TIERED_PARSE_EXTENSIONS else ""
+        file_ext = file_row.get("ext") or Path(file_row["path"]).suffix.lower().lstrip(".")
+        parser_page_range = page_range if file_ext in PAGE_RANGE_PARSE_EXTENSIONS else ""
         result = await asyncio.to_thread(
             parse,
             file_row["path"],
@@ -1108,7 +1131,9 @@ class ParseService:
             include_images=Path(file_row["path"]).suffix.lower().lstrip(".") in OFFICE_EXTENSIONS,
         )
         try:
-            result = await parser.parse_async(file_row["path"], page_range=page_range)
+            file_ext = file_row.get("ext") or Path(file_row["path"]).suffix.lower().lstrip(".")
+            parser_page_range = page_range if file_ext in PAGE_RANGE_PARSE_EXTENSIONS else ""
+            result = await parser.parse_async(file_row["path"], page_range=parser_page_range)
         except _APITransportError as exc:
             if via == "remote":
                 code = "remote_timeout" if exc.timed_out else "remote_unreachable"
@@ -1120,7 +1145,8 @@ class ParseService:
                 code,
                 f"{target} transport failed during {exc.stage} after {exc.attempts} attempt(s) ({type(exc.cause).__name__}).",
             ) from exc
-        _remap_api_result_pages_to_page_range(result, page_range)
+        if file_ext in PAGE_RANGE_PARSE_EXTENSIONS:
+            _remap_api_result_pages_to_page_range(result, page_range)
         return result, via
 
     @staticmethod

@@ -227,7 +227,7 @@ class DocumentParser(ABC):
         path:
             Path to the document file.
         page_range:
-            1-based page range string (``"1~5,-3~-1"``).  Empty means all pages.
+            PDF-only 1-based page range string (``"1~5,-3~-1"``).  Empty means all pages.
         """
 
     async def parse_async(self, path: str | Path, *, page_range: str = "") -> ParseResult:

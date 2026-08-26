@@ -49,7 +49,7 @@ mineru parse <file> [flags]
 | Flag | 类型 | 默认 | 说明 |
 |------|------|------|------|
 | `--tier` | `flash` / `basic` / `standard` / `advanced` | 不传 | 解析 tier；省略时由服务端决定；语义见 [解析 Tier](../tiers.md) |
-| `-p, --pages` | range | 不传 | PDF/图片的页码范围；非 PDF Flash 输入不支持该参数 |
+| `-p, --pages` | range | 不传 | 仅 PDF 支持的页码范围；图片及其他非 PDF 输入不支持该参数 |
 | `--after` | cursor | 不传 | 从服务端返回的 cursor 继续读取 |
 | `--limit` | int | `30000` | STDOUT 内容软字符上限 |
 | `--force` | bool | false | 跳过 done 缓存；复用 active parse 或为未覆盖页创建新 parse；不删除或作废旧缓存 |
@@ -95,7 +95,7 @@ PDF/image 的默认选择策略通过当前目标 parse-server 的能力发现�
 
 默认 STDOUT 输出应适合 Agent context。长文档不一次性输出全文，而是输出有限范围，并通过 marker 指示如何继续。
 
-当前 CLI 不在命令层硬编码默认页码范围；PDF/图片不传 `--pages` 时由 doclib 的内容读取计划决定首次返回范围。非 PDF Flash 输入始终整本解析，显式传入 `--pages` 返回 `page_range_invalid`。
+当前 CLI 不在命令层硬编码默认页码范围；PDF 不传 `--pages` 时由 doclib 的内容读取计划决定首次返回范围。图片及其他非 PDF 输入始终整文件解析，显式传入 `--pages` 返回 `page_range_invalid`。
 
 分页文档使用物理页码：
 

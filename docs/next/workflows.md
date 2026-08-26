@@ -521,7 +521,7 @@ PDF 和 image block 图片通常在读取时从源页面按 bbox 裁剪，不写
 (sha256, tier)
 ```
 
-页码范围由 `parses.page_range` 和对应 JSON 文件共同表达。请求某个页码范围时，doclib 会:
+页码范围由 `parses.page_range` 和对应 JSON 文件共同表达。只有 PDF 使用增量页范围缓存；图片及其他非 PDF 输入仍用实际逻辑页范围命名产物，但整个文件始终对应一个原子 batch。请求 PDF 页码范围时，doclib 会:
 
 1. 查询同一 `sha256 + tier` 下已完成批次。
 2. 忽略已经 invalidate 的批次。
@@ -530,7 +530,7 @@ PDF 和 image block 图片通常在读取时从源页面按 bbox 裁剪，不写
 5. 对未覆盖的页创建新的 parse 任务。
 6. 如果页码已经被 pending / parsing 批次覆盖，则提升优先级，而不是重复创建任务。
 
-这意味着同一个文档可以多轮解析不同页，最终由多个 JSON 批次共同覆盖用户需要的页码集合。
+这意味着同一个 PDF 可以多轮解析不同页，最终由多个 JSON 批次共同覆盖用户需要的页码集合。非 PDF 的历史 partial batch 不参与缺页差集计算；缓存不完整时重新排一个整文件任务。
 
 `--force` 会跳过第 4 步的 done 缓存命中判断，但仍可复用已经覆盖请求页码的 active parse。它不会删除或作废旧 done 批次。若 force 关联的 wait parse 失败，旧批次仍可继续用于读取和搜索，但本次 force 请求应显示为失败。
 
@@ -543,10 +543,11 @@ compaction 负责:
 1. 扫描同一 `sha256 + tier` 下多个有效 done 批次。
 2. 合并相邻或重叠的页码范围。
 3. 读取旧批次 JSON。
-4. 按 `page_idx` 收集页面内容；如果同一页出现多次，`done_at` 较新的有效批次覆盖较旧批次。
-5. 删除旧 JSON 文件。
-6. 为合并后的页码范围写出新的 JSON 文件。
+4. 用 JSON 中的实际 `page_idx` 扩充历史记录不足的范围，完整写入新缓存后再删除旧文件。
+5. 按 `page_idx` 收集页面内容；如果同一页出现多次，`done_at` 较新的有效批次覆盖较旧批次。
+6. 为合并后的页码范围预写并原子提升新的 JSON 文件。
 7. 用较少的 done parse row 替代旧 row。
+8. 删除未被新 row 引用的旧 JSON 文件。
 
 已 invalidate 的批次不参与 compaction 的页面选择；其 JSON 文件可以由 cleanup 或 compaction 的清理阶段删除。
 

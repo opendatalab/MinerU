@@ -121,7 +121,7 @@ Tier 语义见 [解析 Tier](tiers.md)。本节定义 `flash`、`basic`、`stand
 | `invalid_request_error` | `invalid_request` | 400 | 否 | 出错参数 | 参数格式或组合非法 |
 | `invalid_request_error` | `unsupported_output_format` | 400 | 否 | `output_formats` | 输出格式不支持 |
 | `invalid_request_error` | `unsupported_source` | 400 | 否 | `source` | 当前部署不支持该 source 类型或 source 策略 |
-| `invalid_request_error` | `page_range_invalid` | 400 | 否 | `page_range` | 页码范围格式非法、超出文档页数，或对仅支持整本解析的非 PDF Flash 输入指定范围 |
+| `invalid_request_error` | `page_range_invalid` | 400 | 否 | `page_range` | PDF 页码范围格式非法或超出页数，或对图片及其他非 PDF 输入指定范围 |
 | `invalid_request_error` | `file_type_unsupported` | 400 | 否 | `file` | 文件类型不支持 |
 | `invalid_request_error` | `file_encrypted` | 400 | 否 | `file` | 文件加密或受密码保护 |
 | `invalid_request_error` | `file_corrupted` | 400 | 否 | `file` | 文件损坏无法读取 |

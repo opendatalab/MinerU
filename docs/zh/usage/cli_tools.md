@@ -28,7 +28,7 @@ Options:
   --help                          显示帮助信息
 ```
 > [!TIP]
-> `mineru` 当前支持本地 `PDF`、`EPUB`、图片、`CSV`、`RTF`、`DOCX`、`PPTX`、`XLSX`、`ODT`、`ODS`、`ODP` 文件或目录输入。非 PDF Flash 格式只支持整本解析；EPUB 页面严格遵循 OPF spine 顺序，并保留作者目录中可解析的内部跳转。
+> `mineru` 当前支持本地 `PDF`、`EPUB`、图片、`CSV`、`RTF`、`DOCX`、`PPTX`、`XLSX`、`ODT`、`ODS`、`ODP` 文件或目录输入。只有 PDF 接受页范围；其他输入均按一个完整文件解析和缓存，但各格式自身的边界仍作为结构化输出中的逻辑页保留。EPUB 页面严格遵循 OPF spine 顺序，并保留作者目录中可解析的内部跳转。
 
 ```bash
 mineru-api --help

@@ -60,7 +60,7 @@ Job 状态:
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|:--:|------|
 | `source` | object | 是 | 文件来源。 |
-| `page_range` | string | 否 | 针对单个 PDF/图片文件的页码范围；非 PDF Flash 输入显式传入时返回 `page_range_invalid`。 |
+| `page_range` | string | 否 | 仅针对单个 PDF 文件的页码范围；图片及其他非 PDF 输入显式传入时返回 `page_range_invalid`。 |
 
 ### Source 类型
 
@@ -122,7 +122,7 @@ Local Parse Server 的 source 策略由启动参数决定:
 
 | 字段 | 类型 | 默认 | 说明 |
 |------|------|------|------|
-| `page_range` | string | `null` | PDF/图片页码范围。省略或传 `null` 表示解析整个文件；非 PDF Flash 输入只允许省略或传 `null`。推荐 `~` 分隔，如 `1~10`、`1,3,5~7`、`-5~-1`。 |
+| `page_range` | string | `null` | PDF 页码范围。省略或传 `null` 表示解析整个文件；图片及其他非 PDF 输入只允许省略或传 `null`。推荐 `~` 分隔，如 `1~10`、`1,3,5~7`、`-5~-1`。 |
 
 OCR 策略和图片分析能力由 `tier` 与服务端实际引擎自动决定，客户端不能通过文件级参数单独关闭或开启。
 
