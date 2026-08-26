@@ -9,12 +9,18 @@ from PIL import Image
 import pytest
 from lxml import etree
 
+from mineru.model.flash._shared.hyperlink import (
+    OFFICE_EXTERNAL_HYPERLINK_SCHEMES,
+    render_inline_hyperlink,
+    sanitize_hyperlink_target,
+)
 from mineru.model.flash._shared.image import image_to_b64str, image_to_bytes
 from mineru.model.flash._shared.mathml import mathml_to_latex
 from mineru.model.flash.office.doc import records as doc_records
 from mineru.model.flash.office.legacy.binary import bounded_slice, get_f64, get_i16, get_u16, get_u32
 from mineru.model.flash.office.opc import relationship_source_base_dir, write_zip_package
 from mineru.model.flash.office.ppt import records as ppt_records
+from mineru.model.flash.office.rich_text import OfficeRichTextSegment, build_rich_text_from_segments
 from mineru.model.flash.office.xls import records as xls_records
 
 
@@ -68,6 +74,52 @@ def test_mathml_annotation_scan_skips_non_element_nodes(extra_node: str) -> None
     )
 
     assert mathml_to_latex(math) == "x^2"
+
+
+@pytest.mark.parametrize(
+    ("target", "expected"),
+    [
+        ("https://example.com/path", "https://example.com/path"),
+        ("mailto:user@example.com", "mailto:user@example.com"),
+        ("#anchor", "#anchor"),
+        ("../relative/path", "../relative/path"),
+        ("javascript:alert(1)", None),
+        ("file:///tmp/local", None),
+        ("//example.com/path", None),
+        (r"C:\local\file", None),
+        ("https:///missing-host", None),
+        ("https://example.com/a\x01b", None),
+    ],
+)
+def test_shared_hyperlink_policy_rejects_active_and_local_targets(target: str, expected: str | None) -> None:
+    """验证共享策略统一处理外链、fragment、相对路径和危险目标。"""
+    assert (
+        sanitize_hyperlink_target(
+            target,
+            allowed_schemes=OFFICE_EXTERNAL_HYPERLINK_SCHEMES,
+            allow_relative=True,
+            allow_fragment=True,
+        )
+        == expected
+    )
+
+
+def test_shared_hyperlink_protocol_escapes_url_and_rich_text_labels() -> None:
+    """验证共享协议构造不会由 URL 或 Office 标签文本重建内部标记。"""
+    assert render_inline_hyperlink("safe", "https://example.com/?a=1&b=2") == (
+        "<hyperlink>safe<url>https://example.com/?a=1&amp;b=2</url></hyperlink>"
+    )
+    unsafe = build_rich_text_from_segments(
+        [OfficeRichTextSegment("<hyperlink>click</hyperlink>", hyperlink="javascript:alert(1)")]
+    )
+    safe = build_rich_text_from_segments(
+        [OfficeRichTextSegment("<b>click</b>", style="bold", hyperlink="https://example.com/?a=1&b=2")]
+    )
+
+    assert unsafe == "&lt;hyperlink&gt;click&lt;/hyperlink&gt;"
+    assert safe == (
+        '<hyperlink><text style="bold">&lt;b&gt;click&lt;/b&gt;</text><url>https://example.com/?a=1&amp;b=2</url></hyperlink>'
+    )
 
 
 def test_legacy_binary_readers_preserve_bounds_and_values() -> None:

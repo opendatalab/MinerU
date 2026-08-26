@@ -8,11 +8,11 @@ from dataclasses import dataclass, replace
 import struct
 from typing import Iterable
 import unicodedata
-from urllib.parse import urlparse
 import zlib
 
 from loguru import logger
 
+from ..._shared.hyperlink import sanitize_hyperlink_target
 from ..errors import (
     LegacyOfficeEncryptedError,
     LegacyOfficeMalformedError,
@@ -399,16 +399,6 @@ def _decode_text_atom(record: PptRecord) -> str | None:
     return None
 
 
-def _safe_hyperlink_target(target: str) -> str | None:
-    """仅允许公开输出中可安全表达的外部链接 scheme。"""
-
-    normalized = target.strip()
-    if not normalized:
-        return None
-    scheme = urlparse(normalized).scheme.lower()
-    return normalized if scheme in _ALLOWED_LINK_SCHEMES else None
-
-
 def _hyperlink_targets(document: PptRecord, budget: RecordBudget) -> dict[int, str]:
     """建立 ExHyperlinkId 到安全外链目标的映射。"""
 
@@ -425,7 +415,7 @@ def _hyperlink_targets(document: PptRecord, budget: RecordBudget) -> dict[int, s
                 strings.append(utf16_text(child.payload))
         if link_id is None or not strings:
             continue
-        safe_target = _safe_hyperlink_target(strings[-1])
+        safe_target = sanitize_hyperlink_target(strings[-1], allowed_schemes=_ALLOWED_LINK_SCHEMES)
         if safe_target is None:
             logger.warning(f"PPT_UNSAFE_HYPERLINK: hyperlink id={link_id} was downgraded")
             continue

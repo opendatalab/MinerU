@@ -7,7 +7,6 @@ import collections
 import html
 from collections.abc import Iterator
 from typing import Any
-from urllib.parse import urlparse
 
 from loguru import logger
 from openpyxl.cell.rich_text import CellRichText
@@ -15,6 +14,7 @@ from openpyxl.workbook.workbook import Workbook
 from openpyxl.worksheet.worksheet import Worksheet
 
 from .....types import BlockType
+from ..._shared.hyperlink import OFFICE_EXTERNAL_HYPERLINK_SCHEMES, sanitize_hyperlink_target
 from .html import EQUATION_BOOKENDS, render_spreadsheet_table
 from .models import AnchoredBlock, DataRegion, ExcelCell, ExcelTable, FormulaMap, SheetImage
 
@@ -836,24 +836,6 @@ class SpreadsheetProjector:
         return ""
 
     @staticmethod
-    def _sanitize_hyperlink_target(target: str) -> str:
-        """仅保留允许 scheme 的超链接并转义属性字符。"""
-        href = target.strip()
-        if not href:
-            return ""
-
-        if href.lower().startswith(("javascript:", "data:", "vbscript:")):
-            return ""
-
-        parsed = urlparse(href)
-        allowed_schemes = {"http", "https", "mailto", "ftp"}
-        scheme = parsed.scheme.lower() if parsed.scheme else ""
-        if scheme and scheme not in allowed_schemes:
-            return ""
-
-        return html.escape(href, quote=True)
-
-    @staticmethod
     def _apply_inline_font_tags(text_html: str, inline_font: Any) -> str:
         """按 openpyxl 行内字体顺序包装可见 HTML 标签。"""
         if not text_html or inline_font is None:
@@ -884,7 +866,13 @@ class SpreadsheetProjector:
         if cell.value is None:
             return "", False
 
-        link_target = self._sanitize_hyperlink_target(self._get_cell_hyperlink_target(cell))
+        safe_target = sanitize_hyperlink_target(
+            self._get_cell_hyperlink_target(cell),
+            allowed_schemes=OFFICE_EXTERNAL_HYPERLINK_SCHEMES,
+            allow_relative=True,
+            allow_fragment=True,
+        )
+        link_target = html.escape(safe_target, quote=True) if safe_target else ""
 
         if isinstance(cell.value, CellRichText):
             html_parts = []

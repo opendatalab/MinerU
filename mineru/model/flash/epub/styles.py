@@ -119,6 +119,14 @@ def _local_name(element: etree._Element) -> str:
     return etree.QName(element).localname.casefold()
 
 
+def _numeric_font_weight(value: str) -> int | None:
+    """在整数转换前解析 CSS Fonts 允许的一到一千字重。"""
+    if not value.isascii() or not value.isdigit() or len(value) > 4:
+        return None
+    weight = int(value)
+    return weight if 1 <= weight <= 1_000 else None
+
+
 def _parse_declarations(value: str) -> tuple[TextStyleDelta, bool | None]:
     """从声明串提取字体语义和 display/visibility 隐藏状态。"""
     bold = italic = underline = strikethrough = superscript = subscript = None
@@ -130,7 +138,12 @@ def _parse_declarations(value: str) -> tuple[TextStyleDelta, bool | None]:
         name = name.strip().casefold()
         normalized = raw_value.split("!important", 1)[0].strip().casefold()
         if name == "font-weight":
-            bold = normalized in {"bold", "bolder"} or normalized.isdigit() and int(normalized) >= 600
+            if normalized in {"bold", "bolder"}:
+                bold = True
+            elif normalized in {"normal", "lighter"}:
+                bold = False
+            elif (weight := _numeric_font_weight(normalized)) is not None:
+                bold = weight >= 600
         elif name == "font-style":
             italic = normalized in {"italic", "oblique"}
         elif name in {"text-decoration", "text-decoration-line"}:

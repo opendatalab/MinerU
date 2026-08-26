@@ -2,6 +2,13 @@
 from dataclasses import dataclass
 from typing import Any, Optional
 
+from .._shared.hyperlink import (
+    OFFICE_EXTERNAL_HYPERLINK_SCHEMES,
+    escape_inline_protocol_text,
+    render_inline_hyperlink,
+    sanitize_hyperlink_target,
+)
+
 VISIBLE_SPACE_STYLES = {"underline", "emphasis", "strikethrough"}
 
 
@@ -158,19 +165,25 @@ def format_text_tag(
     """生成 Office 内部富文本 text 标签；无样式普通文本默认不包标签。"""
     if not text:
         return text
+    escaped_text = escape_inline_protocol_text(text).replace("\r\n", "\n").replace("\r", "\n")
     if style_str:
-        return f'<text style="{style_str}">{text}</text>'
+        return f'<text style="{style_str}">{escaped_text}</text>'
     if force_tag:
-        return f"<text>{text}</text>"
-    return text
+        return f"<text>{escaped_text}</text>"
+    return escaped_text
 
 
 def is_valid_hyperlink_target(hyperlink: Any) -> bool:
     """判断超链接目标是否可作为真实链接输出。"""
-    if hyperlink is None:
-        return False
-    hyperlink_str = str(hyperlink)
-    return bool(hyperlink_str and hyperlink_str.strip() and hyperlink_str != ".")
+    return (
+        sanitize_hyperlink_target(
+            hyperlink,
+            allowed_schemes=OFFICE_EXTERNAL_HYPERLINK_SCHEMES,
+            allow_relative=True,
+            allow_fragment=True,
+        )
+        is not None
+    )
 
 
 def format_text_with_hyperlink(
@@ -181,23 +194,34 @@ def format_text_with_hyperlink(
     """按 Office 内部约定输出带样式/超链接的文本片段。"""
     if not text:
         return text
-    if not is_valid_hyperlink_target(hyperlink):
+    safe_target = sanitize_hyperlink_target(
+        hyperlink,
+        allowed_schemes=OFFICE_EXTERNAL_HYPERLINK_SCHEMES,
+        allow_relative=True,
+        allow_fragment=True,
+    )
+    if safe_target is None:
         return format_text_tag(text, style_str)
 
     text_tag = format_text_tag(text, style_str, force_tag=True)
-    return f"<hyperlink>{text_tag}<url>{hyperlink}</url></hyperlink>"
+    return render_inline_hyperlink(text_tag, safe_target)
 
 
 def _format_hyperlink_segments(group: list[OfficeRichTextSegment]) -> str:
     """将连续同 URL 的多个片段渲染成单个 hyperlink 标签。"""
     if not group:
         return ""
-    hyperlink = group[0].hyperlink
-    if not is_valid_hyperlink_target(hyperlink):
+    safe_target = sanitize_hyperlink_target(
+        group[0].hyperlink,
+        allowed_schemes=OFFICE_EXTERNAL_HYPERLINK_SCHEMES,
+        allow_relative=True,
+        allow_fragment=True,
+    )
+    if safe_target is None:
         return "".join(format_text_tag(segment.text, _style_str(segment.style)) for segment in group if segment.text)
 
     text_tags = [format_text_tag(segment.text, _style_str(segment.style), force_tag=True) for segment in group if segment.text]
-    return f"<hyperlink>{''.join(text_tags)}<url>{hyperlink}</url></hyperlink>"
+    return render_inline_hyperlink("".join(text_tags), safe_target)
 
 
 def format_hyperlink_group(
@@ -295,7 +319,12 @@ def build_rich_text_from_segments(
         OfficeRichTextSegment(
             segment.text,
             _style_str(segment.style),
-            str(segment.hyperlink) if segment.hyperlink is not None else None,
+            sanitize_hyperlink_target(
+                segment.hyperlink,
+                allowed_schemes=OFFICE_EXTERNAL_HYPERLINK_SCHEMES,
+                allow_relative=True,
+                allow_fragment=True,
+            ),
         )
         for segment in segments
         if segment.text is not None and segment.text != ""

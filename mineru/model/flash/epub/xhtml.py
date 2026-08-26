@@ -8,12 +8,12 @@ import hashlib
 import html
 import re
 from dataclasses import dataclass
-from urllib.parse import urlsplit
 
 from lxml import etree  # type: ignore[reportMissingImports]
 
 from ....types import BlockType
 from ....utils.image_payload import parse_image_data_uri_strict
+from .._shared.hyperlink import render_inline_hyperlink, sanitize_hyperlink_target
 from .._shared.mathml import mathml_to_latex
 from .constants import IMAGE_MEDIA_BY_EXTENSION, SVG_MEDIA_TYPE
 from .package import EpubPackage
@@ -73,7 +73,6 @@ _SKIPPED_TAGS = frozenset(
         "video",
     }
 )
-_SAFE_EXTERNAL_SCHEMES = frozenset({"http", "https", "mailto", "tel"})
 _INDIVIDUAL_NOTE_TYPE_ORDER = ("footnote", "endnote", "rearnote")
 _INDIVIDUAL_NOTE_ROLE_ORDER = ("doc-footnote", "doc-endnote")
 _INDIVIDUAL_NOTE_TYPES = frozenset(_INDIVIDUAL_NOTE_TYPE_ORDER)
@@ -339,14 +338,13 @@ class EpubAnchorRegistry:
 
     def resolve_anchor(self, href: str, *, base_part: str) -> str | None:
         """解析指向正文标题或 note 的 EPUB 包内链接，并返回不带井号的 anchor。"""
-        normalized = (href or "").strip()
-        if not normalized or any(ord(char) < 32 for char in normalized) or any(char in normalized for char in ("<", ">")):
-            return None
-        try:
-            split = urlsplit(normalized)
-        except ValueError:
-            return None
-        if split.scheme or split.netloc or normalized.startswith(("//", "\\")):
+        normalized = sanitize_hyperlink_target(
+            href,
+            allowed_schemes=(),
+            allow_relative=True,
+            allow_fragment=True,
+        )
+        if normalized is None:
             return None
         target = self._package.resolve_reference(normalized, base_part=base_part)
         if target is None:
@@ -355,24 +353,10 @@ class EpubAnchorRegistry:
 
     def resolve_link(self, href: str, *, base_part: str) -> str | None:
         """解析安全外部链接或指向已输出标题/note 的 EPUB 内部链接。"""
-        normalized = (href or "").strip()
-        if not normalized or any(ord(char) < 32 for char in normalized) or any(char in normalized for char in ("<", ">")):
-            return None
-        try:
-            split = urlsplit(normalized)
-        except ValueError:
-            return None
-        if split.scheme:
-            if split.scheme.casefold() not in _SAFE_EXTERNAL_SCHEMES:
-                return None
-            if split.scheme.casefold() in {"http", "https"}:
-                try:
-                    if not split.netloc or split.hostname is None:
-                        return None
-                except ValueError:
-                    return None
-            return normalized
-        anchor = self.resolve_anchor(normalized, base_part=base_part)
+        external = sanitize_hyperlink_target(href)
+        if external is not None:
+            return external
+        anchor = self.resolve_anchor(href, base_part=base_part)
         return f"#{anchor}" if anchor else None
 
 
@@ -549,10 +533,7 @@ class EpubChapterConverter:
             href = element.get("href") or element.get(_XLINK_HREF) or ""
             target = self.anchors.resolve_link(href, base_part=self.chapter_path)
             if target and content.strip():
-                return (
-                    f"<hyperlink>{content}<url>{html.escape(target, quote=False)}</url></hyperlink>",
-                    extras,
-                )
+                return render_inline_hyperlink(content, target), extras
         return content, extras
 
     @staticmethod

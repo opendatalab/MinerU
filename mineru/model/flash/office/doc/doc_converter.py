@@ -145,9 +145,9 @@ class DocConverter:
                 continue
             segments.append(
                 OfficeRichTextSegment(
-                    text=escape(run.text, quote=False).replace("\n", "<br/>"),
+                    text=run.text,
                     style=cls._style_names(run.style),
-                    hyperlink=escape(run.hyperlink, quote=True) if run.hyperlink else None,
+                    hyperlink=run.hyperlink,
                 )
             )
         flush_segments()

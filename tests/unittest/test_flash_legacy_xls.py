@@ -10,6 +10,7 @@ import pytest
 
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
 from mineru.model.flash import XlsModel
+from mineru.model.flash._shared.hyperlink import OFFICE_EXTERNAL_HYPERLINK_SCHEMES, sanitize_hyperlink_target
 from mineru.model.flash.office.errors import (
     LegacyOfficeEncryptedError,
     LegacyOfficeMissingPartError,
@@ -17,7 +18,6 @@ from mineru.model.flash.office.errors import (
 )
 from mineru.model.flash.office.limits import MAX_RECORDS
 from mineru.model.flash.office.xls import xls_converter as xls_converter_module
-from mineru.model.flash.office.xls import parser as xls_parser
 from mineru.model.flash.office.xls.number_format import format_number, format_text
 from mineru.model.flash.office.xls.records import RecordBudget
 from mineru.parser import parse
@@ -184,11 +184,16 @@ def test_xls_text_format_and_unsafe_hyperlink_fallback() -> None:
     )
     pages = XlsModel().predict(BytesIO(build_xls([SheetFixture("Data", records)])))
     assert pages == [[{"type": BlockType.TEXT, "content": "unsafe"}]]
-    assert xls_parser._sanitize_hyperlink_target("mailto:user@example.test") == ("mailto:user@example.test")
-    assert xls_parser._sanitize_hyperlink_target("#Sheet2!A1") == "#Sheet2!A1"
-    assert xls_parser._sanitize_hyperlink_target("../relative/path") == "../relative/path"
-    assert xls_parser._sanitize_hyperlink_target("file:///tmp/local.xls") is None
-    assert xls_parser._sanitize_hyperlink_target("custom:payload") is None
+    policy = {
+        "allowed_schemes": OFFICE_EXTERNAL_HYPERLINK_SCHEMES,
+        "allow_relative": True,
+        "allow_fragment": True,
+    }
+    assert sanitize_hyperlink_target("mailto:user@example.test", **policy) == "mailto:user@example.test"
+    assert sanitize_hyperlink_target("#Sheet2!A1", **policy) == "#Sheet2!A1"
+    assert sanitize_hyperlink_target("../relative/path", **policy) == "../relative/path"
+    assert sanitize_hyperlink_target("file:///tmp/local.xls", **policy) is None
+    assert sanitize_hyperlink_target("custom:payload", **policy) is None
 
 
 def test_xls_filepass_and_broken_boundsheet_behaviors() -> None:

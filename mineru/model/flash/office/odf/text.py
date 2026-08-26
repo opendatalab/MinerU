@@ -9,11 +9,14 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
-from urllib.parse import urlsplit
 
 from lxml import etree  # type: ignore[reportMissingImports]
 
 from .....types import BlockType
+from ..._shared.hyperlink import (
+    escape_inline_protocol_text,
+    sanitize_hyperlink_target,
+)
 from ..._shared.mathml import mathml_to_latex
 from ..._shared.image import image_to_b64str
 from ..image import create_text_placeholder, serialize_office_image
@@ -37,7 +40,6 @@ from .table import OdfTableExpansionBudget, parse_table_grid, table_grid_to_html
 
 
 _WHITESPACE_RE = re.compile(r"[\t\r\n ]+")
-_SAFE_EXTERNAL_HYPERLINK_SCHEMES = frozenset({"http", "https", "mailto", "tel"})
 
 
 @dataclass(slots=True)
@@ -69,40 +71,6 @@ def _clean_xml_text(value: str | None) -> str:
     if not value:
         return ""
     return _WHITESPACE_RE.sub(" ", value)
-
-
-def _escape_href(value: str) -> str:
-    """转义进入 HTML href 属性的 ODF 链接值。"""
-    return html.escape(value, quote=True)
-
-
-def _safe_hyperlink(value: str | None) -> str | None:
-    """保留安全相对链接与允许协议，拒绝活动协议和协议相对地址。"""
-    if value is None:
-        return None
-    normalized = value.strip()
-    if not normalized or any(ord(char) < 32 for char in normalized) or any(char in normalized for char in ("<", ">")):
-        return None
-    if normalized.startswith(("//", "\\")):
-        return None
-    try:
-        parsed = urlsplit(normalized)
-    except ValueError:
-        return None
-    scheme = parsed.scheme.casefold()
-    if not scheme:
-        return normalized
-    if scheme not in _SAFE_EXTERNAL_HYPERLINK_SCHEMES:
-        return None
-    if scheme in {"http", "https"}:
-        try:
-            if not parsed.netloc or parsed.hostname is None:
-                return None
-        except ValueError:
-            return None
-    elif not parsed.path:
-        return None
-    return normalized
 
 
 def _paragraph_anchor(paragraph: etree._Element) -> str | None:
@@ -170,7 +138,7 @@ def render_atoms_to_html(atoms: Sequence[InlineAtom]) -> str:
         if isinstance(atom, InlineText):
             rendered = _style_html(html.escape(atom.text), atom.style)
             if atom.hyperlink:
-                rendered = f'<a href="{_escape_href(atom.hyperlink)}">{rendered}</a>'
+                rendered = f'<a href="{html.escape(atom.hyperlink, quote=True)}">{rendered}</a>'
             parts.append(rendered)
         elif isinstance(atom, InlineMath):
             parts.append(f"<eq>{html.escape(atom.latex)}</eq>")
@@ -212,13 +180,13 @@ def render_atoms_to_model(atoms: Sequence[InlineAtom], *, trim_edges: bool = Fal
     for atom in atoms:
         if isinstance(atom, InlineText):
             style_names = atom.style.names()
-            hyperlink = html.escape(atom.hyperlink, quote=False) if atom.hyperlink else None
+            hyperlink = atom.hyperlink
             if text_fragments and (style_names != fragment_style or hyperlink != fragment_hyperlink):
                 flush_text_fragments()
             if not text_fragments:
                 fragment_style = style_names
                 fragment_hyperlink = hyperlink
-            text_fragments.append(html.escape(atom.text, quote=False))
+            text_fragments.append(atom.text)
             continue
         flush_segments()
         if isinstance(atom, InlineMath):
@@ -226,7 +194,7 @@ def render_atoms_to_model(atoms: Sequence[InlineAtom], *, trim_edges: bool = Fal
         elif isinstance(atom, InlineBreak):
             parts.append("\n")
         elif isinstance(atom, InlineImage) and atom.alt:
-            parts.append(atom.alt)
+            parts.append(escape_inline_protocol_text(atom.alt))
         elif isinstance(atom, (InlineBlockGroup, InlineNote)):
             continue
     flush_segments()
@@ -306,7 +274,11 @@ class OdfBlockParser:
                     atoms=atoms,
                 )
             elif child.tag == qname("text", "a"):
-                target = _safe_hyperlink(child.get(qname("xlink", "href")))
+                target = sanitize_hyperlink_target(
+                    child.get(qname("xlink", "href")),
+                    allow_relative=True,
+                    allow_fragment=True,
+                )
                 if target is not None and target.startswith("#") and target[1:] not in self._anchor_targets:
                     target = None
                 self._walk_inlines(
@@ -333,6 +305,11 @@ class OdfBlockParser:
                 pass
             elif child.tag == qname("text", "note"):
                 self._parse_note(child, style=style, hyperlink=hyperlink, atoms=atoms)
+            elif child.tag == qname("office", "annotation"):
+                if annotation_text := self._annotation_text(child):
+                    atoms.append(InlineNote(annotation_text))
+            elif child.tag == qname("office", "annotation-end"):
+                pass
             elif child.tag == qname("draw", "frame"):
                 inline_atom, blocks = self._parse_frame(child)
                 if inline_atom is not None:
@@ -361,6 +338,10 @@ class OdfBlockParser:
                     atoms=atoms,
                 )
             self._append_text_atom(atoms, child.tail, style=style, hyperlink=hyperlink)
+
+    def _annotation_text(self, annotation: etree._Element) -> str:
+        """只提取 ODF annotation 的正文段落与列表，不混入作者日期元数据。"""
+        return flatten_block_text(self.parse_container(annotation)).strip()
 
     def _parse_note(
         self,
@@ -826,6 +807,12 @@ class OdfBlockParser:
             return blocks
         if element.tag == qname("text", "list"):
             return [item for item in self.parse_list_blocks(element) if isinstance(item, dict)]
+        if element.tag == qname("office", "annotation"):
+            if annotation_text := self._annotation_text(element):
+                self.notes.append(annotation_text)
+            return []
+        if element.tag == qname("office", "annotation-end"):
+            return []
         if element.tag == qname("table", "table"):
             table_block = self.parse_table(element)
             return [table_block] if table_block is not None else []

@@ -4,7 +4,6 @@
 
 from __future__ import annotations
 
-from html import escape
 from typing import Any, BinaryIO
 
 from ..legacy.ole import BoundedOleReader
@@ -76,9 +75,9 @@ class PptConverter:
 
         segments = [
             OfficeRichTextSegment(
-                text=escape(run.text, quote=False).replace("\n", " "),
+                text=run.text.replace("\n", " "),
                 style=cls._run_styles(run),
-                hyperlink=escape(run.hyperlink, quote=False) if run.hyperlink else None,
+                hyperlink=run.hyperlink,
             )
             for run in paragraph.runs
             if run.text

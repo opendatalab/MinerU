@@ -605,6 +605,19 @@ def test_epub_stylesheet_indexes_repeated_selectors_and_preserves_cascade_order(
     assert len(stylesheet._class_cascades) == 3
 
 
+def test_epub_stylesheet_rejects_overlong_numeric_font_weight_before_int() -> None:
+    """验证超长或越界数字字重作为无效声明忽略且不会覆盖继承样式。"""
+    stylesheet = EpubStylesheet()
+    stylesheet.add(f".x {{ font-weight: {'9' * 100_000}; }} .y {{ font-weight: 1001; }}")
+
+    inherited = TextStyle(bold=True)
+    overlong = stylesheet.resolve(etree.fromstring(b'<span class="x"/>'), inherited)
+    out_of_range = stylesheet.resolve(etree.fromstring(b'<span class="y"/>'), inherited)
+
+    assert overlong.text.bold is True
+    assert out_of_range.text.bold is True
+
+
 def test_doclib_extracts_epub_metadata(tmp_path: Path) -> None:
     """验证 doclib 从 OPF 读取元数据和 spine 逻辑页数。"""
     source = tmp_path / "book.epub"

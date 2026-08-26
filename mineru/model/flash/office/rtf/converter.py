@@ -195,9 +195,9 @@ class RtfConverter:
                 hyperlink = self._resolved_hyperlink(inline.hyperlink)
                 segments.append(
                     OfficeRichTextSegment(
-                        text=escape(inline.text, quote=False),
+                        text=inline.text,
                         style=_style_names(inline),
-                        hyperlink=escape(hyperlink, quote=False) if hyperlink is not None else None,
+                        hyperlink=hyperlink,
                     )
                 )
             elif isinstance(inline, RtfInlineEquation):

@@ -7,10 +7,10 @@ import codecs
 from dataclasses import dataclass, field, replace
 import re
 from typing import BinaryIO, Literal
-from urllib.parse import urlsplit
 
 from loguru import logger
 
+from ..._shared.hyperlink import sanitize_hyperlink_target
 from .....filetypes import rtf_header_offset
 from ..errors import LegacyOfficeMalformedError, LegacyOfficeResourceLimitError
 from ..limits import MAX_ASSET_TOTAL_BYTES, MAX_ENTRY_BYTES, MAX_GRID_SLOTS
@@ -796,28 +796,6 @@ def _capture_picture_group(data: bytes) -> _PictCapture | None:
     return capture
 
 
-def _safe_hyperlink_target(target: str, *, local: bool) -> str | None:
-    """保留安全文档链接；活动协议和协议相对地址一律降级。"""
-    normalized = target.strip()
-    if not normalized or any(ord(char) < 0x20 for char in normalized):
-        return None
-    if local:
-        return f"#{normalized.lstrip('#')}" if normalized.lstrip("#") else None
-    if normalized.startswith(("//", "\\")):
-        return None
-    try:
-        parsed = urlsplit(normalized)
-    except ValueError:
-        return None
-    if not parsed.scheme:
-        return normalized
-    if parsed.scheme.casefold() not in {"http", "https", "mailto", "tel"}:
-        return None
-    if parsed.scheme.casefold() in {"http", "https"} and (not parsed.netloc or parsed.hostname is None):
-        return None
-    return normalized
-
-
 class RtfParser:
     """把一个 RTF 字节串解析为无布局、单逻辑页的 typed document。"""
 
@@ -1027,7 +1005,8 @@ class RtfParser:
         if match is None:
             return
         raw_target = match.group("quoted") or match.group("bare") or ""
-        target = _safe_hyperlink_target(raw_target, local=bool(match.group("local")))
+        candidate = f"#{raw_target.lstrip('#')}" if match.group("local") else raw_target
+        target = sanitize_hyperlink_target(candidate, allow_relative=True, allow_fragment=True)
         if target is None:
             return
         start = min(frame.inline_start, len(self.context.inlines))

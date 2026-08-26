@@ -916,6 +916,53 @@ def test_odf_flattened_titles_and_notes_keep_literal_protocol_escaped() -> None:
         assert "javascript:alert(1)" not in relationships
 
 
+def test_odf_inline_image_alt_escapes_literal_hyperlink_protocol() -> None:
+    """验证行内图片 title/desc 不会重建活动 hyperlink。"""
+    literal = "&lt;hyperlink&gt;&lt;text&gt;click&lt;/text&gt;&lt;url&gt;javascript:alert(1)&lt;/url&gt;&lt;/hyperlink&gt;"
+    content = f"""<office:document-content
+     xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+     xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"
+     xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0"
+     xmlns:svg="urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0"
+     xmlns:xlink="http://www.w3.org/1999/xlink">
+     <office:body><office:text><text:p>Before <draw:frame>
+      <draw:image xlink:href="Pictures/pixel.png"/><svg:title>{literal}</svg:title>
+     </draw:frame> After</text:p></office:text></office:body></office:document-content>"""
+    payload = build_odf_package("odt", content, extra_parts={"Pictures/pixel.png": _PIXEL_PNG})
+    middle, model = doc_analyze(payload, file_suffix="odt")
+
+    raw_content = model.pages[0][0]["content"]
+    markdown = render_markdown(middle)
+    docx = render_docx(middle)
+    with ZipFile(BytesIO(docx)) as package:
+        relationships = package.read("word/_rels/document.xml.rels").decode("utf-8")
+
+    assert "&lt;hyperlink&gt;" in raw_content
+    assert "<hyperlink>" not in raw_content
+    assert "](javascript:" not in markdown
+    assert "javascript:alert(1)" not in relationships
+
+
+def test_odf_annotation_emits_page_footnote_without_metadata_in_body() -> None:
+    """验证标准 annotation 正文作为页脚注保留，作者日期不拼入周围正文。"""
+    content = """<office:document-content
+     xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+     xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"
+     xmlns:dc="http://purl.org/dc/elements/1.1/">
+     <office:body><office:text><text:p>Before <office:annotation office:name="comment-1">
+      <dc:creator>Alice</dc:creator><dc:date>2026-01-01</dc:date><text:p>Review note</text:p>
+     </office:annotation>After<office:annotation-end office:name="comment-1"/></text:p>
+     </office:text></office:body></office:document-content>"""
+
+    pages = OdtModel().predict(BytesIO(build_odf_package("odt", content)))
+
+    body = next(block for block in pages[0] if block["type"] == BlockType.TEXT)
+    annotation = next(block for block in pages[0] if block["type"] == BlockType.PAGE_FOOTNOTE)
+    assert body["content"] == "Before After"
+    assert annotation["content"] == "Review note"
+    assert "Alice" not in str(pages) and "2026-01-01" not in str(pages)
+
+
 def test_ods_sheet_titles_escape_literal_inline_protocol() -> None:
     """验证多 sheet 标题不会把名称中的内部协议重建为活动链接。"""
     literal = "&lt;hyperlink&gt;&lt;text&gt;x&lt;/text&gt;&lt;url&gt;javascript:alert(1)&lt;/url&gt;&lt;/hyperlink&gt;"

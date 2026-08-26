@@ -11,7 +11,6 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from io import BytesIO
 from typing import Any, Iterator, Literal, TypeAlias, cast
-from urllib.parse import urlsplit
 
 import numpy as np
 import pypdfium2 as pdfium
@@ -23,6 +22,7 @@ from PIL import Image, ImageOps
 
 from ....types import BBox, PageInfo
 from ....utils.image import crop_pil_image
+from .._shared.hyperlink import sanitize_hyperlink_target
 from .._shared.image import image_to_bytes
 from .classify import classify
 from .pdfium import _pdfium_lock
@@ -1301,26 +1301,7 @@ def _form_bbox_from_object(
 
 def _validate_pdf_external_link_target(value: str) -> str | None:
     """校验 PDF URI Action，只保留显式且可安全输出的外部链接。"""
-
-    target = value.strip()
-    if not target or any(ord(char) < 0x20 or ord(char) == 0x7F or 0xD800 <= ord(char) <= 0xDFFF for char in target):
-        return None
-    try:
-        parsed = urlsplit(target)
-    except ValueError:
-        return None
-    scheme = parsed.scheme.lower()
-    if scheme not in _PDF_EXTERNAL_LINK_SCHEMES:
-        return None
-    if scheme in {"http", "https"}:
-        try:
-            if not parsed.netloc or parsed.hostname is None:
-                return None
-        except ValueError:
-            return None
-    elif not parsed.path:
-        return None
-    return target
+    return sanitize_hyperlink_target(value, allowed_schemes=_PDF_EXTERNAL_LINK_SCHEMES)
 
 
 def _get_pdfium_uri_path(raw_doc: Any, raw_action: Any) -> str | None:

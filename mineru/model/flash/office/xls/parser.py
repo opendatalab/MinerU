@@ -6,11 +6,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 import struct
-from urllib.parse import urlparse
 import uuid
 
 from loguru import logger
 
+from ..._shared.hyperlink import OFFICE_EXTERNAL_HYPERLINK_SCHEMES, sanitize_hyperlink_target
 from ..errors import (
     LegacyOfficeEncryptedError,
     LegacyOfficeMalformedError,
@@ -527,23 +527,6 @@ def _read_obj(payload: bytes) -> _SheetObject | None:
     )
 
 
-def _sanitize_hyperlink_target(target: str) -> str | None:
-    """保留 XlsxModel 允许的网络、邮件、内部与相对链接。"""
-
-    candidate = target.strip().replace("\x00", "")
-    if not candidate:
-        return None
-    lowered = candidate.casefold()
-    if lowered.startswith(("javascript:", "data:", "vbscript:", "file:")):
-        return None
-    parsed = urlparse(candidate)
-    if parsed.scheme and parsed.scheme.casefold() not in {"http", "https", "mailto", "ftp"}:
-        return None
-    if parsed.scheme.casefold() == "mailto" and not parsed.path:
-        return None
-    return candidate
-
-
 def _read_hyperlink_unicode(payload: bytes, cursor: int) -> tuple[str | None, int]:
     """读取 Hyperlink Object 中含末尾 NUL 的 UTF-16 字符串。"""
 
@@ -624,7 +607,12 @@ def _read_hyperlink_target(payload: bytes) -> str | None:
     if blocked_local_file:
         logger.warning("XLS_HYPERLINK_BLOCKED: local File Moniker")
         return None
-    sanitized = _sanitize_hyperlink_target(target or "")
+    sanitized = sanitize_hyperlink_target(
+        target,
+        allowed_schemes=OFFICE_EXTERNAL_HYPERLINK_SCHEMES,
+        allow_relative=True,
+        allow_fragment=True,
+    )
     if target and sanitized is None:
         logger.warning("XLS_HYPERLINK_BLOCKED: target={!r}", target)
     return sanitized

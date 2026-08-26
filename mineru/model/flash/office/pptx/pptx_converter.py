@@ -26,7 +26,7 @@ from ..streams import read_stream_bytes_from_start, rewind_stream
 from .package_normalizer import normalize_pptx_package
 from ..._shared.xycut import sort_entries
 from .....types import BlockType
-from ..rich_text import OfficeRichTextSegment, build_rich_text_from_segments
+from ..rich_text import OfficeRichTextSegment, build_rich_text_from_segments, format_text_with_hyperlink
 from ..._shared.image import image_to_b64str
 
 IGNORED_NOTES_PLACEHOLDER_TYPES: Final = {
@@ -1188,20 +1188,7 @@ class PptxConverter:
         style_str: Optional[str] = None,
     ) -> str:
         """按Office约定格式输出带样式/超链接的文本片段。"""
-        if not text:
-            return ""
-
-        if hyperlink is None or str(hyperlink).strip() in ("", "."):
-            if style_str:
-                return f'<text style="{style_str}">{text}</text>'
-            return text
-
-        if style_str:
-            text_tag = f'<text style="{style_str}">{text}</text>'
-        else:
-            text_tag = f"<text>{text}</text>"
-
-        return f"<hyperlink>{text_tag}<url>{hyperlink}</url></hyperlink>"
+        return format_text_with_hyperlink(text, hyperlink, style_str)
 
     def _resolve_hyperlink_from_run(self, run, shape) -> Optional[str]:
         """解析 run 对应的超链接，优先公开 API，回退到 XML + rels。"""
