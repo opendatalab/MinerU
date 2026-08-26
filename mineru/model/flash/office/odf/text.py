@@ -248,9 +248,10 @@ class OdfBlockParser:
         *,
         style: TextStyle,
         hyperlink: str | None,
+        preserve_whitespace: bool = False,
     ) -> None:
-        """清理并追加一个文本节点，同时合并相邻同样式片段。"""
-        text = _clean_xml_text(value)
+        """清理并追加文本节点；显式 ODF 空格可跳过普通 XML 空白折叠。"""
+        text = value if preserve_whitespace else _clean_xml_text(value)
         if not text:
             return
         atom = InlineText(text=text, style=style, hyperlink=hyperlink)
@@ -298,7 +299,13 @@ class OdfBlockParser:
                 )
             elif child.tag == qname("text", "s"):
                 count = min(_positive_space_count(child.get(qname("text", "c"))), 10_000)
-                self._append_text_atom(atoms, " " * count, style=style, hyperlink=hyperlink)
+                self._append_text_atom(
+                    atoms,
+                    " " * count,
+                    style=style,
+                    hyperlink=hyperlink,
+                    preserve_whitespace=True,
+                )
             elif child.tag == qname("text", "tab"):
                 self._append_text_atom(atoms, " ", style=style, hyperlink=hyperlink)
             elif child.tag == qname("text", "line-break"):

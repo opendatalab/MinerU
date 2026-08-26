@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tracemalloc
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -75,6 +76,23 @@ def test_rtf_font_codepages_and_unicode_surrogates_are_exact() -> None:
     pages = RtfModel().predict(BytesIO(source))
 
     assert pages == [[{"type": BlockType.TEXT, "content": "Привет こんにちは 😀"}]]
+
+
+def test_rtf_unicode_controls_buffer_adjacent_text_without_repeated_run_copy() -> None:
+    """验证逐字符 Unicode control 只在边界处物化文本 run。"""
+    count = 5_000
+    source = b"{\\rtf1\\ansi\\uc1 " + b"\\u20013?" * count + b"\\par}"
+
+    with patch.object(parser_module, "replace", wraps=parser_module.replace) as replace_mock:
+        pages = RtfModel().predict(BytesIO(source))
+
+    text_replacements = [
+        call
+        for call in replace_mock.call_args_list
+        if isinstance(call.args[0], parser_module.RtfTextRun) and "text" in call.kwargs
+    ]
+    assert pages == [[{"type": BlockType.TEXT, "content": "中" * count}]]
+    assert text_replacements == []
 
 
 def test_rtf_inherited_style_honors_explicit_formatting_resets() -> None:

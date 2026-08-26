@@ -362,6 +362,8 @@ class _OutputContext:
 
     blocks: list[RtfBlock] = field(default_factory=list)
     inlines: list[RtfInline] = field(default_factory=list)
+    text_fragments: list[str] = field(default_factory=list)
+    text_style: RtfTextStyle | None = None
     pending_list_label: str | None = None
     tables: dict[int, _TableBuilder] = field(default_factory=dict)
 
@@ -903,6 +905,7 @@ class RtfParser:
             self.state.destination = "suppressed"
             return True
         if name == "field":
+            self._flush_text_run()
             frame.destination = "field"
             frame.inline_start = len(self.context.inlines)
             return True
@@ -996,10 +999,11 @@ class RtfParser:
         elif destination == "bookmark":
             name = "".join(frame.capture_text).strip()
             if name:
-                self.context.inlines.append(RtfAnchor(name))
+                self._append_inline(RtfAnchor(name))
 
     def _finish_field(self, frame: _GroupFrame) -> None:
         """把安全 HYPERLINK field result 包装回行内 run。"""
+        self._flush_text_run()
         instruction = "".join(frame.instruction).strip()
         match = _HYPERLINK_RE.search(instruction)
         if match is None:
@@ -1024,7 +1028,7 @@ class RtfParser:
             return
         note_id = f"rtf{len(self.document.notes)}"
         self.document.notes.append(RtfNote(note_id, frame.note_kind, note_context.blocks))
-        self.context.inlines.append(RtfNoteReference(note_id))
+        self._append_inline(RtfNoteReference(note_id))
 
     def _finish_auxiliary(self, frame: _GroupFrame, destination: str) -> None:
         """结束页眉页脚隔离 context，并恢复父正文。"""
@@ -1041,7 +1045,7 @@ class RtfParser:
             return
         image = self._materialize_picture(capture)
         if image is not None:
-            self.context.inlines.append(image)
+            self._append_inline(image)
 
     def _materialize_picture(self, capture: _PictCapture) -> RtfImage | None:
         """把已捕获 pict 转成有界图片载荷，并累计文档素材预算。"""
@@ -1084,7 +1088,7 @@ class RtfParser:
                     continue
                 image = self._materialize_picture(capture)
                 if image is not None:
-                    self.context.inlines.append(image)
+                    self._append_inline(image)
                     break
             return
         if display:
@@ -1092,7 +1096,8 @@ class RtfParser:
             self._flush_tables()
             self.context.blocks.extend(RtfDisplayEquation(formula) for formula in formulas)
         else:
-            self.context.inlines.extend(RtfInlineEquation(formula) for formula in formulas)
+            for formula in formulas:
+                self._append_inline(RtfInlineEquation(formula))
 
     def _control_symbol(self, token: RtfControlSymbol) -> None:
         """处理 ignorable marker、转义结构字符和特殊空白。"""
@@ -1374,15 +1379,23 @@ class RtfParser:
             return
         if self.state.destination != "body":
             return
-        self._append_inline(RtfTextRun(text=text, style=self.state.style))
+        if self.context.text_fragments and self.context.text_style != self.state.style:
+            self._flush_text_run()
+        self.context.text_style = self.state.style
+        self.context.text_fragments.append(text)
+
+    def _flush_text_run(self) -> None:
+        """把当前 context 的相邻文本片段一次性合并为 typed run。"""
+        if not self.context.text_fragments:
+            return
+        style = self.context.text_style if self.context.text_style is not None else RtfTextStyle()
+        self.context.inlines.append(RtfTextRun(text="".join(self.context.text_fragments), style=style))
+        self.context.text_fragments.clear()
+        self.context.text_style = None
 
     def _append_inline(self, inline: RtfInline) -> None:
-        """追加行内节点，并合并样式和链接完全相同的相邻文本 run。"""
-        if isinstance(inline, RtfTextRun) and self.context.inlines:
-            previous = self.context.inlines[-1]
-            if isinstance(previous, RtfTextRun) and previous.style == inline.style and previous.hyperlink == inline.hyperlink:
-                self.context.inlines[-1] = replace(previous, text=f"{previous.text}{inline.text}")
-                return
+        """先冻结累计文本，再追加公式、图片、锚点等结构行内节点。"""
+        self._flush_text_run()
         self.context.inlines.append(inline)
 
     def _resolve_list_info(self) -> RtfListInfo | None:
@@ -1425,6 +1438,7 @@ class RtfParser:
         if self._pending_high_surrogate is not None:
             self._append_text("\ufffd")
             self._pending_high_surrogate = None
+        self._flush_text_run()
         inlines = self.context.inlines
         self.context.inlines = []
         list_info = self._resolve_list_info()

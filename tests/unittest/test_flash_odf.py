@@ -115,6 +115,19 @@ def test_odt_promotes_numbered_heading_inside_list() -> None:
     assert middle.pages[0].blocks[0].content == "1 Chapter"  # type: ignore[union-attr]
 
 
+def test_odt_preserves_explicit_space_count() -> None:
+    """验证 text:s 的显式重复空格不会被普通 XML 空白规则折叠。"""
+    content = """<office:document-content
+ xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+ xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+ <office:body><office:text><text:p>A<text:s text:c="4"/>B</text:p></office:text></office:body>
+</office:document-content>"""
+
+    pages = OdtModel().predict(BytesIO(build_odf_package("odt", content)))
+
+    assert pages == [[{"type": BlockType.TEXT, "content": "A    B"}]]
+
+
 def test_odt_list_lifts_visual_blocks_outside_strict_list() -> None:
     """验证列表段落图片保留原类型并提升为 LIST 的有序兄弟块。"""
     content = """<office:document-content
