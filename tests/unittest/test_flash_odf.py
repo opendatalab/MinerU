@@ -14,6 +14,7 @@ import pytest
 from lxml import etree
 
 import mineru.model.flash.office.odf.table as odf_table_module
+import mineru.model.flash.office.odf.text as odf_text_module
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
 from mineru.doclib.core.file_io import extract_metadata
 from mineru.doclib.core.db import DatabaseManager
@@ -37,7 +38,7 @@ from _odf_test_utils import _PIXEL_PNG, build_odf_package, build_odp_fixture, bu
 @pytest.mark.parametrize(
     ("suffix", "model_class", "payload", "page_count"),
     [
-        ("odt", OdtModel, build_odt_fixture(), 3),
+        ("odt", OdtModel, build_odt_fixture(), 1),
         ("ods", OdsModel, build_ods_fixture(), 2),
         ("odp", OdpModel, build_odp_fixture(), 3),
     ],
@@ -66,11 +67,11 @@ def test_odf_models_and_analyze_keep_flash_contract(
 
 
 def test_odt_recovers_structure_and_all_renderers() -> None:
-    """验证 ODT 标题、富文本、列表、合并表、分页、脚注、公式和图片。"""
+    """验证 ODT 标题、富文本、列表、合并表、连续排版、脚注、公式和图片。"""
     middle, model = doc_analyze(build_odt_fixture(), file_suffix="odt")
     raw_blocks = [block for page in model.pages for block in page]
     raw_types = [block["type"] for block in raw_blocks]
-    assert len(model.pages) == 3
+    assert len(model.pages) == 1
     assert BlockType.DOC_TITLE in raw_types
     assert BlockType.PARAGRAPH_TITLE in raw_types
     assert BlockType.LIST in raw_types
@@ -128,6 +129,21 @@ def test_odt_preserves_explicit_space_count() -> None:
     assert pages == [[{"type": BlockType.TEXT, "content": "A    B"}]]
 
 
+def test_odt_explicit_space_expansion_uses_document_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证多个 text:s 共享文档级预算，并在超限分配前稳定失败。"""
+    monkeypatch.setattr(odf_text_module, "MAX_EXPANSION_TEXT_BYTES", 5)
+    content = """<office:document-content
+ xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+ xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+ <office:body><office:text>
+  <text:p>A<text:s text:c="3"/>B</text:p><text:p>C<text:s text:c="3"/>D</text:p>
+ </office:text></office:body>
+</office:document-content>"""
+
+    with pytest.raises(OdfResourceLimitError, match="max_expansion_text_bytes=5"):
+        OdtModel().predict(BytesIO(build_odf_package("odt", content)))
+
+
 def test_odt_list_lifts_visual_blocks_outside_strict_list() -> None:
     """验证列表段落图片保留原类型并提升为 LIST 的有序兄弟块。"""
     content = """<office:document-content
@@ -152,6 +168,35 @@ def test_odt_list_lifts_visual_blocks_outside_strict_list() -> None:
     assert [block.type for block in middle.pages[0].blocks] == [BlockType.LIST, BlockType.IMAGE, BlockType.LIST]
     assert [child.content for child in middle.pages[0].blocks[0].content] == ["3. Illustrated item"]  # type: ignore[union-attr]
     assert [child.content for child in middle.pages[0].blocks[2].content] == ["4. Next item"]  # type: ignore[union-attr]
+
+
+def test_odt_ordered_list_normalizes_marker_format_and_item_restarts() -> None:
+    """验证 ODF 列表只保留列表级 start，并连续输出阿拉伯序号。"""
+    content = """<office:document-content
+ xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+ xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"
+ xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0">
+ <office:automatic-styles><text:list-style style:name="L1">
+  <text:list-level-style-number text:level="1" style:num-format="A" style:num-prefix="(" style:num-suffix=")"/>
+ </text:list-style></office:automatic-styles>
+ <office:body><office:text><text:list text:style-name="L1">
+  <text:list-item text:start-value="2"><text:p>First</text:p></text:list-item>
+  <text:list-item text:start-value="9"><text:p>Second</text:p></text:list-item>
+  <text:list-item><text:p>Third</text:p></text:list-item>
+ </text:list></office:text></office:body>
+</office:document-content>"""
+    middle, _ = doc_analyze(build_odf_package("odt", content), file_suffix="odt")
+    expected = ["2. First", "3. Second", "4. Third"]
+    list_block = middle.pages[0].blocks[0]
+
+    assert [child.content for child in list_block.content] == expected  # type: ignore[union-attr]
+    assert render_markdown(middle).splitlines() == expected
+    assert all(label in render_html(middle, standalone=False) for label in ("First", "Second", "Third"))
+    structured = render_structured_content(middle)
+    assert structured["pages"][0]["blocks"][0]["content"] == "\n".join(expected)
+    with ZipFile(BytesIO(render_docx(middle))) as package:
+        document_xml = package.read("word/document.xml").decode("utf-8")
+    assert all(label in document_xml for label in expected)
 
 
 def test_odt_list_item_joins_multiple_paragraphs_before_markers() -> None:
@@ -192,8 +237,8 @@ def test_odt_table_cell_renders_inline_image_once() -> None:
     assert pages[0][0]["content"].count("<img") == 1
 
 
-def test_odt_inline_visual_stays_before_soft_page_break() -> None:
-    """验证 soft-page-break 前遇到的段内视觉块仍留在来源逻辑页。"""
+def test_odt_soft_page_break_is_ignored_with_inline_visual() -> None:
+    """验证 soft-page-break 不拆页、不换行且段内视觉块继续保留。"""
     content = """<office:document-content
  xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
  xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"
@@ -206,14 +251,12 @@ def test_odt_inline_visual_stays_before_soft_page_break() -> None:
 
     pages = OdtModel().predict(BytesIO(build_odf_package("odt", content, extra_parts={"Pictures/pixel.png": _PIXEL_PNG})))
 
-    assert [[block["type"] for block in page] for page in pages] == [
-        [BlockType.TEXT, BlockType.IMAGE],
-        [BlockType.TEXT],
-    ]
+    assert [[block["type"] for block in page] for page in pages] == [[BlockType.TEXT, BlockType.IMAGE]]
+    assert pages[0][0]["content"] == "BeforeAfter"
 
 
-def test_odt_list_preserves_soft_page_break_as_logical_page_boundary() -> None:
-    """验证列表项内的 soft-page-break 会拆分 ODT 逻辑页且不丢前后文本。"""
+def test_odt_list_ignores_soft_page_break_and_keeps_note_on_current_page() -> None:
+    """验证列表软分页不拆页，连续文本与脚注仍保留在当前章节页。"""
     content = """<office:document-content
  xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
  xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
@@ -227,43 +270,47 @@ def test_odt_list_preserves_soft_page_break_as_logical_page_boundary() -> None:
 
     pages = OdtModel().predict(BytesIO(build_odf_package("odt", content)))
 
-    assert len(pages) == 2
-    assert "Before" in str(pages[0]) and "After" not in str(pages[0])
-    assert "After" in str(pages[1]) and "Next" in str(pages[1])
-    assert all(block["type"] != BlockType.PAGE_FOOTNOTE for block in pages[0])
-    assert any(block["type"] == BlockType.PAGE_FOOTNOTE and "After note" in block["content"] for block in pages[1])
+    assert len(pages) == 1
+    assert pages[0][0]["type"] == BlockType.LIST
+    assert [child["content"] for child in pages[0][0]["content"]] == ["BeforeAfter [1]", "Next"]
+    assert pages[0][1] == {"type": BlockType.PAGE_FOOTNOTE, "content": "[1] After note"}
 
 
-def test_odt_child_style_can_reset_inherited_page_breaks() -> None:
-    """验证 break-before/after=auto 显式关闭父样式的逻辑分页。"""
+def test_odt_ignores_physical_breaks_and_pages_only_on_master_change() -> None:
+    """验证普通分页样式无效，只有 master-page 章节变化形成虚拟页。"""
     content = """<office:document-content
  xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
  xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"
  xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0"
  xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0">
  <office:automatic-styles>
-  <style:style style:name="Parent" style:family="paragraph">
+  <style:style style:name="ChapterA" style:family="paragraph" style:master-page-name="MasterA"/>
+  <style:style style:name="PhysicalBreak" style:family="paragraph" style:parent-style-name="ChapterA">
    <style:paragraph-properties fo:break-before="page" fo:break-after="page"/>
   </style:style>
-  <style:style style:name="Inherited" style:family="paragraph" style:parent-style-name="Parent"/>
-  <style:style style:name="Reset" style:family="paragraph" style:parent-style-name="Parent">
-   <style:paragraph-properties fo:break-before="auto" fo:break-after="auto"/>
-  </style:style>
+  <style:style style:name="ChapterB" style:family="paragraph" style:master-page-name="MasterB"/>
  </office:automatic-styles>
  <office:body><office:text>
-  <text:p>Before</text:p><text:p text:style-name="Reset">Reset</text:p><text:p>After</text:p>
+  <text:p text:style-name="ChapterA">Before<text:soft-page-break/>Soft</text:p>
+  <text:section><text:p text:style-name="PhysicalBreak">Physical</text:p></text:section>
+  <text:p text:style-name="ChapterB">After</text:p>
  </office:text></office:body>
 </office:document-content>"""
-    inherited_content = content.replace('text:style-name="Reset"', 'text:style-name="Inherited"')
+    styles = """<office:document-styles
+ xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+ xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0"
+ xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+ <office:master-styles>
+  <style:master-page style:name="MasterA"><style:header><text:p>Header A</text:p></style:header></style:master-page>
+  <style:master-page style:name="MasterB"><style:header><text:p>Header B</text:p></style:header></style:master-page>
+ </office:master-styles>
+</office:document-styles>"""
 
-    reset_pages = OdtModel().predict(BytesIO(build_odf_package("odt", content)))
-    inherited_pages = OdtModel().predict(BytesIO(build_odf_package("odt", inherited_content)))
+    pages = OdtModel().predict(BytesIO(build_odf_package("odt", content, styles_xml=styles)))
 
-    assert [[block.get("content") for block in page] for page in reset_pages] == [["Before", "Reset", "After"]]
-    assert [[block.get("content") for block in page] for page in inherited_pages] == [
-        ["Before"],
-        ["Reset"],
-        ["After"],
+    assert [[block.get("content") for block in page] for page in pages] == [
+        ["BeforeSoft", "Physical", "Header A"],
+        ["After", "Header B"],
     ]
 
 
@@ -293,8 +340,8 @@ def test_odf_covered_placeholder_reuses_colspan_coordinate() -> None:
     assert [cell.html if cell is not None else None for cell in grid.rows[1]] == ["A", "B", "C"]
 
 
-def test_odt_note_after_soft_page_break_stays_on_new_page() -> None:
-    """验证 soft-page-break 后的 note reference 和正文归属同一新页。"""
+def test_odt_note_after_soft_page_break_stays_on_current_page() -> None:
+    """验证 soft-page-break 被忽略后 note reference 和正文仍归属当前章节页。"""
     content = """<office:document-content
  xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
  xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
@@ -306,11 +353,10 @@ def test_odt_note_after_soft_page_break_stays_on_new_page() -> None:
     pages = OdtModel().predict(BytesIO(build_odf_package("odt", content)))
 
     assert pages == [
-        [{"type": BlockType.TEXT, "content": "Before"}],
         [
-            {"type": BlockType.TEXT, "content": "After [1]"},
+            {"type": BlockType.TEXT, "content": "BeforeAfter [1]"},
             {"type": BlockType.PAGE_FOOTNOTE, "content": "[1] After note"},
-        ],
+        ]
     ]
 
 
@@ -379,6 +425,46 @@ def test_ods_skips_hidden_sheet_and_emits_tables_images_and_charts() -> None:
     assert 'colspan="2"' in str(flattened)
     assert any(block["type"] == BlockType.CHART for block in flattened)
     assert len(middle.pages) == 2
+
+
+def test_ods_resolves_inherited_table_visibility_with_child_override() -> None:
+    """验证 table display 沿父样式继承，且子样式显式显示可以覆盖隐藏。"""
+    content = """<office:document-content
+ xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+ xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0"
+ xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0"
+ xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+ <office:automatic-styles>
+  <style:style style:name="HiddenParent" style:family="table">
+   <style:table-properties table:display="false"/>
+  </style:style>
+  <style:style style:name="InheritedHidden" style:family="table" style:parent-style-name="HiddenParent"/>
+  <style:style style:name="ExplicitVisible" style:family="table" style:parent-style-name="HiddenParent">
+   <style:table-properties table:display="true"/>
+  </style:style>
+ </office:automatic-styles>
+ <office:body><office:spreadsheet>
+  <table:table table:name="Secret" table:style-name="InheritedHidden">
+   <table:table-row><table:table-cell><text:p>secret</text:p></table:table-cell></table:table-row>
+  </table:table>
+  <table:table table:name="Override" table:style-name="ExplicitVisible">
+   <table:table-row><table:table-cell><text:p>override</text:p></table:table-cell></table:table-row>
+  </table:table>
+  <table:table table:name="DefaultVisible">
+   <table:table-row><table:table-cell><text:p>default</text:p></table:table-cell></table:table-row>
+  </table:table>
+ </office:spreadsheet></office:body>
+</office:document-content>"""
+    payload = build_odf_package("ods", content)
+
+    pages = OdsModel().predict(BytesIO(payload))
+    metadata = extract_odf_metadata(BytesIO(payload), "ods")
+
+    assert len(pages) == 2
+    assert "secret" not in str(pages)
+    assert "override" in str(pages)
+    assert "default" in str(pages)
+    assert metadata["page_count"] == 2
 
 
 @pytest.mark.parametrize(

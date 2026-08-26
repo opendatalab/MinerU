@@ -71,31 +71,11 @@ class TextStyleDelta:
 
 
 @dataclass(frozen=True, slots=True)
-class ParagraphProperties:
-    """保存影响逻辑分页的 ODF 段落属性。"""
-
-    break_before: bool = False
-    break_after: bool = False
-    master_page_name: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class ParagraphPropertiesDelta:
-    """保存可区分缺省与显式 reset 的 ODF 段落分页增量。"""
-
-    break_before: bool | None = None
-    break_after: bool | None = None
-    master_page_name: str | None = None
-
-
-@dataclass(frozen=True, slots=True)
 class ListLevel:
-    """保存一个 ODF 列表层级的编号语义。"""
+    """保存一个 ODF 列表层级的通用编号语义。"""
 
     ordered: bool = False
     start: int = 1
-    prefix: str = ""
-    suffix: str = "."
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,13 +100,8 @@ class InlineBreak:
 
 
 @dataclass(frozen=True, slots=True)
-class InlinePageBreak:
-    """表示 ODT 内容中的显式软分页。"""
-
-
-@dataclass(frozen=True, slots=True)
 class InlineNote:
-    """保存应随当前行内分页分组归属的 ODF note body。"""
+    """保存应随当前行内内容归属的 ODF note body。"""
 
     content: str
 
@@ -151,7 +126,6 @@ InlineAtom: TypeAlias = Union[
     InlineText,
     InlineMath,
     InlineBreak,
-    InlinePageBreak,
     InlineNote,
     InlineImage,
     InlineBlockGroup,
@@ -195,11 +169,8 @@ __all__ = [
     "InlineImage",
     "InlineMath",
     "InlineNote",
-    "InlinePageBreak",
     "InlineText",
     "ListLevel",
-    "ParagraphProperties",
-    "ParagraphPropertiesDelta",
     "TableGrid",
     "TextStyle",
     "TextStyleDelta",

@@ -805,16 +805,14 @@ class EpubChapterConverter:
         element: etree._Element,
         style: TextStyle,
     ) -> tuple[dict[str, object] | None, list[dict[str, object]]]:
-        """解析有序/无序列表，保留嵌套和每项最终可见标签。"""
+        """解析有序/无序列表，并投影为跨 renderer 的连续编号结构。"""
         ordered = _local_name(element) == "ol"
         items = [child for child in element if isinstance(child.tag, str) and _local_name(child) == "li"]
         if not items:
             return None, []
-        numbers = self._ordered_list_numbers(element, len(items)) if ordered else [None] * len(items)
-        marker_type = (element.get("type") or "1").strip()
         children: list[dict[str, object]] = []
         extras: list[dict[str, object]] = []
-        for item, number in zip(items, numbers, strict=True):
+        for item in items:
             item_style = self.stylesheet.resolve(item, style)
             if item_style.hidden:
                 continue
@@ -851,10 +849,7 @@ class EpubChapterConverter:
                 content_parts.append(self._render_text(child.tail, item_style.text))
             content = "".join(content_parts).strip()
             if content:
-                text_block: dict[str, object] = {"type": BlockType.TEXT, "content": content}
-                if ordered and number is not None:
-                    text_block["list_label"] = self._format_list_label(number, marker_type)
-                children.append(text_block)
+                children.append({"type": BlockType.TEXT, "content": content})
             children.extend(nested_lists)
         if not children:
             return None, extras
@@ -863,79 +858,18 @@ class EpubChapterConverter:
             "attribute": "ordered" if ordered else "unordered",
             "content": children,
         }
+        if ordered:
+            block["start"] = self._ordered_list_start(element)
         return block, extras
 
     @staticmethod
-    def _ordered_list_numbers(element: etree._Element, item_count: int) -> list[int]:
-        """计算 start、reversed 和 li value 共同决定的每项编号。"""
-        reversed_list = element.get("reversed") is not None
+    def _ordered_list_start(element: etree._Element) -> int:
+        """读取有序列表唯一通用起始值，非法或负值统一回退为一。"""
         try:
-            current = int(element.get("start") or (item_count if reversed_list else 1))
+            start = int(element.get("start") or 1)
         except ValueError:
-            current = item_count if reversed_list else 1
-        numbers: list[int] = []
-        for item in [child for child in element if isinstance(child.tag, str) and _local_name(child) == "li"]:
-            try:
-                current = int(item.get("value")) if item.get("value") is not None else current
-            except ValueError:
-                pass
-            numbers.append(current)
-            current += -1 if reversed_list else 1
-        return numbers
-
-    @classmethod
-    def _format_list_label(cls, number: int, marker_type: str) -> str:
-        """把 HTML ordered-list marker 类型格式化为最终可见标签。"""
-        if marker_type == "a":
-            return f"{cls._alpha_marker(number, upper=False)}."
-        if marker_type == "A":
-            return f"{cls._alpha_marker(number, upper=True)}."
-        if marker_type == "i":
-            return f"{cls._roman_marker(number).casefold()}."
-        if marker_type == "I":
-            return f"{cls._roman_marker(number)}."
-        return f"{number}."
-
-    @staticmethod
-    def _alpha_marker(number: int, *, upper: bool) -> str:
-        """把正整数转换为 HTML 字母序号，非正值保留十进制。"""
-        if number <= 0:
-            return str(number)
-        chars: list[str] = []
-        current = number
-        while current > 0:
-            current -= 1
-            chars.append(chr(ord("A" if upper else "a") + current % 26))
-            current //= 26
-        return "".join(reversed(chars))
-
-    @staticmethod
-    def _roman_marker(number: int) -> str:
-        """把 1..3999 转换为罗马数字，范围外保留十进制。"""
-        if number <= 0 or number >= 4000:
-            return str(number)
-        pairs = (
-            (1000, "M"),
-            (900, "CM"),
-            (500, "D"),
-            (400, "CD"),
-            (100, "C"),
-            (90, "XC"),
-            (50, "L"),
-            (40, "XL"),
-            (10, "X"),
-            (9, "IX"),
-            (5, "V"),
-            (4, "IV"),
-            (1, "I"),
-        )
-        parts: list[str] = []
-        current = number
-        for value, symbol in pairs:
-            while current >= value:
-                parts.append(symbol)
-                current -= value
-        return "".join(parts)
+            return 1
+        return start if start >= 0 else 1
 
 
 def convert_svg_spine(

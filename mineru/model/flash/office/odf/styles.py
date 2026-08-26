@@ -9,19 +9,19 @@ from loguru import logger
 from lxml import etree  # type: ignore[reportMissingImports]
 
 from .constants import qname
-from .models import ListLevel, ParagraphProperties, ParagraphPropertiesDelta, TextStyle, TextStyleDelta
+from .models import ListLevel, TextStyle, TextStyleDelta
 
 
 @dataclass(frozen=True, slots=True)
 class _StyleDefinition:
-    """保存一个命名样式的父级、文本增量和分页属性。"""
+    """保存一个命名样式的父级、文本增量和跨格式投影属性。"""
 
     name: str
     family: str
     parent: str | None
     display_name: str | None
     text_delta: TextStyleDelta
-    paragraph: ParagraphPropertiesDelta
+    master_page_name: str | None
     table_display: bool | None
 
 
@@ -34,6 +34,7 @@ class OdfStyles:
         self._defaults: dict[str, TextStyleDelta] = {}
         self._list_styles: dict[str, dict[int, ListLevel]] = {}
         self._resolved_text: dict[tuple[str, str], TextStyleDelta] = {}
+        self._resolved_table_display: dict[str, bool | None] = {}
         self._master_pages: dict[str, etree._Element] = {}
         for root in roots:
             if root is not None:
@@ -56,7 +57,7 @@ class OdfStyles:
                 parent=style.get(qname("style", "parent-style-name")),
                 display_name=style.get(qname("style", "display-name")),
                 text_delta=self._text_delta(style),
-                paragraph=self._paragraph_properties(style),
+                master_page_name=style.get(qname("style", "master-page-name")),
                 table_display=self._table_display(style),
             )
         for list_style in root.iter(qname("text", "list-style")):
@@ -122,18 +123,6 @@ class OdfStyles:
             return False
 
     @staticmethod
-    def _paragraph_properties(style: etree._Element) -> ParagraphPropertiesDelta:
-        """读取可区分缺省与显式非分页值的段落属性增量。"""
-        properties = style.find(qname("style", "paragraph-properties"))
-        before = properties.get(qname("fo", "break-before")) if properties is not None else None
-        after = properties.get(qname("fo", "break-after")) if properties is not None else None
-        return ParagraphPropertiesDelta(
-            break_before=None if before is None else before.casefold() == "page",
-            break_after=None if after is None else after.casefold() == "page",
-            master_page_name=style.get(qname("style", "master-page-name")),
-        )
-
-    @staticmethod
     def _table_display(style: etree._Element) -> bool | None:
         """读取表格样式的 display 开关，用于过滤隐藏工作表。"""
         properties = style.find(qname("style", "table-properties"))
@@ -146,7 +135,7 @@ class OdfStyles:
 
     @staticmethod
     def _parse_list_style(element: etree._Element) -> dict[int, ListLevel]:
-        """解析列表样式的层级、起始值和前后缀。"""
+        """解析列表样式的层级、类型和通用起始值。"""
         levels: dict[int, ListLevel] = {}
         for child in element:
             if not isinstance(child.tag, str):
@@ -166,8 +155,6 @@ class OdfStyles:
             levels[level - 1] = ListLevel(
                 ordered=ordered,
                 start=start,
-                prefix=child.get(qname("style", "num-prefix"), ""),
-                suffix=child.get(qname("style", "num-suffix"), "." if ordered else ""),
             )
         return levels
 
@@ -212,30 +199,24 @@ class OdfStyles:
             delta = base.merge(delta)
         return delta.resolve()
 
-    def paragraph_properties(self, style_name: str | None) -> ParagraphProperties:
-        """沿段落父样式继承分页标记和 master-page 名称。"""
+    def paragraph_master_page_name(self, style_name: str | None) -> str | None:
+        """沿段落父样式查找首个有效 master-page 名称。"""
         if not style_name:
-            return ParagraphProperties()
-        chain: list[_StyleDefinition] = []
+            return None
         seen: set[str] = set()
         current = style_name
-        while current and current not in seen:
+        while current:
+            if current in seen:
+                logger.warning("ODF style inheritance cycle detected: family=paragraph, style={}", current)
+                break
             seen.add(current)
             definition = self._styles.get(("paragraph", current))
             if definition is None:
                 break
-            chain.append(definition)
+            if definition.master_page_name is not None:
+                return definition.master_page_name
             current = definition.parent or ""
-        before = False
-        after = False
-        master: str | None = None
-        for definition in reversed(chain):
-            if definition.paragraph.break_before is not None:
-                before = definition.paragraph.break_before
-            if definition.paragraph.break_after is not None:
-                after = definition.paragraph.break_after
-            master = definition.paragraph.master_page_name or master
-        return ParagraphProperties(before, after, master)
+        return None
 
     def is_document_title(self, style_name: str | None) -> bool:
         """根据样式名称和 display-name 判断段落是否为文档标题。"""
@@ -254,11 +235,28 @@ class OdfStyles:
         return levels.get(depth, ListLevel())
 
     def table_is_visible(self, style_name: str | None) -> bool:
-        """判断工作表样式是否显式隐藏，未知样式默认可见。"""
+        """沿表格父样式解析 display，子样式显式值优先。"""
         if not style_name:
             return True
-        definition = self._styles.get(("table", style_name))
-        return definition is None or definition.table_display is not False
+        if style_name in self._resolved_table_display:
+            return self._resolved_table_display[style_name] is not False
+        seen: set[str] = set()
+        current = style_name
+        resolved: bool | None = None
+        while current:
+            if current in seen:
+                logger.warning("ODF style inheritance cycle detected: family=table, style={}", current)
+                break
+            seen.add(current)
+            definition = self._styles.get(("table", current))
+            if definition is None:
+                break
+            if definition.table_display is not None:
+                resolved = definition.table_display
+                break
+            current = definition.parent or ""
+        self._resolved_table_display[style_name] = resolved
+        return resolved is not False
 
     def master_page(self, name: str | None) -> etree._Element | None:
         """返回指定 master-page；空名称时优先使用第一个定义。"""

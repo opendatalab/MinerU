@@ -13,6 +13,7 @@ from lxml import etree
 
 import mineru.model.flash.epub.package as epub_package_module
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
+from mineru.backend.postprocess.lists import fix_office_list_blocks
 from mineru.doclib.core.file_io import extract_metadata
 from mineru.doclib.core.db import DatabaseManager
 from mineru.doclib.core.fts import FTSManager
@@ -156,8 +157,8 @@ def test_epub_notes_use_page_footnote_and_document_wide_anchors() -> None:
     assert any(f"](#{first.anchor})" in str(block.get("content", "")) for block in structured_blocks)
 
 
-def test_epub_internal_heading_links_and_exact_list_labels_survive() -> None:
-    """验证 spine 正文内部标题链接和列表标签保留，不注入 nav/NCX 目录页。"""
+def test_epub_internal_links_and_lists_use_cross_renderer_projection() -> None:
+    """验证 spine 链接保留，列表规范为连续阿拉伯序号且不注入目录页。"""
     middle, _ = doc_analyze(build_epub_fixture(), file_suffix="epub")
     first_page = middle.pages[0]
     second_page = middle.pages[1]
@@ -171,8 +172,38 @@ def test_epub_internal_heading_links_and_exact_list_labels_survive() -> None:
     assert "Landmark" not in markdown
     assert f"](#{second_title.anchor})" in markdown  # type: ignore[union-attr]
     assert f"](#{first_title.anchor})" in markdown  # type: ignore[union-attr]
-    assert "C. Three" in markdown
-    assert "B. Two" in markdown
+    assert "3. Three" in markdown
+    assert "4. Two" in markdown
+    list_block = next(block for block in first_page.blocks if block.type == BlockType.LIST)
+    assert [child.content for child in list_block.content] == ["3. Three", "4. Two"]
+    assert all(label in render_html(middle, standalone=False) for label in ("Three", "Two"))
+    structured = render_structured_content(middle)
+    assert any(block.get("content") == "3. Three\n4. Two" for page in structured["pages"] for block in page["blocks"])
+    assert render_docx(middle).startswith(b"PK")
+
+
+def test_epub_hidden_list_items_do_not_consume_normalized_numbers() -> None:
+    """验证隐藏条目先被过滤，统一列表后处理再为可见内容连续编号。"""
+    package = EpubPackage(build_epub_fixture())
+    chapter_path = "EPUB/text/ch1.xhtml"
+    try:
+        root = package.xml_part(chapter_path, allow_external_doctype=True)
+        ordered_list = next(element for element in root.iter() if isinstance(element.tag, str) and element.tag.endswith("}ol"))
+        ordered_list.attrib.pop("start", None)
+        ordered_list.attrib.pop("reversed", None)
+        ordered_list.attrib.pop("type", None)
+        items = [child for child in ordered_list if isinstance(child.tag, str) and child.tag.endswith("}li")]
+        items[0].set("hidden", "hidden")
+        anchors = build_anchor_registry([(chapter_path, root)], package)
+        blocks = EpubChapterConverter(package, chapter_path, root, anchors).convert()
+        list_block = next(block for block in blocks if block["type"] == BlockType.LIST)
+
+        assert list_block["start"] == 1
+        assert list_block["content"] == [{"type": BlockType.TEXT, "content": "Two"}]
+        fix_office_list_blocks([list_block])
+        assert list_block["content"] == [{"type": BlockType.TEXT, "content": "1. Two"}]
+    finally:
+        package.close()
 
 
 @pytest.mark.parametrize(

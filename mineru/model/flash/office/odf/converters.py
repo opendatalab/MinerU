@@ -15,7 +15,7 @@ from .models import InlineNote
 from .package import OdfPackage
 from .styles import OdfStyles
 from .table import parse_table_grid, split_table_regions, table_grid_to_html
-from .text import OdfBlockParser, PageBreakMarker, collect_emittable_anchor_targets, flatten_block_text
+from .text import OdfBlockParser, OdfTextExpansionBudget, collect_emittable_anchor_targets, flatten_block_text
 
 
 _LENGTH_RE = re.compile(r"^\s*(?P<value>[+-]?(?:\d+(?:\.\d*)?|\.\d+))(?P<unit>cm|mm|in|pt|pc|px)?\s*$")
@@ -78,22 +78,17 @@ def _flush_notes(parser: OdfBlockParser, page: list[dict[str, Any]]) -> None:
 
 
 def _append_flow_items(
-    items: list[dict[str, Any] | PageBreakMarker | InlineNote],
+    items: list[dict[str, Any] | InlineNote],
     *,
     parser: OdfBlockParser,
-    pages: list[list[dict[str, Any]]],
-    page_masters: list[str | None],
-    current_master: str | None,
+    page: list[dict[str, Any]],
 ) -> None:
-    """把段落结果追加到当前页，并在显式 marker 处切换逻辑页。"""
+    """把段落结果和脚注按统一流语义追加到当前章节页。"""
     for item in items:
-        if isinstance(item, PageBreakMarker):
-            _flush_notes(parser, pages[-1])
-            _new_page(pages, page_masters, current_master)
-        elif isinstance(item, InlineNote):
+        if isinstance(item, InlineNote):
             parser.notes.append(item.content)
         else:
-            pages[-1].append(item)
+            page.append(item)
 
 
 def _master_auxiliary_blocks(
@@ -102,11 +97,17 @@ def _master_auxiliary_blocks(
     package: OdfPackage,
     styles: OdfStyles,
     anchor_targets: frozenset[str],
+    text_expansion_budget: OdfTextExpansionBudget,
 ) -> list[dict[str, Any]]:
     """从 master-page 的 header/footer 中提取页面辅助文本。"""
     if master_page is None:
         return []
-    parser = OdfBlockParser(package, styles, anchor_targets=anchor_targets)
+    parser = OdfBlockParser(
+        package,
+        styles,
+        anchor_targets=anchor_targets,
+        text_expansion_budget=text_expansion_budget,
+    )
     result: list[dict[str, Any]] = []
     for tag_name, block_type in (("header", BlockType.HEADER), ("footer", BlockType.FOOTER)):
         element = master_page.find(qname("style", tag_name))
@@ -122,9 +123,15 @@ def _master_auxiliary_blocks(
 
 
 def _parse_odt_pages(context: _OdfContext) -> list[list[dict[str, Any]]]:
-    """按显式 ODF 分页样式递归构造 ODT 逻辑页。"""
+    """仅按 master-page 章节变化递归构造 ODT 逻辑页。"""
     anchor_targets = collect_emittable_anchor_targets(context.content_root, context.styles)
-    parser = OdfBlockParser(context.package, context.styles, anchor_targets=anchor_targets)
+    text_expansion_budget = OdfTextExpansionBudget()
+    parser = OdfBlockParser(
+        context.package,
+        context.styles,
+        anchor_targets=anchor_targets,
+        text_expansion_budget=text_expansion_budget,
+    )
     pages: list[list[dict[str, Any]]] = [[]]
     page_masters: list[str | None] = [None]
     current_master: str | None = None
@@ -136,29 +143,21 @@ def _parse_odt_pages(context: _OdfContext) -> list[list[dict[str, Any]]]:
             if not isinstance(child.tag, str):
                 continue
             if child.tag in {qname("text", "p"), qname("text", "h")}:
-                properties = context.styles.paragraph_properties(child.get(qname("text", "style-name")))
-                requested_master = properties.master_page_name
+                requested_master = context.styles.paragraph_master_page_name(child.get(qname("text", "style-name")))
                 master_changed = (
-                    requested_master is not None
-                    and current_master is not None
-                    and requested_master != current_master
+                    requested_master is not None and current_master is not None and requested_master != current_master
                 )
-                if (properties.break_before or master_changed) and pages[-1]:
+                if master_changed and pages[-1]:
                     _flush_notes(parser, pages[-1])
-                    _new_page(pages, page_masters, requested_master or current_master)
+                    _new_page(pages, page_masters, requested_master)
                 if requested_master is not None:
                     current_master = requested_master
                     page_masters[-1] = current_master
                 _append_flow_items(
-                    parser.parse_paragraph(child, allow_page_breaks=True),
+                    parser.parse_paragraph(child),
                     parser=parser,
-                    pages=pages,
-                    page_masters=page_masters,
-                    current_master=current_master,
+                    page=pages[-1],
                 )
-                if properties.break_after:
-                    _flush_notes(parser, pages[-1])
-                    _new_page(pages, page_masters, current_master)
             elif child.tag in {
                 qname("text", "section"),
                 qname("text", "index-body"),
@@ -166,13 +165,7 @@ def _parse_odt_pages(context: _OdfContext) -> list[list[dict[str, Any]]]:
             }:
                 walk(child)
             elif child.tag == qname("text", "list"):
-                _append_flow_items(
-                    parser.parse_list_blocks(child, allow_page_breaks=True),
-                    parser=parser,
-                    pages=pages,
-                    page_masters=page_masters,
-                    current_master=current_master,
-                )
+                pages[-1].extend(parser.parse_list_blocks(child))
             else:
                 pages[-1].extend(parser.parse_element(child))
 
@@ -188,6 +181,7 @@ def _parse_odt_pages(context: _OdfContext) -> list[list[dict[str, Any]]]:
                 package=context.package,
                 styles=context.styles,
                 anchor_targets=anchor_targets,
+                text_expansion_budget=text_expansion_budget,
             )
         )
     return pages or [[]]
@@ -290,9 +284,7 @@ def _parse_odp_pages(context: _OdfContext) -> list[list[dict[str, Any]]]:
                 )
                 document_title_emitted = True
             output.extend(
-                block
-                for block in entry.blocks
-                if block.get("type") in {BlockType.IMAGE, BlockType.TABLE, BlockType.CHART}
+                block for block in entry.blocks if block.get("type") in {BlockType.IMAGE, BlockType.TABLE, BlockType.CHART}
             )
         for entry in body_entries:
             output.extend(entry.blocks)

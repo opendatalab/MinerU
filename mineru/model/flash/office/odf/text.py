@@ -19,7 +19,8 @@ from ..._shared.image import image_to_b64str
 from ..image import create_text_placeholder, serialize_office_image
 from ..rich_text import OfficeRichTextSegment, build_rich_text_from_segments
 from .chart import parse_chart_block
-from .constants import qname
+from .constants import MAX_EXPANSION_TEXT_BYTES, qname
+from .errors import OdfResourceLimitError
 from .models import (
     InlineAtom,
     InlineBlockGroup,
@@ -27,7 +28,6 @@ from .models import (
     InlineImage,
     InlineMath,
     InlineNote,
-    InlinePageBreak,
     InlineText,
     TextStyle,
 )
@@ -40,13 +40,20 @@ _WHITESPACE_RE = re.compile(r"[\t\r\n ]+")
 _SAFE_EXTERNAL_HYPERLINK_SCHEMES = frozenset({"http", "https", "mailto", "tel"})
 
 
-@dataclass(frozen=True, slots=True)
-class PageBreakMarker:
-    """表示 ODT 流式解析中应建立新逻辑页的位置。"""
+@dataclass(slots=True)
+class OdfTextExpansionBudget:
+    """记录单个 ODF 文档显式文本膨胀的累计字节数。"""
+
+    used_bytes: int = 0
+
+    def charge(self, byte_count: int) -> None:
+        """在分配膨胀文本前计费，超过固定上限时立即失败。"""
+        if byte_count < 0 or self.used_bytes > MAX_EXPANSION_TEXT_BYTES - byte_count:
+            raise OdfResourceLimitError(f"ODF resource limit exceeded: max_expansion_text_bytes={MAX_EXPANSION_TEXT_BYTES}")
+        self.used_bytes += byte_count
 
 
-PAGE_BREAK = PageBreakMarker()
-RawFlowItem = dict[str, Any] | PageBreakMarker | InlineNote
+RawFlowItem = dict[str, Any] | InlineNote
 
 
 def _clean_xml_text(value: str | None) -> str:
@@ -159,7 +166,7 @@ def render_atoms_to_html(atoms: Sequence[InlineAtom]) -> str:
             parts.append(rendered)
         elif isinstance(atom, InlineMath):
             parts.append(f"<eq>{html.escape(atom.latex)}</eq>")
-        elif isinstance(atom, (InlineBreak, InlinePageBreak)):
+        elif isinstance(atom, InlineBreak):
             parts.append("<br/>")
         elif isinstance(atom, InlineImage):
             parts.append(f'<img src="{html.escape(atom.data_uri, quote=True)}" alt="{html.escape(atom.alt, quote=True)}"/>')
@@ -172,9 +179,23 @@ def render_atoms_to_model(atoms: Sequence[InlineAtom], *, trim_edges: bool = Fal
     """把 ODF 行内语义序列转换为现有 Office 富文本协议。"""
     parts: list[str] = []
     segments: list[OfficeRichTextSegment] = []
+    text_fragments: list[str] = []
+    fragment_style: tuple[str, ...] | None = None
+    fragment_hyperlink: str | None = None
+
+    def flush_text_fragments() -> None:
+        """线性合并连续同样式文本，避免逐片段重复复制前缀。"""
+        nonlocal fragment_style, fragment_hyperlink
+        if not text_fragments:
+            return
+        segments.append(OfficeRichTextSegment("".join(text_fragments), fragment_style, fragment_hyperlink))
+        text_fragments.clear()
+        fragment_style = None
+        fragment_hyperlink = None
 
     def flush_segments() -> None:
         """把连续文本片段批量写入富文本结果。"""
+        flush_text_fragments()
         if not segments:
             return
         parts.append(build_rich_text_from_segments(list(segments), trim_plain_edges=trim_edges and not parts))
@@ -182,18 +203,19 @@ def render_atoms_to_model(atoms: Sequence[InlineAtom], *, trim_edges: bool = Fal
 
     for atom in atoms:
         if isinstance(atom, InlineText):
-            segments.append(
-                OfficeRichTextSegment(
-                    html.escape(atom.text, quote=False),
-                    atom.style.names(),
-                    html.escape(atom.hyperlink, quote=False) if atom.hyperlink else None,
-                )
-            )
+            style_names = atom.style.names()
+            hyperlink = html.escape(atom.hyperlink, quote=False) if atom.hyperlink else None
+            if text_fragments and (style_names != fragment_style or hyperlink != fragment_hyperlink):
+                flush_text_fragments()
+            if not text_fragments:
+                fragment_style = style_names
+                fragment_hyperlink = hyperlink
+            text_fragments.append(html.escape(atom.text, quote=False))
             continue
         flush_segments()
         if isinstance(atom, InlineMath):
             parts.append(f"<eq>{html.escape(atom.latex, quote=False)}</eq>")
-        elif isinstance(atom, (InlineBreak, InlinePageBreak)):
+        elif isinstance(atom, InlineBreak):
             parts.append("\n")
         elif isinstance(atom, InlineImage) and atom.alt:
             parts.append(atom.alt)
@@ -201,17 +223,6 @@ def render_atoms_to_model(atoms: Sequence[InlineAtom], *, trim_edges: bool = Fal
             continue
     flush_segments()
     return "".join(parts).strip() if trim_edges else "".join(parts)
-
-
-def split_atoms_on_page_break(atoms: list[InlineAtom]) -> list[list[InlineAtom]]:
-    """按 InlinePageBreak 把一个段落切分为多个逻辑片段。"""
-    groups: list[list[InlineAtom]] = [[]]
-    for atom in atoms:
-        if isinstance(atom, InlinePageBreak):
-            groups.append([])
-        else:
-            groups[-1].append(atom)
-    return groups
 
 
 class OdfBlockParser:
@@ -229,6 +240,7 @@ class OdfBlockParser:
         collect_cell_visuals: bool = False,
         shared_cell_visuals: list[dict[str, Any]] | None = None,
         anchor_targets: frozenset[str] | None = None,
+        text_expansion_budget: OdfTextExpansionBudget | None = None,
     ) -> None:
         """绑定单次解析包、样式、子文档路径及可跨 parser 共享的状态。"""
         self.package = package
@@ -240,6 +252,7 @@ class OdfBlockParser:
         self._collect_cell_visuals = collect_cell_visuals
         self._cell_visuals = shared_cell_visuals if shared_cell_visuals is not None else []
         self._anchor_targets = anchor_targets or frozenset()
+        self._text_expansion_budget = text_expansion_budget or OdfTextExpansionBudget()
 
     def _append_text_atom(
         self,
@@ -254,12 +267,7 @@ class OdfBlockParser:
         text = value if preserve_whitespace else _clean_xml_text(value)
         if not text:
             return
-        atom = InlineText(text=text, style=style, hyperlink=hyperlink)
-        if atoms and isinstance(atoms[-1], InlineText) and atoms[-1].style == style and atoms[-1].hyperlink == hyperlink:
-            previous = atoms[-1]
-            atoms[-1] = InlineText(previous.text + text, style, hyperlink)
-        else:
-            atoms.append(atom)
+        atoms.append(InlineText(text=text, style=style, hyperlink=hyperlink))
 
     def _walk_inlines(
         self,
@@ -299,6 +307,7 @@ class OdfBlockParser:
                 )
             elif child.tag == qname("text", "s"):
                 count = min(_positive_space_count(child.get(qname("text", "c"))), 10_000)
+                self._text_expansion_budget.charge(count)
                 self._append_text_atom(
                     atoms,
                     " " * count,
@@ -311,7 +320,7 @@ class OdfBlockParser:
             elif child.tag == qname("text", "line-break"):
                 atoms.append(InlineBreak())
             elif child.tag == qname("text", "soft-page-break"):
-                atoms.append(InlinePageBreak())
+                pass
             elif child.tag == qname("text", "note"):
                 self._parse_note(child, style=style, hyperlink=hyperlink, atoms=atoms)
             elif child.tag == qname("draw", "frame"):
@@ -382,53 +391,45 @@ class OdfBlockParser:
         )
         return atoms
 
-    def parse_paragraph(self, paragraph: etree._Element, *, allow_page_breaks: bool = False) -> list[RawFlowItem]:
-        """把 text:p/text:h 转为标题、正文、公式及显式分页项。"""
+    def parse_paragraph(self, paragraph: etree._Element) -> list[RawFlowItem]:
+        """把 text:p/text:h 转为标题、正文、公式和段外内容。"""
         atoms = self.parse_inline_atoms(paragraph)
-        groups = (
-            split_atoms_on_page_break(atoms)
-            if allow_page_breaks
-            else [[InlineBreak() if isinstance(atom, InlinePageBreak) else atom for atom in atoms]]
-        )
         results: list[RawFlowItem] = []
         is_heading = paragraph.tag == qname("text", "h")
         style_name = paragraph.get(qname("text", "style-name"))
-        for group_index, group in enumerate(groups):
-            content_atoms = [atom for atom in group if not isinstance(atom, (InlineBlockGroup, InlineNote))]
-            content = render_atoms_to_model(content_atoms, trim_edges=True)
-            math_atoms = [atom for atom in content_atoms if isinstance(atom, InlineMath)]
-            visible_text = "".join(atom.text for atom in content_atoms if isinstance(atom, InlineText)).strip()
-            if content:
-                if math_atoms and not visible_text and len(math_atoms) == 1 and len(group) == 1:
-                    results.append({"type": BlockType.EQUATION, "content": math_atoms[0].latex})
-                elif self.styles.is_document_title(style_name):
-                    block: dict[str, Any] = {"type": BlockType.DOC_TITLE, "level": 1, "content": content}
-                    if anchor := _paragraph_anchor(paragraph):
-                        block["anchor"] = anchor
-                    results.append(block)
-                elif is_heading:
-                    try:
-                        outline_level = int(paragraph.get(qname("text", "outline-level"), "1"))
-                    except ValueError:
-                        outline_level = 1
-                    block = {
-                        "type": BlockType.PARAGRAPH_TITLE,
-                        "level": min(max(outline_level + 1, 2), 6),
-                        "is_numbered_style": False,
-                        "content": content,
-                    }
-                    if anchor := _paragraph_anchor(paragraph):
-                        block["anchor"] = anchor
-                    results.append(block)
-                else:
-                    results.append({"type": BlockType.TEXT, "content": content})
-            for atom in group:
-                if isinstance(atom, InlineBlockGroup):
-                    results.extend(atom.blocks)
-                elif isinstance(atom, InlineNote):
-                    results.append(atom)
-            if group_index < len(groups) - 1:
-                results.append(PAGE_BREAK)
+        content_atoms = [atom for atom in atoms if not isinstance(atom, (InlineBlockGroup, InlineNote))]
+        content = render_atoms_to_model(content_atoms, trim_edges=True)
+        math_atoms = [atom for atom in content_atoms if isinstance(atom, InlineMath)]
+        visible_text = "".join(atom.text for atom in content_atoms if isinstance(atom, InlineText)).strip()
+        if content:
+            if math_atoms and not visible_text and len(math_atoms) == 1 and len(content_atoms) == 1:
+                results.append({"type": BlockType.EQUATION, "content": math_atoms[0].latex})
+            elif self.styles.is_document_title(style_name):
+                block: dict[str, Any] = {"type": BlockType.DOC_TITLE, "level": 1, "content": content}
+                if anchor := _paragraph_anchor(paragraph):
+                    block["anchor"] = anchor
+                results.append(block)
+            elif is_heading:
+                try:
+                    outline_level = int(paragraph.get(qname("text", "outline-level"), "1"))
+                except ValueError:
+                    outline_level = 1
+                block = {
+                    "type": BlockType.PARAGRAPH_TITLE,
+                    "level": min(max(outline_level + 1, 2), 6),
+                    "is_numbered_style": False,
+                    "content": content,
+                }
+                if anchor := _paragraph_anchor(paragraph):
+                    block["anchor"] = anchor
+                results.append(block)
+            else:
+                results.append({"type": BlockType.TEXT, "content": content})
+        for atom in atoms:
+            if isinstance(atom, InlineBlockGroup):
+                results.extend(atom.blocks)
+            elif isinstance(atom, InlineNote):
+                results.append(atom)
         return results
 
     def parse_list(
@@ -437,21 +438,14 @@ class OdfBlockParser:
         *,
         depth: int = 0,
         inherited_style: str | None = None,
-        allow_page_breaks: bool = False,
-    ) -> list[RawFlowItem]:
+    ) -> list[dict[str, Any]]:
         """递归构造严格 LIST 分片，并把不允许嵌套的 block 提升为有序兄弟。"""
         items = [
             item
             for item in element
             if isinstance(item.tag, str) and item.tag in {qname("text", "list-item"), qname("text", "list-header")}
         ]
-        return self._parse_list_items(
-            element,
-            items,
-            depth=depth,
-            inherited_style=inherited_style,
-            allow_page_breaks=allow_page_breaks,
-        )
+        return self._parse_list_items(element, items, depth=depth, inherited_style=inherited_style)
 
     def _parse_list_items(
         self,
@@ -460,8 +454,7 @@ class OdfBlockParser:
         *,
         depth: int,
         inherited_style: str | None,
-        allow_page_breaks: bool,
-    ) -> list[RawFlowItem]:
+    ) -> list[dict[str, Any]]:
         """按源条目构造 LIST 分片，每个条目只保留一个文本叶子和一个 marker。"""
         style_name = element.get(qname("text", "style-name")) or inherited_style
         level = self.styles.list_level(style_name, depth)
@@ -472,13 +465,11 @@ class OdfBlockParser:
             start = self._list_ids[continue_list]
         elif element.get(qname("text", "continue-numbering")) == "true" and key in self._list_counters:
             start = self._list_counters[key]
-        results: list[RawFlowItem] = []
+        results: list[dict[str, Any]] = []
         content: list[dict[str, Any]] = []
-        pending_notes: list[InlineNote] = []
         item_count = 0
-        fragment_start = start
 
-        def flush_content() -> None:
+        def flush_content(fragment_start: int) -> None:
             """把当前合法子块冻结为一个 LIST 分片。"""
             if not content:
                 return
@@ -493,60 +484,28 @@ class OdfBlockParser:
             results.append(block)
             content.clear()
 
-        def queue_note(note: InlineNote) -> None:
-            """分页模式保留 note 的流位置，其余调用维持既有共享队列行为。"""
-            if allow_page_breaks:
-                pending_notes.append(note)
-            else:
-                self.notes.append(note.content)
-
-        def flush_pending_notes() -> None:
-            """在分页 marker 前或列表结尾输出按来源顺序累计的 note。"""
-            results.extend(pending_notes)
-            pending_notes.clear()
-
+        fragment_start = start
         for item in items:
             is_header = item.tag == qname("text", "list-header")
             if not is_header:
-                try:
-                    item_start = int(item.get(qname("text", "start-value"), str(start + item_count)))
-                    if item_count == 0:
+                if item_count == 0:
+                    try:
+                        item_start = int(item.get(qname("text", "start-value"), str(start)))
                         start = max(0, item_start)
-                except ValueError:
-                    pass
+                        fragment_start = start
+                    except ValueError:
+                        pass
+                # 统一 LIST 只支持列表级起始值，后续逐项重启按连续序号投影。
                 item_count += 1
-            item_number = start + max(item_count - 1, 0)
             text_parts: list[str] = []
             nested_blocks: list[dict[str, Any]] = []
             lifted_blocks: list[dict[str, Any]] = []
 
-            def flush_item_segment() -> None:
-                """把当前列表项在分页边界前后的一个连续片段写入结果。"""
-                nonlocal fragment_start
-                if text_parts or nested_blocks:
-                    if not content:
-                        fragment_start = item_number
-                    if text_parts:
-                        content.append({"type": BlockType.TEXT, "content": "\n".join(text_parts)})
-                    content.extend(nested_blocks)
-                if lifted_blocks:
-                    flush_content()
-                    results.extend(lifted_blocks)
-                text_parts.clear()
-                nested_blocks.clear()
-                lifted_blocks.clear()
-
             def consume_flow(flow: Sequence[RawFlowItem]) -> None:
-                """分类列表项子流，并在显式分页 marker 处冻结当前 LIST 分片。"""
+                """把段落子流投影到列表文本、嵌套列表或提升块。"""
                 for block in flow:
-                    if isinstance(block, PageBreakMarker):
-                        flush_item_segment()
-                        flush_content()
-                        flush_pending_notes()
-                        results.append(PAGE_BREAK)
-                        continue
                     if isinstance(block, InlineNote):
-                        queue_note(block)
+                        self.notes.append(block.content)
                         continue
                     block_type = block.get("type")
                     block_content = block.get("content")
@@ -563,53 +522,28 @@ class OdfBlockParser:
                     else:
                         lifted_blocks.append(block)
 
-            def consume_nested_flow(flow: Sequence[RawFlowItem]) -> None:
-                """按分页分段处理嵌套列表，并保留原有整体提升判定。"""
-                segment: list[dict[str, Any]] = []
-
-                def flush_nested_segment() -> None:
-                    """把纯 LIST 片段嵌套，其余混合结构整体提升。"""
-                    if not segment:
-                        return
-                    if all(block.get("type") == BlockType.LIST for block in segment):
-                        nested_blocks.extend(segment)
-                    else:
-                        lifted_blocks.extend(segment)
-                    segment.clear()
-
-                for block in flow:
-                    if isinstance(block, PageBreakMarker):
-                        flush_nested_segment()
-                        flush_item_segment()
-                        flush_content()
-                        flush_pending_notes()
-                        results.append(PAGE_BREAK)
-                    elif isinstance(block, InlineNote):
-                        queue_note(block)
-                    else:
-                        segment.append(block)
-                flush_nested_segment()
-
             for child in item:
                 if not isinstance(child.tag, str):
                     continue
                 if child.tag in {qname("text", "p"), qname("text", "h")}:
-                    consume_flow(self.parse_paragraph(child, allow_page_breaks=allow_page_breaks))
+                    consume_flow(self.parse_paragraph(child))
                 elif child.tag == qname("text", "list"):
-                    consume_nested_flow(
-                        self.parse_list_blocks(
-                            child,
-                            depth=depth + 1,
-                            inherited_style=style_name,
-                            allow_page_breaks=allow_page_breaks,
-                        )
-                    )
+                    nested_flow = self.parse_list_blocks(child, depth=depth + 1, inherited_style=style_name)
+                    if all(block.get("type") == BlockType.LIST for block in nested_flow):
+                        nested_blocks.extend(nested_flow)
+                    else:
+                        lifted_blocks.extend(nested_flow)
                 else:
                     consume_flow(self.parse_container(child))
-            flush_item_segment()
+            if text_parts:
+                content.append({"type": BlockType.TEXT, "content": "\n".join(text_parts)})
+            content.extend(nested_blocks)
+            if lifted_blocks:
+                flush_content(fragment_start)
+                results.extend(lifted_blocks)
+                fragment_start = start + item_count
 
-        flush_content()
-        flush_pending_notes()
+        flush_content(fragment_start)
         next_value = start + item_count
         self._list_counters[key] = next_value
         if list_id := element.get(qname("xml", "id")):
@@ -622,17 +556,11 @@ class OdfBlockParser:
         *,
         depth: int = 0,
         inherited_style: str | None = None,
-        allow_page_breaks: bool = False,
-    ) -> list[RawFlowItem]:
+    ) -> list[dict[str, Any]]:
         """把含 text:h 的编号章节提升为标题，并保留其余连续列表。"""
         if next(element.iter(qname("text", "h")), None) is None:
-            return self.parse_list(
-                element,
-                depth=depth,
-                inherited_style=inherited_style,
-                allow_page_breaks=allow_page_breaks,
-            )
-        results: list[RawFlowItem] = []
+            return self.parse_list(element, depth=depth, inherited_style=inherited_style)
+        results: list[dict[str, Any]] = []
         pending_items: list[etree._Element] = []
 
         def flush_pending() -> None:
@@ -644,7 +572,6 @@ class OdfBlockParser:
                 list(pending_items),
                 depth=depth,
                 inherited_style=inherited_style,
-                allow_page_breaks=allow_page_breaks,
             )
             pending_items.clear()
             results.extend(blocks)
@@ -663,15 +590,9 @@ class OdfBlockParser:
                 if not isinstance(child.tag, str):
                     continue
                 if child.tag in {qname("text", "p"), qname("text", "h")}:
-                    for parsed in self.parse_paragraph(child, allow_page_breaks=allow_page_breaks):
+                    for parsed in self.parse_paragraph(child):
                         if isinstance(parsed, InlineNote):
-                            if allow_page_breaks:
-                                results.append(parsed)
-                            else:
-                                self.notes.append(parsed.content)
-                            continue
-                        if isinstance(parsed, PageBreakMarker):
-                            results.append(parsed)
+                            self.notes.append(parsed.content)
                             continue
                         if child.tag == qname("text", "h") and parsed.get("type") == BlockType.PARAGRAPH_TITLE:
                             parsed["is_numbered_style"] = True
@@ -682,7 +603,6 @@ class OdfBlockParser:
                             child,
                             depth=depth + 1,
                             inherited_style=element.get(qname("text", "style-name")) or inherited_style,
-                            allow_page_breaks=allow_page_breaks,
                         )
                     )
                 else:
@@ -794,6 +714,7 @@ class OdfBlockParser:
                     collect_cell_visuals=self._collect_cell_visuals,
                     shared_cell_visuals=self._cell_visuals,
                     anchor_targets=self._anchor_targets,
+                    text_expansion_budget=self._text_expansion_budget,
                 )
                 chart = parse_chart_block(
                     object_root,
@@ -1002,8 +923,7 @@ def flatten_block_text(blocks: list[dict[str, Any]]) -> str:
 
 __all__ = [
     "OdfBlockParser",
-    "PAGE_BREAK",
-    "PageBreakMarker",
+    "OdfTextExpansionBudget",
     "RawFlowItem",
     "flatten_block_text",
     "render_atoms_to_html",
