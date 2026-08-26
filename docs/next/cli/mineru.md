@@ -75,7 +75,7 @@
   -> 输出到 STDOUT 或文件
 ```
 
-纯文本文件可以直接读取；Office、HTML 和 CSV 通常可本地 CPU 解析；PDF 和图片按 tier 路由到默认选择、`flash`、`basic`、`standard` 或 `advanced`。
+纯文本文件可以直接读取；EPUB、Office、HTML 和 CSV 通常可本地 CPU 解析；PDF 和图片按 tier 路由到默认选择、`flash`、`basic`、`standard` 或 `advanced`。
 
 ## 5. parse 与 read
 

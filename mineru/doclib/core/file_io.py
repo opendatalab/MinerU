@@ -8,7 +8,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from ...filetypes import CSV_EXTENSIONS, ODF_EXTENSIONS, OFFICE_EXTENSIONS
+from ...filetypes import CSV_EXTENSIONS, EPUB_EXTENSIONS, ODF_EXTENSIONS, OFFICE_EXTENSIONS
 from ...model.flash.pdf.document import PDFDocument
 
 # Optional office doc support
@@ -95,6 +95,9 @@ async def extract_metadata(filepath: str) -> dict:
 
     elif ext in CSV_EXTENSIONS:
         result["page_count"] = 1
+
+    elif ext in EPUB_EXTENSIONS:
+        await _extract_epub_meta(filepath, result)
 
     # truncate all string fields
     for field, limit in [
@@ -226,6 +229,23 @@ async def _extract_office_meta(filepath: str, ext: str, result: dict) -> None:
 
         elif ext in ("doc", "ppt", "xls"):
             _extract_legacy_office_meta(filepath, result)
+
+    await asyncio.to_thread(_extract)
+
+
+async def _extract_epub_meta(filepath: str, result: dict) -> None:
+    """在线程中读取 EPUB OPF 元数据和 spine 逻辑页数。"""
+
+    def _extract() -> None:
+        """打开 EPUB 文件流并把原生 metadata 合并到 doclib 结果。"""
+        from ...model.flash.epub import extract_epub_metadata
+
+        try:
+            with open(filepath, "rb") as epub_file:
+                metadata = extract_epub_metadata(epub_file)
+        except Exception as exc:
+            raise MetadataExtractionError("open_failed", str(exc) or "Failed to open EPUB document") from exc
+        result.update(metadata)
 
     await asyncio.to_thread(_extract)
 

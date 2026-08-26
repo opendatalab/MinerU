@@ -31,7 +31,7 @@
 |------|------|------|
 | `parse` | function | 根据文件后缀和参数构造 `MinerUParser` 并执行解析。 |
 | `parse_async` | function | `parse` 的异步版本。 |
-| `MinerUParser` | class | 统一解析器，支持 PDF、图片、CSV、RTF、OOXML 与 OpenDocument。 |
+| `MinerUParser` | class | 统一解析器，支持 PDF、EPUB、图片、CSV、RTF、OOXML 与 OpenDocument。 |
 | `ParseResult` | dataclass | 解析结果对象。 |
 | `MinerUApiParser` | class | API-backed parser，详见 [API-backed Parser](api-parser.md)。 |
 
@@ -53,15 +53,17 @@ from mineru.parser import MinerUParser
 | `parse_mode` | `str` | 解析模式，对应原 SDK 的 `parse_mode`/`backend` 概念。 |
 | `image_analysis` | `bool` | 是否启用图片分析。对应原 SDK 的 `disable_image_analysis` 取反语义。 |
 
-`MinerUParser` 根据 `tier` / `parse_mode` / `image_analysis` 以及输入文件后缀，在内部选择具体的 PDF/Office 解析路径，不再要求调用方分别实例化不同 parser 类。
+`MinerUParser` 根据 `tier` / `parse_mode` / `image_analysis` 以及输入文件后缀，在内部选择具体的 PDF、EPUB 或结构化文档解析路径，不再要求调用方分别实例化不同 parser 类。
 
 支持输入:
 
 - PDF
+- EPUB（目录页位于最前，随后按 OPF spine 输出逻辑页）
 - 图片（PNG/JPEG 等）
-- DOCX
-- PPTX
-- XLSX
+- CSV、RTF、DOC/DOCX、PPT/PPTX、XLS/XLSX
+- ODT、ODS、ODP
+
+EPUB 始终使用 `flash/txt` 并只支持整本解析。目录来源依次为 EPUB3 nav、EPUB2 NCX 和正文标题；目录可恢复时 `page_idx=0`，原 spine 页整体后移。单条 Footnote/Endnote 输出为带可选 canonical anchor 的 `page_footnote`，正文 `noteref` 可跨 spine 正向链接到该 anchor；脚注集合容器不会整体改型。fixed-layout/SVG 仅尽力保留 DOM 文本与包内静态图片，不执行 OCR、脚本、外部资源下载或 DRM 解密。所有非 PDF Flash 格式显式传入 `page_range` 都会返回 `page_range_invalid`。
 
 ## `parse()` / `parse_async()` 入口
 

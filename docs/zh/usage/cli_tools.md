@@ -28,7 +28,7 @@ Options:
   --help                          显示帮助信息
 ```
 > [!TIP]
-> `mineru` 当前支持本地 `PDF`、图片、`CSV`、`RTF`、`DOCX`、`PPTX`、`XLSX`、`ODT`、`ODS`、`ODP` 文件或目录输入。
+> `mineru` 当前支持本地 `PDF`、`EPUB`、图片、`CSV`、`RTF`、`DOCX`、`PPTX`、`XLSX`、`ODT`、`ODS`、`ODP` 文件或目录输入。非 PDF Flash 格式只支持整本解析；EPUB 有可用目录时会输出独立首页目录。
 
 ```bash
 mineru-api --help

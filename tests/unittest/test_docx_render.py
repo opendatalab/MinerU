@@ -143,6 +143,44 @@ def test_heading_bookmark_forward_index_link_and_rich_inline_ooxml() -> None:
     assert "<m:oMath" in document_xml
 
 
+def test_full_docx_uses_page_footnote_bookmark_for_inline_internal_link() -> None:
+    """验证页面脚注正向引用写为 Word 内部书签，未知目标不创建外部关系。"""
+    middle = _middle(
+        _page(
+            0,
+            TextBlock(
+                type="text",
+                index=0,
+                content=(
+                    "See <hyperlink>[1]<url>#note-one</url></hyperlink> and "
+                    "<hyperlink>[x]<url>#missing-note</url></hyperlink>."
+                ),
+            ),
+            PageAuxTextBlock(
+                type="page_footnote",
+                index=1,
+                content="Footnote body.",
+                anchor="note-one",
+            ),
+        )
+    )
+
+    default_result = render_docx(middle)
+    default_xml = _part(default_result, "word/document.xml")
+    result = render_docx(middle, mode=RenderMode.FULL)
+    document_xml = _part(result, "word/document.xml")
+    relationships = _part(result, "word/_rels/document.xml.rels")
+
+    assert 'w:bookmarkStart w:id="0" w:name="note_one"' in document_xml
+    assert 'w:hyperlink w:anchor="note_one"' in document_xml
+    assert document_xml.count("<w:hyperlink") == 1
+    assert "missing-note" not in relationships
+    assert "#note-one" not in relationships
+    assert "w:bookmarkStart" not in default_xml
+    assert "w:hyperlink" not in default_xml
+    assert all("Footnote body." not in paragraph.text for paragraph in Document(BytesIO(default_result)).paragraphs)
+
+
 def test_visible_styled_boundary_spaces_use_nbsp_without_mutating_input() -> None:
     """验证可见样式的边界空格转为等量 NBSP，普通样式和内部空格保持原样。"""
     content = (

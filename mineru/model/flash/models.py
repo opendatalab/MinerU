@@ -1,6 +1,6 @@
 # Copyright (c) Opendatalab. All rights reserved.
 
-"""Flash PDF、CSV 与 Office/RTF 文档模型。"""
+"""Flash PDF、EPUB、CSV 与 Office/RTF 文档模型。"""
 
 from __future__ import annotations
 
@@ -28,6 +28,21 @@ class CsvModel:
         from .csv import convert_csv
 
         return convert_csv(file_binary)
+
+
+class EpubModel:
+    """将 EPUB OCF/OPF 文档包装为无状态 Flash 模型。"""
+
+    def predict(
+        self,
+        file_binary: BinaryIO,
+    ) -> list[list[dict[str, Any]]]:
+        """转换调用方持有的整本 EPUB 流，并返回目录页和全部正文逻辑页。"""
+        from .epub.converter import EpubConverter
+
+        converter = EpubConverter()
+        converter.convert(file_binary)
+        return converter.pages
 
 
 class RtfModel:

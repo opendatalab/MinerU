@@ -92,8 +92,9 @@ docx_bytes = render_docx(
 不安全、格式损坏或 SVG 输入会抛出带 `page_idx/block_index/block_type` 的
 `DocxRenderError`；WebP 在内存中转为 PNG。
 
-DOCX 输出固定使用 A4 纵向与 20 mm 页边距。标题是 Word Heading 1–9，anchor 是
-document-wide bookmark，Index 标题叶子写成内部链接；正文直接消费共享 inline AST，
+DOCX 输出固定使用 A4 纵向与 20 mm 页边距。标题是 Word Heading 1–9，标题与
+`page_footnote` anchor 是 document-wide bookmark，Index 标题叶子和正文 `#anchor`
+写成内部链接；正文直接消费共享 inline AST，
 保留粗体、斜体、下划线、删除线、emphasis、上下标、外链及行内公式。emphasis 使用下方
 着重号；带可见装饰的边界空格会等量写为 NBSP，避免 Word 隐藏下划线或删除线。列表保留
 producer 已经内化的 marker，只用缩进表达层级，不重建 `numbering.xml`。
@@ -314,6 +315,7 @@ doclib 或历史扁平 `content_list.json` 产物。
 `RenderMode.FULL`:
 
 - 展示全部顶层 block。
+- 带 anchor 的 `page_footnote` 在 Markdown/HTML/DOCX 中分别输出 HTML anchor、元素 id 和 Word bookmark。
 - 只合并页内 `text/ref_text/list.continues_prev`。
 - 不合并跨页 text/ref_text/list/table。
 - 每两个相邻 `PageInfo` 之间输出 `---`，空白页边界同样保留。
@@ -327,6 +329,7 @@ text 合并允许跨越任意其他 block，后一个 text 的内容被吸收到
 
 - `text/ref_text`: 解析行内公式、样式和超链接；普通 text 转义可能误触发的 Markdown block 前缀。
 - `doc_title/paragraph_title`: 使用全局 `level`，Markdown 标题最多六级；anchor 输出为 HTML id。
+- `page_footnote`: 仍属于页面辅助块；可选 anchor 只在 FULL 模式随脚注正文输出。
 - `list`: 递归缩进；普通列表直接使用 content 已内化的前缀。`sub_type=ref_text`
   时统计每个直属非空 item 的前五个可见字符，数字前缀未达到严格多数则给全部 item
   补 `- `，已有 `- ` 不重复；嵌套列表独立判定。

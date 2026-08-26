@@ -102,8 +102,8 @@ watch 的目标是发现文件、建立基础索引和支持后续搜索，不�
 | 场景 | 默认 tier |
 |------|-----------|
 | watch 自动发现 | `flash` |
-| parsing-rule 明确指定 | PDF/image 使用 rule 中的 tier；Office/HTML/CSV 归一为 `flash`；其它 text 只入库和索引 |
-| parsing-rule 未指定 tier | PDF/image 按 `standard` -> `advanced` -> `basic` -> `flash`；Office/HTML/CSV 归一为 `flash`；其它 text 只入库和索引 |
+| parsing-rule 明确指定 | PDF/image 使用 rule 中的 tier；EPUB/Office/HTML/CSV 归一为 `flash`；其它 text 只入库和索引 |
+| parsing-rule 未指定 tier | PDF/image 按 `standard` -> `advanced` -> `basic` -> `flash`；EPUB/Office/HTML/CSV 归一为 `flash`；其它 text 只入库和索引 |
 
 ### 5.3 步骤
 
@@ -280,7 +280,7 @@ client.parse("report.pdf")
 
 ### 6.2 默认目标
 
-主动读取 PDF/image 的目标是尽可能准确地理解文档。未指定 tier 时，使用默认选择策略，并解析到可用的非 `flash` 质量 tier。Office/HTML/CSV 没有质量 tier，未指定 tier 时归一为 `flash`。其它 text 应直接读取，不进入解析流程。
+主动读取 PDF/image 的目标是尽可能准确地理解文档。未指定 tier 时，使用默认选择策略，并解析到可用的非 `flash` 质量 tier。EPUB/Office/HTML/CSV 没有质量 tier，未指定 tier 时归一为 `flash`。其它 text 应直接读取，不进入解析流程。
 
 ### 6.3 步骤
 
@@ -289,7 +289,7 @@ client.parse("report.pdf")
 3. 如果文件尚未入库，先同步执行 ingest，得到 `sha256`。
 4. 确定页码范围、输出格式、等待策略和隐私偏好。
 5. 如果用户未指定 tier，使用默认选择策略。
-6. PDF/image 默认选择策略通过当前可用 parse-server 能力发现，按 `standard` -> `advanced` -> `basic` 选择；Office/HTML/CSV 归一为 `flash`；其它 text 直接读取。
+6. PDF/image 默认选择策略通过当前可用 parse-server 能力发现，按 `standard` -> `advanced` -> `basic` 选择；EPUB/Office/HTML/CSV 归一为 `flash`；其它 text 直接读取。
 7. 将任务和缓存键落到实际使用的实体 tier。
 8. 查询 `(sha256, tier, page_range)` 是否已有可复用结果。
 9. 缓存命中则直接 render 并返回。
@@ -306,7 +306,7 @@ client.parse("report.pdf")
 
 | 请求 | 实际行为 |
 |------|----------|
-| 未指定 tier | PDF/image 按 `standard` -> `advanced` -> `basic` 选择可用的非 `flash` tier；Office/HTML/CSV 归一为 `flash`；其它 text 直接读取 |
+| 未指定 tier | PDF/image 按 `standard` -> `advanced` -> `basic` 选择可用的非 `flash` tier；EPUB/Office/HTML/CSV 归一为 `flash`；其它 text 直接读取 |
 | `tier=flash` | 显式使用本地 `flash` backend |
 | `tier=basic` | 使用本地或自部署 parse-server 的 `basic` 能力 |
 | `tier=standard` | 使用本地 `standard` 或 `mineru.net/api` 的 `standard` 能力 |
@@ -361,7 +361,7 @@ watch -> flash index -> search result -> Agent chooses document -> mineru parse
 3. search result 返回完整 file aliases、sha256、snippet 和可空的索引来源 tier；text 源内容的 tier 为 `null`。
 4. Agent 选择具体文档。
 5. Agent 发起主动 parse 请求。
-6. PDF/image 请求未指定 tier 时使用默认选择策略；Office/HTML/CSV 按 `flash` 语义处理；其它 text 不发起 parse 请求。
+6. PDF/image 请求未指定 tier 时使用默认选择策略；EPUB/Office/HTML/CSV 按 `flash` 语义处理；其它 text 不发起 parse 请求。
 7. doclib 检查是否已有可用质量 tier 缓存。
 8. 如果没有，则创建高优先级 parse 任务。
 9. 解析完成后返回可阅读输出，并写入更高质量索引。
@@ -398,7 +398,7 @@ marker 不应依赖自然语言提示。具体 marker 格式可在 CLI 或 Agent
 
 1. 客户端创建 upload 或提供已有 `file_id`。
 2. 客户端创建 parse job。
-3. 请求可以携带 `tier`；省略或传 JSON `null` 时，PDF/image 使用默认选择策略，Office/HTML/CSV 按批量规则归一为 `flash`；其它 text 不作为解析输入。
+3. 请求可以携带 `tier`；省略或传 JSON `null` 时，PDF/image 使用默认选择策略，EPUB/Office/HTML/CSV 按批量规则归一为 `flash`；其它 text 不作为解析输入。
 4. API service 做鉴权、配额和输入校验。
 5. 调度到可用解析能力。
 6. 解析服务生成 Middle JSON 和请求的输出格式。

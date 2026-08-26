@@ -25,7 +25,7 @@ MinerU 当前定义四个公开 tier。文档中使用面向用户的显示名�
 
 - `flash` 用于发现、预览和建立搜索索引，不是 PDF/image 默认阅读质量。
 - 当 Agent 或用户决定读取 PDF/image 文档时，如果没有指定 tier，默认选择不能解析为 `flash`；有能力发现上下文时优先使用 `standard`。
-- 默认选择策略在 PDF/image 质量解析语境下不会等价于 `flash`；Office/HTML/CSV 这类仅支持 flash tier 的输入按 [ADR-0024](decisions/0024-file-type-tier-normalization.md) 与 [ADR-0028](decisions/0028-csv-structured-flash-parsing.md) 归一为 `flash` 语义；其它 text 直接读取。
+- 默认选择策略在 PDF/image 质量解析语境下不会等价于 `flash`；EPUB/Office/HTML/CSV 这类仅支持 flash tier 的输入按 [ADR-0024](decisions/0024-file-type-tier-normalization.md) 与 [ADR-0028](decisions/0028-csv-structured-flash-parsing.md) 归一为 `flash` 语义；其它 text 直接读取。
 - `standard` 是高质量 tier，也是 `mineru.net/api` 对外提供的解析层级。
 - `advanced` 是当前公开 tier 中质量和成本最高的档位。
 - 本地运行 `standard` 和 `advanced` 是正式支持能力，不是实验能力；它们依赖 VLM 相关依赖、支持的本地加速器和足够的显存或统一内存。
@@ -50,7 +50,7 @@ MinerU 当前定义四个公开 tier。文档中使用面向用户的显示名�
 
 当用户没有指定 tier，或在 HTTP API 中显式传入 JSON `null` 时，MinerU 使用默认选择策略。Python SDK 中的等价表达是 `tier=None`。
 
-默认选择策略分两类场景。本节描述 PDF/image 质量解析的默认选择；Office/HTML/CSV 这类仅支持 flash tier 的输入见 [ADR-0024](decisions/0024-file-type-tier-normalization.md) 与 [ADR-0028](decisions/0028-csv-structured-flash-parsing.md)。其它 text 没有 tier，不进入解析。
+默认选择策略分两类场景。本节描述 PDF/image 质量解析的默认选择；EPUB/Office/HTML/CSV 这类仅支持 flash tier 的输入见 [ADR-0024](decisions/0024-file-type-tier-normalization.md) 与 [ADR-0028](decisions/0028-csv-structured-flash-parsing.md)。其它 text 没有 tier，不进入解析。
 
 ### 3.1 无能力列表的场景
 
@@ -101,7 +101,7 @@ PDF/image 默认选择策略不会解析为 `flash`。如果系统找不到 `bas
 
 P0 不做基于启发式的自动提示或自动排队升级。watch 使用 `flash` 后，如果需要在后台自动解析到 `basic`、`standard` 或 `advanced`，必须来自用户显式配置的 parsing-rules；系统不根据文件名、内容特征、搜索命中或“高价值文档”判断自行升级。
 
-`flash` 不应被当成 PDF/image 默认阅读质量。当 Agent 或用户决定真正读取 PDF/image 文档时，需求已经从“发现它”变成“尽可能准确地理解它”，此时未指定 tier 应使用默认选择策略，并解析到可用的非 `flash` 质量 tier。Office/HTML/CSV 这类仅支持 flash tier 的输入没有质量 tier 分层，按 `flash` 语义处理。其它 text 直接读取。
+`flash` 不应被当成 PDF/image 默认阅读质量。当 Agent 或用户决定真正读取 PDF/image 文档时，需求已经从“发现它”变成“尽可能准确地理解它”，此时未指定 tier 应使用默认选择策略，并解析到可用的非 `flash` 质量 tier。EPUB/Office/HTML/CSV 这类仅支持 flash tier 的输入没有质量 tier 分层，按 `flash` 语义处理。其它 text 直接读取。
 
 只有在用户明确指定 `flash` 时，才返回 `flash` 的解析内容作为最终阅读结果。
 
@@ -159,10 +159,10 @@ MinerU 的 tier 策略同时遵守隐私优先和质量优先。
 |------|--------------|
 | watch 自动发现文件 | 本地 `flash` |
 | `mineru-kit api-server` 未传 `--tier` | 以 `standard` 作为服务默认 tier |
-| `mineru-kit parse` local 模式未传 `--tier` / `--backend` | PDF/image 直接按 `standard` 解析；Office/HTML/CSV 按 `flash` 语义处理；其它 text 不作为解析输入 |
-| watch 命中 parsing-rule 且 rule 指定 tier | PDF/image 按 rule 中的 tier、页码范围和 remote 配置执行；Office/HTML/CSV 忽略 rule tier 和 remote，按 `flash`；其它 text 只入库和索引 |
-| watch 命中 parsing-rule 但 rule 未指定 tier | PDF/image 按 `standard` -> `advanced` -> `basic` -> `flash` 选择；Office/HTML/CSV 按 `flash`；其它 text 只入库和索引 |
-| 用户主动 parse，未指定 tier；HTTP API 传 JSON `null`；Python SDK 传 `None` | PDF/image 有能力发现上下文时按 `standard` -> `advanced` -> `basic` 选择；Office/HTML/CSV 按 [ADR-0024](decisions/0024-file-type-tier-normalization.md) 与 [ADR-0028](decisions/0028-csv-structured-flash-parsing.md) 归一为 `flash`；其它 text 不进入解析 |
+| `mineru-kit parse` local 模式未传 `--tier` / `--backend` | PDF/image 直接按 `standard` 解析；EPUB/Office/HTML/CSV 按 `flash` 语义处理；其它 text 不作为解析输入 |
+| watch 命中 parsing-rule 且 rule 指定 tier | PDF/image 按 rule 中的 tier、页码范围和 remote 配置执行；EPUB/Office/HTML/CSV 忽略 rule tier、page_range 和 remote，按 `flash` 整本解析；其它 text 只入库和索引 |
+| watch 命中 parsing-rule 但 rule 未指定 tier | PDF/image 按 `standard` -> `advanced` -> `basic` -> `flash` 选择；EPUB/Office/HTML/CSV 按 `flash`；其它 text 只入库和索引 |
+| 用户主动 parse，未指定 tier；HTTP API 传 JSON `null`；Python SDK 传 `None` | PDF/image 有能力发现上下文时按 `standard` -> `advanced` -> `basic` 选择；EPUB/Office/HTML/CSV 按 [ADR-0024](decisions/0024-file-type-tier-normalization.md) 与 [ADR-0028](decisions/0028-csv-structured-flash-parsing.md) 归一为 `flash`；其它 text 不进入解析 |
 | 用户主动指定 `--tier flash` | 本地 `flash` |
 | 用户主动指定 `--tier basic` | 本地 basic；不可用时报错 |
 | 用户主动指定 `--tier standard` | 本地 standard；显式 remote 时使用 `mineru.net/api` standard |

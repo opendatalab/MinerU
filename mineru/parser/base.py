@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from ..render import render_markdown, render_structured_content
 from ..render.contracts import ImageRenderer, RenderMode
-from ..types import FileSuffix, MiddleJson, PageInfo
+from ..types import FileSuffix, MiddleJson, ModelJson, PageInfo
 from ..utils.image_payload import ImagePayloadCache
 from .writer import DataWriter
 
@@ -178,9 +178,14 @@ class ParseResult:
         )
 
         if self._model_output is not None:
+            model_output = (
+                self._model_output.to_dict(skip_defaults=False)
+                if isinstance(self._model_output, ModelJson)
+                else self._model_output
+            )
             writer.write_string(
                 "model_output.json",
-                json.dumps(self._model_output, ensure_ascii=False, indent=4),
+                json.dumps(model_output, ensure_ascii=False, indent=4),
             )
 
         for img_path, img_bytes in self.images().items():
@@ -208,7 +213,7 @@ class ParseResult:
 class DocumentParser(ABC):
     """Abstract base class for all document parsers.
 
-    Subclasses implement ``parse()`` for a specific document category (PDF, CSV, or Office).
+    Subclasses implement ``parse()`` for a specific document category (PDF, EPUB, CSV, or Office/RTF/ODF).
     """
 
     _closed: bool = False

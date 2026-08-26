@@ -55,6 +55,7 @@ FileSuffix: TypeAlias = Literal[
     "xlsx",
     "rtf",
     "csv",
+    "epub",
     "odt",
     "ods",
     "odp",
@@ -511,6 +512,14 @@ class PageAuxTextBlock(StringContentBlock):
         BlockType.ASIDE_TEXT,
         BlockType.PAGE_FOOTNOTE,
     ]
+    anchor: str | None = None
+
+    @model_validator(mode="after")
+    def _validate_page_footnote_anchor(self) -> PageAuxTextBlock:
+        """只允许页面脚注携带可跳转 anchor，避免扩大其它辅助块契约。"""
+        if self.type != BlockType.PAGE_FOOTNOTE and self.anchor is not None:
+            raise ValueError("anchor is only supported for page_footnote blocks")
+        return self
 
 
 class ImagePayloadBlock(BlockBase):

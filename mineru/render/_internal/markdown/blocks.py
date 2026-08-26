@@ -75,7 +75,12 @@ def render_planned_block(
         return _render_title(block, delimiters)
     if isinstance(block, PageAuxTextBlock):
         content = escape_text_block_markdown_prefix(render_inline_content(block.content, delimiters))
-        return escape_standalone_marker_rule(content)
+        rendered = escape_standalone_marker_rule(content)
+        if block.type == BlockType.PAGE_FOOTNOTE and block.anchor:
+            anchor = html.escape(block.anchor.strip(), quote=True)
+            if anchor:
+                return f'<a id="{anchor}"></a>\n{rendered}'
+        return rendered
     if isinstance(block, EquationBlock):
         return _render_equation(block, delimiters, asset_base_url, image_renderer)
     if isinstance(block, ListBlock):

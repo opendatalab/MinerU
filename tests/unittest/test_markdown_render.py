@@ -144,6 +144,31 @@ def test_render_modes_filter_merge_and_preserve_input() -> None:
     assert middle.to_json(skip_defaults=False) == before
 
 
+def test_page_footnote_anchor_is_emitted_only_in_full_mode() -> None:
+    """验证默认模式隐藏脚注正文，FULL 输出可供正向引用跳转的 anchor。"""
+    middle = _middle(
+        _page(
+            0,
+            TextBlock(
+                type="text",
+                index=0,
+                content="See <hyperlink>[1]<url>#note-one</url></hyperlink>.",
+            ),
+            PageAuxTextBlock(
+                type="page_footnote",
+                index=1,
+                content="Footnote body.",
+                anchor="note-one",
+            ),
+        )
+    )
+
+    assert render_markdown(middle) == "See [\\[1\\]](#note-one)."
+    assert render_markdown(middle, mode=RenderMode.FULL) == (
+        'See [\\[1\\]](#note-one).\n\n<a id="note-one"></a>\nFootnote body.'
+    )
+
+
 def test_full_mode_preserves_empty_page_boundaries() -> None:
     """验证 FULL 对空白页仍保留相邻页分割线。"""
     middle = _middle(_page(0), _page(1, TextBlock(type="text", index=0, content="x")), _page(2))

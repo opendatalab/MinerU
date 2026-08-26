@@ -118,13 +118,18 @@ class _DocxRenderer:
         mode: RenderMode,
         asset_resolver: AssetResolver | None,
     ) -> None:
-        """初始化 renderer，并预注册全部标题 anchor。"""
+        """初始化 renderer，并按展示模式预注册标题与页面脚注 anchor。"""
         self.middle_json = middle_json
         self.mode = mode
         self.asset_resolver = asset_resolver
         self.document = Document()
         configure_document(self.document)
-        self.bookmarks = BookmarkRegistry(_iter_document_anchors(middle_json))
+        self.bookmarks = BookmarkRegistry(
+            _iter_document_anchors(
+                middle_json,
+                include_page_footnotes=mode is RenderMode.FULL,
+            )
+        )
         self.usable_width_emu = usable_width_emu(self.document)
         self.usable_width_twips = usable_width_twips(self.document)
 
@@ -163,6 +168,8 @@ class _DocxRenderer:
         if isinstance(block, PageAuxTextBlock):
             paragraph = self.document.add_paragraph(style=AUXILIARY_STYLE)
             append_inline_content(paragraph, block.content, context=context)
+            if block.type == BlockType.PAGE_FOOTNOTE:
+                self.bookmarks.attach(paragraph, block.anchor)
             return
         if isinstance(block, EquationBlock):
             self._render_equation(block, context)
@@ -760,11 +767,22 @@ def render_docx(
     ).render()
 
 
-def _iter_document_anchors(middle_json: MiddleJson) -> Iterable[str]:
-    """按文档顺序遍历实际会写入 bookmark 的正文标题 anchor。"""
+def _iter_document_anchors(
+    middle_json: MiddleJson,
+    *,
+    include_page_footnotes: bool,
+) -> Iterable[str]:
+    """按当前展示模式遍历实际会写入 bookmark 的标题和页面脚注 anchor。"""
     for page in middle_json.pages:
         for block in page.blocks:
             if isinstance(block, TitleBlockBase) and block.anchor:
+                yield block.anchor
+            elif (
+                include_page_footnotes
+                and isinstance(block, PageAuxTextBlock)
+                and block.type == BlockType.PAGE_FOOTNOTE
+                and block.anchor
+            ):
                 yield block.anchor
 
 

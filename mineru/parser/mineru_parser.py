@@ -1,5 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
-"""统一文档解析器，委托 backend.analyze 处理 PDF、图片、CSV 与 Office/RTF/ODF。"""
+"""统一文档解析器，委托 backend.analyze 处理 PDF、EPUB、图片、CSV 与 Office/RTF/ODF。"""
 from __future__ import annotations
 
 import asyncio
@@ -32,10 +32,10 @@ class _PreparedInput:
 
 
 class MinerUParser(DocumentParser):
-    """统一文档解析器，支持 PDF、图片、CSV 与 Office/RTF/ODF 文档。
+    """统一文档解析器，支持 PDF、EPUB、图片、CSV 与 Office/RTF/ODF 文档。
 
     通过 file_suffix 路由到 backend.analyze 的统一 doc_analyze 入口，
-    保留 PDF 输入的图片转 PDF、页范围重写、坏页补齐等预处理逻辑。
+    保留 PDF 输入的图片转 PDF、页范围重写和坏页补齐；其他格式仅支持整本解析。
     """
 
     def __init__(
@@ -66,7 +66,7 @@ class MinerUParser(DocumentParser):
         return self._build_result(
             middle_json,
             model_output,
-            retained_page_indices=prepared.retained_page_indices,
+            retained_page_indices=prepared.retained_page_indices if prepared.file_suffix == "pdf" else None,
             broken_page_indices=prepared.broken_page_indices,
         )
 
@@ -86,7 +86,7 @@ class MinerUParser(DocumentParser):
         return self._build_result(
             middle_json,
             model_output,
-            retained_page_indices=prepared.retained_page_indices,
+            retained_page_indices=prepared.retained_page_indices if prepared.file_suffix == "pdf" else None,
             broken_page_indices=prepared.broken_page_indices,
         )
 
@@ -112,13 +112,14 @@ class MinerUParser(DocumentParser):
 
     def _prepare_input(self, path: Path, page_range: str = "") -> _PreparedInput:
         from .file_type import guess_suffix_by_path
-        from ..model.flash.pdf.document import PDFDocument
 
         file_name = path.stem
         file_bytes = path.read_bytes()
         suffix = guess_suffix_by_path(path)
 
         if suffix in IMAGE_EXTENSIONS:
+            from ..model.flash.pdf.document import PDFDocument
+
             conversion_started_at = time.perf_counter()
             input_size = len(file_bytes)
             logger.debug(
@@ -138,13 +139,19 @@ class MinerUParser(DocumentParser):
             )
             suffix = "pdf"
 
+        if suffix not in FILE_SUFFIXES:
+            raise ValueError(f"Unsupported file type: {suffix or path.suffix or 'unknown'}")
+        if suffix != "pdf" and page_range.strip():
+            raise InvalidRequestError(
+                "page_range_invalid",
+                f"Page range is only supported for PDF files; '{suffix}' uses full-document parsing.",
+                "page_range",
+            )
         file_bytes, retained_page_indices, broken_page_indices = self._maybe_adjust_pdf_bytes(
             file_bytes,
             suffix,
             page_range,
         )
-        if suffix not in FILE_SUFFIXES:
-            raise ValueError(f"Unsupported file type: {suffix or path.suffix or 'unknown'}")
         return _PreparedInput(
             file_name=file_name,
             file_bytes=file_bytes,
@@ -159,7 +166,7 @@ class MinerUParser(DocumentParser):
         suffix: str,
         page_range: str = "",
     ) -> tuple[bytes, list[int] | None, list[int] | None]:
-        """仅 PDF 走页范围重写；CSV 与 Office 文件直接返回原字节。"""
+        """仅 PDF 走页范围重写；其他格式直接返回原字节。"""
         if suffix != "pdf":
             return file_bytes, None, None
 

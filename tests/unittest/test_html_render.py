@@ -159,6 +159,36 @@ def test_default_and_full_modes_preserve_their_page_contracts() -> None:
     assert "HEADER" in full.get_text() and "FOOTER" in full.get_text()
 
 
+def test_full_html_links_to_page_footnote_anchor() -> None:
+    """验证 FULL HTML 为页面脚注生成唯一 id，默认模式仍过滤脚注正文。"""
+    middle = _middle(
+        _page(
+            0,
+            TextBlock(
+                type="text",
+                index=0,
+                content="See <hyperlink>[1]<url>#note-one</url></hyperlink>.",
+            ),
+            PageAuxTextBlock(
+                type="page_footnote",
+                index=1,
+                content="Footnote body.",
+                anchor="note-one",
+            ),
+        )
+    )
+
+    default = BeautifulSoup(render_html(middle, standalone=False), "html.parser")
+    full = BeautifulSoup(render_html(middle, mode=RenderMode.FULL, standalone=False), "html.parser")
+
+    assert default.select_one('a[href="#note-one"]') is not None
+    assert default.select_one("#note-one") is None
+    target = full.select_one("#note-one")
+    assert target is not None
+    assert target.get_text() == "Footnote body."
+    assert full.select_one('a[href="#note-one"]') is not None
+
+
 def test_inline_html_escapes_plain_text_and_renders_styles_links_and_math() -> None:
     """验证普通尖括号、富样式、安全链接及 MathJax carrier。"""
     content = (

@@ -10,7 +10,6 @@ from .types import QUALITY_TIERS, Tier, validate_tier
 
 # Legacy Office binary formats and RTF are natively parsed by model.flash.office converters.
 # Unsupported document/e-book/archive-like formats:
-# "epub",
 # "key",
 # "mobi",
 # "numbers",
@@ -25,6 +24,8 @@ IMAGE_EXTENSIONS: frozenset[str] = frozenset({"png", "jpg", "jpeg", "webp", "gif
 
 ODF_EXTENSIONS: frozenset[str] = frozenset({"odt", "ods", "odp"})
 
+EPUB_EXTENSIONS: frozenset[str] = frozenset({"epub"})
+
 OFFICE_EXTENSIONS: frozenset[str] = frozenset({"doc", "docx", "ppt", "pptx", "xls", "xlsx", "rtf"}) | ODF_EXTENSIONS
 
 HTML_EXTENSIONS: frozenset[str] = frozenset({"html", "htm"})
@@ -35,7 +36,7 @@ TEXT_EXTENSIONS: frozenset[str] = frozenset({"txt", "md", "markdown", "rst", "te
 
 TIERED_PARSE_EXTENSIONS: frozenset[str] = PDF_EXTENSIONS | IMAGE_EXTENSIONS
 
-FLASH_ONLY_PARSE_EXTENSIONS: frozenset[str] = OFFICE_EXTENSIONS | HTML_EXTENSIONS | CSV_EXTENSIONS
+FLASH_ONLY_PARSE_EXTENSIONS: frozenset[str] = OFFICE_EXTENSIONS | HTML_EXTENSIONS | CSV_EXTENSIONS | EPUB_EXTENSIONS
 
 PARSEABLE_EXTENSIONS: frozenset[str] = TIERED_PARSE_EXTENSIONS | FLASH_ONLY_PARSE_EXTENSIONS
 
@@ -51,6 +52,7 @@ FILE_TYPE_BY_EXTENSION: dict[str, str] = {
     **{ext: ext for ext in OFFICE_EXTENSIONS},
     **dict.fromkeys(HTML_EXTENSIONS, "html"),
     **dict.fromkeys(CSV_EXTENSIONS, "csv"),
+    **dict.fromkeys(EPUB_EXTENSIONS, "epub"),
     "txt": "text",
     "md": "markdown",
     "markdown": "markdown",
@@ -73,6 +75,7 @@ MIME_TYPE_BY_EXTENSION: dict[str, str] = {
     "ods": "application/vnd.oasis.opendocument.spreadsheet",
     "odp": "application/vnd.oasis.opendocument.presentation",
     "csv": "text/csv",
+    "epub": "application/epub+zip",
     "html": "text/html",
     "htm": "text/html",
     "png": "image/png",

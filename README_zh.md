@@ -46,11 +46,11 @@
 
 <details>
 <summary>MinerU — 专为 LLM · RAG · Agent 场景构建的高精度文档解析引擎 </summary>
-将 PDF · CSV · RTF · DOCX · PPTX · XLSX · ODT · ODS · ODP · 图片 · 网页转为结构化 Markdown / JSON · VLM+OCR 双引擎 · 109 种语言 <br>
+将 PDF · EPUB · CSV · RTF · DOCX · PPTX · XLSX · ODT · ODS · ODP · 图片 · 网页转为结构化 Markdown / JSON · VLM+OCR 双引擎 · 109 种语言 <br>
 MCP Server · LangChain / Dify / FastGPT 原生集成 · 10+ 国产算力适配 <br>
 
 **🔍 核心解析能力**
-- 原生支持 `CSV`、`RTF`、`DOCX`、`PPTX`、`XLSX`、`ODT`、`ODS`、`ODP` 解析
+- 原生支持 `EPUB`、`CSV`、`RTF`、`DOCX`、`PPTX`、`XLSX`、`ODT`、`ODS`、`ODP` 解析
 - 公式 → LaTeX · 表格 → HTML，精准还原复杂版面
 - 支持扫描件、手写体、多栏布局、跨页表格合并
 - 输出符合人类阅读顺序，自动去除页眉页脚
@@ -154,7 +154,7 @@ MCP Server · LangChain / Dify / FastGPT 原生集成 · 10+ 国产算力适配 
 
 ## 项目简介
 
-MinerU 是一款文档解析工具，可将 `PDF`、图片、`CSV`、`RTF`、`DOCX`、`PPTX`、`XLSX`、`ODT`、`ODS`、`ODP` 转化为机器可读格式（如 Markdown、JSON），便于后续检索、抽取与二次处理。
+MinerU 是一款文档解析工具，可将 `PDF`、`EPUB`、图片、`CSV`、`RTF`、`DOCX`、`PPTX`、`XLSX`、`ODT`、`ODS`、`ODP` 转化为机器可读格式（如 Markdown、JSON），便于后续检索、抽取与二次处理。
 MinerU诞生于[书生-浦语](https://github.com/InternLM/InternLM)的预训练过程中，我们将会集中精力解决科技文献中的符号转化问题，希望在大模型时代为科技发展做出贡献。
 相比国内外知名商用产品MinerU还很年轻，如果遇到问题或者结果不及预期请到[issue](https://github.com/opendatalab/MinerU/issues)提交问题，同时**附上相关文档或样例文件**。
 
@@ -162,7 +162,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 
 ## 主要功能
 
-- 支持 `PDF`、图片、`CSV`、`RTF`、`DOCX`、`PPTX`、`XLSX`、`ODT`、`ODS`、`ODP` 输入
+- 支持 `PDF`、`EPUB`、图片、`CSV`、`RTF`、`DOCX`、`PPTX`、`XLSX`、`ODT`、`ODS`、`ODP` 输入
 - 删除页眉、页脚、脚注、页码等元素，确保语义连贯
 - 输出符合人类阅读顺序的文本，适用于单栏、多栏及复杂排版
 - 保留原文档的结构，包括标题、段落、列表等
@@ -336,7 +336,7 @@ mineru -p <input_path> -o <output_path>
 mineru parse "<input_path>" --tier flash -o <output_path>
 ```
 
-当前 `mineru` 支持本地 `PDF / 图片 / CSV / RTF / DOCX / PPTX / XLSX / ODT / ODS / ODP` 文件或目录输入，并可通过命令行、API、`mineru-router` 进行解析。RTF 与 OpenDocument 使用本地 Flash 语义解析，不依赖外部 Office 套件转换；旧 Gradio WebUI 仍保持原有对外说明。具体使用方法请参考[使用指南](https://opendatalab.github.io/MinerU/zh/usage/)。
+当前 `mineru` 支持本地 `PDF / EPUB / 图片 / CSV / RTF / DOCX / PPTX / XLSX / ODT / ODS / ODP` 文件或目录输入，并可通过命令行、API、`mineru-router` 进行解析。EPUB、RTF 与 OpenDocument 使用本地 Flash 语义解析，不依赖外部 Office 套件转换；所有非 PDF Flash 输入只支持整本解析，EPUB 可恢复目录时会在 spine 正文前增加独立目录页。旧 Gradio WebUI 仍保持原有对外说明。具体使用方法请参考[使用指南](https://opendatalab.github.io/MinerU/zh/usage/)。
 
 
 # FAQ

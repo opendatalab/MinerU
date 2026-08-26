@@ -1,5 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
-"""把 ODF 嵌入的常用 MathML 结构转换为 LaTeX。"""
+"""把常用 Presentation MathML 结构转换为 LaTeX。"""
 
 from __future__ import annotations
 
@@ -120,8 +120,7 @@ def _convert(element: etree._Element) -> str:
         closing = element.get("close", ")")
         separators = element.get("separators", ",") or ","
         values = [_convert(child) for child in children]
-        separator = separators[0]
-        return rf"\left{opening}{separator.join(values)}\right{closing}"
+        return rf"\left{opening}{separators[0].join(values)}\right{closing}"
     if name == "mtable":
         rows = [_convert(child) for child in children if _local_name(child) in {"mtr", "mlabeledtr"}]
         return r"\begin{matrix}" + r" \\ ".join(rows) + r"\end{matrix}"
@@ -135,7 +134,7 @@ def _convert(element: etree._Element) -> str:
 
 
 def mathml_to_latex(math_element: etree._Element) -> str | None:
-    """转换 MathML 根节点并返回去除外围空白的 LaTeX。"""
+    """转换 MathML 根节点，并优先采用生产者保留的 TeX annotation。"""
     for annotation in math_element.iter():
         if _local_name(annotation) != "annotation":
             continue

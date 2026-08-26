@@ -116,7 +116,7 @@
 |--------|------|------|
 | `pages` | `list[PageInfo]` | 每一页的解析结果数组，按 `page_idx` 严格升序 |
 | `is_full_document` | `bool` | 是否整本文档解析（`page_index_map` 为空时为 `True`） |
-| `file_suffix` | `string` | 输入文件类型：`pdf`、`doc`、`docx`、`ppt`、`pptx`、`xls`、`xlsx`、`rtf`、`csv`、`odt`、`ods` 或 `odp` |
+| `file_suffix` | `string` | 输入文件类型：`pdf`、`doc`、`docx`、`ppt`、`pptx`、`xls`、`xlsx`、`rtf`、`csv`、`epub`、`odt`、`ods` 或 `odp` |
 | `effort` | `string` | 分析强度：`flash`、`medium`、`high` 或 `xhigh` |
 | `parse_mode` | `string` | 解析模式：`txt` 或 `ocr` |
 | `mineru_version` | `string` | MinerU 版本号 |
@@ -165,8 +165,8 @@ schema 2.0 已移除旧字段 `preproc_blocks`/`para_blocks`/`page_size`/`images
 | `code` | 代码容器；`content` 包含 `code_body` + 可选 `code_caption`/`code_footnote`；`sub_type` 为 `code` 或 `algorithm` |
 | `list` | 列表容器；`content` 为 `text`/`ref_text`/嵌套 `list` 块列表；`sub_type` 为 `text` 或 `ref_text` |
 | `index` | 目录容器；`content` 为 `text`/`doc_title`/`paragraph_title`/嵌套 `index` 块列表 |
-| `ref_text` | 参考文献/引用文本块 |
-| `header` / `footer` / `page_number` / `aside_text` / `page_footnote` | 页面辅助块（叶子块，`content: str`） |
+| `ref_text` | 参考文献文本块；EPUB 脚注不使用该类型 |
+| `header` / `footer` / `page_number` / `aside_text` / `page_footnote` | 页面辅助块（叶子块，`content: str`）；仅 `page_footnote` 可带 `anchor` |
 
 ##### 示例数据（schema 2.0）
 
@@ -244,7 +244,7 @@ schema 2.0 已移除旧字段 `preproc_blocks`/`para_blocks`/`page_size`/`images
 | `type` | `string` | 内容类型 |
 | `content` | `dict` | 与 `type` 对应的结构化内容 |
 | `bbox` | `list[int]` | 可选，0-1000 范围的边界框 |
-| `anchor` | `string` | 可选，部分 `DOCX` 标题或索引项会携带锚点 |
+| `anchor` | `string` | 可选，标题与 `page_footnote` 的 document-wide 目标；目录叶子和行内链接可以引用 |
 
 其中 `image` / `chart` 类型还可能包含可选顶层字段 `sub_type`，用于表示视觉子类型。
 
@@ -412,7 +412,7 @@ schema 2.0 已移除旧字段 `preproc_blocks`/`para_blocks`/`page_size`/`images
     * `code`
     * `algorithm`
 
-- 页面辅助块（`header`、`footer`、`page_number`、`aside_text`、`page_footnote`）作为顶层叶子块出现在 `blocks` 中，`content: str`——schema 2.0 不再有独立的 `discarded_blocks` 字段。
+- 页面辅助块（`header`、`footer`、`page_number`、`aside_text`、`page_footnote`）作为顶层叶子块出现在 `blocks` 中，`content: str`——schema 2.0 不再有独立的 `discarded_blocks` 字段；只有 `page_footnote` 可以额外携带 document-wide `anchor`。
 - 所有 block 可能包含 `angle` 字段，用来表示旋转角度，0，90，180，270
 
 

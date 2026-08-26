@@ -31,7 +31,7 @@ Options:
   --help                          Show help information
 ```
 > [!TIP]
-> `mineru` currently supports local `PDF`, image, `CSV`, `RTF`, `DOCX`, `PPTX`, `XLSX`, `ODT`, `ODS`, and `ODP` file or directory inputs.
+> `mineru` currently supports local `PDF`, `EPUB`, image, `CSV`, `RTF`, `DOCX`, `PPTX`, `XLSX`, `ODT`, `ODS`, and `ODP` file or directory inputs. Non-PDF Flash formats only support full-document parsing; EPUB emits a leading table-of-contents page when available.
 
 ```bash
 mineru-api --help

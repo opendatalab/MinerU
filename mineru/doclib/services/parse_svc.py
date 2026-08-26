@@ -669,7 +669,7 @@ class ParseService:
                 tier = "flash"
                 privacy = "local"
             rule_page_range = rule.get("page_range")
-            if rule_page_range:
+            if rule_page_range and ext in TIERED_PARSE_EXTENSIONS:
                 initial_page_range = expand_page_range(rule_page_range, page_count or 1)
 
         # insert parse batch
@@ -733,6 +733,12 @@ class ParseService:
                 "parse_not_required",
                 "Text files do not require MinerU parsing. Read the file directly.",
                 "path",
+            )
+        if page_range and ext not in TIERED_PARSE_EXTENSIONS:
+            raise InvalidRequestError(
+                "page_range_invalid",
+                f"Page range is only supported for PDF and image files; '{ext}' uses full-document parsing.",
+                "page_range",
             )
         if remote and ext not in TIERED_PARSE_EXTENSIONS:
             raise InvalidRequestError(
@@ -1071,11 +1077,12 @@ class ParseService:
         """Parse via local library call."""
         from ...parser import parse
 
+        parser_page_range = page_range if file_row["ext"] in TIERED_PARSE_EXTENSIONS else ""
         result = await asyncio.to_thread(
             parse,
             file_row["path"],
             tier=tier,
-            page_range=page_range,
+            page_range=parser_page_range,
         )
         return result
 

@@ -49,6 +49,7 @@ _STRONG_CONTENT_SUFFIXES = frozenset(
         "xls",
         "xlsx",
         "rtf",
+        "epub",
         "odt",
         "ods",
         "odp",
@@ -193,6 +194,20 @@ def _guess_odf_suffix_by_path(file_path: Path) -> str | None:
         return None
 
 
+def _guess_epub_suffix_by_bytes(file_bytes: bytes) -> str | None:
+    """从内存 ZIP 包验证 EPUB 强内容身份。"""
+    from ..model.flash.epub import detect_epub
+
+    return "epub" if detect_epub(file_bytes) else None
+
+
+def _guess_epub_suffix_by_path(file_path: Path) -> str | None:
+    """从路径 ZIP 包验证 EPUB 强内容身份。"""
+    from ..model.flash.epub import detect_epub_path
+
+    return "epub" if detect_epub_path(file_path) else None
+
+
 def _guess_ole2_suffix_by_bytes(file_bytes: bytes) -> str | None:
     """用 OLE2 magic + olefile 内部 stream 区分 doc/xls/ppt。
 
@@ -256,9 +271,10 @@ def _resolve_signatureless_csv_suffix(detected_suffix: str, file_path: str | Pat
     return detected_suffix
 
 
-def _reject_unverified_odf_suffix(detected_suffix: str) -> str:
-    """拒绝未通过 mimetype/manifest 验证、仅由启发式工具猜出的 ODF 类型。"""
-    return "unknown" if detected_suffix in ODF_MIMETYPE_SUFFIXES.values() else detected_suffix
+def _reject_unverified_package_suffix(detected_suffix: str) -> str:
+    """拒绝未通过包身份验证、仅由启发式工具猜出的 ODF/EPUB 类型。"""
+    package_suffixes = {*ODF_MIMETYPE_SUFFIXES.values(), "epub"}
+    return "unknown" if detected_suffix in package_suffixes else detected_suffix
 
 
 def guess_suffix_by_bytes(file_bytes: bytes, file_path: str | None = None) -> str:
@@ -266,6 +282,10 @@ def guess_suffix_by_bytes(file_bytes: bytes, file_path: str | None = None) -> st
         return "pdf"
     if rtf_header_offset(file_bytes[:128]) is not None:
         return "rtf"
+
+    epub_suffix = _guess_epub_suffix_by_bytes(file_bytes)
+    if epub_suffix:
+        return epub_suffix
 
     ooxml_suffix = _guess_ooxml_suffix_by_bytes(file_bytes)
     if ooxml_suffix:
@@ -287,7 +307,7 @@ def guess_suffix_by_bytes(file_bytes: bytes, file_path: str | None = None) -> st
         and file_bytes[:4] == PDF_SIG_BYTES
     ):
         suffix = "pdf"
-    return _resolve_signatureless_csv_suffix(_reject_unverified_odf_suffix(suffix), file_path)
+    return _resolve_signatureless_csv_suffix(_reject_unverified_package_suffix(suffix), file_path)
 
 
 def guess_suffix_by_path(file_path: str | Path) -> str:
@@ -296,6 +316,10 @@ def guess_suffix_by_path(file_path: str | Path) -> str:
 
     if _has_rtf_signature_by_path(file_path):
         return "rtf"
+
+    epub_suffix = _guess_epub_suffix_by_path(file_path)
+    if epub_suffix:
+        return epub_suffix
 
     ooxml_suffix = _guess_ooxml_suffix_by_path(file_path)
     if ooxml_suffix:
@@ -320,7 +344,7 @@ def guess_suffix_by_path(file_path: str | Path) -> str:
                     suffix = "pdf"
         except Exception as e:
             logger.warning(f"Failed to read file {file_path} for PDF signature check: {e}")
-    return _resolve_signatureless_csv_suffix(_reject_unverified_odf_suffix(suffix), file_path)
+    return _resolve_signatureless_csv_suffix(_reject_unverified_package_suffix(suffix), file_path)
 
 
 __all__ = ["guess_suffix_by_bytes", "guess_suffix_by_path"]

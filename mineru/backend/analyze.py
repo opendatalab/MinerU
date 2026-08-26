@@ -1,5 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
-"""统一 PDF、CSV 与 Office/RTF 文档分析的稳定公共门面。"""
+"""统一 PDF、EPUB、CSV 与 Office/RTF 文档分析的稳定公共门面。"""
 
 from __future__ import annotations
 
@@ -36,6 +36,8 @@ def doc_analyze(
     """生产严格 ModelJson，并在统一边界构造严格 MiddleJson。"""
     if file_suffix not in FILE_SUFFIXES:
         raise ValueError(f"Unsupported file suffix: {file_suffix!r}")
+    if file_suffix != "pdf" and page_index_map:
+        raise ValueError(f"page_index_map is only supported for PDF files, got {file_suffix!r}")
     if effort not in _SUPPORTED_ANALYZE_EFFORTS:
         raise ValueError(f"Unsupported analyze effort: {effort}")
 
@@ -52,6 +54,10 @@ def doc_analyze(
         from .analysis.csv import analyze_csv
 
         result = analyze_csv(file_bytes)
+    elif file_suffix == "epub":
+        from .analysis.epub import analyze_epub
+
+        result = analyze_epub(file_bytes)
     else:
         from .analysis.office import analyze_office
 

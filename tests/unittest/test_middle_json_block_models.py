@@ -109,6 +109,24 @@ def test_shared_models_preserve_all_discriminator_values() -> None:
     assert isinstance(parse_block({"type": "code_footnote", "content": "f"}), CodeAnnotationBlock)
 
 
+def test_page_aux_anchor_is_restricted_to_page_footnote() -> None:
+    """验证共享 PageAux 模型仅允许 page_footnote 使用可选 anchor。"""
+    footnote = parse_block(
+        {
+            "type": "page_footnote",
+            "content": "note",
+            "anchor": "note-one",
+        }
+    )
+
+    assert isinstance(footnote, PageAuxTextBlock)
+    assert footnote.anchor == "note-one"
+    assert footnote.to_dict()["anchor"] == "note-one"
+    for block_type in ("header", "footer", "page_number", "aside_text"):
+        with pytest.raises(ValidationError, match="only supported for page_footnote"):
+            parse_block({"type": block_type, "content": "aux", "anchor": "invalid"})
+
+
 def test_title_levels_follow_global_hierarchy() -> None:
     """验证文档标题固定为一级，段落标题严格限制在二至六级。"""
     doc_title = parse_block({"type": "doc_title", "content": "doc", "level": 1})

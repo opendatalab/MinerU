@@ -116,7 +116,7 @@ The following sections provide detailed descriptions of each file's purpose and 
 |------------|------|-------------|
 | `pages` | `list[PageInfo]` | Array of parsing results for each page, strictly increasing by `page_idx` |
 | `is_full_document` | `bool` | Whether the input is a full document (empty `page_index_map`) |
-| `file_suffix` | `string` | Input file type: `pdf`, `doc`, `docx`, `ppt`, `pptx`, `xls`, `xlsx`, `rtf`, `csv`, `odt`, `ods`, or `odp` |
+| `file_suffix` | `string` | Input file type: `pdf`, `doc`, `docx`, `ppt`, `pptx`, `xls`, `xlsx`, `rtf`, `csv`, `epub`, `odt`, `ods`, or `odp` |
 | `effort` | `string` | Analysis effort: `flash`, `medium`, `high`, or `xhigh` |
 | `parse_mode` | `string` | Parse mode: `txt` or `ocr` |
 | `mineru_version` | `string` | MinerU version number |
@@ -165,8 +165,8 @@ Leaf blocks (text, title, equation, etc.) carry `content: str` directly. Visual 
 | `code` | Code container; `content` includes `code_body` + optional `code_caption`/`code_footnote`; `sub_type` is `code` or `algorithm` |
 | `list` | List container; `content` is a list of `text`/`ref_text`/nested `list` blocks; `sub_type` is `text` or `ref_text` |
 | `index` | Index (table of contents) container; `content` is a list of `text`/`doc_title`/`paragraph_title`/nested `index` blocks |
-| `ref_text` | Reference / citation text block |
-| `header` / `footer` / `page_number` / `aside_text` / `page_footnote` | Page auxiliary blocks (leaf, `content: str`) |
+| `ref_text` | Reference / bibliography text block; EPUB notes do not use this type |
+| `header` / `footer` / `page_number` / `aside_text` / `page_footnote` | Page auxiliary blocks (leaf, `content: str`); only `page_footnote` may include `anchor` |
 
 ##### Sample Data (schema 2.0)
 
@@ -244,7 +244,7 @@ Leaf blocks (text, title, equation, etc.) carry `content: str` directly. Visual 
 | `type` | `string` | Content type |
 | `content` | `dict` | Structured payload for the given `type` |
 | `bbox` | `list[int]` | Optional bounding box mapped into the 0-1000 coordinate range |
-| `anchor` | `string` | Optional anchor; some `DOCX` titles or index items may include it |
+| `anchor` | `string` | Optional document-wide target for titles and `page_footnote`; index leaves and inline links may reference it |
 
 `image` / `chart` items may also include an optional top-level `sub_type` field for visual subtype propagation.
 
@@ -383,7 +383,7 @@ In schema 2.0, the multimodal tier produces the same unified `MiddleJson` struct
 - `code` is a container block; `content` holds a `code_body` plus optional `code_caption`/`code_footnote`; `sub_type` is:
     * `code`
     * `algorithm`
-- Page auxiliary blocks (`header`, `footer`, `page_number`, `aside_text`, `page_footnote`) appear as top-level leaf blocks in `blocks` with `content: str` — there is no separate `discarded_blocks` field in schema 2.0.
+- Page auxiliary blocks (`header`, `footer`, `page_number`, `aside_text`, `page_footnote`) appear as top-level leaf blocks in `blocks` with `content: str` — there is no separate `discarded_blocks` field in schema 2.0. `page_footnote` alone may carry an optional document-wide `anchor`.
 - All blocks may include an `angle` field indicating rotation (one of `0, 90, 180, 270`).
 
 ##### Examples

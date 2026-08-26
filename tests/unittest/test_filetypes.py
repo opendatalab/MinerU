@@ -4,6 +4,7 @@ from pathlib import Path
 
 from mineru.filetypes import (
     CSV_EXTENSIONS,
+    EPUB_EXTENSIONS,
     FILE_TYPE_BY_EXTENSION,
     FLASH_ONLY_PARSE_EXTENSIONS,
     INGESTIBLE_EXTENSIONS,
@@ -76,6 +77,18 @@ def test_csv_is_a_flash_only_parseable_type_instead_of_plain_text() -> None:
     assert FILE_TYPE_BY_EXTENSION["csv"] == "csv"
     assert MIME_TYPE_BY_EXTENSION["csv"] == "text/csv"
     assert is_flash_only_parse_extension("csv")
+
+
+def test_epub_is_a_flash_only_parseable_e_book_type() -> None:
+    """验证 EPUB 进入本地解析、doclib 与 MIME 派生集合，但不伪装成 Office。"""
+    assert EPUB_EXTENSIONS == frozenset({"epub"})
+    assert "epub" not in OFFICE_EXTENSIONS
+    assert "epub" in FLASH_ONLY_PARSE_EXTENSIONS
+    assert "epub" in PARSEABLE_EXTENSIONS
+    assert "epub" in INGESTIBLE_EXTENSIONS
+    assert FILE_TYPE_BY_EXTENSION["epub"] == "epub"
+    assert MIME_TYPE_BY_EXTENSION["epub"] == "application/epub+zip"
+    assert is_flash_only_parse_extension("epub")
 
 
 def test_mineru_kit_discovers_and_accepts_csv_inputs(tmp_path: Path) -> None:

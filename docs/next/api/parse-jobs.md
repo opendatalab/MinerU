@@ -60,7 +60,7 @@ Job 状态:
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|:--:|------|
 | `source` | object | 是 | 文件来源。 |
-| `page_range` | string | 否 | 针对单个文件的页码范围。 |
+| `page_range` | string | 否 | 针对单个 PDF/图片文件的页码范围；非 PDF Flash 输入显式传入时返回 `page_range_invalid`。 |
 
 ### Source 类型
 
@@ -122,7 +122,7 @@ Local Parse Server 的 source 策略由启动参数决定:
 
 | 字段 | 类型 | 默认 | 说明 |
 |------|------|------|------|
-| `page_range` | string | `null` | 页码范围。省略或传 `null` 均表示未指定页码范围，服务端解析整个文件。推荐 `~` 分隔，如 `1~10`、`1,3,5~7`、`-5~-1`。 |
+| `page_range` | string | `null` | PDF/图片页码范围。省略或传 `null` 表示解析整个文件；非 PDF Flash 输入只允许省略或传 `null`。推荐 `~` 分隔，如 `1~10`、`1,3,5~7`、`-5~-1`。 |
 
 OCR 策略和图片分析能力由 `tier` 与服务端实际引擎自动决定，客户端不能通过文件级参数单独关闭或开启。
 
@@ -352,4 +352,4 @@ Local Parse Server 的任务 API 与官方 API 保持同一结构，但有以下
 - `health.features.sources` 必须反映本地 server 实际允许的 source 类型；只有启动时开启 `--allow-local-source` 才包含 `local`。
 - `local` source 可以不生成输入 `file_id`；响应中应保留 `name` 和文件级状态。
 - 对 PDF/image，省略 `tier` 或传 `null` 时，只能按默认选择策略选择本地可发现的非 `flash` 质量 tier，不能回退到 `flash`；如果只有 `flash` 可用，应返回 `quality_tier_unavailable`。
-- 对 Office/HTML/CSV，API Server job 按批量规则处理，即使 job tier 是质量 tier，文件实际解析也按 `flash` 语义归一；其它 text 不进入 parse job；暂不新增 file-level effective tier 字段。
+- 对 EPUB/Office/HTML/CSV，API Server job 按批量规则处理，即使 job tier 是质量 tier，文件实际解析也按 `flash` 语义归一；其它 text 不进入 parse job；暂不新增 file-level effective tier 字段。

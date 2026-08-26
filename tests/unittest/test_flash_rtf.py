@@ -209,7 +209,11 @@ def test_public_parser_detects_rtf_content_before_extension(tmp_path: Path) -> N
     source = tmp_path / "disguised.csv"
     source.write_bytes(b"\xef\xbb\xbf \r\n" + _complex_rtf())
 
-    result = parse(source, tier="flash", page_range="99")
+    result = parse(source, tier="flash")
+
+    with pytest.raises(InvalidRequestError, match="only supported for PDF") as exc_info:
+        parse(source, tier="flash", page_range="99")
+    assert exc_info.value.code == "page_range_invalid"
 
     assert result.middle_json.file_suffix == "rtf"
     assert result.middle_json.is_full_document is True

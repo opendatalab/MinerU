@@ -12,7 +12,7 @@ RTF 是带有 group、control word、destination、代码页和可嵌入二进�
 
 - RTF 使用 `mineru/model/flash/office/rtf/` 下的纯 Python lexer、typed IR、状态机、Office Math 适配器和 converter，不依赖 anydoc、Pandoc、LibreOffice 或外部服务。
 - `FileSuffix`、`OfficeSuffix` 和 `OFFICE_EXTENSIONS` 接受 `rtf`；`RtfModel -> analyze_office -> doc_analyze` 固定返回 `effort="flash"`、`parse_mode="txt"`。
-- RTF 是可重排语义文档。输出固定为一个无 bbox 的逻辑页；`\page` / `\column` 保留为换行，`page_range` 不切分内容。
+- RTF 是可重排语义文档。输出固定为一个无 bbox 的逻辑页；`\page` / `\column` 保留为换行，显式 `page_range` 返回 `page_range_invalid`。
 - Parser 覆盖代码页与 Unicode、继承样式、标题、嵌套列表、合并/嵌套表格、字段链接、脚注/尾注、页眉页脚、RTF Office Math、pict 图片和图片 MTEF 公式。当前 schema 没有 quote block，顶层引用样式降级为普通文本但保留内容。
 - RTF header 是强内容签名，优先于扩展名和 CSV 兜底；允许 UTF-8 BOM、最多 64 个 ASCII 空白和大小写差异。
 - 只保留安全相对链接、已解析标题 bookmark 以及 `http` / `https` / `mailto` / `tel`。对象数据、活动内容和外部图片不执行、不读取、不联网。

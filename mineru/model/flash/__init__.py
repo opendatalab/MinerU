@@ -1,11 +1,12 @@
 # Copyright (c) Opendatalab. All rights reserved.
 
-"""Flash PDF、CSV 与 Office 模型公开入口。"""
+"""Flash PDF、EPUB、CSV 与 Office 模型公开入口。"""
 
 from .models import (
     CsvModel,
     DocModel,
     DocxModel,
+    EpubModel,
     OdpModel,
     OdsModel,
     OdtModel,
@@ -20,6 +21,7 @@ from .models import (
 __all__ = [
     "PdfModel",
     "CsvModel",
+    "EpubModel",
     "RtfModel",
     "DocModel",
     "DocxModel",

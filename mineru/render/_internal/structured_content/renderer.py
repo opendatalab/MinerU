@@ -14,6 +14,7 @@ from ..markdown.blocks import (
 )
 from ..markdown.assets import normalize_image_source, resolve_image_source
 from ..markdown.escaping import escape_standalone_marker_rule, escape_text_block_markdown_prefix
+from ..markdown.inline import render_inline_content
 from ....types import (
     BlockType,
     ChartAnnotationBlock,
@@ -28,6 +29,7 @@ from ....types import (
     ImageBodyBlock,
     ImagePayloadBlock,
     MiddleJson,
+    PageAuxTextBlock,
     PageBlock,
     ParagraphTitleBlock,
     TableAnnotationBlock,
@@ -106,6 +108,10 @@ def _render_content_block(
         image_source = _resolve_content_image_source(block, asset_base_url)
         if image_source is not None:
             payload["image_source"] = image_source
+        return payload
+    if isinstance(block, PageAuxTextBlock):
+        content = escape_text_block_markdown_prefix(render_inline_content(block.content, delimiters))
+        payload["content"] = escape_standalone_marker_rule(content)
         return payload
     if not isinstance(block, (ImageBlock, TableBlock, ChartBlock, CodeBlock)):
         payload["content"] = render_single_block(

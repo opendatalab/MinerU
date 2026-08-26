@@ -30,7 +30,7 @@ mineru-kit parse <input...> -o <output> [flags]
 | 多文件 | 一次提交多个文件 |
 | 目录 | 展开目录中的可解析文件 |
 
-当前支持的扩展名包括 PDF、常见图片、CSV、RTF、DOC/DOCX、PPT/PPTX、XLS/XLSX、ODT/ODS/ODP、HTML/HTM。目录输入只展开一层，不递归。
+当前支持的扩展名包括 PDF、EPUB、常见图片、CSV、RTF、DOC/DOCX、PPT/PPTX、XLS/XLSX、ODT/ODS/ODP、HTML/HTM。目录输入只展开一层，不递归；非 PDF Flash 输入只支持整本解析，显式 `--pages` 返回 `page_range_invalid`。EPUB 可恢复目录时会增加独立首页目录。
 
 当前不支持：
 
@@ -113,8 +113,8 @@ local 模式支持：
 3. 可以同时传 `--tier` 和 `--backend`
 4. 如果二者不兼容，直接报错
 5. `--tier` 与 `--backend` 都不传时，PDF/image 当前默认为 `standard`
-6. 单文件 Office/HTML/CSV 未指定 tier 时归一为 `flash`；显式指定质量 tier 时报错
-7. 多文件或目录输入按批量规则处理，Office/HTML/CSV 即使遇到质量 tier 也归一为 `flash`
+6. 单文件 EPUB/Office/HTML/CSV 未指定 tier 时归一为 `flash`；显式指定质量 tier 时报错
+7. 多文件或目录输入按批量规则处理，EPUB/Office/HTML/CSV 即使遇到质量 tier 也归一为 `flash`
 8. PDF/image 的 `flash` 只能显式指定：
    - `--tier flash`
    - `--backend flash`
@@ -136,7 +136,7 @@ remote 模式通过以下参数进入：
 5. remote 模式传了 `--tier` 时：
    - 服务提供该 tier，则按该 tier 解析
    - 服务不提供该 tier，则报错
-6. `mineru-kit parse` 是低层工具特例，允许 remote 模式处理 Office/HTML/CSV 等非 PDF/image 输入；这类输入按批量归一规则使用 `flash` 语义。
+6. `mineru-kit parse` 是低层工具特例，允许 remote 模式处理 EPUB/Office/HTML/CSV 等非 PDF/image 输入；这类输入按批量归一规则使用 `flash` 语义。
 
 ## 6. 参数分组
 
