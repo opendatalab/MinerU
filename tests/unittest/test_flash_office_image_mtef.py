@@ -425,7 +425,7 @@ def test_xlsx_cell_image_comment_returns_eq_html() -> None:
     converter.zf = ZipFile(BytesIO(package.getvalue()))
     converter.cell_image_map = {"image-id": "media/image1.gif"}
     try:
-        html = converter._get_cell_image('DISPIMG("image-id")')
+        html = converter._resolve_cell_image('DISPIMG("image-id")')
     finally:
         converter.zf.close()
 

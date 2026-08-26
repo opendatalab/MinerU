@@ -18,7 +18,9 @@ from ..legacy import BoundedOleReader, LegacyOfficeEncryptedError
 from ..legacy.errors import LegacyOfficeResourceLimitError
 from ..legacy.limits import MAX_GRID_SLOTS
 from ..legacy.mtef import decode_equation_native
-from ..xlsx.xlsx_converter import ExcelTable, XlsxConverter
+from ..spreadsheet.html import render_spreadsheet_table
+from ..spreadsheet.models import AnchoredBlock, ExcelTable, FormulaMap, SheetImage
+from ..spreadsheet.projector import SpreadsheetProjector
 from ..legacy.stream import read_stream_bytes_from_start
 from .....types import BlockType
 
@@ -93,7 +95,7 @@ def _to_openpyxl_rich_text(value: XlsRichText) -> str | CellRichText:
     return CellRichText(parts)
 
 
-class _XlsPageBuilder(XlsxConverter):
+class _XlsPageBuilder(SpreadsheetProjector):
     """用轻量 openpyxl worksheet 适配器复用现有网格与 HTML 投影。"""
 
     def __init__(self, workbook_model: XlsWorkbook) -> None:
@@ -164,7 +166,7 @@ class _XlsPageBuilder(XlsxConverter):
             list(rows),
             list(cols),
         )
-        return self.excel_table_to_html(table)
+        return render_spreadsheet_table(table)
 
     def _chart_sheet_page(self, chart_sheet: XlsChartSheet) -> list[dict[str, Any]]:
         """把独立 chart sheet 投影为仅含 chart block 的逻辑页。"""
@@ -206,21 +208,21 @@ class _XlsPageBuilder(XlsxConverter):
             self._prepend_sheet_titles(sheet_pages)
         return [page for _, page in sheet_pages]
 
-    def _collect_sheet_images(self, sheet: Worksheet) -> list[dict]:
+    def _collect_sheet_images(self, sheet: Worksheet) -> list[SheetImage]:
         """返回解析器已经绑定到当前 sheet 的图片。"""
 
         sheet_model = self._sheet_by_title.get(sheet.title)
         if sheet_model is None:
             return []
         return [
-            {
-                "anchor": (image.row, image.col),
-                "base64": image.image_base64,
-            }
+            SheetImage(
+                anchor=(image.row, image.col),
+                image_base64=image.image_base64,
+            )
             for image in sheet_model.images
         ]
 
-    def _map_math_formulas_to_cells(self, sheet: Worksheet) -> dict:
+    def _map_math_formulas_to_cells(self, sheet: Worksheet) -> FormulaMap:
         """把 legacy Equation Editor 公式映射到表格 cell anchor。"""
 
         math_map: dict[tuple[int, int], list[str]] = collections.defaultdict(list)
@@ -279,7 +281,7 @@ class _XlsPageBuilder(XlsxConverter):
     def _find_charts_in_sheet(
         self,
         sheet: Worksheet,
-    ) -> list[tuple[tuple[int, int], int, dict[str, Any]]]:
+    ) -> list[AnchoredBlock]:
         """按 cell anchor 输出当前工作表的 legacy chart blocks。"""
 
         sheet_model = self._sheet_by_title.get(sheet.title)

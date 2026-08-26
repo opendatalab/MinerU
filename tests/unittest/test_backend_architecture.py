@@ -216,6 +216,26 @@ def test_flash_office_does_not_depend_on_pdf_implementation() -> None:
     assert not {path: imports for path, imports in offenders.items() if imports}
 
 
+def test_flash_spreadsheet_dependencies_are_one_way() -> None:
+    """守卫 XLS/XLSX 只依赖中立 spreadsheet 层且共享层不反向引用格式实现。"""
+    xls_offenders = {
+        str(path.relative_to(_PROJECT_ROOT)): sorted(
+            module for module in _resolved_imports(path) if module.startswith("mineru.model.flash.office.xlsx")
+        )
+        for path in (_PROJECT_ROOT / "mineru/model/flash/office/xls").rglob("*.py")
+    }
+    spreadsheet_offenders = {
+        str(path.relative_to(_PROJECT_ROOT)): sorted(
+            module
+            for module in _resolved_imports(path)
+            if module.startswith(("mineru.model.flash.office.xls", "mineru.model.flash.office.xlsx"))
+        )
+        for path in (_PROJECT_ROOT / "mineru/model/flash/office/spreadsheet").rglob("*.py")
+    }
+    assert not {path: imports for path, imports in xls_offenders.items() if imports}
+    assert not {path: imports for path, imports in spreadsheet_offenders.items() if imports}
+
+
 def test_package_initializers_define_explicit_all() -> None:
     """守卫目标目录下每个包入口都显式声明 __all__。"""
     offenders = [
