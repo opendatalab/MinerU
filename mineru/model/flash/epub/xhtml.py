@@ -342,7 +342,10 @@ class EpubAnchorRegistry:
         normalized = (href or "").strip()
         if not normalized or any(ord(char) < 32 for char in normalized) or any(char in normalized for char in ("<", ">")):
             return None
-        split = urlsplit(normalized)
+        try:
+            split = urlsplit(normalized)
+        except ValueError:
+            return None
         if split.scheme or split.netloc or normalized.startswith(("//", "\\")):
             return None
         target = self._package.resolve_reference(normalized, base_part=base_part)
@@ -355,7 +358,10 @@ class EpubAnchorRegistry:
         normalized = (href or "").strip()
         if not normalized or any(ord(char) < 32 for char in normalized) or any(char in normalized for char in ("<", ">")):
             return None
-        split = urlsplit(normalized)
+        try:
+            split = urlsplit(normalized)
+        except ValueError:
+            return None
         if split.scheme:
             if split.scheme.casefold() not in _SAFE_EXTERNAL_SCHEMES:
                 return None

@@ -277,7 +277,10 @@ class EpubPackage:
         raw_href = (href or "").strip()
         if not raw_href:
             return None
-        split = urlsplit(raw_href)
+        try:
+            split = urlsplit(raw_href)
+        except ValueError:
+            return None
         if split.scheme or split.netloc:
             return None
         raw_path = split.path

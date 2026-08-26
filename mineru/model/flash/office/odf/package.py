@@ -225,7 +225,10 @@ class OdfPackage:
         normalized_href = unquote((href or "").strip())
         if not normalized_href or normalized_href.startswith("#"):
             return None
-        split = urlsplit(normalized_href)
+        try:
+            split = urlsplit(normalized_href)
+        except ValueError:
+            return None
         if split.scheme or split.netloc:
             return None
         candidate = split.path.replace("\\", "/")

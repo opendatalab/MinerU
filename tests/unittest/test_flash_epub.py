@@ -464,6 +464,31 @@ def test_epub_corrupt_chapter_keeps_empty_spine_placeholder() -> None:
     assert "SVG text" in middle.pages[2].blocks[0].content  # type: ignore[union-attr]
 
 
+def test_epub_malformed_resource_and_link_references_degrade_locally() -> None:
+    """验证非法 URI 只丢弃样式、图片或链接目标，不阻断章节正文。"""
+    package = EpubPackage(build_epub_fixture())
+    chapter_path = "EPUB/text/ch1.xhtml"
+    try:
+        root = package.xml_part(chapter_path, allow_external_doctype=True)
+        assert root is not None
+        stylesheet = next(element for element in root.iter() if etree.QName(element).localname == "link")
+        hyperlink = next(element for element in root.iter() if etree.QName(element).localname == "a")
+        image = next(element for element in root.iter() if etree.QName(element).localname == "img")
+        stylesheet.set("href", "http://[")
+        hyperlink.set("href", "http://[")
+        image.set("src", "http://[")
+
+        anchors = build_anchor_registry([(chapter_path, root)], package)
+        blocks = EpubChapterConverter(package, chapter_path, root, anchors).convert()
+
+        assert "Chapter One" in str(blocks)
+        assert "chapter two" in str(blocks)
+        assert "Remote image" in str(blocks)
+        assert "<hyperlink>chapter two" not in str(blocks)
+    finally:
+        package.close()
+
+
 def test_epub_rejects_encrypted_unsafe_and_dtd_inputs() -> None:
     """验证选中正文加密、上跳成员和 DTD 在语义解析前稳定失败。"""
     encrypted = build_epub_fixture(encrypted_paths=("EPUB/text/ch1.xhtml",))

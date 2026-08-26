@@ -585,6 +585,22 @@ def test_odf_corrupt_optional_styles_and_external_image_degrade_locally() -> Non
     assert pages == [[{"type": BlockType.TEXT, "content": "visible"}]]
 
 
+def test_odf_malformed_image_and_object_references_degrade_locally() -> None:
+    """验证非法图片和对象 URI 仅丢弃资源，不阻断 ODF 正文。"""
+    content = """<office:document-content
+ xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+ xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"
+ xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+ <office:body><office:text><text:p>visible</text:p><draw:frame>
+  <draw:object xlink:href="http://["/><draw:image xlink:href="http://["/>
+ </draw:frame></office:text></office:body></office:document-content>"""
+
+    pages = OdtModel().predict(BytesIO(build_odf_package("odt", content)))
+
+    assert pages == [[{"type": BlockType.TEXT, "content": "visible"}]]
+
+
 def test_odf_style_cycle_is_bounded_and_preserves_text() -> None:
     """验证循环 parent-style-name 在有限链路内降级，不阻塞正文解析。"""
     content = """<office:document-content
