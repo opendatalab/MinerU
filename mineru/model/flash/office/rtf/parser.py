@@ -50,6 +50,7 @@ MAX_RTF_BYTES = MAX_ENTRY_BYTES
 MAX_RTF_LIST_DEPTH = 8
 MAX_RTF_TABLE_DEPTH = 4
 MAX_RTF_ROMAN_VALUE = 3_999
+MAX_RTF_TABLE_CELLS = 100_000
 
 _CHARSET_ENCODINGS = {
     0: "cp1252",
@@ -250,6 +251,13 @@ class _TableBuilder:
         self._pending_horizontal: Literal["none", "start", "continue"] = "none"
         self._pending_vertical: Literal["none", "start", "continue"] = "none"
         self._row_open = False
+        self._total_slots = 0
+
+    def _check_cell_budget(self, row_cell_count: int) -> None:
+        """在保存定义或物化 cell 前校验当前表格对象预算。"""
+        limit = min(MAX_GRID_SLOTS, MAX_RTF_TABLE_CELLS)
+        if self._total_slots + row_cell_count > limit:
+            raise LegacyOfficeResourceLimitError(f"RTF table exceeds max_grid_slots={limit}")
 
     def start_row(self) -> None:
         """开始新行；若上一行未显式结束则先安全收束。"""
@@ -283,6 +291,7 @@ class _TableBuilder:
         """在 cellx 边界冻结当前单元格定义。"""
         if not self._row_open:
             self.start_row()
+        self._check_cell_budget(max(len(self._definitions) + 1, len(self._cells)))
         self._definitions.append(
             _CellDefinition(
                 horizontal_merge=self._pending_horizontal,
@@ -310,6 +319,7 @@ class _TableBuilder:
         """结束当前单元格，并按同位置 cellx 定义附加合并属性。"""
         if not self._row_open:
             self.start_row()
+        self._check_cell_budget(max(len(self._definitions), len(self._cells) + 1))
         definition_index = len(self._cells)
         definition = self._definitions[definition_index] if definition_index < len(self._definitions) else _CellDefinition()
         self._cells.append(
@@ -329,13 +339,12 @@ class _TableBuilder:
         if self._cell_blocks:
             self.end_cell()
         target_cells = max(len(self._definitions), len(self._cells))
+        self._check_cell_budget(target_cells)
         while len(self._cells) < target_cells:
             self.end_cell()
         if target_cells:
-            total_slots = sum(len(row.cells) for row in self.rows) + target_cells
-            if total_slots > MAX_GRID_SLOTS:
-                raise LegacyOfficeResourceLimitError(f"RTF table exceeds max_grid_slots={MAX_GRID_SLOTS}")
             self.rows.append(RtfTableRow(cells=self._cells, header=self._row_header))
+            self._total_slots += target_cells
         self._definitions = []
         self._cells = []
         self._cell_blocks = []
@@ -1520,6 +1529,7 @@ def parse_rtf(file_binary: BinaryIO) -> RtfDocument:
 __all__ = [
     "MAX_RTF_BYTES",
     "MAX_RTF_LIST_DEPTH",
+    "MAX_RTF_TABLE_CELLS",
     "MAX_RTF_TABLE_DEPTH",
     "RtfParser",
     "parse_rtf",

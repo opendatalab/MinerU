@@ -22,6 +22,7 @@ from mineru.doclib.services.parse_svc import ParseService
 from mineru.errors import InvalidRequestError
 from mineru.model.flash import OdpModel, OdsModel, OdtModel
 from mineru.model.flash.office.odf.errors import OdfEncryptedError, OdfParseError, OdfResourceLimitError
+from mineru.model.flash.office.odf.metadata import MAX_ODT_METADATA_PAGE_COUNT, extract_odf_metadata
 from mineru.model.flash.office.odf.package import OdfPackage
 from mineru.parser import parse, parse_async
 from mineru.parser import api_server
@@ -604,6 +605,24 @@ def test_doclib_extracts_odf_metadata(
     metadata = asyncio.run(extract_metadata(str(source)))
     for key, value in expected.items():
         assert metadata[key] == value
+
+
+def test_odt_metadata_page_count_is_bounded_before_doclib_range_expansion() -> None:
+    """验证 producer page-count 不会把微小 ODT 扩张为无界任务范围。"""
+    content = """<office:document-content
+ xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0">
+ <office:body><office:text/></office:body>
+</office:document-content>"""
+    meta = """<office:document-meta
+ xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+ xmlns:meta="urn:oasis:names:tc:opendocument:xmlns:meta:1.0">
+ <office:meta><meta:document-statistic meta:page-count="999999999999"/></office:meta>
+</office:document-meta>"""
+
+    metadata = extract_odf_metadata(BytesIO(build_odf_package("odt", content, meta_xml=meta)), "odt")
+
+    assert MAX_ODT_METADATA_PAGE_COUNT == 10_000
+    assert metadata["page_count"] == MAX_ODT_METADATA_PAGE_COUNT
 
 
 @pytest.mark.parametrize(

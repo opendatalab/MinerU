@@ -3,13 +3,16 @@
 
 from __future__ import annotations
 
-from typing import BinaryIO
+from typing import BinaryIO, Final
 
 from lxml import etree  # type: ignore[reportMissingImports]
 
 from .constants import OdfSuffix, qname
 from .package import OdfPackage
 from .styles import OdfStyles
+
+
+MAX_ODT_METADATA_PAGE_COUNT: Final = 10_000
 
 
 def _first_text(root: etree._Element | None, *tags: str) -> str | None:
@@ -36,7 +39,7 @@ def _odt_page_count(meta_root: etree._Element | None) -> int | None:
         value = int(statistic.get(qname("meta", "page-count"), ""))
     except ValueError:
         return None
-    return value if value >= 1 else None
+    return min(value, MAX_ODT_METADATA_PAGE_COUNT) if value >= 1 else None
 
 
 def _visible_sheet_count(body: etree._Element, styles: OdfStyles) -> int:

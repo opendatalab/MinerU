@@ -373,8 +373,27 @@ def test_rtf_source_html_is_rendered_as_inert_text() -> None:
     markdown = render_markdown(middle)
 
     assert "<script>" not in html
-    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html
-    assert "script" in markdown and "alert(1)" in markdown
+    assert "&amp;lt;script&amp;gt;alert(1)&amp;lt;/script&amp;gt;" in html
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in markdown
+
+
+def test_rtf_literal_inline_protocol_is_escaped_before_rendering() -> None:
+    """验证普通 RTF 文本不能注入 equation 或 hyperlink 内部协议。"""
+    source = (
+        rb"{\rtf1\ansi literal <eq>x</eq> and "
+        rb"<hyperlink><text>click</text><url>javascript:alert(1)</url></hyperlink>\par}"
+    )
+
+    pages = RtfModel().predict(BytesIO(source))
+    middle, _ = doc_analyze(source, file_suffix="rtf")
+    markdown = render_markdown(middle)
+
+    content = pages[0][0]["content"]
+    assert "&lt;eq&gt;x&lt;/eq&gt;" in content
+    assert "&lt;hyperlink&gt;" in content
+    assert "<eq>" not in content
+    assert "<hyperlink>" not in content
+    assert "](javascript:alert(1))" not in markdown
 
 
 def test_rtf_object_keeps_safe_result_and_suppresses_objdata() -> None:
@@ -430,6 +449,15 @@ def test_rtf_resource_limits_are_fixed_and_non_configurable(monkeypatch: pytest.
     monkeypatch.setattr(parser_module, "MAX_GRID_SLOTS", 4_000_000)
     with pytest.raises(LegacyOfficeResourceLimitError, match="max_table_depth"):
         RtfModel().predict(BytesIO(rb"{\rtf1\pard\intbl\itap5 nested\par}"))
+
+
+def test_rtf_cell_definitions_enforce_budget_before_row_materialization(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证 cellx 在定义列表增长阶段即执行 RTF 专用 cell 预算。"""
+    monkeypatch.setattr(parser_module, "MAX_RTF_TABLE_CELLS", 3)
+    source = rb"{\rtf1\trowd\cellx1\cellx2\cellx3\cellx4}"
+
+    with pytest.raises(LegacyOfficeResourceLimitError, match="max_grid_slots=3"):
+        RtfModel().predict(BytesIO(source))
 
 
 def test_rtf_prelude_nested_groups_do_not_materialize_overlapping_slices() -> None:
