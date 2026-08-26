@@ -6,8 +6,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from ..legacy.binary import bounded_slice, get_u16, get_u32
 from .models import DocListInfo
-from .records import DocBudget, bounded_slice, get_u16, get_u32
+from .records import DocBudget
 
 LEVELS = 9
 
@@ -355,4 +356,3 @@ def parse_list_tables(
             overrides=tuple(overrides),
         )
     return ListTables(definitions)
-

@@ -19,6 +19,7 @@ from ..legacy import (
     LegacyOfficeMalformedError,
     LegacyOfficeResourceLimitError,
 )
+from ..legacy.binary import get_i16, get_u16, get_u32
 from ..legacy.limits import (
     MAX_ASSET_TOTAL_BYTES,
     MAX_ENTRY_BYTES,
@@ -54,9 +55,6 @@ from .records import (
     CONTAINER_VERSION,
     PptRecord,
     RecordBudget,
-    get_i16,
-    get_u16,
-    get_u32,
     iter_descendants,
     iter_records,
     record_at,

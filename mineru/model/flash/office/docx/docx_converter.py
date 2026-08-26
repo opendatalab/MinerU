@@ -32,7 +32,7 @@ from ..image_equation import (
 from .....types import RAW_CAPTION
 from .equationxml import DocxEquationXmlDecoder
 from .package_normalizer import normalize_docx_package
-from .tools.math.omml import oMath2Latex
+from ..math.omml import oMath2Latex
 from .tools.office_xml import read_str
 from .....types import BlockType
 from .formatting_types import Formatting, Script

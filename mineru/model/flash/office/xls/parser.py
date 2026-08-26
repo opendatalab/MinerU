@@ -15,6 +15,7 @@ from ..legacy.errors import (
     LegacyOfficeEncryptedError,
     LegacyOfficeMalformedError,
 )
+from ..legacy.binary import get_f64, get_u16, get_u32
 from ..legacy.officeart import (
     OfficeArtShape,
     OfficeImagePayload,
@@ -48,9 +49,6 @@ from .records import (
     RecordBudget,
     SegmentReader,
     collect_continues,
-    get_f64,
-    get_u16,
-    get_u32,
     iter_records,
     record_at,
 )

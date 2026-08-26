@@ -15,6 +15,7 @@ import mineru.model.flash.models as flat_model_module
 from mineru.model.flash import (
     DocModel,
     DocxModel,
+    EpubModel,
     OdpModel,
     OdsModel,
     OdtModel,
@@ -174,6 +175,7 @@ def test_models_are_exported_from_flash_root() -> None:
     assert flash_models.__all__ == [
         "PdfModel",
         "CsvModel",
+        "EpubModel",
         "RtfModel",
         "DocModel",
         "DocxModel",
@@ -189,6 +191,7 @@ def test_models_are_exported_from_flash_root() -> None:
     assert RtfModel is flat_model_module.RtfModel
     assert DocModel is flat_model_module.DocModel
     assert DocxModel is flat_model_module.DocxModel
+    assert EpubModel is flat_model_module.EpubModel
     assert PptxModel is flat_model_module.PptxModel
     assert PptModel is flat_model_module.PptModel
     assert XlsModel is flat_model_module.XlsModel

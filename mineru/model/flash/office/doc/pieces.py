@@ -9,8 +9,9 @@ from dataclasses import dataclass
 import struct
 
 from ..legacy import LegacyOfficeMalformedError
+from ..legacy.binary import bounded_slice, get_u16, get_u32
 
-from .records import DocBudget, bounded_slice, get_u16, get_u32
+from .records import DocBudget
 
 
 @dataclass(frozen=True, slots=True)
@@ -255,4 +256,3 @@ def extract_text(
                 cursor += width
                 budget.charge(unit_count)
     return TextStream(chars=chars, cps=cps, fcs=fcs, piece_indexes=piece_indexes)
-

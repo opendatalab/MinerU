@@ -14,7 +14,7 @@ from lxml import etree  # type: ignore[reportMissingImports]
 
 from .....types import BlockType
 from ..._shared.mathml import mathml_to_latex
-from ...pdf.raster import image_to_b64str
+from ..._shared.image import image_to_b64str
 from ..image import create_text_placeholder, serialize_office_image
 from ..rich_text import OfficeRichTextSegment, build_rich_text_from_segments
 from .chart import parse_chart_block

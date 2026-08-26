@@ -28,7 +28,7 @@ from ..image_equation import (
 from ..ooxml_equation import OoxmlEquationDecoder
 from ..legacy.errors import LegacyOfficeResourceLimitError
 from ..legacy.limits import MAX_ENTRY_BYTES
-from ..docx.tools.math.omml import oMath2Latex
+from ..math.omml import oMath2Latex
 from ..legacy.stream import read_stream_bytes_from_start, rewind_stream
 from .package_normalizer import (
     normalize_xlsx_package,
@@ -42,7 +42,7 @@ from .ooxml_ole import (
     workbook_sheet_parts,
 )
 from .....types import BlockType
-from ...pdf.raster import image_to_b64str
+from ..._shared.image import image_to_b64str
 
 AUTO_GAP_TOLERANCE_CANDIDATES = (0, 1, 2)
 AUTO_GAP_TOLERANCE_PREFERENCE = {1: 0, 0: 1, 2: 2}

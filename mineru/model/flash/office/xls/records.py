@@ -44,38 +44,6 @@ class RecordBudget:
             )
 
 
-def get_u16(data: bytes, offset: int) -> int | None:
-    """安全读取小端无符号 16 位整数。"""
-
-    if offset < 0 or offset + 2 > len(data):
-        return None
-    return int(struct.unpack_from("<H", data, offset)[0])
-
-
-def get_i16(data: bytes, offset: int) -> int | None:
-    """安全读取小端有符号 16 位整数。"""
-
-    if offset < 0 or offset + 2 > len(data):
-        return None
-    return int(struct.unpack_from("<h", data, offset)[0])
-
-
-def get_u32(data: bytes, offset: int) -> int | None:
-    """安全读取小端无符号 32 位整数。"""
-
-    if offset < 0 or offset + 4 > len(data):
-        return None
-    return int(struct.unpack_from("<I", data, offset)[0])
-
-
-def get_f64(data: bytes, offset: int) -> float | None:
-    """安全读取小端 IEEE-754 双精度数。"""
-
-    if offset < 0 or offset + 8 > len(data):
-        return None
-    return float(struct.unpack_from("<d", data, offset)[0])
-
-
 def record_at(
     data: bytes,
     offset: int,

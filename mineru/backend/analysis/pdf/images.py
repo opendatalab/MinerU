@@ -17,7 +17,8 @@ from loguru import logger
 from PIL import Image
 
 from ....model.flash.pdf.pdfium import close_pdfium_child, pdfium_guard
-from ....model.flash.pdf.raster import image_to_b64str, page_to_image
+from ....model.flash._shared.image import image_to_b64str
+from ....model.flash.pdf.raster import page_to_image
 from ....types import BBox, IntBBox
 from ....utils.geometry import normalize_to_int_bbox
 from ....utils.platform import is_windows_environment

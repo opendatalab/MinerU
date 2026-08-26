@@ -23,9 +23,9 @@ from PIL import Image, ImageOps
 
 from ....types import BBox, PageInfo
 from ....utils.image import crop_pil_image
+from .._shared.image import image_to_bytes
 from .classify import classify
 from .pdfium import _pdfium_lock
-from .raster import image_to_bytes
 
 logger = logging.getLogger(__name__)
 

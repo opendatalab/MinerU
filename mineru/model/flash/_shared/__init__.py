@@ -1,4 +1,4 @@
 # Copyright (c) Opendatalab. All rights reserved.
-"""Flash PDF 与 Office 复用的轻量算法。"""
+"""Flash 各文档格式复用的轻量叶子能力。"""
 
 __all__: list[str] = []

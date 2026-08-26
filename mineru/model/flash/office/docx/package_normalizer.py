@@ -3,10 +3,12 @@ import posixpath
 import zlib
 from io import BytesIO
 from typing import Iterator
-from zipfile import BadZipFile, ZIP_DEFLATED, ZipFile, ZipInfo
+from zipfile import BadZipFile, ZipFile, ZipInfo
 
 from loguru import logger
 from lxml import etree
+
+from ..opc import relationship_source_base_dir, write_zip_package
 
 
 PACKAGE_RELATIONSHIPS_NS = (
@@ -60,7 +62,7 @@ def normalize_docx_package(file_bytes: bytes) -> bytes:
     if not changed:
         return file_bytes
 
-    return _write_package(rewritten_members)
+    return write_zip_package(rewritten_members)
 
 
 def _collect_relationship_reachable_members(
@@ -253,7 +255,7 @@ def _resolve_internal_relationship_target(
     if target.startswith("/"):
         resolved = posixpath.normpath(target.lstrip("/"))
     else:
-        base_dir = _relationship_source_base_dir(rels_filename)
+        base_dir = relationship_source_base_dir(rels_filename.replace("\\", "/"))
         if base_dir is None:
             return None
         resolved = posixpath.normpath(posixpath.join(base_dir, target))
@@ -261,31 +263,3 @@ def _resolve_internal_relationship_target(
     if resolved in {"", "."} or resolved.startswith("../"):
         return None
     return resolved
-
-
-def _relationship_source_base_dir(rels_filename: str) -> str | None:
-    """根据 .rels 路径推导源 part 所在目录。"""
-    rels_filename = rels_filename.replace("\\", "/")
-    if rels_filename == "_rels/.rels":
-        return ""
-
-    marker = "/_rels/"
-    if marker not in rels_filename:
-        return None
-
-    prefix, rels_basename = rels_filename.rsplit(marker, 1)
-    if not rels_basename.endswith(".rels"):
-        return None
-
-    source_part_name = rels_basename[: -len(".rels")]
-    source_part_path = posixpath.normpath(posixpath.join(prefix, source_part_name))
-    return posixpath.dirname(source_part_path)
-
-
-def _write_package(members: list[tuple[ZipInfo, bytes]]) -> bytes:
-    """把规范化后的成员重新写成 DOCX ZIP 包，并重新计算 CRC。"""
-    output = BytesIO()
-    with ZipFile(output, "w", ZIP_DEFLATED) as target:
-        for info, member_data in members:
-            target.writestr(info, member_data)
-    return output.getvalue()

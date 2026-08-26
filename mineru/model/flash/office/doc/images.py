@@ -10,6 +10,7 @@ import hashlib
 from loguru import logger
 
 from ..legacy import LegacyOfficeResourceLimitError
+from ..legacy.binary import bounded_slice, get_u16, get_u32
 from ..legacy.limits import MAX_ASSET_TOTAL_BYTES
 from ..legacy.officeart import (
     OfficeImagePayload,
@@ -23,7 +24,7 @@ from ..image_equation import (
 )
 
 from .models import DocImage, DocImagePayload
-from .records import DocBudget, bounded_slice, get_u16, get_u32, parse_plc
+from .records import DocBudget, parse_plc
 
 _PLACEABLE_WMF_MAGIC = b"\xd7\xcd\xc6\x9a"
 

@@ -11,7 +11,7 @@ from loguru import logger
 from PIL import Image, ImageDraw, ImageFont, UnidentifiedImageError
 
 from ....utils.platform import is_windows_environment
-from ..pdf.raster import image_to_b64str
+from .._shared.image import image_to_b64str
 
 VECTOR_IMAGE_FORMATS = frozenset({"WMF", "EMF"})
 VECTOR_IMAGE_EXTENSIONS = frozenset({".wmf", ".emf"})

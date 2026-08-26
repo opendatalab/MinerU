@@ -21,13 +21,13 @@ from ..ooxml_equation import (
     OoxmlEquationDecoder,
     is_mathtype_equation_prog_id,
 )
-from ..docx.tools.math.omml import oMath2Latex
+from ..math.omml import oMath2Latex
 from ..legacy.stream import read_stream_bytes_from_start, rewind_stream
 from .package_normalizer import normalize_pptx_package
 from ..._shared.xycut import sort_entries
 from .....types import BlockType
 from ..rich_text import OfficeRichTextSegment, build_rich_text_from_segments
-from ...pdf.raster import image_to_b64str
+from ..._shared.image import image_to_b64str
 
 IGNORED_NOTES_PLACEHOLDER_TYPES: Final = {
     PP_PLACEHOLDER.SLIDE_IMAGE,

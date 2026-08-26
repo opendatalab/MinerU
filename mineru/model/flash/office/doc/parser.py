@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from loguru import logger
 
 from ..legacy import LegacyOfficeMalformedError
+from ..legacy.binary import bounded_slice
 
 from .bookmarks import parse_bookmarks
 from .fib import (
@@ -51,7 +52,7 @@ from .models import (
     DocVisualPayload,
 )
 from .pieces import Piece, TextStream, codec_for_lid, extract_text, legacy_single_piece, parse_clx
-from .records import DocBudget, bounded_slice, parse_plc
+from .records import DocBudget, parse_plc
 from .sprm import (
     PapDelta,
     apply_character_sprms,

@@ -10,6 +10,7 @@ import struct
 from loguru import logger
 
 from ..legacy import BoundedOleReader
+from ..legacy.binary import get_f64, get_u16
 from ..legacy.errors import (
     LegacyOfficeMalformedError,
     LegacyOfficeResourceLimitError,
@@ -18,7 +19,7 @@ from ..legacy.limits import MAX_GRID_SLOTS
 from .models import XlsCell, XlsRichText, XlsSheet, XlsWorkbook
 from .number_format import builtin_number_format, format_number
 from .parser import parse_xls_workbook
-from .records import BOF, EOF, get_f64, get_u16, iter_records, record_at
+from .records import BOF, EOF, iter_records, record_at
 from .strings import clean_text
 from .xls_converter import render_xls_chart_html
 

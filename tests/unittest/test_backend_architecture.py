@@ -52,6 +52,7 @@ _REMOVED_INTERNAL_MODULES = (
     "mineru.model.model_types",
     "mineru.model.flash.model",
     "mineru.model.flash.native_pdf",
+    "mineru.model.flash.office.docx.tools.math",
     "mineru.model.utils",
     "mineru.render.writer",
     "mineru.render._internal.common.inline",
@@ -202,6 +203,17 @@ def test_layer_dependencies_are_one_way() -> None:
         if invalid:
             offenders[str(path.relative_to(_PROJECT_ROOT))] = invalid
     assert not offenders
+
+
+def test_flash_office_does_not_depend_on_pdf_implementation() -> None:
+    """守卫 Office 格式只复用中立能力，不反向依赖 Flash PDF 实现。"""
+    offenders = {
+        str(path.relative_to(_PROJECT_ROOT)): sorted(
+            module for module in _resolved_imports(path) if module.startswith("mineru.model.flash.pdf")
+        )
+        for path in (_PROJECT_ROOT / "mineru/model/flash/office").rglob("*.py")
+    }
+    assert not {path: imports for path, imports in offenders.items() if imports}
 
 
 def test_package_initializers_define_explicit_all() -> None:
