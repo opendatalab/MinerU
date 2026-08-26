@@ -7,7 +7,6 @@ import struct
 
 from bs4 import BeautifulSoup
 import pytest
-from pydantic import ValidationError
 
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
 from mineru.model.flash import PptModel
@@ -111,23 +110,6 @@ def test_ppt_encryption_marker_is_rejected_before_record_parsing() -> None:
 
     with pytest.raises(LegacyOfficeEncryptedError, match="password-protected"):
         ppt_parser.parse_ppt_document(b"not parsed", current_user=bytes(current_user))
-
-
-@pytest.mark.parametrize("file_suffix", ["rtf"])
-def test_unimplemented_legacy_suffixes_remain_rejected(file_suffix: str) -> None:
-    """验证本阶段没有提前开放 DOC 严格类型或运行时入口。"""
-
-    with pytest.raises(ValueError, match="Unsupported file suffix"):
-        doc_analyze(b"legacy", file_suffix=file_suffix)  # type: ignore[arg-type]
-    with pytest.raises(ValidationError):
-        ModelJson(
-            pages=[],
-            page_index_map=[],
-            file_suffix=file_suffix,  # type: ignore[arg-type]
-            effort="flash",
-            parse_mode="txt",
-            mineru_version="test",
-        )
 
 
 def test_ppt_is_supported_by_public_parser(tmp_path: Path) -> None:

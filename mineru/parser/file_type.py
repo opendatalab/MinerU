@@ -10,7 +10,7 @@ from zipfile import BadZipFile, ZipFile
 from loguru import logger
 from magika import Magika
 
-from ..filetypes import IMAGE_EXTENSIONS
+from ..filetypes import IMAGE_EXTENSIONS, rtf_header_offset
 
 PDF_SIG_BYTES = b"%PDF"
 OLE2_SIG_BYTES = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
@@ -41,6 +41,7 @@ _STRONG_CONTENT_SUFFIXES = frozenset(
         "pptx",
         "xls",
         "xlsx",
+        "rtf",
         *IMAGE_EXTENSIONS,
     }
 )
@@ -179,6 +180,15 @@ def _has_pdf_signature_by_path(file_path: Path) -> bool:
         return False
 
 
+def _has_rtf_signature_by_path(file_path: Path) -> bool:
+    """读取有限文件头并按共享规则识别 RTF 根组。"""
+    try:
+        with open(file_path, "rb") as file:
+            return rtf_header_offset(file.read(128)) is not None
+    except OSError:
+        return False
+
+
 def _resolve_signatureless_csv_suffix(detected_suffix: str, file_path: str | Path | None) -> str:
     """仅以 .csv 扩展名兜底无签名文本，并保留强内容类型的优先级。"""
     extension = Path(file_path).suffix.lower().lstrip(".") if file_path else ""
@@ -194,6 +204,8 @@ def _resolve_signatureless_csv_suffix(detected_suffix: str, file_path: str | Pat
 def guess_suffix_by_bytes(file_bytes: bytes, file_path: str | None = None) -> str:
     if file_bytes[: len(PDF_SIG_BYTES)] == PDF_SIG_BYTES:
         return "pdf"
+    if rtf_header_offset(file_bytes[:128]) is not None:
+        return "rtf"
 
     ooxml_suffix = _guess_ooxml_suffix_by_bytes(file_bytes)
     if ooxml_suffix:
@@ -217,6 +229,9 @@ def guess_suffix_by_bytes(file_bytes: bytes, file_path: str | None = None) -> st
 def guess_suffix_by_path(file_path: str | Path) -> str:
     if not isinstance(file_path, Path):
         file_path = Path(file_path)
+
+    if _has_rtf_signature_by_path(file_path):
+        return "rtf"
 
     ooxml_suffix = _guess_ooxml_suffix_by_path(file_path)
     if ooxml_suffix:

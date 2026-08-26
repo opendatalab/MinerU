@@ -1,5 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
-"""统一 PDF 与 Office 文档分析的稳定公共门面。"""
+"""统一 PDF、CSV 与 Office/RTF 文档分析的稳定公共门面。"""
 
 from __future__ import annotations
 

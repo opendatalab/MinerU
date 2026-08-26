@@ -47,12 +47,12 @@
 
 <details>
 <summary>MinerU — High-accuracy document parsing engine for LLM · RAG · Agent workflows</summary>
-Converts PDF · CSV · DOCX · PPTX · XLSX · Images · Web pages into structured Markdown / JSON · VLM+OCR dual engine · 109 languages <br>
+Converts PDF · CSV · RTF · DOCX · PPTX · XLSX · Images · Web pages into structured Markdown / JSON · VLM+OCR dual engine · 109 languages <br>
 MCP Server · LangChain / Dify / FastGPT native integration · 10+ domestic AI chip support
 
 **🔍 Core Parsing Capabilities**
 
-- Native support for `CSV`, `DOCX`, `PPTX`, and `XLSX` parsing
+- Native support for `CSV`, `RTF`, `DOCX`, `PPTX`, and `XLSX` parsing
 - Formulas → LaTeX · Tables → HTML, accurate layout reconstruction
 - Supports scanned docs, handwriting, multi-column layouts, cross-page table merging
 - Output follows human reading order with automatic header/footer removal
@@ -155,7 +155,7 @@ Domestic AI chips: Ascend · Cambricon · Enflame · MetaX · Moore Threads · K
 
 ## Project Introduction
 
-MinerU is a document parsing tool that converts `PDF`, image, `CSV`, `DOCX`, `PPTX`, and `XLSX` inputs into machine-readable formats such as Markdown and JSON for downstream retrieval, extraction, and processing.
+MinerU is a document parsing tool that converts `PDF`, image, `CSV`, `RTF`, `DOCX`, `PPTX`, and `XLSX` inputs into machine-readable formats such as Markdown and JSON for downstream retrieval, extraction, and processing.
 MinerU was born during the pre-training process of [InternLM](https://github.com/InternLM/InternLM). We focus on solving symbol conversion issues in scientific literature and hope to contribute to technological development in the era of large models.
 Compared to well-known commercial products, MinerU is still young. If you encounter any issues or if the results are not as expected, please submit an issue on [issue](https://github.com/opendatalab/MinerU/issues) and **attach the relevant document or sample file**.
 
@@ -163,7 +163,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 
 ## Key Features
 
-- Support `PDF`, image, `CSV`, `DOCX`, `PPTX`, and `XLSX` inputs.
+- Support `PDF`, image, `CSV`, `RTF`, `DOCX`, `PPTX`, and `XLSX` inputs.
 - Remove headers, footers, footnotes, page numbers, etc., to ensure semantic coherence.
 - Output text in human-readable order, suitable for single-column, multi-column, and complex layouts.
 - Preserve the structure of the original document, including headings, paragraphs, lists, etc.
@@ -330,7 +330,7 @@ If your device does not meet the GPU acceleration requirements, you can explicit
 mineru parse "<input_path>" --tier flash -o <output_path>
 ```
 
-`mineru` currently supports local `PDF`, image, `CSV`, `DOCX`, `PPTX`, and `XLSX` file or directory inputs through the CLI, API, and `mineru-router`. The legacy Gradio WebUI keeps its existing upload formats and does not yet accept CSV. For detailed instructions, please refer to the [Usage Guide](https://opendatalab.github.io/MinerU/usage/).
+`mineru` currently supports local `PDF`, image, `CSV`, `RTF`, `DOCX`, `PPTX`, and `XLSX` file or directory inputs through the CLI, API, and `mineru-router`. RTF uses local semantic Flash parsing and exposes one logical page without physical-layout bboxes. The legacy Gradio WebUI keeps its existing advertised upload formats. For detailed instructions, please refer to the [Usage Guide](https://opendatalab.github.io/MinerU/usage/).
 
 # FAQ
 

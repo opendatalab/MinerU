@@ -17,7 +17,7 @@ from mineru.kit.common import ensure_supported_inputs, expand_input_paths
 
 
 def test_office_extensions_includes_legacy_binary_formats() -> None:
-    assert {"doc", "docx", "ppt", "pptx", "xls", "xlsx"} <= OFFICE_EXTENSIONS
+    assert {"doc", "docx", "ppt", "pptx", "xls", "xlsx", "rtf"} <= OFFICE_EXTENSIONS
 
 
 def test_legacy_office_extensions_are_parseable_and_ingestible() -> None:
@@ -37,6 +37,17 @@ def test_mime_type_by_extension_covers_legacy_office() -> None:
     assert MIME_TYPE_BY_EXTENSION["doc"] == "application/msword"
     assert MIME_TYPE_BY_EXTENSION["ppt"] == "application/vnd.ms-powerpoint"
     assert MIME_TYPE_BY_EXTENSION["xls"] == "application/vnd.ms-excel"
+    assert MIME_TYPE_BY_EXTENSION["rtf"] == "application/rtf"
+
+
+def test_rtf_is_a_flash_only_parseable_office_type() -> None:
+    """验证 RTF 自动进入所有本地 Flash 与 doclib 文件集合。"""
+    assert "rtf" in OFFICE_EXTENSIONS
+    assert "rtf" in FLASH_ONLY_PARSE_EXTENSIONS
+    assert "rtf" in PARSEABLE_EXTENSIONS
+    assert "rtf" in INGESTIBLE_EXTENSIONS
+    assert FILE_TYPE_BY_EXTENSION["rtf"] == "rtf"
+    assert is_flash_only_parse_extension("rtf")
 
 
 def test_csv_is_a_flash_only_parseable_type_instead_of_plain_text() -> None:

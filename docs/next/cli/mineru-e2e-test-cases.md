@@ -51,7 +51,7 @@
   - `$MINERU_E2E_FIXTURE_DIR/中文样例.pdf`，文件名包含中文，内容可与 `sample.pdf` 相同。
   - `$MINERU_E2E_FIXTURE_DIR/corrupted.pdf`，损坏 PDF。
   - `$MINERU_E2E_FIXTURE_DIR/empty.pdf`，空文件或无法解析出页面的 PDF。
-  - `$MINERU_E2E_FIXTURE_DIR/sample.docx`、`sample.pptx`、`sample.xlsx`，Office 样例文件；当前全量 E2E 必须覆盖。
+  - `$MINERU_E2E_FIXTURE_DIR/sample.rtf`、`sample.docx`、`sample.pptx`、`sample.xlsx`，Office 样例文件；当前全量 E2E 必须覆盖。
   - `$MINERU_E2E_FIXTURE_DIR/sample.md`、`sample.txt`、`sample.csv`，文本类样例文件；当前全量 E2E 必须覆盖。
   - `$MINERU_E2E_FIXTURE_DIR/sample.jpeg`，图片样例文件；若当前安装不支持图片输入，可按预期失败分支判定。
   - `$MINERU_E2E_FIXTURE_DIR/symlink-sample.pdf`，指向 `sample.pdf` 的符号链接；若平台不支持 symlink，可标记相关用例 BLOCKED。
@@ -3972,7 +3972,7 @@ mineru server start
 
 执行要求:
 
-- docx/pptx/xlsx/md/txt/csv 输入为全量 E2E 必测项，不支持时记录为失败。
+- rtf/docx/pptx/xlsx/md/txt/csv 输入为全量 E2E 必测项，不支持时记录为失败。
 - image 输入如果当前安装不支持，按预期失败分支判定。
 - symlink 或 no-read 权限场景无法稳定制造时，相关子项可 BLOCKED，但必须说明平台限制。
 

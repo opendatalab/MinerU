@@ -116,7 +116,7 @@
 |--------|------|------|
 | `pages` | `list[PageInfo]` | 每一页的解析结果数组，按 `page_idx` 严格升序 |
 | `is_full_document` | `bool` | 是否整本文档解析（`page_index_map` 为空时为 `True`） |
-| `file_suffix` | `string` | 输入文件类型：`pdf`、`doc`、`docx`、`ppt`、`pptx`、`xls`、`xlsx` 或 `csv` |
+| `file_suffix` | `string` | 输入文件类型：`pdf`、`doc`、`docx`、`ppt`、`pptx`、`xls`、`xlsx`、`rtf` 或 `csv` |
 | `effort` | `string` | 分析强度：`flash`、`medium`、`high` 或 `xhigh` |
 | `parse_mode` | `string` | 解析模式：`txt` 或 `ocr` |
 | `mineru_version` | `string` | MinerU 版本号 |

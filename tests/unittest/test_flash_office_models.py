@@ -12,13 +12,14 @@ import pytest
 
 import mineru.model.flash as flash_models
 import mineru.model.flash.models as flat_model_module
-from mineru.model.flash import DocModel, DocxModel, PdfModel, PptModel, PptxModel, XlsModel, XlsxModel
+from mineru.model.flash import DocModel, DocxModel, PdfModel, PptModel, PptxModel, RtfModel, XlsModel, XlsxModel
 from mineru.model.flash.office.doc import doc_converter as doc_converter_module
 from mineru.model.flash.office.docx import docx_converter as docx_converter_module
 from mineru.model.flash.office.docx import main as docx_main
 from mineru.model.flash.office.pptx import main as pptx_main
 from mineru.model.flash.office.pptx import pptx_converter as pptx_converter_module
 from mineru.model.flash.office.ppt import ppt_converter as ppt_converter_module
+from mineru.model.flash.office.rtf import converter as rtf_converter_module
 from mineru.model.flash.office.xls import xls_converter as xls_converter_module
 from mineru.model.flash.office.xlsx import main as xlsx_main
 from mineru.model.flash.office.xlsx import xlsx_converter as xlsx_converter_module
@@ -66,6 +67,7 @@ def test_flash_office_model_conversion(
         (PptModel, ppt_converter_module, "PptConverter"),
         (XlsModel, xls_converter_module, "XlsConverter"),
         (XlsxModel, xlsx_converter_module, "XlsxConverter"),
+        (RtfModel, rtf_converter_module, "RtfConverter"),
     ],
 )
 def test_office_model_creates_converter_per_prediction(
@@ -156,6 +158,7 @@ def test_models_are_exported_from_flash_root() -> None:
     assert flash_models.__all__ == [
         "PdfModel",
         "CsvModel",
+        "RtfModel",
         "DocModel",
         "DocxModel",
         "PptModel",
@@ -164,6 +167,7 @@ def test_models_are_exported_from_flash_root() -> None:
         "XlsxModel",
     ]
     assert PdfModel is flat_model_module.PdfModel
+    assert RtfModel is flat_model_module.RtfModel
     assert DocModel is flat_model_module.DocModel
     assert DocxModel is flat_model_module.DocxModel
     assert PptxModel is flat_model_module.PptxModel
@@ -181,6 +185,7 @@ def test_models_are_exported_from_flash_root() -> None:
         ("mineru.model.flash.office.ppt", "PptModel"),
         ("mineru.model.flash.office.xls", "XlsModel"),
         ("mineru.model.flash.office.xlsx", "XlsxModel"),
+        ("mineru.model.flash.office.rtf", "RtfModel"),
     ],
 )
 def test_office_subpackages_do_not_export_models(package_name: str, model_name: str) -> None:
@@ -206,6 +211,7 @@ def test_importing_pdf_model_does_not_load_office_converters() -> None:
             "assert 'mineru.model.flash.office.xls.xls_converter' not in sys.modules",
             "assert 'olefile' not in sys.modules",
             "assert 'mineru.model.flash.office.xlsx.xlsx_converter' not in sys.modules",
+            "assert 'mineru.model.flash.office.rtf.converter' not in sys.modules",
         ]
     )
     result = subprocess.run(

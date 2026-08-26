@@ -30,7 +30,7 @@ mineru-kit parse <input...> -o <output> [flags]
 | 多文件 | 一次提交多个文件 |
 | 目录 | 展开目录中的可解析文件 |
 
-当前支持的扩展名包括 PDF、常见图片、DOCX、PPTX、XLSX、HTML/HTM。目录输入只展开一层，不递归。
+当前支持的扩展名包括 PDF、常见图片、CSV、RTF、DOC/DOCX、PPT/PPTX、XLS/XLSX、HTML/HTM。目录输入只展开一层，不递归。
 
 当前不支持：
 

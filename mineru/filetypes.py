@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
+from typing import Final
 
 from .types import QUALITY_TIERS, Tier, validate_tier
 
 # ── file types ─────────────────────────────────────────────────────
 
-# Legacy Office binary formats (Word 97–2003 / Excel 97–2003 / PowerPoint 97–2003)
-# are natively parsed by mineru.model.flash.{doc,xls,ppt} converters.
+# Legacy Office binary formats and RTF are natively parsed by model.flash.office converters.
 # Unsupported document/e-book/archive-like formats:
 # "epub",
 # "key",
@@ -16,7 +17,6 @@ from .types import QUALITY_TIERS, Tier, validate_tier
 # "ods",
 # "odt",
 # "pages",
-# "rtf",
 # Unsupported mail formats:
 # "eml",
 # "mbox",
@@ -25,7 +25,7 @@ PDF_EXTENSIONS: frozenset[str] = frozenset({"pdf"})
 
 IMAGE_EXTENSIONS: frozenset[str] = frozenset({"png", "jpg", "jpeg", "webp", "gif", "bmp", "tiff", "jp2"})
 
-OFFICE_EXTENSIONS: frozenset[str] = frozenset({"doc", "docx", "ppt", "pptx", "xls", "xlsx"})
+OFFICE_EXTENSIONS: frozenset[str] = frozenset({"doc", "docx", "ppt", "pptx", "xls", "xlsx", "rtf"})
 
 HTML_EXTENSIONS: frozenset[str] = frozenset({"html", "htm"})
 
@@ -68,6 +68,7 @@ MIME_TYPE_BY_EXTENSION: dict[str, str] = {
     "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     "xls": "application/vnd.ms-excel",
     "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "rtf": "application/rtf",
     "csv": "text/csv",
     "html": "text/html",
     "htm": "text/html",
@@ -80,6 +81,19 @@ MIME_TYPE_BY_EXTENSION: dict[str, str] = {
     "bmp": "image/bmp",
     "tiff": "image/tiff",
 }
+
+_RTF_HEADER_RE: Final = re.compile(
+    rb"\A(?:\xef\xbb\xbf)?[ \t\r\n]{0,64}\{\\rtf(?=[0-9])",
+    re.IGNORECASE,
+)
+
+
+def rtf_header_offset(file_bytes: bytes) -> int | None:
+    """返回 RTF 根组左花括号偏移；不接受带任意前缀的伪装文本。"""
+    match = _RTF_HEADER_RE.match(file_bytes)
+    if match is None:
+        return None
+    return file_bytes.find(b"{", 0, match.end())
 
 
 def normalize_parse_extension(path_or_ext: str | Path) -> str:

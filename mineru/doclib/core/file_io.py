@@ -203,6 +203,17 @@ async def _extract_office_meta(filepath: str, ext: str, result: dict) -> None:
                 if wb is not None:
                     wb.close()
 
+        elif ext == "rtf":
+            from ...model.flash.office.rtf.converter import extract_rtf_metadata
+
+            try:
+                with open(filepath, "rb") as rtf_file:
+                    metadata = extract_rtf_metadata(rtf_file)
+            except Exception as exc:
+                raise MetadataExtractionError("open_failed", str(exc) or "Failed to open RTF document") from exc
+            result.update(metadata)
+            result["page_count"] = 1
+
         elif ext in ("doc", "ppt", "xls"):
             _extract_legacy_office_meta(filepath, result)
 

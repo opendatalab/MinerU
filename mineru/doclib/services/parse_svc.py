@@ -586,7 +586,7 @@ class ParseService:
         # 无固有分页或元数据暂不可读的结构化格式默认按一页处理。
         page_count = metadata["page_count"]
         if page_count is None:
-            if ext in ("doc", "docx"):
+            if ext in ("doc", "docx", "rtf"):
                 page_count = 1  # reflow docs
             elif ext in ("ppt", "pptx", "xls", "xlsx"):
                 page_count = 1  # will be updated by metadata extraction

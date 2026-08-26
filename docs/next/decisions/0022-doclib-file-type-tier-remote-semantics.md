@@ -44,7 +44,7 @@ image 扩展名只进入 `INGESTIBLE_EXTENSIONS`，不进入 `DISCOVERABLE_EXTEN
 |----------|---------|----------|--------|---------|
 | PDF | 支持 | 支持 | 支持 | 支持 |
 | image | 支持 | 支持 | 支持 | 支持 |
-| Office (`doc` / `docx` / `ppt` / `pptx` / `xls` / `xlsx`) | 支持 | 不支持 | 不支持 | 不支持 |
+| Office (`doc` / `docx` / `ppt` / `pptx` / `xls` / `xlsx` / `rtf`) | 支持 | 不支持 | 不支持 | 不支持 |
 | HTML (`html` / `htm`) | 支持 | 不支持 | 不支持 | 不支持 |
 | CSV (`csv`) | 支持 | 不支持 | 不支持 | 不支持 |
 | text (`txt` / `md` / `markdown` / `rst` / `tex`) | 无需解析 | 无需解析 | 无需解析 | 无需解析 |
