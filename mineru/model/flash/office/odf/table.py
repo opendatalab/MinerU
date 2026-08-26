@@ -175,12 +175,13 @@ def parse_table_grid(table: etree._Element, render_cell: CellRenderer) -> TableG
                     col_index += pending_empty_columns
                     _ensure_row(grid, row_index, col_index)
                     pending_empty_columns = 0
-                _validate_grid_extent(row_index + 1, max(grid.width, col_index + repeat))
+                if not is_covered:
+                    _validate_grid_extent(row_index + 1, max(grid.width, col_index + repeat))
                 for _ in range(repeat):
                     if is_covered:
-                        _ensure_row(grid, row_index, col_index + 1)
-                        grid.covered.add((row_index, col_index))
-                        col_index += 1
+                        if (row_index, col_index) in grid.covered:
+                            _ensure_row(grid, row_index, col_index + 1)
+                            col_index += 1
                         continue
                     while (row_index, col_index) in grid.covered:
                         col_index += 1

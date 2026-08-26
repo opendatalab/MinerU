@@ -231,6 +231,32 @@ def test_odt_child_style_can_reset_inherited_page_breaks() -> None:
     ]
 
 
+def test_odf_covered_placeholder_reuses_colspan_coordinate() -> None:
+    """验证 colspan 后的 covered placeholder 不会额外扩宽表格。"""
+    table = etree.fromstring(
+        """<table:table xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0"
+ xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+ <table:table-row>
+  <table:table-cell table:number-columns-spanned="2"><text:p>Merged</text:p></table:table-cell>
+  <table:covered-table-cell/><table:table-cell><text:p>Tail</text:p></table:table-cell>
+ </table:table-row>
+ <table:table-row>
+  <table:table-cell><text:p>A</text:p></table:table-cell>
+  <table:table-cell><text:p>B</text:p></table:table-cell>
+  <table:table-cell><text:p>C</text:p></table:table-cell>
+ </table:table-row>
+</table:table>""".encode()
+    )
+
+    grid = odf_table_module.parse_table_grid(table, lambda cell: "".join(cell.itertext()).strip())
+
+    assert grid.width == 3
+    assert grid.covered == {(0, 1)}
+    assert grid.rows[0][0] is not None and grid.rows[0][0].col_span == 2
+    assert grid.rows[0][2] is not None and grid.rows[0][2].html == "Tail"
+    assert [cell.html if cell is not None else None for cell in grid.rows[1]] == ["A", "B", "C"]
+
+
 def test_odp_preserves_empty_slide_chart_preview_and_notes() -> None:
     """验证 ODP 空 slide 不丢失，图表同时保留数据和预览，备注归属原页。"""
     middle, model = doc_analyze(build_odp_fixture(), file_suffix="odp")

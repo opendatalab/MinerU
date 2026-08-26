@@ -9,6 +9,7 @@ from pathlib import Path
 
 import pytest
 from bs4 import BeautifulSoup
+from lxml import etree
 
 import mineru.model.flash.epub.package as epub_package_module
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
@@ -19,6 +20,7 @@ from mineru.doclib.services.parse_svc import ParseService
 from mineru.errors import InvalidRequestError
 from mineru.model.flash import EpubModel
 from mineru.model.flash.epub import EpubEncryptedError, EpubPackage, EpubParseError, EpubResourceLimitError, detect_epub
+from mineru.model.flash.epub.xhtml import EpubChapterConverter, build_anchor_registry
 from mineru.parser import MinerUParser, parse, parse_async
 from mineru.parser import api_server
 from mineru.parser.api_server import CreateJobRequest, FileStore
@@ -171,6 +173,41 @@ def test_epub_internal_heading_links_and_exact_list_labels_survive() -> None:
     assert f"](#{first_title.anchor})" in markdown  # type: ignore[union-attr]
     assert "C. Three" in markdown
     assert "B. Two" in markdown
+
+
+@pytest.mark.parametrize(
+    ("attribute", "value"),
+    [
+        ("hidden", "hidden"),
+        ("aria-hidden", "true"),
+        ("style", "display: none"),
+        ("class", "hidden"),
+    ],
+)
+def test_epub_anchor_registry_excludes_hidden_headings(attribute: str, value: str) -> None:
+    """验证 registry 不为 converter 会丢弃的隐藏标题生成悬空 anchor。"""
+    package = EpubPackage(build_epub_fixture())
+    chapter_path = "EPUB/text/ch1.xhtml"
+    try:
+        root = package.xml_part(chapter_path, allow_external_doctype=True)
+        heading = next(element for element in root.iter() if isinstance(element.tag, str) and element.tag.endswith("}h1"))
+        heading.set(attribute, value)
+        heading.text = "Hidden target"
+        body = next(element for element in root.iter() if isinstance(element.tag, str) and element.tag.endswith("}body"))
+        namespace = etree.QName(body).namespace
+        paragraph = etree.SubElement(body, f"{{{namespace}}}p")
+        link = etree.SubElement(paragraph, f"{{{namespace}}}a", href="#chapter-one")
+        link.text = "Hidden link"
+
+        anchors = build_anchor_registry([(chapter_path, root)], package)
+        blocks = EpubChapterConverter(package, chapter_path, root, anchors).convert()
+
+        assert anchors.resolve_link("#chapter-one", base_part=chapter_path) is None
+        assert "Hidden target" not in str(blocks)
+        assert "Hidden link" in str(blocks)
+        assert "<hyperlink>Hidden link" not in str(blocks)
+    finally:
+        package.close()
 
 
 def test_epub_table_contents_resolve_title_marker_and_expand_only_exact_single_target_rows() -> None:

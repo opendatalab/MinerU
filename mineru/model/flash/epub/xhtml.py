@@ -203,6 +203,41 @@ class _ChapterTree:
     root: etree._Element
 
 
+def _load_chapter_stylesheet(package: EpubPackage, chapter_path: str, root: etree._Element) -> EpubStylesheet:
+    """按章节 head 顺序加载包内 CSS 与内联 style。"""
+    stylesheet = EpubStylesheet()
+    for element in root.iter():
+        if not isinstance(element.tag, str):
+            continue
+        name = _local_name(element)
+        if name == "link" and "stylesheet" in (element.get("rel") or "").casefold().split():
+            target = package.resolve_reference(element.get("href") or "", base_part=chapter_path)
+            if target is None:
+                continue
+            data = package.read_part(target.path)
+            if data is not None:
+                stylesheet.add(data.decode("utf-8-sig", errors="replace"))
+        elif name == "style":
+            stylesheet.add("".join(element.itertext()))
+    return stylesheet
+
+
+def _element_is_hidden(element: etree._Element, stylesheet: EpubStylesheet) -> bool:
+    """按 converter 的祖先到自身样式解析顺序判断元素是否不会输出。"""
+    inherited = TextStyle()
+    chain = [ancestor for ancestor in reversed(list(element.iterancestors())) if isinstance(ancestor.tag, str)]
+    body_index = next((index for index, ancestor in enumerate(chain) if _local_name(ancestor) == "body"), None)
+    if body_index is not None:
+        chain = chain[body_index:]
+    chain.append(element)
+    for current in chain:
+        resolved = stylesheet.resolve(current, inherited)
+        if resolved.hidden:
+            return True
+        inherited = resolved.text
+    return False
+
+
 class EpubAnchorRegistry:
     """建立章节路径、标题与 note fragment 到实际 canonical anchor 的别名表。"""
 
@@ -214,12 +249,14 @@ class EpubAnchorRegistry:
         self._targets: dict[tuple[str, str | None], str] = {}
         self._heading_labels: dict[str, str] = {}
         for chapter in chapters:
+            stylesheet = _load_chapter_stylesheet(package, chapter.path, chapter.root)
             headings = [
                 element
                 for element in chapter.root.iter()
                 if isinstance(element.tag, str)
                 and _local_name(element) in {"h1", "h2", "h3", "h4", "h5", "h6"}
                 and _visible_text(element)
+                and not _element_is_hidden(element, stylesheet)
             ]
             for ordinal, heading in enumerate(headings):
                 source_id = _element_id(heading)
@@ -342,21 +379,7 @@ class EpubChapterConverter:
 
     def _load_stylesheet(self) -> EpubStylesheet:
         """按 head 文档顺序加载包内 CSS 和内联 style 元素。"""
-        stylesheet = EpubStylesheet()
-        for element in self.root.iter():
-            if not isinstance(element.tag, str):
-                continue
-            name = _local_name(element)
-            if name == "link" and "stylesheet" in (element.get("rel") or "").casefold().split():
-                target = self.package.resolve_reference(element.get("href") or "", base_part=self.chapter_path)
-                if target is None:
-                    continue
-                data = self.package.read_part(target.path)
-                if data is not None:
-                    stylesheet.add(data.decode("utf-8-sig", errors="replace"))
-            elif name == "style":
-                stylesheet.add("".join(element.itertext()))
-        return stylesheet
+        return _load_chapter_stylesheet(self.package, self.chapter_path, self.root)
 
     def convert(self) -> list[dict[str, object]]:
         """解析 XHTML body 并返回按 DOM 顺序排列的 raw blocks。"""
