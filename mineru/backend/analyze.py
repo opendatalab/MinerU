@@ -48,6 +48,10 @@ def doc_analyze(
             parse_mode=parse_mode,
             image_analysis=image_analysis,
         )
+    elif file_suffix == "csv":
+        from .analysis.csv import analyze_csv
+
+        result = analyze_csv(file_bytes)
     else:
         from .analysis.office import analyze_office
 

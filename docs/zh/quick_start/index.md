@@ -159,6 +159,6 @@ mineru -p <input_path> -o <output_path>
 mineru parse "<input_path>" --tier flash -o <output_path>
 ```
 
-当前 `mineru` 支持本地 `PDF / 图片 / DOCX / PPTX / XLSX` 文件或目录输入。
+当前 `mineru` 的现代 CLI 和 API 入口支持本地 `PDF / 图片 / CSV / DOCX / PPTX / XLSX` 文件或目录输入。
 
-您可以通过命令行、API、WebUI 等多种方式使用 MinerU 进行文档解析，具体使用方法请参考[使用指南](../usage/index.md)。
+旧 Gradio WebUI 保持原有上传格式，暂不接收 CSV。具体使用方法请参考[使用指南](../usage/index.md)。

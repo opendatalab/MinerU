@@ -55,6 +55,7 @@
 | [ADR-0025](0025-model-download-local-dir.md) | Accepted | 模型下载与本地模型目录 |
 | [ADR-0026](0026-remote-usage-api-key-guidance.md) | Accepted | Remote API Usage 与 API Key 引导 |
 | [ADR-0027](0027-doclib-visual-block-locators.md) | Accepted | Doclib 视觉 Block Locator 图片引用 |
+| [ADR-0028](0028-csv-structured-flash-parsing.md) | Accepted | CSV 本地结构化 Flash 解析 |
 
 ## 模板
 

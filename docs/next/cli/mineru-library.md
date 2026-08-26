@@ -180,7 +180,7 @@ watch 用于自动发现文件并建立本地索引。
 
 - watch 默认使用 `flash`。
 - watch 的目标是发现和搜索，不是最终阅读质量。
-- Agent 或用户主动读取 PDF/image 文档时，应通过 `mineru parse` 使用默认选择策略或显式 tier；Office/HTML 读取按 [ADR-0024](../decisions/0024-file-type-tier-normalization.md) 归一为 `flash` 语义；text 直接读取源文件。
+- Agent 或用户主动读取 PDF/image 文档时，应通过 `mineru parse` 使用默认选择策略或显式 tier；Office/HTML/CSV 读取按 [ADR-0024](../decisions/0024-file-type-tier-normalization.md) 与 [ADR-0028](../decisions/0028-csv-structured-flash-parsing.md) 归一为 `flash` 语义；其它 text 直接读取源文件。
 - 可插拔设备不可达时，watch 标记为 `unreachable`，该 watch 下的 active 文件标记为 `unreachable`，而不是永久删除。
 - 可插拔设备恢复时，watch 和文件恢复为 `active`，并立即对该 watch 执行一次 scan。
 - scan 发现文件真实缺失时，文件标记为 `deleted`，保留 `sha256`。
@@ -340,7 +340,7 @@ mineru config parsing-rules add "*/论文/*" --tier basic --pages all
 mineru config parsing-rules add "*/合同/*" --tier standard --remote
 ```
 
-parsing-rule 的 `tier` 和 `remote` 只适用于 PDF 和 image。Office 和 HTML 命中规则时忽略 `tier` 和 `remote`，按 `flash` 解析，并且 parse row 记录为 `flash`；text 只入库和索引，不创建 parse row。
+parsing-rule 的 `tier` 和 `remote` 只适用于 PDF 和 image。Office、HTML 和 CSV 命中规则时忽略 `tier` 和 `remote`，按 `flash` 解析，并且 parse row 记录为 `flash`；其它 text 只入库和索引，不创建 parse row。
 
 PDF/image 命中规则时，系统必须检查本地或远端能力是否支持对应 tier。rule 未指定 tier 时，按 `standard` -> `advanced` -> `basic` -> `flash` 选择可用 tier，并记录实际 tier。完整文件类型归一规则见 [ADR-0024](../decisions/0024-file-type-tier-normalization.md)。
 

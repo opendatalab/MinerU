@@ -1357,7 +1357,7 @@ def test_request_parse_explicit_image_ingests_and_queues_parse(tmp_path: Path, m
     asyncio.run(_run())
 
 
-@pytest.mark.parametrize("ext", ["html", "docx", "pptx", "xlsx"])
+@pytest.mark.parametrize("ext", ["html", "csv", "docx", "pptx", "xlsx"])
 @pytest.mark.parametrize("tier", ["standard", "advanced"])
 def test_request_parse_rejects_quality_tiers_for_non_pdf_image_inputs(
     tmp_path: Path,
@@ -1410,6 +1410,7 @@ def test_request_parse_rejects_quality_tiers_for_non_pdf_image_inputs(
     [
         ("pdf", "standard", "remote"),
         ("html", "flash", "local"),
+        ("csv", "flash", "local"),
     ],
 )
 def test_refresh_file_applies_parsing_rule_effective_tier_and_privacy(
@@ -1457,7 +1458,7 @@ def test_refresh_file_applies_parsing_rule_effective_tier_and_privacy(
     asyncio.run(_run())
 
 
-@pytest.mark.parametrize("ext", ["html", "docx", "pptx", "xlsx"])
+@pytest.mark.parametrize("ext", ["html", "csv", "docx", "pptx", "xlsx"])
 def test_request_parse_rejects_remote_for_non_pdf_image_inputs(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1502,7 +1503,7 @@ def test_request_parse_rejects_remote_for_non_pdf_image_inputs(
     asyncio.run(_run())
 
 
-@pytest.mark.parametrize("ext", ["txt", "md", "markdown", "csv", "rst", "tex"])
+@pytest.mark.parametrize("ext", ["txt", "md", "markdown", "rst", "tex"])
 @pytest.mark.parametrize(
     ("tier", "force", "remote"),
     [
@@ -1560,6 +1561,58 @@ def test_request_parse_reports_text_files_do_not_require_parsing(
         assert file_row is not None
         assert await db.fetchall("SELECT id FROM parses WHERE sha256=?", (file_row["sha256"],)) == []
         assert await fts.search("searchable")
+
+    asyncio.run(_run())
+
+
+def test_csv_doclib_parse_creates_flash_cache_and_rendered_fts(
+    tmp_path: Path,
+) -> None:
+    """验证 CSV 不再走文本直读，而是生成 flash 缓存并用表格 Markdown 建立 FTS。"""
+
+    class _NoRulesConfig:
+        """为 CSV Doclib 集成测试关闭解析规则。"""
+
+        async def match_rules(self, path: str, rule_type: str) -> list[dict[str, Any]]:
+            """返回空规则集合，使测试只覆盖默认本地 flash 路径。"""
+            return []
+
+    async def _run() -> None:
+        """完成 CSV 入库、排队、执行、缓存和 FTS 的完整生命周期。"""
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        fts = FTSManager(db)
+        service = ParseService(
+            db=db,
+            fts=fts,
+            config_svc=_NoRulesConfig(),
+            data_dir=str(tmp_path / "data"),
+            parse_lock_timeout_sec=1800,
+        )
+        source = tmp_path / "sample.csv"
+        source.write_text("name,score\nAlice,001\nBob,002\n", encoding="utf-8")
+        try:
+            response = await service.request_parse(str(source))
+            assert response.status == "pending"
+            assert response.tier == "flash"
+            assert response.page_range == "1"
+            assert not await fts.search("Alice")
+
+            task = await service.acquire_task()
+            assert task is not None
+            assert task["tier"] == "flash"
+            assert await service.process_doc(task)
+
+            parse_row = await db.fetchone("SELECT status, tier, page_range FROM parses WHERE id=?", (task["id"],))
+            assert parse_row == {"status": "done", "tier": "flash", "page_range": "1"}
+            assert await fts.search("Alice")
+            cached_files = list((tmp_path / "data" / "parsed").rglob("*.json"))
+            assert len(cached_files) == 1
+            cached_payload = json.loads(cached_files[0].read_text(encoding="utf-8"))
+            assert cached_payload["file_suffix"] == "csv"
+            assert cached_payload["effort"] == "flash"
+        finally:
+            await db.close()
 
     asyncio.run(_run())
 
@@ -3195,7 +3248,7 @@ def test_doclib_server_accepts_short_id_for_sha256_doc_inputs(tmp_path: Path) ->
     asyncio.run(_run())
 
 
-@pytest.mark.parametrize("ext", ["txt", "md", "markdown", "csv", "rst", "tex"])
+@pytest.mark.parametrize("ext", ["txt", "md", "markdown", "rst", "tex"])
 def test_doclib_server_reports_text_invalidation_not_required(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -3277,7 +3330,7 @@ def test_doc_content_invalid_after_cursor_returns_invalid_locator(tmp_path: Path
     asyncio.run(_run())
 
 
-@pytest.mark.parametrize("ext", ["txt", "md", "markdown", "csv", "rst", "tex"])
+@pytest.mark.parametrize("ext", ["txt", "md", "markdown", "rst", "tex"])
 def test_read_text_locator_reports_parse_not_required(tmp_path: Path, ext: str) -> None:
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.sqlite"))

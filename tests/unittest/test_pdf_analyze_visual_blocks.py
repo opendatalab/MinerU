@@ -1199,7 +1199,7 @@ def test_aio_doc_analyze_matches_sync_signature() -> None:
 def test_doc_analyze_effort_annotation_exposes_only_supported_values() -> None:
     """验证同步和异步 Analyze 门面复用统一的 effort 与文件后缀类型。"""
     expected_efforts = ("flash", "medium", "high", "xhigh")
-    expected_suffixes = ("pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx")
+    expected_suffixes = ("pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx", "csv")
     assert get_args(get_type_hints(analyze.doc_analyze)["effort"]) == expected_efforts
     assert get_args(get_type_hints(analyze.aio_doc_analyze)["effort"]) == expected_efforts
     assert get_args(FileSuffix) == expected_suffixes

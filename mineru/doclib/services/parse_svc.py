@@ -15,6 +15,7 @@ from urllib.parse import urlparse
 
 from ...errors import InvalidRequestError, MineruError
 from ...filetypes import (
+    CSV_EXTENSIONS,
     IMAGE_EXTENSIONS,
     INGESTIBLE_EXTENSIONS,
     OFFICE_EXTENSIONS,
@@ -582,13 +583,15 @@ class ParseService:
                 "is_image_based": 0,
             }
 
-        # Office: no page_count → default to 1
+        # 无固有分页或元数据暂不可读的结构化格式默认按一页处理。
         page_count = metadata["page_count"]
         if page_count is None:
             if ext in ("doc", "docx"):
                 page_count = 1  # reflow docs
             elif ext in ("ppt", "pptx", "xls", "xlsx"):
                 page_count = 1  # will be updated by metadata extraction
+            elif ext in CSV_EXTENSIONS:
+                page_count = 1
 
         now = _now_ms()
         await self.db.execute(

@@ -10,6 +10,8 @@ from zipfile import BadZipFile, ZipFile
 from loguru import logger
 from magika import Magika
 
+from ..filetypes import IMAGE_EXTENSIONS
+
 PDF_SIG_BYTES = b"%PDF"
 OLE2_SIG_BYTES = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
 OOXML_ROOT_RELS = "_rels/.rels"
@@ -30,6 +32,18 @@ OLE2_STREAM_SUFFIX_MAP: dict[str, str] = {
     "Book": "xls",
     "PowerPoint Document": "ppt",
 }
+_STRONG_CONTENT_SUFFIXES = frozenset(
+    {
+        "pdf",
+        "doc",
+        "docx",
+        "ppt",
+        "pptx",
+        "xls",
+        "xlsx",
+        *IMAGE_EXTENSIONS,
+    }
+)
 
 
 @lru_cache(maxsize=1)
@@ -156,7 +170,31 @@ def _guess_ole2_suffix_by_path(file_path: Path) -> str | None:
         return None
 
 
+def _has_pdf_signature_by_path(file_path: Path) -> bool:
+    """读取文件头判断路径指向的内容是否具有 PDF 强签名。"""
+    try:
+        with open(file_path, "rb") as file:
+            return file.read(len(PDF_SIG_BYTES)) == PDF_SIG_BYTES
+    except OSError:
+        return False
+
+
+def _resolve_signatureless_csv_suffix(detected_suffix: str, file_path: str | Path | None) -> str:
+    """仅以 .csv 扩展名兜底无签名文本，并保留强内容类型的优先级。"""
+    extension = Path(file_path).suffix.lower().lstrip(".") if file_path else ""
+    if extension == "csv":
+        if detected_suffix in _STRONG_CONTENT_SUFFIXES:
+            return detected_suffix
+        return "csv"
+    if detected_suffix == "csv":
+        return extension or "txt"
+    return detected_suffix
+
+
 def guess_suffix_by_bytes(file_bytes: bytes, file_path: str | None = None) -> str:
+    if file_bytes[: len(PDF_SIG_BYTES)] == PDF_SIG_BYTES:
+        return "pdf"
+
     ooxml_suffix = _guess_ooxml_suffix_by_bytes(file_bytes)
     if ooxml_suffix:
         return ooxml_suffix
@@ -173,7 +211,7 @@ def guess_suffix_by_bytes(file_bytes: bytes, file_path: str | None = None) -> st
         and file_bytes[:4] == PDF_SIG_BYTES
     ):
         suffix = "pdf"
-    return suffix
+    return _resolve_signatureless_csv_suffix(suffix, file_path)
 
 
 def guess_suffix_by_path(file_path: str | Path) -> str:
@@ -188,6 +226,9 @@ def guess_suffix_by_path(file_path: str | Path) -> str:
     if ole2_suffix:
         return ole2_suffix
 
+    if _has_pdf_signature_by_path(file_path):
+        return "pdf"
+
     suffix = _magika().identify_path(file_path).prediction.output.label
     if suffix in ["ai", "html"] and file_path.suffix.lower() in [".pdf"]:
         try:
@@ -196,7 +237,7 @@ def guess_suffix_by_path(file_path: str | Path) -> str:
                     suffix = "pdf"
         except Exception as e:
             logger.warning(f"Failed to read file {file_path} for PDF signature check: {e}")
-    return suffix
+    return _resolve_signatureless_csv_suffix(suffix, file_path)
 
 
 __all__ = ["guess_suffix_by_bytes", "guess_suffix_by_path"]

@@ -200,7 +200,7 @@ SQLite 运行在 WAL 模式，使用 FTS5 提供搜索能力。每次 DB 操作�
 
 这样用户无需理解“索引”和“解析”两个概念；不同 tier 只是解析深度和执行路径不同。
 
-注意：`flash` 是 watch 自动发现和搜索索引的低成本 tier，不应作为 PDF/image 主动阅读时的默认最终质量。PDF/image 主动阅读未指定 tier 时应使用默认选择策略；有能力发现上下文时按 `standard` -> `advanced` -> `basic` 解析。Office/HTML 的归一规则见 [ADR-0024](decisions/0024-file-type-tier-normalization.md)；text 只入库和索引，直接读取源文件。
+注意：`flash` 是 watch 自动发现和搜索索引的低成本 tier，不应作为 PDF/image 主动阅读时的默认最终质量。PDF/image 主动阅读未指定 tier 时应使用默认选择策略；有能力发现上下文时按 `standard` -> `advanced` -> `basic` 解析。Office/HTML/CSV 的归一规则见 [ADR-0024](decisions/0024-file-type-tier-normalization.md) 与 [ADR-0028](decisions/0028-csv-structured-flash-parsing.md)；其它 text 只入库和索引，直接读取源文件。
 
 ### 4.2 文件发现到入库
 
@@ -272,7 +272,7 @@ ParseWorker 按 `tier`、`privacy` 和 parse-server 健康状态路由：
 
 | 条件 | 执行路径 |
 |------|----------|
-| 未指定 tier | PDF/image 通过当前目标 parse-server 能力发现，按 `standard` -> `advanced` -> `basic` 解析；Office/HTML 归一为 `flash`；text 直接读取 |
+| 未指定 tier | PDF/image 通过当前目标 parse-server 能力发现，按 `standard` -> `advanced` -> `basic` 解析；Office/HTML/CSV 归一为 `flash`；其它 text 直接读取 |
 | `tier=flash` | 直接本地调用轻量 parser，`via=local` |
 | `tier=basic/standard/advanced` 且 `privacy=remote` | 优先调用 config 中的远端地址，默认使用 `https://mineru.net/api` |
 | remote 不可用 | 尝试 fallback 到 local parse-server |
@@ -412,7 +412,7 @@ Watch、parsing-rules 和 exclude 规则也由 CLI 写入 SQLite。Parsing-rules
 | 类型 | 策略 |
 |------|------|
 | 纯文本 | 直接读取，无需模型解析 |
-| Office / HTML | 本地 CPU 全量解析 |
+| Office / HTML / CSV | 本地 CPU 全量解析 |
 | PDF / Image | 按 tier 路由到默认选择 / flash / basic / standard / advanced |
 
 ## 9. 错误与恢复

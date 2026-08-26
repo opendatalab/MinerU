@@ -13,7 +13,7 @@ MinerU内置了命令行工具，用户可以通过命令行快速使用MinerU�
 mineru -p <input_path> -o <output_path>
 ```
 > [!TIP]
-> - `<input_path>`：本地 `PDF` / 图片 / `DOC`/`DOCX` / `PPT`/`PPTX` / `XLS`/`XLSX` 文件或目录
+> - `<input_path>`：本地 `PDF` / 图片 / `CSV` / `DOC`/`DOCX` / `PPT`/`PPTX` / `XLS`/`XLSX` 文件或目录
 > - `<output_path>`：输出目录
 > - 未传 `--api-url` 时，CLI 会自动拉起本地临时 `mineru-api`
 > - 传入 `--api-url` 时，CLI 会直连远端或已有本地 FastAPI 服务
@@ -41,7 +41,7 @@ mineru -p <input_path> -o <output_path>
   >- 同步解析接口：`POST /file_parse`
   >- 任务查询接口：`GET /tasks/{task_id}`、`GET /tasks/{task_id}/result`
   >- API 输出目录由服务端固定控制，默认写入 `./output`
-  >- 上传文件当前支持 `PDF`、图片与 `DOCX`、`PPTX`、`XLSX`
+  >- 上传文件当前支持 `PDF`、图片、`CSV` 与 `DOCX`、`PPTX`、`XLSX`
   >
   >- `POST /tasks` 会立即返回 `task_id`；`POST /file_parse` 会在内部提交到同一个任务管理器，等待任务完成后同步返回最终结果。
   >- 当任务处于排队状态时，任务提交结果和状态查询结果中可能会返回 `queued_ahead` 字段，用于表示前方排队任务数。

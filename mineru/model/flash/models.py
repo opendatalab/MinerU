@@ -20,6 +20,16 @@ class PdfModel:
         return pipeline._analyze_native_document(pdf_doc)
 
 
+class CsvModel:
+    """将 CSV 分隔符文本包装为无状态 Flash 模型。"""
+
+    def predict(self, file_binary: BinaryIO) -> list[list[dict[str, Any]]]:
+        """转换调用方持有的 CSV 二进制流，并返回单逻辑页 model_list。"""
+        from .csv import convert_csv
+
+        return convert_csv(file_binary)
+
+
 class DocxModel:
     """将 DOCX Converter 包装为无状态模型。"""
 

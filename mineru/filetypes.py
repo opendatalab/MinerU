@@ -29,11 +29,13 @@ OFFICE_EXTENSIONS: frozenset[str] = frozenset({"doc", "docx", "ppt", "pptx", "xl
 
 HTML_EXTENSIONS: frozenset[str] = frozenset({"html", "htm"})
 
-TEXT_EXTENSIONS: frozenset[str] = frozenset({"txt", "md", "markdown", "csv", "rst", "tex"})
+CSV_EXTENSIONS: frozenset[str] = frozenset({"csv"})
+
+TEXT_EXTENSIONS: frozenset[str] = frozenset({"txt", "md", "markdown", "rst", "tex"})
 
 TIERED_PARSE_EXTENSIONS: frozenset[str] = PDF_EXTENSIONS | IMAGE_EXTENSIONS
 
-FLASH_ONLY_PARSE_EXTENSIONS: frozenset[str] = OFFICE_EXTENSIONS | HTML_EXTENSIONS
+FLASH_ONLY_PARSE_EXTENSIONS: frozenset[str] = OFFICE_EXTENSIONS | HTML_EXTENSIONS | CSV_EXTENSIONS
 
 PARSEABLE_EXTENSIONS: frozenset[str] = TIERED_PARSE_EXTENSIONS | FLASH_ONLY_PARSE_EXTENSIONS
 
@@ -48,10 +50,10 @@ FILE_TYPE_BY_EXTENSION: dict[str, str] = {
     **dict.fromkeys(IMAGE_EXTENSIONS, "image"),
     **{ext: ext for ext in OFFICE_EXTENSIONS},
     **dict.fromkeys(HTML_EXTENSIONS, "html"),
+    **dict.fromkeys(CSV_EXTENSIONS, "csv"),
     "txt": "text",
     "md": "markdown",
     "markdown": "markdown",
-    "csv": "csv",
     "rst": "rst",
     "tex": "tex",
 }
@@ -66,6 +68,7 @@ MIME_TYPE_BY_EXTENSION: dict[str, str] = {
     "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     "xls": "application/vnd.ms-excel",
     "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "csv": "text/csv",
     "html": "text/html",
     "htm": "text/html",
     "png": "image/png",

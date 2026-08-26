@@ -148,6 +148,6 @@ If your device does not meet the GPU acceleration requirements, you can explicit
 mineru parse "<input_path>" --tier flash -o <output_path>
 ```
 
-`mineru` currently supports local `PDF`, image, `DOCX`, `PPTX`, and `XLSX` file or directory inputs.
+`mineru` currently supports local `PDF`, image, `CSV`, `DOCX`, `PPTX`, and `XLSX` file or directory inputs through modern CLI and API entry points.
 
-You can use MinerU for document parsing through the CLI, API, WebUI. For detailed instructions, please refer to the [Usage Guide](../usage/index.md).
+The legacy Gradio WebUI keeps its existing upload formats and does not yet accept CSV. For detailed instructions, please refer to the [Usage Guide](../usage/index.md).

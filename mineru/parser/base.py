@@ -208,7 +208,7 @@ class ParseResult:
 class DocumentParser(ABC):
     """Abstract base class for all document parsers.
 
-    Subclasses implement ``parse()`` for a specific document category (PDF, DOCX, PPTX, XLSX).
+    Subclasses implement ``parse()`` for a specific document category (PDF, CSV, or Office).
     """
 
     _closed: bool = False

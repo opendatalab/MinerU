@@ -148,7 +148,7 @@ local parse-server 是独立进程，由 `mineru-kit api-server` 提供。doclib
 | `managed` | doclib 启停时自动管理 parse-server |
 | `self_hosted` | 用户自己启动 parse-server，doclib 只连接 URL |
 
-PDF/image 默认选择策略需要通过 local 或 remote parse-server 的能力发现解析为可用的非 `flash` tier，选择顺序见 [解析 Tier](../tiers.md)。Office/HTML 的归一规则见 [ADR-0024](../decisions/0024-file-type-tier-normalization.md)；text 直接读取。
+PDF/image 默认选择策略需要通过 local 或 remote parse-server 的能力发现解析为可用的非 `flash` tier，选择顺序见 [解析 Tier](../tiers.md)。Office/HTML/CSV 的归一规则见 [ADR-0024](../decisions/0024-file-type-tier-normalization.md) 与 [ADR-0028](../decisions/0028-csv-structured-flash-parsing.md)；其它 text 直接读取。
 
 ## 6. 崩溃恢复
 

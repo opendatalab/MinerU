@@ -155,6 +155,7 @@ def test_models_are_exported_from_flash_root() -> None:
 
     assert flash_models.__all__ == [
         "PdfModel",
+        "CsvModel",
         "DocModel",
         "DocxModel",
         "PptModel",
