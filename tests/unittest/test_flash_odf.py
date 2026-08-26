@@ -30,7 +30,7 @@ from mineru.parser.file_type import guess_suffix_by_bytes, guess_suffix_by_path
 from mineru.render import render_docx, render_html, render_markdown, render_structured_content
 from mineru.types import BlockType
 
-from _odf_test_utils import build_odf_package, build_odp_fixture, build_ods_fixture, build_odt_fixture
+from _odf_test_utils import _PIXEL_PNG, build_odf_package, build_odp_fixture, build_ods_fixture, build_odt_fixture
 
 
 @pytest.mark.parametrize(
@@ -112,6 +112,90 @@ def test_odt_promotes_numbered_heading_inside_list() -> None:
     middle, _ = doc_analyze(build_odf_package("odt", content), file_suffix="odt")
     assert middle.pages[0].blocks[0].type == BlockType.PARAGRAPH_TITLE
     assert middle.pages[0].blocks[0].content == "1 Chapter"  # type: ignore[union-attr]
+
+
+def test_odt_list_lifts_visual_blocks_outside_strict_list() -> None:
+    """验证列表段落图片保留原类型并提升为 LIST 的有序兄弟块。"""
+    content = """<office:document-content
+ xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+ xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"
+ xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0"
+ xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+ <office:automatic-styles><text:list-style style:name="L1">
+  <text:list-level-style-number text:level="1" style:num-format="1"/>
+ </text:list-style></office:automatic-styles>
+ <office:body><office:text><text:list text:style-name="L1"><text:list-item text:start-value="3">
+  <text:p>Illustrated item<draw:frame><draw:image xlink:href="Pictures/pixel.png"/></draw:frame></text:p>
+ </text:list-item><text:list-item><text:p>Next item</text:p></text:list-item></text:list></office:text></office:body>
+</office:document-content>"""
+
+    middle, _ = doc_analyze(
+        build_odf_package("odt", content, extra_parts={"Pictures/pixel.png": _PIXEL_PNG}),
+        file_suffix="odt",
+    )
+
+    assert [block.type for block in middle.pages[0].blocks] == [BlockType.LIST, BlockType.IMAGE, BlockType.LIST]
+    assert [child.content for child in middle.pages[0].blocks[0].content] == ["3. Illustrated item"]  # type: ignore[union-attr]
+    assert [child.content for child in middle.pages[0].blocks[2].content] == ["4. Next item"]  # type: ignore[union-attr]
+
+
+def test_odt_list_item_joins_multiple_paragraphs_before_markers() -> None:
+    """验证一个源 list-item 的多个段落只生成一个 LIST 文本叶子和一个 marker。"""
+    content = """<office:document-content
+ xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+ xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+ <office:body><office:text><text:list>
+  <text:list-item><text:p>First paragraph</text:p><text:p>Second paragraph</text:p></text:list-item>
+  <text:list-item><text:p>Next item</text:p></text:list-item>
+ </text:list></office:text></office:body>
+</office:document-content>"""
+
+    middle, _ = doc_analyze(build_odf_package("odt", content), file_suffix="odt")
+    list_block = middle.pages[0].blocks[0]
+
+    assert list_block.type == BlockType.LIST
+    assert [child.content for child in list_block.content] == ["- First paragraph\nSecond paragraph", "- Next item"]  # type: ignore[union-attr]
+    assert render_markdown(middle).count("- ") == 2
+
+
+def test_odt_table_cell_renders_inline_image_once() -> None:
+    """验证 ODT/ODP 单元格内联图片不会再被对应段外 image block 重复输出。"""
+    content = """<office:document-content
+ xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+ xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"
+ xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0"
+ xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+ <office:body><office:text><table:table><table:table-row><table:table-cell>
+  <text:p>Cell<draw:frame><draw:image xlink:href="Pictures/pixel.png"/></draw:frame></text:p>
+ </table:table-cell></table:table-row></table:table></office:text></office:body>
+</office:document-content>"""
+
+    pages = OdtModel().predict(BytesIO(build_odf_package("odt", content, extra_parts={"Pictures/pixel.png": _PIXEL_PNG})))
+
+    assert pages[0][0]["type"] == BlockType.TABLE
+    assert pages[0][0]["content"].count("<img") == 1
+
+
+def test_odt_inline_visual_stays_before_soft_page_break() -> None:
+    """验证 soft-page-break 前遇到的段内视觉块仍留在来源逻辑页。"""
+    content = """<office:document-content
+ xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+ xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"
+ xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+ <office:body><office:text><text:p>
+  Before<draw:frame><draw:image xlink:href="Pictures/pixel.png"/></draw:frame><text:soft-page-break/>After
+ </text:p></office:text></office:body>
+</office:document-content>"""
+
+    pages = OdtModel().predict(BytesIO(build_odf_package("odt", content, extra_parts={"Pictures/pixel.png": _PIXEL_PNG})))
+
+    assert [[block["type"] for block in page] for page in pages] == [
+        [BlockType.TEXT, BlockType.IMAGE],
+        [BlockType.TEXT],
+    ]
 
 
 def test_odp_preserves_empty_slide_chart_preview_and_notes() -> None:

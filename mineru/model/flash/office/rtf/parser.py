@@ -49,6 +49,7 @@ from .models import (
 MAX_RTF_BYTES = MAX_ENTRY_BYTES
 MAX_RTF_LIST_DEPTH = 8
 MAX_RTF_TABLE_DEPTH = 4
+MAX_RTF_ROMAN_VALUE = 3_999
 
 _CHARSET_ENCODINGS = {
     0: "cp1252",
@@ -147,6 +148,25 @@ _CONTROL_RE = re.compile(rb"\\(?P<name>[A-Za-z]+)(?P<param>-?\d+)?(?: )?")
 
 
 @dataclass(frozen=True, slots=True)
+class _TextStyleOverrides:
+    """保存 stylesheet 中可区分缺省与显式关闭的字符样式覆盖。"""
+
+    bold: bool | None = None
+    italic: bool | None = None
+    underline: bool | None = None
+    strike: bool | None = None
+
+    def resolve(self, base: RtfTextStyle = RtfTextStyle()) -> RtfTextStyle:
+        """用当前显式值覆盖基样式，缺省字段继续继承。"""
+        return RtfTextStyle(
+            bold=base.bold if self.bold is None else self.bold,
+            italic=base.italic if self.italic is None else self.italic,
+            underline=base.underline if self.underline is None else self.underline,
+            strike=base.strike if self.strike is None else self.strike,
+        )
+
+
+@dataclass(frozen=True, slots=True)
 class _StyleDefinition:
     """保存 stylesheet 中与语义投影相关的段落样式。"""
 
@@ -156,6 +176,7 @@ class _StyleDefinition:
     block_style: Literal["normal", "code", "quote"] = "normal"
     based_on: int | None = None
     text_style: RtfTextStyle = RtfTextStyle()
+    text_style_overrides: _TextStyleOverrides = _TextStyleOverrides()
 
 
 @dataclass(frozen=True, slots=True)
@@ -290,11 +311,7 @@ class _TableBuilder:
         if not self._row_open:
             self.start_row()
         definition_index = len(self._cells)
-        definition = (
-            self._definitions[definition_index]
-            if definition_index < len(self._definitions)
-            else _CellDefinition()
-        )
+        definition = self._definitions[definition_index] if definition_index < len(self._definitions) else _CellDefinition()
         self._cells.append(
             RtfTableCell(
                 blocks=self._cell_blocks,
@@ -317,9 +334,7 @@ class _TableBuilder:
         if target_cells:
             total_slots = sum(len(row.cells) for row in self.rows) + target_cells
             if total_slots > MAX_GRID_SLOTS:
-                raise LegacyOfficeResourceLimitError(
-                    f"RTF table exceeds max_grid_slots={MAX_GRID_SLOTS}"
-                )
+                raise LegacyOfficeResourceLimitError(f"RTF table exceeds max_grid_slots={MAX_GRID_SLOTS}")
             self.rows.append(RtfTableRow(cells=self._cells, header=self._row_header))
         self._definitions = []
         self._cells = []
@@ -369,6 +384,19 @@ class _GroupFrame:
     note_kind: Literal["footnote", "endnote"] = "footnote"
 
 
+@dataclass(frozen=True, slots=True)
+class _GroupSpan:
+    """用原始 RTF buffer 上的起止位置表示 group，避免嵌套切片复制。"""
+
+    data: bytes
+    start: int
+    end: int
+
+    def materialize(self) -> bytes:
+        """仅在实际解析匹配 destination 时物化当前 group。"""
+        return self.data[self.start : self.end]
+
+
 def _lookup_encoding(code_page: int, fallback: str = "cp1252") -> str:
     """把 RTF code page 规范为 Python codec，不支持时返回稳定 fallback。"""
     candidate = f"cp{code_page}"
@@ -394,11 +422,11 @@ def _default_encoding(data: bytes) -> str:
     return "cp1252"
 
 
-def _group_slices(data: bytes, *, direct_only: bool = False) -> list[bytes]:
-    """按二进制安全 token 边界返回当前输入中的子 group 切片。"""
+def _group_spans(data: bytes, *, direct_only: bool = False) -> list[_GroupSpan]:
+    """按二进制安全 token 边界返回共享原始 buffer 的子 group 范围。"""
     depth = 0
     starts: list[int] = []
-    result: list[bytes] = []
+    result: list[_GroupSpan] = []
     for token in RtfLexer(data):
         if isinstance(token, RtfOpen):
             depth += 1
@@ -406,14 +434,15 @@ def _group_slices(data: bytes, *, direct_only: bool = False) -> list[bytes]:
         elif isinstance(token, RtfClose) and starts:
             start = starts.pop()
             if (direct_only and depth == 2) or (not direct_only and depth >= 2):
-                result.append(data[start : token.end])
+                result.append(_GroupSpan(data, start, token.end))
             depth = max(depth - 1, 0)
     return result
 
 
-def _group_destination(group: bytes) -> str | None:
+def _group_destination(group: _GroupSpan) -> str | None:
     """读取 group 开头最多两个 control word 以识别 destination。"""
-    controls = list(_CONTROL_RE.finditer(group[:256]))
+    prefix = group.data[group.start : min(group.end, group.start + 256)]
+    controls = list(_CONTROL_RE.finditer(prefix))
     for match in controls[:3]:
         name = match.group("name").decode("ascii").lower()
         if name not in {"rtf", "ansi", "deff"}:
@@ -421,9 +450,9 @@ def _group_destination(group: bytes) -> str | None:
     return None
 
 
-def _named_groups(data: bytes, destination: str) -> list[bytes]:
-    """返回全部以指定 control word 开头的 group。"""
-    return [group for group in _group_slices(data) if _group_destination(group) == destination]
+def _named_groups(data: bytes, destination: str) -> list[_GroupSpan]:
+    """返回全部匹配 destination 的零拷贝 group 范围。"""
+    return [group for group in _group_spans(data) if _group_destination(group) == destination]
 
 
 def _decode_group_text(data: bytes, encoding: str) -> str:
@@ -482,7 +511,9 @@ def _parse_fonts(data: bytes, default: str) -> dict[int, str]:
     if not groups:
         return {}
     result: dict[int, str] = {}
-    for font_group in _group_slices(groups[0], direct_only=True):
+    font_table = groups[0].materialize()
+    for font_span in _group_spans(font_table, direct_only=True):
+        font_group = font_span.materialize()
         font_match = re.search(rb"\\f(?P<id>\d+)(?:\D|$)", font_group)
         if font_match is None:
             continue
@@ -498,15 +529,15 @@ def _parse_fonts(data: bytes, default: str) -> dict[int, str]:
     return result
 
 
-def _style_control_is_on(data: bytes, name: str) -> bool:
-    """读取样式 group 中指定 on/off control 的最后一次显式取值。"""
+def _style_control_value(data: bytes, name: str) -> bool | None:
+    """读取样式 on/off control 的三态值，缺省时返回空。"""
     pattern = re.compile(
         rb"\\" + name.encode("ascii") + rb"(?P<param>-?\d+)?(?=[^A-Za-z]|$)",
         re.IGNORECASE,
     )
     matches = list(pattern.finditer(data))
     if not matches:
-        return False
+        return None
     raw_param = matches[-1].group("param")
     return raw_param is None or int(raw_param) != 0
 
@@ -517,7 +548,9 @@ def _parse_styles(data: bytes, encoding: str) -> dict[int, _StyleDefinition]:
     if not groups:
         return {}
     result: dict[int, _StyleDefinition] = {}
-    for style_group in _group_slices(groups[0], direct_only=True):
+    stylesheet = groups[0].materialize()
+    for style_span in _group_spans(stylesheet, direct_only=True):
+        style_group = style_span.materialize()
         style_match = re.search(rb"\\s(?P<id>-?\d+)(?:\D|$)", style_group)
         if style_match is None:
             continue
@@ -538,11 +571,11 @@ def _parse_styles(data: bytes, encoding: str) -> dict[int, _StyleDefinition]:
             block_style = "quote"
         else:
             block_style = _BLOCK_STYLE_NAMES.get(normalized, "normal")
-        text_style = RtfTextStyle(
-            bold=_style_control_is_on(style_group, "b"),
-            italic=_style_control_is_on(style_group, "i"),
-            underline=_style_control_is_on(style_group, "ul"),
-            strike=_style_control_is_on(style_group, "strike"),
+        text_style_overrides = _TextStyleOverrides(
+            bold=_style_control_value(style_group, "b"),
+            italic=_style_control_value(style_group, "i"),
+            underline=_style_control_value(style_group, "ul"),
+            strike=_style_control_value(style_group, "strike"),
         )
         result[style_id] = _StyleDefinition(
             name=name,
@@ -550,7 +583,8 @@ def _parse_styles(data: bytes, encoding: str) -> dict[int, _StyleDefinition]:
             is_title=normalized in _TITLE_STYLE_NAMES,
             block_style=block_style,  # type: ignore[arg-type]
             based_on=based_on,
-            text_style=text_style,
+            text_style=text_style_overrides.resolve(),
+            text_style_overrides=text_style_overrides,
         )
 
     resolved: dict[int, _StyleDefinition] = {}
@@ -564,12 +598,7 @@ def _parse_styles(data: bytes, encoding: str) -> dict[int, _StyleDefinition]:
             resolved[style_id] = current
             return current
         base = resolve(current.based_on, {*visiting, style_id})
-        merged_style = RtfTextStyle(
-            bold=current.text_style.bold or base.text_style.bold,
-            italic=current.text_style.italic or base.text_style.italic,
-            underline=current.text_style.underline or base.text_style.underline,
-            strike=current.text_style.strike or base.text_style.strike,
-        )
+        merged_style = current.text_style_overrides.resolve(base.text_style)
         merged = _StyleDefinition(
             name=current.name,
             outline_level=current.outline_level if current.outline_level is not None else base.outline_level,
@@ -577,6 +606,7 @@ def _parse_styles(data: bytes, encoding: str) -> dict[int, _StyleDefinition]:
             block_style=current.block_style if current.block_style != "normal" else base.block_style,
             based_on=current.based_on,
             text_style=merged_style,
+            text_style_overrides=current.text_style_overrides,
         )
         resolved[style_id] = merged
         return merged
@@ -591,12 +621,15 @@ def _parse_lists(data: bytes) -> dict[int, _ListDefinition]:
     by_list_id: dict[int, tuple[_ListLevel, ...]] = {}
     list_tables = _named_groups(data, "listtable")
     if list_tables:
-        for list_group in _named_groups(list_tables[0], "list"):
+        list_table = list_tables[0].materialize()
+        for list_span in _named_groups(list_table, "list"):
+            list_group = list_span.materialize()
             id_match = re.search(rb"\\listid(?P<id>-?\d+)", list_group)
             if id_match is None:
                 continue
             levels: list[_ListLevel] = []
-            for level_group in _named_groups(list_group, "listlevel")[: MAX_RTF_LIST_DEPTH + 1]:
+            for level_span in _named_groups(list_group, "listlevel")[: MAX_RTF_LIST_DEPTH + 1]:
+                level_group = level_span.materialize()
                 nfc_match = re.search(rb"\\levelnfc(?P<nfc>\d+)", level_group)
                 start_match = re.search(rb"\\levelstartat(?P<start>-?\d+)", level_group)
                 nfc = int(nfc_match.group("nfc")) if nfc_match is not None else 0
@@ -609,7 +642,9 @@ def _parse_lists(data: bytes) -> dict[int, _ListDefinition]:
     result: dict[int, _ListDefinition] = {}
     override_tables = _named_groups(data, "listoverridetable")
     if override_tables:
-        for override_group in _named_groups(override_tables[0], "listoverride"):
+        override_table = override_tables[0].materialize()
+        for override_span in _named_groups(override_table, "listoverride"):
+            override_group = override_span.materialize()
             id_match = re.search(rb"\\listid(?P<id>-?\d+)", override_group)
             ls_match = re.search(rb"\\ls(?P<ls>\d+)", override_group)
             if id_match is None or ls_match is None:
@@ -617,14 +652,17 @@ def _parse_lists(data: bytes) -> dict[int, _ListDefinition]:
             list_id = int(id_match.group("id"))
             ls = int(ls_match.group("ls"))
             levels = list(by_list_id.get(list_id, (_ListLevel(),)))
-            for level_index, level_override in enumerate(_named_groups(override_group, "lfolevel")):
+            for level_index, level_span in enumerate(_named_groups(override_group, "lfolevel")):
+                level_override = level_span.materialize()
                 while len(levels) <= level_index:
                     levels.append(_ListLevel())
                 current = levels[level_index]
                 start_match = re.search(rb"\\levelstartat(?P<start>-?\d+)", level_override)
                 nfc_match = re.search(rb"\\levelnfc(?P<nfc>\d+)", level_override)
                 start = max(int(start_match.group("start")), 0) if start_match is not None else current.start
-                marker = _NFC_MARKERS.get(int(nfc_match.group("nfc")), current.marker) if nfc_match is not None else current.marker
+                marker = (
+                    _NFC_MARKERS.get(int(nfc_match.group("nfc")), current.marker) if nfc_match is not None else current.marker
+                )
                 levels[level_index] = _ListLevel(marker=marker, start=start)
             result[ls] = _ListDefinition(identity=ls, levels=tuple(levels))
     return result
@@ -635,10 +673,11 @@ def _parse_metadata(data: bytes, encoding: str) -> RtfMetadata:
     info_groups = _named_groups(data, "info")
     if not info_groups:
         return RtfMetadata()
+    info_group = info_groups[0].materialize()
     values: dict[str, str | None] = {}
     for name in ("title", "author", "subject", "keywords"):
-        groups = _named_groups(info_groups[0], name)
-        value = _decode_group_text(groups[0], encoding).strip() if groups else ""
+        groups = _named_groups(info_group, name)
+        value = _decode_group_text(groups[0].materialize(), encoding).strip() if groups else ""
         values[name] = value or None
     return RtfMetadata(**values)
 
@@ -660,8 +699,8 @@ def parse_rtf_prelude(data: bytes) -> _Prelude:
 
 
 def _roman(value: int) -> str:
-    """把正整数格式化为常见 Roman 编号。"""
-    if value <= 0:
+    """把受支持正整数格式化为 Roman 编号，越界时安全回退十进制。"""
+    if value <= 0 or value > MAX_RTF_ROMAN_VALUE:
         return str(value)
     pairs = (
         (1000, "M"),
@@ -1014,9 +1053,7 @@ class RtfParser:
         if len(payload) > MAX_ENTRY_BYTES:
             raise LegacyOfficeResourceLimitError(f"RTF pict exceeds max_entry_bytes={MAX_ENTRY_BYTES}")
         if self._asset_total + len(payload) > MAX_ASSET_TOTAL_BYTES:
-            raise LegacyOfficeResourceLimitError(
-                f"RTF pict assets exceed max_asset_total_bytes={MAX_ASSET_TOTAL_BYTES}"
-            )
+            raise LegacyOfficeResourceLimitError(f"RTF pict assets exceed max_asset_total_bytes={MAX_ASSET_TOTAL_BYTES}")
         self._asset_total += len(payload)
         return RtfImage(
             data=payload,
@@ -1028,12 +1065,12 @@ class RtfParser:
     def _finish_math(self, frame: _GroupFrame, end: int) -> None:
         """把 math group 转换为行内或行间 LaTeX，失败时静默保留其余正文。"""
         formulas, display = parse_rtf_math(
-            self.data[frame.start:end],
+            self.data[frame.start : end],
             encoding=self._current_encoding(),
         )
         if not formulas:
-            for group in _named_groups(self.data[frame.start:end], "pict"):
-                capture = _capture_picture_group(group)
+            for group in _named_groups(self.data[frame.start : end], "pict"):
+                capture = _capture_picture_group(group.materialize())
                 if capture is None:
                     continue
                 image = self._materialize_picture(capture)
@@ -1334,11 +1371,7 @@ class RtfParser:
         """追加行内节点，并合并样式和链接完全相同的相邻文本 run。"""
         if isinstance(inline, RtfTextRun) and self.context.inlines:
             previous = self.context.inlines[-1]
-            if (
-                isinstance(previous, RtfTextRun)
-                and previous.style == inline.style
-                and previous.hyperlink == inline.hyperlink
-            ):
+            if isinstance(previous, RtfTextRun) and previous.style == inline.style and previous.hyperlink == inline.hyperlink:
                 self.context.inlines[-1] = replace(previous, text=f"{previous.text}{inline.text}")
                 return
         self.context.inlines.append(inline)
@@ -1388,8 +1421,7 @@ class RtfParser:
         list_info = self._resolve_list_info()
         self.context.pending_list_label = None
         has_visible = any(
-            not isinstance(inline, (RtfTextRun, RtfAnchor))
-            or (isinstance(inline, RtfTextRun) and bool(inline.text.strip()))
+            not isinstance(inline, (RtfTextRun, RtfAnchor)) or (isinstance(inline, RtfTextRun) and bool(inline.text.strip()))
             for inline in inlines
         )
         if not has_visible and not any(isinstance(inline, RtfAnchor) for inline in inlines):
@@ -1416,18 +1448,14 @@ class RtfParser:
     def _table_builder(self, depth: int) -> _TableBuilder:
         """返回指定 depth 的 builder，并拒绝超出渲染能力的嵌套。"""
         if depth < 1 or depth > MAX_RTF_TABLE_DEPTH:
-            raise LegacyOfficeResourceLimitError(
-                f"RTF table nesting exceeds max_table_depth={MAX_RTF_TABLE_DEPTH}"
-            )
+            raise LegacyOfficeResourceLimitError(f"RTF table nesting exceeds max_table_depth={MAX_RTF_TABLE_DEPTH}")
         return self.context.tables.setdefault(depth, _TableBuilder())
 
     def _set_table_depth(self, depth: int) -> None:
         """切换 table depth，并把已结束的深层表格挂回父 cell。"""
         normalized = min(max(depth, 0), MAX_RTF_TABLE_DEPTH)
         if depth > MAX_RTF_TABLE_DEPTH:
-            raise LegacyOfficeResourceLimitError(
-                f"RTF table nesting exceeds max_table_depth={MAX_RTF_TABLE_DEPTH}"
-            )
+            raise LegacyOfficeResourceLimitError(f"RTF table nesting exceeds max_table_depth={MAX_RTF_TABLE_DEPTH}")
         for current_depth in sorted(
             [value for value in self.context.tables if value > normalized],
             reverse=True,

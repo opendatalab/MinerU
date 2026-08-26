@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TypeAlias, Union
+from typing import Any, TypeAlias, Union
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,7 +123,15 @@ class InlineImage:
     alt: str = ""
 
 
-InlineAtom: TypeAlias = Union[InlineText, InlineMath, InlineBreak, InlinePageBreak, InlineImage]
+@dataclass(frozen=True, slots=True)
+class InlineBlockGroup:
+    """在行内流中保存段外 block 及其与内联图片的配对关系。"""
+
+    blocks: tuple[dict[str, Any], ...]
+    inline_image_rendered: bool = False
+
+
+InlineAtom: TypeAlias = Union[InlineText, InlineMath, InlineBreak, InlinePageBreak, InlineImage, InlineBlockGroup]
 
 
 @dataclass(slots=True)
@@ -158,6 +166,7 @@ class TableGrid:
 __all__ = [
     "GridCell",
     "InlineAtom",
+    "InlineBlockGroup",
     "InlineBreak",
     "InlineImage",
     "InlineMath",

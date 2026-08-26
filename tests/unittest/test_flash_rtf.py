@@ -4,6 +4,7 @@ import asyncio
 from io import BytesIO
 import subprocess
 import sys
+import tracemalloc
 from pathlib import Path
 
 import pytest
@@ -44,7 +45,7 @@ def _complex_rtf() -> bytes:
 
 def test_rtf_lexer_bin_payload_is_position_explicit() -> None:
     """验证 bin 中的花括号和反斜杠不改变 lexer group 结构。"""
-    tokens = list(RtfLexer(br"{\rtf1 before\bin5 }}{\x after}"))
+    tokens = list(RtfLexer(rb"{\rtf1 before\bin5 }}{\x after}"))
     binaries = [token for token in tokens if isinstance(token, RtfBinary)]
 
     assert [token.data for token in binaries] == [b"}}{\\x"]
@@ -53,7 +54,7 @@ def test_rtf_lexer_bin_payload_is_position_explicit() -> None:
 def test_rtf_lexer_rejects_truncated_bin_payload() -> None:
     """验证截断 bin 在游标失去可信边界前立即失败。"""
     with pytest.raises(LegacyOfficeMalformedError, match="truncated"):
-        list(RtfLexer(br"{\rtf1\bin9 ab}"))
+        list(RtfLexer(rb"{\rtf1\bin9 ab}"))
 
 
 def test_rtf_font_codepages_and_unicode_surrogates_are_exact() -> None:
@@ -62,18 +63,45 @@ def test_rtf_font_codepages_and_unicode_surrogates_are_exact() -> None:
     japanese = b"".join(f"\\'{value:02x}".encode("ascii") for value in "こんにちは".encode("cp932"))
     source = b"".join(
         [
-            br"{\rtf1\ansi{\fonttbl{\f0\fcharset204 Arial;}{\f1\fcharset128 MS Gothic;}}",
-            br"\pard\f0 ",
+            rb"{\rtf1\ansi{\fonttbl{\f0\fcharset204 Arial;}{\f1\fcharset128 MS Gothic;}}",
+            rb"\pard\f0 ",
             russian,
-            br" \f1 ",
+            rb" \f1 ",
             japanese,
-            br" \u-10179?\u-8704?\par}",
+            rb" \u-10179?\u-8704?\par}",
         ]
     )
 
     pages = RtfModel().predict(BytesIO(source))
 
     assert pages == [[{"type": BlockType.TEXT, "content": "Привет こんにちは 😀"}]]
+
+
+def test_rtf_inherited_style_honors_explicit_formatting_resets() -> None:
+    """验证 derived stylesheet 的 b0/i0/ul0/strike0 覆盖基样式开启值。"""
+    source = (
+        rb"{\rtf1\ansi{\stylesheet{\s0\b\i\ul\strike Base;}{\s1\sbasedon0\b0\i0\ul0\strike0 Derived;}}\pard\s1 Reset text\par}"
+    )
+
+    pages = RtfModel().predict(BytesIO(source))
+
+    assert pages == [[{"type": BlockType.TEXT, "content": "Reset text"}]]
+
+
+def test_rtf_large_roman_list_start_falls_back_to_decimal() -> None:
+    """验证超出规范范围的 Roman 起始值直接回退十进制而不线性扩张。"""
+    source = b"".join(
+        [
+            rb"{\rtf1\ansi{\*\listtable{\list{\listlevel\levelnfc1\levelstartat1000000000000}\listid7}}",
+            rb"{\*\listoverridetable{\listoverride\listid7\listoverridecount0\ls2}}",
+            rb"\pard\ls2\ilvl0 item\par}",
+        ]
+    )
+
+    pages = RtfModel().predict(BytesIO(source))
+
+    assert pages[0][0]["type"] == BlockType.LIST
+    assert pages[0][0]["content"][0]["list_label"] == "1000000000000."
 
 
 def test_rtf_model_recovers_unicode_styles_and_structures() -> None:
@@ -126,7 +154,7 @@ def test_rtf_model_parses_real_libreoffice_fixture() -> None:
 
 def test_rtf_page_controls_remain_inside_one_semantic_page() -> None:
     """验证 page/column 只保留换行，sect 只结束段落。"""
-    pages = RtfModel().predict(BytesIO(br"{\rtf1\ansi A\page B\column C\sect D\par}"))
+    pages = RtfModel().predict(BytesIO(rb"{\rtf1\ansi A\page B\column C\sect D\par}"))
 
     assert len(pages) == 1
     assert pages[0] == [
@@ -137,7 +165,7 @@ def test_rtf_page_controls_remain_inside_one_semantic_page() -> None:
 
 def test_rtf_nested_and_merged_tables_preserve_content() -> None:
     """验证 nested table、cellx 投影及纵向 continuation 不丢可见文本。"""
-    source = br"""{\rtf1\ansi
+    source = rb"""{\rtf1\ansi
 \trowd\clvmgf\cellx1000\cellx2000 A\cell B\cell\row
 \trowd\clvmrg\cellx1000\cellx2000 \cell C\cell\row
 \trowd\cellx1000\cellx2000
@@ -158,16 +186,16 @@ def test_rtf_math_picture_is_only_used_when_formula_conversion_fails() -> None:
     """验证 Office Math 成功时去重预览，失败时保留首个安全 fallback 图片。"""
     valid = b"".join(
         [
-            br"{\rtf1{\mmath{\*\moMath{\mr x}}{\mmathPict{\pict\pngblip ",
+            rb"{\rtf1{\mmath{\*\moMath{\mr x}}{\mmathPict{\pict\pngblip ",
             _PNG_HEX,
-            br"}}}}",
+            rb"}}}}",
         ]
     )
     invalid = b"".join(
         [
-            br"{\rtf1{\mmath{\*\moMath{\munknown x}}{\mmathPict{\pict\pngblip ",
+            rb"{\rtf1{\mmath{\*\moMath{\munknown x}}{\mmathPict{\pict\pngblip ",
             _PNG_HEX,
-            br"}}}}",
+            rb"}}}}",
         ]
     )
 
@@ -327,7 +355,7 @@ def test_doclib_rejects_rtf_quality_tier_and_remote(
 
 def test_rtf_unknown_destination_and_unbalanced_tail_recover_visible_text() -> None:
     """验证未知 ignorable destination 不泄漏，缺尾括号仍保留已恢复正文。"""
-    source = br"{\rtf1\ansi{\*\unknown hidden}\pard visible\par"
+    source = rb"{\rtf1\ansi{\*\unknown hidden}\pard visible\par"
 
     pages = RtfModel().predict(BytesIO(source))
 
@@ -337,7 +365,7 @@ def test_rtf_unknown_destination_and_unbalanced_tail_recover_visible_text() -> N
 def test_rtf_source_html_is_rendered_as_inert_text() -> None:
     """验证源文档中的活动 HTML 外观不会进入 HTML renderer DOM。"""
     middle, _ = doc_analyze(
-        br"{\rtf1\ansi visible <script>alert(1)</script> and x < y\par}",
+        rb"{\rtf1\ansi visible <script>alert(1)</script> and x < y\par}",
         file_suffix="rtf",
     )
 
@@ -351,28 +379,26 @@ def test_rtf_source_html_is_rendered_as_inert_text() -> None:
 
 def test_rtf_object_keeps_safe_result_and_suppresses_objdata() -> None:
     """验证对象载荷不执行不泄漏，但显式 result 文本仍可恢复。"""
-    pages = RtfModel().predict(
-        BytesIO(br"{\rtf1 before {\object{\*\objdata 41424344}{\result Visible object}} after\par}")
-    )
+    pages = RtfModel().predict(BytesIO(rb"{\rtf1 before {\object{\*\objdata 41424344}{\result Visible object}} after\par}"))
 
     assert pages == [[{"type": BlockType.TEXT, "content": "before Visible object after"}]]
 
 
 def test_rtf_malformed_vector_picture_is_locally_dropped() -> None:
     """验证伪装 WMF 的 bin 字节不会生成占位图或破坏周围正文。"""
-    pages = RtfModel().predict(
-        BytesIO(br"{\rtf1 before {\pict\wmetafile8\bin5 abcde} after\par}")
-    )
+    pages = RtfModel().predict(BytesIO(rb"{\rtf1 before {\pict\wmetafile8\bin5 abcde} after\par}"))
 
-    assert pages == [[
-        {"type": BlockType.TEXT, "content": "before"},
-        {"type": BlockType.TEXT, "content": "after"},
-    ]]
+    assert pages == [
+        [
+            {"type": BlockType.TEXT, "content": "before"},
+            {"type": BlockType.TEXT, "content": "after"},
+        ]
+    ]
 
 
 def test_rtf_valid_empty_and_invalid_header_have_distinct_results() -> None:
     """合法空 RTF 返回空逻辑页，非 RTF 输入返回稳定 malformed 错误。"""
-    assert RtfModel().predict(BytesIO(br"{\rtf1}")) == [[]]
+    assert RtfModel().predict(BytesIO(rb"{\rtf1}")) == [[]]
     with pytest.raises(LegacyOfficeMalformedError, match="not an RTF"):
         RtfModel().predict(BytesIO(b"plain text"))
 
@@ -381,7 +407,7 @@ def test_rtf_resource_limits_are_fixed_and_non_configurable(monkeypatch: pytest.
     """验证 token、group、input、asset、grid 和 nested-table 上限均硬失败。"""
     monkeypatch.setattr(lexer_module, "MAX_RECORDS", 3)
     with pytest.raises(LegacyOfficeResourceLimitError, match="max_tokens"):
-        list(RtfLexer(br"{\rtf1 text}"))
+        list(RtfLexer(rb"{\rtf1 text}"))
 
     monkeypatch.setattr(lexer_module, "MAX_RECORDS", 16_000_000)
     with pytest.raises(LegacyOfficeResourceLimitError, match="max_group_depth"):
@@ -389,30 +415,43 @@ def test_rtf_resource_limits_are_fixed_and_non_configurable(monkeypatch: pytest.
 
     monkeypatch.setattr(parser_module, "MAX_RTF_BYTES", 8)
     with pytest.raises(LegacyOfficeResourceLimitError, match="max_bytes"):
-        RtfModel().predict(BytesIO(br"{\rtf1 too long}"))
+        RtfModel().predict(BytesIO(rb"{\rtf1 too long}"))
 
     monkeypatch.setattr(parser_module, "MAX_RTF_BYTES", 128 * 1024 * 1024)
     monkeypatch.setattr(parser_module, "MAX_ASSET_TOTAL_BYTES", 1)
     with pytest.raises(LegacyOfficeResourceLimitError, match="max_asset_total_bytes"):
-        RtfModel().predict(BytesIO(br"{\rtf1{\pict\pngblip 89504e47}}"))
+        RtfModel().predict(BytesIO(rb"{\rtf1{\pict\pngblip 89504e47}}"))
 
     monkeypatch.setattr(parser_module, "MAX_ASSET_TOTAL_BYTES", 128 * 1024 * 1024)
     monkeypatch.setattr(parser_module, "MAX_GRID_SLOTS", 1)
     with pytest.raises(LegacyOfficeResourceLimitError, match="max_grid_slots"):
-        RtfModel().predict(BytesIO(br"{\rtf1\trowd\cellx1\cellx2 A\cell B\cell\row}"))
+        RtfModel().predict(BytesIO(rb"{\rtf1\trowd\cellx1\cellx2 A\cell B\cell\row}"))
 
     monkeypatch.setattr(parser_module, "MAX_GRID_SLOTS", 4_000_000)
     with pytest.raises(LegacyOfficeResourceLimitError, match="max_table_depth"):
-        RtfModel().predict(BytesIO(br"{\rtf1\pard\intbl\itap5 nested\par}"))
+        RtfModel().predict(BytesIO(rb"{\rtf1\pard\intbl\itap5 nested\par}"))
+
+
+def test_rtf_prelude_nested_groups_do_not_materialize_overlapping_slices() -> None:
+    """验证 prelude 扫描深层 group 时峰值内存保持为输入规模常数倍。"""
+    payload_size = 256 * 1024
+    depth = 64
+    source = b"{\\rtf1" + b"{" * depth + b"x" * payload_size + b"}" * depth + b"}"
+
+    tracemalloc.start()
+    try:
+        parser_module.parse_rtf_prelude(source)
+        _, peak_bytes = tracemalloc.get_traced_memory()
+    finally:
+        tracemalloc.stop()
+
+    assert peak_bytes < len(source) * 4
 
 
 def test_rtf_runtime_has_no_anydoc_dependency() -> None:
     """验证依赖清单、源码导入和惰性模型加载均不包含 anydoc。"""
     assert "firecrawl-anydoc" not in (_PROJECT_ROOT / "pyproject.toml").read_text(encoding="utf-8").lower()
-    assert all(
-        "import anydoc" not in path.read_text(encoding="utf-8")
-        for path in (_PROJECT_ROOT / "mineru").rglob("*.py")
-    )
+    assert all("import anydoc" not in path.read_text(encoding="utf-8") for path in (_PROJECT_ROOT / "mineru").rglob("*.py"))
     script = "\n".join(
         [
             "import sys",
