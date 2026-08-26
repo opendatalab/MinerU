@@ -45,7 +45,20 @@ RAW_ONLY_BLOCK_TYPES = frozenset(
     }
 )
 
-FileSuffix: TypeAlias = Literal["pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx", "rtf", "csv"]
+FileSuffix: TypeAlias = Literal[
+    "pdf",
+    "doc",
+    "docx",
+    "ppt",
+    "pptx",
+    "xls",
+    "xlsx",
+    "rtf",
+    "csv",
+    "odt",
+    "ods",
+    "odp",
+]
 FILE_SUFFIXES: frozenset[FileSuffix] = frozenset(cast(tuple[FileSuffix, ...], get_args(FileSuffix)))
 
 Tier = Literal[

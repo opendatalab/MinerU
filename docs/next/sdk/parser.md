@@ -31,7 +31,7 @@
 |------|------|------|
 | `parse` | function | 根据文件后缀和参数构造 `MinerUParser` 并执行解析。 |
 | `parse_async` | function | `parse` 的异步版本。 |
-| `MinerUParser` | class | 统一解析器，支持 PDF、图片、CSV、RTF 与 Office 文档。 |
+| `MinerUParser` | class | 统一解析器，支持 PDF、图片、CSV、RTF、OOXML 与 OpenDocument。 |
 | `ParseResult` | dataclass | 解析结果对象。 |
 | `MinerUApiParser` | class | API-backed parser，详见 [API-backed Parser](api-parser.md)。 |
 

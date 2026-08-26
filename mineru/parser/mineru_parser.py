@@ -1,5 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
-"""统一文档解析器，委托 mineru.backend.analyze 处理 PDF、图片、CSV 与 Office。"""
+"""统一文档解析器，委托 backend.analyze 处理 PDF、图片、CSV 与 Office/RTF/ODF。"""
 from __future__ import annotations
 
 import asyncio
@@ -32,7 +32,7 @@ class _PreparedInput:
 
 
 class MinerUParser(DocumentParser):
-    """统一文档解析器，支持 PDF、图片、CSV 与 Office 文档。
+    """统一文档解析器，支持 PDF、图片、CSV 与 Office/RTF/ODF 文档。
 
     通过 file_suffix 路由到 backend.analyze 的统一 doc_analyze 入口，
     保留 PDF 输入的图片转 PDF、页范围重写、坏页补齐等预处理逻辑。

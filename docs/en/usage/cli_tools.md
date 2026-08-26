@@ -31,7 +31,7 @@ Options:
   --help                          Show help information
 ```
 > [!TIP]
-> `mineru` currently supports local `PDF`, image, `CSV`, `RTF`, `DOCX`, `PPTX`, and `XLSX` file or directory inputs.
+> `mineru` currently supports local `PDF`, image, `CSV`, `RTF`, `DOCX`, `PPTX`, `XLSX`, `ODT`, `ODS`, and `ODP` file or directory inputs.
 
 ```bash
 mineru-api --help

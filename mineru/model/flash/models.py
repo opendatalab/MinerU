@@ -124,3 +124,39 @@ class XlsxModel:
         converter = XlsxConverter()
         converter.convert(file_binary)
         return converter.pages
+
+
+class OdtModel:
+    """将 OpenDocument Text 包装为无状态 Flash 模型。"""
+
+    def predict(self, file_binary: BinaryIO) -> list[list[dict[str, Any]]]:
+        """转换调用方持有的 ODT 二进制流，并返回分页 model_list。"""
+        from .office.odf.converters import OdtConverter
+
+        converter = OdtConverter()
+        converter.convert(file_binary)
+        return converter.pages
+
+
+class OdsModel:
+    """将 OpenDocument Spreadsheet 包装为无状态 Flash 模型。"""
+
+    def predict(self, file_binary: BinaryIO) -> list[list[dict[str, Any]]]:
+        """转换调用方持有的 ODS 二进制流，并返回逐工作表 model_list。"""
+        from .office.odf.converters import OdsConverter
+
+        converter = OdsConverter()
+        converter.convert(file_binary)
+        return converter.pages
+
+
+class OdpModel:
+    """将 OpenDocument Presentation 包装为无状态 Flash 模型。"""
+
+    def predict(self, file_binary: BinaryIO) -> list[list[dict[str, Any]]]:
+        """转换调用方持有的 ODP 二进制流，并返回逐幻灯片 model_list。"""
+        from .office.odf.converters import OdpConverter
+
+        converter = OdpConverter()
+        converter.convert(file_binary)
+        return converter.pages

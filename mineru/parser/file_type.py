@@ -24,6 +24,13 @@ OOXML_MAIN_CONTENT_TYPES = {
     ("application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"): "pptx",
     ("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"): "xlsx",
 }
+ODF_MIMETYPE_SUFFIXES = {
+    "application/vnd.oasis.opendocument.text": "odt",
+    "application/vnd.oasis.opendocument.spreadsheet": "ods",
+    "application/vnd.oasis.opendocument.presentation": "odp",
+}
+ODF_MANIFEST_PATH = "META-INF/manifest.xml"
+ODF_MANIFEST_NS = "urn:oasis:names:tc:opendocument:xmlns:manifest:1.0"
 # OLE2 compound file 内部 stream 名 → 旧 Office 格式后缀
 # doc: WordDocument stream；xls: Workbook 或 Book stream；ppt: PowerPoint Document stream
 OLE2_STREAM_SUFFIX_MAP: dict[str, str] = {
@@ -42,6 +49,9 @@ _STRONG_CONTENT_SUFFIXES = frozenset(
         "xls",
         "xlsx",
         "rtf",
+        "odt",
+        "ods",
+        "odp",
         *IMAGE_EXTENSIONS,
     }
 )
@@ -140,6 +150,49 @@ def _guess_ooxml_suffix_by_path(file_path: Path) -> str | None:
         return None
 
 
+def _guess_odf_suffix_from_zip(package: ZipFile) -> str | None:
+    """按 ODF mimetype、manifest 根条目依次识别 odt/ods/odp。"""
+    try:
+        mimetype_info = package.getinfo("mimetype")
+        if mimetype_info.file_size <= 256:
+            mimetype = package.read(mimetype_info).decode("ascii", errors="strict").strip()
+            if suffix := ODF_MIMETYPE_SUFFIXES.get(mimetype):
+                return suffix
+    except (KeyError, UnicodeDecodeError, RuntimeError, OSError, ValueError):
+        pass
+    try:
+        manifest_info = package.getinfo(ODF_MANIFEST_PATH)
+        if manifest_info.file_size > 1024 * 1024:
+            return None
+        root = ElementTree.fromstring(package.read(manifest_info))
+    except (KeyError, ElementTree.ParseError, RuntimeError, OSError, ValueError):
+        return None
+    for entry in root.iter(f"{{{ODF_MANIFEST_NS}}}file-entry"):
+        if entry.get(f"{{{ODF_MANIFEST_NS}}}full-path") != "/":
+            continue
+        media_type = entry.get(f"{{{ODF_MANIFEST_NS}}}media-type", "").strip()
+        return ODF_MIMETYPE_SUFFIXES.get(media_type)
+    return None
+
+
+def _guess_odf_suffix_by_bytes(file_bytes: bytes) -> str | None:
+    """从内存 ZIP 包识别 ODF，失败时不影响后续 OLE/Magika/CSV 路由。"""
+    try:
+        with ZipFile(BytesIO(file_bytes)) as package:
+            return _guess_odf_suffix_from_zip(package)
+    except (BadZipFile, RuntimeError, OSError, ValueError):
+        return None
+
+
+def _guess_odf_suffix_by_path(file_path: Path) -> str | None:
+    """从路径 ZIP 包识别 ODF，保持现有 OOXML 检测优先级。"""
+    try:
+        with ZipFile(file_path) as package:
+            return _guess_odf_suffix_from_zip(package)
+    except (BadZipFile, RuntimeError, OSError, ValueError):
+        return None
+
+
 def _guess_ole2_suffix_by_bytes(file_bytes: bytes) -> str | None:
     """用 OLE2 magic + olefile 内部 stream 区分 doc/xls/ppt。
 
@@ -197,8 +250,15 @@ def _resolve_signatureless_csv_suffix(detected_suffix: str, file_path: str | Pat
             return detected_suffix
         return "csv"
     if detected_suffix == "csv":
+        if extension in ODF_MIMETYPE_SUFFIXES.values():
+            return "txt"
         return extension or "txt"
     return detected_suffix
+
+
+def _reject_unverified_odf_suffix(detected_suffix: str) -> str:
+    """拒绝未通过 mimetype/manifest 验证、仅由启发式工具猜出的 ODF 类型。"""
+    return "unknown" if detected_suffix in ODF_MIMETYPE_SUFFIXES.values() else detected_suffix
 
 
 def guess_suffix_by_bytes(file_bytes: bytes, file_path: str | None = None) -> str:
@@ -210,6 +270,10 @@ def guess_suffix_by_bytes(file_bytes: bytes, file_path: str | None = None) -> st
     ooxml_suffix = _guess_ooxml_suffix_by_bytes(file_bytes)
     if ooxml_suffix:
         return ooxml_suffix
+
+    odf_suffix = _guess_odf_suffix_by_bytes(file_bytes)
+    if odf_suffix:
+        return odf_suffix
 
     ole2_suffix = _guess_ole2_suffix_by_bytes(file_bytes)
     if ole2_suffix:
@@ -223,7 +287,7 @@ def guess_suffix_by_bytes(file_bytes: bytes, file_path: str | None = None) -> st
         and file_bytes[:4] == PDF_SIG_BYTES
     ):
         suffix = "pdf"
-    return _resolve_signatureless_csv_suffix(suffix, file_path)
+    return _resolve_signatureless_csv_suffix(_reject_unverified_odf_suffix(suffix), file_path)
 
 
 def guess_suffix_by_path(file_path: str | Path) -> str:
@@ -236,6 +300,10 @@ def guess_suffix_by_path(file_path: str | Path) -> str:
     ooxml_suffix = _guess_ooxml_suffix_by_path(file_path)
     if ooxml_suffix:
         return ooxml_suffix
+
+    odf_suffix = _guess_odf_suffix_by_path(file_path)
+    if odf_suffix:
+        return odf_suffix
 
     ole2_suffix = _guess_ole2_suffix_by_path(file_path)
     if ole2_suffix:
@@ -252,7 +320,7 @@ def guess_suffix_by_path(file_path: str | Path) -> str:
                     suffix = "pdf"
         except Exception as e:
             logger.warning(f"Failed to read file {file_path} for PDF signature check: {e}")
-    return _resolve_signatureless_csv_suffix(suffix, file_path)
+    return _resolve_signatureless_csv_suffix(_reject_unverified_odf_suffix(suffix), file_path)
 
 
 __all__ = ["guess_suffix_by_bytes", "guess_suffix_by_path"]

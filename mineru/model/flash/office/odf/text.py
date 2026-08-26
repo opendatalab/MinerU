@@ -1,0 +1,801 @@
+# Copyright (c) Opendatalab. All rights reserved.
+"""把 ODF 文本、列表、表格和嵌入对象投影为 MinerU raw blocks。"""
+
+from __future__ import annotations
+
+import base64
+import html
+import re
+from collections.abc import Sequence
+from dataclasses import dataclass
+from typing import Any
+
+from lxml import etree  # type: ignore[reportMissingImports]
+
+from .....types import BlockType
+from ...pdf.raster import image_to_b64str
+from ..image import create_text_placeholder, serialize_office_image
+from ..rich_text import OfficeRichTextSegment, build_rich_text_from_segments
+from .chart import parse_chart_block
+from .constants import qname
+from .math import mathml_to_latex
+from .models import (
+    InlineAtom,
+    InlineBreak,
+    InlineImage,
+    InlineMath,
+    InlinePageBreak,
+    InlineText,
+    TextStyle,
+)
+from .package import OdfPackage
+from .styles import OdfStyles
+from .table import parse_table_grid, table_grid_to_html
+
+
+_WHITESPACE_RE = re.compile(r"[\t\r\n ]+")
+
+
+@dataclass(frozen=True, slots=True)
+class PageBreakMarker:
+    """表示 ODT 流式解析中应建立新逻辑页的位置。"""
+
+
+PAGE_BREAK = PageBreakMarker()
+RawFlowItem = dict[str, Any] | PageBreakMarker
+
+
+def _clean_xml_text(value: str | None) -> str:
+    """折叠 XML 排版空白，显式多空格由 text:s 单独恢复。"""
+    if not value:
+        return ""
+    return _WHITESPACE_RE.sub(" ", value)
+
+
+def _escape_href(value: str) -> str:
+    """转义进入 HTML href 属性的 ODF 链接值。"""
+    return html.escape(value, quote=True)
+
+
+def _safe_hyperlink(value: str | None) -> str | None:
+    """拒绝会破坏内部 URL 容器的尖括号和控制字符。"""
+    if value is None or any(char in value for char in ("<", ">", "\x00")):
+        return None
+    normalized = "".join(char for char in value.strip() if ord(char) >= 32 or char in "\t\r\n")
+    return normalized or None
+
+
+def _style_html(text: str, style: TextStyle) -> str:
+    """按稳定顺序把已转义文本包裹为 HTML 行内样式。"""
+    rendered = text
+    wrappers = [
+        (style.bold, "strong"),
+        (style.italic, "em"),
+        (style.underline, "u"),
+        (style.strikethrough, "s"),
+        (style.superscript, "sup"),
+        (style.subscript, "sub"),
+    ]
+    for enabled, tag in wrappers:
+        if enabled:
+            rendered = f"<{tag}>{rendered}</{tag}>"
+    return rendered
+
+
+def _serialize_odf_image(
+    image_bytes: bytes,
+    *,
+    part_name: str | None,
+    content_type: str | None,
+) -> str | None:
+    """序列化 ODF 图片；SVG、SVM 和 GDIMeta 使用安全占位图保留对象位置。"""
+    normalized_type = (content_type or "").split(";", 1)[0].strip().casefold()
+    suffix = (part_name or "").rsplit(".", 1)[-1].casefold() if "." in (part_name or "") else ""
+    if normalized_type == "image/svg+xml" or suffix == "svg":
+        placeholder = create_text_placeholder((320, 180), ["SVG image", "Preview unavailable"])
+        return image_to_b64str(placeholder, image_format="JPEG")
+    if suffix == "svm" or "gdimetafile" in normalized_type or image_bytes.startswith(b"VCLMTF"):
+        placeholder = create_text_placeholder((320, 180), ["ODF vector image", "Preview unavailable"])
+        return image_to_b64str(placeholder, image_format="JPEG")
+    return serialize_office_image(image_bytes, part_name=part_name, content_type=content_type)
+
+
+def render_atoms_to_html(atoms: Sequence[InlineAtom]) -> str:
+    """把 ODF 行内语义序列安全渲染为表格单元格 HTML。"""
+    parts: list[str] = []
+    for atom in atoms:
+        if isinstance(atom, InlineText):
+            rendered = _style_html(html.escape(atom.text), atom.style)
+            if atom.hyperlink:
+                rendered = f'<a href="{_escape_href(atom.hyperlink)}">{rendered}</a>'
+            parts.append(rendered)
+        elif isinstance(atom, InlineMath):
+            parts.append(f"<eq>{html.escape(atom.latex)}</eq>")
+        elif isinstance(atom, (InlineBreak, InlinePageBreak)):
+            parts.append("<br/>")
+        elif isinstance(atom, InlineImage):
+            parts.append(f'<img src="{html.escape(atom.data_uri, quote=True)}" alt="{html.escape(atom.alt, quote=True)}"/>')
+    return "".join(parts)
+
+
+def render_atoms_to_model(atoms: Sequence[InlineAtom], *, trim_edges: bool = False) -> str:
+    """把 ODF 行内语义序列转换为现有 Office 富文本协议。"""
+    parts: list[str] = []
+    segments: list[OfficeRichTextSegment] = []
+
+    def flush_segments() -> None:
+        """把连续文本片段批量写入富文本结果。"""
+        if not segments:
+            return
+        parts.append(build_rich_text_from_segments(list(segments), trim_plain_edges=trim_edges and not parts))
+        segments.clear()
+
+    for atom in atoms:
+        if isinstance(atom, InlineText):
+            segments.append(
+                OfficeRichTextSegment(
+                    html.escape(atom.text, quote=False),
+                    atom.style.names(),
+                    html.escape(atom.hyperlink, quote=False) if atom.hyperlink else None,
+                )
+            )
+            continue
+        flush_segments()
+        if isinstance(atom, InlineMath):
+            parts.append(f"<eq>{html.escape(atom.latex, quote=False)}</eq>")
+        elif isinstance(atom, (InlineBreak, InlinePageBreak)):
+            parts.append("\n")
+        elif isinstance(atom, InlineImage) and atom.alt:
+            parts.append(atom.alt)
+    flush_segments()
+    return "".join(parts).strip() if trim_edges else "".join(parts)
+
+
+def split_atoms_on_page_break(atoms: list[InlineAtom]) -> list[list[InlineAtom]]:
+    """按 InlinePageBreak 把一个段落切分为多个逻辑片段。"""
+    groups: list[list[InlineAtom]] = [[]]
+    for atom in atoms:
+        if isinstance(atom, InlinePageBreak):
+            groups.append([])
+        else:
+            groups[-1].append(atom)
+    return groups
+
+
+class OdfBlockParser:
+    """在单个 ODF 包上下文中解析正文、表格和嵌入资源。"""
+
+    def __init__(
+        self,
+        package: OdfPackage,
+        styles: OdfStyles,
+        *,
+        base_part: str = "content.xml",
+        shared_notes: list[str] | None = None,
+        list_counters: dict[tuple[str, int], int] | None = None,
+        list_ids: dict[str, int] | None = None,
+        collect_cell_visuals: bool = False,
+        shared_cell_visuals: list[dict[str, Any]] | None = None,
+    ) -> None:
+        """绑定单次解析包、样式、子文档路径及可跨 parser 共享的状态。"""
+        self.package = package
+        self.styles = styles
+        self.base_part = base_part
+        self.notes = shared_notes if shared_notes is not None else []
+        self._list_counters = list_counters if list_counters is not None else {}
+        self._list_ids = list_ids if list_ids is not None else {}
+        self._collect_cell_visuals = collect_cell_visuals
+        self._cell_visuals = shared_cell_visuals if shared_cell_visuals is not None else []
+
+    def _append_text_atom(
+        self,
+        atoms: list[InlineAtom],
+        value: str | None,
+        *,
+        style: TextStyle,
+        hyperlink: str | None,
+    ) -> None:
+        """清理并追加一个文本节点，同时合并相邻同样式片段。"""
+        text = _clean_xml_text(value)
+        if not text:
+            return
+        atom = InlineText(text=text, style=style, hyperlink=hyperlink)
+        if atoms and isinstance(atoms[-1], InlineText) and atoms[-1].style == style and atoms[-1].hyperlink == hyperlink:
+            previous = atoms[-1]
+            atoms[-1] = InlineText(previous.text + text, style, hyperlink)
+        else:
+            atoms.append(atom)
+
+    def _walk_inlines(
+        self,
+        element: etree._Element,
+        *,
+        style: TextStyle,
+        hyperlink: str | None,
+        atoms: list[InlineAtom],
+        extra_blocks: list[dict[str, Any]],
+    ) -> None:
+        """递归遍历段落行内节点，并把 frame 视觉对象旁路为 block。"""
+        self._append_text_atom(atoms, element.text, style=style, hyperlink=hyperlink)
+        for child in element:
+            if not isinstance(child.tag, str):
+                self._append_text_atom(atoms, child.tail, style=style, hyperlink=hyperlink)
+                continue
+            if child.tag == qname("text", "span"):
+                span_style = self.styles.text_style(
+                    child.get(qname("text", "style-name")),
+                    family="text",
+                    inherited=style,
+                )
+                self._walk_inlines(
+                    child,
+                    style=span_style,
+                    hyperlink=hyperlink,
+                    atoms=atoms,
+                    extra_blocks=extra_blocks,
+                )
+            elif child.tag == qname("text", "a"):
+                target = _safe_hyperlink(child.get(qname("xlink", "href"))) or hyperlink
+                self._walk_inlines(
+                    child,
+                    style=style,
+                    hyperlink=target,
+                    atoms=atoms,
+                    extra_blocks=extra_blocks,
+                )
+            elif child.tag == qname("text", "s"):
+                count = min(_positive_space_count(child.get(qname("text", "c"))), 10_000)
+                self._append_text_atom(atoms, " " * count, style=style, hyperlink=hyperlink)
+            elif child.tag == qname("text", "tab"):
+                self._append_text_atom(atoms, " ", style=style, hyperlink=hyperlink)
+            elif child.tag == qname("text", "line-break"):
+                atoms.append(InlineBreak())
+            elif child.tag == qname("text", "soft-page-break"):
+                atoms.append(InlinePageBreak())
+            elif child.tag == qname("text", "note"):
+                self._parse_note(child, style=style, hyperlink=hyperlink, atoms=atoms)
+            elif child.tag == qname("draw", "frame"):
+                inline_atom, blocks = self._parse_frame(child)
+                if inline_atom is not None:
+                    atoms.append(inline_atom)
+                extra_blocks.extend(blocks)
+            elif child.tag == qname("math", "math"):
+                if latex := mathml_to_latex(child):
+                    atoms.append(InlineMath(latex))
+            elif child.tag in {
+                qname("text", "bookmark"),
+                qname("text", "bookmark-start"),
+                qname("text", "bookmark-end"),
+            }:
+                pass
+            else:
+                self._walk_inlines(
+                    child,
+                    style=style,
+                    hyperlink=hyperlink,
+                    atoms=atoms,
+                    extra_blocks=extra_blocks,
+                )
+            self._append_text_atom(atoms, child.tail, style=style, hyperlink=hyperlink)
+
+    def _parse_note(
+        self,
+        note: etree._Element,
+        *,
+        style: TextStyle,
+        hyperlink: str | None,
+        atoms: list[InlineAtom],
+    ) -> None:
+        """保留脚注标记，并把 note-body 内容排入当前逻辑页脚注队列。"""
+        citation = note.find(qname("text", "note-citation"))
+        citation_text = "".join(citation.itertext()).strip() if citation is not None else str(len(self.notes) + 1)
+        self._append_text_atom(atoms, f"[{citation_text}]", style=style, hyperlink=hyperlink)
+        body = note.find(qname("text", "note-body"))
+        if body is None:
+            return
+        blocks = self.parse_container(body)
+        visible = flatten_block_text(blocks)
+        if visible:
+            self.notes.append(f"[{citation_text}] {visible}")
+
+    def parse_inline_atoms(self, paragraph: etree._Element) -> tuple[list[InlineAtom], list[dict[str, Any]]]:
+        """解析一个段落的行内语义和段外视觉对象。"""
+        paragraph_style = self.styles.text_style(
+            paragraph.get(qname("text", "style-name")),
+            family="paragraph",
+        )
+        atoms: list[InlineAtom] = []
+        extra_blocks: list[dict[str, Any]] = []
+        self._walk_inlines(
+            paragraph,
+            style=paragraph_style,
+            hyperlink=None,
+            atoms=atoms,
+            extra_blocks=extra_blocks,
+        )
+        return atoms, extra_blocks
+
+    @staticmethod
+    def _paragraph_anchor(paragraph: etree._Element) -> str | None:
+        """返回段落内首个 bookmark 名称。"""
+        for tag in (qname("text", "bookmark"), qname("text", "bookmark-start")):
+            bookmark = next(paragraph.iter(tag), None)
+            if bookmark is not None and (name := bookmark.get(qname("text", "name"))):
+                return name
+        return None
+
+    def parse_paragraph(self, paragraph: etree._Element, *, allow_page_breaks: bool = False) -> list[RawFlowItem]:
+        """把 text:p/text:h 转为标题、正文、公式及显式分页项。"""
+        atoms, extra_blocks = self.parse_inline_atoms(paragraph)
+        groups = split_atoms_on_page_break(atoms) if allow_page_breaks else [[
+            InlineBreak() if isinstance(atom, InlinePageBreak) else atom for atom in atoms
+        ]]
+        results: list[RawFlowItem] = []
+        is_heading = paragraph.tag == qname("text", "h")
+        style_name = paragraph.get(qname("text", "style-name"))
+        for group_index, group in enumerate(groups):
+            content = render_atoms_to_model(group, trim_edges=True)
+            math_atoms = [atom for atom in group if isinstance(atom, InlineMath)]
+            visible_text = "".join(atom.text for atom in group if isinstance(atom, InlineText)).strip()
+            if content:
+                if math_atoms and not visible_text and len(math_atoms) == 1 and len(group) == 1:
+                    results.append({"type": BlockType.EQUATION, "content": math_atoms[0].latex})
+                elif self.styles.is_document_title(style_name):
+                    block: dict[str, Any] = {"type": BlockType.DOC_TITLE, "level": 1, "content": content}
+                    if anchor := self._paragraph_anchor(paragraph):
+                        block["anchor"] = anchor
+                    results.append(block)
+                elif is_heading:
+                    try:
+                        outline_level = int(paragraph.get(qname("text", "outline-level"), "1"))
+                    except ValueError:
+                        outline_level = 1
+                    block = {
+                        "type": BlockType.PARAGRAPH_TITLE,
+                        "level": min(max(outline_level + 1, 2), 6),
+                        "is_numbered_style": False,
+                        "content": content,
+                    }
+                    if anchor := self._paragraph_anchor(paragraph):
+                        block["anchor"] = anchor
+                    results.append(block)
+                else:
+                    results.append({"type": BlockType.TEXT, "content": content})
+            if group_index < len(groups) - 1:
+                results.append(PAGE_BREAK)
+        results.extend(extra_blocks)
+        return results
+
+    def parse_list(
+        self,
+        element: etree._Element,
+        *,
+        depth: int = 0,
+        inherited_style: str | None = None,
+    ) -> dict[str, Any] | None:
+        """递归构造 Office LIST raw block，并保留起始编号与层级。"""
+        items = [
+            item
+            for item in element
+            if isinstance(item.tag, str)
+            and item.tag in {qname("text", "list-item"), qname("text", "list-header")}
+        ]
+        return self._parse_list_items(element, items, depth=depth, inherited_style=inherited_style)
+
+    def _parse_list_items(
+        self,
+        element: etree._Element,
+        items: Sequence[etree._Element],
+        *,
+        depth: int,
+        inherited_style: str | None,
+    ) -> dict[str, Any] | None:
+        """把一段不含章节标题的连续 list-item 序列构造成 LIST block。"""
+        style_name = element.get(qname("text", "style-name")) or inherited_style
+        level = self.styles.list_level(style_name, depth)
+        key = (style_name or "", depth)
+        start = level.start
+        continue_list = element.get(qname("text", "continue-list"))
+        if continue_list and continue_list in self._list_ids:
+            start = self._list_ids[continue_list]
+        elif element.get(qname("text", "continue-numbering")) == "true" and key in self._list_counters:
+            start = self._list_counters[key]
+        content: list[dict[str, Any]] = []
+        item_count = 0
+        for item in items:
+            is_header = item.tag == qname("text", "list-header")
+            if not is_header:
+                try:
+                    item_start = int(item.get(qname("text", "start-value"), str(start + item_count)))
+                    if item_count == 0:
+                        start = max(0, item_start)
+                except ValueError:
+                    pass
+                item_count += 1
+            for child in item:
+                if not isinstance(child.tag, str):
+                    continue
+                if child.tag in {qname("text", "p"), qname("text", "h")}:
+                    for block in self.parse_paragraph(child):
+                        if isinstance(block, dict):
+                            block["type"] = BlockType.TEXT
+                            block.pop("level", None)
+                            block.pop("anchor", None)
+                            content.append(block)
+                elif child.tag == qname("text", "list"):
+                    nested = self.parse_list(child, depth=depth + 1, inherited_style=style_name)
+                    if nested is not None:
+                        content.append(nested)
+                else:
+                    content.extend(self.parse_container(child))
+        if not content:
+            return None
+        next_value = start + item_count
+        self._list_counters[key] = next_value
+        if list_id := element.get(qname("xml", "id")):
+            self._list_ids[list_id] = next_value
+        result: dict[str, Any] = {
+            "type": BlockType.LIST,
+            "attribute": "ordered" if level.ordered else "unordered",
+            "ilevel": depth,
+            "content": content,
+        }
+        if level.ordered:
+            result["start"] = start
+        return result
+
+    def parse_list_blocks(
+        self,
+        element: etree._Element,
+        *,
+        depth: int = 0,
+        inherited_style: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """把含 text:h 的编号章节提升为标题，并保留其余连续列表。"""
+        if next(element.iter(qname("text", "h")), None) is None:
+            block = self.parse_list(element, depth=depth, inherited_style=inherited_style)
+            return [block] if block is not None else []
+        results: list[dict[str, Any]] = []
+        pending_items: list[etree._Element] = []
+
+        def flush_pending() -> None:
+            """把标题之间积累的普通列表项写为独立连续 LIST block。"""
+            if not pending_items:
+                return
+            block = self._parse_list_items(
+                element,
+                list(pending_items),
+                depth=depth,
+                inherited_style=inherited_style,
+            )
+            pending_items.clear()
+            if block is not None:
+                results.append(block)
+
+        for item in element:
+            if not isinstance(item.tag, str) or item.tag not in {
+                qname("text", "list-item"),
+                qname("text", "list-header"),
+            }:
+                continue
+            if next(item.iter(qname("text", "h")), None) is None:
+                pending_items.append(item)
+                continue
+            flush_pending()
+            for child in item:
+                if not isinstance(child.tag, str):
+                    continue
+                if child.tag == qname("text", "h"):
+                    for parsed in self.parse_paragraph(child):
+                        if not isinstance(parsed, dict):
+                            continue
+                        if parsed.get("type") == BlockType.PARAGRAPH_TITLE:
+                            parsed["is_numbered_style"] = True
+                        results.append(parsed)
+                elif child.tag == qname("text", "list"):
+                    results.extend(
+                        self.parse_list_blocks(
+                            child,
+                            depth=depth + 1,
+                            inherited_style=element.get(qname("text", "style-name")) or inherited_style,
+                        )
+                    )
+                else:
+                    results.extend(self.parse_element(child))
+        flush_pending()
+        return results
+
+    def _parse_index(self, element: etree._Element) -> dict[str, Any] | None:
+        """把 ODF 已存储目录正文转换为扁平 INDEX 子项。"""
+        leaves: list[dict[str, Any]] = []
+        for paragraph in element.iter():
+            if paragraph.tag not in {qname("text", "p"), qname("text", "h")}:
+                continue
+            for block in self.parse_paragraph(paragraph):
+                if isinstance(block, dict) and block.get("content"):
+                    leaves.append({"type": BlockType.TEXT, "content": block["content"]})
+        if not leaves:
+            return None
+        return {"type": BlockType.INDEX, "ilevel": 0, "content": leaves}
+
+    def parse_table(self, element: etree._Element) -> dict[str, Any] | None:
+        """把一个 ODF table 转为包含合并语义的 TABLE raw block。"""
+        grid = parse_table_grid(element, self.render_cell_html)
+        content = table_grid_to_html(grid)
+        return {"type": BlockType.TABLE, "content": content} if content else None
+
+    def _load_image(self, image: etree._Element) -> tuple[str | None, str]:
+        """读取 draw:image 的包内或内联载荷并复用 Office 图片序列化。"""
+        href = image.get(qname("xlink", "href"), "")
+        part_name = self.package.resolve_reference(href, base_part=self.base_part) if href else None
+        image_bytes: bytes | None = None
+        content_type: str | None = None
+        if part_name:
+            image_bytes = self.package.read_part(part_name, asset=True)
+            content_type = self.package.content_type_for(part_name)
+        if image_bytes is None:
+            binary = image.find(f".//{qname('office', 'binary-data')}")
+            if binary is not None and (binary.text or "").strip():
+                try:
+                    image_bytes = base64.b64decode("".join((binary.text or "").split()), validate=True)
+                except (ValueError, TypeError):
+                    image_bytes = None
+        alt = ""
+        parent = image.getparent()
+        if parent is not None:
+            title = parent.find(qname("svg", "title"))
+            description = parent.find(qname("svg", "desc"))
+            alt = " ".join(
+                text.strip()
+                for text in (
+                    "".join(title.itertext()) if title is not None else "",
+                    "".join(description.itertext()) if description is not None else "",
+                )
+                if text.strip()
+            )
+        if not image_bytes:
+            return None, alt
+        return _serialize_odf_image(image_bytes, part_name=part_name, content_type=content_type), alt
+
+    def _object_root(self, object_element: etree._Element) -> tuple[etree._Element | None, str | None]:
+        """读取 draw:object 指向的子文档内容树和成员路径。"""
+        inline_math = next(object_element.iter(qname("math", "math")), None)
+        if inline_math is not None:
+            return inline_math, self.base_part
+        href = object_element.get(qname("xlink", "href"), "")
+        part_name = self.package.resolve_object_content(href, base_part=self.base_part)
+        if part_name is None:
+            return None, None
+        return self.package.xml_part(part_name), part_name
+
+    def _parse_frame(self, frame: etree._Element) -> tuple[InlineAtom | None, list[dict[str, Any]]]:
+        """按公式、图表、文本框、表格、图片优先级解析一个 draw:frame。"""
+        image_element = next(frame.iter(qname("draw", "image")), None)
+        preview_uri: str | None = None
+        preview_alt = ""
+
+        def load_preview() -> tuple[str | None, str]:
+            """只在对象需要图片回退或图表预览时读取 sibling draw:image。"""
+            nonlocal preview_uri, preview_alt
+            if image_element is not None and preview_uri is None:
+                preview_uri, preview_alt = self._load_image(image_element)
+            return preview_uri, preview_alt
+
+        object_element = next(frame.iter(qname("draw", "object")), None)
+        if object_element is not None:
+            object_root, object_part = self._object_root(object_element)
+            if object_root is not None:
+                math_element = object_root if object_root.tag == qname("math", "math") else next(
+                    object_root.iter(qname("math", "math")),
+                    None,
+                )
+                if math_element is not None and (latex := mathml_to_latex(math_element)):
+                    return InlineMath(latex), []
+                load_preview()
+                object_parser = OdfBlockParser(
+                    self.package,
+                    self.styles,
+                    base_part=object_part or self.base_part,
+                    shared_notes=self.notes,
+                    list_counters=self._list_counters,
+                    list_ids=self._list_ids,
+                    collect_cell_visuals=self._collect_cell_visuals,
+                    shared_cell_visuals=self._cell_visuals,
+                )
+                chart = parse_chart_block(
+                    object_root,
+                    render_cell=object_parser.render_cell_html,
+                    preview_data_uri=preview_uri,
+                )
+                if chart is not None:
+                    return None, [chart]
+        text_box = next(frame.iter(qname("draw", "text-box")), None)
+        if text_box is not None:
+            return None, self.parse_container(text_box)
+        table = next(frame.iter(qname("table", "table")), None)
+        if table is not None and (table_block := self.parse_table(table)) is not None:
+            return None, [table_block]
+        load_preview()
+        if preview_uri:
+            return InlineImage(preview_uri, preview_alt), [{"type": BlockType.IMAGE, "image_base64": preview_uri}]
+        return None, []
+
+    def parse_frame_blocks(self, frame: etree._Element) -> list[dict[str, Any]]:
+        """把 frame 的内联结果提升为页面级 block，避免正文重复图片。"""
+        inline, blocks = self._parse_frame(frame)
+        if blocks:
+            return blocks
+        if isinstance(inline, InlineMath):
+            return [{"type": BlockType.EQUATION, "content": inline.latex}]
+        if isinstance(inline, InlineImage):
+            return [{"type": BlockType.IMAGE, "image_base64": inline.data_uri}]
+        return []
+
+    def parse_element(self, element: etree._Element) -> list[dict[str, Any]]:
+        """解析一个 ODF block 元素，不移动或修改原始 XML 节点。"""
+        if element.tag in {qname("text", "p"), qname("text", "h")}:
+            return [item for item in self.parse_paragraph(element) if isinstance(item, dict)]
+        if element.tag == qname("text", "list"):
+            return self.parse_list_blocks(element)
+        if element.tag == qname("table", "table"):
+            table_block = self.parse_table(element)
+            return [table_block] if table_block is not None else []
+        if element.tag == qname("draw", "frame"):
+            return self.parse_frame_blocks(element)
+        if element.tag in {
+            qname("text", "section"),
+            qname("text", "index-body"),
+            qname("text", "index-title"),
+            qname("draw", "g"),
+            qname("draw", "custom-shape"),
+        }:
+            return self.parse_container(element)
+        if element.tag in {
+            qname("text", "table-of-content"),
+            qname("text", "alphabetical-index"),
+            qname("text", "bibliography"),
+            qname("text", "illustration-index"),
+        }:
+            index = self._parse_index(element)
+            return [index] if index is not None else []
+        return []
+
+    def parse_container(self, parent: etree._Element) -> list[dict[str, Any]]:
+        """按文档顺序解析普通 ODF block 容器，不建立页面边界。"""
+        blocks: list[dict[str, Any]] = []
+        for child in parent:
+            if isinstance(child.tag, str):
+                blocks.extend(self.parse_element(child))
+        return blocks
+
+    def render_cell_html(self, cell: etree._Element) -> str:
+        """把表格单元格中的段落、列表、嵌套表和 frame 转为 HTML。"""
+        parts: list[str] = []
+        for child in cell:
+            if not isinstance(child.tag, str):
+                continue
+            if child.tag in {qname("text", "p"), qname("text", "h")}:
+                atoms, extra = self.parse_inline_atoms(child)
+                rendered_atoms = (
+                    [atom for atom in atoms if not isinstance(atom, InlineImage)]
+                    if self._collect_cell_visuals
+                    else atoms
+                )
+                parts.append(f"<p>{render_atoms_to_html(rendered_atoms)}</p>")
+                for block in extra:
+                    if self._collect_cell_visuals and block.get("type") in {
+                        BlockType.IMAGE,
+                        BlockType.CHART,
+                        BlockType.EQUATION,
+                    }:
+                        self._cell_visuals.append(block)
+                        continue
+                    if block.get("type") in {BlockType.TABLE, BlockType.CHART} and block.get("content"):
+                        parts.append(str(block["content"]))
+                    elif block.get("image_base64"):
+                        parts.append(f'<img src="{html.escape(str(block["image_base64"]), quote=True)}"/>')
+            elif child.tag == qname("text", "list"):
+                parts.append(self._render_list_html(child))
+            elif child.tag == qname("table", "table"):
+                nested = parse_table_grid(child, self.render_cell_html)
+                parts.append(table_grid_to_html(nested))
+            elif child.tag == qname("draw", "frame"):
+                inline, blocks = self._parse_frame(child)
+                if self._collect_cell_visuals:
+                    self._cell_visuals.extend(
+                        block
+                        for block in blocks
+                        if block.get("type") in {BlockType.IMAGE, BlockType.CHART, BlockType.EQUATION}
+                    )
+                if inline is not None and not (
+                    self._collect_cell_visuals and isinstance(inline, InlineImage)
+                ):
+                    parts.append(render_atoms_to_html([inline]))
+                for block in blocks:
+                    if self._collect_cell_visuals and block.get("type") in {
+                        BlockType.IMAGE,
+                        BlockType.CHART,
+                        BlockType.EQUATION,
+                    }:
+                        continue
+                    if block.get("content"):
+                        parts.append(str(block["content"]))
+                    elif block.get("image_base64"):
+                        parts.append(f'<img src="{html.escape(str(block["image_base64"]), quote=True)}"/>')
+        return "".join(part for part in parts if part)
+
+    def _render_list_html(self, element: etree._Element, *, depth: int = 0, inherited_style: str | None = None) -> str:
+        """把单元格内 ODF 列表递归渲染为 ol/ul HTML。"""
+        style_name = element.get(qname("text", "style-name")) or inherited_style
+        level = self.styles.list_level(style_name, depth)
+        tag = "ol" if level.ordered else "ul"
+        start = f' start="{level.start}"' if level.ordered and level.start != 1 else ""
+        parts = [f"<{tag}{start}>"]
+        for item in element:
+            if item.tag not in {qname("text", "list-item"), qname("text", "list-header")}:
+                continue
+            if item.tag == qname("text", "list-header"):
+                for child in item:
+                    if child.tag in {qname("text", "p"), qname("text", "h")}:
+                        atoms, _ = self.parse_inline_atoms(child)
+                        parts.append(f"<li>{render_atoms_to_html(atoms)}</li>")
+                continue
+            parts.append("<li>")
+            for child in item:
+                if child.tag in {qname("text", "p"), qname("text", "h")}:
+                    atoms, _ = self.parse_inline_atoms(child)
+                    parts.append(render_atoms_to_html(atoms))
+                elif child.tag == qname("text", "list"):
+                    parts.append(self._render_list_html(child, depth=depth + 1, inherited_style=style_name))
+            parts.append("</li>")
+        parts.append(f"</{tag}>")
+        return "".join(parts)
+
+    def drain_notes(self) -> list[str]:
+        """取出当前累计脚注并清空共享队列。"""
+        values = list(self.notes)
+        self.notes.clear()
+        return values
+
+    def drain_cell_visuals(self) -> list[dict[str, Any]]:
+        """取出 ODS 单元格解析期间收集的视觉对象并清空队列。"""
+        values = list(self._cell_visuals)
+        self._cell_visuals.clear()
+        return values
+
+
+def _positive_space_count(value: str | None) -> int:
+    """把 text:s 的重复空格数解析为至少一。"""
+    try:
+        return max(1, int(value or 1))
+    except ValueError:
+        return 1
+
+
+def flatten_block_text(blocks: list[dict[str, Any]]) -> str:
+    """递归提取 raw block 的可见字符串，供标题和备注聚合。"""
+    parts: list[str] = []
+    for block in blocks:
+        content = block.get("content")
+        if isinstance(content, str):
+            visible = re.sub(r"<url>.*?</url>", "", content, flags=re.DOTALL)
+            visible = re.sub(r"<[^>]+>", "", visible)
+            if visible.strip():
+                parts.append(html.unescape(visible).strip())
+        elif isinstance(content, list):
+            children = [child for child in content if isinstance(child, dict)]
+            nested = flatten_block_text(children)
+            if nested:
+                parts.append(nested)
+    return "\n".join(parts)
+
+
+__all__ = [
+    "OdfBlockParser",
+    "PAGE_BREAK",
+    "PageBreakMarker",
+    "RawFlowItem",
+    "flatten_block_text",
+    "render_atoms_to_html",
+    "render_atoms_to_model",
+]

@@ -31,7 +31,7 @@
 |------|------|------|
 | `pages` | `list[list[dict]]` | 必填，保存 Analyze 产生的 raw blocks |
 | `page_index_map` | `list[int]` | 必填；空列表表示整本默认顺序，非空时与 pages 等长且唯一递增 |
-| `file_suffix` | `pdf/doc/docx/ppt/pptx/xls/xlsx/rtf/csv` | 必填 |
+| `file_suffix` | `pdf/doc/docx/ppt/pptx/xls/xlsx/rtf/csv/odt/ods/odp` | 必填 |
 | `effort` | `flash/medium/high/xhigh` | 必填，使用公开分析档位 |
 | `parse_mode` | `txt/ocr` | 必填，使用分析后实际值 |
 | `mineru_version` | 非空字符串 | 必填 |
@@ -50,7 +50,7 @@ MiddleJson 并执行适用的 PDF 后处理。不再提供裸 model list 加独�
 |------|------|------|
 | `pages` | `list[PageInfo]` | 必填，`page_idx` 唯一且严格递增 |
 | `is_full_document` | `bool` | 必填，保存整本或抽页语义，不提供默认值 |
-| `file_suffix` | `pdf/doc/docx/ppt/pptx/xls/xlsx/rtf/csv` | 必填 |
+| `file_suffix` | `pdf/doc/docx/ppt/pptx/xls/xlsx/rtf/csv/odt/ods/odp` | 必填 |
 | `effort` | `flash/medium/high/xhigh` | 必填 |
 | `parse_mode` | `txt/ocr` | 必填 |
 | `mineru_version` | 非空字符串 | 必填 |

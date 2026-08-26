@@ -405,7 +405,7 @@ Watch、parsing-rules 和 exclude 规则也由 CLI 写入 SQLite。Parsing-rules
 
 ## 8. 文件类型与处理策略
 
-当前代码中的 watch discoverable 文件类型包括：`pdf`、`doc`、`docx`、`ppt`、`pptx`、`xls`、`xlsx`、`rtf`、`html`、`htm`、`csv`、`md`、`markdown`、`rst`、`tex`、`txt`。图片不在 watch 白名单中，但可以通过显式 `mineru parse image.png` 触发。电子书、Apple 文档和邮件格式暂不在当前 discoverable 白名单内。
+当前代码中的 watch discoverable 文件类型包括：`pdf`、`doc`、`docx`、`ppt`、`pptx`、`xls`、`xlsx`、`rtf`、`odt`、`ods`、`odp`、`html`、`htm`、`csv`、`md`、`markdown`、`rst`、`tex`、`txt`。图片不在 watch 白名单中，但可以通过显式 `mineru parse image.png` 触发。电子书、Apple 文档和邮件格式暂不在当前 discoverable 白名单内。
 
 处理路径：
 

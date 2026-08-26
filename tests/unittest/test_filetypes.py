@@ -8,6 +8,7 @@ from mineru.filetypes import (
     FLASH_ONLY_PARSE_EXTENSIONS,
     INGESTIBLE_EXTENSIONS,
     MIME_TYPE_BY_EXTENSION,
+    ODF_EXTENSIONS,
     OFFICE_EXTENSIONS,
     PARSEABLE_EXTENSIONS,
     TEXT_EXTENSIONS,
@@ -48,6 +49,21 @@ def test_rtf_is_a_flash_only_parseable_office_type() -> None:
     assert "rtf" in INGESTIBLE_EXTENSIONS
     assert FILE_TYPE_BY_EXTENSION["rtf"] == "rtf"
     assert is_flash_only_parse_extension("rtf")
+
+
+def test_odf_extensions_are_flash_only_office_types() -> None:
+    """验证三个 ODF 后缀进入本地 Office、CLI 和 doclib 派生集合。"""
+    assert ODF_EXTENSIONS == frozenset({"odt", "ods", "odp"})
+    for ext in ODF_EXTENSIONS:
+        assert ext in OFFICE_EXTENSIONS
+        assert ext in FLASH_ONLY_PARSE_EXTENSIONS
+        assert ext in PARSEABLE_EXTENSIONS
+        assert ext in INGESTIBLE_EXTENSIONS
+        assert FILE_TYPE_BY_EXTENSION[ext] == ext
+        assert is_flash_only_parse_extension(ext)
+    assert MIME_TYPE_BY_EXTENSION["odt"] == "application/vnd.oasis.opendocument.text"
+    assert MIME_TYPE_BY_EXTENSION["ods"] == "application/vnd.oasis.opendocument.spreadsheet"
+    assert MIME_TYPE_BY_EXTENSION["odp"] == "application/vnd.oasis.opendocument.presentation"
 
 
 def test_csv_is_a_flash_only_parseable_type_instead_of_plain_text() -> None:

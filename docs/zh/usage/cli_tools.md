@@ -28,7 +28,7 @@ Options:
   --help                          显示帮助信息
 ```
 > [!TIP]
-> `mineru` 当前支持本地 `PDF`、图片、`CSV`、`RTF` 与 `DOCX`、`PPTX`、`XLSX` 文件或目录输入。
+> `mineru` 当前支持本地 `PDF`、图片、`CSV`、`RTF`、`DOCX`、`PPTX`、`XLSX`、`ODT`、`ODS`、`ODP` 文件或目录输入。
 
 ```bash
 mineru-api --help

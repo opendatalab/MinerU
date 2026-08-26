@@ -14,8 +14,6 @@ from .types import QUALITY_TIERS, Tier, validate_tier
 # "key",
 # "mobi",
 # "numbers",
-# "ods",
-# "odt",
 # "pages",
 # Unsupported mail formats:
 # "eml",
@@ -25,7 +23,9 @@ PDF_EXTENSIONS: frozenset[str] = frozenset({"pdf"})
 
 IMAGE_EXTENSIONS: frozenset[str] = frozenset({"png", "jpg", "jpeg", "webp", "gif", "bmp", "tiff", "jp2"})
 
-OFFICE_EXTENSIONS: frozenset[str] = frozenset({"doc", "docx", "ppt", "pptx", "xls", "xlsx", "rtf"})
+ODF_EXTENSIONS: frozenset[str] = frozenset({"odt", "ods", "odp"})
+
+OFFICE_EXTENSIONS: frozenset[str] = frozenset({"doc", "docx", "ppt", "pptx", "xls", "xlsx", "rtf"}) | ODF_EXTENSIONS
 
 HTML_EXTENSIONS: frozenset[str] = frozenset({"html", "htm"})
 
@@ -69,6 +69,9 @@ MIME_TYPE_BY_EXTENSION: dict[str, str] = {
     "xls": "application/vnd.ms-excel",
     "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     "rtf": "application/rtf",
+    "odt": "application/vnd.oasis.opendocument.text",
+    "ods": "application/vnd.oasis.opendocument.spreadsheet",
+    "odp": "application/vnd.oasis.opendocument.presentation",
     "csv": "text/csv",
     "html": "text/html",
     "htm": "text/html",

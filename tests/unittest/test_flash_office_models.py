@@ -12,10 +12,23 @@ import pytest
 
 import mineru.model.flash as flash_models
 import mineru.model.flash.models as flat_model_module
-from mineru.model.flash import DocModel, DocxModel, PdfModel, PptModel, PptxModel, RtfModel, XlsModel, XlsxModel
+from mineru.model.flash import (
+    DocModel,
+    DocxModel,
+    OdpModel,
+    OdsModel,
+    OdtModel,
+    PdfModel,
+    PptModel,
+    PptxModel,
+    RtfModel,
+    XlsModel,
+    XlsxModel,
+)
 from mineru.model.flash.office.doc import doc_converter as doc_converter_module
 from mineru.model.flash.office.docx import docx_converter as docx_converter_module
 from mineru.model.flash.office.docx import main as docx_main
+from mineru.model.flash.office.odf import converters as odf_converter_module
 from mineru.model.flash.office.pptx import main as pptx_main
 from mineru.model.flash.office.pptx import pptx_converter as pptx_converter_module
 from mineru.model.flash.office.ppt import ppt_converter as ppt_converter_module
@@ -68,6 +81,9 @@ def test_flash_office_model_conversion(
         (XlsModel, xls_converter_module, "XlsConverter"),
         (XlsxModel, xlsx_converter_module, "XlsxConverter"),
         (RtfModel, rtf_converter_module, "RtfConverter"),
+        (OdtModel, odf_converter_module, "OdtConverter"),
+        (OdsModel, odf_converter_module, "OdsConverter"),
+        (OdpModel, odf_converter_module, "OdpConverter"),
     ],
 )
 def test_office_model_creates_converter_per_prediction(
@@ -165,6 +181,9 @@ def test_models_are_exported_from_flash_root() -> None:
         "PptxModel",
         "XlsModel",
         "XlsxModel",
+        "OdtModel",
+        "OdsModel",
+        "OdpModel",
     ]
     assert PdfModel is flat_model_module.PdfModel
     assert RtfModel is flat_model_module.RtfModel
@@ -174,6 +193,9 @@ def test_models_are_exported_from_flash_root() -> None:
     assert PptModel is flat_model_module.PptModel
     assert XlsModel is flat_model_module.XlsModel
     assert XlsxModel is flat_model_module.XlsxModel
+    assert OdtModel is flat_model_module.OdtModel
+    assert OdsModel is flat_model_module.OdsModel
+    assert OdpModel is flat_model_module.OdpModel
 
 
 @pytest.mark.parametrize(
@@ -186,6 +208,9 @@ def test_models_are_exported_from_flash_root() -> None:
         ("mineru.model.flash.office.xls", "XlsModel"),
         ("mineru.model.flash.office.xlsx", "XlsxModel"),
         ("mineru.model.flash.office.rtf", "RtfModel"),
+        ("mineru.model.flash.office.odf", "OdtModel"),
+        ("mineru.model.flash.office.odf", "OdsModel"),
+        ("mineru.model.flash.office.odf", "OdpModel"),
     ],
 )
 def test_office_subpackages_do_not_export_models(package_name: str, model_name: str) -> None:
@@ -212,6 +237,7 @@ def test_importing_pdf_model_does_not_load_office_converters() -> None:
             "assert 'olefile' not in sys.modules",
             "assert 'mineru.model.flash.office.xlsx.xlsx_converter' not in sys.modules",
             "assert 'mineru.model.flash.office.rtf.converter' not in sys.modules",
+            "assert 'mineru.model.flash.office.odf.converters' not in sys.modules",
         ]
     )
     result = subprocess.run(
@@ -234,6 +260,9 @@ def test_importing_pdf_model_does_not_load_office_converters() -> None:
         "mineru.model.pptx",
         "mineru.model.xls",
         "mineru.model.xlsx",
+        "mineru.model.odt",
+        "mineru.model.ods",
+        "mineru.model.odp",
     ],
 )
 def test_legacy_office_model_paths_are_removed(module_name: str) -> None:

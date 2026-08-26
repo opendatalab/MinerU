@@ -8,7 +8,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from ...filetypes import CSV_EXTENSIONS, OFFICE_EXTENSIONS
+from ...filetypes import CSV_EXTENSIONS, ODF_EXTENSIONS, OFFICE_EXTENSIONS
 from ...model.flash.pdf.document import PDFDocument
 
 # Optional office doc support
@@ -202,6 +202,16 @@ async def _extract_office_meta(filepath: str, ext: str, result: dict) -> None:
             finally:
                 if wb is not None:
                     wb.close()
+
+        elif ext in ODF_EXTENSIONS:
+            from ...model.flash.office.odf.metadata import extract_odf_metadata
+
+            try:
+                with open(filepath, "rb") as odf_file:
+                    metadata = extract_odf_metadata(odf_file, ext)  # type: ignore[arg-type]
+            except Exception as exc:
+                raise MetadataExtractionError("open_failed", str(exc) or "Failed to open ODF document") from exc
+            result.update(metadata)
 
         elif ext == "rtf":
             from ...model.flash.office.rtf.converter import extract_rtf_metadata

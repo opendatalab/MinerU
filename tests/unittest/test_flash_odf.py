@@ -1,0 +1,422 @@
+from __future__ import annotations
+
+import asyncio
+import importlib.util
+import json
+import subprocess
+import sys
+from io import BytesIO
+from pathlib import Path
+from typing import Any
+from zipfile import ZIP_DEFLATED, ZipFile
+
+import pytest
+
+from mineru.backend.analyze import aio_doc_analyze, doc_analyze
+from mineru.doclib.core.file_io import extract_metadata
+from mineru.doclib.core.db import DatabaseManager
+from mineru.doclib.core.fts import FTSManager
+from mineru.doclib.services.parse_svc import ParseService
+from mineru.errors import InvalidRequestError
+from mineru.model.flash import OdpModel, OdsModel, OdtModel
+from mineru.model.flash.office.odf.errors import OdfEncryptedError, OdfParseError, OdfResourceLimitError
+from mineru.model.flash.office.odf.package import OdfPackage
+from mineru.parser import parse, parse_async
+from mineru.parser import api_server
+from mineru.parser.api_server import CreateJobRequest, FileStore
+from mineru.parser.file_type import guess_suffix_by_bytes, guess_suffix_by_path
+from mineru.render import render_html, render_markdown, render_structured_content
+from mineru.types import BlockType
+
+from _odf_test_utils import build_odf_package, build_odp_fixture, build_ods_fixture, build_odt_fixture
+
+
+@pytest.mark.parametrize(
+    ("suffix", "model_class", "payload", "page_count"),
+    [
+        ("odt", OdtModel, build_odt_fixture(), 3),
+        ("ods", OdsModel, build_ods_fixture(), 2),
+        ("odp", OdpModel, build_odp_fixture(), 3),
+    ],
+)
+def test_odf_models_and_analyze_keep_flash_contract(
+    suffix: str,
+    model_class: type[Any],
+    payload: bytes,
+    page_count: int,
+) -> None:
+    """验证三个 ODF 模型、同步/异步入口及输入流所有权。"""
+    stream = BytesIO(payload)
+    model_pages = model_class().predict(stream)
+    assert not stream.closed
+    assert len(model_pages) == page_count
+
+    middle, model = doc_analyze(payload, effort="xhigh", parse_mode="ocr", file_suffix=suffix)  # type: ignore[arg-type]
+    async_middle, async_model = asyncio.run(
+        aio_doc_analyze(payload, effort="medium", parse_mode="auto", file_suffix=suffix)  # type: ignore[arg-type]
+    )
+    assert model.pages == async_model.pages == model_pages
+    assert middle.model_dump() == async_middle.model_dump()
+    assert model.file_suffix == middle.file_suffix == suffix
+    assert model.effort == middle.effort == "flash"
+    assert model.parse_mode == middle.parse_mode == "txt"
+
+
+def test_odt_recovers_structure_and_all_renderers() -> None:
+    """验证 ODT 标题、富文本、列表、合并表、分页、脚注、公式和图片。"""
+    middle, model = doc_analyze(build_odt_fixture(), file_suffix="odt")
+    raw_blocks = [block for page in model.pages for block in page]
+    raw_types = [block["type"] for block in raw_blocks]
+    assert len(model.pages) == 3
+    assert BlockType.DOC_TITLE in raw_types
+    assert BlockType.PARAGRAPH_TITLE in raw_types
+    assert BlockType.LIST in raw_types
+    assert BlockType.TABLE in raw_types
+    assert BlockType.EQUATION in raw_types
+    assert BlockType.IMAGE in raw_types
+    assert BlockType.PAGE_FOOTNOTE in raw_types
+    assert BlockType.HEADER in raw_types
+    assert BlockType.FOOTER in raw_types
+    assert any('style="bold"' in str(block.get("content")) for block in raw_blocks)
+    assert any(
+        "rowspan" not in str(block.get("content")) and 'colspan="2"' in str(block.get("content"))
+        for block in raw_blocks
+    )
+    assert any(block.get("content") == r"\frac{x}{2}" for block in raw_blocks)
+    assert any(
+        block.get("type") == BlockType.PAGE_FOOTNOTE and "Note body" in block.get("content", "")
+        for block in raw_blocks
+    )
+
+    markdown = render_markdown(middle)
+    html_output = render_html(middle)
+    structured = render_structured_content(middle)
+    assert "ODT Title" in markdown
+    assert "<script>alert(1)</script>" not in markdown
+    assert "<script>alert(1)</script>" not in html_output
+    assert "<table" in html_output
+    assert structured["pages"][0]["blocks"][0]["type"] == "doc_title"
+
+
+def test_odt_promotes_numbered_heading_inside_list() -> None:
+    """验证 LibreOffice 编码在 list-item 中的 text:h 恢复为编号章节标题。"""
+    content = """<office:document-content
+ xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+ xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"
+ xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0">
+ <office:automatic-styles><text:list-style style:name="L1">
+  <text:list-level-style-number text:level="1" style:num-format="1"/>
+ </text:list-style></office:automatic-styles>
+ <office:body><office:text><text:list text:style-name="L1"><text:list-item>
+  <text:h text:outline-level="1">Chapter</text:h>
+ </text:list-item></text:list></office:text></office:body>
+</office:document-content>"""
+    middle, _ = doc_analyze(build_odf_package("odt", content), file_suffix="odt")
+    assert middle.pages[0].blocks[0].type == BlockType.PARAGRAPH_TITLE
+    assert middle.pages[0].blocks[0].content == "1 Chapter"  # type: ignore[union-attr]
+
+
+def test_odp_preserves_empty_slide_chart_preview_and_notes() -> None:
+    """验证 ODP 空 slide 不丢失，图表同时保留数据和预览，备注归属原页。"""
+    middle, model = doc_analyze(build_odp_fixture(), file_suffix="odp")
+    assert len(model.pages) == 3
+    assert model.pages[1] == []
+    assert model.pages[0][0]["type"] == BlockType.DOC_TITLE
+    chart = next(block for block in model.pages[2] if block["type"] == BlockType.CHART)
+    assert "Category" in chart["content"]
+    assert "Value" in chart["content"]
+    assert chart["image_base64"].startswith("data:image/")
+    assert any(block["type"] == BlockType.PAGE_FOOTNOTE and "Speaker note" in block["content"] for block in model.pages[2])
+    assert len(middle.pages) == 3
+
+
+def test_ods_skips_hidden_sheet_and_emits_tables_images_and_charts() -> None:
+    """验证 ODS 可见 sheet 边界、typed value、合并结构和图表对象。"""
+    middle, model = doc_analyze(build_ods_fixture(), file_suffix="ods")
+    assert len(model.pages) == 2
+    assert [page[0]["content"] for page in model.pages] == ["Visible A", "Visible B"]
+    flattened = [block for page in model.pages for block in page]
+    assert "secret" not in str(flattened)
+    assert "50%" in str(flattened)
+    assert 'colspan="2"' in str(flattened)
+    assert any(block["type"] == BlockType.CHART for block in flattened)
+    assert len(middle.pages) == 2
+
+
+@pytest.mark.parametrize(
+    ("suffix", "payload"),
+    [("odt", build_odt_fixture()), ("ods", build_ods_fixture()), ("odp", build_odp_fixture())],
+)
+def test_odf_content_detection_precedes_csv_extension(
+    tmp_path: Path,
+    suffix: str,
+    payload: bytes,
+) -> None:
+    """验证 ODF 强内容身份覆盖伪装扩展名和 CSV 无签名兜底。"""
+    disguised = tmp_path / "disguised.csv"
+    disguised.write_bytes(payload)
+    assert guess_suffix_by_bytes(payload, str(disguised)) == suffix
+    assert guess_suffix_by_path(disguised) == suffix
+
+
+def test_rtf_signature_still_precedes_odf_extension(tmp_path: Path) -> None:
+    """验证新增 ZIP 探测不改变 RTF 强签名的最高优先级。"""
+    source = tmp_path / "disguised.odt"
+    source.write_bytes(br"{\rtf1\ansi visible}")
+    assert guess_suffix_by_path(source) == "rtf"
+    assert guess_suffix_by_bytes(source.read_bytes(), str(source)) == "rtf"
+
+
+def test_plain_text_renamed_to_odf_is_not_accepted(tmp_path: Path) -> None:
+    """验证 ODF 扩展名本身不能把普通文本升级为结构化文档。"""
+    source = tmp_path / "fake.odt"
+    source.write_text("a,b\n1,2\n", encoding="utf-8")
+    assert guess_suffix_by_path(source) not in {"odt", "ods", "odp"}
+    with pytest.raises(ValueError, match="Unsupported file type"):
+        parse(source)
+
+
+def test_odf_rejects_mismatched_encrypted_and_expanding_packages() -> None:
+    """验证格式错配、manifest 加密和超大重复行在分配前稳定失败。"""
+    with pytest.raises(OdfParseError, match="expected"):
+        OdtModel().predict(BytesIO(build_ods_fixture()))
+
+    encrypted_content = (
+        '<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0">'
+        "<office:body><office:text/></office:body></office:document-content>"
+    )
+    encrypted = build_odf_package("odt", encrypted_content, encrypted=True)
+    with pytest.raises(OdfEncryptedError, match="Encrypted ODF"):
+        OdtModel().predict(BytesIO(encrypted))
+
+    expanding_content = (
+        '<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0" '
+        'xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0" '
+        'xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">'
+        '<office:body><office:spreadsheet><table:table><table:table-row table:number-rows-repeated="4000001">'
+        "<table:table-cell><text:p>x</text:p></table:table-cell>"
+        "</table:table-row></table:table></office:spreadsheet></office:body></office:document-content>"
+    )
+    expanding = build_odf_package("ods", expanding_content)
+    with pytest.raises(OdfResourceLimitError, match="max_grid_slots"):
+        OdsModel().predict(BytesIO(expanding))
+
+
+def test_odf_corrupt_optional_styles_and_external_image_degrade_locally() -> None:
+    """验证可选样式损坏和外部图片不会阻断正文或触发网络读取。"""
+    content = """<office:document-content
+ xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+ xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"
+ xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+ <office:body><office:text><text:p>visible</text:p>
+  <draw:frame><draw:image xlink:href="https://example.com/external.png"/></draw:frame>
+ </office:text></office:body></office:document-content>"""
+    pages = OdtModel().predict(BytesIO(build_odf_package("odt", content, styles_xml="<broken")))
+    assert pages == [[{"type": BlockType.TEXT, "content": "visible"}]]
+
+
+def test_odf_style_cycle_is_bounded_and_preserves_text() -> None:
+    """验证循环 parent-style-name 在有限链路内降级，不阻塞正文解析。"""
+    content = """<office:document-content
+ xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+ xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"
+ xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0">
+ <office:body><office:text><text:p text:style-name="A">visible</text:p></office:text></office:body>
+</office:document-content>"""
+    styles = """<office:document-styles
+ xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+ xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0">
+ <office:styles><style:style style:name="A" style:family="paragraph" style:parent-style-name="B"/>
+  <style:style style:name="B" style:family="paragraph" style:parent-style-name="A"/>
+ </office:styles></office:document-styles>"""
+    assert OdtModel().predict(BytesIO(build_odf_package("odt", content, styles_xml=styles))) == [
+        [{"type": BlockType.TEXT, "content": "visible"}]
+    ]
+
+
+def test_odf_package_rejects_unsafe_member_paths_and_dtd() -> None:
+    """验证 ZIP 上跳成员和 XML DTD 在进入语义解析前失败。"""
+    output = BytesIO()
+    with ZipFile(output, "w", ZIP_DEFLATED) as package:
+        package.writestr("mimetype", "application/vnd.oasis.opendocument.text")
+        package.writestr("../escape", b"unsafe")
+    with pytest.raises(OdfParseError, match="unsafe member path"):
+        OdfPackage(output.getvalue())
+
+    dtd_content = """<!DOCTYPE doc [<!ENTITY x "hidden">]>
+<office:document-content xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0">
+ <office:body><office:text/></office:body></office:document-content>"""
+    with pytest.raises(OdfParseError, match="DTD is not allowed"):
+        OdtModel().predict(BytesIO(build_odf_package("odt", dtd_content)))
+
+
+@pytest.mark.parametrize(
+    ("suffix", "payload", "expected"),
+    [
+        ("odt", build_odt_fixture(), {"page_count": 3, "title": "ODT Meta", "author": "Alice", "keywords": "one"}),
+        ("ods", build_ods_fixture(), {"page_count": 2}),
+        ("odp", build_odp_fixture(), {"page_count": 3}),
+    ],
+)
+def test_doclib_extracts_odf_metadata(
+    tmp_path: Path,
+    suffix: str,
+    payload: bytes,
+    expected: dict[str, object],
+) -> None:
+    """验证 doclib ODF 元数据分支不复用 CSV 或 RTF 逻辑。"""
+    source = tmp_path / f"sample.{suffix}"
+    source.write_bytes(payload)
+    metadata = asyncio.run(extract_metadata(str(source)))
+    for key, value in expected.items():
+        assert metadata[key] == value
+
+
+@pytest.mark.parametrize(
+    ("suffix", "payload"),
+    [("odt", build_odt_fixture()), ("ods", build_ods_fixture()), ("odp", build_odp_fixture())],
+)
+def test_public_parser_handles_odf_sync_and_async(
+    tmp_path: Path,
+    suffix: str,
+    payload: bytes,
+) -> None:
+    """验证路径解析器依靠内容识别进入 ODF，并保留原始后缀元数据。"""
+    source = tmp_path / f"sample.{suffix}"
+    source.write_bytes(payload)
+    result = parse(source)
+    async_result = asyncio.run(parse_async(source))
+    assert result.middle_json.file_suffix == async_result.middle_json.file_suffix == suffix
+    assert result.middle_json.model_dump() == async_result.middle_json.model_dump()
+
+
+def test_odf_parse_server_job_emits_flash_outputs(tmp_path: Path) -> None:
+    """验证 local parse server 接受 ODF 并输出严格 Middle JSON 与结构化内容。"""
+    source = tmp_path / "sample.odt"
+    source.write_bytes(build_odt_fixture())
+    file_store = FileStore(tmp_path / "api-files")
+    request = CreateJobRequest.model_validate(
+        {
+            "files": [{"source": {"type": "local", "path": str(source)}}],
+            "tier": "standard",
+            "output_formats": ["markdown", "middle_json", "structured_content"],
+        }
+    )
+    record = api_server.JobStore().create(request, file_store)
+    asyncio.run(
+        api_server._run_job(
+            record,
+            request,
+            file_store,
+            ocr_mode="auto",
+            image_analysis=True,
+            allow_local_source=True,
+        )
+    )
+    parsed_file = record.files[0]
+    assert parsed_file.status == "completed"
+    assert parsed_file.output_files is not None
+    middle_record = file_store.get_file(parsed_file.output_files.middle_json.file_id)  # type: ignore[union-attr]
+    assert middle_record.sha256sum is not None
+    payload = json.loads(file_store.read_blob(middle_record.sha256sum))
+    assert payload["file_suffix"] == "odt"
+    assert payload["effort"] == "flash"
+    assert payload["parse_mode"] == "txt"
+
+
+@pytest.mark.parametrize(
+    ("suffix", "payload", "page_count"),
+    [("odt", build_odt_fixture(), 3), ("ods", build_ods_fixture(), 2), ("odp", build_odp_fixture(), 3)],
+)
+def test_doclib_ingests_odf_as_local_flash(
+    tmp_path: Path,
+    suffix: str,
+    payload: bytes,
+    page_count: int,
+) -> None:
+    """验证 doclib 为 ODF 建立本地 flash parse row 和正确页数。"""
+
+    class _NoRulesConfig:
+        async def match_rules(self, path: str, rule_type: str) -> list[dict[str, object]]:
+            """关闭 parsing rules，让测试只观察默认 ODF 行为。"""
+            return []
+
+    async def run() -> None:
+        """执行隔离 SQLite 入库并检查文档与解析任务。"""
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        service = ParseService(
+            db=db,
+            fts=FTSManager(db),
+            config_svc=_NoRulesConfig(),  # type: ignore[arg-type]
+            data_dir=str(tmp_path / "data"),
+            parse_lock_timeout_sec=1800,
+        )
+        source = tmp_path / f"sample.{suffix}"
+        source.write_bytes(payload)
+        response = await service.request_parse(str(source), tier="flash")
+        doc = await db.fetchone(
+            "SELECT file_type, page_count FROM docs WHERE sha256=?",
+            (response.sha256,),
+        )
+        parses = await db.fetchall(
+            "SELECT tier, status, privacy FROM parses WHERE sha256=?",
+            (response.sha256,),
+        )
+        assert response.tier == "flash"
+        assert doc == {"file_type": suffix, "page_count": page_count}
+        assert parses == [{"tier": "flash", "status": "pending", "privacy": "local"}]
+
+    asyncio.run(run())
+
+
+def test_doclib_rejects_odf_remote_parse(tmp_path: Path) -> None:
+    """验证 ODF 继承非 PDF/image 的严格 remote 拒绝语义。"""
+
+    class _NoRulesConfig:
+        async def match_rules(self, path: str, rule_type: str) -> list[dict[str, object]]:
+            """关闭 parsing rules，让测试只观察主动请求校验。"""
+            return []
+
+    async def run() -> None:
+        """创建隔离 doclib 并断言稳定错误码。"""
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        service = ParseService(
+            db=db,
+            fts=FTSManager(db),
+            config_svc=_NoRulesConfig(),  # type: ignore[arg-type]
+            data_dir=str(tmp_path / "data"),
+            parse_lock_timeout_sec=1800,
+        )
+        source = tmp_path / "sample.odt"
+        source.write_bytes(build_odt_fixture())
+        with pytest.raises(InvalidRequestError) as exc_info:
+            await service.request_parse(str(source), tier="flash", remote=True)
+        assert exc_info.value.code == "remote_unsupported_for_file_type"
+        assert exc_info.value.param == "remote"
+
+    asyncio.run(run())
+
+
+def test_csv_and_rtf_runtime_do_not_load_odf_modules() -> None:
+    """验证新增 ODF converter 不进入既有 CSV/RTF 的惰性导入边界。"""
+    script = "\n".join(
+        [
+            "import io, sys",
+            "from mineru.model.flash import CsvModel, RtfModel",
+            "CsvModel().predict(io.BytesIO(b'a,b\\n1,2\\n'))",
+            "RtfModel().predict(io.BytesIO(b'{\\\\rtf1 ok}'))",
+            "assert not any(name.startswith('mineru.model.flash.office.odf') for name in sys.modules)",
+        ]
+    )
+    result = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, check=False)
+    assert result.returncode == 0, result.stderr
+
+
+def test_odf_subpackage_does_not_export_models() -> None:
+    """验证 ODF 模型只从 Flash 根包公开，不形成第二套公共路径。"""
+    assert importlib.util.find_spec("mineru.model.flash.office.odf.model") is None
+    package = __import__("mineru.model.flash.office.odf", fromlist=["__all__"])
+    assert package.__all__ == []

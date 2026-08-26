@@ -111,7 +111,7 @@
 |--------|------|
 | `parse()` | Tool SDK 的便捷函数 |
 | `DocumentParser` | Parser 抽象接口 |
-| `MinerUParser` | 统一解析器，支持 PDF、图片、CSV 与 Office 文档 |
+| `MinerUParser` | 统一解析器，支持 PDF、图片、CSV、RTF、OOXML 与 OpenDocument |
 | `MinerUApiParser` | 通过 v1 API 委托解析的 parser |
 
 规范:

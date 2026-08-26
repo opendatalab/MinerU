@@ -57,6 +57,7 @@
 | [ADR-0027](0027-doclib-visual-block-locators.md) | Accepted | Doclib 视觉 Block Locator 图片引用 |
 | [ADR-0028](0028-csv-structured-flash-parsing.md) | Accepted | CSV 本地结构化 Flash 解析 |
 | [ADR-0029](0029-rtf-native-semantic-parsing.md) | Accepted | RTF 原生语义 Flash 解析 |
+| [ADR-0030](0030-odf-native-semantic-parsing.md) | Accepted | ODF 原生语义 Flash 解析 |
 
 ## 模板
 

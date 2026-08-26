@@ -148,6 +148,6 @@ If your device does not meet the GPU acceleration requirements, you can explicit
 mineru parse "<input_path>" --tier flash -o <output_path>
 ```
 
-`mineru` currently supports local `PDF`, image, `CSV`, `RTF`, `DOCX`, `PPTX`, and `XLSX` file or directory inputs through modern CLI and API entry points. RTF is parsed locally as one semantic page without physical-layout bboxes.
+`mineru` currently supports local `PDF`, image, `CSV`, `RTF`, `DOCX`, `PPTX`, `XLSX`, `ODT`, `ODS`, and `ODP` file or directory inputs through modern CLI and API entry points. RTF and OpenDocument are parsed locally with Flash semantics and do not require an external office suite.
 
 The legacy Gradio WebUI keeps its existing upload formats and does not yet accept CSV. For detailed instructions, please refer to the [Usage Guide](../usage/index.md).
