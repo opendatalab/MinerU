@@ -10,7 +10,14 @@ from lxml import etree  # type: ignore[reportMissingImports]
 from .....types import BlockType
 from .constants import qname
 from .models import TableGrid
-from .table import crop_table_grid, parse_cell_range_bounds, parse_table_grid, table_grid_to_html, union_bounds
+from .table import (
+    OdfTableExpansionBudget,
+    crop_table_grid,
+    parse_cell_range_bounds,
+    parse_table_grid,
+    table_grid_to_html,
+    union_bounds,
+)
 
 
 def _chart_range_bounds(chart: etree._Element) -> tuple[int, int, int, int] | None:
@@ -39,12 +46,16 @@ def parse_chart_block(
     *,
     render_cell: Callable[[etree._Element], str],
     preview_data_uri: str | None,
+    table_expansion_budget: OdfTableExpansionBudget | None = None,
 ) -> dict | None:
     """按精确引用优先、唯一表回退的规则构造图表 raw block。"""
     chart = next(object_root.iter(qname("chart", "chart")), None)
     if chart is None:
         return None
-    grids = [parse_table_grid(table, render_cell) for table in object_root.iter(qname("table", "table"))]
+    grids = [
+        parse_table_grid(table, render_cell, expansion_budget=table_expansion_budget)
+        for table in object_root.iter(qname("table", "table"))
+    ]
     selected: TableGrid | None = None
     if grids and (bounds := _chart_range_bounds(chart)) is not None:
         selected = crop_table_grid(grids[0], bounds)

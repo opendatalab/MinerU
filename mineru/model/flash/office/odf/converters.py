@@ -15,8 +15,14 @@ from .constants import OdfSuffix, qname
 from .models import InlineNote
 from .package import OdfPackage
 from .styles import OdfStyles
-from .table import parse_table_grid, split_table_regions, table_grid_to_html
-from .text import OdfBlockParser, OdfTextExpansionBudget, collect_emittable_anchor_targets, flatten_block_text
+from .table import OdfTableExpansionBudget, parse_table_grid, split_table_regions, table_grid_to_html
+from .text import (
+    OdfBlockParser,
+    OdfMasterPageChange,
+    OdfTextExpansionBudget,
+    collect_emittable_anchor_targets,
+    flatten_block_text,
+)
 
 
 _LENGTH_RE = re.compile(r"^\s*(?P<value>[+-]?(?:\d+(?:\.\d*)?|\.\d+))(?P<unit>cm|mm|in|pt|pc|px)?\s*$")
@@ -99,6 +105,7 @@ def _master_auxiliary_blocks(
     styles: OdfStyles,
     anchor_targets: frozenset[str],
     text_expansion_budget: OdfTextExpansionBudget,
+    table_expansion_budget: OdfTableExpansionBudget,
 ) -> list[dict[str, Any]]:
     """从 master-page 的 header/footer 中提取页面辅助文本。"""
     if master_page is None:
@@ -108,6 +115,7 @@ def _master_auxiliary_blocks(
         styles,
         anchor_targets=anchor_targets,
         text_expansion_budget=text_expansion_budget,
+        table_expansion_budget=table_expansion_budget,
     )
     result: list[dict[str, Any]] = []
     for tag_name, block_type in (("header", BlockType.HEADER), ("footer", BlockType.FOOTER)):
@@ -137,23 +145,25 @@ def _parse_odt_pages(context: _OdfContext) -> list[list[dict[str, Any]]]:
     page_masters: list[str | None] = [None]
     current_master: str | None = None
 
+    def apply_master_page(requested_master: str | None) -> None:
+        """按段落或列表事件切换 ODT 虚拟页及其 master-page。"""
+        nonlocal current_master
+        master_changed = requested_master is not None and current_master is not None and requested_master != current_master
+        if master_changed and pages[-1]:
+            _flush_notes(parser, pages[-1])
+            _new_page(pages, page_masters, requested_master)
+        if requested_master is not None:
+            current_master = requested_master
+            page_masters[-1] = current_master
+
     def walk(parent: etree._Element) -> None:
         """递归遍历 ODT block 容器并维护当前页与 master-page。"""
-        nonlocal current_master
         for child in parent:
             if not isinstance(child.tag, str):
                 continue
             if child.tag in {qname("text", "p"), qname("text", "h")}:
                 requested_master = context.styles.paragraph_master_page_name(child.get(qname("text", "style-name")))
-                master_changed = (
-                    requested_master is not None and current_master is not None and requested_master != current_master
-                )
-                if master_changed and pages[-1]:
-                    _flush_notes(parser, pages[-1])
-                    _new_page(pages, page_masters, requested_master)
-                if requested_master is not None:
-                    current_master = requested_master
-                    page_masters[-1] = current_master
+                apply_master_page(requested_master)
                 _append_flow_items(
                     parser.parse_paragraph(child),
                     parser=parser,
@@ -166,7 +176,13 @@ def _parse_odt_pages(context: _OdfContext) -> list[list[dict[str, Any]]]:
             }:
                 walk(child)
             elif child.tag == qname("text", "list"):
-                pages[-1].extend(parser.parse_list_blocks(child))
+                for item in parser.parse_list_blocks(child, emit_master_page_changes=True):
+                    if isinstance(item, OdfMasterPageChange):
+                        apply_master_page(item.master_page_name)
+                    elif isinstance(item, InlineNote):
+                        parser.notes.append(item.content)
+                    else:
+                        pages[-1].append(item)
             else:
                 pages[-1].extend(parser.parse_element(child))
 
@@ -183,6 +199,7 @@ def _parse_odt_pages(context: _OdfContext) -> list[list[dict[str, Any]]]:
                 styles=context.styles,
                 anchor_targets=anchor_targets,
                 text_expansion_budget=text_expansion_budget,
+                table_expansion_budget=parser.table_expansion_budget,
             )
         )
     return pages or [[]]
@@ -300,7 +317,7 @@ def _parse_odp_pages(context: _OdfContext) -> list[list[dict[str, Any]]]:
 
 def _sheet_blocks(sheet: etree._Element, parser: OdfBlockParser) -> list[dict[str, Any]]:
     """把一个可见 ODS sheet 拆为数据区域和锚定视觉对象。"""
-    grid = parse_table_grid(sheet, parser.render_cell_html)
+    grid = parse_table_grid(sheet, parser.render_cell_html, expansion_budget=parser.table_expansion_budget)
     blocks: list[dict[str, Any]] = []
     for region in split_table_regions(grid):
         content = table_grid_to_html(region)

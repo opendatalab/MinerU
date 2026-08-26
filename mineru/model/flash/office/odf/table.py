@@ -6,6 +6,7 @@ from __future__ import annotations
 import html
 import re
 from collections.abc import Callable, Iterator
+from dataclasses import dataclass
 
 from lxml import etree  # type: ignore[reportMissingImports]
 
@@ -20,12 +21,62 @@ _HTML_TEXT_RE = re.compile(r"<[^>]+>")
 _CELL_ADDRESS_RE = re.compile(r"\$?(?P<col>[A-Za-z]+)\$?(?P<row>[1-9][0-9]*)")
 
 
+@dataclass(slots=True)
+class OdfTableExpansionBudget:
+    """累计单个 ODF 文档全部表格的网格与重复文本膨胀。"""
+
+    used_grid_slots: int = 0
+    used_duplicated_text_bytes: int = 0
+
+    def start_table(self) -> _TableGridReservation:
+        """为一次表格解析创建只累计新增矩形面积的局部预留。"""
+        return _TableGridReservation(self)
+
+    def charge_grid_slots(self, additional_slots: int) -> None:
+        """在表格网格扩容前累计文档级槽位。"""
+        if additional_slots < 0 or self.used_grid_slots > MAX_GRID_SLOTS - additional_slots:
+            raise OdfResourceLimitError(f"ODF resource limit exceeded: max_grid_slots={MAX_GRID_SLOTS}")
+        self.used_grid_slots += additional_slots
+
+    def charge_duplicated_text(self, byte_count: int) -> None:
+        """在复制单元格文本前累计文档级膨胀字节。"""
+        if byte_count < 0 or self.used_duplicated_text_bytes > MAX_EXPANSION_TEXT_BYTES - byte_count:
+            raise OdfResourceLimitError(f"ODF resource limit exceeded: max_expansion_text_bytes={MAX_EXPANSION_TEXT_BYTES}")
+        self.used_duplicated_text_bytes += byte_count
+
+
+@dataclass(slots=True)
+class _TableGridReservation:
+    """记录当前表格已经计入文档预算的最大矩形面积。"""
+
+    budget: OdfTableExpansionBudget
+    reserved_slots: int = 0
+
+    def reserve(self, row_count: int, width: int) -> None:
+        """仅把当前表格增长部分计入文档级预算。"""
+        projected_slots = row_count * max(width, 1)
+        if projected_slots <= self.reserved_slots:
+            return
+        self.budget.charge_grid_slots(projected_slots - self.reserved_slots)
+        self.reserved_slots = projected_slots
+
+
 def _positive_int(value: str | None, default: int = 1) -> int:
-    """把不可信 ODF 计数属性解析为至少为一的整数。"""
-    try:
-        return max(1, int(value or default))
-    except (TypeError, ValueError):
+    """在转换前约束 ODF 计数属性，并把损坏值回退为至少一。"""
+    if value is None:
         return default
+    normalized = value.strip()
+    if normalized.startswith("+"):
+        normalized = normalized[1:]
+    if not normalized.isascii() or not normalized.isdigit():
+        return default
+    limit_text = str(MAX_GRID_SLOTS)
+    if len(normalized) > len(limit_text):
+        raise OdfResourceLimitError(f"ODF resource limit exceeded: max_grid_slots={MAX_GRID_SLOTS}")
+    significant = normalized.lstrip("0") or "0"
+    if len(significant) > len(limit_text) or (len(significant) == len(limit_text) and significant > limit_text):
+        raise OdfResourceLimitError(f"ODF resource limit exceeded: max_grid_slots={MAX_GRID_SLOTS}")
+    return max(1, int(significant))
 
 
 def _iter_rows(container: etree._Element, *, header: bool = False) -> Iterator[tuple[etree._Element, bool]]:
@@ -84,9 +135,16 @@ def _validate_grid_extent(row_count: int, width: int) -> None:
         raise OdfResourceLimitError(f"ODF resource limit exceeded: max_grid_slots={MAX_GRID_SLOTS}")
 
 
-def _ensure_row(grid: TableGrid, row_index: int, width: int = 0) -> list[GridCell | None]:
+def _ensure_row(
+    grid: TableGrid,
+    row_index: int,
+    width: int = 0,
+    reservation: _TableGridReservation | None = None,
+) -> list[GridCell | None]:
     """确保网格存在指定行和最小列宽。"""
     _validate_grid_extent(max(len(grid.rows), row_index + 1), max(grid.width, width))
+    if reservation is not None:
+        reservation.reserve(max(len(grid.rows), row_index + 1), max(grid.width, width))
     while len(grid.rows) <= row_index:
         grid.rows.append([])
     row = grid.rows[row_index]
@@ -100,13 +158,26 @@ def _charge_grid(grid: TableGrid) -> None:
     _validate_grid_extent(len(grid.rows), grid.width)
 
 
-def parse_table_grid(table: etree._Element, render_cell: CellRenderer) -> TableGrid:
+def parse_table_grid(
+    table: etree._Element,
+    render_cell: CellRenderer,
+    *,
+    expansion_budget: OdfTableExpansionBudget | None = None,
+) -> TableGrid:
     """展开受限重复行列与合并单元格，构造规范二维网格。"""
     grid = TableGrid()
+    reservation = expansion_budget.start_table() if expansion_budget is not None else None
     duplicated_text_bytes = 0
     row_index = 0
     pending_empty_rows = 0
     pending_empty_width = 0
+
+    def ensure_row(target_row: int, width: int = 0) -> list[GridCell | None]:
+        """在兼容独立表格调用的同时应用可选文档级预留。"""
+        if reservation is None:
+            return _ensure_row(grid, target_row, width)
+        return _ensure_row(grid, target_row, width, reservation)
+
     for row_element, header in _iter_rows(table):
         row_repeat = _positive_int(row_element.get(qname("table", "number-rows-repeated")))
         _validate_grid_extent(row_index + row_repeat, grid.width)
@@ -127,9 +198,15 @@ def parse_table_grid(table: etree._Element, render_cell: CellRenderer) -> TableG
             if not _has_visible_html(cell_html):
                 typed_value = _typed_value_text(cell)
                 cell_html = html.escape(typed_value) if typed_value else ""
-            duplicated_text_bytes += len(cell_html.encode("utf-8")) * max(0, row_repeat * column_repeat - 1)
-            if duplicated_text_bytes > MAX_EXPANSION_TEXT_BYTES:
-                raise OdfResourceLimitError(f"ODF resource limit exceeded: max_expansion_text_bytes={MAX_EXPANSION_TEXT_BYTES}")
+            duplicated_bytes = len(cell_html.encode("utf-8")) * max(0, row_repeat * column_repeat - 1)
+            if expansion_budget is None:
+                duplicated_text_bytes += duplicated_bytes
+                if duplicated_text_bytes > MAX_EXPANSION_TEXT_BYTES:
+                    raise OdfResourceLimitError(
+                        f"ODF resource limit exceeded: max_expansion_text_bytes={MAX_EXPANSION_TEXT_BYTES}"
+                    )
+            else:
+                expansion_budget.charge_duplicated_text(duplicated_bytes)
             cell_templates.append(
                 (
                     False,
@@ -151,12 +228,12 @@ def parse_table_grid(table: etree._Element, render_cell: CellRenderer) -> TableG
         if pending_empty_rows:
             _validate_grid_extent(row_index + pending_empty_rows, max(grid.width, pending_empty_width))
             for _ in range(pending_empty_rows):
-                _ensure_row(grid, row_index, pending_empty_width)
+                ensure_row(row_index, pending_empty_width)
                 row_index += 1
             pending_empty_rows = 0
             pending_empty_width = 0
         for _ in range(row_repeat):
-            row = _ensure_row(grid, row_index)
+            row = ensure_row(row_index)
             col_index = 0
             pending_empty_columns = 0
             for is_covered, repeat, template in cell_templates:
@@ -173,14 +250,14 @@ def parse_table_grid(table: etree._Element, render_cell: CellRenderer) -> TableG
                     continue
                 if pending_empty_columns:
                     col_index += pending_empty_columns
-                    _ensure_row(grid, row_index, col_index)
+                    ensure_row(row_index, col_index)
                     pending_empty_columns = 0
                 if not is_covered:
                     _validate_grid_extent(row_index + 1, max(grid.width, col_index + repeat))
                 for _ in range(repeat):
                     if is_covered:
                         if (row_index, col_index) in grid.covered:
-                            _ensure_row(grid, row_index, col_index + 1)
+                            ensure_row(row_index, col_index + 1)
                             col_index += 1
                         continue
                     while (row_index, col_index) in grid.covered:
@@ -196,10 +273,10 @@ def parse_table_grid(table: etree._Element, render_cell: CellRenderer) -> TableG
                         row_index + placed.row_span,
                         max(grid.width, col_index + placed.col_span),
                     )
-                    row = _ensure_row(grid, row_index, col_index + placed.col_span)
+                    row = ensure_row(row_index, col_index + placed.col_span)
                     row[col_index] = placed
                     for row_offset in range(placed.row_span):
-                        covered_row = _ensure_row(grid, row_index + row_offset, col_index + placed.col_span)
+                        covered_row = ensure_row(row_index + row_offset, col_index + placed.col_span)
                         for col_offset in range(placed.col_span):
                             if row_offset == 0 and col_offset == 0:
                                 continue
@@ -382,6 +459,7 @@ def union_bounds(bounds: list[tuple[int, int, int, int]]) -> tuple[int, int, int
 
 
 __all__ = [
+    "OdfTableExpansionBudget",
     "crop_table_grid",
     "parse_cell_range_bounds",
     "parse_table_grid",

@@ -33,7 +33,7 @@ from .models import (
 )
 from .package import OdfPackage
 from .styles import OdfStyles
-from .table import parse_table_grid, table_grid_to_html
+from .table import OdfTableExpansionBudget, parse_table_grid, table_grid_to_html
 
 
 _WHITESPACE_RE = re.compile(r"[\t\r\n ]+")
@@ -53,7 +53,15 @@ class OdfTextExpansionBudget:
         self.used_bytes += byte_count
 
 
+@dataclass(frozen=True, slots=True)
+class OdfMasterPageChange:
+    """表示列表流中由段落样式请求的 master-page 变化。"""
+
+    master_page_name: str
+
+
 RawFlowItem = dict[str, Any] | InlineNote
+OdfListFlowItem = dict[str, Any] | InlineNote | OdfMasterPageChange
 
 
 def _clean_xml_text(value: str | None) -> str:
@@ -241,6 +249,7 @@ class OdfBlockParser:
         shared_cell_visuals: list[dict[str, Any]] | None = None,
         anchor_targets: frozenset[str] | None = None,
         text_expansion_budget: OdfTextExpansionBudget | None = None,
+        table_expansion_budget: OdfTableExpansionBudget | None = None,
     ) -> None:
         """绑定单次解析包、样式、子文档路径及可跨 parser 共享的状态。"""
         self.package = package
@@ -253,6 +262,7 @@ class OdfBlockParser:
         self._cell_visuals = shared_cell_visuals if shared_cell_visuals is not None else []
         self._anchor_targets = anchor_targets or frozenset()
         self._text_expansion_budget = text_expansion_budget or OdfTextExpansionBudget()
+        self.table_expansion_budget = table_expansion_budget or OdfTableExpansionBudget()
 
     def _append_text_atom(
         self,
@@ -438,14 +448,21 @@ class OdfBlockParser:
         *,
         depth: int = 0,
         inherited_style: str | None = None,
-    ) -> list[dict[str, Any]]:
+        emit_master_page_changes: bool = False,
+    ) -> list[OdfListFlowItem]:
         """递归构造严格 LIST 分片，并把不允许嵌套的 block 提升为有序兄弟。"""
         items = [
             item
             for item in element
             if isinstance(item.tag, str) and item.tag in {qname("text", "list-item"), qname("text", "list-header")}
         ]
-        return self._parse_list_items(element, items, depth=depth, inherited_style=inherited_style)
+        return self._parse_list_items(
+            element,
+            items,
+            depth=depth,
+            inherited_style=inherited_style,
+            emit_master_page_changes=emit_master_page_changes,
+        )
 
     def _parse_list_items(
         self,
@@ -454,7 +471,8 @@ class OdfBlockParser:
         *,
         depth: int,
         inherited_style: str | None,
-    ) -> list[dict[str, Any]]:
+        emit_master_page_changes: bool,
+    ) -> list[OdfListFlowItem]:
         """按源条目构造 LIST 分片，每个条目只保留一个文本叶子和一个 marker。"""
         style_name = element.get(qname("text", "style-name")) or inherited_style
         level = self.styles.list_level(style_name, depth)
@@ -465,24 +483,28 @@ class OdfBlockParser:
             start = self._list_ids[continue_list]
         elif element.get(qname("text", "continue-numbering")) == "true" and key in self._list_counters:
             start = self._list_counters[key]
-        results: list[dict[str, Any]] = []
+        results: list[OdfListFlowItem] = []
         content: list[dict[str, Any]] = []
+        fragment_notes: list[InlineNote] = []
         item_count = 0
+        active_master: str | None = None
 
         def flush_content(fragment_start: int) -> None:
             """把当前合法子块冻结为一个 LIST 分片。"""
-            if not content:
-                return
-            block: dict[str, Any] = {
-                "type": BlockType.LIST,
-                "attribute": "ordered" if level.ordered else "unordered",
-                "ilevel": depth,
-                "content": list(content),
-            }
-            if level.ordered:
-                block["start"] = fragment_start
-            results.append(block)
-            content.clear()
+            if content:
+                block: dict[str, Any] = {
+                    "type": BlockType.LIST,
+                    "attribute": "ordered" if level.ordered else "unordered",
+                    "ilevel": depth,
+                    "content": list(content),
+                }
+                if level.ordered:
+                    block["start"] = fragment_start
+                results.append(block)
+                content.clear()
+            if fragment_notes:
+                results.extend(fragment_notes)
+                fragment_notes.clear()
 
         fragment_start = start
         for item in items:
@@ -497,15 +519,36 @@ class OdfBlockParser:
                         pass
                 # 统一 LIST 只支持列表级起始值，后续逐项重启按连续序号投影。
                 item_count += 1
+            first_paragraph = next(
+                (
+                    child
+                    for child in item
+                    if isinstance(child.tag, str) and child.tag in {qname("text", "p"), qname("text", "h")}
+                ),
+                None,
+            )
+            requested_master = (
+                self.styles.paragraph_master_page_name(first_paragraph.get(qname("text", "style-name")))
+                if first_paragraph is not None
+                else None
+            )
+            if emit_master_page_changes and requested_master is not None and requested_master != active_master:
+                flush_content(fragment_start)
+                results.append(OdfMasterPageChange(requested_master))
+                active_master = requested_master
+                fragment_start = start + item_count - (0 if is_header else 1)
             text_parts: list[str] = []
             nested_blocks: list[dict[str, Any]] = []
-            lifted_blocks: list[dict[str, Any]] = []
+            lifted_blocks: list[OdfListFlowItem] = []
 
             def consume_flow(flow: Sequence[RawFlowItem]) -> None:
                 """把段落子流投影到列表文本、嵌套列表或提升块。"""
                 for block in flow:
                     if isinstance(block, InlineNote):
-                        self.notes.append(block.content)
+                        if emit_master_page_changes:
+                            fragment_notes.append(block)
+                        else:
+                            self.notes.append(block.content)
                         continue
                     block_type = block.get("type")
                     block_content = block.get("content")
@@ -528,9 +571,17 @@ class OdfBlockParser:
                 if child.tag in {qname("text", "p"), qname("text", "h")}:
                     consume_flow(self.parse_paragraph(child))
                 elif child.tag == qname("text", "list"):
-                    nested_flow = self.parse_list_blocks(child, depth=depth + 1, inherited_style=style_name)
-                    if all(block.get("type") == BlockType.LIST for block in nested_flow):
-                        nested_blocks.extend(nested_flow)
+                    nested_flow = self.parse_list_blocks(
+                        child,
+                        depth=depth + 1,
+                        inherited_style=style_name,
+                        emit_master_page_changes=emit_master_page_changes,
+                    )
+                    if not any(isinstance(block, OdfMasterPageChange) for block in nested_flow) and all(
+                        isinstance(block, InlineNote) or block.get("type") == BlockType.LIST for block in nested_flow
+                    ):
+                        nested_blocks.extend(block for block in nested_flow if isinstance(block, dict))
+                        fragment_notes.extend(block for block in nested_flow if isinstance(block, InlineNote))
                     else:
                         lifted_blocks.extend(nested_flow)
                 else:
@@ -556,12 +607,19 @@ class OdfBlockParser:
         *,
         depth: int = 0,
         inherited_style: str | None = None,
-    ) -> list[dict[str, Any]]:
+        emit_master_page_changes: bool = False,
+    ) -> list[OdfListFlowItem]:
         """把含 text:h 的编号章节提升为标题，并保留其余连续列表。"""
         if next(element.iter(qname("text", "h")), None) is None:
-            return self.parse_list(element, depth=depth, inherited_style=inherited_style)
-        results: list[dict[str, Any]] = []
+            return self.parse_list(
+                element,
+                depth=depth,
+                inherited_style=inherited_style,
+                emit_master_page_changes=emit_master_page_changes,
+            )
+        results: list[OdfListFlowItem] = []
         pending_items: list[etree._Element] = []
+        active_master: str | None = None
 
         def flush_pending() -> None:
             """把标题之间积累的普通列表项写为独立连续 LIST block。"""
@@ -572,6 +630,7 @@ class OdfBlockParser:
                 list(pending_items),
                 depth=depth,
                 inherited_style=inherited_style,
+                emit_master_page_changes=emit_master_page_changes,
             )
             pending_items.clear()
             results.extend(blocks)
@@ -590,9 +649,16 @@ class OdfBlockParser:
                 if not isinstance(child.tag, str):
                     continue
                 if child.tag in {qname("text", "p"), qname("text", "h")}:
+                    requested_master = self.styles.paragraph_master_page_name(child.get(qname("text", "style-name")))
+                    if emit_master_page_changes and requested_master is not None and requested_master != active_master:
+                        results.append(OdfMasterPageChange(requested_master))
+                        active_master = requested_master
                     for parsed in self.parse_paragraph(child):
                         if isinstance(parsed, InlineNote):
-                            self.notes.append(parsed.content)
+                            if emit_master_page_changes:
+                                results.append(parsed)
+                            else:
+                                self.notes.append(parsed.content)
                             continue
                         if child.tag == qname("text", "h") and parsed.get("type") == BlockType.PARAGRAPH_TITLE:
                             parsed["is_numbered_style"] = True
@@ -603,6 +669,7 @@ class OdfBlockParser:
                             child,
                             depth=depth + 1,
                             inherited_style=element.get(qname("text", "style-name")) or inherited_style,
+                            emit_master_page_changes=emit_master_page_changes,
                         )
                     )
                 else:
@@ -628,7 +695,7 @@ class OdfBlockParser:
 
     def parse_table(self, element: etree._Element) -> dict[str, Any] | None:
         """把一个 ODF table 转为包含合并语义的 TABLE raw block。"""
-        grid = parse_table_grid(element, self.render_cell_html)
+        grid = parse_table_grid(element, self.render_cell_html, expansion_budget=self.table_expansion_budget)
         content = table_grid_to_html(grid)
         return {"type": BlockType.TABLE, "content": content} if content else None
 
@@ -715,11 +782,13 @@ class OdfBlockParser:
                     shared_cell_visuals=self._cell_visuals,
                     anchor_targets=self._anchor_targets,
                     text_expansion_budget=self._text_expansion_budget,
+                    table_expansion_budget=self.table_expansion_budget,
                 )
                 chart = parse_chart_block(
                     object_root,
                     render_cell=object_parser.render_cell_html,
                     preview_data_uri=preview_uri,
+                    table_expansion_budget=self.table_expansion_budget,
                 )
                 if chart is not None:
                     return None, [chart]
@@ -839,7 +908,7 @@ class OdfBlockParser:
             elif child.tag == qname("text", "list"):
                 parts.append(self._render_list_html(child))
             elif child.tag == qname("table", "table"):
-                nested = parse_table_grid(child, self.render_cell_html)
+                nested = parse_table_grid(child, self.render_cell_html, expansion_budget=self.table_expansion_budget)
                 parts.append(table_grid_to_html(nested))
             elif child.tag == qname("draw", "frame"):
                 inline, blocks = self._parse_frame(child)
@@ -923,6 +992,7 @@ def flatten_block_text(blocks: list[dict[str, Any]]) -> str:
 
 __all__ = [
     "OdfBlockParser",
+    "OdfMasterPageChange",
     "OdfTextExpansionBudget",
     "RawFlowItem",
     "flatten_block_text",

@@ -314,6 +314,89 @@ def test_odt_ignores_physical_breaks_and_pages_only_on_master_change() -> None:
     ]
 
 
+def test_odt_list_master_changes_split_pages_and_preserve_numbering_notes() -> None:
+    """验证列表条目中的 master 变化会切页并保持编号、脚注和页眉归属。"""
+    content = """<office:document-content
+     xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+     xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0"
+     xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+     <office:automatic-styles>
+      <style:style style:name="A" style:family="paragraph" style:master-page-name="MasterA"/>
+      <style:style style:name="B" style:family="paragraph" style:master-page-name="MasterB"/>
+      <text:list-style style:name="L1">
+       <text:list-level-style-number text:level="1" style:num-format="1" text:start-value="3"/>
+      </text:list-style>
+     </office:automatic-styles>
+     <office:body><office:text>
+      <text:p text:style-name="A">Before list</text:p>
+      <text:list text:style-name="L1">
+       <text:list-item><text:p>First <text:note><text:note-citation>1</text:note-citation>
+        <text:note-body><text:p>First note</text:p></text:note-body></text:note></text:p></text:list-item>
+       <text:list-item><text:p text:style-name="B">Second <text:note><text:note-citation>2</text:note-citation>
+        <text:note-body><text:p>Second note</text:p></text:note-body></text:note></text:p></text:list-item>
+       <text:list-item><text:p>Third</text:p></text:list-item>
+      </text:list>
+     </office:text></office:body></office:document-content>"""
+    styles = """<office:document-styles
+     xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+     xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0"
+     xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+     <office:master-styles>
+      <style:master-page style:name="MasterA">
+       <style:header><text:p>Header A</text:p></style:header>
+      </style:master-page>
+      <style:master-page style:name="MasterB">
+       <style:header><text:p>Header B</text:p></style:header>
+      </style:master-page>
+     </office:master-styles></office:document-styles>"""
+
+    pages = OdtModel().predict(BytesIO(build_odf_package("odt", content, styles_xml=styles)))
+
+    assert len(pages) == 2
+    first_list = next(block for block in pages[0] if block["type"] == BlockType.LIST)
+    second_list = next(block for block in pages[1] if block["type"] == BlockType.LIST)
+    assert first_list["start"] == 3
+    assert second_list["start"] == 4
+    assert [child["content"] for child in first_list["content"]] == ["First [1]"]
+    assert [child["content"] for child in second_list["content"]] == ["Second [2]", "Third"]
+    assert any(block["type"] == BlockType.PAGE_FOOTNOTE and "First note" in block["content"] for block in pages[0])
+    assert any(block["type"] == BlockType.PAGE_FOOTNOTE and "Second note" in block["content"] for block in pages[1])
+    assert any(block["type"] == BlockType.HEADER and block["content"] == "Header A" for block in pages[0])
+    assert any(block["type"] == BlockType.HEADER and block["content"] == "Header B" for block in pages[1])
+
+
+def test_odt_list_can_select_nondefault_master_on_first_page() -> None:
+    """验证文档从列表开始时使用首个列表段落请求的 master-page。"""
+    content = """<office:document-content
+     xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+     xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0"
+     xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+     <office:automatic-styles>
+      <style:style style:name="B" style:family="paragraph" style:master-page-name="MasterB"/>
+     </office:automatic-styles>
+     <office:body><office:text><text:list><text:list-item>
+      <text:p text:style-name="B">First list item</text:p>
+     </text:list-item></text:list></office:text></office:body></office:document-content>"""
+    styles = """<office:document-styles
+     xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+     xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0"
+     xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+     <office:master-styles>
+      <style:master-page style:name="MasterA">
+       <style:header><text:p>Header A</text:p></style:header>
+      </style:master-page>
+      <style:master-page style:name="MasterB">
+       <style:header><text:p>Header B</text:p></style:header>
+      </style:master-page>
+     </office:master-styles></office:document-styles>"""
+
+    pages = OdtModel().predict(BytesIO(build_odf_package("odt", content, styles_xml=styles)))
+
+    assert len(pages) == 1
+    assert any(block["type"] == BlockType.HEADER and block["content"] == "Header B" for block in pages[0])
+    assert all(block.get("content") != "Header A" for block in pages[0])
+
+
 def test_odf_covered_placeholder_reuses_colspan_coordinate() -> None:
     """验证 colspan 后的 covered placeholder 不会额外扩宽表格。"""
     table = etree.fromstring(
@@ -571,6 +654,93 @@ def test_odf_rejects_projected_span_extent_before_extending_existing_row(monkeyp
     with pytest.raises(OdfResourceLimitError, match="max_grid_slots"):
         odf_table_module.parse_table_grid(table, lambda _cell: "x")
     assert observed_widths and max(observed_widths) <= 3
+
+
+def test_odf_rejects_overlong_repeat_before_integer_conversion(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证超长 repeat 计数在 int 和单元格渲染前触发网格预算。"""
+    monkeypatch.setattr(odf_table_module, "MAX_GRID_SLOTS", 4)
+
+    def unexpected_render(_cell: object) -> str:
+        """超限 repeat 不得进入单元格渲染。"""
+        pytest.fail("oversized ODF repeat reached cell rendering")
+
+    table = etree.fromstring(
+        (
+            '<table:table xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0">'
+            f'<table:table-row table:number-rows-repeated="{"9" * 100_000}">'
+            "<table:table-cell/>"
+            "</table:table-row></table:table>"
+        ).encode()
+    )
+
+    with pytest.raises(OdfResourceLimitError, match="max_grid_slots"):
+        odf_table_module.parse_table_grid(table, unexpected_render)
+
+
+def test_odf_document_grid_budget_is_shared_across_tables(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证多个独立表格共同消耗同一个文档网格预算。"""
+    monkeypatch.setattr(odf_table_module, "MAX_GRID_SLOTS", 4)
+    budget = odf_table_module.OdfTableExpansionBudget()
+    table_xml = (
+        '<table:table xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0">'
+        '<table:table-row table:number-rows-repeated="2">'
+        '<table:table-cell table:number-columns-repeated="2"/>'
+        "</table:table-row></table:table>"
+    )
+
+    first = odf_table_module.parse_table_grid(
+        etree.fromstring(table_xml.encode()),
+        lambda _cell: "x",
+        expansion_budget=budget,
+    )
+    assert len(first.rows) * first.width == 4
+    with pytest.raises(OdfResourceLimitError, match="max_grid_slots"):
+        odf_table_module.parse_table_grid(
+            etree.fromstring(table_xml.encode()),
+            lambda _cell: "x",
+            expansion_budget=budget,
+        )
+
+
+def test_odf_document_text_expansion_budget_is_shared_across_tables(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证多个表格的重复单元格文本共同消耗文档级字节预算。"""
+    monkeypatch.setattr(odf_table_module, "MAX_GRID_SLOTS", 100)
+    monkeypatch.setattr(odf_table_module, "MAX_EXPANSION_TEXT_BYTES", 4)
+    budget = odf_table_module.OdfTableExpansionBudget()
+    table_xml = (
+        '<table:table xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0">'
+        '<table:table-row><table:table-cell table:number-columns-repeated="2"/></table:table-row>'
+        "</table:table>"
+    )
+
+    odf_table_module.parse_table_grid(
+        etree.fromstring(table_xml.encode()),
+        lambda _cell: "xxx",
+        expansion_budget=budget,
+    )
+    with pytest.raises(OdfResourceLimitError, match="max_expansion_text_bytes"):
+        odf_table_module.parse_table_grid(
+            etree.fromstring(table_xml.encode()),
+            lambda _cell: "xxx",
+            expansion_budget=budget,
+        )
+
+
+def test_odt_parser_wires_one_table_budget_across_document(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证 ODT 中多个普通表格通过 parser 共享同一文档预算。"""
+    monkeypatch.setattr(odf_table_module, "MAX_GRID_SLOTS", 4)
+    table = """<table:table><table:table-row table:number-rows-repeated="2">
+     <table:table-cell table:number-columns-repeated="2"><text:p>x</text:p></table:table-cell>
+    </table:table-row></table:table>"""
+    content = f"""<office:document-content
+     xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+     xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0"
+     xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+     <office:body><office:text>{table}{table}</office:text></office:body>
+    </office:document-content>"""
+
+    with pytest.raises(OdfResourceLimitError, match="max_grid_slots"):
+        OdtModel().predict(BytesIO(build_odf_package("odt", content)))
 
 
 def test_odf_rejects_overlong_chart_columns_before_bigint_conversion(monkeypatch: pytest.MonkeyPatch) -> None:

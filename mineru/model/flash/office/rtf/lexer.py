@@ -10,6 +10,9 @@ from ..errors import LegacyOfficeMalformedError, LegacyOfficeResourceLimitError
 from ..limits import MAX_RECORDS
 
 MAX_RTF_GROUP_DEPTH = 256
+MAX_RTF_CONTROL_PARAMETER_DIGITS = 10
+MIN_RTF_CONTROL_PARAMETER = -(2**31)
+MAX_RTF_CONTROL_PARAMETER = 2**31 - 1
 
 
 @dataclass(frozen=True, slots=True)
@@ -116,9 +119,7 @@ class RtfLexer:
                 cursor += 1
                 depth += 1
                 if depth > MAX_RTF_GROUP_DEPTH:
-                    raise LegacyOfficeResourceLimitError(
-                        f"RTF group nesting exceeds max_group_depth={MAX_RTF_GROUP_DEPTH}"
-                    )
+                    raise LegacyOfficeResourceLimitError(f"RTF group nesting exceeds max_group_depth={MAX_RTF_GROUP_DEPTH}")
                 token = RtfOpen(start, cursor)
             elif value == ord("}"):
                 cursor += 1
@@ -166,7 +167,14 @@ class RtfLexer:
                         cursor += 1
                     param = None
                     if cursor > number_start:
+                        digit_count = cursor - number_start
+                        if digit_count > MAX_RTF_CONTROL_PARAMETER_DIGITS:
+                            raise LegacyOfficeResourceLimitError(
+                                f"RTF control parameter exceeds max_digits={MAX_RTF_CONTROL_PARAMETER_DIGITS}"
+                            )
                         param = sign * int(data[number_start:cursor])
+                        if param < MIN_RTF_CONTROL_PARAMETER or param > MAX_RTF_CONTROL_PARAMETER:
+                            raise LegacyOfficeResourceLimitError("RTF control parameter exceeds signed 32-bit range")
                     if cursor < len(data) and data[cursor] == ord(" "):
                         cursor += 1
                     if name == "bin":

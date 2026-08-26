@@ -59,6 +59,32 @@ def test_rtf_lexer_rejects_truncated_bin_payload() -> None:
         list(RtfLexer(rb"{\rtf1\bin9 ab}"))
 
 
+@pytest.mark.parametrize(
+    "control",
+    [
+        b"\\foo99999999999",
+        b"\\foo2147483648",
+        b"\\foo-2147483649",
+        b"\\bin99999999999 payload",
+    ],
+)
+def test_rtf_lexer_rejects_control_parameters_before_unbounded_int(control: bytes) -> None:
+    """验证超长或越界 control parameter 在整数转换和 bin 定位前失败。"""
+    with pytest.raises(LegacyOfficeResourceLimitError, match="control parameter"):
+        list(RtfLexer(b"{\\rtf1" + control + b"}"))
+
+
+def test_rtf_lexer_accepts_signed_32_bit_control_parameter_boundaries() -> None:
+    """验证十位词法限制仍允许有符号 32 位参数边界。"""
+    tokens = list(RtfLexer(rb"{\rtf1\foo2147483647\bar-2147483648}"))
+    controls = [token for token in tokens if isinstance(token, lexer_module.RtfControlWord)]
+
+    assert [(token.name, token.param) for token in controls[-2:]] == [
+        ("foo", 2_147_483_647),
+        ("bar", -2_147_483_648),
+    ]
+
+
 def test_rtf_font_codepages_and_unicode_surrogates_are_exact() -> None:
     """验证 per-font CP1251/CP932、多字节 hex 和 UTF-16 代理对恢复。"""
     russian = b"".join(f"\\'{value:02x}".encode("ascii") for value in "Привет".encode("cp1251"))
@@ -120,7 +146,7 @@ def test_rtf_large_roman_list_start_falls_back_to_decimal() -> None:
     """验证超出规范范围的 Roman 起始值直接回退十进制而不线性扩张。"""
     source = b"".join(
         [
-            rb"{\rtf1\ansi{\*\listtable{\list{\listlevel\levelnfc1\levelstartat1000000000000}\listid7}}",
+            rb"{\rtf1\ansi{\*\listtable{\list{\listlevel\levelnfc1\levelstartat2147483647}\listid7}}",
             rb"{\*\listoverridetable{\listoverride\listid7\listoverridecount0\ls2}}",
             rb"\pard\ls2\ilvl0 item\par}",
         ]
@@ -129,7 +155,7 @@ def test_rtf_large_roman_list_start_falls_back_to_decimal() -> None:
     pages = RtfModel().predict(BytesIO(source))
 
     assert pages[0][0]["type"] == BlockType.LIST
-    assert pages[0][0]["content"][0]["list_label"] == "1000000000000."
+    assert pages[0][0]["content"][0]["list_label"] == "2147483647."
 
 
 def test_rtf_model_recovers_unicode_styles_and_structures() -> None:
