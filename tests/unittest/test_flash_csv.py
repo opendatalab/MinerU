@@ -146,6 +146,28 @@ def test_csv_grid_limit_short_circuits_before_trailing_malformed_record(monkeypa
         CsvModel().predict(BytesIO(b'a,b\n1,2\n"unterminated'))
 
 
+def test_csv_rendered_budget_fails_before_materializing_escaped_field(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证 HTML 展开超限时不会先创建放大的字段字符串。"""
+    monkeypatch.setattr(csv_module, "MAX_CSV_RENDERED_BYTES", 64)
+
+    def unexpected_escape(_value: str) -> str:
+        """输出预算应在进入 html.escape 前拒绝字段。"""
+        pytest.fail("oversized CSV field reached HTML escaping")
+
+    monkeypatch.setattr(csv_module, "_render_field_html", unexpected_escape)
+
+    with pytest.raises(ValueError, match="max_rendered_bytes"):
+        csv_module._rows_to_html([["&" * 20]], has_header=False)
+
+
+def test_csv_rendered_size_estimator_matches_html_escape_semantics() -> None:
+    """验证特殊字符、换行、控制符和非 ASCII 文本的 UTF-8 预算精确。"""
+    value = "&<>\"'\r\n\x01中"
+    rendered = csv_module._render_field_html(value)
+
+    assert csv_module._rendered_field_utf8_bytes(value, 1_000) == len(rendered.encode())
+
+
 def test_csv_default_grid_budget_rejects_wide_dom_before_rendering() -> None:
     """验证默认预算在宽空表生成数十万 HTML 节点前拒绝输入。"""
     assert csv_module.MAX_CSV_GRID_SLOTS == 250_000

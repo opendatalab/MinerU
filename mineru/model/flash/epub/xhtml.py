@@ -489,7 +489,7 @@ class EpubChapterConverter:
         if name == "figure":
             return self._parse_figure(element, resolved.text)
         if name == "svg":
-            return self._parse_svg(element)
+            return self._parse_svg(element, resolved.text)
         return self._parse_container_contents(element, resolved.text)
 
     def _parse_note_element(self, element: etree._Element, style: TextStyle) -> list[dict[str, object]]:
@@ -622,20 +622,44 @@ class EpubChapterConverter:
             blocks.append({"type": BlockType.TEXT, "content": html.escape(caption, quote=False)})
         return blocks
 
-    def _parse_svg(self, element: etree._Element) -> list[dict[str, object]]:
+    def _visible_svg_text(self, element: etree._Element, style: TextStyle) -> str:
+        """递归提取 SVG 可见文本，并排除隐藏后代的内容。"""
+        parts = [_clean_text_node(element.text)]
+        for child in element:
+            if not isinstance(child.tag, str):
+                parts.append(_clean_text_node(_entity_text(child)))
+                parts.append(_clean_text_node(child.tail))
+                continue
+            resolved = self.stylesheet.resolve(child, style)
+            if not resolved.hidden:
+                parts.append(self._visible_svg_text(child, resolved.text))
+            parts.append(_clean_text_node(child.tail))
+        return _WHITESPACE_RE.sub(" ", html.unescape("".join(parts))).strip()
+
+    def _parse_svg(self, element: etree._Element, style: TextStyle) -> list[dict[str, object]]:
         """从 SVG 尽力提取 title/desc/text 和包内栅格 image。"""
         blocks: list[dict[str, object]] = []
         texts: list[str] = []
-        for child in element.iter():
-            if not isinstance(child.tag, str):
-                continue
-            name = _local_name(child)
-            if name in {"title", "desc", "text"}:
-                value = _visible_text(child)
-                if value and value not in texts:
-                    texts.append(value)
-            elif name == "image":
-                blocks.extend(self._image_blocks(child))
+
+        def visit(parent: etree._Element, inherited: TextStyle) -> None:
+            """按 SVG 树顺序访问可见候选节点，并让祖先隐藏状态截断子树。"""
+            for child in parent:
+                if not isinstance(child.tag, str):
+                    continue
+                resolved = self.stylesheet.resolve(child, inherited)
+                if resolved.hidden:
+                    continue
+                name = _local_name(child)
+                if name in {"title", "desc", "text"}:
+                    value = self._visible_svg_text(child, resolved.text)
+                    if value and value not in texts:
+                        texts.append(value)
+                elif name == "image":
+                    blocks.extend(self._image_blocks(child))
+                else:
+                    visit(child, resolved.text)
+
+        visit(element, style)
         if texts:
             blocks.insert(0, {"type": BlockType.TEXT, "content": html.escape("\n".join(texts), quote=False)})
         return blocks
@@ -880,7 +904,8 @@ def convert_svg_spine(
     """把 standalone SVG spine item 尽力转换为文本和包内栅格图片。"""
     empty_registry = EpubAnchorRegistry([], package)
     converter = EpubChapterConverter(package, chapter_path, root, empty_registry)
-    return converter._parse_svg(root)
+    resolved = converter.stylesheet.resolve(root, TextStyle())
+    return [] if resolved.hidden else converter._parse_svg(root, resolved.text)
 
 
 __all__ = [

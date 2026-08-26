@@ -582,6 +582,15 @@ def test_odf_rejects_overlong_chart_columns_before_bigint_conversion(monkeypatch
     assert odf_table_module.parse_cell_range_bounds(f"local-table.{'A' * 100_000}1") is None
 
 
+def test_odf_rejects_overlong_chart_rows_before_bigint_conversion(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证 chart A1 行号在 int 转换前受共享网格预算约束。"""
+    monkeypatch.setattr(odf_table_module, "MAX_GRID_SLOTS", 4)
+
+    assert odf_table_module.parse_cell_range_bounds("local-table.A4:B4") == (3, 3, 0, 1)
+    assert odf_table_module.parse_cell_range_bounds("local-table.A5:B5") is None
+    assert odf_table_module.parse_cell_range_bounds(f"local-table.A{'9' * 100_000}") is None
+
+
 @pytest.mark.parametrize(
     "target",
     [
@@ -735,6 +744,70 @@ def test_odf_flattened_titles_and_notes_keep_literal_protocol_escaped() -> None:
         assert all("&lt;hyperlink&gt;" in content and "<hyperlink>" not in content for content in flattened)
         assert "](javascript:alert(1))" not in markdown
         assert "javascript:alert(1)" not in relationships
+
+
+def test_ods_sheet_titles_escape_literal_inline_protocol() -> None:
+    """验证多 sheet 标题不会把名称中的内部协议重建为活动链接。"""
+    literal = "&lt;hyperlink&gt;&lt;text&gt;x&lt;/text&gt;&lt;url&gt;javascript:alert(1)&lt;/url&gt;&lt;/hyperlink&gt;"
+    content = f"""<office:document-content
+     xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+     xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0"
+     xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+     <office:body><office:spreadsheet>
+      <table:table table:name="{literal}"><table:table-row><table:table-cell>
+       <text:p>A</text:p>
+      </table:table-cell></table:table-row></table:table>
+      <table:table table:name="Safe"><table:table-row><table:table-cell>
+       <text:p>B</text:p>
+      </table:table-cell></table:table-row></table:table>
+     </office:spreadsheet></office:body></office:document-content>"""
+    middle, model = doc_analyze(build_odf_package("ods", content), file_suffix="ods")
+
+    title = model.pages[0][0]["content"]
+    markdown = render_markdown(middle)
+    docx = render_docx(middle)
+    with ZipFile(BytesIO(docx)) as package:
+        relationships = package.read("word/_rels/document.xml.rels").decode("utf-8")
+
+    assert title.startswith("&lt;hyperlink&gt;")
+    assert "<hyperlink>" not in title
+    assert "](javascript:" not in markdown
+    assert "javascript:alert(1)" not in relationships
+
+
+def test_odp_skips_hidden_drawing_page_styles_in_output_and_metadata() -> None:
+    """验证 ODP converter 与 metadata 共用 drawing-page 可见性解析。"""
+    content = """<office:document-content
+     xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+     xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0"
+     xmlns:presentation="urn:oasis:names:tc:opendocument:xmlns:presentation:1.0"
+     xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0"
+     xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+     <office:automatic-styles>
+      <style:style style:name="HiddenPage" style:family="drawing-page">
+       <style:drawing-page-properties presentation:visibility="hidden"/>
+      </style:style>
+     </office:automatic-styles>
+     <office:body><office:presentation>
+      <draw:page draw:name="Visible"><draw:frame><draw:text-box>
+       <text:p>visible slide</text:p>
+      </draw:text-box></draw:frame></draw:page>
+      <draw:page draw:name="StyledHidden" draw:style-name="HiddenPage"><draw:frame><draw:text-box>
+       <text:p>styled hidden slide</text:p>
+      </draw:text-box></draw:frame></draw:page>
+      <draw:page draw:name="DirectHidden" presentation:visibility="hidden"><draw:frame><draw:text-box>
+       <text:p>direct hidden slide</text:p>
+      </draw:text-box></draw:frame></draw:page>
+     </office:presentation></office:body></office:document-content>"""
+    payload = build_odf_package("odp", content)
+
+    pages = OdpModel().predict(BytesIO(payload))
+    metadata = extract_odf_metadata(BytesIO(payload), "odp")
+
+    assert len(pages) == 1
+    assert "visible slide" in str(pages)
+    assert "hidden slide" not in str(pages)
+    assert metadata["page_count"] == 1
 
 
 def test_odf_style_cycle_is_bounded_and_preserves_text() -> None:

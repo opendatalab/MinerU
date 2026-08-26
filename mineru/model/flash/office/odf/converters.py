@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import html
 import re
 from dataclasses import dataclass
 from typing import Any, BinaryIO, Iterator
@@ -251,6 +252,8 @@ def _parse_odp_pages(context: _OdfContext) -> list[list[dict[str, Any]]]:
     for page in context.body:
         if page.tag != qname("draw", "page"):
             continue
+        if not context.styles.drawing_page_is_visible(page):
+            continue
         positioned: list[_PositionedBlocks] = []
         for order, (shape, x, y) in enumerate(_iter_slide_shapes(page)):
             presentation_class = shape.get(qname("presentation", "class"), "")
@@ -324,7 +327,7 @@ def _parse_ods_pages(context: _OdfContext) -> list[list[dict[str, Any]]]:
             continue
         if not context.styles.table_is_visible(sheet.get(qname("table", "style-name"))):
             continue
-        name = sheet.get(qname("table", "name"), "Sheet")
+        name = html.escape(sheet.get(qname("table", "name"), "Sheet"), quote=False)
         sheet_pages.append((name, _sheet_blocks(sheet, parser)))
     if sum(bool(blocks) for _, blocks in sheet_pages) > 1:
         for name, blocks in sheet_pages:

@@ -23,6 +23,7 @@ class _StyleDefinition:
     text_delta: TextStyleDelta
     master_page_name: str | None
     table_display: bool | None
+    drawing_page_visible: bool | None
 
 
 class OdfStyles:
@@ -35,6 +36,7 @@ class OdfStyles:
         self._list_styles: dict[str, dict[int, ListLevel]] = {}
         self._resolved_text: dict[tuple[str, str], TextStyleDelta] = {}
         self._resolved_table_display: dict[str, bool | None] = {}
+        self._resolved_drawing_page_visibility: dict[str, bool | None] = {}
         self._master_pages: dict[str, etree._Element] = {}
         for root in roots:
             if root is not None:
@@ -59,6 +61,7 @@ class OdfStyles:
                 text_delta=self._text_delta(style),
                 master_page_name=style.get(qname("style", "master-page-name")),
                 table_display=self._table_display(style),
+                drawing_page_visible=self._drawing_page_visibility(style),
             )
         for list_style in root.iter(qname("text", "list-style")):
             name = list_style.get(qname("style", "name"))
@@ -132,6 +135,17 @@ class OdfStyles:
         if display is None:
             return None
         return display.casefold() != "false"
+
+    @staticmethod
+    def _drawing_page_visibility(style: etree._Element) -> bool | None:
+        """读取 drawing-page 样式的 presentation visibility。"""
+        properties = style.find(qname("style", "drawing-page-properties"))
+        if properties is None:
+            return None
+        visibility = properties.get(qname("presentation", "visibility"))
+        if visibility is None:
+            return None
+        return visibility.casefold() != "hidden"
 
     @staticmethod
     def _parse_list_style(element: etree._Element) -> dict[int, ListLevel]:
@@ -256,6 +270,34 @@ class OdfStyles:
                 break
             current = definition.parent or ""
         self._resolved_table_display[style_name] = resolved
+        return resolved is not False
+
+    def drawing_page_is_visible(self, page: etree._Element) -> bool:
+        """解析 ODP 页面直接属性或 drawing-page 样式中的隐藏状态。"""
+        direct_visibility = page.get(qname("presentation", "visibility"))
+        if direct_visibility is not None:
+            return direct_visibility.casefold() != "hidden"
+        style_name = page.get(qname("draw", "style-name"))
+        if not style_name:
+            return True
+        if style_name in self._resolved_drawing_page_visibility:
+            return self._resolved_drawing_page_visibility[style_name] is not False
+        seen: set[str] = set()
+        current = style_name
+        resolved: bool | None = None
+        while current:
+            if current in seen:
+                logger.warning("ODF style inheritance cycle detected: family=drawing-page, style={}", current)
+                break
+            seen.add(current)
+            definition = self._styles.get(("drawing-page", current))
+            if definition is None:
+                break
+            if definition.drawing_page_visible is not None:
+                resolved = definition.drawing_page_visible
+                break
+            current = definition.parent or ""
+        self._resolved_drawing_page_visibility[style_name] = resolved
         return resolved is not False
 
     def master_page(self, name: str | None) -> etree._Element | None:

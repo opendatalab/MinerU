@@ -22,7 +22,7 @@ from mineru.errors import InvalidRequestError
 from mineru.model.flash import EpubModel
 from mineru.model.flash.epub import EpubEncryptedError, EpubPackage, EpubParseError, EpubResourceLimitError, detect_epub
 from mineru.model.flash.epub.styles import EpubStylesheet, TextStyle
-from mineru.model.flash.epub.xhtml import EpubChapterConverter, build_anchor_registry
+from mineru.model.flash.epub.xhtml import EpubChapterConverter, build_anchor_registry, convert_svg_spine
 from mineru.parser import MinerUParser, parse, parse_async
 from mineru.parser import api_server
 from mineru.parser.api_server import CreateJobRequest, FileStore
@@ -500,6 +500,35 @@ def test_epub_corrupt_chapter_keeps_empty_spine_placeholder() -> None:
     assert [page.page_idx for page in middle.pages] == [0, 1, 2]
     assert middle.pages[1].blocks == []
     assert "SVG text" in middle.pages[2].blocks[0].content  # type: ignore[union-attr]
+
+
+def test_epub_svg_extraction_skips_hidden_descendants_and_hidden_root() -> None:
+    """验证 standalone SVG 不提取隐藏文本、隐藏图片或隐藏祖先子树。"""
+    package = EpubPackage(build_epub_fixture())
+    path = "EPUB/fixed/page.svg"
+    try:
+        root = package.xml_part(path)
+        assert root is not None
+        namespace = etree.QName(root).namespace
+        original_text = next(root.iter(f"{{{namespace}}}text"))
+        original_text.set("style", "display: none")
+        original_image = next(root.iter(f"{{{namespace}}}image"))
+        original_image.set("style", "visibility: hidden")
+        hidden_group = etree.SubElement(root, f"{{{namespace}}}g", style="display: none")
+        etree.SubElement(hidden_group, f"{{{namespace}}}text").text = "hidden group text"
+        etree.SubElement(root, f"{{{namespace}}}text").text = "visible graphic label"
+
+        blocks = convert_svg_spine(package, path, root)
+
+        assert "visible graphic label" in str(blocks)
+        assert "SVG text" not in str(blocks)
+        assert "hidden group text" not in str(blocks)
+        assert all(block["type"] != BlockType.IMAGE for block in blocks)
+
+        root.set("style", "display: none")
+        assert convert_svg_spine(package, path, root) == []
+    finally:
+        package.close()
 
 
 def test_epub_malformed_resource_and_link_references_degrade_locally() -> None:

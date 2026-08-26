@@ -20,6 +20,7 @@ MAX_CSV_ROWS: Final = 1_048_576
 MAX_CSV_COLUMNS: Final = 16_384
 # CSV 会把每个槽位实体化为 HTML/DOM 节点，预算需显著低于稀疏电子表格投影上限。
 MAX_CSV_GRID_SLOTS: Final = 250_000
+MAX_CSV_RENDERED_BYTES: Final = 256 * 1024 * 1024
 
 _DELIMITER_CANDIDATES: Final = (",", ";", "\t", "|")
 _DELIMITER_SAMPLE_RECORDS: Final = 20
@@ -255,17 +256,78 @@ def _render_field_html(value: str) -> str:
     return html.escape(normalized, quote=True).replace("\n", "<br>")
 
 
+def _rendered_field_utf8_bytes(value: str, remaining_budget: int) -> int:
+    """在不创建转义字符串的前提下计算字段渲染后的 UTF-8 字节数。"""
+    rendered_bytes = 0
+    index = 0
+    while index < len(value):
+        char = value[index]
+        codepoint = ord(char)
+        if char == "\r":
+            if index + 1 < len(value) and value[index + 1] == "\n":
+                index += 1
+            addition = len("<br>")
+        elif char == "\n":
+            addition = len("<br>")
+        elif codepoint <= 0x08 or codepoint in {0x0B, 0x0C, 0x7F} or 0x0E <= codepoint <= 0x1F:
+            addition = 3
+        elif 0xD800 <= codepoint <= 0xDFFF:
+            addition = 3
+        elif char == "&":
+            addition = len("&amp;")
+        elif char in {"<", ">"}:
+            addition = len("&lt;")
+        elif char in {'"', "'"}:
+            addition = len("&quot;")
+        elif codepoint <= 0x7F:
+            addition = 1
+        elif codepoint <= 0x7FF:
+            addition = 2
+        elif codepoint <= 0xFFFF:
+            addition = 3
+        else:
+            addition = 4
+        rendered_bytes += addition
+        if rendered_bytes > remaining_budget:
+            raise ValueError(f"CSV exceeds max_rendered_bytes={MAX_CSV_RENDERED_BYTES}")
+        index += 1
+    return rendered_bytes
+
+
+def _charge_rendered_bytes(used_bytes: int, additional_bytes: int) -> int:
+    """累计 CSV HTML 输出预算，并在写入 StringIO 前拒绝超限内容。"""
+    if additional_bytes < 0 or used_bytes > MAX_CSV_RENDERED_BYTES - additional_bytes:
+        raise ValueError(f"CSV exceeds max_rendered_bytes={MAX_CSV_RENDERED_BYTES}")
+    return used_bytes + additional_bytes
+
+
 def _rows_to_html(rows: list[list[str]], *, has_header: bool) -> str:
     """增量构造安全表格 HTML，避免为每个单元格保留独立字符串对象。"""
     output = StringIO()
+    rendered_bytes = 0
+    rendered_bytes = _charge_rendered_bytes(rendered_bytes, len("<table>"))
     output.write("<table>")
     for row_index, row in enumerate(rows):
         tag = "th" if has_header and row_index == 0 else "td"
-        output.write("\n  <tr>")
+        row_prefix = "\n  <tr>"
+        rendered_bytes = _charge_rendered_bytes(rendered_bytes, len(row_prefix))
+        output.write(row_prefix)
         for value in row:
-            output.write(f"\n    <{tag}>{_render_field_html(value)}</{tag}>")
-        output.write("\n  </tr>")
-    output.write("\n</table>")
+            cell_prefix = f"\n    <{tag}>"
+            cell_suffix = f"</{tag}>"
+            rendered_bytes = _charge_rendered_bytes(rendered_bytes, len(cell_prefix) + len(cell_suffix))
+            remaining_budget = MAX_CSV_RENDERED_BYTES - rendered_bytes
+            field_bytes = _rendered_field_utf8_bytes(value, remaining_budget)
+            rendered_bytes = _charge_rendered_bytes(rendered_bytes, field_bytes)
+            output.write(cell_prefix)
+            output.write(_render_field_html(value))
+            output.write(cell_suffix)
+        row_suffix = "\n  </tr>"
+        rendered_bytes = _charge_rendered_bytes(rendered_bytes, len(row_suffix))
+        output.write(row_suffix)
+    table_suffix = "\n</table>"
+    _charge_rendered_bytes(rendered_bytes, len(table_suffix))
+    output.write(table_suffix)
     return output.getvalue()
 
 

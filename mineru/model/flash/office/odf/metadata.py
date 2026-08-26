@@ -73,7 +73,9 @@ def extract_odf_metadata(file_binary: BinaryIO, suffix: OdfSuffix) -> dict[str, 
         if suffix == "odt":
             page_count = _odt_page_count(meta_root)
         elif suffix == "odp":
-            page_count = sum(1 for child in body if child.tag == qname("draw", "page"))
+            page_count = sum(
+                1 for child in body if child.tag == qname("draw", "page") and styles.drawing_page_is_visible(child)
+            )
         else:
             page_count = _visible_sheet_count(body, styles)
         return {

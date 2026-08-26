@@ -344,6 +344,15 @@ def _column_index(label: str) -> int | None:
     return result - 1 if result <= MAX_GRID_SLOTS else None
 
 
+def _row_index(label: str) -> int | None:
+    """在整数转换前把 A1 地址中的行号约束到共享网格预算。"""
+    normalized = label.lstrip("0")
+    if not normalized or len(normalized) > len(str(MAX_GRID_SLOTS)):
+        return None
+    result = int(normalized)
+    return result - 1 if result <= MAX_GRID_SLOTS else None
+
+
 def parse_cell_range_bounds(address: str) -> tuple[int, int, int, int] | None:
     """从 ODF cell-range-address 中提取零基闭区间边界。"""
     matches = list(_CELL_ADDRESS_RE.finditer(address or ""))
@@ -351,11 +360,11 @@ def parse_cell_range_bounds(address: str) -> tuple[int, int, int, int] | None:
         return None
     first = matches[0]
     last = matches[-1]
-    row_start = int(first.group("row")) - 1
+    row_start = _row_index(first.group("row"))
     col_start = _column_index(first.group("col"))
-    row_end = int(last.group("row")) - 1
+    row_end = _row_index(last.group("row"))
     col_end = _column_index(last.group("col"))
-    if col_start is None or col_end is None:
+    if row_start is None or col_start is None or row_end is None or col_end is None:
         return None
     return min(row_start, row_end), max(row_start, row_end), min(col_start, col_end), max(col_start, col_end)
 
