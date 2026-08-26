@@ -282,6 +282,55 @@ def test_epub_table_contents_resolve_title_marker_and_expand_only_exact_single_t
     assert chapter_link["href"] == f"#{chapter_title['id']}"
 
 
+def test_epub_table_spans_are_bounded_before_downstream_grid_parsing() -> None:
+    """验证超大 EPUB colspan 在进入 DOCX 占位网格前被移除。"""
+    package = EpubPackage(build_epub_fixture())
+    chapter_path = "EPUB/text/ch2.xhtml"
+    try:
+        root = package.xml_part(chapter_path, allow_external_doctype=True)
+        cell = next(element for element in root.iter() if isinstance(element.tag, str) and element.tag.endswith("}td"))
+        cell.set("colspan", "100000000")
+
+        anchors = build_anchor_registry([(chapter_path, root)], package)
+        blocks = EpubChapterConverter(package, chapter_path, root, anchors).convert()
+        table = next(block for block in blocks if block["type"] == BlockType.TABLE)
+        parsed_cell = BeautifulSoup(str(table["content"]), "html.parser").find("td", string="1")
+
+        assert parsed_cell is not None
+        assert parsed_cell["rowspan"] == "2"
+        assert not parsed_cell.has_attr("colspan")
+    finally:
+        package.close()
+
+
+@pytest.mark.parametrize(
+    ("attribute", "value"),
+    [
+        ("hidden", "hidden"),
+        ("aria-hidden", "true"),
+        ("style", "display: none"),
+        ("class", "hidden"),
+    ],
+)
+def test_epub_figure_skips_hidden_direct_images(attribute: str, value: str) -> None:
+    """验证 figure 的直接图片同样遵守元素属性、内联样式和 CSS 隐藏规则。"""
+    package = EpubPackage(build_epub_fixture())
+    chapter_path = "EPUB/text/ch1.xhtml"
+    try:
+        root = package.xml_part(chapter_path, allow_external_doctype=True)
+        figure = next(element for element in root.iter() if isinstance(element.tag, str) and element.tag.endswith("}figure"))
+        image = next(child for child in figure if isinstance(child.tag, str) and child.tag.endswith("}img"))
+        image.set(attribute, value)
+
+        anchors = build_anchor_registry([(chapter_path, root)], package)
+        blocks = EpubChapterConverter(package, chapter_path, root, anchors).convert()
+
+        assert all(block["type"] != BlockType.IMAGE for block in blocks)
+        assert "Dot caption" in str(blocks)
+    finally:
+        package.close()
+
+
 def test_public_parser_rejects_epub_page_range(tmp_path: Path) -> None:
     """验证 EPUB 公共 Parser 只接受整本解析。"""
     source = tmp_path / "book.epub"

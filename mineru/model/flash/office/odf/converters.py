@@ -165,6 +165,14 @@ def _parse_odt_pages(context: _OdfContext) -> list[list[dict[str, Any]]]:
                 qname("text", "index-title"),
             }:
                 walk(child)
+            elif child.tag == qname("text", "list"):
+                _append_flow_items(
+                    parser.parse_list_blocks(child, allow_page_breaks=True),
+                    parser=parser,
+                    pages=pages,
+                    page_masters=page_masters,
+                    current_master=current_master,
+                )
             else:
                 pages[-1].extend(parser.parse_element(child))
 

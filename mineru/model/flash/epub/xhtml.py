@@ -99,6 +99,7 @@ _NOTE_NON_TEXT_SUBTREES = frozenset(
 _WHITESPACE_RE = re.compile(r"[\t\r\n\f ]+")
 _XML_ID = "{http://www.w3.org/XML/1998/namespace}id"
 _XLINK_HREF = "{http://www.w3.org/1999/xlink}href"
+MAX_EPUB_TABLE_SPAN = 1_000
 
 
 def _local_name(element: etree._Element) -> str:
@@ -111,6 +112,17 @@ def _clean_text_node(value: str | None) -> str:
     if not value:
         return ""
     return _WHITESPACE_RE.sub(" ", value)
+
+
+def _bounded_table_span(value: str) -> str | None:
+    """规范化 EPUB 表格跨度，并在整数转换前拒绝超长或越界值。"""
+    if not value.isdigit():
+        return None
+    normalized = value.lstrip("0")
+    if not normalized or len(normalized) > len(str(MAX_EPUB_TABLE_SPAN)):
+        return None
+    span = int(normalized)
+    return str(span) if span <= MAX_EPUB_TABLE_SPAN else None
 
 
 def _visible_text(element: etree._Element) -> str:
@@ -592,7 +604,9 @@ class EpubChapterConverter:
                 continue
             name = _local_name(child)
             if name in {"img", "image"}:
-                blocks.extend(self._image_blocks(child, caption=caption))
+                child_style = self.stylesheet.resolve(child, style)
+                if not child_style.hidden:
+                    blocks.extend(self._image_blocks(child, caption=caption))
             elif name != "figcaption":
                 child_blocks = (
                     self._parse_block(child, style) if name in _BLOCK_TAGS else self._render_inline_element(child, style)[1]
@@ -692,12 +706,14 @@ class EpubChapterConverter:
         if name in {"td", "th"}:
             for attribute in ("colspan", "rowspan", "scope"):
                 value = (element.get(attribute) or "").strip()
-                if value and (attribute == "scope" or value.isdigit()):
+                if attribute == "scope" and value:
                     attributes.append(f'{attribute}="{html.escape(value, quote=True)}"')
+                elif span := _bounded_table_span(value):
+                    attributes.append(f'{attribute}="{span}"')
         elif name in {"col", "colgroup"}:
             value = (element.get("span") or "").strip()
-            if value.isdigit():
-                attributes.append(f'span="{value}"')
+            if span := _bounded_table_span(value):
+                attributes.append(f'span="{span}"')
         if name == "a":
             target = self.anchors.resolve_link(element.get("href") or "", base_part=self.chapter_path)
             if target:

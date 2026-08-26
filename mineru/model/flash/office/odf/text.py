@@ -437,14 +437,21 @@ class OdfBlockParser:
         *,
         depth: int = 0,
         inherited_style: str | None = None,
-    ) -> list[dict[str, Any]]:
+        allow_page_breaks: bool = False,
+    ) -> list[RawFlowItem]:
         """递归构造严格 LIST 分片，并把不允许嵌套的 block 提升为有序兄弟。"""
         items = [
             item
             for item in element
             if isinstance(item.tag, str) and item.tag in {qname("text", "list-item"), qname("text", "list-header")}
         ]
-        return self._parse_list_items(element, items, depth=depth, inherited_style=inherited_style)
+        return self._parse_list_items(
+            element,
+            items,
+            depth=depth,
+            inherited_style=inherited_style,
+            allow_page_breaks=allow_page_breaks,
+        )
 
     def _parse_list_items(
         self,
@@ -453,7 +460,8 @@ class OdfBlockParser:
         *,
         depth: int,
         inherited_style: str | None,
-    ) -> list[dict[str, Any]]:
+        allow_page_breaks: bool,
+    ) -> list[RawFlowItem]:
         """按源条目构造 LIST 分片，每个条目只保留一个文本叶子和一个 marker。"""
         style_name = element.get(qname("text", "style-name")) or inherited_style
         level = self.styles.list_level(style_name, depth)
@@ -464,11 +472,13 @@ class OdfBlockParser:
             start = self._list_ids[continue_list]
         elif element.get(qname("text", "continue-numbering")) == "true" and key in self._list_counters:
             start = self._list_counters[key]
-        results: list[dict[str, Any]] = []
+        results: list[RawFlowItem] = []
         content: list[dict[str, Any]] = []
+        pending_notes: list[InlineNote] = []
         item_count = 0
+        fragment_start = start
 
-        def flush_content(fragment_start: int) -> None:
+        def flush_content() -> None:
             """把当前合法子块冻结为一个 LIST 分片。"""
             if not content:
                 return
@@ -483,7 +493,18 @@ class OdfBlockParser:
             results.append(block)
             content.clear()
 
-        fragment_start = start
+        def queue_note(note: InlineNote) -> None:
+            """分页模式保留 note 的流位置，其余调用维持既有共享队列行为。"""
+            if allow_page_breaks:
+                pending_notes.append(note)
+            else:
+                self.notes.append(note.content)
+
+        def flush_pending_notes() -> None:
+            """在分页 marker 前或列表结尾输出按来源顺序累计的 note。"""
+            results.extend(pending_notes)
+            pending_notes.clear()
+
         for item in items:
             is_header = item.tag == qname("text", "list-header")
             if not is_header:
@@ -491,66 +512,104 @@ class OdfBlockParser:
                     item_start = int(item.get(qname("text", "start-value"), str(start + item_count)))
                     if item_count == 0:
                         start = max(0, item_start)
-                        fragment_start = start
                 except ValueError:
                     pass
                 item_count += 1
+            item_number = start + max(item_count - 1, 0)
             text_parts: list[str] = []
             nested_blocks: list[dict[str, Any]] = []
             lifted_blocks: list[dict[str, Any]] = []
+
+            def flush_item_segment() -> None:
+                """把当前列表项在分页边界前后的一个连续片段写入结果。"""
+                nonlocal fragment_start
+                if text_parts or nested_blocks:
+                    if not content:
+                        fragment_start = item_number
+                    if text_parts:
+                        content.append({"type": BlockType.TEXT, "content": "\n".join(text_parts)})
+                    content.extend(nested_blocks)
+                if lifted_blocks:
+                    flush_content()
+                    results.extend(lifted_blocks)
+                text_parts.clear()
+                nested_blocks.clear()
+                lifted_blocks.clear()
+
+            def consume_flow(flow: Sequence[RawFlowItem]) -> None:
+                """分类列表项子流，并在显式分页 marker 处冻结当前 LIST 分片。"""
+                for block in flow:
+                    if isinstance(block, PageBreakMarker):
+                        flush_item_segment()
+                        flush_content()
+                        flush_pending_notes()
+                        results.append(PAGE_BREAK)
+                        continue
+                    if isinstance(block, InlineNote):
+                        queue_note(block)
+                        continue
+                    block_type = block.get("type")
+                    block_content = block.get("content")
+                    if block_type in {
+                        BlockType.TEXT,
+                        BlockType.REF_TEXT,
+                        BlockType.DOC_TITLE,
+                        BlockType.PARAGRAPH_TITLE,
+                    } and isinstance(block_content, str):
+                        if block_content:
+                            text_parts.append(block_content)
+                    elif block_type == BlockType.LIST:
+                        nested_blocks.append(block)
+                    else:
+                        lifted_blocks.append(block)
+
+            def consume_nested_flow(flow: Sequence[RawFlowItem]) -> None:
+                """按分页分段处理嵌套列表，并保留原有整体提升判定。"""
+                segment: list[dict[str, Any]] = []
+
+                def flush_nested_segment() -> None:
+                    """把纯 LIST 片段嵌套，其余混合结构整体提升。"""
+                    if not segment:
+                        return
+                    if all(block.get("type") == BlockType.LIST for block in segment):
+                        nested_blocks.extend(segment)
+                    else:
+                        lifted_blocks.extend(segment)
+                    segment.clear()
+
+                for block in flow:
+                    if isinstance(block, PageBreakMarker):
+                        flush_nested_segment()
+                        flush_item_segment()
+                        flush_content()
+                        flush_pending_notes()
+                        results.append(PAGE_BREAK)
+                    elif isinstance(block, InlineNote):
+                        queue_note(block)
+                    else:
+                        segment.append(block)
+                flush_nested_segment()
+
             for child in item:
                 if not isinstance(child.tag, str):
                     continue
                 if child.tag in {qname("text", "p"), qname("text", "h")}:
-                    for block in self.parse_paragraph(child):
-                        if isinstance(block, InlineNote):
-                            self.notes.append(block.content)
-                            continue
-                        if not isinstance(block, dict):
-                            continue
-                        block_type = block.get("type")
-                        block_content = block.get("content")
-                        if block_type in {
-                            BlockType.TEXT,
-                            BlockType.REF_TEXT,
-                            BlockType.DOC_TITLE,
-                            BlockType.PARAGRAPH_TITLE,
-                        } and isinstance(block_content, str):
-                            if block_content:
-                                text_parts.append(block_content)
-                        else:
-                            lifted_blocks.append(block)
+                    consume_flow(self.parse_paragraph(child, allow_page_breaks=allow_page_breaks))
                 elif child.tag == qname("text", "list"):
-                    nested_flow = self.parse_list_blocks(child, depth=depth + 1, inherited_style=style_name)
-                    if all(block.get("type") == BlockType.LIST for block in nested_flow):
-                        nested_blocks.extend(nested_flow)
-                    else:
-                        lifted_blocks.extend(nested_flow)
+                    consume_nested_flow(
+                        self.parse_list_blocks(
+                            child,
+                            depth=depth + 1,
+                            inherited_style=style_name,
+                            allow_page_breaks=allow_page_breaks,
+                        )
+                    )
                 else:
-                    for block in self.parse_container(child):
-                        block_type = block.get("type")
-                        block_content = block.get("content")
-                        if block_type in {
-                            BlockType.TEXT,
-                            BlockType.REF_TEXT,
-                            BlockType.DOC_TITLE,
-                            BlockType.PARAGRAPH_TITLE,
-                        } and isinstance(block_content, str):
-                            if block_content:
-                                text_parts.append(block_content)
-                        elif block_type == BlockType.LIST:
-                            nested_blocks.append(block)
-                        else:
-                            lifted_blocks.append(block)
-            if text_parts:
-                content.append({"type": BlockType.TEXT, "content": "\n".join(text_parts)})
-            content.extend(nested_blocks)
-            if lifted_blocks:
-                flush_content(fragment_start)
-                results.extend(lifted_blocks)
-                fragment_start = start + item_count
+                    consume_flow(self.parse_container(child))
+            flush_item_segment()
 
-        flush_content(fragment_start)
+        flush_content()
+        flush_pending_notes()
         next_value = start + item_count
         self._list_counters[key] = next_value
         if list_id := element.get(qname("xml", "id")):
@@ -563,11 +622,17 @@ class OdfBlockParser:
         *,
         depth: int = 0,
         inherited_style: str | None = None,
-    ) -> list[dict[str, Any]]:
+        allow_page_breaks: bool = False,
+    ) -> list[RawFlowItem]:
         """把含 text:h 的编号章节提升为标题，并保留其余连续列表。"""
         if next(element.iter(qname("text", "h")), None) is None:
-            return self.parse_list(element, depth=depth, inherited_style=inherited_style)
-        results: list[dict[str, Any]] = []
+            return self.parse_list(
+                element,
+                depth=depth,
+                inherited_style=inherited_style,
+                allow_page_breaks=allow_page_breaks,
+            )
+        results: list[RawFlowItem] = []
         pending_items: list[etree._Element] = []
 
         def flush_pending() -> None:
@@ -579,6 +644,7 @@ class OdfBlockParser:
                 list(pending_items),
                 depth=depth,
                 inherited_style=inherited_style,
+                allow_page_breaks=allow_page_breaks,
             )
             pending_items.clear()
             results.extend(blocks)
@@ -596,14 +662,18 @@ class OdfBlockParser:
             for child in item:
                 if not isinstance(child.tag, str):
                     continue
-                if child.tag == qname("text", "h"):
-                    for parsed in self.parse_paragraph(child):
+                if child.tag in {qname("text", "p"), qname("text", "h")}:
+                    for parsed in self.parse_paragraph(child, allow_page_breaks=allow_page_breaks):
                         if isinstance(parsed, InlineNote):
-                            self.notes.append(parsed.content)
+                            if allow_page_breaks:
+                                results.append(parsed)
+                            else:
+                                self.notes.append(parsed.content)
                             continue
-                        if not isinstance(parsed, dict):
+                        if isinstance(parsed, PageBreakMarker):
+                            results.append(parsed)
                             continue
-                        if parsed.get("type") == BlockType.PARAGRAPH_TITLE:
+                        if child.tag == qname("text", "h") and parsed.get("type") == BlockType.PARAGRAPH_TITLE:
                             parsed["is_numbered_style"] = True
                         results.append(parsed)
                 elif child.tag == qname("text", "list"):
@@ -612,6 +682,7 @@ class OdfBlockParser:
                             child,
                             depth=depth + 1,
                             inherited_style=element.get(qname("text", "style-name")) or inherited_style,
+                            allow_page_breaks=allow_page_breaks,
                         )
                     )
                 else:
@@ -764,7 +835,7 @@ class OdfBlockParser:
                     self.notes.append(item.content)
             return blocks
         if element.tag == qname("text", "list"):
-            return self.parse_list_blocks(element)
+            return [item for item in self.parse_list_blocks(element) if isinstance(item, dict)]
         if element.tag == qname("table", "table"):
             table_block = self.parse_table(element)
             return [table_block] if table_block is not None else []

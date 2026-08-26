@@ -212,6 +212,28 @@ def test_odt_inline_visual_stays_before_soft_page_break() -> None:
     ]
 
 
+def test_odt_list_preserves_soft_page_break_as_logical_page_boundary() -> None:
+    """验证列表项内的 soft-page-break 会拆分 ODT 逻辑页且不丢前后文本。"""
+    content = """<office:document-content
+ xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+ xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+ <office:body><office:text><text:list>
+  <text:list-item><text:p>Before<text:soft-page-break/>After
+   <text:note><text:note-citation>1</text:note-citation><text:note-body><text:p>After note</text:p></text:note-body></text:note>
+  </text:p></text:list-item>
+  <text:list-item><text:p>Next</text:p></text:list-item>
+ </text:list></office:text></office:body>
+</office:document-content>"""
+
+    pages = OdtModel().predict(BytesIO(build_odf_package("odt", content)))
+
+    assert len(pages) == 2
+    assert "Before" in str(pages[0]) and "After" not in str(pages[0])
+    assert "After" in str(pages[1]) and "Next" in str(pages[1])
+    assert all(block["type"] != BlockType.PAGE_FOOTNOTE for block in pages[0])
+    assert any(block["type"] == BlockType.PAGE_FOOTNOTE and "After note" in block["content"] for block in pages[1])
+
+
 def test_odt_child_style_can_reset_inherited_page_breaks() -> None:
     """验证 break-before/after=auto 显式关闭父样式的逻辑分页。"""
     content = """<office:document-content
