@@ -59,6 +59,18 @@ _GREEK_MAP = {
     "Ω": r"\Omega ",
 }
 _LATEX_ESCAPE_RE = re.compile(r"([#$%&_{}])")
+_LATEX_MATH_TOKEN_ESCAPES = {
+    "\\": r"\backslash{}",
+    "#": r"\#",
+    "$": r"\$",
+    "%": r"\%",
+    "&": r"\&",
+    "_": r"\_",
+    "^": r"\^{}",
+    "{": r"\{",
+    "}": r"\}",
+    "~": r"\~{}",
+}
 
 
 def _local_name(element: etree._Element) -> str:
@@ -69,6 +81,11 @@ def _local_name(element: etree._Element) -> str:
 def _escape_text(value: str) -> str:
     """转义进入 LaTeX 文本命令的保留字符。"""
     return _LATEX_ESCAPE_RE.sub(r"\\\1", value)
+
+
+def _escape_math_token(value: str) -> str:
+    """转义 MathML 标识符中的 TeX 控制字符，避免字面文本改变公式结构。"""
+    return "".join(_LATEX_MATH_TOKEN_ESCAPES.get(char, char) for char in value)
 
 
 def _children(element: etree._Element) -> list[etree._Element]:
@@ -93,7 +110,7 @@ def _convert(element: etree._Element) -> str:
     if name in {"math", "mrow", "mstyle", "mpadded", "mphantom"}:
         return _join_children(element)
     if name in {"mi", "mn"}:
-        return _GREEK_MAP.get(text, text)
+        return _GREEK_MAP.get(text, _escape_math_token(text))
     if name == "mo":
         return _OPERATOR_MAP.get(text, text)
     if name == "mtext":

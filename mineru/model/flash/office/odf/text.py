@@ -40,6 +40,7 @@ from .table import OdfTableExpansionBudget, parse_table_grid, table_grid_to_html
 
 
 _WHITESPACE_RE = re.compile(r"[\t\r\n ]+")
+_MAX_EXPLICIT_SPACE_COUNT = 10_000
 
 
 @dataclass(slots=True)
@@ -288,7 +289,7 @@ class OdfBlockParser:
                     atoms=atoms,
                 )
             elif child.tag == qname("text", "s"):
-                count = min(_positive_space_count(child.get(qname("text", "c"))), 10_000)
+                count = _positive_space_count(child.get(qname("text", "c")))
                 self._text_expansion_budget.charge(count)
                 self._append_text_atom(
                     atoms,
@@ -782,6 +783,8 @@ class OdfBlockParser:
         load_preview()
         if preview_uri:
             return InlineImage(preview_uri, preview_alt), [{"type": BlockType.IMAGE, "image_base64": preview_uri}]
+        if preview_alt:
+            return InlineText(preview_alt), []
         return None, []
 
     def parse_frame_blocks(self, frame: etree._Element) -> list[dict[str, Any]]:
@@ -793,6 +796,9 @@ class OdfBlockParser:
             return [{"type": BlockType.EQUATION, "content": inline.latex}]
         if isinstance(inline, InlineImage):
             return [{"type": BlockType.IMAGE, "image_base64": inline.data_uri}]
+        if isinstance(inline, InlineText):
+            content = render_atoms_to_model([inline], trim_edges=True)
+            return [{"type": BlockType.TEXT, "content": content}] if content else []
         return []
 
     def parse_element(self, element: etree._Element) -> list[dict[str, Any]]:
@@ -951,11 +957,19 @@ class OdfBlockParser:
 
 
 def _positive_space_count(value: str | None) -> int:
-    """把 text:s 的重复空格数解析为至少一。"""
-    try:
-        return max(1, int(value or 1))
-    except ValueError:
+    """在整数转换前校验并限制 text:s 重复空格数，非法值按一处理。"""
+    normalized = (value or "").strip()
+    if normalized.startswith("+"):
+        normalized = normalized[1:]
+    if not normalized or not normalized.isascii() or not normalized.isdigit():
         return 1
+    significant = normalized.lstrip("0")
+    if not significant:
+        return 1
+    max_digits = len(str(_MAX_EXPLICIT_SPACE_COUNT))
+    if len(significant) > max_digits:
+        return _MAX_EXPLICIT_SPACE_COUNT
+    return min(max(1, int(significant)), _MAX_EXPLICIT_SPACE_COUNT)
 
 
 def flatten_block_text(blocks: list[dict[str, Any]]) -> str:

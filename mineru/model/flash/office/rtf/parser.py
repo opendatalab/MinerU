@@ -470,10 +470,21 @@ def _named_groups(data: bytes, destination: str) -> list[_GroupSpan]:
 def _decode_group_text(data: bytes, encoding: str) -> str:
     """解码定义表或 metadata group 中的可见文本，不解释正文结构。"""
     parts: list[str] = []
+    byte_buffer = bytearray()
     uc_skip = 1
     fallback_skip = 0
     pending_high: int | None = None
+
+    def flush_byte_buffer() -> None:
+        """按当前代码页整体解码连续字节，保留多字节字符边界。"""
+        if not byte_buffer:
+            return
+        parts.append(bytes(byte_buffer).decode(encoding, errors="replace"))
+        byte_buffer.clear()
+
     for token in RtfLexer(data):
+        if not isinstance(token, (RtfHexByte, RtfTextBytes)):
+            flush_byte_buffer()
         if isinstance(token, RtfControlWord):
             if token.name == "uc":
                 uc_skip = max(token.param or 0, 0)
@@ -496,7 +507,7 @@ def _decode_group_text(data: bytes, encoding: str) -> str:
             if fallback_skip:
                 fallback_skip -= 1
             else:
-                parts.append(bytes([token.value]).decode(encoding, errors="replace"))
+                byte_buffer.append(token.value)
         elif isinstance(token, RtfTextBytes):
             raw = token.data.replace(b"\r", b"").replace(b"\n", b"")
             if fallback_skip:
@@ -504,7 +515,7 @@ def _decode_group_text(data: bytes, encoding: str) -> str:
                 raw = raw[skipped:]
                 fallback_skip -= skipped
             if raw:
-                parts.append(raw.decode(encoding, errors="replace"))
+                byte_buffer.extend(raw)
         elif isinstance(token, RtfControlSymbol):
             if token.symbol in {"\\", "{", "}"}:
                 parts.append(token.symbol)
@@ -512,6 +523,7 @@ def _decode_group_text(data: bytes, encoding: str) -> str:
                 parts.append("\u00a0")
             elif token.symbol == "_":
                 parts.append("-")
+    flush_byte_buffer()
     if pending_high is not None:
         parts.append("\ufffd")
     return "".join(parts)

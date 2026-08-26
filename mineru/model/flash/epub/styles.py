@@ -10,6 +10,7 @@ from lxml import etree  # type: ignore[reportMissingImports]
 
 
 _CSS_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
+_CSS_IMPORTANT_RE = re.compile(r"!\s*important\s*$", re.IGNORECASE)
 _TEXT_STYLE_FIELDS = ("bold", "italic", "underline", "strikethrough", "superscript", "subscript")
 
 
@@ -101,17 +102,27 @@ class _SelectorCascade:
     """按 selector 聚合各属性最后一次声明及其源码顺序。"""
 
     priority: int
-    declarations: dict[str, tuple[int, bool]] = field(default_factory=dict)
-    hidden: tuple[int, bool] | None = None
+    declarations: dict[str, tuple[bool, int, bool]] = field(default_factory=dict)
+    hidden: tuple[bool, int, bool] | None = None
 
-    def update(self, style: TextStyleDelta, hidden: bool | None, order: int) -> None:
-        """用同 selector 的较新声明更新逐属性级联结果。"""
-        for name in _TEXT_STYLE_FIELDS:
-            value = getattr(style, name)
-            if value is not None:
-                self.declarations[name] = (order, value)
-        if hidden is not None:
-            self.hidden = (order, hidden)
+    def update(self, parsed: _ParsedDeclarations, order: int) -> None:
+        """按 importance 和源码顺序更新同 selector 的逐属性级联结果。"""
+        for name, (important, value) in parsed.text.items():
+            current = self.declarations.get(name)
+            if current is None or (important, order) >= current[:2]:
+                self.declarations[name] = (important, order, value)
+        if parsed.hidden is not None:
+            important, value = parsed.hidden
+            if self.hidden is None or (important, order) >= self.hidden[:2]:
+                self.hidden = (important, order, value)
+
+
+@dataclass(frozen=True, slots=True)
+class _ParsedDeclarations:
+    """保存已投影 CSS 属性的 importance 与布尔值。"""
+
+    text: dict[str, tuple[bool, bool]]
+    hidden: tuple[bool, bool] | None = None
 
 
 def _local_name(element: etree._Element) -> str:
@@ -127,40 +138,50 @@ def _numeric_font_weight(value: str) -> int | None:
     return weight if 1 <= weight <= 1_000 else None
 
 
-def _parse_declarations(value: str) -> tuple[TextStyleDelta, bool | None]:
-    """从声明串提取字体语义和 display/visibility 隐藏状态。"""
-    bold = italic = underline = strikethrough = superscript = subscript = None
-    hidden: bool | None = None
+def _parse_declarations(value: str) -> _ParsedDeclarations:
+    """从声明串逐属性提取字体语义、隐藏状态和 important 优先级。"""
+    text: dict[str, tuple[bool, bool]] = {}
+    hidden: tuple[bool, bool] | None = None
     for raw_declaration in value.split(";"):
         if ":" not in raw_declaration:
             continue
         name, raw_value = raw_declaration.split(":", 1)
         name = name.strip().casefold()
-        normalized = raw_value.split("!important", 1)[0].strip().casefold()
+        important_match = _CSS_IMPORTANT_RE.search(raw_value)
+        important = important_match is not None
+        normalized = raw_value[: important_match.start() if important_match is not None else None].strip().casefold()
+        text_updates: dict[str, bool] = {}
+        hidden_update: bool | None = None
         if name == "font-weight":
             if normalized in {"bold", "bolder"}:
-                bold = True
+                text_updates["bold"] = True
             elif normalized in {"normal", "lighter"}:
-                bold = False
+                text_updates["bold"] = False
             elif (weight := _numeric_font_weight(normalized)) is not None:
-                bold = weight >= 600
+                text_updates["bold"] = weight >= 600
         elif name == "font-style":
-            italic = normalized in {"italic", "oblique"}
+            text_updates["italic"] = normalized in {"italic", "oblique"}
         elif name in {"text-decoration", "text-decoration-line"}:
             if normalized == "none":
-                underline = False
-                strikethrough = False
+                text_updates["underline"] = False
+                text_updates["strikethrough"] = False
             else:
-                underline = "underline" in normalized
-                strikethrough = "line-through" in normalized
+                text_updates["underline"] = "underline" in normalized
+                text_updates["strikethrough"] = "line-through" in normalized
         elif name == "vertical-align":
-            superscript = normalized in {"super", "text-top"}
-            subscript = normalized in {"sub", "text-bottom"}
+            text_updates["superscript"] = normalized in {"super", "text-top"}
+            text_updates["subscript"] = normalized in {"sub", "text-bottom"}
         elif name == "display":
-            hidden = normalized == "none"
+            hidden_update = normalized == "none"
         elif name == "visibility":
-            hidden = normalized in {"hidden", "collapse"}
-    return TextStyleDelta(bold, italic, underline, strikethrough, superscript, subscript), hidden
+            hidden_update = normalized in {"hidden", "collapse"}
+        for field_name, field_value in text_updates.items():
+            current = text.get(field_name)
+            if current is None or important or not current[0]:
+                text[field_name] = (important, field_value)
+        if hidden_update is not None and (hidden is None or important or not hidden[0]):
+            hidden = (important, hidden_update)
+    return _ParsedDeclarations(text=text, hidden=hidden)
 
 
 class EpubStylesheet:
@@ -189,8 +210,8 @@ class EpubStylesheet:
             if "{" not in chunk:
                 continue
             selectors, declarations = chunk.split("{", 1)
-            style, hidden = _parse_declarations(declarations)
-            if style.is_empty() and hidden is None:
+            parsed_declarations = _parse_declarations(declarations)
+            if not parsed_declarations.text and parsed_declarations.hidden is None:
                 continue
             for selector in selectors.split(","):
                 parsed = self._parse_selector(selector)
@@ -198,7 +219,7 @@ class EpubStylesheet:
                     continue
                 tag, class_name, priority = parsed
                 cascade = self._selector_cascade(tag, class_name, priority)
-                cascade.update(style, hidden, self._source_order)
+                cascade.update(parsed_declarations, self._source_order)
                 self._source_order += 1
 
     @staticmethod
@@ -237,30 +258,33 @@ class EpubStylesheet:
             if cascade := self._tag_class_cascades.get((tag, class_name)):
                 matching.append(cascade)
 
+        inline = _parse_declarations(element.get("style") or "")
         resolved_values: dict[str, bool] = {}
         for name in _TEXT_STYLE_FIELDS:
             candidates = [
-                (cascade.priority, order, value)
+                (important, cascade.priority, order, value)
                 for cascade in matching
                 if (declaration := cascade.declarations.get(name)) is not None
-                for order, value in (declaration,)
+                for important, order, value in (declaration,)
             ]
+            if (inline_declaration := inline.text.get(name)) is not None:
+                important, value = inline_declaration
+                candidates.append((important, 1_000, self._source_order, value))
             if candidates:
-                resolved_values[name] = max(candidates, key=lambda item: (item[0], item[1]))[2]
+                resolved_values[name] = max(candidates, key=lambda item: item[:3])[3]
         style = TextStyleDelta(**resolved_values).apply(style)
 
         hidden_candidates = [
-            (cascade.priority, order, value)
+            (important, cascade.priority, order, value)
             for cascade in matching
             if cascade.hidden is not None
-            for order, value in (cascade.hidden,)
+            for important, order, value in (cascade.hidden,)
         ]
+        if inline.hidden is not None:
+            important, value = inline.hidden
+            hidden_candidates.append((important, 1_000, self._source_order, value))
         if hidden_candidates:
-            hidden = max(hidden_candidates, key=lambda item: (item[0], item[1]))[2]
-        inline_style, inline_hidden = _parse_declarations(element.get("style") or "")
-        style = inline_style.apply(style)
-        if inline_hidden is not None:
-            hidden = inline_hidden
+            hidden = max(hidden_candidates, key=lambda item: item[:3])[3]
         return ElementStyle(style, hidden)
 
 

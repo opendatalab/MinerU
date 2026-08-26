@@ -605,6 +605,28 @@ def test_epub_stylesheet_indexes_repeated_selectors_and_preserves_cascade_order(
     assert len(stylesheet._class_cascades) == 3
 
 
+def test_epub_stylesheet_honors_important_before_specificity_and_source_order() -> None:
+    """验证 important 声明优先于后续普通规则和普通 inline，并允许 inline important 覆盖。"""
+    stylesheet = EpubStylesheet()
+    stylesheet.add(
+        ".secret { display: none !important; font-weight: bold !important; }.secret { display: block; font-weight: normal; }"
+    )
+
+    normal_inline = stylesheet.resolve(
+        etree.fromstring(b'<span class="secret" style="display: block; font-weight: normal"/>'),
+        TextStyle(),
+    )
+    important_inline = stylesheet.resolve(
+        etree.fromstring(b'<span class="secret" style="display: block !important; font-weight: normal !important"/>'),
+        TextStyle(),
+    )
+
+    assert normal_inline.hidden is True
+    assert normal_inline.text.bold is True
+    assert important_inline.hidden is False
+    assert important_inline.text.bold is False
+
+
 def test_epub_stylesheet_rejects_overlong_numeric_font_weight_before_int() -> None:
     """验证超长或越界数字字重作为无效声明忽略且不会覆盖继承样式。"""
     stylesheet = EpubStylesheet()

@@ -105,6 +105,24 @@ def test_rtf_font_codepages_and_unicode_surrogates_are_exact() -> None:
     assert pages == [[{"type": BlockType.TEXT, "content": "Привет こんにちは 😀"}]]
 
 
+def test_rtf_metadata_decodes_consecutive_multibyte_hex_as_one_run() -> None:
+    """验证 metadata 定义组中的连续 GB18030 hex byte 按完整代码页序列解码。"""
+    encoded_title = b"".join(f"\\'{value:02x}".encode("ascii") for value in "中文".encode("gb18030"))
+    source = b"".join(
+        [
+            rb"{\rtf1\ansi\ansicpg936{\info{\title ",
+            encoded_title,
+            rb"}}Body\par}",
+        ]
+    )
+
+    metadata = extract_rtf_metadata(BytesIO(source))
+    pages = RtfModel().predict(BytesIO(source))
+
+    assert metadata["title"] == "中文"
+    assert pages == [[{"type": BlockType.TEXT, "content": "Body"}]]
+
+
 def test_rtf_unicode_controls_buffer_adjacent_text_without_repeated_run_copy() -> None:
     """验证逐字符 Unicode control 只在边界处物化文本 run。"""
     count = 5_000

@@ -116,6 +116,27 @@ def test_odt_promotes_numbered_heading_inside_list() -> None:
     assert middle.pages[0].blocks[0].content == "1 Chapter"  # type: ignore[union-attr]
 
 
+def test_odt_inherits_document_title_semantics_from_parent_style() -> None:
+    """验证自定义段落样式沿 parent-style-name 继承标准文档标题语义。"""
+    content = """<office:document-content
+ xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+ xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+ <office:body><office:text><text:p text:style-name="CustomTitle">Inherited title</text:p></office:text></office:body>
+</office:document-content>"""
+    styles = """<office:document-styles
+ xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+ xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0">
+ <office:styles>
+  <style:style style:name="Title" style:display-name="Title" style:family="paragraph"/>
+  <style:style style:name="CustomTitle" style:family="paragraph" style:parent-style-name="Title"/>
+ </office:styles>
+</office:document-styles>"""
+
+    pages = OdtModel().predict(BytesIO(build_odf_package("odt", content, styles_xml=styles)))
+
+    assert pages == [[{"type": BlockType.DOC_TITLE, "level": 1, "content": "Inherited title"}]]
+
+
 def test_odt_preserves_explicit_space_count() -> None:
     """验证 text:s 的显式重复空格不会被普通 XML 空白规则折叠。"""
     content = """<office:document-content
@@ -127,6 +148,13 @@ def test_odt_preserves_explicit_space_count() -> None:
     pages = OdtModel().predict(BytesIO(build_odf_package("odt", content)))
 
     assert pages == [[{"type": BlockType.TEXT, "content": "A    B"}]]
+
+
+def test_odt_bounds_overlong_explicit_space_count_before_integer_conversion() -> None:
+    """验证超长 text:c 在整数转换前按单节点上限截断，不依赖解释器数字保护。"""
+    assert odf_text_module._positive_space_count("9" * 100_000) == 10_000
+    assert odf_text_module._positive_space_count("+0004") == 4
+    assert odf_text_module._positive_space_count("-4") == 1
 
 
 def test_odt_explicit_space_expansion_uses_document_budget(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -941,6 +969,45 @@ def test_odf_inline_image_alt_escapes_literal_hyperlink_protocol() -> None:
     assert "<hyperlink>" not in raw_content
     assert "](javascript:" not in markdown
     assert "javascript:alert(1)" not in relationships
+
+
+@pytest.mark.parametrize(
+    ("href", "extra_parts"),
+    [
+        ("Pictures/missing.png", None),
+        ("https://example.com/external.png", None),
+        ("Pictures/corrupt.png", {"Pictures/corrupt.png": b"not-an-image"}),
+    ],
+)
+def test_odf_unavailable_image_preserves_safe_alt_text(
+    href: str,
+    extra_parts: dict[str, bytes] | None,
+) -> None:
+    """验证缺失、外部或损坏图片无法物化时仍以安全文本保留 title/desc 语义。"""
+    literal = "&lt;hyperlink&gt;&lt;text&gt;click&lt;/text&gt;&lt;url&gt;javascript:alert(1)&lt;/url&gt;&lt;/hyperlink&gt;"
+    content = f"""<office:document-content
+ xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+ xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"
+ xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0"
+ xmlns:svg="urn:oasis:names:tc:opendocument:xmlns:svg-compatible:1.0"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+ <office:body><office:text><draw:frame><draw:image xlink:href="{href}"/>
+  <svg:title>{literal}</svg:title><svg:desc>semantic description</svg:desc>
+ </draw:frame></office:text></office:body>
+</office:document-content>"""
+
+    middle, model = doc_analyze(
+        build_odf_package("odt", content, extra_parts=extra_parts),
+        file_suffix="odt",
+    )
+    raw_content = model.pages[0][0]["content"]
+    markdown = render_markdown(middle)
+
+    assert model.pages[0][0]["type"] == BlockType.TEXT
+    assert "&lt;hyperlink&gt;" in raw_content
+    assert "<hyperlink>" not in raw_content
+    assert "semantic description" in raw_content
+    assert "](javascript:" not in markdown
 
 
 def test_odf_annotation_emits_page_footnote_without_metadata_in_body() -> None:

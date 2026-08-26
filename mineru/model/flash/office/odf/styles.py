@@ -233,13 +233,25 @@ class OdfStyles:
         return None
 
     def is_document_title(self, style_name: str | None) -> bool:
-        """根据样式名称和 display-name 判断段落是否为文档标题。"""
+        """沿段落父样式，根据名称和 display-name 判断是否继承文档标题语义。"""
         if not style_name:
             return False
-        definition = self._styles.get(("paragraph", style_name))
-        names = {style_name, definition.display_name if definition is not None else ""}
-        normalized = {name.replace("_20_", " ").replace("_", " ").strip().casefold() for name in names if name}
-        return bool(normalized & {"title", "document title", "标题"})
+        seen: set[str] = set()
+        current = style_name
+        while current:
+            if current in seen:
+                logger.warning("ODF style inheritance cycle detected: family=paragraph, style={}", current)
+                break
+            seen.add(current)
+            definition = self._styles.get(("paragraph", current))
+            names = {current, definition.display_name if definition is not None else ""}
+            normalized = {name.replace("_20_", " ").replace("_", " ").strip().casefold() for name in names if name}
+            if normalized & {"title", "document title", "标题"}:
+                return True
+            if definition is None:
+                break
+            current = definition.parent or ""
+        return False
 
     def list_level(self, style_name: str | None, depth: int) -> ListLevel:
         """返回指定列表深度的定义，不存在时使用无序默认值。"""

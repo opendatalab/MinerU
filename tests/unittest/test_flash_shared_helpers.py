@@ -61,6 +61,23 @@ def test_mathml_semantics_ignores_non_tex_alternate_annotations() -> None:
     assert mathml_to_latex(math) == r"\frac{x}{2}"
 
 
+@pytest.mark.parametrize(
+    ("token", "value", "expected"),
+    [
+        ("mi", "a_b", r"a\_b"),
+        ("mi", r"\name{x}", r"\backslash{}name\{x\}"),
+        ("mn", "12_3", r"12\_3"),
+        ("mi", "x^~", r"x\^{}\~{}"),
+        ("mi", "α", r"\alpha"),
+    ],
+)
+def test_mathml_literal_identifier_tokens_do_not_become_latex_syntax(token: str, value: str, expected: str) -> None:
+    """验证标识符和数字字面量转义 TeX 控制字符，同时保留显式希腊字母映射。"""
+    math = etree.fromstring(f'<math xmlns="http://www.w3.org/1998/Math/MathML"><{token}>{value}</{token}></math>'.encode())
+
+    assert mathml_to_latex(math) == expected
+
+
 @pytest.mark.parametrize("extra_node", ["<!--producer note-->", "<?producer note?>"])
 def test_mathml_annotation_scan_skips_non_element_nodes(extra_node: str) -> None:
     """验证 TeX annotation 扫描跳过 XML comment 与处理指令。"""
