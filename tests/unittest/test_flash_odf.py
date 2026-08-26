@@ -11,7 +11,9 @@ from typing import Any
 from zipfile import ZIP_DEFLATED, ZipFile
 
 import pytest
+from lxml import etree
 
+import mineru.model.flash.office.odf.table as odf_table_module
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
 from mineru.doclib.core.file_io import extract_metadata
 from mineru.doclib.core.db import DatabaseManager
@@ -25,7 +27,7 @@ from mineru.parser import parse, parse_async
 from mineru.parser import api_server
 from mineru.parser.api_server import CreateJobRequest, FileStore
 from mineru.parser.file_type import guess_suffix_by_bytes, guess_suffix_by_path
-from mineru.render import render_html, render_markdown, render_structured_content
+from mineru.render import render_docx, render_html, render_markdown, render_structured_content
 from mineru.types import BlockType
 
 from _odf_test_utils import build_odf_package, build_odp_fixture, build_ods_fixture, build_odt_fixture
@@ -79,14 +81,10 @@ def test_odt_recovers_structure_and_all_renderers() -> None:
     assert BlockType.FOOTER in raw_types
     assert any('style="bold"' in str(block.get("content")) for block in raw_blocks)
     assert any(
-        "rowspan" not in str(block.get("content")) and 'colspan="2"' in str(block.get("content"))
-        for block in raw_blocks
+        "rowspan" not in str(block.get("content")) and 'colspan="2"' in str(block.get("content")) for block in raw_blocks
     )
     assert any(block.get("content") == r"\frac{x}{2}" for block in raw_blocks)
-    assert any(
-        block.get("type") == BlockType.PAGE_FOOTNOTE and "Note body" in block.get("content", "")
-        for block in raw_blocks
-    )
+    assert any(block.get("type") == BlockType.PAGE_FOOTNOTE and "Note body" in block.get("content", "") for block in raw_blocks)
 
     markdown = render_markdown(middle)
     html_output = render_html(middle)
@@ -162,7 +160,7 @@ def test_odf_content_detection_precedes_csv_extension(
 def test_rtf_signature_still_precedes_odf_extension(tmp_path: Path) -> None:
     """验证新增 ZIP 探测不改变 RTF 强签名的最高优先级。"""
     source = tmp_path / "disguised.odt"
-    source.write_bytes(br"{\rtf1\ansi visible}")
+    source.write_bytes(rb"{\rtf1\ansi visible}")
     assert guess_suffix_by_path(source) == "rtf"
     assert guess_suffix_by_bytes(source.read_bytes(), str(source)) == "rtf"
 
@@ -200,6 +198,117 @@ def test_odf_rejects_mismatched_encrypted_and_expanding_packages() -> None:
     expanding = build_odf_package("ods", expanding_content)
     with pytest.raises(OdfResourceLimitError, match="max_grid_slots"):
         OdsModel().predict(BytesIO(expanding))
+
+
+@pytest.mark.parametrize("span_attribute", ["number-rows-spanned", "number-columns-spanned"])
+def test_odf_rejects_oversized_cell_spans_before_grid_materialization(
+    monkeypatch: pytest.MonkeyPatch,
+    span_attribute: str,
+) -> None:
+    """验证超大行列跨度在渲染单元格或扩容网格前立即失败。"""
+    monkeypatch.setattr(odf_table_module, "MAX_GRID_SLOTS", 4)
+
+    def unexpected_materialization(*_args: object, **_kwargs: object) -> None:
+        """超限 span 不得进入单元格渲染或网格扩容。"""
+        pytest.fail("oversized span reached grid materialization")
+
+    monkeypatch.setattr(odf_table_module, "_ensure_row", unexpected_materialization)
+    table = etree.fromstring(
+        f'<table:table xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0">'
+        f'<table:table-row><table:table-cell table:{span_attribute}="5"/></table:table-row>'
+        "</table:table>"
+    )
+
+    with pytest.raises(OdfResourceLimitError, match="max_grid_slots"):
+        odf_table_module.parse_table_grid(table, unexpected_materialization)
+
+
+def test_odf_rejects_projected_span_extent_before_extending_existing_row(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证单个 span 合法但累计宽度超限时不会先扩展现有行。"""
+    monkeypatch.setattr(odf_table_module, "MAX_GRID_SLOTS", 4)
+    original_ensure_row = odf_table_module._ensure_row
+    observed_widths: list[int] = []
+
+    def tracking_ensure_row(grid: object, row_index: int, width: int = 0) -> object:
+        """记录实际扩容宽度，确保失败前未越过共享预算。"""
+        observed_widths.append(width)
+        return original_ensure_row(grid, row_index, width)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(odf_table_module, "_ensure_row", tracking_ensure_row)
+    table = etree.fromstring(
+        '<table:table xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0">'
+        '<table:table-row><table:table-cell table:number-columns-spanned="3"/>'
+        '<table:table-cell table:number-columns-spanned="2"/></table:table-row>'
+        "</table:table>"
+    )
+
+    with pytest.raises(OdfResourceLimitError, match="max_grid_slots"):
+        odf_table_module.parse_table_grid(table, lambda _cell: "x")
+    assert observed_widths and max(observed_widths) <= 3
+
+
+@pytest.mark.parametrize(
+    "target",
+    [
+        "javascript:alert(1)",
+        "JaVaScRiPt:alert(1)",
+        "data:text/plain,unsafe",
+        "vbscript:msgbox(1)",
+        "file:///tmp/unsafe",
+        "ftp://example.com/file",
+        "//example.com/path",
+        "\\\\server\\share",
+    ],
+)
+def test_odf_rejects_unsafe_hyperlinks_before_shared_renderers(target: str) -> None:
+    """验证危险 ODF 链接在 Raw 阶段降级，Markdown 与 DOCX 不再携带目标。"""
+    content = f'''<office:document-content
+ xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+ xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+ <office:body><office:text><text:p>before <text:a xlink:href="{target}">click</text:a> after</text:p>
+ </office:text></office:body></office:document-content>'''
+    payload = build_odf_package("odt", content)
+    pages = OdtModel().predict(BytesIO(payload))
+    middle, _ = doc_analyze(payload, file_suffix="odt")
+    markdown = render_markdown(middle)
+    docx = render_docx(middle)
+    with ZipFile(BytesIO(docx)) as package:
+        relationships = package.read("word/_rels/document.xml.rels").decode("utf-8")
+
+    assert pages == [[{"type": BlockType.TEXT, "content": "before click after"}]]
+    assert markdown == "before click after"
+    assert target not in relationships
+
+
+@pytest.mark.parametrize(
+    "target",
+    [
+        "https://example.com/path",
+        "mailto:reader@example.com",
+        "tel:+123456",
+        "#section-one",
+        "chapter.odt#section-one",
+    ],
+)
+def test_odf_preserves_allowed_external_and_relative_hyperlinks(target: str) -> None:
+    """验证允许协议、相对地址和 fragment 继续进入共享 hyperlink 协议。"""
+    content = f'''<office:document-content
+ xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+ xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+ <office:body><office:text><text:p><text:a xlink:href="{target}">click</text:a></text:p>
+ </office:text></office:body></office:document-content>'''
+    pages = OdtModel().predict(BytesIO(build_odf_package("odt", content)))
+
+    assert pages == [
+        [
+            {
+                "type": BlockType.TEXT,
+                "content": f"<hyperlink><text>click</text><url>{target}</url></hyperlink>",
+            }
+        ]
+    ]
 
 
 def test_odf_corrupt_optional_styles_and_external_image_degrade_locally() -> None:

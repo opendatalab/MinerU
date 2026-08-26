@@ -33,9 +33,7 @@ ODF_MIME_BY_SUFFIX: Final[dict[OdfSuffix, str]] = {
     "ods": "application/vnd.oasis.opendocument.spreadsheet",
     "odp": "application/vnd.oasis.opendocument.presentation",
 }
-ODF_SUFFIX_BY_MIME: Final[dict[str, OdfSuffix]] = {
-    mime: suffix for suffix, mime in ODF_MIME_BY_SUFFIX.items()
-}
+ODF_SUFFIX_BY_MIME: Final[dict[str, OdfSuffix]] = {mime: suffix for suffix, mime in ODF_MIME_BY_SUFFIX.items()}
 ODF_BODY_BY_SUFFIX: Final[dict[OdfSuffix, str]] = {
     "odt": "text",
     "ods": "spreadsheet",
@@ -47,7 +45,6 @@ MAX_TOTAL_BYTES: Final = 512 * 1024 * 1024
 MAX_ENTRY_COUNT: Final = 100_000
 MAX_XML_DEPTH: Final = 256
 MAX_XML_NODES: Final = 2_000_000
-MAX_GRID_SLOTS: Final = 4_000_000
 MAX_EXPANSION_TEXT_BYTES: Final = 64 * 1024 * 1024
 MAX_ASSET_TOTAL_BYTES: Final = 128 * 1024 * 1024
 
@@ -62,7 +59,6 @@ __all__ = [
     "MAX_ENTRY_BYTES",
     "MAX_ENTRY_COUNT",
     "MAX_EXPANSION_TEXT_BYTES",
-    "MAX_GRID_SLOTS",
     "MAX_TOTAL_BYTES",
     "MAX_XML_DEPTH",
     "MAX_XML_NODES",

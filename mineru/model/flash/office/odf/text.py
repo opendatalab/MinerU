@@ -9,6 +9,7 @@ import re
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
+from urllib.parse import urlsplit
 
 from lxml import etree  # type: ignore[reportMissingImports]
 
@@ -34,6 +35,7 @@ from .table import parse_table_grid, table_grid_to_html
 
 
 _WHITESPACE_RE = re.compile(r"[\t\r\n ]+")
+_SAFE_EXTERNAL_HYPERLINK_SCHEMES = frozenset({"http", "https", "mailto", "tel"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,11 +60,32 @@ def _escape_href(value: str) -> str:
 
 
 def _safe_hyperlink(value: str | None) -> str | None:
-    """拒绝会破坏内部 URL 容器的尖括号和控制字符。"""
-    if value is None or any(char in value for char in ("<", ">", "\x00")):
+    """保留安全相对链接与允许协议，拒绝活动协议和协议相对地址。"""
+    if value is None:
         return None
-    normalized = "".join(char for char in value.strip() if ord(char) >= 32 or char in "\t\r\n")
-    return normalized or None
+    normalized = value.strip()
+    if not normalized or any(ord(char) < 32 for char in normalized) or any(char in normalized for char in ("<", ">")):
+        return None
+    if normalized.startswith(("//", "\\")):
+        return None
+    try:
+        parsed = urlsplit(normalized)
+    except ValueError:
+        return None
+    scheme = parsed.scheme.casefold()
+    if not scheme:
+        return normalized
+    if scheme not in _SAFE_EXTERNAL_HYPERLINK_SCHEMES:
+        return None
+    if scheme in {"http", "https"}:
+        try:
+            if not parsed.netloc or parsed.hostname is None:
+                return None
+        except ValueError:
+            return None
+    elif not parsed.path:
+        return None
+    return normalized
 
 
 def _style_html(text: str, style: TextStyle) -> str:
@@ -327,9 +350,11 @@ class OdfBlockParser:
     def parse_paragraph(self, paragraph: etree._Element, *, allow_page_breaks: bool = False) -> list[RawFlowItem]:
         """把 text:p/text:h 转为标题、正文、公式及显式分页项。"""
         atoms, extra_blocks = self.parse_inline_atoms(paragraph)
-        groups = split_atoms_on_page_break(atoms) if allow_page_breaks else [[
-            InlineBreak() if isinstance(atom, InlinePageBreak) else atom for atom in atoms
-        ]]
+        groups = (
+            split_atoms_on_page_break(atoms)
+            if allow_page_breaks
+            else [[InlineBreak() if isinstance(atom, InlinePageBreak) else atom for atom in atoms]]
+        )
         results: list[RawFlowItem] = []
         is_heading = paragraph.tag == qname("text", "h")
         style_name = paragraph.get(qname("text", "style-name"))
@@ -377,8 +402,7 @@ class OdfBlockParser:
         items = [
             item
             for item in element
-            if isinstance(item.tag, str)
-            and item.tag in {qname("text", "list-item"), qname("text", "list-header")}
+            if isinstance(item.tag, str) and item.tag in {qname("text", "list-item"), qname("text", "list-header")}
         ]
         return self._parse_list_items(element, items, depth=depth, inherited_style=inherited_style)
 
@@ -585,9 +609,13 @@ class OdfBlockParser:
         if object_element is not None:
             object_root, object_part = self._object_root(object_element)
             if object_root is not None:
-                math_element = object_root if object_root.tag == qname("math", "math") else next(
-                    object_root.iter(qname("math", "math")),
-                    None,
+                math_element = (
+                    object_root
+                    if object_root.tag == qname("math", "math")
+                    else next(
+                        object_root.iter(qname("math", "math")),
+                        None,
+                    )
                 )
                 if math_element is not None and (latex := mathml_to_latex(math_element)):
                     return InlineMath(latex), []
@@ -677,9 +705,7 @@ class OdfBlockParser:
             if child.tag in {qname("text", "p"), qname("text", "h")}:
                 atoms, extra = self.parse_inline_atoms(child)
                 rendered_atoms = (
-                    [atom for atom in atoms if not isinstance(atom, InlineImage)]
-                    if self._collect_cell_visuals
-                    else atoms
+                    [atom for atom in atoms if not isinstance(atom, InlineImage)] if self._collect_cell_visuals else atoms
                 )
                 parts.append(f"<p>{render_atoms_to_html(rendered_atoms)}</p>")
                 for block in extra:
@@ -703,13 +729,9 @@ class OdfBlockParser:
                 inline, blocks = self._parse_frame(child)
                 if self._collect_cell_visuals:
                     self._cell_visuals.extend(
-                        block
-                        for block in blocks
-                        if block.get("type") in {BlockType.IMAGE, BlockType.CHART, BlockType.EQUATION}
+                        block for block in blocks if block.get("type") in {BlockType.IMAGE, BlockType.CHART, BlockType.EQUATION}
                     )
-                if inline is not None and not (
-                    self._collect_cell_visuals and isinstance(inline, InlineImage)
-                ):
+                if inline is not None and not (self._collect_cell_visuals and isinstance(inline, InlineImage)):
                     parts.append(render_atoms_to_html([inline]))
                 for block in blocks:
                     if self._collect_cell_visuals and block.get("type") in {

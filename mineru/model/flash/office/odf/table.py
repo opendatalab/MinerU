@@ -9,7 +9,8 @@ from collections.abc import Callable, Iterator
 
 from lxml import etree  # type: ignore[reportMissingImports]
 
-from .constants import MAX_EXPANSION_TEXT_BYTES, MAX_GRID_SLOTS, qname
+from ..limits import MAX_GRID_SLOTS
+from .constants import MAX_EXPANSION_TEXT_BYTES, qname
 from .errors import OdfResourceLimitError
 from .models import GridCell, TableGrid
 
@@ -76,8 +77,16 @@ def _has_visible_html(value: str) -> bool:
     return bool(html.unescape(_HTML_TEXT_RE.sub("", value)).strip())
 
 
+def _validate_grid_extent(row_count: int, width: int) -> None:
+    """在分配或遍历前校验预计矩形不会超过共享网格预算。"""
+    projected_width = max(width, 1)
+    if row_count > MAX_GRID_SLOTS // projected_width:
+        raise OdfResourceLimitError(f"ODF resource limit exceeded: max_grid_slots={MAX_GRID_SLOTS}")
+
+
 def _ensure_row(grid: TableGrid, row_index: int, width: int = 0) -> list[GridCell | None]:
     """确保网格存在指定行和最小列宽。"""
+    _validate_grid_extent(max(len(grid.rows), row_index + 1), max(grid.width, width))
     while len(grid.rows) <= row_index:
         grid.rows.append([])
     row = grid.rows[row_index]
@@ -88,9 +97,7 @@ def _ensure_row(grid: TableGrid, row_index: int, width: int = 0) -> list[GridCel
 
 def _charge_grid(grid: TableGrid) -> None:
     """按当前矩形边界检查最大网格槽位。"""
-    slots = len(grid.rows) * grid.width
-    if slots > MAX_GRID_SLOTS:
-        raise OdfResourceLimitError(f"ODF resource limit exceeded: max_grid_slots={MAX_GRID_SLOTS}")
+    _validate_grid_extent(len(grid.rows), grid.width)
 
 
 def parse_table_grid(table: etree._Element, render_cell: CellRenderer) -> TableGrid:
@@ -102,31 +109,27 @@ def parse_table_grid(table: etree._Element, render_cell: CellRenderer) -> TableG
     pending_empty_width = 0
     for row_element, header in _iter_rows(table):
         row_repeat = _positive_int(row_element.get(qname("table", "number-rows-repeated")))
-        if row_repeat * max(grid.width, 1) > MAX_GRID_SLOTS:
-            raise OdfResourceLimitError(f"ODF resource limit exceeded: max_grid_slots={MAX_GRID_SLOTS}")
+        _validate_grid_extent(row_index + row_repeat, grid.width)
         cell_templates: list[tuple[bool, int, GridCell | None]] = []
         for cell in row_element:
             if not isinstance(cell.tag, str):
                 continue
             if cell.tag == qname("table", "covered-table-cell"):
-                cell_templates.append(
-                    (True, _positive_int(cell.get(qname("table", "number-columns-repeated"))), None)
-                )
+                cell_templates.append((True, _positive_int(cell.get(qname("table", "number-columns-repeated"))), None))
                 continue
             if cell.tag != qname("table", "table-cell"):
                 continue
             column_repeat = _positive_int(cell.get(qname("table", "number-columns-repeated")))
             row_span = _positive_int(cell.get(qname("table", "number-rows-spanned")))
             col_span = _positive_int(cell.get(qname("table", "number-columns-spanned")))
+            _validate_grid_extent(row_span, col_span)
             cell_html = render_cell(cell)
             if not _has_visible_html(cell_html):
                 typed_value = _typed_value_text(cell)
                 cell_html = html.escape(typed_value) if typed_value else ""
             duplicated_text_bytes += len(cell_html.encode("utf-8")) * max(0, row_repeat * column_repeat - 1)
             if duplicated_text_bytes > MAX_EXPANSION_TEXT_BYTES:
-                raise OdfResourceLimitError(
-                    f"ODF resource limit exceeded: max_expansion_text_bytes={MAX_EXPANSION_TEXT_BYTES}"
-                )
+                raise OdfResourceLimitError(f"ODF resource limit exceeded: max_expansion_text_bytes={MAX_EXPANSION_TEXT_BYTES}")
             cell_templates.append(
                 (
                     False,
@@ -146,8 +149,7 @@ def parse_table_grid(table: etree._Element, render_cell: CellRenderer) -> TableG
             )
             continue
         if pending_empty_rows:
-            if (row_index + pending_empty_rows) * max(grid.width, pending_empty_width, 1) > MAX_GRID_SLOTS:
-                raise OdfResourceLimitError(f"ODF resource limit exceeded: max_grid_slots={MAX_GRID_SLOTS}")
+            _validate_grid_extent(row_index + pending_empty_rows, max(grid.width, pending_empty_width))
             for _ in range(pending_empty_rows):
                 _ensure_row(grid, row_index, pending_empty_width)
                 row_index += 1
@@ -173,6 +175,7 @@ def parse_table_grid(table: etree._Element, render_cell: CellRenderer) -> TableG
                     col_index += pending_empty_columns
                     _ensure_row(grid, row_index, col_index)
                     pending_empty_columns = 0
+                _validate_grid_extent(row_index + 1, max(grid.width, col_index + repeat))
                 for _ in range(repeat):
                     if is_covered:
                         _ensure_row(grid, row_index, col_index + 1)
@@ -187,6 +190,10 @@ def parse_table_grid(table: etree._Element, render_cell: CellRenderer) -> TableG
                         row_span=template.row_span,
                         col_span=template.col_span,
                         header=template.header,
+                    )
+                    _validate_grid_extent(
+                        row_index + placed.row_span,
+                        max(grid.width, col_index + placed.col_span),
                     )
                     row = _ensure_row(grid, row_index, col_index + placed.col_span)
                     row[col_index] = placed
@@ -223,11 +230,7 @@ def trim_table_grid(grid: TableGrid) -> TableGrid:
         if len(row) < last_col + 1:
             row.extend([None] * (last_col + 1 - len(row)))
         rows.append(row)
-    covered = {
-        (row, col)
-        for row, col in grid.covered
-        if row <= last_row and col <= last_col
-    }
+    covered = {(row, col) for row, col in grid.covered if row <= last_row and col <= last_col}
     return TableGrid(rows=rows, header_rows=min(grid.header_rows, len(rows)), covered=covered)
 
 
@@ -319,10 +322,7 @@ def table_grid_to_html(grid: TableGrid) -> str:
         parts.append("</thead>")
     if header_rows < len(grid.rows):
         parts.append("<tbody>")
-        parts.extend(
-            _render_html_row(grid, row_index, header=False)
-            for row_index in range(header_rows, len(grid.rows))
-        )
+        parts.extend(_render_html_row(grid, row_index, header=False) for row_index in range(header_rows, len(grid.rows)))
         parts.append("</tbody>")
     parts.append("</table>")
     return "".join(parts)
