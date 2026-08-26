@@ -17,6 +17,7 @@ def build_epub_fixture(
     omit_mimetype: bool = False,
     unsafe_member: str | None = None,
     use_foreign_fallback: bool = False,
+    use_missing_supported_fallback: bool = False,
     include_nav: bool = True,
     include_ncx: bool = True,
     corrupt_nav: bool = False,
@@ -59,6 +60,12 @@ def build_epub_fixture(
         opf = opf.replace(
             '<item id="c2" href="text/ch2.xhtml" media-type="application/xhtml+xml"/>',
             '<item id="c2" href="missing.bin" media-type="application/octet-stream" fallback="c2-fallback"/>'
+            '<item id="c2-fallback" href="text/ch2.xhtml" media-type="application/xhtml+xml"/>',
+        )
+    if use_missing_supported_fallback:
+        opf = opf.replace(
+            '<item id="c2" href="text/ch2.xhtml" media-type="application/xhtml+xml"/>',
+            '<item id="c2" href="missing.xhtml" media-type="application/xhtml+xml" fallback="c2-fallback"/>'
             '<item id="c2-fallback" href="text/ch2.xhtml" media-type="application/xhtml+xml"/>',
         )
     chapter_one = """<?xml version="1.0" encoding="UTF-8"?>

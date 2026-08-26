@@ -391,6 +391,12 @@ def test_epub_spine_foreign_resource_uses_xhtml_fallback_chain() -> None:
     assert middle.pages[1].blocks[0].content == "Section Two"  # type: ignore[union-attr]
 
 
+def test_epub_spine_missing_supported_resource_uses_xhtml_fallback_chain() -> None:
+    """验证缺失的 XHTML 主资源不会阻断可用 fallback 链。"""
+    middle, _ = doc_analyze(build_epub_fixture(use_missing_supported_fallback=True), file_suffix="epub")
+    assert middle.pages[1].blocks[0].content == "Section Two"  # type: ignore[union-attr]
+
+
 def test_epub_nav_and_ncx_outside_spine_do_not_create_synthetic_page() -> None:
     """验证 spine 外的损坏 nav 与有效 NCX 都不会生成合成目录页。"""
     middle, _ = doc_analyze(build_epub_fixture(corrupt_nav=True), file_suffix="epub")

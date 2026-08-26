@@ -417,7 +417,7 @@ class EpubPackage:
             item = self.manifest.get(current_id)
             if item is None:
                 return None
-            if item.media_type in XHTML_MEDIA_TYPES or item.media_type == SVG_MEDIA_TYPE:
+            if item.path and (item.media_type in XHTML_MEDIA_TYPES or item.media_type == SVG_MEDIA_TYPE):
                 return item
             current_id = item.fallback
         return None

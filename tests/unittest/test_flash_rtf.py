@@ -7,6 +7,7 @@ import sys
 import tracemalloc
 from pathlib import Path
 from unittest.mock import patch
+from zipfile import ZipFile
 
 import pytest
 
@@ -412,6 +413,40 @@ def test_rtf_literal_inline_protocol_is_escaped_before_rendering() -> None:
     assert "<eq>" not in content
     assert "<hyperlink>" not in content
     assert "](javascript:alert(1))" not in markdown
+
+
+def test_rtf_footnote_literal_protocol_is_escaped_before_rendering() -> None:
+    """验证 RTF 脚注压平文本不能注入 equation 或 hyperlink 内部协议。"""
+    source = (
+        rb"{\rtf1\ansi Body{\footnote <eq>x</eq> and "
+        rb"<hyperlink><text>click</text><url>javascript:alert(1)</url></hyperlink>}\par}"
+    )
+
+    middle, model = doc_analyze(source, file_suffix="rtf")
+    footnote = next(block for block in model.pages[0] if block.get("type") == BlockType.PAGE_FOOTNOTE)
+    markdown = render_markdown(middle)
+    docx = render_docx(middle)
+    with ZipFile(BytesIO(docx)) as package:
+        relationships = package.read("word/_rels/document.xml.rels").decode("utf-8")
+
+    assert "&lt;eq&gt;x&lt;/eq&gt;" in footnote["content"]
+    assert "&lt;hyperlink&gt;" in footnote["content"]
+    assert "<eq>" not in footnote["content"]
+    assert "<hyperlink>" not in footnote["content"]
+    assert "](javascript:alert(1))" not in markdown
+    assert "javascript:alert(1)" not in relationships
+
+
+def test_rtf_equation_only_paragraph_preserves_note_reference() -> None:
+    """验证纯公式段落仍保留脚注引用，不生成孤立脚注正文。"""
+    source = rb"{\rtf1\ansi\pard {\mmath{\*\moMath{\mr x}}}{\footnote Foot.}\par}"
+
+    pages = RtfModel().predict(BytesIO(source))
+
+    assert pages[0][0]["type"] == BlockType.TEXT
+    assert "<eq>x</eq>" in pages[0][0]["content"]
+    assert "[1]" in pages[0][0]["content"]
+    assert pages[0][1] == {"type": BlockType.PAGE_FOOTNOTE, "content": "[1] Foot."}
 
 
 def test_rtf_object_keeps_safe_result_and_suppresses_objdata() -> None:

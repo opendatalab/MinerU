@@ -86,7 +86,11 @@ def _convert(element: etree._Element) -> str:
     name = _local_name(element)
     children = _children(element)
     text = (element.text or "").strip()
-    if name in {"math", "mrow", "mstyle", "mpadded", "mphantom", "semantics"}:
+    if name == "semantics":
+        if not children or _local_name(children[0]) in {"annotation", "annotation-xml"}:
+            return ""
+        return _convert(children[0])
+    if name in {"math", "mrow", "mstyle", "mpadded", "mphantom"}:
         return _join_children(element)
     if name in {"mi", "mn"}:
         return _GREEK_MAP.get(text, text)

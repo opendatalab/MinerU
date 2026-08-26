@@ -7,8 +7,10 @@ from zipfile import ZIP_DEFLATED, ZipFile, ZipInfo
 
 from PIL import Image
 import pytest
+from lxml import etree
 
 from mineru.model.flash._shared.image import image_to_b64str, image_to_bytes
+from mineru.model.flash._shared.mathml import mathml_to_latex
 from mineru.model.flash.office.doc import records as doc_records
 from mineru.model.flash.office.legacy.binary import bounded_slice, get_f64, get_i16, get_u16, get_u32
 from mineru.model.flash.office.opc import relationship_source_base_dir, write_zip_package
@@ -40,6 +42,17 @@ def test_shared_image_encoding_preserves_format_and_data_uri(
     with Image.open(BytesIO(image_bytes)) as decoded:
         assert decoded.format == expected_format
         assert decoded.size == (2, 3)
+
+
+def test_mathml_semantics_ignores_non_tex_alternate_annotations() -> None:
+    """验证 semantics 只转换主展示分支，不重复拼接非 TeX annotation。"""
+    math = etree.fromstring(
+        b'<math xmlns="http://www.w3.org/1998/Math/MathML"><semantics><mfrac><mi>x</mi><mn>2</mn></mfrac>'
+        b'<annotation-xml encoding="MathML-Content"><apply><divide/><ci>x</ci><cn>2</cn></apply></annotation-xml>'
+        b"</semantics></math>"
+    )
+
+    assert mathml_to_latex(math) == r"\frac{x}{2}"
 
 
 def test_legacy_binary_readers_preserve_bounds_and_values() -> None:

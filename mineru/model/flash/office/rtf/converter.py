@@ -318,7 +318,8 @@ class RtfConverter:
             if not isinstance(inline, (RtfInlineEquation, RtfLineBreak, RtfNoteReference))
             and (not isinstance(inline, RtfTextRun) or bool(inline.text.strip()))
         ]
-        if equations and not ordinary:
+        has_note_reference = any(isinstance(inline, RtfNoteReference) for inline in non_image)
+        if equations and not ordinary and not has_note_reference:
             return [{"type": BlockType.EQUATION, "content": equation.latex} for equation in equations]
 
         blocks: list[dict[str, Any]] = []
@@ -690,7 +691,7 @@ class RtfConverter:
         )
         for note in ordered:
             number = self._note_numbers.get(note.id)
-            content = self._blocks_plain_text(note.blocks).strip()
+            content = escape(self._blocks_plain_text(note.blocks).strip(), quote=False)
             if number is None or not content:
                 continue
             result.append(

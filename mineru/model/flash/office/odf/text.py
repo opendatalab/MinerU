@@ -990,7 +990,8 @@ def flatten_block_text(blocks: list[dict[str, Any]]) -> str:
             visible = re.sub(r"<url>.*?</url>", "", content, flags=re.DOTALL)
             visible = re.sub(r"<[^>]+>", "", visible)
             if visible.strip():
-                parts.append(html.unescape(visible).strip())
+                decoded = html.unescape(visible).strip()
+                parts.append(decoded.replace("<", "&lt;").replace(">", "&gt;"))
         elif isinstance(content, list):
             children = [child for child in content if isinstance(child, dict)]
             nested = flatten_block_text(children)

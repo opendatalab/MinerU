@@ -601,6 +601,47 @@ def test_odf_malformed_image_and_object_references_degrade_locally() -> None:
     assert pages == [[{"type": BlockType.TEXT, "content": "visible"}]]
 
 
+def test_odf_flattened_titles_and_notes_keep_literal_protocol_escaped() -> None:
+    """验证标题、演讲者备注和行内脚注压平后不会重建内部协议标签。"""
+    literal = "&lt;hyperlink&gt;&lt;text&gt;click&lt;/text&gt;&lt;url&gt;javascript:alert(1)&lt;/url&gt;&lt;/hyperlink&gt;"
+    odp_content = f"""<office:document-content
+ xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+ xmlns:presentation="urn:oasis:names:tc:opendocument:xmlns:presentation:1.0"
+ xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0"
+ xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+ <office:body><office:presentation><draw:page draw:name="Slide 1">
+  <draw:frame presentation:class="title"><draw:text-box><text:p>{literal}</text:p></draw:text-box></draw:frame>
+  <presentation:notes><draw:frame><draw:text-box><text:p>{literal}</text:p></draw:text-box></draw:frame></presentation:notes>
+ </draw:page></office:presentation></office:body></office:document-content>"""
+    odt_content = f"""<office:document-content
+ xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+ xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+ <office:body><office:text><text:p>Body<text:note><text:note-citation>1</text:note-citation>
+  <text:note-body><text:p>{literal}</text:p></text:note-body>
+ </text:note></text:p></office:text></office:body></office:document-content>"""
+
+    for suffix, payload in (
+        ("odp", build_odf_package("odp", odp_content)),
+        ("odt", build_odf_package("odt", odt_content)),
+    ):
+        middle, model = doc_analyze(payload, file_suffix=suffix)  # type: ignore[arg-type]
+        flattened = [
+            block["content"]
+            for page in model.pages
+            for block in page
+            if block.get("type") in {BlockType.DOC_TITLE, BlockType.PAGE_FOOTNOTE}
+        ]
+        markdown = render_markdown(middle)
+        docx = render_docx(middle)
+        with ZipFile(BytesIO(docx)) as package:
+            relationships = package.read("word/_rels/document.xml.rels").decode("utf-8")
+
+        assert flattened
+        assert all("&lt;hyperlink&gt;" in content and "<hyperlink>" not in content for content in flattened)
+        assert "](javascript:alert(1))" not in markdown
+        assert "javascript:alert(1)" not in relationships
+
+
 def test_odf_style_cycle_is_bounded_and_preserves_text() -> None:
     """验证循环 parent-style-name 在有限链路内降级，不阻塞正文解析。"""
     content = """<office:document-content
