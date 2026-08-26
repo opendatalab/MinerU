@@ -80,6 +80,15 @@ class ParagraphProperties:
 
 
 @dataclass(frozen=True, slots=True)
+class ParagraphPropertiesDelta:
+    """保存可区分缺省与显式 reset 的 ODF 段落分页增量。"""
+
+    break_before: bool | None = None
+    break_after: bool | None = None
+    master_page_name: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class ListLevel:
     """保存一个 ODF 列表层级的编号语义。"""
 
@@ -174,6 +183,7 @@ __all__ = [
     "InlineText",
     "ListLevel",
     "ParagraphProperties",
+    "ParagraphPropertiesDelta",
     "TableGrid",
     "TextStyle",
     "TextStyleDelta",

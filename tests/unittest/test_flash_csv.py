@@ -146,6 +146,16 @@ def test_csv_grid_limit_short_circuits_before_trailing_malformed_record(monkeypa
         CsvModel().predict(BytesIO(b'a,b\n1,2\n"unterminated'))
 
 
+def test_csv_default_grid_budget_rejects_wide_dom_before_rendering() -> None:
+    """验证默认预算在宽空表生成数十万 HTML 节点前拒绝输入。"""
+    assert csv_module.MAX_CSV_GRID_SLOTS == 250_000
+    wide_empty_row = b"," * (csv_module.MAX_CSV_COLUMNS - 1) + b"\n"
+    payload = wide_empty_row * 16
+
+    with pytest.raises(ValueError, match="max_grid_slots"):
+        CsvModel().predict(BytesIO(payload))
+
+
 def test_csv_doc_analyze_sync_async_and_render_contracts_match() -> None:
     """验证同步异步 Analyze 元数据和既有表格渲染链保持一致。"""
     payload = "姓名,年龄\n张三,30\n".encode()

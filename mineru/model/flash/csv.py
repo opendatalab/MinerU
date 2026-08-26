@@ -18,7 +18,8 @@ from ...types import BlockType
 MAX_CSV_BYTES: Final = 200 * 1024 * 1024
 MAX_CSV_ROWS: Final = 1_048_576
 MAX_CSV_COLUMNS: Final = 16_384
-MAX_CSV_GRID_SLOTS: Final = 4_000_000
+# CSV 会把每个槽位实体化为 HTML/DOM 节点，预算需显著低于稀疏电子表格投影上限。
+MAX_CSV_GRID_SLOTS: Final = 250_000
 
 _DELIMITER_CANDIDATES: Final = (",", ";", "\t", "|")
 _DELIMITER_SAMPLE_RECORDS: Final = 20
@@ -255,16 +256,17 @@ def _render_field_html(value: str) -> str:
 
 
 def _rows_to_html(rows: list[list[str]], *, has_header: bool) -> str:
-    """把规则矩形 CSV 网格转换为现有 TableBlock 可消费的安全 HTML。"""
-    lines = ["<table>"]
+    """增量构造安全表格 HTML，避免为每个单元格保留独立字符串对象。"""
+    output = StringIO()
+    output.write("<table>")
     for row_index, row in enumerate(rows):
         tag = "th" if has_header and row_index == 0 else "td"
-        lines.append("  <tr>")
+        output.write("\n  <tr>")
         for value in row:
-            lines.append(f"    <{tag}>{_render_field_html(value)}</{tag}>")
-        lines.append("  </tr>")
-    lines.append("</table>")
-    return "\n".join(lines)
+            output.write(f"\n    <{tag}>{_render_field_html(value)}</{tag}>")
+        output.write("\n  </tr>")
+    output.write("\n</table>")
+    return output.getvalue()
 
 
 def convert_csv(file_binary: BinaryIO) -> list[list[dict[str, Any]]]:

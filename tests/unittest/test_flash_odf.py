@@ -198,6 +198,39 @@ def test_odt_inline_visual_stays_before_soft_page_break() -> None:
     ]
 
 
+def test_odt_child_style_can_reset_inherited_page_breaks() -> None:
+    """验证 break-before/after=auto 显式关闭父样式的逻辑分页。"""
+    content = """<office:document-content
+ xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+ xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"
+ xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0"
+ xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0">
+ <office:automatic-styles>
+  <style:style style:name="Parent" style:family="paragraph">
+   <style:paragraph-properties fo:break-before="page" fo:break-after="page"/>
+  </style:style>
+  <style:style style:name="Inherited" style:family="paragraph" style:parent-style-name="Parent"/>
+  <style:style style:name="Reset" style:family="paragraph" style:parent-style-name="Parent">
+   <style:paragraph-properties fo:break-before="auto" fo:break-after="auto"/>
+  </style:style>
+ </office:automatic-styles>
+ <office:body><office:text>
+  <text:p>Before</text:p><text:p text:style-name="Reset">Reset</text:p><text:p>After</text:p>
+ </office:text></office:body>
+</office:document-content>"""
+    inherited_content = content.replace('text:style-name="Reset"', 'text:style-name="Inherited"')
+
+    reset_pages = OdtModel().predict(BytesIO(build_odf_package("odt", content)))
+    inherited_pages = OdtModel().predict(BytesIO(build_odf_package("odt", inherited_content)))
+
+    assert [[block.get("content") for block in page] for page in reset_pages] == [["Before", "Reset", "After"]]
+    assert [[block.get("content") for block in page] for page in inherited_pages] == [
+        ["Before"],
+        ["Reset"],
+        ["After"],
+    ]
+
+
 def test_odp_preserves_empty_slide_chart_preview_and_notes() -> None:
     """验证 ODP 空 slide 不丢失，图表同时保留数据和预览，备注归属原页。"""
     middle, model = doc_analyze(build_odp_fixture(), file_suffix="odp")

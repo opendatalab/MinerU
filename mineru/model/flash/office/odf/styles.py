@@ -9,7 +9,7 @@ from loguru import logger
 from lxml import etree  # type: ignore[reportMissingImports]
 
 from .constants import qname
-from .models import ListLevel, ParagraphProperties, TextStyle, TextStyleDelta
+from .models import ListLevel, ParagraphProperties, ParagraphPropertiesDelta, TextStyle, TextStyleDelta
 
 
 @dataclass(frozen=True, slots=True)
@@ -21,7 +21,7 @@ class _StyleDefinition:
     parent: str | None
     display_name: str | None
     text_delta: TextStyleDelta
-    paragraph: ParagraphProperties
+    paragraph: ParagraphPropertiesDelta
     table_display: bool | None
 
 
@@ -122,14 +122,14 @@ class OdfStyles:
             return False
 
     @staticmethod
-    def _paragraph_properties(style: etree._Element) -> ParagraphProperties:
-        """读取段落样式中的显式分页与 master-page 信息。"""
+    def _paragraph_properties(style: etree._Element) -> ParagraphPropertiesDelta:
+        """读取可区分缺省与显式非分页值的段落属性增量。"""
         properties = style.find(qname("style", "paragraph-properties"))
         before = properties.get(qname("fo", "break-before")) if properties is not None else None
         after = properties.get(qname("fo", "break-after")) if properties is not None else None
-        return ParagraphProperties(
-            break_before=before == "page",
-            break_after=after == "page",
+        return ParagraphPropertiesDelta(
+            break_before=None if before is None else before.casefold() == "page",
+            break_after=None if after is None else after.casefold() == "page",
             master_page_name=style.get(qname("style", "master-page-name")),
         )
 
@@ -230,8 +230,10 @@ class OdfStyles:
         after = False
         master: str | None = None
         for definition in reversed(chain):
-            before = before or definition.paragraph.break_before
-            after = after or definition.paragraph.break_after
+            if definition.paragraph.break_before is not None:
+                before = definition.paragraph.break_before
+            if definition.paragraph.break_after is not None:
+                after = definition.paragraph.break_after
             master = definition.paragraph.master_page_name or master
         return ParagraphProperties(before, after, master)
 
