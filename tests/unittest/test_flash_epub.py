@@ -8,6 +8,7 @@ from io import BytesIO
 from pathlib import Path
 
 import pytest
+from bs4 import BeautifulSoup
 
 import mineru.model.flash.epub.package as epub_package_module
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
@@ -23,9 +24,14 @@ from mineru.parser import api_server
 from mineru.parser.api_server import CreateJobRequest, FileStore
 from mineru.parser.file_type import guess_suffix_by_bytes, guess_suffix_by_path
 from mineru.render import RenderMode, render_docx, render_html, render_markdown, render_structured_content
-from mineru.types import BlockType
+from mineru.types import BlockType, PageFootnoteBlock
 
-from _epub_test_utils import build_epub2_fixture, build_epub_fixture, build_epub_notes_fixture
+from _epub_test_utils import (
+    build_epub2_fixture,
+    build_epub_fixture,
+    build_epub_notes_fixture,
+    build_epub_table_toc_fixture,
+)
 
 
 def test_epub_model_analyze_and_renderers_preserve_structured_content() -> None:
@@ -34,13 +40,11 @@ def test_epub_model_analyze_and_renderers_preserve_structured_content() -> None:
     stream = BytesIO(payload)
     model_pages = EpubModel().predict(stream)
     assert not stream.closed
-    assert len(model_pages) == 4
+    assert len(model_pages) == 3
 
     middle, model = doc_analyze(payload, effort="xhigh", parse_mode="ocr", file_suffix="epub")
     explicit_full_middle, explicit_full_model = doc_analyze(payload, page_index_map=[], file_suffix="epub")
-    async_middle, async_model = asyncio.run(
-        aio_doc_analyze(payload, effort="medium", parse_mode="auto", file_suffix="epub")
-    )
+    async_middle, async_model = asyncio.run(aio_doc_analyze(payload, effort="medium", parse_mode="auto", file_suffix="epub"))
     assert model.pages == async_model.pages == model_pages
     assert explicit_full_model.pages == model_pages
     assert explicit_full_middle.is_full_document is True
@@ -48,15 +52,13 @@ def test_epub_model_analyze_and_renderers_preserve_structured_content() -> None:
     assert model.file_suffix == middle.file_suffix == "epub"
     assert model.effort == middle.effort == "flash"
     assert model.parse_mode == middle.parse_mode == "txt"
-    assert [page.page_idx for page in middle.pages] == [0, 1, 2, 3]
-    assert middle.pages[0].blocks[0].type == BlockType.INDEX
-    assert middle.pages[1].blocks[0].type == BlockType.DOC_TITLE
+    assert [page.page_idx for page in middle.pages] == [0, 1, 2]
+    assert middle.pages[0].blocks[0].type == BlockType.DOC_TITLE
 
     raw_blocks = [block for page in model.pages for block in page]
     raw_types = [block["type"] for block in raw_blocks]
     for expected_type in (
         BlockType.DOC_TITLE,
-        BlockType.INDEX,
         BlockType.PARAGRAPH_TITLE,
         BlockType.TEXT,
         BlockType.LIST,
@@ -90,6 +92,7 @@ def test_epub_notes_use_page_footnote_and_document_wide_anchors() -> None:
     middle, model = doc_analyze(build_epub_notes_fixture(), file_suffix="epub")
     blocks = [block for page in middle.pages for block in page.blocks]
     footnotes = [block for block in blocks if block.type == BlockType.PAGE_FOOTNOTE]
+    assert all(isinstance(block, PageFootnoteBlock) for block in footnotes)
     footnote_by_text = {block.content: block for block in footnotes}  # type: ignore[union-attr]
 
     first = footnote_by_text["First footnote paragraph back."]
@@ -107,7 +110,7 @@ def test_epub_notes_use_page_footnote_and_document_wide_anchors() -> None:
 
     body_text = next(
         block
-        for block in middle.pages[1].blocks
+        for block in middle.pages[0].blocks
         if block.type == BlockType.TEXT and "Same-page" in block.content  # type: ignore[union-attr]
     )
     assert f"<url>#{first.anchor}</url>" in body_text.content  # type: ignore[union-attr]
@@ -129,13 +132,19 @@ def test_epub_notes_use_page_footnote_and_document_wide_anchors() -> None:
 
     default_markdown = render_markdown(middle)
     full_markdown = render_markdown(middle, mode=RenderMode.FULL)
-    assert "First footnote paragraph" not in default_markdown
+    assert "First footnote paragraph" in default_markdown
     assert f"](#{first.anchor})" in default_markdown
-    assert f'<a id="{first.anchor}"></a>' in full_markdown
+    assert f'id="{first.anchor}" class="mineru-page-footnote"' in default_markdown
+    assert f'id="{first.anchor}" class="mineru-page-footnote"' in full_markdown
+    assert "Page footnote:" not in default_markdown
 
-    full_html = render_html(middle, mode=RenderMode.FULL, standalone=False)
-    assert f'href="#{first.anchor}"' in full_html
-    assert f'id="{first.anchor}"' in full_html
+    for html_output in (
+        render_html(middle, standalone=False),
+        render_html(middle, mode=RenderMode.FULL, standalone=False),
+    ):
+        assert f'href="#{first.anchor}"' in html_output
+        assert f'id="{first.anchor}"' in html_output
+        assert 'class="mineru-page-footnote"' in html_output
 
     structured = render_structured_content(middle)
     structured_blocks = [block for page in structured["pages"] for block in page["blocks"]]
@@ -146,26 +155,47 @@ def test_epub_notes_use_page_footnote_and_document_wide_anchors() -> None:
 
 
 def test_epub_internal_heading_links_and_exact_list_labels_survive() -> None:
-    """验证章节/section 别名映射到真实标题 anchor，列表标签保留源编号。"""
+    """验证 spine 正文内部标题链接和列表标签保留，不注入 nav/NCX 目录页。"""
     middle, _ = doc_analyze(build_epub_fixture(), file_suffix="epub")
-    toc = middle.pages[0].blocks[0]
-    first_page = middle.pages[1]
-    second_page = middle.pages[2]
+    first_page = middle.pages[0]
+    second_page = middle.pages[1]
     first_title = first_page.blocks[0]
     second_title = second_page.blocks[0]
     assert first_title.anchor and second_title.anchor  # type: ignore[union-attr]
-    assert toc.content[0].content == "NAV Chapter One"  # type: ignore[union-attr]
-    assert toc.content[1].content[0].content == "NAV Section Two"  # type: ignore[union-attr]
-    assert toc.content[2].content == "NAV Missing Appendix"  # type: ignore[union-attr]
     markdown = render_markdown(middle)
-    assert markdown.startswith(f"- [NAV Chapter One](#{first_title.anchor})")  # type: ignore[union-attr]
-    assert f"    - [NAV Section Two](#{second_title.anchor})" in markdown  # type: ignore[union-attr]
+    assert markdown.startswith(f'<a id="{first_title.anchor}"></a>\n# Chapter One')  # type: ignore[union-attr]
+    assert "NAV Chapter One" not in markdown
     assert "NCX Chapter One" not in markdown
     assert "Landmark" not in markdown
     assert f"](#{second_title.anchor})" in markdown  # type: ignore[union-attr]
     assert f"](#{first_title.anchor})" in markdown  # type: ignore[union-attr]
     assert "C. Three" in markdown
     assert "B. Two" in markdown
+
+
+def test_epub_table_contents_resolve_title_marker_and_expand_only_exact_single_target_rows() -> None:
+    """验证标题内部 marker 可跳转，且目录表格只扩展严格匹配的单目标行。"""
+    middle, model = doc_analyze(build_epub_table_toc_fixture(), file_suffix="epub")
+    assert len(middle.pages) == 2
+    assert all(block.type != BlockType.INDEX for page in middle.pages for block in page.blocks)
+    table = next(block for block in model.pages[0] if block["type"] == BlockType.TABLE)
+    soup = BeautifulSoup(str(table["content"]), "html.parser")
+    rows = soup.find_all("tr")
+
+    positive_links = rows[0].find_all("a", href=True)
+    assert [link.get_text(strip=True) for link in positive_links] == ["CHAPTER I.", "Target Chapter"]
+    assert len({link["href"] for link in positive_links}) == 1
+    assert rows[1].find_all("a", href=True)[0].get_text(strip=True) == "Mismatch"
+    assert len(rows[1].find_all("a", href=True)) == 1
+    assert rows[2].find("a", href=True)["href"] == "https://example.com"  # type: ignore[index]
+    assert len(rows[2].find_all("a", href=True)) == 1
+    assert len(rows[3].find_all("a", href=True)) == 2
+
+    rendered = BeautifulSoup(render_html(middle, standalone=False), "html.parser")
+    chapter_link = rendered.find("a", string="Target Chapter")
+    chapter_title = rendered.find(id=positive_links[0]["href"].removeprefix("#"))
+    assert chapter_link is not None and chapter_title is not None
+    assert chapter_link["href"] == f"#{chapter_title['id']}"
 
 
 def test_public_parser_rejects_epub_page_range(tmp_path: Path) -> None:
@@ -217,38 +247,37 @@ def test_epub2_and_mimetype_less_compatibility_packages_parse() -> None:
     assert detect_epub(epub2)
     assert detect_epub(compatibility)
     epub2_middle = doc_analyze(epub2, file_suffix="epub")[0]
-    assert epub2_middle.pages[0].blocks[0].content[0].content == "EPUB 2 Entry"  # type: ignore[union-attr]
-    assert epub2_middle.pages[1].blocks[0].content == "EPUB Two Chapter"  # type: ignore[union-attr]
-    assert epub2_middle.pages[1].blocks[1].content == "Legacy\u00a0body"  # type: ignore[union-attr]
-    assert len(doc_analyze(compatibility, file_suffix="epub")[0].pages) == 4
+    assert epub2_middle.pages[0].blocks[0].content == "EPUB Two Chapter"  # type: ignore[union-attr]
+    assert epub2_middle.pages[0].blocks[1].content == "Legacy\u00a0body"  # type: ignore[union-attr]
+    assert len(doc_analyze(compatibility, file_suffix="epub")[0].pages) == 3
 
 
 def test_epub_spine_foreign_resource_uses_xhtml_fallback_chain() -> None:
     """验证 foreign spine item 缺失时仍沿 manifest fallback 到 XHTML。"""
     middle, _ = doc_analyze(build_epub_fixture(use_foreign_fallback=True), file_suffix="epub")
-    assert middle.pages[2].blocks[0].content == "Section Two"  # type: ignore[union-attr]
+    assert middle.pages[1].blocks[0].content == "Section Two"  # type: ignore[union-attr]
 
 
-def test_epub_corrupt_nav_falls_back_to_ncx() -> None:
-    """验证 EPUB3 nav 损坏时使用 EPUB2 NCX，而不是合并两个来源。"""
+def test_epub_nav_and_ncx_outside_spine_do_not_create_synthetic_page() -> None:
+    """验证 spine 外的损坏 nav 与有效 NCX 都不会生成合成目录页。"""
     middle, _ = doc_analyze(build_epub_fixture(corrupt_nav=True), file_suffix="epub")
     markdown = render_markdown(middle)
-    assert markdown.startswith("- [NCX Chapter One]")
-    assert "    - [NCX Section Two]" in markdown
+    assert len(middle.pages) == 3
+    assert all(block.type != BlockType.INDEX for page in middle.pages for block in page.blocks)
+    assert "NCX Chapter One" not in markdown
     assert "NAV Chapter One" not in markdown
 
 
-def test_epub_without_authored_toc_builds_nested_index_from_headings() -> None:
-    """验证缺失 nav/NCX 时按跨 spine 标题层级生成目录。"""
+def test_epub_without_authored_toc_keeps_only_spine_pages_and_titles() -> None:
+    """验证缺失 nav/NCX 时不从正文标题生成额外目录页。"""
     middle, _ = doc_analyze(
         build_epub_fixture(include_nav=False, include_ncx=False),
         file_suffix="epub",
     )
-    index = middle.pages[0].blocks[0]
-    assert index.type == BlockType.INDEX
-    assert index.content[0].content == "Chapter One"  # type: ignore[union-attr]
-    assert index.content[1].content[0].content == "Section Two"  # type: ignore[union-attr]
-    assert len(middle.pages) == 4
+    assert len(middle.pages) == 3
+    assert middle.pages[0].blocks[0].type == BlockType.DOC_TITLE
+    assert middle.pages[1].blocks[0].type == BlockType.PARAGRAPH_TITLE
+    assert all(block.type != BlockType.INDEX for page in middle.pages for block in page.blocks)
 
 
 def test_epub_without_toc_or_headings_does_not_add_empty_page() -> None:
@@ -265,11 +294,16 @@ def test_epub_without_toc_or_headings_does_not_add_empty_page() -> None:
     assert middle.pages[0].blocks[0].type != BlockType.INDEX
 
 
-def test_epub_navigation_in_spine_is_replaced_by_single_front_index() -> None:
-    """验证 spine 中的 nav occurrence 被首页目录替代，不重复输出正文页。"""
-    middle, _ = doc_analyze(build_epub_fixture(nav_in_spine=True), file_suffix="epub")
+def test_epub_navigation_in_spine_preserves_page_order_and_extra_body_content() -> None:
+    """验证 spine 中的 nav 作为普通 XHTML 页保留目录和额外正文。"""
+    middle, _ = doc_analyze(
+        build_epub_fixture(nav_in_spine=True, nav_extra_body_text="Publisher front matter"),
+        file_suffix="epub",
+    )
     assert len(middle.pages) == 4
-    assert sum(block.type == BlockType.INDEX for page in middle.pages for block in page.blocks) == 1
+    assert all(block.type != BlockType.INDEX for page in middle.pages for block in page.blocks)
+    assert any(getattr(block, "content", None) == "Publisher front matter" for block in middle.pages[0].blocks)
+    assert middle.pages[1].blocks[0].content == "Chapter One"  # type: ignore[union-attr]
 
 
 def test_epub_content_detection_precedes_extension_and_rejects_fake_packages(tmp_path: Path) -> None:
@@ -290,11 +324,11 @@ def test_epub_content_detection_precedes_extension_and_rejects_fake_packages(tmp
 def test_epub_corrupt_chapter_keeps_empty_spine_placeholder() -> None:
     """验证局部 XHTML 损坏不移动后续 spine 页号。"""
     middle, model = doc_analyze(build_epub_fixture(corrupt_second_chapter=True), file_suffix="epub")
-    assert len(model.pages) == 4
-    assert model.pages[2] == []
-    assert [page.page_idx for page in middle.pages] == [0, 1, 2, 3]
-    assert middle.pages[2].blocks == []
-    assert "SVG text" in middle.pages[3].blocks[0].content  # type: ignore[union-attr]
+    assert len(model.pages) == 3
+    assert model.pages[1] == []
+    assert [page.page_idx for page in middle.pages] == [0, 1, 2]
+    assert middle.pages[1].blocks == []
+    assert "SVG text" in middle.pages[2].blocks[0].content  # type: ignore[union-attr]
 
 
 def test_epub_rejects_encrypted_unsafe_and_dtd_inputs() -> None:
@@ -334,7 +368,7 @@ def test_doclib_extracts_epub_metadata(tmp_path: Path) -> None:
     source.write_bytes(build_epub_fixture())
     metadata = asyncio.run(extract_metadata(str(source)))
     assert metadata == {
-        "page_count": 4,
+        "page_count": 3,
         "title": "EPUB Fixture",
         "author": "Alice",
         "subject": "Testing",
@@ -343,8 +377,8 @@ def test_doclib_extracts_epub_metadata(tmp_path: Path) -> None:
     }
 
 
-def test_epub_local_parse_job_emits_full_flash_outputs(tmp_path: Path) -> None:
-    """验证本地 Parse Jobs 接受 EPUB，并输出目录和全部正文。"""
+def test_epub_local_parse_job_emits_spine_aligned_flash_outputs(tmp_path: Path) -> None:
+    """验证本地 Parse Jobs 接受 EPUB，并按 spine 输出全部正文。"""
     source = tmp_path / "book.epub"
     source.write_bytes(build_epub_fixture())
     file_store = FileStore(tmp_path / "api-files")
@@ -376,8 +410,8 @@ def test_epub_local_parse_job_emits_full_flash_outputs(tmp_path: Path) -> None:
     assert payload["file_suffix"] == "epub"
     assert payload["effort"] == "flash"
     assert payload["parse_mode"] == "txt"
-    assert [page["page_idx"] for page in payload["pages"]] == [0, 1, 2, 3]
-    assert payload["pages"][0]["blocks"][0]["type"] == "index"
+    assert [page["page_idx"] for page in payload["pages"]] == [0, 1, 2]
+    assert payload["pages"][0]["blocks"][0]["type"] == "doc_title"
 
 
 def test_epub_local_parse_job_preserves_page_range_error_code(tmp_path: Path) -> None:
@@ -408,8 +442,8 @@ def test_epub_local_parse_job_preserves_page_range_error_code(tmp_path: Path) ->
     assert record.files[0].error.code == "page_range_invalid"
 
 
-def test_doclib_ingests_epub_as_local_flash_with_output_page_count(tmp_path: Path) -> None:
-    """验证 doclib 为 EPUB 建立整本 flash row，并记录目录加正文页数。"""
+def test_doclib_ingests_epub_as_local_flash_with_spine_page_count(tmp_path: Path) -> None:
+    """验证 doclib 为 EPUB 建立整本 flash row，并记录 spine 页数。"""
 
     class _NoRulesConfig:
         async def match_rules(self, path: str, rule_type: str) -> list[dict[str, object]]:
@@ -439,8 +473,8 @@ def test_doclib_ingests_epub_as_local_flash_with_output_page_count(tmp_path: Pat
             (response.sha256,),
         )
         assert response.tier == "flash"
-        assert doc == {"file_type": "epub", "page_count": 4}
-        assert parses == [{"tier": "flash", "status": "pending", "privacy": "local", "page_range": "1~4"}]
+        assert doc == {"file_type": "epub", "page_count": 3}
+        assert parses == [{"tier": "flash", "status": "pending", "privacy": "local", "page_range": "1~3"}]
 
         with pytest.raises(InvalidRequestError) as range_exc:
             await service.request_parse(str(source), tier="flash", page_range="2")
@@ -469,7 +503,7 @@ def test_doclib_local_epub_task_clears_persisted_full_page_range(monkeypatch: py
         service._parse_via_local(  # type: ignore[arg-type]
             {"path": "/tmp/book.epub", "ext": "epub"},
             "flash",
-            "1~4",
+            "1~3",
         )
     )
     assert result is expected

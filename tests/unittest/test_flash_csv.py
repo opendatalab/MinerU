@@ -60,9 +60,7 @@ def test_csv_sep_directive_overrides_delimiter_sniffing() -> None:
 def test_csv_preserves_multiline_quotes_padding_ragged_rows_and_safe_text() -> None:
     """验证多行字段、引号、前导零、首尾空格、短行补齐和 HTML 转义。"""
     payload = (
-        'name,note,code,markup\n'
-        'Alice,"line 1\nline 2",001,"<script>alert(1)</script>"\n'
-        'Bob,"  say ""hi""  ",02\n'
+        'name,note,code,markup\nAlice,"line 1\nline 2",001,"<script>alert(1)</script>"\nBob,"  say ""hi""  ",02\n'
     ).encode()
 
     table_html = _raw_table_html(payload)
@@ -138,6 +136,14 @@ def test_csv_enforces_resource_limits(
 
     with pytest.raises(ValueError, match=message):
         CsvModel().predict(BytesIO(payload))
+
+
+def test_csv_grid_limit_short_circuits_before_trailing_malformed_record(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证网格超限后立即失败，不再继续读取尾部损坏记录。"""
+    monkeypatch.setattr(csv_module, "MAX_CSV_GRID_SLOTS", 3)
+
+    with pytest.raises(ValueError, match="max_grid_slots"):
+        CsvModel().predict(BytesIO(b'a,b\n1,2\n"unterminated'))
 
 
 def test_csv_doc_analyze_sync_async_and_render_contracts_match() -> None:

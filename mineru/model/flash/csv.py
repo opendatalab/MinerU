@@ -28,9 +28,7 @@ _HEADER_KIND_DOMINANCE_DEN: Final = 10
 _MAX_HEADER_LABEL_CHARS: Final = 64
 _SEP_DIRECTIVE_RE = re.compile(r"\Asep=(?P<delimiter>[,;\t|])(?:\r\n|\n|\r|$)", re.IGNORECASE)
 _DISALLOWED_CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\ud800-\udfff]")
-_DATE_RE = re.compile(
-    r"^\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}(?:[ T]\d{1,2}:\d{2}(?::\d{2})?(?:\.\d+)?Z?)?$"
-)
+_DATE_RE = re.compile(r"^\d{1,4}[-/.]\d{1,2}[-/.]\d{1,4}(?:[ T]\d{1,2}:\d{2}(?::\d{2})?(?:\.\d+)?Z?)?$")
 _TIME_RE = re.compile(r"^\d{1,2}:\d{2}(?::\d{2})?(?:\.\d+)?Z?$")
 
 CsvValueKind: TypeAlias = Literal["number", "boolean", "date", "text"]
@@ -135,18 +133,18 @@ def _read_csv_rows(text: str, delimiter: str) -> list[list[str]]:
     try:
         for record in reader:
             row = list(record) or [""]
-            rows.append(row)
-            if len(rows) > MAX_CSV_ROWS:
+            next_row_count = len(rows) + 1
+            if next_row_count > MAX_CSV_ROWS:
                 raise ValueError(f"CSV exceeds max_rows={MAX_CSV_ROWS}")
-            max_columns = max(max_columns, len(row))
-            if max_columns > MAX_CSV_COLUMNS:
+            next_max_columns = max(max_columns, len(row))
+            if next_max_columns > MAX_CSV_COLUMNS:
                 raise ValueError(f"CSV exceeds max_columns={MAX_CSV_COLUMNS}")
+            if next_row_count * next_max_columns > MAX_CSV_GRID_SLOTS:
+                raise ValueError(f"CSV exceeds max_grid_slots={MAX_CSV_GRID_SLOTS}")
+            rows.append(row)
+            max_columns = next_max_columns
     except csv_module.Error as exc:
         raise ValueError(f"Malformed CSV near physical line {reader.line_num}: {exc}") from exc
-
-    grid_slots = len(rows) * max_columns
-    if grid_slots > MAX_CSV_GRID_SLOTS:
-        raise ValueError(f"CSV exceeds max_grid_slots={MAX_CSV_GRID_SLOTS}")
     return rows
 
 

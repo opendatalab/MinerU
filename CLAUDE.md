@@ -175,7 +175,7 @@ pr-5415 重构后，Middle JSON 已收敛为 schema 2.0 的统一结构，不再
 
 ### 2.1 ModelJson 严格容器
 
-`doc_analyze` 返回 `tuple[MiddleJson, ModelJson]`。`ModelJson` 持有 raw model-list（`pages: list[list[dict]]`）+ `page_index_map: list[int]`（空列表表示整本文档），并提供 `is_full_document`/`resolved_page_indices` 派生属性。只有 PDF Analyze 接受非空 `page_index_map`；其它 Flash 格式只支持整本解析。EPUB 可恢复目录时第 0 页为独立 `IndexBlock`，后续页面按 OPF spine 顺序排列。`backend/postprocess/document.py:model_json_to_middle_json()` 是 ModelJson → MiddleJson 的唯一编排入口，内部调用 `model_json_to_pages()` + `apply_llm_aided_postprocess()`。
+`doc_analyze` 返回 `tuple[MiddleJson, ModelJson]`。`ModelJson` 持有 raw model-list（`pages: list[list[dict]]`）+ `page_index_map: list[int]`（空列表表示整本文档），并提供 `is_full_document`/`resolved_page_indices` 派生属性。只有 PDF Analyze 接受非空 `page_index_map`；其它 Flash 格式只支持整本解析。EPUB 逻辑页严格对应 OPF spine 顺序，不再前插合成目录页；位于 spine 中的 navigation XHTML 作为普通内容页保留，spine 外的 nav/NCX 不生成页面。`backend/postprocess/document.py:model_json_to_middle_json()` 是 ModelJson → MiddleJson 的唯一编排入口，内部调用 `model_json_to_pages()` + `apply_llm_aided_postprocess()`。
 
 ### 3. PageInfo 结构
 

@@ -50,7 +50,7 @@ Use MinerU for local document files such as:
 |---|---|
 | PDF | `.pdf`, including scanned PDFs and academic papers |
 | Images | `.png`, `.jpg`, `.jpeg`, `.webp`, `.bmp`, and similar image files |
-| EPUB | `.epub`, parsed as a full document with a leading table-of-contents page when available |
+| EPUB | `.epub`, parsed as a full document in OPF spine order with source internal links preserved |
 | Word | `.docx` |
 | PowerPoint | `.pptx` |
 | Excel | `.xlsx` |

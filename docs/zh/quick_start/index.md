@@ -159,6 +159,6 @@ mineru -p <input_path> -o <output_path>
 mineru parse "<input_path>" --tier flash -o <output_path>
 ```
 
-当前 `mineru` 的现代 CLI 和 API 入口支持本地 `PDF / EPUB / 图片 / CSV / RTF / DOCX / PPTX / XLSX / ODT / ODS / ODP` 文件或目录输入。EPUB、RTF 与 OpenDocument 采用本地 Flash 语义解析，不依赖外部 Office 套件。非 PDF Flash 输入只支持整本解析；EPUB 可从 nav、NCX 或正文标题恢复目录时会增加独立首页目录。
+当前 `mineru` 的现代 CLI 和 API 入口支持本地 `PDF / EPUB / 图片 / CSV / RTF / DOCX / PPTX / XLSX / ODT / ODS / ODP` 文件或目录输入。EPUB、RTF 与 OpenDocument 采用本地 Flash 语义解析，不依赖外部 Office 套件。非 PDF Flash 输入只支持整本解析；EPUB 页面严格遵循 OPF spine 顺序，并保留作者目录中可解析的内部跳转。
 
 旧 Gradio WebUI 保持原有上传格式，暂不接收 CSV。具体使用方法请参考[使用指南](../usage/index.md)。

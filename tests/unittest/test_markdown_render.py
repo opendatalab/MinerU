@@ -20,6 +20,7 @@ from mineru.types import (
     MiddleJson,
     PageAuxTextBlock,
     PageBlock,
+    PageFootnoteBlock,
     PageInfo,
     ParagraphTitleBlock,
     RefTextBlock,
@@ -126,7 +127,7 @@ def test_render_modes_filter_merge_and_preserve_input() -> None:
             1,
             PageAuxTextBlock(type="page_number", index=0, content="2"),
             TextBlock(type="text", index=1, content="again", continues_prev=True),
-            PageAuxTextBlock(type="page_footnote", index=2, content="NOTE"),
+            PageFootnoteBlock(type="page_footnote", index=2, content="NOTE"),
         ),
     )
     before = middle.to_json(skip_defaults=False)
@@ -134,18 +135,19 @@ def test_render_modes_filter_merge_and_preserve_input() -> None:
     default = render_markdown(middle)
     full = render_markdown(middle, mode=RenderMode.FULL)
 
-    assert default == "Hello world again\n\n![](images/a.png)"
+    note = '<small><span class="mineru-page-footnote" data-block-type="page_footnote" style="color:#6b7280">NOTE</span></small>'
+    assert default == f"Hello world again\n\n![](images/a.png)\n\n{note}"
     assert full == "\n\n---\n\n".join(
         [
             "HEADER\n\nHello world\n\n![](images/a.png)\n\nFOOTER",
-            "2\n\nagain\n\nNOTE",
+            f"2\n\nagain\n\n{note}",
         ]
     )
     assert middle.to_json(skip_defaults=False) == before
 
 
-def test_page_footnote_anchor_is_emitted_only_in_full_mode() -> None:
-    """验证默认模式隐藏脚注正文，FULL 输出可供正向引用跳转的 anchor。"""
+def test_page_footnote_is_styled_and_linkable_in_default_and_full_modes() -> None:
+    """验证默认与完整模式都输出非折叠的小字号页面脚注及 anchor。"""
     middle = _middle(
         _page(
             0,
@@ -154,7 +156,7 @@ def test_page_footnote_anchor_is_emitted_only_in_full_mode() -> None:
                 index=0,
                 content="See <hyperlink>[1]<url>#note-one</url></hyperlink>.",
             ),
-            PageAuxTextBlock(
+            PageFootnoteBlock(
                 type="page_footnote",
                 index=1,
                 content="Footnote body.",
@@ -163,9 +165,29 @@ def test_page_footnote_anchor_is_emitted_only_in_full_mode() -> None:
         )
     )
 
-    assert render_markdown(middle) == "See [\\[1\\]](#note-one)."
-    assert render_markdown(middle, mode=RenderMode.FULL) == (
-        'See [\\[1\\]](#note-one).\n\n<a id="note-one"></a>\nFootnote body.'
+    expected = (
+        'See [\\[1\\]](#note-one).\n\n<small><span id="note-one" class="mineru-page-footnote" '
+        'data-block-type="page_footnote" style="color:#6b7280">Footnote body.</span></small>'
+    )
+    assert render_markdown(middle) == expected
+    assert render_markdown(middle, mode=RenderMode.FULL) == expected
+    assert "Page footnote:" not in expected
+
+
+def test_page_footnote_does_not_interrupt_continued_text_rendering() -> None:
+    """验证页面脚注保持独立输出，但不会阻断前后正文续接。"""
+    middle = _middle(
+        _page(
+            0,
+            TextBlock(type="text", index=0, content="inter-"),
+            PageFootnoteBlock(type="page_footnote", index=1, content="NOTE"),
+            TextBlock(type="text", index=2, content="national", continues_prev=True),
+        )
+    )
+
+    assert render_markdown(middle) == (
+        'international\n\n<small><span class="mineru-page-footnote" '
+        'data-block-type="page_footnote" style="color:#6b7280">NOTE</span></small>'
     )
 
 
@@ -198,13 +220,13 @@ def test_text_continuation_handles_hyphen_and_cjk_boundaries() -> None:
     assert render_markdown(cjk) == "中文继续"
 
 
-def test_ref_text_continuation_skips_page_auxiliary_blocks_by_mode() -> None:
-    """验证 ref_text 默认跨页合并，FULL 只合并页内链且不修改输入。"""
+def test_ref_text_continuation_skips_merge_transparent_blocks_by_mode() -> None:
+    """验证 ref_text 可跨页面脚注与辅助块查找，FULL 仍保留页界。"""
     middle = _middle(
         _page(
             0,
             _ref_text(0, "inter-"),
-            PageAuxTextBlock(type="page_footnote", index=1, content="NOTE"),
+            PageFootnoteBlock(type="page_footnote", index=1, content="NOTE"),
         ),
         _page(
             1,
@@ -215,10 +237,9 @@ def test_ref_text_continuation_skips_page_auxiliary_blocks_by_mode() -> None:
     )
     original = deepcopy(middle)
 
-    assert render_markdown(middle) == "international continuation"
-    assert render_markdown(middle, mode=RenderMode.FULL) == (
-        "inter-\n\nNOTE\n\n---\n\nHEADER\n\nnational continuation"
-    )
+    note = '<small><span class="mineru-page-footnote" data-block-type="page_footnote" style="color:#6b7280">NOTE</span></small>'
+    assert render_markdown(middle) == f"international continuation\n\n{note}"
+    assert render_markdown(middle, mode=RenderMode.FULL) == (f"inter-\n\n{note}\n\n---\n\nHEADER\n\nnational continuation")
     assert middle == original
 
 
@@ -279,18 +300,16 @@ def test_list_continuation_merges_cross_page_chain_only_in_default_mode() -> Non
     )
 
     assert render_markdown(middle) == "[1] first\n[2] second\n[3] third"
-    assert render_markdown(middle, mode=RenderMode.FULL) == (
-        "[1] first\n\n---\n\n[2] second\n[3] third"
-    )
+    assert render_markdown(middle, mode=RenderMode.FULL) == ("[1] first\n\n---\n\n[2] second\n[3] third")
 
 
-def test_ref_list_continuation_skips_page_auxiliary_blocks_without_mutating_input() -> None:
-    """验证默认模式跨页面辅助块合并参考文献，完整模式仍保留原始页界和顺序。"""
+def test_ref_list_continuation_skips_merge_transparent_blocks_without_mutating_input() -> None:
+    """验证默认模式跨页面脚注与辅助块合并参考文献，FULL 仍保留页界。"""
     middle = _middle(
         _page(
             0,
             _list(0, "[1] first", sub_type="ref_text"),
-            PageAuxTextBlock(type="page_footnote", index=1, content="NOTE"),
+            PageFootnoteBlock(type="page_footnote", index=1, content="NOTE"),
         ),
         _page(
             1,
@@ -301,20 +320,19 @@ def test_ref_list_continuation_skips_page_auxiliary_blocks_without_mutating_inpu
     )
     original = deepcopy(middle)
 
-    assert render_markdown(middle) == "[1] first\n[2] second"
-    assert render_markdown(middle, mode=RenderMode.FULL) == (
-        "[1] first\n\nNOTE\n\n---\n\nHEADER\n\n2\n\n[2] second"
-    )
+    note = '<small><span class="mineru-page-footnote" data-block-type="page_footnote" style="color:#6b7280">NOTE</span></small>'
+    assert render_markdown(middle) == f"[1] first\n[2] second\n\n{note}"
+    assert render_markdown(middle, mode=RenderMode.FULL) == (f"[1] first\n\n{note}\n\n---\n\nHEADER\n\n2\n\n[2] second")
     assert middle == original
 
 
-def test_ordinary_list_continuation_does_not_skip_page_auxiliary_blocks() -> None:
-    """验证页面辅助块透明规则只作用于参考文献，普通列表仍要求物理相邻。"""
+def test_ordinary_list_continuation_does_not_skip_page_footnote() -> None:
+    """验证页面脚注透明规则只作用于参考文献，普通列表仍要求物理相邻。"""
     middle = _middle(
         _page(
             0,
             _list(0, "- first"),
-            PageAuxTextBlock(type="page_footnote", index=1, content="NOTE"),
+            PageFootnoteBlock(type="page_footnote", index=1, content="NOTE"),
         ),
         _page(
             1,
@@ -323,7 +341,10 @@ def test_ordinary_list_continuation_does_not_skip_page_auxiliary_blocks() -> Non
         ),
     )
 
-    assert render_markdown(middle) == "- first\n\n- second"
+    assert render_markdown(middle) == (
+        '- first\n\n<small><span class="mineru-page-footnote" data-block-type="page_footnote" '
+        'style="color:#6b7280">NOTE</span></small>\n\n- second'
+    )
 
 
 def test_list_continuation_keeps_semantic_barrier_and_matching_subtype() -> None:
@@ -404,9 +425,7 @@ def test_reference_list_bullets_mixed_children_without_duplication() -> None:
         ],
     )
 
-    assert render_markdown(_middle(_page(0, block), file_suffix="pdf")) == (
-        "- existing\n- Author A\n  continued"
-    )
+    assert render_markdown(_middle(_page(0, block), file_suffix="pdf")) == ("- existing\n- Author A\n  continued")
 
 
 def test_nested_reference_list_decides_bullets_independently() -> None:
@@ -644,10 +663,7 @@ def test_complex_html_tables_fall_back_to_html(html_table: str) -> None:
 
 def test_simple_html_table_converts_to_gfm_and_preserves_inline_formula() -> None:
     """验证简单 HTML table 转 GFM，并保留单元格公式反斜杠。"""
-    content = (
-        "<table><tr><th>Name</th><th>Value</th></tr>"
-        "<tr><td>A|B</td><td><eq>\\frac{1}{2}</eq></td></tr></table>"
-    )
+    content = "<table><tr><th>Name</th><th>Value</th></tr><tr><td>A|B</td><td><eq>\\frac{1}{2}</eq></td></tr></table>"
 
     assert render_markdown(_middle(_page(0, _table(0, content)))) == "\n".join(
         [
@@ -726,10 +742,7 @@ def test_algorithm_preserves_whitespace_comparisons_scripts_and_formula() -> Non
             CodeBodyBlock(
                 type="code_body",
                 index=0,
-                content=(
-                    "if a < b and c > d:\n  T<sub>queue</sub><sup>2</sup> = "
-                    "<eq>a < b</eq><eq>c > d</eq>"
-                ),
+                content=("if a < b and c > d:\n  T<sub>queue</sub><sup>2</sup> = <eq>a < b</eq><eq>c > d</eq>"),
             )
         ],
     )

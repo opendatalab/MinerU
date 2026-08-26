@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 import base64
+import html
 from io import BytesIO
 from zipfile import ZIP_DEFLATED, ZIP_STORED, ZipFile
 
 
-_PNG_BYTES = base64.b64decode(
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII="
-)
+_PNG_BYTES = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")
 
 
 def build_epub_fixture(
@@ -22,6 +21,7 @@ def build_epub_fixture(
     include_ncx: bool = True,
     corrupt_nav: bool = False,
     nav_in_spine: bool = False,
+    nav_extra_body_text: str = "",
     strip_headings: bool = False,
 ) -> bytes:
     """构造覆盖 XHTML、SVG、CSS、公式、表格、列表和图片的最小 EPUB 3。"""
@@ -54,7 +54,7 @@ def build_epub_fixture(
     if include_ncx:
         opf = opf.replace("<spine>", '<spine toc="ncx">')
     if nav_in_spine:
-        opf = opf.replace("<itemref idref=\"c1\"/>", '<itemref idref="nav"/><itemref idref="c1"/>')
+        opf = opf.replace('<itemref idref="c1"/>', '<itemref idref="nav"/><itemref idref="c1"/>')
     if use_foreign_fallback:
         opf = opf.replace(
             '<item id="c2" href="text/ch2.xhtml" media-type="application/xhtml+xml"/>',
@@ -104,6 +104,11 @@ def build_epub_fixture(
   </ol></nav>
   <nav epub:type="landmarks"><ol><li><a href="text/ch1.xhtml">Landmark</a></li></ol></nav>
 </body></html>"""
+    if nav_extra_body_text:
+        nav_xhtml = nav_xhtml.replace(
+            "</body>",
+            f"<p>{html.escape(nav_extra_body_text, quote=False)}</p></body>",
+        )
     ncx = """<?xml version="1.0" encoding="UTF-8"?>
 <ncx xmlns="http://www.daisy.org/z3986/2005/ncx/" version="2005-1"><navMap>
   <navPoint id="n1"><navLabel><text>NCX Chapter One</text></navLabel><content src="text/ch1.xhtml#chapter-one"/>
@@ -242,4 +247,43 @@ def build_epub_notes_fixture() -> bytes:
     return output.getvalue()
 
 
-__all__ = ["build_epub2_fixture", "build_epub_fixture", "build_epub_notes_fixture"]
+def build_epub_table_toc_fixture() -> bytes:
+    """构造标题内部 fragment 与保守整行目录表格扩展的最小 EPUB。"""
+    container = (
+        '<container xmlns="urn:oasis:names:tc:opendocument:xmlns:container" version="1.0"><rootfiles>'
+        '<rootfile full-path="EPUB/package.opf" media-type="application/oebps-package+xml"/>'
+        "</rootfiles></container>"
+    )
+    opf = """<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>Table TOC</dc:title></metadata>
+  <manifest>
+    <item id="contents" href="contents.xhtml" media-type="application/xhtml+xml"/>
+    <item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine><itemref idref="contents"/><itemref idref="chapter"/></spine>
+</package>"""
+    contents = """<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml"><body><h1>Contents</h1><table><tbody>
+  <tr><td><a href="chapter.xhtml#chapter-marker">CHAPTER I.</a></td><td>Target Chapter</td></tr>
+  <tr><td><a href="chapter.xhtml#other">Mismatch</a></td><td>Other text</td></tr>
+  <tr><td><a href="https://example.com">External</a></td><td>Target Chapter</td></tr>
+  <tr><td><a href="chapter.xhtml#chapter-marker">First</a></td><td><a href="chapter.xhtml#other">Second</a></td></tr>
+</tbody></table></body></html>"""
+    chapter = """<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml"><body>
+  <h2><a id="chapter-marker"/>CHAPTER I.<br/>
+  Target Chapter</h2>
+  <h2 id="other">Other Chapter</h2>
+</body></html>"""
+    output = BytesIO()
+    with ZipFile(output, "w") as package:
+        package.writestr("mimetype", "application/epub+zip", compress_type=ZIP_STORED)
+        package.writestr("META-INF/container.xml", container, compress_type=ZIP_DEFLATED)
+        package.writestr("EPUB/package.opf", opf, compress_type=ZIP_DEFLATED)
+        package.writestr("EPUB/contents.xhtml", contents, compress_type=ZIP_DEFLATED)
+        package.writestr("EPUB/chapter.xhtml", chapter, compress_type=ZIP_DEFLATED)
+    return output.getvalue()
+
+
+__all__ = ["build_epub2_fixture", "build_epub_fixture", "build_epub_notes_fixture", "build_epub_table_toc_fixture"]

@@ -330,7 +330,7 @@ If your device does not meet the GPU acceleration requirements, you can explicit
 mineru parse "<input_path>" --tier flash -o <output_path>
 ```
 
-`mineru` currently supports local `PDF`, `EPUB`, image, `CSV`, `RTF`, `DOCX`, `PPTX`, `XLSX`, `ODT`, `ODS`, and `ODP` file or directory inputs through the CLI, API, and `mineru-router`. EPUB, RTF, and OpenDocument use local semantic Flash parsing without external office-suite conversion. Non-PDF Flash inputs are always parsed as full documents; EPUB adds a leading table-of-contents page before the spine pages when a directory can be recovered. The legacy Gradio WebUI keeps its existing advertised upload formats. For detailed instructions, please refer to the [Usage Guide](https://opendatalab.github.io/MinerU/usage/).
+`mineru` currently supports local `PDF`, `EPUB`, image, `CSV`, `RTF`, `DOCX`, `PPTX`, `XLSX`, `ODT`, `ODS`, and `ODP` file or directory inputs through the CLI, API, and `mineru-router`. EPUB, RTF, and OpenDocument use local semantic Flash parsing without external office-suite conversion. Non-PDF Flash inputs are always parsed as full documents; EPUB pages follow OPF spine order and preserve resolvable internal links from authored contents, including list and table layouts. The legacy Gradio WebUI keeps its existing advertised upload formats. For detailed instructions, please refer to the [Usage Guide](https://opendatalab.github.io/MinerU/usage/).
 
 # FAQ
 

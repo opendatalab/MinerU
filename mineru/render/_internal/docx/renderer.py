@@ -84,6 +84,7 @@ from ....types import (
     ListBlock,
     MiddleJson,
     PageAuxTextBlock,
+    PageFootnoteBlock,
     ParagraphTitleBlock,
     RefTextBlock,
     TableAnnotationBlock,
@@ -118,18 +119,13 @@ class _DocxRenderer:
         mode: RenderMode,
         asset_resolver: AssetResolver | None,
     ) -> None:
-        """初始化 renderer，并按展示模式预注册标题与页面脚注 anchor。"""
+        """初始化 renderer，并预注册标题与默认可见页面脚注 anchor。"""
         self.middle_json = middle_json
         self.mode = mode
         self.asset_resolver = asset_resolver
         self.document = Document()
         configure_document(self.document)
-        self.bookmarks = BookmarkRegistry(
-            _iter_document_anchors(
-                middle_json,
-                include_page_footnotes=mode is RenderMode.FULL,
-            )
-        )
+        self.bookmarks = BookmarkRegistry(_iter_document_anchors(middle_json))
         self.usable_width_emu = usable_width_emu(self.document)
         self.usable_width_twips = usable_width_twips(self.document)
 
@@ -165,11 +161,14 @@ class _DocxRenderer:
         if isinstance(block, (DocTitleBlock, ParagraphTitleBlock)):
             self._render_title(block, context)
             return
+        if isinstance(block, PageFootnoteBlock):
+            paragraph = self.document.add_paragraph(style=FOOTNOTE_STYLE)
+            append_inline_content(paragraph, block.content, context=context)
+            self.bookmarks.attach(paragraph, block.anchor)
+            return
         if isinstance(block, PageAuxTextBlock):
             paragraph = self.document.add_paragraph(style=AUXILIARY_STYLE)
             append_inline_content(paragraph, block.content, context=context)
-            if block.type == BlockType.PAGE_FOOTNOTE:
-                self.bookmarks.attach(paragraph, block.anchor)
             return
         if isinstance(block, EquationBlock):
             self._render_equation(block, context)
@@ -767,22 +766,13 @@ def render_docx(
     ).render()
 
 
-def _iter_document_anchors(
-    middle_json: MiddleJson,
-    *,
-    include_page_footnotes: bool,
-) -> Iterable[str]:
-    """按当前展示模式遍历实际会写入 bookmark 的标题和页面脚注 anchor。"""
+def _iter_document_anchors(middle_json: MiddleJson) -> Iterable[str]:
+    """遍历标题和默认可见页面脚注实际会写入的 bookmark anchor。"""
     for page in middle_json.pages:
         for block in page.blocks:
             if isinstance(block, TitleBlockBase) and block.anchor:
                 yield block.anchor
-            elif (
-                include_page_footnotes
-                and isinstance(block, PageAuxTextBlock)
-                and block.type == BlockType.PAGE_FOOTNOTE
-                and block.anchor
-            ):
+            elif isinstance(block, PageFootnoteBlock) and block.anchor:
                 yield block.anchor
 
 

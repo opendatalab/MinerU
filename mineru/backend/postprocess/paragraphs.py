@@ -6,7 +6,7 @@ import math
 import re
 from typing import Any, TypeAlias
 
-from ...types import PAGE_AUXILIARY_BLOCK_TYPES, BlockType
+from ...types import MERGE_TRANSPARENT_BLOCK_TYPES, BlockType
 
 LINE_STOP_FLAG = (".", "!", "?", "。", "！", "？", ")", "）", '"', "”", ":", "：", ";", "；")
 SECTION_MERGE_BARRIER_TYPES = {
@@ -18,13 +18,13 @@ TEXT_MERGE_BARRIER_TYPES = {
     *SECTION_MERGE_BARRIER_TYPES,
     BlockType.LIST,
 }
-# 文本段落合并允许跨过视觉根块和页面装饰块，其他语义块仍会阻断候选查找。
+# 文本段落合并允许跨过视觉根块、页面脚注和页面装饰块，其他语义块仍会阻断候选查找。
 TEXT_MERGE_TRANSPARENT_TYPES = {
     BlockType.IMAGE,
     BlockType.TABLE,
     BlockType.CHART,
     BlockType.CODE,
-    *PAGE_AUXILIARY_BLOCK_TYPES,
+    *MERGE_TRANSPARENT_BLOCK_TYPES,
 }
 CONTINUABLE_TEXT_BLOCK_TYPES = {BlockType.TEXT, BlockType.REF_TEXT}
 VERTICAL_LINE_HEIGHT_TO_WIDTH_RATIO_THRESHOLD = 2
@@ -201,7 +201,7 @@ def _find_previous_text_block(
     ordered_blocks: list[OrderedBlock],
     current_index: int,
 ) -> OrderedBlock | None:
-    """向前查找 text，视觉根块和页面装饰块可跨过，其他语义块会阻断查找。"""
+    """向前查找 text，视觉根块和合并透明块可跨过，其他语义块会阻断查找。"""
     for previous_index in range(current_index - 1, -1, -1):
         previous_block = ordered_blocks[previous_index][2]
         previous_type = previous_block.get("type")
@@ -219,11 +219,11 @@ def _find_previous_ref_text_block(
     ordered_blocks: list[OrderedBlock],
     current_index: int,
 ) -> OrderedBlock | None:
-    """跳过页面辅助块查找前一个 ref_text，其他语义块保持阻断。"""
+    """跳过页面脚注与辅助块查找前一个 ref_text，其他语义块保持阻断。"""
     for previous_index in range(current_index - 1, -1, -1):
         previous_block = ordered_blocks[previous_index][2]
         previous_type = previous_block.get("type")
-        if previous_type in PAGE_AUXILIARY_BLOCK_TYPES:
+        if previous_type in MERGE_TRANSPARENT_BLOCK_TYPES:
             continue
         if previous_type == BlockType.REF_TEXT:
             return ordered_blocks[previous_index]
@@ -236,12 +236,12 @@ def _find_previous_ref_text_list_block(
     current_index: int,
     current_block: BlockDict,
 ) -> OrderedBlock | None:
-    """跳过页面辅助块查找前一个 ref_text list，其他语义块保持阻断。"""
+    """跳过页面脚注与辅助块查找前一个 ref_text list，其他语义块保持阻断。"""
     if not _is_ref_text_list_block(current_block):
         return None
     for previous_index in range(current_index - 1, -1, -1):
         previous_block = ordered_blocks[previous_index][2]
-        if previous_block.get("type") in PAGE_AUXILIARY_BLOCK_TYPES:
+        if previous_block.get("type") in MERGE_TRANSPARENT_BLOCK_TYPES:
             continue
         if _is_ref_text_list_block(previous_block):
             return ordered_blocks[previous_index]
@@ -365,9 +365,7 @@ def _collect_following_same_orientation_lines(
 ) -> list[CalculationBBox]:
     """在当前页向后读取至多五条同类型同方向行，语义屏障或非法文本会终止读取。"""
     following_lines: list[CalculationBBox] = []
-    transparent_types = (
-        TEXT_MERGE_TRANSPARENT_TYPES if current_type == BlockType.TEXT else PAGE_AUXILIARY_BLOCK_TYPES
-    )
+    transparent_types = TEXT_MERGE_TRANSPARENT_TYPES if current_type == BlockType.TEXT else MERGE_TRANSPARENT_BLOCK_TYPES
     for page_idx, _, block in ordered_blocks[current_index + 1 :]:
         if page_idx != current_page_idx:
             break

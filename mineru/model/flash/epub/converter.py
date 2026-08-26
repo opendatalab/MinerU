@@ -11,7 +11,6 @@ from lxml import etree  # type: ignore[reportMissingImports]
 from .constants import SVG_MEDIA_TYPE, XHTML_MEDIA_TYPES
 from .errors import EpubEncryptedError, EpubParseError, EpubResourceLimitError
 from .package import EpubPackage
-from .toc import build_epub_toc_index
 from .xhtml import EpubChapterConverter, build_anchor_registry, convert_svg_spine
 
 
@@ -28,7 +27,7 @@ class EpubConverter:
         try:
             parsed: list[tuple[int, str, str, etree._Element | None]] = []
             readable_count = 0
-            for index, spine_item in enumerate(package.content_spine_items()):
+            for index, spine_item in enumerate(package.spine):
                 if spine_item.path is None or spine_item.media_type is None:
                     parsed.append((index, "", "", None))
                     logger.warning("Skipping unsupported EPUB spine item index={} idref={!r}", index, spine_item.idref)
@@ -50,13 +49,10 @@ class EpubConverter:
                 raise EpubParseError("Malformed EPUB package: no selected spine content could be read")
 
             xhtml_chapters = [
-                (path, root)
-                for _, path, media_type, root in parsed
-                if root is not None and media_type in XHTML_MEDIA_TYPES
+                (path, root) for _, path, media_type, root in parsed if root is not None and media_type in XHTML_MEDIA_TYPES
             ]
             anchors = build_anchor_registry(xhtml_chapters, package)
-            toc_index = build_epub_toc_index(package, anchors)
-            pages: list[list[dict[str, Any]]] = [[toc_index]] if toc_index is not None else []
+            pages: list[list[dict[str, Any]]] = []
             for index, path, media_type, root in parsed:
                 if root is None:
                     pages.append([])

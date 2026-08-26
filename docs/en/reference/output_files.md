@@ -166,7 +166,8 @@ Leaf blocks (text, title, equation, etc.) carry `content: str` directly. Visual 
 | `list` | List container; `content` is a list of `text`/`ref_text`/nested `list` blocks; `sub_type` is `text` or `ref_text` |
 | `index` | Index (table of contents) container; `content` is a list of `text`/`doc_title`/`paragraph_title`/nested `index` blocks |
 | `ref_text` | Reference / bibliography text block; EPUB notes do not use this type |
-| `header` / `footer` / `page_number` / `aside_text` / `page_footnote` | Page auxiliary blocks (leaf, `content: str`); only `page_footnote` may include `anchor` |
+| `header` / `footer` / `page_number` / `aside_text` | Page auxiliary blocks (leaf, `content: str`); they do not accept `anchor` |
+| `page_footnote` | Independent page footnote block (leaf, `content: str`); may include a document-wide `anchor` and remains visible in DEFAULT rendering |
 
 ##### Sample Data (schema 2.0)
 
@@ -259,7 +260,8 @@ Leaf blocks (text, title, equation, etc.) carry `content: str` directly. Visual 
 | `code` | Code block with `code_content`, `code_caption`, `code_footnote`, and `code_language` |
 | `algorithm` | Algorithm block with `algorithm_content`, `algorithm_caption`, and `algorithm_footnote` |
 | `list` / `index` | List and index blocks with `list_items` |
-| `page_header` / `page_footer` / `page_number` / `page_aside_text` / `page_footnote` | Page auxiliary blocks |
+| `page_header` / `page_footer` / `page_number` / `page_aside_text` | Page auxiliary blocks |
+| `page_footnote` | Independent page footnote content |
 
 Inline fields such as `title_content`, `paragraph_content`, and captions are
 usually span lists. A `hyperlink` span contains `content` and `url`; when one
@@ -383,7 +385,7 @@ In schema 2.0, the multimodal tier produces the same unified `MiddleJson` struct
 - `code` is a container block; `content` holds a `code_body` plus optional `code_caption`/`code_footnote`; `sub_type` is:
     * `code`
     * `algorithm`
-- Page auxiliary blocks (`header`, `footer`, `page_number`, `aside_text`, `page_footnote`) appear as top-level leaf blocks in `blocks` with `content: str` — there is no separate `discarded_blocks` field in schema 2.0. `page_footnote` alone may carry an optional document-wide `anchor`.
+- Page auxiliary blocks (`header`, `footer`, `page_number`, `aside_text`) and the independent `page_footnote` block appear as top-level leaves in `blocks` with `content: str` — there is no separate `discarded_blocks` field in schema 2.0. Only `page_footnote` may carry an optional document-wide `anchor`, and it remains visible in DEFAULT rendering.
 - All blocks may include an `angle` field indicating rotation (one of `0, 90, 180, 270`).
 
 ##### Examples

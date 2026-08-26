@@ -118,6 +118,11 @@ def _visible_text(element: etree._Element) -> str:
     return _WHITESPACE_RE.sub(" ", html.unescape("".join(element.itertext()))).strip()
 
 
+def _normalized_toc_label(value: str) -> str:
+    """规范目录标签的实体、空白和大小写，供严格标题匹配使用。"""
+    return _WHITESPACE_RE.sub(" ", html.unescape(value)).strip().casefold()
+
+
 def _entity_text(element: etree._Element) -> str:
     """把未解析的安全 HTML 命名实体转换为可见文本。"""
     name = getattr(element, "name", "")
@@ -198,15 +203,6 @@ class _ChapterTree:
     root: etree._Element
 
 
-@dataclass(frozen=True, slots=True)
-class EpubHeadingEntry:
-    """保存 heading fallback 目录使用的标题文本、层级和 anchor。"""
-
-    label: str
-    level: int
-    anchor: str
-
-
 class EpubAnchorRegistry:
     """建立章节路径、标题与 note fragment 到实际 canonical anchor 的别名表。"""
 
@@ -216,12 +212,13 @@ class EpubAnchorRegistry:
         self._heading_anchors: dict[etree._Element, str] = {}
         self._note_anchors: dict[etree._Element, str] = {}
         self._targets: dict[tuple[str, str | None], str] = {}
-        self._heading_entries: list[EpubHeadingEntry] = []
+        self._heading_labels: dict[str, str] = {}
         for chapter in chapters:
             headings = [
                 element
                 for element in chapter.root.iter()
-                if isinstance(element.tag, str) and _local_name(element) in {"h1", "h2", "h3", "h4", "h5", "h6"}
+                if isinstance(element.tag, str)
+                and _local_name(element) in {"h1", "h2", "h3", "h4", "h5", "h6"}
                 and _visible_text(element)
             ]
             for ordinal, heading in enumerate(headings):
@@ -229,13 +226,7 @@ class EpubAnchorRegistry:
                 identity = f"{source_id or 'heading'}-{ordinal}"
                 anchor = _canonical_anchor(chapter.path, identity)
                 self._heading_anchors[heading] = anchor
-                self._heading_entries.append(
-                    EpubHeadingEntry(
-                        label=_visible_text(heading),
-                        level=int(_local_name(heading)[1:]),
-                        anchor=anchor,
-                    )
-                )
+                self._heading_labels[anchor] = _visible_text(heading)
             notes = [
                 element
                 for element in chapter.root.iter()
@@ -255,28 +246,40 @@ class EpubAnchorRegistry:
                     continue
                 if (chapter.path, fragment) in self._targets:
                     continue
-                target_anchor = self._heading_anchors.get(element) or self._note_anchors.get(element)
-                if target_anchor is None:
-                    descendant = next(
-                        (
-                            child
-                            for child in element.iterdescendants()
-                            if isinstance(child.tag, str) and child in self._heading_anchors
-                        ),
-                        None,
-                    )
-                    if descendant is not None:
-                        target_anchor = self._heading_anchors[descendant]
+                target_anchor = self._target_anchor_for_element(element)
                 if target_anchor is not None:
                     self._targets[(chapter.path, fragment)] = target_anchor
+
+    def _target_anchor_for_element(self, element: etree._Element) -> str | None:
+        """把任意 fragment 元素映射到自身、祖先或后代的可输出标题与脚注。"""
+        direct = self._heading_anchors.get(element) or self._note_anchors.get(element)
+        if direct is not None:
+            return direct
+        ancestor = next(
+            (parent for parent in element.iterancestors() if parent in self._heading_anchors or parent in self._note_anchors),
+            None,
+        )
+        if ancestor is not None:
+            return self._heading_anchors.get(ancestor) or self._note_anchors.get(ancestor)
+        descendant = next(
+            (
+                child
+                for child in element.iterdescendants()
+                if isinstance(child.tag, str) and (child in self._heading_anchors or child in self._note_anchors)
+            ),
+            None,
+        )
+        if descendant is None:
+            return None
+        return self._heading_anchors.get(descendant) or self._note_anchors.get(descendant)
 
     def heading_anchor(self, heading: etree._Element) -> str | None:
         """返回一个已预扫描标题的规范 anchor。"""
         return self._heading_anchors.get(heading)
 
-    def heading_entries(self) -> tuple[EpubHeadingEntry, ...]:
-        """按 spine 和文档顺序返回全部可见标题记录。"""
-        return tuple(self._heading_entries)
+    def heading_label(self, anchor: str) -> str | None:
+        """返回 canonical 标题 anchor 对应的可见标题文本。"""
+        return self._heading_labels.get(anchor)
 
     def note_anchor(self, note: etree._Element) -> str | None:
         """返回一个已预扫描 Footnote/Endnote 的 canonical anchor。"""
@@ -358,11 +361,7 @@ class EpubChapterConverter:
     def convert(self) -> list[dict[str, object]]:
         """解析 XHTML body 并返回按 DOM 顺序排列的 raw blocks。"""
         body = next(
-            (
-                element
-                for element in self.root.iter()
-                if isinstance(element.tag, str) and _local_name(element) == "body"
-            ),
+            (element for element in self.root.iter() if isinstance(element.tag, str) and _local_name(element) == "body"),
             None,
         )
         if body is None:
@@ -529,9 +528,7 @@ class EpubChapterConverter:
         alt = (caption or element.get("alt") or element.get("title") or "").strip()
         if data_uri is None:
             return [{"type": BlockType.TEXT, "content": html.escape(alt, quote=False)}] if alt else []
-        blocks: list[dict[str, object]] = [
-            {"type": BlockType.IMAGE, "content": "", "image_base64": data_uri}
-        ]
+        blocks: list[dict[str, object]] = [{"type": BlockType.IMAGE, "content": "", "image_base64": data_uri}]
         if alt:
             blocks.append({"type": BlockType.IMAGE_CAPTION, "content": html.escape(alt, quote=False)})
         return blocks
@@ -559,11 +556,7 @@ class EpubChapterConverter:
     def _parse_figure(self, element: etree._Element, style: TextStyle) -> list[dict[str, object]]:
         """解析 figure 中的图片和 figcaption，其余内容按普通容器处理。"""
         caption_element = next(
-            (
-                child
-                for child in element
-                if isinstance(child.tag, str) and _local_name(child) == "figcaption"
-            ),
+            (child for child in element if isinstance(child.tag, str) and _local_name(child) == "figcaption"),
             None,
         )
         caption = _visible_text(caption_element) if caption_element is not None else ""
@@ -576,9 +569,7 @@ class EpubChapterConverter:
                 blocks.extend(self._image_blocks(child, caption=caption))
             elif name != "figcaption":
                 child_blocks = (
-                    self._parse_block(child, style)
-                    if name in _BLOCK_TAGS
-                    else self._render_inline_element(child, style)[1]
+                    self._parse_block(child, style) if name in _BLOCK_TAGS else self._render_inline_element(child, style)[1]
                 )
                 blocks.extend(child_blocks)
         if not blocks and caption:
@@ -610,18 +601,20 @@ class EpubChapterConverter:
             return []
         blocks: list[dict[str, object]] = [{"type": BlockType.TABLE, "content": markup}]
         caption_element = next(
-            (
-                child
-                for child in table
-                if isinstance(child.tag, str) and _local_name(child) == "caption"
-            ),
+            (child for child in table if isinstance(child.tag, str) and _local_name(child) == "caption"),
             None,
         )
         if caption_element is not None and (caption := _visible_text(caption_element)):
             blocks.append({"type": BlockType.TABLE_CAPTION, "content": html.escape(caption, quote=False)})
         return blocks
 
-    def _serialize_table_node(self, element: etree._Element, inherited: TextStyle) -> str:
+    def _serialize_table_node(
+        self,
+        element: etree._Element,
+        inherited: TextStyle,
+        *,
+        row_link_target: str | None = None,
+    ) -> str:
         """递归序列化安全表格结构、行内样式、链接、公式和包内图片。"""
         resolved = self.stylesheet.resolve(element, inherited)
         if resolved.hidden:
@@ -656,7 +649,7 @@ class EpubChapterConverter:
             "u",
         }
         if name not in allowed:
-            return self._serialize_table_children(element, resolved.text)
+            return self._serialize_table_children(element, resolved.text, row_link_target=row_link_target)
         if name == "br":
             return "<br>"
         if name == "math":
@@ -667,6 +660,8 @@ class EpubChapterConverter:
             data_uri = self._image_data_uri(src)
             alt = html.escape(element.get("alt") or "", quote=True)
             return f'<img src="{html.escape(data_uri, quote=True)}" alt="{alt}">' if data_uri else alt
+        if name == "tr":
+            row_link_target = self._toc_table_row_target(element)
         attributes: list[str] = []
         if name in {"td", "th"}:
             for attribute in ("colspan", "rowspan", "scope"):
@@ -681,20 +676,63 @@ class EpubChapterConverter:
             target = self.anchors.resolve_link(element.get("href") or "", base_part=self.chapter_path)
             if target:
                 attributes.append(f'href="{html.escape(target, quote=True)}"')
-        inner = self._serialize_table_children(element, resolved.text)
+        inner = self._serialize_table_children(element, resolved.text, row_link_target=row_link_target)
+        if name in {"td", "th"} and row_link_target and self._table_cell_can_inherit_toc_link(element):
+            inner = f'<a href="{html.escape(row_link_target, quote=True)}">{inner}</a>'
         attrs = f" {' '.join(attributes)}" if attributes else ""
         return f"<{name}{attrs}>{inner}</{name}>"
 
-    def _serialize_table_children(self, element: etree._Element, style: TextStyle) -> str:
+    def _serialize_table_children(
+        self,
+        element: etree._Element,
+        style: TextStyle,
+        *,
+        row_link_target: str | None = None,
+    ) -> str:
         """序列化表格节点的文本、子元素和 tail。"""
         parts = [self._render_table_text(element.text, style)]
         for child in element:
             if isinstance(child.tag, str):
-                parts.append(self._serialize_table_node(child, style))
+                parts.append(self._serialize_table_node(child, style, row_link_target=row_link_target))
             else:
                 parts.append(self._render_table_text(_entity_text(child), style))
             parts.append(self._render_table_text(child.tail, style))
         return "".join(parts)
+
+    def _toc_table_row_target(self, row: etree._Element) -> str | None:
+        """为严格匹配单一目标标题的目录表格行返回内部链接。"""
+        links = [
+            element
+            for element in row.iter()
+            if isinstance(element.tag, str) and _local_name(element) == "a" and (element.get("href") or "").strip()
+        ]
+        if not links:
+            return None
+        resolved_targets: list[str] = []
+        for link in links:
+            target = self.anchors.resolve_link(link.get("href") or "", base_part=self.chapter_path)
+            if target is None or not target.startswith("#"):
+                return None
+            resolved_targets.append(target)
+        if len(set(resolved_targets)) != 1:
+            return None
+        target = resolved_targets[0]
+        title = self.anchors.heading_label(target[1:])
+        if title is None:
+            return None
+        cells = [child for child in row if isinstance(child.tag, str) and _local_name(child) in {"td", "th"}]
+        row_label = " ".join(value for cell in cells if (value := _visible_text(cell)))
+        if not row_label or _normalized_toc_label(row_label) != _normalized_toc_label(title):
+            return None
+        return target
+
+    @staticmethod
+    def _table_cell_can_inherit_toc_link(cell: etree._Element) -> bool:
+        """只允许纯文本与行内样式单元格继承目录行的唯一内部链接。"""
+        if not _visible_text(cell):
+            return False
+        allowed_inline = {"b", "br", "code", "em", "i", "s", "span", "strong", "sub", "sup", "u"}
+        return all(isinstance(child.tag, str) and _local_name(child) in allowed_inline for child in cell.iterdescendants())
 
     @staticmethod
     def _render_table_text(value: str | None, style: TextStyle) -> str:
@@ -866,7 +904,6 @@ def convert_svg_spine(
 __all__ = [
     "EpubAnchorRegistry",
     "EpubChapterConverter",
-    "EpubHeadingEntry",
     "build_anchor_registry",
     "convert_svg_spine",
 ]

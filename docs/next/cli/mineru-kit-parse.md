@@ -30,7 +30,7 @@ mineru-kit parse <input...> -o <output> [flags]
 | 多文件 | 一次提交多个文件 |
 | 目录 | 展开目录中的可解析文件 |
 
-当前支持的扩展名包括 PDF、EPUB、常见图片、CSV、RTF、DOC/DOCX、PPT/PPTX、XLS/XLSX、ODT/ODS/ODP、HTML/HTM。目录输入只展开一层，不递归；非 PDF Flash 输入只支持整本解析，显式 `--pages` 返回 `page_range_invalid`。EPUB 可恢复目录时会增加独立首页目录。
+当前支持的扩展名包括 PDF、EPUB、常见图片、CSV、RTF、DOC/DOCX、PPT/PPTX、XLS/XLSX、ODT/ODS/ODP、HTML/HTM。目录输入只展开一层，不递归；非 PDF Flash 输入只支持整本解析，显式 `--pages` 返回 `page_range_invalid`。EPUB 页面严格遵循 OPF spine 顺序，并保留作者目录中可解析的内部跳转。
 
 当前不支持：
 

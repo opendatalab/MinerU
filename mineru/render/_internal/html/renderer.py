@@ -49,6 +49,7 @@ from ....types import (
     ListBlock,
     MiddleJson,
     PageAuxTextBlock,
+    PageFootnoteBlock,
     ParagraphTitleBlock,
     RefTextBlock,
     TableAnnotationBlock,
@@ -192,6 +193,14 @@ class _HtmlRenderer:
             return f'<p class="mineru-ref-text">{rendered.html}</p>' if rendered.html else ""
         if isinstance(block, (DocTitleBlock, ParagraphTitleBlock)):
             return self._render_title(block)
+        if isinstance(block, PageFootnoteBlock):
+            rendered = render_inline_content_html(block.content)
+            self._observe_inline(rendered)
+            if not rendered.html:
+                return ""
+            attrs = ['class="mineru-page-footnote"', 'data-block-type="page_footnote"']
+            self._append_anchor_attribute(attrs, block.anchor, block_type=str(block.type))
+            return f"<div {' '.join(attrs)}>{rendered.html}</div>"
         if isinstance(block, PageAuxTextBlock):
             rendered = render_inline_content_html(block.content)
             self._observe_inline(rendered)
@@ -199,8 +208,6 @@ class _HtmlRenderer:
                 return ""
             class_name = html.escape(str(block.type).replace("_", "-"), quote=True)
             attrs = [f'class="mineru-page-aux mineru-page-aux--{class_name}"']
-            if block.type == BlockType.PAGE_FOOTNOTE:
-                self._append_anchor_attribute(attrs, block.anchor, block_type=str(block.type))
             return f"<div {' '.join(attrs)}>{rendered.html}</div>"
         if isinstance(block, EquationBlock):
             return self._render_equation(block)
@@ -737,7 +744,7 @@ def _collect_document_anchor_ids(middle_json: MiddleJson) -> dict[str, str]:
         for block in page.blocks:
             if isinstance(block, TitleBlockBase):
                 visible_content = inline_plain_text(parse_inline_content(block.content)).strip()
-            elif isinstance(block, PageAuxTextBlock) and block.type == BlockType.PAGE_FOOTNOTE:
+            elif isinstance(block, PageFootnoteBlock):
                 visible_content = inline_plain_text(parse_inline_content(block.content)).strip()
             else:
                 continue

@@ -30,6 +30,7 @@ from ....types import (
     ImagePayloadBlock,
     MiddleJson,
     PageAuxTextBlock,
+    PageFootnoteBlock,
     PageBlock,
     ParagraphTitleBlock,
     TableAnnotationBlock,
@@ -109,7 +110,7 @@ def _render_content_block(
         if image_source is not None:
             payload["image_source"] = image_source
         return payload
-    if isinstance(block, PageAuxTextBlock):
+    if isinstance(block, (PageAuxTextBlock, PageFootnoteBlock)):
         content = escape_text_block_markdown_prefix(render_inline_content(block.content, delimiters))
         payload["content"] = escape_standalone_marker_rule(content)
         return payload

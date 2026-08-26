@@ -226,9 +226,7 @@ class EpubPackage:
         self._asset_parts.add(part_name)
         self._asset_bytes += byte_count
         if self._asset_bytes > MAX_ASSET_TOTAL_BYTES:
-            raise EpubResourceLimitError(
-                f"EPUB resource limit exceeded: max_asset_total_bytes={MAX_ASSET_TOTAL_BYTES}"
-            )
+            raise EpubResourceLimitError(f"EPUB resource limit exceeded: max_asset_total_bytes={MAX_ASSET_TOTAL_BYTES}")
 
     def xml_part(
         self,
@@ -467,12 +465,6 @@ class EpubPackage:
         toc_id = (spine_element.get("toc") or "").strip()
         item = self.manifest.get(toc_id)
         return item.path if item is not None and item.path else None
-
-    def content_spine_items(self) -> list[EpubSpineItem]:
-        """返回去除 navigation document occurrence 后的正文 spine 项。"""
-        if self.navigation_path is None:
-            return list(self.spine)
-        return [item for item in self.spine if item.path != self.navigation_path]
 
     def _read_metadata(self) -> EpubMetadata:
         """提取 OPF 的首个标题、作者、主题、关键词和布局模式。"""

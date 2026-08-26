@@ -5,19 +5,13 @@ from __future__ import annotations
 
 from typing import Any
 
-from ....types import BlockType
+from ....types import MERGE_TRANSPARENT_BLOCK_TYPES, BlockType
 
 from .blocks import _get_or_create_table_state
 from .models import BlockDict, PageInfoDict, TableMergeState
 from .structure import can_merge_tables
 
-TABLE_BOUNDARY_IGNORED_TYPES = {
-    BlockType.HEADER,
-    BlockType.FOOTER,
-    BlockType.PAGE_NUMBER,
-    BlockType.PAGE_FOOTNOTE,
-    BlockType.ASIDE_TEXT,
-}
+TABLE_BOUNDARY_IGNORED_TYPES = set(MERGE_TRANSPARENT_BLOCK_TYPES)
 
 
 def _clear_table_continuation_marker(table_block: BlockDict) -> None:
