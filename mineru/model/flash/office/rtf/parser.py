@@ -393,6 +393,7 @@ class _GroupFrame:
     instruction: list[str] = field(default_factory=list)
     pict: _PictCapture | None = None
     note_kind: Literal["footnote", "endnote"] = "footnote"
+    upr_child_count: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -873,7 +874,14 @@ class RtfParser:
     def _open_group(self, token: RtfOpen) -> None:
         """压入当前状态，新的 group 初始继承所有属性。"""
         self._flush_bytes()
+        parent = self._current_frame()
         self.frames.append(_GroupFrame(previous_state=replace(self.state), start=token.start))
+        if parent is not None and parent.destination == "upr":
+            parent.upr_child_count += 1
+            if parent.upr_child_count == 2:
+                self.state.destination = "upr_unicode"
+            else:
+                self.state.destination = "suppressed"
 
     def _close_group(self, token: RtfClose) -> None:
         """收束当前 destination 并恢复父 group 状态。"""
@@ -898,8 +906,18 @@ class RtfParser:
         frame = self._current_frame()
         if frame is None or frame.destination is not None:
             return False
+        if name == "ud" and self.state.destination == "upr_unicode":
+            upr_frame = self._nearest_frame("upr")
+            if upr_frame is not None:
+                frame.destination = "ud"
+                self.state.destination = upr_frame.previous_state.destination
+                return True
         if self.state.destination in {"math", "pict", "suppressed"}:
             return False
+        if name == "upr":
+            frame.destination = "upr"
+            self.state.destination = "upr"
+            return True
         if name in _SUPPRESSED_DESTINATIONS:
             frame.destination = name
             self.state.destination = "suppressed"

@@ -112,6 +112,7 @@ class _XlsPageBuilder(SpreadsheetProjector):
         """把 BIFF 语义模型投影成不落盘的 worksheet 对象。"""
 
         workbook = Workbook()
+        merge_grid_slots = 0
         default_sheet = workbook.active
         if default_sheet is not None:
             workbook.remove(default_sheet)
@@ -126,6 +127,10 @@ class _XlsPageBuilder(SpreadsheetProjector):
                 if cell_model.hyperlink:
                     cell.hyperlink = cell_model.hyperlink
             for row_first, col_first, row_last, col_last in sheet_model.merges:
+                merge_slots = (row_last - row_first + 1) * (col_last - col_first + 1)
+                if merge_slots > MAX_GRID_SLOTS - merge_grid_slots:
+                    raise LegacyOfficeResourceLimitError(f"workbook extent exceeds max_grid_slots={MAX_GRID_SLOTS}")
+                merge_grid_slots += merge_slots
                 worksheet.merge_cells(
                     start_row=row_first + 1,
                     start_column=col_first + 1,

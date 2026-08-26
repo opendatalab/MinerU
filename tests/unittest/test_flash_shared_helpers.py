@@ -55,6 +55,21 @@ def test_mathml_semantics_ignores_non_tex_alternate_annotations() -> None:
     assert mathml_to_latex(math) == r"\frac{x}{2}"
 
 
+@pytest.mark.parametrize("extra_node", ["<!--producer note-->", "<?producer note?>"])
+def test_mathml_annotation_scan_skips_non_element_nodes(extra_node: str) -> None:
+    """验证 TeX annotation 扫描跳过 XML comment 与处理指令。"""
+    math = etree.fromstring(
+        (
+            '<math xmlns="http://www.w3.org/1998/Math/MathML">'
+            f"{extra_node}"
+            '<semantics><mi>x</mi><annotation encoding="application/x-tex">x^2</annotation></semantics>'
+            "</math>"
+        ).encode()
+    )
+
+    assert mathml_to_latex(math) == "x^2"
+
+
 def test_legacy_binary_readers_preserve_bounds_and_values() -> None:
     """验证旧版 Office 共用读取器只在完整边界内返回小端数值。"""
     data = struct.pack("<HhId", 0xABCD, -123, 0x1234_5678, 1.25)

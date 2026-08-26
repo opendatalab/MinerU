@@ -21,6 +21,7 @@ from mineru.doclib.services.parse_svc import ParseService
 from mineru.errors import InvalidRequestError
 from mineru.model.flash import EpubModel
 from mineru.model.flash.epub import EpubEncryptedError, EpubPackage, EpubParseError, EpubResourceLimitError, detect_epub
+from mineru.model.flash.epub.styles import EpubStylesheet, TextStyle
 from mineru.model.flash.epub.xhtml import EpubChapterConverter, build_anchor_registry
 from mineru.parser import MinerUParser, parse, parse_async
 from mineru.parser import api_server
@@ -555,6 +556,24 @@ def test_epub_resource_limits_fail_before_semantic_conversion(monkeypatch: pytes
     monkeypatch.setattr(epub_package_module, "MAX_XML_DEPTH", 2)
     with pytest.raises(EpubResourceLimitError, match="max_xml_depth"):
         EpubPackage(payload)
+
+
+def test_epub_stylesheet_indexes_repeated_selectors_and_preserves_cascade_order() -> None:
+    """验证重复 selector 按属性聚合，交错同优先级规则仍遵守源码顺序。"""
+    stylesheet = EpubStylesheet()
+    stylesheet.add(
+        ".x { font-weight: bold; display: none; }"
+        ".y { font-weight: normal; display: block; }"
+        ".x { font-style: italic; }" + ".unused { text-decoration: underline; }" * 10_000
+    )
+    element = etree.fromstring(b'<span class="x y"/>')
+
+    resolved = stylesheet.resolve(element, TextStyle())
+
+    assert resolved.text.bold is False
+    assert resolved.text.italic is True
+    assert resolved.hidden is False
+    assert len(stylesheet._class_cascades) == 3
 
 
 def test_doclib_extracts_epub_metadata(tmp_path: Path) -> None:

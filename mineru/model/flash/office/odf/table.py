@@ -329,12 +329,19 @@ def table_grid_to_html(grid: TableGrid) -> str:
     return "".join(parts)
 
 
-def _column_index(label: str) -> int:
-    """把 A1 地址中的列字母转换为零基列号。"""
+def _column_index(label: str) -> int | None:
+    """在共享网格预算内把 A1 地址中的列字母转换为零基列号。"""
+    max_label_length = 0
+    remaining = MAX_GRID_SLOTS
+    while remaining > 0:
+        max_label_length += 1
+        remaining = (remaining - 1) // 26
+    if not label or len(label) > max_label_length:
+        return None
     result = 0
     for char in label.upper():
         result = result * 26 + ord(char) - ord("A") + 1
-    return result - 1
+    return result - 1 if result <= MAX_GRID_SLOTS else None
 
 
 def parse_cell_range_bounds(address: str) -> tuple[int, int, int, int] | None:
@@ -348,6 +355,8 @@ def parse_cell_range_bounds(address: str) -> tuple[int, int, int, int] | None:
     col_start = _column_index(first.group("col"))
     row_end = int(last.group("row")) - 1
     col_end = _column_index(last.group("col"))
+    if col_start is None or col_end is None:
+        return None
     return min(row_start, row_end), max(row_start, row_end), min(col_start, col_end), max(col_start, col_end)
 
 

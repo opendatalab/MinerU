@@ -4,12 +4,13 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from lxml import etree  # type: ignore[reportMissingImports]
 
 
 _CSS_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
+_TEXT_STYLE_FIELDS = ("bold", "italic", "underline", "strikethrough", "superscript", "subscript")
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,16 +96,22 @@ class ElementStyle:
     hidden: bool = False
 
 
-@dataclass(frozen=True, slots=True)
-class _Rule:
-    """保存一个受支持的简单 CSS selector 及其声明。"""
+@dataclass(slots=True)
+class _SelectorCascade:
+    """按 selector 聚合各属性最后一次声明及其源码顺序。"""
 
-    tag: str | None
-    class_name: str | None
     priority: int
-    order: int
-    style: TextStyleDelta
-    hidden: bool | None
+    declarations: dict[str, tuple[int, bool]] = field(default_factory=dict)
+    hidden: tuple[int, bool] | None = None
+
+    def update(self, style: TextStyleDelta, hidden: bool | None, order: int) -> None:
+        """用同 selector 的较新声明更新逐属性级联结果。"""
+        for name in _TEXT_STYLE_FIELDS:
+            value = getattr(style, name)
+            if value is not None:
+                self.declarations[name] = (order, value)
+        if hidden is not None:
+            self.hidden = (order, hidden)
 
 
 def _local_name(element: etree._Element) -> str:
@@ -147,8 +154,20 @@ class EpubStylesheet:
     """保存按文档顺序解析的简单 tag/class CSS 规则。"""
 
     def __init__(self) -> None:
-        """初始化空规则列表。"""
-        self._rules: list[_Rule] = []
+        """初始化按 tag、class 与 tag.class 分桶的 selector 索引。"""
+        self._tag_cascades: dict[str, _SelectorCascade] = {}
+        self._class_cascades: dict[str, _SelectorCascade] = {}
+        self._tag_class_cascades: dict[tuple[str, str], _SelectorCascade] = {}
+        self._source_order = 0
+
+    def _selector_cascade(self, tag: str | None, class_name: str | None, priority: int) -> _SelectorCascade:
+        """返回指定简单 selector 的聚合级联槽。"""
+        if class_name is None:
+            assert tag is not None
+            return self._tag_cascades.setdefault(tag, _SelectorCascade(priority))
+        if tag is None:
+            return self._class_cascades.setdefault(class_name, _SelectorCascade(priority))
+        return self._tag_class_cascades.setdefault((tag, class_name), _SelectorCascade(priority))
 
     def add(self, css: str) -> None:
         """追加一个 stylesheet 中受支持的简单 selector 规则。"""
@@ -165,7 +184,9 @@ class EpubStylesheet:
                 if parsed is None:
                     continue
                 tag, class_name, priority = parsed
-                self._rules.append(_Rule(tag, class_name, priority, len(self._rules), style, hidden))
+                cascade = self._selector_cascade(tag, class_name, priority)
+                cascade.update(style, hidden, self._source_order)
+                self._source_order += 1
 
     @staticmethod
     def _parse_selector(selector: str) -> tuple[str | None, str | None, int] | None:
@@ -194,19 +215,35 @@ class EpubStylesheet:
         )
         style = inherited.merge(tag_style)
         hidden = element.get("hidden") is not None or (element.get("aria-hidden") or "").casefold() == "true"
-        matching = sorted(
-            (
-                rule
-                for rule in self._rules
-                if (rule.tag is None or rule.tag == tag)
-                and (rule.class_name is None or rule.class_name in classes)
-            ),
-            key=lambda rule: (rule.priority, rule.order),
-        )
-        for rule in matching:
-            style = rule.style.apply(style)
-            if rule.hidden is not None:
-                hidden = rule.hidden
+        matching: list[_SelectorCascade] = []
+        if cascade := self._tag_cascades.get(tag):
+            matching.append(cascade)
+        for class_name in classes:
+            if cascade := self._class_cascades.get(class_name):
+                matching.append(cascade)
+            if cascade := self._tag_class_cascades.get((tag, class_name)):
+                matching.append(cascade)
+
+        resolved_values: dict[str, bool] = {}
+        for name in _TEXT_STYLE_FIELDS:
+            candidates = [
+                (cascade.priority, order, value)
+                for cascade in matching
+                if (declaration := cascade.declarations.get(name)) is not None
+                for order, value in (declaration,)
+            ]
+            if candidates:
+                resolved_values[name] = max(candidates, key=lambda item: (item[0], item[1]))[2]
+        style = TextStyleDelta(**resolved_values).apply(style)
+
+        hidden_candidates = [
+            (cascade.priority, order, value)
+            for cascade in matching
+            if cascade.hidden is not None
+            for order, value in (cascade.hidden,)
+        ]
+        if hidden_candidates:
+            hidden = max(hidden_candidates, key=lambda item: (item[0], item[1]))[2]
         inline_style, inline_hidden = _parse_declarations(element.get("style") or "")
         style = inline_style.apply(style)
         if inline_hidden is not None:

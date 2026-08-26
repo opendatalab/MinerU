@@ -140,6 +140,8 @@ def _convert(element: etree._Element) -> str:
 def mathml_to_latex(math_element: etree._Element) -> str | None:
     """转换 MathML 根节点，并优先采用生产者保留的 TeX annotation。"""
     for annotation in math_element.iter():
+        if not isinstance(annotation.tag, str):
+            continue
         if _local_name(annotation) != "annotation":
             continue
         encoding = (annotation.get("encoding") or "").casefold()

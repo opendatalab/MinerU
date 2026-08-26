@@ -96,6 +96,15 @@ def test_rtf_unicode_controls_buffer_adjacent_text_without_repeated_run_copy() -
     assert text_replacements == []
 
 
+def test_rtf_upr_prefers_unicode_branch_without_leaking_ansi_fallback() -> None:
+    """验证 Unicode-aware parser 在 upr 中只输出 ud 分支。"""
+    source = rb"{\rtf1\ansi Before {\upr{?}{\*\ud{\u20013?}}} After\par}"
+
+    pages = RtfModel().predict(BytesIO(source))
+
+    assert pages == [[{"type": BlockType.TEXT, "content": "Before 中 After"}]]
+
+
 def test_rtf_inherited_style_honors_explicit_formatting_resets() -> None:
     """验证 derived stylesheet 的 b0/i0/ul0/strike0 覆盖基样式开启值。"""
     source = (

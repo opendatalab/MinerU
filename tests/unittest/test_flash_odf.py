@@ -573,6 +573,15 @@ def test_odf_rejects_projected_span_extent_before_extending_existing_row(monkeyp
     assert observed_widths and max(observed_widths) <= 3
 
 
+def test_odf_rejects_overlong_chart_columns_before_bigint_conversion(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证 chart A1 列名在大整数转换前受共享网格预算约束。"""
+    monkeypatch.setattr(odf_table_module, "MAX_GRID_SLOTS", 4)
+
+    assert odf_table_module.parse_cell_range_bounds("local-table.D1:D2") == (0, 1, 3, 3)
+    assert odf_table_module.parse_cell_range_bounds("local-table.E1:E2") is None
+    assert odf_table_module.parse_cell_range_bounds(f"local-table.{'A' * 100_000}1") is None
+
+
 @pytest.mark.parametrize(
     "target",
     [

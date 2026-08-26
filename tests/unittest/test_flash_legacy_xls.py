@@ -256,6 +256,51 @@ def test_xls_record_and_grid_limits_are_hard_failures(
         XlsModel().predict(BytesIO(build_xls([SheetFixture("Data", label_cell(0, 0, "value"))])))
 
 
+def test_xls_rejects_oversized_merge_before_openpyxl_materialization(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证单个超限 BIFF merge 不会进入 openpyxl 单元格物化。"""
+    monkeypatch.setattr(xls_converter_module, "MAX_GRID_SLOTS", 4)
+
+    def unexpected_merge(*_args: object, **_kwargs: object) -> None:
+        """超限 merge 不得调用 openpyxl。"""
+        pytest.fail("oversized BIFF merge reached openpyxl materialization")
+
+    monkeypatch.setattr(xls_converter_module.Worksheet, "merge_cells", unexpected_merge)
+    source = build_xls([SheetFixture("Data", merged_cells((0, 0, 2, 1)))])
+
+    with pytest.raises(LegacyOfficeResourceLimitError, match="max_grid_slots"):
+        XlsModel().predict(BytesIO(source))
+
+
+def test_xls_charges_cumulative_merge_budget_before_each_materialization(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证多个合法 merge 的累计面积会在下一次物化前触发预算。"""
+    monkeypatch.setattr(xls_converter_module, "MAX_GRID_SLOTS", 4)
+    original_merge = xls_converter_module.Worksheet.merge_cells
+    materialized: list[tuple[object, ...]] = []
+
+    def tracking_merge(self: object, *args: object, **kwargs: object) -> None:
+        """记录预算内实际进入 openpyxl 的 merge。"""
+        materialized.append(args or tuple(kwargs.values()))
+        original_merge(self, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(xls_converter_module.Worksheet, "merge_cells", tracking_merge)
+    source = build_xls(
+        [
+            SheetFixture(
+                "Data",
+                merged_cells(
+                    (0, 0, 0, 1),
+                    (1, 0, 1, 1),
+                    (2, 0, 2, 1),
+                ),
+            )
+        ]
+    )
+
+    with pytest.raises(LegacyOfficeResourceLimitError, match="max_grid_slots"):
+        XlsModel().predict(BytesIO(source))
+    assert len(materialized) == 2
+
+
 def test_xls_is_supported_by_public_parser(tmp_path: Path) -> None:
     """验证公共 parser 通过统一 MinerUParser 路由 XLS。"""
 
