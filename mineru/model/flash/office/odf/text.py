@@ -90,6 +90,29 @@ def _safe_hyperlink(value: str | None) -> str | None:
     return normalized
 
 
+def _paragraph_anchor(paragraph: etree._Element) -> str | None:
+    """返回段落最终能够挂载到输出 block 的首个 bookmark 名称。"""
+    for tag in (qname("text", "bookmark"), qname("text", "bookmark-start")):
+        bookmark = next(paragraph.iter(tag), None)
+        if bookmark is not None and (name := bookmark.get(qname("text", "name"))):
+            return name
+    return None
+
+
+def collect_emittable_anchor_targets(root: etree._Element, styles: OdfStyles) -> frozenset[str]:
+    """收集 ODT 标题类 block 实际能够公开的 bookmark target。"""
+    targets: set[str] = set()
+    for paragraph in root.iter():
+        if paragraph.tag not in {qname("text", "p"), qname("text", "h")}:
+            continue
+        style_name = paragraph.get(qname("text", "style-name"))
+        if paragraph.tag != qname("text", "h") and not styles.is_document_title(style_name):
+            continue
+        if anchor := _paragraph_anchor(paragraph):
+            targets.add(anchor)
+    return frozenset(targets)
+
+
 def _style_html(text: str, style: TextStyle) -> str:
     """按稳定顺序把已转义文本包裹为 HTML 行内样式。"""
     rendered = text
@@ -205,6 +228,7 @@ class OdfBlockParser:
         list_ids: dict[str, int] | None = None,
         collect_cell_visuals: bool = False,
         shared_cell_visuals: list[dict[str, Any]] | None = None,
+        anchor_targets: frozenset[str] | None = None,
     ) -> None:
         """绑定单次解析包、样式、子文档路径及可跨 parser 共享的状态。"""
         self.package = package
@@ -215,6 +239,7 @@ class OdfBlockParser:
         self._list_ids = list_ids if list_ids is not None else {}
         self._collect_cell_visuals = collect_cell_visuals
         self._cell_visuals = shared_cell_visuals if shared_cell_visuals is not None else []
+        self._anchor_targets = anchor_targets or frozenset()
 
     def _append_text_atom(
         self,
@@ -262,11 +287,13 @@ class OdfBlockParser:
                     atoms=atoms,
                 )
             elif child.tag == qname("text", "a"):
-                target = _safe_hyperlink(child.get(qname("xlink", "href"))) or hyperlink
+                target = _safe_hyperlink(child.get(qname("xlink", "href")))
+                if target is not None and target.startswith("#") and target[1:] not in self._anchor_targets:
+                    target = None
                 self._walk_inlines(
                     child,
                     style=style,
-                    hyperlink=target,
+                    hyperlink=target or hyperlink,
                     atoms=atoms,
                 )
             elif child.tag == qname("text", "s"):
@@ -348,15 +375,6 @@ class OdfBlockParser:
         )
         return atoms
 
-    @staticmethod
-    def _paragraph_anchor(paragraph: etree._Element) -> str | None:
-        """返回段落内首个 bookmark 名称。"""
-        for tag in (qname("text", "bookmark"), qname("text", "bookmark-start")):
-            bookmark = next(paragraph.iter(tag), None)
-            if bookmark is not None and (name := bookmark.get(qname("text", "name"))):
-                return name
-        return None
-
     def parse_paragraph(self, paragraph: etree._Element, *, allow_page_breaks: bool = False) -> list[RawFlowItem]:
         """把 text:p/text:h 转为标题、正文、公式及显式分页项。"""
         atoms = self.parse_inline_atoms(paragraph)
@@ -378,7 +396,7 @@ class OdfBlockParser:
                     results.append({"type": BlockType.EQUATION, "content": math_atoms[0].latex})
                 elif self.styles.is_document_title(style_name):
                     block: dict[str, Any] = {"type": BlockType.DOC_TITLE, "level": 1, "content": content}
-                    if anchor := self._paragraph_anchor(paragraph):
+                    if anchor := _paragraph_anchor(paragraph):
                         block["anchor"] = anchor
                     results.append(block)
                 elif is_heading:
@@ -392,7 +410,7 @@ class OdfBlockParser:
                         "is_numbered_style": False,
                         "content": content,
                     }
-                    if anchor := self._paragraph_anchor(paragraph):
+                    if anchor := _paragraph_anchor(paragraph):
                         block["anchor"] = anchor
                     results.append(block)
                 else:
@@ -697,6 +715,7 @@ class OdfBlockParser:
                     list_ids=self._list_ids,
                     collect_cell_visuals=self._collect_cell_visuals,
                     shared_cell_visuals=self._cell_visuals,
+                    anchor_targets=self._anchor_targets,
                 )
                 chart = parse_chart_block(
                     object_root,

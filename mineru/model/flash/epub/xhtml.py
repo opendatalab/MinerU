@@ -267,7 +267,10 @@ class EpubAnchorRegistry:
             notes = [
                 element
                 for element in chapter.root.iter()
-                if isinstance(element.tag, str) and _is_individual_note(element) and _note_has_text_block(element)
+                if isinstance(element.tag, str)
+                and _is_individual_note(element)
+                and _note_has_text_block(element)
+                and not _element_is_hidden(element, stylesheet)
             ]
             for ordinal, note in enumerate(notes):
                 source_id = _element_id(note)

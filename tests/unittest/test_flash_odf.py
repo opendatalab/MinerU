@@ -296,6 +296,28 @@ def test_ods_cell_note_emits_page_footnote() -> None:
     assert pages[0][1]["content"] == "[1] Cell note"
 
 
+def test_odp_slide_inline_note_emits_page_footnote() -> None:
+    """验证 ODP slide 正文中的 note body 不会被 presentation notes 路径遗漏。"""
+    content = """<office:document-content
+ xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+ xmlns:presentation="urn:oasis:names:tc:opendocument:xmlns:presentation:1.0"
+ xmlns:draw="urn:oasis:names:tc:opendocument:xmlns:drawing:1.0"
+ xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+ <office:body><office:presentation><draw:page draw:name="Slide1"><draw:frame><draw:text-box><text:p>Slide
+  <text:note><text:note-citation>1</text:note-citation><text:note-body><text:p>Inline note</text:p></text:note-body></text:note>
+ </text:p></draw:text-box></draw:frame></draw:page></office:presentation></office:body>
+</office:document-content>"""
+
+    pages = OdpModel().predict(BytesIO(build_odf_package("odp", content)))
+
+    assert pages == [
+        [
+            {"type": BlockType.TEXT, "content": "Slide [1]"},
+            {"type": BlockType.PAGE_FOOTNOTE, "content": "[1] Inline note"},
+        ]
+    ]
+
+
 def test_odp_preserves_empty_slide_chart_preview_and_notes() -> None:
     """验证 ODP 空 slide 不丢失，图表同时保留数据和预览，备注归属原页。"""
     middle, model = doc_analyze(build_odp_fixture(), file_suffix="odp")
@@ -469,7 +491,6 @@ def test_odf_rejects_unsafe_hyperlinks_before_shared_renderers(target: str) -> N
         "https://example.com/path",
         "mailto:reader@example.com",
         "tel:+123456",
-        "#section-one",
         "chapter.odt#section-one",
     ],
 )
@@ -491,6 +512,27 @@ def test_odf_preserves_allowed_external_and_relative_hyperlinks(target: str) -> 
             }
         ]
     ]
+
+
+def test_odf_preserves_title_fragment_and_drops_unemittable_text_fragment() -> None:
+    """验证本地 fragment 仅链接到标题类 block 实际公开的 bookmark。"""
+    content = """<office:document-content
+ xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+ xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"
+ xmlns:xlink="http://www.w3.org/1999/xlink">
+ <office:body><office:text>
+  <text:p><text:a xlink:href="#title-target">Title jump</text:a> / <text:a xlink:href="#text-target">Text jump</text:a></text:p>
+  <text:h text:outline-level="1"><text:bookmark-start text:name="title-target"/>Heading</text:h>
+  <text:p><text:bookmark text:name="text-target"/>Ordinary target</text:p>
+ </office:text></office:body>
+</office:document-content>"""
+
+    pages = OdtModel().predict(BytesIO(build_odf_package("odt", content)))
+
+    assert pages[0][0]["content"] == ("<hyperlink><text>Title jump</text><url>#title-target</url></hyperlink> / Text jump")
+    assert pages[0][1]["type"] == BlockType.PARAGRAPH_TITLE
+    assert pages[0][1]["anchor"] == "title-target"
+    assert pages[0][2] == {"type": BlockType.TEXT, "content": "Ordinary target"}
 
 
 def test_odf_corrupt_optional_styles_and_external_image_degrade_locally() -> None:

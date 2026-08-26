@@ -210,6 +210,53 @@ def test_epub_anchor_registry_excludes_hidden_headings(attribute: str, value: st
         package.close()
 
 
+@pytest.mark.parametrize(
+    ("attribute", "value"),
+    [
+        ("hidden", "hidden"),
+        ("aria-hidden", "true"),
+        ("style", "display: none"),
+        ("class", "hidden"),
+    ],
+)
+def test_epub_anchor_registry_excludes_hidden_notes(attribute: str, value: str) -> None:
+    """验证隐藏 note 不生成 converter 无法兑现的 fragment target。"""
+    package = EpubPackage(build_epub_notes_fixture())
+    try:
+        chapters: list[tuple[str, etree._Element]] = []
+        note_path = ""
+        hidden_note: etree._Element | None = None
+        for item in package.spine:
+            if not item.path or not item.media_type or "xhtml" not in item.media_type:
+                continue
+            root = package.xml_part(item.path, allow_external_doctype=True)
+            chapters.append((item.path, root))
+            for element in root.iter():
+                if element.get("id") == "fn-one":
+                    hidden_note = element
+                    note_path = item.path
+        assert hidden_note is not None
+        hidden_note.set(attribute, value)
+        if attribute == "class":
+            namespace = etree.QName(hidden_note.getroottree().getroot()).namespace
+            style = etree.SubElement(hidden_note.getroottree().getroot(), f"{{{namespace}}}style")
+            style.text = ".hidden { display: none; }"
+
+        anchors = build_anchor_registry(chapters, package)
+        blocks = [
+            block
+            for chapter_path, root in chapters
+            for block in EpubChapterConverter(package, chapter_path, root, anchors).convert()
+        ]
+
+        assert anchors.resolve_link("#fn-one", base_part=note_path) is None
+        assert "First footnote paragraph" not in str(blocks)
+        assert "Same-page [1]" in str(blocks)
+        assert "<hyperlink>[1]" not in str(blocks)
+    finally:
+        package.close()
+
+
 def test_epub_table_contents_resolve_title_marker_and_expand_only_exact_single_target_rows() -> None:
     """验证标题内部 marker 可跳转，且目录表格只扩展严格匹配的单目标行。"""
     middle, model = doc_analyze(build_epub_table_toc_fixture(), file_suffix="epub")

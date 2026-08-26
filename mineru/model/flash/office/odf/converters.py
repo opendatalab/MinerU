@@ -15,7 +15,7 @@ from .models import InlineNote
 from .package import OdfPackage
 from .styles import OdfStyles
 from .table import parse_table_grid, split_table_regions, table_grid_to_html
-from .text import OdfBlockParser, PageBreakMarker, flatten_block_text
+from .text import OdfBlockParser, PageBreakMarker, collect_emittable_anchor_targets, flatten_block_text
 
 
 _LENGTH_RE = re.compile(r"^\s*(?P<value>[+-]?(?:\d+(?:\.\d*)?|\.\d+))(?P<unit>cm|mm|in|pt|pc|px)?\s*$")
@@ -101,11 +101,12 @@ def _master_auxiliary_blocks(
     *,
     package: OdfPackage,
     styles: OdfStyles,
+    anchor_targets: frozenset[str],
 ) -> list[dict[str, Any]]:
     """从 master-page 的 header/footer 中提取页面辅助文本。"""
     if master_page is None:
         return []
-    parser = OdfBlockParser(package, styles)
+    parser = OdfBlockParser(package, styles, anchor_targets=anchor_targets)
     result: list[dict[str, Any]] = []
     for tag_name, block_type in (("header", BlockType.HEADER), ("footer", BlockType.FOOTER)):
         element = master_page.find(qname("style", tag_name))
@@ -122,7 +123,8 @@ def _master_auxiliary_blocks(
 
 def _parse_odt_pages(context: _OdfContext) -> list[list[dict[str, Any]]]:
     """按显式 ODF 分页样式递归构造 ODT 逻辑页。"""
-    parser = OdfBlockParser(context.package, context.styles)
+    anchor_targets = collect_emittable_anchor_targets(context.content_root, context.styles)
+    parser = OdfBlockParser(context.package, context.styles, anchor_targets=anchor_targets)
     pages: list[list[dict[str, Any]]] = [[]]
     page_masters: list[str | None] = [None]
     current_master: str | None = None
@@ -177,6 +179,7 @@ def _parse_odt_pages(context: _OdfContext) -> list[list[dict[str, Any]]]:
                 context.styles.master_page(master_name),
                 package=context.package,
                 styles=context.styles,
+                anchor_targets=anchor_targets,
             )
         )
     return pages or [[]]
@@ -285,7 +288,9 @@ def _parse_odp_pages(context: _OdfContext) -> list[list[dict[str, Any]]]:
             )
         for entry in body_entries:
             output.extend(entry.blocks)
+        _flush_notes(parser, output)
         output.extend(_notes_blocks(page, parser))
+        _flush_notes(parser, output)
         pages.append(output)
     return pages or [[]]
 
