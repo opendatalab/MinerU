@@ -11,7 +11,7 @@ import uuid
 
 from loguru import logger
 
-from ..legacy.errors import (
+from ..errors import (
     LegacyOfficeEncryptedError,
     LegacyOfficeMalformedError,
 )
@@ -23,7 +23,7 @@ from ..legacy.officeart import (
     extract_excel_shapes,
 )
 from ..image import serialize_office_image
-from ..image_equation import (
+from ..equation.image import (
     OfficeImageEquationDecoder,
 )
 

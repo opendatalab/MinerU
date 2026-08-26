@@ -1,6 +1,6 @@
 # Copyright (c) Opendatalab. All rights reserved.
 
-"""旧版 Office 解析使用的固定安全限制。"""
+"""Flash Office 二进制、嵌入对象与 RTF 解析共享的固定安全限制。"""
 
 from typing import Final
 

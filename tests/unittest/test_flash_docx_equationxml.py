@@ -11,7 +11,7 @@ from mineru.backend.analyze import aio_doc_analyze, doc_analyze
 from mineru.model.flash import DocxModel
 from mineru.model.flash.office.docx.docx_converter import DocxConverter
 from mineru.model.flash.office.docx.equationxml import DocxEquationXmlDecoder
-from mineru.model.flash.office.legacy.errors import (
+from mineru.model.flash.office.errors import (
     LegacyOfficeResourceLimitError,
 )
 from mineru.render._internal.docx.math import latex_to_omml

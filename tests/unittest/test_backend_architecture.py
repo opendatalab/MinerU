@@ -52,7 +52,17 @@ _REMOVED_INTERNAL_MODULES = (
     "mineru.model.model_types",
     "mineru.model.flash.model",
     "mineru.model.flash.native_pdf",
+    "mineru.model.flash.office.chart",
+    "mineru.model.flash.office.docx.tools",
     "mineru.model.flash.office.docx.tools.math",
+    "mineru.model.flash.office.image_equation",
+    "mineru.model.flash.office.legacy.errors",
+    "mineru.model.flash.office.legacy.limits",
+    "mineru.model.flash.office.legacy.mtef",
+    "mineru.model.flash.office.legacy.mtef_v5",
+    "mineru.model.flash.office.legacy.stream",
+    "mineru.model.flash.office.math",
+    "mineru.model.flash.office.ooxml_equation",
     "mineru.model.utils",
     "mineru.render.writer",
     "mineru.render._internal.common.inline",
@@ -234,6 +244,28 @@ def test_flash_spreadsheet_dependencies_are_one_way() -> None:
     }
     assert not {path: imports for path, imports in xls_offenders.items() if imports}
     assert not {path: imports for path, imports in spreadsheet_offenders.items() if imports}
+
+
+def test_flash_equation_and_legacy_dependencies_are_one_way() -> None:
+    """守卫公式层不反向引用格式实现，legacy 层也不重新承载公式解析。"""
+    format_prefixes = tuple(
+        f"mineru.model.flash.office.{name}"
+        for name in ("doc", "docx", "odf", "ppt", "pptx", "rtf", "spreadsheet", "xls", "xlsx")
+    )
+    equation_offenders = {
+        str(path.relative_to(_PROJECT_ROOT)): sorted(
+            module for module in _resolved_imports(path) if module.startswith(format_prefixes)
+        )
+        for path in (_PROJECT_ROOT / "mineru/model/flash/office/equation").rglob("*.py")
+    }
+    legacy_offenders = {
+        str(path.relative_to(_PROJECT_ROOT)): sorted(
+            module for module in _resolved_imports(path) if module.startswith("mineru.model.flash.office.equation")
+        )
+        for path in (_PROJECT_ROOT / "mineru/model/flash/office/legacy").rglob("*.py")
+    }
+    assert not {path: imports for path, imports in equation_offenders.items() if imports}
+    assert not {path: imports for path, imports in legacy_offenders.items() if imports}
 
 
 def test_package_initializers_define_explicit_all() -> None:

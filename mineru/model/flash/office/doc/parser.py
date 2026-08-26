@@ -7,7 +7,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from loguru import logger
 
-from ..legacy import LegacyOfficeMalformedError
+from ..errors import LegacyOfficeMalformedError
 from ..legacy.binary import bounded_slice
 
 from .bookmarks import parse_bookmarks

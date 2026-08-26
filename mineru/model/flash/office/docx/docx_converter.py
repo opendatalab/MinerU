@@ -18,22 +18,22 @@ from mammoth.conversion import convert_document_element_to_html
 from mammoth.docx import body_xml
 from pydantic import AnyUrl
 
-from ..chart import extract_chart_html_from_ooxml
+from ..ooxml_chart import extract_chart_html_from_ooxml
 from ..image import (
     serialize_office_image,
 )
-from ..ooxml_equation import (
+from ..equation.ooxml import (
     OoxmlEquationDecoder,
     is_mathtype_equation_prog_id,
 )
-from ..image_equation import (
+from ..equation.image import (
     OfficeImageEquationDecoder,
 )
 from .....types import RAW_CAPTION
 from .equationxml import DocxEquationXmlDecoder
 from .package_normalizer import normalize_docx_package
-from ..math.omml import oMath2Latex
-from .tools.office_xml import read_str
+from ..equation.omml import oMath2Latex
+from .office_xml import read_str
 from .....types import BlockType
 from .formatting_types import Formatting, Script
 from ..rich_text import (

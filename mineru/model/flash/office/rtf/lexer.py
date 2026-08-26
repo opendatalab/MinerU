@@ -6,8 +6,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Iterator, TypeAlias, Union
 
-from ..legacy import LegacyOfficeMalformedError, LegacyOfficeResourceLimitError
-from ..legacy.limits import MAX_RECORDS
+from ..errors import LegacyOfficeMalformedError, LegacyOfficeResourceLimitError
+from ..limits import MAX_RECORDS
 
 MAX_RTF_GROUP_DEPTH = 256
 

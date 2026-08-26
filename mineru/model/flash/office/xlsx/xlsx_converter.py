@@ -16,14 +16,14 @@ from openpyxl.worksheet.worksheet import Worksheet
 from PIL import Image
 from ..image import is_vector_image, serialize_vector_image_with_placeholder
 from ..image import serialize_office_image
-from ..image_equation import (
+from ..equation.image import (
     OfficeImageEquationDecoder,
 )
-from ..ooxml_equation import OoxmlEquationDecoder
-from ..legacy.errors import LegacyOfficeResourceLimitError
-from ..legacy.limits import MAX_ENTRY_BYTES
-from ..math.omml import oMath2Latex
-from ..legacy.stream import read_stream_bytes_from_start, rewind_stream
+from ..equation.ooxml import OoxmlEquationDecoder
+from ..errors import LegacyOfficeResourceLimitError
+from ..limits import MAX_ENTRY_BYTES
+from ..equation.omml import oMath2Latex
+from ..streams import read_stream_bytes_from_start, rewind_stream
 from ..spreadsheet.html import EQUATION_BOOKENDS, render_spreadsheet_table
 from ..spreadsheet.models import AnchoredBlock, FormulaMap, SheetImage
 from ..spreadsheet.projector import SpreadsheetProjector

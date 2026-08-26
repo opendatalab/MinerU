@@ -11,9 +11,9 @@ import pytest
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
 from mineru.model.flash import DocxModel, PptxModel, XlsxModel
 from mineru.model.flash.office.docx.docx_converter import DocxConverter
-from mineru.model.flash.office.legacy import LegacyOfficeResourceLimitError
-from mineru.model.flash.office.legacy.limits import MAX_ASSET_TOTAL_BYTES
-from mineru.model.flash.office.ooxml_equation import (
+from mineru.model.flash.office.errors import LegacyOfficeResourceLimitError
+from mineru.model.flash.office.limits import MAX_ASSET_TOTAL_BYTES
+from mineru.model.flash.office.equation.ooxml import (
     OoxmlEquationDecoder,
     is_mathtype_equation_prog_id,
 )

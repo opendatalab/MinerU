@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from lxml import etree  # type: ignore[reportAttributeAccessIssue]
 from loguru import logger
 
-from ..math.omml import oMath2Latex
+from ..equation.omml import oMath2Latex
 from .lexer import RtfClose, RtfControlWord, RtfHexByte, RtfLexer, RtfOpen, RtfTextBytes
 
 _MATH_NS = "http://schemas.openxmlformats.org/officeDocument/2006/math"

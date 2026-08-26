@@ -8,11 +8,11 @@ from dataclasses import dataclass
 import struct
 from typing import Iterator
 
-from ..legacy.errors import (
+from ..errors import (
     LegacyOfficeMalformedError,
     LegacyOfficeResourceLimitError,
 )
-from ..legacy.limits import MAX_RECORD_DEPTH, MAX_RECORDS
+from ..limits import MAX_RECORD_DEPTH, MAX_RECORDS
 
 CONTAINER_VERSION = 0xF
 ROUNDTRIP_OPAQUE_MIN = 1053

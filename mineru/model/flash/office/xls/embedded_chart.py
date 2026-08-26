@@ -9,13 +9,13 @@ import struct
 
 from loguru import logger
 
-from ..legacy import BoundedOleReader
+from ..legacy.ole import BoundedOleReader
 from ..legacy.binary import get_f64, get_u16
-from ..legacy.errors import (
+from ..errors import (
     LegacyOfficeMalformedError,
     LegacyOfficeResourceLimitError,
 )
-from ..legacy.limits import MAX_GRID_SLOTS
+from ..limits import MAX_GRID_SLOTS
 from .models import XlsCell, XlsRichText, XlsSheet, XlsWorkbook
 from .number_format import builtin_number_format, format_number
 from .parser import parse_xls_workbook

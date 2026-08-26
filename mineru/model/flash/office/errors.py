@@ -1,6 +1,6 @@
 # Copyright (c) Opendatalab. All rights reserved.
 
-"""旧版 Office 解析过程中可稳定识别的错误类型。"""
+"""Flash Office 二进制、嵌入对象与 RTF 解析共享的稳定错误类型。"""
 
 from __future__ import annotations
 
@@ -33,4 +33,3 @@ class LegacyOfficeResourceLimitError(LegacyOfficeError):
     """输入超过固定安全限制。"""
 
     code = "resource_limit"
-

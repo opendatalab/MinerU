@@ -7,12 +7,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 import hashlib
 
-from .legacy.errors import LegacyOfficeResourceLimitError
-from .legacy.limits import (
+from ..errors import LegacyOfficeResourceLimitError
+from ..limits import (
     MAX_ASSET_TOTAL_BYTES,
     MAX_ENTRY_BYTES,
 )
-from .legacy.mtef import decode_equation_object
+from .mtef import decode_equation_object
 
 CFB_MAGIC = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
 EQUATION_PROG_ID = "equation"

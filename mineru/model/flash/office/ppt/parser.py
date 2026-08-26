@@ -13,28 +13,28 @@ import zlib
 
 from loguru import logger
 
-from ..legacy import (
-    BoundedOleReader,
+from ..errors import (
     LegacyOfficeEncryptedError,
     LegacyOfficeMalformedError,
     LegacyOfficeResourceLimitError,
 )
 from ..legacy.binary import get_i16, get_u16, get_u32
-from ..legacy.limits import (
+from ..limits import (
     MAX_ASSET_TOTAL_BYTES,
     MAX_ENTRY_BYTES,
     MAX_GRID_SLOTS,
     MAX_PICTURE_RECORDS,
     MAX_USER_EDIT_CHAIN,
 )
-from ..legacy.mtef import decode_equation_object
+from ..equation.mtef import decode_equation_object
+from ..legacy.ole import BoundedOleReader
 from ..legacy.officeart import (
     OfficeArtRecord,
     OfficeImagePayload,
     decode_blip as decode_officeart_blip,
 )
 from ..image import serialize_office_image
-from ..image_equation import (
+from ..equation.image import (
     OfficeImageEquationDecoder,
 )
 from ..xls.embedded_chart import extract_embedded_chart_html_from_storage

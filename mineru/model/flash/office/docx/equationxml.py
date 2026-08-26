@@ -9,11 +9,11 @@ import hashlib
 
 from lxml import etree  # type: ignore[reportAttributeAccessIssue]
 
-from ..math.omml import oMath2Latex
-from ..legacy.errors import (
+from ..equation.omml import oMath2Latex
+from ..errors import (
     LegacyOfficeResourceLimitError,
 )
-from ..legacy.limits import (
+from ..limits import (
     MAX_ASSET_TOTAL_BYTES,
     MAX_ENTRY_BYTES,
 )

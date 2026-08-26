@@ -7,8 +7,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 import struct
 
-from ..legacy import LegacyOfficeResourceLimitError
-from ..legacy.limits import MAX_RECORDS
+from ..errors import LegacyOfficeResourceLimitError
+from ..limits import MAX_RECORDS
 
 
 @dataclass(slots=True)

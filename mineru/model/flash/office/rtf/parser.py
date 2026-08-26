@@ -12,8 +12,8 @@ from urllib.parse import urlsplit
 from loguru import logger
 
 from .....filetypes import rtf_header_offset
-from ..legacy import LegacyOfficeMalformedError, LegacyOfficeResourceLimitError
-from ..legacy.limits import MAX_ASSET_TOTAL_BYTES, MAX_ENTRY_BYTES, MAX_GRID_SLOTS
+from ..errors import LegacyOfficeMalformedError, LegacyOfficeResourceLimitError
+from ..limits import MAX_ASSET_TOTAL_BYTES, MAX_ENTRY_BYTES, MAX_GRID_SLOTS
 from .lexer import (
     RtfBinary,
     RtfClose,

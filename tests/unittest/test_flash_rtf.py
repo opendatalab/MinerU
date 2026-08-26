@@ -15,7 +15,7 @@ from mineru.doclib.core.fts import FTSManager
 from mineru.doclib.services.parse_svc import ParseService
 from mineru.errors import InvalidRequestError
 from mineru.model.flash import RtfModel
-from mineru.model.flash.office.legacy import (
+from mineru.model.flash.office.errors import (
     LegacyOfficeMalformedError,
     LegacyOfficeResourceLimitError,
 )

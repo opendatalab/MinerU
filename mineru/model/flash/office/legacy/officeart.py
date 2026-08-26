@@ -12,8 +12,8 @@ import zlib
 from loguru import logger
 
 from ..image import ensure_bmp_header
-from .errors import LegacyOfficeResourceLimitError
-from .limits import (
+from ..errors import LegacyOfficeResourceLimitError
+from ..limits import (
     MAX_ASSET_TOTAL_BYTES,
     MAX_ENTRY_BYTES,
     MAX_PICTURE_RECORDS,

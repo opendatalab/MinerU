@@ -14,14 +14,14 @@ from openpyxl.cell.rich_text import CellRichText, TextBlock  # type: ignore[repo
 from openpyxl.cell.text import InlineFont  # type: ignore[reportMissingModuleSource]
 from openpyxl.worksheet.worksheet import Worksheet  # type: ignore[reportMissingModuleSource]
 
-from ..legacy import BoundedOleReader, LegacyOfficeEncryptedError
-from ..legacy.errors import LegacyOfficeResourceLimitError
-from ..legacy.limits import MAX_GRID_SLOTS
-from ..legacy.mtef import decode_equation_native
+from ..errors import LegacyOfficeEncryptedError, LegacyOfficeResourceLimitError
+from ..limits import MAX_GRID_SLOTS
+from ..equation.mtef import decode_equation_native
+from ..legacy.ole import BoundedOleReader
 from ..spreadsheet.html import render_spreadsheet_table
 from ..spreadsheet.models import AnchoredBlock, ExcelTable, FormulaMap, SheetImage
 from ..spreadsheet.projector import SpreadsheetProjector
-from ..legacy.stream import read_stream_bytes_from_start
+from ..streams import read_stream_bytes_from_start
 from .....types import BlockType
 
 from .models import XlsChart, XlsChartSheet, XlsRichText, XlsSheet, XlsWorkbook

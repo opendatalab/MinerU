@@ -12,17 +12,17 @@ from pptx import Presentation, presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE, PP_PLACEHOLDER
 from pptx.oxml.text import CT_TextLineBreak
 
-from ..chart import extract_chart_html_from_ooxml
+from ..ooxml_chart import extract_chart_html_from_ooxml
 from ..image import PIL_IMAGE_LOAD_ERRORS, is_vector_image, serialize_vector_image_with_placeholder
-from ..image_equation import (
+from ..equation.image import (
     OfficeImageEquationDecoder,
 )
-from ..ooxml_equation import (
+from ..equation.ooxml import (
     OoxmlEquationDecoder,
     is_mathtype_equation_prog_id,
 )
-from ..math.omml import oMath2Latex
-from ..legacy.stream import read_stream_bytes_from_start, rewind_stream
+from ..equation.omml import oMath2Latex
+from ..streams import read_stream_bytes_from_start, rewind_stream
 from .package_normalizer import normalize_pptx_package
 from ..._shared.xycut import sort_entries
 from .....types import BlockType

@@ -8,7 +8,7 @@ from bisect import bisect_left
 from dataclasses import dataclass
 import struct
 
-from ..legacy import LegacyOfficeMalformedError
+from ..errors import LegacyOfficeMalformedError
 from ..legacy.binary import bounded_slice, get_u16, get_u32
 
 from .records import DocBudget

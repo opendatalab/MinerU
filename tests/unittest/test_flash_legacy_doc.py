@@ -16,7 +16,7 @@ from mineru.model.flash.office.doc.models import DocCharStyle, DocTableCell
 from mineru.model.flash.office.doc.parser import _RawTableRow, _materialize_table_rows
 from mineru.model.flash.office.doc.records import DocBudget
 from mineru.model.flash.office.doc.sprm import apply_character_sprms
-from mineru.model.flash.office.legacy import (
+from mineru.model.flash.office.errors import (
     LegacyOfficeEncryptedError,
     LegacyOfficeMalformedError,
     LegacyOfficeMissingPartError,

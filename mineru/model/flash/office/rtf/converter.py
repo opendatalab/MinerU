@@ -14,7 +14,7 @@ from ..image import (
     is_vector_image_part,
     serialize_office_image,
 )
-from ..image_equation import OfficeImageEquationDecoder
+from ..equation.image import OfficeImageEquationDecoder
 from ..rich_text import OfficeRichTextSegment, build_rich_text_from_segments
 from .models import (
     RtfAnchor,

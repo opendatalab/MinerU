@@ -10,8 +10,8 @@ from typing import Iterator
 
 from loguru import logger
 
-from ..legacy.errors import LegacyOfficeResourceLimitError
-from ..legacy.limits import MAX_RECORDS
+from ..errors import LegacyOfficeResourceLimitError
+from ..limits import MAX_RECORDS
 
 BOF = 0x0809
 EOF = 0x000A

@@ -7,7 +7,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import struct
 
-from ..legacy import LegacyOfficeMalformedError
+from ..errors import LegacyOfficeMalformedError
 
 FIB_IDENT = 0xA5EC
 MIN_WORD97_NFIB = 0x00C1

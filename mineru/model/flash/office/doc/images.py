@@ -9,9 +9,9 @@ import hashlib
 
 from loguru import logger
 
-from ..legacy import LegacyOfficeResourceLimitError
+from ..errors import LegacyOfficeResourceLimitError
 from ..legacy.binary import bounded_slice, get_u16, get_u32
-from ..legacy.limits import MAX_ASSET_TOTAL_BYTES
+from ..limits import MAX_ASSET_TOTAL_BYTES
 from ..legacy.officeart import (
     OfficeImagePayload,
     decode_bstore,
@@ -19,7 +19,7 @@ from ..legacy.officeart import (
     first_blip,
     record_at,
 )
-from ..image_equation import (
+from ..equation.image import (
     OfficeImageEquationDecoder,
 )
 
