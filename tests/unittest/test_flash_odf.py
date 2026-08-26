@@ -257,6 +257,45 @@ def test_odf_covered_placeholder_reuses_colspan_coordinate() -> None:
     assert [cell.html if cell is not None else None for cell in grid.rows[1]] == ["A", "B", "C"]
 
 
+def test_odt_note_after_soft_page_break_stays_on_new_page() -> None:
+    """验证 soft-page-break 后的 note reference 和正文归属同一新页。"""
+    content = """<office:document-content
+ xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+ xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
+ <office:body><office:text><text:p>Before<text:soft-page-break/>After
+  <text:note><text:note-citation>1</text:note-citation><text:note-body><text:p>After note</text:p></text:note-body></text:note>
+ </text:p></office:text></office:body>
+</office:document-content>"""
+
+    pages = OdtModel().predict(BytesIO(build_odf_package("odt", content)))
+
+    assert pages == [
+        [{"type": BlockType.TEXT, "content": "Before"}],
+        [
+            {"type": BlockType.TEXT, "content": "After [1]"},
+            {"type": BlockType.PAGE_FOOTNOTE, "content": "[1] After note"},
+        ],
+    ]
+
+
+def test_ods_cell_note_emits_page_footnote() -> None:
+    """验证 ODS cell citation 对应的 note body 在当前 sheet 页末输出。"""
+    content = """<office:document-content
+ xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+ xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"
+ xmlns:table="urn:oasis:names:tc:opendocument:xmlns:table:1.0">
+ <office:body><office:spreadsheet><table:table table:name="Sheet1"><table:table-row><table:table-cell><text:p>Cell
+  <text:note><text:note-citation>1</text:note-citation><text:note-body><text:p>Cell note</text:p></text:note-body></text:note>
+ </text:p></table:table-cell></table:table-row></table:table></office:spreadsheet></office:body>
+</office:document-content>"""
+
+    pages = OdsModel().predict(BytesIO(build_odf_package("ods", content)))
+
+    assert [block["type"] for block in pages[0]] == [BlockType.TABLE, BlockType.PAGE_FOOTNOTE]
+    assert "Cell [1]" in pages[0][0]["content"]
+    assert pages[0][1]["content"] == "[1] Cell note"
+
+
 def test_odp_preserves_empty_slide_chart_preview_and_notes() -> None:
     """验证 ODP 空 slide 不丢失，图表同时保留数据和预览，备注归属原页。"""
     middle, model = doc_analyze(build_odp_fixture(), file_suffix="odp")

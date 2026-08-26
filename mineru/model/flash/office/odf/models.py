@@ -125,6 +125,13 @@ class InlinePageBreak:
 
 
 @dataclass(frozen=True, slots=True)
+class InlineNote:
+    """保存应随当前行内分页分组归属的 ODF note body。"""
+
+    content: str
+
+
+@dataclass(frozen=True, slots=True)
 class InlineImage:
     """保存表格单元格中允许内联呈现的图片 data URI。"""
 
@@ -140,7 +147,15 @@ class InlineBlockGroup:
     inline_image_rendered: bool = False
 
 
-InlineAtom: TypeAlias = Union[InlineText, InlineMath, InlineBreak, InlinePageBreak, InlineImage, InlineBlockGroup]
+InlineAtom: TypeAlias = Union[
+    InlineText,
+    InlineMath,
+    InlineBreak,
+    InlinePageBreak,
+    InlineNote,
+    InlineImage,
+    InlineBlockGroup,
+]
 
 
 @dataclass(slots=True)
@@ -179,6 +194,7 @@ __all__ = [
     "InlineBreak",
     "InlineImage",
     "InlineMath",
+    "InlineNote",
     "InlinePageBreak",
     "InlineText",
     "ListLevel",

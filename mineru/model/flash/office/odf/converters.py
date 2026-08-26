@@ -11,6 +11,7 @@ from lxml import etree  # type: ignore[reportMissingImports]
 
 from .....types import BlockType
 from .constants import OdfSuffix, qname
+from .models import InlineNote
 from .package import OdfPackage
 from .styles import OdfStyles
 from .table import parse_table_grid, split_table_regions, table_grid_to_html
@@ -77,7 +78,7 @@ def _flush_notes(parser: OdfBlockParser, page: list[dict[str, Any]]) -> None:
 
 
 def _append_flow_items(
-    items: list[dict[str, Any] | PageBreakMarker],
+    items: list[dict[str, Any] | PageBreakMarker | InlineNote],
     *,
     parser: OdfBlockParser,
     pages: list[list[dict[str, Any]]],
@@ -89,6 +90,8 @@ def _append_flow_items(
         if isinstance(item, PageBreakMarker):
             _flush_notes(parser, pages[-1])
             _new_page(pages, page_masters, current_master)
+        elif isinstance(item, InlineNote):
+            parser.notes.append(item.content)
         else:
             pages[-1].append(item)
 
@@ -301,6 +304,7 @@ def _sheet_blocks(sheet: etree._Element, parser: OdfBlockParser) -> list[dict[st
             for block in parser.parse_frame_blocks(frame):
                 if block.get("type") in {BlockType.IMAGE, BlockType.CHART, BlockType.EQUATION}:
                     blocks.append(block)
+    _flush_notes(parser, blocks)
     return blocks
 
 

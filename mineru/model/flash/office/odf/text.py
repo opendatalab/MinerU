@@ -26,6 +26,7 @@ from .models import (
     InlineBreak,
     InlineImage,
     InlineMath,
+    InlineNote,
     InlinePageBreak,
     InlineText,
     TextStyle,
@@ -45,7 +46,7 @@ class PageBreakMarker:
 
 
 PAGE_BREAK = PageBreakMarker()
-RawFlowItem = dict[str, Any] | PageBreakMarker
+RawFlowItem = dict[str, Any] | PageBreakMarker | InlineNote
 
 
 def _clean_xml_text(value: str | None) -> str:
@@ -139,7 +140,7 @@ def render_atoms_to_html(atoms: Sequence[InlineAtom]) -> str:
             parts.append("<br/>")
         elif isinstance(atom, InlineImage):
             parts.append(f'<img src="{html.escape(atom.data_uri, quote=True)}" alt="{html.escape(atom.alt, quote=True)}"/>')
-        elif isinstance(atom, InlineBlockGroup):
+        elif isinstance(atom, (InlineBlockGroup, InlineNote)):
             continue
     return "".join(parts)
 
@@ -173,7 +174,7 @@ def render_atoms_to_model(atoms: Sequence[InlineAtom], *, trim_edges: bool = Fal
             parts.append("\n")
         elif isinstance(atom, InlineImage) and atom.alt:
             parts.append(atom.alt)
-        elif isinstance(atom, InlineBlockGroup):
+        elif isinstance(atom, (InlineBlockGroup, InlineNote)):
             continue
     flush_segments()
     return "".join(parts).strip() if trim_edges else "".join(parts)
@@ -318,7 +319,11 @@ class OdfBlockParser:
     ) -> None:
         """保留脚注标记，并把 note-body 内容排入当前逻辑页脚注队列。"""
         citation = note.find(qname("text", "note-citation"))
-        citation_text = "".join(citation.itertext()).strip() if citation is not None else str(len(self.notes) + 1)
+        citation_text = (
+            "".join(citation.itertext()).strip()
+            if citation is not None
+            else str(len(self.notes) + sum(isinstance(atom, InlineNote) for atom in atoms) + 1)
+        )
         self._append_text_atom(atoms, f"[{citation_text}]", style=style, hyperlink=hyperlink)
         body = note.find(qname("text", "note-body"))
         if body is None:
@@ -326,7 +331,7 @@ class OdfBlockParser:
         blocks = self.parse_container(body)
         visible = flatten_block_text(blocks)
         if visible:
-            self.notes.append(f"[{citation_text}] {visible}")
+            atoms.append(InlineNote(f"[{citation_text}] {visible}"))
 
     def parse_inline_atoms(self, paragraph: etree._Element) -> list[InlineAtom]:
         """解析一个段落的行内语义，并用原位 marker 保留段外 block。"""
@@ -364,7 +369,7 @@ class OdfBlockParser:
         is_heading = paragraph.tag == qname("text", "h")
         style_name = paragraph.get(qname("text", "style-name"))
         for group_index, group in enumerate(groups):
-            content_atoms = [atom for atom in group if not isinstance(atom, InlineBlockGroup)]
+            content_atoms = [atom for atom in group if not isinstance(atom, (InlineBlockGroup, InlineNote))]
             content = render_atoms_to_model(content_atoms, trim_edges=True)
             math_atoms = [atom for atom in content_atoms if isinstance(atom, InlineMath)]
             visible_text = "".join(atom.text for atom in content_atoms if isinstance(atom, InlineText)).strip()
@@ -395,6 +400,8 @@ class OdfBlockParser:
             for atom in group:
                 if isinstance(atom, InlineBlockGroup):
                     results.extend(atom.blocks)
+                elif isinstance(atom, InlineNote):
+                    results.append(atom)
             if group_index < len(groups) - 1:
                 results.append(PAGE_BREAK)
         return results
@@ -471,6 +478,9 @@ class OdfBlockParser:
                     continue
                 if child.tag in {qname("text", "p"), qname("text", "h")}:
                     for block in self.parse_paragraph(child):
+                        if isinstance(block, InlineNote):
+                            self.notes.append(block.content)
+                            continue
                         if not isinstance(block, dict):
                             continue
                         block_type = block.get("type")
@@ -563,6 +573,9 @@ class OdfBlockParser:
                     continue
                 if child.tag == qname("text", "h"):
                     for parsed in self.parse_paragraph(child):
+                        if isinstance(parsed, InlineNote):
+                            self.notes.append(parsed.content)
+                            continue
                         if not isinstance(parsed, dict):
                             continue
                         if parsed.get("type") == BlockType.PARAGRAPH_TITLE:
@@ -588,6 +601,9 @@ class OdfBlockParser:
             if paragraph.tag not in {qname("text", "p"), qname("text", "h")}:
                 continue
             for block in self.parse_paragraph(paragraph):
+                if isinstance(block, InlineNote):
+                    self.notes.append(block.content)
+                    continue
                 if isinstance(block, dict) and block.get("content"):
                     leaves.append({"type": BlockType.TEXT, "content": block["content"]})
         if not leaves:
@@ -714,7 +730,13 @@ class OdfBlockParser:
     def parse_element(self, element: etree._Element) -> list[dict[str, Any]]:
         """解析一个 ODF block 元素，不移动或修改原始 XML 节点。"""
         if element.tag in {qname("text", "p"), qname("text", "h")}:
-            return [item for item in self.parse_paragraph(element) if isinstance(item, dict)]
+            blocks: list[dict[str, Any]] = []
+            for item in self.parse_paragraph(element):
+                if isinstance(item, dict):
+                    blocks.append(item)
+                elif isinstance(item, InlineNote):
+                    self.notes.append(item.content)
+            return blocks
         if element.tag == qname("text", "list"):
             return self.parse_list_blocks(element)
         if element.tag == qname("table", "table"):
@@ -772,6 +794,10 @@ class OdfBlockParser:
             elif block.get("image_base64"):
                 parts.append(f'<img src="{html.escape(str(block["image_base64"]), quote=True)}"/>')
 
+    def _queue_inline_notes(self, atoms: Sequence[InlineAtom]) -> None:
+        """把单元格行内流中的 note marker 排入当前逻辑页队列。"""
+        self.notes.extend(atom.content for atom in atoms if isinstance(atom, InlineNote))
+
     def render_cell_html(self, cell: etree._Element) -> str:
         """把表格单元格中的段落、列表、嵌套表和 frame 转为 HTML。"""
         parts: list[str] = []
@@ -780,6 +806,7 @@ class OdfBlockParser:
                 continue
             if child.tag in {qname("text", "p"), qname("text", "h")}:
                 atoms = self.parse_inline_atoms(child)
+                self._queue_inline_notes(atoms)
                 rendered_atoms = (
                     [atom for atom in atoms if not isinstance(atom, InlineImage)] if self._collect_cell_visuals else atoms
                 )
@@ -821,12 +848,14 @@ class OdfBlockParser:
                 for child in item:
                     if child.tag in {qname("text", "p"), qname("text", "h")}:
                         atoms = self.parse_inline_atoms(child)
+                        self._queue_inline_notes(atoms)
                         parts.append(f"<li>{render_atoms_to_html(atoms)}</li>")
                 continue
             parts.append("<li>")
             for child in item:
                 if child.tag in {qname("text", "p"), qname("text", "h")}:
                     atoms = self.parse_inline_atoms(child)
+                    self._queue_inline_notes(atoms)
                     parts.append(render_atoms_to_html(atoms))
                 elif child.tag == qname("text", "list"):
                     parts.append(self._render_list_html(child, depth=depth + 1, inherited_style=style_name))
