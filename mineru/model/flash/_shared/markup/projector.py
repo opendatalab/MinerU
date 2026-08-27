@@ -576,25 +576,18 @@ class MarkupProjector:
             resolved = self.stylesheet.resolve(annotation, style, visibility_hidden)
             if resolved.subtree_hidden:
                 continue
-            content, extras = self._render_inline_children(annotation, resolved.text, resolved.visibility_hidden)
             target = self._figure_annotation_target(annotation, element, visual_blocks_by_child)
-            annotation_blocks = list(extras)
-            if not content.strip():
-                if target is not None:
-                    annotations_by_visual.setdefault(id(target), []).extend(annotation_blocks)
-                else:
-                    unbound_annotations.extend(annotation_blocks)
-                continue
             visual_type = _raw_visual_type(target.get("type")) if target is not None else None
-            if visual_type is not None:
-                annotation_blocks.append(
-                    {
-                        "type": VISUAL_TYPE_MAPPING[visual_type][kind],
-                        "content": content.strip(),
-                    }
-                )
-            else:
-                annotation_blocks.append({"type": BlockType.TEXT, "content": content.strip()})
+            annotation_type = VISUAL_TYPE_MAPPING[visual_type][kind] if visual_type is not None else BlockType.TEXT
+            annotation_blocks: list[dict[str, object]] = []
+            for segment in self._render_inline_children_ordered(annotation, resolved.text, resolved.visibility_hidden):
+                if isinstance(segment, str):
+                    if content := segment.strip():
+                        annotation_blocks.append({"type": annotation_type, "content": content})
+                    continue
+                if visual_type is not None and segment.get("type") == BlockType.TEXT:
+                    segment = {**segment, "type": annotation_type}
+                annotation_blocks.append(segment)
             if target is not None and visual_type is not None:
                 annotations_by_visual.setdefault(id(target), []).extend(annotation_blocks)
             else:

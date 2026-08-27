@@ -8,13 +8,12 @@ from mineru.doclib.server import (
 )
 from mineru.doclib.types import ContentRange
 from mineru.errors import InvalidRequestError
-from mineru.types import BlockType, PageInfo, TableBlock, TableBodyBlock, TextBlock
+from mineru.types import BlockType, ImageBlock, ImageBodyBlock, PageInfo, TableBlock, TableBodyBlock, TextBlock
 
 
 def _page(page_idx: int, *texts: str) -> PageInfo:
     blocks = [
-        TextBlock(type=BlockType.TEXT, index=index, bbox=(0.0, 0.0, 0.1, 0.1), content=text)
-        for index, text in enumerate(texts)
+        TextBlock(type=BlockType.TEXT, index=index, bbox=(0.0, 0.0, 0.1, 0.1), content=text) for index, text in enumerate(texts)
     ]
     return PageInfo(page_idx=page_idx, blocks=blocks)
 
@@ -235,3 +234,26 @@ def test_page_markdown_blocks_prefers_markdown_table_in_doclib() -> None:
             ),
         )
     ]
+
+
+def test_page_markdown_blocks_preserves_remote_only_image() -> None:
+    """验证 Doclib Markdown 在没有 bbox/sidecar 时仍输出安全编码的远程图片 URL。"""
+    page = PageInfo(
+        page_idx=0,
+        blocks=[
+            ImageBlock(
+                type=BlockType.IMAGE,
+                index=0,
+                content=[
+                    ImageBodyBlock(
+                        type=BlockType.IMAGE_BODY,
+                        index=0,
+                        content="",
+                        image_url="https://cdn.example.com/remote image(1).png",
+                    )
+                ],
+            )
+        ],
+    )
+
+    assert _page_markdown_blocks(page) == [(0, "![Image block](https://cdn.example.com/remote%20image%281%29.png)")]

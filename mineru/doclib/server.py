@@ -25,6 +25,7 @@ from ..config import config
 from ..errors import InvalidRequestError, MineruError, NotFoundError, error_response, http_status_for
 from ..filetypes import IMAGE_EXTENSIONS, TEXT_EXTENSIONS, TEXT_FILE_TYPES
 from ..parser.tier import TierDependencyError, ensure_tier_runtime_dependencies
+from ..render._internal.markdown.assets import build_markdown_image
 from ..render._internal.markdown.blocks import render_single_block
 from ..types import (
     DEPLOYMENT_TIERS,
@@ -1830,9 +1831,11 @@ def _make_doclib_image_renderer(
     def _render(block: BlockBase) -> str:
         label = _VISUAL_BLOCK_LABELS.get(block.type, "Image block")
         source = _resolve_block_image_source(block, image_dir=image_dir)
-        block_no = block.index + 1 if block.index is not None else 0  # TODO: change after block.index's type changed.
-        locator = block_ref(short_id, tier, page_no, block_no) if source is not None else ""
-        return f"![{label}]({locator})"
+        if source is not None:
+            block_no = block.index + 1 if block.index is not None else 0  # TODO: change after block.index's type changed.
+            return build_markdown_image(block_ref(short_id, tier, page_no, block_no), label)
+        remote_url = next((payload.image_url for payload in _iter_block_image_payloads(block) if payload.image_url), None)
+        return build_markdown_image(remote_url, label) if remote_url is not None else f"![{label}]()"
 
     return _render
 

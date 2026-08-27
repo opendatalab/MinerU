@@ -616,6 +616,60 @@ def test_html_interleaved_figure_captions_bind_to_each_nearest_image() -> None:
     assert [child.content for child in images[1].content if child.type == BlockType.IMAGE_CAPTION] == ["Caption B"]
 
 
+@pytest.mark.parametrize(
+    ("visual_markup", "parent_type", "body_type", "annotation_markup", "annotation_type"),
+    [
+        (
+            '<img src="https://example.com/a.png">',
+            BlockType.IMAGE,
+            BlockType.IMAGE_BODY,
+            "<figcaption><p>A</p><p>B</p></figcaption>",
+            BlockType.IMAGE_CAPTION,
+        ),
+        (
+            '<img src="https://example.com/a.png">',
+            BlockType.IMAGE,
+            BlockType.IMAGE_BODY,
+            '<div class="footnote"><p>A</p><p>B</p></div>',
+            BlockType.IMAGE_FOOTNOTE,
+        ),
+        (
+            "<table><tr><td>X</td></tr></table>",
+            BlockType.TABLE,
+            BlockType.TABLE_BODY,
+            "<figcaption><p>A</p><p>B</p></figcaption>",
+            BlockType.TABLE_CAPTION,
+        ),
+        (
+            "<table><tr><td>X</td></tr></table>",
+            BlockType.TABLE,
+            BlockType.TABLE_BODY,
+            '<div class="footnote"><p>A</p><p>B</p></div>',
+            BlockType.TABLE_FOOTNOTE,
+        ),
+    ],
+)
+def test_html_figure_block_children_keep_visual_annotation_relationship(
+    visual_markup: str,
+    parent_type: BlockType,
+    body_type: BlockType,
+    annotation_markup: str,
+    annotation_type: BlockType,
+) -> None:
+    """验证 figure 中的块级说明文本仍按目标 visual 类型保留 caption/footnote 关系。"""
+    payload = f"<html><body><figure>{visual_markup}{annotation_markup}</figure></body></html>".encode()
+
+    middle, model = doc_analyze(payload, file_suffix="html")
+
+    assert [block["type"] for block in model.pages[0]] == [parent_type, annotation_type, annotation_type]
+    assert [block.get("content") for block in model.pages[0][1:]] == ["A", "B"]
+    assert len(middle.pages[0].blocks) == 1
+    visual = middle.pages[0].blocks[0]
+    assert visual.type == parent_type
+    assert [child.type for child in visual.content] == [body_type, annotation_type, annotation_type]  # type: ignore[union-attr]
+    assert [child.content for child in visual.content[1:]] == ["A", "B"]  # type: ignore[union-attr]
+
+
 def test_html_auto_selected_contextual_div_keeps_figure_caption_relation() -> None:
     """验证 auto 直接选中 visual wrapper div 时仍执行根节点 caption 关联。"""
     payload = b"""<html><body><div><figure><img src="https://example.com/a.png"></figure>
