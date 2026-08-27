@@ -4,10 +4,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from math import atan2, degrees, isfinite
+from math import atan2, cos, degrees, isfinite, radians, sin
 import struct
 
 from .binary import BoundedReader
+from .font import measure_text_advance
 from .geometry import (
     PathBuilder,
     arc_path,
@@ -389,6 +390,23 @@ class _Playback:
         if not self.path_active:
             self.emit_path(builder.build(), stroke=True, fill=False)
         self.state.current_position = remaining[-1]
+
+    def angle_arc(self, path: GraphicsPath, *, start: Point, end: Point) -> None:
+        """绘制 current-to-start 连线和 AngleArc，并把 current position 更新到终点。"""
+        mapped_path = transform_path(path, self.logical_matrix())
+        mapped_start = self.map_point(start)
+        tail = GraphicsPath(mapped_path.segments[1:])
+        if self.path_active:
+            self._ensure_active_path_current()
+            self.path_builder.line_to(mapped_start)
+            self.path_builder.extend(tail)
+        else:
+            builder = PathBuilder()
+            builder.move_to(self.map_point(self.state.current_position))
+            builder.line_to(mapped_start)
+            builder.extend(tail)
+            self.emit_path(builder.build(), stroke=True, fill=False)
+        self.state.current_position = end
 
     def begin_path(self) -> None:
         """开始新的 GDI path bracket 并清除旧路径。"""
@@ -966,9 +984,11 @@ def _emit_text(
     if options & _ETO_GLYPH_INDEX:
         playback.warn("glyph_index_text", "glyph-index text was replaced with visible placeholder glyphs")
         text = "□" * len(text)
-    logical_origin = playback.state.current_position if playback.state.text_align & _TA_UPDATECP else reference
+    update_current = bool(playback.state.text_align & _TA_UPDATECP)
+    logical_origin = playback.state.current_position if update_current else reference
     origin = playback.map_point(logical_origin)
     positions: list[Point] = []
+    font = playback.state.font
     if advances:
         cursor_x, cursor_y = logical_origin
         for index, _character in enumerate(text):
@@ -976,9 +996,15 @@ def _emit_text(
             if index < len(advances):
                 cursor_x += advances[index][0]
                 cursor_y += advances[index][1]
-        if playback.state.text_align & _TA_UPDATECP:
+        if update_current:
             playback.state.current_position = (cursor_x, cursor_y)
-    font = playback.state.font
+    elif update_current:
+        advance = measure_text_advance(font, text)
+        angle = radians(font.escapement / 10.0)
+        playback.state.current_position = (
+            logical_origin[0] + advance * cos(angle),
+            logical_origin[1] - advance * sin(angle),
+        )
     mapped_height = vector_length(playback.map_vector((0.0, font.height or -12.0)))
     baseline_vector = playback.map_vector((1.0, 0.0))
     rotation = degrees(atan2(baseline_vector[1], baseline_vector[0])) + font.escapement / 10.0
@@ -1352,16 +1378,16 @@ def _handle_emf_record(record_type: int, record: BoundedReader, playback: _Playb
             center[0] + radius * cos(radians(end_angle)),
             center[1] - radius * sin(radians(end_angle)),
         )
-        direction = 2 if sweep_angle >= 0 else 1
-        playback.emit_logical_path(
+        direction = 1 if sweep_angle >= 0 else 2
+        playback.angle_arc(
             arc_path(
                 Rect(center[0] - radius, center[1] - radius, center[0] + radius, center[1] + radius),
                 start,
                 end,
                 direction=direction,
             ),
-            stroke=True,
-            fill=False,
+            start=start,
+            end=end,
         )
         return
 

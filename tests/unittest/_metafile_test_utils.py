@@ -96,6 +96,11 @@ def emf_line_to(x: int, y: int) -> bytes:
     return emf_record(54, struct.pack("<2i", x, y))
 
 
+def emf_angle_arc(center_x: int, center_y: int, radius: int, start_angle: float, sweep_angle: float) -> bytes:
+    """构造 EMR_ANGLEARC。"""
+    return emf_record(41, struct.pack("<iiIff", center_x, center_y, radius, start_angle, sweep_angle))
+
+
 def emf_begin_path() -> bytes:
     """构造 EMR_BEGINPATH。"""
     return emf_record(59)
@@ -159,6 +164,11 @@ def emf_set_miter_limit(value: float) -> bytes:
     return emf_record(58, struct.pack("<f", value))
 
 
+def emf_set_text_align(value: int) -> bytes:
+    """构造 EMR_SETTEXTALIGN。"""
+    return emf_record(22, struct.pack("<I", value))
+
+
 def emf_font(handle: int, face_name: str = "DejaVu Sans", *, height: int = -14) -> bytes:
     """构造只填充常用 LOGFONTW 字段的 EMR_EXTCREATEFONTINDIRECTW。"""
     logfont = bytearray(92)
@@ -169,12 +179,13 @@ def emf_font(handle: int, face_name: str = "DejaVu Sans", *, height: int = -14) 
     return emf_record(82, struct.pack("<I", handle) + bytes(logfont))
 
 
-def emf_text(text: str, x: int, y: int, *, dx: int = 12) -> bytes:
-    """构造带显式 Dx 数组的 EMR_EXTTEXTOUTW。"""
+def emf_text(text: str, x: int, y: int, *, dx: int | None = 12) -> bytes:
+    """构造可选显式 Dx 数组的 EMR_EXTTEXTOUTW。"""
     encoded = text.encode("utf-16le")
     record = bytearray(76)
+    nominal_dx = dx if dx is not None else 12
     struct.pack_into("<II", record, 0, 84, 0)
-    struct.pack_into("<4i", record, 8, x, y - 20, x + max(1, len(text)) * dx, y + 5)
+    struct.pack_into("<4i", record, 8, x, y - 20, x + max(1, len(text)) * nominal_dx, y + 5)
     struct.pack_into("<Iff", record, 24, 1, 1.0, 1.0)
     struct.pack_into("<2i", record, 36, x, y)
     struct.pack_into("<I", record, 44, len(text))
@@ -182,10 +193,11 @@ def emf_text(text: str, x: int, y: int, *, dx: int = 12) -> bytes:
     struct.pack_into("<I", record, 52, 0)
     struct.pack_into("<4i", record, 56, 0, 0, -1, -1)
     string_and_padding = _pad4(encoded)
-    dx_offset = 76 + len(string_and_padding)
-    struct.pack_into("<I", record, 72, dx_offset)
     record.extend(string_and_padding)
-    record.extend(struct.pack(f"<{len(text)}i", *([dx] * len(text))))
+    if dx is not None:
+        dx_offset = 76 + len(string_and_padding)
+        struct.pack_into("<I", record, 72, dx_offset)
+        record.extend(struct.pack(f"<{len(text)}i", *([dx] * len(text))))
     struct.pack_into("<I", record, 4, len(record))
     return bytes(record)
 
@@ -238,6 +250,26 @@ def wmf_record(function: int, payload: bytes = b"") -> bytes:
     return struct.pack("<IH", (6 + len(payload)) // 2, function) + payload
 
 
+def wmf_move_to(x: int, y: int) -> bytes:
+    """构造 META_MOVETO。"""
+    return wmf_record(0x0214, struct.pack("<hh", y, x))
+
+
+def wmf_set_text_align(value: int) -> bytes:
+    """构造 META_SETTEXTALIGN。"""
+    return wmf_record(0x012E, struct.pack("<H", value))
+
+
+def wmf_textout(text: str, x: int, y: int) -> bytes:
+    """构造没有显式字符 spacing 的 META_TEXTOUT。"""
+    encoded = text.encode("cp1252")
+    payload = struct.pack("<H", len(encoded)) + encoded
+    if len(encoded) & 1:
+        payload += b"\x00"
+    payload += struct.pack("<hh", y, x)
+    return wmf_record(0x0521, payload)
+
+
 def build_placeable_wmf(records: list[bytes], *, bbox: tuple[int, int, int, int] = (0, 0, 1000, 1000)) -> bytes:
     """构造带 Aldus placeable header 的标准 WMF。"""
     eof = wmf_record(0)
@@ -271,6 +303,7 @@ __all__ = [
     "basic_wmf",
     "build_emf",
     "build_placeable_wmf",
+    "emf_angle_arc",
     "emf_create_brush",
     "emf_create_pen",
     "emf_begin_path",
@@ -289,11 +322,15 @@ __all__ = [
     "emf_select_object",
     "emf_set_miter_limit",
     "emf_set_polyfill_mode",
+    "emf_set_text_align",
     "emf_set_world_transform",
     "emf_stroke_and_fill_path",
     "emf_stroke_path",
     "emf_stretch_dib",
     "emf_text",
     "emfplus_comment",
+    "wmf_move_to",
     "wmf_record",
+    "wmf_set_text_align",
+    "wmf_textout",
 ]

@@ -37,7 +37,15 @@ from mineru.model.flash.office.metafile import (
 from mineru.model.flash.office.metafile import parser as metafile_parser
 from mineru.model.flash.office.metafile import render as metafile_render
 from mineru.model.flash.office.metafile.geometry import FlattenBudget, PathBuilder, flatten_path, path_bounds
-from mineru.model.flash.office.metafile.models import ClipOperation, DrawPathCommand, GraphicsPath, Matrix, Pen, Rect
+from mineru.model.flash.office.metafile.models import (
+    ClipOperation,
+    DrawPathCommand,
+    DrawTextCommand,
+    GraphicsPath,
+    Matrix,
+    Pen,
+    Rect,
+)
 from mineru.model.flash.office.legacy.officeart import OfficeArtRecord, decode_blip
 from mineru.model.flash.office.pptx.pptx_converter import PptxConverter
 from mineru.model.flash.office.xlsx.xlsx_converter import XlsxConverter
@@ -47,6 +55,7 @@ from _metafile_test_utils import (
     basic_wmf,
     build_emf,
     build_placeable_wmf,
+    emf_angle_arc,
     emf_begin_path,
     emf_close_figure,
     emf_create_brush,
@@ -63,13 +72,17 @@ from _metafile_test_utils import (
     emf_savedc,
     emf_select_object,
     emf_set_miter_limit,
+    emf_set_text_align,
     emf_set_world_transform,
     emf_stroke_and_fill_path,
     emf_stroke_path,
     emf_stretch_dib,
     emf_text,
     emfplus_comment,
+    wmf_move_to,
     wmf_record,
+    wmf_set_text_align,
+    wmf_textout,
 )
 from _legacy_ppt_test_utils import build_equation_ppt
 from _legacy_xls_test_utils import build_equation_xls
@@ -269,6 +282,59 @@ def test_emf_non_to_polybezier_does_not_change_gdi_current_position() -> None:
     commands = [command for command in document.commands if isinstance(command, DrawPathCommand)]
 
     assert commands[1].path.segments[0].points == ((5.0, 5.0),)
+
+
+@pytest.mark.parametrize(
+    "data",
+    [
+        build_emf(
+            [
+                emf_set_text_align(1),
+                emf_move_to(10, 50),
+                emf_text("first", 900, 900, dx=None),
+                emf_text("second", 800, 800, dx=None),
+            ]
+        ),
+        build_placeable_wmf(
+            [
+                wmf_set_text_align(1),
+                wmf_move_to(10, 50),
+                wmf_textout("first", 900, 900),
+                wmf_textout("second", 800, 800),
+            ]
+        ),
+    ],
+    ids=["emf", "wmf"],
+)
+def test_updatecp_text_without_explicit_spacing_advances_current_position(data: bytes) -> None:
+    """验证 EMF/WMF 无显式 spacing 的 TA_UPDATECP 文本不会相互覆盖。"""
+    commands = [command for command in metafile_parser.parse_metafile(data).commands if isinstance(command, DrawTextCommand)]
+
+    assert len(commands) == 2
+    assert commands[0].origin == (10.0, 50.0)
+    assert commands[1].origin[0] > commands[0].origin[0]
+    assert commands[1].origin[1] == pytest.approx(commands[0].origin[1])
+    assert not commands[0].positions
+    assert not commands[1].positions
+
+
+@pytest.mark.parametrize(("sweep_angle", "expected_end_y"), [(90.0, -10.0), (-90.0, 10.0)])
+def test_emf_anglearc_uses_sweep_direction_and_updates_current_position(
+    sweep_angle: float,
+    expected_end_y: float,
+) -> None:
+    """验证 AngleArc 绘制起始连线、使用正确 sweep 方向并更新 current position。"""
+    data = build_emf(
+        [emf_angle_arc(0, 0, 10, 0.0, sweep_angle), emf_line_to(20, 20)],
+        bounds=(-20, -20, 30, 30),
+    )
+    commands = [command for command in metafile_parser.parse_metafile(data).commands if isinstance(command, DrawPathCommand)]
+
+    assert len(commands[0].path.segments) == 14
+    assert commands[0].path.segments[0].points == ((0.0, 0.0),)
+    assert commands[0].path.segments[1].points == ((10.0, 0.0),)
+    assert commands[0].path.segments[-1].points[0] == pytest.approx((0.0, expected_end_y))
+    assert commands[1].path.segments[0].points[0] == pytest.approx((0.0, expected_end_y))
 
 
 def test_emf_stroke_and_fill_closes_every_open_figure() -> None:

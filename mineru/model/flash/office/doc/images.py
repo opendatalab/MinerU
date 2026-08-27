@@ -34,31 +34,42 @@ class ImageStore:
     """按内容去重并限制 DOC 图片累计字节数。"""
 
     total: int = 0
-    cache: dict[bytes, DocImagePayload] = field(default_factory=dict)
+    cache: dict[tuple[bytes, tuple[int, int] | None], DocImagePayload] = field(default_factory=dict)
+    accounted_digests: set[bytes] = field(default_factory=set)
+    equation_cache: dict[bytes, str | None] = field(default_factory=dict)
     equation_decoder: OfficeImageEquationDecoder = field(default_factory=OfficeImageEquationDecoder)
 
     def add(self, payload: OfficeImagePayload) -> DocImagePayload:
         """计入一张唯一图片并返回内部载荷。"""
 
         digest = hashlib.sha256(payload.data).digest()
-        cached = self.cache.get(digest)
+        cache_key = digest, payload.render_size_emu
+        cached = self.cache.get(cache_key)
         if cached is not None:
             return cached
-        if self.total + len(payload.data) > MAX_ASSET_TOTAL_BYTES:
+        is_new_payload = digest not in self.accounted_digests
+        if is_new_payload and self.total + len(payload.data) > MAX_ASSET_TOTAL_BYTES:
             raise LegacyOfficeResourceLimitError(f"embedded assets exceed max_asset_total_bytes={MAX_ASSET_TOTAL_BYTES}")
+        if digest in self.equation_cache:
+            equation_latex = self.equation_cache[digest]
+        else:
+            equation_latex = self.equation_decoder.decode(
+                payload.data,
+                part_name=f"image.{payload.extension}",
+                content_type=payload.content_type,
+            )
         converted = DocImagePayload(
             payload.data,
             payload.extension,
             payload.content_type,
-            self.equation_decoder.decode(
-                payload.data,
-                part_name=f"image.{payload.extension}",
-                content_type=payload.content_type,
-            ),
+            equation_latex,
             render_size_emu=payload.render_size_emu,
         )
-        self.total += len(payload.data)
-        self.cache[digest] = converted
+        if is_new_payload:
+            self.total += len(payload.data)
+            self.accounted_digests.add(digest)
+        self.equation_cache[digest] = equation_latex
+        self.cache[cache_key] = converted
         return converted
 
 
