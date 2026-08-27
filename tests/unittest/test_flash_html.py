@@ -1153,6 +1153,79 @@ def test_html_invalid_versioned_markers_fallback_without_partial_results() -> No
         assert markdown.count("Visible caption") == 1
 
 
+def test_html_versioned_wire_visible_structural_text_falls_back_without_loss() -> None:
+    """验证机器结构容器中新增的可见文本会整体回退，并保留编辑内容。"""
+    source = MiddleJson.model_validate(
+        {
+            "pages": [{"page_idx": 0, "blocks": [{"type": "text", "index": 0, "content": "Original wire text"}]}],
+            "is_full_document": True,
+            "file_suffix": "html",
+            "effort": "flash",
+            "parse_mode": "txt",
+            "mineru_version": "test",
+        }
+    )
+    default_html = render_html(source, standalone=False)
+    full_html = render_html(source, mode=RenderMode.FULL, standalone=False)
+    variants: list[tuple[str, str]] = []
+
+    root_text = BeautifulSoup(default_html, "html.parser")
+    root_text.select_one(".mineru-document").insert(0, "ROOT EDIT ")
+    variants.append((str(root_text), "ROOT EDIT"))
+
+    section_text = BeautifulSoup(full_html, "html.parser")
+    section_text.select_one(".mineru-page").insert(0, "SECTION EDIT ")
+    variants.append((str(section_text), "SECTION EDIT"))
+
+    wrapper_text = BeautifulSoup(default_html, "html.parser")
+    wrapper_text.select_one(".mineru-block").insert(0, "WRAPPER EDIT ")
+    variants.append((str(wrapper_text), "WRAPPER EDIT"))
+
+    child_tail = BeautifulSoup(default_html, "html.parser")
+    child_tail.select_one(".mineru-block > p").insert_after(" CHILD TAIL EDIT")
+    variants.append((str(child_tail), "CHILD TAIL EDIT"))
+
+    for variant, edited_text in variants:
+        markdown = render_markdown(doc_analyze(variant.encode(), file_suffix="html")[0])
+        assert "Original wire text" in markdown
+        assert edited_text in markdown
+
+
+def test_html_versioned_wire_markerless_block_child_falls_back_without_crash() -> None:
+    """验证行内容器内新增的无 marker 块节点会事务式回退，而不是在物化阶段抛错。"""
+    source = MiddleJson.model_validate(
+        {
+            "pages": [
+                {
+                    "page_idx": 0,
+                    "blocks": [
+                        {
+                            "type": "page_footnote",
+                            "index": 0,
+                            "anchor": "note",
+                            "content": "Original note",
+                        }
+                    ],
+                }
+            ],
+            "is_full_document": True,
+            "file_suffix": "html",
+            "effort": "flash",
+            "parse_mode": "txt",
+            "mineru_version": "test",
+        }
+    )
+    soup = BeautifulSoup(render_html(source, standalone=False), "html.parser")
+    paragraph = soup.new_tag("p")
+    paragraph.string = "EXTRA NOTE"
+    soup.select_one(".mineru-page-footnote").append(paragraph)
+
+    markdown = render_markdown(doc_analyze(str(soup).encode(), file_suffix="html")[0])
+
+    assert "Original note" in markdown
+    assert "EXTRA NOTE" in markdown
+
+
 def test_html_marker_fallback_does_not_double_resolve_images(monkeypatch: pytest.MonkeyPatch) -> None:
     """验证结构校验先于资源物化，非法 marker 回退只解析一次图片。"""
     source = MiddleJson.model_validate(

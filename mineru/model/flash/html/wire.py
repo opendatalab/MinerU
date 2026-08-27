@@ -12,7 +12,7 @@ from lxml import etree  # type: ignore[reportMissingImports]
 
 from ....types import PAGE_BLOCK_TYPES, RAW_ALGORITHM, BlockType, VISUAL_TYPE_MAPPING
 from .._shared.markup import MarkupProjector, MarkupStylesheet, extract_formula
-from .._shared.markup.projector import local_name
+from .._shared.markup.projector import BLOCK_TAGS, local_name
 from .resources import HtmlResourceContext
 
 
@@ -176,6 +176,7 @@ def _validate_wire_root(root: etree._Element) -> MineruHtmlWirePlan:
     """校验根版本、渲染模式、页面容器与顶层 block 完整性。"""
     if local_name(root) != "article" or "mineru-document" not in _class_tokens(root):
         raise _WireValidationError("invalid_root")
+    _validate_element_only_content(root)
     mode = (root.get("data-render-mode") or "").strip()
     if mode not in {"default", "full"}:
         raise _WireValidationError("invalid_render_mode")
@@ -191,6 +192,7 @@ def _validate_wire_root(root: etree._Element) -> MineruHtmlWirePlan:
                 continue
             if local_name(child) != "section" or "mineru-page" not in _class_tokens(child):
                 raise _WireValidationError("invalid_full_child")
+            _validate_element_only_content(child)
             section_page_idx = _non_negative_integer(child, "data-page-idx", required=True)
             for wrapper in _element_children(child):
                 if local_name(wrapper) != "div" or "mineru-block" not in _class_tokens(wrapper):
@@ -211,6 +213,7 @@ def _validate_wire_root(root: etree._Element) -> MineruHtmlWirePlan:
 
 def _validate_top_block(wrapper: etree._Element, section_page_idx: int | None) -> MineruHtmlBlockSpec:
     """校验单个顶层 wrapper 的公开类型、元数据与内部机器树。"""
+    _validate_element_only_content(wrapper)
     block_type = _page_block_type(wrapper)
     page_idx = _non_negative_integer(wrapper, "data-page-idx", required=True)
     if section_page_idx is not None and page_idx != section_page_idx:
@@ -293,6 +296,7 @@ def _validate_simple_content(content_root: etree._Element, block_type: BlockType
         if marker_type != BlockType.EQUATION:
             raise _WireValidationError("invalid_nested_marker")
         _validate_formula_carrier(marker, expected_display="inline")
+    _validate_inline_content_shape(content_root)
 
 
 def _validate_equation_content(content_root: etree._Element) -> None:
@@ -324,6 +328,7 @@ def _validate_visual_content(content_root: etree._Element, wrapper: etree._Eleme
     """校验视觉父块只有匹配 body，并拒绝跨父类型 annotation。"""
     if local_name(content_root) != "figure":
         raise _WireValidationError("invalid_visual_root")
+    _validate_element_only_content(content_root)
     mapping = VISUAL_TYPE_MAPPING[parent_type]
     allowed_types = frozenset(mapping.values())
     children = _element_children(content_root)
@@ -355,12 +360,14 @@ def _validate_visual_content(content_root: etree._Element, wrapper: etree._Eleme
                 if (marker.get("data-block-type") or "").strip() != BlockType.EQUATION:
                     raise _WireValidationError("invalid_annotation_nested_marker")
                 _validate_formula_carrier(marker, expected_display="inline")
+            _validate_inline_content_shape(child)
 
 
 def _validate_list_container(container: etree._Element, *, top_wrapper: etree._Element | None = None) -> None:
     """递归校验列表容器、叶子类型和嵌套列表 marker。"""
     if local_name(container) not in {"ol", "ul"} or (container.get("data-block-type") or "").strip() != BlockType.LIST:
         raise _WireValidationError("invalid_list_root")
+    _validate_element_only_content(container)
     _non_negative_integer(container, "data-block-index", required=False)
     sub_type = (container.get("data-block-sub-type") or "").strip()
     if sub_type and sub_type not in _LIST_LEAF_TYPES:
@@ -387,6 +394,7 @@ def _validate_list_container(container: etree._Element, *, top_wrapper: etree._E
                 if marker_type != BlockType.EQUATION:
                     raise _WireValidationError("invalid_list_nested_marker")
                 _validate_formula_carrier(marker, expected_display="inline")
+            _validate_inline_content_shape(item, excluded_roots=nested_lists)
         elif not nested_lists:
             raise _WireValidationError("markerless_list_leaf")
         for nested in nested_lists:
@@ -397,6 +405,7 @@ def _validate_index_root(content_root: etree._Element, wrapper: etree._Element) 
     """校验目录根 nav 与递归目录叶子元数据。"""
     if local_name(content_root) != "nav" or (content_root.get("data-block-type") or "").strip() != BlockType.INDEX:
         raise _WireValidationError("invalid_index_root")
+    _validate_element_only_content(content_root)
     root_index = _non_negative_integer(content_root, "data-block-index", required=False)
     wrapper_index = _non_negative_integer(wrapper, "data-block-index", required=False)
     if wrapper_index is not None and root_index != wrapper_index:
@@ -409,6 +418,7 @@ def _validate_index_root(content_root: etree._Element, wrapper: etree._Element) 
 
 def _validate_index_list(container: etree._Element, *, nested: bool) -> None:
     """递归校验目录 li 类型、anchor、level 和嵌套 IndexBlock。"""
+    _validate_element_only_content(container)
     if nested and (container.get("data-block-type") or "").strip() != BlockType.INDEX:
         raise _WireValidationError("missing_nested_index_marker")
     if nested:
@@ -436,6 +446,7 @@ def _validate_index_list(container: etree._Element, *, nested: bool) -> None:
                 if marker_type != BlockType.EQUATION:
                     raise _WireValidationError("invalid_index_nested_marker")
                 _validate_formula_carrier(marker, expected_display="inline")
+            _validate_inline_content_shape(item, excluded_roots=nested_lists)
         elif not nested_lists:
             raise _WireValidationError("markerless_index_leaf")
         for child in nested_lists:
@@ -806,6 +817,30 @@ def _page_block_type(wrapper: etree._Element) -> BlockType:
 def _element_children(element: etree._Element) -> list[etree._Element]:
     """返回元素直属的真实标签子节点。"""
     return [child for child in element if isinstance(child.tag, str)]
+
+
+def _validate_element_only_content(element: etree._Element) -> None:
+    """拒绝机器结构容器直属的可见文本，避免精确物化静默丢弃内容。"""
+    if (element.text or "").strip() or any((child.tail or "").strip() for child in element):
+        raise _WireValidationError("unexpected_wire_text")
+
+
+def _validate_inline_content_shape(
+    element: etree._Element,
+    *,
+    excluded_roots: list[etree._Element] | None = None,
+) -> None:
+    """拒绝行内物化区域中的块级或图片后代，确保校验失败时事务式回退。"""
+    excluded = excluded_roots or []
+    for candidate in element.iterdescendants():
+        if not isinstance(candidate.tag, str) or (excluded and _is_within_any(candidate, excluded)):
+            continue
+        name = local_name(candidate)
+        marker_type = (candidate.get("data-block-type") or "").strip()
+        if name == "math" and marker_type == BlockType.EQUATION:
+            continue
+        if name in BLOCK_TAGS or name in {"image", "img"}:
+            raise _WireValidationError("invalid_inline_child")
 
 
 def _descendant_markers(element: etree._Element) -> list[etree._Element]:
