@@ -13,8 +13,6 @@ from openpyxl import load_workbook
 from openpyxl.drawing.image import Image as XlsImage
 from openpyxl.utils.cell import range_to_tuple
 from openpyxl.worksheet.worksheet import Worksheet
-from PIL import Image
-from ..image import is_vector_image, serialize_vector_image_with_placeholder
 from ..image import serialize_office_image
 from ..equation.image import (
     OfficeImageEquationDecoder,
@@ -39,7 +37,6 @@ from .ooxml_ole import (
     workbook_sheet_parts,
 )
 from .....types import BlockType
-from ..._shared.image import image_to_b64str
 
 
 class XlsxConverter(SpreadsheetProjector):
@@ -712,19 +709,12 @@ class XlsxConverter(SpreadsheetProjector):
             )
             if latex:
                 return EQUATION_BOOKENDS.format(EQ=latex)
-            with BytesIO(image_payload) as image_file:
-                pil_image = Image.open(image_file)
-                if is_vector_image(pil_image):
-                    img_base64 = serialize_vector_image_with_placeholder(pil_image)
-                    return rf'<img src="{img_base64}" />'
-
-                pil_image.load()
-
-                if pil_image.mode != "RGB":
-                    img_base64 = image_to_b64str(pil_image, image_format="PNG")
-                else:
-                    img_base64 = image_to_b64str(pil_image, image_format="JPEG")
-                return rf'<img src="{img_base64}" />'
+            img_base64 = serialize_office_image(
+                image_payload,
+                part_name=zip_target_path,
+                content_type=None,
+            )
+            return rf'<img src="{img_base64}" />' if img_base64 is not None else ""
         except Exception as e:
             logger.warning(f"读取单元格图片失败，image_id={image_id}, target={zip_target_path}, error={e}")
             return ""

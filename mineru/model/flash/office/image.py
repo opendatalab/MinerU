@@ -1,6 +1,7 @@
 # Copyright (c) Opendatalab. All rights reserved.
 """Flash Office 文档的图片识别、转码与占位图生成。"""
 
+import base64
 from functools import lru_cache
 from io import BytesIO
 from pathlib import PurePosixPath
@@ -12,6 +13,7 @@ from PIL import Image, ImageDraw, ImageFont, UnidentifiedImageError
 
 from ....utils.platform import is_windows_environment
 from .._shared.image import image_to_b64str
+from .metafile import MetafileError, MetafileResourceLimitError, render_metafile
 
 VECTOR_IMAGE_FORMATS = frozenset({"WMF", "EMF"})
 VECTOR_IMAGE_EXTENSIONS = frozenset({".wmf", ".emf"})
@@ -38,10 +40,13 @@ def _is_wmf_payload(image_data: bytes) -> bool:
     """根据 placeable 或标准 METAHEADER magic 判断原始载荷是否为 WMF。"""
 
     return image_data.startswith(b"\xd7\xcd\xc6\x9a") or (
-        len(image_data) >= 4
-        and image_data[:2] in {b"\x01\x00", b"\x02\x00"}
-        and image_data[2:4] == b"\x09\x00"
+        len(image_data) >= 4 and image_data[:2] in {b"\x01\x00", b"\x02\x00"} and image_data[2:4] == b"\x09\x00"
     )
+
+
+def _is_emf_payload(image_data: bytes) -> bool:
+    """根据 EMR_HEADER type 与 ENHMETA_SIGNATURE 判断载荷是否为 EMF。"""
+    return len(image_data) >= 44 and struct.unpack_from("<I", image_data, 0)[0] == 1 and image_data[40:44] == b" EMF"
 
 
 def is_vector_image(pil_image: Image.Image) -> bool:
@@ -69,14 +74,8 @@ def is_valid_vector_image_payload(
     if label == "WMF":
         return _is_wmf_payload(image_data)
     if label == "EMF":
-        return (
-            len(image_data) >= 44
-            and struct.unpack_from("<I", image_data, 0)[0] == 1
-            and image_data[40:44] == b" EMF"
-        )
-    return _is_wmf_payload(image_data) or (
-        len(image_data) >= 44 and image_data[40:44] == b" EMF"
-    )
+        return _is_emf_payload(image_data)
+    return _is_wmf_payload(image_data) or _is_emf_payload(image_data)
 
 
 def _vector_image_format_label(part_name: object | None = None, content_type: str | None = None) -> str:
@@ -197,35 +196,105 @@ def serialize_vector_part_with_placeholder(
     return get_standard_vector_placeholder_data_uri()
 
 
+def _serialize_native_metafile(image_data: bytes, image_format: str) -> str | None:
+    """在 Windows 上优先调用 Pillow/GDI 渲染原始 WMF/EMF。"""
+    try:
+        pil_image = Image.open(BytesIO(image_data))
+        pil_image.load(dpi=VECTOR_IMAGE_RENDER_DPI)
+        return image_to_b64str(pil_image, image_format="PNG")
+    except PIL_IMAGE_LOAD_ERRORS as exc:
+        logger.warning(f"Native Windows rendering failed for {image_format}: {exc}. Falling back to MinerU renderer.")
+        return None
+
+
+def _render_size_from_emu(render_size_emu: tuple[int, int] | None) -> tuple[int, int] | None:
+    """把 OfficeArt ptSize 的 EMU 尺寸转换为 144 DPI 像素提示。"""
+    if render_size_emu is None or render_size_emu[0] <= 0 or render_size_emu[1] <= 0:
+        return None
+    emu_per_inch = 914_400
+    return (
+        max(1, round(render_size_emu[0] * VECTOR_IMAGE_RENDER_DPI / emu_per_inch)),
+        max(1, round(render_size_emu[1] * VECTOR_IMAGE_RENDER_DPI / emu_per_inch)),
+    )
+
+
+def _serialize_cross_platform_metafile(
+    image_data: bytes,
+    image_format: str,
+    *,
+    size_hint: tuple[int, int] | None = None,
+) -> str | None:
+    """调用 MinerU 内部 WMF/EMF 引擎并生成带 PNG fallback 的 SVG。"""
+    try:
+        rendered = render_metafile(
+            image_data,
+            output_format="svg",
+            dpi=VECTOR_IMAGE_RENDER_DPI,
+            size_hint=size_hint,
+        )
+    except MetafileResourceLimitError as exc:
+        logger.warning(f"Generated {image_format} SVG cannot be consumed safely: {exc}. Falling back to PNG.")
+        try:
+            rendered = render_metafile(
+                image_data,
+                output_format="png",
+                dpi=VECTOR_IMAGE_RENDER_DPI,
+                size_hint=size_hint,
+            )
+        except MetafileError as png_exc:
+            logger.warning(f"Failed to render {image_format} PNG fallback with MinerU: {png_exc}. Using placeholder instead.")
+            return None
+    except MetafileError as exc:
+        logger.warning(f"Failed to render {image_format} image with MinerU: {exc}. Using placeholder instead.")
+        return None
+    if rendered.partial:
+        diagnostic_codes = sorted({diagnostic.code for diagnostic in rendered.diagnostics})
+        logger.warning(
+            f"Rendered partial {image_format} image with MinerU, diagnostics={diagnostic_codes[:16]}, "
+            f"size={rendered.width}x{rendered.height}"
+        )
+    encoded = base64.b64encode(rendered.data).decode("ascii")
+    return f"data:{rendered.media_type};base64,{encoded}"
+
+
 def serialize_office_image(
     image_data: bytes,
     *,
     part_name: object | None = None,
     content_type: str | None = None,
+    render_size_emu: tuple[int, int] | None = None,
 ) -> str | None:
     """识别并序列化 Office 图片，透明图保留 PNG，普通位图优先使用 JPEG。"""
     is_wmf_payload = _is_wmf_payload(image_data)
+    is_emf_payload = _is_emf_payload(image_data)
     if is_wmf_payload:
         part_name = "image.wmf"
         content_type = "image/wmf"
-    if is_wmf_payload or is_vector_image_part(part_name, content_type):
-        if not is_windows_environment():
-            return serialize_vector_part_with_placeholder(part_name, content_type)
-
-        try:
-            pil_image = Image.open(BytesIO(image_data))
-        except PIL_IMAGE_LOAD_ERRORS as e:
+    elif is_emf_payload:
+        part_name = "image.emf"
+        content_type = "image/emf"
+    if is_wmf_payload or is_emf_payload or is_vector_image_part(part_name, content_type):
+        image_format = (
+            "WMF" if is_wmf_payload else "EMF" if is_emf_payload else _vector_image_format_label(part_name, content_type)
+        )
+        if not (is_wmf_payload or is_emf_payload):
             logger.warning(
-                f"Warning: vector image cannot be opened by Pillow: {e}, "
-                f"part_name={part_name}, content_type={content_type}. "
+                f"Vector image payload does not match WMF/EMF signature, part_name={part_name}, content_type={content_type}. "
                 "Using placeholder instead."
             )
             return serialize_vector_part_with_placeholder(part_name, content_type)
-
-        return serialize_vector_image_with_placeholder(
-            pil_image,
-            image_format_override=_vector_image_format_label(part_name, content_type),
+        rendered = _serialize_cross_platform_metafile(
+            image_data,
+            image_format,
+            size_hint=_render_size_from_emu(render_size_emu),
         )
+        if rendered is not None:
+            return rendered
+        if is_windows_environment():
+            native = _serialize_native_metafile(image_data, image_format)
+            if native is not None:
+                return native
+        return serialize_vector_part_with_placeholder(part_name, content_type)
 
     try:
         pil_image = Image.open(BytesIO(image_data))

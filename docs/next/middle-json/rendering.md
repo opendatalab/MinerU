@@ -89,8 +89,10 @@ docx_bytes = render_docx(
 `render_docx()` 只接受严格 `MiddleJson`，返回完整 `.docx` bytes，不写文件、不读取 cwd，
 也不访问网络。block 同时携带两种图片来源时优先解码 `image_base64`；仅有
 `image_path` 时必须提供 `asset_resolver(relative_path) -> bytes`。必需图片缺失、路径
-不安全、格式损坏或 SVG 输入会抛出带 `page_idx/block_index/block_type` 的
-`DocxRenderError`；WebP 在内存中转为 PNG。
+不安全、格式损坏或任意外部 SVG 输入会抛出带 `page_idx/block_index/block_type` 的
+`DocxRenderError`；WebP 在内存中转为 PNG。MinerU 自己生成并通过安全子集校验的
+WMF/EMF SVG 会写入 Office 2016 `asvg:svgBlip`，同时保留高密度 PNG fallback，现代
+Word/LibreOffice 可使用矢量资源，旧版 Office 仍能显示同尺寸后备图。
 
 DOCX 输出固定使用 A4 纵向与 20 mm 页边距。标题是 Word Heading 1–9，标题与
 `page_footnote` anchor 是 document-wide bookmark，Index 标题叶子和正文 `#anchor`

@@ -9,12 +9,76 @@ import re
 import xml.etree.ElementTree as ElementTree
 
 INLINE_IMAGE_DATA_URI_RE = re.compile(r"data:image/([^;\"']+);base64,([^\"']+)", re.DOTALL)
+_SVG_NAMESPACE = "http://www.w3.org/2000/svg"
+_MINERU_SVG_MARKER = "wmf-emf"
+_MINERU_SVG_FALLBACK_ID = "mineru-raster-fallback"
+MAX_GENERATED_SVG_BYTES = 64 * 1024 * 1024
+_MAX_GENERATED_SVG_NODES = 100_000
+_SAFE_SVG_ATTRIBUTES: dict[str, set[str]] = {
+    "svg": {"width", "height", "viewBox", "data-mineru-generated"},
+    "metadata": {"id", "data-mime"},
+    "defs": set(),
+    "clipPath": {"id"},
+    "path": {
+        "d",
+        "fill",
+        "fill-rule",
+        "fill-opacity",
+        "opacity",
+        "stroke",
+        "stroke-width",
+        "stroke-linecap",
+        "stroke-linejoin",
+        "stroke-miterlimit",
+        "stroke-opacity",
+        "stroke-dasharray",
+    },
+    "g": {"clip-path"},
+    "image": {"width", "height", "transform", "href"},
+    "text": {
+        "x",
+        "y",
+        "fill",
+        "opacity",
+        "font-family",
+        "font-size",
+        "font-weight",
+        "font-style",
+        "text-anchor",
+        "dominant-baseline",
+        "text-decoration",
+        "transform",
+    },
+    "rect": {"x", "y", "width", "height", "fill", "opacity"},
+}
+
+
+class _RejectingSvgTreeBuilder(ElementTree.TreeBuilder):
+    """构造拒绝任何 DTD 的 SVG XML 树。"""
+
+    def doctype(self, _name: str, _pubid: str | None, _system: str | None) -> None:
+        """在实体声明被处理前拒绝任意偏移和编码的 DOCTYPE。"""
+        raise ValueError("Generated SVG must not contain a DTD or entity declaration")
 
 
 def normalize_image_extension(fmt: str) -> str:
     """规范化图片扩展名，保证同一图片格式生成稳定文件名。"""
     normalized = fmt.lower().split("+", 1)[0]
     return "jpg" if normalized in {"jpeg", "jpg"} else normalized
+
+
+def _parse_svg_root_strict(payload: bytes) -> ElementTree.Element:
+    """在固定字节预算内解析 SVG 根节点，并在实体展开前拒绝 DTD。"""
+    if len(payload) > MAX_GENERATED_SVG_BYTES:
+        raise ValueError("SVG image payload exceeds its byte limit")
+    try:
+        parser = ElementTree.XMLParser(target=_RejectingSvgTreeBuilder())
+        root = ElementTree.fromstring(payload, parser=parser)
+    except ElementTree.ParseError as exc:
+        raise ValueError("Invalid SVG image payload") from exc
+    if not isinstance(root.tag, str) or root.tag.rsplit("}", 1)[-1].lower() != "svg":
+        raise ValueError("Image signature does not match MIME subtype: svg+xml")
+    return root
 
 
 def parse_image_data_uri_strict(data_uri: str) -> tuple[bytes, str]:
@@ -25,22 +89,22 @@ def parse_image_data_uri_strict(data_uri: str) -> tuple[bytes, str]:
 
     mime_subtype = match.group(1).lower()
     extension = normalize_image_extension(mime_subtype)
+    encoded_payload = match.group(2)
+    if extension == "svg":
+        if mime_subtype != "svg+xml":
+            raise ValueError(f"Unsupported image MIME subtype: {mime_subtype}")
+        max_encoded_bytes = ((MAX_GENERATED_SVG_BYTES + 2) // 3) * 4
+        if len(encoded_payload) > max_encoded_bytes:
+            raise ValueError("SVG image payload exceeds its byte limit")
     try:
-        payload = base64.b64decode(match.group(2), validate=True)
+        payload = base64.b64decode(encoded_payload, validate=True)
     except (binascii.Error, ValueError) as exc:
         raise ValueError("Invalid base64 image payload") from exc
     if not payload:
         raise ValueError("Image payload must not be empty")
 
     if extension == "svg":
-        if mime_subtype != "svg+xml":
-            raise ValueError(f"Unsupported image MIME subtype: {mime_subtype}")
-        try:
-            svg_root = ElementTree.fromstring(payload)
-        except ElementTree.ParseError as exc:
-            raise ValueError("Invalid SVG image payload") from exc
-        if not isinstance(svg_root.tag, str) or svg_root.tag.rsplit("}", 1)[-1].lower() != "svg":
-            raise ValueError("Image signature does not match MIME subtype: svg+xml")
+        _parse_svg_root_strict(payload)
         return payload, extension
 
     signatures: dict[str, tuple[bytes, ...]] = {
@@ -59,6 +123,81 @@ def parse_image_data_uri_strict(data_uri: str) -> tuple[bytes, str]:
     if extension == "webp" and (len(payload) < 12 or payload[8:12] != b"WEBP"):
         raise ValueError("Image signature does not match MIME subtype: webp")
     return payload, extension
+
+
+def _decode_png_data_uri(value: str) -> bytes:
+    """严格解码生成 SVG 内嵌的 PNG data URI。"""
+    match = re.fullmatch(r"data:image/png;base64,([A-Za-z0-9+/]*={0,2})", value)
+    if match is None:
+        raise ValueError("Generated SVG image href must contain a PNG data URI")
+    try:
+        payload = base64.b64decode(match.group(1), validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise ValueError("Generated SVG contains invalid PNG base64") from exc
+    if not payload.startswith(b"\x89PNG\r\n\x1a\n"):
+        raise ValueError("Generated SVG fallback does not contain a PNG")
+    return payload
+
+
+def _validate_generated_svg_attribute(tag: str, name: str, value: str) -> None:
+    """校验生成 SVG 属性只使用静态数值、颜色、本地 clip 或 PNG。"""
+    if name not in _SAFE_SVG_ATTRIBUTES[tag] or "\x00" in value or name.lower().startswith("on"):
+        raise ValueError(f"Generated SVG contains an unsafe attribute: {tag}.{name}")
+    normalized = value.strip().casefold()
+    if "javascript:" in normalized or "data:text" in normalized or "url(" in normalized and name != "clip-path":
+        raise ValueError(f"Generated SVG contains an unsafe attribute value: {tag}.{name}")
+    if name == "href":
+        _decode_png_data_uri(value)
+    elif name == "clip-path" and re.fullmatch(r"url\(#mineru-clip-\d+\)", value) is None:
+        raise ValueError("Generated SVG clip-path must reference a local MinerU clip")
+    elif name == "transform" and re.fullmatch(r"(?:matrix|rotate)\([0-9eE+.,\- ]+\)", value) is None:
+        raise ValueError("Generated SVG transform is outside the supported subset")
+    elif name == "d" and re.fullmatch(r"[MmLlCcZz0-9eE+.,\- ]*", value) is None:
+        raise ValueError("Generated SVG path data is outside the supported subset")
+
+
+def extract_mineru_generated_svg_fallback(payload: bytes) -> tuple[bytes, int, int]:
+    """验证 MinerU 生成 SVG，并返回 PNG fallback 与逻辑像素尺寸。"""
+    if not isinstance(payload, bytes) or not payload:
+        raise ValueError("Generated SVG payload is empty or exceeds its byte limit")
+    root = _parse_svg_root_strict(payload)
+    if root.tag != f"{{{_SVG_NAMESPACE}}}svg" or root.get("data-mineru-generated") != _MINERU_SVG_MARKER:
+        raise ValueError("SVG is not marked as a MinerU generated metafile")
+    try:
+        width = int(root.get("width", ""))
+        height = int(root.get("height", ""))
+    except ValueError as exc:
+        raise ValueError("Generated SVG dimensions must be integers") from exc
+    if width <= 0 or height <= 0 or width > 8192 or height > 8192 or root.get("viewBox") != f"0 0 {width} {height}":
+        raise ValueError("Generated SVG dimensions or viewBox are outside the supported bounds")
+
+    fallback: bytes | None = None
+    node_count = 0
+    for element in root.iter():
+        node_count += 1
+        if node_count > _MAX_GENERATED_SVG_NODES:
+            raise ValueError("Generated SVG exceeds its node limit")
+        if not isinstance(element.tag, str) or not element.tag.startswith(f"{{{_SVG_NAMESPACE}}}"):
+            raise ValueError("Generated SVG contains a foreign namespace")
+        tag = element.tag.rsplit("}", 1)[-1]
+        if tag not in _SAFE_SVG_ATTRIBUTES:
+            raise ValueError(f"Generated SVG contains an unsupported element: {tag}")
+        for attribute_name, attribute_value in element.attrib.items():
+            if "}" in attribute_name:
+                raise ValueError("Generated SVG contains a namespaced attribute")
+            _validate_generated_svg_attribute(tag, attribute_name, attribute_value)
+        if element.tail and element.tail.strip():
+            raise ValueError("Generated SVG contains unexpected tail text")
+        if tag == "metadata":
+            if element.get("id") != _MINERU_SVG_FALLBACK_ID or element.get("data-mime") != "image/png" or fallback is not None:
+                raise ValueError("Generated SVG fallback metadata is invalid or duplicated")
+            encoded = (element.text or "").strip()
+            fallback = _decode_png_data_uri(f"data:image/png;base64,{encoded}")
+        elif tag != "text" and element.text and element.text.strip():
+            raise ValueError(f"Generated SVG element must not contain text: {tag}")
+    if fallback is None:
+        raise ValueError("Generated SVG does not contain a PNG fallback")
+    return fallback, width, height
 
 
 def image_path_from_key(path_key: str, image_format: str = "JPEG") -> str:

@@ -54,6 +54,7 @@ class OfficeImagePayload:
     data: bytes
     extension: str
     content_type: str
+    render_size_emu: tuple[int, int] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -123,9 +124,7 @@ def iter_descendants(
     stack: list[Iterator[OfficeArtRecord]] = [iter_records(data, charge=charge)]
     while stack:
         if len(stack) > MAX_RECORD_DEPTH:
-            raise LegacyOfficeResourceLimitError(
-                f"record nesting exceeds max_record_depth={MAX_RECORD_DEPTH}"
-            )
+            raise LegacyOfficeResourceLimitError(f"record nesting exceeds max_record_depth={MAX_RECORD_DEPTH}")
         try:
             record = next(stack[-1])
         except StopIteration:
@@ -237,6 +236,8 @@ def decode_blip(record: OfficeArtRecord) -> OfficeImagePayload | None:
     if header_offset + 34 > len(body):
         return None
     declared_size = int(struct.unpack_from("<I", body, header_offset)[0])
+    render_width_emu, render_height_emu = struct.unpack_from("<ii", body, header_offset + 20)
+    render_size_emu = (render_width_emu, render_height_emu) if render_width_emu > 0 and render_height_emu > 0 else None
     compressed_size = int(struct.unpack_from("<I", body, header_offset + 28)[0])
     compression = body[header_offset + 32]
     payload_start = header_offset + 34
@@ -260,16 +261,23 @@ def decode_blip(record: OfficeArtRecord) -> OfficeImagePayload | None:
         if not reached_eof:
             return None
         if len(data) > MAX_ENTRY_BYTES:
-            raise LegacyOfficeResourceLimitError(
-                "metafile BLIP decompression exceeded its limit"
-            )
+            raise LegacyOfficeResourceLimitError("metafile BLIP decompression exceeded its limit")
     else:
         data = payload
     if record.record_type == 0xF01A:
-        return OfficeImagePayload(data=data, extension="emf", content_type="image/emf")
-    if data.startswith(b"\xd7\xcd\xc6\x9a") and len(data) >= 22:
-        data = data[22:]
-    return OfficeImagePayload(data=data, extension="wmf", content_type="image/wmf")
+        return OfficeImagePayload(
+            data=data,
+            extension="emf",
+            content_type="image/emf",
+            render_size_emu=render_size_emu,
+        )
+    # 保留合法 placeable header，使跨平台渲染器继续获得 bbox 与 units-per-inch。
+    return OfficeImagePayload(
+        data=data,
+        extension="wmf",
+        content_type="image/wmf",
+        render_size_emu=render_size_emu,
+    )
 
 
 def first_blip(
@@ -338,11 +346,7 @@ def decode_bstore(
 ) -> dict[int, OfficeImagePayload]:
     """按一基 BSE 序号解码 drawing group 中的图片资源。"""
 
-    bse_records = [
-        record
-        for record in iter_descendants(data, charge=charge)
-        if record.record_type == OFFICEART_BSE
-    ]
+    bse_records = [record for record in iter_descendants(data, charge=charge) if record.record_type == OFFICEART_BSE]
     result: dict[int, OfficeImagePayload] = {}
     asset_total = 0
     for index, bse in enumerate(bse_records[:MAX_PICTURE_RECORDS], start=1):
@@ -355,9 +359,7 @@ def decode_bstore(
             continue
         asset_total += len(decoded.data)
         if asset_total > MAX_ASSET_TOTAL_BYTES:
-            raise LegacyOfficeResourceLimitError(
-                f"embedded assets exceed max_asset_total_bytes={MAX_ASSET_TOTAL_BYTES}"
-            )
+            raise LegacyOfficeResourceLimitError(f"embedded assets exceed max_asset_total_bytes={MAX_ASSET_TOTAL_BYTES}")
         result[index] = decoded
     if len(bse_records) > MAX_PICTURE_RECORDS:
         logger.warning(

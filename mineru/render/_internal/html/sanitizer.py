@@ -10,7 +10,7 @@ from urllib.parse import quote, unquote, urlsplit
 import nh3
 from bs4 import BeautifulSoup, NavigableString, Tag
 
-from ....utils.image_payload import parse_image_data_uri_strict
+from ....utils.image_payload import extract_mineru_generated_svg_fallback, parse_image_data_uri_strict
 
 
 _ALLOWED_TAGS = {
@@ -245,18 +245,19 @@ def _sanitize_absolute_image_url(source: str) -> str | None:
 
 
 def _sanitize_raster_data_uri(source: str) -> str | None:
-    """同时校验 MIME、base64 与文件签名，只接受受支持的栅格图。"""
+    """校验栅格图或 MinerU 生成的安全 SVG data URI。"""
     match = _DATA_IMAGE_RE.fullmatch(source)
     if match is None:
         return None
-    if match.group("mime").lower() == "image/svg+xml":
-        return None
     try:
-        _, extension = parse_image_data_uri_strict(source)
+        payload, extension = parse_image_data_uri_strict(source)
     except ValueError:
         return None
     if extension == "svg":
-        return None
+        try:
+            extract_mineru_generated_svg_fallback(payload)
+        except ValueError:
+            return None
     return source
 
 

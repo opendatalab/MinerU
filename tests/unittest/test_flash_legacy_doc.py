@@ -4,6 +4,7 @@ import asyncio
 from collections import Counter
 from io import BytesIO
 from pathlib import Path
+from unittest.mock import Mock
 
 from bs4 import BeautifulSoup
 import pytest
@@ -13,6 +14,7 @@ from mineru.backend.postprocess.lists import fix_office_list_blocks
 from mineru.model.flash import DocModel
 from mineru.model.flash._shared.hyperlink import OFFICE_EXTERNAL_HYPERLINK_SCHEMES, sanitize_hyperlink_target
 from mineru.model.flash.office.doc.models import DocCharStyle, DocTableCell
+from mineru.model.flash.office.doc.images import ImageStore
 from mineru.model.flash.office.doc.parser import _RawTableRow, _materialize_table_rows
 from mineru.model.flash.office.doc.records import DocBudget
 from mineru.model.flash.office.doc.sprm import apply_character_sprms
@@ -22,6 +24,7 @@ from mineru.model.flash.office.errors import (
     LegacyOfficeMissingPartError,
     LegacyOfficeResourceLimitError,
 )
+from mineru.model.flash.office.legacy.officeart import OfficeImagePayload
 from mineru.parser import parse
 from mineru.types import BlockType, ChartBlock, MiddleJson, ModelJson, TableBlock
 
@@ -31,6 +34,25 @@ from _legacy_ppt_test_utils import _build_cfb
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _REAL_DOC = _PROJECT_ROOT / "demo" / "office_docs" / "docx_01.doc"
+
+
+def test_doc_image_store_distinguishes_render_size_without_double_accounting() -> None:
+    """验证相同图片的不同 ptSize 独立缓存，但原始 bytes 只计费和解码一次。"""
+    decoder = Mock()
+    decoder.decode.return_value = None
+    store = ImageStore(equation_decoder=decoder)
+    data = b"same-standard-wmf"
+
+    landscape = store.add(OfficeImagePayload(data, "wmf", "image/wmf", (914_400, 457_200)))
+    portrait = store.add(OfficeImagePayload(data, "wmf", "image/wmf", (457_200, 914_400)))
+    landscape_again = store.add(OfficeImagePayload(data, "wmf", "image/wmf", (914_400, 457_200)))
+
+    assert landscape.render_size_emu == (914_400, 457_200)
+    assert portrait.render_size_emu == (457_200, 914_400)
+    assert portrait is not landscape
+    assert landscape_again is landscape
+    assert store.total == len(data)
+    decoder.decode.assert_called_once()
 
 
 def test_doc_model_preserves_empty_sections_and_ignores_page_breaks() -> None:

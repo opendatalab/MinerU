@@ -14,6 +14,8 @@ from docx.enum.table import WD_CELL_VERTICAL_ALIGNMENT
 from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_TAB_ALIGNMENT
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
+from docx.opc.constants import RELATIONSHIP_TYPE as RT
+from docx.opc.part import Part
 from docx.shared import Emu, Mm, Pt, Twips
 from docx.table import _Cell
 from docx.text.paragraph import Paragraph
@@ -93,6 +95,9 @@ from ....types import (
     TextBlock,
     TitleBlockBase,
 )
+
+_SVG_BLIP_NAMESPACE = "http://schemas.microsoft.com/office/drawing/2016/SVG/main"
+_SVG_BLIP_EXTENSION_URI = "{96DAC541-7B7A-43D3-8B79-37D633B846F1}"
 
 _HTML_TABLE_RE = re.compile(r"<table\b", re.IGNORECASE)
 _ANNOTATION_CAPTION_TYPES = {
@@ -475,12 +480,42 @@ class _DocxRenderer:
             BytesIO(prepared.data),
             width=Emu(max(1, desired_width)),
         )
+        if prepared.svg_data is not None:
+            self._attach_native_svg(shape._inline, target_paragraph.part, prepared.svg_data)
         description = sanitize_xml_text(
             re.sub(r"\s+", " ", alt_text).strip()[:2048],
             context=context,
         )
         if description:
             shape._inline.docPr.set("descr", description)
+
+    @staticmethod
+    def _attach_native_svg(inline: etree._Element, target_part: Part, svg_data: bytes) -> None:
+        """为 fallback PNG 的 a:blip 添加 Office 2016 原生 SVG relationship。"""
+        package = target_part.package
+        svg_part = Part(
+            package.next_partname("/word/media/image%d.svg"),
+            "image/svg+xml",
+            svg_data,
+            package,
+        )
+        relationship_id = target_part.relate_to(svg_part, RT.IMAGE)
+        blip = inline.find(f".//{qn('a:blip')}")
+        if blip is None:
+            raise ValueError("DOCX picture does not contain an a:blip element")
+        extension_list = blip.find(qn("a:extLst"))
+        if extension_list is None:
+            extension_list = OxmlElement("a:extLst")
+            blip.append(extension_list)
+        extension = OxmlElement("a:ext")
+        extension.set("uri", _SVG_BLIP_EXTENSION_URI)
+        svg_blip = etree.SubElement(
+            extension,
+            f"{{{_SVG_BLIP_NAMESPACE}}}svgBlip",
+            nsmap={"asvg": _SVG_BLIP_NAMESPACE},
+        )
+        svg_blip.set(qn("r:embed"), relationship_id)
+        extension_list.append(extension)
 
     def _append_html_tables(
         self,

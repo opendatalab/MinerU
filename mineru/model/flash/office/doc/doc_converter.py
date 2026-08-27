@@ -167,6 +167,7 @@ class DocConverter:
             payload.data,
             part_name=f"image.{payload.extension}",
             content_type=payload.content_type,
+            render_size_emu=payload.render_size_emu,
         )
 
     @classmethod

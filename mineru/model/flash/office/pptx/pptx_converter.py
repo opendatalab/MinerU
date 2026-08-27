@@ -7,13 +7,12 @@ from typing import Any, BinaryIO, Final, Optional
 
 from loguru import logger
 from lxml import etree
-from PIL import Image
 from pptx import Presentation, presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE, PP_PLACEHOLDER
 from pptx.oxml.text import CT_TextLineBreak
 
 from ..ooxml_chart import extract_chart_html_from_ooxml
-from ..image import PIL_IMAGE_LOAD_ERRORS, is_vector_image, serialize_vector_image_with_placeholder
+from ..image import serialize_office_image
 from ..equation.image import (
     OfficeImageEquationDecoder,
 )
@@ -27,7 +26,6 @@ from .package_normalizer import normalize_pptx_package
 from ..._shared.xycut import sort_entries
 from .....types import BlockType
 from ..rich_text import OfficeRichTextSegment, build_rich_text_from_segments, format_text_with_hyperlink
-from ..._shared.image import image_to_b64str
 
 IGNORED_NOTES_PLACEHOLDER_TYPES: Final = {
     PP_PLACEHOLDER.SLIDE_IMAGE,
@@ -904,7 +902,10 @@ class PptxConverter:
             self.cur_page.append(image_block)
             return
 
-        img_base64 = self._serialize_picture_image_best_effort(image_bytes)
+        img_base64 = serialize_office_image(
+            image_bytes,
+            content_type=content_type,
+        )
         if img_base64 is None:
             return
 
@@ -926,32 +927,6 @@ class PptxConverter:
             image_bytes,
             content_type=content_type,
         )
-
-    @classmethod
-    def _serialize_picture_image_best_effort(cls, image_bytes: bytes) -> Optional[str]:
-        """尽量序列化图片；损坏图片失败时降级跳过，避免中断整份 PPTX。"""
-        try:
-            return cls._serialize_picture_image(image_bytes)
-        except PIL_IMAGE_LOAD_ERRORS as exc:
-            logger.warning(f"Warning: image cannot be loaded by Pillow: {exc}")
-            return None
-
-    @staticmethod
-    def _serialize_picture_image(image_bytes: bytes) -> str:
-        """将单张 Pillow 支持的图片转为 Markdown 可用的 base64 字符串。"""
-        pil_image = Image.open(BytesIO(image_bytes))
-
-        if is_vector_image(pil_image):
-            return serialize_vector_image_with_placeholder(pil_image)
-
-        if pil_image.mode == "RGB":
-            pil_image.load()
-            return image_to_b64str(pil_image, image_format="JPEG")
-
-        if pil_image.mode in {"RGBA", "LA"} or (pil_image.mode == "P" and "transparency" in pil_image.info):
-            return image_to_b64str(pil_image.convert("RGBA"), image_format="PNG")
-
-        return image_to_b64str(pil_image.convert("RGB"), image_format="JPEG")
 
     @staticmethod
     def _bytes_to_data_uri(image_bytes: bytes, content_type: str) -> str:
