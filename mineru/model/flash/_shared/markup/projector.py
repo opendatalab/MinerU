@@ -99,7 +99,7 @@ _FOOTNOTE_TOKENS = frozenset(
     }
 )
 _VISUAL_ELEMENT_TAGS = frozenset({"img", "image", "pre", "svg", "table"})
-_LIST_PAGE_BLOCK_TAGS = frozenset({"figure", "image", "img", "pre", "svg", "table"})
+_LIST_PAGE_BLOCK_TAGS = frozenset({"figure", "image", "img", "math", "pre", "svg", "table"})
 _InlineProjectionSegment: TypeAlias = str | dict[str, object]
 
 
@@ -287,11 +287,12 @@ class MarkupProjector:
                 flush_inline()
                 blocks.extend(self._parse_block(child, style, visibility_hidden))
             else:
-                rendered, extras = self._render_inline_element(child, style, visibility_hidden)
-                inline_parts.append(rendered)
-                if extras:
-                    flush_inline()
-                    blocks.extend(extras)
+                for segment in self._render_inline_element_ordered(child, style, visibility_hidden):
+                    if isinstance(segment, str):
+                        inline_parts.append(segment)
+                    else:
+                        flush_inline()
+                        blocks.append(segment)
             if not visibility_hidden:
                 inline_parts.append(self._render_text(child.tail, style))
         flush_inline()
@@ -470,6 +471,8 @@ class MarkupProjector:
                 return []
             formula = self._formula_extraction(element)
             if formula is not None:
+                if formula.display == "block":
+                    return [{"type": BlockType.EQUATION, "content": formula.latex}]
                 return [f"<eq>{html.escape(formula.latex, quote=False)}</eq>"]
             fallback = self._visible_plain_text(element, resolved.text, resolved.visibility_hidden)
             return [html.escape(fallback, quote=False)] if fallback else []
@@ -1009,7 +1012,7 @@ class MarkupProjector:
 
     @staticmethod
     def _list_contains_page_blocks(element: etree._Element) -> bool:
-        """判断列表是否含必须提升为页面兄弟的 visual/code 子树。"""
+        """判断列表是否含可能提升为页面兄弟的 visual、code 或公式子树。"""
         return any(
             isinstance(candidate.tag, str) and local_name(candidate) in _LIST_PAGE_BLOCK_TAGS
             for candidate in element.iterdescendants()

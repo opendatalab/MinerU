@@ -91,7 +91,7 @@ class HtmlResourceContext:
         if normalized is None:
             return None
         if normalized.startswith("#"):
-            fragment = normalized[1:].strip()
+            fragment = unquote(normalized[1:]).strip()
             return fragment or None
         source_uri = (self.source_context.source_uri or "").strip()
         if not source_uri:
@@ -102,7 +102,7 @@ class HtmlResourceContext:
             target_parts = urlsplit(urljoin(base_uri, normalized))
         except ValueError:
             return None
-        fragment = target_parts.fragment.strip()
+        fragment = unquote(target_parts.fragment).strip()
         if not fragment or _document_url_identity(target_parts) != _document_url_identity(source_parts):
             return None
         return fragment

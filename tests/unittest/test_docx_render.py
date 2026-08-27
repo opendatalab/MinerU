@@ -610,6 +610,23 @@ def test_html_table_fallback_rolls_back_partial_table_and_relationships() -> Non
     assert len(media) == 1
 
 
+def test_html_table_remote_cell_image_uses_safe_link_fallback() -> None:
+    """验证远程单元格图片输出可点击 alt，而不是中断整份 DOCX。"""
+    html = '<table><tr><td><img src="https://example.com/logo.png" alt="Logo"></td></tr></table>'
+    table = TableBlock(
+        type="table",
+        index=0,
+        content=[TableBodyBlock(type="table_body", index=0, content=html)],
+    )
+
+    result = render_docx(_middle(_page(0, table)))
+    document = Document(BytesIO(result))
+
+    assert document.tables[0].cell(0, 0).text == "Logo"
+    assert len(document.inline_shapes) == 0
+    assert "https://example.com/logo.png" in _part(result, "word/_rels/document.xml.rels")
+
+
 def test_html_table_cell_image_is_limited_to_merged_cell_width() -> None:
     """验证窄列图片宽度不超过扣除单元格左右内边距后的 tcW。"""
     cells = [f"<td>{'<img src=' + repr(_png_uri(size=(300, 100))) + '/>' if index == 0 else index}</td>" for index in range(10)]

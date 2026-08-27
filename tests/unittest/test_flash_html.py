@@ -332,6 +332,32 @@ def test_html_auto_selection_appends_notes_for_all_same_document_url_forms(href:
 
 
 @pytest.mark.parametrize(
+    ("href", "note_id"),
+    [
+        ("#fn%31", "fn1"),
+        ("page.html#note%20one", "note one"),
+        ("https://example.com/page.html#%E8%84%9A%E6%B3%A8", "脚注"),
+    ],
+)
+def test_html_auto_selection_decodes_same_document_note_fragments(href: str, note_id: str) -> None:
+    """验证数字、空格与非 ASCII fragment 解码后可关联正文外脚注。"""
+    detail = "Useful main article text " * 20
+    payload = f"""<html><head><meta charset="utf-8"></head><body><main><article><h1>Title</h1><p>{detail}
+      <a href="{href}">[1]</a></p></article></main>
+      <footer><aside id="{note_id}" role="doc-footnote"><p>Outside footnote.</p></aside></footer>
+      </body></html>""".encode()
+    context = HtmlSourceContext(source_uri="https://example.com/page.html")
+
+    middle = doc_analyze(payload, file_suffix="html", source_context=context)[0]
+    markdown = render_markdown(middle)
+    footnote = next(block for block in middle.pages[0].blocks if block.type == BlockType.PAGE_FOOTNOTE)
+
+    assert footnote.content == "Outside footnote."  # type: ignore[union-attr]
+    assert f"](#{footnote.anchor})" in markdown  # type: ignore[union-attr]
+    assert href not in markdown
+
+
+@pytest.mark.parametrize(
     ("href", "expected_target"),
     [
         ("other.html#fn1", "https://example.com/other.html#fn1"),
@@ -987,6 +1013,36 @@ def test_html_formula_priority_delimiters_and_supported_mathml_are_normalized() 
     assert r"<eq>\frac{a}{b}</eq>" in text
     assert "data-low" not in text and "annotation-low" not in text and "duplicate" not in text
     assert equations == ["display_value"]
+
+
+def test_html_block_formulas_nested_in_text_containers_preserve_dom_order() -> None:
+    """验证文本容器内的 display 公式切成独立 Equation，并保留前后阅读顺序。"""
+    payload = b"""<html><body><p>Before<script type="math/tex; mode=display">x</script>Between
+      <span><math display="block" data-tex="y"></math></span>After</p>
+      <ul><li>Item before<math display="block" data-tex="z"></math>Item after</li></ul></body></html>"""
+
+    middle, model = doc_analyze(payload, file_suffix="html")
+    raw = [(block["type"], block.get("content")) for block in model.pages[0]]
+
+    assert raw[:5] == [
+        (BlockType.TEXT, "Before"),
+        (BlockType.EQUATION, "x"),
+        (BlockType.TEXT, "Between"),
+        (BlockType.EQUATION, "y"),
+        (BlockType.TEXT, "After"),
+    ]
+    assert raw[5] == (BlockType.LIST, [{"type": BlockType.TEXT, "content": "Item before"}])
+    assert raw[6:] == [(BlockType.EQUATION, "z"), (BlockType.TEXT, "Item after")]
+    assert [block.type for block in middle.pages[0].blocks] == [
+        BlockType.TEXT,
+        BlockType.EQUATION,
+        BlockType.TEXT,
+        BlockType.EQUATION,
+        BlockType.TEXT,
+        BlockType.LIST,
+        BlockType.EQUATION,
+        BlockType.TEXT,
+    ]
 
 
 def test_html_invalid_mathml_and_asciimath_remain_visible_text() -> None:

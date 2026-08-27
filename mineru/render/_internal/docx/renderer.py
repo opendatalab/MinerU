@@ -95,6 +95,7 @@ from ....types import (
     TextBlock,
     TitleBlockBase,
 )
+from ....utils.image_payload import validate_remote_image_url
 
 _SVG_BLIP_NAMESPACE = "http://schemas.microsoft.com/office/drawing/2016/SVG/main"
 _SVG_BLIP_EXTENSION_URI = "{96DAC541-7B7A-43D3-8B79-37D633B846F1}"
@@ -773,6 +774,17 @@ class _DocxRenderer:
         max_width_emu: int,
     ) -> None:
         """安全加载表格单元格 img，并限制到紧凑的单元格宽度。"""
+        try:
+            remote_source = validate_remote_image_url(source)
+        except ValueError:
+            remote_source = None
+        if remote_source is not None:
+            append_inline_nodes(
+                paragraph,
+                [InlineLink([InlineText(alt_text.strip() or "remote image")], remote_source)],
+                context=context,
+            )
+            return
         try:
             prepared = prepare_html_image(source, self.asset_resolver)
         except DocxAssetError as exc:
