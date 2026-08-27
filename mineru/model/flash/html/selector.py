@@ -90,6 +90,7 @@ def select_auto_content(body: etree._Element, stylesheet: MarkupStylesheet) -> C
     """高置信选择正文候选，任一保守门槛失败时回退完整 body。"""
     metrics_by_element: dict[etree._Element, CandidateMetrics] = {}
     body_metrics = _collect_metrics(body, stylesheet, metrics_by_element, TextStyle(), False, False)
+    repeated_penalties = _repeated_short_sibling_penalties(body)
     candidates: list[_ScoredCandidate] = []
     for element in body.iter():
         if not isinstance(element.tag, str) or element is body:
@@ -101,7 +102,14 @@ def select_auto_content(body: etree._Element, stylesheet: MarkupStylesheet) -> C
             continue
         if not explicit and metrics.text_chars < _MIN_TEXT_CHARS and metrics.semantic_count < _MIN_SEMANTIC_OBJECTS:
             continue
-        candidates.append(_ScoredCandidate(element, metrics, _candidate_score(element, metrics), explicit))
+        candidates.append(
+            _ScoredCandidate(
+                element,
+                metrics,
+                _candidate_score(element, metrics, repeated_penalties.get(element, 0)),
+                explicit,
+            )
+        )
     candidates.sort(key=lambda item: (-item.score, _document_order(item.element)))
     repeated_candidate_items = _repeated_candidate_items(candidates, metrics_by_element)
 
@@ -212,13 +220,12 @@ def _collect_metrics(
     return metrics
 
 
-def _candidate_score(element: etree._Element, metrics: CandidateMetrics) -> float:
+def _candidate_score(element: etree._Element, metrics: CandidateMetrics, repeated_penalty: int) -> float:
     """按正文、结构对象、链接与模板噪声计算确定性候选分数。"""
     tokens = _tokens(element)
     token_bonus = 200 if tokens & _POSITIVE_TOKENS else 0
     token_penalty = 240 if tokens & _NEGATIVE_TOKENS else 0
     link_density = metrics.link_chars / max(1, metrics.text_chars)
-    repeated_penalty = _repeated_short_sibling_penalty(element)
     return (
         metrics.text_chars
         + metrics.paragraph_chars
@@ -246,23 +253,30 @@ def _tokens(element: etree._Element) -> frozenset[str]:
     return frozenset(token for token in _TOKEN_RE.split(value) if token)
 
 
-def _repeated_short_sibling_penalty(element: etree._Element) -> int:
-    """统计候选内部重复短同级节点簇，降低菜单和文章列表分数。"""
-    penalty = 0
-    for parent in element.iter():
-        if not isinstance(parent.tag, str):
-            continue
+def _repeated_short_sibling_penalties(root: etree._Element) -> dict[etree._Element, int]:
+    """单次后序遍历预计算各子树的重复短同级惩罚，供嵌套候选共享。"""
+    elements = [element for element in root.iter() if isinstance(element.tag, str)]
+    short_text_lengths: dict[etree._Element, int] = {}
+    penalties: dict[etree._Element, int] = {}
+    for parent in reversed(elements):
+        text_length = min(len(_normalized_text(parent.text)), 161)
+        subtree_penalty = 0
         groups: dict[tuple[str, tuple[str, ...]], int] = {}
         for child in parent:
-            if not isinstance(child.tag, str):
-                continue
-            text = _normalized_text(" ".join(child.itertext()))
-            if not text or len(text) > 160:
-                continue
-            signature = (local_name(child), tuple(sorted(_tokens(child))))
-            groups[signature] = groups.get(signature, 0) + 1
-        penalty += sum(count - 2 for count in groups.values() if count > 2)
-    return penalty
+            if isinstance(child.tag, str):
+                child_text_length = short_text_lengths[child]
+                if child_text_length:
+                    text_length = min(text_length + (1 if text_length else 0) + child_text_length, 161)
+                subtree_penalty += penalties[child]
+                if child_text_length <= 160 and child_text_length > 0:
+                    signature = (local_name(child), tuple(sorted(_tokens(child))))
+                    groups[signature] = groups.get(signature, 0) + 1
+            tail_length = len(_normalized_text(child.tail))
+            if tail_length:
+                text_length = min(text_length + (1 if text_length else 0) + tail_length, 161)
+        short_text_lengths[parent] = text_length
+        penalties[parent] = subtree_penalty + sum(count - 2 for count in groups.values() if count > 2)
+    return penalties
 
 
 def _repeated_candidate_items(

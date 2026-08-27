@@ -6,7 +6,7 @@ from __future__ import annotations
 import base64
 from pathlib import Path
 from typing import Protocol
-from urllib.parse import SplitResult, unquote, urljoin, urlsplit
+from urllib.parse import SplitResult, unquote, urljoin, urlsplit, urlunsplit
 
 from lxml import etree  # type: ignore[reportMissingImports]
 
@@ -148,6 +148,16 @@ class HtmlResourceContext:
         if self._remote_base:
             resolved = urljoin(self._remote_base, normalized)
             return sanitize_hyperlink_target(resolved)
+        if self._local_root is not None and self._local_base is not None and parsed.path and not parsed.path.startswith("/"):
+            local_path = self._resolve_local_path(normalized)
+            if local_path is None:
+                return None
+            relative_path = local_path.relative_to(self._local_root).as_posix()
+            return sanitize_hyperlink_target(
+                urlunsplit(("", "", relative_path, parsed.query, parsed.fragment)),
+                allow_relative=True,
+                allow_fragment=True,
+            )
         return sanitize_hyperlink_target(normalized, allow_relative=True, allow_fragment=True)
 
     def resolve_image(self, source: str, *, alt: str = "") -> ResolvedMarkupImage | None:

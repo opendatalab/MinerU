@@ -360,6 +360,29 @@ def test_html_auto_selection_precomputes_repeated_candidate_groups(monkeypatch: 
     assert token_calls < item_count * 20
 
 
+def test_html_auto_selection_precomputes_nested_subtree_penalties(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证嵌套候选共享子树的短同级惩罚只线性统计文本。"""
+    depth = 20
+    leaf_count = 500
+    original_normalized_text = html_selector_module._normalized_text
+    normalization_calls = 0
+
+    def counted_normalized_text(value: str | None) -> str:
+        """统计正文选择期间的文本规范化次数。"""
+        nonlocal normalization_calls
+        normalization_calls += 1
+        return original_normalized_text(value)
+
+    monkeypatch.setattr(html_selector_module, "_normalized_text", counted_normalized_text)
+    nested_start = '<div class="content">' * depth
+    nested_end = "</div>" * depth
+    leaves = "".join(f"<span>item {index}</span>" for index in range(leaf_count))
+
+    doc_analyze(f"<html><body>{nested_start}{leaves}{nested_end}</body></html>".encode(), file_suffix="html")
+
+    assert normalization_calls < leaf_count * 8
+
+
 def test_html_referenced_external_footnote_keeps_anchor_and_content() -> None:
     """验证正文候选外但被引用的 HTML footnote 会追加并生成可兑现 anchor。"""
     payload = b"""<html><body><article><h1>Notes</h1>
@@ -941,6 +964,20 @@ def test_html_local_base_images_styles_and_escape_are_bounded(tmp_path: Path) ->
     assert exported.image_paths[0].read_bytes() == image_path.read_bytes()
     assert _image_body(exported.middle_json).image_base64 is None
     assert _image_body(exported.middle_json).image_path is not None
+
+
+def test_html_local_base_resolves_relative_links(tmp_path: Path) -> None:
+    """验证本地 HTML 的普通相对链接同样按安全 base 目录解析。"""
+    (tmp_path / "subdir").mkdir()
+    source = tmp_path / "sample.html"
+    source.write_text(
+        '<html><head><base href="subdir/"></head><body><p><a href="next.html">Next</a></p></body></html>',
+        encoding="utf-8",
+    )
+
+    markdown = parse(source).markdown()
+
+    assert "[Next](subdir/next.html)" in markdown
 
 
 def test_html_remote_source_resolves_relative_links_without_fetching_images() -> None:
