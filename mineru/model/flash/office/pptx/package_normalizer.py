@@ -2,10 +2,12 @@
 import posixpath
 import re
 from io import BytesIO
-from zipfile import BadZipFile, ZIP_DEFLATED, ZipFile, ZipInfo
+from zipfile import BadZipFile, ZipFile, ZipInfo
 
 from loguru import logger
 from lxml import etree
+
+from ..opc import relationship_source_base_dir, write_zip_package
 
 LEGACY_PPT_MAGIC = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
 
@@ -123,7 +125,7 @@ def normalize_pptx_package(file_bytes: bytes) -> bytes:
     if not changed:
         return file_bytes
 
-    return _write_package(rewritten_members)
+    return write_zip_package(rewritten_members)
 
 
 def _read_member_best_effort(source: ZipFile, info: ZipInfo) -> bytes | None:
@@ -225,8 +227,9 @@ def _resolve_relationship_target(rels_filename: str, target: str) -> str:
 
 def _relationship_source_base_dir(rels_filename: str) -> str:
     """根据 .rels 成员路径推导源 part 的基础目录。"""
-    if rels_filename == "_rels/.rels":
-        return ""
+    shared_base_dir = relationship_source_base_dir(rels_filename)
+    if shared_base_dir is not None:
+        return shared_base_dir
 
     marker = "/_rels/"
     if marker not in rels_filename:
@@ -330,12 +333,3 @@ def _replace_single_alternate_content(alternate_content: etree._Element) -> bool
         parent.insert(insert_index, fallback_shape)
         insert_index += 1
     return True
-
-
-def _write_package(members: list[tuple[ZipInfo, bytes]]) -> bytes:
-    """把规范化后的成员重新写成 PPTX ZIP 包，并重新计算 CRC。"""
-    output = BytesIO()
-    with ZipFile(output, "w", ZIP_DEFLATED) as target:
-        for info, member_data in members:
-            target.writestr(info, member_data)
-    return output.getvalue()

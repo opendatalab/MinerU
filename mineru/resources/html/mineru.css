@@ -326,7 +326,8 @@
   text-align: left;
 }
 
-.mineru-document .mineru-footnote {
+.mineru-document .mineru-footnote,
+.mineru-document .mineru-page-footnote {
   color: var(--mineru-muted);
   font-size: 0.875em;
   margin-top: 0.4rem;

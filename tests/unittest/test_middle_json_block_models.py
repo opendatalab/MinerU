@@ -27,6 +27,7 @@ from mineru.types import (
     ModelJson,
     PageAuxTextBlock,
     PageBlockTypes,
+    PageFootnoteBlock,
     PageInfo,
     RefTextBlock,
     TableAnnotationBlock,
@@ -107,6 +108,24 @@ def test_shared_models_preserve_all_discriminator_values() -> None:
     assert isinstance(parse_block({"type": "table_footnote", "content": "f"}), TableAnnotationBlock)
     assert isinstance(parse_block({"type": "chart_caption", "content": "c"}), ChartAnnotationBlock)
     assert isinstance(parse_block({"type": "code_footnote", "content": "f"}), CodeAnnotationBlock)
+
+
+def test_page_footnote_uses_independent_model_and_exclusive_anchor() -> None:
+    """验证页面脚注使用独立模型，页面辅助块不再接受 anchor。"""
+    footnote = parse_block(
+        {
+            "type": "page_footnote",
+            "content": "note",
+            "anchor": "note-one",
+        }
+    )
+
+    assert isinstance(footnote, PageFootnoteBlock)
+    assert footnote.anchor == "note-one"
+    assert footnote.to_dict()["anchor"] == "note-one"
+    for block_type in ("header", "footer", "page_number", "aside_text"):
+        with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+            parse_block({"type": block_type, "content": "aux", "anchor": "invalid"})
 
 
 def test_title_levels_follow_global_hierarchy() -> None:
@@ -232,7 +251,6 @@ def test_removed_block_classes_are_not_exposed() -> None:
         "HeaderBlock",
         "FooterBlock",
         "PageNumberBlock",
-        "PageFootnoteBlock",
         "ImageCaptionBlock",
         "ImageFootnoteBlock",
         "TableCaptionBlock",

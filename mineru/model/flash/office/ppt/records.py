@@ -8,11 +8,11 @@ from dataclasses import dataclass
 import struct
 from typing import Iterator
 
-from ..legacy.errors import (
+from ..errors import (
     LegacyOfficeMalformedError,
     LegacyOfficeResourceLimitError,
 )
-from ..legacy.limits import MAX_RECORD_DEPTH, MAX_RECORDS
+from ..limits import MAX_RECORD_DEPTH, MAX_RECORDS
 
 CONTAINER_VERSION = 0xF
 ROUNDTRIP_OPAQUE_MIN = 1053
@@ -44,30 +44,6 @@ class RecordBudget:
             raise LegacyOfficeResourceLimitError(
                 f"record stream exceeds max_records={MAX_RECORDS}"
             )
-
-
-def get_u16(data: bytes, offset: int) -> int | None:
-    """安全读取小端无符号 16 位整数。"""
-
-    if offset < 0 or offset + 2 > len(data):
-        return None
-    return struct.unpack_from("<H", data, offset)[0]
-
-
-def get_i16(data: bytes, offset: int) -> int | None:
-    """安全读取小端有符号 16 位整数。"""
-
-    if offset < 0 or offset + 2 > len(data):
-        return None
-    return struct.unpack_from("<h", data, offset)[0]
-
-
-def get_u32(data: bytes, offset: int) -> int | None:
-    """安全读取小端无符号 32 位整数。"""
-
-    if offset < 0 or offset + 4 > len(data):
-        return None
-    return struct.unpack_from("<I", data, offset)[0]
 
 
 def record_at(

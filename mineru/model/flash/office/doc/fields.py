@@ -5,14 +5,13 @@
 from __future__ import annotations
 
 import re
-from urllib.parse import urlparse
 
 from loguru import logger
 
+from ..._shared.hyperlink import OFFICE_EXTERNAL_HYPERLINK_SCHEMES, sanitize_hyperlink_target
 from .models import DocTextRun
 
 _TOKEN_RE = re.compile(r'"(?:\\.|[^"\\])*"|\\\S|\S+')
-_DRIVE_PATH_RE = re.compile(r"^[A-Za-z]:[\\/]")
 
 
 def field_keyword(instruction: str) -> str:
@@ -52,25 +51,6 @@ def _unquote(token: str) -> str:
     return token.replace(r"\"", '"').replace(r"\\", "\\")
 
 
-def sanitize_hyperlink_target(target: str) -> str | None:
-    """仅保留网络、内部 fragment 和非本地安全相对链接。"""
-
-    candidate = target.strip()
-    if not candidate:
-        return None
-    lowered = candidate.casefold()
-    if lowered.startswith(("javascript:", "data:", "vbscript:", "file:")):
-        return None
-    if candidate.startswith(("\\\\", "//", "/")) or _DRIVE_PATH_RE.match(candidate):
-        return None
-    parsed = urlparse(candidate)
-    if parsed.scheme and parsed.scheme.casefold() not in {"http", "https", "mailto", "ftp"}:
-        return None
-    if parsed.scheme.casefold() == "mailto" and not parsed.path:
-        return None
-    return candidate
-
-
 def hyperlink_target(instruction: str) -> str | None:
     """从 HYPERLINK 字段读取 URL 与可选内部书签。"""
 
@@ -101,7 +81,12 @@ def hyperlink_target(instruction: str) -> str | None:
         candidate = f"#{anchor}"
     else:
         return None
-    safe = sanitize_hyperlink_target(candidate)
+    safe = sanitize_hyperlink_target(
+        candidate,
+        allowed_schemes=OFFICE_EXTERNAL_HYPERLINK_SCHEMES,
+        allow_relative=True,
+        allow_fragment=True,
+    )
     if safe is None:
         logger.warning(f"DOC hyperlink target was rejected: {candidate!r}")
     return safe

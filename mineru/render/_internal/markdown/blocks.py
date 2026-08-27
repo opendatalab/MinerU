@@ -40,6 +40,7 @@ from ....types import (
     IndexBlock,
     ListBlock,
     PageAuxTextBlock,
+    PageFootnoteBlock,
     PageBlock,
     ParagraphTitleBlock,
     RefTextBlock,
@@ -73,6 +74,8 @@ def render_planned_block(
         return escape_standalone_marker_rule(content)
     if isinstance(block, (DocTitleBlock, ParagraphTitleBlock)):
         return _render_title(block, delimiters)
+    if isinstance(block, PageFootnoteBlock):
+        return _render_page_footnote(block, delimiters)
     if isinstance(block, PageAuxTextBlock):
         content = escape_text_block_markdown_prefix(render_inline_content(block.content, delimiters))
         return escape_standalone_marker_rule(content)
@@ -91,6 +94,24 @@ def render_planned_block(
     if isinstance(block, CodeBlock):
         return _render_code_block(block, delimiters)
     raise TypeError(f"Unsupported PageBlock type: {type(block).__name__}")
+
+
+def _render_page_footnote(block: PageFootnoteBlock, delimiters: LatexDelimitersConfig) -> str:
+    """用非折叠的小字号浅色 HTML 标识输出页面脚注。"""
+    content = escape_text_block_markdown_prefix(render_inline_content(block.content, delimiters))
+    rendered = escape_standalone_marker_rule(content)
+    if not rendered.strip():
+        return ""
+    rendered = rendered.replace("\r\n", "\n").replace("\r", "\n").replace("\n", "<br>")
+    attrs = [
+        'class="mineru-page-footnote"',
+        'data-block-type="page_footnote"',
+        'style="color:#6b7280"',
+    ]
+    anchor = (block.anchor or "").strip()
+    if anchor:
+        attrs.insert(0, f'id="{html.escape(anchor, quote=True)}"')
+    return f"<small><span {' '.join(attrs)}>{rendered}</span></small>"
 
 
 def render_single_block(

@@ -36,7 +36,8 @@ def test_visual_bodies_captions_and_footnotes_align_left() -> None:
         "}"
     ) in source
     assert (
-        ".mineru-document .mineru-footnote {\n"
+        ".mineru-document .mineru-footnote,\n"
+        ".mineru-document .mineru-page-footnote {\n"
         "  color: var(--mineru-muted);\n"
         "  font-size: 0.875em;\n"
         "  margin-top: 0.4rem;\n"
@@ -73,16 +74,14 @@ def test_minify_css_preserves_descendant_combinator_before_pseudo_class() -> Non
     """验证伪类前的后代空格不会被误当作声明冒号旁的冗余空白。"""
     source = ".root :is(h1, h2) { color: red; } .root:hover { color: blue; }"
 
-    assert build_html_css.minify_css(source) == (
-        ".root :is(h1,h2){color:red}.root:hover{color:blue}"
-    )
+    assert build_html_css.minify_css(source) == (".root :is(h1,h2){color:red}.root:hover{color:blue}")
 
 
 @pytest.mark.parametrize(
     "source",
     [
         "a { color: red;",
-        "a { content: \"unterminated; }",
+        'a { content: "unterminated; }',
         "a { color: red; /* unterminated",
         "a { color: red; }}",
         "a { content: \\",

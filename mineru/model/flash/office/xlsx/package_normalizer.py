@@ -1,8 +1,10 @@
 # Copyright (c) Opendatalab. All rights reserved.
 from io import BytesIO
 import re
-from zipfile import BadZipFile, ZIP_DEFLATED, ZipFile, ZipInfo
+from zipfile import BadZipFile, ZipFile, ZipInfo
 import xml.etree.ElementTree as ET
+
+from ..opc import write_zip_package
 
 SPREADSHEETML_NS = "http://schemas.openxmlformats.org/spreadsheetml/2006/main"
 SHARED_STRINGS_PATH = "xl/sharedStrings.xml"
@@ -54,7 +56,7 @@ def normalize_xlsx_package(file_bytes: bytes) -> bytes:
     if not changed:
         return file_bytes
 
-    return _write_package(rewritten_members)
+    return write_zip_package(rewritten_members)
 
 
 def strip_xlsx_ole_objects_for_openpyxl(file_bytes: bytes) -> bytes:
@@ -73,7 +75,7 @@ def strip_xlsx_ole_objects_for_openpyxl(file_bytes: bytes) -> bytes:
                 rewritten_members.append((info, member_data))
     except BadZipFile as exc:
         raise ValueError("Invalid XLSX package: file is not a ZIP archive.") from exc
-    return _write_package(rewritten_members) if changed else file_bytes
+    return write_zip_package(rewritten_members) if changed else file_bytes
 
 
 def _remove_worksheet_ole_objects(xml_bytes: bytes) -> bytes:
@@ -309,12 +311,3 @@ def _is_worksheet_xml(member_name: str) -> bool:
         and member_name.endswith(WORKSHEET_SUFFIX)
         and not member_name.startswith(f"{WORKSHEET_PREFIX}_rels/")
     )
-
-
-def _write_package(members: list[tuple[ZipInfo, bytes]]) -> bytes:
-    """把规范化后的成员重新写成 XLSX ZIP 包，并重新计算 CRC。"""
-    output = BytesIO()
-    with ZipFile(output, "w", ZIP_DEFLATED) as target:
-        for info, member_data in members:
-            target.writestr(info, member_data)
-    return output.getvalue()

@@ -148,6 +148,6 @@ If your device does not meet the GPU acceleration requirements, you can explicit
 mineru parse "<input_path>" --tier flash -o <output_path>
 ```
 
-`mineru` currently supports local `PDF`, image, `DOCX`, `PPTX`, and `XLSX` file or directory inputs.
+`mineru` currently supports local `PDF`, `EPUB`, image, `CSV`, `RTF`, `DOCX`, `PPTX`, `XLSX`, `ODT`, `ODS`, and `ODP` file or directory inputs through modern CLI and API entry points. EPUB, RTF, and OpenDocument are parsed locally with Flash semantics and do not require an external office suite. Only PDF accepts page ranges; every non-PDF input is parsed and cached as one complete file, while format-native boundaries remain logical pages in structured output. EPUB pages follow OPF spine order and preserve resolvable internal links from authored contents.
 
-You can use MinerU for document parsing through the CLI, API, WebUI. For detailed instructions, please refer to the [Usage Guide](../usage/index.md).
+The legacy Gradio WebUI keeps its existing upload formats and does not yet accept CSV. For detailed instructions, please refer to the [Usage Guide](../usage/index.md).

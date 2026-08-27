@@ -19,6 +19,7 @@ from mineru.types import (
     MiddleJson,
     PageAuxTextBlock,
     PageBlock,
+    PageFootnoteBlock,
     PageInfo,
     ParagraphTitleBlock,
     TableBlock,
@@ -73,6 +74,13 @@ def test_structured_content_preserves_document_tree_without_merging_or_mutation(
             ),
             TextBlock(type="text", index=1, content="first-"),
             PageAuxTextBlock(type="header", index=2, content="HEADER"),
+            PageFootnoteBlock(
+                type="page_footnote",
+                index=3,
+                bbox=(0.1, 0.8, 0.9, 0.9),
+                anchor="note-one",
+                content="Foot <eq>x</eq>",
+            ),
         ),
         _page(
             1,
@@ -91,6 +99,7 @@ def test_structured_content_preserves_document_tree_without_merging_or_mutation(
         "paragraph_title",
         "text",
         "header",
+        "page_footnote",
     ]
     assert result["pages"][0]["blocks"][0] == {
         "type": "paragraph_title",
@@ -101,6 +110,12 @@ def test_structured_content_preserves_document_tree_without_merging_or_mutation(
     assert render_markdown(middle).startswith('<a id="section-a"></a>\n###### # **Section** $x$')
     assert result["pages"][0]["blocks"][1]["content"] == "first-"
     assert result["pages"][0]["blocks"][2]["content"] == "HEADER"
+    assert result["pages"][0]["blocks"][3] == {
+        "type": "page_footnote",
+        "bbox": [0.1, 0.8, 0.9, 0.9],
+        "anchor": "note-one",
+        "content": "Foot $x$",
+    }
     assert result["pages"][1]["blocks"][0]["content"] == "continued"
     assert result["pages"][1]["blocks"][0]["continues_prev"] is True
     _assert_output_field_contract(result)

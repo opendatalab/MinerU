@@ -7,8 +7,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 import struct
 
-from .errors import LegacyOfficeResourceLimitError
-from .limits import MAX_RECORD_DEPTH, MAX_RECORDS
+from ..errors import LegacyOfficeResourceLimitError
+from ..limits import MAX_RECORD_DEPTH, MAX_RECORDS
 from .mtef import _MtefError, _Node, _render_node
 
 _OPT_NUDGE = 0x08

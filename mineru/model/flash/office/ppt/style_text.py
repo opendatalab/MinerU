@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .records import get_i16, get_u16, get_u32
+from ..legacy.binary import get_i16, get_u16, get_u32
 
 
 @dataclass(frozen=True, slots=True)

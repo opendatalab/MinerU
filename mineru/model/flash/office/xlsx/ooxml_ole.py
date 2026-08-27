@@ -12,13 +12,13 @@ import xml.etree.ElementTree as ET
 
 from loguru import logger
 
-from ..legacy.errors import LegacyOfficeResourceLimitError
-from ..legacy.limits import MAX_ENTRY_BYTES
+from ..errors import LegacyOfficeResourceLimitError
+from ..limits import MAX_ENTRY_BYTES
 from ..image import serialize_office_image
-from ..image_equation import (
+from ..equation.image import (
     OfficeImageEquationDecoder,
 )
-from ..ooxml_equation import (
+from ..equation.ooxml import (
     OoxmlEquationDecoder,
     is_mathtype_equation_prog_id,
 )

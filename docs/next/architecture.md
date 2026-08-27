@@ -200,7 +200,7 @@ SQLite 运行在 WAL 模式，使用 FTS5 提供搜索能力。每次 DB 操作�
 
 这样用户无需理解“索引”和“解析”两个概念；不同 tier 只是解析深度和执行路径不同。
 
-注意：`flash` 是 watch 自动发现和搜索索引的低成本 tier，不应作为 PDF/image 主动阅读时的默认最终质量。PDF/image 主动阅读未指定 tier 时应使用默认选择策略；有能力发现上下文时按 `standard` -> `advanced` -> `basic` 解析。Office/HTML 的归一规则见 [ADR-0024](decisions/0024-file-type-tier-normalization.md)；text 只入库和索引，直接读取源文件。
+注意：`flash` 是 watch 自动发现和搜索索引的低成本 tier，不应作为 PDF/image 主动阅读时的默认最终质量。PDF/image 主动阅读未指定 tier 时应使用默认选择策略；有能力发现上下文时按 `standard` -> `advanced` -> `basic` 解析。EPUB/Office/HTML/CSV 的归一规则见 [ADR-0024](decisions/0024-file-type-tier-normalization.md) 与 [ADR-0028](decisions/0028-csv-structured-flash-parsing.md)；其它 text 只入库和索引，直接读取源文件。
 
 ### 4.2 文件发现到入库
 
@@ -256,7 +256,7 @@ watch 流程也调用同一发现/刷新步骤:
 1. CLI 或 SDK 调用 doclib `POST /parses`。
 2. `ParseService` 先执行文件发现/刷新，确认 path 当前状态。
 3. 如文件需要重新入库，则等待或同步完成入库，获得当前 `sha256`。
-4. 查询 `(sha256, tier)` 下已完成批次，判断 page_range 是否覆盖请求范围。
+4. 查询 `(sha256, tier)` 下已完成批次；PDF 判断 page_range 覆盖，非 PDF 只接受完整整文件 batch。
 5. 缓存命中则返回 `cache_hit=true` 和空 `wait_parse_ids`。
 6. 已有 active parse 覆盖的页复用并提升 `priority`。
 7. 未覆盖页插入新的 `parses` 记录，Agent 请求使用更高 `priority`。
@@ -272,7 +272,7 @@ ParseWorker 按 `tier`、`privacy` 和 parse-server 健康状态路由：
 
 | 条件 | 执行路径 |
 |------|----------|
-| 未指定 tier | PDF/image 通过当前目标 parse-server 能力发现，按 `standard` -> `advanced` -> `basic` 解析；Office/HTML 归一为 `flash`；text 直接读取 |
+| 未指定 tier | PDF/image 通过当前目标 parse-server 能力发现，按 `standard` -> `advanced` -> `basic` 解析；EPUB/Office/HTML/CSV 归一为 `flash`；其它 text 直接读取 |
 | `tier=flash` | 直接本地调用轻量 parser，`via=local` |
 | `tier=basic/standard/advanced` 且 `privacy=remote` | 优先调用 config 中的远端地址，默认使用 `https://mineru.net/api` |
 | remote 不可用 | 尝试 fallback 到 local parse-server |
@@ -405,15 +405,16 @@ Watch、parsing-rules 和 exclude 规则也由 CLI 写入 SQLite。Parsing-rules
 
 ## 8. 文件类型与处理策略
 
-当前代码中的 watch discoverable 文件类型包括：`pdf`、`docx`、`pptx`、`xlsx`、`html`、`htm`、`csv`、`md`、`markdown`、`rst`、`tex`、`txt`。图片不在 watch 白名单中，但可以通过显式 `mineru parse image.png` 触发。旧 Office 格式、电子书、Apple 文档和邮件格式暂不在当前 discoverable 白名单内。
+当前代码中的 watch discoverable 文件类型包括：`pdf`、`epub`、`doc`、`docx`、`ppt`、`pptx`、`xls`、`xlsx`、`rtf`、`odt`、`ods`、`odp`、`html`、`htm`、`csv`、`md`、`markdown`、`rst`、`tex`、`txt`。图片不在 watch 白名单中，但可以通过显式 `mineru parse image.png` 触发。Apple 文档、其它电子书和邮件格式暂不在当前 discoverable 白名单内。
 
 处理路径：
 
 | 类型 | 策略 |
 |------|------|
 | 纯文本 | 直接读取，无需模型解析 |
-| Office / HTML | 本地 CPU 全量解析 |
-| PDF / Image | 按 tier 路由到默认选择 / flash / basic / standard / advanced |
+| Image | 按 tier 路由到默认选择 / flash / basic / standard / advanced，但整文件解析并拒绝显式 page_range |
+| EPUB / Office / HTML / CSV | 本地 CPU Flash 整本解析；显式 page_range 拒绝，EPUB 可增加首页目录 |
+| PDF | 按 tier 路由，并支持增量 page_range 解析和缓存 |
 
 ## 9. 错误与恢复
 

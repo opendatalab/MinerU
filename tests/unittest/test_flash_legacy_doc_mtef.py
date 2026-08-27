@@ -7,7 +7,7 @@ import pytest
 
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
 from mineru.model.flash import DocModel
-from mineru.model.flash.office.legacy.mtef import (
+from mineru.model.flash.office.equation.mtef import (
     decode_equation_native,
     decode_equation_object,
     decode_mtef_v3,

@@ -11,15 +11,15 @@ import struct
 
 from loguru import logger
 
-from .legacy.errors import (
+from ..errors import (
     LegacyOfficeResourceLimitError,
 )
-from .legacy.limits import (
+from ..limits import (
     MAX_ASSET_TOTAL_BYTES,
     MAX_ENTRY_BYTES,
     MAX_PICTURE_RECORDS,
 )
-from .legacy.mtef import decode_mtef
+from .mtef import decode_mtef
 
 _PLACEABLE_WMF_MAGIC = b"\xd7\xcd\xc6\x9a"
 _META_ESCAPE = 0x0626

@@ -9,7 +9,8 @@ from dataclasses import dataclass
 
 from loguru import logger
 
-from .records import DocBudget, bounded_slice, get_u32
+from ..legacy.binary import bounded_slice, get_u32
+from .records import DocBudget
 from .sprm import PapDelta, apply_paragraph_sprms
 
 
@@ -170,4 +171,3 @@ def parse_formatting_runs(
             continue
         paragraphs.extend(_parse_papx_page(page, data_stream, budget))
     return FormattingRuns(characters, paragraphs)
-

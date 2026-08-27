@@ -6,7 +6,7 @@ from __future__ import annotations
 import time
 from io import BytesIO
 
-from ...model.flash import DocModel, DocxModel, PptModel, PptxModel, XlsModel, XlsxModel
+from ...model.flash import DocModel, DocxModel, OdpModel, OdsModel, OdtModel, PptModel, PptxModel, RtfModel, XlsModel, XlsxModel
 
 from .contracts import AnalysisResult, OfficeSuffix
 
@@ -17,6 +17,10 @@ _OFFICE_MODEL_MAP = {
     "pptx": PptxModel,
     "xls": XlsModel,
     "xlsx": XlsxModel,
+    "rtf": RtfModel,
+    "odt": OdtModel,
+    "ods": OdsModel,
+    "odp": OdpModel,
 }
 
 

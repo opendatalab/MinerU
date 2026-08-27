@@ -4,12 +4,11 @@
 
 from __future__ import annotations
 
-from html import escape
 from typing import Any, BinaryIO
 
-from ..legacy import BoundedOleReader
+from ..legacy.ole import BoundedOleReader
 from ..._shared.xycut import sort_entries
-from ..legacy.stream import read_stream_bytes_from_start
+from ..streams import read_stream_bytes_from_start
 from .....types import BlockType
 from ..rich_text import OfficeRichTextSegment, build_rich_text_from_segments
 
@@ -76,9 +75,9 @@ class PptConverter:
 
         segments = [
             OfficeRichTextSegment(
-                text=escape(run.text, quote=False).replace("\n", " "),
+                text=run.text.replace("\n", " "),
                 style=cls._run_styles(run),
-                hyperlink=escape(run.hyperlink, quote=False) if run.hyperlink else None,
+                hyperlink=run.hyperlink,
             )
             for run in paragraph.runs
             if run.text

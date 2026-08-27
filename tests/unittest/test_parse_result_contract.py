@@ -6,7 +6,7 @@ from pydantic import ValidationError
 
 from mineru.parser.base import ParseResult
 from mineru.parser import MIDDLE_JSON_SCHEMA_VERSION
-from mineru.types import BlockType, MiddleJson, PageInfo, TableBlock, TableBodyBlock, TextBlock
+from mineru.types import BlockType, MiddleJson, PageFootnoteBlock, PageInfo, TableBlock, TableBodyBlock, TextBlock
 from mineru.utils.image_payload import ImagePayloadCache
 from mineru.version import __version__
 
@@ -28,22 +28,25 @@ def test_parse_result_from_dict_restores_pages() -> None:
     result = ParseResult(
         middle_json=MiddleJson(
             pages=[
-            PageInfo(
-                page_idx=3,
-                blocks=[
-                    TextBlock(
-                        type=BlockType.TEXT,
-                        index=0,
-                        bbox=(0.0, 0.0, 0.1, 0.1),
-                        content="hello",
-                    )
-                ],
-            )
-        ],
+                PageInfo(
+                    page_idx=3,
+                    blocks=[
+                        TextBlock(
+                            type=BlockType.TEXT,
+                            index=0,
+                            bbox=(0.0, 0.0, 0.1, 0.1),
+                            content="hello",
+                        )
+                    ],
+                )
+            ],
             is_full_document=True,
-            file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__,
+            file_suffix="pdf",
+            effort="medium",
+            parse_mode="txt",
+            mineru_version=__version__,
         )
-        )
+    )
 
     restored = ParseResult.from_dict(result.to_dict())
 
@@ -70,6 +73,38 @@ def test_parse_result_to_dict_includes_schema_version_without_meta() -> None:
     assert payload["schema_version"] == MIDDLE_JSON_SCHEMA_VERSION
     assert "pages" in payload
     assert "_meta" not in payload
+
+
+def test_parse_result_roundtrip_preserves_page_footnote_anchor() -> None:
+    """验证 Schema 2.0 ParseResult 往返保留页面脚注 anchor。"""
+    result = ParseResult(
+        middle_json=MiddleJson(
+            pages=[
+                PageInfo(
+                    page_idx=0,
+                    blocks=[
+                        PageFootnoteBlock(
+                            type=BlockType.PAGE_FOOTNOTE,
+                            index=0,
+                            content="Footnote",
+                            anchor="note-one",
+                        )
+                    ],
+                )
+            ],
+            is_full_document=True,
+            file_suffix="epub",
+            effort="flash",
+            parse_mode="txt",
+            mineru_version=__version__,
+        )
+    )
+
+    restored = ParseResult.from_dict(result.to_dict())
+
+    footnote = restored.pages[0].blocks[0]
+    assert footnote.type == BlockType.PAGE_FOOTNOTE
+    assert footnote.anchor == "note-one"  # type: ignore[union-attr]
 
 
 def test_parse_result_rejects_schema_v2_low_effort() -> None:

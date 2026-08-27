@@ -24,3 +24,10 @@ def test_guess_suffix_by_bytes_falls_through_to_magika_for_unknown_ole2() -> Non
     """OLE2 magic 但无已知 stream 时，交给 Magika 兜底（不返回 unknown_ole2）。"""
     suffix = guess_suffix_by_bytes(_OLE2_HEADER_ONLY)
     assert isinstance(suffix, str)
+
+
+def test_guess_suffix_by_bytes_prefers_rtf_signature_over_csv_extension() -> None:
+    """RTF 强内容签名必须覆盖 CSV 的无签名扩展名兜底。"""
+    payload = b"\xef\xbb\xbf \r\n{\\RTF1\\ANSI body}"
+
+    assert guess_suffix_by_bytes(payload, "disguised.csv") == "rtf"

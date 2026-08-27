@@ -8,8 +8,9 @@ from dataclasses import dataclass, replace
 import struct
 from typing import Callable
 
+from ..legacy.binary import get_i16, get_u16, get_u32
 from .models import DocCharStyle, DocTableCellFormat, DocTableFormat
-from .records import DocBudget, get_i16, get_u16, get_u32
+from .records import DocBudget
 
 
 def _operand_length(opcode: int, operand: bytes) -> int:
@@ -270,4 +271,3 @@ def apply_paragraph_sprms(
 
     walk_sprms(grpprl, consume, budget=budget)
     return delta
-

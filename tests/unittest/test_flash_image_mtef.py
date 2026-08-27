@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from mineru.model.flash.office.legacy.errors import LegacyOfficeResourceLimitError
-from mineru.model.flash.office import image_equation as image_equation_module
-from mineru.model.flash.office.image_equation import (
+from mineru.model.flash.office.errors import LegacyOfficeResourceLimitError
+from mineru.model.flash.office.equation import image as image_equation_module
+from mineru.model.flash.office.equation.image import (
     OfficeImageEquationDecoder,
     decode_image_embedded_equation,
 )

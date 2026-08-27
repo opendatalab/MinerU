@@ -8,14 +8,15 @@ from html import escape
 import re
 from typing import Any, BinaryIO, Iterable
 
-from ..legacy import BoundedOleReader, LegacyOfficeEncryptedError
+from ..errors import LegacyOfficeEncryptedError
 from ..image import serialize_office_image
-from ..legacy.stream import read_stream_bytes_from_start
+from ..legacy.ole import BoundedOleReader
+from ..streams import read_stream_bytes_from_start
 from .....types import RAW_CAPTION, BlockType
 from ..rich_text import OfficeRichTextSegment, build_rich_text_from_segments
 
 from .fib import parse_fib
-from ..legacy.mtef import read_object_pool_equations
+from ..equation.mtef import read_object_pool_equations
 from ..xls.embedded_chart import extract_embedded_chart_html
 from .models import (
     DocCharStyle,
@@ -144,9 +145,9 @@ class DocConverter:
                 continue
             segments.append(
                 OfficeRichTextSegment(
-                    text=escape(run.text, quote=False).replace("\n", "<br/>"),
+                    text=run.text,
                     style=cls._style_names(run.style),
-                    hyperlink=escape(run.hyperlink, quote=True) if run.hyperlink else None,
+                    hyperlink=run.hyperlink,
                 )
             )
         flush_segments()

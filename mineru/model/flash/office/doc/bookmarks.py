@@ -4,7 +4,8 @@
 
 from __future__ import annotations
 
-from .records import DocBudget, bounded_slice, get_u16, parse_plc
+from ..legacy.binary import bounded_slice, get_u16
+from .records import DocBudget, parse_plc
 
 
 def _parse_string_table(data: bytes, budget: DocBudget) -> list[str]:
@@ -80,4 +81,3 @@ def parse_bookmarks(
             continue
         result.setdefault(start, []).append(name)
     return result
-

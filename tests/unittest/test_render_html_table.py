@@ -35,6 +35,27 @@ def test_render_html_table_preserves_supported_inline_markup() -> None:
     )
 
 
+def test_render_html_table_escapes_angle_brackets_from_text_nodes() -> None:
+    """验证实体解码后的文本尖括号不会重新变成可执行 Markdown HTML。"""
+    html = (
+        "<table><tr><th>Name</th><th>Value</th></tr>"
+        "<tr><td>unsafe</td><td>&lt;script&gt;alert(1)&lt;/script&gt;</td></tr></table>"
+    )
+
+    rendered = render_html_table(html, asset_base_url="", delimiters=DELIMITERS)
+
+    assert rendered == "\n".join(
+        [
+            "| Name | Value |",
+            "| --- | --- |",
+            "| unsafe | &lt;script>alert(1)&lt;/script> |",
+        ]
+    )
+    parsed = BeautifulSoup(markdown.markdown(rendered, extensions=["tables"]), "html.parser")
+    assert parsed.find("script") is None
+    assert parsed.find_all("td")[1].get_text() == "<script>alert(1)</script>"
+
+
 def test_render_html_table_escapes_formula_pipes_without_changing_latex() -> None:
     """验证 GFM 源码转义公式竖线，Markdown 解析后恢复原始 LaTeX。"""
     formulas = [

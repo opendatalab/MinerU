@@ -10,9 +10,9 @@ import struct
 
 from loguru import logger
 
-from .errors import LegacyOfficeResourceLimitError
-from .limits import MAX_RECORD_DEPTH, MAX_RECORDS
-from .ole import BoundedOleReader
+from ..errors import LegacyOfficeResourceLimitError
+from ..limits import MAX_RECORD_DEPTH, MAX_RECORDS
+from ..legacy.ole import BoundedOleReader
 
 _OBJECT_POOL_EQUATION_RE = re.compile(
     r"^ObjectPool/_([0-9]+)/Equation Native$",

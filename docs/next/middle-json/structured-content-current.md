@@ -134,7 +134,8 @@ Structured Content 需要重新定义 unknown bbox，不应把 `[0, 0, 0, 0]` �
 | 列表 | `list`, `text_list`, `reference_list`, `index` |
 | 文本结构 | `title`, `paragraph` |
 | span | `text`, `phonetic`, `md`, `code_inline` |
-| 页边内容 | `page_header`, `page_footer`, `page_number`, `page_aside_text`, `page_footnote` |
+| 页边内容 | `page_header`, `page_footer`, `page_number`, `page_aside_text` |
+| 页面脚注 | `page_footnote`（语义上独立于低价值页边内容） |
 
 当前实现并没有使用全部类型:
 

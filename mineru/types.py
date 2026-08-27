@@ -45,7 +45,21 @@ RAW_ONLY_BLOCK_TYPES = frozenset(
     }
 )
 
-FileSuffix: TypeAlias = Literal["pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx"]
+FileSuffix: TypeAlias = Literal[
+    "pdf",
+    "doc",
+    "docx",
+    "ppt",
+    "pptx",
+    "xls",
+    "xlsx",
+    "rtf",
+    "csv",
+    "epub",
+    "odt",
+    "ods",
+    "odp",
+]
 FILE_SUFFIXES: frozenset[FileSuffix] = frozenset(cast(tuple[FileSuffix, ...], get_args(FileSuffix)))
 
 Tier = Literal[
@@ -331,10 +345,14 @@ PAGE_AUXILIARY_BLOCK_TYPES = {
     BlockType.HEADER,
     BlockType.FOOTER,
     BlockType.PAGE_NUMBER,
-    BlockType.PAGE_FOOTNOTE,
     BlockType.ASIDE_TEXT,
 }
-VISUAL_RELATION_IGNORED_TYPES = PAGE_AUXILIARY_BLOCK_TYPES
+# 页面脚注需要参与输出，但不会阻断正文、列表、续表或视觉对象之间的关系判断。
+MERGE_TRANSPARENT_BLOCK_TYPES = {
+    *PAGE_AUXILIARY_BLOCK_TYPES,
+    BlockType.PAGE_FOOTNOTE,
+}
+VISUAL_RELATION_IGNORED_TYPES = MERGE_TRANSPARENT_BLOCK_TYPES
 VISUAL_MAIN_TYPES = {
     BlockType.IMAGE_BODY: BlockType.IMAGE,
     BlockType.TABLE_BODY: BlockType.TABLE,
@@ -489,15 +507,21 @@ class ParagraphTitleBlock(TitleBlockBase):
 
 
 class PageAuxTextBlock(StringContentBlock):
-    """页眉、页脚、页码、边栏和页脚注释的共享文本结构。"""
+    """页眉、页脚、页码和边栏的共享文本结构。"""
 
     type: Literal[  # type: ignore[reportIncompatibleVariableOverride]
         BlockType.HEADER,
         BlockType.FOOTER,
         BlockType.PAGE_NUMBER,
         BlockType.ASIDE_TEXT,
-        BlockType.PAGE_FOOTNOTE,
     ]
+
+
+class PageFootnoteBlock(StringContentBlock):
+    """保存需要参与默认输出并可被文档内链接引用的页面脚注。"""
+
+    type: Literal[BlockType.PAGE_FOOTNOTE]  # type: ignore[reportIncompatibleVariableOverride]
+    anchor: str | None = None
 
 
 class ImagePayloadBlock(BlockBase):
@@ -686,6 +710,7 @@ PageBlock: TypeAlias = Annotated[
         DocTitleBlock,
         ParagraphTitleBlock,
         PageAuxTextBlock,
+        PageFootnoteBlock,
         EquationBlock,
         ListBlock,
         IndexBlock,
@@ -705,6 +730,7 @@ Block: TypeAlias = Annotated[
         DocTitleBlock,
         ParagraphTitleBlock,
         PageAuxTextBlock,
+        PageFootnoteBlock,
         EquationBlock,
         ListBlock,
         IndexBlock,

@@ -92,8 +92,9 @@ docx_bytes = render_docx(
 不安全、格式损坏或 SVG 输入会抛出带 `page_idx/block_index/block_type` 的
 `DocxRenderError`；WebP 在内存中转为 PNG。
 
-DOCX 输出固定使用 A4 纵向与 20 mm 页边距。标题是 Word Heading 1–9，anchor 是
-document-wide bookmark，Index 标题叶子写成内部链接；正文直接消费共享 inline AST，
+DOCX 输出固定使用 A4 纵向与 20 mm 页边距。标题是 Word Heading 1–9，标题与
+`page_footnote` anchor 是 document-wide bookmark，Index 标题叶子和正文 `#anchor`
+写成内部链接；正文直接消费共享 inline AST，
 保留粗体、斜体、下划线、删除线、emphasis、上下标、外链及行内公式。emphasis 使用下方
 着重号；带可见装饰的边界空格会等量写为 NBSP，避免 Word 隐藏下划线或删除线。列表保留
 producer 已经内化的 marker，只用缩进表达层级，不重建 `numbering.xml`。
@@ -305,21 +306,22 @@ doclib 或历史扁平 `content_list.json` 产物。
 
 `RenderMode.DEFAULT`:
 
-- 隐藏 `header/footer/page_number/aside_text/page_footnote`。
-- 合并页内和跨页 `text/ref_text.continues_prev`；ref_text 可跨过页面辅助块查找前序 ref_text。
-- 合并页内和跨页 `list.continues_prev`；ref list 可跨过页面辅助块查找前序列表。
+- 隐藏 `header/footer/page_number/aside_text`，保留独立 `page_footnote`。
+- 合并页内和跨页 `text/ref_text.continues_prev`；ref_text 可跨过页面脚注与辅助块查找前序 ref_text。
+- 合并页内和跨页 `list.continues_prev`；ref list 可跨过页面脚注与辅助块查找前序列表。
 - 只合并跨页 `table.continues_prev`。
 - 页面之间不输出分割线。
 
 `RenderMode.FULL`:
 
 - 展示全部顶层 block。
+- 带 anchor 的 `page_footnote` 在 DEFAULT/FULL 的 Markdown/HTML/DOCX 中分别输出 span id、元素 id 和 Word bookmark。
 - 只合并页内 `text/ref_text/list.continues_prev`。
 - 不合并跨页 text/ref_text/list/table。
 - 每两个相邻 `PageInfo` 之间输出 `---`，空白页边界同样保留。
 
 text 合并允许跨越任意其他 block，后一个 text 的内容被吸收到前一个 text，
-后块不再在原位置输出。ref_text 与 ref list 都只跨过页面辅助块，其他语义块
+后块不再在原位置输出。ref_text 与 ref list 都只跨过页面脚注与辅助块，其他语义块
 仍会分别阻断文本链和列表链；两种参考文献标记互不混用。普通 list 仍要求
 物理相邻。table 只接受跨页合并；失败时保留两张原表。
 
@@ -327,6 +329,7 @@ text 合并允许跨越任意其他 block，后一个 text 的内容被吸收到
 
 - `text/ref_text`: 解析行内公式、样式和超链接；普通 text 转义可能误触发的 Markdown block 前缀。
 - `doc_title/paragraph_title`: 使用全局 `level`，Markdown 标题最多六级；anchor 输出为 HTML id。
+- `page_footnote`: 独立于页面辅助块，DEFAULT/FULL 都输出；Markdown 使用无可见标签的 `<small><span class="mineru-page-footnote" data-block-type="page_footnote" style="color:#6b7280">…</span></small>`，HTML/DOCX 使用小号弱化样式。
 - `list`: 递归缩进；普通列表直接使用 content 已内化的前缀。`sub_type=ref_text`
   时统计每个直属非空 item 的前五个可见字符，数字前缀未达到严格多数则给全部 item
   补 `- `，已有 `- ` 不重复；嵌套列表独立判定。

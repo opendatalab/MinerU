@@ -39,6 +39,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.datastructures import State
 
+from ..errors import MineruError
 from ..filetypes import (
     PARSEABLE_EXTENSIONS,
     batch_effective_parse_tier,
@@ -1434,7 +1435,10 @@ async def _run_job(
                     fr.page_range,
                 )
                 fr.status = "failed"
-                fr.error = ErrorDetail(type="engine_error", code="parse_failed", message=str(exc))
+                if isinstance(exc, MineruError):
+                    fr.error = ErrorDetail(type=exc.type, code=exc.code, message=str(exc), param=exc.param)
+                else:
+                    fr.error = ErrorDetail(type="engine_error", code="parse_failed", message=str(exc))
                 rec.progress.failed += 1
 
     if rec.status != "canceled":

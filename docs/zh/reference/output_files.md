@@ -116,7 +116,7 @@
 |--------|------|------|
 | `pages` | `list[PageInfo]` | 每一页的解析结果数组，按 `page_idx` 严格升序 |
 | `is_full_document` | `bool` | 是否整本文档解析（`page_index_map` 为空时为 `True`） |
-| `file_suffix` | `string` | 输入文件类型：`pdf`、`doc`、`docx`、`ppt`、`pptx`、`xls` 或 `xlsx` |
+| `file_suffix` | `string` | 输入文件类型：`pdf`、`doc`、`docx`、`ppt`、`pptx`、`xls`、`xlsx`、`rtf`、`csv`、`epub`、`odt`、`ods` 或 `odp` |
 | `effort` | `string` | 分析强度：`flash`、`medium`、`high` 或 `xhigh` |
 | `parse_mode` | `string` | 解析模式：`txt` 或 `ocr` |
 | `mineru_version` | `string` | MinerU 版本号 |
@@ -165,8 +165,9 @@ schema 2.0 已移除旧字段 `preproc_blocks`/`para_blocks`/`page_size`/`images
 | `code` | 代码容器；`content` 包含 `code_body` + 可选 `code_caption`/`code_footnote`；`sub_type` 为 `code` 或 `algorithm` |
 | `list` | 列表容器；`content` 为 `text`/`ref_text`/嵌套 `list` 块列表；`sub_type` 为 `text` 或 `ref_text` |
 | `index` | 目录容器；`content` 为 `text`/`doc_title`/`paragraph_title`/嵌套 `index` 块列表 |
-| `ref_text` | 参考文献/引用文本块 |
-| `header` / `footer` / `page_number` / `aside_text` / `page_footnote` | 页面辅助块（叶子块，`content: str`） |
+| `ref_text` | 参考文献文本块；EPUB 脚注不使用该类型 |
+| `header` / `footer` / `page_number` / `aside_text` | 页面辅助块（叶子块，`content: str`）；不接受 `anchor` |
+| `page_footnote` | 独立页面脚注块（叶子块，`content: str`）；可带 document-wide `anchor`，DEFAULT 渲染也保留 |
 
 ##### 示例数据（schema 2.0）
 
@@ -244,7 +245,7 @@ schema 2.0 已移除旧字段 `preproc_blocks`/`para_blocks`/`page_size`/`images
 | `type` | `string` | 内容类型 |
 | `content` | `dict` | 与 `type` 对应的结构化内容 |
 | `bbox` | `list[int]` | 可选，0-1000 范围的边界框 |
-| `anchor` | `string` | 可选，部分 `DOCX` 标题或索引项会携带锚点 |
+| `anchor` | `string` | 可选，标题与 `page_footnote` 的 document-wide 目标；目录叶子和行内链接可以引用 |
 
 其中 `image` / `chart` 类型还可能包含可选顶层字段 `sub_type`，用于表示视觉子类型。
 
@@ -259,7 +260,8 @@ schema 2.0 已移除旧字段 `preproc_blocks`/`para_blocks`/`page_size`/`images
 | `code` | 代码块，包含 `code_content`、`code_caption`、`code_footnote`、`code_language` |
 | `algorithm` | 算法块，包含 `algorithm_content`、`algorithm_caption`、`algorithm_footnote` |
 | `list` / `index` | 列表与索引，包含 `list_items` |
-| `page_header` / `page_footer` / `page_number` / `page_aside_text` / `page_footnote` | 页面辅助块 |
+| `page_header` / `page_footer` / `page_number` / `page_aside_text` | 页面辅助块 |
+| `page_footnote` | 独立页面脚注内容 |
 
 `title_content`、`paragraph_content`、说明文字等行内内容通常由 span 列表组成。
 `hyperlink` span 包含 `content`、`url`，当同一个链接内存在多段不同样式文本时，
@@ -412,7 +414,7 @@ schema 2.0 已移除旧字段 `preproc_blocks`/`para_blocks`/`page_size`/`images
     * `code`
     * `algorithm`
 
-- 页面辅助块（`header`、`footer`、`page_number`、`aside_text`、`page_footnote`）作为顶层叶子块出现在 `blocks` 中，`content: str`——schema 2.0 不再有独立的 `discarded_blocks` 字段。
+- 页面辅助块（`header`、`footer`、`page_number`、`aside_text`）和独立的 `page_footnote` 块都作为顶层叶子出现在 `blocks` 中，`content: str`——schema 2.0 不再有独立的 `discarded_blocks` 字段；只有 `page_footnote` 可以额外携带 document-wide `anchor`，且 DEFAULT 渲染也会保留。
 - 所有 block 可能包含 `angle` 字段，用来表示旋转角度，0，90，180，270
 
 

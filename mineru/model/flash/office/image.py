@@ -4,13 +4,14 @@
 from functools import lru_cache
 from io import BytesIO
 from pathlib import PurePosixPath
+import struct
 from typing import Final
 
 from loguru import logger
 from PIL import Image, ImageDraw, ImageFont, UnidentifiedImageError
 
 from ....utils.platform import is_windows_environment
-from ..pdf.raster import image_to_b64str
+from .._shared.image import image_to_b64str
 
 VECTOR_IMAGE_FORMATS = frozenset({"WMF", "EMF"})
 VECTOR_IMAGE_EXTENSIONS = frozenset({".wmf", ".emf"})
@@ -24,6 +25,7 @@ VECTOR_IMAGE_CONTENT_TYPES = frozenset(
     }
 )
 PIL_IMAGE_LOAD_ERRORS = (UnidentifiedImageError, OSError, SyntaxError)
+VECTOR_IMAGE_RENDER_DPI: Final = 144
 STANDARD_VECTOR_PLACEHOLDER_SIZE: Final = (320, 180)
 STANDARD_VECTOR_PLACEHOLDER_LINES: Final = (
     "WMF/EMF placeholder",
@@ -54,6 +56,27 @@ def is_vector_image_part(part_name: object | None = None, content_type: str | No
         return True
     normalized_content_type = (content_type or "").split(";", 1)[0].strip().lower()
     return normalized_content_type in VECTOR_IMAGE_CONTENT_TYPES
+
+
+def is_valid_vector_image_payload(
+    image_data: bytes,
+    *,
+    part_name: object | None = None,
+    content_type: str | None = None,
+) -> bool:
+    """校验 WMF/EMF 最小文件签名，避免为任意伪装字节生成矢量占位图。"""
+    label = _vector_image_format_label(part_name, content_type)
+    if label == "WMF":
+        return _is_wmf_payload(image_data)
+    if label == "EMF":
+        return (
+            len(image_data) >= 44
+            and struct.unpack_from("<I", image_data, 0)[0] == 1
+            and image_data[40:44] == b" EMF"
+        )
+    return _is_wmf_payload(image_data) or (
+        len(image_data) >= 44 and image_data[40:44] == b" EMF"
+    )
 
 
 def _vector_image_format_label(part_name: object | None = None, content_type: str | None = None) -> str:
@@ -150,7 +173,7 @@ def serialize_vector_image_with_placeholder(pil_image: Image.Image, image_format
 
     if is_windows_environment():
         try:
-            pil_image.load()
+            pil_image.load(dpi=VECTOR_IMAGE_RENDER_DPI)
             return image_to_b64str(pil_image, image_format="PNG")
         except PIL_IMAGE_LOAD_ERRORS as e:
             logger.warning(f"Failed to render {image_format} image: {e}, size: {pil_image.size}. Using placeholder instead.")
@@ -221,3 +244,20 @@ def serialize_office_image(
         return image_to_b64str(pil_image.convert("RGBA"), image_format="PNG")
 
     return image_to_b64str(pil_image.convert("RGB"), image_format="JPEG")
+
+
+def ensure_bmp_header(image_data: bytes) -> bytes:
+    """为裸 DIB 补齐 BMP 文件头，无法可靠推断时保留原始载荷。"""
+    if image_data.startswith(b"BM") or len(image_data) < 4:
+        return image_data
+    header_size = int(struct.unpack_from("<I", image_data, 0)[0])
+    if header_size < 12 or header_size > len(image_data):
+        return image_data
+    palette_bytes = 0
+    if header_size >= 40 and len(image_data) >= 36:
+        bit_count = int(struct.unpack_from("<H", image_data, 14)[0])
+        colors_used = int(struct.unpack_from("<I", image_data, 32)[0])
+        colors = colors_used or ((1 << bit_count) if bit_count <= 8 else 0)
+        palette_bytes = colors * 4
+    pixel_offset = min(14 + header_size + palette_bytes, 14 + len(image_data))
+    return b"BM" + struct.pack("<IHHI", 14 + len(image_data), 0, 0, pixel_offset) + image_data

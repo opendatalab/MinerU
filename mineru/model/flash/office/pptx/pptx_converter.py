@@ -12,22 +12,22 @@ from pptx import Presentation, presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE, PP_PLACEHOLDER
 from pptx.oxml.text import CT_TextLineBreak
 
-from ..chart import extract_chart_html_from_ooxml
+from ..ooxml_chart import extract_chart_html_from_ooxml
 from ..image import PIL_IMAGE_LOAD_ERRORS, is_vector_image, serialize_vector_image_with_placeholder
-from ..image_equation import (
+from ..equation.image import (
     OfficeImageEquationDecoder,
 )
-from ..ooxml_equation import (
+from ..equation.ooxml import (
     OoxmlEquationDecoder,
     is_mathtype_equation_prog_id,
 )
-from ..docx.tools.math.omml import oMath2Latex
-from ..legacy.stream import read_stream_bytes_from_start, rewind_stream
+from ..equation.omml import oMath2Latex
+from ..streams import read_stream_bytes_from_start, rewind_stream
 from .package_normalizer import normalize_pptx_package
 from ..._shared.xycut import sort_entries
 from .....types import BlockType
-from ..rich_text import OfficeRichTextSegment, build_rich_text_from_segments
-from ...pdf.raster import image_to_b64str
+from ..rich_text import OfficeRichTextSegment, build_rich_text_from_segments, format_text_with_hyperlink
+from ..._shared.image import image_to_b64str
 
 IGNORED_NOTES_PLACEHOLDER_TYPES: Final = {
     PP_PLACEHOLDER.SLIDE_IMAGE,
@@ -1188,20 +1188,7 @@ class PptxConverter:
         style_str: Optional[str] = None,
     ) -> str:
         """按Office约定格式输出带样式/超链接的文本片段。"""
-        if not text:
-            return ""
-
-        if hyperlink is None or str(hyperlink).strip() in ("", "."):
-            if style_str:
-                return f'<text style="{style_str}">{text}</text>'
-            return text
-
-        if style_str:
-            text_tag = f'<text style="{style_str}">{text}</text>'
-        else:
-            text_tag = f"<text>{text}</text>"
-
-        return f"<hyperlink>{text_tag}<url>{hyperlink}</url></hyperlink>"
+        return format_text_with_hyperlink(text, hyperlink, style_str)
 
     def _resolve_hyperlink_from_run(self, run, shape) -> Optional[str]:
         """解析 run 对应的超链接，优先公开 API，回退到 XML + rels。"""

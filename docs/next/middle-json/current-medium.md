@@ -31,7 +31,7 @@
 |------|------|------|
 | `pages` | `list[list[dict]]` | 必填，保存 Analyze 产生的 raw blocks |
 | `page_index_map` | `list[int]` | 必填；空列表表示整本默认顺序，非空时与 pages 等长且唯一递增 |
-| `file_suffix` | `pdf/doc/docx/ppt/pptx/xls/xlsx` | 必填 |
+| `file_suffix` | `pdf/doc/docx/ppt/pptx/xls/xlsx/rtf/csv/epub/odt/ods/odp` | 必填 |
 | `effort` | `flash/medium/high/xhigh` | 必填，使用公开分析档位 |
 | `parse_mode` | `txt/ocr` | 必填，使用分析后实际值 |
 | `mineru_version` | 非空字符串 | 必填 |
@@ -50,13 +50,13 @@ MiddleJson 并执行适用的 PDF 后处理。不再提供裸 model list 加独�
 |------|------|------|
 | `pages` | `list[PageInfo]` | 必填，`page_idx` 唯一且严格递增 |
 | `is_full_document` | `bool` | 必填，保存整本或抽页语义，不提供默认值 |
-| `file_suffix` | `pdf/doc/docx/ppt/pptx/xls/xlsx` | 必填 |
+| `file_suffix` | `pdf/doc/docx/ppt/pptx/xls/xlsx/rtf/csv/epub/odt/ods/odp` | 必填 |
 | `effort` | `flash/medium/high/xhigh` | 必填 |
 | `parse_mode` | `txt/ocr` | 必填 |
 | `mineru_version` | 非空字符串 | 必填 |
 
-当 `file_suffix="pdf"` 时，每个页面顶层 block 必须具有有效 bbox。Office
-顶层 block 可以没有 bbox。PDF 标题分级直接读取 `is_full_document`；缺少该字段的
+当 `file_suffix="pdf"` 时，每个页面顶层 block 必须具有有效 bbox。EPUB、CSV 与 Office
+顶层 block 可以没有 bbox。EPUB 的 `page_idx` 与 OPF spine 项一一对应，不会前插合成 `IndexBlock` 目录页。PDF 标题分级直接读取 `is_full_document`；缺少该字段的
 旧 Middle JSON 无法通过严格解析，需要从 ModelJson 重新生成。
 
 ## `PageInfo`
@@ -116,7 +116,8 @@ text
 | `RefTextBlock` | `str` | `continues_prev`；不允许 `anchor` |
 | `DocTitleBlock` | `str` | `anchor`、必填 `level=1` |
 | `ParagraphTitleBlock` | `str` | `anchor`、必填 `level>=2` |
-| `PageAuxTextBlock` | `str` | 共享页眉、页脚、页码、边栏和页脚注释结构 |
+| `PageAuxTextBlock` | `str` | 共享页眉、页脚、页码和边栏结构；不允许 `anchor` |
+| `PageFootnoteBlock` | `str` | 独立页面脚注结构；可带 document-wide `anchor`，DEFAULT 也参与输出 |
 | `TableBlock` | 有序视觉子块列表 | `continues_prev`、`cell_merge` |
 | `TableBodyBlock` | `str` | 图片字段 |
 | `CodeBlock` | 有序视觉子块列表 | `sub_type`、`guess_lang` |
@@ -129,6 +130,9 @@ text
 两者都必须具有合法的临时 `lines`，该字段只参与续段计算，不进入严格 Middle JSON。
 `ref_text` 复用正文的终止符和几何规则，但不要求续段首行或首列顶起始边界，
 也不因续段以数字或大写字符开头而拒绝合并。
+
+`page_footnote.anchor` 是可选的 document-wide 跳转目标。`PageAuxTextBlock`
+discriminator 显式提供 anchor 会被严格校验拒绝。
 
 `CodeBlock(sub_type="code")` 必须有非空 `guess_lang`；
 `sub_type="algorithm"` 禁止 `guess_lang`。`continues_prev` 只允许出现在页面

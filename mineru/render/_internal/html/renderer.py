@@ -49,6 +49,7 @@ from ....types import (
     ListBlock,
     MiddleJson,
     PageAuxTextBlock,
+    PageFootnoteBlock,
     ParagraphTitleBlock,
     RefTextBlock,
     TableAnnotationBlock,
@@ -110,7 +111,7 @@ class _HtmlRenderer:
         self.asset_base_url = asset_base_url
         self.standalone = standalone
         self.document_title = document_title
-        self.anchor_targets = _collect_title_anchor_ids(middle_json)
+        self.anchor_targets = _collect_document_anchor_ids(middle_json)
         self.emitted_anchors: set[str] = set()
         self.has_math = False
         self.has_prism = False
@@ -192,11 +193,22 @@ class _HtmlRenderer:
             return f'<p class="mineru-ref-text">{rendered.html}</p>' if rendered.html else ""
         if isinstance(block, (DocTitleBlock, ParagraphTitleBlock)):
             return self._render_title(block)
+        if isinstance(block, PageFootnoteBlock):
+            rendered = render_inline_content_html(block.content)
+            self._observe_inline(rendered)
+            if not rendered.html:
+                return ""
+            attrs = ['class="mineru-page-footnote"', 'data-block-type="page_footnote"']
+            self._append_anchor_attribute(attrs, block.anchor, block_type=str(block.type))
+            return f"<div {' '.join(attrs)}>{rendered.html}</div>"
         if isinstance(block, PageAuxTextBlock):
             rendered = render_inline_content_html(block.content)
             self._observe_inline(rendered)
+            if not rendered.html:
+                return ""
             class_name = html.escape(str(block.type).replace("_", "-"), quote=True)
-            return f'<div class="mineru-page-aux mineru-page-aux--{class_name}">{rendered.html}</div>' if rendered.html else ""
+            attrs = [f'class="mineru-page-aux mineru-page-aux--{class_name}"']
+            return f"<div {' '.join(attrs)}>{rendered.html}</div>"
         if isinstance(block, EquationBlock):
             return self._render_equation(block)
         if isinstance(block, ListBlock):
@@ -221,16 +233,27 @@ class _HtmlRenderer:
             return ""
         level = min(max(block.level, 1), 6)
         attrs = [f'class="mineru-heading mineru-heading--{level}"', f'data-heading-level="{block.level}"']
-        anchor = _anchor_key(block.anchor)
-        if anchor:
-            if anchor not in self.emitted_anchors:
-                anchor_id = self.anchor_targets.get(anchor)
-                if anchor_id:
-                    attrs.append(f'id="{html.escape(anchor_id, quote=True)}"')
-                self.emitted_anchors.add(anchor)
-            else:
-                logger.warning("Duplicate HTML title anchor omitted: {!r}", anchor)
+        self._append_anchor_attribute(attrs, block.anchor, block_type=str(block.type))
         return f"<h{level} {' '.join(attrs)}>{rendered.html}</h{level}>"
+
+    def _append_anchor_attribute(
+        self,
+        attrs: list[str],
+        anchor: str | None,
+        *,
+        block_type: str,
+    ) -> None:
+        """给标题或页面脚注追加唯一 HTML id，重复目标只保留首次输出。"""
+        normalized = _anchor_key(anchor)
+        if not normalized:
+            return
+        if normalized in self.emitted_anchors:
+            logger.warning("Duplicate HTML {} anchor omitted: {!r}", block_type, normalized)
+            return
+        anchor_id = self.anchor_targets.get(normalized)
+        if anchor_id:
+            attrs.append(f'id="{html.escape(anchor_id, quote=True)}"')
+        self.emitted_anchors.add(normalized)
 
     def _render_equation(self, block: EquationBlock) -> str:
         """优先输出行间公式，空 LaTeX 时回退到安全图片来源。"""
@@ -713,17 +736,20 @@ def _serialize_index_items(items: list[dict[str, object]]) -> str:
     return "".join(rendered)
 
 
-def _collect_title_anchor_ids(middle_json: MiddleJson) -> dict[str, str]:
-    """为正文首次出现的非空 anchor 分配无空白且 document-wide 唯一的 HTML id。"""
+def _collect_document_anchor_ids(middle_json: MiddleJson) -> dict[str, str]:
+    """为标题和页面脚注的首次非空 anchor 分配 document-wide 唯一 HTML id。"""
     anchor_ids: dict[str, str] = {}
     used_ids: set[str] = set()
     for page in middle_json.pages:
         for block in page.blocks:
-            if not isinstance(block, TitleBlockBase):
+            if isinstance(block, TitleBlockBase):
+                visible_content = inline_plain_text(parse_inline_content(block.content)).strip()
+            elif isinstance(block, PageFootnoteBlock):
+                visible_content = inline_plain_text(parse_inline_content(block.content)).strip()
+            else:
                 continue
             anchor = _anchor_key(block.anchor)
-            visible_title = inline_plain_text(parse_inline_content(block.content)).strip()
-            if not anchor or not visible_title or anchor in anchor_ids:
+            if not anchor or not visible_content or anchor in anchor_ids:
                 continue
             base_id = _html_anchor_base(anchor)
             candidate = base_id

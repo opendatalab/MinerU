@@ -7,11 +7,11 @@ import struct
 
 from bs4 import BeautifulSoup
 import pytest
-from pydantic import ValidationError
 
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
 from mineru.model.flash import PptModel
-from mineru.model.flash.office.legacy import LegacyOfficeEncryptedError, LegacyOfficeResourceLimitError
+from mineru.model.flash._shared.hyperlink import sanitize_hyperlink_target
+from mineru.model.flash.office.errors import LegacyOfficeEncryptedError, LegacyOfficeResourceLimitError
 from mineru.model.flash.office.ppt import parser as ppt_parser
 from mineru.model.flash.office.ppt.models import PptPresentation, PptSlide
 from mineru.model.flash.office.ppt.ppt_converter import PptConverter
@@ -113,23 +113,6 @@ def test_ppt_encryption_marker_is_rejected_before_record_parsing() -> None:
         ppt_parser.parse_ppt_document(b"not parsed", current_user=bytes(current_user))
 
 
-@pytest.mark.parametrize("file_suffix", ["rtf"])
-def test_unimplemented_legacy_suffixes_remain_rejected(file_suffix: str) -> None:
-    """验证本阶段没有提前开放 DOC 严格类型或运行时入口。"""
-
-    with pytest.raises(ValueError, match="Unsupported file suffix"):
-        doc_analyze(b"legacy", file_suffix=file_suffix)  # type: ignore[arg-type]
-    with pytest.raises(ValidationError):
-        ModelJson(
-            pages=[],
-            page_index_map=[],
-            file_suffix=file_suffix,  # type: ignore[arg-type]
-            effort="flash",
-            parse_mode="txt",
-            mineru_version="test",
-        )
-
-
 def test_ppt_is_supported_by_public_parser(tmp_path: Path) -> None:
     """验证公共 parser 通过统一 MinerUParser 路由 PPT。"""
 
@@ -145,10 +128,14 @@ def test_ppt_is_supported_by_public_parser(tmp_path: Path) -> None:
 def test_safe_ppt_hyperlink_schemes_are_explicit() -> None:
     """验证外链白名单保留 Web/邮件链接并拒绝本地或脚本目标。"""
 
-    assert ppt_parser._safe_hyperlink_target("https://example.com/a") == "https://example.com/a"
-    assert ppt_parser._safe_hyperlink_target("mailto:user@example.com") == "mailto:user@example.com"
-    assert ppt_parser._safe_hyperlink_target("file:///tmp/a") is None
-    assert ppt_parser._safe_hyperlink_target("javascript:alert(1)") is None
+    assert sanitize_hyperlink_target("https://example.com/a", allowed_schemes=ppt_parser._ALLOWED_LINK_SCHEMES) == (
+        "https://example.com/a"
+    )
+    assert sanitize_hyperlink_target("mailto:user@example.com", allowed_schemes=ppt_parser._ALLOWED_LINK_SCHEMES) == (
+        "mailto:user@example.com"
+    )
+    assert sanitize_hyperlink_target("file:///tmp/a", allowed_schemes=ppt_parser._ALLOWED_LINK_SCHEMES) is None
+    assert sanitize_hyperlink_target("javascript:alert(1)", allowed_schemes=ppt_parser._ALLOWED_LINK_SCHEMES) is None
 
 
 def test_ppt_hyperlink_range_splits_utf16_and_style_boundaries() -> None:

@@ -106,8 +106,13 @@ class Compaction:
         if len(rows) <= 1:
             return 0
 
+        loaded = self._load_batch_payloads(sha256, tier, rows)
+        if loaded is None:
+            return 0
+        pages_by_page_idx, envelope = loaded
+
         # collect all done page numbers
-        all_page_numbers: set[int] = set()
+        all_page_numbers = {page_idx + 1 for page_idx in pages_by_page_idx}
         max_done_at = 0
         for r in rows:
             all_page_numbers |= parse_page_range_set(r["page_range"])
@@ -132,6 +137,17 @@ class Compaction:
         if len(merged_ranges) >= len(rows):
             return 0  # no benefit
 
+        compacted_paths = self._write_compacted_json_files(
+            sha256,
+            tier,
+            merged_ranges,
+            max_done_at,
+            pages_by_page_idx,
+            envelope,
+        )
+        if compacted_paths is None:
+            return 0
+
         # atomic replace
         now = int(time.time() * 1000)
         await self.db.execute(
@@ -149,10 +165,97 @@ class Compaction:
                 (sha256, tier, page_range, PARSE_STATUS_DONE, max_done_at, now, now),
             )
 
-        # compact JSON files (only from done batches, not superseded)
-        await self._compact_json(sha256, tier, merged_ranges, rows, max_done_at)
+        self._delete_obsolete_json_files(sha256, tier, compacted_paths)
+
+        actual_page_count = max(pages_by_page_idx) + 1
+        await self.db.execute(
+            "UPDATE docs SET page_count=?, updated_at=? WHERE sha256=? AND (file_type IS NULL OR file_type<>?)",
+            (actual_page_count, now, sha256, "pdf"),
+        )
 
         return len(rows) - len(merged_ranges)
+
+    def _load_batch_payloads(
+        self,
+        sha256: str,
+        tier: Tier,
+        done_rows: Sequence[ParseBatchRow],
+    ) -> tuple[dict[int, dict[str, Any]], dict[str, Any]] | None:
+        """完整读取 done batch；任一源文件损坏时放弃本轮压缩。"""
+        pages_by_page_idx: dict[int, dict[str, Any]] = {}
+        envelope: dict[str, Any] = {}
+        for row in reversed(done_rows):
+            fpath = parse_batch_json_path(self.data_dir, sha256, tier, row["page_range"], row["done_at"])
+            if not os.path.isfile(fpath):
+                return None
+            try:
+                with open(fpath, encoding="utf-8") as f:
+                    batch_payload = json.load(f)
+                batch_pages = _normalize_batch_pages(batch_payload)
+            except Exception:
+                return None
+            if not batch_pages:
+                return None
+            for page in batch_pages:
+                page_idx = page.get("page_idx")
+                if type(page_idx) is not int or page_idx < 0:
+                    return None
+                pages_by_page_idx[page_idx] = page
+            if not envelope:
+                envelope = {
+                    key: batch_payload[key]
+                    for key in ("is_full_document", "file_suffix", "effort", "parse_mode", "mineru_version")
+                    if key in batch_payload
+                }
+        return (pages_by_page_idx, envelope) if pages_by_page_idx else None
+
+    def _write_compacted_json_files(
+        self,
+        sha256: str,
+        tier: Tier,
+        merged_ranges: Sequence[str],
+        max_done_at: int,
+        pages_by_page_idx: dict[int, dict[str, Any]],
+        envelope: dict[str, Any],
+    ) -> set[str] | None:
+        """先完整写入临时 JSON，再原子提升所有目标文件。"""
+        prepared: list[tuple[str, str]] = []
+        try:
+            for page_range in merged_ranges:
+                page_numbers = parse_page_range_set(page_range)
+                json_pages = [
+                    pages_by_page_idx[page_no - 1] for page_no in sorted(page_numbers) if page_no - 1 in pages_by_page_idx
+                ]
+                if not json_pages:
+                    raise ValueError(f"Compacted page range has no source pages: {page_range}")
+                final_path = parse_batch_json_path(self.data_dir, sha256, tier, page_range, max_done_at)
+                temp_path = f"{final_path}.tmp-{time.time_ns()}"
+                payload: dict[str, Any] = {"schema_version": MIDDLE_JSON_SCHEMA_VERSION, "pages": json_pages}
+                payload.update(envelope)
+                with open(temp_path, "w", encoding="utf-8") as f:
+                    json.dump(payload, f, ensure_ascii=False, indent=4)
+                prepared.append((temp_path, final_path))
+            for temp_path, final_path in prepared:
+                os.replace(temp_path, final_path)
+            return {final_path for _, final_path in prepared}
+        except Exception:
+            for temp_path, _ in prepared:
+                try:
+                    os.unlink(temp_path)
+                except OSError:
+                    pass
+            return None
+
+    def _delete_obsolete_json_files(self, sha256: str, tier: Tier, keep_paths: set[str]) -> None:
+        """仅在新缓存和数据库均就绪后删除已被替代的 JSON。"""
+        tier_dir = os.path.join(self.data_dir, "parsed", sha256[:2], sha256, tier)
+        for fname in os.listdir(tier_dir):
+            path = os.path.join(tier_dir, fname)
+            if fname.endswith(".json") and path not in keep_paths:
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
 
     async def _compact_json(
         self,
@@ -164,57 +267,18 @@ class Compaction:
     ) -> None:
         """Merge per-batch JSON files to match compacted parses rows.
         Only reads files belonging to *done_rows* — ignores superseded files."""
-        tier_dir = os.path.join(self.data_dir, "parsed", sha256[:2], sha256, tier)
-        if not os.path.isdir(tier_dir):
+        loaded = self._load_batch_payloads(sha256, tier, done_rows)
+        if loaded is None:
             return
-
-        # only read files from done batches (exclude superseded)
-        # process oldest first → newest overwrites (done_rows is sorted by done_at DESC)
-        pages_by_page_idx: dict[int, dict] = {}
-        envelope: dict[str, Any] = {}
-        for row in reversed(done_rows):
-            fpath = parse_batch_json_path(self.data_dir, sha256, tier, row["page_range"], row["done_at"])
-            if not os.path.isfile(fpath):
-                continue
-            try:
-                with open(fpath, encoding="utf-8") as f:
-                    batch_payload = json.load(f)
-            except Exception:
-                continue
-            batch_pages = _normalize_batch_pages(batch_payload)
-            for p in batch_pages:
-                pages_by_page_idx[p["page_idx"]] = p
-            # 继承源 batch JSON 的 envelope 元数据（2.0 schema 字段）
-            if not envelope:
-                envelope = {
-                    k: batch_payload[k] for k in ("file_suffix", "effort", "parse_mode", "mineru_version") if k in batch_payload
-                }
-
-        if not pages_by_page_idx:
+        pages_by_page_idx, envelope = loaded
+        compacted_paths = self._write_compacted_json_files(
+            sha256,
+            tier,
+            merged_ranges,
+            max_done_at,
+            pages_by_page_idx,
+            envelope,
+        )
+        if compacted_paths is None:
             return
-
-        # delete old files
-        for fname in os.listdir(tier_dir):
-            if fname.endswith(".json"):
-                try:
-                    os.unlink(os.path.join(tier_dir, fname))
-                except OSError:
-                    pass
-
-        # write one compacted JSON per merged range
-        for page_range in merged_ranges:
-            page_numbers = parse_page_range_set(page_range)
-            json_pages = [
-                pages_by_page_idx[page_no - 1] for page_no in sorted(page_numbers) if page_no - 1 in pages_by_page_idx
-            ]
-            if not json_pages:
-                continue
-            json_path = parse_batch_json_path(self.data_dir, sha256, tier, page_range, max_done_at)
-            try:
-                with open(json_path, "w", encoding="utf-8") as f:
-                    # compacted payload 用 2.0 schema，继承源 batch 的 envelope 元数据
-                    payload: dict[str, Any] = {"schema_version": MIDDLE_JSON_SCHEMA_VERSION, "pages": json_pages}
-                    payload.update(envelope)
-                    json.dump(payload, f, ensure_ascii=False, indent=4)
-            except Exception:
-                pass
+        self._delete_obsolete_json_files(sha256, tier, compacted_paths)

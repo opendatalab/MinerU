@@ -22,8 +22,8 @@ read(locator) = read existing parsed content by stable locator
 设计原则：
 
 - 隐私优先：不显式 `--remote` 就不上传文档。
-- 质量优先：PDF/image 未指定 tier 时使用默认选择策略，不会解析为 `flash`；Office/HTML 未指定 tier 时归一为 `flash`。
-- 文本直读：`.txt`、`.md`、`.markdown`、`.csv`、`.rst` 和 `.tex` 无需解析，应直接读取源文件。
+- 质量优先：PDF/image 未指定 tier 时使用默认选择策略，不会解析为 `flash`；EPUB/Office/HTML/CSV 未指定 tier 时归一为 `flash`。
+- 文本直读：`.txt`、`.md`、`.markdown`、`.rst` 和 `.tex` 无需解析，应直接读取源文件；`.csv` 按本地 flash 结构化解析。
 - Agent-native：默认适合 STDOUT、有限上下文和渐进式阅读。
 - 先入库后输出：解析结果先写入本地文档库，再输出。
 - 去重缓存：相同 SHA256 和实体 tier 可复用 done 缓存；`--force` 跳过 done 缓存，但可复用 active parse，不作废旧缓存。
@@ -49,7 +49,7 @@ mineru parse <file> [flags]
 | Flag | 类型 | 默认 | 说明 |
 |------|------|------|------|
 | `--tier` | `flash` / `basic` / `standard` / `advanced` | 不传 | 解析 tier；省略时由服务端决定；语义见 [解析 Tier](../tiers.md) |
-| `-p, --pages` | range | 不传 | 分页文档的页码范围；`all` 表示全部页 |
+| `-p, --pages` | range | 不传 | 仅 PDF 支持的页码范围；图片及其他非 PDF 输入不支持该参数 |
 | `--after` | cursor | 不传 | 从服务端返回的 cursor 继续读取 |
 | `--limit` | int | `30000` | STDOUT 内容软字符上限 |
 | `--force` | bool | false | 跳过 done 缓存；复用 active parse 或为未覆盖页创建新 parse；不删除或作废旧缓存 |
@@ -74,7 +74,7 @@ mineru parse <file> [flags]
 
 `mineru parse` 未指定 `--tier` 时使用默认选择策略。
 
-PDF/image 的默认选择策略通过当前目标 parse-server 的能力发现，按 [解析 Tier](../tiers.md) 定义的 `standard` -> `advanced` -> `basic` 顺序选择。如果找不到可用质量 tier，返回可解释错误。Office/HTML 归一为 `flash` 语义，详见 [ADR-0024](../decisions/0024-file-type-tier-normalization.md)。文本文件不创建 parse 任务或 Middle JSON，显式请求返回 `parse_not_required`。
+PDF/image 的默认选择策略通过当前目标 parse-server 的能力发现，按 [解析 Tier](../tiers.md) 定义的 `standard` -> `advanced` -> `basic` 顺序选择。如果找不到可用质量 tier，返回可解释错误。EPUB/Office/HTML/CSV 归一为 `flash` 语义，详见 [ADR-0024](../decisions/0024-file-type-tier-normalization.md) 与 [ADR-0028](../decisions/0028-csv-structured-flash-parsing.md)。其它文本文件不创建 parse 任务或 Middle JSON，显式请求返回 `parse_not_required`。
 
 `flash` 只有在用户显式指定 `--tier flash` 时才作为最终解析结果返回。
 
@@ -86,7 +86,7 @@ PDF/image 的默认选择策略通过当前目标 parse-server 的能力发现�
 2. 带 `--remote`：允许上传文档到 config 指定远端或默认 `mineru.net/api`。
 3. 本地能力不足：返回错误和修复建议，不静默上传。
 4. 用户显式选择 `--tier flash`：允许返回 `flash` 结果。
-5. 未指定 tier：PDF/image 使用默认选择策略，不可降级到 `flash`；Office/HTML 归一为 `flash`。
+5. 未指定 tier：PDF/image 使用默认选择策略，不可降级到 `flash`；EPUB/Office/HTML/CSV 归一为 `flash`。
 6. 文本文件不上传也不解析，直接返回 `parse_not_required`，提示调用方读取源文件。
 
 当本地能力不足、默认选择无法解析、远端未显式允许或 parse-server 不支持请求 tier 时，错误码见 [错误码体系](../errors.md)。
@@ -95,7 +95,7 @@ PDF/image 的默认选择策略通过当前目标 parse-server 的能力发现�
 
 默认 STDOUT 输出应适合 Agent context。长文档不一次性输出全文，而是输出有限范围，并通过 marker 指示如何继续。
 
-当前 CLI 不在命令层硬编码默认页码范围；不传 `--pages` 时由 doclib 的内容读取计划决定首次返回范围。用户可以通过 `--pages all` 读取全文，或通过显式页码范围读取任意页段。
+当前 CLI 不在命令层硬编码默认页码范围；PDF 不传 `--pages` 时由 doclib 的内容读取计划决定首次返回范围。图片及其他非 PDF 输入始终整文件解析，显式传入 `--pages` 返回 `page_range_invalid`。
 
 分页文档使用物理页码：
 

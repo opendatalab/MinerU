@@ -1,4 +1,6 @@
 # Copyright (c) Opendatalab. All rights reserved.
+"""Flash Office 转换器复用的调用方二进制流读取能力。"""
+
 from typing import BinaryIO
 
 

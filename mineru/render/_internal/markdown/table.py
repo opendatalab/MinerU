@@ -228,8 +228,9 @@ def _escape_link_url(url: str) -> str:
 
 
 def _escape_cell_text(content: str) -> str:
-    """转义 GFM 单元格中的反斜杠与管道符。"""
-    return content.replace("\\", "\\\\").replace("|", r"\|")
+    """转义 GFM 单元格中的 HTML、反斜杠与管道符，避免源文本注入活动标签。"""
+    escaped_html = content.replace("&", "&amp;").replace("<", "&lt;")
+    return escaped_html.replace("\\", "\\\\").replace("|", r"\|")
 
 
 def _normalize_cell_text(content: str) -> str:

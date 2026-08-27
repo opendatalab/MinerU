@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from ....backend.postprocess.table_merge import merge_table_content
 from ...contracts import RenderMode
 from ....types import (
-    PAGE_AUXILIARY_BLOCK_TYPES,
+    MERGE_TRANSPARENT_BLOCK_TYPES,
     BlockType,
     ContinuableTextBlockBase,
     ListBlock,
@@ -78,7 +78,7 @@ def _find_previous_planned_text(blocks: list[PlannedBlock], current_index: int) 
         previous_index = current_index - 1
         while previous_index >= 0:
             candidate = blocks[previous_index]
-            if candidate.block.type in PAGE_AUXILIARY_BLOCK_TYPES:
+            if candidate.block.type in MERGE_TRANSPARENT_BLOCK_TYPES:
                 previous_index -= 1
                 continue
             if not isinstance(candidate.block, RefTextBlock):
@@ -96,7 +96,7 @@ def _find_previous_planned_text(blocks: list[PlannedBlock], current_index: int) 
 
 
 def _merge_continued_list_blocks(blocks: list[PlannedBlock], mode: RenderMode) -> None:
-    """把续接列表吸收到子类型一致的前序列表，参考文献可跨过页面辅助块。"""
+    """把续接列表吸收到子类型一致的前序列表，参考文献可跨过合并透明块。"""
     for current_index, current in enumerate(blocks):
         if current.removed or not isinstance(current.block, ListBlock) or current.block.continues_prev is not True:
             continue
@@ -116,7 +116,7 @@ def _find_previous_planned_list(
     blocks: list[PlannedBlock],
     current_index: int,
 ) -> PlannedBlock | None:
-    """查找前序有效列表，仅允许参考文献跳过页面辅助块。"""
+    """查找前序有效列表，仅允许参考文献跳过合并透明块。"""
     current = blocks[current_index]
     if not isinstance(current.block, ListBlock):
         return None
@@ -124,7 +124,7 @@ def _find_previous_planned_list(
     previous_index = current_index - 1
     while previous_index >= 0:
         candidate = blocks[previous_index]
-        if can_skip_page_auxiliary and candidate.block.type in PAGE_AUXILIARY_BLOCK_TYPES:
+        if can_skip_page_auxiliary and candidate.block.type in MERGE_TRANSPARENT_BLOCK_TYPES:
             previous_index -= 1
             continue
         if not isinstance(candidate.block, ListBlock):

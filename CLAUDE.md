@@ -76,6 +76,23 @@ from mineru.render import RenderMode
 
 ## 编程原则
 
+### 统一文档信息投影
+
+MinerU 文档解析的目标是尽可能保留具有跨格式价值的内容和结构，并通过统一 Middle JSON 稳定导出多种格式；目标不是逐输入格式、逐排版细节地 100% 复刻源文件。
+
+- 优先保留正文、标题、列表层级、表格、图片、公式、链接、注释和脚注等具有语义价值的信息。
+- Middle JSON 是各输入格式的统一语义交集。新增信息应尽可能能被 Markdown 表达，并能稳定导出为 HTML、DOCX 和 Structured Content。
+- Markdown 是主要兼容基线，但不是纯文本上限；Markdown 原生能力不足时，可以复用现有安全 HTML、图片资源和结构化 block。
+- 不为单一输入格式增加只用于还原罕见排版、编号样式或物理分页的私有 block、私有字段或 renderer 特判。
+- 只有同时满足“常见、语义价值高、可进入统一 Middle JSON、可被多个 renderer 稳定消费”的格式私有信息，才应扩展公共契约。
+- Review 时，源格式细节未被 100% 还原不应自动视为缺陷。只有丢失统一契约支持的有价值内容、破坏结构、产生错误语义时才应报告。
+- 禁止通过不断增加格式例外来追求源文件视觉级复刻；优先规范化为确定、可静态分析、跨格式一致的表示。
+
+具体投影约束：
+
+- ODT 忽略 `text:soft-page-break` 和普通 `fo:break-before/after`；只有有效 `master-page-name` 变化形成章节虚拟页。
+- 有序列表仅保证阿拉伯连续序号及单一列表级起始值；不精确还原字母、罗马数字、前后缀、倒序和 `1,5,6` 式逐项跳号，Review 不应再针对这些未支持能力提出检测。
+
 ### 确定性优先
 
 agent 通过静态分析理解代码。避免运行时注册、猴子补丁、`globals()` 等动态模式，使用显式映射。
@@ -156,7 +173,7 @@ pr-5415 重构后，Middle JSON 已收敛为 schema 2.0 的统一结构，不再
 
 ### 1. 统一分析入口
 
-`backend/analyze.py:doc_analyze()` 是 PDF 与 Office 文档的唯一公共入口，通过 `file_suffix` 路由到 `backend/analysis/pdf/pipeline.py:analyze_pdf` 或 `backend/analysis/office.py:analyze_office`，最终经 `backend/postprocess/pages.py:model_list_to_pages()` 产出统一 `pages`。`MinerUParser` 是 `DocumentParser` 的唯一实现，替代旧的 `PdfHybridParser`/`PdfFlashParser`/`DocxParser` 等。
+`backend/analyze.py:doc_analyze()` 是 PDF、EPUB、CSV 与 Office 文档的唯一公共入口，通过 `file_suffix` 路由到 `backend/analysis/pdf/pipeline.py:analyze_pdf`、`backend/analysis/epub.py:analyze_epub`、`backend/analysis/csv.py:analyze_csv` 或 `backend/analysis/office.py:analyze_office`，最终经 `backend/postprocess/pages.py:model_list_to_pages()` 产出统一 `pages`。`MinerUParser` 是 `DocumentParser` 的唯一实现，替代旧的 `PdfHybridParser`/`PdfFlashParser`/`DocxParser` 等。
 
 ### 2. MiddleJson 顶层字段（schema 2.0）
 
@@ -166,7 +183,7 @@ pr-5415 重构后，Middle JSON 已收敛为 schema 2.0 的统一结构，不再
 |------|------|------|
 | `pages` | `list[PageInfo]` | 严格按 `page_idx` 升序的页面数组 |
 | `is_full_document` | `bool` | 是否整本文档解析（空 `page_index_map` 时为 `True`） |
-| `file_suffix` | `Literal["pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx"]` | 输入文件类型 |
+| `file_suffix` | `Literal["pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx", "rtf", "csv", "epub", "odt", "ods", "odp"]` | 输入文件类型 |
 | `effort` | `Literal["flash", "medium", "high", "xhigh"]` | 分析强度 |
 | `parse_mode` | `Literal["txt", "ocr"]` | 解析模式 |
 | `mineru_version` | `str` | MinerU 版本号 |
@@ -175,7 +192,7 @@ pr-5415 重构后，Middle JSON 已收敛为 schema 2.0 的统一结构，不再
 
 ### 2.1 ModelJson 严格容器
 
-`doc_analyze` 返回 `tuple[MiddleJson, ModelJson]`。`ModelJson` 持有 raw model-list（`pages: list[list[dict]]`）+ `page_index_map: list[int]`（空列表表示整本文档），并提供 `is_full_document`/`resolved_page_indices` 派生属性。`backend/postprocess/document.py:model_json_to_middle_json()` 是 ModelJson → MiddleJson 的唯一编排入口，内部调用 `model_json_to_pages()` + `apply_llm_aided_postprocess()`。
+`doc_analyze` 返回 `tuple[MiddleJson, ModelJson]`。`ModelJson` 持有 raw model-list（`pages: list[list[dict]]`）+ `page_index_map: list[int]`（空列表表示整本文档），并提供 `is_full_document`/`resolved_page_indices` 派生属性。只有 PDF Analyze 接受非空 `page_index_map`；其它 Flash 格式只支持整本解析。EPUB 逻辑页严格对应 OPF spine 顺序，不再前插合成目录页；位于 spine 中的 navigation XHTML 作为普通内容页保留，spine 外的 nav/NCX 不生成页面。`backend/postprocess/document.py:model_json_to_middle_json()` 是 ModelJson → MiddleJson 的唯一编排入口，内部调用 `model_json_to_pages()` + `apply_llm_aided_postprocess()`。
 
 ### 3. PageInfo 结构
 
@@ -204,7 +221,7 @@ pr-5415 重构后，Middle JSON 已收敛为 schema 2.0 的统一结构，不再
 ### 5.1 目录职责
 
 - `model/runtime/` 负责设备、显存、ONNX 与 Hybrid 本地模型生命周期；模型仓库和下载分别位于 `model/registry.py`、`model/download.py`。
-- `model/flash/pdf/` 负责 PDFDocument、PDFium、原生文本、样式和表格恢复；`model/flash/office/` 负责六类 Office 格式。
+- `model/flash/pdf/` 负责 PDFDocument、PDFium、原生文本、样式和表格恢复；`model/flash/epub/` 负责 OCF、OPF、spine 与 XHTML/SVG；`model/flash/csv.py` 负责分隔符文本解析；`model/flash/office/` 负责十类 Office/RTF/ODF 格式。
 - `utils/` 只保留 geometry、image、image payload、language/text、platform 和 stdio 等叶子能力；活动代码不得把业务实现重新放入 utils。
 - 稳定依赖方向为 `utils/types → model → backend → render → parser/kit/doclib`，禁止反向引用。
 

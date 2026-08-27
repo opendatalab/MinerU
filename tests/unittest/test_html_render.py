@@ -22,6 +22,7 @@ from mineru.types import (
     MiddleJson,
     PageAuxTextBlock,
     PageBlock,
+    PageFootnoteBlock,
     PageInfo,
     ParagraphTitleBlock,
     RefTextBlock,
@@ -157,6 +158,37 @@ def test_default_and_full_modes_preserve_their_page_contracts() -> None:
     assert len(full.select(".mineru-page-break")) == 2
     assert [item.get_text() for item in full.select(".mineru-text")] == ["inter-", "national"]
     assert "HEADER" in full.get_text() and "FOOTER" in full.get_text()
+
+
+def test_default_and_full_html_link_to_visible_page_footnote_anchor() -> None:
+    """验证默认与完整 HTML 都输出页面脚注目标及弱化样式类。"""
+    middle = _middle(
+        _page(
+            0,
+            TextBlock(
+                type="text",
+                index=0,
+                content="See <hyperlink>[1]<url>#note-one</url></hyperlink>.",
+            ),
+            PageFootnoteBlock(
+                type="page_footnote",
+                index=1,
+                content="Footnote body.",
+                anchor="note-one",
+            ),
+        )
+    )
+
+    default = BeautifulSoup(render_html(middle, standalone=False), "html.parser")
+    full = BeautifulSoup(render_html(middle, mode=RenderMode.FULL, standalone=False), "html.parser")
+
+    assert default.select_one('a[href="#note-one"]') is not None
+    for output in (default, full):
+        target = output.select_one("#note-one.mineru-page-footnote")
+        assert target is not None
+        assert target["data-block-type"] == "page_footnote"
+        assert target.get_text() == "Footnote body."
+    assert full.select_one('a[href="#note-one"]') is not None
 
 
 def test_inline_html_escapes_plain_text_and_renders_styles_links_and_math() -> None:

@@ -9,12 +9,12 @@ from typing import Any
 
 import olefile  # type: ignore[reportMissingModuleSource]
 
-from .errors import (
+from ..errors import (
     LegacyOfficeMalformedError,
     LegacyOfficeMissingPartError,
     LegacyOfficeResourceLimitError,
 )
-from .limits import MAX_ENTRY_BYTES, MAX_TOTAL_BYTES
+from ..limits import MAX_ENTRY_BYTES, MAX_TOTAL_BYTES
 
 
 class BoundedOleReader:

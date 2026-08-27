@@ -9,8 +9,9 @@ import re
 
 from loguru import logger
 
+from ..legacy.binary import bounded_slice, get_u16
 from .models import DocCharStyle
-from .records import DocBudget, bounded_slice, get_u16
+from .records import DocBudget
 from .sprm import PapDelta, apply_character_sprms, apply_paragraph_sprms
 
 ISTD_NIL = 0x0FFF
@@ -214,4 +215,3 @@ def parse_stylesheet(
     for style_id in raw_styles:
         resolve(style_id)
     return Stylesheet(memo)
-

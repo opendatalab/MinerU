@@ -1199,7 +1199,21 @@ def test_aio_doc_analyze_matches_sync_signature() -> None:
 def test_doc_analyze_effort_annotation_exposes_only_supported_values() -> None:
     """验证同步和异步 Analyze 门面复用统一的 effort 与文件后缀类型。"""
     expected_efforts = ("flash", "medium", "high", "xhigh")
-    expected_suffixes = ("pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx")
+    expected_suffixes = (
+        "pdf",
+        "doc",
+        "docx",
+        "ppt",
+        "pptx",
+        "xls",
+        "xlsx",
+        "rtf",
+        "csv",
+        "epub",
+        "odt",
+        "ods",
+        "odp",
+    )
     assert get_args(get_type_hints(analyze.doc_analyze)["effort"]) == expected_efforts
     assert get_args(get_type_hints(analyze.aio_doc_analyze)["effort"]) == expected_efforts
     assert get_args(FileSuffix) == expected_suffixes
@@ -1262,7 +1276,7 @@ def test_aio_doc_analyze_propagates_sync_entrypoint_error(
         asyncio.run(analyze.aio_doc_analyze(b"invalid-document"))
 
 
-@pytest.mark.parametrize("file_suffix", ["doc", "docx", "ppt", "pptx", "xls", "xlsx"])
+@pytest.mark.parametrize("file_suffix", ["doc", "docx", "ppt", "pptx", "xls", "xlsx", "rtf", "odt", "ods", "odp"])
 def test_doc_analyze_office_returns_model_json_without_pdf_processing(
     monkeypatch: pytest.MonkeyPatch,
     file_suffix: str,
@@ -1279,7 +1293,7 @@ def test_doc_analyze_office_returns_model_json_without_pdf_processing(
         return source_model_list
 
     selected_model.predict.side_effect = fake_office_predict
-    for suffix in ("doc", "docx", "ppt", "pptx", "xls", "xlsx"):
+    for suffix in ("doc", "docx", "ppt", "pptx", "xls", "xlsx", "rtf", "odt", "ods", "odp"):
         model = selected_model if suffix == file_suffix else MagicMock()
         model_factories[suffix] = MagicMock(return_value=model)
 
@@ -1352,7 +1366,8 @@ def test_doc_analyze_rejects_unsupported_suffix_before_resource_initialization(
     """验证非法后缀会在创建 PDF 文档或 Office 模型前直接报错。"""
     pdf_document = MagicMock()
     model_factories = {
-        suffix: MagicMock() for suffix in ("doc", "docx", "ppt", "pptx", "xls", "xlsx")
+        suffix: MagicMock()
+        for suffix in ("doc", "docx", "ppt", "pptx", "xls", "xlsx", "rtf", "odt", "ods", "odp")
     }
     monkeypatch.setattr(pipeline, "PDFDocument", pdf_document)
     monkeypatch.setattr(office, "_OFFICE_MODEL_MAP", model_factories)
@@ -1370,7 +1385,8 @@ def test_doc_analyze_rejects_low_before_office_initialization(
 ) -> None:
     """验证已移除的 Low effort 在创建 Office 模型前直接报错。"""
     model_factories = {
-        suffix: MagicMock() for suffix in ("doc", "docx", "ppt", "pptx", "xls", "xlsx")
+        suffix: MagicMock()
+        for suffix in ("doc", "docx", "ppt", "pptx", "xls", "xlsx", "rtf", "odt", "ods", "odp")
     }
     monkeypatch.setattr(office, "_OFFICE_MODEL_MAP", model_factories)
 

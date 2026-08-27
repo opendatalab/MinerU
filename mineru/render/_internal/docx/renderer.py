@@ -84,6 +84,7 @@ from ....types import (
     ListBlock,
     MiddleJson,
     PageAuxTextBlock,
+    PageFootnoteBlock,
     ParagraphTitleBlock,
     RefTextBlock,
     TableAnnotationBlock,
@@ -118,7 +119,7 @@ class _DocxRenderer:
         mode: RenderMode,
         asset_resolver: AssetResolver | None,
     ) -> None:
-        """初始化 renderer，并预注册全部标题 anchor。"""
+        """初始化 renderer，并预注册标题与默认可见页面脚注 anchor。"""
         self.middle_json = middle_json
         self.mode = mode
         self.asset_resolver = asset_resolver
@@ -159,6 +160,11 @@ class _DocxRenderer:
             return
         if isinstance(block, (DocTitleBlock, ParagraphTitleBlock)):
             self._render_title(block, context)
+            return
+        if isinstance(block, PageFootnoteBlock):
+            paragraph = self.document.add_paragraph(style=FOOTNOTE_STYLE)
+            append_inline_content(paragraph, block.content, context=context)
+            self.bookmarks.attach(paragraph, block.anchor)
             return
         if isinstance(block, PageAuxTextBlock):
             paragraph = self.document.add_paragraph(style=AUXILIARY_STYLE)
@@ -761,10 +767,12 @@ def render_docx(
 
 
 def _iter_document_anchors(middle_json: MiddleJson) -> Iterable[str]:
-    """按文档顺序遍历实际会写入 bookmark 的正文标题 anchor。"""
+    """遍历标题和默认可见页面脚注实际会写入的 bookmark anchor。"""
     for page in middle_json.pages:
         for block in page.blocks:
             if isinstance(block, TitleBlockBase) and block.anchor:
+                yield block.anchor
+            elif isinstance(block, PageFootnoteBlock) and block.anchor:
                 yield block.anchor
 
 

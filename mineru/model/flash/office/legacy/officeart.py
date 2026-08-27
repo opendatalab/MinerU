@@ -11,8 +11,9 @@ import zlib
 
 from loguru import logger
 
-from .errors import LegacyOfficeResourceLimitError
-from .limits import (
+from ..image import ensure_bmp_header
+from ..errors import LegacyOfficeResourceLimitError
+from ..limits import (
     MAX_ASSET_TOTAL_BYTES,
     MAX_ENTRY_BYTES,
     MAX_PICTURE_RECORDS,
@@ -210,24 +211,6 @@ def _bitmap_payload(body: bytes, instance: int) -> bytes | None:
     return body[start:] if start < len(body) else None
 
 
-def _dib_to_bmp(data: bytes) -> bytes:
-    """为裸 DIB 补齐 BMP 文件头，无法推断时仍保留原始载荷。"""
-
-    if data.startswith(b"BM") or len(data) < 4:
-        return data
-    header_size = int(struct.unpack_from("<I", data, 0)[0])
-    if header_size < 12 or header_size > len(data):
-        return data
-    palette_bytes = 0
-    if header_size >= 40 and len(data) >= 36:
-        bit_count = int(struct.unpack_from("<H", data, 14)[0])
-        colors_used = int(struct.unpack_from("<I", data, 32)[0])
-        colors = colors_used or ((1 << bit_count) if bit_count <= 8 else 0)
-        palette_bytes = colors * 4
-    pixel_offset = min(14 + header_size + palette_bytes, 14 + len(data))
-    return b"BM" + struct.pack("<IHHI", 14 + len(data), 0, 0, pixel_offset) + data
-
-
 def decode_blip(record: OfficeArtRecord) -> OfficeImagePayload | None:
     """解码常见位图和 EMF/WMF BLIP，并限制矢量解压输出。"""
 
@@ -245,7 +228,7 @@ def decode_blip(record: OfficeArtRecord) -> OfficeImagePayload | None:
             return OfficeImagePayload(data=data, extension="png", content_type="image/png")
         if record.record_type == 0xF029:
             return OfficeImagePayload(data=data, extension="tiff", content_type="image/tiff")
-        return OfficeImagePayload(data=_dib_to_bmp(data), extension="bmp", content_type="image/bmp")
+        return OfficeImagePayload(data=ensure_bmp_header(data), extension="bmp", content_type="image/bmp")
 
     if record.record_type not in {0xF01A, 0xF01B}:
         return None

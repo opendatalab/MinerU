@@ -102,8 +102,8 @@ watch 的目标是发现文件、建立基础索引和支持后续搜索，不�
 | 场景 | 默认 tier |
 |------|-----------|
 | watch 自动发现 | `flash` |
-| parsing-rule 明确指定 | PDF/image 使用 rule 中的 tier；Office/HTML 归一为 `flash`；text 只入库和索引 |
-| parsing-rule 未指定 tier | PDF/image 按 `standard` -> `advanced` -> `basic` -> `flash`；Office/HTML 归一为 `flash`；text 只入库和索引 |
+| parsing-rule 明确指定 | PDF/image 使用 rule 中的 tier；EPUB/Office/HTML/CSV 归一为 `flash`；其它 text 只入库和索引 |
+| parsing-rule 未指定 tier | PDF/image 按 `standard` -> `advanced` -> `basic` -> `flash`；EPUB/Office/HTML/CSV 归一为 `flash`；其它 text 只入库和索引 |
 
 ### 5.3 步骤
 
@@ -280,7 +280,7 @@ client.parse("report.pdf")
 
 ### 6.2 默认目标
 
-主动读取 PDF/image 的目标是尽可能准确地理解文档。未指定 tier 时，使用默认选择策略，并解析到可用的非 `flash` 质量 tier。Office/HTML 没有质量 tier，未指定 tier 时归一为 `flash`。text 应直接读取，不进入解析流程。
+主动读取 PDF/image 的目标是尽可能准确地理解文档。未指定 tier 时，使用默认选择策略，并解析到可用的非 `flash` 质量 tier。EPUB/Office/HTML/CSV 没有质量 tier，未指定 tier 时归一为 `flash`。其它 text 应直接读取，不进入解析流程。
 
 ### 6.3 步骤
 
@@ -289,7 +289,7 @@ client.parse("report.pdf")
 3. 如果文件尚未入库，先同步执行 ingest，得到 `sha256`。
 4. 确定页码范围、输出格式、等待策略和隐私偏好。
 5. 如果用户未指定 tier，使用默认选择策略。
-6. PDF/image 默认选择策略通过当前可用 parse-server 能力发现，按 `standard` -> `advanced` -> `basic` 选择；Office/HTML 归一为 `flash`；text 直接读取。
+6. PDF/image 默认选择策略通过当前可用 parse-server 能力发现，按 `standard` -> `advanced` -> `basic` 选择；EPUB/Office/HTML/CSV 归一为 `flash`；其它 text 直接读取。
 7. 将任务和缓存键落到实际使用的实体 tier。
 8. 查询 `(sha256, tier, page_range)` 是否已有可复用结果。
 9. 缓存命中则直接 render 并返回。
@@ -306,7 +306,7 @@ client.parse("report.pdf")
 
 | 请求 | 实际行为 |
 |------|----------|
-| 未指定 tier | PDF/image 按 `standard` -> `advanced` -> `basic` 选择可用的非 `flash` tier；Office/HTML 归一为 `flash`；text 直接读取 |
+| 未指定 tier | PDF/image 按 `standard` -> `advanced` -> `basic` 选择可用的非 `flash` tier；EPUB/Office/HTML/CSV 归一为 `flash`；其它 text 直接读取 |
 | `tier=flash` | 显式使用本地 `flash` backend |
 | `tier=basic` | 使用本地或自部署 parse-server 的 `basic` 能力 |
 | `tier=standard` | 使用本地 `standard` 或 `mineru.net/api` 的 `standard` 能力 |
@@ -361,7 +361,7 @@ watch -> flash index -> search result -> Agent chooses document -> mineru parse
 3. search result 返回完整 file aliases、sha256、snippet 和可空的索引来源 tier；text 源内容的 tier 为 `null`。
 4. Agent 选择具体文档。
 5. Agent 发起主动 parse 请求。
-6. PDF/image 请求未指定 tier 时使用默认选择策略；Office/HTML 按 `flash` 语义处理；text 不发起 parse 请求。
+6. PDF/image 请求未指定 tier 时使用默认选择策略；EPUB/Office/HTML/CSV 按 `flash` 语义处理；其它 text 不发起 parse 请求。
 7. doclib 检查是否已有可用质量 tier 缓存。
 8. 如果没有，则创建高优先级 parse 任务。
 9. 解析完成后返回可阅读输出，并写入更高质量索引。
@@ -398,7 +398,7 @@ marker 不应依赖自然语言提示。具体 marker 格式可在 CLI 或 Agent
 
 1. 客户端创建 upload 或提供已有 `file_id`。
 2. 客户端创建 parse job。
-3. 请求可以携带 `tier`；省略或传 JSON `null` 时，PDF/image 使用默认选择策略，Office/HTML 按批量规则归一为 `flash`；text 不作为解析输入。
+3. 请求可以携带 `tier`；省略或传 JSON `null` 时，PDF/image 使用默认选择策略，EPUB/Office/HTML/CSV 按批量规则归一为 `flash`；其它 text 不作为解析输入。
 4. API service 做鉴权、配额和输入校验。
 5. 调度到可用解析能力。
 6. 解析服务生成 Middle JSON 和请求的输出格式。
@@ -521,7 +521,7 @@ PDF 和 image block 图片通常在读取时从源页面按 bbox 裁剪，不写
 (sha256, tier)
 ```
 
-页码范围由 `parses.page_range` 和对应 JSON 文件共同表达。请求某个页码范围时，doclib 会:
+页码范围由 `parses.page_range` 和对应 JSON 文件共同表达。只有 PDF 使用增量页范围缓存；图片及其他非 PDF 输入仍用实际逻辑页范围命名产物，但整个文件始终对应一个原子 batch。请求 PDF 页码范围时，doclib 会:
 
 1. 查询同一 `sha256 + tier` 下已完成批次。
 2. 忽略已经 invalidate 的批次。
@@ -530,7 +530,7 @@ PDF 和 image block 图片通常在读取时从源页面按 bbox 裁剪，不写
 5. 对未覆盖的页创建新的 parse 任务。
 6. 如果页码已经被 pending / parsing 批次覆盖，则提升优先级，而不是重复创建任务。
 
-这意味着同一个文档可以多轮解析不同页，最终由多个 JSON 批次共同覆盖用户需要的页码集合。
+这意味着同一个 PDF 可以多轮解析不同页，最终由多个 JSON 批次共同覆盖用户需要的页码集合。非 PDF 的历史 partial batch 不参与缺页差集计算；缓存不完整时重新排一个整文件任务。
 
 `--force` 会跳过第 4 步的 done 缓存命中判断，但仍可复用已经覆盖请求页码的 active parse。它不会删除或作废旧 done 批次。若 force 关联的 wait parse 失败，旧批次仍可继续用于读取和搜索，但本次 force 请求应显示为失败。
 
@@ -543,10 +543,11 @@ compaction 负责:
 1. 扫描同一 `sha256 + tier` 下多个有效 done 批次。
 2. 合并相邻或重叠的页码范围。
 3. 读取旧批次 JSON。
-4. 按 `page_idx` 收集页面内容；如果同一页出现多次，`done_at` 较新的有效批次覆盖较旧批次。
-5. 删除旧 JSON 文件。
-6. 为合并后的页码范围写出新的 JSON 文件。
+4. 用 JSON 中的实际 `page_idx` 扩充历史记录不足的范围，完整写入新缓存后再删除旧文件。
+5. 按 `page_idx` 收集页面内容；如果同一页出现多次，`done_at` 较新的有效批次覆盖较旧批次。
+6. 为合并后的页码范围预写并原子提升新的 JSON 文件。
 7. 用较少的 done parse row 替代旧 row。
+8. 删除未被新 row 引用的旧 JSON 文件。
 
 已 invalidate 的批次不参与 compaction 的页面选择；其 JSON 文件可以由 cleanup 或 compaction 的清理阶段删除。
 

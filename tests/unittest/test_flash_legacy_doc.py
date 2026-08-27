@@ -11,12 +11,12 @@ import pytest
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
 from mineru.backend.postprocess.lists import fix_office_list_blocks
 from mineru.model.flash import DocModel
-from mineru.model.flash.office.doc.fields import sanitize_hyperlink_target
+from mineru.model.flash._shared.hyperlink import OFFICE_EXTERNAL_HYPERLINK_SCHEMES, sanitize_hyperlink_target
 from mineru.model.flash.office.doc.models import DocCharStyle, DocTableCell
 from mineru.model.flash.office.doc.parser import _RawTableRow, _materialize_table_rows
 from mineru.model.flash.office.doc.records import DocBudget
 from mineru.model.flash.office.doc.sprm import apply_character_sprms
-from mineru.model.flash.office.legacy import (
+from mineru.model.flash.office.errors import (
     LegacyOfficeEncryptedError,
     LegacyOfficeMalformedError,
     LegacyOfficeMissingPartError,
@@ -126,7 +126,15 @@ def test_doc_hyperlink_field_keeps_safe_target_and_drops_dangerous_target() -> N
 def test_doc_hyperlink_security_policy(target: str, expected: str | None) -> None:
     """验证 DOC 链接白名单拒绝本地和可执行目标。"""
 
-    assert sanitize_hyperlink_target(target) == expected
+    assert (
+        sanitize_hyperlink_target(
+            target,
+            allowed_schemes=OFFICE_EXTERNAL_HYPERLINK_SCHEMES,
+            allow_relative=True,
+            allow_fragment=True,
+        )
+        == expected
+    )
 
 
 def test_doc_character_sprms_preserve_visible_styles_and_hide_revisions() -> None:

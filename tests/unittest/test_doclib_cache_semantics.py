@@ -69,7 +69,6 @@ from mineru.parser.tier import resolve_tier_and_backend
 from mineru.parser.api_client import _APITransportError, _V1APIError
 from mineru.parser.base import ParseResult
 from mineru.parser import MIDDLE_JSON_SCHEMA_VERSION
-from mineru.parser.base import _LEGACY_SCHEMA_VERSION
 from mineru.types import (
     BlockBase,
     BlockType,
@@ -149,6 +148,23 @@ class _FakeDB:
                     row["locked_at"] = None
                     row["updated_at"] = updated_at
                     return _Cursor(1)
+        if sql.startswith("UPDATE parses SET status=?, page_range=?, done_at=?"):
+            status, page_range, done_at, via, updated_at, parse_id = params
+            for row in self.parses:
+                if row["id"] == parse_id:
+                    row["status"] = status
+                    row["page_range"] = page_range
+                    row["done_at"] = done_at
+                    row["via"] = via
+                    row["locked_at"] = None
+                    row["updated_at"] = updated_at
+                    return _Cursor(1)
+        if sql.startswith("UPDATE docs SET page_count=?"):
+            page_count, updated_at, sha256 = params
+            if self.doc_row and self.doc_row["sha256"] == sha256:
+                self.doc_row["page_count"] = page_count
+                self.doc_row["updated_at"] = updated_at
+                return _Cursor(1)
         return _Cursor(0)
 
     async def execute_insert(self, sql: str, params: tuple[Any, ...]) -> int:
@@ -260,12 +276,14 @@ def _write_batch(
     json_pages: list[dict],
     *,
     file_suffix: str = "pdf",
+    is_full_document: bool = True,
 ) -> None:
     path = Path(parse_batch_json_path(str(data_dir), sha256, tier, page_range, done_at))
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
         "schema_version": MIDDLE_JSON_SCHEMA_VERSION,
         "pages": json_pages,
+        "is_full_document": is_full_document,
         "file_suffix": file_suffix,
         "effort": "medium",
         "parse_mode": "txt",
@@ -1221,9 +1239,98 @@ def test_compaction_uses_configured_data_dir(tmp_path: Path) -> None:
     compacted_path = Path(parse_batch_json_path(str(tmp_path), sha256, tier, "1~2", 2000))
     compacted = json.loads(compacted_path.read_text(encoding="utf-8"))
 
-    assert compacted["schema_version"] == _LEGACY_SCHEMA_VERSION
+    assert compacted["schema_version"] == MIDDLE_JSON_SCHEMA_VERSION
+    assert compacted["is_full_document"] is True
     assert compacted["pages"] == [older_page, newer_duplicate]
     assert sorted(path.name for path in compacted_path.parent.glob("*.json")) == ["1~2_2000.json"]
+
+
+def test_compaction_repairs_underreported_full_document_ranges(tmp_path: Path) -> None:
+    """验证历史整本 JSON 超出 recorded range 时按实际 page_idx 修复且不丢页。"""
+
+    async def _run() -> None:
+        """创建真实缓存和数据库行并执行一次文档级压缩。"""
+        sha256 = "d" * 64
+        tier = "flash"
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        await db.execute(
+            "INSERT INTO docs (sha256, short_id, size_bytes, file_type, page_count, first_seen_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (sha256, "ddddddd", 1, "epub", 10, 1, 1),
+        )
+        for done_at in (1000, 2000):
+            await db.execute(
+                "INSERT INTO parses (sha256, tier, page_range, status, done_at, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (sha256, tier, "1~10", "done", done_at, done_at, done_at),
+            )
+            _write_batch(
+                tmp_path,
+                sha256,
+                tier,
+                "1~10",
+                done_at,
+                [{"page_idx": page_idx, "blocks": []} for page_idx in range(12)],
+                file_suffix="epub",
+            )
+
+        compaction = Compaction(db=db, interval_sec=600, data_dir=str(tmp_path))
+        assert await compaction._compact_doc_tier(sha256, tier) == 1
+
+        rows = await db.fetchall("SELECT page_range, done_at FROM parses WHERE sha256=? AND tier=?", (sha256, tier))
+        doc = await db.fetchone("SELECT page_count FROM docs WHERE sha256=?", (sha256,))
+        compacted_path = Path(parse_batch_json_path(str(tmp_path), sha256, tier, "1~12", 2000))
+        compacted = json.loads(compacted_path.read_text(encoding="utf-8"))
+        assert rows == [{"page_range": "1~12", "done_at": 2000}]
+        assert doc == {"page_count": 12}
+        assert compacted["is_full_document"] is True
+        assert [page["page_idx"] for page in compacted["pages"]] == list(range(12))
+        assert sorted(path.name for path in compacted_path.parent.glob("*.json")) == ["1~12_2000.json"]
+
+    asyncio.run(_run())
+
+
+def test_compaction_keeps_rows_when_any_source_batch_is_missing(tmp_path: Path) -> None:
+    """验证源 batch 不完整时 compaction 不修改数据库或现存 JSON。"""
+
+    async def _run() -> None:
+        """构造一条缺失 JSON 的 done row 并确认压缩被跳过。"""
+        sha256 = "e" * 64
+        tier = "flash"
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        await db.execute(
+            "INSERT INTO docs (sha256, short_id, size_bytes, file_type, page_count, first_seen_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (sha256, "eeeeeee", 1, "epub", 12, 1, 1),
+        )
+        for page_range, done_at in (("1~10", 1000), ("11~12", 2000)):
+            await db.execute(
+                "INSERT INTO parses (sha256, tier, page_range, status, done_at, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (sha256, tier, page_range, "done", done_at, done_at, done_at),
+            )
+        _write_batch(
+            tmp_path,
+            sha256,
+            tier,
+            "1~10",
+            1000,
+            [{"page_idx": page_idx, "blocks": []} for page_idx in range(10)],
+            file_suffix="epub",
+        )
+
+        compaction = Compaction(db=db, interval_sec=600, data_dir=str(tmp_path))
+        assert await compaction._compact_doc_tier(sha256, tier) == 0
+        rows = await db.fetchall(
+            "SELECT page_range, done_at FROM parses WHERE sha256=? AND tier=? ORDER BY done_at",
+            (sha256, tier),
+        )
+        assert rows == [{"page_range": "1~10", "done_at": 1000}, {"page_range": "11~12", "done_at": 2000}]
+        assert Path(parse_batch_json_path(str(tmp_path), sha256, tier, "1~10", 1000)).is_file()
+
+    asyncio.run(_run())
 
 
 def test_invalidate_deletes_fts_when_no_done_batches_remain(tmp_path: Path) -> None:
@@ -1336,6 +1443,8 @@ def test_request_parse_explicit_image_ingests_and_queues_parse(tmp_path: Path, m
         monkeypatch.setattr(parse_svc_module, "extract_metadata", _metadata)
 
         result = await service.request_parse(str(source), tier="flash")
+        with pytest.raises(InvalidRequestError) as range_exc:
+            await service.request_parse(str(source), tier="flash", page_range="1")
         file_row = await db.fetchone("SELECT path, ext, sha256, status FROM files WHERE path=?", (str(source),))
         doc_row = await db.fetchone(
             "SELECT short_id, file_type, page_count, is_image_based FROM docs WHERE sha256=?",
@@ -1345,6 +1454,8 @@ def test_request_parse_explicit_image_ingests_and_queues_parse(tmp_path: Path, m
 
         assert result.status == "pending"
         assert result.tier == "flash"
+        assert range_exc.value.code == "page_range_invalid"
+        assert range_exc.value.param == "page_range"
         assert doc_row is not None
         assert result.short_id == doc_row["short_id"]
         assert file_row is not None
@@ -1357,7 +1468,7 @@ def test_request_parse_explicit_image_ingests_and_queues_parse(tmp_path: Path, m
     asyncio.run(_run())
 
 
-@pytest.mark.parametrize("ext", ["html", "docx", "pptx", "xlsx"])
+@pytest.mark.parametrize("ext", ["html", "csv", "docx", "pptx", "xlsx"])
 @pytest.mark.parametrize("tier", ["standard", "advanced"])
 def test_request_parse_rejects_quality_tiers_for_non_pdf_image_inputs(
     tmp_path: Path,
@@ -1410,6 +1521,7 @@ def test_request_parse_rejects_quality_tiers_for_non_pdf_image_inputs(
     [
         ("pdf", "standard", "remote"),
         ("html", "flash", "local"),
+        ("csv", "flash", "local"),
     ],
 )
 def test_refresh_file_applies_parsing_rule_effective_tier_and_privacy(
@@ -1457,7 +1569,7 @@ def test_refresh_file_applies_parsing_rule_effective_tier_and_privacy(
     asyncio.run(_run())
 
 
-@pytest.mark.parametrize("ext", ["html", "docx", "pptx", "xlsx"])
+@pytest.mark.parametrize("ext", ["html", "csv", "docx", "pptx", "xlsx"])
 def test_request_parse_rejects_remote_for_non_pdf_image_inputs(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1502,7 +1614,7 @@ def test_request_parse_rejects_remote_for_non_pdf_image_inputs(
     asyncio.run(_run())
 
 
-@pytest.mark.parametrize("ext", ["txt", "md", "markdown", "csv", "rst", "tex"])
+@pytest.mark.parametrize("ext", ["txt", "md", "markdown", "rst", "tex"])
 @pytest.mark.parametrize(
     ("tier", "force", "remote"),
     [
@@ -1560,6 +1672,58 @@ def test_request_parse_reports_text_files_do_not_require_parsing(
         assert file_row is not None
         assert await db.fetchall("SELECT id FROM parses WHERE sha256=?", (file_row["sha256"],)) == []
         assert await fts.search("searchable")
+
+    asyncio.run(_run())
+
+
+def test_csv_doclib_parse_creates_flash_cache_and_rendered_fts(
+    tmp_path: Path,
+) -> None:
+    """验证 CSV 不再走文本直读，而是生成 flash 缓存并用表格 Markdown 建立 FTS。"""
+
+    class _NoRulesConfig:
+        """为 CSV Doclib 集成测试关闭解析规则。"""
+
+        async def match_rules(self, path: str, rule_type: str) -> list[dict[str, Any]]:
+            """返回空规则集合，使测试只覆盖默认本地 flash 路径。"""
+            return []
+
+    async def _run() -> None:
+        """完成 CSV 入库、排队、执行、缓存和 FTS 的完整生命周期。"""
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        fts = FTSManager(db)
+        service = ParseService(
+            db=db,
+            fts=fts,
+            config_svc=_NoRulesConfig(),
+            data_dir=str(tmp_path / "data"),
+            parse_lock_timeout_sec=1800,
+        )
+        source = tmp_path / "sample.csv"
+        source.write_text("name,score\nAlice,001\nBob,002\n", encoding="utf-8")
+        try:
+            response = await service.request_parse(str(source))
+            assert response.status == "pending"
+            assert response.tier == "flash"
+            assert response.page_range == "1"
+            assert not await fts.search("Alice")
+
+            task = await service.acquire_task()
+            assert task is not None
+            assert task["tier"] == "flash"
+            assert await service.process_doc(task)
+
+            parse_row = await db.fetchone("SELECT status, tier, page_range FROM parses WHERE id=?", (task["id"],))
+            assert parse_row == {"status": "done", "tier": "flash", "page_range": "1"}
+            assert await fts.search("Alice")
+            cached_files = list((tmp_path / "data" / "parsed").rglob("*.json"))
+            assert len(cached_files) == 1
+            cached_payload = json.loads(cached_files[0].read_text(encoding="utf-8"))
+            assert cached_payload["file_suffix"] == "csv"
+            assert cached_payload["effort"] == "flash"
+        finally:
+            await db.close()
 
     asyncio.run(_run())
 
@@ -1771,6 +1935,84 @@ def test_force_request_reuses_active_and_creates_only_uncovered_parse(tmp_path: 
     assert result.cache_hit is False
     assert db.updated_priorities == [11]
     assert parses[-1]["page_range"] == "1~5,9~10"
+
+
+def test_non_pdf_requests_use_one_full_document_batch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证非 PDF 初始、历史 partial 和 active 路径始终使用一个整本 batch。"""
+
+    class _NoRulesConfig:
+        """关闭解析规则，让测试只观察默认整本调度。"""
+
+        async def match_rules(self, path: str, rule_type: str) -> list[dict[str, Any]]:
+            """返回空规则列表。"""
+            return []
+
+    async def _run() -> None:
+        """依次验证初始任务、历史 partial 修复和 active 复用。"""
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        service = ParseService(
+            db=db,
+            fts=FTSManager(db),
+            config_svc=_NoRulesConfig(),
+            data_dir=str(tmp_path / "data"),
+            parse_lock_timeout_sec=1800,
+        )
+        source = tmp_path / "book.epub"
+        source.write_bytes(b"epub-placeholder")
+
+        async def _metadata(path: str) -> dict[str, Any]:
+            """返回十二个逻辑 spine 页的确定性 metadata。"""
+            return {
+                "page_count": 12,
+                "title": "Book",
+                "author": None,
+                "subject": None,
+                "keywords": None,
+                "is_image_based": 0,
+            }
+
+        monkeypatch.setattr(parse_svc_module, "extract_metadata", _metadata)
+
+        initial = await service.request_parse(str(source))
+        assert initial.page_range == "1~12"
+        assert initial.created_parse_ids == []
+        assert len(initial.reused_parse_ids) == 1
+        initial_id = initial.reused_parse_ids[0]
+        file_row = await db.fetchone("SELECT sha256 FROM files WHERE path=?", (str(source),))
+        assert file_row is not None
+        sha256 = file_row["sha256"]
+
+        await db.execute(
+            "UPDATE parses SET page_range=?, status=?, done_at=?, updated_at=? WHERE id=?",
+            ("1~10", "done", 1000, 1000, initial_id),
+        )
+        _write_batch(
+            tmp_path / "data",
+            sha256,
+            "flash",
+            "1~10",
+            1000,
+            [{"page_idx": page_idx, "blocks": []} for page_idx in range(12)],
+            file_suffix="epub",
+        )
+
+        repaired = await service.request_parse(str(source))
+        assert repaired.page_range == "1~12"
+        assert len(repaired.created_parse_ids) == 1
+        repaired_id = repaired.created_parse_ids[0]
+        repaired_row = await db.fetchone("SELECT page_range, status FROM parses WHERE id=?", (repaired_id,))
+        assert repaired_row == {"page_range": "1~12", "status": "pending"}
+
+        reused = await service.request_parse(str(source), force=True)
+        assert reused.created_parse_ids == []
+        assert reused.reused_parse_ids == [repaired_id]
+        assert reused.page_range == "1~12"
+
+    asyncio.run(_run())
 
 
 def test_list_parse_records_by_ids_returns_precise_status(tmp_path: Path) -> None:
@@ -3195,7 +3437,7 @@ def test_doclib_server_accepts_short_id_for_sha256_doc_inputs(tmp_path: Path) ->
     asyncio.run(_run())
 
 
-@pytest.mark.parametrize("ext", ["txt", "md", "markdown", "csv", "rst", "tex"])
+@pytest.mark.parametrize("ext", ["txt", "md", "markdown", "rst", "tex"])
 def test_doclib_server_reports_text_invalidation_not_required(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -3277,7 +3519,7 @@ def test_doc_content_invalid_after_cursor_returns_invalid_locator(tmp_path: Path
     asyncio.run(_run())
 
 
-@pytest.mark.parametrize("ext", ["txt", "md", "markdown", "csv", "rst", "tex"])
+@pytest.mark.parametrize("ext", ["txt", "md", "markdown", "rst", "tex"])
 def test_read_text_locator_reports_parse_not_required(tmp_path: Path, ext: str) -> None:
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.sqlite"))
@@ -4175,10 +4417,11 @@ def test_parse_via_api_maps_transport_errors_by_type(
 
 
 @pytest.mark.parametrize(
-    ("path", "expected_include_images"),
+    ("path", "expected_include_images", "expected_page_range"),
     [
-        ("/tmp/doc.docx", True),
-        ("/tmp/doc.pdf", False),
+        ("/tmp/doc.docx", True, ""),
+        ("/tmp/doc.pdf", False, "1"),
+        ("/tmp/image.png", False, ""),
     ],
 )
 def test_parse_via_api_requests_image_cache_only_for_office(
@@ -4186,6 +4429,7 @@ def test_parse_via_api_requests_image_cache_only_for_office(
     tmp_path: Path,
     path: str,
     expected_include_images: bool,
+    expected_page_range: str,
 ) -> None:
     calls: list[bool] = []
     service = ParseService(
@@ -4215,8 +4459,8 @@ def test_parse_via_api_requests_image_cache_only_for_office(
 
         async def parse_async(self, _path: str, *, page_range: str = "") -> ParseResult:
             assert _path == path
-            assert page_range == "1"
-            return ParseResult(middle_json=MiddleJson(pages=[], file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__))
+            assert page_range == expected_page_range
+            return ParseResult(middle_json=MiddleJson(pages=[], is_full_document=True, file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__))
 
     service._resolve_api_target = _resolve_api_target  # type: ignore[method-assign]
     service._resolve_tier = lambda tier, _via: tier  # type: ignore[method-assign]
@@ -4285,6 +4529,75 @@ def test_process_doc_fails_when_batch_json_cannot_be_written(tmp_path: Path) -> 
     assert parses[0]["error_code"] == "parse_json_write_failed"
     assert parses[0]["done_at"] is None
     assert fts.replaced == []
+
+
+def test_process_doc_normalizes_full_document_range_from_actual_pages(tmp_path: Path) -> None:
+    """验证整本结果按实际逻辑页重命名 JSON，并同步 parse row 与 docs.page_count。"""
+    sha256 = "f" * 64
+    task = {
+        "id": 1,
+        "sha256": sha256,
+        "tier": "flash",
+        "page_range": "1~10",
+        "status": "parsing",
+        "privacy": "local",
+    }
+    parses = [
+        {
+            **task,
+            "error_code": None,
+            "error_msg": None,
+            "done_at": None,
+            "locked_at": 123,
+            "updated_at": 123,
+        }
+    ]
+    doc_row = {"sha256": sha256, "short_id": "fffffff", "page_count": 10, "meta_tier": None}
+    db = _FakeDB(
+        parses=parses,
+        file_row={
+            "path": "/tmp/book.epub",
+            "ext": "epub",
+            "sha256": sha256,
+            "status": "active",
+            "filename": "book.epub",
+            "title": "",
+            "author": "",
+        },
+        doc_row=doc_row,
+    )
+    service = ParseService(db=db, fts=_FakeFTS(), config_svc=None, data_dir=str(tmp_path), parse_lock_timeout_sec=1800)
+
+    async def _parse(file_row: dict, tier: Tier, page_range: str) -> ParseResult:
+        """返回十二页整本 EPUB 结果。"""
+        assert page_range == "1~10"
+        return ParseResult(
+            middle_json=MiddleJson(
+                pages=[PageInfo(page_idx=page_idx) for page_idx in range(12)],
+                is_full_document=True,
+                file_suffix="epub",
+                effort="flash",
+                parse_mode="txt",
+                mineru_version=__version__,
+            )
+        )
+
+    async def _skip(*args: object, **kwargs: object) -> None:
+        """跳过与范围归一无关的 FTS 和 metadata tier 更新。"""
+        return None
+
+    service._parse_via_local = _parse  # type: ignore[method-assign]
+    service._maybe_update_fts = _skip  # type: ignore[method-assign]
+    service._maybe_update_docs_meta = _skip  # type: ignore[method-assign]
+
+    assert asyncio.run(service.process_doc(task)) is True
+    assert parses[0]["status"] == "done"
+    assert parses[0]["page_range"] == "1~12"
+    assert doc_row["page_count"] == 12
+    batch_path = Path(parse_batch_json_path(str(tmp_path), sha256, "flash", "1~12", parses[0]["done_at"]))
+    assert batch_path.is_file()
+    assert not Path(parse_batch_json_path(str(tmp_path), sha256, "flash", "1~10", parses[0]["done_at"])).exists()
+    assert len(json.loads(batch_path.read_text(encoding="utf-8"))["pages"]) == 12
 
 
 def test_process_doc_writes_cached_image_sidecars(tmp_path: Path) -> None:

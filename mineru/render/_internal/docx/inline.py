@@ -55,7 +55,7 @@ class BookmarkRegistry:
     """把 MiddleJson anchor 映射为合法且唯一的 Word bookmark 名称。"""
 
     def __init__(self, anchors: Iterable[str]) -> None:
-        """预注册全部 anchor，保证目录前向引用可在写正文前解析。"""
+        """预注册全部 anchor，保证标题、目录和脚注前向引用可提前解析。"""
         self._names: dict[str, str] = {}
         self._attached: set[str] = set()
         self._used_names: set[str] = set()
@@ -267,6 +267,15 @@ def _append_nodes_to_container(
                     hyperlink=hyperlink,
                 )
                 continue
+            if node.url.startswith("#"):
+                _append_inline_internal_link(
+                    container,
+                    paragraph,
+                    node,
+                    context=context,
+                    inherited_styles=inherited_styles,
+                )
+                continue
             _append_external_link(
                 paragraph,
                 node,
@@ -275,6 +284,42 @@ def _append_nodes_to_container(
             )
             continue
         raise TypeError(f"Unsupported inline node: {type(node).__name__}")
+
+
+def _append_inline_internal_link(
+    container: etree._Element,
+    paragraph: Paragraph,
+    node: InlineLink,
+    *,
+    context: InlineRenderContext,
+    inherited_styles: tuple[str, ...],
+) -> None:
+    """把 #anchor 行内链接写为 Word bookmark 跳转，未知目标退化为普通文本。"""
+    anchor = node.url[1:].strip()
+    bookmark_name = context.bookmarks.resolve(anchor)
+    if bookmark_name is None:
+        _append_nodes_to_container(
+            container,
+            paragraph,
+            node.children,
+            context=context,
+            inherited_styles=inherited_styles,
+            hyperlink=False,
+        )
+        return
+
+    internal_link = OxmlElement("w:hyperlink")
+    internal_link.set(qn("w:anchor"), bookmark_name)
+    internal_link.set(qn("w:history"), "1")
+    container.append(internal_link)
+    _append_nodes_to_container(
+        internal_link,
+        paragraph,
+        node.children,
+        context=context,
+        inherited_styles=inherited_styles,
+        hyperlink=True,
+    )
 
 
 def _append_external_link(

@@ -1,6 +1,6 @@
 # Copyright (c) Opendatalab. All rights reserved.
 
-"""Flash PDF 与 Office 文档模型。"""
+"""Flash PDF、EPUB、CSV 与 Office/RTF 文档模型。"""
 
 from __future__ import annotations
 
@@ -18,6 +18,43 @@ class PdfModel:
         from .pdf import pipeline
 
         return pipeline._analyze_native_document(pdf_doc)
+
+
+class CsvModel:
+    """将 CSV 分隔符文本包装为无状态 Flash 模型。"""
+
+    def predict(self, file_binary: BinaryIO) -> list[list[dict[str, Any]]]:
+        """转换调用方持有的 CSV 二进制流，并返回单逻辑页 model_list。"""
+        from .csv import convert_csv
+
+        return convert_csv(file_binary)
+
+
+class EpubModel:
+    """将 EPUB OCF/OPF 文档包装为无状态 Flash 模型。"""
+
+    def predict(
+        self,
+        file_binary: BinaryIO,
+    ) -> list[list[dict[str, Any]]]:
+        """转换调用方持有的整本 EPUB 流，并返回目录页和全部正文逻辑页。"""
+        from .epub.converter import EpubConverter
+
+        converter = EpubConverter()
+        converter.convert(file_binary)
+        return converter.pages
+
+
+class RtfModel:
+    """将 Rich Text Format 文档包装为无状态 Flash 模型。"""
+
+    def predict(self, file_binary: BinaryIO) -> list[list[dict[str, Any]]]:
+        """转换调用方持有的 RTF 二进制流，并返回单逻辑页 model_list。"""
+        from .office.rtf.converter import RtfConverter
+
+        converter = RtfConverter()
+        converter.convert(file_binary)
+        return converter.pages
 
 
 class DocxModel:
@@ -100,5 +137,41 @@ class XlsxModel:
         from .office.xlsx.xlsx_converter import XlsxConverter
 
         converter = XlsxConverter()
+        converter.convert(file_binary)
+        return converter.pages
+
+
+class OdtModel:
+    """将 OpenDocument Text 包装为无状态 Flash 模型。"""
+
+    def predict(self, file_binary: BinaryIO) -> list[list[dict[str, Any]]]:
+        """转换调用方持有的 ODT 二进制流，并返回分页 model_list。"""
+        from .office.odf.converters import OdtConverter
+
+        converter = OdtConverter()
+        converter.convert(file_binary)
+        return converter.pages
+
+
+class OdsModel:
+    """将 OpenDocument Spreadsheet 包装为无状态 Flash 模型。"""
+
+    def predict(self, file_binary: BinaryIO) -> list[list[dict[str, Any]]]:
+        """转换调用方持有的 ODS 二进制流，并返回逐工作表 model_list。"""
+        from .office.odf.converters import OdsConverter
+
+        converter = OdsConverter()
+        converter.convert(file_binary)
+        return converter.pages
+
+
+class OdpModel:
+    """将 OpenDocument Presentation 包装为无状态 Flash 模型。"""
+
+    def predict(self, file_binary: BinaryIO) -> list[list[dict[str, Any]]]:
+        """转换调用方持有的 ODP 二进制流，并返回逐幻灯片 model_list。"""
+        from .office.odf.converters import OdpConverter
+
+        converter = OdpConverter()
         converter.convert(file_binary)
         return converter.pages

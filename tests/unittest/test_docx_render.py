@@ -25,6 +25,7 @@ from mineru.types import (
     MiddleJson,
     PageAuxTextBlock,
     PageBlock,
+    PageFootnoteBlock,
     PageInfo,
     ParagraphTitleBlock,
     TableAnnotationBlock,
@@ -141,6 +142,43 @@ def test_heading_bookmark_forward_index_link_and_rich_inline_ooxml() -> None:
     assert '<w:vertAlign w:val="subscript"' in document_xml
     assert '<w:em w:val="underDot"' in document_xml
     assert "<m:oMath" in document_xml
+
+
+def test_default_and_full_docx_use_page_footnote_bookmark_and_style() -> None:
+    """验证默认与完整 Word 都输出页面脚注书签、内部链接和专用样式。"""
+    middle = _middle(
+        _page(
+            0,
+            TextBlock(
+                type="text",
+                index=0,
+                content=(
+                    "See <hyperlink>[1]<url>#note-one</url></hyperlink> and <hyperlink>[x]<url>#missing-note</url></hyperlink>."
+                ),
+            ),
+            PageFootnoteBlock(
+                type="page_footnote",
+                index=1,
+                content="Footnote body.",
+                anchor="note-one",
+            ),
+        )
+    )
+
+    default_result = render_docx(middle)
+    full_result = render_docx(middle, mode=RenderMode.FULL)
+    for result in (default_result, full_result):
+        document_xml = _part(result, "word/document.xml")
+        relationships = _part(result, "word/_rels/document.xml.rels")
+        document = Document(BytesIO(result))
+        footnote = next(paragraph for paragraph in document.paragraphs if paragraph.text == "Footnote body.")
+
+        assert 'w:bookmarkStart w:id="0" w:name="note_one"' in document_xml
+        assert 'w:hyperlink w:anchor="note_one"' in document_xml
+        assert document_xml.count("<w:hyperlink") == 1
+        assert footnote.style.name == "MinerU Footnote"
+        assert "missing-note" not in relationships
+        assert "#note-one" not in relationships
 
 
 def test_visible_styled_boundary_spaces_use_nbsp_without_mutating_input() -> None:

@@ -1,22 +1,19 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
+from typing import Final
 
 from .types import QUALITY_TIERS, Tier, validate_tier
 
 # ── file types ─────────────────────────────────────────────────────
 
-# Legacy Office binary formats (Word 97–2003 / Excel 97–2003 / PowerPoint 97–2003)
-# are natively parsed by mineru.model.flash.{doc,xls,ppt} converters.
+# Legacy Office binary formats and RTF are natively parsed by model.flash.office converters.
 # Unsupported document/e-book/archive-like formats:
-# "epub",
 # "key",
 # "mobi",
 # "numbers",
-# "ods",
-# "odt",
 # "pages",
-# "rtf",
 # Unsupported mail formats:
 # "eml",
 # "mbox",
@@ -25,15 +22,23 @@ PDF_EXTENSIONS: frozenset[str] = frozenset({"pdf"})
 
 IMAGE_EXTENSIONS: frozenset[str] = frozenset({"png", "jpg", "jpeg", "webp", "gif", "bmp", "tiff", "jp2"})
 
-OFFICE_EXTENSIONS: frozenset[str] = frozenset({"doc", "docx", "ppt", "pptx", "xls", "xlsx"})
+ODF_EXTENSIONS: frozenset[str] = frozenset({"odt", "ods", "odp"})
+
+EPUB_EXTENSIONS: frozenset[str] = frozenset({"epub"})
+
+OFFICE_EXTENSIONS: frozenset[str] = frozenset({"doc", "docx", "ppt", "pptx", "xls", "xlsx", "rtf"}) | ODF_EXTENSIONS
 
 HTML_EXTENSIONS: frozenset[str] = frozenset({"html", "htm"})
 
-TEXT_EXTENSIONS: frozenset[str] = frozenset({"txt", "md", "markdown", "csv", "rst", "tex"})
+CSV_EXTENSIONS: frozenset[str] = frozenset({"csv"})
+
+TEXT_EXTENSIONS: frozenset[str] = frozenset({"txt", "md", "markdown", "rst", "tex"})
 
 TIERED_PARSE_EXTENSIONS: frozenset[str] = PDF_EXTENSIONS | IMAGE_EXTENSIONS
 
-FLASH_ONLY_PARSE_EXTENSIONS: frozenset[str] = OFFICE_EXTENSIONS | HTML_EXTENSIONS
+PAGE_RANGE_PARSE_EXTENSIONS: frozenset[str] = PDF_EXTENSIONS
+
+FLASH_ONLY_PARSE_EXTENSIONS: frozenset[str] = OFFICE_EXTENSIONS | HTML_EXTENSIONS | CSV_EXTENSIONS | EPUB_EXTENSIONS
 
 PARSEABLE_EXTENSIONS: frozenset[str] = TIERED_PARSE_EXTENSIONS | FLASH_ONLY_PARSE_EXTENSIONS
 
@@ -48,10 +53,11 @@ FILE_TYPE_BY_EXTENSION: dict[str, str] = {
     **dict.fromkeys(IMAGE_EXTENSIONS, "image"),
     **{ext: ext for ext in OFFICE_EXTENSIONS},
     **dict.fromkeys(HTML_EXTENSIONS, "html"),
+    **dict.fromkeys(CSV_EXTENSIONS, "csv"),
+    **dict.fromkeys(EPUB_EXTENSIONS, "epub"),
     "txt": "text",
     "md": "markdown",
     "markdown": "markdown",
-    "csv": "csv",
     "rst": "rst",
     "tex": "tex",
 }
@@ -66,6 +72,12 @@ MIME_TYPE_BY_EXTENSION: dict[str, str] = {
     "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
     "xls": "application/vnd.ms-excel",
     "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "rtf": "application/rtf",
+    "odt": "application/vnd.oasis.opendocument.text",
+    "ods": "application/vnd.oasis.opendocument.spreadsheet",
+    "odp": "application/vnd.oasis.opendocument.presentation",
+    "csv": "text/csv",
+    "epub": "application/epub+zip",
     "html": "text/html",
     "htm": "text/html",
     "png": "image/png",
@@ -77,6 +89,19 @@ MIME_TYPE_BY_EXTENSION: dict[str, str] = {
     "bmp": "image/bmp",
     "tiff": "image/tiff",
 }
+
+_RTF_HEADER_RE: Final = re.compile(
+    rb"\A(?:\xef\xbb\xbf)?[ \t\r\n]{0,64}\{\\rtf(?=[0-9])",
+    re.IGNORECASE,
+)
+
+
+def rtf_header_offset(file_bytes: bytes) -> int | None:
+    """返回 RTF 根组左花括号偏移；不接受带任意前缀的伪装文本。"""
+    match = _RTF_HEADER_RE.match(file_bytes)
+    if match is None:
+        return None
+    return file_bytes.find(b"{", 0, match.end())
 
 
 def normalize_parse_extension(path_or_ext: str | Path) -> str:
@@ -100,6 +125,11 @@ def mime_type_for_extension(path_or_ext: str | Path, *, default: str = "applicat
 
 def is_tiered_parse_extension(path_or_ext: str | Path) -> bool:
     return normalize_parse_extension(path_or_ext) in TIERED_PARSE_EXTENSIONS
+
+
+def is_page_range_parse_extension(path_or_ext: str | Path) -> bool:
+    """仅允许 PDF 输入使用局部页范围解析。"""
+    return normalize_parse_extension(path_or_ext) in PAGE_RANGE_PARSE_EXTENSIONS
 
 
 def is_flash_only_parse_extension(path_or_ext: str | Path) -> bool:

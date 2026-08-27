@@ -13,6 +13,7 @@ from typing import Any, Iterable, Literal, Sequence, TypeVar, cast
 from loguru import logger
 
 from ....types import BBox, BlockType, RAW_CAPTION, RAW_FOOTNOTE
+from .._shared.hyperlink import render_inline_hyperlink
 from .document import PDFLinkAnnotation
 from ....utils.text import is_hyphen_at_line_end
 
@@ -1904,11 +1905,9 @@ def _wrap_link_intervals(
         key=lambda item: (item.start, item.end, item.target),
         reverse=True,
     ):
-        escaped_target = html.escape(interval.target, quote=False)
         output = (
-            f"{output[: interval.start]}<hyperlink>"
-            f"{output[interval.start : interval.end]}"
-            f"<url>{escaped_target}</url></hyperlink>"
+            f"{output[: interval.start]}"
+            f"{render_inline_hyperlink(output[interval.start : interval.end], interval.target)}"
             f"{output[interval.end :]}"
         )
     return output

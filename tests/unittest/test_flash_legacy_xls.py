@@ -10,14 +10,14 @@ import pytest
 
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
 from mineru.model.flash import XlsModel
-from mineru.model.flash.office.legacy import (
+from mineru.model.flash._shared.hyperlink import OFFICE_EXTERNAL_HYPERLINK_SCHEMES, sanitize_hyperlink_target
+from mineru.model.flash.office.errors import (
     LegacyOfficeEncryptedError,
     LegacyOfficeMissingPartError,
     LegacyOfficeResourceLimitError,
 )
-from mineru.model.flash.office.legacy.limits import MAX_RECORDS
+from mineru.model.flash.office.limits import MAX_RECORDS
 from mineru.model.flash.office.xls import xls_converter as xls_converter_module
-from mineru.model.flash.office.xls import parser as xls_parser
 from mineru.model.flash.office.xls.number_format import format_number, format_text
 from mineru.model.flash.office.xls.records import RecordBudget
 from mineru.parser import parse
@@ -184,11 +184,16 @@ def test_xls_text_format_and_unsafe_hyperlink_fallback() -> None:
     )
     pages = XlsModel().predict(BytesIO(build_xls([SheetFixture("Data", records)])))
     assert pages == [[{"type": BlockType.TEXT, "content": "unsafe"}]]
-    assert xls_parser._sanitize_hyperlink_target("mailto:user@example.test") == ("mailto:user@example.test")
-    assert xls_parser._sanitize_hyperlink_target("#Sheet2!A1") == "#Sheet2!A1"
-    assert xls_parser._sanitize_hyperlink_target("../relative/path") == "../relative/path"
-    assert xls_parser._sanitize_hyperlink_target("file:///tmp/local.xls") is None
-    assert xls_parser._sanitize_hyperlink_target("custom:payload") is None
+    policy = {
+        "allowed_schemes": OFFICE_EXTERNAL_HYPERLINK_SCHEMES,
+        "allow_relative": True,
+        "allow_fragment": True,
+    }
+    assert sanitize_hyperlink_target("mailto:user@example.test", **policy) == "mailto:user@example.test"
+    assert sanitize_hyperlink_target("#Sheet2!A1", **policy) == "#Sheet2!A1"
+    assert sanitize_hyperlink_target("../relative/path", **policy) == "../relative/path"
+    assert sanitize_hyperlink_target("file:///tmp/local.xls", **policy) is None
+    assert sanitize_hyperlink_target("custom:payload", **policy) is None
 
 
 def test_xls_filepass_and_broken_boundsheet_behaviors() -> None:
@@ -254,6 +259,51 @@ def test_xls_record_and_grid_limits_are_hard_failures(
     monkeypatch.setattr(xls_converter_module, "MAX_GRID_SLOTS", 0)
     with pytest.raises(LegacyOfficeResourceLimitError, match="max_grid_slots"):
         XlsModel().predict(BytesIO(build_xls([SheetFixture("Data", label_cell(0, 0, "value"))])))
+
+
+def test_xls_rejects_oversized_merge_before_openpyxl_materialization(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证单个超限 BIFF merge 不会进入 openpyxl 单元格物化。"""
+    monkeypatch.setattr(xls_converter_module, "MAX_GRID_SLOTS", 4)
+
+    def unexpected_merge(*_args: object, **_kwargs: object) -> None:
+        """超限 merge 不得调用 openpyxl。"""
+        pytest.fail("oversized BIFF merge reached openpyxl materialization")
+
+    monkeypatch.setattr(xls_converter_module.Worksheet, "merge_cells", unexpected_merge)
+    source = build_xls([SheetFixture("Data", merged_cells((0, 0, 2, 1)))])
+
+    with pytest.raises(LegacyOfficeResourceLimitError, match="max_grid_slots"):
+        XlsModel().predict(BytesIO(source))
+
+
+def test_xls_charges_cumulative_merge_budget_before_each_materialization(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证多个合法 merge 的累计面积会在下一次物化前触发预算。"""
+    monkeypatch.setattr(xls_converter_module, "MAX_GRID_SLOTS", 4)
+    original_merge = xls_converter_module.Worksheet.merge_cells
+    materialized: list[tuple[object, ...]] = []
+
+    def tracking_merge(self: object, *args: object, **kwargs: object) -> None:
+        """记录预算内实际进入 openpyxl 的 merge。"""
+        materialized.append(args or tuple(kwargs.values()))
+        original_merge(self, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(xls_converter_module.Worksheet, "merge_cells", tracking_merge)
+    source = build_xls(
+        [
+            SheetFixture(
+                "Data",
+                merged_cells(
+                    (0, 0, 0, 1),
+                    (1, 0, 1, 1),
+                    (2, 0, 2, 1),
+                ),
+            )
+        ]
+    )
+
+    with pytest.raises(LegacyOfficeResourceLimitError, match="max_grid_slots"):
+        XlsModel().predict(BytesIO(source))
+    assert len(materialized) == 2
 
 
 def test_xls_is_supported_by_public_parser(tmp_path: Path) -> None:
