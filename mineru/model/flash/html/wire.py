@@ -345,6 +345,8 @@ def _validate_visual_content(content_root: etree._Element, wrapper: etree._Eleme
                 raise _WireValidationError("invalid_visual_body_shape")
             if parent_index is not None and child_index != parent_index:
                 raise _WireValidationError("visual_body_index_mismatch")
+            if parent_type == BlockType.CODE and (wrapper.get("data-block-sub-type") or "").strip() == BlockType.CODE:
+                _validate_code_body_shape(child)
             for marker in _descendant_markers(child):
                 if marker is child:
                     continue
@@ -361,6 +363,21 @@ def _validate_visual_content(content_root: etree._Element, wrapper: etree._Eleme
                     raise _WireValidationError("invalid_annotation_nested_marker")
                 _validate_formula_carrier(marker, expected_display="inline")
             _validate_inline_content_shape(child)
+
+
+def _validate_code_body_shape(body: etree._Element) -> None:
+    """校验普通代码 body 只含规范 pre/code，避免精确物化静默丢弃编辑内容。"""
+    _validate_element_only_content(body)
+    children = _element_children(body)
+    if len(children) != 1 or local_name(children[0]) != "pre":
+        raise _WireValidationError("invalid_code_body_shape")
+    pre = children[0]
+    _validate_element_only_content(pre)
+    code_children = _element_children(pre)
+    if len(code_children) != 1 or local_name(code_children[0]) != "code":
+        raise _WireValidationError("invalid_code_body_shape")
+    if _element_children(code_children[0]):
+        raise _WireValidationError("invalid_code_body_shape")
 
 
 def _validate_list_container(container: etree._Element, *, top_wrapper: etree._Element | None = None) -> None:

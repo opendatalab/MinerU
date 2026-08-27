@@ -283,6 +283,17 @@ def test_html_auto_selection_preserves_ancestor_text_styles() -> None:
     ]
 
 
+def test_html_auto_selection_handles_colonized_candidate_ancestor() -> None:
+    """验证正文候选位于 Office 冒号标签下时可复制祖先链且不会抛出非法标签异常。"""
+    detail = "Colonized ancestor content " * 20
+    payload = f"""<html><body><o:smarttag style="font-style:italic">
+      <main><p>{detail}</p></main></o:smarttag></body></html>""".encode()
+
+    _, model = doc_analyze(payload, file_suffix="html")
+
+    assert model.pages[0] == [{"type": BlockType.TEXT, "content": f'<text style="italic">{detail}</text>'}]
+
+
 def test_html_auto_selection_rejects_single_section_from_document_index() -> None:
     """验证多个同级 section 构成的文档索引会保留全部章节而非选择最长一节。"""
     detail = b" useful explanatory content with enough words to qualify as an independent scored candidate" * 4
@@ -355,6 +366,19 @@ def test_html_referenced_external_footnote_preserves_inherited_visibility() -> N
     assert "HIDDEN NOTE" not in markdown
     assert footnote.content == "VISIBLE NOTE"  # type: ignore[union-attr]
     assert f"](#{footnote.anchor})" in markdown  # type: ignore[union-attr]
+
+
+def test_html_referenced_external_footnote_preserves_inherited_text_styles() -> None:
+    """验证正文外引用脚注复制后仍携带祖先提供的受支持文字样式。"""
+    detail = "Useful main article text " * 20
+    payload = f"""<html><body><main><p>{detail}<a href="#fn1">[1]</a></p></main>
+      <aside style="font-weight:bold;font-style:italic;text-decoration:underline line-through">
+      <div id="fn1" role="doc-footnote">Styled note</div></aside></body></html>""".encode()
+
+    _, model = doc_analyze(payload, file_suffix="html")
+    footnote = next(block for block in model.pages[0] if block["type"] == BlockType.PAGE_FOOTNOTE)
+
+    assert footnote["content"] == '<text style="bold,italic,underline,strikethrough">Styled note</text>'
 
 
 @pytest.mark.parametrize(
@@ -1224,6 +1248,42 @@ def test_html_versioned_wire_markerless_block_child_falls_back_without_crash() -
 
     assert "Original note" in markdown
     assert "EXTRA NOTE" in markdown
+
+
+def test_html_versioned_wire_edited_code_body_falls_back_without_loss() -> None:
+    """验证普通代码 body 中新增可见节点会整体回退并保留代码与编辑内容。"""
+    source = MiddleJson.model_validate(
+        {
+            "pages": [
+                {
+                    "page_idx": 0,
+                    "blocks": [
+                        {
+                            "type": "code",
+                            "index": 0,
+                            "sub_type": "code",
+                            "guess_lang": "python",
+                            "content": [{"type": "code_body", "index": 0, "content": "print(1)"}],
+                        }
+                    ],
+                }
+            ],
+            "is_full_document": True,
+            "file_suffix": "html",
+            "effort": "flash",
+            "parse_mode": "txt",
+            "mineru_version": "test",
+        }
+    )
+    soup = BeautifulSoup(render_html(source, standalone=False), "html.parser")
+    paragraph = soup.new_tag("p")
+    paragraph.string = "NEW NOTE"
+    soup.select_one('[data-block-type="code_body"]').append(paragraph)
+
+    markdown = render_markdown(doc_analyze(str(soup).encode(), file_suffix="html")[0])
+
+    assert "print(1)" in markdown
+    assert "NEW NOTE" in markdown
 
 
 def test_html_marker_fallback_does_not_double_resolve_images(monkeypatch: pytest.MonkeyPatch) -> None:

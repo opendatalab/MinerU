@@ -83,23 +83,50 @@ def _copy_note_with_source_visibility(
     note: etree._Element,
     stylesheet: MarkupStylesheet,
 ) -> etree._Element | None:
-    """按原始祖先链复制 note；整树隐藏时丢弃，继承 visibility 隐藏时保留状态。"""
+    """按原始祖先链复制 note；整树隐藏时丢弃，并保留继承文字样式与 visibility。"""
     inherited = TextStyle()
     visibility_hidden = False
     chain = [ancestor for ancestor in reversed(list(note.iterancestors())) if isinstance(ancestor.tag, str)]
-    chain.append(note)
     for current in chain:
         resolved = stylesheet.resolve(current, inherited, visibility_hidden)
         if resolved.subtree_hidden:
             return None
         inherited = resolved.text
         visibility_hidden = resolved.visibility_hidden
+    if stylesheet.resolve(note, inherited, visibility_hidden).subtree_hidden:
+        return None
     copied = deepcopy(note)
+    declarations: list[str] = []
+    if inherited.bold:
+        declarations.append("font-weight:bold")
+    if inherited.italic:
+        declarations.append("font-style:italic")
+    decorations = [
+        decoration
+        for enabled, decoration in (
+            (inherited.underline, "underline"),
+            (inherited.strikethrough, "line-through"),
+        )
+        if enabled
+    ]
+    if decorations:
+        declarations.append(f"text-decoration:{' '.join(decorations)}")
+    if inherited.superscript:
+        declarations.append("vertical-align:super")
+    elif inherited.subscript:
+        declarations.append("vertical-align:sub")
     if visibility_hidden:
-        style = (copied.get("style") or "").strip()
-        separator = "" if not style or style.endswith(";") else ";"
-        copied.set("style", f"{style}{separator}visibility:hidden")
-    return copied
+        declarations.append("visibility:hidden")
+    if not declarations:
+        return copied
+    wrapper = etree.Element("div")
+    wrapper.set("style", ";".join(declarations))
+    if inherited.superscript and inherited.subscript:
+        subscript_wrapper = etree.SubElement(wrapper, "sub")
+        subscript_wrapper.append(copied)
+    else:
+        wrapper.append(copied)
+    return wrapper
 
 
 class HtmlAnchorRegistry:

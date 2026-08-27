@@ -144,14 +144,26 @@ def _copy_candidate_with_ancestors(candidate: etree._Element, body: etree._Eleme
     for ancestor in candidate.iterancestors():
         if not isinstance(ancestor.tag, str):
             continue
-        wrapper = etree.Element(ancestor.tag, nsmap=ancestor.nsmap)
-        for name, value in ancestor.attrib.items():
-            wrapper.set(name, value)
+        wrapper = _empty_ancestor_wrapper(ancestor)
         wrapper.append(root)
         root = wrapper
         if ancestor is body:
             return root
     return root
+
+
+def _empty_ancestor_wrapper(ancestor: etree._Element) -> etree._Element:
+    """复制祖先标签和属性；非法 HTML QName 使用安全 div，避免复制整棵兄弟子树。"""
+    try:
+        wrapper = etree.Element(ancestor.tag, nsmap=ancestor.nsmap)
+    except ValueError:
+        wrapper = etree.Element("div", nsmap=ancestor.nsmap)
+    for name, value in ancestor.attrib.items():
+        try:
+            wrapper.set(name, value)
+        except ValueError:
+            continue
+    return wrapper
 
 
 def _collect_metrics(
