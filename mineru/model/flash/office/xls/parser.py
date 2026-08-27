@@ -651,6 +651,7 @@ def _serialize_payload(payload: OfficeImagePayload) -> str | None:
         payload.data,
         part_name=f"picture.{payload.extension}",
         content_type=payload.content_type,
+        render_size_emu=payload.render_size_emu,
     )
 
 

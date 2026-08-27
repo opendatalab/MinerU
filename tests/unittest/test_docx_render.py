@@ -65,6 +65,20 @@ def _png_uri(*, size: tuple[int, int] = (12, 8)) -> str:
     return f"data:image/png;base64,{payload}"
 
 
+def _generated_svg_uri(*, logical_size: tuple[int, int] = (12, 8), fallback_size: tuple[int, int] = (96, 64)) -> str:
+    """生成带高密度 PNG fallback 的 MinerU SVG data URI。"""
+    width, height = logical_size
+    fallback = base64.b64encode(_png_bytes(size=fallback_size)).decode("ascii")
+    svg = (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
+        f'viewBox="0 0 {width} {height}" data-mineru-generated="wmf-emf">'
+        f'<metadata id="mineru-raster-fallback" data-mime="image/png">{fallback}</metadata>'
+        f'<path d="M 0 0 L {width} 0 L {width} {height} Z" fill="#000000"/>'
+        "</svg>"
+    ).encode()
+    return f"data:image/svg+xml;base64,{base64.b64encode(svg).decode('ascii')}"
+
+
 def _part(docx_bytes: bytes, name: str) -> str:
     """读取 DOCX ZIP 中一个 XML part。"""
     with zipfile.ZipFile(BytesIO(docx_bytes)) as archive:
@@ -447,6 +461,46 @@ def test_image_alt_text_and_visual_child_order_are_preserved() -> None:
     assert document_xml.index("before") < document_xml.index("diagram description")
     assert document_xml.index("diagram description") < document_xml.index("after")
     assert 'descr="diagram description"' in document_xml
+
+
+def test_mineru_svg_writes_native_svg_relationship_with_png_fallback() -> None:
+    """验证 DOCX DrawingML 同时引用原生 SVG 与高密度 PNG fallback。"""
+    image = ImageBlock.model_validate(
+        {
+            "type": "image",
+            "index": 0,
+            "content": [
+                {
+                    "type": "image_body",
+                    "index": 0,
+                    "content": "vector formula",
+                    "image_base64": _generated_svg_uri(),
+                }
+            ],
+        }
+    )
+
+    result = render_docx(_middle(_page(0, image)))
+    with zipfile.ZipFile(BytesIO(result)) as archive:
+        media = sorted(name for name in archive.namelist() if name.startswith("word/media/"))
+        document_xml = etree.fromstring(archive.read("word/document.xml"))
+        relationships = etree.fromstring(archive.read("word/_rels/document.xml.rels"))
+        content_types = archive.read("[Content_Types].xml").decode("utf-8")
+
+    assert any(name.endswith(".png") for name in media)
+    assert any(name.endswith(".svg") for name in media)
+    namespace = {
+        "a": "http://schemas.openxmlformats.org/drawingml/2006/main",
+        "asvg": "http://schemas.microsoft.com/office/drawing/2016/SVG/main",
+        "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+    }
+    fallback_id = document_xml.xpath("string(.//a:blip/@r:embed)", namespaces=namespace)
+    svg_id = document_xml.xpath("string(.//asvg:svgBlip/@r:embed)", namespaces=namespace)
+    targets = {relationship.get("Id"): relationship.get("Target") for relationship in relationships}
+    assert fallback_id != svg_id
+    assert targets[fallback_id].endswith(".png")
+    assert targets[svg_id].endswith(".svg")
+    assert "image/svg+xml" in content_types
 
 
 def test_html_table_materializes_merges_inline_content_link_and_image() -> None:

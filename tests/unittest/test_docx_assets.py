@@ -34,6 +34,19 @@ def _data_uri(mime_subtype: str, payload: bytes) -> str:
     return f"data:image/{mime_subtype};base64,{encoded}"
 
 
+def _generated_svg(*, logical_size: tuple[int, int] = (7, 5), fallback_size: tuple[int, int] = (56, 40)) -> bytes:
+    """构造带高密度 PNG fallback 的最小 MinerU SVG。"""
+    fallback = base64.b64encode(_image_bytes("PNG", size=fallback_size)).decode("ascii")
+    width, height = logical_size
+    return (
+        f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
+        f'viewBox="0 0 {width} {height}" data-mineru-generated="wmf-emf">'
+        f'<metadata id="mineru-raster-fallback" data-mime="image/png">{fallback}</metadata>'
+        f'<path d="M 0 0 L {width} 0 L {width} {height} Z" fill="#000000"/>'
+        "</svg>"
+    ).encode()
+
+
 def _image_block(**values: str | None) -> ImageBodyBlock:
     """构造最小图片 body block。"""
     return ImageBodyBlock(type="image_body", index=0, content="", **values)
@@ -176,6 +189,20 @@ def test_svg_is_rejected_explicitly_for_data_uri_and_sidecar() -> None:
         prepare_html_image(_data_uri("svg+xml", svg))
     with pytest.raises(DocxAssetError, match="SVG images are not supported"):
         prepare_html_image("images/vector.svg", lambda _path: svg)
+
+
+def test_mineru_generated_svg_keeps_native_data_and_high_density_png_fallback() -> None:
+    """验证 DOCX 图片准备同时保留 SVG、逻辑尺寸与高密度 PNG。"""
+    svg = _generated_svg()
+
+    prepared = prepare_html_image(_data_uri("svg+xml", svg))
+
+    assert prepared.svg_data == svg
+    assert prepared.extension == "png"
+    assert (prepared.width_px, prepared.height_px) == (7, 5)
+    with Image.open(BytesIO(prepared.data)) as fallback:
+        assert fallback.format == "PNG"
+        assert fallback.size == (56, 40)
 
 
 @pytest.mark.parametrize(

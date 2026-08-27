@@ -35,9 +35,7 @@ class ImageStore:
 
     total: int = 0
     cache: dict[bytes, DocImagePayload] = field(default_factory=dict)
-    equation_decoder: OfficeImageEquationDecoder = field(
-        default_factory=OfficeImageEquationDecoder
-    )
+    equation_decoder: OfficeImageEquationDecoder = field(default_factory=OfficeImageEquationDecoder)
 
     def add(self, payload: OfficeImagePayload) -> DocImagePayload:
         """计入一张唯一图片并返回内部载荷。"""
@@ -47,9 +45,7 @@ class ImageStore:
         if cached is not None:
             return cached
         if self.total + len(payload.data) > MAX_ASSET_TOTAL_BYTES:
-            raise LegacyOfficeResourceLimitError(
-                f"embedded assets exceed max_asset_total_bytes={MAX_ASSET_TOTAL_BYTES}"
-            )
+            raise LegacyOfficeResourceLimitError(f"embedded assets exceed max_asset_total_bytes={MAX_ASSET_TOTAL_BYTES}")
         converted = DocImagePayload(
             payload.data,
             payload.extension,
@@ -59,6 +55,7 @@ class ImageStore:
                 part_name=f"image.{payload.extension}",
                 content_type=payload.content_type,
             ),
+            render_size_emu=payload.render_size_emu,
         )
         self.total += len(payload.data)
         self.cache[digest] = converted

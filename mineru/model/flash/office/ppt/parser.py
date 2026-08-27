@@ -1493,6 +1493,7 @@ def _image_from_shape(
         image.data,
         part_name=f"picture.{image.extension}",
         content_type=image.content_type,
+        render_size_emu=image.render_size_emu,
     )
     if not data_uri:
         logger.warning(f"PPT_IMAGE_UNSUPPORTED: shape={shape.key}, type={image.content_type}")
