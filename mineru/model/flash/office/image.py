@@ -13,7 +13,7 @@ from PIL import Image, ImageDraw, ImageFont, UnidentifiedImageError
 
 from ....utils.platform import is_windows_environment
 from .._shared.image import image_to_b64str
-from .metafile import MetafileError, render_metafile
+from .metafile import MetafileError, MetafileResourceLimitError, render_metafile
 
 VECTOR_IMAGE_FORMATS = frozenset({"WMF", "EMF"})
 VECTOR_IMAGE_EXTENSIONS = frozenset({".wmf", ".emf"})
@@ -232,6 +232,18 @@ def _serialize_cross_platform_metafile(
             dpi=VECTOR_IMAGE_RENDER_DPI,
             size_hint=size_hint,
         )
+    except MetafileResourceLimitError as exc:
+        logger.warning(f"Generated {image_format} SVG cannot be consumed safely: {exc}. Falling back to PNG.")
+        try:
+            rendered = render_metafile(
+                image_data,
+                output_format="png",
+                dpi=VECTOR_IMAGE_RENDER_DPI,
+                size_hint=size_hint,
+            )
+        except MetafileError as png_exc:
+            logger.warning(f"Failed to render {image_format} PNG fallback with MinerU: {png_exc}. Using placeholder instead.")
+            return None
     except MetafileError as exc:
         logger.warning(f"Failed to render {image_format} image with MinerU: {exc}. Using placeholder instead.")
         return None

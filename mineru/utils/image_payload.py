@@ -12,7 +12,7 @@ INLINE_IMAGE_DATA_URI_RE = re.compile(r"data:image/([^;\"']+);base64,([^\"']+)",
 _SVG_NAMESPACE = "http://www.w3.org/2000/svg"
 _MINERU_SVG_MARKER = "wmf-emf"
 _MINERU_SVG_FALLBACK_ID = "mineru-raster-fallback"
-_MAX_GENERATED_SVG_BYTES = 64 * 1024 * 1024
+MAX_GENERATED_SVG_BYTES = 64 * 1024 * 1024
 _MAX_GENERATED_SVG_NODES = 100_000
 _SAFE_SVG_ATTRIBUTES: dict[str, set[str]] = {
     "svg": {"width", "height", "viewBox", "data-mineru-generated"},
@@ -144,7 +144,7 @@ def _validate_generated_svg_attribute(tag: str, name: str, value: str) -> None:
 
 def extract_mineru_generated_svg_fallback(payload: bytes) -> tuple[bytes, int, int]:
     """验证 MinerU 生成 SVG，并返回 PNG fallback 与逻辑像素尺寸。"""
-    if not isinstance(payload, bytes) or not payload or len(payload) > _MAX_GENERATED_SVG_BYTES:
+    if not isinstance(payload, bytes) or not payload or len(payload) > MAX_GENERATED_SVG_BYTES:
         raise ValueError("Generated SVG payload is empty or exceeds its byte limit")
     try:
         parser = ElementTree.XMLParser(target=_RejectingSvgTreeBuilder())

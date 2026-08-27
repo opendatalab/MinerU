@@ -11,6 +11,7 @@ from math import ceil, floor, hypot
 from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont, UnidentifiedImageError
 import pyclipper
 
+from .....utils.image_payload import MAX_GENERATED_SVG_BYTES
 from .font import load_font
 from .geometry import FlattenBudget, flatten_path, transform_path
 from .limits import MAX_CANVAS_PIXELS, MAX_EMBEDDED_BITMAP_BYTES, MAX_RENDER_WORK_PIXELS
@@ -180,18 +181,15 @@ def _clipper_paths(subpaths: list[tuple[list[Point], bool]]) -> list[list[tuple[
 def _paint_polytree(mask: Image.Image, tree: pyclipper.PyPolyNode, budget: FlattenBudget | None = None) -> None:
     """按 PolyTree 层级依次绘制外轮廓、孔洞和孔洞中的岛。"""
     draw = ImageDraw.Draw(mask)
-
-    def paint(node: pyclipper.PyPolyNode) -> None:
-        """递归绘制当前节点的全部子轮廓。"""
-        for child in node.Childs:
-            if budget is not None:
-                budget.charge(len(child.Contour))
-            points = [(x / _CLIPPER_SCALE, y / _CLIPPER_SCALE) for x, y in child.Contour]
-            if len(points) >= 3:
-                draw.polygon(points, fill=0 if child.IsHole else 255)
-            paint(child)
-
-    paint(tree)
+    stack: list[pyclipper.PyPolyNode] = list(reversed(tree.Childs))
+    while stack:
+        child = stack.pop()
+        if budget is not None:
+            budget.charge(len(child.Contour))
+        points = [(x / _CLIPPER_SCALE, y / _CLIPPER_SCALE) for x, y in child.Contour]
+        if len(points) >= 3:
+            draw.polygon(points, fill=0 if child.IsHole else 255)
+        stack.extend(reversed(child.Childs))
 
 
 def _path_mask(
@@ -962,11 +960,11 @@ def _svg_requires_raster(document: MetafileDocument) -> bool:
 
 
 def _svg_fallback_scale(document: MetafileDocument) -> int:
-    """为纯矢量 SVG fallback 选择最高 8× 的安全像素密度。"""
+    """为纯矢量 SVG fallback 选择最高 2× 的安全像素密度。"""
     if any(isinstance(command, DrawImageCommand) for command in document.commands):
         return 1
     command_count = max(len(document.commands), 1)
-    for factor in (8, 4, 2):
+    for factor in (2,):
         width = document.width * factor
         height = document.height * factor
         if (
@@ -992,9 +990,24 @@ def _svg_fallback_metadata(encoded_png: str) -> str:
     return f'<metadata id="mineru-raster-fallback" data-mime="image/png">{encoded_png}</metadata>'
 
 
+def _encode_svg_markup(markup: str) -> bytes:
+    """编码 SVG 并保证生成结果不会超过下游安全消费者的字节上限。"""
+    output = markup.encode("utf-8")
+    if len(output) > MAX_GENERATED_SVG_BYTES:
+        raise MetafileResourceLimitError(f"generated SVG exceeds max_generated_svg_bytes={MAX_GENERATED_SVG_BYTES}")
+    return output
+
+
+def _check_svg_size_budget(estimated_bytes: int) -> None:
+    """在继续编码昂贵 SVG element 前执行保守的消费者字节预算。"""
+    if estimated_bytes > MAX_GENERATED_SVG_BYTES:
+        raise MetafileResourceLimitError(f"generated SVG exceeds max_generated_svg_bytes={MAX_GENERATED_SVG_BYTES}")
+
+
 def _raster_wrapped_svg(document: MetafileDocument) -> bytes:
     """把 Pillow 结果封装为没有外部引用的单图片 SVG。"""
     encoded = base64.b64encode(_png_fallback_bytes(document)).decode("ascii")
+    _check_svg_size_budget(len(encoded) * 2)
     markup = (
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{document.width}" height="{document.height}" '
         f'viewBox="0 0 {document.width} {document.height}" data-mineru-generated="wmf-emf">'
@@ -1002,7 +1015,7 @@ def _raster_wrapped_svg(document: MetafileDocument) -> bytes:
         f'<image width="{document.width}" height="{document.height}" href="data:image/png;base64,{encoded}"/>'
         "</svg>"
     )
-    return markup.encode("utf-8")
+    return _encode_svg_markup(markup)
 
 
 def render_svg(document: MetafileDocument) -> bytes:
@@ -1013,6 +1026,9 @@ def render_svg(document: MetafileDocument) -> bytes:
     definitions, clip_ids = _svg_clip_definitions(document, matrix)
     fallback_scale = _svg_fallback_scale(document)
     fallback = base64.b64encode(_png_fallback_bytes(document, pixel_scale=fallback_scale)).decode("ascii")
+    fallback_metadata = _svg_fallback_metadata(fallback)
+    estimated_bytes = len(fallback_metadata) + 256
+    _check_svg_size_budget(estimated_bytes)
     elements: list[str] = []
     for command in document.commands:
         if isinstance(command, DrawPathCommand):
@@ -1024,13 +1040,15 @@ def render_svg(document: MetafileDocument) -> bytes:
         else:
             element = _svg_image_element(command, matrix)
         elements.append(_wrap_svg_clip(element, command.clip, clip_ids))
+        estimated_bytes += len(elements[-1].encode("utf-8"))
+        _check_svg_size_budget(estimated_bytes)
     defs = f"<defs>{''.join(definitions)}</defs>" if definitions else ""
     markup = (
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{document.width}" height="{document.height}" '
         f'viewBox="0 0 {document.width} {document.height}" data-mineru-generated="wmf-emf">'
-        f"{_svg_fallback_metadata(fallback)}{defs}{''.join(elements)}</svg>"
+        f"{fallback_metadata}{defs}{''.join(elements)}</svg>"
     )
-    return markup.encode("utf-8")
+    return _encode_svg_markup(markup)
 
 
 def encode_document(document: MetafileDocument, output_format: MetafileOutputFormat) -> tuple[bytes, str]:

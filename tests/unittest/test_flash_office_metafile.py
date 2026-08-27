@@ -11,6 +11,7 @@ import zlib
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from PIL import Image
+import pyclipper
 import pytest
 import pptx
 
@@ -384,6 +385,28 @@ def test_compound_path_masks_preserve_nonzero_and_evenodd_topology() -> None:
     assert self_intersecting.getpixel((50, 25)) == 255
 
 
+def test_polytree_paint_handles_deep_nesting_without_python_recursion() -> None:
+    """验证恶意深层 PolyTree 使用显式栈绘制且继续计入 flatten 预算。"""
+    root = pyclipper.PyPolyNode()
+    parent = root
+    for index in range(1100):
+        child = pyclipper.PyPolyNode()
+        child.Contour = [
+            (index, index),
+            (2201 - index, index),
+            (2201 - index, 2201 - index),
+            (index, 2201 - index),
+        ]
+        child.IsHole = bool(index & 1)
+        parent.Childs.append(child)
+        parent = child
+    budget = FlattenBudget(limit=5000)
+
+    metafile_render._paint_polytree(Image.new("L", (10, 10)), root, budget)
+
+    assert budget.used == 4400
+
+
 def test_clip_mask_reuses_compound_path_topology_and_combine_modes() -> None:
     """验证裁剪 copy/and/or/xor/diff 与路径填充共享同一 winding 结果。"""
     outer = _compound_square_path(inner_reversed=False)
@@ -528,18 +551,36 @@ def test_wmf_roundrect_uses_record_parameter_order() -> None:
     assert command.path.segments[0].points == ((250.0, 200.0),)
 
 
-def test_vector_only_metafile_uses_4x_antialiasing_and_8x_svg_fallback() -> None:
-    """验证矢量公式保持逻辑尺寸，同时使用 4× 栅格和 8× DOCX fallback。"""
+def test_vector_only_metafile_uses_4x_antialiasing_and_2x_svg_fallback() -> None:
+    """验证矢量公式保持逻辑尺寸，同时使用 4× 栅格和 2× DOCX fallback。"""
     document = metafile_parser.parse_metafile(basic_wmf())
     svg = render_metafile(basic_wmf(), output_format="svg").data
     fallback, logical_width, logical_height = extract_mineru_generated_svg_fallback(svg)
 
     assert metafile_render._supersample_factor(document) == 4
-    assert metafile_render._svg_fallback_scale(document) == 8
+    assert metafile_render._svg_fallback_scale(document) == 2
     assert (logical_width, logical_height) == (144, 144)
     with Image.open(BytesIO(fallback)) as image:
-        assert image.size == (1152, 1152)
-        assert image.info["dpi"][0] == pytest.approx(768, abs=1)
+        assert image.size == (288, 288)
+        assert image.info["dpi"][0] == pytest.approx(192, abs=1)
+
+
+def test_oversized_generated_svg_degrades_to_png_for_office_consumers(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证超过消费者上限的内部 SVG 不会进入 HTML/DOCX，而是降级为 PNG。"""
+    data = build_emf([emf_stretch_dib()])
+    image_element = Mock(side_effect=AssertionError("oversized fallback should stop before bitmap SVG encoding"))
+    monkeypatch.setattr(metafile_render, "MAX_GENERATED_SVG_BYTES", 1)
+    monkeypatch.setattr(metafile_render, "_svg_image_element", image_element)
+    monkeypatch.setattr(office_image, "is_windows_environment", lambda: False)
+
+    with pytest.raises(MetafileResourceLimitError, match="max_generated_svg_bytes"):
+        render_metafile(data, output_format="svg")
+
+    data_uri = office_image.serialize_office_image(data, part_name="image.wmf", content_type="image/wmf")
+
+    assert data_uri is not None
+    assert data_uri.startswith("data:image/png;base64,")
+    image_element.assert_not_called()
 
 
 def test_emfplus_dual_uses_emf_fallback_and_only_is_rejected() -> None:
@@ -666,7 +707,7 @@ def test_officeart_emu_size_controls_standard_wmf_output(monkeypatch: pytest.Mon
     assert data_uri is not None
     fallback, logical_size, _svg = _svg_data_uri_fallback(data_uri)
     assert logical_size == (144, 72)
-    assert fallback.size == (1152, 576)
+    assert fallback.size == (288, 144)
 
 
 def test_officeart_metafile_header_preserves_payload_and_emu_size() -> None:
@@ -792,7 +833,7 @@ def test_legacy_office_models_emit_rendered_wmf_svg(
     assert all(image.startswith("data:image/svg+xml;base64,") for image in images)
     fallback, logical_size, _svg = _svg_data_uri_fallback(images[0])
     assert logical_size == (144, 144)
-    assert fallback.size == (1152, 1152)
+    assert fallback.size == (288, 288)
 
 
 def test_rtf_model_emf_picture_emits_rendered_svg(monkeypatch: pytest.MonkeyPatch) -> None:
