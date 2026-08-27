@@ -794,7 +794,7 @@ def _supersample_factor(document: MetafileDocument) -> int:
     """在画布、工作量预算内为纯矢量文档选择 1×、2× 或 4×。"""
     if any(isinstance(command, DrawImageCommand) for command in document.commands):
         return 1
-    command_count = max(len(document.commands), 1)
+    work_units = _render_work_units(document)
     for factor in (4, 2):
         width = document.width * factor
         height = document.height * factor
@@ -802,17 +802,22 @@ def _supersample_factor(document: MetafileDocument) -> int:
             width <= 8192
             and height <= 8192
             and width * height <= MAX_CANVAS_PIXELS
-            and width * height * command_count <= MAX_RENDER_WORK_PIXELS
+            and width * height * work_units <= MAX_RENDER_WORK_PIXELS
         ):
             return factor
     return 1
+
+
+def _render_work_units(document: MetafileDocument) -> int:
+    """按绘图命令及其逐项 clip mask 合成次数计算渲染工作单元。"""
+    return max(sum(1 + len(command.clip) for command in document.commands), 1)
 
 
 def _render_pillow_once(document: MetafileDocument, raster_scale: int) -> Image.Image:
     """按给定整数倍率执行一次不缩放的 Pillow 栅格化。"""
     width = document.width * raster_scale
     height = document.height * raster_scale
-    render_work = width * height * max(len(document.commands), 1)
+    render_work = width * height * _render_work_units(document)
     if render_work > MAX_RENDER_WORK_PIXELS:
         raise MetafileResourceLimitError(f"metafile exceeds max_render_work_pixels={MAX_RENDER_WORK_PIXELS}")
     matrix = _document_matrix(document, raster_scale=raster_scale)

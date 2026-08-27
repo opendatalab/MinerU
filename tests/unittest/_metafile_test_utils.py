@@ -96,6 +96,11 @@ def emf_line_to(x: int, y: int) -> bytes:
     return emf_record(54, struct.pack("<2i", x, y))
 
 
+def emf_intersect_clip_rect(left: int, top: int, right: int, bottom: int) -> bytes:
+    """构造 EMR_INTERSECTCLIPRECT。"""
+    return emf_record(30, struct.pack("<4i", left, top, right, bottom))
+
+
 def emf_angle_arc(center_x: int, center_y: int, radius: int, start_angle: float, sweep_angle: float) -> bytes:
     """构造 EMR_ANGLEARC。"""
     return emf_record(41, struct.pack("<iiIff", center_x, center_y, radius, start_angle, sweep_angle))
@@ -260,6 +265,16 @@ def wmf_set_text_align(value: int) -> bytes:
     return wmf_record(0x012E, struct.pack("<H", value))
 
 
+def wmf_set_map_mode(value: int) -> bytes:
+    """构造 META_SETMAPMODE。"""
+    return wmf_record(0x0103, struct.pack("<h", value))
+
+
+def wmf_rectangle(left: int, top: int, right: int, bottom: int) -> bytes:
+    """构造 META_RECTANGLE。"""
+    return wmf_record(0x041B, struct.pack("<hhhh", bottom, right, top, left))
+
+
 def wmf_textout(text: str, x: int, y: int) -> bytes:
     """构造没有显式字符 spacing 的 META_TEXTOUT。"""
     encoded = text.encode("cp1252")
@@ -311,6 +326,7 @@ __all__ = [
     "emf_end_path",
     "emf_fill_path",
     "emf_font",
+    "emf_intersect_clip_rect",
     "emf_line_to",
     "emf_move_to",
     "emf_polybezier",
@@ -330,7 +346,9 @@ __all__ = [
     "emf_text",
     "emfplus_comment",
     "wmf_move_to",
+    "wmf_rectangle",
     "wmf_record",
+    "wmf_set_map_mode",
     "wmf_set_text_align",
     "wmf_textout",
 ]

@@ -64,6 +64,7 @@ from _metafile_test_utils import (
     emf_create_pen,
     emf_end_path,
     emf_font,
+    emf_intersect_clip_rect,
     emf_line_to,
     emf_move_to,
     emf_polybezier,
@@ -82,7 +83,9 @@ from _metafile_test_utils import (
     emf_text,
     emfplus_comment,
     wmf_move_to,
+    wmf_rectangle,
     wmf_record,
+    wmf_set_map_mode,
     wmf_set_text_align,
     wmf_textout,
 )
@@ -645,6 +648,38 @@ def test_wmf_roundrect_uses_record_parameter_order() -> None:
     assert command.path.segments[0].points == ((250.0, 200.0),)
 
 
+@pytest.mark.parametrize("text_align", [2, 6], ids=["right", "center"])
+def test_standard_wmf_fallback_bounds_include_aligned_text(text_align: int) -> None:
+    """验证无 placeable header 时 CENTER/RIGHT 文本 bounds 不会从 origin 单向向右估算。"""
+    standard_wmf = build_placeable_wmf([wmf_set_text_align(text_align), wmf_textout("AB", 100, 50)])[22:]
+
+    document = metafile_parser.parse_metafile(standard_wmf)
+
+    assert document.bounds.left < 100.0
+    if text_align == 2:
+        assert document.bounds.right == pytest.approx(100.0)
+    else:
+        assert (document.bounds.left + document.bounds.right) / 2.0 == pytest.approx(100.0)
+
+
+@pytest.mark.parametrize(
+    ("map_mode", "millimeters_per_unit"),
+    [(2, 0.1), (3, 0.01), (4, 0.254), (5, 0.0254), (6, 25.4 / 1440.0)],
+    ids=["lometric", "himetric", "loenglish", "hienglish", "twips"],
+)
+def test_fixed_wmf_map_modes_use_documented_physical_units(map_mode: int, millimeters_per_unit: float) -> None:
+    """验证固定 map mode 已按 Windows 定义的毫米或英寸单位换算，防止误改 2.54 倍。"""
+    data = build_placeable_wmf([wmf_set_map_mode(map_mode), wmf_rectangle(0, 0, 100, 100)])
+    document = metafile_parser.parse_metafile(data, dpi=144)
+    command = next(command for command in document.commands if isinstance(command, DrawPathCommand))
+    bounds = path_bounds(command.path)
+
+    assert bounds is not None
+    expected = 100 * millimeters_per_unit * (144 / 25.4)
+    assert abs(bounds.width) == pytest.approx(expected)
+    assert abs(bounds.height) == pytest.approx(expected)
+
+
 def test_vector_only_metafile_uses_4x_antialiasing_and_2x_svg_fallback() -> None:
     """验证矢量公式保持逻辑尺寸，同时使用 4× 栅格和 2× DOCX fallback。"""
     document = metafile_parser.parse_metafile(basic_wmf())
@@ -745,6 +780,22 @@ def test_fixed_record_point_and_state_limits_are_enforced(monkeypatch: pytest.Mo
     monkeypatch.setattr(metafile_render, "MAX_RENDER_WORK_PIXELS", 1)
     with pytest.raises(MetafileResourceLimitError, match="max_render_work_pixels"):
         render_metafile(build_emf([emf_rectangle(1, 1, 10, 10)]))
+
+
+def test_clip_stack_and_render_work_use_fixed_budgets(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证累计 clip 操作受深度限制，渲染预算也计入逐项 mask 合成工作。"""
+    clip = emf_intersect_clip_rect(0, 0, 100, 100)
+    monkeypatch.setattr(metafile_parser, "MAX_CLIP_OPERATIONS", 2)
+    with pytest.raises(MetafileResourceLimitError, match="max_clip_operations=2"):
+        metafile_parser.parse_metafile(build_emf([clip, clip, clip, emf_rectangle(1, 1, 10, 10)]))
+
+    monkeypatch.setattr(metafile_parser, "MAX_CLIP_OPERATIONS", 64)
+    monkeypatch.setattr(metafile_parser, "MAX_TOTAL_CLIP_OPERATIONS", 1)
+    with pytest.raises(MetafileResourceLimitError, match="max_total_clip_operations=1"):
+        metafile_parser.parse_metafile(build_emf([clip, emf_rectangle(1, 1, 10, 10), emf_rectangle(20, 20, 30, 30)]))
+
+    document = metafile_parser.parse_metafile(build_emf([clip, emf_rectangle(1, 1, 10, 10)]))
+    assert metafile_render._render_work_units(document) == 2
 
 
 def test_svg_text_escapes_markup_characters() -> None:

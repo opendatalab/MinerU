@@ -25,6 +25,7 @@ from .geometry import (
 from .limits import (
     MAX_CANVAS_DIMENSION,
     MAX_CANVAS_PIXELS,
+    MAX_CLIP_OPERATIONS,
     MAX_COMMANDS,
     MAX_DIAGNOSTICS,
     MAX_EMBEDDED_BITMAP_BYTES,
@@ -33,6 +34,7 @@ from .limits import (
     MAX_POINTS_PER_RECORD,
     MAX_RECORDS,
     MAX_STATE_DEPTH,
+    MAX_TOTAL_CLIP_OPERATIONS,
     MAX_TOTAL_POINTS,
 )
 from .models import (
@@ -170,6 +172,7 @@ class _Playback:
         self.path_ready = False
         self.partial = False
         self.total_points = 0
+        self.total_clip_operations = 0
         self.record_type: int | None = None
         self.record_index: int | None = None
         self.record_offset: int | None = None
@@ -204,6 +207,9 @@ class _Playback:
         """在命令预算内追加一条统一绘图命令。"""
         if len(self.commands) >= MAX_COMMANDS:
             raise MetafileResourceLimitError(f"metafile exceeds max_commands={MAX_COMMANDS}")
+        self.total_clip_operations += len(command.clip)
+        if self.total_clip_operations > MAX_TOTAL_CLIP_OPERATIONS:
+            raise MetafileResourceLimitError(f"metafile exceeds max_total_clip_operations={MAX_TOTAL_CLIP_OPERATIONS}")
         self.commands.append(command)
 
     def copy_state(self) -> GdiState:
@@ -448,7 +454,13 @@ class _Playback:
         if mode == _RGN_COPY:
             self.state.clip = (operation,)
         else:
-            self.state.clip = (*self.state.clip, operation)
+            self.state.clip = self.clip_with_operation(operation)
+
+    def clip_with_operation(self, operation: ClipOperation) -> tuple[ClipOperation, ...]:
+        """在固定 clip 深度预算内返回追加单次操作后的不可变栈。"""
+        if len(self.state.clip) >= MAX_CLIP_OPERATIONS:
+            raise MetafileResourceLimitError(f"metafile exceeds max_clip_operations={MAX_CLIP_OPERATIONS}")
+        return (*self.state.clip, operation)
 
     def reset_clip(self) -> None:
         """恢复为没有额外裁剪区域的初始状态。"""
@@ -571,6 +583,15 @@ def _stock_object(index: int) -> Pen | Brush | Font | None:
     return None
 
 
+def _horizontal_text_align_factor(text_align: int) -> float:
+    """返回 LEFT/CENTER/RIGHT 文本 bounds 相对 origin 的左移比例。"""
+    if text_align & _TA_CENTER == _TA_CENTER:
+        return 0.5
+    if text_align & _TA_RIGHT:
+        return 1.0
+    return 0.0
+
+
 def _commands_bounds(commands: list[DrawCommand]) -> Rect | None:
     """计算全部绘图命令的保守可见包围盒。"""
     rectangles: list[Rect | None] = []
@@ -582,11 +603,15 @@ def _commands_bounds(commands: list[DrawCommand]) -> Rect | None:
                 rectangles.append(command.bounds)
             else:
                 estimated_width = max(command.font_height * 0.6 * len(command.text), command.font_height)
+                if command.advance_end is not None:
+                    estimated_width = max(estimated_width, abs(command.advance_end[0] - command.origin[0]))
+                align_factor = _horizontal_text_align_factor(command.text_align)
+                left = command.origin[0] - estimated_width * align_factor
                 rectangles.append(
                     Rect(
-                        command.origin[0],
+                        left,
                         command.origin[1] - command.font_height,
-                        command.origin[0] + estimated_width,
+                        left + estimated_width,
                         command.origin[1] + command.font_height * 0.25,
                     )
                 )
@@ -1026,7 +1051,7 @@ def _emit_text(
         )
     clip = playback.state.clip
     if mapped_bounds is not None and options & _ETO_CLIPPED:
-        clip = (*clip, ClipOperation(rectangle_path(mapped_bounds), "and"))
+        clip = playback.clip_with_operation(ClipOperation(rectangle_path(mapped_bounds), "and"))
     playback.append_command(
         DrawTextCommand(
             text=text,
