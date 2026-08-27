@@ -18,6 +18,7 @@ from mineru.doclib.services.parse_svc import ParseService
 from mineru.model.flash import HtmlModel
 from mineru.model.flash.html import HtmlResourceLimitError, HtmlSourceContext
 from mineru.model.flash.html import converter as html_converter_module
+from mineru.model.flash.html import resources as html_resources_module
 from mineru.model.flash.html.resources import HtmlResourceContext
 from mineru.parser import ParseResult, parse, parse_async
 from mineru.parser import api_server
@@ -303,6 +304,40 @@ def test_html_referenced_external_footnote_keeps_anchor_and_content() -> None:
     assert "Footnote body." in footnote.content  # type: ignore[union-attr]
     assert f"](#{footnote.anchor})" in markdown  # type: ignore[union-attr]
     assert f'id="{footnote.anchor}" class="mineru-page-footnote"' in markdown  # type: ignore[union-attr]
+
+
+@pytest.mark.parametrize(
+    "ancestor_attributes",
+    ['style="display:none"', 'style="opacity:0"', "hidden", 'aria-hidden="true"'],
+)
+def test_html_referenced_external_footnote_respects_hidden_ancestor(ancestor_attributes: str) -> None:
+    """验证正文外引用脚注不会脱离原始整树隐藏祖先后泄漏到输出。"""
+    detail = "Useful main article text " * 20
+    payload = f"""<html><body><main><h1>Title</h1><p>{detail}<a href="#fn1">[1]</a></p></main>
+      <aside {ancestor_attributes}><div id="fn1" role="doc-footnote">HIDDEN NOTE</div></aside>
+      </body></html>""".encode()
+
+    middle = doc_analyze(payload, file_suffix="html")[0]
+    markdown = render_markdown(middle)
+
+    assert "HIDDEN NOTE" not in markdown
+    assert not any(block.type == BlockType.PAGE_FOOTNOTE for block in middle.pages[0].blocks)
+
+
+def test_html_referenced_external_footnote_preserves_inherited_visibility() -> None:
+    """验证复制脚注保留祖先 visibility:hidden，同时允许后代显式恢复可见。"""
+    detail = "Useful main article text " * 20
+    payload = f"""<html><body><main><h1>Title</h1><p>{detail}<a href="#fn1">[1]</a></p></main>
+      <aside style="visibility:hidden"><div id="fn1" role="doc-footnote">HIDDEN NOTE
+      <span style="visibility:visible">VISIBLE NOTE</span></div></aside></body></html>""".encode()
+
+    middle = doc_analyze(payload, file_suffix="html")[0]
+    markdown = render_markdown(middle)
+    footnote = next(block for block in middle.pages[0].blocks if block.type == BlockType.PAGE_FOOTNOTE)
+
+    assert "HIDDEN NOTE" not in markdown
+    assert footnote.content == "VISIBLE NOTE"  # type: ignore[union-attr]
+    assert f"](#{footnote.anchor})" in markdown  # type: ignore[union-attr]
 
 
 @pytest.mark.parametrize(
@@ -897,6 +932,47 @@ def test_html_rejects_page_range_and_resource_overflow(tmp_path: Path, monkeypat
     monkeypatch.setattr(html_converter_module, "MAX_HTML_BYTES", 4)
     with pytest.raises(HtmlResourceLimitError, match="max_html_bytes"):
         HtmlModel().predict(BytesIO(b"<p>x</p>"))
+
+
+@pytest.mark.parametrize(
+    ("styles", "single_limit", "total_limit", "expected_limit"),
+    [
+        ("<style>.large{display:none}</style>", 8, 128, "max_html_stylesheet_bytes"),
+        (
+            "<style>.a{display:none}</style><style>.b{display:none}</style>",
+            16,
+            24,
+            "max_html_stylesheet_total_bytes",
+        ),
+    ],
+)
+def test_html_inline_stylesheets_enforce_resource_budgets(
+    styles: str,
+    single_limit: int,
+    total_limit: int,
+    expected_limit: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证内联 CSS 同时受单份和整文档 stylesheet 字节预算约束。"""
+    monkeypatch.setattr(html_resources_module, "MAX_HTML_STYLESHEET_BYTES", single_limit)
+    monkeypatch.setattr(html_resources_module, "MAX_HTML_STYLESHEET_TOTAL_BYTES", total_limit)
+    payload = f"<html><head>{styles}</head><body><p>Visible</p></body></html>".encode()
+
+    with pytest.raises(HtmlResourceLimitError, match=expected_limit):
+        doc_analyze(payload, file_suffix="html")
+
+
+def test_html_inline_and_local_stylesheets_share_total_budget(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证内联与本地外链 CSS 按文档顺序共享累计 stylesheet 预算。"""
+    (tmp_path / "styles.css").write_text(".a{display:none}", encoding="utf-8")
+    monkeypatch.setattr(html_resources_module, "MAX_HTML_STYLESHEET_BYTES", 16)
+    monkeypatch.setattr(html_resources_module, "MAX_HTML_STYLESHEET_TOTAL_BYTES", 24)
+    payload = b"""<html><head><link rel="stylesheet" href="styles.css">
+      <style>.b{display:none}</style></head><body><p>Visible</p></body></html>"""
+    context = HtmlSourceContext(local_resource_root=tmp_path)
+
+    with pytest.raises(HtmlResourceLimitError, match="max_html_stylesheet_total_bytes"):
+        doc_analyze(payload, file_suffix="html", source_context=context)
 
 
 @pytest.mark.parametrize(

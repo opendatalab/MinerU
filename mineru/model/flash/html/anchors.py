@@ -43,6 +43,7 @@ def append_referenced_notes(
     selected_root: etree._Element,
     original_body: etree._Element,
     *,
+    stylesheet: MarkupStylesheet,
     resolve_same_document_fragment: Callable[[str], str | None],
 ) -> etree._Element:
     """把正文候选引用但位于候选外的脚注副本追加到内容根末尾。"""
@@ -66,13 +67,39 @@ def append_referenced_notes(
     companions = [
         element for identity, element in targets.items() if identity in referenced_ids and identity not in selected_ids
     ]
-    if not companions:
+    companion_copies = [
+        copy for companion in companions if (copy := _copy_note_with_source_visibility(companion, stylesheet)) is not None
+    ]
+    if not companion_copies:
         return selected_root
     wrapper = etree.Element("div")
     wrapper.append(selected_root)
-    for companion in companions:
-        wrapper.append(deepcopy(companion))
+    for companion in companion_copies:
+        wrapper.append(companion)
     return wrapper
+
+
+def _copy_note_with_source_visibility(
+    note: etree._Element,
+    stylesheet: MarkupStylesheet,
+) -> etree._Element | None:
+    """按原始祖先链复制 note；整树隐藏时丢弃，继承 visibility 隐藏时保留状态。"""
+    inherited = TextStyle()
+    visibility_hidden = False
+    chain = [ancestor for ancestor in reversed(list(note.iterancestors())) if isinstance(ancestor.tag, str)]
+    chain.append(note)
+    for current in chain:
+        resolved = stylesheet.resolve(current, inherited, visibility_hidden)
+        if resolved.subtree_hidden:
+            return None
+        inherited = resolved.text
+        visibility_hidden = resolved.visibility_hidden
+    copied = deepcopy(note)
+    if visibility_hidden:
+        style = (copied.get("style") or "").strip()
+        separator = "" if not style or style.endswith(";") else ";"
+        copied.set("style", f"{style}{separator}visibility:hidden")
+    return copied
 
 
 class HtmlAnchorRegistry:

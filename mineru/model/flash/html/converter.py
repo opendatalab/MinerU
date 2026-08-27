@@ -53,6 +53,7 @@ class HtmlConverter:
             selected_root = append_referenced_notes(
                 selection.root,
                 document.body,
+                stylesheet=stylesheet,
                 resolve_same_document_fragment=resources.same_document_fragment,
             )
             source_key = document.source_context.source_uri or "html"
@@ -88,6 +89,7 @@ def _load_stylesheet(document: HtmlDocument, resources: HtmlResourceContext) -> 
     stylesheet = MarkupStylesheet()
     for source in document.stylesheets:
         if source.kind == "inline":
+            resources.charge_inline_stylesheet(source.value)
             stylesheet.add(source.value)
         elif css := resources.load_stylesheet(source.value):
             stylesheet.add(css)

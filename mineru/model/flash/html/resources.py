@@ -166,16 +166,25 @@ class HtmlResourceContext:
             return cached
         with path.open("rb") as source_file:
             payload = source_file.read(MAX_HTML_STYLESHEET_BYTES + 1)
-        if len(payload) > MAX_HTML_STYLESHEET_BYTES:
-            raise HtmlResourceLimitError(f"HTML stylesheet exceeds max_html_stylesheet_bytes={MAX_HTML_STYLESHEET_BYTES}")
-        self._stylesheet_bytes += len(payload)
-        if self._stylesheet_bytes > MAX_HTML_STYLESHEET_TOTAL_BYTES:
-            raise HtmlResourceLimitError(
-                f"HTML stylesheets exceed max_html_stylesheet_total_bytes={MAX_HTML_STYLESHEET_TOTAL_BYTES}"
-            )
+        self._charge_stylesheet_bytes(len(payload))
         stylesheet = payload.decode("utf-8-sig", errors="replace")
         self._stylesheet_cache[path] = stylesheet
         return stylesheet
+
+    def charge_inline_stylesheet(self, stylesheet: str) -> None:
+        """把一段内联 CSS 的 UTF-8 字节数计入统一 stylesheet 预算。"""
+        self._charge_stylesheet_bytes(len(stylesheet.encode("utf-8")))
+
+    def _charge_stylesheet_bytes(self, byte_count: int) -> None:
+        """执行单份和整文档 stylesheet 字节限制，并只在校验通过后累计。"""
+        if byte_count > MAX_HTML_STYLESHEET_BYTES:
+            raise HtmlResourceLimitError(f"HTML stylesheet exceeds max_html_stylesheet_bytes={MAX_HTML_STYLESHEET_BYTES}")
+        total_bytes = self._stylesheet_bytes + byte_count
+        if total_bytes > MAX_HTML_STYLESHEET_TOTAL_BYTES:
+            raise HtmlResourceLimitError(
+                f"HTML stylesheets exceed max_html_stylesheet_total_bytes={MAX_HTML_STYLESHEET_TOTAL_BYTES}"
+            )
+        self._stylesheet_bytes = total_bytes
 
     def heading_anchor(self, heading: etree._Element) -> str | None:
         """把标题 anchor 查询委托给已绑定的注册表。"""
