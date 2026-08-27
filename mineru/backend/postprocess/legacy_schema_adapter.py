@@ -123,12 +123,18 @@ def _denormalize_bbox(bbox: Any, width: float, height: float) -> tuple[float, fl
 
 
 def _extract_lines_content(lines: list[dict[str, Any]]) -> tuple[str, str]:
-    """从 lines[].spans[] 提取文本 content 和第一个 image_path。"""
-    parts: list[str] = []
+    """从 lines[].spans[] 提取文本 content 和第一个 image_path。
+
+    schema 1.0 的 span 是同一行内的水平切片（字体/样式变化就会切开），
+    所以行内 span 必须无分隔符拼接，只有行与行之间才换行；
+    否则一行里每个 span 都会变成独立的一行，把句子拆碎。
+    """
+    line_texts: list[str] = []
     image_path = ""
     for line in lines:
         if not isinstance(line, dict):
             continue
+        parts: list[str] = []
         for span in line.get("spans") or []:
             if not isinstance(span, dict):
                 continue
@@ -137,7 +143,9 @@ def _extract_lines_content(lines: list[dict[str, Any]]) -> tuple[str, str]:
                 parts.append(text)
             if not image_path and span.get("image_path"):
                 image_path = span["image_path"]
-    return "\n".join(parts), image_path
+        if parts:
+            line_texts.append("".join(parts))
+    return "\n".join(line_texts), image_path
 
 
 def _denormalize_lines(

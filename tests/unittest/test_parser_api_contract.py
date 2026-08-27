@@ -1666,7 +1666,8 @@ def test_legacy_pdf_info_leaves_content_untouched_when_html_missing_or_empty() -
 
     pages = _pages_from_middle_json({"pdf_info": [_legacy_page_with_spans([span_no_html, span_empty_html])]})
 
-    assert _table_body_content(pages[0].blocks) == "keep\nkeep"
+    # 两个 span 同属一行，回推时无分隔符拼接；本用例断言的是 normalizer 没有改写 content。
+    assert _table_body_content(pages[0].blocks) == "keepkeep"
 
 
 def test_legacy_pdf_info_normalizes_spans_in_nested_blocks_and_all_block_lists() -> None:

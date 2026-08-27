@@ -122,6 +122,44 @@ def test_parse_result_from_json_restores_pages() -> None:
     assert restored.middle_json.file_suffix == "pdf"
 
 
+def test_parse_result_from_dict_joins_spans_within_a_line() -> None:
+    """验证 schema 1.0 回推时行内 span 无分隔符拼接，只有跨行才换行。"""
+    data = {
+        "pages": [
+            {
+                "page_idx": 0,
+                "page_size": [600.0, 800.0],
+                "preproc_blocks": [
+                    {
+                        "index": 0,
+                        "type": "text",
+                        "bbox": [60.0, 100.0, 540.0, 130.0],
+                        "lines": [
+                            {
+                                "bbox": [60.0, 100.0, 540.0, 115.0],
+                                # 同一行被样式切成 3 个 span
+                                "spans": [
+                                    {"type": "text", "content": "The measured value is "},
+                                    {"type": "text", "content": "42"},
+                                    {"type": "text", "content": " mV at the gate."},
+                                ],
+                            },
+                            {
+                                "bbox": [60.0, 115.0, 540.0, 130.0],
+                                "spans": [{"type": "text", "content": "Second line."}],
+                            },
+                        ],
+                    }
+                ],
+            }
+        ]
+    }
+
+    restored = ParseResult.from_dict(data)
+
+    assert restored.pages[0].blocks[0].content == "The measured value is 42 mV at the gate.\nSecond line."
+
+
 def test_parse_result_export_pages_returns_defensive_copy() -> None:
     """验证调用方修改导出页面副本时不会污染 ParseResult 内部状态。"""
     image_cache = ImagePayloadCache()
