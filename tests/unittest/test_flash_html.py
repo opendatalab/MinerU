@@ -1286,6 +1286,46 @@ def test_html_versioned_wire_edited_code_body_falls_back_without_loss() -> None:
     assert "NEW NOTE" in markdown
 
 
+def test_html_versioned_wire_edited_table_body_falls_back_without_loss() -> None:
+    """验证表格 body 中新增可见节点会整体回退并保留表格与编辑内容。"""
+    source = MiddleJson.model_validate(
+        {
+            "pages": [
+                {
+                    "page_idx": 0,
+                    "blocks": [
+                        {
+                            "type": "table",
+                            "index": 0,
+                            "content": [
+                                {
+                                    "type": "table_body",
+                                    "index": 0,
+                                    "content": "<table><tr><td>A</td></tr></table>",
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ],
+            "is_full_document": True,
+            "file_suffix": "html",
+            "effort": "flash",
+            "parse_mode": "txt",
+            "mineru_version": "test",
+        }
+    )
+    soup = BeautifulSoup(render_html(source, standalone=False), "html.parser")
+    paragraph = soup.new_tag("p")
+    paragraph.string = "NEW NOTE"
+    soup.select_one('[data-block-type="table_body"]').append(paragraph)
+
+    markdown = render_markdown(doc_analyze(str(soup).encode(), file_suffix="html")[0])
+
+    assert "| A |" in markdown
+    assert "NEW NOTE" in markdown
+
+
 def test_html_marker_fallback_does_not_double_resolve_images(monkeypatch: pytest.MonkeyPatch) -> None:
     """验证结构校验先于资源物化，非法 marker 回退只解析一次图片。"""
     source = MiddleJson.model_validate(

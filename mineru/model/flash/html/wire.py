@@ -347,6 +347,8 @@ def _validate_visual_content(content_root: etree._Element, wrapper: etree._Eleme
                 raise _WireValidationError("visual_body_index_mismatch")
             if parent_type == BlockType.CODE and (wrapper.get("data-block-sub-type") or "").strip() == BlockType.CODE:
                 _validate_code_body_shape(child)
+            elif parent_type == BlockType.TABLE:
+                _validate_table_body_shape(child)
             for marker in _descendant_markers(child):
                 if marker is child:
                     continue
@@ -378,6 +380,27 @@ def _validate_code_body_shape(body: etree._Element) -> None:
         raise _WireValidationError("invalid_code_body_shape")
     if _element_children(code_children[0]):
         raise _WireValidationError("invalid_code_body_shape")
+
+
+def _validate_table_body_shape(body: etree._Element) -> None:
+    """校验表格 body 只含一种规范载荷，避免精确物化静默丢弃旁路内容。"""
+    _validate_element_only_content(body)
+    children = _element_children(body)
+    if not children:
+        return
+    if len(children) != 1:
+        raise _WireValidationError("invalid_table_body_shape")
+    child = children[0]
+    name = local_name(child)
+    classes = _class_tokens(child)
+    if name == "table":
+        return
+    if name == "pre" and bool(classes & {"mineru-table-text", "mineru-raw-fallback"}):
+        if not _element_children(child):
+            return
+    elif name == "img" and "mineru-table-image" in classes:
+        return
+    raise _WireValidationError("invalid_table_body_shape")
 
 
 def _validate_list_container(container: etree._Element, *, top_wrapper: etree._Element | None = None) -> None:
