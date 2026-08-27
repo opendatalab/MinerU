@@ -397,10 +397,12 @@ class _Playback:
             self.emit_path(builder.build(), stroke=True, fill=False)
         self.state.current_position = remaining[-1]
 
-    def angle_arc(self, path: GraphicsPath, *, start: Point, end: Point) -> None:
-        """绘制 current-to-start 连线和 AngleArc，并把 current position 更新到终点。"""
+    def connected_arc(self, path: GraphicsPath) -> None:
+        """绘制 current-to-projected-start 连线和圆弧，并更新到 projected endpoint。"""
+        if not path.segments:
+            return
         mapped_path = transform_path(path, self.logical_matrix())
-        mapped_start = self.map_point(start)
+        mapped_start = mapped_path.segments[0].points[0]
         tail = GraphicsPath(mapped_path.segments[1:])
         if self.path_active:
             self._ensure_active_path_current()
@@ -412,7 +414,7 @@ class _Playback:
             builder.line_to(mapped_start)
             builder.extend(tail)
             self.emit_path(builder.build(), stroke=True, fill=False)
-        self.state.current_position = end
+        self.state.current_position = path.segments[-1].points[-1]
 
     def begin_path(self) -> None:
         """开始新的 GDI path bracket 并清除旧路径。"""
@@ -1386,9 +1388,10 @@ def _handle_emf_record(record_type: int, record: BoundedReader, playback: _Playb
         end = float(record.i32(32)), float(record.i32(36))
         close_mode = "chord" if record_type == 46 else "pie" if record_type == 47 else "open"
         path = arc_path(rect, start, end, direction=playback.state.arc_direction, close_mode=close_mode)
-        playback.emit_logical_path(path, stroke=True, fill=close_mode != "open")
         if record_type == 55:
-            playback.state.current_position = end
+            playback.connected_arc(path)
+        else:
+            playback.emit_logical_path(path, stroke=True, fill=close_mode != "open")
         return
     if record_type == 41:
         center = float(record.i32(8)), float(record.i32(12))
@@ -1407,15 +1410,13 @@ def _handle_emf_record(record_type: int, record: BoundedReader, playback: _Playb
             center[1] - radius * sin(radians(end_angle)),
         )
         direction = 1 if sweep_angle >= 0 else 2
-        playback.angle_arc(
+        playback.connected_arc(
             arc_path(
                 Rect(center[0] - radius, center[1] - radius, center[0] + radius, center[1] + radius),
                 start,
                 end,
                 direction=direction,
             ),
-            start=start,
-            end=end,
         )
         return
 

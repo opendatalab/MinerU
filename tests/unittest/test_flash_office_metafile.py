@@ -58,6 +58,7 @@ from _metafile_test_utils import (
     build_emf,
     build_placeable_wmf,
     emf_angle_arc,
+    emf_arc_to,
     emf_begin_path,
     emf_close_figure,
     emf_create_brush,
@@ -410,6 +411,23 @@ def test_emf_anglearc_uses_sweep_direction_and_updates_current_position(
     assert commands[0].path.segments[1].points == ((10.0, 0.0),)
     assert commands[0].path.segments[-1].points[0] == pytest.approx((0.0, expected_end_y))
     assert commands[1].path.segments[0].points[0] == pytest.approx((0.0, expected_end_y))
+
+
+def test_emf_arcto_connects_current_position_to_projected_arc_endpoints() -> None:
+    """验证 ArcTo 连接 current 与椭圆投影起点，并将 current 更新到投影终点。"""
+    data = build_emf(
+        [
+            emf_move_to(10, 10),
+            emf_arc_to((0, 0, 100, 100), (150, 50), (50, -100)),
+            emf_line_to(80, 80),
+        ]
+    )
+    commands = [command for command in metafile_parser.parse_metafile(data).commands if isinstance(command, DrawPathCommand)]
+
+    assert commands[0].path.segments[0].points == ((10.0, 10.0),)
+    assert commands[0].path.segments[1].points[0] == pytest.approx((100.0, 50.0))
+    assert commands[0].path.segments[-1].points[0] == pytest.approx((50.0, 0.0))
+    assert commands[1].path.segments[0].points[0] == pytest.approx((50.0, 0.0))
 
 
 def test_emf_stroke_and_fill_closes_every_open_figure() -> None:

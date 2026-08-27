@@ -106,6 +106,15 @@ def emf_angle_arc(center_x: int, center_y: int, radius: int, start_angle: float,
     return emf_record(41, struct.pack("<iiIff", center_x, center_y, radius, start_angle, sweep_angle))
 
 
+def emf_arc_to(
+    rect: tuple[int, int, int, int],
+    start: tuple[int, int],
+    end: tuple[int, int],
+) -> bytes:
+    """构造 EMR_ARCTO，start/end 可位于椭圆边界之外。"""
+    return emf_record(55, struct.pack("<8i", *rect, *start, *end))
+
+
 def emf_begin_path() -> bytes:
     """构造 EMR_BEGINPATH。"""
     return emf_record(59)
@@ -319,6 +328,7 @@ __all__ = [
     "build_emf",
     "build_placeable_wmf",
     "emf_angle_arc",
+    "emf_arc_to",
     "emf_create_brush",
     "emf_create_pen",
     "emf_begin_path",
