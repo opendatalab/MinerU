@@ -233,20 +233,55 @@ def _load_chapter_stylesheet(package: EpubPackage, chapter_path: str, root: etre
     return stylesheet
 
 
-def _element_is_hidden(element: etree._Element, stylesheet: EpubStylesheet) -> bool:
-    """按 converter 的祖先到自身样式解析顺序判断元素是否不会输出。"""
+def _visible_raw_text_with_style(
+    element: etree._Element,
+    stylesheet: EpubStylesheet,
+    style: TextStyle,
+    visibility_hidden: bool,
+) -> str:
+    """递归提取遵守整树隐藏和继承 visibility 的原始文本。"""
+    parts: list[str] = [] if visibility_hidden else [element.text or ""]
+    for child in element:
+        if isinstance(child.tag, str):
+            resolved = stylesheet.resolve(child, style, visibility_hidden)
+            if not resolved.subtree_hidden:
+                parts.append(
+                    _visible_raw_text_with_style(
+                        child,
+                        stylesheet,
+                        resolved.text,
+                        resolved.visibility_hidden,
+                    )
+                )
+        elif not visibility_hidden:
+            parts.append(_entity_text(child))
+        if not visibility_hidden:
+            parts.append(child.tail or "")
+    return "".join(parts)
+
+
+def _element_visible_text(element: etree._Element, stylesheet: EpubStylesheet) -> str:
+    """按祖先到自身的样式链返回元素最终可输出的纯文本。"""
     inherited = TextStyle()
+    inherited_visibility_hidden = False
     chain = [ancestor for ancestor in reversed(list(element.iterancestors())) if isinstance(ancestor.tag, str)]
     body_index = next((index for index, ancestor in enumerate(chain) if _local_name(ancestor) == "body"), None)
     if body_index is not None:
         chain = chain[body_index:]
     chain.append(element)
     for current in chain:
-        resolved = stylesheet.resolve(current, inherited)
-        if resolved.hidden:
-            return True
+        resolved = stylesheet.resolve(current, inherited, inherited_visibility_hidden)
+        if resolved.subtree_hidden:
+            return ""
         inherited = resolved.text
-    return False
+        inherited_visibility_hidden = resolved.visibility_hidden
+    value = _visible_raw_text_with_style(element, stylesheet, inherited, inherited_visibility_hidden)
+    return _WHITESPACE_RE.sub(" ", html.unescape(value)).strip()
+
+
+def _element_is_hidden(element: etree._Element, stylesheet: EpubStylesheet) -> bool:
+    """判断元素是否不会产生任何最终可输出的文本。"""
+    return not _element_visible_text(element, stylesheet)
 
 
 class EpubAnchorRegistry:
@@ -261,20 +296,18 @@ class EpubAnchorRegistry:
         self._heading_labels: dict[str, str] = {}
         for chapter in chapters:
             stylesheet = _load_chapter_stylesheet(package, chapter.path, chapter.root)
-            headings = [
-                element
-                for element in chapter.root.iter()
-                if isinstance(element.tag, str)
-                and _local_name(element) in {"h1", "h2", "h3", "h4", "h5", "h6"}
-                and _visible_text(element)
-                and not _element_is_hidden(element, stylesheet)
-            ]
-            for ordinal, heading in enumerate(headings):
+            headings: list[tuple[etree._Element, str]] = []
+            for element in chapter.root.iter():
+                if not isinstance(element.tag, str) or _local_name(element) not in {"h1", "h2", "h3", "h4", "h5", "h6"}:
+                    continue
+                if label := _element_visible_text(element, stylesheet):
+                    headings.append((element, label))
+            for ordinal, (heading, label) in enumerate(headings):
                 source_id = _element_id(heading)
                 identity = f"{source_id or 'heading'}-{ordinal}"
                 anchor = _canonical_anchor(chapter.path, identity)
                 self._heading_anchors[heading] = anchor
-                self._heading_labels[anchor] = _visible_text(heading)
+                self._heading_labels[anchor] = label
             notes = [
                 element
                 for element in chapter.root.iter()
@@ -290,7 +323,7 @@ class EpubAnchorRegistry:
                 self._note_anchors[note] = _canonical_anchor(chapter.path, identity)
 
             if headings:
-                first_anchor = self._heading_anchors[headings[0]]
+                first_anchor = self._heading_anchors[headings[0][0]]
                 self._targets[(chapter.path, None)] = first_anchor
             for element in chapter.root.iter():
                 if not isinstance(element.tag, str) or not (fragment := _element_id(element)):
@@ -395,14 +428,19 @@ class EpubChapterConverter:
         if body is None:
             return []
         body_style = self.stylesheet.resolve(body, TextStyle())
-        if body_style.hidden:
+        if body_style.subtree_hidden:
             return []
-        return self._parse_container_contents(body, body_style.text)
+        return self._parse_container_contents(body, body_style.text, body_style.visibility_hidden)
 
-    def _parse_container_contents(self, element: etree._Element, style: TextStyle) -> list[dict[str, object]]:
+    def _parse_container_contents(
+        self,
+        element: etree._Element,
+        style: TextStyle,
+        visibility_hidden: bool = False,
+    ) -> list[dict[str, object]]:
         """把容器的行内碎片和块级子元素按源顺序拆成 raw blocks。"""
         blocks: list[dict[str, object]] = []
-        inline_parts: list[str] = [self._render_text(element.text, style)]
+        inline_parts: list[str] = [] if visibility_hidden else [self._render_text(element.text, style)]
 
         def flush_inline() -> None:
             """把当前连续行内片段写为一个普通正文 block。"""
@@ -413,35 +451,42 @@ class EpubChapterConverter:
 
         for child in element:
             if not isinstance(child.tag, str):
-                inline_parts.append(self._render_text(_entity_text(child), style))
-                inline_parts.append(self._render_text(child.tail, style))
+                if not visibility_hidden:
+                    inline_parts.append(self._render_text(_entity_text(child), style))
+                    inline_parts.append(self._render_text(child.tail, style))
                 continue
             name = _local_name(child)
             if name in _BLOCK_TAGS:
                 flush_inline()
-                blocks.extend(self._parse_block(child, style))
+                blocks.extend(self._parse_block(child, style, visibility_hidden))
             else:
-                rendered, extras = self._render_inline_element(child, style)
+                rendered, extras = self._render_inline_element(child, style, visibility_hidden)
                 inline_parts.append(rendered)
                 if extras:
                     flush_inline()
                     blocks.extend(extras)
-            inline_parts.append(self._render_text(child.tail, style))
+            if not visibility_hidden:
+                inline_parts.append(self._render_text(child.tail, style))
         flush_inline()
         return blocks
 
-    def _parse_block(self, element: etree._Element, inherited: TextStyle) -> list[dict[str, object]]:
+    def _parse_block(
+        self,
+        element: etree._Element,
+        inherited: TextStyle,
+        inherited_visibility_hidden: bool = False,
+    ) -> list[dict[str, object]]:
         """把一个块级 XHTML 元素分派到对应 raw block 转换逻辑。"""
-        resolved = self.stylesheet.resolve(element, inherited)
-        if resolved.hidden:
+        resolved = self.stylesheet.resolve(element, inherited, inherited_visibility_hidden)
+        if resolved.subtree_hidden:
             return []
         name = _local_name(element)
         if name in _SKIPPED_TAGS or name == "hr":
             return []
         if self.anchors.note_anchor(element) is not None:
-            return self._parse_note_element(element, resolved.text)
+            return self._parse_note_element(element, resolved.text, resolved.visibility_hidden)
         if name in {"h1", "h2", "h3", "h4", "h5", "h6", "p"}:
-            content, extras = self._render_inline_children(element, resolved.text)
+            content, extras = self._render_inline_children(element, resolved.text, resolved.visibility_hidden)
             blocks: list[dict[str, object]] = []
             if content.strip():
                 if name == "h1":
@@ -460,25 +505,32 @@ class EpubChapterConverter:
                 blocks.append(block)
             return [*blocks, *extras]
         if name in {"ul", "ol"}:
-            list_block, extras = self._parse_list(element, resolved.text)
+            list_block, extras = self._parse_list(element, resolved.text, resolved.visibility_hidden)
             return ([list_block] if list_block is not None else []) + extras
         if name == "table":
-            return self._parse_table(element, resolved.text)
+            return self._parse_table(element, resolved.text, resolved.visibility_hidden)
         if name == "pre":
-            content = "".join(element.itertext())
+            content = self._visible_raw_text(element, resolved.text, resolved.visibility_hidden)
             return [{"type": BlockType.CODE, "content": content}] if content.strip() else []
         if name == "math":
+            if resolved.visibility_hidden:
+                return []
             latex = mathml_to_latex(element)
             return [{"type": BlockType.EQUATION, "content": latex}] if latex else []
         if name == "figure":
-            return self._parse_figure(element, resolved.text)
+            return self._parse_figure(element, resolved.text, resolved.visibility_hidden)
         if name == "svg":
-            return self._parse_svg(element, resolved.text)
-        return self._parse_container_contents(element, resolved.text)
+            return self._parse_svg(element, resolved.text, resolved.visibility_hidden)
+        return self._parse_container_contents(element, resolved.text, resolved.visibility_hidden)
 
-    def _parse_note_element(self, element: etree._Element, style: TextStyle) -> list[dict[str, object]]:
+    def _parse_note_element(
+        self,
+        element: etree._Element,
+        style: TextStyle,
+        visibility_hidden: bool = False,
+    ) -> list[dict[str, object]]:
         """逐块转换单条 Footnote/Endnote，并只给首个文本脚注挂载 anchor。"""
-        blocks = self._parse_container_contents(element, style)
+        blocks = self._parse_container_contents(element, style, visibility_hidden)
         anchor = self.anchors.note_anchor(element)
         anchor_attached = False
         for block in blocks:
@@ -494,41 +546,47 @@ class EpubChapterConverter:
         self,
         element: etree._Element,
         style: TextStyle,
+        visibility_hidden: bool = False,
     ) -> tuple[str, list[dict[str, object]]]:
         """渲染元素的连续行内内容，并旁路其中的视觉 blocks。"""
-        parts = [self._render_text(element.text, style)]
+        parts = [] if visibility_hidden else [self._render_text(element.text, style)]
         extras: list[dict[str, object]] = []
         for child in element:
             if not isinstance(child.tag, str):
-                parts.append(self._render_text(_entity_text(child), style))
-                parts.append(self._render_text(child.tail, style))
+                if not visibility_hidden:
+                    parts.append(self._render_text(_entity_text(child), style))
+                    parts.append(self._render_text(child.tail, style))
                 continue
-            rendered, child_extras = self._render_inline_element(child, style)
+            rendered, child_extras = self._render_inline_element(child, style, visibility_hidden)
             parts.append(rendered)
             extras.extend(child_extras)
-            parts.append(self._render_text(child.tail, style))
+            if not visibility_hidden:
+                parts.append(self._render_text(child.tail, style))
         return "".join(parts), extras
 
     def _render_inline_element(
         self,
         element: etree._Element,
         inherited: TextStyle,
+        inherited_visibility_hidden: bool = False,
     ) -> tuple[str, list[dict[str, object]]]:
         """把一个 XHTML 行内元素转换为内部富文本协议和可选视觉块。"""
-        resolved = self.stylesheet.resolve(element, inherited)
-        if resolved.hidden:
+        resolved = self.stylesheet.resolve(element, inherited, inherited_visibility_hidden)
+        if resolved.subtree_hidden:
             return "", []
         name = _local_name(element)
         if name in _SKIPPED_TAGS:
             return "", []
         if name == "br":
-            return "\n", []
+            return ("", []) if resolved.visibility_hidden else ("\n", [])
         if name in {"img", "image"}:
-            return "", self._image_blocks(element)
+            return ("", []) if resolved.visibility_hidden else ("", self._image_blocks(element))
         if name == "math":
+            if resolved.visibility_hidden:
+                return "", []
             latex = mathml_to_latex(element)
             return (f"<eq>{html.escape(latex, quote=False)}</eq>" if latex else ""), []
-        content, extras = self._render_inline_children(element, resolved.text)
+        content, extras = self._render_inline_children(element, resolved.text, resolved.visibility_hidden)
         if name == "a":
             href = element.get("href") or element.get(_XLINK_HREF) or ""
             target = self.anchors.resolve_link(href, base_part=self.chapter_path)
@@ -545,6 +603,25 @@ class EpubChapterConverter:
         escaped = html.escape(text, quote=False)
         names = style.names()
         return f'<text style="{",".join(names)}">{escaped}</text>' if names else escaped
+
+    def _visible_raw_text(
+        self,
+        element: etree._Element,
+        style: TextStyle,
+        visibility_hidden: bool = False,
+    ) -> str:
+        """递归提取可见原始文本，并允许后代显式恢复 visibility。"""
+        return _visible_raw_text_with_style(element, self.stylesheet, style, visibility_hidden)
+
+    def _visible_plain_text(
+        self,
+        element: etree._Element,
+        style: TextStyle,
+        visibility_hidden: bool = False,
+    ) -> str:
+        """返回折叠空白并还原实体后的可见纯文本。"""
+        value = self._visible_raw_text(element, style, visibility_hidden)
+        return _WHITESPACE_RE.sub(" ", html.unescape(value)).strip()
 
     def _image_blocks(self, element: etree._Element, *, caption: str | None = None) -> list[dict[str, object]]:
         """把包内栅格图片转换为 image block，并用 caption/alt 补说明。"""
@@ -578,76 +655,93 @@ class EpubChapterConverter:
             return None
         return data_uri
 
-    def _parse_figure(self, element: etree._Element, style: TextStyle) -> list[dict[str, object]]:
+    def _parse_figure(
+        self,
+        element: etree._Element,
+        style: TextStyle,
+        visibility_hidden: bool = False,
+    ) -> list[dict[str, object]]:
         """解析 figure 中的图片和 figcaption，其余内容按普通容器处理。"""
         caption_element = next(
             (child for child in element if isinstance(child.tag, str) and _local_name(child) == "figcaption"),
             None,
         )
-        caption = _visible_text(caption_element) if caption_element is not None else ""
+        caption = ""
+        if caption_element is not None:
+            caption_style = self.stylesheet.resolve(caption_element, style, visibility_hidden)
+            if not caption_style.subtree_hidden:
+                caption = self._visible_plain_text(caption_element, caption_style.text, caption_style.visibility_hidden)
         blocks: list[dict[str, object]] = []
         for child in element:
             if not isinstance(child.tag, str):
                 continue
             name = _local_name(child)
             if name in {"img", "image"}:
-                child_style = self.stylesheet.resolve(child, style)
-                if not child_style.hidden:
+                child_style = self.stylesheet.resolve(child, style, visibility_hidden)
+                if not child_style.subtree_hidden and not child_style.visibility_hidden:
                     blocks.extend(self._image_blocks(child, caption=caption))
             elif name != "figcaption":
                 child_blocks = (
-                    self._parse_block(child, style) if name in _BLOCK_TAGS else self._render_inline_element(child, style)[1]
+                    self._parse_block(child, style, visibility_hidden)
+                    if name in _BLOCK_TAGS
+                    else self._render_inline_element(child, style, visibility_hidden)[1]
                 )
                 blocks.extend(child_blocks)
         if not blocks and caption:
             blocks.append({"type": BlockType.TEXT, "content": html.escape(caption, quote=False)})
         return blocks
 
-    def _visible_svg_text(self, element: etree._Element, style: TextStyle) -> str:
+    def _visible_svg_text(
+        self,
+        element: etree._Element,
+        style: TextStyle,
+        visibility_hidden: bool = False,
+    ) -> str:
         """递归提取 SVG 可见文本，并排除隐藏后代的内容。"""
-        parts = [_clean_text_node(element.text)]
-        for child in element:
-            if not isinstance(child.tag, str):
-                parts.append(_clean_text_node(_entity_text(child)))
-                parts.append(_clean_text_node(child.tail))
-                continue
-            resolved = self.stylesheet.resolve(child, style)
-            if not resolved.hidden:
-                parts.append(self._visible_svg_text(child, resolved.text))
-            parts.append(_clean_text_node(child.tail))
-        return _WHITESPACE_RE.sub(" ", html.unescape("".join(parts))).strip()
+        return self._visible_plain_text(element, style, visibility_hidden)
 
-    def _parse_svg(self, element: etree._Element, style: TextStyle) -> list[dict[str, object]]:
+    def _parse_svg(
+        self,
+        element: etree._Element,
+        style: TextStyle,
+        visibility_hidden: bool = False,
+    ) -> list[dict[str, object]]:
         """从 SVG 尽力提取 title/desc/text 和包内栅格 image。"""
         blocks: list[dict[str, object]] = []
         texts: list[str] = []
 
-        def visit(parent: etree._Element, inherited: TextStyle) -> None:
-            """按 SVG 树顺序访问可见候选节点，并让祖先隐藏状态截断子树。"""
+        def visit(parent: etree._Element, inherited: TextStyle, inherited_visibility_hidden: bool) -> None:
+            """按 SVG 树顺序访问候选节点，并允许 visibility-visible 后代恢复输出。"""
             for child in parent:
                 if not isinstance(child.tag, str):
                     continue
-                resolved = self.stylesheet.resolve(child, inherited)
-                if resolved.hidden:
+                resolved = self.stylesheet.resolve(child, inherited, inherited_visibility_hidden)
+                if resolved.subtree_hidden:
                     continue
                 name = _local_name(child)
                 if name in {"title", "desc", "text"}:
-                    value = self._visible_svg_text(child, resolved.text)
+                    value = self._visible_svg_text(child, resolved.text, resolved.visibility_hidden)
                     if value and value not in texts:
                         texts.append(value)
                 elif name == "image":
-                    blocks.extend(self._image_blocks(child))
+                    if not resolved.visibility_hidden:
+                        blocks.extend(self._image_blocks(child))
                 else:
-                    visit(child, resolved.text)
+                    visit(child, resolved.text, resolved.visibility_hidden)
 
-        visit(element, style)
+        visit(element, style, visibility_hidden)
         if texts:
             blocks.insert(0, {"type": BlockType.TEXT, "content": html.escape("\n".join(texts), quote=False)})
         return blocks
 
-    def _parse_table(self, table: etree._Element, style: TextStyle) -> list[dict[str, object]]:
+    def _parse_table(
+        self,
+        table: etree._Element,
+        style: TextStyle,
+        visibility_hidden: bool = False,
+    ) -> list[dict[str, object]]:
         """重建白名单化 HTML 表格，并把 caption 投影为表格说明。"""
-        markup = self._serialize_table_node(table, style)
+        markup = self._serialize_table_node(table, style, visibility_hidden)
         if not markup:
             return []
         blocks: list[dict[str, object]] = [{"type": BlockType.TABLE, "content": markup}]
@@ -655,20 +749,25 @@ class EpubChapterConverter:
             (child for child in table if isinstance(child.tag, str) and _local_name(child) == "caption"),
             None,
         )
-        if caption_element is not None and (caption := _visible_text(caption_element)):
-            blocks.append({"type": BlockType.TABLE_CAPTION, "content": html.escape(caption, quote=False)})
+        if caption_element is not None:
+            caption_style = self.stylesheet.resolve(caption_element, style, visibility_hidden)
+            if not caption_style.subtree_hidden:
+                caption = self._visible_plain_text(caption_element, caption_style.text, caption_style.visibility_hidden)
+                if caption:
+                    blocks.append({"type": BlockType.TABLE_CAPTION, "content": html.escape(caption, quote=False)})
         return blocks
 
     def _serialize_table_node(
         self,
         element: etree._Element,
         inherited: TextStyle,
+        inherited_visibility_hidden: bool = False,
         *,
         row_link_target: str | None = None,
     ) -> str:
         """递归序列化安全表格结构、行内样式、链接、公式和包内图片。"""
-        resolved = self.stylesheet.resolve(element, inherited)
-        if resolved.hidden:
+        resolved = self.stylesheet.resolve(element, inherited, inherited_visibility_hidden)
+        if resolved.subtree_hidden:
             return ""
         name = _local_name(element)
         if name == "caption" or name in _SKIPPED_TAGS:
@@ -700,13 +799,22 @@ class EpubChapterConverter:
             "u",
         }
         if name not in allowed:
-            return self._serialize_table_children(element, resolved.text, row_link_target=row_link_target)
+            return self._serialize_table_children(
+                element,
+                resolved.text,
+                resolved.visibility_hidden,
+                row_link_target=row_link_target,
+            )
         if name == "br":
-            return "<br>"
+            return "" if resolved.visibility_hidden else "<br>"
         if name == "math":
+            if resolved.visibility_hidden:
+                return ""
             latex = mathml_to_latex(element)
             return f"<eq>{html.escape(latex, quote=False)}</eq>" if latex else ""
         if name == "img":
+            if resolved.visibility_hidden:
+                return ""
             src = element.get("src") or ""
             data_uri = self._image_data_uri(src)
             alt = html.escape(element.get("alt") or "", quote=True)
@@ -729,7 +837,14 @@ class EpubChapterConverter:
             target = self.anchors.resolve_link(element.get("href") or "", base_part=self.chapter_path)
             if target:
                 attributes.append(f'href="{html.escape(target, quote=True)}"')
-        inner = self._serialize_table_children(element, resolved.text, row_link_target=row_link_target)
+        inner = self._serialize_table_children(
+            element,
+            resolved.text,
+            resolved.visibility_hidden,
+            row_link_target=row_link_target,
+        )
+        if resolved.visibility_hidden and not inner:
+            return ""
         if name in {"td", "th"} and row_link_target and self._table_cell_can_inherit_toc_link(element):
             inner = f'<a href="{html.escape(row_link_target, quote=True)}">{inner}</a>'
         attrs = f" {' '.join(attributes)}" if attributes else ""
@@ -739,17 +854,19 @@ class EpubChapterConverter:
         self,
         element: etree._Element,
         style: TextStyle,
+        visibility_hidden: bool = False,
         *,
         row_link_target: str | None = None,
     ) -> str:
         """序列化表格节点的文本、子元素和 tail。"""
-        parts = [self._render_table_text(element.text, style)]
+        parts = [] if visibility_hidden else [self._render_table_text(element.text, style)]
         for child in element:
             if isinstance(child.tag, str):
-                parts.append(self._serialize_table_node(child, style, row_link_target=row_link_target))
-            else:
+                parts.append(self._serialize_table_node(child, style, visibility_hidden, row_link_target=row_link_target))
+            elif not visibility_hidden:
                 parts.append(self._render_table_text(_entity_text(child), style))
-            parts.append(self._render_table_text(child.tail, style))
+            if not visibility_hidden:
+                parts.append(self._render_table_text(child.tail, style))
         return "".join(parts)
 
     def _toc_table_row_target(self, row: etree._Element) -> str | None:
@@ -809,6 +926,7 @@ class EpubChapterConverter:
         self,
         element: etree._Element,
         style: TextStyle,
+        visibility_hidden: bool = False,
     ) -> tuple[dict[str, object] | None, list[dict[str, object]]]:
         """解析有序/无序列表，并投影为跨 renderer 的连续编号结构。"""
         ordered = _local_name(element) == "ol"
@@ -818,40 +936,60 @@ class EpubChapterConverter:
         children: list[dict[str, object]] = []
         extras: list[dict[str, object]] = []
         for item in items:
-            item_style = self.stylesheet.resolve(item, style)
-            if item_style.hidden:
+            item_style = self.stylesheet.resolve(item, style, visibility_hidden)
+            if item_style.subtree_hidden:
                 continue
             if self.anchors.note_anchor(item) is not None:
-                extras.extend(self._parse_note_element(item, item_style.text))
+                extras.extend(self._parse_note_element(item, item_style.text, item_style.visibility_hidden))
                 continue
-            content_parts: list[str] = [self._render_text(item.text, item_style.text)]
+            content_parts: list[str] = []
+            if not item_style.visibility_hidden:
+                content_parts.append(self._render_text(item.text, item_style.text))
             nested_lists: list[dict[str, object]] = []
             for child in item:
                 if not isinstance(child.tag, str):
-                    content_parts.append(self._render_text(_entity_text(child), item_style.text))
-                    content_parts.append(self._render_text(child.tail, item_style.text))
+                    if not item_style.visibility_hidden:
+                        content_parts.append(self._render_text(_entity_text(child), item_style.text))
+                        content_parts.append(self._render_text(child.tail, item_style.text))
                     continue
                 name = _local_name(child)
                 if name in {"ul", "ol"}:
-                    nested, nested_extras = self._parse_list(child, item_style.text)
-                    if nested is not None:
-                        nested_lists.append(nested)
-                    extras.extend(nested_extras)
+                    nested_style = self.stylesheet.resolve(child, item_style.text, item_style.visibility_hidden)
+                    if not nested_style.subtree_hidden:
+                        nested, nested_extras = self._parse_list(
+                            child,
+                            nested_style.text,
+                            nested_style.visibility_hidden,
+                        )
+                        if nested is not None:
+                            nested_lists.append(nested)
+                        extras.extend(nested_extras)
                 elif name in {"table", "figure", "svg"}:
-                    extras.extend(self._parse_block(child, item_style.text))
+                    extras.extend(self._parse_block(child, item_style.text, item_style.visibility_hidden))
                 elif name in _BLOCK_TAGS:
-                    if self.anchors.note_anchor(child) is not None:
-                        extras.extend(self._parse_note_element(child, item_style.text))
-                    else:
-                        rendered, child_extras = self._render_inline_children(child, item_style.text)
-                        if rendered.strip():
-                            content_parts.append(rendered)
-                        extras.extend(child_extras)
+                    child_style = self.stylesheet.resolve(child, item_style.text, item_style.visibility_hidden)
+                    if not child_style.subtree_hidden:
+                        if self.anchors.note_anchor(child) is not None:
+                            extras.extend(self._parse_note_element(child, child_style.text, child_style.visibility_hidden))
+                        else:
+                            rendered, child_extras = self._render_inline_children(
+                                child,
+                                child_style.text,
+                                child_style.visibility_hidden,
+                            )
+                            if rendered.strip():
+                                content_parts.append(rendered)
+                            extras.extend(child_extras)
                 else:
-                    rendered, child_extras = self._render_inline_element(child, item_style.text)
+                    rendered, child_extras = self._render_inline_element(
+                        child,
+                        item_style.text,
+                        item_style.visibility_hidden,
+                    )
                     content_parts.append(rendered)
                     extras.extend(child_extras)
-                content_parts.append(self._render_text(child.tail, item_style.text))
+                if not item_style.visibility_hidden:
+                    content_parts.append(self._render_text(child.tail, item_style.text))
             content = "".join(content_parts).strip()
             if content:
                 children.append({"type": BlockType.TEXT, "content": content})
@@ -886,7 +1024,7 @@ def convert_svg_spine(
     empty_registry = EpubAnchorRegistry([], package)
     converter = EpubChapterConverter(package, chapter_path, root, empty_registry)
     resolved = converter.stylesheet.resolve(root, TextStyle())
-    return [] if resolved.hidden else converter._parse_svg(root, resolved.text)
+    return [] if resolved.subtree_hidden else converter._parse_svg(root, resolved.text, resolved.visibility_hidden)
 
 
 __all__ = [

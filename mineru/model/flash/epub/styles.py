@@ -92,10 +92,16 @@ class TextStyleDelta:
 
 @dataclass(frozen=True, slots=True)
 class ElementStyle:
-    """保存元素最终文字样式和可见性。"""
+    """保存元素最终文字样式、整树隐藏状态和继承可见性。"""
 
     text: TextStyle
-    hidden: bool = False
+    subtree_hidden: bool = False
+    visibility_hidden: bool = False
+
+    @property
+    def hidden(self) -> bool:
+        """返回当前元素是否因任一种受支持的隐藏语义而不可见。"""
+        return self.subtree_hidden or self.visibility_hidden
 
 
 @dataclass(slots=True)
@@ -175,7 +181,10 @@ def _parse_declarations(value: str) -> _ParsedDeclarations:
         elif name == "display":
             visibility_update = ("display", normalized == "none")
         elif name == "visibility":
-            visibility_update = ("visibility", normalized in {"hidden", "collapse"})
+            if normalized in {"hidden", "collapse"}:
+                visibility_update = ("visibility", True)
+            elif normalized in {"visible", "initial"}:
+                visibility_update = ("visibility", False)
         for field_name, field_value in text_updates.items():
             current = text.get(field_name)
             if current is None or important or not current[0]:
@@ -240,7 +249,12 @@ class EpubStylesheet:
             return tag, class_name, 10 + (1 if tag else 0)
         return normalized.casefold(), None, 1
 
-    def resolve(self, element: etree._Element, inherited: TextStyle) -> ElementStyle:
+    def resolve(
+        self,
+        element: etree._Element,
+        inherited: TextStyle,
+        inherited_visibility_hidden: bool = False,
+    ) -> ElementStyle:
         """计算元素的继承样式、标签默认样式、CSS 规则和 inline style。"""
         tag = _local_name(element)
         classes = frozenset((element.get("class") or "").split())
@@ -252,7 +266,7 @@ class EpubStylesheet:
             subscript=tag == "sub",
         )
         style = inherited.merge(tag_style)
-        hidden = element.get("hidden") is not None or (element.get("aria-hidden") or "").casefold() == "true"
+        subtree_hidden = element.get("hidden") is not None or (element.get("aria-hidden") or "").casefold() == "true"
         matching: list[_SelectorCascade] = []
         if cascade := self._tag_cascades.get(tag):
             matching.append(cascade)
@@ -278,6 +292,7 @@ class EpubStylesheet:
                 resolved_values[name] = max(candidates, key=lambda item: item[:3])[3]
         style = TextStyleDelta(**resolved_values).apply(style)
 
+        resolved_visibility: dict[str, bool] = {}
         for name in _VISIBILITY_FIELDS:
             candidates = [
                 (important, cascade.priority, order, value)
@@ -288,9 +303,11 @@ class EpubStylesheet:
             if (inline_declaration := inline.visibility.get(name)) is not None:
                 important, value = inline_declaration
                 candidates.append((important, 1_000, self._source_order, value))
-            if candidates and max(candidates, key=lambda item: item[:3])[3]:
-                hidden = True
-        return ElementStyle(style, hidden)
+            if candidates:
+                resolved_visibility[name] = max(candidates, key=lambda item: item[:3])[3]
+        subtree_hidden = subtree_hidden or resolved_visibility.get("display", False)
+        visibility_hidden = resolved_visibility.get("visibility", inherited_visibility_hidden)
+        return ElementStyle(style, subtree_hidden, visibility_hidden)
 
 
 __all__ = ["ElementStyle", "EpubStylesheet", "TextStyle", "TextStyleDelta"]

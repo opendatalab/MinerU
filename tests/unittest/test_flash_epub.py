@@ -668,6 +668,108 @@ def test_epub_combined_visibility_rule_does_not_export_hidden_content() -> None:
     assert "hidden secret" not in str(pages)
 
 
+def test_epub_stylesheet_allows_visible_descendant_to_override_inherited_visibility() -> None:
+    """验证 visibility 可继承且显式 visible 后代能够恢复自身输出。"""
+    stylesheet = EpubStylesheet()
+    stylesheet.add(".parent { visibility: hidden; } .child { visibility: visible; }")
+    parent = etree.fromstring(b'<div class="parent"><span class="child"/></div>')
+    child = parent[0]
+
+    parent_style = stylesheet.resolve(parent, TextStyle())
+    child_style = stylesheet.resolve(child, parent_style.text, parent_style.visibility_hidden)
+
+    assert parent_style.subtree_hidden is False
+    assert parent_style.visibility_hidden is True
+    assert child_style.subtree_hidden is False
+    assert child_style.visibility_hidden is False
+
+
+def test_epub_visibility_visible_descendants_survive_hidden_containers() -> None:
+    """验证真实 EPUB 的块、行内、列表、表格、SVG 和标题锚点均可从 visibility:hidden 恢复。"""
+    source = BytesIO(build_epub_fixture())
+    rewritten = BytesIO()
+    replacement = b"""<div class="visibility-parent">
+  hidden parent text
+  <h2 id="visibility-heading">hidden heading text <span class="visibility-child">Visible descendant heading</span></h2>
+  <p>hidden paragraph</p>
+  <p class="visibility-child">visible block text</p>
+  <p>hidden before <span class="visibility-child">visible inline text</span> hidden after</p>
+  <ol><li class="visibility-child">visible list item</li><li>hidden list item</li></ol>
+  <table><tbody><tr><td class="visibility-child">visible table cell</td><td>hidden table cell</td></tr></tbody></table>
+  <svg xmlns="http://www.w3.org/2000/svg"><g><text class="visibility-child">visible SVG text</text>
+    <text>hidden SVG text</text></g></svg>
+</div>
+<div class="display-parent"><p class="visibility-child">display-hidden descendant</p></div>
+<div hidden="hidden"><p class="visibility-child">attribute-hidden descendant</p></div>
+<p><a href="#visibility-heading">jump to visible heading</a></p>"""
+    with ZipFile(source) as archive, ZipFile(rewritten, "w", ZIP_DEFLATED) as output:
+        for info in archive.infolist():
+            data = archive.read(info.filename)
+            if info.filename == "EPUB/text/ch1.xhtml":
+                data = data.replace(b'<p class="hidden">hidden secret</p>', replacement)
+            elif info.filename == "EPUB/styles/book.css":
+                data = (
+                    b".visibility-parent { visibility: hidden; }"
+                    b".visibility-child { visibility: visible; }"
+                    b".display-parent { display: none; }"
+                )
+            output.writestr(info, data)
+
+    pages = EpubModel().predict(BytesIO(rewritten.getvalue()))
+    blocks = [block for page in pages for block in page]
+    flattened = str(blocks)
+
+    for visible_text in (
+        "Visible descendant heading",
+        "visible block text",
+        "visible inline text",
+        "visible list item",
+        "visible table cell",
+        "visible SVG text",
+    ):
+        assert visible_text in flattened
+    for hidden_text in (
+        "hidden parent text",
+        "hidden heading text",
+        "hidden paragraph",
+        "hidden before",
+        "hidden after",
+        "hidden list item",
+        "hidden table cell",
+        "hidden SVG text",
+        "display-hidden descendant",
+        "attribute-hidden descendant",
+    ):
+        assert hidden_text not in flattened
+
+    heading = next(block for block in blocks if block.get("content") == "Visible descendant heading")
+    assert f"<url>#{heading['anchor']}</url>" in flattened
+
+
+def test_epub_visibility_hidden_body_still_visits_visible_children() -> None:
+    """验证 body 自身 visibility:hidden 时不会在显式可见子节点之前剪枝。"""
+    source = BytesIO(build_epub_fixture())
+    rewritten = BytesIO()
+    with ZipFile(source) as archive, ZipFile(rewritten, "w", ZIP_DEFLATED) as output:
+        for info in archive.infolist():
+            data = archive.read(info.filename)
+            if info.filename == "EPUB/text/ch1.xhtml":
+                data = data.replace(b"<body>", b'<body class="visibility-parent">', 1)
+                data = data.replace(b'<h1 id="chapter-one">', b'<h1 id="chapter-one" class="visibility-child">', 1)
+            elif info.filename == "EPUB/styles/book.css":
+                data = (
+                    b".visibility-parent { visibility: hidden; }"
+                    b".visibility-child { visibility: visible; }"
+                    b".hidden { display: none; }"
+                )
+            output.writestr(info, data)
+
+    first_page = str(EpubModel().predict(BytesIO(rewritten.getvalue()))[0])
+
+    assert "Chapter One" in first_page
+    assert "Hello" not in first_page
+
+
 def test_epub_stylesheet_rejects_overlong_numeric_font_weight_before_int() -> None:
     """验证超长或越界数字字重作为无效声明忽略且不会覆盖继承样式。"""
     stylesheet = EpubStylesheet()
