@@ -119,8 +119,7 @@ def select_auto_content(body: etree._Element, stylesheet: MarkupStylesheet) -> C
         )
         if not candidate.explicit and second is not None and candidate.score < second.score * _MIN_SCORE_MARGIN:
             continue
-        selected = deepcopy(candidate.element)
-        _soft_prune(selected)
+        selected = _copy_candidate_with_ancestors(candidate.element, body)
         selected_metrics: dict[etree._Element, CandidateMetrics] = {}
         final_metrics = _collect_metrics(selected, stylesheet, selected_metrics, TextStyle(), False, False)
         retained_ratio = final_metrics.text_chars / max(1, body_metrics.text_chars)
@@ -134,6 +133,25 @@ def select_auto_content(body: etree._Element, stylesheet: MarkupStylesheet) -> C
         return ContentSelection(selected, "main", confidence, retained_ratio, "high_confidence_candidate")
 
     return ContentSelection(deepcopy(body), "document", 0.0, 1.0, "body_fallback")
+
+
+def _copy_candidate_with_ancestors(candidate: etree._Element, body: etree._Element) -> etree._Element:
+    """复制正文候选及其到 body 的空祖先链，保留继承样式但不带入周边正文。"""
+    selected = deepcopy(candidate)
+    selected.tail = None
+    _soft_prune(selected)
+    root = selected
+    for ancestor in candidate.iterancestors():
+        if not isinstance(ancestor.tag, str):
+            continue
+        wrapper = etree.Element(ancestor.tag, nsmap=ancestor.nsmap)
+        for name, value in ancestor.attrib.items():
+            wrapper.set(name, value)
+        wrapper.append(root)
+        root = wrapper
+        if ancestor is body:
+            return root
+    return root
 
 
 def _collect_metrics(

@@ -145,13 +145,15 @@ def _validate_dom_shape(root: etree._Element) -> None:
     node_count = 0
     stack: list[tuple[etree._Element, int]] = [(root, 1)]
     while stack:
-        element, depth = stack.pop()
+        node, depth = stack.pop()
         node_count += 1
         if node_count > MAX_HTML_NODES:
             raise HtmlResourceLimitError(f"HTML resource limit exceeded: max_html_nodes={MAX_HTML_NODES}")
+        if not isinstance(node.tag, str):
+            continue
         if depth > MAX_HTML_DEPTH:
             raise HtmlResourceLimitError(f"HTML resource limit exceeded: max_html_depth={MAX_HTML_DEPTH}")
-        stack.extend((child, depth + 1) for child in element if isinstance(child.tag, str))
+        stack.extend((child, depth + 1) for child in node)
 
 
 def _meta_content(root: etree._Element, *, property_name: str) -> str | None:

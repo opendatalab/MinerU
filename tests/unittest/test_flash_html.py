@@ -18,6 +18,7 @@ from mineru.doclib.services.parse_svc import ParseService
 from mineru.model.flash import HtmlModel
 from mineru.model.flash.html import HtmlResourceLimitError, HtmlSourceContext
 from mineru.model.flash.html import converter as html_converter_module
+from mineru.model.flash.html import document as html_document_module
 from mineru.model.flash.html import resources as html_resources_module
 from mineru.model.flash.html.resources import HtmlResourceContext
 from mineru.parser import ParseResult, parse, parse_async
@@ -264,6 +265,22 @@ def test_html_auto_selection_preserves_all_repeated_forum_posts() -> None:
 
     assert "First post" in markdown and "First body" in markdown
     assert "Second post" in markdown and "Second body" in markdown
+
+
+def test_html_auto_selection_preserves_ancestor_text_styles() -> None:
+    """验证正文候选复制后仍继承 body 与外层容器的受支持文字样式。"""
+    detail = "Inherited text " * 20
+    payload = f"""<html><body style="font-weight:bold"><aside style="font-style:italic;text-decoration:underline">
+      <main><p>{detail}</p></main></aside></body></html>""".encode()
+
+    _, model = doc_analyze(payload, file_suffix="html")
+
+    assert model.pages[0] == [
+        {
+            "type": BlockType.TEXT,
+            "content": f'<text style="bold,italic,underline">{detail}</text>',
+        }
+    ]
 
 
 def test_html_auto_selection_rejects_single_section_from_document_index() -> None:
@@ -932,6 +949,14 @@ def test_html_rejects_page_range_and_resource_overflow(tmp_path: Path, monkeypat
     monkeypatch.setattr(html_converter_module, "MAX_HTML_BYTES", 4)
     with pytest.raises(HtmlResourceLimitError, match="max_html_bytes"):
         HtmlModel().predict(BytesIO(b"<p>x</p>"))
+
+
+def test_html_comments_count_toward_dom_node_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证 comment 等非元素 DOM 节点同样受总节点预算约束。"""
+    monkeypatch.setattr(html_document_module, "MAX_HTML_NODES", 4)
+
+    with pytest.raises(HtmlResourceLimitError, match="max_html_nodes"):
+        doc_analyze(b"<html><body><!--1--><!--2--><!--3--></body></html>", file_suffix="html")
 
 
 @pytest.mark.parametrize(
