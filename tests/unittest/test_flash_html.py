@@ -439,22 +439,58 @@ def test_html_unsafe_or_malformed_note_urls_do_not_append_notes(href: str) -> No
 
 
 def test_html_formula_sources_are_normalized_without_duplicate_katex_text() -> None:
-    """验证 MathML、KaTeX annotation 与 data-expr 按统一公式协议输出且不重复。"""
+    """验证 MathML、公式生成器 wrapper 与 data-expr 按统一公式协议输出且不重复。"""
     payload = rb"""<html><body><h1>Math</h1><p>Inline
       <math><semantics><mi>x</mi><annotation encoding="application/x-tex">x+1</annotation></semantics></math>
       <span class="katex"><span class="katex-mathml"><math><semantics><mi>y</mi>
       <annotation encoding="application/x-tex">y^2</annotation></semantics></math></span>
       <span class="katex-html">duplicate visible</span></span>
+      <span class="mathjax"><math><semantics><mi>q</mi>
+      <annotation encoding="application/x-tex">q_4</annotation></semantics></math>
+      <span>mathjax duplicate</span></span>
       <span data-expr="z_3">formula fallback</span></p>
       <div class="mineru-math mineru-math--block">\[w^4\]</div></body></html>"""
 
     middle = doc_analyze(payload, file_suffix="html")[0]
     markdown = render_markdown(middle)
 
-    assert "x+1" in markdown and "y^2" in markdown and "z_3" in markdown and "w^4" in markdown
+    assert "x+1" in markdown and "y^2" in markdown and "q_4" in markdown and "z_3" in markdown and "w^4" in markdown
     assert any(block.type == BlockType.EQUATION and block.content == "w^4" for block in middle.pages[0].blocks)  # type: ignore[union-attr]
     assert "duplicate visible" not in markdown
+    assert "mathjax duplicate" not in markdown
     assert "formula fallback" not in markdown
+
+
+def test_html_generic_formula_class_wrappers_preserve_mixed_content() -> None:
+    """验证通用公式 class 只规范化真实 carrier，不吞掉外层说明内容。"""
+    payload = b"""<html><body><main>
+      <div class="math"><p>Before explanation.</p><math><mi>x</mi></math><p>After explanation.</p></div>
+      <div class="formula">Prefix <span><math data-tex="y"></math></span> suffix.</div>
+      <div class="tex"><p>Script before.</p><script type="math/tex; mode=display">z</script>
+      <p>Script after.</p></div>
+      <p>Exclusive before<span class="math math-display"><span><math data-tex="u"></math></span></span>Exclusive after</p>
+      <div class="math"><math data-tex="a"></math><math data-tex="b"></math></div></main></body></html>"""
+
+    middle, model = doc_analyze(payload, file_suffix="html")
+    raw = [(block["type"], block.get("content")) for block in model.pages[0]]
+
+    assert raw == [
+        (BlockType.TEXT, "Before explanation."),
+        (BlockType.EQUATION, "x"),
+        (BlockType.TEXT, "After explanation."),
+        (BlockType.TEXT, "Prefix <eq>y</eq> suffix."),
+        (BlockType.TEXT, "Script before."),
+        (BlockType.EQUATION, "z"),
+        (BlockType.TEXT, "Script after."),
+        (BlockType.TEXT, "Exclusive before"),
+        (BlockType.EQUATION, "u"),
+        (BlockType.TEXT, "Exclusive after"),
+        (BlockType.EQUATION, "a"),
+        (BlockType.EQUATION, "b"),
+    ]
+    markdown = render_markdown(middle)
+    assert markdown.index("Before explanation.") < markdown.index("$$\nx\n$$") < markdown.index("After explanation.")
+    assert markdown.index("Script before.") < markdown.index("$$\nz\n$$") < markdown.index("Script after.")
 
 
 def test_html_mineru_page_footnote_marker_roundtrips_as_page_footnote() -> None:

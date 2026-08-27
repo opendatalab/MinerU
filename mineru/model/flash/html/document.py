@@ -36,7 +36,11 @@ _ACTIVE_TAGS = frozenset(
         "video",
     }
 )
-_FORMULA_CLASS_TOKENS = frozenset({"formula", "katex", "math", "mathjax", "mineru-math", "tex"})
+_FORMULA_GENERATOR_CLASS_TOKENS = frozenset({"katex", "mathjax", "mineru-math"})
+_GENERIC_FORMULA_CLASS_TOKENS = frozenset({"formula", "math", "tex"})
+_MEANINGFUL_FORMULA_SIBLING_TAGS = frozenset(
+    {"audio", "br", "canvas", "figure", "hr", "iframe", "image", "img", "object", "svg", "table", "video"}
+)
 _ASCIIMATH_SCRIPT_TYPE_RE = re.compile(r"^math/asciimath(?:\s*;.*)?$", re.IGNORECASE)
 
 
@@ -174,18 +178,58 @@ def _normalize_formula_sources(root: etree._Element) -> None:
     for element in list(root.iter()):
         if not isinstance(element.tag, str) or not _is_attached(root, element):
             continue
-        name = local_name(element)
         classes = frozenset((element.get("class") or "").casefold().split())
-        is_candidate = (
-            name == "math"
-            or is_tex_script(element)
-            or any((element.get(attribute) or "").strip() for attribute in ("data-mineru-latex", "data-tex", "data-expr"))
-            or bool(classes & _FORMULA_CLASS_TOKENS)
+        is_candidate = _is_formula_carrier(element) or (
+            bool(classes & _GENERIC_FORMULA_CLASS_TOKENS) and _formula_wrapper_contains_only_carrier(element)
         )
         if not is_candidate:
             continue
         if formula := extract_formula(element):
             _replace_with_formula(element, formula)
+
+
+def _is_formula_carrier(element: etree._Element) -> bool:
+    """判断元素自身是否携带公式来源，而不是仅从任意后代继承。"""
+    if local_name(element) == "math" or is_tex_script(element):
+        return True
+    if any((element.get(attribute) or "").strip() for attribute in ("data-mineru-latex", "data-tex", "data-expr")):
+        return True
+    classes = frozenset((element.get("class") or "").casefold().split())
+    return bool(classes & _FORMULA_GENERATOR_CLASS_TOKENS)
+
+
+def _formula_wrapper_contains_only_carrier(element: etree._Element) -> bool:
+    """仅允许恰好一个 carrier 且其外没有可见文本或媒体的通用 wrapper 整体折叠。"""
+    carriers: list[etree._Element] = []
+    for candidate in element.iterdescendants():
+        if not isinstance(candidate.tag, str) or not _is_formula_carrier(candidate):
+            continue
+        if any(ancestor in carriers for ancestor in candidate.iterancestors()):
+            continue
+        carriers.append(candidate)
+    if len(carriers) != 1:
+        return False
+    carrier = carriers[0]
+
+    def inside_carrier(candidate: etree._Element | None) -> bool:
+        """判断节点正文是否位于唯一 carrier 子树内。"""
+        return candidate is not None and (
+            candidate is carrier or any(ancestor is carrier for ancestor in candidate.iterancestors())
+        )
+
+    outside_text = [element.text or ""]
+    for candidate in element.iterdescendants():
+        if not isinstance(candidate.tag, str):
+            if not inside_carrier(candidate.getparent()):
+                outside_text.append(candidate.tail or "")
+            continue
+        if not inside_carrier(candidate):
+            outside_text.append(candidate.text or "")
+            if local_name(candidate) in _MEANINGFUL_FORMULA_SIBLING_TAGS:
+                return False
+        if not inside_carrier(candidate.getparent()):
+            outside_text.append(candidate.tail or "")
+    return not any(value.strip() for value in outside_text)
 
 
 def _preserve_asciimath_text(root: etree._Element) -> None:
