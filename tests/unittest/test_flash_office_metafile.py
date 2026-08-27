@@ -36,8 +36,8 @@ from mineru.model.flash.office.metafile import (
 )
 from mineru.model.flash.office.metafile import parser as metafile_parser
 from mineru.model.flash.office.metafile import render as metafile_render
-from mineru.model.flash.office.metafile.geometry import FlattenBudget, PathBuilder, flatten_path
-from mineru.model.flash.office.metafile.models import ClipOperation, DrawPathCommand, GraphicsPath, Matrix, Pen
+from mineru.model.flash.office.metafile.geometry import FlattenBudget, PathBuilder, flatten_path, path_bounds
+from mineru.model.flash.office.metafile.models import ClipOperation, DrawPathCommand, GraphicsPath, Matrix, Pen, Rect
 from mineru.model.flash.office.legacy.officeart import OfficeArtRecord, decode_blip
 from mineru.model.flash.office.pptx.pptx_converter import PptxConverter
 from mineru.model.flash.office.xlsx.xlsx_converter import XlsxConverter
@@ -46,6 +46,7 @@ from mineru.utils.image_payload import extract_mineru_generated_svg_fallback
 from _metafile_test_utils import (
     basic_wmf,
     build_emf,
+    build_placeable_wmf,
     emf_begin_path,
     emf_close_figure,
     emf_create_brush,
@@ -68,6 +69,7 @@ from _metafile_test_utils import (
     emf_stretch_dib,
     emf_text,
     emfplus_comment,
+    wmf_record,
 )
 from _legacy_ppt_test_utils import build_equation_ppt
 from _legacy_xls_test_utils import build_equation_xls
@@ -448,6 +450,16 @@ def test_placeable_wmf_renders_vector_content() -> None:
     assert not result.partial
     assert image.getbbox() is not None
     assert image.getpixel((72, 72))[1] > 150
+
+
+def test_wmf_roundrect_uses_record_parameter_order() -> None:
+    """验证 META_ROUNDRECT 按 Height/Width/Bottom/Right/Top/Left 解码。"""
+    payload = struct.pack("<hhhhhh", 100, 300, 900, 800, 200, 100)
+    document = metafile_parser.parse_metafile(build_placeable_wmf([wmf_record(0x061C, payload)]))
+    command = next(command for command in document.commands if isinstance(command, DrawPathCommand))
+
+    assert path_bounds(command.path) == Rect(100.0, 200.0, 800.0, 900.0)
+    assert command.path.segments[0].points == ((250.0, 200.0),)
 
 
 def test_vector_only_metafile_uses_4x_antialiasing_and_8x_svg_fallback() -> None:

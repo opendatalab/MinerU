@@ -53,6 +53,14 @@ _SAFE_SVG_ATTRIBUTES: dict[str, set[str]] = {
 }
 
 
+class _RejectingSvgTreeBuilder(ElementTree.TreeBuilder):
+    """构造拒绝任何 DTD 的 SVG XML 树。"""
+
+    def doctype(self, _name: str, _pubid: str | None, _system: str | None) -> None:
+        """在实体声明被处理前拒绝任意偏移和编码的 DOCTYPE。"""
+        raise ValueError("Generated SVG must not contain a DTD or entity declaration")
+
+
 def normalize_image_extension(fmt: str) -> str:
     """规范化图片扩展名，保证同一图片格式生成稳定文件名。"""
     normalized = fmt.lower().split("+", 1)[0]
@@ -138,11 +146,9 @@ def extract_mineru_generated_svg_fallback(payload: bytes) -> tuple[bytes, int, i
     """验证 MinerU 生成 SVG，并返回 PNG fallback 与逻辑像素尺寸。"""
     if not isinstance(payload, bytes) or not payload or len(payload) > _MAX_GENERATED_SVG_BYTES:
         raise ValueError("Generated SVG payload is empty or exceeds its byte limit")
-    lowered_prefix = payload[:4096].lower()
-    if b"<!doctype" in lowered_prefix or b"<!entity" in lowered_prefix:
-        raise ValueError("Generated SVG must not contain a DTD or entity declaration")
     try:
-        root = ElementTree.fromstring(payload)
+        parser = ElementTree.XMLParser(target=_RejectingSvgTreeBuilder())
+        root = ElementTree.fromstring(payload, parser=parser)
     except ElementTree.ParseError as exc:
         raise ValueError("Generated SVG payload is not valid XML") from exc
     if root.tag != f"{{{_SVG_NAMESPACE}}}svg" or root.get("data-mineru-generated") != _MINERU_SVG_MARKER:

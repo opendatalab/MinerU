@@ -1777,12 +1777,15 @@ def _handle_wmf_record(function: int, payload: BoundedReader, playback: _Playbac
             cursor += count
         playback.emit_path(builder.build(), stroke=True, fill=True)
         return
-    if function in {0x0418, 0x041B, 0x061C}:
+    if function == 0x061C:
+        rect = Rect(float(payload.i16(10)), float(payload.i16(8)), float(payload.i16(6)), float(payload.i16(4)))
+        path = round_rectangle_path(rect, abs(payload.i16(2)) / 2.0, abs(payload.i16(0)) / 2.0)
+        playback.emit_logical_path(path, stroke=True, fill=True)
+        return
+    if function in {0x0418, 0x041B}:
         rect = Rect(float(payload.i16(6)), float(payload.i16(4)), float(payload.i16(2)), float(payload.i16(0)))
         if function == 0x0418:
             path = ellipse_path(rect)
-        elif function == 0x061C:
-            path = round_rectangle_path(rect, abs(payload.i16(10)) / 2.0, abs(payload.i16(8)) / 2.0)
         else:
             path = rectangle_path(rect)
         playback.emit_logical_path(path, stroke=True, fill=True)

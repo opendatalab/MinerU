@@ -275,6 +275,24 @@ def test_mineru_generated_svg_data_uri_is_allowed() -> None:
     assert sanitize_image_source(source) == source
 
 
+def test_mineru_generated_svg_rejects_dtd_beyond_prefix_window() -> None:
+    """验证任意偏移和编码的 DTD 都不能绕过 HTML SVG 安全校验。"""
+    safe_svg = base64.b64decode(_generated_svg_data_uri().split(",", 1)[1])
+    late_doctype = (
+        b" " * 4097
+        + b'<!DOCTYPE svg [<!ENTITY injected "expanded">]>'
+        + safe_svg.replace(b"</svg>", b'<text x="0" y="0" fill="#000">&injected;</text></svg>')
+    )
+    utf16_doctype = (
+        '<!DOCTYPE svg [<!ENTITY injected "expanded">]>'
+        + safe_svg.decode("utf-8").replace("</svg>", '<text x="0" y="0" fill="#000">&injected;</text></svg>')
+    ).encode("utf-16")
+
+    for payload in (late_doctype, utf16_doctype):
+        source = f"data:image/svg+xml;base64,{base64.b64encode(payload).decode('ascii')}"
+        assert sanitize_image_source(source) is None
+
+
 @pytest.mark.parametrize(
     "extra_markup",
     [
