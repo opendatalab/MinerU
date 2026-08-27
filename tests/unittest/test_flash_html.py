@@ -400,6 +400,22 @@ def test_html_referenced_external_footnote_keeps_anchor_and_content() -> None:
     assert f'id="{footnote.anchor}" class="mineru-page-footnote"' in markdown  # type: ignore[union-attr]
 
 
+def test_html_structured_only_footnote_does_not_create_dangling_anchor() -> None:
+    """验证只投影为结构化 block 的脚注不会把正文引用改写为悬空 fragment。"""
+    payload = b"""<html><body><main><p>Claim <a href="#fn">[1]</a>.</p>
+      <aside id="fn" role="doc-footnote"><ul><li>Only item</li></ul></aside></main></body></html>"""
+
+    middle, model = doc_analyze(payload, file_suffix="html")
+    markdown = render_markdown(middle)
+    rendered_html = render_html(middle, standalone=False)
+
+    assert model.pages[0][0]["content"] == "Claim [1]."
+    assert model.pages[0][1]["type"] == BlockType.LIST
+    assert "Only item" in markdown
+    assert "](#html-" not in markdown
+    assert 'href="#html-' not in rendered_html
+
+
 @pytest.mark.parametrize(
     "ancestor_attributes",
     ['style="display:none"', 'style="opacity:0"', "hidden", 'aria-hidden="true"'],

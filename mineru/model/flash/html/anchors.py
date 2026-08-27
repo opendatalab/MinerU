@@ -10,13 +10,31 @@ import hashlib
 from lxml import etree  # type: ignore[reportMissingImports]
 
 from .._shared.markup import MarkupStylesheet, TextStyle
-from .._shared.markup.projector import local_name, visible_raw_text_with_style
+from .._shared.markup.projector import BLOCK_TAGS, SKIPPED_TAGS, local_name, visible_raw_text_with_style
 
 
 _HEADING_TAGS = frozenset({"h1", "h2", "h3", "h4", "h5", "h6"})
 _NOTE_TYPES = frozenset({"footnote", "endnote", "rearnote"})
 _NOTE_ROLES = frozenset({"doc-footnote", "doc-endnote"})
 _XML_ID = "{http://www.w3.org/XML/1998/namespace}id"
+_NON_TEXT_BLOCK_TAGS = frozenset(
+    {
+        "figure",
+        "h1",
+        "h2",
+        "h3",
+        "h4",
+        "h5",
+        "h6",
+        "hr",
+        "math",
+        "ol",
+        "pre",
+        "svg",
+        "table",
+        "ul",
+    }
+)
 
 
 def is_note_element(element: etree._Element) -> bool:
@@ -159,7 +177,9 @@ class HtmlAnchorRegistry:
         notes = [
             element
             for element in root.iter()
-            if isinstance(element.tag, str) and is_note_element(element) and _visible_element_text(element, stylesheet)
+            if isinstance(element.tag, str)
+            and is_note_element(element)
+            and _note_has_materializable_text_target(element, stylesheet)
         ]
         for ordinal, note in enumerate(notes):
             identity = element_id(note) or f"note-{ordinal}"
@@ -224,6 +244,73 @@ def _visible_element_text(element: etree._Element, stylesheet: MarkupStylesheet)
         visibility_hidden = resolved.visibility_hidden
     value = visible_raw_text_with_style(element, stylesheet, inherited, visibility_hidden)
     return " ".join(value.split())
+
+
+def _note_has_materializable_text_target(element: etree._Element, stylesheet: MarkupStylesheet) -> bool:
+    """判断 note 是否会投影出可挂载 anchor 的顶层文本 block。"""
+    inherited = TextStyle()
+    visibility_hidden = False
+    chain = [ancestor for ancestor in reversed(list(element.iterancestors())) if isinstance(ancestor.tag, str)]
+    for ancestor in chain:
+        resolved = stylesheet.resolve(ancestor, inherited, visibility_hidden)
+        if resolved.subtree_hidden:
+            return False
+        inherited = resolved.text
+        visibility_hidden = resolved.visibility_hidden
+    resolved = stylesheet.resolve(element, inherited, visibility_hidden)
+    if resolved.subtree_hidden:
+        return False
+    return _container_materializes_text_block(
+        element,
+        stylesheet,
+        resolved.text,
+        resolved.visibility_hidden,
+    )
+
+
+def _container_materializes_text_block(
+    element: etree._Element,
+    stylesheet: MarkupStylesheet,
+    style: TextStyle,
+    visibility_hidden: bool,
+) -> bool:
+    """按共享 projector 的容器分块规则判断是否会产生顶层文本。"""
+    if not visibility_hidden and (element.text or "").strip():
+        return True
+    for child in element:
+        if isinstance(child.tag, str):
+            resolved = stylesheet.resolve(child, style, visibility_hidden)
+            if not resolved.subtree_hidden:
+                name = local_name(child)
+                if name == "p":
+                    value = visible_raw_text_with_style(
+                        child,
+                        stylesheet,
+                        resolved.text,
+                        resolved.visibility_hidden,
+                    )
+                    if value.strip():
+                        return True
+                elif name in BLOCK_TAGS:
+                    if name not in _NON_TEXT_BLOCK_TAGS and _container_materializes_text_block(
+                        child,
+                        stylesheet,
+                        resolved.text,
+                        resolved.visibility_hidden,
+                    ):
+                        return True
+                elif name not in SKIPPED_TAGS:
+                    value = visible_raw_text_with_style(
+                        child,
+                        stylesheet,
+                        resolved.text,
+                        resolved.visibility_hidden,
+                    )
+                    if value.strip():
+                        return True
+        if not visibility_hidden and (child.tail or "").strip():
+            return True
+    return False
 
 
 __all__ = ["HtmlAnchorRegistry", "append_referenced_notes", "element_id", "is_note_element"]
