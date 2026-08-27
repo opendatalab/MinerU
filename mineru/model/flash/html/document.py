@@ -42,6 +42,8 @@ _MEANINGFUL_FORMULA_SIBLING_TAGS = frozenset(
     {"audio", "br", "canvas", "figure", "hr", "iframe", "image", "img", "object", "svg", "table", "video"}
 )
 _ASCIIMATH_SCRIPT_TYPE_RE = re.compile(r"^math/asciimath(?:\s*;.*)?$", re.IGNORECASE)
+_HTML_ENCODING_DECLARATION_RE = re.compile(rb"(?is)<(?:meta\b[^>]*\bcharset\s*=|\?xml\b[^>]*\bencoding\s*=)")
+_UNICODE_BOMS = (b"\x00\x00\xfe\xff", b"\xff\xfe\x00\x00", b"\xef\xbb\xbf", b"\xfe\xff", b"\xff\xfe")
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,7 +85,7 @@ def parse_html_document(file_bytes: bytes, source_context: HtmlSourceContext | N
         huge_tree=False,
     )
     try:
-        root = lxml_html.document_fromstring(file_bytes, parser=parser)
+        root = lxml_html.document_fromstring(_html_parser_input(file_bytes), parser=parser)
     except (etree.ParserError, etree.XMLSyntaxError, UnicodeError, ValueError) as exc:
         raise HtmlParseError(f"Malformed HTML document: {exc}") from exc
     _validate_dom_shape(root)
@@ -138,6 +140,16 @@ def parse_html_document(file_bytes: bytes, source_context: HtmlSourceContext | N
         site_name=site_name,
         source_context=context,
     )
+
+
+def _html_parser_input(file_bytes: bytes) -> bytes | str:
+    """无显式编码且符合 UTF-8 时先解码，避免 lxml 按单字节旧编码解释正文。"""
+    if file_bytes.startswith(_UNICODE_BOMS) or _HTML_ENCODING_DECLARATION_RE.search(file_bytes[:4096]):
+        return file_bytes
+    try:
+        return file_bytes.decode("utf-8")
+    except UnicodeDecodeError:
+        return file_bytes
 
 
 def _validate_dom_shape(root: etree._Element) -> None:

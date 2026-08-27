@@ -349,6 +349,8 @@ def _validate_visual_content(content_root: etree._Element, wrapper: etree._Eleme
                 _validate_code_body_shape(child)
             elif parent_type == BlockType.TABLE:
                 _validate_table_body_shape(child)
+            elif parent_type == BlockType.IMAGE and (wrapper.get("data-block-sub-type") or "").strip() == "flowchart":
+                _validate_flowchart_body_shape(child)
             for marker in _descendant_markers(child):
                 if marker is child:
                     continue
@@ -401,6 +403,48 @@ def _validate_table_body_shape(body: etree._Element) -> None:
     elif name == "img" and "mineru-table-image" in classes:
         return
     raise _WireValidationError("invalid_table_body_shape")
+
+
+def _validate_flowchart_body_shape(body: etree._Element) -> None:
+    """校验流程图 body 的展示与源码载体，避免精确物化静默丢弃旁路内容。"""
+    _validate_element_only_content(body)
+    children = _element_children(body)
+    if len(children) != 2:
+        raise _WireValidationError("invalid_flowchart_body_shape")
+    display, details = children
+    if local_name(display) != "div" or "mineru-flowchart" not in _class_tokens(display):
+        raise _WireValidationError("invalid_flowchart_body_shape")
+    _validate_element_only_content(display)
+    display_children = _element_children(display)
+    if not 1 <= len(display_children) <= 2:
+        raise _WireValidationError("invalid_flowchart_body_shape")
+    canvas = display_children[0]
+    if local_name(canvas) != "div" or "mineru-flowchart-canvas" not in _class_tokens(canvas):
+        raise _WireValidationError("invalid_flowchart_body_shape")
+    _validate_element_only_content(canvas)
+    if _element_children(canvas):
+        raise _WireValidationError("invalid_flowchart_body_shape")
+    if len(display_children) == 2:
+        fallback = display_children[1]
+        if local_name(fallback) != "img" or "mineru-flowchart-fallback" not in _class_tokens(fallback):
+            raise _WireValidationError("invalid_flowchart_body_shape")
+
+    if local_name(details) != "details" or "mineru-flowchart-details" not in _class_tokens(details):
+        raise _WireValidationError("invalid_flowchart_body_shape")
+    _validate_element_only_content(details)
+    details_children = _element_children(details)
+    if len(details_children) != 2:
+        raise _WireValidationError("invalid_flowchart_body_shape")
+    summary, source = details_children
+    summary_text = " ".join(summary.itertext()).strip()
+    if local_name(summary) != "summary" or _element_children(summary) or summary_text != "flowchart source":
+        raise _WireValidationError("invalid_flowchart_body_shape")
+    if local_name(source) != "pre" or "mineru-flowchart-source" not in _class_tokens(source):
+        raise _WireValidationError("invalid_flowchart_body_shape")
+    _validate_element_only_content(source)
+    code_children = _element_children(source)
+    if len(code_children) != 1 or local_name(code_children[0]) != "code" or _element_children(code_children[0]):
+        raise _WireValidationError("invalid_flowchart_body_shape")
 
 
 def _validate_list_container(container: etree._Element, *, top_wrapper: etree._Element | None = None) -> None:

@@ -256,6 +256,24 @@ def test_html_doc_analyze_projects_static_semantics_and_renderers() -> None:
         assert "https://cdn.example.com/a.png" in relationships
 
 
+def test_html_charsetless_utf8_preserves_non_ascii_text() -> None:
+    """验证无 charset 的 UTF-8 字节不会被 lxml 按单字节旧编码解释。"""
+    payload = "<html><body><p>中文内容 café</p></body></html>".encode()
+
+    markdown = render_markdown(doc_analyze(payload, file_suffix="html")[0])
+
+    assert "中文内容 café" in markdown
+
+
+def test_html_declared_legacy_charset_remains_supported() -> None:
+    """验证显式声明的旧编码仍交由 lxml 按声明解码。"""
+    payload = '<html><head><meta charset="windows-1252"></head><body><p>café</p></body></html>'.encode("windows-1252")
+
+    markdown = render_markdown(doc_analyze(payload, file_suffix="html")[0])
+
+    assert "café" in markdown
+
+
 def test_html_auto_selection_preserves_all_repeated_forum_posts() -> None:
     """验证重复 article 场景不会只保留论坛中的首个帖子。"""
     payload = b"""<html><body><header>Forum</header><main>
@@ -1383,6 +1401,47 @@ def test_html_versioned_wire_edited_table_body_falls_back_without_loss() -> None
     markdown = render_markdown(doc_analyze(str(soup).encode(), file_suffix="html")[0])
 
     assert "| A |" in markdown
+    assert "NEW NOTE" in markdown
+
+
+def test_html_versioned_wire_edited_flowchart_body_falls_back_without_loss() -> None:
+    """验证流程图 body 中新增可见节点会整体回退并保留源码与编辑内容。"""
+    source = MiddleJson.model_validate(
+        {
+            "pages": [
+                {
+                    "page_idx": 0,
+                    "blocks": [
+                        {
+                            "type": "image",
+                            "index": 0,
+                            "sub_type": "flowchart",
+                            "content": [
+                                {
+                                    "type": "image_body",
+                                    "index": 0,
+                                    "content": "```mermaid\ngraph TD\nA-->B\n```",
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ],
+            "is_full_document": True,
+            "file_suffix": "html",
+            "effort": "flash",
+            "parse_mode": "txt",
+            "mineru_version": "test",
+        }
+    )
+    soup = BeautifulSoup(render_html(source, standalone=False), "html.parser")
+    paragraph = soup.new_tag("p")
+    paragraph.string = "NEW NOTE"
+    soup.select_one('[data-block-type="image_body"]').append(paragraph)
+
+    markdown = render_markdown(doc_analyze(str(soup).encode(), file_suffix="html")[0])
+
+    assert "graph TD" in markdown
     assert "NEW NOTE" in markdown
 
 
