@@ -103,11 +103,12 @@ def select_auto_content(body: etree._Element, stylesheet: MarkupStylesheet) -> C
             continue
         candidates.append(_ScoredCandidate(element, metrics, _candidate_score(element, metrics), explicit))
     candidates.sort(key=lambda item: (-item.score, _document_order(item.element)))
+    repeated_candidate_items = _repeated_candidate_items(candidates, metrics_by_element)
 
     for candidate in candidates:
         if candidate.score <= 0:
             continue
-        if _is_repeated_candidate_item(candidate.element, metrics_by_element):
+        if candidate.element in repeated_candidate_items:
             continue
         second = next(
             (
@@ -264,26 +265,34 @@ def _repeated_short_sibling_penalty(element: etree._Element) -> int:
     return penalty
 
 
-def _is_repeated_candidate_item(
-    element: etree._Element,
+def _repeated_candidate_items(
+    candidates: list[_ScoredCandidate],
     metrics_by_element: dict[etree._Element, CandidateMetrics],
-) -> bool:
-    """拒绝论坛、文档页或聚合页中只代表单个重复同级条目的候选。"""
-    parent = element.getparent()
-    if parent is None:
-        return False
-    element_name = local_name(element)
-    repeated = [
-        child
-        for child in parent
-        if isinstance(child.tag, str)
-        and (
-            local_name(child) == element_name
-            or bool(_tokens(child) & _tokens(element) & {"article", "content", "entry", "post", "section"})
+) -> frozenset[etree._Element]:
+    """一次预计算论坛、文档页或聚合页中的重复同级候选，避免逐候选重扫兄弟节点。"""
+    semantic_tokens = frozenset({"article", "content", "entry", "post", "section"})
+    parents = {parent for candidate in candidates if (parent := candidate.element.getparent()) is not None}
+    repeated: set[etree._Element] = set()
+    for parent in parents:
+        eligible = [
+            child
+            for child in parent
+            if isinstance(child.tag, str) and metrics_by_element.get(child, CandidateMetrics()).text_chars >= 100
+        ]
+        names = {child: local_name(child) for child in eligible}
+        tokens = {child: _tokens(child) & semantic_tokens for child in eligible}
+        name_counts: dict[str, int] = {}
+        token_counts: dict[str, int] = {}
+        for child in eligible:
+            name_counts[names[child]] = name_counts.get(names[child], 0) + 1
+            for token in tokens[child]:
+                token_counts[token] = token_counts.get(token, 0) + 1
+        repeated.update(
+            child
+            for child in eligible
+            if name_counts[names[child]] >= 2 or any(token_counts[token] >= 2 for token in tokens[child])
         )
-        and metrics_by_element.get(child, CandidateMetrics()).text_chars >= 100
-    ]
-    return len(repeated) >= 2 and element in repeated
+    return frozenset(repeated)
 
 
 def _is_containment_equivalent(first: _ScoredCandidate, second: _ScoredCandidate) -> bool:

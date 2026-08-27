@@ -202,16 +202,18 @@ def _is_formula_carrier(element: etree._Element) -> bool:
 
 def _formula_wrapper_contains_only_carrier(element: etree._Element) -> bool:
     """仅允许恰好一个 carrier 且其外没有可见文本或媒体的通用 wrapper 整体折叠。"""
-    carriers: list[etree._Element] = []
+    carrier: etree._Element | None = None
     for candidate in element.iterdescendants():
         if not isinstance(candidate.tag, str) or not _is_formula_carrier(candidate):
             continue
-        if any(ancestor in carriers for ancestor in candidate.iterancestors()):
+        if carrier is None:
+            carrier = candidate
             continue
-        carriers.append(candidate)
-    if len(carriers) != 1:
+        if any(ancestor is carrier for ancestor in candidate.iterancestors()):
+            continue
         return False
-    carrier = carriers[0]
+    if carrier is None:
+        return False
 
     def inside_carrier(candidate: etree._Element | None) -> bool:
         """判断节点正文是否位于唯一 carrier 子树内。"""

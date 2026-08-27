@@ -90,7 +90,8 @@ class HtmlResourceContext:
         )
         if normalized is None:
             return None
-        if normalized.startswith("#"):
+        base_href = (self.base_href or "").strip()
+        if normalized.startswith("#") and (not base_href or base_href.startswith("#")):
             fragment = unquote(normalized[1:]).strip()
             return fragment or None
         source_uri = (self.source_context.source_uri or "").strip()
@@ -98,7 +99,7 @@ class HtmlResourceContext:
             return None
         try:
             source_parts = urlsplit(source_uri)
-            base_uri = urljoin(source_uri, (self.base_href or "").strip())
+            base_uri = urljoin(source_uri, base_href)
             target_parts = urlsplit(urljoin(base_uri, normalized))
         except ValueError:
             return None
@@ -121,6 +122,19 @@ class HtmlResourceContext:
         if normalized is None:
             return None
         if normalized.startswith("#"):
+            base_href = (self.base_href or "").strip()
+            if base_href:
+                source_uri = (self.source_context.source_uri or "").strip()
+                try:
+                    target = urljoin(urljoin(source_uri, base_href), normalized)
+                except ValueError:
+                    return None
+                return sanitize_hyperlink_target(
+                    target,
+                    allow_relative=True,
+                    allow_fragment=True,
+                    allow_root_relative=True,
+                )
             return self.anchors.resolve_fragment(normalized) if self.anchors else None
         parsed = urlsplit(normalized)
         if parsed.scheme:

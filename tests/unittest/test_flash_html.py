@@ -10,6 +10,7 @@ from zipfile import ZipFile
 
 import pytest
 from bs4 import BeautifulSoup
+from lxml import etree, html as lxml_html  # type: ignore[reportMissingImports]
 from PIL import Image
 
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
@@ -20,6 +21,7 @@ from mineru.model.flash.html import HtmlResourceLimitError, HtmlSourceContext
 from mineru.model.flash.html import converter as html_converter_module
 from mineru.model.flash.html import document as html_document_module
 from mineru.model.flash.html import resources as html_resources_module
+from mineru.model.flash.html import selector as html_selector_module
 from mineru.model.flash.html.resources import HtmlResourceContext
 from mineru.parser import ParseResult, parse, parse_async
 from mineru.parser import api_server
@@ -317,6 +319,29 @@ def test_html_auto_selection_rejects_single_section_from_document_index() -> Non
     assert "Third section" in markdown and "third code" in markdown
 
 
+def test_html_auto_selection_precomputes_repeated_candidate_groups(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证大量异构重复候选只线性计算同级 token，不为每个候选重扫全部兄弟节点。"""
+    item_count = 200
+    original_tokens = html_selector_module._tokens
+    token_calls = 0
+
+    def counted_tokens(element: etree._Element) -> frozenset[str]:
+        """统计正文选择期间的 token 计算次数。"""
+        nonlocal token_calls
+        token_calls += 1
+        return original_tokens(element)
+
+    monkeypatch.setattr(html_selector_module, "_tokens", counted_tokens)
+    items = "".join(
+        f'<{tag} class="post"><p>{"candidate text " * 16}</p></{tag}>'
+        for tag in ("div", "section") * (item_count // 2)
+    )
+
+    doc_analyze(f"<html><body>{items}</body></html>".encode(), file_suffix="html")
+
+    assert token_calls < item_count * 20
+
+
 def test_html_referenced_external_footnote_keeps_anchor_and_content() -> None:
     """验证正文候选外但被引用的 HTML footnote 会追加并生成可兑现 anchor。"""
     payload = b"""<html><body><article><h1>Notes</h1>
@@ -477,6 +502,41 @@ def test_html_same_document_note_resolution_honors_base_href(base_href: str, exp
     markdown = render_markdown(doc_analyze(payload, file_suffix="html", source_context=context)[0])
 
     assert ("Outside footnote." in markdown) is expected_note
+
+
+def test_html_fragment_only_link_honors_external_base_document() -> None:
+    """验证 fragment-only 链接按外部 base 解析，不会误关联当前 DOM 中同名脚注。"""
+    detail = "Useful main article text " * 20
+    payload = f"""<html><head><base href="other.html"></head><body><main><article><h1>Title</h1>
+      <p>{detail}<a href="#fn1">[1]</a></p></article></main>
+      <footer><aside id="fn1" role="doc-footnote"><p>Unrelated local footnote.</p></aside></footer>
+      </body></html>""".encode()
+    context = HtmlSourceContext(source_uri="https://example.com/page.html")
+
+    middle = doc_analyze(payload, file_suffix="html", source_context=context)[0]
+    markdown = render_markdown(middle)
+
+    assert "Unrelated local footnote." not in markdown
+    assert not any(block.type == BlockType.PAGE_FOOTNOTE for block in middle.pages[0].blocks)
+    assert "https://example.com/other.html#fn1" in markdown
+
+
+def test_html_formula_wrapper_stops_after_second_non_nested_carrier(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证通用公式 wrapper 发现第二个并列 carrier 后立即失败，不继续扫描全部公式。"""
+    wrapper = lxml_html.fromstring('<div class="math">' + "<math></math>" * 1_000 + "</div>")
+    original_is_carrier = html_document_module._is_formula_carrier
+    carrier_checks = 0
+
+    def counted_is_carrier(element: etree._Element) -> bool:
+        """统计 wrapper 唯一 carrier 判定次数。"""
+        nonlocal carrier_checks
+        carrier_checks += 1
+        return original_is_carrier(element)
+
+    monkeypatch.setattr(html_document_module, "_is_formula_carrier", counted_is_carrier)
+
+    assert html_document_module._formula_wrapper_contains_only_carrier(wrapper) is False
+    assert carrier_checks == 2
 
 
 def test_html_local_self_url_appends_referenced_note(tmp_path: Path) -> None:
