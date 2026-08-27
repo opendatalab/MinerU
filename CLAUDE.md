@@ -169,7 +169,7 @@ pr-5415 重构后，Middle JSON 已收敛为 schema 2.0 的统一结构，不再
 
 ### 1. 统一分析入口
 
-`backend/analyze.py:doc_analyze()` 是 PDF、EPUB、CSV 与 Office 文档的唯一公共入口，通过 `file_suffix` 路由到 `backend/analysis/pdf/pipeline.py:analyze_pdf`、`backend/analysis/epub.py:analyze_epub`、`backend/analysis/csv.py:analyze_csv` 或 `backend/analysis/office.py:analyze_office`，最终经 `backend/postprocess/pages.py:model_list_to_pages()` 产出统一 `pages`。`MinerUParser` 是 `DocumentParser` 的唯一实现，替代旧的 `PdfHybridParser`/`PdfFlashParser`/`DocxParser` 等。
+`backend/analyze.py:doc_analyze()` 是 PDF、EPUB、HTML、CSV 与 Office 文档的唯一公共入口，通过 `file_suffix` 路由到 `backend/analysis/pdf/pipeline.py:analyze_pdf`、`backend/analysis/epub.py:analyze_epub`、`backend/analysis/html.py:analyze_html`、`backend/analysis/csv.py:analyze_csv` 或 `backend/analysis/office.py:analyze_office`，最终经 `backend/postprocess/pages.py:model_list_to_pages()` 产出统一 `pages`。`MinerUParser` 是 `DocumentParser` 的唯一实现，替代旧的 `PdfHybridParser`/`PdfFlashParser`/`DocxParser` 等。
 
 ### 2. MiddleJson 顶层字段（schema 2.0）
 
@@ -179,7 +179,7 @@ pr-5415 重构后，Middle JSON 已收敛为 schema 2.0 的统一结构，不再
 |------|------|------|
 | `pages` | `list[PageInfo]` | 严格按 `page_idx` 升序的页面数组 |
 | `is_full_document` | `bool` | 是否整本文档解析（空 `page_index_map` 时为 `True`） |
-| `file_suffix` | `Literal["pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx", "rtf", "csv", "epub", "odt", "ods", "odp"]` | 输入文件类型 |
+| `file_suffix` | `Literal["pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx", "rtf", "csv", "epub", "html", "odt", "ods", "odp"]` | 输入文件类型 |
 | `effort` | `Literal["flash", "medium", "high", "xhigh"]` | 分析强度 |
 | `parse_mode` | `Literal["txt", "ocr"]` | 解析模式 |
 | `mineru_version` | `str` | MinerU 版本号 |

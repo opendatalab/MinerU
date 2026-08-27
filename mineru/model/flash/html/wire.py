@@ -292,7 +292,7 @@ def _validate_simple_content(content_root: etree._Element, block_type: BlockType
             continue
         if marker_type != BlockType.EQUATION:
             raise _WireValidationError("invalid_nested_marker")
-        _validate_formula_carrier(marker, expected_display=None)
+        _validate_formula_carrier(marker, expected_display="inline")
 
 
 def _validate_equation_content(content_root: etree._Element) -> None:
@@ -345,7 +345,7 @@ def _validate_visual_content(content_root: etree._Element, wrapper: etree._Eleme
                     continue
                 if (marker.get("data-block-type") or "").strip() != BlockType.EQUATION:
                     raise _WireValidationError("invalid_visual_nested_marker")
-                _validate_formula_carrier(marker, expected_display=None)
+                _validate_formula_carrier(marker, expected_display="inline")
         else:
             if local_name(child) != "p":
                 raise _WireValidationError("invalid_annotation_shape")
@@ -354,7 +354,7 @@ def _validate_visual_content(content_root: etree._Element, wrapper: etree._Eleme
                     continue
                 if (marker.get("data-block-type") or "").strip() != BlockType.EQUATION:
                     raise _WireValidationError("invalid_annotation_nested_marker")
-                _validate_formula_carrier(marker, expected_display=None)
+                _validate_formula_carrier(marker, expected_display="inline")
 
 
 def _validate_list_container(container: etree._Element, *, top_wrapper: etree._Element | None = None) -> None:
@@ -386,7 +386,7 @@ def _validate_list_container(container: etree._Element, *, top_wrapper: etree._E
                     continue
                 if marker_type != BlockType.EQUATION:
                     raise _WireValidationError("invalid_list_nested_marker")
-                _validate_formula_carrier(marker, expected_display=None)
+                _validate_formula_carrier(marker, expected_display="inline")
         elif not nested_lists:
             raise _WireValidationError("markerless_list_leaf")
         for nested in nested_lists:
@@ -435,7 +435,7 @@ def _validate_index_list(container: etree._Element, *, nested: bool) -> None:
                     continue
                 if marker_type != BlockType.EQUATION:
                     raise _WireValidationError("invalid_index_nested_marker")
-                _validate_formula_carrier(marker, expected_display=None)
+                _validate_formula_carrier(marker, expected_display="inline")
         elif not nested_lists:
             raise _WireValidationError("markerless_index_leaf")
         for child in nested_lists:

@@ -900,7 +900,7 @@ def test_html_invalid_versioned_markers_fallback_without_partial_results() -> No
                 {
                     "page_idx": 0,
                     "blocks": [
-                        {"type": "text", "index": 0, "content": "WIRESENTINEL"},
+                        {"type": "text", "index": 0, "content": "WIRESENTINEL <eq>WIREFORMULA</eq>"},
                         {
                             "type": "image",
                             "index": 1,
@@ -948,9 +948,16 @@ def test_html_invalid_versioned_markers_fallback_without_partial_results() -> No
     parent_mismatch.select_one('[data-block-type="image_caption"]')["data-block-type"] = "table_caption"
     variants.append(str(parent_mismatch))
 
+    block_nested_formula = BeautifulSoup(base, "html.parser")
+    block_nested_formula.select_one('[data-block-type="equation"][data-formula-display="inline"]')["data-formula-display"] = (
+        "block"
+    )
+    variants.append(str(block_nested_formula))
+
     for variant in variants:
         markdown = render_markdown(doc_analyze(variant.encode(), file_suffix="html")[0])
         assert markdown.count("WIRESENTINEL") == 1
+        assert markdown.count("WIREFORMULA") == 1
         assert markdown.count("Visible caption") == 1
 
 
