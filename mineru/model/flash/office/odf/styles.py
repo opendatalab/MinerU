@@ -26,6 +26,15 @@ class _StyleDefinition:
     drawing_page_visible: bool | None
 
 
+def _numeric_font_weight(value: str) -> int | None:
+    """在整数转换前验证 CSS 数字字重的词法长度和有效范围。"""
+    normalized = value.strip()
+    if not normalized or len(normalized) > 4 or not normalized.isascii() or not normalized.isdigit():
+        return None
+    weight = int(normalized)
+    return weight if 1 <= weight <= 1_000 else None
+
+
 class OdfStyles:
     """合并 styles.xml 与 content.xml 中的 ODF 样式定义。"""
 
@@ -81,10 +90,9 @@ class OdfStyles:
         weight = properties.get(qname("fo", "font-weight"))
         bold: bool | None = None
         if weight is not None:
-            try:
-                bold = int(weight) >= 600
-            except ValueError:
-                bold = weight.casefold() == "bold"
+            normalized_weight = weight.strip().casefold()
+            numeric_weight = _numeric_font_weight(normalized_weight)
+            bold = numeric_weight >= 600 if numeric_weight is not None else normalized_weight == "bold"
         font_style = properties.get(qname("fo", "font-style"))
         italic = None if font_style is None else font_style.casefold() in {"italic", "oblique"}
         underline_style = properties.get(qname("style", "text-underline-style"))

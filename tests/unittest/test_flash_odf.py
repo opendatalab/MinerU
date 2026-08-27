@@ -918,8 +918,8 @@ def test_odf_flattened_titles_and_notes_keep_literal_protocol_escaped() -> None:
     odt_content = f"""<office:document-content
  xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
  xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0">
- <office:body><office:text><text:p>Body<text:note><text:note-citation>1</text:note-citation>
-  <text:note-body><text:p>{literal}</text:p></text:note-body>
+ <office:body><office:text><text:p>Body<text:note><text:note-citation>{literal}</text:note-citation>
+  <text:note-body><text:p>Footnote body {literal}</text:p></text:note-body>
  </text:note></text:p></office:text></office:body></office:document-content>"""
 
     for suffix, payload in (
@@ -942,6 +942,44 @@ def test_odf_flattened_titles_and_notes_keep_literal_protocol_escaped() -> None:
         assert all("&lt;hyperlink&gt;" in content and "<hyperlink>" not in content for content in flattened)
         assert "](javascript:alert(1))" not in markdown
         assert "javascript:alert(1)" not in relationships
+
+
+@pytest.mark.parametrize(
+    ("weight", "expected_bold"),
+    [
+        ("normal", False),
+        ("bold", True),
+        ("599", False),
+        ("600", True),
+        ("1000", True),
+        ("1001", False),
+        ("9" * 100_000, False),
+    ],
+    ids=("normal", "bold", "below-threshold", "threshold", "upper-bound", "out-of-range", "overlong"),
+)
+def test_odf_font_weight_is_bounded_before_numeric_conversion(weight: str, expected_bold: bool) -> None:
+    """验证数字字重只在有限 CSS 范围内转换，超长输入不会依赖解释器保护。"""
+    content = f"""<office:document-content
+ xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
+ xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"
+ xmlns:style="urn:oasis:names:tc:opendocument:xmlns:style:1.0"
+ xmlns:fo="urn:oasis:names:tc:opendocument:xmlns:xsl-fo-compatible:1.0">
+ <office:automatic-styles><style:style style:name="W" style:family="text">
+  <style:text-properties fo:font-weight="{weight}"/>
+ </style:style></office:automatic-styles>
+ <office:body><office:text><text:p><text:span text:style-name="W">weighted</text:span></text:p>
+ </office:text></office:body></office:document-content>"""
+    previous_limit = sys.get_int_max_str_digits() if hasattr(sys, "get_int_max_str_digits") else None
+    if hasattr(sys, "set_int_max_str_digits"):
+        sys.set_int_max_str_digits(0)
+    try:
+        pages = OdtModel().predict(BytesIO(build_odf_package("odt", content)))
+    finally:
+        if previous_limit is not None:
+            sys.set_int_max_str_digits(previous_limit)
+
+    expected_content = '<text style="bold">weighted</text>' if expected_bold else "weighted"
+    assert pages == [[{"type": BlockType.TEXT, "content": expected_content}]]
 
 
 def test_odf_inline_image_alt_escapes_literal_hyperlink_protocol() -> None:

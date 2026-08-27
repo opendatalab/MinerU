@@ -366,7 +366,8 @@ class OdfBlockParser:
         blocks = self.parse_container(body)
         visible = flatten_block_text(blocks)
         if visible:
-            atoms.append(InlineNote(f"[{citation_text}] {visible}"))
+            safe_citation_text = escape_inline_protocol_text(citation_text)
+            atoms.append(InlineNote(f"[{safe_citation_text}] {visible}"))
 
     def parse_inline_atoms(self, paragraph: etree._Element) -> list[InlineAtom]:
         """解析一个段落的行内语义，并用原位 marker 保留段外 block。"""
