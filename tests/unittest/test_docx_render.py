@@ -757,6 +757,60 @@ def test_spatial_table_without_text_uses_sidecar_resolver() -> None:
     assert len(document.inline_shapes) == 1
 
 
+def test_remote_only_equation_table_and_chart_use_docx_link_fallbacks() -> None:
+    """验证所有远程-only 图片载荷都会进入 DOCX 可点击链接回退。"""
+    middle = _middle(
+        _page(
+            0,
+            EquationBlock(
+                type="equation",
+                index=0,
+                content="",
+                image_url="https://example.com/formula.png",
+            ),
+            TableBlock(
+                type="table",
+                index=1,
+                content=[
+                    TableBodyBlock(
+                        type="table_body",
+                        index=1,
+                        content="",
+                        image_url="https://example.com/table.png",
+                    )
+                ],
+            ),
+            ChartBlock(
+                type="chart",
+                index=2,
+                sub_type="bar",
+                content=[
+                    ChartBodyBlock(
+                        type="chart_body",
+                        index=2,
+                        content="",
+                        image_url="https://example.com/chart.png",
+                    )
+                ],
+            ),
+        )
+    )
+
+    result = render_docx(middle)
+    document = Document(BytesIO(result))
+    relationships = _part(result, "word/_rels/document.xml.rels")
+
+    assert [paragraph.text for paragraph in document.paragraphs] == ["formula", "table", "bar"]
+    assert all(
+        target in relationships
+        for target in (
+            "https://example.com/formula.png",
+            "https://example.com/table.png",
+            "https://example.com/chart.png",
+        )
+    )
+
+
 @pytest.mark.parametrize("content", ["", " \n\t"])
 def test_spatial_table_without_text_or_image_raises_contextual_error(content: str) -> None:
     """验证空间表格既无有效文本也无图片时抛出带父表格定位的异常。"""

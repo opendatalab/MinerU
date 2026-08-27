@@ -387,6 +387,64 @@ def test_html_mineru_table_figure_rebinds_renderer_caption() -> None:
     assert markdown.count("Visible table caption") == 1
 
 
+def test_html_figure_preserves_direct_and_inline_text_around_visuals() -> None:
+    """验证 figure 的直属文本、行内容器和 child tail 按 visual 前后顺序进入 raw blocks。"""
+    payload = b"""<html><body><figure>Before<span>Inline</span>
+      <a href="https://example.com/full"><img src="https://example.com/a.png"></a>After
+      <figcaption>Cap</figcaption>Tail</figure></body></html>"""
+
+    middle, model = doc_analyze(payload, file_suffix="html")
+    raw_blocks = model.pages[0]
+    markdown = render_markdown(middle)
+
+    assert [block["type"] for block in raw_blocks] == [
+        BlockType.TEXT,
+        BlockType.IMAGE,
+        BlockType.IMAGE_CAPTION,
+        BlockType.TEXT,
+    ]
+    assert [block.get("content") for block in raw_blocks] == ["BeforeInline", "", "Cap", "After Tail"]
+    assert [block.type for block in middle.pages[0].blocks] == [BlockType.TEXT, BlockType.IMAGE, BlockType.TEXT]
+    assert markdown.index("BeforeInline") < markdown.index("Cap") < markdown.index("After Tail")
+
+
+def test_html_inline_visual_splits_paragraph_text_in_dom_order() -> None:
+    """验证段落内 visual 会切开前后文本，而不是把图片移到合并文本之后。"""
+    payload = b'<html><body><p>Before<img src="https://example.com/a.png">After</p></body></html>'
+
+    middle, model = doc_analyze(payload, file_suffix="html")
+
+    assert [(block["type"], block.get("content")) for block in model.pages[0]] == [
+        (BlockType.TEXT, "Before"),
+        (BlockType.IMAGE, ""),
+        (BlockType.TEXT, "After"),
+    ]
+    assert [block.type for block in middle.pages[0].blocks] == [BlockType.TEXT, BlockType.IMAGE, BlockType.TEXT]
+
+
+def test_html_inline_visual_splits_ordered_list_without_renumbering_following_items() -> None:
+    """验证列表项内 visual 提升为页面兄弟，并保持前后阅读顺序及后续有序编号。"""
+    payload = b"""<html><body><ol start="3"><li>Before<img src="https://example.com/a.png">After</li>
+      <li>Next</li></ol></body></html>"""
+
+    middle, model = doc_analyze(payload, file_suffix="html")
+    raw_blocks = model.pages[0]
+
+    assert [block["type"] for block in raw_blocks] == [BlockType.LIST, BlockType.IMAGE, BlockType.TEXT, BlockType.LIST]
+    assert raw_blocks[0]["start"] == 3 and raw_blocks[3]["start"] == 4
+    assert raw_blocks[0]["content"] == [{"type": BlockType.TEXT, "content": "Before"}]
+    assert raw_blocks[2]["content"] == "After"
+    assert raw_blocks[3]["content"] == [{"type": BlockType.TEXT, "content": "Next"}]
+    assert [block.type for block in middle.pages[0].blocks] == [
+        BlockType.LIST,
+        BlockType.IMAGE,
+        BlockType.TEXT,
+        BlockType.LIST,
+    ]
+    assert middle.pages[0].blocks[0].content[0].content == "3. Before"  # type: ignore[union-attr]
+    assert middle.pages[0].blocks[3].content[0].content == "4. Next"  # type: ignore[union-attr]
+
+
 def test_html_local_base_images_styles_and_escape_are_bounded(tmp_path: Path) -> None:
     """验证本地 base、CSS、栅格图可读取，但父目录逃逸图片只保留说明。"""
     assets = tmp_path / "assets"

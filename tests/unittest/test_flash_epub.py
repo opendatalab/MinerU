@@ -364,6 +364,38 @@ def test_epub_figure_skips_hidden_direct_images(attribute: str, value: str) -> N
         package.close()
 
 
+def test_epub_figure_preserves_direct_text_and_child_tails() -> None:
+    """验证共享 projector 不丢弃 XHTML figure 的直属文本及图片、caption tail。"""
+    package = EpubPackage(build_epub_fixture())
+    chapter_path = "EPUB/text/ch1.xhtml"
+    try:
+        root = package.xml_part(chapter_path, allow_external_doctype=True)
+        figure = next(element for element in root.iter() if isinstance(element.tag, str) and element.tag.endswith("}figure"))
+        image = next(child for child in figure if isinstance(child.tag, str) and child.tag.endswith("}img"))
+        caption = next(child for child in figure if isinstance(child.tag, str) and child.tag.endswith("}figcaption"))
+        figure.text = "Before"
+        image.tail = "After"
+        caption.tail = "Tail"
+
+        anchors = build_anchor_registry([(chapter_path, root)], package)
+        blocks = EpubChapterConverter(package, chapter_path, root, anchors).convert()
+        relevant = [
+            block
+            for block in blocks
+            if block.get("type") in {BlockType.IMAGE, BlockType.IMAGE_CAPTION}
+            or (isinstance(block.get("content"), str) and block.get("content") in {"Before", "AfterTail"})
+        ]
+
+        assert [(block["type"], block.get("content")) for block in relevant] == [
+            (BlockType.TEXT, "Before"),
+            (BlockType.IMAGE, ""),
+            (BlockType.IMAGE_CAPTION, "Dot caption"),
+            (BlockType.TEXT, "AfterTail"),
+        ]
+    finally:
+        package.close()
+
+
 def test_public_parser_rejects_epub_page_range(tmp_path: Path) -> None:
     """验证 EPUB 公共 Parser 只接受整本解析。"""
     source = tmp_path / "book.epub"

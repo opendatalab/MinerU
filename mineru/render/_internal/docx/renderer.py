@@ -114,6 +114,11 @@ _ANNOTATION_FOOTNOTE_TYPES = {
 }
 
 
+def _has_block_image_payload(block: ImagePayloadBlock) -> bool:
+    """判断统一图片载荷是否包含 sidecar、data URI 或远程 URL。"""
+    return block.image_path is not None or block.image_base64 is not None or block.image_url is not None
+
+
 class _DocxRenderer:
     """持有单次 DOCX 渲染所需的 document、素材解析器和书签状态。"""
 
@@ -230,7 +235,7 @@ class _DocxRenderer:
             except DocxFormulaError as exc:
                 logger.warning("DOCX display formula fallback: {} ({})", exc, context.location())
 
-        if block.image_base64 is not None or block.image_path is not None:
+        if _has_block_image_payload(block):
             try:
                 self._append_block_image(block, context=context, alt_text="formula")
                 return
@@ -350,7 +355,7 @@ class _DocxRenderer:
                         self._append_html_tables(child.content, context=context, depth=0)
                     except DocxRenderError as exc:
                         logger.warning("DOCX HTML table fallback: {}", exc)
-                        if child.image_base64 is None and child.image_path is None:
+                        if not _has_block_image_payload(child):
                             raise self._render_error(
                                 "HTML table cannot be materialized and has no image fallback",
                                 context,
@@ -360,7 +365,7 @@ class _DocxRenderer:
                     if child.content and not child.content.isspace():
                         paragraph = self.document.add_paragraph(style=SPATIAL_TABLE_STYLE)
                         paragraph.add_run(sanitize_xml_text(child.content, context=context))
-                    elif child.image_base64 is not None or child.image_path is not None:
+                    elif _has_block_image_payload(child):
                         self._append_block_image(child, context=context, alt_text="table")
                     else:
                         raise self._render_error(
@@ -376,7 +381,7 @@ class _DocxRenderer:
         """先写图表图片，再把 HTML 结构化数据追加为原生表格。"""
         for child in block.content:
             if isinstance(child, ChartBodyBlock):
-                has_image = child.image_base64 is not None or child.image_path is not None
+                has_image = _has_block_image_payload(child)
                 if has_image:
                     self._append_block_image(
                         child,

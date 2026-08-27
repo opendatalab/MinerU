@@ -6,7 +6,7 @@ from __future__ import annotations
 import html
 import re
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Protocol, TypeAlias
 
 from lxml import etree  # type: ignore[reportMissingImports]
 
@@ -98,6 +98,8 @@ _FOOTNOTE_TOKENS = frozenset(
     }
 )
 _VISUAL_ELEMENT_TAGS = frozenset({"img", "image", "pre", "svg", "table"})
+_LIST_PAGE_BLOCK_TAGS = frozenset({"figure", "image", "img", "pre", "svg", "table"})
+_InlineProjectionSegment: TypeAlias = str | dict[str, object]
 
 
 def local_name(element: etree._Element) -> str:
@@ -128,6 +130,17 @@ def _raw_visual_type(value: object) -> BlockType | None:
     if value in {BlockType.CODE, RAW_ALGORITHM}:
         return BlockType.CODE
     return None
+
+
+def _append_inline_segment(
+    segments: list[_InlineProjectionSegment],
+    segment: _InlineProjectionSegment,
+) -> None:
+    """追加行内投影片段，并合并相邻文本以保持稳定 block 粒度。"""
+    if isinstance(segment, str) and segments and isinstance(segments[-1], str):
+        segments[-1] += segment
+    elif not isinstance(segment, str) or segment:
+        segments.append(segment)
 
 
 def entity_text(element: etree._Element) -> str:
@@ -338,9 +351,18 @@ class MarkupProjector:
         visibility_hidden: bool,
     ) -> list[dict[str, object]]:
         """转换标题或段落，并旁路其中的视觉 blocks。"""
-        content, extras = self._render_inline_children(element, style, visibility_hidden)
         blocks: list[dict[str, object]] = []
-        if content.strip():
+        text_emitted = False
+        for segment in self._render_inline_children_ordered(element, style, visibility_hidden):
+            if not isinstance(segment, str):
+                blocks.append(segment)
+                continue
+            content = segment.strip()
+            if not content:
+                continue
+            if text_emitted:
+                blocks.append({"type": BlockType.TEXT, "content": content})
+                continue
             if name == "h1" and (not self.single_document_title or not self.document_title_emitted):
                 block: dict[str, object] = {"type": BlockType.DOC_TITLE, "level": 1, "content": content.strip()}
                 self.document_title_emitted = True
@@ -357,7 +379,8 @@ class MarkupProjector:
             if name.startswith("h") and (anchor := self.context.heading_anchor(element)):
                 block["anchor"] = anchor
             blocks.append(block)
-        return [*blocks, *extras]
+            text_emitted = True
+        return blocks
 
     def _parse_note_element(
         self,
@@ -385,20 +408,33 @@ class MarkupProjector:
         visibility_hidden: bool = False,
     ) -> tuple[str, list[dict[str, object]]]:
         """渲染元素的连续行内内容，并旁路其中的视觉 blocks。"""
-        parts = [] if visibility_hidden else [self._render_text(element.text, style)]
-        extras: list[dict[str, object]] = []
+        segments = self._render_inline_children_ordered(element, style, visibility_hidden)
+        return (
+            "".join(segment for segment in segments if isinstance(segment, str)),
+            [segment for segment in segments if not isinstance(segment, str)],
+        )
+
+    def _render_inline_children_ordered(
+        self,
+        element: etree._Element,
+        style: TextStyle,
+        visibility_hidden: bool = False,
+    ) -> list[_InlineProjectionSegment]:
+        """按 DOM 顺序返回连续文本与旁路 block，保留 inline visual 前后边界。"""
+        segments: list[_InlineProjectionSegment] = []
+        if not visibility_hidden:
+            _append_inline_segment(segments, self._render_text(element.text, style))
         for child in element:
             if not isinstance(child.tag, str):
                 if not visibility_hidden:
-                    parts.append(self._render_text(entity_text(child), style))
-                    parts.append(self._render_text(child.tail, style))
+                    _append_inline_segment(segments, self._render_text(entity_text(child), style))
+                    _append_inline_segment(segments, self._render_text(child.tail, style))
                 continue
-            rendered, child_extras = self._render_inline_element(child, style, visibility_hidden)
-            parts.append(rendered)
-            extras.extend(child_extras)
+            for segment in self._render_inline_element_ordered(child, style, visibility_hidden):
+                _append_inline_segment(segments, segment)
             if not visibility_hidden:
-                parts.append(self._render_text(child.tail, style))
-        return "".join(parts), extras
+                _append_inline_segment(segments, self._render_text(child.tail, style))
+        return segments
 
     def _render_inline_element(
         self,
@@ -407,36 +443,54 @@ class MarkupProjector:
         inherited_visibility_hidden: bool = False,
     ) -> tuple[str, list[dict[str, object]]]:
         """把一个行内元素转换为内部富文本协议和可选视觉块。"""
+        segments = self._render_inline_element_ordered(element, inherited, inherited_visibility_hidden)
+        return (
+            "".join(segment for segment in segments if isinstance(segment, str)),
+            [segment for segment in segments if not isinstance(segment, str)],
+        )
+
+    def _render_inline_element_ordered(
+        self,
+        element: etree._Element,
+        inherited: TextStyle,
+        inherited_visibility_hidden: bool = False,
+    ) -> list[_InlineProjectionSegment]:
+        """递归投影单个行内元素，并在嵌套 visual 位置保留顺序分段。"""
         resolved = self.stylesheet.resolve(element, inherited, inherited_visibility_hidden)
         if resolved.subtree_hidden:
-            return "", []
+            return []
         name = local_name(element)
         if name in SKIPPED_TAGS:
-            return "", []
+            return []
         if name == "br":
-            return ("", []) if resolved.visibility_hidden else ("\n", [])
+            return [] if resolved.visibility_hidden else ["\n"]
         if name in {"img", "image"}:
-            return ("", []) if resolved.visibility_hidden else ("", self._image_blocks(element))
+            return [] if resolved.visibility_hidden else self._image_blocks(element)
         if name == "math":
             if resolved.visibility_hidden:
-                return "", []
+                return []
             formula = self._formula_extraction(element)
             if formula is not None:
-                return f"<eq>{html.escape(formula.latex, quote=False)}</eq>", []
+                return [f"<eq>{html.escape(formula.latex, quote=False)}</eq>"]
             fallback = self._visible_plain_text(element, resolved.text, resolved.visibility_hidden)
-            return html.escape(fallback, quote=False), []
+            return [html.escape(fallback, quote=False)] if fallback else []
         if name == "code":
             if resolved.visibility_hidden:
-                return "", []
+                return []
             code = self._visible_raw_text(element, resolved.text, resolved.visibility_hidden)
-            return (f"<code>{html.escape(code, quote=False)}</code>" if code else ""), []
-        content, extras = self._render_inline_children(element, resolved.text, resolved.visibility_hidden)
+            return [f"<code>{html.escape(code, quote=False)}</code>"] if code else []
+        if name in BLOCK_TAGS:
+            return self._parse_block(element, inherited, inherited_visibility_hidden)
+        segments = self._render_inline_children_ordered(element, resolved.text, resolved.visibility_hidden)
         if name == "a":
             href = element.get("href") or element.get(_XLINK_HREF) or ""
             target = self.context.resolve_link(href)
-            if target and content.strip():
-                return render_inline_hyperlink(content, target), extras
-        return content, extras
+            if target:
+                return [
+                    render_inline_hyperlink(segment, target) if isinstance(segment, str) and segment.strip() else segment
+                    for segment in segments
+                ]
+        return segments
 
     @staticmethod
     def _render_text(value: str | None, style: TextStyle) -> str:
@@ -506,26 +560,18 @@ class MarkupProjector:
         ]
         annotation_elements = {child for child, _ in annotations}
         mineru_figure = "mineru-figure" in (element.get("class") or "").casefold().split()
-        blocks: list[dict[str, object]] = []
-        for child in element:
-            if not isinstance(child.tag, str) or child in annotation_elements:
-                continue
-            name = local_name(child)
-            if name in {"img", "image"}:
-                child_style = self.stylesheet.resolve(child, style, visibility_hidden)
-                if not child_style.subtree_hidden and not child_style.visibility_hidden:
-                    blocks.extend(self._image_blocks(child, emit_alt_caption=not mineru_figure and not annotations))
-            else:
-                child_blocks = (
-                    self._parse_block(child, style, visibility_hidden)
-                    if name in BLOCK_TAGS
-                    else self._render_inline_element(child, style, visibility_hidden)[1]
-                )
-                blocks.extend(child_blocks)
+        blocks = self._parse_figure_contents(
+            element,
+            style,
+            visibility_hidden,
+            annotation_elements=annotation_elements,
+            emit_alt_caption=not mineru_figure and not annotations,
+        )
 
         visual_types = {
             _raw_visual_type(block.get("type")) for block in blocks if _raw_visual_type(block.get("type")) is not None
         }
+        visual_type = next(iter(visual_types)) if len(visual_types) == 1 else None
         annotation_blocks: list[dict[str, object]] = []
         for annotation, kind in annotations:
             resolved = self.stylesheet.resolve(annotation, style, visibility_hidden)
@@ -535,9 +581,7 @@ class MarkupProjector:
             annotation_blocks.extend(extras)
             if not content.strip():
                 continue
-            if len(visual_types) == 1:
-                visual_type = next(iter(visual_types))
-                assert visual_type is not None
+            if visual_type is not None:
                 annotation_blocks.append(
                     {
                         "type": VISUAL_TYPE_MAPPING[visual_type][kind],
@@ -546,7 +590,66 @@ class MarkupProjector:
                 )
             else:
                 annotation_blocks.append({"type": BlockType.TEXT, "content": content.strip()})
-        blocks.extend(annotation_blocks)
+        if visual_type is None or not annotation_blocks:
+            blocks.extend(annotation_blocks)
+            return blocks
+
+        visual_positions = [index for index, block in enumerate(blocks) if _raw_visual_type(block.get("type")) == visual_type]
+        assert visual_positions
+        insert_at = visual_positions[-1] + 1
+        blocks[insert_at:insert_at] = annotation_blocks
+        return blocks
+
+    def _parse_figure_contents(
+        self,
+        element: etree._Element,
+        style: TextStyle,
+        visibility_hidden: bool,
+        *,
+        annotation_elements: set[etree._Element],
+        emit_alt_caption: bool,
+    ) -> list[dict[str, object]]:
+        """按 DOM 顺序缓冲 figure 文本，并在 visual extras 前后切分正文 block。"""
+        blocks: list[dict[str, object]] = []
+        inline_parts: list[str] = [] if visibility_hidden else [self._render_text(element.text, style)]
+
+        def flush_inline() -> None:
+            """把 figure 当前连续文本写为普通正文 block。"""
+            content = "".join(inline_parts).strip()
+            inline_parts.clear()
+            if content:
+                blocks.append({"type": BlockType.TEXT, "content": content})
+
+        for child in element:
+            if not isinstance(child.tag, str):
+                if not visibility_hidden:
+                    inline_parts.append(self._render_text(entity_text(child), style))
+                    inline_parts.append(self._render_text(child.tail, style))
+                continue
+            if child in annotation_elements:
+                if not visibility_hidden:
+                    inline_parts.append(self._render_text(child.tail, style))
+                continue
+
+            name = local_name(child)
+            if name in {"img", "image"}:
+                flush_inline()
+                child_style = self.stylesheet.resolve(child, style, visibility_hidden)
+                if not child_style.subtree_hidden and not child_style.visibility_hidden:
+                    blocks.extend(self._image_blocks(child, emit_alt_caption=emit_alt_caption))
+            elif name in BLOCK_TAGS:
+                flush_inline()
+                blocks.extend(self._parse_block(child, style, visibility_hidden))
+            else:
+                for segment in self._render_inline_element_ordered(child, style, visibility_hidden):
+                    if isinstance(segment, str):
+                        inline_parts.append(segment)
+                    else:
+                        flush_inline()
+                        blocks.append(segment)
+            if not visibility_hidden:
+                inline_parts.append(self._render_text(child.tail, style))
+        flush_inline()
         return blocks
 
     def _has_contextual_visual_annotation(self, element: etree._Element) -> bool:
@@ -810,6 +913,8 @@ class MarkupProjector:
         visibility_hidden: bool = False,
     ) -> tuple[dict[str, object] | None, list[dict[str, object]]]:
         """解析有序/无序列表，并投影为连续阿拉伯编号结构。"""
+        if self._list_contains_page_blocks(element):
+            return self._parse_list_with_page_blocks(element, style, visibility_hidden)
         ordered = local_name(element) == "ol"
         items = [child for child in element if isinstance(child.tag, str) and local_name(child) == "li"]
         if not items:
@@ -875,6 +980,128 @@ class MarkupProjector:
         if ordered:
             block["start"] = self._ordered_list_start(element)
         return block, extras
+
+    @staticmethod
+    def _list_contains_page_blocks(element: etree._Element) -> bool:
+        """判断列表是否含必须提升为页面兄弟的 visual/code 子树。"""
+        return any(
+            isinstance(candidate.tag, str) and local_name(candidate) in _LIST_PAGE_BLOCK_TAGS
+            for candidate in element.iterdescendants()
+        )
+
+    def _parse_list_with_page_blocks(
+        self,
+        element: etree._Element,
+        style: TextStyle,
+        visibility_hidden: bool,
+    ) -> tuple[dict[str, object] | None, list[dict[str, object]]]:
+        """把含 visual 的列表切成有序 list/text/page block 片段，保持 DOM 阅读顺序。"""
+        ordered = local_name(element) == "ol"
+        list_start = self._ordered_list_start(element) if ordered else 1
+        items = [child for child in element if isinstance(child.tag, str) and local_name(child) == "li"]
+        pending_children: list[dict[str, object]] = []
+        pending_start = list_start
+        output: list[dict[str, object]] = []
+        visible_item_ordinal = 0
+        has_page_blocks = False
+
+        def flush_pending() -> None:
+            """把当前连续列表项写为一个顶层 list block。"""
+            nonlocal pending_children
+            if not pending_children:
+                return
+            output.append(self._build_raw_list_block(pending_children, ordered=ordered, start=pending_start))
+            pending_children = []
+
+        for item in items:
+            item_style = self.stylesheet.resolve(item, style, visibility_hidden)
+            if item_style.subtree_hidden:
+                continue
+            if self.context.note_anchor(item) is not None:
+                flush_pending()
+                output.extend(self._parse_note_element(item, item_style.text, item_style.visibility_hidden))
+                has_page_blocks = True
+                continue
+
+            segments = self._normalize_list_item_segments(
+                self._render_inline_children_ordered(item, item_style.text, item_style.visibility_hidden)
+            )
+            page_positions = [
+                index
+                for index, segment in enumerate(segments)
+                if not isinstance(segment, str) and segment.get("type") != BlockType.LIST
+            ]
+            if not page_positions:
+                item_children = self._list_item_children(segments)
+                if item_children:
+                    if not pending_children:
+                        pending_start = list_start + visible_item_ordinal
+                    pending_children.extend(item_children)
+                    visible_item_ordinal += 1
+                continue
+
+            first_page_position = page_positions[0]
+            prefix_children = self._list_item_children(segments[:first_page_position])
+            if not pending_children:
+                pending_start = list_start + visible_item_ordinal
+            pending_children.extend(prefix_children or [{"type": BlockType.TEXT, "content": ""}])
+            flush_pending()
+
+            for segment in segments[first_page_position:]:
+                if isinstance(segment, str):
+                    content = segment.strip()
+                    if content:
+                        output.append({"type": BlockType.TEXT, "content": content})
+                else:
+                    output.append(segment)
+            visible_item_ordinal += 1
+            has_page_blocks = True
+
+        if not has_page_blocks:
+            return (
+                self._build_raw_list_block(pending_children, ordered=ordered, start=list_start) if pending_children else None,
+                [],
+            )
+        flush_pending()
+        return None, output
+
+    @staticmethod
+    def _normalize_list_item_segments(
+        segments: list[_InlineProjectionSegment],
+    ) -> list[_InlineProjectionSegment]:
+        """把列表内部普通 text block 还原为文本片段，保留 visual/list 页面边界。"""
+        normalized: list[_InlineProjectionSegment] = []
+        for segment in segments:
+            if isinstance(segment, dict) and segment.get("type") == BlockType.TEXT:
+                _append_inline_segment(normalized, str(segment.get("content") or ""))
+            else:
+                _append_inline_segment(normalized, segment)
+        return normalized
+
+    @staticmethod
+    def _list_item_children(segments: list[_InlineProjectionSegment]) -> list[dict[str, object]]:
+        """把无页面 visual 的列表片段收敛为一个文本叶子及其嵌套列表。"""
+        content = "".join(segment for segment in segments if isinstance(segment, str)).strip()
+        children = [{"type": BlockType.TEXT, "content": content}] if content else []
+        children.extend(segment for segment in segments if isinstance(segment, dict) and segment.get("type") == BlockType.LIST)
+        return children
+
+    @staticmethod
+    def _build_raw_list_block(
+        children: list[dict[str, object]],
+        *,
+        ordered: bool,
+        start: int,
+    ) -> dict[str, object]:
+        """构造一段可由既有无坐标后处理编号的 raw list block。"""
+        block: dict[str, object] = {
+            "type": BlockType.LIST,
+            "attribute": "ordered" if ordered else "unordered",
+            "content": children,
+        }
+        if ordered:
+            block["start"] = start
+        return block
 
     @staticmethod
     def _ordered_list_start(element: etree._Element) -> int:
