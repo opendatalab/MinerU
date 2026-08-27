@@ -12,6 +12,7 @@ from lxml import etree  # type: ignore[reportMissingImports]
 _CSS_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
 _CSS_IMPORTANT_RE = re.compile(r"!\s*important\s*$", re.IGNORECASE)
 _TEXT_STYLE_FIELDS = ("bold", "italic", "underline", "strikethrough", "superscript", "subscript")
+_VISIBILITY_FIELDS = ("display", "visibility")
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,7 +104,7 @@ class _SelectorCascade:
 
     priority: int
     declarations: dict[str, tuple[bool, int, bool]] = field(default_factory=dict)
-    hidden: tuple[bool, int, bool] | None = None
+    visibility: dict[str, tuple[bool, int, bool]] = field(default_factory=dict)
 
     def update(self, parsed: _ParsedDeclarations, order: int) -> None:
         """按 importance 和源码顺序更新同 selector 的逐属性级联结果。"""
@@ -111,10 +112,10 @@ class _SelectorCascade:
             current = self.declarations.get(name)
             if current is None or (important, order) >= current[:2]:
                 self.declarations[name] = (important, order, value)
-        if parsed.hidden is not None:
-            important, value = parsed.hidden
-            if self.hidden is None or (important, order) >= self.hidden[:2]:
-                self.hidden = (important, order, value)
+        for name, (important, value) in parsed.visibility.items():
+            current = self.visibility.get(name)
+            if current is None or (important, order) >= current[:2]:
+                self.visibility[name] = (important, order, value)
 
 
 @dataclass(frozen=True, slots=True)
@@ -122,7 +123,7 @@ class _ParsedDeclarations:
     """保存已投影 CSS 属性的 importance 与布尔值。"""
 
     text: dict[str, tuple[bool, bool]]
-    hidden: tuple[bool, bool] | None = None
+    visibility: dict[str, tuple[bool, bool]]
 
 
 def _local_name(element: etree._Element) -> str:
@@ -141,7 +142,7 @@ def _numeric_font_weight(value: str) -> int | None:
 def _parse_declarations(value: str) -> _ParsedDeclarations:
     """从声明串逐属性提取字体语义、隐藏状态和 important 优先级。"""
     text: dict[str, tuple[bool, bool]] = {}
-    hidden: tuple[bool, bool] | None = None
+    visibility: dict[str, tuple[bool, bool]] = {}
     for raw_declaration in value.split(";"):
         if ":" not in raw_declaration:
             continue
@@ -151,7 +152,7 @@ def _parse_declarations(value: str) -> _ParsedDeclarations:
         important = important_match is not None
         normalized = raw_value[: important_match.start() if important_match is not None else None].strip().casefold()
         text_updates: dict[str, bool] = {}
-        hidden_update: bool | None = None
+        visibility_update: tuple[str, bool] | None = None
         if name == "font-weight":
             if normalized in {"bold", "bolder"}:
                 text_updates["bold"] = True
@@ -172,16 +173,19 @@ def _parse_declarations(value: str) -> _ParsedDeclarations:
             text_updates["superscript"] = normalized in {"super", "text-top"}
             text_updates["subscript"] = normalized in {"sub", "text-bottom"}
         elif name == "display":
-            hidden_update = normalized == "none"
+            visibility_update = ("display", normalized == "none")
         elif name == "visibility":
-            hidden_update = normalized in {"hidden", "collapse"}
+            visibility_update = ("visibility", normalized in {"hidden", "collapse"})
         for field_name, field_value in text_updates.items():
             current = text.get(field_name)
             if current is None or important or not current[0]:
                 text[field_name] = (important, field_value)
-        if hidden_update is not None and (hidden is None or important or not hidden[0]):
-            hidden = (important, hidden_update)
-    return _ParsedDeclarations(text=text, hidden=hidden)
+        if visibility_update is not None:
+            field_name, field_value = visibility_update
+            current = visibility.get(field_name)
+            if current is None or important or not current[0]:
+                visibility[field_name] = (important, field_value)
+    return _ParsedDeclarations(text=text, visibility=visibility)
 
 
 class EpubStylesheet:
@@ -211,7 +215,7 @@ class EpubStylesheet:
                 continue
             selectors, declarations = chunk.split("{", 1)
             parsed_declarations = _parse_declarations(declarations)
-            if not parsed_declarations.text and parsed_declarations.hidden is None:
+            if not parsed_declarations.text and not parsed_declarations.visibility:
                 continue
             for selector in selectors.split(","):
                 parsed = self._parse_selector(selector)
@@ -274,17 +278,18 @@ class EpubStylesheet:
                 resolved_values[name] = max(candidates, key=lambda item: item[:3])[3]
         style = TextStyleDelta(**resolved_values).apply(style)
 
-        hidden_candidates = [
-            (important, cascade.priority, order, value)
-            for cascade in matching
-            if cascade.hidden is not None
-            for important, order, value in (cascade.hidden,)
-        ]
-        if inline.hidden is not None:
-            important, value = inline.hidden
-            hidden_candidates.append((important, 1_000, self._source_order, value))
-        if hidden_candidates:
-            hidden = max(hidden_candidates, key=lambda item: item[:3])[3]
+        for name in _VISIBILITY_FIELDS:
+            candidates = [
+                (important, cascade.priority, order, value)
+                for cascade in matching
+                if (declaration := cascade.visibility.get(name)) is not None
+                for important, order, value in (declaration,)
+            ]
+            if (inline_declaration := inline.visibility.get(name)) is not None:
+                important, value = inline_declaration
+                candidates.append((important, 1_000, self._source_order, value))
+            if candidates and max(candidates, key=lambda item: item[:3])[3]:
+                hidden = True
         return ElementStyle(style, hidden)
 
 

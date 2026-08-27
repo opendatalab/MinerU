@@ -6,6 +6,7 @@ import subprocess
 import sys
 from io import BytesIO
 from pathlib import Path
+from zipfile import ZIP_DEFLATED, ZipFile
 
 import pytest
 from bs4 import BeautifulSoup
@@ -625,6 +626,46 @@ def test_epub_stylesheet_honors_important_before_specificity_and_source_order() 
     assert normal_inline.text.bold is True
     assert important_inline.hidden is False
     assert important_inline.text.bold is False
+
+
+@pytest.mark.parametrize(
+    ("css", "expected_hidden"),
+    [
+        (".secret { display: none; visibility: visible; }", True),
+        (".secret { display: block; visibility: hidden; }", True),
+        (".secret { display: block; visibility: collapse; }", True),
+        (
+            ".secret { display: none !important; visibility: hidden; }"
+            ".secret { display: block; visibility: visible !important; }",
+            True,
+        ),
+        (".secret { display: block; visibility: visible; }", False),
+    ],
+)
+def test_epub_stylesheet_tracks_display_and_visibility_independently(css: str, expected_hidden: bool) -> None:
+    """验证 display 与 visibility 各自级联，任一计算结果隐藏时都不输出元素。"""
+    stylesheet = EpubStylesheet()
+    stylesheet.add(css)
+
+    resolved = stylesheet.resolve(etree.fromstring(b'<span class="secret"/>'), TextStyle())
+
+    assert resolved.hidden is expected_hidden
+
+
+def test_epub_combined_visibility_rule_does_not_export_hidden_content() -> None:
+    """验证真实 EPUB 中 visibility:visible 不会覆盖同规则的 display:none。"""
+    source = BytesIO(build_epub_fixture())
+    rewritten = BytesIO()
+    with ZipFile(source) as archive, ZipFile(rewritten, "w", ZIP_DEFLATED) as output:
+        for info in archive.infolist():
+            data = archive.read(info.filename)
+            if info.filename == "EPUB/styles/book.css":
+                data = b".hidden { display: none; visibility: visible; }"
+            output.writestr(info, data)
+
+    pages = EpubModel().predict(BytesIO(rewritten.getvalue()))
+
+    assert "hidden secret" not in str(pages)
 
 
 def test_epub_stylesheet_rejects_overlong_numeric_font_weight_before_int() -> None:
