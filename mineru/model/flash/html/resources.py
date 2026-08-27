@@ -110,11 +110,17 @@ class HtmlResourceContext:
 
     def resolve_link(self, href: str) -> str | None:
         """解析安全外链、相对链接或实际存在的文档内 fragment。"""
-        if self.anchors is not None and (fragment := self.same_document_fragment(href)) is not None:
+        candidate = (href or "").strip()
+        if self._remote_base and candidate.startswith("//"):
+            try:
+                candidate = urljoin(self._remote_base, candidate)
+            except ValueError:
+                return None
+        if self.anchors is not None and (fragment := self.same_document_fragment(candidate)) is not None:
             if internal := self.anchors.resolve_fragment(fragment):
                 return internal
         normalized = sanitize_hyperlink_target(
-            href,
+            candidate,
             allow_relative=True,
             allow_fragment=True,
             allow_root_relative=True,

@@ -956,6 +956,16 @@ def test_html_remote_source_resolves_relative_links_without_fetching_images() ->
     assert _image_body(middle).image_base64 is None
 
 
+def test_html_remote_source_resolves_protocol_relative_links() -> None:
+    """验证远程来源按其安全协议补全协议相对链接。"""
+    context = HtmlSourceContext(source_uri="https://example.com/news/page.html")
+    payload = b'<html><body><p><a href="//cdn.example/path">Protocol link</a></p></body></html>'
+
+    markdown = render_markdown(doc_analyze(payload, file_suffix="html", source_context=context)[0])
+
+    assert "[Protocol link](https://cdn.example/path)" in markdown
+
+
 def test_html_local_image_symlink_cannot_escape_resource_root(tmp_path: Path) -> None:
     """验证本地图片 symlink resolve 到根目录外时只保留 alt 文本。"""
     outside = tmp_path.parent / "outside-symlink-image.png"
@@ -1361,6 +1371,47 @@ def test_html_versioned_wire_edited_code_body_falls_back_without_loss() -> None:
     markdown = render_markdown(doc_analyze(str(soup).encode(), file_suffix="html")[0])
 
     assert "print(1)" in markdown
+    assert "NEW NOTE" in markdown
+
+
+def test_html_versioned_wire_edited_algorithm_body_falls_back_without_loss() -> None:
+    """验证 algorithm body 中新增可见节点会整体回退并保留算法与编辑内容。"""
+    source = MiddleJson.model_validate(
+        {
+            "pages": [
+                {
+                    "page_idx": 0,
+                    "blocks": [
+                        {
+                            "type": "code",
+                            "index": 0,
+                            "sub_type": "algorithm",
+                            "content": [
+                                {
+                                    "type": "code_body",
+                                    "index": 0,
+                                    "content": "Step A <eq>x+1</eq>",
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ],
+            "is_full_document": True,
+            "file_suffix": "html",
+            "effort": "flash",
+            "parse_mode": "txt",
+            "mineru_version": "test",
+        }
+    )
+    soup = BeautifulSoup(render_html(source, standalone=False), "html.parser")
+    paragraph = soup.new_tag("p")
+    paragraph.string = "NEW NOTE"
+    soup.select_one('[data-block-type="code_body"]').append(paragraph)
+
+    markdown = render_markdown(doc_analyze(str(soup).encode(), file_suffix="html")[0])
+
+    assert "Step A" in markdown and "x+1" in markdown
     assert "NEW NOTE" in markdown
 
 

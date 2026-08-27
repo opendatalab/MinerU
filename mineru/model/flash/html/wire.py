@@ -345,11 +345,14 @@ def _validate_visual_content(content_root: etree._Element, wrapper: etree._Eleme
                 raise _WireValidationError("invalid_visual_body_shape")
             if parent_index is not None and child_index != parent_index:
                 raise _WireValidationError("visual_body_index_mismatch")
-            if parent_type == BlockType.CODE and (wrapper.get("data-block-sub-type") or "").strip() == BlockType.CODE:
+            sub_type = (wrapper.get("data-block-sub-type") or "").strip()
+            if parent_type == BlockType.CODE and sub_type == BlockType.CODE:
                 _validate_code_body_shape(child)
+            elif parent_type == BlockType.CODE and sub_type == RAW_ALGORITHM:
+                _validate_algorithm_body_shape(child)
             elif parent_type == BlockType.TABLE:
                 _validate_table_body_shape(child)
-            elif parent_type == BlockType.IMAGE and (wrapper.get("data-block-sub-type") or "").strip() == "flowchart":
+            elif parent_type == BlockType.IMAGE and sub_type == "flowchart":
                 _validate_flowchart_body_shape(child)
             for marker in _descendant_markers(child):
                 if marker is child:
@@ -382,6 +385,20 @@ def _validate_code_body_shape(body: etree._Element) -> None:
         raise _WireValidationError("invalid_code_body_shape")
     if _element_children(code_children[0]):
         raise _WireValidationError("invalid_code_body_shape")
+
+
+def _validate_algorithm_body_shape(body: etree._Element) -> None:
+    """校验 algorithm body 只含规范行内容器，避免精确物化静默丢弃编辑内容。"""
+    _validate_element_only_content(body)
+    children = _element_children(body)
+    if not children:
+        return
+    if len(children) != 1:
+        raise _WireValidationError("invalid_algorithm_body_shape")
+    algorithm = children[0]
+    if local_name(algorithm) != "div" or "mineru-algorithm" not in _class_tokens(algorithm):
+        raise _WireValidationError("invalid_algorithm_body_shape")
+    _validate_inline_content_shape(algorithm)
 
 
 def _validate_table_body_shape(body: etree._Element) -> None:
