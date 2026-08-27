@@ -235,6 +235,9 @@ class MarkupProjector:
         resolved = self.stylesheet.resolve(self.root, TextStyle())
         if resolved.subtree_hidden:
             return []
+        name = local_name(self.root)
+        if name == "figure" or (name in {"aside", "div", "section"} and self._has_contextual_visual_annotation(self.root)):
+            return self._parse_figure(self.root, resolved.text, resolved.visibility_hidden)
         return self._parse_container_contents(self.root, resolved.text, resolved.visibility_hidden)
 
     def convert_svg(self) -> list[dict[str, object]]:

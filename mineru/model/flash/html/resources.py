@@ -6,7 +6,7 @@ from __future__ import annotations
 import base64
 from pathlib import Path
 from typing import Protocol
-from urllib.parse import unquote, urljoin, urlsplit
+from urllib.parse import SplitResult, unquote, urljoin, urlsplit
 
 from lxml import etree  # type: ignore[reportMissingImports]
 
@@ -34,6 +34,7 @@ _IMAGE_MIME_SIGNATURES: tuple[tuple[str, tuple[bytes, ...]], ...] = (
     ("image/bmp", (b"BM",)),
     ("image/tiff", (b"II*\x00", b"MM\x00*")),
 )
+_SAME_DOCUMENT_SCHEMES = frozenset({"file", "http", "https"})
 
 
 class HtmlAnchorResolver(Protocol):
@@ -78,8 +79,39 @@ class HtmlResourceContext:
         """在正文选择完成后绑定仅包含实际输出目标的 anchor 表。"""
         self.anchors = anchors
 
+    def same_document_fragment(self, href: str) -> str | None:
+        """解析纯 fragment 或与来源文档身份相同的相对、绝对 URL fragment。"""
+        normalized = sanitize_hyperlink_target(
+            href,
+            allowed_schemes=_SAME_DOCUMENT_SCHEMES,
+            allow_relative=True,
+            allow_fragment=True,
+            allow_root_relative=True,
+        )
+        if normalized is None:
+            return None
+        if normalized.startswith("#"):
+            fragment = normalized[1:].strip()
+            return fragment or None
+        source_uri = (self.source_context.source_uri or "").strip()
+        if not source_uri:
+            return None
+        try:
+            source_parts = urlsplit(source_uri)
+            base_uri = urljoin(source_uri, (self.base_href or "").strip())
+            target_parts = urlsplit(urljoin(base_uri, normalized))
+        except ValueError:
+            return None
+        fragment = target_parts.fragment.strip()
+        if not fragment or _document_url_identity(target_parts) != _document_url_identity(source_parts):
+            return None
+        return fragment
+
     def resolve_link(self, href: str) -> str | None:
         """解析安全外链、相对链接或实际存在的文档内 fragment。"""
+        if self.anchors is not None and (fragment := self.same_document_fragment(href)) is not None:
+            if internal := self.anchors.resolve_fragment(fragment):
+                return internal
         normalized = sanitize_hyperlink_target(
             href,
             allow_relative=True,
@@ -95,18 +127,6 @@ class HtmlResourceContext:
             return normalized
         if self._remote_base:
             resolved = urljoin(self._remote_base, normalized)
-            resolved_parts = urlsplit(resolved)
-            source_parts = urlsplit(self._remote_base)
-            if (
-                resolved_parts.fragment
-                and resolved_parts.scheme == source_parts.scheme
-                and resolved_parts.netloc == source_parts.netloc
-                and resolved_parts.path == source_parts.path
-                and self.anchors is not None
-            ):
-                internal = self.anchors.resolve_fragment(resolved_parts.fragment)
-                if internal:
-                    return internal
             return sanitize_hyperlink_target(resolved)
         return sanitize_hyperlink_target(normalized, allow_relative=True, allow_fragment=True)
 
@@ -293,6 +313,13 @@ def _image_data_uri(payload: bytes) -> str | None:
     except ValueError:
         return None
     return data_uri
+
+
+def _document_url_identity(parts: SplitResult) -> tuple[str, str, str, str]:
+    """返回忽略 fragment 的确定文档身份，并规范层级 URL 的空路径。"""
+    scheme = parts.scheme.casefold()
+    path = parts.path or ("/" if scheme in {"http", "https"} else "")
+    return scheme, parts.netloc.casefold(), unquote(path), parts.query
 
 
 def _is_within(path: Path, root: Path) -> bool:

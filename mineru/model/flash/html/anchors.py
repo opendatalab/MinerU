@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from copy import deepcopy
 import hashlib
 
@@ -38,7 +39,12 @@ def element_id(element: etree._Element) -> str | None:
     return value or None
 
 
-def append_referenced_notes(selected_root: etree._Element, original_body: etree._Element) -> etree._Element:
+def append_referenced_notes(
+    selected_root: etree._Element,
+    original_body: etree._Element,
+    *,
+    resolve_same_document_fragment: Callable[[str], str | None],
+) -> etree._Element:
     """把正文候选引用但位于候选外的脚注副本追加到内容根末尾。"""
     selected_ids = {
         identity
@@ -51,12 +57,11 @@ def append_referenced_notes(selected_root: etree._Element, original_body: etree.
         if isinstance(element.tag, str) and (identity := element_id(element)) is not None and is_note_element(element)
     }
     referenced_ids = dict.fromkeys(
-        href[1:]
+        fragment
         for element in selected_root.iter()
         if isinstance(element.tag, str)
         and local_name(element) == "a"
-        and (href := (element.get("href") or "").strip()).startswith("#")
-        and len(href) > 1
+        and (fragment := resolve_same_document_fragment(element.get("href") or "")) is not None
     )
     companions = [
         element for identity, element in targets.items() if identity in referenced_ids and identity not in selected_ids

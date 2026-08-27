@@ -50,7 +50,11 @@ class HtmlConverter:
                 logger.warning("MinerU HTML marker fallback reason={}", inspection.fallback_reason)
             stylesheet = _load_stylesheet(document, resources)
             selection = select_auto_content(document.body, stylesheet)
-            selected_root = append_referenced_notes(selection.root, document.body)
+            selected_root = append_referenced_notes(
+                selection.root,
+                document.body,
+                resolve_same_document_fragment=resources.same_document_fragment,
+            )
             source_key = document.source_context.source_uri or "html"
             anchors = HtmlAnchorRegistry(selected_root, stylesheet, source_key=source_key)
             resources.bind_anchors(anchors)

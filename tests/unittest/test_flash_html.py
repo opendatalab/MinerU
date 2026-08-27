@@ -305,6 +305,113 @@ def test_html_referenced_external_footnote_keeps_anchor_and_content() -> None:
     assert f'id="{footnote.anchor}" class="mineru-page-footnote"' in markdown  # type: ignore[union-attr]
 
 
+@pytest.mark.parametrize(
+    "href",
+    [
+        "#fn1",
+        "page.html#fn1",
+        "https://example.com/page.html#fn1",
+    ],
+)
+def test_html_auto_selection_appends_notes_for_all_same_document_url_forms(href: str) -> None:
+    """验证 auto 正文外脚注可由纯 fragment、相对或绝对同文档 URL 引用。"""
+    detail = "Useful main article text " * 20
+    payload = f"""<html><body><main><article><h1>Title</h1><p>{detail}
+      <a href="{href}">[1]</a></p></article></main>
+      <footer><aside id="fn1" role="doc-footnote"><p>Outside footnote.</p></aside></footer>
+      </body></html>""".encode()
+    context = HtmlSourceContext(source_uri="https://example.com/page.html")
+
+    middle = doc_analyze(payload, file_suffix="html", source_context=context)[0]
+    markdown = render_markdown(middle)
+    footnote = next(block for block in middle.pages[0].blocks if block.type == BlockType.PAGE_FOOTNOTE)
+
+    assert footnote.content == "Outside footnote."  # type: ignore[union-attr]
+    assert f"](#{footnote.anchor})" in markdown  # type: ignore[union-attr]
+    assert "https://example.com/page.html#fn1" not in markdown
+
+
+@pytest.mark.parametrize(
+    ("href", "expected_target"),
+    [
+        ("other.html#fn1", "https://example.com/other.html#fn1"),
+        ("https://other.example/page.html#fn1", "https://other.example/page.html#fn1"),
+        ("page.html?view=2#fn1", "https://example.com/page.html?view=2#fn1"),
+    ],
+)
+def test_html_auto_selection_does_not_append_notes_for_other_documents(href: str, expected_target: str) -> None:
+    """验证不同 path、origin 或 query 的 URL 不会借 fragment 追加当前文档脚注。"""
+    detail = "Useful main article text " * 20
+    payload = f"""<html><body><main><article><h1>Title</h1><p>{detail}
+      <a href="{href}">[1]</a></p></article></main>
+      <footer><aside id="fn1" role="doc-footnote"><p>Outside footnote.</p></aside></footer>
+      </body></html>""".encode()
+    context = HtmlSourceContext(source_uri="https://example.com/page.html")
+
+    middle = doc_analyze(payload, file_suffix="html", source_context=context)[0]
+    markdown = render_markdown(middle)
+
+    assert "Outside footnote." not in markdown
+    assert not any(block.type == BlockType.PAGE_FOOTNOTE for block in middle.pages[0].blocks)
+    assert expected_target in markdown
+
+
+@pytest.mark.parametrize(
+    ("base_href", "expected_note"),
+    [
+        ("/docs/", True),
+        ("/other/", False),
+    ],
+)
+def test_html_same_document_note_resolution_honors_base_href(base_href: str, expected_note: bool) -> None:
+    """验证 base href 参与相对脚注 URL 的文档身份判定。"""
+    detail = "Useful main article text " * 20
+    payload = f"""<html><head><base href="{base_href}"></head><body><main><article><h1>Title</h1>
+      <p>{detail}<a href="page.html#fn1">[1]</a></p></article></main>
+      <footer><aside id="fn1" role="doc-footnote"><p>Outside footnote.</p></aside></footer>
+      </body></html>""".encode()
+    context = HtmlSourceContext(source_uri="https://example.com/docs/page.html")
+
+    markdown = render_markdown(doc_analyze(payload, file_suffix="html", source_context=context)[0])
+
+    assert ("Outside footnote." in markdown) is expected_note
+
+
+def test_html_local_self_url_appends_referenced_note(tmp_path: Path) -> None:
+    """验证本地 HTML 使用自身文件名 fragment 时同样保留正文选择外脚注。"""
+    detail = "Useful main article text " * 20
+    source = tmp_path / "page.html"
+    source.write_text(
+        f"""<html><body><main><article><h1>Title</h1><p>{detail}
+        <a href="page.html#fn1">[1]</a></p></article></main>
+        <footer><aside id="fn1" role="doc-footnote"><p>Outside footnote.</p></aside></footer>
+        </body></html>""",
+        encoding="utf-8",
+    )
+
+    markdown = parse(source).markdown()
+
+    assert "Outside footnote." in markdown
+    assert "file:" not in markdown
+
+
+@pytest.mark.parametrize("href", ["javascript:alert(1)#fn1", "http://["])
+def test_html_unsafe_or_malformed_note_urls_do_not_append_notes(href: str) -> None:
+    """验证危险协议与畸形 URL 不参与同文档脚注关联，且不会中断正文解析。"""
+    detail = "Useful main article text " * 20
+    payload = f"""<html><body><main><article><h1>Title</h1><p>{detail}
+      <a href="{href}">[1]</a></p></article></main>
+      <footer><aside id="fn1" role="doc-footnote"><p>Outside footnote.</p></aside></footer>
+      </body></html>""".encode()
+    context = HtmlSourceContext(source_uri="https://example.com/page.html")
+
+    markdown = render_markdown(doc_analyze(payload, file_suffix="html", source_context=context)[0])
+
+    assert "Title" in markdown and "[1]" in markdown
+    assert "Outside footnote." not in markdown
+    assert href not in markdown
+
+
 def test_html_formula_sources_are_normalized_without_duplicate_katex_text() -> None:
     """验证 MathML、KaTeX annotation 与 data-expr 按统一公式协议输出且不重复。"""
     payload = rb"""<html><body><h1>Math</h1><p>Inline
@@ -445,6 +552,54 @@ def test_html_interleaved_figure_captions_bind_to_each_nearest_image() -> None:
     assert len(images) == 2
     assert [child.content for child in images[0].content if child.type == BlockType.IMAGE_CAPTION] == ["Caption A"]
     assert [child.content for child in images[1].content if child.type == BlockType.IMAGE_CAPTION] == ["Caption B"]
+
+
+def test_html_auto_selected_contextual_div_keeps_figure_caption_relation() -> None:
+    """验证 auto 直接选中 visual wrapper div 时仍执行根节点 caption 关联。"""
+    payload = b"""<html><body><div><figure><img src="https://example.com/a.png"></figure>
+      <p class="caption">Div caption</p></div></body></html>"""
+
+    middle, model = doc_analyze(payload, file_suffix="html")
+
+    assert [(block["type"], block.get("content")) for block in model.pages[0]] == [
+        (BlockType.IMAGE, ""),
+        (BlockType.IMAGE_CAPTION, "Div caption"),
+    ]
+    image = next(block for block in middle.pages[0].blocks if isinstance(block, ImageBlock))
+    assert [child.content for child in image.content if child.type == BlockType.IMAGE_CAPTION] == ["Div caption"]
+
+
+def test_html_caption_does_not_cross_unrelated_parent_container() -> None:
+    """验证 caption 与 visual 不共享明确语义父容器时不会跨容器猜测归属。"""
+    detail = b"Useful main article text " * 20
+    payload = (
+        b'<html><body><main><div><figure><img src="https://example.com/a.png"></figure></div>'
+        b'<p class="caption">Outside caption</p><p>' + detail + b"</p></main></body></html>"
+    )
+
+    middle = doc_analyze(payload, file_suffix="html")[0]
+    image = next(block for block in middle.pages[0].blocks if isinstance(block, ImageBlock))
+
+    assert all(child.type != BlockType.IMAGE_CAPTION for child in image.content)
+    assert "Outside caption" in render_markdown(middle)
+
+
+def test_html_alt_caption_fallback_policy_distinguishes_generic_and_mineru_figures() -> None:
+    """验证普通图片可用 alt 兜底，但显式 caption 与 MinerU figure 不重复提升 alt。"""
+    payload = b"""<html><body>
+      <figure><img src="https://example.com/a.png" alt="Generic alt"></figure>
+      <figure><img src="https://example.com/b.png" alt="Hidden alt"><figcaption>Explicit caption</figcaption></figure>
+      <figure class="mineru-figure"><img src="https://example.com/c.png" alt="Accessibility alt"></figure>
+      </body></html>"""
+
+    middle = doc_analyze(payload, file_suffix="html")[0]
+    images = [block for block in middle.pages[0].blocks if isinstance(block, ImageBlock)]
+    captions = [[child.content for child in image.content if child.type == BlockType.IMAGE_CAPTION] for image in images]
+
+    assert captions == [["Generic alt"], ["Explicit caption"], []]
+    markdown = render_markdown(middle)
+    assert "Generic alt" in markdown and "Explicit caption" in markdown
+    assert "Hidden alt" not in markdown and "Accessibility alt" not in markdown
 
 
 def test_html_inline_visual_splits_paragraph_text_in_dom_order() -> None:
