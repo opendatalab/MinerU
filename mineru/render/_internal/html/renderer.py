@@ -552,7 +552,7 @@ class _HtmlRenderer:
         if parent.sub_type == BlockType.CODE:
             escaped = html.escape(_replace_html_controls(block.content), quote=False)
             if not block.content:
-                return '<pre class="mineru-code"><code></code></pre>'
+                return _wrap_visual_body('<pre class="mineru-code"><code></code></pre>', block, "code")
             language = _normalize_prism_language(parent.guess_lang)
             class_attr = f' class="language-{language}"' if language else ""
             pre_class = f"mineru-code language-{language}" if language else "mineru-code"

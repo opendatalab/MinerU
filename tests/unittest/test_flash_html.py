@@ -27,7 +27,7 @@ from mineru.render.docx import render_docx
 from mineru.render.html import render_html
 from mineru.render.markdown import render_markdown
 from mineru.render.structured_content import render_structured_content
-from mineru.types import BlockType, ImageBlock, ImageBodyBlock, MiddleJson
+from mineru.types import BlockType, CodeBlock, CodeBodyBlock, ImageBlock, ImageBodyBlock, MiddleJson
 
 
 _PNG_URI = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2l9sAAAAASUVORK5CYII="
@@ -912,6 +912,43 @@ def test_html_remote_image_url_contract_rejects_unsafe_sources(image_url: str) -
     """验证 image_url 公共字段只接受无凭据 HTTP(S) 绝对地址。"""
     with pytest.raises(ValueError):
         ImageBodyBlock(type=BlockType.IMAGE_BODY, content="", image_url=image_url)
+
+
+def test_html_versioned_wire_roundtrips_empty_code_body() -> None:
+    """验证空代码主体仍携带 wire marker，并在 HTML 往返后保留代码块元数据。"""
+    source = MiddleJson.model_validate(
+        {
+            "pages": [
+                {
+                    "page_idx": 0,
+                    "blocks": [
+                        {
+                            "type": "code",
+                            "index": 0,
+                            "sub_type": "code",
+                            "guess_lang": "python",
+                            "content": [{"type": "code_body", "index": 0, "content": ""}],
+                        }
+                    ],
+                }
+            ],
+            "is_full_document": True,
+            "file_suffix": "html",
+            "effort": "flash",
+            "parse_mode": "txt",
+            "mineru_version": "test",
+        }
+    )
+
+    rendered = render_html(source, standalone=False)
+    marker = BeautifulSoup(rendered, "html.parser").select_one('[data-block-type="code_body"]')
+    roundtrip = doc_analyze(rendered.encode(), file_suffix="html")[0]
+    code = next(block for block in roundtrip.pages[0].blocks if isinstance(block, CodeBlock))
+    body = next(child for child in code.content if isinstance(child, CodeBodyBlock))
+
+    assert marker is not None and marker.get("data-block-index") == "0"
+    assert code.sub_type == BlockType.CODE and code.guess_lang == "python"
+    assert body.content == ""
 
 
 def test_html_versioned_wire_roundtrips_all_semantic_types() -> None:
