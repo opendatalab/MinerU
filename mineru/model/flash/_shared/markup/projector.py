@@ -12,6 +12,7 @@ from lxml import etree  # type: ignore[reportMissingImports]
 
 from .....types import RAW_ALGORITHM, BlockType, VISUAL_TYPE_MAPPING
 from ..hyperlink import render_inline_hyperlink
+from ..names import local_name
 from .formula import FormulaExtraction, extract_formula
 from .styles import MarkupStylesheet, TextStyle
 
@@ -100,11 +101,6 @@ _FOOTNOTE_TOKENS = frozenset(
 _VISUAL_ELEMENT_TAGS = frozenset({"img", "image", "pre", "svg", "table"})
 _LIST_PAGE_BLOCK_TAGS = frozenset({"figure", "image", "img", "pre", "svg", "table"})
 _InlineProjectionSegment: TypeAlias = str | dict[str, object]
-
-
-def local_name(element: etree._Element) -> str:
-    """返回元素不含命名空间的小写本地名。"""
-    return etree.QName(element).localname.casefold()
 
 
 def clean_text_node(value: str | None) -> str:
@@ -560,7 +556,7 @@ class MarkupProjector:
         ]
         annotation_elements = {child for child, _ in annotations}
         mineru_figure = "mineru-figure" in (element.get("class") or "").casefold().split()
-        blocks = self._parse_figure_contents(
+        blocks, visual_blocks_by_child = self._parse_figure_contents(
             element,
             style,
             visibility_hidden,
@@ -568,19 +564,22 @@ class MarkupProjector:
             emit_alt_caption=not mineru_figure and not annotations,
         )
 
-        visual_types = {
-            _raw_visual_type(block.get("type")) for block in blocks if _raw_visual_type(block.get("type")) is not None
-        }
-        visual_type = next(iter(visual_types)) if len(visual_types) == 1 else None
-        annotation_blocks: list[dict[str, object]] = []
+        annotations_by_visual: dict[int, list[dict[str, object]]] = {}
+        unbound_annotations: list[dict[str, object]] = []
         for annotation, kind in annotations:
             resolved = self.stylesheet.resolve(annotation, style, visibility_hidden)
             if resolved.subtree_hidden:
                 continue
             content, extras = self._render_inline_children(annotation, resolved.text, resolved.visibility_hidden)
-            annotation_blocks.extend(extras)
+            target = self._figure_annotation_target(annotation, element, visual_blocks_by_child)
+            annotation_blocks = list(extras)
             if not content.strip():
+                if target is not None:
+                    annotations_by_visual.setdefault(id(target), []).extend(annotation_blocks)
+                else:
+                    unbound_annotations.extend(annotation_blocks)
                 continue
+            visual_type = _raw_visual_type(target.get("type")) if target is not None else None
             if visual_type is not None:
                 annotation_blocks.append(
                     {
@@ -590,15 +589,17 @@ class MarkupProjector:
                 )
             else:
                 annotation_blocks.append({"type": BlockType.TEXT, "content": content.strip()})
-        if visual_type is None or not annotation_blocks:
-            blocks.extend(annotation_blocks)
-            return blocks
+            if target is not None and visual_type is not None:
+                annotations_by_visual.setdefault(id(target), []).extend(annotation_blocks)
+            else:
+                unbound_annotations.extend(annotation_blocks)
 
-        visual_positions = [index for index, block in enumerate(blocks) if _raw_visual_type(block.get("type")) == visual_type]
-        assert visual_positions
-        insert_at = visual_positions[-1] + 1
-        blocks[insert_at:insert_at] = annotation_blocks
-        return blocks
+        output: list[dict[str, object]] = []
+        for block in blocks:
+            output.append(block)
+            output.extend(annotations_by_visual.get(id(block), ()))
+        output.extend(unbound_annotations)
+        return output
 
     def _parse_figure_contents(
         self,
@@ -608,9 +609,10 @@ class MarkupProjector:
         *,
         annotation_elements: set[etree._Element],
         emit_alt_caption: bool,
-    ) -> list[dict[str, object]]:
+    ) -> tuple[list[dict[str, object]], dict[etree._Element, list[dict[str, object]]]]:
         """按 DOM 顺序缓冲 figure 文本，并在 visual extras 前后切分正文 block。"""
         blocks: list[dict[str, object]] = []
+        visual_blocks_by_child: dict[etree._Element, list[dict[str, object]]] = {}
         inline_parts: list[str] = [] if visibility_hidden else [self._render_text(element.text, style)]
 
         def flush_inline() -> None:
@@ -631,6 +633,7 @@ class MarkupProjector:
                     inline_parts.append(self._render_text(child.tail, style))
                 continue
 
+            first_child_block = len(blocks)
             name = local_name(child)
             if name in {"img", "image"}:
                 flush_inline()
@@ -649,8 +652,28 @@ class MarkupProjector:
                         blocks.append(segment)
             if not visibility_hidden:
                 inline_parts.append(self._render_text(child.tail, style))
+            child_visuals = [block for block in blocks[first_child_block:] if _raw_visual_type(block.get("type")) is not None]
+            if child_visuals:
+                visual_blocks_by_child[child] = child_visuals
         flush_inline()
-        return blocks
+        return blocks, visual_blocks_by_child
+
+    @staticmethod
+    def _figure_annotation_target(
+        annotation: etree._Element,
+        figure: etree._Element,
+        visual_blocks_by_child: dict[etree._Element, list[dict[str, object]]],
+    ) -> dict[str, object] | None:
+        """把 annotation 绑定到最近前序 visual；没有前序时使用最近后序 visual。"""
+        children = [child for child in figure if isinstance(child.tag, str)]
+        position = children.index(annotation)
+        for child in reversed(children[:position]):
+            if visuals := visual_blocks_by_child.get(child):
+                return visuals[-1]
+        for child in children[position + 1 :]:
+            if visuals := visual_blocks_by_child.get(child):
+                return visuals[0]
+        return None
 
     def _has_contextual_visual_annotation(self, element: etree._Element) -> bool:
         """仅在直属完整 token annotation 与 visual 后代并存时启用非标准容器解析。"""

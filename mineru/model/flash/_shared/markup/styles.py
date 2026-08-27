@@ -8,6 +8,8 @@ from dataclasses import dataclass, field
 
 from lxml import etree  # type: ignore[reportMissingImports]
 
+from ..names import local_name
+
 
 _CSS_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
 _CSS_IMPORTANT_RE = re.compile(r"!\s*important\s*$", re.IGNORECASE)
@@ -130,11 +132,6 @@ class _ParsedDeclarations:
 
     text: dict[str, tuple[bool, bool]]
     visibility: dict[str, tuple[bool, bool]]
-
-
-def _local_name(element: etree._Element) -> str:
-    """返回 XHTML 元素不含命名空间的小写本地名。"""
-    return etree.QName(element).localname.casefold()
 
 
 def _numeric_font_weight(value: str) -> int | None:
@@ -263,7 +260,7 @@ class MarkupStylesheet:
         inherited_visibility_hidden: bool = False,
     ) -> ElementStyle:
         """计算元素的继承样式、标签默认样式、CSS 规则和 inline style。"""
-        tag = _local_name(element)
+        tag = local_name(element)
         classes = frozenset((element.get("class") or "").split())
         tag_style = TextStyle(
             bold=tag in {"b", "strong"},

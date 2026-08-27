@@ -408,6 +408,45 @@ def test_html_figure_preserves_direct_and_inline_text_around_visuals() -> None:
     assert markdown.index("BeforeInline") < markdown.index("Cap") < markdown.index("After Tail")
 
 
+def test_html_colonized_office_svg_and_math_tags_preserve_visible_content() -> None:
+    """验证 legacy HTML 冒号标签不会触发 QName 异常，并按本地名恢复正文、SVG 与公式。"""
+    payload = b"""<html><body><o:p>Legacy Office text</o:p>
+      <svg:svg><svg:text>Visible SVG text</svg:text></svg:svg>
+      <m:math><m:mi>x</m:mi></m:math></body></html>"""
+
+    middle, model = doc_analyze(payload, file_suffix="html")
+
+    assert [(block["type"], block.get("content")) for block in model.pages[0]] == [
+        (BlockType.TEXT, "Legacy Office text"),
+        (BlockType.TEXT, "Visible SVG text"),
+        (BlockType.EQUATION, "x"),
+    ]
+    markdown = render_markdown(middle)
+    assert "Legacy Office text" in markdown and "Visible SVG text" in markdown
+    assert "$$\nx\n$$" in markdown
+
+
+def test_html_interleaved_figure_captions_bind_to_each_nearest_image() -> None:
+    """验证同一 figure 的多张图片分别保留其相邻 caption，不会全部归到末图。"""
+    payload = b"""<html><body><figure>
+      <img src="https://example.com/a.png"><figcaption>Caption A</figcaption>
+      <img src="https://example.com/b.png"><figcaption>Caption B</figcaption>
+      </figure></body></html>"""
+
+    middle, model = doc_analyze(payload, file_suffix="html")
+
+    assert [(block["type"], block.get("content")) for block in model.pages[0]] == [
+        (BlockType.IMAGE, ""),
+        (BlockType.IMAGE_CAPTION, "Caption A"),
+        (BlockType.IMAGE, ""),
+        (BlockType.IMAGE_CAPTION, "Caption B"),
+    ]
+    images = [block for block in middle.pages[0].blocks if isinstance(block, ImageBlock)]
+    assert len(images) == 2
+    assert [child.content for child in images[0].content if child.type == BlockType.IMAGE_CAPTION] == ["Caption A"]
+    assert [child.content for child in images[1].content if child.type == BlockType.IMAGE_CAPTION] == ["Caption B"]
+
+
 def test_html_inline_visual_splits_paragraph_text_in_dom_order() -> None:
     """验证段落内 visual 会切开前后文本，而不是把图片移到合并文本之后。"""
     payload = b'<html><body><p>Before<img src="https://example.com/a.png">After</p></body></html>'

@@ -10,6 +10,7 @@ from typing import Literal, TypeAlias
 from lxml import etree  # type: ignore[reportMissingImports]
 
 from ..mathml import mathml_to_latex
+from ..names import local_name
 
 
 FormulaDisplay: TypeAlias = Literal["inline", "block"]
@@ -111,10 +112,10 @@ def extract_formula(element: etree._Element) -> FormulaExtraction | None:
     if latex := _mathml_alttext(element):
         return FormulaExtraction(latex, display, "mathml_alttext")
 
-    name = _local_name(element)
+    name = local_name(element)
     if name != "math":
         math_element = next(
-            (child for child in element.iterdescendants() if isinstance(child.tag, str) and _local_name(child) == "math"),
+            (child for child in element.iterdescendants() if isinstance(child.tag, str) and local_name(child) == "math"),
             None,
         )
         if math_element is not None and (latex := _presentation_mathml(math_element)):
@@ -145,7 +146,7 @@ def strip_formula_delimiters(value: str) -> str:
 
 def is_tex_script(element: etree._Element) -> bool:
     """判断元素是否是受支持的静态 TeX/LaTeX script carrier。"""
-    return _local_name(element) == "script" and _MATH_SCRIPT_TYPE_RE.fullmatch((element.get("type") or "").strip()) is not None
+    return local_name(element) == "script" and _MATH_SCRIPT_TYPE_RE.fullmatch((element.get("type") or "").strip()) is not None
 
 
 def _normalized_attribute(element: etree._Element, name: str) -> str | None:
@@ -166,7 +167,7 @@ def _tex_annotation(element: etree._Element) -> str | None:
     """返回节点子树中首个受支持 TeX annotation。"""
     candidates = [element, *element.iterdescendants()]
     for candidate in candidates:
-        if not isinstance(candidate.tag, str) or _local_name(candidate) != "annotation":
+        if not isinstance(candidate.tag, str) or local_name(candidate) != "annotation":
             continue
         encoding = (candidate.get("encoding") or "").strip().casefold()
         if encoding not in _TEX_ANNOTATION_ENCODINGS:
@@ -203,7 +204,7 @@ def _data_formula(element: etree._Element) -> str | None:
 def _mathml_alttext(element: etree._Element) -> str | None:
     """返回首个 MathML alttext 中声明的 LaTeX。"""
     for candidate in [element, *element.iterdescendants()]:
-        if not isinstance(candidate.tag, str) or _local_name(candidate) != "math":
+        if not isinstance(candidate.tag, str) or local_name(candidate) != "math":
             continue
         if latex := _normalized_attribute(candidate, "alttext"):
             return latex
@@ -221,12 +222,12 @@ def _presentation_mathml(element: etree._Element) -> str | None:
 
 def _is_supported_presentation_mathml(element: etree._Element) -> bool:
     """拒绝未知节点和畸形固定元数结构，避免把普通 XML 文本冒充为 LaTeX。"""
-    if _local_name(element) != "math":
+    if local_name(element) != "math":
         return False
     for candidate in [element, *element.iterdescendants()]:
         if not isinstance(candidate.tag, str):
             continue
-        name = _local_name(candidate)
+        name = local_name(candidate)
         if name not in _PRESENTATION_MATHML_TAGS:
             return False
         children = [child for child in candidate if isinstance(child.tag, str)]
@@ -234,7 +235,7 @@ def _is_supported_presentation_mathml(element: etree._Element) -> bool:
             return False
         if name in {"mi", "mn", "mo", "mtext", "mspace"} and children:
             return False
-        if name == "semantics" and (not children or _local_name(children[0]) in {"annotation", "annotation-xml"}):
+        if name == "semantics" and (not children or local_name(children[0]) in {"annotation", "annotation-xml"}):
             return False
     return True
 
@@ -259,11 +260,6 @@ def _script_display(element: etree._Element, default: FormulaDisplay) -> Formula
             return "block"
         break
     return default
-
-
-def _local_name(element: etree._Element) -> str:
-    """返回不含命名空间的小写本地标签名。"""
-    return etree.QName(element).localname.casefold()
 
 
 def _class_tokens(element: etree._Element) -> frozenset[str]:
