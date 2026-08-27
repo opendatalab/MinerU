@@ -136,10 +136,10 @@ RtfBlock: TypeAlias = Union[RtfParagraph, RtfDisplayEquation, RtfTable]
 
 @dataclass(slots=True)
 class RtfNote:
-    """保存脚注或尾注正文。"""
+    """保存脚注、尾注或批注正文。"""
 
     id: str
-    kind: Literal["footnote", "endnote"]
+    kind: Literal["footnote", "endnote", "annotation"]
     blocks: list[RtfBlock] = field(default_factory=list)
 
 

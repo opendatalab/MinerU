@@ -95,7 +95,6 @@ _TITLE_STYLE_NAMES = {"document title", "title"}
 _HEADER_DESTINATIONS = {"header", "headerf", "headerl", "headerr"}
 _FOOTER_DESTINATIONS = {"footer", "footerf", "footerl", "footerr"}
 _SUPPRESSED_DESTINATIONS = {
-    "annotation",
     "atnauthor",
     "atnid",
     "background",
@@ -392,7 +391,7 @@ class _GroupFrame:
     capture_text: list[str] = field(default_factory=list)
     instruction: list[str] = field(default_factory=list)
     pict: _PictCapture | None = None
-    note_kind: Literal["footnote", "endnote"] = "footnote"
+    note_kind: Literal["footnote", "endnote", "annotation"] = "footnote"
     upr_child_count: int = 0
 
 
@@ -933,12 +932,14 @@ class RtfParser:
             frame.destination = "fldrslt"
             self.state.destination = "body"
             return True
-        if name in {"footnote", "endnote"}:
+        if name in {"footnote", "endnote", "annotation"}:
             frame.destination = "note"
-            frame.note_kind = "endnote" if name == "endnote" else "footnote"
+            frame.note_kind = "endnote" if name == "endnote" else "annotation" if name == "annotation" else "footnote"
             frame.parent_context = self.context
             self.context = _OutputContext()
             self.state.destination = "body"
+            if name == "annotation":
+                self.state.hidden = False
             return True
         if name in _HEADER_DESTINATIONS | _FOOTER_DESTINATIONS:
             frame.destination = "header" if name in _HEADER_DESTINATIONS else "footer"
@@ -1028,7 +1029,7 @@ class RtfParser:
                 self.context.inlines[index] = replace(inline, hyperlink=target)
 
     def _finish_note(self, frame: _GroupFrame) -> None:
-        """结束隔离 note context，在父正文插入引用并登记正文。"""
+        """结束隔离 note context，登记正文并按类型决定是否插入引用。"""
         note_context = self.context
         self._finalize_context(note_context)
         parent = frame.parent_context or _OutputContext()
@@ -1037,7 +1038,8 @@ class RtfParser:
             return
         note_id = f"rtf{len(self.document.notes)}"
         self.document.notes.append(RtfNote(note_id, frame.note_kind, note_context.blocks))
-        self._append_inline(RtfNoteReference(note_id))
+        if frame.note_kind != "annotation":
+            self._append_inline(RtfNoteReference(note_id))
 
     def _finish_auxiliary(self, frame: _GroupFrame, destination: str) -> None:
         """结束页眉页脚隔离 context，并恢复父正文。"""

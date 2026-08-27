@@ -490,6 +490,34 @@ def test_rtf_footnote_literal_protocol_is_escaped_before_rendering() -> None:
     assert "javascript:alert(1)" not in relationships
 
 
+def test_rtf_annotation_preserves_comment_as_page_footnote() -> None:
+    """验证 annotation 正文进入页脚注块且不会生成虚假的正文脚注引用。"""
+    source = rb"{\rtf1\ansi Before {\*\annotation Review comment} After\par}"
+
+    pages = RtfModel().predict(BytesIO(source))
+
+    assert pages[0][0]["type"] == BlockType.TEXT
+    assert pages[0][0]["content"].split() == ["Before", "After"]
+    assert "[1]" not in pages[0][0]["content"]
+    assert pages[0][1] == {"type": BlockType.PAGE_FOOTNOTE, "content": "[1] Review comment"}
+
+
+def test_rtf_hidden_annotation_preserves_body_and_suppresses_metadata() -> None:
+    """验证隐藏批注可恢复正文，同时作者和标识元数据不会泄漏。"""
+    source = (
+        rb"{\rtf1\ansi Body {\v {\*\atnauthor Alice}{\*\atnid AB}\chatn"
+        rb"{\*\annotation Review <eq>x</eq> comment}} end\par}"
+    )
+
+    pages = RtfModel().predict(BytesIO(source))
+
+    footnote = next(block for block in pages[0] if block.get("type") == BlockType.PAGE_FOOTNOTE)
+    assert "Review &lt;eq&gt;x&lt;/eq&gt; comment" in footnote["content"]
+    assert "Alice" not in footnote["content"]
+    assert "AB" not in footnote["content"]
+    assert "<eq>" not in footnote["content"]
+
+
 def test_rtf_equation_only_paragraph_preserves_note_reference() -> None:
     """验证纯公式段落仍保留脚注引用，不生成孤立脚注正文。"""
     source = rb"{\rtf1\ansi\pard {\mmath{\*\moMath{\mr x}}}{\footnote Foot.}\par}"
