@@ -988,6 +988,7 @@ def _emit_text(
     logical_origin = playback.state.current_position if update_current else reference
     origin = playback.map_point(logical_origin)
     positions: list[Point] = []
+    advance_end: Point | None = None
     font = playback.state.font
     if advances:
         cursor_x, cursor_y = logical_origin
@@ -996,6 +997,7 @@ def _emit_text(
             if index < len(advances):
                 cursor_x += advances[index][0]
                 cursor_y += advances[index][1]
+        advance_end = playback.map_point((cursor_x, cursor_y))
         if update_current:
             playback.state.current_position = (cursor_x, cursor_y)
     elif update_current:
@@ -1039,6 +1041,7 @@ def _emit_text(
             opaque=bool(options & _ETO_OPAQUE) or playback.state.background_mode == 2,
             bounds=mapped_bounds,
             clip=clip,
+            advance_end=advance_end,
         )
     )
 

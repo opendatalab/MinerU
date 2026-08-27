@@ -10,7 +10,7 @@ from unittest.mock import Mock
 import zlib
 from zipfile import ZIP_DEFLATED, ZipFile
 
-from PIL import Image
+from PIL import Image, ImageFont
 import pyclipper
 import pytest
 import pptx
@@ -319,6 +319,52 @@ def test_updatecp_text_without_explicit_spacing_advances_current_position(data: 
     assert not commands[1].positions
 
 
+@pytest.mark.parametrize(("text_align", "expected_x"), [(6, (40.0, 50.0)), (2, (30.0, 40.0))])
+def test_explicit_spacing_applies_center_or_right_alignment_once(
+    text_align: int,
+    expected_x: tuple[float, float],
+) -> None:
+    """验证显式 DX 字符先按整串 alignment 平移，再从左侧 cell origin 绘制。"""
+    document = metafile_parser.parse_metafile(build_emf([emf_set_text_align(text_align), emf_text("AB", 50, 50, dx=10)]))
+    command = next(command for command in document.commands if isinstance(command, DrawTextCommand))
+    positions, positioned_run = metafile_render._aligned_text_positions(command, Matrix(), list(command.positions))
+    svg = metafile_render._svg_text_elements(command, Matrix())
+
+    assert command.advance_end == (70.0, 50.0)
+    assert positioned_run
+    assert tuple(position[0] for position in positions) == expected_x
+    assert all(position[1] == 50.0 for position in positions)
+    assert 'text-anchor="start"' in svg
+
+
+def test_rotated_text_preserves_left_and_right_anchor_without_clipping() -> None:
+    """验证旋转文字围绕 GDI reference 定位，左右 anchor 均保留完整字形。"""
+    font = ImageFont.load_default(size=20)
+    left = Image.new("RGBA", (180, 140), (0, 0, 0, 0))
+    right = Image.new("RGBA", (180, 140), (0, 0, 0, 0))
+
+    for layer, anchor in ((left, "la"), (right, "ra")):
+        metafile_render._draw_rotated_text(
+            layer,
+            (90.0, 70.0),
+            "Anchor",
+            font=font,
+            fill=(0, 0, 0, 255),
+            anchor=anchor,
+            rotation=35.0,
+            underline=True,
+            strikeout=True,
+        )
+
+    left_pixels = sum(value > 0 for value in left.getchannel("A").getdata())
+    right_pixels = sum(value > 0 for value in right.getchannel("A").getdata())
+
+    assert left.getbbox() is not None and right.getbbox() is not None
+    assert right_pixels == pytest.approx(left_pixels, rel=0.05)
+    assert left.getbbox()[2] > 90
+    assert right.getbbox()[0] < 90
+
+
 @pytest.mark.parametrize(("sweep_angle", "expected_end_y"), [(90.0, -10.0), (-90.0, 10.0)])
 def test_emf_anglearc_uses_sweep_direction_and_updates_current_position(
     sweep_angle: float,
@@ -527,6 +573,29 @@ def test_stroke_mask_honors_caps_and_svg_miter_limit() -> None:
     assert miter.getbbox() is not None and bevel.getbbox() is not None
     assert miter.getbbox()[1] < bevel.getbbox()[1]
     assert b'stroke-miterlimit="3.5"' in svg
+
+
+def test_bitmap_source_crop_preserves_empty_and_partial_destination_mapping() -> None:
+    """验证完全越界 source 不绘制，部分交集只映射到对应 destination 子区域。"""
+    image = Image.new("RGBA", (2, 2), "red")
+    destination = ((0.0, 0.0), (100.0, 0.0), (100.0, 100.0), (0.0, 100.0))
+
+    outside, outside_fraction = metafile_render._crop_source(image, Rect(10.0, 10.0, 12.0, 12.0))
+    partial, partial_fraction = metafile_render._crop_source(image, Rect(-1.0, 0.0, 1.0, 2.0))
+    mirrored, mirrored_fraction = metafile_render._crop_source(image, Rect(3.0, 0.0, -1.0, 2.0))
+
+    assert outside is None
+    assert outside_fraction == Rect(0.0, 0.0, 0.0, 0.0)
+    assert partial is not None and partial.size == (1, 2)
+    assert partial_fraction == Rect(0.5, 0.0, 1.0, 1.0)
+    assert mirrored is not None and mirrored.size == (2, 2)
+    assert mirrored_fraction == Rect(0.25, 0.0, 0.75, 1.0)
+    assert metafile_render._crop_destination(destination, partial_fraction) == (
+        (50.0, 0.0),
+        (100.0, 0.0),
+        (100.0, 100.0),
+        (50.0, 100.0),
+    )
 
 
 def test_placeable_wmf_renders_vector_content() -> None:

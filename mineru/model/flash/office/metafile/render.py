@@ -461,6 +461,22 @@ def _text_anchor(text_align: int) -> str:
     return horizontal + vertical
 
 
+def _aligned_text_positions(
+    command: DrawTextCommand,
+    matrix: Matrix,
+    positions: list[Point],
+) -> tuple[list[Point], bool]:
+    """把显式字符位置按整串 CENTER/RIGHT alignment 平移一次。"""
+    if not command.positions or command.advance_end is None:
+        return positions, False
+    factor = 0.5 if command.text_align & _TA_CENTER == _TA_CENTER else 1.0 if command.text_align & _TA_RIGHT else 0.0
+    mapped_origin = matrix.transform_point(command.origin)
+    mapped_end = matrix.transform_point(command.advance_end)
+    offset_x = (mapped_end[0] - mapped_origin[0]) * factor
+    offset_y = (mapped_end[1] - mapped_origin[1]) * factor
+    return [(position[0] - offset_x, position[1] - offset_y) for position in positions], True
+
+
 def _draw_rotated_text(
     layer: Image.Image,
     position: Point,
@@ -470,21 +486,41 @@ def _draw_rotated_text(
     fill: tuple[int, int, int, int],
     anchor: str,
     rotation: float,
+    underline: bool,
+    strikeout: bool,
 ) -> tuple[int, int]:
     """在指定 anchor 绘制可旋转文字，并返回未旋转文字尺寸。"""
     draw = ImageDraw.Draw(layer)
     bbox = draw.textbbox((0, 0), text, font=font, anchor=anchor)
     width = max(1, bbox[2] - bbox[0])
     height = max(1, bbox[3] - bbox[1])
+    line_width = max(1, round(height / 14.0))
+
+    def draw_decorations(target_draw: ImageDraw.ImageDraw, reference: Point) -> None:
+        """围绕同一文字 reference 绘制下划线和删除线。"""
+        left = reference[0] + bbox[0]
+        right = reference[0] + bbox[2]
+        if underline:
+            y = reference[1] + bbox[3] + line_width
+            target_draw.line((left, y, right, y), fill=fill, width=line_width)
+        if strikeout:
+            y = reference[1] + (bbox[1] + bbox[3]) / 2.0
+            target_draw.line((left, y, right, y), fill=fill, width=line_width)
+
     if abs(rotation) < 1e-6:
         draw.text(position, text, font=font, fill=fill, anchor=anchor)
+        draw_decorations(draw, position)
         return width, height
     padding = max(4, ceil(max(width, height) * 0.1))
-    patch = Image.new("RGBA", (width + padding * 2, height + padding * 2), (0, 0, 0, 0))
+    bottom = bbox[3] + line_width * 2 if underline else bbox[3]
+    radius = ceil(max(hypot(x, y) for x in (bbox[0], bbox[2]) for y in (bbox[1], bottom))) + padding
+    patch = Image.new("RGBA", (radius * 2 + 1, radius * 2 + 1), (0, 0, 0, 0))
     patch_draw = ImageDraw.Draw(patch)
-    patch_draw.text((padding - bbox[0], padding - bbox[1]), text, font=font, fill=fill)
-    rotated = patch.rotate(-rotation, expand=True, resample=Image.Resampling.BICUBIC)
-    target = round(position[0] - rotated.width / 2), round(position[1] - rotated.height / 2)
+    reference = float(radius), float(radius)
+    patch_draw.text(reference, text, font=font, fill=fill, anchor=anchor)
+    draw_decorations(patch_draw, reference)
+    rotated = patch.rotate(-rotation, expand=False, resample=Image.Resampling.BICUBIC, center=reference)
+    target = round(position[0] - radius), round(position[1] - radius)
     layer.alpha_composite(rotated, target)
     return width, height
 
@@ -506,6 +542,9 @@ def _render_text_command(
         if command.positions
         else [matrix.transform_point(command.origin)]
     )
+    positions, positioned_run = _aligned_text_positions(command, matrix, positions)
+    if positioned_run:
+        anchor = "l" + anchor[1]
     texts = tuple(command.text) if command.positions else (command.text,)
     if command.opaque:
         draw = ImageDraw.Draw(layer)
@@ -522,50 +561,41 @@ def _render_text_command(
             )
         draw.rectangle(background_bounds, fill=command.background_color.rgba())
     if command.positions:
-        sizes: list[tuple[int, int]] = []
         for position, character in zip(positions, command.text):
-            sizes.append(
-                _draw_rotated_text(
-                    layer,
-                    position,
-                    character,
-                    font=font,
-                    fill=command.color.rgba(),
-                    anchor=anchor,
-                    rotation=command.rotation,
-                )
-            )
-    else:
-        position = positions[0]
-        sizes = [
             _draw_rotated_text(
                 layer,
                 position,
-                command.text,
+                character,
                 font=font,
                 fill=command.color.rgba(),
                 anchor=anchor,
                 rotation=command.rotation,
+                underline=command.font.underline,
+                strikeout=command.font.strikeout,
             )
-        ]
-    if (command.font.underline or command.font.strikeout) and positions:
-        draw = ImageDraw.Draw(layer)
-        width = sizes[-1][0] if sizes else font_size
-        for position in positions:
-            if command.font.underline:
-                y = position[1] + max(1, font_size * 0.1)
-                draw.line((position[0], y, position[0] + width, y), fill=command.color.rgba(), width=max(1, font_size // 14))
-            if command.font.strikeout:
-                y = position[1] - font_size * 0.3
-                draw.line((position[0], y, position[0] + width, y), fill=command.color.rgba(), width=max(1, font_size // 14))
+    else:
+        position = positions[0]
+        _draw_rotated_text(
+            layer,
+            position,
+            command.text,
+            font=font,
+            fill=command.color.rgba(),
+            anchor=anchor,
+            rotation=command.rotation,
+            underline=command.font.underline,
+            strikeout=command.font.strikeout,
+        )
     _apply_clip(layer, command.clip, matrix, budget)
     return layer
 
 
-def _crop_source(image: Image.Image, source: Rect | None) -> Image.Image:
-    """按 GDI source rect 裁剪位图，并兼容负宽高翻转。"""
+def _crop_source(image: Image.Image, source: Rect | None) -> tuple[Image.Image | None, Rect]:
+    """裁剪 GDI source rect，并返回交集在请求矩形中的归一化位置。"""
     if source is None:
-        return image
+        return image, Rect(0.0, 0.0, 1.0, 1.0)
+    if abs(source.width) <= 1e-9 or abs(source.height) <= 1e-9:
+        return None, Rect(0.0, 0.0, 0.0, 0.0)
     flip_x = source.width < 0
     flip_y = source.height < 0
     normalized = source.normalized()
@@ -574,13 +604,42 @@ def _crop_source(image: Image.Image, source: Rect | None) -> Image.Image:
     right = min(image.width, ceil(normalized.right))
     bottom = min(image.height, ceil(normalized.bottom))
     if right <= left or bottom <= top:
-        return image
+        return None, Rect(0.0, 0.0, 0.0, 0.0)
+    horizontal = sorted(((left - source.left) / source.width, (right - source.left) / source.width))
+    vertical = sorted(((top - source.top) / source.height, (bottom - source.top) / source.height))
+    fraction = Rect(
+        max(0.0, horizontal[0]),
+        max(0.0, vertical[0]),
+        min(1.0, horizontal[1]),
+        min(1.0, vertical[1]),
+    )
     cropped = image.crop((left, top, right, bottom))
     if flip_x:
         cropped = cropped.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
     if flip_y:
         cropped = cropped.transpose(Image.Transpose.FLIP_TOP_BOTTOM)
-    return cropped
+    return cropped, fraction
+
+
+def _crop_destination(
+    destination: tuple[Point, Point, Point, Point],
+    fraction: Rect,
+) -> tuple[Point, Point, Point, Point]:
+    """把 source 可见交集的归一化位置映射到目标平行四边形。"""
+    first, second, _third, fourth = destination
+    axis_x = second[0] - first[0], second[1] - first[1]
+    axis_y = fourth[0] - first[0], fourth[1] - first[1]
+
+    def mapped(u: float, v: float) -> Point:
+        """把 source 归一化坐标映射到 destination。"""
+        return first[0] + axis_x[0] * u + axis_y[0] * v, first[1] + axis_x[1] * u + axis_y[1] * v
+
+    return (
+        mapped(fraction.left, fraction.top),
+        mapped(fraction.right, fraction.top),
+        mapped(fraction.right, fraction.bottom),
+        mapped(fraction.left, fraction.bottom),
+    )
 
 
 def _affine_image_layer(
@@ -626,11 +685,14 @@ def _render_image_command(
     budget: FlattenBudget,
 ) -> Image.Image:
     """解码、裁剪并仿射放置单条位图命令。"""
-    image = _crop_source(_decode_dib(command), command.source)
+    image, source_fraction = _crop_source(_decode_dib(command), command.source)
+    if image is None:
+        return Image.new("RGBA", size, (0, 0, 0, 0))
     if command.constant_alpha < 255:
         alpha = image.getchannel("A").point(lambda value: value * command.constant_alpha // 255)
         image.putalpha(alpha)
-    layer = _affine_image_layer(image, command.destination, matrix, size, command.stretch_mode)
+    destination = _crop_destination(command.destination, source_fraction)
+    layer = _affine_image_layer(image, destination, matrix, size, command.stretch_mode)
     _apply_clip(layer, command.clip, matrix, budget)
     return layer
 
@@ -889,16 +951,20 @@ def _svg_text_elements(command: DrawTextCommand, matrix: Matrix) -> str:
     if command.font.strikeout:
         decorations.append("line-through")
     decoration_attr = f' text-decoration="{" ".join(decorations)}"' if decorations else ""
+    elements: list[str] = []
+    positions = command.positions or (command.origin,)
+    texts = tuple(command.text) if command.positions else (command.text,)
+    mapped_positions_list = [matrix.transform_point(position) for position in positions]
+    mapped_positions_list, positioned_run = _aligned_text_positions(command, matrix, mapped_positions_list)
+    if positioned_run:
+        anchor = "start"
     common = (
         f'fill="{command.color.svg()}"{_svg_opacity(command.color)} '
         f'font-family="{escape(command.font.face_name, quote=True)}" font-size="{_svg_number(font_size)}" '
         f'font-weight="{command.font.weight}" font-style="{"italic" if command.font.italic else "normal"}" '
         f'text-anchor="{anchor}" dominant-baseline="{baseline}"{decoration_attr}'
     )
-    elements: list[str] = []
-    positions = command.positions or (command.origin,)
-    texts = tuple(command.text) if command.positions else (command.text,)
-    mapped_positions = tuple(matrix.transform_point(position) for position in positions)
+    mapped_positions = tuple(mapped_positions_list)
     for mapped, text in zip(mapped_positions, texts):
         transform = ""
         if abs(command.rotation) > 1e-6:
@@ -929,13 +995,16 @@ def _svg_text_elements(command: DrawTextCommand, matrix: Matrix) -> str:
 
 def _svg_image_element(command: DrawImageCommand, matrix: Matrix) -> str:
     """把 DIB 转成内嵌 PNG 并以 SVG affine matrix 放置。"""
-    image = _crop_source(_decode_dib(command), command.source)
+    image, source_fraction = _crop_source(_decode_dib(command), command.source)
+    if image is None:
+        return ""
     if command.constant_alpha < 255:
         image.putalpha(image.getchannel("A").point(lambda value: value * command.constant_alpha // 255))
     output = BytesIO()
     image.save(output, format="PNG")
     encoded = base64.b64encode(output.getvalue()).decode("ascii")
-    first, second, _third, fourth = (matrix.transform_point(point) for point in command.destination)
+    destination = _crop_destination(command.destination, source_fraction)
+    first, second, _third, fourth = (matrix.transform_point(point) for point in destination)
     a = (second[0] - first[0]) / max(image.width, 1)
     b = (second[1] - first[1]) / max(image.width, 1)
     c = (fourth[0] - first[0]) / max(image.height, 1)

@@ -233,6 +233,7 @@ class DrawTextCommand:
     opaque: bool
     bounds: Rect | None
     clip: ClipStack
+    advance_end: Point | None = None
 
 
 @dataclass(frozen=True, slots=True)
