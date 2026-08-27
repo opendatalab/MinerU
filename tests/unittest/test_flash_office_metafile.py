@@ -40,6 +40,7 @@ from mineru.model.flash.office.metafile import render as metafile_render
 from mineru.model.flash.office.metafile.geometry import FlattenBudget, PathBuilder, flatten_path, path_bounds
 from mineru.model.flash.office.metafile.models import (
     ClipOperation,
+    DrawImageCommand,
     DrawPathCommand,
     DrawTextCommand,
     GraphicsPath,
@@ -219,6 +220,30 @@ def test_emf_renders_png_jpeg_and_safe_svg() -> None:
     assert image.getpixel((30, 110))[:3] == (0, 0, 255)
     assert image.getpixel((100, 110))[:3] == (255, 255, 255)
     assert image.getpixel((30, 90))[:3] == (255, 255, 255)
+
+
+def test_alpha_dib_unpremultiplies_channels_before_compositing() -> None:
+    """验证 AC_SRC_ALPHA 的 premultiplied BGRA 在 Pillow 合成前恢复为 straight RGBA。"""
+    header = bytearray(40)
+    struct.pack_into("<IiiHHIIiiII", header, 0, 40, 2, -1, 1, 32, 0, 8, 0, 0, 0, 0)
+    command = DrawImageCommand(
+        dib_header=bytes(header),
+        bits=bytes((0, 0, 128, 128, 0, 64, 0, 64)),
+        destination=((0.0, 0.0), (2.0, 0.0), (2.0, 1.0), (0.0, 1.0)),
+        source=None,
+        rop=0,
+        use_source_alpha=True,
+    )
+
+    decoded = metafile_render._decode_raw_alpha_dib(command)
+
+    assert decoded is not None
+    assert decoded.getpixel((0, 0)) == (255, 0, 0, 128)
+    assert decoded.getpixel((1, 0)) == (0, 255, 0, 64)
+    background = Image.new("RGBA", decoded.size, "white")
+    background.alpha_composite(decoded)
+    assert background.getpixel((0, 0)) == (255, 127, 127, 255)
+    assert background.getpixel((1, 0)) == (191, 255, 191, 255)
 
 
 def test_emf_save_restore_preserves_selected_objects_and_transform() -> None:

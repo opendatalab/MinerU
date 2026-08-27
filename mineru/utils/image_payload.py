@@ -67,6 +67,20 @@ def normalize_image_extension(fmt: str) -> str:
     return "jpg" if normalized in {"jpeg", "jpg"} else normalized
 
 
+def _parse_svg_root_strict(payload: bytes) -> ElementTree.Element:
+    """在固定字节预算内解析 SVG 根节点，并在实体展开前拒绝 DTD。"""
+    if len(payload) > MAX_GENERATED_SVG_BYTES:
+        raise ValueError("SVG image payload exceeds its byte limit")
+    try:
+        parser = ElementTree.XMLParser(target=_RejectingSvgTreeBuilder())
+        root = ElementTree.fromstring(payload, parser=parser)
+    except ElementTree.ParseError as exc:
+        raise ValueError("Invalid SVG image payload") from exc
+    if not isinstance(root.tag, str) or root.tag.rsplit("}", 1)[-1].lower() != "svg":
+        raise ValueError("Image signature does not match MIME subtype: svg+xml")
+    return root
+
+
 def parse_image_data_uri_strict(data_uri: str) -> tuple[bytes, str]:
     """严格解析图片 data URI，并同时校验 MIME 与文件签名是否一致。"""
     match = re.fullmatch(r"data:image/([^;]+);base64,([A-Za-z0-9+/]*={0,2})", data_uri)
@@ -75,22 +89,22 @@ def parse_image_data_uri_strict(data_uri: str) -> tuple[bytes, str]:
 
     mime_subtype = match.group(1).lower()
     extension = normalize_image_extension(mime_subtype)
+    encoded_payload = match.group(2)
+    if extension == "svg":
+        if mime_subtype != "svg+xml":
+            raise ValueError(f"Unsupported image MIME subtype: {mime_subtype}")
+        max_encoded_bytes = ((MAX_GENERATED_SVG_BYTES + 2) // 3) * 4
+        if len(encoded_payload) > max_encoded_bytes:
+            raise ValueError("SVG image payload exceeds its byte limit")
     try:
-        payload = base64.b64decode(match.group(2), validate=True)
+        payload = base64.b64decode(encoded_payload, validate=True)
     except (binascii.Error, ValueError) as exc:
         raise ValueError("Invalid base64 image payload") from exc
     if not payload:
         raise ValueError("Image payload must not be empty")
 
     if extension == "svg":
-        if mime_subtype != "svg+xml":
-            raise ValueError(f"Unsupported image MIME subtype: {mime_subtype}")
-        try:
-            svg_root = ElementTree.fromstring(payload)
-        except ElementTree.ParseError as exc:
-            raise ValueError("Invalid SVG image payload") from exc
-        if not isinstance(svg_root.tag, str) or svg_root.tag.rsplit("}", 1)[-1].lower() != "svg":
-            raise ValueError("Image signature does not match MIME subtype: svg+xml")
+        _parse_svg_root_strict(payload)
         return payload, extension
 
     signatures: dict[str, tuple[bytes, ...]] = {
@@ -144,13 +158,9 @@ def _validate_generated_svg_attribute(tag: str, name: str, value: str) -> None:
 
 def extract_mineru_generated_svg_fallback(payload: bytes) -> tuple[bytes, int, int]:
     """验证 MinerU 生成 SVG，并返回 PNG fallback 与逻辑像素尺寸。"""
-    if not isinstance(payload, bytes) or not payload or len(payload) > MAX_GENERATED_SVG_BYTES:
+    if not isinstance(payload, bytes) or not payload:
         raise ValueError("Generated SVG payload is empty or exceeds its byte limit")
-    try:
-        parser = ElementTree.XMLParser(target=_RejectingSvgTreeBuilder())
-        root = ElementTree.fromstring(payload, parser=parser)
-    except ElementTree.ParseError as exc:
-        raise ValueError("Generated SVG payload is not valid XML") from exc
+    root = _parse_svg_root_strict(payload)
     if root.tag != f"{{{_SVG_NAMESPACE}}}svg" or root.get("data-mineru-generated") != _MINERU_SVG_MARKER:
         raise ValueError("SVG is not marked as a MinerU generated metafile")
     try:

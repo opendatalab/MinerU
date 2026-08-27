@@ -106,15 +106,16 @@ def _decode_raw_alpha_dib(command: DrawImageCommand) -> Image.Image | None:
         raise MetafileResourceLimitError("32-bit DIB exceeds pixel budget or is truncated")
     orientation = -1 if signed_height > 0 else 1
     try:
-        return Image.frombytes(
-            "RGBA",
+        premultiplied = Image.frombytes(
+            "RGBa",
             (width, height),
             command.bits[: width * height * 4],
             "raw",
-            "BGRA",
+            "BGRa",
             width * 4,
             orientation,
         )
+        return premultiplied.convert("RGBA")
     except (OSError, ValueError) as exc:
         raise MetafileMalformedError("32-bit DIB alpha payload cannot be decoded") from exc
 

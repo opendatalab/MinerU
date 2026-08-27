@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import base64
+from unittest.mock import Mock
 
 import pytest
 from bs4 import BeautifulSoup, Tag
@@ -11,6 +12,7 @@ from mineru.render._internal.html.sanitizer import (
     sanitize_image_source,
     sanitize_link_url,
 )
+from mineru.utils import image_payload
 
 _SAFE_PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2l9sAAAAASUVORK5CYII="
 
@@ -275,8 +277,18 @@ def test_mineru_generated_svg_data_uri_is_allowed() -> None:
     assert sanitize_image_source(source) == source
 
 
-def test_mineru_generated_svg_rejects_dtd_beyond_prefix_window() -> None:
+def test_mineru_generated_svg_rejects_dtd_beyond_prefix_window(monkeypatch: pytest.MonkeyPatch) -> None:
     """验证任意偏移和编码的 DTD 都不能绕过 HTML SVG 安全校验。"""
+    original_fromstring = image_payload.ElementTree.fromstring
+    parser_calls: list[object] = []
+
+    def guarded_fromstring(payload: bytes, parser: object | None = None) -> object:
+        """断言 SVG 的首次 XML 解析已经使用拒绝 DTD 的 parser。"""
+        assert parser is not None
+        parser_calls.append(parser)
+        return original_fromstring(payload, parser=parser)  # type: ignore[arg-type,return-value]
+
+    monkeypatch.setattr(image_payload.ElementTree, "fromstring", guarded_fromstring)
     safe_svg = base64.b64decode(_generated_svg_data_uri().split(",", 1)[1])
     late_doctype = (
         b" " * 4097
@@ -291,6 +303,17 @@ def test_mineru_generated_svg_rejects_dtd_beyond_prefix_window() -> None:
     for payload in (late_doctype, utf16_doctype):
         source = f"data:image/svg+xml;base64,{base64.b64encode(payload).decode('ascii')}"
         assert sanitize_image_source(source) is None
+    assert len(parser_calls) == 2
+
+
+def test_svg_data_uri_rejects_encoded_oversize_before_xml_parse(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证明显超限的 SVG 在 base64 解码和 XML 解析前被拒绝。"""
+    xml_parser = Mock(side_effect=AssertionError("oversized SVG must not reach XML parsing"))
+    monkeypatch.setattr(image_payload, "MAX_GENERATED_SVG_BYTES", 1)
+    monkeypatch.setattr(image_payload.ElementTree, "fromstring", xml_parser)
+
+    assert sanitize_image_source(_generated_svg_data_uri()) is None
+    xml_parser.assert_not_called()
 
 
 @pytest.mark.parametrize(
