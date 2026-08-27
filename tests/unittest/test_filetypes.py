@@ -11,6 +11,7 @@ from mineru.filetypes import (
     EPUB_EXTENSIONS,
     FILE_TYPE_BY_EXTENSION,
     FLASH_ONLY_PARSE_EXTENSIONS,
+    HTML_EXTENSIONS,
     INGESTIBLE_EXTENSIONS,
     MIME_TYPE_BY_EXTENSION,
     ODF_EXTENSIONS,
@@ -116,6 +117,18 @@ def test_epub_is_a_flash_only_parseable_e_book_type() -> None:
     assert FILE_TYPE_BY_EXTENSION["epub"] == "epub"
     assert MIME_TYPE_BY_EXTENSION["epub"] == "application/epub+zip"
     assert is_flash_only_parse_extension("epub")
+
+
+def test_html_extensions_are_canonical_flash_only_inputs() -> None:
+    """验证 HTML/HTM 在所有入口归一为单一 html 文件类型。"""
+    assert HTML_EXTENSIONS == frozenset({"html", "htm"})
+    for ext in HTML_EXTENSIONS:
+        assert ext in FLASH_ONLY_PARSE_EXTENSIONS
+        assert ext in PARSEABLE_EXTENSIONS
+        assert ext in INGESTIBLE_EXTENSIONS
+        assert FILE_TYPE_BY_EXTENSION[ext] == "html"
+        assert MIME_TYPE_BY_EXTENSION[ext] == "text/html"
+        assert is_flash_only_parse_extension(ext)
 
 
 def test_mineru_kit_discovers_and_accepts_csv_inputs(tmp_path: Path) -> None:

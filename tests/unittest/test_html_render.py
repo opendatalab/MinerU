@@ -109,7 +109,8 @@ def test_public_contract_fragment_standalone_title_and_input_immutability() -> N
     fragment = render_html(middle, standalone=False)
     standalone = render_html(middle)
 
-    assert fragment.startswith('<article class="mineru-document mineru-document--default">')
+    assert fragment.startswith('<article class="mineru-document mineru-document--default" ')
+    assert 'data-mineru-html-version="1" data-render-mode="default"' in fragment
     assert fragment in standalone
     assert '<html lang="und">' in standalone
     assert "<title>Demo &lt;unsafe&gt;</title>" in standalone
@@ -901,7 +902,10 @@ def test_empty_document_and_equation_image_do_not_load_external_scripts() -> Non
     empty = render_html(_middle())
     image_equation = render_html(_middle(_page(0, EquationBlock(type="equation", index=0, content="", image_base64=_PNG_URI))))
 
-    assert '<article class="mineru-document mineru-document--default">\n\n</article>' in empty
+    assert (
+        '<article class="mineru-document mineru-document--default" '
+        'data-mineru-html-version="1" data-render-mode="default">\n\n</article>'
+    ) in empty
     assert "mathjax@" not in empty and "prismjs@" not in empty and "mermaid@" not in empty
     assert "mathjax@" not in image_equation and "prismjs@" not in image_equation and "mermaid@" not in image_equation
     assert "data:image/png" in image_equation

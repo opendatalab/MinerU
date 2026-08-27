@@ -1,5 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
-"""统一文档解析器，委托 backend.analyze 处理 PDF、EPUB、图片、CSV 与 Office/RTF/ODF。"""
+"""统一文档解析器，委托 backend.analyze 处理 PDF、EPUB、HTML、图片、CSV 与 Office/RTF/ODF。"""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from typing import Any, Literal, cast
 from ..backend.analyze import aio_doc_analyze, doc_analyze
 from ..errors import InvalidRequestError
 from ..filetypes import IMAGE_EXTENSIONS, PAGE_RANGE_PARSE_EXTENSIONS
+from ..model.flash.html import HtmlSourceContext
 from ..types import FILE_SUFFIXES, FileSuffix, MiddleJson, ModelJson, PageInfo, Tier
 from .tier import effort_for_tier
 from .base import DocumentParser, ParseResult
@@ -30,12 +31,13 @@ class _PreparedInput:
     file_name: str
     file_bytes: bytes
     file_suffix: FileSuffix
+    source_context: HtmlSourceContext | None = None
     retained_page_indices: list[int] | None = None
     broken_page_indices: list[int] | None = None
 
 
 class MinerUParser(DocumentParser):
-    """统一文档解析器，支持 PDF、EPUB、图片、CSV 与 Office/RTF/ODF 文档。
+    """统一文档解析器，支持 PDF、EPUB、HTML、图片、CSV 与 Office/RTF/ODF 文档。
 
     通过 file_suffix 路由到 backend.analyze 的统一 doc_analyze 入口，
     保留 PDF 输入的图片转 PDF、页范围重写和坏页补齐；其他格式仅支持整本解析。
@@ -53,12 +55,19 @@ class MinerUParser(DocumentParser):
         self.parse_mode: _ParseMode = parse_mode
         self.image_analysis: bool = image_analysis
 
-    def parse(self, path: str | Path, *, page_range: str = "") -> ParseResult:
+    def parse(
+        self,
+        path: str | Path,
+        *,
+        page_range: str = "",
+        source_context: HtmlSourceContext | None = None,
+    ) -> ParseResult:
+        """解析本地路径，并允许内部调用方覆盖 HTML 原始来源上下文。"""
         path = Path(path)
         if not path.exists():
             raise FileNotFoundError(path)
 
-        prepared = self._prepare_input(path, page_range)
+        prepared = self._prepare_input(path, page_range, source_context)
         middle_json, model_output = self._run_analysis(prepared)
         if prepared.file_suffix == "pdf":
             self._insert_broken_pages(
@@ -73,12 +82,19 @@ class MinerUParser(DocumentParser):
             broken_page_indices=prepared.broken_page_indices,
         )
 
-    async def parse_async(self, path: str | Path, *, page_range: str = "") -> ParseResult:
+    async def parse_async(
+        self,
+        path: str | Path,
+        *,
+        page_range: str = "",
+        source_context: HtmlSourceContext | None = None,
+    ) -> ParseResult:
+        """异步解析本地路径，并保留 HTML 下载来源或本地资源根。"""
         path = Path(path)
         if not path.exists():
             raise FileNotFoundError(path)
 
-        prepared = await asyncio.to_thread(self._prepare_input, path, page_range)
+        prepared = await asyncio.to_thread(self._prepare_input, path, page_range, source_context)
         middle_json, model_output = await self._arun_analysis(prepared)
         if prepared.file_suffix == "pdf":
             self._insert_broken_pages(
@@ -101,6 +117,7 @@ class MinerUParser(DocumentParser):
             image_analysis=self.image_analysis,
             page_index_map=prepared.retained_page_indices,
             file_suffix=prepared.file_suffix,
+            source_context=prepared.source_context,
         )
 
     async def _arun_analysis(self, prepared: _PreparedInput) -> tuple[MiddleJson, ModelJson]:
@@ -111,9 +128,16 @@ class MinerUParser(DocumentParser):
             image_analysis=self.image_analysis,
             page_index_map=prepared.retained_page_indices,
             file_suffix=prepared.file_suffix,
+            source_context=prepared.source_context,
         )
 
-    def _prepare_input(self, path: Path, page_range: str = "") -> _PreparedInput:
+    def _prepare_input(
+        self,
+        path: Path,
+        page_range: str = "",
+        source_context: HtmlSourceContext | None = None,
+    ) -> _PreparedInput:
+        """读取路径、检测类型并补齐 HTML 来源或 PDF 页范围状态。"""
         from .file_type import guess_suffix_by_path
 
         file_name = path.stem
@@ -156,10 +180,20 @@ class MinerUParser(DocumentParser):
             suffix,
             page_range,
         )
+        resolved_source_context = source_context
+        if suffix == "html" and resolved_source_context is None:
+            from ..model.flash.html import HtmlSourceContext
+
+            resolved_path = path.resolve()
+            resolved_source_context = HtmlSourceContext(
+                source_uri=resolved_path.as_uri(),
+                local_resource_root=resolved_path.parent,
+            )
         return _PreparedInput(
             file_name=file_name,
             file_bytes=file_bytes,
             file_suffix=cast(FileSuffix, suffix),
+            source_context=resolved_source_context,
             retained_page_indices=retained_page_indices,
             broken_page_indices=broken_page_indices,
         )
@@ -212,10 +246,7 @@ class MinerUParser(DocumentParser):
 
         pages_by_index = {page.page_idx: page for page in pages}
         ordered_page_indices = sorted(set(pages_by_index) | set(broken_page_indices))
-        pages[:] = [
-            pages_by_index.get(page_idx, PageInfo(page_idx=page_idx))
-            for page_idx in ordered_page_indices
-        ]
+        pages[:] = [pages_by_index.get(page_idx, PageInfo(page_idx=page_idx)) for page_idx in ordered_page_indices]
 
     def _build_result(
         self,

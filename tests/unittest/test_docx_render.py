@@ -712,8 +712,8 @@ def test_spatial_table_preserves_preformatted_text_without_assets(image_payload:
 
 
 @pytest.mark.parametrize("content", ["", " \n\t"])
-def test_spatial_table_without_text_uses_base64_image(content: str) -> None:
-    """验证空或纯空白空间表格优先使用内嵌图片。"""
+def test_spatial_table_without_text_uses_preferred_sidecar_image(content: str) -> None:
+    """验证空或纯空白空间表格遵循 image_path 优先的公共图片契约。"""
     spatial = TableBlock(
         type="table",
         index=7,
@@ -727,11 +727,11 @@ def test_spatial_table_without_text_uses_base64_image(content: str) -> None:
             )
         ],
     )
-    resolver = Mock(side_effect=AssertionError("内嵌图片存在时不应解析 sidecar"))
+    resolver = Mock(return_value=_png_bytes(size=(16, 10)))
 
     document = Document(BytesIO(render_docx(_middle(_page(3, spatial)), asset_resolver=resolver)))
 
-    resolver.assert_not_called()
+    resolver.assert_called_once_with("images/unused.png")
     assert len(document.inline_shapes) == 1
 
 

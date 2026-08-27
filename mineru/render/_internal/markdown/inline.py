@@ -8,6 +8,7 @@ import re
 
 from ....config import LatexDelimitersConfig
 from ....backend.postprocess.inline import (
+    InlineCode,
     InlineEquation,
     InlineLink,
     InlineNode,
@@ -47,6 +48,8 @@ def _render_inline_node(node: InlineNode, delimiters: LatexDelimitersConfig) -> 
     """渲染单个行内节点。"""
     if isinstance(node, InlineText):
         return _escape_plain_markdown_text(node.content)
+    if isinstance(node, InlineCode):
+        return _render_inline_code(node.content)
     if isinstance(node, InlineEquation):
         return f"{delimiters.inline.left}{node.latex}{delimiters.inline.right}"
     if isinstance(node, InlineStyled):
@@ -56,6 +59,16 @@ def _render_inline_node(node: InlineNode, delimiters: LatexDelimitersConfig) -> 
         label = render_inline_nodes(node.children, delimiters)
         return _render_link(label, node.url, _requires_html_link(node.children))
     raise TypeError(f"Unsupported inline node: {type(node).__name__}")
+
+
+def _render_inline_code(content: str) -> str:
+    """选择长于内容中反引号游程的 fence，稳定输出 Markdown 行内代码。"""
+    normalized = content.replace("\r\n", " ").replace("\r", " ").replace("\n", " ")
+    longest = max((len(match.group(0)) for match in re.finditer(r"`+", normalized)), default=0)
+    fence = "`" * (longest + 1)
+    if normalized.startswith(("`", " ")) or normalized.endswith(("`", " ")):
+        return f"{fence} {normalized} {fence}"
+    return f"{fence}{normalized}{fence}"
 
 
 def _escape_plain_markdown_text(content: str) -> str:

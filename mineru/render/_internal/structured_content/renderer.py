@@ -53,7 +53,7 @@ _FOOTNOTE_TYPES = {
     BlockType.CHART_FOOTNOTE,
     BlockType.CODE_FOOTNOTE,
 }
-_REMOVED_BLOCK_FIELDS = {"content", "index", "guess_lang", "image_path", "image_base64"}
+_REMOVED_BLOCK_FIELDS = {"content", "index", "guess_lang", "image_path", "image_base64", "image_url"}
 
 
 def render_structured_content(

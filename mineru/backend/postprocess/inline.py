@@ -12,7 +12,7 @@ from ...utils.language import detect_lang
 from ...utils.text import CJK_LANGS, resolve_text_line_boundary
 
 _INLINE_START_RE = re.compile(
-    r"<(?P<tag>eq|text|hyperlink|sup|sub|strong|b|em|i|s|u)(?P<attrs>\s[^<>]*?)?>",
+    r"<(?P<tag>eq|code|text|hyperlink|sup|sub|strong|b|em|i|s|u)(?P<attrs>\s[^<>]*?)?>",
     re.IGNORECASE,
 )
 _STYLE_ATTR_RE = re.compile(r"\bstyle\s*=\s*([\"'])(?P<style>.*?)\1", re.IGNORECASE | re.DOTALL)
@@ -54,6 +54,13 @@ class InlineEquation:
 
 
 @dataclass(slots=True)
+class InlineCode:
+    """保存需要按字面量显示的行内代码。"""
+
+    content: str
+
+
+@dataclass(slots=True)
 class InlineStyled:
     """保存带 Office 字体样式的行内子节点。"""
 
@@ -69,7 +76,7 @@ class InlineLink:
     url: str
 
 
-InlineNode: TypeAlias = Union[InlineText, InlineEquation, InlineStyled, InlineLink]
+InlineNode: TypeAlias = Union[InlineText, InlineEquation, InlineCode, InlineStyled, InlineLink]
 
 
 def parse_inline_content(content: str) -> list[InlineNode]:
@@ -124,6 +131,9 @@ def _parse_inline_element(
     if tag == "eq":
         latex = html.unescape(inner).strip()
         return InlineEquation(latex) if latex else []
+    if tag == "code":
+        code = html.unescape(inner)
+        return InlineCode(code) if code else []
     if tag == "hyperlink":
         return _parse_hyperlink(inner)
 
@@ -256,6 +266,8 @@ def inline_plain_text(nodes: list[InlineNode]) -> str:
     for node in nodes:
         if isinstance(node, InlineText):
             parts.append(node.content)
+        elif isinstance(node, InlineCode):
+            parts.append(node.content)
         elif isinstance(node, InlineEquation):
             parts.append(node.latex)
         elif isinstance(node, (InlineStyled, InlineLink)):
@@ -264,6 +276,7 @@ def inline_plain_text(nodes: list[InlineNode]) -> str:
 
 
 __all__ = [
+    "InlineCode",
     "InlineEquation",
     "InlineLink",
     "InlineNode",

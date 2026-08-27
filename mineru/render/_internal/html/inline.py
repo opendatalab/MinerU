@@ -10,6 +10,7 @@ from dataclasses import dataclass
 from urllib.parse import urlsplit
 
 from ....backend.postprocess.inline import (
+    InlineCode,
     InlineEquation,
     InlineLink,
     InlineNode,
@@ -134,15 +135,18 @@ def render_math_html(latex: str, *, display: bool) -> HtmlInlineResult:
     normalized = latex.strip()
     if not normalized:
         return HtmlInlineResult("")
+    attribute_latex = html.escape(_normalize_html_text(normalized), quote=True)
     normalized = _neutralize_math_closing_delimiter(normalized, "]" if display else ")")
     escaped = _escape_text(normalized)
     if display:
         return HtmlInlineResult(
-            f'<div class="mineru-math mineru-math--block">\\[\n{escaped}\n\\]</div>',
+            '<div class="mineru-math mineru-math--block" data-block-type="equation" '
+            f'data-formula-display="block" data-mineru-latex="{attribute_latex}">\\[\n{escaped}\n\\]</div>',
             has_math=True,
         )
     return HtmlInlineResult(
-        f'<span class="mineru-math mineru-math--inline">\\({escaped}\\)</span>',
+        '<span class="mineru-math mineru-math--inline" data-block-type="equation" '
+        f'data-formula-display="inline" data-mineru-latex="{attribute_latex}">\\({escaped}\\)</span>',
         has_math=True,
     )
 
@@ -162,6 +166,8 @@ def _render_inline_node_html(
                 preserve_newlines=preserve_newlines,
             )
         )
+    if isinstance(node, InlineCode):
+        return HtmlInlineResult(f"<code>{_escape_text(node.content)}</code>")
     if isinstance(node, InlineEquation):
         return render_math_html(node.latex, display=False)
     if isinstance(node, InlineStyled):
@@ -319,9 +325,13 @@ def _apply_html_styles(content: str, styles: tuple[str, ...]) -> str:
 
 def _escape_text(content: str) -> str:
     """转义普通文本，并替换 HTML 不允许的 C0 控制字符。"""
+    return html.escape(_normalize_html_text(content), quote=False)
+
+
+def _normalize_html_text(content: str) -> str:
+    """统一换行并替换 HTML 属性和正文都不允许的控制字符。"""
     normalized = content.replace("\r\n", "\n").replace("\r", "\n")
-    normalized = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\ud800-\udfff]", "\ufffd", normalized)
-    return html.escape(normalized, quote=False)
+    return re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\ud800-\udfff]", "\ufffd", normalized)
 
 
 def _needs_whitespace_preservation(content: str) -> bool:

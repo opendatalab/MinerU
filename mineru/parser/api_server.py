@@ -1285,6 +1285,15 @@ def _count_pages_in_range(page_range: str) -> int:
     return total
 
 
+@dataclass(frozen=True, slots=True)
+class _ExtractedSource:
+    """保存 API 输入字节及 HTML 相对资源解析所需的原始来源。"""
+
+    data: bytes
+    source_uri: str | None = None
+    local_resource_root: pathlib.Path | None = None
+
+
 async def _extract_bytes(
     source: FileSource,
     file_store: FileStore,
@@ -1293,7 +1302,8 @@ async def _extract_bytes(
     allow_local_source: bool = False,
     max_inline_bytes: int = _MAX_INLINE_BYTES_DEFAULT,
     allow_http_source: bool = False,
-) -> bytes:
+) -> _ExtractedSource:
+    """按既有来源策略读取字节，并保留不会由临时文件替代的来源上下文。"""
     _validate_source_policy(
         source,
         allow_local_source=allow_local_source,
@@ -1304,16 +1314,17 @@ async def _extract_bytes(
         rec = file_store.get_file(source.file_id)
         if rec.sha256sum is None:
             raise ValueError("File has no content")
-        return file_store.read_blob(rec.sha256sum)
+        return _ExtractedSource(file_store.read_blob(rec.sha256sum))
     if isinstance(source, UrlSource):
         async with httpx.AsyncClient(timeout=url_timeout) as cli:
             r = await cli.get(source.url)
             r.raise_for_status()
-            return r.content
+            return _ExtractedSource(r.content, source_uri=str(r.url))
     if isinstance(source, InlineSource):
-        return _decode_inline_data(source.data)
+        return _ExtractedSource(_decode_inline_data(source.data))
     if isinstance(source, LocalSource):
-        return pathlib.Path(source.path).expanduser().resolve(strict=False).read_bytes()
+        path = pathlib.Path(source.path).expanduser().resolve(strict=False)
+        return _ExtractedSource(path.read_bytes(), source_uri=path.as_uri(), local_resource_root=path.parent)
     raise ValueError(f"Unknown source type: {type(source)}")
 
 
@@ -1347,7 +1358,7 @@ async def _run_job(
             fr = rec.files[i]
             try:
                 file_started = time.monotonic()
-                data = await _extract_bytes(
+                extracted = await _extract_bytes(
                     entry.source,
                     file_store,
                     url_timeout=url_timeout,
@@ -1355,6 +1366,7 @@ async def _run_job(
                     max_inline_bytes=max_inline_bytes,
                     allow_http_source=allow_http_source,
                 )
+                data = extracted.data
                 stype = _suffix_type(fr.name)
                 if not stype:
                     raise ValueError(f"Unsupported file type: {fr.name}")
@@ -1367,12 +1379,21 @@ async def _run_job(
                 page_range = entry.page_range or ""
                 effective_tier = batch_effective_parse_tier(rec.tier, fr.name)
 
+                source_context = None
+                if stype == "html":
+                    from ..model.flash.html import HtmlSourceContext
+
+                    source_context = HtmlSourceContext(
+                        source_uri=extracted.source_uri,
+                        local_resource_root=extracted.local_resource_root,
+                    )
                 result = await parse_async(
                     str(tmp_path),
                     tier=effective_tier,
                     ocr_mode=ocr_mode,
                     image_analysis=image_analysis,
                     page_range=page_range,
+                    source_context=source_context,
                 )
 
                 # collect outputs

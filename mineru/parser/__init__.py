@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
+from ..model.flash.html import HtmlSourceContext
 from ..types import Tier
 from .api_client import MinerUApiParser
 from .base import MIDDLE_JSON_SCHEMA_VERSION, DocumentParser, ParseResult
@@ -30,10 +31,11 @@ def parse(
     ocr_mode: Literal["auto", "txt", "ocr"] = "auto",
     image_analysis: bool = True,
     page_range: str = "",
+    source_context: HtmlSourceContext | None = None,
 ) -> ParseResult:
-    """同步解析文档，返回 Markdown/Structured Content/图片等结果。"""
+    """同步解析文档；source_context 仅供保留 HTML 原始来源的内部调用方使用。"""
     parser = MinerUParser(tier=tier, parse_mode=ocr_mode, image_analysis=image_analysis)
-    return parser.parse(path, page_range=page_range)
+    return parser.parse(path, page_range=page_range, source_context=source_context)
 
 
 async def parse_async(
@@ -43,7 +45,8 @@ async def parse_async(
     ocr_mode: Literal["auto", "txt", "ocr"] = "auto",
     image_analysis: bool = True,
     page_range: str = "",
+    source_context: HtmlSourceContext | None = None,
 ) -> ParseResult:
-    """异步解析文档，返回 Markdown/Structured Content/图片等结果。"""
+    """异步解析文档；source_context 仅供保留 HTML 原始来源的内部调用方使用。"""
     parser = MinerUParser(tier=tier, parse_mode=ocr_mode, image_analysis=image_analysis)
-    return await parser.parse_async(path, page_range=page_range)
+    return await parser.parse_async(path, page_range=page_range, source_context=source_context)

@@ -271,6 +271,14 @@ def _resolve_signatureless_csv_suffix(detected_suffix: str, file_path: str | Pat
     return detected_suffix
 
 
+def _resolve_signatureless_html_suffix(detected_suffix: str, file_path: str | Path | None) -> str:
+    """用 .html/.htm 兜底短文本，并把 Magika 的 HTML 结果统一规范为 html。"""
+    extension = Path(file_path).suffix.lower().lstrip(".") if file_path else ""
+    if extension in {"html", "htm"} and detected_suffix not in _STRONG_CONTENT_SUFFIXES:
+        return "html"
+    return "html" if detected_suffix == "html" else detected_suffix
+
+
 def _reject_unverified_package_suffix(detected_suffix: str) -> str:
     """拒绝未通过包身份验证、仅由启发式工具猜出的 ODF/EPUB 类型。"""
     package_suffixes = {*ODF_MIMETYPE_SUFFIXES.values(), "epub"}
@@ -307,7 +315,8 @@ def guess_suffix_by_bytes(file_bytes: bytes, file_path: str | None = None) -> st
         and file_bytes[:4] == PDF_SIG_BYTES
     ):
         suffix = "pdf"
-    return _resolve_signatureless_csv_suffix(_reject_unverified_package_suffix(suffix), file_path)
+    suffix = _resolve_signatureless_csv_suffix(_reject_unverified_package_suffix(suffix), file_path)
+    return _resolve_signatureless_html_suffix(suffix, file_path)
 
 
 def guess_suffix_by_path(file_path: str | Path) -> str:
@@ -344,7 +353,8 @@ def guess_suffix_by_path(file_path: str | Path) -> str:
                     suffix = "pdf"
         except Exception as e:
             logger.warning(f"Failed to read file {file_path} for PDF signature check: {e}")
-    return _resolve_signatureless_csv_suffix(_reject_unverified_package_suffix(suffix), file_path)
+    suffix = _resolve_signatureless_csv_suffix(_reject_unverified_package_suffix(suffix), file_path)
+    return _resolve_signatureless_html_suffix(suffix, file_path)
 
 
 __all__ = ["guess_suffix_by_bytes", "guess_suffix_by_path"]

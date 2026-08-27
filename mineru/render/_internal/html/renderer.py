@@ -33,6 +33,7 @@ from ...contracts import RenderMode
 from ....types import (
     PAGE_AUXILIARY_BLOCK_TYPES,
     RAW_ALGORITHM,
+    BlockBase,
     BlockType,
     ChartAnnotationBlock,
     ChartBlock,
@@ -60,6 +61,7 @@ from ....types import (
 )
 
 _STYLE_RESOURCE_NAME = "mineru.min.css"
+_MINERU_HTML_VERSION = "1"
 _MATHJAX_URL = "https://cdn.jsdelivr.net/npm/mathjax@4.1.2/tex-chtml.js"
 _MATHJAX_INTEGRITY = "sha384-zAhQQhdaMeHsMProNntGGg6nOUVcfuF9F22C3d1qJ9NZAVzCplXk1X85D2O5iufn"
 _PRISM_CORE_URL = "https://cdn.jsdelivr.net/npm/prismjs@1.30.0/components/prism-core.min.js"
@@ -124,7 +126,10 @@ class _HtmlRenderer:
             body = self._render_full_pages(planned_pages)
         else:
             body = self._render_default_pages(planned_pages)
-        article = f'<article class="mineru-document mineru-document--{self.mode.value}">\n{body}\n</article>'
+        article = (
+            f'<article class="mineru-document mineru-document--{self.mode.value}" '
+            f'data-mineru-html-version="{_MINERU_HTML_VERSION}" data-render-mode="{self.mode.value}">\n{body}\n</article>'
+        )
         if not self.standalone:
             return article
         # 最终依赖以真实 DOM 为准，避免回退分支或普通文本中的 class 字样误触发。
@@ -174,10 +179,8 @@ class _HtmlRenderer:
         attrs = [
             'class="mineru-block"',
             f'data-page-idx="{planned.page_idx}"',
-            f'data-block-type="{html.escape(str(block.type), quote=True)}"',
         ]
-        if block.index is not None:
-            attrs.append(f'data-block-index="{block.index}"')
+        attrs.extend(_wire_block_attributes(block))
         return f"<div {' '.join(attrs)}>\n{content}\n</div>"
 
     def _render_block_content(self, planned: PlannedBlock) -> str:
@@ -282,7 +285,7 @@ class _HtmlRenderer:
                 if not nested:
                     continue
                 if not items:
-                    items.append({"content": "", "attrs": ' class="mineru-list-item--orphan"', "nested": []})
+                    items.append({"content": "", "attrs": ['class="mineru-list-item--orphan"'], "nested": []})
                 nested_items = items[-1]["nested"]
                 assert isinstance(nested_items, list)
                 nested_items.append(nested)
@@ -297,10 +300,16 @@ class _HtmlRenderer:
             rendered = render_inline_content_html(item_content)
             self._observe_inline(rendered)
             if not rendered.html and not marker:
-                items.append({"content": "", "attrs": ' class="mineru-list-item--markerless"', "nested": []})
+                items.append(
+                    {
+                        "content": "",
+                        "attrs": ['class="mineru-list-item--markerless"', *_wire_block_attributes(child)],
+                        "nested": [],
+                    }
+                )
                 continue
 
-            attrs: list[str] = []
+            attrs = _wire_block_attributes(child)
             if class_name == "mineru-list--explicit":
                 attrs.append('class="mineru-list-item--explicit"')
             if container_tag == "ol" and parsed.kind == "ordered" and parsed.value is not None:
@@ -319,7 +328,7 @@ class _HtmlRenderer:
             items.append(
                 {
                     "content": f'{marker_html}<span class="mineru-list-content">{rendered.html}</span>',
-                    "attrs": f" {' '.join(attrs)}" if attrs else "",
+                    "attrs": attrs,
                     "nested": [],
                 }
             )
@@ -331,11 +340,14 @@ class _HtmlRenderer:
             item_content = str(item["content"])
             if not item_content and not nested:
                 continue
-            rendered_items.append(f"<li{item['attrs']}>{item_content}{''.join(str(value) for value in nested)}</li>")
+            item_attrs = item["attrs"]
+            assert isinstance(item_attrs, list)
+            attrs_html = f" {' '.join(str(value) for value in item_attrs)}" if item_attrs else ""
+            rendered_items.append(f"<li{attrs_html}>{item_content}{''.join(str(value) for value in nested)}</li>")
         if not rendered_items:
             return ""
 
-        container_attrs = [f'class="mineru-list {class_name}"']
+        container_attrs = [f'class="mineru-list {class_name}"', *_wire_block_attributes(block)]
         if list_type:
             container_attrs.append(f'type="{list_type}"')
         if container_tag == "ol" and parsed_leaves and parsed_leaves[0].value not in (None, 1):
@@ -351,15 +363,16 @@ class _HtmlRenderer:
                 if not nested:
                     continue
                 if not items:
-                    items.append({"content": "", "orphan": True, "nested": []})
+                    items.append({"content": "", "attrs": ['class="mineru-list-item--orphan"'], "nested": []})
                 nested_items = items[-1]["nested"]
                 assert isinstance(nested_items, list)
                 nested_items.append(nested)
                 continue
-            rendered = self._render_index_leaf(child)
-            items.append({"content": rendered, "orphan": False, "nested": []})
+            rendered, attrs = self._render_index_leaf(child)
+            items.append({"content": rendered, "attrs": attrs, "nested": []})
         inner = _serialize_index_items(items)
-        return f'<nav class="mineru-index" aria-label="Table of contents"><ul>{inner}</ul></nav>' if inner else ""
+        attrs = ['class="mineru-index"', 'aria-label="Table of contents"', *_wire_block_attributes(block)]
+        return f"<nav {' '.join(attrs)}><ul>{inner}</ul></nav>" if inner else ""
 
     def _render_index_list(self, block: IndexBlock) -> str:
         """渲染一个嵌套 IndexBlock 为可挂接到父项的 ul。"""
@@ -369,28 +382,29 @@ class _HtmlRenderer:
                 nested = self._render_index_list(child)
                 if nested:
                     if not items:
-                        items.append({"content": "", "orphan": True, "nested": []})
+                        items.append({"content": "", "attrs": ['class="mineru-list-item--orphan"'], "nested": []})
                     nested_items = items[-1]["nested"]
                     assert isinstance(nested_items, list)
                     nested_items.append(nested)
                 continue
-            rendered = self._render_index_leaf(child)
-            items.append({"content": rendered, "orphan": False, "nested": []})
+            rendered, attrs = self._render_index_leaf(child)
+            items.append({"content": rendered, "attrs": attrs, "nested": []})
         inner = _serialize_index_items(items)
-        return f"<ul>{inner}</ul>" if inner else ""
+        attrs = _wire_block_attributes(block)
+        return f"<ul {' '.join(attrs)}>{inner}</ul>" if inner else ""
 
-    def _render_index_leaf(self, block: TextBlock | TitleBlockBase) -> str:
+    def _render_index_leaf(self, block: TextBlock | TitleBlockBase) -> tuple[str, list[str]]:
         """渲染目录叶子，并在 anchor 命中正文标题时生成内部链接。"""
         content = strip_index_page_tail(block.content)
         rendered = render_inline_content_html(content)
         self._observe_inline(rendered)
         if not rendered.html:
-            return ""
+            return "", _wire_block_attributes(block)
         anchor = _anchor_key(block.anchor) if isinstance(block, TitleBlockBase) else ""
         if anchor and (anchor_id := self.anchor_targets.get(anchor)):
             href = quote(anchor_id, safe="-._~")
-            return f'<a href="#{href}">{rendered.html}</a>'
-        return rendered.html
+            return f'<a href="#{href}">{rendered.html}</a>', _wire_block_attributes(block)
+        return rendered.html, _wire_block_attributes(block)
 
     def _render_image_block(self, block: ImageBlock) -> str:
         """按原始子块顺序渲染图片主体及重复说明。"""
@@ -411,7 +425,8 @@ class _HtmlRenderer:
         if parent.sub_type == "flowchart":
             mermaid_source = _extract_mermaid_flowchart_source(block.content)
             if mermaid_source is not None:
-                return self._render_flowchart_body(block, mermaid_source)
+                rendered = self._render_flowchart_body(block, mermaid_source)
+                return _wrap_visual_body(rendered, block, "image")
         source = self._safe_block_image_source(block)
         content = self._render_embedded_content(block.content, linkify_text=parent.sub_type != "flowchart")
         alt = _plain_content_text(block.content) or parent.sub_type or "image"
@@ -421,7 +436,7 @@ class _HtmlRenderer:
                 parts.append(self._render_details(content.html, parent.sub_type or "image content"))
             else:
                 parts.append(content.html)
-        return "".join(parts)
+        return _wrap_visual_body("".join(parts), block, "image")
 
     def _render_flowchart_body(self, block: ImageBodyBlock, mermaid_source: str) -> str:
         """输出 Mermaid canvas，并保留 raster 与源码两级失败回退。"""
@@ -463,14 +478,17 @@ class _HtmlRenderer:
             if source_soup.find("table") is not None:
                 rendered = self._render_embedded_content(content)
                 if rendered.html and _contains_usable_table(rendered.html):
-                    return rendered.html
+                    return _wrap_visual_body(rendered.html, block, "table")
                 source = self._safe_block_image_source(block)
                 if source:
-                    return self._render_image(source, alt="table", class_name="mineru-table-image")
-                return _render_raw_fallback(content)
-            return f'<pre class="mineru-table-text">{html.escape(normalized_content, quote=False)}</pre>'
+                    rendered_image = self._render_image(source, alt="table", class_name="mineru-table-image")
+                    return _wrap_visual_body(rendered_image, block, "table")
+                return _wrap_visual_body(_render_raw_fallback(content), block, "table")
+            rendered_text = f'<pre class="mineru-table-text">{html.escape(normalized_content, quote=False)}</pre>'
+            return _wrap_visual_body(rendered_text, block, "table")
         source = self._safe_block_image_source(block)
-        return self._render_image(source, alt="table", class_name="mineru-table-image") if source else ""
+        rendered_image = self._render_image(source, alt="table", class_name="mineru-table-image") if source else ""
+        return _wrap_visual_body(rendered_image, block, "table")
 
     def _render_chart_block(self, block: ChartBlock) -> str:
         """按原始子块顺序渲染 chart 图片、结构内容及说明。"""
@@ -496,7 +514,7 @@ class _HtmlRenderer:
                 parts.append(self._render_details(content.html, parent.sub_type or "chart content"))
             else:
                 parts.append(content.html)
-        return "".join(parts)
+        return _wrap_visual_body("".join(parts), block, "chart")
 
     def _render_chart_content(self, content: str) -> HtmlInlineResult:
         """按 HTML、严格 GFM 表格、普通行内内容的顺序渲染 chart content。"""
@@ -539,7 +557,8 @@ class _HtmlRenderer:
             class_attr = f' class="language-{language}"' if language else ""
             pre_class = f"mineru-code language-{language}" if language else "mineru-code"
             self.has_prism = bool(language) or self.has_prism
-            return f'<pre class="{pre_class}"><code{class_attr}>{escaped}</code></pre>'
+            rendered = f'<pre class="{pre_class}"><code{class_attr}>{escaped}</code></pre>'
+            return _wrap_visual_body(rendered, block, "code")
         if parent.sub_type == RAW_ALGORITHM:
             rendered = render_inline_nodes_html(
                 parse_inline_content(block.content),
@@ -548,7 +567,8 @@ class _HtmlRenderer:
                 preserve_newlines=True,
             )
             self._observe_inline(rendered)
-            return f'<div class="mineru-algorithm">{rendered.html}</div>' if rendered.html else ""
+            algorithm = f'<div class="mineru-algorithm">{rendered.html}</div>' if rendered.html else ""
+            return _wrap_visual_body(algorithm, block, "code")
         raise ValueError(f"Unsupported code subtype: {parent.sub_type}")
 
     def _render_annotation(
@@ -563,7 +583,8 @@ class _HtmlRenderer:
         is_caption = str(block.type).endswith("caption")
         role_class = "mineru-caption" if is_caption else "mineru-footnote"
         type_class = html.escape(str(block.type).replace("_", "-"), quote=True)
-        return f'<p class="{role_class} {role_class}--{type_class}">{rendered.html}</p>'
+        attrs = [f'class="{role_class} {role_class}--{type_class}"', *_wire_block_attributes(block)]
+        return f"<p {' '.join(attrs)}>{rendered.html}</p>"
 
     def _render_embedded_content(self, content: str, *, linkify_text: bool = True) -> HtmlInlineResult:
         """安全处理 body 富 HTML；普通内容走共享 inline AST。"""
@@ -601,6 +622,8 @@ class _HtmlRenderer:
             return sanitize_image_source(block.image_path, asset_base_url=self.asset_base_url)
         if block.image_base64:
             return sanitize_image_source(block.image_base64)
+        if block.image_url:
+            return sanitize_image_source(block.image_url)
         return None
 
     def _render_image(self, source: str, *, alt: str, class_name: str) -> str:
@@ -731,9 +754,41 @@ def _serialize_index_items(items: list[dict[str, object]]) -> str:
         content = str(item["content"])
         if not content and not nested:
             continue
-        class_attr = ' class="mineru-list-item--orphan"' if item["orphan"] else ""
-        rendered.append(f"<li{class_attr}>{content}{''.join(str(value) for value in nested)}</li>")
+        attrs = item["attrs"]
+        assert isinstance(attrs, list)
+        attrs_html = f" {' '.join(str(value) for value in attrs)}" if attrs else ""
+        rendered.append(f"<li{attrs_html}>{content}{''.join(str(value) for value in nested)}</li>")
     return "".join(rendered)
+
+
+def _wire_block_attributes(block: BlockBase) -> list[str]:
+    """把统一 block 身份和可往返元数据编码为版本化 HTML data 属性。"""
+    attrs = [f'data-block-type="{html.escape(str(block.type), quote=True)}"']
+    if block.index is not None:
+        attrs.append(f'data-block-index="{block.index}"')
+    sub_type = getattr(block, "sub_type", None)
+    if sub_type is not None:
+        attrs.append(f'data-block-sub-type="{html.escape(str(sub_type), quote=True)}"')
+    guess_lang = getattr(block, "guess_lang", None)
+    if isinstance(guess_lang, str) and guess_lang:
+        attrs.append(f'data-guess-lang="{html.escape(guess_lang, quote=True)}"')
+    anchor = getattr(block, "anchor", None)
+    if isinstance(anchor, str) and anchor:
+        attrs.append(f'data-anchor="{html.escape(_replace_html_controls(anchor), quote=True)}"')
+    level = getattr(block, "level", None)
+    if type(level) is int:
+        attrs.append(f'data-level="{level}"')
+    return attrs
+
+
+def _wrap_visual_body(
+    content: str,
+    block: ImageBodyBlock | TableBodyBlock | ChartBodyBlock | CodeBodyBlock,
+    kind: str,
+) -> str:
+    """为视觉主体添加不参与 CSS 类型推断的精确机器容器。"""
+    attrs = [f'class="mineru-visual-body mineru-visual-body--{kind}"', *_wire_block_attributes(block)]
+    return f"<div {' '.join(attrs)}>{content}</div>"
 
 
 def _collect_document_anchor_ids(middle_json: MiddleJson) -> dict[str, str]:

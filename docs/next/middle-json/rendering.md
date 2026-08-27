@@ -63,7 +63,7 @@ markdown = render_markdown(
 backend 参数或旧 `Line/Span` renderer。渲染过程基于深拷贝，不修改输入对象，
 也不负责把图片写到文件系统。
 
-图片优先使用 `image_path`，缺失时使用 `image_base64` data URI。
+图片按 `image_path`、`image_base64` data URI、受限 HTTP(S) `image_url` 的顺序选择。
 `asset_base_url` 只给相对 `image_path` 和 HTML 内相对 `img src` 添加前缀。
 
 `ImageRenderer` 是从 `mineru.render` 导出的 Block 级图片扩展契约。传入自定义 renderer 时，
@@ -87,7 +87,8 @@ docx_bytes = render_docx(
 ```
 
 `render_docx()` 只接受严格 `MiddleJson`，返回完整 `.docx` bytes，不写文件、不读取 cwd，
-也不访问网络。block 同时携带两种图片来源时优先解码 `image_base64`；仅有
+也不访问网络。block 同时携带多种图片来源时优先通过 `asset_resolver` 解码 `image_path`，
+其次使用 `image_base64`；仅有 `image_url` 时写入可点击链接而不下载。仅有
 `image_path` 时必须提供 `asset_resolver(relative_path) -> bytes`。必需图片缺失、路径
 不安全、格式损坏或任意外部 SVG 输入会抛出带 `page_idx/block_index/block_type` 的
 `DocxRenderError`；WebP 在内存中转为 PNG。MinerU 自己生成并通过安全子集校验的
@@ -143,8 +144,16 @@ fragment 调用方可以自行决定外围容器尺寸。
 HTML 与 DOCX/Markdown 共用 `RenderMode` 和续段/续表 planner。DEFAULT 输出无页面 wrapper
 的连续阅读内容；FULL 为每个 `PageInfo` 输出一个 `section.mineru-page`，包括空页，并在
 相邻页面之间输出 `hr.mineru-page-break`。每个顶层 block wrapper 保留来源 page/type/index
-元数据。行内内容直接消费共享 AST：普通文本始终 HTML escape，未知标签保持可见；公式只
-在 `mineru-math` carrier 内使用 `\(...\)` 或 `\[...\]`，不扫描普通正文中的美元符号。
+元数据。`article.mineru-document` 同时声明 `data-mineru-html-version="1"` 和
+`data-render-mode="default|full"`；顶层 block、visual body/caption/footnote、列表/目录叶子使用
+原始下划线形式的 `data-block-type`，并按类型携带 `data-block-sub-type`、`data-guess-lang`、
+`data-anchor` 或 `data-level`。这些 data 属性构成 renderer 到 HTML Flash parser 的版本化机器契约，
+CSS class 不参与精确类型判定。
+
+行内内容直接消费共享 AST：普通文本始终 HTML escape，未知标签保持可见；公式只在
+`mineru-math` carrier 内使用 `\(...\)` 或 `\[...\]`，不扫描普通正文中的美元符号。每个公式
+carrier 同时保存 `data-block-type="equation"`、`data-formula-display` 和裸 LaTeX
+`data-mineru-latex`，供 HTML parser 无损恢复；可见 MathJax 定界符不属于 Middle JSON 内容。
 HTML 的普通 `InlineText` 默认 linkify `http/https`、`www.`、邮箱和常见裸域名；裸域名统一补
 `https://`，邮箱补 `mailto:`。无协议裸域名的 TLD 必须属于工程常用白名单：
 `com cn org net edu gov io ai dev app de uk nl ru br fr au in eu jp`、
@@ -265,7 +274,7 @@ body 会提升为父块 `content`，但图片资源只放在 `image_source`，�
 `doc_title/paragraph_title.content` 只包含行内 Markdown，不含 heading 标记或 HTML
 anchor；原始 `level` 和可选 `anchor` 作为独立字段保留。`equation.content` 是不带行间
 定界符的裸 LaTeX，公式图片同样只通过 `image_source` 表达。所有输出 block 都删除
-`index/guess_lang/image_path/image_base64`，`guess_lang` 仍会先参与代码 Markdown 的生成。
+`index/guess_lang/image_path/image_base64/image_url`，`guess_lang` 仍会先参与代码 Markdown 的生成。
 
 ```json
 {
@@ -295,7 +304,7 @@ anchor；原始 `level` 和可选 `anchor` 作为独立字段保留。`equation.
 ```
 
 `image/table/chart/equation` 有图片载荷时，会输出最终选择的 `image_source`：`image_path`
-优先，`image_base64` 兜底，并应用 `asset_base_url` 和 Markdown 地址转义。即使 table
+优先，`image_base64` 与 `image_url` 依次兜底，并应用 `asset_base_url` 和 Markdown 地址转义。即使 table
 选择 GFM/HTML、equation 已有 LaTeX，图片来源也会保留且只出现一次。
 
 如需完整可展示 Markdown，应调用 `render_markdown()`，不能简单拼接 structured_content 中的

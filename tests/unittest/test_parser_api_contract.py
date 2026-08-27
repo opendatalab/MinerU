@@ -2150,6 +2150,8 @@ def test_api_server_run_job_normalizes_lightweight_file_tier_to_flash(
     )
 
     assert [call["tier"] for call in calls] == ["flash"]
+    assert calls[0]["source_context"].source_uri == source.resolve().as_uri()  # type: ignore[union-attr]
+    assert calls[0]["source_context"].local_resource_root == source.resolve().parent  # type: ignore[union-attr]
     assert rec.tier == "standard"
     assert rec.files[0].status == "completed"
 

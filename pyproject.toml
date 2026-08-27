@@ -7,7 +7,7 @@ name = "mineru"
 dynamic = ["version"]
 license = "LicenseRef-MinerU-Open-Source-License"
 license-files = ["LICENSE.md"]
-description = "A practical document parsing tool for converting PDF, EPUB, images, CSV, RTF, OOXML, and OpenDocument files into Markdown and JSON"
+description = "A practical document parsing tool for converting PDF, EPUB, HTML, images, CSV, RTF, OOXML, and OpenDocument files into Markdown and JSON"
 readme = "README.md"
 requires-python = ">=3.10,<3.14"
 keywords = [

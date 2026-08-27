@@ -176,6 +176,7 @@ def test_models_are_exported_from_flash_root() -> None:
         "PdfModel",
         "CsvModel",
         "EpubModel",
+        "HtmlModel",
         "RtfModel",
         "DocModel",
         "DocxModel",

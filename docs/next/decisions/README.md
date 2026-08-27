@@ -58,6 +58,7 @@
 | [ADR-0028](0028-csv-structured-flash-parsing.md) | Accepted | CSV 本地结构化 Flash 解析 |
 | [ADR-0029](0029-rtf-native-semantic-parsing.md) | Accepted | RTF 原生语义 Flash 解析 |
 | [ADR-0030](0030-odf-native-semantic-parsing.md) | Accepted | ODF 原生语义 Flash 解析 |
+| [ADR-0031](0031-html-native-semantic-parsing.md) | Accepted | HTML 原生静态语义 Flash 解析 |
 
 ## 模板
 

@@ -31,7 +31,7 @@
 |------|------|------|
 | `pages` | `list[list[dict]]` | 必填，保存 Analyze 产生的 raw blocks |
 | `page_index_map` | `list[int]` | 必填；空列表表示整本默认顺序，非空时与 pages 等长且唯一递增 |
-| `file_suffix` | `pdf/doc/docx/ppt/pptx/xls/xlsx/rtf/csv/epub/odt/ods/odp` | 必填 |
+| `file_suffix` | `pdf/doc/docx/ppt/pptx/xls/xlsx/rtf/csv/epub/html/odt/ods/odp` | 必填 |
 | `effort` | `flash/medium/high/xhigh` | 必填，使用公开分析档位 |
 | `parse_mode` | `txt/ocr` | 必填，使用分析后实际值 |
 | `mineru_version` | 非空字符串 | 必填 |
@@ -50,7 +50,7 @@ MiddleJson 并执行适用的 PDF 后处理。不再提供裸 model list 加独�
 |------|------|------|
 | `pages` | `list[PageInfo]` | 必填，`page_idx` 唯一且严格递增 |
 | `is_full_document` | `bool` | 必填，保存整本或抽页语义，不提供默认值 |
-| `file_suffix` | `pdf/doc/docx/ppt/pptx/xls/xlsx/rtf/csv/epub/odt/ods/odp` | 必填 |
+| `file_suffix` | `pdf/doc/docx/ppt/pptx/xls/xlsx/rtf/csv/epub/html/odt/ods/odp` | 必填 |
 | `effort` | `flash/medium/high/xhigh` | 必填 |
 | `parse_mode` | `txt/ocr` | 必填 |
 | `mineru_version` | 非空字符串 | 必填 |
@@ -181,7 +181,7 @@ index 时 body 必须使用相同 index；父子同时有 bbox 时必须相等�
 
 ## 图片载荷与导出
 
-以下 block 可以直接携带 `image_base64` 和 `image_path`：
+以下 block 可以直接携带 `image_path`、`image_base64` 和 `image_url`：
 
 - `image_body`
 - `table_body`
@@ -205,6 +205,7 @@ images/page_{page_idx}_{type}_{index}_{ordinal}.{ext}
 
 第二种名称用于同一 HTML block 中的多张内嵌图片，ordinal 从 1 开始。导出
 JSON 不包含 `image_base64` 或 `data:image/...`，原始 MiddleJson 对象保持不变。
+`image_url` 不触发下载或 sidecar 写入，会继续保留在导出副本中。
 
 当前 schema 采用直接切换策略：缺失标题 `level`、`paragraph_title.level=1`、
 `table_body.cell_merge` 和视觉载荷 `content: null` 均不会在严格反序列化时兼容。

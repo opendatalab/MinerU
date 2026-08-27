@@ -213,7 +213,7 @@ class ParseResult:
 class DocumentParser(ABC):
     """Abstract base class for all document parsers.
 
-    Subclasses implement ``parse()`` for a specific document category (PDF, EPUB, CSV, or Office/RTF/ODF).
+    Subclasses implement ``parse()`` for a specific document category (PDF, EPUB, HTML, CSV, or Office/RTF/ODF).
     """
 
     _closed: bool = False

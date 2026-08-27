@@ -439,6 +439,14 @@ class _DocxRenderer:
         alt_text: str,
     ) -> None:
         """安全加载 block 图片，并按 bbox/自然尺寸限制到可用页面范围。"""
+        if block.image_base64 is None and block.image_path is None and block.image_url:
+            paragraph = self.document.add_paragraph(style=BODY_STYLE)
+            append_inline_nodes(
+                paragraph,
+                [InlineLink([InlineText(alt_text or "remote image")], block.image_url)],
+                context=context,
+            )
+            return
         try:
             prepared = prepare_block_image(block, self.asset_resolver)
         except DocxAssetError as exc:

@@ -1,5 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
-"""解析 EPUB XHTML 使用的有限语义 CSS 子集。"""
+"""解析 XHTML/HTML 使用的有限语义 CSS 子集。"""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from lxml import etree  # type: ignore[reportMissingImports]
 _CSS_COMMENT_RE = re.compile(r"/\*.*?\*/", re.DOTALL)
 _CSS_IMPORTANT_RE = re.compile(r"!\s*important\s*$", re.IGNORECASE)
 _TEXT_STYLE_FIELDS = ("bold", "italic", "underline", "strikethrough", "superscript", "subscript")
-_VISIBILITY_FIELDS = ("display", "visibility")
+_VISIBILITY_FIELDS = ("display", "visibility", "opacity")
 
 
 @dataclass(frozen=True, slots=True)
@@ -185,6 +185,13 @@ def _parse_declarations(value: str) -> _ParsedDeclarations:
                 visibility_update = ("visibility", True)
             elif normalized in {"visible", "initial"}:
                 visibility_update = ("visibility", False)
+        elif name == "opacity":
+            try:
+                opacity = float(normalized)
+            except ValueError:
+                pass
+            else:
+                visibility_update = ("opacity", opacity <= 0)
         for field_name, field_value in text_updates.items():
             current = text.get(field_name)
             if current is None or important or not current[0]:
@@ -197,7 +204,7 @@ def _parse_declarations(value: str) -> _ParsedDeclarations:
     return _ParsedDeclarations(text=text, visibility=visibility)
 
 
-class EpubStylesheet:
+class MarkupStylesheet:
     """保存按文档顺序解析的简单 tag/class CSS 规则。"""
 
     def __init__(self) -> None:
@@ -305,9 +312,11 @@ class EpubStylesheet:
                 candidates.append((important, 1_000, self._source_order, value))
             if candidates:
                 resolved_visibility[name] = max(candidates, key=lambda item: item[:3])[3]
-        subtree_hidden = subtree_hidden or resolved_visibility.get("display", False)
+        subtree_hidden = (
+            subtree_hidden or resolved_visibility.get("display", False) or resolved_visibility.get("opacity", False)
+        )
         visibility_hidden = resolved_visibility.get("visibility", inherited_visibility_hidden)
         return ElementStyle(style, subtree_hidden, visibility_hidden)
 
 
-__all__ = ["ElementStyle", "EpubStylesheet", "TextStyle", "TextStyleDelta"]
+__all__ = ["ElementStyle", "MarkupStylesheet", "TextStyle", "TextStyleDelta"]

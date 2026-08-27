@@ -161,9 +161,13 @@ def _prepare_lists_and_indices(
 
 
 def _annotate_code_languages(code_blocks: list[BlockDict]) -> None:
-    """为普通代码主体推断语言，算法块保持既有子类型。"""
+    """优先保留来源语言提示，缺失时再为普通代码主体推断语言。"""
     for code_block in code_blocks:
         if code_block["sub_type"] != BlockType.CODE:
+            continue
+        guess_lang = code_block.get("guess_lang")
+        if isinstance(guess_lang, str) and guess_lang.strip():
+            code_block["guess_lang"] = guess_lang.strip()
             continue
         for sub_block in code_block["content"]:
             if sub_block.get("type") == BlockType.CODE_BODY:

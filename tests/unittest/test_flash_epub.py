@@ -22,7 +22,7 @@ from mineru.doclib.services.parse_svc import ParseService
 from mineru.errors import InvalidRequestError
 from mineru.model.flash import EpubModel
 from mineru.model.flash.epub import EpubEncryptedError, EpubPackage, EpubParseError, EpubResourceLimitError, detect_epub
-from mineru.model.flash.epub.styles import EpubStylesheet, TextStyle
+from mineru.model.flash._shared.markup import MarkupStylesheet, TextStyle
 from mineru.model.flash.epub.xhtml import EpubChapterConverter, build_anchor_registry, convert_svg_spine
 from mineru.parser import MinerUParser, parse, parse_async
 from mineru.parser import api_server
@@ -379,7 +379,7 @@ def test_public_parser_rejects_epub_page_range(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(
     "suffix",
-    ["doc", "docx", "ppt", "pptx", "xls", "xlsx", "rtf", "csv", "epub", "odt", "ods", "odp"],
+    ["doc", "docx", "ppt", "pptx", "xls", "xlsx", "rtf", "csv", "epub", "html", "odt", "ods", "odp"],
 )
 def test_non_pdf_analyze_rejects_non_empty_page_index_map(suffix: str) -> None:
     """验证所有非 PDF Analyze 分支拒绝伪造 partial page mapping。"""
@@ -389,7 +389,7 @@ def test_non_pdf_analyze_rejects_non_empty_page_index_map(suffix: str) -> None:
 
 @pytest.mark.parametrize(
     "suffix",
-    ["doc", "docx", "ppt", "pptx", "xls", "xlsx", "rtf", "csv", "epub", "odt", "ods", "odp"],
+    ["doc", "docx", "ppt", "pptx", "xls", "xlsx", "rtf", "csv", "epub", "html", "odt", "ods", "odp"],
 )
 def test_non_pdf_public_parser_rejects_page_range(
     monkeypatch: pytest.MonkeyPatch,
@@ -590,7 +590,7 @@ def test_epub_resource_limits_fail_before_semantic_conversion(monkeypatch: pytes
 
 def test_epub_stylesheet_indexes_repeated_selectors_and_preserves_cascade_order() -> None:
     """验证重复 selector 按属性聚合，交错同优先级规则仍遵守源码顺序。"""
-    stylesheet = EpubStylesheet()
+    stylesheet = MarkupStylesheet()
     stylesheet.add(
         ".x { font-weight: bold; display: none; }"
         ".y { font-weight: normal; display: block; }"
@@ -608,7 +608,7 @@ def test_epub_stylesheet_indexes_repeated_selectors_and_preserves_cascade_order(
 
 def test_epub_stylesheet_honors_important_before_specificity_and_source_order() -> None:
     """验证 important 声明优先于后续普通规则和普通 inline，并允许 inline important 覆盖。"""
-    stylesheet = EpubStylesheet()
+    stylesheet = MarkupStylesheet()
     stylesheet.add(
         ".secret { display: none !important; font-weight: bold !important; }.secret { display: block; font-weight: normal; }"
     )
@@ -644,7 +644,7 @@ def test_epub_stylesheet_honors_important_before_specificity_and_source_order() 
 )
 def test_epub_stylesheet_tracks_display_and_visibility_independently(css: str, expected_hidden: bool) -> None:
     """验证 display 与 visibility 各自级联，任一计算结果隐藏时都不输出元素。"""
-    stylesheet = EpubStylesheet()
+    stylesheet = MarkupStylesheet()
     stylesheet.add(css)
 
     resolved = stylesheet.resolve(etree.fromstring(b'<span class="secret"/>'), TextStyle())
@@ -670,7 +670,7 @@ def test_epub_combined_visibility_rule_does_not_export_hidden_content() -> None:
 
 def test_epub_stylesheet_allows_visible_descendant_to_override_inherited_visibility() -> None:
     """验证 visibility 可继承且显式 visible 后代能够恢复自身输出。"""
-    stylesheet = EpubStylesheet()
+    stylesheet = MarkupStylesheet()
     stylesheet.add(".parent { visibility: hidden; } .child { visibility: visible; }")
     parent = etree.fromstring(b'<div class="parent"><span class="child"/></div>')
     child = parent[0]
@@ -772,7 +772,7 @@ def test_epub_visibility_hidden_body_still_visits_visible_children() -> None:
 
 def test_epub_stylesheet_rejects_overlong_numeric_font_weight_before_int() -> None:
     """验证超长或越界数字字重作为无效声明忽略且不会覆盖继承样式。"""
-    stylesheet = EpubStylesheet()
+    stylesheet = MarkupStylesheet()
     stylesheet.add(f".x {{ font-weight: {'9' * 100_000}; }} .y {{ font-weight: 1001; }}")
 
     inherited = TextStyle(bold=True)
