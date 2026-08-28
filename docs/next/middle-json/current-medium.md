@@ -19,8 +19,9 @@
 `tuple[MiddleJson, ModelJson]`，`ParseResult.to_dict()` 输出
 `schema_version="3.0"`。
 
-Schema 3.0 是严格切换：缺失版本或版本为 1.0/2.0 的 API 结果、缓存和本地
-payload 不自动迁移，调用方必须从源文件重新解析。
+Schema 3.0 是严格的运行时与公开输出契约。`ParseResult.from_dict()` 直接读取 3.0，
+并仅将可识别的 MinerU 3.4.5 `pdf_info` 或对应 schema 1.0 `pages` 包装单向迁移为 3.0；
+其它缺失版本的 envelope、schema 2.0 与未知旧 payload 必须从源文件重新解析。
 
 ## ModelJson
 

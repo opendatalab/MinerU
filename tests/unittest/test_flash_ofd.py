@@ -7,6 +7,8 @@ from io import BytesIO
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
+from lxml import etree
+from PIL import Image
 import pytest
 
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
@@ -17,7 +19,12 @@ from mineru.doclib.services.parse_svc import ParseService
 from mineru.errors import InvalidRequestError
 from mineru.model.flash import OfdModel
 from mineru.model.flash.ofd import OfdParseError, detect_ofd
+from mineru.model.flash.ofd.geometry import Affine, canonical_angle
+from mineru.model.flash.ofd.images import build_image_item
+from mineru.model.flash.ofd.models import MediaResource, OfdPageScene, ResourceRegistry
 from mineru.model.flash.ofd.package import OfdPackage
+from mineru.model.flash.ofd.reading_order import OfdReadingOrderProjector
+from mineru.model.flash.ofd.text import FontMetricResolver, OfdTextBudget, build_text_lines
 from mineru.parser import MinerUParser
 from mineru.parser import api_server
 from mineru.parser.api_server import CreateJobRequest, FileStore
@@ -139,6 +146,99 @@ def test_ofd_cardinal_text_directions_keep_geometry_and_angle() -> None:
     assert model.pages[0][0]["angle"] == 90
     assert model.pages[0][0]["bbox"][2] > model.pages[0][0]["bbox"][0]
     assert model.pages[0][0]["bbox"][3] > model.pages[0][0]["bbox"][1]
+
+
+def test_ofd_textcode_preserves_boundary_whitespace_and_glyph_positions() -> None:
+    """验证 TextCode 首尾空格参与 Delta 展开和 CGTransform 全局位置映射。"""
+    text_element = etree.fromstring(
+        b'<TextObject ID="9" Boundary="10 10 50 10" Font="1" Size="5">'
+        b'<TextCode X="1" Y="5" DeltaX="5 7"> A </TextCode>'
+        b'<CGTransform CodePosition="1" CodeCount="1"><Glyphs>42</Glyphs></CGTransform>'
+        b"</TextObject>"
+    )
+    package_buffer = BytesIO()
+    with ZipFile(package_buffer, "w", ZIP_DEFLATED) as archive:
+        archive.writestr("OFD.xml", "<OFD/>")
+    package = OfdPackage(package_buffer.getvalue())
+
+    lines = build_text_lines(
+        text_element,
+        parent_transform=Affine(),
+        parent_clip=(0.0, 0.0, 100.0, 100.0),
+        resources=ResourceRegistry(),
+        package=package,
+        font_metrics=FontMetricResolver(package),
+        budget=OfdTextBudget(),
+        paint_order=0,
+        layer_type="body",
+        template_id=None,
+    )
+
+    assert len(lines) == 1
+    assert lines[0].text == " A "
+    assert [glyph.glyph_id for glyph in lines[0].glyphs] == [None, 42, None]
+    assert [glyph.origin[0] for glyph in lines[0].glyphs] == pytest.approx([11.0, 16.0, 23.0])
+
+
+@pytest.mark.parametrize(
+    ("raw_angle", "expected_angle"),
+    [
+        (89.9, 90),
+        (90.1, 90),
+        (179.9, 180),
+        (180.1, 180),
+        (359.9, 0),
+        (0.1, 0),
+    ],
+)
+def test_ofd_image_near_cardinal_rotation_accepts_both_directions(raw_angle: float, expected_angle: int) -> None:
+    """验证图片旋转从直角两侧逼近时都保留载荷和阅读顺序 block。"""
+    image_buffer = BytesIO()
+    Image.new("RGB", (2, 2), "white").save(image_buffer, format="PNG")
+    package_buffer = BytesIO()
+    with ZipFile(package_buffer, "w", ZIP_DEFLATED) as archive:
+        archive.writestr("OFD.xml", "<OFD/>")
+        archive.writestr("Res/image.png", image_buffer.getvalue())
+    package = OfdPackage(package_buffer.getvalue())
+    transform = Affine.rotation(raw_angle)
+    ctm = " ".join(str(value) for value in (transform.a, transform.b, transform.c, transform.d, transform.e, transform.f))
+    image_element = etree.fromstring(f'<ImageObject ID="1" Boundary="0 0 10 10" ResourceID="1" CTM="{ctm}"/>'.encode())
+    resources = ResourceRegistry(
+        media={
+            1: MediaResource(
+                resource_id=1,
+                media_type="Image",
+                media_format="PNG",
+                media_part="Res/image.png",
+            )
+        }
+    )
+
+    item = build_image_item(
+        image_element,
+        parent_transform=Affine(),
+        parent_clip=(0.0, 0.0, 100.0, 100.0),
+        resources=resources,
+        package=package,
+        paint_order=0,
+        layer_type="body",
+        template_id=None,
+    )
+
+    assert item is not None
+    assert item.diagnostic is None
+    assert item.image_base64
+    scene = OfdPageScene(
+        page_idx=0,
+        physical_box=(0.0, 0.0, 100.0, 100.0),
+        content_box=None,
+        images=[item],
+    )
+    blocks = OfdReadingOrderProjector([scene]).project_page(scene)
+    assert len(blocks) == 1
+    assert blocks[0]["type"] == BlockType.IMAGE
+    assert blocks[0]["image_base64"] == item.image_base64
+    assert canonical_angle(raw_angle) == expected_angle
 
 
 def test_ofd_template_grid_recovers_table() -> None:

@@ -317,7 +317,7 @@ def build_text_lines(
     lines: list[TextLine] = []
     object_id = parse_int(text_object.get("ID"))
     for code_index, text_code in enumerate(element for element in text_object if local_name(element.tag) == "TextCode"):
-        text = decode_text_code(element_text(text_code))
+        text = decode_text_code("".join(text_code.itertext()))
         if not text:
             continue
         budget.charge(text)

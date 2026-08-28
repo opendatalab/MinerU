@@ -97,7 +97,7 @@ def build_image_item(
         ctm = parse_affine(image_object.get("CTM"))
         raw_angle = transform_angle(parent_transform.compose(ctm))
         angle = canonical_angle(raw_angle)
-        if angle not in {0, 90, 180, 270} or not math.isclose(raw_angle % 90.0, 0.0, abs_tol=5.0):
+        if angle not in {0, 90, 180, 270} or not math.isclose(math.remainder(raw_angle, 90.0), 0.0, abs_tol=5.0):
             diagnostic = "unsupported_image_affine"
             payload = None
         else:

@@ -3,7 +3,9 @@ from __future__ import annotations
 import asyncio
 from io import BytesIO
 from pathlib import Path
+from zipfile import ZIP_DEFLATED, ZipFile
 
+from docx import Document
 from lxml import etree  # type: ignore[reportAttributeAccessIssue]
 import pytest
 
@@ -69,6 +71,39 @@ def _equationxml_with_forbidden_pict() -> str:
     return etree.tostring(root, encoding="unicode")
 
 
+def _fallback_shape_text_docx(text: str) -> bytes:
+    """构造只可由 shape-text fallback 读取文字的 DOCX。"""
+    document = Document()
+    document.add_paragraph("before")
+    source_buffer = BytesIO()
+    document.save(source_buffer)
+    with ZipFile(BytesIO(source_buffer.getvalue())) as source:
+        members = {name: source.read(name) for name in source.namelist()}
+
+    word_namespace = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
+    drawing_namespace = "http://schemas.openxmlformats.org/drawingml/2006/main"
+    root = etree.fromstring(members["word/document.xml"])
+    body = root.find(f"{{{word_namespace}}}body")
+    assert body is not None
+    drawing = etree.Element(f"{{{word_namespace}}}drawing")
+    text_body = etree.SubElement(drawing, f"{{{drawing_namespace}}}txBody")
+    etree.SubElement(text_body, f"{{{drawing_namespace}}}bodyPr")
+    etree.SubElement(text_body, f"{{{drawing_namespace}}}t").text = text
+    body.insert(max(0, len(body) - 1), drawing)
+    members["word/document.xml"] = etree.tostring(
+        root,
+        xml_declaration=True,
+        encoding="UTF-8",
+        standalone=True,
+    )
+
+    output = BytesIO()
+    with ZipFile(output, "w", ZIP_DEFLATED) as target:
+        for name, payload in members.items():
+            target.writestr(name, payload)
+    return output.getvalue()
+
+
 def test_equationxml_decoder_converts_spec_document_and_fraction() -> None:
     """验证规范 Word 2003 XML 包装可复用现有 OMML 转换器。"""
 
@@ -76,6 +111,16 @@ def test_equationxml_decoder_converts_spec_document_and_fraction() -> None:
 
     assert decoder.decode(build_word_2003_equation_xml()) == "x+y"
     assert decoder.decode(build_word_2003_fraction_equation_xml()) == r"\frac{a}{b}"
+
+
+def test_docx_fallback_shape_text_uses_inline_spans() -> None:
+    """验证非标准 shape 文字 fallback 输出 Span 而不会中断整份解析。"""
+    pages = DocxModel().predict(BytesIO(_fallback_shape_text_docx("  shape text  ")))
+
+    assert pages[0][-1] == {
+        "type": BlockType.TEXT,
+        "content": text_spans("shape text"),
+    }
 
 
 @pytest.mark.parametrize(

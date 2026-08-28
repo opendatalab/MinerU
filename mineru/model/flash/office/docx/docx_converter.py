@@ -43,6 +43,7 @@ from ..._shared.spans import (
     inline_span_plain_text,
     slice_span_dicts,
     strip_span_dicts,
+    text_spans,
 )
 from ..rich_text import (
     append_rich_text_element,
@@ -839,10 +840,11 @@ class DocxConverter:
                         shape_text_elements = shape_text_xpath(element)
                         if shape_text_elements:
                             # 从形状文本创建自定义文本元素
-                            text_content = " ".join([t.text for t in shape_text_elements if t.text])
-                            text_content = self._normalize_text_block_content(text_content)
-                            if text_content.strip():
-                                logger.debug(f"Found shape text: {text_content[:50]}...")
+                            raw_text = " ".join([t.text for t in shape_text_elements if t.text])
+                            text_content = self._normalize_text_block_content(text_spans(raw_text))
+                            visible_text = inline_span_plain_text(text_content)
+                            if visible_text:
+                                logger.debug(f"Found shape text: {visible_text[:50]}...")
                                 self.cur_page.append(
                                     {
                                         "type": BlockType.TEXT,
