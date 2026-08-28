@@ -15,6 +15,7 @@ from .escaping import escape_standalone_marker_rule, escape_text_block_markdown_
 from .inline import (
     render_inline_content,
     render_inline_spans,
+    render_inline_spans_in_html_context,
     render_internal_link,
     render_joined_inline_contents,
 )
@@ -466,7 +467,7 @@ def render_visual_body_content(
         if isinstance(block, ChartBlock) and isinstance(child, ChartBodyBlock):
             return _render_chart_content(child.content, delimiters, asset_base_url)
         if isinstance(block, CodeBlock) and isinstance(child, (CodeBodyBlock, AlgorithmBodyBlock)):
-            return _render_code_body(block, child, delimiters)
+            return _render_code_semantic_content(block, child, delimiters)
     raise ValueError(f"Missing visual body: {block.type}")
 
 
@@ -518,6 +519,19 @@ def _render_code_body(
     delimiters: LatexDelimitersConfig,
 ) -> str:
     """依据父块 subtype 渲染代码或算法 body。"""
+    if block.sub_type == RAW_ALGORITHM:
+        if not isinstance(child, AlgorithmBodyBlock):
+            raise TypeError("algorithm subtype requires AlgorithmBodyBlock")
+        return _render_algorithm_html(child.content, delimiters)
+    return _render_code_semantic_content(block, child, delimiters)
+
+
+def _render_code_semantic_content(
+    block: CodeBlock,
+    child: CodeBodyBlock | AlgorithmBodyBlock,
+    delimiters: LatexDelimitersConfig,
+) -> str:
+    """把代码或算法 body 渲染为 Structured Content 可消费的类 Markdown 字符串。"""
     if block.sub_type == BlockType.CODE:
         if not isinstance(child, CodeBodyBlock):
             raise TypeError("code subtype requires CodeBodyBlock")
@@ -525,7 +539,7 @@ def _render_code_body(
     if block.sub_type == RAW_ALGORITHM:
         if not isinstance(child, AlgorithmBodyBlock):
             raise TypeError("algorithm subtype requires AlgorithmBodyBlock")
-        return _render_algorithm_html(child.content, delimiters)
+        return _render_algorithm_markdown(child.content, delimiters)
     raise ValueError(f"Unsupported code subtype: {block.sub_type}")
 
 
@@ -554,12 +568,25 @@ def _render_algorithm_html(content: list[InlineSpan], delimiters: LatexDelimiter
         current_equation = str(span.type) == "equation_inline"
         if previous_equation and current_equation:
             parts.append(" ")
-        parts.append(render_inline_spans([span], delimiters))
+        parts.append(render_inline_spans_in_html_context([span], delimiters))
         previous_equation = current_equation
     body = "".join(parts)
     if not body.strip():
         return ""
     return f'<div class="mineru-algorithm" style="white-space: pre-wrap; font-family:monospace;">\n{body}\n</div>'
+
+
+def _render_algorithm_markdown(content: list[InlineSpan], delimiters: LatexDelimitersConfig) -> str:
+    """把算法 Span 渲染为类 Markdown 内容，并分隔相邻行内公式。"""
+    parts: list[str] = []
+    previous_equation = False
+    for span in content:
+        current_equation = str(span.type) == "equation_inline"
+        if previous_equation and current_equation:
+            parts.append(" ")
+        parts.append(render_inline_spans([span], delimiters))
+        previous_equation = current_equation
+    return "".join(parts)
 
 
 def _join_visual_parts(parts: list[str]) -> str:

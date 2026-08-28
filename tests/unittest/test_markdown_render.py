@@ -769,7 +769,7 @@ def test_code_uses_language_and_dynamic_fence() -> None:
 
 
 def test_algorithm_preserves_whitespace_comparisons_scripts_and_formula() -> None:
-    """验证算法 HTML 原样保留缩进、比较符、上下标并支持相邻公式。"""
+    """验证算法 raw HTML 使用 HTML 行内语法并保留缩进与相邻公式。"""
     algorithm = CodeBlock(
         type="code",
         index=0,
@@ -779,9 +779,27 @@ def test_algorithm_preserves_whitespace_comparisons_scripts_and_formula() -> Non
                 type="algorithm_body",
                 index=0,
                 content=[
-                    {"type": "text", "content": "if a < b and c > d:\n  T"},
-                    {"type": "text", "content": "queue", "styles": ["subscript"]},
+                    {"type": "text", "content": "if a < b and c * d:\n  "},
+                    {"type": "text", "content": "bold", "styles": ["bold"]},
+                    {"type": "text", "content": " / "},
+                    {"type": "text", "content": "italic", "styles": ["italic"]},
+                    {"type": "text", "content": " / "},
+                    {"type": "text", "content": "strike", "styles": ["strikethrough"]},
+                    {"type": "text", "content": " / "},
+                    {"type": "text", "content": "under", "styles": ["underline"]},
+                    {"type": "text", "content": " / "},
+                    {"type": "text", "content": "dot", "styles": ["emphasis"]},
+                    {"type": "text", "content": " "},
+                    {"type": "text", "content": "q", "styles": ["subscript"]},
                     {"type": "text", "content": "2", "styles": ["superscript"]},
+                    {"type": "text", "content": " "},
+                    {"type": "code_inline", "content": "x * y"},
+                    {"type": "text", "content": " "},
+                    {
+                        "type": "hyperlink",
+                        "url": "https://example.com/a b",
+                        "content": [{"type": "text", "content": "link", "styles": ["bold"]}],
+                    },
                     {"type": "text", "content": " = "},
                     {"type": "equation_inline", "content": "a < b"},
                     {"type": "equation_inline", "content": "c > d"},
@@ -793,9 +811,16 @@ def test_algorithm_preserves_whitespace_comparisons_scripts_and_formula() -> Non
     rendered = render_markdown(_middle(_page(0, algorithm)))
 
     assert 'class="mineru-algorithm"' in rendered
-    assert "if a < b and c > d:\n  T<sub>queue</sub><sup>2</sup> = $a < b$ $c > d$" in rendered
-    assert "&lt;" not in rendered
-    assert "&gt;" not in rendered
+    assert (
+        "if a &lt; b and c * d:\n  <strong>bold</strong> / <em>italic</em> / <s>strike</s> / "
+        '<u>under</u> / <span style="text-emphasis: dot; text-emphasis-position: under;">dot</span> '
+        '<sub>q</sub><sup>2</sup> <code>x * y</code> <a href="https://example.com/a b"><strong>link</strong></a> '
+        "= $a &lt; b$ $c &gt; d$"
+    ) in rendered
+    assert "**bold**" not in rendered
+    assert "*italic*" not in rendered
+    assert "~~strike~~" not in rendered
+    assert r"\*" not in rendered
 
 
 def test_image_path_precedes_base64_and_visual_child_order_is_preserved() -> None:

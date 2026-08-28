@@ -39,6 +39,11 @@ def render_inline_spans(spans: list[InlineSpan], delimiters: LatexDelimitersConf
     return "".join(_render_inline_span(span, delimiters) for span in spans)
 
 
+def render_inline_spans_in_html_context(spans: list[InlineSpan], delimiters: LatexDelimitersConfig) -> str:
+    """把 Markdown raw HTML 容器内的 Span 全部序列化为安全 HTML 行内语法。"""
+    return "".join(_render_inline_span_in_html_context(span, delimiters) for span in spans)
+
+
 def _render_inline_span(span: InlineSpan, delimiters: LatexDelimitersConfig) -> str:
     """渲染单个结构化行内 Span。"""
     if isinstance(span, TextSpan):
@@ -51,6 +56,20 @@ def _render_inline_span(span: InlineSpan, delimiters: LatexDelimitersConfig) -> 
     if isinstance(span, HyperlinkSpan):
         label = render_inline_spans(list(span.content), delimiters)
         return _render_link(label, span.url, _requires_html_link(list(span.content)))
+    raise TypeError(f"Unsupported inline span: {type(span).__name__}")
+
+
+def _render_inline_span_in_html_context(span: InlineSpan, delimiters: LatexDelimitersConfig) -> str:
+    """渲染一个嵌入 Markdown raw HTML block 的结构化行内 Span。"""
+    if isinstance(span, TextSpan):
+        return _apply_html_styles(html.escape(span.content, quote=False), span.styles)
+    if isinstance(span, CodeInlineSpan):
+        return f"<code>{html.escape(span.content, quote=False)}</code>"
+    if isinstance(span, EquationInlineSpan):
+        return html.escape(f"{delimiters.inline.left}{span.content}{delimiters.inline.right}", quote=False)
+    if isinstance(span, HyperlinkSpan):
+        label = render_inline_spans_in_html_context(list(span.content), delimiters)
+        return _render_link(label, span.url, True)
     raise TypeError(f"Unsupported inline span: {type(span).__name__}")
 
 
@@ -226,6 +245,7 @@ def _escape_markdown_link_label(label: str) -> str:
 __all__ = [
     "render_inline_content",
     "render_inline_spans",
+    "render_inline_spans_in_html_context",
     "render_internal_link",
     "render_joined_inline_contents",
 ]

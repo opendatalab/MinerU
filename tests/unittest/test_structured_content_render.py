@@ -9,6 +9,7 @@ import pytest
 from mineru.config import Config
 from mineru.render import render_markdown, render_structured_content
 from mineru.types import (
+    AlgorithmBodyBlock,
     ChartAnnotationBlock,
     ChartBlock,
     ChartBodyBlock,
@@ -188,6 +189,49 @@ def test_structured_content_flattens_recursive_list_index_and_code_metadata() ->
     assert blocks[2]["footnotes"] == [{"bbox": [0.1, 0.8, 0.5, 0.9], "content": "note $x$"}]
     assert "guess_lang" not in blocks[2]
     _assert_output_field_contract(blocks)
+
+
+def test_structured_content_renders_algorithm_as_markdown_like_content() -> None:
+    """验证算法 content 使用简单 Markdown 样式并为复杂样式降级到 HTML。"""
+    algorithm = CodeBlock(
+        type="code",
+        index=0,
+        sub_type="algorithm",
+        content=[
+            AlgorithmBodyBlock(
+                type="algorithm_body",
+                index=0,
+                content=[
+                    {"type": "text", "content": "if x:\n  "},
+                    {"type": "text", "content": "bold", "styles": ["bold"]},
+                    {"type": "text", "content": " / "},
+                    {"type": "text", "content": "italic", "styles": ["italic"]},
+                    {"type": "text", "content": " / "},
+                    {"type": "text", "content": "strike", "styles": ["strikethrough"]},
+                    {"type": "text", "content": " / "},
+                    {"type": "text", "content": "under", "styles": ["underline"]},
+                    {"type": "text", "content": " / "},
+                    {"type": "text", "content": "dot", "styles": ["emphasis"]},
+                    {"type": "text", "content": " "},
+                    {"type": "text", "content": "q", "styles": ["subscript"]},
+                    {"type": "text", "content": "2", "styles": ["superscript"]},
+                    {"type": "text", "content": " = "},
+                    {"type": "equation_inline", "content": "x"},
+                    {"type": "equation_inline", "content": "y"},
+                ],
+            )
+        ],
+    )
+
+    output = render_structured_content(_middle(_page(0, algorithm)))["pages"][0]["blocks"][0]
+
+    assert output["content"] == (
+        "if x:\n  **bold** / *italic* / ~~strike~~ / <u>under</u> / "
+        '<span style="text-emphasis: dot; text-emphasis-position: under;">dot</span> '
+        "<sub>q</sub><sup>2</sup> = $x$ $y$"
+    )
+    assert "mineru-algorithm" not in output["content"]
+    _assert_output_field_contract(output)
 
 
 def test_structured_content_sorts_visual_annotations_and_selects_image_source() -> None:

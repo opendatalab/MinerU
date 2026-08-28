@@ -761,6 +761,11 @@ def test_chart_gfm_details_code_prism_and_algorithm_html() -> None:
                 index=2,
                 content=[
                     {"type": "text", "content": "if a < b:\n  T"},
+                    {"type": "text", "content": "bold", "styles": ["bold"]},
+                    {"type": "text", "content": "italic", "styles": ["italic"]},
+                    {"type": "text", "content": "strike", "styles": ["strikethrough"]},
+                    {"type": "text", "content": "under", "styles": ["underline"]},
+                    {"type": "text", "content": "dot", "styles": ["emphasis"]},
                     {"type": "text", "content": "q", "styles": ["subscript"]},
                     {"type": "text", "content": " = "},
                     {"type": "equation_inline", "content": "x"},
@@ -782,11 +787,19 @@ def test_chart_gfm_details_code_prism_and_algorithm_html() -> None:
     assert "sha384-zLRFO4dw" in result and "sha384-Uq05+JLk" in result
     algorithm_html = soup.select_one(".mineru-algorithm")
     assert "if a < b:" in algorithm_html.get_text()
+    assert algorithm_html.select_one("strong").get_text() == "bold"
+    assert algorithm_html.select_one("em").get_text() == "italic"
+    assert algorithm_html.select_one("s").get_text() == "strike"
+    assert algorithm_html.select_one("u").get_text() == "under"
+    assert algorithm_html.select_one(".mineru-text-emphasis").get_text() == "dot"
     assert algorithm_html.select_one("sub").get_text() == "q"
     assert len(algorithm_html.select(".mineru-math")) == 2
     assert r"\(x\) \(y\)" in algorithm_html.get_text()
     assert "<br" not in str(algorithm_html)
     assert "if a &lt; b:\n  " in str(algorithm_html)
+    assert "**bold**" not in str(algorithm_html)
+    assert "*italic*" not in str(algorithm_html)
+    assert "~~strike~~" not in str(algorithm_html)
 
 
 @pytest.mark.parametrize("guess_lang", ["python bad/../../x", "constructor", "prototype", "__proto__"])
