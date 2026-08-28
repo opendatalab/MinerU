@@ -1356,6 +1356,34 @@ def test_html_versioned_wire_visible_structural_text_falls_back_without_loss() -
         assert edited_text in markdown
 
 
+@pytest.mark.parametrize("position", ["before", "after"])
+def test_html_versioned_wire_visible_sibling_falls_back_without_loss(position: str) -> None:
+    """验证 wire 根前后的可见兄弟会整体回退，避免精确物化静默丢弃正文。"""
+    source = MiddleJson.model_validate(
+        {
+            "pages": [{"page_idx": 0, "blocks": [{"type": "text", "index": 0, "content": "Original wire text"}]}],
+            "is_full_document": True,
+            "file_suffix": "html",
+            "effort": "flash",
+            "parse_mode": "txt",
+            "mineru_version": "test",
+        }
+    )
+    soup = BeautifulSoup(render_html(source, standalone=False), "html.parser")
+    sibling = soup.new_tag("p")
+    sibling.string = "VISIBLE SIBLING"
+    wire_root = soup.select_one(".mineru-document")
+    if position == "before":
+        wire_root.insert_before(sibling)
+    else:
+        wire_root.insert_after(sibling)
+
+    markdown = render_markdown(doc_analyze(str(soup).encode(), file_suffix="html")[0])
+
+    assert "Original wire text" in markdown
+    assert "VISIBLE SIBLING" in markdown
+
+
 def test_html_versioned_wire_markerless_block_child_falls_back_without_crash() -> None:
     """验证行内容器内新增的无 marker 块节点会事务式回退，而不是在物化阶段抛错。"""
     source = MiddleJson.model_validate(

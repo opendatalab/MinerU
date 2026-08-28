@@ -142,6 +142,7 @@ def inspect_mineru_html_wire(body: etree._Element) -> MineruHtmlWireInspection:
     if (root.get("data-mineru-html-version") or "").strip() != _MINERU_HTML_VERSION:
         return MineruHtmlWireInspection(None, "unsupported_version")
     try:
+        _validate_wire_root_ownership(body, root)
         return MineruHtmlWireInspection(_validate_wire_root(root))
     except _WireValidationError as exc:
         return MineruHtmlWireInspection(None, exc.reason)
@@ -209,6 +210,25 @@ def _validate_wire_root(root: etree._Element) -> MineruHtmlWirePlan:
 
     specs = tuple(_validate_top_block(wrapper, section_page_idx) for wrapper, section_page_idx in wrappers)
     return MineruHtmlWirePlan(root, mode, specs)  # type: ignore[arg-type]
+
+
+def _validate_wire_root_ownership(body: etree._Element, root: etree._Element) -> None:
+    """要求 wire 根独占通往 body 的内容路径，避免精确物化丢弃外部正文。"""
+    current = root
+    while current is not body:
+        parent = current.getparent()
+        if parent is None:
+            raise _WireValidationError("invalid_root_location")
+        if (parent.text or "").strip():
+            raise _WireValidationError("content_outside_wire_root")
+        for sibling in parent:
+            if sibling is current:
+                if (sibling.tail or "").strip():
+                    raise _WireValidationError("content_outside_wire_root")
+                continue
+            if isinstance(sibling.tag, str) or (sibling.tail or "").strip():
+                raise _WireValidationError("content_outside_wire_root")
+        current = parent
 
 
 def _validate_top_block(wrapper: etree._Element, section_page_idx: int | None) -> MineruHtmlBlockSpec:
