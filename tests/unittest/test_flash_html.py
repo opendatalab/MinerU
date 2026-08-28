@@ -341,6 +341,57 @@ def test_html_parse_server_url_preserves_http_declared_charset(tmp_path: Path, m
     assert middle_payload["pages"][0]["blocks"][0]["content"] == expected
 
 
+@pytest.mark.parametrize(
+    "url",
+    ["https://example.com/article", "https://example.com/"],
+    ids=["path-without-extension", "trailing-slash"],
+)
+def test_html_parse_server_url_accepts_extensionless_text_html(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    url: str,
+) -> None:
+    """验证无扩展名 URL 可按 HTTP text/html 响应进入 HTML Flash 路由。"""
+    expected = "Extensionless HTML"
+    response = httpx.Response(
+        200,
+        content=f"<html><body><p>{expected}</p></body></html>".encode(),
+        headers={"Content-Type": "text/html; charset=utf-8"},
+        request=httpx.Request("GET", url),
+    )
+    client = AsyncMock()
+    client.__aenter__.return_value = client
+    client.get.return_value = response
+    monkeypatch.setattr(api_server, "httpx", SimpleNamespace(AsyncClient=lambda **_: client))
+    file_store = FileStore(tmp_path / "api-files")
+    request = CreateJobRequest.model_validate(
+        {
+            "files": [{"source": {"type": "url", "url": url}}],
+            "tier": "standard",
+            "output_formats": ["middle_json"],
+        }
+    )
+    record = api_server.JobStore().create(request, file_store)
+
+    asyncio.run(
+        api_server._run_job(
+            record,
+            request,
+            file_store,
+            ocr_mode="auto",
+            image_analysis=True,
+        )
+    )
+
+    parsed_file = record.files[0]
+    assert parsed_file.status == "completed"
+    assert parsed_file.output_files is not None and parsed_file.output_files.middle_json is not None
+    middle_record = file_store.get_file(parsed_file.output_files.middle_json.file_id)
+    assert middle_record.sha256sum is not None
+    middle_payload = json.loads(file_store.read_blob(middle_record.sha256sum))
+    assert middle_payload["pages"][0]["blocks"][0]["content"] == expected
+
+
 def test_html_auto_selection_preserves_all_repeated_forum_posts() -> None:
     """验证重复 article 场景不会只保留论坛中的首个帖子。"""
     payload = b"""<html><body><header>Forum</header><main>
@@ -2143,6 +2194,29 @@ def test_html_formula_priority_delimiters_and_supported_mathml_are_normalized() 
     assert r"<eq>\frac{a}{b}</eq>" in text
     assert "data-low" not in text and "annotation-low" not in text and "duplicate" not in text
     assert equations == ["display_value"]
+
+
+@pytest.mark.parametrize(
+    ("attributes", "stylesheet"),
+    [
+        ("hidden", ""),
+        ('aria-hidden="true"', ""),
+        ('style="display:none"', ""),
+        ('class="hidden-formula"', "<style>.hidden-formula{display:none}</style>"),
+    ],
+    ids=["hidden", "aria-hidden", "inline-style", "stylesheet-class"],
+)
+def test_html_formula_normalization_preserves_direct_visibility(attributes: str, stylesheet: str) -> None:
+    """验证公式 carrier 归一化后仍保留直接声明的隐藏语义。"""
+    payload = (
+        f"<html><head>{stylesheet}</head><body><p>Before <math {attributes} data-tex='x'></math> After</p></body></html>"
+    ).encode()
+
+    middle = doc_analyze(payload, file_suffix="html")[0]
+    markdown = render_markdown(middle)
+
+    assert "$x$" not in markdown
+    assert "Before" in markdown and "After" in markdown
 
 
 def test_html_block_formulas_nested_in_text_containers_preserve_dom_order() -> None:

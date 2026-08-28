@@ -39,6 +39,7 @@ _ACTIVE_TAGS = frozenset(
 )
 _FORMULA_GENERATOR_CLASS_TOKENS = frozenset({"katex", "mathjax", "mineru-math"})
 _GENERIC_FORMULA_CLASS_TOKENS = frozenset({"formula", "math", "tex"})
+_FORMULA_VISIBILITY_ATTRIBUTES = ("hidden", "aria-hidden", "style", "class")
 _MEANINGFUL_FORMULA_SIBLING_TAGS = frozenset(
     {"audio", "br", "canvas", "figure", "hr", "iframe", "image", "img", "object", "svg", "table", "video"}
 )
@@ -327,6 +328,9 @@ def _replace_with_formula(element: etree._Element, formula: FormulaExtraction) -
     replacement = etree.Element("math")
     replacement.set("data-mineru-latex", formula.latex)
     replacement.set("data-formula-display", formula.display)
+    for attribute in _FORMULA_VISIBILITY_ATTRIBUTES:
+        if (value := element.get(attribute)) is not None:
+            replacement.set(attribute, value)
     if formula.display == "block":
         replacement.set("display", "block")
     if (element.get("data-block-type") or "").strip() == "equation":

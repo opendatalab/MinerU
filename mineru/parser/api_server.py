@@ -1287,12 +1287,13 @@ def _count_pages_in_range(page_range: str) -> int:
 
 @dataclass(frozen=True, slots=True)
 class _ExtractedSource:
-    """保存 API 输入字节及 HTML 来源上下文。"""
+    """保存 API 输入字节、响应类型及 HTML 来源上下文。"""
 
     data: bytes
     source_uri: str | None = None
     local_resource_root: pathlib.Path | None = None
     transport_encoding: str | None = None
+    media_type: str | None = None
 
 
 async def _extract_bytes(
@@ -1324,6 +1325,7 @@ async def _extract_bytes(
                 r.content,
                 source_uri=str(r.url),
                 transport_encoding=r.charset_encoding,
+                media_type=(r.headers.get("content-type") or "").partition(";")[0].strip().casefold() or None,
             )
     if isinstance(source, InlineSource):
         return _ExtractedSource(_decode_inline_data(source.data))
@@ -1372,17 +1374,21 @@ async def _run_job(
                     allow_http_source=allow_http_source,
                 )
                 data = extracted.data
+                suffix = pathlib.Path(fr.name).suffix
                 stype = _suffix_type(fr.name)
+                if not stype and not suffix and isinstance(entry.source, UrlSource) and extracted.media_type == "text/html":
+                    stype = "html"
+                    suffix = ".html"
                 if not stype:
                     raise ValueError(f"Unsupported file type: {fr.name}")
 
                 # write to temp file for parsers that require a path
-                suffix = pathlib.Path(fr.name).suffix or ".pdf"
+                suffix = suffix or ".pdf"
                 tmp_path = pathlib.Path(tmpdir) / f"input_{i}{suffix}"
                 tmp_path.write_bytes(data)
 
                 page_range = entry.page_range or ""
-                effective_tier = batch_effective_parse_tier(rec.tier, fr.name)
+                effective_tier = batch_effective_parse_tier(rec.tier, suffix)
 
                 source_context = None
                 if stype == "html":
