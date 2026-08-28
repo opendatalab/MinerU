@@ -3,6 +3,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from io import BytesIO
+from unittest.mock import MagicMock
 import base64
 
 from PIL import Image
@@ -13,6 +14,7 @@ import ziamath
 
 from _span_test_utils import inline as _inline
 from mineru.render import render_pdf
+from mineru.render._internal.pdf import assets as pdf_assets
 from mineru.render._internal.pdf import formula as formula_module
 from mineru.render._internal.pdf.formula import FormulaRenderer, FormulaVector, PdfFormulaError
 from mineru.types import (
@@ -350,6 +352,38 @@ def test_pdf_uses_asset_resolver_and_replaces_missing_or_remote_images_with_plac
     assert text.count("image unavailable") == 3
     assert "https://example.com/image.png" in text
     assert "page_idx=0, block_index=2, block_type=image_body" in text
+
+
+def test_pdf_oversized_image_uses_placeholder_before_pixel_decode(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证 PDF 超限 raster 在 load 前转为现有宽松 placeholder。"""
+    image = MagicMock()
+    image.__enter__.return_value = image
+    image.format = "PNG"
+    image.size = (4_001, 4_000)
+    image.load.side_effect = AssertionError("oversized image must not be decoded")
+    monkeypatch.setattr(pdf_assets.Image, "open", lambda _source: image)
+    middle = _middle(
+        _page(
+            0,
+            ImageBlock(
+                type="image",
+                index=0,
+                content=[
+                    ImageBodyBlock(
+                        type="image_body",
+                        index=0,
+                        content="Oversized image",
+                        image_path="images/oversized.png",
+                    )
+                ],
+            ),
+        )
+    )
+
+    reader = _reader(render_pdf(middle, asset_resolver=lambda _path: b"oversized"))
+
+    assert "image unavailable" in _page_text(reader, 0)
+    image.load.assert_not_called()
 
 
 def test_pdf_renders_tables_lists_indices_code_algorithm_and_annotations() -> None:

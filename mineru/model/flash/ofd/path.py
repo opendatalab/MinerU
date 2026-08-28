@@ -101,7 +101,7 @@ def _segments(value: str, transform: Affine, budget: OfdPathBudget) -> list[tupl
                 current = subpath_start
                 continue
         if command is None or command == "C":
-            continue
+            return []
         needed = arity[command]
         if index + needed > len(tokens):
             break

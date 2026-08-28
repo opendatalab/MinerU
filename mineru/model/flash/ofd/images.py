@@ -12,6 +12,7 @@ from lxml import etree  # type: ignore[reportMissingImports]
 
 from .._shared.image import image_to_b64str
 from ....types import BBox
+from ....utils.image_payload import validate_decoded_raster_size
 from .geometry import Affine, bbox_intersection, canonical_angle, parse_affine, parse_st_box, transform_angle, transform_bbox
 from .models import ImageItem, ResourceRegistry
 from .package import OfdPackage, parse_int
@@ -23,6 +24,7 @@ def _serialize_raster(data: bytes, *, alpha: int, angle: int) -> str | None:
     """使用 Pillow 校验、旋转并编码常见位图。"""
     try:
         with Image.open(BytesIO(data)) as source:
+            validate_decoded_raster_size(*source.size)
             source.load()
             image = source.copy()
     except (Image.DecompressionBombError, UnidentifiedImageError, OSError, SyntaxError, ValueError):

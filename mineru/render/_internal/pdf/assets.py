@@ -16,6 +16,7 @@ from ....types import ImagePayloadBlock
 from ....utils.image_payload import (
     extract_mineru_generated_svg_fallback,
     parse_image_data_uri_strict,
+    validate_decoded_raster_size,
     validate_image_sidecar_path,
 )
 
@@ -106,6 +107,10 @@ def prepare_image_bytes(data: bytes, *, declared_extension: str | None = None) -
             if detected_extension is None:
                 raise PdfAssetError(f"Unsupported image format: {image.format or 'unknown'}")
             width_px, height_px = image.size
+            try:
+                validate_decoded_raster_size(width_px, height_px)
+            except ValueError as exc:
+                raise PdfAssetError(str(exc)) from exc
             image.load()
             if expected_extension is not None and expected_extension != detected_extension:
                 raise PdfAssetError(
@@ -115,7 +120,7 @@ def prepare_image_bytes(data: bytes, *, declared_extension: str | None = None) -
                 return _convert_webp_to_png(image, width_px, height_px)
     except PdfAssetError:
         raise
-    except (UnidentifiedImageError, OSError, ValueError) as exc:
+    except (Image.DecompressionBombError, UnidentifiedImageError, OSError, ValueError) as exc:
         raise PdfAssetError("Invalid or corrupted image payload") from exc
     return PreparedImage(
         data=data,

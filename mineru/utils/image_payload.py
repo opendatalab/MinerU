@@ -7,6 +7,7 @@ import hashlib
 from pathlib import Path, PureWindowsPath
 import re
 import xml.etree.ElementTree as ElementTree
+from typing import Final
 from urllib.parse import urlsplit
 
 INLINE_IMAGE_DATA_URI_RE = re.compile(r"data:image/([^;\"']+);base64,([^\"']+)", re.DOTALL)
@@ -14,6 +15,8 @@ _SVG_NAMESPACE = "http://www.w3.org/2000/svg"
 _MINERU_SVG_MARKER = "wmf-emf"
 _MINERU_SVG_FALLBACK_ID = "mineru-raster-fallback"
 MAX_GENERATED_SVG_BYTES = 64 * 1024 * 1024
+MAX_DECODED_RASTER_DIMENSION: Final = 8_192
+MAX_DECODED_RASTER_PIXELS: Final = 16_000_000
 _MAX_GENERATED_SVG_NODES = 100_000
 _SAFE_SVG_ATTRIBUTES: dict[str, set[str]] = {
     "svg": {"width", "height", "viewBox", "data-mineru-generated"},
@@ -66,6 +69,21 @@ def normalize_image_extension(fmt: str) -> str:
     """规范化图片扩展名，保证同一图片格式生成稳定文件名。"""
     normalized = fmt.lower().split("+", 1)[0]
     return "jpg" if normalized in {"jpeg", "jpg"} else normalized
+
+
+def validate_decoded_raster_size(width: int, height: int) -> None:
+    """在 Pillow 解码像素前校验 raster 单边尺寸与总像素预算。"""
+    if (
+        width <= 0
+        or height <= 0
+        or width > MAX_DECODED_RASTER_DIMENSION
+        or height > MAX_DECODED_RASTER_DIMENSION
+        or width * height > MAX_DECODED_RASTER_PIXELS
+    ):
+        raise ValueError(
+            f"Decoded raster image exceeds limits: {width}x{height}; "
+            f"max_dimension={MAX_DECODED_RASTER_DIMENSION}, max_pixels={MAX_DECODED_RASTER_PIXELS}"
+        )
 
 
 def _parse_svg_root_strict(payload: bytes) -> ElementTree.Element:

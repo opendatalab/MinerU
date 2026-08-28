@@ -4,6 +4,7 @@ import base64
 from copy import deepcopy
 from datetime import datetime, timezone
 from io import BytesIO
+from unittest.mock import MagicMock
 from zipfile import ZIP_STORED, ZipFile
 
 from lxml import etree
@@ -13,6 +14,7 @@ import pytest
 from mineru.backend.analyze import doc_analyze
 from mineru.model.flash.epub import EpubPackage
 from mineru.render import render_epub
+from mineru.render._internal.epub import assets as epub_assets
 from mineru.types import (
     AlgorithmBodyBlock,
     ChartBlock,
@@ -33,6 +35,11 @@ from mineru.types import (
     TableBlock,
     TableBodyBlock,
     TextBlock,
+)
+from mineru.utils.image_payload import (
+    MAX_DECODED_RASTER_DIMENSION,
+    MAX_DECODED_RASTER_PIXELS,
+    validate_decoded_raster_size,
 )
 
 from _epub_test_utils import build_epub_fixture
@@ -335,6 +342,62 @@ def test_epub_assets_are_embedded_deduplicated_and_missing_sources_degrade_to_te
         assert not content.xpath("//xhtml:a[@href='missing.xhtml']", namespaces=_NS)
         assert "https://example.com/remote.png" not in archive.read("EPUB/text/content.xhtml").decode()
     assert requested == ["images/shared.png", "images/missing.png"]
+
+
+@pytest.mark.parametrize(
+    ("width", "height", "is_valid"),
+    [
+        (4_000, 4_000, True),
+        (8_192, 1, True),
+        (4_001, 4_000, False),
+        (8_193, 1, False),
+        (0, 1, False),
+        (-1, 1, False),
+    ],
+)
+def test_decoded_raster_size_uses_shared_dimension_and_pixel_limits(width: int, height: int, is_valid: bool) -> None:
+    """验证共享 raster 解码预算固定为单边 8192 与总像素 1600 万。"""
+    assert MAX_DECODED_RASTER_DIMENSION == 8_192
+    assert MAX_DECODED_RASTER_PIXELS == 16_000_000
+    if is_valid:
+        validate_decoded_raster_size(width, height)
+        return
+    with pytest.raises(ValueError, match="Decoded raster image exceeds limits"):
+        validate_decoded_raster_size(width, height)
+
+
+def test_epub_oversized_image_is_omitted_before_pixel_decode(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证 EPUB 超限 raster 在 load 前省略且保留图片识别文字。"""
+    image = MagicMock()
+    image.__enter__.return_value = image
+    image.format = "PNG"
+    image.size = (4_001, 4_000)
+    image.load.side_effect = AssertionError("oversized image must not be decoded")
+    monkeypatch.setattr(epub_assets.Image, "open", lambda _source: image)
+    middle = _middle(
+        _page(
+            0,
+            ImageBlock(
+                type="image",
+                index=0,
+                content=[
+                    ImageBodyBlock(
+                        type="image_body",
+                        index=0,
+                        content="Oversized OCR",
+                        image_path="images/oversized.png",
+                    )
+                ],
+            ),
+        )
+    )
+
+    payload = render_epub(middle, asset_resolver=lambda _path: b"oversized", modified_at=_FIXED_TIME)
+
+    with _archive(payload) as archive:
+        assert not [name for name in archive.namelist() if name.startswith("EPUB/assets/")]
+        assert "Oversized OCR" in _text(_xml(archive, "EPUB/text/content.xhtml"))
+    image.load.assert_not_called()
 
 
 def test_epub_mathml_failure_uses_visible_latex_without_false_manifest_property() -> None:

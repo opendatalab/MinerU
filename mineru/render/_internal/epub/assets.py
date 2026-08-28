@@ -18,6 +18,7 @@ from ....utils.image_payload import (
     extract_mineru_generated_svg_fallback,
     normalize_image_extension,
     parse_image_data_uri_strict,
+    validate_decoded_raster_size,
     validate_image_sidecar_path,
 )
 
@@ -149,6 +150,7 @@ def _prepare_epub_image(data: bytes, *, declared_extension: str | None) -> tuple
             detected = normalize_image_extension(image.format or "")
             if not detected:
                 raise ValueError("Unsupported image format")
+            validate_decoded_raster_size(*image.size)
             image.load()
             if expected is not None and expected != detected:
                 raise ValueError("Image bytes do not match the declared format")
@@ -159,7 +161,7 @@ def _prepare_epub_image(data: bytes, *, declared_extension: str | None) -> tuple
             output = BytesIO()
             converted.save(output, format="PNG")
             return output.getvalue(), "png"
-    except (UnidentifiedImageError, OSError, ValueError) as exc:
+    except (Image.DecompressionBombError, UnidentifiedImageError, OSError, ValueError) as exc:
         raise ValueError("Invalid or unsupported image payload") from exc
 
 

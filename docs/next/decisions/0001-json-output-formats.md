@@ -31,9 +31,9 @@ MinerU 当前同时存在三类 JSON 结构:
 | Structured Content | `structured-content` | `structured_content` | 面向 Agent 和新客户端的结构化内容 JSON，替代公开名称 `content-list-v2`。 |
 | HTML | `html` | `html` | 从 Middle JSON 或 Markdown 派生的 HTML 输出。 |
 
-`Structured Content` 是 Content List v2 这类结构的公开产品名。当前代码中的 `content_list_v2` 函数名属于实现现状，不进入 NEXT 版公开 CLI/API/SDK 格式契约。
+`Structured Content` 是面向新客户端的 Content List v2 类结构产品名。低层 `mineru.render` 同时正式保留 `content_list` 与 `content_list_v2` 两套 3.4.5 兼容输出；它们属于 SDK render 合同，但不因此进入 NEXT CLI 或 API Server 的正式格式集合。
 
-`json` 不作为正式格式名。`content_list_v2` / `content-list-v2` 不进入公开格式集合。NEXT 版尚未实现，没有历史兼容负担；除当前代码内部命名外，新实现和新文档只使用正式格式名。
+`json` 不作为正式格式名。CLI/API 产品文档继续使用 `structured-content` / `structured_content`，不把 `content-list-v2` / `content_list_v2` 作为同义格式名；需要精确兼容 3.4.5 V2 结构的 SDK 调用方使用 `mineru.render.RenderFormat.CONTENT_LIST_V2` 或 `render_content_list_v2()`。
 
 ## 输出边界
 
@@ -86,12 +86,12 @@ Structured Content 的版本演进通过 schema version 表达，而不是把公
 
 - CLI `--format` 应支持 `middle-json`、`content-list`、`structured-content`。
 - API `output_formats` 应支持 `middle_json`、`content_list`、`structured_content`。
-- 当前代码里的 `content_list_v2()` / `render_content_list_v2()` 需要迁移到 Structured Content 语义；公开接口只使用正式格式名。
+- `render_content_list()` / `render_content_list_v2()` 作为低层 SDK 兼容输出保留；新客户端优先使用 Structured Content。
 - doclib 的 `parsed/` 目录仍只持久化 Middle JSON；Content List v1 和 Structured Content 都是读取时派生结果。
 
 ## 后续动作
 
 1. 更新 CLI/API/SDK 文档中的格式名示例。
 2. 为 Structured Content 定义 schema version 字段和 validator。
-3. 将现有 `render_content_list_v2()` 的文档表述逐步迁移为 Structured Content render。
-4. 在实现计划中把 `content_list_v2` backend-specific converter 收敛任务改写为 Structured Content schema 收敛任务。
+3. 文档必须区分低层兼容 renderer 与 CLI/API 产品格式名，不能把 `content_list_v2` 当作 `structured_content` 的别名。
+4. Content List renderer 只从严格 MiddleJson 派生，不恢复 backend-specific converter。

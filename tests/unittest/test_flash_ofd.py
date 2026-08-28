@@ -5,6 +5,7 @@ import hashlib
 import json
 from io import BytesIO
 from pathlib import Path
+from unittest.mock import MagicMock
 from zipfile import ZIP_DEFLATED, ZipFile
 
 from lxml import etree
@@ -19,10 +20,12 @@ from mineru.doclib.services.parse_svc import ParseService
 from mineru.errors import InvalidRequestError
 from mineru.model.flash import OfdModel
 from mineru.model.flash.ofd import OfdParseError, detect_ofd
+from mineru.model.flash.ofd import images as ofd_images
 from mineru.model.flash.ofd.geometry import Affine, canonical_angle
 from mineru.model.flash.ofd.images import build_image_item
 from mineru.model.flash.ofd.models import MediaResource, OfdPageScene, ResourceRegistry
 from mineru.model.flash.ofd.package import OfdPackage
+from mineru.model.flash.ofd.path import OfdPathBudget, _segments
 from mineru.model.flash.ofd.reading_order import OfdReadingOrderProjector
 from mineru.model.flash.ofd.text import FontMetricResolver, OfdTextBudget, build_text_lines
 from mineru.parser import MinerUParser
@@ -239,6 +242,46 @@ def test_ofd_image_near_cardinal_rotation_accepts_both_directions(raw_angle: flo
     assert blocks[0]["type"] == BlockType.IMAGE
     assert blocks[0]["image_base64"] == item.image_base64
     assert canonical_angle(raw_angle) == expected_angle
+
+
+def test_ofd_oversized_image_is_rejected_before_pixel_decode(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证 OFD 超限 raster 在 Pillow load 前降级为无载荷 diagnostic。"""
+    image = MagicMock()
+    image.__enter__.return_value = image
+    image.size = (8_193, 1)
+    image.load.side_effect = AssertionError("oversized image must not be decoded")
+    monkeypatch.setattr(ofd_images.Image, "open", lambda _source: image)
+    package_buffer = BytesIO()
+    with ZipFile(package_buffer, "w", ZIP_DEFLATED) as archive:
+        archive.writestr("OFD.xml", "<OFD/>")
+        archive.writestr("Res/image.png", b"oversized")
+    package = OfdPackage(package_buffer.getvalue())
+    image_element = etree.fromstring(b'<ImageObject ID="1" Boundary="0 0 10 10" ResourceID="1"/>')
+
+    item = build_image_item(
+        image_element,
+        parent_transform=Affine(),
+        parent_clip=(0.0, 0.0, 100.0, 100.0),
+        resources=ResourceRegistry(
+            media={1: MediaResource(1, "Image", "PNG", "Res/image.png")},
+        ),
+        package=package,
+        paint_order=0,
+        layer_type="body",
+        template_id=None,
+    )
+
+    assert item is not None
+    assert item.image_base64 is None
+    assert item.diagnostic == "unsupported_image_payload"
+    image.load.assert_not_called()
+
+
+def test_ofd_path_rejects_unexpected_numeric_tokens_without_hanging() -> None:
+    """验证无活动命令或 C 后的数字 token 直接使当前非法路径降级。"""
+    assert _segments("1 2", Affine(), OfdPathBudget()) == []
+    assert _segments("M 0 0 C 1 2 L 3 4", Affine(), OfdPathBudget()) == []
+    assert _segments("M 0 0 L 10 0", Affine(), OfdPathBudget()) == [((0.0, 0.0), (10.0, 0.0))]
 
 
 def test_ofd_template_grid_recovers_table() -> None:
