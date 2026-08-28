@@ -19,7 +19,7 @@ from .document import HtmlDocument, parse_html_document
 from .errors import HtmlResourceLimitError
 from .resources import HtmlResourceContext
 from .selector import select_auto_content
-from .wire import inspect_mineru_html_wire, materialize_mineru_html_wire
+from .wire import decode_mineru_html_wire
 
 
 class HtmlConverter:
@@ -40,14 +40,14 @@ class HtmlConverter:
         if len(file_bytes) > MAX_HTML_BYTES:
             raise HtmlResourceLimitError(f"HTML resource limit exceeded: max_html_bytes={MAX_HTML_BYTES}")
         document = parse_html_document(file_bytes, source_context)
-        inspection = inspect_mineru_html_wire(document.body)
         resources = HtmlResourceContext(document.source_context, base_href=document.base_href)
-        if inspection.plan is not None:
-            blocks = materialize_mineru_html_wire(inspection.plan, resources)
+        wire_result = decode_mineru_html_wire(document.body, resources)
+        if wire_result.blocks is not None:
+            blocks = wire_result.blocks
             log_values = ("mineru_exact", 1.0, 1.0, "version_1")
         else:
-            if inspection.fallback_reason is not None:
-                logger.warning("MinerU HTML marker fallback reason={}", inspection.fallback_reason)
+            if wire_result.fallback_reason is not None:
+                logger.warning("MinerU HTML marker fallback reason={}", wire_result.fallback_reason)
             stylesheet = _load_stylesheet(document, resources)
             selection = select_auto_content(document.body, stylesheet)
             selected_root = append_referenced_notes(

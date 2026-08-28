@@ -14,6 +14,17 @@ from loguru import logger
 
 from ..common.index import strip_index_page_tail
 from ....backend.postprocess.inline import inline_plain_text, parse_inline_content
+from ....model.flash.html.wire import MINERU_HTML_VERSION
+from ....model.flash.html.wire.contracts import (
+    WIRE_BLOCK_CLASS,
+    WIRE_DOCUMENT_CLASS,
+    WIRE_INDEX_CLASS,
+    WIRE_LIST_CONTENT_CLASS,
+    WIRE_LIST_MARKER_CLASS,
+    WIRE_PAGE_BREAK_CLASS,
+    WIRE_PAGE_CLASS,
+    WIRE_VISUAL_BODY_CLASS,
+)
 from ..common.list_items import ListItem, parse_list_item_marker, reference_list_needs_bullets
 from ..common.planner import PlannedBlock, build_render_plan
 from .inline import (
@@ -61,7 +72,6 @@ from ....types import (
 )
 
 _STYLE_RESOURCE_NAME = "mineru.min.css"
-_MINERU_HTML_VERSION = "1"
 _MATHJAX_URL = "https://cdn.jsdelivr.net/npm/mathjax@4.1.2/tex-chtml.js"
 _MATHJAX_INTEGRITY = "sha384-zAhQQhdaMeHsMProNntGGg6nOUVcfuF9F22C3d1qJ9NZAVzCplXk1X85D2O5iufn"
 _PRISM_CORE_URL = "https://cdn.jsdelivr.net/npm/prismjs@1.30.0/components/prism-core.min.js"
@@ -127,8 +137,8 @@ class _HtmlRenderer:
         else:
             body = self._render_default_pages(planned_pages)
         article = (
-            f'<article class="mineru-document mineru-document--{self.mode.value}" '
-            f'data-mineru-html-version="{_MINERU_HTML_VERSION}" data-render-mode="{self.mode.value}">\n{body}\n</article>'
+            f'<article class="{WIRE_DOCUMENT_CLASS} {WIRE_DOCUMENT_CLASS}--{self.mode.value}" '
+            f'data-mineru-html-version="{MINERU_HTML_VERSION}" data-render-mode="{self.mode.value}">\n{body}\n</article>'
         )
         if not self.standalone:
             return article
@@ -163,8 +173,8 @@ class _HtmlRenderer:
                 page_idx = self.middle_json.pages[page_position].page_idx
             blocks = [rendered for planned in page if (rendered := self._render_planned_block(planned))]
             rendered_blocks = "\n".join(blocks)
-            sections.append(f'<section class="mineru-page" data-page-idx="{page_idx}">\n{rendered_blocks}\n</section>')
-        return '\n<hr class="mineru-page-break" aria-hidden="true">\n'.join(sections)
+            sections.append(f'<section class="{WIRE_PAGE_CLASS}" data-page-idx="{page_idx}">\n{rendered_blocks}\n</section>')
+        return f'\n<hr class="{WIRE_PAGE_BREAK_CLASS}" aria-hidden="true">\n'.join(sections)
 
     def _render_planned_block(self, planned: PlannedBlock) -> str:
         """过滤计划块、分派类型 visitor，并添加稳定来源元数据。"""
@@ -177,7 +187,7 @@ class _HtmlRenderer:
         if not content or not content.strip():
             return ""
         attrs = [
-            'class="mineru-block"',
+            f'class="{WIRE_BLOCK_CLASS}"',
             f'data-page-idx="{planned.page_idx}"',
         ]
         attrs.extend(_wire_block_attributes(block))
@@ -319,15 +329,15 @@ class _HtmlRenderer:
                     attrs.append(f'value="{parsed.value}"')
                 expected_value = parsed.value + 1
             marker_html = (
-                f'<span class="mineru-list-marker">{html.escape(_replace_html_controls(marker), quote=False)}</span>'
+                f'<span class="{WIRE_LIST_MARKER_CLASS}">{html.escape(_replace_html_controls(marker), quote=False)}</span>'
                 if marker
                 else ""
             )
             if class_name == "mineru-list--explicit" and not marker_html:
-                marker_html = '<span class="mineru-list-marker"></span>'
+                marker_html = f'<span class="{WIRE_LIST_MARKER_CLASS}"></span>'
             items.append(
                 {
-                    "content": f'{marker_html}<span class="mineru-list-content">{rendered.html}</span>',
+                    "content": f'{marker_html}<span class="{WIRE_LIST_CONTENT_CLASS}">{rendered.html}</span>',
                     "attrs": attrs,
                     "nested": [],
                 }
@@ -371,7 +381,7 @@ class _HtmlRenderer:
             rendered, attrs = self._render_index_leaf(child)
             items.append({"content": rendered, "attrs": attrs, "nested": []})
         inner = _serialize_index_items(items)
-        attrs = ['class="mineru-index"', 'aria-label="Table of contents"', *_wire_block_attributes(block)]
+        attrs = [f'class="{WIRE_INDEX_CLASS}"', 'aria-label="Table of contents"', *_wire_block_attributes(block)]
         return f"<nav {' '.join(attrs)}><ul>{inner}</ul></nav>" if inner else ""
 
     def _render_index_list(self, block: IndexBlock) -> str:
@@ -787,7 +797,7 @@ def _wrap_visual_body(
     kind: str,
 ) -> str:
     """为视觉主体添加不参与 CSS 类型推断的精确机器容器。"""
-    attrs = [f'class="mineru-visual-body mineru-visual-body--{kind}"', *_wire_block_attributes(block)]
+    attrs = [f'class="{WIRE_VISUAL_BODY_CLASS} {WIRE_VISUAL_BODY_CLASS}--{kind}"', *_wire_block_attributes(block)]
     return f"<div {' '.join(attrs)}>{content}</div>"
 
 

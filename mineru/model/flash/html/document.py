@@ -43,7 +43,9 @@ _MEANINGFUL_FORMULA_SIBLING_TAGS = frozenset(
     {"audio", "br", "canvas", "figure", "hr", "iframe", "image", "img", "object", "svg", "table", "video"}
 )
 _ASCIIMATH_SCRIPT_TYPE_RE = re.compile(r"^math/asciimath(?:\s*;.*)?$", re.IGNORECASE)
-_HTML_ENCODING_DECLARATION_RE = re.compile(rb"(?is)<(?:meta\b[^>]*\bcharset\s*=|\?xml\b[^>]*\bencoding\s*=)")
+_HTML_ENCODING_DECLARATION_CANDIDATE_RE = re.compile(rb"(?is)<(?:meta\b[^>]*\bcharset\s*=|\?xml\b[^>]*\bencoding\s*=)")
+_XML_ENCODING_DECLARATION_RE = re.compile(rb"(?is)^<\?xml\b[^>]*\bencoding\s*=")
+_META_CONTENT_CHARSET_RE = re.compile(r"\bcharset\s*=", re.IGNORECASE)
 _UNICODE_BOMS = (b"\x00\x00\xfe\xff", b"\xff\xfe\x00\x00", b"\xef\xbb\xbf", b"\xfe\xff", b"\xff\xfe")
 
 
@@ -158,11 +160,41 @@ def _normalize_transport_encoding(value: str | None) -> str | None:
         return None
 
 
+def _has_html_encoding_declaration(file_bytes: bytes) -> bool:
+    """只承认首个 4 KiB 内由 HTML 语法解析出的真实编码声明。"""
+    prefix = file_bytes[:4096]
+    if not _HTML_ENCODING_DECLARATION_CANDIDATE_RE.search(prefix):
+        return False
+    if _XML_ENCODING_DECLARATION_RE.match(prefix):
+        return True
+
+    declaration_parser = lxml_html.HTMLParser(
+        recover=True,
+        no_network=True,
+        remove_comments=False,
+        huge_tree=False,
+        encoding="iso-8859-1",
+    )
+    try:
+        root = lxml_html.document_fromstring(prefix, parser=declaration_parser)
+    except (etree.ParserError, etree.XMLSyntaxError, UnicodeError, ValueError):
+        return False
+    for element in root.iter():
+        if not isinstance(element.tag, str) or local_name(element) != "meta":
+            continue
+        if (element.get("charset") or "").strip():
+            return True
+        http_equiv = (element.get("http-equiv") or "").strip().casefold()
+        if http_equiv == "content-type" and _META_CONTENT_CHARSET_RE.search(element.get("content") or ""):
+            return True
+    return False
+
+
 def _html_parser_input(file_bytes: bytes, *, transport_encoding: str | None = None) -> bytes | str:
     """无显式编码且符合 UTF-8 时先解码，避免 lxml 按单字节旧编码解释正文。"""
     if transport_encoding is not None:
         return file_bytes
-    if file_bytes.startswith(_UNICODE_BOMS) or _HTML_ENCODING_DECLARATION_RE.search(file_bytes[:4096]):
+    if file_bytes.startswith(_UNICODE_BOMS) or _has_html_encoding_declaration(file_bytes):
         return file_bytes
     try:
         return file_bytes.decode("utf-8")

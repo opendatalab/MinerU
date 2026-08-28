@@ -27,6 +27,7 @@ from mineru.model.flash.html import document as html_document_module
 from mineru.model.flash.html import resources as html_resources_module
 from mineru.model.flash.html import selector as html_selector_module
 from mineru.model.flash.html.resources import HtmlResourceContext
+from mineru.model.flash.html.wire import decode_mineru_html_wire
 from mineru.parser import ParseResult, parse, parse_async
 from mineru.parser import api_server
 from mineru.parser.api_server import CreateJobRequest, FileStore
@@ -265,6 +266,23 @@ def test_html_doc_analyze_projects_static_semantics_and_renderers() -> None:
 def test_html_charsetless_utf8_preserves_non_ascii_text() -> None:
     """验证无 charset 的 UTF-8 字节不会被 lxml 按单字节旧编码解释。"""
     payload = "<html><body><p>中文内容 café</p></body></html>".encode()
+
+    markdown = render_markdown(doc_analyze(payload, file_suffix="html")[0])
+
+    assert "中文内容 café" in markdown
+
+
+@pytest.mark.parametrize(
+    "inert_markup",
+    [
+        '<!-- <meta charset="windows-1252"> -->',
+        '<script>const marker = `<meta charset="windows-1252">`;</script>',
+    ],
+    ids=["comment", "script"],
+)
+def test_html_charsetless_utf8_ignores_inert_encoding_declarations(inert_markup: str) -> None:
+    """验证注释和脚本中的伪编码声明不会绕过无 charset UTF-8 回退。"""
+    payload = f"{inert_markup}<html><body><p>中文内容 café</p></body></html>".encode()
 
     markdown = render_markdown(doc_analyze(payload, file_suffix="html")[0])
 
@@ -1306,6 +1324,7 @@ def test_html_versioned_wire_roundtrips_all_semantic_types() -> None:
     source = _wire_contract_middle()
     default_html = render_html(source, standalone=False)
     full_html = render_html(source, mode=RenderMode.FULL, standalone=False)
+    standalone_html = render_html(source, standalone=True)
     default_root = BeautifulSoup(default_html, "html.parser").select_one(".mineru-document")
     full_root = BeautifulSoup(full_html, "html.parser").select_one(".mineru-document")
 
@@ -1319,6 +1338,7 @@ def test_html_versioned_wire_roundtrips_all_semantic_types() -> None:
 
     default_middle = doc_analyze(default_html.encode(), file_suffix="html")[0]
     full_middle = doc_analyze(full_html.encode(), file_suffix="html")[0]
+    standalone_middle = doc_analyze(standalone_html.encode(), file_suffix="html")[0]
     auxiliary_types = {BlockType.HEADER, BlockType.FOOTER, BlockType.PAGE_NUMBER, BlockType.ASIDE_TEXT}
     expected_default = [
         _semantic_block_signature(block) for block in source.pages[0].blocks if block.type not in auxiliary_types
@@ -1326,11 +1346,282 @@ def test_html_versioned_wire_roundtrips_all_semantic_types() -> None:
     expected_full = [_semantic_block_signature(block) for block in source.pages[0].blocks]
 
     assert [_semantic_block_signature(block) for block in default_middle.pages[0].blocks] == expected_default
+    assert [_semantic_block_signature(block) for block in standalone_middle.pages[0].blocks] == expected_default
     assert [_semantic_block_signature(block) for block in full_middle.pages[0].blocks] == expected_full
     assert len(full_middle.pages) == 1 and full_middle.pages[0].page_idx == 0
     assert next(block for block in full_middle.pages[0].blocks if block.type == BlockType.EQUATION).content == "y^2\\tag{1}"  # type: ignore[union-attr]
     roundtrip_text = next(block for block in full_middle.pages[0].blocks if block.type == BlockType.TEXT).content  # type: ignore[union-attr]
     assert roundtrip_text == "Text & value < 3 <eq>x+1</eq> &lt;eq&gt;literal&lt;/eq&gt;"
+
+
+def test_html_wire_decode_distinguishes_absent_empty_and_noncanonical() -> None:
+    """验证单一 decode 入口区分普通 HTML、合法空 wire 与非 canonical v1。"""
+    source = MiddleJson.model_validate(
+        {
+            "pages": [{"page_idx": 0, "blocks": []}],
+            "is_full_document": True,
+            "file_suffix": "html",
+            "effort": "flash",
+            "parse_mode": "txt",
+            "mineru_version": "test",
+        }
+    )
+    ordinary = html_document_module.parse_html_document(b"<html><body><p>ordinary</p></body></html>")
+    empty = html_document_module.parse_html_document(render_html(source, standalone=False).encode())
+    edited_soup = BeautifulSoup(render_html(source, standalone=False), "html.parser")
+    edited_soup.select_one(".mineru-document").append("EDITED")
+    edited = html_document_module.parse_html_document(str(edited_soup).encode())
+
+    ordinary_result = decode_mineru_html_wire(
+        ordinary.body,
+        HtmlResourceContext(ordinary.source_context),
+    )
+    empty_result = decode_mineru_html_wire(empty.body, HtmlResourceContext(empty.source_context))
+    edited_result = decode_mineru_html_wire(edited.body, HtmlResourceContext(edited.source_context))
+
+    assert ordinary_result.blocks is None and ordinary_result.fallback_reason is None
+    assert empty_result.blocks == [] and empty_result.fallback_reason is None
+    assert edited_result.blocks is None and edited_result.fallback_reason == "non_canonical_wire"
+
+
+@pytest.mark.parametrize(("parent_type", "body_type"), [("image", "image_body"), ("chart", "chart_body")])
+@pytest.mark.parametrize("with_main_image", [False, True])
+def test_html_versioned_wire_preserves_visual_rich_content(
+    parent_type: str,
+    body_type: str,
+    with_main_image: bool,
+) -> None:
+    """验证 visual 富内容及嵌套图片按语义往返且不升级为主图片载荷。"""
+    body: dict[str, object] = {
+        "type": body_type,
+        "index": 0,
+        "content": (
+            '<p>Recognized <eq>x+1</eq> <a href="https://example.com/a">link</a></p>'
+            '<img src="https://example.com/nested.png" alt="Nested">'
+        ),
+    }
+    if with_main_image:
+        body["image_url"] = "https://example.com/main.png"
+    source = MiddleJson.model_validate(
+        {
+            "pages": [
+                {
+                    "page_idx": 0,
+                    "blocks": [
+                        {
+                            "type": parent_type,
+                            "index": 0,
+                            "sub_type": "diagram",
+                            "content": [body],
+                        }
+                    ],
+                }
+            ],
+            "is_full_document": True,
+            "file_suffix": "html",
+            "effort": "flash",
+            "parse_mode": "txt",
+            "mineru_version": "test",
+        }
+    )
+    rendered = render_html(source, standalone=False)
+
+    middle, model = doc_analyze(rendered.encode(), file_suffix="html")
+    raw_body = model.pages[0][0]
+    normalized = render_html(middle, standalone=False)
+    normalized_body = BeautifulSoup(normalized, "html.parser").select_one(f'[data-block-type="{body_type}"]')
+    normalized_middle = doc_analyze(normalized.encode(), file_suffix="html")[0]
+    stable_body = BeautifulSoup(render_html(normalized_middle, standalone=False), "html.parser").select_one(
+        f'[data-block-type="{body_type}"]'
+    )
+
+    assert '<p>Recognized <eq>x+1</eq> <a href="https://example.com/a">link</a></p>' in str(raw_body["content"])
+    assert '<img alt="Nested" src="https://example.com/nested.png">' in str(raw_body["content"])
+    assert raw_body.get("image_url") == ("https://example.com/main.png" if with_main_image else None)
+    assert normalized_body is not None
+    nested_images = [image for image in normalized_body.find_all("img") if not image.get("class")]
+    assert [image.get("src") for image in nested_images] == ["https://example.com/nested.png"]
+    assert str(normalized_body) == str(stable_body)
+
+
+def test_html_versioned_wire_roundtrips_canonical_visual_body_variants() -> None:
+    """验证 flowchart 与 table 的固定载荷分支都通过 exact typed plan 往返。"""
+    source = MiddleJson.model_validate(
+        {
+            "pages": [
+                {
+                    "page_idx": 0,
+                    "blocks": [
+                        {
+                            "type": "image",
+                            "index": 0,
+                            "sub_type": "flowchart",
+                            "content": [
+                                {
+                                    "type": "image_body",
+                                    "index": 0,
+                                    "content": "```mermaid\ngraph TD\nA-->B\n```",
+                                }
+                            ],
+                        },
+                        {
+                            "type": "image",
+                            "index": 1,
+                            "sub_type": "flowchart",
+                            "content": [
+                                {
+                                    "type": "image_body",
+                                    "index": 1,
+                                    "content": "Plain non-Mermaid content",
+                                    "image_url": "https://example.com/plain.png",
+                                }
+                            ],
+                        },
+                        {
+                            "type": "table",
+                            "index": 2,
+                            "content": [{"type": "table_body", "index": 2, "content": "A  B\n1  2"}],
+                        },
+                        {
+                            "type": "table",
+                            "index": 3,
+                            "content": [
+                                {
+                                    "type": "table_body",
+                                    "index": 3,
+                                    "content": "",
+                                    "image_url": "https://example.com/table.png",
+                                }
+                            ],
+                        },
+                        {
+                            "type": "table",
+                            "index": 4,
+                            "content": [{"type": "table_body", "index": 4, "content": ""}],
+                        },
+                    ],
+                }
+            ],
+            "is_full_document": True,
+            "file_suffix": "html",
+            "effort": "flash",
+            "parse_mode": "txt",
+            "mineru_version": "test",
+        }
+    )
+    rendered = render_html(source, standalone=False)
+    document = html_document_module.parse_html_document(rendered.encode())
+
+    decode_result = decode_mineru_html_wire(document.body, HtmlResourceContext(document.source_context))
+    middle, _ = doc_analyze(rendered.encode(), file_suffix="html")
+    bodies = [block.content[0] for block in middle.pages[0].blocks]
+
+    assert decode_result.blocks is not None and decode_result.fallback_reason is None
+    assert bodies[0].content == "```mermaid\ngraph TD\nA-->B\n```"
+    assert bodies[1].content == "Plain non-Mermaid content" and bodies[1].image_url == "https://example.com/plain.png"
+    assert bodies[2].content == "A  B\n1  2"
+    assert bodies[3].content == "" and bodies[3].image_url == "https://example.com/table.png"
+    assert bodies[4].content == "" and bodies[4].image_url is None
+
+
+def test_html_versioned_wire_distinguishes_index_carrier_from_inline_link() -> None:
+    """验证未链接目录项中的普通 anchor 不会被误认为 renderer 目录外壳。"""
+    source = MiddleJson.model_validate(
+        {
+            "pages": [
+                {
+                    "page_idx": 0,
+                    "blocks": [
+                        {
+                            "type": "index",
+                            "index": 0,
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "content": ("<hyperlink>External<url>https://example.com/docs</url></hyperlink>"),
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ],
+            "is_full_document": True,
+            "file_suffix": "html",
+            "effort": "flash",
+            "parse_mode": "txt",
+            "mineru_version": "test",
+        }
+    )
+    rendered = render_html(source, standalone=False)
+    document = html_document_module.parse_html_document(rendered.encode())
+
+    decode_result = decode_mineru_html_wire(document.body, HtmlResourceContext(document.source_context))
+    middle = doc_analyze(rendered.encode(), file_suffix="html")[0]
+
+    assert decode_result.blocks is not None and decode_result.fallback_reason is None
+    assert "[External](https://example.com/docs)" in render_markdown(middle)
+
+
+@pytest.mark.parametrize("edit_kind", ["index_sibling", "visual_sibling"])
+def test_html_noncanonical_wire_structural_edits_use_generic_fallback(edit_kind: str) -> None:
+    """验证 carrier 外结构统一触发 generic fallback，而不是增加逐 case 物化兼容。"""
+    if edit_kind == "index_sibling":
+        source = MiddleJson.model_validate(
+            {
+                "pages": [
+                    {
+                        "page_idx": 0,
+                        "blocks": [
+                            {
+                                "type": "paragraph_title",
+                                "index": 0,
+                                "anchor": "target",
+                                "level": 2,
+                                "content": "Target",
+                            },
+                            {
+                                "type": "index",
+                                "index": 1,
+                                "content": [
+                                    {
+                                        "type": "paragraph_title",
+                                        "index": 2,
+                                        "anchor": "target",
+                                        "level": 2,
+                                        "content": "Title",
+                                    }
+                                ],
+                            },
+                        ],
+                    }
+                ],
+                "is_full_document": True,
+                "file_suffix": "html",
+                "effort": "flash",
+                "parse_mode": "txt",
+                "mineru_version": "test",
+            }
+        )
+        soup = BeautifulSoup(render_html(source, standalone=False), "html.parser")
+        target = soup.select_one('.mineru-index li[data-block-type="paragraph_title"]')
+        assert target is not None
+        target.append(" ADDED")
+    else:
+        soup = BeautifulSoup(render_html(_wire_contract_middle(), standalone=False), "html.parser")
+        target = soup.select_one('[data-block-type="image_body"]')
+        assert target is not None
+        target.append(soup.new_tag("img", src="https://example.com/added.png", alt="Added"))
+    document = html_document_module.parse_html_document(str(soup).encode())
+
+    decode_result = decode_mineru_html_wire(document.body, HtmlResourceContext(document.source_context))
+    middle, model = doc_analyze(str(soup).encode(), file_suffix="html")
+
+    assert decode_result.blocks is None and decode_result.fallback_reason == "non_canonical_wire"
+    if edit_kind == "index_sibling":
+        assert "ADDED" in render_markdown(middle)
+    else:
+        image_urls = [str(block["image_url"]) for block in model.pages[0] if block.get("image_url")]
+        assert "https://example.com/added.png" in image_urls
 
 
 @pytest.mark.parametrize("outside_kind", ["text", "inline"])

@@ -15,12 +15,14 @@
 - HTML 规范后缀统一为 `html`，使用 `flash/txt`、整本文档、单逻辑页、无 bbox 的 ModelJson/MiddleJson 2.0 路径。
 - 只解析静态源码，不执行 JavaScript、不启动浏览器、不生成布局坐标。
 - 默认固定使用保守 `auto` 正文选择：高置信候选进入正文投影，其余情况回退完整 body；首版不公开模式参数。
-- MinerU 自身 renderer 输出版本化 `data-mineru-html-version="1"` 机器契约。版本匹配且整棵 marker 树合法时，
-  parser 跳过 `auto` 裁剪，按 `data-block-type` 精确恢复顶层 block、visual child、列表/目录叶子及关键元数据。
+- MinerU 自身 renderer 输出版本化 `data-mineru-html-version="1"` 机器契约。只有当前 renderer 能生成的 canonical
+  marker 树进入精确路径，parser 跳过 `auto` 裁剪并按 `data-block-type` 恢复顶层 block、visual child、列表/目录叶子及关键元数据。
 - `data-block-type` 使用原始下划线形式的 `BlockType` 值，是新版 MinerU HTML 的唯一机器类型来源；
   `mineru-caption`、`mineru-footnote` 和 `mineru-figure--*` 等 class 只负责样式。
-- 精确解码先完成无资源副作用的全树校验，再加载图片并一次性物化 raw blocks。未知版本、缺失/重复 body、
-  非法类型或父子类型不匹配均丢弃整条精确路径，从干净 DOM 进入通用解析，不保留部分结果。
+- 精确解码先把固定 DOM grammar 解析为无资源副作用的 typed plan，再加载图片并一次性物化 raw blocks。未知版本或
+  非 canonical v1 均丢弃整条精确路径，从干净 DOM 进入通用解析；人工编辑后的机器 HTML 不承诺保留原 block 类型和元数据。
+- Image/Chart body 的 renderer-owned 图片恢复为唯一主图片载荷；rich-content carrier 内的安全 HTML（包括嵌套图片）
+  按语义规范化后保留在 `content`，不会提升为额外主图片载荷。
 - 旧 MinerU HTML 与普通互联网 HTML 都走通用路径，只承诺正文、图片、表格、链接及可识别公式的内容兼容，
   不承诺按旧 class suffix 精确恢复 Chart、Index 或 annotation 类型。
 - EPUB XHTML 与 standalone HTML 共用静态 markup projector，继续输出既有标题、正文、列表、表格、图片、代码、
