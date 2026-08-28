@@ -17,7 +17,7 @@ from reportlab.platypus.paraparser import ParaParser
 
 from ....types import CodeInlineSpan, EquationInlineSpan, HyperlinkSpan, InlineSpan, TextSpan
 from .formula import FormulaRenderer, InlineFormulaImage, PdfFormulaError
-from .styles import ACCENT_COLOR, HAN_FONT, JAPANESE_FONT, KOREAN_FONT, MONO_FONT
+from .styles import ACCENT_COLOR, HAN_FONT, JAPANESE_FONT, KOREAN_FONT, MONO_FONT, UNICODE_FALLBACK_FONT
 
 _BOOKMARK_SAFE_RE = re.compile(r"[^A-Za-z0-9_]+")
 _BOOKMARK_MAX_LENGTH = 80
@@ -313,7 +313,7 @@ def _resolve_link_target(url: str, anchors: PdfAnchorRegistry) -> str | None:
 
 
 def _font_for_character(character: str) -> str | None:
-    """按 Unicode 区段为中日韩及其它非 Latin 字符选择标准 CID 字体。"""
+    """为中日韩字符选择 CID 字体，并为非 WinAnsi 字符选择 Unicode 回退。"""
     codepoint = ord(character)
     if 0x3040 <= codepoint <= 0x30FF or 0x31F0 <= codepoint <= 0x31FF or 0xFF66 <= codepoint <= 0xFF9D:
         return JAPANESE_FONT
@@ -325,9 +325,13 @@ def _font_for_character(character: str) -> str | None:
         or 0x4E00 <= codepoint <= 0x9FFF
         or 0xF900 <= codepoint <= 0xFAFF
         or 0xFF00 <= codepoint <= 0xFF65
-        or codepoint >= 0x10000
+        or 0x20000 <= codepoint <= 0x2FA1F
     ):
         return HAN_FONT
+    try:
+        character.encode("cp1252")
+    except UnicodeEncodeError:
+        return UNICODE_FALLBACK_FONT
     return None
 
 

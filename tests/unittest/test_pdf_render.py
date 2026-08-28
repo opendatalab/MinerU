@@ -144,6 +144,31 @@ def test_pdf_renders_inline_and_display_formulas_as_vector_paths_with_links() ->
     assert b" m" in stream and (b" c" in stream or b" l" in stream)
 
 
+def test_pdf_unicode_fallback_and_script_styles_avoid_black_squares() -> None:
+    """验证 Latin Extended、独立重音、希腊文和西里尔文使用确定性字体回退。"""
+    middle = _middle(
+        _page(
+            0,
+            TextBlock(
+                type="text",
+                index=0,
+                content=[
+                    {"type": "text", "content": "Jędrzej J˛edrzej λ Ж 中文 x"},
+                    {"type": "text", "content": "2", "styles": ["superscript"]},
+                ],
+            ),
+        )
+    )
+
+    reader = _reader(render_pdf(middle))
+    text = _page_text(reader, 0)
+    stream = reader.pages[0].get_contents().get_data()
+
+    assert "Jędrzej J˛edrzej λ Ж 中文 x2" in text.replace("\n", "")
+    assert "■" not in text
+    assert b" Ts" in stream
+
+
 def test_pdf_formula_failures_fall_back_to_visible_latex(monkeypatch: pytest.MonkeyPatch) -> None:
     """验证 ZiaMath 失败时行内与行间公式均保留可见 LaTeX。"""
     original_render = FormulaRenderer.render

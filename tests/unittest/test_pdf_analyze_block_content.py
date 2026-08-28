@@ -18,6 +18,7 @@ from mineru.backend.analysis.pdf.text.native import (
     POST_OCR_FALLBACK_CONTENT_KEY,
     POST_OCR_FALLBACK_SCORE_KEY,
 )
+from mineru.model.flash.pdf.text_styles import PDF_NATIVE_SCRIPT_MARKUP_KEY, materialize_pdf_inline_spans
 from mineru.types import BlockType, ContentType, MiddleJson, ModelJson
 
 from _span_test_utils import inline, inline_text
@@ -645,3 +646,36 @@ def test_existing_text_content_is_preserved_while_lines_are_refreshed() -> None:
 
     assert block["content"] == "existing content"
     assert block["lines"] == [{"bbox": [0.0, 0.0, 0.5, 0.01]}]
+
+
+def test_native_script_ownership_propagates_only_when_content_is_filled() -> None:
+    """验证原生脚本标记只随空 block 回填，并在 MiddleJson 边界前被消费。"""
+    owned_line = _AnalyzeLine(
+        bbox=(0.0, 0.0, 100.0, 1.0),
+        spans=[
+            _AnalyzeSpan(
+                type=ContentType.TEXT,
+                bbox=(0.0, 0.0, 100.0, 1.0),
+                content="A<sup>2</sup>",
+                metadata={PDF_NATIVE_SCRIPT_MARKUP_KEY: True},
+            )
+        ],
+    )
+    filled_block = {"type": BlockType.TEXT, "content": ""}
+    existing_block = {"type": BlockType.TEXT, "content": "literal <sup>text</sup>"}
+
+    text_content._apply_block_content_and_line_metadata(
+        [filled_block, existing_block],
+        {0: [owned_line], 1: [owned_line]},
+        (100.0, 100.0),
+    )
+
+    assert filled_block[PDF_NATIVE_SCRIPT_MARKUP_KEY] is True
+    assert PDF_NATIVE_SCRIPT_MARKUP_KEY not in existing_block
+
+    materialize_pdf_inline_spans([filled_block, existing_block])
+
+    assert inline_text(filled_block["content"]) == "A2"
+    assert filled_block["content"][1]["styles"] == ["superscript"]
+    assert inline_text(existing_block["content"]) == "literal <sup>text</sup>"
+    assert PDF_NATIVE_SCRIPT_MARKUP_KEY not in filled_block

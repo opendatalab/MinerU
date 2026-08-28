@@ -16,6 +16,7 @@ from .....model.ocr.image import rotate_vertical_crop_if_needed
 from .....model.ocr.results import OcrConfidence
 from .....model.flash.pdf.document import PDFPage, get_lines_from_chars
 from .....model.flash.pdf.text_styles import (
+    PDF_NATIVE_SCRIPT_MARKUP_KEY,
     PDFTextLinkLine,
     PDFTextStyleLine,
     apply_pdf_text_links,
@@ -268,6 +269,15 @@ def _lines_to_block_content(lines: list[_AnalyzeLine], block_type: str) -> str:
     )
 
 
+def _lines_have_native_script_markup(lines: list[_AnalyzeLine]) -> bool:
+    """判断组行结果是否实际包含 detector-owned 上下标标签。"""
+    return any(
+        span.metadata.get(PDF_NATIVE_SCRIPT_MARKUP_KEY) is True and ("<sup>" in span.content or "<sub>" in span.content)
+        for line in lines
+        for span in line.spans
+    )
+
+
 def _build_ocr_det_line_items(lines: list[_AnalyzeLine], page_size: tuple[float, float]) -> list[dict[str, Any]]:
     """将 Analyze 私有行转换为归一化行框。"""
     line_items = []
@@ -298,6 +308,8 @@ def _apply_block_content_and_line_metadata(
         has_nonempty_content = bool(block_content.strip()) if isinstance(block_content, str) else bool(block_content)
         if not has_nonempty_content:
             block_item["content"] = _lines_to_block_content(lines, block_type)
+            if _lines_have_native_script_markup(lines):
+                block_item[PDF_NATIVE_SCRIPT_MARKUP_KEY] = True
 
         if block_type in LINE_METADATA_BLOCK_TYPES:
             block_item["lines"] = _build_ocr_det_line_items(lines, page_size)

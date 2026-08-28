@@ -31,6 +31,7 @@ from mineru.model.flash.pdf.document import PDFDocument, PDFLinkAnnotation
 from mineru.model.flash.pdf.text_styles import (
     PDF_FONT_FORCE_BOLD_FLAG,
     PDF_FONT_ITALIC_FLAG,
+    PDF_NATIVE_SCRIPT_MARKUP_KEY,
     PDFTextLinkLine,
     PDFTextLinkRange,
     PDFTextStyleLine,
@@ -1531,6 +1532,86 @@ def test_applies_style_inside_superscript_without_crossing_tags() -> None:
     apply_pdf_text_styles(blocks, lines, (100.0, 100.0))
 
     assert _span_snapshot(blocks[0]["content"]) == ('value <sup><text style="strikethrough">deleted</text></sup> tail')
+
+
+@pytest.mark.parametrize(
+    ("tag", "style"),
+    [
+        ("sup", "superscript"),
+        ("sub", "subscript"),
+    ],
+)
+def test_materializes_owned_script_markup(tag: str, style: str) -> None:
+    """验证 producer-owned 上标与下标标签都转换为结构化 TextSpan 样式。"""
+    block = {
+        "type": BlockType.TEXT,
+        "content": f"A<{tag}>2</{tag}>B",
+        PDF_NATIVE_SCRIPT_MARKUP_KEY: True,
+    }
+
+    materialize_pdf_inline_spans([block])
+
+    assert _span_snapshot(block["content"]) == f'A<text style="{style}">2</text>B'
+    assert PDF_NATIVE_SCRIPT_MARKUP_KEY not in block
+
+
+def test_materializes_owned_superscript_with_style_and_hyperlink() -> None:
+    """验证 producer-owned 上标会与删除线和链接语义共同物化。"""
+    target = "https://script.example.test"
+    blocks = [
+        {
+            "type": BlockType.TEXT,
+            "bbox": [0.0, 0.0, 1.0, 1.0],
+            "content": "value <sup>ref</sup> tail",
+            PDF_NATIVE_SCRIPT_MARKUP_KEY: True,
+        }
+    ]
+    link_lines = [
+        PDFTextLinkLine(
+            (10.0, 10.0, 90.0, 20.0),
+            "valuereftail",
+            (PDFTextLinkRange(5, 8, target),),
+            0,
+        )
+    ]
+    style_lines = [
+        PDFTextStyleLine(
+            (10.0, 10.0, 90.0, 20.0),
+            "valuereftail",
+            (PDFTextStyleRange(5, 8, ("strikethrough",)),),
+            0,
+        )
+    ]
+
+    apply_pdf_text_links(blocks, link_lines, (100.0, 100.0))
+    apply_pdf_text_styles(blocks, style_lines, (100.0, 100.0))
+
+    assert _span_snapshot(blocks[0]["content"]) == (
+        f'value <hyperlink><text style="strikethrough,superscript">ref</text><url>{target}</url></hyperlink> tail'
+    )
+    assert PDF_NATIVE_SCRIPT_MARKUP_KEY not in blocks[0]
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "A<sup>B</sub>",
+        "A<sup><sub>B</sub></sup>",
+        "A<sup>B",
+    ],
+)
+def test_malformed_owned_script_markup_remains_literal(content: str) -> None:
+    """验证不平衡或嵌套的 producer-owned 标签按普通字面文本回退。"""
+    block = {
+        "type": BlockType.TEXT,
+        "content": content,
+        PDF_NATIVE_SCRIPT_MARKUP_KEY: True,
+    }
+
+    materialize_pdf_inline_spans([block])
+
+    assert inline_text(block["content"]) == content
+    assert PDF_NATIVE_SCRIPT_MARKUP_KEY not in block
 
 
 def test_filters_italic_before_merging_overlapping_style_ranges() -> None:

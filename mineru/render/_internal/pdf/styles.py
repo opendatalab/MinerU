@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from importlib import resources
 from threading import RLock
 
 from reportlab.lib import colors
@@ -11,6 +12,7 @@ from reportlab.lib.enums import TA_CENTER, TA_LEFT
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.lib.units import mm
 from reportlab.pdfbase import cidfonts, pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 
 PAGE_MARGIN = 20 * mm
 BODY_FONT = "Helvetica"
@@ -19,6 +21,7 @@ MONO_FONT = "Courier"
 HAN_FONT = "STSong-Light"
 JAPANESE_FONT = "HeiseiMin-W3"
 KOREAN_FONT = "HYSMyeongJo-Medium"
+UNICODE_FALLBACK_FONT = "MinerU-DejaVuSans"
 
 ACCENT_COLOR = colors.HexColor("#0b6fc2")
 BACKGROUND_COLOR = colors.HexColor("#ffffff")
@@ -53,7 +56,7 @@ class PdfStyleSet:
 
 def build_pdf_styles() -> PdfStyleSet:
     """注册标准 CID 字体并构造无外部字体依赖的打印样式集。"""
-    _register_cid_fonts()
+    _register_pdf_fonts()
     body = ParagraphStyle(
         "MinerU PDF Body",
         fontName=BODY_FONT,
@@ -165,13 +168,23 @@ def build_pdf_styles() -> PdfStyleSet:
     )
 
 
-def _register_cid_fonts() -> None:
-    """在进程级 ReportLab registry 中幂等注册中日韩标准 CID 字体。"""
+def _register_pdf_fonts() -> None:
+    """幂等注册中日韩 CID 字体与 ziafont 自带 Unicode 回退字体。"""
     with _FONT_LOCK:
         registered = set(pdfmetrics.getRegisteredFontNames())
         for font_name in (HAN_FONT, JAPANESE_FONT, KOREAN_FONT):
             if font_name not in registered:
                 pdfmetrics.registerFont(cidfonts.UnicodeCIDFont(font_name))
+        if UNICODE_FALLBACK_FONT not in registered:
+            font_path = resources.files("ziafont").joinpath("fonts", "DejaVuSans.ttf")
+            pdfmetrics.registerFont(TTFont(UNICODE_FALLBACK_FONT, str(font_path)))
+        pdfmetrics.registerFontFamily(
+            UNICODE_FALLBACK_FONT,
+            normal=UNICODE_FALLBACK_FONT,
+            bold=UNICODE_FALLBACK_FONT,
+            italic=UNICODE_FALLBACK_FONT,
+            boldItalic=UNICODE_FALLBACK_FONT,
+        )
 
 
 __all__ = [
@@ -189,5 +202,6 @@ __all__ = [
     "PdfStyleSet",
     "SURFACE_COLOR",
     "TEXT_COLOR",
+    "UNICODE_FALLBACK_FONT",
     "build_pdf_styles",
 ]

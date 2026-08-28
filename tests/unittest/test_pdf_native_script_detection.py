@@ -8,8 +8,9 @@ from pdftext.schema import Bbox, Char
 
 from mineru.backend.analysis.pdf.text import native
 from mineru.backend.analysis.pdf.text.models import _AnalyzeSpan
-from mineru.types import ContentType
 from mineru.model.flash.pdf.document import PDFDocument
+from mineru.model.flash.pdf.text_styles import PDF_NATIVE_SCRIPT_MARKUP_KEY
+from mineru.types import ContentType
 
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -26,9 +27,7 @@ def _lines_chars_containing(pdf_path: Path, page_index: int, probe: str) -> list
             line_text = "".join(span["text"] for span in line["spans"])
             line_text = "".join(char for char in line_text if char not in _PDF_CONTROL_CHARS)
             if probe in line_text:
-                matching_lines.append(
-                    [char for span in line["spans"] for char in span.get("chars", [])]
-                )
+                matching_lines.append([char for span in line["spans"] for char in span.get("chars", [])])
     return matching_lines
 
 
@@ -145,6 +144,57 @@ def test_strong_geometry_seed_absorbs_same_side_punctuation() -> None:
     ]
 
     assert _render_chars(chars) == "A<sup>2,</sup>"
+
+
+def test_script_markup_records_detector_ownership() -> None:
+    """验证只有脚本检测实际生成标签时才写入私有 ownership 标记。"""
+    script_span = _AnalyzeSpan(
+        type=ContentType.TEXT,
+        bbox=(0.0, 0.0, 1.0, 1.0),
+        metadata={
+            "chars": [
+                _script_char(0, "A", height=10.0, center_y=10.0),
+                _script_char(1, "2", height=7.0, center_y=7.0),
+            ]
+        },
+    )
+    body_span = _AnalyzeSpan(
+        type=ContentType.TEXT,
+        bbox=(0.0, 0.0, 1.0, 1.0),
+        metadata={
+            "chars": [
+                _script_char(0, "A", height=10.0, center_y=10.0),
+                _script_char(1, "B", height=10.0, center_y=10.0),
+            ]
+        },
+    )
+
+    native.chars_to_content(script_span)
+    native.chars_to_content(body_span)
+
+    assert script_span.content == "A<sup>2</sup>"
+    assert script_span.metadata[PDF_NATIVE_SCRIPT_MARKUP_KEY] is True
+    assert PDF_NATIVE_SCRIPT_MARKUP_KEY not in body_span.metadata
+
+
+def test_overlapping_spacing_ogonek_composes_demo2_author_name() -> None:
+    """验证 demo2 原生字符流中与 e 重叠的 spacing ogonek 合成为 ę。"""
+    content = _render_pdf_line(_DEMO_PDF_DIR / "demo2.pdf", 0, "Kowalczuk")
+
+    assert content.startswith("Jędrzej Kowalczuk")
+    assert "\u02db" not in content
+
+
+def test_non_overlapping_spacing_ogonek_remains_literal() -> None:
+    """验证没有几何重叠的 spacing ogonek 不会被字符规范化误合并。"""
+    chars = [
+        _script_char(0, "˛", height=10.0, center_y=10.0),
+        _script_char(1, "e", height=10.0, center_y=10.0),
+    ]
+
+    merged = native._merge_overlapping_spacing_diacritics(chars)
+
+    assert [char["char"] for char in merged] == ["˛", "e"]
 
 
 def test_font_suffix_seed_keeps_its_base_character_body() -> None:
@@ -368,11 +418,7 @@ def test_synthetic_cjk_plain_text_does_not_gain_script_tags(
         probe,
     )
     contents = [_render_chars(chars) for chars in matching_lines]
-    font_names = {
-        str((char.get("font") or {}).get("name", ""))
-        for chars in matching_lines
-        for char in chars
-    }
+    font_names = {str((char.get("font") or {}).get("name", "")) for chars in matching_lines for char in chars}
 
     assert contents
     assert len(font_names) >= minimum_font_count
@@ -387,10 +433,7 @@ def test_rotated_powerpoint_page_keeps_all_plain_text_on_baseline() -> None:
         page_chars = page.get_chars()
         lines = document.get_page_lines(0)
 
-    rendered_lines = [
-        _render_chars([char for span in line["spans"] for char in span.get("chars", [])])
-        for line in lines
-    ]
+    rendered_lines = [_render_chars([char for span in line["spans"] for char in span.get("chars", [])]) for line in lines]
 
     assert page.rotation == 90
     assert any((char.get("font") or {}).get("name") == "CalifornianFB-Reg" for char in page_chars)

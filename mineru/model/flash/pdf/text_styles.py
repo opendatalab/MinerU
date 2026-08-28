@@ -41,6 +41,8 @@ PDF_LINK_CHAR_OVERLAP_THRESHOLD = 0.5
 PDFTextStyle = Literal["bold", "italic", "underline", "strikethrough"]
 _PDF_LINK_INTERVALS_KEY = "_inline_link_intervals"
 _PDF_STYLE_INTERVALS_KEY = "_inline_style_intervals"
+PDF_NATIVE_SCRIPT_MARKUP_KEY = "_pdf_native_script_markup"
+_NATIVE_SCRIPT_TAG_RE = re.compile(r"<(?P<closing>/)?(?P<tag>sup|sub)>")
 _PDF_INLINE_SPAN_BLOCK_TYPES = {
     BlockType.TEXT,
     BlockType.REF_TEXT,
@@ -215,6 +217,14 @@ class _RawStyleInterval:
     start: int
     end: int
     styles: tuple[PDFTextStyle, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _NativeScriptMarkup:
+    """保存 detector-owned 上下标标签边界及对应原文样式区间。"""
+
+    marker_ranges: tuple[tuple[int, int], ...]
+    style_intervals: tuple[tuple[int, int, str], ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -1799,10 +1809,37 @@ def apply_pdf_text_styles(
             block[_PDF_STYLE_INTERVALS_KEY] = intervals
 
 
+def _parse_native_script_markup(content: str) -> _NativeScriptMarkup | None:
+    """严格解析 detector-owned 平坦 sup/sub 标签；畸形或嵌套结构返回 None。"""
+    marker_ranges: list[tuple[int, int]] = []
+    style_intervals: list[tuple[int, int, str]] = []
+    active: tuple[str, int] | None = None
+    for match in _NATIVE_SCRIPT_TAG_RE.finditer(content):
+        marker_ranges.append((match.start(), match.end()))
+        style = "superscript" if match.group("tag") == "sup" else "subscript"
+        if match.group("closing") is None:
+            if active is not None:
+                return None
+            active = (style, match.end())
+            continue
+        if active is None or active[0] != style:
+            return None
+        if active[1] < match.start():
+            style_intervals.append((active[1], match.start(), style))
+        active = None
+    if active is not None or not marker_ranges:
+        return None
+    return _NativeScriptMarkup(
+        marker_ranges=tuple(marker_ranges),
+        style_intervals=tuple(style_intervals),
+    )
+
+
 def materialize_pdf_inline_spans(blocks: list[dict[str, Any]]) -> None:
     """把 PDF 原文、样式区间、链接区间和行内公式一次性物化为 Span。"""
     formula_pattern = re.compile(r"\\\((?P<latex>.*?)\\\)", re.DOTALL)
     for block in blocks:
+        owns_native_script_markup = block.pop(PDF_NATIVE_SCRIPT_MARKUP_KEY, False) is True
         if block.get("type") not in _PDF_INLINE_SPAN_BLOCK_TYPES:
             continue
         content = block.get("content")
@@ -1810,16 +1847,25 @@ def materialize_pdf_inline_spans(blocks: list[dict[str, Any]]) -> None:
         style_intervals = block.pop(_PDF_STYLE_INTERVALS_KEY, [])
         if not isinstance(content, str):
             continue
+        native_scripts = _parse_native_script_markup(content) if owns_native_script_markup else None
+        marker_ranges = native_scripts.marker_ranges if native_scripts is not None else ()
+        script_intervals = native_scripts.style_intervals if native_scripts is not None else ()
         formulas = list(formula_pattern.finditer(content))
         boundaries = {0, len(content)}
         for interval in [*link_intervals, *style_intervals]:
             boundaries.update((interval.start, interval.end))
+        for start, end in marker_ranges:
+            boundaries.update((start, end))
+        for start, end, _style in script_intervals:
+            boundaries.update((start, end))
         for formula in formulas:
             boundaries.update((formula.start(), formula.end()))
         ordered = sorted(value for value in boundaries if 0 <= value <= len(content))
         spans: list[dict[str, Any]] = []
         for start, end in zip(ordered, ordered[1:]):
             if start >= end:
+                continue
+            if any(marker_start <= start and end <= marker_end for marker_start, marker_end in marker_ranges):
                 continue
             formula = next((item for item in formulas if item.start() == start and item.end() == end), None)
             if formula is not None:
@@ -1834,23 +1880,29 @@ def materialize_pdf_inline_spans(blocks: list[dict[str, Any]]) -> None:
                 if interval.start <= start and end <= interval.end
                 for style in interval.styles
             )
+            script_styles = tuple(
+                style
+                for interval_start, interval_end, style in script_intervals
+                if interval_start <= start and end <= interval_end
+            )
+            combined_styles = tuple(dict.fromkeys((*styles, *script_styles)))
             link = next(
                 (interval for interval in link_intervals if interval.start <= start and end <= interval.end),
                 None,
             )
             if link is None:
-                if styles and text.strip():
+                if combined_styles and text.strip():
                     leading_length = len(text) - len(text.lstrip())
                     trailing_length = len(text) - len(text.rstrip())
                     core_end = len(text) - trailing_length if trailing_length else len(text)
                     append_text_span(spans, text[:leading_length])
-                    append_text_span(spans, text[leading_length:core_end], styles)
+                    append_text_span(spans, text[leading_length:core_end], combined_styles)
                     append_text_span(spans, text[core_end:])
                 else:
-                    append_text_span(spans, text, styles)
+                    append_text_span(spans, text, combined_styles)
                 continue
             children: list[dict[str, Any]] = []
-            append_text_span(children, text, (style for style in styles if style != "underline"))
+            append_text_span(children, text, (style for style in combined_styles if style != "underline"))
             if spans and spans[-1].get("type") == "hyperlink" and spans[-1].get("url") == link.target:
                 existing = spans[-1].get("content")
                 if isinstance(existing, list):
@@ -1861,6 +1913,7 @@ def materialize_pdf_inline_spans(blocks: list[dict[str, Any]]) -> None:
 
 
 __all__ = [
+    "PDF_NATIVE_SCRIPT_MARKUP_KEY",
     "PDF_FONT_FORCE_BOLD_FLAG",
     "PDF_FONT_ITALIC_FLAG",
     "PDFTextLinkLine",

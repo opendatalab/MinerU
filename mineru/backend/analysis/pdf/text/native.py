@@ -9,7 +9,7 @@ import re
 import statistics
 import unicodedata
 from dataclasses import dataclass
-from typing import Any, Callable, Literal
+from typing import Any, Callable, Literal, cast
 
 import cv2
 import numpy as np
@@ -19,6 +19,7 @@ from pdftext.schema import Char
 from .....types import BBox, BlockType, ContentType
 from .....utils.image import calculate_contrast
 from .....model.flash.pdf.document import PDFPage, get_lines_from_chars
+from .....model.flash.pdf.text_styles import PDF_NATIVE_SCRIPT_MARKUP_KEY
 from ..images import get_crop_img
 from .....utils.geometry import calculate_overlap_area_in_bbox1_area_ratio
 from .models import _AnalyzeSpan
@@ -33,6 +34,23 @@ POST_OCR_FALLBACK_CONTENT_KEY = "_post_ocr_fallback_content"
 POST_OCR_FALLBACK_SCORE_KEY = "_post_ocr_fallback_score"
 POST_OCR_REASON_KEY = "_post_ocr_reason"
 POST_OCR_REASON_PRIVATE_USE_TEXT = "private_use_text"
+SPACING_DIACRITIC_MIN_OVERLAP_RATIO = 0.5
+_SPACING_DIACRITIC_TO_COMBINING = {
+    "`": "\u0300",
+    "^": "\u0302",
+    "¨": "\u0308",
+    "¯": "\u0304",
+    "´": "\u0301",
+    "¸": "\u0327",
+    "ˆ": "\u0302",
+    "ˇ": "\u030c",
+    "˘": "\u0306",
+    "˙": "\u0307",
+    "˚": "\u030a",
+    "˛": "\u0328",
+    "˜": "\u0303",
+    "˝": "\u030b",
+}
 
 
 def __replace_ligatures(text: str) -> str:
@@ -207,8 +225,7 @@ def _get_chars_for_span_fill(page_chars: list[Char] | dict[str, list[Char]]) -> 
             char_rotation = float(char.get("rotation", 0))
             if (
                 not _is_supported_rotation(char_rotation)
-                and _rotation_distance_degrees(char_rotation, line_rotation)
-                <= SPAN_FILL_LOCAL_ROTATION_MAX_DEGREES
+                and _rotation_distance_degrees(char_rotation, line_rotation) <= SPAN_FILL_LOCAL_ROTATION_MAX_DEGREES
             ):
                 fill_char_keys.add(_get_char_fill_key(char))
 
@@ -635,9 +652,7 @@ def _estimate_script_body_band(features: list[_ScriptCharFeature]) -> _ScriptBod
         return None
 
     body_height = max(feature.height for feature in anchors)
-    full_height_anchors = [
-        feature for feature in anchors if feature.height >= body_height * SCRIPT_BODY_FULL_HEIGHT_RATIO
-    ]
+    full_height_anchors = [feature for feature in anchors if feature.height >= body_height * SCRIPT_BODY_FULL_HEIGHT_RATIO]
     if not full_height_anchors:
         return None
     return _ScriptBodyBand(
@@ -655,10 +670,7 @@ def _is_script_identifier_char(text: str) -> bool:
     if not text.isalpha():
         return False
     unicode_name = unicodedata.name(text, "")
-    return not any(
-        marker in unicode_name
-        for marker in ("CJK", "HIRAGANA", "KATAKANA", "HANGUL", "BOPOMOFO")
-    )
+    return not any(marker in unicode_name for marker in ("CJK", "HIRAGANA", "KATAKANA", "HANGUL", "BOPOMOFO"))
 
 
 def _estimate_main_font_body_band(features: list[_ScriptCharFeature]) -> _ScriptBodyBand | None:
@@ -667,9 +679,7 @@ def _estimate_main_font_body_band(features: list[_ScriptCharFeature]) -> _Script
     if not voters:
         return None
 
-    font_counts: dict[tuple[Any, Any], int] = collections.Counter(
-        feature.font_signature for feature in voters
-    )
+    font_counts: dict[tuple[Any, Any], int] = collections.Counter(feature.font_signature for feature in voters)
     first_indices: dict[tuple[Any, Any], int] = {}
     for feature in voters:
         first_indices.setdefault(feature.font_signature, feature.index)
@@ -679,9 +689,7 @@ def _estimate_main_font_body_band(features: list[_ScriptCharFeature]) -> _Script
     )
     anchors = [feature for feature in voters if feature.font_signature == main_font]
     body_height = max(feature.height for feature in anchors)
-    full_height_anchors = [
-        feature for feature in anchors if feature.height >= body_height * SCRIPT_BODY_FULL_HEIGHT_RATIO
-    ]
+    full_height_anchors = [feature for feature in anchors if feature.height >= body_height * SCRIPT_BODY_FULL_HEIGHT_RATIO]
     return _ScriptBodyBand(
         center_y=max(feature.center_y for feature in full_height_anchors),
         height=body_height,
@@ -703,10 +711,7 @@ def _get_structure_script_role(
     open_offset = open_feature.center_y - body_band.center_y
     close_offset = close_feature.center_y - body_band.center_y
     minimum_offset = body_band.height * SCRIPT_STRUCTURE_MIN_OFFSET_RATIO
-    if (
-        open_offset * close_offset <= 0
-        or min(abs(open_offset), abs(close_offset)) < minimum_offset
-    ):
+    if open_offset * close_offset <= 0 or min(abs(open_offset), abs(close_offset)) < minimum_offset:
         return None
     return _get_script_role((open_offset + close_offset) / 2)
 
@@ -720,8 +725,10 @@ def _is_numeric_square_reference(
     if features[open_index].text not in SCRIPT_NUMERIC_REFERENCE_OPENERS:
         return False
     inner_text = [feature.text for feature in features[open_index + 1 : close_index]]
-    return bool(inner_text) and any(text.isdigit() for text in inner_text) and all(
-        text.isdigit() or text in SCRIPT_NUMERIC_REFERENCE_SEPARATORS for text in inner_text
+    return (
+        bool(inner_text)
+        and any(text.isdigit() for text in inner_text)
+        and all(text.isdigit() or text in SCRIPT_NUMERIC_REFERENCE_SEPARATORS for text in inner_text)
     )
 
 
@@ -907,14 +914,78 @@ def _wrap_script_runs(role_text_parts: list[tuple[str, str]]) -> str:
     return "".join(wrapped_parts)
 
 
+def _axis_overlap_ratio(first_bbox: Any, second_bbox: Any, start_index: int, end_index: int) -> float:
+    """计算两个字符框在指定坐标轴上相对较短边的重叠比例。"""
+    try:
+        first_start = float(first_bbox[start_index])
+        first_end = float(first_bbox[end_index])
+        second_start = float(second_bbox[start_index])
+        second_end = float(second_bbox[end_index])
+    except (IndexError, TypeError, ValueError):
+        return 0.0
+    denominator = min(first_end - first_start, second_end - second_start)
+    if denominator <= 0:
+        return 0.0
+    overlap = max(0.0, min(first_end, second_end) - max(first_start, second_start))
+    return overlap / denominator
+
+
+def _compose_overlapping_spacing_diacritic(base: Char, modifier: Char) -> Char | None:
+    """把与字母 bbox 重叠的 spacing diacritic 规范化为单一 NFC 字符。"""
+    base_text = str(base.get("char", ""))
+    modifier_text = str(modifier.get("char", ""))
+    combining = _SPACING_DIACRITIC_TO_COMBINING.get(modifier_text)
+    if (
+        len(base_text) != 1
+        or combining is None
+        or not unicodedata.category(base_text).startswith("L")
+        or _axis_overlap_ratio(base.get("bbox"), modifier.get("bbox"), 0, 2) < SPACING_DIACRITIC_MIN_OVERLAP_RATIO
+        or _axis_overlap_ratio(base.get("bbox"), modifier.get("bbox"), 1, 3) < SPACING_DIACRITIC_MIN_OVERLAP_RATIO
+    ):
+        return None
+    composed = unicodedata.normalize("NFC", f"{base_text}{combining}")
+    if len(composed) != 1 or composed == base_text:
+        return None
+    merged = dict(base)
+    merged["char"] = composed
+    base_index = base.get("char_idx")
+    modifier_index = modifier.get("char_idx")
+    if isinstance(base_index, int) and isinstance(modifier_index, int):
+        merged["char_idx"] = min(base_index, modifier_index)
+    return cast(Char, merged)
+
+
+def _merge_overlapping_spacing_diacritics(chars: list[Char]) -> list[Char]:
+    """合并字符流中位于基字符前后且几何重叠的 spacing diacritic。"""
+    merged_chars: list[Char] = []
+    cursor = 0
+    while cursor < len(chars):
+        current = chars[cursor]
+        following = chars[cursor + 1] if cursor + 1 < len(chars) else None
+        merged: Char | None = None
+        if following is not None and str(current.get("char", "")) in _SPACING_DIACRITIC_TO_COMBINING:
+            merged = _compose_overlapping_spacing_diacritic(following, current)
+        elif following is not None and str(following.get("char", "")) in _SPACING_DIACRITIC_TO_COMBINING:
+            merged = _compose_overlapping_spacing_diacritic(current, following)
+        if merged is not None:
+            merged_chars.append(merged)
+            cursor += 2
+            continue
+        merged_chars.append(current)
+        cursor += 1
+    return merged_chars
+
+
 def chars_to_content(span: _AnalyzeSpan) -> None:
     """将 Span 内字符重建为文本，并合并连续的上标、下标片段。"""
+    span.metadata.pop(PDF_NATIVE_SCRIPT_MARKUP_KEY, None)
     # 检查span中的char是否为空
     if len(span.metadata["chars"]) != 0:
         chars = span.metadata["chars"]
         # 大多数情况下 char 已按 PDF 原始顺序进入，只有乱序时才排序。
         if any(chars[idx]["char_idx"] > chars[idx + 1]["char_idx"] for idx in range(len(chars) - 1)):
             chars = sorted(chars, key=lambda x: x["char_idx"])
+        chars = _merge_overlapping_spacing_diacritics(chars)
 
         char_metrics = _get_char_bbox_metrics_list(chars)
         # Calculate the width of each character
@@ -946,5 +1017,7 @@ def chars_to_content(span: _AnalyzeSpan) -> None:
         content = __replace_unicode(content)
         content = __replace_ligatures(content)
         span.content = content.strip()
+        if any(role in {"sup", "sub"} and text for role, text in role_text_parts):
+            span.metadata[PDF_NATIVE_SCRIPT_MARKUP_KEY] = True
 
     del span.metadata["chars"]
