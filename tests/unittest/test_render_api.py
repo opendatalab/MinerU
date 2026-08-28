@@ -2,6 +2,7 @@ from __future__ import annotations
 from _span_test_utils import inline as _inline
 
 from copy import deepcopy
+from datetime import datetime, timezone
 from io import BytesIO
 
 from docx import Document
@@ -14,8 +15,10 @@ from mineru.render import (
     ContentListV2RenderOptions,
     DocxRenderError,
     DocxRenderOptions,
+    EpubRenderOptions,
     HtmlRenderOptions,
     MarkdownRenderOptions,
+    PdfRenderOptions,
     RenderFormat,
     RenderMode,
     StructuredContentRenderOptions,
@@ -49,13 +52,19 @@ def _png_bytes() -> bytes:
 
 
 def test_unified_render_dispatches_all_native_output_types_without_mutation() -> None:
-    """验证统一入口默认分发四种原生结果且不修改输入。"""
+    """验证统一入口分发全部原生结果且不修改输入。"""
     middle = _middle(_page(0, TextBlock(type="text", index=0, content=_inline("hello"))))
     original = deepcopy(middle)
 
     markdown = render(middle, RenderFormat.MARKDOWN)
     html = render(middle, RenderFormat.HTML)
     docx = render(middle, RenderFormat.DOCX)
+    epub = render(
+        middle,
+        RenderFormat.EPUB,
+        options=EpubRenderOptions(modified_at=datetime(2026, 1, 2, tzinfo=timezone.utc)),
+    )
+    pdf = render(middle, RenderFormat.PDF)
     structured_content = render(middle, RenderFormat.STRUCTURED_CONTENT)
     content_list = render(middle, RenderFormat.CONTENT_LIST)
     content_list_v2 = render(middle, RenderFormat.CONTENT_LIST_V2)
@@ -63,6 +72,8 @@ def test_unified_render_dispatches_all_native_output_types_without_mutation() ->
     assert markdown == "hello"
     assert isinstance(html, str) and "<html" in html and "hello" in html
     assert isinstance(docx, bytes) and docx.startswith(b"PK\x03\x04")
+    assert isinstance(epub, bytes) and epub.startswith(b"PK\x03\x04")
+    assert isinstance(pdf, bytes) and pdf.startswith(b"%PDF-")
     assert Document(BytesIO(docx)).paragraphs[0].text == "hello"
     assert structured_content["pages"][0]["blocks"][0]["content"] == "hello"
     assert content_list == [{"type": "text", "text": "hello", "page_idx": 0}]
@@ -134,6 +145,11 @@ def test_unified_render_forwards_format_specific_options() -> None:
             document_title="Unified Render",
         ),
     )
+    pdf = render(
+        middle,
+        RenderFormat.PDF,
+        options=PdfRenderOptions(mode=RenderMode.DEFAULT, document_title="Unified Render"),
+    )
     original_tree = render(middle, RenderFormat.STRUCTURED_CONTENT)
 
     assert "\n\n---\n\n" in markdown
@@ -146,6 +162,7 @@ def test_unified_render_forwards_format_specific_options() -> None:
     assert "https://cdn.example/doc/images/a%20b.png" in image_markdown
     assert "<title>Unified Render</title>" in html_document
     assert 'src="https://cdn.example/doc/images/a%20b.png"' in html_document
+    assert pdf == render_module.render_pdf(middle, mode=RenderMode.DEFAULT, document_title="Unified Render")
     assert [page["blocks"][0]["content"] for page in original_tree["pages"]] == ["first-", "second"]
     assert original_tree["pages"][1]["blocks"][0]["continues_prev"] is True
 
@@ -202,6 +219,10 @@ def test_unified_render_rejects_legacy_format_and_mismatched_options() -> None:
         render(middle, RenderFormat.MARKDOWN, options=HtmlRenderOptions())  # type: ignore[arg-type]
     with pytest.raises(TypeError, match="StructuredContentRenderOptions"):
         render(middle, RenderFormat.STRUCTURED_CONTENT, options=DocxRenderOptions())  # type: ignore[arg-type]
+    with pytest.raises(TypeError, match="EpubRenderOptions"):
+        render(middle, RenderFormat.EPUB, options=DocxRenderOptions())  # type: ignore[arg-type]
+    with pytest.raises(TypeError, match="PdfRenderOptions"):
+        render(middle, RenderFormat.PDF, options=DocxRenderOptions())  # type: ignore[arg-type]
     with pytest.raises(TypeError, match="ContentListRenderOptions"):
         render(middle, RenderFormat.CONTENT_LIST, options=DocxRenderOptions())  # type: ignore[arg-type]
     with pytest.raises(TypeError, match="ContentListV2RenderOptions"):
@@ -214,9 +235,11 @@ def test_public_options_validate_fields() -> None:
         "markdown",
         "html",
         "docx",
+        "epub",
         "structured_content",
         "content_list",
         "content_list_v2",
+        "pdf",
     ]
 
     with pytest.raises(TypeError, match="RenderMode"):
@@ -233,6 +256,22 @@ def test_public_options_validate_fields() -> None:
         HtmlRenderOptions(document_title=1)  # type: ignore[arg-type]
     with pytest.raises(TypeError, match="asset_resolver"):
         DocxRenderOptions(asset_resolver="images")  # type: ignore[arg-type]
+    with pytest.raises(TypeError, match="authors"):
+        EpubRenderOptions(authors=["Alice"])  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="BCP 47"):
+        EpubRenderOptions(language="zh CN")
+    with pytest.raises(ValueError, match="timezone-aware"):
+        EpubRenderOptions(modified_at=datetime(2026, 1, 2))
+    with pytest.raises(ValueError, match="four digits"):
+        EpubRenderOptions(modified_at=datetime(999, 1, 2, tzinfo=timezone.utc))
+    with pytest.raises(TypeError, match="asset_resolver"):
+        EpubRenderOptions(asset_resolver="images")  # type: ignore[arg-type]
+    with pytest.raises(TypeError, match="RenderMode"):
+        PdfRenderOptions(mode="full")  # type: ignore[arg-type]
+    with pytest.raises(TypeError, match="asset_resolver"):
+        PdfRenderOptions(asset_resolver="images")  # type: ignore[arg-type]
+    with pytest.raises(TypeError, match="document_title"):
+        PdfRenderOptions(document_title=1)  # type: ignore[arg-type]
 
 
 def test_public_render_exposes_all_three_structured_output_names() -> None:
@@ -240,6 +279,8 @@ def test_public_render_exposes_all_three_structured_output_names() -> None:
     assert callable(render_module.render_structured_content)
     assert callable(render_module.render_content_list)
     assert callable(render_module.render_content_list_v2)
+    assert callable(render_module.render_epub)
+    assert callable(render_module.render_pdf)
     assert not hasattr(render_module, "MarkdownRenderMode")
     assert ContentListRenderOptions is render_module.ContentListRenderOptions
     assert ContentListV2RenderOptions is render_module.ContentListV2RenderOptions

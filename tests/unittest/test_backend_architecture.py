@@ -44,6 +44,8 @@ _CHINESE_DOCSTRING_PATHS = (
     _PROJECT_ROOT / "mineru/render/markdown.py",
     _PROJECT_ROOT / "mineru/render/html.py",
     _PROJECT_ROOT / "mineru/render/docx.py",
+    _PROJECT_ROOT / "mineru/render/epub.py",
+    _PROJECT_ROOT / "mineru/render/pdf.py",
     _PROJECT_ROOT / "mineru/render/structured_content.py",
     _PROJECT_ROOT / "mineru/utils/image.py",
 )
@@ -327,7 +329,20 @@ import mineru.render
 from mineru.model.flash import PdfModel
 
 assert PdfModel.__name__ == "PdfModel"
-for prefix in ("torch", "cv2", "pypdfium2", "pdftext", "docx", "bs4", "lxml", "nh3"):
+for prefix in (
+    "torch",
+    "cv2",
+    "pypdfium2",
+    "pdftext",
+    "docx",
+    "bs4",
+    "lxml",
+    "nh3",
+    "PIL",
+    "latex2mathml",
+    "reportlab",
+    "ziamath",
+):
     assert prefix not in sys.modules, prefix
     assert not any(name.startswith(prefix + ".") for name in sys.modules), prefix
 assert before_env == dict(os.environ)

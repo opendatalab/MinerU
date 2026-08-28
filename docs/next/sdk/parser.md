@@ -65,7 +65,7 @@ from mineru.parser import MinerUParser
 - HTML、HTM（静态源码、固定 `auto` 正文选择）
 - OFD（原生固定版式文字、图片、全线表格和 bbox）
 
-EPUB 始终使用 `flash/txt` 并只支持整本解析。每个 `page_idx` 与 OPF spine 项一一对应；位于 spine 中的 navigation XHTML 按普通内容页解析，spine 外的 nav/NCX 不生成合成目录页。正文、列表和表格中的安全内部链接统一映射到实际标题 anchor；严格匹配单一标题的目录表格行会让相邻标题单元格继承同一跳转。单条 Footnote/Endnote 输出为带可选 canonical anchor 的 `page_footnote`，正文 `noteref` 可跨 spine 正向链接到该 anchor；脚注集合容器不会整体改型。fixed-layout/SVG 仅尽力保留 DOM 文本与包内静态图片，不执行 OCR、脚本、外部资源下载或 DRM 解密。所有非 PDF Flash 格式显式传入 `page_range` 都会返回 `page_range_invalid`。
+EPUB 始终使用 `flash/txt` 并只支持整本解析。每个 `page_idx` 与 OPF spine 项一一对应；位于 spine 中的 navigation XHTML 按普通内容页解析，spine 外的 nav/NCX 不生成合成目录页。正文、列表和表格中的安全内部链接统一映射到实际标题 anchor；严格匹配单一标题的目录表格行会让相邻标题单元格继承同一跳转。单条 Footnote/Endnote 输出为带可选 canonical anchor 的 `page_footnote`，正文 `noteref` 可跨 spine 正向链接到该 anchor；脚注集合容器不会整体改型。spine XHTML 先按严格 XML 解析；局部标签闭合错误会记录 warning，再经过禁用网络的受限 XML 安全审计与 HTML DOM 恢复。恢复后仍要求 `html` 根节点并重新执行节点数、深度预算；DTD 实体、加密、资源超限以及 OPF/container/SVG 等控制或固定版式 XML 不进入宽松回退。恢复仍失败时保留空 spine 占位。fixed-layout/SVG 仅尽力保留 DOM 文本与包内静态图片，不执行 OCR、脚本、外部资源下载或 DRM 解密。所有非 PDF Flash 格式显式传入 `page_range` 都会返回 `page_range_invalid`。
 
 HTML 始终使用 `flash/txt` 并输出一个无 bbox 的逻辑页。解析器不执行 JavaScript 或远程资源下载；固定 `auto`
 模式只在正文候选置信度和保留率均达标时裁剪导航噪声，否则保留完整 body。本地相对图片限制在源文件目录内，

@@ -33,7 +33,10 @@ class EpubConverter:
                     logger.warning("Skipping unsupported EPUB spine item index={} idref={!r}", index, spine_item.idref)
                     continue
                 try:
-                    root = package.xml_part(spine_item.path, allow_external_doctype=True)
+                    if spine_item.media_type in XHTML_MEDIA_TYPES:
+                        root = package.xhtml_part(spine_item.path, allow_external_doctype=True)
+                    else:
+                        root = package.xml_part(spine_item.path, allow_external_doctype=True)
                 except (EpubEncryptedError, EpubResourceLimitError):
                     raise
                 except EpubParseError as exc:

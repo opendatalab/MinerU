@@ -11,6 +11,7 @@ from zipfile import ZIP_DEFLATED, ZipFile
 import pytest
 from bs4 import BeautifulSoup
 from lxml import etree
+from loguru import logger
 
 import mineru.model.flash.epub.package as epub_package_module
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
@@ -542,6 +543,33 @@ def test_epub_corrupt_chapter_keeps_empty_spine_placeholder() -> None:
     assert "SVG text" in inline_text(middle.pages[2].blocks[0].content)  # type: ignore[union-attr]
 
 
+def test_epub_malformed_xhtml_warns_and_recovers_without_relaxing_xml_part() -> None:
+    """验证正文 XHTML 严格失败后告警恢复，而通用 XML 入口仍保持严格。"""
+    payload = build_epub_fixture(unclosed_br_second_chapter=True)
+    package = EpubPackage(payload)
+    try:
+        assert package.xml_part("EPUB/text/ch2.xhtml", allow_external_doctype=True) is None
+        recovered = package.xhtml_part("EPUB/text/ch2.xhtml", allow_external_doctype=True)
+        assert recovered is not None
+        assert etree.QName(recovered).localname == "html"
+    finally:
+        package.close()
+
+    warning_messages: list[str] = []
+    sink_id = logger.add(lambda message: warning_messages.append(str(message)), level="WARNING", format="{message}")
+    try:
+        middle, model = doc_analyze(payload, file_suffix="epub")
+    finally:
+        logger.remove(sink_id)
+
+    assert len(model.pages) == 3
+    assert model.pages[1]
+    assert "Recovered before" in str(model.pages[1])
+    assert "Recovered after" in str(model.pages[1])
+    assert middle.pages[1].blocks
+    assert any("Recovered malformed EPUB XHTML part path='EPUB/text/ch2.xhtml'" in message for message in warning_messages)
+
+
 def test_epub_svg_extraction_skips_hidden_descendants_and_hidden_root() -> None:
     """验证 standalone SVG 不提取隐藏文本、隐藏图片或隐藏祖先子树。"""
     package = EpubPackage(build_epub_fixture())
@@ -610,8 +638,22 @@ def test_epub_rejects_encrypted_unsafe_and_dtd_inputs() -> None:
     try:
         with pytest.raises(EpubParseError, match="DTD declarations are not allowed"):
             dtd_package.xml_part("EPUB/text/ch1.xhtml")
+        with pytest.raises(EpubParseError, match="DTD declarations are not allowed"):
+            dtd_package.xhtml_part("EPUB/text/ch1.xhtml", allow_external_doctype=True)
     finally:
         dtd_package.close()
+
+    malformed_dtd_package = EpubPackage(
+        build_epub_fixture(
+            dtd_first_chapter=True,
+            unclosed_br_first_chapter=True,
+        )
+    )
+    try:
+        with pytest.raises(EpubParseError, match="DTD declarations are not allowed"):
+            malformed_dtd_package.xhtml_part("EPUB/text/ch1.xhtml", allow_external_doctype=True)
+    finally:
+        malformed_dtd_package.close()
 
 
 def test_epub_resource_limits_fail_before_semantic_conversion(monkeypatch: pytest.MonkeyPatch) -> None:

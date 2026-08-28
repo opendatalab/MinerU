@@ -52,6 +52,7 @@ dependencies = [
     "PyYAML>=6.0.1,<7",
     "packaging",
     "reportlab",
+    "ziamath>=0.13,<0.14",
     "pdftext>=0.6.3,<0.8.0",
     "modelscope>=1.26.0",
     "huggingface-hub[hf_xet]>=0.32.4",
