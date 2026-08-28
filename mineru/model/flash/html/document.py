@@ -105,8 +105,12 @@ def parse_html_document(file_bytes: bytes, source_context: HtmlSourceContext | N
             continue
         name = local_name(element)
         if name == "style":
+            if _has_discarded_active_ancestor(element):
+                continue
             stylesheets.append(HtmlStylesheetSource("inline", "".join(element.itertext())))
         elif name == "link" and "stylesheet" in (element.get("rel") or "").casefold().split():
+            if _has_discarded_active_ancestor(element):
+                continue
             if href := (element.get("href") or "").strip():
                 stylesheets.append(HtmlStylesheetSource("link", href))
     base_href = next(
@@ -235,6 +239,11 @@ def _meta_content(root: etree._Element, *, property_name: str) -> str | None:
 def _collapsed_text(element: etree._Element) -> str:
     """折叠元素纯文本中的 HTML 排版空白。"""
     return re.sub(r"\s+", " ", "".join(element.itertext())).strip()
+
+
+def _has_discarded_active_ancestor(element: etree._Element) -> bool:
+    """判断元素是否位于稍后会整棵删除的活动内容祖先中。"""
+    return any(isinstance(ancestor.tag, str) and local_name(ancestor) in _ACTIVE_TAGS for ancestor in element.iterancestors())
 
 
 def _normalize_formula_sources(root: etree._Element) -> None:

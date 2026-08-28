@@ -500,6 +500,28 @@ def test_html_auto_selection_precomputes_nested_subtree_penalties(monkeypatch: p
     assert normalization_calls < leaf_count * 8
 
 
+def test_html_soft_prune_precomputes_deep_subtree_text(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证 soft prune 只线性扫描深层候选中的大段文本。"""
+    depth = 200
+    text = "x" * 4096
+    root = lxml_html.fromstring("<main>" + "<div>" * depth + f"<p>{text}</p>" + "</div>" * depth + "</main>")
+    original_normalized_text = html_selector_module._normalized_text
+    normalized_input_chars = 0
+
+    def counted_normalized_text(value: str | None) -> str:
+        """累计送入文本规范化函数的原始字符数。"""
+        nonlocal normalized_input_chars
+        normalized_input_chars += len(value or "")
+        return original_normalized_text(value)
+
+    monkeypatch.setattr(html_selector_module, "_normalized_text", counted_normalized_text)
+
+    html_selector_module._soft_prune(root)
+
+    assert normalized_input_chars <= len(text) * 2
+    assert text in "".join(root.itertext())
+
+
 def test_html_referenced_external_footnote_keeps_anchor_and_content() -> None:
     """验证正文候选外但被引用的 HTML footnote 会追加并生成可兑现 anchor。"""
     payload = b"""<html><body><article><h1>Notes</h1>
@@ -1275,6 +1297,16 @@ def test_html_comments_count_toward_dom_node_budget(monkeypatch: pytest.MonkeyPa
 
     with pytest.raises(HtmlResourceLimitError, match="max_html_nodes"):
         doc_analyze(b"<html><body><!--1--><!--2--><!--3--></body></html>", file_suffix="html")
+
+
+@pytest.mark.parametrize("container", ["template", "form"])
+def test_html_ignores_stylesheets_beneath_discarded_active_subtrees(container: str) -> None:
+    """验证待删除活动子树内的 stylesheet 不会污染正文样式。"""
+    payload = f"<html><body><{container}><style>p{{display:none}}</style></{container}><p>Visible</p></body></html>".encode()
+
+    markdown = render_markdown(doc_analyze(payload, file_suffix="html")[0])
+
+    assert "Visible" in markdown
 
 
 @pytest.mark.parametrize(

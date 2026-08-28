@@ -86,6 +86,17 @@ class _ScoredCandidate:
     explicit: bool
 
 
+@dataclass(frozen=True, slots=True)
+class _SoftPruneMetrics:
+    """保存 soft prune 所需的规范文本段、链接文本和语义对象统计。"""
+
+    text_chars: int = 0
+    text_segments: int = 0
+    link_chars: int = 0
+    link_count: int = 0
+    semantic_count: int = 0
+
+
 def select_auto_content(body: etree._Element, stylesheet: MarkupStylesheet) -> ContentSelection:
     """高置信选择正文候选，任一保守门槛失败时回退完整 body。"""
     metrics_by_element: dict[etree._Element, CandidateMetrics] = {}
@@ -321,26 +332,60 @@ def _is_containment_equivalent(first: _ScoredCandidate, second: _ScoredCandidate
 
 def _soft_prune(root: etree._Element) -> None:
     """在候选副本中删除确定的导航/表单和高噪声 token 子树。"""
+    metrics_by_element = _collect_soft_prune_metrics(root)
     for element in list(root.iterdescendants()):
         if not isinstance(element.tag, str):
             continue
         name = local_name(element)
         tokens = _tokens(element)
-        valuable = any(
-            isinstance(child.tag, str) and local_name(child) in _SEMANTIC_TAGS for child in element.iterdescendants()
-        )
-        text = _normalized_text(" ".join(element.itertext()))
-        links = " ".join(
-            " ".join(link.itertext())
-            for link in element.iterdescendants()
-            if isinstance(link.tag, str) and local_name(link) == "a"
-        )
-        link_density = len(_normalized_text(links)) / max(1, len(text))
+        metrics = metrics_by_element[element]
+        valuable = metrics.semantic_count > (1 if name in _SEMANTIC_TAGS else 0)
+        text_chars = metrics.text_chars + max(0, metrics.text_segments - 1)
+        link_chars = metrics.link_chars + max(0, metrics.link_count - 1)
+        link_density = link_chars / max(1, text_chars)
         should_remove = name in _BOILERPLATE_TAGS or (
-            bool(tokens & _NEGATIVE_TOKENS) and not valuable and (len(text) < 200 or link_density > 0.5)
+            bool(tokens & _NEGATIVE_TOKENS) and not valuable and (text_chars < 200 or link_density > 0.5)
         )
         if should_remove:
             _drop_tree_preserve_tail(element)
+
+
+def _collect_soft_prune_metrics(root: etree._Element) -> dict[etree._Element, _SoftPruneMetrics]:
+    """单次后序遍历预计算每个元素的完整子树文本、链接和语义对象统计。"""
+    elements = [element for element in root.iter() if isinstance(element.tag, str)]
+    output: dict[etree._Element, _SoftPruneMetrics] = {}
+    for element in reversed(elements):
+        own_text = _normalized_text(element.text)
+        text_chars = len(own_text)
+        text_segments = 1 if own_text else 0
+        link_chars = 0
+        link_count = 0
+        semantic_count = 1 if local_name(element) in _SEMANTIC_TAGS else 0
+        for child in element:
+            if isinstance(child.tag, str):
+                child_metrics = output[child]
+                text_chars += child_metrics.text_chars
+                text_segments += child_metrics.text_segments
+                link_chars += child_metrics.link_chars
+                link_count += child_metrics.link_count
+                semantic_count += child_metrics.semantic_count
+                if local_name(child) == "a":
+                    child_text_chars = child_metrics.text_chars + max(0, child_metrics.text_segments - 1)
+                    if child_text_chars:
+                        link_chars += child_text_chars
+                        link_count += 1
+            tail = _normalized_text(child.tail)
+            if tail:
+                text_chars += len(tail)
+                text_segments += 1
+        output[element] = _SoftPruneMetrics(
+            text_chars=text_chars,
+            text_segments=text_segments,
+            link_chars=link_chars,
+            link_count=link_count,
+            semantic_count=semantic_count,
+        )
+    return output
 
 
 def _drop_tree_preserve_tail(element: etree._Element) -> None:
