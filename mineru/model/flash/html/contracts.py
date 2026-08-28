@@ -9,10 +9,11 @@ from pathlib import Path
 
 @dataclass(frozen=True, slots=True)
 class HtmlSourceContext:
-    """保存相对链接解析所需的来源 URI 与本地安全根目录。"""
+    """保存相对链接解析及 HTML 解码所需的来源上下文。"""
 
     source_uri: str | None = None
     local_resource_root: Path | None = None
+    transport_encoding: str | None = None
 
 
 __all__ = ["HtmlSourceContext"]

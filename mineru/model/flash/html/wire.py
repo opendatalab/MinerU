@@ -525,6 +525,7 @@ def _validate_list_container(container: etree._Element, *, top_wrapper: etree._E
             if item_type not in _LIST_LEAF_TYPES:
                 raise _WireValidationError("invalid_list_leaf_type")
             _non_negative_integer(item, "data-block-index", required=False)
+            _validate_list_item_content_shape(item, nested_lists)
             for marker in _descendant_markers(item):
                 if marker is item or _is_within_any(marker, nested_lists):
                     continue
@@ -539,6 +540,34 @@ def _validate_list_container(container: etree._Element, *, top_wrapper: etree._E
             raise _WireValidationError("markerless_list_leaf")
         for nested in nested_lists:
             _validate_list_container(nested)
+
+
+def _validate_list_item_content_shape(item: etree._Element, nested_lists: list[etree._Element]) -> None:
+    """校验列表项的 marker/content carrier 唯一且不会遗漏旁路可见内容。"""
+    _validate_element_only_content(item)
+    candidates = [
+        child for child in item.iterdescendants() if isinstance(child.tag, str) and not _is_within_any(child, nested_lists)
+    ]
+    content_carriers = [child for child in candidates if "mineru-list-content" in _class_tokens(child)]
+    marker_carriers = [child for child in candidates if "mineru-list-marker" in _class_tokens(child)]
+    if len(content_carriers) > 1 or len(marker_carriers) > 1:
+        raise _WireValidationError("invalid_list_content_shape")
+
+    allowed_children = [*nested_lists, *content_carriers, *marker_carriers]
+    if any(child not in allowed_children for child in _element_children(item)):
+        raise _WireValidationError("invalid_list_content_shape")
+    if not content_carriers:
+        if marker_carriers:
+            raise _WireValidationError("invalid_list_content_shape")
+        return
+
+    content_carrier = content_carriers[0]
+    if content_carrier.getparent() is not item or local_name(content_carrier) != "span":
+        raise _WireValidationError("invalid_list_content_shape")
+    if marker_carriers:
+        marker_carrier = marker_carriers[0]
+        if marker_carrier.getparent() is not item or local_name(marker_carrier) != "span" or _element_children(marker_carrier):
+            raise _WireValidationError("invalid_list_content_shape")
 
 
 def _validate_index_root(content_root: etree._Element, wrapper: etree._Element) -> None:

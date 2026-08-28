@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import codecs
 from copy import deepcopy
 from dataclasses import dataclass
 import re
@@ -78,14 +79,19 @@ def parse_html_document(file_bytes: bytes, source_context: HtmlSourceContext | N
         body = etree.SubElement(root, "body")
         return HtmlDocument(root, body, (), None, None, None, None, context)
 
+    transport_encoding = _normalize_transport_encoding(context.transport_encoding)
     parser = lxml_html.HTMLParser(
         recover=True,
         no_network=True,
         remove_comments=False,
         huge_tree=False,
+        encoding=transport_encoding,
     )
     try:
-        root = lxml_html.document_fromstring(_html_parser_input(file_bytes), parser=parser)
+        root = lxml_html.document_fromstring(
+            _html_parser_input(file_bytes, transport_encoding=transport_encoding),
+            parser=parser,
+        )
     except (etree.ParserError, etree.XMLSyntaxError, UnicodeError, ValueError) as exc:
         raise HtmlParseError(f"Malformed HTML document: {exc}") from exc
     _validate_dom_shape(root)
@@ -142,8 +148,20 @@ def parse_html_document(file_bytes: bytes, source_context: HtmlSourceContext | N
     )
 
 
-def _html_parser_input(file_bytes: bytes) -> bytes | str:
+def _normalize_transport_encoding(value: str | None) -> str | None:
+    """把 HTTP 声明编码规范化为 lxml 可用名称，未知标签继续走文档内探测。"""
+    if not value:
+        return None
+    try:
+        return codecs.lookup(value).name
+    except LookupError:
+        return None
+
+
+def _html_parser_input(file_bytes: bytes, *, transport_encoding: str | None = None) -> bytes | str:
     """无显式编码且符合 UTF-8 时先解码，避免 lxml 按单字节旧编码解释正文。"""
+    if transport_encoding is not None:
+        return file_bytes
     if file_bytes.startswith(_UNICODE_BOMS) or _HTML_ENCODING_DECLARATION_RE.search(file_bytes[:4096]):
         return file_bytes
     try:

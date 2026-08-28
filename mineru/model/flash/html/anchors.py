@@ -5,18 +5,15 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from copy import deepcopy
-import hashlib
 
 from lxml import etree  # type: ignore[reportMissingImports]
 
-from .._shared.markup import MarkupStylesheet, TextStyle
+from .._shared.markup import MarkupAnchorDocument, MarkupAnchorRegistry, MarkupStylesheet, TextStyle, element_id
 from .._shared.markup.projector import BLOCK_TAGS, SKIPPED_TAGS, local_name, visible_raw_text_with_style
 
 
-_HEADING_TAGS = frozenset({"h1", "h2", "h3", "h4", "h5", "h6"})
 _NOTE_TYPES = frozenset({"footnote", "endnote", "rearnote"})
 _NOTE_ROLES = frozenset({"doc-footnote", "doc-endnote"})
-_XML_ID = "{http://www.w3.org/XML/1998/namespace}id"
 _NON_TEXT_BLOCK_TAGS = frozenset(
     {
         "figure",
@@ -49,12 +46,6 @@ def is_note_element(element: etree._Element) -> bool:
         if attribute == "type":
             types.update(value.casefold().split())
     return bool(roles & _NOTE_ROLES or types & _NOTE_TYPES)
-
-
-def element_id(element: etree._Element) -> str | None:
-    """返回元素的 HTML id 或 xml:id。"""
-    value = (element.get("id") or element.get(_XML_ID) or "").strip()
-    return value or None
 
 
 def append_referenced_notes(
@@ -147,6 +138,30 @@ def _copy_note_with_source_visibility(
     return wrapper
 
 
+class _HtmlAnchorPolicy:
+    """保持 standalone HTML 标题与脚注 identity 的既有生成规则。"""
+
+    anchor_prefix = "html"
+    register_document_start = False
+
+    @staticmethod
+    def heading_identity(element: etree._Element, ordinal: int) -> str:
+        """按源 ID 或匿名标题序号生成 HTML 标题 identity。"""
+        identity = element_id(element) or f"heading-{ordinal}"
+        return f"heading-{identity}-{ordinal}"
+
+    @staticmethod
+    def is_materializable_note(element: etree._Element, document: MarkupAnchorDocument) -> bool:
+        """沿用 HTML note marker 与顶层文本可落地性判断。"""
+        return is_note_element(element) and _note_has_materializable_text_target(element, document.stylesheet)
+
+    @staticmethod
+    def note_identity(element: etree._Element, ordinal: int) -> str:
+        """按源 ID 或匿名脚注序号生成 HTML 脚注 identity。"""
+        identity = element_id(element) or f"note-{ordinal}"
+        return f"note-{identity}-{ordinal}"
+
+
 class HtmlAnchorRegistry:
     """把选中 DOM 的标题、note 和源 fragment 映射到稳定 anchor。"""
 
@@ -158,92 +173,33 @@ class HtmlAnchorRegistry:
         source_key: str = "html",
     ) -> None:
         """预扫描选中内容，建立 document-wide 唯一 anchor 映射。"""
-        self._heading_anchors: dict[etree._Element, str] = {}
-        self._note_anchors: dict[etree._Element, str] = {}
-        self._heading_labels: dict[str, str] = {}
-        self._targets: dict[str, str] = {}
-        headings = [
-            element
-            for element in root.iter()
-            if isinstance(element.tag, str)
-            and local_name(element) in _HEADING_TAGS
-            and _visible_element_text(element, stylesheet)
-        ]
-        for ordinal, heading in enumerate(headings):
-            identity = element_id(heading) or f"heading-{ordinal}"
-            anchor = _canonical_anchor(source_key, f"heading-{identity}-{ordinal}")
-            self._heading_anchors[heading] = anchor
-            self._heading_labels[anchor] = _visible_element_text(heading, stylesheet)
-        notes = [
-            element
-            for element in root.iter()
-            if isinstance(element.tag, str)
-            and is_note_element(element)
-            and _note_has_materializable_text_target(element, stylesheet)
-        ]
-        for ordinal, note in enumerate(notes):
-            identity = element_id(note) or f"note-{ordinal}"
-            self._note_anchors[note] = _canonical_anchor(source_key, f"note-{identity}-{ordinal}")
-        for element in root.iter():
-            if not isinstance(element.tag, str) or not (identity := element_id(element)) or identity in self._targets:
-                continue
-            if anchor := self._target_anchor(element):
-                self._targets[identity] = anchor
-
-    def _target_anchor(self, element: etree._Element) -> str | None:
-        """把任意 fragment 元素映射到自身、祖先或后代的可输出目标。"""
-        direct = self._heading_anchors.get(element) or self._note_anchors.get(element)
-        if direct:
-            return direct
-        for parent in element.iterancestors():
-            anchor = self._heading_anchors.get(parent) or self._note_anchors.get(parent)
-            if anchor:
-                return anchor
-        for child in element.iterdescendants():
-            anchor = self._heading_anchors.get(child) or self._note_anchors.get(child)
-            if anchor:
-                return anchor
-        return None
+        self._source_key = source_key
+        document = MarkupAnchorDocument(
+            key=source_key,
+            root=root,
+            stylesheet=stylesheet,
+            visibility_scope="all_ancestors",
+            text_normalization="unicode_whitespace",
+        )
+        self._registry = MarkupAnchorRegistry([document], _HtmlAnchorPolicy())
 
     def heading_anchor(self, heading: etree._Element) -> str | None:
         """返回标题的规范 anchor。"""
-        return self._heading_anchors.get(heading)
+        return self._registry.heading_anchor(heading)
 
     def heading_label(self, anchor: str) -> str | None:
         """返回规范标题 anchor 对应的可见标签。"""
-        return self._heading_labels.get(anchor)
+        return self._registry.heading_label(anchor)
 
     def note_anchor(self, note: etree._Element) -> str | None:
         """返回单条 Footnote/Endnote 的规范 anchor。"""
-        return self._note_anchors.get(note)
+        return self._registry.note_anchor(note)
 
     def resolve_fragment(self, fragment: str) -> str | None:
         """把源文档 fragment 转换为实际可输出的内部链接。"""
         normalized = fragment.removeprefix("#").strip()
-        anchor = self._targets.get(normalized)
+        anchor = self._registry.resolve_target(self._source_key, normalized)
         return f"#{anchor}" if anchor else None
-
-
-def _canonical_anchor(source_key: str, identity: str) -> str:
-    """为 HTML 标题或脚注生成短而稳定的规范 anchor。"""
-    digest = hashlib.sha256(f"{source_key}#{identity}".encode()).hexdigest()[:20]
-    return f"html-{digest}"
-
-
-def _visible_element_text(element: etree._Element, stylesheet: MarkupStylesheet) -> str:
-    """按祖先样式链提取元素最终会由 projector 输出的可见文本。"""
-    inherited = TextStyle()
-    visibility_hidden = False
-    chain = [ancestor for ancestor in reversed(list(element.iterancestors())) if isinstance(ancestor.tag, str)]
-    chain.append(element)
-    for current in chain:
-        resolved = stylesheet.resolve(current, inherited, visibility_hidden)
-        if resolved.subtree_hidden:
-            return ""
-        inherited = resolved.text
-        visibility_hidden = resolved.visibility_hidden
-    value = visible_raw_text_with_style(element, stylesheet, inherited, visibility_hidden)
-    return " ".join(value.split())
 
 
 def _note_has_materializable_text_target(element: etree._Element, stylesheet: MarkupStylesheet) -> bool:
@@ -313,4 +269,4 @@ def _container_materializes_text_block(
     return False
 
 
-__all__ = ["HtmlAnchorRegistry", "append_referenced_notes", "element_id", "is_note_element"]
+__all__ = ["HtmlAnchorRegistry", "append_referenced_notes", "is_note_element"]

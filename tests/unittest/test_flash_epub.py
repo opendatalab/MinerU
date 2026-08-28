@@ -106,6 +106,10 @@ def test_epub_notes_use_page_footnote_and_document_wide_anchors() -> None:
     duplicate_first = footnote_by_text["First duplicate note."]
     duplicate_second = footnote_by_text["Second duplicate note."]
     assert first.anchor and endnote.anchor and duplicate_first.anchor  # type: ignore[union-attr]
+    assert first.anchor == "epub-5da65ec1e273b731b44c"  # type: ignore[union-attr]
+    assert endnote.anchor == "epub-b7ab2fcf9373c09c71d6"  # type: ignore[union-attr]
+    assert duplicate_first.anchor == "epub-2bd2576dd7c5d3cf58f4"  # type: ignore[union-attr]
+    assert duplicate_second.anchor == "epub-2b154ee53d6a59bb32f7"  # type: ignore[union-attr]
     assert second.anchor is None  # type: ignore[union-attr]
     assert duplicate_second.anchor and duplicate_second.anchor != duplicate_first.anchor  # type: ignore[union-attr]
     assert footnote_by_text["ARIA footnote."].anchor  # type: ignore[union-attr]
@@ -167,6 +171,8 @@ def test_epub_internal_links_and_lists_use_cross_renderer_projection() -> None:
     first_title = first_page.blocks[0]
     second_title = second_page.blocks[0]
     assert first_title.anchor and second_title.anchor  # type: ignore[union-attr]
+    assert first_title.anchor == "epub-1daacccca5bf43833643"  # type: ignore[union-attr]
+    assert second_title.anchor == "epub-8d7fe965e2d714cf08ae"  # type: ignore[union-attr]
     markdown = render_markdown(middle)
     assert markdown.startswith(f'<a id="{first_title.anchor}"></a>\n# Chapter One')  # type: ignore[union-attr]
     assert "NAV Chapter One" not in markdown

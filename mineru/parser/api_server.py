@@ -1287,11 +1287,12 @@ def _count_pages_in_range(page_range: str) -> int:
 
 @dataclass(frozen=True, slots=True)
 class _ExtractedSource:
-    """保存 API 输入字节及 HTML 相对资源解析所需的原始来源。"""
+    """保存 API 输入字节及 HTML 来源上下文。"""
 
     data: bytes
     source_uri: str | None = None
     local_resource_root: pathlib.Path | None = None
+    transport_encoding: str | None = None
 
 
 async def _extract_bytes(
@@ -1319,7 +1320,11 @@ async def _extract_bytes(
         async with httpx.AsyncClient(timeout=url_timeout) as cli:
             r = await cli.get(source.url)
             r.raise_for_status()
-            return _ExtractedSource(r.content, source_uri=str(r.url))
+            return _ExtractedSource(
+                r.content,
+                source_uri=str(r.url),
+                transport_encoding=r.charset_encoding,
+            )
     if isinstance(source, InlineSource):
         return _ExtractedSource(_decode_inline_data(source.data))
     if isinstance(source, LocalSource):
@@ -1386,6 +1391,7 @@ async def _run_job(
                     source_context = HtmlSourceContext(
                         source_uri=extracted.source_uri,
                         local_resource_root=extracted.local_resource_root,
+                        transport_encoding=extracted.transport_encoding,
                     )
                 result = await parse_async(
                     str(tmp_path),

@@ -6,8 +6,11 @@ from copy import copy
 from io import BytesIO
 import json
 from pathlib import Path
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 from zipfile import ZipFile
 
+import httpx
 import pytest
 from bs4 import BeautifulSoup
 from lxml import etree, html as lxml_html  # type: ignore[reportMissingImports]
@@ -223,6 +226,8 @@ def test_html_doc_analyze_projects_static_semantics_and_renderers() -> None:
     assert middle.is_full_document is True
     assert [page.page_idx for page in middle.pages] == [0]
     assert all(block.bbox is None for block in middle.pages[0].blocks)
+    title = next(block for block in middle.pages[0].blocks if block.type == BlockType.DOC_TITLE)
+    assert title.anchor == "html-39fc7010518f54fa3fa9"  # type: ignore[union-attr]
 
     raw_blocks = _all_raw_blocks(model.pages)
     raw_types = {block["type"] for block in raw_blocks}
@@ -273,6 +278,49 @@ def test_html_declared_legacy_charset_remains_supported() -> None:
     markdown = render_markdown(doc_analyze(payload, file_suffix="html")[0])
 
     assert "café" in markdown
+
+
+def test_html_parse_server_url_preserves_http_declared_charset(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证 URL HTML 使用 HTTP Content-Type 声明编码而不依赖文档内 meta。"""
+    expected = "日本語テスト"
+    url = "https://example.com/sample.html"
+    response = httpx.Response(
+        200,
+        content=f"<html><body><p>{expected}</p></body></html>".encode("shift_jis"),
+        headers={"Content-Type": "text/html; charset=shift_jis"},
+        request=httpx.Request("GET", url),
+    )
+    client = AsyncMock()
+    client.__aenter__.return_value = client
+    client.get.return_value = response
+    monkeypatch.setattr(api_server, "httpx", SimpleNamespace(AsyncClient=lambda **_: client))
+    file_store = FileStore(tmp_path / "api-files")
+    request = CreateJobRequest.model_validate(
+        {
+            "files": [{"source": {"type": "url", "url": url}}],
+            "tier": "standard",
+            "output_formats": ["middle_json"],
+        }
+    )
+    record = api_server.JobStore().create(request, file_store)
+
+    asyncio.run(
+        api_server._run_job(
+            record,
+            request,
+            file_store,
+            ocr_mode="auto",
+            image_analysis=True,
+        )
+    )
+
+    parsed_file = record.files[0]
+    assert parsed_file.status == "completed"
+    assert parsed_file.output_files is not None and parsed_file.output_files.middle_json is not None
+    middle_record = file_store.get_file(parsed_file.output_files.middle_json.file_id)
+    assert middle_record.sha256sum is not None
+    middle_payload = json.loads(file_store.read_blob(middle_record.sha256sum))
+    assert middle_payload["pages"][0]["blocks"][0]["content"] == expected
 
 
 def test_html_auto_selection_preserves_all_repeated_forum_posts() -> None:
@@ -395,6 +443,7 @@ def test_html_referenced_external_footnote_keeps_anchor_and_content() -> None:
     footnote = next(block for block in middle.pages[0].blocks if block.type == BlockType.PAGE_FOOTNOTE)
 
     assert footnote.anchor is not None  # type: ignore[union-attr]
+    assert footnote.anchor == "html-e31e5112c08d4945a7af"  # type: ignore[union-attr]
     assert "Footnote body." in footnote.content  # type: ignore[union-attr]
     assert f"](#{footnote.anchor})" in markdown  # type: ignore[union-attr]
     assert f'id="{footnote.anchor}" class="mineru-page-footnote"' in markdown  # type: ignore[union-attr]
@@ -1282,6 +1331,46 @@ def test_html_versioned_wire_roundtrips_all_semantic_types() -> None:
     assert next(block for block in full_middle.pages[0].blocks if block.type == BlockType.EQUATION).content == "y^2\\tag{1}"  # type: ignore[union-attr]
     roundtrip_text = next(block for block in full_middle.pages[0].blocks if block.type == BlockType.TEXT).content  # type: ignore[union-attr]
     assert roundtrip_text == "Text & value < 3 <eq>x+1</eq> &lt;eq&gt;literal&lt;/eq&gt;"
+
+
+@pytest.mark.parametrize("outside_kind", ["text", "inline"])
+def test_html_versioned_list_content_outside_carrier_falls_back_without_loss(outside_kind: str) -> None:
+    """验证列表 carrier 外的编辑内容触发通用投影并完整保留。"""
+    source = MiddleJson.model_validate(
+        {
+            "pages": [
+                {
+                    "page_idx": 0,
+                    "blocks": [
+                        {
+                            "type": "list",
+                            "index": 0,
+                            "content": [{"type": "text", "index": 0, "content": "- Original"}],
+                        }
+                    ],
+                }
+            ],
+            "is_full_document": True,
+            "file_suffix": "html",
+            "effort": "flash",
+            "parse_mode": "txt",
+            "mineru_version": "test",
+        }
+    )
+    soup = BeautifulSoup(render_html(source, standalone=False), "html.parser")
+    item = soup.select_one('li[data-block-type="text"]')
+    assert item is not None
+    if outside_kind == "text":
+        item.append(" ADDED")
+    else:
+        added = soup.new_tag("span")
+        added.string = " ADDED"
+        item.append(added)
+
+    middle, model = doc_analyze(str(soup).encode(), file_suffix="html")
+
+    assert model.pages[0][0]["content"][0]["content"] == "Original ADDED"
+    assert render_markdown(middle) == "- Original ADDED"
 
 
 def test_html_invalid_versioned_markers_fallback_without_partial_results() -> None:
