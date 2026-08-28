@@ -13,6 +13,7 @@ from zipfile import ZipFile
 import httpx
 import pytest
 from bs4 import BeautifulSoup
+from fastapi.testclient import TestClient
 from lxml import etree, html as lxml_html  # type: ignore[reportMissingImports]
 from PIL import Image
 
@@ -392,6 +393,74 @@ def test_html_parse_server_url_accepts_extensionless_text_html(
     assert middle_payload["pages"][0]["blocks"][0]["content"] == expected
 
 
+def test_html_parse_server_flash_only_admits_extensionless_url(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证 Flash-only server 在下载识别类型前不会拒绝无扩展名 URL。"""
+
+    async def fake_run_job(*args: object, **kwargs: object) -> None:
+        """跳过后台解析，仅验证 admission 已选择 Flash tier。"""
+
+    monkeypatch.setattr(api_server, "_run_job", fake_run_job)
+    app = api_server.create_app(upload_dir=str(tmp_path / "api"), tier="flash")
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/parse/jobs",
+            json={"files": [{"source": {"type": "url", "url": "https://example.com/article"}}]},
+        )
+
+    assert response.status_code == 202
+    assert response.json()["tier"] == "flash"
+
+
+def test_html_parse_server_no_flash_rejects_extensionless_text_html_after_fetch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证无扩展名 URL 下载为 HTML 后仍执行禁用 Flash 的后置策略检查。"""
+    url = "https://example.com/article"
+    response = httpx.Response(
+        200,
+        content=b"<html><body><p>HTML</p></body></html>",
+        headers={"Content-Type": "text/html; charset=utf-8"},
+        request=httpx.Request("GET", url),
+    )
+    client = AsyncMock()
+    client.__aenter__.return_value = client
+    client.get.return_value = response
+    parse_async_mock = AsyncMock()
+    monkeypatch.setattr(api_server, "httpx", SimpleNamespace(AsyncClient=lambda **_: client))
+    monkeypatch.setattr(api_server, "parse_async", parse_async_mock)
+    file_store = FileStore(tmp_path / "api-files")
+    request = CreateJobRequest.model_validate(
+        {
+            "files": [{"source": {"type": "url", "url": url}}],
+            "tier": "standard",
+        }
+    )
+    record = api_server.JobStore().create(request, file_store)
+
+    asyncio.run(
+        api_server._run_job(
+            record,
+            request,
+            file_store,
+            ocr_mode="auto",
+            image_analysis=True,
+            flash_enabled=False,
+        )
+    )
+
+    assert record.status == "failed"
+    assert record.files[0].error is not None
+    assert record.files[0].error.message == (
+        "Flash parsing is disabled in this server, but this input requires the Flash backend"
+    )
+    parse_async_mock.assert_not_awaited()
+
+
 def test_html_auto_selection_preserves_all_repeated_forum_posts() -> None:
     """验证重复 article 场景不会只保留论坛中的首个帖子。"""
     payload = b"""<html><body><header>Forum</header><main>
@@ -716,6 +785,18 @@ def test_html_fragment_only_link_honors_external_base_document() -> None:
     assert "Unrelated local footnote." not in markdown
     assert not any(block.type == BlockType.PAGE_FOOTNOTE for block in middle.pages[0].blocks)
     assert "https://example.com/other.html#fn1" in markdown
+
+
+def test_html_ignores_base_inside_discarded_template() -> None:
+    """验证惰性 template 中的 base 不会改写正文相对链接。"""
+    payload = b"""<html><head><template><base href="https://discarded.example/assets/"></template></head>
+      <body><main><h1>Title</h1><p><a href="article.html">Relative link</a></p></main></body></html>"""
+    context = HtmlSourceContext(source_uri="https://origin.example/docs/page.html")
+
+    markdown = render_markdown(doc_analyze(payload, file_suffix="html", source_context=context)[0])
+
+    assert "https://origin.example/docs/article.html" in markdown
+    assert "discarded.example" not in markdown
 
 
 def test_html_formula_wrapper_stops_after_second_non_nested_carrier(monkeypatch: pytest.MonkeyPatch) -> None:

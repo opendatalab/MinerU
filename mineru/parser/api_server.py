@@ -1232,8 +1232,13 @@ def _source_name(source: FileSource, file_store: FileStore | None = None) -> str
     return "unknown"
 
 
-def _job_has_only_flash_only_inputs(req: CreateJobRequest, file_store: FileStore) -> bool:
-    return all(is_flash_only_parse_extension(_source_name(entry.source, file_store)) for entry in req.files)
+def _job_can_default_to_flash(req: CreateJobRequest, file_store: FileStore) -> bool:
+    """判断整批输入是否已知为 Flash-only，或需下载后识别类型的无扩展名 URL。"""
+    return all(
+        is_flash_only_parse_extension(_source_name(entry.source, file_store))
+        or (isinstance(entry.source, UrlSource) and not pathlib.Path(_source_name(entry.source)).suffix)
+        for entry in req.files
+    )
 
 
 def _job_has_any_flash_only_inputs(req: CreateJobRequest, file_store: FileStore) -> bool:
@@ -1354,6 +1359,7 @@ async def _run_job(
     allow_local_source: bool = False,
     max_inline_bytes: int = _MAX_INLINE_BYTES_DEFAULT,
     allow_http_source: bool = False,
+    flash_enabled: bool = True,
 ) -> None:
     rec.status = "running"
     rec.started_at = JobStore._now()
@@ -1381,6 +1387,8 @@ async def _run_job(
                     suffix = ".html"
                 if not stype:
                     raise ValueError(f"Unsupported file type: {fr.name}")
+                if not flash_enabled and is_flash_only_parse_extension(stype):
+                    raise ValueError("Flash parsing is disabled in this server, but this input requires the Flash backend")
 
                 # write to temp file for parsers that require a path
                 suffix = suffix or ".pdf"
@@ -1809,7 +1817,7 @@ async def create_job(
 
     # 按请求 tier 选择启动时预先解析好的 runtime；全轻量输入可按 ADR-0024 直接归一到 flash 执行。
     default_tier: Tier | None = request.app.state.default_tier
-    only_flash_only_inputs = _job_has_only_flash_only_inputs(body, file_store)
+    can_default_to_flash = _job_can_default_to_flash(body, file_store)
     if not request.app.state.flash_enabled and _job_has_any_flash_only_inputs(body, file_store):
         _raise_api_error(
             400,
@@ -1819,7 +1827,7 @@ async def create_job(
             param="files",
         )
     if body.tier is None and default_tier is None:
-        if only_flash_only_inputs:
+        if can_default_to_flash:
             body.tier = "flash"
         else:
             _raise_api_error(
@@ -1835,7 +1843,7 @@ async def create_job(
         body.tier = body.tier or default_tier
     runtime_options: dict[Tier, ParserRuntimeOptions] = request.app.state.tier_runtime_options
     runtime = runtime_options.get(body.tier)
-    if runtime is None and only_flash_only_inputs:
+    if runtime is None and can_default_to_flash:
         runtime = runtime_options.get("flash") or runtime_options_for_tier("flash")
     if runtime is None:
         _raise_api_error(
@@ -1857,6 +1865,7 @@ async def create_job(
     allow_local_source_val: bool = request.app.state.allow_local_source
     max_inline_bytes_val: int = request.app.state.max_inline_bytes
     allow_http_source_val: bool = request.app.state.allow_http_source
+    flash_enabled_val: bool = request.app.state.flash_enabled
     ocr_mode_val: str = request.app.state.ocr_mode
     image_analysis_val: bool = request.app.state.image_analysis
 
@@ -1873,6 +1882,7 @@ async def create_job(
                 allow_local_source=allow_local_source_val,
                 max_inline_bytes=max_inline_bytes_val,
                 allow_http_source=allow_http_source_val,
+                flash_enabled=flash_enabled_val,
             )
 
     asyncio.create_task(_bg_run())

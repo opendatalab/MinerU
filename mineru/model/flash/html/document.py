@@ -117,7 +117,10 @@ def parse_html_document(file_bytes: bytes, source_context: HtmlSourceContext | N
         (
             value
             for element in root.iter()
-            if isinstance(element.tag, str) and local_name(element) == "base" and (value := (element.get("href") or "").strip())
+            if isinstance(element.tag, str)
+            and local_name(element) == "base"
+            and not _has_discarded_active_ancestor(element)
+            and (value := (element.get("href") or "").strip())
         ),
         None,
     )
