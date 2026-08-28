@@ -8,6 +8,8 @@ from typing import Any, Literal, overload
 from ..types import MiddleJson
 
 from .contracts import (
+    ContentListRenderOptions,
+    ContentListV2RenderOptions,
     DocxRenderOptions,
     HtmlRenderOptions,
     MarkdownRenderOptions,
@@ -16,6 +18,8 @@ from .contracts import (
     RenderOutput,
     StructuredContentRenderOptions,
 )
+from .content_list import render_content_list
+from .content_list_v2 import render_content_list_v2
 from .docx import render_docx
 from .html import render_html
 from .markdown import render_markdown
@@ -63,6 +67,28 @@ def render(
     options: StructuredContentRenderOptions | None = None,
 ) -> dict[str, Any]:
     """声明 Structured Content 目标对应的字典返回类型。"""
+    ...
+
+
+@overload
+def render(
+    middle_json: MiddleJson,
+    output_format: Literal[RenderFormat.CONTENT_LIST],
+    *,
+    options: ContentListRenderOptions | None = None,
+) -> list[dict[str, Any]]:
+    """声明 Content List V1 目标对应的扁平列表返回类型。"""
+    ...
+
+
+@overload
+def render(
+    middle_json: MiddleJson,
+    output_format: Literal[RenderFormat.CONTENT_LIST_V2],
+    *,
+    options: ContentListV2RenderOptions | None = None,
+) -> list[list[dict[str, Any]]]:
+    """声明 Content List V2 目标对应的按页列表返回类型。"""
     ...
 
 
@@ -116,6 +142,24 @@ def render(
         if not isinstance(resolved_options, StructuredContentRenderOptions):
             raise TypeError("STRUCTURED_CONTENT output requires StructuredContentRenderOptions")
         return render_structured_content(
+            middle_json,
+            asset_base_url=resolved_options.asset_base_url,
+        )
+
+    if output_format is RenderFormat.CONTENT_LIST:
+        resolved_options = options if options is not None else ContentListRenderOptions()
+        if not isinstance(resolved_options, ContentListRenderOptions):
+            raise TypeError("CONTENT_LIST output requires ContentListRenderOptions")
+        return render_content_list(
+            middle_json,
+            asset_base_url=resolved_options.asset_base_url,
+        )
+
+    if output_format is RenderFormat.CONTENT_LIST_V2:
+        resolved_options = options if options is not None else ContentListV2RenderOptions()
+        if not isinstance(resolved_options, ContentListV2RenderOptions):
+            raise TypeError("CONTENT_LIST_V2 output requires ContentListV2RenderOptions")
+        return render_content_list_v2(
             middle_json,
             asset_base_url=resolved_options.asset_base_url,
         )

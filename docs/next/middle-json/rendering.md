@@ -1,8 +1,8 @@
 # Rendering Contract
 
-状态: 统一入口 / Markdown / Structured Content / DOCX / HTML v1
+状态: 统一入口 / Markdown / Content List V1/V2 / Structured Content / DOCX / HTML v1
 读者: render 开发者、backend 开发者、SDK 开发者
-范围: 严格 MiddleJson 到 Markdown、Structured Content、DOCX 和 HTML 的统一消费契约
+范围: 严格 MiddleJson 到 Markdown、Content List V1/V2、Structured Content、DOCX 和 HTML 的统一消费契约
 
 ## 统一入口
 
@@ -32,9 +32,11 @@ markdown = render(
 | `HTML` | `HtmlRenderOptions(mode, asset_base_url, standalone, document_title)` | `str` |
 | `DOCX` | `DocxRenderOptions(mode, asset_resolver)` | `bytes` |
 | `STRUCTURED_CONTENT` | `StructuredContentRenderOptions(asset_base_url)` | `dict[str, Any]` |
+| `CONTENT_LIST` | `ContentListRenderOptions(asset_base_url)` | `list[dict[str, Any]]` |
+| `CONTENT_LIST_V2` | `ContentListV2RenderOptions(asset_base_url)` | `list[list[dict[str, Any]]]` |
 
 `options` 省略时使用对应格式的默认 Options。入口只接受 `RenderFormat` 枚举，格式与 Options
-类型不匹配时抛出 `TypeError`，不归一化字符串格式，也不在单次调用中批量渲染。四个专用
+类型不匹配时抛出 `TypeError`，不归一化字符串格式，也不在单次调用中批量渲染。各专用
 `render_*()` 函数继续保留；统一入口只负责严格校验和分发，不改变底层渲染语义或异常类型。
 
 所有入口均不修改传入的 `MiddleJson`。renderer 不负责把结果或图片写到文件系统；DOCX
@@ -42,7 +44,8 @@ markdown = render(
 
 ### 内部依赖边界
 
-`markdown.py`、`html.py`、`docx.py` 和 `structured_content.py` 是稳定公共门面；实现代码位于非公共
+`markdown.py`、`html.py`、`docx.py`、`content_list.py`、`content_list_v2.py` 和
+`structured_content.py` 是稳定公共门面；实现代码位于非公共
 `mineru.render._internal`。`common` 只保存跨格式 AST、解析、列表/目录语义和 render planner，
 不得依赖任一格式实现。`markdown`、`html`、`docx` 子包只能依赖 `common` 与自身模块，彼此
 不交叉导入。`_internal` 路径不属于 SDK 兼容承诺。
@@ -228,6 +231,33 @@ Chart 的 pipe table 只实现 GFM 列结构与反斜杠/pipe 解码，cell 内�
 
 v1 只增加严格 `mineru.render` 公共面，不迁移旧 parser、CLI、API 或 doclib，也不提供
 Markdown 字符串转 HTML、离线单文件、主题切换、侧边 TOC 或用户自定义 head/CSS/script。
+
+## 3.4.5 兼容 Content List V1/V2
+
+严格 render 层同时提供两个由当前 MiddleJson 派生的兼容结构：
+
+```python
+from mineru.render import render_content_list, render_content_list_v2
+
+content_list = render_content_list(middle_json, asset_base_url="")
+content_list_v2 = render_content_list_v2(middle_json, asset_base_url="")
+```
+
+`render_content_list()` 返回按页序扁平化的 `list[dict]`。每个 item 保留真实 `page_idx`，可用 bbox
+转换为 0-1000 整数坐标；标题继续使用 `type: "text"` 和 `text_level`，视觉内容使用
+`img_path`、caption、footnote 与 body 等 3.4.5 字段。
+
+`render_content_list_v2()` 返回 `list[list[dict]]`，外层与输入页面一一对应，空页保留 `[]`；每个
+item 使用 3.4.5 风格的 `type + content`，行内内容收敛为 `text`、`equation_inline`、
+`code_inline` 和 `hyperlink` span。V2 不增加 envelope 或显式页号，因此抽页结果只能通过外层顺序消费。
+
+两个 renderer 都只接受严格 `MiddleJson`，保持页面和 block 阅读顺序，不使用展示型 planner，也不合并
+`continues_prev` 文本或跨页表格。同页连续 `ref_text` 会合并为 reference list；列表、目录按源顺序递归
+展平，目录删除可信的末尾页码并保留 anchor。图片按 `image_path`、`image_base64`、`image_url` 的顺序
+选择唯一来源，相对 sidecar 与 HTML 内相对图片使用 `asset_base_url`。
+
+这是 render 层兼容 API；本阶段不新增 ParseResult 方法，不迁移 CLI/API 格式名，也不新增自动落盘产物。
+现有 `render_structured_content()` 仍是独立的树形文档级 dict，不是 V2 的别名。
 
 ## 树形 Markdown Structured Content
 
