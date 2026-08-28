@@ -374,6 +374,8 @@ def _validate_visual_content(content_root: etree._Element, wrapper: etree._Eleme
                 _validate_table_body_shape(child)
             elif parent_type == BlockType.IMAGE and sub_type == "flowchart":
                 _validate_flowchart_body_shape(child)
+            elif parent_type in {BlockType.IMAGE, BlockType.CHART}:
+                _validate_owned_visual_image_shape(child, parent_type)
             for marker in _descendant_markers(child):
                 if marker is child:
                     continue
@@ -440,6 +442,23 @@ def _validate_table_body_shape(body: etree._Element) -> None:
     elif name == "img" and "mineru-table-image" in classes:
         return
     raise _WireValidationError("invalid_table_body_shape")
+
+
+def _validate_owned_visual_image_shape(body: etree._Element, parent_type: BlockType) -> None:
+    """限制普通图片和图表 body 只能携带一个与父类型匹配的 renderer 图片。"""
+    allowed_token = "mineru-image" if parent_type == BlockType.IMAGE else "mineru-chart-image"
+    owned_images: list[etree._Element] = []
+    for element in body.iterdescendants():
+        if not isinstance(element.tag, str) or local_name(element) != "img":
+            continue
+        owned_tokens = _class_tokens(element) & _OWNED_VISUAL_IMAGE_TOKENS
+        if not owned_tokens:
+            continue
+        if owned_tokens != {allowed_token}:
+            raise _WireValidationError("invalid_owned_visual_image_shape")
+        owned_images.append(element)
+    if len(owned_images) > 1:
+        raise _WireValidationError("invalid_owned_visual_image_shape")
 
 
 def _validate_flowchart_body_shape(body: etree._Element) -> None:

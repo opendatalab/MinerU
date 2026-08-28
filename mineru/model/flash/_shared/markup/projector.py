@@ -139,6 +139,16 @@ def _append_inline_segment(
         segments.append(segment)
 
 
+def _append_list_block_content(parts: list[str], rendered: str) -> None:
+    """用换行包围列表项内的块级正文，避免相邻段落静默粘连。"""
+    if not rendered.strip():
+        return
+    last_visible = next((part for part in reversed(parts) if part), "")
+    if last_visible and not last_visible.endswith("\n"):
+        parts.append("\n")
+    parts.extend((rendered, "\n"))
+
+
 def entity_text(element: etree._Element) -> str:
     """把 lxml 保留的安全命名实体恢复为可见文本。"""
     name = getattr(element, "name", "")
@@ -569,6 +579,11 @@ class MarkupProjector:
             annotation_elements=annotation_elements,
             emit_alt_caption=not mineru_figure and not annotations,
         )
+        annotation_targets = self._figure_annotation_targets(
+            element,
+            annotation_elements,
+            visual_blocks_by_child,
+        )
 
         annotations_by_visual: dict[int, list[dict[str, object]]] = {}
         unbound_annotations: list[dict[str, object]] = []
@@ -576,7 +591,7 @@ class MarkupProjector:
             resolved = self.stylesheet.resolve(annotation, style, visibility_hidden)
             if resolved.subtree_hidden:
                 continue
-            target = self._figure_annotation_target(annotation, element, visual_blocks_by_child)
+            target = annotation_targets.get(annotation)
             visual_type = _raw_visual_type(target.get("type")) if target is not None else None
             annotation_type = VISUAL_TYPE_MAPPING[visual_type][kind] if visual_type is not None else BlockType.TEXT
             annotation_blocks: list[dict[str, object]] = []
@@ -658,21 +673,28 @@ class MarkupProjector:
         return blocks, visual_blocks_by_child
 
     @staticmethod
-    def _figure_annotation_target(
-        annotation: etree._Element,
+    def _figure_annotation_targets(
         figure: etree._Element,
+        annotations: set[etree._Element],
         visual_blocks_by_child: dict[etree._Element, list[dict[str, object]]],
-    ) -> dict[str, object] | None:
-        """把 annotation 绑定到最近前序 visual；没有前序时使用最近后序 visual。"""
+    ) -> dict[etree._Element, dict[str, object] | None]:
+        """用双向线性扫描绑定全部 annotation，优先最近前序 visual。"""
         children = [child for child in figure if isinstance(child.tag, str)]
-        position = children.index(annotation)
-        for child in reversed(children[:position]):
+        targets: dict[etree._Element, dict[str, object] | None] = {}
+        previous_visual: dict[str, object] | None = None
+        for child in children:
             if visuals := visual_blocks_by_child.get(child):
-                return visuals[-1]
-        for child in children[position + 1 :]:
+                previous_visual = visuals[-1]
+            if child in annotations:
+                targets[child] = previous_visual
+
+        next_visual: dict[str, object] | None = None
+        for child in reversed(children):
             if visuals := visual_blocks_by_child.get(child):
-                return visuals[0]
-        return None
+                next_visual = visuals[0]
+            if child in annotations and targets[child] is None:
+                targets[child] = next_visual
+        return targets
 
     def _has_contextual_visual_annotation(self, element: etree._Element) -> bool:
         """仅在直属完整 token annotation 与 visual 后代并存时启用非标准容器解析。"""
@@ -979,8 +1001,7 @@ class MarkupProjector:
                                 child_style.text,
                                 child_style.visibility_hidden,
                             )
-                            if rendered.strip():
-                                content_parts.append(rendered)
+                            _append_list_block_content(content_parts, rendered)
                             extras.extend(child_extras)
                 else:
                     rendered, child_extras = self._render_inline_element(child, item_style.text, item_style.visibility_hidden)

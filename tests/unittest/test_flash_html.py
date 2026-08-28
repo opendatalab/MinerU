@@ -17,6 +17,7 @@ from mineru.backend.analyze import aio_doc_analyze, doc_analyze
 from mineru.errors import InvalidRequestError
 from mineru.doclib.services.parse_svc import ParseService
 from mineru.model.flash import HtmlModel
+from mineru.model.flash._shared.markup import MarkupProjector
 from mineru.model.flash.html import HtmlResourceLimitError, HtmlSourceContext
 from mineru.model.flash.html import converter as html_converter_module
 from mineru.model.flash.html import document as html_document_module
@@ -351,8 +352,7 @@ def test_html_auto_selection_precomputes_repeated_candidate_groups(monkeypatch: 
 
     monkeypatch.setattr(html_selector_module, "_tokens", counted_tokens)
     items = "".join(
-        f'<{tag} class="post"><p>{"candidate text " * 16}</p></{tag}>'
-        for tag in ("div", "section") * (item_count // 2)
+        f'<{tag} class="post"><p>{"candidate text " * 16}</p></{tag}>' for tag in ("div", "section") * (item_count // 2)
     )
 
     doc_analyze(f"<html><body>{items}</body></html>".encode(), file_suffix="html")
@@ -809,6 +809,28 @@ def test_html_interleaved_figure_captions_bind_to_each_nearest_image() -> None:
     assert [child.content for child in images[1].content if child.type == BlockType.IMAGE_CAPTION] == ["Caption B"]
 
 
+def test_html_figure_annotation_targets_use_one_batched_scan() -> None:
+    """验证大量 figure 说明通过一次批量绑定保持最近前序 visual 关系。"""
+    pair_count = 1_000
+    figure = etree.Element("figure")
+    annotations: set[etree._Element] = set()
+    visual_blocks_by_child: dict[etree._Element, list[dict[str, object]]] = {}
+    expected_targets: list[dict[str, object]] = []
+    for index in range(pair_count):
+        image = etree.SubElement(figure, "img")
+        visual = {"type": BlockType.IMAGE, "content": "", "index": index}
+        visual_blocks_by_child[image] = [visual]
+        caption = etree.SubElement(figure, "figcaption")
+        annotations.add(caption)
+        expected_targets.append(visual)
+
+    targets = MarkupProjector._figure_annotation_targets(figure, annotations, visual_blocks_by_child)
+
+    captions = [child for child in figure if child.tag == "figcaption"]
+    assert len(targets) == pair_count
+    assert [targets[caption] for caption in captions] == expected_targets
+
+
 @pytest.mark.parametrize(
     ("visual_markup", "parent_type", "body_type", "annotation_markup", "annotation_type"),
     [
@@ -946,6 +968,19 @@ def test_html_inline_visual_splits_ordered_list_without_renumbering_following_it
     ]
     assert middle.pages[0].blocks[0].content[0].content == "3. Before"  # type: ignore[union-attr]
     assert middle.pages[0].blocks[3].content[0].content == "4. Next"  # type: ignore[union-attr]
+
+
+def test_html_list_block_children_keep_semantic_text_boundaries() -> None:
+    """验证一个列表项内的多个块级段落不会粘连成错误单词边界。"""
+    payload = b"<html><body><ul><li><p>First paragraph.</p><p>Second paragraph.</p></li></ul></body></html>"
+
+    middle, model = doc_analyze(payload, file_suffix="html")
+    content = model.pages[0][0]["content"][0]["content"]
+    markdown = render_markdown(middle)
+
+    assert content == "First paragraph.\nSecond paragraph."
+    assert "First paragraph.Second paragraph." not in markdown
+    assert "First paragraph.\nSecond paragraph." in markdown
 
 
 def test_html_local_base_images_styles_and_escape_are_bounded(tmp_path: Path) -> None:
@@ -1316,6 +1351,62 @@ def test_html_invalid_versioned_markers_fallback_without_partial_results() -> No
         assert markdown.count("WIRESENTINEL") == 1
         assert markdown.count("WIREFORMULA") == 1
         assert markdown.count("Visible caption") == 1
+
+
+@pytest.mark.parametrize(
+    ("parent_type", "body_type", "sub_type", "owned_class"),
+    [
+        ("image", "image_body", "diagram", "mineru-image"),
+        ("chart", "chart_body", "bar", "mineru-chart-image"),
+    ],
+)
+def test_html_versioned_wire_multiple_owned_images_fall_back_without_loss(
+    parent_type: str,
+    body_type: str,
+    sub_type: str,
+    owned_class: str,
+) -> None:
+    """验证普通图片和图表 body 被追加 renderer 图片时回退并保留全部载荷。"""
+    source = MiddleJson.model_validate(
+        {
+            "pages": [
+                {
+                    "page_idx": 0,
+                    "blocks": [
+                        {
+                            "type": parent_type,
+                            "index": 0,
+                            "sub_type": sub_type,
+                            "content": [
+                                {
+                                    "type": body_type,
+                                    "index": 0,
+                                    "content": "Original visual content",
+                                    "image_url": "https://example.com/original.png",
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ],
+            "is_full_document": True,
+            "file_suffix": "html",
+            "effort": "flash",
+            "parse_mode": "txt",
+            "mineru_version": "test",
+        }
+    )
+    soup = BeautifulSoup(render_html(source, standalone=False), "html.parser")
+    extra = soup.new_tag(
+        "img",
+        attrs={"class": owned_class, "src": "https://example.com/added.png", "alt": "Added visual"},
+    )
+    soup.select_one(f'[data-block-type="{body_type}"]').append(extra)
+
+    _, model = doc_analyze(str(soup).encode(), file_suffix="html")
+    image_urls = [str(block["image_url"]) for block in model.pages[0] if block.get("image_url")]
+
+    assert image_urls == ["https://example.com/original.png", "https://example.com/added.png"]
 
 
 def test_html_versioned_wire_visible_structural_text_falls_back_without_loss() -> None:
