@@ -7,6 +7,8 @@ import re
 
 from lxml import etree  # type: ignore[reportMissingImports]
 
+from .names import local_name
+
 
 _OPERATOR_MAP = {
     "−": "-",
@@ -73,11 +75,6 @@ _LATEX_MATH_TOKEN_ESCAPES = {
 }
 
 
-def _local_name(element: etree._Element) -> str:
-    """返回 XML 元素不含命名空间的本地名。"""
-    return etree.QName(element).localname
-
-
 def _escape_text(value: str) -> str:
     """转义进入 LaTeX 文本命令的保留字符。"""
     return _LATEX_ESCAPE_RE.sub(r"\\\1", value)
@@ -100,11 +97,11 @@ def _join_children(element: etree._Element) -> str:
 
 def _convert(element: etree._Element) -> str:
     """递归转换一个常用 MathML 节点，未知容器保留其可解析子项。"""
-    name = _local_name(element)
+    name = local_name(element)
     children = _children(element)
     text = (element.text or "").strip()
     if name == "semantics":
-        if not children or _local_name(children[0]) in {"annotation", "annotation-xml"}:
+        if not children or local_name(children[0]) in {"annotation", "annotation-xml"}:
             return ""
         return _convert(children[0])
     if name in {"math", "mrow", "mstyle", "mpadded", "mphantom"}:
@@ -143,7 +140,7 @@ def _convert(element: etree._Element) -> str:
         values = [_convert(child) for child in children]
         return rf"\left{opening}{separators[0].join(values)}\right{closing}"
     if name == "mtable":
-        rows = [_convert(child) for child in children if _local_name(child) in {"mtr", "mlabeledtr"}]
+        rows = [_convert(child) for child in children if local_name(child) in {"mtr", "mlabeledtr"}]
         return r"\begin{matrix}" + r" \\ ".join(rows) + r"\end{matrix}"
     if name in {"mtr", "mlabeledtr"}:
         return " & ".join(_convert(child) for child in children)
@@ -159,7 +156,7 @@ def mathml_to_latex(math_element: etree._Element) -> str | None:
     for annotation in math_element.iter():
         if not isinstance(annotation.tag, str):
             continue
-        if _local_name(annotation) != "annotation":
+        if local_name(annotation) != "annotation":
             continue
         encoding = (annotation.get("encoding") or "").casefold()
         if "tex" in encoding and (annotation.text or "").strip():

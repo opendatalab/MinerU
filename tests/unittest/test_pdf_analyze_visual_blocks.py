@@ -660,9 +660,7 @@ def test_normalize_pdf_model_list_preserves_hyperlink_url_payload() -> None:
             {
                 "type": BlockType.TEXT,
                 "content": (
-                    "前Ａ <hyperlink>标Ｂ"
-                    "<url>https://example.test/Ａ\\(x\\)?q=１&amp;y=2</url>"
-                    "</hyperlink> 后Ｃ \\(Ｄ\\)"
+                    "前Ａ <hyperlink>标Ｂ<url>https://example.test/Ａ\\(x\\)?q=１&amp;y=2</url></hyperlink> 后Ｃ \\(Ｄ\\)"
                 ),
                 "lines": [{"bbox": [0.1, 0.1, 0.9, 0.2]}],
             }
@@ -672,9 +670,7 @@ def test_normalize_pdf_model_list_preserves_hyperlink_url_payload() -> None:
     normalization._normalize_pdf_model_list(model_list)
 
     assert model_list[0][0]["content"] == (
-        "前A <hyperlink>标B"
-        "<url>https://example.test/Ａ\\(x\\)?q=１&amp;y=2</url>"
-        "</hyperlink> 后C <eq>Ｄ</eq>"
+        "前A <hyperlink>标B<url>https://example.test/Ａ\\(x\\)?q=１&amp;y=2</url></hyperlink> 后C <eq>Ｄ</eq>"
     )
 
 
@@ -1210,6 +1206,7 @@ def test_doc_analyze_effort_annotation_exposes_only_supported_values() -> None:
         "rtf",
         "csv",
         "epub",
+        "html",
         "odt",
         "ods",
         "odp",
@@ -1257,6 +1254,7 @@ def test_aio_doc_analyze_runs_sync_entrypoint_in_thread_and_forwards_arguments(
         "image_analysis": False,
         "page_index_map": [3, 5],
         "file_suffix": "pptx",
+        "source_context": None,
     }
     assert observed["thread_id"] != caller_thread_id
 
@@ -1366,8 +1364,7 @@ def test_doc_analyze_rejects_unsupported_suffix_before_resource_initialization(
     """验证非法后缀会在创建 PDF 文档或 Office 模型前直接报错。"""
     pdf_document = MagicMock()
     model_factories = {
-        suffix: MagicMock()
-        for suffix in ("doc", "docx", "ppt", "pptx", "xls", "xlsx", "rtf", "odt", "ods", "odp")
+        suffix: MagicMock() for suffix in ("doc", "docx", "ppt", "pptx", "xls", "xlsx", "rtf", "odt", "ods", "odp")
     }
     monkeypatch.setattr(pipeline, "PDFDocument", pdf_document)
     monkeypatch.setattr(office, "_OFFICE_MODEL_MAP", model_factories)
@@ -1385,8 +1382,7 @@ def test_doc_analyze_rejects_low_before_office_initialization(
 ) -> None:
     """验证已移除的 Low effort 在创建 Office 模型前直接报错。"""
     model_factories = {
-        suffix: MagicMock()
-        for suffix in ("doc", "docx", "ppt", "pptx", "xls", "xlsx", "rtf", "odt", "ods", "odp")
+        suffix: MagicMock() for suffix in ("doc", "docx", "ppt", "pptx", "xls", "xlsx", "rtf", "odt", "ods", "odp")
     }
     monkeypatch.setattr(office, "_OFFICE_MODEL_MAP", model_factories)
 

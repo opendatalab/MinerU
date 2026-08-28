@@ -32,6 +32,9 @@ mineru-kit parse <input...> -o <output> [flags]
 
 当前支持的扩展名包括 PDF、EPUB、常见图片、CSV、RTF、DOC/DOCX、PPT/PPTX、XLS/XLSX、ODT/ODS/ODP、HTML/HTM。目录输入只展开一层，不递归；只有 PDF 支持 `--pages`，图片及其他非 PDF 输入均整文件解析，显式 `--pages` 返回 `page_range_invalid`。EPUB 页面严格遵循 OPF spine 顺序，并保留作者目录中可解析的内部跳转。
 
+HTML/HTM 使用静态源码 Flash 解析：固定 `auto` 正文选择、单逻辑页、无 JavaScript/浏览器布局。远程图片只保留
+HTTP(S) URL，解析器不会下载；本地相对图片只能从 HTML 文件所在安全根目录读取。
+
 当前不支持：
 
 - `--recursive`

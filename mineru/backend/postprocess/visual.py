@@ -429,9 +429,11 @@ def regroup_visual_blocks(
         visual_type = VISUAL_MAIN_TYPES[_block_type(main_block)]
         mapping = VISUAL_TYPE_MAPPING[visual_type]
         main_sub_type = str(_get_block_field(main_block, "sub_type", "") or "")
+        main_guess_lang = str(_get_block_field(main_block, "guess_lang", "") or "")
         body_block = deepcopy(main_block)
         _set_block_field(body_block, "type", mapping["body"])
         body_block.pop("sub_type", None)
+        body_block.pop("guess_lang", None)
         table_cell_merge_is_set = visual_type == BlockType.TABLE and "cell_merge" in body_block
         table_cell_merge = body_block.pop("cell_merge", None) if table_cell_merge_is_set else None
 
@@ -466,6 +468,8 @@ def regroup_visual_blocks(
         }
         if main_sub_type:
             two_layer_block["sub_type"] = main_sub_type
+        if visual_type == BlockType.CODE and main_guess_lang:
+            two_layer_block["guess_lang"] = main_guess_lang
         if table_cell_merge_is_set:
             two_layer_block["cell_merge"] = table_cell_merge
         if "bbox" in main_block:

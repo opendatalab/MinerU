@@ -24,7 +24,10 @@ def test_visual_bodies_captions_and_footnotes_align_left() -> None:
     source = css_path.read_text(encoding="utf-8")
 
     assert "width: fit-content" not in source
-    assert ".mineru-document .mineru-figure > img {\n  display: block;\n  margin-inline: 0;\n}" in source
+    assert (
+        ".mineru-document .mineru-figure > img,\n"
+        ".mineru-document .mineru-visual-body > img {\n  display: block;\n  margin-inline: 0;\n}"
+    ) in source
     assert ".mineru-document .mineru-flowchart {\n  margin: 1rem 0;" in source
     assert ".mineru-document .mineru-flowchart-canvas {\n  display: none;\n  min-width: 0;\n  text-align: left;" in source
     assert (

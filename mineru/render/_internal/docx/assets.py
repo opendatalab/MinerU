@@ -54,13 +54,13 @@ def prepare_block_image(
     block: ImagePayloadBlock,
     asset_resolver: AssetResolver | None = None,
 ) -> PreparedImage:
-    """从图片载荷 block 加载图片，始终优先使用内嵌 data URI。"""
+    """从图片载荷 block 加载图片，按 sidecar、data URI 的公共优先级选择。"""
     if not isinstance(block, ImagePayloadBlock):
         raise TypeError("block must be an ImagePayloadBlock")
-    if block.image_base64 is not None:
-        return _prepare_data_uri(block.image_base64)
     if block.image_path is not None:
         return _prepare_relative_asset(block.image_path, asset_resolver)
+    if block.image_base64 is not None:
+        return _prepare_data_uri(block.image_base64)
     raise DocxAssetError("Image block does not contain image_base64 or image_path")
 
 

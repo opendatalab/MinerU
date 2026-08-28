@@ -1,5 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
-"""统一 PDF、EPUB、CSV 与 Office/RTF 文档分析的稳定公共门面。"""
+"""统一 PDF、EPUB、HTML、CSV 与 Office/RTF 文档分析的稳定公共门面。"""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from loguru import logger
 
 from .analysis.contracts import AnalyzeEffort, OfficeSuffix, ParseMode
 from ..config import config
+from ..model.flash.html import HtmlSourceContext
 from ..types import FILE_SUFFIXES, FileSuffix, MiddleJson, ModelJson
 from ..version import __version__ as mineru_version
 
@@ -32,6 +33,7 @@ def doc_analyze(
     image_analysis: bool = True,
     page_index_map: list[int] | None = None,
     file_suffix: FileSuffix = "pdf",
+    source_context: HtmlSourceContext | None = None,
 ) -> tuple[MiddleJson, ModelJson]:
     """生产严格 ModelJson，并在统一边界构造严格 MiddleJson。"""
     if file_suffix not in FILE_SUFFIXES:
@@ -58,6 +60,10 @@ def doc_analyze(
         from .analysis.epub import analyze_epub
 
         result = analyze_epub(file_bytes)
+    elif file_suffix == "html":
+        from .analysis.html import analyze_html
+
+        result = analyze_html(file_bytes, source_context=source_context)
     else:
         from .analysis.office import analyze_office
 
@@ -88,6 +94,7 @@ async def aio_doc_analyze(
     image_analysis: bool = True,
     page_index_map: list[int] | None = None,
     file_suffix: FileSuffix = "pdf",
+    source_context: HtmlSourceContext | None = None,
 ) -> tuple[MiddleJson, ModelJson]:
     """在线程中执行统一文档分析，避免阻塞调用方事件循环。"""
     return await asyncio.to_thread(
@@ -98,4 +105,5 @@ async def aio_doc_analyze(
         image_analysis=image_analysis,
         page_index_map=page_index_map,
         file_suffix=file_suffix,
+        source_context=source_context,
     )

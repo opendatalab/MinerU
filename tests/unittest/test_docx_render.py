@@ -610,6 +610,23 @@ def test_html_table_fallback_rolls_back_partial_table_and_relationships() -> Non
     assert len(media) == 1
 
 
+def test_html_table_remote_cell_image_uses_safe_link_fallback() -> None:
+    """验证远程单元格图片输出可点击 alt，而不是中断整份 DOCX。"""
+    html = '<table><tr><td><img src="https://example.com/logo.png" alt="Logo"></td></tr></table>'
+    table = TableBlock(
+        type="table",
+        index=0,
+        content=[TableBodyBlock(type="table_body", index=0, content=html)],
+    )
+
+    result = render_docx(_middle(_page(0, table)))
+    document = Document(BytesIO(result))
+
+    assert document.tables[0].cell(0, 0).text == "Logo"
+    assert len(document.inline_shapes) == 0
+    assert "https://example.com/logo.png" in _part(result, "word/_rels/document.xml.rels")
+
+
 def test_html_table_cell_image_is_limited_to_merged_cell_width() -> None:
     """验证窄列图片宽度不超过扣除单元格左右内边距后的 tcW。"""
     cells = [f"<td>{'<img src=' + repr(_png_uri(size=(300, 100))) + '/>' if index == 0 else index}</td>" for index in range(10)]
@@ -712,8 +729,8 @@ def test_spatial_table_preserves_preformatted_text_without_assets(image_payload:
 
 
 @pytest.mark.parametrize("content", ["", " \n\t"])
-def test_spatial_table_without_text_uses_base64_image(content: str) -> None:
-    """验证空或纯空白空间表格优先使用内嵌图片。"""
+def test_spatial_table_without_text_uses_preferred_sidecar_image(content: str) -> None:
+    """验证空或纯空白空间表格遵循 image_path 优先的公共图片契约。"""
     spatial = TableBlock(
         type="table",
         index=7,
@@ -727,11 +744,11 @@ def test_spatial_table_without_text_uses_base64_image(content: str) -> None:
             )
         ],
     )
-    resolver = Mock(side_effect=AssertionError("内嵌图片存在时不应解析 sidecar"))
+    resolver = Mock(return_value=_png_bytes(size=(16, 10)))
 
     document = Document(BytesIO(render_docx(_middle(_page(3, spatial)), asset_resolver=resolver)))
 
-    resolver.assert_not_called()
+    resolver.assert_called_once_with("images/unused.png")
     assert len(document.inline_shapes) == 1
 
 
@@ -755,6 +772,60 @@ def test_spatial_table_without_text_uses_sidecar_resolver() -> None:
 
     resolver.assert_called_once_with("images/table.png")
     assert len(document.inline_shapes) == 1
+
+
+def test_remote_only_equation_table_and_chart_use_docx_link_fallbacks() -> None:
+    """验证所有远程-only 图片载荷都会进入 DOCX 可点击链接回退。"""
+    middle = _middle(
+        _page(
+            0,
+            EquationBlock(
+                type="equation",
+                index=0,
+                content="",
+                image_url="https://example.com/formula.png",
+            ),
+            TableBlock(
+                type="table",
+                index=1,
+                content=[
+                    TableBodyBlock(
+                        type="table_body",
+                        index=1,
+                        content="",
+                        image_url="https://example.com/table.png",
+                    )
+                ],
+            ),
+            ChartBlock(
+                type="chart",
+                index=2,
+                sub_type="bar",
+                content=[
+                    ChartBodyBlock(
+                        type="chart_body",
+                        index=2,
+                        content="",
+                        image_url="https://example.com/chart.png",
+                    )
+                ],
+            ),
+        )
+    )
+
+    result = render_docx(middle)
+    document = Document(BytesIO(result))
+    relationships = _part(result, "word/_rels/document.xml.rels")
+
+    assert [paragraph.text for paragraph in document.paragraphs] == ["formula", "table", "bar"]
+    assert all(
+        target in relationships
+        for target in (
+            "https://example.com/formula.png",
+            "https://example.com/table.png",
+            "https://example.com/chart.png",
+        )
+    )
 
 
 @pytest.mark.parametrize("content", ["", " \n\t"])

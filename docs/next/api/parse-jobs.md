@@ -55,6 +55,9 @@ Job 状态:
 | `output_formats` | array | 否 | `["markdown"]` | 请求产物格式。 |
 | `callback` | object | 否 | `null` | Webhook 回调配置，官方 API registered 用户可用。 |
 
+HTML job 固定使用静态 `auto` 正文选择，不执行 JavaScript，也不下载页面引用的远程图片。URL source 的来源 URL
+会用于解析相对链接；本地 source 的相对图片仅允许位于源 HTML 的安全根目录内。
+
 ### `files[]`
 
 | 字段 | 类型 | 必填 | 说明 |

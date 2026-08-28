@@ -1,10 +1,12 @@
 # Copyright (c) Opendatalab. All rights reserved.
 
-"""Flash PDF、EPUB、CSV 与 Office/RTF 文档模型。"""
+"""Flash PDF、EPUB、HTML、CSV 与 Office/RTF 文档模型。"""
 
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, BinaryIO
+
+from .html.contracts import HtmlSourceContext
 
 if TYPE_CHECKING:
     from .pdf.document import PDFDocument
@@ -42,6 +44,23 @@ class EpubModel:
 
         converter = EpubConverter()
         converter.convert(file_binary)
+        return converter.pages
+
+
+class HtmlModel:
+    """将 standalone HTML 文档包装为无状态 Flash 模型。"""
+
+    def predict(
+        self,
+        file_binary: BinaryIO,
+        *,
+        source_context: HtmlSourceContext | None = None,
+    ) -> list[list[dict[str, Any]]]:
+        """转换静态 HTML 流，并返回单逻辑页 model_list。"""
+        from .html.converter import HtmlConverter
+
+        converter = HtmlConverter()
+        converter.convert(file_binary, source_context=source_context)
         return converter.pages
 
 

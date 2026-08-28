@@ -76,20 +76,6 @@ from mineru.render import RenderMode
 
 ## 编程原则
 
-### 统一文档信息投影
-
-MinerU 文档解析的目标是尽可能保留具有跨格式价值的内容和结构，并通过统一 Middle JSON 稳定导出多种格式；目标不是逐输入格式、逐排版细节地 100% 复刻源文件。
-
-- 不为单一输入格式增加只用于还原罕见排版、编号样式或物理分页的私有 block、私有字段或 renderer 特判。
-- 只有同时满足“常见、语义价值高、可进入统一 Middle JSON、可被多个 renderer 稳定消费”的格式私有信息，才应扩展公共契约。
-- Review 时，源格式细节未被 100% 还原不应自动视为缺陷。
-- 禁止通过不断增加格式例外来追求源文件视觉级复刻；优先规范化为确定、可静态分析、跨格式一致的表示。
-
-具体投影约束：
-
-- ODT 忽略 `text:soft-page-break` 和普通 `fo:break-before/after`；只有有效 `master-page-name` 变化形成章节虚拟页。
-- 有序列表仅保证阿拉伯连续序号及单一列表级起始值；不精确还原字母、罗马数字、前后缀、倒序和 `1,5,6` 式逐项跳号，Review 不应再针对这些未支持能力提出检测。
-
 ### 确定性优先
 
 agent 通过静态分析理解代码。避免运行时注册、猴子补丁、`globals()` 等动态模式，使用显式映射。
@@ -170,7 +156,7 @@ pr-5415 重构后，Middle JSON 已收敛为 schema 2.0 的统一结构，不再
 
 ### 1. 统一分析入口
 
-`backend/analyze.py:doc_analyze()` 是 PDF、EPUB、CSV 与 Office 文档的唯一公共入口，通过 `file_suffix` 路由到 `backend/analysis/pdf/pipeline.py:analyze_pdf`、`backend/analysis/epub.py:analyze_epub`、`backend/analysis/csv.py:analyze_csv` 或 `backend/analysis/office.py:analyze_office`，最终经 `backend/postprocess/pages.py:model_list_to_pages()` 产出统一 `pages`。`MinerUParser` 是 `DocumentParser` 的唯一实现，替代旧的 `PdfHybridParser`/`PdfFlashParser`/`DocxParser` 等。
+`backend/analyze.py:doc_analyze()` 是 PDF、EPUB、HTML、CSV 与 Office 文档的唯一公共入口，通过 `file_suffix` 路由到 `backend/analysis/pdf/pipeline.py:analyze_pdf`、`backend/analysis/epub.py:analyze_epub`、`backend/analysis/html.py:analyze_html`、`backend/analysis/csv.py:analyze_csv` 或 `backend/analysis/office.py:analyze_office`，最终经 `backend/postprocess/pages.py:model_list_to_pages()` 产出统一 `pages`。`MinerUParser` 是 `DocumentParser` 的唯一实现，替代旧的 `PdfHybridParser`/`PdfFlashParser`/`DocxParser` 等。
 
 ### 2. MiddleJson 顶层字段（schema 2.0）
 
@@ -180,7 +166,7 @@ pr-5415 重构后，Middle JSON 已收敛为 schema 2.0 的统一结构，不再
 |------|------|------|
 | `pages` | `list[PageInfo]` | 严格按 `page_idx` 升序的页面数组 |
 | `is_full_document` | `bool` | 是否整本文档解析（空 `page_index_map` 时为 `True`） |
-| `file_suffix` | `Literal["pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx", "rtf", "csv", "epub", "odt", "ods", "odp"]` | 输入文件类型 |
+| `file_suffix` | `Literal["pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx", "rtf", "csv", "epub", "html", "odt", "ods", "odp"]` | 输入文件类型 |
 | `effort` | `Literal["flash", "medium", "high", "xhigh"]` | 分析强度 |
 | `parse_mode` | `Literal["txt", "ocr"]` | 解析模式 |
 | `mineru_version` | `str` | MinerU 版本号 |

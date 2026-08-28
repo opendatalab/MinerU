@@ -7,6 +7,7 @@ import hashlib
 from pathlib import Path, PureWindowsPath
 import re
 import xml.etree.ElementTree as ElementTree
+from urllib.parse import urlsplit
 
 INLINE_IMAGE_DATA_URI_RE = re.compile(r"data:image/([^;\"']+);base64,([^\"']+)", re.DOTALL)
 _SVG_NAMESPACE = "http://www.w3.org/2000/svg"
@@ -260,3 +261,26 @@ def validate_image_sidecar_path(image_path: str) -> str:
     ):
         raise ValueError(f"Unsafe image sidecar path: {image_path}")
     return posix_path.as_posix()
+
+
+def validate_remote_image_url(image_url: str) -> str:
+    """校验远程图片只能使用无凭据的 HTTP(S) 绝对地址。"""
+    normalized = image_url.strip()
+    if (
+        not normalized
+        or any(ord(char) < 0x20 or ord(char) == 0x7F for char in normalized)
+        or any(char in normalized for char in ("<", ">", "\\"))
+        or normalized.startswith("//")
+    ):
+        raise ValueError(f"Unsafe remote image URL: {image_url}")
+    try:
+        parsed = urlsplit(normalized)
+        _ = parsed.port
+        hostname = parsed.hostname
+    except ValueError as exc:
+        raise ValueError(f"Unsafe remote image URL: {image_url}") from exc
+    if parsed.scheme.casefold() not in {"http", "https"} or not parsed.netloc or hostname is None:
+        raise ValueError(f"Unsafe remote image URL: {image_url}")
+    if parsed.username is not None or parsed.password is not None:
+        raise ValueError(f"Remote image URL must not contain credentials: {image_url}")
+    return normalized

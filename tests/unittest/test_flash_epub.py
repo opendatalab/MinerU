@@ -22,7 +22,7 @@ from mineru.doclib.services.parse_svc import ParseService
 from mineru.errors import InvalidRequestError
 from mineru.model.flash import EpubModel
 from mineru.model.flash.epub import EpubEncryptedError, EpubPackage, EpubParseError, EpubResourceLimitError, detect_epub
-from mineru.model.flash.epub.styles import EpubStylesheet, TextStyle
+from mineru.model.flash._shared.markup import MarkupStylesheet, TextStyle
 from mineru.model.flash.epub.xhtml import EpubChapterConverter, build_anchor_registry, convert_svg_spine
 from mineru.parser import MinerUParser, parse, parse_async
 from mineru.parser import api_server
@@ -106,6 +106,10 @@ def test_epub_notes_use_page_footnote_and_document_wide_anchors() -> None:
     duplicate_first = footnote_by_text["First duplicate note."]
     duplicate_second = footnote_by_text["Second duplicate note."]
     assert first.anchor and endnote.anchor and duplicate_first.anchor  # type: ignore[union-attr]
+    assert first.anchor == "epub-5da65ec1e273b731b44c"  # type: ignore[union-attr]
+    assert endnote.anchor == "epub-b7ab2fcf9373c09c71d6"  # type: ignore[union-attr]
+    assert duplicate_first.anchor == "epub-2bd2576dd7c5d3cf58f4"  # type: ignore[union-attr]
+    assert duplicate_second.anchor == "epub-2b154ee53d6a59bb32f7"  # type: ignore[union-attr]
     assert second.anchor is None  # type: ignore[union-attr]
     assert duplicate_second.anchor and duplicate_second.anchor != duplicate_first.anchor  # type: ignore[union-attr]
     assert footnote_by_text["ARIA footnote."].anchor  # type: ignore[union-attr]
@@ -167,6 +171,8 @@ def test_epub_internal_links_and_lists_use_cross_renderer_projection() -> None:
     first_title = first_page.blocks[0]
     second_title = second_page.blocks[0]
     assert first_title.anchor and second_title.anchor  # type: ignore[union-attr]
+    assert first_title.anchor == "epub-1daacccca5bf43833643"  # type: ignore[union-attr]
+    assert second_title.anchor == "epub-8d7fe965e2d714cf08ae"  # type: ignore[union-attr]
     markdown = render_markdown(middle)
     assert markdown.startswith(f'<a id="{first_title.anchor}"></a>\n# Chapter One')  # type: ignore[union-attr]
     assert "NAV Chapter One" not in markdown
@@ -364,6 +370,38 @@ def test_epub_figure_skips_hidden_direct_images(attribute: str, value: str) -> N
         package.close()
 
 
+def test_epub_figure_preserves_direct_text_and_child_tails() -> None:
+    """验证共享 projector 不丢弃 XHTML figure 的直属文本及图片、caption tail。"""
+    package = EpubPackage(build_epub_fixture())
+    chapter_path = "EPUB/text/ch1.xhtml"
+    try:
+        root = package.xml_part(chapter_path, allow_external_doctype=True)
+        figure = next(element for element in root.iter() if isinstance(element.tag, str) and element.tag.endswith("}figure"))
+        image = next(child for child in figure if isinstance(child.tag, str) and child.tag.endswith("}img"))
+        caption = next(child for child in figure if isinstance(child.tag, str) and child.tag.endswith("}figcaption"))
+        figure.text = "Before"
+        image.tail = "After"
+        caption.tail = "Tail"
+
+        anchors = build_anchor_registry([(chapter_path, root)], package)
+        blocks = EpubChapterConverter(package, chapter_path, root, anchors).convert()
+        relevant = [
+            block
+            for block in blocks
+            if block.get("type") in {BlockType.IMAGE, BlockType.IMAGE_CAPTION}
+            or (isinstance(block.get("content"), str) and block.get("content") in {"Before", "AfterTail"})
+        ]
+
+        assert [(block["type"], block.get("content")) for block in relevant] == [
+            (BlockType.TEXT, "Before"),
+            (BlockType.IMAGE, ""),
+            (BlockType.IMAGE_CAPTION, "Dot caption"),
+            (BlockType.TEXT, "AfterTail"),
+        ]
+    finally:
+        package.close()
+
+
 def test_public_parser_rejects_epub_page_range(tmp_path: Path) -> None:
     """验证 EPUB 公共 Parser 只接受整本解析。"""
     source = tmp_path / "book.epub"
@@ -379,7 +417,7 @@ def test_public_parser_rejects_epub_page_range(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(
     "suffix",
-    ["doc", "docx", "ppt", "pptx", "xls", "xlsx", "rtf", "csv", "epub", "odt", "ods", "odp"],
+    ["doc", "docx", "ppt", "pptx", "xls", "xlsx", "rtf", "csv", "epub", "html", "odt", "ods", "odp"],
 )
 def test_non_pdf_analyze_rejects_non_empty_page_index_map(suffix: str) -> None:
     """验证所有非 PDF Analyze 分支拒绝伪造 partial page mapping。"""
@@ -389,7 +427,7 @@ def test_non_pdf_analyze_rejects_non_empty_page_index_map(suffix: str) -> None:
 
 @pytest.mark.parametrize(
     "suffix",
-    ["doc", "docx", "ppt", "pptx", "xls", "xlsx", "rtf", "csv", "epub", "odt", "ods", "odp"],
+    ["doc", "docx", "ppt", "pptx", "xls", "xlsx", "rtf", "csv", "epub", "html", "odt", "ods", "odp"],
 )
 def test_non_pdf_public_parser_rejects_page_range(
     monkeypatch: pytest.MonkeyPatch,
@@ -590,7 +628,7 @@ def test_epub_resource_limits_fail_before_semantic_conversion(monkeypatch: pytes
 
 def test_epub_stylesheet_indexes_repeated_selectors_and_preserves_cascade_order() -> None:
     """验证重复 selector 按属性聚合，交错同优先级规则仍遵守源码顺序。"""
-    stylesheet = EpubStylesheet()
+    stylesheet = MarkupStylesheet()
     stylesheet.add(
         ".x { font-weight: bold; display: none; }"
         ".y { font-weight: normal; display: block; }"
@@ -608,7 +646,7 @@ def test_epub_stylesheet_indexes_repeated_selectors_and_preserves_cascade_order(
 
 def test_epub_stylesheet_honors_important_before_specificity_and_source_order() -> None:
     """验证 important 声明优先于后续普通规则和普通 inline，并允许 inline important 覆盖。"""
-    stylesheet = EpubStylesheet()
+    stylesheet = MarkupStylesheet()
     stylesheet.add(
         ".secret { display: none !important; font-weight: bold !important; }.secret { display: block; font-weight: normal; }"
     )
@@ -644,7 +682,7 @@ def test_epub_stylesheet_honors_important_before_specificity_and_source_order() 
 )
 def test_epub_stylesheet_tracks_display_and_visibility_independently(css: str, expected_hidden: bool) -> None:
     """验证 display 与 visibility 各自级联，任一计算结果隐藏时都不输出元素。"""
-    stylesheet = EpubStylesheet()
+    stylesheet = MarkupStylesheet()
     stylesheet.add(css)
 
     resolved = stylesheet.resolve(etree.fromstring(b'<span class="secret"/>'), TextStyle())
@@ -670,7 +708,7 @@ def test_epub_combined_visibility_rule_does_not_export_hidden_content() -> None:
 
 def test_epub_stylesheet_allows_visible_descendant_to_override_inherited_visibility() -> None:
     """验证 visibility 可继承且显式 visible 后代能够恢复自身输出。"""
-    stylesheet = EpubStylesheet()
+    stylesheet = MarkupStylesheet()
     stylesheet.add(".parent { visibility: hidden; } .child { visibility: visible; }")
     parent = etree.fromstring(b'<div class="parent"><span class="child"/></div>')
     child = parent[0]
@@ -772,7 +810,7 @@ def test_epub_visibility_hidden_body_still_visits_visible_children() -> None:
 
 def test_epub_stylesheet_rejects_overlong_numeric_font_weight_before_int() -> None:
     """验证超长或越界数字字重作为无效声明忽略且不会覆盖继承样式。"""
-    stylesheet = EpubStylesheet()
+    stylesheet = MarkupStylesheet()
     stylesheet.add(f".x {{ font-weight: {'9' * 100_000}; }} .y {{ font-weight: 1001; }}")
 
     inherited = TextStyle(bold=True)

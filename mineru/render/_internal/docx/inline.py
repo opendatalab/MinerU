@@ -18,6 +18,7 @@ from lxml import etree
 from loguru import logger
 
 from ....backend.postprocess.inline import (
+    InlineCode,
     InlineEquation,
     InlineLink,
     InlineNode,
@@ -206,6 +207,18 @@ def _append_nodes_to_container(
                 hyperlink=hyperlink,
                 context=context,
             )
+            continue
+        if isinstance(node, InlineCode):
+            run = _append_text_run(
+                container,
+                paragraph,
+                node.content,
+                styles=inherited_styles,
+                hyperlink=hyperlink,
+                context=context,
+            )
+            run.font.name = "Courier New"
+            run.font.size = Pt(9)
             continue
         if isinstance(node, InlineStyled):
             styles = tuple(dict.fromkeys((*inherited_styles, *node.styles)))

@@ -118,11 +118,10 @@ def test_unified_render_forwards_format_specific_options() -> None:
     original_tree = render(middle, RenderFormat.STRUCTURED_CONTENT)
 
     assert "\n\n---\n\n" in markdown
-    assert html.startswith('<article class="mineru-document mineru-document--full">')
+    assert html.startswith('<article class="mineru-document mineru-document--full" ')
+    assert 'data-mineru-html-version="1" data-render-mode="full"' in html
     assert "<!doctype html>" not in html
-    assert structured_content["pages"][0]["blocks"][0]["image_source"] == (
-        "https://cdn.example/doc/images/a%20b.png"
-    )
+    assert structured_content["pages"][0]["blocks"][0]["image_source"] == ("https://cdn.example/doc/images/a%20b.png")
     assert "https://cdn.example/doc/images/a%20b.png" in image_markdown
     assert "<title>Unified Render</title>" in html_document
     assert 'src="https://cdn.example/doc/images/a%20b.png"' in html_document

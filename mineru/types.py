@@ -56,6 +56,7 @@ FileSuffix: TypeAlias = Literal[
     "rtf",
     "csv",
     "epub",
+    "html",
     "odt",
     "ods",
     "odp",
@@ -525,10 +526,11 @@ class PageFootnoteBlock(StringContentBlock):
 
 
 class ImagePayloadBlock(BlockBase):
-    """直接携带图片 data URI 的 block 基类。"""
+    """统一携带 sidecar、data URI 或远程 URL 的图片 block 基类。"""
 
     image_base64: str | None = Field(default=None, repr=False)
     image_path: str | None = None
+    image_url: str | None = None
 
     @field_validator("image_path")
     @classmethod
@@ -539,6 +541,16 @@ class ImagePayloadBlock(BlockBase):
         from .utils.image_payload import validate_image_sidecar_path
 
         return validate_image_sidecar_path(value)
+
+    @field_validator("image_url")
+    @classmethod
+    def _validate_image_url(cls, value: str | None) -> str | None:
+        """校验远程图片 URL，禁止活动协议、相对地址与内嵌凭据。"""
+        if value is None:
+            return None
+        from .utils.image_payload import validate_remote_image_url
+
+        return validate_remote_image_url(value)
 
 
 class ImagePayloadContentBlock(ImagePayloadBlock):

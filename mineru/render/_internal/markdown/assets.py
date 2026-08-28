@@ -15,11 +15,13 @@ _HTML_IMAGE_SRC_RE = re.compile(
 
 
 def resolve_image_source(block: ImagePayloadBlock, asset_base_url: str = "") -> str | None:
-    """按 image_path 优先、image_base64 兜底解析图片来源。"""
+    """按 sidecar、data URI、远程 URL 的稳定优先级解析图片来源。"""
     if block.image_path:
         return join_asset_base_url(asset_base_url, block.image_path)
     if block.image_base64:
         return block.image_base64
+    if block.image_url:
+        return block.image_url
     return None
 
 

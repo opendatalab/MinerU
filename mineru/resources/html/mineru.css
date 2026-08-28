@@ -271,7 +271,8 @@
   max-width: 100%;
 }
 
-.mineru-document .mineru-figure > img {
+.mineru-document .mineru-figure > img,
+.mineru-document .mineru-visual-body > img {
   display: block;
   margin-inline: 0;
 }

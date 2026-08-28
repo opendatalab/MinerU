@@ -64,20 +64,22 @@ def _image_block(**values: str | None) -> ImageBodyBlock:
     return ImageBodyBlock(type="image_body", index=0, content="", **values)
 
 
-def test_block_prefers_base64_over_sidecar() -> None:
-    """验证同时存在两种载荷时只解析 image_base64，不调用 resolver。"""
-    png_data = _image_bytes("PNG", size=(11, 9))
+def test_block_prefers_sidecar_over_base64() -> None:
+    """验证同时存在两种载荷时按公共契约优先解析 image_path。"""
+    embedded_data = _image_bytes("PNG", size=(11, 9))
+    sidecar_data = _image_bytes("PNG", size=(13, 7))
 
-    def unexpected_resolver(_path: str) -> bytes:
-        """若错误访问 sidecar，则立即让测试失败。"""
-        raise AssertionError("resolver must not be called")
+    def resolver(path: str) -> bytes:
+        """验证 helper 请求规范 sidecar 路径并返回不同尺寸图片。"""
+        assert path == "images/preferred.png"
+        return sidecar_data
 
     prepared = prepare_block_image(
-        _image_block(image_base64=_data_uri("png", png_data), image_path="images/fallback.png"),
-        unexpected_resolver,
+        _image_block(image_base64=_data_uri("png", embedded_data), image_path="images/preferred.png"),
+        resolver,
     )
 
-    assert prepared == PreparedImage(png_data, "png", 11, 9)
+    assert prepared == PreparedImage(sidecar_data, "png", 13, 7)
 
 
 def test_block_loads_safe_sidecar_through_resolver() -> None:
