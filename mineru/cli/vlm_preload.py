@@ -10,6 +10,33 @@ SERVICE_CONFIG_DEFAULTS: dict[str, Any] = {
     "enable_vlm_preload": False,
 }
 
+# 请求级参数集合（与 mineru.cli.api_request.ParseRequestOptions 的字段保持同步，
+# files 除外）。这些参数应由每次请求决定，不允许从 CLI 启动参数透传进
+# model_config，否则 run_parse_job 合并 config 时会与请求参数产生重复
+# 关键字参数冲突（TypeError: dict() got multiple values for keyword argument）。
+REQUEST_LEVEL_CONFIG_KEYS: frozenset[str] = frozenset(
+    {
+        "backend",
+        "lang_list",
+        "effort",
+        "parse_method",
+        "formula_enable",
+        "table_enable",
+        "image_analysis",
+        "server_url",
+        "return_md",
+        "return_middle_json",
+        "return_model_output",
+        "return_content_list",
+        "return_images",
+        "response_format_zip",
+        "return_original_file",
+        "client_side_output_generation",
+        "start_page_id",
+        "end_page_id",
+    }
+)
+
 
 def split_service_and_model_config(
     config: Mapping[str, Any] | None,
@@ -19,6 +46,9 @@ def split_service_and_model_config(
 
     for key, default in SERVICE_CONFIG_DEFAULTS.items():
         service_config[key] = bool(raw_config.pop(key, default))
+
+    for key in REQUEST_LEVEL_CONFIG_KEYS:
+        raw_config.pop(key, None)
 
     return service_config, raw_config
 
