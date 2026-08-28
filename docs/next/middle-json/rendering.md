@@ -30,9 +30,9 @@ markdown = render(
 | --- | --- | --- |
 | `MARKDOWN` | `MarkdownRenderOptions(mode, asset_base_url, image_renderer)` | `str` |
 | `HTML` | `HtmlRenderOptions(mode, asset_base_url, standalone, document_title)` | `str` |
-| `DOCX` | `DocxRenderOptions(mode, asset_resolver)` | `bytes` |
-| `EPUB` | `EpubRenderOptions(mode, title, authors, language, identifier, modified_at, asset_resolver)` | `bytes` |
-| `PDF` | `PdfRenderOptions(mode, asset_resolver, document_title)` | `bytes` |
+| `DOCX` | `DocxRenderOptions(asset_resolver)` | `bytes` |
+| `EPUB` | `EpubRenderOptions(title, authors, language, identifier, modified_at, asset_resolver)` | `bytes` |
+| `PDF` | `PdfRenderOptions(asset_resolver, document_title)` | `bytes` |
 | `STRUCTURED_CONTENT` | `StructuredContentRenderOptions(asset_base_url)` | `dict[str, Any]` |
 | `CONTENT_LIST` | `ContentListRenderOptions(asset_base_url)` | `list[dict[str, Any]]` |
 | `CONTENT_LIST_V2` | `ContentListV2RenderOptions(asset_base_url)` | `list[list[dict[str, Any]]]` |
@@ -40,6 +40,8 @@ markdown = render(
 `options` 省略时使用对应格式的默认 Options。入口只接受 `RenderFormat` 枚举，格式与 Options
 类型不匹配时抛出 `TypeError`，不归一化字符串格式，也不在单次调用中批量渲染。各专用
 `render_*()` 函数继续保留；统一入口只负责严格校验和分发，不改变底层渲染语义或异常类型。
+只有 Markdown 与 HTML 的专用函数和 Options 暴露 `mode`；其它格式传入 `mode` 会按严格签名
+直接抛出 `TypeError`，不会兼容或静默忽略。
 
 所有入口均不修改传入的 `MiddleJson`。renderer 不负责把结果或图片写到文件系统；DOCX、
 EPUB 与 PDF 需要读取相对图片 sidecar 时，只能通过显式 `asset_resolver` 获取字节。
@@ -81,12 +83,11 @@ table 会回退到自定义 renderer。
 ```python
 from pathlib import Path
 
-from mineru.render import RenderMode, render_docx
+from mineru.render import render_docx
 
 asset_dir = Path("output/document")
 docx_bytes = render_docx(
     middle_json,
-    mode=RenderMode.DEFAULT,
     asset_resolver=lambda relative_path: (asset_dir / relative_path).read_bytes(),
 )
 ```
@@ -120,23 +121,21 @@ HTML table 使用 occupancy grid 生成原生 Word table，支持 `rowspan/colsp
 alt description；Chart
 在图片后继续输出可用的 HTML 数据表。视觉父块仍严格保持 body/caption/footnote 原顺序。
 
-`RenderMode.DEFAULT` 与下文 Markdown DEFAULT 使用同一份续段/续表 planner；
-`RenderMode.FULL` 保留全部页面辅助块，不跨源页合并，并在相邻 `PageInfo` 间写硬分页。
-Markdown、HTML、DOCX 和 EPUB 统一使用 `RenderMode`。DOCX 是语义化可编辑输出，不承诺
-复刻源 PDF/Office 的字体、分栏、断行和页数；CLI、doclib 与 v1 API 不在本契约范围。
+DOCX 固定使用共享 planner 的 DEFAULT 连续语义：隐藏页面辅助块、合并跨页续段与续表，
+不按 `PageInfo` 写硬分页或保留空源页；`page_footnote` 仍然输出。DOCX 是语义化可编辑输出，
+不承诺复刻源 PDF/Office 的字体、分栏、断行和页数；CLI、doclib 与 v1 API 不在本契约范围。
 
 ## 单正文 EPUB 3.3
 
 ```python
 from datetime import datetime, timezone
 
-from mineru.render import EpubRenderOptions, RenderFormat, RenderMode, render
+from mineru.render import EpubRenderOptions, RenderFormat, render
 
 epub_bytes = render(
     middle_json,
     RenderFormat.EPUB,
     options=EpubRenderOptions(
-        mode=RenderMode.DEFAULT,
         title=None,
         authors=("Alice",),
         language="zh-CN",
@@ -174,19 +173,18 @@ TIFF 及安全 MinerU SVG fallback 规范化为 PNG，PNG/JPEG/GIF 保留，最�
 renderer 不下载 `image_url`。路径缺失、resolver 抛错、图片损坏或远程图片都不会中断输出：图片
 主体省略，但已有结构内容、alt、caption、footnote 和识别文字继续可见，也不会生成虚构占位文案。
 
-EPUB 与 Markdown/HTML/DOCX 共用 `RenderMode` planner。DEFAULT 在单 XHTML 中形成连续阅读内容；
-FULL 仍只有一个 spine item，但为所有 `PageInfo` 保留 section、空页、页面辅助块和分页标记。
-该能力仅属于严格 `mineru.render` 公共面，不新增 ParseResult 方法，也不迁移 CLI、API、doclib 或
-parse-job `output_formats`。
+EPUB 固定使用共享 planner 的 DEFAULT 连续语义，在单个 `article.mineru-document` 中展平页面，
+隐藏页面辅助块、合并跨页续段与续表，不生成源页 section、空页或分页标记；`page_footnote` 仍然
+输出。该能力仅属于严格 `mineru.render` 公共面，不新增 ParseResult 方法，也不迁移 CLI、API、
+doclib 或 parse-job `output_formats`。
 
 ## MinerU PDF
 
 ```python
-from mineru.render import RenderMode, render_pdf
+from mineru.render import render_pdf
 
 pdf_bytes = render_pdf(
     middle_json,
-    mode=RenderMode.FULL,
     asset_resolver=lambda relative_path: (asset_dir / relative_path).read_bytes(),
     document_title=None,
 )
@@ -194,9 +192,9 @@ pdf_bytes = render_pdf(
 
 `render_pdf()` 只接受严格 `MiddleJson`，返回完整 PDF bytes，不写文件、不读取 cwd 且不访问网络。
 它固定使用 A4 纵向和 20 mm 页边距，是面向阅读的语义化重排输出，不承诺复刻源文件坐标、
-分栏、断行或原始物理页数。PDF 默认 `RenderMode.FULL`：保留页面辅助块与空页，在每个
-`PageInfo` 边界硬分页；一个源页内容过长时允许自然延伸到额外 PDF 页。显式 `DEFAULT` 继续使用
-共享 planner 的隐藏辅助块、续段与续表合并语义。
+分栏、断行或原始物理页数。PDF 固定使用共享 planner 的 DEFAULT 连续语义：隐藏页面辅助块、
+合并跨页续段与续表，不保留空源页或在 `PageInfo` 边界硬分页；内容仍会按 A4 可用空间自然分页，
+`page_footnote` 仍然输出。
 
 PDF 使用 ReportLab 生成，标题、正文、表格、图片、代码、caption 与 footnote 采用 MinerU HTML
 主题的打印配色。标题与 `page_footnote` anchor 会建立 PDF destination，目录和 InlineSpan fragment
@@ -238,7 +236,7 @@ html_document = render_html(
 `MinerU Document`。完整文档使用 `body.mineru-html-body` 提供居中和响应式页面布局；
 fragment 调用方可以自行决定外围容器尺寸。
 
-HTML 与 DOCX/Markdown 共用 `RenderMode` 和续段/续表 planner。DEFAULT 输出无页面 wrapper
+HTML 与 Markdown 共用 `RenderMode` 和续段/续表 planner。DEFAULT 输出无页面 wrapper
 的连续阅读内容；FULL 为每个 `PageInfo` 输出一个 `section.mineru-page`，包括空页，并在
 相邻页面之间输出 `hr.mineru-page-break`。每个顶层 block wrapper 保留来源 page/type/index
 元数据。`article.mineru-document` 同时声明 `data-mineru-html-version="1"` 和
@@ -345,10 +343,10 @@ content_list_v2 = render_content_list_v2(middle_json, asset_base_url="")
 item 使用 3.4.5 风格的 `type + content`，行内内容收敛为 `text`、`equation_inline`、
 `code_inline` 和 `hyperlink` span。V2 不增加 envelope 或显式页号，因此抽页结果只能通过外层顺序消费。
 
-两个 renderer 都只接受严格 `MiddleJson`，保持页面和 block 阅读顺序，不使用展示型 planner，也不合并
-`continues_prev` 文本或跨页表格。同页连续 `ref_text` 会合并为 reference list；列表、目录按源顺序递归
-展平，目录删除可信的末尾页码并保留 anchor。图片按 `image_path`、`image_base64`、`image_url` 的顺序
-选择唯一来源，相对 sidecar 与 HTML 内相对图片使用 `asset_base_url`。
+两个 renderer 都只接受严格 `MiddleJson`，没有 `mode` 参数，保持页面和 block 阅读顺序，不使用展示型
+planner，也不合并 `continues_prev` 文本或跨页表格。同页连续 `ref_text` 会合并为 reference list；列表、
+目录按源顺序递归展平，目录删除可信的末尾页码并保留 anchor。图片按 `image_path`、`image_base64`、
+`image_url` 的顺序选择唯一来源，相对 sidecar 与 HTML 内相对图片使用 `asset_base_url`。
 
 这是 render 层兼容 API；本阶段不新增 ParseResult 方法，不迁移 CLI/API 格式名，也不新增自动落盘产物。
 现有 `render_structured_content()` 仍是独立的树形文档级 dict，不是 V2 的别名。
@@ -368,8 +366,8 @@ structured_content = render_structured_content(
 
 `render_structured_content()` 只接受 `MiddleJson`，返回可以直接交给 `json.dumps()` 的
 文档级 dict。顶层保留 `pages/file_suffix/effort/parse_mode/mineru_version`，每页保留
-`page_idx/blocks`，页面和顶层 block 的数量及顺序不变。它不使用下文的
-`RenderMode` 计划，因此不隐藏页面辅助块，也不合并 `continues_prev` 文本、
+`page_idx/blocks`，页面和顶层 block 的数量及顺序不变。它没有 `mode` 参数，也不使用
+Markdown/HTML 的展示型 planner，因此不隐藏页面辅助块，也不合并 `continues_prev` 文本、
 列表或跨页表格；`continues_prev` 和 `cell_merge` 等消费提示仍保留在对应 block。
 
 `content` 保存适合结构化消费的文本表示，而不是可直接拼接成整篇文档的完整视觉
@@ -439,6 +437,9 @@ doclib 或历史扁平 `content_list.json` 产物。
 
 ## 展示模式
 
+`RenderMode` 只适用于 Markdown 与 HTML。DOCX、EPUB、PDF 固定采用下述 DEFAULT 语义；
+Structured Content 与 Content List V1/V2 不使用展示型 planner。
+
 `RenderMode.DEFAULT`:
 
 - 隐藏 `header/footer/page_number/aside_text`，保留独立 `page_footnote`。
@@ -450,10 +451,10 @@ doclib 或历史扁平 `content_list.json` 产物。
 `RenderMode.FULL`:
 
 - 展示全部顶层 block。
-- 带 anchor 的 `page_footnote` 在 DEFAULT/FULL 中由 Markdown 输出 span id，HTML/EPUB 输出元素 id，DOCX 输出 Word bookmark，PDF 输出 destination。
+- 带 anchor 的 `page_footnote` 在 DEFAULT/FULL 中由 Markdown 输出 span id，HTML 输出元素 id。
 - 只合并页内 `text/ref_text/list.continues_prev`。
 - 不合并跨页 text/ref_text/list/table。
-- 每两个相邻 `PageInfo` 之间保留格式对应的页面边界；PDF 使用硬分页且空白页同样保留。
+- 每两个相邻 `PageInfo` 之间保留格式对应的页面边界：Markdown 输出分隔线，HTML 输出 page section 与分页线。
 
 text 合并允许跨越任意其他 block，后一个 text 的内容被吸收到前一个 text，
 后块不再在原位置输出。ref_text 与 ref list 都只跨过页面脚注与辅助块，其他语义块
@@ -464,7 +465,7 @@ text 合并允许跨越任意其他 block，后一个 text 的内容被吸收到
 
 - `text/ref_text`: 直接渲染 InlineSpan 中的公式、样式和超链接；普通 TextSpan 转义可能误触发的 Markdown block 前缀。
 - `doc_title/paragraph_title`: 使用全局 `level`，Markdown 标题最多六级；anchor 输出为 HTML id。
-- `page_footnote`: 独立于页面辅助块，DEFAULT/FULL 都输出；Markdown 使用无可见标签的 `<small><span class="mineru-page-footnote" data-block-type="page_footnote" style="color:#6b7280">…</span></small>`，HTML/DOCX 使用小号弱化样式。
+- `page_footnote`: 独立于页面辅助块，Markdown/HTML 的 DEFAULT/FULL 以及固定默认 DOCX/EPUB/PDF 都输出；Markdown 使用无可见标签的 `<small><span class="mineru-page-footnote" data-block-type="page_footnote" style="color:#6b7280">…</span></small>`，其余格式使用各自的脚注样式和 anchor。
 - `list`: 递归缩进；普通列表直接使用 content 已内化的前缀。`sub_type=ref_text`
   时统计每个直属非空 item 的前五个可见字符，数字前缀未达到严格多数则给全部 item
   补 `- `，已有 `- ` 不重复；嵌套列表独立判定。

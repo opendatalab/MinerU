@@ -6,13 +6,12 @@ from __future__ import annotations
 from datetime import datetime
 
 from ..types import MiddleJson
-from .contracts import AssetResolver, RenderMode
+from .contracts import AssetResolver
 
 
 def render_epub(
     middle_json: MiddleJson,
     *,
-    mode: RenderMode = RenderMode.DEFAULT,
     title: str | None = None,
     authors: tuple[str, ...] = (),
     language: str = "und",
@@ -25,7 +24,6 @@ def render_epub(
 
     return _render_epub(
         middle_json,
-        mode=mode,
         title=title,
         authors=authors,
         language=language,

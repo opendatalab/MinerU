@@ -8,10 +8,11 @@ from zipfile import ZIP_STORED, ZipFile
 
 from lxml import etree
 from PIL import Image
+import pytest
 
 from mineru.backend.analyze import doc_analyze
 from mineru.model.flash.epub import EpubPackage
-from mineru.render import RenderMode, render_epub
+from mineru.render import render_epub
 from mineru.types import (
     AlgorithmBodyBlock,
     ChartBlock,
@@ -162,8 +163,8 @@ def test_epub_package_is_single_spine_epub33_with_stable_metadata_and_mathml() -
     assert later_identifier == first_identifier
 
 
-def test_epub_default_and_full_modes_keep_shared_planner_semantics_without_mutation() -> None:
-    """验证 DEFAULT 连续阅读、FULL 页面边界和严格输入不可变。"""
+def test_epub_uses_default_planner_without_source_page_boundaries() -> None:
+    """验证固定默认 EPUB 连续阅读、隐藏辅助块且不保留源页边界。"""
     middle = _middle(
         _page(
             0,
@@ -179,26 +180,18 @@ def test_epub_default_and_full_modes_keep_shared_planner_semantics_without_mutat
     )
     original = deepcopy(middle)
 
-    default = render_epub(middle, modified_at=_FIXED_TIME)
-    full = render_epub(middle, mode=RenderMode.FULL, modified_at=_FIXED_TIME)
+    payload = render_epub(middle, modified_at=_FIXED_TIME)
 
-    with _archive(default) as archive:
+    with _archive(payload) as archive:
         content = _xml(archive, "EPUB/text/content.xhtml")
         paragraphs = content.xpath("//xhtml:p[contains(@class, 'mineru-text')]", namespaces=_NS)
         assert [_text(item) for item in paragraphs] == ["international"]
+        assert content.xpath("string(//xhtml:article/@class)", namespaces=_NS) == "mineru-document"
         assert not content.xpath("//xhtml:section[contains(@class, 'mineru-page')]", namespaces=_NS)
+        assert not content.xpath("//xhtml:hr[contains(@class, 'mineru-page-break')]", namespaces=_NS)
         assert "HEADER" not in _text(content) and "FOOTER" not in _text(content)
-    with _archive(full) as archive:
-        content = _xml(archive, "EPUB/text/content.xhtml")
-        assert content.xpath("//xhtml:section[contains(@class, 'mineru-page')]/@data-page-idx", namespaces=_NS) == [
-            "0",
-            "5",
-            "9",
-        ]
-        assert content.xpath("count(//xhtml:hr[contains(@class, 'mineru-page-break')])", namespaces=_NS) == 2.0
-        paragraphs = content.xpath("//xhtml:p[contains(@class, 'mineru-text')]", namespaces=_NS)
-        assert [_text(item) for item in paragraphs] == ["inter-", "national"]
-        assert "HEADER" in _text(content) and "FOOTER" in _text(content)
+    with pytest.raises(TypeError, match="unexpected keyword argument 'mode'"):
+        render_epub(middle, mode="default")  # type: ignore[call-arg]
     assert middle == original
 
 

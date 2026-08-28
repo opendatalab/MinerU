@@ -31,7 +31,10 @@ class PlannedBlock:
     removed: bool = False
 
 
-def build_render_plan(middle_json: MiddleJson, mode: RenderMode) -> list[list[PlannedBlock]]:
+def build_render_plan(
+    middle_json: MiddleJson,
+    mode: RenderMode = RenderMode.DEFAULT,
+) -> list[list[PlannedBlock]]:
     """深拷贝 MiddleJson，并按模式生成不污染输入的逐页逻辑块计划。"""
     copied = middle_json.model_copy(deep=True)
     pages = [
@@ -165,4 +168,4 @@ def _find_previous_planned_table(blocks: list[PlannedBlock], current_index: int)
     return None
 
 
-__all__ = ["PlannedBlock", "RenderMode", "build_render_plan"]
+__all__ = ["PlannedBlock", "build_render_plan"]

@@ -43,7 +43,6 @@ from .inline import (
 )
 from .math import DocxFormulaError, latex_to_omml, split_formula_tag
 from .styles import (
-    AUXILIARY_STYLE,
     BODY_STYLE,
     CAPTION_STYLE,
     CODE_STYLE,
@@ -55,7 +54,7 @@ from .styles import (
     usable_width_twips,
 )
 from .table import DocxTableError, NestedTableWriter, materialize_docx_tables
-from ...contracts import AssetResolver, RenderMode
+from ...contracts import AssetResolver
 from ...docx import DocxRenderError
 from ....types import (
     PAGE_AUXILIARY_BLOCK_TYPES,
@@ -80,7 +79,6 @@ from ....types import (
     InlineSpan,
     ListBlock,
     MiddleJson,
-    PageAuxTextBlock,
     PageFootnoteBlock,
     ParagraphTitleBlock,
     RefTextBlock,
@@ -125,12 +123,10 @@ class _DocxRenderer:
         self,
         middle_json: MiddleJson,
         *,
-        mode: RenderMode,
         asset_resolver: AssetResolver | None,
     ) -> None:
         """初始化 renderer，并预注册标题与默认可见页面脚注 anchor。"""
         self.middle_json = middle_json
-        self.mode = mode
         self.asset_resolver = asset_resolver
         self.document = Document()
         configure_document(self.document)
@@ -140,14 +136,12 @@ class _DocxRenderer:
 
     def render(self) -> bytes:
         """执行逐页 visitor，并把 python-docx document 序列化为 bytes。"""
-        planned_pages = build_render_plan(self.middle_json, self.mode)
-        for page_position, planned_blocks in enumerate(planned_pages):
-            if self.mode is RenderMode.FULL and page_position > 0:
-                self.document.add_page_break()
+        planned_pages = build_render_plan(self.middle_json)
+        for planned_blocks in planned_pages:
             for planned in planned_blocks:
                 if planned.removed:
                     continue
-                if self.mode is RenderMode.DEFAULT and planned.block.type in PAGE_AUXILIARY_BLOCK_TYPES:
+                if planned.block.type in PAGE_AUXILIARY_BLOCK_TYPES:
                     continue
                 self._render_planned_block(planned)
 
@@ -174,10 +168,6 @@ class _DocxRenderer:
             paragraph = self.document.add_paragraph(style=FOOTNOTE_STYLE)
             append_inline_content(paragraph, block.content, context=context)
             self.bookmarks.attach(paragraph, block.anchor)
-            return
-        if isinstance(block, PageAuxTextBlock):
-            paragraph = self.document.add_paragraph(style=AUXILIARY_STYLE)
-            append_inline_content(paragraph, block.content, context=context)
             return
         if isinstance(block, EquationBlock):
             self._render_equation(block, context)
@@ -816,17 +806,13 @@ class _DocxRenderer:
 def render_docx(
     middle_json: MiddleJson,
     *,
-    mode: RenderMode = RenderMode.DEFAULT,
     asset_resolver: AssetResolver | None = None,
 ) -> bytes:
     """把严格 MiddleJson 无副作用地渲染为完整 DOCX bytes。"""
     if not isinstance(middle_json, MiddleJson):
         raise TypeError("render_docx expects a MiddleJson instance")
-    if not isinstance(mode, RenderMode):
-        raise TypeError("mode must be a RenderMode value")
     return _DocxRenderer(
         middle_json,
-        mode=mode,
         asset_resolver=asset_resolver,
     ).render()
 

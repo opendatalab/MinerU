@@ -18,21 +18,13 @@ body {
 .mineru-block,
 .mineru-figure,
 .mineru-visual-body,
-.mineru-page-footnote,
-.mineru-page-aux {
+.mineru-page-footnote {
   margin: 1em 0;
 }
 
 .mineru-heading {
   line-height: 1.25;
   break-after: avoid;
-}
-
-.mineru-page-break {
-  border: 0;
-  border-top: 1px solid #d0d7de;
-  margin: 2em 0;
-  break-after: page;
 }
 
 img {

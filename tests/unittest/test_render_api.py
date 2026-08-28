@@ -4,6 +4,7 @@ from _span_test_utils import inline as _inline
 from copy import deepcopy
 from datetime import datetime, timezone
 from io import BytesIO
+from inspect import signature
 
 from docx import Document
 from PIL import Image
@@ -84,7 +85,7 @@ def test_unified_render_dispatches_all_native_output_types_without_mutation() ->
 
 
 def test_unified_render_forwards_format_specific_options() -> None:
-    """验证分页模式、HTML 文档形态和 Structured Content 资源地址分别透传。"""
+    """验证 Markdown/HTML 模式与各格式专属资源选项分别透传。"""
     middle = _middle(
         _page(0, TextBlock(type="text", index=0, content=_inline("first-"))),
         _page(1, TextBlock(type="text", index=0, content=_inline("second"), continues_prev=True)),
@@ -148,9 +149,11 @@ def test_unified_render_forwards_format_specific_options() -> None:
     pdf = render(
         middle,
         RenderFormat.PDF,
-        options=PdfRenderOptions(mode=RenderMode.DEFAULT, document_title="Unified Render"),
+        options=PdfRenderOptions(document_title="Unified Render"),
     )
     original_tree = render(middle, RenderFormat.STRUCTURED_CONTENT)
+    original_list = render(middle, RenderFormat.CONTENT_LIST)
+    original_list_v2 = render(middle, RenderFormat.CONTENT_LIST_V2)
 
     assert "\n\n---\n\n" in markdown
     assert html.startswith('<article class="mineru-document mineru-document--full" ')
@@ -162,9 +165,14 @@ def test_unified_render_forwards_format_specific_options() -> None:
     assert "https://cdn.example/doc/images/a%20b.png" in image_markdown
     assert "<title>Unified Render</title>" in html_document
     assert 'src="https://cdn.example/doc/images/a%20b.png"' in html_document
-    assert pdf == render_module.render_pdf(middle, mode=RenderMode.DEFAULT, document_title="Unified Render")
+    assert pdf == render_module.render_pdf(middle, document_title="Unified Render")
     assert [page["blocks"][0]["content"] for page in original_tree["pages"]] == ["first-", "second"]
     assert original_tree["pages"][1]["blocks"][0]["continues_prev"] is True
+    assert [(item["text"], item["page_idx"]) for item in original_list] == [("first-", 0), ("second", 1)]
+    assert [page[0]["content"]["paragraph_content"][0]["content"] for page in original_list_v2] == [
+        "first-",
+        "second",
+    ]
 
 
 def test_unified_docx_uses_typed_asset_resolver_and_propagates_public_errors() -> None:
@@ -244,6 +252,19 @@ def test_public_options_validate_fields() -> None:
 
     with pytest.raises(TypeError, match="RenderMode"):
         MarkdownRenderOptions(mode="default")  # type: ignore[arg-type]
+    assert "mode" in signature(MarkdownRenderOptions).parameters
+    assert "mode" in signature(HtmlRenderOptions).parameters
+    for options_type in (
+        DocxRenderOptions,
+        EpubRenderOptions,
+        PdfRenderOptions,
+        StructuredContentRenderOptions,
+        ContentListRenderOptions,
+        ContentListV2RenderOptions,
+    ):
+        assert "mode" not in signature(options_type).parameters
+        with pytest.raises(TypeError, match="unexpected keyword argument 'mode'"):
+            options_type(mode=RenderMode.DEFAULT)  # type: ignore[call-arg]
     with pytest.raises(TypeError, match="asset_base_url"):
         StructuredContentRenderOptions(asset_base_url=1)  # type: ignore[arg-type]
     with pytest.raises(TypeError, match="asset_base_url"):
@@ -266,8 +287,6 @@ def test_public_options_validate_fields() -> None:
         EpubRenderOptions(modified_at=datetime(999, 1, 2, tzinfo=timezone.utc))
     with pytest.raises(TypeError, match="asset_resolver"):
         EpubRenderOptions(asset_resolver="images")  # type: ignore[arg-type]
-    with pytest.raises(TypeError, match="RenderMode"):
-        PdfRenderOptions(mode="full")  # type: ignore[arg-type]
     with pytest.raises(TypeError, match="asset_resolver"):
         PdfRenderOptions(asset_resolver="images")  # type: ignore[arg-type]
     with pytest.raises(TypeError, match="document_title"):

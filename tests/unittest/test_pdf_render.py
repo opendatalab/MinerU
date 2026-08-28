@@ -12,7 +12,7 @@ from reportlab.graphics.shapes import Drawing
 import ziamath
 
 from _span_test_utils import inline as _inline
-from mineru.render import RenderMode, render_pdf
+from mineru.render import render_pdf
 from mineru.render._internal.pdf import formula as formula_module
 from mineru.render._internal.pdf.formula import FormulaRenderer, FormulaVector, PdfFormulaError
 from mineru.types import (
@@ -79,8 +79,8 @@ def _page_text(reader: PdfReader, page_index: int) -> str:
     return reader.pages[page_index].extract_text() or ""
 
 
-def test_pdf_defaults_to_full_and_preserves_empty_pages_auxiliary_blocks_and_input() -> None:
-    """验证 PDF 默认 FULL、空页、页面辅助块、源页边界与输入无副作用。"""
+def test_pdf_uses_default_planner_without_source_page_boundaries() -> None:
+    """验证固定默认 PDF 合并续段、隐藏辅助块、折叠空源页且输入不变。"""
     middle = _middle(
         _page(
             0,
@@ -96,20 +96,15 @@ def test_pdf_defaults_to_full_and_preserves_empty_pages_auxiliary_blocks_and_inp
     )
     original = deepcopy(middle)
 
-    full_payload = render_pdf(middle, document_title="PDF Contract")
-    assert full_payload == render_pdf(middle, document_title="PDF Contract")
-    full_reader = _reader(full_payload)
-    default_reader = _reader(render_pdf(middle, mode=RenderMode.DEFAULT))
+    payload = render_pdf(middle, document_title="PDF Contract")
+    assert payload == render_pdf(middle, document_title="PDF Contract")
+    reader = _reader(payload)
 
-    assert len(full_reader.pages) == 3
-    assert "HEADER" in _page_text(full_reader, 0) and "inter-" in _page_text(full_reader, 0)
-    assert not _page_text(full_reader, 1).strip()
-    assert "national" in _page_text(full_reader, 2) and "FOOTER" in _page_text(full_reader, 2)
-    assert full_reader.metadata.title == "PDF Contract"
-    assert full_reader.metadata.creation_date is not None and full_reader.metadata.creation_date.year == 2000
-    assert len(default_reader.pages) == 1
-    assert "international" in _page_text(default_reader, 0).replace("\n", "")
-    assert "HEADER" not in _page_text(default_reader, 0) and "FOOTER" not in _page_text(default_reader, 0)
+    assert len(reader.pages) == 1
+    assert "international" in _page_text(reader, 0).replace("\n", "")
+    assert "HEADER" not in _page_text(reader, 0) and "FOOTER" not in _page_text(reader, 0)
+    assert reader.metadata.title == "PDF Contract"
+    assert reader.metadata.creation_date is not None and reader.metadata.creation_date.year == 2000
     assert middle == original
 
 
@@ -442,12 +437,12 @@ def test_pdf_formula_configuration_is_restored_across_parallel_renders() -> None
 
 
 def test_pdf_public_arguments_remain_strict() -> None:
-    """验证专用 PDF 门面拒绝旧 dict、字符串 mode 与错误参数类型。"""
+    """验证专用 PDF 门面拒绝旧 dict、已删除 mode 与错误参数类型。"""
     middle = _middle(_page(0))
 
     with pytest.raises(TypeError, match="MiddleJson"):
         render_pdf(middle.to_dict())  # type: ignore[arg-type]
-    with pytest.raises(TypeError, match="RenderMode"):
+    with pytest.raises(TypeError, match="unexpected keyword argument 'mode'"):
         render_pdf(middle, mode="full")  # type: ignore[arg-type]
     with pytest.raises(TypeError, match="asset_resolver"):
         render_pdf(middle, asset_resolver="images")  # type: ignore[arg-type]

@@ -43,7 +43,6 @@ from ....types import (
     InlineSpan,
     ListBlock,
     MiddleJson,
-    PageAuxTextBlock,
     PageFootnoteBlock,
     ParagraphTitleBlock,
     RefTextBlock,
@@ -54,7 +53,7 @@ from ....types import (
     TextSpan,
     TitleBlockBase,
 )
-from ...contracts import AssetResolver, EpubRenderOptions, RenderMode
+from ...contracts import AssetResolver, EpubRenderOptions
 from ..common.index import strip_index_page_tail
 from ..common.list_items import ListItem, parse_list_item_marker, reference_list_needs_bullets
 from ..common.planner import PlannedBlock, build_render_plan
@@ -237,14 +236,12 @@ class _EpubXhtmlRenderer:
         self,
         middle_json: MiddleJson,
         *,
-        mode: RenderMode,
         metadata: EpubMetadata,
         assets: EpubAssetRegistry,
         anchors: _AnchorRegistry,
     ) -> None:
         """保存严格输入和已规范化的调用状态。"""
         self.middle_json = middle_json
-        self.mode = mode
         self.metadata = metadata
         self.assets = assets
         self.anchors = anchors
@@ -273,13 +270,9 @@ class _EpubXhtmlRenderer:
             body,
             _xhtml("article"),
             id="content-start",
-            attrib={"class": f"mineru-document mineru-document--{self.mode.value}"},
+            attrib={"class": "mineru-document"},
         )
-        planned_pages = build_render_plan(self.middle_json, self.mode)
-        if self.mode is RenderMode.FULL:
-            self._render_full_pages(article, planned_pages)
-        else:
-            self._render_default_pages(article, planned_pages)
+        self._render_pages(article, build_render_plan(self.middle_json))
         return etree.tostring(
             root,
             encoding="utf-8",
@@ -287,36 +280,20 @@ class _EpubXhtmlRenderer:
             doctype="<!DOCTYPE html>",
         )
 
-    def _render_default_pages(self, parent: etree._Element, pages: list[list[PlannedBlock]]) -> None:
-        """把 DEFAULT 计划展平到单个连续阅读容器。"""
+    def _render_pages(self, parent: etree._Element, pages: list[list[PlannedBlock]]) -> None:
+        """把默认计划展平到单个连续阅读容器。"""
         for page in pages:
             for planned in page:
                 rendered = self._render_planned_block(planned)
                 if rendered is not None:
                     parent.append(rendered)
 
-    def _render_full_pages(self, parent: etree._Element, pages: list[list[PlannedBlock]]) -> None:
-        """在单正文中保留所有 PageInfo section 与相邻分页标记。"""
-        for position, page in enumerate(pages):
-            page_idx = page[0].page_idx if page else self.middle_json.pages[position].page_idx
-            section = etree.SubElement(
-                parent,
-                _xhtml("section"),
-                attrib={"class": "mineru-page", "data-page-idx": str(page_idx)},
-            )
-            for planned in page:
-                rendered = self._render_planned_block(planned)
-                if rendered is not None:
-                    section.append(rendered)
-            if position + 1 < len(pages):
-                etree.SubElement(parent, _xhtml("hr"), attrib={"class": "mineru-page-break"})
-
     def _render_planned_block(self, planned: PlannedBlock) -> etree._Element | None:
         """过滤计划块、分派具体类型并追加稳定来源属性。"""
         if planned.removed:
             return None
         block = planned.block
-        if self.mode is RenderMode.DEFAULT and block.type in PAGE_AUXILIARY_BLOCK_TYPES:
+        if block.type in PAGE_AUXILIARY_BLOCK_TYPES:
             return None
         content = self._render_block_content(planned)
         if content is None:
@@ -349,13 +326,6 @@ class _EpubXhtmlRenderer:
             return self._render_title(planned.page_idx, block)
         if isinstance(block, PageFootnoteBlock):
             return self._render_page_footnote(planned.page_idx, block)
-        if isinstance(block, PageAuxTextBlock):
-            element = etree.Element(
-                _xhtml("aside"),
-                attrib={"class": f"mineru-page-aux mineru-page-aux--{str(block.type).replace('_', '-')}"},
-            )
-            self._append_inline_spans(element, block.content)
-            return element if _has_visible_content(element) else None
         if isinstance(block, EquationBlock):
             return self._render_equation(block)
         if isinstance(block, ListBlock):
@@ -803,7 +773,6 @@ class _EpubXhtmlRenderer:
 def render_epub(
     middle_json: MiddleJson,
     *,
-    mode: RenderMode = RenderMode.DEFAULT,
     title: str | None = None,
     authors: tuple[str, ...] = (),
     language: str = "und",
@@ -815,7 +784,6 @@ def render_epub(
     if not isinstance(middle_json, MiddleJson):
         raise TypeError("render_epub expects a MiddleJson instance")
     options = EpubRenderOptions(
-        mode=mode,
         title=title,
         authors=authors,
         language=language,
@@ -850,7 +818,6 @@ def render_epub(
     assets = EpubAssetRegistry(options.asset_resolver)
     renderer = _EpubXhtmlRenderer(
         middle_json,
-        mode=options.mode,
         metadata=metadata,
         assets=assets,
         anchors=anchors,

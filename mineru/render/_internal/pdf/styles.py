@@ -39,7 +39,6 @@ class PdfStyleSet:
     headings: tuple[ParagraphStyle, ...]
     caption: ParagraphStyle
     footnote: ParagraphStyle
-    auxiliary: ParagraphStyle
     code: ParagraphStyle
     spatial_table: ParagraphStyle
     formula_fallback: ParagraphStyle
@@ -99,13 +98,6 @@ def build_pdf_styles() -> PdfStyleSet:
         spaceBefore=2,
         spaceAfter=4,
     )
-    auxiliary = ParagraphStyle(
-        "MinerU PDF Auxiliary",
-        parent=footnote,
-        fontName="Helvetica-Oblique",
-        spaceBefore=1,
-        spaceAfter=3,
-    )
     code = ParagraphStyle(
         "MinerU PDF Code",
         parent=body,
@@ -164,7 +156,6 @@ def build_pdf_styles() -> PdfStyleSet:
         headings=headings,
         caption=caption,
         footnote=footnote,
-        auxiliary=auxiliary,
         code=code,
         spatial_table=spatial_table,
         formula_fallback=formula_fallback,

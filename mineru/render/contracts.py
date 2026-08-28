@@ -26,7 +26,7 @@ class RenderFormat(str, Enum):
 
 
 class RenderMode(str, Enum):
-    """MiddleJson renderer 共用的默认合并视图与完整分页视图。"""
+    """Markdown 与 HTML renderer 共用的默认合并视图与完整分页视图。"""
 
     DEFAULT = "default"
     FULL = "full"
@@ -37,7 +37,7 @@ ImageRenderer: TypeAlias = Callable[[BlockBase], str]
 
 
 def _validate_mode(mode: object) -> None:
-    """校验展示型 renderer 的公共模式参数。"""
+    """校验 Markdown 与 HTML renderer 的公共模式参数。"""
     if not isinstance(mode, RenderMode):
         raise TypeError("mode must be a RenderMode value")
 
@@ -87,12 +87,10 @@ class HtmlRenderOptions:
 class DocxRenderOptions:
     """DOCX renderer 的统一入口选项。"""
 
-    mode: RenderMode = RenderMode.DEFAULT
     asset_resolver: AssetResolver | None = None
 
     def __post_init__(self) -> None:
-        """在构造时校验分页模式与可选素材解析器。"""
-        _validate_mode(self.mode)
+        """在构造时校验可选素材解析器。"""
         if self.asset_resolver is not None and not callable(self.asset_resolver):
             raise TypeError("asset_resolver must be callable or None")
 
@@ -104,7 +102,6 @@ _EPUB_LANGUAGE_RE = re.compile(r"(?:[A-Za-z]{2,8}|und)(?:-[A-Za-z0-9]{1,8})*\Z",
 class EpubRenderOptions:
     """EPUB 3.3 renderer 的统一入口选项。"""
 
-    mode: RenderMode = RenderMode.DEFAULT
     title: str | None = None
     authors: tuple[str, ...] = ()
     language: str = "und"
@@ -114,7 +111,6 @@ class EpubRenderOptions:
 
     def __post_init__(self) -> None:
         """在构造时校验 EPUB 元数据、时间与素材解析器。"""
-        _validate_mode(self.mode)
         if self.title is not None and (not isinstance(self.title, str) or not self.title.strip()):
             raise TypeError("title must be a non-empty string or None")
         if not isinstance(self.authors, tuple) or any(
@@ -140,13 +136,11 @@ class EpubRenderOptions:
 class PdfRenderOptions:
     """PDF renderer 的统一入口选项。"""
 
-    mode: RenderMode = RenderMode.FULL
     asset_resolver: AssetResolver | None = None
     document_title: str | None = None
 
     def __post_init__(self) -> None:
-        """在构造时校验分页模式、素材解析器与文档标题。"""
-        _validate_mode(self.mode)
+        """在构造时校验素材解析器与文档标题。"""
         if self.asset_resolver is not None and not callable(self.asset_resolver):
             raise TypeError("asset_resolver must be callable or None")
         if self.document_title is not None and not isinstance(self.document_title, str):

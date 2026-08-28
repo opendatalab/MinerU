@@ -18,7 +18,6 @@ from reportlab.pdfgen.canvas import Canvas
 from reportlab.platypus import (
     Flowable,
     Image as ReportLabImage,
-    PageBreak,
     Paragraph,
     SimpleDocTemplate,
     Spacer,
@@ -30,7 +29,7 @@ from ....backend.postprocess.inline import inline_plain_text, join_inline_spans
 from ..common.index import strip_index_page_tail
 from ..common.list_items import parse_list_item_marker, reference_list_needs_bullets
 from ..common.planner import PlannedBlock, build_render_plan
-from ...contracts import AssetResolver, RenderMode
+from ...contracts import AssetResolver
 from ....types import (
     PAGE_AUXILIARY_BLOCK_TYPES,
     RAW_ALGORITHM,
@@ -55,7 +54,6 @@ from ....types import (
     ListBlock,
     MiddleJson,
     NonLinkInlineSpan,
-    PageAuxTextBlock,
     PageFootnoteBlock,
     ParagraphTitleBlock,
     RefTextBlock,
@@ -166,13 +164,11 @@ class _PdfRenderer:
         self,
         middle_json: MiddleJson,
         *,
-        mode: RenderMode,
         asset_resolver: AssetResolver | None,
         document_title: str | None,
     ) -> None:
         """保存严格输入，并预注册标题及页面脚注 anchor。"""
         self.middle_json = middle_json
-        self.mode = mode
         self.asset_resolver = asset_resolver
         self.document_title = _resolve_document_title(middle_json, document_title)
         self.styles = build_pdf_styles()
@@ -186,21 +182,15 @@ class _PdfRenderer:
     def render(self) -> bytes:
         """构造逐页 story，并将确定性 ReportLab 文档序列化为 bytes。"""
         story: list[Flowable] = []
-        planned_pages = build_render_plan(self.middle_json, self.mode)
-        for page_position, planned_blocks in enumerate(planned_pages):
-            if self.mode is RenderMode.FULL and page_position > 0:
-                story.append(PageBreak())
-            rendered_count = 0
+        planned_pages = build_render_plan(self.middle_json)
+        for planned_blocks in planned_pages:
             for planned in planned_blocks:
                 if planned.removed:
                     continue
-                if self.mode is RenderMode.DEFAULT and planned.block.type in PAGE_AUXILIARY_BLOCK_TYPES:
+                if planned.block.type in PAGE_AUXILIARY_BLOCK_TYPES:
                     continue
                 rendered = self._render_planned_block(planned)
                 story.extend(rendered)
-                rendered_count += len(rendered)
-            if self.mode is RenderMode.FULL and rendered_count == 0:
-                story.append(Spacer(1, 1))
         if not story:
             story.append(Spacer(1, 1))
 
@@ -252,8 +242,6 @@ class _PdfRenderer:
                     anchor=block.anchor,
                 )
             ]
-        if isinstance(block, PageAuxTextBlock):
-            return [self._paragraph(block.content, self.styles.auxiliary, planned.page_idx, block)]
         if isinstance(block, EquationBlock):
             return self._render_equation(block, planned.page_idx)
         if isinstance(block, ListBlock):
@@ -671,22 +659,18 @@ class _PdfRenderer:
 def render_pdf(
     middle_json: MiddleJson,
     *,
-    mode: RenderMode = RenderMode.FULL,
     asset_resolver: AssetResolver | None = None,
     document_title: str | None = None,
 ) -> bytes:
     """把严格 MiddleJson 无副作用地渲染为完整 PDF bytes。"""
     if not isinstance(middle_json, MiddleJson):
         raise TypeError("render_pdf expects a MiddleJson instance")
-    if not isinstance(mode, RenderMode):
-        raise TypeError("mode must be a RenderMode value")
     if asset_resolver is not None and not callable(asset_resolver):
         raise TypeError("asset_resolver must be callable or None")
     if document_title is not None and not isinstance(document_title, str):
         raise TypeError("document_title must be a string or None")
     return _PdfRenderer(
         middle_json,
-        mode=mode,
         asset_resolver=asset_resolver,
         document_title=document_title,
     ).render()

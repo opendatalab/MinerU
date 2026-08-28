@@ -159,7 +159,6 @@ def render(
             raise TypeError("DOCX output requires DocxRenderOptions")
         return render_docx(
             middle_json,
-            mode=resolved_options.mode,
             asset_resolver=resolved_options.asset_resolver,
         )
 
@@ -169,7 +168,6 @@ def render(
             raise TypeError("EPUB output requires EpubRenderOptions")
         return render_epub(
             middle_json,
-            mode=resolved_options.mode,
             title=resolved_options.title,
             authors=resolved_options.authors,
             language=resolved_options.language,
@@ -184,7 +182,6 @@ def render(
             raise TypeError("PDF output requires PdfRenderOptions")
         return render_pdf(
             middle_json,
-            mode=resolved_options.mode,
             asset_resolver=resolved_options.asset_resolver,
             document_title=resolved_options.document_title,
         )

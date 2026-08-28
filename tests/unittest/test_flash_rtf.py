@@ -301,7 +301,7 @@ def test_rtf_doc_analyze_and_renderers_share_strict_metadata() -> None:
 
     markdown = render_markdown(middle, mode=RenderMode.FULL)
     html = render_html(middle, mode=RenderMode.FULL, standalone=False)
-    docx = render_docx(middle, mode=RenderMode.FULL)
+    docx = render_docx(middle)
     structured = render_structured_content(middle)
     assert "Inherited heading" in markdown
     assert "Foot body" in markdown

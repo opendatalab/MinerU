@@ -4,13 +4,12 @@
 from __future__ import annotations
 
 from ..types import MiddleJson
-from .contracts import AssetResolver, RenderMode
+from .contracts import AssetResolver
 
 
 def render_pdf(
     middle_json: MiddleJson,
     *,
-    mode: RenderMode = RenderMode.FULL,
     asset_resolver: AssetResolver | None = None,
     document_title: str | None = None,
 ) -> bytes:
@@ -19,7 +18,6 @@ def render_pdf(
 
     return _render_pdf(
         middle_json,
-        mode=mode,
         asset_resolver=asset_resolver,
         document_title=document_title,
     )

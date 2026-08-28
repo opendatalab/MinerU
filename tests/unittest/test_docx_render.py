@@ -13,7 +13,7 @@ from lxml import etree
 from PIL import Image
 import pytest
 
-from mineru.render import DocxRenderError, RenderMode, render_docx
+from mineru.render import DocxRenderError, render_docx
 from mineru.types import (
     ChartBlock,
     ChartBodyBlock,
@@ -91,14 +91,14 @@ def test_public_contract_returns_reopenable_docx_without_mutation() -> None:
     middle = _middle(_page(0, TextBlock(type="text", index=0, content=_inline("hello"))))
     original = deepcopy(middle)
 
-    result = render_docx(middle, mode=RenderMode.DEFAULT)
+    result = render_docx(middle)
 
     assert result.startswith(b"PK\x03\x04")
     assert Document(BytesIO(result)).paragraphs[0].text == "hello"
     assert middle == original
     with pytest.raises(TypeError, match="MiddleJson"):
         render_docx(middle.to_dict())  # type: ignore[arg-type]
-    with pytest.raises(TypeError, match="RenderMode"):
+    with pytest.raises(TypeError, match="unexpected keyword argument 'mode'"):
         render_docx(middle, mode="full")  # type: ignore[arg-type]
 
 
@@ -164,8 +164,8 @@ def test_heading_bookmark_forward_index_link_and_rich_inline_ooxml() -> None:
     assert "<m:oMath" in document_xml
 
 
-def test_default_and_full_docx_use_page_footnote_bookmark_and_style() -> None:
-    """验证默认与完整 Word 都输出页面脚注书签、内部链接和专用样式。"""
+def test_docx_uses_page_footnote_bookmark_and_style() -> None:
+    """验证固定默认 Word 输出页面脚注书签、内部链接和专用样式。"""
     middle = _middle(
         _page(
             0,
@@ -189,20 +189,18 @@ def test_default_and_full_docx_use_page_footnote_bookmark_and_style() -> None:
         )
     )
 
-    default_result = render_docx(middle)
-    full_result = render_docx(middle, mode=RenderMode.FULL)
-    for result in (default_result, full_result):
-        document_xml = _part(result, "word/document.xml")
-        relationships = _part(result, "word/_rels/document.xml.rels")
-        document = Document(BytesIO(result))
-        footnote = next(paragraph for paragraph in document.paragraphs if paragraph.text == "Footnote body.")
+    result = render_docx(middle)
+    document_xml = _part(result, "word/document.xml")
+    relationships = _part(result, "word/_rels/document.xml.rels")
+    document = Document(BytesIO(result))
+    footnote = next(paragraph for paragraph in document.paragraphs if paragraph.text == "Footnote body.")
 
-        assert 'w:bookmarkStart w:id="0" w:name="note_one"' in document_xml
-        assert 'w:hyperlink w:anchor="note_one"' in document_xml
-        assert document_xml.count("<w:hyperlink") == 1
-        assert footnote.style.name == "MinerU Footnote"
-        assert "missing-note" not in relationships
-        assert "#note-one" not in relationships
+    assert 'w:bookmarkStart w:id="0" w:name="note_one"' in document_xml
+    assert 'w:hyperlink w:anchor="note_one"' in document_xml
+    assert document_xml.count("<w:hyperlink") == 1
+    assert footnote.style.name == "MinerU Footnote"
+    assert "missing-note" not in relationships
+    assert "#note-one" not in relationships
 
 
 def test_visible_styled_boundary_spaces_use_nbsp_without_mutating_input() -> None:
@@ -283,8 +281,8 @@ def test_index_only_anchor_falls_back_to_plain_text_without_dangling_link() -> N
     assert "w:bookmarkStart" not in document_xml
 
 
-def test_default_and_full_modes_share_planner_but_keep_page_semantics() -> None:
-    """验证 DEFAULT 隐藏辅助块并合并续段，FULL 保留辅助块与硬分页。"""
+def test_docx_uses_default_planner_without_source_page_boundaries() -> None:
+    """验证固定默认 DOCX 隐藏辅助块、合并续段且不写源页硬分页。"""
     middle = _middle(
         _page(
             0,
@@ -294,15 +292,12 @@ def test_default_and_full_modes_share_planner_but_keep_page_semantics() -> None:
         _page(1, TextBlock(type="text", index=0, content=_inline("continuation"), continues_prev=True)),
     )
 
-    default_doc = Document(BytesIO(render_docx(middle)))
-    full_bytes = render_docx(middle, mode=RenderMode.FULL)
-    full_doc = Document(BytesIO(full_bytes))
+    result = render_docx(middle)
+    document = Document(BytesIO(result))
 
-    assert [paragraph.text for paragraph in default_doc.paragraphs] == ["international continuation"]
-    assert "HEADER" in [paragraph.text for paragraph in full_doc.paragraphs]
-    assert "international" in [paragraph.text for paragraph in full_doc.paragraphs]
-    assert "continuation" in [paragraph.text for paragraph in full_doc.paragraphs]
-    assert 'w:br w:type="page"' in _part(full_bytes, "word/document.xml")
+    assert [paragraph.text for paragraph in document.paragraphs] == ["international continuation"]
+    assert "HEADER" not in [paragraph.text for paragraph in document.paragraphs]
+    assert 'w:br w:type="page"' not in _part(result, "word/document.xml")
 
 
 def test_list_preserves_markers_and_uses_hanging_indents_without_numbering() -> None:
