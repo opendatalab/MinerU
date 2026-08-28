@@ -129,35 +129,56 @@ def test_parse_result_from_dict_rejects_missing_pages() -> None:
         ParseResult.from_dict({"schema_version": MIDDLE_JSON_SCHEMA_VERSION})
 
 
-def test_parse_result_from_json_rejects_legacy_pages() -> None:
+def test_parse_result_from_json_converts_mineru_3_4_5_middle_json() -> None:
+    """验证 ParseResult 恢复 3.4.5 pdf_info 调用链并生成严格 3.0。"""
     data = {
-        "pages": [
+        "_backend": "hybrid",
+        "_effort": "high",
+        "_ocr_enable": True,
+        "_version_name": "3.4.4",
+        "pdf_info": [
             {
-                "page_idx": 0,
-                "para_blocks": [
+                "page_idx": 2,
+                "page_size": [100, 100],
+                "preproc_blocks": [
                     {
                         "index": 0,
                         "type": "text",
-                        "bbox": [0.0, 0.0, 0.0, 0.0],
+                        "bbox": [10, 10, 90, 20],
                         "lines": [
                             {
-                                "bbox": [0.0, 0.0, 0.0, 0.0],
+                                "bbox": [10, 10, 90, 20],
                                 "spans": [{"type": "text", "bbox": [0.0, 0.0, 0.0, 0.0], "content": "round trip"}],
                             }
                         ],
                     }
                 ],
+                "discarded_blocks": [],
             }
-        ]
+        ],
     }
 
-    with pytest.raises(ValueError, match="Reparse the source document"):
-        ParseResult.from_json(json.dumps(data))
+    restored = ParseResult.from_json(json.dumps(data))
+
+    assert restored.pages[0].page_idx == 2
+    assert restored.pages[0].blocks[0].content[0].content == "round trip"
+    assert restored.middle_json.is_full_document is False
+    assert restored.middle_json.effort == "high"
+    assert restored.middle_json.parse_mode == "ocr"
+    assert restored.middle_json.mineru_version == "3.4.4"
 
 
-@pytest.mark.parametrize("schema_version", [None, "1.0", "2.0"])
+def test_parse_result_accepts_schema_v1_page_wrapper() -> None:
+    """验证旧调用方的 1.0 pages envelope 继续委托同一适配器。"""
+    restored = ParseResult.from_dict({"schema_version": "1.0", "pages": []})
+
+    assert restored.pages == []
+    assert restored.middle_json.is_full_document is True
+
+
+@pytest.mark.parametrize("schema_version", [None, "2.0"])
 def test_parse_result_rejects_pre_v3_schema_versions(schema_version: str | None) -> None:
-    """验证缺失版本与 1.0/2.0 payload 均明确要求重新解析源文件。"""
+    """验证无版本 pages 与未支持的 2.0 payload 仍要求重新解析源文件。"""
     payload: dict[str, object] = {"pages": []}
     if schema_version is not None:
         payload["schema_version"] = schema_version

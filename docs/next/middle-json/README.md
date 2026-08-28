@@ -60,7 +60,7 @@ Middle JSON 下一版要达到以下目标:
 
 - 稳定 page/block locator。
 - 可从 Agent answer 追溯到 page / block / bbox / source hash。
-- 旧 middle json 能被明确识别为 stale 并触发重新解析。
+- 可识别的 MinerU 3.4.5 middle json 能迁移，其它旧数据能被标记为 stale 并触发重新解析。
 - `ParseResult.from_dict()` 可以恢复 API / 缓存结果。
 - 默认选择 / tier 产生的不同质量结果能被 doclib 正确区分和缓存。
 

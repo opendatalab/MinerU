@@ -21,11 +21,45 @@ logger = logging.getLogger("mineru.compaction")
 
 
 def _normalize_batch_pages(batch_payload: dict[str, Any]) -> list[dict[str, Any]]:
-    """只接受 3.0 batch；旧缓存由正常缺失路径重新调度解析。"""
-    if batch_payload.get("schema_version") != MIDDLE_JSON_SCHEMA_VERSION:
+    """统一读取 3.0 batch，或把 3.4.5/1.0 页面转换为当前 page 字典。"""
+    schema_version = batch_payload.get("schema_version")
+    raw_pages = batch_payload.get("pages")
+    if schema_version == MIDDLE_JSON_SCHEMA_VERSION:
+        return raw_pages if isinstance(raw_pages, list) else []
+
+    if schema_version == "1.0":
+        pass
+    elif schema_version is None:
+        raw_pages = batch_payload.get("pdf_info")
+    else:
+        raw_pages = None
+    if not isinstance(raw_pages, list) or any(not isinstance(page, dict) for page in raw_pages):
         raise ValueError("stale Middle JSON cache requires source reparse")
-    raw_pages = batch_payload.get("pages", [])
-    return raw_pages if isinstance(raw_pages, list) else []
+
+    from ...backend.postprocess.legacy_schema_adapter import legacy_page_to_model_list
+    from ...backend.postprocess.pages import model_json_to_pages
+    from ...parser.base import (
+        _legacy_effort,
+        _legacy_file_suffix,
+        _legacy_page_index_map,
+        _legacy_parse_mode,
+    )
+    from ...types import ModelJson
+    from ...version import __version__ as current_mineru_version
+
+    source_version = batch_payload.get("_version_name", batch_payload.get("mineru_version"))
+    mineru_version = (
+        source_version.strip() if isinstance(source_version, str) and source_version.strip() else current_mineru_version
+    )
+    model_json = ModelJson(
+        pages=[legacy_page_to_model_list(page) for page in raw_pages],
+        page_index_map=_legacy_page_index_map(raw_pages),
+        file_suffix=_legacy_file_suffix(batch_payload),
+        effort=_legacy_effort(batch_payload),
+        parse_mode=_legacy_parse_mode(batch_payload),
+        mineru_version=mineru_version,
+    )
+    return [page.to_dict() for page in model_json_to_pages(model_json)]
 
 
 class Compaction:

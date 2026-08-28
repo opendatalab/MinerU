@@ -21,8 +21,9 @@ Schema 2.0 使用自然语言字符串中的 `<eq>`、`<text style>` 和
 - 算法正文新增 `algorithm_body` 并使用 Span；普通代码、行间公式、表格 HTML、
   Chart HTML、图片专用内容和 Mermaid 继续使用专用字符串。
 - HTML v1 wire 使用明确 DOM metadata 精确恢复 Span，不从展示标签反推。
-- 1.0/2.0 payload 与旧 Doclib 缓存不迁移，必须从源文件重新解析；删除
-  `legacy_schema_adapter`。
+- 当前运行时仍严格使用 schema 3.0；仅对 MinerU 3.4.5 页面结构及对应的 1.0
+  pages 包装保留 `legacy_schema_adapter`，先转换为结构化 raw ModelJson 再进入统一后处理。
+- 其它未知旧 payload 仍必须从源文件重新解析，不恢复字符串与 Span 的联合公开类型。
 
 ## 结果
 

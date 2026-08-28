@@ -150,8 +150,8 @@ Markdown、HTML、DOCX 与 Structured Content renderer 按 Span discriminator �
 
 ## 缓存与兼容
 
-- `ParseResult.from_dict()` 仅接受 `schema_version="3.0"`；
-- 1.0/2.0 与缺失版本返回“重新解析源文件”的明确错误；
-- Doclib 将旧 batch/cache 视为 stale 并重新调度；
-- `legacy_schema_adapter` 已删除；
+- `ParseResult.from_dict()` 直接接受 `schema_version="3.0"`；
+- MinerU 3.4.5 `pdf_info` 与对应 1.0 pages 包装经 `legacy_schema_adapter` 回推；
+- Doclib compaction 使用同一适配器迁移可识别旧 batch，无法识别时仍按 stale 处理；
+- 2.0 与其它未知旧版本返回“重新解析源文件”的明确错误；
 - 不提供 `str | list[InlineSpan]` 联合，也不恢复旧版带 bbox/图片职责的 Line/Span。

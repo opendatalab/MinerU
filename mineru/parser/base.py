@@ -6,11 +6,11 @@ from abc import ABC, abstractmethod
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from ..render import render_markdown, render_structured_content
 from ..render.contracts import ImageRenderer, RenderMode
-from ..types import MiddleJson, ModelJson, PageInfo
+from ..types import FILE_SUFFIXES, FileSuffix, MiddleJson, ModelJson, PageInfo
 from ..utils.image_payload import ImagePayloadCache
 from .writer import DataWriter
 
@@ -18,6 +18,10 @@ if TYPE_CHECKING:
     from ..model.flash.pdf.document import PDFDocument
 
 MIDDLE_JSON_SCHEMA_VERSION: str = "3.0"
+_LEGACY_SCHEMA_VERSION: str = "1.0"
+_LEGACY_DEFAULT_FILE_SUFFIX: FileSuffix = "pdf"
+_LEGACY_DEFAULT_EFFORT: Literal["flash", "medium", "high", "xhigh"] = "medium"
+_LEGACY_DEFAULT_PARSE_MODE: Literal["txt", "ocr"] = "txt"
 _PDF_RETAINED_PAGE_INDICES_KEY = "_pdf_retained_page_indices"
 _PDF_BROKEN_PAGE_INDICES_KEY = "_pdf_broken_page_indices"
 _TO_DICT_EXCLUDED_KEYS: frozenset[str] = frozenset(
@@ -35,6 +39,62 @@ def _parse_optional_int_list(value: Any) -> list[int] | None:
             return None
         parsed.append(item)
     return parsed
+
+
+def _legacy_raw_pages(payload: dict[str, Any]) -> list[dict[str, Any]] | None:
+    """按 envelope 识别 3.4.5 原始 pdf_info 或后续 1.0 pages 包装。
+
+    3.4.5 release tag 内部仍报告 3.4.4，因此不能把 ``_version_name`` 作为
+    唯一判据。
+    """
+    schema_version = payload.get("schema_version")
+    raw_pages = payload.get("pdf_info") if schema_version is None else None
+    if raw_pages is None and schema_version == _LEGACY_SCHEMA_VERSION:
+        raw_pages = payload.get("pages")
+    if not isinstance(raw_pages, list) or any(not isinstance(page, dict) for page in raw_pages):
+        return None
+    return raw_pages
+
+
+def _legacy_page_index_map(raw_pages: list[dict[str, Any]]) -> list[int]:
+    """从旧 page_idx 恢复抽页映射；连续零起始页面仍表示整本文档。"""
+    page_indices: list[int] = []
+    for fallback_index, page in enumerate(raw_pages):
+        page_idx = page.get("page_idx", fallback_index)
+        if isinstance(page_idx, bool) or not isinstance(page_idx, int) or page_idx < 0:
+            raise ValueError("legacy Middle JSON page_idx values must be non-negative integers")
+        page_indices.append(page_idx)
+    if len(page_indices) != len(set(page_indices)) or any(
+        current <= previous for previous, current in zip(page_indices, page_indices[1:])
+    ):
+        raise ValueError("legacy Middle JSON page_idx values must be unique and strictly increasing")
+    return [] if page_indices == list(range(len(raw_pages))) else page_indices
+
+
+def _legacy_file_suffix(payload: dict[str, Any]) -> FileSuffix:
+    """读取旧 payload 可选后缀；缺失时沿用历史 PDF 默认值。"""
+    value = payload.get("file_suffix")
+    if isinstance(value, str) and value in FILE_SUFFIXES:
+        return cast(FileSuffix, value)
+    return _LEGACY_DEFAULT_FILE_SUFFIX
+
+
+def _legacy_effort(payload: dict[str, Any]) -> Literal["flash", "medium", "high", "xhigh"]:
+    """把 3.4.5 的分析强度映射到当前严格枚举。"""
+    value = payload.get("_effort", payload.get("effort"))
+    if value in {"flash", "medium", "high", "xhigh"}:
+        return cast(Literal["flash", "medium", "high", "xhigh"], value)
+    return _LEGACY_DEFAULT_EFFORT
+
+
+def _legacy_parse_mode(payload: dict[str, Any]) -> Literal["txt", "ocr"]:
+    """优先读取显式 parse_mode，否则按 3.4.5 的 _ocr_enable 推断。"""
+    value = payload.get("parse_mode")
+    if value in {"txt", "ocr"}:
+        return cast(Literal["txt", "ocr"], value)
+    if payload.get("_ocr_enable") is True:
+        return "ocr"
+    return _LEGACY_DEFAULT_PARSE_MODE
 
 
 @dataclass
@@ -73,12 +133,15 @@ class ParseResult:
         retained_page_indices = _parse_optional_int_list(d.get(_PDF_RETAINED_PAGE_INDICES_KEY))
         broken_page_indices = _parse_optional_int_list(d.get(_PDF_BROKEN_PAGE_INDICES_KEY))
 
-        if schema_version != MIDDLE_JSON_SCHEMA_VERSION:
+        if schema_version == MIDDLE_JSON_SCHEMA_VERSION:
+            middle_json = ParseResult._build_middle_json_from_v3(d)
+        elif (raw_pages := _legacy_raw_pages(d)) is not None:
+            middle_json = ParseResult._build_middle_json_from_legacy(d, raw_pages)
+        else:
             raise ValueError(
                 f"Unsupported Middle JSON schema_version={schema_version!r}; "
                 f"expected {MIDDLE_JSON_SCHEMA_VERSION!r}. Reparse the source document."
             )
-        middle_json = ParseResult._build_middle_json_from_v3(d)
 
         return ParseResult(
             middle_json=middle_json,
@@ -91,6 +154,34 @@ class ParseResult:
         """从 3.0 schema 直接构造 Span 化 MiddleJson。"""
         payload = {k: v for k, v in d.items() if k not in _TO_DICT_EXCLUDED_KEYS}
         return MiddleJson.model_validate(payload)
+
+    @staticmethod
+    def _build_middle_json_from_legacy(d: dict[str, Any], raw_pages: list[dict[str, Any]]) -> MiddleJson:
+        """把 3.4.5 页面回推为 raw ModelJson，再走当前统一后处理生成 3.0。"""
+        from ..backend.postprocess.legacy_schema_adapter import legacy_page_to_model_list
+        from ..backend.postprocess.pages import model_json_to_pages
+        from ..version import __version__ as current_mineru_version
+
+        source_version = d.get("_version_name", d.get("mineru_version"))
+        mineru_version = (
+            source_version.strip() if isinstance(source_version, str) and source_version.strip() else current_mineru_version
+        )
+        model_json = ModelJson(
+            pages=[legacy_page_to_model_list(page) for page in raw_pages],
+            page_index_map=_legacy_page_index_map(raw_pages),
+            file_suffix=_legacy_file_suffix(d),
+            effort=_legacy_effort(d),
+            parse_mode=_legacy_parse_mode(d),
+            mineru_version=mineru_version,
+        )
+        return MiddleJson(
+            pages=model_json_to_pages(model_json),
+            is_full_document=model_json.is_full_document,
+            file_suffix=model_json.file_suffix,
+            effort=model_json.effort,
+            parse_mode=model_json.parse_mode,
+            mineru_version=model_json.mineru_version,
+        )
 
     def to_dict(self, *, skip_defaults: bool = True) -> dict[str, Any]:
         payload: dict[str, Any] = {"schema_version": MIDDLE_JSON_SCHEMA_VERSION}
