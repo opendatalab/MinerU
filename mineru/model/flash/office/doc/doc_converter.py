@@ -13,7 +13,8 @@ from ..image import serialize_office_image
 from ..legacy.ole import BoundedOleReader
 from ..streams import read_stream_bytes_from_start
 from .....types import RAW_CAPTION, BlockType
-from ..rich_text import OfficeRichTextSegment, build_rich_text_from_segments
+from ..._shared.spans import append_equation_span, extend_inline_spans, inline_span_plain_text, strip_span_dicts, text_spans
+from ..rich_text import OfficeRichTextSegment, build_rich_text_from_segments, build_rich_text_html_from_segments
 
 from .fib import parse_fib
 from ..equation.mtef import read_object_pool_equations
@@ -116,10 +117,10 @@ class DocConverter:
         return names
 
     @classmethod
-    def _rich_text(cls, runs: Iterable[DocTextRun], *, trim: bool = True) -> str:
-        """把 DOC runs 转换为已转义的 Office 富文本协议。"""
+    def _rich_text(cls, runs: Iterable[DocTextRun], *, trim: bool = True) -> list[dict[str, Any]]:
+        """把 DOC runs 直接转换为结构化 Span。"""
 
-        parts: list[str] = []
+        spans: list[dict[str, Any]] = []
         segments: list[OfficeRichTextSegment] = []
 
         def flush_segments() -> None:
@@ -127,12 +128,7 @@ class DocConverter:
 
             if not segments:
                 return
-            parts.append(
-                build_rich_text_from_segments(
-                    segments,
-                    trim_plain_edges=trim and not parts,
-                )
-            )
+            extend_inline_spans(spans, build_rich_text_from_segments(segments, trim_plain_edges=trim and not spans))
             segments.clear()
 
         for run in runs:
@@ -141,7 +137,7 @@ class DocConverter:
             if run.formula:
                 flush_segments()
                 latex = run.text.replace("<", r"\lt ").replace(">", r"\gt ")
-                parts.append(f"<eq>{latex}</eq>")
+                append_equation_span(spans, latex)
                 continue
             segments.append(
                 OfficeRichTextSegment(
@@ -151,7 +147,38 @@ class DocConverter:
                 )
             )
         flush_segments()
-        return "".join(parts).strip() if trim else "".join(parts)
+        return strip_span_dicts(spans) if trim else spans
+
+    @classmethod
+    def _cell_rich_text_html(cls, runs: Iterable[DocTextRun], *, trim: bool = True) -> str:
+        """把 DOC 表格单元格 runs 序列化为安全 HTML。"""
+        parts: list[str] = []
+        segments: list[OfficeRichTextSegment] = []
+
+        def flush_segments() -> None:
+            """在公式边界输出累计单元格文字。"""
+            if not segments:
+                return
+            parts.append(build_rich_text_html_from_segments(segments, trim_plain_edges=trim and not parts))
+            segments.clear()
+
+        for run in runs:
+            if not run.text:
+                continue
+            if run.formula:
+                flush_segments()
+                latex = run.text.replace("<", r"\lt ").replace(">", r"\gt ")
+                parts.append(f"<eq>{escape(latex, quote=False)}</eq>")
+                continue
+            segments.append(
+                OfficeRichTextSegment(
+                    text=run.text,
+                    style=cls._style_names(run.style),
+                    hyperlink=run.hyperlink,
+                )
+            )
+        flush_segments()
+        return "".join(parts)
 
     @staticmethod
     def _plain_text(paragraph: DocParagraph) -> str:
@@ -229,11 +256,9 @@ class DocConverter:
         """把一个 TOC 段落追加到对应层级的 index 树。"""
 
         content = cls._rich_text(cls._toc_runs(paragraph))
-        content += "".join(
-            f"<eq>{escape(payload.equation_latex, quote=False)}</eq>"
-            for payload in paragraph.images
-            if isinstance(payload, DocImagePayload) and payload.equation_latex
-        )
+        for payload in paragraph.images:
+            if isinstance(payload, DocImagePayload) and payload.equation_latex:
+                append_equation_span(content, payload.equation_latex)
         if not content:
             return
         level = min(max(paragraph.toc_level or 0, 0), 8)
@@ -270,11 +295,9 @@ class DocConverter:
         if info is None:
             return identity or -1
         content = cls._rich_text(paragraph.runs)
-        content += "".join(
-            f"<eq>{escape(payload.equation_latex, quote=False)}</eq>"
-            for payload in paragraph.images
-            if isinstance(payload, DocImagePayload) and payload.equation_latex
-        )
+        for payload in paragraph.images:
+            if isinstance(payload, DocImagePayload) and payload.equation_latex:
+                append_equation_span(content, payload.equation_latex)
         if not content and not paragraph.images:
             return identity or info.identity
         if identity != info.identity:
@@ -320,7 +343,7 @@ class DocConverter:
         list_info = paragraph.list_info
         exact_label = list_info.label if list_info is not None and list_info.ordered else None
         if exact_label and (paragraph.is_title or paragraph.heading_level is not None):
-            content = f"{escape(exact_label, quote=False)} {content}".strip()
+            content = [*text_spans(f"{exact_label} "), *content]
         if (
             formula_runs
             and not ordinary_text
@@ -380,7 +403,9 @@ class DocConverter:
                 result.append(f"</{stack.pop()}><{tag}>")
                 stack.append(tag)
             label = f"{escape(info.label)} " if info.label and info.ordered else ""
-            result.append(f"<li>{label}{cls._rich_text(paragraph.runs)}{cls._cell_images_html(paragraph.images)}</li>")
+            result.append(
+                f"<li>{label}{cls._cell_rich_text_html(paragraph.runs)}{cls._cell_images_html(paragraph.images)}</li>"
+            )
         while stack:
             result.append(f"</{stack.pop()}>")
         return "".join(result)
@@ -390,7 +415,7 @@ class DocConverter:
         """序列化一个表格单元格段落及其内联图片。"""
 
         parts: list[str] = []
-        content = cls._rich_text(paragraph.runs, trim=False)
+        content = cls._cell_rich_text_html(paragraph.runs, trim=False)
         if content:
             parts.append(f"<p>{content}</p>")
         parts.append(cls._cell_images_html(paragraph.images))
@@ -483,17 +508,18 @@ class DocConverter:
         return cls._paragraph_blocks(element)
 
     @classmethod
-    def _auxiliary_contents(cls, paragraphs: list[DocParagraph]) -> list[str]:
+    def _auxiliary_contents(cls, paragraphs: list[DocParagraph]) -> list[list[dict[str, Any]]]:
         """去重页眉页脚段落并过滤纯页码。"""
 
-        result: list[str] = []
+        result: list[list[dict[str, Any]]] = []
         seen: set[str] = set()
         for paragraph in paragraphs:
             content = cls._rich_text(paragraph.runs)
             plain = cls._plain_text(paragraph).strip()
-            if not content or plain.isdigit() or content in seen:
+            visible = inline_span_plain_text(content)
+            if not content or plain.isdigit() or visible in seen:
                 continue
-            seen.add(content)
+            seen.add(visible)
             result.append(content)
         return result
 

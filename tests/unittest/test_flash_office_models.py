@@ -19,6 +19,7 @@ from mineru.model.flash import (
     OdpModel,
     OdsModel,
     OdtModel,
+    OfdModel,
     PdfModel,
     PptModel,
     PptxModel,
@@ -177,6 +178,7 @@ def test_models_are_exported_from_flash_root() -> None:
         "CsvModel",
         "EpubModel",
         "HtmlModel",
+        "OfdModel",
         "RtfModel",
         "DocModel",
         "DocxModel",
@@ -193,6 +195,7 @@ def test_models_are_exported_from_flash_root() -> None:
     assert DocModel is flat_model_module.DocModel
     assert DocxModel is flat_model_module.DocxModel
     assert EpubModel is flat_model_module.EpubModel
+    assert OfdModel is flat_model_module.OfdModel
     assert PptxModel is flat_model_module.PptxModel
     assert PptModel is flat_model_module.PptModel
     assert XlsModel is flat_model_module.XlsModel

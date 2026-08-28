@@ -7,8 +7,8 @@ from dataclasses import dataclass
 import re
 from typing import Literal, TypeAlias
 
-from ....backend.postprocess.inline import inline_plain_text, parse_inline_content
-from ....types import BlockType, ListBlock
+from ....backend.postprocess.inline import inline_plain_text, normalize_inline_spans, slice_inline_spans
+from ....types import BlockType, InlineSpan, ListBlock
 
 ListItemKind: TypeAlias = Literal["unordered", "ordered", "explicit", "none"]
 OrderedListStyle: TypeAlias = Literal["decimal", "lower-alpha", "upper-alpha", "lower-roman", "upper-roman"]
@@ -36,7 +36,7 @@ class ListItem:
     """保存一个列表条目的原始标记、正文与 HTML 所需分类。"""
 
     marker: str | None
-    body: str
+    body: list[InlineSpan]
     kind: ListItemKind
     value: int | None
     ordered_style: OrderedListStyle | None
@@ -44,15 +44,17 @@ class ListItem:
     separator: str
 
 
-def parse_list_item_marker(content: str) -> ListItem:
+def parse_list_item_marker(content: list[InlineSpan]) -> ListItem:
     """解析列表行首 marker；无法识别时仍拆出前导水平空白。"""
-    match = _LIST_ITEM_MARKER_RE.match(content)
+    content = normalize_inline_spans(content)
+    visible_text = inline_plain_text(content)
+    match = _LIST_ITEM_MARKER_RE.match(visible_text)
     if match is None:
-        leading_match = _LEADING_WHITESPACE_RE.match(content)
+        leading_match = _LEADING_WHITESPACE_RE.match(visible_text)
         leading = leading_match.group(0) if leading_match is not None else ""
         return ListItem(
             marker=None,
-            body=content[len(leading) :],
+            body=slice_inline_spans(content, len(leading)),
             kind="none",
             value=None,
             ordered_style=None,
@@ -80,7 +82,7 @@ def parse_list_item_marker(content: str) -> ListItem:
         ordered_style = None
     return ListItem(
         marker=marker,
-        body=match.group("body"),
+        body=slice_inline_spans(content, match.start("body")),
         kind=kind,
         value=value,
         ordered_style=ordered_style,
@@ -123,9 +125,9 @@ def _roman_marker_value(marker: str) -> int:
     return total
 
 
-def has_markdown_unordered_marker(content: str) -> bool:
+def has_markdown_unordered_marker(content: list[InlineSpan]) -> bool:
     """判断条目是否已有 Markdown 短横线 marker，保持既有补 bullet 规则。"""
-    return _MARKDOWN_UNORDERED_MARKER_RE.match(content) is not None
+    return _MARKDOWN_UNORDERED_MARKER_RE.match(inline_plain_text(normalize_inline_spans(content))) is not None
 
 
 def reference_list_needs_bullets(block: ListBlock) -> bool:
@@ -138,7 +140,7 @@ def reference_list_needs_bullets(block: ListBlock) -> bool:
     for child in block.content:
         if isinstance(child, ListBlock):
             continue
-        visible_text = inline_plain_text(parse_inline_content(child.content)).lstrip()
+        visible_text = inline_plain_text(child.content).lstrip()
         if not visible_text:
             continue
         item_count += 1

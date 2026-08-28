@@ -9,6 +9,8 @@ from mineru.backend.postprocess.document import model_json_to_middle_json
 from mineru.config import LLMAidedConfig
 from mineru.types import MiddleJson, ModelJson
 
+from _span_test_utils import inline
+
 
 def _model_json(
     *,
@@ -17,7 +19,7 @@ def _model_json(
 ) -> ModelJson:
     """构造包含全部必填元数据的严格 ModelJson 测试对象。"""
     return ModelJson(
-        pages=pages if pages is not None else [[{"type": "text", "content": "正文"}]],
+        pages=pages if pages is not None else [[{"type": "text", "content": inline("正文")}]],
         page_index_map=page_index_map if page_index_map is not None else [],
         file_suffix="docx",
         effort="flash",
@@ -42,7 +44,7 @@ def test_model_json_is_public_and_serializes_exact_envelope() -> None:
         "mineru_version",
     ]
     assert payload == {
-        "pages": [[{"type": "text", "content": "正文"}]],
+        "pages": [[{"type": "text", "content": inline("正文")}]],
         "page_index_map": [],
         "file_suffix": "docx",
         "effort": "flash",

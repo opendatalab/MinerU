@@ -21,6 +21,7 @@ from mineru.parser import parse
 from mineru.types import BlockType, ChartBlock, ImageBlock, MiddleJson, ModelJson, TableBlock
 
 from _legacy_ppt_test_utils import build_deep_nested_ppt, build_multimaster_ppt, build_sparse_notes_ppt
+from _span_test_utils import inline, inline_text
 
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -33,10 +34,10 @@ def test_ppt_model_preserves_slide_pages_and_sparse_notes() -> None:
     pages = PptModel().predict(BytesIO(build_sparse_notes_ppt()))
 
     assert len(pages) == 2
-    assert pages[0] == [{"type": BlockType.TEXT, "content": "First slide text"}]
+    assert pages[0] == [{"type": BlockType.TEXT, "content": inline("First slide text")}]
     assert pages[1] == [
-        {"type": BlockType.TEXT, "content": "Second slide text"},
-        {"type": BlockType.PAGE_FOOTNOTE, "content": "Notes for the second slide"},
+        {"type": BlockType.TEXT, "content": inline("Second slide text")},
+        {"type": BlockType.PAGE_FOOTNOTE, "content": inline("Notes for the second slide")},
     ]
 
 
@@ -81,7 +82,7 @@ def test_ppt_model_applies_per_slide_master_styles() -> None:
                 "content": [
                     {
                         "type": BlockType.TEXT,
-                        "content": '<text style="bold">Alpha master body text</text>',
+                        "content": inline("Alpha master body text", styles=["bold"]),
                     }
                 ],
             }
@@ -89,7 +90,7 @@ def test_ppt_model_applies_per_slide_master_styles() -> None:
         [
             {
                 "type": BlockType.TEXT,
-                "content": '<text style="italic">Beta master body text</text>',
+                "content": inline("Beta master body text", styles=["italic"]),
             }
         ],
     ]
@@ -212,10 +213,10 @@ def test_real_ppt_recovers_table_notes_images_and_exports(tmp_path: Path) -> Non
             (3, 1, "R4"),
         ]
     )
-    assert [block.content for block in middle_json.pages[1].blocks if block.type == BlockType.PAGE_FOOTNOTE] == [
+    assert [inline_text(block.content) for block in middle_json.pages[1].blocks if block.type == BlockType.PAGE_FOOTNOTE] == [
         "Some notes on the second slide."
     ]
-    assert [block.content for block in middle_json.pages[2].blocks if block.type == BlockType.PAGE_FOOTNOTE] == [
+    assert [inline_text(block.content) for block in middle_json.pages[2].blocks if block.type == BlockType.PAGE_FOOTNOTE] == [
         "Final notes on the third slide.",
         "Second line of notes.",
     ]

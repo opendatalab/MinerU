@@ -37,6 +37,7 @@ from _epub_test_utils import (
     build_epub_notes_fixture,
     build_epub_table_toc_fixture,
 )
+from _span_test_utils import inline, inline_text, inline_urls, visible_content
 
 
 def test_epub_model_analyze_and_renderers_preserve_structured_content() -> None:
@@ -98,7 +99,7 @@ def test_epub_notes_use_page_footnote_and_document_wide_anchors() -> None:
     blocks = [block for page in middle.pages for block in page.blocks]
     footnotes = [block for block in blocks if block.type == BlockType.PAGE_FOOTNOTE]
     assert all(isinstance(block, PageFootnoteBlock) for block in footnotes)
-    footnote_by_text = {block.content: block for block in footnotes}  # type: ignore[union-attr]
+    footnote_by_text = {inline_text(block.content): block for block in footnotes}  # type: ignore[union-attr]
 
     first = footnote_by_text["First footnote paragraph back."]
     second = footnote_by_text["Second footnote paragraph."]
@@ -120,16 +121,16 @@ def test_epub_notes_use_page_footnote_and_document_wide_anchors() -> None:
     body_text = next(
         block
         for block in middle.pages[0].blocks
-        if block.type == BlockType.TEXT and "Same-page" in block.content  # type: ignore[union-attr]
+        if block.type == BlockType.TEXT and "Same-page" in inline_text(block.content)  # type: ignore[union-attr]
     )
-    assert f"<url>#{first.anchor}</url>" in body_text.content  # type: ignore[union-attr]
-    assert f"<url>#{endnote.anchor}</url>" in body_text.content  # type: ignore[union-attr]
-    assert f"<url>#{duplicate_first.anchor}</url>" in body_text.content  # type: ignore[union-attr]
-    assert "empty [4]" in body_text.content and "empty <hyperlink>" not in body_text.content  # type: ignore[union-attr]
-    assert "<hyperlink>back" not in first.content  # type: ignore[union-attr]
+    assert f"#{first.anchor}" in inline_urls(body_text.content)  # type: ignore[union-attr]
+    assert f"#{endnote.anchor}" in inline_urls(body_text.content)  # type: ignore[union-attr]
+    assert f"#{duplicate_first.anchor}" in inline_urls(body_text.content)  # type: ignore[union-attr]
+    assert "empty [4]" in inline_text(body_text.content)  # type: ignore[union-attr]
+    assert not inline_urls(first.content)  # type: ignore[union-attr]
 
-    assert any(block.type == BlockType.TEXT and block.content == "Ordinary aside." for block in blocks)  # type: ignore[union-attr]
-    assert any(block.type == BlockType.TEXT and block.content == "Footnotes collection label." for block in blocks)  # type: ignore[union-attr]
+    assert any(block.type == BlockType.TEXT and inline_text(block.content) == "Ordinary aside." for block in blocks)  # type: ignore[union-attr]
+    assert any(block.type == BlockType.TEXT and inline_text(block.content) == "Footnotes collection label." for block in blocks)  # type: ignore[union-attr]
     assert any(block.type == BlockType.LIST and "Footnote sibling list" in str(block.content) for block in blocks)  # type: ignore[union-attr]
     assert any(block.type == BlockType.TABLE and "Complex only" in str(block.content) for block in blocks)  # type: ignore[union-attr]
     assert all(
@@ -183,7 +184,7 @@ def test_epub_internal_links_and_lists_use_cross_renderer_projection() -> None:
     assert "3. Three" in markdown
     assert "4. Two" in markdown
     list_block = next(block for block in first_page.blocks if block.type == BlockType.LIST)
-    assert [child.content for child in list_block.content] == ["3. Three", "4. Two"]
+    assert [inline_text(child.content) for child in list_block.content] == ["3. Three", "4. Two"]
     assert all(label in render_html(middle, standalone=False) for label in ("Three", "Two"))
     structured = render_structured_content(middle)
     assert any(block.get("content") == "3. Three\n4. Two" for page in structured["pages"] for block in page["blocks"])
@@ -207,9 +208,9 @@ def test_epub_hidden_list_items_do_not_consume_normalized_numbers() -> None:
         list_block = next(block for block in blocks if block["type"] == BlockType.LIST)
 
         assert list_block["start"] == 1
-        assert list_block["content"] == [{"type": BlockType.TEXT, "content": "Two"}]
+        assert list_block["content"] == [{"type": BlockType.TEXT, "content": inline("Two")}]
         fix_office_list_blocks([list_block])
-        assert list_block["content"] == [{"type": BlockType.TEXT, "content": "1. Two"}]
+        assert inline_text(list_block["content"][0]["content"]) == "1. Two"
     finally:
         package.close()
 
@@ -389,10 +390,10 @@ def test_epub_figure_preserves_direct_text_and_child_tails() -> None:
             block
             for block in blocks
             if block.get("type") in {BlockType.IMAGE, BlockType.IMAGE_CAPTION}
-            or (isinstance(block.get("content"), str) and block.get("content") in {"Before", "AfterTail"})
+            or visible_content(block.get("content")) in {"Before", "AfterTail"}
         ]
 
-        assert [(block["type"], block.get("content")) for block in relevant] == [
+        assert [(block["type"], visible_content(block.get("content"))) for block in relevant] == [
             (BlockType.TEXT, "Before"),
             (BlockType.IMAGE, ""),
             (BlockType.IMAGE_CAPTION, "Dot caption"),
@@ -417,7 +418,7 @@ def test_public_parser_rejects_epub_page_range(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(
     "suffix",
-    ["doc", "docx", "ppt", "pptx", "xls", "xlsx", "rtf", "csv", "epub", "html", "odt", "ods", "odp"],
+    ["doc", "docx", "ppt", "pptx", "xls", "xlsx", "rtf", "csv", "epub", "html", "ofd", "odt", "ods", "odp"],
 )
 def test_non_pdf_analyze_rejects_non_empty_page_index_map(suffix: str) -> None:
     """验证所有非 PDF Analyze 分支拒绝伪造 partial page mapping。"""
@@ -427,7 +428,7 @@ def test_non_pdf_analyze_rejects_non_empty_page_index_map(suffix: str) -> None:
 
 @pytest.mark.parametrize(
     "suffix",
-    ["doc", "docx", "ppt", "pptx", "xls", "xlsx", "rtf", "csv", "epub", "html", "odt", "ods", "odp"],
+    ["doc", "docx", "ppt", "pptx", "xls", "xlsx", "rtf", "csv", "epub", "html", "ofd", "odt", "ods", "odp"],
 )
 def test_non_pdf_public_parser_rejects_page_range(
     monkeypatch: pytest.MonkeyPatch,
@@ -451,21 +452,21 @@ def test_epub2_and_mimetype_less_compatibility_packages_parse() -> None:
     assert detect_epub(epub2)
     assert detect_epub(compatibility)
     epub2_middle = doc_analyze(epub2, file_suffix="epub")[0]
-    assert epub2_middle.pages[0].blocks[0].content == "EPUB Two Chapter"  # type: ignore[union-attr]
-    assert epub2_middle.pages[0].blocks[1].content == "Legacy\u00a0body"  # type: ignore[union-attr]
+    assert inline_text(epub2_middle.pages[0].blocks[0].content) == "EPUB Two Chapter"  # type: ignore[union-attr]
+    assert inline_text(epub2_middle.pages[0].blocks[1].content) == "Legacy\u00a0body"  # type: ignore[union-attr]
     assert len(doc_analyze(compatibility, file_suffix="epub")[0].pages) == 3
 
 
 def test_epub_spine_foreign_resource_uses_xhtml_fallback_chain() -> None:
     """验证 foreign spine item 缺失时仍沿 manifest fallback 到 XHTML。"""
     middle, _ = doc_analyze(build_epub_fixture(use_foreign_fallback=True), file_suffix="epub")
-    assert middle.pages[1].blocks[0].content == "Section Two"  # type: ignore[union-attr]
+    assert inline_text(middle.pages[1].blocks[0].content) == "Section Two"  # type: ignore[union-attr]
 
 
 def test_epub_spine_missing_supported_resource_uses_xhtml_fallback_chain() -> None:
     """验证缺失的 XHTML 主资源不会阻断可用 fallback 链。"""
     middle, _ = doc_analyze(build_epub_fixture(use_missing_supported_fallback=True), file_suffix="epub")
-    assert middle.pages[1].blocks[0].content == "Section Two"  # type: ignore[union-attr]
+    assert inline_text(middle.pages[1].blocks[0].content) == "Section Two"  # type: ignore[union-attr]
 
 
 def test_epub_nav_and_ncx_outside_spine_do_not_create_synthetic_page() -> None:
@@ -512,8 +513,8 @@ def test_epub_navigation_in_spine_preserves_page_order_and_extra_body_content() 
     )
     assert len(middle.pages) == 4
     assert all(block.type != BlockType.INDEX for page in middle.pages for block in page.blocks)
-    assert any(getattr(block, "content", None) == "Publisher front matter" for block in middle.pages[0].blocks)
-    assert middle.pages[1].blocks[0].content == "Chapter One"  # type: ignore[union-attr]
+    assert any(inline_text(getattr(block, "content", None)) == "Publisher front matter" for block in middle.pages[0].blocks)
+    assert inline_text(middle.pages[1].blocks[0].content) == "Chapter One"  # type: ignore[union-attr]
 
 
 def test_epub_content_detection_precedes_extension_and_rejects_fake_packages(tmp_path: Path) -> None:
@@ -538,7 +539,7 @@ def test_epub_corrupt_chapter_keeps_empty_spine_placeholder() -> None:
     assert model.pages[1] == []
     assert [page.page_idx for page in middle.pages] == [0, 1, 2]
     assert middle.pages[1].blocks == []
-    assert "SVG text" in middle.pages[2].blocks[0].content  # type: ignore[union-attr]
+    assert "SVG text" in inline_text(middle.pages[2].blocks[0].content)  # type: ignore[union-attr]
 
 
 def test_epub_svg_extraction_skips_hidden_descendants_and_hidden_root() -> None:
@@ -780,8 +781,8 @@ def test_epub_visibility_visible_descendants_survive_hidden_containers() -> None
     ):
         assert hidden_text not in flattened
 
-    heading = next(block for block in blocks if block.get("content") == "Visible descendant heading")
-    assert f"<url>#{heading['anchor']}</url>" in flattened
+    heading = next(block for block in blocks if inline_text(block.get("content")) == "Visible descendant heading")
+    assert f"#{heading['anchor']}" in [url for block in blocks for url in inline_urls(block.get("content"))]
 
 
 def test_epub_visibility_hidden_body_still_visits_visible_children() -> None:

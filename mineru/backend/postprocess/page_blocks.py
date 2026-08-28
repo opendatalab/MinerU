@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
 from ...types import (
@@ -17,7 +16,7 @@ from ...utils.language import guess_code_language
 
 from ...utils.text import clean_isolated_formula
 
-from .content import clean_content, code_content_clean
+from .content import clean_inline_content, code_content_clean, collapse_inline_newlines
 from .lists import (
     fix_office_index_blocks,
     fix_office_list_blocks,
@@ -55,9 +54,27 @@ _REPLACED_BLOCK_TYPES = {
 }
 
 
-def _has_inline_formula_content(content: str | None) -> bool:
-    """判断 content 是否包含成对行内公式标记。"""
-    return bool(content) and content.count("<eq>") == content.count("</eq>") and content.count("<eq>") > 0
+_INLINE_CONTENT_BLOCK_TYPES = {
+    BlockType.TEXT,
+    BlockType.REF_TEXT,
+    BlockType.DOC_TITLE,
+    BlockType.PARAGRAPH_TITLE,
+    BlockType.HEADER,
+    BlockType.FOOTER,
+    BlockType.PAGE_NUMBER,
+    BlockType.ASIDE_TEXT,
+    BlockType.PAGE_FOOTNOTE,
+    RAW_CAPTION,
+    RAW_FOOTNOTE,
+    BlockType.IMAGE_CAPTION,
+    BlockType.IMAGE_FOOTNOTE,
+    BlockType.TABLE_CAPTION,
+    BlockType.TABLE_FOOTNOTE,
+    BlockType.CHART_CAPTION,
+    BlockType.CHART_FOOTNOTE,
+    BlockType.CODE_CAPTION,
+    BlockType.CODE_FOOTNOTE,
+}
 
 
 def _normalize_raw_blocks(page_model_list: list[BlockDict]) -> list[BlockDict]:
@@ -73,9 +90,13 @@ def _normalize_raw_blocks(page_model_list: list[BlockDict]) -> list[BlockDict]:
             block_type = BlockType.TABLE_BODY
         elif block_type == BlockType.CHART:
             block_type = BlockType.CHART_BODY
-        elif block_type in [BlockType.CODE, RAW_ALGORITHM]:
+        elif block_type == BlockType.CODE:
             code_block_sub_type = block_type
             block_content = code_content_clean(block_content)
+            block_type = BlockType.CODE_BODY
+        elif block_type == RAW_ALGORITHM:
+            code_block_sub_type = block_type
+            block_content = clean_inline_content(block_content)
             block_type = BlockType.CODE_BODY
         elif block_type == BlockType.EQUATION:
             block_content = clean_isolated_formula(block_content)
@@ -89,17 +110,10 @@ def _normalize_raw_blocks(page_model_list: list[BlockDict]) -> list[BlockDict]:
             normalized_level = raw_level if type(raw_level) is int else 2
             block["level"] = min(max(normalized_level, 2), 6)
 
-        if block_type not in [BlockType.IMAGE_BODY, BlockType.TABLE_BODY, BlockType.CHART_BODY]:
-            if block_content:
-                block_content = clean_content(block_content) or ""
-            if block_type in [BlockType.DOC_TITLE, BlockType.PARAGRAPH_TITLE] and block_content:
-                block_content = re.sub(r"\n\s*", " ", block_content).strip()
-            if (
-                block_type == BlockType.CODE_BODY
-                and code_block_sub_type == BlockType.CODE
-                and _has_inline_formula_content(block_content)
-            ):
-                code_block_sub_type = RAW_ALGORITHM
+        if block_type in _INLINE_CONTENT_BLOCK_TYPES:
+            block_content = clean_inline_content(block_content)
+            if block_type in [BlockType.DOC_TITLE, BlockType.PARAGRAPH_TITLE]:
+                block_content = collapse_inline_newlines(block_content)
 
         block["type"] = block_type
         block["content"] = block_content
@@ -160,10 +174,14 @@ def _prepare_lists_and_indices(
     return text_blocks, ref_text_blocks, list_blocks, index_blocks
 
 
-def _annotate_code_languages(code_blocks: list[BlockDict]) -> None:
-    """优先保留来源语言提示，缺失时再为普通代码主体推断语言。"""
+def _finalize_code_blocks(code_blocks: list[BlockDict]) -> None:
+    """确定代码语言，并把算法唯一主体切换为 algorithm_body。"""
     for code_block in code_blocks:
-        if code_block["sub_type"] != BlockType.CODE:
+        if code_block["sub_type"] == RAW_ALGORITHM:
+            for sub_block in code_block["content"]:
+                if sub_block.get("type") == BlockType.CODE_BODY:
+                    sub_block["type"] = BlockType.ALGORITHM_BODY
+                    break
             continue
         guess_lang = code_block.get("guess_lang")
         if isinstance(guess_lang, str) and guess_lang.strip():
@@ -196,7 +214,7 @@ def process_page_blocks(
     table_blocks = visual_groups[BlockType.TABLE]
     chart_blocks = visual_groups[BlockType.CHART]
     code_blocks = visual_groups[BlockType.CODE]
-    _annotate_code_languages(code_blocks)
+    _finalize_code_blocks(code_blocks)
     for block in unmatched_child_blocks:
         block["type"] = BlockType.TEXT
         text_blocks.append(block)

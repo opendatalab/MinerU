@@ -6,22 +6,18 @@ from abc import ABC, abstractmethod
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any
 
 from ..render import render_markdown, render_structured_content
 from ..render.contracts import ImageRenderer, RenderMode
-from ..types import FileSuffix, MiddleJson, ModelJson, PageInfo
+from ..types import MiddleJson, ModelJson, PageInfo
 from ..utils.image_payload import ImagePayloadCache
 from .writer import DataWriter
 
 if TYPE_CHECKING:
     from ..model.flash.pdf.document import PDFDocument
 
-MIDDLE_JSON_SCHEMA_VERSION: str = "2.0"
-_LEGACY_SCHEMA_VERSION: str = "1.0"
-_LEGACY_DEFAULT_FILE_SUFFIX: FileSuffix = "pdf"
-_LEGACY_DEFAULT_EFFORT: Literal["flash", "medium", "high", "xhigh"] = "medium"
-_LEGACY_DEFAULT_PARSE_MODE: Literal["txt", "ocr"] = "txt"
+MIDDLE_JSON_SCHEMA_VERSION: str = "3.0"
 _PDF_RETAINED_PAGE_INDICES_KEY = "_pdf_retained_page_indices"
 _PDF_BROKEN_PAGE_INDICES_KEY = "_pdf_broken_page_indices"
 _TO_DICT_EXCLUDED_KEYS: frozenset[str] = frozenset(
@@ -73,14 +69,16 @@ class ParseResult:
         if not isinstance(d, dict):
             raise ValueError("ParseResult.from_dict expects a dict.")
 
-        schema_version = d.get("schema_version", _LEGACY_SCHEMA_VERSION)
+        schema_version = d.get("schema_version")
         retained_page_indices = _parse_optional_int_list(d.get(_PDF_RETAINED_PAGE_INDICES_KEY))
         broken_page_indices = _parse_optional_int_list(d.get(_PDF_BROKEN_PAGE_INDICES_KEY))
 
-        if schema_version == MIDDLE_JSON_SCHEMA_VERSION:
-            middle_json = ParseResult._build_middle_json_from_v2(d)
-        else:
-            middle_json = ParseResult._build_middle_json_from_legacy(d)
+        if schema_version != MIDDLE_JSON_SCHEMA_VERSION:
+            raise ValueError(
+                f"Unsupported Middle JSON schema_version={schema_version!r}; "
+                f"expected {MIDDLE_JSON_SCHEMA_VERSION!r}. Reparse the source document."
+            )
+        middle_json = ParseResult._build_middle_json_from_v3(d)
 
         return ParseResult(
             middle_json=middle_json,
@@ -89,45 +87,10 @@ class ParseResult:
         )
 
     @staticmethod
-    def _build_middle_json_from_v2(d: dict[str, Any]) -> MiddleJson:
-        """从 2.0 schema 直接构造 MiddleJson，pages 与元数据字段齐全。"""
+    def _build_middle_json_from_v3(d: dict[str, Any]) -> MiddleJson:
+        """从 3.0 schema 直接构造 Span 化 MiddleJson。"""
         payload = {k: v for k, v in d.items() if k not in _TO_DICT_EXCLUDED_KEYS}
         return MiddleJson.model_validate(payload)
-
-    @staticmethod
-    def _build_middle_json_from_legacy(d: dict[str, Any]) -> MiddleJson:
-        """从 1.0 schema 兼容构造 MiddleJson，preproc_blocks 回推为 raw model_list 重走后处理。"""
-        raw_pages = d.get("pages")
-        if not isinstance(raw_pages, list):
-            raise ValueError("ParseResult JSON must contain a list field named pages.")
-
-        from ..backend.postprocess.legacy_schema_adapter import legacy_page_to_model_list
-        from ..backend.postprocess.pages import model_json_to_pages
-        from ..types import ModelJson
-        from ..version import __version__ as mineru_version
-
-        model_list = [legacy_page_to_model_list(page) for page in raw_pages]
-        if model_list:
-            model_json = ModelJson(
-                pages=model_list,
-                page_index_map=[],
-                file_suffix=_LEGACY_DEFAULT_FILE_SUFFIX,
-                effort=_LEGACY_DEFAULT_EFFORT,
-                parse_mode=_LEGACY_DEFAULT_PARSE_MODE,
-                mineru_version=mineru_version,
-            )
-            pages = model_json_to_pages(model_json)
-        else:
-            pages = []
-
-        return MiddleJson(
-            pages=pages,
-            is_full_document=True,
-            file_suffix=_LEGACY_DEFAULT_FILE_SUFFIX,
-            effort=_LEGACY_DEFAULT_EFFORT,
-            parse_mode=_LEGACY_DEFAULT_PARSE_MODE,
-            mineru_version=mineru_version,
-        )
 
     def to_dict(self, *, skip_defaults: bool = True) -> dict[str, Any]:
         payload: dict[str, Any] = {"schema_version": MIDDLE_JSON_SCHEMA_VERSION}

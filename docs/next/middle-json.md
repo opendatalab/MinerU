@@ -2,13 +2,13 @@
 
 状态: Draft
 读者: backend 开发者、Markdown/Structured Content 输出开发者、SDK 开发者、Agent 能力开发者
-范围: Middle JSON schema 2.0 事实标准、Agent-native gap、统一 envelope、迁移策略和验收清单
+范围: Middle JSON schema 3.0 事实标准、Agent-native gap、统一 envelope、迁移策略和验收清单
 非目标: 具体 OCR 或模型算法实现
 来源: 由根目录旧 Middle JSON 底稿迁移整理而来
 
 ## 当前定位
 
-Middle JSON 已经收敛为 schema 2.0 的严格 Pydantic 模型：`mineru/types.py` 中的 `MiddleJson`、`PageInfo`、`BlockBase`/`TextBlock`/`ImageBlock`/`EquationBlock` 等类型。下一阶段的重点是把这些类型、统一渲染入口和 Agent-native 需求收敛成可执行方案。
+Middle JSON 已经收敛为 schema 3.0 的严格 Pydantic 模型：`mineru/types.py` 中的 `MiddleJson`、`PageInfo`、Block 联合与 InlineSpan 联合。自然语言使用结构化 Span，不再使用字符串标签协议。
 
 ## 目录
 
@@ -24,10 +24,10 @@ Middle JSON 已经收敛为 schema 2.0 的严格 Pydantic 模型：`mineru/types
 
 ## 整理原则
 
-- 以当前代码中的 Pydantic 严格模型为起点（schema 2.0）。
+- 以当前代码中的 Pydantic 严格模型为起点（schema 3.0）。
 - 区分“已经解决”、“部分解决”、“仍需工作”。
 - Agent 引用与稳定 page/block locator 是 P0 目标。
-- schema 版本和迁移函数必须能处理历史数据（1.0 payload 经 `legacy_schema_adapter` 回推）。
+- 1.0/2.0 payload 和缓存视为 stale，必须从源文件重新解析，不提供自动迁移。
 - render 统一不能只看入口 facade，还要收敛格式-specific 分支。
 
 ## 与其他文档的关系

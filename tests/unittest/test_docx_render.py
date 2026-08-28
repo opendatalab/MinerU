@@ -1,4 +1,5 @@
 from __future__ import annotations
+from _span_test_utils import inline as _inline
 
 import base64
 from copy import deepcopy
@@ -87,7 +88,7 @@ def _part(docx_bytes: bytes, name: str) -> str:
 
 def test_public_contract_returns_reopenable_docx_without_mutation() -> None:
     """验证严格入口、可重开 bytes 和输入无副作用。"""
-    middle = _middle(_page(0, TextBlock(type="text", index=0, content="hello")))
+    middle = _middle(_page(0, TextBlock(type="text", index=0, content=_inline("hello"))))
     original = deepcopy(middle)
 
     result = render_docx(middle, mode=RenderMode.DEFAULT)
@@ -103,7 +104,7 @@ def test_public_contract_returns_reopenable_docx_without_mutation() -> None:
 
 def test_xml_incompatible_text_is_replaced_with_visible_marker() -> None:
     """验证真实语料中的 XML 控制字符会转为 U+FFFD，而不是中止或静默删除。"""
-    middle = _middle(_page(0, TextBlock(type="text", index=0, content="before\x01after")))
+    middle = _middle(_page(0, TextBlock(type="text", index=0, content=_inline("before\x01after"))))
 
     document = Document(BytesIO(render_docx(middle)))
 
@@ -120,26 +121,31 @@ def test_heading_bookmark_forward_index_link_and_rich_inline_ooxml() -> None:
                 type="paragraph_title",
                 level=2,
                 anchor="section a",
-                content="Section\t12",
+                content=_inline("Section\t12"),
             )
         ],
     )
     text = TextBlock(
         type="text",
         index=1,
-        content=(
-            '<text style="bold,italic,underline,strikethrough,emphasis">Styled</text>'
-            "<sup>2</sup><sub>i</sub>"
-            "<hyperlink><text>Link</text><url>https://example.com/a</url></hyperlink>"
-            "<eq>x^2</eq>"
-        ),
+        content=[
+            {
+                "type": "text",
+                "content": "Styled",
+                "styles": ["bold", "italic", "underline", "strikethrough", "emphasis"],
+            },
+            {"type": "text", "content": "2", "styles": ["superscript"]},
+            {"type": "text", "content": "i", "styles": ["subscript"]},
+            {"type": "hyperlink", "url": "https://example.com/a", "content": _inline("Link")},
+            {"type": "equation_inline", "content": "x^2"},
+        ],
     )
     title = ParagraphTitleBlock(
         type="paragraph_title",
         index=2,
         level=2,
         anchor="section a",
-        content="Section",
+        content=_inline("Section"),
     )
 
     result = render_docx(_middle(_page(0, index, text, title)))
@@ -166,14 +172,18 @@ def test_default_and_full_docx_use_page_footnote_bookmark_and_style() -> None:
             TextBlock(
                 type="text",
                 index=0,
-                content=(
-                    "See <hyperlink>[1]<url>#note-one</url></hyperlink> and <hyperlink>[x]<url>#missing-note</url></hyperlink>."
-                ),
+                content=[
+                    {"type": "text", "content": "See "},
+                    {"type": "hyperlink", "url": "#note-one", "content": _inline("[1]")},
+                    {"type": "text", "content": " and "},
+                    {"type": "hyperlink", "url": "#missing-note", "content": _inline("[x]")},
+                    {"type": "text", "content": "."},
+                ],
             ),
             PageFootnoteBlock(
                 type="page_footnote",
                 index=1,
-                content="Footnote body.",
+                content=_inline("Footnote body."),
                 anchor="note-one",
             ),
         )
@@ -197,14 +207,19 @@ def test_default_and_full_docx_use_page_footnote_bookmark_and_style() -> None:
 
 def test_visible_styled_boundary_spaces_use_nbsp_without_mutating_input() -> None:
     """验证可见样式的边界空格转为等量 NBSP，普通样式和内部空格保持原样。"""
-    content = (
-        '<text style="underline">  left</text>|'
-        '<text style="strikethrough">right  </text>|'
-        '<text style="underline,strikethrough">   </text>|'
-        '<text style="emphasis">  emphasis  </text>|'
-        '<text style="bold">  bold  </text>|'
-        '<text style="underline">a b</text>'
-    )
+    content = [
+        {"type": "text", "content": "  left", "styles": ["underline"]},
+        {"type": "text", "content": "|"},
+        {"type": "text", "content": "right  ", "styles": ["strikethrough"]},
+        {"type": "text", "content": "|"},
+        {"type": "text", "content": "   ", "styles": ["underline", "strikethrough"]},
+        {"type": "text", "content": "|"},
+        {"type": "text", "content": "  emphasis  ", "styles": ["emphasis"]},
+        {"type": "text", "content": "|"},
+        {"type": "text", "content": "  bold  ", "styles": ["bold"]},
+        {"type": "text", "content": "|"},
+        {"type": "text", "content": "a b", "styles": ["underline"]},
+    ]
     middle = _middle(_page(0, TextBlock(type="text", index=0, content=content)))
     original = deepcopy(middle)
 
@@ -228,14 +243,14 @@ def test_bookmark_names_are_sanitized_and_collision_safe() -> None:
         index=0,
         level=2,
         anchor="section-a",
-        content="First",
+        content=_inline("First"),
     )
     second = ParagraphTitleBlock(
         type="paragraph_title",
         index=1,
         level=2,
         anchor="section a",
-        content="Second",
+        content=_inline("Second"),
     )
 
     document_xml = _part(render_docx(_middle(_page(0, first, second))), "word/document.xml")
@@ -256,7 +271,7 @@ def test_index_only_anchor_falls_back_to_plain_text_without_dangling_link() -> N
                 type="paragraph_title",
                 level=2,
                 anchor="missing-target",
-                content="Missing target\t8",
+                content=_inline("Missing target\t8"),
             )
         ],
     )
@@ -273,10 +288,10 @@ def test_default_and_full_modes_share_planner_but_keep_page_semantics() -> None:
     middle = _middle(
         _page(
             0,
-            TextBlock(type="text", index=0, content="international"),
-            PageAuxTextBlock(type="header", index=1, content="HEADER"),
+            TextBlock(type="text", index=0, content=_inline("international")),
+            PageAuxTextBlock(type="header", index=1, content=_inline("HEADER")),
         ),
-        _page(1, TextBlock(type="text", index=0, content="continuation", continues_prev=True)),
+        _page(1, TextBlock(type="text", index=0, content=_inline("continuation"), continues_prev=True)),
     )
 
     default_doc = Document(BytesIO(render_docx(middle)))
@@ -294,12 +309,12 @@ def test_list_preserves_markers_and_uses_hanging_indents_without_numbering() -> 
     """验证列表不重建 numbering.xml，只保留 marker 和递归缩进。"""
     nested = ListBlock(
         type="list",
-        content=[TextBlock(type="text", content="- nested item")],
+        content=[TextBlock(type="text", content=_inline("- nested item"))],
     )
     block = ListBlock(
         type="list",
         index=0,
-        content=[TextBlock(type="text", content="1. first item"), nested],
+        content=[TextBlock(type="text", content=_inline("1. first item")), nested],
     )
 
     result = render_docx(_middle(_page(0, block)))
@@ -358,7 +373,7 @@ def test_formula_conversion_failure_falls_back_to_image_then_visible_latex() -> 
                 content=unsupported,
                 image_base64=_png_uri(),
             ),
-            TextBlock(type="text", index=1, content=f"before <eq>{unsupported}</eq> after"),
+            TextBlock(type="text", index=1, content=_inline(f"before <eq>{unsupported}</eq> after")),
         )
     )
 
@@ -381,12 +396,21 @@ def test_genfrac_formula_renders_native_omml_in_title_and_list() -> None:
         type="paragraph_title",
         index=0,
         level=2,
-        content=f"Title <eq>{formula}</eq>",
+        content=[{"type": "text", "content": "Title "}, {"type": "equation_inline", "content": formula}],
     )
     list_block = ListBlock(
         type="list",
         index=1,
-        content=[TextBlock(type="text", content=f"1. before <eq>{formula}</eq> after")],
+        content=[
+            TextBlock(
+                type="text",
+                content=[
+                    {"type": "text", "content": "1. before "},
+                    {"type": "equation_inline", "content": formula},
+                    {"type": "text", "content": " after"},
+                ],
+            )
+        ],
     )
 
     result = render_docx(_middle(_page(0, title, list_block)))
@@ -403,7 +427,12 @@ def test_inline_bare_scripts_use_word_superscript_runs_without_placeholder_boxes
     block = TextBlock(
         type="text",
         index=0,
-        content="S K<eq>^{1/2}</eq>/cm<eq>^{-1}</eq>",
+        content=[
+            {"type": "text", "content": "S K"},
+            {"type": "equation_inline", "content": "^{1/2}"},
+            {"type": "text", "content": "/cm"},
+            {"type": "equation_inline", "content": "^{-1}"},
+        ],
     )
 
     result = render_docx(_middle(_page(0, block)))
@@ -444,14 +473,14 @@ def test_image_alt_text_and_visual_child_order_are_preserved() -> None:
             "type": "image",
             "index": 0,
             "content": [
-                {"type": "image_caption", "content": "before"},
+                {"type": "image_caption", "content": _inline("before")},
                 {
                     "type": "image_body",
                     "index": 0,
                     "content": "<p>diagram description</p>",
                     "image_base64": _png_uri(),
                 },
-                {"type": "image_footnote", "content": "after"},
+                {"type": "image_footnote", "content": _inline("after")},
             ],
         }
     )
@@ -874,9 +903,9 @@ def test_spatial_table_preserves_caption_body_footnote_order() -> None:
         type="table",
         index=1,
         content=[
-            TableAnnotationBlock(type="table_caption", index=0, content="Table caption"),
+            TableAnnotationBlock(type="table_caption", index=0, content=_inline("Table caption")),
             TableBodyBlock(type="table_body", index=1, content="  A    B\n  1    2"),
-            TableAnnotationBlock(type="table_footnote", index=2, content="Table footnote"),
+            TableAnnotationBlock(type="table_footnote", index=2, content=_inline("Table footnote")),
         ],
     )
 
@@ -957,9 +986,15 @@ def test_code_and_algorithm_keep_line_breaks_styles_and_inline_math() -> None:
             "sub_type": "algorithm",
             "content": [
                 {
-                    "type": "code_body",
+                    "type": "algorithm_body",
                     "index": 1,
-                    "content": "T<sub>n</sub> = <eq>x^2</eq>\nnext",
+                    "content": [
+                        {"type": "text", "content": "T"},
+                        {"type": "text", "content": "n", "styles": ["subscript"]},
+                        {"type": "text", "content": " = "},
+                        {"type": "equation_inline", "content": "x^2"},
+                        {"type": "text", "content": "\nnext"},
+                    ],
                 }
             ],
         }

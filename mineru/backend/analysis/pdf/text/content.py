@@ -20,6 +20,7 @@ from .....model.flash.pdf.text_styles import (
     PDFTextStyleLine,
     apply_pdf_text_links,
     apply_pdf_text_styles,
+    materialize_pdf_inline_spans,
 )
 from .....utils.text import merge_text_line_contents
 
@@ -362,10 +363,8 @@ def _fill_window_block_content_and_lines(
                 or isinstance(page_char_count, bool)
                 or page_char_count <= MAX_NATIVE_TEXT_CHARS_PER_PAGE
             ):
-                page_chars, _line_items, style_lines, link_lines = (
-                    build_pdf_native_visual_lines_and_styles(
-                        pdf_page,
-                    )
+                page_chars, _line_items, style_lines, link_lines = build_pdf_native_visual_lines_and_styles(
+                    pdf_page,
                 )
             page_spans = _fill_native_pdf_text_spans(
                 pdf_page,
@@ -395,10 +394,7 @@ def _fill_window_block_content_and_lines(
     if parse_mode == "txt":
         _apply_window_post_ocr(
             local_model_context,
-            [
-                block_lines
-                for _, block_lines, _, _style_lines, _link_lines in page_block_line_results
-            ],
+            [block_lines for _, block_lines, _, _style_lines, _link_lines in page_block_line_results],
         )
 
     for (
@@ -423,6 +419,7 @@ def _fill_window_block_content_and_lines(
             style_lines,
             page_size,
         )
+        materialize_pdf_inline_spans(page_model_list)
     return model_list
 
 

@@ -12,8 +12,14 @@ from typing import Any, Iterable, Literal, Sequence, TypeVar, cast
 
 from loguru import logger
 
-from ....types import BBox, BlockType, RAW_CAPTION, RAW_FOOTNOTE
-from .._shared.hyperlink import render_inline_hyperlink
+from ....types import BBox, BlockType, RAW_ALGORITHM, RAW_CAPTION, RAW_FOOTNOTE, RAW_PHONETIC
+from .._shared.spans import (
+    append_equation_span,
+    append_hyperlink_span,
+    append_text_span,
+    extend_inline_spans,
+    normalize_span_dicts,
+)
 from .document import PDFLinkAnnotation
 from ....utils.text import is_hyphen_at_line_end
 
@@ -33,6 +39,25 @@ PDF_BOLD_MIN_COMPARABLE_CHAR_COUNT = 2
 PDF_LINK_CHAR_OVERLAP_THRESHOLD = 0.5
 
 PDFTextStyle = Literal["bold", "italic", "underline", "strikethrough"]
+_PDF_LINK_INTERVALS_KEY = "_inline_link_intervals"
+_PDF_STYLE_INTERVALS_KEY = "_inline_style_intervals"
+_PDF_INLINE_SPAN_BLOCK_TYPES = {
+    BlockType.TEXT,
+    BlockType.REF_TEXT,
+    BlockType.DOC_TITLE,
+    BlockType.PARAGRAPH_TITLE,
+    BlockType.HEADER,
+    BlockType.FOOTER,
+    BlockType.PAGE_NUMBER,
+    BlockType.ASIDE_TEXT,
+    BlockType.PAGE_FOOTNOTE,
+    BlockType.LIST,
+    BlockType.INDEX,
+    RAW_ALGORITHM,
+    RAW_CAPTION,
+    RAW_FOOTNOTE,
+    RAW_PHONETIC,
+}
 PDFTextDecoration = Literal["underline", "strikethrough"]
 PDF_TEXT_STYLE_ORDER: tuple[PDFTextStyle, ...] = (
     "bold",
@@ -69,24 +94,16 @@ _PDF_TEXT_STYLE_TARGET_BLOCK_TYPES: dict[PDFTextStyle, frozenset[str]] = {
     "strikethrough": PDF_NATURAL_TEXT_STYLE_BLOCK_TYPES,
 }
 
-_KNOWN_INLINE_TAG_RE = re.compile(
-    r"<(?P<close>/)?(?P<tag>eq|text|hyperlink|url|sup|sub|strong|b|em|i|s|u)(?P<attrs>\s[^<>]*?)?>",
-    re.IGNORECASE,
-)
-_STYLE_ATTR_RE = re.compile(r"\bstyle\s*=\s*([\"'])(?P<style>.*?)\1", re.IGNORECASE | re.DOTALL)
 _PDF_FONT_SUBSET_PREFIX_RE = re.compile(r"^[A-Z]{6}\+")
 _PDF_BOLD_FONT_NAME_RE = re.compile(
     r"bold|demi|black|heavy|(?:^|[-_,])(?:bd|bi)(?:mt)?$|gbi$|(?:^|[-_,])w[6-9]$",
     re.IGNORECASE,
 )
-_PDF_LIST_MARKER_CHARS = frozenset(
-    "•◦‣⁃▪▫●○■□∙·▶▷►▸▹\uf0b7"
-)
+_PDF_LIST_MARKER_CHARS = frozenset("•◦‣⁃▪▫●○■□∙·▶▷►▸▹\uf0b7")
 _PDF_GEOMETRIC_TEXT_STYLES = frozenset({"underline", "strikethrough"})
 _PDF_CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]")
 _PDF_SEPARATOR_SPACE_CHARS = frozenset(
-    "\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006"
-    "\u2007\u2008\u2009\u200a\u202f\u205f\u3000"
+    "\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u202f\u205f\u3000"
 )
 _PDF_ZERO_WIDTH_CHARS = frozenset({"\u200b", "\u2060", "\ufeff"})
 _LIGATURE_REPLACEMENTS = {
@@ -189,15 +206,6 @@ class _ProjectedChar:
     existing_styles: frozenset[PDFTextStyle]
     formula_gap_before: bool
     inside_hyperlink: bool
-
-
-@dataclass(frozen=True, slots=True)
-class _InlineTagState:
-    """保存一个已打开行内标签的匹配排除状态和已有字体样式。"""
-
-    tag: str
-    excluded: bool
-    styles: frozenset[PDFTextStyle]
 
 
 @dataclass(frozen=True, slots=True)
@@ -350,18 +358,11 @@ def _has_list_marker_separator(
 ) -> bool:
     """判断行首项目符号与后续正文之间是否存在空白或明显视觉间隔。"""
 
-    if any(
-        str(chars[index].get("char") or "").isspace()
-        for index in range(marker_source_index + 1, next_source_index)
-    ):
+    if any(str(chars[index].get("char") or "").isspace() for index in range(marker_source_index + 1, next_source_index)):
         return True
     marker_bbox = _coerce_bbox(chars[marker_source_index].get("bbox"))
     next_bbox = _coerce_bbox(chars[next_source_index].get("bbox"))
-    return bool(
-        marker_bbox is not None
-        and next_bbox is not None
-        and next_bbox[0] - marker_bbox[2] >= 0.5 * median_height
-    )
+    return bool(marker_bbox is not None and next_bbox is not None and next_bbox[0] - marker_bbox[2] >= 0.5 * median_height)
 
 
 def _filter_pdf_bold_runs(
@@ -407,11 +408,7 @@ def _filter_pdf_bold_runs(
         )
         if is_short or is_isolated_leading_marker:
             for run_source_index, _run_fragment in run:
-                output[run_source_index] = frozenset(
-                    style
-                    for style in output[run_source_index]
-                    if style != "bold"
-                )
+                output[run_source_index] = frozenset(style for style in output[run_source_index] if style != "bold")
         run_start = run_end
     return output
 
@@ -439,11 +436,7 @@ def _build_line_candidate(line: Any) -> _LineCandidate | None:
     median_height = statistics.median(heights)
     if median_height <= 0:
         return None
-    body_chars = [
-        char
-        for char, height in zip(visible_chars, heights)
-        if height >= 0.8 * median_height
-    ]
+    body_chars = [char for char, height in zip(visible_chars, heights) if height >= 0.8 * median_height]
     if not body_chars:
         return None
     font_styles = [_char_font_styles(char) for char in chars]
@@ -452,10 +445,7 @@ def _build_line_candidate(line: Any) -> _LineCandidate | None:
         chars=chars,
         visible_chars=visible_chars,
         median_height=median_height,
-        center_y=statistics.median(
-            (char.bbox[1] + char.bbox[3]) / 2
-            for char in body_chars
-        ),
+        center_y=statistics.median((char.bbox[1] + char.bbox[3]) / 2 for char in body_chars),
         bottom_y=statistics.median(char.bbox[3] for char in body_chars),
         source_index=int(getattr(line, "source_index", 0) or 0),
         font_styles=_filter_pdf_bold_runs(
@@ -488,9 +478,7 @@ def _drawing_match_for_line(
     drawing_center_y = (drawing_bbox[1] + drawing_bbox[3]) / 2
     target_y = line.bottom_y if style == "underline" else line.center_y
     target_tolerance = (
-        UNDERLINE_BOTTOM_TOLERANCE_HEIGHT_RATIO
-        if style == "underline"
-        else STRIKETHROUGH_CENTER_TOLERANCE_HEIGHT_RATIO
+        UNDERLINE_BOTTOM_TOLERANCE_HEIGHT_RATIO if style == "underline" else STRIKETHROUGH_CENTER_TOLERANCE_HEIGHT_RATIO
     )
     target_distance_ratio = abs(drawing_center_y - target_y) / line.median_height
     if target_distance_ratio > target_tolerance:
@@ -502,11 +490,7 @@ def _drawing_match_for_line(
     if drawing_width > TEXT_DECORATION_MAX_WIDTH_HEIGHT_RATIO * line.median_height:
         return None
 
-    hit_chars = [
-        char
-        for char in line.visible_chars
-        if drawing_bbox[0] <= (char.bbox[0] + char.bbox[2]) / 2 <= drawing_bbox[2]
-    ]
+    hit_chars = [char for char in line.visible_chars if drawing_bbox[0] <= (char.bbox[0] + char.bbox[2]) / 2 <= drawing_bbox[2]]
     if not hit_chars:
         return None
     hit_left = min(char.bbox[0] for char in hit_chars)
@@ -554,10 +538,7 @@ def _merge_source_ranges(ranges: list[tuple[int, int]]) -> list[tuple[int, int]]
 def _line_style_payload(line: _LineCandidate) -> PDFTextStyleLine | None:
     """把来源字符的字体与装饰线证据转换为紧凑文本样式区间。"""
 
-    decoration_styles: list[set[PDFTextStyle]] = [
-        set()
-        for _char in line.chars
-    ]
+    decoration_styles: list[set[PDFTextStyle]] = [set() for _char in line.chars]
     for style in _PDF_TEXT_DECORATION_ORDER:
         for start, end in _merge_source_ranges(line.decoration_ranges[style]):
             for char_index in range(max(0, start), min(end, len(line.chars))):
@@ -584,9 +565,7 @@ def _line_style_payload(line: _LineCandidate) -> PDFTextStyleLine | None:
         if styles == active_styles:
             continue
         if active_styles:
-            compact_ranges.append(
-                PDFTextStyleRange(active_start, offset, active_styles)
-            )
+            compact_ranges.append(PDFTextStyleRange(active_start, offset, active_styles))
         active_start = offset
         active_styles = styles
     return PDFTextStyleLine(
@@ -613,9 +592,7 @@ def _build_line_geometry_grids(
     anchor_grid: dict[int, list[tuple[int, PDFTextDecoration]]] = {}
     top_grid: dict[int, list[int]] = {}
     for line_index, line in enumerate(candidates):
-        top_grid.setdefault(math.floor(line.bbox[1] / grid_size), []).append(
-            line_index
-        )
+        top_grid.setdefault(math.floor(line.bbox[1] / grid_size), []).append(line_index)
         for style, target_y, tolerance_ratio in (
             (
                 "underline",
@@ -647,10 +624,7 @@ def _is_fraction_bar_candidate(
 
     line = candidates[line_index]
     drawing_center_y = (drawing_bbox[1] + drawing_bbox[3]) / 2
-    max_lower_top = (
-        drawing_center_y
-        + UNDERLINE_FRACTION_MAX_GAP_HEIGHT_RATIO * line.median_height
-    )
+    max_lower_top = drawing_center_y + UNDERLINE_FRACTION_MAX_GAP_HEIGHT_RATIO * line.median_height
     lower_indices: set[int] = set()
     for cell in range(
         math.floor(drawing_center_y / grid_size),
@@ -666,13 +640,9 @@ def _is_fraction_bar_candidate(
         lower_width = lower_line.bbox[2] - lower_line.bbox[0]
         horizontal_overlap = max(
             0.0,
-            min(drawing_bbox[2], lower_line.bbox[2])
-            - max(drawing_bbox[0], lower_line.bbox[0]),
+            min(drawing_bbox[2], lower_line.bbox[2]) - max(drawing_bbox[0], lower_line.bbox[0]),
         )
-        if (
-            horizontal_overlap / max(0.01, lower_width)
-            >= UNDERLINE_FRACTION_MIN_LOWER_LINE_COVERAGE
-        ):
+        if horizontal_overlap / max(0.01, lower_width) >= UNDERLINE_FRACTION_MIN_LOWER_LINE_COVERAGE:
             return True
     return False
 
@@ -683,18 +653,10 @@ def detect_pdf_text_style_lines(
 ) -> list[PDFTextStyleLine]:
     """从视觉文本 run 与页面 drawing 中生成全部水平行样式证据。"""
 
-    candidates = [
-        candidate
-        for line in lines
-        if (candidate := _build_line_candidate(line)) is not None
-    ]
+    candidates = [candidate for line in lines if (candidate := _build_line_candidate(line)) is not None]
     if not candidates:
         return []
-    horizontal_drawings = [
-        drawing
-        for drawing in drawing_lines
-        if getattr(drawing, "orientation", None) == "horizontal"
-    ]
+    horizontal_drawings = [drawing for drawing in drawing_lines if getattr(drawing, "orientation", None) == "horizontal"]
     if horizontal_drawings:
         grid_size, anchor_grid, top_grid = _build_line_geometry_grids(candidates)
         for drawing in horizontal_drawings:
@@ -735,15 +697,9 @@ def detect_pdf_text_style_lines(
                     _PDF_TEXT_DECORATION_ORDER.index(item[1].style),
                 ),
             )
-            candidates[line_index].decoration_ranges[best_match.style].append(
-                (best_match.start_index, best_match.end_index)
-            )
+            candidates[line_index].decoration_ranges[best_match.style].append((best_match.start_index, best_match.end_index))
 
-    payloads = [
-        payload
-        for line in candidates
-        if (payload := _line_style_payload(line)) is not None
-    ]
+    payloads = [payload for line in candidates if (payload := _line_style_payload(line)) is not None]
     if not any(line.style_ranges for line in payloads):
         return []
     return sorted(
@@ -765,19 +721,13 @@ def _link_region_hits_char(region: BBox, char_bbox: BBox) -> bool:
 
     center_x = (char_bbox[0] + char_bbox[2]) / 2
     center_y = (char_bbox[1] + char_bbox[3]) / 2
-    if (
-        region[0] <= center_x <= region[2]
-        and region[1] <= center_y <= region[3]
-    ):
+    if region[0] <= center_x <= region[2] and region[1] <= center_y <= region[3]:
         return True
     char_area = max(
         0.01,
         (char_bbox[2] - char_bbox[0]) * (char_bbox[3] - char_bbox[1]),
     )
-    return (
-        _bbox_intersection_area(region, char_bbox) / char_area
-        >= PDF_LINK_CHAR_OVERLAP_THRESHOLD
-    )
+    return _bbox_intersection_area(region, char_bbox) / char_area >= PDF_LINK_CHAR_OVERLAP_THRESHOLD
 
 
 def _link_targets_for_char(
@@ -789,10 +739,7 @@ def _link_targets_for_char(
     return {
         annotation.target
         for annotation in annotations
-        if any(
-            _link_region_hits_char(region, char_bbox)
-            for region in annotation.bboxes
-        )
+        if any(_link_region_hits_char(region, char_bbox) for region in annotation.bboxes)
     }
 
 
@@ -839,10 +786,7 @@ def _build_link_line_payload(
     nearby_annotations = [
         annotation
         for annotation in annotations
-        if any(
-            _bbox_intersection_area(line_bbox, region) > 0
-            for region in annotation.bboxes
-        )
+        if any(_bbox_intersection_area(line_bbox, region) > 0 for region in annotation.bboxes)
     ]
     if not nearby_annotations:
         return None
@@ -854,11 +798,7 @@ def _build_link_line_payload(
         if not fragment:
             continue
         char_bbox = _coerce_bbox(char.get("bbox"))
-        targets = (
-            _link_targets_for_char(char_bbox, nearby_annotations)
-            if char_bbox is not None
-            else set()
-        )
+        targets = _link_targets_for_char(char_bbox, nearby_annotations) if char_bbox is not None else set()
         # 同一字符落入不同目标时不猜测 PDF 点击层级，保留为普通文本。
         target = next(iter(targets)) if len(targets) == 1 else None
         compact_parts.append(fragment)
@@ -936,10 +876,7 @@ def _line_block_score(line_bbox: BBox, block_bbox: BBox) -> tuple[float, float, 
 
     center_x = (line_bbox[0] + line_bbox[2]) / 2
     center_y = (line_bbox[1] + line_bbox[3]) / 2
-    center_inside = float(
-        block_bbox[0] <= center_x <= block_bbox[2]
-        and block_bbox[1] <= center_y <= block_bbox[3]
-    )
+    center_inside = float(block_bbox[0] <= center_x <= block_bbox[2] and block_bbox[1] <= center_y <= block_bbox[3])
     overlap_ratio = _bbox_overlap_ratio(line_bbox, block_bbox)
     block_area = (block_bbox[2] - block_bbox[0]) * (block_bbox[3] - block_bbox[1])
     return center_inside, overlap_ratio, -block_area
@@ -1023,110 +960,34 @@ def _filter_line_styles_for_block(
     return output
 
 
-def _text_tag_styles(attrs: str) -> frozenset[PDFTextStyle]:
-    """提取 text 标签中已存在且属于 PDF 富化范围的样式。"""
-
-    match = _STYLE_ATTR_RE.search(attrs)
-    if match is None:
-        return frozenset()
-    return frozenset(
-        cast(PDFTextStyle, style)
-        for raw_style in match.group("style").split(",")
-        if (style := raw_style.strip().lower()) in PDF_TEXT_STYLE_ORDER
-    )
-
-
-def _direct_tag_styles(tag: str) -> frozenset[PDFTextStyle]:
-    """把直接 HTML 风格标签转换为当前 PDF 富化识别的样式。"""
-
-    style = {
-        "strong": "bold",
-        "b": "bold",
-        "em": "italic",
-        "i": "italic",
-        "u": "underline",
-        "s": "strikethrough",
-    }.get(tag)
-    return frozenset({cast(PDFTextStyle, style)}) if style is not None else frozenset()
-
-
-def _active_inline_styles(stack: Sequence[_InlineTagState]) -> frozenset[PDFTextStyle]:
-    """合并当前位置全部已打开标签携带的字体样式。"""
-
-    return frozenset(
-        style
-        for state in stack
-        for style in state.styles
-    )
-
-
-def _pop_inline_tag(stack: list[_InlineTagState], tag: str) -> None:
-    """从行内标签栈弹出最近的同名元素，容忍损坏嵌套。"""
-
-    for index in range(len(stack) - 1, -1, -1):
-        if stack[index].tag == tag:
-            del stack[index:]
-            return
-
-
 def _project_content_chars(content: str) -> list[_ProjectedChar]:
-    """把 model content 投影为忽略空白和公式的可比较字符，并保留原始 offset。"""
+    """把原始文字投影为忽略空白和圆括号公式的可比较字符。"""
 
     projected: list[_ProjectedChar] = []
-    stack: list[_InlineTagState] = []
     pending_formula_gap = False
     cursor = 0
     while cursor < len(content):
-        if not any(state.excluded for state in stack) and content.startswith(r"\(", cursor):
+        if content.startswith(r"\(", cursor):
             formula_end = content.find(r"\)", cursor + 2)
             if formula_end >= 0:
                 cursor = formula_end + 2
                 pending_formula_gap = True
                 continue
-        tag_match = _KNOWN_INLINE_TAG_RE.match(content, cursor)
-        if tag_match is not None:
-            tag = tag_match.group("tag").lower()
-            if tag_match.group("close"):
-                _pop_inline_tag(stack, tag)
-                if tag == "eq":
-                    pending_formula_gap = True
-            else:
-                attrs = tag_match.group("attrs") or ""
-                stack.append(
-                    _InlineTagState(
-                        tag=tag,
-                        excluded=tag in {"eq", "url"},
-                        styles=(
-                            _text_tag_styles(attrs)
-                            if tag == "text"
-                            else _direct_tag_styles(tag)
-                        ),
-                    )
-                )
-            cursor = tag_match.end()
-            continue
-
         raw_char = content[cursor]
-        if not any(state.excluded for state in stack):
-            fragment = _normalize_match_fragment(raw_char)
-            for fragment_index, value in enumerate(fragment):
-                projected.append(
-                    _ProjectedChar(
-                        value=value,
-                        raw_start=cursor,
-                        raw_end=cursor + 1,
-                        existing_styles=_active_inline_styles(stack),
-                        formula_gap_before=(
-                            pending_formula_gap and fragment_index == 0
-                        ),
-                        inside_hyperlink=any(
-                            state.tag == "hyperlink"
-                            for state in stack
-                        ),
-                    )
+        fragment = _normalize_match_fragment(raw_char)
+        for fragment_index, value in enumerate(fragment):
+            projected.append(
+                _ProjectedChar(
+                    value=value,
+                    raw_start=cursor,
+                    raw_end=cursor + 1,
+                    existing_styles=frozenset(),
+                    formula_gap_before=pending_formula_gap and fragment_index == 0,
+                    inside_hyperlink=False,
                 )
-            if fragment:
-                pending_formula_gap = False
+            )
+        if fragment:
+            pending_formula_gap = False
         cursor += 1
     return projected
 
@@ -1161,21 +1022,14 @@ def _resolve_fallback_occurrence(
             int(bool(left_context) and content[max(0, position - len(left_context)) : position] == left_context)
             + int(
                 bool(right_context)
-                and content[
-                    position + len(target) : position + len(target) + len(right_context)
-                ]
-                == right_context
+                and content[position + len(target) : position + len(target) + len(right_context)] == right_context
             ),
             position,
         )
         for position in occurrences
     ]
-    has_geometric_style = bool(
-        _PDF_GEOMETRIC_TEXT_STYLES.intersection(style_range.styles)
-    )
-    if len(occurrences) == 1 and (
-        has_geometric_style or len(target) >= 3
-    ):
+    has_geometric_style = bool(_PDF_GEOMETRIC_TEXT_STYLES.intersection(style_range.styles))
+    if len(occurrences) == 1 and (has_geometric_style or len(target) >= 3):
         return occurrences[0]
     best_score = max(score for score, _position in scored)
     best_positions = [position for score, position in scored if score == best_score]
@@ -1184,9 +1038,7 @@ def _resolve_fallback_occurrence(
     required_context_score = int(bool(left_context)) + int(bool(right_context))
     return (
         best_positions[0]
-        if required_context_score > 0
-        and best_score == required_context_score
-        and len(best_positions) == 1
+        if required_context_score > 0 and best_score == required_context_score and len(best_positions) == 1
         else None
     )
 
@@ -1198,11 +1050,7 @@ def _match_line_across_formula_gaps(
 ) -> _LineProjectionMatch | None:
     """用精确字符序列跨过公式空洞，将一个物理行对齐到 block 文本。"""
 
-    if (
-        not line_text
-        or start >= len(projected)
-        or not any(token.formula_gap_before for token in projected[start:])
-    ):
+    if not line_text or start >= len(projected) or not any(token.formula_gap_before for token in projected[start:]):
         return None
     for projected_start in range(max(0, start), len(projected)):
         first_token = projected[projected_start]
@@ -1257,9 +1105,7 @@ def _ranges_from_line_projection(
     for style_range in line.style_ranges:
         current_start: int | None = None
         previous_index: int | None = None
-        for projected_index in match.source_to_projected[
-            style_range.start : style_range.end
-        ]:
+        for projected_index in match.source_to_projected[style_range.start : style_range.end]:
             if projected_index is None:
                 if current_start is not None and previous_index is not None:
                     output.append(
@@ -1272,11 +1118,7 @@ def _ranges_from_line_projection(
                 current_start = None
                 previous_index = None
                 continue
-            if (
-                current_start is not None
-                and previous_index is not None
-                and projected_index != previous_index + 1
-            ):
+            if current_start is not None and previous_index is not None and projected_index != previous_index + 1:
                 output.append(
                     PDFTextStyleRange(
                         current_start,
@@ -1330,16 +1172,10 @@ def _match_line_without_terminal_hyphen(
     occurrences = [
         position
         for position in _all_occurrences(projected_text, candidate, start)
-        if (
-            position + len(candidate) < len(projected_text)
-            and projected_text[position + len(candidate)] == next_first_char
-        )
+        if (position + len(candidate) < len(projected_text) and projected_text[position + len(candidate)] == next_first_char)
     ]
     if len(occurrences) != 1:
-        logger.debug(
-            "Skip ambiguous PDF text dehyphenation mapping: "
-            f"line={line.text!r}, occurrences={len(occurrences)}"
-        )
+        logger.debug(f"Skip ambiguous PDF text dehyphenation mapping: line={line.text!r}, occurrences={len(occurrences)}")
         return None
     position = occurrences[0]
     return _LineProjectionMatch(
@@ -1391,9 +1227,7 @@ def _match_style_ranges(
             cursor,
         )
         if dehyphenated_match is not None:
-            output.extend(
-                _ranges_from_line_projection(line, dehyphenated_match)
-            )
+            output.extend(_ranges_from_line_projection(line, dehyphenated_match))
             cursor = dehyphenated_match.end
             continue
         skipped_ranges: list[PDFTextStyleRange] = []
@@ -1451,21 +1285,9 @@ def _merge_style_ranges(ranges: Sequence[PDFTextStyleRange]) -> list[PDFTextStyl
     merged: list[PDFTextStyleRange] = []
     previous_position: int | None = None
     for position in sorted(events):
-        active_styles = _canonical_styles(
-            style
-            for style, count in active_counts.items()
-            if count > 0
-        )
-        if (
-            previous_position is not None
-            and previous_position < position
-            and active_styles
-        ):
-            if (
-                merged
-                and merged[-1].end == previous_position
-                and merged[-1].styles == active_styles
-            ):
+        active_styles = _canonical_styles(style for style, count in active_counts.items() if count > 0)
+        if previous_position is not None and previous_position < position and active_styles:
+            if merged and merged[-1].end == previous_position and merged[-1].styles == active_styles:
                 merged[-1] = PDFTextStyleRange(
                     merged[-1].start,
                     position,
@@ -1507,34 +1329,18 @@ def _resolve_link_fallback_occurrence(
         return None
     scored = [
         (
-            int(
-                bool(left_context)
-                and content[max(0, position - len(left_context)) : position]
-                == left_context
-            )
+            int(bool(left_context) and content[max(0, position - len(left_context)) : position] == left_context)
             + int(
                 bool(right_context)
-                and content[
-                    position + len(target_text) :
-                    position + len(target_text) + len(right_context)
-                ]
-                == right_context
+                and content[position + len(target_text) : position + len(target_text) + len(right_context)] == right_context
             ),
             position,
         )
         for position in occurrences
     ]
     best_score = max(score for score, _position in scored)
-    best_positions = [
-        position
-        for score, position in scored
-        if score == best_score
-    ]
-    return (
-        best_positions[0]
-        if best_score == required_context_score and len(best_positions) == 1
-        else None
-    )
+    best_positions = [position for score, position in scored if score == best_score]
+    return best_positions[0] if best_score == required_context_score and len(best_positions) == 1 else None
 
 
 def _project_link_range_from_line_match(
@@ -1547,9 +1353,7 @@ def _project_link_range_from_line_match(
     output: list[_MatchedLinkRange] = []
     current_start: int | None = None
     previous_index: int | None = None
-    for projected_index in match.source_to_projected[
-        link_range.start : link_range.end
-    ]:
+    for projected_index in match.source_to_projected[link_range.start : link_range.end]:
         if projected_index is None:
             if current_start is not None and previous_index is not None:
                 output.append(
@@ -1563,11 +1367,7 @@ def _project_link_range_from_line_match(
             current_start = None
             previous_index = None
             continue
-        if (
-            current_start is not None
-            and previous_index is not None
-            and projected_index != previous_index + 1
-        ):
+        if current_start is not None and previous_index is not None and projected_index != previous_index + 1:
             output.append(
                 _MatchedLinkRange(
                     current_start,
@@ -1600,16 +1400,8 @@ def _link_lines_form_dehyphenated_continuation(
 
     if not _lines_form_dehyphenated_continuation(line, next_line):
         return False
-    tail_targets = {
-        link_range.target
-        for link_range in line.link_ranges
-        if link_range.start < link_range.end == len(line.text)
-    }
-    head_targets = {
-        link_range.target
-        for link_range in next_line.link_ranges
-        if link_range.start == 0 < link_range.end
-    }
+    tail_targets = {link_range.target for link_range in line.link_ranges if link_range.start < link_range.end == len(line.text)}
+    head_targets = {link_range.target for link_range in next_line.link_ranges if link_range.start == 0 < link_range.end}
     return bool(tail_targets.intersection(head_targets))
 
 
@@ -1636,42 +1428,19 @@ def _merge_matched_link_ranges(
 ) -> list[_MatchedLinkRange]:
     """删除不同目标重叠区，并合并同一物理行内的同目标相邻区间。"""
 
-    valid_ranges = [
-        link_range
-        for link_range in ranges
-        if link_range.start < link_range.end and link_range.target
-    ]
+    valid_ranges = [link_range for link_range in ranges if link_range.start < link_range.end and link_range.target]
     if not valid_ranges:
         return []
-    boundaries = sorted(
-        {
-            position
-            for link_range in valid_ranges
-            for position in (link_range.start, link_range.end)
-        }
-    )
+    boundaries = sorted({position for link_range in valid_ranges for position in (link_range.start, link_range.end)})
     merged: list[_MatchedLinkRange] = []
     for start, end in zip(boundaries, boundaries[1:]):
-        active = [
-            link_range
-            for link_range in valid_ranges
-            if link_range.start < end and link_range.end > start
-        ]
+        active = [link_range for link_range in valid_ranges if link_range.start < end and link_range.end > start]
         targets = {link_range.target for link_range in active}
         if len(targets) != 1:
             continue
         target = next(iter(targets))
-        source_index = min(
-            link_range.source_index
-            for link_range in active
-            if link_range.target == target
-        )
-        if (
-            merged
-            and merged[-1].end == start
-            and merged[-1].target == target
-            and merged[-1].source_index == source_index
-        ):
+        source_index = min(link_range.source_index for link_range in active if link_range.target == target)
+        if merged and merged[-1].end == start and merged[-1].target == target and merged[-1].source_index == source_index:
             merged[-1] = _MatchedLinkRange(
                 merged[-1].start,
                 end,
@@ -1773,7 +1542,7 @@ def _match_link_ranges(
             logger.debug(
                 "Skip ambiguous PDF hyperlink mapping: "
                 f"line={line.text!r}, skipped={len(skipped_ranges)}, "
-                f"samples={[(line.text[item.start:item.end], item.target) for item in skipped_ranges[:3]]!r}"
+                f"samples={[(line.text[item.start : item.end], item.target) for item in skipped_ranges[:3]]!r}"
             )
     return _merge_matched_link_ranges(output)
 
@@ -1810,9 +1579,7 @@ def _raw_link_intervals(
         current_start: int | None = None
         current_end = 0
         for token in projected[link_range.start : link_range.end]:
-            if token.inside_hyperlink or (
-                token.formula_gap_before and current_start is not None
-            ):
+            if token.inside_hyperlink or (token.formula_gap_before and current_start is not None):
                 _append_raw_link_interval(
                     intervals,
                     current_start,
@@ -1855,7 +1622,7 @@ def _raw_link_gap_is_boundary_only(gap: str) -> bool:
 
     if not gap:
         return True
-    if _KNOWN_INLINE_TAG_RE.search(gap) or r"\(" in gap or r"\)" in gap:
+    if r"\(" in gap or r"\)" in gap:
         return False
     return not any(char.isalnum() for char in html.unescape(gap))
 
@@ -1878,9 +1645,7 @@ def _merge_raw_link_intervals(
             and merged[-1].target == interval.target
             and interval.source_index == merged[-1].source_index + 1
             and interval.start >= merged[-1].end
-            and _raw_link_gap_is_boundary_only(
-                content[merged[-1].end : interval.start]
-            )
+            and _raw_link_gap_is_boundary_only(content[merged[-1].end : interval.start])
         ):
             merged[-1] = _RawLinkInterval(
                 merged[-1].start,
@@ -1891,26 +1656,6 @@ def _merge_raw_link_intervals(
         else:
             merged.append(interval)
     return merged
-
-
-def _wrap_link_intervals(
-    content: str,
-    intervals: Sequence[_RawLinkInterval],
-) -> str:
-    """从右向左包装链接区间，并对 URL 标签正文执行实体转义。"""
-
-    output = content
-    for interval in sorted(
-        intervals,
-        key=lambda item: (item.start, item.end, item.target),
-        reverse=True,
-    ):
-        output = (
-            f"{output[: interval.start]}"
-            f"{render_inline_hyperlink(output[interval.start : interval.end], interval.target)}"
-            f"{output[interval.end :]}"
-        )
-    return output
 
 
 def apply_pdf_text_links(
@@ -1932,10 +1677,7 @@ def apply_pdf_text_links(
         intervals = _raw_link_intervals(content, projected, link_ranges)
         if intervals:
             intervals = _merge_raw_link_intervals(content, intervals)
-            blocks[block_index]["content"] = _wrap_link_intervals(
-                content,
-                intervals,
-            )
+            blocks[block_index][_PDF_LINK_INTERVALS_KEY] = intervals
 
 
 def _append_raw_style_interval(
@@ -1963,10 +1705,7 @@ def _merge_raw_style_intervals(
         if (
             merged
             and merged[-1].styles == interval.styles
-            and (
-                interval.start <= merged[-1].end
-                or content[merged[-1].end : interval.start].isspace()
-            )
+            and (interval.start <= merged[-1].end or content[merged[-1].end : interval.start].isspace())
         ):
             merged[-1] = _RawStyleInterval(
                 merged[-1].start,
@@ -1995,8 +1734,7 @@ def _raw_style_intervals(
             missing_styles = _canonical_styles(
                 style
                 for style in style_range.styles
-                if style not in token.existing_styles
-                and not (style == "underline" and token.inside_hyperlink)
+                if style not in token.existing_styles and not (style == "underline" and token.inside_hyperlink)
             )
             if not missing_styles:
                 _append_raw_style_interval(
@@ -2014,10 +1752,7 @@ def _raw_style_intervals(
                 current_styles = missing_styles
                 continue
             gap = content[current_end : token.raw_start]
-            if (
-                missing_styles == current_styles
-                and (token.raw_start <= current_end or not gap or gap.isspace())
-            ):
+            if missing_styles == current_styles and (token.raw_start <= current_end or not gap or gap.isspace()):
                 current_end = max(current_end, token.raw_end)
             else:
                 _append_raw_style_interval(
@@ -2038,23 +1773,6 @@ def _raw_style_intervals(
     return _merge_raw_style_intervals(content, intervals)
 
 
-def _wrap_style_intervals(
-    content: str,
-    intervals: Sequence[_RawStyleInterval],
-) -> str:
-    """从右向左包装样式区间，确保插入标签时原 offset 保持有效。"""
-
-    output = content
-    for interval in reversed(intervals):
-        style_attr = ",".join(interval.styles)
-        output = (
-            f'{output[: interval.start]}<text style="{style_attr}">'
-            f"{output[interval.start : interval.end]}</text>"
-            f"{output[interval.end :]}"
-        )
-    return output
-
-
 def apply_pdf_text_styles(
     blocks: list[dict[str, Any]],
     lines: Sequence[PDFTextStyleLine],
@@ -2070,9 +1788,7 @@ def apply_pdf_text_styles(
             block.get("type"),
         )
         content = block.get("content")
-        if not isinstance(content, str) or not content or not any(
-            line.style_ranges for line in block_lines
-        ):
+        if not isinstance(content, str) or not content or not any(line.style_ranges for line in block_lines):
             continue
         projected = _project_content_chars(content)
         style_ranges = _match_style_ranges(projected, block_lines)
@@ -2080,7 +1796,68 @@ def apply_pdf_text_styles(
             continue
         intervals = _raw_style_intervals(content, projected, style_ranges)
         if intervals:
-            block["content"] = _wrap_style_intervals(content, intervals)
+            block[_PDF_STYLE_INTERVALS_KEY] = intervals
+
+
+def materialize_pdf_inline_spans(blocks: list[dict[str, Any]]) -> None:
+    """把 PDF 原文、样式区间、链接区间和行内公式一次性物化为 Span。"""
+    formula_pattern = re.compile(r"\\\((?P<latex>.*?)\\\)", re.DOTALL)
+    for block in blocks:
+        if block.get("type") not in _PDF_INLINE_SPAN_BLOCK_TYPES:
+            continue
+        content = block.get("content")
+        link_intervals = block.pop(_PDF_LINK_INTERVALS_KEY, [])
+        style_intervals = block.pop(_PDF_STYLE_INTERVALS_KEY, [])
+        if not isinstance(content, str):
+            continue
+        formulas = list(formula_pattern.finditer(content))
+        boundaries = {0, len(content)}
+        for interval in [*link_intervals, *style_intervals]:
+            boundaries.update((interval.start, interval.end))
+        for formula in formulas:
+            boundaries.update((formula.start(), formula.end()))
+        ordered = sorted(value for value in boundaries if 0 <= value <= len(content))
+        spans: list[dict[str, Any]] = []
+        for start, end in zip(ordered, ordered[1:]):
+            if start >= end:
+                continue
+            formula = next((item for item in formulas if item.start() == start and item.end() == end), None)
+            if formula is not None:
+                append_equation_span(spans, formula.group("latex"))
+                continue
+            text = content[start:end]
+            if not text:
+                continue
+            styles = _canonical_styles(
+                style
+                for interval in style_intervals
+                if interval.start <= start and end <= interval.end
+                for style in interval.styles
+            )
+            link = next(
+                (interval for interval in link_intervals if interval.start <= start and end <= interval.end),
+                None,
+            )
+            if link is None:
+                if styles and text.strip():
+                    leading_length = len(text) - len(text.lstrip())
+                    trailing_length = len(text) - len(text.rstrip())
+                    core_end = len(text) - trailing_length if trailing_length else len(text)
+                    append_text_span(spans, text[:leading_length])
+                    append_text_span(spans, text[leading_length:core_end], styles)
+                    append_text_span(spans, text[core_end:])
+                else:
+                    append_text_span(spans, text, styles)
+                continue
+            children: list[dict[str, Any]] = []
+            append_text_span(children, text, (style for style in styles if style != "underline"))
+            if spans and spans[-1].get("type") == "hyperlink" and spans[-1].get("url") == link.target:
+                existing = spans[-1].get("content")
+                if isinstance(existing, list):
+                    extend_inline_spans(existing, children)
+                    continue
+            append_hyperlink_span(spans, children, link.target)
+        block["content"] = normalize_span_dicts(spans)
 
 
 __all__ = [
@@ -2095,4 +1872,5 @@ __all__ = [
     "apply_pdf_text_styles",
     "detect_pdf_text_link_lines",
     "detect_pdf_text_style_lines",
+    "materialize_pdf_inline_spans",
 ]

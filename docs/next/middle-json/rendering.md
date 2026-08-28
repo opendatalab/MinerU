@@ -338,7 +338,7 @@ text 合并允许跨越任意其他 block，后一个 text 的内容被吸收到
 
 ## Block 规则
 
-- `text/ref_text`: 解析行内公式、样式和超链接；普通 text 转义可能误触发的 Markdown block 前缀。
+- `text/ref_text`: 直接渲染 InlineSpan 中的公式、样式和超链接；普通 TextSpan 转义可能误触发的 Markdown block 前缀。
 - `doc_title/paragraph_title`: 使用全局 `level`，Markdown 标题最多六级；anchor 输出为 HTML id。
 - `page_footnote`: 独立于页面辅助块，DEFAULT/FULL 都输出；Markdown 使用无可见标签的 `<small><span class="mineru-page-footnote" data-block-type="page_footnote" style="color:#6b7280">…</span></small>`，HTML/DOCX 使用小号弱化样式。
 - `list`: 递归缩进；普通列表直接使用 content 已内化的前缀。`sub_type=ref_text`
@@ -349,15 +349,15 @@ text 合并允许跨越任意其他 block，后一个 text 的内容被吸收到
 - `image/chart`: 图片优先，识别内容放入折叠 details；chart 的简单 HTML 表格转为 GFM，复杂表格保留 HTML，无图片时直接输出转换后的内容。
 - `table`: 简单单层 HTML 转 GFM；合并单元格或不可无损结构保留 HTML；空间投影文本使用动态 fenced block；空 content 回退图片。
 - `code`: 使用 `guess_lang` 和动态 fenced block。
-- `algorithm`: 使用等宽、`white-space: pre-wrap` 的 HTML div，只把 `<eq>` 转为行内公式。
+- `algorithm`: `algorithm_body` 使用等宽、`white-space: pre-wrap` 的 HTML div，并按 EquationInlineSpan 渲染公式。
 
 视觉父块严格按 `content` 原顺序渲染，body、重复 caption 和 footnote 不重新排序。
 
 ## 行内语义
 
-行内 parser 只解释白名单标签，包括 `<eq>`、`<text style>`、
-`<hyperlink>/<url>`、`<sup>/<sub>`。未知或损坏标签作为普通文本转义保留。
-普通字体样式使用 Markdown；underline、emphasis、上下标和复杂组合使用安全 HTML。
+renderer 直接按 Text/EquationInline/CodeInline/Hyperlink discriminator 分派，不解析
+字符串标签。TextSpan 中任意 `<...>` 都作为普通文本转义保留。普通字体样式使用
+Markdown；underline、emphasis、上下标和复杂组合使用安全 HTML。
 underline/strikethrough 包裹的 ASCII 空格按 dev 规则转为 `_`/`-` marker；
 整块 marker 会转义首字符，避免被识别为 Markdown 分割线。
 

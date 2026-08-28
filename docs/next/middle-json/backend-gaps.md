@@ -20,9 +20,9 @@
 | typed schema | 已解决 | `PageInfo` 与 Pydantic block tree 已是事实标准。 | 保持严格 validation。 |
 | 顶层 envelope | 部分解决 | 当前运行时使用 `schema_version + pages`；历史 `pdf_info/_backend` 仍是离线迁移对象。 | 补 canonical `_meta` 与 envelope validator。 |
 | bbox 缺失 | 已解决 | 非 PDF Flash 文档允许无 bbox；PDF 顶层 block 仍强制 bbox。 | renderer 与 locator 不得把缺失值当真实坐标。 |
-| page_size 缺失 | 已解决 | schema 2.0 的 `PageInfo` 不再包含 page_size。 | 无。 |
+| page_size 缺失 | 已解决 | schema 3.0 的 `PageInfo` 不再包含 page_size。 | 无。 |
 | index 稳定性 | 部分解决 | reading order 可用，但 Agent locator 不够稳定。 | normalization 阶段重编号。 |
-| `preproc_blocks` | 已解决 | schema 2.0 只公开统一 `blocks`。 | 无。 |
+| `preproc_blocks` | 已解决 | schema 3.0 只公开统一 `blocks`。 | 无。 |
 | render 统一 | 已解决 | 四种输出通过统一 render facade 消费严格 MiddleJson。 | 保持格式实现单向依赖共享后处理。 |
 | `_backend` | 部分解决 | render 依赖临时字段。 | 迁移到 envelope `_meta.backend`。 |
 | locator | 部分解决 | Agent 需要稳定 page/block 引用。 | 锁定 locator helper 并补齐输出契约。 |
@@ -146,7 +146,7 @@
 
 现状:
 
-- HTML 经统一 `doc_analyze()` 和 ModelJson → MiddleJson 2.0 路径映射到单页 `PageInfo(page_idx=0)`。
+- HTML 经统一 `doc_analyze()` 和 ModelJson → MiddleJson 3.0 路径映射到单页 `PageInfo(page_idx=0)`。
 - 顶层 block 使用 DOM 顺序生成稳定 index，HTML 不生成 bbox，也不再构造历史 `Line`/`Span`。
 - 标题、正文、列表、表格、图片、代码、公式和页面脚注复用统一 block 与 renderer。
 - 本地/data 图片进入 `image_base64`，远程图片进入受限 `image_url`，解析阶段不下载远程资源。

@@ -22,6 +22,7 @@ from pydantic import ValidationError
 import mineru.parser.api_client as api_client
 import mineru.parser.api_server as api_server
 import mineru.parser.tier as parser_tier
+from mineru.parser import MIDDLE_JSON_SCHEMA_VERSION
 from mineru.parser.api_client import MinerUApiParser, _pages_from_middle_json, _parse_result_from_job, should_trust_env_for_url
 from mineru.parser.api_server import (
     _API_SERVER_LANGUAGES,
@@ -85,6 +86,45 @@ def _full_middle_json(*pages: PageInfo) -> MiddleJson:
         parse_mode="txt",
         mineru_version=__version__,
     )
+
+
+def _v3_payload(pages: list[dict[str, Any]], **extra: Any) -> dict[str, Any]:
+    """构造严格 Middle JSON 3.0 API envelope。"""
+    payload: dict[str, Any] = {
+        "schema_version": MIDDLE_JSON_SCHEMA_VERSION,
+        "pages": pages,
+        "is_full_document": True,
+        "file_suffix": "pdf",
+        "effort": "medium",
+        "parse_mode": "txt",
+        "mineru_version": __version__,
+    }
+    payload.update(extra)
+    return payload
+
+
+def _v3_image_page(image_path: str, *, page_idx: int = 0) -> dict[str, Any]:
+    """构造带一个图片 sidecar 的严格 PDF 页面。"""
+    bbox = [0.0, 0.0, 0.1, 0.1]
+    return {
+        "page_idx": page_idx,
+        "blocks": [
+            {
+                "type": "image",
+                "index": 0,
+                "bbox": bbox,
+                "content": [
+                    {
+                        "type": "image_body",
+                        "index": 0,
+                        "bbox": bbox,
+                        "content": "",
+                        "image_path": image_path,
+                    }
+                ],
+            }
+        ],
+    }
 
 
 def test_backend_analyze_import_does_not_require_vlm_utils() -> None:
@@ -681,36 +721,11 @@ def test_api_client_ignores_legacy_detail_error_envelope() -> None:
 
 def test_api_client_reads_image_cache_from_zip_and_preserves_pdf_mapping(monkeypatch: pytest.MonkeyPatch) -> None:
     parser = MinerUApiParser(api_url="http://localhost:8000", tier="standard", include_images=True)
-    middle_json = {
-        "schema_version": "1.0.0",
-        "_pdf_retained_page_indices": [0, 2],
-        "_pdf_broken_page_indices": [1],
-        "pages": [
-            {
-                "page_idx": 0,
-                "page_size": [100, 200],
-                "para_blocks": [
-                    {
-                        "index": 0,
-                        "type": "image",
-                        "bbox": [0, 0, 10, 10],
-                        "lines": [
-                            {
-                                "bbox": [0, 0, 10, 10],
-                                "spans": [
-                                    {
-                                        "type": "image",
-                                        "bbox": [0, 0, 10, 10],
-                                        "image_path": "images/chart.png",
-                                    }
-                                ],
-                            }
-                        ],
-                    }
-                ],
-            }
-        ],
-    }
+    middle_json = _v3_payload(
+        [_v3_image_page("images/chart.png")],
+        _pdf_retained_page_indices=[0, 2],
+        _pdf_broken_page_indices=[1],
+    )
     zip_ref = {"file_id": "file-zip", "bytes": 10}
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
@@ -736,10 +751,7 @@ def test_api_client_reads_image_cache_from_zip_and_preserves_pdf_mapping(monkeyp
 
 def test_api_client_downloads_model_output_from_zip(monkeypatch: pytest.MonkeyPatch) -> None:
     parser = MinerUApiParser(api_url="http://localhost:8000", tier="standard", include_model_output=True)
-    middle_json = {
-        "schema_version": "1.0.0",
-        "pages": [{"page_idx": 0, "page_size": [100, 200]}],
-    }
+    middle_json = _v3_payload([{"page_idx": 0, "blocks": []}])
     zip_ref = {"file_id": "file-zip", "bytes": 10}
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
@@ -768,7 +780,7 @@ def test_api_client_downloads_model_output_from_zip(monkeypatch: pytest.MonkeyPa
     assert result._model_output == [[{"raw": "model"}]]
 
 
-def test_api_client_reads_official_layout_json_and_model_output_from_zip(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_api_client_rejects_legacy_official_layout_json(monkeypatch: pytest.MonkeyPatch) -> None:
     parser = MinerUApiParser(
         api_url="https://mineru.net/api",
         tier="standard",
@@ -806,28 +818,21 @@ def test_api_client_reads_official_layout_json_and_model_output_from_zip(monkeyp
 
     monkeypatch.setattr(api_client, "_download_bytes", lambda _parser, ref: zip_buffer.getvalue() if ref is zip_ref else b"")
 
-    result = _parse_result_from_job(
-        {
-            "job_id": "job_1",
-            "status": "completed",
-            "files": [{"output_files": {"zip": zip_ref}}],
-        },
-        "demo.pdf",
-        parser,
-    )
-
-    assert len(result.pages) == 1
-    assert result.pages[0].page_idx == 0
-    assert result.images() == {"chart.png": b"chart-bytes"}
-    assert result._model_output == [[{"raw": "model"}]]
+    with pytest.raises(api_client._V1APIError, match="must contain a list field named pages"):
+        _parse_result_from_job(
+            {
+                "job_id": "job_1",
+                "status": "completed",
+                "files": [{"output_files": {"zip": zip_ref}}],
+            },
+            "demo.pdf",
+            parser,
+        )
 
 
 def test_api_client_async_downloads_model_output_from_zip(monkeypatch: pytest.MonkeyPatch) -> None:
     parser = MinerUApiParser(api_url="http://localhost:8000", tier="standard", include_model_output=True)
-    middle_json = {
-        "schema_version": "1.0.0",
-        "pages": [{"page_idx": 0, "page_size": [100, 200]}],
-    }
+    middle_json = _v3_payload([{"page_idx": 0, "blocks": []}])
     zip_ref = {"file_id": "file-zip", "bytes": 10}
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
@@ -924,28 +929,7 @@ def test_api_client_include_images_downloads_single_zip(monkeypatch: pytest.Monk
 def test_api_client_does_not_read_image_cache_from_zip_unless_requested(monkeypatch: pytest.MonkeyPatch) -> None:
     parser = MinerUApiParser(api_url="http://localhost:8000", tier="standard", include_model_output=True)
     zip_ref = {"file_id": "file-zip", "bytes": 10}
-    middle_json = {
-        "schema_version": "1.0.0",
-        "pages": [
-            {
-                "page_idx": 0,
-                "page_size": [100, 200],
-                "para_blocks": [
-                    {
-                        "index": 0,
-                        "type": "image",
-                        "bbox": [0, 0, 10, 10],
-                        "lines": [
-                            {
-                                "bbox": [0, 0, 10, 10],
-                                "spans": [{"type": "image", "bbox": [0, 0, 10, 10], "image_path": "images/chart.png"}],
-                            }
-                        ],
-                    }
-                ],
-            }
-        ],
-    }
+    middle_json = _v3_payload([_v3_image_page("images/chart.png")])
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("middle_json.json", json.dumps(middle_json, ensure_ascii=False))
@@ -980,7 +964,7 @@ def test_api_client_async_include_images_downloads_single_zip(monkeypatch: pytes
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.writestr(
             "middle_json.json",
-            json.dumps({"schema_version": "1.0.0", "pages": [{"page_idx": 2, "page_size": [100, 200]}]}),
+            json.dumps(_v3_payload([{"page_idx": 0, "blocks": []}])),
         )
         archive.writestr("model_output.json", json.dumps([[{"raw": "model"}]], ensure_ascii=False, indent=4))
     download_calls: list[dict[str, object]] = []
@@ -1015,27 +999,7 @@ def test_api_client_async_include_images_downloads_single_zip(monkeypatch: pytes
 def test_api_client_include_images_rejects_unsafe_image_entries(monkeypatch: pytest.MonkeyPatch) -> None:
     parser = MinerUApiParser(api_url="http://localhost:8000", tier="standard", include_images=True)
     zip_ref = {"file_id": "file-zip", "bytes": 10}
-    middle_json = {
-        "schema_version": "1.0.0",
-        "pages": [
-            {
-                "page_idx": 0,
-                "para_blocks": [
-                    {
-                        "index": 0,
-                        "type": "image",
-                        "bbox": [0, 0, 10, 10],
-                        "lines": [
-                            {
-                                "bbox": [0, 0, 10, 10],
-                                "spans": [{"type": "image", "bbox": [0, 0, 10, 10], "image_path": "../escape.png"}],
-                            }
-                        ],
-                    }
-                ],
-            }
-        ],
-    }
+    middle_json = _v3_payload([_v3_image_page("../escape.png")])
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("middle_json.json", json.dumps(middle_json, ensure_ascii=False))
@@ -1054,7 +1018,7 @@ def test_api_client_include_images_rejects_unsafe_image_entries(monkeypatch: pyt
         )
 
 
-def test_api_client_accepts_remote_pdf_info_middle_json(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_api_client_rejects_remote_pdf_info_middle_json(monkeypatch: pytest.MonkeyPatch) -> None:
     parser = MinerUApiParser(api_url="https://mineru.net/api", tier="standard")
     middle_json = {
         "_backend": "hybrid",
@@ -1064,21 +1028,19 @@ def test_api_client_accepts_remote_pdf_info_middle_json(monkeypatch: pytest.Monk
 
     monkeypatch.setattr(api_client, "_download_json", lambda _parser, _outputs: middle_json)
 
-    result = _parse_result_from_job(
-        {
-            "job_id": "job_1",
-            "status": "completed",
-            "files": [{"output_files": {"middle_json": {"file_id": "file-middle-json", "bytes": 10}}}],
-        },
-        "demo.pdf",
-        parser,
-    )
-
-    assert len(result.pages) == 1
-    assert result.pages[0].page_idx == 0
+    with pytest.raises(api_client._V1APIError, match="must contain a list field named pages"):
+        _parse_result_from_job(
+            {
+                "job_id": "job_1",
+                "status": "completed",
+                "files": [{"output_files": {"middle_json": {"file_id": "file-middle-json", "bytes": 10}}}],
+            },
+            "demo.pdf",
+            parser,
+        )
 
 
-def test_async_api_client_accepts_remote_pdf_info_middle_json(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_async_api_client_rejects_remote_pdf_info_middle_json(monkeypatch: pytest.MonkeyPatch) -> None:
     parser = MinerUApiParser(api_url="https://mineru.net/api", tier="standard")
     middle_json = {
         "_backend": "hybrid",
@@ -1090,20 +1052,18 @@ def test_async_api_client_accepts_remote_pdf_info_middle_json(monkeypatch: pytes
 
     monkeypatch.setattr(api_client, "_async_download_json", _download_json)
 
-    result = asyncio.run(
-        api_client._async_parse_result_from_job(
-            {
-                "job_id": "job_1",
-                "status": "completed",
-                "files": [{"output_files": {"middle_json": {"file_id": "file-middle-json", "bytes": 10}}}],
-            },
-            "demo.pdf",
-            parser,
+    with pytest.raises(api_client._V1APIError, match="must contain a list field named pages"):
+        asyncio.run(
+            api_client._async_parse_result_from_job(
+                {
+                    "job_id": "job_1",
+                    "status": "completed",
+                    "files": [{"output_files": {"middle_json": {"file_id": "file-middle-json", "bytes": 10}}}],
+                },
+                "demo.pdf",
+                parser,
+            )
         )
-    )
-
-    assert len(result.pages) == 1
-    assert result.pages[0].page_idx == 0
 
 
 def test_api_client_rejects_legacy_json_output_file_key() -> None:
@@ -1154,27 +1114,7 @@ def test_api_client_include_images_rejects_unsafe_zip_image_sidecar_paths(
 ) -> None:
     parser = MinerUApiParser(api_url="http://localhost:8000", tier="standard", include_images=True)
     zip_ref = {"file_id": "file-zip", "bytes": 10}
-    middle_json = {
-        "schema_version": "1.0.0",
-        "pages": [
-            {
-                "page_idx": 0,
-                "para_blocks": [
-                    {
-                        "index": 0,
-                        "type": "image",
-                        "bbox": [0, 0, 10, 10],
-                        "lines": [
-                            {
-                                "bbox": [0, 0, 10, 10],
-                                "spans": [{"type": "image", "bbox": [0, 0, 10, 10], "image_path": image_path}],
-                            }
-                        ],
-                    }
-                ],
-            }
-        ],
-    }
+    middle_json = _v3_payload([_v3_image_page(image_path)])
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("middle_json.json", json.dumps(middle_json, ensure_ascii=False))
@@ -1196,27 +1136,7 @@ def test_api_client_include_images_rejects_unsafe_zip_image_sidecar_paths(
 def test_async_api_client_include_images_rejects_unsafe_zip_image_sidecar_paths(monkeypatch: pytest.MonkeyPatch) -> None:
     parser = MinerUApiParser(api_url="http://localhost:8000", tier="standard", include_images=True)
     zip_ref = {"file_id": "file-zip", "bytes": 10}
-    middle_json = {
-        "schema_version": "1.0.0",
-        "pages": [
-            {
-                "page_idx": 0,
-                "para_blocks": [
-                    {
-                        "index": 0,
-                        "type": "image",
-                        "bbox": [0, 0, 10, 10],
-                        "lines": [
-                            {
-                                "bbox": [0, 0, 10, 10],
-                                "spans": [{"type": "image", "bbox": [0, 0, 10, 10], "image_path": "../escape.png"}],
-                            }
-                        ],
-                    }
-                ],
-            }
-        ],
-    }
+    middle_json = _v3_payload([_v3_image_page("../escape.png")])
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("middle_json.json", json.dumps(middle_json, ensure_ascii=False))
@@ -1599,154 +1519,26 @@ def test_api_client_rejects_json_underscore_output_alias() -> None:
     assert "available outputs: json_" in exc_info.value.message
 
 
-def test_api_client_accepts_pages_middle_json_only() -> None:
-    pages = _pages_from_middle_json({"pages": [{"page_idx": 2, "page_size": [100, 200]}]})
+def test_api_client_accepts_middle_json_3_pages() -> None:
+    """验证 API client 只恢复严格 3.0 pages envelope。"""
+    pages = _pages_from_middle_json(_v3_payload([{"page_idx": 2, "blocks": []}]))
 
     assert len(pages) == 1
-    assert pages[0].page_idx == 0
+    assert pages[0].page_idx == 2
 
 
-def test_api_client_accepts_legacy_pdf_info_middle_json() -> None:
-    pages = _pages_from_middle_json({"pdf_info": [{"page_idx": 2, "page_size": [100, 200]}]})
-
-    assert len(pages) == 1
-    assert pages[0].page_idx == 0
-
-
-def _legacy_span_with_html(html: str, *, content: str | None = None, span_type: str = "table") -> dict[str, Any]:
-    span: dict[str, Any] = {"type": span_type, "bbox": [0, 0, 10, 10], "html": html}
-    if content is not None:
-        span["content"] = content
-    return span
-
-
-def _legacy_page_with_spans(spans: list[dict[str, Any]], *, block_key: str = "preproc_blocks") -> dict[str, Any]:
-    return {
-        "page_idx": 0,
-        "page_size": [100, 200],
-        block_key: [
-            {
-                "index": 0,
-                "type": "table",
-                "bbox": [0, 0, 100, 100],
-                "lines": [{"bbox": [0, 0, 100, 100], "spans": spans}],
-            }
-        ],
-    }
-
-
-def _table_body_content(blocks: list[object]) -> str:
-    """Extract the first table_body content from a TableBlock's children."""
-    from mineru.types import BlockBase
-
-    table_blocks = [b for b in blocks if isinstance(b, BlockBase) and b.type == BlockType.TABLE]
-    assert len(table_blocks) == 1
-    body_blocks = [child for child in table_blocks[0].content if child.type == BlockType.TABLE_BODY]  # type: ignore[attr-defined]
-    assert len(body_blocks) == 1
-    return body_blocks[0].content  # type: ignore[attr-defined]
-
-
-def test_legacy_pdf_info_fills_content_from_html_when_content_missing() -> None:
-    pages = _pages_from_middle_json({"pdf_info": [_legacy_page_with_spans([_legacy_span_with_html("<table></table>")])]})
-
-    assert _table_body_content(pages[0].blocks) == "<table></table>"
-
-
-def test_legacy_pdf_info_overrides_content_with_non_empty_html() -> None:
-    pages = _pages_from_middle_json(
-        {"pdf_info": [_legacy_page_with_spans([_legacy_span_with_html("<table>new</table>", content="old")])]}
-    )
-
-    assert _table_body_content(pages[0].blocks) == "<table>new</table>"
-
-
-def test_legacy_pdf_info_leaves_content_untouched_when_html_missing_or_empty() -> None:
-    span_no_html: dict[str, Any] = {"type": "text", "bbox": [0, 0, 10, 10], "content": "keep"}
-    span_empty_html: dict[str, Any] = {"type": "text", "bbox": [0, 0, 10, 10], "content": "keep", "html": ""}
-
-    pages = _pages_from_middle_json({"pdf_info": [_legacy_page_with_spans([span_no_html, span_empty_html])]})
-
-    assert _table_body_content(pages[0].blocks) == "keep\nkeep"
-
-
-def test_legacy_pdf_info_normalizes_spans_in_nested_blocks_and_all_block_lists() -> None:
-    """验证 _normalize_legacy_pdf_info_spans 对 preproc/para/discarded 三种 block list 及嵌套 blocks 都生效。"""
-    from mineru.parser.api_client import _normalize_legacy_pdf_info_spans
-
-    nested_span = _legacy_span_with_html("<table>nested</table>")
-    preproc_span = _legacy_span_with_html("<table>preproc</table>")
-    discarded_span = _legacy_span_with_html("<table>discarded</table>")
-
-    page: dict[str, Any] = {
-        "page_idx": 0,
-        "page_size": [100, 200],
-        "preproc_blocks": [
-            {
-                "index": 0,
-                "type": "table",
-                "bbox": [0, 0, 100, 100],
-                "lines": [{"bbox": [0, 0, 100, 100], "spans": [preproc_span]}],
-            }
-        ],
-        "para_blocks": [
-            {
-                "index": 0,
-                "type": "image",
-                "bbox": [0, 0, 100, 100],
-                "blocks": [
-                    {
-                        "index": 0,
-                        "type": "image_body",
-                        "bbox": [0, 0, 50, 50],
-                        "lines": [{"bbox": [0, 0, 50, 50], "spans": [nested_span]}],
-                    }
-                ],
-            }
-        ],
-        "discarded_blocks": [
-            {
-                "index": 0,
-                "type": "text",
-                "bbox": [0, 0, 100, 100],
-                "lines": [{"bbox": [0, 0, 100, 100], "spans": [discarded_span]}],
-            }
-        ],
-    }
-
-    _normalize_legacy_pdf_info_spans([page])
-
-    assert page["preproc_blocks"][0]["lines"][0]["spans"][0]["content"] == "<table>preproc</table>"
-    assert page["para_blocks"][0]["blocks"][0]["lines"][0]["spans"][0]["content"] == "<table>nested</table>"
-    assert page["discarded_blocks"][0]["lines"][0]["spans"][0]["content"] == "<table>discarded</table>"
-
-    pages = _pages_from_middle_json({"pdf_info": [page]})
-    assert _table_body_content(pages[0].blocks) == "<table>preproc</table>"
-
-
-def test_new_format_pages_does_not_treat_html_as_content() -> None:
-    # 新版 pages 格式不走 compat 分支，span 的 html 字段不回填 content，
-    # legacy adapter 的 _extract_lines_content 只读 content，html 被丢弃。
-    page = {
-        "page_idx": 0,
-        "page_size": [100, 200],
-        "preproc_blocks": [
-            {
-                "index": 0,
-                "type": "table",
-                "bbox": [0, 0, 100, 100],
-                "lines": [{"bbox": [0, 0, 100, 100], "spans": [_legacy_span_with_html("<table>html</table>")]}],
-            }
-        ],
-    }
-
-    result = ParseResult.from_dict({"pages": [page]})
-    assert _table_body_content(result.pages[0].blocks) == ""
-
-
-@pytest.mark.parametrize("payload", [[{"page_idx": 0}], {"pdf_info": {"preproc_blocks": []}}])
-def test_api_client_rejects_legacy_middle_json_shapes(payload: object) -> None:
-    with pytest.raises(Exception, match="pages"):
-        _pages_from_middle_json(payload)  # type: ignore[arg-type]
+@pytest.mark.parametrize(
+    "payload",
+    [
+        {"pages": [{"page_idx": 0, "blocks": []}]},
+        {"schema_version": "2.0", "pages": [{"page_idx": 0, "blocks": []}]},
+        {"pdf_info": [{"page_idx": 0}]},
+    ],
+)
+def test_api_client_rejects_pre_v3_middle_json(payload: dict[str, object]) -> None:
+    """验证缺失版本、2.0 与 legacy pdf_info 都要求重新解析。"""
+    with pytest.raises((ValueError, api_client._V1APIError), match="Reparse the source document|list field named pages"):
+        _pages_from_middle_json(payload)
 
 
 def test_create_job_request_accepts_new_format_names_and_rejects_options() -> None:

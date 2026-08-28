@@ -33,27 +33,19 @@ from _ooxml_mtef_test_utils import (
     build_equation_pptx,
     build_equation_xlsx,
 )
+from _span_test_utils import equation
 
 
 def _equation_contents(pages: list[list[dict]]) -> list[str]:
     """按分页和 block 顺序收集独立公式内容。"""
 
-    return [
-        block["content"]
-        for page in pages
-        for block in page
-        if block.get("type") == BlockType.EQUATION
-    ]
+    return [block["content"] for page in pages for block in page if block.get("type") == BlockType.EQUATION]
 
 
 def _has_preview_image(pages: list[list[dict]]) -> bool:
     """判断 model-list 是否至少保留一个图片回退。"""
 
-    return any(
-        block.get("type") == BlockType.IMAGE
-        for page in pages
-        for block in page
-    )
+    return any(block.get("type") == BlockType.IMAGE for page in pages for block in page)
 
 
 def test_six_office_models_decode_the_full_mtef_v5_corpus() -> None:
@@ -119,15 +111,9 @@ def test_ooxml_prog_id_and_mtef_version_are_orthogonal(
     _v5_name, v5, v5_expected = v5_formula_corpus()[1]
     _v3_name, v3, v3_expected = formula_corpus()[1]
 
-    assert _equation_contents(
-        model.predict(BytesIO(builder([v5], prog_id="Equation.3")))
-    ) == [v5_expected]
-    assert _equation_contents(
-        model.predict(BytesIO(builder([v3], prog_id="Equation.DSMT4")))
-    ) == [v3_expected]
-    assert _equation_contents(
-        model.predict(BytesIO(builder([v5], prog_id="Equation")))
-    ) == [v5_expected]
+    assert _equation_contents(model.predict(BytesIO(builder([v5], prog_id="Equation.3")))) == [v5_expected]
+    assert _equation_contents(model.predict(BytesIO(builder([v3], prog_id="Equation.DSMT4")))) == [v3_expected]
+    assert _equation_contents(model.predict(BytesIO(builder([v5], prog_id="Equation")))) == [v5_expected]
 
 
 @pytest.mark.parametrize(
@@ -404,15 +390,15 @@ def test_docx_header_footer_and_pptx_notes_accept_mtef_v5() -> None:
 
     assert docx == [
         [
-            {"type": BlockType.HEADER, "content": f"<eq>{first[2]}</eq>"},
-            {"type": BlockType.FOOTER, "content": f"<eq>{second[2]}</eq>"},
+            {"type": BlockType.HEADER, "content": [equation(first[2])]},
+            {"type": BlockType.FOOTER, "content": [equation(second[2])]},
         ]
     ]
     assert pptx == [
         [
             {
                 "type": BlockType.PAGE_FOOTNOTE,
-                "content": f"<eq>{first[2]}</eq>",
+                "content": [equation(first[2])],
             }
         ]
     ]
@@ -451,11 +437,7 @@ def test_modern_office_converter_reuse_resets_v5_state() -> None:
     ]
 
     for converter, builder in cases:
-        converter.convert(
-            BytesIO(builder([first[1]], prog_id=prog_id))
-        )
+        converter.convert(BytesIO(builder([first[1]], prog_id=prog_id)))
         assert _equation_contents(converter.pages) == [first[2]]
-        converter.convert(
-            BytesIO(builder([second[1]], prog_id=prog_id))
-        )
+        converter.convert(BytesIO(builder([second[1]], prog_id=prog_id)))
         assert _equation_contents(converter.pages) == [second[2]]

@@ -1,4 +1,5 @@
 from __future__ import annotations
+from _span_test_utils import inline as _inline
 
 from copy import deepcopy
 from importlib import resources
@@ -8,6 +9,7 @@ import pytest
 
 from mineru.render import RenderMode, render_html
 from mineru.types import (
+    AlgorithmBodyBlock,
     ChartAnnotationBlock,
     ChartBlock,
     ChartBodyBlock,
@@ -29,6 +31,7 @@ from mineru.types import (
     TableBlock,
     TableBodyBlock,
     TextBlock,
+    TextSpan,
 )
 
 _PNG_URI = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2l9sAAAAASUVORK5CYII="
@@ -58,7 +61,7 @@ def _list(index: int, *items: str, sub_type: str | None = None) -> ListBlock:
         type="list",
         index=index,
         sub_type=sub_type,
-        content=[child_class(type=sub_type or "text", content=item) for item in items],
+        content=[child_class(type=sub_type or "text", content=_inline(item)) for item in items],
     )
 
 
@@ -84,7 +87,7 @@ def _flowchart(content: str, *, with_raster: bool = True) -> ImageBlock:
             "sub_type": "flowchart",
             "content": [
                 body,
-                {"type": "image_caption", "index": 1, "content": "Flowchart caption"},
+                {"type": "image_caption", "index": 1, "content": _inline("Flowchart caption")},
             ],
         }
     )
@@ -99,9 +102,12 @@ def test_public_contract_fragment_standalone_title_and_input_immutability() -> N
                 type="doc_title",
                 index=0,
                 level=1,
-                content='<text style="bold">Demo</text> <unsafe>',
+                content=[
+                    {"type": "text", "content": "Demo", "styles": ["bold"]},
+                    {"type": "text", "content": " <unsafe>"},
+                ],
             ),
-            TextBlock(type="text", index=1, content="body"),
+            TextBlock(type="text", index=1, content=_inline("body")),
         )
     )
     original = deepcopy(middle)
@@ -136,14 +142,14 @@ def test_default_and_full_modes_preserve_their_page_contracts() -> None:
     middle = _middle(
         _page(
             0,
-            PageAuxTextBlock(type="header", index=0, content="HEADER"),
-            TextBlock(type="text", index=1, content="inter-"),
+            PageAuxTextBlock(type="header", index=0, content=_inline("HEADER")),
+            TextBlock(type="text", index=1, content=_inline("inter-")),
         ),
         _page(5),
         _page(
             9,
-            TextBlock(type="text", index=0, content="national", continues_prev=True),
-            PageAuxTextBlock(type="footer", index=1, content="FOOTER"),
+            TextBlock(type="text", index=0, content=_inline("national"), continues_prev=True),
+            PageAuxTextBlock(type="footer", index=1, content=_inline("FOOTER")),
         ),
     )
 
@@ -169,12 +175,16 @@ def test_default_and_full_html_link_to_visible_page_footnote_anchor() -> None:
             TextBlock(
                 type="text",
                 index=0,
-                content="See <hyperlink>[1]<url>#note-one</url></hyperlink>.",
+                content=[
+                    {"type": "text", "content": "See "},
+                    {"type": "hyperlink", "url": "#note-one", "content": _inline("[1]")},
+                    {"type": "text", "content": "."},
+                ],
             ),
             PageFootnoteBlock(
                 type="page_footnote",
                 index=1,
-                content="Footnote body.",
+                content=_inline("Footnote body."),
                 anchor="note-one",
             ),
         )
@@ -194,12 +204,14 @@ def test_default_and_full_html_link_to_visible_page_footnote_anchor() -> None:
 
 def test_inline_html_escapes_plain_text_and_renders_styles_links_and_math() -> None:
     """验证普通尖括号、富样式、安全链接及 MathJax carrier。"""
-    content = (
-        'p <0.05 <local_dir> <text style="bold,italic,underline"> styled </text> '
-        "<hyperlink>safe<url>https://example.test/a b</url></hyperlink> "
-        "<hyperlink>bad<url>javascript:alert(1)</url></hyperlink> "
-        "<eq>x < y & z</eq>"
-    )
+    content = [
+        {"type": "text", "content": "p <0.05 <local_dir> "},
+        {"type": "text", "content": " styled ", "styles": ["bold", "italic", "underline"]},
+        {"type": "text", "content": " "},
+        {"type": "hyperlink", "url": "https://example.test/a b", "content": _inline("safe")},
+        {"type": "text", "content": " bad javascript:alert(1) "},
+        {"type": "equation_inline", "content": "x < y & z"},
+    ]
     result = render_html(_middle(_page(0, TextBlock(type="text", index=0, content=content))))
     soup = BeautifulSoup(result, "html.parser")
 
@@ -209,7 +221,7 @@ def test_inline_html_escapes_plain_text_and_renders_styles_links_and_math() -> N
     assert paragraph.select_one(".mineru-preserve-whitespace") is not None
     assert paragraph.select_one('a[href="https://example.test/a%20b"]') is not None
     assert "bad" in paragraph.get_text()
-    assert "javascript:" not in result
+    assert paragraph.select_one('a[href^="javascript:"]') is None
     assert paragraph.select_one(".mineru-math").get_text() == r"\(x < y & z\)"
     assert "mathjax@4.1.2/tex-chtml.js" in result
     assert "loader: {load: ['ui/safe']}" in result
@@ -226,7 +238,7 @@ def test_plain_text_autolinks_mpe_style_urls_domains_and_email() -> None:
         "pair https://one.example/ahttps://two.example/b"
     )
     soup = BeautifulSoup(
-        render_html(_middle(_page(0, TextBlock(type="text", index=0, content=content))), standalone=False),
+        render_html(_middle(_page(0, TextBlock(type="text", index=0, content=_inline(content)))), standalone=False),
         "html.parser",
     )
 
@@ -296,7 +308,7 @@ def test_common_engineering_bare_domain_suffixes_linkify(tld: str) -> None:
     """验证 B 工程常用集中的裸域名后缀全部保持可链接。"""
     content = f"Project.Example.{tld}/docs?x=1#intro"
     soup = BeautifulSoup(
-        render_html(_middle(_page(0, TextBlock(type="text", index=0, content=content))), standalone=False),
+        render_html(_middle(_page(0, TextBlock(type="text", index=0, content=_inline(content)))), standalone=False),
         "html.parser",
     )
 
@@ -324,7 +336,7 @@ def test_common_engineering_bare_domain_suffixes_linkify(tld: str) -> None:
 def test_non_common_bare_domain_suffixes_remain_plain_text(content: str) -> None:
     """验证文件名、股票代码、作者姓名和非白名单后缀不再误生成链接。"""
     soup = BeautifulSoup(
-        render_html(_middle(_page(0, TextBlock(type="text", index=0, content=content))), standalone=False),
+        render_html(_middle(_page(0, TextBlock(type="text", index=0, content=_inline(content)))), standalone=False),
         "html.parser",
     )
 
@@ -336,7 +348,7 @@ def test_strong_link_syntax_bypasses_bare_domain_suffix_allowlist() -> None:
     """验证显式 HTTP、www 和邮箱不受裸域名 B 白名单限制。"""
     content = "https://example.ch www.example.ch user@example.ua https://machine.Aborted"
     soup = BeautifulSoup(
-        render_html(_middle(_page(0, TextBlock(type="text", index=0, content=content))), standalone=False),
+        render_html(_middle(_page(0, TextBlock(type="text", index=0, content=_inline(content)))), standalone=False),
         "html.parser",
     )
 
@@ -353,13 +365,18 @@ def test_autolink_excludes_existing_links_code_math_algorithm_and_raw_html() -> 
     text = TextBlock(
         type="text",
         index=0,
-        content=(
-            "ftp://bad.example.com /relative.example.com 1.2.3.4 "
-            "javascript:evil.example.com data:text/html,data.example.com "
-            "bad..mail@example.com "
-            "<hyperlink>example.com<url>https://target.test</url></hyperlink> "
-            "<eq>math.example.com</eq>"
-        ),
+        content=[
+            {
+                "type": "text",
+                "content": (
+                    "ftp://bad.example.com /relative.example.com 1.2.3.4 "
+                    "javascript:evil.example.com data:text/html,data.example.com bad..mail@example.com "
+                ),
+            },
+            {"type": "hyperlink", "url": "https://target.test", "content": _inline("example.com")},
+            {"type": "text", "content": " "},
+            {"type": "equation_inline", "content": "math.example.com"},
+        ],
     )
     code = CodeBlock(
         type="code",
@@ -372,7 +389,7 @@ def test_autolink_excludes_existing_links_code_math_algorithm_and_raw_html() -> 
         type="code",
         index=2,
         sub_type="algorithm",
-        content=[CodeBodyBlock(type="code_body", index=2, content="visit algorithm.example.com")],
+        content=[AlgorithmBodyBlock(type="algorithm_body", index=2, content=_inline("visit algorithm.example.com"))],
     )
     raw_html = ChartBlock(
         type="chart",
@@ -399,7 +416,11 @@ def test_formula_body_closing_delimiters_are_neutralized_before_mathjax_scanning
     middle = _middle(
         _page(
             0,
-            TextBlock(type="text", index=0, content=r"inline <eq>x\)y</eq>"),
+            TextBlock(
+                type="text",
+                index=0,
+                content=[{"type": "text", "content": "inline "}, {"type": "equation_inline", "content": r"x\)y"}],
+            ),
             EquationBlock(type="equation", index=1, content=r"x\]y"),
         )
     )
@@ -420,22 +441,22 @@ def test_lists_cover_native_explicit_reference_nested_and_orphan_shapes() -> Non
         type="list",
         index=4,
         content=[
-            TextBlock(type="text", content="- parent"),
-            ListBlock(type="list", content=[TextBlock(type="text", content="- child")]),
+            TextBlock(type="text", content=_inline("- parent")),
+            ListBlock(type="list", content=[TextBlock(type="text", content=_inline("- child"))]),
         ],
     )
     orphan = ListBlock(
         type="list",
         index=5,
-        content=[ListBlock(type="list", content=[TextBlock(type="text", content="- orphan")])],
+        content=[ListBlock(type="list", content=[TextBlock(type="text", content=_inline("- orphan"))])],
     )
     markerless_owner = ListBlock(
         type="list",
         index=7,
         content=[
-            TextBlock(type="text", content="1. visible"),
-            TextBlock(type="text", content=""),
-            ListBlock(type="list", content=[TextBlock(type="text", content="- nested owner")]),
+            TextBlock(type="text", content=_inline("1. visible")),
+            TextBlock(type="text", content=[]),
+            ListBlock(type="list", content=[TextBlock(type="text", content=_inline("- nested owner"))]),
         ],
     )
     soup = BeautifulSoup(
@@ -473,15 +494,17 @@ def test_index_uses_real_forward_anchor_and_omits_duplicate_ids() -> None:
         type="index",
         index=0,
         content=[
-            ParagraphTitleBlock(type="paragraph_title", level=2, anchor="sec 1", content="Section\t3"),
+            ParagraphTitleBlock(type="paragraph_title", level=2, anchor="sec 1", content=_inline("Section\t3")),
             IndexBlock(
                 type="index",
-                content=[ParagraphTitleBlock(type="paragraph_title", level=3, anchor="missing", content="Missing\tiv")],
+                content=[
+                    ParagraphTitleBlock(type="paragraph_title", level=3, anchor="missing", content=_inline("Missing\tiv"))
+                ],
             ),
         ],
     )
-    first = ParagraphTitleBlock(type="paragraph_title", index=1, level=2, anchor="sec 1", content="Section")
-    duplicate = ParagraphTitleBlock(type="paragraph_title", index=2, level=6, anchor="sec 1", content="Duplicate")
+    first = ParagraphTitleBlock(type="paragraph_title", index=1, level=2, anchor="sec 1", content=_inline("Section"))
+    duplicate = ParagraphTitleBlock(type="paragraph_title", index=2, level=6, anchor="sec 1", content=_inline("Duplicate"))
     soup = BeautifulSoup(render_html(_middle(_page(0, index, first, duplicate)), standalone=False), "html.parser")
 
     assert soup.select_one('.mineru-index a[href="#sec-1"]').get_text() == "Section"
@@ -498,19 +521,19 @@ def test_empty_title_does_not_create_a_broken_index_target_and_anchor_controls_a
         type="index",
         index=0,
         content=[
-            ParagraphTitleBlock(type="paragraph_title", level=2, anchor="empty", content="Empty"),
-            ParagraphTitleBlock(type="paragraph_title", level=2, anchor="bad\x00id", content="Good"),
-            ParagraphTitleBlock(type="paragraph_title", level=2, anchor="bad\ufffdid", content="Collision"),
+            ParagraphTitleBlock(type="paragraph_title", level=2, anchor="empty", content=_inline("Empty")),
+            ParagraphTitleBlock(type="paragraph_title", level=2, anchor="bad\x00id", content=_inline("Good")),
+            ParagraphTitleBlock(type="paragraph_title", level=2, anchor="bad\ufffdid", content=_inline("Collision")),
         ],
     )
-    empty = ParagraphTitleBlock(type="paragraph_title", index=1, level=2, anchor="empty", content="")
-    good = ParagraphTitleBlock(type="paragraph_title", index=2, level=2, anchor="bad\x00id", content="Good")
+    empty = ParagraphTitleBlock(type="paragraph_title", index=1, level=2, anchor="empty", content=[])
+    good = ParagraphTitleBlock(type="paragraph_title", index=2, level=2, anchor="bad\x00id", content=_inline("Good"))
     collision = ParagraphTitleBlock(
         type="paragraph_title",
         index=3,
         level=2,
         anchor="bad\ufffdid",
-        content="Collision",
+        content=_inline("Collision"),
     )
     soup = BeautifulSoup(
         render_html(_middle(_page(0, index, empty, good, collision)), standalone=False),
@@ -531,9 +554,9 @@ def test_empty_index_leaf_owns_its_following_nested_index() -> None:
         type="index",
         index=0,
         content=[
-            TextBlock(type="text", content="visible"),
-            TextBlock(type="text", content=""),
-            IndexBlock(type="index", content=[TextBlock(type="text", content="nested")]),
+            TextBlock(type="text", content=_inline("visible")),
+            TextBlock(type="text", content=[]),
+            IndexBlock(type="index", content=[TextBlock(type="text", content=_inline("nested"))]),
         ],
     )
     soup = BeautifulSoup(render_html(_middle(_page(0, index)), standalone=False), "html.parser")
@@ -552,7 +575,7 @@ def test_visual_child_order_image_details_and_asset_precedence() -> None:
             "index": 0,
             "sub_type": "diagram",
             "content": [
-                {"type": "image_caption", "content": "before"},
+                {"type": "image_caption", "content": _inline("before")},
                 {
                     "type": "image_body",
                     "index": 0,
@@ -560,8 +583,8 @@ def test_visual_child_order_image_details_and_asset_precedence() -> None:
                     "image_path": "images/a b.png",
                     "image_base64": _PNG_URI,
                 },
-                {"type": "image_footnote", "content": "after"},
-                {"type": "image_caption", "content": "again"},
+                {"type": "image_footnote", "content": _inline("after")},
+                {"type": "image_caption", "content": _inline("again")},
             ],
         }
     )
@@ -709,7 +732,7 @@ def test_chart_gfm_details_code_prism_and_algorithm_html() -> None:
         index=0,
         sub_type="line chart",
         content=[
-            ChartAnnotationBlock(type="chart_caption", content="chart before"),
+            ChartAnnotationBlock(type="chart_caption", content=_inline("chart before")),
             ChartBodyBlock(
                 type="chart_body",
                 index=0,
@@ -725,7 +748,7 @@ def test_chart_gfm_details_code_prism_and_algorithm_html() -> None:
         guess_lang="shell",
         content=[
             CodeBodyBlock(type="code_body", index=1, content='echo "<x>"\n'),
-            CodeAnnotationBlock(type="code_footnote", content="code after"),
+            CodeAnnotationBlock(type="code_footnote", content=_inline("code after")),
         ],
     )
     algorithm = CodeBlock(
@@ -733,10 +756,16 @@ def test_chart_gfm_details_code_prism_and_algorithm_html() -> None:
         index=2,
         sub_type="algorithm",
         content=[
-            CodeBodyBlock(
-                type="code_body",
+            AlgorithmBodyBlock(
+                type="algorithm_body",
                 index=2,
-                content="if a < b:\n  T<sub>q</sub> = <eq>x</eq><eq>y</eq>",
+                content=[
+                    {"type": "text", "content": "if a < b:\n  T"},
+                    {"type": "text", "content": "q", "styles": ["subscript"]},
+                    {"type": "text", "content": " = "},
+                    {"type": "equation_inline", "content": "x"},
+                    {"type": "equation_inline", "content": "y"},
+                ],
             )
         ],
     )
@@ -784,7 +813,7 @@ def test_empty_code_and_literal_class_text_do_not_load_external_runtimes() -> No
     middle = _middle(
         _page(
             0,
-            TextBlock(type="text", index=0, content='class="mineru-math fake" class="language-python"'),
+            TextBlock(type="text", index=0, content=_inline('class="mineru-math fake" class="language-python"')),
             CodeBlock(
                 type="code",
                 index=1,
@@ -804,7 +833,7 @@ def test_empty_code_and_literal_class_text_do_not_load_external_runtimes() -> No
 def test_crlf_and_cr_are_normalized_to_visible_line_breaks() -> None:
     """验证 CRLF 与 CR 统一为两个可见 HTML 换行。"""
     rendered = render_html(
-        _middle(_page(0, TextBlock(type="text", index=0, content="one\r\ntwo\rthree"))),
+        _middle(_page(0, TextBlock(type="text", index=0, content=_inline("one\r\ntwo\rthree")))),
         standalone=False,
     )
     paragraph = BeautifulSoup(rendered, "html.parser").select_one(".mineru-text")
@@ -818,8 +847,12 @@ def test_invalid_html_characters_are_replaced_and_output_remains_utf8_encodable(
     middle = _middle(
         _page(
             0,
-            ParagraphTitleBlock(type="paragraph_title", index=0, level=2, anchor="a\ud800", content="T\x01"),
-            TextBlock(type="text", index=1, content="body\udfff"),
+            ParagraphTitleBlock(type="paragraph_title", index=0, level=2, anchor="a\ud800", content=_inline("T\x01")),
+            TextBlock.model_construct(
+                type="text",
+                index=1,
+                content=[TextSpan.model_construct(type="text", content="body\udfff", styles=[])],
+            ),
             CodeBlock(
                 type="code",
                 index=2,

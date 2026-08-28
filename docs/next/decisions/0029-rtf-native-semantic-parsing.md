@@ -6,7 +6,7 @@
 
 ## 背景
 
-RTF 是带有 group、control word、destination、代码页和可嵌入二进制素材的结构化文档格式。把它当作普通文本会丢失标题、列表、表格、图片、公式和脚注；调用 LibreOffice、Pandoc 或平台专属转换器又会引入部署、性能和跨平台差异。项目需要让 `.rtf` 与现有 Office 格式进入相同的稳定 `doc_analyze()` / Middle JSON 2.0 链路。
+RTF 是带有 group、control word、destination、代码页和可嵌入二进制素材的结构化文档格式。把它当作普通文本会丢失标题、列表、表格、图片、公式和脚注；调用 LibreOffice、Pandoc 或平台专属转换器又会引入部署、性能和跨平台差异。项目需要让 `.rtf` 与现有 Office 格式进入相同的稳定 `doc_analyze()` / Middle JSON 3.0 链路。
 
 ## 决策
 
@@ -42,5 +42,5 @@ RTF 是带有 group、control word、destination、代码页和可嵌入二进�
 ## 影响
 
 - 现代 CLI、API Server、mineru-kit 和 doclib 自动接受 RTF，并按 Office 的本地 Flash-only tier/remote 规则处理。
-- `file_suffix="rtf"` 成为 Middle JSON 2.0 的稳定公开值。
+- `file_suffix="rtf"` 成为 Middle JSON 3.0 的稳定公开值。
 - RTF 不提供物理页、坐标或 OCR 版式语义；需要这些能力时应由调用方显式转换为 PDF 后另行解析。

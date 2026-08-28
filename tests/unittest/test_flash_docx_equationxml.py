@@ -27,26 +27,20 @@ from _docx_equationxml_test_utils import (
     build_word_2003_fraction_equation_xml,
 )
 from _mtef_test_utils import formula_corpus
+from _span_test_utils import equation, inline as text_spans
 
 
 def _equation_contents(pages: list[list[dict]]) -> list[str]:
     """按分页顺序提取独立公式 block 的 LaTeX 内容。"""
 
-    return [
-        block["content"]
-        for page in pages
-        for block in page
-        if block["type"] == BlockType.EQUATION
-    ]
+    return [block["content"] for page in pages for block in page if block["type"] == BlockType.EQUATION]
 
 
 def _invalid_equationxml_with_multiple_math() -> str:
     """构造包含两个 ``m:oMath`` 的非规范 Equation XML。"""
 
     root = etree.fromstring(build_word_2003_equation_xml("x").encode())
-    math_paragraph = root.find(
-        f".//{{{M_NS}}}oMathPara"
-    )
+    math_paragraph = root.find(f".//{{{M_NS}}}oMathPara")
     assert math_paragraph is not None
     second = etree.SubElement(math_paragraph, f"{{{M_NS}}}oMath")
     run = etree.SubElement(second, f"{{{M_NS}}}r")
@@ -81,10 +75,7 @@ def test_equationxml_decoder_converts_spec_document_and_fraction() -> None:
     decoder = DocxEquationXmlDecoder()
 
     assert decoder.decode(build_word_2003_equation_xml()) == "x+y"
-    assert (
-        decoder.decode(build_word_2003_fraction_equation_xml())
-        == r"\frac{a}{b}"
-    )
+    assert decoder.decode(build_word_2003_fraction_equation_xml()) == r"\frac{a}{b}"
 
 
 @pytest.mark.parametrize(
@@ -157,36 +148,24 @@ def test_docx_equationxml_standalone_inline_table_and_textbox_flows() -> None:
     """验证正文独立、行内、表格和文本框 Equation XML 输出语义。"""
 
     equation_xml = build_word_2003_equation_xml()
-    standalone = DocxModel().predict(
-        BytesIO(build_equationxml_docx([equation_xml]))
-    )
-    inline = DocxModel().predict(
-        BytesIO(build_equationxml_docx([equation_xml], inline=True))
-    )
-    table = DocxModel().predict(
-        BytesIO(build_equationxml_docx([equation_xml], table=True))
-    )
-    textbox = DocxModel().predict(
-        BytesIO(build_equationxml_docx([equation_xml], textbox=True))
-    )
+    standalone = DocxModel().predict(BytesIO(build_equationxml_docx([equation_xml])))
+    inline = DocxModel().predict(BytesIO(build_equationxml_docx([equation_xml], inline=True)))
+    table = DocxModel().predict(BytesIO(build_equationxml_docx([equation_xml], table=True)))
+    textbox = DocxModel().predict(BytesIO(build_equationxml_docx([equation_xml], textbox=True)))
 
-    assert standalone == [
-        [{"type": BlockType.EQUATION, "content": "x+y"}]
-    ]
+    assert standalone == [[{"type": BlockType.EQUATION, "content": "x+y"}]]
     assert inline == [
         [
             {
                 "type": BlockType.TEXT,
-                "content": "before <eq>x+y</eq> after",
+                "content": [*text_spans("before "), equation("x+y"), *text_spans(" after")],
             }
         ]
     ]
     assert table[0][0]["type"] == BlockType.TABLE
     assert "<eq>x+y</eq>" in table[0][0]["content"]
     assert "<img" not in table[0][0]["content"]
-    assert textbox == [
-        [{"type": BlockType.EQUATION, "content": "x+y"}]
-    ]
+    assert textbox == [[{"type": BlockType.EQUATION, "content": "x+y"}]]
 
 
 def test_docx_equationxml_title_list_header_and_footer_flows() -> None:
@@ -224,7 +203,7 @@ def test_docx_equationxml_title_list_header_and_footer_flows() -> None:
     assert title[0][0] == {
         "type": BlockType.DOC_TITLE,
         "level": 1,
-        "content": "before <eq>x</eq> after",
+        "content": [*text_spans("before "), equation("x"), *text_spans(" after")],
     }
     assert bullet == [
         [
@@ -234,7 +213,7 @@ def test_docx_equationxml_title_list_header_and_footer_flows() -> None:
                 "content": [
                     {
                         "type": BlockType.TEXT,
-                        "content": "before <eq>x</eq> after",
+                        "content": [*text_spans("before "), equation("x"), *text_spans(" after")],
                     }
                 ],
                 "ilevel": 0,
@@ -243,10 +222,10 @@ def test_docx_equationxml_title_list_header_and_footer_flows() -> None:
     ]
     assert header_footer == [
         [
-            {"type": BlockType.HEADER, "content": "<eq>x</eq>"},
+            {"type": BlockType.HEADER, "content": [equation("x")]},
             {
                 "type": BlockType.FOOTER,
-                "content": r"<eq>\frac{a}{b}</eq>",
+                "content": [equation(r"\frac{a}{b}")],
             },
         ]
     ]
@@ -285,19 +264,11 @@ def test_docx_equationxml_precedence_and_preview_fallback() -> None:
             )
         )
     )
-    preview = DocxModel().predict(
-        BytesIO(build_equationxml_docx(["<broken"]))
-    )
+    preview = DocxModel().predict(BytesIO(build_equationxml_docx(["<broken"])))
 
-    assert native_omml == [
-        [{"type": BlockType.EQUATION, "content": "z"}]
-    ]
-    assert equationxml_over_mtef == [
-        [{"type": BlockType.EQUATION, "content": "x"}]
-    ]
-    assert mtef_over_bad_equationxml == [
-        [{"type": BlockType.EQUATION, "content": mtef_latex}]
-    ]
+    assert native_omml == [[{"type": BlockType.EQUATION, "content": "z"}]]
+    assert equationxml_over_mtef == [[{"type": BlockType.EQUATION, "content": "x"}]]
+    assert mtef_over_bad_equationxml == [[{"type": BlockType.EQUATION, "content": mtef_latex}]]
     assert len(preview[0]) == 1
     assert preview[0][0]["type"] == BlockType.IMAGE
 
@@ -306,9 +277,7 @@ def test_docx_equationxml_same_payload_is_not_semantically_deduplicated() -> Non
     """验证缓存只减少解码成本，不合并两个独立公式 shape。"""
 
     equation_xml = build_word_2003_equation_xml("x")
-    pages = DocxModel().predict(
-        BytesIO(build_equationxml_docx([equation_xml, equation_xml]))
-    )
+    pages = DocxModel().predict(BytesIO(build_equationxml_docx([equation_xml, equation_xml])))
 
     assert _equation_contents(pages) == ["x", "x"]
 
@@ -335,13 +304,7 @@ def test_docx_equationxml_shared_preview_is_suppressed_per_shape() -> None:
 def test_docx_equationxml_attribute_is_unescaped_exactly_once() -> None:
     """验证外层属性和内层 XML 实体各解码一次，不发生二次展开。"""
 
-    pages = DocxModel().predict(
-        BytesIO(
-            build_equationxml_docx(
-                [build_word_2003_equation_xml("x&y")]
-            )
-        )
-    )
+    pages = DocxModel().predict(BytesIO(build_equationxml_docx([build_word_2003_equation_xml("x&y")])))
 
     assert _equation_contents(pages) == [r"x\&y"]
 
@@ -349,15 +312,11 @@ def test_docx_equationxml_attribute_is_unescaped_exactly_once() -> None:
 def test_docx_equationxml_analyze_lifecycle_and_strict_contracts() -> None:
     """验证 Equation XML 贯穿同步异步 Analyze 且调用方流保持打开。"""
 
-    file_bytes = build_equationxml_docx(
-        [build_word_2003_fraction_equation_xml()]
-    )
+    file_bytes = build_equationxml_docx([build_word_2003_fraction_equation_xml()])
     stream = BytesIO(file_bytes)
     pages = DocxModel().predict(stream)
     middle, model = doc_analyze(file_bytes, file_suffix="docx")
-    async_middle, async_model = asyncio.run(
-        aio_doc_analyze(file_bytes, file_suffix="docx")
-    )
+    async_middle, async_model = asyncio.run(aio_doc_analyze(file_bytes, file_suffix="docx"))
 
     assert not stream.closed
     assert _equation_contents(pages) == [r"\frac{a}{b}"]
@@ -374,18 +333,10 @@ def test_docx_equationxml_converter_reuse_resets_decoder_state() -> None:
     """验证 converter 复用时页、缓存、资源预算和告警状态均重置。"""
 
     converter = DocxConverter()
-    converter.convert(
-        BytesIO(
-            build_equationxml_docx([build_word_2003_equation_xml("x")])
-        )
-    )
+    converter.convert(BytesIO(build_equationxml_docx([build_word_2003_equation_xml("x")])))
     assert _equation_contents(converter.pages) == ["x"]
 
-    converter.convert(
-        BytesIO(
-            build_equationxml_docx([build_word_2003_equation_xml("y")])
-        )
-    )
+    converter.convert(BytesIO(build_equationxml_docx([build_word_2003_equation_xml("y")])))
     assert _equation_contents(converter.pages) == ["y"]
 
 

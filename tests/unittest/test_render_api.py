@@ -1,4 +1,5 @@
 from __future__ import annotations
+from _span_test_utils import inline as _inline
 
 from copy import deepcopy
 from io import BytesIO
@@ -47,7 +48,7 @@ def _png_bytes() -> bytes:
 
 def test_unified_render_dispatches_all_native_output_types_without_mutation() -> None:
     """验证统一入口默认分发四种原生结果且不修改输入。"""
-    middle = _middle(_page(0, TextBlock(type="text", index=0, content="hello")))
+    middle = _middle(_page(0, TextBlock(type="text", index=0, content=_inline("hello"))))
     original = deepcopy(middle)
 
     markdown = render(middle, RenderFormat.MARKDOWN)
@@ -66,8 +67,8 @@ def test_unified_render_dispatches_all_native_output_types_without_mutation() ->
 def test_unified_render_forwards_format_specific_options() -> None:
     """验证分页模式、HTML 文档形态和 Structured Content 资源地址分别透传。"""
     middle = _middle(
-        _page(0, TextBlock(type="text", index=0, content="first-")),
-        _page(1, TextBlock(type="text", index=0, content="second", continues_prev=True)),
+        _page(0, TextBlock(type="text", index=0, content=_inline("first-"))),
+        _page(1, TextBlock(type="text", index=0, content=_inline("second"), continues_prev=True)),
     )
     image_middle = _middle(
         _page(

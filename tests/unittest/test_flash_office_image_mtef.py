@@ -35,6 +35,7 @@ from _docx_equationxml_test_utils import (
     build_equationxml_docx,
     build_word_2003_equation_xml,
 )
+from _span_test_utils import equation, inline as text_spans, inline_text
 from _image_mtef_test_utils import (
     apps_mfcc_comments,
     baseline_wmf_comment,
@@ -61,22 +62,13 @@ from _ooxml_mtef_test_utils import (
 def _equation_contents(pages: list[list[dict]]) -> list[str]:
     """按分页顺序收集独立 equation block 内容。"""
 
-    return [
-        block["content"]
-        for page in pages
-        for block in page
-        if block.get("type") == BlockType.EQUATION
-    ]
+    return [block["content"] for page in pages for block in page if block.get("type") == BlockType.EQUATION]
 
 
 def _has_image(pages: list[list[dict]]) -> bool:
     """判断 model-list 是否至少保留一个图片 block。"""
 
-    return any(
-        block.get("type") == BlockType.IMAGE
-        for page in pages
-        for block in page
-    )
+    return any(block.get("type") == BlockType.IMAGE for page in pages for block in page)
 
 
 def _wmf_formula(mtef: bytes) -> bytes:
@@ -213,24 +205,12 @@ def test_doc_image_comment_equation_enters_nested_table_html() -> None:
     nested = DocTable(
         cp_start=1,
         cp_end=2,
-        rows=[
-            DocTableRow(
-                cells=[
-                    DocTableCell(
-                        blocks=[DocImage(cp=1, payload=payload)]
-                    )
-                ]
-            )
-        ],
+        rows=[DocTableRow(cells=[DocTableCell(blocks=[DocImage(cp=1, payload=payload)])])],
     )
     table = DocTable(
         cp_start=0,
         cp_end=2,
-        rows=[
-            DocTableRow(
-                cells=[DocTableCell(blocks=[paragraph, nested])]
-            )
-        ],
+        rows=[DocTableRow(cells=[DocTableCell(blocks=[paragraph, nested])])],
     )
 
     html = DocConverter._table_html(table)
@@ -247,24 +227,16 @@ def test_docx_picture_comment_flows_inline_table_header_and_standalone() -> None
     wmf = _wmf_formula(first[1])
     gif = build_gif_with_mtef(second[1], chunk_size=5)
     standalone = DocxModel().predict(BytesIO(build_image_docx(wmf)))
-    inline = DocxModel().predict(
-        BytesIO(build_image_docx(gif, inline=True))
-    )
-    table = DocxModel().predict(
-        BytesIO(build_image_docx(gif, table=True))
-    )
-    header = DocxModel().predict(
-        BytesIO(build_image_docx(gif, header=True))
-    )
+    inline = DocxModel().predict(BytesIO(build_image_docx(gif, inline=True)))
+    table = DocxModel().predict(BytesIO(build_image_docx(gif, table=True)))
+    header = DocxModel().predict(BytesIO(build_image_docx(gif, header=True)))
 
-    assert standalone == [
-        [{"type": BlockType.EQUATION, "content": first[2]}]
-    ]
+    assert standalone == [[{"type": BlockType.EQUATION, "content": first[2]}]]
     assert inline == [
         [
             {
                 "type": BlockType.TEXT,
-                "content": f"before <eq>{second[2]}</eq> after",
+                "content": [*text_spans("before "), equation(second[2]), *text_spans(" after")],
             }
         ]
     ]
@@ -275,7 +247,7 @@ def test_docx_picture_comment_flows_inline_table_header_and_standalone() -> None
         [
             {
                 "type": BlockType.HEADER,
-                "content": f"<eq>{second[2]}</eq>",
+                "content": [equation(second[2])],
             }
         ]
     ]
@@ -308,12 +280,10 @@ def test_docx_picture_comment_flows_title_and_list() -> None:
     assert title[0][0] == {
         "type": BlockType.DOC_TITLE,
         "level": 1,
-        "content": f"before <eq>{expected}</eq> after",
+        "content": [*text_spans("before "), equation(expected), *text_spans(" after")],
     }
     assert bullet[0][0]["type"] == BlockType.LIST
-    assert bullet[0][0]["content"][0]["content"] == (
-        f"before <eq>{expected}</eq> after"
-    )
+    assert inline_text(bullet[0][0]["content"][0]["content"]) == f"before {expected} after"
 
 
 @pytest.mark.parametrize("carrier", ["wmf", "gif"])
@@ -321,11 +291,7 @@ def test_pptx_picture_comment_equation_keeps_shape_order(carrier: str) -> None:
     """验证 PPTX 普通图片 comment 以原 shape 顺序输出 equation。"""
 
     _name, mtef, expected = v5_formula_corpus()[2]
-    image = (
-        _wmf_formula(mtef)
-        if carrier == "wmf"
-        else build_gif_with_mtef(mtef, chunk_size=7)
-    )
+    image = _wmf_formula(mtef) if carrier == "wmf" else build_gif_with_mtef(mtef, chunk_size=7)
 
     pages = PptxModel().predict(BytesIO(build_image_pptx(image)))
 
@@ -340,11 +306,7 @@ def test_pptx_notes_picture_comment_becomes_page_footnote(
     """验证 PPTX notes 中的 WMF/GIF 图片公式输出 page_footnote。"""
 
     _name, mtef, expected = v5_formula_corpus()[0]
-    image = (
-        _wmf_formula(mtef)
-        if carrier == "wmf"
-        else build_gif_with_mtef(mtef)
-    )
+    image = _wmf_formula(mtef) if carrier == "wmf" else build_gif_with_mtef(mtef)
     pages = PptxModel().predict(
         BytesIO(
             build_image_pptx(
@@ -358,7 +320,7 @@ def test_pptx_notes_picture_comment_becomes_page_footnote(
         [
             {
                 "type": BlockType.PAGE_FOOTNOTE,
-                "content": f"<eq>{expected}</eq>",
+                "content": [equation(expected)],
             }
         ]
     ]
@@ -382,7 +344,7 @@ def test_pptx_notes_bad_ole_native_uses_wmf_preview_comment() -> None:
         [
             {
                 "type": BlockType.PAGE_FOOTNOTE,
-                "content": f"<eq>{expected}</eq>",
+                "content": [equation(expected)],
             }
         ]
     ]
@@ -395,17 +357,9 @@ def test_xlsx_image_comment_equation_enters_visual_and_table_paths(
     """验证 XLSX 普通 WMF/GIF comment 按 anchor 输出或进入表格 cell。"""
 
     _name, mtef, expected = v5_formula_corpus()[0]
-    image = (
-        _wmf_formula(mtef)
-        if carrier == "wmf"
-        else build_gif_with_mtef(mtef, chunk_size=3)
-    )
-    standalone = XlsxModel().predict(
-        BytesIO(build_image_xlsx(image))
-    )
-    table = XlsxModel().predict(
-        BytesIO(build_image_xlsx(image, cell_value="value"))
-    )
+    image = _wmf_formula(mtef) if carrier == "wmf" else build_gif_with_mtef(mtef, chunk_size=3)
+    standalone = XlsxModel().predict(BytesIO(build_image_xlsx(image)))
+    table = XlsxModel().predict(BytesIO(build_image_xlsx(image, cell_value="value")))
 
     assert _equation_contents(standalone) == [expected]
     assert _equation_contents(table) == []
@@ -624,11 +578,7 @@ def test_modern_converter_reuse_resets_image_comment_decoder() -> None:
     ]
 
     for converter, builder in cases:
-        converter.convert(
-            BytesIO(builder(build_gif_with_mtef(first[1])))
-        )
+        converter.convert(BytesIO(builder(build_gif_with_mtef(first[1]))))
         assert _equation_contents(converter.pages) == [first[2]]
-        converter.convert(
-            BytesIO(builder(build_gif_with_mtef(second[1])))
-        )
+        converter.convert(BytesIO(builder(build_gif_with_mtef(second[1]))))
         assert _equation_contents(converter.pages) == [second[2]]

@@ -3,8 +3,6 @@
 
 from __future__ import annotations
 
-import re
-
 from ....types import RAW_ALGORITHM, RAW_CAPTION, RAW_FOOTNOTE, RAW_FORMULA_NUMBER, RAW_PHONETIC, BlockType
 
 LAYOUT_BASE_BATCH_SIZE = 1
@@ -72,8 +70,6 @@ LOCAL_LAYOUT_IMAGE_BLOCK_AREA_TYPES = {
     BlockType.IMAGE_FOOTNOTE,
     RAW_FOOTNOTE,
 }
-_INLINE_FORMULA_PATTERN = re.compile(r"\\\((.*?)\\\)")
-
 VLM_LAYOUT_LABEL_MAP = {
     "abstract": BlockType.TEXT,
     "algorithm": BlockType.CODE,

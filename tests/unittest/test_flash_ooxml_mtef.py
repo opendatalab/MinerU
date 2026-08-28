@@ -27,17 +27,13 @@ from _ooxml_mtef_test_utils import (
     build_equation_pptx,
     build_equation_xlsx,
 )
+from _span_test_utils import equation, inline as text_spans
 
 
 def _equation_contents(pages: list[list[dict]]) -> list[str]:
     """按分页顺序返回所有独立 equation block 内容。"""
 
-    return [
-        block["content"]
-        for page in pages
-        for block in page
-        if block.get("type") == BlockType.EQUATION
-    ]
+    return [block["content"] for page in pages for block in page if block.get("type") == BlockType.EQUATION]
 
 
 def test_ooxml_equation_decoder_enforces_scope_icon_and_total_budget() -> None:
@@ -107,31 +103,21 @@ def test_docx_mtef_flows_inline_table_header_footer_and_omml_precedence() -> Non
     first = corpus[0]
     second = corpus[1]
 
-    inline = DocxModel().predict(
-        BytesIO(build_equation_docx([first[1]], inline=True))
-    )
-    table = DocxModel().predict(
-        BytesIO(build_equation_docx([first[1]], table=True))
-    )
-    header_footer = DocxModel().predict(
-        BytesIO(build_equation_docx([first[1], second[1]], header_footer=True))
-    )
-    alternate = DocxModel().predict(
-        BytesIO(build_equation_docx([first[1]], alternate_omml=True))
-    )
-    textbox = DocxModel().predict(
-        BytesIO(build_equation_docx([first[1]], textbox=True))
-    )
+    inline = DocxModel().predict(BytesIO(build_equation_docx([first[1]], inline=True)))
+    table = DocxModel().predict(BytesIO(build_equation_docx([first[1]], table=True)))
+    header_footer = DocxModel().predict(BytesIO(build_equation_docx([first[1], second[1]], header_footer=True)))
+    alternate = DocxModel().predict(BytesIO(build_equation_docx([first[1]], alternate_omml=True)))
+    textbox = DocxModel().predict(BytesIO(build_equation_docx([first[1]], textbox=True)))
 
-    assert inline == [[{"type": BlockType.TEXT, "content": "before <eq>x+y</eq> after"}]]
+    assert inline == [[{"type": BlockType.TEXT, "content": [*text_spans("before "), equation("x+y"), *text_spans(" after")]}]]
     assert table[0][0]["type"] == BlockType.TABLE
     assert "<eq>x+y</eq>" in table[0][0]["content"]
     assert header_footer == [
         [
-            {"type": BlockType.HEADER, "content": "<eq>x+y</eq>"},
+            {"type": BlockType.HEADER, "content": [equation("x+y")]},
             {
                 "type": BlockType.FOOTER,
-                "content": r"<eq>\frac{a+b}{c}</eq>",
+                "content": [equation(r"\frac{a+b}{c}")],
             },
         ]
     ]
@@ -163,9 +149,7 @@ def test_omml_precedes_mtef_and_preview_for_the_same_ooxml_object() -> None:
     ]
 
     for model, file_bytes in cases:
-        assert model.predict(BytesIO(file_bytes)) == [
-            [{"type": BlockType.EQUATION, "content": "z"}]
-        ]
+        assert model.predict(BytesIO(file_bytes)) == [[{"type": BlockType.EQUATION, "content": "z"}]]
 
 
 @pytest.mark.parametrize(
@@ -223,9 +207,7 @@ def test_ooxml_icon_mode_preserves_preview_instead_of_expanding_formula(
         "xlsx": XlsxModel(),
     }
 
-    pages = models[file_suffix].predict(
-        BytesIO(builders[file_suffix]([mtef], show_as_icon=True))
-    )
+    pages = models[file_suffix].predict(BytesIO(builders[file_suffix]([mtef], show_as_icon=True)))
 
     assert pages[0][0]["type"] == BlockType.IMAGE
     assert all(block["type"] != BlockType.EQUATION for block in pages[0])
@@ -236,15 +218,13 @@ def test_pptx_notes_equation_is_appended_as_page_footnote() -> None:
 
     _name, mtef, expected = formula_corpus()[0]
 
-    pages = PptxModel().predict(
-        BytesIO(build_equation_pptx([mtef], notes=True))
-    )
+    pages = PptxModel().predict(BytesIO(build_equation_pptx([mtef], notes=True)))
 
     assert pages == [
         [
             {
                 "type": BlockType.PAGE_FOOTNOTE,
-                "content": f"<eq>{expected}</eq>",
+                "content": [equation(expected)],
             }
         ]
     ]
@@ -256,9 +236,7 @@ def test_xlsx_equation_anchor_variants_and_tail_fallback(anchor_mode: str) -> No
 
     _name, mtef, expected = formula_corpus()[0]
 
-    pages = XlsxModel().predict(
-        BytesIO(build_equation_xlsx([mtef], anchor_mode=anchor_mode))
-    )
+    pages = XlsxModel().predict(BytesIO(build_equation_xlsx([mtef], anchor_mode=anchor_mode)))
 
     assert pages == [[{"type": BlockType.EQUATION, "content": expected}]]
 
@@ -267,12 +245,8 @@ def test_xlsx_mtef_inside_table_and_hidden_sheet_behavior() -> None:
     """验证表内公式不重复输出，隐藏公式工作表沿用现有跳过策略。"""
 
     _name, mtef, expected = formula_corpus()[0]
-    table_pages = XlsxModel().predict(
-        BytesIO(build_equation_xlsx([mtef], cell_value="value"))
-    )
-    hidden_pages = XlsxModel().predict(
-        BytesIO(build_equation_xlsx([mtef], hidden=True))
-    )
+    table_pages = XlsxModel().predict(BytesIO(build_equation_xlsx([mtef], cell_value="value")))
+    hidden_pages = XlsxModel().predict(BytesIO(build_equation_xlsx([mtef], hidden=True)))
 
     assert len(table_pages[0]) == 1
     assert table_pages[0][0]["type"] == BlockType.TABLE
@@ -285,9 +259,7 @@ def test_xlsx_linked_equation_never_loads_external_target() -> None:
 
     _name, mtef, _expected = formula_corpus()[0]
 
-    pages = XlsxModel().predict(
-        BytesIO(build_equation_xlsx([mtef], linked=True))
-    )
+    pages = XlsxModel().predict(BytesIO(build_equation_xlsx([mtef], linked=True)))
 
     assert pages[0][0]["type"] == BlockType.IMAGE
     assert all(block["type"] != BlockType.EQUATION for block in pages[0])

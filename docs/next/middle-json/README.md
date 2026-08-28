@@ -7,23 +7,18 @@
 
 ## 当前事实
 
-当前 Middle JSON 的事实标准是 `mineru/types.py` 中的 typed document model:
+当前 Middle JSON 的事实标准是 `mineru/types.py` 中的 schema 3.0 typed document model:
 
 ```text
+MiddleJson
+  -> pages: list[PageInfo]
 PageInfo
-  -> preproc_blocks: list[Block]
-  -> para_blocks: list[Block]
-  -> discarded_blocks: list[Block]
-
-Block
-  -> lines: list[Line]
-  -> blocks: list[Block]
-
-Line
-  -> spans: list[Span]
+  -> blocks: list[PageBlock]
+InlineContentBlock
+  -> content: list[InlineSpan]
 ```
 
-这套结构已经被 parser、doclib、render 和 parse-server 共同使用。旧底稿中“需要定义 canonical schema”的方向仍然成立，但下一步应以当前 dataclass 为基准，而不是另起一套独立结构。
+这套结构已经被 parser、doclib、render 和 parse-server 共同使用。旧版带 bbox/图片职责的 Line/Span 不会恢复；当前 InlineSpan 只表达行内文字、公式、代码与链接。
 
 ## 为什么还需要整理
 
@@ -40,8 +35,8 @@ Line
 
 Middle JSON 下一版要达到以下目标:
 
-1. 统一顶层 envelope，运行时只接受当前 `pages` 结构。
-2. 明确 `PageInfo` / `Block` / `Line` / `Span` 字段契约。
+1. 统一顶层 envelope，运行时只接受 schema 3.0 `pages` 结构。
+2. 明确 `PageInfo` / `Block` / `InlineSpan` 字段契约。
 3. 为每个 backend 提供 normalization 任务清单。
 4. 定义 Agent 可引用的稳定 locator 规则。
 5. 明确 render 层依赖哪些字段，逐步移除对 `_backend` 的长期依赖。
@@ -65,7 +60,7 @@ Middle JSON 下一版要达到以下目标:
 
 - 稳定 page/block locator。
 - 可从 Agent answer 追溯到 page / block / bbox / source hash。
-- 历史 middle json 可迁移到当前 envelope。
+- 旧 middle json 能被明确识别为 stale 并触发重新解析。
 - `ParseResult.from_dict()` 可以恢复 API / 缓存结果。
 - 默认选择 / tier 产生的不同质量结果能被 doclib 正确区分和缓存。
 

@@ -21,40 +21,11 @@ logger = logging.getLogger("mineru.compaction")
 
 
 def _normalize_batch_pages(batch_payload: dict[str, Any]) -> list[dict[str, Any]]:
-    """把 batch JSON 的 pages 统一为 2.0 schema 的 page dict 列表。
-
-    2.0 batch：page 只有 page_idx + blocks，直接用。
-    1.0 batch：page 含 preproc_blocks/para_blocks/discarded_blocks/page_size，
-    走 legacy_schema_adapter 回推为 raw model_list，再走 model_json_to_pages 转 2.0。
-    """
+    """只接受 3.0 batch；旧缓存由正常缺失路径重新调度解析。"""
+    if batch_payload.get("schema_version") != MIDDLE_JSON_SCHEMA_VERSION:
+        raise ValueError("stale Middle JSON cache requires source reparse")
     raw_pages = batch_payload.get("pages", [])
-    if batch_payload.get("schema_version") == MIDDLE_JSON_SCHEMA_VERSION:
-        return raw_pages
-
-    # 1.0 batch：走 legacy 适配器转换
-    from ...backend.postprocess.legacy_schema_adapter import legacy_page_to_model_list
-    from ...backend.postprocess.pages import model_json_to_pages
-    from ...parser.base import (
-        _LEGACY_DEFAULT_EFFORT,
-        _LEGACY_DEFAULT_FILE_SUFFIX,
-        _LEGACY_DEFAULT_PARSE_MODE,
-    )
-    from ...types import ModelJson
-    from ...version import __version__ as mineru_version
-
-    model_list = [legacy_page_to_model_list(page) for page in raw_pages]
-    if not model_list or not any(model_list):
-        return []
-    model_json = ModelJson(
-        pages=model_list,
-        page_index_map=[],
-        file_suffix=_LEGACY_DEFAULT_FILE_SUFFIX,
-        effort=_LEGACY_DEFAULT_EFFORT,
-        parse_mode=_LEGACY_DEFAULT_PARSE_MODE,
-        mineru_version=mineru_version,
-    )
-    pages = model_json_to_pages(model_json)
-    return [page.to_dict() for page in pages]
+    return raw_pages if isinstance(raw_pages, list) else []
 
 
 class Compaction:

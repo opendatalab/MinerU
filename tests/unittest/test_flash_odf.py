@@ -33,6 +33,7 @@ from mineru.render import render_docx, render_html, render_markdown, render_stru
 from mineru.types import BlockType
 
 from _odf_test_utils import _PIXEL_PNG, build_odf_package, build_odp_fixture, build_ods_fixture, build_odt_fixture
+from _span_test_utils import inline, inline_text, visible_content
 
 
 @pytest.mark.parametrize(
@@ -81,12 +82,19 @@ def test_odt_recovers_structure_and_all_renderers() -> None:
     assert BlockType.PAGE_FOOTNOTE in raw_types
     assert BlockType.HEADER in raw_types
     assert BlockType.FOOTER in raw_types
-    assert any('style="bold"' in str(block.get("content")) for block in raw_blocks)
+    assert any(
+        any(isinstance(span, dict) and "bold" in span.get("styles", []) for span in block.get("content", []))
+        for block in raw_blocks
+        if isinstance(block.get("content"), list)
+    )
     assert any(
         "rowspan" not in str(block.get("content")) and 'colspan="2"' in str(block.get("content")) for block in raw_blocks
     )
     assert any(block.get("content") == r"\frac{x}{2}" for block in raw_blocks)
-    assert any(block.get("type") == BlockType.PAGE_FOOTNOTE and "Note body" in block.get("content", "") for block in raw_blocks)
+    assert any(
+        block.get("type") == BlockType.PAGE_FOOTNOTE and "Note body" in visible_content(block.get("content"))
+        for block in raw_blocks
+    )
 
     markdown = render_markdown(middle)
     html_output = render_html(middle)
@@ -113,7 +121,7 @@ def test_odt_promotes_numbered_heading_inside_list() -> None:
 </office:document-content>"""
     middle, _ = doc_analyze(build_odf_package("odt", content), file_suffix="odt")
     assert middle.pages[0].blocks[0].type == BlockType.PARAGRAPH_TITLE
-    assert middle.pages[0].blocks[0].content == "1 Chapter"  # type: ignore[union-attr]
+    assert inline_text(middle.pages[0].blocks[0].content) == "1 Chapter"  # type: ignore[union-attr]
 
 
 def test_odt_inherits_document_title_semantics_from_parent_style() -> None:
@@ -134,7 +142,7 @@ def test_odt_inherits_document_title_semantics_from_parent_style() -> None:
 
     pages = OdtModel().predict(BytesIO(build_odf_package("odt", content, styles_xml=styles)))
 
-    assert pages == [[{"type": BlockType.DOC_TITLE, "level": 1, "content": "Inherited title"}]]
+    assert pages == [[{"type": BlockType.DOC_TITLE, "level": 1, "content": inline("Inherited title")}]]
 
 
 def test_odt_preserves_explicit_space_count() -> None:
@@ -147,7 +155,7 @@ def test_odt_preserves_explicit_space_count() -> None:
 
     pages = OdtModel().predict(BytesIO(build_odf_package("odt", content)))
 
-    assert pages == [[{"type": BlockType.TEXT, "content": "A    B"}]]
+    assert pages == [[{"type": BlockType.TEXT, "content": inline("A    B")}]]
 
 
 def test_odt_bounds_overlong_explicit_space_count_before_integer_conversion() -> None:
@@ -194,8 +202,10 @@ def test_odt_list_lifts_visual_blocks_outside_strict_list() -> None:
     )
 
     assert [block.type for block in middle.pages[0].blocks] == [BlockType.LIST, BlockType.IMAGE, BlockType.LIST]
-    assert [child.content for child in middle.pages[0].blocks[0].content] == ["3. Illustrated item"]  # type: ignore[union-attr]
-    assert [child.content for child in middle.pages[0].blocks[2].content] == ["4. Next item"]  # type: ignore[union-attr]
+    assert [inline_text(child.content) for child in middle.pages[0].blocks[0].content] == [  # type: ignore[union-attr]
+        "3. Illustrated item"
+    ]
+    assert [inline_text(child.content) for child in middle.pages[0].blocks[2].content] == ["4. Next item"]  # type: ignore[union-attr]
 
 
 def test_odt_ordered_list_normalizes_marker_format_and_item_restarts() -> None:
@@ -217,14 +227,16 @@ def test_odt_ordered_list_normalizes_marker_format_and_item_restarts() -> None:
     expected = ["2. First", "3. Second", "4. Third"]
     list_block = middle.pages[0].blocks[0]
 
-    assert [child.content for child in list_block.content] == expected  # type: ignore[union-attr]
+    assert [inline_text(child.content) for child in list_block.content] == expected  # type: ignore[union-attr]
     assert render_markdown(middle).splitlines() == expected
     assert all(label in render_html(middle, standalone=False) for label in ("First", "Second", "Third"))
     structured = render_structured_content(middle)
     assert structured["pages"][0]["blocks"][0]["content"] == "\n".join(expected)
     with ZipFile(BytesIO(render_docx(middle))) as package:
         document_xml = package.read("word/document.xml").decode("utf-8")
-    assert all(label in document_xml for label in expected)
+    document_root = etree.fromstring(document_xml.encode("utf-8"))
+    paragraph_texts = ["".join(paragraph.itertext()) for paragraph in document_root.xpath("//*[local-name()='p']")]
+    assert all(label in paragraph_texts for label in expected)
 
 
 def test_odt_list_item_joins_multiple_paragraphs_before_markers() -> None:
@@ -242,7 +254,10 @@ def test_odt_list_item_joins_multiple_paragraphs_before_markers() -> None:
     list_block = middle.pages[0].blocks[0]
 
     assert list_block.type == BlockType.LIST
-    assert [child.content for child in list_block.content] == ["- First paragraph\nSecond paragraph", "- Next item"]  # type: ignore[union-attr]
+    assert [inline_text(child.content) for child in list_block.content] == [  # type: ignore[union-attr]
+        "- First paragraph\nSecond paragraph",
+        "- Next item",
+    ]
     assert render_markdown(middle).count("- ") == 2
 
 
@@ -280,7 +295,7 @@ def test_odt_soft_page_break_is_ignored_with_inline_visual() -> None:
     pages = OdtModel().predict(BytesIO(build_odf_package("odt", content, extra_parts={"Pictures/pixel.png": _PIXEL_PNG})))
 
     assert [[block["type"] for block in page] for page in pages] == [[BlockType.TEXT, BlockType.IMAGE]]
-    assert pages[0][0]["content"] == "BeforeAfter"
+    assert inline_text(pages[0][0]["content"]) == "BeforeAfter"
 
 
 def test_odt_list_ignores_soft_page_break_and_keeps_note_on_current_page() -> None:
@@ -300,8 +315,8 @@ def test_odt_list_ignores_soft_page_break_and_keeps_note_on_current_page() -> No
 
     assert len(pages) == 1
     assert pages[0][0]["type"] == BlockType.LIST
-    assert [child["content"] for child in pages[0][0]["content"]] == ["BeforeAfter [1]", "Next"]
-    assert pages[0][1] == {"type": BlockType.PAGE_FOOTNOTE, "content": "[1] After note"}
+    assert [inline_text(child["content"]) for child in pages[0][0]["content"]] == ["BeforeAfter [1]", "Next"]
+    assert pages[0][1] == {"type": BlockType.PAGE_FOOTNOTE, "content": inline("[1] After note")}
 
 
 def test_odt_ignores_physical_breaks_and_pages_only_on_master_change() -> None:
@@ -336,7 +351,7 @@ def test_odt_ignores_physical_breaks_and_pages_only_on_master_change() -> None:
 
     pages = OdtModel().predict(BytesIO(build_odf_package("odt", content, styles_xml=styles)))
 
-    assert [[block.get("content") for block in page] for page in pages] == [
+    assert [[visible_content(block.get("content")) for block in page] for page in pages] == [
         ["BeforeSoft", "Physical", "Header A"],
         ["After", "Header B"],
     ]
@@ -385,12 +400,14 @@ def test_odt_list_master_changes_split_pages_and_preserve_numbering_notes() -> N
     second_list = next(block for block in pages[1] if block["type"] == BlockType.LIST)
     assert first_list["start"] == 3
     assert second_list["start"] == 4
-    assert [child["content"] for child in first_list["content"]] == ["First [1]"]
-    assert [child["content"] for child in second_list["content"]] == ["Second [2]", "Third"]
-    assert any(block["type"] == BlockType.PAGE_FOOTNOTE and "First note" in block["content"] for block in pages[0])
-    assert any(block["type"] == BlockType.PAGE_FOOTNOTE and "Second note" in block["content"] for block in pages[1])
-    assert any(block["type"] == BlockType.HEADER and block["content"] == "Header A" for block in pages[0])
-    assert any(block["type"] == BlockType.HEADER and block["content"] == "Header B" for block in pages[1])
+    assert [inline_text(child["content"]) for child in first_list["content"]] == ["First [1]"]
+    assert [inline_text(child["content"]) for child in second_list["content"]] == ["Second [2]", "Third"]
+    assert any(block["type"] == BlockType.PAGE_FOOTNOTE and "First note" in inline_text(block["content"]) for block in pages[0])
+    assert any(
+        block["type"] == BlockType.PAGE_FOOTNOTE and "Second note" in inline_text(block["content"]) for block in pages[1]
+    )
+    assert any(block["type"] == BlockType.HEADER and inline_text(block["content"]) == "Header A" for block in pages[0])
+    assert any(block["type"] == BlockType.HEADER and inline_text(block["content"]) == "Header B" for block in pages[1])
 
 
 def test_odt_list_can_select_nondefault_master_on_first_page() -> None:
@@ -421,8 +438,8 @@ def test_odt_list_can_select_nondefault_master_on_first_page() -> None:
     pages = OdtModel().predict(BytesIO(build_odf_package("odt", content, styles_xml=styles)))
 
     assert len(pages) == 1
-    assert any(block["type"] == BlockType.HEADER and block["content"] == "Header B" for block in pages[0])
-    assert all(block.get("content") != "Header A" for block in pages[0])
+    assert any(block["type"] == BlockType.HEADER and inline_text(block["content"]) == "Header B" for block in pages[0])
+    assert all(visible_content(block.get("content")) != "Header A" for block in pages[0])
 
 
 def test_odf_covered_placeholder_reuses_colspan_coordinate() -> None:
@@ -465,8 +482,8 @@ def test_odt_note_after_soft_page_break_stays_on_current_page() -> None:
 
     assert pages == [
         [
-            {"type": BlockType.TEXT, "content": "BeforeAfter [1]"},
-            {"type": BlockType.PAGE_FOOTNOTE, "content": "[1] After note"},
+            {"type": BlockType.TEXT, "content": inline("BeforeAfter [1]")},
+            {"type": BlockType.PAGE_FOOTNOTE, "content": inline("[1] After note")},
         ]
     ]
 
@@ -486,7 +503,7 @@ def test_ods_cell_note_emits_page_footnote() -> None:
 
     assert [block["type"] for block in pages[0]] == [BlockType.TABLE, BlockType.PAGE_FOOTNOTE]
     assert "Cell [1]" in pages[0][0]["content"]
-    assert pages[0][1]["content"] == "[1] Cell note"
+    assert inline_text(pages[0][1]["content"]) == "[1] Cell note"
 
 
 def test_odp_slide_inline_note_emits_page_footnote() -> None:
@@ -505,8 +522,8 @@ def test_odp_slide_inline_note_emits_page_footnote() -> None:
 
     assert pages == [
         [
-            {"type": BlockType.TEXT, "content": "Slide [1]"},
-            {"type": BlockType.PAGE_FOOTNOTE, "content": "[1] Inline note"},
+            {"type": BlockType.TEXT, "content": inline("Slide [1]")},
+            {"type": BlockType.PAGE_FOOTNOTE, "content": inline("[1] Inline note")},
         ]
     ]
 
@@ -521,7 +538,9 @@ def test_odp_preserves_empty_slide_chart_preview_and_notes() -> None:
     assert "Category" in chart["content"]
     assert "Value" in chart["content"]
     assert chart["image_base64"].startswith("data:image/")
-    assert any(block["type"] == BlockType.PAGE_FOOTNOTE and "Speaker note" in block["content"] for block in model.pages[2])
+    assert any(
+        block["type"] == BlockType.PAGE_FOOTNOTE and "Speaker note" in inline_text(block["content"]) for block in model.pages[2]
+    )
     assert len(middle.pages) == 3
 
 
@@ -529,7 +548,7 @@ def test_ods_skips_hidden_sheet_and_emits_tables_images_and_charts() -> None:
     """验证 ODS 可见 sheet 边界、typed value、合并结构和图表对象。"""
     middle, model = doc_analyze(build_ods_fixture(), file_suffix="ods")
     assert len(model.pages) == 2
-    assert [page[0]["content"] for page in model.pages] == ["Visible A", "Visible B"]
+    assert [inline_text(page[0]["content"]) for page in model.pages] == ["Visible A", "Visible B"]
     flattened = [block for page in model.pages for block in page]
     assert "secret" not in str(flattened)
     assert "50%" in str(flattened)
@@ -818,7 +837,7 @@ def test_odf_rejects_unsafe_hyperlinks_before_shared_renderers(target: str) -> N
     with ZipFile(BytesIO(docx)) as package:
         relationships = package.read("word/_rels/document.xml.rels").decode("utf-8")
 
-    assert pages == [[{"type": BlockType.TEXT, "content": "before click after"}]]
+    assert pages == [[{"type": BlockType.TEXT, "content": inline("before click after")}]]
     assert markdown == "before click after"
     assert target not in relationships
 
@@ -833,7 +852,7 @@ def test_odf_rejects_unsafe_hyperlinks_before_shared_renderers(target: str) -> N
     ],
 )
 def test_odf_preserves_allowed_external_and_relative_hyperlinks(target: str) -> None:
-    """验证允许协议、相对地址和 fragment 继续进入共享 hyperlink 协议。"""
+    """验证允许协议、相对地址和 fragment 直接进入 HyperlinkSpan。"""
     content = f'''<office:document-content
  xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
  xmlns:text="urn:oasis:names:tc:opendocument:xmlns:text:1.0"
@@ -842,14 +861,12 @@ def test_odf_preserves_allowed_external_and_relative_hyperlinks(target: str) -> 
  </office:text></office:body></office:document-content>'''
     pages = OdtModel().predict(BytesIO(build_odf_package("odt", content)))
 
-    assert pages == [
-        [
-            {
-                "type": BlockType.TEXT,
-                "content": f"<hyperlink><text>click</text><url>{target}</url></hyperlink>",
-            }
-        ]
-    ]
+    assert pages[0][0]["type"] == BlockType.TEXT
+    assert len(pages[0][0]["content"]) == 1
+    link = pages[0][0]["content"][0]
+    assert link["type"] == "hyperlink"
+    assert link["url"] == target
+    assert inline_text(link["content"]) == "click"
 
 
 def test_odf_preserves_title_fragment_and_drops_unemittable_text_fragment() -> None:
@@ -867,10 +884,12 @@ def test_odf_preserves_title_fragment_and_drops_unemittable_text_fragment() -> N
 
     pages = OdtModel().predict(BytesIO(build_odf_package("odt", content)))
 
-    assert pages[0][0]["content"] == ("<hyperlink><text>Title jump</text><url>#title-target</url></hyperlink> / Text jump")
+    assert inline_text(pages[0][0]["content"]) == "Title jump / Text jump"
+    assert pages[0][0]["content"][0]["type"] == "hyperlink"
+    assert pages[0][0]["content"][0]["url"] == "#title-target"
     assert pages[0][1]["type"] == BlockType.PARAGRAPH_TITLE
     assert pages[0][1]["anchor"] == "title-target"
-    assert pages[0][2] == {"type": BlockType.TEXT, "content": "Ordinary target"}
+    assert pages[0][2] == {"type": BlockType.TEXT, "content": inline("Ordinary target")}
 
 
 def test_odf_corrupt_optional_styles_and_external_image_degrade_locally() -> None:
@@ -884,7 +903,7 @@ def test_odf_corrupt_optional_styles_and_external_image_degrade_locally() -> Non
   <draw:frame><draw:image xlink:href="https://example.com/external.png"/></draw:frame>
  </office:text></office:body></office:document-content>"""
     pages = OdtModel().predict(BytesIO(build_odf_package("odt", content, styles_xml="<broken")))
-    assert pages == [[{"type": BlockType.TEXT, "content": "visible"}]]
+    assert pages == [[{"type": BlockType.TEXT, "content": inline("visible")}]]
 
 
 def test_odf_malformed_image_and_object_references_degrade_locally() -> None:
@@ -900,11 +919,11 @@ def test_odf_malformed_image_and_object_references_degrade_locally() -> None:
 
     pages = OdtModel().predict(BytesIO(build_odf_package("odt", content)))
 
-    assert pages == [[{"type": BlockType.TEXT, "content": "visible"}]]
+    assert pages == [[{"type": BlockType.TEXT, "content": inline("visible")}]]
 
 
-def test_odf_flattened_titles_and_notes_keep_literal_protocol_escaped() -> None:
-    """验证标题、演讲者备注和行内脚注压平后不会重建内部协议标签。"""
+def test_odf_flattened_titles_and_notes_keep_tag_literals_as_text_spans() -> None:
+    """验证标题、演讲者备注和行内脚注保留标签外观原文但不生成链接 Span。"""
     literal = "&lt;hyperlink&gt;&lt;text&gt;click&lt;/text&gt;&lt;url&gt;javascript:alert(1)&lt;/url&gt;&lt;/hyperlink&gt;"
     odp_content = f"""<office:document-content
  xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
@@ -928,7 +947,7 @@ def test_odf_flattened_titles_and_notes_keep_literal_protocol_escaped() -> None:
     ):
         middle, model = doc_analyze(payload, file_suffix=suffix)  # type: ignore[arg-type]
         flattened = [
-            block["content"]
+            inline_text(block["content"])
             for page in model.pages
             for block in page
             if block.get("type") in {BlockType.DOC_TITLE, BlockType.PAGE_FOOTNOTE}
@@ -939,7 +958,7 @@ def test_odf_flattened_titles_and_notes_keep_literal_protocol_escaped() -> None:
             relationships = package.read("word/_rels/document.xml.rels").decode("utf-8")
 
         assert flattened
-        assert all("&lt;hyperlink&gt;" in content and "<hyperlink>" not in content for content in flattened)
+        assert all("<hyperlink>" in content for content in flattened)
         assert "](javascript:alert(1))" not in markdown
         assert "javascript:alert(1)" not in relationships
 
@@ -978,12 +997,12 @@ def test_odf_font_weight_is_bounded_before_numeric_conversion(weight: str, expec
         if previous_limit is not None:
             sys.set_int_max_str_digits(previous_limit)
 
-    expected_content = '<text style="bold">weighted</text>' if expected_bold else "weighted"
+    expected_content = inline("weighted", styles=["bold"] if expected_bold else None)
     assert pages == [[{"type": BlockType.TEXT, "content": expected_content}]]
 
 
-def test_odf_inline_image_alt_escapes_literal_hyperlink_protocol() -> None:
-    """验证行内图片 title/desc 不会重建活动 hyperlink。"""
+def test_odf_inline_image_alt_keeps_literal_hyperlink_text_inert() -> None:
+    """验证行内图片 title/desc 保留标签外观原文但不会生成活动链接。"""
     literal = "&lt;hyperlink&gt;&lt;text&gt;click&lt;/text&gt;&lt;url&gt;javascript:alert(1)&lt;/url&gt;&lt;/hyperlink&gt;"
     content = f"""<office:document-content
      xmlns:office="urn:oasis:names:tc:opendocument:xmlns:office:1.0"
@@ -1003,8 +1022,8 @@ def test_odf_inline_image_alt_escapes_literal_hyperlink_protocol() -> None:
     with ZipFile(BytesIO(docx)) as package:
         relationships = package.read("word/_rels/document.xml.rels").decode("utf-8")
 
-    assert "&lt;hyperlink&gt;" in raw_content
-    assert "<hyperlink>" not in raw_content
+    assert "<hyperlink>" in inline_text(raw_content)
+    assert all(span.get("type") == "text" for span in raw_content)
     assert "](javascript:" not in markdown
     assert "javascript:alert(1)" not in relationships
 
@@ -1042,9 +1061,9 @@ def test_odf_unavailable_image_preserves_safe_alt_text(
     markdown = render_markdown(middle)
 
     assert model.pages[0][0]["type"] == BlockType.TEXT
-    assert "&lt;hyperlink&gt;" in raw_content
-    assert "<hyperlink>" not in raw_content
-    assert "semantic description" in raw_content
+    assert "<hyperlink>" in inline_text(raw_content)
+    assert all(span.get("type") == "text" for span in raw_content)
+    assert "semantic description" in inline_text(raw_content)
     assert "](javascript:" not in markdown
 
 
@@ -1063,8 +1082,8 @@ def test_odf_annotation_emits_page_footnote_without_metadata_in_body() -> None:
 
     body = next(block for block in pages[0] if block["type"] == BlockType.TEXT)
     annotation = next(block for block in pages[0] if block["type"] == BlockType.PAGE_FOOTNOTE)
-    assert body["content"] == "Before After"
-    assert annotation["content"] == "Review note"
+    assert inline_text(body["content"]) == "Before After"
+    assert inline_text(annotation["content"]) == "Review note"
     assert "Alice" not in str(pages) and "2026-01-01" not in str(pages)
 
 
@@ -1091,8 +1110,8 @@ def test_ods_sheet_titles_escape_literal_inline_protocol() -> None:
     with ZipFile(BytesIO(docx)) as package:
         relationships = package.read("word/_rels/document.xml.rels").decode("utf-8")
 
-    assert title.startswith("&lt;hyperlink&gt;")
-    assert "<hyperlink>" not in title
+    assert inline_text(title).startswith("<hyperlink>")
+    assert all(span.get("type") == "text" for span in title)
     assert "](javascript:" not in markdown
     assert "javascript:alert(1)" not in relationships
 
@@ -1147,7 +1166,7 @@ def test_odf_style_cycle_is_bounded_and_preserves_text() -> None:
   <style:style style:name="B" style:family="paragraph" style:parent-style-name="A"/>
  </office:styles></office:document-styles>"""
     assert OdtModel().predict(BytesIO(build_odf_package("odt", content, styles_xml=styles))) == [
-        [{"type": BlockType.TEXT, "content": "visible"}]
+        [{"type": BlockType.TEXT, "content": inline("visible")}]
     ]
 
 

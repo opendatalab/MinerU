@@ -18,6 +18,7 @@ from ...filetypes import (
     CSV_EXTENSIONS,
     IMAGE_EXTENSIONS,
     INGESTIBLE_EXTENSIONS,
+    OFD_EXTENSIONS,
     OFFICE_EXTENSIONS,
     PAGE_RANGE_PARSE_EXTENSIONS,
     TEXT_EXTENSIONS,
@@ -1128,7 +1129,7 @@ class ParseService:
             api_url=base_url,
             api_key=api_key,
             tier=resolved_tier,
-            include_images=Path(file_row["path"]).suffix.lower().lstrip(".") in OFFICE_EXTENSIONS,
+            include_images=Path(file_row["path"]).suffix.lower().lstrip(".") in (OFFICE_EXTENSIONS | OFD_EXTENSIONS),
         )
         try:
             file_ext = file_row.get("ext") or Path(file_row["path"]).suffix.lower().lstrip(".")

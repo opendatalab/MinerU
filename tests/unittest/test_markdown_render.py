@@ -1,4 +1,5 @@
 from __future__ import annotations
+from _span_test_utils import inline as _inline
 
 from copy import deepcopy
 from typing import Literal
@@ -8,6 +9,7 @@ import pytest
 from mineru.config import Config
 from mineru.render import RenderMode, render_markdown
 from mineru.types import (
+    AlgorithmBodyBlock,
     ChartBlock,
     ChartBodyBlock,
     CodeBlock,
@@ -85,7 +87,7 @@ def _pdf_table(
 
 def _list(
     index: int,
-    *items: str,
+    *items: str | list[dict[str, object]],
     sub_type: Literal["text", "ref_text"] | None = None,
     continues_prev: bool | None = None,
 ) -> ListBlock:
@@ -98,7 +100,7 @@ def _list(
         bbox=(0.1, 0.1, 0.9, 0.3),
         sub_type=sub_type,
         continues_prev=continues_prev,
-        content=[child_class(type=child_type, content=item) for item in items],
+        content=[child_class(type=child_type, content=_inline(item) if isinstance(item, str) else item) for item in items],
     )
 
 
@@ -107,7 +109,7 @@ def _ref_text(index: int, content: str, *, continues_prev: bool | None = None) -
     return RefTextBlock(
         type="ref_text",
         index=index,
-        content=content,
+        content=_inline(content),
         continues_prev=continues_prev,
     )
 
@@ -117,17 +119,17 @@ def test_render_modes_filter_merge_and_preserve_input() -> None:
     middle = _middle(
         _page(
             0,
-            PageAuxTextBlock(type="header", index=0, content="HEADER"),
-            TextBlock(type="text", index=1, content="Hello"),
+            PageAuxTextBlock(type="header", index=0, content=_inline("HEADER")),
+            TextBlock(type="text", index=1, content=_inline("Hello")),
             _image(2),
-            TextBlock(type="text", index=3, content="world", continues_prev=True),
-            PageAuxTextBlock(type="footer", index=4, content="FOOTER"),
+            TextBlock(type="text", index=3, content=_inline("world"), continues_prev=True),
+            PageAuxTextBlock(type="footer", index=4, content=_inline("FOOTER")),
         ),
         _page(
             1,
-            PageAuxTextBlock(type="page_number", index=0, content="2"),
-            TextBlock(type="text", index=1, content="again", continues_prev=True),
-            PageFootnoteBlock(type="page_footnote", index=2, content="NOTE"),
+            PageAuxTextBlock(type="page_number", index=0, content=_inline("2")),
+            TextBlock(type="text", index=1, content=_inline("again"), continues_prev=True),
+            PageFootnoteBlock(type="page_footnote", index=2, content=_inline("NOTE")),
         ),
     )
     before = middle.to_json(skip_defaults=False)
@@ -154,12 +156,16 @@ def test_page_footnote_is_styled_and_linkable_in_default_and_full_modes() -> Non
             TextBlock(
                 type="text",
                 index=0,
-                content="See <hyperlink>[1]<url>#note-one</url></hyperlink>.",
+                content=[
+                    {"type": "text", "content": "See "},
+                    {"type": "hyperlink", "url": "#note-one", "content": _inline("[1]")},
+                    {"type": "text", "content": "."},
+                ],
             ),
             PageFootnoteBlock(
                 type="page_footnote",
                 index=1,
-                content="Footnote body.",
+                content=_inline("Footnote body."),
                 anchor="note-one",
             ),
         )
@@ -179,9 +185,9 @@ def test_page_footnote_does_not_interrupt_continued_text_rendering() -> None:
     middle = _middle(
         _page(
             0,
-            TextBlock(type="text", index=0, content="inter-"),
-            PageFootnoteBlock(type="page_footnote", index=1, content="NOTE"),
-            TextBlock(type="text", index=2, content="national", continues_prev=True),
+            TextBlock(type="text", index=0, content=_inline("inter-")),
+            PageFootnoteBlock(type="page_footnote", index=1, content=_inline("NOTE")),
+            TextBlock(type="text", index=2, content=_inline("national"), continues_prev=True),
         )
     )
 
@@ -193,7 +199,7 @@ def test_page_footnote_does_not_interrupt_continued_text_rendering() -> None:
 
 def test_full_mode_preserves_empty_page_boundaries() -> None:
     """验证 FULL 对空白页仍保留相邻页分割线。"""
-    middle = _middle(_page(0), _page(1, TextBlock(type="text", index=0, content="x")), _page(2))
+    middle = _middle(_page(0), _page(1, TextBlock(type="text", index=0, content=_inline("x"))), _page(2))
 
     assert render_markdown(middle, mode=RenderMode.FULL) == "\n\n---\n\nx\n\n---\n\n"
     assert render_markdown(middle) == "x"
@@ -204,15 +210,15 @@ def test_text_continuation_handles_hyphen_and_cjk_boundaries() -> None:
     western = _middle(
         _page(
             0,
-            TextBlock(type="text", index=0, content="inter-"),
-            TextBlock(type="text", index=1, content="national", continues_prev=True),
+            TextBlock(type="text", index=0, content=_inline("inter-")),
+            TextBlock(type="text", index=1, content=_inline("national"), continues_prev=True),
         )
     )
     cjk = _middle(
         _page(
             0,
-            TextBlock(type="text", index=0, content="中文"),
-            TextBlock(type="text", index=1, content="继续", continues_prev=True),
+            TextBlock(type="text", index=0, content=_inline("中文")),
+            TextBlock(type="text", index=1, content=_inline("继续"), continues_prev=True),
         )
     )
 
@@ -226,11 +232,11 @@ def test_ref_text_continuation_skips_merge_transparent_blocks_by_mode() -> None:
         _page(
             0,
             _ref_text(0, "inter-"),
-            PageFootnoteBlock(type="page_footnote", index=1, content="NOTE"),
+            PageFootnoteBlock(type="page_footnote", index=1, content=_inline("NOTE")),
         ),
         _page(
             1,
-            PageAuxTextBlock(type="header", index=0, content="HEADER"),
+            PageAuxTextBlock(type="header", index=0, content=_inline("HEADER")),
             _ref_text(1, "national", continues_prev=True),
             _ref_text(2, "continuation", continues_prev=True),
         ),
@@ -249,7 +255,7 @@ def test_ref_text_continuation_keeps_semantic_barrier() -> None:
         _page(
             0,
             _ref_text(0, "first"),
-            TextBlock(type="text", index=1, content="separator"),
+            TextBlock(type="text", index=1, content=_inline("separator")),
             _ref_text(2, "second", continues_prev=True),
         )
     )
@@ -309,12 +315,12 @@ def test_ref_list_continuation_skips_merge_transparent_blocks_without_mutating_i
         _page(
             0,
             _list(0, "[1] first", sub_type="ref_text"),
-            PageFootnoteBlock(type="page_footnote", index=1, content="NOTE"),
+            PageFootnoteBlock(type="page_footnote", index=1, content=_inline("NOTE")),
         ),
         _page(
             1,
-            PageAuxTextBlock(type="header", index=0, content="HEADER"),
-            PageAuxTextBlock(type="page_number", index=1, content="2"),
+            PageAuxTextBlock(type="header", index=0, content=_inline("HEADER")),
+            PageAuxTextBlock(type="page_number", index=1, content=_inline("2")),
             _list(2, "[2] second", sub_type="ref_text", continues_prev=True),
         ),
     )
@@ -332,11 +338,11 @@ def test_ordinary_list_continuation_does_not_skip_page_footnote() -> None:
         _page(
             0,
             _list(0, "- first"),
-            PageFootnoteBlock(type="page_footnote", index=1, content="NOTE"),
+            PageFootnoteBlock(type="page_footnote", index=1, content=_inline("NOTE")),
         ),
         _page(
             1,
-            PageAuxTextBlock(type="header", index=0, content="HEADER"),
+            PageAuxTextBlock(type="header", index=0, content=_inline("HEADER")),
             _list(1, "- second", continues_prev=True),
         ),
     )
@@ -353,7 +359,7 @@ def test_list_continuation_keeps_semantic_barrier_and_matching_subtype() -> None
         _page(
             0,
             _list(0, "[1] first", sub_type="ref_text"),
-            TextBlock(type="text", index=1, bbox=(0.1, 0.4, 0.9, 0.5), content="separator"),
+            TextBlock(type="text", index=1, bbox=(0.1, 0.4, 0.9, 0.5), content=_inline("separator")),
             _list(2, "[2] second", sub_type="ref_text", continues_prev=True),
         ),
         file_suffix="pdf",
@@ -385,7 +391,15 @@ def test_list_continuation_keeps_semantic_barrier_and_matching_subtype() -> None
 )
 def test_reference_list_keeps_supported_numeric_prefix_styles(item: str, expected: str) -> None:
     """验证数字出现在前五个可见字符内时，单条参考文献保留原有编号。"""
-    middle = _middle(_page(0, _list(0, item, sub_type="ref_text")), file_suffix="pdf")
+    content = (
+        [
+            {"type": "text", "content": "[1]", "styles": ["bold"]},
+            {"type": "text", "content": " styled"},
+        ]
+        if item.startswith("<text")
+        else _inline(item)
+    )
+    middle = _middle(_page(0, _list(0, content, sub_type="ref_text")), file_suffix="pdf")
 
     assert render_markdown(middle) == expected
 
@@ -420,8 +434,8 @@ def test_reference_list_bullets_mixed_children_without_duplication() -> None:
         bbox=(0.1, 0.1, 0.9, 0.3),
         sub_type="ref_text",
         content=[
-            TextBlock(type="text", content="- existing"),
-            RefTextBlock(type="ref_text", content="Author A\ncontinued"),
+            TextBlock(type="text", content=_inline("- existing")),
+            RefTextBlock(type="ref_text", content=_inline("Author A\ncontinued")),
         ],
     )
 
@@ -433,14 +447,14 @@ def test_nested_reference_list_decides_bullets_independently() -> None:
     nested = ListBlock(
         type="list",
         sub_type="ref_text",
-        content=[RefTextBlock(type="ref_text", content="Author A")],
+        content=[RefTextBlock(type="ref_text", content=_inline("Author A"))],
     )
     outer = ListBlock(
         type="list",
         index=0,
         bbox=(0.1, 0.1, 0.9, 0.3),
         sub_type="text",
-        content=[TextBlock(type="text", content="- outer"), nested],
+        content=[TextBlock(type="text", content=_inline("- outer")), nested],
     )
 
     assert render_markdown(_middle(_page(0, outer), file_suffix="pdf")) == "- outer\n    - Author A"
@@ -451,15 +465,15 @@ def test_text_continuation_joins_url_candidates_but_separates_independent_urls()
     continued_url = _middle(
         _page(
             0,
-            TextBlock(type="text", index=0, content="See https://doi.o"),
-            TextBlock(type="text", index=1, content="rg/10.1016/example", continues_prev=True),
+            TextBlock(type="text", index=0, content=_inline("See https://doi.o")),
+            TextBlock(type="text", index=1, content=_inline("rg/10.1016/example"), continues_prev=True),
         )
     )
     independent_urls = _middle(
         _page(
             0,
-            TextBlock(type="text", index=0, content="https://example.test/first"),
-            TextBlock(type="text", index=1, content="https://example.test/second", continues_prev=True),
+            TextBlock(type="text", index=0, content=_inline("https://example.test/first")),
+            TextBlock(type="text", index=1, content=_inline("https://example.test/second"), continues_prev=True),
         )
     )
 
@@ -472,15 +486,19 @@ def test_text_continuation_does_not_rewrite_formula_or_style_wrappers() -> None:
     formula = _middle(
         _page(
             0,
-            TextBlock(type="text", index=0, content="before <eq>x</eq>"),
-            TextBlock(type="text", index=1, content="after", continues_prev=True),
+            TextBlock(
+                type="text",
+                index=0,
+                content=[{"type": "text", "content": "before "}, {"type": "equation_inline", "content": "x"}],
+            ),
+            TextBlock(type="text", index=1, content=_inline("after"), continues_prev=True),
         )
     )
     styled = _middle(
         _page(
             0,
-            TextBlock(type="text", index=0, content='<text style="bold">inter-</text>'),
-            TextBlock(type="text", index=1, content="national", continues_prev=True),
+            TextBlock(type="text", index=0, content=_inline("inter-", styles=["bold"])),
+            TextBlock(type="text", index=1, content=_inline("national"), continues_prev=True),
         )
     )
 
@@ -500,11 +518,21 @@ def test_render_rejects_legacy_inputs_and_string_mode() -> None:
 
 def test_inline_rich_text_unknown_tags_and_visible_spaces() -> None:
     """验证富文本、公式、链接、未知标签与可见空白。"""
-    content = (
-        'A <text style="bold">B</text> '
-        '<hyperlink><text style="underline">link</text><url>https://example.com/a b</url></hyperlink> '
-        '<eq>x_1</eq> <local_dir> p <0.05 and x > 0 <sup>2</sup><text style="underline">  </text>'
-    )
+    content = [
+        {"type": "text", "content": "A "},
+        {"type": "text", "content": "B", "styles": ["bold"]},
+        {"type": "text", "content": " "},
+        {
+            "type": "hyperlink",
+            "url": "https://example.com/a b",
+            "content": [{"type": "text", "content": "link", "styles": ["underline"]}],
+        },
+        {"type": "text", "content": " "},
+        {"type": "equation_inline", "content": "x_1"},
+        {"type": "text", "content": " <local_dir> p <0.05 and x > 0 "},
+        {"type": "text", "content": "2", "styles": ["superscript"]},
+        {"type": "text", "content": "  ", "styles": ["underline"]},
+    ]
     middle = _middle(_page(0, TextBlock(type="text", index=0, content=content)))
 
     rendered = render_markdown(middle)
@@ -512,7 +540,7 @@ def test_inline_rich_text_unknown_tags_and_visible_spaces() -> None:
     assert "**B**" in rendered
     assert '<a href="https://example.com/a b"><u>link</u></a>' in rendered
     assert "$x_1$" in rendered
-    assert "<local_dir>" in rendered
+    assert "&lt;local_dir&gt;" in rendered
     assert "p <0.05 and x > 0" in rendered
     assert "<sup>2</sup>" in rendered
     assert rendered.endswith("<sup>2</sup>__")
@@ -529,7 +557,11 @@ def test_inline_rich_text_unknown_tags_and_visible_spaces() -> None:
 )
 def test_visible_style_ascii_spaces_use_dev_markers(style: str, expected: str) -> None:
     """验证纯 ASCII 样式空格使用 dev 的下划线或短横线 marker。"""
-    content = f'A<text style="{style}">   </text>B'
+    content = [
+        {"type": "text", "content": "A"},
+        {"type": "text", "content": "   ", "styles": style.split(",")},
+        {"type": "text", "content": "B"},
+    ]
 
     assert render_markdown(_middle(_page(0, TextBlock(type="text", index=0, content=content)))) == expected
 
@@ -544,7 +576,7 @@ def test_visible_style_ascii_spaces_use_dev_markers(style: str, expected: str) -
 )
 def test_visible_style_edge_spaces_use_dev_markers(style: str, expected: str) -> None:
     """验证非空样式文本只替换首尾 ASCII 空格。"""
-    content = f'<text style="{style}">   广东  </text>'
+    content = _inline("   广东  ", styles=style.split(","))
 
     assert render_markdown(_middle(_page(0, TextBlock(type="text", index=0, content=content)))) == expected
 
@@ -558,14 +590,14 @@ def test_visible_style_edge_spaces_use_dev_markers(style: str, expected: str) ->
 )
 def test_standalone_visible_space_markers_are_escaped(style: str, expected: str) -> None:
     """验证整块 marker 会转义首字符，避免被当作 Markdown 分割线。"""
-    content = f'<text style="{style}">   </text>'
+    content = _inline("   ", styles=[style])
 
     assert render_markdown(_middle(_page(0, TextBlock(type="text", index=0, content=content)))) == expected
 
 
 def test_emphasis_only_spaces_keep_existing_html_behavior() -> None:
     """验证 emphasis-only 空格不进入 underline/strikethrough marker 规则。"""
-    content = '<text style="emphasis">  </text>'
+    content = _inline("  ", styles=["emphasis"])
 
     rendered = render_markdown(_middle(_page(0, TextBlock(type="text", index=0, content=content))))
 
@@ -577,12 +609,12 @@ def test_text_block_escapes_markdown_prefix_and_malformed_tag() -> None:
     middle = _middle(
         _page(
             0,
-            TextBlock(type="text", index=0, content="- plain"),
-            TextBlock(type="text", index=1, content='<text style="bold">broken'),
+            TextBlock(type="text", index=0, content=_inline("- plain")),
+            TextBlock(type="text", index=1, content=_inline('<text style="bold">broken')),
         )
     )
 
-    assert render_markdown(middle) == '\\- plain\n\n<text style="bold">broken'
+    assert render_markdown(middle) == '\\- plain\n\n&lt;text style="bold"&gt;broken'
 
 
 def test_title_and_index_render_anchor_links_without_heading_leaves() -> None:
@@ -595,11 +627,11 @@ def test_title_and_index_render_anchor_links_without_heading_leaves() -> None:
                 type="paragraph_title",
                 level=2,
                 anchor="toc-a",
-                content="1 Section\t12",
+                content=_inline("1 Section\t12"),
             ),
             IndexBlock(
                 type="index",
-                content=[TextBlock(type="text", content="Plain")],
+                content=[TextBlock(type="text", content=_inline("Plain"))],
             ),
         ],
     )
@@ -608,7 +640,7 @@ def test_title_and_index_render_anchor_links_without_heading_leaves() -> None:
         index=1,
         level=6,
         anchor="toc-a",
-        content="Section",
+        content=_inline("Section"),
     )
 
     rendered = render_markdown(_middle(_page(0, index, title)))
@@ -633,7 +665,11 @@ def test_equation_uses_content_then_image_fallback(monkeypatch: pytest.MonkeyPat
             0,
             EquationBlock(type="equation", index=0, content="x=1"),
             EquationBlock(type="equation", index=1, content="", image_path="images/e.png"),
-            TextBlock(type="text", index=2, content="inline <eq>y</eq>"),
+            TextBlock(
+                type="text",
+                index=2,
+                content=[{"type": "text", "content": "inline "}, {"type": "equation_inline", "content": "y"}],
+            ),
         )
     )
 
@@ -739,10 +775,17 @@ def test_algorithm_preserves_whitespace_comparisons_scripts_and_formula() -> Non
         index=0,
         sub_type="algorithm",
         content=[
-            CodeBodyBlock(
-                type="code_body",
+            AlgorithmBodyBlock(
+                type="algorithm_body",
                 index=0,
-                content=("if a < b and c > d:\n  T<sub>queue</sub><sup>2</sup> = <eq>a < b</eq><eq>c > d</eq>"),
+                content=[
+                    {"type": "text", "content": "if a < b and c > d:\n  T"},
+                    {"type": "text", "content": "queue", "styles": ["subscript"]},
+                    {"type": "text", "content": "2", "styles": ["superscript"]},
+                    {"type": "text", "content": " = "},
+                    {"type": "equation_inline", "content": "a < b"},
+                    {"type": "equation_inline", "content": "c > d"},
+                ],
             )
         ],
     )
@@ -762,7 +805,7 @@ def test_image_path_precedes_base64_and_visual_child_order_is_preserved() -> Non
             "type": "image",
             "index": 0,
             "content": [
-                {"type": "image_caption", "content": "before"},
+                {"type": "image_caption", "content": _inline("before")},
                 {
                     "type": "image_body",
                     "index": 0,
@@ -770,7 +813,7 @@ def test_image_path_precedes_base64_and_visual_child_order_is_preserved() -> Non
                     "image_path": "images/a b.png",
                     "image_base64": "data:image/png;base64,AAAA",
                 },
-                {"type": "image_footnote", "content": "after"},
+                {"type": "image_footnote", "content": _inline("after")},
             ],
         }
     )

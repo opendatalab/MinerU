@@ -14,6 +14,7 @@ from .assets import build_markdown_image, resolve_image_source
 from .escaping import escape_standalone_marker_rule, escape_text_block_markdown_prefix
 from .inline import (
     render_inline_content,
+    render_inline_spans,
     render_internal_link,
     render_joined_inline_contents,
 )
@@ -25,6 +26,7 @@ from .table import (
 from ...contracts import ImageRenderer
 from ....types import (
     RAW_ALGORITHM,
+    AlgorithmBodyBlock,
     BlockType,
     ChartAnnotationBlock,
     ChartBlock,
@@ -37,6 +39,7 @@ from ....types import (
     ImageAnnotationBlock,
     ImageBlock,
     ImageBodyBlock,
+    InlineSpan,
     IndexBlock,
     ListBlock,
     PageAuxTextBlock,
@@ -50,10 +53,6 @@ from ....types import (
     TextBlock,
 )
 
-_ALGORITHM_TOKEN_RE = re.compile(
-    r"<eq>(?P<latex>.*?)</eq>|(?P<script_tag></?(?:sub|sup)>)",
-    re.IGNORECASE | re.DOTALL,
-)
 _VALID_CODE_LANGUAGE_RE = re.compile(r"[A-Za-z0-9_.+#-]+")
 
 
@@ -187,7 +186,7 @@ def _render_list(block: ListBlock, delimiters: LatexDelimitersConfig, depth: int
         item = escape_standalone_marker_rule(item)
         indent = "    " * depth
         item_lines = item.splitlines() or [item]
-        if add_ref_bullets and not has_markdown_unordered_marker(item):
+        if add_ref_bullets and not has_markdown_unordered_marker(child.content):
             lines.append(f"{indent}- {item_lines[0]}")
             lines.extend(f"{indent}  {line}" for line in item_lines[1:])
         else:
@@ -435,7 +434,7 @@ def _render_code_block(block: CodeBlock, delimiters: LatexDelimitersConfig) -> s
     """按父块 subtype 渲染普通代码或支持公式的算法。"""
     parts: list[str] = []
     for child in block.content:
-        if isinstance(child, CodeBodyBlock):
+        if isinstance(child, (CodeBodyBlock, AlgorithmBodyBlock)):
             body = _render_visual_body_child(
                 block,
                 child,
@@ -466,14 +465,14 @@ def render_visual_body_content(
             return _render_table_content(child, delimiters, asset_base_url)
         if isinstance(block, ChartBlock) and isinstance(child, ChartBodyBlock):
             return _render_chart_content(child.content, delimiters, asset_base_url)
-        if isinstance(block, CodeBlock) and isinstance(child, CodeBodyBlock):
+        if isinstance(block, CodeBlock) and isinstance(child, (CodeBodyBlock, AlgorithmBodyBlock)):
             return _render_code_body(block, child, delimiters)
     raise ValueError(f"Missing visual body: {block.type}")
 
 
 def _render_visual_body_child(
     block: ImageBlock | TableBlock | ChartBlock | CodeBlock,
-    child: ImageBodyBlock | TableBodyBlock | ChartBodyBlock | CodeBodyBlock,
+    child: ImageBodyBlock | TableBodyBlock | ChartBodyBlock | CodeBodyBlock | AlgorithmBodyBlock,
     *,
     delimiters: LatexDelimitersConfig,
     asset_base_url: str,
@@ -500,7 +499,7 @@ def _render_visual_body_child(
             image_renderer=image_renderer,
             parent_block=block,
         )
-    if isinstance(block, CodeBlock) and isinstance(child, CodeBodyBlock):
+    if isinstance(block, CodeBlock) and isinstance(child, (CodeBodyBlock, AlgorithmBodyBlock)):
         return _render_code_body(block, child, delimiters)
     raise TypeError(f"Unsupported visual body pair: {block.type}/{child.type}")
 
@@ -515,13 +514,17 @@ def render_visual_annotation(
 
 def _render_code_body(
     block: CodeBlock,
-    child: CodeBodyBlock,
+    child: CodeBodyBlock | AlgorithmBodyBlock,
     delimiters: LatexDelimitersConfig,
 ) -> str:
     """依据父块 subtype 渲染代码或算法 body。"""
     if block.sub_type == BlockType.CODE:
+        if not isinstance(child, CodeBodyBlock):
+            raise TypeError("code subtype requires CodeBodyBlock")
         return _render_fenced_content(child.content, _normalize_code_language(block.guess_lang))
     if block.sub_type == RAW_ALGORITHM:
+        if not isinstance(child, AlgorithmBodyBlock):
+            raise TypeError("algorithm subtype requires AlgorithmBodyBlock")
         return _render_algorithm_html(child.content, delimiters)
     raise ValueError(f"Unsupported code subtype: {block.sub_type}")
 
@@ -543,33 +546,19 @@ def _render_fenced_content(content: str, language: str | None = None) -> str:
     return f"{opening}\n{content}{closing_prefix}{fence}"
 
 
-def _render_algorithm_html(content: str, delimiters: LatexDelimitersConfig) -> str:
+def _render_algorithm_html(content: list[InlineSpan], delimiters: LatexDelimitersConfig) -> str:
     """参考 dev 实现渲染保留空白、上下标和行内公式的算法 HTML。"""
-    if not content.strip():
-        return ""
     parts: list[str] = []
-    cursor = 0
-    previous_was_equation = False
-    for match in _ALGORITHM_TOKEN_RE.finditer(content):
-        plain = content[cursor : match.start()]
-        if plain:
-            parts.append(plain)
-            previous_was_equation = False
-        script_tag = match.group("script_tag")
-        if script_tag is not None:
-            parts.append(script_tag.lower())
-            previous_was_equation = False
-            cursor = match.end()
-            continue
-        latex = html.unescape(match.group("latex")).strip()
-        if latex:
-            if previous_was_equation and parts and not parts[-1].endswith((" ", "\n", "\t")):
-                parts.append(" ")
-            parts.append(f"{delimiters.inline.left}{latex}{delimiters.inline.right}")
-            previous_was_equation = True
-        cursor = match.end()
-    parts.append(content[cursor:])
+    previous_equation = False
+    for span in content:
+        current_equation = str(span.type) == "equation_inline"
+        if previous_equation and current_equation:
+            parts.append(" ")
+        parts.append(render_inline_spans([span], delimiters))
+        previous_equation = current_equation
     body = "".join(parts)
+    if not body.strip():
+        return ""
     return f'<div class="mineru-algorithm" style="white-space: pre-wrap; font-family:monospace;">\n{body}\n</div>'
 
 

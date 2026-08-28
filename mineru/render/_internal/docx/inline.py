@@ -1,5 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
-"""MiddleJson 行内节点到 Word run、超链接、书签和 OMML 的 DOCX 写入。"""
+"""Middle JSON 3.0 行内 Span 到 Word run、超链接、书签和 OMML 的写入。"""
 
 from __future__ import annotations
 
@@ -17,17 +17,8 @@ from docx.shared import Pt, RGBColor
 from lxml import etree
 from loguru import logger
 
-from ....backend.postprocess.inline import (
-    InlineCode,
-    InlineEquation,
-    InlineLink,
-    InlineNode,
-    InlineStyled,
-    InlineText,
-    inline_plain_text,
-    join_inline_contents,
-    parse_inline_content,
-)
+from ....backend.postprocess.inline import inline_plain_text, join_inline_spans
+from ....types import CodeInlineSpan, EquationInlineSpan, HyperlinkSpan, InlineSpan, TextSpan
 from .math import DocxFormulaError, latex_to_omml
 
 _BOOKMARK_SAFE_RE = re.compile(r"[^A-Za-z0-9_]+")
@@ -121,36 +112,36 @@ class BookmarkRegistry:
 
 def append_inline_content(
     paragraph: Paragraph,
-    content: str,
+    content: list[InlineSpan],
     *,
     context: InlineRenderContext,
 ) -> None:
-    """解析并把一段 MiddleJson 行内内容追加到 Word 段落。"""
-    append_inline_nodes(paragraph, parse_inline_content(content), context=context)
+    """把一段 MiddleJson 行内 Span 追加到 Word 段落。"""
+    append_inline_spans(paragraph, content, context=context)
 
 
 def append_joined_inline_contents(
     paragraph: Paragraph,
-    contents: list[str],
+    contents: list[list[InlineSpan]],
     *,
     context: InlineRenderContext,
 ) -> None:
-    """按共享边界规则合并续段，并把中性行内节点写入 Word。"""
-    append_inline_nodes(paragraph, join_inline_contents(contents), context=context)
+    """按共享边界规则合并续段，并把结构化行内 Span 写入 Word。"""
+    append_inline_spans(paragraph, join_inline_spans(contents), context=context)
 
 
-def append_inline_nodes(
+def append_inline_spans(
     paragraph: Paragraph,
-    nodes: list[InlineNode],
+    spans: list[InlineSpan],
     *,
     context: InlineRenderContext,
     inherited_styles: tuple[str, ...] = (),
 ) -> None:
-    """把行内节点写入段落，同时保留嵌套样式、链接与公式语义。"""
-    _append_nodes_to_container(
+    """把行内 Span 写入段落，同时保留样式、链接与公式语义。"""
+    _append_spans_to_container(
         paragraph._p,
         paragraph,
-        nodes,
+        spans,
         context=context,
         inherited_styles=inherited_styles,
         hyperlink=False,
@@ -159,7 +150,7 @@ def append_inline_nodes(
 
 def append_internal_link(
     paragraph: Paragraph,
-    label_nodes: list[InlineNode],
+    label_spans: list[InlineSpan],
     *,
     anchor: str | None,
     context: InlineRenderContext,
@@ -167,7 +158,7 @@ def append_internal_link(
     """把目录标签写为内部链接；目标缺失时退回普通行内内容。"""
     bookmark_name = context.bookmarks.resolve(anchor)
     if bookmark_name is None:
-        append_inline_nodes(paragraph, label_nodes, context=context)
+        append_inline_spans(paragraph, label_spans, context=context)
         if anchor:
             logger.warning("Unmatched DOCX index anchor: {} ({})", anchor, context.location())
         return False
@@ -176,10 +167,10 @@ def append_internal_link(
     hyperlink.set(qn("w:anchor"), bookmark_name)
     hyperlink.set(qn("w:history"), "1")
     paragraph._p.append(hyperlink)
-    _append_nodes_to_container(
+    _append_spans_to_container(
         hyperlink,
         paragraph,
-        label_nodes,
+        label_spans,
         context=context,
         inherited_styles=(),
         hyperlink=True,
@@ -187,32 +178,33 @@ def append_internal_link(
     return True
 
 
-def _append_nodes_to_container(
+def _append_spans_to_container(
     container: etree._Element,
     paragraph: Paragraph,
-    nodes: list[InlineNode],
+    spans: list[InlineSpan],
     *,
     context: InlineRenderContext,
     inherited_styles: tuple[str, ...],
     hyperlink: bool,
 ) -> None:
     """递归写入一个段落或 hyperlink XML 容器。"""
-    for node in nodes:
-        if isinstance(node, InlineText):
+    for span in spans:
+        if isinstance(span, TextSpan):
+            styles = tuple(dict.fromkeys((*inherited_styles, *span.styles)))
             _append_text_run(
                 container,
                 paragraph,
-                node.content,
-                styles=inherited_styles,
+                span.content,
+                styles=styles,
                 hyperlink=hyperlink,
                 context=context,
             )
             continue
-        if isinstance(node, InlineCode):
+        if isinstance(span, CodeInlineSpan):
             run = _append_text_run(
                 container,
                 paragraph,
-                node.content,
+                span.content,
                 styles=inherited_styles,
                 hyperlink=hyperlink,
                 context=context,
@@ -220,19 +212,8 @@ def _append_nodes_to_container(
             run.font.name = "Courier New"
             run.font.size = Pt(9)
             continue
-        if isinstance(node, InlineStyled):
-            styles = tuple(dict.fromkeys((*inherited_styles, *node.styles)))
-            _append_nodes_to_container(
-                container,
-                paragraph,
-                node.children,
-                context=context,
-                inherited_styles=styles,
-                hyperlink=hyperlink,
-            )
-            continue
-        if isinstance(node, InlineEquation):
-            bare_script = _BARE_SCRIPT_RE.fullmatch(node.latex)
+        if isinstance(span, EquationInlineSpan):
+            bare_script = _BARE_SCRIPT_RE.fullmatch(span.content)
             if bare_script is not None:
                 script_style = "superscript" if bare_script.group("marker") == "^" else "subscript"
                 styles = tuple(dict.fromkeys((*inherited_styles, script_style)))
@@ -249,72 +230,72 @@ def _append_nodes_to_container(
                 _append_text_run(
                     container,
                     paragraph,
-                    node.latex,
+                    span.content,
                     styles=inherited_styles,
                     hyperlink=True,
                     context=context,
                 )
                 continue
             try:
-                container.append(latex_to_omml(node.latex, display=False))
+                container.append(latex_to_omml(span.content, display=False))
             except DocxFormulaError as exc:
                 logger.warning("DOCX inline formula fallback: {} ({})", exc, context.location())
                 _append_text_run(
                     container,
                     paragraph,
-                    node.latex,
+                    span.content,
                     styles=inherited_styles,
                     hyperlink=False,
                     formula_fallback=True,
                     context=context,
                 )
             continue
-        if isinstance(node, InlineLink):
-            if hyperlink or not node.url or node.url == ".":
-                _append_nodes_to_container(
+        if isinstance(span, HyperlinkSpan):
+            if hyperlink or not span.url or span.url == ".":
+                _append_spans_to_container(
                     container,
                     paragraph,
-                    node.children,
+                    list(span.content),
                     context=context,
                     inherited_styles=inherited_styles,
                     hyperlink=hyperlink,
                 )
                 continue
-            if node.url.startswith("#"):
+            if span.url.startswith("#"):
                 _append_inline_internal_link(
                     container,
                     paragraph,
-                    node,
+                    span,
                     context=context,
                     inherited_styles=inherited_styles,
                 )
                 continue
             _append_external_link(
                 paragraph,
-                node,
+                span,
                 context=context,
                 inherited_styles=inherited_styles,
             )
             continue
-        raise TypeError(f"Unsupported inline node: {type(node).__name__}")
+        raise TypeError(f"Unsupported inline span: {type(span).__name__}")
 
 
 def _append_inline_internal_link(
     container: etree._Element,
     paragraph: Paragraph,
-    node: InlineLink,
+    span: HyperlinkSpan,
     *,
     context: InlineRenderContext,
     inherited_styles: tuple[str, ...],
 ) -> None:
     """把 #anchor 行内链接写为 Word bookmark 跳转，未知目标退化为普通文本。"""
-    anchor = node.url[1:].strip()
+    anchor = span.url[1:].strip()
     bookmark_name = context.bookmarks.resolve(anchor)
     if bookmark_name is None:
-        _append_nodes_to_container(
+        _append_spans_to_container(
             container,
             paragraph,
-            node.children,
+            list(span.content),
             context=context,
             inherited_styles=inherited_styles,
             hyperlink=False,
@@ -325,10 +306,10 @@ def _append_inline_internal_link(
     internal_link.set(qn("w:anchor"), bookmark_name)
     internal_link.set(qn("w:history"), "1")
     container.append(internal_link)
-    _append_nodes_to_container(
+    _append_spans_to_container(
         internal_link,
         paragraph,
-        node.children,
+        list(span.content),
         context=context,
         inherited_styles=inherited_styles,
         hyperlink=True,
@@ -337,24 +318,24 @@ def _append_inline_internal_link(
 
 def _append_external_link(
     paragraph: Paragraph,
-    node: InlineLink,
+    span: HyperlinkSpan,
     *,
     context: InlineRenderContext,
     inherited_styles: tuple[str, ...],
 ) -> None:
     """创建外部 hyperlink relationship，并写入完整标签内容。"""
     relation_id = paragraph.part.relate_to(
-        sanitize_xml_text(node.url, context=context),
+        sanitize_xml_text(span.url, context=context),
         RELATIONSHIP_TYPE.HYPERLINK,
         is_external=True,
     )
     hyperlink = OxmlElement("w:hyperlink")
     hyperlink.set(qn("r:id"), relation_id)
     paragraph._p.append(hyperlink)
-    _append_nodes_to_container(
+    _append_spans_to_container(
         hyperlink,
         paragraph,
-        node.children,
+        list(span.content),
         context=context,
         inherited_styles=inherited_styles,
         hyperlink=True,
@@ -437,16 +418,16 @@ def _rgb_color(value: str) -> RGBColor:
     return RGBColor.from_string(value)
 
 
-def plain_inline_text(content: str) -> str:
+def plain_inline_text(content: list[InlineSpan]) -> str:
     """提取一段 MiddleJson 行内内容的可见文本。"""
-    return inline_plain_text(parse_inline_content(content))
+    return inline_plain_text(content)
 
 
 __all__ = [
     "BookmarkRegistry",
     "InlineRenderContext",
     "append_inline_content",
-    "append_inline_nodes",
+    "append_inline_spans",
     "append_internal_link",
     "append_joined_inline_contents",
     "plain_inline_text",

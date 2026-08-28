@@ -20,6 +20,8 @@ from mineru.types import RAW_ALGORITHM, RAW_CAPTION, RAW_FOOTNOTE, RAW_FORMULA_N
 from mineru.types import FILE_SUFFIXES, BlockType, FileSuffix, MiddleJson, ModelJson
 from mineru.version import __version__ as mineru_version
 
+from _span_test_utils import equation, hyperlink, inline, inline_items, inline_text, inline_urls
+
 
 JPEG_DATA_URI_PREFIX = "data:image/jpeg;base64,"
 RED = (255, 0, 0)
@@ -588,10 +590,12 @@ def test_normalize_pdf_model_list_updates_in_place() -> None:
     result = normalization._normalize_pdf_model_list(model_list)
 
     assert result is None
-    assert model_list[0][0]["content"] == "前 <eq>a+b</eq> 中 <eq>c_d</eq> 后"
-    assert model_list[0][1]["content"] == "已有 <eq>x</eq> 保持不变"
-    assert model_list[0][2]["content"] == "未闭合 \\(formula"
-    assert [block["content"] for block in model_list[1]] == ["跨行 \\(a\nb\\)"]
+    assert inline_text(model_list[0][0]["content"]) == "前 a+b 中 c_d 后"
+    assert [span["content"] for span in model_list[0][0]["content"] if span.get("type") == "equation_inline"] == ["a+b", "c_d"]
+    assert inline_text(model_list[0][1]["content"]) == "已有 <eq>x</eq> 保持不变"
+    assert all(span.get("type") == "text" for span in model_list[0][1]["content"])
+    assert inline_text(model_list[0][2]["content"]) == "未闭合 \\(formula"
+    assert [inline_text(block["content"]) for block in model_list[1]] == ["跨行 a\nb"]
     assert all("angle" not in block and "score" not in block for page_model_list in model_list for block in page_model_list)
 
 
@@ -630,13 +634,13 @@ def test_normalize_pdf_model_list_converts_full_width_alphanumeric_for_textual_b
 
     normalization._normalize_pdf_model_list(model_list)
 
-    assert model_list[0][0]["content"] == "Az0，。！？（）"
+    assert inline_text(model_list[0][0]["content"]) == "Az0，。！？（）"
     expected_type = BlockType.TEXT if block_type == RAW_PHONETIC else block_type
     assert model_list[0][0]["type"] == expected_type
 
 
-def test_normalize_pdf_model_list_preserves_inline_formulas_during_full_width_cleanup() -> None:
-    """验证两种行内公式片段不参与全角转换，普通正文仍正常清洗。"""
+def test_normalize_pdf_model_list_preserves_inline_formulas_and_tag_literals_during_full_width_cleanup() -> None:
+    """验证圆括号公式不参与全角转换，标签外观原文仍作为普通 TextSpan 清洗。"""
     model_list = [
         [
             {
@@ -649,19 +653,24 @@ def test_normalize_pdf_model_list_preserves_inline_formulas_during_full_width_cl
 
     normalization._normalize_pdf_model_list(model_list)
 
-    assert model_list[0][0]["content"] == "前A1 <eq>Ｆ２+x</eq> 中B3 <eq>Ｃ４+y</eq> 后D5"
+    content = model_list[0][0]["content"]
+    assert inline_text(content) == "前A1 Ｆ２+x 中B3 <eq>C4+y</eq> 后D5"
+    assert [span["content"] for span in content if span.get("type") == "equation_inline"] == ["Ｆ２+x"]
 
 
 def test_normalize_pdf_model_list_preserves_hyperlink_url_payload() -> None:
-    """验证可见链接文本正常清洗，而 URL 全角字符和公式样式字面量保持原样。"""
+    """验证已有 HyperlinkSpan 的可见文字正常清洗，而 URL 与公式内容保持原样。"""
 
     model_list = [
         [
             {
                 "type": BlockType.TEXT,
-                "content": (
-                    "前Ａ <hyperlink>标Ｂ<url>https://example.test/Ａ\\(x\\)?q=１&amp;y=2</url></hyperlink> 后Ｃ \\(Ｄ\\)"
-                ),
+                "content": [
+                    *inline("前Ａ "),
+                    hyperlink("https://example.test/Ａ\\(x\\)?q=１&amp;y=2", "标Ｂ"),
+                    *inline(" 后Ｃ "),
+                    equation("Ｄ"),
+                ],
                 "lines": [{"bbox": [0.1, 0.1, 0.9, 0.2]}],
             }
         ]
@@ -669,16 +678,17 @@ def test_normalize_pdf_model_list_preserves_hyperlink_url_payload() -> None:
 
     normalization._normalize_pdf_model_list(model_list)
 
-    assert model_list[0][0]["content"] == (
-        "前A <hyperlink>标B<url>https://example.test/Ａ\\(x\\)?q=１&amp;y=2</url></hyperlink> 后C <eq>Ｄ</eq>"
-    )
+    content = model_list[0][0]["content"]
+    assert inline_text(content) == "前A 标B 后C Ｄ"
+    assert inline_urls(content) == ["https://example.test/Ａ\\(x\\)?q=１&amp;y=2"]
+    assert next(span for span in inline_items(content) if span.get("type") == "equation_inline")["content"] == "Ｄ"
 
 
 @pytest.mark.parametrize(
     ("content", "expected"),
     [
         ("前Ａ１ \\(Ｆ２ 后Ｂ３", "前A1 \\(Ｆ２ 后Ｂ３"),
-        ("前Ａ１ <eq>Ｆ２ 后Ｂ３", "前A1 <eq>Ｆ２ 后Ｂ３"),
+        ("前Ａ１ <eq>Ｆ２ 后Ｂ３", "前A1 <eq>F2 后B3"),
     ],
 )
 def test_normalize_pdf_model_list_preserves_content_after_unclosed_inline_formula(
@@ -698,7 +708,7 @@ def test_normalize_pdf_model_list_preserves_content_after_unclosed_inline_formul
 
     normalization._normalize_pdf_model_list(model_list)
 
-    assert model_list[0][0]["content"] == expected
+    assert inline_text(model_list[0][0]["content"]) == expected
 
 
 @pytest.mark.parametrize(
@@ -1207,6 +1217,7 @@ def test_doc_analyze_effort_annotation_exposes_only_supported_values() -> None:
         "csv",
         "epub",
         "html",
+        "ofd",
         "odt",
         "ods",
         "odp",
@@ -1280,7 +1291,7 @@ def test_doc_analyze_office_returns_model_json_without_pdf_processing(
     file_suffix: str,
 ) -> None:
     """验证五类 Office 文件返回严格 ModelJson，且不进入任何 PDF 处理阶段。"""
-    source_model_list = [[{"type": BlockType.TEXT, "content": "原始 \\(office\\) 内容"}]]
+    source_model_list = [[{"type": BlockType.TEXT, "content": inline("原始 \\(office\\) 内容")}]]
     events: list[str] = []
     model_factories: dict[str, MagicMock] = {}
     selected_model = MagicMock()
@@ -1341,7 +1352,7 @@ def test_doc_analyze_office_returns_model_json_without_pdf_processing(
     assert model_json.effort == "flash"
     assert model_json.parse_mode == "txt"
     assert model_json.mineru_version == mineru_version
-    assert model_json.pages[0][0]["content"] == "原始 \\(office\\) 内容"
+    assert inline_text(model_json.pages[0][0]["content"]) == "原始 \\(office\\) 内容"
     for suffix, model_factory in model_factories.items():
         assert model_factory.call_count == (1 if suffix == file_suffix else 0)
     file_stream = selected_model.predict.call_args.args[0]
@@ -1820,7 +1831,7 @@ def test_doc_analyze_flash_returns_complete_model_json_and_typed_middle_json(mon
                 "type": BlockType.EQUATION,
                 "bbox": [0.0, 0.0, 1.0, 1.0],
                 "angle": 90,
-                "content": "第三页 \\(z\\)",
+                "content": "z",
             }
         ],
     ]
@@ -1907,8 +1918,9 @@ def test_doc_analyze_flash_returns_complete_model_json_and_typed_middle_json(mon
     assert model_json.page_index_map == [7, 8, 9]
     assert model_json.is_full_document is False
     assert requested_ranges == [(0, 1), (2, 2)]
-    assert model_json.pages[0][0]["content"] == "第一页 <eq>x+y</eq>"
-    assert model_json.pages[2][0]["content"] == "第三页 <eq>z</eq>"
+    assert inline_text(model_json.pages[0][0]["content"]) == "第一页 x+y"
+    assert [span["content"] for span in model_json.pages[0][0]["content"] if span.get("type") == "equation_inline"] == ["x+y"]
+    assert model_json.pages[2][0]["content"] == "z"
     assert model_json.pages[2][0]["type"] == BlockType.EQUATION
     assert middle_json.pages[2].blocks[0].type == BlockType.EQUATION
     assert "interline_equation" not in middle_json.to_json()

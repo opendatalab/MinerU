@@ -13,7 +13,7 @@ from bs4 import BeautifulSoup
 from loguru import logger
 
 from ..common.index import strip_index_page_tail
-from ....backend.postprocess.inline import inline_plain_text, parse_inline_content
+from ....backend.postprocess.inline import inline_plain_text, normalize_inline_spans
 from ....model.flash.html.wire import MINERU_HTML_VERSION
 from ....model.flash.html.wire.contracts import (
     WIRE_BLOCK_CLASS,
@@ -30,7 +30,7 @@ from ..common.planner import PlannedBlock, build_render_plan
 from .inline import (
     HtmlInlineResult,
     render_inline_content_html,
-    render_inline_nodes_html,
+    render_inline_spans_html,
     render_joined_inline_contents_html,
     render_math_html,
 )
@@ -44,6 +44,7 @@ from ...contracts import RenderMode
 from ....types import (
     PAGE_AUXILIARY_BLOCK_TYPES,
     RAW_ALGORITHM,
+    AlgorithmBodyBlock,
     BlockBase,
     BlockType,
     ChartAnnotationBlock,
@@ -57,6 +58,7 @@ from ....types import (
     ImageAnnotationBlock,
     ImageBlock,
     ImageBodyBlock,
+    InlineSpan,
     IndexBlock,
     ListBlock,
     MiddleJson,
@@ -68,6 +70,7 @@ from ....types import (
     TableBlock,
     TableBodyBlock,
     TextBlock,
+    TextSpan,
     TitleBlockBase,
 )
 
@@ -282,7 +285,7 @@ class _HtmlRenderer:
         parsed_leaves = [
             parse_list_item_marker(child.content)
             for child in block.content
-            if not isinstance(child, ListBlock) and child.content.strip()
+            if not isinstance(child, ListBlock) and inline_plain_text(child.content).strip()
         ]
         add_reference_bullets = reference_list_needs_bullets(block)
         container_tag, list_type, class_name = _classify_list(parsed_leaves, add_reference_bullets)
@@ -539,7 +542,7 @@ class _HtmlRenderer:
                 return HtmlInlineResult(_render_raw_fallback(content))
             self._observe_inline(rendered)
             return rendered
-        rendered = render_inline_content_html(content)
+        rendered = render_inline_content_html([TextSpan(type="text", content=content)])
         self._observe_inline(rendered)
         return rendered
 
@@ -547,7 +550,7 @@ class _HtmlRenderer:
         """按原始子块顺序渲染代码或算法及其说明。"""
         parts: list[str] = []
         for child in block.content:
-            if isinstance(child, CodeBodyBlock):
+            if isinstance(child, (CodeBodyBlock, AlgorithmBodyBlock)):
                 body = self._render_code_body(block, child)
             elif isinstance(child, CodeAnnotationBlock):
                 body = self._render_annotation(child)
@@ -557,9 +560,11 @@ class _HtmlRenderer:
                 parts.append(body)
         return f'<figure class="mineru-figure mineru-figure--code">{"".join(parts)}</figure>' if parts else ""
 
-    def _render_code_body(self, parent: CodeBlock, block: CodeBodyBlock) -> str:
-        """代码使用 Prism class，算法使用共享 inline AST 保留空白。"""
+    def _render_code_body(self, parent: CodeBlock, block: CodeBodyBlock | AlgorithmBodyBlock) -> str:
+        """代码使用 Prism class，算法直接使用结构化 Span 保留空白。"""
         if parent.sub_type == BlockType.CODE:
+            if not isinstance(block, CodeBodyBlock):
+                raise TypeError("code subtype requires CodeBodyBlock")
             escaped = html.escape(_replace_html_controls(block.content), quote=False)
             if not block.content:
                 return _wrap_visual_body('<pre class="mineru-code"><code></code></pre>', block, "code")
@@ -570,8 +575,10 @@ class _HtmlRenderer:
             rendered = f'<pre class="{pre_class}"><code{class_attr}>{escaped}</code></pre>'
             return _wrap_visual_body(rendered, block, "code")
         if parent.sub_type == RAW_ALGORITHM:
-            rendered = render_inline_nodes_html(
-                parse_inline_content(block.content),
+            if not isinstance(block, AlgorithmBodyBlock):
+                raise TypeError("algorithm subtype requires AlgorithmBodyBlock")
+            rendered = render_inline_spans_html(
+                block.content,
                 linkify_text=False,
                 separate_adjacent_math=True,
                 preserve_newlines=True,
@@ -597,12 +604,12 @@ class _HtmlRenderer:
         return f"<p {' '.join(attrs)}>{rendered.html}</p>"
 
     def _render_embedded_content(self, content: str, *, linkify_text: bool = True) -> HtmlInlineResult:
-        """安全处理 body 富 HTML；普通内容走共享 inline AST。"""
+        """安全处理 body 富 HTML；普通字符串始终按字面文本渲染。"""
         normalized = content.strip()
         if not normalized:
             return HtmlInlineResult("")
         if not is_supported_html_markup(normalized):
-            rendered = render_inline_nodes_html(parse_inline_content(content), linkify_text=linkify_text)
+            rendered = render_inline_spans_html([TextSpan(type="text", content=content)], linkify_text=linkify_text)
             self._observe_inline(rendered)
             return rendered
         sanitized = sanitize_html_fragment(normalized, asset_base_url=self.asset_base_url)
@@ -741,12 +748,13 @@ def _list_item_content(
     add_reference_bullets: bool,
     *,
     explicit_markers: bool,
-) -> tuple[str, str | None]:
+) -> tuple[list[InlineSpan], str | None]:
     """决定一个列表项应剥离、保留还是显式显示源 marker。"""
     if add_reference_bullets:
         if item.kind == "unordered":
             return item.body, None
-        original = f"{item.leading}{item.marker or ''}{item.separator}{item.body}"
+        prefix = f"{item.leading}{item.marker or ''}{item.separator}"
+        original = normalize_inline_spans([TextSpan(type="text", content=prefix), *item.body]) if prefix else item.body
         return original, None
     if explicit_markers:
         return item.body, item.marker
@@ -793,7 +801,7 @@ def _wire_block_attributes(block: BlockBase) -> list[str]:
 
 def _wrap_visual_body(
     content: str,
-    block: ImageBodyBlock | TableBodyBlock | ChartBodyBlock | CodeBodyBlock,
+    block: ImageBodyBlock | TableBodyBlock | ChartBodyBlock | CodeBodyBlock | AlgorithmBodyBlock,
     kind: str,
 ) -> str:
     """为视觉主体添加不参与 CSS 类型推断的精确机器容器。"""
@@ -808,9 +816,9 @@ def _collect_document_anchor_ids(middle_json: MiddleJson) -> dict[str, str]:
     for page in middle_json.pages:
         for block in page.blocks:
             if isinstance(block, TitleBlockBase):
-                visible_content = inline_plain_text(parse_inline_content(block.content)).strip()
+                visible_content = inline_plain_text(block.content).strip()
             elif isinstance(block, PageFootnoteBlock):
-                visible_content = inline_plain_text(parse_inline_content(block.content)).strip()
+                visible_content = inline_plain_text(block.content).strip()
             else:
                 continue
             anchor = _anchor_key(block.anchor)
@@ -833,7 +841,7 @@ def _plain_content_text(content: str) -> str:
         return ""
     if is_supported_html_markup(content):
         return BeautifulSoup(content, "html.parser").get_text(" ", strip=True)
-    return inline_plain_text(parse_inline_content(content)).strip()
+    return content.strip()
 
 
 def _extract_mermaid_flowchart_source(content: str) -> str | None:
@@ -891,7 +899,7 @@ def _resolve_document_title(middle_json: MiddleJson, explicit_title: str | None)
     for page in middle_json.pages:
         for block in page.blocks:
             if isinstance(block, DocTitleBlock):
-                title = inline_plain_text(parse_inline_content(block.content)).strip()
+                title = inline_plain_text(block.content).strip()
                 if title:
                     return title
     return "MinerU Document"

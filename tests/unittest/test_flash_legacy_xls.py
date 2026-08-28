@@ -39,6 +39,7 @@ from _legacy_xls_test_utils import (
     url_hyperlink,
 )
 from _legacy_ppt_test_utils import _build_cfb
+from _span_test_utils import inline, inline_text
 
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -60,7 +61,7 @@ def test_xls_model_preserves_visible_empty_pages_and_skips_hidden_sheet() -> Non
     pages = XlsModel().predict(stream)
 
     assert not stream.closed
-    assert pages == [[{"type": BlockType.TEXT, "content": "visible"}], []]
+    assert pages == [[{"type": BlockType.TEXT, "content": inline("visible")}], []]
 
 
 def test_backend_analyze_accepts_xls_and_async_contract() -> None:
@@ -183,7 +184,7 @@ def test_xls_text_format_and_unsafe_hyperlink_fallback() -> None:
         "javascript:alert(1)",
     )
     pages = XlsModel().predict(BytesIO(build_xls([SheetFixture("Data", records)])))
-    assert pages == [[{"type": BlockType.TEXT, "content": "unsafe"}]]
+    assert pages == [[{"type": BlockType.TEXT, "content": inline("unsafe")}]]
     policy = {
         "allowed_schemes": OFFICE_EXTERNAL_HYPERLINK_SCHEMES,
         "allow_relative": True,
@@ -210,7 +211,7 @@ def test_xls_filepass_and_broken_boundsheet_behaviors() -> None:
             )
         )
     )
-    assert pages == [[{"type": BlockType.TEXT, "content": "ok"}]]
+    assert pages == [[{"type": BlockType.TEXT, "content": inline("ok")}]]
 
 
 def test_xls_encrypted_ooxml_marker_and_missing_workbook_are_stable_errors() -> None:
@@ -232,7 +233,7 @@ def test_xls_encrypted_ooxml_marker_and_missing_workbook_are_stable_errors() -> 
 def test_xls_biff5_codepage_and_hidden_rows_columns_are_preserved() -> None:
     """验证 BIFF5 codepage 降级及用户选择的隐藏行列保留策略。"""
 
-    assert XlsModel().predict(BytesIO(build_biff5_xls("légacy"))) == [[{"type": BlockType.TEXT, "content": "légacy"}]]
+    assert XlsModel().predict(BytesIO(build_biff5_xls("légacy"))) == [[{"type": BlockType.TEXT, "content": inline("légacy")}]]
 
     row = bytearray(16)
     struct.pack_into("<H", row, 0, 0)
@@ -243,7 +244,7 @@ def test_xls_biff5_codepage_and_hidden_rows_columns_are_preserved() -> None:
     records = biff_record(0x0208, bytes(row)) + biff_record(0x007D, bytes(colinfo)) + label_cell(0, 0, "still visible")
 
     assert XlsModel().predict(BytesIO(build_xls([SheetFixture("Data", records)]))) == [
-        [{"type": BlockType.TEXT, "content": "still visible"}]
+        [{"type": BlockType.TEXT, "content": inline("still visible")}]
     ]
 
 
@@ -315,7 +316,7 @@ def test_xls_is_supported_by_public_parser(tmp_path: Path) -> None:
     result = parse(path, tier="flash")
 
     assert result.middle_json.file_suffix == "xls"
-    assert result.pages[0].blocks[0].content == "value"
+    assert inline_text(result.pages[0].blocks[0].content) == "value"
 
 
 @pytest.mark.skipif(not _REAL_XLS.exists(), reason="real Office roundtrip fixture is local-only")

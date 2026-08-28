@@ -10,7 +10,7 @@ from ..legacy.ole import BoundedOleReader
 from ..._shared.xycut import sort_entries
 from ..streams import read_stream_bytes_from_start
 from .....types import BlockType
-from ..rich_text import OfficeRichTextSegment, build_rich_text_from_segments
+from ..rich_text import OfficeRichTextSegment, build_rich_text_from_segments, build_rich_text_html_from_segments
 
 from .models import (
     PptChartElement,
@@ -70,8 +70,8 @@ class PptConverter:
         return styles
 
     @classmethod
-    def _paragraph_content(cls, paragraph: PptParagraph) -> str:
-        """把段落 run 构建为已转义的 MinerU Office 富文本。"""
+    def _paragraph_content(cls, paragraph: PptParagraph) -> list[dict[str, Any]]:
+        """把段落 run 直接构建为结构化 Span。"""
 
         segments = [
             OfficeRichTextSegment(
@@ -159,8 +159,20 @@ class PptConverter:
     @classmethod
     def _table_cell_content(cls, cell: PptTableCell) -> str:
         """把表格单元格内的多个段落连接为 HTML 内容。"""
-
-        return "<br/>".join(content for paragraph in cell.paragraphs if (content := cls._paragraph_content(paragraph)))
+        paragraphs: list[str] = []
+        for paragraph in cell.paragraphs:
+            segments = [
+                OfficeRichTextSegment(
+                    text=run.text.replace("\n", " "),
+                    style=cls._run_styles(run),
+                    hyperlink=run.hyperlink,
+                )
+                for run in paragraph.runs
+                if run.text
+            ]
+            if content := build_rich_text_html_from_segments(segments, trim_plain_edges=True):
+                paragraphs.append(content)
+        return "<br/>".join(paragraphs)
 
     @classmethod
     def _table_html(cls, table: PptTableElement) -> str:

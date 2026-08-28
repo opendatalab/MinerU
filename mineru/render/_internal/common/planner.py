@@ -14,6 +14,7 @@ from ....types import (
     ListBlock,
     MiddleJson,
     PageBlock,
+    InlineSpan,
     RefTextBlock,
     TableBlock,
     TextBlock,
@@ -26,7 +27,7 @@ class PlannedBlock:
 
     page_idx: int
     block: PageBlock
-    text_contents: list[str] = field(default_factory=list)
+    text_contents: list[list[InlineSpan]] = field(default_factory=list)
     removed: bool = False
 
 

@@ -15,6 +15,8 @@ from mineru.model.flash.office.xlsx import xlsx_converter as xlsx_converter_modu
 from mineru.model.flash.office.xlsx.xlsx_converter import XlsxConverter
 from mineru.types import BlockType
 
+from _span_test_utils import inline
+
 
 def _cell(
     row: int,
@@ -190,12 +192,12 @@ def test_hidden_sheet_titles_and_standalone_images_remain_separate() -> None:
     projector.workbook = workbook
 
     assert [sheet.title for sheet in projector._iter_sheets_to_convert()] == ["First", "Second"]
-    sheet_pages = [("First", [{"type": BlockType.TEXT, "content": "a"}]), ("Empty", [])]
+    sheet_pages = [("First", [{"type": BlockType.TEXT, "content": inline("a")}]), ("Empty", [])]
     projector._prepend_sheet_titles(sheet_pages)
     assert sheet_pages[0][1][0] == {
         "type": BlockType.PARAGRAPH_TITLE,
         "level": 2,
-        "content": "First",
+        "content": inline("First"),
     }
     assert sheet_pages[1][1] == []
 

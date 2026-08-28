@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import re
 
+from ....types import TextSpan
 from .inline import HtmlInlineResult, render_inline_content_html
 
 _SEPARATOR_CELL_RE = re.compile(r"^:?-{3,}:?$")
@@ -47,7 +48,10 @@ def render_gfm_table_html(content: str) -> HtmlInlineResult | None:
         nonlocal has_math
         rendered_cells: list[str] = []
         for index, cell in enumerate(cells):
-            rendered = render_inline_content_html(_unescape_gfm_cell(cell.strip()))
+            cell_text = _unescape_gfm_cell(cell.strip())
+            rendered = (
+                render_inline_content_html([TextSpan(type="text", content=cell_text)]) if cell_text else HtmlInlineResult("")
+            )
             has_math = rendered.has_math or has_math
             alignment = alignments[index]
             class_attr = f' class="mineru-align-{alignment}"' if alignment else ""

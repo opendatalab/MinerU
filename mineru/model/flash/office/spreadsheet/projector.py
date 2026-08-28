@@ -15,6 +15,7 @@ from openpyxl.worksheet.worksheet import Worksheet
 
 from .....types import BlockType
 from ..._shared.hyperlink import OFFICE_EXTERNAL_HYPERLINK_SCHEMES, sanitize_hyperlink_target
+from ..._shared.spans import text_spans
 from .html import EQUATION_BOOKENDS, render_spreadsheet_table
 from .models import AnchoredBlock, DataRegion, ExcelCell, ExcelTable, FormulaMap, SheetImage
 
@@ -174,7 +175,7 @@ class SpreadsheetProjector:
         return {
             "type": BlockType.PARAGRAPH_TITLE,
             "level": 2,
-            "content": sheet_title,
+            "content": text_spans(sheet_title),
         }
 
     @staticmethod
@@ -200,7 +201,7 @@ class SpreadsheetProjector:
         if self.treat_singleton_as_text and len(excel_table.data) == 1 and self._can_render_singleton_as_text(excel_table):
             return {
                 "type": BlockType.TEXT,
-                "content": excel_table.data[0].text,
+                "content": text_spans(excel_table.data[0].text),
             }
 
         return {
@@ -343,21 +344,11 @@ class SpreadsheetProjector:
     def _can_render_singleton_as_text(self, excel_table: ExcelTable) -> bool:
         """判断单格表是否可安全降级为普通文本 block。"""
         cell = excel_table.data[0]
-        return (
-            cell.row_span == 1
-            and cell.col_span == 1
-            and not cell.media
-            and not cell.text_is_html
-            and not cell.equations
-        )
+        return cell.row_span == 1 and cell.col_span == 1 and not cell.media and not cell.text_is_html and not cell.equations
 
     def _cell_has_semantic_content(self, excel_table: ExcelTable, cell: ExcelCell) -> bool:
         """判断单元格是否包含文本、媒体或公式语义。"""
-        return bool(
-            cell.text.strip()
-            or any(media.strip() for media in cell.media)
-            or cell.equations
-        )
+        return bool(cell.text.strip() or any(media.strip() for media in cell.media) or cell.equations)
 
     def _get_table_semantic_positions(self, excel_table: ExcelTable) -> set[tuple[int, int]]:
         """返回表格内具有语义内容的源工作表坐标。"""
@@ -933,5 +924,6 @@ class SpreadsheetProjector:
                 if isinstance(color, str) and len(color) == 8:
                     style["background-color"] = "#" + color[2:]
         return style
+
 
 __all__ = ["SpreadsheetProjector"]

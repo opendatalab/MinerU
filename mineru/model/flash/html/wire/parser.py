@@ -265,17 +265,18 @@ def _parse_visual_content(
         raise NonCanonicalWire
     _validate_structural_text(content_root)
     mapping = VISUAL_TYPE_MAPPING[parent_type]
-    allowed_types = frozenset(mapping.values())
+    sub_type = (wrapper.get("data-block-sub-type") or "").strip()
+    body_type = BlockType.ALGORITHM_BODY if parent_type == BlockType.CODE and sub_type == RAW_ALGORITHM else mapping["body"]
+    allowed_types = frozenset({body_type, mapping["caption"], mapping["footnote"]})
     children = _element_children(content_root)
     child_types = [(child.get("data-block-type") or "").strip() for child in children]
-    if child_types.count(mapping["body"]) != 1 or any(value not in allowed_types for value in child_types):
+    if child_types.count(body_type) != 1 or any(value not in allowed_types for value in child_types):
         raise NonCanonicalWire
-    sub_type = (wrapper.get("data-block-sub-type") or "").strip()
     guess_lang = (wrapper.get("data-guess-lang") or "").strip()
     parsed_children: list[VisualBodyWireSpec | AnnotationWireSpec] = []
     for child, child_type in zip(children, child_types, strict=True):
         child_index = _non_negative_integer(child, "data-block-index", required=False)
-        if child_type == mapping["body"]:
+        if child_type == body_type:
             if local_name(child) != "div" or (block_index is not None and child_index != block_index):
                 raise NonCanonicalWire
             parsed_children.append(_parse_visual_body(child, parent_type, sub_type))

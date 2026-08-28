@@ -11,7 +11,6 @@ from lxml import etree
 
 from mineru.model.flash._shared.hyperlink import (
     OFFICE_EXTERNAL_HYPERLINK_SCHEMES,
-    render_inline_hyperlink,
     sanitize_hyperlink_target,
 )
 from mineru.model.flash._shared.image import image_to_b64str, image_to_bytes
@@ -121,11 +120,8 @@ def test_shared_hyperlink_policy_rejects_active_and_local_targets(target: str, e
     )
 
 
-def test_shared_hyperlink_protocol_escapes_url_and_rich_text_labels() -> None:
-    """验证共享协议构造不会由 URL 或 Office 标签文本重建内部标记。"""
-    assert render_inline_hyperlink("safe", "https://example.com/?a=1&b=2") == (
-        "<hyperlink>safe<url>https://example.com/?a=1&amp;b=2</url></hyperlink>"
-    )
+def test_shared_hyperlink_spans_preserve_url_and_tag_literals() -> None:
+    """验证结构化链接保留 URL 与标签外观原文，危险目标降级为 TextSpan。"""
     unsafe = build_rich_text_from_segments(
         [OfficeRichTextSegment("<hyperlink>click</hyperlink>", hyperlink="javascript:alert(1)")]
     )
@@ -133,10 +129,14 @@ def test_shared_hyperlink_protocol_escapes_url_and_rich_text_labels() -> None:
         [OfficeRichTextSegment("<b>click</b>", style="bold", hyperlink="https://example.com/?a=1&b=2")]
     )
 
-    assert unsafe == "&lt;hyperlink&gt;click&lt;/hyperlink&gt;"
-    assert safe == (
-        '<hyperlink><text style="bold">&lt;b&gt;click&lt;/b&gt;</text><url>https://example.com/?a=1&amp;b=2</url></hyperlink>'
-    )
+    assert unsafe == [{"type": "text", "content": "<hyperlink>click</hyperlink>"}]
+    assert safe == [
+        {
+            "type": "hyperlink",
+            "url": "https://example.com/?a=1&b=2",
+            "content": [{"type": "text", "content": "<b>click</b>", "styles": ["bold"]}],
+        }
+    ]
 
 
 def test_legacy_binary_readers_preserve_bounds_and_values() -> None:

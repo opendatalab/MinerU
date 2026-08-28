@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import html
 import json
 import re
 from typing import Any, BinaryIO
@@ -12,6 +11,7 @@ from loguru import logger
 
 from ....types import BlockType
 from .._shared.markup import MarkupProjector, MarkupStylesheet
+from .._shared.spans import text_spans
 from .anchors import HtmlAnchorRegistry, append_referenced_notes
 from .constants import MAX_HTML_BYTES, MAX_HTML_RENDERED_BYTES
 from .contracts import HtmlSourceContext
@@ -67,7 +67,7 @@ class HtmlConverter:
             ).convert()
             if not any(block.get("type") == BlockType.DOC_TITLE for block in blocks):
                 if title := _document_title(document):
-                    blocks.insert(0, {"type": BlockType.DOC_TITLE, "level": 1, "content": html.escape(title, quote=False)})
+                    blocks.insert(0, {"type": BlockType.DOC_TITLE, "level": 1, "content": text_spans(title)})
             log_values = (
                 selection.mode_used,
                 selection.confidence,

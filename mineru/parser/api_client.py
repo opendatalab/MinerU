@@ -831,7 +831,7 @@ def _read_middle_json_from_zip(archive: zipfile.ZipFile) -> dict[str, Any]:
         if not isinstance(loaded, dict):
             raise _V1APIError(
                 "invalid_middle_json_output",
-                "middle_json output must be a JSON object with pages or pdf_info",
+                "middle_json output must be a JSON object with pages",
             )
         return loaded
     available = ", ".join(sorted(names)) or "none"
@@ -883,7 +883,7 @@ def _download_json(parser: MinerUApiParser, outputs: dict[str, Any]) -> dict[str
     except json.JSONDecodeError as exc:
         raise _V1APIError("invalid_middle_json_output", f"middle_json output is not valid JSON: {exc}") from exc
     if not isinstance(loaded, dict):
-        raise _V1APIError("invalid_middle_json_output", "middle_json output must be a JSON object with pages or pdf_info")
+        raise _V1APIError("invalid_middle_json_output", "middle_json output must be a JSON object with pages")
     return loaded
 
 
@@ -901,7 +901,7 @@ async def _async_download_json(parser: MinerUApiParser, outputs: dict[str, Any])
     except json.JSONDecodeError as exc:
         raise _V1APIError("invalid_middle_json_output", f"middle_json output is not valid JSON: {exc}") from exc
     if not isinstance(loaded, dict):
-        raise _V1APIError("invalid_middle_json_output", "middle_json output must be a JSON object with pages or pdf_info")
+        raise _V1APIError("invalid_middle_json_output", "middle_json output must be a JSON object with pages")
     return loaded
 
 
@@ -973,59 +973,10 @@ def _pages_from_middle_json(mid_json: dict[str, Any] | None) -> list[PageInfo]:
     return _parse_result_from_middle_json(mid_json).pages
 
 
-def _normalize_legacy_pdf_info_spans(pdf_info: Any) -> None:
-    """旧版 middle_json 的 span 可能用 html 字段携带 table/chart 等内容而不设 content。
-
-    Span.from_dict 只读取 dataclass 定义的字段，会丢弃 html，导致 content 为空。
-    在反序列化前把非空 html 回填到 content。
-    """
-    if not isinstance(pdf_info, list):
-        return
-    for page in pdf_info:
-        if not isinstance(page, dict):
-            continue
-        for key in ("preproc_blocks", "para_blocks", "discarded_blocks"):
-            blocks = page.get(key)
-            if isinstance(blocks, list):
-                _normalize_legacy_blocks(blocks)
-
-
-def _normalize_legacy_blocks(blocks: list[Any]) -> None:
-    for block in blocks:
-        if not isinstance(block, dict):
-            continue
-        lines = block.get("lines")
-        if isinstance(lines, list):
-            for line in lines:
-                if not isinstance(line, dict):
-                    continue
-                spans = line.get("spans")
-                if isinstance(spans, list):
-                    for span in spans:
-                        if not isinstance(span, dict):
-                            continue
-                        html = span.get("html")
-                        if isinstance(html, str) and html:
-                            span["content"] = html
-        children = block.get("blocks")
-        if isinstance(children, list):
-            _normalize_legacy_blocks(children)
-
-
 def _parse_result_from_middle_json(mid_json: dict[str, Any]) -> ParseResult:
-    if isinstance(mid_json, dict):
-        pages = mid_json.get("pages")
-        if pages is not None:
-            return ParseResult.from_dict(mid_json)
-
-        pdf_info = mid_json.get("pdf_info")
-        if isinstance(pdf_info, list):
-            # The official API may use the older pdf_info field instead of ParseResult pages.
-            _normalize_legacy_pdf_info_spans(pdf_info)
-            compat_payload = dict(mid_json)
-            compat_payload["pages"] = pdf_info
-            return ParseResult.from_dict(compat_payload)
-    raise _V1APIError("invalid_middle_json_output", "middle_json output must contain a list field named pages or pdf_info")
+    if isinstance(mid_json, dict) and mid_json.get("pages") is not None:
+        return ParseResult.from_dict(mid_json)
+    raise _V1APIError("invalid_middle_json_output", "middle_json output must contain a list field named pages")
 
 
 def _raise_for_terminal_job_error(job: dict[str, Any]) -> None:

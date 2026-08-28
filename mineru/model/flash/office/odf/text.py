@@ -13,9 +13,13 @@ from typing import Any
 from lxml import etree  # type: ignore[reportMissingImports]
 
 from .....types import BlockType
-from ..._shared.hyperlink import (
-    escape_inline_protocol_text,
-    sanitize_hyperlink_target,
+from ..._shared.hyperlink import sanitize_hyperlink_target
+from ..._shared.spans import (
+    append_equation_span,
+    append_text_span,
+    extend_inline_spans,
+    inline_span_plain_text,
+    strip_span_dicts,
 )
 from ..._shared.mathml import mathml_to_latex
 from ..._shared.image import image_to_b64str
@@ -152,9 +156,9 @@ def render_atoms_to_html(atoms: Sequence[InlineAtom]) -> str:
     return "".join(parts)
 
 
-def render_atoms_to_model(atoms: Sequence[InlineAtom], *, trim_edges: bool = False) -> str:
-    """把 ODF 行内语义序列转换为现有 Office 富文本协议。"""
-    parts: list[str] = []
+def render_atoms_to_model(atoms: Sequence[InlineAtom], *, trim_edges: bool = False) -> list[dict[str, Any]]:
+    """把 ODF 行内语义序列直接转换为结构化 Span。"""
+    spans: list[dict[str, Any]] = []
     segments: list[OfficeRichTextSegment] = []
     text_fragments: list[str] = []
     fragment_style: tuple[str, ...] | None = None
@@ -175,7 +179,7 @@ def render_atoms_to_model(atoms: Sequence[InlineAtom], *, trim_edges: bool = Fal
         flush_text_fragments()
         if not segments:
             return
-        parts.append(build_rich_text_from_segments(list(segments), trim_plain_edges=trim_edges and not parts))
+        extend_inline_spans(spans, build_rich_text_from_segments(list(segments), trim_plain_edges=trim_edges and not spans))
         segments.clear()
 
     for atom in atoms:
@@ -191,15 +195,15 @@ def render_atoms_to_model(atoms: Sequence[InlineAtom], *, trim_edges: bool = Fal
             continue
         flush_segments()
         if isinstance(atom, InlineMath):
-            parts.append(f"<eq>{html.escape(atom.latex, quote=False)}</eq>")
+            append_equation_span(spans, atom.latex)
         elif isinstance(atom, InlineBreak):
-            parts.append("\n")
+            append_text_span(spans, "\n")
         elif isinstance(atom, InlineImage) and atom.alt:
-            parts.append(escape_inline_protocol_text(atom.alt))
+            append_text_span(spans, atom.alt)
         elif isinstance(atom, (InlineBlockGroup, InlineNote)):
             continue
     flush_segments()
-    return "".join(parts).strip() if trim_edges else "".join(parts)
+    return strip_span_dicts(spans) if trim_edges else spans
 
 
 class OdfBlockParser:
@@ -366,8 +370,7 @@ class OdfBlockParser:
         blocks = self.parse_container(body)
         visible = flatten_block_text(blocks)
         if visible:
-            safe_citation_text = escape_inline_protocol_text(citation_text)
-            atoms.append(InlineNote(f"[{safe_citation_text}] {visible}"))
+            atoms.append(InlineNote(f"[{citation_text}] {visible}"))
 
     def parse_inline_atoms(self, paragraph: etree._Element) -> list[InlineAtom]:
         """解析一个段落的行内语义，并用原位 marker 保留段外 block。"""
@@ -520,7 +523,7 @@ class OdfBlockParser:
                 results.append(OdfMasterPageChange(requested_master))
                 active_master = requested_master
                 fragment_start = start + item_count - (0 if is_header else 1)
-            text_parts: list[str] = []
+            text_content: list[dict[str, Any]] = []
             nested_blocks: list[dict[str, Any]] = []
             lifted_blocks: list[OdfListFlowItem] = []
 
@@ -540,9 +543,12 @@ class OdfBlockParser:
                         BlockType.REF_TEXT,
                         BlockType.DOC_TITLE,
                         BlockType.PARAGRAPH_TITLE,
-                    } and isinstance(block_content, str):
-                        if block_content:
-                            text_parts.append(block_content)
+                    } and isinstance(block_content, list):
+                        block_spans = [span for span in block_content if isinstance(span, dict)]
+                        if block_spans:
+                            if text_content:
+                                append_text_span(text_content, "\n")
+                            extend_inline_spans(text_content, block_spans)
                     elif block_type == BlockType.LIST:
                         nested_blocks.append(block)
                     else:
@@ -569,8 +575,8 @@ class OdfBlockParser:
                         lifted_blocks.extend(nested_flow)
                 else:
                     consume_flow(self.parse_container(child))
-            if text_parts:
-                content.append({"type": BlockType.TEXT, "content": "\n".join(text_parts)})
+            if text_content:
+                content.append({"type": BlockType.TEXT, "content": text_content})
             content.extend(nested_blocks)
             if lifted_blocks:
                 flush_content(fragment_start)
@@ -979,14 +985,17 @@ def flatten_block_text(blocks: list[dict[str, Any]]) -> str:
     for block in blocks:
         content = block.get("content")
         if isinstance(content, str):
-            visible = re.sub(r"<url>.*?</url>", "", content, flags=re.DOTALL)
-            visible = re.sub(r"<[^>]+>", "", visible)
-            if visible.strip():
-                decoded = html.unescape(visible).strip()
-                parts.append(decoded.replace("<", "&lt;").replace(">", "&gt;"))
+            if content.strip():
+                visible = re.sub(r"<[^>]+>", "", content)
+                parts.append(html.unescape(visible).strip())
         elif isinstance(content, list):
             children = [child for child in content if isinstance(child, dict)]
-            nested = flatten_block_text(children)
+            if children and all(
+                child.get("type") in {"text", "equation_inline", "code_inline", "hyperlink"} for child in children
+            ):
+                nested = inline_span_plain_text(children)
+            else:
+                nested = flatten_block_text(children)
             if nested:
                 parts.append(nested)
     return "\n".join(parts)

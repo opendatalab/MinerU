@@ -1,3 +1,4 @@
+from _span_test_utils import inline as _inline
 from dataclasses import fields
 import json
 
@@ -35,7 +36,7 @@ def test_parse_result_from_dict_restores_pages() -> None:
                             type=BlockType.TEXT,
                             index=0,
                             bbox=(0.0, 0.0, 0.1, 0.1),
-                            content="hello",
+                            content=_inline("hello"),
                         )
                     ],
                 )
@@ -53,7 +54,7 @@ def test_parse_result_from_dict_restores_pages() -> None:
     assert restored.to_dict() == result.to_dict()
     assert restored.pages[0].page_idx == 3
     assert restored.pages[0].blocks[0].bbox == (0.0, 0.0, 0.1, 0.1)
-    assert restored.pages[0].blocks[0].content == "hello"
+    assert restored.pages[0].blocks[0].content[0].content == "hello"
 
 
 def test_parse_result_to_dict_includes_schema_version_without_meta() -> None:
@@ -76,7 +77,7 @@ def test_parse_result_to_dict_includes_schema_version_without_meta() -> None:
 
 
 def test_parse_result_roundtrip_preserves_page_footnote_anchor() -> None:
-    """验证 Schema 2.0 ParseResult 往返保留页面脚注 anchor。"""
+    """验证 Schema 3.0 ParseResult 往返保留页面脚注 anchor。"""
     result = ParseResult(
         middle_json=MiddleJson(
             pages=[
@@ -86,7 +87,7 @@ def test_parse_result_roundtrip_preserves_page_footnote_anchor() -> None:
                         PageFootnoteBlock(
                             type=BlockType.PAGE_FOOTNOTE,
                             index=0,
-                            content="Footnote",
+                            content=_inline("Footnote"),
                             anchor="note-one",
                         )
                     ],
@@ -107,8 +108,8 @@ def test_parse_result_roundtrip_preserves_page_footnote_anchor() -> None:
     assert footnote.anchor == "note-one"  # type: ignore[union-attr]
 
 
-def test_parse_result_rejects_schema_v2_low_effort() -> None:
-    """验证 schema 版本保持 2.0 时，旧 Low effort 载荷仍按新严格枚举失败。"""
+def test_parse_result_rejects_schema_v3_low_effort() -> None:
+    """验证 schema 3.0 的旧 Low effort 值仍按严格枚举失败。"""
     with pytest.raises(ValidationError, match="literal_error"):
         ParseResult.from_dict(
             {
@@ -125,10 +126,10 @@ def test_parse_result_rejects_schema_v2_low_effort() -> None:
 
 def test_parse_result_from_dict_rejects_missing_pages() -> None:
     with pytest.raises(ValueError, match="pages"):
-        ParseResult.from_dict({"pdf_info": []})
+        ParseResult.from_dict({"schema_version": MIDDLE_JSON_SCHEMA_VERSION})
 
 
-def test_parse_result_from_json_restores_pages() -> None:
+def test_parse_result_from_json_rejects_legacy_pages() -> None:
     data = {
         "pages": [
             {
@@ -150,11 +151,19 @@ def test_parse_result_from_json_restores_pages() -> None:
         ]
     }
 
-    restored = ParseResult.from_json(json.dumps(data))
+    with pytest.raises(ValueError, match="Reparse the source document"):
+        ParseResult.from_json(json.dumps(data))
 
-    assert restored.to_dict() == ParseResult.from_dict(data).to_dict()
-    assert restored.middle_json.is_full_document is True
-    assert restored.middle_json.file_suffix == "pdf"
+
+@pytest.mark.parametrize("schema_version", [None, "1.0", "2.0"])
+def test_parse_result_rejects_pre_v3_schema_versions(schema_version: str | None) -> None:
+    """验证缺失版本与 1.0/2.0 payload 均明确要求重新解析源文件。"""
+    payload: dict[str, object] = {"pages": []}
+    if schema_version is not None:
+        payload["schema_version"] = schema_version
+
+    with pytest.raises(ValueError, match="Reparse the source document"):
+        ParseResult.from_dict(payload)
 
 
 def test_parse_result_export_pages_returns_defensive_copy() -> None:

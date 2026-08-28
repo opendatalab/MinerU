@@ -11,6 +11,8 @@ from mineru.backend.postprocess.paragraphs import (
 )
 from mineru.types import BlockType
 
+from _span_test_utils import inline as _inline, inline_text
+
 
 def _text_block(
     index: int,
@@ -25,7 +27,7 @@ def _text_block(
         "index": index,
         "type": block_type,
         "bbox": list(bbox),
-        "content": content,
+        "content": _inline(content),
         "lines": [{"bbox": list(line_bbox)} for line_bbox in line_bboxes],
     }
 
@@ -46,7 +48,7 @@ def _list_block(
         "content": [
             {
                 "type": child_type,
-                "content": content,
+                "content": _inline(content),
                 "lines": [{"bbox": [0.1, 0.1, 0.9, 0.2]}],
             }
         ],
@@ -304,8 +306,8 @@ def test_merge_para_text_blocks_ignores_cross_page_decorations() -> None:
     merge_para_text_blocks(pages)
 
     assert current_block["continues_prev"] is True
-    assert previous_block["content"] == "previous continuation"
-    assert current_block["content"] == "current continuation"
+    assert inline_text(previous_block["content"]) == "previous continuation"
+    assert inline_text(current_block["content"]) == "current continuation"
     assert "lines" not in previous_block
     assert "lines" not in current_block
 
@@ -657,7 +659,7 @@ def test_can_auto_merge_horizontal_text_blocks_rejects_paragraph_boundaries() ->
     assert can_auto_merge_text_blocks(current_block, previous_block)
 
     previous_block, current_block = _horizontal_pair()
-    previous_block["content"] = "finished."
+    previous_block["content"] = _inline("finished.")
     assert not can_auto_merge_text_blocks(current_block, previous_block)
 
     previous_block, current_block = _horizontal_pair()
@@ -729,12 +731,12 @@ def test_ref_text_rule_relaxes_leading_edge_and_initial_character() -> None:
     assert not can_auto_merge_ref_text_blocks(current_block, previous_block)
 
     previous_block, current_block = _ref_text_horizontal_pair()
-    current_block["content"] = "Uppercase"
+    current_block["content"] = _inline("Uppercase")
     assert can_auto_merge_ref_text_blocks(current_block, previous_block)
     assert not can_auto_merge_text_blocks(current_block, previous_block)
 
     previous_block, current_block = _ref_text_horizontal_pair()
-    current_block["content"] = "1470–1480, Beijing, China."
+    current_block["content"] = _inline("1470–1480, Beijing, China.")
     assert can_auto_merge_ref_text_blocks(current_block, previous_block)
     assert not can_auto_merge_text_blocks(current_block, previous_block)
 
@@ -788,8 +790,8 @@ def test_merge_para_text_blocks_marks_indented_ref_text_without_moving_content()
 def test_merge_para_text_blocks_marks_numeric_reference_page_range() -> None:
     """验证数字页码范围开头的 ref_text 可以续接前一条未结束参考文献。"""
     previous_block, current_block = _ref_text_horizontal_pair()
-    previous_block["content"] = "Proceedings of the conference, pages"
-    current_block["content"] = "1470–1480, Beijing, China."
+    previous_block["content"] = _inline("Proceedings of the conference, pages")
+    current_block["content"] = _inline("1470–1480, Beijing, China.")
     pages = [{"page_idx": 0, "blocks": [previous_block, current_block]}]
 
     merge_para_text_blocks(pages)
@@ -1023,8 +1025,8 @@ def test_merge_para_text_blocks_skips_page_auxiliary_blocks_between_ref_lists() 
 
     assert "continues_prev" not in previous_list
     assert current_list["continues_prev"] is True
-    assert previous_list["content"][0]["content"] == "ref one"
-    assert current_list["content"][0]["content"] == "ref two"
+    assert inline_text(previous_list["content"][0]["content"]) == "ref one"
+    assert inline_text(current_list["content"][0]["content"]) == "ref two"
     assert "lines" not in previous_list["content"][0]
     assert "lines" not in current_list["content"][0]
 

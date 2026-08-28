@@ -20,6 +20,8 @@ from mineru.backend.analysis.pdf.text.native import (
 )
 from mineru.types import BlockType, ContentType, MiddleJson, ModelJson
 
+from _span_test_utils import inline, inline_text
+
 
 def _build_text_lines(*contents: str) -> list[_AnalyzeLine]:
     """按输入文本构造稳定的多行文本结构，供 block content 拼接测试复用。"""
@@ -227,7 +229,7 @@ def test_doc_analyze_converts_vlm_results_before_downstream_processing(
     assert type(model_json.pages) is list
     assert type(model_json.pages[0]) is list
     assert type(model_json.pages[0][0]) is dict
-    assert model_json.pages == [[{"type": BlockType.PAGE_NUMBER, "bbox": [0.45, 0.9, 0.55, 0.95], "content": "1"}]]
+    assert model_json.pages == [[{"type": BlockType.PAGE_NUMBER, "bbox": [0.45, 0.9, 0.55, 0.95], "content": inline("1")}]]
     assert model_json.page_index_map == []
     assert model_json.file_suffix == "pdf"
     assert model_json.effort == effort
@@ -467,7 +469,7 @@ def test_fill_window_batches_txt_post_ocr_before_page_content(monkeypatch: pytes
 
     assert result is model_list
     local_model_context.ocr_model.ocr.assert_called_once()
-    assert [page[0]["content"] for page in model_list] == ["窗口第一页", "窗口第二页"]
+    assert [inline_text(page[0]["content"]) for page in model_list] == ["窗口第一页", "窗口第二页"]
 
 
 def test_fill_window_ocr_mode_does_not_run_txt_post_ocr(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -491,7 +493,7 @@ def test_fill_window_ocr_mode_does_not_run_txt_post_ocr(monkeypatch: pytest.Monk
     )
 
     local_model_context.ocr_model.ocr.assert_not_called()
-    assert model_list[0][0]["content"] == "已有 OCR 文本"
+    assert inline_text(model_list[0][0]["content"]) == "已有 OCR 文本"
 
 
 def test_empty_index_content_preserves_grouped_line_breaks() -> None:

@@ -23,14 +23,7 @@ from lxml import etree
 from loguru import logger
 
 from ..common.index import strip_index_page_tail
-from ....backend.postprocess.inline import (
-    InlineEquation,
-    InlineLink,
-    InlineNode,
-    InlineStyled,
-    InlineText,
-    parse_inline_content,
-)
+from ....backend.postprocess.inline import normalize_inline_spans
 from ..common.list_items import parse_list_item_marker
 from ..common.planner import PlannedBlock, build_render_plan
 from .assets import (
@@ -43,7 +36,7 @@ from .inline import (
     BookmarkRegistry,
     InlineRenderContext,
     append_inline_content,
-    append_inline_nodes,
+    append_inline_spans,
     append_internal_link,
     append_joined_inline_contents,
     sanitize_xml_text,
@@ -67,6 +60,7 @@ from ...docx import DocxRenderError
 from ....types import (
     PAGE_AUXILIARY_BLOCK_TYPES,
     RAW_ALGORITHM,
+    AlgorithmBodyBlock,
     BlockBase,
     BlockType,
     BBox,
@@ -83,6 +77,7 @@ from ....types import (
     ImageBodyBlock,
     ImagePayloadBlock,
     IndexBlock,
+    InlineSpan,
     ListBlock,
     MiddleJson,
     PageAuxTextBlock,
@@ -93,6 +88,9 @@ from ....types import (
     TableBlock,
     TableBodyBlock,
     TextBlock,
+    TextSpan,
+    EquationInlineSpan,
+    HyperlinkSpan,
     TitleBlockBase,
 )
 from ....utils.image_payload import validate_remote_image_url
@@ -326,15 +324,14 @@ class _DocxRenderer:
                 self._render_index(child, context, depth=depth + 1)
                 continue
             content = strip_index_page_tail(child.content)
-            nodes = parse_inline_content(content)
-            if not nodes:
+            if not content:
                 continue
             paragraph = self.document.add_paragraph(style=BODY_STYLE)
             paragraph.paragraph_format.left_indent = Mm((depth + 1) * 6)
             paragraph.paragraph_format.first_line_indent = Mm(-4)
             paragraph.add_run("• ")
             anchor = child.anchor if isinstance(child, TitleBlockBase) else None
-            append_internal_link(paragraph, nodes, anchor=anchor, context=context)
+            append_internal_link(paragraph, content, anchor=anchor, context=context)
 
     def _render_image_block(self, block: ImageBlock, context: InlineRenderContext) -> None:
         """按原始子块顺序写图片主体、caption 与 footnote。"""
@@ -398,7 +395,7 @@ class _DocxRenderer:
                         logger.warning("DOCX chart data table omitted after image fallback: {}", exc)
                 elif child.content.strip() and not has_image:
                     paragraph = self.document.add_paragraph(style=BODY_STYLE)
-                    append_inline_content(paragraph, child.content, context=context)
+                    append_inline_content(paragraph, [TextSpan(type="text", content=child.content)], context=context)
                 elif not has_image and not child.content.strip():
                     raise self._render_error("Chart does not contain image or structured content", context)
             elif isinstance(child, ChartAnnotationBlock):
@@ -409,11 +406,15 @@ class _DocxRenderer:
     def _render_code_block(self, block: CodeBlock, context: InlineRenderContext) -> None:
         """按原始子块顺序写代码或算法主体及说明。"""
         for child in block.content:
-            if isinstance(child, CodeBodyBlock):
+            if isinstance(child, (CodeBodyBlock, AlgorithmBodyBlock)):
                 paragraph = self.document.add_paragraph(style=CODE_STYLE)
                 if block.sub_type == BlockType.CODE:
+                    if not isinstance(child, CodeBodyBlock):
+                        raise TypeError("code subtype requires CodeBodyBlock")
                     paragraph.add_run(sanitize_xml_text(child.content, context=context))
                 elif block.sub_type == RAW_ALGORITHM:
+                    if not isinstance(child, AlgorithmBodyBlock):
+                        raise TypeError("algorithm subtype requires AlgorithmBodyBlock")
                     append_inline_content(paragraph, child.content, context=context)
                 else:
                     raise ValueError(f"Unsupported code subtype: {block.sub_type}")
@@ -447,9 +448,15 @@ class _DocxRenderer:
         """安全加载 block 图片，并按 bbox/自然尺寸限制到可用页面范围。"""
         if block.image_base64 is None and block.image_path is None and block.image_url:
             paragraph = self.document.add_paragraph(style=BODY_STYLE)
-            append_inline_nodes(
+            append_inline_spans(
                 paragraph,
-                [InlineLink([InlineText(alt_text or "remote image")], block.image_url)],
+                [
+                    HyperlinkSpan(
+                        type="hyperlink",
+                        url=block.image_url,
+                        content=[TextSpan(type="text", content=alt_text or "remote image")],
+                    )
+                ],
                 context=context,
             )
             return
@@ -647,10 +654,8 @@ class _DocxRenderer:
             text = str(node)
             if not text:
                 return paragraph, False
-            nodes: list[InlineNode] = [InlineText(text)]
-            if inherited_styles:
-                nodes = [InlineStyled(nodes, inherited_styles)]
-            append_inline_nodes(paragraph, nodes, context=context)
+            spans: list[InlineSpan] = [TextSpan(type="text", content=text, styles=list(inherited_styles))]
+            append_inline_spans(paragraph, spans, context=context)
             return paragraph, bool(text.strip())
 
         name = node.name.lower()
@@ -674,18 +679,14 @@ class _DocxRenderer:
             return paragraph, True
         if name == "eq":
             latex = node.get_text().strip()
-            nodes = [InlineEquation(latex)] if latex else []
-            if inherited_styles and nodes:
-                nodes = [InlineStyled(nodes, inherited_styles)]
-            append_inline_nodes(paragraph, nodes, context=context)
-            return paragraph, bool(nodes)
+            spans = [EquationInlineSpan(type="equation_inline", content=latex)] if latex else []
+            append_inline_spans(paragraph, spans, context=context)
+            return paragraph, bool(spans)
         if name == "a":
-            children = _html_inline_nodes(node)
-            if inherited_styles and children:
-                children = [InlineStyled(children, inherited_styles)]
-            append_inline_nodes(
+            children = _html_inline_spans(node, inherited_styles=inherited_styles)
+            append_inline_spans(
                 paragraph,
-                [InlineLink(children, str(node.get("href", "")).strip())],
+                [HyperlinkSpan(type="hyperlink", content=children, url=str(node.get("href", "")).strip())] if children else [],
                 context=context,
             )
             return paragraph, bool(children)
@@ -732,11 +733,9 @@ class _DocxRenderer:
                     rendered = child_rendered or rendered
             return paragraph, rendered
         if name == "text":
-            nodes = parse_inline_content(str(node))
-            if inherited_styles and nodes:
-                nodes = [InlineStyled(nodes, inherited_styles)]
-            append_inline_nodes(paragraph, nodes, context=context)
-            return paragraph, bool(nodes)
+            spans = _html_inline_spans(node, inherited_styles=inherited_styles)
+            append_inline_spans(paragraph, spans, context=context)
+            return paragraph, bool(spans)
 
         style = {
             "strong": "bold",
@@ -779,9 +778,15 @@ class _DocxRenderer:
         except ValueError:
             remote_source = None
         if remote_source is not None:
-            append_inline_nodes(
+            append_inline_spans(
                 paragraph,
-                [InlineLink([InlineText(alt_text.strip() or "remote image")], remote_source)],
+                [
+                    HyperlinkSpan(
+                        type="hyperlink",
+                        url=remote_source,
+                        content=[TextSpan(type="text", content=alt_text.strip() or "remote image")],
+                    )
+                ],
                 context=context,
             )
             return
@@ -843,43 +848,50 @@ def _plain_html_text(content: str) -> str:
     return BeautifulSoup(content, "html.parser").get_text(" ", strip=True)
 
 
-def _html_inline_nodes(node: Tag) -> list[InlineNode]:
-    """把表格单元格中的安全 HTML 行内标签转换为共享 InlineNode。"""
-    nodes: list[InlineNode] = []
+def _html_inline_spans(node: Tag, *, inherited_styles: tuple[str, ...] = ()) -> list[InlineSpan]:
+    """把表格单元格中的安全 HTML 行内标签转换为结构化 Span。"""
+    spans: list[InlineSpan] = []
     for child in node.children:
         if isinstance(child, NavigableString):
             if str(child):
-                nodes.append(InlineText(str(child)))
+                spans.append(TextSpan(type="text", content=str(child), styles=list(inherited_styles)))
             continue
         if not isinstance(child, Tag):
             continue
         name = child.name.lower()
-        children = _html_inline_nodes(child)
         if name == "eq":
             latex = child.get_text().strip()
             if latex:
-                nodes.append(InlineEquation(latex))
-        elif name in {"strong", "b"}:
-            nodes.append(InlineStyled(children, ("bold",)))
-        elif name in {"em", "i"}:
-            nodes.append(InlineStyled(children, ("italic",)))
-        elif name == "u":
-            nodes.append(InlineStyled(children, ("underline",)))
-        elif name == "s":
-            nodes.append(InlineStyled(children, ("strikethrough",)))
-        elif name == "sup":
-            nodes.append(InlineStyled(children, ("superscript",)))
-        elif name == "sub":
-            nodes.append(InlineStyled(children, ("subscript",)))
-        elif name == "a":
-            nodes.append(InlineLink(children, str(child.get("href", "")).strip()))
-        elif name == "br":
-            nodes.append(InlineText("\n"))
-        elif name == "text":
-            nodes.extend(parse_inline_content(str(child)))
+                spans.append(EquationInlineSpan(type="equation_inline", content=latex))
+            continue
+        if name == "br":
+            spans.append(TextSpan(type="text", content="\n", styles=list(inherited_styles)))
+            continue
+        style = {
+            "strong": "bold",
+            "b": "bold",
+            "em": "italic",
+            "i": "italic",
+            "u": "underline",
+            "s": "strikethrough",
+            "sup": "superscript",
+            "sub": "subscript",
+        }.get(name)
+        styles = tuple(dict.fromkeys((*inherited_styles, style))) if style else inherited_styles
+        if name == "text":
+            declared = [item.strip() for item in str(child.get("style", "")).split(",") if item.strip()]
+            styles = tuple(dict.fromkeys((*styles, *declared)))
+        children = _html_inline_spans(child, inherited_styles=styles)
+        if name == "a":
+            non_link_children = [item for item in children if not isinstance(item, HyperlinkSpan)]
+            url = str(child.get("href", "")).strip()
+            if non_link_children and url:
+                spans.append(HyperlinkSpan(type="hyperlink", content=non_link_children, url=url))
+            else:
+                spans.extend(non_link_children)
         elif name not in {"img", "table"}:
-            nodes.extend(children)
-    return nodes
+            spans.extend(children)
+    return normalize_inline_spans(spans)
 
 
 def _set_cell_margins(

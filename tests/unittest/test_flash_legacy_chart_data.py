@@ -13,6 +13,7 @@ from mineru.types import BlockType, ChartBlock
 
 from _legacy_ppt_test_utils import _build_cfb
 from _legacy_xls_test_utils import biff_bof, biff_record, label_cell, number_cell
+from _span_test_utils import inline_text
 
 
 def _boundsheet(offset: int, name: str, sheet_type: int, *, visible: bool = True) -> bytes:
@@ -152,7 +153,7 @@ def test_xls_standalone_chart_sheet_keeps_workbook_order() -> None:
         ["A", "1.5"],
         ["B", "2.5"],
     ]
-    assert model.pages[1][0]["content"] == "Sheet1"
+    assert inline_text(model.pages[1][0]["content"]) == "Sheet1"
 
 
 def test_excel_chart_single_visible_sheet_fallback_uses_nonempty_extent() -> None:

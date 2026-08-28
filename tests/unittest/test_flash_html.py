@@ -37,7 +37,9 @@ from mineru.render.docx import render_docx
 from mineru.render.html import render_html
 from mineru.render.markdown import render_markdown
 from mineru.render.structured_content import render_structured_content
-from mineru.types import BlockType, CodeBlock, CodeBodyBlock, ImageBlock, ImageBodyBlock, MiddleJson
+from mineru.types import BlockBase, BlockType, CodeBlock, CodeBodyBlock, ImageBlock, ImageBodyBlock, MiddleJson
+
+from _span_test_utils import equation, hyperlink, inline, inline_items, inline_text, visible_content
 
 
 _PNG_URI = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2l9sAAAAASUVORK5CYII="
@@ -62,29 +64,33 @@ def _wire_contract_middle() -> MiddleJson:
                 {
                     "page_idx": 3,
                     "blocks": [
-                        {"type": "doc_title", "index": 0, "level": 1, "anchor": "doc-anchor", "content": "Document"},
+                        {"type": "doc_title", "index": 0, "level": 1, "anchor": "doc-anchor", "content": inline("Document")},
                         {
                             "type": "paragraph_title",
                             "index": 1,
                             "level": 2,
                             "anchor": "section-anchor",
-                            "content": "Section",
+                            "content": inline("Section"),
                         },
                         {
                             "type": "text",
                             "index": 2,
-                            "content": "Text & value < 3 <eq>x+1</eq> &lt;eq&gt;literal&lt;/eq&gt;",
+                            "content": [
+                                *inline("Text & value < 3 "),
+                                equation("x+1"),
+                                *inline(" <eq>literal</eq>"),
+                            ],
                         },
-                        {"type": "ref_text", "index": 3, "content": "Reference text"},
+                        {"type": "ref_text", "index": 3, "content": inline("Reference text")},
                         {
                             "type": "list",
                             "index": 4,
                             "sub_type": "ref_text",
                             "content": [
-                                {"type": "ref_text", "content": "[1] Reference"},
+                                {"type": "ref_text", "content": inline("[1] Reference")},
                                 {
                                     "type": "list",
-                                    "content": [{"type": "text", "content": "- Nested item"}],
+                                    "content": [{"type": "text", "content": inline("- Nested item")}],
                                 },
                             ],
                         },
@@ -96,11 +102,11 @@ def _wire_contract_middle() -> MiddleJson:
                                     "type": "paragraph_title",
                                     "level": 2,
                                     "anchor": "section-anchor",
-                                    "content": "Section\t9",
+                                    "content": inline("Section\t9"),
                                 },
                                 {
                                     "type": "index",
-                                    "content": [{"type": "text", "content": "Unlinked entry"}],
+                                    "content": [{"type": "text", "content": inline("Unlinked entry")}],
                                 },
                             ],
                         },
@@ -115,8 +121,8 @@ def _wire_contract_middle() -> MiddleJson:
                                     "content": "Image body",
                                     "image_base64": _PNG_URI,
                                 },
-                                {"type": "image_caption", "index": 7, "content": "Image caption"},
-                                {"type": "image_footnote", "index": 8, "content": "Image footnote"},
+                                {"type": "image_caption", "index": 7, "content": inline("Image caption")},
+                                {"type": "image_footnote", "index": 8, "content": inline("Image footnote")},
                             ],
                         },
                         {
@@ -128,8 +134,8 @@ def _wire_contract_middle() -> MiddleJson:
                                     "index": 9,
                                     "content": "<table><tr><td>A</td></tr></table>",
                                 },
-                                {"type": "table_caption", "index": 10, "content": "Table caption"},
-                                {"type": "table_footnote", "index": 11, "content": "Table footnote"},
+                                {"type": "table_caption", "index": 10, "content": inline("Table caption")},
+                                {"type": "table_footnote", "index": 11, "content": inline("Table footnote")},
                             ],
                         },
                         {
@@ -143,8 +149,8 @@ def _wire_contract_middle() -> MiddleJson:
                                     "content": "| A | B |\n| - | - |\n| 1 | 2 |",
                                     "image_base64": _PNG_URI,
                                 },
-                                {"type": "chart_caption", "index": 13, "content": "Chart caption"},
-                                {"type": "chart_footnote", "index": 14, "content": "Chart footnote"},
+                                {"type": "chart_caption", "index": 13, "content": inline("Chart caption")},
+                                {"type": "chart_footnote", "index": 14, "content": inline("Chart footnote")},
                             ],
                         },
                         {
@@ -154,8 +160,8 @@ def _wire_contract_middle() -> MiddleJson:
                             "guess_lang": "python",
                             "content": [
                                 {"type": "code_body", "index": 15, "content": "print('ok')"},
-                                {"type": "code_caption", "index": 16, "content": "Code caption"},
-                                {"type": "code_footnote", "index": 17, "content": "Code footnote"},
+                                {"type": "code_caption", "index": 16, "content": inline("Code caption")},
+                                {"type": "code_footnote", "index": 17, "content": inline("Code footnote")},
                             ],
                         },
                         {
@@ -163,17 +169,26 @@ def _wire_contract_middle() -> MiddleJson:
                             "index": 18,
                             "sub_type": "algorithm",
                             "content": [
-                                {"type": "code_body", "index": 18, "content": "if x < y:\n  z=<eq>a</eq>"},
-                                {"type": "code_caption", "index": 19, "content": "Algorithm caption"},
-                                {"type": "code_footnote", "index": 20, "content": "Algorithm footnote"},
+                                {
+                                    "type": "algorithm_body",
+                                    "index": 18,
+                                    "content": [*inline("if x < y:\n  z="), equation("a")],
+                                },
+                                {"type": "code_caption", "index": 19, "content": inline("Algorithm caption")},
+                                {"type": "code_footnote", "index": 20, "content": inline("Algorithm footnote")},
                             ],
                         },
                         {"type": "equation", "index": 21, "content": "y^2\\tag{1}"},
-                        {"type": "page_footnote", "index": 22, "anchor": "note-anchor", "content": "Page footnote"},
-                        {"type": "header", "index": 23, "content": "Header"},
-                        {"type": "footer", "index": 24, "content": "Footer"},
-                        {"type": "page_number", "index": 25, "content": "3"},
-                        {"type": "aside_text", "index": 26, "content": "Aside"},
+                        {
+                            "type": "page_footnote",
+                            "index": 22,
+                            "anchor": "note-anchor",
+                            "content": inline("Page footnote"),
+                        },
+                        {"type": "header", "index": 23, "content": inline("Header")},
+                        {"type": "footer", "index": 24, "content": inline("Footer")},
+                        {"type": "page_number", "index": 25, "content": inline("3")},
+                        {"type": "aside_text", "index": 26, "content": inline("Aside")},
                     ],
                 }
             ],
@@ -189,7 +204,11 @@ def _wire_contract_middle() -> MiddleJson:
 def _semantic_block_signature(block: object) -> tuple[object, ...]:
     """提取往返测试关心的类型、元数据和递归 child 类型。"""
     content = getattr(block, "content", None)
-    children = tuple(_semantic_block_signature(child) for child in content) if isinstance(content, list) else ()
+    children = (
+        tuple(_semantic_block_signature(child) for child in content if isinstance(child, BlockBase))
+        if isinstance(content, list)
+        else ()
+    )
     return (
         str(getattr(block, "type")),
         getattr(block, "sub_type", None),
@@ -339,7 +358,7 @@ def test_html_parse_server_url_preserves_http_declared_charset(tmp_path: Path, m
     middle_record = file_store.get_file(parsed_file.output_files.middle_json.file_id)
     assert middle_record.sha256sum is not None
     middle_payload = json.loads(file_store.read_blob(middle_record.sha256sum))
-    assert middle_payload["pages"][0]["blocks"][0]["content"] == expected
+    assert inline_text(middle_payload["pages"][0]["blocks"][0]["content"]) == expected
 
 
 @pytest.mark.parametrize(
@@ -390,7 +409,7 @@ def test_html_parse_server_url_accepts_extensionless_text_html(
     middle_record = file_store.get_file(parsed_file.output_files.middle_json.file_id)
     assert middle_record.sha256sum is not None
     middle_payload = json.loads(file_store.read_blob(middle_record.sha256sum))
-    assert middle_payload["pages"][0]["blocks"][0]["content"] == expected
+    assert inline_text(middle_payload["pages"][0]["blocks"][0]["content"]) == expected
 
 
 def test_html_parse_server_flash_only_admits_extensionless_url(
@@ -482,12 +501,8 @@ def test_html_auto_selection_preserves_ancestor_text_styles() -> None:
 
     _, model = doc_analyze(payload, file_suffix="html")
 
-    assert model.pages[0] == [
-        {
-            "type": BlockType.TEXT,
-            "content": f'<text style="bold,italic,underline">{detail}</text>',
-        }
-    ]
+    assert inline_text(model.pages[0][0]["content"]) == detail.strip()
+    assert model.pages[0][0]["content"][0]["styles"] == ["bold", "italic", "underline"]
 
 
 def test_html_auto_selection_handles_colonized_candidate_ancestor() -> None:
@@ -498,7 +513,8 @@ def test_html_auto_selection_handles_colonized_candidate_ancestor() -> None:
 
     _, model = doc_analyze(payload, file_suffix="html")
 
-    assert model.pages[0] == [{"type": BlockType.TEXT, "content": f'<text style="italic">{detail}</text>'}]
+    assert inline_text(model.pages[0][0]["content"]) == detail.strip()
+    assert model.pages[0][0]["content"][0]["styles"] == ["italic"]
 
 
 def test_html_auto_selection_rejects_single_section_from_document_index() -> None:
@@ -604,7 +620,7 @@ def test_html_referenced_external_footnote_keeps_anchor_and_content() -> None:
 
     assert footnote.anchor is not None  # type: ignore[union-attr]
     assert footnote.anchor == "html-e31e5112c08d4945a7af"  # type: ignore[union-attr]
-    assert "Footnote body." in footnote.content  # type: ignore[union-attr]
+    assert "Footnote body." in inline_text(footnote.content)  # type: ignore[union-attr]
     assert f"](#{footnote.anchor})" in markdown  # type: ignore[union-attr]
     assert f'id="{footnote.anchor}" class="mineru-page-footnote"' in markdown  # type: ignore[union-attr]
 
@@ -618,7 +634,7 @@ def test_html_structured_only_footnote_does_not_create_dangling_anchor() -> None
     markdown = render_markdown(middle)
     rendered_html = render_html(middle, standalone=False)
 
-    assert model.pages[0][0]["content"] == "Claim [1]."
+    assert inline_text(model.pages[0][0]["content"]) == "Claim [1]."
     assert model.pages[0][1]["type"] == BlockType.LIST
     assert "Only item" in markdown
     assert "](#html-" not in markdown
@@ -655,7 +671,7 @@ def test_html_referenced_external_footnote_preserves_inherited_visibility() -> N
     footnote = next(block for block in middle.pages[0].blocks if block.type == BlockType.PAGE_FOOTNOTE)
 
     assert "HIDDEN NOTE" not in markdown
-    assert footnote.content == "VISIBLE NOTE"  # type: ignore[union-attr]
+    assert inline_text(footnote.content) == "VISIBLE NOTE"  # type: ignore[union-attr]
     assert f"](#{footnote.anchor})" in markdown  # type: ignore[union-attr]
 
 
@@ -669,7 +685,10 @@ def test_html_referenced_external_footnote_preserves_inherited_text_styles() -> 
     _, model = doc_analyze(payload, file_suffix="html")
     footnote = next(block for block in model.pages[0] if block["type"] == BlockType.PAGE_FOOTNOTE)
 
-    assert footnote["content"] == '<text style="bold,italic,underline,strikethrough">Styled note</text>'
+    assert footnote["content"] == inline(
+        "Styled note",
+        styles=["bold", "italic", "underline", "strikethrough"],
+    )
 
 
 @pytest.mark.parametrize(
@@ -693,7 +712,7 @@ def test_html_auto_selection_appends_notes_for_all_same_document_url_forms(href:
     markdown = render_markdown(middle)
     footnote = next(block for block in middle.pages[0].blocks if block.type == BlockType.PAGE_FOOTNOTE)
 
-    assert footnote.content == "Outside footnote."  # type: ignore[union-attr]
+    assert inline_text(footnote.content) == "Outside footnote."  # type: ignore[union-attr]
     assert f"](#{footnote.anchor})" in markdown  # type: ignore[union-attr]
     assert "https://example.com/page.html#fn1" not in markdown
 
@@ -719,7 +738,7 @@ def test_html_auto_selection_decodes_same_document_note_fragments(href: str, not
     markdown = render_markdown(middle)
     footnote = next(block for block in middle.pages[0].blocks if block.type == BlockType.PAGE_FOOTNOTE)
 
-    assert footnote.content == "Outside footnote."  # type: ignore[union-attr]
+    assert inline_text(footnote.content) == "Outside footnote."  # type: ignore[union-attr]
     assert f"](#{footnote.anchor})" in markdown  # type: ignore[union-attr]
     assert href not in markdown
 
@@ -886,13 +905,19 @@ def test_html_generic_formula_class_wrappers_preserve_mixed_content() -> None:
       <div class="math"><math data-tex="a"></math><math data-tex="b"></math></div></main></body></html>"""
 
     middle, model = doc_analyze(payload, file_suffix="html")
-    raw = [(block["type"], block.get("content")) for block in model.pages[0]]
+    raw = [
+        (
+            block["type"],
+            block.get("content") if block["type"] == BlockType.LIST else visible_content(block.get("content")),
+        )
+        for block in model.pages[0]
+    ]
 
     assert raw == [
         (BlockType.TEXT, "Before explanation."),
         (BlockType.EQUATION, "x"),
         (BlockType.TEXT, "After explanation."),
-        (BlockType.TEXT, "Prefix <eq>y</eq> suffix."),
+        (BlockType.TEXT, "Prefix y suffix."),
         (BlockType.TEXT, "Script before."),
         (BlockType.EQUATION, "z"),
         (BlockType.TEXT, "Script after."),
@@ -902,6 +927,12 @@ def test_html_generic_formula_class_wrappers_preserve_mixed_content() -> None:
         (BlockType.EQUATION, "a"),
         (BlockType.EQUATION, "b"),
     ]
+    mixed_spans = model.pages[0][3]["content"]
+    assert any(
+        (span.get("type") if isinstance(span, dict) else getattr(span, "type", None)) == "equation_inline"
+        and (span.get("content") if isinstance(span, dict) else getattr(span, "content", None)) == "y"
+        for span in inline_items(mixed_spans)
+    )
     markdown = render_markdown(middle)
     assert markdown.index("Before explanation.") < markdown.index("$$\nx\n$$") < markdown.index("After explanation.")
     assert markdown.index("Script before.") < markdown.index("$$\nz\n$$") < markdown.index("Script after.")
@@ -916,7 +947,7 @@ def test_html_mineru_page_footnote_marker_roundtrips_as_page_footnote() -> None:
     middle = doc_analyze(payload, file_suffix="html")[0]
 
     footnote = next(block for block in middle.pages[0].blocks if block.type == BlockType.PAGE_FOOTNOTE)
-    assert footnote.content == "Rendered footnote."  # type: ignore[union-attr]
+    assert inline_text(footnote.content) == "Rendered footnote."  # type: ignore[union-attr]
 
 
 def test_html_malformed_urls_degrade_without_aborting_document() -> None:
@@ -986,7 +1017,7 @@ def test_html_figure_preserves_direct_and_inline_text_around_visuals() -> None:
         BlockType.IMAGE_CAPTION,
         BlockType.TEXT,
     ]
-    assert [block.get("content") for block in raw_blocks] == ["BeforeInline", "", "Cap", "After Tail"]
+    assert [visible_content(block.get("content")) for block in raw_blocks] == ["BeforeInline", "", "Cap", "After Tail"]
     assert [block.type for block in middle.pages[0].blocks] == [BlockType.TEXT, BlockType.IMAGE, BlockType.TEXT]
     assert markdown.index("BeforeInline") < markdown.index("Cap") < markdown.index("After Tail")
 
@@ -999,7 +1030,7 @@ def test_html_colonized_office_svg_and_math_tags_preserve_visible_content() -> N
 
     middle, model = doc_analyze(payload, file_suffix="html")
 
-    assert [(block["type"], block.get("content")) for block in model.pages[0]] == [
+    assert [(block["type"], visible_content(block.get("content"))) for block in model.pages[0]] == [
         (BlockType.TEXT, "Legacy Office text"),
         (BlockType.TEXT, "Visible SVG text"),
         (BlockType.EQUATION, "x"),
@@ -1018,7 +1049,7 @@ def test_html_interleaved_figure_captions_bind_to_each_nearest_image() -> None:
 
     middle, model = doc_analyze(payload, file_suffix="html")
 
-    assert [(block["type"], block.get("content")) for block in model.pages[0]] == [
+    assert [(block["type"], visible_content(block.get("content"))) for block in model.pages[0]] == [
         (BlockType.IMAGE, ""),
         (BlockType.IMAGE_CAPTION, "Caption A"),
         (BlockType.IMAGE, ""),
@@ -1026,8 +1057,8 @@ def test_html_interleaved_figure_captions_bind_to_each_nearest_image() -> None:
     ]
     images = [block for block in middle.pages[0].blocks if isinstance(block, ImageBlock)]
     assert len(images) == 2
-    assert [child.content for child in images[0].content if child.type == BlockType.IMAGE_CAPTION] == ["Caption A"]
-    assert [child.content for child in images[1].content if child.type == BlockType.IMAGE_CAPTION] == ["Caption B"]
+    assert [inline_text(child.content) for child in images[0].content if child.type == BlockType.IMAGE_CAPTION] == ["Caption A"]
+    assert [inline_text(child.content) for child in images[1].content if child.type == BlockType.IMAGE_CAPTION] == ["Caption B"]
 
 
 def test_html_figure_annotation_targets_use_one_batched_scan() -> None:
@@ -1098,12 +1129,12 @@ def test_html_figure_block_children_keep_visual_annotation_relationship(
     middle, model = doc_analyze(payload, file_suffix="html")
 
     assert [block["type"] for block in model.pages[0]] == [parent_type, annotation_type, annotation_type]
-    assert [block.get("content") for block in model.pages[0][1:]] == ["A", "B"]
+    assert [visible_content(block.get("content")) for block in model.pages[0][1:]] == ["A", "B"]
     assert len(middle.pages[0].blocks) == 1
     visual = middle.pages[0].blocks[0]
     assert visual.type == parent_type
     assert [child.type for child in visual.content] == [body_type, annotation_type, annotation_type]  # type: ignore[union-attr]
-    assert [child.content for child in visual.content[1:]] == ["A", "B"]  # type: ignore[union-attr]
+    assert [inline_text(child.content) for child in visual.content[1:]] == ["A", "B"]  # type: ignore[union-attr]
 
 
 def test_html_auto_selected_contextual_div_keeps_figure_caption_relation() -> None:
@@ -1113,12 +1144,12 @@ def test_html_auto_selected_contextual_div_keeps_figure_caption_relation() -> No
 
     middle, model = doc_analyze(payload, file_suffix="html")
 
-    assert [(block["type"], block.get("content")) for block in model.pages[0]] == [
+    assert [(block["type"], visible_content(block.get("content"))) for block in model.pages[0]] == [
         (BlockType.IMAGE, ""),
         (BlockType.IMAGE_CAPTION, "Div caption"),
     ]
     image = next(block for block in middle.pages[0].blocks if isinstance(block, ImageBlock))
-    assert [child.content for child in image.content if child.type == BlockType.IMAGE_CAPTION] == ["Div caption"]
+    assert [inline_text(child.content) for child in image.content if child.type == BlockType.IMAGE_CAPTION] == ["Div caption"]
 
 
 def test_html_caption_does_not_cross_unrelated_parent_container() -> None:
@@ -1146,7 +1177,9 @@ def test_html_alt_caption_fallback_policy_distinguishes_generic_and_mineru_figur
 
     middle = doc_analyze(payload, file_suffix="html")[0]
     images = [block for block in middle.pages[0].blocks if isinstance(block, ImageBlock)]
-    captions = [[child.content for child in image.content if child.type == BlockType.IMAGE_CAPTION] for image in images]
+    captions = [
+        [inline_text(child.content) for child in image.content if child.type == BlockType.IMAGE_CAPTION] for image in images
+    ]
 
     assert captions == [["Generic alt"], ["Explicit caption"], []]
     markdown = render_markdown(middle)
@@ -1160,7 +1193,7 @@ def test_html_inline_visual_splits_paragraph_text_in_dom_order() -> None:
 
     middle, model = doc_analyze(payload, file_suffix="html")
 
-    assert [(block["type"], block.get("content")) for block in model.pages[0]] == [
+    assert [(block["type"], visible_content(block.get("content"))) for block in model.pages[0]] == [
         (BlockType.TEXT, "Before"),
         (BlockType.IMAGE, ""),
         (BlockType.TEXT, "After"),
@@ -1178,17 +1211,17 @@ def test_html_inline_visual_splits_ordered_list_without_renumbering_following_it
 
     assert [block["type"] for block in raw_blocks] == [BlockType.LIST, BlockType.IMAGE, BlockType.TEXT, BlockType.LIST]
     assert raw_blocks[0]["start"] == 3 and raw_blocks[3]["start"] == 4
-    assert raw_blocks[0]["content"] == [{"type": BlockType.TEXT, "content": "Before"}]
-    assert raw_blocks[2]["content"] == "After"
-    assert raw_blocks[3]["content"] == [{"type": BlockType.TEXT, "content": "Next"}]
+    assert raw_blocks[0]["content"] == [{"type": BlockType.TEXT, "content": inline("Before")}]
+    assert inline_text(raw_blocks[2]["content"]) == "After"
+    assert raw_blocks[3]["content"] == [{"type": BlockType.TEXT, "content": inline("Next")}]
     assert [block.type for block in middle.pages[0].blocks] == [
         BlockType.LIST,
         BlockType.IMAGE,
         BlockType.TEXT,
         BlockType.LIST,
     ]
-    assert middle.pages[0].blocks[0].content[0].content == "3. Before"  # type: ignore[union-attr]
-    assert middle.pages[0].blocks[3].content[0].content == "4. Next"  # type: ignore[union-attr]
+    assert inline_text(middle.pages[0].blocks[0].content[0].content) == "3. Before"  # type: ignore[union-attr]
+    assert inline_text(middle.pages[0].blocks[3].content[0].content) == "4. Next"  # type: ignore[union-attr]
 
 
 def test_html_list_block_children_keep_semantic_text_boundaries() -> None:
@@ -1199,7 +1232,7 @@ def test_html_list_block_children_keep_semantic_text_boundaries() -> None:
     content = model.pages[0][0]["content"][0]["content"]
     markdown = render_markdown(middle)
 
-    assert content == "First paragraph.\nSecond paragraph."
+    assert inline_text(content) == "First paragraph.\nSecond paragraph."
     assert "First paragraph.Second paragraph." not in markdown
     assert "First paragraph.\nSecond paragraph." in markdown
 
@@ -1515,7 +1548,8 @@ def test_html_versioned_wire_roundtrips_all_semantic_types() -> None:
     assert len(full_middle.pages) == 1 and full_middle.pages[0].page_idx == 0
     assert next(block for block in full_middle.pages[0].blocks if block.type == BlockType.EQUATION).content == "y^2\\tag{1}"  # type: ignore[union-attr]
     roundtrip_text = next(block for block in full_middle.pages[0].blocks if block.type == BlockType.TEXT).content  # type: ignore[union-attr]
-    assert roundtrip_text == "Text & value < 3 <eq>x+1</eq> &lt;eq&gt;literal&lt;/eq&gt;"
+    source_text = next(block for block in source.pages[0].blocks if block.type == BlockType.TEXT).content  # type: ignore[union-attr]
+    assert roundtrip_text == source_text
 
 
 def test_html_wire_decode_distinguishes_absent_empty_and_noncanonical() -> None:
@@ -1702,7 +1736,7 @@ def test_html_versioned_wire_distinguishes_index_carrier_from_inline_link() -> N
                             "content": [
                                 {
                                     "type": "text",
-                                    "content": ("<hyperlink>External<url>https://example.com/docs</url></hyperlink>"),
+                                    "content": [hyperlink("https://example.com/docs", "External")],
                                 }
                             ],
                         }
@@ -1741,7 +1775,7 @@ def test_html_noncanonical_wire_structural_edits_use_generic_fallback(edit_kind:
                                 "index": 0,
                                 "anchor": "target",
                                 "level": 2,
-                                "content": "Target",
+                                "content": inline("Target"),
                             },
                             {
                                 "type": "index",
@@ -1752,7 +1786,7 @@ def test_html_noncanonical_wire_structural_edits_use_generic_fallback(edit_kind:
                                         "index": 2,
                                         "anchor": "target",
                                         "level": 2,
-                                        "content": "Title",
+                                        "content": inline("Title"),
                                     }
                                 ],
                             },
@@ -1800,7 +1834,7 @@ def test_html_versioned_list_content_outside_carrier_falls_back_without_loss(out
                         {
                             "type": "list",
                             "index": 0,
-                            "content": [{"type": "text", "index": 0, "content": "- Original"}],
+                            "content": [{"type": "text", "index": 0, "content": inline("- Original")}],
                         }
                     ],
                 }
@@ -1824,7 +1858,7 @@ def test_html_versioned_list_content_outside_carrier_falls_back_without_loss(out
 
     middle, model = doc_analyze(str(soup).encode(), file_suffix="html")
 
-    assert model.pages[0][0]["content"][0]["content"] == "Original ADDED"
+    assert inline_text(model.pages[0][0]["content"][0]["content"]) == "Original ADDED"
     assert render_markdown(middle) == "- Original ADDED"
 
 
@@ -1836,7 +1870,11 @@ def test_html_invalid_versioned_markers_fallback_without_partial_results() -> No
                 {
                     "page_idx": 0,
                     "blocks": [
-                        {"type": "text", "index": 0, "content": "WIRESENTINEL <eq>WIREFORMULA</eq>"},
+                        {
+                            "type": "text",
+                            "index": 0,
+                            "content": [*inline("WIRESENTINEL "), equation("WIREFORMULA")],
+                        },
                         {
                             "type": "image",
                             "index": 1,
@@ -1847,7 +1885,7 @@ def test_html_invalid_versioned_markers_fallback_without_partial_results() -> No
                                     "content": "Image body",
                                     "image_url": "https://example.com/wire.png",
                                 },
-                                {"type": "image_caption", "index": 2, "content": "Visible caption"},
+                                {"type": "image_caption", "index": 2, "content": inline("Visible caption")},
                             ],
                         },
                     ],
@@ -1957,7 +1995,7 @@ def test_html_versioned_wire_visible_structural_text_falls_back_without_loss() -
     """验证机器结构容器中新增的可见文本会整体回退，并保留编辑内容。"""
     source = MiddleJson.model_validate(
         {
-            "pages": [{"page_idx": 0, "blocks": [{"type": "text", "index": 0, "content": "Original wire text"}]}],
+            "pages": [{"page_idx": 0, "blocks": [{"type": "text", "index": 0, "content": inline("Original wire text")}]}],
             "is_full_document": True,
             "file_suffix": "html",
             "effort": "flash",
@@ -1996,7 +2034,7 @@ def test_html_versioned_wire_visible_sibling_falls_back_without_loss(position: s
     """验证 wire 根前后的可见兄弟会整体回退，避免精确物化静默丢弃正文。"""
     source = MiddleJson.model_validate(
         {
-            "pages": [{"page_idx": 0, "blocks": [{"type": "text", "index": 0, "content": "Original wire text"}]}],
+            "pages": [{"page_idx": 0, "blocks": [{"type": "text", "index": 0, "content": inline("Original wire text")}]}],
             "is_full_document": True,
             "file_suffix": "html",
             "effort": "flash",
@@ -2031,7 +2069,7 @@ def test_html_versioned_wire_markerless_block_child_falls_back_without_crash() -
                             "type": "page_footnote",
                             "index": 0,
                             "anchor": "note",
-                            "content": "Original note",
+                            "content": inline("Original note"),
                         }
                     ],
                 }
@@ -2104,9 +2142,9 @@ def test_html_versioned_wire_edited_algorithm_body_falls_back_without_loss() -> 
                             "sub_type": "algorithm",
                             "content": [
                                 {
-                                    "type": "code_body",
+                                    "type": "algorithm_body",
                                     "index": 0,
-                                    "content": "Step A <eq>x+1</eq>",
+                                    "content": [*inline("Step A "), equation("x+1")],
                                 }
                             ],
                         }
@@ -2123,7 +2161,7 @@ def test_html_versioned_wire_edited_algorithm_body_falls_back_without_loss() -> 
     soup = BeautifulSoup(render_html(source, standalone=False), "html.parser")
     paragraph = soup.new_tag("p")
     paragraph.string = "NEW NOTE"
-    soup.select_one('[data-block-type="code_body"]').append(paragraph)
+    soup.select_one('[data-block-type="algorithm_body"]').append(paragraph)
 
     markdown = render_markdown(doc_analyze(str(soup).encode(), file_suffix="html")[0])
 
@@ -2220,7 +2258,7 @@ def test_html_marker_fallback_does_not_double_resolve_images(monkeypatch: pytest
                 {
                     "page_idx": 0,
                     "blocks": [
-                        {"type": "text", "index": 0, "content": "Fallback"},
+                        {"type": "text", "index": 0, "content": inline("Fallback")},
                         {
                             "type": "image",
                             "index": 1,
@@ -2299,13 +2337,12 @@ def test_html_formula_priority_delimiters_and_supported_mathml_are_normalized() 
     text = next(block for block in middle.pages[0].blocks if block.type == BlockType.TEXT).content  # type: ignore[union-attr]
     equations = [block.content for block in middle.pages[0].blocks if block.type == BlockType.EQUATION]  # type: ignore[union-attr]
 
-    assert "<eq>producer</eq>" in text
-    assert "<eq>annotation-high</eq>" in text
-    assert "<eq>z_3\\tag{3}</eq>" in text
-    assert "<eq>alt_value</eq>" in text
-    assert "<eq>{k}^{2}</eq>" in text
-    assert r"<eq>\frac{a}{b}</eq>" in text
-    assert "data-low" not in text and "annotation-low" not in text and "duplicate" not in text
+    inline_equations = [
+        getattr(span, "content", "") for span in inline_items(text) if str(getattr(span, "type", "")) == "equation_inline"
+    ]
+    assert inline_equations == ["producer", "annotation-high", "z_3\\tag{3}", "alt_value", "{k}^{2}", r"\frac{a}{b}"]
+    visible_text = inline_text(text)
+    assert "data-low" not in visible_text and "annotation-low" not in visible_text and "duplicate" not in visible_text
     assert equations == ["display_value"]
 
 
@@ -2339,7 +2376,13 @@ def test_html_block_formulas_nested_in_text_containers_preserve_dom_order() -> N
       <ul><li>Item before<math display="block" data-tex="z"></math>Item after</li></ul></body></html>"""
 
     middle, model = doc_analyze(payload, file_suffix="html")
-    raw = [(block["type"], block.get("content")) for block in model.pages[0]]
+    raw = [
+        (
+            block["type"],
+            block.get("content") if block["type"] == BlockType.LIST else visible_content(block.get("content")),
+        )
+        for block in model.pages[0]
+    ]
 
     assert raw[:5] == [
         (BlockType.TEXT, "Before"),
@@ -2348,7 +2391,8 @@ def test_html_block_formulas_nested_in_text_containers_preserve_dom_order() -> N
         (BlockType.EQUATION, "y"),
         (BlockType.TEXT, "After"),
     ]
-    assert raw[5] == (BlockType.LIST, [{"type": BlockType.TEXT, "content": "Item before"}])
+    assert raw[5][0] == BlockType.LIST
+    assert inline_text(raw[5][1][0]["content"]) == "Item before"
     assert raw[6:] == [(BlockType.EQUATION, "z"), (BlockType.TEXT, "Item after")]
     assert [block.type for block in middle.pages[0].blocks] == [
         BlockType.TEXT,
