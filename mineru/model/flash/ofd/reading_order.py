@@ -16,6 +16,7 @@ from .table import OfdTableRegion, recover_tables
 from .text import format_line_spans
 
 _PAGE_NUMBER_RE = re.compile(r"^(?:\d+|[IVXLCDM]+)$", re.IGNORECASE)
+_ASCII_WORD_GAP_RATIO = 0.2
 
 
 def _same_baseline(first: TextLine, second: TextLine) -> bool:
@@ -38,12 +39,27 @@ def _same_baseline(first: TextLine, second: TextLine) -> bool:
 
 
 def _join_text(first: TextLine, second: TextLine) -> str:
-    """按语言字符边界决定同行片段间是否补空格。"""
+    """按语言字符边界和实际字形间距决定同行片段间是否补空格。"""
     if not first.text or not second.text:
         return first.text + second.text
-    needs_space = (
+    ascii_word_boundary = (
         first.text[-1].isascii() and second.text[0].isascii() and first.text[-1].isalnum() and second.text[0].isalnum()
     )
+    if not ascii_word_boundary:
+        return first.text + second.text
+    first_glyph = first.glyphs[-1] if first.glyphs else None
+    second_glyph = second.glyphs[0] if second.glyphs else None
+    first_right = first_glyph.bbox[2] if first_glyph is not None else first.bbox[2]
+    second_left = second_glyph.bbox[0] if second_glyph is not None else second.bbox[0]
+    gap = second_left - first_right
+    glyph_widths = [
+        glyph.bbox[2] - glyph.bbox[0]
+        for glyph in (first_glyph, second_glyph)
+        if glyph is not None and glyph.bbox[2] > glyph.bbox[0]
+    ]
+    reference_width = statistics.median(glyph_widths) if glyph_widths else 0.0
+    spacing_threshold = _ASCII_WORD_GAP_RATIO * max(min(first.font_size, second.font_size), reference_width, 0.5)
+    needs_space = gap >= spacing_threshold
     return f"{first.text}{' ' if needs_space else ''}{second.text}"
 
 

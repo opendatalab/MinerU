@@ -21,7 +21,9 @@ from mineru.errors import InvalidRequestError
 from mineru.model.flash import OfdModel
 from mineru.model.flash.ofd import OfdParseError, OfdResourceLimitError, detect_ofd
 from mineru.model.flash.ofd import images as ofd_images
-from mineru.model.flash.ofd.constants import MAX_DRAW_PARAM_INHERITANCE, MAX_EXPANDED_GLYPHS
+from mineru.model.flash.ofd import metadata as ofd_metadata
+from mineru.model.flash.ofd import scene as ofd_scene
+from mineru.model.flash.ofd.constants import MAX_DRAW_PARAM_INHERITANCE, MAX_EXPANDED_GLYPHS, MAX_PAGE_COUNT
 from mineru.model.flash.ofd.geometry import Affine, canonical_angle
 from mineru.model.flash.ofd.images import build_image_item
 from mineru.model.flash.ofd.models import MediaResource, OfdPageScene, ResourceRegistry
@@ -112,6 +114,46 @@ def test_ofd_multiple_doc_bodies_flatten_in_declared_order() -> None:
     assert [inline_text(page[0]["content"]) for page in model.pages] == ["doc-zero", "doc-one"]
 
 
+def test_ofd_declared_page_count_is_bounded_for_parser_and_metadata() -> None:
+    """验证重复引用同一页面 part 也受全文页数预算限制。"""
+    payload = build_ofd_package([("Pages/Page_0/Content.xml", page_xml(""))])
+    source_buffer = BytesIO(payload)
+    output_buffer = BytesIO()
+    with ZipFile(source_buffer) as source, ZipFile(output_buffer, "w", ZIP_DEFLATED) as output:
+        document_root = etree.fromstring(source.read("Doc_0/Document.xml"))
+        pages = next(element for element in document_root.iter() if etree.QName(element).localname == "Pages")
+        pages.clear()
+        namespace = etree.QName(document_root).namespace
+        for page_index in range(MAX_PAGE_COUNT + 1):
+            etree.SubElement(
+                pages,
+                f"{{{namespace}}}Page",
+                ID=str(page_index + 1),
+                BaseLoc="Pages/Page_0/Content.xml",
+            )
+        replacement = etree.tostring(document_root, xml_declaration=True, encoding="UTF-8")
+        for info in source.infolist():
+            output.writestr(info, replacement if info.filename == "Doc_0/Document.xml" else source.read(info.filename))
+    oversized = output_buffer.getvalue()
+
+    with pytest.raises(OfdResourceLimitError, match="max_page_count"):
+        OfdModel().predict(BytesIO(oversized))
+    with pytest.raises(OfdResourceLimitError, match="max_page_count"):
+        ofd_metadata.extract_ofd_metadata(BytesIO(oversized))
+
+
+def test_ofd_page_count_budget_is_shared_across_doc_bodies(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证多个 DocBody 共用解析和元数据页数预算。"""
+    monkeypatch.setattr(ofd_scene, "MAX_PAGE_COUNT", 1)
+    monkeypatch.setattr(ofd_metadata, "MAX_PAGE_COUNT", 1)
+    payload = build_multi_document_ofd()
+
+    with pytest.raises(OfdResourceLimitError, match="max_page_count"):
+        OfdModel().predict(BytesIO(payload))
+    with pytest.raises(OfdResourceLimitError, match="max_page_count"):
+        ofd_metadata.extract_ofd_metadata(BytesIO(payload))
+
+
 def test_ofd_textcode_geometry_does_not_use_oversized_boundary() -> None:
     """验证 Foxit 风格超大 Boundary 不会成为最终文字 bbox。"""
     content = text_object(
@@ -151,6 +193,25 @@ def test_ofd_cardinal_text_directions_keep_geometry_and_angle() -> None:
     assert model.pages[0][0]["angle"] == 90
     assert model.pages[0][0]["bbox"][2] > model.pages[0][0]["bbox"][0]
     assert model.pages[0][0]["bbox"][3] > model.pages[0][0]["bbox"][1]
+
+
+@pytest.mark.parametrize(("second_x", "expected"), [(16.0, "Hello"), (17.0, "Hel lo")])
+def test_ofd_same_baseline_ascii_fragments_use_measured_gap(second_x: float, expected: str) -> None:
+    """验证相邻英文 run 仅在存在可见词间距时补空格。"""
+    content = "".join(
+        [
+            text_object(1, "Hel", boundary="10 10 10 10", size=4, y=5, delta_x="2 2"),
+            text_object(2, "lo", boundary=f"{second_x} 10 10 10", size=4, y=5, delta_x="2"),
+        ]
+    )
+
+    _middle, model = doc_analyze(
+        build_ofd_package([("Pages/Page_0/Content.xml", page_xml(content))]),
+        file_suffix="ofd",
+    )
+
+    assert len(model.pages[0]) == 1
+    assert inline_text(model.pages[0][0]["content"]) == expected
 
 
 def test_ofd_textcode_preserves_boundary_whitespace_and_glyph_positions() -> None:

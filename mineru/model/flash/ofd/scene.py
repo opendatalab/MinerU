@@ -9,7 +9,7 @@ from loguru import logger
 from lxml import etree  # type: ignore[reportMissingImports]
 
 from ....types import BBox
-from .constants import MAX_OBJECT_RECURSION, OFD_NAMESPACES
+from .constants import MAX_OBJECT_RECURSION, MAX_PAGE_COUNT, OFD_NAMESPACES
 from .errors import OfdParseError, OfdResourceLimitError
 from .geometry import Affine, bbox_intersection, parse_affine, parse_st_box, transform_bbox
 from .images import build_image_item
@@ -30,6 +30,7 @@ class OfdSceneBuilder:
         self.path_budget = OfdPathBudget()
         self.font_metrics = FontMetricResolver(package)
         self._paint_order = 0
+        self._page_count = 0
 
     def build(self) -> list[OfdPageScene]:
         """按 DocBody 和 Pages 声明顺序构造全部页面。"""
@@ -100,6 +101,9 @@ class OfdSceneBuilder:
         for element in pages:
             if local_name(element.tag) != "Page":
                 continue
+            self._page_count += 1
+            if self._page_count > MAX_PAGE_COUNT:
+                raise OfdResourceLimitError(f"OFD resource limit exceeded: max_page_count={MAX_PAGE_COUNT}")
             page_part = self.package.resolve_reference(document_part, element.get("BaseLoc"))
             if page_part is None or not self.package.has_part(page_part):
                 raise OfdParseError(f"Malformed OFD package: invalid page BaseLoc in {document_part!r}")

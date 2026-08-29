@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import BinaryIO
 
-from .constants import MAX_TOTAL_BYTES
+from .constants import MAX_PAGE_COUNT, MAX_TOTAL_BYTES
 from .errors import OfdResourceLimitError
 from .package import OfdPackage, first_descendant, local_name
 
@@ -35,7 +35,12 @@ def extract_ofd_metadata(file_binary: BinaryIO) -> dict[str, object | None]:
             assert document_root is not None
             pages = first_descendant(document_root, "Pages")
             if pages is not None:
-                page_count += sum(local_name(child.tag) == "Page" for child in pages)
+                for child in pages:
+                    if local_name(child.tag) != "Page":
+                        continue
+                    page_count += 1
+                    if page_count > MAX_PAGE_COUNT:
+                        raise OfdResourceLimitError(f"OFD resource limit exceeded: max_page_count={MAX_PAGE_COUNT}")
             for source_key, target_key in key_map.items():
                 if metadata[target_key] is None and ref.metadata.get(source_key):
                     metadata[target_key] = ref.metadata[source_key]
