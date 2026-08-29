@@ -28,8 +28,13 @@ XML 对象顺序主要表示绘制顺序而非阅读顺序。将 OFD 归入 Offi
 
 ## 兼容与安全
 
-- 必需 OFD.xml、Document.xml、页面和被正文引用的资源损坏时整份失败；未被首期能力读取的 CustomTag、附件、注释与
-  签章 part 不会因自身损坏阻断正文。
+- 必需 OFD.xml、Document.xml、页面 XML、显式声明的 PublicRes/DocumentRes/PageRes，以及已定义并被页面引用的
+  模板页 XML 缺失或损坏时整份失败；ImageObject 明确引用的 MultiMedia 资源 ID 或其 MediaFile 成员缺失、无法读取时
+  同样失败。
+- 对仍可恢复页面自身 Content 的局部兼容性问题采用 best-effort：页面引用未在 CommonData 中定义的 TemplateID 时记录
+  `OFD_TEMPLATE_MISSING` warning，跳过该模板并继续解析页面；不支持的 JBIG2、图片仿射、图片解码和可选字体指标继续
+  沿用各自的降级语义。
+- 未被首期能力读取的 CustomTag、附件、注释与签章 part 不会因自身损坏阻断正文。
 - PublicRes、DocumentRes、PageRes 正常应使用文档级唯一 ID；异常重复时按 Page > Document > Public 选择并告警。
 - ZIP、XML、资源、展开文字、glyph、路径命令和对象递归均有累计上限，不截断或返回部分文档。
 
