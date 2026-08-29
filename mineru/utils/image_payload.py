@@ -14,7 +14,10 @@ INLINE_IMAGE_DATA_URI_RE = re.compile(r"data:image/([^;\"']+);base64,([^\"']+)",
 _SVG_NAMESPACE = "http://www.w3.org/2000/svg"
 _MINERU_SVG_MARKER = "wmf-emf"
 _MINERU_SVG_FALLBACK_ID = "mineru-raster-fallback"
-MAX_GENERATED_SVG_BYTES = 64 * 1024 * 1024
+MAX_IMAGE_PAYLOAD_BYTES: Final = 64 * 1024 * 1024
+MAX_GENERATED_SVG_BYTES: Final = MAX_IMAGE_PAYLOAD_BYTES
+MAX_RASTER_IMAGE_BYTES: Final = MAX_IMAGE_PAYLOAD_BYTES
+MAX_IMAGE_DATA_URI_BYTES: Final = len("data:image/svg+xml;base64,") + ((MAX_IMAGE_PAYLOAD_BYTES + 2) // 3) * 4
 MAX_DECODED_RASTER_DIMENSION: Final = 8_192
 MAX_DECODED_RASTER_PIXELS: Final = 16_000_000
 _MAX_GENERATED_SVG_NODES = 100_000
@@ -102,6 +105,8 @@ def _parse_svg_root_strict(payload: bytes) -> ElementTree.Element:
 
 def parse_image_data_uri_strict(data_uri: str) -> tuple[bytes, str]:
     """严格解析图片 data URI，并同时校验 MIME 与文件签名是否一致。"""
+    if len(data_uri) > MAX_IMAGE_DATA_URI_BYTES:
+        raise ValueError("Image data URI exceeds its byte limit")
     match = re.fullmatch(r"data:image/([^;]+);base64,([A-Za-z0-9+/]*={0,2})", data_uri)
     if match is None:
         raise ValueError("Invalid image data URI")
@@ -109,18 +114,23 @@ def parse_image_data_uri_strict(data_uri: str) -> tuple[bytes, str]:
     mime_subtype = match.group(1).lower()
     extension = normalize_image_extension(mime_subtype)
     encoded_payload = match.group(2)
+    payload_limit = MAX_GENERATED_SVG_BYTES if extension == "svg" else MAX_RASTER_IMAGE_BYTES
+    max_encoded_bytes = ((payload_limit + 2) // 3) * 4
+    if len(encoded_payload) > max_encoded_bytes:
+        payload_kind = "SVG" if extension == "svg" else "Raster"
+        raise ValueError(f"{payload_kind} image payload exceeds its byte limit")
     if extension == "svg":
         if mime_subtype != "svg+xml":
             raise ValueError(f"Unsupported image MIME subtype: {mime_subtype}")
-        max_encoded_bytes = ((MAX_GENERATED_SVG_BYTES + 2) // 3) * 4
-        if len(encoded_payload) > max_encoded_bytes:
-            raise ValueError("SVG image payload exceeds its byte limit")
     try:
         payload = base64.b64decode(encoded_payload, validate=True)
     except (binascii.Error, ValueError) as exc:
         raise ValueError("Invalid base64 image payload") from exc
     if not payload:
         raise ValueError("Image payload must not be empty")
+    if len(payload) > payload_limit:
+        payload_kind = "SVG" if extension == "svg" else "Raster"
+        raise ValueError(f"{payload_kind} image payload exceeds its byte limit")
 
     if extension == "svg":
         _parse_svg_root_strict(payload)

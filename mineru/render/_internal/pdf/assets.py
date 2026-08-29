@@ -14,6 +14,7 @@ from PIL import Image, UnidentifiedImageError
 from ...contracts import AssetResolver
 from ....types import ImagePayloadBlock
 from ....utils.image_payload import (
+    MAX_IMAGE_PAYLOAD_BYTES,
     extract_mineru_generated_svg_fallback,
     parse_image_data_uri_strict,
     validate_decoded_raster_size,
@@ -88,6 +89,8 @@ def prepare_image_bytes(data: bytes, *, declared_extension: str | None = None) -
         raise PdfAssetError("Image resolver must return bytes")
     if not data:
         raise PdfAssetError("Image payload must not be empty")
+    if len(data) > MAX_IMAGE_PAYLOAD_BYTES:
+        raise PdfAssetError("Image payload exceeds its byte limit")
     expected_extension = _normalize_extension(declared_extension)
     if expected_extension == "svg" or _looks_like_svg(data):
         try:

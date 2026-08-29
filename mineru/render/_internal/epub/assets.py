@@ -15,6 +15,8 @@ from PIL import Image, UnidentifiedImageError
 from ...contracts import AssetResolver
 from ....types import ImagePayloadBlock
 from ....utils.image_payload import (
+    MAX_IMAGE_DATA_URI_BYTES,
+    MAX_IMAGE_PAYLOAD_BYTES,
     extract_mineru_generated_svg_fallback,
     normalize_image_extension,
     parse_image_data_uri_strict,
@@ -109,6 +111,8 @@ class EpubAssetRegistry:
 
     def _resolve_data_uri(self, data_uri: str) -> str | None:
         """严格解码图片 data URI，失败时返回可降级的空结果。"""
+        if len(data_uri) > MAX_IMAGE_DATA_URI_BYTES:
+            return None
         cache_key = f"data:{hashlib.sha256(data_uri.encode('utf-8', errors='replace')).hexdigest()}"
         if cache_key in self._source_cache:
             return self._source_cache[cache_key]
@@ -138,6 +142,8 @@ def _prepare_epub_image(data: bytes, *, declared_extension: str | None) -> tuple
     """校验图片字节，并把非 PNG/JPEG/GIF 栅格统一转为 PNG。"""
     if not isinstance(data, bytes) or not data:
         raise ValueError("Image payload must contain bytes")
+    if len(data) > MAX_IMAGE_PAYLOAD_BYTES:
+        raise ValueError("Image payload exceeds its byte limit")
     expected = normalize_image_extension(declared_extension or "") or None
     if expected == "svg" or _SVG_START_RE.match(data[:4096]) is not None:
         if expected not in {None, "svg"}:

@@ -386,6 +386,18 @@ def test_pdf_oversized_image_uses_placeholder_before_pixel_decode(monkeypatch: p
     image.load.assert_not_called()
 
 
+def test_pdf_oversized_image_bytes_are_rejected_before_pillow(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证 PDF 在 Pillow 识别前拒绝超过固定字节预算的图片。"""
+    open_image = MagicMock(side_effect=AssertionError("oversized image must not reach Pillow"))
+    monkeypatch.setattr(pdf_assets, "MAX_IMAGE_PAYLOAD_BYTES", 8)
+    monkeypatch.setattr(pdf_assets.Image, "open", open_image)
+
+    with pytest.raises(pdf_assets.PdfAssetError, match="Image payload exceeds its byte limit"):
+        pdf_assets.prepare_image_bytes(b"oversized")
+
+    open_image.assert_not_called()
+
+
 def test_pdf_renders_tables_lists_indices_code_algorithm_and_annotations() -> None:
     """验证原生表格合并、嵌套表、目录、列表、代码算法与说明的组合输出。"""
     table = TableBlock.model_validate(

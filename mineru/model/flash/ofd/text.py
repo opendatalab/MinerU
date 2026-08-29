@@ -340,11 +340,9 @@ def build_text_lines(
             previous = origins[-1]
             origins.append((previous[0] + delta_x[index], previous[1] + delta_y[index]))
         glyph_items: list[GlyphItem] = []
-        visible_text: list[str] = []
         for index, (character, origin) in enumerate(zip(text, origins, strict=True)):
             glyph_id = glyph_by_position.get(global_position + index)
             resolved_character = font_metrics.resolve_character(font, glyph_id, character)
-            visible_text.append(resolved_character)
             advance_hint = None
             if index + 1 < len(origins):
                 advance_hint = math.dist(origin, origins[index + 1])
@@ -363,7 +361,9 @@ def build_text_lines(
             glyph_bbox = quad_bbox(quad)
             if glyph_bbox is None:
                 continue
-            clipped_glyph_bbox = bbox_intersection(glyph_bbox, object_clip) or glyph_bbox
+            clipped_glyph_bbox = bbox_intersection(glyph_bbox, object_clip)
+            if clipped_glyph_bbox is None:
+                continue
             glyph_items.append(
                 GlyphItem(
                     text=resolved_character,
@@ -374,16 +374,16 @@ def build_text_lines(
                 )
             )
         global_position += len(text)
+        if not glyph_items:
+            continue
         line_bbox = bbox_union(item.bbox for item in glyph_items)
         if line_bbox is None:
-            line_bbox = object_clip
-        else:
-            line_bbox = bbox_intersection(line_bbox, object_clip) or line_bbox
+            continue
         if line_bbox[2] <= line_bbox[0] or line_bbox[3] <= line_bbox[1]:
             continue
         lines.append(
             TextLine(
-                text="".join(visible_text),
+                text="".join(item.text for item in glyph_items),
                 bbox=line_bbox,
                 glyphs=glyph_items,
                 angle=canonical_angle(transform_angle(direction_transform)),

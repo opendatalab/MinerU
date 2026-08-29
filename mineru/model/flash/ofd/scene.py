@@ -203,6 +203,8 @@ class OfdSceneBuilder:
         style = dict(context.draw_style)
         try:
             style.update(resolve_draw_param(resources, parse_int(element.get("DrawParam"))))
+        except OfdResourceLimitError:
+            raise
         except ValueError as exc:
             raise OfdParseError(str(exc)) from exc
         style.update({str(key): str(value) for key, value in element.attrib.items()})

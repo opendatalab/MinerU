@@ -41,6 +41,7 @@ from mineru.utils.image_payload import (
     MAX_DECODED_RASTER_PIXELS,
     validate_decoded_raster_size,
 )
+from mineru.utils import image_payload as image_payload_utils
 
 from _epub_test_utils import build_epub_fixture
 from _span_test_utils import equation, hyperlink, inline
@@ -364,6 +365,35 @@ def test_decoded_raster_size_uses_shared_dimension_and_pixel_limits(width: int, 
         return
     with pytest.raises(ValueError, match="Decoded raster image exceeds limits"):
         validate_decoded_raster_size(width, height)
+
+
+def test_image_data_uri_enforces_encoded_and_decoded_byte_budgets(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证 raster data URI 会在 Base64 前后分别执行固定字节预算。"""
+    decode = MagicMock(return_value=b"\x89PNG\r\n\x1a\nx")
+    monkeypatch.setattr(image_payload_utils, "MAX_RASTER_IMAGE_BYTES", 8)
+    monkeypatch.setattr(image_payload_utils.base64, "b64decode", decode)
+
+    with pytest.raises(ValueError, match="Raster image payload exceeds its byte limit"):
+        image_payload_utils.parse_image_data_uri_strict("data:image/png;base64,AAAAAAAAAAAAAAAA")
+    decode.assert_not_called()
+
+    with pytest.raises(ValueError, match="Raster image payload exceeds its byte limit"):
+        image_payload_utils.parse_image_data_uri_strict("data:image/png;base64,AAAA")
+    decode.assert_called_once_with("AAAA", validate=True)
+
+
+def test_epub_oversized_data_uri_is_omitted_before_hashing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证 EPUB 在缓存键哈希前拒绝超过编码预算的 data URI。"""
+    digest = MagicMock(side_effect=AssertionError("oversized data URI must not be hashed"))
+    monkeypatch.setattr(epub_assets, "MAX_IMAGE_DATA_URI_BYTES", len(_PNG_URI) - 1)
+    monkeypatch.setattr(epub_assets.hashlib, "sha256", digest)
+    registry = epub_assets.EpubAssetRegistry(None)
+
+    href = registry.resolve_block(ImageBodyBlock(type="image_body", index=0, content="OCR", image_base64=_PNG_URI))
+
+    assert href is None
+    assert registry.assets == ()
+    digest.assert_not_called()
 
 
 def test_epub_oversized_image_is_omitted_before_pixel_decode(monkeypatch: pytest.MonkeyPatch) -> None:

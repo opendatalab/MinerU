@@ -5,6 +5,8 @@ from __future__ import annotations
 
 from loguru import logger
 
+from .constants import MAX_DRAW_PARAM_INHERITANCE
+from .errors import OfdResourceLimitError
 from .geometry import parse_numbers
 from .models import CompositeResource, FontResource, MediaResource, ResourceRegistry
 from .package import OfdPackage, element_text, first_child, local_name, parse_int
@@ -93,27 +95,27 @@ def merge_registries(*registries: ResourceRegistry) -> ResourceRegistry:
 
 
 def resolve_draw_param(registry: ResourceRegistry, resource_id: int | None) -> dict[str, str]:
-    """递归解析 DrawParam Relative 继承并检测循环。"""
+    """迭代解析 DrawParam Relative 继承，并限制深度、检测循环。"""
     if resource_id is None:
         return {}
-    result: dict[str, str] = {}
-    visiting: set[int] = set()
-
-    def visit(current_id: int) -> None:
-        """按父到子顺序合并一个 DrawParam。"""
-        if current_id in visiting:
+    inheritance_chain: list[dict[str, str]] = []
+    visited: set[int] = set()
+    current_id: int | None = resource_id
+    while current_id is not None:
+        if current_id in visited:
             raise ValueError(f"OFD DrawParam cycle detected at id={current_id}")
         current = registry.draw_params.get(current_id)
         if current is None:
-            return
-        visiting.add(current_id)
-        parent = parse_int(current.get("Relative"))
-        if parent is not None:
-            visit(parent)
-        result.update({key: value for key, value in current.items() if key not in {"ID", "Relative"}})
-        visiting.remove(current_id)
+            break
+        if len(inheritance_chain) >= MAX_DRAW_PARAM_INHERITANCE:
+            raise OfdResourceLimitError(f"OFD resource limit exceeded: max_draw_param_inheritance={MAX_DRAW_PARAM_INHERITANCE}")
+        visited.add(current_id)
+        inheritance_chain.append(current)
+        current_id = parse_int(current.get("Relative"))
 
-    visit(resource_id)
+    result: dict[str, str] = {}
+    for current in reversed(inheritance_chain):
+        result.update({key: value for key, value in current.items() if key not in {"ID", "Relative"}})
     return result
 
 

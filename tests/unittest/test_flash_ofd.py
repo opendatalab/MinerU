@@ -19,14 +19,16 @@ from mineru.doclib.core.fts import FTSManager
 from mineru.doclib.services.parse_svc import ParseService
 from mineru.errors import InvalidRequestError
 from mineru.model.flash import OfdModel
-from mineru.model.flash.ofd import OfdParseError, detect_ofd
+from mineru.model.flash.ofd import OfdParseError, OfdResourceLimitError, detect_ofd
 from mineru.model.flash.ofd import images as ofd_images
+from mineru.model.flash.ofd.constants import MAX_DRAW_PARAM_INHERITANCE
 from mineru.model.flash.ofd.geometry import Affine, canonical_angle
 from mineru.model.flash.ofd.images import build_image_item
 from mineru.model.flash.ofd.models import MediaResource, OfdPageScene, ResourceRegistry
 from mineru.model.flash.ofd.package import OfdPackage
 from mineru.model.flash.ofd.path import OfdPathBudget, _segments
 from mineru.model.flash.ofd.reading_order import OfdReadingOrderProjector
+from mineru.model.flash.ofd.resources import resolve_draw_param
 from mineru.model.flash.ofd.text import FontMetricResolver, OfdTextBudget, build_text_lines
 from mineru.parser import MinerUParser
 from mineru.parser import api_server
@@ -138,7 +140,7 @@ def test_ofd_cardinal_text_directions_keep_geometry_and_angle() -> None:
     content = (
         '<ofd:TextObject ID="8" Boundary="20 20 20 50" Font="1" Size="5" '
         'ReadDirection="90" CharDirection="90">'
-        '<ofd:TextCode X="2" Y="2" DeltaX="g 3 6">竖排文</ofd:TextCode>'
+        '<ofd:TextCode X="2" Y="-5" DeltaX="g 3 6">竖排文</ofd:TextCode>'
         "</ofd:TextObject>"
     )
     _middle, model = doc_analyze(
@@ -181,6 +183,66 @@ def test_ofd_textcode_preserves_boundary_whitespace_and_glyph_positions() -> Non
     assert lines[0].text == " A "
     assert [glyph.glyph_id for glyph in lines[0].glyphs] == [None, 42, None]
     assert [glyph.origin[0] for glyph in lines[0].glyphs] == pytest.approx([11.0, 16.0, 23.0])
+
+
+def test_ofd_textcode_discards_glyphs_outside_object_boundary() -> None:
+    """验证 TextObject Boundary 会裁掉完整位于边界外的字符和空行。"""
+    package_buffer = BytesIO()
+    with ZipFile(package_buffer, "w", ZIP_DEFLATED) as archive:
+        archive.writestr("OFD.xml", "<OFD/>")
+    package = OfdPackage(package_buffer.getvalue())
+    font_metrics = FontMetricResolver(package)
+    common = {
+        "parent_transform": Affine(),
+        "parent_clip": (0.0, 0.0, 100.0, 100.0),
+        "resources": ResourceRegistry(),
+        "package": package,
+        "font_metrics": font_metrics,
+        "budget": OfdTextBudget(),
+        "paint_order": 0,
+        "layer_type": "body",
+        "template_id": None,
+    }
+
+    partial = etree.fromstring(
+        b'<TextObject ID="10" Boundary="0 0 10 10" Size="5"><TextCode X="2" Y="5" DeltaX="20">AB</TextCode></TextObject>'
+    )
+    outside = etree.fromstring(
+        b'<TextObject ID="11" Boundary="0 0 10 10" Size="5"><TextCode X="20" Y="5">X</TextCode></TextObject>'
+    )
+
+    partial_lines = build_text_lines(partial, **common)
+    outside_lines = build_text_lines(outside, **common)
+
+    assert len(partial_lines) == 1
+    assert partial_lines[0].text == "A"
+    assert [glyph.text for glyph in partial_lines[0].glyphs] == ["A"]
+    assert outside_lines == []
+
+
+def test_ofd_draw_param_inheritance_is_ordered_and_bounded() -> None:
+    """验证 DrawParam 保持父到子覆盖顺序，并在继承链超限时受控失败。"""
+    ordered = ResourceRegistry(
+        draw_params={
+            1: {"ID": "1", "Relative": "2", "LineWidth": "2"},
+            2: {"ID": "2", "LineWidth": "1", "Color": "red"},
+        }
+    )
+    assert resolve_draw_param(ordered, 1) == {"LineWidth": "2", "Color": "red"}
+
+    chain_length = MAX_DRAW_PARAM_INHERITANCE + 1
+    oversized = ResourceRegistry(
+        draw_params={
+            resource_id: (
+                {"ID": str(resource_id), "Relative": str(resource_id + 1)}
+                if resource_id + 1 < chain_length
+                else {"ID": str(resource_id), "LineWidth": "1"}
+            )
+            for resource_id in range(chain_length)
+        }
+    )
+    with pytest.raises(OfdResourceLimitError, match="max_draw_param_inheritance"):
+        resolve_draw_param(oversized, 0)
 
 
 @pytest.mark.parametrize(
