@@ -5,11 +5,11 @@ from __future__ import annotations
 
 from loguru import logger
 
-from .constants import MAX_DRAW_PARAM_INHERITANCE
-from .errors import OfdResourceLimitError
+from .constants import MAX_DRAW_PARAM_INHERITANCE, OFD_NAMESPACES
+from .errors import OfdParseError, OfdResourceLimitError
 from .geometry import parse_numbers
 from .models import CompositeResource, FontResource, MediaResource, ResourceRegistry
-from .package import OfdPackage, element_text, first_child, local_name, parse_int
+from .package import OfdPackage, element_text, first_child, local_name, namespace_name, parse_int
 
 
 def _bool_attr(value: str | None) -> bool:
@@ -36,10 +36,11 @@ def parse_resource_part(package: OfdPackage, resource_part: str | None) -> Resou
     registry = ResourceRegistry()
     if resource_part is None:
         return registry
-    root = package.xml_part(resource_part)
-    if root is None:
-        logger.warning(f"OFD_OPTIONAL_RESOURCE_MISSING: part={resource_part!r}")
-        return registry
+    root = package.xml_part(resource_part, required=True)
+    assert root is not None
+    namespace = namespace_name(root.tag)
+    if namespace not in OFD_NAMESPACES:
+        raise OfdParseError(f"Malformed OFD package: unsupported namespace {namespace!r} in {resource_part!r}")
     base_loc = (root.get("BaseLoc") or "").strip()
     for element in root.iter():
         name = local_name(element.tag)

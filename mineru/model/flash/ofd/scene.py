@@ -62,8 +62,14 @@ class OfdSceneBuilder:
     def _document_resources(self, document_part: str, document_root: etree._Element) -> ResourceRegistry:
         """解析文档级 PublicRes 与 DocumentRes。"""
         common_data = first_descendant(document_root, "CommonData")
-        public_part = self._resolve_part(document_part, first_child(common_data, "PublicRes"))
-        document_resource_part = self._resolve_part(document_part, first_child(common_data, "DocumentRes"))
+        public_element = first_child(common_data, "PublicRes")
+        document_resource_element = first_child(common_data, "DocumentRes")
+        public_part = self._resolve_part(document_part, public_element, required=public_element is not None)
+        document_resource_part = self._resolve_part(
+            document_part,
+            document_resource_element,
+            required=document_resource_element is not None,
+        )
         return merge_registries(
             parse_resource_part(self.package, public_part),
             parse_resource_part(self.package, document_resource_part),
@@ -129,7 +135,12 @@ class OfdSceneBuilder:
             if physical_box is None:
                 raise OfdParseError(f"Malformed OFD package: page {page_ref.page_part!r} has no PhysicalBox")
             content_box = self._page_area(page_root, default_content, "ContentBox")
-            page_resource_part = self._resolve_part(page_ref.page_part, first_descendant(page_root, "PageRes"))
+            page_resource_element = first_descendant(page_root, "PageRes")
+            page_resource_part = self._resolve_part(
+                page_ref.page_part,
+                page_resource_element,
+                required=page_resource_element is not None,
+            )
             resources = merge_registries(document_resources, parse_resource_part(self.package, page_resource_part))
             scene = OfdPageScene(
                 page_idx=page_index_offset + local_page_idx,
@@ -173,7 +184,12 @@ class OfdSceneBuilder:
             logger.warning(f"OFD_TEMPLATE_MISSING: template_id={template_id}")
             return
         template_root = self._required_ofd_xml(template_ref.page_part)
-        template_resource_part = self._resolve_part(template_ref.page_part, first_descendant(template_root, "PageRes"))
+        template_resource_element = first_descendant(template_root, "PageRes")
+        template_resource_part = self._resolve_part(
+            template_ref.page_part,
+            template_resource_element,
+            required=template_resource_element is not None,
+        )
         template_resources = merge_registries(resources, parse_resource_part(self.package, template_resource_part))
         content = first_descendant(template_root, "Content")
         if content is None:

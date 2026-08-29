@@ -118,7 +118,9 @@ TextSpan 中保持原文。renderer 在目标格式边界执行转义，不反�
 | `chart_body` | Chart HTML/文本 |
 
 表格和 Chart HTML 中的公式继续使用受限安全 DOM 节点处理，不进入 InlineSpan
-流水线。图片 sidecar、bbox、score 和字体信息也不属于 InlineSpan。
+流水线。表格内文字样式使用 `strong/em/u/s/sup/sub` 标准 HTML 标签，不使用
+`<text style="...">` 私有协议。图片 sidecar、bbox、score 和字体信息也不属于
+InlineSpan。
 
 ## 容器约束
 

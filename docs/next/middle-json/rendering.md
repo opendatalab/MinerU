@@ -472,7 +472,10 @@ text 合并允许跨越任意其他 block，后一个 text 的内容被吸收到
 - `index`: 递归输出 GFM 列表；标题叶子使用 anchor 生成内部链接，不当作 heading 输出。
 - `equation`: content 非空时输出行间 LaTeX，空 content 回退图片。
 - `image/chart`: 图片优先，识别内容放入折叠 details；chart 的简单 HTML 表格转为 GFM，复杂表格保留 HTML，无图片时直接输出转换后的内容。
-- `table`: 简单单层 HTML 转 GFM；合并单元格或不可无损结构保留 HTML；空间投影文本使用动态 fenced block；空 content 回退图片。
+- `table`: 简单单层 HTML 转 GFM；`strong/em/s` 的简单样式组合使用 Markdown wrapper，
+  `u/sup/sub` 或其它复杂组合整体保留标准 HTML 标签；合并单元格或不可无损结构保留
+  HTML；空间投影文本使用动态 fenced block；空 content 回退图片。表格不解析旧
+  `<text style="...">` 私有标签。
 - `code`: 使用 `guess_lang` 和动态 fenced block。
 - `algorithm`: `algorithm_body` 使用等宽、`white-space: pre-wrap` 的 HTML div，并按 EquationInlineSpan 渲染公式。
 

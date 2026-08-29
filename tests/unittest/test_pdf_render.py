@@ -6,6 +6,7 @@ from io import BytesIO
 from unittest.mock import MagicMock
 import base64
 
+from bs4 import BeautifulSoup
 from PIL import Image
 from pypdf import PdfReader
 import pytest
@@ -17,6 +18,7 @@ from mineru.render import render_pdf
 from mineru.render._internal.pdf import assets as pdf_assets
 from mineru.render._internal.pdf import formula as formula_module
 from mineru.render._internal.pdf.formula import FormulaRenderer, FormulaVector, PdfFormulaError
+from mineru.render._internal.pdf.table import _html_cell_spans
 from mineru.types import (
     AlgorithmBodyBlock,
     ChartAnnotationBlock,
@@ -396,6 +398,27 @@ def test_pdf_oversized_image_bytes_are_rejected_before_pillow(monkeypatch: pytes
         pdf_assets.prepare_image_bytes(b"oversized")
 
     open_image.assert_not_called()
+
+
+def test_pdf_table_parser_preserves_standard_inline_style_tags() -> None:
+    """验证 PDF 表格解析器把标准 HTML 标签恢复为结构化文字样式。"""
+    soup = BeautifulSoup(
+        "<td><strong>bold</strong><em>italic</em><u>under</u><s>strike</s><sup>sup</sup><sub>sub</sub></td>",
+        "html.parser",
+    )
+    cell = soup.td
+    assert cell is not None
+
+    spans = _html_cell_spans(cell)
+
+    assert [(span.content, list(getattr(span, "styles", []))) for span in spans] == [
+        ("bold", ["bold"]),
+        ("italic", ["italic"]),
+        ("under", ["underline"]),
+        ("strike", ["strikethrough"]),
+        ("sup", ["superscript"]),
+        ("sub", ["subscript"]),
+    ]
 
 
 def test_pdf_renders_tables_lists_indices_code_algorithm_and_annotations() -> None:

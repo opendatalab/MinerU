@@ -8,6 +8,8 @@ from pathlib import Path
 from unittest.mock import MagicMock
 from zipfile import ZIP_DEFLATED, ZipFile
 
+from bs4 import BeautifulSoup
+from docx import Document
 from lxml import etree
 from PIL import Image
 import pytest
@@ -23,21 +25,24 @@ from mineru.model.flash.ofd import OfdParseError, OfdResourceLimitError, detect_
 from mineru.model.flash.ofd import images as ofd_images
 from mineru.model.flash.ofd import metadata as ofd_metadata
 from mineru.model.flash.ofd import scene as ofd_scene
+from mineru.model.flash.ofd import table as ofd_table
 from mineru.model.flash.ofd.constants import (
+    MAX_DELTA_TOKENS,
     MAX_DOCUMENT_COUNT,
     MAX_DRAW_PARAM_INHERITANCE,
     MAX_EXPANDED_GLYPHS,
     MAX_GLYPH_TOKENS,
     MAX_PAGE_COUNT,
+    MAX_PATH_TOKENS,
 )
 from mineru.model.flash.ofd.geometry import Affine, canonical_angle
 from mineru.model.flash.ofd.images import build_image_item
-from mineru.model.flash.ofd.models import MediaResource, OfdPageScene, ResourceRegistry
+from mineru.model.flash.ofd.models import AxisLine, MediaResource, OfdPageScene, ResourceRegistry, TextLine
 from mineru.model.flash.ofd.package import OfdPackage
 from mineru.model.flash.ofd.path import OfdPathBudget, _segments, build_axis_lines
 from mineru.model.flash.ofd.reading_order import OfdReadingOrderProjector
-from mineru.model.flash.ofd.resources import resolve_draw_param
-from mineru.model.flash.ofd.text import FontMetricResolver, OfdTextBudget, build_text_lines
+from mineru.model.flash.ofd.resources import parse_resource_part, resolve_draw_param
+from mineru.model.flash.ofd.text import FontMetricResolver, OfdTextBudget, build_text_lines, parse_delta
 from mineru.parser import MinerUParser
 from mineru.parser import api_server
 from mineru.parser.api_server import CreateJobRequest, FileStore
@@ -60,6 +65,20 @@ def _minimal_payload(*, namespace: str = "http://www.ofdspec.org/2016", version:
         namespace=namespace,
         version=version,
     )
+
+
+def _replace_package_part(payload: bytes, part_name: str, replacement: bytes | None) -> bytes:
+    """替换或删除测试 OFD ZIP 中的单个成员。"""
+    source_buffer = BytesIO(payload)
+    output_buffer = BytesIO()
+    with ZipFile(source_buffer) as source, ZipFile(output_buffer, "w", ZIP_DEFLATED) as output:
+        for info in source.infolist():
+            if info.filename == part_name:
+                if replacement is not None:
+                    output.writestr(info, replacement)
+                continue
+            output.writestr(info, source.read(info.filename))
+    return output_buffer.getvalue()
 
 
 def test_ofd_model_analyze_detection_and_renderers(tmp_path: Path) -> None:
@@ -351,6 +370,19 @@ def test_ofd_cgtransform_expands_only_actual_text_positions() -> None:
         )
 
 
+def test_ofd_delta_tokens_are_streamed_and_bounded() -> None:
+    """验证 Delta 只扫描所需 token，并在全文累计超限时受控失败。"""
+    budget = OfdTextBudget()
+
+    assert parse_delta("1 " + "2 " * 100_000, 1, budget) == [1.0]
+    assert budget.delta_token_count == 1
+    assert parse_delta("g 3 2", 4, budget) == [2.0, 2.0, 2.0, 2.0]
+
+    exhausted = OfdTextBudget(delta_token_count=MAX_DELTA_TOKENS)
+    with pytest.raises(OfdResourceLimitError, match="max_delta_tokens"):
+        parse_delta("invalid 1", 1, exhausted)
+
+
 def test_ofd_textcode_discards_glyphs_outside_object_boundary() -> None:
     """验证 TextObject Boundary 会裁掉完整位于边界外的字符和空行。"""
     package_buffer = BytesIO()
@@ -505,11 +537,58 @@ def test_ofd_oversized_image_is_rejected_before_pixel_decode(monkeypatch: pytest
     image.load.assert_not_called()
 
 
+def test_ofd_referenced_media_resource_and_part_are_required() -> None:
+    """验证正文 ImageObject 引用不存在的资源 ID 或成员时整份失败。"""
+    image_element = etree.fromstring(b'<ImageObject ID="7" Boundary="0 0 10 10" ResourceID="1"/>')
+    package_buffer = BytesIO()
+    with ZipFile(package_buffer, "w", ZIP_DEFLATED) as archive:
+        archive.writestr("OFD.xml", "<OFD/>")
+
+    with OfdPackage(package_buffer.getvalue()) as package:
+        with pytest.raises(OfdParseError, match="missing media resource"):
+            build_image_item(
+                image_element,
+                parent_transform=Affine(),
+                parent_clip=(0.0, 0.0, 100.0, 100.0),
+                resources=ResourceRegistry(),
+                package=package,
+                paint_order=0,
+                layer_type="body",
+                template_id=None,
+            )
+
+    with OfdPackage(package_buffer.getvalue()) as package:
+        with pytest.raises(OfdParseError, match="missing required part"):
+            build_image_item(
+                image_element,
+                parent_transform=Affine(),
+                parent_clip=(0.0, 0.0, 100.0, 100.0),
+                resources=ResourceRegistry(media={1: MediaResource(1, "Image", "PNG", "Res/missing.png")}),
+                package=package,
+                paint_order=0,
+                layer_type="body",
+                template_id=None,
+            )
+
+
 def test_ofd_path_rejects_unexpected_numeric_tokens_without_hanging() -> None:
     """验证无活动命令或 C 后的数字 token 直接使当前非法路径降级。"""
     assert _segments("1 2", Affine(), OfdPathBudget()) == []
     assert _segments("M 0 0 C 1 2 L 3 4", Affine(), OfdPathBudget()) == []
     assert _segments("M 0 0 L 10 0", Affine(), OfdPathBudget()) == [((0.0, 0.0), (10.0, 0.0))]
+
+
+def test_ofd_path_tokens_are_streamed_and_bounded() -> None:
+    """验证无活动命令时立即停止，并在路径 token 累计超限时失败。"""
+    stray_budget = OfdPathBudget()
+
+    assert _segments("1 " * 100_000, Affine(), stray_budget) == []
+    assert stray_budget.token_count == 1
+    assert stray_budget.command_count == 0
+
+    exhausted = OfdPathBudget(token_count=MAX_PATH_TOKENS)
+    with pytest.raises(OfdResourceLimitError, match="max_path_tokens"):
+        _segments("M 0 0", Affine(), exhausted)
 
 
 def test_ofd_path_segments_are_clipped_to_object_boundary() -> None:
@@ -585,6 +664,71 @@ def test_ofd_template_grid_recovers_table() -> None:
     assert middle.pages[0].blocks[0].type == BlockType.TABLE
 
 
+def test_ofd_table_styles_use_standard_html_across_renderers() -> None:
+    """验证 OFD 表格直接输出标准标签，并由 Markdown、HTML、DOCX 保留样式。"""
+    paths = "".join(
+        [
+            path_object(10, boundary="10 20 80 0.2", data="M 0 0.1 L 80 0.1"),
+            path_object(11, boundary="10 50 80 0.2", data="M 0 0.1 L 80 0.1"),
+            path_object(12, boundary="10 80 80 0.2", data="M 0 0.1 L 80 0.1"),
+            path_object(13, boundary="10 20 0.2 60", data="M 0.1 0 L 0.1 60"),
+            path_object(14, boundary="50 20 0.2 60", data="M 0.1 0 L 0.1 60"),
+            path_object(15, boundary="90 20 0.2 60", data="M 0.1 0 L 0.1 60"),
+        ]
+    )
+    body = "".join(
+        [
+            text_object(21, "A", boundary="20 30 10 8", size=4, y=4),
+            text_object(22, "B", boundary="60 30 10 8", size=4, y=4),
+            text_object(23, "C", boundary="20 60 10 8", size=4, y=4),
+            text_object(24, "D", boundary="60 60 10 8", size=4, y=4),
+        ]
+    )
+    page_resource = (
+        '<ofd:Res xmlns:ofd="http://www.ofdspec.org/2016"><ofd:Fonts>'
+        '<ofd:Font ID="1" FontName="Styled" Bold="true" Italic="true"/></ofd:Fonts></ofd:Res>'
+    )
+    payload = build_ofd_package(
+        [("Pages/Page_0/Content.xml", page_xml(paths + body, page_res="PageRes.xml"))],
+        extra_parts={"Doc_0/Pages/Page_0/PageRes.xml": page_resource},
+    )
+
+    middle, model = doc_analyze(payload, file_suffix="ofd")
+    table_html = model.pages[0][0]["content"]
+
+    assert "<text" not in table_html
+    assert "<em><strong>A</strong></em>" in table_html
+    assert "***A***" in render_markdown(middle)
+    html_soup = BeautifulSoup(render_html(middle), "html.parser")
+    assert html_soup.select_one("td em strong").get_text() == "A"
+    document = Document(BytesIO(render_docx(middle)))
+    styled_run = next(run for paragraph in document.tables[0].cell(0, 0).paragraphs for run in paragraph.runs if run.text)
+    assert styled_run.text == "A" and styled_run.bold and styled_run.italic
+
+
+def test_ofd_table_intersection_budget_is_shared_across_pages(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证表格线段比较预算由同一 projector 跨页累计。"""
+
+    def scene(page_idx: int) -> OfdPageScene:
+        """构造需要六次两两比较的单格表页面。"""
+        axis_lines = [
+            AxisLine((0.0, 0.0, 10.0, 0.2), "horizontal", 0.2, 0, None),
+            AxisLine((0.0, 10.0, 10.0, 10.2), "horizontal", 0.2, 1, None),
+            AxisLine((0.0, 0.0, 0.2, 10.0), "vertical", 0.2, 2, None),
+            AxisLine((10.0, 0.0, 10.2, 10.0), "vertical", 0.2, 3, None),
+        ]
+        text_lines = [
+            TextLine("A", (2.0, 2.0, 4.0, 4.0), [], 0, 2.0, 4, 1, "Body", None),
+            TextLine("B", (2.0, 6.0, 4.0, 8.0), [], 0, 2.0, 5, 2, "Body", None),
+        ]
+        return OfdPageScene(page_idx, (0.0, 0.0, 20.0, 20.0), None, text_lines, axis_lines)
+
+    monkeypatch.setattr(ofd_table, "MAX_TABLE_INTERSECTION_CHECKS", 8)
+
+    with pytest.raises(OfdResourceLimitError, match="max_table_intersection_checks"):
+        OfdReadingOrderProjector([scene(0), scene(1)]).project()
+
+
 def test_ofd_page_resource_overrides_document_resource() -> None:
     """验证异常重复资源 ID 按 PageRes 高于 PublicRes 的规则解析。"""
     page_resource = (
@@ -603,6 +747,62 @@ def test_ofd_page_resource_overrides_document_resource() -> None:
     _middle, model = doc_analyze(payload, file_suffix="ofd")
 
     assert model.pages[0][0]["content"] == [{"type": "text", "content": "page-style", "styles": ["bold"]}]
+
+
+@pytest.mark.parametrize(
+    ("replacement", "error"),
+    [
+        (None, "invalid required location"),
+        (b"<broken", "invalid XML part"),
+        (b'<Res xmlns="urn:unsupported"/>', "unsupported namespace"),
+    ],
+)
+def test_ofd_declared_resource_part_is_required(replacement: bytes | None, error: str) -> None:
+    """验证已声明资源成员缺失、损坏或 namespace 错误时整份失败。"""
+    payload = _replace_package_part(_minimal_payload(), "Doc_0/PublicRes.xml", replacement)
+
+    with pytest.raises(OfdParseError, match=error):
+        OfdModel().predict(BytesIO(payload))
+
+
+def test_ofd_absent_resource_declaration_is_optional_but_empty_declaration_is_invalid() -> None:
+    """验证未声明资源合法，而显式空资源引用按损坏包处理。"""
+    payload = _minimal_payload()
+    with ZipFile(BytesIO(payload)) as package:
+        document_root = etree.fromstring(package.read("Doc_0/Document.xml"))
+    public_res = next(element for element in document_root.iter() if etree.QName(element).localname == "PublicRes")
+
+    parent = public_res.getparent()
+    assert parent is not None
+    parent.remove(public_res)
+    without_declaration = _replace_package_part(
+        payload,
+        "Doc_0/Document.xml",
+        etree.tostring(document_root, xml_declaration=True, encoding="UTF-8"),
+    )
+    assert OfdModel().predict(BytesIO(without_declaration))
+
+    public_res = etree.SubElement(parent, "{http://www.ofdspec.org/2016}PublicRes")
+    public_res.text = ""
+    empty_declaration = _replace_package_part(
+        payload,
+        "Doc_0/Document.xml",
+        etree.tostring(document_root, xml_declaration=True, encoding="UTF-8"),
+    )
+    with pytest.raises(OfdParseError, match="invalid required location"):
+        OfdModel().predict(BytesIO(empty_declaration))
+
+
+def test_parse_resource_part_none_returns_empty_registry() -> None:
+    """验证调用方明确传入未声明资源时不会读取可选成员。"""
+    package_buffer = BytesIO()
+    with ZipFile(package_buffer, "w", ZIP_DEFLATED) as archive:
+        archive.writestr("OFD.xml", "<OFD/>")
+
+    with OfdPackage(package_buffer.getvalue()) as package:
+        registry = parse_resource_part(package, None)
+
+    assert not registry.fonts and not registry.media and not registry.composites and not registry.draw_params
 
 
 def test_ofd_does_not_open_malformed_unreferenced_custom_tag() -> None:

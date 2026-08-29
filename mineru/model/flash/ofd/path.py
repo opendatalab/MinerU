@@ -11,7 +11,7 @@ from loguru import logger
 from lxml import etree  # type: ignore[reportMissingImports]
 
 from ....types import BBox
-from .constants import MAX_PATH_COMMANDS
+from .constants import MAX_PATH_COMMANDS, MAX_PATH_TOKENS
 from .errors import OfdResourceLimitError
 from .geometry import Affine, bbox_intersection, parse_affine, parse_st_box, transform_bbox
 from .models import AxisLine
@@ -22,13 +22,20 @@ _TOKEN_RE = re.compile(r"CM|[SMLQBAC]|[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][-+]?\d
 
 @dataclass(slots=True)
 class OfdPathBudget:
-    """累计限制紧缩路径命令数量。"""
+    """累计限制紧缩路径 token 与命令数量。"""
 
     command_count: int = 0
+    token_count: int = 0
 
-    def charge(self, count: int) -> None:
-        """累计本次路径命令并在超限时失败。"""
-        self.command_count += count
+    def charge_token(self) -> None:
+        """累计实际扫描的路径 token 并在超限时失败。"""
+        self.token_count += 1
+        if self.token_count > MAX_PATH_TOKENS:
+            raise OfdResourceLimitError(f"OFD resource limit exceeded: max_path_tokens={MAX_PATH_TOKENS}")
+
+    def charge_command(self) -> None:
+        """累计实际扫描的路径命令并在超限时失败。"""
+        self.command_count += 1
         if self.command_count > MAX_PATH_COMMANDS:
             raise OfdResourceLimitError(f"OFD resource limit exceeded: max_path_commands={MAX_PATH_COMMANDS}")
 
@@ -40,11 +47,6 @@ def _finite_float(value: str) -> float | None:
     except ValueError:
         return None
     return parsed if math.isfinite(parsed) else None
-
-
-def _tokenize(value: str) -> list[str]:
-    """把紧缩路径文本拆成命令和数值 token。"""
-    return _TOKEN_RE.findall(value)
 
 
 def _line_bbox(first: tuple[float, float], second: tuple[float, float], width: float) -> tuple[BBox, str] | None:
@@ -80,37 +82,37 @@ def _line_bbox(first: tuple[float, float], second: tuple[float, float], width: f
 
 
 def _segments(value: str, transform: Affine, budget: OfdPathBudget) -> list[tuple[tuple[float, float], tuple[float, float]]]:
-    """提取 S/M/L/CM 产生的直线段，曲线命令只推进当前位置。"""
-    tokens = _tokenize(value)
-    command_count = sum(token in {"S", "M", "L", "Q", "B", "A", "C", "CM"} for token in tokens)
-    budget.charge(command_count)
+    """流式提取 S/M/L/CM 直线段，曲线命令只推进当前位置。"""
     result: list[tuple[tuple[float, float], tuple[float, float]]] = []
-    index = 0
     current: tuple[float, float] | None = None
     subpath_start: tuple[float, float] | None = None
     command: str | None = None
+    parameters: list[float] = []
+    commands = {"S", "M", "L", "Q", "B", "A", "C", "CM"}
     arity = {"S": 2, "M": 2, "L": 2, "Q": 4, "B": 6, "A": 7, "CM": 2}
-    while index < len(tokens):
-        token = tokens[index]
-        if token in {"S", "M", "L", "Q", "B", "A", "C", "CM"}:
+    for match in _TOKEN_RE.finditer(value):
+        budget.charge_token()
+        token = match.group()
+        if token in commands:
+            if parameters:
+                return []
+            budget.charge_command()
             command = token
-            index += 1
             if command == "C":
                 if current is not None and subpath_start is not None and current != subpath_start:
                     result.append((transform.apply(current), transform.apply(subpath_start)))
                 current = subpath_start
-                continue
+                command = None
+            continue
         if command is None or command == "C":
             return []
-        needed = arity[command]
-        if index + needed > len(tokens):
-            break
-        values = [_finite_float(item) for item in tokens[index : index + needed]]
-        if any(item is None for item in values):
-            index += needed
+        parsed = _finite_float(token)
+        if parsed is None:
+            return []
+        parameters.append(parsed)
+        if len(parameters) < arity[command]:
             continue
-        numbers = [float(item) for item in values if item is not None]
-        endpoint = (numbers[-2], numbers[-1])
+        endpoint = (parameters[-2], parameters[-1])
         if command in {"S", "M"}:
             current = endpoint
             subpath_start = endpoint
@@ -120,8 +122,8 @@ def _segments(value: str, transform: Affine, budget: OfdPathBudget) -> list[tupl
             current = endpoint
         else:
             current = endpoint
-        index += needed
-    return result
+        parameters.clear()
+    return [] if parameters else result
 
 
 def build_axis_lines(

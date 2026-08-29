@@ -6,6 +6,7 @@ from __future__ import annotations
 import html
 import math
 import re
+from collections import deque
 from dataclasses import dataclass
 from io import BytesIO
 
@@ -15,7 +16,7 @@ from lxml import etree  # type: ignore[reportMissingImports]
 
 from .._shared.spans import text_spans
 from ....types import BBox
-from .constants import MAX_EXPANDED_GLYPHS, MAX_EXPANDED_TEXT_BYTES, MAX_FONT_BYTES, MAX_GLYPH_TOKENS
+from .constants import MAX_DELTA_TOKENS, MAX_EXPANDED_GLYPHS, MAX_EXPANDED_TEXT_BYTES, MAX_FONT_BYTES, MAX_GLYPH_TOKENS
 from .errors import OfdResourceLimitError
 from .geometry import (
     Affine,
@@ -35,6 +36,7 @@ from .package import OfdPackage, element_text, local_name, parse_int
 
 _HEX_ESCAPE_RE = re.compile(r"\\([0-9A-Fa-f]{4})")
 _GLYPH_TOKEN_RE = re.compile(r"\S+")
+_DELTA_TOKEN_RE = re.compile(r"[^,\s]+")
 
 
 @dataclass(slots=True)
@@ -45,6 +47,7 @@ class OfdTextBudget:
     glyph_count: int = 0
     glyph_mapping_count: int = 0
     glyph_token_count: int = 0
+    delta_token_count: int = 0
 
     def charge(self, text: str) -> None:
         """为一次 TextCode 展开计费。"""
@@ -66,6 +69,12 @@ class OfdTextBudget:
         self.glyph_token_count += 1
         if self.glyph_token_count > MAX_GLYPH_TOKENS:
             raise OfdResourceLimitError(f"OFD resource limit exceeded: max_glyph_tokens={MAX_GLYPH_TOKENS}")
+
+    def charge_delta_token(self) -> None:
+        """累计实际扫描的 Delta token 数量并限制全文解析量。"""
+        self.delta_token_count += 1
+        if self.delta_token_count > MAX_DELTA_TOKENS:
+            raise OfdResourceLimitError(f"OFD resource limit exceeded: max_delta_tokens={MAX_DELTA_TOKENS}")
 
 
 @dataclass(slots=True)
@@ -197,34 +206,52 @@ def decode_text_code(value: str) -> str:
     return _HEX_ESCAPE_RE.sub(lambda match: chr(int(match.group(1), 16)), value)
 
 
-def parse_delta(value: str | None, count: int) -> list[float]:
-    """展开普通与 g-count-value 压缩 Delta，并补齐不足项。"""
+def parse_delta(value: str | None, count: int, budget: OfdTextBudget) -> list[float]:
+    """流式展开普通与 g-count-value 压缩 Delta，并补齐不足项。"""
     if count <= 0:
         return []
-    tokens = (value or "").replace(",", " ").split()
     output: list[float] = []
-    index = 0
-    while index < len(tokens) and len(output) < count:
-        token = tokens[index]
-        if token.casefold() == "g" and index + 2 < len(tokens):
+    matches = iter(_DELTA_TOKEN_RE.finditer(value or ""))
+    pending: deque[str] = deque()
+
+    def next_token() -> str | None:
+        """返回下一个 Delta token，并只对首次扫描计费。"""
+        if pending:
+            return pending.popleft()
+        try:
+            match = next(matches)
+        except StopIteration:
+            return None
+        budget.charge_delta_token()
+        return match.group()
+
+    while len(output) < count:
+        token = next_token()
+        if token is None:
+            break
+        if token.casefold() == "g":
+            repeat_token = next_token()
+            value_token = next_token()
+            if repeat_token is None or value_token is None:
+                if repeat_token is not None:
+                    pending.appendleft(repeat_token)
+                continue
             try:
-                repeat = max(0, int(tokens[index + 1]))
-                repeated_value = float(tokens[index + 2])
+                repeat = max(0, int(repeat_token))
+                repeated_value = float(value_token)
             except ValueError:
-                index += 1
+                pending.appendleft(value_token)
+                pending.appendleft(repeat_token)
                 continue
             if math.isfinite(repeated_value):
                 output.extend([repeated_value] * min(repeat, count - len(output)))
-            index += 3
             continue
         try:
             parsed = float(token)
         except ValueError:
-            index += 1
             continue
         if math.isfinite(parsed):
             output.append(parsed)
-        index += 1
     if len(output) < count:
         output.extend([output[-1] if output else 0.0] * (count - len(output)))
     return output[:count]
@@ -293,10 +320,20 @@ def format_line_spans(text: str, styles: tuple[str, ...]) -> list[dict[str, obje
 
 def format_line_html(text: str, styles: tuple[str, ...]) -> str:
     """把 OFD 表格单元格文字序列化为安全 HTML。"""
-    escaped = html.escape(text, quote=False)
-    if not styles:
-        return escaped
-    return f'<text style="{",".join(styles)}">{escaped}</text>'
+    rendered = html.escape(text, quote=False)
+    if "superscript" in styles:
+        rendered = f"<sup>{rendered}</sup>"
+    elif "subscript" in styles:
+        rendered = f"<sub>{rendered}</sub>"
+    if "underline" in styles:
+        rendered = f"<u>{rendered}</u>"
+    if "bold" in styles:
+        rendered = f"<strong>{rendered}</strong>"
+    if "italic" in styles:
+        rendered = f"<em>{rendered}</em>"
+    if "strikethrough" in styles:
+        rendered = f"<s>{rendered}</s>"
+    return rendered
 
 
 def build_text_lines(
@@ -371,8 +408,8 @@ def build_text_lines(
             global_position += len(text)
             continue
         delta_count = max(0, len(text) - 1)
-        delta_x = parse_delta(text_code.get("DeltaX"), delta_count)
-        delta_y = parse_delta(text_code.get("DeltaY"), delta_count)
+        delta_x = parse_delta(text_code.get("DeltaX"), delta_count, budget)
+        delta_y = parse_delta(text_code.get("DeltaY"), delta_count, budget)
         origins: list[tuple[float, float]] = [(inherited_x, inherited_y)]
         for index in range(delta_count):
             previous = origins[-1]

@@ -35,6 +35,28 @@ def test_render_html_table_preserves_supported_inline_markup() -> None:
     )
 
 
+def test_render_html_table_uses_markdown_only_for_simple_style_sets() -> None:
+    """验证标准 HTML 标签按有效样式集合选择 Markdown 或完整 HTML wrapper。"""
+    html = (
+        "<table><tr><td><strong>bold</strong></td><td><em>italic</em></td>"
+        "<td><s>strike</s></td><td><em><strong>both</strong></em></td>"
+        "<td><strong><u>complex</u></strong></td>"
+        "<td><s><strong>mixed</strong></s></td>"
+        "<td><sup><strong>script</strong></sup></td></tr></table>"
+    )
+
+    assert render_html_table(html, asset_base_url="", delimiters=DELIMITERS) == "\n".join(
+        [
+            (
+                "| **bold** | *italic* | ~~strike~~ | ***both*** | "
+                "<strong><u>complex</u></strong> | <s><strong>mixed</strong></s> | "
+                "<strong><sup>script</sup></strong> |"
+            ),
+            "| --- | --- | --- | --- | --- | --- | --- |",
+        ]
+    )
+
+
 def test_render_html_table_escapes_angle_brackets_from_text_nodes() -> None:
     """验证实体解码后的文本尖括号不会重新变成可执行 Markdown HTML。"""
     html = (
@@ -64,8 +86,7 @@ def test_render_html_table_escapes_formula_pipes_without_changing_latex() -> Non
         r"\begin{array}{c|c}x\end{array}",
     ]
     rows = "".join(
-        f"<tr><td>F{index}</td><td><eq>{formula}</eq></td><td>ok</td></tr>"
-        for index, formula in enumerate(formulas, start=1)
+        f"<tr><td>F{index}</td><td><eq>{formula}</eq></td><td>ok</td></tr>" for index, formula in enumerate(formulas, start=1)
     )
     html = f"<table><tr><th>Name</th><th>Formula</th><th>Note</th></tr>{rows}</table>"
 
@@ -78,6 +99,7 @@ def test_render_html_table_escapes_formula_pipes_without_changing_latex() -> Non
     assert [row.find_all("td", recursive=False)[1].get_text() for row in parsed_rows[1:]] == [
         f"${formula}$" for formula in formulas
     ]
+
 
 def test_render_html_table_falls_back_for_span_attribute_even_when_value_is_one() -> None:
     """验证只要显式出现 rowspan/colspan 就按复杂 HTML 输出。"""
@@ -98,10 +120,7 @@ def test_format_embedded_html_rewrites_relative_images_and_equations() -> None:
 
 def test_format_embedded_html_keeps_absolute_and_data_images() -> None:
     """验证已经可访问的绝对图片来源不会重复添加 base URL。"""
-    html = (
-        '<table><tr><td><img src="https://example.com/a.png">'
-        '<img src="data:image/png;base64,AAAA"></td></tr></table>'
-    )
+    html = '<table><tr><td><img src="https://example.com/a.png"><img src="data:image/png;base64,AAAA"></td></tr></table>'
 
     formatted = format_embedded_html(html, asset_base_url="https://cdn.example/doc", delimiters=DELIMITERS)
 

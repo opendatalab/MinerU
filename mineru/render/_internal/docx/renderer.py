@@ -722,11 +722,6 @@ class _DocxRenderer:
                     )
                     rendered = child_rendered or rendered
             return paragraph, rendered
-        if name == "text":
-            spans = _html_inline_spans(node, inherited_styles=inherited_styles)
-            append_inline_spans(paragraph, spans, context=context)
-            return paragraph, bool(spans)
-
         style = {
             "strong": "bold",
             "b": "bold",
@@ -864,9 +859,6 @@ def _html_inline_spans(node: Tag, *, inherited_styles: tuple[str, ...] = ()) -> 
             "sub": "subscript",
         }.get(name)
         styles = tuple(dict.fromkeys((*inherited_styles, style))) if style else inherited_styles
-        if name == "text":
-            declared = [item.strip() for item in str(child.get("style", "")).split(",") if item.strip()]
-            styles = tuple(dict.fromkeys((*styles, *declared)))
         children = _html_inline_spans(child, inherited_styles=styles)
         if name == "a":
             non_link_children = [item for item in children if not isinstance(item, HyperlinkSpan)]

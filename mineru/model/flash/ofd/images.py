@@ -13,6 +13,7 @@ from lxml import etree  # type: ignore[reportMissingImports]
 from .._shared.image import image_to_b64str
 from ....types import BBox
 from ....utils.image_payload import validate_decoded_raster_size
+from .errors import OfdParseError
 from .geometry import Affine, bbox_intersection, canonical_angle, parse_affine, parse_st_box, transform_angle, transform_bbox
 from .models import ImageItem, ResourceRegistry
 from .package import OfdPackage, parse_int
@@ -71,9 +72,14 @@ def build_image_item(
     page_bbox = bbox_intersection(page_bbox, parent_clip)
     if page_bbox is None:
         return None
-    resource_id = parse_int(image_object.get("ResourceID") or image_object.get("ResouceID"))
+    raw_resource_id = image_object.get("ResourceID") or image_object.get("ResouceID")
+    resource_id = parse_int(raw_resource_id)
     media = resources.media.get(resource_id) if resource_id is not None else None
     object_id = parse_int(image_object.get("ID"))
+    if raw_resource_id is not None and media is None:
+        raise OfdParseError(
+            f"Malformed OFD package: ImageObject id={object_id} references missing media resource {raw_resource_id!r}"
+        )
     if media is None:
         return ImageItem(
             bbox=page_bbox,
@@ -84,11 +90,9 @@ def build_image_item(
             template_id=template_id,
             diagnostic="missing_media_resource",
         )
-    data = package.read_part(media.media_part, asset=True)
-    if data is None:
-        diagnostic = "missing_media_part"
-        payload = None
-    elif data.startswith(_JBIG2_SIGNATURE):
+    data = package.read_part(media.media_part, required=True, asset=True)
+    assert data is not None
+    if data.startswith(_JBIG2_SIGNATURE):
         diagnostic = "unsupported_jbig2"
         payload = None
     else:

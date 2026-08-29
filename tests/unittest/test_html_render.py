@@ -704,6 +704,36 @@ def test_table_keeps_safe_html_and_spatial_or_image_fallbacks() -> None:
     assert soup.select_one('[data-block-index="2"] img')["src"].startswith("data:image/png")
 
 
+def test_table_preserves_standard_inline_style_tags() -> None:
+    """验证表格安全 HTML 保留 renderer 支持的标准行内样式标签。"""
+    table = TableBlock(
+        type="table",
+        index=0,
+        content=[
+            TableBodyBlock(
+                type="table_body",
+                index=0,
+                content=(
+                    "<table><tr><td><strong>bold</strong><em>italic</em><u>under</u>"
+                    "<s>strike</s><sup>sup</sup><sub>sub</sub></td></tr></table>"
+                ),
+            )
+        ],
+    )
+
+    soup = BeautifulSoup(render_html(_middle(_page(0, table)), standalone=False), "html.parser")
+    cell = soup.select_one("td")
+
+    assert [cell.select_one(tag).get_text() for tag in ("strong", "em", "u", "s", "sup", "sub")] == [
+        "bold",
+        "italic",
+        "under",
+        "strike",
+        "sup",
+        "sub",
+    ]
+
+
 def test_discarded_invalid_table_math_does_not_load_mathjax() -> None:
     """验证无单元格表格回退图片后，已丢弃的 eq 不会误触发 MathJax。"""
     table = TableBlock(

@@ -6,6 +6,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from ....types import BBox
+from .constants import MAX_TABLE_INTERSECTION_CHECKS
+from .errors import OfdResourceLimitError
 from .geometry import bbox_area, bbox_center, bbox_intersection
 from .models import AxisLine, TextLine
 from .text import format_line_html
@@ -24,6 +26,21 @@ class OfdTableRegion:
     html: str
     paint_order: int
     consumed_line_ids: frozenset[int]
+
+
+@dataclass(slots=True)
+class OfdTableBudget:
+    """累计限制整份 OFD 的表格线段相交比较次数。"""
+
+    intersection_check_count: int = 0
+
+    def charge_intersection_check(self) -> None:
+        """累计一次线段相交比较并在超限时失败。"""
+        self.intersection_check_count += 1
+        if self.intersection_check_count > MAX_TABLE_INTERSECTION_CHECKS:
+            raise OfdResourceLimitError(
+                f"OFD resource limit exceeded: max_table_intersection_checks={MAX_TABLE_INTERSECTION_CHECKS}"
+            )
 
 
 def _line_coord(line: AxisLine) -> float:
@@ -58,7 +75,7 @@ def _touches(first: AxisLine, second: AxisLine) -> bool:
     )
 
 
-def _components(lines: list[AxisLine]) -> list[list[AxisLine]]:
+def _components(lines: list[AxisLine], budget: OfdTableBudget) -> list[list[AxisLine]]:
     """按线段相交关系构造确定性的连通分量。"""
     parents = list(range(len(lines)))
 
@@ -78,6 +95,7 @@ def _components(lines: list[AxisLine]) -> list[list[AxisLine]]:
 
     for first_index, first in enumerate(lines):
         for second_index in range(first_index + 1, len(lines)):
+            budget.charge_intersection_check()
             if _touches(first, lines[second_index]):
                 union(first_index, second_index)
     grouped: dict[int, list[AxisLine]] = {}
@@ -179,12 +197,16 @@ def _serialize_grid(xs: list[float], ys: list[float], lines: list[TextLine]) -> 
     return "".join(output)
 
 
-def recover_tables(axis_lines: list[AxisLine], text_lines: list[TextLine]) -> list[OfdTableRegion]:
+def recover_tables(
+    axis_lines: list[AxisLine],
+    text_lines: list[TextLine],
+    budget: OfdTableBudget,
+) -> list[OfdTableRegion]:
     """从页面轴向线段中恢复互不重叠的高置信表格。"""
     if len(axis_lines) < 4 or len(text_lines) < 2 or len(axis_lines) > _MAX_TABLE_AXIS_LINES:
         return []
     candidates: list[OfdTableRegion] = []
-    for component in _components(axis_lines):
+    for component in _components(axis_lines, budget):
         grid = _component_grid(component)
         if grid is None:
             continue
@@ -216,4 +238,4 @@ def recover_tables(axis_lines: list[AxisLine], text_lines: list[TextLine]) -> li
     return sorted(selected, key=lambda item: (item.bbox[1], item.bbox[0], item.paint_order))
 
 
-__all__ = ["OfdTableRegion", "recover_tables"]
+__all__ = ["OfdTableBudget", "OfdTableRegion", "recover_tables"]

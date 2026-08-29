@@ -171,6 +171,38 @@ def test_epub_package_is_single_spine_epub33_with_stable_metadata_and_mathml() -
     assert later_identifier == first_identifier
 
 
+def test_epub_table_preserves_standard_inline_style_tags() -> None:
+    """验证表格中的标准文字样式标签安全复制为 XHTML。"""
+    table = TableBlock(
+        type="table",
+        index=0,
+        content=[
+            TableBodyBlock(
+                type="table_body",
+                index=0,
+                content=(
+                    "<table><tr><td><strong>bold</strong><em>italic</em><u>under</u>"
+                    "<s>strike</s><sup>sup</sup><sub>sub</sub></td></tr></table>"
+                ),
+            )
+        ],
+    )
+
+    with _archive(render_epub(_middle(_page(0, table)), modified_at=_FIXED_TIME)) as archive:
+        content = _xml(archive, "EPUB/text/content.xhtml")
+
+    assert [
+        content.xpath(f"string(//xhtml:td/xhtml:{tag})", namespaces=_NS) for tag in ("strong", "em", "u", "s", "sup", "sub")
+    ] == [
+        "bold",
+        "italic",
+        "under",
+        "strike",
+        "sup",
+        "sub",
+    ]
+
+
 def test_epub_uses_default_planner_without_source_page_boundaries() -> None:
     """验证固定默认 EPUB 连续阅读、隐藏辅助块且不保留源页边界。"""
     middle = _middle(

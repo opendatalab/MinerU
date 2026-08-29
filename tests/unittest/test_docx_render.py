@@ -555,6 +555,26 @@ def test_html_table_materializes_merges_inline_content_link_and_image() -> None:
     assert "https://example.com/table" in relationships
 
 
+def test_html_table_does_not_restore_legacy_text_style_tags() -> None:
+    """验证旧 text-style 容器只保留文字，标准 strong 标签继续恢复粗体。"""
+    table = TableBlock(
+        type="table",
+        index=0,
+        content=[
+            TableBodyBlock(
+                type="table_body",
+                index=0,
+                content=('<table><tr><td><text style="bold">legacy</text><strong>standard</strong></td></tr></table>'),
+            )
+        ],
+    )
+
+    document = Document(BytesIO(render_docx(_middle(_page(0, table)))))
+    runs = [run for paragraph in document.tables[0].cell(0, 0).paragraphs for run in paragraph.runs if run.text]
+
+    assert [(run.text, bool(run.bold)) for run in runs] == [("legacy", False), ("standard", True)]
+
+
 def test_html_table_cell_lists_keep_item_boundaries() -> None:
     """验证 HTML 单元格中的有序和无序列表不会串成连续文本。"""
     html = (

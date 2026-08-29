@@ -185,6 +185,16 @@ def _apply_style_wrappers(
     return f"{leading}{_apply_html_styles(core, styles)}{trailing}"
 
 
+def render_styled_markdown_text(content: str, styles: Sequence[str]) -> str:
+    """按正文相同规则把已转义文字渲染为 Markdown 或安全 HTML 样式。"""
+    return _apply_style_wrappers(content, styles)
+
+
+def markdown_styles_require_html(styles: Sequence[str]) -> bool:
+    """判断样式组合是否必须整体使用 HTML 标签表达。"""
+    return bool(styles) and frozenset(styles) not in _SIMPLE_STYLE_WRAPPERS
+
+
 def _render_visible_whitespace(content: str, styles: Sequence[str]) -> str:
     """使用原 HTML 规则保留非 ASCII marker 场景的可见空白。"""
     visible = "".join("<br>" if char == "\n" else "&nbsp;" for char in content.expandtabs(4))
@@ -243,9 +253,11 @@ def _escape_markdown_link_label(label: str) -> str:
 
 
 __all__ = [
+    "markdown_styles_require_html",
     "render_inline_content",
     "render_inline_spans",
     "render_inline_spans_in_html_context",
     "render_internal_link",
     "render_joined_inline_contents",
+    "render_styled_markdown_text",
 ]

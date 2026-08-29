@@ -12,7 +12,7 @@ from .._shared.xycut import sort_entries
 from ....types import BlockType
 from .geometry import bbox_center, bbox_union, normalize_bbox
 from .models import OfdPageScene, TextLine
-from .table import OfdTableRegion, recover_tables
+from .table import OfdTableBudget, OfdTableRegion, recover_tables
 from .text import format_line_spans
 
 _PAGE_NUMBER_RE = re.compile(r"^(?:\d+|[IVXLCDM]+)$", re.IGNORECASE)
@@ -175,6 +175,7 @@ class OfdReadingOrderProjector:
         body_sizes = [line.font_size for scene in scenes for line in scene.text_lines if line.font_size > 0]
         self.body_size = statistics.median(body_sizes) if body_sizes else 1.0
         self.document_title_emitted = False
+        self.table_budget = OfdTableBudget()
 
     def _text_block(self, line: TextLine, scene: OfdPageScene) -> dict[str, Any]:
         """把 TextLine 转换为尚未归一化的 raw block。"""
@@ -233,7 +234,7 @@ class OfdReadingOrderProjector:
     def project_page(self, scene: OfdPageScene) -> list[dict[str, Any]]:
         """把一页场景投影为最终阅读顺序 raw model-list。"""
         merged_lines = merge_same_baseline_lines(scene.text_lines)
-        tables = recover_tables(scene.axis_lines, merged_lines)
+        tables = recover_tables(scene.axis_lines, merged_lines, self.table_budget)
         consumed = {line_id for table in tables for line_id in table.consumed_line_ids}
         blocks = [self._text_block(line, scene) for line in merged_lines if id(line) not in consumed]
         blocks.extend(self._table_block(table) for table in tables)
