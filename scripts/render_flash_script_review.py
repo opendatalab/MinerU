@@ -12,6 +12,7 @@ from collections import Counter, defaultdict, deque
 from pathlib import Path
 from typing import Any
 
+from bs4 import BeautifulSoup
 from PIL import Image, ImageDraw, ImageFont
 
 from mineru.model.flash.pdf.document import PDFDocument
@@ -176,6 +177,27 @@ def _final_script_runs(
     for block_index, block in enumerate(blocks):
         block_type = str(block.get("type") or "")
         block_bbox = _page_bbox_from_normalized(block.get("bbox"), page_size)
+        block_content = block.get("content")
+        if block_type == "table" and isinstance(block_content, str) and block_content.lstrip().lower().startswith("<table"):
+            soup = BeautifulSoup(block_content, "html.parser")
+            for row_index, row in enumerate(soup.find_all("tr")):
+                for cell_index, cell in enumerate(row.find_all(["td", "th"], recursive=False)):
+                    for tag in cell.find_all(["sup", "sub"]):
+                        text = tag.get_text()
+                        if not _normalized_text(text):
+                            continue
+                        runs.append(
+                            {
+                                "block_index": block_index,
+                                "block_type": block_type,
+                                "block_bbox": list(block_bbox) if block_bbox is not None else None,
+                                "role": "superscript" if tag.name == "sup" else "subscript",
+                                "text": text,
+                                "cell_row": row_index,
+                                "cell_col": cell_index,
+                                "cell_text": cell.get_text(),
+                            }
+                        )
 
         def walk(value: Any) -> None:
             """递归遍历 block 的 InlineSpan。"""
@@ -200,7 +222,7 @@ def _final_script_runs(
                 for child in value:
                     walk(child)
 
-        walk(block.get("content"))
+        walk(block_content)
     return runs
 
 
@@ -278,6 +300,8 @@ def _render_crop(
 def _build_contact_sheets(
     records: list[dict[str, Any]],
     staging: Path,
+    *,
+    directory: str = "contact_sheets",
 ) -> list[str]:
     """按文档把候选 crop 组合成多张联系表。"""
     contact_paths = []
@@ -301,7 +325,7 @@ def _build_contact_sheets(
                 x = (index % CONTACT_COLUMNS) * page_size[0] + 6
                 y = (index // CONTACT_COLUMNS) * page_size[1] + 6
                 canvas.paste(crop, (x, y))
-            relative = Path("contact_sheets") / (f"{_safe_stem(Path(document_name))}_{sheet_index + 1:02d}.png")
+            relative = Path(directory) / (f"{_safe_stem(Path(document_name))}_{sheet_index + 1:02d}.png")
             output = staging / relative
             output.parent.mkdir(parents=True, exist_ok=True)
             canvas.save(output)
@@ -331,6 +355,7 @@ def _write_review_markdown(records: list[dict[str, Any]], staging: Path) -> Path
                 [
                     f"- [ ] `{record['id']}` **{record['role']}** `{record['text']}`",
                     f"  - block: `{record['block_type']}`; angle: `{record['angle']}`; "
+                    f"cell: `{record.get('cell_row')},{record.get('cell_col')}`; "
                     f"formula_region: `{record['formula_region']}`; stable_body_count: `{record['stable_body_count']}`",
                     f"  - previous: {record['previous_line']}",
                     f"  - context: {context}",
@@ -416,7 +441,7 @@ def main() -> None:
                                 "formula_region": False,
                                 "stable_body_count": 0,
                                 "previous_line": "",
-                                "current_line": final_run["text"],
+                                "current_line": final_run.get("cell_text", final_run["text"]),
                                 "next_line": "",
                             }
                         )
@@ -448,6 +473,9 @@ def main() -> None:
                             "previous_line": str(candidate.get("previous_line", "")),
                             "current_line": str(candidate.get("current_line", final_run["text"])),
                             "next_line": str(candidate.get("next_line", "")),
+                            "cell_row": final_run.get("cell_row"),
+                            "cell_col": final_run.get("cell_col"),
+                            "cell_text": final_run.get("cell_text"),
                             "crop": relative_crop.as_posix(),
                         }
                         if page_index not in page_images:
@@ -479,6 +507,11 @@ def main() -> None:
                     }
                 )
         contact_sheets = _build_contact_sheets(records, staging)
+        table_contact_sheets = _build_contact_sheets(
+            [record for record in records if record["block_type"] == "table"],
+            staging,
+            directory="table_contact_sheets",
+        )
         review_path = _write_review_markdown(records, staging)
         manifest = {
             "source_count": len(PDF_PATHS),
@@ -488,6 +521,7 @@ def main() -> None:
             "formula_region_count": sum(record["formula_region"] for record in records),
             "documents": documents,
             "contact_sheets": contact_sheets,
+            "table_contact_sheets": table_contact_sheets,
             "records": records,
         }
         manifest_path = staging / "manifest.json"

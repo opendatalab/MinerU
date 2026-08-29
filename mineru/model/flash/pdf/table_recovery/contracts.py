@@ -140,6 +140,7 @@ class NativeTableResult:
     rows: int
     cols: int
     cells: tuple[NativeTableCell, ...]
+    text: NativeTableText
     source: NativeTableCandidateSource
     confidence: float
     diagnostics: tuple[str, ...] = field(default_factory=tuple)

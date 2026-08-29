@@ -173,7 +173,8 @@ def _visible_content(value: Any) -> str:
 
     content = value.get("content") if isinstance(value, dict) else value
     if isinstance(content, str) and content.lstrip().lower().startswith("<table"):
-        content = BeautifulSoup(content, "html.parser").get_text(" ")
+        soup = BeautifulSoup(content, "html.parser")
+        content = " ".join(cell.get_text() for cell in soup.find_all(["td", "th"]))
     return visible_content(content)
 
 
@@ -181,7 +182,7 @@ def _html_table_rows(content: str) -> list[tuple[str, ...]]:
     """读取原生结构恢复输出的 HTML 表格行与单元格纯文本。"""
 
     soup = BeautifulSoup(content, "html.parser")
-    return [tuple(cell.get_text(" ") for cell in row.find_all(["td", "th"], recursive=False)) for row in soup.find_all("tr")]
+    return [tuple(cell.get_text() for cell in row.find_all(["td", "th"], recursive=False)) for row in soup.find_all("tr")]
 
 
 def _normalized_content_probe(text: str) -> str:
@@ -838,8 +839,9 @@ def test_demo3_keeps_tables_and_covers_every_native_source_line() -> None:
     page10_first_reference = next(
         block for block in model_list[9] if _visible_content(block).startswith("Xiang Deng, Huan Sun")
     )
+    table4_text = _visible_content(page7_table4)
     assert all(
-        marker in page7_table4["content"]
+        marker in table4_text
         for marker in (
             "Model",
             "TAPASBASE",

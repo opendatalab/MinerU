@@ -349,6 +349,8 @@ def _prepare_page_source(
     table_blocks, table_annotation_blocks, claimed_line_indices = _materialize_table_blocks(
         source,
         candidates,
+        tight_bboxes=tight_bboxes,
+        origins=origins,
     )
     claimed_line_indices.update(claimed_rule_code_line_indices)
     table_bboxes = [block["bbox"] for block in table_blocks]

@@ -1,16 +1,16 @@
 {
-  "schema_version": 3,
-  "manifest_version": "2026-08-25-demo-sparse-multiline-v3",
+  "schema_version": 4,
+  "manifest_version": "2026-08-30-native-table-scripts-v4",
   "source_root": "demo/pdfs",
   "totals": {
-    "documents": 14,
-    "pages": 104,
-    "tables": 44,
-    "expected_html": 41,
+    "documents": 15,
+    "pages": 127,
+    "tables": 46,
+    "expected_html": 43,
     "expected_projection": 3,
-    "tracked_tables": 44,
+    "tracked_tables": 46,
     "existing_verified_html": 18,
-    "new_verified_html": 23,
+    "new_verified_html": 25,
     "fallback_expected": 3
   },
   "tables": [
@@ -20284,7 +20284,7 @@
       "angle": 0,
       "expected_output": "html",
       "review_status": "target_verified",
-      "content_sha256": "3a0bf3295c9c83d4fb3c21851daee9c9c085cdae9ed8a53e51fddec3afe79598",
+      "content_sha256": "989d9e4a1dcc90eb8c78165ebc9c086209fc55ca0a907ec8a5a46af0f41d4a19",
       "expected_source": "sparse_multiline",
       "rows": 10,
       "cols": 7,
@@ -20790,7 +20790,7 @@
       "angle": 0,
       "expected_output": "html",
       "review_status": "existing_verified",
-      "content_sha256": "7c5a18775a22d2efac0d940971ba52c713ff75a23cb14208ec6eaa29d8e6137d",
+      "content_sha256": "7ff0031b1507612c021fd20ebedfff7e2d8660afd3faeab3594ca4ac8bc78c05",
       "expected_source": "sparse_hybrid",
       "rows": 9,
       "cols": 3,
@@ -21000,7 +21000,7 @@
       "angle": 0,
       "expected_output": "html",
       "review_status": "existing_verified",
-      "content_sha256": "0d2fbc3114bf3bc2f95bc4c17ba97652b73a6b57330d4fa52edf84c10e1918a7",
+      "content_sha256": "0def2755bbba986a464843dff723050bc1f061ccbe57c8028089b93ba20ebbd1",
       "expected_source": "vector_grid",
       "rows": 9,
       "cols": 5,
@@ -21532,7 +21532,7 @@
       "angle": 0,
       "expected_output": "html",
       "review_status": "target_verified",
-      "content_sha256": "0f8c19e5bd163d8d3c37297233aff208ab07de4e696561361585ea42f5beabf6",
+      "content_sha256": "4f0d10bfc866afd6189fa66079db4b692b215363097a4fd3bbc9c4f47f72cb9d",
       "expected_source": "sparse_multiline",
       "rows": 14,
       "cols": 6,
@@ -22133,7 +22133,7 @@
       "angle": 0,
       "expected_output": "html",
       "review_status": "existing_verified",
-      "content_sha256": "db10d2560f690f11b585c9550cdf554cf057004c7c89d177aeccf3c17b8f90e4",
+      "content_sha256": "0efbe72e79f6b953806ddb6d8be1fc2100247d29ba1ba02838ee3b652f634c73",
       "expected_source": "sparse_hybrid",
       "rows": 12,
       "cols": 10,
@@ -22958,7 +22958,7 @@
       "angle": 0,
       "expected_output": "html",
       "review_status": "target_verified",
-      "content_sha256": "5bfbf71ba768d8c6c737f164415e3eba3b6d50545e7ae4b2d8898b1f07d740e3",
+      "content_sha256": "164625c7493a2afb27821b0cada6575a9843df5ed3995e372be7368c7f69cc05",
       "expected_source": "sparse_multiline",
       "rows": 11,
       "cols": 3,
@@ -23210,7 +23210,7 @@
       "angle": 0,
       "expected_output": "html",
       "review_status": "target_verified",
-      "content_sha256": "a854fb5444b20805d67e0aa3474cdfdae51fd15b63d22c3f184804b006adabfb",
+      "content_sha256": "8b5a16fb797203354d52dc5323f7ef31b643ef6e396b35f67b0f3d7330a29471",
       "expected_source": "sparse_multiline",
       "rows": 5,
       "cols": 2,
@@ -23301,7 +23301,7 @@
       "angle": 0,
       "expected_output": "html",
       "review_status": "target_verified",
-      "content_sha256": "44f1e274c6ab834af4237bca93d3eca833ce3cb074af33aec4a12d8e92d266a1",
+      "content_sha256": "dd085ccd303c047fe52d2a9e01a3a3fc9afec41170fc6a4905e7b91ce26b5b0c",
       "expected_source": "sparse_multiline",
       "rows": 5,
       "cols": 5,
@@ -23497,7 +23497,7 @@
       "angle": 0,
       "expected_output": "html",
       "review_status": "target_verified",
-      "content_sha256": "4d7449a59e0a30fe190e3db2b8eb19d6cbd32218ddf1c0b51039d1027e55e2ef",
+      "content_sha256": "33caad5439c6c58882477e813cb69e1c6b3845d3cab02722eda2f9be1306021c",
       "expected_source": "sparse_multiline",
       "rows": 9,
       "cols": 5,
@@ -23832,7 +23832,7 @@
       "angle": 0,
       "expected_output": "html",
       "review_status": "existing_verified",
-      "content_sha256": "f25432428d565b97dd16ec037a6234a6f9e74985fdfd92bc97e10450edfdc6a2",
+      "content_sha256": "41c63a73de3e715148d184436e09ccfc656a65c06869f1ba4579014748aa040c",
       "expected_source": "sparse_hybrid",
       "rows": 15,
       "cols": 3,
@@ -24588,7 +24588,7 @@
       "angle": 0,
       "expected_output": "html",
       "review_status": "existing_verified",
-      "content_sha256": "1605146e64ef7be920fc778076bf4abdb744abf3123148327054bd3b6195ec9f",
+      "content_sha256": "47f40b9d7ec55a5daaa315419e23fba80efca37922bf20e6317cf1d9973b799c",
       "expected_source": "sparse_hybrid",
       "rows": 3,
       "cols": 6,
@@ -25211,7 +25211,7 @@
       "angle": 0,
       "expected_output": "html",
       "review_status": "target_verified",
-      "content_sha256": "d0c635e80dc56d2f6ac809dbb8ebe7e990eaeacab0c77db7c602955ac1361c3c",
+      "content_sha256": "9470c6774f0ed9f16f63b07a7c8f55ca5e6f2cde08038a0ad4dccb93e54d64c6",
       "expected_source": "sparse_multiline",
       "rows": 7,
       "cols": 5,
@@ -25810,6 +25810,1196 @@
       "review_status": "fallback_expected",
       "content_sha256": "9bac22d6ce15b6a8b6d97e95c5ffe76f6ea188a068698b8df17c70c5ea276b71",
       "rejection_reason": "overlapping_formula_rows"
+    },
+    {
+      "file": "中文论文2.pdf",
+      "page_index": 1,
+      "table_index": 0,
+      "bbox": [
+        0.095,
+        0.478,
+        0.905,
+        0.911
+      ],
+      "angle": 0,
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "content_sha256": "e572309d4f3045c68cf66d3d28b356723dd7edd0bcff680ed6c28e9b2b979c56",
+      "expected_source": "vector_grid",
+      "rows": 19,
+      "cols": 6,
+      "span_signature": [],
+      "cell_truth": [
+        {
+          "row": 0,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "基准名称"
+        },
+        {
+          "row": 0,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "发布时间"
+        },
+        {
+          "row": 0,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "发布人/机构"
+        },
+        {
+          "row": 0,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "规模"
+        },
+        {
+          "row": 0,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "评价方面"
+        },
+        {
+          "row": 0,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "语种数"
+        },
+        {
+          "row": 1,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "DecaNLP"
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2018年"
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "McCann等"
+        },
+        {
+          "row": 1,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "10个任务"
+        },
+        {
+          "row": 1,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "NLU"
+        },
+        {
+          "row": 1,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1"
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "GLUE"
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2018年"
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "纽约大学等"
+        },
+        {
+          "row": 2,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "9个任务"
+        },
+        {
+          "row": 2,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "NLU"
+        },
+        {
+          "row": 2,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1"
+        },
+        {
+          "row": 3,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "SuperGLUE"
+        },
+        {
+          "row": 3,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2019年"
+        },
+        {
+          "row": 3,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "纽约大学等"
+        },
+        {
+          "row": 3,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "8个任务"
+        },
+        {
+          "row": 3,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "NLU"
+        },
+        {
+          "row": 3,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1"
+        },
+        {
+          "row": 4,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "XTREME"
+        },
+        {
+          "row": 4,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2020年"
+        },
+        {
+          "row": 4,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "卡耐基梅隆大学等"
+        },
+        {
+          "row": 4,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "9个任务"
+        },
+        {
+          "row": 4,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "NLU"
+        },
+        {
+          "row": 4,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "40"
+        },
+        {
+          "row": 5,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "XGLUE"
+        },
+        {
+          "row": 5,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2020年"
+        },
+        {
+          "row": 5,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "微软"
+        },
+        {
+          "row": 5,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "11个任务"
+        },
+        {
+          "row": 5,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "NLU"
+        },
+        {
+          "row": 5,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "19"
+        },
+        {
+          "row": 6,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "CLUE"
+        },
+        {
+          "row": 6,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2020年"
+        },
+        {
+          "row": 6,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "CLUE团队"
+        },
+        {
+          "row": 6,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "9个任务"
+        },
+        {
+          "row": 6,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "NLU"
+        },
+        {
+          "row": 6,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1"
+        },
+        {
+          "row": 7,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "GLGE"
+        },
+        {
+          "row": 7,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2020年"
+        },
+        {
+          "row": 7,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "四川大学等"
+        },
+        {
+          "row": 7,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "4个任务"
+        },
+        {
+          "row": 7,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "NLG"
+        },
+        {
+          "row": 7,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1"
+        },
+        {
+          "row": 8,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "GEM"
+        },
+        {
+          "row": 8,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2021年"
+        },
+        {
+          "row": 8,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "卡耐基梅隆大学等"
+        },
+        {
+          "row": 8,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "11个数据集"
+        },
+        {
+          "row": 8,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "NLG"
+        },
+        {
+          "row": 8,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "18"
+        },
+        {
+          "row": 9,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "CUGE"
+        },
+        {
+          "row": 9,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2021年"
+        },
+        {
+          "row": 9,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "清华大学等"
+        },
+        {
+          "row": 9,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "21个数据集"
+        },
+        {
+          "row": 9,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "NLU、NLG"
+        },
+        {
+          "row": 9,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1"
+        },
+        {
+          "row": 10,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "EleuHthaerrnAesIsLM"
+        },
+        {
+          "row": 10,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2021年"
+        },
+        {
+          "row": 10,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "EleutherAI"
+        },
+        {
+          "row": 10,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "200余个数据集"
+        },
+        {
+          "row": 10,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "NLU、NLG"
+        },
+        {
+          "row": 10,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "-"
+        },
+        {
+          "row": 11,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "BIG-bench"
+        },
+        {
+          "row": 11,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2022年"
+        },
+        {
+          "row": 11,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "谷歌"
+        },
+        {
+          "row": 11,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "200余个数据集"
+        },
+        {
+          "row": 11,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "逻辑能力、数学伦能理力道、德代码理解能力、"
+        },
+        {
+          "row": 11,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "-"
+        },
+        {
+          "row": 12,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "MT-Bench"
+        },
+        {
+          "row": 12,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2023年"
+        },
+        {
+          "row": 12,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "伯克利大学等"
+        },
+        {
+          "row": 12,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "80个样例"
+        },
+        {
+          "row": 12,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "与人类偏好对齐程度"
+        },
+        {
+          "row": 12,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1"
+        },
+        {
+          "row": 13,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "ChatbotArena"
+        },
+        {
+          "row": 13,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2023年"
+        },
+        {
+          "row": 13,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "伯克利大学等"
+        },
+        {
+          "row": 13,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "-"
+        },
+        {
+          "row": 13,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "与人类偏好对齐程度"
+        },
+        {
+          "row": 13,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "-"
+        },
+        {
+          "row": 14,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "SuperCLUE-Open"
+        },
+        {
+          "row": 14,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2023年"
+        },
+        {
+          "row": 14,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "CLUE团队"
+        },
+        {
+          "row": 14,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1.2k个样例"
+        },
+        {
+          "row": 14,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "与人类偏好对齐程度"
+        },
+        {
+          "row": 14,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1"
+        },
+        {
+          "row": 15,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "C-EVAL"
+        },
+        {
+          "row": 15,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2023年"
+        },
+        {
+          "row": 15,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "上海交通大学等"
+        },
+        {
+          "row": 15,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "13948个样例"
+        },
+        {
+          "row": 15,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "知识运用与推理能力"
+        },
+        {
+          "row": 15,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1"
+        },
+        {
+          "row": 16,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "SAFETYPROMPTS"
+        },
+        {
+          "row": 16,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2023年"
+        },
+        {
+          "row": 16,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "清华大学等"
+        },
+        {
+          "row": 16,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "100k个样例"
+        },
+        {
+          "row": 16,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "安全性"
+        },
+        {
+          "row": 16,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1"
+        },
+        {
+          "row": 17,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "LLMEVAL"
+        },
+        {
+          "row": 17,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2023年"
+        },
+        {
+          "row": 17,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "复旦大学等"
+        },
+        {
+          "row": 17,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "933个样例"
+        },
+        {
+          "row": 17,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "正确性、流畅性、信息量、逻辑性、无害性等"
+        },
+        {
+          "row": 17,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1"
+        },
+        {
+          "row": 18,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "TriviaQA"
+        },
+        {
+          "row": 18,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2017年"
+        },
+        {
+          "row": 18,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "华盛顿大学等"
+        },
+        {
+          "row": 18,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "95k个样例"
+        },
+        {
+          "row": 18,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "知识运用能力"
+        },
+        {
+          "row": 18,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1"
+        }
+      ]
+    },
+    {
+      "file": "中文论文2.pdf",
+      "page_index": 2,
+      "table_index": 0,
+      "bbox": [
+        0.095,
+        0.075,
+        0.905,
+        0.297
+      ],
+      "angle": 0,
+      "expected_output": "html",
+      "review_status": "target_verified",
+      "content_sha256": "917b8da9b7ef5ab009647fe8c2c9c69c82b7638b43c5f9fc0efb009e2da45da3",
+      "expected_source": "vector_grid",
+      "rows": 9,
+      "cols": 6,
+      "span_signature": [
+        [
+          0,
+          0,
+          1,
+          6
+        ]
+      ],
+      "cell_truth": [
+        {
+          "row": 0,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 6,
+          "text": "续表"
+        },
+        {
+          "row": 1,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "基准名称"
+        },
+        {
+          "row": 1,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "发布时间"
+        },
+        {
+          "row": 1,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "发布人/机构"
+        },
+        {
+          "row": 1,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "规模"
+        },
+        {
+          "row": 1,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "评价方面"
+        },
+        {
+          "row": 1,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "语种数"
+        },
+        {
+          "row": 2,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "OpenBookQA"
+        },
+        {
+          "row": 2,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2018年"
+        },
+        {
+          "row": 2,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "艾伦人工智能研究所等"
+        },
+        {
+          "row": 2,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "约6k个样例"
+        },
+        {
+          "row": 2,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "知识运用能力"
+        },
+        {
+          "row": 2,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1"
+        },
+        {
+          "row": 3,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "GSM8k"
+        },
+        {
+          "row": 3,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2021年"
+        },
+        {
+          "row": 3,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "OpenAI等"
+        },
+        {
+          "row": 3,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "8.5k个样例"
+        },
+        {
+          "row": 3,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "数学推理能力"
+        },
+        {
+          "row": 3,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1"
+        },
+        {
+          "row": 4,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "HaluEval"
+        },
+        {
+          "row": 4,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2023年"
+        },
+        {
+          "row": 4,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "人民大学等"
+        },
+        {
+          "row": 4,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "35k个样例"
+        },
+        {
+          "row": 4,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "检测幻觉能力"
+        },
+        {
+          "row": 4,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1"
+        },
+        {
+          "row": 5,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "MMLU"
+        },
+        {
+          "row": 5,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2021年"
+        },
+        {
+          "row": 5,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "伯克利大学等"
+        },
+        {
+          "row": 5,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "57个数据集"
+        },
+        {
+          "row": 5,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "知识运用与问题解决能力"
+        },
+        {
+          "row": 5,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1"
+        },
+        {
+          "row": 6,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "HellaSwag"
+        },
+        {
+          "row": 6,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2019年"
+        },
+        {
+          "row": 6,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "华盛顿大学"
+        },
+        {
+          "row": 6,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "70k个样例"
+        },
+        {
+          "row": 6,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "常识推理能力"
+        },
+        {
+          "row": 6,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1"
+        },
+        {
+          "row": 7,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "HumanEval"
+        },
+        {
+          "row": 7,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2021年"
+        },
+        {
+          "row": 7,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "OpenAI等"
+        },
+        {
+          "row": 7,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "164个样例"
+        },
+        {
+          "row": 7,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "代码生成能力"
+        },
+        {
+          "row": 7,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "-"
+        },
+        {
+          "row": 8,
+          "col": 0,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "DROP"
+        },
+        {
+          "row": 8,
+          "col": 1,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "2019年"
+        },
+        {
+          "row": 8,
+          "col": 2,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "加利福尼亚大学等"
+        },
+        {
+          "row": 8,
+          "col": 3,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "96k个样例"
+        },
+        {
+          "row": 8,
+          "col": 4,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "阅读理解和数值推理能力"
+        },
+        {
+          "row": 8,
+          "col": 5,
+          "rowspan": 1,
+          "colspan": 1,
+          "text": "1"
+        }
+      ]
     }
   ]
 }

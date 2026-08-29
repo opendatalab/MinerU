@@ -324,6 +324,7 @@ def _fill_window_block_content_and_lines(
     parse_mode: Literal["txt", "ocr"],
     ocr_det_type: set[str],
     local_model_context: HybridLocalModelContext,
+    page_text_geometries: list[PDFPageTextGeometry | None] | None = None,
 ) -> list[list[dict[str, Any]]]:
     """按页完成 span 回填与行级元数据构造，返回不含页面级 sidecar 的 model list。"""
     page_counts = {
@@ -333,6 +334,8 @@ def _fill_window_block_content_and_lines(
         "inline_formulas": len(inline_formula_list),
         "ocr_results": len(ocr_res_list),
     }
+    if page_text_geometries is not None:
+        page_counts["text_geometries"] = len(page_text_geometries)
     if len(set(page_counts.values())) != 1:
         raise ValueError(f"Hybrid block content page count mismatch: {page_counts}")
 
@@ -346,12 +349,15 @@ def _fill_window_block_content_and_lines(
             list[PDFTextLinkLine],
         ]
     ] = []
-    for image_dict, pdf_page, page_model_list, page_inline_formula_list, page_ocr_res_list in zip(
-        images_list,
-        pdf_pages,
-        model_list,
-        inline_formula_list,
-        ocr_res_list,
+    for page_idx, (image_dict, pdf_page, page_model_list, page_inline_formula_list, page_ocr_res_list) in enumerate(
+        zip(
+            images_list,
+            pdf_pages,
+            model_list,
+            inline_formula_list,
+            ocr_res_list,
+            strict=True,
+        )
     ):
         page_pil_image = image_dict["img_pil"]
         render_scale = float(image_dict["scale"])
@@ -365,7 +371,7 @@ def _fill_window_block_content_and_lines(
         style_lines: list[PDFTextStyleLine] = []
         link_lines: list[PDFTextLinkLine] = []
         if parse_mode == "txt":
-            page_text_geometry = None
+            page_text_geometry = page_text_geometries[page_idx] if page_text_geometries is not None else None
             try:
                 page_char_count = pdf_page.get_char_count()
             except Exception:
@@ -380,7 +386,12 @@ def _fill_window_block_content_and_lines(
                     _line_items,
                     style_lines,
                     link_lines,
-                ) = build_pdf_native_visual_lines_and_styles(pdf_page)
+                ) = build_pdf_native_visual_lines_and_styles(
+                    pdf_page,
+                    page_text_geometry=page_text_geometry,
+                )
+                if page_text_geometries is not None:
+                    page_text_geometries[page_idx] = page_text_geometry
             page_spans = _fill_native_pdf_text_spans(
                 pdf_page,
                 page_spans,

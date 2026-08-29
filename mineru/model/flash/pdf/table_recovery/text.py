@@ -193,10 +193,19 @@ def _join_glyph_line(
 ) -> str:
     """按字符间距重建单行文本，避免在中文字符之间强插空格。"""
 
+    return "".join(text for text, _source_index in _glyph_line_parts(glyphs, median_height))
+
+
+def _glyph_line_parts(
+    glyphs: list[NativeTableGlyph] | list[_PendingGlyph],
+    median_height: float,
+) -> list[tuple[str, int | None]]:
+    """重建单行文本片段，并保留每个可见片段的原字符索引。"""
+
     if not glyphs:
-        return ""
+        return []
     ordered = sorted(glyphs, key=lambda glyph: (glyph.bbox[0], glyph.bbox[1], glyph.glyph_id))
-    parts = [ordered[0].text]
+    parts: list[tuple[str, int | None]] = [(ordered[0].text, ordered[0].source_index)]
     previous = ordered[0]
     for glyph in ordered[1:]:
         gap = glyph.bbox[0] - previous.bbox[2]
@@ -209,11 +218,11 @@ def _join_glyph_line(
             and previous_tail.isprintable()
             and current_head.isprintable()
         )
-        if needs_space and not parts[-1].endswith(" "):
-            parts.append(" ")
-        parts.append(glyph.text)
+        if needs_space and not parts[-1][0].endswith(" "):
+            parts.append((" ", None))
+        parts.append((glyph.text, glyph.source_index))
         previous = glyph
-    return "".join(parts).strip()
+    return parts
 
 
 def _tokenize_row(
@@ -299,12 +308,24 @@ def build_cell_text(
 ) -> str:
     """按视觉行和局部横向顺序重建文本，并将同一单元格内的多行直接拼接。"""
 
+    return "".join(text for text, _source_index in build_cell_text_parts(glyphs, median_height))
+
+
+def build_cell_text_parts(
+    glyphs: list[NativeTableGlyph],
+    median_height: float,
+) -> list[tuple[str, int | None]]:
+    """按视觉行重建 cell 文本片段，供安全插入字符级语义标签。"""
+
     if not glyphs:
-        return ""
+        return []
     grouped: dict[int, list[NativeTableGlyph]] = {}
     for glyph in glyphs:
         grouped.setdefault(glyph.visual_row, []).append(glyph)
-    return "".join(line for row_index in sorted(grouped) if (line := _join_glyph_line(grouped[row_index], median_height)))
+    parts: list[tuple[str, int | None]] = []
+    for row_index in sorted(grouped):
+        parts.extend(_glyph_line_parts(grouped[row_index], median_height))
+    return parts
 
 
 def glyph_overlap_ratio(glyph: NativeTableGlyph, bbox: BBox) -> float:
@@ -320,6 +341,7 @@ def glyph_overlap_ratio(glyph: NativeTableGlyph, bbox: BBox) -> float:
 
 __all__ = [
     "build_cell_text",
+    "build_cell_text_parts",
     "build_native_table_text",
     "glyph_overlap_ratio",
 ]

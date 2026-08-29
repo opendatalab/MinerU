@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import html
 from bisect import bisect_left, bisect_right
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from .....types import BBox
@@ -325,11 +326,22 @@ def build_candidate(
 def serialize_candidate_html(candidate: NativeTableCandidate) -> str:
     """把合法候选序列化为稳定、转义且不猜测表头语义的 HTML。"""
 
+    return serialize_native_table_html(candidate.rows, candidate.cells)
+
+
+def serialize_native_table_html(
+    rows: int,
+    cells: tuple[NativeTableCell, ...],
+    *,
+    render_cell: Callable[[NativeTableCell], str] | None = None,
+) -> str:
+    """按稳定拓扑序列化表格，并允许调用方提供已安全转义的 cell 内容。"""
+
     cells_by_row: dict[int, list[NativeTableCell]] = {}
-    for cell in candidate.cells:
+    for cell in cells:
         cells_by_row.setdefault(cell.row, []).append(cell)
     rendered_rows: list[str] = []
-    for row_index in range(candidate.rows):
+    for row_index in range(rows):
         rendered_cells: list[str] = []
         for cell in sorted(cells_by_row.get(row_index, []), key=lambda item: item.col):
             attributes = []
@@ -337,8 +349,8 @@ def serialize_candidate_html(candidate: NativeTableCandidate) -> str:
                 attributes.append(f' rowspan="{cell.rowspan}"')
             if cell.colspan > 1:
                 attributes.append(f' colspan="{cell.colspan}"')
-            escaped_content = html.escape(cell.content, quote=False)
-            rendered_cells.append(f"<td{''.join(attributes)}>{escaped_content}</td>")
+            content = render_cell(cell) if render_cell is not None else html.escape(cell.content, quote=False)
+            rendered_cells.append(f"<td{''.join(attributes)}>{content}</td>")
         rendered_rows.append(f"<tr>{''.join(rendered_cells)}</tr>")
     return f"<table><tbody>{''.join(rendered_rows)}</tbody></table>"
 
@@ -347,4 +359,5 @@ __all__ = [
     "GridCellSpec",
     "build_candidate",
     "serialize_candidate_html",
+    "serialize_native_table_html",
 ]

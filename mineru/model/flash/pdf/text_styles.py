@@ -1267,17 +1267,18 @@ def _classify_script_runs(
     return roles, body_counts, formula_flags
 
 
-def _script_line_payload(
+def _script_line_char_roles(
     line: Any,
     page_size: tuple[float, float],
     tight_bboxes: dict[int, BBox],
     origins: dict[int, tuple[float, float]],
     fraction_members: set[int],
-) -> PDFTextScriptLine | None:
-    """把 Flash 行转换为公式分段后的紧凑上下标 sidecar。"""
+) -> tuple[list[dict[str, Any]], list[ScriptRole], list[int], list[bool]]:
+    """按正文同款公式分段返回原字符及其上下标角色。"""
+
     chars = _ordered_line_chars(line)
     if not chars:
-        return None
+        return [], [], [], []
     angle = int(getattr(line, "angle", 0) or 0) % 360
     local_chars: list[dict[str, Any]] = []
     local_tight_bboxes: dict[int, BBox] = {}
@@ -1321,6 +1322,28 @@ def _script_line_payload(
         char_idx = char.get("char_idx")
         if isinstance(char_idx, int) and char_idx in fraction_members:
             roles[index] = "body"
+    return chars, roles, body_counts, formula_flags
+
+
+def _script_line_payload(
+    line: Any,
+    page_size: tuple[float, float],
+    tight_bboxes: dict[int, BBox],
+    origins: dict[int, tuple[float, float]],
+    fraction_members: set[int],
+) -> PDFTextScriptLine | None:
+    """把 Flash 行转换为公式分段后的紧凑上下标 sidecar。"""
+
+    chars, roles, body_counts, formula_flags = _script_line_char_roles(
+        line,
+        page_size,
+        tight_bboxes,
+        origins,
+        fraction_members,
+    )
+    if not chars:
+        return None
+    angle = int(getattr(line, "angle", 0) or 0) % 360
     compact_parts: list[str] = []
     compact_roles: list[str] = []
     compact_bboxes: list[BBox | None] = []
