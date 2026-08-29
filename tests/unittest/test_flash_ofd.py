@@ -23,7 +23,13 @@ from mineru.model.flash.ofd import OfdParseError, OfdResourceLimitError, detect_
 from mineru.model.flash.ofd import images as ofd_images
 from mineru.model.flash.ofd import metadata as ofd_metadata
 from mineru.model.flash.ofd import scene as ofd_scene
-from mineru.model.flash.ofd.constants import MAX_DRAW_PARAM_INHERITANCE, MAX_EXPANDED_GLYPHS, MAX_PAGE_COUNT
+from mineru.model.flash.ofd.constants import (
+    MAX_DOCUMENT_COUNT,
+    MAX_DRAW_PARAM_INHERITANCE,
+    MAX_EXPANDED_GLYPHS,
+    MAX_GLYPH_TOKENS,
+    MAX_PAGE_COUNT,
+)
 from mineru.model.flash.ofd.geometry import Affine, canonical_angle
 from mineru.model.flash.ofd.images import build_image_item
 from mineru.model.flash.ofd.models import MediaResource, OfdPageScene, ResourceRegistry
@@ -154,6 +160,38 @@ def test_ofd_page_count_budget_is_shared_across_doc_bodies(monkeypatch: pytest.M
         ofd_metadata.extract_ofd_metadata(BytesIO(payload))
 
 
+def test_ofd_declared_document_count_is_bounded_before_page_parsing() -> None:
+    """验证大量空 DocBody 在物化文档引用前受独立预算限制。"""
+    payload = build_ofd_package([("Pages/Page_0/Content.xml", page_xml(""))])
+    source_buffer = BytesIO(payload)
+    output_buffer = BytesIO()
+    with ZipFile(source_buffer) as source, ZipFile(output_buffer, "w", ZIP_DEFLATED) as output:
+        ofd_root = etree.fromstring(source.read("OFD.xml"))
+        for child in list(ofd_root):
+            ofd_root.remove(child)
+        namespace = etree.QName(ofd_root).namespace
+        for _document_index in range(MAX_DOCUMENT_COUNT + 1):
+            doc_body = etree.SubElement(ofd_root, f"{{{namespace}}}DocBody")
+            doc_root = etree.SubElement(doc_body, f"{{{namespace}}}DocRoot")
+            doc_root.text = "Doc_0/Document.xml"
+        document_root = etree.fromstring(source.read("Doc_0/Document.xml"))
+        pages = next(element for element in document_root.iter() if etree.QName(element).localname == "Pages")
+        pages.clear()
+        replacements = {
+            "OFD.xml": etree.tostring(ofd_root, xml_declaration=True, encoding="UTF-8"),
+            "Doc_0/Document.xml": etree.tostring(document_root, xml_declaration=True, encoding="UTF-8"),
+        }
+        for info in source.infolist():
+            content = replacements[info.filename] if info.filename in replacements else source.read(info.filename)
+            output.writestr(info, content)
+    oversized = output_buffer.getvalue()
+
+    with pytest.raises(OfdResourceLimitError, match="max_document_count"):
+        OfdModel().predict(BytesIO(oversized))
+    with pytest.raises(OfdResourceLimitError, match="max_document_count"):
+        ofd_metadata.extract_ofd_metadata(BytesIO(oversized))
+
+
 def test_ofd_textcode_geometry_does_not_use_oversized_boundary() -> None:
     """验证 Foxit 风格超大 Boundary 不会成为最终文字 bbox。"""
     content = text_object(
@@ -248,11 +286,14 @@ def test_ofd_textcode_preserves_boundary_whitespace_and_glyph_positions() -> Non
 
 def test_ofd_cgtransform_expands_only_actual_text_positions() -> None:
     """验证超大 CodeCount 只映射 TextCode 实际存在的字符位置。"""
+    glyphs = "42 " + "999 " * 100_000
     text_element = etree.fromstring(
-        b'<TextObject ID="10" Boundary="0 0 10 10" Font="1" Size="5">'
-        b'<TextCode X="1" Y="5">A</TextCode>'
-        b'<CGTransform CodePosition="0" CodeCount="1000000000"><Glyphs>42</Glyphs></CGTransform>'
-        b"</TextObject>"
+        (
+            '<TextObject ID="10" Boundary="0 0 10 10" Font="1" Size="5">'
+            '<TextCode X="1" Y="5">A</TextCode>'
+            f'<CGTransform CodePosition="0" CodeCount="1000000000"><Glyphs>{glyphs}</Glyphs></CGTransform>'
+            "</TextObject>"
+        ).encode()
     )
     package_buffer = BytesIO()
     with ZipFile(package_buffer, "w", ZIP_DEFLATED) as archive:
@@ -275,6 +316,7 @@ def test_ofd_cgtransform_expands_only_actual_text_positions() -> None:
 
     assert budget.glyph_count == 1
     assert budget.glyph_mapping_count == 1
+    assert budget.glyph_token_count == 1
     assert len(lines) == 1
     assert [glyph.glyph_id for glyph in lines[0].glyphs] == [42]
 
@@ -288,6 +330,21 @@ def test_ofd_cgtransform_expands_only_actual_text_positions() -> None:
             package=package,
             font_metrics=FontMetricResolver(package),
             budget=exhausted_budget,
+            paint_order=0,
+            layer_type="body",
+            template_id=None,
+        )
+
+    token_exhausted_budget = OfdTextBudget(glyph_token_count=MAX_GLYPH_TOKENS)
+    with pytest.raises(OfdResourceLimitError, match="max_glyph_tokens"):
+        build_text_lines(
+            text_element,
+            parent_transform=Affine(),
+            parent_clip=(0.0, 0.0, 100.0, 100.0),
+            resources=ResourceRegistry(),
+            package=package,
+            font_metrics=FontMetricResolver(package),
+            budget=token_exhausted_budget,
             paint_order=0,
             layer_type="body",
             template_id=None,

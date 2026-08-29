@@ -15,6 +15,7 @@ from lxml import etree  # type: ignore[reportMissingImports]
 
 from .constants import (
     MAX_ASSET_TOTAL_BYTES,
+    MAX_DOCUMENT_COUNT,
     MAX_ENTRY_BYTES,
     MAX_ENTRY_COUNT,
     MAX_TOTAL_BYTES,
@@ -262,6 +263,8 @@ class OfdPackage:
         for body in self.root():
             if local_name(body.tag) != "DocBody":
                 continue
+            if len(refs) >= MAX_DOCUMENT_COUNT:
+                raise OfdResourceLimitError(f"OFD resource limit exceeded: max_document_count={MAX_DOCUMENT_COUNT}")
             doc_root = first_child(body, "DocRoot")
             document_part = self.resolve_reference("OFD.xml", element_text(doc_root))
             if document_part is None:

@@ -15,7 +15,7 @@ from lxml import etree  # type: ignore[reportMissingImports]
 
 from .._shared.spans import text_spans
 from ....types import BBox
-from .constants import MAX_EXPANDED_GLYPHS, MAX_EXPANDED_TEXT_BYTES, MAX_FONT_BYTES
+from .constants import MAX_EXPANDED_GLYPHS, MAX_EXPANDED_TEXT_BYTES, MAX_FONT_BYTES, MAX_GLYPH_TOKENS
 from .errors import OfdResourceLimitError
 from .geometry import (
     Affine,
@@ -34,6 +34,7 @@ from .models import FontResource, GlyphItem, ResourceRegistry, TextLine
 from .package import OfdPackage, element_text, local_name, parse_int
 
 _HEX_ESCAPE_RE = re.compile(r"\\([0-9A-Fa-f]{4})")
+_GLYPH_TOKEN_RE = re.compile(r"\S+")
 
 
 @dataclass(slots=True)
@@ -43,6 +44,7 @@ class OfdTextBudget:
     text_bytes: int = 0
     glyph_count: int = 0
     glyph_mapping_count: int = 0
+    glyph_token_count: int = 0
 
     def charge(self, text: str) -> None:
         """为一次 TextCode 展开计费。"""
@@ -58,6 +60,12 @@ class OfdTextBudget:
         self.glyph_mapping_count += count
         if self.glyph_mapping_count > MAX_EXPANDED_GLYPHS:
             raise OfdResourceLimitError(f"OFD resource limit exceeded: max_expanded_glyphs={MAX_EXPANDED_GLYPHS}")
+
+    def charge_glyph_token(self) -> None:
+        """累计实际扫描的 Glyphs token 数量并限制全文解析量。"""
+        self.glyph_token_count += 1
+        if self.glyph_token_count > MAX_GLYPH_TOKENS:
+            raise OfdResourceLimitError(f"OFD resource limit exceeded: max_glyph_tokens={MAX_GLYPH_TOKENS}")
 
 
 @dataclass(slots=True)
@@ -222,6 +230,20 @@ def parse_delta(value: str | None, count: int) -> list[float]:
     return output[:count]
 
 
+def _bounded_glyph_ids(glyphs_element: etree._Element, limit: int, budget: OfdTextBudget) -> list[int]:
+    """按需迭代 Glyphs token，只保留有效映射所需的有限 ID。"""
+    glyph_ids: list[int] = []
+    for match in _GLYPH_TOKEN_RE.finditer(element_text(glyphs_element)):
+        budget.charge_glyph_token()
+        glyph_id = parse_int(match.group())
+        if glyph_id is None:
+            continue
+        glyph_ids.append(glyph_id)
+        if len(glyph_ids) >= limit:
+            break
+    return glyph_ids
+
+
 def _glyph_map(text_object: etree._Element, position_count: int, budget: OfdTextBudget) -> dict[int, int]:
     """把实际 TextCode 字符位置映射到 glyph ID，并限制累计展开量。"""
     result: dict[int, int] = {}
@@ -233,17 +255,16 @@ def _glyph_map(text_object: etree._Element, position_count: int, budget: OfdText
         glyphs_element = next((child for child in element if local_name(child.tag) == "Glyphs"), None)
         if code_position is None or code_count is None or glyphs_element is None:
             continue
-        glyph_ids = [parse_int(item) for item in element_text(glyphs_element).split()]
-        valid_glyph_ids = [item for item in glyph_ids if item is not None]
-        if not valid_glyph_ids:
-            continue
         effective_count = min(code_count, max(0, position_count - code_position))
         if effective_count <= 0:
             continue
+        glyph_ids = _bounded_glyph_ids(glyphs_element, effective_count, budget)
+        if not glyph_ids:
+            continue
         budget.charge_glyph_mapping(effective_count)
         for offset in range(effective_count):
-            glyph_index = min(offset, len(valid_glyph_ids) - 1)
-            result[code_position + offset] = valid_glyph_ids[glyph_index]
+            glyph_index = min(offset, len(glyph_ids) - 1)
+            result[code_position + offset] = glyph_ids[glyph_index]
     return result
 
 
