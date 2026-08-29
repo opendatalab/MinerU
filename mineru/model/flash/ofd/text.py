@@ -42,6 +42,7 @@ class OfdTextBudget:
 
     text_bytes: int = 0
     glyph_count: int = 0
+    glyph_mapping_count: int = 0
 
     def charge(self, text: str) -> None:
         """为一次 TextCode 展开计费。"""
@@ -50,6 +51,12 @@ class OfdTextBudget:
         if self.text_bytes > MAX_EXPANDED_TEXT_BYTES:
             raise OfdResourceLimitError(f"OFD resource limit exceeded: max_expanded_text_bytes={MAX_EXPANDED_TEXT_BYTES}")
         if self.glyph_count > MAX_EXPANDED_GLYPHS:
+            raise OfdResourceLimitError(f"OFD resource limit exceeded: max_expanded_glyphs={MAX_EXPANDED_GLYPHS}")
+
+    def charge_glyph_mapping(self, count: int) -> None:
+        """累计 CGTransform 的有效字符映射数量并限制全文展开量。"""
+        self.glyph_mapping_count += count
+        if self.glyph_mapping_count > MAX_EXPANDED_GLYPHS:
             raise OfdResourceLimitError(f"OFD resource limit exceeded: max_expanded_glyphs={MAX_EXPANDED_GLYPHS}")
 
 
@@ -215,8 +222,8 @@ def parse_delta(value: str | None, count: int) -> list[float]:
     return output[:count]
 
 
-def _glyph_map(text_object: etree._Element) -> dict[int, int]:
-    """把 TextObject 全局字符位置映射到首个绘制 glyph ID。"""
+def _glyph_map(text_object: etree._Element, position_count: int, budget: OfdTextBudget) -> dict[int, int]:
+    """把实际 TextCode 字符位置映射到 glyph ID，并限制累计展开量。"""
     result: dict[int, int] = {}
     for element in text_object:
         if local_name(element.tag) != "CGTransform":
@@ -230,7 +237,11 @@ def _glyph_map(text_object: etree._Element) -> dict[int, int]:
         valid_glyph_ids = [item for item in glyph_ids if item is not None]
         if not valid_glyph_ids:
             continue
-        for offset in range(code_count):
+        effective_count = min(code_count, max(0, position_count - code_position))
+        if effective_count <= 0:
+            continue
+        budget.charge_glyph_mapping(effective_count)
+        for offset in range(effective_count):
             glyph_index = min(offset, len(valid_glyph_ids) - 1)
             result[code_position + offset] = valid_glyph_ids[glyph_index]
     return result
@@ -310,17 +321,23 @@ def build_text_lines(
     except ValueError:
         size, hscale = 1.0, 1.0
     styles = _styles(text_object, font, style)
-    glyph_by_position = _glyph_map(text_object)
+    decoded_text_codes: list[tuple[etree._Element, str]] = []
+    position_count = 0
+    for text_code in (element for element in text_object if local_name(element.tag) == "TextCode"):
+        text = decode_text_code("".join(text_code.itertext()))
+        decoded_text_codes.append((text_code, text))
+        if text:
+            budget.charge(text)
+            position_count += len(text)
+    glyph_by_position = _glyph_map(text_object, position_count, budget)
     global_position = 0
     inherited_x: float | None = None
     inherited_y: float | None = None
     lines: list[TextLine] = []
     object_id = parse_int(text_object.get("ID"))
-    for code_index, text_code in enumerate(element for element in text_object if local_name(element.tag) == "TextCode"):
-        text = decode_text_code("".join(text_code.itertext()))
+    for code_index, (text_code, text) in enumerate(decoded_text_codes):
         if not text:
             continue
-        budget.charge(text)
         try:
             if text_code.get("X") is not None:
                 inherited_x = float(text_code.get("X") or "")

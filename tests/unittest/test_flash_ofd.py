@@ -21,7 +21,7 @@ from mineru.errors import InvalidRequestError
 from mineru.model.flash import OfdModel
 from mineru.model.flash.ofd import OfdParseError, OfdResourceLimitError, detect_ofd
 from mineru.model.flash.ofd import images as ofd_images
-from mineru.model.flash.ofd.constants import MAX_DRAW_PARAM_INHERITANCE
+from mineru.model.flash.ofd.constants import MAX_DRAW_PARAM_INHERITANCE, MAX_EXPANDED_GLYPHS
 from mineru.model.flash.ofd.geometry import Affine, canonical_angle
 from mineru.model.flash.ofd.images import build_image_item
 from mineru.model.flash.ofd.models import MediaResource, OfdPageScene, ResourceRegistry
@@ -183,6 +183,54 @@ def test_ofd_textcode_preserves_boundary_whitespace_and_glyph_positions() -> Non
     assert lines[0].text == " A "
     assert [glyph.glyph_id for glyph in lines[0].glyphs] == [None, 42, None]
     assert [glyph.origin[0] for glyph in lines[0].glyphs] == pytest.approx([11.0, 16.0, 23.0])
+
+
+def test_ofd_cgtransform_expands_only_actual_text_positions() -> None:
+    """验证超大 CodeCount 只映射 TextCode 实际存在的字符位置。"""
+    text_element = etree.fromstring(
+        b'<TextObject ID="10" Boundary="0 0 10 10" Font="1" Size="5">'
+        b'<TextCode X="1" Y="5">A</TextCode>'
+        b'<CGTransform CodePosition="0" CodeCount="1000000000"><Glyphs>42</Glyphs></CGTransform>'
+        b"</TextObject>"
+    )
+    package_buffer = BytesIO()
+    with ZipFile(package_buffer, "w", ZIP_DEFLATED) as archive:
+        archive.writestr("OFD.xml", "<OFD/>")
+    package = OfdPackage(package_buffer.getvalue())
+    budget = OfdTextBudget()
+
+    lines = build_text_lines(
+        text_element,
+        parent_transform=Affine(),
+        parent_clip=(0.0, 0.0, 100.0, 100.0),
+        resources=ResourceRegistry(),
+        package=package,
+        font_metrics=FontMetricResolver(package),
+        budget=budget,
+        paint_order=0,
+        layer_type="body",
+        template_id=None,
+    )
+
+    assert budget.glyph_count == 1
+    assert budget.glyph_mapping_count == 1
+    assert len(lines) == 1
+    assert [glyph.glyph_id for glyph in lines[0].glyphs] == [42]
+
+    exhausted_budget = OfdTextBudget(glyph_mapping_count=MAX_EXPANDED_GLYPHS)
+    with pytest.raises(OfdResourceLimitError, match="max_expanded_glyphs"):
+        build_text_lines(
+            text_element,
+            parent_transform=Affine(),
+            parent_clip=(0.0, 0.0, 100.0, 100.0),
+            resources=ResourceRegistry(),
+            package=package,
+            font_metrics=FontMetricResolver(package),
+            budget=exhausted_budget,
+            paint_order=0,
+            layer_type="body",
+            template_id=None,
+        )
 
 
 def test_ofd_textcode_discards_glyphs_outside_object_boundary() -> None:

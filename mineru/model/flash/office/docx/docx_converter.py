@@ -311,6 +311,7 @@ class DocxConverter:
         if tag_name is None:
             return []
         tag = str(getattr(element, "tag", ""))
+        word_namespace = DocxConverter._BLIP_NAMESPACES["w"]
 
         if tag_name == "AlternateContent":
             branch_tokens = [
@@ -351,6 +352,15 @@ class DocxConverter:
 
         if tag_name == "t" and "officeDocument/2006/math" not in tag:
             return [("text", element.text)] if isinstance(element.text, str) else []
+        if tag in {f"{{{word_namespace}}}tab", f"{{{word_namespace}}}ptab"}:
+            return [("text", "\t")]
+        if tag == f"{{{word_namespace}}}cr":
+            return [("text", "\n")]
+        if tag == f"{{{word_namespace}}}br":
+            break_type = element.get(f"{{{word_namespace}}}type")
+            return [("text", "\n")] if break_type in {None, "textWrapping"} else []
+        if tag == f"{{{word_namespace}}}noBreakHyphen":
+            return [("text", "-")]
 
         tokens: list[tuple[str, str]] = []
         for child in element:
@@ -683,7 +693,7 @@ class DocxConverter:
         styled_spans = self._build_text_from_elements(paragraph_elements)
         styled_visible = inline_span_plain_text(styled_spans)
         plain_visible = "".join(value for kind, value in equations if kind == "text")
-        if re.sub(r"\s+", "", plain_visible) != re.sub(r"\s+", "", styled_visible):
+        if plain_visible != styled_visible:
             return styled_spans
 
         output: list[dict[str, Any]] = []
@@ -2077,7 +2087,7 @@ class DocxConverter:
         if not formula_values:
             return text, []
 
-        if re.sub(r"\s+", "", "".join(only_texts)).strip() != re.sub(r"\s+", "", text).strip():
+        if "".join(only_texts) != text:
             # 如果我们无法重构初始原始文本
             # 不要尝试解析公式并返回原始文本
             return text, []

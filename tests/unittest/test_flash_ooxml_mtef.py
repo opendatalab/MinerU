@@ -6,6 +6,9 @@ from io import BytesIO
 from pathlib import Path
 from typing import Any
 
+from docx import Document
+from docx.enum.text import WD_BREAK
+from docx.oxml import parse_xml
 import pytest
 
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
@@ -123,6 +126,43 @@ def test_docx_mtef_flows_inline_table_header_footer_and_omml_precedence() -> Non
     ]
     assert alternate == [[{"type": BlockType.EQUATION, "content": "z"}]]
     assert textbox == [[{"type": BlockType.EQUATION, "content": "x+y"}]]
+
+
+@pytest.mark.parametrize(("separator", "break_type"), [("\t", None), ("\n", WD_BREAK.LINE)])
+def test_docx_equation_tokens_preserve_run_whitespace_offsets(separator: str, break_type: WD_BREAK | None) -> None:
+    """验证公式旁的 tab 和软换行参与样式 Span 的精确偏移。"""
+    document = Document()
+    paragraph = document.add_paragraph()
+    first = paragraph.add_run("A")
+    first.bold = True
+    if break_type is None:
+        first.add_tab()
+    else:
+        first.add_break(break_type)
+    paragraph._p.append(
+        parse_xml(
+            '<m:oMath xmlns:m="http://schemas.openxmlformats.org/officeDocument/2006/math"><m:r><m:t>x</m:t></m:r></m:oMath>'
+        )
+    )
+    last = paragraph.add_run("B")
+    last.italic = True
+    output = BytesIO()
+    document.save(output)
+
+    pages = DocxModel().predict(BytesIO(output.getvalue()))
+
+    assert pages == [
+        [
+            {
+                "type": BlockType.TEXT,
+                "content": [
+                    *text_spans(f"A{separator}", styles=["bold"]),
+                    equation("x"),
+                    *text_spans("B", styles=["italic"]),
+                ],
+            }
+        ]
+    ]
 
 
 def test_omml_precedes_mtef_and_preview_for_the_same_ooxml_object() -> None:
