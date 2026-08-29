@@ -330,6 +330,26 @@ def _real_manifest_script_runs() -> tuple[set[tuple[object, ...]], set[str]]:
     return actual, styled_cell_texts
 
 
+def test_demo3_compound_model_suffixes_are_complete_table_subscripts() -> None:
+    """验证 demo3 表 5 的复合模型后缀整体进入同一个下标标签。"""
+    manifest = json.loads((_PROJECT_ROOT / "tests/fixtures/native_pdf_table_demo_manifest.json").read_text(encoding="utf-8"))
+    entry = next(
+        item
+        for item in manifest["tables"]
+        if item["file"] == "demo3.pdf" and item["page_index"] == 6 and item["table_index"] == 1
+    )
+    with PDFDocument(str(_PROJECT_ROOT / "demo/pdfs/demo3.pdf")) as document:
+        table_input, tight_bboxes, origins = _manifest_table_input(document, entry, cross_page_manifest=False)
+        result = recover_native_pdf_table(table_input)
+    assert result is not None
+
+    styled = render_native_table_html_with_scripts(result, table_input, tight_bboxes, origins)
+    cells = {cell.get_text(): cell for cell in BeautifulSoup(styled, "html.parser").find_all("td")}
+
+    assert cells["TAPASBASE-SAT"].find("sub").get_text() == "BASE-SAT"  # type: ignore[union-attr]
+    assert cells["TABLEFORMERBASE-SO"].find("sub").get_text() == "BASE-SO"  # type: ignore[union-attr]
+
+
 def test_real_native_table_scripts_are_precision_gated() -> None:
     """验证全部实际输出属于人工真值，必召回项存在且强制负例保持纯文本。"""
 

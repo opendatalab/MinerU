@@ -136,7 +136,7 @@ def _non_grid_fraction_rules(
 
 
 def _drop_shifted_word_prefixes(chars: list[dict[str, Any]], roles: list[ScriptRole]) -> None:
-    """拒绝普通字母词仅首字母偏移的弱候选，如 ``-SAT`` 中的 ``S``。"""
+    """拒绝普通字母词仅首字母偏移的弱候选，完整同基线词由精炼层闭合。"""
 
     start = 0
     while start < len(chars):

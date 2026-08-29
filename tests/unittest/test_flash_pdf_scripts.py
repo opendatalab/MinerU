@@ -13,6 +13,7 @@ from mineru.model.flash import PdfModel
 from mineru.model.flash.pdf.document import PDFDocument
 from mineru.model.flash.pdf.models import _AxisLine, _LineItem
 from mineru.model.flash.pdf.pipeline import _analyze_native_document
+from mineru.model.flash.pdf.script_geometry import ScriptRole
 from mineru.model.flash.pdf.text_styles import (
     PDFTextLinkLine,
     PDFTextLinkRange,
@@ -25,6 +26,7 @@ from mineru.model.flash.pdf.text_styles import (
     apply_pdf_text_styles,
     detect_pdf_text_script_lines,
     materialize_pdf_inline_spans,
+    _refine_math_script_tokens,
 )
 from mineru.types import BBox
 
@@ -81,9 +83,17 @@ _REVIEWED_SCRIPT_EXPECTATIONS = {
         (0, 11): (),
         (0, 14): (),
     },
+    "mixed_elements_pages_11_15.pdf": {
+        (0, 30): (("2", "subscript"),),
+    },
 }
 
 _RUN_CLOSURE_EXPECTATIONS = {
+    "demo3.pdf": {
+        (6, 38): (("BASE-SAT", "subscript"),),
+        (6, 102): (("BASE-SO", "subscript"),),
+        (6, 114): (("BASE-SO", "subscript"),),
+    },
     "demo2.pdf": {
         (2, 22): (("t-1", "subscript"),),
         (2, 25): (("t-1", "subscript"),),
@@ -188,6 +198,68 @@ def _script_fixture(
         dict(enumerate(page_origins)),
         page_size,
     )
+
+
+def _compact_refinement_fixture(text: str) -> tuple[list[Char], dict[int, BBox], dict[int, tuple[float, float]]]:
+    """构造同一 tight/origin 基线上的紧凑 token 精炼 fixture。"""
+    chars: list[Char] = []
+    tight_bboxes: dict[int, BBox] = {}
+    origins: dict[int, tuple[float, float]] = {}
+    for index, char_text in enumerate(text):
+        left = 10.0 + index * 6.0
+        bbox = (left, 40.0, left + 5.0, 46.0)
+        chars.append(
+            {
+                "char": char_text,
+                "char_idx": index,
+                "bbox": Bbox(list(bbox)),
+                "rotation": 0.0,
+                "font": {},
+            }
+        )
+        tight_bboxes[index] = bbox
+        origins[index] = (left, 46.0)
+    return chars, tight_bboxes, origins
+
+
+def test_flash_compact_aligned_script_suffix_closes_complete_run() -> None:
+    """验证可信 BASE 下标会把同基线的 ``-SAT`` 整体闭合。"""
+    chars, tight_bboxes, origins = _compact_refinement_fixture("XBASE-SAT")
+
+    roles = _refine_math_script_tokens(
+        chars,
+        ["body", *(["sub"] * len("BASE-SAT"))],
+        tight_bboxes,
+        origins,
+        formula_region=False,
+    )
+
+    assert roles == ["body", *(["sub"] * len("BASE-SAT"))]
+
+
+@pytest.mark.parametrize(
+    ("text", "raw_roles"),
+    [
+        pytest.param("BASE-SAT", ["sub"] * len("BASE-SAT"), id="missing-body-anchor"),
+        pytest.param("MODEL-SAT", ["body"] * len("MODEL-SAT"), id="plain-hyphenated-word"),
+    ],
+)
+def test_flash_compact_script_suffix_requires_anchor_and_raw_geometry(
+    text: str,
+    raw_roles: list[ScriptRole],
+) -> None:
+    """验证无正文锚点或无原始角标证据时不会闭合连字符词。"""
+    chars, tight_bboxes, origins = _compact_refinement_fixture(text)
+
+    roles = _refine_math_script_tokens(
+        chars,
+        raw_roles,
+        tight_bboxes,
+        origins,
+        formula_region=False,
+    )
+
+    assert roles == ["body"] * len(text)
 
 
 @pytest.mark.parametrize("angle", [0, 90, 180, 270])
@@ -604,7 +676,13 @@ def test_chinese_paper_page_12_recovers_numbered_formula_regions() -> None:
         ),
         pytest.param(
             "demo3.pdf",
-            (("i", "subscript"), ("BASE", "subscript"), ("LARGE", "subscript")),
+            (
+                ("i", "subscript"),
+                ("BASE", "subscript"),
+                ("LARGE", "subscript"),
+                ("BASE-SAT", "subscript"),
+                ("BASE-SO", "subscript"),
+            ),
             id="model-subscripts",
         ),
         pytest.param(

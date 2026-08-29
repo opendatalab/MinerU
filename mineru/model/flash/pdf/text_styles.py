@@ -133,6 +133,7 @@ _LIGATURE_REPLACEMENTS = {
     "ﬆ": "st",
 }
 _PDF_SCRIPT_TOKEN_CONNECTORS = frozenset({"^", "_", "ˆ", "~"})
+_PDF_SCRIPT_COMPACT_JOINERS = frozenset({"-", "−", "–"})
 _PDF_SCRIPT_CITATION_BRACKETS = {
     "[": "]",
     "［": "］",
@@ -905,6 +906,58 @@ def _close_spaced_script_operators(
         roles[target] = role
 
 
+def _close_compact_aligned_script_suffixes(
+    chars: list[dict[str, Any]],
+    raw_roles: list[ScriptRole],
+    refined_roles: list[ScriptRole],
+    tight_bboxes: dict[int, BBox],
+    origins: dict[int, tuple[float, float]],
+) -> None:
+    """把已有可信角标 run 后同基线的紧凑连字符后缀整体闭合。"""
+    for joiner_index in range(1, len(chars) - 1):
+        if _script_char_text(chars[joiner_index]) not in _PDF_SCRIPT_COMPACT_JOINERS:
+            continue
+        left_seed = joiner_index - 1
+        role = refined_roles[left_seed]
+        if role == "body" or not _is_math_identifier_char(_script_char_text(chars[left_seed])):
+            continue
+
+        left_start = left_seed
+        while (
+            left_start > 0
+            and refined_roles[left_start - 1] == role
+            and _is_math_identifier_char(_script_char_text(chars[left_start - 1]))
+        ):
+            left_start -= 1
+        if left_seed - left_start + 1 < 2:
+            continue
+        anchor_index = left_start - 1
+        if (
+            anchor_index < 0
+            or refined_roles[anchor_index] != "body"
+            or not _is_math_identifier_char(_script_char_text(chars[anchor_index]))
+        ):
+            continue
+
+        suffix_start = joiner_index + 1
+        suffix_end = suffix_start
+        while suffix_end < len(chars) and _is_math_identifier_char(_script_char_text(chars[suffix_end])):
+            suffix_end += 1
+        if suffix_end - suffix_start < 2:
+            continue
+        restored_indices = range(joiner_index, suffix_end)
+        if any(raw_roles[index] != role for index in restored_indices):
+            continue
+        if not _script_geometry_is_aligned(chars, left_seed, joiner_index, tight_bboxes, origins):
+            continue
+        if any(
+            not _script_geometry_is_aligned(chars, left_seed, index, tight_bboxes, origins)
+            for index in range(suffix_start, suffix_end)
+        ):
+            continue
+        refined_roles[joiner_index:suffix_end] = [role] * (suffix_end - joiner_index)
+
+
 def _protected_subscript_indices(
     chars: list[dict[str, Any]],
     roles: list[ScriptRole],
@@ -1133,6 +1186,14 @@ def _refine_math_script_tokens(
             ):
                 continue
         refined[index] = "body"
+    if not formula_region:
+        _close_compact_aligned_script_suffixes(
+            chars,
+            roles,
+            refined,
+            tight_bboxes,
+            origins,
+        )
     return refined
 
 

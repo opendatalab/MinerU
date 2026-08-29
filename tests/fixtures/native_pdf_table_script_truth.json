@@ -498,7 +498,7 @@
       "row": 2,
       "col": 0,
       "cell_text": "TAPASBASE-SAT",
-      "text": "BASE",
+      "text": "BASE-SAT",
       "style": "subscript"
     },
     {
@@ -508,7 +508,7 @@
       "row": 3,
       "col": 0,
       "cell_text": "TABLEFORMERBASE-SO",
-      "text": "BASE",
+      "text": "BASE-SO",
       "style": "subscript"
     },
     {
@@ -935,6 +935,26 @@
     },
     {
       "file": "demo3.pdf",
+      "page_index": 6,
+      "table_index": 1,
+      "row": 2,
+      "col": 0,
+      "cell_text": "TAPASBASE-SAT",
+      "text": "BASE-SAT",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 6,
+      "table_index": 1,
+      "row": 3,
+      "col": 0,
+      "cell_text": "TABLEFORMERBASE-SO",
+      "text": "BASE-SO",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
       "page_index": 7,
       "table_index": 0,
       "row": 2,
@@ -1034,24 +1054,7 @@
       "style": "superscript"
     }
   ],
-  "forbidden_runs": [
-    {
-      "file": "demo3.pdf",
-      "page_index": 6,
-      "table_index": 1,
-      "cell_text": "TAPASBASE-SAT",
-      "text": "S",
-      "style": "subscript"
-    },
-    {
-      "file": "demo3.pdf",
-      "page_index": 6,
-      "table_index": 1,
-      "cell_text": "TABLEFORMERBASE-SO",
-      "text": "S",
-      "style": "subscript"
-    }
-  ],
+  "forbidden_runs": [],
   "forbidden_plain_cells": [
     "最小值",
     "最大值",
