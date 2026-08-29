@@ -30,14 +30,9 @@ from .geometry import (
 
 
 _PDF_CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]")
-_PDF_LINE_END_SOFT_HYPHEN_RE = re.compile(
-    r"(?<=[A-Za-z])[\x02\u00ad](?=[\t ]*(?:\n|$))"
-)
+_PDF_LINE_END_SOFT_HYPHEN_RE = re.compile(r"(?<=[A-Za-z])[\x02\u00ad](?=[\t ]*(?:\n|$))")
 # Unicode Zs 空格在 model_list 中只承担分词作用，统一成可互操作的 ASCII 空格。
-_PDF_SEPARATOR_SPACE_CHARS = (
-    "\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006"
-    "\u2007\u2008\u2009\u200a\u202f\u205f\u3000"
-)
+_PDF_SEPARATOR_SPACE_CHARS = "\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u202f\u205f\u3000"
 _PDF_UNICODE_TEXT_TRANSLATION = str.maketrans(
     {
         **dict.fromkeys(_PDF_SEPARATOR_SPACE_CHARS, " "),
@@ -55,6 +50,7 @@ _SUPPORTED_PDFTEXT_LINE_ANGLES = (0.0, 90.0, 270.0)
 _PDFTEXT_SHEARED_HORIZONTAL_MAX_ANGLE_DEGREES = 30.0
 _PDFTEXT_HORIZONTAL_BASELINE_MAX_ANGLE_DEGREES = 2.0
 _PDFTEXT_HORIZONTAL_BASELINE_MAX_DISPERSION_RATIO = 0.75
+_PDFTEXT_FORMULA_OPERATOR_CHARS = frozenset("=∑∫√±×÷")
 
 
 def _build_native_line_items(
@@ -66,21 +62,27 @@ def _build_native_line_items(
 ) -> list[_LineItem]:
     """按指定视觉方向将 pdftext 粗行精修成字符间隙分隔的视觉 run。"""
 
-    items: list[_LineItem] = []
-    supported_lines = [
-        (child_line, visual_angle)
-        for pdf_line in pdf_lines
-        for child_line in _split_pdftext_line_by_rotation(pdf_line)
-        if (
-            visual_angle := _resolve_pdftext_line_angle(
+    normal_items: list[_LineItem] = []
+    formula_items: list[_LineItem] = []
+    supported_lines: list[tuple[dict[str, Any], int, bool]] = []
+    for pdf_line in pdf_lines:
+        for child_line in _split_pdftext_line_by_rotation(pdf_line):
+            visual_angle = _resolve_pdftext_line_angle(
                 child_line,
                 page_rotation=page_rotation,
                 supported_angles=supported_angles,
             )
-        )
-        is not None
-    ]
-    for visual_row_id, (pdf_line, visual_angle) in enumerate(supported_lines):
+            formula_candidate_only = False
+            if visual_angle is None:
+                visual_angle = _resolve_pdftext_formula_candidate_angle(
+                    child_line,
+                    page_rotation=page_rotation,
+                    supported_angles=supported_angles,
+                )
+                formula_candidate_only = visual_angle is not None
+            if visual_angle is not None:
+                supported_lines.append((child_line, visual_angle, formula_candidate_only))
+    for visual_row_id, (pdf_line, visual_angle, formula_candidate_only) in enumerate(supported_lines):
         bbox = _clip_bbox(_coerce_bbox(pdf_line.get("bbox")), page_size)
         if bbox is None:
             continue
@@ -93,14 +95,23 @@ def _build_native_line_items(
             source_index=-1,
             chars=chars,
             visual_row_id=visual_row_id,
+            formula_candidate_only=formula_candidate_only,
         )
-        items.extend(_split_native_visual_runs(coarse_item, page_size))
+        target = formula_items if formula_candidate_only else normal_items
+        target.extend(_split_native_visual_runs(coarse_item, page_size))
 
-    merged_items = _merge_native_inline_scripts(items, page_size)
-    for source_index, item in enumerate(merged_items):
+    stable_items = _merge_native_inline_scripts(normal_items, page_size)
+    for source_index, item in enumerate(stable_items):
         # source_index 必须在页内唯一，表格投影和失败回滚都依赖该精确成员标识。
         item.source_index = source_index
-    return merged_items
+    formula_items = _merge_native_inline_scripts(formula_items, page_size)
+    next_source_index = len(stable_items)
+    for item in formula_items:
+        item.source_index = next_source_index
+        next_source_index += 1
+    output = [*stable_items, *formula_items]
+    output.sort(key=lambda item: (item.visual_row_id if item.visual_row_id is not None else math.inf, item.run_index))
+    return output
 
 
 def _pdftext_angle_degrees(value: Any) -> float:
@@ -124,10 +135,7 @@ def _circular_angle_distance(first: float, second: float) -> float:
 def _span_has_visible_text(span: dict[str, Any]) -> bool:
     """判断 span 是否包含可见的非空白字符，换行与占位空格不参与方向拆分。"""
 
-    return any(
-        char.isprintable() and not char.isspace()
-        for char in str(span.get("text") or "")
-    )
+    return any(char.isprintable() and not char.isspace() for char in str(span.get("text") or ""))
 
 
 def _build_pdftext_child_line(
@@ -137,11 +145,7 @@ def _build_pdftext_child_line(
 ) -> dict[str, Any]:
     """使用同方向 span 重建子行，并收缩原粗行被异向内容扩大的 bbox。"""
 
-    span_bboxes = [
-        bbox
-        for span in spans
-        if (bbox := _coerce_bbox(span.get("bbox"))) is not None
-    ]
+    span_bboxes = [bbox for span in spans if (bbox := _coerce_bbox(span.get("bbox"))) is not None]
     child_line = dict(pdf_line)
     child_line["spans"] = spans
     child_line["bbox"] = _bbox_union_many(span_bboxes) if span_bboxes else pdf_line.get("bbox")
@@ -164,8 +168,7 @@ def _split_pdftext_line_by_rotation(pdf_line: dict[str, Any]) -> list[dict[str, 
         if (
             current_spans
             and _span_has_visible_text(span)
-            and _circular_angle_distance(span_angle, current_angle)
-            >= _PDFTEXT_ROTATION_SPLIT_THRESHOLD_DEGREES
+            and _circular_angle_distance(span_angle, current_angle) >= _PDFTEXT_ROTATION_SPLIT_THRESHOLD_DEGREES
         ):
             output.append(_build_pdftext_child_line(pdf_line, current_spans, current_angle))
             current_spans = []
@@ -187,8 +190,7 @@ def _is_supported_pdftext_line_rotation(
 
     visual_angle = (_pdftext_angle_degrees(value) + int(page_rotation or 0)) % 360.0
     return any(
-        _circular_angle_distance(visual_angle, supported_angle)
-        <= _PDFTEXT_LINE_ANGLE_TOLERANCE_DEGREES
+        _circular_angle_distance(visual_angle, supported_angle) <= _PDFTEXT_LINE_ANGLE_TOLERANCE_DEGREES
         for supported_angle in supported_angles
     )
 
@@ -201,29 +203,49 @@ def _resolve_pdftext_line_angle(
 ) -> int | None:
     """解析视觉文字方向，并用字符基线纠正字体 shear 造成的伪斜向行。"""
 
-    visual_angle = (
-        _pdftext_angle_degrees(pdf_line.get("rotation"))
-        + int(page_rotation or 0)
-    ) % 360.0
+    visual_angle = (_pdftext_angle_degrees(pdf_line.get("rotation")) + int(page_rotation or 0)) % 360.0
     for supported_angle in supported_angles:
-        if (
-            _circular_angle_distance(visual_angle, supported_angle)
-            <= _PDFTEXT_LINE_ANGLE_TOLERANCE_DEGREES
-        ):
+        if _circular_angle_distance(visual_angle, supported_angle) <= _PDFTEXT_LINE_ANGLE_TOLERANCE_DEGREES:
             return int(supported_angle)
     supports_horizontal = any(
-        _circular_angle_distance(0.0, supported_angle)
-        <= _PDFTEXT_LINE_ANGLE_TOLERANCE_DEGREES
+        _circular_angle_distance(0.0, supported_angle) <= _PDFTEXT_LINE_ANGLE_TOLERANCE_DEGREES
         for supported_angle in supported_angles
     )
     if (
         supports_horizontal
-        and _circular_angle_distance(visual_angle, 0.0)
-        <= _PDFTEXT_SHEARED_HORIZONTAL_MAX_ANGLE_DEGREES
+        and _circular_angle_distance(visual_angle, 0.0) <= _PDFTEXT_SHEARED_HORIZONTAL_MAX_ANGLE_DEGREES
         and _pdftext_line_has_horizontal_char_baseline(pdf_line)
     ):
         return 0
     return None
+
+
+def _resolve_pdftext_formula_candidate_angle(
+    pdf_line: dict[str, Any],
+    *,
+    page_rotation: int,
+    supported_angles: Sequence[float],
+) -> int | None:
+    """保留小角度字体矩阵下的公式专用粗行，未被公式认领时不回流正文。"""
+    visual_angle = (_pdftext_angle_degrees(pdf_line.get("rotation")) + int(page_rotation or 0)) % 360.0
+    nearest = min(supported_angles, key=lambda angle: _circular_angle_distance(visual_angle, angle))
+    if _circular_angle_distance(visual_angle, nearest) > _PDFTEXT_SHEARED_HORIZONTAL_MAX_ANGLE_DEGREES:
+        return None
+    spans = [span for span in (pdf_line.get("spans") or []) if isinstance(span, dict)]
+    compact_text = "".join(str(span.get("text") or "") for span in spans)
+    compact_text = "".join(char for char in compact_text if char.isprintable() and not char.isspace())
+    if not compact_text:
+        return None
+    has_script_flag = any(span.get("superscript") is True or span.get("subscript") is True for span in spans)
+    has_math_operator = any(char in _PDFTEXT_FORMULA_OPERATOR_CHARS for char in compact_text)
+    font_sizes = [
+        float(size)
+        for span in spans
+        if isinstance(span.get("font"), dict) and isinstance((size := span["font"].get("size")), (int, float)) and size > 0
+    ]
+    has_mixed_sizes = bool(font_sizes) and max(font_sizes) >= 1.35 * min(font_sizes)
+    is_compact_identifier = len(compact_text) <= 3 and all(char.isalnum() for char in compact_text)
+    return int(nearest) if has_script_flag or has_math_operator or has_mixed_sizes or is_compact_identifier else None
 
 
 def _pdftext_line_has_horizontal_char_baseline(
@@ -240,11 +262,7 @@ def _pdftext_line_has_horizontal_char_baseline(
                 continue
             raw_char = str(char.get("char") or "")
             bbox = _coerce_bbox(char.get("bbox"))
-            if (
-                bbox is not None
-                and raw_char.isprintable()
-                and not raw_char.isspace()
-            ):
+            if bbox is not None and raw_char.isprintable() and not raw_char.isspace():
                 visible_bboxes.append(bbox)
     if len(visible_bboxes) < 4:
         return False
@@ -254,11 +272,7 @@ def _pdftext_line_has_horizontal_char_baseline(
     line_height = line_bbox[3] - line_bbox[1]
     glyph_heights = [bbox[3] - bbox[1] for bbox in visible_bboxes]
     median_height = statistics.median(glyph_heights)
-    if (
-        line_height <= 0
-        or median_height <= 0
-        or line_width / line_height < 3.0
-    ):
+    if line_height <= 0 or median_height <= 0 or line_width / line_height < 3.0:
         return False
 
     ordered = sorted(
@@ -276,16 +290,11 @@ def _pdftext_line_has_horizontal_char_baseline(
     baseline_width = last_center[0] - first_center[0]
     if baseline_width <= 0:
         return False
-    baseline_angle = abs(
-        math.degrees(
-            math.atan2(last_center[1] - first_center[1], baseline_width)
-        )
-    )
+    baseline_angle = abs(math.degrees(math.atan2(last_center[1] - first_center[1], baseline_width)))
     centers_y = [(bbox[1] + bbox[3]) / 2.0 for bbox in ordered]
     return (
         baseline_angle <= _PDFTEXT_HORIZONTAL_BASELINE_MAX_ANGLE_DEGREES
-        and max(centers_y) - min(centers_y)
-        <= _PDFTEXT_HORIZONTAL_BASELINE_MAX_DISPERSION_RATIO * median_height
+        and max(centers_y) - min(centers_y) <= _PDFTEXT_HORIZONTAL_BASELINE_MAX_DISPERSION_RATIO * median_height
     )
 
 
@@ -366,9 +375,7 @@ def _split_native_visual_runs(
         run_tokens = tokens[start:end]
         run_text = _normalize_native_run_text("".join(token[1] for token in run_tokens))
         run_bboxes = [
-            token[2]
-            for token in run_tokens
-            if token[2] is not None and token[1].isprintable() and not token[1].isspace()
+            token[2] for token in run_tokens if token[2] is not None and token[1].isprintable() and not token[1].isspace()
         ]
         if not run_text or not run_bboxes:
             continue
@@ -382,6 +389,7 @@ def _split_native_visual_runs(
             visual_row_id=line.visual_row_id,
             run_index=run_index,
             split_from_row=len(ranges) > 1,
+            formula_candidate_only=line.formula_candidate_only,
         )
         _fill_native_typography(run_item, page_size)
         output.append(run_item)
@@ -438,10 +446,7 @@ def _detect_leading_emphasis_width(
         return None
     prefix_weight = statistics.median(prefix_weights)
     body_weight = statistics.median(body_weights)
-    if (
-        prefix_weight - body_weight < 100.0
-        or prefix_weight < 1.15 * max(1.0, body_weight)
-    ):
+    if prefix_weight - body_weight < 100.0 or prefix_weight < 1.15 * max(1.0, body_weight):
         return None
 
     prefix_bbox = _bbox_union_many([bbox for bbox, _signature, _weight in prefix])
@@ -628,6 +633,16 @@ def _merge_native_inline_scripts(
         for child_index in positions.values():
             merge_children(child_index, visiting)
         base = lines[base_index]
+        stable_source_indices = [
+            source_index
+            for source_index in [base.source_index, *(lines[child_index].source_index for child_index in positions.values())]
+            if source_index >= 0
+        ]
+        if stable_source_indices:
+            base.source_index = min(stable_source_indices)
+        formula_candidate_only = base.formula_candidate_only and all(
+            lines[child_index].formula_candidate_only for child_index in positions.values()
+        )
         merged_bbox = base.bbox
         merged_chars = list(base.chars)
         if "prefix" in positions:
@@ -637,6 +652,7 @@ def _merge_native_inline_scripts(
             merged_bbox = _bbox_union(merged_bbox, prefix.bbox)
             merged_chars = [*prefix.chars, *merged_chars]
             base.split_from_row = base.split_from_row or prefix.split_from_row
+            base.inline_math_regions.extend(prefix.inline_math_regions)
         if "suffix" in positions:
             suffix_index = positions["suffix"]
             suffix = lines[suffix_index]
@@ -644,14 +660,15 @@ def _merge_native_inline_scripts(
             merged_bbox = _bbox_union(merged_bbox, suffix.bbox)
             merged_chars.extend(suffix.chars)
             base.split_from_row = base.split_from_row or suffix.split_from_row
+            base.inline_math_regions.extend(suffix.inline_math_regions)
         base.bbox = merged_bbox
         base.chars = merged_chars
         # 只有低重叠外置候选才需要按完整二维 bbox 计算后继行距；普通上下标保持原有基线行为。
         base.restored_inline_cluster = base.restored_inline_cluster or any(
-            lines[child_index].restored_inline_cluster
-            or (child_index, base_index, position) in detached_candidate_pairs
+            lines[child_index].restored_inline_cluster or (child_index, base_index, position) in detached_candidate_pairs
             for position, child_index in positions.items()
         )
+        base.formula_candidate_only = formula_candidate_only
         _fill_native_typography(base, page_size)
         visiting.remove(base_index)
         merged_base_indices.add(base_index)

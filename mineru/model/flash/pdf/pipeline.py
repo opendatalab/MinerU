@@ -7,14 +7,16 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any
 
-
+from ....types import BBox
 from .._shared.xycut import sort_entries
 from .document import PDFDocument, PDFImageInfo, get_lines_from_chars
 from .text_styles import (
     PDFTextLinkLine,
     PDFTextStyleLine,
     apply_pdf_text_links,
+    apply_pdf_text_scripts,
     apply_pdf_text_styles,
+    detect_pdf_text_script_lines,
     detect_pdf_text_link_lines,
     detect_pdf_text_style_lines,
     materialize_pdf_inline_spans,
@@ -179,7 +181,11 @@ def _filter_repeated_raster_watermark_bboxes(
     ]
 
 
-def _analyze_native_document(pdf_doc: PDFDocument) -> list[list[dict[str, Any]]]:
+def _analyze_native_document(
+    pdf_doc: PDFDocument,
+    *,
+    script_diagnostics: list[dict[str, Any]] | None = None,
+) -> list[list[dict[str, Any]]]:
     """逐页读取数字 PDF，并在轻量页面上完成跨页文本类型判定。"""
 
     page_sizes = [pdf_doc.page_size(page_idx) for page_idx in range(pdf_doc.page_count)]
@@ -191,11 +197,13 @@ def _analyze_native_document(pdf_doc: PDFDocument) -> list[list[dict[str, Any]]]
     )
 
     page_sources: list[_PageSource] = []
+    page_text_geometries = []
     page_style_lines: list[list[PDFTextStyleLine]] = []
     page_link_lines: list[list[PDFTextLinkLine]] = []
     for page_idx in range(pdf_doc.page_count):
         page_size = page_sizes[page_idx]
-        chars = pdf_doc.get_page_chars(page_idx)
+        text_geometry = pdf_doc.get_page_chars_with_geometry(page_idx)
+        chars = text_geometry.chars
         lines = _build_native_line_items(
             get_lines_from_chars(chars),
             page_size,
@@ -224,9 +232,35 @@ def _analyze_native_document(pdf_doc: PDFDocument) -> list[list[dict[str, Any]]]
             path_infos=pdf_doc.get_page_path_infos(page_idx),
         )
         page_sources.append(source)
+        page_text_geometries.append(text_geometry)
 
     _classify_raw_page_marginals(page_sources)
-    prepared_pages = [_prepare_page_source(source) for source in page_sources]
+    prepared_pages = [
+        _prepare_page_source(
+            source,
+            tight_bboxes=geometry.tight_bboxes,
+            origins=geometry.origins,
+        )
+        for source, geometry in zip(page_sources, page_text_geometries, strict=True)
+    ]
+    if script_diagnostics is not None:
+        script_diagnostics.extend(
+            {
+                "page_index": page_index,
+                "page_size": prepared.page_size,
+                "script_lines": list(prepared.script_lines),
+                "lines": [
+                    {
+                        "source_index": line.source_index,
+                        "text": line.text,
+                        "bbox": line.bbox,
+                        "angle": line.angle,
+                    }
+                    for line in prepared.remaining_lines
+                ],
+            }
+            for page_index, prepared in enumerate(prepared_pages)
+        )
 
     _classify_repeated_visual_headers(prepared_pages)
     _classify_repeated_page_marginals(prepared_pages)
@@ -256,20 +290,38 @@ def _analyze_native_document(pdf_doc: PDFDocument) -> list[list[dict[str, Any]]]
         )
         for page_index, prepared in enumerate(prepared_pages)
     ]
-    for page_blocks, style_lines, link_lines, page_size in zip(
-        finalized_pages,
-        page_style_lines,
-        page_link_lines,
-        page_sizes,
-        strict=True,
+    for page_index, (page_blocks, prepared, style_lines, link_lines, page_size) in enumerate(
+        zip(
+            finalized_pages,
+            prepared_pages,
+            page_style_lines,
+            page_link_lines,
+            page_sizes,
+            strict=True,
+        )
     ):
         apply_pdf_text_links(page_blocks, link_lines, page_size)
         apply_pdf_text_styles(page_blocks, style_lines, page_size)
+        materialized_diagnostics = None
+        if script_diagnostics is not None:
+            materialized_diagnostics = []
+            script_diagnostics[page_index]["materialized_ranges"] = materialized_diagnostics
+        apply_pdf_text_scripts(
+            page_blocks,
+            prepared.script_lines,
+            page_size,
+            materialized_diagnostics=materialized_diagnostics,
+        )
         materialize_pdf_inline_spans(page_blocks)
     return finalized_pages
 
 
-def _prepare_page_source(source: _PageSource) -> _PreparedPage:
+def _prepare_page_source(
+    source: _PageSource,
+    *,
+    tight_bboxes: dict[int, BBox] | None = None,
+    origins: dict[int, tuple[float, float]] | None = None,
+) -> _PreparedPage:
     """先认领视觉容器，再标注辅助文本并留下可跨页比较的轻量文本行。"""
 
     protected_line_indices = {line.source_index for line in source.lines if line.semantic_type is not None}
@@ -374,7 +426,18 @@ def _prepare_page_source(source: _PageSource) -> _PreparedPage:
         source.page_size,
         table_bboxes,
     )
+    formula_candidate_lines = [line for line in remaining_lines if line.formula_candidate_only]
+    remaining_lines = [line for line in remaining_lines if not line.formula_candidate_only]
+    script_lines = detect_pdf_text_script_lines(
+        remaining_lines,
+        source.page_size,
+        tight_bboxes or {},
+        origins or {},
+        all_chars=source.chars,
+        drawing_lines=source.drawing_lines,
+    )
     _compact_prepared_lines(remaining_lines, source.page_size)
+    _compact_prepared_lines(formula_candidate_lines, source.page_size)
     prepared = _PreparedPage(
         page_size=source.page_size,
         remaining_lines=remaining_lines,
@@ -390,6 +453,8 @@ def _prepare_page_source(source: _PageSource) -> _PreparedPage:
             + raster_image_blocks
             + vector_formula_blocks
         ),
+        script_lines=script_lines,
+        formula_candidate_lines=formula_candidate_lines,
     )
     _classify_page_auxiliary_text(prepared)
     return prepared
@@ -426,7 +491,10 @@ def _finalize_prepared_page(
         require_heading=True,
     )
     semantic_lines.extend(line for line in unresolved_lines if line.semantic_type is not None)
-    formula_input = [line for line in unresolved_lines if line.semantic_type is None]
+    formula_input = [
+        *(line for line in unresolved_lines if line.semantic_type is None),
+        *prepared.formula_candidate_lines,
+    ]
     formula_input = _restore_dense_split_visual_rows(
         formula_input,
         prepared.page_size,
@@ -852,6 +920,16 @@ def _normalize_output_block(
         "angle": 0 if normalized_type == "image" else int(block.get("angle", 0) or 0) % 360,
         "content": content,
     }
+    inline_math_regions = []
+    for value in block.get("_inline_math_regions", []):
+        raw_region = _coerce_bbox(value)
+        if raw_region is None:
+            continue
+        region = _clip_bbox(raw_region, page_size)
+        if region is not None:
+            inline_math_regions.append(_normalize_bbox_to_thousandths(region, page_size))
+    if inline_math_regions:
+        output_block["_inline_math_regions"] = inline_math_regions
     if normalized_type in _LINE_METADATA_OUTPUT_TYPES:
         output_block["lines"] = _normalize_output_line_items(block, page_size)
     return output_block

@@ -66,9 +66,7 @@ def _starts_structural_reference_entry(
     pair_height = max(previous_height, current_height)
     return (
         current[1][0] <= previous[1][0] - max(5.0, 0.6 * min(previous_height, current_height))
-        and -0.75 * pair_height
-        <= _effective_text_row_gap(previous, current)
-        <= 1.5 * pair_height
+        and -0.75 * pair_height <= _effective_text_row_gap(previous, current) <= 1.5 * pair_height
     )
 
 
@@ -83,14 +81,11 @@ def _build_hanging_indent_group_map(
         return {}
     rows = sorted(
         (item for item in lane.lines if item[0].semantic_type is None),
-        key=lambda item: (item[1
-                          ][1], item[1][0], item[0].source_index),
+        key=lambda item: (item[1][1], item[1][0], item[0].source_index),
     )
     if len(rows) < 4:
         return {}
-    median_height = statistics.median(
-        _line_effective_height(line, bbox) for line, bbox in rows
-    )
+    median_height = statistics.median(_line_effective_height(line, bbox) for line, bbox in rows)
     start_tolerance = max(5.0, 0.65 * median_height)
     minimum_indent = max(7.0, 0.8 * median_height)
     continuation_tolerance = max(4.0, 0.55 * median_height)
@@ -103,15 +98,8 @@ def _build_hanging_indent_group_map(
 
         effective_gap = _effective_text_row_gap(previous, current)
         top_pitch = current[1][1] - previous[1][1]
-        robust_pitch_fallback = (
-            0.5 * median_height
-            <= top_pitch
-            <= 1.8 * median_height
-        )
-        if (
-            not -0.6 * median_height <= effective_gap <= 1.3 * median_height
-            and not robust_pitch_fallback
-        ):
+        robust_pitch_fallback = 0.5 * median_height <= top_pitch <= 1.8 * median_height
+        if not -0.6 * median_height <= effective_gap <= 1.3 * median_height and not robust_pitch_fallback:
             return False
         if _connection_crosses_table(
             previous[0].bbox,
@@ -258,19 +246,11 @@ def _build_grouped_page_footnote_blocks(
 ) -> tuple[list[dict[str, Any]], set[int]]:
     """按分隔线组切分几何脚注条目，并返回已消费的来源编号。"""
 
-    footnote_by_source = {
-        line.source_index: line
-        for line in lines
-        if line.semantic_type == "page_footnote"
-    }
+    footnote_by_source = {line.source_index: line for line in lines if line.semantic_type == "page_footnote"}
     blocks: list[dict[str, Any]] = []
     consumed_source_indices: set[int] = set()
     for source_group in source_groups:
-        group_lines = [
-            footnote_by_source[source_index]
-            for source_index in source_group
-            if source_index in footnote_by_source
-        ]
+        group_lines = [footnote_by_source[source_index] for source_index in source_group if source_index in footnote_by_source]
         for angle in sorted({line.angle for line in group_lines}):
             directional_lines = [line for line in group_lines if line.angle == angle]
             tight_bboxes = _tight_page_footnote_bboxes(
@@ -292,11 +272,7 @@ def _build_grouped_page_footnote_blocks(
                 content = _merge_text_line_content([line.text for line in ordered_lines])
                 if not content:
                     continue
-                visual_row_ids = {
-                    line.visual_row_id
-                    for line in ordered_lines
-                    if line.visual_row_id is not None
-                }
+                visual_row_ids = {line.visual_row_id for line in ordered_lines if line.visual_row_id is not None}
                 single_run_row_id = (
                     ordered_lines[0].visual_row_id
                     if len(ordered_lines) == 1
@@ -307,18 +283,15 @@ def _build_grouped_page_footnote_blocks(
                 blocks.append(
                     {
                         "type": "page_footnote",
-                        "bbox": _bbox_union_many(
-                            [tight_bboxes[line.source_index] for line in ordered_lines]
-                        ),
+                        "bbox": _bbox_union_many([tight_bboxes[line.source_index] for line in ordered_lines]),
                         "angle": angle,
                         "content": content,
                         "_visual_row_ids": visual_row_ids,
                         "_single_run_row_id": single_run_row_id,
+                        "_inline_math_regions": [region for line in ordered_lines for region in line.inline_math_regions],
                     }
                 )
-                consumed_source_indices.update(
-                    line.source_index for line in ordered_lines
-                )
+                consumed_source_indices.update(line.source_index for line in ordered_lines)
     return blocks, consumed_source_indices
 
 
@@ -331,31 +304,15 @@ def _split_page_footnote_entries(
     if not lines:
         return []
     angle = lines[0].angle
-    line_geometry = [
-        (line, _rotate_bbox_to_upright(line.bbox, page_size, angle))
-        for line in lines
-    ]
-    line_geometry.sort(
-        key=lambda item: (item[1][1], item[1][0], item[0].source_index)
-    )
+    line_geometry = [(line, _rotate_bbox_to_upright(line.bbox, page_size, angle)) for line in lines]
+    line_geometry.sort(key=lambda item: (item[1][1], item[1][0], item[0].source_index))
     if len(line_geometry) == 1:
         return [[line_geometry[0][0]]]
 
-    effective_heights = [
-        _line_effective_height(line, bbox)
-        for line, bbox in line_geometry
-    ]
+    effective_heights = [_line_effective_height(line, bbox) for line, bbox in line_geometry]
     median_height = statistics.median(effective_heights)
-    glyph_widths = [
-        line.median_glyph_width
-        for line, _bbox in line_geometry
-        if line.median_glyph_width is not None
-    ]
-    median_glyph_width = (
-        statistics.median(glyph_widths)
-        if glyph_widths
-        else 0.5 * median_height
-    )
+    glyph_widths = [line.median_glyph_width for line, _bbox in line_geometry if line.median_glyph_width is not None]
+    median_glyph_width = statistics.median(glyph_widths) if glyph_widths else 0.5 * median_height
     indent_threshold = max(1.5 * median_height, 2.0 * median_glyph_width)
     base_left = min(bbox[0] for _line, bbox in line_geometry)
     maximum_row_width = max(bbox[2] - bbox[0] for _line, bbox in line_geometry)
@@ -414,8 +371,7 @@ def _find_page_footnote_marker_rows(
             or not 0.0 <= horizontal_gap <= 1.5 * median_height
             or body[1][0] - base_left < max(1.5 * marker_width, 0.75 * median_height)
             or body_width < max(4.0 * marker_width, 4.0 * median_glyph_width)
-            or abs(_bbox_center_y(marker[1]) - _bbox_center_y(body[1]))
-            > 0.4 * median_height
+            or abs(_bbox_center_y(marker[1]) - _bbox_center_y(body[1])) > 0.4 * median_height
         ):
             continue
         marker_rows.append((marker, body))
@@ -442,11 +398,7 @@ def _split_marked_page_footnote_entries(
         maximum_row_width,
         indent_threshold,
     )
-    consumed = {
-        line.source_index
-        for entry in entries
-        for line in entry
-    }
+    consumed = {line.source_index for entry in entries for line in entry}
     continuation_tolerance = max(0.75 * median_height, 2.0 * median_glyph_width)
     for marker_index, (marker, body) in enumerate(marker_rows):
         next_marker_top = (
@@ -472,11 +424,7 @@ def _split_marked_page_footnote_entries(
         entry_items.sort(key=lambda item: (item[1][1], item[1][0], item[0].source_index))
         entries.append([line for line, _bbox in entry_items])
 
-    leftovers = [
-        item
-        for item in line_geometry
-        if item[0].source_index not in consumed
-    ]
+    leftovers = [item for item in line_geometry if item[0].source_index not in consumed]
     entries.extend(
         _split_unmarked_page_footnote_entries(
             leftovers,
@@ -487,10 +435,7 @@ def _split_marked_page_footnote_entries(
     )
     entries.sort(
         key=lambda entry: min(
-            bbox[1]
-            for line in entry
-            for candidate, bbox in line_geometry
-            if candidate.source_index == line.source_index
+            bbox[1] for line in entry for candidate, bbox in line_geometry if candidate.source_index == line.source_index
         )
     )
     return entries
@@ -515,9 +460,7 @@ def _split_unmarked_page_footnote_entries(
         current_is_indented = current[1][0] - base_left > indent_threshold
         # 满行后必然续接；其余行按首页观测到的首行/续行缩进模式决定边界。
         continues_previous = previous_is_near_full or (
-            not current_is_indented
-            if first_line_is_indented
-            else current_is_indented
+            not current_is_indented if first_line_is_indented else current_is_indented
         )
         if continues_previous:
             entries[-1].append(current[0])
@@ -535,17 +478,9 @@ def _tight_page_footnote_bboxes(
     if not lines:
         return {}
     angle = lines[0].angle
-    line_geometry = [
-        (line, _rotate_bbox_to_upright(line.bbox, page_size, angle))
-        for line in lines
-    ]
-    line_geometry.sort(
-        key=lambda item: (item[1][1], item[1][0], item[0].source_index)
-    )
-    median_height = statistics.median(
-        _line_effective_height(line, bbox)
-        for line, bbox in line_geometry
-    )
+    line_geometry = [(line, _rotate_bbox_to_upright(line.bbox, page_size, angle)) for line in lines]
+    line_geometry.sort(key=lambda item: (item[1][1], item[1][0], item[0].source_index))
+    median_height = statistics.median(_line_effective_height(line, bbox) for line, bbox in line_geometry)
     row_pitches = [
         current[1][1] - previous[1][1]
         for previous, current in zip(line_geometry, line_geometry[1:])
@@ -586,9 +521,7 @@ def _infer_local_text_lane_map(lane: _TextLane) -> dict[int, _TextLane]:
         lane.lines,
         key=lambda item: (item[1][1], item[1][0], item[0].source_index),
     )
-    median_height = statistics.median(
-        _line_effective_height(line, bbox) for line, bbox in rows
-    )
+    median_height = statistics.median(_line_effective_height(line, bbox) for line, bbox in rows)
     left_tolerance = max(3.0, 0.75 * median_height)
     height_ratio_limit = 1.25
     runs: list[list[tuple[_LineItem, BBox]]] = []
@@ -611,16 +544,11 @@ def _infer_local_text_lane_map(lane: _TextLane) -> dict[int, _TextLane]:
             current_run = [item]
             continue
         run_left = statistics.median(member[1][0] for member in current_run)
-        run_heights = [
-            _line_effective_height(member, member_bbox)
-            for member, member_bbox in current_run
-        ]
+        run_heights = [_line_effective_height(member, member_bbox) for member, member_bbox in current_run]
         current_height = _line_effective_height(line, bbox)
         if (
             abs(bbox[0] - run_left) <= left_tolerance
-            and max([*run_heights, current_height])
-            / max(0.1, min([*run_heights, current_height]))
-            <= height_ratio_limit
+            and max([*run_heights, current_height]) / max(0.1, min([*run_heights, current_height])) <= height_ratio_limit
         ):
             current_run.append(item)
         else:
@@ -636,10 +564,7 @@ def _infer_local_text_lane_map(lane: _TextLane) -> dict[int, _TextLane]:
         local_left = statistics.median(bbox[0] for _line, bbox in run)
         local_right = max(bbox[2] for _line, bbox in run)
         local_width = max(0.1, local_right - local_left)
-        wide_support = sum(
-            bbox[2] - bbox[0] >= 0.7 * local_width
-            for _line, bbox in run
-        )
+        wide_support = sum(bbox[2] - bbox[0] >= 0.7 * local_width for _line, bbox in run)
         if global_width < 1.4 * local_width or wide_support < 3:
             continue
         local_lane = _TextLane(
@@ -701,11 +626,8 @@ def _structured_text_break_sources(
             )
             previous_fill = (previous[1][2] - lane.left) / lane_width
             vertical_gap = _effective_text_row_gap(previous, current)
-            if (
-                previous_fill <= 0.8
-                and -0.25 * pair_height
-                <= vertical_gap
-                <= regular_gap + max(0.75 * pair_height, 3.0 * gap_mad)
+            if previous_fill <= 0.8 and -0.25 * pair_height <= vertical_gap <= regular_gap + max(
+                0.75 * pair_height, 3.0 * gap_mad
             ):
                 break_sources.add(current[0].source_index)
     return break_sources
@@ -726,11 +648,7 @@ def _build_text_blocks(
         page_footnote_groups or [],
         page_size,
     )
-    lines = [
-        line
-        for line in lines
-        if line.source_index not in grouped_footnote_indices
-    ]
+    lines = [line for line in lines if line.source_index not in grouped_footnote_indices]
     for angle in sorted({line.angle for line in lines}):
         line_geometry = [(line, _rotate_bbox_to_upright(line.bbox, page_size, angle)) for line in lines if line.angle == angle]
         if not line_geometry:
@@ -777,16 +695,11 @@ def _build_text_blocks(
                 else:
                     previous_group = hanging_indent_groups.get(previous[0].source_index)
                     current_group = hanging_indent_groups.get(current[0].source_index)
-                    previous_local_lane = local_lane_by_source.get(
-                        previous[0].source_index
-                    )
-                    current_local_lane = local_lane_by_source.get(
-                        current[0].source_index
-                    )
+                    previous_local_lane = local_lane_by_source.get(previous[0].source_index)
+                    current_local_lane = local_lane_by_source.get(current[0].source_index)
                     connection_lane = (
                         current_local_lane
-                        if current_local_lane is not None
-                        and previous_local_lane is current_local_lane
+                        if current_local_lane is not None and previous_local_lane is current_local_lane
                         else lane
                     )
                     if current[0].source_index in structured_break_sources:
@@ -826,30 +739,21 @@ def _build_text_blocks(
 
             for component_geometry in components:
                 component_lines = [item[0] for item in component_geometry]
-                component_local_lane = local_lane_by_source.get(
-                    component_lines[0].source_index
-                )
+                component_local_lane = local_lane_by_source.get(component_lines[0].source_index)
                 if component_local_lane is None or not all(
-                    local_lane_by_source.get(line.source_index) is component_local_lane
-                    for line in component_lines
+                    local_lane_by_source.get(line.source_index) is component_local_lane for line in component_lines
                 ):
                     component_local_lane = lane
                 if component_lines[0].semantic_type == "doc_title":
                     # 文档标题保留自然换行，避免混排标题因语言检测在中文折行处插入空格。
                     content = "\n".join(
-                        normalized
-                        for line in component_lines
-                        if (normalized := _normalize_native_run_text(line.text))
+                        normalized for line in component_lines if (normalized := _normalize_native_run_text(line.text))
                     )
                 else:
-                    content = _merge_text_line_content(
-                        [line.text for line in component_lines]
-                    )
+                    content = _merge_text_line_content([line.text for line in component_lines])
                 if not content:
                     continue
-                visual_row_ids = {
-                    line.visual_row_id for line in component_lines if line.visual_row_id is not None
-                }
+                visual_row_ids = {line.visual_row_id for line in component_lines if line.visual_row_id is not None}
                 single_run_row_id = (
                     component_lines[0].visual_row_id
                     if len(component_lines) == 1
@@ -866,16 +770,13 @@ def _build_text_blocks(
                         "_visual_row_ids": visual_row_ids,
                         "_single_run_row_id": single_run_row_id,
                         "_local_line_bboxes": [bbox for _line, bbox in component_geometry],
-                        "_line_heights": [
-                            _line_effective_height(line, bbox)
-                            for line, bbox in component_geometry
-                        ],
+                        "_line_heights": [_line_effective_height(line, bbox) for line, bbox in component_geometry],
                         "_font_signatures": {
                             line.font_signature
                             for line in component_lines
-                            if line.font_signature is not None
-                            and line.font_coverage >= 0.5
+                            if line.font_signature is not None and line.font_coverage >= 0.5
                         },
+                        "_inline_math_regions": [region for line in component_lines for region in line.inline_math_regions],
                         "_lane_interval": (
                             component_local_lane.left,
                             component_local_lane.right,
@@ -913,8 +814,7 @@ def _blocks_share_boundary_visual_row(
     lower_boundary = min(lower_rows, key=lambda bbox: (_bbox_center_y(bbox), bbox[0]))
     vertical_overlap = max(
         0.0,
-        min(upper_boundary[3], lower_boundary[3])
-        - max(upper_boundary[1], lower_boundary[1]),
+        min(upper_boundary[3], lower_boundary[3]) - max(upper_boundary[1], lower_boundary[1]),
     )
     shorter_height = max(
         0.1,
@@ -955,15 +855,9 @@ def _merge_overlapping_same_line_text_blocks(
         ):
             continue
         first_heights = [
-            float(height)
-            for height in first.get("_line_heights", [])
-            if isinstance(height, (int, float)) and height > 0
+            float(height) for height in first.get("_line_heights", []) if isinstance(height, (int, float)) and height > 0
         ]
-        first_height = (
-            statistics.median(first_heights)
-            if first_heights
-            else first_bbox[3] - first_bbox[1]
-        )
+        first_height = statistics.median(first_heights) if first_heights else first_bbox[3] - first_bbox[1]
         for second_index in range(first_index + 1, len(blocks)):
             second = blocks[second_index]
             second_bbox = second.get("bbox")
@@ -979,20 +873,13 @@ def _merge_overlapping_same_line_text_blocks(
             ):
                 continue
             second_heights = [
-                float(height)
-                for height in second.get("_line_heights", [])
-                if isinstance(height, (int, float)) and height > 0
+                float(height) for height in second.get("_line_heights", []) if isinstance(height, (int, float)) and height > 0
             ]
-            second_height = (
-                statistics.median(second_heights)
-                if second_heights
-                else second_bbox[3] - second_bbox[1]
-            )
+            second_height = statistics.median(second_heights) if second_heights else second_bbox[3] - second_bbox[1]
             pair_height = max(first_height, second_height, 0.1)
             vertical_overlap = max(
                 0.0,
-                min(first_bbox[3], second_bbox[3])
-                - max(first_bbox[1], second_bbox[1]),
+                min(first_bbox[3], second_bbox[3]) - max(first_bbox[1], second_bbox[1]),
             )
             minimum_box_height = max(
                 0.1,
@@ -1016,8 +903,7 @@ def _merge_overlapping_same_line_text_blocks(
                 and min(len(first_rows), len(second_rows)) == 1
                 and abs(first_bbox[0] - second_bbox[0]) <= pair_height
                 and vertical_overlap / minimum_box_height >= 0.5
-                and _bbox_axis_overlap_ratio(first_bbox, second_bbox, axis="x")
-                >= 0.75
+                and _bbox_axis_overlap_ratio(first_bbox, second_bbox, axis="x") >= 0.75
             )
             boundary_overlap = _blocks_share_boundary_visual_row(
                 first,
@@ -1027,10 +913,7 @@ def _merge_overlapping_same_line_text_blocks(
             if fonts_conflict or not (compact_overlap or boundary_overlap):
                 continue
             union_bbox = _bbox_union_many([first_bbox, second_bbox])
-            if (
-                not boundary_overlap
-                and union_bbox[3] - union_bbox[1] > 4.0 * pair_height
-            ):
+            if not boundary_overlap and union_bbox[3] - union_bbox[1] > 4.0 * pair_height:
                 continue
             replacement_index = min(first_index, second_index)
             replacements[replacement_index] = _merge_internal_text_block_group(
@@ -1040,9 +923,7 @@ def _merge_overlapping_same_line_text_blocks(
             consumed.update({first_index, second_index})
             break
     return [
-        replacements.get(index, block)
-        for index, block in enumerate(blocks)
-        if index not in consumed or index in replacements
+        replacements.get(index, block) for index, block in enumerate(blocks) if index not in consumed or index in replacements
     ]
 
 
@@ -1063,13 +944,7 @@ def _merge_inline_math_fragment_text_blocks(
         if (
             host_index in consumed
             or host.get("type") != "text"
-            or (
-                host.get("_single_run_row_id") is None
-                and (
-                    not isinstance(host_rows, list)
-                    or len(host_rows) > 2
-                )
-            )
+            or (host.get("_single_run_row_id") is None and (not isinstance(host_rows, list) or len(host_rows) > 2))
             or not isinstance(host_bbox, (list, tuple))
             or host_bbox[2] - host_bbox[0] < 0.35 * local_page_width
             or not isinstance(host_heights, list)
@@ -1077,9 +952,7 @@ def _merge_inline_math_fragment_text_blocks(
         ):
             continue
         host_height = statistics.median(
-            float(height)
-            for height in host_heights
-            if isinstance(height, (int, float)) and height > 0
+            float(height) for height in host_heights if isinstance(height, (int, float)) and height > 0
         )
         fragment_indices: list[int] = []
         for candidate_index, candidate in enumerate(blocks):
@@ -1093,8 +966,7 @@ def _merge_inline_math_fragment_text_blocks(
                 or not isinstance(candidate_bbox, (list, tuple))
                 or not isinstance(candidate_rows, list)
                 or len(candidate_rows) != 1
-                or candidate_bbox[2] - candidate_bbox[0]
-                > 0.25 * (host_bbox[2] - host_bbox[0])
+                or candidate_bbox[2] - candidate_bbox[0] > 0.25 * (host_bbox[2] - host_bbox[0])
                 or _bbox_axis_overlap_ratio(
                     host_bbox,
                     candidate_bbox,
@@ -1106,13 +978,9 @@ def _merge_inline_math_fragment_text_blocks(
             union_bbox = _bbox_union_many([host_bbox, candidate_bbox])
             vertical_gap = max(
                 0.0,
-                max(host_bbox[1], candidate_bbox[1])
-                - min(host_bbox[3], candidate_bbox[3]),
+                max(host_bbox[1], candidate_bbox[1]) - min(host_bbox[3], candidate_bbox[3]),
             )
-            if (
-                vertical_gap <= 0.75 * host_height
-                and union_bbox[3] - union_bbox[1] <= 3.5 * host_height
-            ):
+            if vertical_gap <= 0.75 * host_height and union_bbox[3] - union_bbox[1] <= 3.5 * host_height:
                 fragment_indices.append(candidate_index)
         if len(fragment_indices) < 2:
             continue
@@ -1124,9 +992,7 @@ def _merge_inline_math_fragment_text_blocks(
         )
         consumed.update(group_indices)
     output = [
-        replacements.get(index, block)
-        for index, block in enumerate(blocks)
-        if index not in consumed or index in replacements
+        replacements.get(index, block) for index, block in enumerate(blocks) if index not in consumed or index in replacements
     ]
     output = _merge_hostless_inline_math_fragment_blocks(output, page_size)
     output = _merge_residual_narrow_math_text_blocks(output, page_size)
@@ -1155,22 +1021,14 @@ def _merge_residual_narrow_math_text_blocks(
         ):
             continue
         candidate_heights = [
-            float(height)
-            for height in candidate.get("_line_heights", [])
-            if isinstance(height, (int, float)) and height > 0
+            float(height) for height in candidate.get("_line_heights", []) if isinstance(height, (int, float)) and height > 0
         ]
-        candidate_height = (
-            statistics.median(candidate_heights)
-            if candidate_heights
-            else candidate_bbox[3] - candidate_bbox[1]
-        )
+        candidate_height = statistics.median(candidate_heights) if candidate_heights else candidate_bbox[3] - candidate_bbox[1]
         hosts: list[tuple[float, float, int]] = []
         for host_index, host in enumerate(blocks):
             host_bbox = host.get("bbox")
             host_heights = [
-                float(height)
-                for height in host.get("_line_heights", [])
-                if isinstance(height, (int, float)) and height > 0
+                float(height) for height in host.get("_line_heights", []) if isinstance(height, (int, float)) and height > 0
             ]
             if (
                 host_index == candidate_index
@@ -1183,26 +1041,19 @@ def _merge_residual_narrow_math_text_blocks(
                 or candidate_bbox[2] > host_bbox[2]
             ):
                 continue
-            host_height = (
-                statistics.median(host_heights)
-                if host_heights
-                else host_bbox[3] - host_bbox[1]
-            )
+            host_height = statistics.median(host_heights) if host_heights else host_bbox[3] - host_bbox[1]
             vertical_overlap = max(
                 0.0,
-                min(candidate_bbox[3], host_bbox[3])
-                - max(candidate_bbox[1], host_bbox[1]),
+                min(candidate_bbox[3], host_bbox[3]) - max(candidate_bbox[1], host_bbox[1]),
             )
             vertical_gap = max(
                 0.0,
-                max(candidate_bbox[1], host_bbox[1])
-                - min(candidate_bbox[3], host_bbox[3]),
+                max(candidate_bbox[1], host_bbox[1]) - min(candidate_bbox[3], host_bbox[3]),
             )
             pair_height = max(candidate_height, host_height, 0.1)
             union_bbox = _bbox_union_many([candidate_bbox, host_bbox])
             if (
-                vertical_overlap < 0.35 * min(candidate_height, host_height)
-                and vertical_gap > 0.5 * pair_height
+                vertical_overlap < 0.35 * min(candidate_height, host_height) and vertical_gap > 0.5 * pair_height
             ) or union_bbox[3] - union_bbox[1] > 3.0 * pair_height:
                 continue
             hosts.append(
@@ -1222,9 +1073,7 @@ def _merge_residual_narrow_math_text_blocks(
         )
         consumed.update({candidate_index, host_index})
     return [
-        replacements.get(index, block)
-        for index, block in enumerate(blocks)
-        if index not in consumed or index in replacements
+        replacements.get(index, block) for index, block in enumerate(blocks) if index not in consumed or index in replacements
     ]
 
 
@@ -1235,13 +1084,7 @@ def _merge_hostless_inline_math_fragment_blocks(
     """把没有单一宽宿主但在一栏内二维密集排列的数学碎片合成文本块。"""
 
     grouped_indices: list[list[int]] = []
-    for angle in sorted(
-        {
-            int(block.get("angle", 0) or 0) % 360
-            for block in blocks
-            if block.get("type") == "text"
-        }
-    ):
+    for angle in sorted({int(block.get("angle", 0) or 0) % 360 for block in blocks if block.get("type") == "text"}):
         local_page_width = page_size[1] if angle in {90, 270} else page_size[0]
         candidates = {
             index
@@ -1251,8 +1094,7 @@ def _merge_hostless_inline_math_fragment_blocks(
             and isinstance(block.get("bbox"), (list, tuple))
             and isinstance(block.get("_local_line_bboxes"), list)
             and len(block["_local_line_bboxes"]) == 1
-            and block["bbox"][2] - block["bbox"][0]
-            <= 0.25 * local_page_width
+            and block["bbox"][2] - block["bbox"][0] <= 0.25 * local_page_width
         }
         while candidates:
             component = {candidates.pop()}
@@ -1266,9 +1108,7 @@ def _merge_hostless_inline_math_fragment_blocks(
                         [],
                     )
                     candidate_height = (
-                        statistics.median(candidate_heights)
-                        if candidate_heights
-                        else candidate_bbox[3] - candidate_bbox[1]
+                        statistics.median(candidate_heights) if candidate_heights else candidate_bbox[3] - candidate_bbox[1]
                     )
                     if any(
                         (
@@ -1277,28 +1117,24 @@ def _merge_hostless_inline_math_fragment_blocks(
                                 max(candidate_bbox[1], blocks[index]["bbox"][1])
                                 - min(candidate_bbox[3], blocks[index]["bbox"][3]),
                             )
-                            <= 0.75 * max(
+                            <= 0.75
+                            * max(
                                 candidate_height,
-                                statistics.median(
-                                    blocks[index].get("_line_heights", [])
-                                )
+                                statistics.median(blocks[index].get("_line_heights", []))
                                 if blocks[index].get("_line_heights")
-                                else blocks[index]["bbox"][3]
-                                - blocks[index]["bbox"][1],
+                                else blocks[index]["bbox"][3] - blocks[index]["bbox"][1],
                             )
                             and max(
                                 0.0,
                                 max(candidate_bbox[0], blocks[index]["bbox"][0])
                                 - min(candidate_bbox[2], blocks[index]["bbox"][2]),
                             )
-                            <= 1.5 * max(
+                            <= 1.5
+                            * max(
                                 candidate_height,
-                                statistics.median(
-                                    blocks[index].get("_line_heights", [])
-                                )
+                                statistics.median(blocks[index].get("_line_heights", []))
                                 if blocks[index].get("_line_heights")
-                                else blocks[index]["bbox"][3]
-                                - blocks[index]["bbox"][1],
+                                else blocks[index]["bbox"][3] - blocks[index]["bbox"][1],
                             )
                         )
                         for index in component
@@ -1317,9 +1153,7 @@ def _merge_hostless_inline_math_fragment_blocks(
             if not component_heights:
                 continue
             median_height = statistics.median(component_heights)
-            union_bbox = _bbox_union_many(
-                [blocks[index]["bbox"] for index in component]
-            )
+            union_bbox = _bbox_union_many([blocks[index]["bbox"] for index in component])
             font_signatures = set().union(
                 *[
                     signatures
@@ -1332,16 +1166,9 @@ def _merge_hostless_inline_math_fragment_blocks(
             )
             if (
                 len(font_signatures) < 2
-                or not 0.25 * local_page_width
-                <= union_bbox[2] - union_bbox[0]
-                <= 0.5 * local_page_width
+                or not 0.25 * local_page_width <= union_bbox[2] - union_bbox[0] <= 0.5 * local_page_width
                 or union_bbox[3] - union_bbox[1] > 3.5 * median_height
-                or sum(
-                    blocks[index]["bbox"][2] - blocks[index]["bbox"][0]
-                    >= 3.5 * median_height
-                    for index in component
-                )
-                < 2
+                or sum(blocks[index]["bbox"][2] - blocks[index]["bbox"][0] >= 3.5 * median_height for index in component) < 2
             ):
                 continue
             grouped_indices.append(sorted(component))
@@ -1358,9 +1185,7 @@ def _merge_hostless_inline_math_fragment_blocks(
         )
         consumed.update(group)
     return [
-        replacements.get(index, block)
-        for index, block in enumerate(blocks)
-        if index not in consumed or index in replacements
+        replacements.get(index, block) for index, block in enumerate(blocks) if index not in consumed or index in replacements
     ]
 
 
@@ -1369,9 +1194,20 @@ def _merge_inline_math_recovery_group(
     indices: list[int],
 ) -> dict[str, Any]:
     """合并数学碎片并保留仅供后续段落闭合使用的内部标记。"""
-
+    member_bboxes = [blocks[index]["bbox"] for index in indices]
+    widths = [bbox[2] - bbox[0] for bbox in member_bboxes]
+    maximum_width = max(widths, default=0.0)
+    detected_regions = [
+        bbox for bbox, width in zip(member_bboxes, widths) if maximum_width <= 0 or width <= 0.25 * maximum_width
+    ]
+    if not detected_regions:
+        detected_regions = list(member_bboxes)
     merged = _merge_internal_text_block_group(blocks, indices)
     merged[_INLINE_MATH_RECOVERY_MARKER] = True
+    merged["_inline_math_regions"] = [
+        *merged.get("_inline_math_regions", []),
+        *detected_regions,
+    ]
     return merged
 
 
@@ -1381,13 +1217,7 @@ def _merge_inline_math_paragraph_continuations(
 ) -> list[dict[str, Any]]:
     """在数学碎片恢复后，合并同栏连续且足够宽的正文段落块。"""
 
-    if (
-        sum(
-            block.get(_INLINE_MATH_RECOVERY_MARKER) is True
-            for block in blocks
-        )
-        < 2
-    ):
+    if sum(block.get(_INLINE_MATH_RECOVERY_MARKER) is True for block in blocks) < 2:
         return blocks
 
     lane_groups: list[list[int]] = []
@@ -1396,8 +1226,7 @@ def _merge_inline_math_paragraph_continuations(
         key=lambda item: (
             int(item[1].get("angle", 0) or 0) % 360,
             _text_component_sort_key(item[1])
-            if isinstance(item[1].get("_local_line_bboxes"), list)
-            and item[1]["_local_line_bboxes"]
+            if isinstance(item[1].get("_local_line_bboxes"), list) and item[1]["_local_line_bboxes"]
             else (float("inf"), float("inf")),
         ),
     ):
@@ -1410,26 +1239,20 @@ def _merge_inline_math_paragraph_continuations(
         ):
             continue
         block_heights = [
-            float(height)
-            for height in block.get("_line_heights", [])
-            if isinstance(height, (int, float)) and height > 0
+            float(height) for height in block.get("_line_heights", []) if isinstance(height, (int, float)) and height > 0
         ]
         if not block_heights:
             continue
         for lane_group in lane_groups:
             representative = blocks[lane_group[0]]
-            if int(representative.get("angle", 0) or 0) % 360 != int(
-                block.get("angle", 0) or 0
-            ) % 360:
+            if int(representative.get("angle", 0) or 0) % 360 != int(block.get("angle", 0) or 0) % 360:
                 continue
             representative_heights = [
                 float(height)
                 for height in representative.get("_line_heights", [])
                 if isinstance(height, (int, float)) and height > 0
             ]
-            pair_height = statistics.median(
-                [*representative_heights, *block_heights]
-            )
+            pair_height = statistics.median([*representative_heights, *block_heights])
             if _components_share_lane_role(representative, block, pair_height):
                 lane_group.append(index)
                 break
@@ -1478,15 +1301,10 @@ def _merge_inline_math_paragraph_continuations(
             vertical_gap = current_local_bbox[1] - previous_local_bbox[3]
             connects = (
                 _components_share_lane_role(previous, current, pair_height)
-                and previous_local_bbox[2] - previous_local_bbox[0]
-                >= 0.8 * lane_width
-                and current_local_bbox[2] - current_local_bbox[0]
-                >= 0.8 * lane_width
-                and abs(previous_local_bbox[0] - current_local_bbox[0])
-                <= 0.75 * pair_height
-                and -0.75 * pair_height
-                <= vertical_gap
-                <= 0.75 * pair_height
+                and previous_local_bbox[2] - previous_local_bbox[0] >= 0.8 * lane_width
+                and current_local_bbox[2] - current_local_bbox[0] >= 0.8 * lane_width
+                and abs(previous_local_bbox[0] - current_local_bbox[0]) <= 0.75 * pair_height
+                and -0.75 * pair_height <= vertical_gap <= 0.75 * pair_height
                 and not fonts_conflict
                 and not _component_connection_skips_block(
                     blocks,
@@ -1505,14 +1323,7 @@ def _merge_inline_math_paragraph_continuations(
     consumed: set[int] = set()
     replacements: dict[int, dict[str, Any]] = {}
     for chain in candidate_chains:
-        if (
-            len(chain) < 3
-            or sum(
-                blocks[index].get(_INLINE_MATH_RECOVERY_MARKER) is True
-                for index in chain
-            )
-            < 2
-        ):
+        if len(chain) < 3 or sum(blocks[index].get(_INLINE_MATH_RECOVERY_MARKER) is True for index in chain) < 2:
             continue
         chain_heights = [
             float(height)
@@ -1521,13 +1332,7 @@ def _merge_inline_math_paragraph_continuations(
             if isinstance(height, (int, float)) and height > 0
         ]
         median_height = statistics.median(chain_heights)
-        local_union = _bbox_union_many(
-            [
-                bbox
-                for index in chain
-                for bbox in blocks[index]["_local_line_bboxes"]
-            ]
-        )
+        local_union = _bbox_union_many([bbox for index in chain for bbox in blocks[index]["_local_line_bboxes"]])
         if local_union[3] - local_union[1] > 24.0 * median_height:
             continue
         replacement_index = min(chain)
@@ -1536,9 +1341,7 @@ def _merge_inline_math_paragraph_continuations(
         replacements[replacement_index] = merged
         consumed.update(chain)
     return [
-        replacements.get(index, block)
-        for index, block in enumerate(blocks)
-        if index not in consumed or index in replacements
+        replacements.get(index, block) for index, block in enumerate(blocks) if index not in consumed or index in replacements
     ]
 
 
@@ -1621,11 +1424,7 @@ def _merge_image_caption_text_blocks(
             group_indices,
         )
         merged_indices.update(tail_indices)
-    return [
-        replacements.get(index, block)
-        for index, block in enumerate(blocks)
-        if index not in merged_indices
-    ]
+    return [replacements.get(index, block) for index, block in enumerate(blocks) if index not in merged_indices]
 
 
 def _caption_image_group_bboxes(
@@ -1646,8 +1445,7 @@ def _caption_image_group_bboxes(
                 for member in group:
                     overlap = max(
                         0.0,
-                        min(candidate[3], member[3])
-                        - max(candidate[1], member[1]),
+                        min(candidate[3], member[3]) - max(candidate[1], member[1]),
                     )
                     minimum_height = max(
                         0.1,
@@ -1658,13 +1456,9 @@ def _caption_image_group_bboxes(
                     )
                     horizontal_gap = max(
                         0.0,
-                        max(candidate[0], member[0])
-                        - min(candidate[2], member[2]),
+                        max(candidate[0], member[0]) - min(candidate[2], member[2]),
                     )
-                    if (
-                        overlap / minimum_height >= 0.7
-                        and horizontal_gap <= 2.0 * median_height
-                    ):
+                    if overlap / minimum_height >= 0.7 and horizontal_gap <= 2.0 * median_height:
                         aligned = True
                         break
                 if aligned:
@@ -1691,8 +1485,7 @@ def _caption_seed_matches_image(
         _bbox_center_y(bbox) >= image_bbox[3] - 0.25 * median_height
         and vertical_gap <= 2.5 * median_height
         and _bbox_axis_overlap_ratio(bbox, image_bbox, axis="x") >= 0.35
-        and abs(_bbox_center_x(bbox) - _bbox_center_x(image_bbox))
-        <= 0.35 * max(image_width, block_width)
+        and abs(_bbox_center_x(bbox) - _bbox_center_x(image_bbox)) <= 0.35 * max(image_width, block_width)
         and block_width <= 1.75 * image_width
     )
 
@@ -1730,15 +1523,10 @@ def _caption_body_has_structural_gap(
     previous_bbox, previous_height = seed_rows[-1]
     current_bbox, current_height = candidate_rows[0]
     internal_gaps = [
-        max(0.0, current[0][1] - (previous[0][1] + float(previous[1])))
-        for previous, current in zip(seed_rows, seed_rows[1:])
+        max(0.0, current[0][1] - (previous[0][1] + float(previous[1]))) for previous, current in zip(seed_rows, seed_rows[1:])
     ]
     regular_gap = statistics.median(internal_gaps) if internal_gaps else 0.0
-    gap_mad = (
-        statistics.median(abs(gap - regular_gap) for gap in internal_gaps)
-        if internal_gaps
-        else 0.0
-    )
+    gap_mad = statistics.median(abs(gap - regular_gap) for gap in internal_gaps) if internal_gaps else 0.0
     seed_fonts = seed.get("_font_signatures")
     candidate_fonts = candidate.get("_font_signatures")
     reliable_style_change = (
@@ -1777,10 +1565,7 @@ def _caption_tail_matches_seed(
     if _caption_body_has_structural_gap(seed, candidate):
         return False
     vertical_gap = max(0.0, candidate_bbox[1] - seed_bbox[3])
-    if (
-        vertical_gap > 0.5 * median_height
-        or _bbox_axis_overlap_ratio(seed_bbox, candidate_bbox, axis="x") < 0.35
-    ):
+    if vertical_gap > 0.5 * median_height or _bbox_axis_overlap_ratio(seed_bbox, candidate_bbox, axis="x") < 0.35:
         return False
     seed_fonts = seed.get("_font_signatures")
     candidate_fonts = candidate.get("_font_signatures")
@@ -1804,8 +1589,7 @@ def _merge_multiline_title_blocks(
         indices = [
             index
             for index, block in enumerate(blocks)
-            if block.get("type") == block_type
-            and isinstance(block.get("bbox"), (list, tuple))
+            if block.get("type") == block_type and isinstance(block.get("bbox"), (list, tuple))
         ]
         indices.sort(
             key=lambda index: (
@@ -1846,9 +1630,7 @@ def _merge_multiline_title_blocks(
                 and previous_fonts.isdisjoint(current_fonts)
             )
             if (
-                -0.2 * max(previous_height, current_height)
-                <= vertical_gap
-                <= 0.4 * max(previous_height, current_height)
+                -0.2 * max(previous_height, current_height) <= vertical_gap <= 0.4 * max(previous_height, current_height)
                 and _bbox_axis_overlap_ratio(
                     previous_bbox,
                     current_bbox,
@@ -1868,11 +1650,7 @@ def _merge_multiline_title_blocks(
                 group,
             )
             consumed.update(group[1:])
-    return [
-        replacements.get(index, block)
-        for index, block in enumerate(blocks)
-        if index not in consumed
-    ]
+    return [replacements.get(index, block) for index, block in enumerate(blocks) if index not in consumed]
 
 
 def _merge_fragmented_header_blocks(
@@ -1896,14 +1674,9 @@ def _merge_fragmented_header_blocks(
             bbox = blocks[index]["bbox"]
             heights = blocks[index].get("_line_heights", [])
             effective_height = (
-                statistics.median(heights)
-                if isinstance(heights, list) and heights
-                else max(0.1, bbox[3] - bbox[1])
+                statistics.median(heights) if isinstance(heights, list) and heights else max(0.1, bbox[3] - bbox[1])
             )
-            if (
-                blocks[index].get("type") == "header"
-                and bbox[2] - bbox[0] > 1.25 * effective_height
-            ):
+            if blocks[index].get("type") == "header" and bbox[2] - bbox[0] > 1.25 * effective_height:
                 continue
             if not components:
                 components.append([index])
@@ -1917,8 +1690,7 @@ def _merge_fragmented_header_blocks(
                 else max(0.1, previous_bbox[3] - previous_bbox[1])
             )
             if (
-                bbox[0] - previous_bbox[2]
-                <= 4.0 * max(effective_height, previous_height)
+                bbox[0] - previous_bbox[2] <= 4.0 * max(effective_height, previous_height)
                 and _bbox_axis_overlap_ratio(previous_bbox, bbox, axis="y") >= 0.5
             ):
                 components[-1].append(index)
@@ -1935,11 +1707,7 @@ def _merge_fragmented_header_blocks(
             replacement["_single_run_row_id"] = None
             replacements[component[0]] = replacement
             consumed.update(component[1:])
-    return [
-        replacements.get(index, block)
-        for index, block in enumerate(blocks)
-        if index not in consumed
-    ]
+    return [replacements.get(index, block) for index, block in enumerate(blocks) if index not in consumed]
 
 
 def _merge_front_matter_column_blocks(
@@ -1956,10 +1724,7 @@ def _merge_front_matter_column_blocks(
     if page_width <= 0 or page_height <= 0:
         return blocks
     title_blocks = [
-        block
-        for block in blocks
-        if block.get("type") == "doc_title"
-        and isinstance(block.get("bbox"), (list, tuple))
+        block for block in blocks if block.get("type") == "doc_title" and isinstance(block.get("bbox"), (list, tuple))
     ]
     if not title_blocks:
         return blocks
@@ -1970,7 +1735,8 @@ def _merge_front_matter_column_blocks(
         if block.get("type") == "text"
         and isinstance(block.get("bbox"), (list, tuple))
         and title_bottom < block["bbox"][1]
-        and block["bbox"][3] <= min(
+        and block["bbox"][3]
+        <= min(
             0.4 * page_height,
             title_bottom + 0.22 * page_height,
         )
@@ -1979,10 +1745,7 @@ def _merge_front_matter_column_blocks(
     ]
     if len(candidates) < 9:
         return blocks
-    median_height = statistics.median(
-        blocks[index]["bbox"][3] - blocks[index]["bbox"][1]
-        for index in candidates
-    )
+    median_height = statistics.median(blocks[index]["bbox"][3] - blocks[index]["bbox"][1] for index in candidates)
     row_groups: list[list[int]] = []
     for index in sorted(
         candidates,
@@ -1996,13 +1759,7 @@ def _merge_front_matter_column_blocks(
             (
                 row
                 for row in row_groups
-                if abs(
-                    center_y
-                    - statistics.median(
-                        _bbox_center_y(blocks[member]["bbox"])
-                        for member in row
-                    )
-                )
+                if abs(center_y - statistics.median(_bbox_center_y(blocks[member]["bbox"]) for member in row))
                 <= 0.6 * median_height
             ),
             None,
@@ -2016,9 +1773,7 @@ def _merge_front_matter_column_blocks(
         for row in row_groups
         if 3 <= len(row) <= 6
         and (
-            max(blocks[index]["bbox"][2] for index in row)
-            - min(blocks[index]["bbox"][0] for index in row)
-            >= 0.55 * page_width
+            max(blocks[index]["bbox"][2] for index in row) - min(blocks[index]["bbox"][0] for index in row) >= 0.55 * page_width
         )
     ]
     if len(dense_rows) < 2:
@@ -2027,33 +1782,16 @@ def _merge_front_matter_column_blocks(
         dense_rows,
         key=lambda row: (
             -len(row),
-            statistics.median(
-                _bbox_center_y(blocks[index]["bbox"])
-                for index in row
-            ),
+            statistics.median(_bbox_center_y(blocks[index]["bbox"]) for index in row),
         ),
     )
-    anchor_centers = sorted(
-        _bbox_center_x(blocks[index]["bbox"])
-        for index in anchor_row
-    )
+    anchor_centers = sorted(_bbox_center_x(blocks[index]["bbox"]) for index in anchor_row)
     if len(anchor_centers) != 4:
         return blocks
-    boundaries = [
-        0.5 * (left + right)
-        for left, right in zip(anchor_centers, anchor_centers[1:])
-    ]
-    band_top = min(
-        min(blocks[index]["bbox"][1] for index in row)
-        for row in dense_rows
-    ) - median_height
-    band_bottom = max(
-        max(blocks[index]["bbox"][3] for index in row)
-        for row in dense_rows
-    ) + median_height
-    column_groups: list[list[int]] = [
-        [] for _center in anchor_centers
-    ]
+    boundaries = [0.5 * (left + right) for left, right in zip(anchor_centers, anchor_centers[1:])]
+    band_top = min(min(blocks[index]["bbox"][1] for index in row) for row in dense_rows) - median_height
+    band_bottom = max(max(blocks[index]["bbox"][3] for index in row) for row in dense_rows) + median_height
+    column_groups: list[list[int]] = [[] for _center in anchor_centers]
     for index in candidates:
         bbox = blocks[index]["bbox"]
         if not band_top <= _bbox_center_y(bbox) <= band_bottom:
@@ -2081,11 +1819,7 @@ def _merge_front_matter_column_blocks(
             ordered,
         )
         consumed.update(ordered[1:])
-    return [
-        replacements.get(index, block)
-        for index, block in enumerate(blocks)
-        if index not in consumed
-    ]
+    return [replacements.get(index, block) for index, block in enumerate(blocks) if index not in consumed]
 
 
 def _merge_repeated_compact_title_continuations(
@@ -2111,15 +1845,10 @@ def _merge_repeated_compact_title_continuations(
         angle = int(title.get("angle", 0) or 0) % 360
         local_page_width = page_size[1] if angle in {90, 270} else page_size[0]
         line_heights = [
-            float(height)
-            for height in title.get("_line_heights", [])
-            if isinstance(height, (int, float)) and height > 0
+            float(height) for height in title.get("_line_heights", []) if isinstance(height, (int, float)) and height > 0
         ]
         title_height = statistics.median(line_heights) if line_heights else 0.0
-        if (
-            title_height <= 0
-            or title_bbox[2] - title_bbox[0] > 0.55 * local_page_width
-        ):
+        if title_height <= 0 or title_bbox[2] - title_bbox[0] > 0.55 * local_page_width:
             continue
 
         continuations: list[tuple[float, int]] = []
@@ -2137,10 +1866,7 @@ def _merge_repeated_compact_title_continuations(
             ):
                 continue
             gap = text_bbox[1] - title_bbox[3]
-            if (
-                -0.25 * title_height <= gap <= 0.6 * title_height
-                and abs(text_bbox[0] - title_bbox[0]) <= 0.75 * title_height
-            ):
+            if -0.25 * title_height <= gap <= 0.6 * title_height and abs(text_bbox[0] - title_bbox[0]) <= 0.75 * title_height:
                 continuations.append((max(0.0, gap), text_index))
         if continuations:
             _gap, text_index = min(continuations)
@@ -2150,8 +1876,7 @@ def _merge_repeated_compact_title_continuations(
     for title_index, text_index, title_height in candidate_pairs:
         title_bbox = blocks[title_index]["bbox"]
         support_count = sum(
-            abs(blocks[other_title]["bbox"][0] - title_bbox[0])
-            <= max(title_height, other_height)
+            abs(blocks[other_title]["bbox"][0] - title_bbox[0]) <= max(title_height, other_height)
             and 0.75 <= other_height / title_height <= 1.25
             for other_title, _other_text, other_height in candidate_pairs
         )
@@ -2173,9 +1898,7 @@ def _merge_repeated_compact_title_continuations(
         replacements[min(title_index, text_index)] = merged
         consumed.update({title_index, text_index})
     return [
-        replacements.get(index, block)
-        for index, block in enumerate(blocks)
-        if index not in consumed or index in replacements
+        replacements.get(index, block) for index, block in enumerate(blocks) if index not in consumed or index in replacements
     ]
 
 
@@ -2204,23 +1927,11 @@ def _merge_internal_text_block_group(
         else _merge_text_line_content(contents)
     )
     merged["_visual_row_ids"] = set().union(
-        *[
-            row_ids
-            for index in ordered_indices
-            if isinstance((row_ids := blocks[index].get("_visual_row_ids")), set)
-        ]
+        *[row_ids for index in ordered_indices if isinstance((row_ids := blocks[index].get("_visual_row_ids")), set)]
     )
     merged["_single_run_row_id"] = None
-    merged["_local_line_bboxes"] = [
-        bbox
-        for index in ordered_indices
-        for bbox in blocks[index].get("_local_line_bboxes", [])
-    ]
-    merged["_line_heights"] = [
-        height
-        for index in ordered_indices
-        for height in blocks[index].get("_line_heights", [])
-    ]
+    merged["_local_line_bboxes"] = [bbox for index in ordered_indices for bbox in blocks[index].get("_local_line_bboxes", [])]
+    merged["_line_heights"] = [height for index in ordered_indices for height in blocks[index].get("_line_heights", [])]
     merged["_font_signatures"] = set().union(
         *[
             signatures
@@ -2231,6 +1942,9 @@ def _merge_internal_text_block_group(
             )
         ]
     )
+    merged["_inline_math_regions"] = [
+        region for index in ordered_indices for region in blocks[index].get("_inline_math_regions", [])
+    ]
     return merged
 
 
@@ -2351,9 +2065,7 @@ def _merge_spatial_text_components(
         )
         merged = dict(blocks[ordered_indices[0]])
         merged["bbox"] = _bbox_union_many([blocks[index]["bbox"] for index in ordered_indices])
-        merged["content"] = _merge_text_line_content(
-            [str(blocks[index].get("content", "")) for index in ordered_indices]
-        )
+        merged["content"] = _merge_text_line_content([str(blocks[index].get("content", "")) for index in ordered_indices])
         merged["_visual_row_ids"] = set().union(
             *[
                 block_ids
@@ -2366,15 +2078,9 @@ def _merge_spatial_text_components(
         )
         merged["_single_run_row_id"] = None
         merged["_local_line_bboxes"] = [
-            bbox
-            for index in ordered_indices
-            for bbox in blocks[index].get("_local_line_bboxes", [])
+            bbox for index in ordered_indices for bbox in blocks[index].get("_local_line_bboxes", [])
         ]
-        merged["_line_heights"] = [
-            height
-            for index in ordered_indices
-            for height in blocks[index].get("_line_heights", [])
-        ]
+        merged["_line_heights"] = [height for index in ordered_indices for height in blocks[index].get("_line_heights", [])]
         merged["_font_signatures"] = set().union(
             *[
                 signatures
@@ -2385,6 +2091,9 @@ def _merge_spatial_text_components(
                 )
             ]
         )
+        merged["_inline_math_regions"] = [
+            region for index in ordered_indices for region in blocks[index].get("_inline_math_regions", [])
+        ]
         output.append(merged)
     return output
 
@@ -2430,10 +2139,7 @@ def _compatible_component_lane_width(
     if first_interval is None or second_interval is None:
         return local_page_width
     tolerance = 0.75 * median_height
-    if (
-        abs(first_interval[0] - second_interval[0]) > tolerance
-        or abs(first_interval[1] - second_interval[1]) > tolerance
-    ):
+    if abs(first_interval[0] - second_interval[0]) > tolerance or abs(first_interval[1] - second_interval[1]) > tolerance:
         return local_page_width
     return min(
         first_interval[1] - first_interval[0],
@@ -2481,10 +2187,7 @@ def _block_starts_with_short_wide_rows(
     first_width = first_bbox[2] - first_bbox[0]
     second_width = second_bbox[2] - second_bbox[0]
     reference_width = _component_reference_width(block, local_page_width)
-    return (
-        first_width <= 0.35 * reference_width
-        and second_width >= max(0.25 * reference_width, 1.8 * first_width)
-    )
+    return first_width <= 0.35 * reference_width and second_width >= max(0.25 * reference_width, 1.8 * first_width)
 
 
 def _find_short_opener_pairs(
@@ -2594,13 +2297,9 @@ def _has_parallel_text_component(
         candidate_bbox = blocks[candidate_index]["bbox"]
         vertical_overlap = max(
             0.0,
-            min(current_bbox[3], candidate_bbox[3])
-            - max(current_bbox[1], candidate_bbox[1]),
+            min(current_bbox[3], candidate_bbox[3]) - max(current_bbox[1], candidate_bbox[1]),
         )
-        horizontally_separate = (
-            candidate_bbox[0] >= current_bbox[2]
-            or current_bbox[0] >= candidate_bbox[2]
-        )
+        horizontally_separate = candidate_bbox[0] >= current_bbox[2] or current_bbox[0] >= candidate_bbox[2]
         if vertical_overlap > 0 and horizontally_separate:
             return True
     return False
@@ -2678,11 +2377,7 @@ def _component_connection_skips_block(
             continue
         other_bbox = local_bboxes[0]
         other_center = _bbox_center_y(other_bbox)
-        if not (
-            corridor_top + 0.1 * median_height
-            < other_center
-            < corridor_bottom - 0.1 * median_height
-        ):
+        if not (corridor_top + 0.1 * median_height < other_center < corridor_bottom - 0.1 * median_height):
             continue
         if _bbox_axis_overlap_ratio(corridor_bbox, other_bbox, axis="x") >= 0.2:
             return True

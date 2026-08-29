@@ -93,10 +93,7 @@ def test_small_oblique_span_stays_inside_standard_direction_line() -> None:
 def test_sheared_horizontal_line_uses_char_baseline_and_splits_far_sidecar() -> None:
     """验证仿斜体粗行可由水平字符基线恢复，并继续拆开远端页码。"""
 
-    chars = [
-        _char(value, (10.0 + index * 5.0, 80.0, 14.0 + index * 5.0, 88.0))
-        for index, value in enumerate("NOTICE")
-    ]
+    chars = [_char(value, (10.0 + index * 5.0, 80.0, 14.0 + index * 5.0, 88.0)) for index, value in enumerate("NOTICE")]
     chars.append(_char("2", (90.0, 80.2, 94.0, 88.2)))
     pdf_line = _line(
         [
@@ -138,6 +135,49 @@ def test_true_diagonal_char_baseline_is_not_recovered_as_horizontal() -> None:
         ],
         315.0,
         bbox=(10.0, 22.0, 78.0, 78.0),
+    )
+
+    assert native_text._build_native_line_items([pdf_line], (100.0, 100.0)) == []
+
+
+def test_small_shear_formula_line_is_retained_as_formula_only() -> None:
+    """验证带数学运算符的小角度多基线粗行只进入 formula-only 流。"""
+    chars = [
+        _char("x", (10.0, 20.0, 15.0, 28.0)),
+        _char("=", (18.0, 24.0, 24.0, 30.0)),
+    ]
+    pdf_line = _line(
+        [_span("x=", (10.0, 20.0, 24.0, 30.0), 10.0, chars=chars)],
+        10.0,
+        bbox=(10.0, 20.0, 24.0, 30.0),
+    )
+
+    items = native_text._build_native_line_items([pdf_line], (100.0, 100.0))
+
+    assert [(item.text, item.angle, item.formula_candidate_only) for item in items] == [("x=", 0, True)]
+
+
+def test_formula_only_rows_do_not_shift_existing_source_indices() -> None:
+    """验证新增公式候选使用尾部 source index，不改变既有自然文本身份。"""
+    first = _line([_span("first", (10.0, 10.0, 35.0, 18.0), 0.0)], 0.0)
+    formula = _line([_span("x=", (10.0, 20.0, 24.0, 30.0), 10.0)], 10.0)
+    second = _line([_span("second", (10.0, 32.0, 40.0, 40.0), 0.0)], 0.0)
+
+    items = native_text._build_native_line_items([first, formula, second], (100.0, 100.0))
+
+    assert {item.text: item.source_index for item in items} == {"first": 0, "second": 1, "x=": 2}
+
+
+def test_small_true_diagonal_without_formula_evidence_stays_rejected() -> None:
+    """验证缺少公式证据的短斜向文字不会借 formula-only 流回到正文。"""
+    chars = [
+        _char(value, (10.0 + index * 5.0, 30.0 - index * 2.0, 14.0 + index * 5.0, 38.0 - index * 2.0))
+        for index, value in enumerate("mark")
+    ]
+    pdf_line = _line(
+        [_span("mark", (10.0, 24.0, 29.0, 38.0), 10.0, chars=chars)],
+        10.0,
+        bbox=(10.0, 24.0, 29.0, 38.0),
     )
 
     assert native_text._build_native_line_items([pdf_line], (100.0, 100.0)) == []
@@ -193,9 +233,7 @@ def test_native_line_builder_can_opt_in_to_180_degree_visual_runs() -> None:
     )
 
     assert default_items == []
-    assert [(item.text, item.angle) for item in low_txt_items] == [
-        ("upside down", 180)
-    ]
+    assert [(item.text, item.angle) for item in low_txt_items] == [("upside down", 180)]
 
 
 @pytest.mark.parametrize(
@@ -222,10 +260,13 @@ def test_native_line_builder_can_opt_in_to_180_degree_visual_runs() -> None:
 def test_pdf_unicode_separator_spaces_are_normalized_to_ascii(separator: str) -> None:
     """验证所有 Unicode Zs 排版空格均转换为普通 ASCII 空格。"""
 
-    assert native_text._sanitize_pdf_control_text(
-        f"left{separator}right",
-        preserve_newlines=True,
-    ) == "left right"
+    assert (
+        native_text._sanitize_pdf_control_text(
+            f"left{separator}right",
+            preserve_newlines=True,
+        )
+        == "left right"
+    )
 
 
 def test_pdf_unicode_line_separators_follow_newline_policy() -> None:
@@ -233,14 +274,20 @@ def test_pdf_unicode_line_separators_follow_newline_policy() -> None:
 
     content = "first\u0085second\u2028third\u2029fourth"
 
-    assert native_text._sanitize_pdf_control_text(
-        content,
-        preserve_newlines=True,
-    ) == "first\nsecond\nthird\nfourth"
-    assert native_text._sanitize_pdf_control_text(
-        content,
-        preserve_newlines=False,
-    ) == "firstsecondthirdfourth"
+    assert (
+        native_text._sanitize_pdf_control_text(
+            content,
+            preserve_newlines=True,
+        )
+        == "first\nsecond\nthird\nfourth"
+    )
+    assert (
+        native_text._sanitize_pdf_control_text(
+            content,
+            preserve_newlines=False,
+        )
+        == "firstsecondthirdfourth"
+    )
 
 
 def test_pdf_safe_invisible_and_control_characters_are_removed_idempotently() -> None:
@@ -253,10 +300,13 @@ def test_pdf_safe_invisible_and_control_characters_are_removed_idempotently() ->
     )
 
     assert normalized == "ABCDEFGHI"
-    assert native_text._sanitize_pdf_control_text(
-        normalized,
-        preserve_newlines=True,
-    ) == normalized
+    assert (
+        native_text._sanitize_pdf_control_text(
+            normalized,
+            preserve_newlines=True,
+        )
+        == normalized
+    )
 
 
 def test_pdf_soft_hyphens_keep_only_latin_line_end_breaks() -> None:
@@ -273,7 +323,10 @@ def test_pdf_semantic_joiners_and_decode_markers_are_preserved() -> None:
 
     content = "a\u200cb\u200dc\uf8f1d\ufffde"
 
-    assert native_text._sanitize_pdf_control_text(
-        content,
-        preserve_newlines=True,
-    ) == content
+    assert (
+        native_text._sanitize_pdf_control_text(
+            content,
+            preserve_newlines=True,
+        )
+        == content
+    )

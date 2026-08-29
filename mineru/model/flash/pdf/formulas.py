@@ -44,9 +44,7 @@ from .line_layout import (
 from .line_merging import _join_formula_visual_row
 
 
-_FORMULA_NUMBER_SUFFIX_RE = re.compile(
-    r"^(?P<prefix>.*?)(?P<marker>[(（﹙][^()（）﹙﹚\r\n]+[)）﹚])\s*$"
-)
+_FORMULA_NUMBER_SUFFIX_RE = re.compile(r"^(?P<prefix>.*?)(?P<marker>[(（﹙][^()（）﹙﹚\r\n]+[)）﹚])\s*$")
 
 
 _FORMULA_PAGE_MARGIN_RATIO = 0.05
@@ -84,11 +82,7 @@ def _build_vector_formula_blocks(
 ) -> tuple[list[dict[str, Any]], set[int]]:
     """从根层填充 Path 构建空内容公式，并唯一认领可提取的公式编号。"""
 
-    available_lines = [
-        line
-        for line in source.lines
-        if line.angle == 0 and line.source_index not in claimed_line_indices
-    ]
+    available_lines = [line for line in source.lines if line.angle == 0 and line.source_index not in claimed_line_indices]
     if len(available_lines) < 3 or not source.path_infos:
         return [], set()
 
@@ -110,11 +104,7 @@ def _build_vector_formula_blocks(
         lanes,
         median_height,
     )
-    container_bboxes = [
-        bbox
-        for block in container_blocks
-        if (bbox := _coerce_bbox(block.get("bbox"))) is not None
-    ]
+    container_bboxes = [bbox for block in container_blocks if (bbox := _coerce_bbox(block.get("bbox"))) is not None]
     candidates = [
         _VectorFormulaCandidate(
             lane_index=component.lane_index,
@@ -176,11 +166,7 @@ def _build_vector_path_components(
 
     members_by_lane: dict[int, list[PDFPathInfo]] = {}
     for path_info in path_infos:
-        if (
-            path_info.form_depth != 0
-            or not path_info.fill_visible
-            or path_info.stroke_visible
-        ):
+        if path_info.form_depth != 0 or not path_info.fill_visible or path_info.stroke_visible:
             continue
         lane_index = _assign_vector_path_lane(path_info.bbox, lanes, median_height)
         if lane_index is None:
@@ -317,10 +303,7 @@ def _is_vector_formula_core(
     """按复杂度、尺寸、正文碰撞和容器优先级校验公式主体组件。"""
 
     path_count = len(component.path_infos)
-    complex_count = sum(
-        item.segment_count >= _VECTOR_FORMULA_COMPLEX_SEGMENTS
-        for item in component.path_infos
-    )
+    complex_count = sum(item.segment_count >= _VECTOR_FORMULA_COMPLEX_SEGMENTS for item in component.path_infos)
     if (
         path_count < _VECTOR_FORMULA_MIN_PATHS
         or complex_count < _VECTOR_FORMULA_MIN_COMPLEX_PATHS
@@ -331,23 +314,13 @@ def _is_vector_formula_core(
     bbox = component.bbox
     width = bbox[2] - bbox[0]
     height = bbox[3] - bbox[1]
-    if not (
-        width >= 2.5 * median_height
-        and 0.9 * median_height <= height <= 8.0 * median_height
-        and width >= 1.4 * height
-    ):
+    if not (width >= 2.5 * median_height and 0.9 * median_height <= height <= 8.0 * median_height and width >= 1.4 * height):
         return False
     if _is_formula_component_in_page_margin(bbox, page_size[1]):
         return False
-    if any(
-        _bbox_overlap_in_smaller(bbox, container_bbox) >= 0.5
-        for container_bbox in container_bboxes
-    ):
+    if any(_bbox_overlap_in_smaller(bbox, container_bbox) >= 0.5 for container_bbox in container_bboxes):
         return False
-    return not any(
-        _vector_formula_collides_with_text(bbox, line, line_bbox, median_height)
-        for line, line_bbox in lane.lines
-    )
+    return not any(_vector_formula_collides_with_text(bbox, line, line_bbox, median_height) for line, line_bbox in lane.lines)
 
 
 def _is_formula_component_in_page_margin(bbox: BBox, page_height: float) -> bool:
@@ -374,10 +347,7 @@ def _vector_formula_collides_with_text(
         line_bbox[0] - formula_bbox[2],
         0.0,
     )
-    return (
-        _bbox_axis_overlap_ratio(formula_bbox, line_bbox, axis="y") >= 0.5
-        and horizontal_gap <= median_height
-    )
+    return _bbox_axis_overlap_ratio(formula_bbox, line_bbox, axis="y") >= 0.5 and horizontal_gap <= median_height
 
 
 def _attach_vector_formula_rules(
@@ -387,16 +357,11 @@ def _attach_vector_formula_rules(
 ) -> None:
     """把靠近公式主体且横向覆盖充分的孤立细横线唯一并入主体。"""
 
-    used_sources = {
-        source_index
-        for candidate in candidates
-        for source_index in candidate.path_source_indices
-    }
+    used_sources = {source_index for candidate in candidates for source_index in candidate.path_source_indices}
     for component in components:
         component_sources = {item.source_index for item in component.path_infos}
         if component_sources & used_sources or not all(
-            item.bbox[3] - item.bbox[1] <= 0.2 * median_height
-            for item in component.path_infos
+            item.bbox[3] - item.bbox[1] <= 0.2 * median_height for item in component.path_infos
         ):
             continue
         matches = [
@@ -426,11 +391,7 @@ def _attach_vector_formula_path_numbers(
 ) -> None:
     """把栏右缘的小型复杂 Path 组件作为公式编号并入唯一主体。"""
 
-    used_sources = {
-        source_index
-        for candidate in candidates
-        for source_index in candidate.path_source_indices
-    }
+    used_sources = {source_index for candidate in candidates for source_index in candidate.path_source_indices}
     for component in components:
         component_sources = {item.source_index for item in component.path_infos}
         if component_sources & used_sources or not _is_vector_formula_number_component(
@@ -466,13 +427,8 @@ def _is_vector_formula_number_component(
     width = bbox[2] - bbox[0]
     height = bbox[3] - bbox[1]
     return (
-        _VECTOR_FORMULA_NUMBER_MIN_PATHS
-        <= path_count
-        <= _VECTOR_FORMULA_NUMBER_MAX_PATHS
-        and all(
-            item.segment_count >= _VECTOR_FORMULA_COMPLEX_SEGMENTS
-            for item in component.path_infos
-        )
+        _VECTOR_FORMULA_NUMBER_MIN_PATHS <= path_count <= _VECTOR_FORMULA_NUMBER_MAX_PATHS
+        and all(item.segment_count >= _VECTOR_FORMULA_COMPLEX_SEGMENTS for item in component.path_infos)
         and 0.5 * median_height <= width <= 2.0 * median_height
         and 0.6 * median_height <= height <= 1.4 * median_height
         and abs(lane.right - bbox[2]) <= 1.5 * median_height
@@ -492,16 +448,11 @@ def _vector_formula_number_matches(
         if candidate.has_number or candidate.lane_index != lane_index:
             continue
         vertical_overlap = _bbox_axis_overlap_ratio(candidate.bbox, number_bbox, axis="y")
-        if (
-            number_bbox[0] < candidate.bbox[2]
-            or vertical_overlap < 0.6
-        ):
+        if number_bbox[0] < candidate.bbox[2] or vertical_overlap < 0.6:
             continue
         center_distance = abs(_bbox_center_y(candidate.bbox) - _bbox_center_y(number_bbox))
         horizontal_gap = max(0.0, number_bbox[0] - candidate.bbox[2])
-        matches.append(
-            (-vertical_overlap, center_distance, horizontal_gap / max(0.1, median_height), candidate_index)
-        )
+        matches.append((-vertical_overlap, center_distance, horizontal_gap / max(0.1, median_height), candidate_index))
     return matches
 
 
@@ -567,8 +518,7 @@ def _build_formula_like_blocks(
         angle_geometry = [
             (line, _rotate_bbox_to_upright(line.bbox, page_size, angle))
             for line in lines
-            if line.angle == angle
-            and line.source_index not in claimed_source_indices
+            if line.angle == angle and line.source_index not in claimed_source_indices
         ]
         if len(angle_geometry) < 2:
             continue
@@ -607,9 +557,9 @@ def _build_formula_like_blocks(
                         dominant_body_font,
                     )
                 ) and not _is_formula_component_in_page_margin(
-                        bbox,
-                        local_page_height,
-                    ):
+                    bbox,
+                    local_page_height,
+                ):
                     content = _sanitize_pdf_control_text(
                         line.text,
                         preserve_newlines=False,
@@ -625,11 +575,7 @@ def _build_formula_like_blocks(
                         }
                     )
                     claimed_source_indices.add(line.source_index)
-            lane.lines = [
-                item
-                for item in lane.lines
-                if item[0].source_index not in claimed_source_indices
-            ]
+            lane.lines = [item for item in lane.lines if item[0].source_index not in claimed_source_indices]
             if len(lane.lines) < 2:
                 continue
             anchors = _find_formula_spatial_anchors(
@@ -670,15 +616,17 @@ def _build_formula_like_blocks(
                 )
                 if len(members) < 2:
                     continue
-                if len(members) == 2 and _bbox_axis_overlap_ratio(
-                    members[0][1],
-                    members[1][1],
-                    axis="y",
-                ) < 0.2:
+                if (
+                    len(members) == 2
+                    and _bbox_axis_overlap_ratio(
+                        members[0][1],
+                        members[1][1],
+                        axis="y",
+                    )
+                    < 0.2
+                ):
                     continue
-                component_bbox = _bbox_union_many(
-                    [member_bbox for _member_line, member_bbox in members]
-                )
+                component_bbox = _bbox_union_many([member_bbox for _member_line, member_bbox in members])
                 if _is_formula_component_in_page_margin(
                     component_bbox,
                     local_page_height,
@@ -695,7 +643,9 @@ def _build_formula_like_blocks(
                 blocks.append(block)
                 claimed_source_indices.update(line.source_index for line, _bbox in members)
 
-    remaining_lines = [line for line in lines if line.source_index not in claimed_source_indices]
+    remaining_lines = [
+        line for line in lines if line.source_index not in claimed_source_indices and not line.formula_candidate_only
+    ]
     return blocks, remaining_lines
 
 
@@ -717,19 +667,11 @@ def _build_split_visual_row_formula_blocks(
     for (angle, _row_id), members in row_groups.items():
         if len(members) < 3:
             continue
-        markers = [
-            member
-            for member in members
-            if _standalone_formula_number_marker(member.text) is not None
-        ]
+        markers = [member for member in members if _standalone_formula_number_marker(member.text) is not None]
         if len(markers) != 1:
             continue
         marker = markers[0]
-        if any(
-            _bbox_intersects(member.bbox, table_bbox)
-            for member in members
-            for table_bbox in table_bboxes
-        ):
+        if any(_bbox_intersects(member.bbox, table_bbox) for member in members for table_bbox in table_bboxes):
             continue
         local_members = [
             (
@@ -742,52 +684,21 @@ def _build_split_visual_row_formula_blocks(
             )
             for member in members
         ]
-        marker_bbox = next(
-            bbox
-            for member, bbox in local_members
-            if member is marker
-        )
-        body_members = [
-            (member, bbox)
-            for member, bbox in local_members
-            if member is not marker
-        ]
-        if not body_members or marker_bbox[0] <= max(
-            _bbox_center_x(bbox)
-            for _member, bbox in body_members
-        ):
+        marker_bbox = next(bbox for member, bbox in local_members if member is marker)
+        body_members = [(member, bbox) for member, bbox in local_members if member is not marker]
+        if not body_members or marker_bbox[0] <= max(_bbox_center_x(bbox) for _member, bbox in body_members):
             continue
-        median_height = statistics.median(
-            _line_effective_height(member, bbox)
-            for member, bbox in local_members
-        )
-        row_center = statistics.median(
-            _bbox_center_y(bbox)
-            for _member, bbox in local_members
-        )
-        if any(
-            abs(_bbox_center_y(bbox) - row_center) > 0.75 * median_height
-            for _member, bbox in local_members
-        ):
+        median_height = statistics.median(_line_effective_height(member, bbox) for member, bbox in local_members)
+        row_center = statistics.median(_bbox_center_y(bbox) for _member, bbox in local_members)
+        if any(abs(_bbox_center_y(bbox) - row_center) > 0.75 * median_height for _member, bbox in local_members):
             continue
-        body_fonts = {
-            member.font_signature
-            for member, _bbox in body_members
-            if member.font_signature is not None
-        }
-        has_math_typography = (
-            len(body_fonts) >= 2
-            or any(
-                member.compact_formula_cluster
-                or member.font_coverage < 0.8
-                for member, _bbox in body_members
-            )
+        body_fonts = {member.font_signature for member, _bbox in body_members if member.font_signature is not None}
+        has_math_typography = len(body_fonts) >= 2 or any(
+            member.compact_formula_cluster or member.font_coverage < 0.8 for member, _bbox in body_members
         )
         if not has_math_typography:
             continue
-        body_bbox = _bbox_union_many(
-            [bbox for _member, bbox in body_members]
-        )
+        body_bbox = _bbox_union_many([bbox for _member, bbox in body_members])
         body_width = max(0.1, body_bbox[2] - body_bbox[0])
         # 同行成员可能只是分式尾部；窄尾部不能压低外部公式片段的宽度容差，
         # 否则会提前认领分母、右括号和编号，使左侧公式主体落回普通文本。
@@ -807,16 +718,14 @@ def _build_split_visual_row_formula_blocks(
             )
             vertical_gap = max(
                 0.0,
-                max(other_bbox[1], body_bbox[1])
-                - min(other_bbox[3], body_bbox[3]),
+                max(other_bbox[1], body_bbox[1]) - min(other_bbox[3], body_bbox[3]),
             )
             if (
                 vertical_gap <= 0.75 * median_height
                 and other_bbox[2] - other_bbox[0] <= nearby_fragment_width_limit
                 and max(
                     0.0,
-                    max(other_bbox[0], body_bbox[0])
-                    - min(other_bbox[2], body_bbox[2]),
+                    max(other_bbox[0], body_bbox[0]) - min(other_bbox[2], body_bbox[2]),
                 )
                 <= median_height
             ):
@@ -832,14 +741,8 @@ def _build_split_visual_row_formula_blocks(
         )
         if block is None:
             continue
-        local_bbox = _bbox_union_many(
-            [bbox for _member, bbox in local_members]
-        )
-        local_page_height = (
-            page_size[0]
-            if angle in {90, 270}
-            else page_size[1]
-        )
+        local_bbox = _bbox_union_many([bbox for _member, bbox in local_members])
+        local_page_height = page_size[0] if angle in {90, 270} else page_size[1]
         if _is_formula_component_in_page_margin(
             local_bbox,
             local_page_height,
@@ -865,16 +768,11 @@ def _is_isolated_compact_formula_cluster(
         return False
     if bbox[3] - bbox[1] > 3.0 * median_height:
         return False
-    center_delta_ratio = abs(
-        _bbox_center_x(bbox) - 0.5 * (lane.left + lane.right)
-    ) / lane_width
+    center_delta_ratio = abs(_bbox_center_x(bbox) - 0.5 * (lane.left + lane.right)) / lane_width
     left_indent_ratio = (bbox[0] - lane.left) / lane_width
     right_blank_ratio = (lane.right - bbox[2]) / lane_width
     # 部分期刊把独立公式按固定左缩进排版；同时要求右侧大留白，排除贴栏正文。
-    deliberately_left_indented = (
-        0.03 <= left_indent_ratio <= 0.25
-        and right_blank_ratio >= 0.35
-    )
+    deliberately_left_indented = 0.03 <= left_indent_ratio <= 0.25 and right_blank_ratio >= 0.35
     if center_delta_ratio > 0.2 and not deliberately_left_indented:
         return False
 
@@ -884,28 +782,17 @@ def _is_isolated_compact_formula_cluster(
         for item in lane.lines
         if item[0].source_index != line.source_index
         and item[1][2] - item[1][0] >= 0.45 * lane_width
-        and 0.8 * median_height
-        <= _line_effective_height(*item)
-        <= 1.25 * median_height
+        and 0.8 * median_height <= _line_effective_height(*item) <= 1.25 * median_height
     ]
-    rows_above = [
-        item
-        for item in body_rows
-        if _bbox_center_y(item[1]) < candidate_center
-    ]
-    rows_below = [
-        item
-        for item in body_rows
-        if _bbox_center_y(item[1]) > candidate_center
-    ]
+    rows_above = [item for item in body_rows if _bbox_center_y(item[1]) < candidate_center]
+    rows_below = [item for item in body_rows if _bbox_center_y(item[1]) > candidate_center]
     if not rows_above or not rows_below:
         return False
     previous = max(rows_above, key=lambda item: _bbox_center_y(item[1]))
     following = min(rows_below, key=lambda item: _bbox_center_y(item[1]))
     return (
         candidate_center - _bbox_center_y(previous[1]) <= 8.0 * median_height
-        and _bbox_center_y(following[1]) - candidate_center
-        <= 8.0 * median_height
+        and _bbox_center_y(following[1]) - candidate_center <= 8.0 * median_height
     )
 
 
@@ -921,8 +808,7 @@ def _compact_cluster_has_nearby_number_anchor(
         other_line.source_index != line.source_index
         and _standalone_formula_number_marker(other_line.text) is not None
         and other_bbox[0] > _bbox_center_x(bbox)
-        and abs(_bbox_center_y(other_bbox) - _bbox_center_y(bbox))
-        <= 2.5 * median_height
+        and abs(_bbox_center_y(other_bbox) - _bbox_center_y(bbox)) <= 2.5 * median_height
         for other_line, other_bbox in lane.lines
     )
 
@@ -948,10 +834,7 @@ def _is_isolated_unnumbered_formula_line(
     line_width = bbox[2] - bbox[0]
     if not 0.15 * lane_width <= line_width <= 0.8 * lane_width:
         return False
-    if (
-        abs(_bbox_center_x(bbox) - 0.5 * (lane.left + lane.right))
-        > 0.08 * lane_width
-    ):
+    if abs(_bbox_center_x(bbox) - 0.5 * (lane.left + lane.right)) > 0.08 * lane_width:
         return False
     if bbox[3] - bbox[1] > 1.8 * median_height:
         return False
@@ -961,8 +844,7 @@ def _is_isolated_unnumbered_formula_line(
     if any(
         other_line.source_index != line.source_index
         and _standalone_formula_number_marker(other_line.text) is not None
-        and abs(_bbox_center_y(other_bbox) - candidate_center)
-        <= 4.0 * median_height
+        and abs(_bbox_center_y(other_bbox) - candidate_center) <= 4.0 * median_height
         for other_line, other_bbox in lane.lines
     ) or _has_nearby_punctuated_formula_number_anchor(
         candidate,
@@ -977,28 +859,17 @@ def _is_isolated_unnumbered_formula_line(
         and item[0].font_signature == dominant_body_font
         and item[0].font_coverage >= 0.75
         and item[1][2] - item[1][0] >= 0.45 * lane_width
-        and 0.8 * median_height
-        <= _line_effective_height(*item)
-        <= 1.25 * median_height
+        and 0.8 * median_height <= _line_effective_height(*item) <= 1.25 * median_height
     ]
-    rows_above = [
-        item
-        for item in body_rows
-        if _bbox_center_y(item[1]) < candidate_center
-    ]
-    rows_below = [
-        item
-        for item in body_rows
-        if _bbox_center_y(item[1]) > candidate_center
-    ]
+    rows_above = [item for item in body_rows if _bbox_center_y(item[1]) < candidate_center]
+    rows_below = [item for item in body_rows if _bbox_center_y(item[1]) > candidate_center]
     if not rows_above or not rows_below:
         return False
     previous = max(rows_above, key=lambda item: _bbox_center_y(item[1]))
     following = min(rows_below, key=lambda item: _bbox_center_y(item[1]))
     return (
         candidate_center - _bbox_center_y(previous[1]) <= 4.0 * median_height
-        and _bbox_center_y(following[1]) - candidate_center
-        <= 4.0 * median_height
+        and _bbox_center_y(following[1]) - candidate_center <= 4.0 * median_height
     )
 
 
@@ -1014,16 +885,10 @@ def _is_hanging_indent_tail_line(
         return False
     candidate_center = _bbox_center_y(bbox)
     rows_above = [
-        item
-        for item in lane.lines
-        if item[0].source_index != line.source_index
-        and _bbox_center_y(item[1]) < candidate_center
+        item for item in lane.lines if item[0].source_index != line.source_index and _bbox_center_y(item[1]) < candidate_center
     ]
     rows_below = [
-        item
-        for item in lane.lines
-        if item[0].source_index != line.source_index
-        and _bbox_center_y(item[1]) > candidate_center
+        item for item in lane.lines if item[0].source_index != line.source_index and _bbox_center_y(item[1]) > candidate_center
     ]
     if not rows_above or not rows_below:
         return False
@@ -1063,11 +928,7 @@ def _has_nearby_punctuated_formula_number_anchor(
             continue
         prefix, _marker = parts
         compact_prefix = prefix.strip()
-        if (
-            not compact_prefix
-            or len(compact_prefix) > 3
-            or any(character.isalnum() for character in compact_prefix)
-        ):
+        if not compact_prefix or len(compact_prefix) > 3 or any(character.isalnum() for character in compact_prefix):
             continue
         vertical_gap = max(
             0.0,
@@ -1083,6 +944,61 @@ def _has_nearby_punctuated_formula_number_anchor(
     return False
 
 
+def _find_repeated_formula_number_anchors(
+    lane: _TextLane,
+    median_height: float,
+    body_interval: tuple[float, float] | None,
+) -> list[_FormulaAnchor]:
+    """用栏右缘重复编号恢复正文区间之外的行间公式锚点。"""
+    lane_width = max(0.1, lane.right - lane.left)
+    markers = [
+        (line, bbox)
+        for line, bbox in lane.lines
+        if (parts := _split_trailing_formula_number(line.text)) is not None
+        and not parts[0]
+        and abs(lane.right - bbox[2]) <= max(3.0, 0.02 * lane_width)
+    ]
+    output: list[_FormulaAnchor] = []
+    for line, bbox in markers:
+        if not any(
+            other_line.source_index != line.source_index
+            and abs(_bbox_center_y(other_bbox) - _bbox_center_y(bbox)) <= 6.0 * median_height
+            for other_line, other_bbox in markers
+        ):
+            continue
+        line_height = _line_effective_height(line, bbox)
+        left_peers = [
+            (other_line, other_bbox)
+            for other_line, other_bbox in lane.lines
+            if other_line.source_index != line.source_index
+            and _bbox_center_x(other_bbox) < bbox[0]
+            and _formula_detached_seed_vertical_match(
+                bbox,
+                line_height,
+                other_bbox,
+                _line_effective_height(other_line, other_bbox),
+            )
+        ]
+        if len(left_peers) < 2 or not any(
+            peer.formula_candidate_only or peer.compact_formula_cluster or peer.font_coverage < 0.75
+            for peer, _peer_bbox in left_peers
+        ):
+            continue
+        center_y = _bbox_center_y(bbox)
+        detached_above = body_interval is None or center_y < body_interval[0]
+        detached_below = body_interval is not None and center_y > body_interval[1]
+        output.append(
+            _FormulaAnchor(
+                line=line,
+                bbox=bbox,
+                detached_below_body=detached_below,
+                detached_above_body=detached_above,
+                repeated_number_band=True,
+            )
+        )
+    return output
+
+
 def _find_formula_spatial_anchors(
     lane: _TextLane,
     median_height: float,
@@ -1092,11 +1008,19 @@ def _find_formula_spatial_anchors(
 
     lane_width = max(0.1, lane.right - lane.left)
     body_interval = _formula_lane_body_interval(lane, median_height)
+    repeated_anchors = _find_repeated_formula_number_anchors(
+        lane,
+        median_height,
+        body_interval,
+    )
     if body_interval is None:
-        return []
+        return _deduplicate_formula_anchors(repeated_anchors, median_height)
     body_top, body_bottom = body_interval
-    anchors: list[_FormulaAnchor] = []
+    anchors: list[_FormulaAnchor] = list(repeated_anchors)
+    repeated_sources = {anchor.line.source_index for anchor in repeated_anchors}
     for line, bbox in lane.lines:
+        if line.source_index in repeated_sources:
+            continue
         line_height = _line_effective_height(line, bbox)
         line_width = bbox[2] - bbox[0]
         is_short_right_anchor = line_width <= max(4.0 * line_height, 0.12 * lane_width)
@@ -1105,10 +1029,7 @@ def _find_formula_spatial_anchors(
             has_formula_number_suffix
             and line_width <= 0.75 * lane_width
             and dominant_body_font is not None
-            and (
-                line.font_signature != dominant_body_font
-                or line.font_coverage < 0.75
-            )
+            and (line.font_signature != dominant_body_font or line.font_coverage < 0.75)
         )
         if not is_short_right_anchor and not is_wide_numbered_anchor:
             continue
@@ -1121,10 +1042,7 @@ def _find_formula_spatial_anchors(
         ]
         if len(same_row_fragments) >= 3 and not any(
             other_line.font_coverage < 0.75
-            or (
-                dominant_body_font is not None
-                and other_line.font_signature != dominant_body_font
-            )
+            or (dominant_body_font is not None and other_line.font_signature != dominant_body_font)
             for other_line in same_row_fragments
             if other_line.source_index != line.source_index
         ):
@@ -1142,11 +1060,7 @@ def _find_formula_spatial_anchors(
         center_y = _bbox_center_y(bbox)
         detached_below_body = body_bottom < center_y <= body_bottom + 6.0 * median_height
         detached_above_body = body_top - 6.0 * median_height <= center_y < body_top
-        if (
-            not body_top <= center_y <= body_bottom
-            and not detached_below_body
-            and not detached_above_body
-        ):
+        if not body_top <= center_y <= body_bottom and not detached_below_body and not detached_above_body:
             continue
         left_peers = [
             (other_line, other_bbox)
@@ -1172,16 +1086,10 @@ def _find_formula_spatial_anchors(
         ]
         if is_short_right_anchor and not has_formula_number_suffix:
             # 非编号短锚点必须与左侧主体真正分离；分母字符与正文横向重叠时不能扩张成公式。
-            if any(
-                _bbox_axis_overlap_ratio(bbox, other_bbox, axis="x") >= 0.5
-                for _other_line, other_bbox in left_peers
-            ):
+            if any(_bbox_axis_overlap_ratio(bbox, other_bbox, axis="x") >= 0.5 for _other_line, other_bbox in left_peers):
                 continue
             minimum_gap = max(0.5, 0.1 * line_height)
-            if not any(
-                bbox[0] - other_bbox[2] >= minimum_gap
-                for _other_line, other_bbox in left_peers
-            ):
+            if not any(bbox[0] - other_bbox[2] >= minimum_gap for _other_line, other_bbox in left_peers):
                 continue
         if left_peers:
             anchors.append(
@@ -1205,38 +1113,25 @@ def _split_visual_row_has_prose_continuation(
 
     if len(same_row_fragments) < 3 or anchor_line.visual_row_id is None:
         return False
-    fragment_sources = {
-        line.source_index
-        for line in same_row_fragments
-    }
-    fragment_geometry = [
-        (line, bbox)
-        for line, bbox in lane.lines
-        if line.source_index in fragment_sources
-    ]
+    fragment_sources = {line.source_index for line in same_row_fragments}
+    fragment_geometry = [(line, bbox) for line, bbox in lane.lines if line.source_index in fragment_sources]
     if len(fragment_geometry) < 3:
         return False
     lane_width = max(0.1, lane.right - lane.left)
     row_bbox = _bbox_union_many([bbox for _line, bbox in fragment_geometry])
     if row_bbox[2] - row_bbox[0] < 0.75 * lane_width:
         return False
-    row_center = statistics.median(
-        _bbox_center_y(bbox)
-        for _line, bbox in fragment_geometry
-    )
+    row_center = statistics.median(_bbox_center_y(bbox) for _line, bbox in fragment_geometry)
     if any(
         abs(_bbox_center_y(bbox) - row_center) > 0.25 * median_height
-        or not 0.7 * median_height
-        <= _line_effective_height(line, bbox)
-        <= 1.3 * median_height
+        or not 0.7 * median_height <= _line_effective_height(line, bbox) <= 1.3 * median_height
         for line, bbox in fragment_geometry
     ):
         return False
     following_rows = [
         (line, bbox)
         for line, bbox in lane.lines
-        if line.source_index not in fragment_sources
-        and _bbox_center_y(bbox) > row_center + 0.5 * median_height
+        if line.source_index not in fragment_sources and _bbox_center_y(bbox) > row_center + 0.5 * median_height
     ]
     if not following_rows:
         return False
@@ -1286,12 +1181,7 @@ def _formula_lane_body_interval(
 
     lane_width = max(0.1, lane.right - lane.left)
     body_lines = sorted(
-        (
-            item
-            for item in lane.lines
-            if item[1][2] - item[1][0]
-            >= max(4.0 * _line_effective_height(*item), 0.35 * lane_width)
-        ),
+        (item for item in lane.lines if item[1][2] - item[1][0] >= max(4.0 * _line_effective_height(*item), 0.35 * lane_width)),
         key=lambda item: (item[1][1], item[1][0]),
     )
     if len(body_lines) < 3:
@@ -1299,10 +1189,7 @@ def _formula_lane_body_interval(
     dense_lines: list[tuple[_LineItem, BBox]] = []
     for index, item in enumerate(body_lines):
         has_close_previous = index > 0 and item[1][1] - body_lines[index - 1][1][3] <= 1.5 * median_height
-        has_close_next = (
-            index + 1 < len(body_lines)
-            and body_lines[index + 1][1][1] - item[1][3] <= 1.5 * median_height
-        )
+        has_close_next = index + 1 < len(body_lines) and body_lines[index + 1][1][1] - item[1][3] <= 1.5 * median_height
         if has_close_previous or has_close_next:
             dense_lines.append(item)
     if len(dense_lines) < 3:
@@ -1371,6 +1258,7 @@ def _grow_formula_spatial_component(
             anchor_geometry,
             dominant_body_font,
             median_height,
+            minimum_font_coverage=0.5 if anchor.repeated_number_band else 0.75,
         )
     ]
     seeds = [
@@ -1473,6 +1361,8 @@ def _is_formula_body_prefix(
     anchor: tuple[_LineItem, BBox],
     dominant_body_font: tuple[str, int] | None,
     median_height: float,
+    *,
+    minimum_font_coverage: float = 0.75,
 ) -> bool:
     """识别锚点上方左对齐的常规正文行，防止公式空间扩张越界认领。"""
 
@@ -1480,6 +1370,8 @@ def _is_formula_body_prefix(
         return False
     line, bbox = candidate
     anchor_line, anchor_bbox = anchor
+    if line.formula_candidate_only:
+        return False
     line_height = _line_effective_height(line, bbox)
     anchor_height = _line_effective_height(anchor_line, anchor_bbox)
     if _bbox_center_y(bbox) > _bbox_center_y(anchor_bbox) - 0.2 * max(line_height, anchor_height):
@@ -1488,7 +1380,7 @@ def _is_formula_body_prefix(
         return False
     return (
         line.font_signature == dominant_body_font
-        and line.font_coverage >= 0.75
+        and line.font_coverage >= minimum_font_coverage
         and 0.8 * median_height <= line_height <= 1.25 * median_height
     )
 
@@ -1552,11 +1444,7 @@ def _is_detached_formula_sidecar(
     """仅依据 bbox 判断右侧锚点是否为与公式主体分离的窄幅 sidecar。"""
 
     anchor_line, anchor_bbox = anchor
-    body_bboxes = [
-        bbox
-        for line, bbox in members
-        if line.source_index != anchor_line.source_index
-    ]
+    body_bboxes = [bbox for line, bbox in members if line.source_index != anchor_line.source_index]
     if not body_bboxes:
         return False
 
@@ -1599,11 +1487,7 @@ def _formula_members_to_block(
         (line for line, _bbox in members if line.source_index == anchor_source_index),
         None,
     )
-    anchor_formula_number_parts = (
-        _split_trailing_formula_number(anchor_line.text)
-        if anchor_line is not None
-        else None
-    )
+    anchor_formula_number_parts = _split_trailing_formula_number(anchor_line.text) if anchor_line is not None else None
     heights = [_line_effective_height(line, bbox) for line, bbox in members]
     median_height = statistics.median(heights) if heights else 1.0
     row_tolerance = max(1.5, 0.35 * median_height)
@@ -1641,9 +1525,7 @@ def _formula_members_to_block(
             ]
             trailing_sidecar_content = marker
         elif _is_detached_formula_sidecar(anchor_member, members, median_height):
-            rows[row_index] = [
-                member for member in row if member[0].source_index != anchor_source_index
-            ]
+            rows[row_index] = [member for member in row if member[0].source_index != anchor_source_index]
             trailing_sidecar_content = anchor_member[0].text.strip()
         break
 

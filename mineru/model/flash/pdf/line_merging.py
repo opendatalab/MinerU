@@ -206,6 +206,8 @@ def _overlapping_inline_cluster_pair_is_connected(
     second_line, second_bbox = second
     if first_line.angle != second_line.angle:
         return False
+    if first_line.formula_candidate_only != second_line.formula_candidate_only:
+        return False
     if first_line.semantic_type != second_line.semantic_type:
         return False
     if _connection_crosses_table(
@@ -316,6 +318,11 @@ def _merge_overlapping_inline_cluster(
         key=lambda line: line.source_index,
     )
     host = _select_overlapping_inline_cluster_host(members, median_height)
+    detected_regions = (
+        [line.bbox for line in ordered_members]
+        if compact_formula_cluster
+        else [line.bbox for line in ordered_members if line is not host]
+    )
     merged = _LineItem(
         text=" ".join(text for line in ordered_members if (text := line.text.strip())),
         bbox=_bbox_union_many([line.bbox for line in ordered_members]),
@@ -331,16 +338,20 @@ def _merge_overlapping_inline_cluster(
         median_glyph_width=host.median_glyph_width,
         leading_emphasis_width=ordered_members[0].leading_emphasis_width,
         split_from_row=any(line.split_from_row for line in ordered_members),
-        preserve_split_boundary=any(
-            line.preserve_split_boundary for line in ordered_members
-        ),
+        preserve_split_boundary=any(line.preserve_split_boundary for line in ordered_members),
         semantic_type=host.semantic_type,
         restored_inline_cluster=True,
         compact_formula_cluster=compact_formula_cluster,
+        formula_candidate_only=all(line.formula_candidate_only for line in ordered_members),
+        inline_math_regions=[
+            *(region for line in ordered_members for region in line.inline_math_regions),
+            *detected_regions,
+        ],
     )
     if merged.chars:
         _fill_native_typography(merged, page_size)
     return merged
+
 
 def _merge_post_semantic_text_runs(
     lines: list[_LineItem],
@@ -351,10 +362,7 @@ def _merge_post_semantic_text_runs(
 
     if len(lines) < 2:
         return list(lines)
-    local_bboxes = [
-        _rotate_bbox_to_upright(line.bbox, page_size, line.angle)
-        for line in lines
-    ]
+    local_bboxes = [_rotate_bbox_to_upright(line.bbox, page_size, line.angle) for line in lines]
     parents = list(range(len(lines)))
 
     def find(index: int) -> int:
@@ -381,6 +389,8 @@ def _merge_post_semantic_text_runs(
         for second_index in range(first_index + 1, len(lines)):
             second_line = lines[second_index]
             if second_line.semantic_type is not None or first_line.angle != second_line.angle:
+                continue
+            if first_line.formula_candidate_only != second_line.formula_candidate_only:
                 continue
             if _connection_crosses_table(
                 first_line.bbox,
@@ -441,10 +451,15 @@ def _post_semantic_same_baseline_geometry(
     """放宽上下标字号差异，仅合并水平紧贴且垂直充分交叠的普通 run。"""
 
     pair_height = max(first_height, second_height)
-    if min(first_height, second_height) <= 0 or pair_height / min(
-        first_height,
-        second_height,
-    ) > 1.6:
+    if (
+        min(first_height, second_height) <= 0
+        or pair_height
+        / min(
+            first_height,
+            second_height,
+        )
+        > 1.6
+    ):
         return False
     y_overlap = max(
         0.0,
@@ -472,11 +487,11 @@ def _can_merge_same_baseline_pair(
 
     if first.angle != second.angle:
         return False
+    if first.formula_candidate_only != second.formula_candidate_only:
+        return False
     if first.semantic_type != second.semantic_type:
         return False
-    if first.visual_row_id == second.visual_row_id and (
-        first.split_from_row or second.split_from_row
-    ):
+    if first.visual_row_id == second.visual_row_id and (first.split_from_row or second.split_from_row):
         return False
     if _connection_crosses_table(first.bbox, second.bbox, table_bboxes):
         return False
@@ -593,31 +608,23 @@ def _merge_same_baseline_group(
         font_signature=members[0].font_signature,
         font_coverage=min(member.font_coverage for member in members),
         dominant_font_weight=statistics.median(
-            member.dominant_font_weight
-            for member in members
-            if member.dominant_font_weight is not None
+            member.dominant_font_weight for member in members if member.dominant_font_weight is not None
         )
         if any(member.dominant_font_weight is not None for member in members)
         else None,
         median_glyph_width=statistics.median(
-            member.median_glyph_width
-            for member in members
-            if member.median_glyph_width is not None
+            member.median_glyph_width for member in members if member.median_glyph_width is not None
         )
         if any(member.median_glyph_width is not None for member in members)
         else None,
         leading_emphasis_width=members[0].leading_emphasis_width,
         split_from_row=any(member.split_from_row for member in members),
-        preserve_split_boundary=any(
-            member.preserve_split_boundary for member in members
-        ),
+        preserve_split_boundary=any(member.preserve_split_boundary for member in members),
         semantic_type=members[0].semantic_type,
-        restored_inline_cluster=any(
-            member.restored_inline_cluster for member in members
-        ),
-        compact_formula_cluster=any(
-            member.compact_formula_cluster for member in members
-        ),
+        restored_inline_cluster=any(member.restored_inline_cluster for member in members),
+        compact_formula_cluster=any(member.compact_formula_cluster for member in members),
+        formula_candidate_only=all(member.formula_candidate_only for member in members),
+        inline_math_regions=[region for member in members for region in member.inline_math_regions],
     )
     if merged.chars:
         _fill_native_typography(merged, page_size)
@@ -667,11 +674,7 @@ def _restore_dense_split_visual_rows(
         return list(lines)
     lane_keys: dict[int, tuple[int, int]] = {}
     for angle in sorted({line.angle for line in lines}):
-        line_geometry = [
-            (line, _rotate_bbox_to_upright(line.bbox, page_size, angle))
-            for line in lines
-            if line.angle == angle
-        ]
+        line_geometry = [(line, _rotate_bbox_to_upright(line.bbox, page_size, angle)) for line in lines if line.angle == angle]
         if not line_geometry:
             continue
         median_height = statistics.median(_line_effective_height(line, bbox) for line, bbox in line_geometry)
@@ -744,8 +747,7 @@ def _merge_title_resolved_visual_rows(
             page_size,
         )
         if semantic_type != "paragraph_title" and not (
-            semantic_type is None
-            and (len(font_signatures) > 1 or dense_same_font_text)
+            semantic_type is None and (len(font_signatures) > 1 or dense_same_font_text)
         ):
             continue
         local_geometry = [
@@ -774,9 +776,7 @@ def _merge_title_resolved_visual_rows(
         merged_rows.append(_merge_dense_split_visual_row(members, page_size))
         consumed_source_indices.update(member.source_index for member in members)
 
-    output = [
-        line for line in lines if line.source_index not in consumed_source_indices
-    ]
+    output = [line for line in lines if line.source_index not in consumed_source_indices]
     output.extend(merged_rows)
     output.sort(
         key=lambda line: (
@@ -817,9 +817,7 @@ def _is_dense_same_font_two_run_row(
         )
         for member in ordered
     ]
-    local_geometry.sort(
-        key=lambda item: (item[1][0], item[1][1], item[0].source_index)
-    )
+    local_geometry.sort(key=lambda item: (item[1][0], item[1][1], item[0].source_index))
     first, second = local_geometry
     pair_height = max(
         _line_effective_height(*first),
@@ -835,9 +833,7 @@ def _is_dense_same_font_two_run_row(
         return False
 
     union_bbox = _bbox_union_many([bbox for _member, bbox in local_geometry])
-    occupied_width = sum(
-        bbox[2] - bbox[0] for _member, bbox in local_geometry
-    )
+    occupied_width = sum(bbox[2] - bbox[0] for _member, bbox in local_geometry)
     return occupied_width / max(0.1, union_bbox[2] - union_bbox[0]) >= 0.85
 
 
@@ -857,6 +853,8 @@ def _can_restore_dense_split_visual_row(
         return False
     if len({member.semantic_type for member in members}) != 1:
         return False
+    if len({member.formula_candidate_only for member in members}) != 1:
+        return False
     ordered = sorted(members, key=lambda member: member.run_index)
     if [member.run_index for member in ordered] != list(range(len(ordered))):
         return False
@@ -865,11 +863,7 @@ def _can_restore_dense_split_visual_row(
     font_signatures = {member.font_signature for member in ordered}
     if len(font_signatures) != 1:
         return False
-    if any(
-        _bbox_intersects(member.bbox, table_bbox)
-        for member in ordered
-        for table_bbox in table_bboxes
-    ):
+    if any(_bbox_intersects(member.bbox, table_bbox) for member in ordered for table_bbox in table_bboxes):
         return False
 
     local_geometry = [
@@ -881,10 +875,7 @@ def _can_restore_dense_split_visual_row(
     ]
     local_geometry.sort(key=lambda item: (item[1][0], item[1][1], item[0].source_index))
     if not same_inferred_lane:
-        member_widths = [
-            bbox[2] - bbox[0]
-            for _member, bbox in local_geometry
-        ]
+        member_widths = [bbox[2] - bbox[0] for _member, bbox in local_geometry]
         if len(members) == 2 and min(member_widths) > 0.35 * max(member_widths):
             return False
         if 3 <= len(members) <= 6:
@@ -892,9 +883,7 @@ def _can_restore_dense_split_visual_row(
     heights = [_line_effective_height(member, bbox) for member, bbox in local_geometry]
     median_height = statistics.median(heights)
     glyph_widths = [
-        width
-        for member, _bbox in local_geometry
-        if (width := _median_native_glyph_width(member, page_size)) is not None
+        width for member, _bbox in local_geometry if (width := _median_native_glyph_width(member, page_size)) is not None
     ]
     median_glyph_width = statistics.median(glyph_widths) if glyph_widths else 0.0
     gap_limit = (
@@ -923,10 +912,7 @@ def _can_restore_dense_split_visual_row(
         if not same_inferred_lane
         else 0.65
     )
-    return (
-        occupied_width / max(0.1, union_bbox[2] - union_bbox[0])
-        >= minimum_occupancy
-    )
+    return occupied_width / max(0.1, union_bbox[2] - union_bbox[0]) >= minimum_occupancy
 
 
 def _merge_dense_split_visual_row(
@@ -959,38 +945,27 @@ def _merge_dense_split_visual_row(
         chars=[char for member in ordered_members for char in member.chars],
         visual_row_id=ordered_members[0].visual_row_id,
         run_index=0,
-        effective_height=statistics.median(
-            _line_effective_height(member, bbox)
-            for member, bbox in ordered_geometry
-        ),
+        effective_height=statistics.median(_line_effective_height(member, bbox) for member, bbox in ordered_geometry),
         font_signature=ordered_members[0].font_signature,
         font_coverage=min(member.font_coverage for member in ordered_members),
         dominant_font_weight=statistics.median(
-            member.dominant_font_weight
-            for member in ordered_members
-            if member.dominant_font_weight is not None
+            member.dominant_font_weight for member in ordered_members if member.dominant_font_weight is not None
         )
         if any(member.dominant_font_weight is not None for member in ordered_members)
         else None,
         median_glyph_width=statistics.median(
-            member.median_glyph_width
-            for member in ordered_members
-            if member.median_glyph_width is not None
+            member.median_glyph_width for member in ordered_members if member.median_glyph_width is not None
         )
         if any(member.median_glyph_width is not None for member in ordered_members)
         else None,
         leading_emphasis_width=ordered_members[0].leading_emphasis_width,
         split_from_row=False,
-        preserve_split_boundary=any(
-            member.preserve_split_boundary for member in ordered_members
-        ),
+        preserve_split_boundary=any(member.preserve_split_boundary for member in ordered_members),
         semantic_type=ordered_members[0].semantic_type,
-        restored_inline_cluster=any(
-            member.restored_inline_cluster for member in ordered_members
-        ),
-        compact_formula_cluster=any(
-            member.compact_formula_cluster for member in ordered_members
-        ),
+        restored_inline_cluster=any(member.restored_inline_cluster for member in ordered_members),
+        compact_formula_cluster=any(member.compact_formula_cluster for member in ordered_members),
+        formula_candidate_only=all(member.formula_candidate_only for member in ordered_members),
+        inline_math_regions=[region for member in ordered_members for region in member.inline_math_regions],
     )
     if merged.chars:
         _fill_native_typography(merged, page_size)
