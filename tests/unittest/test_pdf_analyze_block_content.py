@@ -13,6 +13,7 @@ from mineru.backend.analysis.pdf import constants, layout, normalization, ocr, p
 from mineru.backend.analysis.pdf.text import content as text_content
 from mineru.backend.analysis.pdf.text.models import _AnalyzeLine, _AnalyzeSpan
 from mineru.backend.postprocess import document as postprocess_document
+from mineru.model.flash.pdf.document import PDFPageTextGeometry
 from mineru.types import RAW_ALGORITHM, RAW_CAPTION, RAW_FOOTNOTE
 from mineru.backend.analysis.pdf.text.native import (
     POST_OCR_FALLBACK_CONTENT_KEY,
@@ -441,7 +442,7 @@ def test_fill_window_batches_txt_post_ocr_before_page_content(monkeypatch: pytes
     monkeypatch.setattr(
         text_content,
         "build_pdf_native_visual_lines_and_styles",
-        lambda *_args, **_kwargs: ([], [], [], []),
+        lambda *_args, **_kwargs: (PDFPageTextGeometry([], {}, {}), [], [], []),
     )
     monkeypatch.setattr(
         text_content,

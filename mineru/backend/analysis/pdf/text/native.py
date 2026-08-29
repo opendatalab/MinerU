@@ -80,6 +80,8 @@ def txt_spans_extract(
     all_discarded_blocks: list[tuple[Any, ...]],
     *,
     page_chars: list[Char] | dict[str, list[Char]] | None = None,
+    tight_bboxes: dict[int, BBox] | None = None,
+    origins: dict[int, tuple[float, float]] | None = None,
 ) -> list[_AnalyzeSpan]:
     """从 PDF 原生字符中提取文本 Span，并允许复用调用方已读取的页面字符。"""
     page_char_count = None
@@ -94,7 +96,10 @@ def txt_spans_extract(
         return _prepare_post_ocr_spans(need_ocr_spans, spans, pil_img, scale)
 
     if page_chars is None:
-        page_chars = pdf_page.get_chars()
+        page_text_geometry = pdf_page.get_chars_with_geometry()
+        page_chars = page_text_geometry.chars
+        tight_bboxes = page_text_geometry.tight_bboxes
+        origins = page_text_geometry.origins
     page_all_chars = _get_chars_for_span_fill(page_chars)
 
     # 计算所有span的高度的中位数
@@ -153,7 +158,13 @@ def txt_spans_extract(
             span.metadata["chars"] = []
             new_spans.append(span)
 
-    need_ocr_spans = fill_char_in_spans(new_spans, page_all_chars, median_span_height)
+    need_ocr_spans = fill_char_in_spans(
+        new_spans,
+        page_all_chars,
+        median_span_height,
+        tight_bboxes=tight_bboxes,
+        origins=origins,
+    )
 
     return _prepare_post_ocr_spans(need_ocr_spans, spans, pil_img, scale)
 
@@ -329,52 +340,218 @@ class SpanBlockMatcher:
         return calculate_overlap_area_in_bbox1_area_ratio(span.bbox, block_bbox)
 
 
+def _coerce_finite_bbox(value: Any) -> BBox | None:
+    """把可迭代四元组收敛为合法有限 bbox。"""
+    try:
+        raw_bbox = getattr(value, "bbox", value)
+        if raw_bbox is None or len(raw_bbox) != 4:
+            return None
+        bbox = tuple(float(item) for item in raw_bbox)
+    except (TypeError, ValueError):
+        return None
+    if not all(math.isfinite(item) for item in bbox) or bbox[2] <= bbox[0] or bbox[3] <= bbox[1]:
+        return None
+    return cast(BBox, bbox)
+
+
+def _coerce_finite_whitespace_bbox(value: Any) -> BBox | None:
+    """解析空白字符的 loose bbox，并允许 PDF 中常见的零面积 advance point。"""
+    try:
+        raw_bbox = getattr(value, "bbox", value)
+        if raw_bbox is None or len(raw_bbox) != 4:
+            return None
+        bbox = tuple(float(item) for item in raw_bbox)
+    except (TypeError, ValueError):
+        return None
+    if not all(math.isfinite(item) for item in bbox) or bbox[2] < bbox[0] or bbox[3] < bbox[1]:
+        return None
+    return cast(BBox, bbox)
+
+
+def _char_geometry_key(char: Char) -> int | None:
+    """返回可用于 side-map 查询的合法 PDFium char_idx。"""
+    char_idx = char.get("char_idx")
+    if isinstance(char_idx, bool) or not isinstance(char_idx, int):
+        return None
+    return char_idx
+
+
+def _span_match_rank(char_bbox: BBox, span_bbox: BBox, span_index: int) -> tuple[float, float, int]:
+    """按归一化纵向中心距离、横向中心距离和原顺序稳定排序。"""
+    char_center_x = (char_bbox[0] + char_bbox[2]) / 2
+    char_center_y = (char_bbox[1] + char_bbox[3]) / 2
+    span_center_x = (span_bbox[0] + span_bbox[2]) / 2
+    span_center_y = (span_bbox[1] + span_bbox[3]) / 2
+    span_width = max(span_bbox[2] - span_bbox[0], 1e-6)
+    span_height = max(span_bbox[3] - span_bbox[1], 1e-6)
+    return (
+        abs(char_center_y - span_center_y) / span_height,
+        abs(char_center_x - span_center_x) / span_width,
+        span_index,
+    )
+
+
+def _match_char_bbox_to_span(
+    char_bbox: BBox,
+    char_text: str,
+    span_bboxes: list[BBox],
+    grid: dict[int, list[int]],
+    grid_size: float,
+) -> int | None:
+    """在给定 bbox 对应的全部候选 Span 中返回几何距离最优者。"""
+    char_center_x = (char_bbox[0] + char_bbox[2]) / 2
+    char_center_y = (char_bbox[1] + char_bbox[3]) / 2
+    candidate_span_indices = grid.get(int(char_center_y / grid_size), [])
+    matches = []
+    for span_index in candidate_span_indices:
+        span_bbox = span_bboxes[span_index]
+        if (
+            char_text not in LINE_STOP_FLAG
+            and char_text not in LINE_START_FLAG
+            and not span_bbox[0] < char_center_x < span_bbox[2]
+        ):
+            continue
+        if calculate_char_in_span(char_bbox, span_bbox, char_text):
+            matches.append(span_index)
+    if not matches:
+        return None
+    return min(
+        matches,
+        key=lambda span_index: _span_match_rank(char_bbox, span_bboxes[span_index], span_index),
+    )
+
+
+def _match_whitespace_bbox_to_first_span(
+    char_bbox: BBox,
+    char_text: str,
+    span_bboxes: list[BBox],
+    grid: dict[int, list[int]],
+    grid_size: float,
+) -> int | None:
+    """按旧 loose 顺序归属无可见字形的空白，避免重叠 Span 改变词间距。"""
+    char_center_x = (char_bbox[0] + char_bbox[2]) / 2
+    char_center_y = (char_bbox[1] + char_bbox[3]) / 2
+    for span_index in grid.get(int(char_center_y / grid_size), []):
+        span_bbox = span_bboxes[span_index]
+        if (
+            char_text not in LINE_STOP_FLAG
+            and char_text not in LINE_START_FLAG
+            and not span_bbox[0] < char_center_x < span_bbox[2]
+        ):
+            continue
+        if calculate_char_in_span(char_bbox, span_bbox, char_text):
+            return span_index
+    return None
+
+
 def fill_char_in_spans(
     spans: list[_AnalyzeSpan],
     all_chars: list[Char],
     median_span_height: float,
+    *,
+    tight_bboxes: dict[int, BBox] | None = None,
+    origins: dict[int, tuple[float, float]] | None = None,
 ) -> list[_AnalyzeSpan]:
-    """将 PDF 字符分配到对应 Span，并返回仍需后置 OCR 的 Span。"""
-    # 简单从上到下排一下序
+    """以 tight-first、loose-fallback 将字符分配到 Span，并返回待 OCR Span。"""
     spans = sorted(spans, key=lambda x: x.bbox[1])
+    tight_bboxes = tight_bboxes or {}
+    origins = origins or {}
 
     grid_size = max(1, median_span_height)
     grid = collections.defaultdict(list)
     span_bboxes = []
-    for i, span in enumerate(spans):
+    for span_index, span in enumerate(spans):
         span_bbox = span.bbox
         span_bboxes.append(span_bbox)
         start_cell = int(span_bbox[1] / grid_size)
         end_cell = int(span_bbox[3] / grid_size)
         for cell_idx in range(start_cell, end_cell + 1):
-            grid[cell_idx].append(i)
+            grid[cell_idx].append(span_index)
 
-    for char in all_chars:
-        char_bbox = char["bbox"]
-        char_center_x = (char_bbox[0] + char_bbox[2]) / 2
-        char_center_y = (char_bbox[1] + char_bbox[3]) / 2
-        cell_idx = int(char_center_y / grid_size)
-
-        candidate_span_indices = grid.get(cell_idx, [])
-
-        for span_idx in candidate_span_indices:
-            span = spans[span_idx]
-            span_bbox = span_bboxes[span_idx]
-            if (
-                char["char"] not in LINE_STOP_FLAG
-                and char["char"] not in LINE_START_FLAG
-                and not span_bbox[0] < char_center_x < span_bbox[2]
-            ):
+    assigned_span_indices: list[int | None] = [None] * len(all_chars)
+    for char_position, char in enumerate(all_chars):
+        char_idx = _char_geometry_key(char)
+        tight_bbox = _coerce_finite_bbox(tight_bboxes.get(char_idx)) if char_idx is not None else None
+        loose_bbox = _coerce_finite_bbox(char.get("bbox"))
+        char_text = str(char.get("char", ""))
+        if char_text.isspace():
+            continue
+        for candidate_bbox in (tight_bbox, loose_bbox):
+            if candidate_bbox is None:
                 continue
-            if calculate_char_in_span(char_bbox, span_bbox, char["char"]):
-                span.metadata["chars"].append(char)
+            assigned_span_indices[char_position] = _match_char_bbox_to_span(
+                candidate_bbox,
+                char_text,
+                span_bboxes,
+                grid,
+                grid_size,
+            )
+            if assigned_span_indices[char_position] is not None:
                 break
+
+    previous_visible_owners: list[int | None] = [None] * len(all_chars)
+    previous_owner = None
+    for char_position, char in enumerate(all_chars):
+        char_text = str(char.get("char", ""))
+        if char_text in CONTROL_LINE_BREAK_CHARS:
+            previous_owner = None
+            continue
+        previous_visible_owners[char_position] = previous_owner
+        if not char_text.isspace() and assigned_span_indices[char_position] is not None:
+            previous_owner = assigned_span_indices[char_position]
+
+    next_visible_owners: list[int | None] = [None] * len(all_chars)
+    next_owner = None
+    for char_position in range(len(all_chars) - 1, -1, -1):
+        char_text = str(all_chars[char_position].get("char", ""))
+        if char_text in CONTROL_LINE_BREAK_CHARS:
+            next_owner = None
+            continue
+        next_visible_owners[char_position] = next_owner
+        if not char_text.isspace() and assigned_span_indices[char_position] is not None:
+            next_owner = assigned_span_indices[char_position]
+
+    for char_position, char in enumerate(all_chars):
+        char_text = str(char.get("char", ""))
+        if not char_text.isspace():
+            continue
+        loose_bbox = _coerce_finite_whitespace_bbox(char.get("bbox"))
+        if loose_bbox is None:
+            continue
+        previous_owner = previous_visible_owners[char_position]
+        next_owner = next_visible_owners[char_position]
+        same_neighbor_owner = previous_owner is not None and previous_owner == next_owner
+        neighbor_owner = previous_owner if same_neighbor_owner else None
+        if neighbor_owner is None:
+            neighbor_owner = previous_owner if next_owner is None else next_owner if previous_owner is None else None
+        if (
+            char_text not in CONTROL_LINE_BREAK_CHARS
+            and neighbor_owner is not None
+            and (same_neighbor_owner or calculate_char_in_span(loose_bbox, span_bboxes[neighbor_owner], char_text))
+        ):
+            assigned_span_indices[char_position] = neighbor_owner
+        else:
+            assigned_span_indices[char_position] = _match_whitespace_bbox_to_first_span(
+                loose_bbox,
+                char_text,
+                span_bboxes,
+                grid,
+                grid_size,
+            )
+
+    for char, span_index in zip(all_chars, assigned_span_indices):
+        if span_index is not None:
+            spans[span_index].metadata["chars"].append(char)
 
     need_ocr_spans = []
     for span in spans:
         private_use_signal = _get_private_use_text_signal(span.metadata["chars"])
         should_post_ocr_private_use = _should_fallback_to_post_ocr_for_private_use_text(private_use_signal)
-        chars_to_content(span)
+        chars_to_content(
+            span,
+            tight_bboxes=tight_bboxes,
+            origins=origins,
+        )
         # 有的span中虽然没有字但有一两个空的占位符，用宽高和content长度过滤
         if should_post_ocr_private_use and span.content:
             span.metadata[POST_OCR_FALLBACK_CONTENT_KEY] = span.content
@@ -432,57 +609,85 @@ LINE_START_FLAG = (
 )
 
 Span_Height_Ratio = 0.33  # 字符的中轴和span的中轴高度差不能超过1/3span高度
-# 正文带阈值：只允许接近最大高度的字符参与正文基线估计。
-SCRIPT_BODY_FULL_HEIGHT_RATIO = 0.9
-# 三类证据阈值：依次对应强几何、成对结构和相邻字体切换。
-SCRIPT_GEOMETRY_MAX_HEIGHT_RATIO = 0.8
-SCRIPT_GEOMETRY_MIN_OFFSET_RATIO = 0.24
-SCRIPT_STRUCTURE_MIN_OFFSET_RATIO = 0.18
-SCRIPT_TYPOGRAPHY_MIN_LOCAL_OFFSET_RATIO = 0.1
-# 连续组件阈值：弱证据只能扩展已有种子，不能独立产生上下标。
+SCRIPT_BODY_COMPARABLE_HEIGHT_RATIO = 0.9
+SCRIPT_BASELINE_ABSOLUTE_TOLERANCE = 0.35
+SCRIPT_BASELINE_LOOSE_HEIGHT_RATIO = 0.04
+SCRIPT_ORIGIN_MIN_SHIFT_ABSOLUTE = 0.5
+SCRIPT_ORIGIN_MIN_SHIFT_RATIO = 0.12
+SCRIPT_TIGHT_HEIGHT_RATIO = 0.9
+SCRIPT_STRONG_SHIFT_RATIO = 0.3
+SCRIPT_STRONG_MAX_HEIGHT_RATIO = 1.1
+SCRIPT_CONSENSUS_TIGHT_HEIGHT_RATIO = 0.88
+SCRIPT_CONSENSUS_ORIGIN_SHIFT_RATIO = 0.22
+SCRIPT_CONSENSUS_TIGHT_CENTER_SHIFT_RATIO = 0.3
+SCRIPT_CONSENSUS_LOOSE_CENTER_SHIFT_RATIO = 0.15
+SCRIPT_LOOSE_HEIGHT_ANOMALY_RATIO = 1.35
+SCRIPT_COMPONENT_FORWARD_GAP_RATIO = 1.5
+SCRIPT_COMPONENT_X_BACKTRACK_RATIO = 0.5
+SCRIPT_COMPONENT_SEED_GAP_RATIO = 0.5
+SCRIPT_COMPONENT_SEED_MAX_POSITION_DISTANCE = 4
 SCRIPT_COMPONENT_MIN_OFFSET_RATIO = 0.08
 SCRIPT_COMPONENT_MAX_HEIGHT_RATIO = 1.1
-SCRIPT_BRACKET_PAIRS = {"[": "]", "［": "］", "(": ")", "（": "）"}
-SCRIPT_NUMERIC_REFERENCE_OPENERS = {"[", "［"}
-SCRIPT_NUMERIC_REFERENCE_SEPARATORS = {"-", "–", "—", "‑", ",", "，", " ", "\u00a0"}
 SPAN_FILL_LOCAL_ROTATION_MAX_DEGREES = 30.0
 CONTROL_LINE_BREAK_CHARS = {"\r", "\n"}
 
 _ScriptRole = Literal["body", "sup", "sub"]
 _ScriptMarkRole = Literal["sup", "sub"]
-_ScriptEvidenceKind = Literal["geometry", "typography", "structure"]
 
 
 @dataclass(frozen=True, slots=True)
 class _ScriptCharFeature:
-    """保存单个字符参与上下标判定所需的只读排版特征。"""
+    """保存单个字符参与纯几何上下标判定所需的只读特征。"""
 
     index: int
     text: str
-    height: float
-    center_y: float
-    font_signature: tuple[Any, Any]
+    loose_bbox: BBox
+    tight_bbox: BBox | None
+    origin: tuple[float, float] | None
     is_valid: bool
     is_body_anchor: bool
+
+    @property
+    def loose_height(self) -> float:
+        """返回 loose bbox 高度。"""
+        return self.loose_bbox[3] - self.loose_bbox[1]
+
+    @property
+    def loose_center_y(self) -> float:
+        """返回 loose bbox 中心 y。"""
+        return (self.loose_bbox[1] + self.loose_bbox[3]) / 2
+
+    @property
+    def tight_height(self) -> float:
+        """返回 tight bbox 高度，无有效框时返回零。"""
+        if self.tight_bbox is None:
+            return 0.0
+        return self.tight_bbox[3] - self.tight_bbox[1]
+
+    @property
+    def tight_center_y(self) -> float | None:
+        """返回 tight bbox 中心 y。"""
+        if self.tight_bbox is None:
+            return None
+        return (self.tight_bbox[1] + self.tight_bbox[3]) / 2
 
 
 @dataclass(frozen=True, slots=True)
 class _ScriptBodyBand:
-    """表示当前 span 的正文中心线和参考高度。"""
+    """表示当前视觉组件的正文 origin 基线与双 bbox 参考高度。"""
 
-    center_y: float
-    height: float
+    baseline: float
+    tight_height: float
+    loose_height: float
+    member_indices: frozenset[int]
 
 
 @dataclass(frozen=True, slots=True)
-class _ScriptSeed:
-    """表示可让连续组件成立的高置信证据区间及其角色。"""
+class _ScriptBaselineCluster:
+    """表示共享近似字符 origin 的正文或角标基线簇。"""
 
-    start: int
-    end: int
-    role: _ScriptMarkRole
-    evidence: _ScriptEvidenceKind
-    protected_body_indices: frozenset[int] = frozenset()
+    baseline: float
+    member_indices: tuple[int, ...]
 
 
 def _is_private_use_char(char: str) -> bool:
@@ -608,280 +813,491 @@ def _get_char_bbox_metrics_list(chars: list[Char]) -> list[dict[str, float]]:
     return [_get_char_bbox_metrics(char) for char in chars]
 
 
-def _is_valid_script_reference_char(char: Char, metrics: dict[str, float]) -> bool:
-    """过滤空白和退化 bbox，只用真实可见字符估计正文主带。"""
-    if char["char"] in {" ", "\r", "\n"}:
-        return False
-
-    return metrics["height"] > 1 and metrics["width"] > 0
-
-
 def _get_script_role(offset: float) -> _ScriptMarkRole:
-    """把相对正文中心的纵向偏移转换为上标或下标角色。"""
+    """把相对正文 origin 基线的纵向偏移转换为上下标角色。"""
     return "sub" if offset > 0 else "sup"
 
 
 def _build_script_features(
     chars: list[Char],
-    char_metrics: list[dict[str, float]],
+    tight_bboxes: dict[int, BBox],
+    origins: dict[int, tuple[float, float]],
+    protected_body_indices: set[int],
 ) -> list[_ScriptCharFeature]:
-    """一次性构造字符几何、字体和正文锚点特征。"""
+    """一次性构造 loose/tight/origin 三类字符几何特征。"""
     features = []
-    for index, (char, metrics) in enumerate(zip(chars, char_metrics)):
+    for index, char in enumerate(chars):
         text = str(char.get("char", ""))
-        font = char.get("font") or {}
-        is_valid = _is_valid_script_reference_char(char, metrics)
+        char_idx = _char_geometry_key(char)
+        loose_bbox = _coerce_finite_bbox(char.get("bbox")) or (0.0, 0.0, 0.0, 0.0)
+        tight_bbox = _coerce_finite_bbox(tight_bboxes.get(char_idx)) if char_idx is not None else None
+        raw_origin = origins.get(char_idx) if char_idx is not None else None
+        origin = None
+        if raw_origin is not None:
+            try:
+                candidate_origin = (float(raw_origin[0]), float(raw_origin[1]))
+            except (IndexError, TypeError, ValueError):
+                candidate_origin = None
+            if candidate_origin is not None and all(math.isfinite(value) for value in candidate_origin):
+                origin = candidate_origin
+        is_valid = text not in CONTROL_LINE_BREAK_CHARS and not text.isspace() and tight_bbox is not None and origin is not None
         features.append(
             _ScriptCharFeature(
                 index=index,
                 text=text,
-                height=metrics["height"],
-                center_y=metrics["center_y"],
-                font_signature=(font.get("name"), font.get("flags")),
+                loose_bbox=loose_bbox,
+                tight_bbox=tight_bbox,
+                origin=origin,
                 is_valid=is_valid,
-                is_body_anchor=is_valid and text.isalnum(),
+                is_body_anchor=is_valid and text.isalnum() and index not in protected_body_indices,
             )
         )
     return features
 
 
-def _estimate_script_body_band(features: list[_ScriptCharFeature]) -> _ScriptBodyBand | None:
-    """使用全高正文锚点的最低中心估计正文带，排除项目符号与标点干扰。"""
-    anchors = [feature for feature in features if feature.is_body_anchor]
+def _script_quantile(values: list[float], fraction: float) -> float:
+    """返回适合小样本基线簇的稳定分位数。"""
+    if not values:
+        return 0.0
+    ordered = sorted(values)
+    index = min(len(ordered) - 1, max(0, round((len(ordered) - 1) * fraction)))
+    return ordered[index]
+
+
+def _split_script_visual_components(features: list[_ScriptCharFeature]) -> list[list[int]]:
+    """按换行、x 回退和大间隙切分独立视觉组件。"""
+    valid_heights = [feature.loose_height for feature in features if feature.loose_height > 0]
+    scale = statistics.median(valid_heights) if valid_heights else 1.0
+    components: list[list[int]] = []
+    current: list[int] = []
+    previous_visible: _ScriptCharFeature | None = None
+
+    for feature in features:
+        if feature.text in CONTROL_LINE_BREAK_CHARS:
+            if current:
+                components.append(current)
+                current = []
+            previous_visible = None
+            continue
+        if feature.text.isspace():
+            if current:
+                components.append(current)
+                current = []
+            previous_visible = None
+            continue
+
+        if feature.is_valid and previous_visible is not None:
+            x_backtrack = previous_visible.loose_bbox[0] - feature.loose_bbox[0]
+            forward_gap = feature.loose_bbox[0] - previous_visible.loose_bbox[2]
+            if (
+                x_backtrack > scale * SCRIPT_COMPONENT_X_BACKTRACK_RATIO
+                or forward_gap > scale * SCRIPT_COMPONENT_FORWARD_GAP_RATIO
+            ):
+                if current:
+                    components.append(current)
+                current = []
+                previous_visible = None
+
+        current.append(feature.index)
+        if feature.is_valid:
+            previous_visible = feature
+
+    if current:
+        components.append(current)
+    return components
+
+
+def _cluster_script_baselines(
+    features: list[_ScriptCharFeature],
+    component_indices: list[int],
+) -> tuple[list[_ScriptBaselineCluster], float]:
+    """按字符 origin y 聚类当前组件的字母数字基线。"""
+    anchors = [features[index] for index in component_indices if features[index].is_body_anchor]
     if not anchors:
-        return None
-
-    body_height = max(feature.height for feature in anchors)
-    full_height_anchors = [feature for feature in anchors if feature.height >= body_height * SCRIPT_BODY_FULL_HEIGHT_RATIO]
-    if not full_height_anchors:
-        return None
-    return _ScriptBodyBand(
-        center_y=max(feature.center_y for feature in full_height_anchors),
-        height=body_height,
+        return [], 0.0
+    median_loose_height = statistics.median(feature.loose_height for feature in anchors)
+    tolerance = max(
+        SCRIPT_BASELINE_ABSOLUTE_TOLERANCE,
+        median_loose_height * SCRIPT_BASELINE_LOOSE_HEIGHT_RATIO,
     )
-
-
-def _is_script_identifier_char(text: str) -> bool:
-    """判断字符是否属于可承载数学角标的非 CJK 字母或数字。"""
-    if len(text) != 1:
-        return False
-    if text.isdigit():
-        return True
-    if not text.isalpha():
-        return False
-    unicode_name = unicodedata.name(text, "")
-    return not any(marker in unicode_name for marker in ("CJK", "HIRAGANA", "KATAKANA", "HANGUL", "BOPOMOFO"))
-
-
-def _estimate_main_font_body_band(features: list[_ScriptCharFeature]) -> _ScriptBodyBand | None:
-    """使用字母和汉字投票选出主字体，并据此估计局部正文带。"""
-    voters = [feature for feature in features if feature.is_body_anchor and feature.text.isalpha()]
-    if not voters:
-        return None
-
-    font_counts: dict[tuple[Any, Any], int] = collections.Counter(feature.font_signature for feature in voters)
-    first_indices: dict[tuple[Any, Any], int] = {}
-    for feature in voters:
-        first_indices.setdefault(feature.font_signature, feature.index)
-    main_font = min(
-        font_counts,
-        key=lambda signature: (-font_counts[signature], first_indices[signature]),
-    )
-    anchors = [feature for feature in voters if feature.font_signature == main_font]
-    body_height = max(feature.height for feature in anchors)
-    full_height_anchors = [feature for feature in anchors if feature.height >= body_height * SCRIPT_BODY_FULL_HEIGHT_RATIO]
-    return _ScriptBodyBand(
-        center_y=max(feature.center_y for feature in full_height_anchors),
-        height=body_height,
-    )
-
-
-def _get_structure_script_role(
-    open_feature: _ScriptCharFeature,
-    close_feature: _ScriptCharFeature,
-    body_band: _ScriptBodyBand,
-) -> _ScriptMarkRole | None:
-    """按指定正文带判断成对括号是否构成同向缩小的结构角标。"""
-    if (
-        open_feature.height > body_band.height * SCRIPT_GEOMETRY_MAX_HEIGHT_RATIO
-        or close_feature.height > body_band.height * SCRIPT_GEOMETRY_MAX_HEIGHT_RATIO
-    ):
-        return None
-
-    open_offset = open_feature.center_y - body_band.center_y
-    close_offset = close_feature.center_y - body_band.center_y
-    minimum_offset = body_band.height * SCRIPT_STRUCTURE_MIN_OFFSET_RATIO
-    if open_offset * close_offset <= 0 or min(abs(open_offset), abs(close_offset)) < minimum_offset:
-        return None
-    return _get_script_role((open_offset + close_offset) / 2)
-
-
-def _is_numeric_square_reference(
-    features: list[_ScriptCharFeature],
-    open_index: int,
-    close_index: int,
-) -> bool:
-    """判断成对方括号内部是否只包含数字及引用范围分隔符。"""
-    if features[open_index].text not in SCRIPT_NUMERIC_REFERENCE_OPENERS:
-        return False
-    inner_text = [feature.text for feature in features[open_index + 1 : close_index]]
-    return (
-        bool(inner_text)
-        and any(text.isdigit() for text in inner_text)
-        and all(text.isdigit() or text in SCRIPT_NUMERIC_REFERENCE_SEPARATORS for text in inner_text)
-    )
-
-
-def _collect_script_seeds(
-    features: list[_ScriptCharFeature],
-    body_band: _ScriptBodyBand,
-) -> list[_ScriptSeed]:
-    """统一收集强几何、局部字体和成对结构三类上下标证据。"""
-    seeds: list[_ScriptSeed] = []
-    claimed_indices: set[int] = set()
-
-    for feature in features:
-        is_symbol = len(feature.text) == 1 and unicodedata.category(feature.text).startswith("S")
-        offset = feature.center_y - body_band.center_y
-        if (
-            feature.is_valid
-            and (feature.text.isalnum() or is_symbol)
-            and feature.height <= body_band.height * SCRIPT_GEOMETRY_MAX_HEIGHT_RATIO
-            and abs(offset) >= body_band.height * SCRIPT_GEOMETRY_MIN_OFFSET_RATIO
-        ):
-            seeds.append(
-                _ScriptSeed(
-                    start=feature.index,
-                    end=feature.index,
-                    role=_get_script_role(offset),
-                    evidence="geometry",
-                )
-            )
-            claimed_indices.add(feature.index)
-
-    for index in range(1, len(features)):
-        feature = features[index]
-        previous_feature = features[index - 1]
-        if (
-            index in claimed_indices
-            or index - 1 in claimed_indices
-            or not feature.text.isalnum()
-            or not previous_feature.text.isalnum()
-            or not _is_script_identifier_char(feature.text)
-            or not _is_script_identifier_char(previous_feature.text)
-            or feature.font_signature == previous_feature.font_signature
-            or feature.height > previous_feature.height * SCRIPT_COMPONENT_MAX_HEIGHT_RATIO
-        ):
+    groups: list[list[int]] = []
+    for feature in sorted(anchors, key=lambda item: item.origin[1] if item.origin is not None else 0.0):
+        baseline = feature.origin[1] if feature.origin is not None else 0.0
+        if not groups:
+            groups.append([feature.index])
             continue
-
-        local_offset = feature.center_y - previous_feature.center_y
-        minimum_offset = previous_feature.height * SCRIPT_TYPOGRAPHY_MIN_LOCAL_OFFSET_RATIO
-        if abs(local_offset) >= minimum_offset:
-            seeds.append(
-                _ScriptSeed(
-                    start=index,
-                    end=index,
-                    role=_get_script_role(local_offset),
-                    evidence="typography",
-                    protected_body_indices=frozenset({index - 1}),
-                )
-            )
-            claimed_indices.add(index)
-
-    bracket_stack: list[tuple[int, str]] = []
-    main_font_body_band = _estimate_main_font_body_band(features)
-    for feature in features:
-        if feature.text in SCRIPT_BRACKET_PAIRS:
-            bracket_stack.append((feature.index, feature.text))
-            continue
-        if not bracket_stack or feature.text != SCRIPT_BRACKET_PAIRS[bracket_stack[-1][1]]:
-            continue
-
-        open_index, _open_text = bracket_stack.pop()
-        open_feature = features[open_index]
-        if not open_feature.is_valid or not feature.is_valid:
-            continue
-        role = _get_structure_script_role(open_feature, feature, body_band)
-        if (
-            role is None
-            and main_font_body_band is not None
-            and _is_numeric_square_reference(features, open_index, feature.index)
-        ):
-            role = _get_structure_script_role(open_feature, feature, main_font_body_band)
-        if role is None:
-            continue
-
-        seeds.append(
-            _ScriptSeed(
-                start=open_index,
-                end=feature.index,
-                role=role,
-                evidence="structure",
-            )
+        previous_baseline = statistics.median(
+            features[index].origin[1] for index in groups[-1] if features[index].origin is not None
         )
-    return seeds
+        if abs(baseline - previous_baseline) <= tolerance:
+            groups[-1].append(feature.index)
+        else:
+            groups.append([feature.index])
+    return (
+        [
+            _ScriptBaselineCluster(
+                baseline=statistics.median(features[index].origin[1] for index in group if features[index].origin is not None),
+                member_indices=tuple(group),
+            )
+            for group in groups
+        ],
+        tolerance,
+    )
+
+
+def _cluster_tight_height(features: list[_ScriptCharFeature], cluster: _ScriptBaselineCluster) -> float:
+    """返回基线簇的高分位 tight 高度。"""
+    return _script_quantile(
+        [features[index].tight_height for index in cluster.member_indices if features[index].tight_height > 0],
+        0.9,
+    )
+
+
+def _cluster_loose_height(features: list[_ScriptCharFeature], cluster: _ScriptBaselineCluster) -> float:
+    """返回基线簇的高分位 loose 高度。"""
+    return _script_quantile(
+        [features[index].loose_height for index in cluster.member_indices if features[index].loose_height > 0],
+        0.9,
+    )
+
+
+def _cluster_tight_center(features: list[_ScriptCharFeature], cluster: _ScriptBaselineCluster) -> float:
+    """返回基线簇的 tight bbox 中心中位数。"""
+    return statistics.median(
+        features[index].tight_center_y for index in cluster.member_indices if features[index].tight_center_y is not None
+    )
+
+
+def _cluster_loose_center(features: list[_ScriptCharFeature], cluster: _ScriptBaselineCluster) -> float:
+    """返回基线簇的 loose bbox 中心中位数。"""
+    return statistics.median(features[index].loose_center_y for index in cluster.member_indices)
+
+
+def _script_cluster_has_consistent_displacement(
+    features: list[_ScriptCharFeature],
+    cluster: _ScriptBaselineCluster,
+    body_cluster: _ScriptBaselineCluster,
+    body_band: _ScriptBodyBand,
+) -> bool:
+    """要求 origin 与双 bbox 至少两项同向，并排除普通混合字体的弱中心偏移。"""
+    origin_shift = cluster.baseline - body_band.baseline
+    tight_center_shift = _cluster_tight_center(features, cluster) - _cluster_tight_center(features, body_cluster)
+    loose_center_shift = _cluster_loose_center(features, cluster) - _cluster_loose_center(features, body_cluster)
+    shifts = (origin_shift, tight_center_shift, loose_center_shift)
+    expected_positive = origin_shift > 0
+    same_direction_votes = sum(value > 0.05 if expected_positive else value < -0.05 for value in shifts)
+    if same_direction_votes < 2:
+        return False
+
+    origin_ratio = abs(origin_shift) / max(body_band.tight_height, 1e-6)
+    tight_center_ratio = abs(tight_center_shift) / max(body_band.tight_height, 1e-6)
+    loose_center_ratio = abs(loose_center_shift) / max(body_band.loose_height, 1e-6)
+    return origin_ratio >= SCRIPT_CONSENSUS_ORIGIN_SHIFT_RATIO or (
+        tight_center_ratio >= SCRIPT_CONSENSUS_TIGHT_CENTER_SHIFT_RATIO
+        and loose_center_ratio >= SCRIPT_CONSENSUS_LOOSE_CENTER_SHIFT_RATIO
+    )
+
+
+def _choose_script_body_band(
+    features: list[_ScriptCharFeature],
+    clusters: list[_ScriptBaselineCluster],
+) -> tuple[_ScriptBodyBand, _ScriptBaselineCluster] | None:
+    """在接近最高字形的基线簇中按字符数选择正文基线。"""
+    if not clusters:
+        return None
+    maximum_height = max(_cluster_tight_height(features, cluster) for cluster in clusters)
+    comparable = [
+        cluster
+        for cluster in clusters
+        if _cluster_tight_height(features, cluster) >= maximum_height * SCRIPT_BODY_COMPARABLE_HEIGHT_RATIO
+    ]
+    body_cluster = max(
+        comparable,
+        key=lambda cluster: (
+            len(cluster.member_indices),
+            _cluster_tight_height(features, cluster),
+            _cluster_loose_height(features, cluster),
+        ),
+    )
+    body_band = _ScriptBodyBand(
+        baseline=body_cluster.baseline,
+        tight_height=_cluster_tight_height(features, body_cluster),
+        loose_height=_cluster_loose_height(features, body_cluster),
+        member_indices=frozenset(body_cluster.member_indices),
+    )
+    return body_band, body_cluster
+
+
+def _nearest_script_cluster(
+    feature: _ScriptCharFeature,
+    clusters: list[_ScriptBaselineCluster],
+    tolerance: float,
+) -> _ScriptBaselineCluster | None:
+    """把非字母数字字符附着到最近 origin 基线簇。"""
+    if feature.origin is None or not clusters:
+        return None
+    nearest = min(clusters, key=lambda cluster: abs(feature.origin[1] - cluster.baseline))
+    if abs(feature.origin[1] - nearest.baseline) > tolerance:
+        return None
+    return nearest
+
+
+def _script_horizontal_gap(first: BBox, second: BBox) -> float:
+    """返回两个字符 tight bbox 的水平间隙。"""
+    return max(0.0, first[0] - second[2], second[0] - first[2])
+
+
+def _drop_unseeded_script_punctuation(
+    features: list[_ScriptCharFeature],
+    component_indices: list[int],
+    roles: list[_ScriptRole],
+    body_height: float,
+) -> None:
+    """移除未邻近同类字母数字种子的标点，避免跨 run 基线串联。"""
+    seeded = [
+        features[index]
+        for index in component_indices
+        if roles[index] != "body" and features[index].text.isalnum() and features[index].tight_bbox is not None
+    ]
+    for index in component_indices:
+        feature = features[index]
+        role = roles[index]
+        if role == "body" or feature.text.isalnum() or feature.tight_bbox is None:
+            continue
+        nearby_seed = any(
+            roles[seed.index] == role
+            and _script_horizontal_gap(feature.tight_bbox, seed.tight_bbox)
+            <= max(
+                2.0,
+                body_height * SCRIPT_COMPONENT_SEED_GAP_RATIO,
+            )
+            and abs(feature.index - seed.index) <= SCRIPT_COMPONENT_SEED_MAX_POSITION_DISTANCE
+            for seed in seeded
+        )
+        if not nearby_seed:
+            roles[index] = "body"
+
+
+def _apply_script_consensus_candidates(
+    features: list[_ScriptCharFeature],
+    component_indices: list[int],
+    body_band: _ScriptBodyBand,
+    roles: list[_ScriptRole],
+) -> None:
+    """用 origin/tight/loose 三证据一致性补充孤立边界字符。"""
+    body_members = [
+        features[index]
+        for index in body_band.member_indices
+        if features[index].tight_bbox is not None
+        and features[index].tight_center_y is not None
+        and features[index].origin is not None
+    ]
+    for index in component_indices:
+        feature = features[index]
+        if (
+            roles[index] != "body"
+            or index in body_band.member_indices
+            or not feature.is_valid
+            or feature.tight_bbox is None
+            or feature.tight_center_y is None
+            or feature.origin is None
+            or not body_members
+        ):
+            continue
+        reference = min(
+            body_members,
+            key=lambda member: (
+                _script_horizontal_gap(feature.tight_bbox, member.tight_bbox),
+                abs(feature.index - member.index),
+            ),
+        )
+        gap = _script_horizontal_gap(feature.tight_bbox, reference.tight_bbox)
+        if gap > max(2.5, reference.tight_height * 1.2):
+            continue
+        tight_ratio = feature.tight_height / max(reference.tight_height, 1e-6)
+        if tight_ratio > SCRIPT_CONSENSUS_TIGHT_HEIGHT_RATIO:
+            continue
+
+        shifts = (
+            feature.origin[1] - reference.origin[1],
+            feature.tight_center_y - reference.tight_center_y,
+            feature.loose_center_y - reference.loose_center_y,
+        )
+        positive_votes = sum(value > 0.05 for value in shifts)
+        negative_votes = sum(value < -0.05 for value in shifts)
+        if max(positive_votes, negative_votes) < 2:
+            continue
+        role = "sub" if positive_votes > negative_votes else "sup"
+        if _get_script_role(shifts[0]) != role:
+            continue
+        origin_ratio = abs(shifts[0]) / max(reference.tight_height, 1e-6)
+        tight_center_ratio = abs(shifts[1]) / max(reference.tight_height, 1e-6)
+        loose_center_ratio = abs(shifts[2]) / max(reference.loose_height, 1e-6)
+        if not feature.text.isalnum():
+            expected_positive = role == "sub"
+            if not all(value > 0.05 if expected_positive else value < -0.05 for value in shifts) or not (
+                origin_ratio >= SCRIPT_STRONG_SHIFT_RATIO
+                and tight_center_ratio >= SCRIPT_CONSENSUS_TIGHT_CENTER_SHIFT_RATIO
+                and loose_center_ratio >= SCRIPT_CONSENSUS_LOOSE_CENTER_SHIFT_RATIO
+            ):
+                continue
+        if not (
+            origin_ratio >= SCRIPT_CONSENSUS_ORIGIN_SHIFT_RATIO
+            or (
+                tight_center_ratio >= SCRIPT_CONSENSUS_TIGHT_CENTER_SHIFT_RATIO
+                and loose_center_ratio >= SCRIPT_CONSENSUS_LOOSE_CENTER_SHIFT_RATIO
+            )
+        ):
+            continue
+        roles[index] = role
+
+
+def _expand_script_component_neighbors(
+    features: list[_ScriptCharFeature],
+    component_indices: list[int],
+    body_band: _ScriptBodyBand,
+    protected_body_indices: set[int],
+    roles: list[_ScriptRole],
+) -> None:
+    """把同侧连续字符并入已有角标 run，不依赖字符类别或文本内容。"""
+    component_set = set(component_indices)
+    changed = True
+    while changed:
+        changed = False
+        for index in component_indices:
+            feature = features[index]
+            if (
+                roles[index] != "body"
+                or index in protected_body_indices
+                or not feature.is_valid
+                or feature.origin is None
+                or feature.text.isspace()
+                or feature.tight_height > body_band.tight_height * SCRIPT_COMPONENT_MAX_HEIGHT_RATIO
+            ):
+                continue
+            neighbor_roles = {
+                roles[neighbor]
+                for neighbor in (index - 1, index + 1)
+                if neighbor in component_set and roles[neighbor] != "body"
+            }
+            if len(neighbor_roles) != 1:
+                continue
+            role = next(iter(neighbor_roles))
+            shift = feature.origin[1] - body_band.baseline
+            if abs(shift) < body_band.tight_height * SCRIPT_COMPONENT_MIN_OFFSET_RATIO:
+                continue
+            if _get_script_role(shift) != role:
+                continue
+            roles[index] = role
+            changed = True
 
 
 def _assign_script_components(
     features: list[_ScriptCharFeature],
-    body_band: _ScriptBodyBand,
-    seeds: list[_ScriptSeed],
-) -> list[_ScriptRole]:
-    """线性划分同侧连续组件，只有包含高置信种子的组件才输出上下标。"""
-    seed_roles: dict[int, _ScriptMarkRole] = {}
-    protected_body_indices: set[int] = set()
-    for seed in seeds:
-        protected_body_indices.update(seed.protected_body_indices)
-        for index in range(seed.start, seed.end + 1):
-            seed_roles[index] = seed.role
+    component_indices: list[int],
+    protected_body_indices: set[int],
+    roles: list[_ScriptRole],
+) -> None:
+    """在单个视觉组件内按 origin 基线簇和双 bbox 一致性分配角色。"""
+    clusters, tolerance = _cluster_script_baselines(features, component_indices)
+    body_result = _choose_script_body_band(features, clusters)
+    if body_result is None:
+        return
+    body_band, body_cluster = body_result
+    if body_band.tight_height <= 0 or body_band.loose_height <= 0:
+        return
 
-    minimum_offset = body_band.height * SCRIPT_COMPONENT_MIN_OFFSET_RATIO
-    maximum_height = body_band.height * SCRIPT_COMPONENT_MAX_HEIGHT_RATIO
-    candidate_roles: list[_ScriptMarkRole | None] = []
-    for feature in features:
-        if feature.index in seed_roles:
-            candidate_roles.append(seed_roles[feature.index])
+    cluster_roles: dict[_ScriptBaselineCluster, _ScriptRole] = {body_cluster: "body"}
+    for cluster in clusters:
+        if cluster is body_cluster:
             continue
+        shift = cluster.baseline - body_band.baseline
+        tight_ratio = _cluster_tight_height(features, cluster) / body_band.tight_height
+        loose_ratio = _cluster_loose_height(features, cluster) / body_band.loose_height
+        minimum_shift = max(
+            SCRIPT_ORIGIN_MIN_SHIFT_ABSOLUTE,
+            body_band.tight_height * SCRIPT_ORIGIN_MIN_SHIFT_RATIO,
+        )
+        strong_shift = abs(shift) >= body_band.tight_height * SCRIPT_STRONG_SHIFT_RATIO
         if (
-            feature.index in protected_body_indices
-            or not feature.is_valid
-            or feature.text.isspace()
-            or feature.height > maximum_height
+            abs(shift) < minimum_shift
+            or (
+                tight_ratio > SCRIPT_TIGHT_HEIGHT_RATIO and not (strong_shift and tight_ratio <= SCRIPT_STRONG_MAX_HEIGHT_RATIO)
+            )
+            or (
+                loose_ratio > SCRIPT_LOOSE_HEIGHT_ANOMALY_RATIO
+                and not _script_cluster_has_consistent_displacement(
+                    features,
+                    cluster,
+                    body_cluster,
+                    body_band,
+                )
+            )
         ):
-            candidate_roles.append(None)
+            cluster_roles[cluster] = "body"
             continue
+        cluster_roles[cluster] = _get_script_role(shift)
 
-        offset = feature.center_y - body_band.center_y
-        if abs(offset) < minimum_offset:
-            candidate_roles.append(None)
-        else:
-            candidate_roles.append(_get_script_role(offset))
+    for index in component_indices:
+        feature = features[index]
+        if (
+            index in protected_body_indices
+            or feature.origin is None
+            or feature.text.isspace()
+            or feature.text in CONTROL_LINE_BREAK_CHARS
+        ):
+            continue
+        cluster = _nearest_script_cluster(feature, clusters, tolerance)
+        if cluster is not None:
+            roles[index] = cluster_roles.get(cluster, "body")
 
+    _drop_unseeded_script_punctuation(
+        features,
+        component_indices,
+        roles,
+        body_band.tight_height,
+    )
+    _apply_script_consensus_candidates(
+        features,
+        component_indices,
+        body_band,
+        roles,
+    )
+    _expand_script_component_neighbors(
+        features,
+        component_indices,
+        body_band,
+        protected_body_indices,
+        roles,
+    )
+    for index in protected_body_indices.intersection(component_indices):
+        roles[index] = "body"
+
+
+def _classify_char_script_roles(
+    chars: list[Char],
+    *,
+    tight_bboxes: dict[int, BBox],
+    origins: dict[int, tuple[float, float]],
+    protected_body_indices: set[int] | None = None,
+) -> list[_ScriptRole]:
+    """按视觉组件、origin 基线簇和双 bbox 一致性识别上下标。"""
+    protected_body_indices = protected_body_indices or set()
+    features = _build_script_features(
+        chars,
+        tight_bboxes,
+        origins,
+        protected_body_indices,
+    )
     roles: list[_ScriptRole] = ["body"] * len(features)
-    component_start = 0
-    while component_start < len(features):
-        component_role = candidate_roles[component_start]
-        if component_role is None:
-            component_start += 1
-            continue
-
-        component_end = component_start + 1
-        while component_end < len(features) and candidate_roles[component_end] == component_role:
-            component_end += 1
-        if any(index in seed_roles for index in range(component_start, component_end)):
-            roles[component_start:component_end] = [component_role] * (component_end - component_start)
-        component_start = component_end
+    for component_indices in _split_script_visual_components(features):
+        _assign_script_components(
+            features,
+            component_indices,
+            protected_body_indices,
+            roles,
+        )
     return roles
-
-
-def _classify_char_script_roles(chars: list[Char], char_metrics: list[dict[str, float]]) -> list[str]:
-    """按字符特征、正文带、证据和连续组件四步识别上下标。"""
-    features = _build_script_features(chars, char_metrics)
-    body_band = _estimate_script_body_band(features)
-    if body_band is None or body_band.height <= 0:
-        return ["body"] * len(chars)
-    seeds = _collect_script_seeds(features, body_band)
-    return _assign_script_components(features, body_band, seeds)
 
 
 def _append_script_wrapped_text(parts: list[str], role: str | None, text: str) -> None:
@@ -955,9 +1371,12 @@ def _compose_overlapping_spacing_diacritic(base: Char, modifier: Char) -> Char |
     return cast(Char, merged)
 
 
-def _merge_overlapping_spacing_diacritics(chars: list[Char]) -> list[Char]:
-    """合并字符流中位于基字符前后且几何重叠的 spacing diacritic。"""
+def _merge_overlapping_spacing_diacritics_with_protection(
+    chars: list[Char],
+) -> tuple[list[Char], set[int]]:
+    """合并 spacing diacritic，并返回必须保持正文角色的合成字符位置。"""
     merged_chars: list[Char] = []
+    protected_body_indices: set[int] = set()
     cursor = 0
     while cursor < len(chars):
         current = chars[cursor]
@@ -969,14 +1388,26 @@ def _merge_overlapping_spacing_diacritics(chars: list[Char]) -> list[Char]:
             merged = _compose_overlapping_spacing_diacritic(current, following)
         if merged is not None:
             merged_chars.append(merged)
+            protected_body_indices.add(len(merged_chars) - 1)
             cursor += 2
             continue
         merged_chars.append(current)
         cursor += 1
+    return merged_chars, protected_body_indices
+
+
+def _merge_overlapping_spacing_diacritics(chars: list[Char]) -> list[Char]:
+    """兼容调用方：只返回合并后的 spacing diacritic 字符流。"""
+    merged_chars, _protected_body_indices = _merge_overlapping_spacing_diacritics_with_protection(chars)
     return merged_chars
 
 
-def chars_to_content(span: _AnalyzeSpan) -> None:
+def chars_to_content(
+    span: _AnalyzeSpan,
+    *,
+    tight_bboxes: dict[int, BBox] | None = None,
+    origins: dict[int, tuple[float, float]] | None = None,
+) -> None:
     """将 Span 内字符重建为文本，并合并连续的上标、下标片段。"""
     span.metadata.pop(PDF_NATIVE_SCRIPT_MARKUP_KEY, None)
     # 检查span中的char是否为空
@@ -985,14 +1416,19 @@ def chars_to_content(span: _AnalyzeSpan) -> None:
         # 大多数情况下 char 已按 PDF 原始顺序进入，只有乱序时才排序。
         if any(chars[idx]["char_idx"] > chars[idx + 1]["char_idx"] for idx in range(len(chars) - 1)):
             chars = sorted(chars, key=lambda x: x["char_idx"])
-        chars = _merge_overlapping_spacing_diacritics(chars)
+        chars, protected_body_indices = _merge_overlapping_spacing_diacritics_with_protection(chars)
 
         char_metrics = _get_char_bbox_metrics_list(chars)
         # Calculate the width of each character
         char_widths = [metrics["width"] for metrics in char_metrics]
         # Calculate the median width
         median_width = statistics.median(char_widths)
-        script_roles = _classify_char_script_roles(chars, char_metrics)
+        script_roles = _classify_char_script_roles(
+            chars,
+            tight_bboxes=tight_bboxes or {},
+            origins=origins or {},
+            protected_body_indices=protected_body_indices,
+        )
 
         role_text_parts = []
         for idx, char1 in enumerate(chars):

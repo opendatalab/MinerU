@@ -144,7 +144,10 @@ def build_axis_lines(
     if boundary is None:
         return []
     boundary_page = transform_bbox(boundary, parent_transform)
-    if boundary_page is None or bbox_intersection(boundary_page, parent_clip) is None:
+    if boundary_page is None:
+        return []
+    object_clip = bbox_intersection(boundary_page, parent_clip)
+    if object_clip is None:
         return []
     try:
         width = max(0.1, float(style.get("LineWidth") or path_object.get("LineWidth") or 0.353))
@@ -155,28 +158,13 @@ def build_axis_lines(
     )
     extracted: list[AxisLine] = []
     data = first_descendant(path_object, "AbbreviatedData")
-    if data is not None:
-        for first, second in _segments(element_text(data), object_transform, budget):
-            line = _line_bbox(first, second, width)
-            if line is None:
-                continue
-            line_bbox, orientation = line
-            clipped = bbox_intersection(line_bbox, parent_clip)
-            if clipped is not None:
-                extracted.append(
-                    AxisLine(
-                        bbox=clipped,
-                        orientation=orientation,
-                        width=width,
-                        paint_order=paint_order,
-                        template_id=template_id,
-                    )
-                )
-    boundary_width = boundary_page[2] - boundary_page[0]
-    boundary_height = boundary_page[3] - boundary_page[1]
-    if not extracted and max(boundary_width, boundary_height) >= 5 * max(min(boundary_width, boundary_height), 0.01):
-        orientation = "horizontal" if boundary_width >= boundary_height else "vertical"
-        clipped = bbox_intersection(boundary_page, parent_clip)
+    segments = _segments(element_text(data), object_transform, budget) if data is not None else []
+    for first, second in segments:
+        line = _line_bbox(first, second, width)
+        if line is None:
+            continue
+        line_bbox, orientation = line
+        clipped = bbox_intersection(line_bbox, object_clip)
         if clipped is not None:
             extracted.append(
                 AxisLine(
@@ -187,6 +175,23 @@ def build_axis_lines(
                     template_id=template_id,
                 )
             )
+    boundary_width = boundary_page[2] - boundary_page[0]
+    boundary_height = boundary_page[3] - boundary_page[1]
+    if (
+        not extracted
+        and not segments
+        and max(boundary_width, boundary_height) >= 5 * max(min(boundary_width, boundary_height), 0.01)
+    ):
+        orientation = "horizontal" if boundary_width >= boundary_height else "vertical"
+        extracted.append(
+            AxisLine(
+                bbox=object_clip,
+                orientation=orientation,
+                width=width,
+                paint_order=paint_order,
+                template_id=template_id,
+            )
+        )
     if not extracted and parse_int(path_object.get("ID")) is None:
         logger.debug("OFD_PATH_SKIPPED: path without stable ID produced no axis lines")
     return extracted

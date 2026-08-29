@@ -27,7 +27,7 @@ from mineru.types import (
     ModelJson,
     PageInfo,
 )
-from mineru.model.flash.pdf.document import PDFDocument, PDFLinkAnnotation
+from mineru.model.flash.pdf.document import PDFDocument, PDFLinkAnnotation, PDFPageTextGeometry
 from mineru.model.flash.pdf.text_styles import (
     PDF_FONT_FORCE_BOLD_FLAG,
     PDF_FONT_ITALIC_FLAG,
@@ -2027,6 +2027,11 @@ def test_hybrid_txt_reuses_loaded_chars_and_applies_styles(
     """验证 Medium/High/XHigh 复用 chars，并应用允许的组合样式。"""
 
     page_chars = [{"char": "d", "bbox": (10.0, 10.0, 16.0, 20.0), "char_idx": 0}]
+    page_text_geometry = PDFPageTextGeometry(
+        chars=page_chars,  # type: ignore[arg-type]
+        tight_bboxes={0: (10.0, 10.0, 16.0, 20.0)},
+        origins={0: (10.0, 20.0)},
+    )
     style_lines = [
         PDFTextStyleLine(
             (10.0, 10.0, 52.0, 20.0),
@@ -2049,8 +2054,8 @@ def test_hybrid_txt_reuses_loaded_chars_and_applies_styles(
             0,
         )
     ]
-    build_styles = MagicMock(return_value=(page_chars, [], style_lines, link_lines))
-    observed_chars: list[object] = []
+    build_styles = MagicMock(return_value=(page_text_geometry, [], style_lines, link_lines))
+    observed_geometry: list[object] = []
 
     def fake_fill_native(
         _pdf_page: object,
@@ -2059,11 +2064,11 @@ def test_hybrid_txt_reuses_loaded_chars_and_applies_styles(
         _scale: object,
         _page_size: object,
         *,
-        page_chars: object,
+        page_text_geometry: object,
     ) -> list[_AnalyzeSpan]:
-        """记录传入原生回填的 chars，并返回稳定文本 span。"""
+        """记录传入原生回填的字符几何，并返回稳定文本 span。"""
 
-        observed_chars.append(page_chars)
+        observed_geometry.append(page_text_geometry)
         return [
             _AnalyzeSpan(
                 type=ContentType.TEXT,
@@ -2118,7 +2123,7 @@ def test_hybrid_txt_reuses_loaded_chars_and_applies_styles(
         MagicMock(),
     )
 
-    assert observed_chars == [page_chars]
+    assert observed_geometry == [page_text_geometry]
     assert _span_snapshot(model_list[0][0]["content"]) == (
         '<hyperlink><text style="bold,strikethrough">deleted</text><url>https://hybrid.example.test</url></hyperlink>'
     )
@@ -2149,7 +2154,7 @@ def test_hybrid_txt_efforts_apply_dehyphenated_links(
     monkeypatch.setattr(
         text_content,
         "build_pdf_native_visual_lines_and_styles",
-        lambda *_args, **_kwargs: ([], [], [], link_lines),
+        lambda *_args, **_kwargs: (PDFPageTextGeometry([], {}, {}), [], [], link_lines),
     )
     monkeypatch.setattr(
         text_content,
@@ -2377,3 +2382,4 @@ def test_native_span_fill_does_not_read_preloaded_page_chars_twice() -> None:
     assert result == [span]
     assert span.content == "deleted"
     pdf_page.get_chars.assert_not_called()
+    pdf_page.get_chars_with_geometry.assert_not_called()

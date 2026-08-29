@@ -186,6 +186,105 @@ def test_legacy_adapter_normalizes_bbox_and_block_aliases() -> None:
     _current_pages([raw_page])
 
 
+def test_legacy_adapter_keeps_only_final_middle_json_aliases() -> None:
+    """验证最终 3.4.5 仍会序列化的三个旧类型继续转换。"""
+    page = {
+        "page_size": [100, 100],
+        "preproc_blocks": [
+            {"type": "abstract", "bbox": [0, 0, 100, 20], "lines": [_legacy_line("Abstract")]},
+            {"type": "phonetic", "bbox": [0, 30, 100, 50], "lines": [_legacy_line("phonetic")]},
+            {
+                "type": "interline_equation",
+                "bbox": [0, 60, 100, 80],
+                "lines": [
+                    {
+                        "bbox": [0, 60, 100, 80],
+                        "spans": [{"type": "interline_equation", "content": "x=1"}],
+                    }
+                ],
+            },
+        ],
+        "discarded_blocks": [],
+    }
+
+    raw_page = legacy_page_to_model_list(page)
+
+    assert [block["type"] for block in raw_page] == ["text", "text", "equation"]
+    assert raw_page[0]["content"][0]["content"] == "Abstract"
+    assert raw_page[1]["content"][0]["content"] == "phonetic"
+    assert raw_page[2]["content"] == "x=1"
+    _current_pages([raw_page])
+
+
+@pytest.mark.parametrize(
+    "block_type",
+    [
+        "vertical_text",
+        "formula_number",
+        "discarded",
+        "image_block",
+        "algorithm",
+        "algorithm_body",
+        "algorithm_caption",
+        "algorithm_footnote",
+        "header_image",
+        "footer_image",
+    ],
+)
+def test_legacy_adapter_rejects_pre_middle_json_block_types(block_type: str) -> None:
+    """验证 finalize 前布局、raw model 与 Content List 类型要求源文件重解析。"""
+    block = {
+        "type": block_type,
+        "bbox": [0, 0, 100, 20],
+        "lines": [_legacy_line("internal")],
+    }
+    if block_type in {"image_block", "algorithm"}:
+        block["blocks"] = [{"type": "text", "bbox": [0, 0, 100, 20], "lines": [_legacy_line("nested")]}]
+    page = {
+        "page_size": [100, 100],
+        "preproc_blocks": [block],
+        "discarded_blocks": [],
+    }
+
+    with pytest.raises(ValueError, match=rf"{block_type!s}.*source reparse"):
+        legacy_page_to_model_list(page)
+
+
+def test_legacy_adapter_preserves_canonical_image_and_auxiliary_blocks() -> None:
+    """验证规范 image 视觉块及 header/footer 辅助块不会提升为正文图片。"""
+    page = {
+        "page_size": [100, 100],
+        "preproc_blocks": [
+            {
+                "type": "image",
+                "bbox": [10, 20, 90, 80],
+                "blocks": [
+                    {
+                        "type": "image_body",
+                        "bbox": [10, 20, 90, 80],
+                        "lines": [
+                            {
+                                "bbox": [10, 20, 90, 80],
+                                "spans": [{"type": "image", "image_path": "images/body.png"}],
+                            }
+                        ],
+                    }
+                ],
+            }
+        ],
+        "discarded_blocks": [
+            {"type": "header", "bbox": [0, 0, 100, 10], "lines": [_legacy_line("Header")]},
+            {"type": "footer", "bbox": [0, 90, 100, 100], "lines": [_legacy_line("Footer")]},
+        ],
+    }
+
+    pages = _current_pages([legacy_page_to_model_list(page)])
+
+    assert [block.type for block in pages[0].blocks] == [BlockType.IMAGE, BlockType.HEADER, BlockType.FOOTER]
+    image = pages[0].blocks[0]
+    assert image.content[0].image_path == "images/body.png"
+
+
 def test_legacy_adapter_recovers_pdf_list_items_from_line_flags() -> None:
     """验证旧 PDF list 的物理行重新生成当前列表文本子块。"""
     page = {

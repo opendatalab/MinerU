@@ -34,7 +34,7 @@ from mineru.model.flash.ofd.geometry import Affine, canonical_angle
 from mineru.model.flash.ofd.images import build_image_item
 from mineru.model.flash.ofd.models import MediaResource, OfdPageScene, ResourceRegistry
 from mineru.model.flash.ofd.package import OfdPackage
-from mineru.model.flash.ofd.path import OfdPathBudget, _segments
+from mineru.model.flash.ofd.path import OfdPathBudget, _segments, build_axis_lines
 from mineru.model.flash.ofd.reading_order import OfdReadingOrderProjector
 from mineru.model.flash.ofd.resources import resolve_draw_param
 from mineru.model.flash.ofd.text import FontMetricResolver, OfdTextBudget, build_text_lines
@@ -510,6 +510,47 @@ def test_ofd_path_rejects_unexpected_numeric_tokens_without_hanging() -> None:
     assert _segments("1 2", Affine(), OfdPathBudget()) == []
     assert _segments("M 0 0 C 1 2 L 3 4", Affine(), OfdPathBudget()) == []
     assert _segments("M 0 0 L 10 0", Affine(), OfdPathBudget()) == [((0.0, 0.0), (10.0, 0.0))]
+
+
+def test_ofd_path_segments_are_clipped_to_object_boundary() -> None:
+    """验证完全越界路径被丢弃，穿越路径裁到对象与父级裁剪交集。"""
+    outside = etree.fromstring(
+        b'<PathObject ID="1" Boundary="10 10 10 1" LineWidth="0.2">'
+        b"<AbbreviatedData>M 20 0.5 L 30 0.5</AbbreviatedData></PathObject>"
+    )
+    outside_lines = build_axis_lines(
+        outside,
+        parent_transform=Affine(),
+        parent_clip=(0.0, 0.0, 100.0, 100.0),
+        paint_order=0,
+        template_id=None,
+        budget=OfdPathBudget(),
+    )
+    assert outside_lines == []
+
+    cases = [
+        ("M -5 5 L 15 5", "horizontal", (12.0, 14.9, 18.0, 15.1)),
+        ("M 5 -5 L 5 15", "vertical", (14.9, 12.0, 15.1, 18.0)),
+    ]
+    for data, orientation, expected_bbox in cases:
+        crossing = etree.fromstring(
+            (
+                '<PathObject ID="2" Boundary="10 10 10 10" LineWidth="0.2">'
+                f"<AbbreviatedData>{data}</AbbreviatedData></PathObject>"
+            ).encode()
+        )
+        lines = build_axis_lines(
+            crossing,
+            parent_transform=Affine(),
+            parent_clip=(12.0, 12.0, 18.0, 18.0),
+            paint_order=0,
+            template_id=None,
+            budget=OfdPathBudget(),
+        )
+
+        assert len(lines) == 1
+        assert lines[0].orientation == orientation
+        assert lines[0].bbox == pytest.approx(expected_bbox)
 
 
 def test_ofd_template_grid_recovers_table() -> None:

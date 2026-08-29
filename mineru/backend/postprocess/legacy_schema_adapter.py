@@ -23,11 +23,9 @@ from .inline import join_inline_spans
 _VISUAL_PARENT_TYPES: frozenset[str] = frozenset(
     {
         "image",
-        "image_block",
         "table",
         "chart",
         "code",
-        "algorithm",
     }
 )
 
@@ -52,7 +50,6 @@ _INLINE_CONTENT_BLOCK_TYPES: frozenset[str] = frozenset(
         "code_footnote",
         "caption",
         "footnote",
-        "algorithm",
         "phonetic",
     }
 )
@@ -69,18 +66,13 @@ _STRING_CONTENT_BLOCK_TYPES: frozenset[str] = frozenset(
 
 _BLOCK_TYPE_ALIASES: dict[str, str] = {
     "abstract": "text",
-    "vertical_text": "text",
     "phonetic": "text",
-    "formula_number": "text",
-    "discarded": "aside_text",
     "interline_equation": "equation",
-    "image_block": "image",
-    "algorithm_body": "code_body",
-    "algorithm_caption": "code_caption",
-    "algorithm_footnote": "code_footnote",
-    "header_image": "image_body",
-    "footer_image": "image_body",
 }
+
+_SUPPORTED_BLOCK_TYPES: frozenset[str] = frozenset(
+    _VISUAL_PARENT_TYPES | _INLINE_CONTENT_BLOCK_TYPES | _STRING_CONTENT_BLOCK_TYPES | {"list", "index"}
+)
 
 _INLINE_START_RE = re.compile(
     r"<(?P<tag>eq|code|text|hyperlink|sup|sub|strong|b|em|i|s|u)(?P<attrs>\s[^<>]*?)?>",
@@ -168,17 +160,16 @@ def _collect_blocks(
     inherited: dict[str, Any] | None,
 ) -> None:
     """递归展平视觉父块，并把普通叶子转换为当前 raw block。"""
-    source_type = str(block.get("type", "") or "")
+    block_type = _normalize_block_type(block)
     nested = block.get("blocks")
-    if source_type in _VISUAL_PARENT_TYPES and isinstance(nested, list) and nested:
-        child_context = _visual_child_context(block, source_type, inherited)
+    if block_type in _VISUAL_PARENT_TYPES and isinstance(nested, list) and nested:
+        child_context = _visual_child_context(block, inherited)
         for child in nested:
             if not isinstance(child, dict):
                 raise ValueError("legacy visual block children must be dicts")
             _collect_blocks(child, width, height, output, inherited=child_context)
         return
 
-    block_type = _normalize_block_type(block)
     if block_type == "list" and isinstance(nested, list) and nested:
         output.append(_convert_leaf_block(block, block_type, width, height, inherited))
         output.extend(_flatten_nested_list_items(nested, width, height))
@@ -197,7 +188,6 @@ def _collect_blocks(
 
 def _visual_child_context(
     block: dict[str, Any],
-    source_type: str,
     inherited: dict[str, Any] | None,
 ) -> dict[str, Any]:
     """收集视觉父块上需要下沉到 body 的元数据。"""
@@ -205,7 +195,7 @@ def _visual_child_context(
     context["bbox"] = block.get("bbox", context.get("bbox"))
     sub_type = block.get("sub_type")
     if not isinstance(sub_type, str) or not sub_type.strip():
-        sub_type = "algorithm" if source_type == "algorithm" else None
+        sub_type = None
     if sub_type:
         context["sub_type"] = sub_type
     if isinstance(block.get("guess_lang"), str) and block["guess_lang"].strip():
@@ -694,11 +684,14 @@ def _copy_leaf_metadata(
 
 
 def _normalize_block_type(block: dict[str, Any]) -> str:
-    """把 3.4.5 block discriminator 映射到当前 raw block 类型。"""
+    """把最终 3.4.5 discriminator 映射到当前 raw 类型并拒绝内部标签。"""
     block_type = str(block.get("type", "") or "")
     if block_type == "title":
         return "doc_title" if block.get("level") == 1 else "paragraph_title"
-    return _BLOCK_TYPE_ALIASES.get(block_type, block_type)
+    normalized = _BLOCK_TYPE_ALIASES.get(block_type, block_type)
+    if normalized not in _SUPPORTED_BLOCK_TYPES:
+        raise ValueError(f"unsupported MinerU 3.4.5 block type {block_type!r}; source reparse required")
+    return normalized
 
 
 def _normalize_bbox(value: Any, width: float, height: float) -> tuple[float, float, float, float]:

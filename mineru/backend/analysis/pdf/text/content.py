@@ -7,14 +7,12 @@ from typing import Any, Literal
 
 import numpy as np
 from PIL import Image
-from pdftext.schema import Char
-
 from .....model.runtime.hybrid import HybridLocalModelContext, run_ocr_inference
 from .....types import BBox, BlockType, ContentType
 from .....utils.language import detect_lang
 from .....model.ocr.image import rotate_vertical_crop_if_needed
 from .....model.ocr.results import OcrConfidence
-from .....model.flash.pdf.document import PDFPage, get_lines_from_chars
+from .....model.flash.pdf.document import PDFPage, PDFPageTextGeometry, get_lines_from_chars
 from .....model.flash.pdf.text_styles import (
     PDF_NATIVE_SCRIPT_MARKUP_KEY,
     PDFTextLinkLine,
@@ -152,7 +150,7 @@ def _fill_native_pdf_text_spans(
     render_scale: float,
     page_size: tuple[float, float],
     *,
-    page_chars: list[Char] | None = None,
+    page_text_geometry: PDFPageTextGeometry | None = None,
 ) -> list[_AnalyzeSpan]:
     """复用原生 PDF 字符回填逻辑，并允许共享同页删除线检测读取的字符。"""
     page_width, page_height = page_size
@@ -164,7 +162,9 @@ def _fill_native_pdf_text_spans(
         render_scale,
         [virtual_block],
         [],
-        page_chars=page_chars,
+        page_chars=page_text_geometry.chars if page_text_geometry is not None else None,
+        tight_bboxes=page_text_geometry.tight_bboxes if page_text_geometry is not None else None,
+        origins=page_text_geometry.origins if page_text_geometry is not None else None,
     )
 
 
@@ -365,7 +365,7 @@ def _fill_window_block_content_and_lines(
         style_lines: list[PDFTextStyleLine] = []
         link_lines: list[PDFTextLinkLine] = []
         if parse_mode == "txt":
-            page_chars = None
+            page_text_geometry = None
             try:
                 page_char_count = pdf_page.get_char_count()
             except Exception:
@@ -375,16 +375,19 @@ def _fill_window_block_content_and_lines(
                 or isinstance(page_char_count, bool)
                 or page_char_count <= MAX_NATIVE_TEXT_CHARS_PER_PAGE
             ):
-                page_chars, _line_items, style_lines, link_lines = build_pdf_native_visual_lines_and_styles(
-                    pdf_page,
-                )
+                (
+                    page_text_geometry,
+                    _line_items,
+                    style_lines,
+                    link_lines,
+                ) = build_pdf_native_visual_lines_and_styles(pdf_page)
             page_spans = _fill_native_pdf_text_spans(
                 pdf_page,
                 page_spans,
                 page_pil_image,
                 render_scale,
                 page_size,
-                page_chars=page_chars,
+                page_text_geometry=page_text_geometry,
             )
 
         block_lines = _group_page_spans_by_block(
