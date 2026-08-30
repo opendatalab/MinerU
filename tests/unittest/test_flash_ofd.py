@@ -26,6 +26,7 @@ from mineru.model.flash.ofd import images as ofd_images
 from mineru.model.flash.ofd import metadata as ofd_metadata
 from mineru.model.flash.ofd import scene as ofd_scene
 from mineru.model.flash.ofd import table as ofd_table
+from mineru.model.flash.ofd import text as ofd_text
 from mineru.model.flash.ofd.constants import (
     MAX_DELTA_TOKENS,
     MAX_DOCUMENT_COUNT,
@@ -381,6 +382,33 @@ def test_ofd_delta_tokens_are_streamed_and_bounded() -> None:
     exhausted = OfdTextBudget(delta_token_count=MAX_DELTA_TOKENS)
     with pytest.raises(OfdResourceLimitError, match="max_delta_tokens"):
         parse_delta("invalid 1", 1, exhausted)
+
+
+def test_ofd_textcode_is_decoded_and_charged_in_bounded_chunks(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证十六进制转义可跨分片恢复，超限时不会先解码完整 TextCode。"""
+    monkeypatch.setattr(ofd_text, "_TEXT_CODE_DECODE_CHUNK_SIZE", 3)
+    escaped = etree.fromstring(b"<TextCode>before\\00<Part>41</Part>after</TextCode>")
+    budget = OfdTextBudget()
+
+    assert ofd_text._decode_text_code_element(escaped, budget) == "beforeAafter"
+    assert budget.glyph_count == len("beforeAafter")
+
+    monkeypatch.setattr(ofd_text, "_TEXT_CODE_DECODE_CHUNK_SIZE", 16)
+    oversized = etree.fromstring(f"<TextCode>{'A' * 100_000}</TextCode>".encode())
+    original_decode = ofd_text.decode_text_code
+    decoded_chunk_lengths: list[int] = []
+
+    def record_decode(value: str) -> str:
+        """记录单次解码规模并委托真实转义实现。"""
+        decoded_chunk_lengths.append(len(value))
+        return original_decode(value)
+
+    monkeypatch.setattr(ofd_text, "decode_text_code", record_decode)
+    exhausted = OfdTextBudget(glyph_count=MAX_EXPANDED_GLYPHS)
+    with pytest.raises(OfdResourceLimitError, match="max_expanded_glyphs"):
+        ofd_text._decode_text_code_element(oversized, exhausted)
+
+    assert decoded_chunk_lengths == [16]
 
 
 def test_ofd_textcode_discards_glyphs_outside_object_boundary() -> None:

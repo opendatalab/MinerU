@@ -231,8 +231,8 @@ def test_ziamath_vector_corpus_covers_inline_and_display_constructs(source: str,
     assert vector.drawing.contents
 
 
-def test_formula_cache_is_bounded_and_skips_oversized_entries(monkeypatch: pytest.MonkeyPatch) -> None:
-    """验证公式超长或唯一项超过预算时继续渲染但不扩张文档级缓存。"""
+def test_formula_cache_is_bounded_and_rejects_oversized_entries(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证超长公式在 ZiaMath 前失败，唯一项超过预算时不扩张缓存。"""
     calls: list[str] = []
 
     def fake_render(latex: str, *, inline: bool, font_size: float, color: str) -> FormulaVector:
@@ -243,12 +243,12 @@ def test_formula_cache_is_bounded_and_skips_oversized_entries(monkeypatch: pytes
     monkeypatch.setattr(formula_module, "_render_ziamath_formula", fake_render)
     renderer = FormulaRenderer()
     oversized = "x" * (formula_module.MAX_FORMULA_CHARACTERS + 1)
-    renderer.render(oversized, inline=True, font_size=10)
-    renderer.render(oversized, inline=True, font_size=10)
+    with pytest.raises(PdfFormulaError, match="max_formula_characters"):
+        renderer.render(oversized, inline=True, font_size=10)
     for index in range(formula_module.MAX_CACHED_FORMULAS + 3):
         renderer.render(f"x_{index}", inline=True, font_size=10)
 
-    assert calls.count(oversized) == 2
+    assert oversized not in calls
     assert len(renderer._cache) == formula_module.MAX_CACHED_FORMULAS  # noqa: SLF001
 
 

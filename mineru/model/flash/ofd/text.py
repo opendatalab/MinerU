@@ -8,7 +8,7 @@ import math
 import re
 from collections import deque
 from dataclasses import dataclass
-from io import BytesIO
+from io import BytesIO, StringIO
 
 from fontTools.pens.boundsPen import BoundsPen
 from loguru import logger
@@ -37,6 +37,8 @@ from .package import OfdPackage, element_text, local_name, parse_int
 _HEX_ESCAPE_RE = re.compile(r"\\([0-9A-Fa-f]{4})")
 _GLYPH_TOKEN_RE = re.compile(r"\S+")
 _DELTA_TOKEN_RE = re.compile(r"[^,\s]+")
+_HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
+_TEXT_CODE_DECODE_CHUNK_SIZE = 64 * 1024
 
 
 @dataclass(slots=True)
@@ -51,12 +53,14 @@ class OfdTextBudget:
 
     def charge(self, text: str) -> None:
         """为一次 TextCode 展开计费。"""
-        self.text_bytes += len(text.encode("utf-8"))
-        self.glyph_count += len(text)
-        if self.text_bytes > MAX_EXPANDED_TEXT_BYTES:
-            raise OfdResourceLimitError(f"OFD resource limit exceeded: max_expanded_text_bytes={MAX_EXPANDED_TEXT_BYTES}")
-        if self.glyph_count > MAX_EXPANDED_GLYPHS:
+        glyph_count = self.glyph_count + len(text)
+        if glyph_count > MAX_EXPANDED_GLYPHS:
             raise OfdResourceLimitError(f"OFD resource limit exceeded: max_expanded_glyphs={MAX_EXPANDED_GLYPHS}")
+        text_bytes = self.text_bytes + len(text.encode("utf-8"))
+        if text_bytes > MAX_EXPANDED_TEXT_BYTES:
+            raise OfdResourceLimitError(f"OFD resource limit exceeded: max_expanded_text_bytes={MAX_EXPANDED_TEXT_BYTES}")
+        self.glyph_count = glyph_count
+        self.text_bytes = text_bytes
 
     def charge_glyph_mapping(self, count: int) -> None:
         """累计 CGTransform 的有效字符映射数量并限制全文展开量。"""
@@ -204,6 +208,41 @@ class FontMetricResolver:
 def decode_text_code(value: str) -> str:
     """解码 OFD TextCode 中的反斜杠四位十六进制字符。"""
     return _HEX_ESCAPE_RE.sub(lambda match: chr(int(match.group(1), 16)), value)
+
+
+def _incomplete_hex_escape_length(value: str) -> int:
+    """返回末尾可能跨分片的反斜杠十六进制前缀长度。"""
+    for length in range(min(4, len(value)), 0, -1):
+        suffix = value[-length:]
+        if suffix[0] == "\\" and all(character in _HEX_DIGITS for character in suffix[1:]):
+            return length
+    return 0
+
+
+def _decode_text_code_element(text_code: etree._Element, budget: OfdTextBudget) -> str:
+    """分片解码一个 TextCode，并在写入完整字符串前累计文字预算。"""
+    output = StringIO()
+    carry = ""
+    for part in text_code.itertext():
+        for offset in range(0, len(part), _TEXT_CODE_DECODE_CHUNK_SIZE):
+            chunk = part[offset : offset + _TEXT_CODE_DECODE_CHUNK_SIZE]
+            value = f"{carry}{chunk}" if carry else chunk
+            carry_length = _incomplete_hex_escape_length(value)
+            if carry_length:
+                complete = value[:-carry_length]
+                carry = value[-carry_length:]
+            else:
+                complete = value
+                carry = ""
+            if not complete:
+                continue
+            decoded = decode_text_code(complete)
+            budget.charge(decoded)
+            output.write(decoded)
+    if carry:
+        budget.charge(carry)
+        output.write(carry)
+    return output.getvalue()
 
 
 def parse_delta(value: str | None, count: int, budget: OfdTextBudget) -> list[float]:
@@ -382,10 +421,9 @@ def build_text_lines(
     decoded_text_codes: list[tuple[etree._Element, str]] = []
     position_count = 0
     for text_code in (element for element in text_object if local_name(element.tag) == "TextCode"):
-        text = decode_text_code("".join(text_code.itertext()))
+        text = _decode_text_code_element(text_code, budget)
         decoded_text_codes.append((text_code, text))
         if text:
-            budget.charge(text)
             position_count += len(text)
     glyph_by_position = _glyph_map(text_object, position_count, budget)
     global_position = 0

@@ -77,13 +77,15 @@ class FormulaRenderer:
             raise PdfFormulaError("formula must contain non-blank LaTeX")
         if not isinstance(font_size, (int, float)) or isinstance(font_size, bool) or font_size <= 0:
             raise PdfFormulaError("font_size must be a positive number")
+        if len(latex) > MAX_FORMULA_CHARACTERS:
+            raise PdfFormulaError(f"formula exceeds max_formula_characters={MAX_FORMULA_CHARACTERS}")
 
         key = (latex, inline, float(font_size), color)
-        if len(latex) <= MAX_FORMULA_CHARACTERS and key in self._cache:
+        if key in self._cache:
             return self._cache[key]
 
         vector = _render_ziamath_formula(latex, inline=inline, font_size=float(font_size), color=color)
-        if len(latex) <= MAX_FORMULA_CHARACTERS and len(self._cache) < MAX_CACHED_FORMULAS:
+        if len(self._cache) < MAX_CACHED_FORMULAS:
             self._cache[key] = vector
         return vector
 
