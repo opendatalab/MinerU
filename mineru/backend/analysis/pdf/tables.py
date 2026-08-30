@@ -246,11 +246,7 @@ def _apply_native_txt_table_priority(
                 {
                     "table_block": block,
                     "table_bbox": table_bbox,
-                    "complex_reasons": (
-                        {"rotated_table"}
-                        if _normalize_visual_block_angle(block.get("angle", 0)) != 0
-                        else set()
-                    ),
+                    "complex_reasons": set(),
                 }
             )
 

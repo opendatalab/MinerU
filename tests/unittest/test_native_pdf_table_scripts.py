@@ -11,6 +11,7 @@ from bs4 import BeautifulSoup
 from pdftext.schema import Bbox, Char
 import pytest
 
+from mineru.model.flash.pdf import table_text_styles as pdf_table_text_styles
 from mineru.model.flash.pdf.geometry import _rotate_bbox_from_upright
 from mineru.model.flash.pdf.document import PDFDocument
 from mineru.model.flash.pdf.table_recovery import (
@@ -146,6 +147,49 @@ def test_table_script_serialization_escapes_text_and_marks_superscript() -> None
 
     assert "&lt;A<sup>2</sup>" in styled
     assert BeautifulSoup(styled, "html.parser").get_text() == "<A2"
+
+
+def test_table_script_serialization_preserves_latin_row_separator(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证无来源行间空格与后续上下标 HTML 可以同时保留。"""
+
+    texts = "ModelNameH2"
+    bboxes = tuple(
+        (5.0 + index * 5.0, 40.0, 9.0 + index * 5.0, 50.0)
+        if index < 9
+        else (5.0 + (index - 9) * 5.0, 20.0, 9.0 + (index - 9) * 5.0, 30.0)
+        for index in range(len(texts))
+    )
+    chars = tuple(_char(text, index, bboxes[index]) for index, text in enumerate(texts))
+    glyphs = tuple(
+        NativeTableGlyph(
+            index,
+            index,
+            text,
+            bboxes[index],
+            0 if index < 9 else 1,
+            explicit_space_before=index == 5,
+        )
+        for index, text in enumerate(texts)
+    )
+    result = _result("Model Name H2", glyphs)
+    table_input = NativeTableInput((0.0, 0.0, 60.0, 60.0), (60.0, 60.0), 0, chars)
+    monkeypatch.setattr(
+        pdf_table_text_styles,
+        "_cell_script_roles",
+        lambda *_args, **_kwargs: {10: "sub"},
+    )
+
+    styled = render_native_table_html_with_scripts(
+        result,
+        table_input,
+        dict(enumerate(bboxes)),
+        {index: (bbox[0], bbox[3]) for index, bbox in enumerate(bboxes)},
+    )
+
+    assert "Model Name H<sub>2</sub>" in styled
+    assert BeautifulSoup(styled, "html.parser").get_text() == "Model Name H2"
 
 
 @pytest.mark.parametrize("angle", [0, 90, 180, 270])

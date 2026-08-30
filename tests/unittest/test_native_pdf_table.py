@@ -19,13 +19,17 @@ from mineru.model.flash.pdf.table_recovery import (
     recover_native_pdf_table,
 )
 from mineru.model.flash.pdf.table_recovery.candidate import GridCellSpec, build_candidate
-from mineru.model.flash.pdf.table_recovery.contracts import NativeTableCandidate
+from mineru.model.flash.pdf.table_recovery.contracts import NativeTableCandidate, NativeTableGlyph
 from mineru.model.flash.pdf.table_recovery.engine import (
     _remove_undercounted_vector_candidates,
     _select_candidate,
     diagnose_native_pdf_table,
 )
-from mineru.model.flash.pdf.table_recovery.text import build_native_table_text
+from mineru.model.flash.pdf.table_recovery.text import (
+    build_cell_text,
+    build_cell_text_parts,
+    build_native_table_text,
+)
 from mineru.model.flash.pdf.table_recovery.vector import (
     MAX_PRIMITIVES_PER_TABLE,
     build_vector_candidates,
@@ -56,6 +60,35 @@ def _char_items(
                 }
             )
     return tuple(rebuilt)
+
+
+def _cell_glyph_rows(rows: list[str]) -> list[NativeTableGlyph]:
+    """把多条物理行构造成保留显式词间空格的 cell 字形。"""
+
+    glyphs: list[NativeTableGlyph] = []
+    source_index = 0
+    for row_index, text in enumerate(rows):
+        x = 0.0
+        pending_space = False
+        for char in text:
+            if char.isspace():
+                pending_space = True
+                x += 2.0
+                continue
+            glyphs.append(
+                NativeTableGlyph(
+                    glyph_id=len(glyphs),
+                    source_index=source_index,
+                    text=char,
+                    bbox=(x, row_index * 12.0, x + 4.0, row_index * 12.0 + 8.0),
+                    visual_row=row_index,
+                    explicit_space_before=pending_space,
+                )
+            )
+            source_index += 1
+            pending_space = False
+            x += 4.0
+    return glyphs
 
 
 def _grid_rules(
@@ -1530,8 +1563,8 @@ def test_vector_grid_rejects_non_rectangular_merge_component() -> None:
     assert build_vector_candidates(table_input, text) == []
 
 
-def test_vector_cell_concatenates_multiple_visual_lines() -> None:
-    """验证同一逻辑单元格中的多行文本直接拼接且不写入 HTML 换行。"""
+def test_vector_cell_joins_latin_visual_lines_with_space() -> None:
+    """验证同一逻辑单元格中的 Latin 多行补空格但不写入 HTML 换行。"""
 
     table_input = NativeTableInput(
         table_bbox=(0.0, 0.0, 100.0, 60.0),
@@ -1552,8 +1585,44 @@ def test_vector_cell_concatenates_multiple_visual_lines() -> None:
     result = recover_native_pdf_table(table_input)
 
     assert result is not None
-    assert "<td>AB</td>" in result.html
+    assert "<td>A B</td>" in result.html
     assert "<br>" not in result.html
+
+
+@pytest.mark.parametrize(
+    ("rows", "expected"),
+    [
+        (["Latin line", "continues"], "Latin line continues"),
+        (["中文", "继续"], "中文继续"),
+        (["标题 neural", "networks"], "标题 neural networks"),
+        (["Neural Networks:", "Unlocking"], "Neural Networks: Unlocking"),
+        (["RF-", "based"], "RF-based"),
+        (["https://example.test/path", "/next"], "https://example.test/path/next"),
+        (["https://example.test/one", "https://example.test/two"], "https://example.test/one https://example.test/two"),
+        (["40.5000", "00"], "40.500000"),
+        (["1.0mg/N", "m3"], "1.0mg/Nm3"),
+        (["RFC3986", "URL"], "RFC3986URL"),
+        (["Привет", "мир"], "Приветмир"),
+    ],
+)
+def test_cell_visual_line_join_is_language_aware(
+    rows: list[str],
+    expected: str,
+) -> None:
+    """验证 Latin、CJK、URL、连字符、数字和紧凑标识符的边界策略。"""
+
+    glyphs = _cell_glyph_rows(rows)
+
+    assert build_cell_text(glyphs, 8.0) == expected
+
+
+def test_cell_visual_line_separator_has_no_source_index() -> None:
+    """验证新增行间空格不伪造 PDF 字符来源索引。"""
+
+    parts = build_cell_text_parts(_cell_glyph_rows(["Latin", "text"]), 8.0)
+
+    assert (" ", None) in parts
+    assert "".join(text for text, _source_index in parts) == "Latin text"
 
 
 @pytest.mark.parametrize("angle", [0, 90, 180, 270])
@@ -1991,7 +2060,7 @@ def test_sparse_multiline_recovers_keyed_long_records() -> None:
     assert result is not None
     assert result.source == "sparse_multiline"
     assert (result.rows, result.cols) == (4, 2)
-    assert "<td>Alpha(A1)</td><td>Title Abody a1body a2body a3</td>" in result.html
+    assert "<td>Alpha(A1)</td><td>Title A body a1 body a2 body a3</td>" in result.html
 
 
 def test_sparse_multiline_recovers_filled_record_continuations() -> None:
