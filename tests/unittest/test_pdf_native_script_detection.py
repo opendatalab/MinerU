@@ -319,6 +319,148 @@ def test_span_fill_uses_loose_bbox_when_tight_punctuation_does_not_match() -> No
     assert span.content == "."
 
 
+def test_zh2_heading_number_bridges_low_internal_periods() -> None:
+    """验证中文论文2窄标题框可恢复同行数字之间偏低的句点。"""
+    probe = "1.3.6 评估结果缺乏可解释性"
+    fixture = _contiguous_chars_containing(_ZH_2_PDF, 6, probe)
+    span_bbox = (308.16, 628.56, 444.96, 637.56)
+    periods = [char for char in fixture.chars if char["char"] == "."]
+    assert len(periods) == 2
+    for period in periods:
+        char_idx = int(period["char_idx"])
+        assert not native.calculate_char_in_span(fixture.tight_bboxes[char_idx], span_bbox, ".")
+        assert not native.calculate_char_in_span(tuple(float(value) for value in period["bbox"]), span_bbox, ".")
+
+    span = _fillable_span(span_bbox)
+    native.fill_char_in_spans(
+        [span],
+        fixture.chars,
+        8.64,
+        tight_bboxes=fixture.tight_bboxes,
+        origins=fixture.origins,
+        detect_scripts=False,
+    )
+
+    assert span.content == probe
+
+
+def test_span_fill_bridges_consecutive_internal_punctuation() -> None:
+    """验证连续内部标点在同行两侧同属一个 Span 时均可恢复。"""
+    span = _fillable_span((10.0, 10.0, 40.0, 20.0))
+    chars = [
+        _script_char(0, "1", height=6.0, center_y=15.0),
+        _script_char(1, ".", height=2.4, center_y=18.4),
+        _script_char(2, ".", height=2.4, center_y=18.4),
+        _script_char(3, "3", height=6.0, center_y=15.0),
+    ]
+    loose_bboxes = [
+        Bbox([12.0, 12.0, 15.0, 18.0]),
+        Bbox([15.0, 17.2, 16.0, 19.6]),
+        Bbox([16.0, 17.2, 17.0, 19.6]),
+        Bbox([17.0, 12.0, 20.0, 18.0]),
+    ]
+    for char, bbox in zip(chars, loose_bboxes, strict=True):
+        char["bbox"] = bbox
+    tight_bboxes = {index: tuple(float(value) for value in bbox) for index, bbox in enumerate(loose_bboxes)}
+
+    native.fill_char_in_spans(
+        [span],
+        chars,
+        10.0,
+        tight_bboxes=tight_bboxes,
+        origins={index: (float(index), 18.0) for index in range(len(chars))},
+        detect_scripts=False,
+    )
+
+    assert span.content == "1..3"
+
+
+def test_span_fill_does_not_bridge_punctuation_between_different_spans() -> None:
+    """验证前后字符归属不同 Span 时不会吸收中间标点。"""
+    first = _fillable_span((10.0, 10.0, 20.0, 20.0))
+    second = _fillable_span((20.0, 10.0, 30.0, 20.0))
+    chars = [
+        _script_char(0, "A", height=6.0, center_y=15.0),
+        _script_char(1, ".", height=2.4, center_y=18.4),
+        _script_char(2, "B", height=6.0, center_y=15.0),
+    ]
+    loose_bboxes = [
+        Bbox([12.0, 12.0, 15.0, 18.0]),
+        Bbox([19.5, 17.2, 20.5, 19.6]),
+        Bbox([22.0, 12.0, 25.0, 18.0]),
+    ]
+    for char, bbox in zip(chars, loose_bboxes, strict=True):
+        char["bbox"] = bbox
+
+    native.fill_char_in_spans(
+        [first, second],
+        chars,
+        10.0,
+        tight_bboxes={index: tuple(float(value) for value in bbox) for index, bbox in enumerate(loose_bboxes)},
+        origins={index: (float(index), 18.0) for index in range(len(chars))},
+        detect_scripts=False,
+    )
+
+    assert first.content == "A"
+    assert second.content == "B"
+
+
+def test_span_fill_does_not_bridge_punctuation_across_line_break_or_outside_span() -> None:
+    """验证跨物理行或中心位于 Span 外部的标点不会被桥接。"""
+    line_break_span = _fillable_span((10.0, 10.0, 40.0, 20.0))
+    line_break_chars = [
+        _script_char(0, "A", height=6.0, center_y=15.0),
+        _script_char(1, "\r", height=0.0, center_y=15.0),
+        _script_char(2, ".", height=2.4, center_y=18.4),
+        _script_char(3, "B", height=6.0, center_y=15.0),
+    ]
+    line_break_bboxes = [
+        Bbox([12.0, 12.0, 15.0, 18.0]),
+        Bbox([15.0, 15.0, 15.0, 15.0]),
+        Bbox([15.0, 17.2, 16.0, 19.6]),
+        Bbox([16.0, 12.0, 19.0, 18.0]),
+    ]
+    for char, bbox in zip(line_break_chars, line_break_bboxes, strict=True):
+        char["bbox"] = bbox
+    native.fill_char_in_spans(
+        [line_break_span],
+        line_break_chars,
+        10.0,
+        tight_bboxes={
+            0: (12.0, 12.0, 15.0, 18.0),
+            2: (15.0, 17.2, 16.0, 19.6),
+            3: (16.0, 12.0, 19.0, 18.0),
+        },
+        origins={index: (float(index), 18.0) for index in range(len(line_break_chars))},
+        detect_scripts=False,
+    )
+
+    outside_span = _fillable_span((10.0, 10.0, 40.0, 20.0))
+    outside_chars = [
+        _script_char(0, "A", height=6.0, center_y=15.0),
+        _script_char(1, ".", height=2.0, center_y=22.0),
+        _script_char(2, "B", height=6.0, center_y=15.0),
+    ]
+    outside_bboxes = [
+        Bbox([12.0, 12.0, 15.0, 18.0]),
+        Bbox([15.0, 21.0, 16.0, 23.0]),
+        Bbox([16.0, 12.0, 19.0, 18.0]),
+    ]
+    for char, bbox in zip(outside_chars, outside_bboxes, strict=True):
+        char["bbox"] = bbox
+    native.fill_char_in_spans(
+        [outside_span],
+        outside_chars,
+        10.0,
+        tight_bboxes={index: tuple(float(value) for value in bbox) for index, bbox in enumerate(outside_bboxes)},
+        origins={index: (float(index), 18.0) for index in range(len(outside_chars))},
+        detect_scripts=False,
+    )
+
+    assert line_break_span.content == "AB"
+    assert outside_span.content == "A B"
+
+
 def test_span_fill_attaches_whitespace_to_tight_owned_neighbors() -> None:
     """验证空格跟随两侧 tight 字符进入同一 Span，而不是留在旧的重叠 Span。"""
     first = _fillable_span((0.0, 0.0, 12.0, 20.0))
