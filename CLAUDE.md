@@ -150,15 +150,15 @@ class MinerUParser(DocumentParser):
         self._analyze_fn = doc_analyze
 ```
 
-## Middle JSON Schema 2.0 架构
+## Middle JSON Schema 3.0 架构
 
-pr-5415 重构后，Middle JSON 已收敛为 schema 2.0 的统一结构，不再有 pipeline/vlm/office 三套独立实现。
+Middle JSON 已收敛为 schema 3.0 的统一结构，并使用结构化 InlineSpan 表达自然语言行内语义，不再有 pipeline/vlm/office 三套独立实现。
 
 ### 1. 统一分析入口
 
-`backend/analyze.py:doc_analyze()` 是 PDF、EPUB、HTML、CSV 与 Office 文档的唯一公共入口，通过 `file_suffix` 路由到 `backend/analysis/pdf/pipeline.py:analyze_pdf`、`backend/analysis/epub.py:analyze_epub`、`backend/analysis/html.py:analyze_html`、`backend/analysis/csv.py:analyze_csv` 或 `backend/analysis/office.py:analyze_office`，最终经 `backend/postprocess/pages.py:model_list_to_pages()` 产出统一 `pages`。`MinerUParser` 是 `DocumentParser` 的唯一实现，替代旧的 `PdfHybridParser`/`PdfFlashParser`/`DocxParser` 等。
+`backend/analyze.py:doc_analyze()` 是 PDF、OFD、EPUB、HTML、CSV 与 Office 文档的唯一公共入口，通过 `file_suffix` 路由到 `backend/analysis/pdf/pipeline.py:analyze_pdf`、`backend/analysis/ofd.py:analyze_ofd`、`backend/analysis/epub.py:analyze_epub`、`backend/analysis/html.py:analyze_html`、`backend/analysis/csv.py:analyze_csv` 或 `backend/analysis/office.py:analyze_office`，生成严格 `ModelJson` 后统一交给 `backend/postprocess/document.py:model_json_to_middle_json()` 构造 `MiddleJson`。`MinerUParser` 是 `DocumentParser` 的唯一实现，替代旧的 `PdfHybridParser`/`PdfFlashParser`/`DocxParser` 等。
 
-### 2. MiddleJson 顶层字段（schema 2.0）
+### 2. MiddleJson 顶层字段（schema 3.0）
 
 `mineru/types.py:MiddleJson` 严格定义：
 
@@ -166,12 +166,12 @@ pr-5415 重构后，Middle JSON 已收敛为 schema 2.0 的统一结构，不再
 |------|------|------|
 | `pages` | `list[PageInfo]` | 严格按 `page_idx` 升序的页面数组 |
 | `is_full_document` | `bool` | 是否整本文档解析（空 `page_index_map` 时为 `True`） |
-| `file_suffix` | `Literal["pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx", "rtf", "csv", "epub", "html", "odt", "ods", "odp"]` | 输入文件类型 |
+| `file_suffix` | `Literal["pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx", "rtf", "csv", "epub", "html", "ofd", "odt", "ods", "odp"]` | 输入文件类型 |
 | `effort` | `Literal["flash", "medium", "high", "xhigh"]` | 分析强度 |
 | `parse_mode` | `Literal["txt", "ocr"]` | 解析模式 |
 | `mineru_version` | `str` | MinerU 版本号 |
 
-不再有 `_backend`/`_version_name`/`pdf_info`/`_ocr_enable`/`_vlm_ocr_enable` 等旧字段。
+schema 3.0 输出不再有 `_backend`/`_version_name`/`pdf_info`/`_ocr_enable`/`_vlm_ocr_enable` 等旧字段；这些字段只能作为受支持旧 payload 的迁移输入出现。
 
 ### 2.1 ModelJson 严格容器
 
@@ -183,12 +183,14 @@ pr-5415 重构后，Middle JSON 已收敛为 schema 2.0 的统一结构，不再
 
 ### 4. Block 类型体系
 
-`mineru/types.py` 使用 Pydantic 模型替代旧 `Block`/`Line`/`Span` dataclass：
+`mineru/types.py` 使用严格 Pydantic 模型替代旧 `Block`/`Line`/几何 `Span` dataclass：
 
-- 叶子块（`TextBlock`/`EquationBlock`/`ImageBodyBlock` 等）直接持有 `content: str`
+- 自然语言块（正文、标题、页眉页脚、脚注、视觉注释与算法正文）持有 `content: list[InlineSpan]`
+- `InlineSpan` 是 `TextSpan`/`EquationInlineSpan`/`CodeInlineSpan`/`HyperlinkSpan` 的严格联合，只表达行内语义，不携带 bbox、score、字体或图片字段
+- `EquationBlock`、图片/表格/图表 body 与普通 `CodeBodyBlock` 等专用叶子继续使用各自的字符串或图片载荷字段
 - 视觉父块（`ImageBlock`/`TableBlock`/`ChartBlock`/`CodeBlock`）持有 `content: list[child blocks]`，子块包含唯一 body + 可选 caption/footnote
 - `BlockType.INTERLINE_EQUATION` 已重命名为 `BlockType.EQUATION`
-- 不再有 `Line`/`Span` 独立类型，行级和 span 级 bbox 不再生成
+- 不再生成旧版独立 `Line`/几何 `Span` 类型及行级、span 级 bbox
 
 ### 5. 统一 render 入口
 
@@ -197,17 +199,21 @@ pr-5415 重构后，Middle JSON 已收敛为 schema 2.0 的统一结构，不再
 - `RenderFormat.MARKDOWN` → `render_markdown`
 - `RenderFormat.HTML` → `render_html`
 - `RenderFormat.DOCX` → `render_docx`
+- `RenderFormat.EPUB` → `render_epub`
 - `RenderFormat.STRUCTURED_CONTENT` → `render_structured_content`
+- `RenderFormat.CONTENT_LIST` → `render_content_list`
+- `RenderFormat.CONTENT_LIST_V2` → `render_content_list_v2`
+- `RenderFormat.PDF` → `render_pdf`
 
-`render/_internal/` 下按目标格式分目录组织共享逻辑（`common/`/`markdown/`/`html/`/`docx/`/`structured_content/`），顶层同名模块只是惰性公共门面。行内语义解析归 `backend/postprocess/inline.py`，renderer 只能单向依赖该模块和 `backend/postprocess/table_merge`。不再有 `pipeline_union_make`/`vlm_union_make`/`office_union_make` 三套逻辑，`content_list` 格式和 `render_content_list` 函数已删除。
+`render/_internal/` 下按目标格式分目录组织共享逻辑（`common/`/`markdown/`/`html/`/`docx/`/`epub/`/`pdf/`/`content_list/`/`structured_content/`），顶层同名模块只是惰性公共门面。InlineSpan 的规范化、连接、裁剪和可见文本操作归 `backend/postprocess/inline.py`，renderer 按 Span discriminator 分派，并只能单向依赖该模块和 `backend/postprocess/table_merge`。不再有 `pipeline_union_make`/`vlm_union_make`/`office_union_make` 三套逻辑；Content List V1/V2 是由严格 MiddleJson 派生的正式兼容输出，不恢复旧 backend 并行实现。EPUB、PDF 与两套 Content List 只扩展低层 `mineru.render` 公共面，不自动扩展 ParseResult、CLI、API Server 或 doclib 输出合同。
 
 ### 5.1 目录职责
 
 - `model/runtime/` 负责设备、显存、ONNX 与 Hybrid 本地模型生命周期；模型仓库和下载分别位于 `model/registry.py`、`model/download.py`。
-- `model/flash/pdf/` 负责 PDFDocument、PDFium、原生文本、样式和表格恢复；`model/flash/epub/` 负责 OCF、OPF、spine 与 XHTML/SVG；`model/flash/csv.py` 负责分隔符文本解析；`model/flash/office/` 负责十类 Office/RTF/ODF 格式。
-- `utils/` 只保留 geometry、image、image payload、language/text、platform 和 stdio 等叶子能力；活动代码不得把业务实现重新放入 utils。
-- 稳定依赖方向为 `utils/types → model → backend → render → parser/kit/doclib`，禁止反向引用。
+- `model/flash/pdf/` 负责 PDFDocument、PDFium、原生文本、样式和表格恢复；`model/flash/ofd/` 负责 OFD 包、资源、固定版式场景与阅读顺序；`model/flash/epub/` 负责 OCF、OPF、spine 与 XHTML/SVG；`model/flash/csv.py` 负责分隔符文本解析；`model/flash/office/` 负责十类 Office/RTF/ODF 格式。
+- `utils/` 只保留 geometry、image、image payload、language/text、URL/超链接目标校验与共享安全 scheme 集合、platform 和 stdio 等无业务依赖的叶子能力；是否允许相对链接、fragment 等格式策略由调用方显式选择，活动代码不得把格式解析或其它业务实现放入 utils。
+- `utils/types` 共同组成基础能力层，`types.py` 可以复用不依赖上层模块的 leaf utility；稳定依赖方向为 `utils/types → model → backend → render → parser/kit/doclib`，禁止上层模块被基础层反向引用。
 
 ### 6. ParseResult 与 MiddleJson 的关系
 
-`ParseResult` 持有 `MiddleJson` 实例，`pages` 改为 property 委托给 `middle_json.pages`。`to_dict()`/`from_dict()` 处理 schema 2.0 与旧 1.0 payload 的双向兼容（1.0 经 `backend/postprocess/legacy_schema_adapter.py:legacy_page_to_model_list` 回推为 model_list 重走后处理）。
+`ParseResult` 持有 `MiddleJson` 实例，`pages` property 委托给 `middle_json.pages`。`to_dict()` 只输出 schema 3.0；`from_dict()` 直接读取 3.0，并将 MinerU 3.4.5 `pdf_info` 与对应 schema 1.0 `pages` 包装经 `backend/postprocess/legacy_schema_adapter.py:legacy_page_to_model_list` 单向回推为 raw model-list 后重走统一后处理。schema 2.0 与其它未知旧 payload 不自动迁移，必须从源文件重新解析。

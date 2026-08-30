@@ -1,0 +1,91 @@
+html {
+  color: #1f2328;
+  background: #fff;
+  font-family: serif;
+  line-height: 1.6;
+}
+
+body {
+  margin: 0;
+  padding: 0 5%;
+}
+
+.mineru-document {
+  max-width: 48rem;
+  margin: 0 auto;
+}
+
+.mineru-block,
+.mineru-figure,
+.mineru-visual-body,
+.mineru-page-footnote {
+  margin: 1em 0;
+}
+
+.mineru-heading {
+  line-height: 1.25;
+  break-after: avoid;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+figure,
+figcaption,
+.mineru-caption,
+.mineru-footnote {
+  margin-left: 0;
+  text-align: left;
+}
+
+table {
+  border-collapse: collapse;
+  max-width: 100%;
+}
+
+th,
+td {
+  border: 1px solid #8c959f;
+  padding: 0.3em 0.5em;
+  vertical-align: top;
+}
+
+pre {
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+code,
+kbd,
+pre {
+  font-family: monospace;
+}
+
+.mineru-preserve-whitespace,
+.mineru-algorithm {
+  white-space: pre-wrap;
+}
+
+.mineru-page-footnote,
+.mineru-footnote,
+figcaption {
+  color: #57606a;
+  font-size: 0.9em;
+}
+
+.mineru-text-emphasis {
+  font-weight: 600;
+}
+
+.mineru-list-marker {
+  margin-right: 0.4em;
+}
+
+.mineru-list--explicit,
+.mineru-list--unmarked {
+  list-style: none;
+  padding-left: 1.2em;
+}

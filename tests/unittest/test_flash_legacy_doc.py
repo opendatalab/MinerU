@@ -30,6 +30,7 @@ from mineru.types import BlockType, ChartBlock, MiddleJson, ModelJson, TableBloc
 
 from _legacy_doc_test_utils import build_doc, utf16_cp
 from _legacy_ppt_test_utils import _build_cfb
+from _span_test_utils import inline, inline_items, inline_text, inline_urls
 
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -65,7 +66,11 @@ def test_doc_model_preserves_empty_sections_and_ignores_page_breaks() -> None:
     pages = DocModel().predict(stream)
 
     assert not stream.closed
-    assert pages == [[], [{"type": BlockType.TEXT, "content": "First"}], [{"type": BlockType.TEXT, "content": "Second"}]]
+    assert pages == [
+        [],
+        [{"type": BlockType.TEXT, "content": inline("First")}],
+        [{"type": BlockType.TEXT, "content": inline("Second")}],
+    ]
 
 
 def test_doc_analyze_sync_and_async_return_strict_doc_contract() -> None:
@@ -102,7 +107,7 @@ def test_doc_piece_text_preserves_non_bmp_and_compressed_codepage(
 
     pages = DocModel().predict(BytesIO(build_doc(text, compressed=compressed, **kwargs)))
 
-    assert pages == [[{"type": BlockType.TEXT, "content": text.rstrip("\r")}]]
+    assert pages == [[{"type": BlockType.TEXT, "content": inline(text.rstrip("\r"))}]]
 
 
 def test_doc_footnote_reference_and_body_bind_to_reference_section() -> None:
@@ -118,8 +123,11 @@ def test_doc_footnote_reference_and_body_bind_to_reference_section() -> None:
         )
     )
 
-    assert '<text style="superscript">[1]</text>' in pages[0][0]["content"]
-    assert pages[0][-1] == {"type": BlockType.PAGE_FOOTNOTE, "content": "[1] Foot note"}
+    assert any(
+        isinstance(span, dict) and span.get("content") == "[1]" and "superscript" in span.get("styles", [])
+        for span in inline_items(pages[0][0]["content"])
+    )
+    assert pages[0][-1] == {"type": BlockType.PAGE_FOOTNOTE, "content": inline("[1] Foot note")}
     assert all(block.get("type") != BlockType.PAGE_FOOTNOTE for block in pages[1])
 
 
@@ -129,8 +137,8 @@ def test_doc_hyperlink_field_keeps_safe_target_and_drops_dangerous_target() -> N
     text = '\x13 HYPERLINK "https://example.test/a" \x14Safe\x15\r\x13 HYPERLINK "javascript:alert(1)" \x14Danger\x15\r'
     pages = DocModel().predict(BytesIO(build_doc(text)))
 
-    assert "<url>https://example.test/a</url>" in pages[0][0]["content"]
-    assert pages[0][1] == {"type": BlockType.TEXT, "content": "Danger"}
+    assert inline_urls(pages[0][0]["content"]) == ["https://example.test/a"]
+    assert pages[0][1] == {"type": BlockType.TEXT, "content": inline("Danger")}
 
 
 @pytest.mark.parametrize(
@@ -189,12 +197,12 @@ def test_doc_exact_list_label_is_consumed_before_strict_projection() -> None:
             "start": 4,
             "ilevel": 0,
             "content": [
-                {"type": BlockType.TEXT, "content": "item", "list_label": "IV."},
+                {"type": BlockType.TEXT, "content": inline("item"), "list_label": "IV."},
             ],
         }
     ]
 
-    assert fix_office_list_blocks(blocks)[0]["content"] == [{"type": BlockType.TEXT, "content": "IV. item"}]
+    assert inline_text(fix_office_list_blocks(blocks)[0]["content"][0]["content"]) == "IV. item"
 
 
 def test_doc_table_grid_materializes_colspan_and_rowspan() -> None:
@@ -317,4 +325,4 @@ def test_doc_is_supported_by_public_parser(tmp_path: Path) -> None:
     result = parse(path, tier="flash")
 
     assert result.middle_json.file_suffix == "doc"
-    assert result.pages[0].blocks[0].content == "Hello"
+    assert inline_text(result.pages[0].blocks[0].content) == "Hello"

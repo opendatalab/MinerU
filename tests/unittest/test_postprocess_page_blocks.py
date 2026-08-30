@@ -4,6 +4,8 @@ from mineru.backend.postprocess.lists import fix_pdf_list_blocks
 from mineru.backend.postprocess.page_blocks import process_page_blocks
 from mineru.types import BlockType
 
+from _span_test_utils import inline as _inline
+
 
 def test_page_blocks_keep_canonical_equation_type_and_clean_content() -> None:
     """验证单页后处理清理行间公式内容时不改写 equation 类型。"""
@@ -35,7 +37,7 @@ def test_fix_pdf_list_blocks_supports_unit_bbox_without_rewrite() -> None:
     text_block = {
         "type": BlockType.TEXT,
         "bbox": text_bbox,
-        "content": "list item",
+        "content": _inline("list item"),
     }
 
     list_blocks, text_blocks, ref_text_blocks = fix_pdf_list_blocks(
@@ -60,7 +62,7 @@ def test_page_blocks_group_bbox_dict_visual_blocks() -> None:
             {
                 "type": BlockType.IMAGE_CAPTION,
                 "bbox": [0.0, 0.0, 80.0, 10.0],
-                "content": "Figure 1",
+                "content": _inline("Figure 1"),
             },
             {
                 "type": BlockType.IMAGE,
@@ -90,7 +92,7 @@ def test_page_blocks_group_no_bbox_office_caption_by_prefix() -> None:
             },
             {
                 "type": BlockType.TEXT,
-                "content": "Figure 1",
+                "content": _inline("Figure 1"),
             },
         ]
     )
@@ -109,9 +111,9 @@ def test_page_blocks_group_no_bbox_chart_and_code_captions() -> None:
     """验证无 bbox 的 chart/code caption 映射及 code subtype 保留。"""
     blocks = process_page_blocks(
         [
-            {"type": BlockType.CHART_CAPTION, "content": "Chart 1"},
+            {"type": BlockType.CHART_CAPTION, "content": _inline("Chart 1")},
             {"type": BlockType.CHART, "content": "<div>chart</div>"},
-            {"type": BlockType.CODE_CAPTION, "content": "Algorithm 1"},
+            {"type": BlockType.CODE_CAPTION, "content": _inline("Algorithm 1")},
             {"type": BlockType.CODE, "content": "print('ok')"},
         ]
     )

@@ -10,7 +10,7 @@ import numpy as np
 from loguru import logger
 
 from ....model.runtime.hybrid import HybridLocalModelContext
-from ....model.flash.pdf.document import PDFDocument, PDFPage
+from ....model.flash.pdf.document import PDFDocument, PDFPage, PDFPageTextGeometry
 from .images import load_images_from_pdf_bytes_range
 
 from ..contracts import AnalyzeEffort
@@ -169,6 +169,7 @@ def _process_flash_ocr(
         empty_formula_list,
         ocr_res_list,
         "ocr",
+        "flash",
         PIPELINE_DET_TYPE,
         local_model_context,
     )
@@ -188,6 +189,7 @@ def _process_text_and_formulas(
     effort: Literal["medium", "high", "xhigh"],
     local_model_context: HybridLocalModelContext,
     images_layout_res: list[list[dict[str, Any]]],
+    page_text_geometries: list[PDFPageTextGeometry | None] | None = None,
 ) -> list[list[dict[str, Any]]]:
     """在当前窗口内完成 OCR、公式、原生文本及 block 行信息回填。"""
 
@@ -270,8 +272,10 @@ def _process_text_and_formulas(
         inline_formula_list,
         ocr_res_list,
         parse_mode,
+        effort,
         ocr_det_type,
         local_model_context,
+        page_text_geometries,
     )
 
 
@@ -312,6 +316,11 @@ def process_pdf_windows(
                 raise ValueError("Hybrid processing window PDF page count does not match image count")
             images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
             _log_processing_window(window, page_count, len(images_pil_list))
+            page_text_geometries: list[PDFPageTextGeometry | None] | None = (
+                [None] * len(window_pages)
+                if not flash_txt_mode and parse_mode == "txt" and effort in {"medium", "high", "xhigh"}
+                else None
+            )
 
             if flash_txt_mode:
                 # Flash 仅切割当前窗口的外层列表，用于页图释放前原地补充视觉块裁图。
@@ -346,6 +355,7 @@ def process_pdf_windows(
                         window_pages,
                         images_list,
                         effort=effort,
+                        page_text_geometries=page_text_geometries,
                     )
                     if native_table_summary.total:
                         native_table_stats = {
@@ -443,6 +453,7 @@ def process_pdf_windows(
                         effort,
                         local_model_context,
                         images_layout_res,
+                        page_text_geometries,
                     )
 
                 if effort in {"medium", "high"}:

@@ -1,6 +1,6 @@
 # Copyright (c) Opendatalab. All rights reserved.
 
-"""Flash PDF、EPUB、HTML、CSV 与 Office/RTF 文档模型。"""
+"""Flash PDF、EPUB、HTML、OFD、CSV 与 Office/RTF 文档模型。"""
 
 from __future__ import annotations
 
@@ -61,6 +61,18 @@ class HtmlModel:
 
         converter = HtmlConverter()
         converter.convert(file_binary, source_context=source_context)
+        return converter.pages
+
+
+class OfdModel:
+    """将 OFD 固定版式文档包装为无状态 Flash 模型。"""
+
+    def predict(self, file_binary: BinaryIO) -> list[list[dict[str, Any]]]:
+        """转换调用方持有的整份 OFD 流，并返回逐物理页 model-list。"""
+        from .ofd.converter import OfdConverter
+
+        converter = OfdConverter()
+        converter.convert(file_binary)
         return converter.pages
 
 

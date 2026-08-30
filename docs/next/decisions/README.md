@@ -59,6 +59,8 @@
 | [ADR-0029](0029-rtf-native-semantic-parsing.md) | Accepted | RTF 原生语义 Flash 解析 |
 | [ADR-0030](0030-odf-native-semantic-parsing.md) | Accepted | ODF 原生语义 Flash 解析 |
 | [ADR-0031](0031-html-native-semantic-parsing.md) | Accepted | HTML 原生静态语义 Flash 解析 |
+| [ADR-0032](0032-ofd-native-fixed-layout-parsing.md) | Accepted | OFD 原生固定版式 Flash 解析 |
+| [ADR-0033](0033-middle-json-inline-spans.md) | Accepted | Middle JSON 3.0 结构化行内 Span |
 
 ## 模板
 

@@ -21,40 +21,45 @@ logger = logging.getLogger("mineru.compaction")
 
 
 def _normalize_batch_pages(batch_payload: dict[str, Any]) -> list[dict[str, Any]]:
-    """把 batch JSON 的 pages 统一为 2.0 schema 的 page dict 列表。
+    """统一读取 3.0 batch，或把 3.4.5/1.0 页面转换为当前 page 字典。"""
+    schema_version = batch_payload.get("schema_version")
+    raw_pages = batch_payload.get("pages")
+    if schema_version == MIDDLE_JSON_SCHEMA_VERSION:
+        return raw_pages if isinstance(raw_pages, list) else []
 
-    2.0 batch：page 只有 page_idx + blocks，直接用。
-    1.0 batch：page 含 preproc_blocks/para_blocks/discarded_blocks/page_size，
-    走 legacy_schema_adapter 回推为 raw model_list，再走 model_json_to_pages 转 2.0。
-    """
-    raw_pages = batch_payload.get("pages", [])
-    if batch_payload.get("schema_version") == MIDDLE_JSON_SCHEMA_VERSION:
-        return raw_pages
+    if schema_version == "1.0":
+        pass
+    elif schema_version is None:
+        raw_pages = batch_payload.get("pdf_info")
+    else:
+        raw_pages = None
+    if not isinstance(raw_pages, list) or any(not isinstance(page, dict) for page in raw_pages):
+        raise ValueError("stale Middle JSON cache requires source reparse")
 
-    # 1.0 batch：走 legacy 适配器转换
     from ...backend.postprocess.legacy_schema_adapter import legacy_page_to_model_list
     from ...backend.postprocess.pages import model_json_to_pages
     from ...parser.base import (
-        _LEGACY_DEFAULT_EFFORT,
-        _LEGACY_DEFAULT_FILE_SUFFIX,
-        _LEGACY_DEFAULT_PARSE_MODE,
+        _legacy_effort,
+        _legacy_file_suffix,
+        _legacy_page_index_map,
+        _legacy_parse_mode,
     )
     from ...types import ModelJson
-    from ...version import __version__ as mineru_version
+    from ...version import __version__ as current_mineru_version
 
-    model_list = [legacy_page_to_model_list(page) for page in raw_pages]
-    if not model_list or not any(model_list):
-        return []
+    source_version = batch_payload.get("_version_name", batch_payload.get("mineru_version"))
+    mineru_version = (
+        source_version.strip() if isinstance(source_version, str) and source_version.strip() else current_mineru_version
+    )
     model_json = ModelJson(
-        pages=model_list,
-        page_index_map=[],
-        file_suffix=_LEGACY_DEFAULT_FILE_SUFFIX,
-        effort=_LEGACY_DEFAULT_EFFORT,
-        parse_mode=_LEGACY_DEFAULT_PARSE_MODE,
+        pages=[legacy_page_to_model_list(page) for page in raw_pages],
+        page_index_map=_legacy_page_index_map(raw_pages),
+        file_suffix=_legacy_file_suffix(batch_payload),
+        effort=_legacy_effort(batch_payload),
+        parse_mode=_legacy_parse_mode(batch_payload),
         mineru_version=mineru_version,
     )
-    pages = model_json_to_pages(model_json)
-    return [page.to_dict() for page in pages]
+    return [page.to_dict() for page in model_json_to_pages(model_json)]
 
 
 class Compaction:

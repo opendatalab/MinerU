@@ -1,3 +1,4 @@
+from _span_test_utils import inline as _inline
 from dataclasses import dataclass
 from typing import Literal
 
@@ -9,7 +10,7 @@ from mineru.types import (
     ImageAnnotationBlock,
     ImageBlock,
     ImageBodyBlock,
-    MiddleJson,
+    InlineContentBlock,
     PageInfo,
     ParagraphTitleBlock,
     TextBlock,
@@ -18,27 +19,12 @@ from mineru.types import (
 IssueSeverity = Literal["error", "warning"]
 
 KNOWN_BLOCK_TYPES = BLOCK_TYPES
-TEXT_CONTENT_BLOCK_TYPES = {
-    BlockType.TEXT,
-    BlockType.REF_TEXT,
-    BlockType.DOC_TITLE,
-    BlockType.PARAGRAPH_TITLE,
+STRING_CONTENT_BLOCK_TYPES = {
     BlockType.EQUATION,
     BlockType.TABLE_BODY,
-    BlockType.IMAGE_CAPTION,
-    BlockType.IMAGE_FOOTNOTE,
-    BlockType.TABLE_CAPTION,
-    BlockType.TABLE_FOOTNOTE,
-    BlockType.CHART_CAPTION,
-    BlockType.CHART_FOOTNOTE,
     BlockType.CODE_BODY,
-    BlockType.CODE_CAPTION,
-    BlockType.CODE_FOOTNOTE,
-    BlockType.HEADER,
-    BlockType.FOOTER,
-    BlockType.PAGE_NUMBER,
-    BlockType.ASIDE_TEXT,
-    BlockType.PAGE_FOOTNOTE,
+    BlockType.IMAGE_BODY,
+    BlockType.CHART_BODY,
 }
 VISUAL_PARENT_TYPES = {
     BlockType.IMAGE,
@@ -170,7 +156,9 @@ def _validate_block(block: BlockBase, path: str, issues: list[ValidationIssue]) 
     if _has_field(block, "bbox") and block.bbox is not None:
         _validate_bbox(block.bbox, f"{path}.bbox", issues)
 
-    if block_type in TEXT_CONTENT_BLOCK_TYPES:
+    if isinstance(block, InlineContentBlock):
+        _validate_inline_content(block, f"{path}.content", issues)
+    elif block_type in STRING_CONTENT_BLOCK_TYPES:
         _validate_string_content(block, f"{path}.content", issues)
 
     if block_type in VISUAL_PARENT_TYPES:
@@ -191,13 +179,30 @@ def _validate_string_content(block: BlockBase, path: str, issues: list[Validatio
     if not isinstance(content, str):
         issues.append(_invalid_type(path, "str"))
         return
-    if not content:
+    if not content and block_type == BlockType.CODE_BODY:
         issues.append(
             ValidationIssue(
                 severity="warning",
                 code="block_content_missing",
                 path=path,
                 message=f"{block_type} block should provide content.",
+            )
+        )
+
+
+def _validate_inline_content(block: InlineContentBlock, path: str, issues: list[ValidationIssue]) -> None:
+    """验证行内内容是非空 Span 列表。"""
+    content = getattr(block, "content", None)
+    if not isinstance(content, list):
+        issues.append(_invalid_type(path, "list[InlineSpan]"))
+        return
+    if not content:
+        issues.append(
+            ValidationIssue(
+                severity="warning",
+                code="block_content_missing",
+                path=path,
+                message=f"{block.type} block should provide content.",
             )
         )
 
@@ -350,13 +355,13 @@ def _valid_page() -> PageInfo:
     return PageInfo(
         page_idx=0,
         blocks=[
-            TextBlock(type=BlockType.TEXT, index=0, bbox=(0.1, 0.1, 0.2, 0.2), content="hello"),
+            TextBlock(type=BlockType.TEXT, index=0, bbox=(0.1, 0.1, 0.2, 0.2), content=_inline("hello")),
         ],
     )
 
 
 def test_middle_json_schema_version_is_public_constant() -> None:
-    assert MIDDLE_JSON_SCHEMA_VERSION == "2.0"
+    assert MIDDLE_JSON_SCHEMA_VERSION == "3.0"
 
 
 def test_validate_pages_accepts_valid_page_tree() -> None:
@@ -464,9 +469,9 @@ def test_validate_pages_reports_block_index_order_and_duplicates() -> None:
     page = PageInfo.model_construct(
         page_idx=0,
         blocks=[
-            TextBlock(type=BlockType.TEXT, index=2, bbox=(0.1, 0.1, 0.2, 0.2), content="a"),
-            TextBlock(type=BlockType.TEXT, index=1, bbox=(0.1, 0.1, 0.2, 0.2), content="b"),
-            TextBlock(type=BlockType.TEXT, index=1, bbox=(0.1, 0.1, 0.2, 0.2), content="c"),
+            TextBlock(type=BlockType.TEXT, index=2, bbox=(0.1, 0.1, 0.2, 0.2), content=_inline("a")),
+            TextBlock(type=BlockType.TEXT, index=1, bbox=(0.1, 0.1, 0.2, 0.2), content=_inline("b")),
+            TextBlock(type=BlockType.TEXT, index=1, bbox=(0.1, 0.1, 0.2, 0.2), content=_inline("c")),
         ],
     )
 
@@ -476,9 +481,9 @@ def test_validate_pages_reports_block_index_order_and_duplicates() -> None:
     assert ("error", "block_index_duplicate", "pages[0].blocks[2].index") in _issue_keys(issues)
 
 
-def test_validate_pages_reports_string_content_contracts() -> None:
-    """验证字符串内容 block 的空 content 会触发 warning。"""
-    empty_text = TextBlock.model_construct(type=BlockType.TEXT, index=0, content="", bbox=(0.1, 0.1, 0.2, 0.2))
+def test_validate_pages_reports_inline_content_contracts() -> None:
+    """验证 Span 内容 block 的空 content 会触发 warning。"""
+    empty_text = TextBlock.model_construct(type=BlockType.TEXT, index=0, content=[], bbox=(0.1, 0.1, 0.2, 0.2))
     page = PageInfo(page_idx=0, blocks=[empty_text])
 
     issues = validate_pages([page])
@@ -496,7 +501,12 @@ def test_validate_pages_reports_visual_block_body_count_mismatch() -> None:
         index=0,
         bbox=(0.0, 0.0, 0.5, 0.5),
         content=[
-            ImageAnnotationBlock.model_construct(type=BlockType.IMAGE_CAPTION, index=1, content="caption", bbox=(0.0, 0.0, 0.5, 0.5)),
+            ImageAnnotationBlock.model_construct(
+                type=BlockType.IMAGE_CAPTION,
+                index=1,
+                content=_inline("caption"),
+                bbox=(0.0, 0.0, 0.5, 0.5),
+            ),
         ],
     )
     page = PageInfo.model_construct(page_idx=0, blocks=[image_block])

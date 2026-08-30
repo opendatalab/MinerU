@@ -587,7 +587,7 @@ def recover_native_pdf_table(
 
     evaluation = _evaluate_native_pdf_table(table_input)
     selected = evaluation.selected
-    if selected is None:
+    if selected is None or evaluation.text is None:
         return None
     diagnostics = tuple(
         [
@@ -606,6 +606,7 @@ def recover_native_pdf_table(
         rows=selected.rows,
         cols=selected.cols,
         cells=selected.cells,
+        text=evaluation.text,
         source=selected.source,
         confidence=selected.score,
         diagnostics=diagnostics,

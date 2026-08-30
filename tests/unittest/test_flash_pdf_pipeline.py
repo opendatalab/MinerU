@@ -73,6 +73,7 @@ def test_prepare_page_materializes_table_against_original_semantic_lines(
     def fake_materialize(
         materialization_source: models._PageSource,
         candidates: list[models._TableCandidate],
+        **_kwargs: object,
     ) -> tuple[list[dict[str, object]], list[dict[str, object]], set[int]]:
         """记录表格物化阶段可见的来源行。"""
 

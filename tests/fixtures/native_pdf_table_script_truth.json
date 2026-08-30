@@ -1,0 +1,1065 @@
+{
+  "schema_version": 1,
+  "matching": [
+    "file",
+    "page_index",
+    "table_index",
+    "row",
+    "col",
+    "text",
+    "style"
+  ],
+  "precision_policy": "actual_runs_must_be_subset_of_truth; required_runs_must_be_emitted",
+  "runs": [
+    {
+      "file": "demo1.pdf",
+      "page_index": 8,
+      "table_index": 0,
+      "row": 0,
+      "col": 2,
+      "cell_text": "Rainfalla (mm)",
+      "text": "a",
+      "style": "superscript"
+    },
+    {
+      "file": "demo1.pdf",
+      "page_index": 8,
+      "table_index": 0,
+      "row": 1,
+      "col": 5,
+      "cell_text": "Total flowreduction (%)b",
+      "text": "b",
+      "style": "superscript"
+    },
+    {
+      "file": "demo1.pdf",
+      "page_index": 8,
+      "table_index": 0,
+      "row": 1,
+      "col": 6,
+      "cell_text": "Low flowreduction (%)c",
+      "text": "c",
+      "style": "superscript"
+    },
+    {
+      "file": "demo1.pdf",
+      "page_index": 8,
+      "table_index": 0,
+      "row": 3,
+      "col": 5,
+      "cell_text": "62d",
+      "text": "d",
+      "style": "superscript"
+    },
+    {
+      "file": "demo2.pdf",
+      "page_index": 3,
+      "table_index": 0,
+      "row": 3,
+      "col": 0,
+      "cell_text": "γc",
+      "text": "c",
+      "style": "subscript"
+    },
+    {
+      "file": "demo2.pdf",
+      "page_index": 3,
+      "table_index": 0,
+      "row": 3,
+      "col": 1,
+      "cell_text": "Strength of grouping by color similarity 1",
+      "text": "1",
+      "style": "superscript"
+    },
+    {
+      "file": "demo2.pdf",
+      "page_index": 3,
+      "table_index": 0,
+      "row": 4,
+      "col": 0,
+      "cell_text": "γg",
+      "text": "g",
+      "style": "subscript"
+    },
+    {
+      "file": "demo2.pdf",
+      "page_index": 3,
+      "table_index": 0,
+      "row": 4,
+      "col": 1,
+      "cell_text": "Strength of grouping by proximity 1",
+      "text": "1",
+      "style": "superscript"
+    },
+    {
+      "file": "demo2.pdf",
+      "page_index": 3,
+      "table_index": 0,
+      "row": 6,
+      "col": 0,
+      "cell_text": "γt",
+      "text": "t",
+      "style": "subscript"
+    },
+    {
+      "file": "demo2.pdf",
+      "page_index": 4,
+      "table_index": 0,
+      "row": 0,
+      "col": 2,
+      "cell_text": "MDE/s1",
+      "text": "1",
+      "style": "superscript"
+    },
+    {
+      "file": "demo2.pdf",
+      "page_index": 4,
+      "table_index": 0,
+      "row": 0,
+      "col": 3,
+      "cell_text": "FPS2",
+      "text": "2",
+      "style": "superscript"
+    },
+    {
+      "file": "demo2.pdf",
+      "page_index": 4,
+      "table_index": 0,
+      "row": 0,
+      "col": 4,
+      "cell_text": "Error3",
+      "text": "3",
+      "style": "superscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 4,
+      "table_index": 0,
+      "row": 1,
+      "col": 3,
+      "cell_text": "ALLd",
+      "text": "d",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 4,
+      "table_index": 0,
+      "row": 6,
+      "col": 0,
+      "cell_text": "TAPASBASE",
+      "text": "BASE",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 4,
+      "table_index": 0,
+      "row": 7,
+      "col": 0,
+      "cell_text": "TABLEFORMERBASE",
+      "text": "BASE",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 4,
+      "table_index": 0,
+      "row": 8,
+      "col": 0,
+      "cell_text": "TAPASLARGE",
+      "text": "LARGE",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 4,
+      "table_index": 0,
+      "row": 9,
+      "col": 0,
+      "cell_text": "TABLEFORMERLARGE",
+      "text": "LARGE",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 4,
+      "table_index": 0,
+      "row": 10,
+      "col": 0,
+      "cell_text": "TAPASBASE inter",
+      "text": "BASE",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 4,
+      "table_index": 0,
+      "row": 11,
+      "col": 0,
+      "cell_text": "TABLEFORMERBASE inter",
+      "text": "BASE",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 4,
+      "table_index": 0,
+      "row": 12,
+      "col": 0,
+      "cell_text": "TAPASLARGE inter",
+      "text": "LARGE",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 4,
+      "table_index": 0,
+      "row": 13,
+      "col": 0,
+      "cell_text": "TABLEFORMERLARGE inter",
+      "text": "LARGE",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 5,
+      "table_index": 0,
+      "row": 1,
+      "col": 3,
+      "cell_text": "testsimple",
+      "text": "simple",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 5,
+      "table_index": 0,
+      "row": 1,
+      "col": 4,
+      "cell_text": "testcomplex",
+      "text": "complex",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 5,
+      "table_index": 0,
+      "row": 1,
+      "col": 5,
+      "cell_text": "testsmall",
+      "text": "small",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 5,
+      "table_index": 0,
+      "row": 1,
+      "col": 7,
+      "cell_text": "testsimple",
+      "text": "simple",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 5,
+      "table_index": 0,
+      "row": 1,
+      "col": 8,
+      "cell_text": "testcomplex",
+      "text": "complex",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 5,
+      "table_index": 0,
+      "row": 1,
+      "col": 9,
+      "cell_text": "testsmall",
+      "text": "small",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 5,
+      "table_index": 0,
+      "row": 4,
+      "col": 0,
+      "cell_text": "TAPASBASE",
+      "text": "BASE",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 5,
+      "table_index": 0,
+      "row": 5,
+      "col": 0,
+      "cell_text": "TABLEFORMERBASE",
+      "text": "BASE",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 5,
+      "table_index": 0,
+      "row": 6,
+      "col": 0,
+      "cell_text": "TAPASLARGE",
+      "text": "LARGE",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 5,
+      "table_index": 0,
+      "row": 7,
+      "col": 0,
+      "cell_text": "TABLEFORMERLARGE",
+      "text": "LARGE",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 5,
+      "table_index": 0,
+      "row": 8,
+      "col": 0,
+      "cell_text": "TAPASBASE inter",
+      "text": "BASE",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 5,
+      "table_index": 0,
+      "row": 9,
+      "col": 0,
+      "cell_text": "TABLEFORMERBASE inter",
+      "text": "BASE",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 5,
+      "table_index": 0,
+      "row": 10,
+      "col": 0,
+      "cell_text": "TAPASLARGE inter",
+      "text": "LARGE",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 5,
+      "table_index": 0,
+      "row": 11,
+      "col": 0,
+      "cell_text": "TABLEFORMERLARGE inter",
+      "text": "LARGE",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 5,
+      "table_index": 1,
+      "row": 3,
+      "col": 0,
+      "cell_text": "TAPASBASE",
+      "text": "BASE",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 5,
+      "table_index": 1,
+      "row": 4,
+      "col": 0,
+      "cell_text": "TABLEFORMERBASE",
+      "text": "BASE",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 5,
+      "table_index": 1,
+      "row": 5,
+      "col": 0,
+      "cell_text": "TAPASLARGE",
+      "text": "LARGE",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 5,
+      "table_index": 1,
+      "row": 6,
+      "col": 0,
+      "cell_text": "TABLEFORMERLARGE",
+      "text": "LARGE",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 5,
+      "table_index": 1,
+      "row": 7,
+      "col": 0,
+      "cell_text": "TAPASBASE inter-sqa",
+      "text": "BASE",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 5,
+      "table_index": 1,
+      "row": 8,
+      "col": 0,
+      "cell_text": "TABLEFORMERBASE inter-sqa",
+      "text": "BASE",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 5,
+      "table_index": 1,
+      "row": 9,
+      "col": 0,
+      "cell_text": "TAPASLARGE inter-sqa",
+      "text": "LARGE",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 5,
+      "table_index": 1,
+      "row": 10,
+      "col": 0,
+      "cell_text": "TABLEFORMERLARGE inter-sqa",
+      "text": "LARGE",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 6,
+      "table_index": 0,
+      "row": 1,
+      "col": 0,
+      "cell_text": "TAPASBASE",
+      "text": "BASE",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 6,
+      "table_index": 0,
+      "row": 2,
+      "col": 0,
+      "cell_text": "TABLEFORMERBASE",
+      "text": "BASE",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 6,
+      "table_index": 0,
+      "row": 3,
+      "col": 0,
+      "cell_text": "TAPASLARGE",
+      "text": "LARGE",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 6,
+      "table_index": 0,
+      "row": 4,
+      "col": 0,
+      "cell_text": "TABLEFORMERLARGE",
+      "text": "LARGE",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 6,
+      "table_index": 1,
+      "row": 1,
+      "col": 0,
+      "cell_text": "TAPASBASE",
+      "text": "BASE",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 6,
+      "table_index": 1,
+      "row": 2,
+      "col": 0,
+      "cell_text": "TAPASBASE-SAT",
+      "text": "BASE-SAT",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 6,
+      "table_index": 1,
+      "row": 3,
+      "col": 0,
+      "cell_text": "TABLEFORMERBASE-SO",
+      "text": "BASE-SO",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 6,
+      "table_index": 1,
+      "row": 4,
+      "col": 0,
+      "cell_text": "TABLEFORMERBASE",
+      "text": "BASE",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 7,
+      "table_index": 0,
+      "row": 2,
+      "col": 0,
+      "cell_text": "TAPASBASE",
+      "text": "BASE",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 7,
+      "table_index": 0,
+      "row": 3,
+      "col": 0,
+      "cell_text": "TAPASBASE 1p",
+      "text": "BASE",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 7,
+      "table_index": 0,
+      "row": 4,
+      "col": 0,
+      "cell_text": "TAPASBASE 2p",
+      "text": "BASE",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 7,
+      "table_index": 0,
+      "row": 5,
+      "col": 0,
+      "cell_text": "TAPASBASE 4p",
+      "text": "BASE",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 7,
+      "table_index": 0,
+      "row": 6,
+      "col": 0,
+      "cell_text": "TAPASBASE 8p",
+      "text": "BASE",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 7,
+      "table_index": 0,
+      "row": 7,
+      "col": 0,
+      "cell_text": "TAPASBASE 16p",
+      "text": "BASE",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 7,
+      "table_index": 0,
+      "row": 8,
+      "col": 0,
+      "cell_text": "TABLEFORMERBASE",
+      "text": "BASE",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 7,
+      "table_index": 1,
+      "row": 1,
+      "col": 0,
+      "cell_text": "TABLEFORMERBASE",
+      "text": "BASE",
+      "style": "subscript"
+    },
+    {
+      "file": "mixed_elements_pages_03_06.pdf",
+      "page_index": 2,
+      "table_index": 0,
+      "row": 0,
+      "col": 1,
+      "cell_text": "T0, K",
+      "text": "0",
+      "style": "subscript"
+    },
+    {
+      "file": "mixed_elements_pages_03_06.pdf",
+      "page_index": 2,
+      "table_index": 0,
+      "row": 0,
+      "col": 3,
+      "cell_text": "N(EF), eV-1 cm-3",
+      "text": "-1",
+      "style": "superscript"
+    },
+    {
+      "file": "mixed_elements_pages_03_06.pdf",
+      "page_index": 2,
+      "table_index": 0,
+      "row": 0,
+      "col": 3,
+      "cell_text": "N(EF), eV-1 cm-3",
+      "text": "-3",
+      "style": "superscript"
+    },
+    {
+      "file": "mixed_elements_pages_03_06.pdf",
+      "page_index": 2,
+      "table_index": 0,
+      "row": 0,
+      "col": 3,
+      "cell_text": "N(EF), eV-1 cm-3",
+      "text": "F",
+      "style": "subscript"
+    },
+    {
+      "file": "mixed_elements_pages_03_06.pdf",
+      "page_index": 2,
+      "table_index": 0,
+      "row": 1,
+      "col": 2,
+      "cell_text": "9.2 × 103",
+      "text": "3",
+      "style": "superscript"
+    },
+    {
+      "file": "mixed_elements_pages_03_06.pdf",
+      "page_index": 2,
+      "table_index": 0,
+      "row": 1,
+      "col": 5,
+      "cell_text": "1.28 × 10-4",
+      "text": "-4",
+      "style": "superscript"
+    },
+    {
+      "file": "mixed_elements_pages_03_06.pdf",
+      "page_index": 2,
+      "table_index": 0,
+      "row": 2,
+      "col": 2,
+      "cell_text": "7.2 × 104",
+      "text": "4",
+      "style": "superscript"
+    },
+    {
+      "file": "mixed_elements_pages_03_06.pdf",
+      "page_index": 2,
+      "table_index": 0,
+      "row": 2,
+      "col": 5,
+      "cell_text": "2.72 × 10-5",
+      "text": "-5",
+      "style": "superscript"
+    },
+    {
+      "file": "mixed_elements_pages_11_15.pdf",
+      "page_index": 3,
+      "table_index": 0,
+      "row": 2,
+      "col": 1,
+      "cell_text": "26.5 ± 4.3a",
+      "text": "a",
+      "style": "superscript"
+    },
+    {
+      "file": "mixed_elements_pages_11_15.pdf",
+      "page_index": 3,
+      "table_index": 0,
+      "row": 3,
+      "col": 1,
+      "cell_text": "25.5 ± 3.9a",
+      "text": "a",
+      "style": "superscript"
+    },
+    {
+      "file": "mixed_elements_pages_11_15.pdf",
+      "page_index": 3,
+      "table_index": 0,
+      "row": 4,
+      "col": 1,
+      "cell_text": "27.0 ± 3.0a",
+      "text": "a",
+      "style": "superscript"
+    },
+    {
+      "file": "mixed_elements_pages_11_15.pdf",
+      "page_index": 3,
+      "table_index": 0,
+      "row": 4,
+      "col": 2,
+      "cell_text": "39.5 ± 4.2a",
+      "text": "a",
+      "style": "superscript"
+    },
+    {
+      "file": "mixed_elements_pages_11_15.pdf",
+      "page_index": 3,
+      "table_index": 0,
+      "row": 5,
+      "col": 1,
+      "cell_text": "6.4 ± 3.0a,b,c",
+      "text": "a,b,c",
+      "style": "superscript"
+    },
+    {
+      "file": "mixed_elements_pages_11_15.pdf",
+      "page_index": 3,
+      "table_index": 0,
+      "row": 6,
+      "col": 1,
+      "cell_text": "6.1 ± 2.8a,b,d",
+      "text": "a,b,d",
+      "style": "superscript"
+    },
+    {
+      "file": "mixed_elements_pages_11_15.pdf",
+      "page_index": 3,
+      "table_index": 0,
+      "row": 6,
+      "col": 2,
+      "cell_text": "40.7 ± 4.1a",
+      "text": "a",
+      "style": "superscript"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 48,
+      "table_index": 0,
+      "row": 1,
+      "col": 6,
+      "cell_text": "浓度限值（mg/Nm3）",
+      "text": "3",
+      "style": "superscript"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 49,
+      "table_index": 0,
+      "row": 1,
+      "col": 6,
+      "cell_text": "浓度限值（mg/Nm3）",
+      "text": "3",
+      "style": "superscript"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 50,
+      "table_index": 0,
+      "row": 1,
+      "col": 6,
+      "cell_text": "浓度限值（mg/Nm3）",
+      "text": "3",
+      "style": "superscript"
+    }
+  ],
+  "required_runs": [
+    {
+      "file": "demo2.pdf",
+      "page_index": 3,
+      "table_index": 0,
+      "row": 3,
+      "col": 0,
+      "cell_text": "γc",
+      "text": "c",
+      "style": "subscript"
+    },
+    {
+      "file": "demo2.pdf",
+      "page_index": 3,
+      "table_index": 0,
+      "row": 4,
+      "col": 0,
+      "cell_text": "γg",
+      "text": "g",
+      "style": "subscript"
+    },
+    {
+      "file": "demo2.pdf",
+      "page_index": 3,
+      "table_index": 0,
+      "row": 6,
+      "col": 0,
+      "cell_text": "γt",
+      "text": "t",
+      "style": "subscript"
+    },
+    {
+      "file": "demo2.pdf",
+      "page_index": 4,
+      "table_index": 0,
+      "row": 0,
+      "col": 2,
+      "cell_text": "MDE/s1",
+      "text": "1",
+      "style": "superscript"
+    },
+    {
+      "file": "demo2.pdf",
+      "page_index": 4,
+      "table_index": 0,
+      "row": 0,
+      "col": 3,
+      "cell_text": "FPS2",
+      "text": "2",
+      "style": "superscript"
+    },
+    {
+      "file": "demo2.pdf",
+      "page_index": 4,
+      "table_index": 0,
+      "row": 0,
+      "col": 4,
+      "cell_text": "Error3",
+      "text": "3",
+      "style": "superscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 4,
+      "table_index": 0,
+      "row": 6,
+      "col": 0,
+      "cell_text": "TAPASBASE",
+      "text": "BASE",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 4,
+      "table_index": 0,
+      "row": 8,
+      "col": 0,
+      "cell_text": "TAPASLARGE",
+      "text": "LARGE",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 5,
+      "table_index": 0,
+      "row": 4,
+      "col": 0,
+      "cell_text": "TAPASBASE",
+      "text": "BASE",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 5,
+      "table_index": 0,
+      "row": 6,
+      "col": 0,
+      "cell_text": "TAPASLARGE",
+      "text": "LARGE",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 5,
+      "table_index": 1,
+      "row": 3,
+      "col": 0,
+      "cell_text": "TAPASBASE",
+      "text": "BASE",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 5,
+      "table_index": 1,
+      "row": 5,
+      "col": 0,
+      "cell_text": "TAPASLARGE",
+      "text": "LARGE",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 6,
+      "table_index": 0,
+      "row": 1,
+      "col": 0,
+      "cell_text": "TAPASBASE",
+      "text": "BASE",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 6,
+      "table_index": 0,
+      "row": 3,
+      "col": 0,
+      "cell_text": "TAPASLARGE",
+      "text": "LARGE",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 6,
+      "table_index": 1,
+      "row": 1,
+      "col": 0,
+      "cell_text": "TAPASBASE",
+      "text": "BASE",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 6,
+      "table_index": 1,
+      "row": 2,
+      "col": 0,
+      "cell_text": "TAPASBASE-SAT",
+      "text": "BASE-SAT",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 6,
+      "table_index": 1,
+      "row": 3,
+      "col": 0,
+      "cell_text": "TABLEFORMERBASE-SO",
+      "text": "BASE-SO",
+      "style": "subscript"
+    },
+    {
+      "file": "demo3.pdf",
+      "page_index": 7,
+      "table_index": 0,
+      "row": 2,
+      "col": 0,
+      "cell_text": "TAPASBASE",
+      "text": "BASE",
+      "style": "subscript"
+    },
+    {
+      "file": "mixed_elements_pages_03_06.pdf",
+      "page_index": 2,
+      "table_index": 0,
+      "row": 0,
+      "col": 1,
+      "cell_text": "T0, K",
+      "text": "0",
+      "style": "subscript"
+    },
+    {
+      "file": "mixed_elements_pages_03_06.pdf",
+      "page_index": 2,
+      "table_index": 0,
+      "row": 0,
+      "col": 3,
+      "cell_text": "N(EF), eV-1 cm-3",
+      "text": "-1",
+      "style": "superscript"
+    },
+    {
+      "file": "mixed_elements_pages_03_06.pdf",
+      "page_index": 2,
+      "table_index": 0,
+      "row": 0,
+      "col": 3,
+      "cell_text": "N(EF), eV-1 cm-3",
+      "text": "F",
+      "style": "subscript"
+    },
+    {
+      "file": "mixed_elements_pages_03_06.pdf",
+      "page_index": 2,
+      "table_index": 0,
+      "row": 1,
+      "col": 2,
+      "cell_text": "9.2 × 103",
+      "text": "3",
+      "style": "superscript"
+    },
+    {
+      "file": "mixed_elements_pages_03_06.pdf",
+      "page_index": 2,
+      "table_index": 0,
+      "row": 1,
+      "col": 5,
+      "cell_text": "1.28 × 10-4",
+      "text": "-4",
+      "style": "superscript"
+    },
+    {
+      "file": "mixed_elements_pages_11_15.pdf",
+      "page_index": 3,
+      "table_index": 0,
+      "row": 5,
+      "col": 1,
+      "cell_text": "6.4 ± 3.0a,b,c",
+      "text": "a,b,c",
+      "style": "superscript"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 48,
+      "table_index": 0,
+      "row": 1,
+      "col": 6,
+      "cell_text": "浓度限值（mg/Nm3）",
+      "text": "3",
+      "style": "superscript"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 49,
+      "table_index": 0,
+      "row": 1,
+      "col": 6,
+      "cell_text": "浓度限值（mg/Nm3）",
+      "text": "3",
+      "style": "superscript"
+    },
+    {
+      "file": "pollutant_discharge_tables.pdf",
+      "page_index": 50,
+      "table_index": 0,
+      "row": 1,
+      "col": 6,
+      "cell_text": "浓度限值（mg/Nm3）",
+      "text": "3",
+      "style": "superscript"
+    }
+  ],
+  "forbidden_runs": [],
+  "forbidden_plain_cells": [
+    "最小值",
+    "最大值",
+    "序号",
+    "7,059.94",
+    "2,845.04"
+  ]
+}

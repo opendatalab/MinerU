@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import html
 import math
 from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
+from collections.abc import Sequence
 from typing import Any
 from unittest.mock import MagicMock
 from zipfile import ZipFile
@@ -11,6 +13,7 @@ from zipfile import ZipFile
 import pytest
 
 from mineru.backend.analysis.pdf.text import content as text_content
+from mineru.backend.analysis.pdf.text import styles as text_style_enrichment
 from mineru.backend.analysis.pdf.text.models import _AnalyzeLine, _AnalyzeSpan
 from mineru.backend.analysis.pdf.text.native import txt_spans_extract
 from mineru.backend.postprocess.pages import model_json_to_pages
@@ -25,19 +28,72 @@ from mineru.types import (
     ModelJson,
     PageInfo,
 )
-from mineru.model.flash.pdf.document import PDFDocument, PDFLinkAnnotation
+from mineru.model.flash.pdf.document import PDFDocument, PDFLinkAnnotation, PDFPageTextGeometry
 from mineru.model.flash.pdf.text_styles import (
     PDF_FONT_FORCE_BOLD_FLAG,
     PDF_FONT_ITALIC_FLAG,
+    PDF_NATIVE_SCRIPT_MARKUP_KEY,
     PDFTextLinkLine,
     PDFTextLinkRange,
+    PDFTextScriptLine,
+    PDFTextScriptRange,
     PDFTextStyleLine,
     PDFTextStyleRange,
-    apply_pdf_text_links,
-    apply_pdf_text_styles,
+    apply_pdf_text_links as _apply_pdf_text_links,
+    apply_pdf_text_styles as _apply_pdf_text_styles,
     detect_pdf_text_link_lines,
     detect_pdf_text_style_lines,
+    materialize_pdf_inline_spans,
 )
+from _span_test_utils import inline_text, inline_urls
+
+
+def apply_pdf_text_links(
+    blocks: list[dict[str, Any]],
+    lines: Sequence[PDFTextLinkLine],
+    page_size: tuple[float, float],
+) -> None:
+    """在测试中保留链接区间阶段，等待样式区间一并物化。"""
+    _apply_pdf_text_links(blocks, lines, page_size)
+
+
+def apply_pdf_text_styles(
+    blocks: list[dict[str, Any]],
+    lines: Sequence[PDFTextStyleLine],
+    page_size: tuple[float, float],
+) -> None:
+    """在测试中追加样式区间后执行生产环境的一次性 Span 物化。"""
+    _apply_pdf_text_styles(blocks, lines, page_size)
+    materialize_pdf_inline_spans(blocks)
+
+
+def _span_snapshot(content: Any) -> str:
+    """把结构化 Span 序列化为便于沿用既有精确区间断言的只读快照。"""
+    if isinstance(content, str):
+        return content
+    if not isinstance(content, list):
+        return ""
+    parts: list[str] = []
+    for span in content:
+        if not isinstance(span, dict):
+            continue
+        span_type = span.get("type")
+        value = span.get("content")
+        if span_type == "text" and isinstance(value, str):
+            styles = span.get("styles")
+            if isinstance(styles, list) and styles:
+                parts.append(f'<text style="{",".join(str(style) for style in styles)}">{value}</text>')
+            else:
+                parts.append(value)
+        elif span_type == "equation_inline" and isinstance(value, str):
+            parts.append(f"<eq>{value}</eq>")
+        elif span_type == "code_inline" and isinstance(value, str):
+            parts.append(f"<code>{value}</code>")
+        elif span_type == "hyperlink":
+            url = span.get("url")
+            if isinstance(url, str):
+                parts.append(f"<hyperlink>{_span_snapshot(value)}<url>{html.escape(url, quote=False)}</url></hyperlink>")
+    return "".join(parts)
 
 
 def _model_json(pages: list[list[dict[str, Any]]]) -> ModelJson:
@@ -94,12 +150,7 @@ BT /F4 12 Tf 50 10 Td (bold italic sample) Tj ET
     payload.extend(b"0000000000 65535 f \n")
     for offset in offsets[1:]:
         payload.extend(f"{offset:010d} 00000 n \n".encode("ascii"))
-    payload.extend(
-        (
-            f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\n"
-            f"startxref\n{xref_offset}\n%%EOF\n"
-        ).encode("ascii")
-    )
+    payload.extend((f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref_offset}\n%%EOF\n").encode("ascii"))
     return bytes(payload)
 
 
@@ -235,11 +286,8 @@ def test_detect_and_apply_pdf_text_link_ranges_with_styles(angle: int) -> None:
         ],
         (100.0, 100.0),
     )
-    expected = (
-        "<hyperlink>alpha beta"
-        "<url>https://example.test/a?x=1&amp;y=2</url></hyperlink>"
-    )
-    assert blocks[0]["content"] == expected
+    expected = "<hyperlink>alpha beta<url>https://example.test/a?x=1&amp;y=2</url></hyperlink>"
+    assert _span_snapshot(blocks[0]["content"]) == expected
 
     apply_pdf_text_links(blocks, link_lines, (100.0, 100.0))
     apply_pdf_text_styles(
@@ -254,7 +302,7 @@ def test_detect_and_apply_pdf_text_link_ranges_with_styles(angle: int) -> None:
         ],
         (100.0, 100.0),
     )
-    assert blocks[0]["content"] == expected
+    assert _span_snapshot(blocks[0]["content"]) == expected
 
 
 def test_pdf_underline_keeps_only_non_link_overlap() -> None:
@@ -293,10 +341,8 @@ def test_pdf_underline_keeps_only_non_link_overlap() -> None:
     apply_pdf_text_links(blocks, link_lines, (100.0, 100.0))
     apply_pdf_text_styles(blocks, style_lines, (100.0, 100.0))
 
-    assert blocks[0]["content"] == (
-        '<text style="underline">under</text> '
-        "<hyperlink>hyperlink"
-        "<url>https://example.test/partial</url></hyperlink>"
+    assert _span_snapshot(blocks[0]["content"]) == (
+        '<text style="underline">under</text> <hyperlink>hyperlink<url>https://example.test/partial</url></hyperlink>'
     )
 
 
@@ -324,9 +370,8 @@ def test_detect_pdf_text_links_keeps_partial_ranges_and_drops_conflicts() -> Non
         }
     ]
     apply_pdf_text_links(blocks, partial_lines, (100.0, 100.0))
-    assert blocks[0]["content"] == (
-        "al<hyperlink>ph<url>https://partial.example.test</url></hyperlink>a"
-    )
+    materialize_pdf_inline_spans(blocks)
+    assert _span_snapshot(blocks[0]["content"]) == ("al<hyperlink>ph<url>https://partial.example.test</url></hyperlink>a")
 
     conflict = PDFLinkAnnotation(
         target="https://conflict.example.test",
@@ -343,7 +388,7 @@ def test_apply_pdf_text_links_splits_formula_gaps_and_maps_repeated_labels() -> 
         {
             "type": BlockType.TEXT,
             "bbox": (0.0, 0.0, 1.0, 1.0),
-            "content": "pre<eq>x</eq>post",
+            "content": r"pre\(x\)post",
         }
     ]
     apply_pdf_text_links(
@@ -352,15 +397,14 @@ def test_apply_pdf_text_links_splits_formula_gaps_and_maps_repeated_labels() -> 
             PDFTextLinkLine(
                 bbox=(10.0, 10.0, 60.0, 20.0),
                 text="prexpost",
-                link_ranges=(
-                    PDFTextLinkRange(0, 8, "https://formula.example.test"),
-                ),
+                link_ranges=(PDFTextLinkRange(0, 8, "https://formula.example.test"),),
                 source_index=0,
             )
         ],
         (100.0, 100.0),
     )
-    assert formula_blocks[0]["content"] == (
+    materialize_pdf_inline_spans(formula_blocks)
+    assert _span_snapshot(formula_blocks[0]["content"]) == (
         "<hyperlink>pre<url>https://formula.example.test</url></hyperlink>"
         "<eq>x</eq>"
         "<hyperlink>post<url>https://formula.example.test</url></hyperlink>"
@@ -391,9 +435,9 @@ def test_apply_pdf_text_links_splits_formula_gaps_and_maps_repeated_labels() -> 
         ],
         (100.0, 100.0),
     )
-    assert repeated_blocks[0]["content"] == (
-        "<hyperlink>link<url>https://first.test</url></hyperlink> and "
-        "<hyperlink>link<url>https://second.test</url></hyperlink>"
+    materialize_pdf_inline_spans(repeated_blocks)
+    assert _span_snapshot(repeated_blocks[0]["content"]) == (
+        "<hyperlink>link<url>https://first.test</url></hyperlink> and <hyperlink>link<url>https://second.test</url></hyperlink>"
     )
 
 
@@ -425,14 +469,12 @@ def test_apply_pdf_text_links_merges_three_line_visible_url() -> None:
     ]
 
     apply_pdf_text_links(blocks, link_lines, (100.0, 100.0))
+    materialize_pdf_inline_spans(blocks)
 
-    expected = (
-        "1Code has been released at "
-        f"<hyperlink>{target}<url>{target}</url></hyperlink>"
-    )
-    assert blocks[0]["content"] == expected
+    expected = f"1Code has been released at <hyperlink>{target}<url>{target}</url></hyperlink>"
+    assert _span_snapshot(blocks[0]["content"]) == expected
     apply_pdf_text_links(blocks, link_lines, (100.0, 100.0))
-    assert blocks[0]["content"] == expected
+    assert _span_snapshot(blocks[0]["content"]) == expected
 
 
 @pytest.mark.parametrize(
@@ -515,19 +557,17 @@ def test_apply_pdf_text_links_maps_dehyphenated_first_fragment(
         ],
         (100.0, 100.0),
     )
+    materialize_pdf_inline_spans(blocks)
 
     expected_link = f"<hyperlink>{label}<url>{target}</url></hyperlink>"
-    assert blocks[0]["content"] == content.replace(label, expected_link)
+    assert _span_snapshot(blocks[0]["content"]) == content.replace(label, expected_link)
 
 
 def test_apply_pdf_text_links_maps_dehyphenated_middle_fragment() -> None:
     """验证三行链接中间行的行末断词符不再阻断同 href 合并。"""
 
     target = "https://doi.org/10.18653/v1/N19-1423"
-    label = (
-        "BERT: Pre-training of deep bidirectional transformers for language "
-        "understanding"
-    )
+    label = "BERT: Pre-training of deep bidirectional transformers for language understanding"
     content = f"Kristina Toutanova. 2019. {label}. In Proceedings"
     first_text = "KristinaToutanova.2019.BERT:Pre-trainingof"
     blocks = [
@@ -558,14 +598,15 @@ def test_apply_pdf_text_links_maps_dehyphenated_middle_fragment() -> None:
     ]
 
     apply_pdf_text_links(blocks, link_lines, (100.0, 100.0))
+    materialize_pdf_inline_spans(blocks)
 
     expected = content.replace(
         label,
         f"<hyperlink>{label}<url>{target}</url></hyperlink>",
     )
-    assert blocks[0]["content"] == expected
+    assert _span_snapshot(blocks[0]["content"]) == expected
     apply_pdf_text_links(blocks, link_lines, (100.0, 100.0))
-    assert blocks[0]["content"] == expected
+    assert _span_snapshot(blocks[0]["content"]) == expected
 
 
 @pytest.mark.parametrize(
@@ -623,8 +664,9 @@ def test_apply_pdf_text_links_rejects_unsafe_dehyphenated_boundaries(
         [first_line, second_line],
         (100.0, 100.0),
     )
+    materialize_pdf_inline_spans(blocks)
 
-    assert f"<hyperlink>{content}<url>" not in blocks[0]["content"]
+    assert f"<hyperlink>{content}<url>" not in _span_snapshot(blocks[0]["content"])
 
 
 def test_apply_pdf_text_links_preserves_hyphen_before_uppercase_continuation() -> None:
@@ -647,10 +689,9 @@ def test_apply_pdf_text_links_preserves_hyphen_before_uppercase_continuation() -
         ],
         (100.0, 100.0),
     )
+    materialize_pdf_inline_spans(blocks)
 
-    assert blocks[0]["content"] == (
-        f"<hyperlink>inter-National<url>{target}</url></hyperlink>"
-    )
+    assert _span_snapshot(blocks[0]["content"]) == (f"<hyperlink>inter-National<url>{target}</url></hyperlink>")
 
 
 def test_apply_pdf_text_links_skips_ambiguous_dehyphenated_occurrence() -> None:
@@ -672,10 +713,11 @@ def test_apply_pdf_text_links_skips_ambiguous_dehyphenated_occurrence() -> None:
         ],
         (100.0, 100.0),
     )
+    materialize_pdf_inline_spans(blocks)
 
-    assert "<hyperlink>international<url>" not in blocks[0]["content"]
-    assert blocks[0]["content"].startswith("inter<hyperlink>national")
-    assert blocks[0]["content"].endswith(" international")
+    assert "<hyperlink>international<url>" not in _span_snapshot(blocks[0]["content"])
+    assert _span_snapshot(blocks[0]["content"]).startswith("inter<hyperlink>national")
+    assert _span_snapshot(blocks[0]["content"]).endswith(" international")
 
 
 @pytest.mark.parametrize(
@@ -687,10 +729,7 @@ def test_apply_pdf_text_links_skips_ambiguous_dehyphenated_occurrence() -> None:
         ),
         (
             ("underline",),
-            (
-                '<text style="bold">ETC: Encoding long and structured inputs</text> '
-                "in transformers"
-            ),
+            ('<text style="bold">ETC: Encoding long and structured inputs</text> in transformers'),
         ),
     ],
 )
@@ -732,9 +771,7 @@ def test_apply_pdf_text_links_merges_title_and_preserves_non_underline_styles(
     apply_pdf_text_links(blocks, link_lines, (100.0, 100.0))
     apply_pdf_text_styles(blocks, style_lines, (100.0, 100.0))
 
-    assert blocks[0]["content"] == (
-        f"<hyperlink>{expected_label}<url>{target}</url></hyperlink>"
-    )
+    assert _span_snapshot(blocks[0]["content"]) == (f"<hyperlink>{expected_label}<url>{target}</url></hyperlink>")
 
 
 @pytest.mark.parametrize(
@@ -770,8 +807,9 @@ def test_apply_pdf_text_links_does_not_cross_invalid_merge_boundaries(
         ],
         (100.0, 100.0),
     )
+    materialize_pdf_inline_spans(blocks)
 
-    assert blocks[0]["content"].count("<hyperlink>") == 2
+    assert _span_snapshot(blocks[0]["content"]).count("<hyperlink>") == 2
 
 
 @pytest.mark.parametrize(
@@ -821,13 +859,10 @@ def test_apply_pdf_text_links_only_enriches_natural_language_blocks(
         ],
         (100.0, 100.0),
     )
+    materialize_pdf_inline_spans(blocks)
 
-    expected = (
-        "<hyperlink>label<url>https://target.test</url></hyperlink>"
-        if should_link
-        else "label"
-    )
-    assert blocks[0]["content"] == expected
+    expected = "<hyperlink>label<url>https://target.test</url></hyperlink>" if should_link else "label"
+    assert _span_snapshot(blocks[0]["content"]) == expected
 
 
 @pytest.mark.parametrize(
@@ -973,9 +1008,7 @@ def test_keeps_list_marker_when_it_is_part_of_a_full_bold_run() -> None:
 
     detected = detect_pdf_text_style_lines([line], [])
 
-    assert detected[0].style_ranges == (
-        PDFTextStyleRange(0, 5, ("bold",)),
-    )
+    assert detected[0].style_ranges == (PDFTextStyleRange(0, 5, ("bold",)),)
 
 
 def test_combines_bold_and_strikethrough_styles_per_character() -> None:
@@ -1028,9 +1061,7 @@ def test_detects_long_strikethrough_and_preserves_internal_spaces() -> None:
 
     assert len(detected) == 1
     assert detected[0].text == "alphadeletedtextomega"
-    assert detected[0].text[
-        detected[0].style_ranges[0].start : detected[0].style_ranges[0].end
-    ] == "deletedtext"
+    assert detected[0].text[detected[0].style_ranges[0].start : detected[0].style_ranges[0].end] == "deletedtext"
 
 
 @pytest.mark.parametrize("drawing_y", [18.0, 20.0, 22.0])
@@ -1047,9 +1078,7 @@ def test_detects_underline_inside_strict_bottom_band(drawing_y: float) -> None:
         [_drawing(x0, x1, drawing_y)],
     )
 
-    assert detected[0].style_ranges == (
-        PDFTextStyleRange(5, 15, ("underline",)),
-    )
+    assert detected[0].style_ranges == (PDFTextStyleRange(5, 15, ("underline",)),)
 
 
 @pytest.mark.parametrize("drawing_y", [17.99, 22.01])
@@ -1063,10 +1092,13 @@ def test_rejects_underline_outside_strict_bottom_band(
     end = start + len("underlined")
     x0, x1 = _char_span(line, start, end)
 
-    assert detect_pdf_text_style_lines(
-        [line],
-        [_drawing(x0, x1, drawing_y)],
-    ) == []
+    assert (
+        detect_pdf_text_style_lines(
+            [line],
+            [_drawing(x0, x1, drawing_y)],
+        )
+        == []
+    )
 
 
 def test_combines_bold_underline_and_strikethrough_in_protocol_order() -> None:
@@ -1106,9 +1138,7 @@ def test_merges_repeated_underline_drawings() -> None:
         ],
     )
 
-    assert detected[0].style_ranges == (
-        PDFTextStyleRange(0, 10, ("underline",)),
-    )
+    assert detected[0].style_ranges == (PDFTextStyleRange(0, 10, ("underline",)),)
 
 
 def test_rejects_fraction_bar_with_tightly_contained_lower_run() -> None:
@@ -1124,10 +1154,13 @@ def test_rejects_fraction_bar_with_tightly_contained_lower_run() -> None:
     )
     x0, x1 = _char_span(numerator, 0, len(numerator.text))
 
-    assert detect_pdf_text_style_lines(
-        [numerator, denominator],
-        [_drawing(x0, x1, 20.0)],
-    ) == []
+    assert (
+        detect_pdf_text_style_lines(
+            [numerator, denominator],
+            [_drawing(x0, x1, 20.0)],
+        )
+        == []
+    )
 
 
 def test_keeps_underline_when_following_text_is_outside_fraction_gap() -> None:
@@ -1148,13 +1181,8 @@ def test_keeps_underline_when_following_text_is_outside_fraction_gap() -> None:
         [_drawing(x0, x1, 20.0)],
     )
 
-    ranges_by_source = {
-        line.source_index: line.style_ranges
-        for line in detected
-    }
-    assert ranges_by_source[0] == (
-        PDFTextStyleRange(0, 10, ("underline",)),
-    )
+    ranges_by_source = {line.source_index: line.style_ranges for line in detected}
+    assert ranges_by_source[0] == (PDFTextStyleRange(0, 10, ("underline",)),)
     assert ranges_by_source[1] == ()
 
 
@@ -1255,10 +1283,10 @@ def test_keeps_two_disjoint_strikethrough_ranges() -> None:
         ],
     )
 
-    assert [
-        detected[0].text[style_range.start : style_range.end]
-        for style_range in detected[0].style_ranges
-    ] == ["deleted", "removed"]
+    assert [detected[0].text[style_range.start : style_range.end] for style_range in detected[0].style_ranges] == [
+        "deleted",
+        "removed",
+    ]
 
 
 def test_drawing_is_assigned_to_the_closest_overlapping_line() -> None:
@@ -1273,13 +1301,8 @@ def test_drawing_is_assigned_to_the_closest_overlapping_line() -> None:
         [_drawing(x0, x1, 15.1)],
     )
 
-    ranges_by_source = {
-        line.source_index: line.style_ranges
-        for line in detected
-    }
-    assert ranges_by_source[0] == (
-        PDFTextStyleRange(0, 7, ("strikethrough",)),
-    )
+    ranges_by_source = {line.source_index: line.style_ranges for line in detected}
+    assert ranges_by_source[0] == (PDFTextStyleRange(0, 7, ("strikethrough",)),)
     assert ranges_by_source[1] == ()
 
 
@@ -1288,10 +1311,13 @@ def test_rotated_text_is_not_a_style_candidate() -> None:
 
     line = _text_line("rotated text", angle=90)
 
-    assert detect_pdf_text_style_lines(
-        [line],
-        [_drawing(10.0, 80.0, 15.0)],
-    ) == []
+    assert (
+        detect_pdf_text_style_lines(
+            [line],
+            [_drawing(10.0, 80.0, 15.0)],
+        )
+        == []
+    )
 
 
 def test_invalid_line_and_char_bboxes_are_ignored() -> None:
@@ -1304,10 +1330,13 @@ def test_invalid_line_and_char_bboxes_are_ignored() -> None:
         chars=[{"char": "x", "bbox": (10.0, 10.0, 10.0, 20.0)}],
     )
 
-    assert detect_pdf_text_style_lines(
-        [invalid_line],
-        [_drawing(10.0, 40.0, 15.0)],
-    ) == []
+    assert (
+        detect_pdf_text_style_lines(
+            [invalid_line],
+            [_drawing(10.0, 40.0, 15.0)],
+        )
+        == []
+    )
 
 
 def test_applies_style_to_plain_content_and_duplicate_second_line() -> None:
@@ -1332,7 +1361,7 @@ def test_applies_style_to_plain_content_and_duplicate_second_line() -> None:
 
     apply_pdf_text_styles(blocks, lines, (100.0, 100.0))
 
-    assert blocks[0]["content"] == 'deleted <text style="strikethrough">deleted</text>'
+    assert _span_snapshot(blocks[0]["content"]) == 'deleted <text style="strikethrough">deleted</text>'
 
 
 def test_applies_style_across_dehyphenated_line_boundary() -> None:
@@ -1362,7 +1391,7 @@ def test_applies_style_across_dehyphenated_line_boundary() -> None:
 
     apply_pdf_text_styles(blocks, lines, (100.0, 100.0))
 
-    assert blocks[0]["content"] == (
+    assert _span_snapshot(blocks[0]["content"]) == (
         '<text style="bold">Abstract—Stereo matching was designed for sequences.</text>'
     )
 
@@ -1433,7 +1462,7 @@ def test_style_dehyphenation_preserves_safe_boundaries(
 
     apply_pdf_text_styles(blocks, lines, (100.0, 100.0))
 
-    assert blocks[0]["content"] == expected
+    assert _span_snapshot(blocks[0]["content"]) == expected
 
 
 def test_same_visual_row_style_runs_follow_source_order_despite_bbox_jitter() -> None:
@@ -1481,9 +1510,7 @@ def test_same_visual_row_style_runs_follow_source_order_despite_bbox_jitter() ->
     ]
     apply_pdf_text_styles(blocks, style_lines, (250.0, 100.0))
 
-    assert blocks[0]["content"] == (
-        '<text style="bold">Attention Bias Scaling.</text> Unlike'
-    )
+    assert _span_snapshot(blocks[0]["content"]) == ('<text style="bold">Attention Bias Scaling.</text> Unlike')
 
 
 def test_applies_style_inside_superscript_without_crossing_tags() -> None:
@@ -1507,9 +1534,87 @@ def test_applies_style_inside_superscript_without_crossing_tags() -> None:
 
     apply_pdf_text_styles(blocks, lines, (100.0, 100.0))
 
-    assert blocks[0]["content"] == (
-        'value <sup><text style="strikethrough">deleted</text></sup> tail'
+    assert _span_snapshot(blocks[0]["content"]) == ('value <sup><text style="strikethrough">deleted</text></sup> tail')
+
+
+@pytest.mark.parametrize(
+    ("tag", "style"),
+    [
+        ("sup", "superscript"),
+        ("sub", "subscript"),
+    ],
+)
+def test_materializes_owned_script_markup(tag: str, style: str) -> None:
+    """验证 producer-owned 上标与下标标签都转换为结构化 TextSpan 样式。"""
+    block = {
+        "type": BlockType.TEXT,
+        "content": f"A<{tag}>2</{tag}>B",
+        PDF_NATIVE_SCRIPT_MARKUP_KEY: True,
+    }
+
+    materialize_pdf_inline_spans([block])
+
+    assert _span_snapshot(block["content"]) == f'A<text style="{style}">2</text>B'
+    assert PDF_NATIVE_SCRIPT_MARKUP_KEY not in block
+
+
+def test_materializes_owned_superscript_with_style_and_hyperlink() -> None:
+    """验证 producer-owned 上标会与删除线和链接语义共同物化。"""
+    target = "https://script.example.test"
+    blocks = [
+        {
+            "type": BlockType.TEXT,
+            "bbox": [0.0, 0.0, 1.0, 1.0],
+            "content": "value <sup>ref</sup> tail",
+            PDF_NATIVE_SCRIPT_MARKUP_KEY: True,
+        }
+    ]
+    link_lines = [
+        PDFTextLinkLine(
+            (10.0, 10.0, 90.0, 20.0),
+            "valuereftail",
+            (PDFTextLinkRange(5, 8, target),),
+            0,
+        )
+    ]
+    style_lines = [
+        PDFTextStyleLine(
+            (10.0, 10.0, 90.0, 20.0),
+            "valuereftail",
+            (PDFTextStyleRange(5, 8, ("strikethrough",)),),
+            0,
+        )
+    ]
+
+    apply_pdf_text_links(blocks, link_lines, (100.0, 100.0))
+    apply_pdf_text_styles(blocks, style_lines, (100.0, 100.0))
+
+    assert _span_snapshot(blocks[0]["content"]) == (
+        f'value <hyperlink><text style="strikethrough,superscript">ref</text><url>{target}</url></hyperlink> tail'
     )
+    assert PDF_NATIVE_SCRIPT_MARKUP_KEY not in blocks[0]
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        "A<sup>B</sub>",
+        "A<sup><sub>B</sub></sup>",
+        "A<sup>B",
+    ],
+)
+def test_malformed_owned_script_markup_remains_literal(content: str) -> None:
+    """验证不平衡或嵌套的 producer-owned 标签按普通字面文本回退。"""
+    block = {
+        "type": BlockType.TEXT,
+        "content": content,
+        PDF_NATIVE_SCRIPT_MARKUP_KEY: True,
+    }
+
+    materialize_pdf_inline_spans([block])
+
+    assert inline_text(block["content"]) == content
+    assert PDF_NATIVE_SCRIPT_MARKUP_KEY not in block
 
 
 def test_filters_italic_before_merging_overlapping_style_ranges() -> None:
@@ -1538,7 +1643,7 @@ def test_filters_italic_before_merging_overlapping_style_ranges() -> None:
 
     apply_pdf_text_styles(blocks, lines, (100.0, 100.0))
 
-    assert blocks[0]["content"] == (
+    assert _span_snapshot(blocks[0]["content"]) == (
         '<text style="bold">a</text>'
         '<text style="bold,underline">bc</text>'
         '<text style="bold,underline,strikethrough">d</text>'
@@ -1566,11 +1671,11 @@ def test_preserves_internal_spaces_and_is_idempotent() -> None:
     ]
 
     apply_pdf_text_styles(blocks, lines, (100.0, 100.0))
-    first_result = blocks[0]["content"]
+    first_result = _span_snapshot(blocks[0]["content"])
     apply_pdf_text_styles(blocks, lines, (100.0, 100.0))
 
     assert first_result == '<text style="bold">bold text</text>'
-    assert blocks[0]["content"] == first_result
+    assert _span_snapshot(blocks[0]["content"]) == first_result
 
 
 def test_underline_does_not_wrap_boundary_spaces() -> None:
@@ -1594,9 +1699,7 @@ def test_underline_does_not_wrap_boundary_spaces() -> None:
 
     apply_pdf_text_styles(blocks, lines, (100.0, 100.0))
 
-    assert blocks[0]["content"] == (
-        '  <text style="underline">under lined</text>  '
-    )
+    assert _span_snapshot(blocks[0]["content"]) == ('  <text style="underline">under lined</text>  ')
 
 
 @pytest.mark.parametrize(
@@ -1646,14 +1749,8 @@ def test_applies_style_specific_scope_to_natural_language_blocks(
 
     apply_pdf_text_styles(blocks, lines, (100.0, 100.0))
 
-    expected_styles = (
-        "bold,underline,strikethrough"
-        if block_type == BlockType.TEXT
-        else "strikethrough"
-    )
-    assert blocks[0]["content"] == (
-        f'<text style="{expected_styles}">styled</text>'
-    )
+    expected_styles = "bold,underline,strikethrough" if block_type == BlockType.TEXT else "strikethrough"
+    assert _span_snapshot(blocks[0]["content"]) == (f'<text style="{expected_styles}">styled</text>')
 
 
 @pytest.mark.parametrize(
@@ -1692,28 +1789,24 @@ def test_does_not_apply_styles_to_visual_or_code_blocks(block_type: str) -> None
 
     apply_pdf_text_styles(blocks, lines, (100.0, 100.0))
 
-    assert blocks[0]["content"] == "styled"
+    assert _span_snapshot(blocks[0]["content"]) == "styled"
 
 
-def test_respects_existing_styles_and_skips_equation_and_url_payloads() -> None:
-    """验证已有样式保持幂等，公式和 URL 不进入 PDF 样式富化。"""
+def test_tag_shaped_pdf_text_is_not_interpreted_as_inline_semantics() -> None:
+    """验证 PDF 标签外观原文始终保留为 TextSpan，不会重建旧行内协议。"""
 
+    first_literal = "A<sup>B</sup><eq>C</eq><hyperlink><text>D</text><url>u</url></hyperlink>"
+    second_literal = '<b>A</b><i>B</i><u>C</u><s>D</s><text style="underline">E</text>'
     blocks = [
         {
             "type": "text",
             "bbox": [0.0, 0.0, 1.0, 0.4],
-            "content": (
-                "A<sup>B</sup><eq>C</eq>"
-                "<hyperlink><text>D</text><url>u</url></hyperlink>"
-            ),
+            "content": first_literal,
         },
         {
             "type": "text",
             "bbox": [0.0, 0.6, 1.0, 1.0],
-            "content": (
-                "<b>A</b><i>B</i><u>C</u><s>D</s>"
-                '<text style="underline">E</text>'
-            ),
+            "content": second_literal,
         },
     ]
     lines = [
@@ -1744,20 +1837,13 @@ def test_respects_existing_styles_and_skips_equation_and_url_payloads() -> None:
 
     apply_pdf_text_styles(blocks, lines[:1], (100.0, 100.0))
     apply_pdf_text_styles(blocks[1:], lines[1:], (100.0, 100.0))
-    first_results = [block["content"] for block in blocks]
+    first_results = [_span_snapshot(block["content"]) for block in blocks]
     apply_pdf_text_styles(blocks, lines, (100.0, 100.0))
 
-    assert '<text style="bold">A</text>' in str(blocks[0]["content"])
-    assert "<sup>B</sup>" in str(blocks[0]["content"])
-    assert "<eq>C</eq>" in str(blocks[0]["content"])
-    assert '<text style="bold">D</text>' in str(blocks[0]["content"])
-    assert 'style="bold,underline"' not in str(blocks[0]["content"])
-    assert "<url>u</url>" in str(blocks[0]["content"])
-    assert blocks[1]["content"] == (
-        "<b>A</b><i>B</i><u>C</u><s>D</s>"
-        '<text style="underline">E</text>'
-    )
-    assert [block["content"] for block in blocks] == first_results
+    assert inline_text(blocks[0]["content"]) == first_literal
+    assert inline_text(blocks[1]["content"]) == second_literal
+    assert all(span.get("type") == "text" for block in blocks for span in block["content"])
+    assert [_span_snapshot(block["content"]) for block in blocks] == first_results
 
 
 def test_formula_style_does_not_fall_back_to_same_plain_character() -> None:
@@ -1767,7 +1853,7 @@ def test_formula_style_does_not_fall_back_to_same_plain_character() -> None:
         {
             "type": "text",
             "bbox": [0.0, 0.0, 1.0, 1.0],
-            "content": "A<eq>C</eq>C",
+            "content": r"A\(C\)C",
         }
     ]
     lines = [
@@ -1781,7 +1867,7 @@ def test_formula_style_does_not_fall_back_to_same_plain_character() -> None:
 
     apply_pdf_text_styles(blocks, lines, (100.0, 100.0))
 
-    assert blocks[0]["content"] == "A<eq>C</eq>C"
+    assert _span_snapshot(blocks[0]["content"]) == "A<eq>C</eq>C"
 
 
 def test_unique_long_style_range_survives_omitted_list_marker() -> None:
@@ -1808,9 +1894,7 @@ def test_unique_long_style_range_survives_omitted_list_marker() -> None:
 
     apply_pdf_text_styles(blocks, lines, (100.0, 100.0))
 
-    assert blocks[0]["content"] == (
-        '无序列表项1：<text style="bold">bold 粗体文本</text>'
-    )
+    assert _span_snapshot(blocks[0]["content"]) == ('无序列表项1：<text style="bold">bold 粗体文本</text>')
 
 
 def test_never_styles_equations_or_excluded_blocks() -> None:
@@ -1820,7 +1904,7 @@ def test_never_styles_equations_or_excluded_blocks() -> None:
         {
             "type": "text",
             "bbox": [0.0, 0.0, 1.0, 0.5],
-            "content": "before <eq>deleted</eq> after",
+            "content": r"before \(deleted\) after",
         },
         {
             "type": "table",
@@ -1845,8 +1929,8 @@ def test_never_styles_equations_or_excluded_blocks() -> None:
 
     apply_pdf_text_styles(blocks, lines, (100.0, 100.0))
 
-    assert blocks[0]["content"] == "before <eq>deleted</eq> after"
-    assert blocks[1]["content"] == "deleted"
+    assert _span_snapshot(blocks[0]["content"]) == "before <eq>deleted</eq> after"
+    assert _span_snapshot(blocks[1]["content"]) == "deleted"
 
 
 def test_flash_native_pdf_styles_reach_model_middle_and_renderers() -> None:
@@ -1857,11 +1941,7 @@ def test_flash_native_pdf_styles_reach_model_middle_and_renderers() -> None:
         model_list = PdfModel().predict(document)
     finally:
         document.close()
-    model_contents = [
-        str(block.get("content") or "")
-        for page in model_list
-        for block in page
-    ]
+    model_contents = [_span_snapshot(block.get("content")) for page in model_list for block in page]
     joined_model_content = "\n".join(model_contents)
     assert '<text style="strikethrough">deleted</text>' in joined_model_content
     assert '<text style="strikethrough">filled strike</text>' in joined_model_content
@@ -1884,9 +1964,7 @@ def test_flash_native_pdf_styles_reach_model_middle_and_renderers() -> None:
     )
     markdown = render_markdown(middle)
     html = render_html(middle, standalone=False)
-    document_xml = ZipFile(BytesIO(render_docx(middle))).read(
-        "word/document.xml"
-    ).decode("utf-8")
+    document_xml = ZipFile(BytesIO(render_docx(middle))).read("word/document.xml").decode("utf-8")
 
     assert "~~deleted~~" in markdown
     assert "<u>underlined</u>" in markdown
@@ -1914,10 +1992,8 @@ def test_demo1_pdf_link_reaches_model_middle_and_all_renderers() -> None:
 
     target = "http://www.elsevier.com/locate/jhydrol"
     label = "www.elsevier.com/locate/jhydrol"
-    inline_markup = f"<hyperlink>{label}<url>{target}</url></hyperlink>"
     assert any(
-        block.get("content") == inline_markup
-        for block in model_list[0]
+        inline_text(block.get("content")) == label and inline_urls(block.get("content")) == [target] for block in model_list[0]
     )
 
     middle = MiddleJson(
@@ -1931,7 +2007,7 @@ def test_demo1_pdf_link_reaches_model_middle_and_all_renderers() -> None:
     link_block = next(
         block
         for block in middle.pages[0].blocks
-        if getattr(block, "content", None) == inline_markup
+        if inline_text(getattr(block, "content", None)) == label and inline_urls(getattr(block, "content", None)) == [target]
     )
     link_middle = MiddleJson(
         pages=[PageInfo(page_idx=0, blocks=[link_block])],
@@ -1943,9 +2019,7 @@ def test_demo1_pdf_link_reaches_model_middle_and_all_renderers() -> None:
     )
     assert f"[{label}]({target})" in render_markdown(link_middle)
     assert f'href="{target}"' in render_html(link_middle, standalone=False)
-    relationships = ZipFile(BytesIO(render_docx(link_middle))).read(
-        "word/_rels/document.xml.rels"
-    ).decode("utf-8")
+    relationships = ZipFile(BytesIO(render_docx(link_middle))).read("word/_rels/document.xml.rels").decode("utf-8")
     assert target in relationships
     assert f"[{label}]({target})" in str(render_structured_content(link_middle))
 
@@ -1956,6 +2030,11 @@ def test_hybrid_txt_reuses_loaded_chars_and_applies_styles(
     """验证 Medium/High/XHigh 复用 chars，并应用允许的组合样式。"""
 
     page_chars = [{"char": "d", "bbox": (10.0, 10.0, 16.0, 20.0), "char_idx": 0}]
+    page_text_geometry = PDFPageTextGeometry(
+        chars=page_chars,  # type: ignore[arg-type]
+        tight_bboxes={0: (10.0, 10.0, 16.0, 20.0)},
+        origins={0: (10.0, 20.0)},
+    )
     style_lines = [
         PDFTextStyleLine(
             (10.0, 10.0, 52.0, 20.0),
@@ -1978,10 +2057,8 @@ def test_hybrid_txt_reuses_loaded_chars_and_applies_styles(
             0,
         )
     ]
-    build_styles = MagicMock(
-        return_value=(page_chars, [], style_lines, link_lines)
-    )
-    observed_chars: list[object] = []
+    build_styles = MagicMock(return_value=(page_text_geometry, [], style_lines, link_lines, []))
+    observed_geometry: list[object] = []
 
     def fake_fill_native(
         _pdf_page: object,
@@ -1990,11 +2067,13 @@ def test_hybrid_txt_reuses_loaded_chars_and_applies_styles(
         _scale: object,
         _page_size: object,
         *,
-        page_chars: object,
+        page_text_geometry: object,
+        detect_scripts: bool,
     ) -> list[_AnalyzeSpan]:
-        """记录传入原生回填的 chars，并返回稳定文本 span。"""
+        """记录传入原生回填的字符几何，并返回稳定文本 span。"""
 
-        observed_chars.append(page_chars)
+        observed_geometry.append(page_text_geometry)
+        assert detect_scripts is False
         return [
             _AnalyzeSpan(
                 type=ContentType.TEXT,
@@ -2045,14 +2124,14 @@ def test_hybrid_txt_reuses_loaded_chars_and_applies_styles(
         [[]],
         [[]],
         "txt",
+        "medium",
         {BlockType.TEXT},
         MagicMock(),
     )
 
-    assert observed_chars == [page_chars]
-    assert model_list[0][0]["content"] == (
-        '<hyperlink><text style="bold,strikethrough">deleted</text>'
-        "<url>https://hybrid.example.test</url></hyperlink>"
+    assert observed_geometry == [page_text_geometry]
+    assert _span_snapshot(model_list[0][0]["content"]) == (
+        '<hyperlink><text style="bold,strikethrough">deleted</text><url>https://hybrid.example.test</url></hyperlink>'
     )
 
 
@@ -2081,7 +2160,7 @@ def test_hybrid_txt_efforts_apply_dehyphenated_links(
     monkeypatch.setattr(
         text_content,
         "build_pdf_native_visual_lines_and_styles",
-        lambda *_args, **_kwargs: ([], [], [], link_lines),
+        lambda *_args, **_kwargs: (PDFPageTextGeometry([], {}, {}), [], [], link_lines, []),
     )
     monkeypatch.setattr(
         text_content,
@@ -2143,13 +2222,95 @@ def test_hybrid_txt_efforts_apply_dehyphenated_links(
         [[]],
         [[]],
         "txt",
+        effort,
         {BlockType.TEXT},
         MagicMock(),
     )
 
-    assert model_list[0][0]["content"] == (
-        f"<hyperlink>international<url>{target}</url></hyperlink>"
+    assert _span_snapshot(model_list[0][0]["content"]) == (f"<hyperlink>international<url>{target}</url></hyperlink>")
+
+
+@pytest.mark.parametrize("effort", ["medium", "high", "xhigh"])
+def test_hybrid_txt_efforts_apply_shared_script_sidecar(
+    monkeypatch: pytest.MonkeyPatch,
+    effort: str,
+) -> None:
+    """验证 Medium、High 与 XHigh 的 TXT 文本统一应用整行脚本 sidecar。"""
+
+    page_geometry = PDFPageTextGeometry([], {}, {})
+    script_line = PDFTextScriptLine(
+        bbox=(10.0, 10.0, 30.0, 20.0),
+        text="x2",
+        script_ranges=(PDFTextScriptRange(1, 2, "superscript", (20.0, 10.0, 25.0, 15.0), 1, False),),
+        source_index=0,
+        angle=0,
     )
+    build_evidence = MagicMock(return_value=(page_geometry, [], [], [], [script_line]))
+    monkeypatch.setattr(text_content, "build_pdf_native_visual_lines_and_styles", build_evidence)
+    monkeypatch.setattr(text_content, "_build_page_text_formula_spans", lambda *_args: [])
+
+    def fake_fill_native(*_args: object, detect_scripts: bool, **_kwargs: object) -> list[_AnalyzeSpan]:
+        """确认 Hybrid TXT 不再使用 layout span 内的旧脚本分类。"""
+
+        assert detect_scripts is False
+        return [_AnalyzeSpan(type=ContentType.TEXT, bbox=(10.0, 10.0, 30.0, 20.0), content="x2", score=1.0)]
+
+    monkeypatch.setattr(text_content, "_fill_native_pdf_text_spans", fake_fill_native)
+    monkeypatch.setattr(
+        text_content,
+        "_group_page_spans_by_block",
+        lambda *_args: {
+            0: [
+                _AnalyzeLine(
+                    bbox=(10.0, 10.0, 30.0, 20.0),
+                    spans=[_AnalyzeSpan(type=ContentType.TEXT, bbox=(10.0, 10.0, 30.0, 20.0), content="x2", score=1.0)],
+                )
+            ]
+        },
+    )
+    monkeypatch.setattr(text_content, "_apply_window_post_ocr", lambda *_args: None)
+    pdf_page = MagicMock(size=(100.0, 100.0))
+    pdf_page.get_char_count.return_value = 2
+    model_list = [[{"type": BlockType.TEXT, "bbox": [0.1, 0.1, 0.3, 0.2], "content": ""}]]
+
+    text_content._fill_window_block_content_and_lines(
+        [{"img_pil": object(), "scale": 1.0}],
+        [pdf_page],
+        model_list,
+        [[]],
+        [[]],
+        "txt",
+        effort,  # type: ignore[arg-type]
+        {BlockType.TEXT},
+        MagicMock(),
+    )
+
+    assert model_list[0][0]["content"] == [
+        {"type": "text", "content": "x"},
+        {"type": "text", "content": "2", "styles": ["superscript"]},
+    ]
+
+
+def test_hybrid_layout_formula_regions_hard_exclude_script_ranges() -> None:
+    """验证 Hybrid TXT 只保留 layout 行内公式 bbox 外的脚本证据。"""
+
+    line = PDFTextScriptLine(
+        bbox=(0.0, 0.0, 40.0, 20.0),
+        text="x2y3",
+        script_ranges=(
+            PDFTextScriptRange(1, 2, "superscript", (10.0, 2.0, 15.0, 8.0), 2, True),
+            PDFTextScriptRange(3, 4, "subscript", (30.0, 12.0, 35.0, 18.0), 2, False),
+        ),
+        source_index=0,
+        angle=0,
+    )
+
+    filtered = text_style_enrichment._exclude_layout_formula_script_ranges(
+        [line],
+        [(8.0, 0.0, 18.0, 10.0)],
+    )
+
+    assert [(item.start, item.end, item.style) for item in filtered[0].script_ranges] == [(3, 4, "subscript")]
 
 
 def test_ocr_path_does_not_collect_or_apply_pdf_styles(
@@ -2203,12 +2364,13 @@ def test_ocr_path_does_not_collect_or_apply_pdf_styles(
         [[]],
         [[]],
         "ocr",
+        "medium",
         {BlockType.TEXT},
         MagicMock(),
     )
 
     build_styles.assert_not_called()
-    assert model_list[0][0]["content"] == "deleted"
+    assert inline_text(model_list[0][0]["content"]) == "deleted"
 
 
 def test_high_char_count_txt_path_skips_pdf_text_enrichment(
@@ -2251,9 +2413,7 @@ def test_high_char_count_txt_path_skips_pdf_text_enrichment(
         },
     )
     pdf_page = MagicMock(size=(100.0, 100.0))
-    pdf_page.get_char_count.return_value = (
-        text_content.MAX_NATIVE_TEXT_CHARS_PER_PAGE + 1
-    )
+    pdf_page.get_char_count.return_value = text_content.MAX_NATIVE_TEXT_CHARS_PER_PAGE + 1
     model_list = [
         [
             {
@@ -2271,12 +2431,13 @@ def test_high_char_count_txt_path_skips_pdf_text_enrichment(
         [[]],
         [[]],
         "txt",
+        "medium",
         {BlockType.TEXT},
         MagicMock(),
     )
 
     build_enrichment.assert_not_called()
-    assert model_list[0][0]["content"] == "plain"
+    assert inline_text(model_list[0][0]["content"]) == "plain"
 
 
 def test_native_span_fill_does_not_read_preloaded_page_chars_twice() -> None:
@@ -2313,3 +2474,4 @@ def test_native_span_fill_does_not_read_preloaded_page_chars_twice() -> None:
     assert result == [span]
     assert span.content == "deleted"
     pdf_page.get_chars.assert_not_called()
+    pdf_page.get_chars_with_geometry.assert_not_called()

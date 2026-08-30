@@ -8,6 +8,13 @@ from html import escape
 from typing import Any, BinaryIO, Iterable
 
 from .....types import BlockType
+from ..._shared.spans import (
+    append_equation_span,
+    extend_inline_spans,
+    inline_span_plain_text,
+    strip_span_dicts,
+    text_spans,
+)
 from ..image import (
     ensure_bmp_header,
     is_valid_vector_image_payload,
@@ -178,16 +185,16 @@ class RtfConverter:
             return None
         return target
 
-    def _rich_text(self, inlines: Iterable[RtfInline]) -> str:
-        """把非图片行内节点转换为现有 Office 富文本和公式协议。"""
-        parts: list[str] = []
+    def _rich_text(self, inlines: Iterable[RtfInline]) -> list[dict[str, Any]]:
+        """把非图片行内节点直接转换为结构化 Span。"""
+        spans: list[dict[str, Any]] = []
         segments: list[OfficeRichTextSegment] = []
 
         def flush() -> None:
             """在公式边界前输出累计普通富文本。"""
             if not segments:
                 return
-            parts.append(build_rich_text_from_segments(segments, trim_plain_edges=not parts))
+            extend_inline_spans(spans, build_rich_text_from_segments(segments, trim_plain_edges=not spans))
             segments.clear()
 
         for inline in inlines:
@@ -202,7 +209,7 @@ class RtfConverter:
                 )
             elif isinstance(inline, RtfInlineEquation):
                 flush()
-                parts.append(f"<eq>{escape(inline.latex, quote=False)}</eq>")
+                append_equation_span(spans, inline.latex)
             elif isinstance(inline, RtfNoteReference):
                 number = self._note_numbers.get(inline.note_id)
                 if number is not None:
@@ -215,7 +222,7 @@ class RtfConverter:
             elif isinstance(inline, RtfLineBreak):
                 segments.append(OfficeRichTextSegment(text="\n"))
         flush()
-        return "".join(parts).strip()
+        return strip_span_dicts(spans)
 
     def _image_payload(self, image: RtfImage) -> tuple[bytes, str, str] | None:
         """规范 DIB 载荷并返回图片数据、part name 和 content type。"""
@@ -234,7 +241,7 @@ class RtfConverter:
         normalized = self._image_payload(image)
         if normalized is None:
             if image.alt.strip():
-                return {"type": BlockType.TEXT, "content": image.alt.strip()}
+                return {"type": BlockType.TEXT, "content": text_spans(image.alt.strip())}
             return None
         payload, part_name, content_type = normalized
         latex = self._image_equations.decode(
@@ -251,7 +258,7 @@ class RtfConverter:
         )
         if image_base64 is None:
             if image.alt.strip():
-                return {"type": BlockType.TEXT, "content": image.alt.strip()}
+                return {"type": BlockType.TEXT, "content": text_spans(image.alt.strip())}
             return None
         block: dict[str, Any] = {
             "type": BlockType.IMAGE,
@@ -361,9 +368,7 @@ class RtfConverter:
         info = paragraph.list_info
         if info is None:
             return identity or -1
-        content = self._rich_text(
-            inline for inline in paragraph.inlines if not isinstance(inline, (RtfImage, RtfAnchor))
-        )
+        content = self._rich_text(inline for inline in paragraph.inlines if not isinstance(inline, (RtfImage, RtfAnchor)))
         if identity != info.identity:
             stack.clear()
             identity = info.identity
@@ -425,8 +430,10 @@ class RtfConverter:
                     if image_block is not None:
                         page.append(image_block)
                 continue
-            if isinstance(block, RtfParagraph) and block.list_info is not None and not (
-                block.is_title or block.outline_level is not None
+            if (
+                isinstance(block, RtfParagraph)
+                and block.list_info is not None
+                and not (block.is_title or block.outline_level is not None)
             ):
                 list_identity = self._append_list_item(page, list_stack, list_identity, block)
                 images = [inline for inline in block.inlines if isinstance(inline, RtfImage)]
@@ -504,9 +511,7 @@ class RtfConverter:
                     content_type=content_type,
                 )
                 if source:
-                    parts.append(
-                        f'<img src="{escape(source, quote=True)}" alt="{escape(inline.alt, quote=True)}">'
-                    )
+                    parts.append(f'<img src="{escape(source, quote=True)}" alt="{escape(inline.alt, quote=True)}">')
                 elif inline.alt:
                     parts.append(escape(inline.alt, quote=False))
         return "".join(parts)
@@ -579,12 +584,7 @@ class RtfConverter:
     def _table_grid(self, table: RtfTable) -> list[list[_GridOrigin | None]]:
         """解析横向与纵向 merge continuation，生成 exactly-once origin 网格。"""
         boundaries = sorted(
-            {
-                cell.right_boundary
-                for row in table.rows
-                for cell in row.cells
-                if cell.right_boundary is not None
-            }
+            {cell.right_boundary for row in table.rows for cell in row.cells if cell.right_boundary is not None}
         )
         width = len(boundaries) or max((len(row.cells) for row in table.rows), default=0)
         boundary_index = {value: index for index, value in enumerate(boundaries)}
@@ -652,13 +652,15 @@ class RtfConverter:
             if isinstance(block, RtfParagraph):
                 content = self._rich_text(block.inlines)
             elif isinstance(block, RtfDisplayEquation):
-                content = f"<eq>{escape(block.latex, quote=False)}</eq>"
+                content = []
+                append_equation_span(content, block.latex)
             elif isinstance(block, RtfTable):
-                content = escape(self._table_plain_text(block), quote=False)
+                content = text_spans(self._table_plain_text(block))
             else:
                 continue
-            if content and not content.isdigit() and content not in seen:
-                seen.add(content)
+            visible = inline_span_plain_text(content)
+            if content and not visible.isdigit() and visible not in seen:
+                seen.add(visible)
                 result.append({"type": block_type, "content": content})
         return result
 
@@ -691,13 +693,13 @@ class RtfConverter:
         )
         for note in ordered:
             number = self._note_numbers.get(note.id)
-            content = escape(self._blocks_plain_text(note.blocks).strip(), quote=False)
+            content = self._blocks_plain_text(note.blocks).strip()
             if number is None or not content:
                 continue
             result.append(
                 {
                     "type": BlockType.PAGE_FOOTNOTE,
-                    "content": f"[{number}] {content}",
+                    "content": text_spans(f"[{number}] {content}"),
                 }
             )
         return result

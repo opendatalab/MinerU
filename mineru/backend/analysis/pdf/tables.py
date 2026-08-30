@@ -26,8 +26,9 @@ from ....model.flash.pdf.table_recovery import (
     coerce_native_table_rules,
     recover_native_pdf_table,
 )
+from ....model.flash.pdf.table_text_styles import render_native_table_html_with_scripts
 from ....model.ocr.image import mask_formula_regions_for_ocr_det
-from ....model.flash.pdf.document import PDFPage, get_lines_from_chars
+from ....model.flash.pdf.document import PDFPage, PDFPageTextGeometry, get_lines_from_chars
 from ....model.flash.pdf.spatial_text import project_ocr_table_text
 
 from .constants import (
@@ -104,18 +105,13 @@ def _has_non_empty_table_content(block: dict[str, Any]) -> bool:
 def _mark_native_table_complex_entries(
     table_entries: list[dict[str, Any]],
     page_blocks: list[dict[str, Any]],
-    layout_res: list[dict[str, Any]],
     page_size: tuple[int, int],
-    *,
-    formula_is_complex: bool,
 ) -> None:
     """按现有归属几何标记含模型语义对象或重叠表格的候选。"""
 
     for block in page_blocks:
         block_type = block.get("type")
-        if block_type not in _NATIVE_TABLE_ALWAYS_COMPLEX_BLOCK_TYPES and not (
-            formula_is_complex and block_type in _NATIVE_TABLE_FORMULA_BLOCK_TYPES
-        ):
+        if block_type not in _NATIVE_TABLE_ALWAYS_COMPLEX_BLOCK_TYPES:
             continue
         block_bbox = _bbox_to_pixel_bbox(block.get("bbox"), page_size)
         if block_bbox is None:
@@ -123,19 +119,6 @@ def _mark_native_table_complex_entries(
         owner = _select_table_owner(block_bbox, table_entries)
         if owner is not None:
             owner["complex_reasons"].add(str(block.get("type")))
-
-    if formula_is_complex:
-        # inline_formula 不会进入 VL-style block，High 必须从原始 layout 结果单独参与门控。
-        for layout_item in layout_res:
-            label = str(layout_item.get("label") or layout_item.get("type") or "")
-            if label not in _NATIVE_TABLE_FORMULA_LAYOUT_LABELS:
-                continue
-            formula_bbox = _bbox_to_pixel_bbox(layout_item.get("bbox"), page_size)
-            if formula_bbox is None:
-                continue
-            owner = _select_table_owner(formula_bbox, table_entries)
-            if owner is not None:
-                owner["complex_reasons"].add(label)
 
     for entry_index, table_entry in enumerate(table_entries):
         table_bbox = table_entry["table_bbox"]
@@ -186,13 +169,13 @@ def _remove_native_table_internal_text_blocks(
     return removed_count
 
 
-def _remove_medium_native_table_formula_items(
+def _remove_native_table_formula_items(
     page_blocks: list[dict[str, Any]],
     layout_res: list[dict[str, Any]],
     accepted_entries: list[dict[str, Any]],
     page_size: tuple[int, int],
 ) -> tuple[int, int]:
-    """原子删除 Medium 原生命中表内的公式 block 与原始 layout 项。"""
+    """原子删除 Medium/High 原生命中表内的公式 block 与原始 layout 项。"""
 
     if not accepted_entries:
         return 0, 0
@@ -233,6 +216,7 @@ def _apply_native_txt_table_priority(
     images_list: list[dict[str, Any]],
     *,
     effort: Literal["medium", "high"],
+    page_text_geometries: list[PDFPageTextGeometry | None] | None = None,
 ) -> _NativeTablePrioritySummary:
     """在 Medium/High TXT 模型表格识别前回填高置信原生 HTML。"""
 
@@ -276,9 +260,7 @@ def _apply_native_txt_table_priority(
         _mark_native_table_complex_entries(
             table_entries,
             page_blocks,
-            layout_res,
             page_size,
-            formula_is_complex=effort == "high",
         )
         for table_entry in table_entries:
             if table_entry["complex_reasons"]:
@@ -293,7 +275,12 @@ def _apply_native_txt_table_priority(
             continue
 
         try:
-            native_chars = tuple(pdf_page.get_chars())
+            page_text_geometry = page_text_geometries[page_idx] if page_text_geometries is not None else None
+            if page_text_geometry is None:
+                page_text_geometry = pdf_page.get_chars_with_geometry()
+                if page_text_geometries is not None:
+                    page_text_geometries[page_idx] = page_text_geometry
+            native_chars = tuple(page_text_geometry.chars)
             native_rules = coerce_native_table_rules(pdf_page.get_drawing_lines())
             native_rectangles = coerce_native_table_rectangles(pdf_page.get_path_infos())
             native_page_size = tuple(float(value) for value in pdf_page.size)
@@ -318,16 +305,15 @@ def _apply_native_txt_table_priority(
                 rejected += 1
                 continue
             try:
-                result = recover_native_pdf_table(
-                    NativeTableInput(
-                        table_bbox=table_bbox,
-                        page_size=native_page_size,
-                        angle=_normalize_visual_block_angle(table_block.get("angle", 0)),
-                        chars=native_chars,
-                        drawing_lines=native_rules,
-                        rectangles=native_rectangles,
-                    )
+                table_input = NativeTableInput(
+                    table_bbox=table_bbox,
+                    page_size=native_page_size,
+                    angle=_normalize_visual_block_angle(table_block.get("angle", 0)),
+                    chars=native_chars,
+                    drawing_lines=native_rules,
+                    rectangles=native_rectangles,
                 )
+                result = recover_native_pdf_table(table_input)
             except Exception as exc:
                 errors += 1
                 logger.warning(
@@ -342,7 +328,12 @@ def _apply_native_txt_table_priority(
                     f"page_idx={page_idx}, bbox={table_block.get('bbox')}"
                 )
                 continue
-            table_block["content"] = result.html
+            table_block["content"] = render_native_table_html_with_scripts(
+                result,
+                table_input,
+                page_text_geometry.tight_bboxes,
+                page_text_geometry.origins,
+            )
             accepted_entries.append(table_entry)
             accepted += 1
             logger.debug(
@@ -351,17 +342,16 @@ def _apply_native_txt_table_priority(
                 f"source={result.source}, confidence={result.confidence:.3f}"
             )
 
-        if effort == "medium":
-            page_removed_formula_blocks, page_removed_formula_layout_items = (
-                _remove_medium_native_table_formula_items(
-                    page_blocks,
-                    layout_res,
-                    accepted_entries,
-                    page_size,
-                )
+        page_removed_formula_blocks, page_removed_formula_layout_items = (
+            _remove_native_table_formula_items(
+                page_blocks,
+                layout_res,
+                accepted_entries,
+                page_size,
             )
-            removed_formula_blocks += page_removed_formula_blocks
-            removed_formula_layout_items += page_removed_formula_layout_items
+        )
+        removed_formula_blocks += page_removed_formula_blocks
+        removed_formula_layout_items += page_removed_formula_layout_items
 
         removed_internal_text += _remove_native_table_internal_text_blocks(
             page_blocks,

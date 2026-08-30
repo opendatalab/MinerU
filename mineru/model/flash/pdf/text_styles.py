@@ -7,14 +7,23 @@ import html
 import math
 import re
 import statistics
+import unicodedata
 from dataclasses import dataclass
 from typing import Any, Iterable, Literal, Sequence, TypeVar, cast
 
 from loguru import logger
 
-from ....types import BBox, BlockType, RAW_CAPTION, RAW_FOOTNOTE
-from .._shared.hyperlink import render_inline_hyperlink
+from ....types import BBox, BlockType, RAW_ALGORITHM, RAW_CAPTION, RAW_FOOTNOTE, RAW_PHONETIC
+from .._shared.spans import (
+    append_equation_span,
+    append_hyperlink_span,
+    append_text_span,
+    extend_inline_spans,
+    normalize_span_dicts,
+)
 from .document import PDFLinkAnnotation
+from .geometry import _rotate_bbox_to_upright
+from .script_geometry import ScriptRole, classify_char_script_roles
 from ....utils.text import is_hyphen_at_line_end
 
 
@@ -32,13 +41,44 @@ PDF_BOLD_MIN_WEIGHT = 600.0
 PDF_BOLD_MIN_COMPARABLE_CHAR_COUNT = 2
 PDF_LINK_CHAR_OVERLAP_THRESHOLD = 0.5
 
-PDFTextStyle = Literal["bold", "italic", "underline", "strikethrough"]
+PDFTextStyle = Literal[
+    "bold",
+    "italic",
+    "underline",
+    "strikethrough",
+    "superscript",
+    "subscript",
+]
+PDFScriptStyle = Literal["superscript", "subscript"]
+_PDF_LINK_INTERVALS_KEY = "_inline_link_intervals"
+_PDF_STYLE_INTERVALS_KEY = "_inline_style_intervals"
+PDF_NATIVE_SCRIPT_MARKUP_KEY = "_pdf_native_script_markup"
+_NATIVE_SCRIPT_TAG_RE = re.compile(r"<(?P<closing>/)?(?P<tag>sup|sub)>")
+_PDF_INLINE_SPAN_BLOCK_TYPES = {
+    BlockType.TEXT,
+    BlockType.REF_TEXT,
+    BlockType.DOC_TITLE,
+    BlockType.PARAGRAPH_TITLE,
+    BlockType.HEADER,
+    BlockType.FOOTER,
+    BlockType.PAGE_NUMBER,
+    BlockType.ASIDE_TEXT,
+    BlockType.PAGE_FOOTNOTE,
+    BlockType.LIST,
+    BlockType.INDEX,
+    RAW_ALGORITHM,
+    RAW_CAPTION,
+    RAW_FOOTNOTE,
+    RAW_PHONETIC,
+}
 PDFTextDecoration = Literal["underline", "strikethrough"]
 PDF_TEXT_STYLE_ORDER: tuple[PDFTextStyle, ...] = (
     "bold",
     "italic",
     "underline",
     "strikethrough",
+    "superscript",
+    "subscript",
 )
 _PDF_TEXT_DECORATION_ORDER: tuple[PDFTextDecoration, ...] = (
     "underline",
@@ -67,26 +107,20 @@ _PDF_TEXT_STYLE_TARGET_BLOCK_TYPES: dict[PDFTextStyle, frozenset[str]] = {
     "italic": frozenset(),
     "underline": frozenset({BlockType.TEXT}),
     "strikethrough": PDF_NATURAL_TEXT_STYLE_BLOCK_TYPES,
+    "superscript": PDF_NATURAL_TEXT_STYLE_BLOCK_TYPES,
+    "subscript": PDF_NATURAL_TEXT_STYLE_BLOCK_TYPES,
 }
 
-_KNOWN_INLINE_TAG_RE = re.compile(
-    r"<(?P<close>/)?(?P<tag>eq|text|hyperlink|url|sup|sub|strong|b|em|i|s|u)(?P<attrs>\s[^<>]*?)?>",
-    re.IGNORECASE,
-)
-_STYLE_ATTR_RE = re.compile(r"\bstyle\s*=\s*([\"'])(?P<style>.*?)\1", re.IGNORECASE | re.DOTALL)
 _PDF_FONT_SUBSET_PREFIX_RE = re.compile(r"^[A-Z]{6}\+")
 _PDF_BOLD_FONT_NAME_RE = re.compile(
     r"bold|demi|black|heavy|(?:^|[-_,])(?:bd|bi)(?:mt)?$|gbi$|(?:^|[-_,])w[6-9]$",
     re.IGNORECASE,
 )
-_PDF_LIST_MARKER_CHARS = frozenset(
-    "•◦‣⁃▪▫●○■□∙·▶▷►▸▹\uf0b7"
-)
+_PDF_LIST_MARKER_CHARS = frozenset("•◦‣⁃▪▫●○■□∙·▶▷►▸▹\uf0b7")
 _PDF_GEOMETRIC_TEXT_STYLES = frozenset({"underline", "strikethrough"})
 _PDF_CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]")
 _PDF_SEPARATOR_SPACE_CHARS = frozenset(
-    "\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006"
-    "\u2007\u2008\u2009\u200a\u202f\u205f\u3000"
+    "\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u202f\u205f\u3000"
 )
 _PDF_ZERO_WIDTH_CHARS = frozenset({"\u200b", "\u2060", "\ufeff"})
 _LIGATURE_REPLACEMENTS = {
@@ -98,6 +132,17 @@ _LIGATURE_REPLACEMENTS = {
     "ﬅ": "ft",
     "ﬆ": "st",
 }
+_PDF_SCRIPT_TOKEN_CONNECTORS = frozenset({"^", "_", "ˆ", "~"})
+_PDF_SCRIPT_COMPACT_JOINERS = frozenset({"-", "−", "–"})
+_PDF_SCRIPT_CITATION_BRACKETS = {
+    "[": "]",
+    "［": "］",
+}
+_PDF_SCRIPT_AUTHOR_MARKS = frozenset({"*", "†", "‡", "∗"})
+_PDF_SCRIPT_SIGN_CHARS = frozenset({"+", "-", "−", "–", "⁻", "⁺"})
+_PDF_SCRIPT_SPACED_OPERATORS = frozenset({"+", "-", "−", "–"})
+_PDF_SCRIPT_TRAILING_MARKS = frozenset({")", "）"})
+_PDF_SCRIPT_MATH_BASE_CHARS = frozenset({"∆", "Δ", "σ", "Σ", "φ", "Φ", "μ", "µ", "Ω", "Ω", "λ", "γ", "δ", "ρ", "β", "α"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,6 +162,29 @@ class PDFTextStyleLine:
     text: str
     style_ranges: tuple[PDFTextStyleRange, ...]
     source_index: int
+
+
+@dataclass(frozen=True, slots=True)
+class PDFTextScriptRange:
+    """保存 Flash 上下标的文本区间、页面 tight bbox 与稳定性证据。"""
+
+    start: int
+    end: int
+    style: PDFScriptStyle
+    bbox: BBox
+    stable_body_count: int
+    formula_region: bool
+
+
+@dataclass(frozen=True, slots=True)
+class PDFTextScriptLine:
+    """保存一个 Flash 视觉行的紧凑文本及上下标候选。"""
+
+    bbox: BBox
+    text: str
+    script_ranges: tuple[PDFTextScriptRange, ...]
+    source_index: int
+    angle: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -142,6 +210,7 @@ PDFTextEvidenceLine = TypeVar(
     "PDFTextEvidenceLine",
     PDFTextStyleLine,
     PDFTextLinkLine,
+    PDFTextScriptLine,
 )
 
 
@@ -192,21 +261,20 @@ class _ProjectedChar:
 
 
 @dataclass(frozen=True, slots=True)
-class _InlineTagState:
-    """保存一个已打开行内标签的匹配排除状态和已有字体样式。"""
-
-    tag: str
-    excluded: bool
-    styles: frozenset[PDFTextStyle]
-
-
-@dataclass(frozen=True, slots=True)
 class _RawStyleInterval:
     """保存 model content 原字符串中的半开样式区间。"""
 
     start: int
     end: int
     styles: tuple[PDFTextStyle, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class _NativeScriptMarkup:
+    """保存 detector-owned 上下标标签边界及对应原文样式区间。"""
+
+    marker_ranges: tuple[tuple[int, int], ...]
+    style_intervals: tuple[tuple[int, int, str], ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -350,18 +418,11 @@ def _has_list_marker_separator(
 ) -> bool:
     """判断行首项目符号与后续正文之间是否存在空白或明显视觉间隔。"""
 
-    if any(
-        str(chars[index].get("char") or "").isspace()
-        for index in range(marker_source_index + 1, next_source_index)
-    ):
+    if any(str(chars[index].get("char") or "").isspace() for index in range(marker_source_index + 1, next_source_index)):
         return True
     marker_bbox = _coerce_bbox(chars[marker_source_index].get("bbox"))
     next_bbox = _coerce_bbox(chars[next_source_index].get("bbox"))
-    return bool(
-        marker_bbox is not None
-        and next_bbox is not None
-        and next_bbox[0] - marker_bbox[2] >= 0.5 * median_height
-    )
+    return bool(marker_bbox is not None and next_bbox is not None and next_bbox[0] - marker_bbox[2] >= 0.5 * median_height)
 
 
 def _filter_pdf_bold_runs(
@@ -407,11 +468,7 @@ def _filter_pdf_bold_runs(
         )
         if is_short or is_isolated_leading_marker:
             for run_source_index, _run_fragment in run:
-                output[run_source_index] = frozenset(
-                    style
-                    for style in output[run_source_index]
-                    if style != "bold"
-                )
+                output[run_source_index] = frozenset(style for style in output[run_source_index] if style != "bold")
         run_start = run_end
     return output
 
@@ -439,11 +496,7 @@ def _build_line_candidate(line: Any) -> _LineCandidate | None:
     median_height = statistics.median(heights)
     if median_height <= 0:
         return None
-    body_chars = [
-        char
-        for char, height in zip(visible_chars, heights)
-        if height >= 0.8 * median_height
-    ]
+    body_chars = [char for char, height in zip(visible_chars, heights) if height >= 0.8 * median_height]
     if not body_chars:
         return None
     font_styles = [_char_font_styles(char) for char in chars]
@@ -452,10 +505,7 @@ def _build_line_candidate(line: Any) -> _LineCandidate | None:
         chars=chars,
         visible_chars=visible_chars,
         median_height=median_height,
-        center_y=statistics.median(
-            (char.bbox[1] + char.bbox[3]) / 2
-            for char in body_chars
-        ),
+        center_y=statistics.median((char.bbox[1] + char.bbox[3]) / 2 for char in body_chars),
         bottom_y=statistics.median(char.bbox[3] for char in body_chars),
         source_index=int(getattr(line, "source_index", 0) or 0),
         font_styles=_filter_pdf_bold_runs(
@@ -488,9 +538,7 @@ def _drawing_match_for_line(
     drawing_center_y = (drawing_bbox[1] + drawing_bbox[3]) / 2
     target_y = line.bottom_y if style == "underline" else line.center_y
     target_tolerance = (
-        UNDERLINE_BOTTOM_TOLERANCE_HEIGHT_RATIO
-        if style == "underline"
-        else STRIKETHROUGH_CENTER_TOLERANCE_HEIGHT_RATIO
+        UNDERLINE_BOTTOM_TOLERANCE_HEIGHT_RATIO if style == "underline" else STRIKETHROUGH_CENTER_TOLERANCE_HEIGHT_RATIO
     )
     target_distance_ratio = abs(drawing_center_y - target_y) / line.median_height
     if target_distance_ratio > target_tolerance:
@@ -502,11 +550,7 @@ def _drawing_match_for_line(
     if drawing_width > TEXT_DECORATION_MAX_WIDTH_HEIGHT_RATIO * line.median_height:
         return None
 
-    hit_chars = [
-        char
-        for char in line.visible_chars
-        if drawing_bbox[0] <= (char.bbox[0] + char.bbox[2]) / 2 <= drawing_bbox[2]
-    ]
+    hit_chars = [char for char in line.visible_chars if drawing_bbox[0] <= (char.bbox[0] + char.bbox[2]) / 2 <= drawing_bbox[2]]
     if not hit_chars:
         return None
     hit_left = min(char.bbox[0] for char in hit_chars)
@@ -554,10 +598,7 @@ def _merge_source_ranges(ranges: list[tuple[int, int]]) -> list[tuple[int, int]]
 def _line_style_payload(line: _LineCandidate) -> PDFTextStyleLine | None:
     """把来源字符的字体与装饰线证据转换为紧凑文本样式区间。"""
 
-    decoration_styles: list[set[PDFTextStyle]] = [
-        set()
-        for _char in line.chars
-    ]
+    decoration_styles: list[set[PDFTextStyle]] = [set() for _char in line.chars]
     for style in _PDF_TEXT_DECORATION_ORDER:
         for start, end in _merge_source_ranges(line.decoration_ranges[style]):
             for char_index in range(max(0, start), min(end, len(line.chars))):
@@ -584,9 +625,7 @@ def _line_style_payload(line: _LineCandidate) -> PDFTextStyleLine | None:
         if styles == active_styles:
             continue
         if active_styles:
-            compact_ranges.append(
-                PDFTextStyleRange(active_start, offset, active_styles)
-            )
+            compact_ranges.append(PDFTextStyleRange(active_start, offset, active_styles))
         active_start = offset
         active_styles = styles
     return PDFTextStyleLine(
@@ -595,6 +634,913 @@ def _line_style_payload(line: _LineCandidate) -> PDFTextStyleLine | None:
         style_ranges=tuple(compact_ranges),
         source_index=line.source_index,
     )
+
+
+def _rotate_origin_to_upright(
+    origin: tuple[float, float],
+    page_size: tuple[float, float],
+    angle: int,
+) -> tuple[float, float]:
+    """把页面字符 origin 旋到当前 Flash 行的局部正向坐标。"""
+    x, y = origin
+    page_width, page_height = page_size
+    if angle == 270:
+        return page_height - y, x
+    if angle == 90:
+        return y, page_width - x
+    if angle == 180:
+        return page_width - x, page_height - y
+    return origin
+
+
+def _bbox_center_inside_region(bbox: BBox, region: BBox) -> bool:
+    """判断字符 tight bbox 中心是否落入公式区域。"""
+    center_x = (bbox[0] + bbox[2]) / 2
+    center_y = (bbox[1] + bbox[3]) / 2
+    return region[0] <= center_x <= region[2] and region[1] <= center_y <= region[3]
+
+
+def _script_region_memberships(
+    chars: list[dict[str, Any]],
+    tight_bboxes: dict[int, BBox],
+    regions: list[BBox],
+) -> list[int | None]:
+    """按页面 tight 中心把字符分配到公式区域，区域外返回 None。"""
+    memberships: list[int | None] = []
+    for char in chars:
+        char_idx = char.get("char_idx")
+        tight_bbox = tight_bboxes.get(char_idx) if isinstance(char_idx, int) else None
+        region_index = None
+        if tight_bbox is not None:
+            region_index = next(
+                (index for index, region in enumerate(regions) if _bbox_center_inside_region(tight_bbox, region)),
+                None,
+            )
+        memberships.append(region_index)
+    return memberships
+
+
+def _script_char_text(char: dict[str, Any]) -> str:
+    """返回单字符脚本判定使用的稳定文本。"""
+    return str(char.get("char", ""))
+
+
+def _is_cjk_text(text: str) -> bool:
+    """判断单字符是否属于 CJK、日文假名或韩文书写系统。"""
+    if len(text) != 1:
+        return False
+    codepoint = ord(text)
+    return (
+        0x3400 <= codepoint <= 0x4DBF
+        or 0x4E00 <= codepoint <= 0x9FFF
+        or 0xF900 <= codepoint <= 0xFAFF
+        or 0x3040 <= codepoint <= 0x30FF
+        or 0xAC00 <= codepoint <= 0xD7AF
+    )
+
+
+def _is_math_identifier_char(text: str) -> bool:
+    """识别可与拉丁 base/index 共同组成数学 token 的字母数字字符。"""
+    if len(text) != 1 or _is_cjk_text(text):
+        return False
+    if text.isascii():
+        return text.isalnum()
+    category = unicodedata.category(text)
+    unicode_name = unicodedata.name(text, "")
+    return (
+        text in _PDF_SCRIPT_MATH_BASE_CHARS
+        or "GREEK" in unicode_name
+        or "MATHEMATICAL" in unicode_name
+        or category in {"Lu", "Ll", "Lm"}
+    )
+
+
+def _is_math_script_token_char(text: str) -> bool:
+    """判断字符是否属于可按 source order 重新锚定的数学 token。"""
+    return _is_math_identifier_char(text) or text in _PDF_SCRIPT_TOKEN_CONNECTORS
+
+
+def _iter_math_script_tokens(chars: list[dict[str, Any]]) -> list[list[int]]:
+    """按连续数学 identifier 和连接符切分局部 token，并在 CJK 边界断开。"""
+    tokens: list[list[int]] = []
+    current: list[int] = []
+    for index, char in enumerate(chars):
+        if _is_math_script_token_char(_script_char_text(char)):
+            current.append(index)
+            continue
+        if current:
+            tokens.append(current)
+            current = []
+    if current:
+        tokens.append(current)
+    return tokens
+
+
+def _citation_script_indices(chars: list[dict[str, Any]], roles: list[ScriptRole]) -> set[int]:
+    """识别方括号引用区间，避免保守 token 规则删除数字引用。"""
+    protected: set[int] = set()
+    for start, char in enumerate(chars):
+        closing = _PDF_SCRIPT_CITATION_BRACKETS.get(_script_char_text(char))
+        if closing is None:
+            continue
+        for end in range(start + 1, min(len(chars), start + 16)):
+            if _script_char_text(chars[end]) != closing:
+                continue
+            if any(roles[index] != "body" and _script_char_text(chars[index]).isalnum() for index in range(start + 1, end)):
+                protected.update(range(start, end + 1))
+            break
+    return protected
+
+
+def _token_origin(
+    char: dict[str, Any],
+    origins: dict[int, tuple[float, float]],
+) -> float | None:
+    """读取 token 字符的局部正向 origin y。"""
+    char_idx = char.get("char_idx")
+    origin = origins.get(char_idx) if isinstance(char_idx, int) else None
+    return float(origin[1]) if origin is not None else None
+
+
+def _token_tight_height(
+    char: dict[str, Any],
+    tight_bboxes: dict[int, BBox],
+) -> float:
+    """读取 token 字符的局部正向 tight 高度。"""
+    char_idx = char.get("char_idx")
+    bbox = tight_bboxes.get(char_idx) if isinstance(char_idx, int) else None
+    return max(0.0, bbox[3] - bbox[1]) if bbox is not None else 0.0
+
+
+def _has_adjacent_math_base(
+    chars: list[dict[str, Any]],
+    index: int,
+    roles: list[ScriptRole],
+    tight_bboxes: dict[int, BBox],
+    origins: dict[int, tuple[float, float]],
+) -> bool:
+    """判断孤立索引左侧是否存在紧邻且位移明确的非 CJK 数学 base。"""
+    if index <= 0 or roles[index - 1] != "body":
+        return False
+    base_text = _script_char_text(chars[index - 1])
+    if not _is_math_identifier_char(base_text):
+        return False
+    base_origin = _token_origin(chars[index - 1], origins)
+    script_origin = _token_origin(chars[index], origins)
+    base_height = _token_tight_height(chars[index - 1], tight_bboxes)
+    base_idx = chars[index - 1].get("char_idx")
+    script_idx = chars[index].get("char_idx")
+    base_bbox = tight_bboxes.get(base_idx) if isinstance(base_idx, int) else None
+    script_bbox = tight_bboxes.get(script_idx) if isinstance(script_idx, int) else None
+    if base_origin is None or script_origin is None or base_bbox is None or script_bbox is None:
+        return False
+    return (
+        _bbox_axis_overlap(base_bbox, script_bbox, axis="y") > 0
+        or _horizontal_gap_between_bboxes(base_bbox, script_bbox) <= max(2.0, 0.5 * base_height)
+    ) and abs(script_origin - base_origin) >= max(0.35, 0.08 * base_height)
+
+
+def _horizontal_gap_between_bboxes(first: BBox, second: BBox) -> float:
+    """返回两个 tight bbox 的水平间隙。"""
+    return max(0.0, first[0] - second[2], second[0] - first[2])
+
+
+def _token_split_position(
+    chars: list[dict[str, Any]],
+    token: list[int],
+    roles: list[ScriptRole],
+    tight_bboxes: dict[int, BBox],
+    origins: dict[int, tuple[float, float]],
+) -> int | None:
+    """用最左 origin 簇和显式连接符确定 base 与索引的分界。"""
+    alnum_positions = [index for index in token if _is_math_identifier_char(_script_char_text(chars[index]))]
+    if len(alnum_positions) < 2:
+        return None
+    first = alnum_positions[0]
+    first_origin = _token_origin(chars[first], origins)
+    first_height = _token_tight_height(chars[first], tight_bboxes)
+    origin_tolerance = max(0.35, 0.06 * first_height)
+    leading_connectors = [
+        index for index in token if index < first and _script_char_text(chars[index]) in _PDF_SCRIPT_TOKEN_CONNECTORS
+    ]
+    if leading_connectors:
+        return alnum_positions[1]
+    for position in alnum_positions[1:]:
+        if any(_script_char_text(chars[index]) in _PDF_SCRIPT_TOKEN_CONNECTORS for index in range(first + 1, position)):
+            return position
+        origin = _token_origin(chars[position], origins)
+        if first_origin is not None and origin is not None and abs(origin - first_origin) > origin_tolerance:
+            return position
+    scripted_positions = [position for position in alnum_positions[1:] if roles[position] != "body"]
+    if roles[first] == "body" and scripted_positions:
+        return scripted_positions[0]
+    return None
+
+
+def _script_geometry_is_aligned(
+    chars: list[dict[str, Any]],
+    first: int,
+    second: int,
+    tight_bboxes: dict[int, BBox],
+    origins: dict[int, tuple[float, float]],
+) -> bool:
+    """判断两个字符是否处在同一 displaced baseline 上。"""
+    first_origin = _token_origin(chars[first], origins)
+    second_origin = _token_origin(chars[second], origins)
+    first_height = _token_tight_height(chars[first], tight_bboxes)
+    second_height = _token_tight_height(chars[second], tight_bboxes)
+    first_idx = chars[first].get("char_idx")
+    second_idx = chars[second].get("char_idx")
+    first_bbox = tight_bboxes.get(first_idx) if isinstance(first_idx, int) else None
+    second_bbox = tight_bboxes.get(second_idx) if isinstance(second_idx, int) else None
+    if first_origin is None or second_origin is None or first_bbox is None or second_bbox is None:
+        return False
+    scale = max(first_height, second_height, 1.0)
+    first_center = (first_bbox[1] + first_bbox[3]) / 2
+    second_center = (second_bbox[1] + second_bbox[3]) / 2
+    return abs(first_origin - second_origin) <= max(0.35, 0.06 * scale) and abs(first_center - second_center) <= max(
+        0.75,
+        0.3 * scale,
+    )
+
+
+def _nearest_nonspace_index(
+    chars: list[dict[str, Any]],
+    start: int,
+    step: Literal[-1, 1],
+) -> int | None:
+    """从指定位置向前或向后查找最近的非空白字符。"""
+    index = start + step
+    while 0 <= index < len(chars):
+        if not _script_char_text(chars[index]).isspace():
+            return index
+        index += step
+    return None
+
+
+def _close_spaced_script_operators(
+    chars: list[dict[str, Any]],
+    roles: list[ScriptRole],
+    tight_bboxes: dict[int, BBox],
+    origins: dict[int, tuple[float, float]],
+) -> None:
+    """跨少量 PDF 空格闭合同基线的 `1 - x` 一类角标 run。"""
+    for seed, role in enumerate(list(roles)):
+        if role == "body" or not _is_math_identifier_char(_script_char_text(chars[seed])):
+            continue
+        operator_index = _nearest_nonspace_index(chars, seed, 1)
+        if operator_index is None or operator_index - seed > 3:
+            continue
+        if _script_char_text(chars[operator_index]) not in _PDF_SCRIPT_SPACED_OPERATORS:
+            continue
+        target = _nearest_nonspace_index(chars, operator_index, 1)
+        if target is None or target - operator_index > 3:
+            continue
+        if not _is_math_identifier_char(_script_char_text(chars[target])):
+            continue
+        if not _script_geometry_is_aligned(chars, seed, operator_index, tight_bboxes, origins):
+            continue
+        if not _script_geometry_is_aligned(chars, seed, target, tight_bboxes, origins):
+            continue
+        roles[operator_index] = role
+        roles[target] = role
+
+
+def _close_compact_aligned_script_suffixes(
+    chars: list[dict[str, Any]],
+    raw_roles: list[ScriptRole],
+    refined_roles: list[ScriptRole],
+    tight_bboxes: dict[int, BBox],
+    origins: dict[int, tuple[float, float]],
+) -> None:
+    """把已有可信角标 run 后同基线的紧凑连字符后缀整体闭合。"""
+    for joiner_index in range(1, len(chars) - 1):
+        if _script_char_text(chars[joiner_index]) not in _PDF_SCRIPT_COMPACT_JOINERS:
+            continue
+        left_seed = joiner_index - 1
+        role = refined_roles[left_seed]
+        if role == "body" or not _is_math_identifier_char(_script_char_text(chars[left_seed])):
+            continue
+
+        left_start = left_seed
+        while (
+            left_start > 0
+            and refined_roles[left_start - 1] == role
+            and _is_math_identifier_char(_script_char_text(chars[left_start - 1]))
+        ):
+            left_start -= 1
+        if left_seed - left_start + 1 < 2:
+            continue
+        anchor_index = left_start - 1
+        if (
+            anchor_index < 0
+            or refined_roles[anchor_index] != "body"
+            or not _is_math_identifier_char(_script_char_text(chars[anchor_index]))
+        ):
+            continue
+
+        suffix_start = joiner_index + 1
+        suffix_end = suffix_start
+        while suffix_end < len(chars) and _is_math_identifier_char(_script_char_text(chars[suffix_end])):
+            suffix_end += 1
+        if suffix_end - suffix_start < 2:
+            continue
+        restored_indices = range(joiner_index, suffix_end)
+        if any(raw_roles[index] != role for index in restored_indices):
+            continue
+        if not _script_geometry_is_aligned(chars, left_seed, joiner_index, tight_bboxes, origins):
+            continue
+        if any(
+            not _script_geometry_is_aligned(chars, left_seed, index, tight_bboxes, origins)
+            for index in range(suffix_start, suffix_end)
+        ):
+            continue
+        refined_roles[joiner_index:suffix_end] = [role] * (suffix_end - joiner_index)
+
+
+def _protected_subscript_indices(
+    chars: list[dict[str, Any]],
+    roles: list[ScriptRole],
+    tokens: list[list[int]],
+    tight_bboxes: dict[int, BBox],
+    origins: dict[int, tuple[float, float]],
+) -> set[int]:
+    """找出拥有内部 base 或与其同基线连通的下标字符。"""
+    protected: set[int] = set()
+    for token in tokens:
+        for position, index in enumerate(token):
+            if roles[index] != "sub" or not _is_math_identifier_char(_script_char_text(chars[index])):
+                continue
+            if any(
+                earlier < index and roles[earlier] == "body" and _is_math_identifier_char(_script_char_text(chars[earlier]))
+                for earlier in token[:position]
+            ) or _has_adjacent_math_base(chars, index, roles, tight_bboxes, origins):
+                protected.add(index)
+    changed = True
+    while changed:
+        changed = False
+        for index, role in enumerate(roles):
+            if role != "sub" or index in protected or not _is_math_identifier_char(_script_char_text(chars[index])):
+                continue
+            for seed in tuple(protected):
+                start, end = sorted((seed, index))
+                if end - start > 5 or not _script_geometry_is_aligned(chars, seed, index, tight_bboxes, origins):
+                    continue
+                if all(
+                    _script_char_text(chars[bridge]).isspace()
+                    or _script_char_text(chars[bridge]) in _PDF_SCRIPT_TOKEN_CONNECTORS
+                    or _script_char_text(chars[bridge]) in _PDF_SCRIPT_SIGN_CHARS
+                    or _script_char_text(chars[bridge]) == "."
+                    for bridge in range(start + 1, end)
+                ):
+                    protected.add(index)
+                    changed = True
+                    break
+    return protected
+
+
+def _refine_math_script_tokens(
+    chars: list[dict[str, Any]],
+    roles: list[ScriptRole],
+    tight_bboxes: dict[int, BBox],
+    origins: dict[int, tuple[float, float]],
+    *,
+    formula_region: bool,
+) -> list[ScriptRole]:
+    """以最左稳定簇保护 base，并对弱单字符和复杂未分段 token 保守拒识。"""
+    refined = list(roles)
+    citation_indices = _citation_script_indices(chars, refined)
+    complex_unsegmented_token = False
+    tokens = _iter_math_script_tokens(chars)
+    token_alnum_positions = {
+        tuple(token): [index for index in token if _is_math_identifier_char(_script_char_text(chars[index]))]
+        for token in tokens
+    }
+    token_splits = {
+        tuple(token): _token_split_position(
+            chars,
+            token,
+            refined,
+            tight_bboxes,
+            origins,
+        )
+        for token in tokens
+    }
+    token_families: dict[str, list[tuple[int, ...]]] = {}
+    for token in tokens:
+        key = tuple(token)
+        alnum_positions = token_alnum_positions[key]
+        if len(alnum_positions) >= 2:
+            token_families.setdefault(_script_char_text(chars[alnum_positions[0]]), []).append(key)
+    trusted_family_bases = {
+        base
+        for base, members in token_families.items()
+        if len(members) >= 3
+        or any(token_splits[member] is not None for member in members)
+        or any(any(_script_char_text(chars[index]) in _PDF_SCRIPT_TOKEN_CONNECTORS for index in member) for member in members)
+    }
+    for token in tokens:
+        if any(index in citation_indices for index in token):
+            continue
+        token_key = tuple(token)
+        alnum_positions = token_alnum_positions[token_key]
+        if not alnum_positions or not any(refined[index] != "body" for index in token):
+            continue
+        token_roles = {refined[index] for index in token if refined[index] != "body"}
+        if token_roles == {"sup", "sub"}:
+            complex_unsegmented_token = True
+        if len(alnum_positions) == 1:
+            continue
+        first_position = alnum_positions[0]
+        suffix_positions = alnum_positions[1:]
+        if (
+            refined[first_position] == "sup"
+            and all(refined[index] == "body" for index in suffix_positions)
+            and len(suffix_positions) >= 2
+            and all(_script_char_text(chars[index]).isalpha() for index in suffix_positions)
+        ):
+            continue
+        split_position = token_splits[token_key]
+        if split_position is None and _script_char_text(chars[alnum_positions[0]]) in trusted_family_bases:
+            split_position = alnum_positions[1]
+        if split_position is None:
+            if all(refined[index] != "body" for index in alnum_positions):
+                for index in token:
+                    refined[index] = "body"
+            continue
+        base_positions = [index for index in alnum_positions if index < split_position]
+        base_origins = [origin for index in base_positions if (origin := _token_origin(chars[index], origins)) is not None]
+        base_heights = [_token_tight_height(chars[index], tight_bboxes) for index in base_positions]
+        base_origin = statistics.median(base_origins) if base_origins else None
+        base_height = statistics.median([height for height in base_heights if height > 0]) if any(base_heights) else 0.0
+        for index in token:
+            if index < split_position or _script_char_text(chars[index]) in _PDF_SCRIPT_TOKEN_CONNECTORS:
+                refined[index] = "body"
+                continue
+            text = _script_char_text(chars[index])
+            if not _is_math_identifier_char(text) or refined[index] != "body":
+                continue
+            origin = _token_origin(chars[index], origins)
+            if base_origin is None or origin is None:
+                continue
+            shift = origin - base_origin
+            if abs(shift) >= max(0.35, 0.08 * base_height):
+                refined[index] = "sub" if shift > 0 else "sup"
+    _close_spaced_script_operators(
+        chars,
+        refined,
+        tight_bboxes,
+        origins,
+    )
+    if complex_unsegmented_token and not formula_region:
+        for index in range(len(refined)):
+            if index not in citation_indices:
+                refined[index] = "body"
+    scripted_alnum = [
+        index for index, role in enumerate(refined) if role != "body" and _script_char_text(chars[index]).isalnum()
+    ]
+    if not formula_region and len(scripted_alnum) >= 2 and any(_script_char_text(char) in {"∑", "∫"} for char in chars):
+        for index in range(len(refined)):
+            if index not in citation_indices:
+                refined[index] = "body"
+    has_compact_multiply = any(
+        _script_char_text(char) == "×"
+        and 0 < index < len(chars) - 1
+        and not _script_char_text(chars[index - 1]).isspace()
+        and not _script_char_text(chars[index + 1]).isspace()
+        for index, char in enumerate(chars)
+    )
+    if not formula_region and len(scripted_alnum) >= 2 and has_compact_multiply:
+        for index in range(len(refined)):
+            if index not in citation_indices:
+                refined[index] = "body"
+    if not formula_region:
+        for operator_index, char in enumerate(chars):
+            operator = _script_char_text(char)
+            nearby = [candidate for candidate in scripted_alnum if abs(candidate - operator_index) <= 5]
+            if (
+                operator in {"/", "⁄"}
+                and any(candidate < operator_index for candidate in nearby)
+                and any(candidate > operator_index for candidate in nearby)
+            ):
+                for candidate in nearby:
+                    if candidate not in citation_indices:
+                        refined[candidate] = "body"
+    protected_subscripts = _protected_subscript_indices(
+        chars,
+        refined,
+        tokens,
+        tight_bboxes,
+        origins,
+    )
+    for index, role in enumerate(list(refined)):
+        if (
+            role == "sub"
+            and index not in citation_indices
+            and index not in protected_subscripts
+            and _is_math_identifier_char(_script_char_text(chars[index]))
+        ):
+            refined[index] = "body"
+    for index, role in enumerate(list(refined)):
+        if role == "body" or index in citation_indices:
+            continue
+        text = _script_char_text(chars[index])
+        if text.isalnum() or text in _PDF_SCRIPT_AUTHOR_MARKS:
+            continue
+        if text in {",", "，"} and all(
+            0 <= neighbor < len(refined)
+            and refined[neighbor] == role
+            and (_script_char_text(chars[neighbor]).isalnum() or _script_char_text(chars[neighbor]) in _PDF_SCRIPT_AUTHOR_MARKS)
+            for neighbor in (index - 1, index + 1)
+        ):
+            continue
+        if text == "." and all(
+            0 <= neighbor < len(refined) and refined[neighbor] == role and _script_char_text(chars[neighbor]).isdigit()
+            for neighbor in (index - 1, index + 1)
+        ):
+            continue
+        if text in _PDF_SCRIPT_SIGN_CHARS:
+            sign_neighbors = [
+                neighbor
+                for step in (-1, 1)
+                if (neighbor := _nearest_nonspace_index(chars, index, step)) is not None
+                and abs(neighbor - index) <= 3
+                and refined[neighbor] == role
+            ]
+            if sign_neighbors and any(_script_char_text(chars[neighbor]).isdigit() for neighbor in sign_neighbors):
+                continue
+        if text in _PDF_SCRIPT_TRAILING_MARKS:
+            previous = _nearest_nonspace_index(chars, index, -1)
+            body_prefix = previous - 1 if previous is not None else -1
+            if (
+                role == "sup"
+                and previous is not None
+                and index - previous == 1
+                and body_prefix >= 0
+                and refined[body_prefix] == "body"
+                and _script_char_text(chars[body_prefix]).isalpha()
+                and refined[previous] == role
+                and roles[index] == role
+                and _script_char_text(chars[previous]).isalpha()
+                and _script_geometry_is_aligned(chars, previous, index, tight_bboxes, origins)
+            ):
+                continue
+        refined[index] = "body"
+    if not formula_region:
+        _close_compact_aligned_script_suffixes(
+            chars,
+            roles,
+            refined,
+            tight_bboxes,
+            origins,
+        )
+    return refined
+
+
+def _bbox_axis_overlap(first: BBox, second: BBox, *, axis: Literal["x", "y"]) -> float:
+    """返回两个 bbox 在指定轴上的绝对重叠长度。"""
+    start, end = (0, 2) if axis == "x" else (1, 3)
+    return max(0.0, min(first[end], second[end]) - max(first[start], second[start]))
+
+
+def _fraction_member_indices(
+    page_size: tuple[float, float],
+    all_chars: list[dict[str, Any]],
+    tight_bboxes: dict[int, BBox],
+    drawing_lines: Sequence[Any],
+    angle: int,
+) -> set[int]:
+    """按页面方向一次识别分数线两侧的上下叠字，供复杂分式整块拒识。"""
+    if not all_chars or not drawing_lines:
+        return set()
+    local_chars: list[tuple[int, str, BBox]] = []
+    local_heights = []
+    for char in all_chars:
+        char_idx = char.get("char_idx")
+        text = _script_char_text(char)
+        bbox = tight_bboxes.get(char_idx) if isinstance(char_idx, int) else None
+        if not isinstance(char_idx, int) or bbox is None or not text.isprintable() or text.isspace():
+            continue
+        local_bbox = _rotate_bbox_to_upright(bbox, page_size, angle)
+        local_chars.append((char_idx, text, local_bbox))
+        local_heights.append(local_bbox[3] - local_bbox[1])
+    scale = statistics.median([height for height in local_heights if height > 0]) if local_heights else 8.0
+    members: set[int] = set()
+    for drawing in drawing_lines:
+        raw_bbox = _coerce_bbox(getattr(drawing, "bbox", drawing))
+        if raw_bbox is None:
+            continue
+        local_rule = _rotate_bbox_to_upright(raw_bbox, page_size, angle)
+        width = local_rule[2] - local_rule[0]
+        height = local_rule[3] - local_rule[1]
+        if width < max(2.0, 0.45 * scale) or width > 12.0 * scale or height > max(1.25, 0.25 * scale):
+            continue
+        rule_y = (local_rule[1] + local_rule[3]) / 2
+        aligned = [
+            (char_idx, bbox)
+            for char_idx, text, bbox in local_chars
+            if text.isalnum()
+            and abs((bbox[1] + bbox[3]) / 2 - rule_y) <= 2.25 * scale
+            and (
+                _bbox_axis_overlap(bbox, local_rule, axis="x") > 0
+                or local_rule[0] - 0.25 * scale <= (bbox[0] + bbox[2]) / 2 <= local_rule[2] + 0.25 * scale
+            )
+        ]
+        above = [
+            (char_idx, bbox)
+            for char_idx, bbox in aligned
+            if bbox[3] <= rule_y + 0.2 * scale and rule_y - bbox[3] <= 1.75 * scale
+        ]
+        below = [
+            (char_idx, bbox)
+            for char_idx, bbox in aligned
+            if bbox[1] >= rule_y - 0.2 * scale and bbox[1] - rule_y <= 1.75 * scale
+        ]
+        # 超过局部公式尺度的长横线更像脚注/段落分隔线，不用于分式成员抑制。
+        if width > 8.0 * scale:
+            continue
+        if above and below:
+            members.update(char_idx for char_idx, _bbox in above)
+            members.update(char_idx for char_idx, _bbox in below)
+    return members
+
+
+def _strong_structural_script_roles(
+    chars: list[dict[str, Any]],
+    tight_bboxes: dict[int, BBox],
+    origins: dict[int, tuple[float, float]],
+) -> dict[int, ScriptRole]:
+    """提取可在恢复公式区域中保留的引用和邻接 base 强脚本证据。"""
+
+    roles = classify_char_script_roles(
+        chars,
+        tight_bboxes=tight_bboxes,
+        origins=origins,
+    )
+    strong_roles: dict[int, ScriptRole] = {}
+    for index in _citation_script_indices(chars, roles):
+        if roles[index] != "body":
+            strong_roles[index] = roles[index]
+    for index, role in enumerate(roles):
+        if role != "sup" or not _is_math_identifier_char(_script_char_text(chars[index])):
+            continue
+        base_height = _token_tight_height(chars[index - 1], tight_bboxes) if index > 0 else 0.0
+        script_height = _token_tight_height(chars[index], tight_bboxes)
+        if base_height <= 0 or script_height > 0.8 * base_height:
+            continue
+        next_index = _nearest_nonspace_index(chars, index, 1)
+        if next_index is not None and _is_math_script_token_char(_script_char_text(chars[next_index])):
+            continue
+        if _has_adjacent_math_base(
+            chars,
+            index,
+            roles,
+            tight_bboxes,
+            origins,
+        ):
+            strong_roles[index] = role
+    return strong_roles
+
+
+def _classify_script_runs(
+    chars: list[dict[str, Any]],
+    local_tight_bboxes: dict[int, BBox],
+    local_origins: dict[int, tuple[float, float]],
+    memberships: list[int | None],
+) -> tuple[list[str], list[int], list[bool]]:
+    """按公式区域边界分段分类，并要求公式段内部存在稳定 body。"""
+    roles: list[ScriptRole] = ["body"] * len(chars)
+    body_counts = [0] * len(chars)
+    formula_flags = [False] * len(chars)
+    start = 0
+    while start < len(chars):
+        membership = memberships[start]
+        end = start + 1
+        while end < len(chars) and memberships[end] == membership:
+            end += 1
+        run_chars = chars[start:end]
+        run_indices = {int(char["char_idx"]) for char in run_chars if isinstance(char.get("char_idx"), int)}
+        run_roles = classify_char_script_roles(
+            run_chars,
+            tight_bboxes={index: local_tight_bboxes[index] for index in run_indices if index in local_tight_bboxes},
+            origins={index: local_origins[index] for index in run_indices if index in local_origins},
+        )
+        run_roles = _refine_math_script_tokens(
+            run_chars,
+            run_roles,
+            local_tight_bboxes,
+            local_origins,
+            formula_region=membership is not None,
+        )
+        visible = [
+            index
+            for index, char in enumerate(run_chars)
+            if str(char.get("char", "")).isprintable() and not str(char.get("char", "")).isspace()
+        ]
+        body_count = sum(run_roles[index] == "body" and str(run_chars[index].get("char", "")).isalnum() for index in visible)
+        marked_count = sum(run_roles[index] != "body" for index in visible)
+        body_tight_heights = [
+            local_tight_bboxes[int(run_chars[index]["char_idx"])][3] - local_tight_bboxes[int(run_chars[index]["char_idx"])][1]
+            for index in visible
+            if run_roles[index] == "body"
+            and isinstance(run_chars[index].get("char_idx"), int)
+            and int(run_chars[index]["char_idx"]) in local_tight_bboxes
+        ]
+        script_tight_heights = [
+            local_tight_bboxes[int(run_chars[index]["char_idx"])][3] - local_tight_bboxes[int(run_chars[index]["char_idx"])][1]
+            for index in visible
+            if run_roles[index] != "body"
+            and isinstance(run_chars[index].get("char_idx"), int)
+            and int(run_chars[index]["char_idx"]) in local_tight_bboxes
+        ]
+        stable_formula_body = (
+            body_count > 0
+            and bool(body_tight_heights)
+            and (not script_tight_heights or max(body_tight_heights) >= 1.1 * max(script_tight_heights))
+        )
+        if membership is not None and (not stable_formula_body or marked_count >= len(visible)):
+            run_roles = ["body"] * len(run_chars)
+        for offset, role in enumerate(run_roles, start=start):
+            roles[offset] = role
+            body_counts[offset] = body_count
+            formula_flags[offset] = membership is not None
+        start = end
+    return roles, body_counts, formula_flags
+
+
+def _script_line_char_roles(
+    line: Any,
+    page_size: tuple[float, float],
+    tight_bboxes: dict[int, BBox],
+    origins: dict[int, tuple[float, float]],
+    fraction_members: set[int],
+) -> tuple[list[dict[str, Any]], list[ScriptRole], list[int], list[bool]]:
+    """按正文同款公式分段返回原字符及其上下标角色。"""
+
+    chars = _ordered_line_chars(line)
+    if not chars:
+        return [], [], [], []
+    angle = int(getattr(line, "angle", 0) or 0) % 360
+    local_chars: list[dict[str, Any]] = []
+    local_tight_bboxes: dict[int, BBox] = {}
+    local_origins: dict[int, tuple[float, float]] = {}
+    for char in chars:
+        local_char = dict(char)
+        bbox = _coerce_bbox(char.get("bbox"))
+        if bbox is not None:
+            local_char["bbox"] = _rotate_bbox_to_upright(bbox, page_size, angle)
+        local_chars.append(local_char)
+        char_idx = char.get("char_idx")
+        if not isinstance(char_idx, int):
+            continue
+        tight_bbox = tight_bboxes.get(char_idx)
+        if tight_bbox is not None:
+            local_tight_bboxes[char_idx] = _rotate_bbox_to_upright(
+                tight_bbox,
+                page_size,
+                angle,
+            )
+        origin = origins.get(char_idx)
+        if origin is not None:
+            local_origins[char_idx] = _rotate_origin_to_upright(
+                origin,
+                page_size,
+                angle,
+            )
+    regions = [bbox for value in getattr(line, "inline_math_regions", []) if (bbox := _coerce_bbox(value)) is not None]
+    memberships = _script_region_memberships(chars, tight_bboxes, regions)
+    roles, body_counts, formula_flags = _classify_script_runs(
+        local_chars,
+        local_tight_bboxes,
+        local_origins,
+        memberships,
+    )
+    strong_structural_roles = _strong_structural_script_roles(
+        local_chars,
+        local_tight_bboxes,
+        local_origins,
+    )
+    if bool(getattr(line, "compact_formula_cluster", False)) or (
+        bool(getattr(line, "restored_inline_cluster", False)) and bool(regions)
+    ):
+        roles = [strong_structural_roles.get(index, "body") for index in range(len(roles))]
+    for index, char in enumerate(chars):
+        char_idx = char.get("char_idx")
+        if isinstance(char_idx, int) and char_idx in fraction_members:
+            roles[index] = "body"
+    return chars, roles, body_counts, formula_flags
+
+
+def _script_line_payload(
+    line: Any,
+    page_size: tuple[float, float],
+    tight_bboxes: dict[int, BBox],
+    origins: dict[int, tuple[float, float]],
+    fraction_members: set[int],
+) -> PDFTextScriptLine | None:
+    """把 Flash 行转换为公式分段后的紧凑上下标 sidecar。"""
+
+    chars, roles, body_counts, formula_flags = _script_line_char_roles(
+        line,
+        page_size,
+        tight_bboxes,
+        origins,
+        fraction_members,
+    )
+    if not chars:
+        return None
+    angle = int(getattr(line, "angle", 0) or 0) % 360
+    compact_parts: list[str] = []
+    compact_roles: list[str] = []
+    compact_bboxes: list[BBox | None] = []
+    compact_body_counts: list[int] = []
+    compact_formula_flags: list[bool] = []
+    for index, char in enumerate(chars):
+        fragment = _normalize_match_fragment(char.get("char"))
+        if not fragment:
+            continue
+        compact_parts.append(fragment)
+        char_idx = char.get("char_idx")
+        page_tight_bbox = tight_bboxes.get(char_idx) if isinstance(char_idx, int) else None
+        compact_roles.extend([roles[index]] * len(fragment))
+        compact_bboxes.extend([page_tight_bbox] * len(fragment))
+        compact_body_counts.extend([body_counts[index]] * len(fragment))
+        compact_formula_flags.extend([formula_flags[index]] * len(fragment))
+    text = "".join(compact_parts)
+    if not text:
+        return None
+    ranges: list[PDFTextScriptRange] = []
+    start = 0
+    while start < len(compact_roles):
+        role = compact_roles[start]
+        end = start + 1
+        while end < len(compact_roles) and compact_roles[end] == role:
+            end += 1
+        if role in {"sup", "sub"}:
+            range_bboxes = [bbox for bbox in compact_bboxes[start:end] if bbox is not None]
+            if range_bboxes:
+                page_bbox = (
+                    min(bbox[0] for bbox in range_bboxes),
+                    min(bbox[1] for bbox in range_bboxes),
+                    max(bbox[2] for bbox in range_bboxes),
+                    max(bbox[3] for bbox in range_bboxes),
+                )
+                ranges.append(
+                    PDFTextScriptRange(
+                        start=start,
+                        end=end,
+                        style="superscript" if role == "sup" else "subscript",
+                        bbox=page_bbox,
+                        stable_body_count=max(compact_body_counts[start:end], default=0),
+                        formula_region=any(compact_formula_flags[start:end]),
+                    )
+                )
+        start = end
+    return PDFTextScriptLine(
+        bbox=getattr(line, "bbox"),
+        text=text,
+        script_ranges=tuple(ranges),
+        source_index=int(getattr(line, "source_index", 0) or 0),
+        angle=angle,
+    )
+
+
+def detect_pdf_text_script_lines(
+    lines: list[Any],
+    page_size: tuple[float, float],
+    tight_bboxes: dict[int, BBox],
+    origins: dict[int, tuple[float, float]],
+    *,
+    all_chars: list[dict[str, Any]] | None = None,
+    drawing_lines: Sequence[Any] | None = None,
+) -> list[PDFTextScriptLine]:
+    """检测 Flash 剩余自然文本行中的上下标候选。"""
+    resolved_chars = all_chars or []
+    resolved_drawings = drawing_lines or []
+    fraction_members_by_angle = {
+        angle: _fraction_member_indices(
+            page_size,
+            resolved_chars,
+            tight_bboxes,
+            resolved_drawings,
+            angle,
+        )
+        for angle in {int(getattr(line, "angle", 0) or 0) % 360 for line in lines}
+    }
+    return [
+        payload
+        for line in lines
+        if (
+            payload := _script_line_payload(
+                line,
+                page_size,
+                tight_bboxes,
+                origins,
+                fraction_members_by_angle[int(getattr(line, "angle", 0) or 0) % 360],
+            )
+        )
+        is not None
+    ]
 
 
 def _build_line_geometry_grids(
@@ -613,9 +1559,7 @@ def _build_line_geometry_grids(
     anchor_grid: dict[int, list[tuple[int, PDFTextDecoration]]] = {}
     top_grid: dict[int, list[int]] = {}
     for line_index, line in enumerate(candidates):
-        top_grid.setdefault(math.floor(line.bbox[1] / grid_size), []).append(
-            line_index
-        )
+        top_grid.setdefault(math.floor(line.bbox[1] / grid_size), []).append(line_index)
         for style, target_y, tolerance_ratio in (
             (
                 "underline",
@@ -647,10 +1591,7 @@ def _is_fraction_bar_candidate(
 
     line = candidates[line_index]
     drawing_center_y = (drawing_bbox[1] + drawing_bbox[3]) / 2
-    max_lower_top = (
-        drawing_center_y
-        + UNDERLINE_FRACTION_MAX_GAP_HEIGHT_RATIO * line.median_height
-    )
+    max_lower_top = drawing_center_y + UNDERLINE_FRACTION_MAX_GAP_HEIGHT_RATIO * line.median_height
     lower_indices: set[int] = set()
     for cell in range(
         math.floor(drawing_center_y / grid_size),
@@ -666,13 +1607,9 @@ def _is_fraction_bar_candidate(
         lower_width = lower_line.bbox[2] - lower_line.bbox[0]
         horizontal_overlap = max(
             0.0,
-            min(drawing_bbox[2], lower_line.bbox[2])
-            - max(drawing_bbox[0], lower_line.bbox[0]),
+            min(drawing_bbox[2], lower_line.bbox[2]) - max(drawing_bbox[0], lower_line.bbox[0]),
         )
-        if (
-            horizontal_overlap / max(0.01, lower_width)
-            >= UNDERLINE_FRACTION_MIN_LOWER_LINE_COVERAGE
-        ):
+        if horizontal_overlap / max(0.01, lower_width) >= UNDERLINE_FRACTION_MIN_LOWER_LINE_COVERAGE:
             return True
     return False
 
@@ -683,18 +1620,10 @@ def detect_pdf_text_style_lines(
 ) -> list[PDFTextStyleLine]:
     """从视觉文本 run 与页面 drawing 中生成全部水平行样式证据。"""
 
-    candidates = [
-        candidate
-        for line in lines
-        if (candidate := _build_line_candidate(line)) is not None
-    ]
+    candidates = [candidate for line in lines if (candidate := _build_line_candidate(line)) is not None]
     if not candidates:
         return []
-    horizontal_drawings = [
-        drawing
-        for drawing in drawing_lines
-        if getattr(drawing, "orientation", None) == "horizontal"
-    ]
+    horizontal_drawings = [drawing for drawing in drawing_lines if getattr(drawing, "orientation", None) == "horizontal"]
     if horizontal_drawings:
         grid_size, anchor_grid, top_grid = _build_line_geometry_grids(candidates)
         for drawing in horizontal_drawings:
@@ -735,15 +1664,9 @@ def detect_pdf_text_style_lines(
                     _PDF_TEXT_DECORATION_ORDER.index(item[1].style),
                 ),
             )
-            candidates[line_index].decoration_ranges[best_match.style].append(
-                (best_match.start_index, best_match.end_index)
-            )
+            candidates[line_index].decoration_ranges[best_match.style].append((best_match.start_index, best_match.end_index))
 
-    payloads = [
-        payload
-        for line in candidates
-        if (payload := _line_style_payload(line)) is not None
-    ]
+    payloads = [payload for line in candidates if (payload := _line_style_payload(line)) is not None]
     if not any(line.style_ranges for line in payloads):
         return []
     return sorted(
@@ -765,19 +1688,13 @@ def _link_region_hits_char(region: BBox, char_bbox: BBox) -> bool:
 
     center_x = (char_bbox[0] + char_bbox[2]) / 2
     center_y = (char_bbox[1] + char_bbox[3]) / 2
-    if (
-        region[0] <= center_x <= region[2]
-        and region[1] <= center_y <= region[3]
-    ):
+    if region[0] <= center_x <= region[2] and region[1] <= center_y <= region[3]:
         return True
     char_area = max(
         0.01,
         (char_bbox[2] - char_bbox[0]) * (char_bbox[3] - char_bbox[1]),
     )
-    return (
-        _bbox_intersection_area(region, char_bbox) / char_area
-        >= PDF_LINK_CHAR_OVERLAP_THRESHOLD
-    )
+    return _bbox_intersection_area(region, char_bbox) / char_area >= PDF_LINK_CHAR_OVERLAP_THRESHOLD
 
 
 def _link_targets_for_char(
@@ -789,10 +1706,7 @@ def _link_targets_for_char(
     return {
         annotation.target
         for annotation in annotations
-        if any(
-            _link_region_hits_char(region, char_bbox)
-            for region in annotation.bboxes
-        )
+        if any(_link_region_hits_char(region, char_bbox) for region in annotation.bboxes)
     }
 
 
@@ -839,10 +1753,7 @@ def _build_link_line_payload(
     nearby_annotations = [
         annotation
         for annotation in annotations
-        if any(
-            _bbox_intersection_area(line_bbox, region) > 0
-            for region in annotation.bboxes
-        )
+        if any(_bbox_intersection_area(line_bbox, region) > 0 for region in annotation.bboxes)
     ]
     if not nearby_annotations:
         return None
@@ -854,11 +1765,7 @@ def _build_link_line_payload(
         if not fragment:
             continue
         char_bbox = _coerce_bbox(char.get("bbox"))
-        targets = (
-            _link_targets_for_char(char_bbox, nearby_annotations)
-            if char_bbox is not None
-            else set()
-        )
+        targets = _link_targets_for_char(char_bbox, nearby_annotations) if char_bbox is not None else set()
         # 同一字符落入不同目标时不猜测 PDF 点击层级，保留为普通文本。
         target = next(iter(targets)) if len(targets) == 1 else None
         compact_parts.append(fragment)
@@ -936,10 +1843,7 @@ def _line_block_score(line_bbox: BBox, block_bbox: BBox) -> tuple[float, float, 
 
     center_x = (line_bbox[0] + line_bbox[2]) / 2
     center_y = (line_bbox[1] + line_bbox[3]) / 2
-    center_inside = float(
-        block_bbox[0] <= center_x <= block_bbox[2]
-        and block_bbox[1] <= center_y <= block_bbox[3]
-    )
+    center_inside = float(block_bbox[0] <= center_x <= block_bbox[2] and block_bbox[1] <= center_y <= block_bbox[3])
     overlap_ratio = _bbox_overlap_ratio(line_bbox, block_bbox)
     block_area = (block_bbox[2] - block_bbox[0]) * (block_bbox[3] - block_bbox[1])
     return center_inside, overlap_ratio, -block_area
@@ -985,6 +1889,87 @@ def _assign_lines_to_blocks(
     return assignments
 
 
+def _assign_script_lines_to_blocks(
+    blocks: list[dict[str, Any]],
+    lines: Sequence[PDFTextScriptLine],
+    page_size: tuple[float, float],
+) -> dict[int, list[PDFTextScriptLine]]:
+    """保留整行主归属，并为无法投影的脚本区间补充 tight bbox 备用归属。"""
+
+    target_bboxes = {
+        block_index: block_bbox
+        for block_index, block in enumerate(blocks)
+        if block.get("type") in PDF_NATURAL_TEXT_STYLE_BLOCK_TYPES
+        and isinstance(block.get("content"), str)
+        and (block_bbox := _block_bbox_to_page_bbox(block.get("bbox"), page_size)) is not None
+    }
+    target_projected = {
+        block_index: _project_content_chars(str(blocks[block_index]["content"])) for block_index in target_bboxes
+    }
+    primary_assignments = _assign_lines_to_blocks(blocks, lines, page_size)
+    assignments: dict[int, list[PDFTextScriptLine]] = {
+        block_index: [line for line in block_lines if isinstance(line, PDFTextScriptLine)]
+        for block_index, block_lines in primary_assignments.items()
+    }
+    primary_block_by_line = {id(line): block_index for block_index, block_lines in assignments.items() for line in block_lines}
+    fallback_ranges: dict[tuple[int, int], list[PDFTextScriptRange]] = {}
+    for line_index, line in enumerate(lines):
+        for script_range in line.script_ranges:
+            evidence_line = PDFTextStyleLine(
+                bbox=line.bbox,
+                text=line.text,
+                style_ranges=(
+                    PDFTextStyleRange(
+                        script_range.start,
+                        script_range.end,
+                        (script_range.style,),
+                    ),
+                ),
+                source_index=line.source_index,
+            )
+            primary_block_index = primary_block_by_line.get(id(line))
+            if primary_block_index is not None and _match_script_line_ranges(
+                target_projected[primary_block_index],
+                evidence_line,
+            ):
+                continue
+            matches = [
+                (
+                    block_index,
+                    _line_block_score(script_range.bbox, block_bbox),
+                )
+                for block_index, block_bbox in target_bboxes.items()
+                if block_index != primary_block_index
+                and _match_script_line_ranges(
+                    target_projected[block_index],
+                    evidence_line,
+                )
+                if (
+                    block_bbox[0] <= (script_range.bbox[0] + script_range.bbox[2]) / 2 <= block_bbox[2]
+                    and block_bbox[1] <= (script_range.bbox[1] + script_range.bbox[3]) / 2 <= block_bbox[3]
+                )
+                or _bbox_overlap_ratio(script_range.bbox, block_bbox) >= 0.5
+            ]
+            if not matches:
+                continue
+            block_index, _score = max(matches, key=lambda item: (*item[1], -item[0]))
+            fallback_ranges.setdefault((block_index, line_index), []).append(script_range)
+    for (block_index, line_index), script_ranges in fallback_ranges.items():
+        line = lines[line_index]
+        assignments.setdefault(block_index, []).append(
+            PDFTextScriptLine(
+                bbox=line.bbox,
+                text=line.text,
+                script_ranges=tuple(script_ranges),
+                source_index=line.source_index,
+                angle=line.angle,
+            )
+        )
+    for block_lines in assignments.values():
+        block_lines.sort(key=lambda line: (line.source_index, line.bbox[1], line.bbox[0]))
+    return assignments
+
+
 def _filter_line_styles_for_block(
     lines: Sequence[PDFTextStyleLine],
     block_type: Any,
@@ -1023,110 +2008,34 @@ def _filter_line_styles_for_block(
     return output
 
 
-def _text_tag_styles(attrs: str) -> frozenset[PDFTextStyle]:
-    """提取 text 标签中已存在且属于 PDF 富化范围的样式。"""
-
-    match = _STYLE_ATTR_RE.search(attrs)
-    if match is None:
-        return frozenset()
-    return frozenset(
-        cast(PDFTextStyle, style)
-        for raw_style in match.group("style").split(",")
-        if (style := raw_style.strip().lower()) in PDF_TEXT_STYLE_ORDER
-    )
-
-
-def _direct_tag_styles(tag: str) -> frozenset[PDFTextStyle]:
-    """把直接 HTML 风格标签转换为当前 PDF 富化识别的样式。"""
-
-    style = {
-        "strong": "bold",
-        "b": "bold",
-        "em": "italic",
-        "i": "italic",
-        "u": "underline",
-        "s": "strikethrough",
-    }.get(tag)
-    return frozenset({cast(PDFTextStyle, style)}) if style is not None else frozenset()
-
-
-def _active_inline_styles(stack: Sequence[_InlineTagState]) -> frozenset[PDFTextStyle]:
-    """合并当前位置全部已打开标签携带的字体样式。"""
-
-    return frozenset(
-        style
-        for state in stack
-        for style in state.styles
-    )
-
-
-def _pop_inline_tag(stack: list[_InlineTagState], tag: str) -> None:
-    """从行内标签栈弹出最近的同名元素，容忍损坏嵌套。"""
-
-    for index in range(len(stack) - 1, -1, -1):
-        if stack[index].tag == tag:
-            del stack[index:]
-            return
-
-
 def _project_content_chars(content: str) -> list[_ProjectedChar]:
-    """把 model content 投影为忽略空白和公式的可比较字符，并保留原始 offset。"""
+    """把原始文字投影为忽略空白和圆括号公式的可比较字符。"""
 
     projected: list[_ProjectedChar] = []
-    stack: list[_InlineTagState] = []
     pending_formula_gap = False
     cursor = 0
     while cursor < len(content):
-        if not any(state.excluded for state in stack) and content.startswith(r"\(", cursor):
+        if content.startswith(r"\(", cursor):
             formula_end = content.find(r"\)", cursor + 2)
             if formula_end >= 0:
                 cursor = formula_end + 2
                 pending_formula_gap = True
                 continue
-        tag_match = _KNOWN_INLINE_TAG_RE.match(content, cursor)
-        if tag_match is not None:
-            tag = tag_match.group("tag").lower()
-            if tag_match.group("close"):
-                _pop_inline_tag(stack, tag)
-                if tag == "eq":
-                    pending_formula_gap = True
-            else:
-                attrs = tag_match.group("attrs") or ""
-                stack.append(
-                    _InlineTagState(
-                        tag=tag,
-                        excluded=tag in {"eq", "url"},
-                        styles=(
-                            _text_tag_styles(attrs)
-                            if tag == "text"
-                            else _direct_tag_styles(tag)
-                        ),
-                    )
-                )
-            cursor = tag_match.end()
-            continue
-
         raw_char = content[cursor]
-        if not any(state.excluded for state in stack):
-            fragment = _normalize_match_fragment(raw_char)
-            for fragment_index, value in enumerate(fragment):
-                projected.append(
-                    _ProjectedChar(
-                        value=value,
-                        raw_start=cursor,
-                        raw_end=cursor + 1,
-                        existing_styles=_active_inline_styles(stack),
-                        formula_gap_before=(
-                            pending_formula_gap and fragment_index == 0
-                        ),
-                        inside_hyperlink=any(
-                            state.tag == "hyperlink"
-                            for state in stack
-                        ),
-                    )
+        fragment = _normalize_match_fragment(raw_char)
+        for fragment_index, value in enumerate(fragment):
+            projected.append(
+                _ProjectedChar(
+                    value=value,
+                    raw_start=cursor,
+                    raw_end=cursor + 1,
+                    existing_styles=frozenset(),
+                    formula_gap_before=pending_formula_gap and fragment_index == 0,
+                    inside_hyperlink=False,
                 )
-            if fragment:
-                pending_formula_gap = False
+            )
+        if fragment:
+            pending_formula_gap = False
         cursor += 1
     return projected
 
@@ -1161,21 +2070,14 @@ def _resolve_fallback_occurrence(
             int(bool(left_context) and content[max(0, position - len(left_context)) : position] == left_context)
             + int(
                 bool(right_context)
-                and content[
-                    position + len(target) : position + len(target) + len(right_context)
-                ]
-                == right_context
+                and content[position + len(target) : position + len(target) + len(right_context)] == right_context
             ),
             position,
         )
         for position in occurrences
     ]
-    has_geometric_style = bool(
-        _PDF_GEOMETRIC_TEXT_STYLES.intersection(style_range.styles)
-    )
-    if len(occurrences) == 1 and (
-        has_geometric_style or len(target) >= 3
-    ):
+    has_geometric_style = bool(_PDF_GEOMETRIC_TEXT_STYLES.intersection(style_range.styles))
+    if len(occurrences) == 1 and (has_geometric_style or len(target) >= 3):
         return occurrences[0]
     best_score = max(score for score, _position in scored)
     best_positions = [position for score, position in scored if score == best_score]
@@ -1184,9 +2086,7 @@ def _resolve_fallback_occurrence(
     required_context_score = int(bool(left_context)) + int(bool(right_context))
     return (
         best_positions[0]
-        if required_context_score > 0
-        and best_score == required_context_score
-        and len(best_positions) == 1
+        if required_context_score > 0 and best_score == required_context_score and len(best_positions) == 1
         else None
     )
 
@@ -1198,11 +2098,7 @@ def _match_line_across_formula_gaps(
 ) -> _LineProjectionMatch | None:
     """用精确字符序列跨过公式空洞，将一个物理行对齐到 block 文本。"""
 
-    if (
-        not line_text
-        or start >= len(projected)
-        or not any(token.formula_gap_before for token in projected[start:])
-    ):
+    if not line_text or start >= len(projected) or not any(token.formula_gap_before for token in projected[start:]):
         return None
     for projected_start in range(max(0, start), len(projected)):
         first_token = projected[projected_start]
@@ -1257,9 +2153,7 @@ def _ranges_from_line_projection(
     for style_range in line.style_ranges:
         current_start: int | None = None
         previous_index: int | None = None
-        for projected_index in match.source_to_projected[
-            style_range.start : style_range.end
-        ]:
+        for projected_index in match.source_to_projected[style_range.start : style_range.end]:
             if projected_index is None:
                 if current_start is not None and previous_index is not None:
                     output.append(
@@ -1272,11 +2166,7 @@ def _ranges_from_line_projection(
                 current_start = None
                 previous_index = None
                 continue
-            if (
-                current_start is not None
-                and previous_index is not None
-                and projected_index != previous_index + 1
-            ):
+            if current_start is not None and previous_index is not None and projected_index != previous_index + 1:
                 output.append(
                     PDFTextStyleRange(
                         current_start,
@@ -1330,16 +2220,10 @@ def _match_line_without_terminal_hyphen(
     occurrences = [
         position
         for position in _all_occurrences(projected_text, candidate, start)
-        if (
-            position + len(candidate) < len(projected_text)
-            and projected_text[position + len(candidate)] == next_first_char
-        )
+        if (position + len(candidate) < len(projected_text) and projected_text[position + len(candidate)] == next_first_char)
     ]
     if len(occurrences) != 1:
-        logger.debug(
-            "Skip ambiguous PDF text dehyphenation mapping: "
-            f"line={line.text!r}, occurrences={len(occurrences)}"
-        )
+        logger.debug(f"Skip ambiguous PDF text dehyphenation mapping: line={line.text!r}, occurrences={len(occurrences)}")
         return None
     position = occurrences[0]
     return _LineProjectionMatch(
@@ -1391,9 +2275,7 @@ def _match_style_ranges(
             cursor,
         )
         if dehyphenated_match is not None:
-            output.extend(
-                _ranges_from_line_projection(line, dehyphenated_match)
-            )
+            output.extend(_ranges_from_line_projection(line, dehyphenated_match))
             cursor = dehyphenated_match.end
             continue
         skipped_ranges: list[PDFTextStyleRange] = []
@@ -1431,6 +2313,51 @@ def _match_style_ranges(
     return _merge_style_ranges(output)
 
 
+def _match_script_line_ranges(
+    projected: Sequence[_ProjectedChar],
+    line: PDFTextStyleLine,
+) -> list[PDFTextStyleRange]:
+    """独立投影单条脚本行，避免其它视觉行推进 cursor 后吞掉短脚本。"""
+
+    projected_text = "".join(token.value for token in projected)
+    exact_occurrences = _all_occurrences(projected_text, line.text, 0)
+    if len(exact_occurrences) == 1:
+        line_start = exact_occurrences[0]
+        return [
+            PDFTextStyleRange(
+                line_start + style_range.start,
+                line_start + style_range.end,
+                style_range.styles,
+            )
+            for style_range in line.style_ranges
+        ]
+    formula_match = _match_line_across_formula_gaps(
+        line.text,
+        projected,
+        0,
+    )
+    if formula_match is not None:
+        return _ranges_from_line_projection(line, formula_match)
+    output: list[PDFTextStyleRange] = []
+    for style_range in line.style_ranges:
+        position = _resolve_fallback_occurrence(
+            projected_text,
+            line,
+            style_range,
+            0,
+        )
+        if position is None:
+            continue
+        output.append(
+            PDFTextStyleRange(
+                position,
+                position + style_range.end - style_range.start,
+                style_range.styles,
+            )
+        )
+    return _merge_style_ranges(output)
+
+
 def _merge_style_ranges(ranges: Sequence[PDFTextStyleRange]) -> list[PDFTextStyleRange]:
     """把重叠样式取并集，并合并相邻且样式集合相同的区间。"""
 
@@ -1451,21 +2378,9 @@ def _merge_style_ranges(ranges: Sequence[PDFTextStyleRange]) -> list[PDFTextStyl
     merged: list[PDFTextStyleRange] = []
     previous_position: int | None = None
     for position in sorted(events):
-        active_styles = _canonical_styles(
-            style
-            for style, count in active_counts.items()
-            if count > 0
-        )
-        if (
-            previous_position is not None
-            and previous_position < position
-            and active_styles
-        ):
-            if (
-                merged
-                and merged[-1].end == previous_position
-                and merged[-1].styles == active_styles
-            ):
+        active_styles = _canonical_styles(style for style, count in active_counts.items() if count > 0)
+        if previous_position is not None and previous_position < position and active_styles:
+            if merged and merged[-1].end == previous_position and merged[-1].styles == active_styles:
                 merged[-1] = PDFTextStyleRange(
                     merged[-1].start,
                     position,
@@ -1507,34 +2422,18 @@ def _resolve_link_fallback_occurrence(
         return None
     scored = [
         (
-            int(
-                bool(left_context)
-                and content[max(0, position - len(left_context)) : position]
-                == left_context
-            )
+            int(bool(left_context) and content[max(0, position - len(left_context)) : position] == left_context)
             + int(
                 bool(right_context)
-                and content[
-                    position + len(target_text) :
-                    position + len(target_text) + len(right_context)
-                ]
-                == right_context
+                and content[position + len(target_text) : position + len(target_text) + len(right_context)] == right_context
             ),
             position,
         )
         for position in occurrences
     ]
     best_score = max(score for score, _position in scored)
-    best_positions = [
-        position
-        for score, position in scored
-        if score == best_score
-    ]
-    return (
-        best_positions[0]
-        if best_score == required_context_score and len(best_positions) == 1
-        else None
-    )
+    best_positions = [position for score, position in scored if score == best_score]
+    return best_positions[0] if best_score == required_context_score and len(best_positions) == 1 else None
 
 
 def _project_link_range_from_line_match(
@@ -1547,9 +2446,7 @@ def _project_link_range_from_line_match(
     output: list[_MatchedLinkRange] = []
     current_start: int | None = None
     previous_index: int | None = None
-    for projected_index in match.source_to_projected[
-        link_range.start : link_range.end
-    ]:
+    for projected_index in match.source_to_projected[link_range.start : link_range.end]:
         if projected_index is None:
             if current_start is not None and previous_index is not None:
                 output.append(
@@ -1563,11 +2460,7 @@ def _project_link_range_from_line_match(
             current_start = None
             previous_index = None
             continue
-        if (
-            current_start is not None
-            and previous_index is not None
-            and projected_index != previous_index + 1
-        ):
+        if current_start is not None and previous_index is not None and projected_index != previous_index + 1:
             output.append(
                 _MatchedLinkRange(
                     current_start,
@@ -1600,16 +2493,8 @@ def _link_lines_form_dehyphenated_continuation(
 
     if not _lines_form_dehyphenated_continuation(line, next_line):
         return False
-    tail_targets = {
-        link_range.target
-        for link_range in line.link_ranges
-        if link_range.start < link_range.end == len(line.text)
-    }
-    head_targets = {
-        link_range.target
-        for link_range in next_line.link_ranges
-        if link_range.start == 0 < link_range.end
-    }
+    tail_targets = {link_range.target for link_range in line.link_ranges if link_range.start < link_range.end == len(line.text)}
+    head_targets = {link_range.target for link_range in next_line.link_ranges if link_range.start == 0 < link_range.end}
     return bool(tail_targets.intersection(head_targets))
 
 
@@ -1636,42 +2521,19 @@ def _merge_matched_link_ranges(
 ) -> list[_MatchedLinkRange]:
     """删除不同目标重叠区，并合并同一物理行内的同目标相邻区间。"""
 
-    valid_ranges = [
-        link_range
-        for link_range in ranges
-        if link_range.start < link_range.end and link_range.target
-    ]
+    valid_ranges = [link_range for link_range in ranges if link_range.start < link_range.end and link_range.target]
     if not valid_ranges:
         return []
-    boundaries = sorted(
-        {
-            position
-            for link_range in valid_ranges
-            for position in (link_range.start, link_range.end)
-        }
-    )
+    boundaries = sorted({position for link_range in valid_ranges for position in (link_range.start, link_range.end)})
     merged: list[_MatchedLinkRange] = []
     for start, end in zip(boundaries, boundaries[1:]):
-        active = [
-            link_range
-            for link_range in valid_ranges
-            if link_range.start < end and link_range.end > start
-        ]
+        active = [link_range for link_range in valid_ranges if link_range.start < end and link_range.end > start]
         targets = {link_range.target for link_range in active}
         if len(targets) != 1:
             continue
         target = next(iter(targets))
-        source_index = min(
-            link_range.source_index
-            for link_range in active
-            if link_range.target == target
-        )
-        if (
-            merged
-            and merged[-1].end == start
-            and merged[-1].target == target
-            and merged[-1].source_index == source_index
-        ):
+        source_index = min(link_range.source_index for link_range in active if link_range.target == target)
+        if merged and merged[-1].end == start and merged[-1].target == target and merged[-1].source_index == source_index:
             merged[-1] = _MatchedLinkRange(
                 merged[-1].start,
                 end,
@@ -1773,7 +2635,7 @@ def _match_link_ranges(
             logger.debug(
                 "Skip ambiguous PDF hyperlink mapping: "
                 f"line={line.text!r}, skipped={len(skipped_ranges)}, "
-                f"samples={[(line.text[item.start:item.end], item.target) for item in skipped_ranges[:3]]!r}"
+                f"samples={[(line.text[item.start : item.end], item.target) for item in skipped_ranges[:3]]!r}"
             )
     return _merge_matched_link_ranges(output)
 
@@ -1810,9 +2672,7 @@ def _raw_link_intervals(
         current_start: int | None = None
         current_end = 0
         for token in projected[link_range.start : link_range.end]:
-            if token.inside_hyperlink or (
-                token.formula_gap_before and current_start is not None
-            ):
+            if token.inside_hyperlink or (token.formula_gap_before and current_start is not None):
                 _append_raw_link_interval(
                     intervals,
                     current_start,
@@ -1855,7 +2715,7 @@ def _raw_link_gap_is_boundary_only(gap: str) -> bool:
 
     if not gap:
         return True
-    if _KNOWN_INLINE_TAG_RE.search(gap) or r"\(" in gap or r"\)" in gap:
+    if r"\(" in gap or r"\)" in gap:
         return False
     return not any(char.isalnum() for char in html.unescape(gap))
 
@@ -1878,9 +2738,7 @@ def _merge_raw_link_intervals(
             and merged[-1].target == interval.target
             and interval.source_index == merged[-1].source_index + 1
             and interval.start >= merged[-1].end
-            and _raw_link_gap_is_boundary_only(
-                content[merged[-1].end : interval.start]
-            )
+            and _raw_link_gap_is_boundary_only(content[merged[-1].end : interval.start])
         ):
             merged[-1] = _RawLinkInterval(
                 merged[-1].start,
@@ -1891,26 +2749,6 @@ def _merge_raw_link_intervals(
         else:
             merged.append(interval)
     return merged
-
-
-def _wrap_link_intervals(
-    content: str,
-    intervals: Sequence[_RawLinkInterval],
-) -> str:
-    """从右向左包装链接区间，并对 URL 标签正文执行实体转义。"""
-
-    output = content
-    for interval in sorted(
-        intervals,
-        key=lambda item: (item.start, item.end, item.target),
-        reverse=True,
-    ):
-        output = (
-            f"{output[: interval.start]}"
-            f"{render_inline_hyperlink(output[interval.start : interval.end], interval.target)}"
-            f"{output[interval.end :]}"
-        )
-    return output
 
 
 def apply_pdf_text_links(
@@ -1932,10 +2770,7 @@ def apply_pdf_text_links(
         intervals = _raw_link_intervals(content, projected, link_ranges)
         if intervals:
             intervals = _merge_raw_link_intervals(content, intervals)
-            blocks[block_index]["content"] = _wrap_link_intervals(
-                content,
-                intervals,
-            )
+            blocks[block_index][_PDF_LINK_INTERVALS_KEY] = intervals
 
 
 def _append_raw_style_interval(
@@ -1963,10 +2798,7 @@ def _merge_raw_style_intervals(
         if (
             merged
             and merged[-1].styles == interval.styles
-            and (
-                interval.start <= merged[-1].end
-                or content[merged[-1].end : interval.start].isspace()
-            )
+            and (interval.start <= merged[-1].end or content[merged[-1].end : interval.start].isspace())
         ):
             merged[-1] = _RawStyleInterval(
                 merged[-1].start,
@@ -1995,8 +2827,7 @@ def _raw_style_intervals(
             missing_styles = _canonical_styles(
                 style
                 for style in style_range.styles
-                if style not in token.existing_styles
-                and not (style == "underline" and token.inside_hyperlink)
+                if style not in token.existing_styles and not (style == "underline" and token.inside_hyperlink)
             )
             if not missing_styles:
                 _append_raw_style_interval(
@@ -2014,10 +2845,7 @@ def _raw_style_intervals(
                 current_styles = missing_styles
                 continue
             gap = content[current_end : token.raw_start]
-            if (
-                missing_styles == current_styles
-                and (token.raw_start <= current_end or not gap or gap.isspace())
-            ):
+            if missing_styles == current_styles and (token.raw_start <= current_end or not gap or gap.isspace()):
                 current_end = max(current_end, token.raw_end)
             else:
                 _append_raw_style_interval(
@@ -2038,23 +2866,6 @@ def _raw_style_intervals(
     return _merge_raw_style_intervals(content, intervals)
 
 
-def _wrap_style_intervals(
-    content: str,
-    intervals: Sequence[_RawStyleInterval],
-) -> str:
-    """从右向左包装样式区间，确保插入标签时原 offset 保持有效。"""
-
-    output = content
-    for interval in reversed(intervals):
-        style_attr = ",".join(interval.styles)
-        output = (
-            f'{output[: interval.start]}<text style="{style_attr}">'
-            f"{output[interval.start : interval.end]}</text>"
-            f"{output[interval.end :]}"
-        )
-    return output
-
-
 def apply_pdf_text_styles(
     blocks: list[dict[str, Any]],
     lines: Sequence[PDFTextStyleLine],
@@ -2070,9 +2881,7 @@ def apply_pdf_text_styles(
             block.get("type"),
         )
         content = block.get("content")
-        if not isinstance(content, str) or not content or not any(
-            line.style_ranges for line in block_lines
-        ):
+        if not isinstance(content, str) or not content or not any(line.style_ranges for line in block_lines):
             continue
         projected = _project_content_chars(content)
         style_ranges = _match_style_ranges(projected, block_lines)
@@ -2080,19 +2889,282 @@ def apply_pdf_text_styles(
             continue
         intervals = _raw_style_intervals(content, projected, style_ranges)
         if intervals:
-            block["content"] = _wrap_style_intervals(content, intervals)
+            existing = block.get(_PDF_STYLE_INTERVALS_KEY, [])
+            block[_PDF_STYLE_INTERVALS_KEY] = _merge_raw_style_intervals(
+                content,
+                [
+                    *(interval for interval in existing if isinstance(interval, _RawStyleInterval)),
+                    *intervals,
+                ],
+            )
+
+
+def _script_range_hits_late_formula_region(
+    script_range: PDFTextScriptRange,
+    regions: list[BBox],
+) -> bool:
+    """判断非公式候选是否落入后续文本块恢复出的行内数学区域。"""
+    if script_range.formula_region:
+        return False
+    center_x = (script_range.bbox[0] + script_range.bbox[2]) / 2
+    center_y = (script_range.bbox[1] + script_range.bbox[3]) / 2
+    return any(region[0] <= center_x <= region[2] and region[1] <= center_y <= region[3] for region in regions)
+
+
+def _record_materialized_script_ranges(
+    content: str,
+    projected: Sequence[_ProjectedChar],
+    combined_ranges: Sequence[PDFTextStyleRange],
+    block_index: int,
+    line: PDFTextScriptLine,
+    script_ranges: Sequence[PDFTextScriptRange],
+    output: list[dict[str, Any]],
+) -> None:
+    """记录真正通过文本投影的私有上下标区间，供审阅产物精确回溯。"""
+    for script_range in script_ranges:
+        evidence_line = PDFTextStyleLine(
+            bbox=line.bbox,
+            text=line.text,
+            style_ranges=(
+                PDFTextStyleRange(
+                    script_range.start,
+                    script_range.end,
+                    (script_range.style,),
+                ),
+            ),
+            source_index=line.source_index,
+        )
+        matched = _match_script_line_ranges(projected, evidence_line)
+        if len(matched) != 1:
+            continue
+        mapped = matched[0]
+        if not any(
+            mapped.start >= combined.start and mapped.end <= combined.end and script_range.style in combined.styles
+            for combined in combined_ranges
+        ):
+            continue
+        raw_intervals = _raw_style_intervals(content, projected, [mapped])
+        if len(raw_intervals) != 1:
+            continue
+        raw_interval = raw_intervals[0]
+        output.append(
+            {
+                "block_index": block_index,
+                "raw_start": raw_interval.start,
+                "raw_end": raw_interval.end,
+                "source_index": line.source_index,
+                "range_start": script_range.start,
+                "range_end": script_range.end,
+                "role": script_range.style,
+                "text": line.text[script_range.start : script_range.end],
+                "bbox": script_range.bbox,
+                "angle": line.angle,
+                "formula_region": script_range.formula_region,
+                "stable_body_count": script_range.stable_body_count,
+            }
+        )
+
+
+def apply_pdf_text_scripts(
+    blocks: list[dict[str, Any]],
+    lines: list[PDFTextScriptLine],
+    page_size: tuple[float, float],
+    *,
+    materialized_diagnostics: list[dict[str, Any]] | None = None,
+) -> None:
+    """把 Flash 上下标 sidecar 投影到最终自然语言 block，并清理公式私有区域。"""
+    assignments = _assign_script_lines_to_blocks(blocks, lines, page_size)
+    for block_index, block_lines in assignments.items():
+        block = blocks[block_index]
+        regions = [
+            region
+            for value in block.get("_inline_math_regions", [])
+            if (region := _block_bbox_to_page_bbox(value, page_size)) is not None
+        ]
+        projected_lines = []
+        eligible_ranges: dict[int, tuple[PDFTextScriptRange, ...]] = {}
+        for line in block_lines:
+            retained = tuple(
+                script_range
+                for script_range in line.script_ranges
+                if not _script_range_hits_late_formula_region(script_range, regions)
+            )
+            eligible_ranges[id(line)] = retained
+            ranges = tuple(
+                PDFTextStyleRange(
+                    script_range.start,
+                    script_range.end,
+                    (script_range.style,),
+                )
+                for script_range in retained
+            )
+            projected_lines.append(
+                PDFTextStyleLine(
+                    bbox=line.bbox,
+                    text=line.text,
+                    style_ranges=ranges,
+                    source_index=line.source_index,
+                )
+            )
+        projected_lines = _filter_line_styles_for_block(projected_lines, block.get("type"))
+        content = block.get("content")
+        if not isinstance(content, str) or not content:
+            continue
+        projected = _project_content_chars(content)
+        combined_ranges = _merge_style_ranges(
+            [
+                *_match_style_ranges(projected, projected_lines),
+                *(
+                    matched_range
+                    for projected_line in projected_lines
+                    for matched_range in _match_script_line_ranges(projected, projected_line)
+                ),
+            ]
+        )
+        if materialized_diagnostics is not None:
+            for line in block_lines:
+                _record_materialized_script_ranges(
+                    content,
+                    projected,
+                    combined_ranges,
+                    block_index,
+                    line,
+                    eligible_ranges.get(id(line), ()),
+                    materialized_diagnostics,
+                )
+        intervals = _raw_style_intervals(content, projected, combined_ranges)
+        if intervals:
+            existing = block.get(_PDF_STYLE_INTERVALS_KEY, [])
+            block[_PDF_STYLE_INTERVALS_KEY] = _merge_raw_style_intervals(
+                content,
+                [
+                    *(interval for interval in existing if isinstance(interval, _RawStyleInterval)),
+                    *intervals,
+                ],
+            )
+    for block in blocks:
+        block.pop("_inline_math_regions", None)
+
+
+def _parse_native_script_markup(content: str) -> _NativeScriptMarkup | None:
+    """严格解析 detector-owned 平坦 sup/sub 标签；畸形或嵌套结构返回 None。"""
+    marker_ranges: list[tuple[int, int]] = []
+    style_intervals: list[tuple[int, int, str]] = []
+    active: tuple[str, int] | None = None
+    for match in _NATIVE_SCRIPT_TAG_RE.finditer(content):
+        marker_ranges.append((match.start(), match.end()))
+        style = "superscript" if match.group("tag") == "sup" else "subscript"
+        if match.group("closing") is None:
+            if active is not None:
+                return None
+            active = (style, match.end())
+            continue
+        if active is None or active[0] != style:
+            return None
+        if active[1] < match.start():
+            style_intervals.append((active[1], match.start(), style))
+        active = None
+    if active is not None or not marker_ranges:
+        return None
+    return _NativeScriptMarkup(
+        marker_ranges=tuple(marker_ranges),
+        style_intervals=tuple(style_intervals),
+    )
+
+
+def materialize_pdf_inline_spans(blocks: list[dict[str, Any]]) -> None:
+    """把 PDF 原文、样式区间、链接区间和行内公式一次性物化为 Span。"""
+    formula_pattern = re.compile(r"\\\((?P<latex>.*?)\\\)", re.DOTALL)
+    for block in blocks:
+        owns_native_script_markup = block.pop(PDF_NATIVE_SCRIPT_MARKUP_KEY, False) is True
+        if block.get("type") not in _PDF_INLINE_SPAN_BLOCK_TYPES:
+            continue
+        content = block.get("content")
+        link_intervals = block.pop(_PDF_LINK_INTERVALS_KEY, [])
+        style_intervals = block.pop(_PDF_STYLE_INTERVALS_KEY, [])
+        if not isinstance(content, str):
+            continue
+        native_scripts = _parse_native_script_markup(content) if owns_native_script_markup else None
+        marker_ranges = native_scripts.marker_ranges if native_scripts is not None else ()
+        script_intervals = native_scripts.style_intervals if native_scripts is not None else ()
+        formulas = list(formula_pattern.finditer(content))
+        boundaries = {0, len(content)}
+        for interval in [*link_intervals, *style_intervals]:
+            boundaries.update((interval.start, interval.end))
+        for start, end in marker_ranges:
+            boundaries.update((start, end))
+        for start, end, _style in script_intervals:
+            boundaries.update((start, end))
+        for formula in formulas:
+            boundaries.update((formula.start(), formula.end()))
+        ordered = sorted(value for value in boundaries if 0 <= value <= len(content))
+        spans: list[dict[str, Any]] = []
+        for start, end in zip(ordered, ordered[1:]):
+            if start >= end:
+                continue
+            if any(marker_start <= start and end <= marker_end for marker_start, marker_end in marker_ranges):
+                continue
+            formula = next((item for item in formulas if item.start() == start and item.end() == end), None)
+            if formula is not None:
+                append_equation_span(spans, formula.group("latex"))
+                continue
+            text = content[start:end]
+            if not text:
+                continue
+            styles = _canonical_styles(
+                style
+                for interval in style_intervals
+                if interval.start <= start and end <= interval.end
+                for style in interval.styles
+            )
+            script_styles = tuple(
+                style
+                for interval_start, interval_end, style in script_intervals
+                if interval_start <= start and end <= interval_end
+            )
+            combined_styles = tuple(dict.fromkeys((*styles, *script_styles)))
+            link = next(
+                (interval for interval in link_intervals if interval.start <= start and end <= interval.end),
+                None,
+            )
+            if link is None:
+                if combined_styles and text.strip():
+                    leading_length = len(text) - len(text.lstrip())
+                    trailing_length = len(text) - len(text.rstrip())
+                    core_end = len(text) - trailing_length if trailing_length else len(text)
+                    append_text_span(spans, text[:leading_length])
+                    append_text_span(spans, text[leading_length:core_end], combined_styles)
+                    append_text_span(spans, text[core_end:])
+                else:
+                    append_text_span(spans, text, combined_styles)
+                continue
+            children: list[dict[str, Any]] = []
+            append_text_span(children, text, (style for style in combined_styles if style != "underline"))
+            if spans and spans[-1].get("type") == "hyperlink" and spans[-1].get("url") == link.target:
+                existing = spans[-1].get("content")
+                if isinstance(existing, list):
+                    extend_inline_spans(existing, children)
+                    continue
+            append_hyperlink_span(spans, children, link.target)
+        block["content"] = normalize_span_dicts(spans)
 
 
 __all__ = [
+    "PDF_NATIVE_SCRIPT_MARKUP_KEY",
     "PDF_FONT_FORCE_BOLD_FLAG",
     "PDF_FONT_ITALIC_FLAG",
     "PDFTextLinkLine",
     "PDFTextLinkRange",
+    "PDFTextScriptLine",
+    "PDFTextScriptRange",
     "PDFTextStyle",
     "PDFTextStyleLine",
     "PDFTextStyleRange",
     "apply_pdf_text_links",
+    "apply_pdf_text_scripts",
     "apply_pdf_text_styles",
     "detect_pdf_text_link_lines",
+    "detect_pdf_text_script_lines",
     "detect_pdf_text_style_lines",
+    "materialize_pdf_inline_spans",
 ]

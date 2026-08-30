@@ -36,16 +36,21 @@ from ..equation.omml import oMath2Latex
 from .office_xml import read_str
 from .....types import BlockType
 from .formatting_types import Formatting, Script
+from ..._shared.spans import (
+    append_equation_span,
+    append_text_span,
+    extend_inline_spans,
+    inline_span_plain_text,
+    slice_span_dicts,
+    strip_span_dicts,
+    text_spans,
+)
 from ..rich_text import (
     append_rich_text_element,
-    build_text_mappings_from_elements,
-    format_hyperlink_group,
-    format_text_tag,
-    format_text_with_hyperlink,
+    build_spans_from_elements,
     formatting_to_style_str,
     has_non_visible_text_style,
     has_visible_style,
-    is_valid_hyperlink_target,
     normalize_format_for_text,
     should_keep_group_text,
 )
@@ -74,9 +79,7 @@ class DocxConverter:
         "moveTo",
         "smartTag",
     }
-    _FORMULA_TOKEN_KINDS: Final = frozenset(
-        {"omml", "equationxml", "mtef", "image_mtef"}
-    )
+    _FORMULA_TOKEN_KINDS: Final = frozenset({"omml", "equationxml", "mtef", "image_mtef"})
     _FORMULA_SOURCE_PRIORITY: Final = (
         "omml",
         "equationxml",
@@ -177,9 +180,7 @@ class DocxConverter:
         if draw_aspect == "icon":
             return None
 
-        relationship_id = ole_element.get(
-            "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
-        )
+        relationship_id = ole_element.get("{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id")
         relationships = getattr(part, "rels", None)
         relationship = relationships.get(relationship_id) if relationships is not None else None
         if relationship is None or getattr(relationship, "is_external", False):
@@ -226,9 +227,7 @@ class DocxConverter:
         if latex is not None:
             return latex
 
-        digest = hashlib.sha256(
-            equation_xml.encode("utf-8", errors="replace")
-        ).hexdigest()[:16]
+        digest = hashlib.sha256(equation_xml.encode("utf-8", errors="replace")).hexdigest()[:16]
         warning_key = (
             self._docx_part_key(part),
             str(shape_element.get("id") or ""),
@@ -248,13 +247,9 @@ class DocxConverter:
     def _docx_image_relationship_id(image: Any) -> str | None:
         """读取 DrawingML/VML 图片元素的内部 relationship id。"""
 
-        relationship_id = image.get(
-            "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed"
-        )
+        relationship_id = image.get("{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed")
         if not relationship_id:
-            relationship_id = image.get(
-                "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
-            )
+            relationship_id = image.get("{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id")
         return str(relationship_id) if relationship_id else None
 
     @classmethod
@@ -316,23 +311,16 @@ class DocxConverter:
         if tag_name is None:
             return []
         tag = str(getattr(element, "tag", ""))
+        word_namespace = DocxConverter._BLIP_NAMESPACES["w"]
 
         if tag_name == "AlternateContent":
             branch_tokens = [
-                self._docx_formula_tokens(child, part)
-                for child in element
-                if self._local_name(child) in {"Choice", "Fallback"}
+                self._docx_formula_tokens(child, part) for child in element if self._local_name(child) in {"Choice", "Fallback"}
             ]
             return self._select_docx_compatibility_tokens(branch_tokens)
 
-        if (
-            tag_name == "object"
-            and tag
-            == f"{{{DocxConverter._BLIP_NAMESPACES['w']}}}object"
-        ):
-            child_tokens = [
-                self._docx_formula_tokens(child, part) for child in element
-            ]
+        if tag_name == "object" and tag == f"{{{DocxConverter._BLIP_NAMESPACES['w']}}}object":
+            child_tokens = [self._docx_formula_tokens(child, part) for child in element]
             return self._select_docx_compatibility_tokens(child_tokens)
 
         if tag_name == "txbxContent":
@@ -347,10 +335,7 @@ class DocxConverter:
                 return []
             return [("omml", latex)] if latex else []
 
-        if (
-            tag_name == "shape"
-            and tag == f"{{{DocxConverter._BLIP_NAMESPACES['v']}}}shape"
-        ):
+        if tag_name == "shape" and tag == f"{{{DocxConverter._BLIP_NAMESPACES['v']}}}shape":
             latex = self._decode_docx_equationxml(element, part)
             if latex is not None:
                 return [("equationxml", latex)]
@@ -359,19 +344,23 @@ class DocxConverter:
             latex = self._decode_docx_ole_equation(element, part)
             return [("mtef", latex)] if latex else []
 
-        if (
-            tag_name == "blip"
-            and tag
-            == "{http://schemas.openxmlformats.org/drawingml/2006/main}blip"
-        ) or (
-            tag_name == "imagedata"
-            and tag == f"{{{DocxConverter._BLIP_NAMESPACES['v']}}}imagedata"
+        if (tag_name == "blip" and tag == "{http://schemas.openxmlformats.org/drawingml/2006/main}blip") or (
+            tag_name == "imagedata" and tag == f"{{{DocxConverter._BLIP_NAMESPACES['v']}}}imagedata"
         ):
             latex = self._decode_docx_image_equation(element, part)
             return [("image_mtef", latex)] if latex else []
 
         if tag_name == "t" and "officeDocument/2006/math" not in tag:
             return [("text", element.text)] if isinstance(element.text, str) else []
+        if tag in {f"{{{word_namespace}}}tab", f"{{{word_namespace}}}ptab"}:
+            return [("text", "\t")]
+        if tag == f"{{{word_namespace}}}cr":
+            return [("text", "\n")]
+        if tag == f"{{{word_namespace}}}br":
+            break_type = element.get(f"{{{word_namespace}}}type")
+            return [("text", "\n")] if break_type in {None, "textWrapping"} else []
+        if tag == f"{{{word_namespace}}}noBreakHyphen":
+            return [("text", "-")]
 
         tokens: list[tuple[str, str]] = []
         for child in element:
@@ -392,10 +381,7 @@ class DocxConverter:
                 continue
             if ancestor_name in {"object", "AlternateContent"}:
                 tokens = self._docx_formula_tokens(ancestor, part)
-                if any(
-                    kind in DocxConverter._FORMULA_TOKEN_KINDS
-                    for kind, _value in tokens
-                ):
+                if any(kind in DocxConverter._FORMULA_TOKEN_KINDS for kind, _value in tokens):
                     return True
                 continue
         return False
@@ -654,65 +640,17 @@ class DocxConverter:
         return False
 
     @classmethod
-    def _format_text_with_hyperlink(
-        cls,
-        text: str,
-        hyperlink: Optional[Union[AnyUrl, Path, str]],
-        style_str: Optional[str] = None,
-    ) -> str:
-        """
-        将文本和超链接格式化，支持字体样式标记。
-
-        无超链接时：有样式包裹为 <text style="...">文本</text>，无样式直接返回文本。
-        有超链接时：格式化为 <hyperlink><text [style="..."]>文本</text><url>链接</url></hyperlink>。
-
-        Args:
-            text: 文本内容
-            hyperlink: 超链接地址
-            style_str: 样式字符串（如 "bold,italic"），无样式时为 None
-
-        Returns:
-            str: 格式化后的文本
-        """
-        return format_text_with_hyperlink(text, hyperlink, style_str)
-
-    @staticmethod
-    def _format_text_tag(
-        text: str,
-        style_str: Optional[str] = None,
-        *,
-        force_tag: bool = False,
-    ) -> str:
-        """生成内部富文本标记；无样式时普通文本不额外包裹。"""
-        return format_text_tag(text, style_str, force_tag=force_tag)
-
-    @staticmethod
-    def _is_valid_hyperlink_target(
-        hyperlink: Optional[Union[AnyUrl, Path, str]],
-    ) -> bool:
-        """判断 hyperlink 是否是可输出的真实链接目标。"""
-        return is_valid_hyperlink_target(hyperlink)
-
-    @classmethod
-    def _format_hyperlink_group(
-        cls,
-        group: list[tuple[str, Optional[Formatting], Optional[Union[AnyUrl, Path, str]]]],
-    ) -> str:
-        """将连续同 URL 的 hyperlink 片段输出为一个外层 hyperlink 标记。"""
-        return format_hyperlink_group(group)
-
-    @classmethod
-    def _build_text_mappings_from_elements(
+    def _build_spans_from_elements(
         cls,
         paragraph_elements: list[tuple[str, Optional[Formatting], Optional[Union[AnyUrl, Path, str]]]],
-    ) -> list[tuple[str, str]]:
-        """按连续同 URL hyperlink 分组，生成原文到富文本标记的映射。"""
-        return build_text_mappings_from_elements(paragraph_elements)
+    ) -> list[dict[str, Any]]:
+        """按连续同 URL hyperlink 分组，直接生成结构化 Span。"""
+        return build_spans_from_elements(paragraph_elements)
 
     def _build_text_from_elements(
         self,
         paragraph_elements: list[tuple[str, Optional[Formatting], Optional[Union[AnyUrl, Path, str]]]],
-    ) -> str:
+    ) -> list[dict[str, Any]]:
         """
         从 paragraph_elements 重组文本，应用超链接格式和字体样式。
 
@@ -720,234 +658,54 @@ class DocxConverter:
             paragraph_elements: 段落元素列表
 
         Returns:
-            str: 重组后的文本
+            list[dict]: 重组后的 Span
         """
-        result_parts = [formatted_text for _, formatted_text in self._build_text_mappings_from_elements(paragraph_elements)]
-        return "".join(result_parts) if result_parts else ""
+        return self._build_spans_from_elements(paragraph_elements)
 
     @staticmethod
-    def _normalize_text_block_content(content: str) -> str:
+    def _normalize_text_block_content(content: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """
         规范化普通文本块导出内容。
 
         DOCX 常用段首/段尾空格模拟版式对齐，导出普通文本块前去除这些前后空白。
         """
-        if not content:
-            return content
-        return content.strip()
-
-    @staticmethod
-    def _split_paragraph_elements_at_eq_boundaries(
-        paragraph_elements: list,
-        non_eq_segments: list,
-    ) -> list:
-        """
-        在公式边界处拆分段落元素，解决格式标注跨公式边界失效的问题。
-
-        当 _get_paragraph_elements 处理含公式（oMath）的段落时，python-docx 的
-        iter_inner_content() 不会遍历 oMath 元素。如果公式前后的文本格式相同，
-        它们会被合并为单个元素，导致文本跨越 <eq> 标签两侧。
-        _replace_text_outside_equations 只在单个非公式片段中搜索，无法找到跨片段的文本，
-        从而导致样式替换失败。
-
-        本方法通过将这些跨边界的合并元素重新拆分为多个片段来修复此问题，
-        使每个元素都对应 text_with_equations 中唯一的非公式片段。
-
-        Args:
-            paragraph_elements: (text, format, hyperlink) 元组的列表
-            non_eq_segments:     从 text_with_equations 中提取的非公式文本片段列表
-
-        Returns:
-            重新拆分后的 (text, format, hyperlink) 列表，每个元素均位于单个公式片段内
-        """
-        if len(non_eq_segments) <= 1:
-            return paragraph_elements
-
-        # 计算各非公式片段的累积结束位置，作为分割边界
-        boundaries: set[int] = set()
-        pos = 0
-        for seg in non_eq_segments[:-1]:  # 最后一个片段后无需分割
-            pos += len(seg)
-            boundaries.add(pos)
-
-        if not boundaries:
-            return paragraph_elements
-
-        # 验证段落元素的拼接文本与非公式片段的拼接文本一致
-        concat_elem_text = "".join(text for text, _, _ in paragraph_elements)
-        concat_seg_text = "".join(non_eq_segments)
-        if concat_elem_text != concat_seg_text:
-            # 文本不匹配时安全降级：原样返回
-            return paragraph_elements
-
-        # 在边界处分割元素
-        result = []
-        text_pos = 0
-        for text, fmt, hyperlink in paragraph_elements:
-            if not text:
-                result.append((text, fmt, hyperlink))
-                text_pos += len(text)
-                continue
-
-            elem_start = text_pos
-            elem_end = elem_start + len(text)
-            text_pos = elem_end
-
-            # 找到落在该元素内部的分割点
-            splits_in_elem = sorted(b - elem_start for b in boundaries if elem_start < b < elem_end)
-
-            if not splits_in_elem:
-                result.append((text, fmt, hyperlink))
-            else:
-                prev = 0
-                for split_pos in splits_in_elem:
-                    fragment = text[prev:split_pos]
-                    if fragment:
-                        result.append((fragment, fmt, hyperlink))
-                    prev = split_pos
-                fragment = text[prev:]
-                if fragment:
-                    result.append((fragment, fmt, hyperlink))
-
-        return result
-
-    @staticmethod
-    def _group_paragraph_elements_by_non_eq_segments(
-        paragraph_elements: list,
-        non_eq_segments: list,
-    ) -> list[list]:
-        """按公式切分出的非公式文本片段分组，避免 hyperlink 跨公式合并。"""
-        if len(non_eq_segments) <= 1:
-            return [paragraph_elements]
-
-        concat_elem_text = "".join(text for text, _, _ in paragraph_elements)
-        concat_seg_text = "".join(non_eq_segments)
-        if concat_elem_text != concat_seg_text:
-            return [paragraph_elements]
-
-        groups = []
-        current_group = []
-        current_len = 0
-        segment_index = 0
-
-        while segment_index < len(non_eq_segments) and non_eq_segments[segment_index] == "":
-            groups.append([])
-            segment_index += 1
-
-        for element in paragraph_elements:
-            text = element[0]
-            if segment_index >= len(non_eq_segments):
-                return [paragraph_elements]
-
-            current_group.append(element)
-            current_len += len(text)
-            target_len = len(non_eq_segments[segment_index])
-
-            if current_len == target_len:
-                groups.append(current_group)
-                current_group = []
-                current_len = 0
-                segment_index += 1
-                while segment_index < len(non_eq_segments) and non_eq_segments[segment_index] == "":
-                    groups.append([])
-                    segment_index += 1
-            elif current_len > target_len:
-                return [paragraph_elements]
-
-        if current_group:
-            groups.append(current_group)
-        return groups
+        return strip_span_dicts(content)
 
     def _build_text_with_equations_and_hyperlinks(
         self,
         paragraph_elements: list[tuple[str, Optional[Formatting], Optional[Union[AnyUrl, Path, str]]]],
         text_with_equations: str,
-        equations: list,
-    ) -> str:
+        equations: list[tuple[str, str]],
+    ) -> list[dict[str, Any]]:
         """
         构建同时包含公式、超链接和字体样式的文本。
 
         Args:
             paragraph_elements: 段落元素列表，包含格式和超链接信息
-            text_with_equations: 包含公式标记的原始文本
-            equations: 公式列表
+            text_with_equations: 不含公式的原始可见文本
+            equations: 按源顺序排列的 text/equation token
 
         Returns:
-            str: 包含公式标记、超链接格式和字体样式的文本
+            list[dict]: 包含公式、超链接和字体样式的 Span
         """
         if not equations:
-            # 没有公式，直接返回带超链接和样式的文本
             return self._build_text_from_elements(paragraph_elements)
+        styled_spans = self._build_text_from_elements(paragraph_elements)
+        styled_visible = inline_span_plain_text(styled_spans)
+        plain_visible = "".join(value for kind, value in equations if kind == "text")
+        if plain_visible != styled_visible:
+            return styled_spans
 
-        # 检查是否有超链接
-        has_hyperlink = any(
-            hyperlink is not None and str(hyperlink).strip() not in ("", ".") for _, _, hyperlink in paragraph_elements
-        )
-
-        # 检查是否有字体样式
-        has_style = any(
-            fmt is not None
-            and (fmt.bold or fmt.italic or fmt.underline or fmt.emphasis or fmt.strikethrough or fmt.script != Script.BASELINE)
-            for _, fmt, _ in paragraph_elements
-        )
-
-        if not has_hyperlink and not has_style:
-            # 没有超链接也没有样式，直接返回带公式的文本
-            return text_with_equations
-
-        # 同时有公式和超链接/样式，需要合并处理
-        # 策略：在带公式的文本基础上，将样式/超链接标记插入到正确的位置
-
-        # 0. 拆分 text_with_equations，获取各非公式片段，用于解决跨公式边界的元素合并问题
-        eq_split_pattern = re.compile(r"<eq>.*?</eq>", re.DOTALL)
-        non_eq_segments = eq_split_pattern.split(text_with_equations)
-
-        # 在公式边界处重新拆分段落元素，避免单个元素跨越多个非公式片段
-        paragraph_elements = self._split_paragraph_elements_at_eq_boundaries(paragraph_elements, non_eq_segments)
-
-        # 1. 记录每个元素的原始文本和对应的格式化结果
-        element_mappings = []
-        for segment_elements in self._group_paragraph_elements_by_non_eq_segments(
-            paragraph_elements,
-            non_eq_segments,
-        ):
-            element_mappings.extend(self._build_text_mappings_from_elements(segment_elements))
-
-        # 2. 在 text_with_equations 中定位每个元素的原始文本，然后替换为格式化后的文本
-        result_text = text_with_equations
-        for original_text, formatted_text in element_mappings:
-            if original_text != formatted_text:
-                # 只有当文本被格式化（添加样式或超链接）时才需要替换
-                result_text = self._replace_text_outside_equations(result_text, original_text, formatted_text)
-
-        return result_text
-
-    def _replace_text_outside_equations(self, text: str, old_text: str, new_text: str) -> str:
-        """
-        在公式标记外替换文本。
-
-        Args:
-            text: 原始文本
-            old_text: 要替换的文本
-            new_text: 替换后的文本
-
-        Returns:
-            str: 替换后的文本
-        """
-        # 分割文本为公式和非公式部分
-        eq_pattern = re.compile(r"(<eq>.*?</eq>)")
-        parts = eq_pattern.split(text)
-
-        result_parts = []
-        for part in parts:
-            if part.startswith("<eq>") and part.endswith("</eq>"):
-                # 公式部分，保持不变
-                result_parts.append(part)
-            else:
-                # 非公式部分，进行替换
-                result_parts.append(part.replace(old_text, new_text, 1))
-
-        return "".join(result_parts)
+        output: list[dict[str, Any]] = []
+        visible_cursor = 0
+        for kind, value in equations:
+            if kind == "equation":
+                append_equation_span(output, value)
+                continue
+            next_cursor = visible_cursor + len(value)
+            extend_inline_spans(output, slice_span_dicts(styled_spans, visible_cursor, next_cursor))
+            visible_cursor = next_cursor
+        return strip_span_dicts(output)
 
     def _sanitize_missing_internal_relationships(self, file_bytes: bytes) -> bytes:
         """规范化 DOCX 包，兼容缺失内部关系和损坏图片成员。"""
@@ -1092,10 +850,11 @@ class DocxConverter:
                         shape_text_elements = shape_text_xpath(element)
                         if shape_text_elements:
                             # 从形状文本创建自定义文本元素
-                            text_content = " ".join([t.text for t in shape_text_elements if t.text])
-                            text_content = self._normalize_text_block_content(text_content)
-                            if text_content.strip():
-                                logger.debug(f"Found shape text: {text_content[:50]}...")
+                            raw_text = " ".join([t.text for t in shape_text_elements if t.text])
+                            text_content = self._normalize_text_block_content(text_spans(raw_text))
+                            visible_text = inline_span_plain_text(text_content)
+                            if visible_text:
+                                logger.debug(f"Found shape text: {visible_text[:50]}...")
                                 self.cur_page.append(
                                     {
                                         "type": BlockType.TEXT,
@@ -1345,17 +1104,11 @@ class DocxConverter:
             f"{{{w_ns}}}softHyphen",
             f"{{{w_ns}}}sym",
         )
-        text = "".join(
-            DocxConverter._xml_table_char_fragment(node) for node in xml_table.iter() if node.tag in char_tags
-        )
+        text = "".join(DocxConverter._xml_table_char_fragment(node) for node in xml_table.iter() if node.tag in char_tags)
         return {
             "row_count": len(xml_table.xpath('./*[local-name()="tr"]')),
             "cell_count": len(xml_table.xpath('.//*[local-name()="tc"]')),
-            "image_count": len(
-                xml_table.xpath(
-                    './/*[local-name()="blip" or local-name()="imagedata"]'
-                )
-            ),
+            "image_count": len(xml_table.xpath('.//*[local-name()="blip" or local-name()="imagedata"]')),
             "text": DocxConverter._normalize_table_match_text(text),
         }
 
@@ -1408,8 +1161,7 @@ class DocxConverter:
 
         # 快速检查：该表格是否含有任何公式
         if not any(
-            kind in DocxConverter._FORMULA_TOKEN_KINDS
-            for kind, _value in self._docx_formula_tokens(xml_table, source_part)
+            kind in DocxConverter._FORMULA_TOKEN_KINDS for kind, _value in self._docx_formula_tokens(xml_table, source_part)
         ):
             return html_table
 
@@ -1776,7 +1528,7 @@ class DocxConverter:
         if p_style_id in ["Title"]:
             # 构建包含公式和超链接的文本
             content_text = self._build_text_with_equations_and_hyperlinks(paragraph_elements, text, equations)
-            if content_text != "":
+            if content_text:
                 title_block = {
                     "type": BlockType.DOC_TITLE,
                     "level": 1,
@@ -1790,7 +1542,7 @@ class DocxConverter:
             is_numbered_style = numid is not None and ilevel is not None and self._is_numbered_list(numid, ilevel)
             # 构建包含公式和超链接的文本
             content_text = self._build_text_with_equations_and_hyperlinks(paragraph_elements, text, equations)
-            if content_text != "":
+            if content_text:
                 h_block = {
                     "type": BlockType.PARAGRAPH_TITLE,
                     "level": max(p_level + 1, 2) if p_level is not None else 2,
@@ -1801,19 +1553,20 @@ class DocxConverter:
                     h_block["anchor"] = paragraph_anchor
                 self.cur_page.append(h_block)
 
-        elif len(equations) > 0:
-            if (paragraph_text is None or len(paragraph_text.strip()) == 0) and len(text) > 0:
+        elif equations:
+            equation_values = [value for kind, value in equations if kind == "equation"]
+            if (paragraph_text is None or len(paragraph_text.strip()) == 0) and equation_values:
                 # 独立公式
                 eq_block = {
                     "type": BlockType.EQUATION,
-                    "content": text.replace("<eq>", "").replace("</eq>", ""),
+                    "content": equation_values[0] if len(equation_values) == 1 else "\n".join(equation_values),
                 }
                 self.cur_page.append(eq_block)
             else:
                 # 包含行内公式的文本块，同时支持超链接
                 content_text = self._build_text_with_equations_and_hyperlinks(paragraph_elements, text, equations)
                 content_text = self._normalize_text_block_content(content_text)
-                if content_text != "":
+                if content_text:
                     text_with_inline_eq_block = {
                         "type": BlockType.TEXT,
                         "content": content_text,
@@ -1834,7 +1587,7 @@ class DocxConverter:
             # 构建包含公式和超链接的文本
             content_text = self._build_text_with_equations_and_hyperlinks(paragraph_elements, text, equations)
             content_text = self._normalize_text_block_content(content_text)
-            if content_text != "":
+            if content_text:
                 text_block = {
                     "type": BlockType.TEXT,
                     "content": content_text,
@@ -1846,7 +1599,7 @@ class DocxConverter:
         elif self._is_caption(element):
             # 构建包含公式和超链接的文本
             content_text = self._build_text_with_equations_and_hyperlinks(paragraph_elements, text, equations)
-            if content_text != "":
+            if content_text:
                 caption_block = {
                     "type": RAW_CAPTION,
                     "content": content_text,
@@ -1858,7 +1611,7 @@ class DocxConverter:
             # 构建包含公式和超链接的文本
             content_text = self._build_text_with_equations_and_hyperlinks(paragraph_elements, text, equations)
             content_text = self._normalize_text_block_content(content_text)
-            if content_text != "":
+            if content_text:
                 text_block = {
                     "type": BlockType.TEXT,
                     "content": content_text,
@@ -2307,7 +2060,7 @@ class DocxConverter:
         text: str,
         *,
         part: Any | None = None,
-    ) -> tuple[str, list[str]]:
+    ) -> tuple[str, list[tuple[str, str]]]:
         """
         处理文本中的公式。
 
@@ -2317,47 +2070,29 @@ class DocxConverter:
             part: 当前段落所属的 OOXML part，用于解析局部 relationship
 
         Returns:
-            tuple: (处理后的文本, 公式列表)
+            tuple: (原始可见文本, 含公式时的有序 text/equation token)
         """
         source_part = part or self._require_document_part()
         only_texts: list[str] = []
-        only_equations: list[str] = []
-        texts_and_equations: list[str] = []
+        formula_values: list[str] = []
+        tokens: list[tuple[str, str]] = []
         for token_kind, value in self._docx_formula_tokens(element, source_part):
             if token_kind == "text":
                 only_texts.append(value)
-                texts_and_equations.append(value)
+                tokens.append(("text", value))
                 continue
-            equation = self.equation_bookends.format(EQ=value)
-            only_equations.append(equation)
-            texts_and_equations.append(equation)
+            formula_values.append(value)
+            tokens.append(("equation", value))
 
-        if len(only_equations) < 1:
+        if not formula_values:
             return text, []
 
-        if re.sub(r"\s+", "", "".join(only_texts)).strip() != re.sub(r"\s+", "", text).strip():
+        if "".join(only_texts) != text:
             # 如果我们无法重构初始原始文本
             # 不要尝试解析公式并返回原始文本
             return text, []
 
-        # 将公式插入原始文本中
-        # 这样做是为了保持空白结构
-        output_text = text[:]
-        init_i = 0
-        for i_substr, substr in enumerate(texts_and_equations):
-            if len(substr) == 0:
-                continue
-
-            if substr in output_text[init_i:]:
-                init_i += output_text[init_i:].find(substr) + len(substr)
-            else:
-                if i_substr > 0:
-                    output_text = output_text[:init_i] + substr + output_text[init_i:]
-                    init_i += len(substr)
-                else:
-                    output_text = substr + output_text
-
-        return output_text, only_equations
+        return text, tokens
 
     def _get_label_and_level(self, paragraph: Paragraph) -> tuple[str, Optional[int]]:
         """
@@ -2711,7 +2446,7 @@ class DocxConverter:
         # 构建 content_text，处理行内公式和超链接
         content_text = self._build_text_with_equations_and_hyperlinks(elements, text, equations)
         content_text = self._normalize_text_block_content(content_text)
-        if content_text == "":
+        if not content_text:
             return None
 
         # 确定列表属性
@@ -3079,7 +2814,7 @@ class DocxConverter:
 
         content_text = self._build_text_with_equations_and_hyperlinks(elements, text, equations)
         content_text = self._normalize_text_block_content(content_text)
-        if content_text == "":
+        if not content_text:
             return
 
         # 情况 1: 首个目录项，创建新的顶层索引块
@@ -3369,7 +3104,7 @@ class DocxConverter:
         except ValueError:
             return default
 
-    def _process_header_footer_paragraph(self, paragraph: Paragraph) -> str:
+    def _process_header_footer_paragraph(self, paragraph: Paragraph) -> list[dict[str, Any]]:
         """
         处理页眉/页脚中的单个段落，支持行内公式和超链接。
 
@@ -3377,7 +3112,7 @@ class DocxConverter:
             paragraph: 段落对象
 
         Returns:
-            str: 处理后的文本内容（包含公式标记和超链接格式）
+            list[dict]: 处理后的结构化 Span
         """
         paragraph_elements = self._get_paragraph_elements(paragraph)
         paragraph_text = self._get_paragraph_text(paragraph)
@@ -3387,12 +3122,9 @@ class DocxConverter:
             part=paragraph.part,
         )
 
-        if text is None:
-            return ""
-
         text = text.strip()
-        if not text:
-            return ""
+        if not text and not equations:
+            return []
 
         # 构建包含公式和超链接的文本
         content_text = self._build_text_with_equations_and_hyperlinks(paragraph_elements, text, equations)
@@ -3418,19 +3150,24 @@ class DocxConverter:
                 hdrs.append(section.first_page_header)
             for hdr in hdrs:
                 # 处理每个段落，支持公式和超链接
-                processed_parts = []
+                processed_parts: list[list[dict[str, Any]]] = []
                 for par in hdr.paragraphs:
                     content = self._process_header_footer_paragraph(par)
                     if content:
                         processed_parts.append(content)
-                text = " ".join(processed_parts)
-                if text != "" and not text.isdigit() and text not in added_headers:
-                    added_headers.add(text)
+                spans: list[dict[str, Any]] = []
+                for part in processed_parts:
+                    if spans:
+                        append_text_span(spans, " ")
+                    extend_inline_spans(spans, part)
+                visible = inline_span_plain_text(spans)
+                if spans and not visible.isdigit() and visible not in added_headers:
+                    added_headers.add(visible)
                     try:
                         self.pages[sec_idx].append(
                             {
                                 "type": BlockType.HEADER,
-                                "content": text,
+                                "content": spans,
                             }
                         )
                     except IndexError:
@@ -3448,14 +3185,19 @@ class DocxConverter:
                     content = self._process_header_footer_paragraph(par)
                     if content:
                         processed_parts.append(content)
-                text = " ".join(processed_parts)
-                if text != "" and not text.isdigit() and text not in added_footers:
-                    added_footers.add(text)
+                spans = []
+                for part in processed_parts:
+                    if spans:
+                        append_text_span(spans, " ")
+                    extend_inline_spans(spans, part)
+                visible = inline_span_plain_text(spans)
+                if spans and not visible.isdigit() and visible not in added_footers:
+                    added_footers.add(visible)
                     try:
                         self.pages[sec_idx].append(
                             {
                                 "type": BlockType.FOOTER,
-                                "content": text,
+                                "content": spans,
                             }
                         )
                     except IndexError:

@@ -1,4 +1,5 @@
 from __future__ import annotations
+from _span_test_utils import inline as _inline
 
 from unittest.mock import Mock
 
@@ -37,7 +38,7 @@ def _image_block() -> ImageBlock:
         type=BlockType.IMAGE_CAPTION,
         index=0,
         bbox=(0.0, 0.0, 0.1, 0.01),
-        content="Figure caption",
+        content=_inline("Figure caption"),
     )
     return ImageBlock(
         type=BlockType.IMAGE,

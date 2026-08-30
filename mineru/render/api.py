@@ -8,17 +8,25 @@ from typing import Any, Literal, overload
 from ..types import MiddleJson
 
 from .contracts import (
+    ContentListRenderOptions,
+    ContentListV2RenderOptions,
     DocxRenderOptions,
+    EpubRenderOptions,
     HtmlRenderOptions,
     MarkdownRenderOptions,
+    PdfRenderOptions,
     RenderFormat,
     RenderOptions,
     RenderOutput,
     StructuredContentRenderOptions,
 )
+from .content_list import render_content_list
+from .content_list_v2 import render_content_list_v2
 from .docx import render_docx
+from .epub import render_epub
 from .html import render_html
 from .markdown import render_markdown
+from .pdf import render_pdf
 from .structured_content import render_structured_content
 
 
@@ -58,11 +66,55 @@ def render(
 @overload
 def render(
     middle_json: MiddleJson,
+    output_format: Literal[RenderFormat.EPUB],
+    *,
+    options: EpubRenderOptions | None = None,
+) -> bytes:
+    """声明 EPUB 目标对应的字节返回类型。"""
+    ...
+
+
+@overload
+def render(
+    middle_json: MiddleJson,
+    output_format: Literal[RenderFormat.PDF],
+    *,
+    options: PdfRenderOptions | None = None,
+) -> bytes:
+    """声明 PDF 目标对应的字节返回类型。"""
+    ...
+
+
+@overload
+def render(
+    middle_json: MiddleJson,
     output_format: Literal[RenderFormat.STRUCTURED_CONTENT],
     *,
     options: StructuredContentRenderOptions | None = None,
 ) -> dict[str, Any]:
     """声明 Structured Content 目标对应的字典返回类型。"""
+    ...
+
+
+@overload
+def render(
+    middle_json: MiddleJson,
+    output_format: Literal[RenderFormat.CONTENT_LIST],
+    *,
+    options: ContentListRenderOptions | None = None,
+) -> list[dict[str, Any]]:
+    """声明 Content List V1 目标对应的扁平列表返回类型。"""
+    ...
+
+
+@overload
+def render(
+    middle_json: MiddleJson,
+    output_format: Literal[RenderFormat.CONTENT_LIST_V2],
+    *,
+    options: ContentListV2RenderOptions | None = None,
+) -> list[list[dict[str, Any]]]:
+    """声明 Content List V2 目标对应的按页列表返回类型。"""
     ...
 
 
@@ -107,8 +159,31 @@ def render(
             raise TypeError("DOCX output requires DocxRenderOptions")
         return render_docx(
             middle_json,
-            mode=resolved_options.mode,
             asset_resolver=resolved_options.asset_resolver,
+        )
+
+    if output_format is RenderFormat.EPUB:
+        resolved_options = options if options is not None else EpubRenderOptions()
+        if not isinstance(resolved_options, EpubRenderOptions):
+            raise TypeError("EPUB output requires EpubRenderOptions")
+        return render_epub(
+            middle_json,
+            title=resolved_options.title,
+            authors=resolved_options.authors,
+            language=resolved_options.language,
+            identifier=resolved_options.identifier,
+            modified_at=resolved_options.modified_at,
+            asset_resolver=resolved_options.asset_resolver,
+        )
+
+    if output_format is RenderFormat.PDF:
+        resolved_options = options if options is not None else PdfRenderOptions()
+        if not isinstance(resolved_options, PdfRenderOptions):
+            raise TypeError("PDF output requires PdfRenderOptions")
+        return render_pdf(
+            middle_json,
+            asset_resolver=resolved_options.asset_resolver,
+            document_title=resolved_options.document_title,
         )
 
     if output_format is RenderFormat.STRUCTURED_CONTENT:
@@ -116,6 +191,24 @@ def render(
         if not isinstance(resolved_options, StructuredContentRenderOptions):
             raise TypeError("STRUCTURED_CONTENT output requires StructuredContentRenderOptions")
         return render_structured_content(
+            middle_json,
+            asset_base_url=resolved_options.asset_base_url,
+        )
+
+    if output_format is RenderFormat.CONTENT_LIST:
+        resolved_options = options if options is not None else ContentListRenderOptions()
+        if not isinstance(resolved_options, ContentListRenderOptions):
+            raise TypeError("CONTENT_LIST output requires ContentListRenderOptions")
+        return render_content_list(
+            middle_json,
+            asset_base_url=resolved_options.asset_base_url,
+        )
+
+    if output_format is RenderFormat.CONTENT_LIST_V2:
+        resolved_options = options if options is not None else ContentListV2RenderOptions()
+        if not isinstance(resolved_options, ContentListV2RenderOptions):
+            raise TypeError("CONTENT_LIST_V2 output requires ContentListV2RenderOptions")
+        return render_content_list_v2(
             middle_json,
             asset_base_url=resolved_options.asset_base_url,
         )

@@ -6,6 +6,7 @@ from __future__ import annotations
 from copy import deepcopy
 from typing import Any
 
+from ...model.flash._shared.spans import inline_span_plain_text
 from ...types import (
     BBox,
     BlockType,
@@ -190,6 +191,8 @@ def _is_leading_continuation_text_block(block: BlockDict) -> bool:
 def _block_text_content(block: BlockDict) -> str:
     """提取视觉块中的可见文本，用于续表 marker 判断。"""
     content = _get_block_field(block, "content", "")
+    if isinstance(content, list):
+        return inline_span_plain_text(item for item in content if isinstance(item, dict))
     return content if isinstance(content, str) else ""
 
 

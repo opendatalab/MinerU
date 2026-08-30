@@ -1,3 +1,4 @@
+from _span_test_utils import inline as _inline
 import pytest
 
 from mineru.doclib.server import (
@@ -13,7 +14,8 @@ from mineru.types import BlockType, ImageBlock, ImageBodyBlock, PageInfo, TableB
 
 def _page(page_idx: int, *texts: str) -> PageInfo:
     blocks = [
-        TextBlock(type=BlockType.TEXT, index=index, bbox=(0.0, 0.0, 0.1, 0.1), content=text) for index, text in enumerate(texts)
+        TextBlock(type=BlockType.TEXT, index=index, bbox=(0.0, 0.0, 0.1, 0.1), content=_inline(text))
+        for index, text in enumerate(texts)
     ]
     return PageInfo(page_idx=page_idx, blocks=blocks)
 

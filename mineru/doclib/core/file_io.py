@@ -8,7 +8,7 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from ...filetypes import CSV_EXTENSIONS, EPUB_EXTENSIONS, ODF_EXTENSIONS, OFFICE_EXTENSIONS
+from ...filetypes import CSV_EXTENSIONS, EPUB_EXTENSIONS, ODF_EXTENSIONS, OFD_EXTENSIONS, OFFICE_EXTENSIONS
 from ...model.flash.pdf.document import PDFDocument
 
 # Optional office doc support
@@ -89,6 +89,9 @@ async def extract_metadata(filepath: str) -> dict:
 
     if ext == "pdf":
         await _extract_pdf_meta(filepath, result)
+
+    elif ext in OFD_EXTENSIONS:
+        await _extract_ofd_meta(filepath, result)
 
     elif ext in OFFICE_EXTENSIONS:
         await _extract_office_meta(filepath, ext, result)
@@ -245,6 +248,23 @@ async def _extract_epub_meta(filepath: str, result: dict) -> None:
                 metadata = extract_epub_metadata(epub_file)
         except Exception as exc:
             raise MetadataExtractionError("open_failed", str(exc) or "Failed to open EPUB document") from exc
+        result.update(metadata)
+
+    await asyncio.to_thread(_extract)
+
+
+async def _extract_ofd_meta(filepath: str, result: dict) -> None:
+    """在线程中读取 OFD DocInfo 和声明页数。"""
+
+    def _extract() -> None:
+        """打开 OFD 文件流并合并原生元数据。"""
+        from ...model.flash.ofd import extract_ofd_metadata
+
+        try:
+            with open(filepath, "rb") as ofd_file:
+                metadata = extract_ofd_metadata(ofd_file)
+        except Exception as exc:
+            raise MetadataExtractionError("open_failed", str(exc) or "Failed to open OFD document") from exc
         result.update(metadata)
 
     await asyncio.to_thread(_extract)

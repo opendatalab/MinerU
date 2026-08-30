@@ -6,9 +6,11 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from ...types import BlockType
+from ...model.flash._shared.spans import inline_span_plain_text, text_spans
+from ...types import BlockType, parse_inline_spans
 from ...utils.geometry import calculate_overlap_area_in_bbox1_area_ratio
 
+from .inline import inline_plain_text, slice_inline_spans
 from .visual import _bbox_for_calculation
 
 
@@ -27,17 +29,15 @@ def fix_office_paragraph_titles(model_list: list[list[dict[str, Any]]]) -> None:
             is_numbered_style = block.pop("is_numbered_style", None)
             block.pop("section_number", None)
             content = block.get("content")
-            if not isinstance(content, str):
+            if not isinstance(content, list):
                 continue
             if is_numbered_style is True:
                 for ancestor_level in range(1, numbering_depth):
                     counters.setdefault(ancestor_level, 1)
                 counters[numbering_depth] = counters.get(numbering_depth, 0) + 1
                 _clear_deeper_title_counters(counters, numbering_depth)
-                section_number = ".".join(
-                    str(counters[ancestor_level]) for ancestor_level in range(1, numbering_depth + 1)
-                )
-                block["content"] = f"{section_number} {content}"
+                section_number = ".".join(str(counters[ancestor_level]) for ancestor_level in range(1, numbering_depth + 1))
+                block["content"] = [*text_spans(f"{section_number} "), *content]
                 continue
             if is_numbered_style is False:
                 number_match = re.match(r"^\s*(\d+(?:\.\d+)*)\b", _visible_text(content))
@@ -134,7 +134,23 @@ def fix_pdf_list_blocks(
 def fix_pdf_index_blocks(index_blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """将 PDF 目录块的多行内容拆分为多个文本子块。"""
     for index_block in index_blocks:
-        index_block["content"] = [{"type": "text", "content": content} for content in index_block["content"].split("\n")]
+        raw_content = index_block.get("content")
+        if not isinstance(raw_content, list):
+            index_block["content"] = []
+            continue
+        spans = parse_inline_spans(raw_content)
+        visible = inline_plain_text(spans)
+        children: list[dict[str, Any]] = []
+        start = 0
+        for match in re.finditer("\n", visible):
+            content = slice_inline_spans(spans, start, match.start())
+            if content:
+                children.append({"type": BlockType.TEXT, "content": [span.model_dump(mode="json") for span in content]})
+            start = match.end()
+        content = slice_inline_spans(spans, start)
+        if content:
+            children.append({"type": BlockType.TEXT, "content": [span.model_dump(mode="json") for span in content]})
+        index_block["content"] = children
     return index_blocks
 
 
@@ -156,9 +172,9 @@ def _clear_deeper_title_counters(counters: dict[int, int], level: int) -> None:
         del counters[counter_level]
 
 
-def _visible_text(content: str) -> str:
-    """移除简单富文本标签，供显式标题编号识别可见文本开头。"""
-    return re.sub(r"<[^>]+>", "", content)
+def _visible_text(content: list[dict[str, Any]]) -> str:
+    """提取结构化 Span 的可见文本，供显式标题编号识别。"""
+    return inline_span_plain_text(content)
 
 
 def fix_office_list_blocks(list_blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -187,7 +203,7 @@ def fix_office_list_blocks(list_blocks: list[dict[str, Any]]) -> list[dict[str, 
                 child_type = child_block.get("type")
                 if child_type == BlockType.TEXT:
                     child_content = child_block.get("content")
-                    if not isinstance(child_content, str):
+                    if not isinstance(child_content, list):
                         child_block.pop("list_label", None)
                         continue
                     exact_label = child_block.pop("list_label", None)
@@ -200,7 +216,7 @@ def fix_office_list_blocks(list_blocks: list[dict[str, Any]]) -> list[dict[str, 
                         ordered_number += 1
                     else:
                         prefix = "- "
-                    child_block["content"] = f"{prefix}{child_content}"
+                    child_block["content"] = [*text_spans(prefix), *child_content]
                 elif child_type == BlockType.LIST:
                     fix_list_block(child_block)
         list_block.pop("attribute", None)

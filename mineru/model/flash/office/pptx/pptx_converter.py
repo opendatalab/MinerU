@@ -24,8 +24,9 @@ from ..equation.omml import oMath2Latex
 from ..streams import read_stream_bytes_from_start, rewind_stream
 from .package_normalizer import normalize_pptx_package
 from ..._shared.xycut import sort_entries
+from ..._shared.spans import append_equation_span, extend_inline_spans, strip_span_dicts
 from .....types import BlockType
-from ..rich_text import OfficeRichTextSegment, build_rich_text_from_segments, format_text_with_hyperlink
+from ..rich_text import OfficeRichTextSegment, build_rich_text_from_segments
 
 IGNORED_NOTES_PLACEHOLDER_TYPES: Final = {
     PP_PLACEHOLDER.SLIDE_IMAGE,
@@ -111,7 +112,6 @@ class PptxConverter:
             tuple[Optional[str], Optional[int], Optional[str]],
             Optional[MSO_SHAPE_TYPE],
         ] = {}
-        self.equation_bookends: str = "<eq>{EQ}</eq>"  # 公式标记格式
         self._ooxml_equation_decoder = OoxmlEquationDecoder()
         self._image_equation_decoder = OfficeImageEquationDecoder()
         self._mtef_warned_shapes: set[tuple[str, int | None]] = set()
@@ -160,10 +160,7 @@ class PptxConverter:
         """判断 PPTX OLE shape 的 ProgID 是否为 MathType/Equation 公式。"""
 
         ole_format = self._pptx_ole_format(shape)
-        return bool(
-            ole_format is not None
-            and is_mathtype_equation_prog_id(getattr(ole_format, "prog_id", None))
-        )
+        return bool(ole_format is not None and is_mathtype_equation_prog_id(getattr(ole_format, "prog_id", None)))
 
     def _decode_pptx_ole_equation(self, shape: Any) -> str | None:
         """解码 PPTX 内嵌公式 OLE；链接、图标和坏对象返回空。"""
@@ -686,7 +683,7 @@ class PptxConverter:
                         self.cur_page.extend(
                             {
                                 "type": BlockType.PAGE_FOOTNOTE,
-                                "content": self.equation_bookends.format(EQ=latex),
+                                "content": [{"type": "equation_inline", "content": latex}],
                             }
                             for latex in omml_equations
                         )
@@ -696,7 +693,7 @@ class PptxConverter:
                         self.cur_page.append(
                             {
                                 "type": BlockType.PAGE_FOOTNOTE,
-                                "content": self.equation_bookends.format(EQ=latex),
+                                "content": [{"type": "equation_inline", "content": latex}],
                             }
                         )
                         return
@@ -705,9 +702,7 @@ class PptxConverter:
                         self.cur_page.append(
                             {
                                 "type": BlockType.PAGE_FOOTNOTE,
-                                "content": self.equation_bookends.format(
-                                    EQ=image_latex
-                                ),
+                                "content": [{"type": "equation_inline", "content": image_latex}],
                             }
                         )
                 return
@@ -718,9 +713,7 @@ class PptxConverter:
                     self.cur_page.append(
                         {
                             "type": BlockType.PAGE_FOOTNOTE,
-                            "content": self.equation_bookends.format(
-                                EQ=image_latex
-                            ),
+                            "content": [{"type": "equation_inline", "content": image_latex}],
                         }
                     )
                     return
@@ -1156,15 +1149,6 @@ class PptxConverter:
 
         return ",".join(styles) if styles else None
 
-    @staticmethod
-    def _format_text_with_hyperlink(
-        text: str,
-        hyperlink: Optional[str],
-        style_str: Optional[str] = None,
-    ) -> str:
-        """按Office约定格式输出带样式/超链接的文本片段。"""
-        return format_text_with_hyperlink(text, hyperlink, style_str)
-
     def _resolve_hyperlink_from_run(self, run, shape) -> Optional[str]:
         """解析 run 对应的超链接，优先公开 API，回退到 XML + rels。"""
         try:
@@ -1264,8 +1248,8 @@ class PptxConverter:
 
         return None
 
-    def _build_paragraph_rich_text(self, paragraph, shape) -> str:
-        """按 run 维度构建段落富文本，支持样式与超链接标签。"""
+    def _build_paragraph_rich_text(self, paragraph, shape) -> list[dict[str, Any]]:
+        """按 run 维度构建段落 Span，支持样式、公式与超链接。"""
         paragraph_font_sources = self._get_paragraph_font_sources(shape, paragraph)
         run_map = {}
         for run in paragraph.runs:
@@ -1274,29 +1258,26 @@ class PptxConverter:
             except Exception:
                 continue
 
-        segments = []
+        output: list[dict[str, Any]] = []
+        segments: list[OfficeRichTextSegment] = []
+
+        def flush_segments() -> None:
+            """在公式边界输出累计普通富文本 Span。"""
+            if not segments:
+                return
+            extend_inline_spans(output, build_rich_text_from_segments(list(segments)))
+            segments.clear()
 
         for node in paragraph._element.content_children:
             if isinstance(node, CT_TextLineBreak):
-                segments.append(
-                    {
-                        "text": " ",
-                        "style_str": None,
-                        "hyperlink": None,
-                    }
-                )
+                segments.append(OfficeRichTextSegment(" "))
                 continue
 
             if self._is_math_content_node(node):
                 latex = self._convert_math_node_to_latex(node)
                 if latex:
-                    segments.append(
-                        {
-                            "text": self.equation_bookends.format(EQ=latex),
-                            "style_str": None,
-                            "hyperlink": None,
-                        }
-                    )
+                    flush_segments()
+                    append_equation_span(output, latex)
                     continue
 
             node_text = getattr(node, "text", None)
@@ -1307,37 +1288,22 @@ class PptxConverter:
 
             run = run_map.get(id(node))
             if run is None:
-                segments.append(
-                    {
-                        "text": node_text,
-                        "style_str": None,
-                        "hyperlink": None,
-                    }
-                )
+                segments.append(OfficeRichTextSegment(node_text))
                 continue
 
             segments.append(
-                {
-                    "text": node_text,
-                    "style_str": self._get_style_str_from_run(
+                OfficeRichTextSegment(
+                    node_text,
+                    self._get_style_str_from_run(
                         run,
                         paragraph_font_sources,
                     ),
-                    "hyperlink": self._resolve_hyperlink_from_run(run, shape),
-                }
+                    self._resolve_hyperlink_from_run(run, shape),
+                )
             )
 
-        return build_rich_text_from_segments(
-            [
-                OfficeRichTextSegment(
-                    segment["text"],
-                    segment["style_str"],
-                    segment["hyperlink"],
-                )
-                for segment in segments
-            ],
-            trim_plain_edges=True,
-        )
+        flush_segments()
+        return strip_span_dicts(output)
 
     @staticmethod
     def _trim_rich_text_segments(segments: list[dict]) -> list[dict]:
@@ -1371,11 +1337,9 @@ class PptxConverter:
         return trimmed_segments[: end_idx + 1]
 
     @staticmethod
-    def _normalize_text_block_content(content: str) -> str:
-        """Normalize extracted text-block content without changing internal spacing."""
-        if not content:
-            return ""
-        return content.strip()
+    def _normalize_text_block_content(content: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """裁剪提取文本首尾空白，同时保留 Span 样式和链接。"""
+        return strip_span_dicts(content)
 
     @staticmethod
     def _parse_font_size_pt_from_rpr(

@@ -11,6 +11,7 @@ from lxml import etree  # type: ignore[reportMissingImports]
 from .....types import RAW_ALGORITHM, BlockType
 from ..._shared.markup import MarkupProjector, MarkupStylesheet, extract_formula
 from ..._shared.markup.projector import BLOCK_TAGS, local_name
+from ..._shared.spans import text_spans
 from ..resources import HtmlResourceContext
 from .contracts import (
     AnnotationWireSpec,
@@ -205,7 +206,7 @@ def _materialize_code(spec: CodeBodyWireSpec, projector: MarkupProjector) -> dic
         }
     return {
         "type": RAW_ALGORITHM,
-        "content": _restore_content(spec.content_element, projector),
+        "content": _project_inline_content(projector, spec.content_element),
     }
 
 
@@ -216,9 +217,9 @@ def _materialize_list(spec: ListWireSpec, projector: MarkupProjector) -> dict[st
         if isinstance(child, ListWireSpec):
             children.append(_materialize_list(child, projector))
             continue
-        content = _project_inline_content(projector, child.content_element) if child.content_element is not None else ""
+        content = _project_inline_content(projector, child.content_element) if child.content_element is not None else []
         if child.marker and ({"mineru-list--reference", "mineru-list--explicit"} & spec.classes):
-            content = f"{child.marker} {content}".strip()
+            content = [*text_spans(f"{child.marker} "), *content]
         block: dict[str, object] = {"type": child.block_type, "content": content}
         if child.block_index is not None:
             block["index"] = child.block_index
@@ -251,7 +252,7 @@ def _materialize_index(spec: IndexWireSpec, projector: MarkupProjector) -> dict[
 
 def _materialize_index_leaf(spec: IndexLeafWireSpec, projector: MarkupProjector) -> dict[str, object]:
     """恢复目录叶子的内容和标题元数据。"""
-    content = _project_inline_content(projector, spec.content_element) if spec.content_element is not None else ""
+    content = _project_inline_content(projector, spec.content_element) if spec.content_element is not None else []
     block: dict[str, object] = {"type": spec.block_type, "content": content}
     if spec.block_type in {BlockType.DOC_TITLE, BlockType.PARAGRAPH_TITLE}:
         block["anchor"] = spec.anchor
@@ -266,7 +267,7 @@ def _restore_content(fragment: etree._Element | None, projector: MarkupProjector
     if fragment is None:
         return ""
     if not _contains_rich_markup(fragment):
-        return _project_inline_content(projector, fragment)
+        return "".join(fragment.itertext()).strip()
     clone = deepcopy(fragment)
     for carrier in list(clone.iterdescendants()):
         if not isinstance(carrier.tag, str):
@@ -304,9 +305,9 @@ def _serialize_fragment(fragment: etree._Element) -> str:
     return "".join(parts).strip()
 
 
-def _project_inline_content(projector: MarkupProjector, element: etree._Element) -> str:
-    """恢复 projector 为内部标签安全转义的一层实体。"""
-    return html.unescape(projector.project_inline_content(element))
+def _project_inline_content(projector: MarkupProjector, element: etree._Element) -> list[dict[str, object]]:
+    """直接恢复 projector 生成的结构化 Span。"""
+    return projector.project_inline_content(element)
 
 
 def _flowchart_content(source_element: etree._Element) -> str:

@@ -1,5 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
-"""MiddleJson 共享行内语义到安全 HTML 的序列化。"""
+"""Middle JSON 3.0 行内 Span 到安全 HTML 的序列化。"""
 
 from __future__ import annotations
 
@@ -9,17 +9,8 @@ import re
 from dataclasses import dataclass
 from urllib.parse import urlsplit
 
-from ....backend.postprocess.inline import (
-    InlineCode,
-    InlineEquation,
-    InlineLink,
-    InlineNode,
-    InlineStyled,
-    InlineText,
-    inline_plain_text,
-    join_inline_contents,
-    parse_inline_content,
-)
+from ....backend.postprocess.inline import join_inline_spans
+from ....types import CodeInlineSpan, EquationInlineSpan, HyperlinkSpan, InlineSpan, TextSpan
 from .sanitizer import sanitize_link_url
 
 
@@ -92,36 +83,36 @@ class HtmlInlineResult:
     has_math: bool = False
 
 
-def render_inline_content_html(content: str) -> HtmlInlineResult:
+def render_inline_content_html(content: list[InlineSpan]) -> HtmlInlineResult:
     """把一段 MiddleJson 行内内容渲染为安全 HTML。"""
-    return render_inline_nodes_html(parse_inline_content(content))
+    return render_inline_spans_html(content)
 
 
-def render_joined_inline_contents_html(contents: list[str]) -> HtmlInlineResult:
+def render_joined_inline_contents_html(contents: list[list[InlineSpan]]) -> HtmlInlineResult:
     """按共享物理段落边界规则合并多段内容后渲染 HTML。"""
-    return render_inline_nodes_html(join_inline_contents(contents))
+    return render_inline_spans_html(join_inline_spans(contents))
 
 
-def render_inline_nodes_html(
-    nodes: list[InlineNode],
+def render_inline_spans_html(
+    spans: list[InlineSpan],
     *,
     linkify_text: bool = True,
     separate_adjacent_math: bool = False,
     preserve_newlines: bool = False,
 ) -> HtmlInlineResult:
-    """渲染行内节点，可分隔相邻公式或给 pre-wrap 容器保留原始换行。"""
+    """渲染行内 Span，可分隔相邻公式或给 pre-wrap 容器保留原始换行。"""
     parts: list[str] = []
     has_math = False
     previous_was_math = False
-    for node in nodes:
-        rendered = _render_inline_node_html(
-            node,
+    for span in spans:
+        rendered = _render_inline_span_html(
+            span,
             linkify_text=linkify_text,
             preserve_newlines=preserve_newlines,
         )
         if not rendered.html:
             continue
-        current_is_math = isinstance(node, InlineEquation)
+        current_is_math = isinstance(span, EquationInlineSpan)
         if separate_adjacent_math and previous_was_math and current_is_math:
             parts.append(" ")
         parts.append(rendered.html)
@@ -151,43 +142,36 @@ def render_math_html(latex: str, *, display: bool) -> HtmlInlineResult:
     )
 
 
-def _render_inline_node_html(
-    node: InlineNode,
+def _render_inline_span_html(
+    span: InlineSpan,
     *,
     linkify_text: bool,
     preserve_newlines: bool,
 ) -> HtmlInlineResult:
-    """把一个共享行内节点映射为 HTML。"""
-    if isinstance(node, InlineText):
-        return HtmlInlineResult(
+    """把一个结构化行内 Span 映射为 HTML。"""
+    if isinstance(span, TextSpan):
+        rendered = HtmlInlineResult(
             _render_text_html(
-                node.content,
+                span.content,
                 linkify_text=linkify_text,
                 preserve_newlines=preserve_newlines,
             )
         )
-    if isinstance(node, InlineCode):
-        return HtmlInlineResult(f"<code>{_escape_text(node.content)}</code>")
-    if isinstance(node, InlineEquation):
-        return render_math_html(node.latex, display=False)
-    if isinstance(node, InlineStyled):
-        children = render_inline_nodes_html(
-            node.children,
-            linkify_text=linkify_text,
-            preserve_newlines=preserve_newlines,
-        )
-        rendered = _apply_html_styles(children.html, node.styles)
-        plain_text = inline_plain_text(node.children)
-        if _needs_whitespace_preservation(plain_text):
-            rendered = f'<span class="mineru-preserve-whitespace">{rendered}</span>'
-        return HtmlInlineResult(rendered, children.has_math)
-    if isinstance(node, InlineLink):
-        children = render_inline_nodes_html(
-            node.children,
+        styled_html = _apply_html_styles(rendered.html, span.styles)
+        if span.styles and _needs_whitespace_preservation(span.content):
+            styled_html = f'<span class="mineru-preserve-whitespace">{styled_html}</span>'
+        return HtmlInlineResult(styled_html)
+    if isinstance(span, CodeInlineSpan):
+        return HtmlInlineResult(f"<code>{_escape_text(span.content)}</code>")
+    if isinstance(span, EquationInlineSpan):
+        return render_math_html(span.content, display=False)
+    if isinstance(span, HyperlinkSpan):
+        children = render_inline_spans_html(
+            list(span.content),
             linkify_text=False,
             preserve_newlines=preserve_newlines,
         )
-        safe_url = sanitize_link_url(node.url)
+        safe_url = sanitize_link_url(span.url)
         if not safe_url or safe_url == ".":
             return children
         href = html.escape(safe_url, quote=True)
@@ -195,7 +179,7 @@ def _render_inline_node_html(
             f'<a href="{href}" rel="noopener noreferrer">{children.html}</a>',
             children.has_math,
         )
-    raise TypeError(f"Unsupported inline node: {type(node).__name__}")
+    raise TypeError(f"Unsupported inline span: {type(span).__name__}")
 
 
 def _render_text_html(
@@ -302,7 +286,7 @@ def _escape_text_with_breaks(content: str, *, preserve_newlines: bool) -> str:
     return escaped if preserve_newlines else escaped.replace("\n", "<br>\n")
 
 
-def _apply_html_styles(content: str, styles: tuple[str, ...]) -> str:
+def _apply_html_styles(content: str, styles: list[str]) -> str:
     """按 Markdown renderer 的稳定顺序应用共享富文本样式。"""
     if not content:
         return content
@@ -357,7 +341,7 @@ def _neutralize_math_closing_delimiter(latex: str, closing: str) -> str:
 __all__ = [
     "HtmlInlineResult",
     "render_inline_content_html",
-    "render_inline_nodes_html",
+    "render_inline_spans_html",
     "render_joined_inline_contents_html",
     "render_math_html",
 ]

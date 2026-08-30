@@ -7,16 +7,19 @@ from __future__ import annotations
 from dataclasses import replace
 from typing import Any
 
-
+from ....types import BBox
 from .._shared.xycut import sort_entries
 from .document import PDFDocument, PDFImageInfo, get_lines_from_chars
 from .text_styles import (
     PDFTextLinkLine,
     PDFTextStyleLine,
     apply_pdf_text_links,
+    apply_pdf_text_scripts,
     apply_pdf_text_styles,
+    detect_pdf_text_script_lines,
     detect_pdf_text_link_lines,
     detect_pdf_text_style_lines,
+    materialize_pdf_inline_spans,
 )
 
 from .models import (
@@ -142,12 +145,7 @@ def _is_large_raster_image(
 
     bbox = _coerce_bbox(image_info.bbox)
     page_area = max(0.0, page_size[0]) * max(0.0, page_size[1])
-    return (
-        bbox is not None
-        and page_area > 0
-        and _bbox_area(bbox) / page_area
-        >= _REPEATED_RASTER_IMAGE_MIN_PAGE_AREA_RATIO
-    )
+    return bbox is not None and page_area > 0 and _bbox_area(bbox) / page_area >= _REPEATED_RASTER_IMAGE_MIN_PAGE_AREA_RATIO
 
 
 def _detect_repeated_raster_watermark_fingerprints(
@@ -157,9 +155,7 @@ def _detect_repeated_raster_watermark_fingerprints(
     """按大图指纹统计不同页号，出现至少三页时判为跨页图片水印。"""
 
     page_indices_by_fingerprint: dict[str, set[int]] = {}
-    for page_idx, (image_infos, page_size) in enumerate(
-        zip(page_image_infos, page_sizes, strict=True)
-    ):
+    for page_idx, (image_infos, page_size) in enumerate(zip(page_image_infos, page_sizes, strict=True)):
         for image_info in image_infos:
             if image_info.fingerprint is None or not _is_large_raster_image(image_info, page_size):
                 continue
@@ -181,48 +177,40 @@ def _filter_repeated_raster_watermark_bboxes(
     return [
         image_info.bbox
         for image_info in image_infos
-        if not (
-            image_info.fingerprint in watermark_fingerprints
-            and _is_large_raster_image(image_info, page_size)
-        )
+        if not (image_info.fingerprint in watermark_fingerprints and _is_large_raster_image(image_info, page_size))
     ]
 
 
-def _analyze_native_document(pdf_doc: PDFDocument) -> list[list[dict[str, Any]]]:
+def _analyze_native_document(
+    pdf_doc: PDFDocument,
+    *,
+    script_diagnostics: list[dict[str, Any]] | None = None,
+) -> list[list[dict[str, Any]]]:
     """逐页读取数字 PDF，并在轻量页面上完成跨页文本类型判定。"""
 
-    page_sizes = [
-        pdf_doc.page_size(page_idx)
-        for page_idx in range(pdf_doc.page_count)
-    ]
-    page_image_infos = [
-        pdf_doc.get_page_image_infos(page_idx)
-        for page_idx in range(pdf_doc.page_count)
-    ]
-    page_signature_bboxes = [
-        pdf_doc.get_page_signature_bboxes(page_idx)
-        for page_idx in range(pdf_doc.page_count)
-    ]
+    page_sizes = [pdf_doc.page_size(page_idx) for page_idx in range(pdf_doc.page_count)]
+    page_image_infos = [pdf_doc.get_page_image_infos(page_idx) for page_idx in range(pdf_doc.page_count)]
+    page_signature_bboxes = [pdf_doc.get_page_signature_bboxes(page_idx) for page_idx in range(pdf_doc.page_count)]
     watermark_fingerprints = _detect_repeated_raster_watermark_fingerprints(
         page_image_infos,
         page_sizes,
     )
 
     page_sources: list[_PageSource] = []
+    page_text_geometries = []
     page_style_lines: list[list[PDFTextStyleLine]] = []
     page_link_lines: list[list[PDFTextLinkLine]] = []
     for page_idx in range(pdf_doc.page_count):
         page_size = page_sizes[page_idx]
-        chars = pdf_doc.get_page_chars(page_idx)
+        text_geometry = pdf_doc.get_page_chars_with_geometry(page_idx)
+        chars = text_geometry.chars
         lines = _build_native_line_items(
             get_lines_from_chars(chars),
             page_size,
             page_rotation=pdf_doc.page_rotation(page_idx),
         )
         drawing_lines = _get_pdf_drawing_lines(pdf_doc, page_idx)
-        page_style_lines.append(
-            detect_pdf_text_style_lines(lines, drawing_lines)
-        )
+        page_style_lines.append(detect_pdf_text_style_lines(lines, drawing_lines))
         page_link_lines.append(
             detect_pdf_text_link_lines(
                 lines,
@@ -244,12 +232,35 @@ def _analyze_native_document(pdf_doc: PDFDocument) -> list[list[dict[str, Any]]]
             path_infos=pdf_doc.get_page_path_infos(page_idx),
         )
         page_sources.append(source)
+        page_text_geometries.append(text_geometry)
 
     _classify_raw_page_marginals(page_sources)
     prepared_pages = [
-        _prepare_page_source(source)
-        for source in page_sources
+        _prepare_page_source(
+            source,
+            tight_bboxes=geometry.tight_bboxes,
+            origins=geometry.origins,
+        )
+        for source, geometry in zip(page_sources, page_text_geometries, strict=True)
     ]
+    if script_diagnostics is not None:
+        script_diagnostics.extend(
+            {
+                "page_index": page_index,
+                "page_size": prepared.page_size,
+                "script_lines": list(prepared.script_lines),
+                "lines": [
+                    {
+                        "source_index": line.source_index,
+                        "text": line.text,
+                        "bbox": line.bbox,
+                        "angle": line.angle,
+                    }
+                    for line in prepared.remaining_lines
+                ],
+            }
+            for page_index, prepared in enumerate(prepared_pages)
+        )
 
     _classify_repeated_visual_headers(prepared_pages)
     _classify_repeated_page_marginals(prepared_pages)
@@ -279,44 +290,50 @@ def _analyze_native_document(pdf_doc: PDFDocument) -> list[list[dict[str, Any]]]
         )
         for page_index, prepared in enumerate(prepared_pages)
     ]
-    for page_blocks, style_lines, link_lines, page_size in zip(
-        finalized_pages,
-        page_style_lines,
-        page_link_lines,
-        page_sizes,
-        strict=True,
+    for page_index, (page_blocks, prepared, style_lines, link_lines, page_size) in enumerate(
+        zip(
+            finalized_pages,
+            prepared_pages,
+            page_style_lines,
+            page_link_lines,
+            page_sizes,
+            strict=True,
+        )
     ):
         apply_pdf_text_links(page_blocks, link_lines, page_size)
         apply_pdf_text_styles(page_blocks, style_lines, page_size)
+        materialized_diagnostics = None
+        if script_diagnostics is not None:
+            materialized_diagnostics = []
+            script_diagnostics[page_index]["materialized_ranges"] = materialized_diagnostics
+        apply_pdf_text_scripts(
+            page_blocks,
+            prepared.script_lines,
+            page_size,
+            materialized_diagnostics=materialized_diagnostics,
+        )
+        materialize_pdf_inline_spans(page_blocks)
     return finalized_pages
 
 
-def _prepare_page_source(source: _PageSource) -> _PreparedPage:
+def _prepare_page_source(
+    source: _PageSource,
+    *,
+    tight_bboxes: dict[int, BBox] | None = None,
+    origins: dict[int, tuple[float, float]] | None = None,
+) -> _PreparedPage:
     """先认领视觉容器，再标注辅助文本并留下可跨页比较的轻量文本行。"""
 
-    protected_line_indices = {
-        line.source_index
-        for line in source.lines
-        if line.semantic_type is not None
-    }
+    protected_line_indices = {line.source_index for line in source.lines if line.semantic_type is not None}
     analysis_source = replace(
         source,
-        lines=[
-            line
-            for line in source.lines
-            if line.source_index not in protected_line_indices
-        ],
+        lines=[line for line in source.lines if line.source_index not in protected_line_indices],
     )
     form_bboxes = _select_form_image_bboxes(source)
     strong_graphic_bboxes = _detect_strong_graphic_bboxes(analysis_source)
-    rule_code_blocks, claimed_rule_code_line_indices = (
-        _build_rule_delimited_code_blocks(
-            analysis_source,
-            form_bboxes
-            + strong_graphic_bboxes
-            + list(source.image_bboxes)
-            + list(source.signature_bboxes),
-        )
+    rule_code_blocks, claimed_rule_code_line_indices = _build_rule_delimited_code_blocks(
+        analysis_source,
+        form_bboxes + strong_graphic_bboxes + list(source.image_bboxes) + list(source.signature_bboxes),
     )
     rule_code_bboxes = [block["bbox"] for block in rule_code_blocks]
     candidates = [
@@ -325,18 +342,15 @@ def _prepare_page_source(source: _PageSource) -> _PreparedPage:
             analysis_source,
             excluded_bboxes=strong_graphic_bboxes + rule_code_bboxes,
         )
-        if not any(
-            _form_supersedes_nested_bbox(form_bbox, candidate.bbox)
-            for form_bbox in form_bboxes
-        )
+        if not any(_form_supersedes_nested_bbox(form_bbox, candidate.bbox) for form_bbox in form_bboxes)
     ]
     # 候选检测仍避开预分类边缘文本；已确认表格物化时回到原始行，
     # 让 core_bbox 内的误标页脚可被重新认领，表格外边缘文本不会被矩形扩张带入。
-    table_blocks, table_annotation_blocks, claimed_line_indices = (
-        _materialize_table_blocks(
-            source,
-            candidates,
-        )
+    table_blocks, table_annotation_blocks, claimed_line_indices = _materialize_table_blocks(
+        source,
+        candidates,
+        tight_bboxes=tight_bboxes,
+        origins=origins,
     )
     claimed_line_indices.update(claimed_rule_code_line_indices)
     table_bboxes = [block["bbox"] for block in table_blocks]
@@ -344,18 +358,12 @@ def _prepare_page_source(source: _PageSource) -> _PreparedPage:
         form_bbox
         for form_bbox in form_bboxes
         if not any(
-            _bbox_overlap_in_smaller(form_bbox, table_bbox)
-            >= _IMAGE_CONTAINER_OVERLAP_THRESHOLD
-            for table_bbox in table_bboxes
+            _bbox_overlap_in_smaller(form_bbox, table_bbox) >= _IMAGE_CONTAINER_OVERLAP_THRESHOLD for table_bbox in table_bboxes
         )
     ]
     code_blocks, claimed_code_line_indices = _build_code_blocks(
         analysis_source,
-        table_bboxes
-        + active_form_bboxes
-        + strong_graphic_bboxes
-        + list(source.image_bboxes)
-        + list(source.signature_bboxes),
+        table_bboxes + active_form_bboxes + strong_graphic_bboxes + list(source.image_bboxes) + list(source.signature_bboxes),
         claimed_line_indices,
     )
     code_bboxes = [block["bbox"] for block in code_blocks]
@@ -372,24 +380,12 @@ def _prepare_page_source(source: _PageSource) -> _PreparedPage:
     )
     raster_image_blocks, claimed_raster_line_indices = _build_raster_image_blocks(
         analysis_source,
-        table_blocks
-        + rule_code_blocks
-        + code_blocks
-        + form_image_blocks
-        + graphic_blocks,
-        claimed_line_indices
-        | claimed_code_line_indices
-        | claimed_form_line_indices
-        | claimed_graphic_line_indices,
+        table_blocks + rule_code_blocks + code_blocks + form_image_blocks + graphic_blocks,
+        claimed_line_indices | claimed_code_line_indices | claimed_form_line_indices | claimed_graphic_line_indices,
     )
     vector_formula_blocks, claimed_vector_number_indices = _build_vector_formula_blocks(
         analysis_source,
-        table_blocks
-        + rule_code_blocks
-        + code_blocks
-        + form_image_blocks
-        + graphic_blocks
-        + raster_image_blocks,
+        table_blocks + rule_code_blocks + code_blocks + form_image_blocks + graphic_blocks + raster_image_blocks,
         claimed_line_indices
         | claimed_code_line_indices
         | claimed_form_line_indices
@@ -405,20 +401,9 @@ def _prepare_page_source(source: _PageSource) -> _PreparedPage:
         | claimed_vector_number_indices
     )
     remaining_lines = _split_parallel_graphic_rule_rows(
-        [
-            line
-            for line in source.lines
-            if line.source_index not in claimed_line_indices
-        ],
+        [line for line in source.lines if line.source_index not in claimed_line_indices],
         source.drawing_lines,
-        [
-            block["bbox"]
-            for block in (
-                form_image_blocks
-                + graphic_blocks
-                + raster_image_blocks
-            )
-        ],
+        [block["bbox"] for block in (form_image_blocks + graphic_blocks + raster_image_blocks)],
         table_bboxes,
         source.page_size,
         source_index_start=max(
@@ -443,7 +428,18 @@ def _prepare_page_source(source: _PageSource) -> _PreparedPage:
         source.page_size,
         table_bboxes,
     )
+    formula_candidate_lines = [line for line in remaining_lines if line.formula_candidate_only]
+    remaining_lines = [line for line in remaining_lines if not line.formula_candidate_only]
+    script_lines = detect_pdf_text_script_lines(
+        remaining_lines,
+        source.page_size,
+        tight_bboxes or {},
+        origins or {},
+        all_chars=source.chars,
+        drawing_lines=source.drawing_lines,
+    )
     _compact_prepared_lines(remaining_lines, source.page_size)
+    _compact_prepared_lines(formula_candidate_lines, source.page_size)
     prepared = _PreparedPage(
         page_size=source.page_size,
         remaining_lines=remaining_lines,
@@ -459,6 +455,8 @@ def _prepare_page_source(source: _PageSource) -> _PreparedPage:
             + raster_image_blocks
             + vector_formula_blocks
         ),
+        script_lines=script_lines,
+        formula_candidate_lines=formula_candidate_lines,
     )
     _classify_page_auxiliary_text(prepared)
     return prepared
@@ -494,12 +492,11 @@ def _finalize_prepared_page(
         container_bboxes,
         require_heading=True,
     )
-    semantic_lines.extend(
-        line
-        for line in unresolved_lines
-        if line.semantic_type is not None
-    )
-    formula_input = [line for line in unresolved_lines if line.semantic_type is None]
+    semantic_lines.extend(line for line in unresolved_lines if line.semantic_type is not None)
+    formula_input = [
+        *(line for line in unresolved_lines if line.semantic_type is None),
+        *prepared.formula_candidate_lines,
+    ]
     formula_input = _restore_dense_split_visual_rows(
         formula_input,
         prepared.page_size,
@@ -521,26 +518,12 @@ def _finalize_prepared_page(
         container_bboxes,
     )
     index_blocks.extend(fallback_index_blocks)
-    semantic_lines.extend(
-        line
-        for line in remaining_lines
-        if line.semantic_type is not None
-    )
-    remaining_lines = [
-        line
-        for line in remaining_lines
-        if line.semantic_type is None
-    ]
+    semantic_lines.extend(line for line in remaining_lines if line.semantic_type is not None)
+    remaining_lines = [line for line in remaining_lines if line.semantic_type is None]
     title_container_bboxes = [
-        block["bbox"]
-        for block in prepared.fixed_blocks
-        if not isinstance(block.get("_inline_visual_row_id"), int)
+        block["bbox"] for block in prepared.fixed_blocks if not isinstance(block.get("_inline_visual_row_id"), int)
     ]
-    caption_container_bboxes = [
-        block["bbox"]
-        for block in prepared.fixed_blocks
-        if block.get("type") in {"image", "code"}
-    ]
+    caption_container_bboxes = [block["bbox"] for block in prepared.fixed_blocks if block.get("type") in {"image", "code"}]
     _classify_body_height_section_titles(
         remaining_lines,
         prepared.page_size,
@@ -580,20 +563,14 @@ def _finalize_prepared_page(
     )
     text_blocks = _merge_image_caption_text_blocks(
         text_blocks,
-        [
-            block["bbox"]
-            for block in prepared.fixed_blocks
-            if block.get("type") == "image"
-        ],
+        [block["bbox"] for block in prepared.fixed_blocks if block.get("type") == "image"],
     )
     text_blocks = _merge_fragmented_header_blocks(text_blocks)
     text_blocks = _merge_repeated_compact_title_continuations(
         text_blocks,
         prepared.page_size,
     )
-    absolute_blocks = (
-        prepared.fixed_blocks + formula_blocks + index_blocks + text_blocks
-    )
+    absolute_blocks = prepared.fixed_blocks + formula_blocks + index_blocks + text_blocks
     visual_annotation_regions = _classify_and_bind_visual_annotations(
         absolute_blocks,
         prepared.page_size,
@@ -605,9 +582,7 @@ def _finalize_prepared_page(
         visual_annotation_regions=visual_annotation_regions,
     )
     return [
-        normalized
-        for block in sorted_blocks
-        if (normalized := _normalize_output_block(block, prepared.page_size)) is not None
+        normalized for block in sorted_blocks if (normalized := _normalize_output_block(block, prepared.page_size)) is not None
     ]
 
 
@@ -635,9 +610,7 @@ def _sort_blocks_with_visual_row_groups(
         block_type = block.get("type")
         bbox = block.get("bbox")
         if block_type == "header" or (
-            block_type == "page_number"
-            and isinstance(bbox, (list, tuple))
-            and _bbox_center_y(bbox) <= 0.5 * local_page_height
+            block_type == "page_number" and isinstance(bbox, (list, tuple)) and _bbox_center_y(bbox) <= 0.5 * local_page_height
         ):
             top_marginals.append(block)
         elif block_type in {"footer", "page_footnote"} or block_type == "page_number":
@@ -645,17 +618,11 @@ def _sort_blocks_with_visual_row_groups(
         else:
             body_blocks.append(block)
 
-    body_index_by_identity = {
-        id(block): index for index, block in enumerate(body_blocks)
-    }
+    body_index_by_identity = {id(block): index for index, block in enumerate(body_blocks)}
     region_groups: list[list[dict[str, Any]]] = []
     region_consumed_indices: set[int] = set()
     for region in visual_annotation_regions or []:
-        indices = [
-            body_index_by_identity[id(member)]
-            for member in region
-            if id(member) in body_index_by_identity
-        ]
+        indices = [body_index_by_identity[id(member)] for member in region if id(member) in body_index_by_identity]
         if len(indices) < 2 or any(index in region_consumed_indices for index in indices):
             continue
         members = [body_blocks[index] for index in indices]
@@ -668,11 +635,7 @@ def _sort_blocks_with_visual_row_groups(
         body_blocks,
         excluded_indices=region_consumed_indices,
     )
-    inline_consumed_indices = {
-        index
-        for indices in inline_grouped_indices.values()
-        for index in indices
-    }
+    inline_consumed_indices = {index for indices in inline_grouped_indices.values() for index in indices}
     grouped_indices: dict[int, list[int]] = {}
     for index, block in enumerate(body_blocks):
         if index in region_consumed_indices or index in inline_consumed_indices:
@@ -720,11 +683,7 @@ def _sort_blocks_with_visual_row_groups(
         virtual_groups.append(virtual_group)
         consumed_indices.update(indices)
 
-    sortable_blocks = [
-        block
-        for index, block in enumerate(body_blocks)
-        if index not in consumed_indices
-    ]
+    sortable_blocks = [block for index, block in enumerate(body_blocks) if index not in consumed_indices]
     sortable_blocks.extend(virtual_groups)
     sorted_payloads = sort_entries(sortable_blocks)
     output: list[dict[str, Any]] = []
@@ -803,11 +762,7 @@ def _inline_visual_group_member_sort_key(
     """按图片位置或正文首个局部行位置确定复合视觉行的组内顺序。"""
 
     local_line_bboxes = block.get("_local_line_bboxes")
-    if (
-        block.get("type") == "text"
-        and isinstance(local_line_bboxes, list)
-        and local_line_bboxes
-    ):
+    if block.get("type") == "text" and isinstance(local_line_bboxes, list) and local_line_bboxes:
         local_bbox = local_line_bboxes[0]
     else:
         angle = int(block.get("angle", 0) or 0) % 360
@@ -855,10 +810,7 @@ def _sort_marginal_blocks(
             (
                 row
                 for row in rows
-                if abs(
-                    _bbox_center_y(item[1])
-                    - sum(_bbox_center_y(member[1]) for member in row) / len(row)
-                )
+                if abs(_bbox_center_y(item[1]) - sum(_bbox_center_y(member[1]) for member in row) / len(row))
                 <= 0.75 * median_height
             ),
             None,
@@ -867,14 +819,8 @@ def _sort_marginal_blocks(
             rows.append([item])
         else:
             target.append(item)
-    rows.sort(
-        key=lambda row: sum(_bbox_center_y(member[1]) for member in row) / len(row)
-    )
-    return [
-        block
-        for row in rows
-        for block, _bbox in sorted(row, key=lambda member: member[1][0])
-    ]
+    rows.sort(key=lambda row: sum(_bbox_center_y(member[1]) for member in row) / len(row))
+    return [block for row in rows for block, _bbox in sorted(row, key=lambda member: member[1][0])]
 
 
 def _stabilize_overlapping_lane_order(
@@ -905,9 +851,7 @@ def _overlapping_lane_pair_is_inverted(
 ) -> bool:
     """判断相邻块是否属于同一内部栏带且视觉中心顺序与当前结果相反。"""
 
-    if first.get("_visual_annotation_region_member") or second.get(
-        "_visual_annotation_region_member"
-    ):
+    if first.get("_visual_annotation_region_member") or second.get("_visual_annotation_region_member"):
         return False
     first_interval = first.get("_lane_interval")
     second_interval = second.get("_lane_interval")
@@ -917,8 +861,7 @@ def _overlapping_lane_pair_is_inverted(
         or len(first_interval) != 2
         or len(second_interval) != 2
         or first.get("_lane_is_span") != second.get("_lane_is_span")
-        or int(first.get("angle", 0) or 0) % 360
-        != int(second.get("angle", 0) or 0) % 360
+        or int(first.get("angle", 0) or 0) % 360 != int(second.get("angle", 0) or 0) % 360
     ):
         return False
     first_bbox = _rotate_bbox_to_upright(
@@ -979,6 +922,16 @@ def _normalize_output_block(
         "angle": 0 if normalized_type == "image" else int(block.get("angle", 0) or 0) % 360,
         "content": content,
     }
+    inline_math_regions = []
+    for value in block.get("_inline_math_regions", []):
+        raw_region = _coerce_bbox(value)
+        if raw_region is None:
+            continue
+        region = _clip_bbox(raw_region, page_size)
+        if region is not None:
+            inline_math_regions.append(_normalize_bbox_to_thousandths(region, page_size))
+    if inline_math_regions:
+        output_block["_inline_math_regions"] = inline_math_regions
     if normalized_type in _LINE_METADATA_OUTPUT_TYPES:
         output_block["lines"] = _normalize_output_line_items(block, page_size)
     return output_block
@@ -1002,12 +955,7 @@ def _normalize_output_line_items(
         except (TypeError, ValueError):
             return []
         coerced_bbox = _coerce_bbox(raw_bbox)
-        if (
-            len(raw_bbox) != 4
-            or coerced_bbox is None
-            or raw_bbox[2] <= raw_bbox[0]
-            or raw_bbox[3] <= raw_bbox[1]
-        ):
+        if len(raw_bbox) != 4 or coerced_bbox is None or raw_bbox[2] <= raw_bbox[0] or raw_bbox[3] <= raw_bbox[1]:
             return []
         page_bbox = _clip_bbox(
             _rotate_bbox_from_upright(coerced_bbox, page_size, angle),
@@ -1015,7 +963,5 @@ def _normalize_output_line_items(
         )
         if page_bbox is None:
             return []
-        line_items.append(
-            {"bbox": _normalize_bbox_to_thousandths(page_bbox, page_size)}
-        )
+        line_items.append({"bbox": _normalize_bbox_to_thousandths(page_bbox, page_size)})
     return line_items

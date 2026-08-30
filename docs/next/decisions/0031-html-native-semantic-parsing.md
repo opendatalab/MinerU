@@ -8,11 +8,11 @@
 
 文件类型、Doclib、API Server 与 mineru-kit 已把 `.html/.htm` 归入仅支持 Flash 的输入，但严格 `FileSuffix` 与
 `doc_analyze()` 尚未接通，导致请求在高层被接受后才以 `Unsupported file type: html` 失败。旧 HTML parser 依赖
-历史 `Line`/`Span` 结构，也无法复用 Middle JSON 2.0 的统一后处理与 renderer。
+历史 `Line`/`Span` 结构，也无法复用 Middle JSON 3.0 的统一后处理与 renderer。
 
 ## 决策
 
-- HTML 规范后缀统一为 `html`，使用 `flash/txt`、整本文档、单逻辑页、无 bbox 的 ModelJson/MiddleJson 2.0 路径。
+- HTML 规范后缀统一为 `html`，使用 `flash/txt`、整本文档、单逻辑页、无 bbox 的 ModelJson/MiddleJson 3.0 路径。
 - 只解析静态源码，不执行 JavaScript、不启动浏览器、不生成布局坐标。
 - 默认固定使用保守 `auto` 正文选择：高置信候选进入正文投影，其余情况回退完整 body；首版不公开模式参数。
 - MinerU 自身 renderer 输出版本化 `data-mineru-html-version="1"` 机器契约。只有当前 renderer 能生成的 canonical
@@ -28,7 +28,7 @@
 - EPUB XHTML 与 standalone HTML 共用静态 markup projector，继续输出既有标题、正文、列表、表格、图片、代码、
   公式和页面脚注 block，不增加 HTML 专属 block。
 - 新版公式 carrier 保存 `data-formula-display` 与 `data-mineru-latex`。网页公式按固定来源优先级收敛为裸 LaTeX：
-  行间写入 `EquationBlock.content`，行内写为 `<eq>latex</eq>`，不保留 `$...$`、`\(...\)` 或 `\[...\]` 外层定界符。
+  行间写入 `EquationBlock.content`，行内写入 `EquationInlineSpan`，不保留 `$...$`、`\(...\)` 或 `\[...\]` 外层定界符。
   无法安全转换的 MathML 与暂不支持的 AsciiMath 保留可见文本，不冒充 LaTeX。
 - 有序列表只保留连续阿拉伯编号和单一列表级起始值。
 - data URI 与安全本地图片进入 `image_base64`；本地相对路径不得逃逸 HTML 所在安全根目录。
@@ -49,7 +49,7 @@
 - `.html/.htm` 可通过 SDK、API Server、mineru-kit 和 Doclib 本地 Flash 路径生成统一多格式输出。
 - 新版 MinerU HTML 可按类型级往返；FULL 中页面辅助类型可恢复，但 HTML 输入仍固定投影为一个逻辑页，
   不依据 `data-page-idx` 重建原始多页。
-- `image_url` 是 schema 2.0 内可选且默认省略的增量字段；现有格式与既有 payload 不发生变化。
+- `image_url` 是 schema 3.0 内可选且默认省略的字段。
 - 打开 Markdown 或 HTML 输出时，客户端可能访问原 HTML 中保留的远程图片地址；服务端解析阶段不会访问该地址。
 - 所有非 PDF 页范围请求继续返回 `page_range_invalid`。
 

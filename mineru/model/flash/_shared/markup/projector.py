@@ -11,7 +11,16 @@ from typing import Protocol, TypeAlias
 from lxml import etree  # type: ignore[reportMissingImports]
 
 from .....types import RAW_ALGORITHM, BlockType, VISUAL_TYPE_MAPPING
-from ..hyperlink import render_inline_hyperlink
+from ..spans import (
+    append_code_span,
+    append_equation_span,
+    append_hyperlink_span,
+    append_text_span,
+    extend_inline_spans,
+    inline_span_plain_text,
+    strip_span_dicts,
+    text_spans,
+)
 from ..names import local_name
 from .formula import FormulaExtraction, extract_formula
 from .styles import MarkupStylesheet, TextStyle
@@ -100,7 +109,8 @@ _FOOTNOTE_TOKENS = frozenset(
 )
 _VISUAL_ELEMENT_TAGS = frozenset({"img", "image", "pre", "svg", "table"})
 _LIST_PAGE_BLOCK_TAGS = frozenset({"figure", "image", "img", "math", "pre", "svg", "table"})
-_InlineProjectionSegment: TypeAlias = str | dict[str, object]
+_InlineSpanDict: TypeAlias = dict[str, object]
+_InlineProjectionSegment: TypeAlias = list[_InlineSpanDict] | dict[str, object]
 
 
 def clean_text_node(value: str | None) -> str:
@@ -132,21 +142,22 @@ def _append_inline_segment(
     segments: list[_InlineProjectionSegment],
     segment: _InlineProjectionSegment,
 ) -> None:
-    """追加行内投影片段，并合并相邻文本以保持稳定 block 粒度。"""
-    if isinstance(segment, str) and segments and isinstance(segments[-1], str):
-        segments[-1] += segment
-    elif not isinstance(segment, str) or segment:
+    """追加行内投影片段，并合并相邻 Span 组以保持稳定 block 粒度。"""
+    if isinstance(segment, list) and segments and isinstance(segments[-1], list):
+        extend_inline_spans(segments[-1], segment)
+    elif not isinstance(segment, list) or segment:
         segments.append(segment)
 
 
-def _append_list_block_content(parts: list[str], rendered: str) -> None:
+def _append_list_block_content(parts: list[_InlineSpanDict], rendered: list[_InlineSpanDict]) -> None:
     """用换行包围列表项内的块级正文，避免相邻段落静默粘连。"""
-    if not rendered.strip():
+    if not rendered:
         return
-    last_visible = next((part for part in reversed(parts) if part), "")
+    last_visible = inline_span_plain_text(parts)
     if last_visible and not last_visible.endswith("\n"):
-        parts.append("\n")
-    parts.extend((rendered, "\n"))
+        append_text_span(parts, "\n")
+    extend_inline_spans(parts, rendered)
+    append_text_span(parts, "\n")
 
 
 def entity_text(element: etree._Element) -> str:
@@ -259,15 +270,15 @@ class MarkupProjector:
         """把一个已知块元素按默认继承样式投影，供版本化 HTML 解码复用。"""
         return self._parse_block(element, TextStyle())
 
-    def project_inline_content(self, element: etree._Element) -> str:
-        """把一个已知行内容器恢复为统一富文本字符串。"""
+    def project_inline_content(self, element: etree._Element) -> list[_InlineSpanDict]:
+        """把一个已知行内容器恢复为结构化 Span。"""
         resolved = self.stylesheet.resolve(element, TextStyle())
         if resolved.subtree_hidden:
-            return ""
+            return []
         content, extras = self._render_inline_children(element, resolved.text, resolved.visibility_hidden)
         if extras:
             raise ValueError("inline projection produced unexpected block content")
-        return content.strip()
+        return strip_span_dicts(content)
 
     def _parse_container_contents(
         self,
@@ -277,11 +288,13 @@ class MarkupProjector:
     ) -> list[dict[str, object]]:
         """把连续行内内容和块级子元素按源顺序拆成 raw blocks。"""
         blocks: list[dict[str, object]] = []
-        inline_parts: list[str] = [] if visibility_hidden else [self._render_text(element.text, style)]
+        inline_parts: list[_InlineSpanDict] = []
+        if not visibility_hidden:
+            extend_inline_spans(inline_parts, self._render_text(element.text, style))
 
         def flush_inline() -> None:
             """把当前连续行内片段写为普通正文 block。"""
-            content = "".join(inline_parts).strip()
+            content = strip_span_dicts(inline_parts)
             inline_parts.clear()
             if content:
                 blocks.append({"type": BlockType.TEXT, "content": content})
@@ -289,8 +302,8 @@ class MarkupProjector:
         for child in element:
             if not isinstance(child.tag, str):
                 if not visibility_hidden:
-                    inline_parts.append(self._render_text(entity_text(child), style))
-                    inline_parts.append(self._render_text(child.tail, style))
+                    extend_inline_spans(inline_parts, self._render_text(entity_text(child), style))
+                    extend_inline_spans(inline_parts, self._render_text(child.tail, style))
                 continue
             name = local_name(child)
             if name in BLOCK_TAGS:
@@ -298,13 +311,13 @@ class MarkupProjector:
                 blocks.extend(self._parse_block(child, style, visibility_hidden))
             else:
                 for segment in self._render_inline_element_ordered(child, style, visibility_hidden):
-                    if isinstance(segment, str):
-                        inline_parts.append(segment)
+                    if isinstance(segment, list):
+                        extend_inline_spans(inline_parts, segment)
                     else:
                         flush_inline()
                         blocks.append(segment)
             if not visibility_hidden:
-                inline_parts.append(self._render_text(child.tail, style))
+                extend_inline_spans(inline_parts, self._render_text(child.tail, style))
         flush_inline()
         return blocks
 
@@ -344,7 +357,7 @@ class MarkupProjector:
             if formula is not None:
                 return [{"type": BlockType.EQUATION, "content": formula.latex}]
             fallback = self._visible_plain_text(element, resolved.text, resolved.visibility_hidden)
-            return [{"type": BlockType.TEXT, "content": html.escape(fallback, quote=False)}] if fallback else []
+            return [{"type": BlockType.TEXT, "content": text_spans(fallback)}] if fallback else []
         if name == "figure":
             return self._parse_figure(element, resolved.text, resolved.visibility_hidden)
         if name in {"aside", "div", "section"} and self._has_contextual_visual_annotation(element):
@@ -364,17 +377,17 @@ class MarkupProjector:
         blocks: list[dict[str, object]] = []
         text_emitted = False
         for segment in self._render_inline_children_ordered(element, style, visibility_hidden):
-            if not isinstance(segment, str):
+            if not isinstance(segment, list):
                 blocks.append(segment)
                 continue
-            content = segment.strip()
+            content = strip_span_dicts(segment)
             if not content:
                 continue
             if text_emitted:
                 blocks.append({"type": BlockType.TEXT, "content": content})
                 continue
             if name == "h1" and (not self.single_document_title or not self.document_title_emitted):
-                block: dict[str, object] = {"type": BlockType.DOC_TITLE, "level": 1, "content": content.strip()}
+                block: dict[str, object] = {"type": BlockType.DOC_TITLE, "level": 1, "content": content}
                 self.document_title_emitted = True
             elif name.startswith("h"):
                 level = min(max(int(name[1:]), 2), 6)
@@ -382,10 +395,10 @@ class MarkupProjector:
                     "type": BlockType.PARAGRAPH_TITLE,
                     "level": level,
                     "is_numbered_style": False,
-                    "content": content.strip(),
+                    "content": content,
                 }
             else:
-                block = {"type": BlockType.TEXT, "content": content.strip()}
+                block = {"type": BlockType.TEXT, "content": content}
             if name.startswith("h") and (anchor := self.context.heading_anchor(element)):
                 block["anchor"] = anchor
             blocks.append(block)
@@ -403,7 +416,8 @@ class MarkupProjector:
         anchor = self.context.note_anchor(element)
         anchor_attached = False
         for block in blocks:
-            if block.get("type") != BlockType.TEXT or not str(block.get("content") or "").strip():
+            content = block.get("content")
+            if block.get("type") != BlockType.TEXT or not isinstance(content, list) or not content:
                 continue
             block["type"] = BlockType.PAGE_FOOTNOTE
             if anchor is not None and not anchor_attached:
@@ -416,12 +430,16 @@ class MarkupProjector:
         element: etree._Element,
         style: TextStyle,
         visibility_hidden: bool = False,
-    ) -> tuple[str, list[dict[str, object]]]:
-        """渲染元素的连续行内内容，并旁路其中的视觉 blocks。"""
+    ) -> tuple[list[_InlineSpanDict], list[dict[str, object]]]:
+        """渲染元素的连续行内 Span，并旁路其中的视觉 blocks。"""
         segments = self._render_inline_children_ordered(element, style, visibility_hidden)
+        content: list[_InlineSpanDict] = []
+        for segment in segments:
+            if isinstance(segment, list):
+                extend_inline_spans(content, segment)
         return (
-            "".join(segment for segment in segments if isinstance(segment, str)),
-            [segment for segment in segments if not isinstance(segment, str)],
+            content,
+            [segment for segment in segments if not isinstance(segment, list)],
         )
 
     def _render_inline_children_ordered(
@@ -451,12 +469,16 @@ class MarkupProjector:
         element: etree._Element,
         inherited: TextStyle,
         inherited_visibility_hidden: bool = False,
-    ) -> tuple[str, list[dict[str, object]]]:
-        """把一个行内元素转换为内部富文本协议和可选视觉块。"""
+    ) -> tuple[list[_InlineSpanDict], list[dict[str, object]]]:
+        """把一个行内元素转换为结构化 Span 和可选视觉块。"""
         segments = self._render_inline_element_ordered(element, inherited, inherited_visibility_hidden)
+        content: list[_InlineSpanDict] = []
+        for segment in segments:
+            if isinstance(segment, list):
+                extend_inline_spans(content, segment)
         return (
-            "".join(segment for segment in segments if isinstance(segment, str)),
-            [segment for segment in segments if not isinstance(segment, str)],
+            content,
+            [segment for segment in segments if not isinstance(segment, list)],
         )
 
     def _render_inline_element_ordered(
@@ -473,7 +495,7 @@ class MarkupProjector:
         if name in SKIPPED_TAGS:
             return []
         if name == "br":
-            return [] if resolved.visibility_hidden else ["\n"]
+            return [] if resolved.visibility_hidden else [text_spans("\n")]
         if name in {"img", "image"}:
             return [] if resolved.visibility_hidden else self._image_blocks(element)
         if name == "math":
@@ -483,14 +505,18 @@ class MarkupProjector:
             if formula is not None:
                 if formula.display == "block":
                     return [{"type": BlockType.EQUATION, "content": formula.latex}]
-                return [f"<eq>{html.escape(formula.latex, quote=False)}</eq>"]
+                spans: list[_InlineSpanDict] = []
+                append_equation_span(spans, formula.latex)
+                return [spans]
             fallback = self._visible_plain_text(element, resolved.text, resolved.visibility_hidden)
-            return [html.escape(fallback, quote=False)] if fallback else []
+            return [text_spans(fallback)] if fallback else []
         if name == "code":
             if resolved.visibility_hidden:
                 return []
             code = self._visible_raw_text(element, resolved.text, resolved.visibility_hidden)
-            return [f"<code>{html.escape(code, quote=False)}</code>"] if code else []
+            spans = []
+            append_code_span(spans, code)
+            return [spans] if spans else []
         if name in BLOCK_TAGS:
             return self._parse_block(element, inherited, inherited_visibility_hidden)
         segments = self._render_inline_children_ordered(element, resolved.text, resolved.visibility_hidden)
@@ -498,21 +524,24 @@ class MarkupProjector:
             href = element.get("href") or element.get(_XLINK_HREF) or ""
             target = self.context.resolve_link(href)
             if target:
-                return [
-                    render_inline_hyperlink(segment, target) if isinstance(segment, str) and segment.strip() else segment
-                    for segment in segments
-                ]
+                linked: list[_InlineProjectionSegment] = []
+                for segment in segments:
+                    if not isinstance(segment, list) or not segment:
+                        linked.append(segment)
+                        continue
+                    wrapped: list[_InlineSpanDict] = []
+                    append_hyperlink_span(wrapped, segment, target)
+                    linked.append(wrapped)
+                return linked
         return segments
 
     @staticmethod
-    def _render_text(value: str | None, style: TextStyle) -> str:
-        """折叠并转义文本节点，再按现有行内协议应用文字样式。"""
+    def _render_text(value: str | None, style: TextStyle) -> list[_InlineSpanDict]:
+        """折叠文本节点并直接投影为带样式 TextSpan。"""
         text = clean_text_node(value)
         if not text:
-            return ""
-        escaped = html.escape(text, quote=False)
-        names = style.names()
-        return f'<text style="{",".join(names)}">{escaped}</text>' if names else escaped
+            return []
+        return text_spans(text, style.names())
 
     def _visible_raw_text(
         self,
@@ -546,7 +575,7 @@ class MarkupProjector:
         resolved = self.context.resolve_image(source, alt=requested_alt)
         alt = (resolved.alt if resolved is not None else requested_alt).strip()
         if resolved is None or not (resolved.image_base64 or resolved.image_url):
-            return [{"type": BlockType.TEXT, "content": html.escape(alt, quote=False)}] if alt else []
+            return [{"type": BlockType.TEXT, "content": text_spans(alt)}] if alt else []
         block: dict[str, object] = {"type": BlockType.IMAGE, "content": ""}
         if resolved.image_base64:
             block["image_base64"] = resolved.image_base64
@@ -555,7 +584,7 @@ class MarkupProjector:
         blocks: list[dict[str, object]] = [block]
         annotation = (caption or (alt if emit_alt_caption else "")).strip()
         if annotation:
-            blocks.append({"type": BlockType.IMAGE_CAPTION, "content": html.escape(annotation, quote=False)})
+            blocks.append({"type": BlockType.IMAGE_CAPTION, "content": text_spans(annotation)})
         return blocks
 
     def _parse_figure(
@@ -596,8 +625,8 @@ class MarkupProjector:
             annotation_type = VISUAL_TYPE_MAPPING[visual_type][kind] if visual_type is not None else BlockType.TEXT
             annotation_blocks: list[dict[str, object]] = []
             for segment in self._render_inline_children_ordered(annotation, resolved.text, resolved.visibility_hidden):
-                if isinstance(segment, str):
-                    if content := segment.strip():
+                if isinstance(segment, list):
+                    if content := strip_span_dicts(segment):
                         annotation_blocks.append({"type": annotation_type, "content": content})
                     continue
                 if visual_type is not None and segment.get("type") == BlockType.TEXT:
@@ -627,11 +656,13 @@ class MarkupProjector:
         """按 DOM 顺序缓冲 figure 文本，并在 visual extras 前后切分正文 block。"""
         blocks: list[dict[str, object]] = []
         visual_blocks_by_child: dict[etree._Element, list[dict[str, object]]] = {}
-        inline_parts: list[str] = [] if visibility_hidden else [self._render_text(element.text, style)]
+        inline_parts: list[_InlineSpanDict] = []
+        if not visibility_hidden:
+            extend_inline_spans(inline_parts, self._render_text(element.text, style))
 
         def flush_inline() -> None:
             """把 figure 当前连续文本写为普通正文 block。"""
-            content = "".join(inline_parts).strip()
+            content = strip_span_dicts(inline_parts)
             inline_parts.clear()
             if content:
                 blocks.append({"type": BlockType.TEXT, "content": content})
@@ -639,12 +670,12 @@ class MarkupProjector:
         for child in element:
             if not isinstance(child.tag, str):
                 if not visibility_hidden:
-                    inline_parts.append(self._render_text(entity_text(child), style))
-                    inline_parts.append(self._render_text(child.tail, style))
+                    extend_inline_spans(inline_parts, self._render_text(entity_text(child), style))
+                    extend_inline_spans(inline_parts, self._render_text(child.tail, style))
                 continue
             if child in annotation_elements:
                 if not visibility_hidden:
-                    inline_parts.append(self._render_text(child.tail, style))
+                    extend_inline_spans(inline_parts, self._render_text(child.tail, style))
                 continue
 
             first_child_block = len(blocks)
@@ -659,13 +690,13 @@ class MarkupProjector:
                 blocks.extend(self._parse_block(child, style, visibility_hidden))
             else:
                 for segment in self._render_inline_element_ordered(child, style, visibility_hidden):
-                    if isinstance(segment, str):
-                        inline_parts.append(segment)
+                    if isinstance(segment, list):
+                        extend_inline_spans(inline_parts, segment)
                     else:
                         flush_inline()
                         blocks.append(segment)
             if not visibility_hidden:
-                inline_parts.append(self._render_text(child.tail, style))
+                extend_inline_spans(inline_parts, self._render_text(child.tail, style))
             child_visuals = [block for block in blocks[first_child_block:] if _raw_visual_type(block.get("type")) is not None]
             if child_visuals:
                 visual_blocks_by_child[child] = child_visuals
@@ -753,7 +784,7 @@ class MarkupProjector:
 
         visit(element, style, visibility_hidden)
         if texts:
-            blocks.insert(0, {"type": BlockType.TEXT, "content": html.escape("\n".join(texts), quote=False)})
+            blocks.insert(0, {"type": BlockType.TEXT, "content": text_spans("\n".join(texts))})
         return blocks
 
     def _parse_table(
@@ -776,7 +807,7 @@ class MarkupProjector:
             if not caption_style.subtree_hidden:
                 caption = self._visible_plain_text(caption_element, caption_style.text, caption_style.visibility_hidden)
                 if caption:
-                    blocks.append({"type": BlockType.TABLE_CAPTION, "content": html.escape(caption, quote=False)})
+                    blocks.append({"type": BlockType.TABLE_CAPTION, "content": text_spans(caption)})
         return blocks
 
     def _serialize_table_node(
@@ -972,13 +1003,15 @@ class MarkupProjector:
             if self.context.note_anchor(item) is not None:
                 extras.extend(self._parse_note_element(item, item_style.text, item_style.visibility_hidden))
                 continue
-            content_parts: list[str] = [] if item_style.visibility_hidden else [self._render_text(item.text, item_style.text)]
+            content_parts: list[_InlineSpanDict] = []
+            if not item_style.visibility_hidden:
+                extend_inline_spans(content_parts, self._render_text(item.text, item_style.text))
             nested_lists: list[dict[str, object]] = []
             for child in item:
                 if not isinstance(child.tag, str):
                     if not item_style.visibility_hidden:
-                        content_parts.append(self._render_text(entity_text(child), item_style.text))
-                        content_parts.append(self._render_text(child.tail, item_style.text))
+                        extend_inline_spans(content_parts, self._render_text(entity_text(child), item_style.text))
+                        extend_inline_spans(content_parts, self._render_text(child.tail, item_style.text))
                     continue
                 name = local_name(child)
                 if name in {"ul", "ol"}:
@@ -1005,11 +1038,11 @@ class MarkupProjector:
                             extras.extend(child_extras)
                 else:
                     rendered, child_extras = self._render_inline_element(child, item_style.text, item_style.visibility_hidden)
-                    content_parts.append(rendered)
+                    extend_inline_spans(content_parts, rendered)
                     extras.extend(child_extras)
                 if not item_style.visibility_hidden:
-                    content_parts.append(self._render_text(child.tail, item_style.text))
-            content = "".join(content_parts).strip()
+                    extend_inline_spans(content_parts, self._render_text(child.tail, item_style.text))
+            content = strip_span_dicts(content_parts)
             if content:
                 children.append({"type": BlockType.TEXT, "content": content})
             children.extend(nested_lists)
@@ -1072,7 +1105,7 @@ class MarkupProjector:
             page_positions = [
                 index
                 for index, segment in enumerate(segments)
-                if not isinstance(segment, str) and segment.get("type") != BlockType.LIST
+                if not isinstance(segment, list) and segment.get("type") != BlockType.LIST
             ]
             if not page_positions:
                 item_children = self._list_item_children(segments)
@@ -1087,12 +1120,12 @@ class MarkupProjector:
             prefix_children = self._list_item_children(segments[:first_page_position])
             if not pending_children:
                 pending_start = list_start + visible_item_ordinal
-            pending_children.extend(prefix_children or [{"type": BlockType.TEXT, "content": ""}])
+            pending_children.extend(prefix_children or [{"type": BlockType.TEXT, "content": []}])
             flush_pending()
 
             for segment in segments[first_page_position:]:
-                if isinstance(segment, str):
-                    content = segment.strip()
+                if isinstance(segment, list):
+                    content = strip_span_dicts(segment)
                     if content:
                         output.append({"type": BlockType.TEXT, "content": content})
                 else:
@@ -1116,7 +1149,8 @@ class MarkupProjector:
         normalized: list[_InlineProjectionSegment] = []
         for segment in segments:
             if isinstance(segment, dict) and segment.get("type") == BlockType.TEXT:
-                _append_inline_segment(normalized, str(segment.get("content") or ""))
+                content = segment.get("content")
+                _append_inline_segment(normalized, content if isinstance(content, list) else [])
             else:
                 _append_inline_segment(normalized, segment)
         return normalized
@@ -1124,7 +1158,11 @@ class MarkupProjector:
     @staticmethod
     def _list_item_children(segments: list[_InlineProjectionSegment]) -> list[dict[str, object]]:
         """把无页面 visual 的列表片段收敛为一个文本叶子及其嵌套列表。"""
-        content = "".join(segment for segment in segments if isinstance(segment, str)).strip()
+        content: list[_InlineSpanDict] = []
+        for segment in segments:
+            if isinstance(segment, list):
+                extend_inline_spans(content, segment)
+        content = strip_span_dicts(content)
         children = [{"type": BlockType.TEXT, "content": content}] if content else []
         children.extend(segment for segment in segments if isinstance(segment, dict) and segment.get("type") == BlockType.LIST)
         return children

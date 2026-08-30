@@ -20,6 +20,7 @@ from .table_recovery import (
     coerce_native_table_rules,
     recover_native_pdf_table,
 )
+from .table_text_styles import render_native_table_html_with_scripts
 from ....utils.text import merge_text_line_contents
 from .spatial_text import project_pdf_table_text
 from ....types import BBox
@@ -93,28 +94,28 @@ def _recover_native_table_html(
     chars: tuple[Char, ...] | None = None,
     drawing_lines: tuple[NativeTableRule, ...] | None = None,
     rectangles: tuple[NativeTableRectangle, ...] | None = None,
+    tight_bboxes: dict[int, BBox] | None = None,
+    origins: dict[int, tuple[float, float]] | None = None,
 ) -> str:
     """使用共享原生字符与绘图原语恢复高置信表格 HTML。"""
 
-    result = recover_native_pdf_table(
-        NativeTableInput(
-            table_bbox=table_bbox,
-            page_size=source.page_size,
-            angle=angle,
-            chars=chars if chars is not None else tuple(source.chars),
-            drawing_lines=(
-                drawing_lines
-                if drawing_lines is not None
-                else coerce_native_table_rules(source.drawing_lines)
-            ),
-            rectangles=(
-                rectangles
-                if rectangles is not None
-                else coerce_native_table_rectangles(source.path_infos)
-            ),
-        )
+    table_input = NativeTableInput(
+        table_bbox=table_bbox,
+        page_size=source.page_size,
+        angle=angle,
+        chars=chars if chars is not None else tuple(source.chars),
+        drawing_lines=(drawing_lines if drawing_lines is not None else coerce_native_table_rules(source.drawing_lines)),
+        rectangles=(rectangles if rectangles is not None else coerce_native_table_rectangles(source.path_infos)),
     )
-    return result.html if result is not None else ""
+    result = recover_native_pdf_table(table_input)
+    if result is None:
+        return ""
+    return render_native_table_html_with_scripts(
+        result,
+        table_input,
+        tight_bboxes or {},
+        origins or {},
+    )
 
 
 def _detect_table_candidates(
@@ -2047,6 +2048,9 @@ def _merge_table_candidate_annotations(
 def _materialize_table_blocks(
     source: _PageSource,
     candidates: list[_TableCandidate],
+    *,
+    tight_bboxes: dict[int, BBox] | None = None,
+    origins: dict[int, tuple[float, float]] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], set[int]]:
     """原子物化表体及其独立注释，仅认领整组成功输出的文本行。"""
 
@@ -2085,6 +2089,8 @@ def _materialize_table_blocks(
                 native_chars,
                 native_rules,
                 native_rectangles,
+                tight_bboxes,
+                origins,
             )
         except Exception as exc:
             logger.warning(

@@ -34,6 +34,16 @@ def test_pdf_page_exposes_path_infos_without_raw_pdfium_access() -> None:
     document.get_page_path_infos.assert_called_once_with(3)
 
 
+def test_pdf_page_exposes_chars_with_geometry_without_raw_pdfium_access() -> None:
+    """验证 PDFPage 代理扩展字符几何并保留页索引。"""
+    document = MagicMock()
+    expected = pdf_document.PDFPageTextGeometry(chars=[], tight_bboxes={}, origins={})
+    document.get_page_chars_with_geometry.return_value = expected
+
+    assert pdf_document.PDFPage(document, 4).get_chars_with_geometry() is expected
+    document.get_page_chars_with_geometry.assert_called_once_with(4)
+
+
 def _build_drawing_pdf() -> bytes:
     """构造包含描边、填充细矩形、相邻线段、Form 矩阵和斜线的测试 PDF。"""
     output = BytesIO()
@@ -235,9 +245,7 @@ def _build_rotated_cropped_signature_pdf() -> bytes:
     add_widget((20, 80, 40, 100), field_type="/Btn")
     add_widget((20, 80, 40, 100), subtype="/Text")
     page[NameObject("/Annots")] = annotations
-    writer._root_object[NameObject("/AcroForm")] = DictionaryObject(
-        {NameObject("/Fields"): form_fields}
-    )
+    writer._root_object[NameObject("/AcroForm")] = DictionaryObject({NameObject("/Fields"): form_fields})
 
     output = BytesIO()
     writer.write(output)
@@ -267,9 +275,7 @@ def _build_rotated_cropped_link_pdf() -> bytes:
             {
                 NameObject("/Type"): NameObject("/Annot"),
                 NameObject("/Subtype"): NameObject("/Link"),
-                NameObject("/Rect"): ArrayObject(
-                    [FloatObject(value) for value in rect]
-                ),
+                NameObject("/Rect"): ArrayObject([FloatObject(value) for value in rect]),
                 NameObject("/A"): DictionaryObject(
                     {
                         NameObject("/S"): NameObject("/URI"),
@@ -279,9 +285,7 @@ def _build_rotated_cropped_link_pdf() -> bytes:
             }
         )
         if quad_points is not None:
-            annotation[NameObject("/QuadPoints")] = ArrayObject(
-                [FloatObject(value) for value in quad_points]
-            )
+            annotation[NameObject("/QuadPoints")] = ArrayObject([FloatObject(value) for value in quad_points])
         if flags:
             annotation[NameObject("/F")] = NumberObject(flags)
         annotations.append(writer._add_object(annotation))
@@ -316,15 +320,11 @@ def _build_rotated_cropped_link_pdf() -> bytes:
                 {
                     NameObject("/Type"): NameObject("/Annot"),
                     NameObject("/Subtype"): NameObject("/Link"),
-                    NameObject("/Rect"): ArrayObject(
-                        [FloatObject(10), FloatObject(20)]
-                    ),
+                    NameObject("/Rect"): ArrayObject([FloatObject(10), FloatObject(20)]),
                     NameObject("/A"): DictionaryObject(
                         {
                             NameObject("/S"): NameObject("/URI"),
-                            NameObject("/URI"): TextStringObject(
-                                "https://broken.example.com"
-                            ),
+                            NameObject("/URI"): TextStringObject("https://broken.example.com"),
                         }
                     ),
                 }
@@ -560,6 +560,119 @@ def test_pdf_document_does_not_expose_legacy_compat_hooks() -> None:
     assert pdf_document.PDFDocument._pdf_doc.fset is None
 
 
+@pytest.mark.parametrize(
+    ("rotation", "expected"),
+    [
+        (0, (10.0, 150.0, 30.0, 170.0)),
+        (90, (30.0, 10.0, 50.0, 30.0)),
+        (180, (70.0, 30.0, 90.0, 50.0)),
+        (270, (150.0, 70.0, 170.0, 90.0)),
+    ],
+)
+def test_char_visual_bbox_from_pdfium_applies_page_rotation(
+    rotation: int,
+    expected: tuple[float, float, float, float],
+) -> None:
+    """验证 tight char box 按非零 CropBox 和四种页面旋转转换。"""
+    assert (
+        pdf_document._char_visual_bbox_from_pdfium(
+            20.0,
+            40.0,
+            50.0,
+            70.0,
+            (10.0, 20.0, 110.0, 220.0),
+            rotation,
+        )
+        == expected
+    )
+
+
+def test_extract_page_char_extended_geometry_isolates_single_char_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证 tight/origin 单字符失败或非法值不会影响同页其余字符。"""
+
+    class _FakeTextPage:
+        raw = object()
+
+    chars = [
+        {
+            "char": text,
+            "bbox": Bbox([float(index), 0.0, float(index + 1), 1.0]),
+            "rotation": 0.0,
+            "font": {},
+            "char_idx": index,
+        }
+        for index, text in enumerate("AB")
+    ]
+
+    def fake_get_char_box(
+        _textpage: object,
+        index: int,
+        left: Any,
+        right: Any,
+        bottom: Any,
+        top: Any,
+    ) -> bool:
+        """只为第一个字符返回合法 tight bbox。"""
+        if index != 0:
+            return False
+        left.value, right.value, bottom.value, top.value = 10.0, 15.0, 180.0, 190.0
+        return True
+
+    def fake_get_char_origin(
+        _textpage: object,
+        index: int,
+        origin_x: Any,
+        origin_y: Any,
+    ) -> bool:
+        """第二个字符返回非有限 origin，验证其被单独丢弃。"""
+        origin_x.value = 10.0 + index
+        origin_y.value = 180.0 if index == 0 else float("nan")
+        return True
+
+    monkeypatch.setattr(pdf_document.pdfium_c, "FPDFText_GetCharBox", fake_get_char_box)
+    monkeypatch.setattr(pdf_document.pdfium_c, "FPDFText_GetCharOrigin", fake_get_char_origin)
+
+    tight_bboxes, origins = pdf_document._extract_page_char_extended_geometry(
+        _FakeTextPage(),  # type: ignore[arg-type]
+        chars,  # type: ignore[arg-type]
+        (0.0, 0.0, 100.0, 200.0),
+        0,
+    )
+
+    assert tight_bboxes == {0: (10.0, 10.0, 15.0, 20.0)}
+    assert origins == {0: (10.0, 20.0)}
+
+
+def test_get_page_chars_with_geometry_preserves_legacy_char_output() -> None:
+    """验证扩展读取不会改变既有字符文本、索引或 loose bbox。"""
+    output = BytesIO()
+    canvas = Canvas(output, pagesize=(120, 80))
+    canvas.drawString(10, 50, "Geometry A2")
+    canvas.save()
+
+    with pdf_document.PDFDocument(output.getvalue()) as document:
+        legacy_chars = document.get_page_chars(0)
+        geometry = document.get_page_chars_with_geometry(0)
+
+    def snapshot(chars: list[dict[str, Any]]) -> list[tuple[str, int, tuple[float, ...]]]:
+        """生成忽略第三方 bbox 容器类型的稳定字符快照。"""
+        return [
+            (
+                str(char.get("char", "")),
+                int(char.get("char_idx", -1)),
+                tuple(float(value) for value in char["bbox"]),
+            )
+            for char in chars
+        ]
+
+    assert snapshot(geometry.chars) == snapshot(legacy_chars)  # type: ignore[arg-type]
+    visible_indices = {int(char["char_idx"]) for char in geometry.chars if str(char.get("char", "")).strip()}
+    assert visible_indices <= geometry.tight_bboxes.keys()
+    assert visible_indices <= geometry.origins.keys()
+
+
 def test_restore_pdfium_surrogate_pairs_recovers_supplementary_unicode(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -586,12 +699,12 @@ def test_restore_pdfium_surrogate_pairs_recovers_supplementary_unicode(
             "font": {},
             "char_idx": char_idx,
         }
-        for char_idx, text in enumerate(["A", "\uFFFD", "\uFFFD", "\uFFFD", "\ud835", "B"])
+        for char_idx, text in enumerate(["A", "\ufffd", "\ufffd", "\ufffd", "\ud835", "B"])
     ]
 
     restored = pdf_document._restore_pdfium_surrogate_pairs(chars, _FakeTextPage())
 
-    assert [char["char"] for char in restored] == ["A", "𝜃", "\uFFFD", "\uFFFD", "B"]
+    assert [char["char"] for char in restored] == ["A", "𝜃", "\ufffd", "\ufffd", "B"]
     assert [char["char_idx"] for char in restored] == [0, 1, 3, 4, 5]
 
 

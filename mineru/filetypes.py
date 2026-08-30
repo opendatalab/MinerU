@@ -26,6 +26,8 @@ ODF_EXTENSIONS: frozenset[str] = frozenset({"odt", "ods", "odp"})
 
 EPUB_EXTENSIONS: frozenset[str] = frozenset({"epub"})
 
+OFD_EXTENSIONS: frozenset[str] = frozenset({"ofd"})
+
 OFFICE_EXTENSIONS: frozenset[str] = frozenset({"doc", "docx", "ppt", "pptx", "xls", "xlsx", "rtf"}) | ODF_EXTENSIONS
 
 HTML_EXTENSIONS: frozenset[str] = frozenset({"html", "htm"})
@@ -38,7 +40,9 @@ TIERED_PARSE_EXTENSIONS: frozenset[str] = PDF_EXTENSIONS | IMAGE_EXTENSIONS
 
 PAGE_RANGE_PARSE_EXTENSIONS: frozenset[str] = PDF_EXTENSIONS
 
-FLASH_ONLY_PARSE_EXTENSIONS: frozenset[str] = OFFICE_EXTENSIONS | HTML_EXTENSIONS | CSV_EXTENSIONS | EPUB_EXTENSIONS
+FLASH_ONLY_PARSE_EXTENSIONS: frozenset[str] = (
+    OFFICE_EXTENSIONS | HTML_EXTENSIONS | CSV_EXTENSIONS | EPUB_EXTENSIONS | OFD_EXTENSIONS
+)
 
 PARSEABLE_EXTENSIONS: frozenset[str] = TIERED_PARSE_EXTENSIONS | FLASH_ONLY_PARSE_EXTENSIONS
 
@@ -55,6 +59,7 @@ FILE_TYPE_BY_EXTENSION: dict[str, str] = {
     **dict.fromkeys(HTML_EXTENSIONS, "html"),
     **dict.fromkeys(CSV_EXTENSIONS, "csv"),
     **dict.fromkeys(EPUB_EXTENSIONS, "epub"),
+    **dict.fromkeys(OFD_EXTENSIONS, "ofd"),
     "txt": "text",
     "md": "markdown",
     "markdown": "markdown",
@@ -78,6 +83,8 @@ MIME_TYPE_BY_EXTENSION: dict[str, str] = {
     "odp": "application/vnd.oasis.opendocument.presentation",
     "csv": "text/csv",
     "epub": "application/epub+zip",
+    # OFD 尚无 IANA 注册 subtype；使用生态中通行的项目级 MIME 映射。
+    "ofd": "application/ofd",
     "html": "text/html",
     "htm": "text/html",
     "png": "image/png",

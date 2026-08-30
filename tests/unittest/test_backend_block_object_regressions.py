@@ -3,6 +3,8 @@ from typing import Any
 from mineru.backend.postprocess.pages import model_json_to_pages
 from mineru.types import BlockType, ImageBlock, ModelJson
 
+from _span_test_utils import inline
+
 
 def _model_json(pages: list[list[dict[str, Any]]]) -> ModelJson:
     """为 raw block 对象化回归构造最小严格 ModelJson。"""
@@ -25,7 +27,7 @@ def test_postprocess_groups_pdf_visual_blocks_without_dict_access() -> None:
                     {
                         "type": BlockType.IMAGE_CAPTION,
                         "bbox": [0.05, 0.05, 0.6, 0.12],
-                        "content": "Figure 1",
+                        "content": inline("Figure 1"),
                     },
                     {
                         "type": BlockType.IMAGE,
@@ -51,7 +53,7 @@ def test_postprocess_groups_raw_vision_footnote_as_image_footnote() -> None:
             [
                 [
                     {"type": BlockType.IMAGE, "bbox": [0.1, 0.1, 0.6, 0.45]},
-                    {"type": "footnote", "bbox": [0.12, 0.47, 0.6, 0.6], "content": "Figure note"},
+                    {"type": "footnote", "bbox": [0.12, 0.47, 0.6, 0.6], "content": inline("Figure note")},
                 ]
             ]
         )

@@ -21,6 +21,8 @@ from mineru.model.flash.office.pptx.pptx_converter import (
 )
 from mineru.types import BlockType
 
+from _span_test_utils import inline_text
+
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _OFFICE_SAMPLE_DIR = _PROJECT_ROOT / "demo" / "office_docs"
@@ -39,14 +41,14 @@ def _flatten_pages(pages: list[list[dict[str, Any]]]) -> list[dict[str, Any]]:
 
 def _find_block_by_content(blocks: list[dict[str, Any]], content: str) -> dict[str, Any]:
     """按完整 content 查找唯一 block。"""
-    matches = [block for block in blocks if block.get("content") == content]
+    matches = [block for block in blocks if inline_text(block.get("content")) == content]
     assert len(matches) == 1
     return matches[0]
 
 
 def _find_block_containing(blocks: list[dict[str, Any]], content: str) -> dict[str, Any]:
     """按 content 子串查找唯一 block。"""
-    matches = [block for block in blocks if isinstance(block.get("content"), str) and content in block["content"]]
+    matches = [block for block in blocks if content in inline_text(block.get("content"))]
     assert len(matches) == 1
     return matches[0]
 
@@ -65,9 +67,7 @@ def test_office_models_store_standalone_images_in_image_base64() -> None:
         ("xlsx", XlsxModel()),
     ):
         image_blocks = [
-            block
-            for block in _flatten_pages(_predict_sample(model, suffix))
-            if block.get("type") == BlockType.IMAGE
+            block for block in _flatten_pages(_predict_sample(model, suffix)) if block.get("type") == BlockType.IMAGE
         ]
 
         assert image_blocks, suffix
@@ -103,7 +103,7 @@ def test_docx_model_splits_document_and_paragraph_titles() -> None:
     pages = _predict_sample(DocxModel(), "docx")
     blocks = _flatten_pages(pages)
 
-    assert pages[0][0]["content"] == "MinerU supports DOCX document parsing now"
+    assert inline_text(pages[0][0]["content"]) == "MinerU supports DOCX document parsing now"
 
     doc_title = _find_block_by_content(blocks, "MinerU supports DOCX document parsing now")
     assert doc_title["type"] == BlockType.DOC_TITLE
@@ -146,7 +146,11 @@ def test_pptx_model_splits_title_placeholders_and_subtitle() -> None:
 
     assert all(_PPTX_TITLE_CANDIDATE_KEY not in block for block in blocks)
     assert all(_PPTX_TITLE_ROLE_KEY not in block for block in blocks)
-    assert [block["content"] for block in pages[0] if block.get("content") in {"Test Table Slide", "With footnote"}] == [
+    assert [
+        inline_text(block["content"])
+        for block in pages[0]
+        if inline_text(block.get("content")) in {"Test Table Slide", "With footnote"}
+    ] == [
         "Test Table Slide",
         "With footnote",
     ]
@@ -300,7 +304,7 @@ def test_xlsx_model_emits_sheet_names_as_level_two_paragraph_titles() -> None:
     blocks = _flatten_pages(pages)
     sheet_titles = [_find_block_by_content(blocks, sheet_name) for sheet_name in ("Sheet1", "Sheet2", "Sheet3")]
 
-    assert [page[0]["content"] for page in pages] == ["Sheet1", "Sheet2", "Sheet3"]
+    assert [inline_text(page[0]["content"]) for page in pages] == ["Sheet1", "Sheet2", "Sheet3"]
     assert all(block["type"] == BlockType.PARAGRAPH_TITLE for block in sheet_titles)
     assert all(block["level"] == 2 for block in sheet_titles)
     assert all(block.get("type") != BlockType.DOC_TITLE for block in blocks)

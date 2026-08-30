@@ -17,6 +17,44 @@ from mineru.types import (
     TableBlock,
     TextBlock,
 )
+from _span_test_utils import equation, hyperlink, inline as _inline, inline_text
+
+
+_RAW_INLINE_TYPES = {
+    "text",
+    "ref_text",
+    "doc_title",
+    "paragraph_title",
+    "header",
+    "footer",
+    "page_number",
+    "aside_text",
+    "page_footnote",
+    "list",
+    "index",
+    "caption",
+    "footnote",
+    "image_caption",
+    "image_footnote",
+    "table_caption",
+    "table_footnote",
+    "chart_caption",
+    "chart_footnote",
+    "code_caption",
+    "code_footnote",
+}
+
+
+def _spanize_blocks(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """把本文件关注后处理逻辑的简写文字夹具转换为 Schema 3.0 Span。"""
+    for block in blocks:
+        block_type = str(block.get("type"))
+        content = block.get("content")
+        if block_type in _RAW_INLINE_TYPES and isinstance(content, str):
+            block["content"] = _inline(content) if content else []
+        elif block_type in {"list", "index"} and isinstance(content, list):
+            _spanize_blocks([child for child in content if isinstance(child, dict)])
+    return blocks
 
 
 def _model_json(
@@ -26,7 +64,7 @@ def _model_json(
 ) -> ModelJson:
     """为 PageInfo 后处理测试构造最小严格 ModelJson。"""
     return ModelJson(
-        pages=pages,
+        pages=[_spanize_blocks(deepcopy(page)) for page in pages],
         page_index_map=page_index_map or [],
         file_suffix="pdf",
         effort="flash",
@@ -134,20 +172,17 @@ def test_model_json_to_pages_preserves_recursive_office_list_and_index() -> None
     index_block = page.blocks[1]
 
     assert isinstance(list_block, ListBlock)
-    assert list_block.content[0].content == "1. first"
+    assert inline_text(list_block.content[0].content) == "1. first"
     assert isinstance(list_block.content[1], ListBlock)
-    assert list_block.content[1].content[0].content == "- child"
+    assert inline_text(list_block.content[1].content[0].content) == "- child"
     assert isinstance(list_block.content[1].content[1], ListBlock)
-    assert index_block.content[0].content[0].content == "section"
+    assert inline_text(index_block.content[0].content[0].content) == "section"
     assert "anchor" not in index_block.content[0].content[0].model_fields_set
 
 
 def test_fix_office_list_blocks_uses_local_ordered_markers_at_each_depth() -> None:
     """验证多级 Office 有序列表按当前层独立编号，并保留富文本与各层起始值。"""
-    rich_content = (
-        '<text style="bold">root</text><eq>x</eq>'
-        '<hyperlink><text>link</text><url>https://example.com</url></hyperlink>'
-    )
+    rich_content = [*_inline("root", styles=["bold"]), equation("x"), hyperlink("https://example.com", "link")]
     list_block = {
         "type": "list",
         "attribute": "ordered",
@@ -207,26 +242,27 @@ def test_fix_office_list_blocks_uses_local_ordered_markers_at_each_depth() -> No
         "content": [{"type": "text", "content": "fallback"}],
     }
 
+    _spanize_blocks([list_block, invalid_start_list])
     result = fix_office_list_blocks([list_block, invalid_start_list])
 
     assert result == [list_block, invalid_start_list]
-    assert list_block["content"][0]["content"] == f"3. {rich_content}"
-    assert list_block["content"][2]["content"] == "4. root after nested"
+    assert inline_text(list_block["content"][0]["content"]) == "3. rootxlink"
+    assert inline_text(list_block["content"][2]["content"]) == "4. root after nested"
     unordered = list_block["content"][1]
-    assert unordered["content"][0]["content"] == "- bullet before"
-    assert unordered["content"][2]["content"] == "- bullet after"
+    assert inline_text(unordered["content"][0]["content"]) == "- bullet before"
+    assert inline_text(unordered["content"][2]["content"]) == "- bullet after"
     level_two = unordered["content"][1]
-    assert [level_two["content"][index]["content"] for index in (0, 1, 3, 5)] == [
+    assert [inline_text(level_two["content"][index]["content"]) for index in (0, 1, 3, 5)] == [
         "1. level two first",
         "2. level two second",
         "3. level two third",
         "4. level two fourth",
     ]
     zero_start = level_two["content"][2]
-    assert [child["content"] for child in zero_start["content"]] == ["0. zero", "1. one"]
+    assert [inline_text(child["content"]) for child in zero_start["content"]] == ["0. zero", "1. one"]
     five_start = level_two["content"][4]
-    assert [child["content"] for child in five_start["content"]] == ["5. five", "6. six"]
-    assert invalid_start_list["content"][0]["content"] == "1. fallback"
+    assert [inline_text(child["content"]) for child in five_start["content"]] == ["5. five", "6. six"]
+    assert inline_text(invalid_start_list["content"][0]["content"]) == "1. fallback"
 
     pending_lists = list(result)
     while pending_lists:
@@ -277,11 +313,11 @@ def test_model_json_to_pages_maps_index_anchor_to_document_title_type_and_level(
     assert isinstance(doc_leaf, DocTitleBlock)
     assert doc_leaf.level == 1
     assert doc_leaf.anchor == "doc-anchor"
-    assert doc_leaf.content == "Document"
+    assert inline_text(doc_leaf.content) == "Document"
     assert isinstance(section_leaf, ParagraphTitleBlock)
     assert section_leaf.level == 3
     assert section_leaf.anchor == "section-anchor"
-    assert section_leaf.content == "Section"
+    assert inline_text(section_leaf.content) == "Section"
     assert isinstance(missing_leaf, TextBlock)
     assert "anchor" not in missing_leaf.model_fields_set
 
@@ -325,7 +361,7 @@ def test_office_paragraph_numbering_is_document_wide_and_copy_only() -> None:
     titles = [block for page in pages for block in page.blocks]
 
     assert all(isinstance(block, ParagraphTitleBlock) for block in titles)
-    assert [block.content for block in titles] == [
+    assert [inline_text(block.content) for block in titles] == [
         "1 <b>A</b>",
         "1.1 B",
         "1.4 Explicit",
@@ -352,7 +388,7 @@ def test_office_paragraph_numbering_clears_deeper_levels() -> None:
 
     titles = model_json_to_pages(_model_json(model_list))[0].blocks
 
-    assert [title.content for title in titles] == [
+    assert [inline_text(title.content) for title in titles] == [
         "1 A",
         "1.1 B",
         "1.1.1 C",
@@ -433,7 +469,7 @@ def test_office_title_level_is_clamped_before_numbering_and_index_mapping() -> N
 
     assert isinstance(title, ParagraphTitleBlock)
     assert title.level == 6
-    assert title.content == "1.1.1.1.1 Deep"
+    assert inline_text(title.content) == "1.1.1.1.1 Deep"
     assert isinstance(index.content[0], ParagraphTitleBlock)
     assert index.content[0].level == 6
 

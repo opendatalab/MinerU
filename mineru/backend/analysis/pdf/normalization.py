@@ -5,10 +5,10 @@ from __future__ import annotations
 
 import math
 import re
-from collections.abc import Callable
 from typing import Any
 
-from ....types import BBox, BlockType, RAW_PHONETIC
+from ....model.flash._shared.spans import append_equation_span, append_text_span, inline_span_plain_text, strip_span_dicts
+from ....types import BBox, BlockType, RAW_ALGORITHM, RAW_PHONETIC
 from ....utils.geometry import calculate_overlap_area_2_minbox_area_ratio
 from ....utils.text import full_to_half_exclude_marks
 
@@ -16,12 +16,9 @@ from .constants import (
     LAYOUT_TITLE_SPLIT_OVERLAP_THRESHOLD,
     LINE_METADATA_BLOCK_TYPES,
     NATURAL_LANGUAGE_CONTENT_BLOCK_TYPES,
-    _INLINE_FORMULA_PATTERN,
     _VLM_UNCLASSIFIED_TITLE_TYPE,
 )
 from .geometry import _bbox_to_pixel_bbox
-
-_URL_ELEMENT_PATTERN = re.compile(r"<url>.*?</url>", re.IGNORECASE | re.DOTALL)
 
 
 def _collect_layout_doc_title_bboxes(layout_res: list[dict[str, Any]], page_size: tuple[int, int]) -> list[BBox]:
@@ -71,7 +68,11 @@ def _is_valid_pdf_text_block(block: dict[str, Any]) -> bool:
     """检查 PDF 文本块是否同时具有非空正文和完整合法的归一化行框。"""
 
     content = block.get("content")
-    if not isinstance(content, str) or not content.strip():
+    if isinstance(content, list):
+        visible_content = inline_span_plain_text(item for item in content if isinstance(item, dict))
+    else:
+        visible_content = content if isinstance(content, str) else ""
+    if not visible_content.strip():
         return False
 
     lines = block.get("lines")
@@ -93,28 +94,12 @@ def _is_valid_pdf_text_block(block: dict[str, Any]) -> bool:
     return True
 
 
-def _transform_outside_url_elements(
-    content: str,
-    transform: Callable[[str], str],
-) -> str:
-    """仅转换 hyperlink 可见内容，原样保留结构化 URL 标签及其正文。"""
-
-    parts: list[str] = []
-    cursor = 0
-    for match in _URL_ELEMENT_PATTERN.finditer(content):
-        parts.append(transform(content[cursor : match.start()]))
-        parts.append(match.group(0))
-        cursor = match.end()
-    parts.append(transform(content[cursor:]))
-    return "".join(parts)
-
-
 def _normalize_natural_language_fragment(content: str) -> str:
     """规范自然语言片段中的全角字符，同时原样保留行内公式片段。"""
 
     normalized_parts: list[str] = []
     cursor = 0
-    formula_markers = (("\\(", "\\)"), ("<eq>", "</eq>"))
+    formula_markers = (("\\(", "\\)"),)
 
     while cursor < len(content):
         formula_starts = [
@@ -139,24 +124,34 @@ def _normalize_natural_language_fragment(content: str) -> str:
 
 
 def _normalize_natural_language_content(content: str) -> str:
-    """规范自然语言可见文本，但不改写 hyperlink 的 URL 目标。"""
-
-    return _transform_outside_url_elements(
-        content,
-        _normalize_natural_language_fragment,
-    )
+    """规范尚未 Span 化的自然语言可见文本。"""
+    return _normalize_natural_language_fragment(content)
 
 
-def _normalize_inline_formula_markup(content: str) -> str:
-    """只在 URL 标签外把反斜杠圆括号公式转换为 eq 标签。"""
+def _natural_language_spans(content: str) -> list[dict[str, Any]]:
+    """把 PDF 自然语言字符串及圆括号公式定界符直接转换为 Span。"""
+    pattern = re.compile(r"\\\((?P<round>.*?)\\\)", re.DOTALL)
+    spans: list[dict[str, Any]] = []
+    cursor = 0
+    for match in pattern.finditer(content):
+        append_text_span(spans, content[cursor : match.start()])
+        append_equation_span(spans, match.group("round"))
+        cursor = match.end()
+    append_text_span(spans, content[cursor:])
+    return strip_span_dicts(spans)
 
-    return _transform_outside_url_elements(
-        content,
-        lambda value: _INLINE_FORMULA_PATTERN.sub(
-            lambda match: f"<eq>{match.group(1)}</eq>",
-            value,
-        ),
-    )
+
+def _normalize_existing_span_text(spans: list[Any]) -> None:
+    """只规范已有 Span 中的 TextSpan 文字，保留公式、代码和链接目标原文。"""
+    for span in spans:
+        if not isinstance(span, dict):
+            continue
+        span_type = span.get("type")
+        span_content = span.get("content")
+        if span_type == "text" and isinstance(span_content, str):
+            span["content"] = _normalize_natural_language_fragment(span_content)
+        elif span_type == "hyperlink" and isinstance(span_content, list):
+            _normalize_existing_span_text(span_content)
 
 
 def _normalize_pdf_model_list(model_list: list[list[dict[str, Any]]]) -> None:
@@ -180,11 +175,22 @@ def _normalize_pdf_model_list(model_list: list[list[dict[str, Any]]]) -> None:
             block.pop("score", None)
             block.pop("merge_prev", None)
             content = block.get("content")
+            if isinstance(content, list):
+                if block.get("type") in {*NATURAL_LANGUAGE_CONTENT_BLOCK_TYPES, RAW_ALGORITHM}:
+                    _normalize_existing_span_text(content)
+                continue
             if not isinstance(content, str):
                 continue
             if block.get("type") in NATURAL_LANGUAGE_CONTENT_BLOCK_TYPES:
                 content = _normalize_natural_language_content(content)
-            block["content"] = _normalize_inline_formula_markup(content)
+                block["content"] = _natural_language_spans(content)
+            elif block.get("type") == BlockType.CODE:
+                spans = _natural_language_spans(content)
+                if any(span.get("type") == "equation_inline" for span in spans):
+                    block["type"] = RAW_ALGORITHM
+                    block["content"] = spans
+                else:
+                    block["content"] = content
         page_model_list[:] = [
             block
             for block in page_model_list

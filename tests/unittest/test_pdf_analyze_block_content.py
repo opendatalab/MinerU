@@ -13,12 +13,16 @@ from mineru.backend.analysis.pdf import constants, layout, normalization, ocr, p
 from mineru.backend.analysis.pdf.text import content as text_content
 from mineru.backend.analysis.pdf.text.models import _AnalyzeLine, _AnalyzeSpan
 from mineru.backend.postprocess import document as postprocess_document
+from mineru.model.flash.pdf.document import PDFPageTextGeometry
 from mineru.types import RAW_ALGORITHM, RAW_CAPTION, RAW_FOOTNOTE
 from mineru.backend.analysis.pdf.text.native import (
     POST_OCR_FALLBACK_CONTENT_KEY,
     POST_OCR_FALLBACK_SCORE_KEY,
 )
+from mineru.model.flash.pdf.text_styles import PDF_NATIVE_SCRIPT_MARKUP_KEY, materialize_pdf_inline_spans
 from mineru.types import BlockType, ContentType, MiddleJson, ModelJson
+
+from _span_test_utils import inline, inline_text
 
 
 def _build_text_lines(*contents: str) -> list[_AnalyzeLine]:
@@ -173,11 +177,17 @@ def test_doc_analyze_converts_vlm_results_before_downstream_processing(
         _effort: object,
         _hybrid_model: object,
         _images_layout_res: object,
+        _page_text_geometries: object,
     ) -> list[list[dict[str, object]]]:
         """原样返回窗口结果，并在后处理入口校验精确容器类型。"""
         assert type(window_model_list) is list
         assert all(type(page) is list for page in window_model_list)
         assert all(type(block) is dict for page in window_model_list for block in page)
+        if parse_mode == "txt":
+            assert isinstance(_page_text_geometries, list)
+            assert len(_page_text_geometries) == 1
+        else:
+            assert _page_text_geometries is None
         return window_model_list
 
     xhigh_normalizer = MagicMock(wraps=layout._normalize_xhigh_vlm_blocks)
@@ -227,7 +237,7 @@ def test_doc_analyze_converts_vlm_results_before_downstream_processing(
     assert type(model_json.pages) is list
     assert type(model_json.pages[0]) is list
     assert type(model_json.pages[0][0]) is dict
-    assert model_json.pages == [[{"type": BlockType.PAGE_NUMBER, "bbox": [0.45, 0.9, 0.55, 0.95], "content": "1"}]]
+    assert model_json.pages == [[{"type": BlockType.PAGE_NUMBER, "bbox": [0.45, 0.9, 0.55, 0.95], "content": inline("1")}]]
     assert model_json.page_index_map == []
     assert model_json.file_suffix == "pdf"
     assert model_json.effort == effort
@@ -438,7 +448,7 @@ def test_fill_window_batches_txt_post_ocr_before_page_content(monkeypatch: pytes
     monkeypatch.setattr(
         text_content,
         "build_pdf_native_visual_lines_and_styles",
-        lambda *_args, **_kwargs: ([], [], [], []),
+        lambda *_args, **_kwargs: (PDFPageTextGeometry([], {}, {}), [], [], [], []),
     )
     monkeypatch.setattr(
         text_content,
@@ -461,13 +471,14 @@ def test_fill_window_batches_txt_post_ocr_before_page_content(monkeypatch: pytes
         [[], []],
         [[], []],
         "txt",
+        "medium",
         {BlockType.TEXT},
         local_model_context,
     )
 
     assert result is model_list
     local_model_context.ocr_model.ocr.assert_called_once()
-    assert [page[0]["content"] for page in model_list] == ["窗口第一页", "窗口第二页"]
+    assert [inline_text(page[0]["content"]) for page in model_list] == ["窗口第一页", "窗口第二页"]
 
 
 def test_fill_window_ocr_mode_does_not_run_txt_post_ocr(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -486,12 +497,13 @@ def test_fill_window_ocr_mode_does_not_run_txt_post_ocr(monkeypatch: pytest.Monk
         [[]],
         [[]],
         "ocr",
+        "medium",
         {BlockType.TEXT},
         local_model_context,
     )
 
     local_model_context.ocr_model.ocr.assert_not_called()
-    assert model_list[0][0]["content"] == "已有 OCR 文本"
+    assert inline_text(model_list[0][0]["content"]) == "已有 OCR 文本"
 
 
 def test_empty_index_content_preserves_grouped_line_breaks() -> None:
@@ -643,3 +655,36 @@ def test_existing_text_content_is_preserved_while_lines_are_refreshed() -> None:
 
     assert block["content"] == "existing content"
     assert block["lines"] == [{"bbox": [0.0, 0.0, 0.5, 0.01]}]
+
+
+def test_native_script_ownership_propagates_only_when_content_is_filled() -> None:
+    """验证原生脚本标记只随空 block 回填，并在 MiddleJson 边界前被消费。"""
+    owned_line = _AnalyzeLine(
+        bbox=(0.0, 0.0, 100.0, 1.0),
+        spans=[
+            _AnalyzeSpan(
+                type=ContentType.TEXT,
+                bbox=(0.0, 0.0, 100.0, 1.0),
+                content="A<sup>2</sup>",
+                metadata={PDF_NATIVE_SCRIPT_MARKUP_KEY: True},
+            )
+        ],
+    )
+    filled_block = {"type": BlockType.TEXT, "content": ""}
+    existing_block = {"type": BlockType.TEXT, "content": "literal <sup>text</sup>"}
+
+    text_content._apply_block_content_and_line_metadata(
+        [filled_block, existing_block],
+        {0: [owned_line], 1: [owned_line]},
+        (100.0, 100.0),
+    )
+
+    assert filled_block[PDF_NATIVE_SCRIPT_MARKUP_KEY] is True
+    assert PDF_NATIVE_SCRIPT_MARKUP_KEY not in existing_block
+
+    materialize_pdf_inline_spans([filled_block, existing_block])
+
+    assert inline_text(filled_block["content"]) == "A2"
+    assert filled_block["content"][1]["styles"] == ["superscript"]
+    assert inline_text(existing_block["content"]) == "literal <sup>text</sup>"
+    assert PDF_NATIVE_SCRIPT_MARKUP_KEY not in filled_block

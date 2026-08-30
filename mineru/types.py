@@ -20,6 +20,8 @@ from pydantic import (
     model_validator,
 )
 
+from .utils.hyperlink import OFFICE_EXTERNAL_HYPERLINK_SCHEMES, sanitize_hyperlink_target
+
 # 这些字符串不能作为公开 Block.type discriminator，只用于 raw 阶段或 Block 内部枚举值。
 RawBlockType: TypeAlias = Literal[
     "algorithm",
@@ -57,6 +59,7 @@ FileSuffix: TypeAlias = Literal[
     "csv",
     "epub",
     "html",
+    "ofd",
     "odt",
     "ods",
     "odp",
@@ -179,6 +182,7 @@ class BlockType(str, Enum):
     # Added in vlm 2.5
     CODE = "code"
     CODE_BODY = "code_body"
+    ALGORITHM_BODY = "algorithm_body"
     CODE_CAPTION = "code_caption"
     CODE_FOOTNOTE = "code_footnote"
 
@@ -260,6 +264,7 @@ BlockTypes = Literal[
     BlockType.INDEX,
     BlockType.CODE,
     BlockType.CODE_BODY,
+    BlockType.ALGORITHM_BODY,
     BlockType.CODE_CAPTION,
     BlockType.CODE_FOOTNOTE,
     BlockType.REF_TEXT,
@@ -310,6 +315,7 @@ BLOCK_TYPES = {
     BlockType.INDEX,
     BlockType.CODE,
     BlockType.CODE_BODY,
+    BlockType.ALGORITHM_BODY,
     BlockType.CODE_CAPTION,
     BlockType.CODE_FOOTNOTE,
     BlockType.REF_TEXT,
@@ -445,6 +451,149 @@ class _StrictMiddleModel(BaseModel):
         )
 
 
+InlineStyle: TypeAlias = Literal[
+    "bold",
+    "italic",
+    "underline",
+    "emphasis",
+    "strikethrough",
+    "superscript",
+    "subscript",
+]
+
+INLINE_STYLE_ORDER: tuple[InlineStyle, ...] = (
+    "bold",
+    "italic",
+    "underline",
+    "emphasis",
+    "strikethrough",
+    "superscript",
+    "subscript",
+)
+
+
+class TextSpan(_StrictMiddleModel):
+    """保存普通行内文字及其可见字体样式。"""
+
+    type: Literal["text"]
+    content: str = Field(min_length=1)
+    styles: list[InlineStyle] = Field(default_factory=list)
+
+    @field_validator("styles")
+    @classmethod
+    def _normalize_styles(cls, value: list[InlineStyle]) -> list[InlineStyle]:
+        """按公开固定顺序去重样式，并禁止同时声明上下标。"""
+        unique = set(value)
+        if "superscript" in unique and "subscript" in unique:
+            raise ValueError("text span cannot be both superscript and subscript")
+        return [style for style in INLINE_STYLE_ORDER if style in unique]
+
+
+class EquationInlineSpan(_StrictMiddleModel):
+    """保存不含外层定界符的行内 LaTeX。"""
+
+    type: Literal["equation_inline"]
+    content: str = Field(min_length=1)
+
+    @field_validator("content")
+    @classmethod
+    def _validate_content(cls, value: str) -> str:
+        """拒绝只包含空白的行内公式，同时保留公式原始空白。"""
+        if not value.strip():
+            raise ValueError("inline equation content must not be blank")
+        return value
+
+
+class CodeInlineSpan(_StrictMiddleModel):
+    """保存需要按字面量显示的行内代码。"""
+
+    type: Literal["code_inline"]
+    content: str = Field(min_length=1)
+
+
+NonLinkInlineSpan: TypeAlias = Annotated[
+    Union[TextSpan, EquationInlineSpan, CodeInlineSpan],
+    Field(discriminator="type"),
+]
+
+
+class HyperlinkSpan(_StrictMiddleModel):
+    """保存安全超链接目标及其非链接行内子节点。"""
+
+    type: Literal["hyperlink"]
+    url: str = Field(min_length=1)
+    content: list[NonLinkInlineSpan] = Field(min_length=1)
+
+    @field_validator("url")
+    @classmethod
+    def _validate_url(cls, value: str) -> str:
+        """复用统一策略拒绝危险协议、本地路径、畸形 URL 和控制字符。"""
+        normalized = sanitize_hyperlink_target(
+            value,
+            allowed_schemes=OFFICE_EXTERNAL_HYPERLINK_SCHEMES,
+            allow_relative=True,
+            allow_fragment=True,
+        )
+        if normalized is None:
+            raise ValueError("hyperlink span url is unsafe or malformed")
+        return normalized
+
+
+InlineSpan: TypeAlias = Annotated[
+    Union[TextSpan, EquationInlineSpan, CodeInlineSpan, HyperlinkSpan],
+    Field(discriminator="type"),
+]
+
+INLINE_SPAN_ADAPTER = TypeAdapter(InlineSpan)
+INLINE_SPAN_LIST_ADAPTER = TypeAdapter(list[InlineSpan])
+
+
+def _normalize_typed_inline_spans(spans: list[InlineSpan]) -> list[InlineSpan]:
+    """递归合并相邻同样式文字及相邻同目标链接。"""
+    normalized: list[InlineSpan] = []
+    for span in spans:
+        current: InlineSpan
+        if isinstance(span, HyperlinkSpan):
+            children = _normalize_typed_inline_spans(list(span.content))
+            non_link_children = [child for child in children if not isinstance(child, HyperlinkSpan)]
+            if not non_link_children:
+                continue
+            current = span.model_copy(update={"content": non_link_children}, deep=True)
+        else:
+            current = span.model_copy(deep=True)
+        if (
+            normalized
+            and isinstance(normalized[-1], TextSpan)
+            and isinstance(current, TextSpan)
+            and normalized[-1].styles == current.styles
+        ):
+            previous = normalized[-1]
+            normalized[-1] = previous.model_copy(update={"content": f"{previous.content}{current.content}"})
+            continue
+        if (
+            normalized
+            and isinstance(normalized[-1], HyperlinkSpan)
+            and isinstance(current, HyperlinkSpan)
+            and normalized[-1].url == current.url
+        ):
+            previous_link = normalized[-1]
+            merged_children = _normalize_typed_inline_spans([*previous_link.content, *current.content])
+            normalized[-1] = previous_link.model_copy(update={"content": merged_children})
+            continue
+        normalized.append(current)
+    return normalized
+
+
+def parse_inline_span(value: Any) -> InlineSpan:
+    """把字典或现有模型严格解析为一个公开行内 Span。"""
+    return INLINE_SPAN_ADAPTER.validate_python(value)
+
+
+def parse_inline_spans(value: Any) -> list[InlineSpan]:
+    """严格解析并规范化完整行内 Span 列表。"""
+    return _normalize_typed_inline_spans(INLINE_SPAN_LIST_ADAPTER.validate_python(value))
+
+
 class BlockBase(_StrictMiddleModel):
     """所有公开 Middle JSON block 的最小公共字段。"""
 
@@ -476,7 +625,19 @@ class StringContentBlock(BlockBase):
     content: str
 
 
-class ContinuableTextBlockBase(StringContentBlock):
+class InlineContentBlock(BlockBase):
+    """所有结构化行内内容 block 的共享结构。"""
+
+    content: list[InlineSpan]
+
+    @field_validator("content")
+    @classmethod
+    def _normalize_content(cls, value: list[InlineSpan]) -> list[InlineSpan]:
+        """在严格对象边界合并相邻同语义 Span。"""
+        return _normalize_typed_inline_spans(value)
+
+
+class ContinuableTextBlockBase(InlineContentBlock):
     """正文与参考文献共享的跨块续接结构。"""
 
     continues_prev: bool | None = None
@@ -490,7 +651,7 @@ class RefTextBlock(ContinuableTextBlockBase):
     type: Literal[BlockType.REF_TEXT]  # type: ignore[reportIncompatibleVariableOverride]
 
 
-class TitleBlockBase(StringContentBlock):
+class TitleBlockBase(InlineContentBlock):
     """文档标题与段落标题的全局层级公共结构。"""
 
     anchor: str | None = None
@@ -507,7 +668,7 @@ class ParagraphTitleBlock(TitleBlockBase):
     level: int = Field(ge=2, le=6)
 
 
-class PageAuxTextBlock(StringContentBlock):
+class PageAuxTextBlock(InlineContentBlock):
     """页眉、页脚、页码和边栏的共享文本结构。"""
 
     type: Literal[  # type: ignore[reportIncompatibleVariableOverride]
@@ -518,7 +679,7 @@ class PageAuxTextBlock(StringContentBlock):
     ]
 
 
-class PageFootnoteBlock(StringContentBlock):
+class PageFootnoteBlock(InlineContentBlock):
     """保存需要参与默认输出并可被文档内链接引用的页面脚注。"""
 
     type: Literal[BlockType.PAGE_FOOTNOTE]  # type: ignore[reportIncompatibleVariableOverride]
@@ -579,25 +740,31 @@ class CodeBodyBlock(StringContentBlock):
     type: Literal[BlockType.CODE_BODY]  # type: ignore[reportIncompatibleVariableOverride]
 
 
-class ImageAnnotationBlock(StringContentBlock):
+class AlgorithmBodyBlock(InlineContentBlock):
+    """保存预格式算法文字与行内公式 Span。"""
+
+    type: Literal[BlockType.ALGORITHM_BODY]  # type: ignore[reportIncompatibleVariableOverride]
+
+
+class ImageAnnotationBlock(InlineContentBlock):
     """图片标题与图片脚注的共享结构。"""
 
     type: Literal[BlockType.IMAGE_CAPTION, BlockType.IMAGE_FOOTNOTE]  # type: ignore[reportIncompatibleVariableOverride]
 
 
-class TableAnnotationBlock(StringContentBlock):
+class TableAnnotationBlock(InlineContentBlock):
     """表格标题与表格脚注的共享结构。"""
 
     type: Literal[BlockType.TABLE_CAPTION, BlockType.TABLE_FOOTNOTE]  # type: ignore[reportIncompatibleVariableOverride]
 
 
-class ChartAnnotationBlock(StringContentBlock):
+class ChartAnnotationBlock(InlineContentBlock):
     """图表标题与图表脚注的共享结构。"""
 
     type: Literal[BlockType.CHART_CAPTION, BlockType.CHART_FOOTNOTE]  # type: ignore[reportIncompatibleVariableOverride]
 
 
-class CodeAnnotationBlock(StringContentBlock):
+class CodeAnnotationBlock(InlineContentBlock):
     """代码标题与代码脚注的共享结构。"""
 
     type: Literal[BlockType.CODE_CAPTION, BlockType.CODE_FOOTNOTE]  # type: ignore[reportIncompatibleVariableOverride]
@@ -630,15 +797,16 @@ class IndexBlock(BlockBase):
 class _VisualBlockBase(BlockBase):
     """视觉父块的共享结构约束。"""
 
-    _body_type: ClassVar[str]
+    _body_types: ClassVar[tuple[str, ...]]
 
     @model_validator(mode="after")
     def _validate_visual_children(self) -> _VisualBlockBase:
         """校验视觉父块只有一个 body，且父子定位字段保持一致。"""
         children = getattr(self, "content", [])
-        bodies = [child for child in children if child.type == self._body_type]
+        bodies = [child for child in children if child.type in self._body_types]
         if len(bodies) != 1:
-            raise ValueError(f"{self.type} must contain exactly one {self._body_type}")
+            expected = "/".join(str(item) for item in self._body_types)
+            raise ValueError(f"{self.type} must contain exactly one {expected}")
         body = bodies[0]
         if self.index is not None and body.index != self.index:
             raise ValueError(f"{self.type} body index must equal parent index")
@@ -657,7 +825,7 @@ class ImageBlock(_VisualBlockBase):
     type: Literal[BlockType.IMAGE]  # type: ignore[reportIncompatibleVariableOverride]
     content: list[ImageChildBlock]
     sub_type: str | None = None
-    _body_type: ClassVar[str] = BlockType.IMAGE_BODY
+    _body_types: ClassVar[tuple[str, ...]] = (BlockType.IMAGE_BODY,)
 
 
 TableChildBlock: TypeAlias = Annotated[
@@ -671,7 +839,7 @@ class TableBlock(_VisualBlockBase):
     content: list[TableChildBlock]
     continues_prev: bool | None = None
     cell_merge: list[Literal[0, 1]] | None = None
-    _body_type: ClassVar[str] = BlockType.TABLE_BODY
+    _body_types: ClassVar[tuple[str, ...]] = (BlockType.TABLE_BODY,)
 
 
 ChartChildBlock: TypeAlias = Annotated[
@@ -684,11 +852,11 @@ class ChartBlock(_VisualBlockBase):
     type: Literal[BlockType.CHART]  # type: ignore[reportIncompatibleVariableOverride]
     content: list[ChartChildBlock]
     sub_type: str | None = None
-    _body_type: ClassVar[str] = BlockType.CHART_BODY
+    _body_types: ClassVar[tuple[str, ...]] = (BlockType.CHART_BODY,)
 
 
 CodeChildBlock: TypeAlias = Annotated[
-    Union[CodeBodyBlock, CodeAnnotationBlock],
+    Union[CodeBodyBlock, AlgorithmBodyBlock, CodeAnnotationBlock],
     Field(discriminator="type"),
 ]
 
@@ -698,16 +866,22 @@ class CodeBlock(_VisualBlockBase):
     content: list[CodeChildBlock]
     sub_type: Literal[BlockType.CODE, RAW_ALGORITHM]
     guess_lang: str | None = None
-    _body_type: ClassVar[str] = BlockType.CODE_BODY
+    _body_types: ClassVar[tuple[str, ...]] = (BlockType.CODE_BODY, BlockType.ALGORITHM_BODY)
 
     @model_validator(mode="after")
     def _validate_language(self) -> CodeBlock:
         """代码块要求语言，算法块则禁止携带代码语言猜测结果。"""
+        body = next(child for child in self.content if child.type in self._body_types)
         if self.sub_type == BlockType.CODE:
+            if body.type != BlockType.CODE_BODY:
+                raise ValueError("code block must contain code_body")
             if not isinstance(self.guess_lang, str) or not self.guess_lang.strip():
                 raise ValueError("code block must contain a non-empty guess_lang")
-        elif self.guess_lang is not None:
-            raise ValueError("algorithm block must not contain guess_lang")
+        else:
+            if body.type != BlockType.ALGORITHM_BODY:
+                raise ValueError("algorithm block must contain algorithm_body")
+            if self.guess_lang is not None:
+                raise ValueError("algorithm block must not contain guess_lang")
         return self
 
 
@@ -756,6 +930,7 @@ Block: TypeAlias = Annotated[
         ChartAnnotationBlock,
         ChartBlock,
         CodeBodyBlock,
+        AlgorithmBodyBlock,
         CodeAnnotationBlock,
         CodeBlock,
     ],
@@ -778,6 +953,73 @@ def _iter_child_blocks(block: BlockBase) -> list[BlockBase]:
     return [child for child in content if isinstance(child, BlockBase)]
 
 
+_RAW_INLINE_CONTENT_TYPES = {
+    BlockType.TEXT,
+    BlockType.REF_TEXT,
+    BlockType.DOC_TITLE,
+    BlockType.PARAGRAPH_TITLE,
+    BlockType.HEADER,
+    BlockType.FOOTER,
+    BlockType.PAGE_NUMBER,
+    BlockType.ASIDE_TEXT,
+    BlockType.PAGE_FOOTNOTE,
+    BlockType.IMAGE_CAPTION,
+    BlockType.IMAGE_FOOTNOTE,
+    BlockType.TABLE_CAPTION,
+    BlockType.TABLE_FOOTNOTE,
+    BlockType.CHART_CAPTION,
+    BlockType.CHART_FOOTNOTE,
+    BlockType.CODE_CAPTION,
+    BlockType.CODE_FOOTNOTE,
+    RAW_ALGORITHM,
+    RAW_CAPTION,
+    RAW_FOOTNOTE,
+    RAW_PHONETIC,
+}
+
+
+def _looks_like_raw_inline_span_list(content: list[Any]) -> bool:
+    """区分 PDF 扁平 LIST/INDEX 的 Span 载荷与已经成树的文本子块。"""
+    if not content:
+        return False
+    for item in content:
+        if not isinstance(item, dict):
+            return False
+        span_type = item.get("type")
+        span_content = item.get("content")
+        if span_type in {"text", "equation_inline", "code_inline"} and isinstance(span_content, str):
+            continue
+        if span_type == "hyperlink" and isinstance(span_content, list) and isinstance(item.get("url"), str):
+            continue
+        return False
+    return True
+
+
+def _validate_raw_block_inline_content(block: dict[str, Any], *, location: str) -> None:
+    """递归校验 raw block 的自然语言 content 已切换为 Span 列表。"""
+    block_type = block.get("type")
+    content = block.get("content")
+    if block_type in _RAW_INLINE_CONTENT_TYPES:
+        if not isinstance(content, list):
+            raise ValueError(f"ModelJson inline content must be a span list: {location}, type={block_type}")
+        try:
+            parse_inline_spans(content)
+        except ValueError as exc:
+            raise ValueError(f"Invalid ModelJson inline spans: {location}, type={block_type}: {exc}") from exc
+        return
+    if block_type not in {BlockType.LIST, BlockType.INDEX} or not isinstance(content, list):
+        return
+    if _looks_like_raw_inline_span_list(content):
+        try:
+            parse_inline_spans(content)
+        except ValueError as exc:
+            raise ValueError(f"Invalid ModelJson inline spans: {location}, type={block_type}: {exc}") from exc
+        return
+    for child_index, child in enumerate(content):
+        if isinstance(child, dict):
+            _validate_raw_block_inline_content(child, location=f"{location}.content[{child_index}]")
+
+
 class ModelJson(_StrictMiddleModel):
     """Analyze 返回的完整严格 Model JSON 对象。"""
 
@@ -790,17 +1032,20 @@ class ModelJson(_StrictMiddleModel):
 
     @model_validator(mode="after")
     def _validate_page_index_map(self) -> ModelJson:
-        """校验显式抽页映射，并保留空列表作为整本解析标记。"""
-        if not self.page_index_map:
-            return self
-        if len(self.page_index_map) != len(self.pages):
-            raise ValueError(f"page_index_map length mismatch: pages={len(self.pages)}, mapping={len(self.page_index_map)}")
-        if any(page_idx < 0 for page_idx in self.page_index_map):
-            raise ValueError("page_index_map values must be non-negative integers")
-        if len(self.page_index_map) != len(set(self.page_index_map)):
-            raise ValueError("page_index_map values must be unique")
-        if any(current <= previous for previous, current in zip(self.page_index_map, self.page_index_map[1:])):
-            raise ValueError("page_index_map values must preserve strictly increasing order")
+        """校验显式抽页映射及每个 raw 文本块的 Span 契约。"""
+        if self.page_index_map:
+            if len(self.page_index_map) != len(self.pages):
+                raise ValueError(f"page_index_map length mismatch: pages={len(self.pages)}, mapping={len(self.page_index_map)}")
+            if any(page_idx < 0 for page_idx in self.page_index_map):
+                raise ValueError("page_index_map values must be non-negative integers")
+            if len(self.page_index_map) != len(set(self.page_index_map)):
+                raise ValueError("page_index_map values must be unique")
+            if any(current <= previous for previous, current in zip(self.page_index_map, self.page_index_map[1:])):
+                raise ValueError("page_index_map values must preserve strictly increasing order")
+        for page_index, page in enumerate(self.pages):
+            for block_index, block in enumerate(page):
+                if isinstance(block, dict):
+                    _validate_raw_block_inline_content(block, location=f"pages[{page_index}][{block_index}]")
         return self
 
     @property
@@ -856,17 +1101,20 @@ class MiddleJson(_StrictMiddleModel):
 
     @model_validator(mode="after")
     def _validate_document(self) -> MiddleJson:
-        """校验页号唯一有序，并要求 PDF 顶层 block 均具有 bbox。"""
+        """校验页号唯一有序，并要求固定版式文档顶层 block 均具有 bbox。"""
         page_indices = [page.page_idx for page in self.pages]
         if len(page_indices) != len(set(page_indices)):
             raise ValueError("page_idx values must be unique")
         if any(current <= previous for previous, current in zip(page_indices, page_indices[1:])):
             raise ValueError("page_idx values must be strictly increasing")
-        if self.file_suffix == "pdf":
+        if self.file_suffix in {"pdf", "ofd"}:
             for page in self.pages:
                 for block in page.blocks:
                     if block.bbox is None:
-                        raise ValueError(f"PDF top-level block requires bbox: page_idx={page.page_idx}, index={block.index}")
+                        raise ValueError(
+                            f"Fixed-layout top-level block requires bbox: "
+                            f"file_suffix={self.file_suffix}, page_idx={page.page_idx}, index={block.index}"
+                        )
         return self
 
     def export(

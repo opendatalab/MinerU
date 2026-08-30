@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import html
 import re
 from dataclasses import dataclass
 from typing import Any, BinaryIO, Iterator
@@ -11,6 +10,7 @@ from typing import Any, BinaryIO, Iterator
 from lxml import etree  # type: ignore[reportMissingImports]
 
 from .....types import BlockType
+from ..._shared.spans import inline_span_plain_text, text_spans
 from .constants import OdfSuffix, qname
 from .models import InlineNote
 from .package import OdfPackage
@@ -81,7 +81,7 @@ def _new_page(
 def _flush_notes(parser: OdfBlockParser, page: list[dict[str, Any]]) -> None:
     """把解析器累计脚注追加为当前页面的 PAGE_FOOTNOTE blocks。"""
     for note in parser.drain_notes():
-        page.append({"type": BlockType.PAGE_FOOTNOTE, "content": note})
+        page.append({"type": BlockType.PAGE_FOOTNOTE, "content": text_spans(note)})
 
 
 def _append_flow_items(
@@ -126,7 +126,7 @@ def _master_auxiliary_blocks(
             continue
         for block in parser.parse_container(element):
             content = block.get("content")
-            if isinstance(content, str) and content.strip():
+            if isinstance(content, list) and inline_span_plain_text(span for span in content if isinstance(span, dict)).strip():
                 result.append({"type": block_type, "content": content})
     return result
 
@@ -258,7 +258,7 @@ def _notes_blocks(page: etree._Element, parser: OdfBlockParser) -> list[dict[str
     for frame in notes.iter(qname("draw", "frame")):
         blocks.extend(parser.parse_frame_blocks(frame))
     visible = flatten_block_text(blocks)
-    return [{"type": BlockType.PAGE_FOOTNOTE, "content": visible}] if visible else []
+    return [{"type": BlockType.PAGE_FOOTNOTE, "content": text_spans(visible)}] if visible else []
 
 
 def _parse_odp_pages(context: _OdfContext) -> list[list[dict[str, Any]]]:
@@ -299,7 +299,7 @@ def _parse_odp_pages(context: _OdfContext) -> list[list[dict[str, Any]]]:
                     {
                         "type": title_type,
                         "level": 1 if title_type == BlockType.DOC_TITLE else 2,
-                        "content": visible.replace("\n", " "),
+                        "content": text_spans(visible.replace("\n", " ")),
                     }
                 )
                 document_title_emitted = True
@@ -344,12 +344,12 @@ def _parse_ods_pages(context: _OdfContext) -> list[list[dict[str, Any]]]:
             continue
         if not context.styles.table_is_visible(sheet.get(qname("table", "style-name"))):
             continue
-        name = html.escape(sheet.get(qname("table", "name"), "Sheet"), quote=False)
+        name = sheet.get(qname("table", "name"), "Sheet")
         sheet_pages.append((name, _sheet_blocks(sheet, parser)))
     if sum(bool(blocks) for _, blocks in sheet_pages) > 1:
         for name, blocks in sheet_pages:
             if blocks:
-                blocks.insert(0, {"type": BlockType.PARAGRAPH_TITLE, "level": 2, "content": name})
+                blocks.insert(0, {"type": BlockType.PARAGRAPH_TITLE, "level": 2, "content": text_spans(name)})
     return [blocks for _, blocks in sheet_pages] or [[]]
 
 

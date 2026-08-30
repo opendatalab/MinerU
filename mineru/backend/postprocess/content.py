@@ -4,6 +4,9 @@
 from __future__ import annotations
 
 import re
+from typing import Any
+
+from .inline import map_text_span_content, normalize_inline_spans
 
 
 def code_content_clean(content: str | None) -> str:
@@ -30,3 +33,22 @@ def clean_content(content: str | None) -> str | None:
 
         content = re.sub(r"\\\[(.*?)\\\]", replace_pattern, content)
     return content
+
+
+def clean_inline_content(content: Any) -> list[dict[str, Any]]:
+    """严格规范化 raw Span 列表，并返回可继续后处理的 JSON 字典。"""
+    if content is None:
+        return []
+    if not isinstance(content, list):
+        raise TypeError("inline content must be a list of spans")
+    spans = normalize_inline_spans(content)
+    return [span.model_dump(mode="json") for span in spans]
+
+
+def collapse_inline_newlines(content: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """把标题 Span 中的换行及后续空白收敛为单个空格。"""
+    spans = map_text_span_content(normalize_inline_spans(content), lambda value: re.sub(r"\n\s*", " ", value))
+    return [span.model_dump(mode="json") for span in spans]
+
+
+__all__ = ["clean_content", "clean_inline_content", "code_content_clean", "collapse_inline_newlines"]

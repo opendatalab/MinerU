@@ -81,6 +81,29 @@ def _xml_parser() -> etree.XMLParser:
     )
 
 
+def _recovering_xml_parser() -> etree.XMLParser:
+    """创建禁用实体、DTD 和网络但允许修复局部 XHTML 语法的 parser。"""
+    return etree.XMLParser(
+        resolve_entities=False,
+        load_dtd=False,
+        no_network=True,
+        recover=True,
+        remove_blank_text=False,
+        huge_tree=False,
+    )
+
+
+def _recovering_html_parser() -> etree.HTMLParser:
+    """创建禁用网络并按 HTML 空元素语义修复正文结构的 parser。"""
+    return etree.HTMLParser(
+        no_network=True,
+        recover=True,
+        remove_comments=False,
+        remove_blank_text=False,
+        huge_tree=False,
+    )
+
+
 def _local_name(element: etree._Element) -> str:
     """返回 XML 元素不含命名空间的本地名。"""
     return etree.QName(element).localname
@@ -245,14 +268,75 @@ class EpubPackage:
             if required:
                 raise EpubParseError(f"Malformed EPUB package: invalid XML part {part_name!r}: {exc}") from exc
             return None
+        self._validate_xml_document(root, part_name, allow_external_doctype=allow_external_doctype)
+        return root
+
+    def xhtml_part(
+        self,
+        part_name: str,
+        *,
+        required: bool = False,
+        allow_external_doctype: bool = True,
+    ) -> etree._Element | None:
+        """严格解析 spine XHTML，失败后在相同安全预算内尝试局部语法恢复。"""
+        data = self.read_part(part_name, required=required)
+        if data is None:
+            return None
+        strict_error: etree.XMLSyntaxError | ValueError | None = None
+        try:
+            root = etree.fromstring(data, parser=_xml_parser())
+        except (etree.XMLSyntaxError, ValueError) as exc:
+            strict_error = exc
+            try:
+                xml_recovery_root = etree.fromstring(data, parser=_recovering_xml_parser())
+            except (etree.XMLSyntaxError, ValueError) as recovery_exc:
+                if required:
+                    raise EpubParseError(
+                        f"Malformed EPUB package: invalid XHTML part {part_name!r}: {recovery_exc}"
+                    ) from recovery_exc
+                return None
+            if not isinstance(xml_recovery_root.tag, str) or _local_name(xml_recovery_root).casefold() != "html":
+                if required:
+                    raise EpubParseError(f"Malformed EPUB package: XHTML part {part_name!r} has no html root")
+                return None
+            self._validate_xml_document(
+                xml_recovery_root,
+                part_name,
+                allow_external_doctype=allow_external_doctype,
+            )
+            try:
+                root = etree.fromstring(data, parser=_recovering_html_parser())
+            except (etree.XMLSyntaxError, ValueError) as recovery_exc:
+                if required:
+                    raise EpubParseError(
+                        f"Malformed EPUB package: invalid XHTML part {part_name!r}: {recovery_exc}"
+                    ) from recovery_exc
+                return None
+        if not isinstance(root.tag, str) or _local_name(root).casefold() != "html":
+            if required:
+                raise EpubParseError(f"Malformed EPUB package: XHTML part {part_name!r} has no html root")
+            return None
+        self._validate_xml_document(root, part_name, allow_external_doctype=allow_external_doctype)
+        if strict_error is not None:
+            logger.warning("Recovered malformed EPUB XHTML part path={!r}: {}", part_name, strict_error)
+        return root
+
+    @classmethod
+    def _validate_xml_document(
+        cls,
+        root: etree._Element,
+        part_name: str,
+        *,
+        allow_external_doctype: bool,
+    ) -> None:
+        """统一校验已解析 XML/XHTML 的 DTD 策略、节点数和最大深度。"""
         docinfo = root.getroottree().docinfo
         if docinfo.doctype:
             internal_dtd = docinfo.internalDTD
             has_entities = internal_dtd is not None and bool(internal_dtd.entities())
             if not allow_external_doctype or has_entities:
                 raise EpubParseError(f"Malformed EPUB package: DTD declarations are not allowed in {part_name!r}")
-        self._validate_xml_shape(root, part_name)
-        return root
+        cls._validate_xml_shape(root, part_name)
 
     @staticmethod
     def _validate_xml_shape(root: etree._Element, part_name: str) -> None:

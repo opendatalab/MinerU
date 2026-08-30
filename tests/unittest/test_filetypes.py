@@ -15,6 +15,7 @@ from mineru.filetypes import (
     INGESTIBLE_EXTENSIONS,
     MIME_TYPE_BY_EXTENSION,
     ODF_EXTENSIONS,
+    OFD_EXTENSIONS,
     OFFICE_EXTENSIONS,
     PAGE_RANGE_PARSE_EXTENSIONS,
     PARSEABLE_EXTENSIONS,
@@ -129,6 +130,18 @@ def test_html_extensions_are_canonical_flash_only_inputs() -> None:
         assert FILE_TYPE_BY_EXTENSION[ext] == "html"
         assert MIME_TYPE_BY_EXTENSION[ext] == "text/html"
         assert is_flash_only_parse_extension(ext)
+
+
+def test_ofd_is_an_independent_fixed_layout_flash_type() -> None:
+    """验证 OFD 进入现代 Flash/Doclib 集合但不归入 Office。"""
+    assert OFD_EXTENSIONS == frozenset({"ofd"})
+    assert "ofd" not in OFFICE_EXTENSIONS
+    assert "ofd" in FLASH_ONLY_PARSE_EXTENSIONS
+    assert "ofd" in PARSEABLE_EXTENSIONS
+    assert "ofd" in INGESTIBLE_EXTENSIONS
+    assert FILE_TYPE_BY_EXTENSION["ofd"] == "ofd"
+    assert MIME_TYPE_BY_EXTENSION["ofd"] == "application/ofd"
+    assert is_flash_only_parse_extension("ofd")
 
 
 def test_mineru_kit_discovers_and_accepts_csv_inputs(tmp_path: Path) -> None:

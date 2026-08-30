@@ -5,12 +5,15 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 
 from pdftext.schema import Char
 
 from ....types import BBox
 from .document import PDFPathInfo
+
+if TYPE_CHECKING:
+    from .text_styles import PDFTextScriptLine
 
 
 @dataclass(slots=True)
@@ -35,6 +38,8 @@ class _LineItem:
     semantic_type: str | None = None
     restored_inline_cluster: bool = False
     compact_formula_cluster: bool = False
+    formula_candidate_only: bool = False
+    inline_math_regions: list[BBox] = field(default_factory=list)
 
 
 @dataclass(slots=True)
@@ -137,6 +142,7 @@ class _FormulaAnchor:
     bbox: BBox
     detached_below_body: bool = False
     detached_above_body: bool = False
+    repeated_number_band: bool = False
 
 
 @dataclass(slots=True)
@@ -163,6 +169,8 @@ class _PreparedPage:
     drawing_lines: list[_AxisLine]
     fixed_blocks: list[dict[str, Any]]
     page_footnote_groups: list[set[int]] = field(default_factory=list)
+    script_lines: list[PDFTextScriptLine] = field(default_factory=list)
+    formula_candidate_lines: list[_LineItem] = field(default_factory=list)
 
 
 @dataclass(slots=True)

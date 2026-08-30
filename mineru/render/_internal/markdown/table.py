@@ -11,6 +11,7 @@ from bs4.element import NavigableString, Tag
 
 from ....config import LatexDelimitersConfig
 from .assets import prefix_html_image_sources
+from .inline import markdown_styles_require_html, render_styled_markdown_text
 
 _INLINE_EQ_RE = re.compile(r"<eq>(?P<latex>.*?)</eq>", re.IGNORECASE | re.DOTALL)
 _GFM_FORMULA_PIPE_RE = re.compile(r"(?P<slashes>\\*)\|")
@@ -50,6 +51,16 @@ _ALLOWED_INLINE_TAGS = {
     "sub",
     "sup",
     "u",
+}
+_STYLE_TAGS = {
+    "b": "bold",
+    "strong": "bold",
+    "em": "italic",
+    "i": "italic",
+    "u": "underline",
+    "s": "strikethrough",
+    "sup": "superscript",
+    "sub": "subscript",
 }
 
 
@@ -167,17 +178,24 @@ def _detect_header_index(table: Tag, header_flags: list[list[bool]]) -> int:
     return 0
 
 
-def _render_inline_children(node: Tag, delimiters: LatexDelimitersConfig) -> str:
+def _render_inline_children(
+    node: Tag,
+    delimiters: LatexDelimitersConfig,
+    inherited_styles: tuple[str, ...] = (),
+) -> str:
     """递归渲染简单单元格中的安全行内 HTML。"""
     parts: list[str] = []
     for child in node.children:
         if isinstance(child, NavigableString):
-            parts.append(_escape_cell_text(str(child)))
+            escaped = _escape_cell_text(str(child))
+            parts.append(render_styled_markdown_text(escaped, inherited_styles))
             continue
         if not isinstance(child, Tag):
             continue
         name = child.name
-        rendered = _render_inline_children(child, delimiters)
+        style = _STYLE_TAGS.get(name)
+        styles = tuple(dict.fromkeys((*inherited_styles, style))) if style is not None else inherited_styles
+        rendered = _render_inline_children(child, delimiters, styles)
         if name in {"p", "span"}:
             parts.append(rendered)
         elif name == "br":
@@ -190,18 +208,33 @@ def _render_inline_children(node: Tag, delimiters: LatexDelimitersConfig) -> str
             parts.append(f"{delimiters.inline.left}{escaped_latex}{delimiters.inline.right}" if escaped_latex else "")
         elif name == "a":
             href = str(child.get("href", "")).strip()
-            parts.append(f"[{rendered}]({_escape_link_url(href)})" if href else rendered)
-        elif name in {"b", "strong"}:
-            parts.append(f"**{rendered.strip()}**")
-        elif name in {"em", "i"}:
-            parts.append(f"*{rendered.strip()}*")
-        elif name == "s":
-            parts.append(f"~~{rendered.strip()}~~")
-        elif name in {"u", "sub", "sup"}:
-            parts.append(f"<{name}>{rendered}</{name}>")
+            if not href:
+                parts.append(rendered)
+            elif _node_has_complex_text_style(child, inherited_styles):
+                parts.append(f'<a href="{html.escape(href, quote=True)}">{rendered}</a>')
+            else:
+                parts.append(f"[{rendered}]({_escape_link_url(href)})")
+        elif name in _STYLE_TAGS:
+            parts.append(rendered)
         else:
             parts.append(rendered)
     return "".join(parts)
+
+
+def _node_has_complex_text_style(node: Tag, inherited_styles: tuple[str, ...]) -> bool:
+    """判断节点后代是否含必须用 HTML 表达的有效文字样式组合。"""
+    for child in node.children:
+        if isinstance(child, NavigableString):
+            if str(child) and markdown_styles_require_html(inherited_styles):
+                return True
+            continue
+        if not isinstance(child, Tag):
+            continue
+        style = _STYLE_TAGS.get(child.name)
+        styles = tuple(dict.fromkeys((*inherited_styles, style))) if style is not None else inherited_styles
+        if _node_has_complex_text_style(child, styles):
+            return True
+    return False
 
 
 def _render_inline_code(content: str) -> str:

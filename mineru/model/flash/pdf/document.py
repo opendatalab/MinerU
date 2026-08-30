@@ -71,6 +71,15 @@ class PDFPageImage:
         self.scale = scale
 
 
+@dataclass(frozen=True, slots=True)
+class PDFPageTextGeometry:
+    """保存 Hybrid TXT 需要的原始字符、tight bbox 和视觉字符原点。"""
+
+    chars: list[Char]
+    tight_bboxes: dict[int, BBox]
+    origins: dict[int, tuple[float, float]]
+
+
 @dataclass(frozen=True)
 class PDFDrawingLine:
     """PDF 页面中可见的水平或竖直绘图线，坐标使用页面左上原点的 PDF point。"""
@@ -141,6 +150,10 @@ class PDFPage:
 
     def get_chars(self) -> list[Char]:
         return self.pdf_doc.get_page_chars(self._idx)
+
+    def get_chars_with_geometry(self) -> PDFPageTextGeometry:
+        """一次读取字符及 Hybrid TXT 匹配所需的额外几何。"""
+        return self.pdf_doc.get_page_chars_with_geometry(self._idx)
 
     def get_drawing_lines(self) -> list[PDFDrawingLine]:
         """读取当前页已规范到视觉页面坐标的横竖 drawing。"""
@@ -380,23 +393,51 @@ class PDFDocument:
         return cast(int, n_chars)
 
     def get_page_chars(self, page_idx: int) -> list[Char]:
+        return self._get_page_text_geometry(page_idx, include_extended_geometry=False).chars
+
+    def get_page_chars_with_geometry(self, page_idx: int) -> PDFPageTextGeometry:
+        """一次读取字符、tight bbox 和字符原点，避免 Hybrid 重复打开 textpage。"""
+        return self._get_page_text_geometry(page_idx, include_extended_geometry=True)
+
+    def _get_page_text_geometry(
+        self,
+        page_idx: int,
+        *,
+        include_extended_geometry: bool,
+    ) -> PDFPageTextGeometry:
+        """在同一 PDFium textpage 生命周期内物化字符及可选扩展几何。"""
         with self._open_page(page_idx) as page:
             textpage = None
             try:
                 textpage = page.get_textpage()
-                page_bbox: list[float] = list(page.get_bbox())
+                raw_page_bbox: list[float] = list(page.get_bbox())
+                page_bbox = _normalize_pdf_page_bbox(tuple(raw_page_bbox))
                 page_rotation: int = 0
                 try:
                     page_rotation = page.get_rotation()
                 except Exception:
                     pass
-                chars = get_chars(textpage, page_bbox, page_rotation)
+                chars = get_chars(textpage, raw_page_bbox, page_rotation)
                 chars = _deduplicate_pdftext_chars(chars)
                 chars = _ensure_legacy_chars(chars)
                 chars = _restore_pdfium_surrogate_pairs(chars, textpage)
+                chars = _deduplicate_near_identical_chars(chars)
+                if include_extended_geometry:
+                    tight_bboxes, origins = _extract_page_char_extended_geometry(
+                        textpage,
+                        chars,
+                        page_bbox,
+                        page_rotation,
+                    )
+                else:
+                    tight_bboxes, origins = {}, {}
             finally:
                 _try_close(textpage)
-        return _deduplicate_near_identical_chars(chars)
+        return PDFPageTextGeometry(
+            chars=chars,
+            tight_bboxes=tight_bboxes,
+            origins=origins,
+        )
 
     def get_page_lines(self, page_idx: int) -> list[Line]:
         chars = self.get_page_chars(page_idx)
@@ -576,6 +617,101 @@ def _transform_drawing_point(
     if page_rotation == 270:
         return top - y, right - x
     return x - left, top - y
+
+
+def _char_visual_bbox_from_pdfium(
+    left: float,
+    right: float,
+    bottom: float,
+    top: float,
+    page_bbox: BBox,
+    page_rotation: int,
+) -> BBox | None:
+    """把 PDFium 字符 user-space 框转换为合法视觉页面 bbox。"""
+    points = [
+        _transform_drawing_point(point, page_bbox, page_rotation)
+        for point in (
+            (left, bottom),
+            (left, top),
+            (right, bottom),
+            (right, top),
+        )
+    ]
+    bbox = (
+        min(point[0] for point in points),
+        min(point[1] for point in points),
+        max(point[0] for point in points),
+        max(point[1] for point in points),
+    )
+    if not all(math.isfinite(value) for value in bbox) or bbox[2] <= bbox[0] or bbox[3] <= bbox[1]:
+        return None
+    return bbox
+
+
+def _extract_page_char_extended_geometry(
+    textpage: pdfium.PdfTextPage,
+    chars: list[Char],
+    page_bbox: BBox,
+    page_rotation: int,
+) -> tuple[dict[int, BBox], dict[int, tuple[float, float]]]:
+    """逐字符读取 tight bbox 和 origin；单字符失败不影响其余文本。"""
+    tight_bboxes: dict[int, BBox] = {}
+    origins: dict[int, tuple[float, float]] = {}
+    textpage_raw = textpage.raw
+
+    for char in chars:
+        raw_char_idx = char.get("char_idx")
+        if isinstance(raw_char_idx, bool) or not isinstance(raw_char_idx, int):
+            continue
+
+        left = ctypes.c_double()
+        right = ctypes.c_double()
+        bottom = ctypes.c_double()
+        top = ctypes.c_double()
+        try:
+            has_tight_bbox = pdfium_c.FPDFText_GetCharBox(
+                textpage_raw,
+                raw_char_idx,
+                left,
+                right,
+                bottom,
+                top,
+            )
+        except Exception:
+            has_tight_bbox = False
+        if has_tight_bbox:
+            tight_bbox = _char_visual_bbox_from_pdfium(
+                left.value,
+                right.value,
+                bottom.value,
+                top.value,
+                page_bbox,
+                page_rotation,
+            )
+            if tight_bbox is not None:
+                tight_bboxes[raw_char_idx] = tight_bbox
+
+        origin_x = ctypes.c_double()
+        origin_y = ctypes.c_double()
+        try:
+            has_origin = pdfium_c.FPDFText_GetCharOrigin(
+                textpage_raw,
+                raw_char_idx,
+                origin_x,
+                origin_y,
+            )
+        except Exception:
+            has_origin = False
+        if has_origin:
+            origin = _transform_drawing_point(
+                (origin_x.value, origin_y.value),
+                page_bbox,
+                page_rotation,
+            )
+            if all(math.isfinite(value) for value in origin):
+                origins[raw_char_idx] = origin
+
+    return tight_bboxes, origins
 
 
 def _multiply_pdf_matrices(

@@ -16,7 +16,6 @@ CODE_STYLE = "MinerU Code"
 SPATIAL_TABLE_STYLE = "MinerU Spatial Table"
 CAPTION_STYLE = "MinerU Caption"
 FOOTNOTE_STYLE = "MinerU Footnote"
-AUXILIARY_STYLE = "MinerU Auxiliary"
 FORMULA_FALLBACK_STYLE = "MinerU Formula Fallback"
 
 _HEADING_SIZES = (20, 18, 16, 14, 13, 12, 11, 10.5, 10.5)
@@ -104,19 +103,6 @@ def configure_document(document: Document) -> None:
         line_spacing=1.0,
     )
 
-    auxiliary = _get_or_add_paragraph_style(document, AUXILIARY_STYLE)
-    _configure_paragraph_style(
-        auxiliary,
-        western_font="Times New Roman",
-        east_asia_font="宋体",
-        size_pt=8,
-        italic=True,
-        color="777777",
-        space_before_pt=2,
-        space_after_pt=3,
-        line_spacing=1.0,
-    )
-
     formula_fallback = _get_or_add_paragraph_style(document, FORMULA_FALLBACK_STYLE)
     _configure_paragraph_style(
         formula_fallback,
@@ -198,7 +184,6 @@ def _set_paragraph_shading(style: _ParagraphStyle, fill: str) -> None:
 
 
 __all__ = [
-    "AUXILIARY_STYLE",
     "BODY_STYLE",
     "CAPTION_STYLE",
     "CODE_STYLE",

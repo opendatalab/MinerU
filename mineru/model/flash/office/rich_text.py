@@ -1,13 +1,13 @@
 # Copyright (c) Opendatalab. All rights reserved.
+import html
 from dataclasses import dataclass
 from typing import Any, Optional
 
 from .._shared.hyperlink import (
     OFFICE_EXTERNAL_HYPERLINK_SCHEMES,
-    escape_inline_protocol_text,
-    render_inline_hyperlink,
     sanitize_hyperlink_target,
 )
+from .._shared.spans import append_hyperlink_span, append_text_span, extend_inline_spans, normalize_span_dicts
 
 VISIBLE_SPACE_STYLES = {"underline", "emphasis", "strikethrough"}
 
@@ -156,21 +156,28 @@ def append_rich_text_element(
     paragraph_elements.append((text, format_obj, hyperlink))
 
 
-def format_text_tag(
+def format_text_spans(
     text: str,
-    style_str: Optional[str] = None,
-    *,
-    force_tag: bool = False,
-) -> str:
-    """生成 Office 内部富文本 text 标签；无样式普通文本默认不包标签。"""
+    hyperlink: Any = None,
+    style: str | list[str] | tuple[str, ...] | None = None,
+) -> list[dict[str, Any]]:
+    """把 Office 文字、样式和安全超链接直接构造为 Span。"""
     if not text:
-        return text
-    escaped_text = escape_inline_protocol_text(text).replace("\r\n", "\n").replace("\r", "\n")
-    if style_str:
-        return f'<text style="{style_str}">{escaped_text}</text>'
-    if force_tag:
-        return f"<text>{escaped_text}</text>"
-    return escaped_text
+        return []
+    normalized_text = text.replace("\r\n", "\n").replace("\r", "\n")
+    children: list[dict[str, Any]] = []
+    append_text_span(children, normalized_text, _style_list(style))
+    safe_target = sanitize_hyperlink_target(
+        hyperlink,
+        allowed_schemes=OFFICE_EXTERNAL_HYPERLINK_SCHEMES,
+        allow_relative=True,
+        allow_fragment=True,
+    )
+    if safe_target is None:
+        return children
+    output: list[dict[str, Any]] = []
+    append_hyperlink_span(output, children, safe_target)
+    return output
 
 
 def is_valid_hyperlink_target(hyperlink: Any) -> bool:
@@ -186,48 +193,30 @@ def is_valid_hyperlink_target(hyperlink: Any) -> bool:
     )
 
 
-def format_text_with_hyperlink(
-    text: str,
-    hyperlink: Any,
-    style_str: Optional[str] = None,
-) -> str:
-    """按 Office 内部约定输出带样式/超链接的文本片段。"""
-    if not text:
-        return text
-    safe_target = sanitize_hyperlink_target(
-        hyperlink,
-        allowed_schemes=OFFICE_EXTERNAL_HYPERLINK_SCHEMES,
-        allow_relative=True,
-        allow_fragment=True,
-    )
-    if safe_target is None:
-        return format_text_tag(text, style_str)
-
-    text_tag = format_text_tag(text, style_str, force_tag=True)
-    return render_inline_hyperlink(text_tag, safe_target)
-
-
-def _format_hyperlink_segments(group: list[OfficeRichTextSegment]) -> str:
-    """将连续同 URL 的多个片段渲染成单个 hyperlink 标签。"""
+def _format_hyperlink_segments(group: list[OfficeRichTextSegment]) -> list[dict[str, Any]]:
+    """将连续同 URL 的多个片段构造成单个 HyperlinkSpan。"""
     if not group:
-        return ""
+        return []
     safe_target = sanitize_hyperlink_target(
         group[0].hyperlink,
         allowed_schemes=OFFICE_EXTERNAL_HYPERLINK_SCHEMES,
         allow_relative=True,
         allow_fragment=True,
     )
+    children: list[dict[str, Any]] = []
+    for segment in group:
+        append_text_span(children, segment.text, _style_list(segment.style))
     if safe_target is None:
-        return "".join(format_text_tag(segment.text, _style_str(segment.style)) for segment in group if segment.text)
-
-    text_tags = [format_text_tag(segment.text, _style_str(segment.style), force_tag=True) for segment in group if segment.text]
-    return render_inline_hyperlink("".join(text_tags), safe_target)
+        return children
+    output: list[dict[str, Any]] = []
+    append_hyperlink_span(output, children, safe_target)
+    return output
 
 
 def format_hyperlink_group(
     group: list[tuple[str, Any, Any]],
-) -> str:
-    """将 DOCX paragraph element 分组渲染成单个 hyperlink 标签。"""
+) -> list[dict[str, Any]]:
+    """将 DOCX paragraph element 分组构造成单个 HyperlinkSpan。"""
     return _format_hyperlink_segments(
         [
             OfficeRichTextSegment(
@@ -313,8 +302,8 @@ def build_rich_text_from_segments(
     segments: list[OfficeRichTextSegment],
     *,
     trim_plain_edges: bool = False,
-) -> str:
-    """从 Office 富文本片段构建内部标记，统一处理样式、空白和超链接分组。"""
+) -> list[dict[str, Any]]:
+    """从 Office 富文本片段直接构建规范化行内 Span。"""
     normalized_segments = [
         OfficeRichTextSegment(
             segment.text,
@@ -333,7 +322,7 @@ def build_rich_text_from_segments(
         normalized_segments = _trim_plain_edge_spaces(normalized_segments)
     normalized_segments = _merge_non_link_segments(normalized_segments)
 
-    rendered_parts = []
+    rendered_spans: list[dict[str, Any]] = []
     index = 0
     while index < len(normalized_segments):
         segment = normalized_segments[index]
@@ -348,48 +337,88 @@ def build_rich_text_from_segments(
                     break
                 group.append(next_segment)
                 index += 1
-            rendered_parts.append(_format_hyperlink_segments(group))
+            extend_inline_spans(rendered_spans, _format_hyperlink_segments(group))
             continue
 
-        rendered_parts.append(
-            format_text_with_hyperlink(
+        extend_inline_spans(
+            rendered_spans,
+            format_text_spans(
                 segment.text,
                 segment.hyperlink,
-                _style_str(segment.style),
-            )
+                segment.style,
+            ),
         )
         index += 1
 
-    return "".join(rendered_parts)
+    return normalize_span_dicts(rendered_spans)
 
 
-def build_text_mappings_from_elements(
+def build_spans_from_elements(
     paragraph_elements: list[tuple[str, Any, Any]],
-) -> list[tuple[str, str]]:
-    """按连续同 URL hyperlink 分组，生成原文到内部富文本标记的映射。"""
-    mappings = []
-    index = 0
-    while index < len(paragraph_elements):
-        text, format_obj, hyperlink = paragraph_elements[index]
-        if not text:
-            index += 1
+) -> list[dict[str, Any]]:
+    """把 DOCX paragraph element 直接构造成结构化 Span。"""
+    return build_rich_text_from_segments(
+        [
+            OfficeRichTextSegment(
+                text=text,
+                style=formatting_to_style_str(format_obj),
+                hyperlink=str(hyperlink) if hyperlink is not None else None,
+            )
+            for text, format_obj, hyperlink in paragraph_elements
+            if text
+        ]
+    )
+
+
+def build_rich_text_html_from_segments(
+    segments: list[OfficeRichTextSegment],
+    *,
+    trim_plain_edges: bool = False,
+) -> str:
+    """把 Office 富文本片段序列化为表格单元格使用的安全 HTML。"""
+    normalized = _trim_plain_edge_spaces(segments) if trim_plain_edges else list(segments)
+    parts: list[str] = []
+    for segment in normalized:
+        if not segment.text:
             continue
+        rendered = html.escape(segment.text, quote=False).replace("\r\n", "\n").replace("\r", "\n")
+        styles = _style_list(segment.style)
+        if "superscript" in styles:
+            rendered = f"<sup>{rendered}</sup>"
+        elif "subscript" in styles:
+            rendered = f"<sub>{rendered}</sub>"
+        if "underline" in styles:
+            rendered = f"<u>{rendered}</u>"
+        if "bold" in styles:
+            rendered = f"<strong>{rendered}</strong>"
+        if "italic" in styles:
+            rendered = f"<em>{rendered}</em>"
+        if "strikethrough" in styles:
+            rendered = f"<s>{rendered}</s>"
+        safe_target = sanitize_hyperlink_target(
+            segment.hyperlink,
+            allowed_schemes=OFFICE_EXTERNAL_HYPERLINK_SCHEMES,
+            allow_relative=True,
+            allow_fragment=True,
+        )
+        if safe_target:
+            rendered = f'<a href="{html.escape(safe_target, quote=True)}">{rendered}</a>'
+        parts.append(rendered)
+    return "".join(parts)
 
-        if is_valid_hyperlink_target(hyperlink):
-            group = [(text, format_obj, hyperlink)]
-            index += 1
-            while index < len(paragraph_elements):
-                next_text, next_format, next_hyperlink = paragraph_elements[index]
-                if not next_text or not is_valid_hyperlink_target(next_hyperlink) or str(next_hyperlink) != str(hyperlink):
-                    break
-                group.append((next_text, next_format, next_hyperlink))
-                index += 1
 
-            original_text = "".join(item_text for item_text, _, _ in group)
-            mappings.append((original_text, format_hyperlink_group(group)))
-            continue
-
-        style_str = formatting_to_style_str(format_obj)
-        mappings.append((text, format_text_with_hyperlink(text, hyperlink, style_str)))
-        index += 1
-    return mappings
+__all__ = [
+    "OfficeRichTextSegment",
+    "append_rich_text_element",
+    "build_rich_text_from_segments",
+    "build_rich_text_html_from_segments",
+    "build_spans_from_elements",
+    "format_hyperlink_group",
+    "format_text_spans",
+    "formatting_to_style_str",
+    "has_non_visible_text_style",
+    "has_visible_style",
+    "is_valid_hyperlink_target",
+    "normalize_format_for_text",
+    "should_keep_group_text",
+]

@@ -1,11 +1,10 @@
 # Copyright (c) Opendatalab. All rights reserved.
 """PDF 段落延续关系的 raw model-list 后处理。"""
 
-import html
 import math
-import re
 from typing import Any, TypeAlias
 
+from ...model.flash._shared.spans import inline_span_plain_text
 from ...types import MERGE_TRANSPARENT_BLOCK_TYPES, BlockType
 
 LINE_STOP_FLAG = (".", "!", "?", "。", "！", "？", ")", "）", '"', "”", ":", "：", ";", "；")
@@ -32,15 +31,6 @@ VERTICAL_LINE_IN_BLOCK_THRESHOLD = 0.8
 SINGLE_LINE_LOOKAHEAD_LIMIT = 5
 SINGLE_LINE_MIN_ALIGNED_LOOKAHEAD = 3
 SINGLE_LINE_THICKNESS_RATIO_MAX = 1.5
-_INLINE_URL_ELEMENT_RE = re.compile(
-    r"<url>.*?</url>",
-    re.IGNORECASE | re.DOTALL,
-)
-_KNOWN_INLINE_TAG_RE = re.compile(
-    r"</?(?:eq|text|hyperlink|sup|sub|strong|b|em|i|s|u)(?:\s[^<>]*?)?>",
-    re.IGNORECASE,
-)
-
 BlockDict: TypeAlias = dict[str, Any]
 CalculationBBox: TypeAlias = tuple[int, int, int, int]
 OrderedBlock: TypeAlias = tuple[int, int, BlockDict]
@@ -301,14 +291,12 @@ def _metric_line_bboxes(block: BlockDict) -> list[CalculationBBox]:
 
 
 def _normalized_text_content(block: BlockDict) -> str:
-    """读取 text block 可见文本，排除富文本标签和 hyperlink URL 目标。"""
+    """读取 text block 的结构化 Span 可见文本。"""
 
     content = block.get("content")
-    if not isinstance(content, str):
+    if not isinstance(content, list):
         return ""
-    content = _INLINE_URL_ELEMENT_RE.sub("", content)
-    content = _KNOWN_INLINE_TAG_RE.sub("", content)
-    return html.unescape(content).strip()
+    return inline_span_plain_text(item for item in content if isinstance(item, dict)).strip()
 
 
 def _bbox_union(line_bboxes: list[CalculationBBox]) -> CalculationBBox:

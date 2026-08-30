@@ -7,19 +7,21 @@ from typing import Any, Literal
 
 import numpy as np
 from PIL import Image
-from pdftext.schema import Char
-
 from .....model.runtime.hybrid import HybridLocalModelContext, run_ocr_inference
 from .....types import BBox, BlockType, ContentType
 from .....utils.language import detect_lang
 from .....model.ocr.image import rotate_vertical_crop_if_needed
 from .....model.ocr.results import OcrConfidence
-from .....model.flash.pdf.document import PDFPage, get_lines_from_chars
+from .....model.flash.pdf.document import PDFPage, PDFPageTextGeometry, get_lines_from_chars
 from .....model.flash.pdf.text_styles import (
+    PDF_NATIVE_SCRIPT_MARKUP_KEY,
     PDFTextLinkLine,
+    PDFTextScriptLine,
     PDFTextStyleLine,
     apply_pdf_text_links,
+    apply_pdf_text_scripts,
     apply_pdf_text_styles,
+    materialize_pdf_inline_spans,
 )
 from .....utils.text import merge_text_line_contents
 
@@ -143,6 +145,51 @@ def _build_page_text_formula_spans(
     return page_spans
 
 
+def _get_page_inline_formula_regions(
+    page_inline_formula_list: list[dict[str, Any]],
+    page_size: tuple[float, float],
+    render_scale: float,
+) -> list[BBox]:
+    """把当前页 layout/MFR 行内公式统一转换成页面 point bbox。"""
+
+    return [
+        bbox
+        for formula in page_inline_formula_list
+        if (bbox := _sidecar_bbox_to_page_bbox(formula.get("bbox"), page_size, render_scale)) is not None
+    ]
+
+
+def _get_page_table_regions(
+    page_model_list: list[dict[str, Any]],
+    page_size: tuple[float, float],
+) -> list[BBox]:
+    """把当前页模型表格 bbox 转成脚本行合并使用的页面 point 区域。"""
+
+    page_width, page_height = page_size
+    regions: list[BBox] = []
+    for block in page_model_list:
+        if block.get("type") != BlockType.TABLE:
+            continue
+        raw_bbox = block.get("bbox")
+        if not isinstance(raw_bbox, (list, tuple)) or len(raw_bbox) != 4:
+            continue
+        try:
+            bbox = tuple(float(value) for value in raw_bbox)
+        except (TypeError, ValueError):
+            continue
+        if bbox[2] <= bbox[0] or bbox[3] <= bbox[1]:
+            continue
+        if all(0.0 <= value <= 1.0 for value in bbox):
+            bbox = (
+                bbox[0] * page_width,
+                bbox[1] * page_height,
+                bbox[2] * page_width,
+                bbox[3] * page_height,
+            )
+        regions.append(bbox)
+    return regions
+
+
 def _fill_native_pdf_text_spans(
     pdf_page: PDFPage,
     page_spans: list[_AnalyzeSpan],
@@ -150,7 +197,8 @@ def _fill_native_pdf_text_spans(
     render_scale: float,
     page_size: tuple[float, float],
     *,
-    page_chars: list[Char] | None = None,
+    page_text_geometry: PDFPageTextGeometry | None = None,
+    detect_scripts: bool = True,
 ) -> list[_AnalyzeSpan]:
     """复用原生 PDF 字符回填逻辑，并允许共享同页删除线检测读取的字符。"""
     page_width, page_height = page_size
@@ -162,7 +210,10 @@ def _fill_native_pdf_text_spans(
         render_scale,
         [virtual_block],
         [],
-        page_chars=page_chars,
+        page_chars=page_text_geometry.chars if page_text_geometry is not None else None,
+        tight_bboxes=page_text_geometry.tight_bboxes if page_text_geometry is not None else None,
+        origins=page_text_geometry.origins if page_text_geometry is not None else None,
+        detect_scripts=detect_scripts,
     )
 
 
@@ -267,6 +318,15 @@ def _lines_to_block_content(lines: list[_AnalyzeLine], block_type: str) -> str:
     )
 
 
+def _lines_have_native_script_markup(lines: list[_AnalyzeLine]) -> bool:
+    """判断组行结果是否实际包含 detector-owned 上下标标签。"""
+    return any(
+        span.metadata.get(PDF_NATIVE_SCRIPT_MARKUP_KEY) is True and ("<sup>" in span.content or "<sub>" in span.content)
+        for line in lines
+        for span in line.spans
+    )
+
+
 def _build_ocr_det_line_items(lines: list[_AnalyzeLine], page_size: tuple[float, float]) -> list[dict[str, Any]]:
     """将 Analyze 私有行转换为归一化行框。"""
     line_items = []
@@ -297,6 +357,8 @@ def _apply_block_content_and_line_metadata(
         has_nonempty_content = bool(block_content.strip()) if isinstance(block_content, str) else bool(block_content)
         if not has_nonempty_content:
             block_item["content"] = _lines_to_block_content(lines, block_type)
+            if _lines_have_native_script_markup(lines):
+                block_item[PDF_NATIVE_SCRIPT_MARKUP_KEY] = True
 
         if block_type in LINE_METADATA_BLOCK_TYPES:
             block_item["lines"] = _build_ocr_det_line_items(lines, page_size)
@@ -309,8 +371,10 @@ def _fill_window_block_content_and_lines(
     inline_formula_list: list[list[dict[str, Any]]],
     ocr_res_list: list[list[dict[str, Any]]],
     parse_mode: Literal["txt", "ocr"],
+    effort: Literal["flash", "medium", "high", "xhigh"],
     ocr_det_type: set[str],
     local_model_context: HybridLocalModelContext,
+    page_text_geometries: list[PDFPageTextGeometry | None] | None = None,
 ) -> list[list[dict[str, Any]]]:
     """按页完成 span 回填与行级元数据构造，返回不含页面级 sidecar 的 model list。"""
     page_counts = {
@@ -320,9 +384,12 @@ def _fill_window_block_content_and_lines(
         "inline_formulas": len(inline_formula_list),
         "ocr_results": len(ocr_res_list),
     }
+    if page_text_geometries is not None:
+        page_counts["text_geometries"] = len(page_text_geometries)
     if len(set(page_counts.values())) != 1:
         raise ValueError(f"Hybrid block content page count mismatch: {page_counts}")
 
+    use_shared_script_sidecar = parse_mode == "txt" and effort in {"medium", "high", "xhigh"}
     target_block_types = set(ocr_det_type) | TITLE_BLOCK_TYPES | {BlockType.TEXT}
     page_block_line_results: list[
         tuple[
@@ -331,14 +398,18 @@ def _fill_window_block_content_and_lines(
             tuple[float, float],
             list[PDFTextStyleLine],
             list[PDFTextLinkLine],
+            list[PDFTextScriptLine],
         ]
     ] = []
-    for image_dict, pdf_page, page_model_list, page_inline_formula_list, page_ocr_res_list in zip(
-        images_list,
-        pdf_pages,
-        model_list,
-        inline_formula_list,
-        ocr_res_list,
+    for page_idx, (image_dict, pdf_page, page_model_list, page_inline_formula_list, page_ocr_res_list) in enumerate(
+        zip(
+            images_list,
+            pdf_pages,
+            model_list,
+            inline_formula_list,
+            ocr_res_list,
+            strict=True,
+        )
     ):
         page_pil_image = image_dict["img_pil"]
         render_scale = float(image_dict["scale"])
@@ -349,10 +420,20 @@ def _fill_window_block_content_and_lines(
             page_size,
             render_scale,
         )
+        inline_math_regions = _get_page_inline_formula_regions(
+            page_inline_formula_list,
+            page_size,
+            render_scale,
+        )
+        table_regions = _get_page_table_regions(
+            page_model_list,
+            page_size,
+        )
         style_lines: list[PDFTextStyleLine] = []
         link_lines: list[PDFTextLinkLine] = []
+        script_lines: list[PDFTextScriptLine] = []
         if parse_mode == "txt":
-            page_chars = None
+            page_text_geometry = page_text_geometries[page_idx] if page_text_geometries is not None else None
             try:
                 page_char_count = pdf_page.get_char_count()
             except Exception:
@@ -362,18 +443,28 @@ def _fill_window_block_content_and_lines(
                 or isinstance(page_char_count, bool)
                 or page_char_count <= MAX_NATIVE_TEXT_CHARS_PER_PAGE
             ):
-                page_chars, _line_items, style_lines, link_lines = (
-                    build_pdf_native_visual_lines_and_styles(
-                        pdf_page,
-                    )
+                (
+                    page_text_geometry,
+                    _line_items,
+                    style_lines,
+                    link_lines,
+                    script_lines,
+                ) = build_pdf_native_visual_lines_and_styles(
+                    pdf_page,
+                    page_text_geometry=page_text_geometry,
+                    inline_math_regions=inline_math_regions,
+                    table_regions=table_regions,
                 )
+                if page_text_geometries is not None:
+                    page_text_geometries[page_idx] = page_text_geometry
             page_spans = _fill_native_pdf_text_spans(
                 pdf_page,
                 page_spans,
                 page_pil_image,
                 render_scale,
                 page_size,
-                page_chars=page_chars,
+                page_text_geometry=page_text_geometry,
+                detect_scripts=not use_shared_script_sidecar,
             )
 
         block_lines = _group_page_spans_by_block(
@@ -389,16 +480,14 @@ def _fill_window_block_content_and_lines(
                 page_size,
                 style_lines,
                 link_lines,
+                script_lines,
             )
         )
 
     if parse_mode == "txt":
         _apply_window_post_ocr(
             local_model_context,
-            [
-                block_lines
-                for _, block_lines, _, _style_lines, _link_lines in page_block_line_results
-            ],
+            [block_lines for _, block_lines, _, _style_lines, _link_lines, _script_lines in page_block_line_results],
         )
 
     for (
@@ -407,6 +496,7 @@ def _fill_window_block_content_and_lines(
         page_size,
         style_lines,
         link_lines,
+        script_lines,
     ) in page_block_line_results:
         _apply_block_content_and_line_metadata(
             page_model_list,
@@ -423,6 +513,12 @@ def _fill_window_block_content_and_lines(
             style_lines,
             page_size,
         )
+        apply_pdf_text_scripts(
+            page_model_list,
+            script_lines,
+            page_size,
+        )
+        materialize_pdf_inline_spans(page_model_list)
     return model_list
 
 

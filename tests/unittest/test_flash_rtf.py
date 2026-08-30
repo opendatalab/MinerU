@@ -30,6 +30,8 @@ from mineru.parser import parse
 from mineru.render import RenderMode, render_docx, render_html, render_markdown, render_structured_content
 from mineru.types import BlockType
 
+from _span_test_utils import inline, inline_text, visible_content
+
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _REAL_RTF = _PROJECT_ROOT / "demo" / "office_docs" / "rtf_01.rtf"
@@ -102,7 +104,7 @@ def test_rtf_font_codepages_and_unicode_surrogates_are_exact() -> None:
 
     pages = RtfModel().predict(BytesIO(source))
 
-    assert pages == [[{"type": BlockType.TEXT, "content": "Привет こんにちは 😀"}]]
+    assert pages == [[{"type": BlockType.TEXT, "content": inline("Привет こんにちは 😀")}]]
 
 
 def test_rtf_metadata_decodes_consecutive_multibyte_hex_as_one_run() -> None:
@@ -120,7 +122,7 @@ def test_rtf_metadata_decodes_consecutive_multibyte_hex_as_one_run() -> None:
     pages = RtfModel().predict(BytesIO(source))
 
     assert metadata["title"] == "中文"
-    assert pages == [[{"type": BlockType.TEXT, "content": "Body"}]]
+    assert pages == [[{"type": BlockType.TEXT, "content": inline("Body")}]]
 
 
 def test_rtf_unicode_controls_buffer_adjacent_text_without_repeated_run_copy() -> None:
@@ -136,7 +138,7 @@ def test_rtf_unicode_controls_buffer_adjacent_text_without_repeated_run_copy() -
         for call in replace_mock.call_args_list
         if isinstance(call.args[0], parser_module.RtfTextRun) and "text" in call.kwargs
     ]
-    assert pages == [[{"type": BlockType.TEXT, "content": "中" * count}]]
+    assert pages == [[{"type": BlockType.TEXT, "content": inline("中" * count)}]]
     assert text_replacements == []
 
 
@@ -146,7 +148,7 @@ def test_rtf_upr_prefers_unicode_branch_without_leaking_ansi_fallback() -> None:
 
     pages = RtfModel().predict(BytesIO(source))
 
-    assert pages == [[{"type": BlockType.TEXT, "content": "Before 中 After"}]]
+    assert pages == [[{"type": BlockType.TEXT, "content": inline("Before 中 After")}]]
 
 
 def test_rtf_inherited_style_honors_explicit_formatting_resets() -> None:
@@ -157,7 +159,7 @@ def test_rtf_inherited_style_honors_explicit_formatting_resets() -> None:
 
     pages = RtfModel().predict(BytesIO(source))
 
-    assert pages == [[{"type": BlockType.TEXT, "content": "Reset text"}]]
+    assert pages == [[{"type": BlockType.TEXT, "content": inline("Reset text")}]]
 
 
 def test_rtf_large_roman_list_start_falls_back_to_decimal() -> None:
@@ -192,17 +194,21 @@ def test_rtf_model_recovers_unicode_styles_and_structures() -> None:
     assert title["type"] == BlockType.PARAGRAPH_TITLE
     assert title["level"] == 2
     assert title["anchor"] == "heading"
-    assert "bold,italic" in title["content"]
-    body = next(block for block in blocks if block.get("type") == BlockType.TEXT and "Unicode" in block.get("content", ""))
-    assert "中文" in body["content"]
-    assert "superscript" in body["content"]
-    link = next(block for block in blocks if block.get("type") == BlockType.TEXT and "Jump heading" in block.get("content", ""))
-    assert "<url>#heading</url>" in link["content"]
-    assert "javascript:" not in link["content"]
+    assert any(set(span.get("styles", [])) == {"bold", "italic"} for span in title["content"])
+    body = next(
+        block for block in blocks if block.get("type") == BlockType.TEXT and "Unicode" in inline_text(block.get("content"))
+    )
+    assert "中文" in inline_text(body["content"])
+    assert any("superscript" in span.get("styles", []) for span in body["content"])
+    link = next(
+        block for block in blocks if block.get("type") == BlockType.TEXT and "Jump heading" in inline_text(block.get("content"))
+    )
+    assert any(span.get("type") == "hyperlink" and span.get("url") == "#heading" for span in link["content"])
+    assert "javascript:" not in str(link["content"])
     assert blocks[-3:] == [
-        {"type": BlockType.HEADER, "content": "Header text"},
-        {"type": BlockType.FOOTER, "content": "Footer text"},
-        {"type": BlockType.PAGE_FOOTNOTE, "content": "[1] Foot body."},
+        {"type": BlockType.HEADER, "content": inline("Header text")},
+        {"type": BlockType.FOOTER, "content": inline("Footer text")},
+        {"type": BlockType.PAGE_FOOTNOTE, "content": inline("[1] Foot body.")},
     ]
     code = next(block for block in blocks if block.get("type") == BlockType.CODE)
     assert code["content"] == "first()\nsecond()"
@@ -218,7 +224,7 @@ def test_rtf_model_parses_real_libreoffice_fixture() -> None:
 
     assert len(pages) == 1
     assert len(pages[0]) == 9
-    content = "\n".join(str(block.get("content", "")) for block in pages[0])
+    content = "\n".join(visible_content(block.get("content")) for block in pages[0])
     assert "KVCache-centric Scheduling Algorithm" in content
     assert "Prefill Global Scheduling" in content
     assert "Conductor estimates" in content
@@ -230,8 +236,8 @@ def test_rtf_page_controls_remain_inside_one_semantic_page() -> None:
 
     assert len(pages) == 1
     assert pages[0] == [
-        {"type": BlockType.TEXT, "content": "A\nB\nC"},
-        {"type": BlockType.TEXT, "content": "D"},
+        {"type": BlockType.TEXT, "content": inline("A\nB\nC")},
+        {"type": BlockType.TEXT, "content": inline("D")},
     ]
 
 
@@ -295,7 +301,7 @@ def test_rtf_doc_analyze_and_renderers_share_strict_metadata() -> None:
 
     markdown = render_markdown(middle, mode=RenderMode.FULL)
     html = render_html(middle, mode=RenderMode.FULL, standalone=False)
-    docx = render_docx(middle, mode=RenderMode.FULL)
+    docx = render_docx(middle)
     structured = render_structured_content(middle)
     assert "Inherited heading" in markdown
     assert "Foot body" in markdown
@@ -431,7 +437,7 @@ def test_rtf_unknown_destination_and_unbalanced_tail_recover_visible_text() -> N
 
     pages = RtfModel().predict(BytesIO(source))
 
-    assert pages == [[{"type": BlockType.TEXT, "content": "visible"}]]
+    assert pages == [[{"type": BlockType.TEXT, "content": inline("visible")}]]
 
 
 def test_rtf_source_html_is_rendered_as_inert_text() -> None:
@@ -445,12 +451,12 @@ def test_rtf_source_html_is_rendered_as_inert_text() -> None:
     markdown = render_markdown(middle)
 
     assert "<script>" not in html
-    assert "&amp;lt;script&amp;gt;alert(1)&amp;lt;/script&amp;gt;" in html
+    assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html
     assert "&lt;script&gt;alert(1)&lt;/script&gt;" in markdown
 
 
-def test_rtf_literal_inline_protocol_is_escaped_before_rendering() -> None:
-    """验证普通 RTF 文本不能注入 equation 或 hyperlink 内部协议。"""
+def test_rtf_literal_tag_protocol_remains_inert_text() -> None:
+    """验证普通 RTF 标签外观原文只生成 TextSpan，不能注入公式或链接。"""
     source = (
         rb"{\rtf1\ansi literal <eq>x</eq> and "
         rb"<hyperlink><text>click</text><url>javascript:alert(1)</url></hyperlink>\par}"
@@ -461,15 +467,14 @@ def test_rtf_literal_inline_protocol_is_escaped_before_rendering() -> None:
     markdown = render_markdown(middle)
 
     content = pages[0][0]["content"]
-    assert "&lt;eq&gt;x&lt;/eq&gt;" in content
-    assert "&lt;hyperlink&gt;" in content
-    assert "<eq>" not in content
-    assert "<hyperlink>" not in content
+    assert "<eq>x</eq>" in inline_text(content)
+    assert "<hyperlink>" in inline_text(content)
+    assert all(span.get("type") == "text" for span in content)
     assert "](javascript:alert(1))" not in markdown
 
 
-def test_rtf_footnote_literal_protocol_is_escaped_before_rendering() -> None:
-    """验证 RTF 脚注压平文本不能注入 equation 或 hyperlink 内部协议。"""
+def test_rtf_footnote_literal_tag_protocol_remains_inert_text() -> None:
+    """验证 RTF 脚注标签外观原文只生成 TextSpan，不能注入公式或链接。"""
     source = (
         rb"{\rtf1\ansi Body{\footnote <eq>x</eq> and "
         rb"<hyperlink><text>click</text><url>javascript:alert(1)</url></hyperlink>}\par}"
@@ -482,10 +487,9 @@ def test_rtf_footnote_literal_protocol_is_escaped_before_rendering() -> None:
     with ZipFile(BytesIO(docx)) as package:
         relationships = package.read("word/_rels/document.xml.rels").decode("utf-8")
 
-    assert "&lt;eq&gt;x&lt;/eq&gt;" in footnote["content"]
-    assert "&lt;hyperlink&gt;" in footnote["content"]
-    assert "<eq>" not in footnote["content"]
-    assert "<hyperlink>" not in footnote["content"]
+    assert "<eq>x</eq>" in inline_text(footnote["content"])
+    assert "<hyperlink>" in inline_text(footnote["content"])
+    assert all(span.get("type") == "text" for span in footnote["content"])
     assert "](javascript:alert(1))" not in markdown
     assert "javascript:alert(1)" not in relationships
 
@@ -497,9 +501,9 @@ def test_rtf_annotation_preserves_comment_as_page_footnote() -> None:
     pages = RtfModel().predict(BytesIO(source))
 
     assert pages[0][0]["type"] == BlockType.TEXT
-    assert pages[0][0]["content"].split() == ["Before", "After"]
-    assert "[1]" not in pages[0][0]["content"]
-    assert pages[0][1] == {"type": BlockType.PAGE_FOOTNOTE, "content": "[1] Review comment"}
+    assert inline_text(pages[0][0]["content"]).split() == ["Before", "After"]
+    assert "[1]" not in inline_text(pages[0][0]["content"])
+    assert pages[0][1] == {"type": BlockType.PAGE_FOOTNOTE, "content": inline("[1] Review comment")}
 
 
 def test_rtf_hidden_annotation_preserves_body_and_suppresses_metadata() -> None:
@@ -512,10 +516,10 @@ def test_rtf_hidden_annotation_preserves_body_and_suppresses_metadata() -> None:
     pages = RtfModel().predict(BytesIO(source))
 
     footnote = next(block for block in pages[0] if block.get("type") == BlockType.PAGE_FOOTNOTE)
-    assert "Review &lt;eq&gt;x&lt;/eq&gt; comment" in footnote["content"]
-    assert "Alice" not in footnote["content"]
-    assert "AB" not in footnote["content"]
-    assert "<eq>" not in footnote["content"]
+    assert "Review <eq>x</eq> comment" in inline_text(footnote["content"])
+    assert "Alice" not in inline_text(footnote["content"])
+    assert "AB" not in inline_text(footnote["content"])
+    assert all(span.get("type") == "text" for span in footnote["content"])
 
 
 def test_rtf_equation_only_paragraph_preserves_note_reference() -> None:
@@ -525,16 +529,16 @@ def test_rtf_equation_only_paragraph_preserves_note_reference() -> None:
     pages = RtfModel().predict(BytesIO(source))
 
     assert pages[0][0]["type"] == BlockType.TEXT
-    assert "<eq>x</eq>" in pages[0][0]["content"]
-    assert "[1]" in pages[0][0]["content"]
-    assert pages[0][1] == {"type": BlockType.PAGE_FOOTNOTE, "content": "[1] Foot."}
+    assert any(span.get("type") == "equation_inline" and span.get("content") == "x" for span in pages[0][0]["content"])
+    assert "[1]" in inline_text(pages[0][0]["content"])
+    assert pages[0][1] == {"type": BlockType.PAGE_FOOTNOTE, "content": inline("[1] Foot.")}
 
 
 def test_rtf_object_keeps_safe_result_and_suppresses_objdata() -> None:
     """验证对象载荷不执行不泄漏，但显式 result 文本仍可恢复。"""
     pages = RtfModel().predict(BytesIO(rb"{\rtf1 before {\object{\*\objdata 41424344}{\result Visible object}} after\par}"))
 
-    assert pages == [[{"type": BlockType.TEXT, "content": "before Visible object after"}]]
+    assert pages == [[{"type": BlockType.TEXT, "content": inline("before Visible object after")}]]
 
 
 def test_rtf_malformed_vector_picture_is_locally_dropped() -> None:
@@ -543,8 +547,8 @@ def test_rtf_malformed_vector_picture_is_locally_dropped() -> None:
 
     assert pages == [
         [
-            {"type": BlockType.TEXT, "content": "before"},
-            {"type": BlockType.TEXT, "content": "after"},
+            {"type": BlockType.TEXT, "content": inline("before")},
+            {"type": BlockType.TEXT, "content": inline("after")},
         ]
     ]
 
@@ -620,7 +624,7 @@ def test_rtf_runtime_has_no_anydoc_dependency() -> None:
             "from mineru.model.flash import RtfModel",
             "assert 'mineru.model.flash.office.rtf.converter' not in sys.modules",
             "pages = RtfModel().predict(__import__('io').BytesIO(b'{\\\\rtf1 ok}'))",
-            "assert pages == [[{'type': 'text', 'content': 'ok'}]]",
+            "assert pages == [[{'type': 'text', 'content': [{'type': 'text', 'content': 'ok'}]}]]",
             "assert 'anydoc' not in sys.modules",
         ]
     )

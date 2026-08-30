@@ -16,6 +16,7 @@ from mineru.backend.analysis.pdf import tables as pdf_tables
 from mineru.backend.analysis.pdf import window as pdf_window
 from mineru.model.flash.pdf import models as flash_models
 from mineru.model.flash.pdf import tables as flash_tables
+from mineru.model.flash.pdf.document import PDFPageTextGeometry
 from mineru.types import RAW_FORMULA_NUMBER, BlockType
 
 
@@ -25,6 +26,11 @@ def _build_native_pdf_page(*, width: float = 100.0, height: float = 100.0) -> Ma
     page = MagicMock()
     page.size = (width, height)
     page.get_chars.return_value = []
+    page.get_chars_with_geometry.return_value = PDFPageTextGeometry(
+        chars=[],
+        tight_bboxes={},
+        origins={},
+    )
     page.get_drawing_lines.return_value = []
     page.get_path_infos.return_value = []
     return page
@@ -181,7 +187,7 @@ def test_medium_native_table_priority_accepts_html_and_removes_internal_text_and
     assert table_input.table_bbox == pytest.approx((10.0, 40.0, 90.0, 160.0))
     assert table_input.page_size == (100.0, 200.0)
     assert table_input.angle == 0
-    page.get_chars.assert_called_once_with()
+    page.get_chars_with_geometry.assert_called_once_with()
     page.get_drawing_lines.assert_called_once_with()
     page.get_path_infos.assert_called_once_with()
 
@@ -227,12 +233,13 @@ def test_hybrid_native_table_priority_falls_back_for_complex_content(
     recover.assert_not_called()
 
 
-def test_high_native_table_priority_falls_back_for_formula_content(
+def test_high_native_table_priority_ignores_layout_formula_and_removes_duplicates(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """验证 High 将表内公式视为复杂内容并且不调用原生规则。"""
+    """验证 High 不采信 layout 公式框，并在原生命中后移除重复对象。"""
 
-    recover = MagicMock()
+    html = "<table><tbody><tr><td>T</td></tr></tbody></table>"
+    recover = MagicMock(return_value=SimpleNamespace(html=html, source="vector_grid", confidence=1.0))
     monkeypatch.setattr(pdf_tables, "recover_native_pdf_table", recover)
     table_block = {"type": BlockType.TABLE, "bbox": [0.1, 0.1, 0.9, 0.9], "angle": 0}
     equation_block = {"type": BlockType.EQUATION, "bbox": [0.2, 0.2, 0.4, 0.4]}
@@ -250,13 +257,19 @@ def test_high_native_table_priority_falls_back_for_formula_content(
     finally:
         image.close()
 
-    assert page_blocks == [table_block, equation_block]
-    assert layout_res == [{"label": "inline_formula", "bbox": [20, 20, 40, 40]}]
-    assert summary == pdf_tables._NativeTablePrioritySummary(total=1, complex_fallbacks=1)
+    assert table_block["content"] == html
+    assert page_blocks == [table_block]
+    assert layout_res == []
+    assert summary == pdf_tables._NativeTablePrioritySummary(
+        total=1,
+        accepted=1,
+        removed_formula_blocks=1,
+        removed_formula_layout_items=1,
+    )
     vlm_blocks, accepted_tables = pdf_tables._split_native_high_table_blocks([page_blocks])
-    assert vlm_blocks == [page_blocks]
-    assert accepted_tables == [[]]
-    recover.assert_not_called()
+    assert vlm_blocks == [[]]
+    assert accepted_tables == [[table_block]]
+    recover.assert_called_once()
 
 
 def test_hybrid_native_table_priority_falls_back_for_rotated_table(
@@ -327,7 +340,7 @@ def test_hybrid_native_table_priority_keeps_none_and_exception_fallbacks(
         errors=1,
     )
     assert recover.call_count == 2
-    page.get_chars.assert_called_once_with()
+    page.get_chars_with_geometry.assert_called_once_with()
 
 
 def test_medium_table_tasks_skip_native_html_and_keep_model_fallback() -> None:
@@ -454,6 +467,7 @@ def test_high_txt_window_excludes_native_table_from_vlm(
     hybrid_model = MagicMock()
     hybrid_model.layout_model.batch_predict.return_value = layout_results
     vlm_predictor = MagicMock()
+    cached_geometry = PDFPageTextGeometry(chars=[], tight_bboxes={}, origins={})
 
     def fake_native_priority(
         model_list: list[list[dict[str, object]]],
@@ -462,10 +476,13 @@ def test_high_txt_window_excludes_native_table_from_vlm(
         _images_list: object,
         *,
         effort: object,
+        page_text_geometries: object,
     ) -> object:
         """只命中首个表格，构造同页混合短路场景。"""
 
         assert effort == "high"
+        assert isinstance(page_text_geometries, list)
+        page_text_geometries[0] = cached_geometry
         model_list[0][0]["content"] = native_html
         return pdf_tables._NativeTablePrioritySummary(total=2, accepted=1, rejected=1)
 
@@ -485,9 +502,12 @@ def test_high_txt_window_excludes_native_table_from_vlm(
         _effort: object,
         _local_model_context: object,
         _images_layout_res: object,
+        _page_text_geometries: object,
     ) -> list[list[dict[str, object]]]:
         """跳过与本测试无关的正文和公式回填。"""
 
+        assert isinstance(_page_text_geometries, list)
+        assert _page_text_geometries[0] is cached_geometry
         return model_list
 
     vlm_predictor.batch_extract_with_layout.side_effect = fake_high_extract

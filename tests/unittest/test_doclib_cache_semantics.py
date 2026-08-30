@@ -1,4 +1,5 @@
 from __future__ import annotations
+from _span_test_utils import inline as _inline, inline_text
 
 import asyncio
 import base64
@@ -302,11 +303,21 @@ def _image_result(image_path: str, image_bytes: bytes = b"image-bytes") -> Parse
     """构造带顶层图片缓存的 ParseResult，避免在 span 中保留 base64。"""
     image_cache = ImagePayloadCache()
     image_cache.register_bytes(image_bytes, "jpeg", image_path=image_path)
-    return ParseResult(middle_json=MiddleJson(pages=[_image_page(image_path)], file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__), _image_cache=image_cache)
+    return ParseResult(
+        middle_json=MiddleJson(
+            pages=[_image_page(image_path)],
+            is_full_document=True,
+            file_suffix="pdf",
+            effort="medium",
+            parse_mode="txt",
+            mineru_version=__version__,
+        ),
+        _image_cache=image_cache,
+    )
 
 
 def _text_page(text: str) -> PageInfo:
-    block = TextBlock(type=BlockType.TEXT, index=0, bbox=(0.0, 0.0, 0.1, 0.1), content=text)
+    block = TextBlock(type=BlockType.TEXT, index=0, bbox=(0.0, 0.0, 0.1, 0.1), content=_inline(text))
     return PageInfo(page_idx=0, blocks=[block])
 
 
@@ -314,8 +325,14 @@ def test_load_pages_from_done_batches_keeps_newest_page_idx(tmp_path: Path) -> N
     sha256 = "a" * 64
     tier = "standard"
     older_page = {"page_idx": 1, "blocks": []}
-    older_duplicate = {"page_idx": 2, "blocks": [{"type": "text", "index": 0, "bbox": [0.0, 0.0, 0.1, 0.1], "content": "older"}]}
-    newer_duplicate = {"page_idx": 2, "blocks": [{"type": "text", "index": 0, "bbox": [0.0, 0.0, 0.1, 0.1], "content": "newer"}]}
+    older_duplicate = {
+        "page_idx": 2,
+        "blocks": [{"type": "text", "index": 0, "bbox": [0.0, 0.0, 0.1, 0.1], "content": _inline("older")}],
+    }
+    newer_duplicate = {
+        "page_idx": 2,
+        "blocks": [{"type": "text", "index": 0, "bbox": [0.0, 0.0, 0.1, 0.1], "content": _inline("newer")}],
+    }
 
     _write_batch(tmp_path, sha256, tier, "1~2", 1000, [older_page, older_duplicate])
     _write_batch(tmp_path, sha256, tier, "2", 2000, [newer_duplicate])
@@ -328,7 +345,7 @@ def test_load_pages_from_done_batches_keeps_newest_page_idx(tmp_path: Path) -> N
     pages = load_pages_from_done_batches(str(tmp_path), sha256, tier, done_rows)
 
     assert [page.page_idx for page in pages] == [1, 2]
-    assert pages[1].blocks[0].content == "newer"  # type: ignore[union-attr]
+    assert inline_text(pages[1].blocks[0].content) == "newer"  # type: ignore[union-attr]
 
 
 def test_parser_tier_backend_mapping_is_parser_layer_only() -> None:
@@ -729,9 +746,7 @@ def test_stop_managed_parse_server_shortens_startup_grace(monkeypatch: pytest.Mo
 
     monkeypatch.setattr("mineru.doclib.background.parse_server_health.time.monotonic", lambda: 100.0)
 
-    stop_managed_parse_server(
-        _Proc(), control=_Control(), timeout_sec=10, reason="startup", startup_in_progress=True
-    )
+    stop_managed_parse_server(_Proc(), control=_Control(), timeout_sec=10, reason="startup", startup_in_progress=True)
 
     assert waits == [2.0]
 
@@ -2081,7 +2096,16 @@ def test_expand_page_range_rejects_empty_available_subset() -> None:
 def test_remap_api_result_pages_to_non_contiguous_page_range() -> None:
     from mineru.doclib.services.parse_svc import _remap_api_result_pages_to_page_range
 
-    result = ParseResult(middle_json=MiddleJson(pages=[PageInfo(page_idx=0), PageInfo(page_idx=1), PageInfo(page_idx=2)], file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__))
+    result = ParseResult(
+        middle_json=MiddleJson(
+            pages=[PageInfo(page_idx=0), PageInfo(page_idx=1), PageInfo(page_idx=2)],
+            is_full_document=False,
+            file_suffix="pdf",
+            effort="medium",
+            parse_mode="txt",
+            mineru_version=__version__,
+        )
+    )
 
     _remap_api_result_pages_to_page_range(result, "11,13~14")
 
@@ -2091,7 +2115,17 @@ def test_remap_api_result_pages_to_non_contiguous_page_range() -> None:
 def test_remap_api_result_pages_refreshes_attached_export_cache() -> None:
     from mineru.doclib.services.parse_svc import _remap_api_result_pages_to_page_range
 
-    result = ParseResult.from_dict({"pages": [{"page_idx": 0}]})
+    result = ParseResult.from_dict(
+        {
+            "schema_version": "3.0",
+            "pages": [{"page_idx": 0, "blocks": []}],
+            "is_full_document": False,
+            "file_suffix": "pdf",
+            "effort": "medium",
+            "parse_mode": "txt",
+            "mineru_version": __version__,
+        }
+    )
     result.attach_export_images({"images/figure.png": b"figure-bytes"})
 
     _remap_api_result_pages_to_page_range(result, "5")
@@ -2103,7 +2137,16 @@ def test_remap_api_result_pages_refreshes_attached_export_cache() -> None:
 def test_remap_api_result_pages_rejects_count_mismatch() -> None:
     from mineru.doclib.services.parse_svc import ParseFailure, _remap_api_result_pages_to_page_range
 
-    result = ParseResult(middle_json=MiddleJson(pages=[PageInfo(page_idx=0), PageInfo(page_idx=1)], file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__))
+    result = ParseResult(
+        middle_json=MiddleJson(
+            pages=[PageInfo(page_idx=0), PageInfo(page_idx=1)],
+            is_full_document=False,
+            file_suffix="pdf",
+            effort="medium",
+            parse_mode="txt",
+            mineru_version=__version__,
+        )
+    )
 
     with pytest.raises(ParseFailure) as exc:
         _remap_api_result_pages_to_page_range(result, "11~13")
@@ -4306,7 +4349,16 @@ def test_process_doc_marks_empty_page_result_failed(tmp_path: Path) -> None:
     service = ParseService(db=db, fts=_FakeFTS(), config_svc=None, data_dir=str(tmp_path), parse_lock_timeout_sec=1800)
 
     async def _empty_parse(file_row: dict, tier: Tier, page_range: str) -> ParseResult:
-        return ParseResult(middle_json=MiddleJson(pages=[], file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__))
+        return ParseResult(
+            middle_json=MiddleJson(
+                pages=[],
+                is_full_document=False,
+                file_suffix="pdf",
+                effort="medium",
+                parse_mode="txt",
+                mineru_version=__version__,
+            )
+        )
 
     service._parse_via_local = _empty_parse  # type: ignore[method-assign]
 
@@ -4460,7 +4512,16 @@ def test_parse_via_api_requests_image_cache_only_for_office(
         async def parse_async(self, _path: str, *, page_range: str = "") -> ParseResult:
             assert _path == path
             assert page_range == expected_page_range
-            return ParseResult(middle_json=MiddleJson(pages=[], is_full_document=True, file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__))
+            return ParseResult(
+                middle_json=MiddleJson(
+                    pages=[],
+                    is_full_document=True,
+                    file_suffix="pdf",
+                    effort="medium",
+                    parse_mode="txt",
+                    mineru_version=__version__,
+                )
+            )
 
     service._resolve_api_target = _resolve_api_target  # type: ignore[method-assign]
     service._resolve_tier = lambda tier, _via: tier  # type: ignore[method-assign]
@@ -4518,7 +4579,16 @@ def test_process_doc_fails_when_batch_json_cannot_be_written(tmp_path: Path) -> 
     blocked_output_dir.write_text("not a directory", encoding="utf-8")
 
     async def _parse(file_row: dict, tier: Tier, page_range: str) -> ParseResult:
-        return ParseResult(middle_json=MiddleJson(pages=[PageInfo(page_idx=0)], file_suffix="pdf", effort="medium", parse_mode="txt", mineru_version=__version__))
+        return ParseResult(
+            middle_json=MiddleJson(
+                pages=[PageInfo(page_idx=0)],
+                is_full_document=False,
+                file_suffix="pdf",
+                effort="medium",
+                parse_mode="txt",
+                mineru_version=__version__,
+            )
+        )
 
     service._parse_via_local = _parse  # type: ignore[method-assign]
 
@@ -4797,7 +4867,9 @@ def test_find_block_by_no_ignores_conflicting_child_indexes() -> None:
         bbox=(0.0, 0.0, 0.05, 0.05),
         content=[
             ImageBodyBlock(type=BlockType.IMAGE_BODY, index=0, bbox=(0.0, 0.0, 0.05, 0.05), content=""),
-            ImageAnnotationBlock(type=BlockType.IMAGE_CAPTION, index=1, bbox=(0.01, 0.01, 0.02, 0.02), content="caption"),
+            ImageAnnotationBlock(
+                type=BlockType.IMAGE_CAPTION, index=1, bbox=(0.01, 0.01, 0.02, 0.02), content=_inline("caption")
+            ),
         ],
     )
     second = ImageBlock(

@@ -1,5 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
-"""统一 PDF、EPUB、HTML、CSV 与 Office/RTF 文档分析的稳定公共门面。"""
+"""统一 PDF、EPUB、HTML、OFD、CSV 与 Office/RTF 文档分析的稳定公共门面。"""
 
 from __future__ import annotations
 
@@ -64,6 +64,10 @@ def doc_analyze(
         from .analysis.html import analyze_html
 
         result = analyze_html(file_bytes, source_context=source_context)
+    elif file_suffix == "ofd":
+        from .analysis.ofd import analyze_ofd
+
+        result = analyze_ofd(file_bytes)
     else:
         from .analysis.office import analyze_office
 

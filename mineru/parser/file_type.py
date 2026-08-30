@@ -50,6 +50,7 @@ _STRONG_CONTENT_SUFFIXES = frozenset(
         "xlsx",
         "rtf",
         "epub",
+        "ofd",
         "odt",
         "ods",
         "odp",
@@ -208,6 +209,20 @@ def _guess_epub_suffix_by_path(file_path: Path) -> str | None:
     return "epub" if detect_epub_path(file_path) else None
 
 
+def _guess_ofd_suffix_by_bytes(file_bytes: bytes) -> str | None:
+    """从内存 ZIP 包验证 OFD 强内容身份。"""
+    from ..model.flash.ofd import detect_ofd
+
+    return "ofd" if detect_ofd(file_bytes) else None
+
+
+def _guess_ofd_suffix_by_path(file_path: Path) -> str | None:
+    """从路径 ZIP 包验证 OFD 强内容身份。"""
+    from ..model.flash.ofd import detect_ofd_path
+
+    return "ofd" if detect_ofd_path(file_path) else None
+
+
 def _guess_ole2_suffix_by_bytes(file_bytes: bytes) -> str | None:
     """用 OLE2 magic + olefile 内部 stream 区分 doc/xls/ppt。
 
@@ -280,8 +295,8 @@ def _resolve_signatureless_html_suffix(detected_suffix: str, file_path: str | Pa
 
 
 def _reject_unverified_package_suffix(detected_suffix: str) -> str:
-    """拒绝未通过包身份验证、仅由启发式工具猜出的 ODF/EPUB 类型。"""
-    package_suffixes = {*ODF_MIMETYPE_SUFFIXES.values(), "epub"}
+    """拒绝未通过包身份验证、仅由启发式工具猜出的 ODF/EPUB/OFD 类型。"""
+    package_suffixes = {*ODF_MIMETYPE_SUFFIXES.values(), "epub", "ofd"}
     return "unknown" if detected_suffix in package_suffixes else detected_suffix
 
 
@@ -290,6 +305,10 @@ def guess_suffix_by_bytes(file_bytes: bytes, file_path: str | None = None) -> st
         return "pdf"
     if rtf_header_offset(file_bytes[:128]) is not None:
         return "rtf"
+
+    ofd_suffix = _guess_ofd_suffix_by_bytes(file_bytes)
+    if ofd_suffix:
+        return ofd_suffix
 
     epub_suffix = _guess_epub_suffix_by_bytes(file_bytes)
     if epub_suffix:
@@ -325,6 +344,10 @@ def guess_suffix_by_path(file_path: str | Path) -> str:
 
     if _has_rtf_signature_by_path(file_path):
         return "rtf"
+
+    ofd_suffix = _guess_ofd_suffix_by_path(file_path)
+    if ofd_suffix:
+        return ofd_suffix
 
     epub_suffix = _guess_epub_suffix_by_path(file_path)
     if epub_suffix:

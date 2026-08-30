@@ -1,4 +1,5 @@
 from __future__ import annotations
+from _span_test_utils import inline as _inline
 
 import json
 from copy import deepcopy
@@ -8,6 +9,7 @@ import pytest
 from mineru.config import Config
 from mineru.render import render_markdown, render_structured_content
 from mineru.types import (
+    AlgorithmBodyBlock,
     ChartAnnotationBlock,
     ChartBlock,
     ChartBodyBlock,
@@ -70,21 +72,26 @@ def test_structured_content_preserves_document_tree_without_merging_or_mutation(
                 index=0,
                 level=6,
                 anchor="section-a",
-                content='# <text style="bold">Section</text> <eq>x</eq>',
+                content=[
+                    {"type": "text", "content": "# "},
+                    {"type": "text", "content": "Section", "styles": ["bold"]},
+                    {"type": "text", "content": " "},
+                    {"type": "equation_inline", "content": "x"},
+                ],
             ),
-            TextBlock(type="text", index=1, content="first-"),
-            PageAuxTextBlock(type="header", index=2, content="HEADER"),
+            TextBlock(type="text", index=1, content=_inline("first-")),
+            PageAuxTextBlock(type="header", index=2, content=_inline("HEADER")),
             PageFootnoteBlock(
                 type="page_footnote",
                 index=3,
                 bbox=(0.1, 0.8, 0.9, 0.9),
                 anchor="note-one",
-                content="Foot <eq>x</eq>",
+                content=[{"type": "text", "content": "Foot "}, {"type": "equation_inline", "content": "x"}],
             ),
         ),
         _page(
             1,
-            TextBlock(type="text", index=0, content="continued", continues_prev=True),
+            TextBlock(type="text", index=0, content=_inline("continued"), continues_prev=True),
         ),
     )
     original = deepcopy(middle)
@@ -126,13 +133,13 @@ def test_structured_content_flattens_recursive_list_index_and_code_metadata() ->
     """验证递归容器和代码 body 上浮为 Markdown，渲染元数据不进入输出。"""
     nested = ListBlock(
         type="list",
-        content=[TextBlock(type="text", content="- inner")],
+        content=[TextBlock(type="text", content=_inline("- inner"))],
     )
     list_block = ListBlock(
         type="list",
         index=0,
         sub_type="text",
-        content=[TextBlock(type="text", content="- outer"), nested],
+        content=[TextBlock(type="text", content=_inline("- outer")), nested],
     )
     index_block = IndexBlock(
         type="index",
@@ -142,7 +149,7 @@ def test_structured_content_flattens_recursive_list_index_and_code_metadata() ->
                 type="paragraph_title",
                 level=2,
                 anchor="section-b",
-                content="Section\t12",
+                content=_inline("Section\t12"),
             )
         ],
     )
@@ -157,14 +164,17 @@ def test_structured_content_flattens_recursive_list_index_and_code_metadata() ->
                     "type": "code_caption",
                     "index": 4,
                     "bbox": [0.1, 0.1, 0.5, 0.2],
-                    "content": '<text style="bold">Example</text>',
+                    "content": _inline("Example", styles=["bold"]),
                 },
                 {"type": "code_body", "index": 2, "content": "print('x')\n```"},
                 {
                     "type": "code_footnote",
                     "index": 5,
                     "bbox": [0.1, 0.8, 0.5, 0.9],
-                    "content": "note <eq>x</eq>",
+                    "content": [
+                        {"type": "text", "content": "note "},
+                        {"type": "equation_inline", "content": "x"},
+                    ],
                 },
             ],
         }
@@ -181,6 +191,49 @@ def test_structured_content_flattens_recursive_list_index_and_code_metadata() ->
     _assert_output_field_contract(blocks)
 
 
+def test_structured_content_renders_algorithm_as_markdown_like_content() -> None:
+    """验证算法 content 使用简单 Markdown 样式并为复杂样式降级到 HTML。"""
+    algorithm = CodeBlock(
+        type="code",
+        index=0,
+        sub_type="algorithm",
+        content=[
+            AlgorithmBodyBlock(
+                type="algorithm_body",
+                index=0,
+                content=[
+                    {"type": "text", "content": "if x:\n  "},
+                    {"type": "text", "content": "bold", "styles": ["bold"]},
+                    {"type": "text", "content": " / "},
+                    {"type": "text", "content": "italic", "styles": ["italic"]},
+                    {"type": "text", "content": " / "},
+                    {"type": "text", "content": "strike", "styles": ["strikethrough"]},
+                    {"type": "text", "content": " / "},
+                    {"type": "text", "content": "under", "styles": ["underline"]},
+                    {"type": "text", "content": " / "},
+                    {"type": "text", "content": "dot", "styles": ["emphasis"]},
+                    {"type": "text", "content": " "},
+                    {"type": "text", "content": "q", "styles": ["subscript"]},
+                    {"type": "text", "content": "2", "styles": ["superscript"]},
+                    {"type": "text", "content": " = "},
+                    {"type": "equation_inline", "content": "x"},
+                    {"type": "equation_inline", "content": "y"},
+                ],
+            )
+        ],
+    )
+
+    output = render_structured_content(_middle(_page(0, algorithm)))["pages"][0]["blocks"][0]
+
+    assert output["content"] == (
+        "if x:\n  **bold** / *italic* / ~~strike~~ / <u>under</u> / "
+        '<span style="text-emphasis: dot; text-emphasis-position: under;">dot</span> '
+        "<sub>q</sub><sup>2</sup> = $x$ $y$"
+    )
+    assert "mineru-algorithm" not in output["content"]
+    _assert_output_field_contract(output)
+
+
 def test_structured_content_sorts_visual_annotations_and_selects_image_source() -> None:
     """验证视觉说明稳定排序、空项保留及图片 path 优先规则。"""
     image = ImageBlock.model_validate(
@@ -189,7 +242,7 @@ def test_structured_content_sorts_visual_annotations_and_selects_image_source() 
             "index": 0,
             "sub_type": "diagram",
             "content": [
-                {"type": "image_caption", "content": "missing index"},
+                {"type": "image_caption", "content": _inline("missing index")},
                 {
                     "type": "image_body",
                     "index": 0,
@@ -201,19 +254,19 @@ def test_structured_content_sorts_visual_annotations_and_selects_image_source() 
                     "type": "image_caption",
                     "index": 5,
                     "bbox": [0.1, 0.5, 0.4, 0.6],
-                    "content": "",
+                    "content": [],
                 },
                 {
                     "type": "image_caption",
                     "index": 3,
                     "bbox": [0.1, 0.2, 0.4, 0.3],
-                    "content": '<text style="bold">early</text>',
+                    "content": _inline("early", styles=["bold"]),
                 },
                 {
                     "type": "image_footnote",
                     "index": 4,
                     "bbox": [0.1, 0.7, 0.4, 0.8],
-                    "content": "after",
+                    "content": _inline("after"),
                 },
             ],
         }
@@ -268,13 +321,13 @@ def test_structured_content_keeps_table_image_source_and_cross_page_metadata() -
                     "type": "table_caption",
                     "index": 2,
                     "bbox": [0.1, 0.1, 0.9, 0.2],
-                    "content": "Table 2",
+                    "content": _inline("Table 2"),
                 },
                 {
                     "type": "table_footnote",
                     "index": 3,
                     "bbox": [0.1, 0.8, 0.9, 0.9],
-                    "content": "note",
+                    "content": _inline("note"),
                 },
             ],
         }
@@ -330,7 +383,7 @@ def test_structured_content_keeps_chart_content_separate_from_base64_source(
             ChartAnnotationBlock(
                 type="chart_caption",
                 bbox=(0.1, 0.1, 0.9, 0.2),
-                content='<text style="bold">Chart</text>',
+                content=_inline("Chart", styles=["bold"]),
             ),
             ChartBodyBlock(
                 type="chart_body",
@@ -340,7 +393,7 @@ def test_structured_content_keeps_chart_content_separate_from_base64_source(
             ),
             ChartAnnotationBlock(
                 type="chart_footnote",
-                content="source",
+                content=_inline("source"),
             ),
         ],
     )

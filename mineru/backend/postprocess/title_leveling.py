@@ -8,7 +8,7 @@ import json
 from typing import Any
 
 from ...types import DocTitleBlock, PageInfo, ParagraphTitleBlock
-from .inline import inline_plain_text, parse_inline_content
+from .inline import inline_plain_text
 
 from .llm_client import LLMAidedClient
 
@@ -35,7 +35,7 @@ def _collect_paragraph_title_groups(pages: list[PageInfo]) -> list[ParagraphTitl
 
 def _plain_title_text(block: ParagraphTitleBlock) -> str:
     """提取标题可见文本供 LLM 使用，不改写原始行内样式内容。"""
-    return inline_plain_text(parse_inline_content(block.content))
+    return inline_plain_text(block.content)
 
 
 def _build_title_prompt(group: ParagraphTitleGroup) -> str:

@@ -1,4 +1,5 @@
 from __future__ import annotations
+from _span_test_utils import inline as _inline, inline_text
 
 import asyncio
 from pathlib import Path
@@ -178,12 +179,8 @@ def _cross_page_table_pages(
     current_html: str | None = None,
 ) -> list[PageInfo]:
     """构造包含重复表头和两个数据行的严格跨页表格页面。"""
-    previous_html = previous_html or (
-        "<table><tr><th>H1</th><th>H2</th></tr><tr><td>A</td><td>X</td></tr></table>"
-    )
-    current_html = current_html or (
-        "<table><tr><th>H1</th><th>H2</th></tr><tr><td>B</td><td>Y</td></tr></table>"
-    )
+    previous_html = previous_html or ("<table><tr><th>H1</th><th>H2</th></tr><tr><td>A</td><td>X</td></tr></table>")
+    current_html = current_html or ("<table><tr><th>H1</th><th>H2</th></tr><tr><td>B</td><td>Y</td></tr></table>")
     return [
         PageInfo(page_idx=0, blocks=[_table(0, previous_html)]),
         PageInfo(page_idx=1, blocks=[_table(0, current_html, continues_prev=continues_prev)]),
@@ -321,14 +318,14 @@ def test_title_leveling_uses_current_page_blocks_and_keeps_global_levels() -> No
                     type=BlockType.DOC_TITLE,
                     index=0,
                     bbox=(0.1, 0.1, 0.9, 0.2),
-                    content="Document",
+                    content=_inline("Document"),
                     level=1,
                 ),
                 ParagraphTitleBlock(
                     type=BlockType.PARAGRAPH_TITLE,
                     index=1,
                     bbox=(0.1, 0.3, 0.9, 0.35),
-                    content="Section",
+                    content=_inline("Section"),
                     level=3,
                 ),
             ],
@@ -349,7 +346,7 @@ def test_title_leveling_keeps_original_levels_for_invalid_response() -> None:
         type=BlockType.PARAGRAPH_TITLE,
         index=0,
         bbox=(0.1, 0.1, 0.9, 0.2),
-        content="Section",
+        content=_inline("Section"),
         level=3,
     )
     pages = [PageInfo(page_idx=0, blocks=[title])]
@@ -362,26 +359,26 @@ def test_title_leveling_keeps_original_levels_for_invalid_response() -> None:
 
 def test_title_leveling_groups_by_doc_title_and_uses_plain_content_only() -> None:
     """验证文档标题切组、组内重新编号，并且提示词只含段落标题纯文本。"""
-    styled_content = '<text style="bold">Leading</text>'
+    styled_content = _inline("Leading", styles=["bold"])
     leading = ParagraphTitleBlock(type=BlockType.PARAGRAPH_TITLE, index=0, content=styled_content, level=2)
-    first = ParagraphTitleBlock(type=BlockType.PARAGRAPH_TITLE, index=2, content="First", level=2)
+    first = ParagraphTitleBlock(type=BlockType.PARAGRAPH_TITLE, index=2, content=_inline("First"), level=2)
     second = ParagraphTitleBlock(
         type=BlockType.PARAGRAPH_TITLE,
         index=3,
-        content='<text style="italic">Second</text>',
+        content=_inline("Second", styles=["italic"]),
         level=3,
     )
-    third = ParagraphTitleBlock(type=BlockType.PARAGRAPH_TITLE, index=6, content="Third", level=2)
+    third = ParagraphTitleBlock(type=BlockType.PARAGRAPH_TITLE, index=6, content=_inline("Third"), level=2)
     pages = [
         PageInfo(
             page_idx=0,
             blocks=[
                 leading,
-                DocTitleBlock(type=BlockType.DOC_TITLE, index=1, content="Document A", level=1),
+                DocTitleBlock(type=BlockType.DOC_TITLE, index=1, content=_inline("Document A"), level=1),
                 first,
                 second,
-                DocTitleBlock(type=BlockType.DOC_TITLE, index=4, content="Document B", level=1),
-                DocTitleBlock(type=BlockType.DOC_TITLE, index=5, content="Document C", level=1),
+                DocTitleBlock(type=BlockType.DOC_TITLE, index=4, content=_inline("Document B"), level=1),
+                DocTitleBlock(type=BlockType.DOC_TITLE, index=5, content=_inline("Document C"), level=1),
                 third,
             ],
         )
@@ -391,7 +388,8 @@ def test_title_leveling_groups_by_doc_title_and_uses_plain_content_only() -> Non
     asyncio.run(apply_llm_title_leveling(pages, client))  # type: ignore[arg-type]
 
     assert [leading.level, first.level, second.level, third.level] == [2, 3, 5, 6]
-    assert styled_content == leading.content
+    assert leading.content[0].styles == ["bold"]
+    assert inline_text(leading.content) == "Leading"
     assert len(client.prompts) == 3
     assert '"0": "Leading"' in client.prompts[0]
     assert '"0": "First"' in client.prompts[1]
@@ -416,15 +414,15 @@ def test_title_leveling_groups_by_doc_title_and_uses_plain_content_only() -> Non
 
 def test_title_leveling_invalid_group_does_not_block_other_groups() -> None:
     """验证一个分组失败不会阻止其他并发分组更新层级。"""
-    first = ParagraphTitleBlock(type=BlockType.PARAGRAPH_TITLE, index=1, content="First", level=2)
-    second = ParagraphTitleBlock(type=BlockType.PARAGRAPH_TITLE, index=3, content="Second", level=2)
+    first = ParagraphTitleBlock(type=BlockType.PARAGRAPH_TITLE, index=1, content=_inline("First"), level=2)
+    second = ParagraphTitleBlock(type=BlockType.PARAGRAPH_TITLE, index=3, content=_inline("Second"), level=2)
     pages = [
         PageInfo(
             page_idx=0,
             blocks=[
-                DocTitleBlock(type=BlockType.DOC_TITLE, index=0, content="A", level=1),
+                DocTitleBlock(type=BlockType.DOC_TITLE, index=0, content=_inline("A"), level=1),
                 first,
-                DocTitleBlock(type=BlockType.DOC_TITLE, index=2, content="B", level=1),
+                DocTitleBlock(type=BlockType.DOC_TITLE, index=2, content=_inline("B"), level=1),
                 second,
             ],
         )
@@ -440,7 +438,7 @@ def test_title_leveling_invalid_group_does_not_block_other_groups() -> None:
 @pytest.mark.parametrize(("response_level", "expected_level"), [(1, 2), (2, 2), (3, 3), (4, 4), (5, 5), (6, 6)])
 def test_title_leveling_accepts_levels_one_through_six(response_level: int, expected_level: int) -> None:
     """验证一级归一为二级，并允许二至六级标题写回。"""
-    title = ParagraphTitleBlock(type=BlockType.PARAGRAPH_TITLE, index=0, content="Section", level=3)
+    title = ParagraphTitleBlock(type=BlockType.PARAGRAPH_TITLE, index=0, content=_inline("Section"), level=3)
     pages = [PageInfo(page_idx=0, blocks=[title])]
     client = _QueuedValidatedClient([{"0": response_level}])
 
@@ -452,7 +450,7 @@ def test_title_leveling_accepts_levels_one_through_six(response_level: int, expe
 @pytest.mark.parametrize("response_level", [0, 7, True, 2.0, "6"])
 def test_title_leveling_rejects_levels_outside_integer_one_through_six(response_level: Any) -> None:
     """验证越界或非整数层级会让当前标题组保持原层级。"""
-    title = ParagraphTitleBlock(type=BlockType.PARAGRAPH_TITLE, index=0, content="Section", level=3)
+    title = ParagraphTitleBlock(type=BlockType.PARAGRAPH_TITLE, index=0, content=_inline("Section"), level=3)
     pages = [PageInfo(page_idx=0, blocks=[title])]
     client = _QueuedValidatedClient([{"0": response_level}])
 
@@ -485,12 +483,8 @@ def test_cell_merge_accepts_independent_zero_one_states(response: list[int], exp
 def test_cell_merge_expands_rendered_colspan_segment_to_visual_columns() -> None:
     """验证一个 colspan 渲染单元格的状态会展开到其覆盖的全部视觉列。"""
     pages = _cross_page_table_pages(
-        previous_html=(
-            "<table><tr><th colspan='2'>H</th></tr><tr><td colspan='2'>A</td></tr></table>"
-        ),
-        current_html=(
-            "<table><tr><th colspan='2'>H</th></tr><tr><td colspan='2'>B</td></tr></table>"
-        ),
+        previous_html=("<table><tr><th colspan='2'>H</th></tr><tr><td colspan='2'>A</td></tr></table>"),
+        current_html=("<table><tr><th colspan='2'>H</th></tr><tr><td colspan='2'>B</td></tr></table>"),
     )
     client = _QueuedValidatedClient([[1]])
 
@@ -545,11 +539,15 @@ def test_mixed_cell_merge_flows_through_strict_middle_json_and_renderer() -> Non
 def test_postprocess_reuses_one_client_for_both_features() -> None:
     """验证标题与表格功能复用同一个后置请求客户端。"""
     table_pages = _cross_page_table_pages()
-    previous_table = table_pages[0].blocks[0].model_copy(  # type: ignore[union-attr]
-        update={
-            "index": 1,
-            "content": [table_pages[0].blocks[0].content[0].model_copy(update={"index": 1})],  # type: ignore[union-attr]
-        }
+    previous_table = (
+        table_pages[0]
+        .blocks[0]
+        .model_copy(  # type: ignore[union-attr]
+            update={
+                "index": 1,
+                "content": [table_pages[0].blocks[0].content[0].model_copy(update={"index": 1})],  # type: ignore[union-attr]
+            }
+        )
     )
     pages = [
         PageInfo(
@@ -559,7 +557,7 @@ def test_postprocess_reuses_one_client_for_both_features() -> None:
                     type=BlockType.PARAGRAPH_TITLE,
                     index=0,
                     bbox=(0.1, 0.01, 0.9, 0.05),
-                    content="Section",
+                    content=_inline("Section"),
                     level=2,
                 ),
                 previous_table,
@@ -585,25 +583,33 @@ def test_title_groups_and_table_candidates_run_concurrently() -> None:
     """验证多个标题组和表格候选会跨功能同时请求共享客户端。"""
     first_pair = _cross_page_table_pages()
     second_pair = _cross_page_table_pages()
-    first_previous_table = first_pair[0].blocks[0].model_copy(  # type: ignore[union-attr]
-        update={
-            "index": 2,
-            "content": [first_pair[0].blocks[0].content[0].model_copy(update={"index": 2})],  # type: ignore[union-attr]
-        }
+    first_previous_table = (
+        first_pair[0]
+        .blocks[0]
+        .model_copy(  # type: ignore[union-attr]
+            update={
+                "index": 2,
+                "content": [first_pair[0].blocks[0].content[0].model_copy(update={"index": 2})],  # type: ignore[union-attr]
+            }
+        )
     )
-    second_previous_table = second_pair[0].blocks[0].model_copy(  # type: ignore[union-attr]
-        update={
-            "index": 2,
-            "content": [second_pair[0].blocks[0].content[0].model_copy(update={"index": 2})],  # type: ignore[union-attr]
-        }
+    second_previous_table = (
+        second_pair[0]
+        .blocks[0]
+        .model_copy(  # type: ignore[union-attr]
+            update={
+                "index": 2,
+                "content": [second_pair[0].blocks[0].content[0].model_copy(update={"index": 2})],  # type: ignore[union-attr]
+            }
+        )
     )
-    first_title = ParagraphTitleBlock(type=BlockType.PARAGRAPH_TITLE, index=1, content="First", level=2)
-    second_title = ParagraphTitleBlock(type=BlockType.PARAGRAPH_TITLE, index=1, content="Second", level=2)
+    first_title = ParagraphTitleBlock(type=BlockType.PARAGRAPH_TITLE, index=1, content=_inline("First"), level=2)
+    second_title = ParagraphTitleBlock(type=BlockType.PARAGRAPH_TITLE, index=1, content=_inline("Second"), level=2)
     pages = [
         PageInfo(
             page_idx=0,
             blocks=[
-                DocTitleBlock(type=BlockType.DOC_TITLE, index=0, content="A", level=1),
+                DocTitleBlock(type=BlockType.DOC_TITLE, index=0, content=_inline("A"), level=1),
                 first_title,
                 first_previous_table,
             ],
@@ -612,7 +618,7 @@ def test_title_groups_and_table_candidates_run_concurrently() -> None:
         PageInfo(
             page_idx=2,
             blocks=[
-                DocTitleBlock(type=BlockType.DOC_TITLE, index=0, content="B", level=1),
+                DocTitleBlock(type=BlockType.DOC_TITLE, index=0, content=_inline("B"), level=1),
                 second_title,
                 second_previous_table,
             ],
@@ -657,13 +663,17 @@ def test_partial_input_skips_title_without_constructing_client(monkeypatch: pyte
 def test_partial_input_skips_title_but_keeps_table_cell_merge() -> None:
     """验证抽页输入不会触发标题请求，但仍会执行跨页单元格分析。"""
     pages = _cross_page_table_pages()
-    pages[0].blocks[0] = pages[0].blocks[0].model_copy(  # type: ignore[union-attr]
-        update={
-            "index": 1,
-            "content": [pages[0].blocks[0].content[0].model_copy(update={"index": 1})],  # type: ignore[union-attr]
-        }
+    pages[0].blocks[0] = (
+        pages[0]
+        .blocks[0]
+        .model_copy(  # type: ignore[union-attr]
+            update={
+                "index": 1,
+                "content": [pages[0].blocks[0].content[0].model_copy(update={"index": 1})],  # type: ignore[union-attr]
+            }
+        )
     )
-    title = ParagraphTitleBlock(type=BlockType.PARAGRAPH_TITLE, index=0, content="Section", level=2)
+    title = ParagraphTitleBlock(type=BlockType.PARAGRAPH_TITLE, index=0, content=_inline("Section"), level=2)
     pages[0].blocks.insert(0, title)
     client = _QueuedValidatedClient([[0, 1]])
     middle_json = _middle_json(pages, is_full_document=False)

@@ -24,6 +24,8 @@ def build_epub_fixture(
     nav_in_spine: bool = False,
     nav_extra_body_text: str = "",
     strip_headings: bool = False,
+    unclosed_br_first_chapter: bool = False,
+    unclosed_br_second_chapter: bool = False,
 ) -> bytes:
     """构造覆盖 XHTML、SVG、CSS、公式、表格、列表和图片的最小 EPUB 3。"""
     container = """<?xml version="1.0" encoding="UTF-8"?>
@@ -89,6 +91,8 @@ def build_epub_fixture(
             '<!DOCTYPE html [<!ENTITY x "hidden">]><html xmlns="http://www.w3.org/1999/xhtml">',
             1,
         )
+    if unclosed_br_first_chapter:
+        chapter_one = chapter_one.replace("</body>", "<p>Malformed<br>tail</p></body>", 1)
     chapter_two = """<?xml version="1.0" encoding="UTF-8"?>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><body>
   <section id="section-two"><h2>Section Two</h2></section>
@@ -101,6 +105,8 @@ def build_epub_fixture(
     if strip_headings:
         chapter_one = chapter_one.replace('<h1 id="chapter-one">Chapter One</h1>', '<p id="chapter-one">Chapter One</p>')
         chapter_two = chapter_two.replace("<h2>Section Two</h2>", "<p>Section Two</p>")
+    if unclosed_br_second_chapter:
+        chapter_two = chapter_two.replace("<pre>", "<p>Recovered before<br>Recovered after</p><pre>", 1)
     nav_xhtml = """<?xml version="1.0" encoding="UTF-8"?>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><body>
   <nav epub:type="toc" role="doc-toc"><ol>

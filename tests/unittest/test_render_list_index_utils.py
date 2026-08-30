@@ -1,7 +1,9 @@
 from __future__ import annotations
+from _span_test_utils import inline as _inline
 
 import pytest
 
+from mineru.backend.postprocess.inline import inline_plain_text
 from mineru.render._internal.common.index import looks_like_index_page_token, strip_index_page_tail
 from mineru.render._internal.common.list_items import (
     has_markdown_unordered_marker,
@@ -44,10 +46,10 @@ def test_parse_list_item_marker_classifies_supported_styles(
     ordered_style: str | None,
 ) -> None:
     """验证共享 parser 区分原生列表与需要显式 marker 的编号风格。"""
-    item = parse_list_item_marker(content)
+    item = parse_list_item_marker(_inline(content))
 
     assert item.marker == marker
-    assert item.body == body
+    assert inline_plain_text(item.body) == body
     assert item.kind == kind
     assert item.value == value
     assert item.ordered_style == ordered_style
@@ -56,23 +58,23 @@ def test_parse_list_item_marker_classifies_supported_styles(
 @pytest.mark.parametrize("content", ["  2. item", "\t- item", "- \ncontinued", "  plain item"])
 def test_parse_list_item_marker_preserves_reconstructable_whitespace(content: str) -> None:
     """验证 parser 单独保存前导与分隔空白，并可无损重建原内容。"""
-    item = parse_list_item_marker(content)
+    item = parse_list_item_marker(_inline(content))
     reconstructed = item.leading
     if item.marker is not None:
         reconstructed += item.marker + item.separator
-    reconstructed += item.body
+    reconstructed += inline_plain_text(item.body)
 
     assert reconstructed == content
 
 
 def test_single_roman_letters_use_stable_roman_precedence() -> None:
     """验证与字母编号同形的罗马字符固定优先解释为罗马数字。"""
-    assert parse_list_item_marker("v. item").ordered_style == "lower-roman"
-    assert parse_list_item_marker("v. item").value == 5
-    assert parse_list_item_marker("c. item").ordered_style == "lower-roman"
-    assert parse_list_item_marker("c. item").value == 100
-    assert parse_list_item_marker("z. item").ordered_style == "lower-alpha"
-    assert parse_list_item_marker("z. item").value == 26
+    assert parse_list_item_marker(_inline("v. item")).ordered_style == "lower-roman"
+    assert parse_list_item_marker(_inline("v. item")).value == 5
+    assert parse_list_item_marker(_inline("c. item")).ordered_style == "lower-roman"
+    assert parse_list_item_marker(_inline("c. item")).value == 100
+    assert parse_list_item_marker(_inline("z. item")).ordered_style == "lower-alpha"
+    assert parse_list_item_marker(_inline("z. item")).value == 26
 
 
 @pytest.mark.parametrize(
@@ -88,7 +90,7 @@ def test_single_roman_letters_use_stable_roman_precedence() -> None:
 )
 def test_unbounded_or_invalid_ordered_markers_degrade_to_explicit(content: str) -> None:
     """验证超长、超界或非规范编号不会触发大整数异常，并原样保留 marker。"""
-    item = parse_list_item_marker(content)
+    item = parse_list_item_marker(_inline(content))
 
     assert item.kind == "explicit"
     assert item.marker is not None
@@ -98,11 +100,11 @@ def test_unbounded_or_invalid_ordered_markers_degrade_to_explicit(content: str) 
 
 def test_markdown_existing_bullet_detection_remains_hyphen_only() -> None:
     """验证参考文献补 bullet 只避开既有短横线，保持 Markdown 历史输出。"""
-    assert has_markdown_unordered_marker("  - existing")
-    assert not has_markdown_unordered_marker("* existing")
-    assert not has_markdown_unordered_marker("+ existing")
-    assert not has_markdown_unordered_marker("-without-space")
-    assert not has_markdown_unordered_marker("-\ncontinued")
+    assert has_markdown_unordered_marker(_inline("  - existing"))
+    assert not has_markdown_unordered_marker(_inline("* existing"))
+    assert not has_markdown_unordered_marker(_inline("+ existing"))
+    assert not has_markdown_unordered_marker(_inline("-without-space"))
+    assert not has_markdown_unordered_marker(_inline("-\ncontinued"))
 
 
 def _reference_list(*children: TextBlock | RefTextBlock | ListBlock) -> ListBlock:
@@ -112,17 +114,23 @@ def _reference_list(*children: TextBlock | RefTextBlock | ListBlock) -> ListBloc
 
 def test_reference_list_bullet_rule_uses_visible_direct_item_strict_majority() -> None:
     """验证富文本可见数字、空项和嵌套列表遵守既有严格多数规则。"""
-    nested = _reference_list(RefTextBlock(type="ref_text", content="Author nested"))
+    nested = _reference_list(RefTextBlock(type="ref_text", content=_inline("Author nested")))
     numbered_majority = _reference_list(
-        RefTextBlock(type="ref_text", content='<text style="bold">[1]</text> first'),
-        RefTextBlock(type="ref_text", content="missing marker"),
-        TextBlock(type="text", content="3) third"),
-        RefTextBlock(type="ref_text", content=""),
+        RefTextBlock(
+            type="ref_text",
+            content=[
+                {"type": "text", "content": "[1]", "styles": ["bold"]},
+                {"type": "text", "content": " first"},
+            ],
+        ),
+        RefTextBlock(type="ref_text", content=_inline("missing marker")),
+        TextBlock(type="text", content=_inline("3) third")),
+        RefTextBlock(type="ref_text", content=[]),
         nested,
     )
     tied = _reference_list(
-        RefTextBlock(type="ref_text", content="[1] first"),
-        RefTextBlock(type="ref_text", content="Author A"),
+        RefTextBlock(type="ref_text", content=_inline("[1] first")),
+        RefTextBlock(type="ref_text", content=_inline("Author A")),
     )
 
     assert not reference_list_needs_bullets(numbered_majority)
@@ -143,7 +151,15 @@ def test_reference_list_bullet_rule_uses_visible_direct_item_strict_majority() -
 )
 def test_strip_index_page_tail_uses_visible_tail_token(content: str, expected: str) -> None:
     """验证目录仅删除可信的末尾页码，并把保留 tab 转为空格。"""
-    assert strip_index_page_tail(content) == expected
+    spans = (
+        [
+            {"type": "text", "content": "Title\t"},
+            {"type": "text", "content": "IV", "styles": ["bold"]},
+        ]
+        if "<text" in content
+        else _inline(content)
+    )
+    assert inline_plain_text(strip_index_page_tail(spans)) == expected
 
 
 @pytest.mark.parametrize("content", ["1", "１２", "iv", "XII", "a", "Z"])

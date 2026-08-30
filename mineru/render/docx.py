@@ -4,7 +4,7 @@
 from __future__ import annotations
 
 from ..types import MiddleJson
-from .contracts import AssetResolver, RenderMode
+from .contracts import AssetResolver
 
 
 class DocxRenderError(RuntimeError):
@@ -28,13 +28,12 @@ class DocxRenderError(RuntimeError):
 def render_docx(
     middle_json: MiddleJson,
     *,
-    mode: RenderMode = RenderMode.DEFAULT,
     asset_resolver: AssetResolver | None = None,
 ) -> bytes:
     """惰性加载 DOCX 实现并渲染严格 MiddleJson。"""
     from ._internal.docx.renderer import render_docx as _render_docx
 
-    return _render_docx(middle_json, mode=mode, asset_resolver=asset_resolver)
+    return _render_docx(middle_json, asset_resolver=asset_resolver)
 
 
 __all__ = ["DocxRenderError", "render_docx"]
