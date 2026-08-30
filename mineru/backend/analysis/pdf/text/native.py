@@ -82,6 +82,7 @@ def txt_spans_extract(
     page_chars: list[Char] | dict[str, list[Char]] | None = None,
     tight_bboxes: dict[int, BBox] | None = None,
     origins: dict[int, tuple[float, float]] | None = None,
+    detect_scripts: bool = True,
 ) -> list[_AnalyzeSpan]:
     """从 PDF 原生字符中提取文本 Span，并允许复用调用方已读取的页面字符。"""
     page_char_count = None
@@ -164,6 +165,7 @@ def txt_spans_extract(
         median_span_height,
         tight_bboxes=tight_bboxes,
         origins=origins,
+        detect_scripts=detect_scripts,
     )
 
     return _prepare_post_ocr_spans(need_ocr_spans, spans, pil_img, scale)
@@ -451,6 +453,7 @@ def fill_char_in_spans(
     *,
     tight_bboxes: dict[int, BBox] | None = None,
     origins: dict[int, tuple[float, float]] | None = None,
+    detect_scripts: bool = True,
 ) -> list[_AnalyzeSpan]:
     """以 tight-first、loose-fallback 将字符分配到 Span，并返回待 OCR Span。"""
     spans = sorted(spans, key=lambda x: x.bbox[1])
@@ -551,6 +554,7 @@ def fill_char_in_spans(
             span,
             tight_bboxes=tight_bboxes,
             origins=origins,
+            detect_scripts=detect_scripts,
         )
         # 有的span中虽然没有字但有一两个空的占位符，用宽高和content长度过滤
         if should_post_ocr_private_use and span.content:
@@ -860,6 +864,7 @@ def chars_to_content(
     *,
     tight_bboxes: dict[int, BBox] | None = None,
     origins: dict[int, tuple[float, float]] | None = None,
+    detect_scripts: bool = True,
 ) -> None:
     """将 Span 内字符重建为文本，并合并连续的上标、下标片段。"""
     span.metadata.pop(PDF_NATIVE_SCRIPT_MARKUP_KEY, None)
@@ -876,12 +881,14 @@ def chars_to_content(
         char_widths = [metrics["width"] for metrics in char_metrics]
         # Calculate the median width
         median_width = statistics.median(char_widths)
-        script_roles = _classify_char_script_roles(
-            chars,
-            tight_bboxes=tight_bboxes or {},
-            origins=origins or {},
-            protected_body_indices=protected_body_indices,
-        )
+        script_roles: list[_ScriptRole] = ["body"] * len(chars)
+        if detect_scripts:
+            script_roles = _classify_char_script_roles(
+                chars,
+                tight_bboxes=tight_bboxes or {},
+                origins=origins or {},
+                protected_body_indices=protected_body_indices,
+            )
 
         role_text_parts = []
         for idx, char1 in enumerate(chars):

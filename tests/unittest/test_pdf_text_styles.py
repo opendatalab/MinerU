@@ -13,6 +13,7 @@ from zipfile import ZipFile
 import pytest
 
 from mineru.backend.analysis.pdf.text import content as text_content
+from mineru.backend.analysis.pdf.text import styles as text_style_enrichment
 from mineru.backend.analysis.pdf.text.models import _AnalyzeLine, _AnalyzeSpan
 from mineru.backend.analysis.pdf.text.native import txt_spans_extract
 from mineru.backend.postprocess.pages import model_json_to_pages
@@ -34,6 +35,8 @@ from mineru.model.flash.pdf.text_styles import (
     PDF_NATIVE_SCRIPT_MARKUP_KEY,
     PDFTextLinkLine,
     PDFTextLinkRange,
+    PDFTextScriptLine,
+    PDFTextScriptRange,
     PDFTextStyleLine,
     PDFTextStyleRange,
     apply_pdf_text_links as _apply_pdf_text_links,
@@ -2054,7 +2057,7 @@ def test_hybrid_txt_reuses_loaded_chars_and_applies_styles(
             0,
         )
     ]
-    build_styles = MagicMock(return_value=(page_text_geometry, [], style_lines, link_lines))
+    build_styles = MagicMock(return_value=(page_text_geometry, [], style_lines, link_lines, []))
     observed_geometry: list[object] = []
 
     def fake_fill_native(
@@ -2065,10 +2068,12 @@ def test_hybrid_txt_reuses_loaded_chars_and_applies_styles(
         _page_size: object,
         *,
         page_text_geometry: object,
+        detect_scripts: bool,
     ) -> list[_AnalyzeSpan]:
         """记录传入原生回填的字符几何，并返回稳定文本 span。"""
 
         observed_geometry.append(page_text_geometry)
+        assert detect_scripts is False
         return [
             _AnalyzeSpan(
                 type=ContentType.TEXT,
@@ -2119,6 +2124,7 @@ def test_hybrid_txt_reuses_loaded_chars_and_applies_styles(
         [[]],
         [[]],
         "txt",
+        "medium",
         {BlockType.TEXT},
         MagicMock(),
     )
@@ -2154,7 +2160,7 @@ def test_hybrid_txt_efforts_apply_dehyphenated_links(
     monkeypatch.setattr(
         text_content,
         "build_pdf_native_visual_lines_and_styles",
-        lambda *_args, **_kwargs: (PDFPageTextGeometry([], {}, {}), [], [], link_lines),
+        lambda *_args, **_kwargs: (PDFPageTextGeometry([], {}, {}), [], [], link_lines, []),
     )
     monkeypatch.setattr(
         text_content,
@@ -2216,11 +2222,95 @@ def test_hybrid_txt_efforts_apply_dehyphenated_links(
         [[]],
         [[]],
         "txt",
+        effort,
         {BlockType.TEXT},
         MagicMock(),
     )
 
     assert _span_snapshot(model_list[0][0]["content"]) == (f"<hyperlink>international<url>{target}</url></hyperlink>")
+
+
+@pytest.mark.parametrize("effort", ["medium", "high", "xhigh"])
+def test_hybrid_txt_efforts_apply_shared_script_sidecar(
+    monkeypatch: pytest.MonkeyPatch,
+    effort: str,
+) -> None:
+    """验证 Medium、High 与 XHigh 的 TXT 文本统一应用整行脚本 sidecar。"""
+
+    page_geometry = PDFPageTextGeometry([], {}, {})
+    script_line = PDFTextScriptLine(
+        bbox=(10.0, 10.0, 30.0, 20.0),
+        text="x2",
+        script_ranges=(PDFTextScriptRange(1, 2, "superscript", (20.0, 10.0, 25.0, 15.0), 1, False),),
+        source_index=0,
+        angle=0,
+    )
+    build_evidence = MagicMock(return_value=(page_geometry, [], [], [], [script_line]))
+    monkeypatch.setattr(text_content, "build_pdf_native_visual_lines_and_styles", build_evidence)
+    monkeypatch.setattr(text_content, "_build_page_text_formula_spans", lambda *_args: [])
+
+    def fake_fill_native(*_args: object, detect_scripts: bool, **_kwargs: object) -> list[_AnalyzeSpan]:
+        """确认 Hybrid TXT 不再使用 layout span 内的旧脚本分类。"""
+
+        assert detect_scripts is False
+        return [_AnalyzeSpan(type=ContentType.TEXT, bbox=(10.0, 10.0, 30.0, 20.0), content="x2", score=1.0)]
+
+    monkeypatch.setattr(text_content, "_fill_native_pdf_text_spans", fake_fill_native)
+    monkeypatch.setattr(
+        text_content,
+        "_group_page_spans_by_block",
+        lambda *_args: {
+            0: [
+                _AnalyzeLine(
+                    bbox=(10.0, 10.0, 30.0, 20.0),
+                    spans=[_AnalyzeSpan(type=ContentType.TEXT, bbox=(10.0, 10.0, 30.0, 20.0), content="x2", score=1.0)],
+                )
+            ]
+        },
+    )
+    monkeypatch.setattr(text_content, "_apply_window_post_ocr", lambda *_args: None)
+    pdf_page = MagicMock(size=(100.0, 100.0))
+    pdf_page.get_char_count.return_value = 2
+    model_list = [[{"type": BlockType.TEXT, "bbox": [0.1, 0.1, 0.3, 0.2], "content": ""}]]
+
+    text_content._fill_window_block_content_and_lines(
+        [{"img_pil": object(), "scale": 1.0}],
+        [pdf_page],
+        model_list,
+        [[]],
+        [[]],
+        "txt",
+        effort,  # type: ignore[arg-type]
+        {BlockType.TEXT},
+        MagicMock(),
+    )
+
+    assert model_list[0][0]["content"] == [
+        {"type": "text", "content": "x"},
+        {"type": "text", "content": "2", "styles": ["superscript"]},
+    ]
+
+
+def test_hybrid_layout_formula_regions_hard_exclude_script_ranges() -> None:
+    """验证 Hybrid TXT 只保留 layout 行内公式 bbox 外的脚本证据。"""
+
+    line = PDFTextScriptLine(
+        bbox=(0.0, 0.0, 40.0, 20.0),
+        text="x2y3",
+        script_ranges=(
+            PDFTextScriptRange(1, 2, "superscript", (10.0, 2.0, 15.0, 8.0), 2, True),
+            PDFTextScriptRange(3, 4, "subscript", (30.0, 12.0, 35.0, 18.0), 2, False),
+        ),
+        source_index=0,
+        angle=0,
+    )
+
+    filtered = text_style_enrichment._exclude_layout_formula_script_ranges(
+        [line],
+        [(8.0, 0.0, 18.0, 10.0)],
+    )
+
+    assert [(item.start, item.end, item.style) for item in filtered[0].script_ranges] == [(3, 4, "subscript")]
 
 
 def test_ocr_path_does_not_collect_or_apply_pdf_styles(
@@ -2274,6 +2364,7 @@ def test_ocr_path_does_not_collect_or_apply_pdf_styles(
         [[]],
         [[]],
         "ocr",
+        "medium",
         {BlockType.TEXT},
         MagicMock(),
     )
@@ -2340,6 +2431,7 @@ def test_high_char_count_txt_path_skips_pdf_text_enrichment(
         [[]],
         [[]],
         "txt",
+        "medium",
         {BlockType.TEXT},
         MagicMock(),
     )

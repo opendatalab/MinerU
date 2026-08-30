@@ -183,6 +183,11 @@ def test_doc_analyze_converts_vlm_results_before_downstream_processing(
         assert type(window_model_list) is list
         assert all(type(page) is list for page in window_model_list)
         assert all(type(block) is dict for page in window_model_list for block in page)
+        if parse_mode == "txt":
+            assert isinstance(_page_text_geometries, list)
+            assert len(_page_text_geometries) == 1
+        else:
+            assert _page_text_geometries is None
         return window_model_list
 
     xhigh_normalizer = MagicMock(wraps=layout._normalize_xhigh_vlm_blocks)
@@ -443,7 +448,7 @@ def test_fill_window_batches_txt_post_ocr_before_page_content(monkeypatch: pytes
     monkeypatch.setattr(
         text_content,
         "build_pdf_native_visual_lines_and_styles",
-        lambda *_args, **_kwargs: (PDFPageTextGeometry([], {}, {}), [], [], []),
+        lambda *_args, **_kwargs: (PDFPageTextGeometry([], {}, {}), [], [], [], []),
     )
     monkeypatch.setattr(
         text_content,
@@ -466,6 +471,7 @@ def test_fill_window_batches_txt_post_ocr_before_page_content(monkeypatch: pytes
         [[], []],
         [[], []],
         "txt",
+        "medium",
         {BlockType.TEXT},
         local_model_context,
     )
@@ -491,6 +497,7 @@ def test_fill_window_ocr_mode_does_not_run_txt_post_ocr(monkeypatch: pytest.Monk
         [[]],
         [[]],
         "ocr",
+        "medium",
         {BlockType.TEXT},
         local_model_context,
     )

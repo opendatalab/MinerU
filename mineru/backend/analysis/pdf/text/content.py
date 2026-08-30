@@ -16,8 +16,10 @@ from .....model.flash.pdf.document import PDFPage, PDFPageTextGeometry, get_line
 from .....model.flash.pdf.text_styles import (
     PDF_NATIVE_SCRIPT_MARKUP_KEY,
     PDFTextLinkLine,
+    PDFTextScriptLine,
     PDFTextStyleLine,
     apply_pdf_text_links,
+    apply_pdf_text_scripts,
     apply_pdf_text_styles,
     materialize_pdf_inline_spans,
 )
@@ -143,6 +145,51 @@ def _build_page_text_formula_spans(
     return page_spans
 
 
+def _get_page_inline_formula_regions(
+    page_inline_formula_list: list[dict[str, Any]],
+    page_size: tuple[float, float],
+    render_scale: float,
+) -> list[BBox]:
+    """把当前页 layout/MFR 行内公式统一转换成页面 point bbox。"""
+
+    return [
+        bbox
+        for formula in page_inline_formula_list
+        if (bbox := _sidecar_bbox_to_page_bbox(formula.get("bbox"), page_size, render_scale)) is not None
+    ]
+
+
+def _get_page_table_regions(
+    page_model_list: list[dict[str, Any]],
+    page_size: tuple[float, float],
+) -> list[BBox]:
+    """把当前页模型表格 bbox 转成脚本行合并使用的页面 point 区域。"""
+
+    page_width, page_height = page_size
+    regions: list[BBox] = []
+    for block in page_model_list:
+        if block.get("type") != BlockType.TABLE:
+            continue
+        raw_bbox = block.get("bbox")
+        if not isinstance(raw_bbox, (list, tuple)) or len(raw_bbox) != 4:
+            continue
+        try:
+            bbox = tuple(float(value) for value in raw_bbox)
+        except (TypeError, ValueError):
+            continue
+        if bbox[2] <= bbox[0] or bbox[3] <= bbox[1]:
+            continue
+        if all(0.0 <= value <= 1.0 for value in bbox):
+            bbox = (
+                bbox[0] * page_width,
+                bbox[1] * page_height,
+                bbox[2] * page_width,
+                bbox[3] * page_height,
+            )
+        regions.append(bbox)
+    return regions
+
+
 def _fill_native_pdf_text_spans(
     pdf_page: PDFPage,
     page_spans: list[_AnalyzeSpan],
@@ -151,6 +198,7 @@ def _fill_native_pdf_text_spans(
     page_size: tuple[float, float],
     *,
     page_text_geometry: PDFPageTextGeometry | None = None,
+    detect_scripts: bool = True,
 ) -> list[_AnalyzeSpan]:
     """复用原生 PDF 字符回填逻辑，并允许共享同页删除线检测读取的字符。"""
     page_width, page_height = page_size
@@ -165,6 +213,7 @@ def _fill_native_pdf_text_spans(
         page_chars=page_text_geometry.chars if page_text_geometry is not None else None,
         tight_bboxes=page_text_geometry.tight_bboxes if page_text_geometry is not None else None,
         origins=page_text_geometry.origins if page_text_geometry is not None else None,
+        detect_scripts=detect_scripts,
     )
 
 
@@ -322,6 +371,7 @@ def _fill_window_block_content_and_lines(
     inline_formula_list: list[list[dict[str, Any]]],
     ocr_res_list: list[list[dict[str, Any]]],
     parse_mode: Literal["txt", "ocr"],
+    effort: Literal["flash", "medium", "high", "xhigh"],
     ocr_det_type: set[str],
     local_model_context: HybridLocalModelContext,
     page_text_geometries: list[PDFPageTextGeometry | None] | None = None,
@@ -339,6 +389,7 @@ def _fill_window_block_content_and_lines(
     if len(set(page_counts.values())) != 1:
         raise ValueError(f"Hybrid block content page count mismatch: {page_counts}")
 
+    use_shared_script_sidecar = parse_mode == "txt" and effort in {"medium", "high", "xhigh"}
     target_block_types = set(ocr_det_type) | TITLE_BLOCK_TYPES | {BlockType.TEXT}
     page_block_line_results: list[
         tuple[
@@ -347,6 +398,7 @@ def _fill_window_block_content_and_lines(
             tuple[float, float],
             list[PDFTextStyleLine],
             list[PDFTextLinkLine],
+            list[PDFTextScriptLine],
         ]
     ] = []
     for page_idx, (image_dict, pdf_page, page_model_list, page_inline_formula_list, page_ocr_res_list) in enumerate(
@@ -368,8 +420,18 @@ def _fill_window_block_content_and_lines(
             page_size,
             render_scale,
         )
+        inline_math_regions = _get_page_inline_formula_regions(
+            page_inline_formula_list,
+            page_size,
+            render_scale,
+        )
+        table_regions = _get_page_table_regions(
+            page_model_list,
+            page_size,
+        )
         style_lines: list[PDFTextStyleLine] = []
         link_lines: list[PDFTextLinkLine] = []
+        script_lines: list[PDFTextScriptLine] = []
         if parse_mode == "txt":
             page_text_geometry = page_text_geometries[page_idx] if page_text_geometries is not None else None
             try:
@@ -386,9 +448,12 @@ def _fill_window_block_content_and_lines(
                     _line_items,
                     style_lines,
                     link_lines,
+                    script_lines,
                 ) = build_pdf_native_visual_lines_and_styles(
                     pdf_page,
                     page_text_geometry=page_text_geometry,
+                    inline_math_regions=inline_math_regions,
+                    table_regions=table_regions,
                 )
                 if page_text_geometries is not None:
                     page_text_geometries[page_idx] = page_text_geometry
@@ -399,6 +464,7 @@ def _fill_window_block_content_and_lines(
                 render_scale,
                 page_size,
                 page_text_geometry=page_text_geometry,
+                detect_scripts=not use_shared_script_sidecar,
             )
 
         block_lines = _group_page_spans_by_block(
@@ -414,13 +480,14 @@ def _fill_window_block_content_and_lines(
                 page_size,
                 style_lines,
                 link_lines,
+                script_lines,
             )
         )
 
     if parse_mode == "txt":
         _apply_window_post_ocr(
             local_model_context,
-            [block_lines for _, block_lines, _, _style_lines, _link_lines in page_block_line_results],
+            [block_lines for _, block_lines, _, _style_lines, _link_lines, _script_lines in page_block_line_results],
         )
 
     for (
@@ -429,6 +496,7 @@ def _fill_window_block_content_and_lines(
         page_size,
         style_lines,
         link_lines,
+        script_lines,
     ) in page_block_line_results:
         _apply_block_content_and_line_metadata(
             page_model_list,
@@ -443,6 +511,11 @@ def _fill_window_block_content_and_lines(
         apply_pdf_text_styles(
             page_model_list,
             style_lines,
+            page_size,
+        )
+        apply_pdf_text_scripts(
+            page_model_list,
+            script_lines,
             page_size,
         )
         materialize_pdf_inline_spans(page_model_list)

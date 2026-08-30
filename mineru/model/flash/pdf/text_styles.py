@@ -1256,10 +1256,50 @@ def _fraction_member_indices(
             for char_idx, bbox in aligned
             if bbox[1] >= rule_y - 0.2 * scale and bbox[1] - rule_y <= 1.75 * scale
         ]
+        # 超过局部公式尺度的长横线更像脚注/段落分隔线，不用于分式成员抑制。
+        if width > 8.0 * scale:
+            continue
         if above and below:
             members.update(char_idx for char_idx, _bbox in above)
             members.update(char_idx for char_idx, _bbox in below)
     return members
+
+
+def _strong_structural_script_roles(
+    chars: list[dict[str, Any]],
+    tight_bboxes: dict[int, BBox],
+    origins: dict[int, tuple[float, float]],
+) -> dict[int, ScriptRole]:
+    """提取可在恢复公式区域中保留的引用和邻接 base 强脚本证据。"""
+
+    roles = classify_char_script_roles(
+        chars,
+        tight_bboxes=tight_bboxes,
+        origins=origins,
+    )
+    strong_roles: dict[int, ScriptRole] = {}
+    for index in _citation_script_indices(chars, roles):
+        if roles[index] != "body":
+            strong_roles[index] = roles[index]
+    for index, role in enumerate(roles):
+        if role != "sup" or not _is_math_identifier_char(_script_char_text(chars[index])):
+            continue
+        base_height = _token_tight_height(chars[index - 1], tight_bboxes) if index > 0 else 0.0
+        script_height = _token_tight_height(chars[index], tight_bboxes)
+        if base_height <= 0 or script_height > 0.8 * base_height:
+            continue
+        next_index = _nearest_nonspace_index(chars, index, 1)
+        if next_index is not None and _is_math_script_token_char(_script_char_text(chars[next_index])):
+            continue
+        if _has_adjacent_math_base(
+            chars,
+            index,
+            roles,
+            tight_bboxes,
+            origins,
+        ):
+            strong_roles[index] = role
+    return strong_roles
 
 
 def _classify_script_runs(
@@ -1375,10 +1415,15 @@ def _script_line_char_roles(
         local_origins,
         memberships,
     )
+    strong_structural_roles = _strong_structural_script_roles(
+        local_chars,
+        local_tight_bboxes,
+        local_origins,
+    )
     if bool(getattr(line, "compact_formula_cluster", False)) or (
         bool(getattr(line, "restored_inline_cluster", False)) and bool(regions)
     ):
-        roles = ["body"] * len(roles)
+        roles = [strong_structural_roles.get(index, "body") for index in range(len(roles))]
     for index, char in enumerate(chars):
         char_idx = char.get("char_idx")
         if isinstance(char_idx, int) and char_idx in fraction_members:
@@ -1844,6 +1889,87 @@ def _assign_lines_to_blocks(
     return assignments
 
 
+def _assign_script_lines_to_blocks(
+    blocks: list[dict[str, Any]],
+    lines: Sequence[PDFTextScriptLine],
+    page_size: tuple[float, float],
+) -> dict[int, list[PDFTextScriptLine]]:
+    """保留整行主归属，并为无法投影的脚本区间补充 tight bbox 备用归属。"""
+
+    target_bboxes = {
+        block_index: block_bbox
+        for block_index, block in enumerate(blocks)
+        if block.get("type") in PDF_NATURAL_TEXT_STYLE_BLOCK_TYPES
+        and isinstance(block.get("content"), str)
+        and (block_bbox := _block_bbox_to_page_bbox(block.get("bbox"), page_size)) is not None
+    }
+    target_projected = {
+        block_index: _project_content_chars(str(blocks[block_index]["content"])) for block_index in target_bboxes
+    }
+    primary_assignments = _assign_lines_to_blocks(blocks, lines, page_size)
+    assignments: dict[int, list[PDFTextScriptLine]] = {
+        block_index: [line for line in block_lines if isinstance(line, PDFTextScriptLine)]
+        for block_index, block_lines in primary_assignments.items()
+    }
+    primary_block_by_line = {id(line): block_index for block_index, block_lines in assignments.items() for line in block_lines}
+    fallback_ranges: dict[tuple[int, int], list[PDFTextScriptRange]] = {}
+    for line_index, line in enumerate(lines):
+        for script_range in line.script_ranges:
+            evidence_line = PDFTextStyleLine(
+                bbox=line.bbox,
+                text=line.text,
+                style_ranges=(
+                    PDFTextStyleRange(
+                        script_range.start,
+                        script_range.end,
+                        (script_range.style,),
+                    ),
+                ),
+                source_index=line.source_index,
+            )
+            primary_block_index = primary_block_by_line.get(id(line))
+            if primary_block_index is not None and _match_script_line_ranges(
+                target_projected[primary_block_index],
+                evidence_line,
+            ):
+                continue
+            matches = [
+                (
+                    block_index,
+                    _line_block_score(script_range.bbox, block_bbox),
+                )
+                for block_index, block_bbox in target_bboxes.items()
+                if block_index != primary_block_index
+                and _match_script_line_ranges(
+                    target_projected[block_index],
+                    evidence_line,
+                )
+                if (
+                    block_bbox[0] <= (script_range.bbox[0] + script_range.bbox[2]) / 2 <= block_bbox[2]
+                    and block_bbox[1] <= (script_range.bbox[1] + script_range.bbox[3]) / 2 <= block_bbox[3]
+                )
+                or _bbox_overlap_ratio(script_range.bbox, block_bbox) >= 0.5
+            ]
+            if not matches:
+                continue
+            block_index, _score = max(matches, key=lambda item: (*item[1], -item[0]))
+            fallback_ranges.setdefault((block_index, line_index), []).append(script_range)
+    for (block_index, line_index), script_ranges in fallback_ranges.items():
+        line = lines[line_index]
+        assignments.setdefault(block_index, []).append(
+            PDFTextScriptLine(
+                bbox=line.bbox,
+                text=line.text,
+                script_ranges=tuple(script_ranges),
+                source_index=line.source_index,
+                angle=line.angle,
+            )
+        )
+    for block_lines in assignments.values():
+        block_lines.sort(key=lambda line: (line.source_index, line.bbox[1], line.bbox[0]))
+    return assignments
+
+
 def _filter_line_styles_for_block(
     lines: Sequence[PDFTextStyleLine],
     block_type: Any,
@@ -2184,6 +2310,51 @@ def _match_style_ranges(
                 f"line={line.text!r}, skipped={len(skipped_ranges)}, "
                 f"samples={skipped_samples!r}"
             )
+    return _merge_style_ranges(output)
+
+
+def _match_script_line_ranges(
+    projected: Sequence[_ProjectedChar],
+    line: PDFTextStyleLine,
+) -> list[PDFTextStyleRange]:
+    """独立投影单条脚本行，避免其它视觉行推进 cursor 后吞掉短脚本。"""
+
+    projected_text = "".join(token.value for token in projected)
+    exact_occurrences = _all_occurrences(projected_text, line.text, 0)
+    if len(exact_occurrences) == 1:
+        line_start = exact_occurrences[0]
+        return [
+            PDFTextStyleRange(
+                line_start + style_range.start,
+                line_start + style_range.end,
+                style_range.styles,
+            )
+            for style_range in line.style_ranges
+        ]
+    formula_match = _match_line_across_formula_gaps(
+        line.text,
+        projected,
+        0,
+    )
+    if formula_match is not None:
+        return _ranges_from_line_projection(line, formula_match)
+    output: list[PDFTextStyleRange] = []
+    for style_range in line.style_ranges:
+        position = _resolve_fallback_occurrence(
+            projected_text,
+            line,
+            style_range,
+            0,
+        )
+        if position is None:
+            continue
+        output.append(
+            PDFTextStyleRange(
+                position,
+                position + style_range.end - style_range.start,
+                style_range.styles,
+            )
+        )
     return _merge_style_ranges(output)
 
 
@@ -2763,7 +2934,7 @@ def _record_materialized_script_ranges(
             ),
             source_index=line.source_index,
         )
-        matched = _match_style_ranges(projected, [evidence_line])
+        matched = _match_script_line_ranges(projected, evidence_line)
         if len(matched) != 1:
             continue
         mapped = matched[0]
@@ -2802,7 +2973,7 @@ def apply_pdf_text_scripts(
     materialized_diagnostics: list[dict[str, Any]] | None = None,
 ) -> None:
     """把 Flash 上下标 sidecar 投影到最终自然语言 block，并清理公式私有区域。"""
-    assignments = _assign_lines_to_blocks(blocks, lines, page_size)
+    assignments = _assign_script_lines_to_blocks(blocks, lines, page_size)
     for block_index, block_lines in assignments.items():
         block = blocks[block_index]
         regions = [
@@ -2837,9 +3008,20 @@ def apply_pdf_text_scripts(
             )
         projected_lines = _filter_line_styles_for_block(projected_lines, block.get("type"))
         content = block.get("content")
-        if materialized_diagnostics is not None and isinstance(content, str):
-            projected = _project_content_chars(content)
-            combined_ranges = _match_style_ranges(projected, projected_lines)
+        if not isinstance(content, str) or not content:
+            continue
+        projected = _project_content_chars(content)
+        combined_ranges = _merge_style_ranges(
+            [
+                *_match_style_ranges(projected, projected_lines),
+                *(
+                    matched_range
+                    for projected_line in projected_lines
+                    for matched_range in _match_script_line_ranges(projected, projected_line)
+                ),
+            ]
+        )
+        if materialized_diagnostics is not None:
             for line in block_lines:
                 _record_materialized_script_ranges(
                     content,
@@ -2850,7 +3032,16 @@ def apply_pdf_text_scripts(
                     eligible_ranges.get(id(line), ()),
                     materialized_diagnostics,
                 )
-        apply_pdf_text_styles([block], projected_lines, page_size)
+        intervals = _raw_style_intervals(content, projected, combined_ranges)
+        if intervals:
+            existing = block.get(_PDF_STYLE_INTERVALS_KEY, [])
+            block[_PDF_STYLE_INTERVALS_KEY] = _merge_raw_style_intervals(
+                content,
+                [
+                    *(interval for interval in existing if isinstance(interval, _RawStyleInterval)),
+                    *intervals,
+                ],
+            )
     for block in blocks:
         block.pop("_inline_math_regions", None)
 

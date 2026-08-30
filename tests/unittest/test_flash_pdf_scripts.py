@@ -127,6 +127,25 @@ _NO_SCRIPT_SOURCE_EXPECTATIONS = {
     }
 }
 
+_GENERAL_RECOVERY_EXPECTATIONS = {
+    "demo3.pdf": {
+        (4, 51): (("2", "superscript"),),
+        (4, 163): (("3", "superscript"),),
+        (8, 48): (("5", "superscript"),),
+    },
+    "中文论文.pdf": {
+        (3, 95): (("2", "superscript"),),
+    },
+    "中文论文2.pdf": {
+        (0, 41): (("[2]", "superscript"), ("[3]", "superscript")),
+        (2, 97): (("[12]", "superscript"),),
+        (3, 14): (("[17]", "superscript"),),
+        (3, 83): (("[30]", "superscript"),),
+        (3, 87): (("[31]", "superscript"), ("[32]", "superscript"), ("[33]", "superscript")),
+        (13, 70): (("[41]", "superscript"),),
+    },
+}
+
 
 def _origin_from_upright(
     origin: tuple[float, float],
@@ -365,6 +384,92 @@ def test_flash_fraction_bar_suppresses_stacked_script_candidate() -> None:
     assert filtered.script_ranges == ()
 
 
+def test_flash_long_text_separator_does_not_suppress_leading_note_marker() -> None:
+    """验证长脚注分隔线两侧的正文不会被误判成局部分式。"""
+
+    page_size = (100.0, 100.0)
+    below_chars: list[Char] = []
+    tight_bboxes: dict[int, BBox] = {}
+    origins: dict[int, tuple[float, float]] = {}
+    for index, text in enumerate("2Word"):
+        left = 10.0 + index * 7.0
+        bbox = (left, 43.0, left + (4.0 if index == 0 else 6.0), 47.0 if index == 0 else 51.0)
+        below_chars.append({"char": text, "char_idx": index, "bbox": Bbox(list(bbox)), "rotation": 0.0, "font": {}})
+        tight_bboxes[index] = bbox
+        origins[index] = (left, bbox[3])
+    above_chars: list[Char] = []
+    for offset, text in enumerate("data", start=len(below_chars)):
+        left = 10.0 + (offset - len(below_chars)) * 7.0
+        bbox = (left, 28.0, left + 6.0, 34.0)
+        above_chars.append({"char": text, "char_idx": offset, "bbox": Bbox(list(bbox)), "rotation": 0.0, "font": {}})
+        tight_bboxes[offset] = bbox
+        origins[offset] = (left, 34.0)
+    line = _LineItem(
+        text="2Word",
+        bbox=(10.0, 43.0, 44.0, 51.0),
+        angle=0,
+        source_index=0,
+        chars=below_chars,
+    )
+
+    script_line = detect_pdf_text_script_lines(
+        [line],
+        page_size,
+        tight_bboxes,
+        origins,
+        all_chars=[*above_chars, *below_chars],
+        drawing_lines=[_AxisLine((5.0, 39.8, 65.0, 40.2), 0.4, "horizontal")],
+    )[0]
+
+    assert [(item.start, item.end, item.style) for item in script_line.script_ranges] == [(0, 1, "superscript")]
+
+
+@pytest.mark.parametrize(
+    ("text", "script_start", "expected_text"),
+    [
+        pytest.param("R2", 1, "2", id="adjacent-base"),
+        pytest.param("A[2]", 1, "[2]", id="numeric-citation"),
+    ],
+)
+def test_flash_restored_formula_line_preserves_strong_structural_scripts(
+    text: str,
+    script_start: int,
+    expected_text: str,
+) -> None:
+    """验证恢复公式行只退让弱 token，并保留局部几何稳定的强脚本结构。"""
+
+    chars: list[Char] = []
+    tight_bboxes: dict[int, BBox] = {}
+    origins: dict[int, tuple[float, float]] = {}
+    for index, char_text in enumerate(text):
+        left = 10.0 + index * 7.0
+        bbox = (left, 40.0, left + 6.0, 50.0) if index < script_start else (left, 34.0, left + 4.0, 40.0)
+        chars.append({"char": char_text, "char_idx": index, "bbox": Bbox(list(bbox)), "rotation": 0.0, "font": {}})
+        tight_bboxes[index] = bbox
+        origins[index] = (left, bbox[3])
+    line_bbox = (10.0, 34.0, 10.0 + len(text) * 7.0, 50.0)
+    line = _LineItem(
+        text=text,
+        bbox=line_bbox,
+        angle=0,
+        source_index=0,
+        chars=chars,
+        restored_inline_cluster=True,
+        inline_math_regions=[line_bbox],
+    )
+
+    script_line = detect_pdf_text_script_lines(
+        [line],
+        (100.0, 100.0),
+        tight_bboxes,
+        origins,
+    )[0]
+
+    assert [(script_line.text[item.start : item.end], item.style) for item in script_line.script_ranges] == [
+        (expected_text, "superscript")
+    ]
+
+
 @pytest.mark.parametrize("text", ["Bm", "r1"])
 def test_flash_formula_region_marks_only_the_index(text: str) -> None:
     """验证公式内部 B_m 与 r_1 只标记下移索引，不把整个 token 标成下标。"""
@@ -449,6 +554,33 @@ def test_flash_script_projection_does_not_leak_to_same_text() -> None:
         {"type": "text", "content": "Bm B"},
         {"type": "text", "content": "m", "styles": ["subscript"]},
     ]
+
+
+def test_flash_script_projection_ignores_unrelated_line_cursor() -> None:
+    """验证无关短行不会推进共享 cursor 并吞掉后续完整引用脚本。"""
+
+    blocks = [{"type": "text", "bbox": [0.0, 0.0, 1.0, 1.0], "content": "[12]"}]
+    lines = [
+        PDFTextScriptLine(
+            bbox=(10.0, 10.0, 20.0, 20.0),
+            text="[",
+            script_ranges=(PDFTextScriptRange(0, 1, "superscript", (10.0, 10.0, 12.0, 15.0), 1, False),),
+            source_index=0,
+            angle=0,
+        ),
+        PDFTextScriptLine(
+            bbox=(10.0, 10.0, 40.0, 20.0),
+            text="[12]",
+            script_ranges=(PDFTextScriptRange(0, 4, "superscript", (10.0, 10.0, 30.0, 15.0), 1, False),),
+            source_index=1,
+            angle=0,
+        ),
+    ]
+
+    apply_pdf_text_scripts(blocks, lines, (100.0, 100.0))
+    materialize_pdf_inline_spans(blocks)
+
+    assert blocks[0]["content"] == [{"type": "text", "content": "[12]", "styles": ["superscript"]}]
 
 
 def test_flash_script_projection_combines_hyperlink() -> None:
@@ -638,6 +770,23 @@ def test_user_reviewed_unicode_math_tokens_stay_body(pdf_name: str) -> None:
         script_line = next(line for line in diagnostics[page_index]["script_lines"] if line.source_index == source_index)
         assert script_line.script_ranges == ()
         assert not any(item["source_index"] == source_index for item in diagnostics[page_index]["materialized_ranges"])
+
+
+@pytest.mark.parametrize("pdf_name", tuple(_GENERAL_RECOVERY_EXPECTATIONS))
+def test_general_flash_script_recovery_candidates_materialize(pdf_name: str) -> None:
+    """验证脚注、邻接 base 与数字引用通过通用几何规则检测并物化。"""
+
+    diagnostics = _flash_script_diagnostics(pdf_name)
+    for (page_index, source_index), expected in _GENERAL_RECOVERY_EXPECTATIONS[pdf_name].items():
+        script_line = next(line for line in diagnostics[page_index]["script_lines"] if line.source_index == source_index)
+        actual = tuple((script_line.text[item.start : item.end], item.style) for item in script_line.script_ranges)
+        materialized = tuple(
+            (item["text"], item["role"])
+            for item in diagnostics[page_index]["materialized_ranges"]
+            if item["source_index"] == source_index
+        )
+        assert all(item in actual for item in expected), (page_index + 1, source_index, script_line.text)
+        assert all(item in materialized for item in expected), (page_index + 1, source_index, script_line.text)
 
 
 def test_chinese_paper_page_12_recovers_numbered_formula_regions() -> None:

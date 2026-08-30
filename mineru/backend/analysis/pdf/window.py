@@ -169,6 +169,7 @@ def _process_flash_ocr(
         empty_formula_list,
         ocr_res_list,
         "ocr",
+        "flash",
         PIPELINE_DET_TYPE,
         local_model_context,
     )
@@ -271,6 +272,7 @@ def _process_text_and_formulas(
         inline_formula_list,
         ocr_res_list,
         parse_mode,
+        effort,
         ocr_det_type,
         local_model_context,
         page_text_geometries,
@@ -316,7 +318,7 @@ def process_pdf_windows(
             _log_processing_window(window, page_count, len(images_pil_list))
             page_text_geometries: list[PDFPageTextGeometry | None] | None = (
                 [None] * len(window_pages)
-                if not flash_txt_mode and parse_mode == "txt" and effort in {"medium", "high"}
+                if not flash_txt_mode and parse_mode == "txt" and effort in {"medium", "high", "xhigh"}
                 else None
             )
 
