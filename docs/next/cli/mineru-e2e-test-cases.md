@@ -51,7 +51,9 @@
   - `$MINERU_E2E_FIXTURE_DIR/中文样例.pdf`，文件名包含中文，内容可与 `sample.pdf` 相同。
   - `$MINERU_E2E_FIXTURE_DIR/corrupted.pdf`，损坏 PDF。
   - `$MINERU_E2E_FIXTURE_DIR/empty.pdf`，空文件或无法解析出页面的 PDF。
-  - `$MINERU_E2E_FIXTURE_DIR/sample.rtf`、`sample.docx`、`sample.pptx`、`sample.xlsx`，Office 样例文件；当前全量 E2E 必须覆盖。
+  - `$MINERU_E2E_FIXTURE_DIR/sample.rtf`、`sample.doc`/`sample.docx`、`sample.ppt`/`sample.pptx`、`sample.xls`/`sample.xlsx`，Office/RTF 样例文件；当前全量 E2E 必须覆盖。
+  - `$MINERU_E2E_FIXTURE_DIR/sample.ofd`、`sample.epub`、`sample.html`，OFD/EPUB/HTML 样例文件；当前全量 E2E 必须覆盖。
+  - `$MINERU_E2E_FIXTURE_DIR/sample.odt`、`sample.ods`、`sample.odp`，OpenDocument 样例文件；当前全量 E2E 必须覆盖。
   - `$MINERU_E2E_FIXTURE_DIR/sample.md`、`sample.txt`、`sample.csv`，文本类样例文件；当前全量 E2E 必须覆盖。
   - `$MINERU_E2E_FIXTURE_DIR/sample.jpeg`，图片样例文件；若当前安装不支持图片输入，可按预期失败分支判定。
   - `$MINERU_E2E_FIXTURE_DIR/symlink-sample.pdf`，指向 `sample.pdf` 的符号链接；若平台不支持 symlink，可标记相关用例 BLOCKED。
@@ -61,6 +63,7 @@
 - 测试环境必须安装 `full` extra，并满足 README 中 `full` stack 的硬件要求，以同时覆盖 `light` 和 `full` model stack 下的本地 `basic`、`standard`、`advanced` quality parse-server；默认 tier 相关用例应验证本地 quality tier 可用，不再按缺少本地 quality tier 的预期失败分支判定。
 - 全量主流程固定使用 `light` stack；`full` stack 作为硬性 profile，必须额外覆盖本地 PDF Basic、Standard、Advanced。不得使用 `auto` 执行这些用例，以免硬件探测导致测试环境不确定。
 - MinerU 的公开 tier 只有 `flash`、`basic`、`standard`、`advanced`；默认 quality tier 选择顺序为 `standard`、`basic`，`advanced` 只在显式请求时使用；已缓存结果的读取顺序为 `advanced`、`standard`、`basic`、`flash`。
+- 非 PDF/图片格式（Office/RTF/ODF/OFD/EPUB/HTML/CSV）固定使用 `flash` tier，传入其它 tier 返回 `tier_unsupported_for_file_type`；这些格式不接受 page_range，传入 page_range 返回 `page_range_invalid`。
 - 显式指定 quality tier 的 remote 请求应按 remote 成功、remote 失败后同 tier local fallback、remote 与 local 均不可用三个分支判定；不得 fallback 到 `flash`。未指定 tier 时需要先从 remote 能力中按 `standard`、`basic` 选择默认值，无法选择时返回 `quality_tier_unavailable`；仅暴露 `advanced` 不构成可用的默认 quality tier。
 - PARSE-013A1 是 remote Standard 硬性测试，remote parse-server 不可用或不支持 Standard 均记录为失败。
 
@@ -189,6 +192,32 @@ cp "$MINERU_E2E_FIXTURE_DIR/sample.pdf" "$MINERU_E2E_FIXTURE_DIR/中文样例.pd
 cp "$HOME/MinerU-Repo/demo/office_docs/docx_01.docx" "$MINERU_E2E_FIXTURE_DIR/sample.docx"
 cp "$HOME/MinerU-Repo/demo/office_docs/pptx_01.pptx" "$MINERU_E2E_FIXTURE_DIR/sample.pptx"
 cp "$HOME/MinerU-Repo/demo/office_docs/xlsx_01.xlsx" "$MINERU_E2E_FIXTURE_DIR/sample.xlsx"
+cp "$HOME/MinerU-Repo/demo/office_docs/docx_01.doc" "$MINERU_E2E_FIXTURE_DIR/sample.doc"
+cp "$HOME/MinerU-Repo/demo/office_docs/pptx_01.ppt" "$MINERU_E2E_FIXTURE_DIR/sample.ppt"
+cp "$HOME/MinerU-Repo/demo/office_docs/xlsx_01.xls" "$MINERU_E2E_FIXTURE_DIR/sample.xls"
+cp "$HOME/MinerU-Repo/demo/office_docs/rtf_01.rtf" "$MINERU_E2E_FIXTURE_DIR/sample.rtf"
+
+# OFD/ODT/ODS/ODP 来自 OFDRW（Apache 2.0）与 Apache ODF Toolkit（Apache 2.0）公开测试资源
+curl -sL -o "$MINERU_E2E_FIXTURE_DIR/sample.ofd" "https://raw.githubusercontent.com/ofdrw/ofdrw/7459e35082170061efa6b399a6518dbc219f08ac/ofdrw-converter/src/test/resources/helloworld.ofd"
+curl -sL -o "$MINERU_E2E_FIXTURE_DIR/sample.odt" "https://raw.githubusercontent.com/apache/odftoolkit/trunk/odfdom/src/main/resources/OdfTextDocument.odt"
+curl -sL -o "$MINERU_E2E_FIXTURE_DIR/sample.ods" "https://raw.githubusercontent.com/apache/odftoolkit/trunk/odfdom/src/main/resources/OdfSpreadsheetDocument.ods"
+curl -sL -o "$MINERU_E2E_FIXTURE_DIR/sample.odp" "https://raw.githubusercontent.com/apache/odftoolkit/trunk/odfdom/src/main/resources/OdfPresentationDocument.odp"
+# EPUB 使用 Project Gutenberg 公版电子书（Alice's Adventures in Wonderland，无版权限制）
+curl -sL -o "$MINERU_E2E_FIXTURE_DIR/sample.epub" "https://www.gutenberg.org/ebooks/11.epub.noimages"
+
+# 手写最小 HTML，含图片引用以验证 source_context 资源解析
+mkdir -p "$MINERU_E2E_FIXTURE_DIR/html-bundle"
+cp "$MINERU_E2E_FIXTURE_DIR/sample.jpeg" "$MINERU_E2E_FIXTURE_DIR/html-bundle/img.jpeg"
+cat > "$MINERU_E2E_FIXTURE_DIR/sample.html" <<'HTML'
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>MinerU E2E HTML</title></head>
+<body>
+<h1>MinerU E2E HTML Fixture</h1>
+<p>This file verifies HTML parsing and resource resolution.</p>
+<p><img src="html-bundle/img.jpeg" alt="fixture image"></p>
+<ul><li>bullet one</li><li>bullet two</li></ul>
+</body></html>
+HTML
 
 printf '# MinerU E2E Markdown\n\nThis file verifies markdown input.\n' > "$MINERU_E2E_FIXTURE_DIR/sample.md"
 printf 'MinerU E2E text fixture\nsecond line\n' > "$MINERU_E2E_FIXTURE_DIR/sample.txt"
@@ -3345,7 +3374,7 @@ mineru read "doc:<short_id>/tier:flash/page:1" --context 2 --limit 30000 --json
 - request_scope.context = 2 或等价字段体现 context 生效
 - 如果文档页数不足，命令应优雅返回可用范围，不报 traceback
 
-### FILETYPE-001 Office 与文本类输入文件
+### FILETYPE-001 可解析的非 PDF/图片格式
 
 命令:
 
@@ -3353,18 +3382,28 @@ mineru read "doc:<short_id>/tier:flash/page:1" --context 2 --limit 30000 --json
 mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.docx" --tier flash --wait 60 --json
 mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pptx" --tier flash --wait 60 --json
 mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.xlsx" --tier flash --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.doc" --tier flash --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.ppt" --tier flash --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.xls" --tier flash --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.rtf" --tier flash --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.ofd" --tier flash --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.epub" --tier flash --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.html" --tier flash --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.odt" --tier flash --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.ods" --tier flash --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.odp" --tier flash --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.csv" --tier flash --wait 60 --json
 mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.md" --tier flash --wait 60 --json
 mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.txt" --tier flash --wait 60 --json
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.csv" --tier flash --wait 60 --json
 ```
 
 预期:
 
-- DOCX、PPTX、XLSX 三条命令 exit code = 0
-- DOCX、PPTX、XLSX 的 stdout 均为可直接解析的 JSON，且 content 或 doc metadata 合理存在
-- MD、TXT、CSV 三条命令 exit code != 0
-- MD、TXT、CSV 的 stdout 均为可直接解析的 JSON error
-- MD、TXT、CSV 的 `error.type = invalid_request_error`、`error.code = parse_not_required`、`error.param = path`
+- 前 14 条命令（DOCX/PPTX/XLSX/DOC/PPT/XLS/RTF/OFD/EPUB/HTML/ODT/ODS/ODP/CSV）exit code = 0
+- 前 14 条 stdout 均为可直接解析的 JSON，且 `parse.status = done`、`content` 或 doc metadata 合理存在
+- MD、TXT 两条命令 exit code != 0
+- MD、TXT 的 stdout 均为可直接解析的 JSON error
+- MD、TXT 的 `error.type = invalid_request_error`、`error.code = parse_not_required`、`error.param = path`
 - 不包含 Python traceback
 
 ### FILETYPE-001A 图片输入
@@ -3397,6 +3436,65 @@ mineru parse "$MINERU_E2E_FIXTURE_DIR/no-read.pdf" --tier flash --wait 60 --json
 - 输出包含 file_corrupted、parse_empty、file_permission_denied、file_not_found、unsupported 或等价错误
 - 失败命令带 `--json` 时，stdout 必须为可直接解析的 JSON error
 - 如果 `no-read.pdf` 权限场景无法稳定制造，可标记该子项 BLOCKED
+- 不包含 Python traceback
+
+### FILETYPE-003 非 PDF 格式不接受 page_range
+
+命令:
+
+```bash
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.docx" --tier flash --pages 1~1 --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.epub" --tier flash --pages 1~1 --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.ofd" --tier flash --pages 1~1 --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.html" --tier flash --pages 1~1 --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.odt" --tier flash --pages 1~1 --wait 60 --json
+```
+
+预期:
+
+- 五条 exit code != 0
+- 五条 stdout 均为可直接解析的 JSON error
+- `error.type = invalid_request_error`、`error.code = page_range_invalid`、`error.param = page_range`
+- 不启动解析任务，不创建 parse record
+- 不包含 Python traceback
+
+### FILETYPE-004 非 PDF/图片格式 tier 约束
+
+命令:
+
+```bash
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.ofd" --tier standard --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.epub" --tier standard --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.html" --tier standard --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.odt" --tier advanced --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.ofd" --tier standard --remote --wait 60 --json
+```
+
+预期:
+
+- 四条 local 命令 exit code != 0
+- 四条 local 命令的 `error.code = tier_unsupported_for_file_type`、`error.param = tier`
+- 一条 remote 命令 exit code != 0
+- 一条 remote 命令的 `error.code = remote_unsupported_for_file_type`、`error.param = remote`
+- 非 PDF/图片格式只允许 local `flash`，不创建 Standard/Advanced/remote parse record
+- 不包含 Python traceback
+
+### FILETYPE-005 HTML source_context 资源解析
+
+前置: `$MINERU_E2E_FIXTURE_DIR/sample.html` 引用 `$MINERU_E2E_FIXTURE_DIR/html-bundle/img.jpeg`。
+
+命令:
+
+```bash
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.html" --tier flash --wait 60 --json
+```
+
+预期:
+
+- exit code = 0，stdout 为可直接解析的 JSON
+- `parse.status = done`，`content` 不为 null
+- 解析结果包含图片引用（markdown 中存在 `![](...)` 或等价图片标记）
+- 不因相对路径资源找不到而失败
 - 不包含 Python traceback
 
 ### PATH-001 路径字符边界
@@ -3963,16 +4061,20 @@ mineru server start
 
 必跑 case:
 
-- FILETYPE-001 Office 与文本类输入文件
+- FILETYPE-001 可解析的非 PDF/图片格式
 - FILETYPE-001A 图片输入
 - FILETYPE-002 损坏、空、不可读文件中尚未执行的 empty/no-read 子项
+- FILETYPE-003 非 PDF 格式不接受 page_range
+- FILETYPE-004 非 PDF/图片格式 tier 约束
+- FILETYPE-005 HTML source_context 资源解析
 - PATH-001 路径字符边界
 - PATH-002 相对路径和 home 路径中相对路径、show file 同源子项
 - OUTPUT-002 read image output 后缀边界
 
 执行要求:
 
-- rtf/docx/pptx/xlsx/md/txt/csv 输入为全量 E2E 必测项，不支持时记录为失败。
+- docx/pptx/xlsx/doc/ppt/xls/rtf/ofd/epub/html/odt/ods/odp/csv 输入为全量 E2E 必测项，不支持时记录为失败。
+- md/txt 输入必须返回 `parse_not_required`，不视为可解析格式。
 - image 输入如果当前安装不支持，按预期失败分支判定。
 - symlink 或 no-read 权限场景无法稳定制造时，相关子项可 BLOCKED，但必须说明平台限制。
 

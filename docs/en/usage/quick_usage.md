@@ -13,7 +13,7 @@ MinerU has built-in command line tools that allow users to quickly use MinerU fo
 mineru -p <input_path> -o <output_path>
 ```
 > [!TIP]
->- `<input_path>`: Local `PDF` / `EPUB` / image / `CSV` / `RTF` / `DOC`/`DOCX` / `PPT`/`PPTX` / `XLS`/`XLSX` / `ODT`/`ODS`/`ODP` file or directory
+>- `<input_path>`: Local `PDF` / `OFD` / `EPUB` / static `HTML` / image / `CSV` / `RTF` / `DOC`/`DOCX` / `PPT`/`PPTX` / `XLS`/`XLSX` / `ODT`/`ODS`/`ODP` file or directory
 >- `<output_path>`: Output directory
 >- Without `--api-url`, the CLI launches a temporary local `mineru-api`
 >- With `--api-url`, the CLI connects to an existing local or remote FastAPI service directly
@@ -41,7 +41,7 @@ If you need to adjust parsing options through custom parameters, you can also ch
   >- Synchronous parsing endpoint: `POST /file_parse`
   >- Task query endpoints: `GET /tasks/{task_id}`, `GET /tasks/{task_id}/result`
   >- API outputs are controlled by the server and written to `./output` by default
-  >- Uploads currently support `PDF`, `EPUB`, image, `CSV`, `RTF`, `DOCX`, `PPTX`, `XLSX`, `ODT`, `ODS`, and `ODP` files
+  >- Uploads currently support `PDF`, `OFD`, `EPUB`, `HTML`, image, `CSV`, `RTF`, `DOC`/`DOCX`, `PPT`/`PPTX`, `XLS`/`XLSX`, `ODT`/`ODS`/`ODP` files
   >
   >- `POST /tasks` returns immediately with a `task_id`. `POST /file_parse` uses the same task manager internally, waits for the task to finish, and then returns the final result synchronously.
   >- When a task is waiting in the queue, both the submission response and task-status response may include `queued_ahead` to indicate how many tasks are ahead of it.
