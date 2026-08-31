@@ -150,15 +150,15 @@ class MinerUParser(DocumentParser):
         self._analyze_fn = doc_analyze
 ```
 
-## Middle JSON Schema 3.0 架构
+## Middle JSON Schema 2.0 架构
 
-Middle JSON 已收敛为 schema 3.0 的统一结构，并使用结构化 InlineSpan 表达自然语言行内语义，不再有 pipeline/vlm/office 三套独立实现。
+Middle JSON 已收敛为 schema 2.0 的统一结构，并使用结构化 InlineSpan 表达自然语言行内语义，不再有 pipeline/vlm/office 三套独立实现。
 
 ### 1. 统一分析入口
 
 `backend/analyze.py:doc_analyze()` 是 PDF、OFD、EPUB、HTML、CSV 与 Office 文档的唯一公共入口，通过 `file_suffix` 路由到 `backend/analysis/pdf/pipeline.py:analyze_pdf`、`backend/analysis/ofd.py:analyze_ofd`、`backend/analysis/epub.py:analyze_epub`、`backend/analysis/html.py:analyze_html`、`backend/analysis/csv.py:analyze_csv` 或 `backend/analysis/office.py:analyze_office`，生成严格 `ModelJson` 后统一交给 `backend/postprocess/document.py:model_json_to_middle_json()` 构造 `MiddleJson`。`MinerUParser` 是 `DocumentParser` 的唯一实现，替代旧的 `PdfHybridParser`/`PdfFlashParser`/`DocxParser` 等。
 
-### 2. MiddleJson 顶层字段（schema 3.0）
+### 2. MiddleJson 顶层字段（schema 2.0）
 
 `mineru/types.py:MiddleJson` 严格定义：
 
@@ -171,7 +171,7 @@ Middle JSON 已收敛为 schema 3.0 的统一结构，并使用结构化 InlineS
 | `parse_mode` | `Literal["txt", "ocr"]` | 解析模式 |
 | `mineru_version` | `str` | MinerU 版本号 |
 
-schema 3.0 输出不再有 `_backend`/`_version_name`/`pdf_info`/`_ocr_enable`/`_vlm_ocr_enable` 等旧字段；这些字段只能作为受支持旧 payload 的迁移输入出现。
+schema 2.0 输出不再有 `_backend`/`_version_name`/`pdf_info`/`_ocr_enable`/`_vlm_ocr_enable` 等旧字段；这些字段只能作为受支持旧 payload 的迁移输入出现。
 
 ### 2.1 ModelJson 严格容器
 
@@ -216,4 +216,4 @@ schema 3.0 输出不再有 `_backend`/`_version_name`/`pdf_info`/`_ocr_enable`/`
 
 ### 6. ParseResult 与 MiddleJson 的关系
 
-`ParseResult` 持有 `MiddleJson` 实例，`pages` property 委托给 `middle_json.pages`。`to_dict()` 只输出 schema 3.0；`from_dict()` 直接读取 3.0，并将 MinerU 3.4.5 `pdf_info` 与对应 schema 1.0 `pages` 包装经 `backend/postprocess/legacy_schema_adapter.py:legacy_page_to_model_list` 单向回推为 raw model-list 后重走统一后处理。schema 2.0 与其它未知旧 payload 不自动迁移，必须从源文件重新解析。
+`ParseResult` 持有 `MiddleJson` 实例，`pages` property 委托给 `middle_json.pages`。`to_dict()` 只输出 schema 2.0；`from_dict()` 直接读取 2.0，并将 MinerU 3.4.5 `pdf_info` 与对应 schema 1.0 `pages` 包装经 `backend/postprocess/legacy_schema_adapter.py:legacy_page_to_model_list` 单向回推为 raw model-list 后重走统一后处理。其它未知版本旧 payload 不自动迁移，必须从源文件重新解析。

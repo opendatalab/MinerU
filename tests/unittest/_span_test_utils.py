@@ -4,7 +4,7 @@ from typing import Any
 
 
 def inline(content: str, *, styles: list[str] | None = None) -> list[dict[str, Any]]:
-    """把测试文字构造成最小 Middle JSON 3.0 TextSpan 列表。"""
+    """把测试文字构造成最小 Middle JSON 2.0 TextSpan 列表。"""
     span: dict[str, Any] = {"type": "text", "content": content}
     if styles:
         span["styles"] = styles

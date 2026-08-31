@@ -1,5 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
-"""Flash 各格式构造 Middle JSON 3.0 行内 Span 的轻量工具。"""
+"""Flash 各格式构造 Middle JSON 2.0 行内 Span 的轻量工具。"""
 
 from __future__ import annotations
 

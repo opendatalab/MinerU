@@ -1,5 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
-"""Middle JSON 3.0 行内 Span 到安全 HTML 的序列化。"""
+"""Middle JSON 2.0 行内 Span 到安全 HTML 的序列化。"""
 
 from __future__ import annotations
 

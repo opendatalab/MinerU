@@ -46,7 +46,7 @@ _RAW_INLINE_TYPES = {
 
 
 def _spanize_blocks(blocks: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """把本文件关注后处理逻辑的简写文字夹具转换为 Schema 3.0 Span。"""
+    """把本文件关注后处理逻辑的简写文字夹具转换为 Schema 2.0 Span。"""
     for block in blocks:
         block_type = str(block.get("type"))
         content = block.get("content")

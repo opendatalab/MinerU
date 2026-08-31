@@ -77,7 +77,7 @@ def test_parse_result_to_dict_includes_schema_version_without_meta() -> None:
 
 
 def test_parse_result_roundtrip_preserves_page_footnote_anchor() -> None:
-    """验证 Schema 3.0 ParseResult 往返保留页面脚注 anchor。"""
+    """验证 Schema 2.0 ParseResult 往返保留页面脚注 anchor。"""
     result = ParseResult(
         middle_json=MiddleJson(
             pages=[
@@ -108,8 +108,8 @@ def test_parse_result_roundtrip_preserves_page_footnote_anchor() -> None:
     assert footnote.anchor == "note-one"  # type: ignore[union-attr]
 
 
-def test_parse_result_rejects_schema_v3_low_effort() -> None:
-    """验证 schema 3.0 的旧 Low effort 值仍按严格枚举失败。"""
+def test_parse_result_rejects_low_effort() -> None:
+    """验证当前 schema 的旧 Low effort 值仍按严格枚举失败。"""
     with pytest.raises(ValidationError, match="literal_error"):
         ParseResult.from_dict(
             {
@@ -130,7 +130,7 @@ def test_parse_result_from_dict_rejects_missing_pages() -> None:
 
 
 def test_parse_result_from_json_converts_mineru_3_4_5_middle_json() -> None:
-    """验证 ParseResult 恢复 3.4.5 pdf_info 调用链并生成严格 3.0。"""
+    """验证 ParseResult 恢复 3.4.5 pdf_info 调用链并生成严格 2.0。"""
     data = {
         "_backend": "hybrid",
         "_effort": "high",
@@ -176,9 +176,9 @@ def test_parse_result_accepts_schema_v1_page_wrapper() -> None:
     assert restored.middle_json.is_full_document is True
 
 
-@pytest.mark.parametrize("schema_version", [None, "2.0"])
-def test_parse_result_rejects_pre_v3_schema_versions(schema_version: str | None) -> None:
-    """验证无版本 pages 与未支持的 2.0 payload 仍要求重新解析源文件。"""
+@pytest.mark.parametrize("schema_version", [None, "3.0"])
+def test_parse_result_rejects_legacy_schema_versions(schema_version: str | None) -> None:
+    """验证无版本 pages 与未知版本 payload 仍要求重新解析源文件。"""
     payload: dict[str, object] = {"pages": []}
     if schema_version is not None:
         payload["schema_version"] = schema_version

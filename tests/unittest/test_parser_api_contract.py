@@ -88,8 +88,8 @@ def _full_middle_json(*pages: PageInfo) -> MiddleJson:
     )
 
 
-def _v3_payload(pages: list[dict[str, Any]], **extra: Any) -> dict[str, Any]:
-    """构造严格 Middle JSON 3.0 API envelope。"""
+def _current_payload(pages: list[dict[str, Any]], **extra: Any) -> dict[str, Any]:
+    """构造严格 Middle JSON 2.0 API envelope。"""
     payload: dict[str, Any] = {
         "schema_version": MIDDLE_JSON_SCHEMA_VERSION,
         "pages": pages,
@@ -103,7 +103,7 @@ def _v3_payload(pages: list[dict[str, Any]], **extra: Any) -> dict[str, Any]:
     return payload
 
 
-def _v3_image_page(image_path: str, *, page_idx: int = 0) -> dict[str, Any]:
+def _current_image_page(image_path: str, *, page_idx: int = 0) -> dict[str, Any]:
     """构造带一个图片 sidecar 的严格 PDF 页面。"""
     bbox = [0.0, 0.0, 0.1, 0.1]
     return {
@@ -721,8 +721,8 @@ def test_api_client_ignores_legacy_detail_error_envelope() -> None:
 
 def test_api_client_reads_image_cache_from_zip_and_preserves_pdf_mapping(monkeypatch: pytest.MonkeyPatch) -> None:
     parser = MinerUApiParser(api_url="http://localhost:8000", tier="standard", include_images=True)
-    middle_json = _v3_payload(
-        [_v3_image_page("images/chart.png")],
+    middle_json = _current_payload(
+        [_current_image_page("images/chart.png")],
         _pdf_retained_page_indices=[0, 2],
         _pdf_broken_page_indices=[1],
     )
@@ -751,7 +751,7 @@ def test_api_client_reads_image_cache_from_zip_and_preserves_pdf_mapping(monkeyp
 
 def test_api_client_downloads_model_output_from_zip(monkeypatch: pytest.MonkeyPatch) -> None:
     parser = MinerUApiParser(api_url="http://localhost:8000", tier="standard", include_model_output=True)
-    middle_json = _v3_payload([{"page_idx": 0, "blocks": []}])
+    middle_json = _current_payload([{"page_idx": 0, "blocks": []}])
     zip_ref = {"file_id": "file-zip", "bytes": 10}
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
@@ -836,7 +836,7 @@ def test_api_client_accepts_legacy_official_layout_json(monkeypatch: pytest.Monk
 
 def test_api_client_async_downloads_model_output_from_zip(monkeypatch: pytest.MonkeyPatch) -> None:
     parser = MinerUApiParser(api_url="http://localhost:8000", tier="standard", include_model_output=True)
-    middle_json = _v3_payload([{"page_idx": 0, "blocks": []}])
+    middle_json = _current_payload([{"page_idx": 0, "blocks": []}])
     zip_ref = {"file_id": "file-zip", "bytes": 10}
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
@@ -933,7 +933,7 @@ def test_api_client_include_images_downloads_single_zip(monkeypatch: pytest.Monk
 def test_api_client_does_not_read_image_cache_from_zip_unless_requested(monkeypatch: pytest.MonkeyPatch) -> None:
     parser = MinerUApiParser(api_url="http://localhost:8000", tier="standard", include_model_output=True)
     zip_ref = {"file_id": "file-zip", "bytes": 10}
-    middle_json = _v3_payload([_v3_image_page("images/chart.png")])
+    middle_json = _current_payload([_current_image_page("images/chart.png")])
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("middle_json.json", json.dumps(middle_json, ensure_ascii=False))
@@ -968,7 +968,7 @@ def test_api_client_async_include_images_downloads_single_zip(monkeypatch: pytes
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.writestr(
             "middle_json.json",
-            json.dumps(_v3_payload([{"page_idx": 0, "blocks": []}])),
+            json.dumps(_current_payload([{"page_idx": 0, "blocks": []}])),
         )
         archive.writestr("model_output.json", json.dumps([[{"raw": "model"}]], ensure_ascii=False, indent=4))
     download_calls: list[dict[str, object]] = []
@@ -1003,7 +1003,7 @@ def test_api_client_async_include_images_downloads_single_zip(monkeypatch: pytes
 def test_api_client_include_images_rejects_unsafe_image_entries(monkeypatch: pytest.MonkeyPatch) -> None:
     parser = MinerUApiParser(api_url="http://localhost:8000", tier="standard", include_images=True)
     zip_ref = {"file_id": "file-zip", "bytes": 10}
-    middle_json = _v3_payload([_v3_image_page("../escape.png")])
+    middle_json = _current_payload([_current_image_page("../escape.png")])
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("middle_json.json", json.dumps(middle_json, ensure_ascii=False))
@@ -1124,7 +1124,7 @@ def test_api_client_include_images_rejects_unsafe_zip_image_sidecar_paths(
 ) -> None:
     parser = MinerUApiParser(api_url="http://localhost:8000", tier="standard", include_images=True)
     zip_ref = {"file_id": "file-zip", "bytes": 10}
-    middle_json = _v3_payload([_v3_image_page(image_path)])
+    middle_json = _current_payload([_current_image_page(image_path)])
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("middle_json.json", json.dumps(middle_json, ensure_ascii=False))
@@ -1146,7 +1146,7 @@ def test_api_client_include_images_rejects_unsafe_zip_image_sidecar_paths(
 def test_async_api_client_include_images_rejects_unsafe_zip_image_sidecar_paths(monkeypatch: pytest.MonkeyPatch) -> None:
     parser = MinerUApiParser(api_url="http://localhost:8000", tier="standard", include_images=True)
     zip_ref = {"file_id": "file-zip", "bytes": 10}
-    middle_json = _v3_payload([_v3_image_page("../escape.png")])
+    middle_json = _current_payload([_current_image_page("../escape.png")])
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("middle_json.json", json.dumps(middle_json, ensure_ascii=False))
@@ -1529,9 +1529,9 @@ def test_api_client_rejects_json_underscore_output_alias() -> None:
     assert "available outputs: json_" in exc_info.value.message
 
 
-def test_api_client_accepts_middle_json_3_pages() -> None:
-    """验证 API client 恢复严格 3.0 pages envelope；legacy pdf_info 由 accepts_remote_pdf_info 系列覆盖。"""
-    pages = _pages_from_middle_json(_v3_payload([{"page_idx": 2, "blocks": []}]))
+def test_api_client_accepts_middle_json_current_pages() -> None:
+    """验证 API client 恢复严格 2.0 pages envelope；legacy pdf_info 由 accepts_remote_pdf_info 系列覆盖。"""
+    pages = _pages_from_middle_json(_current_payload([{"page_idx": 2, "blocks": []}]))
 
     assert len(pages) == 1
     assert pages[0].page_idx == 2
@@ -1541,11 +1541,11 @@ def test_api_client_accepts_middle_json_3_pages() -> None:
     "payload",
     [
         {"pages": [{"page_idx": 0, "blocks": []}]},
-        {"schema_version": "2.0", "pages": [{"page_idx": 0, "blocks": []}]},
+        {"schema_version": "3.0", "pages": [{"page_idx": 0, "blocks": []}]},
     ],
 )
-def test_api_client_rejects_pre_v3_middle_json(payload: dict[str, object]) -> None:
-    """验证缺失版本与未支持的 2.0 payload 仍要求重新解析；pdf_info 走 legacy 迁移单独覆盖。"""
+def test_api_client_rejects_unknown_schema_version(payload: dict[str, object]) -> None:
+    """验证缺失版本与未知版本 payload 仍要求重新解析；pdf_info 走 legacy 迁移单独覆盖。"""
     with pytest.raises((ValueError, api_client._V1APIError), match="Reparse the source document"):
         _pages_from_middle_json(payload)
 

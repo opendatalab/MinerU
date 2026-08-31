@@ -17,7 +17,7 @@ from .writer import DataWriter
 if TYPE_CHECKING:
     from ..model.flash.pdf.document import PDFDocument
 
-MIDDLE_JSON_SCHEMA_VERSION: str = "3.0"
+MIDDLE_JSON_SCHEMA_VERSION: str = "2.0"
 _LEGACY_SCHEMA_VERSION: str = "1.0"
 _LEGACY_DEFAULT_FILE_SUFFIX: FileSuffix = "pdf"
 _LEGACY_DEFAULT_EFFORT: Literal["flash", "medium", "high", "xhigh"] = "medium"
@@ -134,7 +134,7 @@ class ParseResult:
         broken_page_indices = _parse_optional_int_list(d.get(_PDF_BROKEN_PAGE_INDICES_KEY))
 
         if schema_version == MIDDLE_JSON_SCHEMA_VERSION:
-            middle_json = ParseResult._build_middle_json_from_v3(d)
+            middle_json = ParseResult._build_middle_json_from_current(d)
         elif (raw_pages := _legacy_raw_pages(d)) is not None:
             middle_json = ParseResult._build_middle_json_from_legacy(d, raw_pages)
         else:
@@ -150,14 +150,14 @@ class ParseResult:
         )
 
     @staticmethod
-    def _build_middle_json_from_v3(d: dict[str, Any]) -> MiddleJson:
-        """从 3.0 schema 直接构造 Span 化 MiddleJson。"""
+    def _build_middle_json_from_current(d: dict[str, Any]) -> MiddleJson:
+        """从当前版本 schema 直接构造 Span 化 MiddleJson。"""
         payload = {k: v for k, v in d.items() if k not in _TO_DICT_EXCLUDED_KEYS}
         return MiddleJson.model_validate(payload)
 
     @staticmethod
     def _build_middle_json_from_legacy(d: dict[str, Any], raw_pages: list[dict[str, Any]]) -> MiddleJson:
-        """把 3.4.5 页面回推为 raw ModelJson，再走当前统一后处理生成 3.0。"""
+        """把 3.4.5 页面回推为 raw ModelJson，再走当前统一后处理生成 2.0。"""
         from ..backend.postprocess.legacy_schema_adapter import legacy_page_to_model_list
         from ..backend.postprocess.pages import model_json_to_pages
         from ..version import __version__ as current_mineru_version

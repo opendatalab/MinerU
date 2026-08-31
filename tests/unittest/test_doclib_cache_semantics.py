@@ -2203,7 +2203,7 @@ def test_remap_api_result_pages_refreshes_attached_export_cache() -> None:
 
     result = ParseResult.from_dict(
         {
-            "schema_version": "3.0",
+            "schema_version": MIDDLE_JSON_SCHEMA_VERSION,
             "pages": [{"page_idx": 0, "blocks": []}],
             "is_full_document": False,
             "file_suffix": "pdf",

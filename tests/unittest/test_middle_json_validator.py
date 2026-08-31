@@ -361,7 +361,7 @@ def _valid_page() -> PageInfo:
 
 
 def test_middle_json_schema_version_is_public_constant() -> None:
-    assert MIDDLE_JSON_SCHEMA_VERSION == "3.0"
+    assert MIDDLE_JSON_SCHEMA_VERSION == "2.0"
 
 
 def test_validate_pages_accepts_valid_page_tree() -> None:

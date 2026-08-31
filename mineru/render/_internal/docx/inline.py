@@ -1,5 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
-"""Middle JSON 3.0 行内 Span 到 Word run、超链接、书签和 OMML 的写入。"""
+"""Middle JSON 2.0 行内 Span 到 Word run、超链接、书签和 OMML 的写入。"""
 
 from __future__ import annotations
 

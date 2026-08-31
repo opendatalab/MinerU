@@ -21,7 +21,7 @@ logger = logging.getLogger("mineru.compaction")
 
 
 def _normalize_batch_pages(batch_payload: dict[str, Any]) -> list[dict[str, Any]]:
-    """统一读取 3.0 batch，或把 3.4.5/1.0 页面转换为当前 page 字典。"""
+    """统一读取 2.0 batch，或把 3.4.5/1.0 页面转换为当前 page 字典。"""
     schema_version = batch_payload.get("schema_version")
     raw_pages = batch_payload.get("pages")
     if schema_version == MIDDLE_JSON_SCHEMA_VERSION:
