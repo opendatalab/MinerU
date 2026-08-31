@@ -375,6 +375,7 @@ def test_parse_service_process_doc_records_task_metrics(tmp_path) -> None:
             telemetry_svc=telemetry,
         )
         now = 1_700_000_000_000
+        (tmp_path / "a.pdf").write_bytes(b"%PDF-1.4\n")
         await db.execute(
             "INSERT INTO docs (sha256, short_id, size_bytes, file_type, page_count, first_seen_at, updated_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -445,6 +446,7 @@ def test_parse_service_requires_result_images_method(tmp_path) -> None:
             telemetry_svc=telemetry,
         )
         now = 1_700_000_000_000
+        (tmp_path / "a.pdf").write_bytes(b"%PDF-1.4\n")
         await db.execute(
             "INSERT INTO docs (sha256, short_id, size_bytes, file_type, page_count, first_seen_at, updated_at) "
             "VALUES (?, ?, ?, ?, ?, ?, ?)",

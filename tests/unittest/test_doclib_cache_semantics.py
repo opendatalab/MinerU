@@ -210,6 +210,11 @@ class _FakeDB:
         return None
 
     async def fetchall(self, sql: str, params: tuple[Any, ...]) -> list[dict[str, Any]]:
+        if sql.startswith("SELECT * FROM files WHERE sha256=? AND status=? ORDER BY updated_at DESC"):
+            sha256 = params[0]
+            if self.file_row and self.file_row.get("sha256") == sha256 and self.file_row["status"] == "active":
+                return [self.file_row]
+            return []
         if sql.startswith("SELECT * FROM parses WHERE id IN"):
             ids = set(params)
             return [row for row in self.parses if row["id"] in ids]
@@ -1427,6 +1432,87 @@ def test_ingest_binds_file_sha_before_creating_parse_task(tmp_path: Path, monkey
     asyncio.run(_run())
 
 
+def test_ingest_moved_file_retargets_to_new_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    class _NoRulesConfig:
+        async def match_rules(self, path: str, rule_type: str) -> list[dict[str, Any]]:
+            return []
+
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        service = ParseService(
+            db=db,
+            fts=_FilenameOnlyFTS(),
+            config_svc=_NoRulesConfig(),
+            data_dir=str(tmp_path / "data"),
+            parse_lock_timeout_sec=1800,
+        )
+
+        async def _metadata(path: str) -> dict[str, Any]:
+            return {
+                "page_count": 1,
+                "title": None,
+                "author": None,
+                "subject": None,
+                "keywords": None,
+                "is_image_based": 0,
+            }
+
+        monkeypatch.setattr(parse_svc_module, "extract_metadata", _metadata)
+
+        old_dir = tmp_path / "old"
+        new_dir = tmp_path / "new"
+        old_dir.mkdir()
+        new_dir.mkdir()
+        source = old_dir / "doc.pdf"
+        source.write_bytes(b"%PDF-1.4\n")
+        first_row = await service.ingest_file(str(source))
+
+        source.rename(new_dir / "doc.pdf")
+        second_row = await service.ingest_file(str(new_dir / "doc.pdf"))
+
+        assert first_row is not None
+        assert second_row is not None
+        assert second_row["path"] == str(new_dir / "doc.pdf")
+        stale = await db.fetchone("SELECT status FROM files WHERE id=?", (first_row["id"],))
+        assert stale["status"] == "deleted"
+        accessible = await parse_svc_module.accessible_file_for_sha256(db, second_row["sha256"])
+        assert accessible is not None
+        assert accessible["path"] == str(new_dir / "doc.pdf")
+
+    asyncio.run(_run())
+
+
+def test_accessible_file_for_sha256_skips_missing_paths(tmp_path: Path) -> None:
+    sha256 = "e" * 64
+    existing = tmp_path / "kept.pdf"
+    existing.write_bytes(b"%PDF-1.4\n")
+    missing = tmp_path / "moved.pdf"
+
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        await db.execute(
+            "INSERT INTO docs (sha256, short_id, size_bytes, first_seen_at, updated_at) VALUES (?, ?, ?, ?, ?)",
+            (sha256, "sh0rt1d", 10, 1000, 1000),
+        )
+        insert_sql = (
+            "INSERT INTO files (path, filename, ext, size_bytes, mtime_ms, sha256, watch_id, first_seen_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?)"
+        )
+        await db.execute(insert_sql, (str(missing), "moved.pdf", "pdf", 10, 10, sha256, 2000, 2000))
+        await db.execute(insert_sql, (str(existing), "kept.pdf", "pdf", 10, 10, sha256, 1000, 1000))
+
+        row = await parse_svc_module.accessible_file_for_sha256(db, sha256)
+        assert row is not None
+        assert row["path"] == str(existing)
+
+        existing.unlink()
+        assert await parse_svc_module.accessible_file_for_sha256(db, sha256) is None
+
+    asyncio.run(_run())
+
+
 def test_request_parse_explicit_image_ingests_and_queues_parse(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     class _NoRulesConfig:
         async def match_rules(self, path: str, rule_type: str) -> list[dict[str, Any]]:
@@ -1813,34 +1899,34 @@ def test_request_parse_rejects_unsupported_file_type_before_parse_response(tmp_p
 
 
 @pytest.mark.parametrize(
-    ("ext", "target_ext"),
-    [
-        ("doc", "docx"),
-        ("ppt", "pptx"),
-        ("xls", "xlsx"),
-    ],
+    "ext",
+    ["doc", "ppt", "xls"],
 )
-def test_request_parse_rejects_legacy_office_with_conversion_hint(tmp_path: Path, ext: str, target_ext: str) -> None:
+def test_request_parse_accepts_legacy_office_formats(tmp_path: Path, ext: str) -> None:
+    """legacy Office 二进制格式端到端可解析：request_parse 应接受并按 flash tier 排队。"""
+
+    class _NoRulesConfig:
+        async def match_rules(self, path: str, rule_type: str) -> list[dict[str, Any]]:
+            return []
+
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.db"))
         await db.initialize()
         service = ParseService(
             db=db,
             fts=FTSManager(db),
-            config_svc=None,
+            config_svc=_NoRulesConfig(),
             data_dir=str(tmp_path / "data"),
             parse_lock_timeout_sec=1800,
         )
         source = tmp_path / f"sample.{ext}"
         source.write_bytes(b"office")
 
-        with pytest.raises(InvalidRequestError) as exc_info:
-            await service.request_parse(str(source), tier="flash")
+        response = await service.request_parse(str(source), tier="flash")
 
-        assert exc_info.value.code == "file_type_unsupported"
-        assert exc_info.value.param == "path"
-        assert f".{ext} files are not supported" in exc_info.value.message
-        assert f".{target_ext}" in exc_info.value.message
+        assert response.tier == "flash"
+        assert response.status == "pending"
+        assert response.created_parse_ids or response.reused_parse_ids
 
     asyncio.run(_run())
 
@@ -4289,10 +4375,12 @@ def test_process_doc_rejects_existing_office_temp_lock_file_task(tmp_path: Path)
             "updated_at": 123,
         }
     ]
+    lock_file = tmp_path / "~$package-size.xlsx"
+    lock_file.write_bytes(b"")
     db = _FakeDB(
         parses=parses,
         file_row={
-            "path": "/tmp/~$package-size.xlsx",
+            "path": str(lock_file),
             "sha256": sha256,
             "status": "active",
             "filename": "~$package-size.xlsx",
@@ -4335,10 +4423,12 @@ def test_process_doc_marks_empty_page_result_failed(tmp_path: Path) -> None:
             "updated_at": 123,
         }
     ]
+    source = tmp_path / "doc.pdf"
+    source.write_bytes(b"%PDF-1.4\n")
     db = _FakeDB(
         parses=parses,
         file_row={
-            "path": "/tmp/doc.pdf",
+            "path": str(source),
             "sha256": sha256,
             "status": "active",
             "filename": "doc.pdf",
@@ -4390,10 +4480,12 @@ def test_process_doc_preserves_remote_api_error_code(tmp_path: Path) -> None:
             "updated_at": 123,
         }
     ]
+    source = tmp_path / "doc.pdf"
+    source.write_bytes(b"%PDF-1.4\n")
     db = _FakeDB(
         parses=parses,
         file_row={
-            "path": "/tmp/doc.pdf",
+            "path": str(source),
             "sha256": sha256,
             "status": "active",
             "filename": "doc.pdf",
@@ -4561,10 +4653,12 @@ def test_process_doc_fails_when_batch_json_cannot_be_written(tmp_path: Path) -> 
             "updated_at": 123,
         }
     ]
+    source = tmp_path / "doc.pdf"
+    source.write_bytes(b"%PDF-1.4\n")
     db = _FakeDB(
         parses=parses,
         file_row={
-            "path": "/tmp/doc.pdf",
+            "path": str(source),
             "sha256": sha256,
             "status": "active",
             "filename": "doc.pdf",
@@ -4623,10 +4717,12 @@ def test_process_doc_normalizes_full_document_range_from_actual_pages(tmp_path: 
         }
     ]
     doc_row = {"sha256": sha256, "short_id": "fffffff", "page_count": 10, "meta_tier": None}
+    source = tmp_path / "book.epub"
+    source.write_bytes(b"epub")
     db = _FakeDB(
         parses=parses,
         file_row={
-            "path": "/tmp/book.epub",
+            "path": str(source),
             "ext": "epub",
             "sha256": sha256,
             "status": "active",
@@ -4690,10 +4786,12 @@ def test_process_doc_writes_cached_image_sidecars(tmp_path: Path) -> None:
             "updated_at": 123,
         }
     ]
+    source = tmp_path / "doc.pdf"
+    source.write_bytes(b"%PDF-1.4\n")
     db = _FakeDB(
         parses=parses,
         file_row={
-            "path": "/tmp/doc.pdf",
+            "path": str(source),
             "sha256": sha256,
             "status": "active",
             "filename": "doc.pdf",

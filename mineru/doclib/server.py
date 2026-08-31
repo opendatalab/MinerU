@@ -68,6 +68,7 @@ from .rows import (
     WatchTargetRow,
 )
 from .services.parse_svc import (
+    accessible_file_for_sha256,
     filter_pages_by_user_range,
     load_pages_from_done_batches,
     parse_image_sidecar_dir,
@@ -1412,13 +1413,7 @@ class DoclibServer(AsyncDoclibInterface):
     async def _render_source_image_asset(self, plan: _ReadPlan, page: PageInfo) -> ContentAsset:
         if plan.target is None:
             raise InvalidRequestError("format_not_supported", "image format requires a page or block locator.", "format")
-        file_row = cast(
-            FileRow | None,
-            await self.state.db.fetchone(
-                "SELECT * FROM files WHERE sha256=? AND status=? LIMIT 1",
-                (plan.sha256, FILE_STATUS_ACTIVE),
-            ),
-        )
+        file_row = await accessible_file_for_sha256(self.state.db, plan.sha256)
         if file_row is None:
             raise NotFoundError("no_accessible_file", "No active source file found for this document.", "locator")
         source_path = file_row["path"]

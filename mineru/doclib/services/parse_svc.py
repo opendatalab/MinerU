@@ -70,6 +70,26 @@ MAX_FTS_CHARS = 30_000
 FTS_HEAD_HALF = 15_000
 
 
+async def accessible_file_for_sha256(db: DatabaseManager, sha256: str) -> FileRow | None:
+    """Find the newest active file row whose path still exists.
+
+    The same content (sha256) may be tracked at several paths; rows whose
+    source file was moved away stay active until a refresh marks them
+    deleted, so existence must be checked before trusting a path.
+    """
+    rows = cast(
+        list[FileRow],
+        await db.fetchall(
+            "SELECT * FROM files WHERE sha256=? AND status=? ORDER BY updated_at DESC",
+            (sha256, FILE_STATUS_ACTIVE),
+        ),
+    )
+    for row in rows:
+        if os.path.exists(row["path"]):
+            return row
+    return None
+
+
 FileRefreshStatus = Literal["known", "new", "changed", "missing", "deleted", "unreachable", "unsupported", "error"]
 
 
@@ -555,6 +575,9 @@ class ParseService:
             file_row = cast(FileRow | None, await self.db.fetchone("SELECT * FROM files WHERE path=?", (path,)))
             if file_row:
                 await self.fts.upsert_filename(file_row["id"], Path(path).stem, ext)
+            # the source may have been moved here from another tracked path;
+            # retire stale duplicates whose files no longer exist.
+            await self._mark_moved_duplicate_files_deleted(sha256, path)
             return file_row
 
         # brand new document
@@ -889,6 +912,22 @@ class ParseService:
             await self._record_count("parse_task.started.count", dimensions={"tier": task["tier"]})
         return task
 
+    async def _mark_moved_duplicate_files_deleted(self, sha256: str, keep_path: str) -> None:
+        rows = cast(
+            list[FileRow],
+            await self.db.fetchall(
+                "SELECT id, path FROM files WHERE sha256=? AND status=? AND path<>?",
+                (sha256, FILE_STATUS_ACTIVE, keep_path),
+            ),
+        )
+        now = _now_ms()
+        for row in rows:
+            if not os.path.exists(row["path"]):
+                await self.db.execute(
+                    "UPDATE files SET status=?, deleted_at=?, updated_at=? WHERE id=?",
+                    (FILE_STATUS_DELETED, now, now, row["id"]),
+                )
+
     async def process_doc(self, task: ParseRow) -> bool:
         """Execute parse for a batch.  Returns True on success."""
         task_start_ms = _now_ms()
@@ -903,13 +942,7 @@ class ParseService:
             return False
 
         # find the file
-        file_row = cast(
-            FileRow | None,
-            await self.db.fetchone(
-                "SELECT * FROM files WHERE sha256=? AND status=? LIMIT 1",
-                (sha256, FILE_STATUS_ACTIVE),
-            ),
-        )
+        file_row = await accessible_file_for_sha256(self.db, sha256)
         if file_row is None:
             await self._fail_task(task["id"], "no_accessible_file", "No active file found for this document")
             await self._record_parse_task_finished(
@@ -1405,16 +1438,19 @@ class ParseService:
         )
 
     async def _rebuild_fts_after_invalidate(self, sha256: str) -> None:
+        # FTS rebuild reads only cached parse batches, so any active row works;
+        # keep it deterministic and tolerate rows whose file moved away.
         file_row = cast(
             FileRow | None,
             await self.db.fetchone(
-                "SELECT * FROM files WHERE sha256=? AND status=? LIMIT 1",
+                "SELECT * FROM files WHERE sha256=? AND status=? ORDER BY updated_at DESC",
                 (sha256, FILE_STATUS_ACTIVE),
             ),
         )
         if file_row is None:
             await self.fts.delete(sha256)
             return
+        doc_row = cast(DocRow | None, await self.db.fetchone("SELECT title, author FROM docs WHERE sha256=?", (sha256,)))
 
         rows = cast(
             list[ParseRow],
@@ -1451,8 +1487,8 @@ class ParseService:
                 sha256=sha256,
                 tier=tier,
                 text=text,
-                title=file_row.get("title") or "",
-                author=file_row.get("author") or "",
+                title=(doc_row or {}).get("title") or "",
+                author=(doc_row or {}).get("author") or "",
             )
             return
 
