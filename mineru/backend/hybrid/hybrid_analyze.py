@@ -12,6 +12,9 @@ from mineru_vl_utils import MinerUClient
 from mineru_vl_utils.structs import BlockType, ContentBlock
 from tqdm import tqdm
 
+from mineru.backend.hybrid.hybrid_block_dedup import (
+    deduplicate_vlm_model_blocks,
+)
 from mineru.backend.hybrid.hybrid_model_output_to_middle_json import (
     append_page_model_list_to_middle_json,
     apply_server_side_postprocess,
@@ -749,6 +752,10 @@ def _apply_vlm_ocr_det_sidecars_for_window(
     hybrid_pipeline_model,
 ):
     """为VLM-OCR路径追加OCR det空文本行和行内公式框sidecar。"""
+    model_list[:] = [
+        deduplicate_vlm_model_blocks(page_model_list)
+        for page_model_list in model_list
+    ]
     formula_mask_inputs = _build_formula_mask_inputs(images_layout_res)
     inline_formula_list = _build_inline_formula_det_inputs(images_layout_res)
     np_images = [np.asarray(pil_image).copy() for pil_image in images_pil_list]
