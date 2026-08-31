@@ -780,7 +780,8 @@ def test_api_client_downloads_model_output_from_zip(monkeypatch: pytest.MonkeyPa
     assert result._model_output == [[{"raw": "model"}]]
 
 
-def test_api_client_rejects_legacy_official_layout_json(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_api_client_accepts_legacy_official_layout_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    """官方 API zip 中的 legacy pdf_info layout.json 应经 legacy_schema_adapter 迁移为 3.0。"""
     parser = MinerUApiParser(
         api_url="https://mineru.net/api",
         tier="standard",
@@ -818,16 +819,19 @@ def test_api_client_rejects_legacy_official_layout_json(monkeypatch: pytest.Monk
 
     monkeypatch.setattr(api_client, "_download_bytes", lambda _parser, ref: zip_buffer.getvalue() if ref is zip_ref else b"")
 
-    with pytest.raises(api_client._V1APIError, match="must contain a list field named pages"):
-        _parse_result_from_job(
-            {
-                "job_id": "job_1",
-                "status": "completed",
-                "files": [{"output_files": {"zip": zip_ref}}],
-            },
-            "demo.pdf",
-            parser,
-        )
+    result = _parse_result_from_job(
+        {
+            "job_id": "job_1",
+            "status": "completed",
+            "files": [{"output_files": {"zip": zip_ref}}],
+        },
+        "demo.pdf",
+        parser,
+    )
+
+    assert len(result.pages) == 1
+    assert result.pages[0].blocks[0].type.value == "image"
+    assert result.images() == {"chart.png": b"chart-bytes"}
 
 
 def test_api_client_async_downloads_model_output_from_zip(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1006,7 +1010,7 @@ def test_api_client_include_images_rejects_unsafe_image_entries(monkeypatch: pyt
 
     monkeypatch.setattr(api_client, "_download_bytes", lambda _parser, ref: zip_buffer.getvalue() if ref is zip_ref else b"")
 
-    with pytest.raises(ValueError, match="Unsafe image sidecar path"):
+    with pytest.raises(api_client._V1APIError, match="Unsafe image sidecar path"):
         _parse_result_from_job(
             {
                 "job_id": "job_1",
@@ -1018,7 +1022,8 @@ def test_api_client_include_images_rejects_unsafe_image_entries(monkeypatch: pyt
         )
 
 
-def test_api_client_rejects_remote_pdf_info_middle_json(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_api_client_accepts_remote_pdf_info_middle_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    """remote 官方 API 返回 3.4.5 pdf_info payload 时应经 legacy 分支迁移而不是拒绝。"""
     parser = MinerUApiParser(api_url="https://mineru.net/api", tier="standard")
     middle_json = {
         "_backend": "hybrid",
@@ -1028,19 +1033,22 @@ def test_api_client_rejects_remote_pdf_info_middle_json(monkeypatch: pytest.Monk
 
     monkeypatch.setattr(api_client, "_download_json", lambda _parser, _outputs: middle_json)
 
-    with pytest.raises(api_client._V1APIError, match="must contain a list field named pages"):
-        _parse_result_from_job(
-            {
-                "job_id": "job_1",
-                "status": "completed",
-                "files": [{"output_files": {"middle_json": {"file_id": "file-middle-json", "bytes": 10}}}],
-            },
-            "demo.pdf",
-            parser,
-        )
+    result = _parse_result_from_job(
+        {
+            "job_id": "job_1",
+            "status": "completed",
+            "files": [{"output_files": {"middle_json": {"file_id": "file-middle-json", "bytes": 10}}}],
+        },
+        "demo.pdf",
+        parser,
+    )
+
+    assert len(result.pages) == 1
+    assert result.pages[0].page_idx == 0
+    assert result.middle_json.mineru_version == "remote"
 
 
-def test_async_api_client_rejects_remote_pdf_info_middle_json(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_async_api_client_accepts_remote_pdf_info_middle_json(monkeypatch: pytest.MonkeyPatch) -> None:
     parser = MinerUApiParser(api_url="https://mineru.net/api", tier="standard")
     middle_json = {
         "_backend": "hybrid",
@@ -1052,18 +1060,20 @@ def test_async_api_client_rejects_remote_pdf_info_middle_json(monkeypatch: pytes
 
     monkeypatch.setattr(api_client, "_async_download_json", _download_json)
 
-    with pytest.raises(api_client._V1APIError, match="must contain a list field named pages"):
-        asyncio.run(
-            api_client._async_parse_result_from_job(
-                {
-                    "job_id": "job_1",
-                    "status": "completed",
-                    "files": [{"output_files": {"middle_json": {"file_id": "file-middle-json", "bytes": 10}}}],
-                },
-                "demo.pdf",
-                parser,
-            )
+    result = asyncio.run(
+        api_client._async_parse_result_from_job(
+            {
+                "job_id": "job_1",
+                "status": "completed",
+                "files": [{"output_files": {"middle_json": {"file_id": "file-middle-json", "bytes": 10}}}],
+            },
+            "demo.pdf",
+            parser,
         )
+    )
+
+    assert len(result.pages) == 1
+    assert result.pages[0].page_idx == 0
 
 
 def test_api_client_rejects_legacy_json_output_file_key() -> None:
@@ -1121,7 +1131,7 @@ def test_api_client_include_images_rejects_unsafe_zip_image_sidecar_paths(
 
     monkeypatch.setattr(api_client, "_download_bytes", lambda _parser, ref: zip_buffer.getvalue() if ref is zip_ref else b"")
 
-    with pytest.raises(ValueError, match="Unsafe image sidecar path"):
+    with pytest.raises(api_client._V1APIError, match="Unsafe image sidecar path"):
         _parse_result_from_job(
             {
                 "job_id": "job_1",
@@ -1146,7 +1156,7 @@ def test_async_api_client_include_images_rejects_unsafe_zip_image_sidecar_paths(
 
     monkeypatch.setattr(api_client, "_async_download_bytes", _download_bytes)
 
-    with pytest.raises(ValueError, match="Unsafe image sidecar path"):
+    with pytest.raises(api_client._V1APIError, match="Unsafe image sidecar path"):
         asyncio.run(
             api_client._async_parse_result_from_job(
                 {
@@ -1520,7 +1530,7 @@ def test_api_client_rejects_json_underscore_output_alias() -> None:
 
 
 def test_api_client_accepts_middle_json_3_pages() -> None:
-    """验证 API client 只恢复严格 3.0 pages envelope。"""
+    """验证 API client 恢复严格 3.0 pages envelope；legacy pdf_info 由 accepts_remote_pdf_info 系列覆盖。"""
     pages = _pages_from_middle_json(_v3_payload([{"page_idx": 2, "blocks": []}]))
 
     assert len(pages) == 1
@@ -1532,12 +1542,11 @@ def test_api_client_accepts_middle_json_3_pages() -> None:
     [
         {"pages": [{"page_idx": 0, "blocks": []}]},
         {"schema_version": "2.0", "pages": [{"page_idx": 0, "blocks": []}]},
-        {"pdf_info": [{"page_idx": 0}]},
     ],
 )
 def test_api_client_rejects_pre_v3_middle_json(payload: dict[str, object]) -> None:
-    """验证缺失版本、2.0 与 legacy pdf_info 都要求重新解析。"""
-    with pytest.raises((ValueError, api_client._V1APIError), match="Reparse the source document|list field named pages"):
+    """验证缺失版本与未支持的 2.0 payload 仍要求重新解析；pdf_info 走 legacy 迁移单独覆盖。"""
+    with pytest.raises((ValueError, api_client._V1APIError), match="Reparse the source document"):
         _pages_from_middle_json(payload)
 
 

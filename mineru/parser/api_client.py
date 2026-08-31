@@ -831,7 +831,7 @@ def _read_middle_json_from_zip(archive: zipfile.ZipFile) -> dict[str, Any]:
         if not isinstance(loaded, dict):
             raise _V1APIError(
                 "invalid_middle_json_output",
-                "middle_json output must be a JSON object with pages",
+                "middle_json output must be a JSON object with pages or pdf_info",
             )
         return loaded
     available = ", ".join(sorted(names)) or "none"
@@ -883,7 +883,7 @@ def _download_json(parser: MinerUApiParser, outputs: dict[str, Any]) -> dict[str
     except json.JSONDecodeError as exc:
         raise _V1APIError("invalid_middle_json_output", f"middle_json output is not valid JSON: {exc}") from exc
     if not isinstance(loaded, dict):
-        raise _V1APIError("invalid_middle_json_output", "middle_json output must be a JSON object with pages")
+        raise _V1APIError("invalid_middle_json_output", "middle_json output must be a JSON object with pages or pdf_info")
     return loaded
 
 
@@ -901,7 +901,7 @@ async def _async_download_json(parser: MinerUApiParser, outputs: dict[str, Any])
     except json.JSONDecodeError as exc:
         raise _V1APIError("invalid_middle_json_output", f"middle_json output is not valid JSON: {exc}") from exc
     if not isinstance(loaded, dict):
-        raise _V1APIError("invalid_middle_json_output", "middle_json output must be a JSON object with pages")
+        raise _V1APIError("invalid_middle_json_output", "middle_json output must be a JSON object with pages or pdf_info")
     return loaded
 
 
@@ -974,9 +974,18 @@ def _pages_from_middle_json(mid_json: dict[str, Any] | None) -> list[PageInfo]:
 
 
 def _parse_result_from_middle_json(mid_json: dict[str, Any]) -> ParseResult:
-    if isinstance(mid_json, dict) and mid_json.get("pages") is not None:
+    """把远端 middle_json 恢复为 ParseResult；legacy pdf_info 交给 ParseResult.from_dict 迁移。"""
+    if not isinstance(mid_json, dict):
+        raise _V1APIError("invalid_middle_json_output", "middle_json output must be a JSON object")
+    if mid_json.get("pages") is None and mid_json.get("pdf_info") is None:
+        raise _V1APIError(
+            "invalid_middle_json_output",
+            "middle_json output must contain a list field named pages or pdf_info",
+        )
+    try:
         return ParseResult.from_dict(mid_json)
-    raise _V1APIError("invalid_middle_json_output", "middle_json output must contain a list field named pages")
+    except ValueError as exc:
+        raise _V1APIError("invalid_middle_json_output", str(exc)) from exc
 
 
 def _raise_for_terminal_job_error(job: dict[str, Any]) -> None:
