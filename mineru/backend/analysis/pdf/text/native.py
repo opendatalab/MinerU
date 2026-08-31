@@ -446,6 +446,47 @@ def _match_whitespace_bbox_to_first_span(
     return None
 
 
+def _bbox_center_inside_span(char_bbox: BBox, span_bbox: BBox) -> bool:
+    """判断字符框中心是否位于 Span 完整矩形内。"""
+    char_center_x = (char_bbox[0] + char_bbox[2]) / 2
+    char_center_y = (char_bbox[1] + char_bbox[3]) / 2
+    return span_bbox[0] <= char_center_x <= span_bbox[2] and span_bbox[1] <= char_center_y <= span_bbox[3]
+
+
+def _bridge_unassigned_punctuation(
+    assigned_span_indices: list[int | None],
+    all_chars: list[Char],
+    previous_visible_owners: list[int | None],
+    next_visible_owners: list[int | None],
+    span_bboxes: list[BBox],
+    tight_bboxes: dict[int, BBox],
+) -> None:
+    """用同行两侧一致的 Span 归属恢复中心仍在框内的未分配标点。"""
+    for char_position, char in enumerate(all_chars):
+        char_text = str(char.get("char", ""))
+        if (
+            assigned_span_indices[char_position] is not None
+            or len(char_text) != 1
+            or not unicodedata.category(char_text).startswith("P")
+        ):
+            continue
+
+        previous_owner = previous_visible_owners[char_position]
+        next_owner = next_visible_owners[char_position]
+        if previous_owner is None or previous_owner != next_owner:
+            continue
+
+        char_idx = _char_geometry_key(char)
+        tight_bbox = _coerce_finite_bbox(tight_bboxes.get(char_idx)) if char_idx is not None else None
+        loose_bbox = _coerce_finite_bbox(char.get("bbox"))
+        owner_bbox = span_bboxes[previous_owner]
+        if any(
+            candidate_bbox is not None and _bbox_center_inside_span(candidate_bbox, owner_bbox)
+            for candidate_bbox in (tight_bbox, loose_bbox)
+        ):
+            assigned_span_indices[char_position] = previous_owner
+
+
 def fill_char_in_spans(
     spans: list[_AnalyzeSpan],
     all_chars: list[Char],
@@ -513,6 +554,15 @@ def fill_char_in_spans(
         next_visible_owners[char_position] = next_owner
         if not char_text.isspace() and assigned_span_indices[char_position] is not None:
             next_owner = assigned_span_indices[char_position]
+
+    _bridge_unassigned_punctuation(
+        assigned_span_indices,
+        all_chars,
+        previous_visible_owners,
+        next_visible_owners,
+        span_bboxes,
+        tight_bboxes,
+    )
 
     for char_position, char in enumerate(all_chars):
         char_text = str(char.get("char", ""))

@@ -5073,7 +5073,7 @@
       "angle": 0,
       "expected_output": "html",
       "review_status": "target_verified",
-      "content_sha256": "0489b58206469821c2c7ce4aac25d2fdb2c6cffb670d09010d77d1dbef2124fa",
+      "content_sha256": "35f94188ba7298ba29beaf056e3c20ed40bc6f272f3dfd0826b752110636dc00",
       "expected_source": "sparse_multiline",
       "rows": 6,
       "cols": 2,
@@ -5112,7 +5112,7 @@
           "col": 0,
           "rowspan": 1,
           "colspan": 1,
-          "text": "小鹏汽车-W(9868 HK)"
+          "text": "小鹏汽车-W (9868 HK)"
         },
         {
           "row": 2,
@@ -5133,7 +5133,7 @@
           "col": 1,
           "rowspan": 1,
           "colspan": 1,
-          "text": "23Q4创季度营收新高，24Q1创季度归母净利新高公司发布23年年报及24Q1季报，23年营收46.25亿元(yoy+36.68%)，归母净利6.09亿元(yoy+35.26%)，其中Q4营收14.31亿元(yoy+48.56%，qoq+16.13%)，归母净利1.54亿元(yoy+73.39%，qoq-14.44%)。24Q1营收14.17亿元（yoy +55.22%，qoq -1.00%），归母净利2.19亿元（yoy+ 66.24%，qoq +42.47%）。考虑后续行业竞争加剧，我们预计公司24~26年归母净利分别为8.52/11.68/15.00亿元（前值24~25年10.39/13.97亿元）。可比公司24年iFind一致预期PE均值为33.0倍，考虑公司产品升级明显，且国际化拓展具备优势，给予公司20%的可比估值溢价，24年39.6倍PE目标，目标价83.44元（前值67.86元），维持\"买入\"评级。风险提示：下游整车行业产销不及预期；新项目开拓速度不及预期。报告发布日期：2024年04月20日点击下载全文：科博达(603786 CH,买入): 营收业绩再创新高，展现强劲动能"
+          "text": "23Q4创季度营收新高，24Q1创季度归母净利新高公司发布23年年报及24Q1季报，23年营收46.25亿元(yoy+36.68%)，归母净利6.09亿元(yoy+35.26%)，其中Q4营收14.31亿元(yoy+48.56%， qoq+16.13%)，归母净利1.54亿元(yoy+73.39%，qoq-14.44%)。24Q1营收14.17亿元（yoy +55.22%，qoq -1.00%），归母净利2.19亿元（yoy + 66.24%，qoq +42.47%）。考虑后续行业竞争加剧，我们预计公司24~26年归母净利分别为8.52/11.68/15.00亿元（前值24~25年10.39/13.97亿元）。可比公司24年iFind一致预期PE均值为33.0倍，考虑公司产品升级明显，且国际化拓展具备优势，给予公司20%的可比估值溢价，24年39.6倍PE目标，目标价83.44元（前值67.86元），维持\"买入\"评级。风险提示：下游整车行业产销不及预期；新项目开拓速度不及预期。报告发布日期：2024年04月20日点击下载全文：科博达(603786 CH,买入): 营收业绩再创新高，展现强劲动能"
         },
         {
           "row": 4,
@@ -16752,7 +16752,7 @@
       "angle": 270,
       "expected_output": "html",
       "review_status": "target_verified",
-      "content_sha256": "d6273b35bc26223b61fd7900ab7d48bc00292b256d6724586a0fc483a5d20ee8",
+      "content_sha256": "412113029f464ab3d6c03d1ef843d614fe77470c1981b97bddd42663e39941c5",
       "expected_source": "sparse_multiline",
       "rows": 11,
       "cols": 11,
@@ -16784,42 +16784,42 @@
           "col": 3,
           "rowspan": 1,
           "colspan": 1,
-          "text": "% Areaplanted"
+          "text": "% Area planted"
         },
         {
           "row": 0,
           "col": 4,
           "rowspan": 1,
           "colspan": 1,
-          "text": "Meanannualrainfall(mm)"
+          "text": "Mean annual rainfall (mm)"
         },
         {
           "row": 0,
           "col": 5,
           "rowspan": 1,
           "colspan": 1,
-          "text": "*Raindistrib."
+          "text": "*Rain distrib."
         },
         {
           "row": 0,
           "col": 6,
           "rowspan": 1,
           "colspan": 1,
-          "text": "Pre-treat-ment(years)"
+          "text": "Pre-treat-ment (years)"
         },
         {
           "row": 0,
           "col": 7,
           "rowspan": 1,
           "colspan": 1,
-          "text": "Forest age(years)"
+          "text": "Forest age (years)"
         },
         {
           "row": 0,
           "col": 8,
           "rowspan": 1,
           "colspan": 1,
-          "text": "Mean soildepth (m)"
+          "text": "Mean soil depth (m)"
         },
         {
           "row": 0,
@@ -17141,7 +17141,7 @@
           "col": 10,
           "rowspan": 1,
           "colspan": 1,
-          "text": "Nandakumar andMein, 1 993"
+          "text": "Nandakumar and Mein, 1 993"
         },
         {
           "row": 5,
@@ -20284,7 +20284,7 @@
       "angle": 0,
       "expected_output": "html",
       "review_status": "target_verified",
-      "content_sha256": "989d9e4a1dcc90eb8c78165ebc9c086209fc55ca0a907ec8a5a46af0f41d4a19",
+      "content_sha256": "a52e2efd31f2c51402ab62e618e2442d872c34c8318abcaf149af2352256b664",
       "expected_source": "sparse_multiline",
       "rows": 10,
       "cols": 7,
@@ -20353,14 +20353,14 @@
           "col": 3,
           "rowspan": 2,
           "colspan": 1,
-          "text": "Total flowreduction (%)"
+          "text": "Total flow reduction (%)"
         },
         {
           "row": 0,
           "col": 4,
           "rowspan": 2,
           "colspan": 1,
-          "text": "Low flowreduction (%)"
+          "text": "Low flow reduction (%)"
         },
         {
           "row": 0,
@@ -20374,14 +20374,14 @@
           "col": 5,
           "rowspan": 1,
           "colspan": 1,
-          "text": "Total flowreduction (%)b"
+          "text": "Total flow reduction (%)b"
         },
         {
           "row": 1,
           "col": 6,
           "rowspan": 1,
           "colspan": 1,
-          "text": "Low flowreduction (%)c"
+          "text": "Low flow reduction (%)c"
         },
         {
           "row": 2,
@@ -23301,7 +23301,7 @@
       "angle": 0,
       "expected_output": "html",
       "review_status": "target_verified",
-      "content_sha256": "dd085ccd303c047fe52d2a9e01a3a3fc9afec41170fc6a4905e7b91ce26b5b0c",
+      "content_sha256": "bb234ea8e74105d4cccde9e040b08089dc42b2ecb74d78a7e060ad7f737b1334",
       "expected_source": "sparse_multiline",
       "rows": 5,
       "cols": 5,
@@ -24735,7 +24735,7 @@
       "angle": 0,
       "expected_output": "html",
       "review_status": "existing_verified",
-      "content_sha256": "110e749698e1ccdad658112b45f6b5924cbc4a6b6d6728ead0becfe07917b4cb",
+      "content_sha256": "f85576a1b0a52c3b1fca65763cc2880e8e099772b4086181c73b1e3d25b86b53",
       "expected_source": "vector_grid",
       "rows": 11,
       "cols": 4,
@@ -24760,14 +24760,14 @@
           "col": 2,
           "rowspan": 1,
           "colspan": 1,
-          "text": "Position ofdead code"
+          "text": "Position of dead code"
         },
         {
           "row": 0,
           "col": 3,
           "rowspan": 1,
           "colspan": 1,
-          "text": "Types ofdead code"
+          "text": "Types of dead code"
         },
         {
           "row": 1,
@@ -25064,7 +25064,7 @@
       "angle": 0,
       "expected_output": "html",
       "review_status": "existing_verified",
-      "content_sha256": "cf6e545fb4f6bad3ee63ec6b17dfdc6ec5d2a33e2772772367d3cdc927f1a600",
+      "content_sha256": "46f3d31b3d4e2aa725491b7dfafe9a5fc5bf3debd1eab2906adbacad7a384f4c",
       "expected_source": "vector_grid",
       "rows": 6,
       "cols": 3,
@@ -25082,14 +25082,14 @@
           "col": 1,
           "rowspan": 1,
           "colspan": 1,
-          "text": "Number of deadcode lines detected"
+          "text": "Number of dead code lines detected"
         },
         {
           "row": 0,
           "col": 2,
           "rowspan": 1,
           "colspan": 1,
-          "text": "Percentagedetected"
+          "text": "Percentage detected"
         },
         {
           "row": 1,
@@ -25211,7 +25211,7 @@
       "angle": 0,
       "expected_output": "html",
       "review_status": "target_verified",
-      "content_sha256": "9470c6774f0ed9f16f63b07a7c8f55ca5e6f2cde08038a0ad4dccb93e54d64c6",
+      "content_sha256": "7d525b88a5b6481bef729f75e57bfdd160276c57d9e4c0e1f168a53620cef88d",
       "expected_source": "sparse_multiline",
       "rows": 7,
       "cols": 5,
@@ -25229,7 +25229,7 @@
           "col": 1,
           "rowspan": 1,
           "colspan": 1,
-          "text": "Lesion Lengthmm"
+          "text": "Lesion Length mm"
         },
         {
           "row": 0,
@@ -25243,7 +25243,7 @@
           "col": 3,
           "rowspan": 1,
           "colspan": 1,
-          "text": "Pepsin Activitymg tyrosine/mL/10 min"
+          "text": "Pepsin Activity mg tyrosine/mL/10 min"
         },
         {
           "row": 0,

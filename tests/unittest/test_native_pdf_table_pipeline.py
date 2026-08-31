@@ -3,7 +3,10 @@
 
 from __future__ import annotations
 
+import json
+from pathlib import Path
 from types import SimpleNamespace
+from typing import Literal
 from unittest.mock import MagicMock
 
 import numpy as np
@@ -16,8 +19,11 @@ from mineru.backend.analysis.pdf import tables as pdf_tables
 from mineru.backend.analysis.pdf import window as pdf_window
 from mineru.model.flash.pdf import models as flash_models
 from mineru.model.flash.pdf import tables as flash_tables
-from mineru.model.flash.pdf.document import PDFPageTextGeometry
+from mineru.model.flash.pdf.document import PDFDocument, PDFPageTextGeometry
 from mineru.types import RAW_FORMULA_NUMBER, BlockType
+
+
+_PROJECT_ROOT = Path(__file__).parents[2]
 
 
 def _build_native_pdf_page(*, width: float = 100.0, height: float = 100.0) -> MagicMock:
@@ -272,17 +278,22 @@ def test_high_native_table_priority_ignores_layout_formula_and_removes_duplicate
     recover.assert_called_once()
 
 
-def test_hybrid_native_table_priority_falls_back_for_rotated_table(
+@pytest.mark.parametrize("effort", ["medium", "high"])
+@pytest.mark.parametrize("angle", [90, 180, 270])
+def test_hybrid_native_table_priority_attempts_rotated_table(
     monkeypatch: pytest.MonkeyPatch,
+    effort: Literal["medium", "high"],
+    angle: int,
 ) -> None:
-    """验证真实字符源顺序未覆盖的旋转表继续使用现有模型。"""
+    """验证 Medium/High 会把标准旋转角传入原生表格恢复器。"""
 
-    recover = MagicMock()
+    html = "<table><tbody><tr><td>rotated</td></tr></tbody></table>"
+    recover = MagicMock(return_value=SimpleNamespace(html=html, source="vector_grid", confidence=1.0))
     monkeypatch.setattr(pdf_tables, "recover_native_pdf_table", recover)
     table_block = {
         "type": BlockType.TABLE,
         "bbox": [0.1, 0.1, 0.9, 0.9],
-        "angle": 270,
+        "angle": angle,
     }
     image = Image.new("RGB", (100, 100), "white")
     try:
@@ -291,17 +302,55 @@ def test_hybrid_native_table_priority_falls_back_for_rotated_table(
             [[]],
             [_build_native_pdf_page()],
             [{"img_pil": image, "scale": 1.0}],
-            effort="medium",
+            effort=effort,
         )
     finally:
         image.close()
 
-    assert "content" not in table_block
+    assert table_block["content"] == html
     assert summary == pdf_tables._NativeTablePrioritySummary(
         total=1,
-        complex_fallbacks=1,
+        accepted=1,
     )
-    recover.assert_not_called()
+    recover.assert_called_once()
+    assert recover.call_args.args[0].angle == angle
+
+
+@pytest.mark.parametrize("effort", ["medium", "high"])
+def test_hybrid_native_table_priority_accepts_real_rotated_table(
+    effort: Literal["medium", "high"],
+) -> None:
+    """验证真实 270 度表格在 Medium/High 中都能直接生成原生 HTML。"""
+
+    manifest = json.loads((_PROJECT_ROOT / "tests" / "fixtures" / "native_pdf_table_demo_manifest.json").read_text())
+    target = next(
+        item
+        for item in manifest["tables"]
+        if item["file"] == "demo1.pdf" and item["page_index"] == 4 and item["table_index"] == 0
+    )
+    pdf_path = _PROJECT_ROOT / manifest["source_root"] / target["file"]
+    with PDFDocument(pdf_path.read_bytes()) as document:
+        page = document[target["page_index"]]
+        image = Image.new("RGB", (round(page.size[0]), round(page.size[1])), "white")
+        table_block = {
+            "type": BlockType.TABLE,
+            "bbox": target["bbox"],
+            "angle": target["angle"],
+        }
+        try:
+            summary = pdf_tables._apply_native_txt_table_priority(
+                [[table_block]],
+                [[]],
+                [page],
+                [{"img_pil": image, "scale": 1.0}],
+                effort=effort,
+            )
+        finally:
+            image.close()
+
+    assert summary == pdf_tables._NativeTablePrioritySummary(total=1, accepted=1)
+    assert table_block["content"].count("<tr>") == target["rows"]
+    assert table_block["content"].startswith("<table><tbody>")
 
 
 def test_hybrid_native_table_priority_keeps_none_and_exception_fallbacks(
@@ -312,8 +361,8 @@ def test_hybrid_native_table_priority_keeps_none_and_exception_fallbacks(
     recover = MagicMock(side_effect=[None, RuntimeError("broken")])
     monkeypatch.setattr(pdf_tables, "recover_native_pdf_table", recover)
     tables = [
-        {"type": BlockType.TABLE, "bbox": [0.05, 0.1, 0.45, 0.9], "angle": 0},
-        {"type": BlockType.TABLE, "bbox": [0.55, 0.1, 0.95, 0.9], "angle": 0},
+        {"type": BlockType.TABLE, "bbox": [0.05, 0.1, 0.45, 0.9], "angle": 270},
+        {"type": BlockType.TABLE, "bbox": [0.55, 0.1, 0.95, 0.9], "angle": 90},
     ]
     equation_block = {"type": BlockType.EQUATION, "bbox": [0.1, 0.2, 0.3, 0.4]}
     page_blocks = [tables[0], equation_block, tables[1]]
@@ -340,6 +389,7 @@ def test_hybrid_native_table_priority_keeps_none_and_exception_fallbacks(
         errors=1,
     )
     assert recover.call_count == 2
+    assert [call.args[0].angle for call in recover.call_args_list] == [270, 90]
     page.get_chars_with_geometry.assert_called_once_with()
 
 

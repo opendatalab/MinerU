@@ -4,11 +4,13 @@
 from __future__ import annotations
 
 import statistics
+import unicodedata
 from dataclasses import dataclass
 
 from pdftext.schema import Char
 
 from .....types import BBox
+from .....utils.text import resolve_text_line_boundary
 from ..spatial_text import _normalize_table_text
 
 from .contracts import (
@@ -196,6 +198,70 @@ def _join_glyph_line(
     return "".join(text for text, _source_index in _glyph_line_parts(glyphs, median_height))
 
 
+def _nearest_alphabetic_char(text: str, *, reverse: bool) -> str:
+    """从物理行边界向内查找最近的 Unicode 字母。"""
+
+    normalized = text.rstrip() if reverse else text.lstrip()
+    characters = reversed(normalized) if reverse else iter(normalized)
+    return next((char for char in characters if char.isalpha()), "")
+
+
+def _is_latin_letter(char: str) -> bool:
+    """判断单个 Unicode 字符规范化后是否只由 Latin 字母组成。"""
+
+    if len(char) != 1:
+        return False
+    normalized = unicodedata.normalize("NFKC", char)
+    return bool(normalized) and all(item.isalpha() and unicodedata.name(item, "").startswith("LATIN ") for item in normalized)
+
+
+def _looks_like_compact_unit_or_identifier(
+    previous_line: str,
+    next_line: str,
+) -> bool:
+    """识别不应因视觉换行插入空格的紧凑单位或标识符片段。"""
+
+    combined = previous_line.strip() + next_line.strip()
+    if not combined or any(char.isspace() for char in combined):
+        return False
+    return any(char.isdigit() or char in "/_^%°µμ" for char in combined)
+
+
+def _starts_with_url(text: str) -> bool:
+    """判断下一物理行是否自身以完整 URL 前缀开始。"""
+
+    normalized = text.lstrip().casefold()
+    return normalized.startswith(("http://", "https://", "ftp://", "www."))
+
+
+def _cell_row_separator(
+    accumulated_content: str,
+    previous_line: str,
+    next_line: str,
+) -> str:
+    """按相邻行边界词元返回安全分隔符，非 Latin 边界保持直连。"""
+
+    previous_letter = _nearest_alphabetic_char(previous_line, reverse=True)
+    next_letter = _nearest_alphabetic_char(next_line, reverse=False)
+    if not (_is_latin_letter(previous_letter) and _is_latin_letter(next_letter)):
+        return ""
+
+    _processed_previous, separator = resolve_text_line_boundary(
+        accumulated_content,
+        block_language="en",
+        next_content=next_line,
+    )
+    if separator != " ":
+        # 表格 HTML 保留原始连字符，只复用正文规则的 URL/连字符直连判定。
+        return separator
+    if not _starts_with_url(next_line) and _looks_like_compact_unit_or_identifier(
+        previous_line,
+        next_line,
+    ):
+        return ""
+    return separator
+
+
 def _glyph_line_parts(
     glyphs: list[NativeTableGlyph] | list[_PendingGlyph],
     median_height: float,
@@ -323,8 +389,23 @@ def build_cell_text_parts(
     for glyph in glyphs:
         grouped.setdefault(glyph.visual_row, []).append(glyph)
     parts: list[tuple[str, int | None]] = []
+    previous_line = ""
     for row_index in sorted(grouped):
-        parts.extend(_glyph_line_parts(grouped[row_index], median_height))
+        row_parts = _glyph_line_parts(grouped[row_index], median_height)
+        row_text = "".join(text for text, _source_index in row_parts)
+        if not row_text:
+            continue
+        if parts:
+            accumulated_content = "".join(text for text, _source_index in parts)
+            separator = _cell_row_separator(
+                accumulated_content,
+                previous_line,
+                row_text,
+            )
+            if separator and not accumulated_content.endswith(" ") and not row_text.startswith(" "):
+                parts.append((separator, None))
+        parts.extend(row_parts)
+        previous_line = row_text
     return parts
 
 
