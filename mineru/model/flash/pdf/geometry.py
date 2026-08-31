@@ -14,6 +14,8 @@ from .models import (
     _AxisLine,
     _LocalAxisLine,
 )
+
+
 def _horizontal_bbox_gap(first_bbox: BBox, second_bbox: BBox) -> float:
     """返回两个局部 bbox 在 x 轴上的无方向净空，重叠时为零。"""
 
@@ -119,6 +121,24 @@ def _rotate_bbox_from_upright(
     if angle == 180:
         return (page_width - x1, page_height - y1, page_width - x0, page_height - y0)
     return bbox
+
+
+def _rotate_origin_to_upright(
+    origin: tuple[float, float],
+    page_size: tuple[float, float],
+    angle: int,
+) -> tuple[float, float]:
+    """将页面字符 origin 转到当前文字方向的正向局部坐标。"""
+
+    page_width, page_height = page_size
+    x, y = origin
+    if angle == 270:
+        return (page_height - y, x)
+    if angle == 90:
+        return (y, page_width - x)
+    if angle == 180:
+        return (page_width - x, page_height - y)
+    return origin
 
 
 def _coerce_bbox(value: Any) -> BBox | None:

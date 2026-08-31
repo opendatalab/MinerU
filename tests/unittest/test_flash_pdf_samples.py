@@ -376,7 +376,7 @@ def test_explicit_pdf_fixtures_keep_expected_txt_block_inventory() -> None:
                     "page_number": 9,
                     "paragraph_title": 20,
                     "table": 3,
-                    "text": 106,
+                    "text": 108,
                 }
             ),
         ),

@@ -138,11 +138,11 @@ _GENERAL_RECOVERY_EXPECTATIONS = {
     },
     "中文论文2.pdf": {
         (0, 41): (("[2]", "superscript"), ("[3]", "superscript")),
-        (2, 97): (("[12]", "superscript"),),
+        (2, 95): (("[12]", "superscript"),),
         (3, 14): (("[17]", "superscript"),),
         (3, 83): (("[30]", "superscript"),),
         (3, 87): (("[31]", "superscript"), ("[32]", "superscript"), ("[33]", "superscript")),
-        (13, 70): (("[41]", "superscript"),),
+        (13, 69): (("[41]", "superscript"),),
     },
 }
 

@@ -47,6 +47,11 @@ from .native_text import (
     _median_native_glyph_width,
     _sanitize_pdf_control_text,
 )
+from .char_geometry import (
+    DocumentGeometryPlan,
+    apply_line_geometry_repairs,
+    build_document_geometry_plan,
+)
 from .line_merging import (
     _merge_overlapping_inline_text_clusters,
     _merge_post_semantic_text_runs,
@@ -185,6 +190,7 @@ def _analyze_native_document(
     pdf_doc: PDFDocument,
     *,
     script_diagnostics: list[dict[str, Any]] | None = None,
+    geometry_diagnostics: list[dict[str, Any]] | None = None,
 ) -> list[list[dict[str, Any]]]:
     """逐页读取数字 PDF，并在轻量页面上完成跨页文本类型判定。"""
 
@@ -234,14 +240,32 @@ def _analyze_native_document(
         page_sources.append(source)
         page_text_geometries.append(text_geometry)
 
+    geometry_plan = build_document_geometry_plan(
+        [source.lines for source in page_sources],
+        page_text_geometries,
+        page_sizes,
+    )
+    for page_index, source in enumerate(page_sources):
+        # 容器认领前只启用高置信 X 修复；Y trim 等表格、公式和图片行被排除后再应用。
+        apply_line_geometry_repairs(
+            source.lines,
+            page_index=page_index,
+            plan=geometry_plan,
+            allow_y_trim=False,
+        )
+    if geometry_diagnostics is not None:
+        geometry_diagnostics.append(geometry_plan.to_dict())
+
     _classify_raw_page_marginals(page_sources)
     prepared_pages = [
         _prepare_page_source(
             source,
             tight_bboxes=geometry.tight_bboxes,
             origins=geometry.origins,
+            geometry_plan=geometry_plan,
+            page_index=page_index,
         )
-        for source, geometry in zip(page_sources, page_text_geometries, strict=True)
+        for page_index, (source, geometry) in enumerate(zip(page_sources, page_text_geometries, strict=True))
     ]
     if script_diagnostics is not None:
         script_diagnostics.extend(
@@ -321,6 +345,8 @@ def _prepare_page_source(
     *,
     tight_bboxes: dict[int, BBox] | None = None,
     origins: dict[int, tuple[float, float]] | None = None,
+    geometry_plan: DocumentGeometryPlan | None = None,
+    page_index: int = 0,
 ) -> _PreparedPage:
     """先认领视觉容器，再标注辅助文本并留下可跨页比较的轻量文本行。"""
 
@@ -400,8 +426,16 @@ def _prepare_page_source(
         | claimed_raster_line_indices
         | claimed_vector_number_indices
     )
+    unclaimed_lines = [line for line in source.lines if line.source_index not in claimed_line_indices]
+    if geometry_plan is not None:
+        apply_line_geometry_repairs(
+            unclaimed_lines,
+            page_index=page_index,
+            plan=geometry_plan,
+            allow_y_trim=True,
+        )
     remaining_lines = _split_parallel_graphic_rule_rows(
-        [line for line in source.lines if line.source_index not in claimed_line_indices],
+        unclaimed_lines,
         source.drawing_lines,
         [block["bbox"] for block in (form_image_blocks + graphic_blocks + raster_image_blocks)],
         table_bboxes,
