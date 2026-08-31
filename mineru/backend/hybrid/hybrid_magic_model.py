@@ -4,6 +4,7 @@ import re
 
 from loguru import logger
 
+from mineru.backend.hybrid.hybrid_block_dedup import deduplicate_list_sub_blocks
 from mineru.utils.boxbase import calculate_overlap_area_in_bbox1_area_ratio
 from mineru.utils.enum_class import ContentType, BlockType, NotExtractType
 from mineru.utils.guess_suffix_or_lang import guess_language_by_text
@@ -477,6 +478,8 @@ class MagicModel:
 
     def get_all_spans(self):
         return self.all_spans
+
+
 def fix_list_blocks(list_blocks, text_blocks, ref_text_blocks):
     for list_block in list_blocks:
         list_block["blocks"] = []
@@ -497,6 +500,9 @@ def fix_list_blocks(list_blocks, text_blocks, ref_text_blocks):
                 list_block["blocks"].append(block)
                 need_remove_blocks.append(block)
                 break
+
+    for list_block in list_blocks:
+        list_block["blocks"] = deduplicate_list_sub_blocks(list_block["blocks"])
 
     for block in need_remove_blocks:
         if block in text_blocks:
