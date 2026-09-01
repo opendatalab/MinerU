@@ -165,6 +165,7 @@ class AsyncParseTask:
     end_page_id: int
     upload_names: list[str]
     uploads: list[str]
+    priority: int = 0
     submit_order: int = 0
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
@@ -179,6 +180,7 @@ class AsyncParseTask:
             "task_id": self.task_id,
             "status": self.status,
             "backend": self.backend,
+            "priority": self.priority,
             "file_names": self.file_names,
             "created_at": self.created_at,
             "started_at": self.started_at,
@@ -908,6 +910,7 @@ async def create_async_parse_task(
             response_format_zip=request_options.response_format_zip,
             return_original_file=request_options.return_original_file,
             client_side_output_generation=request_options.client_side_output_generation,
+            priority=request_options.priority,
             start_page_id=request_options.start_page_id,
             end_page_id=request_options.end_page_id,
             upload_names=[upload.original_name for upload in uploads],
@@ -928,7 +931,11 @@ class AsyncTaskManager:
         self.app = fastapi_app
         self.tasks: dict[str, AsyncParseTask] = {}
         self.task_events: dict[str, asyncio.Event] = {}
-        self.queue: asyncio.Queue[str] = asyncio.Queue()
+        # Entries are (-priority, submit_order, task_id) tuples so that larger
+        # priorities dequeue first while equal priorities keep submission order.
+        self.queue: asyncio.PriorityQueue[tuple[int, int, str]] = (
+            asyncio.PriorityQueue()
+        )
         self.dispatcher_task: Optional[asyncio.Task[Any]] = None
         self.cleanup_task: Optional[asyncio.Task[Any]] = None
         self.active_tasks: set[asyncio.Task[Any]] = set()
@@ -981,7 +988,7 @@ class AsyncTaskManager:
         self._next_submit_order += 1
         self.tasks[task.task_id] = task
         self.task_events[task.task_id] = asyncio.Event()
-        await self.queue.put(task.task_id)
+        await self.queue.put((-int(task.priority), task.submit_order, task.task_id))
 
     def get(self, task_id: str) -> Optional[AsyncParseTask]:
         return self.tasks.get(task_id)
@@ -993,13 +1000,14 @@ class AsyncTaskManager:
         if task.status != TASK_PENDING:
             return 0
 
+        task_key = (-int(task.priority), task.submit_order)
         return sum(
             1
             for other_task in self.tasks.values()
             if (
                 other_task.task_id != task_id
                 and other_task.status == TASK_PENDING
-                and 0 < other_task.submit_order < task.submit_order
+                and (-int(other_task.priority), other_task.submit_order) < task_key
             )
         )
 
@@ -1096,11 +1104,31 @@ class AsyncTaskManager:
     async def _dispatcher_loop(self) -> None:
         try:
             while True:
-                task_id = await self.queue.get()
-                processor = asyncio.create_task(
-                    self._process_task(task_id),
-                    name=f"mineru-fastapi-task-{task_id}",
-                )
+                if _request_semaphore is None:
+                    _neg_priority, _submit_order, task_id = await self.queue.get()
+                    processor = asyncio.create_task(
+                        self._process_task(task_id),
+                        name=f"mineru-fastapi-task-{task_id}",
+                    )
+                else:
+                    # Acquire an execution slot *before* dequeuing. Dequeuing
+                    # first would spawn processors in submission order, and the
+                    # semaphore's FIFO wake-up would then hand freed slots out
+                    # in submission order too, silently nullifying the priority
+                    # ordering whenever the queue is (momentarily) empty — the
+                    # common case under sparse arrivals.
+                    await _request_semaphore.acquire()
+                    try:
+                        _neg_priority, _submit_order, task_id = await self.queue.get()
+                    except BaseException:
+                        _request_semaphore.release()
+                        raise
+                    processor = asyncio.create_task(
+                        self._process_task(
+                            task_id, held_semaphore=_request_semaphore
+                        ),
+                        name=f"mineru-fastapi-task-{task_id}",
+                    )
                 self.active_tasks.add(processor)
                 processor.add_done_callback(self._on_processor_done)
                 self.queue.task_done()
@@ -1133,13 +1161,22 @@ class AsyncTaskManager:
             logger.error(f"Async task processor crashed: {exception}")
             self.last_worker_error = str(exception)
 
-    async def _process_task(self, task_id: str) -> None:
+    async def _process_task(
+        self,
+        task_id: str,
+        held_semaphore: Optional[asyncio.Semaphore] = None,
+    ) -> None:
         task = self.tasks.get(task_id)
         if task is None:
+            if held_semaphore is not None:
+                held_semaphore.release()
             return
 
         try:
-            if _request_semaphore is not None:
+            if held_semaphore is not None:
+                # The dispatcher already holds the execution slot for this task.
+                await self._run_task(task)
+            elif _request_semaphore is not None:
                 async with _request_semaphore:
                     await self._run_task(task)
             else:
@@ -1152,6 +1189,9 @@ class AsyncTaskManager:
             task.completed_at = utc_now_iso()
             self._signal_task_event(task_id)
             logger.exception(f"Async task failed: {task_id}")
+        finally:
+            if held_semaphore is not None:
+                held_semaphore.release()
 
     async def _run_task(self, task: AsyncParseTask) -> None:
         task.status = TASK_PROCESSING

@@ -48,6 +48,7 @@ class ParseRequestOptions:
     response_format_zip: bool
     return_original_file: bool
     client_side_output_generation: bool
+    priority: int
     start_page_id: int
     end_page_id: int
 
@@ -201,6 +202,17 @@ async def parse_request_form(
             ),
         ),
     ] = False,
+    priority: Annotated[
+        int,
+        Form(
+            description=(
+                "Request scheduling priority. Larger values are scheduled first "
+                "(aligned with vLLM priority semantics); requests with the same "
+                "priority keep submission order. Defaults to 0, which preserves "
+                "the traditional first-come-first-served behavior."
+            ),
+        ),
+    ] = 0,
     start_page_id: Annotated[
         int,
         Form(description="The starting page for PDF parsing, beginning from 0"),
@@ -249,6 +261,7 @@ async def parse_request_form(
         response_format_zip=response_format_zip,
         return_original_file=effective_return_original_file,
         client_side_output_generation=client_side_output_generation,
+        priority=priority,
         start_page_id=start_page_id,
         end_page_id=end_page_id,
     )
