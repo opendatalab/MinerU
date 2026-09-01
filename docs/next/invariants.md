@@ -24,7 +24,7 @@
 
 - 不得改变既有 error code 的语义或取值集合的成员含义；已发布的 code 视为对外契约。
 - 不得随意改动 code → type 与 code → HTTP 的映射关系；新增 code 必须同时登记进两张表。
-- 响应外层结构（OpenAI 兼容 `{type, code, message, param}`）不得变更；扩展字段见 `docs/next/errors.md` 与 `docs/next/pitfalls.md` 第 4 条。
+- 响应外层结构（OpenAI 兼容 `{type, code, message, param}`）不得变更；扩展字段见 `docs/next/errors.md` 与 `docs/next/pitfalls.md` 第 3 条。
 
 ## 3. Middle JSON schema 2.0 输出契约（ADR-0020）
 
