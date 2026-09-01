@@ -447,8 +447,8 @@ def test_flash_layout_manifest_uses_portable_repository_paths() -> None:
     project_root = Path(__file__).parents[2]
     payload = json.loads((project_root / "tests" / "fixtures" / "flash_layout_geometry_manifest.json").read_text())
     assert payload["schema_version"] == 1
-    assert len(payload["documents"]) == 17
-    assert sum(len(document["pages"]) for document in payload["documents"]) == 159
+    assert len(payload["documents"]) == 19
+    assert sum(len(document["pages"]) for document in payload["documents"]) == 168
     for document in payload["documents"]:
         path = Path(document["path"])
         assert not path.is_absolute()

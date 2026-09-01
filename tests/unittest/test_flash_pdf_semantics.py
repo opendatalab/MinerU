@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import re
+import unicodedata
 from collections import Counter
 from functools import lru_cache
 from pathlib import Path
@@ -17,24 +18,9 @@ from scripts.review_flash_layout_geometry import (
 
 
 _PROJECT_ROOT = Path(__file__).parents[2]
-_EXPECTATION_PATH = (
-    _PROJECT_ROOT
-    / "tests"
-    / "fixtures"
-    / "flash_layout_semantic_expectations.json"
-)
-_GEOMETRY_MANIFEST_PATH = (
-    _PROJECT_ROOT
-    / "tests"
-    / "fixtures"
-    / "flash_layout_geometry_manifest.json"
-)
-_BLOCK_EXPECTATION_PATH = (
-    _PROJECT_ROOT
-    / "tests"
-    / "fixtures"
-    / "flash_layout_block_expectations.json"
-)
+_EXPECTATION_PATH = _PROJECT_ROOT / "tests" / "fixtures" / "flash_layout_semantic_expectations.json"
+_GEOMETRY_MANIFEST_PATH = _PROJECT_ROOT / "tests" / "fixtures" / "flash_layout_geometry_manifest.json"
+_BLOCK_EXPECTATION_PATH = _PROJECT_ROOT / "tests" / "fixtures" / "flash_layout_block_expectations.json"
 _FROZEN_SOIL_PATH = _PROJECT_ROOT / "demo" / "pdfs" / "中文论文.pdf"
 _NATURAL_TEXT_TYPES = {"text", "doc_title", "paragraph_title"}
 
@@ -57,10 +43,15 @@ def _visible_text(value: Any) -> str:
     return ""
 
 
-def _normalized_text(value: Any) -> str:
+def _normalized_text(
+    value: Any,
+    *,
+    nfkc: bool = False,
+) -> str:
     """移除排版空白，保留语义字符供版本化期望比较。"""
 
-    return re.sub(r"\s+", "", _visible_text(value))
+    normalized = re.sub(r"\s+", "", _visible_text(value))
+    return unicodedata.normalize("NFKC", normalized) if nfkc else normalized
 
 
 @lru_cache(maxsize=1)
@@ -93,9 +84,21 @@ def _frozen_soil_pages() -> tuple[tuple[dict[str, Any], ...], ...]:
     return tuple(tuple(page) for page in pages)
 
 
+@lru_cache(maxsize=None)
+def _additional_chinese_paper_pages(
+    relative_path: str,
+) -> tuple[tuple[dict[str, Any], ...], ...]:
+    """按版本化相对路径缓存新增中文论文 Flash 页面。"""
+
+    source = _PROJECT_ROOT / relative_path
+    with PDFDocument(str(source)) as document:
+        pages = _analyze_native_document(document)
+    return tuple(tuple(page) for page in pages)
+
+
 @lru_cache(maxsize=1)
 def _block_expectations() -> tuple[dict[str, Any], ...]:
-    """读取两篇中文论文的版本化 block 分组与类型库存期望。"""
+    """读取四篇中文论文的版本化 block 分组与类型库存期望。"""
 
     payload = json.loads(
         _BLOCK_EXPECTATION_PATH.read_text(encoding="utf-8"),
@@ -114,8 +117,11 @@ def _pages_for_expectation(
 
     if expectation["path"] == "demo/pdfs/中文论文.pdf":
         return _frozen_soil_pages()
-    assert expectation["path"] == "demo/pdfs/中文论文2.pdf"
-    return _pages()
+    if expectation["path"] == "demo/pdfs/中文论文2.pdf":
+        return _pages()
+    return _additional_chinese_paper_pages(
+        str(expectation["path"]),
+    )
 
 
 def _block_containing_fragment(
@@ -123,20 +129,38 @@ def _block_containing_fragment(
     fragment: str,
     *,
     block_type: str | None = None,
+    nfkc: bool = False,
 ) -> tuple[int, dict[str, Any]]:
     """返回唯一包含规范化片段的顶层 block 及其页内索引。"""
 
-    normalized_fragment = _normalized_text(fragment)
+    normalized_fragment = _normalized_text(
+        fragment,
+        nfkc=nfkc,
+    )
     matches = [
         (index, block)
         for index, block in enumerate(page)
         if (block_type is None or block.get("type") == block_type)
-        and normalized_fragment in _normalized_text(block.get("content"))
+        and normalized_fragment
+        in _normalized_text(
+            block.get("content"),
+            nfkc=nfkc,
+        )
     ]
     assert len(matches) == 1, (
         fragment,
         block_type,
-        [(index, block.get("type"), _normalized_text(block.get("content"))) for index, block in matches],
+        [
+            (
+                index,
+                block.get("type"),
+                _normalized_text(
+                    block.get("content"),
+                    nfkc=nfkc,
+                ),
+            )
+            for index, block in matches
+        ],
     )
     return matches[0]
 
@@ -147,21 +171,11 @@ def test_frozen_soil_paper_keeps_tracked_semantic_and_bbox_gold() -> None:
     manifest = json.loads(
         _GEOMETRY_MANIFEST_PATH.read_text(encoding="utf-8"),
     )
-    expected = next(
-        document
-        for document in manifest["documents"]
-        if document["path"] == "demo/pdfs/中文论文.pdf"
-    )
+    expected = next(document for document in manifest["documents"] if document["path"] == "demo/pdfs/中文论文.pdf")
     assert hashlib.sha256(_FROZEN_SOIL_PATH.read_bytes()).hexdigest() == expected["sha256"]
     pages = _frozen_soil_pages()
-    assert [
-        _page_fingerprint(list(page))
-        for page in pages
-    ] == [page["fingerprint"] for page in expected["pages"]]
-    assert [
-        _page_bbox_fingerprint(list(page))
-        for page in pages
-    ] == [page["bbox_fingerprint"] for page in expected["pages"]]
+    assert [_page_fingerprint(list(page)) for page in pages] == [page["fingerprint"] for page in expected["pages"]]
+    assert [_page_bbox_fingerprint(list(page)) for page in pages] == [page["bbox_fingerprint"] for page in expected["pages"]]
 
 
 def _typed_texts(block_type: str) -> Counter[tuple[int, str]]:
@@ -179,37 +193,20 @@ def test_chinese_paper_matches_versioned_title_semantics() -> None:
     """验证双语文档标题和四十个章节标题与人工视觉金标完全一致。"""
 
     expectation = _expectation()
-    expected_doc_titles = Counter(
-        (item["page_index"], item["text"])
-        for item in expectation["doc_titles"]
-    )
-    expected_paragraph_titles = Counter(
-        (item["page_index"], item["text"])
-        for item in expectation["paragraph_titles"]
-    )
+    expected_doc_titles = Counter((item["page_index"], item["text"]) for item in expectation["doc_titles"])
+    expected_paragraph_titles = Counter((item["page_index"], item["text"]) for item in expectation["paragraph_titles"])
 
     assert _typed_texts("doc_title") == expected_doc_titles
     assert _typed_texts("paragraph_title") == expected_paragraph_titles
-    title_text = "\n".join(
-        text
-        for _page_index, text in _typed_texts("paragraph_title")
-    )
-    assert all(
-        fragment not in title_text
-        for fragment in expectation["forbidden_title_fragments"]
-    )
+    title_text = "\n".join(text for _page_index, text in _typed_texts("paragraph_title"))
+    assert all(fragment not in title_text for fragment in expectation["forbidden_title_fragments"])
 
 
 def test_chinese_paper_recovers_all_numbered_formula_blocks() -> None:
     """验证式一至式十四唯一成块，且公式内容不吸收相邻说明句。"""
 
     expectation = _expectation()
-    equations = [
-        block
-        for page in _pages()
-        for block in page
-        if block.get("type") == "equation"
-    ]
+    equations = [block for page in _pages() for block in page if block.get("type") == "equation"]
     tag_counts: Counter[str] = Counter()
     contents = []
     for block in equations:
@@ -220,33 +217,21 @@ def test_chinese_paper_recovers_all_numbered_formula_blocks() -> None:
         tag_counts[match.group(1)] += 1
 
     assert tag_counts == Counter(expectation["equation_tags"])
-    assert all(
-        fragment not in content
-        for content in contents
-        for fragment in expectation["forbidden_equation_fragments"]
-    )
+    assert all(fragment not in content for content in contents for fragment in expectation["forbidden_equation_fragments"])
 
 
 def test_chinese_paper_preserves_visual_controls_and_unique_blocks() -> None:
     """验证表图页码数量、双栏归属和顶层自然文本无近乎完全重叠。"""
 
     expectation = _expectation()
-    counts = Counter(
-        str(block.get("type"))
-        for page in _pages()
-        for block in page
-    )
-    assert all(
-        counts[block_type] == expected_count
-        for block_type, expected_count in expectation["control_counts"].items()
-    )
+    counts = Counter(str(block.get("type")) for page in _pages() for block in page)
+    assert all(counts[block_type] == expected_count for block_type, expected_count in expectation["control_counts"].items())
 
     first_page = _pages()[0]
     introduction = next(
         block
         for block in first_page
-        if block.get("type") == "paragraph_title"
-        and _normalized_text(block.get("content")) == "0引言"
+        if block.get("type") == "paragraph_title" and _normalized_text(block.get("content")) == "0引言"
     )
     introduction_bottom = float(introduction["bbox"][3])
     assert not any(
@@ -260,12 +245,7 @@ def test_chinese_paper_preserves_visual_controls_and_unique_blocks() -> None:
 
     overlaps = []
     for page_index, page in enumerate(_pages()):
-        blocks = [
-            block
-            for block in page
-            if block.get("type") in _NATURAL_TEXT_TYPES
-            and isinstance(block.get("bbox"), list)
-        ]
+        blocks = [block for block in page if block.get("type") in _NATURAL_TEXT_TYPES and isinstance(block.get("bbox"), list)]
         for first_index, first in enumerate(blocks):
             first_bbox = [float(value) for value in first["bbox"]]
             first_area = max(0.0, first_bbox[2] - first_bbox[0]) * max(
@@ -280,12 +260,10 @@ def test_chinese_paper_preserves_visual_controls_and_unique_blocks() -> None:
                 )
                 intersection = max(
                     0.0,
-                    min(first_bbox[2], second_bbox[2])
-                    - max(first_bbox[0], second_bbox[0]),
+                    min(first_bbox[2], second_bbox[2]) - max(first_bbox[0], second_bbox[0]),
                 ) * max(
                     0.0,
-                    min(first_bbox[3], second_bbox[3])
-                    - max(first_bbox[1], second_bbox[1]),
+                    min(first_bbox[3], second_bbox[3]) - max(first_bbox[1], second_bbox[1]),
                 )
                 overlap = intersection / max(
                     1e-9,
@@ -303,10 +281,11 @@ def test_chinese_paper_preserves_visual_controls_and_unique_blocks() -> None:
 
 
 def test_chinese_papers_match_versioned_block_group_expectations() -> None:
-    """验证两篇真实论文的类型库存、指定合并和指定拆分与人工审阅期望一致。"""
+    """验证四篇真实论文的类型库存、指定合并和指定拆分与人工审阅期望一致。"""
 
     for expectation in _block_expectations():
         pages = _pages_for_expectation(expectation)
+        normalize_nfkc = expectation.get("normalize_nfkc") is True
         counts = Counter(str(block.get("type")) for page in pages for block in page)
         assert counts == Counter(expectation["type_counts"])
 
@@ -315,7 +294,15 @@ def test_chinese_papers_match_versioned_block_group_expectations() -> None:
             matches = [
                 block
                 for block in page
-                if block.get("type") == item["type"] and _normalized_text(block.get("content")) == item["text"]
+                if block.get("type") == item["type"]
+                and _normalized_text(
+                    block.get("content"),
+                    nfkc=normalize_nfkc,
+                )
+                == _normalized_text(
+                    item["text"],
+                    nfkc=normalize_nfkc,
+                )
             ]
             assert len(matches) == 1, item
 
@@ -326,6 +313,7 @@ def test_chinese_papers_match_versioned_block_group_expectations() -> None:
                     page,
                     fragment,
                     block_type=group["type"],
+                    nfkc=normalize_nfkc,
                 )[0]
                 for fragment in group["fragments"]
             }
@@ -337,6 +325,7 @@ def test_chinese_papers_match_versioned_block_group_expectations() -> None:
                 _block_containing_fragment(
                     page,
                     fragment,
+                    nfkc=normalize_nfkc,
                 )[0]
                 for fragment in group["fragments"]
             }
@@ -344,11 +333,44 @@ def test_chinese_papers_match_versioned_block_group_expectations() -> None:
 
         for item in expectation.get("forbidden_type_fragments", []):
             page = pages[item["page_index"]]
-            normalized_fragment = _normalized_text(item["fragment"])
+            normalized_fragment = _normalized_text(
+                item["fragment"],
+                nfkc=normalize_nfkc,
+            )
             assert not any(
-                block.get("type") == item["type"] and normalized_fragment in _normalized_text(block.get("content"))
+                block.get("type") == item["type"]
+                and normalized_fragment
+                in _normalized_text(
+                    block.get("content"),
+                    nfkc=normalize_nfkc,
+                )
                 for block in page
             ), item
+
+
+def test_chinese_paper_four_third_page_upper_band_inventory() -> None:
+    """验证中文论文4第三页原假大表区域恢复为指定的文本、图表和标题库存。"""
+
+    pages = _additional_chinese_paper_pages(
+        "demo/pdfs/中文论文4.pdf",
+    )
+    upper_band = [
+        block
+        for block in pages[2]
+        if block.get("type") != "header"
+        and isinstance(block.get("bbox"), list)
+        and float(block["bbox"][3]) <= 0.56
+    ]
+
+    assert Counter(str(block.get("type")) for block in upper_band) == Counter(
+        {
+            "paragraph_title": 3,
+            "text": 4,
+            "image": 1,
+            "caption": 2,
+            "table": 1,
+        }
+    )
 
 
 def test_chinese_paper_continuation_caption_precedes_tight_table_body() -> None:

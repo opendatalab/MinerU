@@ -64,6 +64,97 @@ def test_hanging_indent_groups_neutral_entries_and_ignores_centered_heading() ->
     ]
 
 
+def test_nested_columns_ignore_intervening_full_width_metadata_band() -> None:
+    """验证左右栏行交错时，中间全宽元数据簇不阻断局部双栏推断。"""
+
+    lines = [
+        _text_line("full width", (0.0, 0.0, 100.0, 10.0), 0),
+        *[
+            _text_line(
+                f"left {index}",
+                (0.0, 30.0 + 12.0 * index, 45.0, 40.0 + 12.0 * index),
+                1 + 2 * index,
+            )
+            for index in range(4)
+        ],
+        *[
+            _text_line(
+                f"right {index}",
+                (55.0, 30.0 + 12.0 * index, 100.0, 40.0 + 12.0 * index),
+                2 + 2 * index,
+            )
+            for index in range(4)
+        ],
+        _text_line("author one", (20.0, 100.0, 80.0, 110.0), 20),
+        _text_line("author two", (20.0, 112.0, 80.0, 122.0), 21),
+        _text_line("author three", (20.0, 124.0, 80.0, 134.0), 22),
+    ]
+
+    lanes = line_layout._infer_text_lanes(
+        [(line, line.bbox) for line in lines],
+        100.0,
+        10.0,
+    )
+    regular = sorted(
+        (
+            lane
+            for lane in lanes
+            if not lane.is_span and len(lane.lines) >= 4 and min(item[1][1] for item in lane.lines) >= 30.0
+        ),
+        key=lambda lane: lane.left,
+    )
+
+    assert [(lane.left, lane.right) for lane in regular[:2]] == [
+        (0.0, 45.0),
+        (55.0, 100.0),
+    ]
+
+
+def test_paragraph_formula_context_merges_dense_same_lane_text() -> None:
+    """验证复杂行内分式及其同栏前后正文恢复为一个文本块。"""
+
+    def block(
+        content: str,
+        bbox: tuple[float, float, float, float],
+    ) -> dict[str, object]:
+        """构造含栏带和行框的最小文本块。"""
+
+        return {
+            "type": "text",
+            "bbox": bbox,
+            "angle": 0,
+            "content": content,
+            "_local_line_bboxes": [bbox],
+            "_line_heights": [10.0],
+            "_font_signatures": {("Body", 0)},
+            "_lane_interval": (0.0, 100.0),
+            "_lane_is_span": False,
+            "_hard_break_before": False,
+            "_leading_emphasis_start": False,
+        }
+
+    blocks = [
+        block("prefix", (0.0, 0.0, 30.0, 10.0)),
+        block("body:", (0.0, 10.0, 100.0, 20.0)),
+        block("I=ΔT/ΔH", (0.0, 21.0, 100.0, 31.0)),
+        block("tail", (0.0, 32.0, 100.0, 42.0)),
+        {
+            **block("other lane", (120.0, 0.0, 220.0, 10.0)),
+            "_lane_interval": (120.0, 220.0),
+        },
+    ]
+    blocks[2]["_paragraph_formula_context"] = True
+
+    merged = text_blocks._merge_paragraph_formula_context_blocks(
+        blocks,
+    )
+
+    assert [item["content"] for item in merged] == [
+        "prefix body: I=ΔT/ΔH tail",
+        "other lane",
+    ]
+
+
 def test_hanging_indent_accepts_reference_spacing_and_italic_tail() -> None:
     """验证 1.25 倍行高的参考文献间距不会拆掉前一条斜体尾行。"""
 
@@ -1356,9 +1447,7 @@ def test_nested_lane_accepts_wider_one_sided_rows_and_expands_interval() -> None
             (10.0, top, 190.0, top + 8.0),
             30 + row_index,
         )
-        for row_index, top in enumerate(
-            (90.0, 100.0, 110.0, 120.0, 130.0, 140.0, 150.0, 160.0, 170.0, 180.0)
-        )
+        for row_index, top in enumerate((90.0, 100.0, 110.0, 120.0, 130.0, 140.0, 150.0, 160.0, 170.0, 180.0))
     )
 
     lanes = line_layout._infer_text_lanes(
@@ -1367,18 +1456,13 @@ def test_nested_lane_accepts_wider_one_sided_rows_and_expands_interval() -> None
         8.0,
     )
 
-    left_lane = next(
-        lane
-        for lane in lanes
-        if any(line.text == "wide-left-one" for line, _bbox in lane.lines)
-    )
+    left_lane = next(lane for lane in lanes if any(line.text == "wide-left-one" for line, _bbox in lane.lines))
     assert not left_lane.is_span
     assert left_lane.right == pytest.approx(105.0)
-    assert {
-        line.text
-        for line, _bbox in left_lane.lines
-        if line.text.startswith("wide-left")
-    } == {"wide-left-one", "wide-left-two"}
+    assert {line.text for line, _bbox in left_lane.lines if line.text.startswith("wide-left")} == {
+        "wide-left-one",
+        "wide-left-two",
+    }
 
 
 def test_regular_lanes_accept_wider_one_sided_rows_but_keep_gutter_crossing_span() -> None:
@@ -1414,16 +1498,8 @@ def test_regular_lanes_accept_wider_one_sided_rows_but_keep_gutter_crossing_span
         8.0,
     )
 
-    left_lane = next(
-        lane
-        for lane in lanes
-        if any(line.text == "wide-left-one" for line, _bbox in lane.lines)
-    )
-    span_lane = next(
-        lane
-        for lane in lanes
-        if any(line.text == "crosses-gutter" for line, _bbox in lane.lines)
-    )
+    left_lane = next(lane for lane in lanes if any(line.text == "wide-left-one" for line, _bbox in lane.lines))
+    span_lane = next(lane for lane in lanes if any(line.text == "crosses-gutter" for line, _bbox in lane.lines))
     assert not left_lane.is_span
     assert left_lane.right == pytest.approx(105.0)
     assert span_lane.is_span
@@ -2296,10 +2372,7 @@ def test_canonical_visual_resplit_separates_cross_column_coarse_row() -> None:
             zip("ABCDEFGH", positions, strict=True),
         )
     ]
-    visual_bboxes = {
-        index: (position, 10.0, position + 5.0, 20.0)
-        for index, position in enumerate(positions)
-    }
+    visual_bboxes = {index: (position, 10.0, position + 5.0, 20.0) for index, position in enumerate(positions)}
     line = models._LineItem(
         text="ABCDEFGH",
         bbox=(0.0, 10.0, 100.0, 20.0),
@@ -2453,13 +2526,10 @@ def test_local_aligned_column_replaces_polluted_full_width_lane() -> None:
     ]
 
     blocks = text_blocks._build_text_blocks(lines, [], (200.0, 120.0))
-    introduction_body = next(
-        block for block in blocks if "local first sentence" in block["content"]
-    )
+    introduction_body = next(block for block in blocks if "local first sentence" in block["content"])
 
     assert introduction_body["content"] == (
-        "local first sentence. local second sentence local third sentence "
-        "local final sentence."
+        "local first sentence. local second sentence local third sentence local final sentence."
     )
     assert introduction_body["_lane_interval"] == (110.0, 200.0)
 
@@ -2761,10 +2831,7 @@ def test_inline_math_fragments_merge_into_wide_split_text_row() -> None:
 
     assert len(merged) == 1
     assert merged[0]["bbox"] == (10.0, 34.0, 90.0, 56.0)
-    assert all(
-        token in merged[0]["content"]
-        for token in ("body host", "numerator", "denominator", "power")
-    )
+    assert all(token in merged[0]["content"] for token in ("body host", "numerator", "denominator", "power"))
     assert merged[0][text_blocks._INLINE_MATH_RECOVERY_MARKER] is True
 
 
@@ -2873,10 +2940,7 @@ def test_inline_math_paragraph_continuations_merge_five_wide_blocks() -> None:
 
     assert len(merged) == 1
     assert merged[0]["bbox"] == (20.0, 40.0, 172.0, 175.0)
-    assert all(
-        f"paragraph part {index}" in str(merged[0]["content"])
-        for index in range(5)
-    )
+    assert all(f"paragraph part {index}" in str(merged[0]["content"]) for index in range(5))
     assert merged[0][text_blocks._INLINE_MATH_RECOVERY_MARKER] is True
 
 
@@ -3109,7 +3173,4 @@ def test_front_matter_grid_merges_each_author_column_independently() -> None:
 
     assert len(merged_authors) == 4
     for column_index, block in enumerate(merged_authors):
-        assert all(
-            f"author-{column_index}-row-{row_index}" in block["content"]
-            for row_index in range(3)
-        )
+        assert all(f"author-{column_index}-row-{row_index}" in block["content"] for row_index in range(3))

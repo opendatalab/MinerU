@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import re
 import statistics
+import unicodedata
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -564,15 +565,8 @@ def _build_formula_like_blocks(
                 if block is None:
                     continue
                 blocks.append(block)
-                claimed_source_indices.update(
-                    member_line.source_index
-                    for member_line, _member_bbox in members
-                )
-            lane.lines = [
-                item
-                for item in lane.lines
-                if item[0].source_index not in claimed_source_indices
-            ]
+                claimed_source_indices.update(member_line.source_index for member_line, _member_bbox in members)
+            lane.lines = [item for item in lane.lines if item[0].source_index not in claimed_source_indices]
             for line, bbox in list(lane.lines):
                 if (
                     (
@@ -652,6 +646,14 @@ def _build_formula_like_blocks(
                     dominant_body_font,
                     median_height,
                 )
+                if _formula_component_has_left_prose(
+                    members,
+                    lane,
+                    median_height,
+                ):
+                    for member_line, _member_bbox in members:
+                        member_line.paragraph_formula_context = True
+                    continue
                 if len(members) < 2:
                     continue
                 if (
@@ -692,7 +694,10 @@ def _build_formula_like_blocks(
                 claimed_source_indices.update(line.source_index for line, _bbox in members)
 
     remaining_lines = [
-        line for line in lines if line.source_index not in claimed_source_indices and not line.formula_candidate_only
+        line
+        for line in lines
+        if line.source_index not in claimed_source_indices
+        and (not line.formula_candidate_only or line.paragraph_formula_context)
     ]
     return blocks, remaining_lines
 
@@ -701,6 +706,42 @@ def _formula_line_has_math_operator(text: str) -> bool:
     """检查文本行是否具有独立公式常见的数学运算符。"""
 
     return any(character in _FORMULA_OPERATOR_CHARS for character in text)
+
+
+def _formula_component_has_left_prose(
+    members: list[tuple[_LineItem, BBox]],
+    lane: _TextLane,
+    median_height: float,
+) -> bool:
+    """识别贴栏左缘且在首个运算符前带正文引导语的伪行间公式。"""
+
+    for line, bbox in members:
+        if abs(bbox[0] - lane.left) > 0.75 * median_height:
+            continue
+        normalized = unicodedata.normalize("NFKC", line.text).strip()
+        operator_positions = [index for index, character in enumerate(normalized) if character in _FORMULA_OPERATOR_CHARS]
+        if not operator_positions:
+            continue
+        prefix = normalized[: min(operator_positions)]
+        han_count = len(re.findall(r"[\u3400-\u9fff]", prefix))
+        has_clause_punctuation = (
+            re.search(
+                r"[,;:。！？!?）)]",
+                prefix,
+            )
+            is not None
+        )
+        has_english_lead = (
+            re.search(
+                r"\b(?:where|when|with|given|using|denote[ds]?|defined)\b",
+                prefix,
+                re.IGNORECASE,
+            )
+            is not None
+        )
+        if (han_count >= 2 and has_clause_punctuation) or has_english_lead:
+            return True
+    return False
 
 
 def _is_wide_tagged_formula_member(
@@ -736,20 +777,13 @@ def _is_single_line_numbered_formula(
     if parts is None:
         return False
     prefix, marker = parts
-    if (
-        not prefix
-        or not _FORMULA_NUMBER_MARKER_RE.fullmatch(marker)
-        or not _formula_line_has_math_operator(prefix)
-    ):
+    if not prefix or not _FORMULA_NUMBER_MARKER_RE.fullmatch(marker) or not _formula_line_has_math_operator(prefix):
         return False
     lane_width = max(0.1, lane.right - lane.left)
     width_ratio = (bbox[2] - bbox[0]) / lane_width
     if not 0.12 <= width_ratio <= 0.98:
         return False
-    if (
-        abs(_bbox_center_x(bbox) - 0.5 * (lane.left + lane.right))
-        > 0.2 * lane_width
-    ):
+    if abs(_bbox_center_x(bbox) - 0.5 * (lane.left + lane.right)) > 0.2 * lane_width:
         return False
     if bbox[3] - bbox[1] > 4.0 * median_height:
         return False
@@ -1571,44 +1605,24 @@ def _is_formula_body_barrier(
             line.font_signature == dominant_body_font
             and line.font_coverage >= 0.75
             and bbox[2] - bbox[0] >= 0.3 * lane_width
-            and 0.8 * median_height
-            <= line_height
-            <= 1.25 * median_height
+            and 0.8 * median_height <= line_height <= 1.25 * median_height
         )
     lane_width = max(0.1, lane.right - lane.left)
     body_style_scales = [
         _line_style_scale(other_line, other_bbox)
         for other_line, other_bbox in lane.lines
-        if other_bbox[2] - other_bbox[0] >= 0.35 * lane_width
-        and not _formula_line_has_math_operator(other_line.text)
+        if other_bbox[2] - other_bbox[0] >= 0.35 * lane_width and not _formula_line_has_math_operator(other_line.text)
     ]
-    body_scale = (
-        statistics.median(body_style_scales)
-        if body_style_scales
-        else median_height
-    )
+    body_scale = statistics.median(body_style_scales) if body_style_scales else median_height
     line_scale = _line_style_scale(line, bbox)
     line_width = bbox[2] - bbox[0]
-    left_aligned = (
-        abs(bbox[0] - lane.left)
-        <= max(3.0, 0.75 * body_scale)
-    )
+    left_aligned = abs(bbox[0] - lane.left) <= max(3.0, 0.75 * body_scale)
     return (
         not _formula_line_has_math_operator(line.text)
-        and (
-            line_width >= 0.3 * lane_width
-            or (
-                left_aligned
-                and line_width >= 0.08 * lane_width
-            )
-        )
+        and (line_width >= 0.3 * lane_width or (left_aligned and line_width >= 0.08 * lane_width))
         and 0.75 * body_scale <= line_scale <= 1.35 * body_scale
         and (
-            (
-                dominant_body_font is not None
-                and line.font_signature == dominant_body_font
-                and line.font_coverage >= 0.75
-            )
+            (dominant_body_font is not None and line.font_signature == dominant_body_font and line.font_coverage >= 0.75)
             or left_aligned
         )
     )
@@ -1658,17 +1672,12 @@ def _is_formula_body_prefix(
         return False
     if abs(bbox[0] - lane.left) > max(3.0, 0.75 * median_height):
         return False
-    if (
-        not line.style_scale_repaired
-        and not anchor_line.style_scale_repaired
-    ):
+    if not line.style_scale_repaired and not anchor_line.style_scale_repaired:
         return (
             dominant_body_font is not None
             and line.font_signature == dominant_body_font
             and line.font_coverage >= minimum_font_coverage
-            and 0.8 * median_height
-            <= line_height
-            <= 1.25 * median_height
+            and 0.8 * median_height <= line_height <= 1.25 * median_height
         )
     lane_width = max(0.1, lane.right - lane.left)
     if bbox[2] - bbox[0] < 0.08 * lane_width:
@@ -1679,23 +1688,13 @@ def _is_formula_body_prefix(
         _line_style_scale(other_line, other_bbox)
         for other_line, other_bbox in lane.lines
         if other_bbox[2] - other_bbox[0] >= 0.35 * lane_width
-        and abs(other_bbox[0] - lane.left)
-        <= max(3.0, 0.75 * median_height)
+        and abs(other_bbox[0] - lane.left) <= max(3.0, 0.75 * median_height)
         and not _formula_line_has_math_operator(other_line.text)
     ]
-    body_scale = (
-        statistics.median(body_style_scales)
-        if body_style_scales
-        else median_height
-    )
+    body_scale = statistics.median(body_style_scales) if body_style_scales else median_height
     line_scale = _line_style_scale(line, bbox)
-    return (
-        0.75 * body_scale <= line_scale <= 1.35 * body_scale
-        and (
-            dominant_body_font is None
-            or line.font_signature == dominant_body_font
-            or line.font_coverage <= minimum_font_coverage
-        )
+    return 0.75 * body_scale <= line_scale <= 1.35 * body_scale and (
+        dominant_body_font is None or line.font_signature == dominant_body_font or line.font_coverage <= minimum_font_coverage
     )
 
 

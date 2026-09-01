@@ -130,14 +130,10 @@ def _filled_grid_path_fixture(
             (300.0 + cell_gap, top, right_edge, bottom),
         ]
         for cell in cells:
-            output.append(
-                _path_info(cell, source_index, form_depth=form_depth)
-            )
+            output.append(_path_info(cell, source_index, form_depth=form_depth))
             source_index += 1
         if row_index == 0:
-            output.append(
-                _path_info(cells[0], source_index, form_depth=form_depth)
-            )
+            output.append(_path_info(cells[0], source_index, form_depth=form_depth))
             source_index += 1
         if row_index % 2 == 1:
             middle = 0.5 * (top + bottom)
@@ -184,9 +180,7 @@ def test_filled_grid_geometry_detects_exact_outer_bbox_without_text() -> None:
         drawing_lines=[],
         path_infos=path_infos,
     )
-    assert [
-        candidate.bbox for candidate in tables._detect_table_candidates(source)
-    ] == [(100.0, 100.0, 500.0, 400.0)]
+    assert [candidate.bbox for candidate in tables._detect_table_candidates(source)] == [(100.0, 100.0, 500.0, 400.0)]
 
     source.lines = [
         models._LineItem(
@@ -197,36 +191,49 @@ def test_filled_grid_geometry_detects_exact_outer_bbox_without_text() -> None:
             effective_height=20.0,
         )
     ]
-    assert [
-        candidate.bbox for candidate in tables._detect_table_candidates(source)
-    ] == [(100.0, 100.0, 500.0, 400.0)]
+    assert [candidate.bbox for candidate in tables._detect_table_candidates(source)] == [(100.0, 100.0, 500.0, 400.0)]
 
 
 def test_filled_grid_geometry_rejects_incomplete_or_interfering_paths() -> None:
     """验证行带不足、横向破损、非根层和强图形重叠均不能生成外框。"""
 
     page_size = (1000.0, 1000.0)
-    assert tables._detect_filled_grid_table_candidates(
-        _filled_grid_path_fixture(band_count=3),
-        page_size,
-    ) == []
-    assert tables._detect_filled_grid_table_candidates(
-        _filled_grid_path_fixture(right_edge=450.0),
-        page_size,
-    ) == []
-    assert tables._detect_filled_grid_table_candidates(
-        _filled_grid_path_fixture(cell_gap=10.0),
-        page_size,
-    ) == []
-    assert tables._detect_filled_grid_table_candidates(
-        _filled_grid_path_fixture(form_depth=1),
-        page_size,
-    ) == []
-    assert tables._detect_filled_grid_table_candidates(
-        _filled_grid_path_fixture(),
-        page_size,
-        [(120.0, 120.0, 480.0, 380.0)],
-    ) == []
+    assert (
+        tables._detect_filled_grid_table_candidates(
+            _filled_grid_path_fixture(band_count=3),
+            page_size,
+        )
+        == []
+    )
+    assert (
+        tables._detect_filled_grid_table_candidates(
+            _filled_grid_path_fixture(right_edge=450.0),
+            page_size,
+        )
+        == []
+    )
+    assert (
+        tables._detect_filled_grid_table_candidates(
+            _filled_grid_path_fixture(cell_gap=10.0),
+            page_size,
+        )
+        == []
+    )
+    assert (
+        tables._detect_filled_grid_table_candidates(
+            _filled_grid_path_fixture(form_depth=1),
+            page_size,
+        )
+        == []
+    )
+    assert (
+        tables._detect_filled_grid_table_candidates(
+            _filled_grid_path_fixture(),
+            page_size,
+            [(120.0, 120.0, 480.0, 380.0)],
+        )
+        == []
+    )
 
 
 def test_filled_grid_candidate_prevents_rule_bbox_expansion() -> None:
@@ -268,9 +275,7 @@ def test_filled_grid_candidate_prevents_rule_bbox_expansion() -> None:
 
     candidates = tables._detect_table_candidates(source)
 
-    assert [candidate.bbox for candidate in candidates] == [
-        (100.0, 100.0, 500.0, 400.0)
-    ]
+    assert [candidate.bbox for candidate in candidates] == [(100.0, 100.0, 500.0, 400.0)]
 
 
 def test_filled_grid_materialization_uses_existing_spatial_projection(
@@ -550,14 +555,8 @@ def test_connected_rule_grid_expands_core_and_reclaims_sparse_bottom_row() -> No
         line_indices=set(range(9)),
     )
     axis_lines = [
-        *[
-            _axis_line("horizontal", (0.0, top, 110.0, top + 0.1))
-            for top in (8.0, 58.0, 80.0)
-        ],
-        *[
-            _axis_line("vertical", (left, 8.0, left + 0.1, 80.1))
-            for left in (0.0, 55.0, 109.9)
-        ],
+        *[_axis_line("horizontal", (0.0, top, 110.0, top + 0.1)) for top in (8.0, 58.0, 80.0)],
+        *[_axis_line("vertical", (left, 8.0, left + 0.1, 80.1)) for left in (0.0, 55.0, 109.9)],
     ]
 
     expanded = tables._expand_candidates_to_connected_rule_grids(
@@ -579,18 +578,9 @@ def test_disconnected_stacked_rule_grids_remain_separate() -> None:
     """验证竖轨未跨越空白间距时，同跨度上下网格仍保持为两张表。"""
 
     axis_lines = [
-        *[
-            _axis_line("horizontal", (0.0, top, 110.0, top + 0.1))
-            for top in (8.0, 58.0, 90.0, 140.0)
-        ],
-        *[
-            _axis_line("vertical", (left, 8.0, left + 0.1, 58.1))
-            for left in (0.0, 55.0, 109.9)
-        ],
-        *[
-            _axis_line("vertical", (left, 90.0, left + 0.1, 140.1))
-            for left in (0.0, 55.0, 109.9)
-        ],
+        *[_axis_line("horizontal", (0.0, top, 110.0, top + 0.1)) for top in (8.0, 58.0, 90.0, 140.0)],
+        *[_axis_line("vertical", (left, 8.0, left + 0.1, 58.1)) for left in (0.0, 55.0, 109.9)],
+        *[_axis_line("vertical", (left, 90.0, left + 0.1, 140.1)) for left in (0.0, 55.0, 109.9)],
     ]
 
     grid_bboxes = tables._connected_rule_grid_bboxes(axis_lines, 5.0)
@@ -646,20 +636,10 @@ def _closed_sparse_grid_fixture(
         )
         for fragment in fragments
     ]
-    horizontal_tops = (
-        (0.0, 20.0, 40.0)
-        if horizontal_count == 3
-        else (0.0, 40.0)
-    )
+    horizontal_tops = (0.0, 20.0, 40.0) if horizontal_count == 3 else (0.0, 40.0)
     axis_lines = [
-        *[
-            _axis_line("horizontal", (0.0, top, 110.0, top + 0.1))
-            for top in horizontal_tops
-        ],
-        *[
-            _axis_line("vertical", (left, 0.0, left + 0.1, 40.1))
-            for left in (0.0, 55.0, 109.9)
-        ],
+        *[_axis_line("horizontal", (0.0, top, 110.0, top + 0.1)) for top in horizontal_tops],
+        *[_axis_line("vertical", (left, 0.0, left + 0.1, 40.1)) for left in (0.0, 55.0, 109.9)],
     ]
     return rows, lines, axis_lines
 
@@ -683,9 +663,7 @@ def test_closed_grid_accepts_sparse_single_column_form_with_empty_row() -> None:
     )
 
     assert len(candidates) == 1
-    assert candidates[0].core_bbox == pytest.approx(
-        (0.0, 0.0, 110.0, 40.1)
-    )
+    assert candidates[0].core_bbox == pytest.approx((0.0, 0.0, 110.0, 40.1))
     assert candidates[0].line_indices == {0}
 
 
@@ -734,35 +712,30 @@ def test_closed_sparse_grid_rejects_incomplete_or_excluded_geometry(
         lines = []
     elif failure_mode == "short_outer_tracks":
         axis_lines = [
-            _axis_line("vertical", (line.bbox[0], 5.0, line.bbox[2], 35.0))
-            if line.orientation == "vertical"
-            else line
+            _axis_line("vertical", (line.bbox[0], 5.0, line.bbox[2], 35.0)) if line.orientation == "vertical" else line
             for line in axis_lines
         ]
     elif failure_mode == "only_two_vertical_tracks":
-        axis_lines = [
-            line
-            for line in axis_lines
-            if line.orientation != "vertical" or line.bbox[0] != 55.0
-        ]
+        axis_lines = [line for line in axis_lines if line.orientation != "vertical" or line.bbox[0] != 55.0]
     elif failure_mode == "one_occupied_column":
         rows[0].fragments[1].bbox = (32.0, 10.0, 48.0, 15.0)
         rows[0].fragments[1].local_bbox = rows[0].fragments[1].bbox
-        rows[0].bbox = geometry._bbox_union_many(
-            [fragment.bbox for fragment in rows[0].fragments]
-        )
+        rows[0].bbox = geometry._bbox_union_many([fragment.bbox for fragment in rows[0].fragments])
     else:
         excluded_bboxes = [(0.0, 0.0, 110.0, 40.1)]
 
-    assert tables._build_closed_rule_grid_candidates(
-        rows,
-        lines,
-        (150.0, 100.0),
-        0,
-        5.0,
-        axis_lines,
-        excluded_bboxes,
-    ) == []
+    assert (
+        tables._build_closed_rule_grid_candidates(
+            rows,
+            lines,
+            (150.0, 100.0),
+            0,
+            5.0,
+            axis_lines,
+            excluded_bboxes,
+        )
+        == []
+    )
 
 
 def test_closed_grid_inside_form_bbox_is_not_a_table_candidate() -> None:
@@ -843,10 +816,7 @@ def _rule_table_fixture(
             )
         )
     rule_tops = (8.0, 58.0) if rule_count == 2 else (8.0, 33.0, 58.0)
-    axis_lines = [
-        _axis_line("horizontal", (0.0, top, 110.0, top + 0.1))
-        for top in rule_tops
-    ]
+    axis_lines = [_axis_line("horizontal", (0.0, top, 110.0, top + 0.1)) for top in rule_tops]
     return rows, lines, axis_lines
 
 
@@ -895,22 +865,14 @@ def _compact_fully_ruled_table_fixture() -> tuple[
             models._VisualRow(
                 fragments=fragments,
                 center_y=top + 2.5,
-                bbox=geometry._bbox_union_many(
-                    [fragment.bbox for fragment in fragments]
-                ),
+                bbox=geometry._bbox_union_many([fragment.bbox for fragment in fragments]),
                 visual_row_id=row_index,
             )
         )
 
     axis_lines = [
-        *[
-            _axis_line("horizontal", (0.0, top, 110.0, top + 0.1))
-            for top in (8.0, 20.0, 32.0)
-        ],
-        *[
-            _axis_line("vertical", (left, 8.1, left + 0.1, 32.0))
-            for left in (0.0, 27.5, 55.0, 82.5, 109.9)
-        ],
+        *[_axis_line("horizontal", (0.0, top, 110.0, top + 0.1)) for top in (8.0, 20.0, 32.0)],
+        *[_axis_line("vertical", (left, 8.1, left + 0.1, 32.0)) for left in (0.0, 27.5, 55.0, 82.5, 109.9)],
     ]
     return rows, lines, axis_lines
 
@@ -971,14 +933,57 @@ def test_compact_fully_ruled_two_row_table_is_accepted() -> None:
     assert candidates[0].score == 8.0
 
 
+def test_caption_anchored_two_row_three_line_table_is_accepted() -> None:
+    """验证强表题可与三横线、两行稳定多列共同确认无竖线表格。"""
+
+    rows, lines, axis_lines = _compact_fully_ruled_table_fixture()
+    axis_lines = [line for line in axis_lines if line.orientation == "horizontal"]
+    lines.append(
+        models._LineItem(
+            text="Table 1 Results",
+            bbox=(20.0, 0.0, 90.0, 6.0),
+            angle=0,
+            source_index=100,
+            effective_height=5.0,
+        )
+    )
+    rows.append(
+        models._VisualRow(
+            fragments=[
+                models._Fragment(
+                    text="Table 1 Results",
+                    bbox=(20.0, 0.0, 90.0, 6.0),
+                    local_bbox=(20.0, 0.0, 90.0, 6.0),
+                    line_index=100,
+                    visual_row_id=100,
+                )
+            ],
+            center_y=3.0,
+            bbox=(20.0, 0.0, 90.0, 6.0),
+            visual_row_id=100,
+        )
+    )
+    rows.sort(key=lambda row: row.center_y)
+
+    candidates = tables._build_rule_table_candidates(
+        rows,
+        lines,
+        (150.0, 200.0),
+        0,
+        5.0,
+        axis_lines,
+    )
+
+    assert len(candidates) == 1
+    assert candidates[0].line_indices == set(range(8))
+    assert [annotation.kind for annotation in candidates[0].annotations] == ["caption"]
+
+
 def test_compact_grid_deduplicates_repeated_vertical_paths() -> None:
     """验证同位置重复竖线路径不会扩大紧凑表格的物理列数和评分。"""
 
     rows, lines, axis_lines = _compact_fully_ruled_table_fixture()
-    axis_lines.extend(
-        _axis_line("vertical", (left + 0.3, 8.1, left + 0.4, 32.0))
-        for left in (0.0, 27.5, 55.0, 82.5, 109.9)
-    )
+    axis_lines.extend(_axis_line("vertical", (left + 0.3, 8.1, left + 0.4, 32.0)) for left in (0.0, 27.5, 55.0, 82.5, 109.9))
 
     candidates = tables._build_rule_table_candidates(
         rows,
@@ -1013,17 +1018,11 @@ def test_compact_two_row_layout_requires_complete_grid(
         axis_lines = [line for line in axis_lines if line.orientation == "horizontal"]
     elif failure_mode == "short_verticals":
         axis_lines = [
-            _axis_line("vertical", (line.bbox[0], 13.0, line.bbox[2], 27.0))
-            if line.orientation == "vertical"
-            else line
+            _axis_line("vertical", (line.bbox[0], 13.0, line.bbox[2], 27.0)) if line.orientation == "vertical" else line
             for line in axis_lines
         ]
     elif failure_mode == "missing_outer":
-        axis_lines = [
-            line
-            for line in axis_lines
-            if line.orientation != "vertical" or line.bbox[0] > 1.0
-        ]
+        axis_lines = [line for line in axis_lines if line.orientation != "vertical" or line.bbox[0] > 1.0]
     elif failure_mode == "same_cell":
         rows[0].fragments[1].bbox = (8.0, 10.0, 18.0, 15.0)
         rows[0].fragments[1].local_bbox = rows[0].fragments[1].bbox
@@ -1049,12 +1048,8 @@ def test_compact_admission_does_not_accept_two_row_column_prose() -> None:
     rows, lines, axis_lines = _compact_fully_ruled_table_fixture()
     for row in rows:
         row.fragments = [row.fragments[0], row.fragments[-1]]
-        row.bbox = geometry._bbox_union_many(
-            [fragment.bbox for fragment in row.fragments]
-        )
-    retained_indices = {
-        fragment.line_index for row in rows for fragment in row.fragments
-    }
+        row.bbox = geometry._bbox_union_many([fragment.bbox for fragment in row.fragments])
+    retained_indices = {fragment.line_index for row in rows for fragment in row.fragments}
     lines = [line for line in lines if line.source_index in retained_indices]
     axis_lines = [line for line in axis_lines if line.orientation == "horizontal"]
 
@@ -1230,10 +1225,7 @@ def test_long_sparse_rule_interval_cannot_bridge_two_low_column_tables() -> None
                 visual_row_id=row_index,
             )
         )
-    rules = [
-        _axis_line("horizontal", (0.0, top, 110.0, top + 0.1))
-        for top in (0.0, 40.0, 120.0, 150.0)
-    ]
+    rules = [_axis_line("horizontal", (0.0, top, 110.0, top + 0.1)) for top in (0.0, 40.0, 120.0, 150.0)]
 
     assert not tables._rule_intervals_are_column_compatible(rows, rules, 5.0)
 
@@ -1564,9 +1556,7 @@ def test_auxiliary_table_note_requires_neutral_core_reference(
         0,
     )
 
-    assert [tables._visual_row_text(row) for row in selected] == [
-        f"{marker} neutral explanation"
-    ]
+    assert [tables._visual_row_text(row) for row in selected] == [f"{marker} neutral explanation"]
 
 
 def test_auxiliary_table_note_rejects_marker_without_core_reference() -> None:
@@ -1577,15 +1567,18 @@ def test_auxiliary_table_note_rejects_marker_without_core_reference() -> None:
         "none",
     )
 
-    assert tables._collect_footnote_rows(
-        rows,
-        lines,
-        rule_bbox,
-        8.0,
-        core_indices,
-        page_size,
-        0,
-    ) == []
+    assert (
+        tables._collect_footnote_rows(
+            rows,
+            lines,
+            rule_bbox,
+            8.0,
+            core_indices,
+            page_size,
+            0,
+        )
+        == []
+    )
 
 
 def test_superscript_reference_requires_smaller_raised_glyph() -> None:
@@ -1615,15 +1608,18 @@ def test_auxiliary_table_note_rejects_body_or_title_sized_first_row(
         note_height=note_height,
     )
 
-    assert tables._collect_footnote_rows(
-        rows,
-        lines,
-        rule_bbox,
-        8.0,
-        core_indices,
-        page_size,
-        0,
-    ) == []
+    assert (
+        tables._collect_footnote_rows(
+            rows,
+            lines,
+            rule_bbox,
+            8.0,
+            core_indices,
+            page_size,
+            0,
+        )
+        == []
+    )
 
 
 def test_auxiliary_table_note_rejects_loose_first_gap() -> None:
@@ -1642,15 +1638,18 @@ def test_auxiliary_table_note_rejects_loose_first_gap() -> None:
         visual_row_id=1,
     )
 
-    assert tables._collect_footnote_rows(
-        rows,
-        lines,
-        rule_bbox,
-        8.0,
-        core_indices,
-        page_size,
-        0,
-    ) == []
+    assert (
+        tables._collect_footnote_rows(
+            rows,
+            lines,
+            rule_bbox,
+            8.0,
+            core_indices,
+            page_size,
+            0,
+        )
+        == []
+    )
 
 
 def test_auxiliary_table_note_requires_smaller_than_body_reference() -> None:
@@ -1663,15 +1662,18 @@ def test_auxiliary_table_note_requires_smaller_than_body_reference() -> None:
     for line in lines[2:]:
         line.effective_height = 8.5
 
-    assert tables._collect_footnote_rows(
-        rows,
-        lines,
-        rule_bbox,
-        8.0,
-        core_indices,
-        page_size,
-        0,
-    ) == []
+    assert (
+        tables._collect_footnote_rows(
+            rows,
+            lines,
+            rule_bbox,
+            8.0,
+            core_indices,
+            page_size,
+            0,
+        )
+        == []
+    )
 
 
 def test_auxiliary_table_note_uses_clipped_corridor_projection() -> None:
@@ -1704,15 +1706,18 @@ def test_auxiliary_table_note_uses_clipped_corridor_projection() -> None:
         )
     )
 
-    assert tables._collect_footnote_rows(
-        rows,
-        lines,
-        rule_bbox,
-        8.0,
-        core_indices,
-        page_size,
-        0,
-    ) == []
+    assert (
+        tables._collect_footnote_rows(
+            rows,
+            lines,
+            rule_bbox,
+            8.0,
+            core_indices,
+            page_size,
+            0,
+        )
+        == []
+    )
 
 
 def test_rotated_auxiliary_table_note_uses_local_superscript_geometry() -> None:
@@ -1734,9 +1739,7 @@ def test_rotated_auxiliary_table_note_uses_local_superscript_geometry() -> None:
         90,
     )
 
-    assert [tables._visual_row_text(row) for row in selected] == [
-        "7 neutral explanation"
-    ]
+    assert [tables._visual_row_text(row) for row in selected] == ["7 neutral explanation"]
 
 
 def test_table_note_chain_cannot_expand_beyond_ten_line_heights() -> None:
@@ -1745,10 +1748,7 @@ def test_table_note_chain_cannot_expand_beyond_ten_line_heights() -> None:
     lines: list[models._LineItem] = []
     rows: list[models._VisualRow] = []
     specs = [("Note: neutral", (0.0, 51.0, 80.0, 59.0))]
-    specs.extend(
-        (f"continuation-{index}", (0.0, 59.5 + 8.5 * index, 80.0, 67.5 + 8.5 * index))
-        for index in range(12)
-    )
+    specs.extend((f"continuation-{index}", (0.0, 59.5 + 8.5 * index, 80.0, 67.5 + 8.5 * index)) for index in range(12))
     for source_index, (text, bbox) in enumerate(specs):
         lines.append(
             models._LineItem(
@@ -1860,15 +1860,18 @@ def test_numeric_body_row_cannot_start_table_note_chain() -> None:
         visual_row_id=0,
     )
 
-    assert tables._collect_footnote_rows(
-        [row],
-        [line],
-        (0.0, 0.0, 100.0, 50.0),
-        10.0,
-        set(),
-        (100.0, 100.0),
-        0,
-    ) == []
+    assert (
+        tables._collect_footnote_rows(
+            [row],
+            [line],
+            (0.0, 0.0, 100.0, 50.0),
+            10.0,
+            set(),
+            (100.0, 100.0),
+            0,
+        )
+        == []
+    )
 
 
 @pytest.mark.parametrize("projection_mode", ["empty", "error"])

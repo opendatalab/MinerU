@@ -53,8 +53,9 @@ _FIGURE_CAPTION_MARKER_RE = re.compile(
     re.IGNORECASE,
 )
 _INLINE_MATH_RECOVERY_MARKER = "_recovered_inline_math_fragments"
-_FRONT_MATTER_KEYWORDS_RE = re.compile(
-    r"^\s*(?:keywords?|key\s+words?|关键词)\s*[:：]",
+_PARAGRAPH_FORMULA_CONTEXT_MARKER = "_paragraph_formula_context"
+_FRONT_MATTER_FIELD_RE = re.compile(
+    r"^\s*(?:keywords?|key\s+words?|关键词|中图分类号|文献标识码|文章编号)\s*[:：]",
     re.IGNORECASE,
 )
 _LIST_ITEM_RE = re.compile(
@@ -78,6 +79,9 @@ _LABELLED_METADATA_RE = re.compile(
 _URL_LINE_RE = re.compile(
     r"^\s*(?:https?://|www\.)",
     re.IGNORECASE,
+)
+_SHORT_SAME_BASELINE_PREFIX_RE = re.compile(
+    r"^(?:[（(]\s*\d{1,3}|\d{1,2}\s*[:：]\s*\d{2})$",
 )
 
 
@@ -732,7 +736,7 @@ def _front_matter_keyword_break_sources(
     local_page_height: float,
     page_index: int | None,
 ) -> set[int]:
-    """把首页前置信息中的通用关键词行固定为独立文本块起点。"""
+    """把首页关键词和文献元数据行固定为独立文本块起点。"""
 
     if page_index != 0:
         return set()
@@ -741,7 +745,7 @@ def _front_matter_keyword_break_sources(
         for line, bbox in lane.lines
         if line.semantic_type is None
         and bbox[1] <= 0.65 * local_page_height
-        and _FRONT_MATTER_KEYWORDS_RE.match(line.text) is not None
+        and _FRONT_MATTER_FIELD_RE.match(line.text) is not None
     }
 
 
@@ -867,9 +871,7 @@ def _build_text_blocks(
         split_row_counts: dict[int, int] = {}
         for line, _bbox in line_geometry:
             if line.visual_row_id is not None and line.split_from_row:
-                split_row_counts[line.visual_row_id] = (
-                    split_row_counts.get(line.visual_row_id, 0) + 1
-                )
+                split_row_counts[line.visual_row_id] = split_row_counts.get(line.visual_row_id, 0) + 1
 
         for lane in lanes:
             lane.lines.sort(key=lambda item: (item[1][1], item[1][0], item[0].source_index))
@@ -1021,6 +1023,7 @@ def _build_text_blocks(
                             if line.font_signature is not None and line.font_coverage >= 0.5
                         },
                         "_inline_math_regions": [region for line in component_lines for region in line.inline_math_regions],
+                        _PARAGRAPH_FORMULA_CONTEXT_MARKER: any(line.paragraph_formula_context for line in component_lines),
                         "_lane_interval": (
                             component_local_lane.left,
                             component_local_lane.right,
@@ -1036,11 +1039,94 @@ def _build_text_blocks(
                         ),
                     }
                 )
+    blocks = _merge_short_same_baseline_prefix_blocks(
+        blocks,
+        page_size,
+    )
     blocks = _merge_spatial_text_components(blocks, page_size)
     blocks = _merge_list_intro_text_components(blocks)
     blocks = _merge_unterminated_text_components(blocks)
     blocks = _merge_overlapping_same_line_text_blocks(blocks, page_size)
-    return _merge_inline_math_fragment_text_blocks(blocks, page_size)
+    blocks = _merge_inline_math_fragment_text_blocks(
+        blocks,
+        page_size,
+    )
+    return _merge_paragraph_formula_context_blocks(
+        blocks,
+    )
+
+
+def _merge_short_same_baseline_prefix_blocks(
+    blocks: list[dict[str, Any]],
+    page_size: tuple[float, float],
+) -> list[dict[str, Any]]:
+    """合并括号序号或时刻等短前缀与右侧同基线正文。"""
+
+    replacements: dict[int, dict[str, Any]] = {}
+    consumed: set[int] = set()
+    for prefix_index, prefix in enumerate(blocks):
+        prefix_rows = prefix.get("_local_line_bboxes")
+        prefix_content = str(prefix.get("content") or "").strip()
+        if (
+            prefix_index in consumed
+            or prefix.get("type") != "text"
+            or not isinstance(prefix_rows, list)
+            or len(prefix_rows) != 1
+            or _SHORT_SAME_BASELINE_PREFIX_RE.match(prefix_content) is None
+        ):
+            continue
+        prefix_bbox = prefix_rows[0]
+        prefix_heights = [
+            float(height)
+            for height in prefix.get("_line_heights", [])
+            if isinstance(height, (int, float)) and float(height) > 0
+        ]
+        prefix_height = statistics.median(prefix_heights) if prefix_heights else max(0.1, prefix_bbox[3] - prefix_bbox[1])
+        angle = int(prefix.get("angle", 0) or 0) % 360
+        local_page_width = page_size[1] if angle in {90, 270} else page_size[0]
+        matches: list[tuple[float, int]] = []
+        for host_index, host in enumerate(blocks):
+            host_rows = host.get("_local_line_bboxes")
+            if (
+                host_index == prefix_index
+                or host_index in consumed
+                or host.get("type") != "text"
+                or int(host.get("angle", 0) or 0) % 360 != angle
+                or not isinstance(host_rows, list)
+                or not host_rows
+            ):
+                continue
+            host_bbox = host_rows[0]
+            host_width = host_bbox[2] - host_bbox[0]
+            horizontal_gap = host_bbox[0] - prefix_bbox[2]
+            if (
+                host_bbox[0] < prefix_bbox[2]
+                or horizontal_gap > 1.25 * prefix_height
+                or host_width < 0.15 * local_page_width
+                or _bbox_axis_overlap_ratio(
+                    prefix_bbox,
+                    host_bbox,
+                    axis="y",
+                )
+                < 0.5
+            ):
+                continue
+            matches.append((horizontal_gap, host_index))
+        if not matches:
+            continue
+        _gap, host_index = min(matches)
+        replacement_index = min(prefix_index, host_index)
+        replacement = _merge_internal_text_block_group(
+            blocks,
+            [prefix_index, host_index],
+            preserve_visual_spaces=True,
+        )
+        replacement["type"] = "text"
+        replacements[replacement_index] = replacement
+        consumed.update({prefix_index, host_index})
+    return [
+        replacements.get(index, block) for index, block in enumerate(blocks) if index not in consumed or index in replacements
+    ]
 
 
 def _blocks_share_boundary_visual_row(
@@ -1257,6 +1343,115 @@ def _merge_inline_math_fragment_text_blocks(
     output = _merge_hostless_inline_math_fragment_blocks(output, page_size)
     output = _merge_residual_narrow_math_text_blocks(output, page_size)
     return _merge_inline_math_paragraph_continuations(output, page_size)
+
+
+def _merge_paragraph_formula_context_blocks(
+    blocks: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """把误似行间公式的复杂行内分式与同栏前后正文恢复成一个块。"""
+
+    terminal_re = re.compile(
+        r"[.!?。！？][\]\)}）】》”’'\"]*$",
+    )
+    consumed: set[int] = set()
+    replacements: dict[int, dict[str, Any]] = {}
+    seed_indices = [
+        index
+        for index, block in enumerate(blocks)
+        if block.get("type") == "text" and block.get(_PARAGRAPH_FORMULA_CONTEXT_MARKER) is True
+    ]
+    for seed_index in seed_indices:
+        if seed_index in consumed:
+            continue
+        group = {seed_index}
+        changed = True
+        while changed:
+            changed = False
+            for candidate_index, candidate in enumerate(blocks):
+                if candidate_index in group or candidate_index in consumed or candidate.get("type") != "text":
+                    continue
+                for member_index in group:
+                    member = blocks[member_index]
+                    if int(candidate.get("angle", 0) or 0) % 360 != int(member.get("angle", 0) or 0) % 360:
+                        continue
+                    pair_heights = [
+                        float(height)
+                        for block in (candidate, member)
+                        for height in block.get("_line_heights", [])
+                        if isinstance(height, (int, float)) and float(height) > 0
+                    ]
+                    if not pair_heights:
+                        continue
+                    pair_height = statistics.median(pair_heights)
+                    if not _components_share_lane_role(
+                        candidate,
+                        member,
+                        pair_height,
+                    ):
+                        continue
+                    candidate_bbox = candidate["bbox"]
+                    member_bbox = member["bbox"]
+                    vertical_gap = max(
+                        candidate_bbox[1] - member_bbox[3],
+                        member_bbox[1] - candidate_bbox[3],
+                        0.0,
+                    )
+                    if vertical_gap > 1.5 * pair_height:
+                        continue
+                    candidate_below = candidate_bbox[1] >= member_bbox[3]
+                    member_below = member_bbox[1] >= candidate_bbox[3]
+                    if candidate_below and (
+                        candidate.get("_hard_break_before") is True
+                        or terminal_re.search(str(member.get("content") or "").rstrip()) is not None
+                    ):
+                        continue
+                    if member_below and (
+                        member.get("_hard_break_before") is True
+                        or terminal_re.search(str(candidate.get("content") or "").rstrip()) is not None
+                    ):
+                        continue
+                    group.add(candidate_index)
+                    changed = True
+                    break
+                if changed:
+                    break
+        if len(group) < 2:
+            continue
+        ordered_group = sorted(group)
+        replacement_index = min(ordered_group)
+        merged = _merge_internal_text_block_group(
+            blocks,
+            ordered_group,
+        )
+        local_rows = [
+            bbox
+            for bbox in merged.get("_local_line_bboxes", [])
+            if isinstance(bbox, (list, tuple))
+            and len(bbox) == 4
+        ]
+        maximum_width = max(
+            (bbox[2] - bbox[0] for bbox in local_rows),
+            default=0.0,
+        )
+        body_rows = [
+            bbox
+            for bbox in local_rows
+            if bbox[2] - bbox[0] >= 0.75 * maximum_width
+        ]
+        if len(body_rows) >= 2:
+            # 复杂分式可能比正文左缘多探出少量 glyph；公开框按重复满行边界稳定收口。
+            merged_bbox = merged["bbox"]
+            merged["bbox"] = (
+                min(bbox[0] for bbox in body_rows),
+                merged_bbox[1],
+                max(bbox[2] for bbox in body_rows),
+                merged_bbox[3],
+            )
+        replacements[replacement_index] = merged
+        consumed.update(ordered_group)
+    return [
+        replacements.get(index, block) for index, block in enumerate(blocks) if index not in consumed or index in replacements
+    ]
 
 
 def _merge_residual_narrow_math_text_blocks(
@@ -2205,6 +2400,9 @@ def _merge_internal_text_block_group(
     merged["_inline_math_regions"] = [
         region for index in ordered_indices for region in blocks[index].get("_inline_math_regions", [])
     ]
+    merged[_PARAGRAPH_FORMULA_CONTEXT_MARKER] = any(
+        blocks[index].get(_PARAGRAPH_FORMULA_CONTEXT_MARKER) is True for index in ordered_indices
+    )
     return merged
 
 

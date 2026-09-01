@@ -225,6 +225,104 @@
         {"page_index": 2, "type": "table", "fragment": "续表"},
         {"page_index": 7, "type": "text", "fragment": "acc(Bm)="}
       ]
+    },
+    {
+      "path": "demo/pdfs/中文论文3.pdf",
+      "sha256": "a9edebcdff03ea03d80f61cfe0b5a875ea2f7122beacaf8177d59327eeab8154",
+      "type_counts": {
+        "caption": 6,
+        "doc_title": 1,
+        "header": 12,
+        "image": 3,
+        "page_footnote": 4,
+        "page_number": 3,
+        "paragraph_title": 6,
+        "text": 59
+      },
+      "exact_typed_text": [
+        {"page_index": 0, "type": "header", "text": "DOI:10.16270/j.cnki.slgc.2013.03.029"},
+        {"page_index": 0, "type": "header", "text": "FORESTENGINEERING"},
+        {"page_index": 0, "type": "paragraph_title", "text": "1APS与ERP简介"},
+        {"page_index": 0, "type": "paragraph_title", "text": "1.1ERP系统的弱点"},
+        {"page_index": 2, "type": "caption", "text": "图1高级计划与排程系统业务流程"},
+        {"page_index": 2, "type": "caption", "text": "Fig.1BusinessprocessofAPS"},
+        {"page_index": 2, "type": "caption", "text": "图2APS结构模块示意图"},
+        {"page_index": 2, "type": "caption", "text": "Fig.2SchematicdiagramofstructuremoduleinAPS"},
+        {"page_index": 3, "type": "caption", "text": "图3APS与ERP系统集成计划管理流程"},
+        {"page_index": 3, "type": "caption", "text": "Fig.3ManagementprocessofintegratedProjectbetweenAPSandERP"},
+        {"page_index": 3, "type": "paragraph_title", "text": "【参考文献】"}
+      ],
+      "different_block_groups": [
+        {
+          "page_index": 0,
+          "fragments": ["关键词:高级计划与排程", "中图分类号:F406.2", "文献标识码:A", "文章编号:1001"]
+        },
+        {
+          "page_index": 0,
+          "fragments": ["1APS与ERP简介", "1.1ERP系统的弱点"]
+        }
+      ]
+    },
+    {
+      "path": "demo/pdfs/中文论文4.pdf",
+      "sha256": "697f37feb86cb49c905ceac0074e2569969e25043c15768cf6c0a86973fdc899",
+      "normalize_nfkc": true,
+      "type_counts": {
+        "caption": 10,
+        "doc_title": 2,
+        "header": 19,
+        "image": 5,
+        "page_footnote": 1,
+        "paragraph_title": 13,
+        "table": 5,
+        "text": 46
+      },
+      "exact_typed_text": [
+        {"page_index": 0, "type": "paragraph_title", "text": "引言"},
+        {"page_index": 0, "type": "paragraph_title", "text": "1资料与分析方法"},
+        {"page_index": 0, "type": "text", "text": "http：／／www．qxkj．net．cn气象科技"},
+        {"page_index": 1, "type": "caption", "text": "表1逆温强度分级"},
+        {"page_index": 1, "type": "caption", "text": "图12005—2009年逆温发生频率年变化"},
+        {"page_index": 1, "type": "paragraph_title", "text": "2重庆市区低空逆温时空分布特征"},
+        {"page_index": 1, "type": "paragraph_title", "text": "2．1低空逆温出现频率"},
+        {"page_index": 1, "type": "paragraph_title", "text": "2．2逆温厚度分布特征"},
+        {"page_index": 1, "type": "paragraph_title", "text": "2．2．1接地逆温厚度分布特征"},
+        {"page_index": 2, "type": "paragraph_title", "text": "2．2．2悬浮逆温厚度分布特征"},
+        {"page_index": 2, "type": "caption", "text": "图22005—2009年逆温厚度年变化"},
+        {"page_index": 2, "type": "caption", "text": "表22005—2009年悬浮逆温分布特征"},
+        {"page_index": 2, "type": "caption", "text": "图32005—2009年悬浮逆温层底高和顶高的年变化"},
+        {"page_index": 2, "type": "caption", "text": "图42005—2009年悬浮逆温高度分布"},
+        {"page_index": 3, "type": "caption", "text": "表3逆温强度的次数和频率"},
+        {"page_index": 3, "type": "caption", "text": "图52005—2009年逆温强度年变化"},
+        {"page_index": 3, "type": "caption", "text": "表407：00多层逆温次数分布"},
+        {"page_index": 3, "type": "paragraph_title", "text": "2．5逆温垂直结构特征分析"},
+        {"page_index": 3, "type": "paragraph_title", "text": "3结论与讨论"},
+        {"page_index": 4, "type": "caption", "text": "表519：00多层逆温次数分布"},
+        {"page_index": 4, "type": "doc_title", "text": "CharacteristicAnalysisofTemperatureInversioninLower－LevelAtmosphereoverChongqingBasedonL－BandRadarData"}
+      ],
+      "same_block_groups": [
+        {"page_index": 0, "type": "text", "fragments": ["（1南京信息工程大学", "重庆401147）"]},
+        {"page_index": 1, "type": "text", "fragments": ["差：ΔT＝T2－T1", "逆温强度定义为", "Ｉ＝ΔＴ×１００％", "100％。逆温日数统计算法"]},
+        {"page_index": 1, "type": "text", "fragments": ["07：00悬浮逆温频次", "19：00悬浮逆温年平均值"]},
+        {"page_index": 1, "type": "text", "fragments": ["逆温层厚度反映", "也只有134m。"]},
+        {"page_index": 2, "type": "text", "fragments": ["悬浮逆温是悬浮在离地面", "的厚度即为顶高减底高的差值"]},
+        {"page_index": 4, "type": "text", "fragments": ["（3）重庆市区低空逆温强度不大", "没有大的季节变化。"]},
+        {"page_index": 4, "type": "text", "fragments": ["（4）重庆市区低空逆温厚度薄且层次多", "待今后开展更深入的分析。"]},
+        {"page_index": 4, "type": "text", "fragments": ["［2］姜大膀", "200l，37（4）：133－139．"]},
+        {"page_index": 4, "type": "text", "fragments": ["［3］刘焕彬", "象，2005，25（1）：27－28．"]},
+        {"page_index": 4, "type": "text", "fragments": ["［4］刘增强", "分析［J］．干旱区地理"]},
+        {"page_index": 4, "type": "text", "fragments": ["［5］戴安国", "14（3）：58－62．"]},
+        {"page_index": 4, "type": "text", "fragments": ["［6］马力", "105－107．"]},
+        {"page_index": 4, "type": "text", "fragments": ["［7］胡春梅", "665－669．"]},
+        {"page_index": 4, "type": "text", "fragments": ["［8］王荣基", "106－109．"]},
+        {"page_index": 4, "type": "doc_title", "fragments": ["CharacteristicAnalysisofTemperatureInversioninLower－Level", "AtmosphereoverChongqingBasedonL－BandRadarData"]}
+      ],
+      "forbidden_type_fragments": [
+        {"page_index": 1, "type": "equation", "fragment": "Ｉ＝ΔＴ"},
+        {"page_index": 1, "type": "paragraph_title", "fragment": "也只有134m。"},
+        {"page_index": 2, "type": "table", "fragment": "2．2．2悬浮逆温厚度"},
+        {"page_index": 4, "type": "paragraph_title", "fragment": "2ChongqingMeteorologicalService"}
+      ]
     }
   ]
 }

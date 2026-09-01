@@ -52,6 +52,31 @@ def _path_info(
     )
 
 
+def test_vertical_raster_tiles_merge_before_area_filter() -> None:
+    """验证同宽纵向切片先合并成完整图片，再应用单图面积门槛。"""
+
+    tiles = [(20.0, float(top), 180.0, float(top + 4)) for top in range(20, 60, 4)]
+
+    assert graphics._merge_vertical_raster_tiles(
+        tiles,
+        (200.0, 200.0),
+    ) == [(20.0, 20.0, 180.0, 60.0)]
+
+
+def test_full_page_raster_tiles_stay_separate() -> None:
+    """验证整页扫描图切片不合成单个容器，保留既有逐片输出。"""
+
+    tiles = [(0.0, float(top), 200.0, float(top + 10)) for top in range(0, 200, 10)]
+
+    assert (
+        graphics._merge_vertical_raster_tiles(
+            tiles,
+            (200.0, 200.0),
+        )
+        == tiles
+    )
+
+
 def _parallel_rule_split_fixture(
     *,
     cross_gutter: bool = False,
@@ -151,9 +176,7 @@ def test_parallel_graphic_rule_rows_require_all_spatial_evidence(
 ) -> None:
     """验证横线、图形、栏沟或表格排除任一不成立时都不拆分。"""
 
-    line, rules, images = _parallel_rule_split_fixture(
-        cross_gutter=missing_evidence == "clear_gutter"
-    )
+    line, rules, images = _parallel_rule_split_fixture(cross_gutter=missing_evidence == "clear_gutter")
     table_bboxes: list[tuple[float, float, float, float]] = []
     if missing_evidence == "right_rule":
         rules = rules[:1]
@@ -323,16 +346,22 @@ def test_strong_graphic_core_binds_only_to_unique_containing_lane() -> None:
         models._TextLane(left=305.0, right=545.0),
     ]
 
-    assert graphics._strong_graphic_lane_index(
-        (73.0, 516.0, 281.0, 655.0),
-        lanes,
-        10.0,
-    ) == 0
-    assert graphics._strong_graphic_lane_index(
-        (73.0, 516.0, 520.0, 655.0),
-        lanes,
-        10.0,
-    ) == -1
+    assert (
+        graphics._strong_graphic_lane_index(
+            (73.0, 516.0, 281.0, 655.0),
+            lanes,
+            10.0,
+        )
+        == 0
+    )
+    assert (
+        graphics._strong_graphic_lane_index(
+            (73.0, 516.0, 520.0, 655.0),
+            lanes,
+            10.0,
+        )
+        == -1
+    )
 
 
 def test_axis_pair_requires_internal_two_dimensional_complex_path() -> None:
@@ -353,9 +382,7 @@ def test_axis_pair_requires_internal_two_dimensional_complex_path() -> None:
         ],
     )
 
-    assert graphics._detect_strong_graphic_bboxes(source) == [
-        (20.0, 20.0, 80.0, 70.0)
-    ]
+    assert graphics._detect_strong_graphic_bboxes(source) == [(20.0, 20.0, 80.0, 70.0)]
 
     source.path_infos[2] = _path_info(
         (25.0, 30.0, 75.0, 31.0),
@@ -434,9 +461,7 @@ def test_form_image_bbox_tightens_to_supported_internal_evidence() -> None:
         ],
     )
 
-    assert graphics._select_form_image_bboxes(source) == [
-        (20.0, 25.0, 85.0, 81.0)
-    ]
+    assert graphics._select_form_image_bboxes(source) == [(20.0, 25.0, 85.0, 81.0)]
 
 
 def test_graphic_label_absorbs_short_axis_title_but_rejects_long_caption() -> None:

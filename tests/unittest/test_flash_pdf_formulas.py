@@ -38,6 +38,55 @@ def _formula_member(
     )
 
 
+def test_formula_component_rejects_left_aligned_prose_lead() -> None:
+    """验证同栏左缘带正文引导语的复杂行内分式不升级为行间公式。"""
+
+    prose = _text_line(
+        "（℃/hm），用 I 表示：I=ΔT",
+        (0.0, 20.0, 55.0, 30.0),
+        0,
+        effective_height=10.0,
+    )
+    numerator = _text_line(
+        "×100%",
+        (56.0, 20.0, 78.0, 30.0),
+        1,
+        effective_height=10.0,
+    )
+    denominator = _text_line(
+        "ΔH",
+        (45.0, 30.0, 55.0, 38.0),
+        2,
+        effective_height=8.0,
+    )
+    lane = models._TextLane(
+        left=0.0,
+        right=100.0,
+        lines=[
+            (prose, prose.bbox),
+            (numerator, numerator.bbox),
+            (denominator, denominator.bbox),
+        ],
+    )
+
+    assert formulas._formula_component_has_left_prose(
+        lane.lines,
+        lane,
+        10.0,
+    )
+
+    formula = replace(
+        prose,
+        text="I=ΔT",
+        bbox=(20.0, 20.0, 55.0, 30.0),
+    )
+    assert not formulas._formula_component_has_left_prose(
+        [(formula, formula.bbox), (denominator, denominator.bbox)],
+        lane,
+        10.0,
+    )
+
+
 def _vector_path(
     bbox: tuple[float, float, float, float],
     source_index: int,
@@ -209,10 +258,7 @@ def test_vector_formula_paths_and_detached_path_number_form_one_empty_equation()
     """验证矢量主体与远距栏右缘路径编号形成一个空内容公式。"""
 
     body_paths = _vector_formula_body_paths()
-    number_paths = [
-        _vector_path((91.0 + index * 3.0, 51.0, 93.0 + index * 3.0, 60.0), 10 + index)
-        for index in range(3)
-    ]
+    number_paths = [_vector_path((91.0 + index * 3.0, 51.0, 93.0 + index * 3.0, 60.0), 10 + index) for index in range(3)]
     blocks, claimed = formulas._build_vector_formula_blocks(
         _vector_formula_source(*body_paths, *number_paths),
         [],
@@ -249,13 +295,9 @@ def test_vector_formula_claims_text_number_but_keeps_content_empty() -> None:
 def test_vector_formula_rejects_unmatched_number_rules_strokes_forms_and_inline_paths() -> None:
     """验证无主体编号、细规则、描边、Form 图标和正文同行路径均不会误报。"""
 
-    unmatched_number = [
-        _vector_path((91.0 + index * 3.0, 51.0, 93.0 + index * 3.0, 60.0), index)
-        for index in range(3)
-    ]
+    unmatched_number = [_vector_path((91.0 + index * 3.0, 51.0, 93.0 + index * 3.0, 60.0), index) for index in range(3)]
     rules = [
-        _vector_path((10.0 + index * 12.0, 70.0, 20.0 + index * 12.0, 70.5), 10 + index, segment_count=5)
-        for index in range(6)
+        _vector_path((10.0 + index * 12.0, 70.0, 20.0 + index * 12.0, 70.5), 10 + index, segment_count=5) for index in range(6)
     ]
     excluded = [
         _vector_path((20.0, 50.0, 24.0, 62.0), 30, stroke_visible=True),

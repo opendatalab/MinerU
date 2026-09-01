@@ -59,6 +59,37 @@ def test_heading_like_content_with_body_layout_remains_text() -> None:
     assert lines[2].semantic_type is None
 
 
+def test_explicit_section_number_rejects_century_and_decimal_sentence() -> None:
+    """验证通用章节编号补标标题，同时排除世纪年代和小数正文。"""
+
+    body_font = ("Body", 0)
+    lines = [
+        _text_line("20 century body", (0.0, 10.0, 80.0, 20.0), 0, font_signature=body_font),
+        _text_line("ordinary body one", (0.0, 22.0, 100.0, 32.0), 1, font_signature=body_font),
+        _text_line("2 Section heading", (0.0, 45.0, 55.0, 55.0), 2, font_signature=body_font),
+        _text_line("ordinary body two", (0.0, 62.0, 100.0, 72.0), 3, font_signature=body_font),
+        _text_line("ordinary body three", (0.0, 74.0, 100.0, 84.0), 4, font_signature=body_font),
+        _text_line("0.26 value, continues", (0.0, 96.0, 100.0, 106.0), 5, font_signature=body_font),
+        _text_line("ordinary body four", (0.0, 108.0, 100.0, 118.0), 6, font_signature=body_font),
+    ]
+    profile = titles._DocumentBodyProfile(
+        body_height=10.0,
+        body_weight=400.0,
+        regular_fonts=frozenset({body_font}),
+    )
+
+    titles._classify_explicit_section_titles(
+        lines,
+        (120.0, 150.0),
+        container_bboxes=[],
+        document_body_profile=profile,
+    )
+
+    assert lines[0].semantic_type is None
+    assert lines[2].semantic_type == "paragraph_title"
+    assert lines[5].semantic_type is None
+
+
 def test_document_regular_fonts_only_use_body_height_band() -> None:
     """验证跨页重复的大字号标题字体不会进入全文常规正文字体集合。"""
 
@@ -256,11 +287,7 @@ def test_body_height_section_titles_mark_only_repeated_short_anchors() -> None:
         "paragraph_title",
         "paragraph_title",
     ]
-    assert all(
-        line.semantic_type is None
-        for index, line in enumerate(lines)
-        if index not in {0, 4}
-    )
+    assert all(line.semantic_type is None for index, line in enumerate(lines) if index not in {0, 4})
 
 
 def test_physical_title_gap_ignores_disjoint_column_and_keeps_overlapping_row() -> None:
@@ -324,9 +351,7 @@ def test_grid_title_suppression_requires_two_distinct_parallel_bands() -> None:
             source_index,
         )
         source_index += 1
-        lane.lines.extend(
-            [(second_opener, second_opener.bbox), (second_body, second_body.bbox)]
-        )
+        lane.lines.extend([(second_opener, second_opener.bbox), (second_body, second_body.bbox)])
 
     suppressions = titles._find_repeated_grid_title_suppressions(lanes, 10.0)
 

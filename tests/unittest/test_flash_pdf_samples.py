@@ -458,6 +458,36 @@ def test_explicit_pdf_fixtures_keep_expected_txt_block_inventory() -> None:
                 }
             ),
         ),
+        "中文论文3.pdf": (
+            4,
+            Counter(
+                {
+                    "caption": 6,
+                    "doc_title": 1,
+                    "header": 12,
+                    "image": 3,
+                    "page_footnote": 4,
+                    "page_number": 3,
+                    "paragraph_title": 6,
+                    "text": 59,
+                }
+            ),
+        ),
+        "中文论文4.pdf": (
+            5,
+            Counter(
+                {
+                    "caption": 10,
+                    "doc_title": 2,
+                    "header": 19,
+                    "image": 5,
+                    "page_footnote": 1,
+                    "paragraph_title": 13,
+                    "table": 5,
+                    "text": 46,
+                }
+            ),
+        ),
         _FLASH_SYNTHETIC_PDF_NAME: (
             8,
             Counter(

@@ -46,7 +46,10 @@ class _LineItem:
     restored_inline_cluster: bool = False
     compact_formula_cluster: bool = False
     formula_candidate_only: bool = False
+    paragraph_formula_context: bool = False
     structural_title: bool = False
+    explicit_section_title: bool = False
+    title_suppressed: bool = False
     style_scale_repaired: bool = False
     inline_math_regions: list[BBox] = field(default_factory=list)
 

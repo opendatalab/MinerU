@@ -133,6 +133,39 @@ def test_prepare_page_uses_only_table_body_bbox_and_keeps_annotations_fixed(
     ]
 
 
+def test_table_detection_excludes_confirmed_masthead_separator() -> None:
+    """验证页首通栏分隔线不与下方真表格边界组成巨型候选。"""
+
+    source = models._PageSource(
+        page_size=(200.0, 300.0),
+        lines=[
+            _text_line("left masthead", (10.0, 10.0, 60.0, 20.0), 0),
+            _text_line("center masthead", (70.0, 10.0, 130.0, 20.0), 1),
+            _text_line("body", (10.0, 50.0, 190.0, 60.0), 2),
+        ],
+        chars=[],
+        drawing_lines=[
+            models._AxisLine(
+                bbox=(10.0, 30.0, 190.0, 31.0),
+                width=1.0,
+                orientation="horizontal",
+            ),
+            models._AxisLine(
+                bbox=(10.0, 100.0, 190.0, 101.0),
+                width=1.0,
+                orientation="horizontal",
+            ),
+        ],
+    )
+
+    retained = pipeline._table_detection_drawing_lines(
+        source,
+        {(10.0, 30.0, 190.0, 31.0)},
+    )
+
+    assert [line.bbox for line in retained] == [(10.0, 100.0, 190.0, 101.0)]
+
+
 def test_repeated_large_image_requires_three_distinct_pages() -> None:
     """验证同页重复只计一次，面积恰好 8% 且跨三页时才命中水印。"""
 

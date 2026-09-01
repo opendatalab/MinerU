@@ -4,7 +4,9 @@
 
 from __future__ import annotations
 
+import re
 import statistics
+import unicodedata
 
 
 from ....types import BBox
@@ -230,14 +232,10 @@ def _overlapping_inline_cluster_pair_is_connected(
     )
     if (
         local_page_width is not None
-        and (
-            first_line.style_scale_repaired
-            or second_line.style_scale_repaired
-        )
+        and (first_line.style_scale_repaired or second_line.style_scale_repaired)
         and left_bbox[2] <= 0.5 * local_page_width
         and right_bbox[0] >= 0.5 * local_page_width
-        and right_bbox[0] - left_bbox[2]
-        >= 0.02 * local_page_width
+        and right_bbox[0] - left_bbox[2] >= 0.02 * local_page_width
     ):
         return False
 
@@ -377,10 +375,7 @@ def _merge_overlapping_inline_cluster(
         restored_inline_cluster=True,
         compact_formula_cluster=compact_formula_cluster,
         formula_candidate_only=all(line.formula_candidate_only for line in ordered_members),
-        style_scale_repaired=any(
-            line.style_scale_repaired
-            for line in ordered_members
-        ),
+        style_scale_repaired=any(line.style_scale_repaired for line in ordered_members),
         inline_math_regions=[
             *(region for line in ordered_members for region in line.inline_math_regions),
             *detected_regions,
@@ -658,10 +653,7 @@ def _merge_same_baseline_group(
         ),
         run_index=min(member.run_index for member in members),
         effective_height=statistics.median(member.effective_height for member in members),
-        em_height=statistics.median(
-            member.em_height or member.effective_height
-            for member in members
-        ),
+        em_height=statistics.median(member.em_height or member.effective_height for member in members),
         font_signature=members[0].font_signature,
         font_coverage=min(member.font_coverage for member in members),
         dominant_font_weight=statistics.median(
@@ -681,10 +673,7 @@ def _merge_same_baseline_group(
         restored_inline_cluster=any(member.restored_inline_cluster for member in members),
         compact_formula_cluster=any(member.compact_formula_cluster for member in members),
         formula_candidate_only=all(member.formula_candidate_only for member in members),
-        style_scale_repaired=any(
-            member.style_scale_repaired
-            for member in members
-        ),
+        style_scale_repaired=any(member.style_scale_repaired for member in members),
         inline_math_regions=[region for member in members for region in member.inline_math_regions],
     )
     if merged.chars:
@@ -844,6 +833,98 @@ def _merge_title_resolved_visual_rows(
             line.angle,
             _rotate_bbox_to_upright(line.bbox, page_size, line.angle)[1],
             _rotate_bbox_to_upright(line.bbox, page_size, line.angle)[0],
+            line.source_index,
+        )
+    )
+    return _merge_numbered_title_fragments(
+        output,
+        page_size,
+    )
+
+
+def _merge_numbered_title_fragments(
+    lines: list[_LineItem],
+    page_size: tuple[float, float],
+) -> list[_LineItem]:
+    """合并 PDF 字体分割导致的章节编号与同基线标题文字。"""
+
+    marker_re = re.compile(
+        r"^\d+(?:\s*\.\s*\d+)*\.?$",
+    )
+    geometry = [
+        (
+            line,
+            _rotate_bbox_to_upright(
+                line.bbox,
+                page_size,
+                line.angle,
+            ),
+        )
+        for line in lines
+        if line.semantic_type == "paragraph_title"
+    ]
+    consumed: set[int] = set()
+    merged: list[_LineItem] = []
+    for marker, marker_bbox in geometry:
+        if marker.source_index in consumed:
+            continue
+        normalized = re.sub(
+            r"\s+",
+            " ",
+            unicodedata.normalize("NFKC", marker.text),
+        ).strip()
+        if marker_re.match(normalized) is None:
+            continue
+        marker_height = _line_effective_height(
+            marker,
+            marker_bbox,
+        )
+        companions = [
+            (candidate, candidate_bbox)
+            for candidate, candidate_bbox in geometry
+            if candidate is not marker
+            and candidate.source_index not in consumed
+            and candidate.angle == marker.angle
+            and candidate_bbox[0] >= marker_bbox[2]
+            and candidate_bbox[0] - marker_bbox[2] <= 4.0 * marker_height
+            and _bbox_axis_overlap_ratio(
+                marker_bbox,
+                candidate_bbox,
+                axis="y",
+            )
+            >= 0.5
+        ]
+        if not companions:
+            continue
+        companion, _companion_bbox = min(
+            companions,
+            key=lambda item: (
+                item[1][0] - marker_bbox[2],
+                item[1][1],
+            ),
+        )
+        merged.append(
+            _merge_dense_split_visual_row(
+                [marker, companion],
+                page_size,
+            )
+        )
+        consumed.update({marker.source_index, companion.source_index})
+    output = [line for line in lines if line.source_index not in consumed]
+    output.extend(merged)
+    output.sort(
+        key=lambda line: (
+            line.angle,
+            _rotate_bbox_to_upright(
+                line.bbox,
+                page_size,
+                line.angle,
+            )[1],
+            _rotate_bbox_to_upright(
+                line.bbox,
+                page_size,
+                line.angle,
+            )[0],
             line.source_index,
         )
     )
@@ -1022,10 +1103,7 @@ def _merge_dense_split_visual_row(
         visual_row_id=ordered_members[0].visual_row_id,
         run_index=0,
         effective_height=statistics.median(_line_effective_height(member, bbox) for member, bbox in ordered_geometry),
-        em_height=statistics.median(
-            _line_effective_height(member, bbox)
-            for member, bbox in ordered_geometry
-        ),
+        em_height=statistics.median(_line_effective_height(member, bbox) for member, bbox in ordered_geometry),
         font_signature=ordered_members[0].font_signature,
         font_coverage=min(member.font_coverage for member in ordered_members),
         dominant_font_weight=statistics.median(
@@ -1045,10 +1123,7 @@ def _merge_dense_split_visual_row(
         restored_inline_cluster=any(member.restored_inline_cluster for member in ordered_members),
         compact_formula_cluster=any(member.compact_formula_cluster for member in ordered_members),
         formula_candidate_only=all(member.formula_candidate_only for member in ordered_members),
-        style_scale_repaired=any(
-            member.style_scale_repaired
-            for member in ordered_members
-        ),
+        style_scale_repaired=any(member.style_scale_repaired for member in ordered_members),
         inline_math_regions=[region for member in ordered_members for region in member.inline_math_regions],
     )
     if merged.chars:

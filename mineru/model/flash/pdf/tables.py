@@ -163,10 +163,7 @@ def _detect_table_candidates(
         ]
         local_closed_grid_excluded_bboxes = [
             *local_excluded_bboxes,
-            *[
-                _rotate_bbox_to_upright(bbox, source.page_size, angle)
-                for bbox in source.form_bboxes
-            ],
+            *[_rotate_bbox_to_upright(bbox, source.page_size, angle) for bbox in source.form_bboxes],
         ]
         rule_candidates.extend(
             _build_rule_table_candidates(
@@ -194,10 +191,7 @@ def _detect_table_candidates(
     merged_rule_candidates = [
         candidate
         for candidate in _merge_table_candidates(rule_candidates)
-        if not any(
-            _bbox_overlap_in_smaller(candidate.bbox, filled_bbox) >= 0.2
-            for filled_bbox in filled_grid_bboxes
-        )
+        if not any(_bbox_overlap_in_smaller(candidate.bbox, filled_bbox) >= 0.2 for filled_bbox in filled_grid_bboxes)
     ]
     candidates = [*filled_grid_candidates, *merged_rule_candidates]
     _externalize_table_continuation_captions(
@@ -357,26 +351,17 @@ def _detect_filled_grid_table_candidates(
         outer_height = outer_bbox[3] - outer_bbox[1]
         outer_area = _bbox_area(outer_bbox)
         if not (
-            _FILLED_GRID_MIN_PAGE_AREA_RATIO
-            <= outer_area / page_area
-            <= _FILLED_GRID_MAX_PAGE_AREA_RATIO
+            _FILLED_GRID_MIN_PAGE_AREA_RATIO <= outer_area / page_area <= _FILLED_GRID_MAX_PAGE_AREA_RATIO
             and outer_width >= _FILLED_GRID_MIN_PAGE_WIDTH_RATIO * page_width
             and outer_height >= _FILLED_GRID_MIN_PAGE_HEIGHT_RATIO * page_height
         ):
             continue
-        if any(
-            _bbox_overlap_in_smaller(outer_bbox, excluded_bbox) >= 0.5
-            for excluded_bbox in excluded_bboxes
-        ):
+        if any(_bbox_overlap_in_smaller(outer_bbox, excluded_bbox) >= 0.5 for excluded_bbox in excluded_bboxes):
             continue
 
         cells = _select_maximal_filled_grid_cells(rectangles, outer_bbox)
         bands = _group_filled_grid_cells_into_bands(cells, outer_bbox)
-        accepted_bands = [
-            band
-            for band in bands
-            if _filled_grid_band_covers_outer_width(band, outer_bbox)
-        ]
+        accepted_bands = [band for band in bands if _filled_grid_band_covers_outer_width(band, outer_bbox)]
         if len(accepted_bands) < 4:
             continue
         accepted_bands.sort(
@@ -385,17 +370,12 @@ def _detect_filled_grid_table_candidates(
                 min(cell[0] for cell in band),
             )
         )
-        covered_height = sum(
-            max(cell[3] for cell in band) - min(cell[1] for cell in band)
-            for band in accepted_bands
-        )
+        covered_height = sum(max(cell[3] for cell in band) - min(cell[1] for cell in band) for band in accepted_bands)
         vertical_coverage = covered_height / outer_height
         if vertical_coverage < 0.75:
             continue
         if any(
-            min(cell[1] for cell in next_band)
-            - max(cell[3] for cell in current_band)
-            > 0.05 * outer_height
+            min(cell[1] for cell in next_band) - max(cell[3] for cell in current_band) > 0.05 * outer_height
             for current_band, next_band in zip(
                 accepted_bands,
                 accepted_bands[1:],
@@ -425,10 +405,7 @@ def _detect_filled_grid_table_candidates(
         key=lambda item: (item[1], item[2], item[3]),
         reverse=True,
     ):
-        if any(
-            _bbox_overlap_in_smaller(candidate.bbox, accepted.bbox) >= 0.9
-            for accepted in output
-        ):
+        if any(_bbox_overlap_in_smaller(candidate.bbox, accepted.bbox) >= 0.9 for accepted in output):
             continue
         output.append(candidate)
     return sorted(output, key=lambda candidate: (candidate.bbox[1], candidate.bbox[0]))
@@ -474,18 +451,11 @@ def _select_maximal_filled_grid_cells(
             )
             and _bbox_area(other) >= 1.08 * _bbox_area(rectangle)
             and _bbox_area(other) <= 0.8 * outer_area
-            and abs(
-                (rectangle[2] - rectangle[0])
-                - (other[2] - other[0])
-            )
-            <= 0.01 * outer_width
+            and abs((rectangle[2] - rectangle[0]) - (other[2] - other[0])) <= 0.01 * outer_width
             for other in nested_rectangles
         ):
             continue
-        if any(
-            _bbox_overlap_in_smaller(rectangle, accepted) >= 0.95
-            for accepted in output
-        ):
+        if any(_bbox_overlap_in_smaller(rectangle, accepted) >= 0.95 for accepted in output):
             continue
         output.append(rectangle)
     return sorted(output, key=lambda bbox: (bbox[1], bbox[0], bbox[3], bbox[2]))
@@ -517,12 +487,7 @@ def _group_filled_grid_cells_into_bands(
     bands: list[list[BBox]] = []
     for cell in sorted(cells, key=lambda bbox: (bbox[1], bbox[0], bbox[3])):
         target = next(
-            (
-                band
-                for band in bands
-                if abs(cell[1] - band[0][1]) <= y_tolerance
-                and abs(cell[3] - band[0][3]) <= y_tolerance
-            ),
+            (band for band in bands if abs(cell[1] - band[0][1]) <= y_tolerance and abs(cell[3] - band[0][3]) <= y_tolerance),
             None,
         )
         if target is None:
@@ -556,10 +521,8 @@ def _filled_grid_band_covers_outer_width(
     return (
         covered_width >= 0.9 * outer_width
         and maximum_gap <= 0.01 * outer_width
-        and abs(min(cell[0] for cell in band) - outer_bbox[0])
-        <= 0.02 * outer_width
-        and abs(max(cell[2] for cell in band) - outer_bbox[2])
-        <= 0.02 * outer_width
+        and abs(min(cell[0] for cell in band) - outer_bbox[0]) <= 0.02 * outer_width
+        and abs(max(cell[2] for cell in band) - outer_bbox[2]) <= 0.02 * outer_width
     )
 
 
@@ -669,16 +632,34 @@ def _build_rule_table_candidates(
                     rule_bbox,
                     excluded_bboxes,
                 )
-                if not _every_rule_interval_has_multi_cell_row(
-                    core_rows,
-                    interval_rules,
+                caption_line = _find_table_caption(
+                    lines,
+                    rule_bbox,
+                    page_size,
+                    angle,
                     median_height,
+                )
+                caption_anchored_compact_grid = (
+                    caption_line is not None
+                    and len(interval_rules) >= 3
+                    and rule_bbox[3] - rule_bbox[1] <= 0.15 * (page_size[0] if angle in {90, 270} else page_size[1])
+                )
+                if (
+                    not _every_rule_interval_has_multi_cell_row(
+                        core_rows,
+                        interval_rules,
+                        median_height,
+                    )
+                    and not caption_anchored_compact_grid
                 ):
                     continue
-                if not _rule_intervals_are_column_compatible(
-                    core_rows,
-                    interval_rules,
-                    median_height,
+                if (
+                    not _rule_intervals_are_column_compatible(
+                        core_rows,
+                        interval_rules,
+                        median_height,
+                    )
+                    and not caption_anchored_compact_grid
                 ):
                     continue
 
@@ -711,12 +692,6 @@ def _build_rule_table_candidates(
                         if len(dense_rows) == 2
                         else 0
                     )
-                    if len(dense_rows) < 3 and compact_grid_columns == 0:
-                        continue
-                    # 真表格的多单元行会在整个数据带内反复出现；少数图题、图例和
-                    # 坐标刻度偶然形成的多列行不能支撑一大片正文区域。
-                    if len(dense_rows) / len(row_segment) < 0.2:
-                        continue
                     stable_columns, column_coverage = _count_stable_columns(
                         dense_rows,
                         median_height,
@@ -724,6 +699,18 @@ def _build_rule_table_candidates(
                     if compact_grid_columns > 0:
                         # 两行样本容易把左右/中心锚点误算成不同稳定列，使用物理网格列数。
                         stable_columns = compact_grid_columns
+                    caption_supported_compact_rows = (
+                        caption_anchored_compact_grid
+                        and len(dense_rows) >= 2
+                        and stable_columns >= 3
+                        and column_coverage >= 0.5
+                    )
+                    if len(dense_rows) < 3 and compact_grid_columns == 0 and not caption_supported_compact_rows:
+                        continue
+                    # 真表格的多单元行会在整个数据带内反复出现；少数图题、图例和
+                    # 坐标刻度偶然形成的多列行不能支撑一大片正文区域。
+                    if len(dense_rows) / len(row_segment) < 0.2:
+                        continue
                     if stable_columns < 2 or column_coverage < 0.5:
                         continue
                     if _looks_like_page_column_prose(
@@ -769,13 +756,6 @@ def _build_rule_table_candidates(
                     continue
 
                 accepted_rows, dense_rows, stable_columns, _coverage = accepted
-                caption_line = _find_table_caption(
-                    lines,
-                    rule_bbox,
-                    page_size,
-                    angle,
-                    median_height,
-                )
                 candidate = _expand_rule_table_candidate(
                     boundary_rules,
                     accepted_rows,
@@ -786,12 +766,7 @@ def _build_rule_table_candidates(
                     median_height,
                     caption_line,
                 )
-                candidate.score = float(
-                    2
-                    + len(dense_rows)
-                    + stable_columns
-                    + min(fill_band_count, 8)
-                )
+                candidate.score = float(2 + len(dense_rows) + stable_columns + min(fill_band_count, 8))
                 candidates.append(candidate)
     return _expand_candidates_to_connected_rule_grids(
         candidates,
@@ -818,10 +793,7 @@ def _expand_candidates_to_connected_rule_grids(
     grid_bboxes = [
         grid_bbox
         for grid_bbox in _connected_rule_grid_bboxes(axis_lines, median_height)
-        if not any(
-            _bbox_overlap_in_smaller(grid_bbox, excluded_bbox) >= 0.5
-            for excluded_bbox in excluded_bboxes
-        )
+        if not any(_bbox_overlap_in_smaller(grid_bbox, excluded_bbox) >= 0.5 for excluded_bbox in excluded_bboxes)
     ]
     if not grid_bboxes:
         return candidates
@@ -852,8 +824,7 @@ def _expand_candidates_to_connected_rule_grids(
         grid_bbox = max(
             matches,
             key=lambda bbox: (
-                min(core_local_bbox[3], bbox[3])
-                - max(core_local_bbox[1], bbox[1]),
+                min(core_local_bbox[3], bbox[3]) - max(core_local_bbox[1], bbox[1]),
                 _bbox_area(bbox),
             ),
         )
@@ -902,10 +873,7 @@ def _build_closed_rule_grid_candidates(
     candidates: list[_TableCandidate] = []
     for component in _connected_rule_grid_components(axis_lines, median_height):
         grid_bbox = _bbox_union_many([rule.bbox for rule in component])
-        if any(
-            _bbox_overlap_in_smaller(grid_bbox, excluded_bbox) >= 0.5
-            for excluded_bbox in excluded_bboxes
-        ):
+        if any(_bbox_overlap_in_smaller(grid_bbox, excluded_bbox) >= 0.5 for excluded_bbox in excluded_bboxes):
             continue
         core_rows = _rows_inside_rule_interval(
             rows,
@@ -956,9 +924,7 @@ def _build_closed_rule_grid_candidates(
             median_height,
             caption_line,
         )
-        candidate.score = float(
-            100 + len(component) + len(vertical_positions)
-        )
+        candidate.score = float(100 + len(component) + len(vertical_positions))
         candidates.append(candidate)
     return candidates
 
@@ -985,20 +951,13 @@ def _closed_grid_vertical_track_positions(
             min(line.bbox[3], bottom) - max(line.bbox[1], top),
         )
         position = _bbox_center_x(line.bbox)
-        if (
-            overlap / grid_height >= 0.9
-            and left - edge_tolerance <= position <= right + edge_tolerance
-        ):
+        if overlap / grid_height >= 0.9 and left - edge_tolerance <= position <= right + edge_tolerance:
             raw_positions.append(position)
 
     position_tolerance = max(1.0, 0.1 * median_height)
     position_groups: list[list[float]] = []
     for position in sorted(raw_positions):
-        if (
-            position_groups
-            and abs(position - statistics.mean(position_groups[-1]))
-            <= position_tolerance
-        ):
+        if position_groups and abs(position - statistics.mean(position_groups[-1])) <= position_tolerance:
             position_groups[-1].append(position)
         else:
             position_groups.append([position])
@@ -1017,9 +976,7 @@ def _count_occupied_closed_grid_columns(
             center_x = _bbox_center_x(fragment.local_bbox)
             matching_columns = [
                 index
-                for index, (left, right) in enumerate(
-                    zip(vertical_positions, vertical_positions[1:])
-                )
+                for index, (left, right) in enumerate(zip(vertical_positions, vertical_positions[1:]))
                 if left < center_x < right
             ]
             if len(matching_columns) == 1:
@@ -1095,31 +1052,20 @@ def _rule_bands_share_grid_tracks(
         if line.orientation == "vertical"
         and line.bbox[1] <= top_y + track_tolerance
         and line.bbox[3] >= bottom_y - track_tolerance
-        and overlap_left - track_tolerance
-        <= _bbox_center_x(line.bbox)
-        <= overlap_right + track_tolerance
+        and overlap_left - track_tolerance <= _bbox_center_x(line.bbox) <= overlap_right + track_tolerance
     ]
     position_groups: list[list[float]] = []
     for position in sorted(raw_positions):
-        if (
-            position_groups
-            and abs(position - statistics.mean(position_groups[-1]))
-            <= track_tolerance
-        ):
+        if position_groups and abs(position - statistics.mean(position_groups[-1])) <= track_tolerance:
             position_groups[-1].append(position)
         else:
             position_groups.append([position])
     positions = [statistics.mean(group) for group in position_groups]
-    has_outer_tracks = (
-        any(abs(position - overlap_left) <= endpoint_tolerance for position in positions)
-        and any(abs(position - overlap_right) <= endpoint_tolerance for position in positions)
+    has_outer_tracks = any(abs(position - overlap_left) <= endpoint_tolerance for position in positions) and any(
+        abs(position - overlap_right) <= endpoint_tolerance for position in positions
     )
     interior_tracks = [
-        position
-        for position in positions
-        if overlap_left + track_tolerance
-        < position
-        < overlap_right - track_tolerance
+        position for position in positions if overlap_left + track_tolerance < position < overlap_right - track_tolerance
     ]
     return has_outer_tracks or len(interior_tracks) >= 2
 
@@ -1155,10 +1101,7 @@ def _group_long_horizontal_rules(
     for span_group in span_groups:
         unique_lines: list[_LocalAxisLine] = []
         for line in sorted(span_group, key=lambda item: _bbox_center_y(item.bbox)):
-            if any(
-                abs(_bbox_center_y(line.bbox) - _bbox_center_y(item.bbox)) <= 1.0
-                for item in unique_lines
-            ):
+            if any(abs(_bbox_center_y(line.bbox) - _bbox_center_y(item.bbox)) <= 1.0 for item in unique_lines):
                 continue
             unique_lines.append(line)
         if len(unique_lines) >= 2:
@@ -1197,10 +1140,7 @@ def _rows_inside_rule_interval(
         output.append(
             _VisualRow(
                 fragments=fragments,
-                center_y=sum(
-                    _bbox_center_y(fragment.local_bbox) for fragment in fragments
-                )
-                / len(fragments),
+                center_y=sum(_bbox_center_y(fragment.local_bbox) for fragment in fragments) / len(fragments),
                 bbox=_bbox_union_many([fragment.local_bbox for fragment in fragments]),
                 visual_row_id=clipped_row.visual_row_id,
             )
@@ -1217,9 +1157,7 @@ def _every_rule_interval_has_multi_cell_row(
 
     if len(rule_group) < 2:
         return False
-    for interval_index, (top_rule, bottom_rule) in enumerate(
-        zip(rule_group, rule_group[1:])
-    ):
+    for interval_index, (top_rule, bottom_rule) in enumerate(zip(rule_group, rule_group[1:])):
         top = _bbox_center_y(top_rule.bbox)
         bottom = _bbox_center_y(bottom_rule.bbox)
         interval_rows = [row for row in rows if top <= row.center_y <= bottom]
@@ -1227,11 +1165,7 @@ def _every_rule_interval_has_multi_cell_row(
             continue
         # 紧邻顶边界的合并表头可能由 pdftext 输出为一个短 fragment；
         # 只放宽高度很小的首区间，避免把远处章节标题接到表格上。
-        if (
-            interval_index == 0
-            and interval_rows
-            and bottom - top <= 2.5 * median_height
-        ):
+        if interval_index == 0 and interval_rows and bottom - top <= 2.5 * median_height:
             continue
         return False
     return True
@@ -1248,11 +1182,7 @@ def _rule_intervals_are_column_compatible(
     for top_rule, bottom_rule in zip(rule_group, rule_group[1:]):
         top = _bbox_center_y(top_rule.bbox)
         bottom = _bbox_center_y(bottom_rule.bbox)
-        interval_rows = [
-            row
-            for row in rows
-            if top <= row.center_y <= bottom and len(row.fragments) >= 2
-        ]
+        interval_rows = [row for row in rows if top <= row.center_y <= bottom and len(row.fragments) >= 2]
         stable_columns, column_coverage = _count_stable_columns(
             interval_rows,
             median_height,
@@ -1292,11 +1222,7 @@ def _continuous_table_row_segments(
 
     segments: list[list[_VisualRow]] = []
     for row in sorted(rows, key=lambda item: item.center_y):
-        if (
-            not segments
-            or max(0.0, row.bbox[1] - segments[-1][-1].bbox[3])
-            > 3.0 * median_height
-        ):
+        if not segments or max(0.0, row.bbox[1] - segments[-1][-1].bbox[3]) > 3.0 * median_height:
             segments.append([row])
         else:
             segments[-1].append(row)
@@ -1334,10 +1260,7 @@ def _table_rows_align_with_rule_span(
         0.0,
         min(rows_bbox[2], rule_bbox[2]) - max(rows_bbox[0], rule_bbox[0]),
     )
-    return (
-        overlap / min(rule_width, rows_width) >= 0.9
-        and rows_width >= max(8.0 * median_height, 0.25 * rule_width)
-    )
+    return overlap / min(rule_width, rows_width) >= 0.9 and rows_width >= max(8.0 * median_height, 0.25 * rule_width)
 
 
 def _count_aligned_vertical_rules(
@@ -1368,12 +1291,7 @@ def _compact_fully_ruled_grid_column_count(
     """以完整横竖边界确认两行紧凑网格，并返回物理列数，失败时返回零。"""
 
     rule_height = max(0.1, rule_bbox[3] - rule_bbox[1])
-    if (
-        len(row_segment) != 2
-        or len(dense_rows) != 2
-        or len(interval_rules) < 3
-        or rule_height > 6.0 * median_height
-    ):
+    if len(row_segment) != 2 or len(dense_rows) != 2 or len(interval_rules) < 3 or rule_height > 6.0 * median_height:
         return 0
 
     vertical_positions = _full_height_vertical_rule_positions(
@@ -1400,11 +1318,7 @@ def _compact_fully_ruled_grid_column_count(
     ):
         return 0
 
-    grid_boundaries = [
-        position
-        for position in vertical_positions
-        if left_boundary <= position <= right_boundary
-    ]
+    grid_boundaries = [position for position in vertical_positions if left_boundary <= position <= right_boundary]
     if len(grid_boundaries) < 3:
         return 0
     grid_intervals = list(zip(grid_boundaries, grid_boundaries[1:]))
@@ -1414,11 +1328,7 @@ def _compact_fully_ruled_grid_column_count(
         row_columns: list[int] = []
         for fragment in row.fragments:
             fragment_center = _bbox_center_x(fragment.local_bbox)
-            matching_columns = [
-                index
-                for index, (left, right) in enumerate(grid_intervals)
-                if left <= fragment_center <= right
-            ]
+            matching_columns = [index for index, (left, right) in enumerate(grid_intervals) if left <= fragment_center <= right]
             if len(matching_columns) != 1:
                 return 0
             column_index = matching_columns[0]
@@ -1448,15 +1358,12 @@ def _full_height_vertical_rule_positions(
             continue
         overlap = max(
             0.0,
-            min(line.bbox[3], rule_bbox[3])
-            - max(line.bbox[1], rule_bbox[1]),
+            min(line.bbox[3], rule_bbox[3]) - max(line.bbox[1], rule_bbox[1]),
         )
         if (
             overlap / rule_height < 0.8
             or line.bbox[3] - line.bbox[1] < 0.8 * rule_height
-            or not rule_bbox[0] - median_height
-            <= _bbox_center_x(line.bbox)
-            <= rule_bbox[2] + median_height
+            or not rule_bbox[0] - median_height <= _bbox_center_x(line.bbox) <= rule_bbox[2] + median_height
         ):
             continue
         raw_positions.append(_bbox_center_x(line.bbox))
@@ -1481,17 +1388,11 @@ def _looks_like_page_column_prose(
 ) -> bool:
     """用双栏占宽率识别夹在远横线间的普通并排正文。"""
 
-    if (
-        stable_columns != 2
-        or fill_band_count >= 2
-        or aligned_vertical_count > 0
-        or len(dense_rows) / len(rows) < 0.55
-    ):
+    if stable_columns != 2 or fill_band_count >= 2 or aligned_vertical_count > 0 or len(dense_rows) / len(rows) < 0.55:
         return False
     corridor_width = max(0.1, rule_bbox[2] - rule_bbox[0])
     occupied_ratios = [
-        sum(fragment.local_bbox[2] - fragment.local_bbox[0] for fragment in row.fragments)
-        / corridor_width
+        sum(fragment.local_bbox[2] - fragment.local_bbox[0] for fragment in row.fragments) / corridor_width
         for row in dense_rows
     ]
     return statistics.median(occupied_ratios) >= 0.75
@@ -1535,8 +1436,7 @@ def _count_repeated_fill_bands(
                 for group in groups
                 if abs(bbox[0] - group[0][0]) <= endpoint_tolerance
                 and abs(bbox[2] - group[0][2]) <= endpoint_tolerance
-                and abs((bbox[3] - bbox[1]) - (group[0][3] - group[0][1]))
-                <= endpoint_tolerance
+                and abs((bbox[3] - bbox[1]) - (group[0][3] - group[0][1])) <= endpoint_tolerance
             ),
             None,
         )
@@ -1622,14 +1522,14 @@ def _expand_rule_table_candidate(
         footnote_rows,
         excluded_line_indices=core_line_indices,
     )
-    annotations = [
-        annotation
-        for annotation in (caption_annotation, footnote_annotation)
-        if annotation is not None
-    ]
-    annotation_line_indices = set().union(
-        *(annotation.line_indices for annotation in annotations),
-    ) if annotations else set()
+    annotations = [annotation for annotation in (caption_annotation, footnote_annotation) if annotation is not None]
+    annotation_line_indices = (
+        set().union(
+            *(annotation.line_indices for annotation in annotations),
+        )
+        if annotations
+        else set()
+    )
     included_rows = [*caption_rows, *core_rows, *footnote_rows]
     local_bbox = _bbox_union(core_local_bbox, _bbox_union_many([row.bbox for row in included_rows]))
     return _TableCandidate(
@@ -1675,11 +1575,7 @@ def _build_table_annotation(
     line_bboxes: dict[int, BBox] = {}
     for fragment in fragments:
         existing_bbox = line_bboxes.get(fragment.line_index)
-        line_bboxes[fragment.line_index] = (
-            fragment.bbox
-            if existing_bbox is None
-            else _bbox_union(existing_bbox, fragment.bbox)
-        )
+        line_bboxes[fragment.line_index] = fragment.bbox if existing_bbox is None else _bbox_union(existing_bbox, fragment.bbox)
     return _TableAnnotation(
         kind=kind,
         bbox=_bbox_union_many(list(line_bboxes.values())),
@@ -1766,11 +1662,7 @@ def _collect_footnote_rows(
             bottom = max(bottom, clipped_row.bbox[3])
             continue
         row_gap = max(0.0, clipped_row.bbox[1] - bottom)
-        row_lines = [
-            line_by_index[line_index]
-            for line_index in line_indices
-            if line_index in line_by_index
-        ]
+        row_lines = [line_by_index[line_index] for line_index in line_indices if line_index in line_by_index]
         row_heights = [
             _line_effective_height(
                 line,
@@ -1780,23 +1672,18 @@ def _collect_footnote_rows(
         ]
         row_height = statistics.median(row_heights) if row_heights else clipped_row.bbox[3] - clipped_row.bbox[1]
         row_fonts = {
-            line.font_signature
-            for line in row_lines
-            if line.font_signature is not None and line.font_coverage >= 0.75
+            line.font_signature for line in row_lines if line.font_signature is not None and line.font_coverage >= 0.75
         }
         if note_chain_started and clipped_row.bbox[3] - rule_bbox[3] > 10.0 * median_height:
             break
         row_text = _visual_row_text(clipped_row)
         explicit_note = _is_table_note_text(row_text)
         auxiliary_marker = _extract_auxiliary_table_note_marker(row_text)
-        auxiliary_note = (
-            auxiliary_marker is not None
-            and _table_core_references_marker(
-                auxiliary_marker,
-                core_lines,
-                page_size,
-                angle,
-            )
+        auxiliary_note = auxiliary_marker is not None and _table_core_references_marker(
+            auxiliary_marker,
+            core_lines,
+            page_size,
+            angle,
         )
         first_gap_limit = 0.75 if auxiliary_note and not explicit_note else 1.25
         if row_gap > (first_gap_limit if not note_chain_started else 1.0) * median_height:
@@ -1827,11 +1714,7 @@ def _collect_footnote_rows(
             or note_height is None
             or abs(clipped_row.bbox[0] - note_left) > 1.5 * median_height
             or not 0.75 <= row_height / note_height <= 1.25
-            or (
-                note_fonts
-                and row_fonts
-                and note_fonts.isdisjoint(row_fonts)
-            )
+            or (note_fonts and row_fonts and note_fonts.isdisjoint(row_fonts))
             or _bbox_axis_overlap_ratio(clipped_row.bbox, rule_bbox, axis="x") < 0.35
         ):
             # 字号、字体或缩进突变表明已进入标题/正文，表注链必须立即终止。
@@ -1864,8 +1747,7 @@ def _table_core_references_marker(
     """要求通用短标记在表格核心中具有上标或紧凑单元格引用。"""
 
     return any(
-        _line_has_superscript_marker(line, marker, page_size, angle)
-        or _line_has_compact_marker_token(line.text, marker)
+        _line_has_superscript_marker(line, marker, page_size, angle) or _line_has_compact_marker_token(line.text, marker)
         for line in core_lines
     )
 
@@ -1925,19 +1807,12 @@ def _line_has_superscript_marker(
             normal_height = statistics.median(bbox[3] - bbox[1] for bbox in ordinary_bboxes)
             if normal_height <= 0:
                 continue
-            baseline_bboxes = [
-                bbox
-                for bbox in ordinary_bboxes
-                if bbox[3] - bbox[1] >= 0.90 * normal_height
-            ]
+            baseline_bboxes = [bbox for bbox in ordinary_bboxes if bbox[3] - bbox[1] >= 0.90 * normal_height]
             marker_bboxes = [glyphs[index][1] for index in marker_indices]
             marker_height = statistics.median(bbox[3] - bbox[1] for bbox in marker_bboxes)
             marker_center = statistics.median(_bbox_center_y(bbox) for bbox in marker_bboxes)
             normal_center = statistics.median(_bbox_center_y(bbox) for bbox in baseline_bboxes)
-            if (
-                marker_height <= 0.85 * normal_height
-                and normal_center - marker_center >= 0.12 * normal_height
-            ):
+            if marker_height <= 0.85 * normal_height and normal_center - marker_center >= 0.12 * normal_height:
                 return True
     return False
 
@@ -2081,11 +1956,7 @@ def _count_stable_columns(
                     cluster["values"].append(anchor)
                     cluster["rows"].add(row_index)
                     cluster["mean"] = sum(cluster["values"]) / len(cluster["values"])
-        stable_coverages = [
-            len(cluster["rows"]) / len(rows)
-            for cluster in clusters
-            if len(cluster["rows"]) / len(rows) >= 0.5
-        ]
+        stable_coverages = [len(cluster["rows"]) / len(rows) for cluster in clusters if len(cluster["rows"]) / len(rows) >= 0.5]
         result = (
             len(stable_coverages),
             min(stable_coverages) if stable_coverages else 0.0,
@@ -2132,11 +2003,7 @@ def _merge_table_candidate_annotations(
 
     for annotation in candidate.annotations:
         existing = next(
-            (
-                item
-                for item in target.annotations
-                if item.kind == annotation.kind
-            ),
+            (item for item in target.annotations if item.kind == annotation.kind),
             None,
         )
         if existing is None:
@@ -2153,20 +2020,14 @@ def _merge_table_candidate_annotations(
         existing.line_indices.update(annotation.line_indices)
         for line_index, bbox in annotation.line_bboxes.items():
             existing_bbox = existing.line_bboxes.get(line_index)
-            existing.line_bboxes[line_index] = (
-                bbox
-                if existing_bbox is None
-                else _bbox_union(existing_bbox, bbox)
-            )
+            existing.line_bboxes[line_index] = bbox if existing_bbox is None else _bbox_union(existing_bbox, bbox)
 
     # 重复候选发生角色冲突时以任一候选确认的表体成员为准，避免表头被并入 caption。
     retained_annotations: list[_TableAnnotation] = []
     for annotation in target.annotations:
         annotation.line_indices.difference_update(target.line_indices)
         annotation.line_bboxes = {
-            line_index: bbox
-            for line_index, bbox in annotation.line_bboxes.items()
-            if line_index in annotation.line_indices
+            line_index: bbox for line_index, bbox in annotation.line_bboxes.items() if line_index in annotation.line_indices
         }
         if not annotation.line_indices:
             continue
@@ -2196,14 +2057,11 @@ def _materialize_table_blocks(
     native_rectangles = coerce_native_table_rectangles(source.path_infos)
     for candidate in sorted(candidates, key=lambda item: item.score, reverse=True):
         # 候选去重仍使用包含注释的完整框，不能因输出表体收缩而放行重复表格。
-        if any(
-            _bbox_overlap_in_smaller(candidate.bbox, bbox) >= 0.5
-            for bbox in accepted_candidate_bboxes
-        ):
+        if any(_bbox_overlap_in_smaller(candidate.bbox, bbox) >= 0.5 for bbox in accepted_candidate_bboxes):
             continue
         output_angle = candidate.angle
-        candidate_annotation_blocks, externalized_line_indices, failed_annotations = (
-            _materialize_table_annotations(source, candidate)
+        candidate_annotation_blocks, externalized_line_indices, failed_annotations = _materialize_table_annotations(
+            source, candidate
         )
         projection_line_indices = _candidate_projection_line_indices(source, candidate)
         for annotation in candidate.annotations:
@@ -2227,14 +2085,10 @@ def _materialize_table_blocks(
             )
         except Exception as exc:
             logger.warning(
-                "Flash native table recovery failed and fell back to projection: "
-                f"bbox={candidate.bbox}, error={exc}"
+                f"Flash native table recovery failed and fell back to projection: bbox={candidate.bbox}, error={exc}"
             )
         if content:
-            logger.debug(
-                "Flash native table recovery accepted: "
-                f"bbox={body_bbox}, angle={candidate.angle}"
-            )
+            logger.debug(f"Flash native table recovery accepted: bbox={body_bbox}, angle={candidate.angle}")
         try:
             if not content:
                 # 使用完整原始字符流保留 PDF 物理换行；行索引仅负责表体与注释的所有权认领。
@@ -2337,10 +2191,7 @@ def _build_table_annotation_block(
         "angle": candidate.angle,
         "content": content,
         "_local_line_bboxes": [bbox for _line, bbox in line_geometry],
-        "_line_heights": [
-            _line_effective_height(line, bbox)
-            for line, bbox in line_geometry
-        ],
+        "_line_heights": [_line_effective_height(line, bbox) for line, bbox in line_geometry],
         "_font_signatures": {
             line.font_signature
             for line, _bbox in line_geometry
@@ -2354,11 +2205,7 @@ def _build_table_annotation_block(
 def _merge_table_annotation_content(line_texts: list[str]) -> str:
     """按正文一致的语言与行末断词规则折叠表格注释原生行。"""
 
-    normalized_lines = [
-        normalized
-        for text in line_texts
-        if (normalized := _normalize_native_run_text(str(text or "")))
-    ]
+    normalized_lines = [normalized for text in line_texts if (normalized := _normalize_native_run_text(str(text or "")))]
     if not normalized_lines:
         return ""
     try:
@@ -2454,11 +2301,7 @@ def _expand_candidate_same_baseline_members(
     changed = True
     while changed:
         changed = False
-        selected_lines = [
-            line
-            for line in source.lines
-            if line.angle == candidate.angle and line.source_index in line_indices
-        ]
+        selected_lines = [line for line in source.lines if line.angle == candidate.angle and line.source_index in line_indices]
         for line in source.lines:
             if line.angle != candidate.angle or line.source_index in line_indices:
                 continue

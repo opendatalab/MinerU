@@ -16,6 +16,7 @@ from .._shared.xycut import sort_entries
 from ....types import BBox
 
 from .geometry import (
+    _bbox_axis_overlap_ratio,
     _bbox_center_x,
     _bbox_center_y,
     _bbox_union_many,
@@ -134,6 +135,21 @@ def _is_strong_caption_text(text: str) -> bool:
     return match is not None and not _caption_tail_is_reference(match.group("tail"))
 
 
+def _caption_identifier(text: str) -> str | None:
+    """返回中英文强图表题共用的规范化编号。"""
+
+    normalized = _normalize_annotation_text(text)
+    match = _ENGLISH_CAPTION_RE.match(normalized) or _CHINESE_CAPTION_RE.match(normalized)
+    return (
+        unicodedata.normalize(
+            "NFKC",
+            match.group("identifier"),
+        ).casefold()
+        if match is not None
+        else None
+    )
+
+
 def _is_strong_footnote_text(text: str) -> bool:
     """判断文本是否以带冒号的来源或注释强标记开头。"""
 
@@ -170,9 +186,7 @@ def _block_median_line_height(
     """优先使用原生行高，缺失时按局部块高和行框数量保守估计。"""
 
     heights = [
-        float(height)
-        for height in block.get("_line_heights", [])
-        if isinstance(height, (int, float)) and float(height) > 0
+        float(height) for height in block.get("_line_heights", []) if isinstance(height, (int, float)) and float(height) > 0
     ]
     if heights:
         return statistics.median(heights)
@@ -494,17 +508,15 @@ def _axis_overlap_metrics(
     expanded_parent_end = parent_end + float_margin
     overlap = max(
         0.0,
-        min(annotation_end, expanded_parent_end)
-        - max(annotation_start, expanded_parent_start),
+        min(annotation_end, expanded_parent_end) - max(annotation_start, expanded_parent_start),
     )
     annotation_length = max(0.1, annotation_end - annotation_start)
     parent_length = max(0.1, expanded_parent_end - expanded_parent_start)
     projection_overlap = overlap / min(annotation_length, parent_length)
     annotation_coverage = overlap / annotation_length
-    center_offset = abs(
-        (annotation_start + annotation_end) / 2.0
-        - (parent_start + parent_end) / 2.0
-    ) / max(annotation_length, parent_end - parent_start, 0.1)
+    center_offset = abs((annotation_start + annotation_end) / 2.0 - (parent_start + parent_end) / 2.0) / max(
+        annotation_length, parent_end - parent_start, 0.1
+    )
     return projection_overlap, annotation_coverage, center_offset
 
 
@@ -548,10 +560,7 @@ def _direction_relation(
         axis=projection_axis,
         float_margin=line_height,
     )
-    if (
-        projection_overlap < _MIN_PROJECTION_OVERLAP
-        or annotation_coverage < _MIN_ANNOTATION_COVERAGE
-    ):
+    if projection_overlap < _MIN_PROJECTION_OVERLAP or annotation_coverage < _MIN_ANNOTATION_COVERAGE:
         return None
     return _AnnotationRelation(
         parent=parent,
@@ -618,9 +627,7 @@ def _image_blocks_form_component(
     y_overlap = max(0.0, min(first_bbox[3], second_bbox[3]) - max(first_bbox[1], second_bbox[1]))
     min_width = max(0.1, min(first_bbox[2] - first_bbox[0], second_bbox[2] - second_bbox[0]))
     min_height = max(0.1, min(first_bbox[3] - first_bbox[1], second_bbox[3] - second_bbox[1]))
-    return (
-        horizontal_gap <= 2.0 * line_height and y_overlap / min_height >= 0.5
-    ) or (
+    return (horizontal_gap <= 2.0 * line_height and y_overlap / min_height >= 0.5) or (
         vertical_gap <= 2.0 * line_height and x_overlap / min_width >= 0.5
     )
 
@@ -722,10 +729,7 @@ def _relation_has_intervening_block(
         bbox = _block_local_bbox(block, page_size, relation.parent.angle)
         if bbox is None:
             continue
-        if (
-            min(bbox[2], corridor[2]) > max(bbox[0], corridor[0])
-            and min(bbox[3], corridor[3]) > max(bbox[1], corridor[1])
-        ):
+        if min(bbox[2], corridor[2]) > max(bbox[0], corridor[0]) and min(bbox[3], corridor[3]) > max(bbox[1], corridor[1]):
             return True
     return False
 
@@ -742,8 +746,7 @@ def _component_relation_is_materially_better(
     comparable = [
         single
         for single in single_relations
-        if single.direction == relation.direction
-        and single.parent.member_indices[0] in member_indices
+        if single.direction == relation.direction and single.parent.member_indices[0] in member_indices
     ]
     if not comparable:
         return True
@@ -781,9 +784,7 @@ def _choose_annotation_relation(
         )
         is not None
     ]
-    single_relations = [
-        relation for relation in relations if len(relation.parent.member_indices) == 1
-    ]
+    single_relations = [relation for relation in relations if len(relation.parent.member_indices) == 1]
     relations = [
         relation
         for relation in relations
@@ -819,19 +820,13 @@ def _caption_blocks_use_distinct_regular_lanes(
 ) -> bool:
     """确认两个标题块分别属于互不重叠的普通栏带。"""
 
-    if (
-        anchor.get("_lane_is_span") is not False
-        or candidate.get("_lane_is_span") is not False
-    ):
+    if anchor.get("_lane_is_span") is not False or candidate.get("_lane_is_span") is not False:
         return False
     anchor_interval = _coerce_lane_interval(anchor.get("_lane_interval"))
     candidate_interval = _coerce_lane_interval(candidate.get("_lane_interval"))
     if anchor_interval is None or candidate_interval is None:
         return False
-    return (
-        anchor_interval[1] <= candidate_interval[0]
-        or candidate_interval[1] <= anchor_interval[0]
-    )
+    return anchor_interval[1] <= candidate_interval[0] or candidate_interval[1] <= anchor_interval[0]
 
 
 def _caption_blocks_have_compatible_typography(
@@ -846,11 +841,7 @@ def _caption_blocks_have_compatible_typography(
     if anchor_height <= 0 or candidate_height <= 0:
         return False
     height_ratio = candidate_height / anchor_height
-    if not (
-        _CROSS_LANE_CAPTION_MIN_LINE_HEIGHT_RATIO
-        <= height_ratio
-        <= _CROSS_LANE_CAPTION_MAX_LINE_HEIGHT_RATIO
-    ):
+    if not (_CROSS_LANE_CAPTION_MIN_LINE_HEIGHT_RATIO <= height_ratio <= _CROSS_LANE_CAPTION_MAX_LINE_HEIGHT_RATIO):
         return False
 
     anchor_fonts = anchor.get("_font_signatures")
@@ -880,10 +871,7 @@ def _cross_lane_caption_companion_relation(
         return None
     anchor = blocks[anchor_index]
     candidate = blocks[candidate_index]
-    if (
-        candidate.get("type") != "text"
-        or _block_angle(candidate) != anchor_relation.parent.angle
-    ):
+    if candidate.get("type") != "text" or _block_angle(candidate) != anchor_relation.parent.angle:
         return None
     if not _caption_blocks_use_distinct_regular_lanes(anchor, candidate):
         return None
@@ -909,10 +897,7 @@ def _cross_lane_caption_companion_relation(
             _block_median_line_height(candidate, page_size),
         )
     )
-    if (
-        abs(anchor_first_row[1] - candidate_first_row[1])
-        > _CROSS_LANE_CAPTION_ROW_TOP_TOLERANCE * pair_height
-    ):
+    if abs(anchor_first_row[1] - candidate_first_row[1]) > _CROSS_LANE_CAPTION_ROW_TOP_TOLERANCE * pair_height:
         return None
 
     relation = _choose_annotation_relation(
@@ -923,11 +908,7 @@ def _cross_lane_caption_companion_relation(
         parents,
         annotation_indices | {candidate_index},
     )
-    if (
-        relation is None
-        or relation.parent != anchor_relation.parent
-        or relation.direction != anchor_relation.direction
-    ):
+    if relation is None or relation.parent != anchor_relation.parent or relation.direction != anchor_relation.direction:
         return None
     return relation
 
@@ -984,11 +965,7 @@ def _merge_parent_assignment_groups(
     groups: list[tuple[set[int], dict[int, _AnnotationRelation]]] = []
     for annotation_index, relation in assignments.items():
         parent_indices = set(relation.parent.member_indices)
-        overlapping = [
-            index
-            for index, (members, _relations) in enumerate(groups)
-            if members & parent_indices
-        ]
+        overlapping = [index for index, (members, _relations) in enumerate(groups) if members & parent_indices]
         merged_members = set(parent_indices)
         merged_relations = {annotation_index: relation}
         for group_index in reversed(overlapping):
@@ -1067,9 +1044,7 @@ def _sort_annotation_indices_by_visual_rows(
                 item_relation is not None
                 and item_relation.direction in {"above", "below"}
                 and all(
-                    (
-                        member_relation := relations.get(member[0])
-                    ) is not None
+                    (member_relation := relations.get(member[0])) is not None
                     and member_relation.direction == item_relation.direction
                     and _caption_blocks_use_distinct_regular_lanes(
                         blocks[member[0]],
@@ -1078,20 +1053,10 @@ def _sort_annotation_indices_by_visual_rows(
                     for member in current_row
                 )
             )
-            reference_top = statistics.median(
-                member[1][1]
-                for member in current_row
-            )
-            reference_height = statistics.median(
-                member[2]
-                for member in current_row
-            )
+            reference_top = statistics.median(member[1][1] for member in current_row)
+            reference_height = statistics.median(member[2] for member in current_row)
             pair_height = statistics.median((reference_height, item[2]))
-            if (
-                shares_cross_lane_row
-                and abs(item[1][1] - reference_top)
-                <= _CROSS_LANE_CAPTION_ROW_TOP_TOLERANCE * pair_height
-            ):
+            if shares_cross_lane_row and abs(item[1][1] - reference_top) <= _CROSS_LANE_CAPTION_ROW_TOP_TOLERANCE * pair_height:
                 current_row.append(item)
                 continue
         rows.append([item])
@@ -1125,20 +1090,14 @@ def _build_visual_annotation_regions(
         leading = [
             index
             for index, relation in relations.items()
-            if blocks[index].get("type") == "caption"
-            and relation.direction in {"above", "left"}
+            if blocks[index].get("type") == "caption" and relation.direction in {"above", "left"}
         ]
         trailing = [
             index
             for index, relation in relations.items()
-            if blocks[index].get("type") == "caption"
-            and relation.direction in {"below", "right"}
+            if blocks[index].get("type") == "caption" and relation.direction in {"below", "right"}
         ]
-        footnotes = [
-            index
-            for index in relations
-            if blocks[index].get("type") == "footnote"
-        ]
+        footnotes = [index for index in relations if blocks[index].get("type") == "footnote"]
         regions.append(
             [
                 *(
@@ -1187,10 +1146,7 @@ def _classify_and_bind_visual_annotations(
     candidates = _collect_annotation_candidates(blocks)
     if not candidates:
         return []
-    line_heights = [
-        _block_median_line_height(blocks[index], page_size)
-        for index in candidates
-    ]
+    line_heights = [_block_median_line_height(blocks[index], page_size) for index in candidates]
     component_line_height = statistics.median(line_heights) if line_heights else 8.0
     parents = _build_visual_parents(blocks, page_size, component_line_height)
     if not parents:
@@ -1211,6 +1167,14 @@ def _classify_and_bind_visual_annotations(
         )
         is not None
     }
+    assignments.update(
+        _expand_stacked_bilingual_caption_assignments(
+            blocks,
+            page_size,
+            candidates,
+            assignments,
+        )
+    )
     cross_lane_assignments = _expand_cross_lane_caption_assignments(
         blocks,
         page_size,
@@ -1232,9 +1196,69 @@ def _classify_and_bind_visual_annotations(
         blocks[index]["_visual_annotation_direction"] = relation.direction
     regions = _build_visual_annotation_regions(assignments, blocks, page_size)
     if consumed_indices:
-        blocks[:] = [
-            block
-            for index, block in enumerate(blocks)
-            if index not in consumed_indices
-        ]
+        blocks[:] = [block for index, block in enumerate(blocks) if index not in consumed_indices]
     return regions
+
+
+def _expand_stacked_bilingual_caption_assignments(
+    blocks: list[dict[str, Any]],
+    page_size: tuple[float, float],
+    candidates: dict[int, _AnnotationKind],
+    assignments: dict[int, _AnnotationRelation],
+) -> dict[int, _AnnotationRelation]:
+    """把紧邻且编号相同的中英文双语图题绑定到同一视觉主体。"""
+
+    output: dict[int, _AnnotationRelation] = {}
+    assigned_captions = [index for index in assignments if candidates.get(index) == "caption"]
+    for candidate_index, kind in candidates.items():
+        if kind != "caption" or candidate_index in assignments:
+            continue
+        candidate_identifier = _caption_identifier(
+            str(blocks[candidate_index].get("content") or ""),
+        )
+        candidate_bbox = _block_local_bbox(
+            blocks[candidate_index],
+            page_size,
+        )
+        if candidate_identifier is None or candidate_bbox is None:
+            continue
+        candidate_height = _block_median_line_height(
+            blocks[candidate_index],
+            page_size,
+        )
+        matches: list[tuple[float, int]] = []
+        for anchor_index in assigned_captions:
+            if _caption_identifier(
+                str(blocks[anchor_index].get("content") or ""),
+            ) != candidate_identifier or _block_angle(blocks[anchor_index]) != _block_angle(blocks[candidate_index]):
+                continue
+            anchor_bbox = _block_local_bbox(
+                blocks[anchor_index],
+                page_size,
+            )
+            if anchor_bbox is None:
+                continue
+            anchor_height = _block_median_line_height(
+                blocks[anchor_index],
+                page_size,
+            )
+            gap = max(
+                candidate_bbox[1] - anchor_bbox[3],
+                anchor_bbox[1] - candidate_bbox[3],
+                0.0,
+            )
+            if (
+                gap <= 1.5 * max(candidate_height, anchor_height)
+                and _bbox_axis_overlap_ratio(
+                    candidate_bbox,
+                    anchor_bbox,
+                    axis="x",
+                )
+                >= 0.35
+            ):
+                matches.append((gap, anchor_index))
+        if not matches:
+            continue
+        _gap, anchor_index = min(matches)
+        output[candidate_index] = assignments[anchor_index]
+    return output

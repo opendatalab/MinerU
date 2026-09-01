@@ -7,6 +7,8 @@ from __future__ import annotations
 import math
 import re
 import statistics
+import unicodedata
+from collections import Counter
 from typing import Any, Literal, Mapping, Sequence
 
 from pdftext.schema import Char
@@ -116,6 +118,53 @@ def _build_native_line_items(
     output = [*stable_items, *formula_items]
     output.sort(key=lambda item: (item.visual_row_id if item.visual_row_id is not None else math.inf, item.run_index))
     return output
+
+
+def _extract_decorative_text_rules(
+    lines: list[_LineItem],
+    page_size: tuple[float, float],
+) -> tuple[list[_LineItem], list[_AxisLine]]:
+    """把宽幅私用区重复字形转为装饰分隔线，避免其进入文本块。"""
+
+    retained: list[_LineItem] = []
+    decorative_rules: list[_AxisLine] = []
+    for line in lines:
+        local_bbox = _rotate_bbox_to_upright(
+            line.bbox,
+            page_size,
+            line.angle,
+        )
+        local_page_width = page_size[1] if line.angle in {90, 270} else page_size[0]
+        local_page_height = page_size[0] if line.angle in {90, 270} else page_size[1]
+        compact_text = "".join(
+            char for char in line.text if not char.isspace() and (char.isprintable() or unicodedata.category(char) == "Co")
+        )
+        private_use_count = sum(unicodedata.category(char) == "Co" for char in compact_text)
+        repeated_count = max(
+            Counter(compact_text).values(),
+            default=0,
+        )
+        local_width = max(0.0, local_bbox[2] - local_bbox[0])
+        local_height = max(0.1, local_bbox[3] - local_bbox[1])
+        is_decorative_rule = (
+            len(compact_text) >= 8
+            and private_use_count / len(compact_text) >= 0.8
+            and repeated_count / len(compact_text) >= 0.8
+            and local_width >= 0.4 * local_page_width
+            and local_width / local_height >= 20.0
+            and _bbox_center_y(local_bbox) <= 0.2 * local_page_height
+        )
+        if not is_decorative_rule:
+            retained.append(line)
+            continue
+        decorative_rules.append(
+            _AxisLine(
+                bbox=line.bbox,
+                width=min(1.0, local_height),
+                orientation=("vertical" if line.angle in {90, 270} else "horizontal"),
+            )
+        )
+    return retained, decorative_rules
 
 
 def _pdftext_angle_degrees(value: Any) -> float:
@@ -319,10 +368,7 @@ def _split_native_visual_runs(
         char_idx = char.get("char_idx")
         visual_bbox = (
             visual_bboxes.get(char_idx)
-            if visual_bboxes is not None
-            and isinstance(char_idx, int)
-            and raw_char.isprintable()
-            and not raw_char.isspace()
+            if visual_bboxes is not None and isinstance(char_idx, int) and raw_char.isprintable() and not raw_char.isspace()
             else None
         )
         bbox = _clip_bbox(
@@ -464,20 +510,11 @@ def _resplit_native_visual_runs(
             page_size,
             line.angle,
         )
-        local_page_height = (
-            page_size[0]
-            if line.angle in {90, 270}
-            else page_size[1]
-        )
-        local_page_width = (
-            page_size[1]
-            if line.angle in {90, 270}
-            else page_size[0]
-        )
+        local_page_height = page_size[0] if line.angle in {90, 270} else page_size[1]
+        local_page_width = page_size[1] if line.angle in {90, 270} else page_size[0]
         if (
             line.semantic_type is not None
-            or local_bbox[2] - local_bbox[0]
-            < 0.45 * local_page_width
+            or local_bbox[2] - local_bbox[0] < 0.45 * local_page_width
             or _bbox_center_y(local_bbox) < 0.07 * local_page_height
             or _bbox_center_y(local_bbox) > 0.93 * local_page_height
         ):
@@ -505,13 +542,8 @@ def _resplit_native_visual_runs(
         )
         column_split = (
             len(local_members) == 2
-            and all(
-                bbox[2] - bbox[0]
-                >= 0.15 * local_page_width
-                for bbox in local_members
-            )
-            and local_members[1][0] - local_members[0][2]
-            >= 0.02 * local_page_width
+            and all(bbox[2] - bbox[0] >= 0.15 * local_page_width for bbox in local_members)
+            and local_members[1][0] - local_members[0][2] >= 0.02 * local_page_width
             and local_members[0][2] <= 0.52 * local_page_width
             and local_members[1][0] >= 0.48 * local_page_width
         )
@@ -519,11 +551,7 @@ def _resplit_native_visual_runs(
             output.append(line)
             continue
         for member_index, member in enumerate(members):
-            member.source_index = (
-                line.source_index
-                if member_index == 0
-                else next_source_index
-            )
+            member.source_index = line.source_index if member_index == 0 else next_source_index
             if member_index > 0:
                 next_source_index += 1
             member.visual_row_id = line.visual_row_id
@@ -542,9 +570,7 @@ def _resplit_native_visual_runs(
             output.append(member)
     output.sort(
         key=lambda item: (
-            item.visual_row_id
-            if item.visual_row_id is not None
-            else math.inf,
+            item.visual_row_id if item.visual_row_id is not None else math.inf,
             item.run_index,
             item.source_index,
         )
