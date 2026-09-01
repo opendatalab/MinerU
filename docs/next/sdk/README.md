@@ -49,7 +49,7 @@ mineru doclib
 
 - `mineru.parser` 不依赖 `doclib`。
 - `mineru.doclib.client` 不直接调用 heavy backend，只通过 doclib server 通信。
-- `MinerUApiParser` 可以在 Tool SDK 中存在，因为它遵守 `DocumentParser` 接口，但它必须显式要求 `api_url`。
+- `MinerUApiParser` 可以在 Tool SDK 中存在，因为它遵守 `DocumentParser` 接口。`api_url` 可省略：未传入时按 `MINERU_API_URL` 环境变量回退，仍缺失则使用官方默认 `https://mineru.net/api`。
 - SDK 不应在 import 阶段启动 server、连接数据库、读取配置或加载模型。
 
 ## 包边界
