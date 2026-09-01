@@ -121,7 +121,7 @@ P0 不做基于启发式的自动提示或自动排队升级。watch 使用 `fla
 
 `standard` 代表高质量解析能力。它既可以由 `mineru.net/api` 提供，也可以由本地高端硬件运行。
 
-本地 managed `standard` 需要安装 VLM 相关 runtime 依赖，要求至少 16GB 总内存，并满足以下本地加速器条件之一:
+本地 managed `standard` 需要安装 VLM 相关 runtime 依赖，建议配置为至少 16GB 总内存，并满足以下本地加速器条件之一（以下为建议配置，代码不做硬件检查）:
 
 - Volta 或更新架构的 NVIDIA GPU，且可供 MinerU 使用的 VRAM 至少 8GB。
 - Apple Silicon，且统一内存至少 16GB。

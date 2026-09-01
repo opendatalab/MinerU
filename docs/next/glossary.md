@@ -57,7 +57,7 @@
 规范:
 
 - CLI/API/SDK 的用户可见参数应使用 `tier`。
-- CLI 不传 `--tier`、HTTP API 省略 `tier` 或传 JSON `null`、Python SDK 传 `None` 表示使用默认选择策略。
+- CLI 不传 `--tier`、HTTP API 省略 `tier` 或传 JSON `null` 时按入口默认值处理；Python SDK 的 `parse()` 默认 `tier="standard"`，传 `None` 也归一为 `standard`。基于服务能力的默认选择策略（standard 优先于 basic）只在 doclib 层生效。
 - 任务入队、缓存目录、产物 metadata 应记录实际使用的实体 tier，即 `flash`、`basic`、`standard` 或 `advanced`。
 - PDF/image 的默认选择策略不能解析为 `flash`；OFD/EPUB/Office/HTML/CSV 这类仅支持 flash tier 的输入归一规则见 [ADR-0024](decisions/0024-file-type-tier-normalization.md) 与 [ADR-0028](decisions/0028-csv-structured-flash-parsing.md)；其它 text 直接读取。
 
@@ -69,25 +69,23 @@
 
 `engine` 和 `backend` 在含义上非常接近，都是某种解析能力的实现后端。新文档应优先使用 `backend`；只有在已有错误码、历史命名或兼容接口中才保留 `engine`。
 
-典型 backend:
+典型 backend（`PARSER_BACKENDS` / 公开选择项见 `mineru/parser/tier.py`）:
 
 | Backend | 含义 |
 |---------|------|
-| `pipeline` | Pipeline PDF 解析实现 |
-| `vlm` | VLM PDF 解析实现 |
-| `hybrid` | Hybrid PDF 解析实现 |
-| `office` | Office 文档解析实现 |
-| `html` | HTML 解析实现 |
-| `ofd` | OFD 固定版式解析实现 |
-| `flash` | 快速 CPU PDF 解析 backend；同时也是 `flash` tier 的默认实现 |
+| `hybrid-engine` | 默认本地 Hybrid 解析实现（默认 backend） |
+| `hybrid-http-client` | 通过 HTTP 调用 Hybrid 解析服务的客户端 backend |
+| `flash` | 快速 CPU 解析实现，同时是 `flash` tier 的默认实现；仅作兼容保留，不在公开 backend 选择项中 |
+
+历史名称 `pipeline`、`vlm-engine`、`vlm-auto-engine`、`vlm-http-client`、`hybrid-auto-engine` 作为兼容别名保留，会被归一化映射到上述 canonical backend。Office / HTML / OFD / CSV 等是按 `file_suffix` 路由的文件类型，不是 backend。
 
 规范:
 
 - 对普通用户显示 `tier`，不要把 `backend` 作为主选择项。
-- `backend` 只应暴露在 kit 或核心开发层，例如 `mineru-kit parse --backend`。
-- Tool SDK 的直接 parser 可以接受专家 `backend` 参数；API-backed parser、Doclib SDK、doclib server API 和 v1 API 不应要求用户理解或选择 `backend`。
+- `backend` 只应暴露在 kit 或核心开发层，例如 `mineru-kit parse --backend`；Tool SDK 的 `parse()` 不接受 `backend` 参数，只接受 `tier`。
+- API-backed parser、Doclib SDK、doclib server API 和 v1 API 不应要求用户理解或选择 `backend`。
 - `mineru-kit api-server` 使用单值 `--tier flash|basic|standard` 表示能力上限，不暴露 `--backend`；启动后的 HTTP API 通过 `/v1/tiers` 发布展开后的请求 tier。
-- Middle JSON 中 `_meta.backend` 表示产物来源实现，不表示用户请求的 `tier`。
+- Middle JSON schema 2.0 不记录 `_meta.backend`；产物 metadata 不包含 backend 字段，用户可见语义只记录 `tier`。
 - `backend` 不应承担隐私语义；隐私由 `privacy` / `remote` / `via` 描述。
 
 ### 3.3 Engine
@@ -210,7 +208,7 @@ Local Parse Server 的 API 尽量兼容官方 v1 API，但可以简化 Webhook�
 职责:
 
 - 提供 `parse()` 和 parser 类。
-- 根据 `tier` 或专家 `backend` 选择具体 parser。
+- 根据 `tier` 选择具体 parser。
 - 返回统一 `ParseResult`。
 
 不负责:
@@ -246,7 +244,7 @@ Doclib SDK 不是 v1 Unified API client，也不应直接加载 heavy backend。
 
 `Middle JSON` 是解析中间结构，用于连接 backend、render、SDK 和 Agent 能力。
 
-当前事实标准来自 `PageInfo`、`Block`、`Line`、`Span` 等 typed structure。下一阶段目标是统一 envelope、metadata、backend 差异和 Agent citation 字段。
+当前事实标准来自 `PageInfo`、`Block`、`InlineSpan` 等 typed structure（schema 2.0）。下一阶段目标是统一 envelope、metadata、backend 差异和 Agent citation 字段。
 
 规范:
 

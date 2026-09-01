@@ -52,7 +52,7 @@
 | `mineru-kit parse` 输入 | 当前只支持文件和目录输入；不支持 stdin、路径列表、URL 输入和递归目录。 |
 | `mineru-kit parse` 输出 | `--output` 必填；单文件可输出到文件路径或目录路径；多文件只能输出到目录路径；同名冲突直接报错并终止整个批次。 |
 | `mineru-kit parse` local/remote | local 支持 `tier/backend` 并校验兼容，PDF/image 二者都不传时默认 `standard`，OFD/EPUB/Office/HTML/CSV 按 ADR-0024/0028 归一，其它 text 不作为解析输入；remote 支持 `--remote`/`--remote-url`/`--api-key`，允许传 `tier`，禁止传 `backend`。 |
-| parsing-rules 默认 tier | parsing-rules 允许不指定 tier；PDF/image 按 `standard` -> `advanced` -> `basic` -> `flash` 选择，OFD/EPUB/Office/HTML/CSV 归一为 `flash`，其它 text 只入库和索引；只记录实际 tier。 |
+| parsing-rules 默认 tier | parsing-rules 允许不指定 tier；PDF/image 按 `standard` -> `basic` -> `flash` 选择（`PARSING_RULE_TIER_SELECTION_ORDER`），OFD/EPUB/Office/HTML/CSV 归一为 `flash`，其它 text 只入库和索引；只记录实际 tier。 |
 | Telemetry P0 | P0 必须实现 doclib server telemetry 状态、聚合、flush 和 CLI 管理入口；纯工具无 telemetry 能力。 |
 | `mineru parse` 默认页码范围 | 分页文档默认解析和读取 `1~min(page_count,10)`；该默认由 doclib 读取/解析计划负责，CLI 参数层不硬编码默认 `--pages`。 |
 | 渐进式阅读协议 | Server 返回结构化 `next_request`；CLI marker 只由 `next_request` 渲染，不作为协议源头，详见 [ADR-0013](decisions/0013-doc-content-progressive-reading.md)。 |
@@ -61,7 +61,7 @@
 | Block locator | Agent-native 整体是 P0。P0 public locator 使用 1-based `page_no` / `block_no`，形态为 `doc:{short_id}/tier:{tier}/page:{page_no}/block:{block_no}`，详见 [ADR-0012](decisions/0012-doclib-block-locator.md)。 |
 | `mineru read` | 新增 locator-first 顶级读取命令；`parse` 和 `read` 共享 `ReadPlan` 与 `execute_read_plan()`，`read --format image` 进入 P0，详见 [ADR-0014](decisions/0014-mineru-read-command.md)。 |
 | `search/find/show file` JSON 输出 | `search` 输出文档大小、页数、snippet 和完整 file aliases；`find` 输出文件名、文件大小、页数；`show file` 输出文件大小、页数、文档 metadata 摘要、各 tier 已解析页和 active parse 摘要。 |
-| Tool SDK `server_url` | Tool SDK 的 PDF VLM / hybrid parser 可以保留 `server_url` 作为 parser-layer 高级 backend 参数；API-backed parser 使用 `api_url`。 |
+| Tool SDK `server_url` | Tool SDK 的 `parse()` 当前不提供 `server_url` 参数（目标行为，未实现）；API-backed parser 使用 `api_url`。 |
 | `MinerUApiParser` 位置 | API-backed parser 保持现状，公开入口继续使用 `from mineru.parser import MinerUApiParser`；不重命名，不移动到 `mineru.parser.remote`。 |
 | `ParseResult` backend 字段 | `ParseResult` 不再持有 `_backend` / `_version_name`；backend 仅允许作为 page / middle-json 内部来源信息存在。 |
 | 其他语言 SDK | 其他语言 SDK 暂无开发计划；如果未来开发，只覆盖 v1 Unified API，不覆盖本地 doclib transport discovery 能力。 |
@@ -71,7 +71,7 @@
 | Office/HTML unknown bbox | 公共 schema 允许 unknown bbox；不要求 Office/HTML 在 P0 估算真实 bbox，validator 应区分 unknown 与非法 bbox。 |
 | 本地 managed tier 硬件基线 | 本地 managed tier 的硬件边界以 [解析 Tier](tiers.md) 为准。 |
 | watch tier 升级 | P0 不做基于启发式的自动提示或自动排队升级。watch 默认使用 `flash`；后台自动升级只由用户显式配置的 parsing-rules 触发；用户或 Agent 主动读取 PDF/image 时再按默认选择策略解析到可用的非 `flash` 质量 tier。 |
-| Middle JSON `schema_version` | 采用 `pages` 的 Middle JSON 顶层结构必须写 `schema_version`；当前运行时不读取 `pdf_info`；历史 `pdf_info` 只作为离线 migration 或重新生成对象。当前暂不增加 `_meta`；`ParseResult.to_dict()` 可能保留顶层 `_backend` 临时 metadata；代码常量定义为 `mineru.parser.MIDDLE_JSON_SCHEMA_VERSION`。 |
+| Middle JSON `schema_version` | 采用 `pages` 的 Middle JSON 顶层结构必须写 `schema_version`；运行时 `ParseResult.from_dict()` 接受 schema 2.0、`pdf_info` 与 schema 1.0 pages 包装作为 legacy 兼容分支，未知版本被拒绝。当前暂不增加 `_meta`；`ParseResult.to_dict()` 只写 `schema_version` + `middle_json`，不保留顶层 `_backend` 临时 metadata；代码常量定义为 `mineru.parser.MIDDLE_JSON_SCHEMA_VERSION`。 |
 
 ## 3. Blocker
 

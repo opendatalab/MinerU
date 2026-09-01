@@ -39,7 +39,7 @@
 | parse-server | 解析服务 | 无状态解析服务，提供 v1 Unified API，执行 `basic` / `standard` / `advanced` 等质量 tier。 |
 | Local Parse Server | 本地解析服务 | 用户可信环境内的 parse-server。 |
 | Remote Parse Server | 远端解析服务 | `mineru.net/api` 或显式配置的远端兼容服务。 |
-| Backend | 解析后端 | 实际解析实现，例如 `flash`、`pipeline`、`vlm`、`hybrid`。 |
+| Backend | 解析后端 | 实际解析实现，例如 `hybrid-engine`、`hybrid-http-client`、`flash`。 |
 | Render | 输出渲染 | 将 Middle JSON 转为 Markdown / Content List / HTML 等。 |
 
 ## 3. 全局不变量
@@ -50,7 +50,7 @@
 2. **质量优先**: 用户或 Agent 主动读取 PDF/image 文档时，默认使用默认选择策略，且不会解析为 `flash`。
 3. **发现与阅读分离**: watch 可以自动使用 `flash`；PDF/image 主动阅读不能静默使用 `flash`。
 4. **结果记录实际 tier**: 默认选择是请求时选择逻辑，任务、缓存、产物和 metadata 记录实际使用的实体 tier。
-5. **backend 只在专家层和 Tool SDK parser 层暴露**: Tool SDK 的直接 parser 可以接受专家 `backend` 参数；API-backed parser、Doclib SDK、doclib server API 和 v1 API 只面向 `tier`，不暴露 `backend`。
+5. **backend 只在专家层暴露**: backend 覆盖仅在 kit 层提供（`mineru-kit parse --backend`）；Tool SDK 的 `parse()` 只接受 `tier`。API-backed parser、Doclib SDK、doclib server API 和 v1 API 只面向 `tier`，不暴露 `backend`。
 6. **缓存按内容和 tier 隔离**: 同一 `sha256 + tier` 的解析结果可以复用；不同 tier 的结果不能互相覆盖。
 7. **fallback 不扩大隐私边界**: local 失败不能自动改成 remote；remote 失败可以 fallback 到 local。
 8. **Flash 可长期作为 backend 名称**: `flash` 同时是解析档位，也是快速 CPU PDF 解析 backend。
