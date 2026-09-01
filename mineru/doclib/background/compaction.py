@@ -238,7 +238,7 @@ class Compaction:
                 payload: dict[str, Any] = {"schema_version": MIDDLE_JSON_SCHEMA_VERSION, "pages": json_pages}
                 payload.update(envelope)
                 with open(temp_path, "w", encoding="utf-8") as f:
-                    json.dump(payload, f, ensure_ascii=False, indent=4)
+                    json.dump(payload, f, ensure_ascii=False, indent=2)
                 prepared.append((temp_path, final_path))
             for temp_path, final_path in prepared:
                 os.replace(temp_path, final_path)

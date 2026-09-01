@@ -1052,7 +1052,7 @@ class ParseService:
             os.makedirs(output_dir, exist_ok=True)
             _write_cached_image_sidecars(parse_image_sidecar_dir(self.data_dir, sha256, tier), result.images())
             with open(json_path, "w", encoding="utf-8") as f:
-                json.dump(export_payload, f, ensure_ascii=False, indent=4)
+                json.dump(export_payload, f, ensure_ascii=False, indent=2)
         except Exception as exc:
             logger.error(
                 "Parse post-write finalization failed for task_id=%s path=%s tier=%s page_range=%s: %s",

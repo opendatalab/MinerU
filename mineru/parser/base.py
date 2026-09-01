@@ -185,7 +185,7 @@ class ParseResult:
 
     def to_dict(self, *, skip_defaults: bool = True) -> dict[str, Any]:
         payload: dict[str, Any] = {"schema_version": MIDDLE_JSON_SCHEMA_VERSION}
-        payload.update(self.middle_json.to_dict(skip_defaults=skip_defaults))
+        payload.update(self.middle_json.to_dict(skip_defaults=skip_defaults, exclude_block_fields={"image_base64"}))
         if self._retained_page_indices is not None:
             payload[_PDF_RETAINED_PAGE_INDICES_KEY] = list(self._retained_page_indices)
         if self._broken_page_indices:
@@ -200,7 +200,7 @@ class ParseResult:
         return ParseResult.from_dict(data)
 
     def to_json(self) -> str:
-        return json.dumps(self.to_dict(), ensure_ascii=False, indent=4)
+        return json.dumps(self.to_dict(), ensure_ascii=False, indent=2)
 
     def markdown(
         self,
@@ -228,7 +228,7 @@ class ParseResult:
 
         writer.write_string(
             "structured_content.json",
-            json.dumps(self.structured_content(), ensure_ascii=False, indent=4),
+            json.dumps(self.structured_content(), ensure_ascii=False, indent=2),
         )
 
         if self._model_output is not None:
@@ -239,7 +239,7 @@ class ParseResult:
             )
             writer.write_string(
                 "model_output.json",
-                json.dumps(model_output, ensure_ascii=False, indent=4),
+                json.dumps(model_output, ensure_ascii=False, indent=2),
             )
 
         for img_path, img_bytes in self.images().items():
