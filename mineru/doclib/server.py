@@ -1444,7 +1444,7 @@ class DoclibServer(AsyncDoclibInterface):
                 if block.bbox is None or _is_empty_bbox(block.bbox):
                     raise InvalidRequestError("bbox_not_available", "Block bbox is not available for image output.", "locator")
                 image_bytes = _transcode_image_bytes(
-                    doc.crop_image(block.bbox, plan.target.page_no - 1, scale=doc.render_scale),
+                    doc.crop_image(block.bbox, plan.target.page_no - 1),
                     plan.image_format,
                 )
                 width, height = _image_size_from_bytes(image_bytes)

@@ -37,7 +37,7 @@ from .geometry import (
     _bbox_union_many,
     _clip_bbox,
     _coerce_bbox,
-    _normalize_bbox_to_thousandths,
+    _normalize_bbox_to_unit,
     _rotate_bbox_from_upright,
     _rotate_bbox_to_upright,
 )
@@ -915,7 +915,7 @@ def _normalize_output_block(
     normalized_type = block_type if block_type in _OUTPUT_BLOCK_TYPES else "text"
     if normalized_type not in {"image", "equation", "header", "footer"} and not content.strip():
         return None
-    normalized_bbox = _normalize_bbox_to_thousandths(bbox, page_size)
+    normalized_bbox = _normalize_bbox_to_unit(bbox, page_size)
     output_block = {
         "type": normalized_type,
         "bbox": normalized_bbox,
@@ -929,7 +929,7 @@ def _normalize_output_block(
             continue
         region = _clip_bbox(raw_region, page_size)
         if region is not None:
-            inline_math_regions.append(_normalize_bbox_to_thousandths(region, page_size))
+            inline_math_regions.append(_normalize_bbox_to_unit(region, page_size))
     if inline_math_regions:
         output_block["_inline_math_regions"] = inline_math_regions
     if normalized_type in _LINE_METADATA_OUTPUT_TYPES:
@@ -963,5 +963,5 @@ def _normalize_output_line_items(
         )
         if page_bbox is None:
             return []
-        line_items.append({"bbox": _normalize_bbox_to_thousandths(page_bbox, page_size)})
+        line_items.append({"bbox": _normalize_bbox_to_unit(page_bbox, page_size)})
     return line_items

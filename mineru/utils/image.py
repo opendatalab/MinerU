@@ -34,12 +34,16 @@ def calculate_contrast(img: np.ndarray, img_mode: str) -> float:
     return round(float(contrast), 2)
 
 
-def crop_pil_image(bbox: BBox, image: Image.Image, scale: float = 2.0) -> Image.Image:
-    """按缩放后的 bbox 裁剪 Pillow 图像。"""
-    scaled_bbox = normalize_to_int_bbox([float(value) * scale for value in bbox])
+def crop_pil_image(bbox: BBox, image: Image.Image) -> Image.Image:
+    """按 0-1 归一化 bbox 裁剪 Pillow 图像。"""
+    width, height = image.size
+    scaled_bbox = normalize_to_int_bbox(
+        [bbox[0] * width, bbox[1] * height, bbox[2] * width, bbox[3] * height],
+        image_size=(height, width),
+    )
     if scaled_bbox is None:
         return image.crop((0, 0, 0, 0))
-    return image.crop(tuple(scaled_bbox))
+    return image.crop(scaled_bbox)
 
 
 __all__ = ["calculate_contrast", "crop_pil_image"]
