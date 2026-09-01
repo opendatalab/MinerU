@@ -98,6 +98,7 @@ from .auxiliary_text import (
 )
 from .titles import (
     _classify_body_height_section_titles,
+    _classify_document_structural_titles,
     _classify_page_titles,
     _infer_document_body_profile,
     _infer_document_title_profile,
@@ -302,6 +303,10 @@ def _analyze_native_document(
             document_body_profile.body_height,
         )
     document_title_profile = _infer_document_title_profile(
+        prepared_pages,
+        document_body_profile,
+    )
+    _classify_document_structural_titles(
         prepared_pages,
         document_body_profile,
     )
@@ -563,6 +568,7 @@ def _finalize_prepared_page(
         prepared.page_size,
         container_bboxes=title_container_bboxes,
         document_body_profile=document_body_profile,
+        page_index=page_index,
     )
     _classify_page_titles(
         remaining_lines,

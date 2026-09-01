@@ -105,6 +105,44 @@ def _vector_formula_source(
     )
 
 
+def test_single_line_formula_requires_numeric_trailing_marker() -> None:
+    """验证同行公式只把数字编号识别为 tag，不把函数参数当编号。"""
+
+    numbered = _text_line(
+        "score=f(x) (3)",
+        (15.0, 30.0, 90.0, 40.0),
+        0,
+        effective_height=10.0,
+    )
+    parenthesized_argument = _text_line(
+        "Score=MLP(vCLS)",
+        (15.0, 50.0, 90.0, 60.0),
+        1,
+        effective_height=10.0,
+    )
+    numbered.document_style_anomaly = True
+    parenthesized_argument.document_style_anomaly = True
+    lane = models._TextLane(
+        left=0.0,
+        right=100.0,
+        lines=[
+            (numbered, numbered.bbox),
+            (parenthesized_argument, parenthesized_argument.bbox),
+        ],
+    )
+
+    assert formulas._is_single_line_numbered_formula(
+        (numbered, numbered.bbox),
+        lane,
+        10.0,
+    )
+    assert not formulas._is_single_line_numbered_formula(
+        (parenthesized_argument, parenthesized_argument.bbox),
+        lane,
+        10.0,
+    )
+
+
 def test_vector_formula_paths_and_detached_path_number_form_one_empty_equation() -> None:
     """验证矢量主体与远距栏右缘路径编号形成一个空内容公式。"""
 

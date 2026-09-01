@@ -148,6 +148,7 @@ def _merge_overlapping_inline_text_clusters(
                         second,
                         lane_median_height,
                         table_bboxes,
+                        local_page_width=local_page_width,
                     ):
                         union(first_index, second_index)
 
@@ -199,6 +200,8 @@ def _overlapping_inline_cluster_pair_is_connected(
     second: tuple[_LineItem, BBox],
     median_height: float,
     table_bboxes: list[BBox],
+    *,
+    local_page_width: float | None = None,
 ) -> bool:
     """判断两个同栏成员是否为同一二维物理行中的重叠片段。"""
 
@@ -217,6 +220,25 @@ def _overlapping_inline_cluster_pair_is_connected(
     ):
         return False
     if _bbox_axis_overlap_ratio(first_bbox, second_bbox, axis="y") < 0.55:
+        return False
+
+    first_guard_bbox = first_line.source_bbox or first_bbox
+    second_guard_bbox = second_line.source_bbox or second_bbox
+    left_bbox, right_bbox = sorted(
+        (first_guard_bbox, second_guard_bbox),
+        key=lambda bbox: bbox[0],
+    )
+    if (
+        local_page_width is not None
+        and (
+            first_line.document_style_anomaly
+            or second_line.document_style_anomaly
+        )
+        and left_bbox[2] <= 0.5 * local_page_width
+        and right_bbox[0] >= 0.5 * local_page_width
+        and right_bbox[0] - left_bbox[2]
+        >= 0.02 * local_page_width
+    ):
         return False
 
     horizontal_gap = _horizontal_bbox_gap(first_bbox, second_bbox)
@@ -332,6 +354,7 @@ def _merge_overlapping_inline_cluster(
         visual_row_id=host.visual_row_id,
         run_index=host.run_index,
         effective_height=host.effective_height,
+        em_height=host.em_height or host.effective_height,
         font_signature=host.font_signature,
         font_coverage=host.font_coverage,
         dominant_font_weight=host.dominant_font_weight,
@@ -343,6 +366,10 @@ def _merge_overlapping_inline_cluster(
         restored_inline_cluster=True,
         compact_formula_cluster=compact_formula_cluster,
         formula_candidate_only=all(line.formula_candidate_only for line in ordered_members),
+        document_style_anomaly=any(
+            line.document_style_anomaly
+            for line in ordered_members
+        ),
         inline_math_regions=[
             *(region for line in ordered_members for region in line.inline_math_regions),
             *detected_regions,
@@ -605,6 +632,10 @@ def _merge_same_baseline_group(
         ),
         run_index=min(member.run_index for member in members),
         effective_height=statistics.median(member.effective_height for member in members),
+        em_height=statistics.median(
+            member.em_height or member.effective_height
+            for member in members
+        ),
         font_signature=members[0].font_signature,
         font_coverage=min(member.font_coverage for member in members),
         dominant_font_weight=statistics.median(
@@ -624,6 +655,10 @@ def _merge_same_baseline_group(
         restored_inline_cluster=any(member.restored_inline_cluster for member in members),
         compact_formula_cluster=any(member.compact_formula_cluster for member in members),
         formula_candidate_only=all(member.formula_candidate_only for member in members),
+        document_style_anomaly=any(
+            member.document_style_anomaly
+            for member in members
+        ),
         inline_math_regions=[region for member in members for region in member.inline_math_regions],
     )
     if merged.chars:
@@ -946,6 +981,10 @@ def _merge_dense_split_visual_row(
         visual_row_id=ordered_members[0].visual_row_id,
         run_index=0,
         effective_height=statistics.median(_line_effective_height(member, bbox) for member, bbox in ordered_geometry),
+        em_height=statistics.median(
+            _line_effective_height(member, bbox)
+            for member, bbox in ordered_geometry
+        ),
         font_signature=ordered_members[0].font_signature,
         font_coverage=min(member.font_coverage for member in ordered_members),
         dominant_font_weight=statistics.median(
@@ -965,6 +1004,10 @@ def _merge_dense_split_visual_row(
         restored_inline_cluster=any(member.restored_inline_cluster for member in ordered_members),
         compact_formula_cluster=any(member.compact_formula_cluster for member in ordered_members),
         formula_candidate_only=all(member.formula_candidate_only for member in ordered_members),
+        document_style_anomaly=any(
+            member.document_style_anomaly
+            for member in ordered_members
+        ),
         inline_math_regions=[region for member in ordered_members for region in member.inline_math_regions],
     )
     if merged.chars:

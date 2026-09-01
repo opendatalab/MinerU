@@ -102,6 +102,13 @@ def _classify_page_titles(
                 local_page_height,
                 document_title_bottom,
             )
+            document_title_bottom = _classify_additional_document_title_bands(
+                line_geometry,
+                local_page_width,
+                local_page_height,
+                document_title_bottom,
+                document_body_profile=document_body_profile,
+            )
         preserve_front_matter_boundaries = _document_title_uses_page_fallback(
             lanes,
             document_body_profile=document_body_profile,
@@ -155,6 +162,31 @@ def _classify_page_titles(
                 for bbox in (caption_container_bboxes or [])
             ],
         )
+        if (
+            document_body_profile is not None
+            and document_body_profile.has_loose_height_anomaly
+        ):
+            _demote_non_structural_anomaly_titles(line_geometry)
+        if page_index == 0:
+            _demote_front_matter_non_document_titles(
+                line_geometry,
+                local_page_height,
+                document_title_bottom,
+                document_body_profile=document_body_profile,
+            )
+
+
+def _demote_non_structural_anomaly_titles(
+    line_geometry: list[tuple[_LineItem, BBox]],
+) -> None:
+    """在 loose 高度异常文档中只保留预先通过结构转折校验的段落标题。"""
+
+    for line, _bbox in line_geometry:
+        if (
+            line.semantic_type == "paragraph_title"
+            and not line.structural_title
+        ):
+            line.semantic_type = None
 
 
 def _infer_document_body_profile(
@@ -273,7 +305,283 @@ def _infer_document_body_profile(
         body_height=max(0.1, body_height),
         body_weight=body_weight,
         regular_fonts=regular_fonts,
+        has_loose_height_anomaly=any(
+            line.document_style_anomaly
+            for prepared in prepared_pages
+            for line in prepared.remaining_lines
+        ),
     )
+
+
+def _classify_document_structural_titles(
+    prepared_pages: list[_PreparedPage],
+    document_body_profile: _DocumentBodyProfile | None,
+) -> None:
+    """用跨页稳定栏带和段前后转折补齐正文同字号标题。"""
+
+    if (
+        document_body_profile is None
+        or not document_body_profile.has_loose_height_anomaly
+    ):
+        return
+    body_height = max(0.1, document_body_profile.body_height)
+    strong_candidates: list[
+        tuple[int, _LineItem, tuple[str, int] | None]
+    ] = []
+    start_candidates: list[
+        tuple[int, _LineItem, tuple[str, int] | None]
+    ] = []
+    accepted_anchor_positions: list[
+        tuple[int, int, float, float]
+    ] = []
+    for page_index, prepared in enumerate(prepared_pages):
+        container_bboxes = [
+            block["bbox"]
+            for block in prepared.fixed_blocks
+            if not isinstance(block.get("_inline_visual_row_id"), int)
+        ]
+        for angle in sorted(
+            {
+                line.angle
+                for line in prepared.remaining_lines
+                if line.semantic_type is None
+            }
+        ):
+            geometry = sorted(
+                [
+                    (
+                        line,
+                        _rotate_bbox_to_upright(
+                            line.source_bbox or line.bbox,
+                            prepared.page_size,
+                            angle,
+                        ),
+                    )
+                    for line in prepared.remaining_lines
+                    if line.angle == angle
+                    and line.semantic_type is None
+                ],
+                key=lambda item: (
+                    item[1][1],
+                    item[1][0],
+                    item[0].source_index,
+                ),
+            )
+            if len(geometry) < 4:
+                continue
+            local_page_width = (
+                prepared.page_size[1]
+                if angle in {90, 270}
+                else prepared.page_size[0]
+            )
+            local_page_height = (
+                prepared.page_size[0]
+                if angle in {90, 270}
+                else prepared.page_size[1]
+            )
+            median_height = statistics.median(
+                _line_effective_height(line, bbox)
+                for line, bbox in geometry
+            )
+            lanes = _infer_text_lanes(
+                geometry,
+                local_page_width,
+                median_height,
+            )
+            physical_gaps = _build_physical_title_gap_map(geometry)
+            local_containers = [
+                _rotate_bbox_to_upright(
+                    bbox,
+                    prepared.page_size,
+                    angle,
+                )
+                for bbox in container_bboxes
+            ]
+            for line, bbox in geometry:
+                if (
+                    page_index == 0
+                    and _bbox_center_y(bbox)
+                    < 0.64 * local_page_height
+                ):
+                    continue
+                related_lanes = [
+                    lane
+                    for lane in lanes
+                    if not lane.is_span
+                    and len(lane.lines) >= 3
+                    and lane.left - body_height
+                    <= _bbox_center_x(bbox)
+                    <= lane.right + body_height
+                ]
+                if not related_lanes:
+                    continue
+                lane = max(
+                    related_lanes,
+                    key=lambda item: (
+                        len(item.lines),
+                        item.right - item.left,
+                    ),
+                )
+                lane_width = max(0.1, lane.right - lane.left)
+                width_ratio = (bbox[2] - bbox[0]) / lane_width
+                style_ratio = (
+                    _line_effective_height(line, bbox)
+                    / body_height
+                )
+                left_offset = (bbox[0] - lane.left) / body_height
+                regular_font = _line_uses_document_regular_font(
+                    line,
+                    document_body_profile,
+                )
+                if (
+                    not 0.75 <= style_ratio <= 1.35
+                    or width_ratio > 0.8
+                    or left_offset > 0.75
+                    or left_offset < (-0.75 if regular_font else -3.0)
+                    or _line_inside_visual_container(
+                        bbox,
+                        local_containers,
+                    )
+                ):
+                    continue
+                followers = [
+                    (other_line, other_bbox)
+                    for other_line, other_bbox in geometry
+                    if other_line is not line
+                    and bbox[1] < other_bbox[1]
+                    and other_bbox[1] - bbox[3]
+                    <= 3.0 * body_height
+                    and lane.left - body_height
+                    <= other_bbox[0]
+                    <= lane.left + 3.5 * body_height
+                    and other_bbox[2] - other_bbox[0]
+                    >= 0.4 * lane_width
+                ]
+                if not followers:
+                    continue
+                gap_above, gap_below = physical_gaps.get(
+                    line.source_index,
+                    (None, None),
+                )
+                layout_ratio = (
+                    bbox[3] - bbox[1]
+                ) / body_height
+                if (
+                    regular_font
+                    and layout_ratio < 1.3
+                    and line.font_coverage < 0.75
+                ):
+                    continue
+                standard_transition = (
+                    gap_above is not None
+                    and gap_below is not None
+                    and gap_above >= 0.65 * body_height
+                    and gap_below >= 0.35 * body_height
+                    and (
+                        not regular_font
+                        or gap_below <= 1.5 * body_height
+                    )
+                )
+                low_coverage_wide_transition = (
+                    gap_above is not None
+                    and gap_below is not None
+                    and gap_above >= 0.5 * body_height
+                    and gap_below >= 0.45 * body_height
+                    and gap_below <= 0.7 * body_height
+                    and width_ratio >= 0.75
+                    and line.font_coverage <= 0.7
+                    and layout_ratio >= 1.8
+                )
+                if low_coverage_wide_transition and any(
+                    anchor_page_index == page_index
+                    and anchor_angle == angle
+                    and abs(anchor_left - lane.left)
+                    <= body_height
+                    and 0
+                    < _bbox_center_y(bbox) - anchor_center_y
+                    <= 12.0 * body_height
+                    for (
+                        anchor_page_index,
+                        anchor_angle,
+                        anchor_left,
+                        anchor_center_y,
+                    ) in accepted_anchor_positions
+                ):
+                    low_coverage_wide_transition = False
+                compact_regular_transition = (
+                    gap_above is not None
+                    and gap_below is not None
+                    and gap_above >= 0.65 * body_height
+                    and gap_below >= 0.15 * body_height
+                    and width_ratio <= 0.45
+                    and line.font_coverage >= 0.75
+                    and layout_ratio <= 1.3
+                )
+                family_key = (
+                    _normalized_font_family(line.font_signature),
+                    line.font_signature[1],
+                ) if line.font_signature is not None else None
+                if (
+                    standard_transition
+                    or low_coverage_wide_transition
+                    or compact_regular_transition
+                    or (
+                        gap_above is None
+                        and gap_below is not None
+                        and gap_below >= 0.6 * body_height
+                        and not regular_font
+                    )
+                ):
+                    strong_candidates.append(
+                        (page_index, line, family_key),
+                    )
+                    accepted_anchor_positions.append(
+                        (
+                            page_index,
+                            angle,
+                            lane.left,
+                            _bbox_center_y(bbox),
+                        )
+                    )
+                    continue
+                if (
+                    gap_above is None
+                    and bbox[1] <= 0.18 * local_page_height
+                    and width_ratio <= 0.6
+                    and (
+                        line.font_coverage >= 0.75
+                        or (
+                            not regular_font
+                            and line.font_coverage >= 0.5
+                        )
+                    )
+                ):
+                    start_candidates.append(
+                        (page_index, line, family_key),
+                    )
+
+    for _page_index, line, _family_key in strong_candidates:
+        line.semantic_type = "paragraph_title"
+        line.structural_title = True
+    strong_families_by_page = {
+        (page_index, family_key)
+        for page_index, _line, family_key in strong_candidates
+        if family_key is not None
+    }
+    for page_index, line, family_key in start_candidates:
+        if (
+            not _line_uses_document_regular_font(
+                line,
+                document_body_profile,
+            )
+            or (
+                family_key is not None
+                and (page_index, family_key)
+                in strong_families_by_page
+            )
+        ):
+            line.semantic_type = "paragraph_title"
+            line.structural_title = True
 
 
 def _classify_body_height_section_titles(
@@ -282,6 +590,7 @@ def _classify_body_height_section_titles(
     *,
     container_bboxes: list[BBox],
     document_body_profile: _DocumentBodyProfile | None,
+    page_index: int = 1,
 ) -> None:
     """用重复的短行加正文组结构识别与正文同字号的独立章节标题。"""
 
@@ -925,12 +1234,18 @@ def _classify_document_title(
             ):
                 continue
             top_preference = max(0.0, 0.45 - _bbox_center_y(bbox) / local_page_height)
+            top_preference_weight = (
+                4.0
+                if document_body_profile is not None
+                and document_body_profile.has_loose_height_anomaly
+                else 1.0
+            )
             score = (
                 height_ratio
                 + (0.75 if centered else 0.0)
                 + (1.25 if page_centered else 0.0)
                 + (0.75 if page_width_ratio >= 0.55 else 0.0)
-                + top_preference
+                + top_preference_weight * top_preference
                 - 0.02 * row_index
             )
             candidates.append((score, lane, row_index, item))
@@ -1051,6 +1366,107 @@ def _expand_document_title_across_lanes(
             changed = True
             break
     return max(bbox[3] for _line, bbox in title_items)
+
+
+def _classify_additional_document_title_bands(
+    line_geometry: list[tuple[_LineItem, BBox]],
+    local_page_width: float,
+    local_page_height: float,
+    document_title_bottom: float | None,
+    *,
+    document_body_profile: _DocumentBodyProfile | None,
+) -> float | None:
+    """用居中译题与后续作者行结构补充首页第二文档标题带。"""
+
+    if (
+        document_title_bottom is None
+        or document_body_profile is None
+        or not document_body_profile.has_loose_height_anomaly
+    ):
+        return document_title_bottom
+    body_height = max(0.1, document_body_profile.body_height)
+    ordered = sorted(
+        line_geometry,
+        key=lambda item: (item[1][1], item[1][0], item[0].source_index),
+    )
+    selected_bottoms = [
+        bbox[3]
+        for line, bbox in ordered
+        if line.semantic_type == "doc_title"
+    ]
+    for index, (line, bbox) in enumerate(ordered):
+        if line.semantic_type is not None:
+            continue
+        center_y = _bbox_center_y(bbox)
+        width_ratio = (bbox[2] - bbox[0]) / max(0.1, local_page_width)
+        if not (
+            document_title_bottom + 4.0 * body_height
+            <= center_y
+            <= 0.58 * local_page_height
+        ):
+            continue
+        if not 0.4 <= width_ratio <= 0.8:
+            continue
+        if (
+            abs(_bbox_center_x(bbox) - 0.5 * local_page_width)
+            > 0.08 * local_page_width
+        ):
+            continue
+        if _line_uses_document_regular_font(line, document_body_profile):
+            continue
+        following = [
+            item
+            for item in ordered[index + 1 :]
+            if item[0].semantic_type is None
+            and _bbox_center_y(item[1]) > center_y
+        ]
+        if not following:
+            continue
+        _next_line, next_bbox = following[0]
+        next_width_ratio = (
+            next_bbox[2] - next_bbox[0]
+        ) / max(0.1, local_page_width)
+        next_centered = (
+            abs(_bbox_center_x(next_bbox) - 0.5 * local_page_width)
+            <= 0.12 * local_page_width
+        )
+        vertical_gap = max(0.0, next_bbox[1] - bbox[3])
+        if (
+            not next_centered
+            or next_width_ratio > 0.45
+            or vertical_gap > 2.0 * body_height
+        ):
+            continue
+        line.semantic_type = "doc_title"
+        selected_bottoms.append(bbox[3])
+    return max(selected_bottoms, default=document_title_bottom)
+
+
+def _demote_front_matter_non_document_titles(
+    line_geometry: list[tuple[_LineItem, BBox]],
+    local_page_height: float,
+    document_title_bottom: float | None,
+    *,
+    document_body_profile: _DocumentBodyProfile | None,
+) -> None:
+    """把首页最后标题带后的作者与单位行降回正文。"""
+
+    if (
+        document_title_bottom is None
+        or document_body_profile is None
+        or not document_body_profile.has_loose_height_anomaly
+    ):
+        return
+    boundary = max(
+        document_title_bottom + 2.5 * document_body_profile.body_height,
+        0.46 * local_page_height,
+    )
+    for line, bbox in line_geometry:
+        if (
+            line.semantic_type == "paragraph_title"
+            and _bbox_center_y(bbox) <= boundary
+        ):
+            line.semantic_type = None
 
 
 def _classify_cross_lane_centered_section_titles(

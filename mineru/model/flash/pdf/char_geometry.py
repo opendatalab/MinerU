@@ -46,6 +46,14 @@ Y_MIN_REPEATED_LINES = 3
 Y_MIN_REPEATED_SHARE = 0.50
 Y_HEALTHY_LOOSE_SAMPLE_MIN = 20
 Y_DOCUMENT_RISK_P95_RATIO = 2.20
+STYLE_INFLATION_LOOSE_FONT_RATIO = 1.50
+STYLE_INFLATION_LOOSE_TIGHT_RATIO = 1.80
+STYLE_INFLATION_MIN_LINE_COUNT = 3
+STYLE_INFLATION_MIN_LINE_SHARE = 0.50
+STYLE_INFLATION_MIN_PAGE_COUNT = 2
+STYLE_INFLATION_MIN_SCALE = 4.0
+STYLE_INFLATION_DOCUMENT_MIN_LINE_COUNT = 20
+STYLE_INFLATION_DOCUMENT_MIN_PAGE_COUNT = 15
 
 RunKey: TypeAlias = tuple[str, float, int, int, int, str]
 LineKey: TypeAlias = tuple[int, int]
@@ -92,12 +100,15 @@ class DocumentGeometryPlan:
 
     char_repairs: dict[CharKey, CharLayoutGeometry] = field(default_factory=dict)
     line_repairs: dict[LineKey, LineGeometryRepair] = field(default_factory=dict)
+    line_style_scales: dict[LineKey, float] = field(default_factory=dict)
     run_diagnostics: list[dict[str, Any]] = field(default_factory=list)
+    document_style_anomaly: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         """转换为 review 脚本可序列化的稳定诊断。"""
 
         return {
+            "document_style_anomaly": self.document_style_anomaly,
             "run_diagnostics": self.run_diagnostics,
             "char_repairs": [
                 {
@@ -169,6 +180,7 @@ class _RunStats:
     samples: list[_CharSample] = field(default_factory=list)
     strong_x_bad: bool = False
     sibling_x_bad: bool = False
+    style_y_bad: bool = False
     median_advance: float | None = None
     median_tight_left_bearing: float = 0.0
 
@@ -315,9 +327,27 @@ def _source_bbox(
     geometry: PDFPageTextGeometry,
     char_idx: int,
 ) -> BBox | None:
-    """优先读取显式 loose side-map，缺失时兼容旧 char bbox。"""
+    """按提取契约读取 loose：零旋转使用 char bbox，旋转字符才接受 side-map。"""
 
-    return _coerce_bbox(geometry.loose_bboxes.get(char_idx)) or _coerce_bbox(char.get("bbox"))
+    raw_bbox = _coerce_bbox(char.get("bbox"))
+    try:
+        rotation = float(char.get("rotation") or 0.0)
+    except (TypeError, ValueError):
+        rotation = math.nan
+    if math.isfinite(rotation) and abs(rotation) <= 1e-9:
+        return raw_bbox
+    side_bbox = _coerce_bbox(geometry.loose_bboxes.get(char_idx))
+    if side_bbox is None or raw_bbox is None:
+        return side_bbox or raw_bbox
+    tight_bbox = _coerce_bbox(geometry.tight_bboxes.get(char_idx))
+    stable_width = max(
+        raw_bbox[2] - raw_bbox[0],
+        (tight_bbox[2] - tight_bbox[0]) if tight_bbox is not None else 0.0,
+        0.1,
+    )
+    if side_bbox[2] - side_bbox[0] > 1.6 * stable_width:
+        return raw_bbox
+    return side_bbox
 
 
 def _document_requires_full_geometry(
@@ -547,6 +577,185 @@ def _build_run_stats(
             median_ratio >= X_SIBLING_MEDIAN_RATIO and overlap_share >= X_SIBLING_NEXT_TIGHT_OVERLAP_SHARE
         ) or _quantile(run.pair_ratios, 0.9) >= X_SIBLING_P90_RATIO
     return runs
+
+
+def _mark_style_inflated_runs(
+    runs: dict[RunKey, _RunStats],
+) -> set[RunKey]:
+    """标记跨页重复出现且 loose 高度同时偏离字号与 tight 的字体 run。"""
+
+    output: set[RunKey] = set()
+    for run in runs.values():
+        samples_by_line: dict[LineKey, list[_CharSample]] = defaultdict(list)
+        for sample in run.samples:
+            if sample.is_anchor:
+                samples_by_line[
+                    (sample.page_index, sample.line.source_index)
+                ].append(sample)
+        if len(samples_by_line) < STYLE_INFLATION_MIN_LINE_COUNT:
+            continue
+        inflated_lines: list[LineKey] = []
+        for line_key, line_samples in samples_by_line.items():
+            font_sizes = [
+                sample.font_size
+                for sample in line_samples
+                if sample.font_size > 0
+            ]
+            tight_heights = [
+                sample.local_tight_bbox[3]
+                - sample.local_tight_bbox[1]
+                for sample in line_samples
+            ]
+            style_scale = max(
+                statistics.median(font_sizes)
+                if font_sizes
+                else 0.0,
+                _quantile(tight_heights, 0.75),
+            )
+            if style_scale < STYLE_INFLATION_MIN_SCALE:
+                continue
+            source_height = line_samples[0].line.effective_height
+            tight_height = max(0.1, _quantile(tight_heights, 0.75))
+            if (
+                source_height
+                > STYLE_INFLATION_LOOSE_FONT_RATIO * style_scale
+                and source_height
+                > STYLE_INFLATION_LOOSE_TIGHT_RATIO * tight_height
+            ):
+                inflated_lines.append(line_key)
+        if (
+            len(inflated_lines) >= STYLE_INFLATION_MIN_LINE_COUNT
+            and len(inflated_lines) / len(samples_by_line)
+            >= STYLE_INFLATION_MIN_LINE_SHARE
+            and len({page_index for page_index, _source_index in inflated_lines})
+            >= STYLE_INFLATION_MIN_PAGE_COUNT
+        ):
+            run.style_y_bad = True
+            output.add(run.key)
+    return output
+
+
+def _document_uses_global_style_calibration(
+    lines_by_page: list[list[_LineItem]],
+    by_line: dict[LineKey, list[_CharSample]],
+    style_inflated_runs: set[RunKey],
+) -> bool:
+    """判断异常 run 是否以跨页稀疏模式反复污染全文排版尺度。"""
+
+    if not style_inflated_runs:
+        return False
+    affected_lines: set[LineKey] = set()
+    for line_key, line_samples in by_line.items():
+        relevant = [
+            sample
+            for sample in line_samples
+            if sample.is_anchor
+            and sample.run_key in style_inflated_runs
+        ]
+        if not relevant:
+            continue
+        font_sizes = [
+            sample.font_size
+            for sample in relevant
+            if sample.font_size > 0
+        ]
+        tight_heights = [
+            sample.local_tight_bbox[3]
+            - sample.local_tight_bbox[1]
+            for sample in relevant
+        ]
+        style_scale = max(
+            statistics.median(font_sizes)
+            if font_sizes
+            else 0.0,
+            _quantile(tight_heights, 0.75),
+        )
+        if (
+            style_scale >= STYLE_INFLATION_MIN_SCALE
+            and relevant[0].line.effective_height
+            > STYLE_INFLATION_LOOSE_FONT_RATIO * style_scale
+            and relevant[0].line.effective_height
+            > STYLE_INFLATION_LOOSE_TIGHT_RATIO
+            * max(0.1, _quantile(tight_heights, 0.75))
+        ):
+            affected_lines.add(line_key)
+    return (
+        len(affected_lines)
+        >= STYLE_INFLATION_DOCUMENT_MIN_LINE_COUNT
+        and len({page_index for page_index, _source_index in affected_lines})
+        >= STYLE_INFLATION_DOCUMENT_MIN_PAGE_COUNT
+    )
+
+
+def _apply_style_scale_repairs(
+    plan: DocumentGeometryPlan,
+    style_inflated_runs: set[RunKey],
+    by_line: dict[LineKey, list[_CharSample]],
+) -> None:
+    """异常文档触发后统一写入逐行 canonical 字号，不改变公开来源 bbox。"""
+
+    if not style_inflated_runs:
+        return
+    for line_key, line_samples in by_line.items():
+        anchor_samples = [
+            sample
+            for sample in line_samples
+            if sample.is_anchor
+        ]
+        if not anchor_samples:
+            continue
+        dominant_run = Counter(
+            sample.run_key
+            for sample in anchor_samples
+        ).most_common(1)[0][0]
+        style_samples = [
+            sample
+            for sample in anchor_samples
+            if sample.run_key == dominant_run
+        ]
+        font_sizes = [
+            sample.font_size
+            for sample in style_samples
+            if sample.font_size > 0
+        ]
+        tight_heights = [
+            sample.local_tight_bbox[3]
+            - sample.local_tight_bbox[1]
+            for sample in style_samples
+        ]
+        style_scale = max(
+            statistics.median(font_sizes)
+            if font_sizes
+            else 0.0,
+            _quantile(tight_heights, 0.75),
+            0.1,
+        )
+        if style_scale < STYLE_INFLATION_MIN_SCALE:
+            continue
+        plan.line_style_scales[line_key] = style_scale
+
+
+def _restore_stable_legacy_source_bboxes(
+    by_line: dict[LineKey, list[_CharSample]],
+    page_sizes: list[tuple[float, float]],
+) -> None:
+    """全文异常成立后改用原始字符 bbox，隔离仅存在于 loose side-map 的扰动。"""
+
+    for (page_index, _source_index), line_samples in by_line.items():
+        page_size = page_sizes[page_index]
+        for sample in line_samples:
+            raw_bbox = _clip_bbox(
+                _coerce_bbox(sample.line.chars[sample.position].get("bbox")),
+                page_size,
+            )
+            if raw_bbox is None:
+                continue
+            sample.source_bbox = raw_bbox
+            sample.local_source_bbox = _rotate_bbox_to_upright(
+                raw_bbox,
+                page_size,
+                sample.line.angle,
+            )
 
 
 def _next_compatible_sample(
@@ -935,7 +1144,11 @@ def _repair_y_lines(
             continue
         current.layout_bbox = layout_bbox
         current.ink_bbox = _bbox_union_many([sample.tight_bbox for sample in analysis.samples])
-        current.em_height = analysis.line.effective_height if preserve_legacy_typography else max(0.1, bottom - top)
+        current.em_height = (
+            analysis.line.effective_height
+            if preserve_legacy_typography
+            else max(0.1, bottom - top)
+        )
         current.state = "repair_xy" if current.state == "repair_x" else "trim_y"
         current.confidence = min(analysis.geometry_coverage, analysis.dominant_share)
         current.y_intrusion_ratio = analysis.intrusion_ratio
@@ -1015,6 +1228,7 @@ def _run_diagnostics(runs: dict[RunKey, _RunStats]) -> list[dict[str, Any]]:
                 "next_tight_overlap_share": sum(run.pair_overlaps) / pair_count if pair_count else 0.0,
                 "strong_x_bad": run.strong_x_bad,
                 "sibling_x_bad": run.sibling_x_bad,
+                "style_y_bad": run.style_y_bad,
             }
         )
     return output
@@ -1036,10 +1250,27 @@ def build_document_geometry_plan(
         return plan
     samples, by_line = _collect_samples(lines_by_page, geometries, page_sizes)
     runs = _build_run_stats(samples, by_line)
+    style_inflated_runs = _mark_style_inflated_runs(runs)
+    plan.document_style_anomaly = _document_uses_global_style_calibration(
+        lines_by_page,
+        by_line,
+        style_inflated_runs,
+    )
+    _apply_style_scale_repairs(
+        plan,
+        style_inflated_runs
+        if plan.document_style_anomaly
+        else set(),
+        by_line,
+    )
+    if plan.document_style_anomaly:
+        _restore_stable_legacy_source_bboxes(by_line, page_sizes)
+        runs = _build_run_stats(samples, by_line)
+        for run in runs.values():
+            run.style_y_bad = run.key in style_inflated_runs
     plan.run_diagnostics = _run_diagnostics(runs)
     x_bad_runs = {run.key for run in runs.values() if run.strong_x_bad or run.sibling_x_bad}
-    has_x_repairs = bool(x_bad_runs)
-    if has_x_repairs:
+    if x_bad_runs:
         _repair_x_chars(plan, runs, by_line, page_sizes)
         _build_line_repairs_from_x(plan, lines_by_page, by_line, page_sizes)
     if not _has_document_y_risk(by_line):
@@ -1060,6 +1291,12 @@ def apply_line_geometry_repairs(
     """把文档计划应用到当前仍可参与 Flash 布局的行。"""
 
     for line in lines:
+        line.document_style_anomaly = plan.document_style_anomaly
+        style_scale = plan.line_style_scales.get(
+            (page_index, line.source_index),
+        )
+        if style_scale is not None:
+            line.em_height = style_scale
         repair = plan.line_repairs.get((page_index, line.source_index))
         if repair is None:
             continue
@@ -1079,11 +1316,13 @@ def apply_line_geometry_repairs(
         line.geometry_confidence = repair.confidence
         line.split_y_candidate = repair.split_y_candidate
         line.bbox = layout
+        line.em_height = (
+            style_scale
+            if style_scale is not None
+            else repair.em_height
+        )
         if allow_y_trim and repair.state in {"trim_y", "repair_xy"}:
             line.effective_height = repair.em_height
-            line.em_height = repair.em_height
-        elif line.em_height <= 0:
-            line.em_height = line.effective_height
 
 
 __all__ = [

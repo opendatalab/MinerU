@@ -659,6 +659,12 @@ def _build_text_blocks(
         local_page_width = page_size[1] if angle in {90, 270} else page_size[0]
         lanes = _infer_text_lanes(line_geometry, local_page_width, median_height)
         local_axis_lines = _transform_axis_lines(drawing_lines or [], page_size, angle)
+        split_row_counts: dict[int, int] = {}
+        for line, _bbox in line_geometry:
+            if line.visual_row_id is not None and line.split_from_row:
+                split_row_counts[line.visual_row_id] = (
+                    split_row_counts.get(line.visual_row_id, 0) + 1
+                )
 
         for lane in lanes:
             lane.lines.sort(key=lambda item: (item[1][1], item[1][0], item[0].source_index))
@@ -702,7 +708,18 @@ def _build_text_blocks(
                         if current_local_lane is not None and previous_local_lane is current_local_lane
                         else lane
                     )
-                    if current[0].source_index in structured_break_sources:
+                    if (
+                        current[0].document_style_anomaly
+                        and current[0].split_from_row
+                        and current[0].visual_row_id is not None
+                        and split_row_counts.get(
+                            current[0].visual_row_id,
+                            0,
+                        )
+                        >= 2
+                    ):
+                        should_connect = False
+                    elif current[0].source_index in structured_break_sources:
                         should_connect = False
                     elif _starts_structural_reference_entry(previous, current):
                         # 编号只确认已经由悬挂缩进几何形成的新条目，不能单独扩张范围。

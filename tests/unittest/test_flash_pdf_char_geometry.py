@@ -96,6 +96,65 @@ def _merge_geometries(*geometries: PDFPageTextGeometry) -> PDFPageTextGeometry:
     )
 
 
+def test_repeated_loose_height_inflation_sets_canonical_em_scale() -> None:
+    """验证跨页重复的 loose 高度异常按字号与 tight 几何校准行尺度。"""
+
+    lines_by_page: list[list[_LineItem]] = []
+    geometries: list[PDFPageTextGeometry] = []
+    for page_index in range(15):
+        page_lines = []
+        page_geometries = []
+        for line_index in range(10):
+            baseline = 20.0 + 16.0 * line_index
+            anomalous = line_index < 2
+            line, geometry = _line_fixture(
+                source_index=line_index,
+                baseline=baseline,
+                loose_top=(
+                    baseline - 20.0
+                    if anomalous
+                    else baseline - 8.0
+                ),
+                loose_bottom=(
+                    baseline + 4.0
+                    if anomalous
+                    else baseline + 2.0
+                ),
+                loose_width=12.0 if anomalous else 6.0,
+                font_name=(
+                    "ABCDEF+Anomaly"
+                    if anomalous
+                    else "ABCDEF+Normal"
+                ),
+                font_size=10.0,
+                start_char_idx=(
+                    page_index * 10000
+                    + line_index * 100
+                ),
+            )
+            page_lines.append(line)
+            page_geometries.append(geometry)
+        lines_by_page.append(page_lines)
+        geometries.append(_merge_geometries(*page_geometries))
+
+    plan = build_document_geometry_plan(
+        lines_by_page,
+        geometries,
+        [(300.0, 200.0)] * 15,
+    )
+    for page_index, lines in enumerate(lines_by_page):
+        apply_line_geometry_repairs(
+            lines,
+            page_index=page_index,
+            plan=plan,
+            allow_y_trim=True,
+        )
+
+    assert plan.document_style_anomaly
+    assert all(lines[0].em_height == 10.0 for lines in lines_by_page)
+    assert any(run["style_y_bad"] for run in plan.run_diagnostics)
+
+
 def test_strong_x_run_repairs_advance_and_contains_tight_bbox() -> None:
     """验证强 X 异常 run 按 origin advance 收缩且仍包含 tight。"""
 
@@ -119,6 +178,42 @@ def test_normal_monospace_run_keeps_identity_geometry() -> None:
 
     assert plan.char_repairs == {}
     assert (0, 0) not in plan.line_repairs
+
+
+def test_zero_rotation_ignores_untrusted_loose_side_map_shadow() -> None:
+    """验证零旋转字符只使用原始 bbox，不让密集 side-map 扰动改变布局计划。"""
+
+    line, geometry = _line_fixture(source_index=0, baseline=20.0, loose_width=6.0)
+    perturbed = {
+        char_idx: (bbox[0], bbox[1] - 20.0, bbox[2] + 30.0, bbox[3] + 20.0)
+        for char_idx, bbox in geometry.loose_bboxes.items()
+    }
+    geometry.loose_bboxes.clear()
+    geometry.loose_bboxes.update(perturbed)
+
+    plan = build_document_geometry_plan([[line]], [geometry], [(400.0, 100.0)])
+
+    assert plan.char_repairs == {}
+    assert plan.line_repairs == {}
+
+
+def test_rotated_char_rejects_implausible_side_map_x_expansion() -> None:
+    """验证旋转字符的 loose 宽度远超原始和 tight 框时回退稳定原始几何。"""
+
+    line, geometry = _line_fixture(source_index=0, baseline=20.0, loose_width=6.0)
+    for char in line.chars:
+        char["rotation"] = 0.2
+    perturbed = {
+        char_idx: (bbox[0], bbox[1], bbox[2] + 30.0, bbox[3])
+        for char_idx, bbox in geometry.loose_bboxes.items()
+    }
+    geometry.loose_bboxes.clear()
+    geometry.loose_bboxes.update(perturbed)
+
+    plan = build_document_geometry_plan([[line]], [geometry], [(400.0, 100.0)])
+
+    assert plan.char_repairs == {}
+    assert plan.line_repairs == {}
 
 
 def test_missing_extended_geometry_is_exact_identity() -> None:

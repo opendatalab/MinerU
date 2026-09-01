@@ -1862,6 +1862,87 @@ def test_native_typography_caches_leading_emphasis_before_chars_are_cleared() ->
     assert not line.chars
 
 
+def test_native_typography_separates_loose_height_from_canonical_em() -> None:
+    """验证异常 loose 字符高度不会覆盖 PDF 字号形成的 canonical 尺度。"""
+
+    chars = [
+        {
+            "char": character,
+            "bbox": (float(index * 6), 0.0, float(index * 6 + 6), 24.0),
+            "font": {
+                "name": "ABCDEF+Body",
+                "flags": 0,
+                "weight": 400,
+                "size": 10.0,
+            },
+            "char_idx": index,
+        }
+        for index, character in enumerate("Body")
+    ]
+    line = models._LineItem(
+        text="Body",
+        bbox=(0.0, 0.0, 24.0, 24.0),
+        angle=0,
+        source_index=0,
+        chars=chars,
+        em_height=10.0,
+        document_style_anomaly=True,
+    )
+
+    native_text._fill_native_typography(line, (100.0, 100.0))
+
+    assert line.effective_height == 24.0
+    assert line.em_height == 10.0
+    assert line_layout._line_effective_height(line, line.bbox) == 10.0
+    assert line_layout._line_layout_height(line, line.bbox) == 24.0
+
+
+def test_canonical_visual_resplit_separates_cross_column_coarse_row() -> None:
+    """验证 repaired/tight 字符间隙可把跨栏粗行重切成唯一视觉 run。"""
+
+    positions = (0.0, 6.0, 12.0, 18.0, 62.0, 68.0, 74.0, 80.0)
+    chars = [
+        {
+            "char": character,
+            "bbox": (position, 10.0, position + 20.0, 20.0),
+            "font": {
+                "name": "ABCDEF+Body",
+                "flags": 0,
+                "weight": 400,
+                "size": 10.0,
+            },
+            "char_idx": index,
+        }
+        for index, (character, position) in enumerate(
+            zip("ABCDEFGH", positions, strict=True),
+        )
+    ]
+    visual_bboxes = {
+        index: (position, 10.0, position + 5.0, 20.0)
+        for index, position in enumerate(positions)
+    }
+    line = models._LineItem(
+        text="ABCDEFGH",
+        bbox=(0.0, 10.0, 100.0, 20.0),
+        angle=0,
+        source_index=5,
+        chars=chars,
+        visual_row_id=3,
+    )
+
+    output = native_text._resplit_native_visual_runs(
+        [line],
+        (100.0, 100.0),
+        visual_bboxes,
+        source_index_start=10,
+    )
+
+    assert [item.text for item in output] == ["ABCD", "EFGH"]
+    assert [item.source_index for item in output] == [5, 10]
+    assert all(item.visual_row_id == 3 for item in output)
+    assert all(item.split_from_row for item in output)
+
+
 def test_two_leading_emphasis_rows_do_not_activate_structured_text_split() -> None:
     """验证不足三个重复强调首行时不会把普通混排正文切碎。"""
 

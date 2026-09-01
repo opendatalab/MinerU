@@ -46,15 +46,15 @@ class _LineItem:
     restored_inline_cluster: bool = False
     compact_formula_cluster: bool = False
     formula_candidate_only: bool = False
+    structural_title: bool = False
+    document_style_anomaly: bool = False
     inline_math_regions: list[BBox] = field(default_factory=list)
 
     def __post_init__(self) -> None:
-        """为旧调用与合成测试补齐可选双几何字段。"""
+        """为旧调用与合成测试补齐可选来源几何字段。"""
 
         if self.source_bbox is None:
             self.source_bbox = self.bbox
-        if self.em_height <= 0 and self.effective_height > 0:
-            self.em_height = self.effective_height
 
 
 @dataclass(slots=True)
@@ -218,6 +218,7 @@ class _DocumentBodyProfile:
     body_height: float
     body_weight: float | None
     regular_fonts: frozenset[tuple[str, int]]
+    has_loose_height_anomaly: bool = False
 
 
 @dataclass(frozen=True, slots=True)

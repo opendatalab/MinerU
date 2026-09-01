@@ -7,7 +7,7 @@ from __future__ import annotations
 import math
 import re
 import statistics
-from typing import Any, Literal, Sequence
+from typing import Any, Literal, Mapping, Sequence
 
 from pdftext.schema import Char
 
@@ -25,6 +25,7 @@ from .geometry import (
     _clip_bbox,
     _coerce_bbox,
     _horizontal_bbox_gap,
+    _rotate_bbox_from_upright,
     _rotate_bbox_to_upright,
 )
 
@@ -301,15 +302,30 @@ def _pdftext_line_has_horizontal_char_baseline(
 def _split_native_visual_runs(
     line: _LineItem,
     page_size: tuple[float, float],
+    *,
+    visual_bboxes: Mapping[int, BBox] | None = None,
+    preserve_vertical_bbox: BBox | None = None,
 ) -> list[_LineItem]:
-    """保留字符源顺序与空白信息，并将一个 pdftext 粗行拆成远距视觉 run。"""
+    """保留字符源顺序与空白信息，并按 canonical 字符框拆分远距视觉 run。"""
 
     tokens: list[tuple[Char, str, BBox | None, BBox | None]] = []
     for char in line.chars:
         raw_char = str(char.get("char") or "")
         if raw_char in {"\r", "\n"}:
             continue
-        bbox = _clip_bbox(_coerce_bbox(char.get("bbox")), page_size)
+        char_idx = char.get("char_idx")
+        visual_bbox = (
+            visual_bboxes.get(char_idx)
+            if visual_bboxes is not None
+            and isinstance(char_idx, int)
+            and raw_char.isprintable()
+            and not raw_char.isspace()
+            else None
+        )
+        bbox = _clip_bbox(
+            _coerce_bbox(visual_bbox) or _coerce_bbox(char.get("bbox")),
+            page_size,
+        )
         local_bbox = _rotate_bbox_to_upright(bbox, page_size, line.angle) if bbox is not None else None
         tokens.append((char, raw_char, bbox, local_bbox))
 
@@ -379,10 +395,32 @@ def _split_native_visual_runs(
         ]
         if not run_text or not run_bboxes:
             continue
+        run_bbox = _bbox_union_many(run_bboxes)
+        if preserve_vertical_bbox is not None:
+            local_run_bbox = _rotate_bbox_to_upright(
+                run_bbox,
+                page_size,
+                line.angle,
+            )
+            local_vertical_bbox = _rotate_bbox_to_upright(
+                preserve_vertical_bbox,
+                page_size,
+                line.angle,
+            )
+            run_bbox = _rotate_bbox_from_upright(
+                (
+                    local_run_bbox[0],
+                    local_vertical_bbox[1],
+                    local_run_bbox[2],
+                    local_vertical_bbox[3],
+                ),
+                page_size,
+                line.angle,
+            )
         run_chars = [token[0] for token in run_tokens]
         run_item = _LineItem(
             text=run_text,
-            bbox=_bbox_union_many(run_bboxes),
+            bbox=run_bbox,
             angle=line.angle,
             source_index=-1,
             chars=run_chars,
@@ -393,6 +431,121 @@ def _split_native_visual_runs(
         )
         _fill_native_typography(run_item, page_size)
         output.append(run_item)
+    return output
+
+
+def _resplit_native_visual_runs(
+    lines: list[_LineItem],
+    page_size: tuple[float, float],
+    visual_bboxes: Mapping[int, BBox],
+    *,
+    source_index_start: int | None = None,
+) -> list[_LineItem]:
+    """在字符几何修复后重切跨栏粗行，并保持页内 source identity 唯一。"""
+
+    if not lines or not visual_bboxes:
+        return list(lines)
+    next_source_index = (
+        source_index_start
+        if source_index_start is not None
+        else max(
+            (line.source_index for line in lines),
+            default=-1,
+        )
+        + 1
+    )
+    output: list[_LineItem] = []
+    for line in lines:
+        local_bbox = _rotate_bbox_to_upright(
+            line.bbox,
+            page_size,
+            line.angle,
+        )
+        local_page_height = (
+            page_size[0]
+            if line.angle in {90, 270}
+            else page_size[1]
+        )
+        local_page_width = (
+            page_size[1]
+            if line.angle in {90, 270}
+            else page_size[0]
+        )
+        if (
+            line.semantic_type is not None
+            or local_bbox[2] - local_bbox[0]
+            < 0.45 * local_page_width
+            or _bbox_center_y(local_bbox) < 0.07 * local_page_height
+            or _bbox_center_y(local_bbox) > 0.93 * local_page_height
+        ):
+            output.append(line)
+            continue
+        members = _split_native_visual_runs(
+            line,
+            page_size,
+            visual_bboxes=visual_bboxes,
+            preserve_vertical_bbox=line.bbox,
+        )
+        if len(members) <= 1:
+            output.append(line)
+            continue
+        local_members = sorted(
+            (
+                _rotate_bbox_to_upright(
+                    member.bbox,
+                    page_size,
+                    member.angle,
+                )
+                for member in members
+            ),
+            key=lambda bbox: bbox[0],
+        )
+        column_split = (
+            len(local_members) == 2
+            and all(
+                bbox[2] - bbox[0]
+                >= 0.15 * local_page_width
+                for bbox in local_members
+            )
+            and local_members[1][0] - local_members[0][2]
+            >= 0.02 * local_page_width
+            and local_members[0][2] <= 0.52 * local_page_width
+            and local_members[1][0] >= 0.48 * local_page_width
+        )
+        if not column_split:
+            output.append(line)
+            continue
+        for member_index, member in enumerate(members):
+            member.source_index = (
+                line.source_index
+                if member_index == 0
+                else next_source_index
+            )
+            if member_index > 0:
+                next_source_index += 1
+            member.visual_row_id = line.visual_row_id
+            member.run_index = line.run_index + member_index
+            member.source_bbox = member.bbox
+            member.baseline = line.baseline
+            member.geometry_state = line.geometry_state
+            member.geometry_confidence = line.geometry_confidence
+            member.split_y_candidate = line.split_y_candidate
+            member.em_height = line.em_height or member.effective_height
+            member.split_from_row = True
+            member.preserve_split_boundary = line.preserve_split_boundary
+            member.semantic_type = line.semantic_type
+            member.formula_candidate_only = line.formula_candidate_only
+            member.document_style_anomaly = line.document_style_anomaly
+            output.append(member)
+    output.sort(
+        key=lambda item: (
+            item.visual_row_id
+            if item.visual_row_id is not None
+            else math.inf,
+            item.run_index,
+            item.source_index,
+        )
+    )
     return output
 
 
@@ -454,8 +607,9 @@ def _detect_leading_emphasis_width(
 
 
 def _fill_native_typography(line: _LineItem, page_size: tuple[float, float]) -> None:
-    """使用非空字符 bbox 高度和 dominant font 填充原生行排版特征。"""
+    """使用原始 bbox、PDF 字号和 dominant font 填充两套排版特征。"""
 
+    canonical_em_height = line.em_height
     heights: list[float] = []
     glyph_widths: list[float] = []
     font_counts: dict[tuple[str, int], int] = {}
@@ -496,6 +650,7 @@ def _fill_native_typography(line: _LineItem, page_size: tuple[float, float]) -> 
 
     local_bbox = _rotate_bbox_to_upright(line.bbox, page_size, line.angle)
     line.effective_height = statistics.median(heights) if heights else max(0.1, local_bbox[3] - local_bbox[1])
+    line.em_height = canonical_em_height if canonical_em_height > 0 else line.effective_height
     line.median_glyph_width = statistics.median(glyph_widths) if glyph_widths else None
     if font_counts and valid_font_chars:
         line.font_signature, dominant_count = max(font_counts.items(), key=lambda item: item[1])

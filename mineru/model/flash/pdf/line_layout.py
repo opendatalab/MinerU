@@ -140,10 +140,29 @@ def _should_connect_semantic_rows(
     return centered_pair or aligned_pair or overlapping_pair
 
 
-def _line_effective_height(line: _LineItem, local_bbox: BBox) -> float:
-    """返回字符统计得到的有效行高，缺失时回退到局部 bbox 高度。"""
+def _line_style_scale(line: _LineItem, local_bbox: BBox) -> float:
+    """返回 canonical 字体尺度，缺失时兼容旧有效行高与局部 bbox。"""
 
-    return max(0.1, line.effective_height or (local_bbox[3] - local_bbox[1]))
+    return max(
+        0.1,
+        line.em_height
+        if line.document_style_anomaly
+        and line.em_height > 0
+        else line.effective_height
+        or (local_bbox[3] - local_bbox[1]),
+    )
+
+
+def _line_effective_height(line: _LineItem, local_bbox: BBox) -> float:
+    """兼容既有布局调用，并统一转发到 canonical 字体尺度。"""
+
+    return _line_style_scale(line, local_bbox)
+
+
+def _line_layout_height(_line: _LineItem, local_bbox: BBox) -> float:
+    """返回 canonical 布局包络高度，供公式与视觉容器空间判断使用。"""
+
+    return max(0.1, local_bbox[3] - local_bbox[1])
 
 
 def _effective_text_row_gap(
