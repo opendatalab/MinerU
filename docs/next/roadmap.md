@@ -187,7 +187,7 @@ P0 阶段需要优先交付 Agent 可可靠消费的输出能力：
 
 ### 5.2 Middle JSON 统一
 
-当前公开对象已从历史 `pdf_info` 逐步收敛到 `schema_version + pages` 的顶层结构，并由 `PageInfo`、`Block`、`Line`、`Span` 等模型表达；历史 `pdf_info` 只作为离线迁移或重新生成对象处理。Pipeline、VLM、Hybrid、Office、HTML 等来源仍存在 bbox、block type、span 粒度、page_size 和内部后处理流程差异。P0 需要推动 canonical schema、validator、locator 和内容生成逻辑继续收敛，最终减少多套 `union_make` / output builder 逻辑的重复。
+当前公开对象已从历史 `pdf_info` 逐步收敛到 `schema_version + pages` 的顶层结构，并由 `PageInfo`、`Block`、`Line`、`Span` 等模型表达；MinerU 3.4.5 `pdf_info` 与 schema 1.0 `pages` 包装由 `ParseResult.from_dict()` / doclib compaction 的运行时 legacy 分支单向迁移，不可识别的旧 payload 拒绝并要求重新解析。Pipeline、VLM、Hybrid、Office、HTML 等来源仍存在 bbox、block type、span 粒度、page_size 和内部后处理流程差异。P0 需要推动 canonical schema、validator、locator 和内容生成逻辑继续收敛，最终减少多套 `union_make` / output builder 逻辑的重复。
 
 详细设计见 [Middle JSON](middle-json.md)。
 

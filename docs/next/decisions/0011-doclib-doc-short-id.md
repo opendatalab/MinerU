@@ -1,6 +1,6 @@
 # ADR-0011: Doclib Doc Short ID
 
-状态: Accepted
+状态: Accepted，已实现
 日期: 2026-06-15
 相关文档: 0012-doclib-block-locator.md, ../middle-json/agent-gaps.md, ../middle-json/structured-content-schema.md, ../workflows.md
 

@@ -1,6 +1,6 @@
 # ADR-0032: OFD 原生固定版式 Flash 解析
 
-状态: Accepted
+状态: Accepted，已实现
 日期: 2026-08-28
 相关文档: ../architecture.md, ../sdk/parser.md, 0024-file-type-tier-normalization.md
 
@@ -22,7 +22,7 @@ XML 对象顺序主要表示绘制顺序而非阅读顺序。将 OFD 归入 Offi
   Boundary 只作为容器与裁剪边界。
 - 模板、页面和图层先组合为页面场景；高置信全线表使用 OFD 自身路径与 glyph 几何恢复。其余正文、图片、表格经
   OFD-aware 预分类后使用共享 XYCut++ 恢复阅读顺序。
-- 所有顶层 OFD block 必须携带相对 PhysicalBox 的归一化 bbox；继续复用现有 Block、renderer 和 Middle JSON 3.0，
+- 所有顶层 OFD block 必须携带相对 PhysicalBox 的归一化 bbox；继续复用现有 Block、renderer 和 Middle JSON 2.0，
   不增加 OFD 私有输出字段。
 - PNG/JPEG/BMP/TIFF/WebP 可作为图片输出。首版不增加外部 JBIG2、Java、LibreOffice、系统字体或网络资源依赖。
 
