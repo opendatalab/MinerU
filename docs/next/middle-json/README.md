@@ -26,10 +26,10 @@ InlineContentBlock
 
 | 类别 | 现状 |
 |------|------|
-| 顶层 envelope | 当前 `ParseResult` 使用 `schema_version + pages`；顶层 `_backend` 是临时兼容 metadata；历史 `_version_name` 仅作为离线迁移输入处理；底稿希望有 `_meta`。 |
-| backend 细节 | Pipeline/VLM/Hybrid/Office/HTML 对 bbox、index、page_size、preproc_blocks 的质量不同。 |
+| 顶层 envelope | 当前 `ParseResult.to_dict()` 写出 `schema_version` + `MiddleJson` 顶层字段（`pages`、`is_full_document`、`file_suffix`、`effort`、`parse_mode`、`mineru_version`）；legacy `pdf_info` / schema 1.0 `pages` 包装由 `from_dict()` 兼容读取，`_version_name` / `mineru_version` 在该 legacy 分支恢复；底稿希望有 `_meta`。 |
+| backend 细节 | Pipeline/VLM/Hybrid/Office/HTML 对 block type、span 粒度与内部后处理流程的处理不同；public schema 中 bbox 统一为 0-1 归一化坐标或 `null`，`PageInfo` 无 page_size。 |
 | render 消费 | 已有统一 render facade，但内部仍按 backend dispatch。 |
-| Agent 能力 | 引用定位、稳定 page/block 地址和隐私边界还没有落地。 |
+| Agent 能力 | 稳定 page/block locator 与 short_id 已落地（`mineru/doclib/locators.py`）；citation 输出形态与隐私边界的部分能力仍在收敛。 |
 
 ## 下一版目标
 

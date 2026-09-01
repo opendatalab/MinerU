@@ -31,24 +31,22 @@
 
 现状:
 
-- 使用 `PageInfo` / `Block` / `Line` / `Span`。
-- 通常有 `page_size` 和 bbox。
-- 有 `preproc_blocks`，并经过 para split 生成 `para_blocks`。
-- `doc_title` / `paragraph_title` 等类型可能经后处理转为 `title`。
-- legacy structured_content 曾由 PDF/Office backend converter 分别生成；当前同名严格 renderer 直接消费 MiddleJson，不再承担该 backend 分发。
+- PDF 分析走统一 `doc_analyze()` 入口（`mineru/backend/analyze.py`），产出严格 `ModelJson` 后经 `model_json_to_middle_json()` 统一转换为 schema 2.0 `MiddleJson`，与 VLM/Hybrid/Office/HTML 共用同一 ModelJson → MiddleJson 路径。
+- 输出只有 `PageInfo` / 严格 Pydantic block tree；不再有 `Line` / 几何 `Span` / `preproc_blocks` / `para_blocks` 等中间结构。
+- 固定版式（`pdf`/`ofd`）顶层 block 强制携带 `bbox`（归一化坐标），并校验 page_idx 与顶层 index 唯一有序。
+- `doc_title` / `paragraph_title` 等类型直接进入 block tree，不再后处理转为 `title`。
+- structured content 由统一 renderer 直接消费 `MiddleJson` 生成，不再存在 PDF/Office backend converter 分发。
 
 已解决:
 
-- typed structure 已接入。
-- PDF page index 修正已有处理。
-- `middle_json_utils.append_pages()` 抽出了部分共享构建逻辑。
+- typed structure 已接入并通过严格 validation。
+- PDF page index 修正已有处理；显式抽页映射由 `ModelJson.page_index_map` 承载。
 
 仍需工作:
 
-1. 明确 `preproc_blocks` 是否写入 public envelope。
-2. 继续确认 PDF 通用 structured_content converter 与 Office converter 的字段差异。
-3. 确认 block index 在 `para_blocks + discarded_blocks + children` 中是否满足全页稳定排序。
-4. 清理或规范 `doc_title` / `paragraph_title` / `vertical_text` 等类型进入 render 前的归一化规则。
+1. 持续校准 PDF 解析质量并保持 strict validation 不回退。
+2. 确认 block index 在含嵌套 children 的 block tree 中满足全页稳定排序。
+3. 确认 `doc_title` / `paragraph_title` / `vertical_text` 等类型进入 render 前的归一化规则。
 
 验收:
 
@@ -61,27 +59,26 @@
 现状:
 
 - 使用 typed structure。
-- 通常有 `page_size` 和 bbox。
-- VLM 归一化坐标已在转换阶段转为页面坐标。
+- block 统一带 `bbox` 字段，schema 内为归一化坐标（0-1），`null` 表示 unknown。
 - text block 粒度通常是 1 行 1 span。
 - 有 VLM 2.5 独有类型，如 `code`、`algorithm`、`ref_text`、`phonetic`、`header`、`footer` 等。
 
 已解决:
 
 - VLM 输出已进入 `PageInfo`。
-- `cleanup_internal_para_block_metadata()` 已用于清理内部字段。
+- 内部 metadata 已在统一 ModelJson → MiddleJson 转换中剥离，不进入 public Middle JSON。
 - markdown render 已走统一 facade。
 
 仍需工作:
 
-1. 明确 VLM block 粒度与 Pipeline OCR 粒度的兼容语义。
+1. 明确 VLM block 粒度与统一 PDF 分析文本粒度的兼容语义。
 2. 统一 VLM-specific type 在 structured_content / Agent citation 中的表达。
-3. 确认归一化坐标绝不进入 public Middle JSON。
-4. 确认 VLM/Hybrid 与 Pipeline 在统一 structured_content converter 下的字段一致性。
+3. 确认进入 public Middle JSON 的 bbox 均为 schema 约定的归一化坐标（0-1）。
+4. 确认统一 structured_content renderer 下各来源字段的一致性。
 
 验收:
 
-- VLM 输出不出现归一化 bbox。
+- VLM 输出的 bbox 均为 schema 约定的归一化坐标（0-1）或 `null`，不出现页面坐标。
 - VLM 特有 block type 能被 renderer 和 Agent locator 识别。
 - 默认选择得到的 `standard` 结果可以恢复为 `ParseResult`。
 
@@ -115,10 +112,10 @@
 
 现状:
 
-- Office 已转换为 typed `PageInfo`。
-- 直接写入 `para_blocks`，通常没有 `preproc_blocks`。
-- 大量 bbox 使用 `EMPTY_BBOX`。
-- `page_size` 当前通常为空。
+- Office 已通过统一 `doc_analyze()` 转换为 typed `PageInfo`。
+- 与其它 backend 共用统一 `blocks` block tree，不再有独立的 `para_blocks` / `preproc_blocks`。
+- 大量 block 的 `bbox` 为 `null`（unknown），由 strict model 直接表达。
+- `PageInfo` 不携带 `page_size`。
 - 保留 Office 特有字段，如 `section_number`、`anchor`、`is_numbered_style`。
 - Office render 仍有专门逻辑。
 
@@ -130,11 +127,10 @@
 
 仍需工作:
 
-1. 定义 Office 的 page_size 策略。
-2. 定义 `EMPTY_BBOX` 在 Office 中的正式含义。
-3. 将 Office `anchor` / `_style` / `_children` 等字段决定是否公开。
-4. 收敛 Office render 到通用 render 能消费的结构。
-5. 检查 Office list/index child block 的 index 是否稳定。
+1. 定义 Office unknown bbox（`bbox: null`）在 citation 与 UI 中的展示语义。
+2. 将 Office `anchor` / `_style` / `_children` 等字段决定是否公开。
+3. 收敛 Office render 到通用 render 能消费的结构。
+4. 检查 Office list/index child block 的 index 是否稳定。
 
 验收:
 
@@ -169,14 +165,14 @@ P0:
 2. 实现 validator。
 3. 设计历史 migration: `pdf_info/_backend` -> envelope。
 4. 实现并锁定 locator。
-5. 修正 `ParseResult.from_dict()` / `from_json()`。
+5. （已完成）修正 `ParseResult.from_dict()` / `from_json()`，兼容 schema 2.0、legacy `pdf_info` 与 schema 1.0 `pages` 包装。
 
 P1:
 
 1. 收敛 Office/HTML 与 PDF structured_content 字段差异。
 2. 统一 Office/HTML unknown bbox 语义。
 3. 公开或隐藏 Office style/hyperlink 内部字段。
-4. 将 `_backend` 从 `PageInfo` 迁移到 `_meta.backend`。
+4. 明确 backend 信息在 envelope `_meta` 中的记录方式（当前 `PageInfo` 已不携带 `_backend`）。
 
 P2:
 

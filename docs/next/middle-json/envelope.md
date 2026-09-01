@@ -11,7 +11,7 @@
 
 ```json
 {
-  "schema_version": "1.0",
+  "schema_version": "2.0",
   "pages": []
 }
 ```
@@ -20,7 +20,7 @@
 
 ```json
 {
-  "schema_version": "1.0",
+  "schema_version": "2.0",
   "pages": [],
   "_meta": {
     "mineru_version": "2.x",
@@ -44,8 +44,8 @@
 
 - 新结构使用 `pages`，对应 `ParseResult.pages`。
 - 运行时只读取当前结构 `pages`；历史 `pdf_info` 文件需要离线迁移或重新生成。
-- 当前 `ParseResult.to_dict()` 保留 `schema_version` 和 `pages`；当所有 page backend 一致时保留顶层 `_backend` 作为临时兼容 metadata。
-- `_meta.backend` 取代长期依赖 `PageInfo._backend`。
+- 当前 `ParseResult.to_dict()` 输出 `schema_version` 加 `MiddleJson` 顶层字段（`pages`、`is_full_document`、`file_suffix`、`effort`、`parse_mode`、`mineru_version`），不携带 `_backend` 等 backend metadata。
+- `_meta.backend` 设计为替代旧 payload 中的 `_backend` 字段；当前 schema 2.0 已不再有该字段。
 - `schema_version` 放在顶层，便于快速判断 migration。
 - 代码常量定义为 `mineru.parser.MIDDLE_JSON_SCHEMA_VERSION`，由 normalize、validate、writer 和 exporter 统一引用。
 - 当前 P0 写出路径只增加 `schema_version`，不新增 `_meta`；`_meta` 由后续 canonical envelope migration / writer 引入。
@@ -54,8 +54,13 @@
 
 | 字段 | 类型 | 必带 | 说明 |
 |------|------|:--:|------|
-| `schema_version` | string | 是 | 当前 `"1.0"`；代码常量为 `MIDDLE_JSON_SCHEMA_VERSION`。 |
+| `schema_version` | string | 是 | 当前 `"2.0"`；代码常量为 `MIDDLE_JSON_SCHEMA_VERSION`。 |
 | `pages` | list[PageInfo] | 是 | typed pages 的 JSON 表达。 |
+| `is_full_document` | bool | 是 | 是否整本文档解析（空 `page_index_map` 时为 `true`）。 |
+| `file_suffix` | string | 是 | 输入文件类型（`pdf`、`docx`、`pptx`、`epub`、`html`、`ofd` 等）。 |
+| `effort` | string | 是 | 分析强度：`flash`、`medium`、`high`、`xhigh`。 |
+| `parse_mode` | string | 是 | `txt` 或 `ocr`。 |
+| `mineru_version` | string | 是 | 生成该结果的 MinerU 版本。 |
 | `_meta` | object | 后续 | 元数据；当前 P0 写出路径暂不增加。 |
 
 ## `_meta`
@@ -108,13 +113,13 @@ models 也是开放字典。字段粒度可以随 backend 增加。
 
 ## 兼容输入
 
-当前 `ParseResult.from_dict()` 只支持 `pages` envelope。目标读入函数可支持以下输入:
+当前 `ParseResult.from_dict()` 接受 schema 2.0 `pages` envelope，并兼容历史 `pdf_info` 与 schema 1.0 `pages` 包装；无版本标识的裸 `pages` 会被拒绝。目标读入函数可支持以下输入:
 
 ### 1. Canonical envelope
 
 ```json
 {
-  "schema_version": "1.0",
+  "schema_version": "2.0",
   "pages": [],
   "_meta": {}
 }
@@ -146,7 +151,7 @@ models 也是开放字典。字段粒度可以随 backend 增加。
 }
 ```
 
-当前运行时不接受 `pdf_info`。这类历史文件只作为离线 migration 输入，不作为 `ParseResult.from_dict()` 的兼容分支。旧产物中的 `_backend: "pipeline"` 不再属于当前兼容输入。
+当前运行时 `from_dict()` 已兼容 `pdf_info`（以及 schema 1.0 `pages` 包装）作为 legacy 分支；无版本标识的裸 `pages` 会被拒绝。旧产物中的 `_backend: "pipeline"` 不属于当前 schema 字段，legacy 读取时仅被忽略。
 
 历史文件的离线 migration 可转换为:
 
@@ -173,7 +178,7 @@ def normalize_middle_json(
 规则:
 
 1. 运行时 payload 必须是 dict，且 `pages` 必须是 list。
-2. 历史 `pdf_info` 只允许由离线 migration 工具转换，不作为当前运行时读取兼容分支。
+2. 运行时 `from_dict()` 已兼容历史 `pdf_info` 与 schema 1.0 `pages` 包装；无版本标识的裸 `pages` 会被拒绝。
 3. 如果没有 sha256，则保留 null，但禁用需要严格校验 source identity 的 citation 能力。
 4. 输出必须是 canonical envelope。
 
@@ -196,9 +201,8 @@ P0 校验:
 - 有 `schema_version`。
 - 有 `pages` list。
 - 每个 page 有 `page_idx`。
-- 每个 block 有 `index`、`type`、`bbox`。
-- 每个 line 有 `bbox`、`spans`。
-- 每个 span 有 `type`、`bbox`。
+- 每个 block 有 `index`、`type`；固定版式（`pdf`/`ofd`）顶层 block 必须有 `bbox`。
+- 自然语言 block 的 `content` 是合法的 `InlineSpan` 列表（`TextSpan` / `EquationInlineSpan` / `CodeInlineSpan` / `HyperlinkSpan`），span 只表达行内语义，不携带 bbox。
 - `page_count == len(pages)`。
 
 P1 校验:
@@ -210,7 +214,7 @@ P1 校验:
 
 ## 与 `ParseResult`
 
-`ParseResult.to_dict()` 当前输出 `{"schema_version": "1.0", "pages": ...}`，并可能包含顶层 `_backend` 与 PDF 页映射内部 metadata。`ParseResult.from_dict()` 当前要求 payload 为 dict 且包含 list 字段 `pages`。
+`ParseResult.to_dict()` 当前输出 `schema_version` 加 `MiddleJson` 顶层字段（`pages`、`is_full_document`、`file_suffix`、`effort`、`parse_mode`、`mineru_version`）。`ParseResult.from_dict()` 当前要求 payload 为 dict，接受 schema 2.0 `pages` envelope、历史 `pdf_info` 与 schema 1.0 `pages` 包装。
 
 建议:
 
