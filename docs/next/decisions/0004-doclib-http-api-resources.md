@@ -1,6 +1,6 @@
 # ADR-0004: Doclib HTTP API 资源模型
 
-状态: Accepted
+状态: Accepted，已实现
 日期: 2026-06-09
 相关文档: ../architecture.md, ../workflows.md, ../sdk/doclib-client.md, 0003-parse-request-wait-batches.md
 
@@ -150,10 +150,10 @@ API 影响:
 
 SDK 影响:
 
-- `MineruClient.parse()` 对应 `POST /parses`。
-- `MineruClient.parse_status()` 不再作为稳定方法，改为 `list_parses()` / `get_parse()`。
-- `MineruClient.parse_content()` 对应 `GET /docs/{sha256}/content`。
-- `MineruClient.invalidate(..., target="parses")` 对应 `POST /invalidate`。
+- `DoclibClient.ensure_parse(request)` 对应 `POST /parses`。
+- `DoclibClient.list_parses(...)` / `DoclibClient.get_parse(parse_id)` 对应 `GET /parses` 与 `GET /parses/{id}`。
+- `DoclibClient.get_doc_content(doc_ref, tier=...)` 对应 `GET /docs/{doc_ref}/content`。
+- `DoclibClient.invalidate(request)` 对应 `POST /invalidate`。
 
 CLI 影响:
 
