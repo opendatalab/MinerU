@@ -120,8 +120,8 @@ def test_single_line_formula_requires_numeric_trailing_marker() -> None:
         1,
         effective_height=10.0,
     )
-    numbered.document_style_anomaly = True
-    parenthesized_argument.document_style_anomaly = True
+    numbered.style_scale_repaired = True
+    parenthesized_argument.style_scale_repaired = True
     lane = models._TextLane(
         left=0.0,
         right=100.0,

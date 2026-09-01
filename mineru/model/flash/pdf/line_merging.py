@@ -231,8 +231,8 @@ def _overlapping_inline_cluster_pair_is_connected(
     if (
         local_page_width is not None
         and (
-            first_line.document_style_anomaly
-            or second_line.document_style_anomaly
+            first_line.style_scale_repaired
+            or second_line.style_scale_repaired
         )
         and left_bbox[2] <= 0.5 * local_page_width
         and right_bbox[0] >= 0.5 * local_page_width
@@ -366,8 +366,8 @@ def _merge_overlapping_inline_cluster(
         restored_inline_cluster=True,
         compact_formula_cluster=compact_formula_cluster,
         formula_candidate_only=all(line.formula_candidate_only for line in ordered_members),
-        document_style_anomaly=any(
-            line.document_style_anomaly
+        style_scale_repaired=any(
+            line.style_scale_repaired
             for line in ordered_members
         ),
         inline_math_regions=[
@@ -655,8 +655,8 @@ def _merge_same_baseline_group(
         restored_inline_cluster=any(member.restored_inline_cluster for member in members),
         compact_formula_cluster=any(member.compact_formula_cluster for member in members),
         formula_candidate_only=all(member.formula_candidate_only for member in members),
-        document_style_anomaly=any(
-            member.document_style_anomaly
+        style_scale_repaired=any(
+            member.style_scale_repaired
             for member in members
         ),
         inline_math_regions=[region for member in members for region in member.inline_math_regions],
@@ -1004,8 +1004,8 @@ def _merge_dense_split_visual_row(
         restored_inline_cluster=any(member.restored_inline_cluster for member in ordered_members),
         compact_formula_cluster=any(member.compact_formula_cluster for member in ordered_members),
         formula_candidate_only=all(member.formula_candidate_only for member in ordered_members),
-        document_style_anomaly=any(
-            member.document_style_anomaly
+        style_scale_repaired=any(
+            member.style_scale_repaired
             for member in ordered_members
         ),
         inline_math_regions=[region for member in ordered_members for region in member.inline_math_regions],

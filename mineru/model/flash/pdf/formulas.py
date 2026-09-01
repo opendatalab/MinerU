@@ -703,7 +703,7 @@ def _is_wide_tagged_formula_member(
     member_width = member_bbox[2] - member_bbox[0]
     marker = _standalone_formula_number_marker(anchor_line.text)
     return (
-        anchor_line.document_style_anomaly
+        anchor_line.style_scale_repaired
         and marker is not None
         and _FORMULA_NUMBER_MARKER_RE.fullmatch(marker)
         and 0.75 * lane_width < member_width <= 0.95 * lane_width
@@ -719,7 +719,7 @@ def _is_single_line_numbered_formula(
     """识别公式主体与右侧编号已落在同一原生文本行的情形。"""
 
     line, bbox = candidate
-    if not line.document_style_anomaly:
+    if not line.style_scale_repaired:
         return False
     parts = _split_trailing_formula_number(line.text)
     if parts is None:
@@ -1450,7 +1450,7 @@ def _is_formula_body_barrier(
     """识别具有稳定正文排版的行，阻止公式分量吸收正文尾行。"""
 
     line, bbox = candidate
-    if not line.document_style_anomaly:
+    if not line.style_scale_repaired:
         if dominant_body_font is None:
             return False
         line_height = _line_effective_height(line, bbox)
@@ -1547,8 +1547,8 @@ def _is_formula_body_prefix(
     if abs(bbox[0] - lane.left) > max(3.0, 0.75 * median_height):
         return False
     if (
-        not line.document_style_anomaly
-        and not anchor_line.document_style_anomaly
+        not line.style_scale_repaired
+        and not anchor_line.style_scale_repaired
     ):
         return (
             dominant_body_font is not None

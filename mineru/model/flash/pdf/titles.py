@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import statistics
+from collections import Counter
 from dataclasses import replace
 from typing import Literal
 
@@ -37,6 +38,7 @@ from .line_layout import (
     _font_signatures_share_family,
     _font_weights_conflict,
     _infer_text_lanes,
+    _line_canonical_style_scale,
     _line_effective_height,
     _normalized_font_family,
     _should_connect_semantic_rows,
@@ -164,7 +166,7 @@ def _classify_page_titles(
         )
         if (
             document_body_profile is not None
-            and document_body_profile.has_loose_height_anomaly
+            and document_body_profile.has_style_scale_repairs
         ):
             _demote_non_structural_anomaly_titles(line_geometry)
         if page_index == 0:
@@ -191,6 +193,8 @@ def _demote_non_structural_anomaly_titles(
 
 def _infer_document_body_profile(
     prepared_pages: list[_PreparedPage],
+    *,
+    use_canonical_scale: bool = False,
 ) -> _DocumentBodyProfile | None:
     """按跨页覆盖和累计行宽推断全文正文行高及常规字体集合。"""
 
@@ -217,7 +221,11 @@ def _infer_document_body_profile(
                 if line.angle in {90, 270}
                 else prepared.page_size[0]
             )
-            height = _line_effective_height(line, local_bbox)
+            height = (
+                _line_canonical_style_scale(line, local_bbox)
+                if use_canonical_scale
+                else _line_effective_height(line, local_bbox)
+            )
             normalized_width = max(0.0, local_bbox[2] - local_bbox[0]) / max(
                 0.1,
                 local_page_width,
@@ -305,8 +313,8 @@ def _infer_document_body_profile(
         body_height=max(0.1, body_height),
         body_weight=body_weight,
         regular_fonts=regular_fonts,
-        has_loose_height_anomaly=any(
-            line.document_style_anomaly
+        has_style_scale_repairs=any(
+            line.style_scale_repaired
             for prepared in prepared_pages
             for line in prepared.remaining_lines
         ),
@@ -316,20 +324,133 @@ def _infer_document_body_profile(
 def _classify_document_structural_titles(
     prepared_pages: list[_PreparedPage],
     document_body_profile: _DocumentBodyProfile | None,
+    *,
+    legacy_body_profile: _DocumentBodyProfile | None,
+    document_title_profile: _DocumentTitleProfile | None,
 ) -> None:
     """用跨页稳定栏带和段前后转折补齐正文同字号标题。"""
 
     if (
         document_body_profile is None
-        or not document_body_profile.has_loose_height_anomaly
+        or not document_body_profile.has_style_scale_repairs
     ):
         return
+    probe_pages = [
+        replace(
+            prepared,
+            remaining_lines=[
+                replace(
+                    line,
+                    style_scale_repaired=True,
+                    structural_title=False,
+                )
+                for line in prepared.remaining_lines
+            ],
+        )
+        for prepared in prepared_pages
+    ]
+    _classify_document_structural_title_candidates(
+        probe_pages,
+        document_body_profile,
+    )
+    canonical_candidate_sources = {
+        (page_index, line.source_index)
+        for page_index, prepared in enumerate(probe_pages)
+        for line in prepared.remaining_lines
+        if line.structural_title
+    }
+    legacy_title_sources = _collect_legacy_paragraph_title_sources(
+        prepared_pages,
+        legacy_body_profile,
+        document_title_profile,
+    )
+    body_height = max(0.1, document_body_profile.body_height)
+    canonical_style_candidate_pages: dict[
+        tuple[str, int, float, int],
+        list[int],
+    ] = {}
+    for page_index, prepared in enumerate(prepared_pages):
+        for line in prepared.remaining_lines:
+            line_key = (page_index, line.source_index)
+            if line_key not in canonical_candidate_sources:
+                continue
+            local_bbox = _rotate_bbox_to_upright(
+                line.source_bbox or line.bbox,
+                prepared.page_size,
+                line.angle,
+            )
+            layout_ratio = (
+                local_bbox[3] - local_bbox[1]
+            ) / body_height
+            if (
+                line_key in legacy_title_sources
+                or layout_ratio >= 1.8
+                or not _line_uses_document_regular_font(
+                    line,
+                    document_body_profile,
+                )
+            ):
+                line.semantic_type = "paragraph_title"
+                line.structural_title = True
+                if (
+                    line_key not in legacy_title_sources
+                    and layout_ratio >= 1.8
+                    and (
+                        style_key := _canonical_title_style_key(
+                            line,
+                        )
+                    )
+                    is not None
+                ):
+                    canonical_style_candidate_pages.setdefault(
+                        style_key,
+                        [],
+                    ).append(page_index)
+    canonical_style_prototypes = {
+        style_key
+        for style_key, page_indices in canonical_style_candidate_pages.items()
+        if len(set(page_indices)) >= 2
+        or max(Counter(page_indices).values(), default=0) >= 3
+    }
+    if canonical_style_prototypes:
+        for prepared in prepared_pages:
+            prepared.canonical_formula_geometry = True
+            for line in prepared.remaining_lines:
+                style_key = _canonical_title_style_key(line)
+                if style_key in canonical_style_prototypes:
+                    line.style_scale_repaired = True
+
+
+def _canonical_title_style_key(
+    line: _LineItem,
+) -> tuple[str, int, float, int] | None:
+    """返回 canonical-only 标题向同样式正文传播时使用的稳定键。"""
+
+    if line.font_signature is None or line.em_height <= 0:
+        return None
+    font_family = _normalized_font_family(line.font_signature)
+    if font_family is None:
+        return None
+    return (
+        font_family,
+        line.font_signature[1],
+        round(line.em_height * 4.0) / 4.0,
+        line.angle,
+    )
+
+
+def _classify_document_structural_title_candidates(
+    prepared_pages: list[_PreparedPage],
+    document_body_profile: _DocumentBodyProfile,
+) -> None:
+    """在 canonical 行副本上收集所有满足结构转折的标题候选。"""
+
     body_height = max(0.1, document_body_profile.body_height)
     strong_candidates: list[
-        tuple[int, _LineItem, tuple[str, int] | None]
+        tuple[int, _LineItem, tuple[str, int] | None, float]
     ] = []
     start_candidates: list[
-        tuple[int, _LineItem, tuple[str, int] | None]
+        tuple[int, _LineItem, tuple[str, int] | None, float]
     ] = []
     accepted_anchor_positions: list[
         tuple[int, int, float, float]
@@ -380,7 +501,7 @@ def _classify_document_structural_titles(
                 else prepared.page_size[1]
             )
             median_height = statistics.median(
-                _line_effective_height(line, bbox)
+                _line_canonical_style_scale(line, bbox)
                 for line, bbox in geometry
             )
             lanes = _infer_text_lanes(
@@ -425,7 +546,7 @@ def _classify_document_structural_titles(
                 lane_width = max(0.1, lane.right - lane.left)
                 width_ratio = (bbox[2] - bbox[0]) / lane_width
                 style_ratio = (
-                    _line_effective_height(line, bbox)
+                    _line_canonical_style_scale(line, bbox)
                     / body_height
                 )
                 left_offset = (bbox[0] - lane.left) / body_height
@@ -533,7 +654,12 @@ def _classify_document_structural_titles(
                     )
                 ):
                     strong_candidates.append(
-                        (page_index, line, family_key),
+                        (
+                            page_index,
+                            line,
+                            family_key,
+                            layout_ratio,
+                        ),
                     )
                     accepted_anchor_positions.append(
                         (
@@ -557,18 +683,23 @@ def _classify_document_structural_titles(
                     )
                 ):
                     start_candidates.append(
-                        (page_index, line, family_key),
+                        (
+                            page_index,
+                            line,
+                            family_key,
+                            layout_ratio,
+                        ),
                     )
 
-    for _page_index, line, _family_key in strong_candidates:
+    for _page_index, line, _family_key, _layout_ratio in strong_candidates:
         line.semantic_type = "paragraph_title"
         line.structural_title = True
     strong_families_by_page = {
         (page_index, family_key)
-        for page_index, _line, family_key in strong_candidates
+        for page_index, _line, family_key, _layout_ratio in strong_candidates
         if family_key is not None
     }
-    for page_index, line, family_key in start_candidates:
+    for page_index, line, family_key, _layout_ratio in start_candidates:
         if (
             not _line_uses_document_regular_font(
                 line,
@@ -582,6 +713,56 @@ def _classify_document_structural_titles(
         ):
             line.semantic_type = "paragraph_title"
             line.structural_title = True
+
+
+def _collect_legacy_paragraph_title_sources(
+    prepared_pages: list[_PreparedPage],
+    document_body_profile: _DocumentBodyProfile | None,
+    document_title_profile: _DocumentTitleProfile | None,
+) -> set[tuple[int, int]]:
+    """在行副本上使用 legacy 尺度收集原本成立的段落标题身份。"""
+
+    if document_body_profile is None:
+        return set()
+    legacy_profile = replace(
+        document_body_profile,
+        has_style_scale_repairs=False,
+    )
+    output: set[tuple[int, int]] = set()
+    for page_index, prepared in enumerate(prepared_pages):
+        probe_lines = [
+            replace(
+                line,
+                style_scale_repaired=False,
+                structural_title=False,
+            )
+            for line in prepared.remaining_lines
+        ]
+        container_bboxes = [
+            block["bbox"]
+            for block in prepared.fixed_blocks
+            if not isinstance(block.get("_inline_visual_row_id"), int)
+        ]
+        caption_container_bboxes = [
+            block["bbox"]
+            for block in prepared.fixed_blocks
+            if block.get("type") in {"image", "code"}
+        ]
+        _classify_page_titles(
+            probe_lines,
+            prepared.page_size,
+            page_index=page_index,
+            container_bboxes=container_bboxes,
+            caption_container_bboxes=caption_container_bboxes,
+            document_body_profile=legacy_profile,
+            document_title_profile=document_title_profile,
+        )
+        output.update(
+            (page_index, line.source_index)
+            for line in probe_lines
+            if line.semantic_type == "paragraph_title"
+        )
+    return output
 
 
 def _classify_body_height_section_titles(
@@ -1237,7 +1418,7 @@ def _classify_document_title(
             top_preference_weight = (
                 4.0
                 if document_body_profile is not None
-                and document_body_profile.has_loose_height_anomaly
+                and document_body_profile.has_style_scale_repairs
                 else 1.0
             )
             score = (
@@ -1381,7 +1562,7 @@ def _classify_additional_document_title_bands(
     if (
         document_title_bottom is None
         or document_body_profile is None
-        or not document_body_profile.has_loose_height_anomaly
+        or not document_body_profile.has_style_scale_repairs
     ):
         return document_title_bottom
     body_height = max(0.1, document_body_profile.body_height)
@@ -1454,7 +1635,7 @@ def _demote_front_matter_non_document_titles(
     if (
         document_title_bottom is None
         or document_body_profile is None
-        or not document_body_profile.has_loose_height_anomaly
+        or not document_body_profile.has_style_scale_repairs
     ):
         return
     boundary = max(

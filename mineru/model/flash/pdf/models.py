@@ -47,7 +47,7 @@ class _LineItem:
     compact_formula_cluster: bool = False
     formula_candidate_only: bool = False
     structural_title: bool = False
-    document_style_anomaly: bool = False
+    style_scale_repaired: bool = False
     inline_math_regions: list[BBox] = field(default_factory=list)
 
     def __post_init__(self) -> None:
@@ -183,6 +183,8 @@ class _PreparedPage:
     table_bboxes: list[BBox]
     drawing_lines: list[_AxisLine]
     fixed_blocks: list[dict[str, Any]]
+    canonical_formula_geometry: bool = False
+    canonical_formula_source_lines: list[_LineItem] = field(default_factory=list)
     page_footnote_groups: list[set[int]] = field(default_factory=list)
     script_lines: list[PDFTextScriptLine] = field(default_factory=list)
     formula_candidate_lines: list[_LineItem] = field(default_factory=list)
@@ -218,7 +220,7 @@ class _DocumentBodyProfile:
     body_height: float
     body_weight: float | None
     regular_fonts: frozenset[tuple[str, int]]
-    has_loose_height_anomaly: bool = False
+    has_style_scale_repairs: bool = False
 
 
 @dataclass(frozen=True, slots=True)

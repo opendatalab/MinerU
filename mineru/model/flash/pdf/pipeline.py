@@ -297,6 +297,10 @@ def _analyze_native_document(
     _classify_page_footnote_trailing_footers(prepared_pages)
     _classify_isolated_first_page_footer(prepared_pages)
     document_body_profile = _infer_document_body_profile(prepared_pages)
+    canonical_body_profile = _infer_document_body_profile(
+        prepared_pages,
+        use_canonical_scale=True,
+    )
     if document_body_profile is not None:
         _classify_deferred_image_footnotes(
             prepared_pages,
@@ -308,7 +312,9 @@ def _analyze_native_document(
     )
     _classify_document_structural_titles(
         prepared_pages,
-        document_body_profile,
+        canonical_body_profile,
+        legacy_body_profile=document_body_profile,
+        document_title_profile=document_title_profile,
     )
     finalized_pages = [
         _finalize_prepared_page(
@@ -451,6 +457,19 @@ def _prepare_page_source(
         )
         + 1,
     )
+    canonical_formula_source_lines = (
+        [
+            replace(
+                line,
+                chars=list(line.chars),
+                inline_math_regions=list(line.inline_math_regions),
+            )
+            for line in remaining_lines
+        ]
+        if geometry_plan is not None
+        and geometry_plan.document_style_anomaly
+        else []
+    )
     remaining_lines = _merge_same_baseline_text_lines(
         remaining_lines,
         source.page_size,
@@ -494,6 +513,7 @@ def _prepare_page_source(
             + raster_image_blocks
             + vector_formula_blocks
         ),
+        canonical_formula_source_lines=canonical_formula_source_lines,
         script_lines=script_lines,
         formula_candidate_lines=formula_candidate_lines,
     )
@@ -511,6 +531,79 @@ def _compact_prepared_lines(
         if line.median_glyph_width is None:
             line.median_glyph_width = _median_native_glyph_width(line, page_size)
         line.chars.clear()
+
+
+def _rebuild_canonical_formula_blocks(
+    prepared: _PreparedPage,
+    excluded_source_indices: set[int],
+) -> list[dict[str, Any]]:
+    """从容器认领后的未合并行重放 canonical 公式路径，避免 loose 行高改变公式成员顺序。"""
+
+    replay_lines = [
+        replace(
+            line,
+            chars=list(line.chars),
+            style_scale_repaired=True,
+            inline_math_regions=list(line.inline_math_regions),
+        )
+        for line in prepared.canonical_formula_source_lines
+        if line.source_index not in excluded_source_indices
+    ]
+    replay_lines = _merge_same_baseline_text_lines(
+        replay_lines,
+        prepared.page_size,
+        prepared.table_bboxes,
+    )
+    replay_lines = _merge_overlapping_inline_text_clusters(
+        replay_lines,
+        prepared.page_size,
+        prepared.table_bboxes,
+    )
+    replay_lines = _merge_same_baseline_text_lines(
+        replay_lines,
+        prepared.page_size,
+        prepared.table_bboxes,
+    )
+    formula_candidate_lines = [
+        line
+        for line in replay_lines
+        if line.formula_candidate_only
+    ]
+    replay_lines = [
+        line
+        for line in replay_lines
+        if not line.formula_candidate_only
+    ]
+    formula_input = _restore_dense_split_visual_rows(
+        replay_lines + formula_candidate_lines,
+        prepared.page_size,
+        prepared.table_bboxes,
+    )
+    formula_input = _merge_same_baseline_text_lines(
+        formula_input,
+        prepared.page_size,
+        prepared.table_bboxes,
+    )
+    blocks, _remaining_lines = _build_formula_like_blocks(
+        formula_input,
+        prepared.table_bboxes,
+        prepared.page_size,
+    )
+    return blocks
+
+
+def _formula_block_inventory(
+    blocks: list[dict[str, Any]],
+) -> list[tuple[float, float, float, float]]:
+    """返回公式重放与正常路径可比较的稳定 bbox 库存。"""
+
+    return sorted(
+        tuple(float(value) for value in block["bbox"])
+        for block in blocks
+        if block.get("type") == "equation"
+        and isinstance(block.get("bbox"), (list, tuple))
+        and len(block["bbox"]) == 4
+    )
 
 
 def _finalize_prepared_page(
@@ -536,6 +629,13 @@ def _finalize_prepared_page(
         *(line for line in unresolved_lines if line.semantic_type is None),
         *prepared.formula_candidate_lines,
     ]
+    original_style_scale_state = {
+        line.source_index: line.style_scale_repaired
+        for line in formula_input
+    }
+    if prepared.canonical_formula_geometry:
+        for line in formula_input:
+            line.style_scale_repaired = True
     formula_input = _restore_dense_split_visual_rows(
         formula_input,
         prepared.page_size,
@@ -551,6 +651,28 @@ def _finalize_prepared_page(
         prepared.table_bboxes,
         prepared.page_size,
     )
+    if (
+        prepared.canonical_formula_geometry
+        and prepared.canonical_formula_source_lines
+    ):
+        canonical_formula_blocks = _rebuild_canonical_formula_blocks(
+            prepared,
+            {
+                line.source_index
+                for line in semantic_lines
+            },
+        )
+        if _formula_block_inventory(
+            canonical_formula_blocks,
+        ) == _formula_block_inventory(formula_blocks):
+            formula_blocks = canonical_formula_blocks
+    prepared.canonical_formula_source_lines.clear()
+    if prepared.canonical_formula_geometry:
+        for line in remaining_lines:
+            line.style_scale_repaired = original_style_scale_state.get(
+                line.source_index,
+                line.style_scale_repaired,
+            )
     fallback_index_blocks, remaining_lines = _extract_index_blocks(
         remaining_lines,
         prepared.page_size,

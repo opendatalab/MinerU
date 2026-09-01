@@ -709,7 +709,7 @@ def _build_text_blocks(
                         else lane
                     )
                     if (
-                        current[0].document_style_anomaly
+                        current[0].style_scale_repaired
                         and current[0].split_from_row
                         and current[0].visual_row_id is not None
                         and split_row_counts.get(

@@ -6,6 +6,7 @@ from pathlib import Path
 
 from mineru.model.flash.pdf import pipeline
 from mineru.model.flash.pdf.char_geometry import (
+    _line_loose_tier_offsets,
     apply_line_geometry_repairs,
     build_document_geometry_plan,
 )
@@ -96,15 +97,15 @@ def _merge_geometries(*geometries: PDFPageTextGeometry) -> PDFPageTextGeometry:
     )
 
 
-def test_repeated_loose_height_inflation_sets_canonical_em_scale() -> None:
-    """验证跨页重复的 loose 高度异常按字号与 tight 几何校准行尺度。"""
+def test_two_page_repeated_loose_height_inflation_sets_canonical_em_scale() -> None:
+    """验证两页内重复的 loose 高度异常即可按字号与 tight 几何校准全文。"""
 
     lines_by_page: list[list[_LineItem]] = []
     geometries: list[PDFPageTextGeometry] = []
-    for page_index in range(15):
+    for page_index in range(2):
         page_lines = []
         page_geometries = []
-        for line_index in range(10):
+        for line_index in range(3):
             baseline = 20.0 + 16.0 * line_index
             anomalous = line_index < 2
             line, geometry = _line_fixture(
@@ -140,7 +141,7 @@ def test_repeated_loose_height_inflation_sets_canonical_em_scale() -> None:
     plan = build_document_geometry_plan(
         lines_by_page,
         geometries,
-        [(300.0, 200.0)] * 15,
+        [(300.0, 200.0)] * 2,
     )
     for page_index, lines in enumerate(lines_by_page):
         apply_line_geometry_repairs(
@@ -153,6 +154,42 @@ def test_repeated_loose_height_inflation_sets_canonical_em_scale() -> None:
     assert plan.document_style_anomaly
     assert all(lines[0].em_height == 10.0 for lines in lines_by_page)
     assert any(run["style_y_bad"] for run in plan.run_diagnostics)
+
+
+def test_line_loose_tier_shrinks_repeated_largest_tier_to_second_tier() -> None:
+    """验证同行重复最大 loose 档按次档的归一化 ascent/descent 回缩。"""
+
+    offsets = _line_loose_tier_offsets(
+        [(8.0, 2.0, 7.0, 10.0)] * 6
+        + [(20.0, 4.0, 7.0, 10.0)] * 4,
+        10.0,
+    )
+
+    assert offsets == (8.0, 2.0)
+
+
+def test_line_loose_tier_preserves_legitimate_mixed_font_sizes() -> None:
+    """验证按各自 em 归一化后相同的真实混合字号不会形成异常高度档。"""
+
+    offsets = _line_loose_tier_offsets(
+        [(8.0, 2.0, 7.0, 10.0)] * 4
+        + [(16.0, 4.0, 14.0, 20.0)] * 4,
+        10.0,
+    )
+
+    assert offsets is None
+
+
+def test_line_loose_tier_ignores_single_large_outlier() -> None:
+    """验证单个 loose 高度离群字符不足以触发整行档位回缩。"""
+
+    offsets = _line_loose_tier_offsets(
+        [(8.0, 2.0, 7.0, 10.0)] * 7
+        + [(20.0, 4.0, 7.0, 10.0)],
+        10.0,
+    )
+
+    assert offsets is None
 
 
 def test_strong_x_run_repairs_advance_and_contains_tight_bbox() -> None:

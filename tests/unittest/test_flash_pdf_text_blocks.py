@@ -1886,7 +1886,7 @@ def test_native_typography_separates_loose_height_from_canonical_em() -> None:
         source_index=0,
         chars=chars,
         em_height=10.0,
-        document_style_anomaly=True,
+        style_scale_repaired=True,
     )
 
     native_text._fill_native_typography(line, (100.0, 100.0))

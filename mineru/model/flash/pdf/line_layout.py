@@ -146,8 +146,20 @@ def _line_style_scale(line: _LineItem, local_bbox: BBox) -> float:
     return max(
         0.1,
         line.em_height
-        if line.document_style_anomaly
+        if line.style_scale_repaired
         and line.em_height > 0
+        else line.effective_height
+        or (local_bbox[3] - local_bbox[1]),
+    )
+
+
+def _line_canonical_style_scale(line: _LineItem, local_bbox: BBox) -> float:
+    """忽略语义选择标记，直接返回 tight/origin 校准后的字体尺度。"""
+
+    return max(
+        0.1,
+        line.em_height
+        if line.em_height > 0
         else line.effective_height
         or (local_bbox[3] - local_bbox[1]),
     )

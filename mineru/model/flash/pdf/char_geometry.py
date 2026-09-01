@@ -52,12 +52,14 @@ STYLE_INFLATION_MIN_LINE_COUNT = 3
 STYLE_INFLATION_MIN_LINE_SHARE = 0.50
 STYLE_INFLATION_MIN_PAGE_COUNT = 2
 STYLE_INFLATION_MIN_SCALE = 4.0
-STYLE_INFLATION_DOCUMENT_MIN_LINE_COUNT = 20
-STYLE_INFLATION_DOCUMENT_MIN_PAGE_COUNT = 15
+STYLE_TIER_MIN_MEMBER_COUNT = 2
+STYLE_TIER_MIN_MEMBER_SHARE = 0.15
+STYLE_TIER_GAP_RATIO = 1.35
 
 RunKey: TypeAlias = tuple[str, float, int, int, int, str]
 LineKey: TypeAlias = tuple[int, int]
 CharKey: TypeAlias = tuple[int, int]
+LooseTierSample: TypeAlias = tuple[float, float, float, float]
 
 
 @dataclass(slots=True)
@@ -101,6 +103,7 @@ class DocumentGeometryPlan:
     char_repairs: dict[CharKey, CharLayoutGeometry] = field(default_factory=dict)
     line_repairs: dict[LineKey, LineGeometryRepair] = field(default_factory=dict)
     line_style_scales: dict[LineKey, float] = field(default_factory=dict)
+    style_inflated_runs: set[RunKey] = field(default_factory=set)
     run_diagnostics: list[dict[str, Any]] = field(default_factory=list)
     document_style_anomaly: bool = False
 
@@ -221,6 +224,78 @@ def _quantile(values: list[float], fraction: float) -> float:
         return ordered[lower]
     weight = position - lower
     return ordered[lower] * (1.0 - weight) + ordered[upper] * weight
+
+
+def _line_loose_tier_offsets(
+    samples: list[LooseTierSample],
+    em_height: float,
+) -> tuple[float, float] | None:
+    """把归一化 loose 高度分档，并返回最大异常档回缩到次档后的 ascent/descent。"""
+
+    if len(samples) < 2 * STYLE_TIER_MIN_MEMBER_COUNT or em_height <= 0:
+        return None
+    normalized = sorted(
+        (
+            (ascent + descent) / max(font_size, tight_height, 0.1),
+            ascent,
+            descent,
+            tight_height,
+            font_size,
+        )
+        for ascent, descent, tight_height, font_size in samples
+    )
+    tiers: list[list[tuple[float, float, float, float, float]]] = []
+    for item in normalized:
+        if (
+            not tiers
+            or item[0]
+            > STYLE_TIER_GAP_RATIO
+            * statistics.median(member[0] for member in tiers[-1])
+        ):
+            tiers.append([item])
+        else:
+            tiers[-1].append(item)
+    if len(tiers) < 2:
+        return None
+    upper_tier = tiers[-1]
+    reference_tier = tiers[-2]
+    minimum_members = max(
+        STYLE_TIER_MIN_MEMBER_COUNT,
+        math.ceil(STYLE_TIER_MIN_MEMBER_SHARE * len(samples)),
+    )
+    if (
+        len(upper_tier) < minimum_members
+        or len(reference_tier) < STYLE_TIER_MIN_MEMBER_COUNT
+    ):
+        return None
+    upper_loose_heights = [member[1] + member[2] for member in upper_tier]
+    upper_font_sizes = [member[4] for member in upper_tier if member[4] > 0]
+    upper_tight_heights = [member[3] for member in upper_tier]
+    if (
+        statistics.median(upper_loose_heights)
+        <= STYLE_INFLATION_LOOSE_FONT_RATIO
+        * (
+            statistics.median(upper_font_sizes)
+            if upper_font_sizes
+            else 0.0
+        )
+        or statistics.median(upper_loose_heights)
+        <= STYLE_INFLATION_LOOSE_TIGHT_RATIO
+        * max(0.1, _quantile(upper_tight_heights, 0.75))
+    ):
+        return None
+    reference_ascent_ratios = [
+        member[1] / max(member[4], member[3], 0.1)
+        for member in reference_tier
+    ]
+    reference_descent_ratios = [
+        member[2] / max(member[4], member[3], 0.1)
+        for member in reference_tier
+    ]
+    return (
+        statistics.median(reference_ascent_ratios) * em_height,
+        statistics.median(reference_descent_ratios) * em_height,
+    )
 
 
 def _coerce_origin(value: Any) -> tuple[float, float] | None:
@@ -636,55 +711,11 @@ def _mark_style_inflated_runs(
 
 
 def _document_uses_global_style_calibration(
-    lines_by_page: list[list[_LineItem]],
-    by_line: dict[LineKey, list[_CharSample]],
     style_inflated_runs: set[RunKey],
 ) -> bool:
-    """判断异常 run 是否以跨页稀疏模式反复污染全文排版尺度。"""
+    """只要存在已通过跨页重复证据的异常 run，就启用全文统一字体尺度。"""
 
-    if not style_inflated_runs:
-        return False
-    affected_lines: set[LineKey] = set()
-    for line_key, line_samples in by_line.items():
-        relevant = [
-            sample
-            for sample in line_samples
-            if sample.is_anchor
-            and sample.run_key in style_inflated_runs
-        ]
-        if not relevant:
-            continue
-        font_sizes = [
-            sample.font_size
-            for sample in relevant
-            if sample.font_size > 0
-        ]
-        tight_heights = [
-            sample.local_tight_bbox[3]
-            - sample.local_tight_bbox[1]
-            for sample in relevant
-        ]
-        style_scale = max(
-            statistics.median(font_sizes)
-            if font_sizes
-            else 0.0,
-            _quantile(tight_heights, 0.75),
-        )
-        if (
-            style_scale >= STYLE_INFLATION_MIN_SCALE
-            and relevant[0].line.effective_height
-            > STYLE_INFLATION_LOOSE_FONT_RATIO * style_scale
-            and relevant[0].line.effective_height
-            > STYLE_INFLATION_LOOSE_TIGHT_RATIO
-            * max(0.1, _quantile(tight_heights, 0.75))
-        ):
-            affected_lines.add(line_key)
-    return (
-        len(affected_lines)
-        >= STYLE_INFLATION_DOCUMENT_MIN_LINE_COUNT
-        and len({page_index for page_index, _source_index in affected_lines})
-        >= STYLE_INFLATION_DOCUMENT_MIN_PAGE_COUNT
-    )
+    return bool(style_inflated_runs)
 
 
 def _apply_style_scale_repairs(
@@ -733,6 +764,26 @@ def _apply_style_scale_repairs(
         if style_scale < STYLE_INFLATION_MIN_SCALE:
             continue
         plan.line_style_scales[line_key] = style_scale
+
+
+def _line_uses_repaired_style_scale(
+    line: _LineItem,
+    style_inflated_runs: set[RunKey],
+) -> bool:
+    """按字体族、字号、flags 和方向把异常 run 证据投影到当前视觉行。"""
+
+    if line.font_signature is None or line.em_height <= 0:
+        return False
+    family = _normalized_font_family(line.font_signature[0])
+    style_size = round(line.em_height * 4.0) / 4.0
+    flags = line.font_signature[1]
+    return any(
+        family == run_key[0]
+        and abs(style_size - run_key[1]) <= 0.25
+        and flags == run_key[2]
+        and line.angle == run_key[4]
+        for run_key in style_inflated_runs
+    )
 
 
 def _restore_stable_legacy_source_bboxes(
@@ -1095,7 +1146,31 @@ def _repair_y_lines(
             if healthy_ascents and healthy_descents
             else math.inf
         )
-        if len(healthy_ascents) >= Y_HEALTHY_LOOSE_SAMPLE_MIN and healthy_loose_height <= 1.5 * em_height:
+        tier_offsets = _line_loose_tier_offsets(
+            [
+                (
+                    max(
+                        0.0,
+                        sample.local_origin[1]
+                        - sample.local_source_bbox[1],
+                    ),
+                    max(
+                        0.0,
+                        sample.local_source_bbox[3]
+                        - sample.local_origin[1],
+                    ),
+                    sample.local_tight_bbox[3]
+                    - sample.local_tight_bbox[1],
+                    sample.font_size,
+                )
+                for sample in analysis.dominant
+                if sample.run_key == analysis.run_key
+            ],
+            em_height,
+        )
+        if tier_offsets is not None:
+            ascent, descent = tier_offsets
+        elif len(healthy_ascents) >= Y_HEALTHY_LOOSE_SAMPLE_MIN and healthy_loose_height <= 1.5 * em_height:
             ascent = statistics.median(healthy_ascents)
             descent = statistics.median(healthy_descents)
         else:
@@ -1251,9 +1326,8 @@ def build_document_geometry_plan(
     samples, by_line = _collect_samples(lines_by_page, geometries, page_sizes)
     runs = _build_run_stats(samples, by_line)
     style_inflated_runs = _mark_style_inflated_runs(runs)
+    plan.style_inflated_runs = style_inflated_runs
     plan.document_style_anomaly = _document_uses_global_style_calibration(
-        lines_by_page,
-        by_line,
         style_inflated_runs,
     )
     _apply_style_scale_repairs(
@@ -1291,12 +1365,15 @@ def apply_line_geometry_repairs(
     """把文档计划应用到当前仍可参与 Flash 布局的行。"""
 
     for line in lines:
-        line.document_style_anomaly = plan.document_style_anomaly
         style_scale = plan.line_style_scales.get(
             (page_index, line.source_index),
         )
         if style_scale is not None:
             line.em_height = style_scale
+        line.style_scale_repaired = _line_uses_repaired_style_scale(
+            line,
+            plan.style_inflated_runs,
+        )
         repair = plan.line_repairs.get((page_index, line.source_index))
         if repair is None:
             continue

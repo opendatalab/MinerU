@@ -535,7 +535,7 @@ def _resplit_native_visual_runs(
             member.preserve_split_boundary = line.preserve_split_boundary
             member.semantic_type = line.semantic_type
             member.formula_candidate_only = line.formula_candidate_only
-            member.document_style_anomaly = line.document_style_anomaly
+            member.style_scale_repaired = line.style_scale_repaired
             output.append(member)
     output.sort(
         key=lambda item: (

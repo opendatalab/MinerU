@@ -10,6 +10,10 @@ from typing import Any
 
 from mineru.model.flash.pdf.document import PDFDocument
 from mineru.model.flash.pdf.pipeline import _analyze_native_document
+from scripts.review_flash_layout_geometry import (
+    _page_bbox_fingerprint,
+    _page_fingerprint,
+)
 
 
 _PROJECT_ROOT = Path(__file__).parents[2]
@@ -19,6 +23,13 @@ _EXPECTATION_PATH = (
     / "fixtures"
     / "flash_layout_semantic_expectations.json"
 )
+_GEOMETRY_MANIFEST_PATH = (
+    _PROJECT_ROOT
+    / "tests"
+    / "fixtures"
+    / "flash_layout_geometry_manifest.json"
+)
+_FROZEN_SOIL_PATH = _PROJECT_ROOT / "demo" / "pdfs" / "中文论文.pdf"
 _NATURAL_TEXT_TYPES = {"text", "doc_title", "paragraph_title"}
 
 
@@ -65,6 +76,38 @@ def _pages() -> tuple[tuple[dict[str, Any], ...], ...]:
     with PDFDocument(str(source)) as document:
         pages = _analyze_native_document(document)
     return tuple(tuple(page) for page in pages)
+
+
+@lru_cache(maxsize=1)
+def _frozen_soil_pages() -> tuple[tuple[dict[str, Any], ...], ...]:
+    """只解析一次中文论文1，供 canonical 几何兼容性断言复用。"""
+
+    with PDFDocument(str(_FROZEN_SOIL_PATH)) as document:
+        pages = _analyze_native_document(document)
+    return tuple(tuple(page) for page in pages)
+
+
+def test_frozen_soil_paper_keeps_tracked_semantic_and_bbox_gold() -> None:
+    """验证无长文档门槛时中文论文1仍逐页保持已有语义与 bbox 指纹。"""
+
+    manifest = json.loads(
+        _GEOMETRY_MANIFEST_PATH.read_text(encoding="utf-8"),
+    )
+    expected = next(
+        document
+        for document in manifest["documents"]
+        if document["path"] == "demo/pdfs/中文论文.pdf"
+    )
+    assert hashlib.sha256(_FROZEN_SOIL_PATH.read_bytes()).hexdigest() == expected["sha256"]
+    pages = _frozen_soil_pages()
+    assert [
+        _page_fingerprint(list(page))
+        for page in pages
+    ] == [page["fingerprint"] for page in expected["pages"]]
+    assert [
+        _page_bbox_fingerprint(list(page))
+        for page in pages
+    ] == [page["bbox_fingerprint"] for page in expected["pages"]]
 
 
 def _typed_texts(block_type: str) -> Counter[tuple[int, str]]:
