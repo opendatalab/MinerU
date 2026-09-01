@@ -54,7 +54,7 @@ def test_mixed_footer_and_315_degree_watermark_are_split_before_filtering() -> N
     pdf_line = _line(
         [
             _span("文档问题反馈: aw-document@example.com", (30.0, 90.0, 80.0, 98.0), 0.0),
-            _span("深圳TCL智能家庭科技有限公司raynL", (5.0, 10.0, 25.0, 95.0), 315.000019),
+            _span("通用测试文档", (5.0, 10.0, 25.0, 95.0), 315.000019),
             _span("\r\n", (26.0, 20.0, 26.0, 20.0), 0.0),
         ],
         0.0,

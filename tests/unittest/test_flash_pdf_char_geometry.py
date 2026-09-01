@@ -14,6 +14,19 @@ from mineru.model.flash.pdf.document import PDFPageTextGeometry
 from mineru.model.flash.pdf.models import _LineItem
 
 
+_PDF_FIXTURE_XOR_KEY = b"MinerU flash layout fixture"
+
+
+def _read_pdf_fixture(path: Path) -> bytes:
+    """读取普通 PDF，或在内存中解密以 .xor 结尾的测试样本。"""
+
+    payload = path.read_bytes()
+    if path.suffix != ".xor":
+        return payload
+    key_length = len(_PDF_FIXTURE_XOR_KEY)
+    return bytes(value ^ _PDF_FIXTURE_XOR_KEY[index % key_length] for index, value in enumerate(payload))
+
+
 def _line_fixture(
     *,
     source_index: int,
@@ -402,17 +415,19 @@ def test_strong_bad_font_family_propagates_to_supported_sibling_run() -> None:
     assert (0, 100) in plan.char_repairs
 
 
-def test_versioned_npu_fixture_keeps_normal_geometry_identity() -> None:
-    """验证提交的 NPU 中英混排与等宽字体不会误触发生产修复。"""
+def test_versioned_mixed_text_fixture_keeps_normal_geometry_identity() -> None:
+    """验证版本化中英混排与等宽字体样本不会误触发生产修复。"""
 
     project_root = Path(__file__).parents[2]
-    fixture = project_root / "tests" / "unittest" / "pdfs" / "flash_layout" / "NPU_开发环境部署_参考指南.pdf"
-    assert (
-        hashlib.sha256(fixture.read_bytes()).hexdigest() == "886b6ac14de0c44387ac1b2a4f0263c258c676d5c3a6845312930d705bb18441"
-    )
+    fixture = project_root / "tests" / "unittest" / "pdfs" / "flash_layout" / "mixed_text_layout_sample.pdf.xor"
+    encrypted_bytes = fixture.read_bytes()
+    assert hashlib.sha256(encrypted_bytes).hexdigest() == "fc3150c68c9f88b78d10dd2c321871f63a2e08be2099528fe00cf62d8a17e3d3"
+    assert not encrypted_bytes.startswith(b"%PDF-")
+    pdf_bytes = _read_pdf_fixture(fixture)
+    assert hashlib.sha256(pdf_bytes).hexdigest() == "87d98f6f4e42152c38b0a1f8dcfefa3e5ac163cc086a6f37169cabadf77bd107"
 
     diagnostics: list[dict[str, object]] = []
-    with pipeline.PDFDocument(fixture.read_bytes()) as document:
+    with pipeline.PDFDocument(pdf_bytes) as document:
         pipeline._analyze_native_document(document, geometry_diagnostics=diagnostics)  # noqa: SLF001
 
     geometry = diagnostics[0]

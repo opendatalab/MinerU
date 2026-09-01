@@ -6962,8 +6962,8 @@
       }
     },
     {
-      "path": "tests/unittest/pdfs/flash_layout/NPU_开发环境部署_参考指南.pdf",
-      "sha256": "886b6ac14de0c44387ac1b2a4f0263c258c676d5c3a6845312930d705bb18441",
+      "path": "tests/unittest/pdfs/flash_layout/mixed_text_layout_sample.pdf.xor",
+      "sha256": "fc3150c68c9f88b78d10dd2c321871f63a2e08be2099528fe00cf62d8a17e3d3",
       "role": "normal",
       "approved": true,
       "pages": [

@@ -35,6 +35,7 @@ PERTURBATION_NAMES = (
     "latin_only",
     "punctuation",
 )
+_PDF_FIXTURE_XOR_KEY = b"MinerU flash layout fixture"
 _IGNORED_FINGERPRINT_KEYS = {
     "bbox",
     "lines",
@@ -64,6 +65,16 @@ def _sha256_bytes(value: bytes) -> str:
     """返回字节内容的稳定 SHA256。"""
 
     return hashlib.sha256(value).hexdigest()
+
+
+def read_pdf_fixture(path: Path) -> bytes:
+    """读取普通 PDF，或在内存中解密以 .xor 结尾的测试样本。"""
+
+    payload = path.read_bytes()
+    if path.suffix != ".xor":
+        return payload
+    key_length = len(_PDF_FIXTURE_XOR_KEY)
+    return bytes(value ^ _PDF_FIXTURE_XOR_KEY[index % key_length] for index, value in enumerate(payload))
 
 
 def _corpus_paths(manifest: dict[str, Any], source_root: Path) -> list[Path]:
@@ -358,8 +369,9 @@ def _run_document(
 ) -> dict[str, Any]:
     """解析一份语料并返回正常、扰动、overlay 和金标页面信息。"""
 
-    pdf_bytes = path.read_bytes()
-    pdf_sha = _sha256_bytes(pdf_bytes)
+    stored_bytes = path.read_bytes()
+    pdf_bytes = read_pdf_fixture(path)
+    pdf_sha = _sha256_bytes(stored_bytes)
     geometry_diagnostics: list[dict[str, Any]] = []
     started = time.perf_counter()
     rss_before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
