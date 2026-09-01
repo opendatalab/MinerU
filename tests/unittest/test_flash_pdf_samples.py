@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import re
+import sys
 import unicodedata
 from collections import Counter
+from collections.abc import Iterator
 from copy import deepcopy
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+import pytest
 from bs4 import BeautifulSoup
 from pypdf import PdfReader
 
@@ -35,6 +39,40 @@ _FIXTURE_PDF_DIR = Path(__file__).resolve().parent / "pdfs"
 _FLASH_SYNTHETIC_PDF_NAME = "flash_table_annotations_synthetic.pdf"
 _CJK_SYNTHETIC_PDF_NAME = "native_cjk_layout_synthetic.pdf"
 _SAFE_WATERMARK_TEXT = "MINERU TEST WATERMARK"
+
+
+def _pdf_cache_key(pdf_path: Path) -> tuple[str, int, int]:
+    """以规范路径、文件大小和纳秒 mtime 构造单次 pytest 进程内缓存键。"""
+
+    resolved = pdf_path.resolve()
+    stat = resolved.stat()
+    return str(resolved), stat.st_size, stat.st_mtime_ns
+
+
+@lru_cache(maxsize=None)
+def _cached_model_list(
+    pdf_path: str,
+    _size: int,
+    _mtime_ns: int,
+) -> list[list[dict[str, Any]]]:
+    """每份不可变真实 PDF 只运行一次 Flash 预测，并缓存原始模型输出。"""
+
+    with PDFDocument(Path(pdf_path).read_bytes()) as pdf_doc:
+        return PdfModel().predict(pdf_doc)
+
+
+def _cached_model_list_copy(pdf_path: Path) -> list[list[dict[str, Any]]]:
+    """返回缓存模型输出的深拷贝，隔离不同测试对可变 block 的修改。"""
+
+    return deepcopy(_cached_model_list(*_pdf_cache_key(pdf_path)))
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _clear_real_pdf_model_cache_after_module() -> Iterator[None]:
+    """模块结束后释放真实 PDF 模型缓存，避免影响后续 unittest 内存。"""
+
+    yield
+    _cached_model_list.cache_clear()
 
 
 def _model_json(
@@ -105,9 +143,7 @@ def _native_model_list(
 ) -> list[list[dict[str, Any]]]:
     """运行仓库内数字 PDF 样例并返回 Flash 原生模型输出。"""
 
-    pdf_path = pdf_dir / pdf_name
-    with PDFDocument(str(pdf_path)) as pdf_doc:
-        return PdfModel().predict(pdf_doc)
+    return _cached_model_list_copy(pdf_dir / pdf_name)
 
 
 def _txt_model_list(
@@ -117,9 +153,7 @@ def _txt_model_list(
 ) -> list[list[dict[str, Any]]]:
     """显式使用 Flash TXT 模式解析仓库内回归 PDF，禁止经过 auto 分类。"""
 
-    pdf_path = pdf_dir / pdf_name
-    with PDFDocument(pdf_path.read_bytes()) as pdf_doc:
-        return PdfModel().predict(pdf_doc)
+    return _cached_model_list_copy(pdf_dir / pdf_name)
 
 
 def _auto_model_list(pdf_name: str) -> list[list[dict[str, Any]]]:
@@ -128,13 +162,57 @@ def _auto_model_list(pdf_name: str) -> list[list[dict[str, Any]]]:
     pdf_path = Path(__file__).parents[2] / "demo" / "pdfs" / pdf_name
     with PDFDocument(pdf_path.read_bytes()) as pdf_doc:
         assert pdf_doc.classify() == "txt"
-        return PdfModel().predict(pdf_doc)
+    return _cached_model_list_copy(pdf_path)
 
 
 def _native_table_counts(pdf_name: str) -> list[int]:
     """返回仓库内数字 PDF 样例的逐页表格块数量。"""
 
     return [sum(block["type"] == "table" for block in page) for page in _native_model_list(pdf_name)]
+
+
+def test_real_pdf_model_cache_reuses_parse_and_isolates_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """验证相同文件只预测一次，且调用方修改深拷贝不会污染缓存。"""
+
+    pdf_path = tmp_path / "cache-fixture.pdf"
+    pdf_path.write_bytes(b"cache fixture")
+    predict_calls: list[object] = []
+
+    class FakePDFDocument:
+        """提供缓存测试所需的最小 PDFDocument 上下文。"""
+
+        def __init__(self, _payload: bytes) -> None:
+            pass
+
+        def __enter__(self) -> FakePDFDocument:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+    class FakePdfModel:
+        """记录预测次数并返回可变模型块。"""
+
+        def predict(self, document: object) -> list[list[dict[str, Any]]]:
+            predict_calls.append(document)
+            return [[{"type": "text", "content": "stable"}]]
+
+    module = sys.modules[__name__]
+    monkeypatch.setattr(module, "PDFDocument", FakePDFDocument)
+    monkeypatch.setattr(module, "PdfModel", FakePdfModel)
+
+    first = _cached_model_list_copy(pdf_path)
+    second = _cached_model_list_copy(pdf_path)
+    first[0][0]["content"] = "changed"
+    third = _cached_model_list_copy(pdf_path)
+
+    assert len(predict_calls) == 1
+    assert first is not second
+    assert second[0][0]["content"] == "stable"
+    assert third[0][0]["content"] == "stable"
 
 
 def _native_page_source(pdf_name: str, page_idx: int) -> models._PageSource:
@@ -787,8 +865,8 @@ def test_demo3_keeps_tables_and_covers_every_native_source_line() -> None:
     """验证 demo3 容器、后续页段落边界及每条原生 source line 均保持稳定。"""
 
     pdf_path = Path(__file__).parents[2] / "demo" / "pdfs" / "demo3.pdf"
+    model_list = _native_model_list("demo3.pdf")
     with PDFDocument(str(pdf_path)) as pdf_doc:
-        model_list = PdfModel().predict(pdf_doc)
         source_lines_by_page: list[list[models._LineItem]] = []
         for page_idx in range(pdf_doc.page_count):
             page_size = pdf_doc.page_size(page_idx)
@@ -1702,6 +1780,10 @@ def test_synthetic_cjk_fixture_contains_only_safe_watermarks_and_links() -> None
     """验证合成 CJK PDF 仅含安全旋转水印和预期 URI 注解。"""
 
     pdf_path = _FIXTURE_PDF_DIR / _CJK_SYNTHETIC_PDF_NAME
+    model_list = _txt_model_list(
+        _CJK_SYNTHETIC_PDF_NAME,
+        pdf_dir=_FIXTURE_PDF_DIR,
+    )
     with PDFDocument(pdf_path.read_bytes()) as document:
         rotated_lines = [
             "".join(str(span.get("text", "")) for span in line.get("spans", []))
@@ -1709,7 +1791,6 @@ def test_synthetic_cjk_fixture_contains_only_safe_watermarks_and_links() -> None
             for line in document.get_page_lines(page_index)
             if float(line.get("rotation", 0.0))
         ]
-        model_list = PdfModel().predict(document)
 
     expected_watermark_row = " ".join([_SAFE_WATERMARK_TEXT] * 4)
     assert len(rotated_lines) == 16

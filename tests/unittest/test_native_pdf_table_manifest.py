@@ -3,12 +3,15 @@
 
 from __future__ import annotations
 
-import json
 import hashlib
+import importlib.util
+import json
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
+import pytest
 from pypdf import PdfReader
 
 
@@ -40,6 +43,19 @@ _SENSITIVE_PROBE_HASHES = (
 )
 
 
+def _load_evaluator_module() -> Any:
+    """按文件路径加载 Native Table evaluator，供内部调用次数单测使用。"""
+
+    spec = importlib.util.spec_from_file_location(
+        "_native_pdf_table_manifest_evaluator",
+        _EVALUATOR,
+    )
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
 def _contains_sensitive_probe_hash(text: str) -> bool:
     """使用不可逆摘要检查已知敏感片段，避免把原文写入仓库。"""
 
@@ -50,6 +66,97 @@ def _contains_sensitive_probe_hash(text: str) -> bool:
         ):
             return True
     return False
+
+
+def test_native_table_skip_performance_runs_recovery_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证 pytest 功能模式只恢复一次，不执行预热或计时。"""
+
+    evaluator = _load_evaluator_module()
+    recover_calls: list[object] = []
+
+    def fake_recover(table_input: object) -> dict[str, int]:
+        """记录一次恢复并返回可识别结果。"""
+
+        recover_calls.append(table_input)
+        return {"call": len(recover_calls)}
+
+    monkeypatch.setattr(evaluator, "recover_native_pdf_table", fake_recover)
+    monkeypatch.setattr(evaluator, "_result_signature", lambda result: result)
+
+    actual, duration = evaluator._recover_table_input(
+        object(),
+        measure_performance=False,
+    )
+
+    assert actual == {"call": 1}
+    assert duration == 0.0
+    assert len(recover_calls) == 1
+
+
+def test_native_table_performance_mode_warms_and_times_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证显式性能模式保留一次预热和一次正式计时恢复。"""
+
+    evaluator = _load_evaluator_module()
+    recover_calls: list[object] = []
+    counter = iter((10.0, 12.5))
+
+    def fake_recover(table_input: object) -> dict[str, int]:
+        """记录预热和正式恢复。"""
+
+        recover_calls.append(table_input)
+        return {"call": len(recover_calls)}
+
+    monkeypatch.setattr(evaluator, "recover_native_pdf_table", fake_recover)
+    monkeypatch.setattr(evaluator, "_result_signature", lambda result: result)
+    monkeypatch.setattr(evaluator.time, "perf_counter", lambda: next(counter))
+
+    actual, duration = evaluator._recover_table_input(
+        object(),
+        measure_performance=True,
+    )
+
+    assert actual == {"call": 2}
+    assert duration == 2.5
+    assert len(recover_calls) == 2
+
+
+def test_native_table_diagnostics_are_lazy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证候选诊断仅在显式请求或结果不匹配时执行。"""
+
+    evaluator = _load_evaluator_module()
+    diagnose_calls: list[object] = []
+
+    def fake_diagnose(table_input: object) -> dict[str, bool]:
+        """记录惰性诊断调用。"""
+
+        diagnose_calls.append(table_input)
+        return {"diagnosed": True}
+
+    monkeypatch.setattr(evaluator, "diagnose_native_pdf_table", fake_diagnose)
+    table_input = object()
+
+    assert evaluator._maybe_diagnose_table_input(
+        table_input,
+        collect_diagnostics=False,
+        mismatch=False,
+    ) is None
+    assert evaluator._maybe_diagnose_table_input(
+        table_input,
+        collect_diagnostics=True,
+        mismatch=False,
+    ) == {"diagnosed": True}
+    assert evaluator._maybe_diagnose_table_input(
+        table_input,
+        collect_diagnostics=False,
+        mismatch=True,
+    ) == {"diagnosed": True}
+    assert diagnose_calls == [table_input, table_input]
 
 
 def test_repository_native_table_manifest_matches_all_fixtures() -> None:

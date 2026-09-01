@@ -60,12 +60,43 @@ def _result_signature(result: Any) -> dict[str, Any] | None:
     }
 
 
+def _recover_table_input(
+    table_input: NativeTableInput,
+    *,
+    measure_performance: bool,
+) -> tuple[dict[str, Any] | None, float]:
+    """按性能门开关执行一次功能恢复，或执行预热后的正式计时恢复。"""
+
+    if not measure_performance:
+        return _result_signature(recover_native_pdf_table(table_input)), 0.0
+    # 性能模式保留一次不计时预热，避免 Python 首次路径和页面缓存抖动污染 p95。
+    recover_native_pdf_table(table_input)
+    started = time.perf_counter()
+    result = recover_native_pdf_table(table_input)
+    return _result_signature(result), time.perf_counter() - started
+
+
+def _maybe_diagnose_table_input(
+    table_input: NativeTableInput,
+    *,
+    collect_diagnostics: bool,
+    mismatch: bool,
+) -> dict[str, Any] | None:
+    """仅在显式请求诊断或结果不匹配时执行昂贵的候选诊断。"""
+
+    if not collect_diagnostics and not mismatch:
+        return None
+    return diagnose_native_pdf_table(table_input)
+
+
 def _evaluate_entry(
     document: PDFDocument,
     entry: dict[str, Any],
     page_cache: dict[int, tuple[Any, ...]],
-) -> tuple[dict[str, Any] | None, float, dict[str, Any]]:
-    """运行一个 manifest 表格并返回结构签名和耗时。"""
+    *,
+    measure_performance: bool,
+) -> tuple[dict[str, Any] | None, float, NativeTableInput]:
+    """构造一个 manifest 表格输入，并返回结构签名、耗时和诊断输入。"""
 
     page_index = int(entry["page_index"])
     if page_index not in page_cache:
@@ -95,16 +126,11 @@ def _evaluate_entry(
         drawing_lines=rules,
         rectangles=rectangles,
     )
-    # 先执行一次不计时预热，避免 Python 首次路径和页面缓存抖动污染 p95。
-    recover_native_pdf_table(table_input)
-    started = time.perf_counter()
-    result = recover_native_pdf_table(table_input)
-    duration = time.perf_counter() - started
-    return (
-        _result_signature(result),
-        duration,
-        diagnose_native_pdf_table(table_input),
+    actual, duration = _recover_table_input(
+        table_input,
+        measure_performance=measure_performance,
     )
+    return actual, duration, table_input
 
 
 def _entry_mismatch(
@@ -167,28 +193,37 @@ def main() -> None:
     html_count = 0
     target_html_count = 0
     durations: list[float] = []
+    measure_performance = not args.skip_performance_gate
+    collect_diagnostics = args.diagnostics_output is not None
     for filename, entries in entries_by_file.items():
         with PDFDocument(str(args.source_root / filename)) as document:
             page_cache: dict[int, tuple[Any, ...]] = {}
             for entry in entries:
-                actual, duration, diagnostic = _evaluate_entry(
+                actual, duration, table_input = _evaluate_entry(
                     document,
                     entry,
                     page_cache,
-                )
-                diagnostics.append(
-                    {
-                        "scope": "corpus",
-                        "file": filename,
-                        "page_index": entry["page_index"],
-                        "table_index": entry["table_index"],
-                        "bbox": entry["bbox"],
-                        "expected_output": entry["expected_output"],
-                        **diagnostic,
-                    }
+                    measure_performance=measure_performance,
                 )
                 durations.append(duration)
                 actual_output, mismatch = _entry_mismatch(entry, actual)
+                diagnostic = _maybe_diagnose_table_input(
+                    table_input,
+                    collect_diagnostics=collect_diagnostics,
+                    mismatch=mismatch,
+                )
+                if diagnostic is not None:
+                    diagnostics.append(
+                        {
+                            "scope": "corpus",
+                            "file": filename,
+                            "page_index": entry["page_index"],
+                            "table_index": entry["table_index"],
+                            "bbox": entry["bbox"],
+                            "expected_output": entry["expected_output"],
+                            **diagnostic,
+                        }
+                    )
                 if actual_output == "html":
                     html_count += 1
                 is_target = entry["review_status"] == "target_verified"
@@ -203,6 +238,8 @@ def main() -> None:
                         "expected_output": entry["expected_output"],
                         "actual": actual,
                     }
+                    if diagnostic is not None:
+                        mismatch_record["diagnostic"] = diagnostic
                     if is_target:
                         target_mismatches.append(mismatch_record)
                     else:
@@ -217,36 +254,44 @@ def main() -> None:
         with PDFDocument(str(args.source_root / filename)) as document:
             page_cache = {}
             for entry in entries:
-                actual, duration, diagnostic = _evaluate_entry(
+                actual, duration, table_input = _evaluate_entry(
                     document,
                     entry,
                     page_cache,
-                )
-                diagnostics.append(
-                    {
-                        "scope": "flash_target",
-                        "file": filename,
-                        "page_index": entry["page_index"],
-                        "table_index": entry["table_index"],
-                        "bbox_points": entry["bbox_points"],
-                        "expected_output": entry["expected_output"],
-                        **diagnostic,
-                    }
+                    measure_performance=measure_performance,
                 )
                 durations.append(duration)
                 actual_output, mismatch = _entry_mismatch(entry, actual)
-                if actual_output == "html":
-                    flash_target_html_count += 1
-                if mismatch:
-                    flash_target_mismatches.append(
+                diagnostic = _maybe_diagnose_table_input(
+                    table_input,
+                    collect_diagnostics=collect_diagnostics,
+                    mismatch=mismatch,
+                )
+                if diagnostic is not None:
+                    diagnostics.append(
                         {
+                            "scope": "flash_target",
                             "file": filename,
                             "page_index": entry["page_index"],
                             "table_index": entry["table_index"],
+                            "bbox_points": entry["bbox_points"],
                             "expected_output": entry["expected_output"],
-                            "actual": actual,
+                            **diagnostic,
                         }
                     )
+                if actual_output == "html":
+                    flash_target_html_count += 1
+                if mismatch:
+                    mismatch_record = {
+                        "file": filename,
+                        "page_index": entry["page_index"],
+                        "table_index": entry["table_index"],
+                        "expected_output": entry["expected_output"],
+                        "actual": actual,
+                    }
+                    if diagnostic is not None:
+                        mismatch_record["diagnostic"] = diagnostic
+                    flash_target_mismatches.append(mismatch_record)
 
     total = len(manifest["entries"])
     target_total = sum(entry["review_status"] == "target_verified" for entry in manifest["entries"])
