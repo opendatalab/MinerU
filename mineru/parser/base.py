@@ -22,23 +22,7 @@ _LEGACY_SCHEMA_VERSION: str = "1.0"
 _LEGACY_DEFAULT_FILE_SUFFIX: FileSuffix = "pdf"
 _LEGACY_DEFAULT_EFFORT: Literal["flash", "medium", "high", "xhigh"] = "medium"
 _LEGACY_DEFAULT_PARSE_MODE: Literal["txt", "ocr"] = "txt"
-_PDF_RETAINED_PAGE_INDICES_KEY = "_pdf_retained_page_indices"
-_PDF_BROKEN_PAGE_INDICES_KEY = "_pdf_broken_page_indices"
-_TO_DICT_EXCLUDED_KEYS: frozenset[str] = frozenset(
-    {"schema_version", _PDF_RETAINED_PAGE_INDICES_KEY, _PDF_BROKEN_PAGE_INDICES_KEY}
-)
-
-
-def _parse_optional_int_list(value: Any) -> list[int] | None:
-    """解析内部页映射列表；旧 payload 或非法类型直接按缺省处理。"""
-    if not isinstance(value, list):
-        return None
-    parsed: list[int] = []
-    for item in value:
-        if not isinstance(item, int):
-            return None
-        parsed.append(item)
-    return parsed
+_TO_DICT_EXCLUDED_KEYS: frozenset[str] = frozenset({"schema_version"})
 
 
 def _legacy_raw_pages(payload: dict[str, Any]) -> list[dict[str, Any]] | None:
@@ -109,8 +93,6 @@ class ParseResult:
     _pdf_doc: PDFDocument | None = None
     _model_output: Any = None
     _image_cache: ImagePayloadCache | dict[str, bytes] | None = None
-    _retained_page_indices: list[int] | None = None
-    _broken_page_indices: list[int] | None = None
 
     @property
     def pages(self) -> list[PageInfo]:
@@ -130,8 +112,6 @@ class ParseResult:
             raise ValueError("ParseResult.from_dict expects a dict.")
 
         schema_version = d.get("schema_version")
-        retained_page_indices = _parse_optional_int_list(d.get(_PDF_RETAINED_PAGE_INDICES_KEY))
-        broken_page_indices = _parse_optional_int_list(d.get(_PDF_BROKEN_PAGE_INDICES_KEY))
 
         if schema_version == MIDDLE_JSON_SCHEMA_VERSION:
             middle_json = ParseResult._build_middle_json_from_current(d)
@@ -143,11 +123,7 @@ class ParseResult:
                 f"expected {MIDDLE_JSON_SCHEMA_VERSION!r}. Reparse the source document."
             )
 
-        return ParseResult(
-            middle_json=middle_json,
-            _retained_page_indices=retained_page_indices,
-            _broken_page_indices=broken_page_indices,
-        )
+        return ParseResult(middle_json=middle_json)
 
     @staticmethod
     def _build_middle_json_from_current(d: dict[str, Any]) -> MiddleJson:
@@ -185,11 +161,11 @@ class ParseResult:
 
     def to_dict(self, *, skip_defaults: bool = True) -> dict[str, Any]:
         payload: dict[str, Any] = {"schema_version": MIDDLE_JSON_SCHEMA_VERSION}
-        payload.update(self.middle_json.to_dict(skip_defaults=skip_defaults, exclude_block_fields={"image_base64"}))
-        if self._retained_page_indices is not None:
-            payload[_PDF_RETAINED_PAGE_INDICES_KEY] = list(self._retained_page_indices)
-        if self._broken_page_indices:
-            payload[_PDF_BROKEN_PAGE_INDICES_KEY] = list(self._broken_page_indices)
+        options: dict[str, Any] = {"skip_defaults": skip_defaults}
+        # image block in PDF can be rendered and cropped again.
+        if self.middle_json.file_suffix == "pdf":
+            options["exclude_block_fields"] = {"image_base64"}
+        payload.update(self.middle_json.to_dict(**options))
         return payload
 
     @staticmethod

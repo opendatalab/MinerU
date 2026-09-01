@@ -719,13 +719,9 @@ def test_api_client_ignores_legacy_detail_error_envelope() -> None:
     assert exc_info.value.message.startswith("HTTP 400:")
 
 
-def test_api_client_reads_image_cache_from_zip_and_preserves_pdf_mapping(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_api_client_reads_image_cache_from_zip(monkeypatch: pytest.MonkeyPatch) -> None:
     parser = MinerUApiParser(api_url="http://localhost:8000", tier="standard", include_images=True)
-    middle_json = _current_payload(
-        [_current_image_page("images/chart.png")],
-        _pdf_retained_page_indices=[0, 2],
-        _pdf_broken_page_indices=[1],
-    )
+    middle_json = _current_payload([_current_image_page("images/chart.png")])
     zip_ref = {"file_id": "file-zip", "bytes": 10}
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
@@ -744,8 +740,6 @@ def test_api_client_reads_image_cache_from_zip_and_preserves_pdf_mapping(monkeyp
         parser,
     )
 
-    assert result._retained_page_indices == [0, 2]
-    assert result._broken_page_indices == [1]
     assert result.images() == {"images/chart.png": b"chart-bytes"}
 
 

@@ -75,12 +75,7 @@ class MinerUParser(DocumentParser):
                 prepared.retained_page_indices,
                 prepared.broken_page_indices,
             )
-        return self._build_result(
-            middle_json,
-            model_output,
-            retained_page_indices=prepared.retained_page_indices if prepared.file_suffix == "pdf" else None,
-            broken_page_indices=prepared.broken_page_indices,
-        )
+        return self._build_result(middle_json, model_output)
 
     async def parse_async(
         self,
@@ -102,12 +97,7 @@ class MinerUParser(DocumentParser):
                 prepared.retained_page_indices,
                 prepared.broken_page_indices,
             )
-        return self._build_result(
-            middle_json,
-            model_output,
-            retained_page_indices=prepared.retained_page_indices if prepared.file_suffix == "pdf" else None,
-            broken_page_indices=prepared.broken_page_indices,
-        )
+        return self._build_result(middle_json, model_output)
 
     def _run_analysis(self, prepared: _PreparedInput) -> tuple[MiddleJson, ModelJson]:
         return doc_analyze(
@@ -252,15 +242,10 @@ class MinerUParser(DocumentParser):
         self,
         middle_json: MiddleJson,
         model_output: Any = None,
-        *,
-        retained_page_indices: list[int] | None = None,
-        broken_page_indices: list[int] | None = None,
     ) -> ParseResult:
         return ParseResult(
             middle_json=middle_json,
             _model_output=model_output,
-            _retained_page_indices=retained_page_indices,
-            _broken_page_indices=broken_page_indices,
         )
 
 
