@@ -44,6 +44,64 @@ def _path_info(
     )
 
 
+def test_continuation_marker_is_externalized_above_precise_rule_grid() -> None:
+    """验证续表标记成为独立 caption，表体从连通竖轨支撑的网格顶线开始。"""
+
+    continuation = models._LineItem(
+        text="续表",
+        bbox=(80.0, 10.0, 95.0, 18.0),
+        angle=0,
+        source_index=0,
+        effective_height=8.0,
+    )
+    source = models._PageSource(
+        page_size=(100.0, 100.0),
+        lines=[continuation],
+        chars=[],
+        drawing_lines=[
+            models._AxisLine(
+                bbox=(0.0, 30.0, 100.0, 30.5),
+                width=0.5,
+                orientation="horizontal",
+            ),
+            models._AxisLine(
+                bbox=(0.0, 60.0, 100.0, 60.5),
+                width=0.5,
+                orientation="horizontal",
+            ),
+            models._AxisLine(
+                bbox=(0.0, 30.0, 0.5, 60.5),
+                width=0.5,
+                orientation="vertical",
+            ),
+            models._AxisLine(
+                bbox=(99.5, 30.0, 100.0, 60.5),
+                width=0.5,
+                orientation="vertical",
+            ),
+        ],
+    )
+    candidate = models._TableCandidate(
+        bbox=(0.0, 0.0, 100.0, 60.5),
+        local_bbox=(0.0, 0.0, 100.0, 60.5),
+        angle=0,
+        score=1.0,
+        core_bbox=(0.0, 0.0, 100.0, 60.5),
+        line_indices={0},
+    )
+
+    tables._externalize_table_continuation_captions(
+        source,
+        [candidate],
+    )
+
+    assert candidate.core_bbox == (0.0, 30.0, 100.0, 60.5)
+    assert candidate.line_indices == set()
+    assert len(candidate.annotations) == 1
+    assert candidate.annotations[0].kind == "caption"
+    assert candidate.annotations[0].line_indices == {0}
+
+
 def _filled_grid_path_fixture(
     *,
     band_count: int = 5,

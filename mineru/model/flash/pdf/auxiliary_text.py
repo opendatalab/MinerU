@@ -723,7 +723,7 @@ def _classify_rule_delimited_headers(pages: list[_PreparedPage]) -> None:
             (
                 line,
                 _rotate_bbox_to_upright(
-                    line.bbox,
+                    line.ink_bbox or line.bbox,
                     page.page_size,
                     dominant_angle,
                 ),

@@ -62,6 +62,13 @@ _TABLE_CAPTION_RE = re.compile(
 )
 
 
+_TABLE_CONTINUATION_RE = re.compile(
+    r"^(?:续\s*表(?:\s*[0-9０-９ivxlcdm一二三四五六七八九十]+)?"
+    r"|(?:table|tab\.?)\s*(?:[0-9ivxlcdm]+\s*)?(?:continued|cont\.?))$",
+    re.IGNORECASE,
+)
+
+
 _TABLE_NOTE_RE = re.compile(
     r"^(?:notes?|sources?)\b|^(?:注释?|说明)\s*[:：]?|^for\s+[*†‡]"
     r"|^[*†‡]\s*\S",
@@ -192,10 +199,136 @@ def _detect_table_candidates(
             for filled_bbox in filled_grid_bboxes
         )
     ]
+    candidates = [*filled_grid_candidates, *merged_rule_candidates]
+    _externalize_table_continuation_captions(
+        source,
+        candidates,
+    )
     return sorted(
-        [*filled_grid_candidates, *merged_rule_candidates],
+        candidates,
         key=lambda candidate: (candidate.bbox[1], candidate.bbox[0]),
     )
+
+
+def _externalize_table_continuation_captions(
+    source: _PageSource,
+    candidates: list[_TableCandidate],
+) -> None:
+    """以连通物理网格收紧表体，并把其上方续表标记外置为 caption。"""
+
+    for candidate in candidates:
+        angle_lines = [line for line in source.lines if line.angle == candidate.angle]
+        if not angle_lines:
+            continue
+        fragments = _build_fragments(
+            angle_lines,
+            source.page_size,
+        )
+        if not fragments:
+            continue
+        median_height = _median_fragment_height(fragments)
+        local_axis_lines = _transform_axis_lines(
+            source.drawing_lines,
+            source.page_size,
+            candidate.angle,
+        )
+        grid_matches = [
+            grid_bbox
+            for grid_bbox in _connected_rule_grid_bboxes(
+                local_axis_lines,
+                median_height,
+            )
+            if _bbox_axis_overlap_ratio(
+                grid_bbox,
+                candidate.local_bbox,
+                axis="x",
+            )
+            >= 0.9
+            and _bbox_overlap_in_smaller(
+                grid_bbox,
+                candidate.local_bbox,
+            )
+            >= 0.9
+        ]
+        if not grid_matches:
+            continue
+        grid_bbox = max(
+            grid_matches,
+            key=lambda bbox: _bbox_area(bbox),
+        )
+        continuation_lines = []
+        for line in angle_lines:
+            if (
+                _TABLE_CONTINUATION_RE.fullmatch(
+                    line.text.strip(),
+                )
+                is None
+            ):
+                continue
+            local_bbox = _rotate_bbox_to_upright(
+                line.bbox,
+                source.page_size,
+                candidate.angle,
+            )
+            gap = grid_bbox[1] - local_bbox[3]
+            if (
+                local_bbox[3] <= grid_bbox[1] + 0.25 * median_height
+                and -0.25 * median_height <= gap <= 3.0 * median_height
+                and _bbox_axis_overlap_ratio(
+                    local_bbox,
+                    grid_bbox,
+                    axis="x",
+                )
+                >= 0.8
+            ):
+                continuation_lines.append(
+                    (line, local_bbox),
+                )
+        if len(continuation_lines) != 1:
+            continue
+        continuation_line, continuation_local_bbox = continuation_lines[0]
+        continuation_bbox = continuation_line.bbox
+        existing_caption = next(
+            (annotation for annotation in candidate.annotations if annotation.kind == "caption"),
+            None,
+        )
+        if existing_caption is None:
+            candidate.annotations.append(
+                _TableAnnotation(
+                    kind="caption",
+                    bbox=continuation_bbox,
+                    line_indices={continuation_line.source_index},
+                    line_bboxes={
+                        continuation_line.source_index: continuation_bbox,
+                    },
+                )
+            )
+        else:
+            existing_caption.bbox = _bbox_union(
+                existing_caption.bbox,
+                continuation_bbox,
+            )
+            existing_caption.line_indices.add(
+                continuation_line.source_index,
+            )
+            existing_caption.line_bboxes[continuation_line.source_index] = continuation_bbox
+        candidate.line_indices.discard(
+            continuation_line.source_index,
+        )
+        core_bbox = _rotate_bbox_from_upright(
+            grid_bbox,
+            source.page_size,
+            candidate.angle,
+        )
+        candidate.core_bbox = core_bbox
+        candidate.local_bbox = _bbox_union(
+            grid_bbox,
+            continuation_local_bbox,
+        )
+        candidate.bbox = _bbox_union(
+            core_bbox,
+            continuation_bbox,
+        )
 
 
 def _detect_filled_grid_table_candidates(

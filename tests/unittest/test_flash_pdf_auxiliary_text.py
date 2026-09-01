@@ -904,6 +904,50 @@ def test_top_rule_marks_only_unclassified_text_above_it_as_header() -> None:
     ]
 
 
+def test_top_rule_uses_ink_bbox_when_loose_bbox_crosses_separator() -> None:
+    """验证 loose 框穿过页首横线时仍按真实字形区分线上日期和线下 DOI。"""
+
+    date = _text_line(
+        "2026 年 4 月",
+        (100.0, 30.0, 240.0, 64.0),
+        0,
+        effective_height=10.0,
+    )
+    date.ink_bbox = (100.0, 34.0, 240.0, 45.0)
+    doi = _text_line(
+        "DOI:10.1000/example",
+        (100.0, 58.0, 500.0, 76.0),
+        1,
+        effective_height=10.0,
+    )
+    doi.ink_bbox = (100.0, 64.0, 500.0, 74.0)
+    body = _text_line(
+        "body",
+        (100.0, 90.0, 700.0, 100.0),
+        2,
+        effective_height=10.0,
+    )
+    page = _prepared_text_page(
+        date,
+        doi,
+        body,
+        page_size=(1000.0, 1000.0),
+    )
+    page.drawing_lines = [
+        models._AxisLine(
+            (80.0, 60.0, 920.0, 62.0),
+            1.0,
+            "horizontal",
+        )
+    ]
+
+    auxiliary_text._classify_rule_delimited_headers([page])
+
+    assert date.semantic_type == "header"
+    assert doi.semantic_type is None
+    assert body.semantic_type is None
+
+
 def test_top_rule_inside_graphic_does_not_mark_header() -> None:
     """验证图形容器内的页首长横线不会把其上方普通文本误标为页眉。"""
 

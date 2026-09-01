@@ -421,6 +421,148 @@ def _classify_document_structural_titles(
                     line.style_scale_repaired = True
 
 
+def _classify_secondary_document_title_bands(
+    prepared_pages: list[_PreparedPage],
+    document_body_profile: _DocumentBodyProfile | None,
+) -> None:
+    """用标题、作者、单位和宽摘要的连续版式识别非首页双语标题带。"""
+
+    if document_body_profile is None:
+        return
+    body_height = max(0.1, document_body_profile.body_height)
+    for prepared in prepared_pages[1:]:
+        for angle in sorted(
+            {line.angle for line in prepared.remaining_lines if line.semantic_type in {None, "paragraph_title"}}
+        ):
+            geometry = sorted(
+                [
+                    (
+                        line,
+                        _rotate_bbox_to_upright(
+                            line.bbox,
+                            prepared.page_size,
+                            angle,
+                        ),
+                    )
+                    for line in prepared.remaining_lines
+                    if line.angle == angle and line.semantic_type in {None, "paragraph_title"}
+                ],
+                key=lambda item: (
+                    item[1][1],
+                    item[1][0],
+                    item[0].source_index,
+                ),
+            )
+            if len(geometry) < 5:
+                continue
+            local_page_width = prepared.page_size[1] if angle in {90, 270} else prepared.page_size[0]
+            local_page_height = prepared.page_size[0] if angle in {90, 270} else prepared.page_size[1]
+            local_containers = [
+                _rotate_bbox_to_upright(
+                    block["bbox"],
+                    prepared.page_size,
+                    angle,
+                )
+                for block in prepared.fixed_blocks
+                if isinstance(block.get("bbox"), (list, tuple))
+            ]
+            consumed_sources: set[int] = set()
+            for index, (line, bbox) in enumerate(geometry):
+                if line.source_index in consumed_sources:
+                    continue
+                line_scale = _line_effective_height(line, bbox)
+                width_ratio = (bbox[2] - bbox[0]) / max(
+                    0.1,
+                    local_page_width,
+                )
+                centered = abs(_bbox_center_x(bbox) - 0.5 * local_page_width) <= 0.08 * local_page_width
+                if (
+                    line_scale < 1.35 * body_height
+                    or not 0.45 <= width_ratio <= 0.85
+                    or not centered
+                    or not 0.12 * local_page_height <= _bbox_center_y(bbox) <= 0.75 * local_page_height
+                    or _line_inside_visual_container(
+                        bbox,
+                        local_containers,
+                    )
+                ):
+                    continue
+
+                title_members = [(line, bbox)]
+                cursor = index + 1
+                while cursor < len(geometry):
+                    candidate_line, candidate_bbox = geometry[cursor]
+                    candidate_scale = _line_effective_height(
+                        candidate_line,
+                        candidate_bbox,
+                    )
+                    vertical_gap = max(
+                        0.0,
+                        candidate_bbox[1] - title_members[-1][1][3],
+                    )
+                    if (
+                        candidate_scale < 1.3 * body_height
+                        or vertical_gap
+                        > 1.5
+                        * max(
+                            line_scale,
+                            candidate_scale,
+                        )
+                        or abs(_bbox_center_x(candidate_bbox) - 0.5 * local_page_width) > 0.1 * local_page_width
+                        or candidate_bbox[2] - candidate_bbox[0] > 0.85 * local_page_width
+                        or not _title_fonts_compatible(
+                            title_members[-1][0],
+                            candidate_line,
+                        )
+                    ):
+                        break
+                    title_members.append(
+                        (candidate_line, candidate_bbox),
+                    )
+                    cursor += 1
+
+                followers = geometry[cursor:]
+                if len(followers) < 3:
+                    continue
+                metadata = followers[:2]
+                if any(
+                    not 0.2 * local_page_width <= metadata_bbox[2] - metadata_bbox[0] <= 0.7 * local_page_width
+                    or abs(_bbox_center_x(metadata_bbox) - 0.5 * local_page_width) > 0.12 * local_page_width
+                    or _line_effective_height(
+                        metadata_line,
+                        metadata_bbox,
+                    )
+                    > line_scale
+                    for metadata_line, metadata_bbox in metadata
+                ):
+                    continue
+                title_to_metadata_gap = max(
+                    0.0,
+                    metadata[0][1][1] - title_members[-1][1][3],
+                )
+                metadata_gap = max(
+                    0.0,
+                    metadata[1][1][1] - metadata[0][1][3],
+                )
+                abstract_line, abstract_bbox = followers[2]
+                abstract_gap = max(
+                    0.0,
+                    abstract_bbox[1] - metadata[1][1][3],
+                )
+                if (
+                    title_to_metadata_gap > 4.5 * body_height
+                    or metadata_gap > 2.0 * body_height
+                    or abstract_gap > 4.0 * body_height
+                    or abstract_bbox[2] - abstract_bbox[0] < 0.7 * local_page_width
+                    or abstract_bbox[0] > 0.15 * local_page_width
+                    or abstract_bbox[2] < 0.85 * local_page_width
+                ):
+                    continue
+                for title_line, _title_bbox in title_members:
+                    title_line.semantic_type = "doc_title"
+                    consumed_sources.add(title_line.source_index)
+
+
 def _canonical_title_style_key(
     line: _LineItem,
 ) -> tuple[str, int, float, int] | None:

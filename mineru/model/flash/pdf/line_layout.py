@@ -196,6 +196,35 @@ def _effective_text_row_gap(
     )
 
 
+def _effective_body_text_row_gap(
+    previous: tuple[_LineItem, BBox],
+    current: tuple[_LineItem, BBox],
+) -> float:
+    """正文连接优先使用 origin 基线节奏，缺证据时回退既有 bbox 净空。"""
+
+    previous_line, previous_bbox = previous
+    current_line, _current_bbox = current
+    if (
+        previous_line.baseline is not None
+        and current_line.baseline is not None
+        and current_line.baseline > previous_line.baseline
+    ):
+        previous_scale = _line_effective_height(previous_line, previous_bbox)
+        current_scale = _line_effective_height(*current)
+        pitch = current_line.baseline - previous_line.baseline
+        if (
+            0.5 * min(previous_scale, current_scale)
+            <= pitch
+            <= 3.0
+            * max(
+                previous_scale,
+                current_scale,
+            )
+        ):
+            return pitch - previous_scale
+    return _effective_text_row_gap(previous, current)
+
+
 def _infer_text_lanes(
     line_geometry: list[tuple[_LineItem, BBox]],
     local_page_width: float,
@@ -334,6 +363,7 @@ def _infer_text_lanes(
                 )
             )
         _reattach_span_lane_continuations(lanes, median_height)
+        _reattach_cross_lane_short_tails(lanes, median_height)
         return lanes
 
     lanes = [_TextLane(left=left, right=right) for left, right, _support in filtered_intervals]
@@ -388,6 +418,7 @@ def _infer_text_lanes(
             )
         )
     _reattach_span_lane_continuations(lanes, median_height)
+    _reattach_cross_lane_short_tails(lanes, median_height)
     return lanes
 
 
@@ -659,6 +690,85 @@ def _reattach_span_lane_continuations(
             )
 
 
+def _reattach_cross_lane_short_tails(
+    lanes: list[_TextLane],
+    median_height: float,
+) -> None:
+    """把误入另一栏带、但完整落在唯一前序栏内的正文短尾迁回原栏。"""
+
+    while True:
+        moves: list[
+            tuple[
+                float,
+                _TextLane,
+                _TextLane,
+                tuple[_LineItem, BBox],
+            ]
+        ] = []
+        for source_lane in lanes:
+            for candidate in source_lane.lines:
+                candidate_line, candidate_bbox = candidate
+                if candidate_line.semantic_type is not None:
+                    continue
+                matches: list[tuple[float, _TextLane]] = []
+                for target_lane in lanes:
+                    if target_lane is source_lane or not target_lane.lines:
+                        continue
+                    preceding = [
+                        item
+                        for item in target_lane.lines
+                        if item[0].semantic_type == candidate_line.semantic_type and item[1][1] < candidate_bbox[1]
+                    ]
+                    if not preceding:
+                        continue
+                    previous = max(
+                        preceding,
+                        key=lambda item: (item[1][1], item[1][0]),
+                    )
+                    previous_line, previous_bbox = previous
+                    pair_height = max(
+                        _line_effective_height(*previous),
+                        _line_effective_height(*candidate),
+                        median_height,
+                    )
+                    lane_width = max(0.1, target_lane.right - target_lane.left)
+                    if (
+                        previous_bbox[2] - previous_bbox[0] < 0.65 * lane_width
+                        or candidate_bbox[2] - candidate_bbox[0] > 0.85 * lane_width
+                        or candidate_bbox[0] < target_lane.left - 0.75 * pair_height
+                        or candidate_bbox[2] > target_lane.right + 0.75 * pair_height
+                        or abs(candidate_bbox[0] - previous_bbox[0]) > 0.75 * pair_height
+                        or not _title_fonts_compatible(previous_line, candidate_line)
+                    ):
+                        continue
+                    gap = _effective_body_text_row_gap(previous, candidate)
+                    if not -0.25 * pair_height <= gap <= 0.9 * pair_height:
+                        continue
+                    if (
+                        previous_line.visual_row_id is not None
+                        and candidate_line.visual_row_id is not None
+                        and not 0 < candidate_line.visual_row_id - previous_line.visual_row_id <= 2
+                    ):
+                        continue
+                    matches.append((max(0.0, gap), target_lane))
+                if len(matches) == 1:
+                    gap, target_lane = matches[0]
+                    moves.append((candidate_bbox[1] + gap, source_lane, target_lane, candidate))
+        if not moves:
+            return
+        _score, source_lane, target_lane, candidate = min(
+            moves,
+            key=lambda item: item[0],
+        )
+        if candidate not in source_lane.lines:
+            continue
+        source_lane.lines.remove(candidate)
+        target_lane.lines.append(candidate)
+        target_lane.lines.sort(
+            key=lambda item: (item[1][1], item[1][0], item[0].source_index),
+        )
+
+
 def _reattach_repeated_indented_span_tails(
     span_lane: _TextLane,
     regular_lanes: list[_TextLane],
@@ -812,7 +922,7 @@ def _should_connect_text_rows(
     lane_width = max(0.1, lane.right - lane.left)
     previous_width = previous_bbox[2] - previous_bbox[0]
     current_width = current_bbox[2] - current_bbox[0]
-    vertical_gap = _effective_text_row_gap(previous, current)
+    vertical_gap = _effective_body_text_row_gap(previous, current)
     if previous_line.visual_row_id == current_line.visual_row_id and (
         previous_line.split_from_row or current_line.split_from_row
     ):
@@ -845,6 +955,13 @@ def _should_connect_text_rows(
             current_width <= 0.5 * lane_width
             and previous_line.font_signature[1] == current_line.font_signature[1]
         )
+    )
+    previous_indent = previous_bbox[0] - lane.left
+    repeated_indent_continuation = (
+        previous_indent >= max(5.0, 1.8 * pair_height)
+        and abs(current_bbox[0] - previous_bbox[0]) <= 0.5 * pair_height
+        and reliable_font_match
+        and -0.25 * pair_height <= vertical_gap <= regular_gap + max(0.75 * pair_height, 3.0 * gap_mad)
     )
     safe_short_tail = (
         previous_width >= 0.75 * lane_width
@@ -952,7 +1069,12 @@ def _should_connect_text_rows(
         return False
 
     terminal_previous = bool(re.search(r"[.!?。！？:：;；][\]\)}）】》”’'\"]*$", previous_line.text.rstrip()))
-    if terminal_previous and vertical_gap > regular_gap + 0.5 * pair_height:
+    sparse_lane = sum(line.semantic_type is None for line, _bbox in lane.lines) <= 6
+    if (
+        terminal_previous
+        and not repeated_indent_continuation
+        and ((sparse_lane and vertical_gap > 0.65 * pair_height) or vertical_gap > regular_gap + 0.5 * pair_height)
+    ):
         return False
 
     # 局部版心可能比整栏推断边界更靠左，缩进需同时参考上一物理行。
@@ -964,6 +1086,7 @@ def _should_connect_text_rows(
         next_indent >= max(5.0, 0.65 * pair_height)
         and (previous_fill <= 0.8 or terminal_previous)
         and not safe_short_tail
+        and not repeated_indent_continuation
     ):
         # 已确认的同左缘短尾优先于栏左缘缩进，避免参考文献冒号后的末行被切断。
         return False

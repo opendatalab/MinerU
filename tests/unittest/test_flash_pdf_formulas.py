@@ -143,6 +143,68 @@ def test_single_line_formula_requires_numeric_trailing_marker() -> None:
     )
 
 
+def test_single_line_numbered_formula_absorbs_connected_math_sidecars() -> None:
+    """验证带编号公式核心吸收等号前缀和窄分子，但不吸收后续正文。"""
+
+    core = _text_line(
+        "|Bm| sum(yi) (1)",
+        (40.0, 20.0, 95.0, 35.0),
+        0,
+        effective_height=10.0,
+    )
+    prefix = _text_line(
+        "acc(Bm)=",
+        (10.0, 24.0, 39.5, 34.0),
+        1,
+        effective_height=10.0,
+    )
+    numerator = _text_line(
+        "1",
+        (55.0, 15.0, 60.0, 23.0),
+        2,
+        effective_height=8.0,
+    )
+    body = _text_line(
+        "ordinary following prose",
+        (0.0, 40.0, 100.0, 50.0),
+        3,
+        effective_height=10.0,
+        font_signature=("Body", 0),
+        font_coverage=1.0,
+    )
+    core.style_scale_repaired = True
+    lane = models._TextLane(
+        left=0.0,
+        right=100.0,
+        lines=[
+            (core, core.bbox),
+            (prefix, prefix.bbox),
+            (numerator, numerator.bbox),
+            (body, body.bbox),
+        ],
+    )
+
+    members = formulas._expand_single_line_numbered_formula_members(
+        (core, core.bbox),
+        lane,
+        set(),
+        [],
+        ("Body", 0),
+        10.0,
+    )
+    block = formulas._formula_members_to_block(
+        members,
+        (100.0, 100.0),
+        0,
+        anchor_source_index=core.source_index,
+    )
+
+    assert {line.source_index for line, _bbox in members} == {0, 1, 2}
+    assert block is not None
+    assert "acc(Bm)=" in block["content"]
+    assert block["content"].count("\\tag{1}") == 1
+
+
 def test_vector_formula_paths_and_detached_path_number_form_one_empty_equation() -> None:
     """验证矢量主体与远距栏右缘路径编号形成一个空内容公式。"""
 

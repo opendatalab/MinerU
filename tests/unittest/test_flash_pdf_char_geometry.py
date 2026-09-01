@@ -207,6 +207,37 @@ def test_strong_x_run_repairs_advance_and_contains_tight_bbox() -> None:
     assert plan.line_repairs[(0, 0)].state == "repair_x"
 
 
+def test_canonical_line_metrics_propagate_without_y_bbox_rewrite() -> None:
+    """验证只发生 X 修复的行仍获得 tight 字形并集和 dominant origin 基线。"""
+
+    line, geometry = _line_fixture(
+        source_index=0,
+        baseline=20.0,
+        loose_width=12.0,
+    )
+    plan = build_document_geometry_plan(
+        [[line]],
+        [geometry],
+        [(400.0, 100.0)],
+    )
+
+    apply_line_geometry_repairs(
+        [line],
+        page_index=0,
+        plan=plan,
+        allow_y_trim=False,
+    )
+
+    assert line.baseline == 20.0
+    assert line.ink_bbox == (
+        10.5,
+        13.0,
+        249.0,
+        20.0,
+    )
+    assert line.geometry_state == "repair_x"
+
+
 def test_normal_monospace_run_keeps_identity_geometry() -> None:
     """验证 fixed cell 与 origin advance 一致时不会被判为异常。"""
 
@@ -401,8 +432,8 @@ def test_flash_layout_manifest_uses_portable_repository_paths() -> None:
     project_root = Path(__file__).parents[2]
     payload = json.loads((project_root / "tests" / "fixtures" / "flash_layout_geometry_manifest.json").read_text())
     assert payload["schema_version"] == 1
-    assert len(payload["documents"]) == 16
-    assert sum(len(document["pages"]) for document in payload["documents"]) == 151
+    assert len(payload["documents"]) == 17
+    assert sum(len(document["pages"]) for document in payload["documents"]) == 159
     for document in payload["documents"]:
         path = Path(document["path"])
         assert not path.is_absolute()

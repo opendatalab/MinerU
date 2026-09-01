@@ -98,6 +98,7 @@ from .auxiliary_text import (
 )
 from .titles import (
     _classify_body_height_section_titles,
+    _classify_secondary_document_title_bands,
     _classify_document_structural_titles,
     _classify_page_titles,
     _infer_document_body_profile,
@@ -315,6 +316,10 @@ def _analyze_native_document(
         canonical_body_profile,
         legacy_body_profile=document_body_profile,
         document_title_profile=document_title_profile,
+    )
+    _classify_secondary_document_title_bands(
+        prepared_pages,
+        canonical_body_profile,
     )
     finalized_pages = [
         _finalize_prepared_page(
@@ -716,6 +721,7 @@ def _finalize_prepared_page(
         prepared.page_size,
         prepared.drawing_lines,
         page_footnote_groups=prepared.page_footnote_groups,
+        page_index=page_index,
     )
     text_blocks = _merge_multiline_title_blocks(text_blocks)
     text_blocks = _merge_front_matter_column_blocks(

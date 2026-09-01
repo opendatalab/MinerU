@@ -367,16 +367,16 @@ def test_explicit_pdf_fixtures_keep_expected_txt_block_inventory() -> None:
             Counter(
                 {
                     "caption": 18,
-                    "doc_title": 1,
+                    "doc_title": 2,
                     "equation": 6,
                     "footnote": 1,
-                    "header": 22,
+                    "header": 24,
                     "image": 8,
                     "page_footnote": 4,
                     "page_number": 9,
-                    "paragraph_title": 20,
+                    "paragraph_title": 19,
                     "table": 3,
-                    "text": 108,
+                    "text": 106,
                 }
             ),
         ),
@@ -389,7 +389,8 @@ def test_explicit_pdf_fixtures_keep_expected_txt_block_inventory() -> None:
                     "footnote": 3,
                     "page_number": 8,
                     "table": 6,
-                    "text": 16,
+                    # 第 5 页三条等节奏句号行按当前正文段界规则拆开；视觉 gold 已完成人工批准。
+                    "text": 18,
                 }
             ),
         ),

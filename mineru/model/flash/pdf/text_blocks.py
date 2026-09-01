@@ -34,6 +34,7 @@ from .geometry import (
 from .native_text import _normalize_native_run_text
 from .line_layout import (
     _connection_crosses_table,
+    _effective_body_text_row_gap,
     _effective_text_row_gap,
     _estimate_lane_gap,
     _horizontal_rule_separates_rows,
@@ -42,6 +43,7 @@ from .line_layout import (
     _line_effective_height,
     _should_connect_semantic_rows,
     _should_connect_text_rows,
+    _title_fonts_compatible,
 )
 
 
@@ -51,6 +53,32 @@ _FIGURE_CAPTION_MARKER_RE = re.compile(
     re.IGNORECASE,
 )
 _INLINE_MATH_RECOVERY_MARKER = "_recovered_inline_math_fragments"
+_FRONT_MATTER_KEYWORDS_RE = re.compile(
+    r"^\s*(?:keywords?|key\s+words?|关键词)\s*[:：]",
+    re.IGNORECASE,
+)
+_LIST_ITEM_RE = re.compile(
+    r"^\s*(?:[（(]\s*(?:\d+|[ivxlcdm]+)\s*[）)]|[①-⑳]|[•●▪])",
+    re.IGNORECASE,
+)
+_BULLET_ITEM_RE = re.compile(
+    r"^\s*[•●▪]",
+)
+_EMAIL_METADATA_RE = re.compile(
+    r"^\s*e[\s-]*mail\s*[:：]",
+    re.IGNORECASE,
+)
+_ABSTRACT_METADATA_RE = re.compile(
+    r"^\s*(?:abstract|摘\s*要)\s*[:：]",
+    re.IGNORECASE,
+)
+_LABELLED_METADATA_RE = re.compile(
+    r"^\s*(?P<label>[A-Za-z\u3400-\u9fff]{1,12})\s*[:：]",
+)
+_URL_LINE_RE = re.compile(
+    r"^\s*(?:https?://|www\.)",
+    re.IGNORECASE,
+)
 
 
 def _starts_structural_reference_entry(
@@ -123,6 +151,23 @@ def _build_hanging_indent_group_map(
     ) -> tuple[int, float] | None:
         """消费一个左突首行及其续行，并返回下一条首行位置。"""
 
+        lane_width = max(0.1, lane.right - lane.left)
+        full_width_midparagraph_entry = (
+            rows[start_index][1][2] - rows[start_index][1][0] >= 0.8 * lane_width
+            and start_index + 1 < len(rows)
+            and rows[start_index + 1][1][2] - rows[start_index + 1][1][0] <= 0.75 * lane_width
+        )
+        if (
+            start_index > 0
+            and rows_are_adjacent(
+                rows[start_index - 1],
+                rows[start_index],
+            )
+            and abs(rows[start_index - 1][1][0] - start_left) <= start_tolerance
+            and not full_width_midparagraph_entry
+        ):
+            # 同左缘正文仍在连续时不能从段落中部启动悬挂条目序列。
+            return None
         if (
             start_index > 0
             and is_hyphen_at_line_end(rows[start_index - 1][0].text)
@@ -633,6 +678,164 @@ def _structured_text_break_sources(
     return break_sources
 
 
+def _isolated_indented_paragraph_break_sources(
+    lane: _TextLane,
+    regular_gap: float,
+    gap_mad: float,
+) -> set[int]:
+    """识别短终止尾行之后的缩进首行，并要求下一行回到稳定栏左缘。"""
+
+    rows = sorted(
+        (item for item in lane.lines if item[0].semantic_type is None),
+        key=lambda item: (item[1][1], item[1][0], item[0].source_index),
+    )
+    lane_width = max(0.1, lane.right - lane.left)
+    output: set[int] = set()
+    terminal_re = re.compile(r"[.!?。！？:：;；][\]\)}）】》”’'\"]*$")
+    for previous, current, following in zip(
+        rows,
+        rows[1:],
+        rows[2:],
+    ):
+        previous_height = _line_effective_height(*previous)
+        current_height = _line_effective_height(*current)
+        following_height = _line_effective_height(*following)
+        pair_height = max(
+            previous_height,
+            current_height,
+            following_height,
+        )
+        current_indent = current[1][0] - lane.left
+        if (
+            previous[1][2] - previous[1][0] > 0.3 * lane_width
+            or terminal_re.search(previous[0].text.rstrip()) is None
+            or not max(5.0, 0.65 * pair_height) <= current_indent <= 3.0 * pair_height
+            or current[1][2] - current[1][0] < 0.75 * lane_width
+            or abs(following[1][0] - lane.left) > 0.75 * pair_height
+            or following[1][2] - following[1][0] < 0.65 * lane_width
+            or not _title_fonts_compatible(current[0], following[0])
+        ):
+            continue
+        first_gap = _effective_body_text_row_gap(previous, current)
+        second_gap = _effective_body_text_row_gap(current, following)
+        gap_limit = regular_gap + max(
+            0.75 * pair_height,
+            3.0 * gap_mad,
+        )
+        if -0.25 * pair_height <= first_gap <= gap_limit and -0.25 * pair_height <= second_gap <= gap_limit:
+            output.add(current[0].source_index)
+    return output
+
+
+def _front_matter_keyword_break_sources(
+    lane: _TextLane,
+    local_page_height: float,
+    page_index: int | None,
+) -> set[int]:
+    """把首页前置信息中的通用关键词行固定为独立文本块起点。"""
+
+    if page_index != 0:
+        return set()
+    return {
+        line.source_index
+        for line, bbox in lane.lines
+        if line.semantic_type is None
+        and bbox[1] <= 0.65 * local_page_height
+        and _FRONT_MATTER_KEYWORDS_RE.match(line.text) is not None
+    }
+
+
+def _component_starts_with_emphasized_row(
+    lines: list[_LineItem],
+) -> bool:
+    """识别行内强调或首行字重显著高于后续正文的组件起点。"""
+
+    if not lines:
+        return False
+    if lines[0].leading_emphasis_width is not None:
+        return True
+    first_weight = lines[0].dominant_font_weight
+    following_weights = [line.dominant_font_weight for line in lines[1:] if line.dominant_font_weight is not None]
+    if first_weight is None or not following_weights:
+        return False
+    body_weight = statistics.median(following_weights)
+    return first_weight - body_weight >= 100.0 and first_weight >= 1.15 * max(1.0, body_weight)
+
+
+def _explicit_text_break_sources(
+    lane: _TextLane,
+) -> set[int]:
+    """用通用列表标记和 E-mail 元数据确认正文中的显式硬分段。"""
+
+    rows = sorted(
+        (item for item in lane.lines if item[0].semantic_type is None),
+        key=lambda item: (item[1][1], item[1][0], item[0].source_index),
+    )
+    output = {line.source_index for line, _bbox in rows if _ABSTRACT_METADATA_RE.match(line.text) is not None}
+    lane_width = max(0.1, lane.right - lane.left)
+    output.update(
+        line.source_index
+        for line, bbox in rows
+        if _BULLET_ITEM_RE.match(line.text) is not None and bbox[2] - bbox[0] >= 0.8 * lane_width
+    )
+    for index, (line, bbox) in enumerate(rows):
+        if _EMAIL_METADATA_RE.match(line.text) is None or index == 0:
+            continue
+        previous_line, previous_bbox = rows[index - 1]
+        pair_height = max(
+            _line_effective_height(previous_line, previous_bbox),
+            _line_effective_height(line, bbox),
+        )
+        if abs(bbox[0] - previous_bbox[0]) <= 0.75 * pair_height:
+            output.add(line.source_index)
+    for row_index, (previous, current) in enumerate(
+        zip(rows, rows[1:]),
+    ):
+        previous_is_label = _LABELLED_METADATA_RE.match(
+            previous[0].text,
+        )
+        current_is_label = _LABELLED_METADATA_RE.match(
+            current[0].text,
+        )
+        label_pair_height = max(
+            _line_effective_height(*previous),
+            _line_effective_height(*current),
+        )
+        if (
+            previous_is_label is not None
+            and current_is_label is not None
+            and _URL_LINE_RE.match(current[0].text) is None
+            and len(previous_is_label.group("label")) >= 4
+            and len(current_is_label.group("label")) >= 4
+            and any("\u3400" <= char <= "\u9fff" for char in previous_is_label.group("label"))
+            and any("\u3400" <= char <= "\u9fff" for char in current_is_label.group("label"))
+            and previous_is_label.group("label").casefold() != current_is_label.group("label").casefold()
+            and current[1][1] - previous[1][1] <= 2.0 * label_pair_height
+            and previous[1][2] - previous[1][0] <= 0.75 * lane_width
+            and current[1][2] - current[1][0] <= 0.75 * lane_width
+        ):
+            output.add(current[0].source_index)
+        pair_height = max(
+            _line_effective_height(*previous),
+            _line_effective_height(*current),
+        )
+        next_row = rows[row_index + 2] if row_index + 2 < len(rows) else None
+        indented_item_continuation = (
+            current[1][0] - lane.left >= max(5.0, 0.65 * pair_height)
+            and next_row is not None
+            and next_row[1][0] - lane.left <= 0.5 * pair_height
+            and 0.5 * pair_height <= next_row[1][1] - current[1][1] <= 2.25 * pair_height
+        )
+        if (
+            _LIST_ITEM_RE.match(current[0].text) is not None
+            and previous[0].text.rstrip().endswith((":", "："))
+            and previous[1][2] - previous[1][0] <= 0.8 * lane_width
+            and indented_item_continuation
+        ):
+            output.add(current[0].source_index)
+    return output
+
+
 def _build_text_blocks(
     lines: list[_LineItem],
     table_bboxes: list[BBox],
@@ -640,6 +843,7 @@ def _build_text_blocks(
     drawing_lines: list[_AxisLine] | None = None,
     *,
     page_footnote_groups: Sequence[set[int]] | None = None,
+    page_index: int | None = None,
 ) -> list[dict[str, Any]]:
     """先构建分组脚注，再按类型屏障、栏带和自然段边界聚合其余文本。"""
 
@@ -657,6 +861,7 @@ def _build_text_blocks(
         effective_heights = [_line_effective_height(line, bbox) for line, bbox in line_geometry]
         median_height = statistics.median(effective_heights) if effective_heights else 1.0
         local_page_width = page_size[1] if angle in {90, 270} else page_size[0]
+        local_page_height = page_size[0] if angle in {90, 270} else page_size[1]
         lanes = _infer_text_lanes(line_geometry, local_page_width, median_height)
         local_axis_lines = _transform_axis_lines(drawing_lines or [], page_size, angle)
         split_row_counts: dict[int, int] = {}
@@ -676,6 +881,28 @@ def _build_text_blocks(
                 lane,
                 regular_gap,
                 gap_mad,
+            )
+            isolated_break_sources = _isolated_indented_paragraph_break_sources(
+                lane,
+                regular_gap,
+                gap_mad,
+            )
+            structured_break_sources.update(
+                isolated_break_sources,
+            )
+            protected_break_sources: set[int] = set()
+            protected_break_sources.update(
+                _front_matter_keyword_break_sources(
+                    lane,
+                    local_page_height,
+                    page_index,
+                )
+            )
+            protected_break_sources.update(
+                _explicit_text_break_sources(lane),
+            )
+            structured_break_sources.update(
+                protected_break_sources,
             )
             hanging_indent_groups = _build_hanging_indent_group_map(
                 lane,
@@ -799,9 +1026,19 @@ def _build_text_blocks(
                             component_local_lane.right,
                         ),
                         "_lane_is_span": component_local_lane.is_span,
+                        "_hard_break_before": (component_lines[0].source_index in structured_break_sources),
+                        "_protected_hard_break_before": (component_lines[0].source_index in protected_break_sources),
+                        "_hanging_indent_group": hanging_indent_groups.get(
+                            component_lines[0].source_index,
+                        ),
+                        "_leading_emphasis_start": _component_starts_with_emphasized_row(
+                            component_lines,
+                        ),
                     }
                 )
     blocks = _merge_spatial_text_components(blocks, page_size)
+    blocks = _merge_list_intro_text_components(blocks)
+    blocks = _merge_unterminated_text_components(blocks)
     blocks = _merge_overlapping_same_line_text_blocks(blocks, page_size)
     return _merge_inline_math_fragment_text_blocks(blocks, page_size)
 
@@ -888,6 +1125,12 @@ def _merge_overlapping_same_line_text_blocks(
                 or not 1 <= len(second_rows) <= 5
                 or second_bbox[2] - second_bbox[0] < 0.3 * local_page_width
             ):
+                continue
+            later_block = max(
+                (first, second),
+                key=_text_component_sort_key,
+            )
+            if later_block.get("_hard_break_before") is True:
                 continue
             second_heights = [
                 float(height) for height in second.get("_line_heights", []) if isinstance(height, (int, float)) and height > 0
@@ -2115,6 +2358,263 @@ def _merge_spatial_text_components(
     return output
 
 
+def _merge_list_intro_text_components(
+    blocks: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """在编号列表硬边界前合并被误拆的连续引导段和冒号短尾。"""
+
+    consumed: set[int] = set()
+    replacements: dict[int, dict[str, Any]] = {}
+    text_indices = [
+        index
+        for index, block in enumerate(blocks)
+        if block.get("type") == "text" and isinstance(block.get("_local_line_bboxes"), list) and block["_local_line_bboxes"]
+    ]
+    for boundary_index in text_indices:
+        boundary = blocks[boundary_index]
+        if (
+            boundary.get("_hard_break_before") is not True
+            or _LIST_ITEM_RE.match(
+                str(boundary.get("content") or ""),
+            )
+            is None
+        ):
+            continue
+        preceding = [
+            index
+            for index in text_indices
+            if index not in consumed and _text_component_sort_key(blocks[index]) < _text_component_sort_key(boundary)
+        ]
+        if not preceding:
+            continue
+        immediate_index = max(
+            preceding,
+            key=lambda index: _text_component_sort_key(blocks[index]),
+        )
+        immediate = blocks[immediate_index]
+        immediate_rows = immediate["_local_line_bboxes"]
+        immediate_heights = [
+            float(height) for height in immediate.get("_line_heights", []) if isinstance(height, (int, float)) and height > 0
+        ]
+        pair_height = statistics.median(
+            immediate_heights
+            or [
+                immediate_rows[-1][3] - immediate_rows[-1][1],
+            ],
+        )
+        interval = _component_lane_interval(immediate)
+        if (
+            interval is None
+            or immediate_rows[-1][2] - immediate_rows[-1][0] > 0.35 * (interval[1] - interval[0])
+            or not str(immediate.get("content") or "").rstrip().endswith((":", "："))
+            or not _components_share_lane_role(
+                immediate,
+                boundary,
+                pair_height,
+            )
+        ):
+            continue
+
+        group = [immediate_index]
+        cursor_index = immediate_index
+        while len(group) < 3:
+            earlier = [
+                index
+                for index in preceding
+                if index not in group
+                and _text_component_sort_key(blocks[index]) < _text_component_sort_key(blocks[cursor_index])
+                and _components_share_lane_role(
+                    blocks[index],
+                    blocks[cursor_index],
+                    pair_height,
+                )
+            ]
+            if not earlier:
+                break
+            previous_index = max(
+                earlier,
+                key=lambda index: _text_component_sort_key(blocks[index]),
+            )
+            previous = blocks[previous_index]
+            current = blocks[cursor_index]
+            previous_rows = previous["_local_line_bboxes"]
+            current_rows = current["_local_line_bboxes"]
+            heights = [
+                float(height)
+                for block in (previous, current)
+                for height in block.get("_line_heights", [])
+                if isinstance(height, (int, float)) and height > 0
+            ]
+            local_height = statistics.median(heights or [pair_height])
+            vertical_gap = current_rows[0][1] - previous_rows[-1][3]
+            if (
+                previous.get("_hard_break_before") is True
+                or not _components_share_lane_role(
+                    previous,
+                    current,
+                    local_height,
+                )
+                or not -local_height <= vertical_gap <= local_height
+            ):
+                break
+            group.append(previous_index)
+            cursor_index = previous_index
+        if len(group) < 2:
+            continue
+        ordered_group = sorted(
+            group,
+            key=lambda index: _text_component_sort_key(blocks[index]),
+        )
+        replacement_index = min(ordered_group)
+        replacements[replacement_index] = _merge_internal_text_block_group(
+            blocks,
+            ordered_group,
+        )
+        consumed.update(ordered_group)
+
+    return [
+        replacements.get(index, block) for index, block in enumerate(blocks) if index not in consumed or index in replacements
+    ]
+
+
+def _merge_unterminated_text_components(
+    blocks: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """合并同栏、满行且前块没有终止标点的紧邻正文组件。"""
+
+    output = list(blocks)
+    terminal_re = re.compile(
+        r"[.!?。！？:：;；][\]\)}）】》”’'\"]*$",
+    )
+    while True:
+        text_indices = sorted(
+            (
+                index
+                for index, block in enumerate(output)
+                if block.get("type") == "text"
+                and isinstance(
+                    block.get("_local_line_bboxes"),
+                    list,
+                )
+                and block["_local_line_bboxes"]
+            ),
+            key=lambda index: _text_component_sort_key(output[index]),
+        )
+        merged_pair: tuple[int, int] | None = None
+        for first_index, second_index in zip(
+            text_indices,
+            text_indices[1:],
+        ):
+            first = output[first_index]
+            second = output[second_index]
+            second_rows = second["_local_line_bboxes"]
+            first_rows = first["_local_line_bboxes"]
+            heights = [
+                float(height)
+                for block in (first, second)
+                for height in block.get("_line_heights", [])
+                if isinstance(height, (int, float)) and height > 0
+            ]
+            pair_height = statistics.median(
+                heights
+                or [
+                    first_rows[-1][3] - first_rows[-1][1],
+                    second_rows[0][3] - second_rows[0][1],
+                ],
+            )
+            second_interval = _component_lane_interval(second)
+            first_content = str(first.get("content") or "")
+            second_content = str(second.get("content") or "")
+            single_numbered_tail = (
+                len(second_rows) == 1
+                and second.get("_hard_break_before") is not True
+                and _LIST_ITEM_RE.match(second_content) is not None
+                and first_content.rstrip().endswith((":", "："))
+            )
+            url_continuation = _URL_LINE_RE.match(second_content) is not None
+            aligned_short_tail = (
+                len(first_rows) >= 2
+                and len(second_rows) == 1
+                and abs(second_rows[0][0] - first_rows[-1][0]) <= 0.75 * pair_height
+            )
+            narrow_continuation = single_numbered_tail or url_continuation or aligned_short_tail
+            starts_wide_label = (
+                not url_continuation
+                and _LABELLED_METADATA_RE.match(
+                    second_content,
+                )
+                is not None
+                and second_interval is not None
+                and second_rows[0][2] - second_rows[0][0] >= 0.5 * (second_interval[1] - second_interval[0])
+            )
+            if (
+                second.get("_protected_hard_break_before") is True
+                or (second.get("_hard_break_before") is True and not narrow_continuation)
+                or second.get("_leading_emphasis_start") is True
+                or (starts_wide_label and not aligned_short_tail)
+                or first.get("_hanging_indent_group") is not None
+                or second.get("_hanging_indent_group") is not None
+                or _FIGURE_CAPTION_MARKER_RE.match(
+                    first_content,
+                )
+                is not None
+                or (
+                    not single_numbered_tail
+                    and not url_continuation
+                    and terminal_re.search(
+                        first_content.rstrip(),
+                    )
+                    is not None
+                )
+            ):
+                continue
+            interval = _component_lane_interval(first)
+            if interval is None or not _components_share_lane_role(
+                first,
+                second,
+                pair_height,
+            ):
+                continue
+            lane_width = interval[1] - interval[0]
+            vertical_gap = second_rows[0][1] - first_rows[-1][3]
+            minimum_first_fill = 0.5 if single_numbered_tail else 0.65
+            first_reference_width = (
+                max(row[2] - row[0] for row in first_rows) if narrow_continuation else first_rows[-1][2] - first_rows[-1][0]
+            )
+            first_fonts = first.get("_font_signatures")
+            second_fonts = second.get("_font_signatures")
+            fonts_conflict = (
+                isinstance(first_fonts, set)
+                and isinstance(second_fonts, set)
+                and first_fonts
+                and second_fonts
+                and first_fonts.isdisjoint(second_fonts)
+            )
+            if (
+                first_reference_width < minimum_first_fill * lane_width
+                or (not narrow_continuation and second_rows[0][2] - second_rows[0][0] < 0.65 * lane_width)
+                or not -pair_height <= vertical_gap <= 1.5 * pair_height
+                or fonts_conflict
+                or _component_connection_skips_block(
+                    output,
+                    first_index,
+                    second_index,
+                    pair_height,
+                )
+            ):
+                continue
+            merged_pair = (first_index, second_index)
+            break
+        if merged_pair is None:
+            return output
+        first_index, second_index = merged_pair
+        output[first_index] = _merge_internal_text_block_group(
+            output,
+            [first_index, second_index],
+        )
+        output.pop(second_index)
+
+
 def _component_lane_interval(
     block: dict[str, Any],
 ) -> tuple[float, float] | None:
@@ -2226,6 +2726,8 @@ def _find_short_opener_pairs(
         for body_index in candidate_indices:
             if body_index == opener_index:
                 continue
+            if blocks[body_index].get("_hard_break_before") is True:
+                continue
             if not _components_share_lane_role(
                 blocks[opener_index],
                 blocks[body_index],
@@ -2274,6 +2776,8 @@ def _nearest_following_text_component(
     matches: list[tuple[float, float, int]] = []
     for candidate_index in candidate_indices:
         if candidate_index == current_index or candidate_index in section_starts:
+            continue
+        if blocks[candidate_index].get("_hard_break_before") is True:
             continue
         if not _components_share_lane_role(
             blocks[current_index],
@@ -2336,6 +2840,8 @@ def _nearest_tapered_tail_component(
     matches: list[tuple[float, int]] = []
     for candidate_index in candidate_indices:
         if candidate_index == current_index or candidate_index in section_starts:
+            continue
+        if blocks[candidate_index].get("_hard_break_before") is True:
             continue
         if not _components_share_lane_role(
             blocks[current_index],

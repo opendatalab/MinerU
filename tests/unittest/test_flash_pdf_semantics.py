@@ -29,6 +29,12 @@ _GEOMETRY_MANIFEST_PATH = (
     / "fixtures"
     / "flash_layout_geometry_manifest.json"
 )
+_BLOCK_EXPECTATION_PATH = (
+    _PROJECT_ROOT
+    / "tests"
+    / "fixtures"
+    / "flash_layout_block_expectations.json"
+)
 _FROZEN_SOIL_PATH = _PROJECT_ROOT / "demo" / "pdfs" / "中文论文.pdf"
 _NATURAL_TEXT_TYPES = {"text", "doc_title", "paragraph_title"}
 
@@ -85,6 +91,54 @@ def _frozen_soil_pages() -> tuple[tuple[dict[str, Any], ...], ...]:
     with PDFDocument(str(_FROZEN_SOIL_PATH)) as document:
         pages = _analyze_native_document(document)
     return tuple(tuple(page) for page in pages)
+
+
+@lru_cache(maxsize=1)
+def _block_expectations() -> tuple[dict[str, Any], ...]:
+    """读取两篇中文论文的版本化 block 分组与类型库存期望。"""
+
+    payload = json.loads(
+        _BLOCK_EXPECTATION_PATH.read_text(encoding="utf-8"),
+    )
+    assert payload["schema_version"] == 1
+    for document in payload["documents"]:
+        source = _PROJECT_ROOT / document["path"]
+        assert hashlib.sha256(source.read_bytes()).hexdigest() == document["sha256"]
+    return tuple(payload["documents"])
+
+
+def _pages_for_expectation(
+    expectation: dict[str, Any],
+) -> tuple[tuple[dict[str, Any], ...], ...]:
+    """按版本化路径返回已缓存的真实 Flash 页面。"""
+
+    if expectation["path"] == "demo/pdfs/中文论文.pdf":
+        return _frozen_soil_pages()
+    assert expectation["path"] == "demo/pdfs/中文论文2.pdf"
+    return _pages()
+
+
+def _block_containing_fragment(
+    page: tuple[dict[str, Any], ...],
+    fragment: str,
+    *,
+    block_type: str | None = None,
+) -> tuple[int, dict[str, Any]]:
+    """返回唯一包含规范化片段的顶层 block 及其页内索引。"""
+
+    normalized_fragment = _normalized_text(fragment)
+    matches = [
+        (index, block)
+        for index, block in enumerate(page)
+        if (block_type is None or block.get("type") == block_type)
+        and normalized_fragment in _normalized_text(block.get("content"))
+    ]
+    assert len(matches) == 1, (
+        fragment,
+        block_type,
+        [(index, block.get("type"), _normalized_text(block.get("content"))) for index, block in matches],
+    )
+    return matches[0]
 
 
 def test_frozen_soil_paper_keeps_tracked_semantic_and_bbox_gold() -> None:
@@ -246,3 +300,68 @@ def test_chinese_paper_preserves_visual_controls_and_unique_blocks() -> None:
                         )
                     )
     assert overlaps == []
+
+
+def test_chinese_papers_match_versioned_block_group_expectations() -> None:
+    """验证两篇真实论文的类型库存、指定合并和指定拆分与人工审阅期望一致。"""
+
+    for expectation in _block_expectations():
+        pages = _pages_for_expectation(expectation)
+        counts = Counter(str(block.get("type")) for page in pages for block in page)
+        assert counts == Counter(expectation["type_counts"])
+
+        for item in expectation.get("exact_typed_text", []):
+            page = pages[item["page_index"]]
+            matches = [
+                block
+                for block in page
+                if block.get("type") == item["type"] and _normalized_text(block.get("content")) == item["text"]
+            ]
+            assert len(matches) == 1, item
+
+        for group in expectation.get("same_block_groups", []):
+            page = pages[group["page_index"]]
+            matched_indices = {
+                _block_containing_fragment(
+                    page,
+                    fragment,
+                    block_type=group["type"],
+                )[0]
+                for fragment in group["fragments"]
+            }
+            assert len(matched_indices) == 1, group
+
+        for group in expectation.get("different_block_groups", []):
+            page = pages[group["page_index"]]
+            matched_indices = {
+                _block_containing_fragment(
+                    page,
+                    fragment,
+                )[0]
+                for fragment in group["fragments"]
+            }
+            assert len(matched_indices) == len(group["fragments"]), group
+
+        for item in expectation.get("forbidden_type_fragments", []):
+            page = pages[item["page_index"]]
+            normalized_fragment = _normalized_text(item["fragment"])
+            assert not any(
+                block.get("type") == item["type"] and normalized_fragment in _normalized_text(block.get("content"))
+                for block in page
+            ), item
+
+
+def test_chinese_paper_continuation_caption_precedes_tight_table_body() -> None:
+    """验证第3页续表 caption 不进入 HTML，且其边界位于收紧后的表体上方。"""
+
+    page = _pages()[2]
+    _caption_index, caption = _block_containing_fragment(
+        page,
+        "续表",
+        block_type="caption",
+    )
+    table = next(block for block in page if block.get("type") == "table")
+
+    assert _normalized_text(caption.get("content")) == "续表"
+    assert "续表" not in str(table.get("content") or "")
+    assert float(caption["bbox"][3]) < float(table["bbox"][1])

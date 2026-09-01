@@ -32,6 +32,9 @@ from .geometry import (
 
 _PDF_CONTROL_CHAR_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f-\x9f]")
 _PDF_LINE_END_SOFT_HYPHEN_RE = re.compile(r"(?<=[A-Za-z])[\x02\u00ad](?=[\t ]*(?:\n|$))")
+_INLINE_REFERENCE_MARKER_RE = re.compile(
+    r"^[\[（(［]\s*\d{1,4}\s*[\]）)］]$",
+)
 # Unicode Zs 空格在 model_list 中只承担分词作用，统一成可互操作的 ASCII 空格。
 _PDF_SEPARATOR_SPACE_CHARS = "\u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u202f\u205f\u3000"
 _PDF_UNICODE_TEXT_TRANSLATION = str.maketrans(
@@ -695,6 +698,23 @@ def _is_detached_inline_script_candidate(
     )
 
 
+def _native_typographic_scale(line: _LineItem) -> float:
+    """返回原生行的字体尺度，禁止 loose 空间高度参与上下标字号比较。"""
+
+    font_sizes: list[float] = []
+    for char in line.chars:
+        try:
+            font_size = float((char.get("font") or {}).get("size") or 0.0)
+        except (TypeError, ValueError):
+            continue
+        if math.isfinite(font_size) and font_size > 0:
+            font_sizes.append(font_size)
+    return max(
+        0.1,
+        statistics.median(font_sizes) if font_sizes else line.em_height or line.effective_height,
+    )
+
+
 def _merge_native_inline_scripts(
     lines: list[_LineItem],
     page_size: tuple[float, float],
@@ -713,10 +733,22 @@ def _merge_native_inline_scripts(
                 continue
             if small.effective_height <= 0 or base.effective_height <= 0:
                 continue
-            height_ratio = small.effective_height / base.effective_height
+            canonical_small_scale = _native_typographic_scale(small)
+            canonical_base_scale = _native_typographic_scale(base)
+            legacy_small_scale = max(0.1, small.effective_height)
+            legacy_base_scale = max(0.1, base.effective_height)
+            legacy_ratio = legacy_small_scale / legacy_base_scale
+            use_canonical_reference_scale = (
+                _INLINE_REFERENCE_MARKER_RE.fullmatch(compact_text) is not None
+                and not 0.35 <= legacy_ratio <= 0.8
+                and 0.35 <= canonical_small_scale / canonical_base_scale <= 0.8
+            )
+            small_scale = canonical_small_scale if use_canonical_reference_scale else legacy_small_scale
+            base_scale = canonical_base_scale if use_canonical_reference_scale else legacy_base_scale
+            height_ratio = small_scale / base_scale
             if not 0.35 <= height_ratio <= 0.8:
                 continue
-            if len(compact_text) > 8 and small_local_bbox[2] - small_local_bbox[0] > 3.0 * base.effective_height:
+            if len(compact_text) > 8 and small_local_bbox[2] - small_local_bbox[0] > 3.0 * base_scale:
                 continue
             base_local_bbox = _rotate_bbox_to_upright(base.bbox, page_size, base.angle)
             vertical_overlap = max(
@@ -728,21 +760,21 @@ def _merge_native_inline_scripts(
             detached_candidate = overlap_ratio < 0.5 and _is_detached_inline_script_candidate(
                 small_local_bbox,
                 base_local_bbox,
-                base.effective_height,
+                base_scale,
             )
             if overlap_ratio < 0.5 and not detached_candidate:
                 continue
             center_offset = abs(_bbox_center_y(small_local_bbox) - _bbox_center_y(base_local_bbox))
-            if center_offset < max(0.5, 0.12 * base.effective_height):
+            if center_offset < max(0.5, 0.12 * base_scale):
                 # 同基线居中的小字号文本更可能是表格相邻 cell，而不是上下标。
                 continue
-            gap_limit = max(1.5, 0.35 * base.effective_height)
+            gap_limit = max(1.5, 0.35 * base_scale)
             edge_options: list[tuple[float, Literal["prefix", "suffix"], float]] = []
             for position, gap in (
                 ("prefix", base_local_bbox[0] - small_local_bbox[2]),
                 ("suffix", small_local_bbox[0] - base_local_bbox[2]),
             ):
-                if -0.35 * base.effective_height <= gap <= gap_limit:
+                if -0.35 * base_scale <= gap <= gap_limit:
                     edge_options.append((abs(gap), position, gap))
             if not edge_options:
                 continue
@@ -752,11 +784,11 @@ def _merge_native_inline_scripts(
                 base_local_bbox[1] - small_local_bbox[1],
                 small_local_bbox[3] - base_local_bbox[3],
             )
-            tightly_attached = abs(gap) <= max(1.0, 0.1 * base.effective_height)
-            if outside_offset < max(0.5, 0.08 * base.effective_height) and not tightly_attached:
+            tightly_attached = abs(gap) <= max(1.0, 0.1 * base_scale)
+            if outside_offset < max(0.5, 0.08 * base_scale) and not tightly_attached:
                 # 紧贴边缘的小字号上下标可能完全落入高字形 bbox；其余内嵌小字仍按普通 cell 排除。
                 continue
-            metric = abs(gap) + (1.0 - overlap_ratio) * base.effective_height
+            metric = abs(gap) + (1.0 - overlap_ratio) * base_scale
             candidates.append((metric, small_index, base_index, position))
             if detached_candidate:
                 detached_candidate_pairs.add((small_index, base_index, position))

@@ -350,6 +350,17 @@ def _merge_overlapping_inline_cluster(
         bbox=_bbox_union_many([line.bbox for line in ordered_members]),
         angle=host.angle,
         source_index=min(line.source_index for line in ordered_members),
+        source_bbox=_bbox_union_many(
+            [line.source_bbox or line.bbox for line in ordered_members],
+        ),
+        ink_bbox=(
+            _bbox_union_many(
+                [line.ink_bbox for line in ordered_members if line.ink_bbox is not None],
+            )
+            if any(line.ink_bbox is not None for line in ordered_members)
+            else None
+        ),
+        baseline=host.baseline,
         chars=[char for line in ordered_members for char in line.chars],
         visual_row_id=host.visual_row_id,
         run_index=host.run_index,
@@ -625,6 +636,21 @@ def _merge_same_baseline_group(
         bbox=_bbox_union_many([member.bbox for member in members]),
         angle=members[0].angle,
         source_index=min(member.source_index for member in members),
+        source_bbox=_bbox_union_many(
+            [member.source_bbox or member.bbox for member in members],
+        ),
+        ink_bbox=(
+            _bbox_union_many(
+                [member.ink_bbox for member in members if member.ink_bbox is not None],
+            )
+            if any(member.ink_bbox is not None for member in members)
+            else None
+        ),
+        baseline=(
+            statistics.median(member.baseline for member in members if member.baseline is not None)
+            if any(member.baseline is not None for member in members)
+            else None
+        ),
         chars=[char for member in members for char in member.chars],
         visual_row_id=min(
             (member.visual_row_id for member in members if member.visual_row_id is not None),
@@ -977,6 +1003,21 @@ def _merge_dense_split_visual_row(
         bbox=_bbox_union_many([member.bbox for member in ordered_members]),
         angle=ordered_members[0].angle,
         source_index=min(member.source_index for member in ordered_members),
+        source_bbox=_bbox_union_many(
+            [member.source_bbox or member.bbox for member in ordered_members],
+        ),
+        ink_bbox=(
+            _bbox_union_many(
+                [member.ink_bbox for member in ordered_members if member.ink_bbox is not None],
+            )
+            if any(member.ink_bbox is not None for member in ordered_members)
+            else None
+        ),
+        baseline=(
+            statistics.median(member.baseline for member in ordered_members if member.baseline is not None)
+            if any(member.baseline is not None for member in ordered_members)
+            else None
+        ),
         chars=[char for member in ordered_members for char in member.chars],
         visual_row_id=ordered_members[0].visual_row_id,
         run_index=0,

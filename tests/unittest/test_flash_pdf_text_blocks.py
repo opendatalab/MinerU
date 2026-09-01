@@ -182,6 +182,81 @@ def test_hanging_indent_keeps_confirmed_entries_before_plain_trailing_paragraph(
     assert 7 not in group_map
 
 
+def test_full_width_hanging_entries_can_start_after_aligned_prose() -> None:
+    """验证近满栏的重复悬挂条目可在同左缘正文之后启动，普通单行仍留在前文。"""
+
+    lines = [
+        _text_line("plain disclosure", (0.0, 0.0, 100.0, 10.0), 0),
+        _text_line("plain single row", (0.0, 10.0, 100.0, 20.0), 1),
+        _text_line("first entry", (0.0, 20.0, 100.0, 30.0), 2),
+        _text_line("first entry tail", (15.0, 30.0, 70.0, 40.0), 3),
+        _text_line("second entry", (0.0, 40.0, 100.0, 50.0), 4),
+        _text_line("second entry tail", (15.0, 50.0, 80.0, 60.0), 5),
+    ]
+    lane = models._TextLane(
+        left=0.0,
+        right=100.0,
+        lines=[(line, line.bbox) for line in lines],
+    )
+
+    group_map = text_blocks._build_hanging_indent_group_map(lane, [], [])
+
+    assert 0 not in group_map
+    assert 1 not in group_map
+    assert [group_map[index] for index in range(2, 6)] == [0, 0, 1, 1]
+
+
+def test_bullet_rows_remain_independent_text_blocks() -> None:
+    """验证近满栏项目符号为显式段界，连续披露条目不会在后处理阶段串联。"""
+
+    lines = [
+        _text_line("• first disclosure.", (0.0, 0.0, 100.0, 10.0), 0),
+        _text_line("• second disclosure.", (0.0, 10.0, 100.0, 20.0), 1),
+        _text_line("• third disclosure.", (0.0, 20.0, 100.0, 30.0), 2),
+    ]
+
+    blocks = text_blocks._build_text_blocks(lines, [], (120.0, 100.0))
+
+    assert [block["content"] for block in blocks] == [
+        "• first disclosure.",
+        "• second disclosure.",
+        "• third disclosure.",
+    ]
+
+
+def test_compact_bullet_rows_keep_one_list_block() -> None:
+    """验证短项目符号列表继续按紧凑列表成块，不套用近满栏披露条目的边界。"""
+
+    lines = [
+        _text_line("• first tool", (0.0, 0.0, 45.0, 10.0), 0),
+        _text_line("• second tool", (0.0, 10.0, 48.0, 20.0), 1),
+        _text_line("• third tool", (0.0, 20.0, 42.0, 30.0), 2),
+    ]
+    lane = models._TextLane(
+        left=0.0,
+        right=100.0,
+        lines=[(line, line.bbox) for line in lines],
+    )
+
+    assert text_blocks._explicit_text_break_sources(lane) == set()
+
+
+def test_adjacent_compact_label_rows_remain_separate() -> None:
+    """验证连续的短键值元数据行形成独立块，不因缺少句末标点而串联。"""
+
+    lines = [
+        _text_line("递交截止时间：09:30", (0.0, 0.0, 55.0, 10.0), 0),
+        _text_line("递交方式：paper", (0.0, 10.0, 60.0, 20.0), 1),
+    ]
+    lane = models._TextLane(
+        left=0.0,
+        right=100.0,
+        lines=[(line, line.bbox) for line in lines],
+    )
+
+    assert text_blocks._explicit_text_break_sources(lane) == {1}
+
+
 def test_twelve_point_gutter_keeps_two_text_lanes_and_paragraphs_separate() -> None:
     """验证约 12pt 行高和栏沟仍识别为双栏，左右正文不会交叉拼接。"""
 
@@ -374,6 +449,99 @@ def test_effective_height_connects_body_line_after_tall_math_glyph() -> None:
     )
 
 
+def test_body_row_gap_uses_canonical_baseline_without_changing_semantic_gap() -> None:
+    """验证正文连接使用 baseline 节奏，而其它语义路径仍保留 bbox 净空。"""
+
+    previous = _text_line(
+        "previous full body row",
+        (0.0, 0.0, 100.0, 24.0),
+        0,
+        effective_height=24.0,
+    )
+    current = _text_line(
+        "current full body row",
+        (0.0, 30.0, 100.0, 54.0),
+        1,
+        effective_height=24.0,
+    )
+    for line, baseline in ((previous, 20.0), (current, 36.0)):
+        line.em_height = 10.0
+        line.style_scale_repaired = True
+        line.baseline = baseline
+    lane = models._TextLane(
+        left=0.0,
+        right=100.0,
+        lines=[(previous, previous.bbox), (current, current.bbox)],
+    )
+
+    assert (
+        line_layout._effective_text_row_gap(
+            (previous, previous.bbox),
+            (current, current.bbox),
+        )
+        == 20.0
+    )
+    assert (
+        line_layout._effective_body_text_row_gap(
+            (previous, previous.bbox),
+            (current, current.bbox),
+        )
+        == 6.0
+    )
+    assert line_layout._should_connect_text_rows(
+        (previous, previous.bbox),
+        (current, current.bbox),
+        lane,
+        6.0,
+        0.0,
+        [],
+        [],
+    )
+
+
+def test_cross_lane_short_tail_returns_to_unique_preceding_lane() -> None:
+    """验证完整落在唯一正文栏内的短尾不会继续停留在 span lane。"""
+
+    previous = _text_line(
+        "full preceding row",
+        (0.0, 10.0, 100.0, 20.0),
+        0,
+        visual_row_id=1,
+        effective_height=10.0,
+    )
+    tail = _text_line(
+        "short tail",
+        (0.0, 20.0, 40.0, 30.0),
+        1,
+        visual_row_id=2,
+        effective_height=10.0,
+    )
+    previous.baseline = 20.0
+    tail.baseline = 30.0
+    body_lane = models._TextLane(
+        left=0.0,
+        right=100.0,
+        lines=[(previous, previous.bbox)],
+    )
+    span_lane = models._TextLane(
+        left=0.0,
+        right=180.0,
+        lines=[(tail, tail.bbox)],
+        is_span=True,
+    )
+
+    line_layout._reattach_cross_lane_short_tails(
+        [body_lane, span_lane],
+        10.0,
+    )
+
+    assert [line.text for line, _bbox in body_lane.lines] == [
+        "full preceding row",
+        "short tail",
+    ]
+    assert span_lane.lines == []
+
+
 def test_inline_scripts_and_touching_low_coverage_runs_are_recovered() -> None:
     """验证紧贴上下标与低覆盖率同行后缀恢复，同时保留外置公式编号。"""
 
@@ -432,6 +600,217 @@ def test_inline_scripts_and_touching_low_coverage_runs_are_recovered() -> None:
         formula_number.bbox,
         [],
     )
+
+
+def test_canonical_reference_scale_merges_bracket_marker_but_not_plain_number() -> None:
+    """验证 loose 高度相同的括号引用可按 PDF 字号并入宿主，普通数字保持独立。"""
+
+    def sized_line(
+        text: str,
+        bbox: tuple[float, float, float, float],
+        source_index: int,
+        font_size: float,
+    ) -> models._LineItem:
+        """构造带 PDF 字号证据的单字符原生行。"""
+
+        line = _text_line(
+            text,
+            bbox,
+            source_index,
+            visual_row_id=source_index,
+            effective_height=12.0,
+        )
+        line.chars = [
+            {
+                "char": text[0],
+                "bbox": bbox,
+                "font": {
+                    "name": "Fixture",
+                    "flags": 0,
+                    "size": font_size,
+                    "weight": 400,
+                },
+            }
+        ]  # type: ignore[list-item]
+        return line
+
+    base = sized_line(
+        "TriviaQA",
+        (0.0, 10.0, 50.0, 22.0),
+        0,
+        10.0,
+    )
+    reference = sized_line(
+        "[38]",
+        (50.1, 5.0, 57.1, 14.0),
+        1,
+        6.0,
+    )
+    plain_number = sized_line(
+        "1",
+        (50.1, 5.0, 57.1, 14.0),
+        2,
+        6.0,
+    )
+
+    merged_reference = native_text._merge_native_inline_scripts(
+        [base, reference],
+        (120.0, 100.0),
+    )
+    separate_number = native_text._merge_native_inline_scripts(
+        [
+            sized_line(
+                "TriviaQA",
+                (0.0, 10.0, 50.0, 22.0),
+                0,
+                10.0,
+            ),
+            plain_number,
+        ],
+        (120.0, 100.0),
+    )
+
+    assert [line.text for line in merged_reference] == [
+        "TriviaQA[38]",
+    ]
+    assert [line.text for line in separate_number] == [
+        "TriviaQA",
+        "1",
+    ]
+
+
+def test_same_repeated_indent_continues_after_terminal_punctuation() -> None:
+    """验证同一悬挂缩进锚点的紧邻尾行不会因前行句号被再次切开。"""
+
+    previous = _text_line(
+        "first indented line.",
+        (20.0, 0.0, 100.0, 10.0),
+        0,
+        effective_height=10.0,
+    )
+    current = _text_line(
+        "second indented line",
+        (20.0, 10.0, 80.0, 20.0),
+        1,
+        effective_height=10.0,
+    )
+    lane = models._TextLane(
+        left=0.0,
+        right=100.0,
+        lines=[(previous, previous.bbox), (current, current.bbox)],
+    )
+
+    assert line_layout._should_connect_text_rows(
+        (previous, previous.bbox),
+        (current, current.bbox),
+        lane,
+        0.0,
+        0.0,
+        [],
+        [],
+    )
+
+
+def test_sparse_lane_terminal_gap_remains_paragraph_boundary() -> None:
+    """验证稀疏页不会把唯一的句号后大间距反向估计成常规行距。"""
+
+    previous = _text_line(
+        "first generated paragraph.",
+        (0.0, 0.0, 100.0, 10.0),
+        0,
+        effective_height=10.0,
+    )
+    current = _text_line(
+        "second generated paragraph",
+        (0.0, 18.0, 100.0, 28.0),
+        1,
+        effective_height=10.0,
+    )
+    lane = models._TextLane(
+        left=0.0,
+        right=100.0,
+        lines=[(previous, previous.bbox), (current, current.bbox)],
+    )
+
+    assert not line_layout._should_connect_text_rows(
+        (previous, previous.bbox),
+        (current, current.bbox),
+        lane,
+        8.0,
+        0.0,
+        [],
+        [],
+    )
+
+
+def test_list_intro_chain_splits_before_item_and_keeps_intro_together() -> None:
+    """验证列表前的连续引导段与冒号短尾合并，而编号项保持硬边界。"""
+
+    lines = [
+        _text_line("paragraph continues", (0.0, 0.0, 100.0, 10.0), 0),
+        _text_line("paragraph closes.", (0.0, 10.0, 100.0, 20.0), 1),
+        _text_line("list introduction", (10.0, 20.0, 100.0, 30.0), 2),
+        _text_line("directions:", (0.0, 30.0, 25.0, 40.0), 3),
+        _text_line("(1) first item", (10.0, 40.0, 100.0, 50.0), 4),
+        _text_line("item continuation", (0.0, 50.0, 100.0, 60.0), 5),
+    ]
+
+    blocks = text_blocks._build_text_blocks(
+        lines,
+        [],
+        (120.0, 100.0),
+    )
+
+    assert [block["content"] for block in blocks] == [
+        "paragraph continues paragraph closes. list introduction directions:",
+        "(1) first item item continuation",
+    ]
+
+
+def test_single_numbered_tail_merges_back_into_colon_line() -> None:
+    """验证没有续行的单个编号尾项回并冒号行，不被稀疏页段界永久拆开。"""
+
+    lines = [
+        _text_line("scope includes:", (0.0, 0.0, 90.0, 10.0), 0),
+        _text_line("(001) only entry;", (10.0, 23.0, 70.0, 33.0), 1),
+    ]
+
+    blocks = text_blocks._build_text_blocks(lines, [], (120.0, 100.0))
+
+    assert [block["content"] for block in blocks] == [
+        "scope includes: (001) only entry;",
+    ]
+
+
+def test_multiline_component_absorbs_aligned_short_tail() -> None:
+    """验证多行正文吸收同左缘的单行短尾，不要求短尾达到正文满栏宽度。"""
+
+    lines = [
+        _text_line("body starts", (0.0, 0.0, 100.0, 10.0), 0),
+        _text_line("body continues", (0.0, 10.0, 100.0, 20.0), 1),
+        _text_line("short tail", (0.0, 35.0, 35.0, 45.0), 2),
+    ]
+
+    blocks = text_blocks._build_text_blocks(lines, [], (120.0, 100.0))
+
+    assert [block["content"] for block in blocks] == [
+        "body starts body continues short tail",
+    ]
+
+
+def test_url_rows_continue_colon_introduction() -> None:
+    """验证冒号引导后的 URL 行继续属于前一正文块，即使 URL 自身不满栏。"""
+
+    lines = [
+        _text_line("reference link:", (0.0, 0.0, 80.0, 10.0), 0),
+        _text_line("https://example.test/path", (0.0, 24.0, 55.0, 34.0), 1),
+    ]
+
+    blocks = text_blocks._build_text_blocks(lines, [], (120.0, 100.0))
+
+    assert [block["content"] for block in blocks] == [
+        "reference link: https://example.test/path",
+    ]
 
 
 def test_low_overlap_detached_script_preserves_following_row_gap() -> None:

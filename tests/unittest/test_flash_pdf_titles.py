@@ -93,6 +93,88 @@ def test_document_regular_fonts_only_use_body_height_band() -> None:
     assert profile.regular_fonts == frozenset({body_font})
 
 
+def test_secondary_document_title_requires_author_affiliation_and_wide_body() -> None:
+    """验证非首页大标题只有在作者、单位和宽摘要结构完整时才成为 doc_title。"""
+
+    title_font = ("Title", 0)
+    body_font = ("Body", 0)
+    title_first = _text_line(
+        "Translated document title first",
+        (15.0, 20.0, 85.0, 38.0),
+        0,
+        effective_height=18.0,
+        font_signature=title_font,
+        font_coverage=1.0,
+    )
+    title_second = _text_line(
+        "translated title second",
+        (20.0, 38.0, 80.0, 56.0),
+        1,
+        effective_height=18.0,
+        font_signature=title_font,
+        font_coverage=1.0,
+    )
+    author = _text_line(
+        "Author One, Author Two",
+        (20.0, 65.0, 80.0, 75.0),
+        2,
+        effective_height=10.0,
+        font_signature=body_font,
+        font_coverage=1.0,
+    )
+    affiliation = _text_line(
+        "University affiliation",
+        (25.0, 77.0, 75.0, 87.0),
+        3,
+        effective_height=10.0,
+        font_signature=body_font,
+        font_coverage=1.0,
+    )
+    abstract = _text_line(
+        "wide abstract body",
+        (5.0, 96.0, 95.0, 106.0),
+        4,
+        effective_height=10.0,
+        font_signature=body_font,
+        font_coverage=1.0,
+    )
+    pages = [
+        _prepared_text_page(
+            _text_line(
+                "ordinary first page body",
+                (0.0, 20.0, 100.0, 30.0),
+                0,
+                effective_height=10.0,
+                font_signature=body_font,
+                font_coverage=1.0,
+            ),
+            page_size=(100.0, 150.0),
+        ),
+        _prepared_text_page(
+            title_first,
+            title_second,
+            author,
+            affiliation,
+            abstract,
+            page_size=(100.0, 150.0),
+        ),
+    ]
+    profile = titles._DocumentBodyProfile(
+        body_height=10.0,
+        body_weight=400.0,
+        regular_fonts=frozenset({body_font}),
+    )
+
+    titles._classify_secondary_document_title_bands(
+        pages,
+        profile,
+    )
+
+    assert title_first.semantic_type == "doc_title"
+    assert title_second.semantic_type == "doc_title"
+    assert all(line.semantic_type is None for line in (author, affiliation, abstract))
+
+
 def test_document_body_profile_prefers_width_support_over_footer_page_count() -> None:
     """验证窄页脚覆盖更多页面时，累计行宽更大的正文高度仍优先。"""
 

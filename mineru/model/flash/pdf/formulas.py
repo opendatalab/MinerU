@@ -547,8 +547,16 @@ def _build_formula_like_blocks(
                     median_height,
                 ):
                     continue
+                members = _expand_single_line_numbered_formula_members(
+                    (line, bbox),
+                    lane,
+                    claimed_source_indices,
+                    table_bboxes,
+                    dominant_body_font,
+                    median_height,
+                )
                 block = _formula_members_to_block(
-                    [(line, bbox)],
+                    members,
                     page_size,
                     angle,
                     anchor_source_index=line.source_index,
@@ -556,7 +564,10 @@ def _build_formula_like_blocks(
                 if block is None:
                     continue
                 blocks.append(block)
-                claimed_source_indices.add(line.source_index)
+                claimed_source_indices.update(
+                    member_line.source_index
+                    for member_line, _member_bbox in members
+                )
             lane.lines = [
                 item
                 for item in lane.lines
@@ -747,6 +758,107 @@ def _is_single_line_numbered_formula(
         lane,
         median_height,
     )
+
+
+def _expand_single_line_numbered_formula_members(
+    core: tuple[_LineItem, BBox],
+    lane: _TextLane,
+    claimed_source_indices: set[int],
+    table_bboxes: list[BBox],
+    dominant_body_font: tuple[str, int] | None,
+    median_height: float,
+) -> list[tuple[_LineItem, BBox]]:
+    """为已带编号的公式核心吸收同栏连通的等号前缀和窄分式碎片。"""
+
+    core_line, core_bbox = core
+    lane_width = max(0.1, lane.right - lane.left)
+    candidates = []
+    for candidate_line, candidate_bbox in lane.lines:
+        if (
+            candidate_line.source_index == core_line.source_index
+            or candidate_line.source_index in claimed_source_indices
+            or candidate_bbox[2] - candidate_bbox[0] > 0.35 * lane_width
+            or _is_formula_body_barrier(
+                (candidate_line, candidate_bbox),
+                lane,
+                dominant_body_font,
+                median_height,
+            )
+            or _is_formula_title_barrier(
+                (candidate_line, candidate_bbox),
+                lane,
+                dominant_body_font,
+                median_height,
+            )
+        ):
+            continue
+        narrow_fragment = (
+            candidate_bbox[2] - candidate_bbox[0] <= 1.5 * median_height
+            and core_bbox[0] - median_height <= _bbox_center_x(candidate_bbox) <= core_bbox[2] + median_height
+        )
+        if not (
+            _formula_line_has_math_operator(candidate_line.text)
+            or candidate_line.compact_formula_cluster
+            or candidate_line.formula_candidate_only
+            or narrow_fragment
+        ):
+            continue
+        if not _formula_lines_are_connected(
+            core_line,
+            core_bbox,
+            candidate_line,
+            candidate_bbox,
+            table_bboxes,
+        ):
+            continue
+        candidates.append(
+            (candidate_line, candidate_bbox),
+        )
+
+    members = [core, *candidates]
+    member_sources = {line.source_index for line, _bbox in members}
+    changed = True
+    while changed:
+        changed = False
+        for candidate in lane.lines:
+            candidate_line, candidate_bbox = candidate
+            if (
+                candidate_line.source_index in member_sources
+                or candidate_line.source_index in claimed_source_indices
+                or candidate_bbox[2] - candidate_bbox[0] > 0.35 * lane_width
+                or _is_formula_body_barrier(
+                    candidate,
+                    lane,
+                    dominant_body_font,
+                    median_height,
+                )
+                or _is_formula_title_barrier(
+                    candidate,
+                    lane,
+                    dominant_body_font,
+                    median_height,
+                )
+            ):
+                continue
+            if any(
+                _formula_lines_are_connected(
+                    member_line,
+                    member_bbox,
+                    candidate_line,
+                    candidate_bbox,
+                    table_bboxes,
+                )
+                for member_line, member_bbox in members
+            ) and (
+                _formula_line_has_math_operator(candidate_line.text)
+                or candidate_line.compact_formula_cluster
+                or candidate_line.formula_candidate_only
+                or candidate_bbox[2] - candidate_bbox[0] <= 1.5 * median_height
+            ):
+                members.append(candidate)
+                member_sources.add(candidate_line.source_index)
+                changed = True
+    return members
 
 
 def _build_split_visual_row_formula_blocks(

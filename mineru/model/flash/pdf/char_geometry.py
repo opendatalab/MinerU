@@ -103,6 +103,8 @@ class DocumentGeometryPlan:
     char_repairs: dict[CharKey, CharLayoutGeometry] = field(default_factory=dict)
     line_repairs: dict[LineKey, LineGeometryRepair] = field(default_factory=dict)
     line_style_scales: dict[LineKey, float] = field(default_factory=dict)
+    line_ink_bboxes: dict[LineKey, BBox] = field(default_factory=dict)
+    line_baselines: dict[LineKey, float] = field(default_factory=dict)
     style_inflated_runs: set[RunKey] = field(default_factory=set)
     run_diagnostics: list[dict[str, Any]] = field(default_factory=list)
     document_style_anomaly: bool = False
@@ -905,6 +907,37 @@ def _baseline_clusters(samples: list[_CharSample]) -> tuple[list[list[_CharSampl
     return clusters, tolerance
 
 
+def _record_line_canonical_metrics(
+    plan: DocumentGeometryPlan,
+    by_line: dict[LineKey, list[_CharSample]],
+) -> None:
+    """为无需改写 bbox 的普通行保存 tight 字形并集和 dominant origin 基线。"""
+
+    for line_key, line_samples in by_line.items():
+        if not line_samples:
+            continue
+        line = line_samples[0].line
+        plan.line_ink_bboxes[line_key] = _bbox_union_many(
+            [sample.tight_bbox for sample in line_samples],
+        )
+        if line.formula_candidate_only or line.compact_formula_cluster:
+            continue
+        anchors = [sample for sample in line_samples if sample.is_anchor]
+        if len(anchors) < 2:
+            continue
+        clusters, _tolerance = _baseline_clusters(anchors)
+        dominant = max(
+            clusters,
+            key=lambda cluster: (
+                sum(sample.local_tight_bbox[2] - sample.local_tight_bbox[0] for sample in cluster),
+                len(cluster),
+            ),
+        )
+        if len(dominant) / len(anchors) < 0.5:
+            continue
+        plan.line_baselines[line_key] = statistics.median(sample.local_origin[1] for sample in dominant)
+
+
 def _analyze_lines(
     lines_by_page: list[list[_LineItem]],
     by_line: dict[LineKey, list[_CharSample]],
@@ -1324,6 +1357,7 @@ def build_document_geometry_plan(
             geometry.loose_bboxes.clear()
         return plan
     samples, by_line = _collect_samples(lines_by_page, geometries, page_sizes)
+    _record_line_canonical_metrics(plan, by_line)
     runs = _build_run_stats(samples, by_line)
     style_inflated_runs = _mark_style_inflated_runs(runs)
     plan.style_inflated_runs = style_inflated_runs
@@ -1365,6 +1399,16 @@ def apply_line_geometry_repairs(
     """把文档计划应用到当前仍可参与 Flash 布局的行。"""
 
     for line in lines:
+        canonical_ink_bbox = plan.line_ink_bboxes.get(
+            (page_index, line.source_index),
+        )
+        if canonical_ink_bbox is not None:
+            line.ink_bbox = canonical_ink_bbox
+        canonical_baseline = plan.line_baselines.get(
+            (page_index, line.source_index),
+        )
+        if canonical_baseline is not None:
+            line.baseline = canonical_baseline
         style_scale = plan.line_style_scales.get(
             (page_index, line.source_index),
         )
@@ -1388,7 +1432,8 @@ def apply_line_geometry_repairs(
             layout = repair.layout_bbox
         line.source_bbox = repair.source_bbox
         line.ink_bbox = repair.ink_bbox
-        line.baseline = repair.baseline
+        if repair.baseline is not None:
+            line.baseline = repair.baseline
         line.geometry_state = local_state
         line.geometry_confidence = repair.confidence
         line.split_y_candidate = repair.split_y_candidate
