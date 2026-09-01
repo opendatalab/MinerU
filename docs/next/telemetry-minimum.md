@@ -218,38 +218,36 @@ TelemetryConsentState = Literal["unset", "enabled", "disabled"]
 TelemetryAction = Literal["enable", "disable", "flush"]
 
 class TelemetryStatusResponse(DoclibModel):
-    consent_state: TelemetryConsentState
+    state: TelemetryConsentState
     installation_id: str
-    pending_aggregate_count: int
-    pending_period_count: int
+    pending_periods: int = 0
+    pending_metrics: int = 0
     last_flush_at: int | None = None
-    flush_locked_at: int | None = None
 
 
 class TelemetryFlushResult(DoclibModel):
-    accepted: bool
-    executed: bool
-    reason: str | None = None
-    sent_batch_count: int = 0
-    sent_metric_count: int = 0
+    status: str
+    attempted: int = 0
+    succeeded: int = 0
+    discarded: int = 0
 
 
 class TelemetryActionResponse(DoclibModel):
     action: TelemetryAction
-    accepted: bool
-    executed: bool
-    consent_state: TelemetryConsentState
+    state: TelemetryConsentState
+    installation_id: str
+    accepted: bool = True
+    executed: bool = True
     reason: str | None = None
-    flush_result: TelemetryFlushResult | None = None
+    flush_result: dict[str, Any] | None = None
 ```
 
 API 语义:
 
 - `GET /telemetry/status` 返回 `TelemetryStatusResponse`。
-- `pending_aggregate_count` 表示当前 `telemetry_aggregates` 中待上报 aggregate row 的数量，不是 `metric_value` 总和。
-- `pending_period_count` 表示当前待上报的 distinct period 数量，即 distinct `(period_start, period_end)` 数量。
-- `last_flush_at` 表示最近一次至少有一个 batch 被 telemetry endpoint 2xx 确认接收的完成时间；此前从未成功 flush 时返回 `null`。
-- `flush_locked_at` 表示当前 live flush lock 的获取时间；没有 live lock 时返回 `null`。
+- `pending_metrics` 表示当前 `telemetry_aggregates` 中待上报 aggregate row 的数量，不是 `metric_value` 总和。
+- `pending_periods` 表示当前待上报的 distinct period 数量，即 distinct `(period_start, period_end)` 数量。
+- `last_flush_at` 表示最近一次有 batch 被 telemetry endpoint 2xx 确认接收或被 4xx discard 后的完成时间；此前从未有过时返回 `null`。
 - `GET /telemetry/preview` 直接返回外部 telemetry request body，不额外包 metadata。
 - `preview` 不触发 flush，不修改 `last_flush_at`，可以展示完整 `installation_id`。
 - 如果本地没有待上报 metrics，`preview` 返回合法空 batch，`metrics=[]`。这只表示当前没有待上传 metrics，`flush` 不会上传空 batch。
@@ -259,25 +257,34 @@ API 语义:
 - 空 batch preview 的 `period_start` / `period_end` 使用当前 UTC 小时 period。
 - `POST /telemetry/actions/enable` 设置 `consent_state=enabled`，返回 `accepted=true`、`executed=true`。
 - `POST /telemetry/actions/disable` 设置 `consent_state=disabled`，删除本地未上报聚合数据，返回 `accepted=true`、`executed=true`。
-- `POST /telemetry/actions/flush` 在 `enabled` 时同步触发一次 flush，并返回 `TelemetryActionResponse`，其中 `flush_result` 填充 `TelemetryFlushResult`。
+- `POST /telemetry/actions/flush` 在 `enabled` 时同步触发一次 flush，并返回 `TelemetryActionResponse`，其中 `flush_result` 填充 flush 状态 dict（`status` / `attempted` / `succeeded` / `discarded`）。
 - `flush` 在 `unset` 或 `disabled` 时返回 HTTP 200，`accepted=true`、`executed=false`、`reason="telemetry_not_enabled"`。
 - 未知 action 返回 HTTP 4xx。
 - `TelemetryActionResponse.executed` 表示 action 已被执行，不表示 flush 成功上传；flush 结果以 `flush_result.reason` 为准。
 
-`TelemetryService.flush()` 返回 `TelemetryFlushResult`。语义:
+`TelemetryService.flush_once()` 返回 `TelemetryFlushResult`，`status` 枚举与语义:
 
-- `unset` / `disabled`: `accepted=true`、`executed=false`、`reason="telemetry_not_enabled"`。
-- 没有 pending aggregate: `accepted=true`、`executed=false`、`reason="no_pending_metrics"`。
-- flush lock 未过期: `accepted=true`、`executed=false`、`reason="flush_locked"`。
-- 网络失败: 保留 rows，`executed=false`、`reason="network_error"`。
-- telemetry endpoint 5xx: 保留 rows，`executed=false`、`reason="server_error"`。
-- telemetry endpoint 4xx: 删除对应 batch rows，不更新 `last_flush_at`，记录 warning log，`executed=true`、`reason="invalid_payload_discarded"`。
-- 如果同一次 flush 中同时出现至少一个 2xx 成功 batch，且也出现至少一个 network / 5xx / 4xx discard batch，则返回 `accepted=true`、`executed=true`、`reason="partial_success"`。
-- 至少一个 batch 被 telemetry endpoint 2xx 确认接收时，删除已确认 rows，更新 `last_flush_at`。
-- 全部 batch 都失败时，不更新 `last_flush_at`。
-- 4xx discard 不算成功，不触发 `last_flush_at` 更新。
-- `sent_batch_count` 表示被 telemetry endpoint 2xx 确认接收的 batch 数。
-- `sent_metric_count` 表示被 telemetry endpoint 2xx 确认接收的 aggregate row 数总和，不是尝试发送的 row 数，也不是 `metric_value` 总和。
+- `disabled`: 当前 `consent_state=disabled`，不外发。
+- `locked`: flush lock 被占用。
+- `no_metrics`: 没有待上报 period。
+- `success`: 所有尝试的 batch 都被 endpoint 2xx 确认或 4xx discard。
+- `partial_success`: 部分 batch 成功 / discard，其余 batch 保留待下次 flush。
+- `failed`: 所有尝试的 batch 均因网络失败或 endpoint 5xx 未送达，rows 全部保留。
+
+字段语义:
+
+- `attempted`: 本次实际尝试外送的 batch 数。
+- `succeeded`: 被 telemetry endpoint 2xx 确认接收并删除 rows 的 batch 数。
+- `discarded`: 被 telemetry endpoint 4xx 拒绝并删除 rows 的 batch 数。
+- 任一 batch 被 2xx 确认或 4xx discard 后都会更新 `last_flush_at`。
+- 网络失败 / endpoint 5xx 保留 rows，不更新 `last_flush_at`，仅记录 debug log。
+
+`POST /telemetry/actions/flush` 响应语义:
+
+- 当前 consent state 不是 `enabled` 时，`accepted=true`、`executed=false`、`reason="telemetry_not_enabled"`、`flush_result=null`。
+- `executed=false` 对应 flush status `disabled`、`locked`、`no_metrics`、`failed`。
+- `reason` 取 flush `status`，`status="success"` 时 `reason=null`。
+- `flush_result` 内含 `status`、`attempted`、`succeeded`、`discarded`。
 
 ## 4. 隐私边界
 
@@ -341,7 +348,7 @@ doclib server runtime
 - `consent_state=enabled` 时，运行中每 2 小时尝试 flush 一次。
 - `consent_state=unset` 或 `disabled` 时，不进行外部 flush。
 - 网络失败或服务端 5xx 时保留本地聚合结果，后续重试。
-- 服务端 4xx 表示 payload 不合法，对应 batch rows 应删除，不更新 `last_flush_at`，记录 warning log，不应无限重试。
+- 服务端 4xx 表示 payload 不合法，对应 batch rows 应删除，并更新 `last_flush_at`，记录 debug log，不应无限重试。
 - flush 成功后，已被服务端确认接收的 telemetry 聚合数据应从 doclib DB 中删除。
 - 同一个 period 内 context 变化可以接受；flush 时使用当前 context 上报该 period 的聚合 metrics。
 - 一个 HTTP 请求只发送一个 period。
@@ -478,7 +485,7 @@ lock 存储规则:
 ```json
 {
   "batch_id": "tb_01HX...",
-  "schema_version": 1,
+  "schema_version": "1",
   "installation_id": "inst_01HX...",
   "period_start": "2026-06-10T14:00:00Z",
   "period_end": "2026-06-10T15:00:00Z",
@@ -487,7 +494,7 @@ lock 存储规则:
     "app_version": "3.0.0",
     "os": "macos",
     "arch": "arm64",
-    "python_version": "3.11",
+    "python": "3.11.4",
     "install_channel": "pip",
     "cpu_count_bucket": "9_16",
     "gpu_vendor": "apple"
@@ -510,7 +517,7 @@ lock 存储规则:
 规则:
 
 - `batch_id` 由本地 flush 任务生成，用于服务端短窗口幂等。第一版格式定义为 `tb_<32 lowercase hex>`。
-- `schema_version` 使用整数，第一版固定为 `1`。
+- `schema_version` 使用字符串，第一版固定为 `"1"`。
 - `value` 必须是非负数。
 - 字符串数据只能出现在 `context` 或 `dimensions`。
 - `context` 描述安装实例、运行环境和版本。
@@ -526,11 +533,11 @@ lock 存储规则:
 | `app` | string | `mineru` | 固定应用名 |
 | `app_version` | string | semver 或发布版本 | MinerU 版本 |
 | `os` | string | `macos` / `windows` / `linux` / `other` / `unknown` | 操作系统 |
-| `arch` | string | `x86_64` / `arm64` / `other` / `unknown` | CPU 架构 |
-| `python_version` | string | `3.10` / `3.11` / `3.12` / `3.13` / `other` / `unknown` | Python 主次版本 |
+| `arch` | string | `platform.machine()` 转小写结果（如 `x86_64` / `arm64`），无法获取时 `unknown` | CPU 架构 |
+| `python` | string | `major.minor.micro`（如 `3.10.11`） | Python 完整主次修订版本 |
 | `install_channel` | string | `pip` / `uv` / `docker` / `source` / `unknown` | 安装来源 |
-| `cpu_count_bucket` | string | `1_4` / `5_8` / `9_16` / `gt_16` / `unknown` | CPU 核心数分桶 |
-| `gpu_vendor` | string | `nvidia` / `apple` / `amd` / `none` / `unknown` | GPU 或常见加速器厂商 |
+| `cpu_count_bucket` | string | `1_2` / `3_4` / `5_8` / `9_16` / `gt_16` / `unknown` | CPU 核心数分桶 |
+| `gpu_vendor` | string | `nvidia` / `apple` / `amd` / `intel` / `none` / `unknown` | GPU 或常见加速器厂商 |
 
 `gpu_vendor` 规则:
 
@@ -543,23 +550,21 @@ lock 存储规则:
 context 采集规则:
 
 - `os`: 使用 `platform.system()` 归一化为 `macos | windows | linux | other | unknown`。
-- `arch`: 使用 `platform.machine()` 归一化为 `x86_64 | arm64 | other | unknown`；`amd64` 归一化为 `x86_64`，`aarch64` 归一化为 `arm64`。
-- `python_version`: 使用 `sys.version_info.major.minor`；不在白名单时记为 `other`。
-- `cpu_count_bucket`: 使用 `os.cpu_count()`；`None` 或小于等于 0 时记为 `unknown`，否则按 `1_4 | 5_8 | 9_16 | gt_16` 分桶。
+- `arch`: 使用 `platform.machine()` 转小写；为空时记为 `unknown`。第一版不做 `amd64` → `x86_64`、`aarch64` → `arm64` 等别名归一化。
+- `python`: 使用 `sys.version_info` 输出 `major.minor.micro`。
+- `cpu_count_bucket`: 使用 `os.cpu_count()`；`None` 或小于等于 0 时记为 `unknown`，否则按 `<=2 → 1_2`、`<=4 → 3_4`、`<=8 → 5_8`、`<=16 → 9_16`、其余 `gt_16` 分桶。
 - `install_channel` 使用以下优先级:
   1. 若检测到当前运行在 Docker / 容器环境中，记为 `docker`。
-  2. 否则若 `importlib.metadata.distribution("mineru")` 的 `direct_url.json` 表示本地目录安装，或 `dir_info.editable=true`，记为 `source`。
-  3. 否则若当前 `mineru` 模块文件路径不在 `site-packages` / `dist-packages` 下，且向上能找到项目级 `pyproject.toml`，记为 `source`。
-  4. 否则尝试读取 `importlib.metadata.distribution("mineru")` 的 `INSTALLER` 元数据；值为 `uv` 时记为 `uv`，值为 `pip` 时记为 `pip`。
+  2. 否则若当前安装为源码 checkout（`mineru` 模块向上第 3 级目录同时存在 `pyproject.toml` 与 `.git`），记为 `source`。
+  3. 否则尝试读取 `importlib.metadata.distribution("mineru")`（回退 `mineru-vl-utils`）的 `INSTALLER` 元数据；值为 `uv` 时记为 `uv`，值为 `pip` 时记为 `pip`。
+  4. 否则若 `direct_url.json` 表示 editable 本地目录安装（`dir_info.editable=true`），记为 `source`。
   5. 其它情况记为 `unknown`。
 - Docker / 容器检测为 best-effort，第一版允许使用 `/.dockerenv`、`/proc/1/cgroup`、`/proc/self/cgroup` 等本地信号；判断失败时降级，不向业务层抛错。
 - `gpu_vendor` 使用保守检测:
-  1. `platform.system()=="Darwin"` 且 `arch=="arm64"` 时记为 `apple`。
-  2. Linux 上若 DRM / sysfs vendor 可明确识别为 `0x10de`，或存在 `nvidia-smi` / `/dev/nvidiactl`，记为 `nvidia`。
-  3. Linux 上若 DRM / sysfs vendor 可明确识别为 `0x1002`，记为 `amd`。
-  4. Linux 上若未发现任何 GPU / render device 信号，记为 `none`。
-  5. Windows 上使用 `winreg` best-effort 读取 display adapter 信息；能明确识别 `NVIDIA` / `VEN_10DE` 时记为 `nvidia`，能明确识别 `AMD` / `Radeon` / `VEN_1002` 时记为 `amd`，其它情况记为 `unknown`。第一版不在 Windows 上上报 `none`。
-  6. 其它无法可靠判断的情况记为 `unknown`。
+  1. `platform.system()=="Darwin"` 且 `arch` 为 `arm64` / `aarch64` 时记为 `apple`。
+  2. Linux 上读取 `/sys/class/drm/card*/device/vendor`（回退 `/sys/bus/pci/devices/*/vendor`）vendor 列表: 可识别 `0x10de` 记为 `nvidia`，`0x1002` 记为 `amd`，`0x8086` 记为 `intel`；未发现任何 GPU 信号或无法识别时记为 `unknown`。
+  3. Windows 上使用 `winreg` best-effort 读取 display adapter 信息（`DriverDesc` / `ProviderName` / `MatchingDeviceId`）: 能明确识别 `NVIDIA` / `VEN_10DE` 时记为 `nvidia`，能明确识别 `AMD` / `Radeon` / `VEN_1002` 时记为 `amd`，能明确识别 `intel` / `VEN_8086` 时记为 `intel`，其它情况记为 `unknown`。第一版不在 Windows 上上报 `none`。
+  4. 其它平台或无法可靠判断的情况记为 `unknown`。
 - 第一版不为了 telemetry 主动 import `torch`、`paddle`、`transformers` 等重依赖做硬件探测。
 
 第一版不采集 CPU/GPU family、具体型号、显存、驱动和 CUDA 版本。
@@ -629,7 +634,7 @@ CLI 规则:
 - CLI 入口设置 telemetry context。
 - `DoclibClient` 在发请求前读取 context。
 - `caller` 由 helper best-effort 检测当前进程父进程树。
-- 已知 Agent 进程记为 `agent`，普通 shell / terminal 记为 `user`，无法可靠判断时记为 `unknown`。
+- 已知 Agent 进程记为 `agent`，交互式终端（TTY）会话记为 `user`，无法可靠判断时记为 `unknown`。
 - helper 只输出枚举值，不记录进程名原文、命令行、路径或 prompt。
 
 `DoclibClient` 发送 header 规则:
@@ -642,8 +647,8 @@ CLI 规则:
 `DoclibClient` 到 doclib server 使用 HTTP header 传递:
 
 ```text
-X-MinerU-Source: cli | sdk | http_api | watch | background | unknown
-X-MinerU-Caller: agent | user | sdk | http_client | system | unknown
+X-MinerU-Telemetry-Source: cli | sdk | http_api | watch | background | unknown
+X-MinerU-Telemetry-Caller: agent | user | sdk | http_client | system | unknown
 ```
 
 server middleware 解析 header，写入 request context。route、service 和 telemetry emitter 从 request context 读取。request 结束时必须 reset contextvars token，避免上下文泄漏到后续请求。
@@ -660,10 +665,9 @@ caller 推断规则:
 
 - 遍历父进程树，只读取进程名，不读取完整命令行、路径、参数或环境变量。
 - 进程名统一取 basename 后转小写，再与白名单比较。
-- 遍历最大深度固定为 12；遇到 `pid <= 1`、父 pid 重复、读取失败或达到最大深度时停止。
-- 命中白名单时按优先级返回: `agent` 高于 `user`。即只要 12 层内出现已知 Agent 进程名，就返回 `agent`；否则若出现 shell / terminal 进程名，则返回 `user`；否则返回 `unknown`。
-- 命中常见 Agent 进程名时返回 `agent`，例如 `codex`、`claude`、`cursor`、`windsurf`、`aider`、`gemini`、`qwen`、`cline`。
-- 命中常见 shell / terminal 进程名时返回 `user`，例如 `bash`、`zsh`、`fish`、`Terminal`、`iTerm2`、`WindowsTerminal`。
+- 遍历最大深度固定为 8；遇到 `pid <= 1`、父 pid 重复、读取失败或达到最大深度时停止。
+- 命中白名单时返回 `agent`；否则若当前进程 `sys.stdin` 是 TTY（`stdin.isatty()`），返回 `user`；否则返回 `unknown`。
+- 命中常见 Agent 进程名（子串匹配）时返回 `agent`，例如 `claude`、`codex`、`cursor`、`cline`、`copilot`、`gemini`、`goose`、`opencode`、`roo`、`trae`、`windsurf`。
 - 权限不足、平台不支持、进程树读取失败或无法判断时返回 `unknown`。
 - 进程名只用于本地枚举判断，不写入 telemetry 聚合或外部 payload。
 
@@ -738,7 +742,9 @@ parse_failed
 parse_timeout
 
 metadata_failed
+open_failed
 parse_json_write_failed
+read_metadata_failed
 ingest_failed
 scan_failed
 ```
@@ -787,12 +793,12 @@ mineru telemetry preview
 mineru telemetry flush
 ```
 
-`TOP_LEVEL_COMMAND_ORDER` 中放在 `config` 后:
+`TOP_LEVEL_COMMAND_ORDER` 中放在 `server` 与 `config` 之前:
 
 ```text
+telemetry
 server
 config
-telemetry
 ```
 
 输出规则:
@@ -1509,10 +1515,10 @@ Flush tests:
 - enabled + metrics 调用 fake endpoint。
 - 2xx 删除 rows。
 - 5xx 保留 rows。
-- 4xx 删除对应 batch rows，不更新 `last_flush_at`，记录 warning log。
+- 4xx 删除对应 batch rows，并更新 `last_flush_at`，记录 debug log。
 - 至少一个 batch 2xx 成功时更新 `last_flush_at`。
 - 全部 batch 失败时不更新 `last_flush_at`。
-- `sent_batch_count` 和 `sent_metric_count` 只统计 2xx 成功接收的 batch / aggregate rows。
+- `succeeded` 和 `discarded` 只统计 2xx 成功接收或 4xx discard 的 batch 数，`attempted` 统计实际尝试外送的 batch 数。
 - flush lock 存在时跳过。
 - 一次 flush 最多发送 10 个 period。
 - 一个 HTTP 请求只包含一个 period。

@@ -41,11 +41,10 @@ POST https://mineru.net/metrics/v2/metrics
 
 flush response 处理:
 
-- `2xx`: batch accepted，删除对应 aggregate rows。
-- `4xx`: 删除对应 batch rows，不更新 `last_flush_at`，返回 `invalid_payload_discarded`，记录 warning。
-- `5xx`: 保留 rows，返回 `server_error`。
-- network / timeout: 保留 rows，返回 `network_error`。
-- 同一次 flush 中既有 2xx，又有失败 batch，返回 `partial_success`。
+- `2xx`: batch accepted，删除对应 aggregate rows，计入 `succeeded`。
+- `4xx`: 删除对应 batch rows，计入 `discarded`；与 2xx 一样更新 `last_flush_at`。
+- `5xx` / network / timeout: 保留 rows，该 batch 留待下次 flush。
+- 同一次 flush 中既有成功 / discard batch，又有失败 batch，返回 `partial_success`；全部失败返回 `failed`。
 - response body 不写 DB、不进入 preview、不进入 CLI 输出、不进入日志。
 
 official remote 判定:
@@ -83,7 +82,7 @@ mineru/doclib/telemetry/
 - `constants.py`: metric name、dimension whitelist、`METRIC_SPECS`、consent state、endpoint、API version、schema version、正式环境 app key/secret。
 - `buckets.py`: duration、pages、file size、results bucket。
 - `context.py`: `contextvars`、HTTP header parse、request context set/reset。
-- `caller.py`: parent process tree inference，最大深度 12，只读进程名。
+- `caller.py`: parent process tree inference，最大深度 8，只读进程名；无 Agent 命中时以 `stdin.isatty()` 判定 `user`。
 - `store.py`: `telemetry_state` 和 `telemetry_aggregates` 读写。
 - `payload.py`: preview / flush payload 组装，metrics 稳定排序。
 - `service.py`: `record_*`、`status`、`preview`、`enable`、`disable`、`flush`。
@@ -123,8 +122,8 @@ POST /observations
 context 传递:
 
 - `DoclibClient._request_model` 读取 contextvars，并发送:
-  - `X-MinerU-Source`
-  - `X-MinerU-Caller`
+  - `X-MinerU-Telemetry-Source`
+  - `X-MinerU-Telemetry-Caller`
 - server middleware 解析 header，缺失时默认 `source=http_api`、`caller=http_client`。
 - request 结束后 reset context token。
 
@@ -324,9 +323,9 @@ mineru telemetry flush
 `TOP_LEVEL_COMMAND_ORDER`:
 
 ```text
+telemetry
 server
 config
-telemetry
 ```
 
 prompt helper:
