@@ -49,6 +49,9 @@
 | 配置 | [config.md](config.md) | 配置专题文档仍待继续核对 | CLI、服务端、SDK 开发 |
 | Telemetry | [telemetry.md](telemetry.md) | 用户讨论 / 旧路线图底稿迁移内容 | 产品、核心开发、数据分析、合规参与者 |
 | 开放问题 | [open-questions.md](open-questions.md) | 各专题文档、用户讨论 | 核心开发、编程 Agent、文档维护者 |
+| 模块地图 | [code-map.md](code-map.md) | 代码结构分析报告（MINERU-1）对照代码核实固化 | 首次接触 4.x 代码的贡献者、核心开发、编程 Agent |
+| 开发陷阱 | [pitfalls.md](pitfalls.md) | 代码结构分析报告（MINERU-1）对照代码核实固化 | 核心开发、编程 Agent、代码审查者 |
+| 不变量红线 | [invariants.md](invariants.md) | 代码结构分析报告（MINERU-1）对照代码核实固化 | 核心开发、编程 Agent、代码审查者 |
 
 ## 整理原则
 
