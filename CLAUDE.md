@@ -21,6 +21,10 @@ uv pip install -e ".[core]"
 .venv/bin/python -m mineru.path.to.submodule
 ```
 
+## 验证循环
+
+改动后的验证命令（ruff 格式化/lint、pytest 全量与子集、解析质量人工验证）与提交流程、ADR 工作流见 [CONTRIBUTING.md](CONTRIBUTING.md)。本文不复制命令，以该文件为单一事实源。
+
 ## GitHub Issue / PR 处理规范
 
 处理 GitHub issue 时，commit message 和 PR body 中不要使用会导致 issue 在 merge 后自动关闭的关键词。
