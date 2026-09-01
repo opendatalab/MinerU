@@ -18,7 +18,7 @@
 
 ## 2. 错误码语义稳定
 
-`mineru/errors.py` 定义了结构化错误协议：code → type 映射（`_ERROR_TYPE_MAP` `errors.py:20`）、code → HTTP 覆盖表（`_ERROR_CODE_STATUS_MAP` `errors.py:119`）、响应构造（`error_response` `errors.py:208`）。
+`mineru/errors.py` 定义了结构化错误协议：code → type 映射（`_ERROR_TYPE_MAP` `errors.py:20`）、code → HTTP 覆盖表（`_ERROR_CODE_STATUS_MAP` `errors.py:118`）、响应构造（`error_response` `errors.py:208`）。
 
 红线：
 
@@ -37,9 +37,7 @@ Middle JSON 的对外 schema 固定为 `2.0`（`mineru/parser/base.py:20` `MIDDL
 
 ## 4. 依赖方向：基础层不得反向引用上层
 
-稳定依赖方向为 `utils/types → model → backend → render → parser/kit/doclib`，禁止上层模块被基础层反向引用（事实源：`CLAUDE.md` "5.1 目录职责"，此处引用并保持单一事实源）。
-
-配套规则：mineru 子模块之间只用 relative import。
+依赖方向红线以 `CLAUDE.md`「5.1 目录职责」为单一事实源，此处不复述。配套规则 mineru 子模块之间只用 relative import，同样以 `CLAUDE.md`「Import 规范」为准，不在此复制。违反任一即视为回归。
 
 ## 5. 定位符协议语法向后兼容
 

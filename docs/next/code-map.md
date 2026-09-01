@@ -43,13 +43,13 @@
 cli/commands/parse.py parse_cmd（--remote 选项 :100）
   → DoclibClient（doclib/client.py）经 UDS（$MINERU_HOME/doclib.sock；UDS 不可用回退
     TCP 127.0.0.1:15980，见 config.py 与 doclib/endpoint.py）
-  → doclib/server.py → ParseService.submit（services/parse_svc.py:726：校验 tier/privacy/
+  → doclib/server.py → ParseService.request_parse（services/parse_svc.py:719：校验 tier/privacy/
     page_range/扩展名；privacy = "remote"|"local" :754）写入 parses 表任务队列
   → ParseWorkerPool（background/parse_worker.py:15）→ process_doc（parse_svc.py:931）按 tier 分派：
     · flash   → 进程内本地 flash 解析（parse_svc.py:971 附近，"local(flash)"）
     · basic/standard/advanced → _parse_via_api（parse_svc.py:1146）三选一：
-        managed（doclib 自动拉起 `mineru-kit api-server --tier … --no-flash --preload-models`，
-                 background/parse_server_health.py:98-113；TCP 127.0.0.1:16580）
+        managed（doclib 自动拉起 `python -m mineru.parser.api_server`，
+                 managed 进程参数见 background/parse_server_health.py:98-113；TCP 127.0.0.1:16580）
         self_hosted（parse_server.local.self_hosted_url）
         remote（parse_server.remote.url）
       均不可用时抛 no_engine（parse_svc.py:1239）

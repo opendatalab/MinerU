@@ -22,7 +22,7 @@
 
 1. legacy 读取：`mineru/parser/base.py:20-47` —— 识别 3.4.5 `pdf_info` 与 schema 1.0 `pages` 包装（`_legacy_raw_pages`），`MIDDLE_JSON_SCHEMA_VERSION = "2.0"`；
 2. legacy 适配：`mineru/backend/postprocess/legacy_schema_adapter.py` —— 旧 payload 单向回推为 raw model-list；
-3. 批次合并：`mineru/doclib/background/compaction.py:27-32` —— 仅合并同 schema 批次。
+3. 批次合并：`mineru/doclib/background/compaction.py:23` `_normalize_batch_pages` 会把 schema 2.0、1.0、3.4.5 批次归一化后**跨 schema 合并**（legacy 批次经 `legacy_schema_adapter` 转换参与），并非只合并 2.0 批次；schema 无法识别时抛 stale-cache 错误并放弃本轮压缩（`compaction.py:37`）。
 
 新增或调整 Middle JSON 字段时，先确认 ADR-0020（schema stability boundary）是否覆盖该字段，再同步上述三处与 `docs/next/middle-json.md`。
 
