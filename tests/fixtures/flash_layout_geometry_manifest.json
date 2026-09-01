@@ -15318,8 +15318,8 @@
       "pages": [
         {
           "page_index": 0,
-          "fingerprint": "10c7003ad02f6b2a0b0ec73d8fb9842e3856f7f1077e6a672c1218453e9c6716",
-          "bbox_fingerprint": "9825313d730f19b1f29a7ad60c4f194d03a905c01cb5e79234bbd338cd97ddad",
+          "fingerprint": "691868af009d91fbdc4d43127d66717d83f64405f551a4c7896ba7d704926558",
+          "bbox_fingerprint": "31bdbbc64e58ffec31bfefc9ad228d9c0738d05fffcb505f127c0e83c8174b1f",
           "approved": true,
           "blocks": [
             {
@@ -15408,82 +15408,67 @@
               "text_sha256": "ce93751a458c21be8d8216511c0429f8af22ba37ce0fa9ba142084a9d769b159"
             },
             {
-              "id": "3fb6a95e84aebba221f0",
+              "id": "f0149b89a9f7c551d32c",
               "type": "text",
-              "text_sha256": "6135cb595b6a44ac0b1f83e777b9c1368e19ae7e7cc0bc2516383fcab98d79c9"
+              "text_sha256": "cd24d0f95423fb38a98b24bdebd8766a31340893f52854165072c8d81edcb2b5"
             },
             {
-              "id": "f73bf87339147e1ef87c",
-              "type": "text",
-              "text_sha256": "d35691561d144fe1bc705dbac69076558ce6534cfb2d0c20ee87d218df25e6ff"
-            },
-            {
-              "id": "15887426ff716593f86b",
-              "type": "text",
-              "text_sha256": "f2a30116729cecbbcbb2abf85a89913cc831b94a313b9d98ac619511e7e2e169"
-            },
-            {
-              "id": "7e2e522eee79bd24dc32",
-              "type": "text",
-              "text_sha256": "c404a4505d40de06f329a449caca810b7a0270028b8dcfe55f84ecfa50110618"
-            },
-            {
-              "id": "e3609c52c44e8881f4fb",
+              "id": "d0f1628cdd0df25c8ec3",
               "type": "text",
               "text_sha256": "57062170fafa9aab8a02b74224e8d7bc3916cd3095dd9322441fc464d8c05a84"
             },
             {
-              "id": "effc3a46f93f3f6ffd51",
+              "id": "de141528f1a108d2bab0",
               "type": "text",
               "text_sha256": "dd579f9dca995144e66410bbfac2372f24ef8841e91da1403edf0d2b68d90c54"
             },
             {
-              "id": "f7e7603dab3beef3d8f0",
+              "id": "f008886cb36f19777c76",
               "type": "text",
               "text_sha256": "0bd40e5187027c20e261b0ba8265f0cda183f52e682ef8325bfcdec5c5667ff4"
             },
             {
-              "id": "9cfa8afb25140150657d",
+              "id": "de7e553848f43b60e710",
               "type": "text",
               "text_sha256": "b26cfda16bb1ca373cf38e89540cc173b1d27dc5ce947a35cf508e35355dfc70"
             },
             {
-              "id": "517097a84ba8c2ffff5d",
+              "id": "d5dc353196caaf835150",
               "type": "paragraph_title",
               "text_sha256": "43a5aff3a2b04e2ecf77e8b43f58ce277864cafdec454c19c6871e2042753c86"
             },
             {
-              "id": "f331f94651da579cd233",
+              "id": "1dda13cb55e399c0afec",
               "type": "paragraph_title",
               "text_sha256": "9b01688e04e6c70a9aefae712c86c27355533e7d386e3d56af317a24275e3cf2"
             },
             {
-              "id": "ecf882ab2edd975315c3",
+              "id": "0d4fd99611fb9903fef1",
               "type": "text",
               "text_sha256": "0a42360909fdaad4c7c1813fc48a69a1f56af9041b6535fcbcdfef8c7b9f1396"
             },
             {
-              "id": "fac81474a35e1a75e35c",
+              "id": "435acdd2a3669bb32006",
               "type": "text",
               "text_sha256": "bfe8c8675d7dc0a8092ef36834a2af3f02badf8d2a94be38aa7750eab2e8b841"
             },
             {
-              "id": "49342749d23c81795626",
+              "id": "8f6218245404117288d5",
               "type": "page_footnote",
               "text_sha256": "636a4aa82543baa6ee109629389cf59fef90e87dd73479ae5b967e565663447c"
             },
             {
-              "id": "64f577c813b5bdd15cb5",
+              "id": "f076a77c0d7ad5ef7d51",
               "type": "page_footnote",
               "text_sha256": "7c2894bb02606f5a375cd9d5743772ce00e971169d8250ec6a6feb16dd9c89cd"
             },
             {
-              "id": "2088afa4f1a8f18edf80",
+              "id": "b6ccf0f923dd6ec8d7c4",
               "type": "page_footnote",
               "text_sha256": "fe406fb44b94810275c0c16ad5e27d0e123e1bc7a0db5dcb172b868969169c35"
             },
             {
-              "id": "933af638553ce75d4637",
+              "id": "df4b1a1fae0c2c3b89c9",
               "type": "page_footnote",
               "text_sha256": "33da632aca31786f893397be4ba3bccb87571d9ed026c0f9c8af85800819e404"
             }

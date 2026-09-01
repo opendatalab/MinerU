@@ -237,7 +237,7 @@
         "page_footnote": 4,
         "page_number": 3,
         "paragraph_title": 6,
-        "text": 59
+        "text": 56
       },
       "exact_typed_text": [
         {"page_index": 0, "type": "header", "text": "DOI:10.16270/j.cnki.slgc.2013.03.029"},
@@ -252,6 +252,18 @@
         {"page_index": 3, "type": "caption", "text": "Fig.3ManagementprocessofintegratedProjectbetweenAPSandERP"},
         {"page_index": 3, "type": "paragraph_title", "text": "【参考文献】"}
       ],
+      "same_block_groups": [
+        {
+          "page_index": 0,
+          "type": "text",
+          "fragments": [
+            "Abstract: Advanced planning and scheduling",
+            "based on the Theory of Constraint",
+            "huge advantage in production planning",
+            "important role in the production planning"
+          ]
+        }
+      ],
       "different_block_groups": [
         {
           "page_index": 0,
@@ -260,6 +272,10 @@
         {
           "page_index": 0,
           "fragments": ["1APS与ERP简介", "1.1ERP系统的弱点"]
+        },
+        {
+          "page_index": 0,
+          "fragments": ["Abstract: Advanced planning and scheduling", "Keywords: APS"]
         }
       ]
     },

@@ -1424,20 +1424,13 @@ def _merge_paragraph_formula_context_blocks(
             ordered_group,
         )
         local_rows = [
-            bbox
-            for bbox in merged.get("_local_line_bboxes", [])
-            if isinstance(bbox, (list, tuple))
-            and len(bbox) == 4
+            bbox for bbox in merged.get("_local_line_bboxes", []) if isinstance(bbox, (list, tuple)) and len(bbox) == 4
         ]
         maximum_width = max(
             (bbox[2] - bbox[0] for bbox in local_rows),
             default=0.0,
         )
-        body_rows = [
-            bbox
-            for bbox in local_rows
-            if bbox[2] - bbox[0] >= 0.75 * maximum_width
-        ]
+        body_rows = [bbox for bbox in local_rows if bbox[2] - bbox[0] >= 0.75 * maximum_width]
         if len(body_rows) >= 2:
             # 复杂分式可能比正文左缘多探出少量 glyph；公开框按重复满行边界稳定收口。
             merged_bbox = merged["bbox"]
@@ -2678,7 +2671,7 @@ def _merge_list_intro_text_components(
 def _merge_unterminated_text_components(
     blocks: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
-    """合并同栏、满行且前块没有终止标点的紧邻正文组件。"""
+    """合并普通栏未终止正文，以及满足严格结构约束的满宽 span 正文。"""
 
     output = list(blocks)
     terminal_re = re.compile(
@@ -2721,6 +2714,44 @@ def _merge_unterminated_text_components(
                 ],
             )
             second_interval = _component_lane_interval(second)
+            first_declared_interval = _component_declared_lane_interval(
+                first,
+            )
+            second_declared_interval = _component_declared_lane_interval(
+                second,
+            )
+            row_pair_height = statistics.median(
+                [
+                    max(
+                        0.1,
+                        first_rows[-1][3] - first_rows[-1][1],
+                    ),
+                    max(
+                        0.1,
+                        second_rows[0][3] - second_rows[0][1],
+                    ),
+                ],
+            )
+            span_connection_height = max(
+                pair_height,
+                row_pair_height,
+            )
+            span_tolerance = 0.75 * span_connection_height
+            span_pair = (
+                first.get("_lane_is_span") is True
+                and second.get("_lane_is_span") is True
+                and int(first.get("angle", 0) or 0) % 360 == int(second.get("angle", 0) or 0) % 360
+                and first_declared_interval is not None
+                and second_declared_interval is not None
+                and abs(
+                    first_declared_interval[0] - second_declared_interval[0],
+                )
+                <= span_tolerance
+                and abs(
+                    first_declared_interval[1] - second_declared_interval[1],
+                )
+                <= span_tolerance
+            )
             first_content = str(first.get("content") or "")
             second_content = str(second.get("content") or "")
             single_numbered_tail = (
@@ -2742,14 +2773,14 @@ def _merge_unterminated_text_components(
                     second_content,
                 )
                 is not None
-                and second_interval is not None
-                and second_rows[0][2] - second_rows[0][0] >= 0.5 * (second_interval[1] - second_interval[0])
+                and (reference_interval := (second_declared_interval if span_pair else second_interval)) is not None
+                and second_rows[0][2] - second_rows[0][0] >= 0.5 * (reference_interval[1] - reference_interval[0])
             )
             if (
                 second.get("_protected_hard_break_before") is True
-                or (second.get("_hard_break_before") is True and not narrow_continuation)
+                or (second.get("_hard_break_before") is True and (span_pair or not narrow_continuation))
                 or second.get("_leading_emphasis_start") is True
-                or (starts_wide_label and not aligned_short_tail)
+                or (starts_wide_label and (span_pair or not aligned_short_tail))
                 or first.get("_hanging_indent_group") is not None
                 or second.get("_hanging_indent_group") is not None
                 or _FIGURE_CAPTION_MARKER_RE.match(
@@ -2757,7 +2788,8 @@ def _merge_unterminated_text_components(
                 )
                 is not None
                 or (
-                    not single_numbered_tail
+                    not span_pair
+                    and not single_numbered_tail
                     and not url_continuation
                     and terminal_re.search(
                         first_content.rstrip(),
@@ -2767,15 +2799,21 @@ def _merge_unterminated_text_components(
             ):
                 continue
             interval = _component_lane_interval(first)
-            if interval is None or not _components_share_lane_role(
+            if span_pair:
+                interval = first_declared_interval
+            elif interval is None or not _components_share_lane_role(
                 first,
                 second,
                 pair_height,
             ):
                 continue
+            if interval is None:
+                continue
             lane_width = interval[1] - interval[0]
             vertical_gap = second_rows[0][1] - first_rows[-1][3]
-            minimum_first_fill = 0.5 if single_numbered_tail else 0.65
+            minimum_first_fill = 0.8 if span_pair else 0.5 if single_numbered_tail else 0.65
+            minimum_second_fill = 0.8 if span_pair else 0.65
+            connection_height = span_connection_height if span_pair else pair_height
             first_reference_width = (
                 max(row[2] - row[0] for row in first_rows) if narrow_continuation else first_rows[-1][2] - first_rows[-1][0]
             )
@@ -2790,14 +2828,17 @@ def _merge_unterminated_text_components(
             )
             if (
                 first_reference_width < minimum_first_fill * lane_width
-                or (not narrow_continuation and second_rows[0][2] - second_rows[0][0] < 0.65 * lane_width)
-                or not -pair_height <= vertical_gap <= 1.5 * pair_height
+                or (
+                    (span_pair or not narrow_continuation)
+                    and second_rows[0][2] - second_rows[0][0] < minimum_second_fill * lane_width
+                )
+                or not -connection_height <= vertical_gap <= 1.5 * connection_height
                 or fonts_conflict
                 or _component_connection_skips_block(
                     output,
                     first_index,
                     second_index,
-                    pair_height,
+                    connection_height,
                 )
             ):
                 continue
@@ -2813,13 +2854,11 @@ def _merge_unterminated_text_components(
         output.pop(second_index)
 
 
-def _component_lane_interval(
+def _component_declared_lane_interval(
     block: dict[str, Any],
 ) -> tuple[float, float] | None:
-    """读取普通文本组件所属的有效非跨栏栏带区间。"""
+    """读取组件声明的有效栏带区间，不区分普通栏或跨栏。"""
 
-    if block.get("_lane_is_span") is not False:
-        return None
     interval = block.get("_lane_interval")
     if (
         not isinstance(interval, (list, tuple))
@@ -2829,6 +2868,16 @@ def _component_lane_interval(
         return None
     left, right = float(interval[0]), float(interval[1])
     return (left, right) if right > left else None
+
+
+def _component_lane_interval(
+    block: dict[str, Any],
+) -> tuple[float, float] | None:
+    """读取普通文本组件所属的有效非跨栏栏带区间。"""
+
+    if block.get("_lane_is_span") is not False:
+        return None
+    return _component_declared_lane_interval(block)
 
 
 def _component_reference_width(

@@ -469,7 +469,7 @@ def test_explicit_pdf_fixtures_keep_expected_txt_block_inventory() -> None:
                     "page_footnote": 4,
                     "page_number": 3,
                     "paragraph_title": 6,
-                    "text": 59,
+                    "text": 56,
                 }
             ),
         ),

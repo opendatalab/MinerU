@@ -18,6 +18,32 @@ from _flash_pdf_test_utils import (
 )
 
 
+def _span_text_block(
+    content: str,
+    bbox: tuple[float, float, float, float],
+) -> dict[str, object]:
+    """构造全宽 span 正文回并测试使用的最小内部文本块。"""
+
+    return {
+        "type": "text",
+        "bbox": bbox,
+        "angle": 0,
+        "content": content,
+        "_visual_row_ids": set(),
+        "_single_run_row_id": None,
+        "_local_line_bboxes": [bbox],
+        "_line_heights": [4.0],
+        "_font_signatures": {("Body", 0)},
+        "_inline_math_regions": [],
+        "_lane_interval": (0.0, 100.0),
+        "_lane_is_span": True,
+        "_hard_break_before": False,
+        "_protected_hard_break_before": False,
+        "_hanging_indent_group": None,
+        "_leading_emphasis_start": False,
+    }
+
+
 def test_hanging_indent_groups_neutral_entries_and_ignores_centered_heading() -> None:
     """验证不含序号的重复悬挂缩进逐条分组，且居中标题不参与条目。"""
 
@@ -153,6 +179,118 @@ def test_paragraph_formula_context_merges_dense_same_lane_text() -> None:
         "prefix body: I=ΔT/ΔH tail",
         "other lane",
     ]
+
+
+def test_full_width_span_text_merges_without_terminal_punctuation_dependency() -> None:
+    """验证同栏满宽 span 正文可跨句号连续回并，并沿用英文断词恢复。"""
+
+    blocks = [
+        _span_text_block(
+            "Abstract first sentence.",
+            (0.0, 0.0, 90.0, 10.0),
+        ),
+        _span_text_block(
+            "Continuation remains in the same paragraph.",
+            (0.0, 16.0, 90.0, 26.0),
+        ),
+        _span_text_block(
+            "Another impor-",
+            (0.0, 32.0, 90.0, 42.0),
+        ),
+        _span_text_block(
+            "tant detail",
+            (0.0, 48.0, 90.0, 58.0),
+        ),
+        {
+            **_span_text_block(
+                "Keywords: separate metadata",
+                (0.0, 64.0, 90.0, 74.0),
+            ),
+            "_lane_is_span": False,
+            "_hard_break_before": True,
+            "_protected_hard_break_before": True,
+        },
+    ]
+
+    merged = text_blocks._merge_unterminated_text_components(
+        blocks,
+    )
+
+    assert [block["content"] for block in merged] == [
+        "Abstract first sentence. Continuation remains in the same paragraph. Another important detail",
+        "Keywords: separate metadata",
+    ]
+
+
+@pytest.mark.parametrize(
+    "barrier",
+    [
+        "hard_break",
+        "protected_break",
+        "leading_emphasis",
+        "font_conflict",
+        "narrow_row",
+        "different_lane",
+        "different_angle",
+        "labelled_metadata",
+        "intervening_block",
+        "ordinary_lane_terminal",
+    ],
+)
+def test_full_width_span_text_respects_structural_barriers(
+    barrier: str,
+) -> None:
+    """验证 span 回并仍受硬边界、栏带、字体、宽度和阻隔块约束。"""
+
+    first = _span_text_block(
+        "First sentence.",
+        (0.0, 0.0, 90.0, 10.0),
+    )
+    second = _span_text_block(
+        "Second sentence",
+        (0.0, 16.0, 90.0, 26.0),
+    )
+    blocks = [first, second]
+    if barrier == "hard_break":
+        second["_hard_break_before"] = True
+    elif barrier == "protected_break":
+        second["_protected_hard_break_before"] = True
+    elif barrier == "leading_emphasis":
+        second["_leading_emphasis_start"] = True
+    elif barrier == "font_conflict":
+        second["_font_signatures"] = {("Other", 0)}
+    elif barrier == "narrow_row":
+        second["bbox"] = (0.0, 16.0, 79.0, 26.0)
+        second["_local_line_bboxes"] = [second["bbox"]]
+    elif barrier == "different_lane":
+        second["_lane_interval"] = (0.0, 120.0)
+    elif barrier == "different_angle":
+        second["angle"] = 90
+    elif barrier == "labelled_metadata":
+        second["content"] = "Keywords: separate metadata"
+    elif barrier == "intervening_block":
+        blocks.insert(
+            1,
+            {
+                **_span_text_block(
+                    "visual barrier",
+                    (0.0, 11.0, 90.0, 15.0),
+                ),
+                "type": "caption",
+            },
+        )
+    elif barrier == "ordinary_lane_terminal":
+        first["_lane_is_span"] = False
+        second["_lane_is_span"] = False
+
+    merged = text_blocks._merge_unterminated_text_components(
+        blocks,
+    )
+
+    assert not any(
+        "First sentence." in str(block.get("content") or "") and "Second sentence" in str(block.get("content") or "")
+        for block in merged
+    )
 
 
 def test_hanging_indent_accepts_reference_spacing_and_italic_tail() -> None:
