@@ -28,6 +28,7 @@
 | `mineru server` | 管理本地 doclib 服务 | [mineru server](mineru-server.md) |
 | `mineru search` | 搜索本地文档库内容 | [mineru library](mineru-library.md) |
 | `mineru find` | 搜索或定位文件 | [mineru library](mineru-library.md) |
+| `mineru usage` | 查看 Remote API usage 和 limits | [mineru usage](mineru-usage.md) |
 | `mineru list` | 列出 parses、scans、files、docs | [mineru library](mineru-library.md) |
 | `mineru show` | 查看 file、doc、parse、scan 等资源详情 | [mineru library](mineru-library.md) |
 | `mineru config` | 管理本地配置、watch、rules | [mineru library](mineru-library.md) |
