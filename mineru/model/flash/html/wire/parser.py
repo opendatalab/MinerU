@@ -127,7 +127,7 @@ def _parse_wire_root(root: etree._Element) -> MineruHtmlWirePlan:
     ]
     if len(nested_wrappers) != len(wrappers):
         raise NonCanonicalWire
-    target_ids = _collect_title_target_ids(wrappers)
+    target_ids = _collect_anchor_target_ids(wrappers)
     blocks = tuple(_parse_top_block(wrapper, section_page_idx, target_ids) for wrapper, section_page_idx in wrappers)
     return MineruHtmlWirePlan(root, mode, blocks)
 
@@ -214,7 +214,12 @@ def _validate_top_metadata(wrapper: etree._Element, block_type: BlockType) -> No
             raise NonCanonicalWire
     elif level is not None:
         raise NonCanonicalWire
-    if anchor and block_type not in {BlockType.DOC_TITLE, BlockType.PARAGRAPH_TITLE, BlockType.PAGE_FOOTNOTE}:
+    if anchor and block_type not in {
+        BlockType.TEXT,
+        BlockType.DOC_TITLE,
+        BlockType.PARAGRAPH_TITLE,
+        BlockType.PAGE_FOOTNOTE,
+    }:
         raise NonCanonicalWire
 
 
@@ -595,14 +600,14 @@ def _parse_index_leaf(
     return IndexLeafWireSpec(item_type, block_index, content_element, anchor, level)
 
 
-def _collect_title_target_ids(
+def _collect_anchor_target_ids(
     wrappers: list[tuple[etree._Element, int | None]],
 ) -> dict[str, frozenset[str]]:
-    """预收集 renderer 标题 id，供目录 linked carrier 做确定性判定。"""
+    """预收集 renderer 正文和标题 id，供目录 linked carrier 做确定性判定。"""
     collected: dict[str, set[str]] = {}
     for wrapper, _ in wrappers:
         block_type = (wrapper.get("data-block-type") or "").strip()
-        if block_type not in {BlockType.DOC_TITLE, BlockType.PARAGRAPH_TITLE}:
+        if block_type not in {BlockType.TEXT, BlockType.DOC_TITLE, BlockType.PARAGRAPH_TITLE}:
             continue
         anchor = (wrapper.get("data-anchor") or "").strip()
         children = _element_children(wrapper)
@@ -626,7 +631,7 @@ def _is_canonical_index_link(
     target_ids: dict[str, frozenset[str]],
 ) -> bool:
     """判断直属 anchor 是否为 renderer 生成的目录目标外壳。"""
-    if item_type not in {BlockType.DOC_TITLE, BlockType.PARAGRAPH_TITLE} or local_name(element) != "a":
+    if item_type not in {BlockType.TEXT, BlockType.DOC_TITLE, BlockType.PARAGRAPH_TITLE} or local_name(element) != "a":
         return False
     href = (element.get("href") or "").strip()
     if not href.startswith("#"):
@@ -635,9 +640,9 @@ def _is_canonical_index_link(
 
 
 def _validate_index_leaf_metadata(item_type: BlockType, anchor: str, level: int | None) -> None:
-    """校验目录标题叶子的 anchor/level 与普通文本互斥。"""
+    """校验目录叶子的 anchor 与标题 level 组合。"""
     if item_type == BlockType.TEXT:
-        if anchor or level is not None:
+        if level is not None:
             raise NonCanonicalWire
         return
     if not anchor:

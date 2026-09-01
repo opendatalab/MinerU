@@ -51,27 +51,30 @@ def fix_office_paragraph_titles(model_list: list[list[dict[str, Any]]]) -> None:
 
 
 def fix_office_index_title_blocks(model_list: list[list[dict[str, Any]]]) -> None:
-    """按目标标题 anchor 将 Office 目录文本叶子转换为对应标题类型。"""
-    title_by_anchor: dict[str, tuple[str, int]] = {}
+    """按正文目标 anchor 将 Office 目录文本叶子转换为对应正文或标题类型。"""
+    target_by_anchor: dict[str, tuple[str, int | None]] = {}
     for page_model_list in model_list:
         for block in page_model_list:
-            if block.get("type") not in {BlockType.DOC_TITLE, BlockType.PARAGRAPH_TITLE}:
+            block_type = block.get("type")
+            if block_type not in {BlockType.TEXT, BlockType.DOC_TITLE, BlockType.PARAGRAPH_TITLE}:
                 continue
             anchor = block.get("anchor")
             level = block.get("level")
-            if not isinstance(anchor, str) or not anchor.strip() or type(level) is not int:
+            if not isinstance(anchor, str) or not anchor.strip():
                 continue
-            title_by_anchor.setdefault(anchor.strip(), (block["type"], level))
+            if block_type in {BlockType.DOC_TITLE, BlockType.PARAGRAPH_TITLE} and type(level) is not int:
+                continue
+            target_by_anchor.setdefault(anchor.strip(), (block_type, level if type(level) is int else None))
 
     for page_model_list in model_list:
         for block in page_model_list:
             if block.get("type") == BlockType.INDEX:
-                _rewrite_office_index_title_leaves(block, title_by_anchor)
+                _rewrite_office_index_title_leaves(block, target_by_anchor)
 
 
 def _rewrite_office_index_title_leaves(
     index_block: dict[str, Any],
-    title_by_anchor: dict[str, tuple[str, int]],
+    target_by_anchor: dict[str, tuple[str, int | None]],
 ) -> None:
     """递归改写目录叶子；未匹配 anchor 时降级为不带 anchor 的普通文本。"""
     content = index_block.get("content")
@@ -81,17 +84,22 @@ def _rewrite_office_index_title_leaves(
         if not isinstance(child, dict):
             continue
         if child.get("type") == BlockType.INDEX:
-            _rewrite_office_index_title_leaves(child, title_by_anchor)
+            _rewrite_office_index_title_leaves(child, target_by_anchor)
             continue
         if child.get("type") != BlockType.TEXT:
             continue
         anchor = child.get("anchor")
         normalized_anchor = anchor.strip() if isinstance(anchor, str) else ""
-        target = title_by_anchor.get(normalized_anchor)
+        target = target_by_anchor.get(normalized_anchor)
         if target is None:
             child.pop("anchor", None)
             continue
-        child["type"], child["level"] = target
+        target_type, target_level = target
+        child["type"] = target_type
+        if target_level is None:
+            child.pop("level", None)
+        else:
+            child["level"] = target_level
         child["anchor"] = normalized_anchor
 
 

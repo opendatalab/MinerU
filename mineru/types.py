@@ -645,6 +645,7 @@ class ContinuableTextBlockBase(InlineContentBlock):
 
 class TextBlock(ContinuableTextBlockBase):
     type: Literal[BlockType.TEXT]  # type: ignore[reportIncompatibleVariableOverride]
+    anchor: str | None = None
 
 
 class RefTextBlock(ContinuableTextBlockBase):

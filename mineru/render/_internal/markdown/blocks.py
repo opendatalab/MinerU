@@ -63,19 +63,22 @@ def render_planned_block(
     delimiters: LatexDelimitersConfig,
     asset_base_url: str,
     image_renderer: ImageRenderer | None = None,
+    anchor_targets: set[str] | None = None,
+    emitted_anchors: set[str] | None = None,
 ) -> str:
     """按具体 Pydantic block 类型分发 Markdown 渲染。"""
     block = planned.block
     if isinstance(block, TextBlock):
         content = render_joined_inline_contents(planned.text_contents or [block.content], delimiters)
-        return escape_standalone_marker_rule(escape_text_block_markdown_prefix(content))
+        rendered = escape_standalone_marker_rule(escape_text_block_markdown_prefix(content))
+        return _prepend_markdown_anchor(rendered, block.anchor, emitted_anchors)
     if isinstance(block, RefTextBlock):
         content = render_joined_inline_contents(planned.text_contents or [block.content], delimiters)
         return escape_standalone_marker_rule(content)
     if isinstance(block, (DocTitleBlock, ParagraphTitleBlock)):
-        return _render_title(block, delimiters)
+        return _render_title(block, delimiters, emitted_anchors)
     if isinstance(block, PageFootnoteBlock):
-        return _render_page_footnote(block, delimiters)
+        return _render_page_footnote(block, delimiters, emitted_anchors)
     if isinstance(block, PageAuxTextBlock):
         content = escape_text_block_markdown_prefix(render_inline_content(block.content, delimiters))
         return escape_standalone_marker_rule(content)
@@ -84,7 +87,7 @@ def render_planned_block(
     if isinstance(block, ListBlock):
         return _render_list(block, delimiters)
     if isinstance(block, IndexBlock):
-        return _render_index(block, delimiters)
+        return _render_index(block, delimiters, anchor_targets=anchor_targets)
     if isinstance(block, ImageBlock):
         return _render_image_block(block, delimiters, asset_base_url, image_renderer)
     if isinstance(block, TableBlock):
@@ -96,7 +99,33 @@ def render_planned_block(
     raise TypeError(f"Unsupported PageBlock type: {type(block).__name__}")
 
 
-def _render_page_footnote(block: PageFootnoteBlock, delimiters: LatexDelimitersConfig) -> str:
+def _claim_markdown_anchor(anchor: str | None, emitted_anchors: set[str] | None) -> str:
+    """规范化 Markdown 目标，并在文档级集合中只登记首次出现的 anchor。"""
+    normalized = (anchor or "").strip()
+    if not normalized:
+        return ""
+    if emitted_anchors is not None:
+        if normalized in emitted_anchors:
+            return ""
+        emitted_anchors.add(normalized)
+    return normalized
+
+
+def _prepend_markdown_anchor(content: str, anchor: str | None, emitted_anchors: set[str] | None) -> str:
+    """给非空 Markdown 正文添加独立 HTML anchor，避免污染正文文本。"""
+    if not content.strip():
+        return content
+    normalized = _claim_markdown_anchor(anchor, emitted_anchors)
+    if not normalized:
+        return content
+    return f'<a id="{html.escape(normalized, quote=True)}"></a>\n{content}'
+
+
+def _render_page_footnote(
+    block: PageFootnoteBlock,
+    delimiters: LatexDelimitersConfig,
+    emitted_anchors: set[str] | None = None,
+) -> str:
     """用非折叠的小字号浅色 HTML 标识输出页面脚注。"""
     content = escape_text_block_markdown_prefix(render_inline_content(block.content, delimiters))
     rendered = escape_standalone_marker_rule(content)
@@ -108,7 +137,7 @@ def _render_page_footnote(block: PageFootnoteBlock, delimiters: LatexDelimitersC
         'data-block-type="page_footnote"',
         'style="color:#6b7280"',
     ]
-    anchor = (block.anchor or "").strip()
+    anchor = _claim_markdown_anchor(block.anchor, emitted_anchors)
     if anchor:
         attrs.insert(0, f'id="{html.escape(anchor, quote=True)}"')
     return f"<small><span {' '.join(attrs)}>{rendered}</span></small>"
@@ -135,14 +164,15 @@ def render_single_block(
 def _render_title(
     block: DocTitleBlock | ParagraphTitleBlock,
     delimiters: LatexDelimitersConfig,
+    emitted_anchors: set[str] | None = None,
 ) -> str:
     """渲染带可选 HTML anchor 的 Markdown 标题。"""
     level = min(max(block.level, 1), 6)
     title = f"{'#' * level} {render_title_inline_content(block, delimiters)}"
-    if not block.anchor:
+    anchor = _claim_markdown_anchor(block.anchor, emitted_anchors)
+    if not anchor:
         return title
-    anchor = html.escape(block.anchor.strip(), quote=True)
-    return f'<a id="{anchor}"></a>\n{title}'
+    return f'<a id="{html.escape(anchor, quote=True)}"></a>\n{title}'
 
 
 def render_title_inline_content(
@@ -195,12 +225,18 @@ def _render_list(block: ListBlock, delimiters: LatexDelimitersConfig, depth: int
     return "\n".join(lines)
 
 
-def _render_index(block: IndexBlock, delimiters: LatexDelimitersConfig, depth: int = 0) -> str:
+def _render_index(
+    block: IndexBlock,
+    delimiters: LatexDelimitersConfig,
+    depth: int = 0,
+    *,
+    anchor_targets: set[str] | None = None,
+) -> str:
     """递归渲染目录列表，并给标题叶子添加内部 anchor 链接。"""
     lines: list[str] = []
     for child in block.content:
         if isinstance(child, IndexBlock):
-            nested = _render_index(child, delimiters, depth + 1)
+            nested = _render_index(child, delimiters, depth + 1, anchor_targets=anchor_targets)
             if nested:
                 lines.extend(nested.splitlines())
             continue
@@ -208,8 +244,9 @@ def _render_index(block: IndexBlock, delimiters: LatexDelimitersConfig, depth: i
         label = render_inline_content(content, delimiters).strip()
         if not label:
             continue
-        if isinstance(child, (DocTitleBlock, ParagraphTitleBlock)) and child.anchor:
-            label = render_internal_link(label, child.anchor)
+        anchor = (child.anchor or "").strip()
+        if anchor and (anchor_targets is None or anchor in anchor_targets):
+            label = render_internal_link(label, anchor)
         lines.append(f"{'    ' * depth}- {label}")
     return "\n".join(lines)
 

@@ -108,7 +108,7 @@ def _materialize_text(spec: TextWireSpec, projector: MarkupProjector) -> dict[st
     }
     if spec.block_type in {BlockType.DOC_TITLE, BlockType.PARAGRAPH_TITLE}:
         block["level"] = int(spec.wrapper.get("data-level") or 1)
-    if spec.block_type in {BlockType.DOC_TITLE, BlockType.PARAGRAPH_TITLE, BlockType.PAGE_FOOTNOTE}:
+    if spec.block_type in {BlockType.TEXT, BlockType.DOC_TITLE, BlockType.PARAGRAPH_TITLE, BlockType.PAGE_FOOTNOTE}:
         anchor = (spec.wrapper.get("data-anchor") or "").strip()
         if anchor:
             block["anchor"] = anchor
@@ -254,8 +254,9 @@ def _materialize_index_leaf(spec: IndexLeafWireSpec, projector: MarkupProjector)
     """恢复目录叶子的内容和标题元数据。"""
     content = _project_inline_content(projector, spec.content_element) if spec.content_element is not None else []
     block: dict[str, object] = {"type": spec.block_type, "content": content}
-    if spec.block_type in {BlockType.DOC_TITLE, BlockType.PARAGRAPH_TITLE}:
+    if spec.anchor:
         block["anchor"] = spec.anchor
+    if spec.block_type in {BlockType.DOC_TITLE, BlockType.PARAGRAPH_TITLE}:
         block["level"] = spec.level or 1
     if spec.block_index is not None:
         block["index"] = spec.block_index

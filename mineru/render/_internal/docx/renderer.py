@@ -160,6 +160,8 @@ class _DocxRenderer:
                 planned.text_contents or [block.content],
                 context=context,
             )
+            if isinstance(block, TextBlock):
+                self.bookmarks.attach(paragraph, block.anchor)
             return
         if isinstance(block, (DocTitleBlock, ParagraphTitleBlock)):
             self._render_title(block, context)
@@ -320,8 +322,7 @@ class _DocxRenderer:
             paragraph.paragraph_format.left_indent = Mm((depth + 1) * 6)
             paragraph.paragraph_format.first_line_indent = Mm(-4)
             paragraph.add_run("• ")
-            anchor = child.anchor if isinstance(child, TitleBlockBase) else None
-            append_internal_link(paragraph, content, anchor=anchor, context=context)
+            append_internal_link(paragraph, content, anchor=child.anchor, context=context)
 
     def _render_image_block(self, block: ImageBlock, context: InlineRenderContext) -> None:
         """按原始子块顺序写图片主体、caption 与 footnote。"""
@@ -813,10 +814,10 @@ def render_docx(
 
 
 def _iter_document_anchors(middle_json: MiddleJson) -> Iterable[str]:
-    """遍历标题和默认可见页面脚注实际会写入的 bookmark anchor。"""
+    """遍历正文、标题和默认可见页面脚注实际会写入的 bookmark anchor。"""
     for page in middle_json.pages:
         for block in page.blocks:
-            if isinstance(block, TitleBlockBase) and block.anchor:
+            if isinstance(block, (TextBlock, TitleBlockBase)) and block.anchor:
                 yield block.anchor
             elif isinstance(block, PageFootnoteBlock) and block.anchor:
                 yield block.anchor

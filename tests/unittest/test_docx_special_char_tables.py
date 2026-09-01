@@ -80,6 +80,21 @@ def _build_plain_docx_table() -> bytes:
     return _save_docx_bytes(doc)
 
 
+def _build_nested_merged_docx_table() -> bytes:
+    """构造含嵌套行、纵向合并和编号样式的完整上下文表格。"""
+    doc = Document()
+    table = doc.add_table(rows=2, cols=2)
+    merged = table.cell(0, 0).merge(table.cell(1, 0))
+    merged.paragraphs[0].add_run("纵向合并")
+    nested = table.cell(0, 1).add_table(rows=2, cols=1)
+    nested.cell(0, 0).paragraphs[0].add_run("嵌套首行")
+    numbered = nested.cell(1, 0).paragraphs[0]
+    numbered.style = doc.styles["List Number"]
+    numbered.add_run("嵌套编号行")
+    table.cell(1, 1).paragraphs[0].add_run("外层尾行")
+    return _save_docx_bytes(doc)
+
+
 def test_no_break_hyphen_table_not_lost() -> None:
     """验证不间断连字符与编号列表并存时整表不会丢失。"""
     tables = _table_blocks(_convert_docx_bytes(_build_docx_with_no_break_hyphen_table()))
@@ -115,6 +130,22 @@ def test_plain_table_still_emitted() -> None:
 
     assert len(tables) == 1
     assert "APTT" in tables[0]["content"]
+
+
+def test_nested_merged_table_uses_recursive_row_signature_and_full_context() -> None:
+    """验证 XML/HTML 递归行数对齐后不会进入缺少编号上下文的孤立回退。"""
+    file_bytes = _build_nested_merged_docx_table()
+    converter = DocxConverter()
+    preparsed = converter._preparse_tables_with_mammoth(file_bytes)
+
+    assert len(preparsed) == 1
+    assert preparsed[0] is not None
+    tables = _table_blocks(_convert_docx_bytes(file_bytes))
+    assert len(tables) == 1
+    assert "纵向合并" in tables[0]["content"]
+    assert "嵌套首行" in tables[0]["content"]
+    assert "嵌套编号行" in tables[0]["content"]
+    assert "外层尾行" in tables[0]["content"]
 
 
 def test_xml_table_signature_renders_special_chars() -> None:
