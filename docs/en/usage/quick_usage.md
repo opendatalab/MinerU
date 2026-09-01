@@ -45,6 +45,7 @@ If you need to adjust parsing options through custom parameters, you can also ch
   >
   >- `POST /tasks` returns immediately with a `task_id`. `POST /file_parse` uses the same task manager internally, waits for the task to finish, and then returns the final result synchronously.
   >- When a task is waiting in the queue, both the submission response and task-status response may include `queued_ahead` to indicate how many tasks are ahead of it.
+  >- `POST /file_parse` and `POST /tasks` accept an optional integer form field `priority`. When execution slots are contended, tasks with a larger `priority` are scheduled first, while tasks with the same priority keep submission order. The default is 0, which preserves the traditional first-come-first-served behavior, and each task's priority is echoed in its status payload.
   >- Tasks are tracked only in-process for a single `mineru-api` instance. Task status is not preserved across service restarts, `--reload`, or multi-process deployments.
   >- Completed or failed tasks are retained for 24 hours by default, then their task state and output directory are cleaned automatically. After cleanup, task status and result endpoints return `404`.
   >- Use `MINERU_API_TASK_RETENTION_SECONDS` and `MINERU_API_TASK_CLEANUP_INTERVAL_SECONDS` to adjust retention and cleanup polling intervals.

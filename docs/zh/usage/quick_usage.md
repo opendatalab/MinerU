@@ -45,6 +45,7 @@ mineru -p <input_path> -o <output_path>
   >
   >- `POST /tasks` 会立即返回 `task_id`；`POST /file_parse` 会在内部提交到同一个任务管理器，等待任务完成后同步返回最终结果。
   >- 当任务处于排队状态时，任务提交结果和状态查询结果中可能会返回 `queued_ahead` 字段，用于表示前方排队任务数。
+  >- `POST /file_parse` 和 `POST /tasks` 接受可选的整数表单字段 `priority`。并发槽位竞争时，`priority` 较大的任务优先调度，相同优先级保持提交顺序；默认值 0 保持传统的先来先服务行为，任务状态中会回显其优先级。
   >- 任务为单进程、进程内状态实现，服务重启、`--reload` 热重载或多进程部署后不保证仍可查询历史任务状态。
   >- 默认任务完成或失败后保留 24 小时，随后自动清理任务状态和输出目录；清理后访问任务状态或结果会返回 `404`。
   >- 可通过环境变量 `MINERU_API_TASK_RETENTION_SECONDS` 和 `MINERU_API_TASK_CLEANUP_INTERVAL_SECONDS` 调整保留时长与清理轮询间隔。
