@@ -11,6 +11,8 @@
 
 当前阶段的事实来源是本目录专题文档和仓库代码。后续当某个主题完成审阅后，可以把对应文档从 Draft 提升为稳定设计文档。
 
+状态词汇约定：专题文档使用 `Draft`（设计或核对中）与 `Implemented`（已逐条对照代码核验通过）；ADR 使用 `Proposed / Accepted / Deprecated / Superseded`，决策与当前代码核验一致时注记为 `Accepted，已实现`；被取代或仅作历史快照的文档分别标注 `Superseded` 与 `Legacy`。
+
 ## 推荐阅读顺序
 
 1. [产品路线图](roadmap.md): 先理解产品定位、边界和优先级。

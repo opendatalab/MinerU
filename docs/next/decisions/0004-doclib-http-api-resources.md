@@ -64,12 +64,12 @@ POST /invalidate
 
 ```http
 GET /parses?ids=12,13
-GET /parses?sha256=...&tier=basic
-GET /parses?sha256=...&tier=basic&status=pending
-GET /parses?sha256=...&tier=basic&page_range=1~10
+GET /parses?doc_ref=...&tier=basic
+GET /parses?doc_ref=...&tier=basic&status=pending
+GET /parses?doc_ref=...&tier=basic&page_range=1~10
 ```
 
-`ids` 查询用于 CLI wait 等精确请求状态判断。`sha256 + tier + page_range` 查询用于计算页覆盖状态。
+`ids` 查询用于 CLI wait 等精确请求状态判断。`doc_ref + tier + page_range` 查询用于计算页覆盖状态（过滤参数为 `doc_ref`，可接受 sha256 或 path 等文档引用，与 [ADR-0003](0003-parse-request-wait-batches.md) 一致）。
 所有 list 响应统一包含 `total`、`limit`、`offset` 分页元数据。
 
 `GET /parses/{id}` 返回单条 parse record。
