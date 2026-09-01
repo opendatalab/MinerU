@@ -27,6 +27,7 @@ from ..filetypes import IMAGE_EXTENSIONS, TEXT_EXTENSIONS, TEXT_FILE_TYPES
 from ..parser.tier import TierDependencyError, ensure_tier_runtime_dependencies
 from ..render._internal.markdown.assets import build_markdown_image
 from ..render._internal.markdown.blocks import render_single_block
+from ..utils.image_payload import parse_image_data_uri_strict
 from ..types import (
     DEPLOYMENT_TIERS,
     TIERS,
@@ -71,9 +72,7 @@ from .services.parse_svc import (
     accessible_file_for_sha256,
     filter_pages_by_user_range,
     load_pages_from_done_batches,
-    parse_image_sidecar_dir,
     parse_page_range_set,
-    resolve_image_sidecar_path,
 )
 from .telemetry.buckets import pages_bucket, results_bucket
 from .types import (
@@ -211,7 +210,7 @@ _VISUAL_BLOCK_LABELS = {
 @dataclass(frozen=True)
 class _BlockImageSource:
     kind: str
-    sidecar_path: Path | None = None
+    data_uri: str | None = None
 
 
 @dataclass(frozen=True)
@@ -1227,8 +1226,6 @@ class DoclibServer(AsyncDoclibInterface):
                 text
                 for _, text in _page_markdown_blocks(
                     page,
-                    data_dir=data_dir,
-                    sha256=sha256,
                     short_id=doc["short_id"],
                     tier=tier,
                 )
@@ -1254,8 +1251,6 @@ class DoclibServer(AsyncDoclibInterface):
         pages_for_render = _select_context_pages(loaded_pages, plan.target, plan.context)
         rendered = _render_progressive_markdown(
             pages_for_render,
-            data_dir=data_dir,
-            sha256=plan.sha256,
             short_id=plan.short_id,
             tier=plan.tier,
             after=_parse_after_cursor(plan.after),
@@ -1318,15 +1313,14 @@ class DoclibServer(AsyncDoclibInterface):
             block = _find_block_by_no(page, plan.target.block_no)
             if block is None:
                 raise NotFoundError("block_not_found", f"Block {plan.target.block_no} not found.", "locator")
-            image_dir = parse_image_sidecar_dir(_effective_data_dir(self.state), plan.sha256, plan.tier)
-            source = _resolve_block_image_source(block, image_dir=image_dir)
+            source = _resolve_block_image_source(block)
             if source is None:
                 raise NotFoundError("asset_not_available", "Block image asset is not available.", "locator")
             if source.kind == "source_bbox":
                 asset = await self._render_source_image_asset(plan, page)
             else:
-                assert source.sidecar_path is not None
-                asset = self._render_sidecar_image_asset(plan, source.sidecar_path)
+                assert source.data_uri is not None
+                asset = self._render_base64_image_asset(plan, source.data_uri)
 
         target_ref = plan.locator or page_ref(plan.short_id, plan.tier, plan.target.page_no)
         return DocContentResponse(
@@ -1458,8 +1452,8 @@ class DoclibServer(AsyncDoclibInterface):
             height=height,
         )
 
-    def _render_sidecar_image_asset(self, plan: _ReadPlan, sidecar_path: Path) -> ContentAsset:
-        image_bytes = sidecar_path.read_bytes()
+    def _render_base64_image_asset(self, plan: _ReadPlan, data_uri: str) -> ContentAsset:
+        image_bytes, _extension = parse_image_data_uri_strict(data_uri)
         image_bytes = _transcode_image_bytes(image_bytes, plan.image_format)
         width, height = _image_size_from_bytes(image_bytes)
         return _write_temp_asset(
@@ -1801,31 +1795,24 @@ def _is_empty_bbox(bbox: object) -> bool:
     return values[0] >= values[2] or values[1] >= values[3]
 
 
-def _resolve_block_image_source(block: BlockBase, *, image_dir: str) -> _BlockImageSource | None:
+def _resolve_block_image_source(block: BlockBase) -> _BlockImageSource | None:
     if not _is_empty_bbox(block.bbox):
         return _BlockImageSource(kind="source_bbox")
     for payload in _iter_block_image_payloads(block):
-        if not payload.image_path:
-            continue
-        candidate = resolve_image_sidecar_path(image_dir, payload.image_path)
-        if candidate is not None and candidate.is_file():
-            return _BlockImageSource(kind="sidecar", sidecar_path=candidate)
+        if payload.image_base64:
+            return _BlockImageSource(kind="base64", data_uri=payload.image_base64)
     return None
 
 
 def _make_doclib_image_renderer(
     *,
-    data_dir: str,
-    sha256: str,
     short_id: str,
     tier: Tier,
     page_no: int,
 ) -> Callable[[BlockBase], str]:
-    image_dir = parse_image_sidecar_dir(data_dir, sha256, tier)
-
     def _render(block: BlockBase) -> str:
         label = _VISUAL_BLOCK_LABELS.get(block.type, "Image block")
-        source = _resolve_block_image_source(block, image_dir=image_dir)
+        source = _resolve_block_image_source(block)
         if source is not None:
             block_no = block.index + 1 if block.index is not None else 0  # TODO: change after block.index's type changed.
             return build_markdown_image(block_ref(short_id, tier, page_no, block_no), label)
@@ -1925,8 +1912,6 @@ def _render_progressive_markdown(
     add_markers: bool,
     target: ContentCursor | None = None,
     context: int = 0,
-    data_dir: str = "",
-    sha256: str = "",
     page_count: int | None = None,
 ) -> _RenderedContent:
     output: list[str] = []
@@ -1942,8 +1927,6 @@ def _render_progressive_markdown(
             continue
         page_blocks = _page_markdown_blocks(
             page,
-            data_dir=data_dir,
-            sha256=sha256,
             short_id=short_id,
             tier=tier,
         )
@@ -2071,8 +2054,6 @@ def _page_marker(page_no: int, page_count: int | None) -> str:
 def _page_markdown_blocks(
     page: PageInfo,
     *,
-    data_dir: str = "",
-    sha256: str = "",
     short_id: str = "",
     tier: Tier = "standard",
 ) -> list[tuple[int, str]]:
@@ -2080,8 +2061,6 @@ def _page_markdown_blocks(
 
     result: list[tuple[int, str]] = []
     image_renderer = _make_doclib_image_renderer(
-        data_dir=data_dir,
-        sha256=sha256,
         short_id=short_id,
         tier=tier,
         page_no=page.page_idx + 1,
