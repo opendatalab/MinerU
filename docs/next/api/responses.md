@@ -93,7 +93,9 @@ Idempotency-Key: 7f5b7f7c-5c5a-4b2f-bb89-0c901c9a2d6a
 | `permission_error` | 权限不足、配额耗尽或功能需要更高 access level。 |
 | `rate_limit_error` | 请求触发限流。 |
 | `engine_error` | 解析引擎不可用、崩溃或解析失败。 |
-| `api_error` | 服务端内部错误。 |
+| `timeout_error` | 请求等待或处理超时。 |
+| `internal_error` | 服务端内部错误（未归类异常）。 |
+| `api_error` | 服务端 API 层错误（存储、元数据、远端依赖等副作用失败）。 |
 
 ## 常用错误码
 

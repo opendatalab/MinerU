@@ -44,7 +44,7 @@ GET /v1/health HTTP/1.1
 
 | HTTP | code | 场景 |
 |------|------|------|
-| 503 | `service_unavailable` | 服务启动中或无法处理请求。 |
+| 503 | `engine_error` 类模型预加载错误码 | 模型预加载未成功，服务尚不能处理请求。本地实现返回 `model_preload_dependency_missing`、`model_preload_files_missing`、`model_preload_device_unavailable` 或 `model_preload_failed`，`type` 固定为 `engine_error`。 |
 
 ## GET `/v1/models`
 
@@ -63,11 +63,22 @@ GET /v1/models HTTP/1.1
   "object": "list",
   "data": [
     {
-      "id": "pipeline",
+      "id": "MinerU-Flash",
       "object": "model",
       "created": 1700000000,
-      "owned_by": "mineru",
-      "description": "Pipeline-based parsing model."
+      "owned_by": "mineru"
+    },
+    {
+      "id": "Hybrid-Basic",
+      "object": "model",
+      "created": 1700000000,
+      "owned_by": "mineru"
+    },
+    {
+      "id": "MinerU-HTML",
+      "object": "model",
+      "created": 1700000000,
+      "owned_by": "mineru"
     },
     {
       "id": "MinerU2.5-Pro-2605-1.2B",
@@ -79,6 +90,8 @@ GET /v1/models HTTP/1.1
   ]
 }
 ```
+
+Local Parse Server 默认（`--tier standard`）按上述顺序返回 `MinerU-Flash`、`Hybrid-Basic`、`MinerU-HTML`、`MinerU2.5-Pro-2605-1.2B`；实际模型列表由启动 `--tier`（与 `--no-flash`）决定。
 
 模型对象字段:
 
