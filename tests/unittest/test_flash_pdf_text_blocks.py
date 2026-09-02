@@ -832,6 +832,105 @@ def test_inline_scripts_and_touching_low_coverage_runs_are_recovered() -> None:
     )
 
 
+def test_title_resolved_visual_row_merges_sparse_short_prefix() -> None:
+    """验证同视觉行的短前缀与远端宽正文按字体族和基线恢复。"""
+
+    lines = [
+        _text_line(
+            "prefix",
+            (0.0, 0.0, 15.0, 10.0),
+            0,
+            visual_row_id=7,
+            run_index=0,
+            split_from_row=True,
+            font_signature=("SimSun", 0),
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "wide body",
+            (60.0, 0.0, 140.0, 10.0),
+            1,
+            visual_row_id=7,
+            run_index=1,
+            split_from_row=True,
+            font_signature=("ABCDEF+SimSun", 0),
+            font_coverage=1.0,
+        ),
+    ]
+
+    merged = line_merging._merge_title_resolved_visual_rows(
+        lines,
+        (200.0, 100.0),
+    )
+
+    assert len(merged) == 1
+    assert merged[0].text == "prefix wide body"
+
+
+@pytest.mark.parametrize(
+    "failure_mode",
+    [
+        "font-conflict",
+        "different-row",
+        "protected-boundary",
+        "two-wide-runs",
+    ],
+)
+def test_title_resolved_visual_row_rejects_weak_sparse_prefix(
+    failure_mode: str,
+) -> None:
+    """验证字体、行身份、保护边界或前缀宽度不符时保留拆分。"""
+
+    prefix_bbox = (
+        (0.0, 0.0, 40.0, 10.0)
+        if failure_mode == "two-wide-runs"
+        else (0.0, 0.0, 15.0, 10.0)
+    )
+    lines = [
+        _text_line(
+            "prefix",
+            prefix_bbox,
+            0,
+            visual_row_id=7,
+            run_index=0,
+            split_from_row=True,
+            preserve_split_boundary=(
+                failure_mode == "protected-boundary"
+            ),
+            font_signature=("SimSun", 0),
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "wide body",
+            (85.0, 0.0, 165.0, 10.0)
+            if failure_mode == "two-wide-runs"
+            else (60.0, 0.0, 140.0, 10.0),
+            1,
+            visual_row_id=(
+                8 if failure_mode == "different-row" else 7
+            ),
+            run_index=1,
+            split_from_row=True,
+            font_signature=(
+                ("OtherFont", 0)
+                if failure_mode == "font-conflict"
+                else ("ABCDEF+SimSun", 0)
+            ),
+            font_coverage=1.0,
+        ),
+    ]
+
+    merged = line_merging._merge_title_resolved_visual_rows(
+        lines,
+        (200.0, 100.0),
+    )
+
+    assert [line.text for line in merged] == [
+        "prefix",
+        "wide body",
+    ]
+
+
 def test_canonical_reference_scale_merges_bracket_marker_but_not_plain_number() -> None:
     """验证 loose 高度相同的括号引用可按 PDF 字号并入宿主，普通数字保持独立。"""
 
@@ -2538,6 +2637,104 @@ def test_short_tail_and_leading_typography_run_split_structured_text() -> None:
 
     assert [block["content"] for block in blocks] == ["tail", "opener body"]
     assert [block["content"] for block in control] == ["tail opener body"]
+
+
+def test_same_baseline_merge_preserves_paragraph_formula_context() -> None:
+    """验证公式回退上下文在同行碎片合并后不会丢失。"""
+
+    fragments = [
+        _text_line(
+            "left",
+            (0.0, 0.0, 40.0, 10.0),
+            0,
+            font_signature=("Math", 0),
+            font_coverage=0.5,
+            paragraph_formula_context=True,
+        ),
+        _text_line(
+            "right",
+            (40.1, 0.0, 80.0, 10.0),
+            1,
+            font_signature=("Math", 0),
+            font_coverage=0.5,
+        ),
+    ]
+
+    merged = line_merging._merge_same_baseline_text_lines(
+        fragments,
+        (100.0, 100.0),
+        [],
+    )
+
+    assert len(merged) == 1
+    assert merged[0].paragraph_formula_context
+
+
+@pytest.mark.parametrize("row_count", [2, 3, 6])
+def test_formula_style_text_rows_split_pairwise_without_count_gate(
+    row_count: int,
+) -> None:
+    """验证两行起任意长度的独立公式样式文本均按相邻行拆分。"""
+
+    rows = [
+        _text_line(
+            f"row {index}",
+            (20.0 - index, 14.0 * index, 80.0 + index, 14.0 * index + 10.0),
+            index,
+            font_signature=("Math", 0),
+            font_coverage=0.5,
+            paragraph_formula_context=True,
+        )
+        for index in range(row_count)
+    ]
+    lane = models._TextLane(
+        left=0.0,
+        right=100.0,
+        lines=[(row, row.bbox) for row in rows],
+    )
+
+    break_sources = text_blocks._formula_style_text_row_break_sources(lane)
+
+    assert break_sources == set(range(row_count))
+
+
+@pytest.mark.parametrize(
+    "second_bbox",
+    [
+        (35.0, 11.0, 65.0, 21.0),
+        (20.0, 5.0, 80.0, 15.0),
+    ],
+    ids=["narrow-denominator", "overlapping-script-tier"],
+)
+def test_formula_style_text_rows_keep_connected_math_fragments(
+    second_bbox: tuple[float, float, float, float],
+) -> None:
+    """验证窄分母和垂直重叠层级不会被拆成独立正文块。"""
+
+    rows = [
+        _text_line(
+            "formula body",
+            (20.0, 0.0, 80.0, 10.0),
+            0,
+            paragraph_formula_context=True,
+        ),
+        _text_line(
+            "math fragment",
+            second_bbox,
+            1,
+            paragraph_formula_context=True,
+        ),
+    ]
+
+    blocks = text_blocks._build_text_blocks(
+        rows,
+        [],
+        (100.0, 100.0),
+    )
+
+    assert [block["content"] for block in blocks] == [
+        "formula body math fragment",
+    ]
 
 
 def test_native_typography_separates_loose_height_from_canonical_em() -> None:

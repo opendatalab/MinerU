@@ -567,10 +567,24 @@ def _footnote_lane_members(
         rule_bbox[0] < lane.left
         and lane.left - rule_bbox[0] <= 2.25 * median_height
     )
-    if not strict_left_alignment and not relaxed_left_alignment:
+    rule_center_y = _bbox_center_y(rule_bbox)
+    centered_short_alignment = (
+        not lane.is_span
+        and rule_center_y >= 0.7 * local_page_height
+        and 0.35 * lane_width <= rule_width <= 0.7 * lane_width
+        and abs(
+            _bbox_center_x(rule_bbox)
+            - 0.5 * (lane.left + lane.right)
+        )
+        <= 0.08 * lane_width
+    )
+    if (
+        not strict_left_alignment
+        and not relaxed_left_alignment
+        and not centered_short_alignment
+    ):
         return set()
 
-    rule_center_y = _bbox_center_y(rule_bbox)
     is_regular_short_rule = (
         rule_center_y >= 0.7 * local_page_height
         and rule_width <= 0.65 * lane_width
@@ -582,7 +596,11 @@ def _footnote_lane_members(
         and 0.65 * lane_width <= rule_width <= 1.05 * lane_width
         and abs(rule_bbox[2] - lane.right) <= endpoint_tolerance
     )
-    if not is_regular_short_rule and not is_column_width_rule:
+    if (
+        not is_regular_short_rule
+        and not is_column_width_rule
+        and not centered_short_alignment
+    ):
         return set()
 
     # 首行采用较宽的 3.5% 页高窗口；命中后仅按紧凑的连续净空向下扩展。
@@ -648,6 +666,40 @@ def _footnote_lane_members(
             len(members) < 2
             or first_height > 0.9 * reference_height
             or horizontal_overlap / max(0.1, rule_width) < 0.8
+        ):
+            return set()
+    if centered_short_alignment:
+        reference_height = max(
+            median_height,
+            page_median_height or 0.0,
+        )
+        projecting_rows_above = []
+        for _line, bbox in lane_lines[:first_index]:
+            overlap = max(
+                0.0,
+                min(rule_bbox[2], bbox[2])
+                - max(rule_bbox[0], bbox[0]),
+            )
+            row_width = max(0.1, bbox[2] - bbox[0])
+            if (
+                bbox[1] < rule_bbox[1]
+                and overlap
+                >= 0.2 * min(rule_width, row_width)
+            ):
+                projecting_rows_above.append(bbox)
+        if any(
+            bbox[3]
+            > rule_bbox[1] - 0.75 * reference_height
+            for bbox in projecting_rows_above
+        ):
+            # 分式横线位于公式成员之间；真正的脚注分隔线上方应保留正文净空。
+            return set()
+        member_height = statistics.median(
+            _line_effective_height(*member) for member in members
+        )
+        if (
+            len(members) < 2
+            or member_height > 0.9 * reference_height
         ):
             return set()
     return {line.source_index for line, _bbox in members}
@@ -746,7 +798,7 @@ def _classify_rule_delimited_headers(pages: list[_PreparedPage]) -> None:
         ]
         if not candidates:
             continue
-        separator = max(candidates, key=lambda item: _bbox_center_y(item.bbox))
+        separator = min(candidates, key=lambda item: _bbox_center_y(item.bbox))
         separator_y = _bbox_center_y(separator.bbox)
         local_lines = [
             (

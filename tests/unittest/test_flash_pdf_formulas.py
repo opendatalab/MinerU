@@ -218,6 +218,67 @@ def test_inline_prose_formula_component_returns_to_paragraph_context() -> None:
     assert {line.source_index for line in remaining} == set(range(7))
 
 
+def test_isolated_numbered_fraction_overrides_left_prose_shape() -> None:
+    """验证带分数线和上下净空的编号多层公式不被变量名误判为正文。"""
+
+    body_font = ("Body", 0)
+    lines = [
+        _text_line(
+            "preceding body",
+            (0.0, 0.0, 100.0, 10.0),
+            0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "FZ SSEs KSSEc=SSEx",
+            (0.0, 25.0, 60.0, 35.0),
+            1,
+            font_signature=("Math", 0),
+            font_coverage=0.6,
+        ),
+        _text_line(
+            "SSEc=dfc",
+            (25.0, 36.0, 45.0, 46.0),
+            2,
+            font_signature=("Math", 0),
+            font_coverage=0.6,
+        ),
+        _text_line(
+            "(7)",
+            (91.0, 31.0, 100.0, 41.0),
+            3,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "following body",
+            (0.0, 60.0, 100.0, 70.0),
+            4,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+    ]
+
+    lane = models._TextLane(
+        left=0.0,
+        right=100.0,
+        lines=[(line, line.bbox) for line in lines],
+    )
+
+    assert formulas._formula_component_has_left_prose(
+        [(line, line.bbox) for line in lines[1:4]],
+        lane,
+        10.0,
+    )
+    assert formulas._formula_component_has_isolated_numbered_fraction(
+        [(line, line.bbox) for line in lines[1:4]],
+        lane,
+        10.0,
+        [(10.0, 34.5, 60.0, 35.0)],
+    )
+
+
 def _vector_path(
     bbox: tuple[float, float, float, float],
     source_index: int,

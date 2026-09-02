@@ -101,6 +101,7 @@ from .auxiliary_text import (
 from .titles import (
     _classify_body_height_section_titles,
     _classify_explicit_section_titles,
+    _classify_inline_typography_reset_titles,
     _classify_document_structural_titles,
     _classify_page_titles,
     _infer_document_body_profile,
@@ -653,6 +654,7 @@ def _rebuild_canonical_formula_blocks(
         formula_input,
         prepared.table_bboxes,
         prepared.page_size,
+        drawing_lines=prepared.drawing_lines,
     )
     return blocks
 
@@ -758,6 +760,7 @@ def _finalize_prepared_page(
         formula_input,
         prepared.table_bboxes,
         prepared.page_size,
+        drawing_lines=prepared.drawing_lines,
     )
     if prepared.canonical_formula_geometry and prepared.canonical_formula_source_lines:
         canonical_formula_blocks = _rebuild_canonical_formula_blocks(
@@ -788,6 +791,12 @@ def _finalize_prepared_page(
     ]
     caption_container_bboxes = [block["bbox"] for block in prepared.fixed_blocks if block.get("type") in {"image", "code"}]
     _classify_explicit_section_titles(
+        remaining_lines,
+        prepared.page_size,
+        container_bboxes=title_container_bboxes,
+        document_body_profile=document_body_profile,
+    )
+    _classify_inline_typography_reset_titles(
         remaining_lines,
         prepared.page_size,
         container_bboxes=title_container_bboxes,

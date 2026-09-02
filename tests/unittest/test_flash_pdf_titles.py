@@ -7,6 +7,7 @@ import pytest
 from mineru.model.flash.pdf import (
     line_layout,
     line_merging,
+    models,
     text_blocks,
     titles,
 )
@@ -859,6 +860,187 @@ def test_first_page_centered_body_style_metadata_does_not_use_title_fallback() -
     assert lines[0].semantic_type is None
 
 
+def test_first_page_centered_small_regular_metadata_requires_emphasis() -> None:
+    """验证首页正文区的小字号常规字体元数据不会仅凭居中和留白晋升。"""
+
+    body_font = ("Body", 0)
+    lines = [
+        _text_line(
+            "body above one",
+            (0.0, 10.0, 100.0, 20.0),
+            0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "body above two",
+            (0.0, 22.0, 100.0, 32.0),
+            1,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "centered metadata",
+            (25.0, 48.0, 75.0, 55.0),
+            2,
+            effective_height=7.0,
+            font_signature=body_font,
+            font_coverage=1.0,
+            dominant_font_weight=400.0,
+        ),
+        _text_line(
+            "compact body one",
+            (0.0, 72.0, 100.0, 80.0),
+            3,
+            effective_height=8.0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "compact body two",
+            (0.0, 82.0, 100.0, 90.0),
+            4,
+            effective_height=8.0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "compact body three",
+            (0.0, 92.0, 100.0, 100.0),
+            5,
+            effective_height=8.0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+    ]
+    profile = models._DocumentBodyProfile(
+        body_height=10.0,
+        body_weight=400.0,
+        regular_fonts=frozenset({body_font}),
+    )
+
+    titles._classify_page_titles(
+        lines,
+        (100.0, 140.0),
+        page_index=0,
+        container_bboxes=[],
+        document_body_profile=profile,
+    )
+
+    assert lines[2].semantic_type is None
+
+
+def test_first_page_hanging_title_rows_demote_to_text_geometry() -> None:
+    """验证近满栏缩进首行接栏左续行的标题组在首页降回正文。"""
+
+    heading_font = ("Heading", 0)
+    first = _text_line(
+        "first row",
+        (10.0, 10.0, 100.0, 20.0),
+        0,
+        font_signature=heading_font,
+        font_coverage=1.0,
+        semantic_type="paragraph_title",
+    )
+    second = _text_line(
+        "second row",
+        (0.0, 20.2, 55.0, 30.2),
+        1,
+        font_signature=heading_font,
+        font_coverage=1.0,
+        semantic_type="paragraph_title",
+    )
+    lane = models._TextLane(
+        left=0.0,
+        right=100.0,
+        lines=[
+            (first, first.bbox),
+            (second, second.bbox),
+        ],
+    )
+    profile = models._DocumentBodyProfile(
+        body_height=10.0,
+        body_weight=400.0,
+        regular_fonts=frozenset({("Body", 0)}),
+    )
+
+    titles._demote_hanging_multiline_text_titles(
+        [lane],
+        profile,
+        page_index=0,
+    )
+
+    assert first.semantic_type is None
+    assert second.semantic_type is None
+    assert first.title_suppressed
+    assert second.title_suppressed
+
+
+def test_inline_typography_reset_promotes_only_distinct_middle_row() -> None:
+    """验证短段尾、异字体短行和缩进正文的三行结构只提升中间行。"""
+
+    body_font = ("Body", 0)
+    heading_font = ("Heading", 0)
+    lines = [
+        _text_line(
+            "short tail",
+            (0.0, 0.0, 25.0, 10.0),
+            0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "inline heading",
+            (0.0, 11.0, 45.0, 21.0),
+            1,
+            font_signature=heading_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "indented body",
+            (18.0, 22.0, 100.0, 32.0),
+            2,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+    ]
+    profile = models._DocumentBodyProfile(
+        body_height=10.0,
+        body_weight=400.0,
+        regular_fonts=frozenset({body_font}),
+    )
+
+    titles._classify_inline_typography_reset_titles(
+        lines,
+        (100.0, 100.0),
+        container_bboxes=[],
+        document_body_profile=profile,
+    )
+    control = [
+        _text_line(
+            line.text,
+            line.bbox,
+            line.source_index,
+            font_signature=body_font,
+            font_coverage=1.0,
+        )
+        for line in lines
+    ]
+    titles._classify_inline_typography_reset_titles(
+        control,
+        (100.0, 100.0),
+        container_bboxes=[],
+        document_body_profile=profile,
+    )
+
+    assert [line.semantic_type for line in lines] == [
+        None,
+        "paragraph_title",
+        None,
+    ]
+    assert all(line.semantic_type is None for line in control)
+
+
 def test_cross_column_document_title_uses_thirteen_tenths_body_height_fallback() -> None:
     """验证首页跨栏居中标题达到正文 1.30 倍时可命中，作者行保持正文类型。"""
 
@@ -1263,6 +1445,7 @@ def test_paragraph_title_detector_does_not_read_line_text() -> None:
         inspect.getsource(function)
         for function in (
             titles._classify_page_titles,
+            titles._classify_inline_typography_reset_titles,
             titles._infer_document_body_profile,
             titles._classify_body_height_section_titles,
             titles._body_height_section_followers,
@@ -1294,6 +1477,7 @@ def test_paragraph_title_detector_does_not_read_line_text() -> None:
             titles._normalized_title_gap,
             titles._line_near_visual_container,
             titles._is_wide_leading_title_continuation,
+            titles._demote_hanging_multiline_text_titles,
             line_layout._title_fonts_compatible,
             titles._expand_paragraph_title_neighbors,
         )

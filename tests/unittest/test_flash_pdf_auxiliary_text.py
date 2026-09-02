@@ -473,6 +473,103 @@ def test_page_footnote_rejects_left_shifted_rule_with_single_or_body_size_row() 
         assert all(line.semantic_type is None for line in lines)
 
 
+def test_page_footnote_accepts_centered_short_rule_with_small_rows() -> None:
+    """验证栏内居中短横线可凭页面位置和小字号连续行确认脚注。"""
+
+    body = [
+        _text_line(
+            f"body {index}",
+            (100.0, 180.0 + 80.0 * index, 500.0, 190.0 + 80.0 * index),
+            index,
+            effective_height=10.0,
+        )
+        for index in range(4)
+    ]
+    notes = [
+        _text_line(
+            "note one",
+            (100.0, 862.0, 490.0, 870.0),
+            4,
+            effective_height=8.0,
+        ),
+        _text_line(
+            "note two",
+            (100.0, 874.0, 460.0, 882.0),
+            5,
+            effective_height=8.0,
+        ),
+    ]
+    page = _prepared_text_page(
+        *body,
+        *notes,
+        page_size=(1000.0, 1000.0),
+    )
+    page.drawing_lines = [
+        models._AxisLine(
+            (200.0, 850.0, 400.0, 852.0),
+            1.0,
+            "horizontal",
+        )
+    ]
+
+    auxiliary_text._classify_page_auxiliary_text(page)
+
+    assert all(line.semantic_type is None for line in body)
+    assert all(line.semantic_type == "page_footnote" for line in notes)
+    assert page.page_footnote_groups == [{4, 5}]
+
+
+def test_page_footnote_rejects_centered_fraction_rule_without_upper_clearance() -> None:
+    """验证夹在上下公式层级之间的居中横线不会触发页脚注。"""
+
+    body = [
+        _text_line(
+            f"body {index}",
+            (100.0, 180.0 + 80.0 * index, 500.0, 190.0 + 80.0 * index),
+            index,
+            effective_height=10.0,
+        )
+        for index in range(4)
+    ]
+    formula_rows = [
+        _text_line(
+            "formula numerator",
+            (100.0, 842.0, 500.0, 852.0),
+            4,
+            effective_height=10.0,
+        ),
+        _text_line(
+            "formula denominator",
+            (100.0, 854.0, 490.0, 862.0),
+            5,
+            effective_height=8.0,
+        ),
+        _text_line(
+            "formula tail",
+            (100.0, 866.0, 460.0, 874.0),
+            6,
+            effective_height=8.0,
+        ),
+    ]
+    page = _prepared_text_page(
+        *body,
+        *formula_rows,
+        page_size=(1000.0, 1000.0),
+    )
+    page.drawing_lines = [
+        models._AxisLine(
+            (200.0, 850.0, 400.0, 852.0),
+            1.0,
+            "horizontal",
+        )
+    ]
+
+    auxiliary_text._classify_page_auxiliary_text(page)
+
+    assert page.page_footnote_groups == []
+    assert all(line.semantic_type is None for line in formula_rows)
+
+
 def test_page_footnote_accepts_lower_half_column_width_rule_with_smaller_text() -> None:
     """验证页面下半部的栏宽横线可凭字号收缩识别单栏脚注。"""
 
@@ -689,6 +786,65 @@ def test_page_footnote_entries_keep_same_left_compact_continuation() -> None:
 
     assert [[line.source_index for line in entry] for entry in entries] == [
         [0, 1],
+    ]
+
+
+def test_page_footnote_single_geometric_marker_keeps_group_together() -> None:
+    """验证 row id 缺失的单个窄编号首行仍可聚合整组连续脚注。"""
+
+    note_font = ("NoteFont", 0)
+    lines = [
+        _text_line(
+            "1",
+            (10.0, 80.0, 12.0, 88.0),
+            0,
+            visual_row_id=10,
+            effective_height=8.0,
+            font_signature=note_font,
+            font_coverage=1.0,
+            median_glyph_width=2.0,
+            semantic_type="page_footnote",
+        ),
+        _text_line(
+            "first source",
+            (14.0, 80.5, 60.0, 88.5),
+            1,
+            visual_row_id=11,
+            effective_height=8.0,
+            font_signature=note_font,
+            font_coverage=1.0,
+            median_glyph_width=2.0,
+            semantic_type="page_footnote",
+        ),
+        _text_line(
+            "second source",
+            (10.0, 92.0, 70.0, 100.0),
+            2,
+            effective_height=8.0,
+            font_signature=note_font,
+            font_coverage=1.0,
+            median_glyph_width=2.0,
+            semantic_type="page_footnote",
+        ),
+        _text_line(
+            "third source",
+            (10.0, 104.0, 65.0, 112.0),
+            3,
+            effective_height=8.0,
+            font_signature=note_font,
+            font_coverage=1.0,
+            median_glyph_width=2.0,
+            semantic_type="page_footnote",
+        ),
+    ]
+
+    entries = text_blocks._split_page_footnote_entries(
+        lines,
+        (100.0, 140.0),
+    )
+
+    assert [[line.source_index for line in entry] for entry in entries] == [
+        [0, 1, 2, 3],
     ]
 
 
@@ -1024,6 +1180,38 @@ def test_top_rule_marks_only_unclassified_text_above_it_as_header() -> None:
         "header",
         None,
     ]
+
+
+def test_top_rule_uses_first_separator_before_later_section_rule() -> None:
+    """验证页首多条长横线只采用最上方有效页眉分隔线。"""
+
+    header = _text_line("header", (100.0, 30.0, 300.0, 40.0), 0)
+    section = _text_line("section", (100.0, 90.0, 300.0, 110.0), 1)
+    body = _text_line("body", (100.0, 150.0, 700.0, 160.0), 2)
+    page = _prepared_text_page(
+        header,
+        section,
+        body,
+        page_size=(1000.0, 1000.0),
+    )
+    page.drawing_lines = [
+        models._AxisLine(
+            (80.0, 60.0, 920.0, 62.0),
+            1.0,
+            "horizontal",
+        ),
+        models._AxisLine(
+            (80.0, 120.0, 920.0, 122.0),
+            1.0,
+            "horizontal",
+        ),
+    ]
+
+    auxiliary_text._classify_rule_delimited_headers([page])
+
+    assert header.semantic_type == "header"
+    assert section.semantic_type is None
+    assert body.semantic_type is None
 
 
 def test_top_rule_uses_ink_bbox_when_loose_bbox_crosses_separator() -> None:

@@ -13,7 +13,7 @@
         "image": 8,
         "page_footnote": 4,
         "page_number": 9,
-        "paragraph_title": 19,
+        "paragraph_title": 20,
         "table": 3,
         "text": 107
       },
@@ -24,6 +24,11 @@
           "page_index": 9,
           "type": "doc_title",
           "text": "Predictionoffrozensiltysandshearstrengthbasedonfourensemblelearningmethods：Boosting，Bagging，Stacking，andVoting"
+        },
+        {
+          "page_index": 6,
+          "type": "paragraph_title",
+          "text": "6.3模型可解释性分析"
         }
       ],
       "same_block_groups": [
@@ -57,6 +62,10 @@
         {
           "page_index": 6,
           "fragments": ["图7 Voting模型SHAP", "Fig. 7 SHAP"]
+        },
+        {
+          "page_index": 6,
+          "fragments": ["复杂非线性关系", "6. 3 模型可解释性分析"]
         },
         {
           "page_index": 9,

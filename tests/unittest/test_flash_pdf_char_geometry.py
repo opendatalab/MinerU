@@ -428,7 +428,7 @@ def test_versioned_mixed_text_fixture_keeps_normal_geometry_identity() -> None:
 
     diagnostics: list[dict[str, object]] = []
     with pipeline.PDFDocument(pdf_bytes) as document:
-        pipeline._analyze_native_document(document, geometry_diagnostics=diagnostics)  # noqa: SLF001
+        pages = pipeline._analyze_native_document(document, geometry_diagnostics=diagnostics)  # noqa: SLF001
 
     geometry = diagnostics[0]
     assert not any(
@@ -439,6 +439,25 @@ def test_versioned_mixed_text_fixture_keeps_normal_geometry_identity() -> None:
         line["state"] != "healthy"  # type: ignore[index]
         for line in geometry["line_repairs"]  # type: ignore[index]
     )
+    for page_index, section_text in (
+        (4, "1 前言"),
+        (5, "2 准备工作"),
+        (8, "3 工具安装"),
+        (20, "4 常见问题"),
+        (22, "5 附录："),
+    ):
+        section = next(
+            block
+            for block in pages[page_index]
+            if section_text in str(block.get("content"))
+        )
+        security = next(
+            block
+            for block in pages[page_index]
+            if "文档密级：秘密" in str(block.get("content"))
+        )
+        assert section["type"] == "paragraph_title"
+        assert security["type"] == "header"
 
 
 def test_flash_layout_manifest_uses_portable_repository_paths() -> None:

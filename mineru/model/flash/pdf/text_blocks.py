@@ -400,7 +400,7 @@ def _split_page_footnote_entries(
         median_glyph_width,
         base_left,
     )
-    if len(marker_rows) >= 2:
+    if marker_rows:
         return _split_marked_page_footnote_entries(
             line_geometry,
             marker_rows,
@@ -454,7 +454,98 @@ def _find_page_footnote_marker_rows(
             continue
         marker_rows.append((marker, body))
     marker_rows.sort(key=lambda pair: (min(pair[0][1][1], pair[1][1][1]), pair[0][1][0]))
+    if not marker_rows:
+        marker_rows = _find_geometric_page_footnote_marker_rows(
+            line_geometry,
+            median_height,
+            median_glyph_width,
+            base_left,
+        )
     return marker_rows
+
+
+def _find_geometric_page_footnote_marker_rows(
+    line_geometry: list[tuple[_LineItem, BBox]],
+    median_height: float,
+    median_glyph_width: float,
+    base_left: float,
+) -> list[tuple[tuple[_LineItem, BBox], tuple[_LineItem, BBox]]]:
+    """在 row id 缺失时用同基线窄标记和右侧正文恢复脚注首行。"""
+
+    marker_width_limit = max(
+        1.5 * median_glyph_width,
+        0.75 * median_height,
+    )
+    candidates: list[
+        tuple[
+            float,
+            tuple[_LineItem, BBox],
+            tuple[_LineItem, BBox],
+        ]
+    ] = []
+    for marker in line_geometry:
+        marker_width = marker[1][2] - marker[1][0]
+        if (
+            marker_width > marker_width_limit
+            or marker[1][0] - base_left > 0.5 * median_height
+        ):
+            continue
+        for body in line_geometry:
+            if body is marker:
+                continue
+            body_width = body[1][2] - body[1][0]
+            horizontal_gap = body[1][0] - marker[1][2]
+            if (
+                not 0.0 <= horizontal_gap <= 1.5 * median_height
+                or body[1][0] - base_left
+                < max(
+                    1.5 * marker_width,
+                    0.4 * median_height,
+                )
+                or body_width
+                < max(
+                    4.0 * marker_width,
+                    4.0 * median_glyph_width,
+                )
+                or abs(
+                    _bbox_center_y(marker[1])
+                    - _bbox_center_y(body[1])
+                )
+                > 0.4 * median_height
+                or not _title_fonts_compatible(
+                    marker[0],
+                    body[0],
+                )
+            ):
+                continue
+            candidates.append(
+                (
+                    horizontal_gap,
+                    marker,
+                    body,
+                )
+            )
+
+    output = []
+    consumed_sources: set[int] = set()
+    for _gap, marker, body in sorted(
+        candidates,
+        key=lambda item: (
+            min(item[1][1][1], item[2][1][1]),
+            item[0],
+            item[1][0].source_index,
+            item[2][0].source_index,
+        ),
+    ):
+        pair_sources = {
+            marker[0].source_index,
+            body[0].source_index,
+        }
+        if pair_sources & consumed_sources:
+            continue
+        output.append((marker, body))
+        consumed_sources.update(pair_sources)
+    return output
 
 
 def _split_marked_page_footnote_entries(
@@ -859,6 +950,67 @@ def _leading_typography_reset_break_sources(
     return output
 
 
+def _formula_style_text_row_break_sources(
+    lane: _TextLane,
+) -> set[int]:
+    """按相邻显示行几何拆分被公式检测回退为正文的独立文本行。"""
+
+    rows = sorted(
+        (item for item in lane.lines if item[0].semantic_type is None),
+        key=lambda item: (item[1][1], item[1][0], item[0].source_index),
+    )
+    lane_width = max(0.1, lane.right - lane.left)
+    matching_edges: set[int] = set()
+    for index, (previous, current) in enumerate(zip(rows, rows[1:])):
+        previous_line, previous_bbox = previous
+        current_line, current_bbox = current
+        if not (
+            previous_line.paragraph_formula_context
+            and current_line.paragraph_formula_context
+        ):
+            continue
+        previous_height = _line_effective_height(*previous)
+        current_height = _line_effective_height(*current)
+        minimum_height = min(previous_height, current_height)
+        maximum_height = max(previous_height, current_height)
+        if minimum_height < 0.75 * maximum_height:
+            continue
+        previous_width = previous_bbox[2] - previous_bbox[0]
+        current_width = current_bbox[2] - current_bbox[0]
+        if (
+            min(previous_width, current_width) < 0.45 * lane_width
+            or max(previous_width, current_width) > 0.95 * lane_width
+        ):
+            continue
+        lane_center = 0.5 * (lane.left + lane.right)
+        if (
+            abs(_bbox_center_x(previous_bbox) - lane_center) > 0.15 * lane_width
+            or abs(_bbox_center_x(current_bbox) - lane_center) > 0.15 * lane_width
+        ):
+            continue
+        vertical_overlap = max(
+            0.0,
+            min(previous_bbox[3], current_bbox[3])
+            - max(previous_bbox[1], current_bbox[1]),
+        )
+        top_pitch = current_bbox[1] - previous_bbox[1]
+        pair_height = statistics.median((previous_height, current_height))
+        if (
+            vertical_overlap <= 0.2 * minimum_height
+            and 0.9 * pair_height <= top_pitch <= 2.0 * pair_height
+        ):
+            matching_edges.add(index)
+
+    output: set[int] = set()
+    for index in matching_edges:
+        output.add(rows[index][0].source_index)
+        output.add(rows[index + 1][0].source_index)
+        if index + 2 < len(rows):
+            # 同时保护显示行组后的正文起点，避免上下文恢复阶段重新跨界合并。
+            output.add(rows[index + 2][0].source_index)
+    return output
+
+
 def _front_matter_keyword_break_sources(
     lane: _TextLane,
     local_page_height: float,
@@ -1032,11 +1184,16 @@ def _build_text_blocks(
                 regular_gap,
                 gap_mad,
             )
+            formula_text_break_sources = _formula_style_text_row_break_sources(
+                lane,
+            )
             structured_break_sources.update(visual_reset_sources)
             structured_break_sources.update(typography_reset_sources)
+            structured_break_sources.update(formula_text_break_sources)
             protected_break_sources: set[int] = set()
             protected_break_sources.update(visual_reset_sources)
             protected_break_sources.update(typography_reset_sources)
+            protected_break_sources.update(formula_text_break_sources)
             protected_break_sources.update(
                 _front_matter_keyword_break_sources(
                     lane,

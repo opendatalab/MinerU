@@ -428,6 +428,7 @@ def _classify_page_titles(
             local_page_width,
             local_page_height,
             local_container_bboxes,
+            page_index=page_index,
             document_title_bottom=document_title_bottom,
         )
         _classify_cross_lane_emphasized_section_titles(
@@ -458,6 +459,11 @@ def _classify_page_titles(
             )
         _expand_cross_lane_paragraph_title_neighbors(
             line_geometry,
+        )
+        _demote_hanging_multiline_text_titles(
+            lanes,
+            document_body_profile,
+            page_index=page_index,
         )
         _demote_cross_lane_body_continuation_titles(
             line_geometry,
@@ -1123,6 +1129,138 @@ def _collect_legacy_paragraph_title_sources(
         )
         output.update((page_index, line.source_index) for line in probe_lines if line.semantic_type == "paragraph_title")
     return output
+
+
+def _classify_inline_typography_reset_titles(
+    lines: list[_LineItem],
+    page_size: tuple[float, float],
+    *,
+    container_bboxes: list[BBox],
+    document_body_profile: _DocumentBodyProfile | None,
+) -> None:
+    """用短段尾、字体切换和缩进正文识别行内结构标题。"""
+
+    if document_body_profile is None:
+        return
+    for angle in sorted(
+        {
+            line.angle
+            for line in lines
+            if line.semantic_type is None and not line.title_suppressed
+        }
+    ):
+        line_geometry = [
+            (line, _rotate_bbox_to_upright(line.bbox, page_size, angle))
+            for line in lines
+            if line.angle == angle
+            and line.semantic_type is None
+            and not line.title_suppressed
+        ]
+        if len(line_geometry) < 3:
+            continue
+        median_height = statistics.median(
+            _line_effective_height(line, bbox)
+            for line, bbox in line_geometry
+        )
+        local_page_width = (
+            page_size[1] if angle in {90, 270} else page_size[0]
+        )
+        lanes = _infer_text_lanes(
+            line_geometry,
+            local_page_width,
+            median_height,
+        )
+        local_container_bboxes = [
+            _rotate_bbox_to_upright(bbox, page_size, angle)
+            for bbox in container_bboxes
+        ]
+        for lane in lanes:
+            rows = sorted(
+                lane.lines,
+                key=lambda item: (
+                    item[1][1],
+                    item[1][0],
+                    item[0].source_index,
+                ),
+            )
+            lane_width = max(0.1, lane.right - lane.left)
+            for previous, current, following in zip(
+                rows,
+                rows[1:],
+                rows[2:],
+            ):
+                previous_line, previous_bbox = previous
+                current_line, current_bbox = current
+                following_line, following_bbox = following
+                if any(
+                    line.semantic_type is not None
+                    for line in (
+                        previous_line,
+                        current_line,
+                        following_line,
+                    )
+                ):
+                    continue
+                if (
+                    previous_line.font_signature is None
+                    or current_line.font_signature is None
+                    or following_line.font_signature is None
+                    or previous_line.font_coverage < 0.65
+                    or current_line.font_coverage < 0.65
+                    or following_line.font_coverage < 0.65
+                ):
+                    continue
+                if not _font_signatures_share_family(
+                    previous_line.font_signature,
+                    following_line.font_signature,
+                ) or _font_signatures_share_family(
+                    current_line.font_signature,
+                    previous_line.font_signature,
+                ):
+                    continue
+                previous_height = _line_effective_height(*previous)
+                current_height = _line_effective_height(*current)
+                following_height = _line_effective_height(*following)
+                neighbor_height = statistics.median(
+                    (previous_height, following_height),
+                )
+                pair_height = max(
+                    previous_height,
+                    current_height,
+                    following_height,
+                )
+                previous_width = previous_bbox[2] - previous_bbox[0]
+                current_width = current_bbox[2] - current_bbox[0]
+                following_width = following_bbox[2] - following_bbox[0]
+                following_indent = following_bbox[0] - current_bbox[0]
+                if not (
+                    previous_width <= 0.45 * lane_width
+                    and 0.2 * lane_width
+                    <= current_width
+                    <= 0.65 * lane_width
+                    and following_width >= 0.75 * lane_width
+                    and abs(current_bbox[0] - lane.left)
+                    <= 0.75 * pair_height
+                    and 0.75 * pair_height
+                    <= following_indent
+                    <= 3.0 * pair_height
+                    and 0.85
+                    <= current_height / max(0.1, neighbor_height)
+                    <= 1.15
+                    and -0.25 * pair_height
+                    <= _effective_text_row_gap(previous, current)
+                    <= 0.5 * pair_height
+                    and -0.25 * pair_height
+                    <= _effective_text_row_gap(current, following)
+                    <= 0.5 * pair_height
+                    and not _line_inside_visual_container(
+                        current_bbox,
+                        local_container_bboxes,
+                    )
+                ):
+                    continue
+                current_line.semantic_type = "paragraph_title"
+                current_line.structural_title = True
 
 
 def _classify_body_height_section_titles(
@@ -1867,6 +2005,7 @@ def _classify_cross_lane_centered_section_titles(
     local_page_height: float,
     container_bboxes: list[BBox],
     *,
+    page_index: int,
     document_title_bottom: float | None,
 ) -> None:
     """用正文栏中心、上下留白和正文邻行补标被单独推成窄栏的标题。"""
@@ -1895,6 +2034,31 @@ def _classify_cross_lane_centered_section_titles(
         if abs(_bbox_center_x(bbox) - 0.5 * (lane.left + lane.right)) > 0.05 * lane_width:
             continue
         if not 0.75 <= line_height / max(0.1, profile.body_height) <= 1.3:
+            continue
+        uses_regular_font = (
+            profile.body_font is not None
+            and line.font_signature is not None
+            and line.font_coverage >= 0.75
+            and _font_signatures_share_family(
+                line.font_signature,
+                profile.body_font,
+            )
+        )
+        weight_emphasized = (
+            profile.body_weight is not None
+            and line.dominant_font_weight is not None
+            and line.dominant_font_weight
+            >= max(
+                profile.body_weight + 100.0,
+                1.15 * profile.body_weight,
+            )
+        )
+        if (
+            page_index == 0
+            and line_height < 0.9 * profile.body_height
+            and uses_regular_font
+            and not weight_emphasized
+        ):
             continue
         if document_title_bottom is not None and bbox[1] <= document_title_bottom + profile.body_height:
             continue
@@ -2202,6 +2366,67 @@ def _expand_cross_lane_paragraph_title_neighbors(
                 break
             if changed:
                 break
+
+
+def _demote_hanging_multiline_text_titles(
+    lanes: list[_TextLane],
+    document_body_profile: _DocumentBodyProfile | None,
+    *,
+    page_index: int,
+) -> None:
+    """把缩进满行后回到栏左缘的紧邻标题行组降回正文。"""
+
+    if page_index != 0 or document_body_profile is None:
+        return
+    body_height = max(0.1, document_body_profile.body_height)
+    for lane in lanes:
+        rows = sorted(
+            lane.lines,
+            key=lambda item: (
+                item[1][1],
+                item[1][0],
+                item[0].source_index,
+            ),
+        )
+        lane_width = max(0.1, lane.right - lane.left)
+        for first, second in zip(rows, rows[1:]):
+            first_line, first_bbox = first
+            second_line, second_bbox = second
+            if (
+                first_line.semantic_type != "paragraph_title"
+                or second_line.semantic_type != "paragraph_title"
+                or first_line.font_signature is None
+                or second_line.font_signature is None
+                or first_line.font_coverage < 0.75
+                or second_line.font_coverage < 0.75
+                or not _font_signatures_share_family(
+                    first_line.font_signature,
+                    second_line.font_signature,
+                )
+            ):
+                continue
+            first_height = _line_effective_height(*first)
+            second_height = _line_effective_height(*second)
+            pair_height = max(first_height, second_height)
+            if not (
+                max(first_height, second_height) <= 1.1 * body_height
+                and min(first_height, second_height)
+                >= 0.85 * pair_height
+                and first_bbox[2] - first_bbox[0]
+                >= 0.9 * lane_width
+                and first_bbox[0] - lane.left
+                >= 0.75 * pair_height
+                and abs(second_bbox[0] - lane.left)
+                <= 0.5 * pair_height
+                and -0.25 * pair_height
+                <= _effective_text_row_gap(first, second)
+                <= 0.5 * pair_height
+            ):
+                continue
+            first_line.semantic_type = None
+            second_line.semantic_type = None
+            first_line.title_suppressed = True
+            second_line.title_suppressed = True
 
 
 def _demote_visual_container_caption_titles(
@@ -2520,6 +2745,12 @@ def _classify_paragraph_titles_in_lane(
             and width_ratio <= 0.7
             and gap_above >= 0.35
             and gap_below >= 0.2
+            and (
+                page_index != 0
+                or style_differs
+                or weight_emphasized
+                or title_prototype is not None
+            )
             and _has_following_compact_text_section(
                 rows,
                 index,

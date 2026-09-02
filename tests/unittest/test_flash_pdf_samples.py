@@ -322,16 +322,16 @@ def test_explicit_pdf_fixtures_keep_expected_txt_block_inventory() -> None:
                 {
                     "caption": 10,
                     "doc_title": 1,
-                    "equation": 6,
+                    "equation": 7,
                     "footer": 1,
                     "footnote": 5,
                     "header": 12,
                     "image": 8,
                     "page_footnote": 1,
                     "page_number": 12,
-                    "paragraph_title": 18,
+                    "paragraph_title": 17,
                     "table": 5,
-                    "text": 84,
+                    "text": 86,
                 }
             ),
         ),
@@ -363,7 +363,7 @@ def test_explicit_pdf_fixtures_keep_expected_txt_block_inventory() -> None:
                     "page_footnote": 6,
                     "paragraph_title": 21,
                     "table": 9,
-                    "text": 119,
+                    "text": 124,
                 }
             ),
         ),
@@ -384,7 +384,7 @@ def test_explicit_pdf_fixtures_keep_expected_txt_block_inventory() -> None:
                 }
             ),
         ),
-        "demo6.pdf": (7, Counter({"image": 2, "paragraph_title": 9, "text": 24})),
+        "demo6.pdf": (7, Counter({"image": 2, "paragraph_title": 9, "text": 22})),
         "mixed_elements_pages_03_06.pdf": (
             4,
             Counter(
@@ -409,10 +409,11 @@ def test_explicit_pdf_fixtures_keep_expected_txt_block_inventory() -> None:
                     "caption": 6,
                     "code": 3,
                     "doc_title": 1,
-                    "footer": 3,
+                    "footer": 1,
                     "image": 2,
                     "page_number": 4,
-                    "paragraph_title": 16,
+                    "page_footnote": 2,
+                    "paragraph_title": 15,
                     "table": 2,
                     "text": 57,
                 }
@@ -452,7 +453,7 @@ def test_explicit_pdf_fixtures_keep_expected_txt_block_inventory() -> None:
                     "image": 8,
                     "page_footnote": 4,
                     "page_number": 9,
-                    "paragraph_title": 19,
+                    "paragraph_title": 20,
                     "table": 3,
                     "text": 107,
                 }
@@ -543,7 +544,7 @@ def test_demo1_keeps_five_real_tables_without_formula_false_positive() -> None:
 
     model_list = _native_model_list("demo1.pdf")
 
-    assert [len(page) for page in model_list] == [16, 9, 12, 18, 10, 13, 11, 10, 12, 7, 10, 26, 9]
+    assert [len(page) for page in model_list] == [16, 9, 12, 18, 12, 13, 11, 10, 12, 7, 10, 26, 9]
     assert [sum(block["type"] == "table" for block in page) for page in model_list] == [
         0,
         0,
@@ -562,7 +563,7 @@ def test_demo1_keeps_five_real_tables_without_formula_false_positive() -> None:
     assert sum(block["type"] == "doc_title" for page in model_list for block in page) == 1
     assert sum(block["type"] == "header" for page in model_list for block in page) == 12
     assert sum(block["type"] == "page_number" for page in model_list for block in page) == 12
-    assert sum(block["type"] == "equation" for page in model_list for block in page) == 6
+    assert sum(block["type"] == "equation" for page in model_list for block in page) == 7
     assert sum(block["type"] == "caption" for page in model_list for block in page) == 10
     assert sum(block["type"] == "footnote" for page in model_list for block in page) == 5
     middle_pages = model_json_to_pages(_model_json(model_list))
@@ -599,6 +600,18 @@ def test_demo1_keeps_five_real_tables_without_formula_false_positive() -> None:
     assert "The F-statistic was calculated as:" in _visible_content(
         inline_statistics,
     )
+    formula7 = next(
+        block
+        for block in model_list[4]
+        if block["type"] == "equation"
+        and r"\tag{7}" in str(block.get("content", ""))
+    )
+    formula_index = model_list[4].index(formula7)
+    assert [
+        model_list[4][formula_index - 1]["type"],
+        formula7["type"],
+        model_list[4][formula_index + 1]["type"],
+    ] == ["text", "equation", "text"]
     assert [[child["type"] for child in group["content"]] for group in _grouped_visual_blocks(model_list[5], "table")] == [
         ["table_caption", "table_body", "table_footnote"],
         ["table_caption", "table_body", "table_footnote"],
@@ -612,6 +625,12 @@ def test_demo1_keeps_five_real_tables_without_formula_false_positive() -> None:
     assert "doi:10.1016/j.jhydrol.2005.01.006" in _visible_content(copyright_block)
     assert model_list[0].index(page1_footnotes[0]) < model_list[0].index(copyright_block)
     assert next(block for block in model_list[0] if _visible_content(block) == "Abstract")["type"] == "paragraph_title"
+    received = next(
+        block
+        for block in model_list[0]
+        if _visible_content(block).startswith("Received 1 October")
+    )
+    assert received["type"] == "text"
     assert next(block for block in model_list[6] if _visible_content(block).startswith("4.2."))["type"] == "paragraph_title"
 
 
@@ -931,7 +950,7 @@ def test_demo3_keeps_tables_and_covers_every_native_source_line() -> None:
     ]
     assert [len(page) for page in model_list] == [
         23,
-        15,
+        20,
         13,
         21,
         19,
@@ -941,7 +960,7 @@ def test_demo3_keeps_tables_and_covers_every_native_source_line() -> None:
         17,
         18,
     ]
-    assert sum(len(page) for page in model_list) == 173
+    assert sum(len(page) for page in model_list) == 178
     assert sum(block["type"] == "caption" for page in model_list for block in page) == 8
     page7_tables = [block for block in model_list[6] if block["type"] == "table"]
     page7_table4 = next(block for block in page7_tables if "Number of parameters" in block["content"])
@@ -1062,27 +1081,34 @@ def test_demo3_pages1_and2_fix_title_front_matter_and_embedding_list() -> None:
     assert tables_body["type"] == "text"
 
     section_title = next(block for block in page2 if _visible_content(block).startswith("2 Preliminaries:"))
-    embedding_list = next(
-        block
-        for block in page2
-        if _visible_content(block).startswith("token ids (W)")
+    embedding_labels = (
+        "token ids (W)",
+        "positional ids (B)",
+        "segment ids (G)",
+        "column ids (C)",
+        "row ids (R)",
+        "rank ids (Z)",
     )
+    embedding_blocks = [
+        next(
+            block
+            for block in page2
+            if _visible_content(block).startswith(label)
+        )
+        for label in embedding_labels
+    ]
     assert section_title["type"] == "paragraph_title"
     assert _visible_content(section_title) == "2 Preliminaries: TAPAS for Table Encoding"
-    assert embedding_list["type"] == "text"
-    assert not [block for block in page2 if block["type"] == "equation"]
-    embedding_text = _visible_content(embedding_list)
+    assert len({id(block) for block in embedding_blocks}) == 6
+    assert all(block["type"] == "text" for block in embedding_blocks)
     assert all(
-        label in embedding_text
-        for label in (
-            "token ids (W)",
-            "positional ids (B)",
-            "segment ids (G)",
-            "column ids (C)",
-            "row ids (R)",
-            "rank ids (Z)",
+        page2.index(first) < page2.index(second)
+        for first, second in zip(
+            embedding_blocks,
+            embedding_blocks[1:],
         )
     )
+    assert not [block for block in page2 if block["type"] == "equation"]
     as_model_blocks = [
         block
         for block in page2
@@ -1566,6 +1592,18 @@ def test_demo6_default3_targeted_title_regressions() -> None:
     assert sum("签名" in str(block["content"]) for block in model_list[6]) == 1
     assert sum("盖章" in str(block["content"]) for block in model_list[6]) == 1
     assert not [block for page in model_list for block in page if block["type"] in {"caption", "footnote"}]
+    page5 = model_list[4]
+    assert len(page5) == 1
+    assert page5[0]["type"] == "text"
+    assert all(
+        probe in _visible_content(page5[0])
+        for probe in (
+            "1.2",
+            "[2014]68 号",
+            "1.3",
+            "1.4",
+        )
+    )
 
 
 def test_mixed_elements_pages_03_06_force_txt_regressions() -> None:
@@ -2007,6 +2045,17 @@ def test_mixed_elements_pages_07_10_force_txt_regressions() -> None:
         matches = _blocks_containing(page7, probe)
         assert len(matches) == 1
         assert matches[0]["type"] == "text"
+    keywords = _blocks_containing(
+        page7,
+        "Keywords-program slicing",
+    )
+    funding_note = _blocks_containing(
+        page7,
+        "The work was partially funded",
+    )
+    assert len(keywords) == len(funding_note) == 1
+    assert keywords[0]["type"] == "text"
+    assert funding_note[0]["type"] == "page_footnote"
 
     code_blocks = [block for block in page8 if block["type"] == "code"]
     assert len(code_blocks) == 3
@@ -2054,7 +2103,27 @@ def test_mixed_elements_pages_07_10_force_txt_regressions() -> None:
     assert experiment_title[0]["type"] == "paragraph_title"
     url_footer = _blocks_containing(page9, "http://klee.github.io")
     assert len(url_footer) == 1
-    assert url_footer[0]["type"] == "footer"
+    assert url_footer[0]["type"] == "page_footnote"
+    bottom_footnotes = [
+        block
+        for block in page9
+        if block["type"] == "page_footnote"
+        and block["bbox"][1] >= 0.85
+    ]
+    assert len(bottom_footnotes) == 1
+    assert all(
+        probe in _visible_content(bottom_footnotes[0])
+        for probe in (
+            "http://klee.github.io",
+            "llvm-slicing",
+            "liuml07/giri",
+        )
+    )
+    assert sum(
+        block["type"] == "page_footnote"
+        for page in model_list
+        for block in page
+    ) == 2
 
     reference5 = _blocks_containing(page10, "[5] A. Srivastava")
     assert len(reference5) == 1

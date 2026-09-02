@@ -16,6 +16,7 @@ from .document import PDFPathInfo
 from ....utils.text import build_tagged_formula_content
 
 from .models import (
+    _AxisLine,
     _FormulaAnchor,
     _LineItem,
     _PageSource,
@@ -35,6 +36,7 @@ from .geometry import (
     _coerce_bbox,
     _expand_bbox,
     _rotate_bbox_to_upright,
+    _transform_axis_lines,
 )
 from .native_text import _sanitize_pdf_control_text
 from .line_layout import (
@@ -514,6 +516,8 @@ def _build_formula_like_blocks(
     lines: list[_LineItem],
     table_bboxes: list[BBox],
     page_size: tuple[float, float],
+    *,
+    drawing_lines: list[_AxisLine] | None = None,
 ) -> tuple[list[dict[str, Any]], list[_LineItem]]:
     """仅依据栏带、右侧短锚点和空间连通关系聚合公式状区域。"""
 
@@ -534,6 +538,15 @@ def _build_formula_like_blocks(
         median_height = statistics.median(effective_heights) if effective_heights else 1.0
         local_page_width = page_size[1] if angle in {90, 270} else page_size[0]
         local_page_height = page_size[0] if angle in {90, 270} else page_size[1]
+        local_horizontal_rules = [
+            rule.bbox
+            for rule in _transform_axis_lines(
+                drawing_lines or [],
+                page_size,
+                angle,
+            )
+            if rule.orientation == "horizontal"
+        ]
         lanes = _infer_text_lanes(angle_geometry, local_page_width, median_height)
         for lane in lanes:
             if lane.is_span:
@@ -653,10 +666,21 @@ def _build_formula_like_blocks(
                     dominant_body_font,
                     median_height,
                 )
-                if _formula_component_has_left_prose(
-                    members,
-                    lane,
-                    median_height,
+                has_isolated_numbered_fraction = (
+                    _formula_component_has_isolated_numbered_fraction(
+                        members,
+                        lane,
+                        median_height,
+                        local_horizontal_rules,
+                    )
+                )
+                if (
+                    _formula_component_has_left_prose(
+                        members,
+                        lane,
+                        median_height,
+                    )
+                    and not has_isolated_numbered_fraction
                 ):
                     for member_line, _member_bbox in members:
                         member_line.paragraph_formula_context = True
@@ -745,6 +769,95 @@ def _formula_component_has_left_prose(
             continue
         prefix = normalized[: min(operator_positions)]
         if _formula_prefix_has_prose(prefix):
+            return True
+    return False
+
+
+def _formula_component_has_isolated_numbered_fraction(
+    members: list[tuple[_LineItem, BBox]],
+    lane: _TextLane,
+    median_height: float,
+    horizontal_rules: list[BBox],
+) -> bool:
+    """用右侧编号、内部分数线和上下留白确认独立多层公式。"""
+
+    if len(members) < 3 or not horizontal_rules:
+        return False
+    markers = [
+        (line, bbox)
+        for line, bbox in members
+        if _standalone_formula_number_marker(line.text) is not None
+    ]
+    if len(markers) != 1:
+        return False
+    marker_line, marker_bbox = markers[0]
+    lane_width = max(0.1, lane.right - lane.left)
+    if (
+        marker_bbox[2] < lane.right - max(3.0, 0.08 * lane_width)
+        or marker_bbox[2] - marker_bbox[0] > 0.12 * lane_width
+    ):
+        return False
+    body_members = [
+        (line, bbox)
+        for line, bbox in members
+        if line is not marker_line
+    ]
+    if len(body_members) < 2:
+        return False
+    body_bbox = _bbox_union_many(
+        [bbox for _line, bbox in body_members],
+    )
+    member_sources = {
+        line.source_index for line, _bbox in members
+    }
+    rows_above = [
+        bbox
+        for line, bbox in lane.lines
+        if line.source_index not in member_sources
+        and bbox[3] <= body_bbox[1]
+    ]
+    rows_below = [
+        bbox
+        for line, bbox in lane.lines
+        if line.source_index not in member_sources
+        and bbox[1] >= body_bbox[3]
+    ]
+    if not rows_above or not rows_below:
+        return False
+    gap_above = body_bbox[1] - max(bbox[3] for bbox in rows_above)
+    gap_below = min(bbox[1] for bbox in rows_below) - body_bbox[3]
+    if min(gap_above, gap_below) < 0.75 * median_height:
+        return False
+
+    body_centers = [
+        _bbox_center_y(bbox) for _line, bbox in body_members
+    ]
+    for rule_bbox in horizontal_rules:
+        rule_width = rule_bbox[2] - rule_bbox[0]
+        if not (
+            3.0 * median_height
+            <= rule_width
+            <= 0.75 * lane_width
+        ):
+            continue
+        horizontal_overlap = max(
+            0.0,
+            min(rule_bbox[2], body_bbox[2])
+            - max(rule_bbox[0], body_bbox[0]),
+        )
+        if horizontal_overlap < 0.6 * rule_width:
+            continue
+        rule_center = _bbox_center_y(rule_bbox)
+        if (
+            any(
+                center <= rule_center - 0.1 * median_height
+                for center in body_centers
+            )
+            and any(
+                center >= rule_center + 0.1 * median_height
+                for center in body_centers
+            )
+        ):
             return True
     return False
 
