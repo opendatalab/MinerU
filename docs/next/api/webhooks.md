@@ -29,7 +29,7 @@ Webhook 只面向 registered 请求。anonymous 请求传入 `callback` 时，�
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|:--:|------|
 | `url` | string | 是 | 接收回调的 HTTP 或 HTTPS URL，必须支持 POST。 |
-| `secret` | string | 是 | 当前 job 的签名密钥，由英文字母、数字、下划线组成，不超过 64 字符。 |
+| `secret` | string | 否 | 当前 job 的签名密钥，由英文字母、数字、下划线组成，不超过 64 字符。本地实现中可省略；官方 API 可能要求必填。 |
 
 `secret` 与 job 生命周期绑定，不会在 `GET /v1/parse/jobs/{job_id}` 响应中返回。
 
