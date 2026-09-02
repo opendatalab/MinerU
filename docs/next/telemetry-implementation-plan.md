@@ -178,7 +178,7 @@ flush 行为:
 - unset / disabled 不外发。
 - no pending metrics 不外发。
 - 2xx 删除 rows。
-- 4xx 删除 rows，不更新 `last_flush_at`。
+- 4xx 删除 rows，并计入 discard、更新 `last_flush_at`（`telemetry/service.py:138-144`）。
 - 5xx/network 保留 rows。
 - partial success。
 - lock 存在时跳过。
