@@ -24,12 +24,14 @@ def _text_line(
     leading_emphasis_width: float | None = None,
     preserve_split_boundary: bool = False,
     semantic_type: str | None = None,
+    ink_bbox: tuple[float, float, float, float] | None = None,
 ) -> models._LineItem:
     """构造栏带、排版恢复与图形标签测试使用的原生文本行。"""
 
     return models._LineItem(
         text=text,
         bbox=bbox,
+        ink_bbox=ink_bbox,
         angle=angle,
         source_index=source_index,
         visual_row_id=visual_row_id,

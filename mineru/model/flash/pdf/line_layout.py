@@ -7,6 +7,7 @@ from __future__ import annotations
 import math
 import re
 import statistics
+from typing import Sequence
 
 
 from ....utils.text import is_hyphen_at_line_end
@@ -21,9 +22,14 @@ from .geometry import (
     _bbox_axis_overlap_ratio,
     _bbox_center_x,
     _bbox_center_y,
+    _bbox_union_many,
+    _clip_bbox,
     _bbox_intersects,
     _coerce_bbox,
 )
+
+
+_TIGHT_OUTPUT_PADDING = 1.0
 
 
 def _title_fonts_compatible(first: _LineItem, second: _LineItem) -> bool:
@@ -157,6 +163,43 @@ def _line_layout_height(_line: _LineItem, local_bbox: BBox) -> float:
     """返回 canonical 布局包络高度，供公式与视觉容器空间判断使用。"""
 
     return max(0.1, local_bbox[3] - local_bbox[1])
+
+
+def _line_tight_output_bbox(
+    line: _LineItem,
+    page_size: tuple[float, float],
+) -> BBox | None:
+    """把可靠 tight 字形并集四边各扩 1pt，并裁剪到页面范围。"""
+
+    ink_bbox = _coerce_bbox(line.ink_bbox)
+    if ink_bbox is None:
+        return None
+    return _clip_bbox(
+        (
+            ink_bbox[0] - _TIGHT_OUTPUT_PADDING,
+            ink_bbox[1] - _TIGHT_OUTPUT_PADDING,
+            ink_bbox[2] + _TIGHT_OUTPUT_PADDING,
+            ink_bbox[3] + _TIGHT_OUTPUT_PADDING,
+        ),
+        page_size,
+    )
+
+
+def _lines_tight_output_bbox(
+    lines: Sequence[_LineItem],
+    page_size: tuple[float, float],
+) -> BBox | None:
+    """合并多行 tight+1pt 候选；缺失 tight 的成员继续使用原 layout bbox。"""
+
+    output_bboxes: list[BBox] = []
+    changed = False
+    for line in lines:
+        candidate = _line_tight_output_bbox(line, page_size)
+        output_bboxes.append(candidate or line.bbox)
+        changed = changed or candidate is not None
+    if not changed or not output_bboxes:
+        return None
+    return _bbox_union_many(output_bboxes)
 
 
 def _effective_text_row_gap(

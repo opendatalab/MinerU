@@ -20,7 +20,7 @@ from .geometry import (
     _bbox_union_many,
     _rotate_bbox_to_upright,
 )
-from .line_layout import _line_effective_height
+from .line_layout import _line_effective_height, _lines_tight_output_bbox
 
 
 _INDEX_PAGE_NUMBER_RE = re.compile(
@@ -82,14 +82,22 @@ def _extract_index_blocks(
                 for line in row.members:
                     line.semantic_type = BlockType.INDEX
                     claimed_line_ids.add(id(line))
-            blocks.append(
-                {
-                    "type": BlockType.INDEX,
-                    "bbox": _bbox_union_many([line.bbox for row in candidate for line in row.members]),
-                    "angle": angle,
-                    "content": "\n".join(row.content for row in candidate),
-                }
+            candidate_lines = [
+                line for row in candidate for line in row.members
+            ]
+            block: dict[str, object] = {
+                "type": BlockType.INDEX,
+                "bbox": _bbox_union_many([line.bbox for line in candidate_lines]),
+                "angle": angle,
+                "content": "\n".join(row.content for row in candidate),
+            }
+            tight_output_bbox = _lines_tight_output_bbox(
+                candidate_lines,
+                page_size,
             )
+            if tight_output_bbox is not None:
+                block["_tight_output_bbox"] = tight_output_bbox
+            blocks.append(block)
 
     remaining_lines = [line for line in lines if id(line) not in claimed_line_ids]
     return blocks, remaining_lines

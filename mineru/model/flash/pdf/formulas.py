@@ -42,6 +42,8 @@ from .line_layout import (
     _infer_text_lanes,
     _line_effective_height,
     _line_style_scale,
+    _line_tight_output_bbox,
+    _lines_tight_output_bbox,
 )
 from .line_merging import _join_formula_visual_row
 
@@ -598,14 +600,19 @@ def _build_formula_like_blocks(
                     ).strip()
                     if not content:
                         continue
-                    blocks.append(
-                        {
-                            "type": "equation",
-                            "bbox": line.bbox,
-                            "angle": angle,
-                            "content": content,
-                        }
+                    block = {
+                        "type": "equation",
+                        "bbox": line.bbox,
+                        "angle": angle,
+                        "content": content,
+                    }
+                    tight_output_bbox = _line_tight_output_bbox(
+                        line,
+                        page_size,
                     )
+                    if tight_output_bbox is not None:
+                        block["_tight_output_bbox"] = tight_output_bbox
+                    blocks.append(block)
                     claimed_source_indices.add(line.source_index)
             lane.lines = [item for item in lane.lines if item[0].source_index not in claimed_source_indices]
             if len(lane.lines) < 2:
@@ -1856,9 +1863,16 @@ def _formula_members_to_block(
                 content = tagged_content
     if not content.strip():
         return None
-    return {
+    block = {
         "type": "equation",
         "bbox": _bbox_union_many([line.bbox for line, _bbox in members]),
         "angle": angle,
         "content": content,
     }
+    tight_output_bbox = _lines_tight_output_bbox(
+        [line for line, _bbox in members],
+        page_size,
+    )
+    if tight_output_bbox is not None:
+        block["_tight_output_bbox"] = tight_output_bbox
+    return block

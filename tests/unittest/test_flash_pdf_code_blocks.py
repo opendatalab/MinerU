@@ -316,7 +316,7 @@ def test_kvcache_algorithm_pdf_materializes_caption_and_code() -> None:
     code = [block for block in page if block["type"] == "code"]
 
     assert len(captions) == 1
-    assert captions[0]["bbox"] == [0.176, 0.094, 0.528, 0.106]
+    assert captions[0]["bbox"] == [0.174, 0.093, 0.529, 0.107]
     assert len(code) == 1
     assert code[0]["bbox"] == [0.176, 0.108, 0.824, 0.539]
     assert page.index(captions[0]) + 1 == page.index(code[0])

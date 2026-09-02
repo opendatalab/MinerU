@@ -582,9 +582,9 @@ def test_demo1_keeps_five_real_tables_without_formula_false_positive() -> None:
         "footnote",
     ]
     assert [block["bbox"] for block in page5_visual_blocks] == [
-        [0.078, 0.729, 0.107, 0.891],
+        [0.076, 0.727, 0.109, 0.892],
         [0.117, 0.125, 0.431, 0.891],
-        [0.44, 0.435, 0.452, 0.891],
+        [0.438, 0.434, 0.454, 0.892],
     ]
     assert [block["angle"] for block in page5_visual_blocks] == [270, 270, 270]
     assert _visible_content(page5_visual_blocks[2]) == (
@@ -599,7 +599,7 @@ def test_demo1_keeps_five_real_tables_without_formula_false_positive() -> None:
     assert _visible_content(page1_footnotes[0]).startswith("* Corresponding author.")
     copyright_block = next(block for block in model_list[0] if _visible_content(block).startswith("0022-1694/$"))
     assert copyright_block["type"] == "footer"
-    assert copyright_block["bbox"] == [0.078, 0.87, 0.513, 0.894]
+    assert copyright_block["bbox"] == [0.077, 0.869, 0.514, 0.895]
     assert "doi:10.1016/j.jhydrol.2005.01.006" in _visible_content(copyright_block)
     assert model_list[0].index(page1_footnotes[0]) < model_list[0].index(copyright_block)
     assert next(block for block in model_list[0] if _visible_content(block) == "Abstract")["type"] == "paragraph_title"
@@ -1582,7 +1582,7 @@ def test_mixed_elements_pages_03_06_force_txt_regressions() -> None:
         "This allowed us to estimate the low-temperature hop distance",
     )
     assert len(math_paragraph) == 1
-    assert math_paragraph[0]["bbox"] == [0.081, 0.665, 0.475, 0.911]
+    assert math_paragraph[0]["bbox"] == [0.08, 0.666, 0.476, 0.912]
     assert set(math_paragraph[0]) == {"type", "bbox", "angle", "content", "lines"}
     for probe in (
         "where T0",
@@ -1603,16 +1603,16 @@ def test_mixed_elements_pages_03_06_force_txt_regressions() -> None:
     ] == []
     page4_footer = [block for block in page4 if block["type"] == "footer"]
     assert len(page4_footer) == 1
-    assert page4_footer[0]["bbox"] == [0.104, 0.93, 0.449, 0.941]
+    assert page4_footer[0]["bbox"] == [0.103, 0.929, 0.45, 0.94]
     assert math_paragraph[0]["bbox"][3] < page4_footer[0]["bbox"][1]
     assert [
         block["bbox"]
         for block in page4
         if block["type"] in {"text", "image", "caption"} and block["bbox"][0] >= 0.49 and block["bbox"][1] >= 0.49
     ] == [
-        [0.498, 0.509, 0.892, 0.634],
+        [0.496, 0.508, 0.893, 0.636],
         [0.503, 0.66, 0.886, 0.871],
-        [0.521, 0.889, 0.869, 0.911],
+        [0.52, 0.887, 0.87, 0.912],
     ]
 
     page5 = model_list[2]
@@ -1765,7 +1765,7 @@ def test_iebm_left_indented_compact_formula_is_equation() -> None:
     """验证右栏左缩进紧凑公式通过公共 auto 入口输出为 equation。"""
 
     page = _auto_model_list("IEBM_A_2667169_O-5.pdf")[0]
-    target = [block for block in page if block["bbox"] == [0.532, 0.292, 0.658, 0.312]]
+    target = [block for block in page if block["bbox"] == [0.531, 0.291, 0.658, 0.311]]
 
     assert len(target) == 1
     assert target[0]["type"] == "equation"
@@ -1875,7 +1875,7 @@ def test_frozen_soil_page3_formula3_remains_one_equation() -> None:
     assert len(page) == 30
     assert len(equations) == 4
     assert len(formula3) == 1
-    assert formula3[0]["bbox"] == [0.653, 0.703, 0.898, 0.751]
+    assert formula3[0]["bbox"] == [0.651, 0.717, 0.893, 0.746]
     assert all(probe in str(formula3[0]["content"]) for probe in ("at = 1", "2 ln", "1 - εt", "εt", r"\tag{3}"))
     assert not [
         block
@@ -1920,10 +1920,10 @@ def test_frozen_soil_reference_tails_remain_single_text_blocks() -> None:
         "table_footnote",
     ]
     assert [tuple(round(value * 1000) for value in child["bbox"]) for child in page3_table_group["content"]] == [
-        (184, 684, 411, 708),
-        (116, 700, 473, 725),
+        (182, 688, 406, 700),
+        (114, 706, 474, 715),
         (107, 721, 483, 838),
-        (107, 838, 489, 925),
+        (105, 837, 484, 926),
     ]
     assert inline_text(page3_table_group["content"][0]["content"]).startswith("表1")
     assert inline_text(page3_table_group["content"][1]["content"]).startswith("Table 1")
@@ -1935,17 +1935,17 @@ def test_frozen_soil_reference_tails_remain_single_text_blocks() -> None:
     ]
     assert [
         [tuple(round(value * 1000) for value in child["bbox"]) for child in group["content"]] for group in page5_table_groups
-    ] == [
-        [
-            (217, 121, 373, 145),
-            (170, 137, 419, 162),
-            (107, 158, 483, 416),
-        ],
-        [
-            (209, 624, 380, 649),
-            (128, 641, 461, 665),
-            (107, 662, 483, 826),
-        ],
+        ] == [
+            [
+                (215, 124, 374, 137),
+                (169, 143, 421, 154),
+                (107, 158, 483, 416),
+            ],
+            [
+                (208, 628, 381, 640),
+                (127, 646, 462, 656),
+                (107, 662, 483, 826),
+            ],
     ]
 
     narrative_reference = _blocks_containing(
@@ -2090,7 +2090,7 @@ def test_mixed_elements_pages_11_15_force_txt_regressions() -> None:
         "table_body",
     ]
     assert [tuple(round(value * 1000) for value in child["bbox"]) for child in table_group["content"]] == [
-        (79, 93, 798, 103),
+        (77, 92, 799, 104),
         (79, 109, 922, 247),
     ]
     assert "Table 1." not in str(table_group["content"][1]["content"])

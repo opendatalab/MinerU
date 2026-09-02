@@ -672,6 +672,53 @@ def _formula_block_inventory(
     )
 
 
+def _apply_post_aggregation_tight_bboxes(
+    blocks: list[dict[str, Any]],
+    page_size: tuple[float, float],
+) -> None:
+    """在 block 聚合完成后应用 tight+1pt 框，并同步最终公开行框。"""
+
+    for block in blocks:
+        candidate_bbox = _coerce_bbox(
+            block.pop("_tight_output_bbox", None),
+        )
+        output_line_bboxes = block.pop(
+            "_local_output_line_bboxes",
+            None,
+        )
+        output_bbox_repaired = block.pop(
+            "_output_bbox_repaired",
+            False,
+        )
+        if (
+            output_bbox_repaired is True
+            and isinstance(output_line_bboxes, list)
+            and output_line_bboxes
+        ):
+            local_bboxes = [
+                _coerce_bbox(value) for value in output_line_bboxes
+            ]
+            if all(value is not None for value in local_bboxes):
+                resolved_local_bboxes = [
+                    value for value in local_bboxes if value is not None
+                ]
+                block["_local_line_bboxes"] = resolved_local_bboxes
+                angle = int(block.get("angle", 0) or 0) % 360
+                candidate_bbox = _bbox_union_many(
+                    [
+                        _rotate_bbox_from_upright(
+                            value,
+                            page_size,
+                            angle,
+                        )
+                        for value in resolved_local_bboxes
+                    ]
+                )
+        clipped_bbox = _clip_bbox(candidate_bbox, page_size)
+        if clipped_bbox is not None:
+            block["bbox"] = clipped_bbox
+
+
 def _finalize_prepared_page(
     prepared: _PreparedPage,
     page_index: int,
@@ -797,6 +844,10 @@ def _finalize_prepared_page(
         prepared.page_size,
     )
     absolute_blocks = prepared.fixed_blocks + formula_blocks + index_blocks + text_blocks
+    _apply_post_aggregation_tight_bboxes(
+        absolute_blocks,
+        prepared.page_size,
+    )
     visual_annotation_regions = _classify_and_bind_visual_annotations(
         absolute_blocks,
         prepared.page_size,

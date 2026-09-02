@@ -51,7 +51,7 @@ from .geometry import (
     _rotate_bbox_to_upright,
     _transform_axis_lines,
 )
-from .line_layout import _line_effective_height
+from .line_layout import _line_effective_height, _line_tight_output_bbox
 from .line_merging import _same_baseline_geometry
 from .native_text import _normalize_native_run_text
 
@@ -2185,12 +2185,29 @@ def _build_table_annotation_block(
     )
     if not line_geometry or not content:
         return None
+    local_output_line_bboxes = []
+    output_bbox_repaired = False
+    for line, local_bbox in line_geometry:
+        tight_candidate = _line_tight_output_bbox(line, source.page_size)
+        if tight_candidate is None:
+            local_output_line_bboxes.append(local_bbox)
+        else:
+            local_output_line_bboxes.append(
+                _rotate_bbox_to_upright(
+                    tight_candidate,
+                    source.page_size,
+                    candidate.angle,
+                )
+            )
+            output_bbox_repaired = True
     return {
         "type": annotation.kind,
         "bbox": annotation.bbox,
         "angle": candidate.angle,
         "content": content,
         "_local_line_bboxes": [bbox for _line, bbox in line_geometry],
+        "_local_output_line_bboxes": local_output_line_bboxes,
+        "_output_bbox_repaired": output_bbox_repaired,
         "_line_heights": [_line_effective_height(line, bbox) for line, bbox in line_geometry],
         "_font_signatures": {
             line.font_signature

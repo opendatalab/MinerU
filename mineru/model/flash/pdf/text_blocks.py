@@ -41,6 +41,8 @@ from .line_layout import (
     _infer_text_lanes,
     _is_structural_typography_gap,
     _line_effective_height,
+    _line_tight_output_bbox,
+    _lines_tight_output_bbox,
     _should_connect_semantic_rows,
     _should_connect_text_rows,
     _title_fonts_compatible,
@@ -83,6 +85,28 @@ _URL_LINE_RE = re.compile(
 _SHORT_SAME_BASELINE_PREFIX_RE = re.compile(
     r"^(?:[（(]\s*\d{1,3}|\d{1,2}\s*[:：]\s*\d{2})$",
 )
+
+
+def _local_tight_output_line_bboxes(
+    lines: Sequence[_LineItem],
+    page_size: tuple[float, float],
+    angle: int,
+) -> tuple[list[BBox], bool]:
+    """返回与原行顺序一致的 tight+1pt 局部框及是否存在可靠候选。"""
+
+    output = []
+    changed = False
+    for line in lines:
+        candidate = _line_tight_output_bbox(line, page_size)
+        output.append(
+            _rotate_bbox_to_upright(
+                candidate or line.bbox,
+                page_size,
+                angle,
+            )
+        )
+        changed = changed or candidate is not None
+    return output, changed
 
 
 def _starts_structural_reference_entry(
@@ -329,17 +353,22 @@ def _build_grouped_page_footnote_blocks(
                     and ordered_lines[0].visual_row_id is not None
                     else None
                 )
-                blocks.append(
-                    {
-                        "type": "page_footnote",
-                        "bbox": _bbox_union_many([tight_bboxes[line.source_index] for line in ordered_lines]),
-                        "angle": angle,
-                        "content": content,
-                        "_visual_row_ids": visual_row_ids,
-                        "_single_run_row_id": single_run_row_id,
-                        "_inline_math_regions": [region for line in ordered_lines for region in line.inline_math_regions],
-                    }
+                block = {
+                    "type": "page_footnote",
+                    "bbox": _bbox_union_many([tight_bboxes[line.source_index] for line in ordered_lines]),
+                    "angle": angle,
+                    "content": content,
+                    "_visual_row_ids": visual_row_ids,
+                    "_single_run_row_id": single_run_row_id,
+                    "_inline_math_regions": [region for line in ordered_lines for region in line.inline_math_regions],
+                }
+                tight_output_bbox = _lines_tight_output_bbox(
+                    ordered_lines,
+                    page_size,
                 )
+                if tight_output_bbox is not None:
+                    block["_tight_output_bbox"] = tight_output_bbox
+                blocks.append(block)
                 consumed_source_indices.update(line.source_index for line in ordered_lines)
     return blocks, consumed_source_indices
 
@@ -1007,6 +1036,11 @@ def _build_text_blocks(
                     and component_lines[0].visual_row_id is not None
                     else None
                 )
+                local_output_line_bboxes, output_bbox_repaired = _local_tight_output_line_bboxes(
+                    component_lines,
+                    page_size,
+                    angle,
+                )
                 blocks.append(
                     {
                         "type": component_lines[0].semantic_type or "text",
@@ -1016,6 +1050,8 @@ def _build_text_blocks(
                         "_visual_row_ids": visual_row_ids,
                         "_single_run_row_id": single_run_row_id,
                         "_local_line_bboxes": [bbox for _line, bbox in component_geometry],
+                        "_local_output_line_bboxes": local_output_line_bboxes,
+                        "_output_bbox_repaired": output_bbox_repaired,
                         "_line_heights": [_line_effective_height(line, bbox) for line, bbox in component_geometry],
                         "_font_signatures": {
                             line.font_signature
@@ -2379,6 +2415,12 @@ def _merge_internal_text_block_group(
     )
     merged["_single_run_row_id"] = None
     merged["_local_line_bboxes"] = [bbox for index in ordered_indices for bbox in blocks[index].get("_local_line_bboxes", [])]
+    merged["_local_output_line_bboxes"] = [
+        bbox for index in ordered_indices for bbox in blocks[index].get("_local_output_line_bboxes", [])
+    ]
+    merged["_output_bbox_repaired"] = any(
+        blocks[index].get("_output_bbox_repaired") is True for index in ordered_indices
+    )
     merged["_line_heights"] = [height for index in ordered_indices for height in blocks[index].get("_line_heights", [])]
     merged["_font_signatures"] = set().union(
         *[
@@ -2531,6 +2573,12 @@ def _merge_spatial_text_components(
         merged["_local_line_bboxes"] = [
             bbox for index in ordered_indices for bbox in blocks[index].get("_local_line_bboxes", [])
         ]
+        merged["_local_output_line_bboxes"] = [
+            bbox for index in ordered_indices for bbox in blocks[index].get("_local_output_line_bboxes", [])
+        ]
+        merged["_output_bbox_repaired"] = any(
+            blocks[index].get("_output_bbox_repaired") is True for index in ordered_indices
+        )
         merged["_line_heights"] = [height for index in ordered_indices for height in blocks[index].get("_line_heights", [])]
         merged["_font_signatures"] = set().union(
             *[

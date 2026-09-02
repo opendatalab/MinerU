@@ -38,6 +38,38 @@ def _formula_member(
     )
 
 
+def test_formula_members_expose_union_of_tight_bboxes_with_one_point_padding() -> None:
+    """验证文本公式聚合后保留全部成员的 tight+1pt 输出包络。"""
+
+    body, body_bbox = _formula_member(
+        "x=1",
+        (10.0, 20.0, 50.0, 40.0),
+        0,
+    )
+    number, number_bbox = _formula_member(
+        "(1)",
+        (80.0, 25.0, 90.0, 35.0),
+        1,
+    )
+    body.ink_bbox = (12.0, 25.0, 48.0, 35.0)
+    number.ink_bbox = (82.0, 27.0, 89.0, 33.0)
+
+    block = formulas._formula_members_to_block(
+        [(body, body_bbox), (number, number_bbox)],
+        (100.0, 100.0),
+        0,
+        anchor_source_index=1,
+    )
+
+    assert block is not None
+    assert block["_tight_output_bbox"] == (
+        11.0,
+        24.0,
+        90.0,
+        36.0,
+    )
+
+
 def test_formula_component_rejects_left_aligned_prose_lead() -> None:
     """验证同栏左缘带正文引导语的复杂行内分式不升级为行间公式。"""
 
