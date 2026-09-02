@@ -17,6 +17,7 @@ class RenderFormat(str, Enum):
 
     MARKDOWN = "markdown"
     HTML = "html"
+    LATEX = "latex"
     DOCX = "docx"
     EPUB = "epub"
     STRUCTURED_CONTENT = "structured_content"
@@ -79,6 +80,21 @@ class HtmlRenderOptions:
         _validate_asset_base_url(self.asset_base_url)
         if not isinstance(self.standalone, bool):
             raise TypeError("standalone must be a bool")
+        if self.document_title is not None and not isinstance(self.document_title, str):
+            raise TypeError("document_title must be a string or None")
+
+
+@dataclass(frozen=True, slots=True)
+class LatexRenderOptions:
+    """LaTeX renderer 的统一入口选项。"""
+
+    asset_base_path: str = ""
+    document_title: str | None = None
+
+    def __post_init__(self) -> None:
+        """在构造时校验 LaTeX 素材路径前缀与文档标题。"""
+        if not isinstance(self.asset_base_path, str):
+            raise TypeError("asset_base_path must be a string")
         if self.document_title is not None and not isinstance(self.document_title, str):
             raise TypeError("document_title must be a string or None")
 
@@ -183,6 +199,7 @@ class ContentListV2RenderOptions:
 RenderOptions: TypeAlias = (
     MarkdownRenderOptions
     | HtmlRenderOptions
+    | LatexRenderOptions
     | DocxRenderOptions
     | EpubRenderOptions
     | PdfRenderOptions
@@ -201,6 +218,7 @@ __all__ = [
     "EpubRenderOptions",
     "HtmlRenderOptions",
     "ImageRenderer",
+    "LatexRenderOptions",
     "MarkdownRenderOptions",
     "PdfRenderOptions",
     "RenderFormat",

@@ -19,7 +19,7 @@ Middle JSON 已经收敛为 schema 2.0 的严格 Pydantic 模型：`mineru/types
 5. [Canonical Envelope](middle-json/envelope.md): 顶层结构、`_meta`、版本和兼容输入。
 6. [当前 Content List v2 结构盘点](middle-json/structured-content-current.md): 当前 Structured Content 起点的事实结构。
 7. [Structured Content Schema](middle-json/structured-content-schema.md): NEXT 版结构化内容 JSON 的目标 schema 草案。
-8. [Rendering Contract](middle-json/rendering.md): Markdown / HTML / DOCX / Structured Content 如何通过 `render/api.py` 消费 middle structure。
+8. [Rendering Contract](middle-json/rendering.md): Markdown / HTML / LaTeX / DOCX / Structured Content 如何通过 `render/api.py` 消费 middle structure。
 9. [迁移计划](middle-json/migration.md): 可执行阶段、任务清单和验收标准。
 
 ## 整理原则

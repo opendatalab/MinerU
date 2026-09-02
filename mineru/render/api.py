@@ -13,6 +13,7 @@ from .contracts import (
     DocxRenderOptions,
     EpubRenderOptions,
     HtmlRenderOptions,
+    LatexRenderOptions,
     MarkdownRenderOptions,
     PdfRenderOptions,
     RenderFormat,
@@ -25,6 +26,7 @@ from .content_list_v2 import render_content_list_v2
 from .docx import render_docx
 from .epub import render_epub
 from .html import render_html
+from .latex import render_latex
 from .markdown import render_markdown
 from .pdf import render_pdf
 from .structured_content import render_structured_content
@@ -49,6 +51,17 @@ def render(
     options: HtmlRenderOptions | None = None,
 ) -> str:
     """声明 HTML 目标对应的字符串返回类型。"""
+    ...
+
+
+@overload
+def render(
+    middle_json: MiddleJson,
+    output_format: Literal[RenderFormat.LATEX],
+    *,
+    options: LatexRenderOptions | None = None,
+) -> str:
+    """声明 LaTeX 目标对应的字符串返回类型。"""
     ...
 
 
@@ -150,6 +163,16 @@ def render(
             mode=resolved_options.mode,
             asset_base_url=resolved_options.asset_base_url,
             standalone=resolved_options.standalone,
+            document_title=resolved_options.document_title,
+        )
+
+    if output_format is RenderFormat.LATEX:
+        resolved_options = options if options is not None else LatexRenderOptions()
+        if not isinstance(resolved_options, LatexRenderOptions):
+            raise TypeError("LATEX output requires LatexRenderOptions")
+        return render_latex(
+            middle_json,
+            asset_base_path=resolved_options.asset_base_path,
             document_title=resolved_options.document_title,
         )
 
