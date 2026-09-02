@@ -14,7 +14,7 @@
 任务:
 
 1. 明确 `mineru/types.py` 是当前 Middle JSON 基础类型来源。
-2. 将 `PageInfo` / `Block` / `Line` / `Span` 字段写入文档。
+2. 将 `PageInfo` / 严格 Pydantic block tree / `InlineSpan` 字段写入文档。
 3. 标注内部字段和 public 字段。
 
 验收:
@@ -47,13 +47,12 @@
 
 任务:
 
-1. 生产代码暂不提供 validator API。
+1. 生产代码暂不提供独立 validator API；结构合法性由 strict Pydantic 模型（`extra="forbid"` + `strict`）在解析时强制。
 2. 单测中保留 `validate_pages()` 与 `ValidationIssue` 作为 test-local helper。
 3. 单测已覆盖 P0 页面树校验:
    - page_idx
-   - block index/type/bbox
-   - line bbox/spans
-   - span type/bbox
+   - block index/type/bbox（固定版式顶层 block 强制 bbox）
+   - 自然语言 block 的行内 `content` 为合法 InlineSpan 列表
 4. 待补 envelope-level 校验:
    - schema_version
    - pages list
@@ -70,10 +69,10 @@
 
 任务:
 
-1. 定义 locator。
-2. 实现 block locator。
-3. 实现 citation record helper。
-4. doclib 存储 schema version 和 source sha256。
+1. （已完成）定义 locator（`mineru/doclib/locators.py`）。
+2. （已完成）实现 block locator（`locator_for_block()` / `block_ref()` / `block_char_ref()`，doclib server 与 CLI 已消费）。
+3. 待实现 citation record helper。
+4. doclib 已持久化 `short_id` 与 `sha256`；`parses` 表暂无 schema_version 列，仍待补。
 
 验收:
 
@@ -87,9 +86,9 @@
 任务:
 
 1. Pipeline: 检查 index 全页稳定性。
-2. VLM: 确认 bbox 不含归一化坐标。
+2. VLM: 确认 bbox 为 schema 约定的归一化坐标（0-1）且不含内部 metadata。
 3. Hybrid: 将 features/models 进入 `_meta`。
-4. Office: 定义 page_size 和 unknown bbox。
+4. Office: 明确 unknown bbox（`bbox: null`）语义。
 5. HTML: 修正必填字段和 DOM order index。
 6. 所有 backend 输出通过 validator。
 
@@ -97,7 +96,7 @@
 
 - 每个 backend 生成 canonical envelope。
 - 每个 backend 可生成 locator。
-- `PageInfo._backend` 不再是唯一 backend 来源。
+- `PageInfo` 不携带 `_backend` 等 backend metadata。
 
 ## Phase 5: Rendering 收敛
 

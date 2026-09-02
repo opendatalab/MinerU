@@ -56,6 +56,11 @@
 |------|------|:--:|------|
 | `schema_version` | string | 是 | 当前 `"2.0"`；代码常量为 `MIDDLE_JSON_SCHEMA_VERSION`。 |
 | `pages` | list[PageInfo] | 是 | typed pages 的 JSON 表达。 |
+| `is_full_document` | bool | 是 | 是否整本文档解析（空 `page_index_map` 时为 `true`）。 |
+| `file_suffix` | string | 是 | 输入文件类型（`pdf`、`docx`、`pptx`、`epub`、`html`、`ofd` 等）。 |
+| `effort` | string | 是 | 分析强度：`flash`、`medium`、`high`、`xhigh`。 |
+| `parse_mode` | string | 是 | `txt` 或 `ocr`。 |
+| `mineru_version` | string | 是 | 生成该结果的 MinerU 版本。 |
 | `_meta` | object | 后续 | 元数据；当前 P0 写出路径暂不增加。 |
 
 ## `_meta`
@@ -173,7 +178,7 @@ def normalize_middle_json(
 
 ## Validator
 
-当前生产代码不提供 envelope validator API；页面树校验逻辑仅保留在单测中作为 test-local helper。
+当前生产代码不提供独立的 envelope validator API；结构合法性由 strict Pydantic 模型（`MiddleJson` 等，`extra="forbid"` + `strict`，`mineru/types.py:1092`）在解析时强制，页面树语义校验仅保留在单测中作为 test-local helper。
 
 ```python
 from mineru.parser import MIDDLE_JSON_SCHEMA_VERSION
@@ -190,16 +195,15 @@ P0 校验:
 - 有 `schema_version`。
 - 有 `pages` list。
 - 每个 page 有 `page_idx`。
-- 每个 block 有 `index`、`type`、`bbox`。
-- 每个 line 有 `bbox`、`spans`。
-- 每个 span 有 `type`、`bbox`。
+- 每个 block 有 `index`、`type`；固定版式（`pdf`/`ofd`）顶层 block 必须有 `bbox`。
+- 自然语言 block 的 `content` 是合法的 `InlineSpan` 列表（`TextSpan` / `EquationInlineSpan` / `CodeInlineSpan` / `HyperlinkSpan`），span 只表达行内语义，不携带 bbox。
 - `page_count == len(pages)`。
 
 P1 校验:
 
 - block index 页内唯一。
 - locator 可生成。
-- bbox 在 page_size 范围内，unknown bbox 除外。
+- bbox 为 schema 约定的 0-1 归一化坐标或 `null`（unknown）。
 - 内部字段不出现在 public output。
 
 ## 与 `ParseResult`
