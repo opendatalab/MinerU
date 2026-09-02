@@ -18,6 +18,7 @@ from mineru.backend.analysis.pdf.text.models import _AnalyzeLine, _AnalyzeSpan
 from mineru.backend.analysis.pdf.text.native import txt_spans_extract
 from mineru.backend.postprocess.pages import model_json_to_pages
 from mineru.model.flash import PdfModel
+from mineru.model.flash.pdf import models, native_text, text_styles as flash_text_styles
 from mineru.render import render_docx, render_html, render_markdown, render_structured_content
 from mineru.types import (
     RAW_CAPTION,
@@ -44,6 +45,7 @@ from mineru.model.flash.pdf.text_styles import (
     detect_pdf_text_link_lines,
     detect_pdf_text_style_lines,
     materialize_pdf_inline_spans,
+    _partition_resplit_text_evidence,
 )
 from _span_test_utils import inline_text, inline_urls
 
@@ -237,6 +239,156 @@ def _link_evidence_line(
         link_ranges=(PDFTextLinkRange(start, resolved_end, target),),
         source_index=source_index,
     )
+
+
+def test_resplit_text_evidence_partitions_ranges_by_character_identity() -> None:
+    """验证重复字符、空白和连字不会让跨栏 evidence 按文本搜索错配。"""
+
+    chars = [
+        {"char": char, "char_idx": char_idx}
+        for char_idx, char in enumerate(
+            ("A", "A", " ", "ﬀ", "B", "B"),
+            start=10,
+        )
+    ]
+    source = models._LineItem(
+        text="AA ﬀBB",
+        bbox=(0.0, 10.0, 100.0, 20.0),
+        angle=0,
+        source_index=5,
+        chars=chars,  # type: ignore[arg-type]
+    )
+    left = models._LineItem(
+        text="AA",
+        bbox=(0.0, 10.0, 20.0, 20.0),
+        angle=0,
+        source_index=5,
+        chars=chars[:3],  # type: ignore[arg-type]
+        run_index=0,
+    )
+    right = models._LineItem(
+        text="ﬀBB",
+        bbox=(60.0, 10.0, 90.0, 20.0),
+        angle=0,
+        source_index=10,
+        chars=chars[3:],  # type: ignore[arg-type]
+        run_index=1,
+    )
+    resplits = {
+        5: native_text._NativeVisualResplit(
+            source=source,
+            members=(left, right),
+        )
+    }
+    style_line = PDFTextStyleLine(
+        bbox=source.bbox,
+        text="AAffBB",
+        style_ranges=(PDFTextStyleRange(1, 5, ("bold",)),),
+        source_index=5,
+    )
+    link_line = PDFTextLinkLine(
+        bbox=source.bbox,
+        text="AAffBB",
+        link_ranges=(PDFTextLinkRange(1, 4, "https://example.test/split"),),
+        source_index=5,
+    )
+
+    style_lines, link_lines = _partition_resplit_text_evidence(
+        [style_line],
+        [link_line],
+        resplits,
+    )
+
+    assert style_lines == [
+        PDFTextStyleLine(
+            bbox=left.bbox,
+            text="AA",
+            style_ranges=(PDFTextStyleRange(1, 2, ("bold",)),),
+            source_index=5,
+        ),
+        PDFTextStyleLine(
+            bbox=right.bbox,
+            text="ffBB",
+            style_ranges=(PDFTextStyleRange(0, 3, ("bold",)),),
+            source_index=10,
+        ),
+    ]
+    assert link_lines == [
+        PDFTextLinkLine(
+            bbox=left.bbox,
+            text="AA",
+            link_ranges=(PDFTextLinkRange(1, 2, "https://example.test/split"),),
+            source_index=5,
+        ),
+        PDFTextLinkLine(
+            bbox=right.bbox,
+            text="ffBB",
+            link_ranges=(PDFTextLinkRange(0, 2, "https://example.test/split"),),
+            source_index=10,
+        ),
+    ]
+
+
+def test_resplit_text_evidence_preserves_identity_and_unsafe_mapping(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证无重切时保持原列表，映射不一致时保留粗行 evidence 并记录诊断。"""
+
+    source = models._LineItem(
+        text="AB",
+        bbox=(0.0, 10.0, 100.0, 20.0),
+        angle=0,
+        source_index=5,
+        chars=[  # type: ignore[arg-type]
+            {"char": "A", "char_idx": 0},
+            {"char": "B", "char_idx": 1},
+        ],
+    )
+    member = models._LineItem(
+        text="AB",
+        bbox=(0.0, 10.0, 20.0, 20.0),
+        angle=0,
+        source_index=5,
+        chars=list(source.chars),
+    )
+    style_line = PDFTextStyleLine(source.bbox, "mismatch", (), 5)
+    link_line = PDFTextLinkLine(
+        source.bbox,
+        "mismatch",
+        (PDFTextLinkRange(0, 8, "https://example.test"),),
+        5,
+    )
+    original_styles = [style_line]
+    original_links = [link_line]
+    warnings: list[str] = []
+    monkeypatch.setattr(
+        flash_text_styles,
+        "logger",
+        SimpleNamespace(warning=warnings.append),
+    )
+
+    unchanged_styles, unchanged_links = _partition_resplit_text_evidence(
+        original_styles,
+        original_links,
+        {},
+    )
+    fallback_styles, fallback_links = _partition_resplit_text_evidence(
+        original_styles,
+        original_links,
+        {
+            5: native_text._NativeVisualResplit(
+                source=source,
+                members=(member,),
+            )
+        },
+    )
+
+    assert unchanged_styles is original_styles
+    assert unchanged_links is original_links
+    assert fallback_styles == original_styles
+    assert fallback_links == original_links
+    assert len(warnings) == 2
+    assert all("unsafe resplit mapping" in warning for warning in warnings)
 
 
 @pytest.mark.parametrize("angle", [0, 90, 180, 270])

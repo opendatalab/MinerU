@@ -20,6 +20,7 @@ from mineru.model.flash.pdf import (
     pipeline,
     tables,
     text_blocks,
+    text_styles,
     titles,
     visual_annotations,
 )
@@ -193,6 +194,39 @@ def test_prepare_page_resplits_repaired_cross_column_row_before_text_classificat
         drawing_lines=[],
     )
     observed_next_indices: list[int] = []
+    untouched_style = text_styles.PDFTextStyleLine(
+        bbox=(0.0, 30.0, 20.0, 40.0),
+        text="plain",
+        style_ranges=(),
+        source_index=4,
+    )
+    style_lines = [
+        untouched_style,
+        text_styles.PDFTextStyleLine(
+            bbox=line.bbox,
+            text="ABCDEFGH",
+            style_ranges=(
+                text_styles.PDFTextStyleRange(0, 2, ("bold",)),
+                text_styles.PDFTextStyleRange(2, 6, ("bold", "underline")),
+                text_styles.PDFTextStyleRange(6, 8, ("underline",)),
+            ),
+            source_index=5,
+        ),
+    ]
+    link_lines = [
+        text_styles.PDFTextLinkLine(
+            bbox=line.bbox,
+            text="ABCDEFGH",
+            link_ranges=(
+                text_styles.PDFTextLinkRange(
+                    2,
+                    6,
+                    "https://example.test/split",
+                ),
+            ),
+            source_index=5,
+        ),
+    ]
 
     def record_graphic_split_start(
         lines: list[models._LineItem],
@@ -214,12 +248,85 @@ def test_prepare_page_resplits_repaired_cross_column_row_before_text_classificat
         source,
         geometry_plan=plan,
         page_index=0,
+        style_lines=style_lines,
+        link_lines=link_lines,
     )
 
     assert [member.text for member in prepared.remaining_lines] == ["ABCD", "EFGH"]
     assert [member.source_index for member in prepared.remaining_lines] == [5, 6]
     assert all(member.split_from_row for member in prepared.remaining_lines)
     assert observed_next_indices == [7]
+    assert style_lines[0] is untouched_style
+    assert style_lines[1:] == [
+        text_styles.PDFTextStyleLine(
+            bbox=(0.0, 10.0, 23.0, 20.0),
+            text="ABCD",
+            style_ranges=(
+                text_styles.PDFTextStyleRange(0, 2, ("bold",)),
+                text_styles.PDFTextStyleRange(2, 4, ("bold", "underline")),
+            ),
+            source_index=5,
+        ),
+        text_styles.PDFTextStyleLine(
+            bbox=(62.0, 10.0, 85.0, 20.0),
+            text="EFGH",
+            style_ranges=(
+                text_styles.PDFTextStyleRange(0, 2, ("bold", "underline")),
+                text_styles.PDFTextStyleRange(2, 4, ("underline",)),
+            ),
+            source_index=6,
+        ),
+    ]
+    assert link_lines == [
+        text_styles.PDFTextLinkLine(
+            bbox=(0.0, 10.0, 23.0, 20.0),
+            text="ABCD",
+            link_ranges=(
+                text_styles.PDFTextLinkRange(
+                    2,
+                    4,
+                    "https://example.test/split",
+                ),
+            ),
+            source_index=5,
+        ),
+        text_styles.PDFTextLinkLine(
+            bbox=(62.0, 10.0, 85.0, 20.0),
+            text="EFGH",
+            link_ranges=(
+                text_styles.PDFTextLinkRange(
+                    0,
+                    2,
+                    "https://example.test/split",
+                ),
+            ),
+            source_index=6,
+        ),
+    ]
+    split_blocks = [
+        {
+            "type": "text",
+            "bbox": member.bbox,
+            "content": member.text,
+        }
+        for member in prepared.remaining_lines
+    ]
+    assert {
+        block_index: [line.source_index for line in lines]
+        for block_index, lines in text_styles._assign_lines_to_blocks(
+            split_blocks,
+            style_lines[1:],
+            source.page_size,
+        ).items()
+    } == {0: [5], 1: [6]}
+    assert {
+        block_index: [line.source_index for line in lines]
+        for block_index, lines in text_styles._assign_lines_to_blocks(
+            split_blocks,
+            link_lines,
+            source.page_size,
+        ).items()
+    } == {0: [5], 1: [6]}
 
 
 def test_table_detection_excludes_confirmed_masthead_separator() -> None:

@@ -9,6 +9,7 @@ import re
 import statistics
 import unicodedata
 from collections import Counter
+from dataclasses import dataclass
 from typing import Any, Literal, Mapping, Sequence
 
 from pdftext.schema import Char
@@ -57,6 +58,14 @@ _PDFTEXT_SHEARED_HORIZONTAL_MAX_ANGLE_DEGREES = 30.0
 _PDFTEXT_HORIZONTAL_BASELINE_MAX_ANGLE_DEGREES = 2.0
 _PDFTEXT_HORIZONTAL_BASELINE_MAX_DISPERSION_RATIO = 0.75
 _PDFTEXT_FORMULA_OPERATOR_CHARS = frozenset("=∑∫√±×÷")
+
+
+@dataclass(frozen=True, slots=True)
+class _NativeVisualResplit:
+    """保存一个粗行及其按 canonical 字符框重切后的成员。"""
+
+    source: _LineItem
+    members: tuple[_LineItem, ...]
 
 
 def _build_native_line_items(
@@ -489,11 +498,11 @@ def _resplit_native_visual_runs(
     visual_bboxes: Mapping[int, BBox],
     *,
     source_index_start: int | None = None,
-) -> list[_LineItem]:
-    """在字符几何修复后重切跨栏粗行，并保持页内 source identity 唯一。"""
+) -> tuple[list[_LineItem], dict[int, _NativeVisualResplit]]:
+    """重切跨栏粗行，并返回供行内 evidence 分片使用的来源映射。"""
 
     if not lines or not visual_bboxes:
-        return list(lines)
+        return list(lines), {}
     next_source_index = (
         source_index_start
         if source_index_start is not None
@@ -504,6 +513,7 @@ def _resplit_native_visual_runs(
         + 1
     )
     output: list[_LineItem] = []
+    resplits: dict[int, _NativeVisualResplit] = {}
     for line in lines:
         local_bbox = _rotate_bbox_to_upright(
             line.bbox,
@@ -568,6 +578,10 @@ def _resplit_native_visual_runs(
             member.formula_candidate_only = line.formula_candidate_only
             member.style_scale_repaired = line.style_scale_repaired
             output.append(member)
+        resplits[line.source_index] = _NativeVisualResplit(
+            source=line,
+            members=tuple(members),
+        )
     output.sort(
         key=lambda item: (
             item.visual_row_id if item.visual_row_id is not None else math.inf,
@@ -575,7 +589,7 @@ def _resplit_native_visual_runs(
             item.source_index,
         )
     )
-    return output
+    return output, resplits
 
 
 def _normalize_native_run_text(text: str) -> str:

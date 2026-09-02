@@ -2882,7 +2882,7 @@ def test_canonical_visual_resplit_separates_cross_column_coarse_row() -> None:
         visual_row_id=3,
     )
 
-    output = native_text._resplit_native_visual_runs(
+    output, resplits = native_text._resplit_native_visual_runs(
         [line],
         (100.0, 100.0),
         visual_bboxes,
@@ -2893,6 +2893,8 @@ def test_canonical_visual_resplit_separates_cross_column_coarse_row() -> None:
     assert [item.source_index for item in output] == [5, 10]
     assert all(item.visual_row_id == 3 for item in output)
     assert all(item.split_from_row for item in output)
+    assert resplits[5].source is line
+    assert resplits[5].members == tuple(output)
 
 
 def test_two_leading_emphasis_rows_do_not_activate_structured_text_split() -> None:

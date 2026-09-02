@@ -20,6 +20,7 @@ from .text_styles import (
     detect_pdf_text_link_lines,
     detect_pdf_text_style_lines,
     materialize_pdf_inline_spans,
+    _partition_resplit_text_evidence,
 )
 
 from .models import (
@@ -331,6 +332,8 @@ def _analyze_native_document(
             origins=geometry.origins,
             geometry_plan=geometry_plan,
             page_index=page_index,
+            style_lines=page_style_lines[page_index],
+            link_lines=page_link_lines[page_index],
             table_header_separator_bboxes=(repeated_header_separators[page_index]),
         )
         for page_index, (source, geometry) in enumerate(zip(page_sources, page_text_geometries, strict=True))
@@ -426,6 +429,8 @@ def _prepare_page_source(
     origins: dict[int, tuple[float, float]] | None = None,
     geometry_plan: DocumentGeometryPlan | None = None,
     page_index: int = 0,
+    style_lines: list[PDFTextStyleLine] | None = None,
+    link_lines: list[PDFTextLinkLine] | None = None,
     table_header_separator_bboxes: set[BBox] | None = None,
 ) -> _PreparedPage:
     """先认领视觉容器，再标注辅助文本并留下可跨页比较的轻量文本行。"""
@@ -534,12 +539,22 @@ def _prepare_page_source(
             for (repair_page_index, char_idx), repair in geometry_plan.char_repairs.items()
             if repair_page_index == page_index
         }
-        unclaimed_lines = _resplit_native_visual_runs(
+        unclaimed_lines, resplits = _resplit_native_visual_runs(
             unclaimed_lines,
             source.page_size,
             repaired_char_bboxes,
             source_index_start=next_source_index,
         )
+        if resplits:
+            partitioned_styles, partitioned_links = _partition_resplit_text_evidence(
+                style_lines or [],
+                link_lines or [],
+                resplits,
+            )
+            if style_lines is not None:
+                style_lines[:] = partitioned_styles
+            if link_lines is not None:
+                link_lines[:] = partitioned_links
         next_source_index = max(
             next_source_index,
             max(
