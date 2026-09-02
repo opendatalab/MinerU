@@ -157,9 +157,18 @@ zip-safe = false
 
 [tool.pytest.ini_options]
 addopts = "-s --cov=mineru --cov-report html"
+markers = [
+  "e2e: MinerU CLI 端到端用例（脚本化 docs/next/cli/mineru-e2e-test-cases.md）",
+  "smoke: 快速回归子集（无需本地 quality tier）",
+  "slow: 单用例预计超过 60s",
+  "remote: 依赖 mineru.net 云端 parse-server（默认套件包含）",
+  "full_stack: 需要 MINERU_MODEL_STACK=full 与 full 模型集",
+  "isolated_home: 使用独立 MINERU_HOME",
+  "lifecycle: 会 stop/start/restart doclib server",
+]
 
 [tool.coverage.run]
-command_line = "-m pytest tests/unittest/test_e2e.py"
+command_line = "-m pytest tests/unittest"
 source = ["mineru/"]
 omit = [
     "*/gradio_app.py",

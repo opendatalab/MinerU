@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import base64
 import binascii
-import hashlib
 from pathlib import Path, PureWindowsPath
 import re
 import xml.etree.ElementTree as ElementTree
@@ -227,48 +226,6 @@ def extract_mineru_generated_svg_fallback(payload: bytes) -> tuple[bytes, int, i
     if fallback is None:
         raise ValueError("Generated SVG does not contain a PNG fallback")
     return fallback, width, height
-
-
-def image_path_from_key(path_key: str, image_format: str = "JPEG") -> str:
-    """复用旧裁图路径哈希规则，根据逻辑路径生成稳定图片文件名。"""
-    ext = normalize_image_extension(image_format)
-    return f"{path_key}.{ext}"
-
-
-class ImagePayloadCache:
-    """保存运行时图片载荷，public middle_json 只通过 image_path 引用图片。"""
-
-    def __init__(self, images: dict[str, bytes] | None = None) -> None:
-        self._images: dict[str, bytes] = dict(images or {})
-
-    def register_bytes(
-        self,
-        img_bytes: bytes,
-        image_format: str = "JPEG",
-        *,
-        path_key: str | None = None,
-        image_path: str | None = None,
-    ) -> str:
-        """登记图片字节，优先使用显式路径，其次使用逻辑 path_key 生成稳定路径。"""
-        if image_path:
-            img_path = image_path
-        elif path_key:
-            img_path = image_path_from_key(path_key, image_format)
-        else:
-            ext = normalize_image_extension(image_format)
-            payload_key = base64.b64encode(img_bytes).decode("ascii")
-            img_path = f"{hashlib.sha256(payload_key.encode('utf-8')).hexdigest()}.{ext}"
-        self._images[img_path] = img_bytes
-        return img_path
-
-    def update(self, images: dict[str, bytes]) -> None:
-        """合并外部 sidecar 图片字节，供 API client 绑定远端输出。"""
-        for image_path, image_bytes in images.items():
-            self.register_bytes(image_bytes, image_path=image_path)
-
-    def images(self) -> dict[str, bytes]:
-        """返回 image_path 到图片字节的副本，避免调用方改写内部缓存。"""
-        return dict(self._images)
 
 
 def validate_image_sidecar_path(image_path: str) -> str:

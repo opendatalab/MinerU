@@ -74,7 +74,7 @@ mineru parse <file> [flags]
 
 `mineru parse` 未指定 `--tier` 时使用默认选择策略。
 
-PDF/image 的默认选择策略通过当前目标 parse-server 的能力发现，按 [解析 Tier](../tiers.md) 定义的 `standard` -> `advanced` -> `basic` 顺序选择。如果找不到可用质量 tier，返回可解释错误。OFD/EPUB/Office/HTML/CSV 归一为 `flash` 语义，详见 [ADR-0024](../decisions/0024-file-type-tier-normalization.md) 与 [ADR-0028](../decisions/0028-csv-structured-flash-parsing.md)。其它文本文件不创建 parse 任务或 Middle JSON，显式请求返回 `parse_not_required`。
+PDF/image 的默认选择策略通过当前目标 parse-server 的能力发现，按 [解析 Tier](../tiers.md) 定义的 `standard` -> `basic` 顺序选择。如果找不到可用质量 tier，返回可解释错误。OFD/EPUB/Office/HTML/CSV 归一为 `flash` 语义，详见 [ADR-0024](../decisions/0024-file-type-tier-normalization.md) 与 [ADR-0028](../decisions/0028-csv-structured-flash-parsing.md)。其它文本文件不创建 parse 任务或 Middle JSON，显式请求返回 `parse_not_required`。
 
 `flash` 只有在用户显式指定 `--tier flash` 时才作为最终解析结果返回。
 
