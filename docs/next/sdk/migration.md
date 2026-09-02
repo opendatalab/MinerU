@@ -21,7 +21,7 @@ SDK 迁移的目标不是重写现有 parser，而是稳定已经成形的边界
 | Tool SDK 导出 | 已有 `mineru.parser.__all__`。 |
 | `DocumentParser` | 已有 sync/async/batch/context manager 接口。 |
 | `ParseResult` | 已有输出方法，`from_dict()` / `from_json()` 已实现；仍需稳定 envelope 兼容边界。 |
-| Tier 参数 | `parse()` 当前主要使用 `backend`，tier 语义分散在 doclib/service 中。 |
+| Tier 参数 | `parse()` 已以 `tier` 为主参数（默认 `standard`），并接受 `ocr_mode` / `image_analysis` / `page_range`；`backend` 专家覆盖保留在 `mineru-kit parse` CLI 层。 |
 | API-backed parser | 已有 `MinerUApiParser`，使用 v1 uploads/jobs/files。 |
 | parse-server runtime | 已有 `mineru.parser.api_server`。 |
 | Doclib SDK | 已有 `DoclibClient`，继承 `DoclibInterface` 并返回 typed Pydantic response。 |
@@ -59,16 +59,18 @@ SDK 迁移的目标不是重写现有 parser，而是稳定已经成形的边界
 
 ## Phase 3: Tier 进入 Tool SDK
 
-1. 在 `parse()` 增加 `tier` 参数。
-2. 保留 `backend` 作为高级兼容参数。
-3. 明确 `backend` 覆盖 `tier`。
-4. 增加 `tier=None` 默认选择逻辑：PDF/image 永不回退到 `flash`，OFD/EPUB/Office/HTML/CSV 这类仅支持 flash tier 的输入按实际能力归一为 `flash`。
+状态: 已落地。
+
+1. `parse()` / `parse_async()` 已接受 `tier` 参数，默认 `standard`。
+2. `parse()` 不接受 `backend` 参数；`backend` 作为高级专家覆盖保留在 `mineru-kit parse` CLI 层。
+3. `tier` 与 `backend` 的兼容关系由 CLI 的解析逻辑处理，不进入 `parse()` 签名。
+4. `parse()` 接受显式 `tier`（`flash` / `basic` / `standard` / `advanced`）；`tier=None` 默认选择逻辑未进入 `parse()`，flash-only 输入的 tier 归一仍由 doclib/CLI 层承担。
 
 验收:
 
 - `parse(path, tier="basic")` 可用。
-- `parse(path, tier="standard")` 可用或给出明确 engine error。
-- PDF/image 的 `parse(path)` 或 `parse(path, tier=None)` 不会静默使用 flash；OFD/EPUB/Office/HTML/CSV 这类仅支持 flash tier 的输入未指定 tier 时返回实际 `flash` 语义。
+- `parse(path, tier="standard")` 可用；tier 运行时依赖检查由 api-server / doclib server 层执行，`parse()` 本身不做依赖探测。
+- `parse(path)` 默认使用 `standard`，不会静默使用 flash。
 - `parse(path, tier="flash")` 只有显式请求时使用 flash。
 
 ## Phase 4: 错误模型统一

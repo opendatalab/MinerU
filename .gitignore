@@ -58,3 +58,8 @@ _build/
 
 output/
 .coverage
+
+# E2E 测试工作目录（.e2e/fixtures-cache 跨 session 复用）
+.e2e/
+
+htmlcov/

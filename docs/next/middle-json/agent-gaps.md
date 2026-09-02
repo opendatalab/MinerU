@@ -18,10 +18,10 @@ Agent 读取文档时，不只是需要 markdown 文本，还需要可以回溯�
 
 | 能力 | 当前状态 | 影响 |
 |------|----------|------|
-| block ref | 已决策，未实现 | Agent 还不能用稳定可读 ID 引用解析块。 |
-| locator | 已决策，未实现 | 已有统一 page/block 地址格式，是 P0 主引用模型。 |
+| block ref | 已实现（`mineru/doclib/locators.py`，doclib/CLI 消费） | Agent 可用稳定可读 ID 引用解析块。 |
+| locator | 已实现（`locator_for_block()` / `parse_content_cursor()`） | 统一 page/block 地址格式，是 P0 主引用模型。 |
 | source hash | doclib 有 sha256，但 Middle JSON envelope 未携带 | 跨文件引用不稳定。 |
-| bbox known flag | 单测中保留 `bbox_known()` 校验 helper；citation 输出仍未定稿 | Office/HTML 的 `EMPTY_BBOX` 不应被误解为真实坐标。 |
+| bbox known flag | 未知 bbox 以 `bbox: null` 表达；citation 输出仍未定稿 | 缺失 bbox 不应被误解为真实坐标。 |
 | schema version | 当前 `ParseResult.to_dict()` 已写 `schema_version` | 历史缓存仍缺完整 migration。 |
 | child/list-item locator | 暂缓 | P0 不把嵌套 child 或 list item 作为公开引用目标。 |
 | span/cell locator | 不进入公开契约 | span/cell 不单独暴露为公开 citation 目标。 |
@@ -42,6 +42,14 @@ page:{page_no}/block:{block_no}
 ```text
 doc:{short_id}/tier:{tier}/page:{page_no}/block:{block_no}
 ```
+
+在 block reference 之上，locator 还支持可选的字符偏移扩展：
+
+```text
+doc:{short_id}/tier:{tier}/page:{page_no}/block:{block_no}/char:{char_offset}
+```
+
+`block_char_ref(short_id, tier, page_no, block_no, char_offset)` 生成该形式，`parse_content_cursor()` 解析时 `char_offset` 为可选字段（`mineru/doclib/locators.py`），doclib server 在返回摘录时会携带起止 char cursor。
 
 示例:
 
@@ -116,12 +124,12 @@ Agent 对外返回引用时，建议使用 citation record，而不是直接暴�
 
 ## Unknown BBox
 
-当前 Office/HTML 常用 `EMPTY_BBOX=(0,0,0,0)` 表示未知。Agent 场景必须避免误解。
+当前 Office/HTML 的 unknown bbox 以 `bbox: null` 表达（schema 中不再有 `EMPTY_BBOX=(0,0,0,0)` 哨兵值）。Agent 场景必须避免误解。
 
 目标规则:
 
 - public citation 中必须有 `bbox_known`。
-- `EMPTY_BBOX` 默认解释为 unknown，除非 validator 能证明它是合法真实 bbox。
+- `bbox: null` 默认解释为 unknown。
 - 对 unknown bbox，UI 可以显示页级引用，而不是框选区域。
 
 ## Block 粒度
@@ -131,7 +139,7 @@ Agent citation 默认以 block 为最小稳定单元:
 | Block type | Agent 默认 citation unit |
 |------------|------------------|
 | `text` | 单 block。 |
-| `title` | 单 block，并可作为后续 section context。 |
+| `doc_title` / `paragraph_title` | 单 block，并可作为后续 section context。 |
 | `list` | list 容器；必要时可展开 list item。 |
 | `table` | table 容器，保留 body/caption/footnote。 |
 | `image` | image 容器，保留 caption/footnote 和 image path。 |
@@ -171,10 +179,10 @@ Agent citation 不应默认暴露:
 
 P0:
 
-1. 按 [ADR-0011](../decisions/0011-doclib-doc-short-id.md) 在 `docs` 表增加并持久化 `short_id`。
-2. 按 [ADR-0012](../decisions/0012-doclib-block-locator.md) 定义 `locator_for_block(page_no, block_no)`。
-3. 按 [ADR-0012](../decisions/0012-doclib-block-locator.md) 定义 `block_ref(short_id, tier, page_no, block_no)`。
-4. 在 doclib 持久化时保存 `source_sha256`、`short_id` 与 schema version。
+1. （已完成）按 [ADR-0011](../decisions/0011-doclib-doc-short-id.md) 在 `docs` 表增加并持久化 `short_id`（`mineru/doclib/services/parse_svc.py`）。
+2. （已完成）按 [ADR-0012](../decisions/0012-doclib-block-locator.md) 定义 `locator_for_block(page_no, block_no)`（`mineru/doclib/locators.py`）。
+3. （已完成）按 [ADR-0012](../decisions/0012-doclib-block-locator.md) 定义 `block_ref(short_id, tier, page_no, block_no)`（`mineru/doclib/locators.py`）。
+4. 部分完成：doclib 已持久化 `source_sha256` 与 `short_id`；`parses` 表暂无 schema_version 列，仍待补。
 5. 在 SDK 中提供 citation 构造 helper。
 
 P1:

@@ -63,11 +63,11 @@ ID:
 | `mineru/doclib/client.py` | 同步 Doclib client 已实现 Interface；route metadata 与 server 由测试约束一致。 |
 | `mineru/doclib/core/fts.py`、`services/search_svc.py` | FTS 已存 tier；搜索结果已返回来源 tier，并支持 `tier`、`min_tier`、`file_type` 过滤。 |
 | `mineru/doclib/locators.py` | 已有 `short_id` 相关 block/page/char cursor helper；P0 引用模型收敛为稳定 page/block locator。 |
-| `mineru/parser/base.py` | `ParseResult.from_dict()` / `from_json()` 仍是 TODO。 |
-| `mineru/parser/__init__.py` | Tool SDK `parse()` / `parse_async()` 已有 `tier` 参数，并保留 `backend` 高级参数。 |
+| `mineru/parser/base.py` | `ParseResult.from_dict()` / `from_json()` 已实现；`from_dict()` 支持 schema 2.0 与 `pdf_info` / schema 1.0 legacy 兼容分支。 |
+| `mineru/parser/__init__.py` | Tool SDK `parse()` / `parse_async()` 已有 `tier` 参数；无 `backend` 参数，backend 覆盖仅在 kit 层。 |
 | `mineru/types.py` | `Tier`、`TIER_ORDER` 与 Middle JSON typed dataclass 在此定义；尚无 Middle JSON normalize / validator。 |
 | `mineru/errors.py` | 已有 `MineruError`、`engine_error` 映射和错误 envelope helper，但部分新 code 仍未补齐。 |
-| `mineru/cli_next/main.py` | `mineru parse/scan/watch/search/find/list/show/server/config/invalidate/forget/cleanup` 已按 NEXT 入口组织；尚无 `mineru telemetry`。 |
+| `mineru/cli/main.py` | `mineru parse/scan/watch/search/find/list/show/server/config/invalidate/forget/cleanup/usage/telemetry` 已按 NEXT 入口组织。 |
 | `mineru/parser/api_server.py`、`mineru/parser/api_client.py` | v1 parse API、uploads/files、tiers、usage 和 API-backed parser 已有基础；callback/webhook 本地差异和 chat/responses 仍需明确边界。 |
 
 因此，任务分成三类:
@@ -78,7 +78,7 @@ ID:
 | 部分实现 | 当前代码已有基础，但与文档目标还有缺口。 |
 | 已实现需锁定 | 当前代码看起来已满足目标，任务重点是补测试、防回退、修小边界。 |
 
-Agent 领取任务时，应先读本节。如果任务标记为“已实现需锁定”，不要重写实现，优先补测试。
+Agent 领取任务时，应先读本节。如果任务标记为“已实现需锁定”，不要重写实现，优先补测试。索引中“已实现需锁定”对应任务卡片的 `verify-first` 状态。
 
 ### 3.2 里程碑
 
@@ -108,7 +108,7 @@ M1 和 M2 的部分测试任务可以并行，但 `ParseResult.from_dict()`、JS
 | M0-001 | 已实现 | 已有 doclib / parser / CLI 单元测试骨架；新增任务直接复用。 |
 | M0-002 | 已实现需锁定 | 已有 JSON-only 行为基础；继续补高风险边界测试。 |
 | M0-003 | 需要实现 | 新增 Middle JSON fixtures。 |
-| M1-001 | 需要实现 | `ParseResult.from_dict()` / `from_json()` 是 TODO。 |
+| M1-001 | 已实现需锁定 | `from_dict()` / `from_json()` 已实现并有契约测试；继续补 legacy 兼容分支边界测试。 |
 | M1-002 | 需要实现 | 新增 normalize helper。 |
 | M1-003 | 需要实现 | 新增 validator。 |
 | M1-004 | 部分实现 | 先用 validator 跑 HTML 输出，再最小修。 |
@@ -124,14 +124,14 @@ M1 和 M2 的部分测试任务可以并行，但 `ParseResult.from_dict()`、JS
 | M3-003 | 已实现需锁定 | remote 失败 fallback local 已有实现；补 `via=local` 和 tier 能力测试。 |
 | M3-004 | 已实现需锁定 | tier mismatch 不降级已有实现；补错误 code / message 边界测试。 |
 | M4-001 | 部分实现 | CLI 已调用 doclib read-time render；JSON/HTML/Content List 输出边界仍需对齐。 |
-| M4-002 | 已实现需锁定 | Tool SDK `parse()` / `parse_async()` 已有 `tier` 参数；补 backend 覆盖 tier 测试。 |
+| M4-002 | 已实现需锁定 | Tool SDK `parse()` / `parse_async()` 已有 `tier` 参数（无 `backend` 参数；backend 覆盖仅在 kit 层）；补 tier 边界测试。 |
 | M4-003 | 部分实现 | Doclib client 已有映射；API-backed parser 等仍需统一。 |
 | M4-004 | 部分实现 | api_server/client 已有基础，需按文档补差异测试。 |
 | M5-001a | 已实现需锁定 | doclib locator helper 已实现；补 Structured Content / marker 复用边界。 |
 | M5-002 | ready | Markdown block marker 尚未完整实现。 |
 | M5-003 | 已实现需锁定 | 搜索结果已返回 tier，并支持过滤；补 CLI/JSON 边界。 |
-| M6-001 | 需要实现 | Telemetry DB schema、状态管理、聚合与 flush 尚未实现。 |
-| M6-002 | 需要实现 | `mineru telemetry status|enable|disable|preview|flush` 尚未实现。 |
+| M6-001 | 已实现需锁定 | telemetry DB schema、状态管理、聚合与 flush 已实现（`mineru/doclib/telemetry/` + `background/telemetry_flush.py`）；继续补隐私边界测试。 |
+| M6-002 | 已实现需锁定 | `mineru telemetry status|enable|disable|preview|flush` 已实现（`mineru/cli/commands/telemetry.py`）；继续补 CLI 契约测试。 |
 
 ## 4. M0: 测试与基线
 
@@ -281,7 +281,7 @@ M1 和 M2 的部分测试任务可以并行，但 `ParseResult.from_dict()`、JS
 
 ### M1-001 实现 `ParseResult.from_dict()` / `from_json()`
 
-状态: `ready`
+状态: `verify-first`
 
 目标:
 
@@ -1031,8 +1031,8 @@ M1 和 M2 的部分测试任务可以并行，但 `ParseResult.from_dict()`、JS
 
 建议修改范围:
 
-- `mineru/cli_next/commands/parse.py`
-- `mineru/cli_next/output.py`
+- `mineru/cli/commands/parse.py`
+- `mineru/cli/output.py`
 - `mineru/doclib/client.py`
 - `tests/...`
 
@@ -1066,7 +1066,7 @@ M1 和 M2 的部分测试任务可以并行，但 `ParseResult.from_dict()`、JS
 
 目标:
 
-让 Tool SDK 支持 `tier` 参数，同时保留 `backend` 作为高级兼容参数。
+让 Tool SDK 支持 `tier` 参数；`backend` 不进入 Tool SDK 签名，backend 覆盖仅在 kit 层（`mineru-kit parse --backend`）提供。
 
 依赖:
 
@@ -1358,7 +1358,7 @@ Markdown 输出可选择携带 Agent locator marker。
 
 ### M6-001 实现 telemetry DB 状态、聚合与 flush
 
-状态: `ready`
+状态: `verify-first`
 
 目标:
 
@@ -1414,7 +1414,7 @@ Markdown 输出可选择携带 Agent locator marker。
 
 ### M6-002 实现 `mineru telemetry` CLI
 
-状态: `ready`
+状态: `verify-first`
 
 目标:
 
@@ -1431,8 +1431,8 @@ Markdown 输出可选择携带 Agent locator marker。
 
 建议修改范围:
 
-- `mineru/cli_next/main.py`
-- `mineru/cli_next/commands/`
+- `mineru/cli/main.py`
+- `mineru/cli/commands/`
 - `mineru/doclib/base.py`
 - `mineru/doclib/client.py`
 - `mineru/doclib/server.py`

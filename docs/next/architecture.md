@@ -84,6 +84,8 @@ Routes
 | `ParseServerHealthCheck` | 1 | 探测 local/remote parse-server 健康状态 |
 | `DeviceMonitor` | 1 | 检测可插拔 watch 路径 |
 | `Compaction` | 1 | 合并已完成 parse 批次 |
+| `ScanWorkerPool` | 1 | 执行排队的文件系统 scan 任务 |
+| `TelemetryFlushLoop` | 1 | 按固定间隔批量上报 telemetry |
 
 所有后台组件都是 asyncio task，随 server 启停。
 
@@ -170,6 +172,9 @@ metadata 更新规则：入库阶段写基础 metadata；解析完成后，只�
 | `watches` | 监控目录、可插拔设备状态 |
 | `exclude_rules` | exclude 路径规则 |
 | `parsing_rules` | parsing-rule 路径规则 |
+| `scans` | scan 任务表与轻量 scan log |
+| `telemetry_state` | telemetry 上报状态（consent、上次 flush 等） |
+| `telemetry_aggregates` | 待上报 telemetry 聚合数据 |
 | `config` | SQLite KV 配置 |
 | `_migrations` | schema 版本追踪 |
 
@@ -200,7 +205,7 @@ SQLite 运行在 WAL 模式，使用 FTS5 提供搜索能力。每次 DB 操作�
 
 这样用户无需理解“索引”和“解析”两个概念；不同 tier 只是解析深度和执行路径不同。
 
-注意：`flash` 是 watch 自动发现和搜索索引的低成本 tier，不应作为 PDF/image 主动阅读时的默认最终质量。PDF/image 主动阅读未指定 tier 时应使用默认选择策略；有能力发现上下文时按 `standard` -> `advanced` -> `basic` 解析。OFD/EPUB/Office/HTML/CSV 的归一规则见 [ADR-0024](decisions/0024-file-type-tier-normalization.md)、[ADR-0028](decisions/0028-csv-structured-flash-parsing.md) 与 [ADR-0032](decisions/0032-ofd-native-fixed-layout-parsing.md)；其它 text 只入库和索引，直接读取源文件。
+注意：`flash` 是 watch 自动发现和搜索索引的低成本 tier，不应作为 PDF/image 主动阅读时的默认最终质量。PDF/image 主动阅读未指定 tier 时应使用默认选择策略；有能力发现上下文时按 `standard` -> `basic` 解析。OFD/EPUB/Office/HTML/CSV 的归一规则见 [ADR-0024](decisions/0024-file-type-tier-normalization.md)、[ADR-0028](decisions/0028-csv-structured-flash-parsing.md) 与 [ADR-0032](decisions/0032-ofd-native-fixed-layout-parsing.md)；其它 text 只入库和索引，直接读取源文件。
 
 ### 4.2 文件发现到入库
 
@@ -272,7 +277,7 @@ ParseWorker 按 `tier`、`privacy` 和 parse-server 健康状态路由：
 
 | 条件 | 执行路径 |
 |------|----------|
-| 未指定 tier | PDF/image 通过当前目标 parse-server 能力发现，按 `standard` -> `advanced` -> `basic` 解析；OFD/EPUB/Office/HTML/CSV 归一为 `flash`；其它 text 直接读取 |
+| 未指定 tier | PDF/image 通过当前目标 parse-server 能力发现，按 `standard` -> `basic` 解析；OFD/EPUB/Office/HTML/CSV 归一为 `flash`；其它 text 直接读取 |
 | `tier=flash` | 直接本地调用轻量 parser，`via=local` |
 | `tier=basic/standard/advanced` 且 `privacy=remote` | 优先调用 config 中的远端地址，默认使用 `https://mineru.net/api` |
 | remote 不可用 | 尝试 fallback 到 local parse-server |

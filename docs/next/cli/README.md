@@ -49,7 +49,7 @@ MinerU 仓库提供两款命令行工具：
 ## 4. 共享约束
 
 - 解析 tier 语义以 [解析 Tier](../tiers.md) 为准。
-- 不显式 `--remote` 时，不上传用户文档。
+- 除显式 `--remote` 或 parsing-rule 显式允许 remote 外，不上传用户文档。
 - 用户主动读取 PDF/image 时，不把 `flash` 作为默认最终质量。
 - 未指定 tier 使用默认选择策略；PDF/image 默认选择不会解析为 `flash`，OFD/EPUB/Office/HTML/CSV 归一规则见 [ADR-0024](../decisions/0024-file-type-tier-normalization.md) 与 [ADR-0028](../decisions/0028-csv-structured-flash-parsing.md)，其它 text 直接读取。
 - CLI 错误应使用结构化错误码和可执行修复建议。

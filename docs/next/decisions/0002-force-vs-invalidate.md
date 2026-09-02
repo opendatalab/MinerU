@@ -1,6 +1,6 @@
 # ADR-0002: Force 与 Invalidate 缓存语义
 
-状态: Accepted
+状态: Accepted，已实现
 日期: 2026-06-09
 相关文档: ../architecture.md, ../workflows.md, ../cli/mineru-parse.md, ../sdk/doclib-client.md
 补充决策: 0003-parse-request-wait-batches.md, 0004-doclib-http-api-resources.md

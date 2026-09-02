@@ -1,6 +1,6 @@
 # ADR-0027: Doclib 视觉 Block Locator 图片引用
 
-状态: Accepted
+状态: Accepted，已实现
 日期: 2026-07-17
 相关文档: 0012-doclib-block-locator.md, 0014-mineru-read-command.md, 0015-cli-output-json-composition.md, ../architecture.md, ../cli/mineru-read.md
 
@@ -54,7 +54,8 @@ mineru read "doc:ab12cd3/tier:standard/page:1/block:4" --format image --output i
 
 1. block 有有效 bbox 时，输出 canonical block locator。当前只有 PDF 和 image block 会产生这种 bbox，且两者都能重新渲染源页面；渲染 Markdown 时不检查源文件是否存在。
 2. 否则，递归检查 block 中的视觉 span。如果存在安全的 `image_path`，并且它在当前文档和 tier 的 doclib sidecar 目录中对应实际文件，则输出 canonical block locator。
-3. 其他情况输出对应类型的空 locator。
+3. 否则，如果视觉 span 的图片载荷携带远程 `image_url`（如 HTML 内嵌图片），Markdown 渲染直接输出该远程 URL 作为图片引用。`image_url` 不参与 sidecar resolver，也不支持 block image 读取，仅用于 Markdown 展示。
+4. 其他情况输出对应类型的空 locator。
 
 有效 bbox 沿用现有规则: bbox 必须包含四个有效数值，不等于 empty bbox，并且 `x0 < x1`、`y0 < y1`。
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import time
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -12,6 +13,7 @@ import httpx
 import pytest
 from fastapi.testclient import TestClient
 
+import mineru.parser.api_server as api_server
 from mineru.kit.router import RouterSettings, create_app
 from mineru.kit.router.workers import (
     ManagedLocalWorker,
@@ -1059,3 +1061,25 @@ def test_router_console_script_points_to_new_cli() -> None:
     pyproject = tomllib.loads((repo_root / "pyproject.toml").read_text(encoding="utf-8"))
 
     assert pyproject["project"]["scripts"]["mineru-router"] == "mineru.kit.router.cli:main"
+
+
+def test_force_exit_timer_fires_within_deadline() -> None:
+    """控制通道关闭的兜底强杀应在超时后触发 exit(1)，daemon 线程不阻塞进程退出。"""
+    exited: list[int] = []
+
+    timer = api_server._start_force_exit_timer(0.05, exit_fn=exited.append)
+
+    assert timer.daemon is True
+    time.sleep(0.2)
+    assert exited == [1]
+
+
+def test_force_exit_timer_does_not_fire_when_cancelled() -> None:
+    """进程在窗口内自然退出（cancel）时不应强杀。"""
+    exited: list[int] = []
+
+    timer = api_server._start_force_exit_timer(0.3, exit_fn=exited.append)
+    timer.cancel()
+    time.sleep(0.45)
+
+    assert exited == []

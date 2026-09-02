@@ -368,11 +368,11 @@ class PDFDocument:
             return _page_to_image(page, scale, self.render_max_edge)
 
     # TODO: move
-    def crop_image(self, bbox: BBox, page_idx: int, *, scale: float = 2) -> bytes:
-        image = self.render_page(page_idx, scale=scale)
+    def crop_image(self, bbox: BBox, page_idx: int) -> bytes:
+        image = self.render_page(page_idx)
         crop = None
         try:
-            crop = crop_pil_image(bbox, image.pil_image, scale=image.scale)
+            crop = crop_pil_image(bbox, image.pil_image)
             return image_to_bytes(crop, image_format="JPEG")
         finally:
             if crop is not None:

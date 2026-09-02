@@ -10,7 +10,7 @@ from zipfile import BadZipFile, ZipFile
 from loguru import logger
 from magika import Magika
 
-from ..filetypes import IMAGE_EXTENSIONS, rtf_header_offset
+from ..filetypes import CSV_EXTENSIONS, HTML_EXTENSIONS, IMAGE_EXTENSIONS, rtf_header_offset
 
 PDF_SIG_BYTES = b"%PDF"
 OLE2_SIG_BYTES = b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"
@@ -273,9 +273,9 @@ def _has_rtf_signature_by_path(file_path: Path) -> bool:
 
 
 def _resolve_signatureless_csv_suffix(detected_suffix: str, file_path: str | Path | None) -> str:
-    """仅以 .csv 扩展名兜底无签名文本，并保留强内容类型的优先级。"""
+    """以 .csv/.tsv 扩展名兜底无签名分隔文本，并保留强内容类型的优先级。"""
     extension = Path(file_path).suffix.lower().lstrip(".") if file_path else ""
-    if extension == "csv":
+    if extension in CSV_EXTENSIONS:
         if detected_suffix in _STRONG_CONTENT_SUFFIXES:
             return detected_suffix
         return "csv"
@@ -287,9 +287,9 @@ def _resolve_signatureless_csv_suffix(detected_suffix: str, file_path: str | Pat
 
 
 def _resolve_signatureless_html_suffix(detected_suffix: str, file_path: str | Path | None) -> str:
-    """用 .html/.htm 兜底短文本，并把 Magika 的 HTML 结果统一规范为 html。"""
+    """用 HTML_EXTENSIONS 兜底短文本，并把 Magika 的 HTML 结果统一规范为 html。"""
     extension = Path(file_path).suffix.lower().lstrip(".") if file_path else ""
-    if extension in {"html", "htm"} and detected_suffix not in _STRONG_CONTENT_SUFFIXES:
+    if extension in HTML_EXTENSIONS and detected_suffix not in _STRONG_CONTENT_SUFFIXES:
         return "html"
     return "html" if detected_suffix == "html" else detected_suffix
 

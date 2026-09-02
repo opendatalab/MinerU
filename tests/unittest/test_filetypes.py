@@ -97,15 +97,17 @@ def test_odf_extensions_are_flash_only_office_types() -> None:
 
 
 def test_csv_is_a_flash_only_parseable_type_instead_of_plain_text() -> None:
-    """验证 CSV 进入结构化 flash 解析集合并保留独立 MIME 和文件类型。"""
-    assert CSV_EXTENSIONS == frozenset({"csv"})
-    assert "csv" in FLASH_ONLY_PARSE_EXTENSIONS
-    assert "csv" in PARSEABLE_EXTENSIONS
-    assert "csv" in INGESTIBLE_EXTENSIONS
-    assert "csv" not in TEXT_EXTENSIONS
-    assert FILE_TYPE_BY_EXTENSION["csv"] == "csv"
+    """验证 CSV/TSV 进入结构化 flash 解析集合并保留独立 MIME 和文件类型。"""
+    assert CSV_EXTENSIONS == frozenset({"csv", "tsv"})
+    for ext in CSV_EXTENSIONS:
+        assert ext in FLASH_ONLY_PARSE_EXTENSIONS
+        assert ext in PARSEABLE_EXTENSIONS
+        assert ext in INGESTIBLE_EXTENSIONS
+        assert ext not in TEXT_EXTENSIONS
+        assert FILE_TYPE_BY_EXTENSION[ext] == "csv"
+        assert is_flash_only_parse_extension(ext)
     assert MIME_TYPE_BY_EXTENSION["csv"] == "text/csv"
-    assert is_flash_only_parse_extension("csv")
+    assert MIME_TYPE_BY_EXTENSION["tsv"] == "text/tab-separated-values"
 
 
 def test_epub_is_a_flash_only_parseable_e_book_type() -> None:
@@ -122,7 +124,7 @@ def test_epub_is_a_flash_only_parseable_e_book_type() -> None:
 
 def test_html_extensions_are_canonical_flash_only_inputs() -> None:
     """验证 HTML/HTM 在所有入口归一为单一 html 文件类型。"""
-    assert HTML_EXTENSIONS == frozenset({"html", "htm"})
+    assert HTML_EXTENSIONS == frozenset({"html", "htm", "shtml"})
     for ext in HTML_EXTENSIONS:
         assert ext in FLASH_ONLY_PARSE_EXTENSIONS
         assert ext in PARSEABLE_EXTENSIONS
@@ -142,6 +144,18 @@ def test_ofd_is_an_independent_fixed_layout_flash_type() -> None:
     assert FILE_TYPE_BY_EXTENSION["ofd"] == "ofd"
     assert MIME_TYPE_BY_EXTENSION["ofd"] == "application/ofd"
     assert is_flash_only_parse_extension("ofd")
+
+
+def test_additional_text_extensions_are_ingestible_but_not_parseable() -> None:
+    """新增文本扩展进入 doclib ingest/扫描，但不进入结构化解析集合。"""
+    for ext in ("mdx", "latex", "adoc", "asciidoc"):
+        assert ext in TEXT_EXTENSIONS
+        assert ext in INGESTIBLE_EXTENSIONS
+        assert ext not in PARSEABLE_EXTENSIONS
+    assert FILE_TYPE_BY_EXTENSION["mdx"] == "markdown"
+    assert FILE_TYPE_BY_EXTENSION["latex"] == "tex"
+    assert FILE_TYPE_BY_EXTENSION["adoc"] == "asciidoc"
+    assert FILE_TYPE_BY_EXTENSION["asciidoc"] == "asciidoc"
 
 
 def test_mineru_kit_discovers_and_accepts_csv_inputs(tmp_path: Path) -> None:

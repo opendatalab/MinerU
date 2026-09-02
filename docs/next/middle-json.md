@@ -1,6 +1,6 @@
 # Middle JSON
 
-状态: Draft
+状态: Implemented
 读者: backend 开发者、Markdown/Structured Content 输出开发者、SDK 开发者、Agent 能力开发者
 范围: Middle JSON schema 2.0 事实标准、Agent-native gap、统一 envelope、迁移策略和验收清单
 非目标: 具体 OCR 或模型算法实现

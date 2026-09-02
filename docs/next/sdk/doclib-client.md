@@ -102,12 +102,15 @@ class ParseResponse:
 
 状态:
 
+`ParseResponse.status` 只有 `pending`（已入队）和 `done`（已完成或命中缓存）两个取值。parse record（`list_parses()` / `get_parse()` 返回的 `ParseInfo.status`）使用更细的状态集合:
+
 | 状态 | 含义 |
 |------|------|
-| `pending` | 已入队。 |
+| `pending` | 已入队，尚未开始解析。 |
 | `parsing` | 正在解析。 |
-| `done` | 已完成或命中缓存。 |
+| `done` | 解析完成。 |
 | `failed` | 解析失败。 |
+| `superseded` | 已被同文档同范围的新 parse 覆盖，默认不出现在 `list_parses()` 结果中。 |
 
 当前没有稳定的 `DoclibClient.parse(path, ...)` convenience wrapper。CLI 会自行构造 `ParseRequest`，然后调用 `ensure_parse()`，再按需要调用内容读取接口。
 
@@ -115,10 +118,10 @@ class ParseResponse:
 
 | 方法 | 说明 |
 |------|------|
-| `list_parses(...)` | 对应 `GET /parses`，按 ids、sha256、tier、status 或 page_range 查询 parse records 和覆盖状态。 |
+| `list_parses(*, ids=None, doc_ref=None, tier=None, status=None, page_range=None, include_superseded=False, limit=50, offset=0)` | 对应 `GET /parses`，按 ids、`doc_ref`、tier、status 或 page_range 查询 parse records 和覆盖状态；`include_superseded` 控制是否返回已被覆盖的 parse。 |
 | `get_parse(parse_id)` | 对应 `GET /parses/{id}`，查询单条 parse record。 |
-| `get_doc_content(doc_ref, tier=..., page_range=None, after=None, limit=..., format=...)` | 对应 `GET /docs/{doc_ref}/content`，从保存的 JSON 结果读取时转换。 |
-| `read_content(locator, context=..., limit=..., format=...)` | 对应 `GET /content`，按 Agent locator 读取内容或图片。 |
+| `get_doc_content(doc_ref, *, tier, page_range=None, after=None, limit=30000, format="markdown", no_marker=False)` | 对应 `GET /docs/{doc_ref}/content`，从保存的 JSON 结果读取时转换。 |
+| `read_content(locator, *, context=0, limit=30000, format="markdown", image_format="jpeg", no_marker=False)` | 对应 `GET /content`，按 Agent locator 读取内容或图片。 |
 | `export_doc_content(doc_ref, request)` | 对应 `POST /docs/{doc_ref}/exports`，导出结构化内容。 |
 | `invalidate(request)` | 对应 `POST /invalidate`，将已有解析结果标记为失效；不自动触发重新解析。 |
 
@@ -128,23 +131,26 @@ class ParseResponse:
 
 Markdown 响应中的 visual block 图片使用 `doc:.../page:.../block:...` locator。非空图片 locator 可以原样传给 `read_content(..., format="image")`；空 locator 表示该 block 没有可用图片。SDK 调用方不应依赖或拼接 Middle JSON 内部的 `image_path`。
 
-## Search 与 Info
+## Search 与文件信息
 
 ```python
 def search(
     self,
     query: str,
+    *,
     file_type: str | None = None,
     tier: Tier | None = None,
     min_tier: Tier | None = None,
     limit: int = 20,
     offset: int = 0,
-) -> dict: ...
+) -> SearchResponse: ...
 
-def find(self, query: str, ext: str | None = None, limit: int = 50) -> dict: ...
+def find(self, query: str, *, ext: str | None = None, limit: int = 50) -> FindResponse: ...
 
-def info(self, file_path: str) -> dict: ...
+def get_file_by_path(self, path: str) -> FileInfoResponse: ...
 ```
+
+按路径查询文件信息使用 `get_file_by_path(path)`，对应 `GET /files/by-path`；不存在独立的 `info()` 方法。
 
 目标响应类型:
 

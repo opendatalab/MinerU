@@ -112,7 +112,7 @@
 
 ### G-004 手动 refresh / retry failed / remove file 能力
 
-状态: In progress。
+状态: Done。
 已定部分:
 
 - `forget path`，见 [ADR-0008](decisions/0008-doclib-forget-path.md)。
@@ -259,7 +259,7 @@ MinerU 当前状态:
 
 ### G-008 搜索过滤与结果可信度
 
-状态: P0 decision ready。
+状态: Done。
 待实现位置: `SearchService.search()`、`SearchService.search_filenames()`、doclib interface/client/server、`mineru search` / `mineru find`。
 
 来源:
@@ -269,9 +269,9 @@ MinerU 当前状态:
 
 MinerU 当前状态:
 
-- `search()` 支持 `file_type`、`limit`、`offset`。
-- `find()` 是文件名搜索。
-- 搜索结果返回 `tier`，但没有系统性表达可信度、mtime 范围、watch 过滤、min tier 等。
+- `search()` 已支持 `file_type`、`tier`、`min_tier`、`limit`、`offset` 过滤（`mineru/doclib/services/search_svc.py`，tier 匹配见 `_matches_tier`）。
+- `find()` / `search_filenames()` 是文件名搜索，已支持 `ext` 过滤。
+- 搜索结果仍不表达 mtime 范围、watch 过滤。
 
 风险:
 
@@ -327,8 +327,8 @@ MinerU 当前状态:
 
 MinerU 当前状态:
 
-- Middle JSON 文档讨论了 schema version。
-- 当前 DB 的 `docs` / `parses` 还没有明确记录 parser version / schema version。
+- Middle JSON 文档讨论了 schema version；parsed JSON envelope 已包含 `schema_version`（当前 `"2.0"`，见 `mineru/parser/base.py` 的 `MIDDLE_JSON_SCHEMA_VERSION`）。
+- 当前 DB 的 `docs` / `parses` 还没有明确记录 parser version / schema version 列。
 
 风险:
 

@@ -57,9 +57,10 @@
 当前 `mineru-kit models` 已确定：
 
 - 第一阶段只提供 `download`、`show`、`verify` 三个子命令。
-- 继续使用旧 `mineru.json` 配置文件体系。
-- `download` 用位置参数显式选择 `pipeline`、`vlm` 或 `all`，不提供默认 bundle。
-- 下载完成后默认更新配置文件，不支持 `--no-config` 或自定义配置文件路径。
+- 使用 `config.yaml` 配置文件体系（默认 `${MINERU_HOME:-~/.mineru}/config.yaml`，可由 `MINERU_CONFIG` 指定其它路径）。
+- `download` 用位置参数选择模型 repo，或用 `--tier` 下载某个 tier 所需的 repo 集合。
+- `download`、`show`、`verify` 均支持 `--stack auto|light|full` 选择模型栈。
+- 下载过程中自动解析出的 `model.source` 可能写回配置文件，不提供 `--no-config` 或自定义配置文件路径参数。
 
 详细命令契约见 [ADR-0019](../decisions/0019-mineru-kit-models-command.md)。
 

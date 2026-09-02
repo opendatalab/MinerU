@@ -1,6 +1,6 @@
 # ADR-0015: CLI Output 与 JSON 组合语义
 
-状态: Accepted
+状态: Accepted，已实现
 日期: 2026-06-17
 相关文档: ../cli/mineru.md, ../cli/mineru-parse.md, ../cli/mineru-read.md, ../cli/mineru-e2e-test-cases.md, 0014-mineru-read-command.md
 

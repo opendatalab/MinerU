@@ -31,9 +31,13 @@
 |------|------|------|
 | `parse` | function | 根据文件后缀和参数构造 `MinerUParser` 并执行解析。 |
 | `parse_async` | function | `parse` 的异步版本。 |
+| `DocumentParser` | class | 统一 parser 抽象基类（sync/async/batch/context manager 接口）。 |
 | `MinerUParser` | class | 统一解析器，支持 PDF、OFD、EPUB、HTML、图片、CSV、RTF、OOXML 与 OpenDocument。 |
 | `ParseResult` | dataclass | 解析结果对象。 |
 | `MinerUApiParser` | class | API-backed parser，详见 [API-backed Parser](api-parser.md)。 |
+| `backend_for_tier` | function | 返回指定 tier 使用的 parser backend，tier 自身决定质量档位。 |
+| `PARSER_BACKENDS` | 常量 | 受支持的 backend 名称元组。 |
+| `MIDDLE_JSON_SCHEMA_VERSION` | 常量 | 当前 Middle JSON schema 版本（`"2.0"`）。 |
 
 ## `MinerUParser`
 
@@ -47,11 +51,11 @@ from mineru.parser import MinerUParser
 
 构造参数（关键字参数）:
 
-| 参数 | 类型 | 说明 |
-|------|------|------|
-| `tier` | `Literal["flash","basic","standard","advanced"]` | 解析投入档位，对应原 SDK 的 `effort` 概念。 |
-| `parse_mode` | `str` | 解析模式，对应原 SDK 的 `parse_mode`/`backend` 概念。 |
-| `image_analysis` | `bool` | 是否启用图片分析。对应原 SDK 的 `disable_image_analysis` 取反语义。 |
+| 参数 | 类型 | 默认值 | 说明 |
+|------|------|--------|------|
+| `tier` | `Literal["flash","basic","standard","advanced"]` | `"standard"` | 解析投入档位，对应原 SDK 的 `effort` 概念。 |
+| `parse_mode` | `Literal["auto","txt","ocr"]` | `"auto"` | 解析模式，对应原 SDK 的 `parse_mode`/`backend` 概念。 |
+| `image_analysis` | `bool` | `True` | 是否启用图片分析。对应原 SDK 的 `disable_image_analysis` 取反语义。 |
 
 `MinerUParser` 根据 `tier` / `parse_mode` / `image_analysis` 以及输入文件后缀，在内部选择具体的 PDF、EPUB 或结构化文档解析路径，不再要求调用方分别实例化不同 parser 类。
 
@@ -90,10 +94,11 @@ from mineru.parser import ParseResult
 def parse(
     path: str | Path,
     *,
-    tier: Literal["flash","basic","standard","advanced"] | None = None,
-    parse_mode: str | None = None,
-    image_analysis: bool = False,
-    **kwargs,
+    tier: Literal["flash","basic","standard","advanced"] = "standard",
+    ocr_mode: Literal["auto","txt","ocr"] = "auto",
+    image_analysis: bool = True,
+    page_range: str = "",
+    source_context=None,
 ) -> ParseResult: ...
 
 async def parse_async(...) -> ParseResult: ...
@@ -101,7 +106,9 @@ async def parse_async(...) -> ParseResult: ...
 
 设计规则:
 
-- `tier` / `parse_mode` / `image_analysis` 与 `MinerUParser` 的构造参数一致。
+- `tier` / `ocr_mode` / `image_analysis` 与 `MinerUParser` 的构造参数一致；`ocr_mode` 映射到 `MinerUParser` 的 `parse_mode`。
+- `source_context` 仅供内部保留 HTML 原始来源（下载来源或本地资源根）的调用方使用，普通调用方不应传入。
+- `page_range` 仅对 PDF 生效；其他格式传入非空值返回 `page_range_invalid`。
 - 返回值始终是 `ParseResult`。
 - `parse_async()` 默认可以通过线程池调用同步实现。
 

@@ -1,6 +1,6 @@
 # 端到端示例
 
-状态: Draft
+状态: Implemented
 读者: API 使用者、SDK 开发者
 范围: 官方 API 与本地 server 的常见调用流程
 来源: 由根目录旧 Unified API 底稿迁移整理而来
@@ -9,7 +9,7 @@
 
 ```bash
 SHA=$(sha256sum report.pdf | cut -d' ' -f1)
-SIZE=$(stat -f%z report.pdf)
+SIZE=$(wc -c < report.pdf | tr -d ' ')
 
 RESP=$(curl -s -X POST https://mineru.net/api/v1/uploads \
   -H "Authorization: Bearer $MINERU_API_KEY" \
@@ -138,7 +138,7 @@ curl -X POST http://localhost:8000/v1/parse/jobs \
 客户端也可以对本地 server 使用与官方 API 相同的上传流程。差异只在于 `upload_url` 指向本地 server:
 
 ```bash
-SIZE=$(stat -f%z report.pdf)
+SIZE=$(wc -c < report.pdf | tr -d ' ')
 
 RESP=$(curl -s -X POST http://localhost:8000/v1/uploads \
   -H "Content-Type: application/json" \

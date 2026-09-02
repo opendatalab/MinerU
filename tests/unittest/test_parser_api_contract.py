@@ -57,7 +57,6 @@ from mineru.types import (
     select_parsing_rule_tier,
     validate_tier,
 )
-from mineru.utils.image_payload import ImagePayloadCache
 from mineru.version import __version__
 
 runner = CliRunner()
@@ -719,13 +718,9 @@ def test_api_client_ignores_legacy_detail_error_envelope() -> None:
     assert exc_info.value.message.startswith("HTTP 400:")
 
 
-def test_api_client_reads_image_cache_from_zip_and_preserves_pdf_mapping(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_api_client_inlines_image_sidecar_from_zip(monkeypatch: pytest.MonkeyPatch) -> None:
     parser = MinerUApiParser(api_url="http://localhost:8000", tier="standard", include_images=True)
-    middle_json = _current_payload(
-        [_current_image_page("images/chart.png")],
-        _pdf_retained_page_indices=[0, 2],
-        _pdf_broken_page_indices=[1],
-    )
+    middle_json = _current_payload([_current_image_page("images/chart.png")])
     zip_ref = {"file_id": "file-zip", "bytes": 10}
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
@@ -744,9 +739,9 @@ def test_api_client_reads_image_cache_from_zip_and_preserves_pdf_mapping(monkeyp
         parser,
     )
 
-    assert result._retained_page_indices == [0, 2]
-    assert result._broken_page_indices == [1]
-    assert result.images() == {"images/chart.png": b"chart-bytes"}
+    image_body = result.pages[0].blocks[0].content[0]  # type: ignore[union-attr]
+    assert image_body.image_base64 == "data:image/png;base64," + base64.b64encode(b"chart-bytes").decode("ascii")  # type: ignore[union-attr]
+    assert image_body.image_path is None  # type: ignore[union-attr]
 
 
 def test_api_client_downloads_model_output_from_zip(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -831,7 +826,8 @@ def test_api_client_accepts_legacy_official_layout_json(monkeypatch: pytest.Monk
 
     assert len(result.pages) == 1
     assert result.pages[0].blocks[0].type.value == "image"
-    assert result.images() == {"chart.png": b"chart-bytes"}
+    image_body = result.pages[0].blocks[0].content[0]
+    assert image_body.image_base64 == "data:image/png;base64," + base64.b64encode(b"chart-bytes").decode("ascii")  # type: ignore[union-attr]
 
 
 def test_api_client_async_downloads_model_output_from_zip(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -874,8 +870,7 @@ def test_api_client_include_images_downloads_single_zip(monkeypatch: pytest.Monk
         include_model_output=True,
     )
     zip_ref = {"file_id": "file-zip", "bytes": 10}
-    image_cache = ImagePayloadCache()
-    image_path = image_cache.register_bytes(b"chart-bytes", "png", image_path="images/chart.png")
+    image_path = "images/chart.png"
     image_body = ImageBodyBlock(
         type=BlockType.IMAGE_BODY,
         index=0,
@@ -895,7 +890,7 @@ def test_api_client_include_images_downloads_single_zip(monkeypatch: pytest.Monk
         archive.writestr(
             "middle_json.json",
             json.dumps(
-                ParseResult(middle_json=_full_middle_json(page), _image_cache=image_cache).to_dict(),
+                ParseResult(middle_json=_full_middle_json(page)).to_dict(),
                 ensure_ascii=False,
             ),
         )
@@ -926,7 +921,8 @@ def test_api_client_include_images_downloads_single_zip(monkeypatch: pytest.Monk
 
     assert download_calls == [zip_ref]
     assert result.pages[0].page_idx == 0
-    assert result.images() == {"images/chart.png": b"chart-bytes"}
+    image_body = result.pages[0].blocks[0].content[0]
+    assert image_body.image_base64 == "data:image/png;base64," + base64.b64encode(b"chart-bytes").decode("ascii")  # type: ignore[union-attr]
     assert result._model_output == [[{"raw": "model"}]]
 
 
@@ -952,7 +948,9 @@ def test_api_client_does_not_read_image_cache_from_zip_unless_requested(monkeypa
         parser,
     )
 
-    assert result.images() == {}
+    image_body = result.pages[0].blocks[0].content[0]
+    assert image_body.image_base64 is None  # type: ignore[union-attr]
+    assert image_body.image_path == "images/chart.png"  # type: ignore[union-attr]
     assert result._model_output == [[{"raw": "model"}]]
 
 
@@ -1857,9 +1855,7 @@ def test_api_server_rendered_outputs_do_not_return_image_sidecars(
     output_format: str,
     output_attr: str,
 ) -> None:
-    img_bytes = b"rendered-image-bytes"
-    image_cache = ImagePayloadCache()
-    image_path = image_cache.register_bytes(img_bytes, "png", image_path="rendered.png")
+    image_path = "rendered.png"
     image_body = ImageBodyBlock(
         type=BlockType.IMAGE_BODY,
         index=0,
@@ -1880,7 +1876,6 @@ def test_api_server_rendered_outputs_do_not_return_image_sidecars(
                 blocks=[image_block],
             )
         ),
-        _image_cache=image_cache,
     )
 
     async def fake_parse_async(*args: object, **kwargs: object) -> ParseResult:
@@ -2092,15 +2087,6 @@ def test_api_server_zip_includes_model_output_when_parse_result_has_it(
     assert payload == model_output
     if model_output:
         assert "\n    " in model_output_text
-
-
-def test_parse_result_rejects_unsafe_image_cache_path() -> None:
-    """验证 ParseResult 绑定外部图片缓存时立即拒绝不安全路径。"""
-    with pytest.raises(ValueError, match="Unsafe image sidecar path"):
-        ParseResult(
-            middle_json=_full_middle_json(PageInfo(page_idx=0)),
-            _image_cache={"../escape.png": b"bad-image"},
-        )
 
 
 def test_api_server_zip_rejects_unsafe_image_sidecar_path(

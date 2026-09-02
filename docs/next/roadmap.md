@@ -57,7 +57,7 @@ SaaS 不承担 MinerU 的全部产品体验。它的定位是高质量、可扩�
 
 ### 2.5 数据驱动但不被指标绑架
 
-路线图以 WAI（Weekly Active Installs，每周至少完成一次成功 parse 的 install 数）作为北极星指标，同时跟踪解析成功率、backend 分布、错误码、留存和调用来源。
+路线图以 WAI（Weekly Active Installs，每周至少完成一次成功 parse 的 install 数）作为北极星指标，同时跟踪解析成功率、tier 分布、错误码、留存和调用来源。
 
 解析质量、社区反馈和代码质量不能只靠 dashboard 判断，仍需要人工评测、review 和专项回归。
 
@@ -65,12 +65,12 @@ SaaS 不承担 MinerU 的全部产品体验。它的定位是高质量、可扩�
 
 | 维度 | 指标 | 数据来源 |
 |------|------|----------|
-| 采纳 | 累计 install、WAI | install_uuid、startup 事件 |
-| 使用质量 | 解析成功率，按 backend / 文件类型分组 | parse.result、backend、file_format |
-| 能力分布 | backend 或 tier 选择分布 | parse.backend / parse.tier |
-| 错误信号 | Top 错误码周分布 | parse.error_code |
-| 留存 | install 4 周后回访率 | install_uuid 跨周存在 |
-| 渠道 | Agent 调用占比 | parse.source，例如 Skill / MCP / SDK / CLI |
+| 采纳 | 累计 install、WAI | telemetry `installation_id` 跨周出现（install/startup 专属事件为目标行为，暂未实现） |
+| 使用质量 | 解析成功率，按 tier / 文件类型分组 | `parse.finished.count` 的 status / tier 维度；文件类型分组为目标行为，暂无对应维度 |
+| 能力分布 | tier 选择分布 | `parse.finished.count` / `parse.pages.count` 的 tier 维度 |
+| 错误信号 | Top 错误码周分布 | `parse.finished.count` 的 error_code 维度 |
+| 留存 | install 4 周后回访率 | `installation_id` 跨周存在 |
+| 渠道 | Agent 调用占比 | `parse.request.count` 的 source / caller 维度，例如 Skill / MCP / SDK / CLI |
 
 Review 节奏：P0 攻坚期双周 review，产品稳定期月度 review。对外只公开累计 install、累计 parse 等入口叙事指标；留存率、错误率等早期容易被误读的数据默认内部使用。
 
@@ -187,7 +187,7 @@ P0 阶段需要优先交付 Agent 可可靠消费的输出能力：
 
 ### 5.2 Middle JSON 统一
 
-当前公开对象已从历史 `pdf_info` 逐步收敛到 `schema_version + pages` 的顶层结构，并由 `PageInfo`、`Block`、`Line`、`Span` 等模型表达；历史 `pdf_info` 只作为离线迁移或重新生成对象处理。Pipeline、VLM、Hybrid、Office、HTML 等来源仍存在 bbox、block type、span 粒度、page_size 和内部后处理流程差异。P0 需要推动 canonical schema、validator、locator 和内容生成逻辑继续收敛，最终减少多套 `union_make` / output builder 逻辑的重复。
+当前公开对象已从历史 `pdf_info` 收敛到 `schema_version + pages` 的顶层结构（schema 2.0），并由 `PageInfo`、`Block`、`InlineSpan` 等严格模型表达；历史 `pdf_info` 与 schema 1.0 payload 由 `ParseResult.from_dict()` 与 doclib compaction 的运行时 legacy 分支单向回推为 raw model-list 后重走统一后处理。Pipeline、VLM、Hybrid、Office、HTML 等来源仍存在 block type、span 粒度和内部后处理流程差异。P0 需要推动 canonical schema、validator、locator 和内容生成逻辑继续收敛，最终消除 `model_json_to_middle_json` 统一构造与 `render` 统一输出管线之外的重复 output builder 逻辑。
 
 详细设计见 [Middle JSON](middle-json.md)。
 

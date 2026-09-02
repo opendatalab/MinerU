@@ -61,11 +61,11 @@ def _bbox_area(bbox: BBox) -> float:
     return max(0.0, bbox[2] - bbox[0]) * max(0.0, bbox[3] - bbox[1])
 
 
-def _normalize_bbox_to_thousandths(
+def _normalize_bbox_to_unit(
     bbox: BBox,
     page_size: tuple[float, float],
 ) -> list[float]:
-    """将绝对 bbox 转成千分位刻度，并保证舍入后的宽高至少各占一个刻度。"""
+    """将绝对 bbox 归一化到 0-1 单位区间，并保证舍入后的宽高至少各占一个刻度。"""
 
     page_width, page_height = page_size
     ticks = [

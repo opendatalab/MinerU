@@ -9,7 +9,7 @@ import os
 import time
 from collections.abc import Sequence
 from dataclasses import dataclass
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 from typing import Literal, cast
 from urllib.parse import urlparse
 
@@ -1050,9 +1050,8 @@ class ParseService:
         write_start_ms = _now_ms()
         try:
             os.makedirs(output_dir, exist_ok=True)
-            _write_cached_image_sidecars(parse_image_sidecar_dir(self.data_dir, sha256, tier), result.images())
             with open(json_path, "w", encoding="utf-8") as f:
-                json.dump(export_payload, f, ensure_ascii=False, indent=4)
+                json.dump(export_payload, f, ensure_ascii=False, indent=2)
         except Exception as exc:
             logger.error(
                 "Parse post-write finalization failed for task_id=%s path=%s tier=%s page_range=%s: %s",
@@ -1565,31 +1564,6 @@ def parse_batch_json_path(data_dir: str, sha256: str, tier: Tier, page_range: st
     return os.path.join(os.path.expanduser(data_dir), "parsed", sha256[:2], sha256, tier, filename)
 
 
-def parse_image_sidecar_dir(data_dir: str, sha256: str, tier: Tier) -> str:
-    """返回 doclib 解析缓存图片 sidecar 目录，供同一文档同一 tier 的多个 batch 共用。"""
-    return os.path.join(os.path.expanduser(data_dir), "parsed", sha256[:2], sha256, tier, "images")
-
-
-def resolve_image_sidecar_path(image_dir: str, image_path: str) -> Path | None:
-    """把 public image_path 安全映射到 doclib 缓存图片目录，拒绝绝对路径和上跳路径。"""
-    if not image_path:
-        return None
-    raw_path = PurePosixPath(image_path)
-    if raw_path.is_absolute() or any(part in {"", ".", ".."} for part in raw_path.parts):
-        return None
-    return Path(image_dir).joinpath(*raw_path.parts)
-
-
-def _write_cached_image_sidecars(image_dir: str, images: dict[str, bytes]) -> None:
-    """把 ParseResult.images() 的图片字节写入 doclib 缓存，保证后续 markdown 链接可访问。"""
-    for image_path, image_bytes in images.items():
-        sidecar_path = resolve_image_sidecar_path(image_dir, image_path)
-        if sidecar_path is None:
-            continue
-        sidecar_path.parent.mkdir(parents=True, exist_ok=True)
-        sidecar_path.write_bytes(image_bytes)
-
-
 def load_pages_from_done_batches(data_dir: str, sha256: str, tier: Tier, done_rows: Sequence[ParseBatchRow]) -> list[PageInfo]:
     """Load valid done JSON batches and keep the newest page for duplicate page_idx values."""
     pages_by_page_idx: dict[int, PageInfo] = {}
@@ -1658,7 +1632,6 @@ def _remap_api_result_pages_to_page_range(result: ParseResult, page_range: str) 
         )
     for page, page_no in zip(result.pages, requested_page_numbers, strict=True):
         page.page_idx = page_no - 1
-    result.refresh_export_cache(preserve_images=True)
 
 
 def _parse_coverage(request_page_range: str, rows: list[ParseRow]) -> dict:

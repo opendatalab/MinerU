@@ -112,26 +112,25 @@ mineru show scan <scan-id>
 
 输出应区分实际 tier、缓存状态、产物路径和错误状态。已解析结果使用实际 tier。
 
-JSON 输出至少包含:
+JSON 输出为 `FileInfoResponse` 顶层对象，至少包含:
 
 | 字段 | 说明 |
 |------|------|
-| `filename` | 文件名。 |
-| `size_bytes` | 文件大小。 |
-| `page_count` | 文档页数；未知时为 `null`。 |
-| `tiers` | 各 tier 已解析页码范围。 |
+| `file` | 文件对象；`filename`、`size_bytes`、`path`、`sha256`、`short_id`、`status` 等嵌套在其内。 |
+| `doc` | 文档对象；`page_count`（未知时为 `null`）、`title`、`author` 等嵌套在其内；未关联文档时为 `null`。 |
+| `parsed_tiers` | 各 tier 的解析状态摘要。 |
 | `active_parses` | 当前 pending / parsing 的解析任务摘要。 |
 
-`tiers` 应表达当前哪些页已经被哪些 tier 解析，例如:
+`parsed_tiers` 表达当前哪些页已经被哪些 tier 解析，例如:
 
 ```json
 [
-  {"tier": "flash", "page_range": "1~20"},
-  {"tier": "basic", "page_range": "1~5,18~20"}
+  {"tier": "flash", "page_range": "1~20", "status": "done", "done_at": 1730000000},
+  {"tier": "basic", "page_range": "1~5,18~20", "status": "done", "done_at": 1730000100}
 ]
 ```
 
-`active_parses` 应表达当前文档是否有正在进行中的解析任务，例如:
+`active_parses` 表达当前文档是否有正在进行中的解析任务，元素为 parse task 摘要，例如:
 
 ```json
 [
@@ -342,7 +341,7 @@ mineru config parsing-rules add "*/合同/*" --tier standard --remote
 
 parsing-rule 的 `tier` 和 `remote` 适用于 PDF 和 image，但 `page_range` 只适用于 PDF。image 忽略 page_range 并整文件解析；EPUB、Office、HTML 和 CSV 命中规则时忽略 tier、page_range 和 remote，按 `flash` 整本解析，并且 parse row 记录为 `flash`；其它 text 只入库和索引，不创建 parse row。
 
-PDF/image 命中规则时，系统必须检查本地或远端能力是否支持对应 tier。rule 未指定 tier 时，按 `standard` -> `advanced` -> `basic` -> `flash` 选择可用 tier，并记录实际 tier。完整文件类型归一规则见 [ADR-0024](../decisions/0024-file-type-tier-normalization.md)。
+PDF/image 命中规则时，系统必须检查本地或远端能力是否支持对应 tier。rule 未指定 tier 时，按 `standard` -> `basic` -> `flash` 选择可用 tier，并记录实际 tier。完整文件类型归一规则见 [ADR-0024](../decisions/0024-file-type-tier-normalization.md)。
 
 ## 已收敛规则
 

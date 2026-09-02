@@ -31,12 +31,22 @@
 model:
   base_dir: ${MINERU_HOME:-~/.mineru}/models
   source: auto
+  stack: auto
 ```
+
+`model.stack` 支持 `auto`、`light`、`full`；`auto` 跟随设备与配置自动选择。
 
 `model.base_dir` 是所有 MinerU 模型仓库的根目录。当前模型仓库会落在:
 
-- `{model.base_dir}/PDF-Extract-Kit-1.0`
-- `{model.base_dir}/MinerU2.5-Pro-2605-1.2B`
+- `{model.base_dir}/PDF-Extract-Kit-1.0`（full stack）
+- `{model.base_dir}/MinerU2.5-Pro-2605-1.2B`（full stack）
+- `{model.base_dir}/PP-DocLayoutV2_onnx`（light stack）
+- `{model.base_dir}/PP-OCRv6_small_det_onnx`（light stack）
+- `{model.base_dir}/PP-OCRv6_small_rec_onnx`（light stack）
+- `{model.base_dir}/PP-OCRv6_medium_det_onnx`（light stack）
+- `{model.base_dir}/PP-OCRv6_medium_rec_onnx`（light stack）
+- `{model.base_dir}/PP-FormulaNet_plus-M_onnx`（light stack）
+- `{model.base_dir}/MinerU2.5-Pro-2605-1.2B-GGUF`（light stack）
 
 `model.source` 支持:
 
@@ -63,6 +73,7 @@ mineru-kit models download --tier <basic|standard> [flags]
 | Flag | 简写 | 类型 | 默认 | 说明 |
 |------|------|------|------|------|
 | `--tier` | - | `basic \| standard` | - | 按模型 tier 下载所需模型 |
+| `--stack` | - | `auto \| light \| full` | `auto` | 选择模型栈；`auto` 跟随 `config.model.stack`，传入 repo 位置参数时忽略 |
 | `--source` | `-s` | `auto \| huggingface \| modelscope` | 配置值 | 本次下载源 |
 | `--verbose` | `-v` | bool | false | 输出详细路径 |
 
@@ -77,13 +88,22 @@ mineru-kit models download --tier <basic|standard> [flags]
 
 支持的 repo 名:
 
-- `PDF-Extract-Kit-1.0`
-- `MinerU2.5-Pro-2605-1.2B`
+- `PDF-Extract-Kit-1.0`（full stack）
+- `MinerU2.5-Pro-2605-1.2B`（full stack）
+- `PP-DocLayoutV2_onnx`（light stack）
+- `PP-OCRv6_small_det_onnx`（light stack）
+- `PP-OCRv6_small_rec_onnx`（light stack）
+- `PP-OCRv6_medium_det_onnx`（light stack）
+- `PP-OCRv6_medium_rec_onnx`（light stack）
+- `PP-FormulaNet_plus-M_onnx`（light stack）
+- `MinerU2.5-Pro-2605-1.2B-GGUF`（light stack）
 
-模型 tier 到 repo 的映射:
+模型 tier 到 repo 的映射随模型栈变化:
 
-- `basic`: `PDF-Extract-Kit-1.0`
-- `standard`: `PDF-Extract-Kit-1.0` + `MinerU2.5-Pro-2605-1.2B`
+- full stack `basic`: `PDF-Extract-Kit-1.0`
+- full stack `standard`: `PDF-Extract-Kit-1.0` + `MinerU2.5-Pro-2605-1.2B`
+- light stack `basic`: `PP-DocLayoutV2_onnx` + `PP-OCRv6_small_det_onnx` + `PP-OCRv6_small_rec_onnx` + `PP-FormulaNet_plus-M_onnx`
+- light stack `standard`: 在 light `basic` 基础上追加 `MinerU2.5-Pro-2605-1.2B-GGUF`
 
 解析 Tier 中的 Flash 不进入模型管理流程；Advanced 使用 Standard 模型集。
 
@@ -102,16 +122,19 @@ mineru-kit models download MinerU2.5-Pro-2605-1.2B --source huggingface
 
 ```bash
 mineru-kit models show
+mineru-kit models show --stack <auto|light|full>
 ```
+
+`--stack` 支持 `auto|light|full`，默认 `auto`（跟随 `config.model.stack` 与设备自动选择）。
 
 输出内容:
 
-- 当前实际使用的 `config.yaml` 路径
+- 当前实际使用的 `config.yaml` 路径及是否存在
 - `MINERU_MODEL_SOURCE`
-- `model.base_dir` 和来源
-- `model.source` 和来源
-- 每个 repo 的 local dir 和 readiness
-- Basic 和 Standard 模型 tier 需要的 repo 集合
+- `model.base_dir`、`model.source`、`model.stack` 及各自来源
+- 实际生效的模型栈（Effective stack）
+- 每个 repo 的 local dir、readiness 和所属 stack
+- Basic 和 Standard 模型 tier 在当前模型栈下需要的 repo 集合
 
 第一阶段不支持 `--json`。
 
@@ -123,13 +146,21 @@ mineru-kit models show
 mineru-kit models verify
 mineru-kit models verify <repo>
 mineru-kit models verify --tier <basic|standard>
+mineru-kit models verify --stack <auto|light|full>
 ```
+
+参数:
+
+| Flag | 简写 | 类型 | 默认 | 说明 |
+|------|------|------|------|------|
+| `--tier` | - | `basic \| standard` | - | 按模型 tier 校验所需模型 |
+| `--stack` | - | `auto \| light \| full` | `auto` | 选择模型栈；`auto` 跟随 `config.model.stack`，传入 repo 位置参数时忽略 |
 
 规则:
 
-- 默认校验全部 repo
+- 默认校验当前模型栈下的全部 repo
 - repo 位置参数与 `--tier` 互斥
-- `--tier` 只接受 `basic` 和 `standard`
+- `--tier` 只接受 `basic` 和 `standard`；按 `--tier` 校验时使用 `--stack` 解析出的模型栈
 - 不是单纯目录存在性检查，还会检查 registry 中声明的关键路径
 - 第一阶段不做 hash 级完整性校验
 

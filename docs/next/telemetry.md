@@ -1,6 +1,7 @@
 # Telemetry 设计
 
-状态: Draft
+状态: Superseded
+取代说明: 本文已被 `telemetry-minimum.md` 全面取代，仅保留历史设计参考；现状以 `telemetry-minimum.md` 与代码为准。
 读者: 产品负责人、核心开发者、doclib server 开发者、数据分析与合规参与者
 范围: 下一代 MinerU 的匿名使用统计、稳定性指标和粗粒度环境画像
 非目标: 计费、审计、安全风控、精确故障追踪、上传文档内容或用户输入

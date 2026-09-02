@@ -8,7 +8,6 @@ from pydantic import ValidationError
 from mineru.parser.base import ParseResult
 from mineru.parser import MIDDLE_JSON_SCHEMA_VERSION
 from mineru.types import BlockType, MiddleJson, PageFootnoteBlock, PageInfo, TableBlock, TableBodyBlock, TextBlock
-from mineru.utils.image_payload import ImagePayloadCache
 from mineru.version import __version__
 
 
@@ -189,12 +188,7 @@ def test_parse_result_rejects_legacy_schema_versions(schema_version: str | None)
 
 def test_parse_result_export_pages_returns_defensive_copy() -> None:
     """验证调用方修改导出页面副本时不会污染 ParseResult 内部状态。"""
-    image_cache = ImagePayloadCache()
-    image_path = image_cache.register_bytes(
-        b"defensive-table-image",
-        "png",
-        image_path="images/table.png",
-    )
+    image_path = "images/table.png"
     page = PageInfo(
         page_idx=0,
         blocks=[
@@ -222,7 +216,6 @@ def test_parse_result_export_pages_returns_defensive_copy() -> None:
             parse_mode="txt",
             mineru_version=__version__,
         ),
-        _image_cache=image_cache,
     )
     first_export = result.export_pages()
     first_export[0].blocks[0].content[0].content = "mutated by caller"
@@ -232,22 +225,4 @@ def test_parse_result_export_pages_returns_defensive_copy() -> None:
     exported_json = json.dumps(result.to_dict(), ensure_ascii=False)
 
     assert image_path in second_content
-    assert result.images() == {image_path: b"defensive-table-image"}
     assert "mutated by caller" not in exported_json
-
-
-def test_parse_result_attach_export_images_rejects_unsafe_paths() -> None:
-    """验证远端 sidecar 绑定入口继承 ImagePayloadCache 的路径安全边界。"""
-    result = ParseResult(
-        middle_json=MiddleJson(
-            pages=[PageInfo(page_idx=0)],
-            is_full_document=True,
-            file_suffix="pdf",
-            effort="medium",
-            parse_mode="txt",
-            mineru_version=__version__,
-        )
-    )
-
-    with pytest.raises(ValueError, match="Unsafe image sidecar path"):
-        result.attach_export_images({"../escape.png": b"bad-image"})
