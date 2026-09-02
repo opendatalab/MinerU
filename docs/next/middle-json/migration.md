@@ -47,7 +47,7 @@
 
 任务:
 
-1. 生产代码暂不提供 validator API。
+1. 生产代码暂不提供独立 validator API；结构合法性由 strict Pydantic 模型（`extra="forbid"` + `strict`）在解析时强制。
 2. 单测中保留 `validate_pages()` 与 `ValidationIssue` 作为 test-local helper。
 3. 单测已覆盖 P0 页面树校验:
    - page_idx
