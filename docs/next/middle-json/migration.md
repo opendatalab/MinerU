@@ -31,16 +31,17 @@
 3. 已实现 `ParseResult.from_json()`。
 4. 已实现 `ParseResult.to_dict()` 输出 `schema_version + pages`。
 5. 待实现 `normalize_middle_json()`。
-6. 当前运行时兼容两类输入:
-   - `{"schema_version", "pages", ...}`
-   - `{"pages": [...]}`
-7. 历史 `{"pdf_info": [...], "_backend": ...}` 只进入离线 migration，不作为当前运行时兼容分支。
+6. 当前运行时兼容的输入（`ParseResult.from_dict()`）:
+   - `{"schema_version": "2.0", "pages": [...], ...}` 直接读取。
+   - `{"schema_version": "1.0", "pages": [...]}` 经 legacy 分支单向迁移。
+   - `{"pdf_info": [...], "_backend": ..., ...}`（MinerU 3.4.5 产物）按 envelope 识别后经同一 legacy 分支单向迁移。
+7. 无版本号的裸 `{"pages": [...]}` 与其它未知旧 payload 被明确拒绝，要求重新解析，不做静默迁移。
 
 验收:
 
 - API `middle_json` output 可以恢复为 `ParseResult`。
 - doclib 当前缓存 JSON 可以恢复为 `ParseResult`。
-- 历史旧 CLI `pdf_info` 产物需要迁移工具或重新生成后再恢复。
+- 历史旧 CLI `pdf_info` 产物经运行时 legacy 分支单向恢复；无法识别的旧 payload 按 stale 处理并要求重新解析。
 
 ## Phase 2: Validator
 
@@ -117,7 +118,7 @@
 任务:
 
 1. 为 doclib 缓存结果提供 lazy migration。
-2. 为历史 `pdf_info` CLI 输出提供 migration 命令或重新生成说明。
+2. 评估历史 `pdf_info` CLI 输出是否仍需离线批量迁移命令（单文档恢复已由运行时 legacy 分支覆盖），或仅保留重新生成说明。
 3. 对缺少 sha256 的历史数据给出明确错误或要求调用方提供文件 hash。
 
 验收:
@@ -131,7 +132,7 @@
 | 风险 | 缓解 |
 |------|------|
 | 强行要求 Office bbox 导致大量无效框 | 使用 `bbox_known=false`，先承认 unknown。 |
-| 改 envelope 破坏旧 CLI | 当前运行时只读 `pages`；历史 `pdf_info` 走离线 migration 或重新生成。 |
+| 改 envelope 破坏旧 CLI | 运行时 legacy 分支单向迁移可识别旧 payload；不可识别的按 stale 处理并重新解析，不静默降级。 |
 | locator 因 index 不稳定而漂移 | 先做 normalization，再生成 locator。 |
 | render 收敛过大 | 分阶段，先 facade，后 type-specific helper。 |
 | filename 泄露隐私 | `_meta.file.filename` 默认可为空。 |
@@ -143,6 +144,6 @@
 3. 修正 HTML 解析必填字段。
 4. 定义 `locator_for_block()`。
 5. 给 Pipeline/VLM/Office 各加一个 fixture。
-6. 设计历史 `pdf_info` 离线 migration。
+6. 复核历史 `pdf_info` 迁移路径（运行时 legacy 分支已覆盖单文档恢复，确认离线批量迁移是否仍有必要）。
 
 完成这些任务后，Middle JSON 就可以支撑 API/SDK 的 `middle_json` output、doclib 缓存恢复和 Agent citation 的第一版闭环。

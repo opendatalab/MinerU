@@ -10,7 +10,6 @@ from ..filetypes import PARSEABLE_EXTENSIONS
 from ..parser.base import ParseResult
 from ..parser.writer import FileBasedDataWriter
 from ..types import Tier
-from ..utils.image_payload import validate_image_sidecar_path
 
 KitFormat = Literal["markdown", "middle_json", "zip"]
 LocalTier: TypeAlias = Tier
@@ -117,11 +116,9 @@ def save_parse_result(result: ParseResult, dest: Path, format: KitFormat) -> Non
     dest.parent.mkdir(parents=True, exist_ok=True)
     if format == "markdown":
         _write_utf8_text(dest, result.markdown())
-        _write_image_sidecars(dest.parent, result.images())
         return
     if format == "middle_json":
         _write_utf8_text(dest, result.to_json())
-        _write_image_sidecars(dest.parent, result.images())
         return
     if format == "zip":
         tmp_dir = dest.parent / f".{dest.stem}"
@@ -144,28 +141,6 @@ def save_parse_result(result: ParseResult, dest: Path, format: KitFormat) -> Non
 
 def _write_utf8_text(path: Path, content: str) -> None:
     path.write_bytes(content.encode("utf-8", errors="replace"))
-
-
-def _resolve_safe_sidecar_path(output_dir: Path, image_path: str) -> str:
-    """校验图片 sidecar 路径必须落在输出目录内，并返回安全的相对路径。"""
-    safe_image_path = validate_image_sidecar_path(image_path)
-    output_root = output_dir.resolve()
-    target_path = (output_root / safe_image_path).resolve()
-    try:
-        target_path.relative_to(output_root)
-    except ValueError as exc:
-        raise ValueError(f"Unsafe image sidecar path: {image_path}") from exc
-    return target_path.relative_to(output_root).as_posix()
-
-
-def _write_image_sidecars(output_dir: Path, images: dict[str, bytes]) -> None:
-    """将 public middle_json 引用的图片 sidecar 写到输出目录，避免 image_path 悬空。"""
-    writer = FileBasedDataWriter(str(output_dir))
-    safe_images = [
-        (_resolve_safe_sidecar_path(output_dir, image_path), image_bytes) for image_path, image_bytes in images.items()
-    ]
-    for image_path, image_bytes in safe_images:
-        writer.write(image_path, image_bytes)
 
 
 def parse_result_payload(path: Path, dest: Path, format: KitFormat) -> dict[str, str]:

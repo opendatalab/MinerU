@@ -1,5 +1,6 @@
 {
   "typeCheckingMode": "standard",
-  "include": ["mineru"],
+  "include": ["mineru", "tests/e2e"],
   "exclude": ["**/node_modules", "**/__pycache__", ".venv"],
+  "extraPaths": ["tests/e2e"],
 }

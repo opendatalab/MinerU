@@ -18,13 +18,13 @@
 | 问题 | 当前状态 | 影响 | 下一步 |
 |------|----------|------|--------|
 | typed schema | 已解决 | `PageInfo` 与 Pydantic block tree 已是事实标准。 | 保持严格 validation。 |
-| 顶层 envelope | 部分解决 | 当前运行时使用 `schema_version + pages`；历史 `pdf_info/_backend` 仍是离线迁移对象。 | 补 canonical `_meta` 与 envelope validator。 |
+| 顶层 envelope | 部分解决 | 当前运行时使用 `schema_version: "2.0"` + MiddleJson 顶层字段；MinerU 3.4.5 `pdf_info` 与 schema 1.0 `pages` 包装由 `ParseResult.from_dict()` / doclib compaction 的运行时 legacy 分支单向迁移。 | 补 canonical `_meta` 与 envelope validator。 |
 | bbox 缺失 | 已解决 | 非 PDF Flash 文档允许无 bbox；PDF 顶层 block 仍强制 bbox。 | renderer 与 locator 不得把缺失值当真实坐标。 |
-| page_size 缺失 | 已解决 | schema 3.0 的 `PageInfo` 不再包含 page_size。 | 无。 |
+| page_size 缺失 | 已解决 | schema 2.0 的 `PageInfo` 不再包含 page_size。 | 无。 |
 | index 稳定性 | 部分解决 | reading order 可用，但 Agent locator 不够稳定。 | normalization 阶段重编号。 |
-| `preproc_blocks` | 已解决 | schema 3.0 只公开统一 `blocks`。 | 无。 |
+| `preproc_blocks` | 已解决 | schema 2.0 只公开统一 `blocks`。 | 无。 |
 | render 统一 | 已解决 | 四种输出通过统一 render facade 消费严格 MiddleJson。 | 保持格式实现单向依赖共享后处理。 |
-| `_backend` | 部分解决 | render 依赖临时字段。 | 迁移到 envelope `_meta.backend`。 |
+| `_backend` | 已解决 | `MiddleJson`/`PageInfo` 不再有 `_backend` 临时字段；backend 差异由严格类型与统一分析入口收敛。 | 无。 |
 | locator | 部分解决 | Agent 需要稳定 page/block 引用。 | 锁定 locator helper 并补齐输出契约。 |
 
 ## Pipeline
@@ -142,7 +142,7 @@
 
 现状:
 
-- HTML 经统一 `doc_analyze()` 和 ModelJson → MiddleJson 3.0 路径映射到单页 `PageInfo(page_idx=0)`。
+- HTML 经统一 `doc_analyze()` 和 ModelJson → MiddleJson 2.0 路径映射到单页 `PageInfo(page_idx=0)`。
 - 顶层 block 使用 DOM 顺序生成稳定 index，HTML 不生成 bbox，也不再构造历史 `Line`/`Span`。
 - 标题、正文、列表、表格、图片、代码、公式和页面脚注复用统一 block 与 renderer。
 - 本地/data 图片进入 `image_base64`，远程图片进入受限 `image_url`，解析阶段不下载远程资源。
@@ -163,7 +163,7 @@ P0:
 
 1. 定义 canonical envelope。
 2. 实现 validator。
-3. 设计历史 migration: `pdf_info/_backend` -> envelope。
+3. 历史 migration: `pdf_info/_backend` 与 schema 1.0 `pages` 包装经运行时 legacy 分支单向迁移（`ParseResult.from_dict()` / doclib compaction），不可识别旧 payload 按 stale 处理并要求重新解析。
 4. 实现并锁定 locator。
 5. （已完成）修正 `ParseResult.from_dict()` / `from_json()`，兼容 schema 2.0、legacy `pdf_info` 与 schema 1.0 `pages` 包装。
 
@@ -172,7 +172,7 @@ P1:
 1. 收敛 Office/HTML 与 PDF structured_content 字段差异。
 2. 统一 Office/HTML unknown bbox 语义。
 3. 公开或隐藏 Office style/hyperlink 内部字段。
-4. 明确 backend 信息在 envelope `_meta` 中的记录方式（当前 `PageInfo` 已不携带 `_backend`）。
+4. 确认 envelope `_meta` 是否引入 backend 维度（当前 schema 2.0 无 `_backend`/`_meta`，见 [open-questions.md](../open-questions.md)）。
 
 P2:
 

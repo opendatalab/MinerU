@@ -7,7 +7,7 @@
 
 ## 当前事实
 
-当前 Middle JSON 的事实标准是 `mineru/types.py` 中的 schema 3.0 typed document model:
+当前 Middle JSON 的事实标准是 `mineru/types.py` 中的 schema 2.0 typed document model（`mineru/parser/base.py` 的 `MIDDLE_JSON_SCHEMA_VERSION = "2.0"`，3.0 从未发布）:
 
 ```text
 MiddleJson
@@ -26,16 +26,15 @@ InlineContentBlock
 
 | 类别 | 现状 |
 |------|------|
-| 顶层 envelope | 当前 `ParseResult.to_dict()` 写出 `schema_version` + `MiddleJson` 顶层字段（`pages`、`is_full_document`、`file_suffix`、`effort`、`parse_mode`、`mineru_version`）；legacy `pdf_info` / schema 1.0 `pages` 包装由 `from_dict()` 兼容读取，`_version_name` / `mineru_version` 在该 legacy 分支恢复；底稿希望有 `_meta`。 |
-| backend 细节 | Pipeline/VLM/Hybrid/Office/HTML 对 block type、span 粒度与内部后处理流程的处理不同；public schema 中 bbox 统一为 0-1 归一化坐标或 `null`，`PageInfo` 无 page_size。 |
-| render 消费 | 已有统一 render facade，但内部仍按 backend dispatch。 |
+| 顶层 envelope | 当前 `ParseResult.to_dict()` 只输出 `schema_version: "2.0"` + MiddleJson 字段，没有顶层 `_backend`/`_meta` 临时 metadata；MinerU 3.4.5 `pdf_info` 与 schema 1.0 `pages` 包装由 `ParseResult.from_dict()` 的运行时 legacy 分支单向迁移（见 [migration.md](migration.md)）。 |
+| backend 细节 | Pipeline/VLM/Hybrid/Office/HTML 对 block type、span 粒度与内部后处理流程的处理不同；public schema 中 bbox 统一为 0-1 归一化坐标或 `null`，`PageInfo` 无 page_size。 || render 消费 | 已有统一 render facade，但内部仍按 backend dispatch。 |
 | Agent 能力 | 稳定 page/block locator 与 short_id 已落地（`mineru/doclib/locators.py`）；citation 输出形态与隐私边界的部分能力仍在收敛。 |
 
 ## 下一版目标
 
 Middle JSON 下一版要达到以下目标:
 
-1. 统一顶层 envelope，运行时只接受 schema 3.0 `pages` 结构。
+1. 统一顶层 envelope，运行时只接受 schema 2.0 `pages` 结构；旧 payload（3.4.5 `pdf_info`、schema 1.0 `pages` 包装）仅通过 `from_dict()` 的 legacy 分支单向迁移，无版本号的裸 `{"pages": []}` 直接拒绝并要求重新解析。
 2. 明确 `PageInfo` / `Block` / `InlineSpan` 字段契约。
 3. 为每个 backend 提供 normalization 任务清单。
 4. 定义 Agent 可引用的稳定 locator 规则。

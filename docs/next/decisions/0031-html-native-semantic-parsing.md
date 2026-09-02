@@ -1,6 +1,6 @@
 # ADR-0031: HTML 原生静态语义 Flash 解析
 
-状态: Accepted
+状态: Accepted，已实现
 日期: 2026-08-27
 相关文档: ../sdk/parser.md, ../cli/mineru-kit-parse.md, ../api/parse-jobs.md, 0024-file-type-tier-normalization.md
 
@@ -8,11 +8,11 @@
 
 文件类型、Doclib、API Server 与 mineru-kit 已把 `.html/.htm` 归入仅支持 Flash 的输入，但严格 `FileSuffix` 与
 `doc_analyze()` 尚未接通，导致请求在高层被接受后才以 `Unsupported file type: html` 失败。旧 HTML parser 依赖
-历史 `Line`/`Span` 结构，也无法复用 Middle JSON 3.0 的统一后处理与 renderer。
+历史 `Line`/`Span` 结构，也无法复用 Middle JSON 2.0 的统一后处理与 renderer。
 
 ## 决策
 
-- HTML 规范后缀统一为 `html`，使用 `flash/txt`、整本文档、单逻辑页、无 bbox 的 ModelJson/MiddleJson 3.0 路径。
+- HTML 规范后缀统一为 `html`，使用 `flash/txt`、整本文档、单逻辑页、无 bbox 的 ModelJson/MiddleJson 2.0 路径。
 - 只解析静态源码，不执行 JavaScript、不启动浏览器、不生成布局坐标。
 - 默认固定使用保守 `auto` 正文选择：高置信候选进入正文投影，其余情况回退完整 body；首版不公开模式参数。
 - MinerU 自身 renderer 输出版本化 `data-mineru-html-version="1"` 机器契约。只有当前 renderer 能生成的 canonical
@@ -49,7 +49,7 @@
 - `.html/.htm` 可通过 SDK、API Server、mineru-kit 和 Doclib 本地 Flash 路径生成统一多格式输出。
 - 新版 MinerU HTML 可按类型级往返；FULL 中页面辅助类型可恢复，但 HTML 输入仍固定投影为一个逻辑页，
   不依据 `data-page-idx` 重建原始多页。
-- `image_url` 是 schema 3.0 内可选且默认省略的字段。
+- `image_url` 是 schema 2.0 内可选且默认省略的字段。
 - 打开 Markdown 或 HTML 输出时，客户端可能访问原 HTML 中保留的远程图片地址；服务端解析阶段不会访问该地址。
 - 所有非 PDF 页范围请求继续返回 `page_range_invalid`。
 

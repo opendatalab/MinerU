@@ -1,6 +1,6 @@
 # ADR-0028: CSV 本地结构化 Flash 解析
 
-状态: Accepted
+状态: Accepted，已实现
 日期: 2026-08-26
 相关文档: ../cli/mineru-parse.md, ../cli/mineru-kit-parse.md, ../api/parse-jobs.md, 0022-doclib-file-type-tier-remote-semantics.md, 0024-file-type-tier-normalization.md
 
@@ -23,7 +23,7 @@ CSV 没有可靠的内容签名，同一个扩展名还可能包含不同编码�
 
 - CSV 固定记录 `effort="flash"`、`parse_mode="txt"`，不进入 PDF/image 质量 tier。
 - 一份 CSV 对应一个逻辑页面。非空输入产生一个 `TableBlock`，空输入产生一个空页面。
-- 表格主体使用安全 HTML 表达，继续复用 Middle JSON 3.0 的 `TableBlock/TableBodyBlock` 和既有 Markdown、HTML、DOCX、Structured Content renderer；不新增 block 类型或 CSV 专属输出 schema。
+- 表格主体使用安全 HTML 表达，继续复用 Middle JSON 2.0 的 `TableBlock/TableBodyBlock` 和既有 Markdown、HTML、DOCX、Structured Content renderer；不新增 block 类型或 CSV 专属输出 schema。
 
 ### 3. 解析与数据完整性
 

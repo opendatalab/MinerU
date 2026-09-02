@@ -1,6 +1,6 @@
 # ADR-0017: MinerU Kit API Server Command
 
-状态: Accepted
+状态: Accepted，已实现
 日期: 2026-06-17
 相关文档:
 - ../cli/mineru-kit.md

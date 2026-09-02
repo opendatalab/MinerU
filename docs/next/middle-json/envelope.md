@@ -43,9 +43,9 @@
 设计选择:
 
 - 新结构使用 `pages`，对应 `ParseResult.pages`。
-- 运行时只读取当前结构 `pages`；历史 `pdf_info` 文件需要离线迁移或重新生成。
-- 当前 `ParseResult.to_dict()` 输出 `schema_version` 加 `MiddleJson` 顶层字段（`pages`、`is_full_document`、`file_suffix`、`effort`、`parse_mode`、`mineru_version`），不携带 `_backend` 等 backend metadata。
-- `_meta.backend` 设计为替代旧 payload 中的 `_backend` 字段；当前 schema 2.0 已不再有该字段。
+- 运行时直接读取 schema 2.0 `pages` 结构；MinerU 3.4.5 `pdf_info` 与 schema 1.0 `pages` 包装由 `ParseResult.from_dict()` 与 doclib compaction 的运行时 legacy 分支单向迁移，不是离线工具专属；无版本号的裸 `{"pages": []}` 被拒绝并要求重新解析。
+- 当前 `ParseResult.to_dict()` 只输出 `schema_version` 与 MiddleJson 顶层字段，不写顶层 `_backend`/`_meta`。
+- 若后续引入 canonical `_meta`，可由 `_meta.backend` 表达 backend 维度；当前 schema 2.0 没有 `_backend` 字段（是否引入 `_meta` 见 [open-questions.md](../open-questions.md)）。
 - `schema_version` 放在顶层，便于快速判断 migration。
 - 代码常量定义为 `mineru.parser.MIDDLE_JSON_SCHEMA_VERSION`，由 normalize、validate、writer 和 exporter 统一引用。
 - 当前 P0 写出路径只增加 `schema_version`，不新增 `_meta`；`_meta` 由后续 canonical envelope migration / writer 引入。
@@ -113,7 +113,7 @@ models 也是开放字典。字段粒度可以随 backend 增加。
 
 ## 兼容输入
 
-当前 `ParseResult.from_dict()` 接受 schema 2.0 `pages` envelope，并兼容历史 `pdf_info` 与 schema 1.0 `pages` 包装；无版本标识的裸 `pages` 会被拒绝。目标读入函数可支持以下输入:
+`ParseResult.from_dict()` 在运行时接受 schema 2.0 envelope 与两类可识别 legacy 输入。目标读入函数可支持以下输入:
 
 ### 1. Canonical envelope
 
@@ -127,21 +127,18 @@ models 也是开放字典。字段粒度可以随 backend 增加。
 
 直接读取。
 
-### 2. 当前 SDK envelope
+### 2. 历史 1.0 `pages` 包装
 
 ```json
 {
+  "schema_version": "1.0",
   "pages": []
 }
 ```
 
-视为无 metadata 的当前结构。migration 应补:
+`schema_version` 为 `"1.0"` 且 `pages` 为 page dict 列表时，经 `legacy_schema_adapter` 单向回推为 raw model-list 后重走统一后处理，生成 2.0 结果。
 
-- `schema_version`
-- `_meta.backend`，如果调用方提供。
-- `_meta.file.sha256`，如果调用方提供。
-
-### 3. 历史旧 CLI middle_json
+### 3. 历史旧 CLI middle_json（MinerU 3.4.5 `pdf_info`）
 
 ```json
 {
@@ -151,14 +148,11 @@ models 也是开放字典。字段粒度可以随 backend 增加。
 }
 ```
 
-当前运行时 `from_dict()` 已兼容 `pdf_info`（以及 schema 1.0 `pages` 包装）作为 legacy 分支；无版本标识的裸 `pages` 会被拒绝。旧产物中的 `_backend: "pipeline"` 不属于当前 schema 字段，legacy 读取时仅被忽略。
+`pdf_info` 是 `ParseResult.from_dict()` 的运行时兼容分支（按 envelope 识别，不要求 `_version_name` 作为唯一判据）：经 `legacy_schema_adapter` 单向迁移为 2.0。旧产物中的 `_backend: "pipeline"` 等字段不参与迁移语义，产物版本以文件内版本信息为准。
 
-历史文件的离线 migration 可转换为:
+### 4. 被拒绝的输入
 
-- `pages = pdf_info`
-- `_meta.backend = _backend`
-- `_meta.mineru_version = _version_name`
-- `schema_version = "1.0"`
+无 `schema_version` 且无 `pdf_info` 的裸 `{"pages": []}`、`schema_version: "3.0"` 与其它未知旧版本都会抛出“重新解析源文件”的明确错误，不做静默迁移。
 
 ## Migration 函数
 
@@ -178,7 +172,7 @@ def normalize_middle_json(
 规则:
 
 1. 运行时 payload 必须是 dict，且 `pages` 必须是 list。
-2. 运行时 `from_dict()` 已兼容历史 `pdf_info` 与 schema 1.0 `pages` 包装；无版本标识的裸 `pages` 会被拒绝。
+2. 历史 `pdf_info` 与 schema 1.0 `pages` 包装由 `ParseResult.from_dict()` / doclib compaction 的运行时 legacy 分支单向迁移；不可识别的旧 payload 标记为 stale 并要求重新解析，不做静默转换。
 3. 如果没有 sha256，则保留 null，但禁用需要严格校验 source identity 的 citation 能力。
 4. 输出必须是 canonical envelope。
 
@@ -214,7 +208,7 @@ P1 校验:
 
 ## 与 `ParseResult`
 
-`ParseResult.to_dict()` 当前输出 `schema_version` 加 `MiddleJson` 顶层字段（`pages`、`is_full_document`、`file_suffix`、`effort`、`parse_mode`、`mineru_version`）。`ParseResult.from_dict()` 当前要求 payload 为 dict，接受 schema 2.0 `pages` envelope、历史 `pdf_info` 与 schema 1.0 `pages` 包装。
+`ParseResult.to_dict()` 当前输出 `{"schema_version": "2.0", "pages": ...}` 等 MiddleJson 顶层字段，不包含顶层 `_backend` 或 PDF 页映射内部 metadata。`ParseResult.from_dict()` 当前要求 payload 为 dict，且只接受 schema 2.0 与可识别 legacy 输入（见上文“兼容输入”）。
 
 建议:
 

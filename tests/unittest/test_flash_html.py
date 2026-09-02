@@ -1263,7 +1263,6 @@ def test_html_local_base_images_styles_and_escape_are_bounded(tmp_path: Path) ->
     markdown = result.markdown()
     assert "hidden css" not in markdown
     assert "Outside" in markdown
-    assert outside.read_bytes() not in result.images().values()
     exported = result.middle_json.export(tmp_path / "export")
     assert len(exported.image_paths) == 1
     assert exported.image_paths[0].read_bytes() == image_path.read_bytes()
