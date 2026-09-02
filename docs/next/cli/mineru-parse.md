@@ -127,6 +127,7 @@ Markdown 中的可视图片使用 `mineru read` 可读取的 block locator，不
 {
   "parse": { "... parse summary ..." },
   "content": { "... DocContentResponse ..." } | null,
+  "output": { "status": "written", "path": "..." },  // 仅 `-o/--output` 时存在
   "error": { "... ErrorInfo ..." } | null
 }
 ```

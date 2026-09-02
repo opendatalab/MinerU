@@ -150,6 +150,6 @@ remote 模式通过以下参数进入：
 | remote 模式 | remote、remote-url、api-key |
 | 输出控制 | format、output |
 
-local 模式的 `ocr-mode`、`tier`、`disable-image-analysis` 与 `mineru-kit api-server` 保持一致；`api-server` 额外提供 `--language` OCR 语言提示，`mineru-kit parse` 当前不提供该参数。
+local 模式的 `ocr-mode`、`disable-image-analysis` 与 `mineru-kit api-server` 一致；`--tier` 值域更宽（`mineru-kit parse` 接受 `flash/basic/standard/advanced`，`api-server` 只接受 `flash/basic/standard` 作为能力上限）。`api-server` 额外提供 `--language` OCR 语言提示，`mineru-kit parse` 当前不提供该参数。
 
 完整决策背景见 [ADR-0016](../decisions/0016-mineru-kit-parse-command.md)。
