@@ -234,3 +234,20 @@ def test_parse_result_export_pages_returns_defensive_copy() -> None:
     assert image_path in second_content
     assert result.images() == {image_path: b"defensive-table-image"}
     assert "mutated by caller" not in exported_json
+
+
+def test_parse_result_attach_export_images_rejects_unsafe_paths() -> None:
+    """验证远端 sidecar 绑定入口继承 ImagePayloadCache 的路径安全边界。"""
+    result = ParseResult(
+        middle_json=MiddleJson(
+            pages=[PageInfo(page_idx=0)],
+            is_full_document=True,
+            file_suffix="pdf",
+            effort="medium",
+            parse_mode="txt",
+            mineru_version=__version__,
+        )
+    )
+
+    with pytest.raises(ValueError, match="Unsafe image sidecar path"):
+        result.attach_export_images({"../escape.png": b"bad-image"})

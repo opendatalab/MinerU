@@ -239,7 +239,9 @@ class ImagePayloadCache:
     """保存运行时图片载荷，public middle_json 只通过 image_path 引用图片。"""
 
     def __init__(self, images: dict[str, bytes] | None = None) -> None:
-        self._images: dict[str, bytes] = dict(images or {})
+        self._images: dict[str, bytes] = {}
+        if images:
+            self.update(images)
 
     def register_bytes(
         self,
@@ -258,6 +260,7 @@ class ImagePayloadCache:
             ext = normalize_image_extension(image_format)
             payload_key = base64.b64encode(img_bytes).decode("ascii")
             img_path = f"{hashlib.sha256(payload_key.encode('utf-8')).hexdigest()}.{ext}"
+        img_path = validate_image_sidecar_path(img_path)
         self._images[img_path] = img_bytes
         return img_path
 
@@ -273,14 +276,20 @@ class ImagePayloadCache:
 
 def validate_image_sidecar_path(image_path: str) -> str:
     """校验图片 sidecar 路径只能是安全的相对子路径，并返回规范化 POSIX 路径。"""
-    posix_path = Path(image_path)
-    windows_path = PureWindowsPath(image_path)
     if (
         not image_path
         or image_path == "."
-        or "\x00" in image_path
         or "\\" in image_path
-        or posix_path.is_absolute()
+        or any(ord(char) < 0x20 or ord(char) == 0x7F for char in image_path)
+    ):
+        raise ValueError(f"Unsafe image sidecar path: {image_path}")
+    parsed = urlsplit(image_path)
+    if parsed.scheme or parsed.netloc:
+        raise ValueError(f"Unsafe image sidecar path: {image_path}")
+    posix_path = Path(image_path)
+    windows_path = PureWindowsPath(image_path)
+    if (
+        posix_path.is_absolute()
         or windows_path.is_absolute()
         or windows_path.drive
         or windows_path.root
