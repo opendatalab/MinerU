@@ -20,7 +20,7 @@ from .text_styles import (
     detect_pdf_text_link_lines,
     detect_pdf_text_style_lines,
     materialize_pdf_inline_spans,
-    _partition_resplit_text_evidence,
+    _realign_repaired_text_evidence,
 )
 
 from .models import (
@@ -28,6 +28,7 @@ from .models import (
     _DocumentBodyProfile,
     _DocumentTitleProfile,
     _LineItem,
+    _MarginalCandidate,
     _PageSource,
     _PreparedPage,
 )
@@ -65,6 +66,7 @@ from .line_merging import (
 )
 from .index_blocks import _extract_index_blocks
 from .tables import (
+    _connected_horizontal_rule_bboxes,
     _detect_table_candidates,
     _materialize_table_blocks,
 )
@@ -87,6 +89,7 @@ from .code_blocks import (
     _build_rule_delimited_code_blocks,
 )
 from .auxiliary_text import (
+    _build_marginal_candidate,
     _classify_deferred_image_footnotes,
     _classify_isolated_first_page_footer,
     _classify_page_footnote_trailing_footers,
@@ -99,6 +102,8 @@ from .auxiliary_text import (
     _classify_repeated_page_marginals,
     _classify_repeated_visual_headers,
     _classify_single_page_compound_headers,
+    _marginal_geometry_matches,
+    _marginal_text_matches,
 )
 from .titles import (
     _classify_body_height_section_titles,
@@ -207,7 +212,7 @@ def _table_detection_drawing_lines(
 def _detect_repeated_header_separator_bboxes(
     sources: list[_PageSource],
 ) -> list[set[BBox]]:
-    """用至少三页重复的页首几何和上方刊头文本确认页眉分隔线。"""
+    """用重复刊头文本和非表格横线共同确认跨页页眉分隔线。"""
 
     candidates_by_signature: dict[
         tuple[float, float, float],
@@ -217,6 +222,7 @@ def _detect_repeated_header_separator_bboxes(
         page_width, page_height = source.page_size
         if page_width <= 0 or page_height <= 0:
             continue
+        connected_table_rules = _connected_horizontal_rule_bboxes(source)
         for drawing_line in source.drawing_lines:
             bbox = drawing_line.bbox
             center_y = _bbox_center_y(bbox)
@@ -225,6 +231,7 @@ def _detect_repeated_header_separator_bboxes(
                 or center_y > 0.15 * page_height
                 or bbox[2] - bbox[0] < 0.6 * page_width
                 or sum(line.angle == 0 and line.bbox[3] <= center_y for line in source.lines) < 2
+                or bbox in connected_table_rules
             ):
                 continue
             signature = (
@@ -241,9 +248,49 @@ def _detect_repeated_header_separator_bboxes(
     for members in candidates_by_signature.values():
         if len({page_index for page_index, _bbox in members}) < 3:
             continue
+        if len(_repeated_header_evidence_pages(sources, members)) < 2:
+            continue
         for page_index, bbox in members:
             output[page_index].add(bbox)
     return output
+
+
+def _repeated_header_evidence_pages(
+    sources: list[_PageSource],
+    separator_members: list[tuple[int, BBox]],
+) -> set[int]:
+    """返回具有已分类或跨页重复刊头文本证据的页号集合。"""
+
+    supported_pages: set[int] = set()
+    candidates: list[tuple[int, _MarginalCandidate]] = []
+    for page_index, separator_bbox in separator_members:
+        center_y = _bbox_center_y(separator_bbox)
+        for line in sources[page_index].lines:
+            if line.angle != 0 or line.bbox[3] > center_y:
+                continue
+            if line.semantic_type == "header":
+                supported_pages.add(page_index)
+                continue
+            candidate = _build_marginal_candidate(
+                page_index,
+                line,
+                sources[page_index].page_size,
+            )
+            if candidate is not None and candidate.region == "header":
+                candidates.append((page_index, candidate))
+
+    for left_index, (left_page, left) in enumerate(candidates):
+        for right_page, right in candidates[left_index + 1 :]:
+            page_delta = right_page - left_page
+            if page_delta > 2:
+                break
+            if (
+                page_delta > 0
+                and _marginal_geometry_matches(left, right)
+                and _marginal_text_matches(left.line.text, right.line.text)
+            ):
+                supported_pages.update((left_page, right_page))
+    return supported_pages
 
 
 def _analyze_native_document(
@@ -534,6 +581,7 @@ def _prepare_page_source(
         + 1
     )
     if geometry_plan is not None:
+        repaired_line_bboxes = {line.source_index: line.bbox for line in source.lines}
         repaired_char_bboxes = {
             char_idx: repair.layout_bbox
             for (repair_page_index, char_idx), repair in geometry_plan.char_repairs.items()
@@ -545,16 +593,16 @@ def _prepare_page_source(
             repaired_char_bboxes,
             source_index_start=next_source_index,
         )
-        if resplits:
-            partitioned_styles, partitioned_links = _partition_resplit_text_evidence(
-                style_lines or [],
-                link_lines or [],
-                resplits,
-            )
-            if style_lines is not None:
-                style_lines[:] = partitioned_styles
-            if link_lines is not None:
-                link_lines[:] = partitioned_links
+        aligned_styles, aligned_links = _realign_repaired_text_evidence(
+            style_lines or [],
+            link_lines or [],
+            repaired_line_bboxes,
+            resplits,
+        )
+        if style_lines is not None and aligned_styles is not style_lines:
+            style_lines[:] = aligned_styles
+        if link_lines is not None and aligned_links is not link_lines:
+            link_lines[:] = aligned_links
         next_source_index = max(
             next_source_index,
             max(
@@ -728,18 +776,10 @@ def _apply_post_aggregation_tight_bboxes(
             "_output_bbox_repaired",
             False,
         )
-        if (
-            output_bbox_repaired is True
-            and isinstance(output_line_bboxes, list)
-            and output_line_bboxes
-        ):
-            local_bboxes = [
-                _coerce_bbox(value) for value in output_line_bboxes
-            ]
+        if output_bbox_repaired is True and isinstance(output_line_bboxes, list) and output_line_bboxes:
+            local_bboxes = [_coerce_bbox(value) for value in output_line_bboxes]
             if all(value is not None for value in local_bboxes):
-                resolved_local_bboxes = [
-                    value for value in local_bboxes if value is not None
-                ]
+                resolved_local_bboxes = [value for value in local_bboxes if value is not None]
                 block["_local_line_bboxes"] = resolved_local_bboxes
                 angle = int(block.get("angle", 0) or 0) % 360
                 candidate_bbox = _bbox_union_many(
@@ -883,11 +923,7 @@ def _finalize_prepared_page(
         prepared.drawing_lines,
         page_footnote_groups=prepared.page_footnote_groups,
         page_index=page_index,
-        visual_bboxes=[
-            block["bbox"]
-            for block in prepared.fixed_blocks
-            if block.get("type") == "image"
-        ],
+        visual_bboxes=[block["bbox"] for block in prepared.fixed_blocks if block.get("type") == "image"],
     )
     text_blocks = _merge_multiline_title_blocks(text_blocks)
     text_blocks = _merge_front_matter_column_blocks(

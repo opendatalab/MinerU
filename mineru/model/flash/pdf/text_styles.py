@@ -515,6 +515,49 @@ def _partition_resplit_text_evidence(
     return partitioned_styles, partitioned_links
 
 
+def _realign_repaired_text_evidence(
+    style_lines: list[PDFTextStyleLine],
+    link_lines: list[PDFTextLinkLine],
+    line_bboxes: dict[int, BBox],
+    resplits: dict[int, _NativeVisualResplit],
+) -> tuple[list[PDFTextStyleLine], list[PDFTextLinkLine]]:
+    """同步未重切修复行的 evidence 框，再按字符身份切分发生重切的样式与链接。"""
+
+    aligned_styles = style_lines
+    for index, line in enumerate(style_lines):
+        bbox = line_bboxes.get(line.source_index)
+        if line.source_index in resplits or bbox is None or bbox == line.bbox:
+            continue
+        if aligned_styles is style_lines:
+            aligned_styles = list(style_lines)
+        aligned_styles[index] = PDFTextStyleLine(
+            bbox=bbox,
+            text=line.text,
+            style_ranges=line.style_ranges,
+            source_index=line.source_index,
+        )
+
+    aligned_links = link_lines
+    for index, line in enumerate(link_lines):
+        bbox = line_bboxes.get(line.source_index)
+        if line.source_index in resplits or bbox is None or bbox == line.bbox:
+            continue
+        if aligned_links is link_lines:
+            aligned_links = list(link_lines)
+        aligned_links[index] = PDFTextLinkLine(
+            bbox=bbox,
+            text=line.text,
+            link_ranges=line.link_ranges,
+            source_index=line.source_index,
+        )
+
+    return _partition_resplit_text_evidence(
+        aligned_styles,
+        aligned_links,
+        resplits,
+    )
+
+
 def _canonical_styles(styles: Iterable[str]) -> tuple[PDFTextStyle, ...]:
     """按公开富文本协议顺序过滤、去重并规范样式集合。"""
 

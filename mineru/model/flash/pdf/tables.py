@@ -1026,6 +1026,31 @@ def _connected_rule_grid_components(
     return output
 
 
+def _connected_horizontal_rule_bboxes(
+    source: _PageSource,
+) -> set[BBox]:
+    """返回参与常规横排闭合网格的原始水平线框，供上游避免删除真实表格边界。"""
+
+    angle_lines = [line for line in source.lines if line.angle == 0]
+    fragments = _build_fragments(angle_lines, source.page_size)
+    if not fragments:
+        return set()
+    local_axis_lines = _transform_axis_lines(
+        source.drawing_lines,
+        source.page_size,
+        0,
+    )
+    return {
+        rule.original_bbox
+        for component in _connected_rule_grid_components(
+            local_axis_lines,
+            _median_fragment_height(fragments),
+        )
+        for rule in component
+        if rule.orientation == "horizontal"
+    }
+
+
 def _rule_bands_share_grid_tracks(
     top_rule: _LocalAxisLine,
     bottom_rule: _LocalAxisLine,

@@ -46,6 +46,7 @@ from mineru.model.flash.pdf.text_styles import (
     detect_pdf_text_style_lines,
     materialize_pdf_inline_spans,
     _partition_resplit_text_evidence,
+    _realign_repaired_text_evidence,
 )
 from _span_test_utils import inline_text, inline_urls
 
@@ -389,6 +390,94 @@ def test_resplit_text_evidence_preserves_identity_and_unsafe_mapping(
     assert fallback_links == original_links
     assert len(warnings) == 2
     assert all("unsafe resplit mapping" in warning for warning in warnings)
+
+
+def test_repaired_text_evidence_realigns_only_changed_unsplit_lines() -> None:
+    """验证 X/Y 修复后的普通行更新 bbox，未修复 evidence 保持对象身份和顺序。"""
+
+    untouched_style = PDFTextStyleLine((10.0, 210.0, 50.0, 220.0), "plain", (), 0)
+    x_style = PDFTextStyleLine(
+        (0.0, 80.0, 200.0, 100.0),
+        "bold",
+        (PDFTextStyleRange(0, 4, ("bold",)),),
+        1,
+    )
+    y_style = PDFTextStyleLine(
+        (20.0, 0.0, 60.0, 200.0),
+        "under",
+        (PDFTextStyleRange(0, 5, ("underline",)),),
+        2,
+    )
+    untouched_link = PDFTextLinkLine(
+        (10.0, 210.0, 50.0, 220.0),
+        "plain",
+        (PDFTextLinkRange(0, 5, "https://example.test/plain"),),
+        0,
+    )
+    x_link = PDFTextLinkLine(
+        x_style.bbox,
+        x_style.text,
+        (PDFTextLinkRange(0, 4, "https://example.test/x"),),
+        1,
+    )
+    y_link = PDFTextLinkLine(
+        y_style.bbox,
+        y_style.text,
+        (PDFTextLinkRange(0, 5, "https://example.test/y"),),
+        2,
+    )
+    style_lines = [untouched_style, x_style, y_style]
+    link_lines = [untouched_link, x_link, y_link]
+    repaired_bboxes = {
+        0: untouched_style.bbox,
+        1: (20.0, 80.0, 60.0, 100.0),
+        2: (100.0, 80.0, 140.0, 100.0),
+    }
+
+    aligned_styles, aligned_links = _realign_repaired_text_evidence(
+        style_lines,
+        link_lines,
+        repaired_bboxes,
+        {},
+    )
+
+    assert aligned_styles[0] is untouched_style
+    assert aligned_links[0] is untouched_link
+    assert [line.source_index for line in aligned_styles] == [0, 1, 2]
+    assert [line.source_index for line in aligned_links] == [0, 1, 2]
+    assert [line.bbox for line in aligned_styles] == [untouched_style.bbox, repaired_bboxes[1], repaired_bboxes[2]]
+    assert [line.bbox for line in aligned_links] == [untouched_link.bbox, repaired_bboxes[1], repaired_bboxes[2]]
+    blocks = [
+        {"type": "text", "bbox": repaired_bboxes[1], "content": "bold"},
+        {"type": "text", "bbox": repaired_bboxes[2], "content": "under"},
+    ]
+    assert {
+        block_index: [line.source_index for line in lines]
+        for block_index, lines in flash_text_styles._assign_lines_to_blocks(
+            blocks,
+            aligned_styles[1:],
+            (200.0, 240.0),
+        ).items()
+    } == {0: [1], 1: [2]}
+    assert {
+        block_index: [line.source_index for line in lines]
+        for block_index, lines in flash_text_styles._assign_lines_to_blocks(
+            blocks,
+            aligned_links[1:],
+            (200.0, 240.0),
+        ).items()
+    } == {0: [1], 1: [2]}
+
+    original_untouched_styles = [untouched_style]
+    original_untouched_links = [untouched_link]
+    unchanged_styles, unchanged_links = _realign_repaired_text_evidence(
+        original_untouched_styles,
+        original_untouched_links,
+        {0: untouched_style.bbox},
+        {},
+    )
+    assert unchanged_styles is original_untouched_styles
+    assert unchanged_links is original_untouched_links
 
 
 @pytest.mark.parametrize("angle", [0, 90, 180, 270])
