@@ -57,6 +57,7 @@ def _append_toc_complex_field(
     page_number: str,
     anchor: str,
     include_outer_toc: bool,
+    split_hyperlink_instruction: bool = False,
 ) -> None:
     """构造 WPS 常见的 TOC、HYPERLINK 与 PAGEREF 嵌套复杂域。"""
     if include_outer_toc:
@@ -65,7 +66,11 @@ def _append_toc_complex_field(
         _append_field_char(paragraph, "separate")
 
     _append_field_char(paragraph, "begin")
-    _append_instruction(paragraph, f' HYPERLINK \\l "{anchor}" ')
+    if split_hyperlink_instruction:
+        _append_instruction(paragraph, " HYPER")
+        _append_instruction(paragraph, f'LINK \\l "{anchor}" ')
+    else:
+        _append_instruction(paragraph, f' HYPERLINK \\l "{anchor}" ')
     _append_field_char(paragraph, "separate")
     _append_result_text(paragraph, title)
     _append_result_tab(paragraph)
@@ -104,6 +109,7 @@ def _build_complex_toc_docx() -> bytes:
         page_number="1",
         anchor="_TocTarget",
         include_outer_toc=True,
+        split_hyperlink_instruction=True,
     )
     second = document.add_paragraph(style=toc_style)
     _append_toc_complex_field(
@@ -123,7 +129,7 @@ def _build_complex_toc_docx() -> bytes:
 
 
 def test_nested_complex_toc_fields_preserve_titles_and_strict_index_targets() -> None:
-    """验证嵌套复杂域不会只剩页码，并按真实正文目标收敛目录 anchor。"""
+    """验证拆分且嵌套的复杂域不会只剩页码，并按真实正文目标收敛目录 anchor。"""
     file_bytes = _build_complex_toc_docx()
     model_pages = DocxModel().predict(BytesIO(file_bytes))
     raw_index = next(block for page in model_pages for block in page if block["type"] == "index")

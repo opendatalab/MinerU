@@ -198,6 +198,7 @@ schema 2.0 输出不再有 `_backend`/`_version_name`/`pdf_info`/`_ocr_enable`/`
 
 - `RenderFormat.MARKDOWN` → `render_markdown`
 - `RenderFormat.HTML` → `render_html`
+- `RenderFormat.LATEX` → `render_latex`
 - `RenderFormat.DOCX` → `render_docx`
 - `RenderFormat.EPUB` → `render_epub`
 - `RenderFormat.STRUCTURED_CONTENT` → `render_structured_content`
@@ -205,7 +206,7 @@ schema 2.0 输出不再有 `_backend`/`_version_name`/`pdf_info`/`_ocr_enable`/`
 - `RenderFormat.CONTENT_LIST_V2` → `render_content_list_v2`
 - `RenderFormat.PDF` → `render_pdf`
 
-`render/_internal/` 下按目标格式分目录组织共享逻辑（`common/`/`markdown/`/`html/`/`docx/`/`epub/`/`pdf/`/`content_list/`/`structured_content/`），顶层同名模块只是惰性公共门面。InlineSpan 的规范化、连接、裁剪和可见文本操作归 `backend/postprocess/inline.py`，renderer 按 Span discriminator 分派，并只能单向依赖该模块和 `backend/postprocess/table_merge`。不再有 `pipeline_union_make`/`vlm_union_make`/`office_union_make` 三套逻辑；Content List V1/V2 是由严格 MiddleJson 派生的正式兼容输出，不恢复旧 backend 并行实现。EPUB、PDF 与两套 Content List 只扩展低层 `mineru.render` 公共面，不自动扩展 ParseResult、CLI、API Server 或 doclib 输出合同。
+`render/_internal/` 下按目标格式分目录组织共享逻辑（`common/`/`markdown/`/`html/`/`latex/`/`docx/`/`epub/`/`pdf/`/`content_list/`/`structured_content/`），顶层同名模块只是惰性公共门面。InlineSpan 的规范化、连接、裁剪和可见文本操作归 `backend/postprocess/inline.py`，renderer 按 Span discriminator 分派，并只能单向依赖该模块和 `backend/postprocess/table_merge`。不再有 `pipeline_union_make`/`vlm_union_make`/`office_union_make` 三套逻辑；Content List V1/V2 是由严格 MiddleJson 派生的正式兼容输出，不恢复旧 backend 并行实现。LaTeX、EPUB、PDF 与两套 Content List 只扩展低层 `mineru.render` 公共面，不自动扩展 ParseResult、CLI、API Server 或 doclib 输出合同。
 
 ### 5.1 目录职责
 

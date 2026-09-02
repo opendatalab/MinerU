@@ -11,7 +11,7 @@ import unicodedata
 from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 from functools import lru_cache
-from typing import Any, Literal, TypeAlias
+from typing import Any, Literal, Sequence, TypeAlias
 
 from ....types import BBox
 from .document import PDFPageTextGeometry
@@ -151,6 +151,20 @@ class DocumentGeometryPlan:
                 if repair.state != "healthy" or repair.split_y_candidate
             ],
         }
+
+
+@dataclass(frozen=True, slots=True)
+class _DocumentGeometryRisk:
+    """区分需要完整字符几何的布局风险与仅需字号校准的样式风险。"""
+
+    layout: bool = False
+    style: bool = False
+
+    @property
+    def any(self) -> bool:
+        """返回当前文档是否需要进入完整字符样本收集。"""
+
+        return self.layout or self.style
 
 
 @dataclass(slots=True)
@@ -427,18 +441,44 @@ def _source_bbox(
     return side_bbox
 
 
+def _style_line_is_inflated(
+    source_height: float,
+    font_sizes: Sequence[float],
+    tight_heights: Sequence[float],
+) -> bool:
+    """按统一阈值判断一行 loose 高度是否显著偏离字号与 tight 字形。"""
+
+    if not tight_heights:
+        return False
+    style_scale = max(
+        statistics.median(font_sizes) if font_sizes else 0.0,
+        _quantile(tight_heights, 0.75),
+    )
+    if style_scale < STYLE_INFLATION_MIN_SCALE:
+        return False
+    tight_height = max(0.1, _quantile(tight_heights, 0.75))
+    return (
+        source_height > STYLE_INFLATION_LOOSE_FONT_RATIO * style_scale
+        and source_height > STYLE_INFLATION_LOOSE_TIGHT_RATIO * tight_height
+    )
+
+
 def _document_requires_full_geometry(
     lines_by_page: list[list[_LineItem]],
     geometries: list[PDFPageTextGeometry],
     page_sizes: list[tuple[float, float]],
-) -> bool:
-    """流式否决健康文档，避免为 identity 路径保留整本字符样本对象。"""
+) -> _DocumentGeometryRisk:
+    """流式识别布局与样式风险，避免健康文档保留整本字符样本。"""
 
     x_ratios: dict[RunKey, list[float]] = defaultdict(list)
     x_overlaps: dict[RunKey, int] = defaultdict(int)
     y_ratios: list[float] = []
     y_extreme_runs: Counter[RunKey] = Counter()
-    for lines, geometry, page_size in zip(lines_by_page, geometries, page_sizes, strict=True):
+    style_line_counts: Counter[RunKey] = Counter()
+    style_inflated_lines: dict[RunKey, set[LineKey]] = defaultdict(set)
+    for page_index, (lines, geometry, page_size) in enumerate(
+        zip(lines_by_page, geometries, page_sizes, strict=True),
+    ):
         for line in lines:
             entries: list[tuple[int, str, BBox, BBox, tuple[float, float], RunKey, float]] = []
             for position, char in enumerate(line.chars):
@@ -463,7 +503,7 @@ def _document_requires_full_geometry(
                         font_size,
                     )
                 )
-            if len(entries) < Y_MIN_ANCHOR_COUNT:
+            if not entries:
                 continue
             height_q75 = _quantile([entry[3][3] - entry[3][1] for entry in entries], 0.75)
             anchors = [entry for entry in entries if entry[3][3] - entry[3][1] >= ANCHOR_MIN_TIGHT_HEIGHT_RATIO * height_q75]
@@ -483,6 +523,25 @@ def _document_requires_full_geometry(
                 if current[2][2] - following[3][0] >= 0.05 * max(following_width, 0.1):
                     x_overlaps[current[5]] += 1
 
+            anchors_by_run: dict[RunKey, list[tuple[int, str, BBox, BBox, tuple[float, float], RunKey, float]]] = defaultdict(
+                list
+            )
+            for entry in anchors:
+                anchors_by_run[entry[5]].append(entry)
+            for run_key, run_entries in anchors_by_run.items():
+                style_line_counts[run_key] += 1
+                if _style_line_is_inflated(
+                    line.effective_height,
+                    [entry[6] for entry in run_entries if entry[6] > 0],
+                    [entry[3][3] - entry[3][1] for entry in run_entries],
+                ):
+                    style_inflated_lines[run_key].add(
+                        (page_index, line.source_index),
+                    )
+
+            # 四锚点门槛只约束 Y 分析；短行仍须为文档级 X 统计贡献相邻字符对。
+            if len(anchors) < Y_MIN_ANCHOR_COUNT:
+                continue
             if line.angle != 0 or line.formula_candidate_only or line.restored_inline_cluster or line.compact_formula_cluster:
                 continue
             baseline_entries = sorted(anchors, key=lambda entry: entry[4][1])
@@ -495,7 +554,7 @@ def _document_requires_full_geometry(
                     clusters[-1].append(entry)
             supported = [cluster for cluster in clusters if len(cluster) >= 3 and len(cluster) / len(anchors) >= 0.20]
             if len(supported) >= 2:
-                return True
+                return _DocumentGeometryRisk(layout=True)
             dominant = max(clusters, key=len)
             if len(dominant) / len(anchors) < Y_DOMINANT_ROW_SHARE:
                 continue
@@ -509,6 +568,7 @@ def _document_requires_full_geometry(
             if ratio >= 3.0:
                 y_extreme_runs[Counter(entry[5] for entry in dominant).most_common(1)[0][0]] += 1
 
+    layout_risk = False
     for run_key, ratios in x_ratios.items():
         pair_count = len(ratios)
         if pair_count < X_RELIABLE_PAIR_MIN:
@@ -518,10 +578,26 @@ def _document_requires_full_geometry(
             and sum(value > X_STRONG_RATIO_THRESHOLD for value in ratios) / pair_count >= X_STRONG_RATIO_SHARE
             and x_overlaps[run_key] / pair_count >= X_STRONG_NEXT_TIGHT_OVERLAP_SHARE
         ):
-            return True
-    return bool(y_ratios) and (
-        _quantile(y_ratios, 0.95) >= Y_DOCUMENT_RISK_P95_RATIO
-        or any(count >= Y_MIN_REPEATED_LINES for count in y_extreme_runs.values())
+            layout_risk = True
+            break
+    layout_risk = (
+        layout_risk
+        or bool(y_ratios)
+        and (
+            _quantile(y_ratios, 0.95) >= Y_DOCUMENT_RISK_P95_RATIO
+            or any(count >= Y_MIN_REPEATED_LINES for count in y_extreme_runs.values())
+        )
+    )
+    style_risk = any(
+        len(inflated_lines) >= STYLE_INFLATION_MIN_LINE_COUNT
+        and len(inflated_lines) / style_line_counts[run_key] >= STYLE_INFLATION_MIN_LINE_SHARE
+        and len({page_index for page_index, _source_index in inflated_lines}) >= STYLE_INFLATION_MIN_PAGE_COUNT
+        for run_key, inflated_lines in style_inflated_lines.items()
+        if style_line_counts[run_key] >= STYLE_INFLATION_MIN_LINE_COUNT
+    )
+    return _DocumentGeometryRisk(
+        layout=layout_risk,
+        style=style_risk,
     )
 
 
@@ -666,46 +742,21 @@ def _mark_style_inflated_runs(
         samples_by_line: dict[LineKey, list[_CharSample]] = defaultdict(list)
         for sample in run.samples:
             if sample.is_anchor:
-                samples_by_line[
-                    (sample.page_index, sample.line.source_index)
-                ].append(sample)
+                samples_by_line[(sample.page_index, sample.line.source_index)].append(sample)
         if len(samples_by_line) < STYLE_INFLATION_MIN_LINE_COUNT:
             continue
         inflated_lines: list[LineKey] = []
         for line_key, line_samples in samples_by_line.items():
-            font_sizes = [
-                sample.font_size
-                for sample in line_samples
-                if sample.font_size > 0
-            ]
-            tight_heights = [
-                sample.local_tight_bbox[3]
-                - sample.local_tight_bbox[1]
-                for sample in line_samples
-            ]
-            style_scale = max(
-                statistics.median(font_sizes)
-                if font_sizes
-                else 0.0,
-                _quantile(tight_heights, 0.75),
-            )
-            if style_scale < STYLE_INFLATION_MIN_SCALE:
-                continue
-            source_height = line_samples[0].line.effective_height
-            tight_height = max(0.1, _quantile(tight_heights, 0.75))
-            if (
-                source_height
-                > STYLE_INFLATION_LOOSE_FONT_RATIO * style_scale
-                and source_height
-                > STYLE_INFLATION_LOOSE_TIGHT_RATIO * tight_height
+            if _style_line_is_inflated(
+                line_samples[0].line.effective_height,
+                [sample.font_size for sample in line_samples if sample.font_size > 0],
+                [sample.local_tight_bbox[3] - sample.local_tight_bbox[1] for sample in line_samples],
             ):
                 inflated_lines.append(line_key)
         if (
             len(inflated_lines) >= STYLE_INFLATION_MIN_LINE_COUNT
-            and len(inflated_lines) / len(samples_by_line)
-            >= STYLE_INFLATION_MIN_LINE_SHARE
-            and len({page_index for page_index, _source_index in inflated_lines})
-            >= STYLE_INFLATION_MIN_PAGE_COUNT
+            and len(inflated_lines) / len(samples_by_line) >= STYLE_INFLATION_MIN_LINE_SHARE
+            and len({page_index for page_index, _source_index in inflated_lines}) >= STYLE_INFLATION_MIN_PAGE_COUNT
         ):
             run.style_y_bad = True
             output.add(run.key)
@@ -1352,12 +1403,19 @@ def build_document_geometry_plan(
     plan = DocumentGeometryPlan()
     if not any(geometry.tight_bboxes and geometry.origins for geometry in geometries):
         return plan
-    if not _document_requires_full_geometry(lines_by_page, geometries, page_sizes):
+    risk = _document_requires_full_geometry(
+        lines_by_page,
+        geometries,
+        page_sizes,
+    )
+    if not risk.any:
         for geometry in geometries:
             geometry.loose_bboxes.clear()
         return plan
     samples, by_line = _collect_samples(lines_by_page, geometries, page_sizes)
-    _record_line_canonical_metrics(plan, by_line)
+    if risk.layout:
+        # 只有布局风险才记录公开输出候选；仅样式异常时只校准内部字号。
+        _record_line_canonical_metrics(plan, by_line)
     runs = _build_run_stats(samples, by_line)
     style_inflated_runs = _mark_style_inflated_runs(runs)
     plan.style_inflated_runs = style_inflated_runs
@@ -1366,17 +1424,17 @@ def build_document_geometry_plan(
     )
     _apply_style_scale_repairs(
         plan,
-        style_inflated_runs
-        if plan.document_style_anomaly
-        else set(),
+        style_inflated_runs if plan.document_style_anomaly else set(),
         by_line,
     )
-    if plan.document_style_anomaly:
+    if plan.document_style_anomaly and risk.layout:
         _restore_stable_legacy_source_bboxes(by_line, page_sizes)
         runs = _build_run_stats(samples, by_line)
         for run in runs.values():
             run.style_y_bad = run.key in style_inflated_runs
     plan.run_diagnostics = _run_diagnostics(runs)
+    if not risk.layout:
+        return plan
     x_bad_runs = {run.key for run in runs.values() if run.strong_x_bad or run.sibling_x_bad}
     if x_bad_runs:
         _repair_x_chars(plan, runs, by_line, page_sizes)

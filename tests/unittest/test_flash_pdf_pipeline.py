@@ -8,6 +8,7 @@ import pytest
 from mineru.model.flash import PdfModel
 from mineru.model.flash.pdf import (
     auxiliary_text,
+    char_geometry,
     formulas,
     geometry,
     graphics,
@@ -131,6 +132,94 @@ def test_prepare_page_uses_only_table_body_bbox_and_keeps_annotations_fixed(
         "caption",
         "table",
     ]
+
+
+def test_prepare_page_resplits_repaired_cross_column_row_before_text_classification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证生产页面准备会按修复字符框重切跨栏粗行并分配唯一来源序号。"""
+
+    positions = (0.0, 6.0, 12.0, 18.0, 62.0, 68.0, 74.0, 80.0)
+    chars = [
+        {
+            "char": character,
+            "bbox": (position, 10.0, position + 20.0, 20.0),
+            "font": {
+                "name": "ABCDEF+Body",
+                "flags": 0,
+                "weight": 400,
+                "size": 10.0,
+            },
+            "char_idx": index,
+        }
+        for index, (character, position) in enumerate(
+            zip("ABCDEFGH", positions, strict=True),
+        )
+    ]
+    line = models._LineItem(
+        text="ABCDEFGH",
+        bbox=(0.0, 10.0, 100.0, 20.0),
+        angle=0,
+        source_index=5,
+        chars=chars,  # type: ignore[arg-type]
+        visual_row_id=3,
+        effective_height=10.0,
+        em_height=10.0,
+    )
+    plan = char_geometry.DocumentGeometryPlan(
+        char_repairs={
+            (0, index): char_geometry.CharLayoutGeometry(
+                source_bbox=tuple(float(value) for value in char["bbox"]),  # type: ignore[arg-type]
+                tight_bbox=(position, 10.0, position + 5.0, 20.0),
+                origin=(position, 20.0),
+                layout_bbox=(position, 10.0, position + 5.0, 20.0),
+                ink_bbox=(position, 10.0, position + 5.0, 20.0),
+                baseline=20.0,
+                advance=6.0,
+                em_height=10.0,
+                x_state="abnormal",
+                y_state="healthy",
+                confidence=1.0,
+            )
+            for index, (char, position) in enumerate(
+                zip(chars, positions, strict=True),
+            )
+        },
+    )
+    source = models._PageSource(
+        page_size=(100.0, 100.0),
+        lines=[line],
+        chars=chars,  # type: ignore[arg-type]
+        drawing_lines=[],
+    )
+    observed_next_indices: list[int] = []
+
+    def record_graphic_split_start(
+        lines: list[models._LineItem],
+        *_args: object,
+        source_index_start: int,
+    ) -> list[models._LineItem]:
+        """记录跨栏重切后传给后续 graphic split 的下一来源序号。"""
+
+        observed_next_indices.append(source_index_start)
+        return lines
+
+    monkeypatch.setattr(
+        pipeline,
+        "_split_parallel_graphic_rule_rows",
+        record_graphic_split_start,
+    )
+
+    prepared = pipeline._prepare_page_source(
+        source,
+        geometry_plan=plan,
+        page_index=0,
+    )
+
+    assert [member.text for member in prepared.remaining_lines] == ["ABCD", "EFGH"]
+    assert [member.source_index for member in prepared.remaining_lines] == [5, 6]
+    assert all(member.split_from_row for member in prepared.remaining_lines)
+    assert observed_next_indices == [7]
 
 
 def test_table_detection_excludes_confirmed_masthead_separator() -> None:

@@ -1,4 +1,4 @@
-"""生成 Flash 双几何全量回测、扰动不变性和逐页人工审阅产物。"""
+"""生成 Flash 双几何全量回测、金标比对和逐页人工审阅产物。"""
 
 from __future__ import annotations
 
@@ -6,10 +6,8 @@ import argparse
 import hashlib
 import json
 import os
-import resource
 import sys
 import time
-from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
@@ -20,21 +18,13 @@ if str(SOURCE_ROOT) not in sys.path:
 
 import pypdfium2 as pdfium  # noqa: E402
 from PIL import Image, ImageDraw, ImageFont  # noqa: E402
-from pdftext.schema import Bbox  # noqa: E402
 
-from mineru.model.flash.pdf.document import PDFDocument, PDFPageTextGeometry  # noqa: E402
+from mineru.model.flash.pdf.document import PDFDocument  # noqa: E402
 from mineru.model.flash.pdf.pipeline import _analyze_native_document  # noqa: E402
 
 
 DEFAULT_OUTPUT = SOURCE_ROOT / "output" / "pdf" / "flash_layout_geometry_review"
 TRACKED_GOLD_MANIFEST = SOURCE_ROOT / "tests" / "fixtures" / "flash_layout_geometry_manifest.json"
-PERTURBATION_NAMES = (
-    "x_advance",
-    "y_symmetric",
-    "y_asymmetric",
-    "latin_only",
-    "punctuation",
-)
 _PDF_FIXTURE_XOR_KEY = b"MinerU flash layout fixture"
 _IGNORED_FINGERPRINT_KEYS = {
     "bbox",
@@ -93,91 +83,6 @@ def _corpus_paths(manifest: dict[str, Any], source_root: Path) -> list[Path]:
             raise ValueError(f"manifest sha256 mismatch: {path}")
         paths.append(resolved)
     return paths
-
-
-def _stable_factor(font_name: str) -> float:
-    """由字体名确定性生成 loose bbox 扰动倍率。"""
-
-    digest = hashlib.sha256(font_name.encode("utf-8", errors="replace")).digest()[0]
-    return (1.75, 2.5, 4.0, 6.0)[digest % 4]
-
-
-def _perturb_bbox(
-    char: dict[str, Any],
-    origin: tuple[float, float] | None,
-    variant: str,
-) -> None:
-    """按指定变体改变 loose bbox，保留 tight 与 origin。"""
-
-    raw_bbox = char.get("bbox")
-    if raw_bbox is None or origin is None:
-        return
-    x0, y0, x1, y1 = [float(value) for value in raw_bbox]
-    text = str(char.get("char") or "")
-    font_name = str((char.get("font") or {}).get("name") or "")
-    if variant == "latin_only" and not any(value.isascii() and value.isalnum() for value in text):
-        return
-    if variant == "punctuation" and not any(not value.isalnum() and not value.isspace() for value in text):
-        return
-
-    baseline = float(origin[1])
-    ascent = max(0.1, baseline - y0)
-    descent = max(0.1, y1 - baseline)
-    factor = _stable_factor(font_name)
-    if variant == "x_advance":
-        new_x1 = x0 + max(0.1, x1 - x0) * max(1.75, factor)
-        char["bbox"] = Bbox([x0, y0, new_x1, y1])
-        return
-    if variant == "y_asymmetric":
-        new_y0 = baseline - ascent * factor
-        new_y1 = baseline + descent * (0.5 if factor > 1 else 3.0)
-    elif variant == "punctuation":
-        new_y0 = baseline + 1.5 * max(ascent, descent)
-        new_y1 = new_y0 + max(0.5, 0.25 * (ascent + descent))
-    else:
-        new_y0 = baseline - ascent * factor
-        new_y1 = baseline + descent * factor
-    char["bbox"] = Bbox([x0, min(new_y0, new_y1), x1, max(new_y0, new_y1)])
-
-
-class _PerturbedPDFDocument:
-    """代理 PDFDocument，并对读取出的 loose 字符框应用确定性扰动。"""
-
-    def __init__(self, document: PDFDocument, variant: str) -> None:
-        """保存真实文档和当前 loose 扰动名称。"""
-
-        self._document = document
-        self._variant = variant
-
-    def __getattr__(self, name: str) -> Any:
-        """把未覆盖的方法和属性转发给真实 PDFDocument。"""
-
-        return getattr(self._document, name)
-
-    def get_page_chars_with_geometry(self, page_idx: int) -> PDFPageTextGeometry:
-        """返回 tight/origin 不变、loose bbox 已扰动的页面字符几何。"""
-
-        geometry = self._document.get_page_chars_with_geometry(page_idx)
-        chars = deepcopy(geometry.chars)
-        loose_bboxes = dict(geometry.loose_bboxes)
-        for char in chars:
-            char_idx = char.get("char_idx")
-            origin = geometry.origins.get(char_idx) if isinstance(char_idx, int) else None
-            if isinstance(char_idx, int):
-                raw_bbox = loose_bboxes.get(char_idx) or char.get("bbox")
-                probe = {
-                    "bbox": Bbox([float(value) for value in raw_bbox]),
-                    "char": char.get("char"),
-                    "font": char.get("font"),
-                }
-                _perturb_bbox(probe, origin, self._variant)
-                loose_bboxes[char_idx] = tuple(float(value) for value in probe["bbox"])
-        return PDFPageTextGeometry(
-            chars=chars,
-            tight_bboxes=geometry.tight_bboxes,
-            origins=geometry.origins,
-            loose_bboxes=loose_bboxes,
-        )
 
 
 def _canonical_value(value: Any) -> Any:
@@ -363,44 +268,23 @@ def _build_contact_sheets(images: list[Path], output_dir: Path) -> list[Path]:
 def _run_document(
     path: Path,
     *,
-    perturb: bool,
     render: bool,
     output_dir: Path,
 ) -> dict[str, Any]:
-    """解析一份语料并返回正常、扰动、overlay 和金标页面信息。"""
+    """解析一份语料并返回耗时、overlay 和金标页面信息。"""
 
     stored_bytes = path.read_bytes()
     pdf_bytes = read_pdf_fixture(path)
     pdf_sha = _sha256_bytes(stored_bytes)
     geometry_diagnostics: list[dict[str, Any]] = []
     started = time.perf_counter()
-    rss_before = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     with PDFDocument(pdf_bytes) as document:
         mode = document.classify()
         pages = _analyze_native_document(document, geometry_diagnostics=geometry_diagnostics)
     elapsed = time.perf_counter() - started
-    rss_after = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
     geometry = geometry_diagnostics[0] if geometry_diagnostics else {}
     fingerprints = [_page_fingerprint(page) for page in pages]
     bbox_fingerprints = [_page_bbox_fingerprint(page) for page in pages]
-    perturbation_diffs: dict[str, list[int]] = {}
-    perturbation_bbox_diffs: dict[str, list[int]] = {}
-    if perturb and mode == "txt":
-        for variant in PERTURBATION_NAMES:
-            with PDFDocument(pdf_bytes) as document:
-                variant_pages = _analyze_native_document(_PerturbedPDFDocument(document, variant))
-            variant_fingerprints = [_page_fingerprint(page) for page in variant_pages]
-            variant_bbox_fingerprints = [_page_bbox_fingerprint(page) for page in variant_pages]
-            perturbation_diffs[variant] = [
-                index
-                for index, (normal, changed) in enumerate(zip(fingerprints, variant_fingerprints, strict=True))
-                if normal != changed
-            ]
-            perturbation_bbox_diffs[variant] = [
-                index
-                for index, (normal, changed) in enumerate(zip(bbox_fingerprints, variant_bbox_fingerprints, strict=True))
-                if normal != changed
-            ]
 
     output_dir.mkdir(parents=True, exist_ok=True)
     (output_dir / "geometry.json").write_text(
@@ -427,10 +311,7 @@ def _run_document(
         "parse_mode": mode,
         "page_fingerprints": fingerprints,
         "bbox_fingerprints": bbox_fingerprints,
-        "perturbation_diffs": perturbation_diffs,
-        "perturbation_bbox_diffs": perturbation_bbox_diffs,
         "elapsed_seconds": elapsed,
-        "peak_rss_delta": max(0, rss_after - rss_before),
         "geometry_summary": {
             "repaired_chars": len(geometry.get("char_repairs", [])),
             "repaired_lines": sum(line.get("state") != "healthy" for line in geometry.get("line_repairs", [])),
@@ -459,13 +340,12 @@ def _run_document(
 
 
 def _parse_args() -> argparse.Namespace:
-    """解析全量回测输出、扰动和渲染开关。"""
+    """解析全量回测输出、筛选和渲染开关。"""
 
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--source-root", type=Path, default=SOURCE_ROOT)
     parser.add_argument("--manifest", type=Path, default=TRACKED_GOLD_MANIFEST)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
-    parser.add_argument("--perturb-loose", action="store_true")
     parser.add_argument("--no-render", action="store_true")
     parser.add_argument("--skip-performance-gate", action="store_true")
     parser.add_argument("--include", action="append", default=[], help="仅运行指定 PDF 文件名，可重复传入")
@@ -503,7 +383,6 @@ def main() -> int:
         print(f"[{index}/{len(corpus_paths)}] {path.name}", flush=True)
         document = _run_document(
             path,
-            perturb=args.perturb_loose,
             render=not args.no_render,
             output_dir=output_dir / path.stem,
         )
@@ -512,26 +391,6 @@ def main() -> int:
                 page["approved"] = True
         documents.append(document)
 
-    perturbation_failures = [
-        {
-            "file": document["file"],
-            "variant": variant,
-            "pages": pages,
-        }
-        for document in documents
-        for variant, pages in document["perturbation_diffs"].items()
-        if pages
-    ]
-    perturbation_bbox_failures = [
-        {
-            "file": document["file"],
-            "variant": variant,
-            "pages": pages,
-        }
-        for document in documents
-        for variant, pages in document["perturbation_bbox_diffs"].items()
-        if pages
-    ]
     gold_mismatches: list[dict[str, Any]] = []
     tracked_by_file = {Path(str(document["path"])).name: document for document in tracked_gold.get("documents", [])}
     for document in documents:
@@ -571,26 +430,19 @@ def main() -> int:
         for document in documents:
             expected = tracked_by_file.get(document["file"], {})
             max_elapsed = expected.get("max_elapsed_seconds")
-            max_rss = expected.get("max_peak_rss_delta")
             if isinstance(max_elapsed, (int, float)) and document["elapsed_seconds"] > float(max_elapsed):
                 performance_failures.append({"file": document["file"], "metric": "elapsed_seconds"})
-            if isinstance(max_rss, (int, float)) and document["peak_rss_delta"] > float(max_rss):
-                performance_failures.append({"file": document["file"], "metric": "peak_rss_delta"})
     manifest = {
         "source_root": str(source_root),
         "source_count": len(documents),
         "page_count": sum(document["pages"] for document in documents),
         "txt_page_count": sum(document["pages"] for document in documents if document["parse_mode"] == "txt"),
-        "perturbation_enabled": args.perturb_loose,
-        "perturbations": list(PERTURBATION_NAMES),
-        "perturbation_failures": perturbation_failures,
-        "perturbation_bbox_failures": perturbation_bbox_failures,
         "performance_failures": performance_failures,
         "gold_mismatches": gold_mismatches,
         "documents": [{key: value for key, value in document.items() if key != "gold_pages"} for document in documents],
     }
     gold = {
-        "contract": "Flash semantic labels and grouping ignore loose bbox coordinates",
+        "contract": "Flash semantic labels, grouping, and bboxes match the approved corpus",
         "baseline_git_sha": tracked_gold.get("baseline_git_sha"),
         "source_count": len(documents),
         "page_count": manifest["page_count"],
@@ -618,21 +470,18 @@ def main() -> int:
         f"- Documents: {manifest['source_count']}",
         f"- Pages: {manifest['page_count']}",
         f"- TXT pages: {manifest['txt_page_count']}",
-        f"- Perturbation enabled: {manifest['perturbation_enabled']}",
-        f"- Perturbation failures: {len(perturbation_failures)}",
-        f"- Perturbation bbox failures: {len(perturbation_bbox_failures)}",
         f"- Performance failures: {len(performance_failures)}",
         f"- Gold mismatches: {len(gold_mismatches)}",
         f"- All pages approved: {gold['all_approved']}",
         "",
     ]
     for document in documents:
-        changed = sum(bool(pages) for pages in document["perturbation_diffs"].values())
         review_lines.append(
-            f"- {document['file']}: {document['pages']} pages, {document['parse_mode']}, failed variants={changed}"
+            f"- {document['file']}: {document['pages']} pages, {document['parse_mode']}, "
+            f"elapsed={document['elapsed_seconds']:.3f}s"
         )
     (output_dir / "review.md").write_text("\n".join(review_lines) + "\n", encoding="utf-8")
-    return 1 if perturbation_failures or perturbation_bbox_failures or gold_mismatches or performance_failures else 0
+    return 1 if gold_mismatches or performance_failures else 0
 
 
 if __name__ == "__main__":

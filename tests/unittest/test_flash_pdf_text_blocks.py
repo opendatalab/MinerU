@@ -5,6 +5,7 @@ from dataclasses import replace
 import pytest
 
 from mineru.model.flash.pdf import (
+    geometry,
     line_layout,
     line_merging,
     models,
@@ -174,11 +175,90 @@ def test_paragraph_formula_context_merges_dense_same_lane_text() -> None:
 
     merged = text_blocks._merge_paragraph_formula_context_blocks(
         blocks,
+        (220.0, 100.0),
     )
 
     assert [item["content"] for item in merged] == [
         "prefix body: I=ΔT/ΔH tail",
         "other lane",
+    ]
+
+
+@pytest.mark.parametrize("angle", [90, 270])
+def test_rotated_paragraph_formula_context_uses_upright_gap(
+    angle: int,
+) -> None:
+    """验证旋转公式上下文只合并正向坐标中真正相邻的同栏正文。"""
+
+    page_size = (200.0, 200.0)
+
+    def block(
+        content: str,
+        local_bbox: tuple[float, float, float, float],
+        *,
+        formula_context: bool = False,
+    ) -> dict[str, object]:
+        """构造页面框与正向行框分离的旋转文本块。"""
+
+        return {
+            "type": "text",
+            "bbox": geometry._rotate_bbox_from_upright(
+                local_bbox,
+                page_size,
+                angle,
+            ),
+            "angle": angle,
+            "content": content,
+            "_local_line_bboxes": [local_bbox],
+            "_line_heights": [10.0],
+            "_font_signatures": {("Body", 0)},
+            "_lane_interval": (0.0, 80.0),
+            "_lane_is_span": False,
+            "_hard_break_before": False,
+            "_paragraph_formula_context": formula_context,
+        }
+
+    adjacent = text_blocks._merge_paragraph_formula_context_blocks(
+        [
+            block("formula", (0.0, 0.0, 80.0, 10.0), formula_context=True),
+            block("adjacent body", (0.0, 11.0, 80.0, 21.0)),
+        ],
+        page_size,
+    )
+    distant = text_blocks._merge_paragraph_formula_context_blocks(
+        [
+            block("formula", (0.0, 0.0, 80.0, 10.0), formula_context=True),
+            block("distant body", (0.0, 100.0, 80.0, 110.0)),
+        ],
+        page_size,
+    )
+    missing_geometry_seed = block(
+        "formula",
+        (0.0, 0.0, 80.0, 10.0),
+        formula_context=True,
+    )
+    missing_geometry_seed.pop("_local_line_bboxes")
+    missing_geometry = text_blocks._merge_paragraph_formula_context_blocks(
+        [
+            missing_geometry_seed,
+            block("adjacent body", (0.0, 11.0, 80.0, 21.0)),
+        ],
+        page_size,
+    )
+
+    assert [item["content"] for item in adjacent] == ["formula adjacent body"]
+    assert adjacent[0]["bbox"] == geometry._rotate_bbox_from_upright(
+        (0.0, 0.0, 80.0, 21.0),
+        page_size,
+        angle,
+    )
+    assert [item["content"] for item in distant] == [
+        "formula",
+        "distant body",
+    ]
+    assert [item["content"] for item in missing_geometry] == [
+        "formula",
+        "adjacent body",
     ]
 
 

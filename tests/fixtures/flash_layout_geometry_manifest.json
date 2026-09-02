@@ -16209,8 +16209,6 @@
     "p95_change_ratio": 0.0261,
     "baseline_total_seconds": 17.466309,
     "current_total_seconds": 17.340156,
-    "total_change_ratio": -0.0072,
-    "baseline_demo4_peak_rss_bytes": 191119360,
-    "current_demo4_peak_rss_bytes": 190971904
+    "total_change_ratio": -0.0072
   }
 }

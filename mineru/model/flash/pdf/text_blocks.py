@@ -1361,6 +1361,7 @@ def _build_text_blocks(
     )
     return _merge_paragraph_formula_context_blocks(
         blocks,
+        page_size,
     )
 
 
@@ -1653,8 +1654,30 @@ def _merge_inline_math_fragment_text_blocks(
     return _merge_inline_math_paragraph_continuations(output, page_size)
 
 
+def _component_local_union_bbox(
+    block: dict[str, Any],
+) -> BBox | None:
+    """合并正文组件持有的正向行框，非法或缺失元数据时返回空。"""
+
+    rows = block.get("_local_line_bboxes")
+    if not isinstance(rows, list):
+        return None
+    bboxes: list[BBox] = []
+    for row in rows:
+        if not isinstance(row, (list, tuple)) or len(row) != 4:
+            continue
+        try:
+            bbox = tuple(float(value) for value in row)
+        except (TypeError, ValueError):
+            continue
+        if bbox[2] > bbox[0] and bbox[3] > bbox[1]:
+            bboxes.append(bbox)  # type: ignore[arg-type]
+    return _bbox_union_many(bboxes) if bboxes else None
+
+
 def _merge_paragraph_formula_context_blocks(
     blocks: list[dict[str, Any]],
+    page_size: tuple[float, float],
 ) -> list[dict[str, Any]]:
     """把误似行间公式的复杂行内分式与同栏前后正文恢复成一个块。"""
 
@@ -1697,8 +1720,10 @@ def _merge_paragraph_formula_context_blocks(
                         pair_height,
                     ):
                         continue
-                    candidate_bbox = candidate["bbox"]
-                    member_bbox = member["bbox"]
+                    candidate_bbox = _component_local_union_bbox(candidate)
+                    member_bbox = _component_local_union_bbox(member)
+                    if candidate_bbox is None or member_bbox is None:
+                        continue
                     vertical_gap = max(
                         candidate_bbox[1] - member_bbox[3],
                         member_bbox[1] - candidate_bbox[3],
@@ -1741,12 +1766,17 @@ def _merge_paragraph_formula_context_blocks(
         body_rows = [bbox for bbox in local_rows if bbox[2] - bbox[0] >= 0.75 * maximum_width]
         if len(body_rows) >= 2:
             # 复杂分式可能比正文左缘多探出少量 glyph；公开框按重复满行边界稳定收口。
-            merged_bbox = merged["bbox"]
-            merged["bbox"] = (
+            local_merged_bbox = _bbox_union_many(local_rows)
+            local_output_bbox = (
                 min(bbox[0] for bbox in body_rows),
-                merged_bbox[1],
+                local_merged_bbox[1],
                 max(bbox[2] for bbox in body_rows),
-                merged_bbox[3],
+                local_merged_bbox[3],
+            )
+            merged["bbox"] = _rotate_bbox_from_upright(
+                local_output_bbox,
+                page_size,
+                int(merged.get("angle", 0) or 0) % 360,
             )
         replacements[replacement_index] = merged
         consumed.update(ordered_group)

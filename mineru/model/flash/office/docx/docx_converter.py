@@ -1706,6 +1706,56 @@ class DocxConverter:
             return (target or None), False
         return None, False
 
+    @classmethod
+    def _complex_field_instructions(
+        cls,
+        paragraph_element: BaseOxmlElement,
+    ) -> list[str]:
+        """按字段边界与嵌套顺序合并段落中被拆分的复杂字段指令。"""
+
+        word_namespace = cls._BLIP_NAMESPACES["w"]
+        field_char_tag = f"{{{word_namespace}}}fldChar"
+        instruction_tag = f"{{{word_namespace}}}instrText"
+        field_type_attr = f"{{{word_namespace}}}fldCharType"
+        field_stack: list[_DocxComplexFieldFrame] = []
+        instructions: list[str] = []
+
+        def append_instruction(frame: _DocxComplexFieldFrame) -> None:
+            """把一个字段已累计的非空指令追加到输出。"""
+
+            instruction = "".join(frame.instruction_parts).strip()
+            if instruction:
+                instructions.append(instruction)
+
+        for element in paragraph_element.iter():
+            if element.tag == field_char_tag:
+                field_type = element.get(field_type_attr)
+                if field_type == "begin":
+                    field_stack.append(_DocxComplexFieldFrame())
+                elif field_type == "separate" and field_stack:
+                    frame = field_stack[-1]
+                    if frame.phase == "instr":
+                        append_instruction(frame)
+                        frame.phase = "result"
+                elif field_type == "end" and field_stack:
+                    frame = field_stack.pop()
+                    if frame.phase == "instr":
+                        append_instruction(frame)
+                continue
+            if element.tag != instruction_tag:
+                continue
+            text = element.text or ""
+            if field_stack and field_stack[-1].phase == "instr":
+                field_stack[-1].instruction_parts.append(text)
+            elif text.strip():
+                # 兼容缺少 fldChar 包裹、但过去可被逐节点解析的非规范指令。
+                instructions.append(text.strip())
+
+        for frame in field_stack:
+            if frame.phase == "instr":
+                append_instruction(frame)
+        return instructions
+
     @staticmethod
     def _python_docx_hyperlink_target(hyperlink: Hyperlink) -> _ParagraphHyperlink:
         """把 python-docx Hyperlink 的地址或 fragment 转换为行内目标。"""
@@ -2970,11 +3020,10 @@ class DocxConverter:
             return anchors[0]
 
         field_anchors: list[str] = []
-        for instruction in paragraph_element.findall(
-            ".//w:instrText",
-            namespaces=DocxConverter._BLIP_NAMESPACES,
+        for instruction in self._complex_field_instructions(
+            paragraph_element,
         ):
-            target, is_internal = self._complex_field_hyperlink_target(instruction.text or "")
+            target, is_internal = self._complex_field_hyperlink_target(instruction)
             anchor = target.removeprefix("#") if target and is_internal else ""
             if anchor:
                 field_anchors.append(anchor)

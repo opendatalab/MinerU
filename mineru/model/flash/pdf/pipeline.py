@@ -48,6 +48,7 @@ from .native_text import (
     _get_pdf_drawing_lines,
     _median_native_glyph_width,
     _sanitize_pdf_control_text,
+    _resplit_native_visual_runs,
 )
 from .char_geometry import (
     DocumentGeometryPlan,
@@ -520,17 +521,40 @@ def _prepare_page_source(
             plan=geometry_plan,
             allow_y_trim=True,
         )
+    next_source_index = (
+        max(
+            (line.source_index for line in source.lines),
+            default=-1,
+        )
+        + 1
+    )
+    if geometry_plan is not None:
+        repaired_char_bboxes = {
+            char_idx: repair.layout_bbox
+            for (repair_page_index, char_idx), repair in geometry_plan.char_repairs.items()
+            if repair_page_index == page_index
+        }
+        unclaimed_lines = _resplit_native_visual_runs(
+            unclaimed_lines,
+            source.page_size,
+            repaired_char_bboxes,
+            source_index_start=next_source_index,
+        )
+        next_source_index = max(
+            next_source_index,
+            max(
+                (line.source_index for line in unclaimed_lines),
+                default=-1,
+            )
+            + 1,
+        )
     remaining_lines = _split_parallel_graphic_rule_rows(
         unclaimed_lines,
         source.drawing_lines,
         [block["bbox"] for block in (form_image_blocks + graphic_blocks + raster_image_blocks)],
         table_bboxes,
         source.page_size,
-        source_index_start=max(
-            (line.source_index for line in source.lines),
-            default=-1,
-        )
-        + 1,
+        source_index_start=next_source_index,
     )
     canonical_formula_source_lines = (
         [

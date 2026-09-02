@@ -220,6 +220,116 @@ def test_strong_x_run_repairs_advance_and_contains_tight_bbox() -> None:
     assert plan.line_repairs[(0, 0)].state == "repair_x"
 
 
+def test_short_rows_accumulate_enough_pairs_for_strong_x_repair() -> None:
+    """验证大量三字符短行仍可累计文档级 X 异常证据。"""
+
+    lines = []
+    geometries = []
+    for line_index in range(15):
+        line, geometry = _line_fixture(
+            source_index=line_index,
+            baseline=10.0 + 5.0 * line_index,
+            count=3,
+            loose_width=12.0,
+            start_char_idx=10 * line_index,
+        )
+        lines.append(line)
+        geometries.append(geometry)
+
+    plan = build_document_geometry_plan(
+        [lines],
+        [_merge_geometries(*geometries)],
+        [(400.0, 100.0)],
+    )
+
+    assert any(run["reliable_pair_count"] == 30 and run["strong_x_bad"] for run in plan.run_diagnostics)
+    assert plan.char_repairs
+    assert all(plan.line_repairs[(0, line_index)].state == "repair_x" for line_index in range(15))
+
+
+def test_style_only_prefilter_calibrates_scale_without_rewriting_output_geometry() -> None:
+    """验证温和跨页高度异常只校准字号，不顺带启用公开 bbox 重写。"""
+
+    lines_by_page = []
+    geometries = []
+    original_bboxes = []
+    for page_index in range(2):
+        page_lines = []
+        page_geometries = []
+        for line_index in range(3):
+            baseline = 20.0 + 20.0 * line_index
+            line, geometry = _line_fixture(
+                source_index=line_index,
+                baseline=baseline,
+                count=6,
+                font_size=7.0,
+                loose_top=baseline - 11.3,
+                loose_bottom=baseline + 2.0,
+                start_char_idx=page_index * 100 + line_index * 10,
+            )
+            page_lines.append(line)
+            page_geometries.append(geometry)
+            original_bboxes.append(line.bbox)
+        lines_by_page.append(page_lines)
+        geometries.append(_merge_geometries(*page_geometries))
+
+    plan = build_document_geometry_plan(
+        lines_by_page,
+        geometries,
+        [(200.0, 100.0)] * 2,
+    )
+    for page_index, lines in enumerate(lines_by_page):
+        apply_line_geometry_repairs(
+            lines,
+            page_index=page_index,
+            plan=plan,
+            allow_y_trim=True,
+        )
+
+    assert plan.document_style_anomaly
+    assert plan.line_style_scales
+    assert plan.line_ink_bboxes == {}
+    assert plan.line_baselines == {}
+    assert plan.line_repairs == {}
+    assert [line.bbox for lines in lines_by_page for line in lines] == original_bboxes
+    assert all(line.em_height == 7.0 for lines in lines_by_page for line in lines)
+
+
+def test_style_prefilter_keeps_subthreshold_document_on_identity_path() -> None:
+    """验证未超过 style inflation 阈值的跨页行保持完全 identity。"""
+
+    lines_by_page = []
+    geometries = []
+    for page_index in range(2):
+        page_lines = []
+        page_geometries = []
+        for line_index in range(3):
+            baseline = 20.0 + 20.0 * line_index
+            line, geometry = _line_fixture(
+                source_index=line_index,
+                baseline=baseline,
+                count=6,
+                font_size=7.0,
+                loose_top=baseline - 10.5,
+                loose_bottom=baseline + 2.0,
+                start_char_idx=page_index * 100 + line_index * 10,
+            )
+            page_lines.append(line)
+            page_geometries.append(geometry)
+        lines_by_page.append(page_lines)
+        geometries.append(_merge_geometries(*page_geometries))
+
+    plan = build_document_geometry_plan(
+        lines_by_page,
+        geometries,
+        [(200.0, 100.0)] * 2,
+    )
+
+    assert not plan.document_style_anomaly
+    assert plan.line_style_scales == {}
+    assert plan.run_diagnostics == []
+
+
 def test_canonical_line_metrics_propagate_without_y_bbox_rewrite() -> None:
     """验证只发生 X 修复的行仍获得 tight 字形并集和 dominant origin 基线。"""
 
