@@ -116,7 +116,7 @@
 - 与其它 backend 共用统一 `blocks` block tree，不再有独立的 `para_blocks` / `preproc_blocks`。
 - 大量 block 的 `bbox` 为 `null`（unknown），由 strict model 直接表达。
 - `PageInfo` 不携带 `page_size`。
-- 保留 Office 特有字段，如 `section_number`、`anchor`、`is_numbered_style`。
+- Office 特有内部字段不进入 public schema（`section_number`/`is_numbered_style` 已内化；`anchor` 保留在内部模型中）。
 - Office render 仍有专门逻辑。
 
 已解决:

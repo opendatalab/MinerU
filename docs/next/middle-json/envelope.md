@@ -178,7 +178,7 @@ def normalize_middle_json(
 
 ## Validator
 
-当前生产代码不提供 envelope validator API；页面树校验逻辑仅保留在单测中作为 test-local helper。
+当前生产代码不提供独立的 envelope validator API；结构合法性由 strict Pydantic 模型（`MiddleJson` 等，`extra="forbid"` + `strict`，`mineru/types.py:1092`）在解析时强制，页面树语义校验仅保留在单测中作为 test-local helper。
 
 ```python
 from mineru.parser import MIDDLE_JSON_SCHEMA_VERSION
@@ -203,7 +203,7 @@ P1 校验:
 
 - block index 页内唯一。
 - locator 可生成。
-- bbox 在 page_size 范围内，unknown bbox 除外。
+- bbox 为 schema 约定的 0-1 归一化坐标或 `null`（unknown）。
 - 内部字段不出现在 public output。
 
 ## 与 `ParseResult`
