@@ -85,12 +85,13 @@ GET /v1/models HTTP/1.1
       "object": "model",
       "created": 1700000000,
       "owned_by": "mineru",
-      "description": "VLM-based high-accuracy parsing model."
+      "description": null
     }
   ]
 }
 ```
 
+- 描述性 tier 文案（如 `Standard parsing for most documents.`）属于 `/v1/tiers` 返回的 tier info；`/v1/models` 的 `description` 当前为 `null`。
 Local Parse Server 默认（`--tier standard`）按上述顺序返回 `MinerU-Flash`、`Hybrid-Basic`、`MinerU-HTML`、`MinerU2.5-Pro-2605-1.2B`；实际模型列表由启动 `--tier`（与 `--no-flash`）决定。
 
 模型对象字段:
@@ -121,7 +122,7 @@ GET /v1/models/MinerU2.5-Pro-2605-1.2B HTTP/1.1
   "object": "model",
   "created": 1700000000,
   "owned_by": "mineru",
-  "description": "VLM-based high-accuracy parsing model."
+  "description": null
 }
 ```
 
@@ -149,7 +150,7 @@ GET /v1/tiers HTTP/1.1
   "data": [
     {
       "id": "standard",
-      "description": "Standard parsing for most documents.",
+      "description": null,
       "current_model": "MinerU2.5-Pro-2605-1.2B"
     }
   ]
