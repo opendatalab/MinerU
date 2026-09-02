@@ -5,17 +5,17 @@
 使用 **uv** 管理 Python 虚拟环境和依赖。
 
 ```bash
-# 在项目根目录 MinerU-Repo 中创建虚拟环境
+# 在项目根目录中创建虚拟环境
 uv venv .venv
 
 # 激活虚拟环境
 source .venv/bin/activate
 
 # 安装依赖
-uv pip install -e ".[core]"
+uv pip install -e ".[dev,test]"
 ```
 
-运行 Python 代码须在项目根目录 `MinerU-Repo` 中执行：
+运行 Python 代码须在项目根目录 `MinerU` 中执行：
 
 ```bash
 .venv/bin/python -m mineru.path.to.submodule
@@ -69,8 +69,6 @@ from mineru.render import RenderMode
 
 忽略的规则：
 - **C901** — 函数过复杂（允许必要的复杂函数）
-- **ANN002** — `*args` 不需要类型注解
-- **ANN003** — `**kwargs` 不需要类型注解
 - **ANN204** — 特殊方法（如 `__init__`）不需要返回类型注解
 - **ANN401** — 允许使用 `Any` 类型标注
 
@@ -87,9 +85,9 @@ registry.register(MyParser)
 # 好 — 显式映射
 TIER_TO_EFFORT: dict[Tier, Effort] = {
     "flash": "flash",
-    "basic": "low",
-    "standard": "medium",
-    "advanced": "high",
+    "basic": "medium",
+    "standard": "high",
+    "advanced": "xhigh",
 }
 ```
 
@@ -98,11 +96,10 @@ TIER_TO_EFFORT: dict[Tier, Effort] = {
 每个模块的 `__init__.py` 必须明确导出 `__all__`，让 agent 能快速获取模块边界。
 
 ```python
-# mineru/api/__init__.py
-from .base import DocumentParser
-from .parse_result import ParseResult
+# mineru/parser/__init__.py
+from .base import DocumentParser, ParseResult
 
-__all__ = ["DocumentParser", "ParseResult"]
+__all__ = ["DocumentParser", "ParseResult", "parse", "parse_async"]
 ```
 
 ### 类型优先
@@ -142,12 +139,13 @@ def parse(...):
 对外 API 层的 `import` 不得触发重依赖（torch、transformers 等）。重依赖应在函数体内按需导入。
 
 ```python
+# 对外 API 层不触发重依赖；轻依赖（如 doc_analyze 所在的 backend.analyze）
+# 可模块顶层导入，重依赖（torch、transformers 等）在函数体内按需导入。
 class MinerUParser(DocumentParser):
-    def __init__(self, *, tier: Tier = "standard", **kwargs):
-        super().__init__(**kwargs)
-        from ..backend.analyze import doc_analyze  # 惰性加载
+    def parse(self, path: str | Path, *, page_range: str = "") -> ParseResult:
+        from ..model.flash.pdf.document import PDFDocument  # 重依赖惰性加载
 
-        self._analyze_fn = doc_analyze
+        ...
 ```
 
 ## Middle JSON Schema 2.0 架构
@@ -156,7 +154,7 @@ Middle JSON 已收敛为 schema 2.0 的统一结构，并使用结构化 InlineS
 
 ### 1. 统一分析入口
 
-`backend/analyze.py:doc_analyze()` 是 PDF、OFD、EPUB、HTML、CSV 与 Office 文档的唯一公共入口，通过 `file_suffix` 路由到 `backend/analysis/pdf/pipeline.py:analyze_pdf`、`backend/analysis/ofd.py:analyze_ofd`、`backend/analysis/epub.py:analyze_epub`、`backend/analysis/html.py:analyze_html`、`backend/analysis/csv.py:analyze_csv` 或 `backend/analysis/office.py:analyze_office`，生成严格 `ModelJson` 后统一交给 `backend/postprocess/document.py:model_json_to_middle_json()` 构造 `MiddleJson`。`MinerUParser` 是 `DocumentParser` 的唯一实现，替代旧的 `PdfHybridParser`/`PdfFlashParser`/`DocxParser` 等。
+`backend/analyze.py:doc_analyze()` 是 PDF、OFD、EPUB、HTML、CSV 与 Office 文档的唯一公共入口，通过 `file_suffix` 路由到 `backend/analysis/pdf/pipeline.py:analyze_pdf`、`backend/analysis/ofd.py:analyze_ofd`、`backend/analysis/epub.py:analyze_epub`、`backend/analysis/html.py:analyze_html`、`backend/analysis/csv.py:analyze_csv` 或 `backend/analysis/office.py:analyze_office`，生成严格 `ModelJson` 后统一交给 `backend/postprocess/document.py:model_json_to_middle_json()` 构造 `MiddleJson`。`MinerUParser` 是本地解析的统一 `DocumentParser` 实现，替代旧的 `PdfHybridParser`/`PdfFlashParser`/`DocxParser` 等；`MinerUApiParser`（`parser/api_client.py`）通过 v1 API 委托解析，是 `DocumentParser` 的另一个实现。
 
 ### 2. MiddleJson 顶层字段（schema 2.0）
 

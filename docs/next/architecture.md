@@ -84,6 +84,8 @@ Routes
 | `ParseServerHealthCheck` | 1 | 探测 local/remote parse-server 健康状态 |
 | `DeviceMonitor` | 1 | 检测可插拔 watch 路径 |
 | `Compaction` | 1 | 合并已完成 parse 批次 |
+| `ScanWorkerPool` | 1 | 执行排队的文件系统 scan 任务 |
+| `TelemetryFlushLoop` | 1 | 按固定间隔批量上报 telemetry |
 
 所有后台组件都是 asyncio task，随 server 启停。
 
@@ -170,6 +172,9 @@ metadata 更新规则：入库阶段写基础 metadata；解析完成后，只�
 | `watches` | 监控目录、可插拔设备状态 |
 | `exclude_rules` | exclude 路径规则 |
 | `parsing_rules` | parsing-rule 路径规则 |
+| `scans` | scan 任务表与轻量 scan log |
+| `telemetry_state` | telemetry 上报状态（consent、上次 flush 等） |
+| `telemetry_aggregates` | 待上报 telemetry 聚合数据 |
 | `config` | SQLite KV 配置 |
 | `_migrations` | schema 版本追踪 |
 
