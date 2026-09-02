@@ -1,6 +1,6 @@
 # ADR-0013: Doc Content Progressive Reading
 
-状态: Accepted
+状态: Accepted，已实现
 日期: 2026-06-15
 相关文档: 0012-doclib-block-locator.md, ../cli/mineru-parse.md, ../workflows.md, ../middle-json/agent-gaps.md
 

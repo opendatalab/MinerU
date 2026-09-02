@@ -1,6 +1,6 @@
 # Next MinerU 文档体系
 
-状态: Draft
+状态: Implemented
 读者: 项目核心开发者、SDK/API 设计参与者、需要理解下一代能力边界的外部开发者
 范围: 组织下一阶段 MinerU 的产品方向、系统架构、公开接口和关键内部规范
 非目标: 立即改写现有正式用户文档
@@ -10,6 +10,8 @@
 `docs/next/` 是下一代 MinerU 设计文档的体系化入口。根目录旧 `NEXT-*.md` 底稿中的信息已按主题迁移到本目录；本目录负责建立导航、边界和读者路径。
 
 当前阶段的事实来源是本目录专题文档和仓库代码。后续当某个主题完成审阅后，可以把对应文档从 Draft 提升为稳定设计文档。
+
+状态词汇约定：专题文档使用 `Draft`（设计或核对中）与 `Implemented`（已逐条对照代码核验通过）；ADR 使用 `Proposed / Accepted / Deprecated / Superseded`，决策与当前代码核验一致时注记为 `Accepted，已实现`；被取代或仅作历史快照的文档分别标注 `Superseded` 与 `Legacy`。
 
 ## 推荐阅读顺序
 
@@ -49,6 +51,9 @@
 | 配置 | [config.md](config.md) | 配置专题文档仍待继续核对 | CLI、服务端、SDK 开发 |
 | Telemetry | [telemetry.md](telemetry.md) | 用户讨论 / 旧路线图底稿迁移内容 | 产品、核心开发、数据分析、合规参与者 |
 | 开放问题 | [open-questions.md](open-questions.md) | 各专题文档、用户讨论 | 核心开发、编程 Agent、文档维护者 |
+| 模块地图 | [code-map.md](code-map.md) | 代码结构分析报告（MINERU-1）对照代码核实固化 | 首次接触 4.x 代码的贡献者、核心开发、编程 Agent |
+| 开发陷阱 | [pitfalls.md](pitfalls.md) | 代码结构分析报告（MINERU-1）对照代码核实固化 | 核心开发、编程 Agent、代码审查者 |
+| 不变量红线 | [invariants.md](invariants.md) | 代码结构分析报告（MINERU-1）对照代码核实固化 | 核心开发、编程 Agent、代码审查者 |
 
 ## 整理原则
 

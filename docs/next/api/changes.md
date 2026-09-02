@@ -1,5 +1,6 @@
 # API 变更记录
 
+状态: Implemented
 范围: NEXT v1 API 标准的破坏性或需要迁移的行为变化。
 
 ## 2026-07-08: 明确 Local Parse Server base URL

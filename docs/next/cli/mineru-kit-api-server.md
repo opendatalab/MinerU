@@ -1,6 +1,6 @@
 # mineru-kit api-server
 
-状态: Draft
+状态: Implemented
 读者: 服务部署者、核心开发者、`mineru server` 集成开发者
 范围: `mineru-kit api-server` 的定位、self-hosted 边界、与 doclib 的协作和参数契约
 非目标: 统一 REST API 的字段级定义；模型服务内部实现
