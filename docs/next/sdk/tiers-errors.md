@@ -31,7 +31,7 @@ SDK 中未指定 tier，或 Python 调用传 `tier=None` 时，必须遵循 [解
 | `standard` | hybrid 默认高质量 backend |
 | `advanced` | hybrid backend + 更高 effort |
 
-`tier=None` 使用默认选择策略。PDF/image 直接本地解析且没有能力列表时默认 `standard`；有能力发现上下文时按 `standard` -> `advanced` -> `basic` 选择。OFD/EPUB/Office/HTML/CSV 单文件解析未指定 tier 时归一为 `flash`。结果记录实际 tier，不能为仅支持 flash tier 的输入记录伪质量 tier。其它 text 不产生解析结果。
+`tier=None` 使用默认选择策略。PDF/image 直接本地解析且没有能力列表时默认 `standard`；有能力发现上下文时按 `standard` -> `basic` 选择。OFD/EPUB/Office/HTML/CSV 单文件解析未指定 tier 时归一为 `flash`。结果记录实际 tier，不能为仅支持 flash tier 的输入记录伪质量 tier。其它 text 不产生解析结果。
 
 ## Doclib SDK 的 tier 处理
 

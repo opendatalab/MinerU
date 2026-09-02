@@ -1,6 +1,6 @@
 # ADR-0003: Parse 请求等待批次语义
 
-状态: Accepted
+状态: Accepted，已实现
 日期: 2026-06-09
 相关文档: ../architecture.md, ../workflows.md, ../cli/mineru-parse.md, 0002-force-vs-invalidate.md, 0004-doclib-http-api-resources.md
 
@@ -78,7 +78,7 @@ GET /parses?ids=12,13
 不再保留 `/parse/status`。所有状态查询都进入 `/parses`:
 
 - `GET /parses?ids=...` 回答“本次请求关联的 parse record 是否完成”。
-- `GET /parses?sha256=...&tier=...&page_range=...` 回答“文档在某个 tier 下的覆盖状态”。
+- `GET /parses?doc_ref=...&tier=...&page_range=...` 回答“文档在某个 tier 下的覆盖状态”（实现中的过滤参数为 `doc_ref`，可接受 sha256 或 path 等文档引用，是本 ADR 原写法 `sha256=` 的超集）。
 
 CLI wait 必须使用 id 级状态查询。
 

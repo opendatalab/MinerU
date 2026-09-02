@@ -9,6 +9,7 @@ does not expose parser backend selection.
 from __future__ import annotations
 
 import asyncio
+import base64
 import hashlib
 import io
 import ipaddress
@@ -795,11 +796,11 @@ def _parse_result_from_zip_bytes(
     try:
         with zipfile.ZipFile(io.BytesIO(zip_bytes)) as archive:
             mid_json = _read_middle_json_from_zip(archive)
-            result = _parse_result_from_middle_json(mid_json)
             if include_images:
                 images = _read_image_sidecars_from_zip(archive, mid_json)
                 if images:
-                    result.attach_export_images(images)
+                    _inline_image_sidecars(mid_json, images)
+            result = _parse_result_from_middle_json(mid_json)
             if include_model_output:
                 model_output = _extract_model_output_from_archive(archive)
                 if model_output is not None:
@@ -807,6 +808,8 @@ def _parse_result_from_zip_bytes(
             return result
     except zipfile.BadZipFile as exc:
         raise _V1APIError("invalid_zip_output", "zip output is not a valid ZIP archive") from exc
+    except ValueError as exc:
+        raise _V1APIError("invalid_image_sidecar", str(exc)) from exc
 
 
 def _middle_json_zip_candidates() -> list[str]:
@@ -867,6 +870,46 @@ def _read_image_sidecars_from_zip(archive: zipfile.ZipFile, mid_json: dict[str, 
                 images[safe_image_path] = archive.read(candidate)
                 break
     return images
+
+
+_IMAGE_DATA_URI_SUBTYPES: dict[str, str] = {
+    "jpg": "jpeg",
+    "jpeg": "jpeg",
+    "png": "png",
+    "gif": "gif",
+    "webp": "webp",
+    "bmp": "bmp",
+    "tiff": "tiff",
+    "svg": "svg+xml",
+}
+
+
+def _encode_image_data_uri(image_bytes: bytes, image_path: str) -> str:
+    """把图片字节编码为 data URI，MIME subtype 从 sidecar 扩展名推断。"""
+    ext = Path(image_path).suffix.lstrip(".").lower()
+    subtype = _IMAGE_DATA_URI_SUBTYPES.get(ext)
+    if subtype is None:
+        raise _V1APIError("invalid_image_sidecar", f"Unsupported image sidecar extension: {image_path}")
+    return f"data:image/{subtype};base64,{base64.b64encode(image_bytes).decode('ascii')}"
+
+
+def _inline_image_sidecars(mid_json: Any, images: dict[str, bytes]) -> None:
+    """递归把 middle_json 中引用的图片 sidecar 路径替换为内联 data URI。"""
+    if isinstance(mid_json, dict):
+        image_path = mid_json.get("image_path") or mid_json.get("img_path")
+        if isinstance(image_path, str) and image_path:
+            image_bytes = images.get(image_path)
+            if image_bytes is None and not image_path.startswith("images/"):
+                image_bytes = images.get(f"images/{image_path}")
+            if image_bytes is not None:
+                mid_json["image_base64"] = _encode_image_data_uri(image_bytes, image_path)
+                mid_json.pop("image_path", None)
+                mid_json.pop("img_path", None)
+        for value in mid_json.values():
+            _inline_image_sidecars(value, images)
+    elif isinstance(mid_json, list):
+        for item in mid_json:
+            _inline_image_sidecars(item, images)
 
 
 def _download_json(parser: MinerUApiParser, outputs: dict[str, Any]) -> dict[str, Any]:

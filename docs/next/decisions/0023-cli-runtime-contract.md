@@ -1,6 +1,6 @@
 # ADR-0023: CLI Runtime 输出、错误与退出码集中契约
 
-状态: Accepted
+状态: Accepted，已实现
 日期: 2026-06-30
 相关文档: ../cli.md, ../cli/mineru.md, ../errors.md, 0015-cli-output-json-composition.md
 

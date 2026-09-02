@@ -1,6 +1,6 @@
 # ADR-0026: Remote API Usage 与 API Key 引导
 
-状态: Accepted
+状态: Accepted，已实现
 日期: 2026-07-14
 相关文档: ../api/usage-limits.md, ../cli/mineru-parse.md, 0005-doclib-interface-client-server-contract.md, 0015-cli-output-json-composition.md, 0023-cli-runtime-contract.md
 

@@ -1,6 +1,6 @@
 # ADR-0010: Doclib Watch CLI 与 Rescan 边界
 
-状态: Accepted
+状态: Accepted，已实现
 日期: 2026-06-12
 相关文档: ../cli/mineru-library.md, ../workflows.md, 0009-doclib-scan-task.md
 

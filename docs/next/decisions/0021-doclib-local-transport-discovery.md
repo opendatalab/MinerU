@@ -1,6 +1,6 @@
 # ADR-0021: Doclib 本地 Transport 与 Endpoint Discovery
 
-状态: Accepted
+状态: Accepted，已实现
 日期: 2026-06-22
 相关文档: ../architecture.md, ../config.md, ../cli/mineru-server.md, ../sdk/doclib-client.md
 
@@ -50,8 +50,6 @@ doclib:
 ```
 
 ### 默认启用规则
-
-`enabled` 字段继续使用 `bool`，不引入字符串三态，也不使用 `None` 表示 auto。
 
 `doclib.uds.enabled` 和 `doclib.tcp.enabled` 的配置类型为 `auto | true | false`，默认值均为 `auto`。当前第一版只在启动前解析 `auto`，不在 UDS bind 失败后继续 fallback:
 

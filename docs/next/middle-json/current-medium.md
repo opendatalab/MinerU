@@ -4,7 +4,7 @@
 
 读者: backend、SDK、renderer 与 Doclib 开发者
 
-范围: Middle JSON schema 3.0、ModelJson 及公开 Block/InlineSpan 契约
+范围: Middle JSON schema 2.0、ModelJson 及公开 Block/InlineSpan 契约
 
 ## 标准来源
 
@@ -17,11 +17,11 @@
 
 模型统一使用 `extra="forbid"`。`doc_analyze()` 与 `aio_doc_analyze()` 固定返回
 `tuple[MiddleJson, ModelJson]`，`ParseResult.to_dict()` 输出
-`schema_version="3.0"`。
+`schema_version="2.0"`。
 
-Schema 3.0 是严格的运行时与公开输出契约。`ParseResult.from_dict()` 直接读取 3.0，
-并仅将可识别的 MinerU 3.4.5 `pdf_info` 或对应 schema 1.0 `pages` 包装单向迁移为 3.0；
-其它缺失版本的 envelope、schema 2.0 与未知旧 payload 必须从源文件重新解析。
+Schema 2.0 是严格的运行时与公开输出契约（3.0 从未发布）。`ParseResult.from_dict()` 直接读取 2.0，
+并仅将可识别的 MinerU 3.4.5 `pdf_info` 或对应 schema 1.0 `pages` 包装经运行时 legacy 分支单向迁移为 2.0；
+其它缺失版本号的 envelope 与未知旧 payload 必须从源文件重新解析。
 
 ## ModelJson
 
@@ -153,8 +153,8 @@ Markdown、HTML、DOCX 与 Structured Content renderer 按 Span discriminator �
 
 ## 缓存与兼容
 
-- `ParseResult.from_dict()` 直接接受 `schema_version="3.0"`；
-- MinerU 3.4.5 `pdf_info` 与对应 1.0 pages 包装经 `legacy_schema_adapter` 回推；
+- `ParseResult.from_dict()` 直接接受 `schema_version="2.0"`；
+- MinerU 3.4.5 `pdf_info` 与对应 1.0 pages 包装经 `legacy_schema_adapter` 在运行时（`from_dict()` 与 doclib compaction）回推；
 - Doclib compaction 使用同一适配器迁移可识别旧 batch，无法识别时仍按 stale 处理；
-- 2.0 与其它未知旧版本返回“重新解析源文件”的明确错误；
+- 无版本号的裸 `{"pages": []}` 与其它未知旧版本返回“重新解析源文件”的明确错误；
 - 不提供 `str | list[InlineSpan]` 联合，也不恢复旧版带 bbox/图片职责的 Line/Span。
