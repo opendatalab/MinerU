@@ -17,14 +17,12 @@ SDK 中未指定 tier，或 Python 调用传 `tier=None` 时，必须遵循 [解
 
 ## Tool SDK 的 tier 处理
 
-`mineru.parser.parse()` 的目标行为:
+`mineru.parser.parse()` 的当前行为:
 
-- 用户传 `tier`，SDK 解析为 backend。
-- 用户传 `backend`，视为高级覆盖。
-- `backend` 覆盖 `tier` 时应在文档中明确。
-- 如果需要能力发现但当前环境无法发现，应返回明确错误。
+- 调用方传 `tier`（默认 `standard`），SDK 在内部把它映射为具体 backend 与 effort。
+- `parse()` 不接受 `backend` 参数；`backend` 作为专家覆盖只保留在 `mineru-kit parse` CLI 层，由 CLI 与 `tier` 一起解析出实际执行配置。
 
-目标映射:
+映射:
 
 | Tier | Backend |
 |------|---------|
@@ -57,7 +55,7 @@ SDK 默认隐私优先:
 | SDK | 默认行为 |
 |-----|----------|
 | `mineru.parser` | 只解析本地文件，不上传远端。 |
-| `MinerUApiParser` | 调用方显式传入 `api_url`，由调用方承担远端许可语义。 |
+| `MinerUApiParser` | `api_url` 可省略（回退 `MINERU_API_URL` → 官方默认 `https://mineru.net/api`）；显式传入 `api_url` 即表示调用方选择目标服务，由调用方承担远端许可语义。 |
 | `DoclibClient` | `ParseRequest.remote=False`，不得上传到 remote parse-server 或 mineru.net。 |
 
 只有显式 remote 许可才可以上传用户文件到远端。
