@@ -482,9 +482,9 @@ def test_explicit_pdf_fixtures_keep_expected_txt_block_inventory() -> None:
                     "header": 19,
                     "image": 5,
                     "page_footnote": 1,
-                    "paragraph_title": 13,
+                    "paragraph_title": 14,
                     "table": 5,
-                    "text": 46,
+                    "text": 45,
                 }
             ),
         ),

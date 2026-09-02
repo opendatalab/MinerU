@@ -483,13 +483,6 @@ def _classify_page_titles(
         )
         if document_body_profile is not None and document_body_profile.has_style_scale_repairs:
             _demote_non_structural_anomaly_titles(line_geometry)
-        if page_index == 0:
-            _demote_front_matter_non_document_titles(
-                line_geometry,
-                local_page_height,
-                document_title_bottom,
-                document_body_profile=document_body_profile,
-            )
 
 
 def _demote_non_structural_anomaly_titles(
@@ -716,161 +709,153 @@ def _classify_document_structural_titles(
                     line.style_scale_repaired = True
 
 
-def _classify_secondary_document_title_bands(
-    prepared_pages: list[_PreparedPage],
+def _promote_noninitial_document_title_band(
+    lines: list[_LineItem],
+    page_size: tuple[float, float],
+    *,
+    page_index: int,
+    container_bboxes: list[BBox],
     document_body_profile: _DocumentBodyProfile | None,
+    title_candidate_source_indices: set[int],
 ) -> None:
-    """用标题、作者、单位和宽摘要的连续版式识别非首页双语标题带。"""
+    """把非首页中已确认且显著大于正文的最强段落标题带升为文档标题。"""
 
-    if document_body_profile is None:
+    if page_index == 0 or document_body_profile is None:
         return
     body_height = max(0.1, document_body_profile.body_height)
-    for prepared in prepared_pages[1:]:
-        for angle in sorted(
-            {line.angle for line in prepared.remaining_lines if line.semantic_type in {None, "paragraph_title"}}
-        ):
-            geometry = sorted(
-                [
-                    (
-                        line,
-                        _rotate_bbox_to_upright(
-                            line.bbox,
-                            prepared.page_size,
-                            angle,
-                        ),
-                    )
-                    for line in prepared.remaining_lines
-                    if line.angle == angle and line.semantic_type in {None, "paragraph_title"}
-                ],
-                key=lambda item: (
-                    item[1][1],
-                    item[1][0],
-                    item[0].source_index,
-                ),
+    page_candidates: list[
+        tuple[
+            tuple[float, float, int, float],
+            list[tuple[_LineItem, BBox]],
+        ]
+    ] = []
+    for angle in sorted(
+        {
+            line.angle
+            for line in lines
+            if line.source_index in title_candidate_source_indices
+            and line.semantic_type in {None, "paragraph_title"}
+            and not line.title_suppressed
+        }
+    ):
+        geometry = sorted(
+            [
+                (
+                    line,
+                    _rotate_bbox_to_upright(
+                        line.bbox,
+                        page_size,
+                        angle,
+                    ),
+                )
+                for line in lines
+                if line.angle == angle
+                and line.source_index in title_candidate_source_indices
+                and line.semantic_type in {None, "paragraph_title"}
+                and not line.title_suppressed
+            ],
+            key=lambda item: (
+                item[1][1],
+                item[1][0],
+                item[0].source_index,
+            ),
+        )
+        if not geometry:
+            continue
+        local_page_width = page_size[1] if angle in {90, 270} else page_size[0]
+        local_page_height = page_size[0] if angle in {90, 270} else page_size[1]
+        local_containers = [
+            _rotate_bbox_to_upright(
+                bbox,
+                page_size,
+                angle,
             )
-            if len(geometry) < 5:
+            for bbox in container_bboxes
+        ]
+        for index, (line, bbox) in enumerate(geometry):
+            line_scale = _line_effective_height(line, bbox)
+            width_ratio = (bbox[2] - bbox[0]) / max(
+                0.1,
+                local_page_width,
+            )
+            centered = abs(_bbox_center_x(bbox) - 0.5 * local_page_width) <= 0.08 * local_page_width
+            if (
+                line_scale < 1.25 * body_height
+                or not 0.45 <= width_ratio <= 0.85
+                or not centered
+                or not 0.12 * local_page_height <= _bbox_center_y(bbox) <= 0.75 * local_page_height
+                or _line_inside_visual_container(
+                    bbox,
+                    local_containers,
+                )
+            ):
                 continue
-            local_page_width = prepared.page_size[1] if angle in {90, 270} else prepared.page_size[0]
-            local_page_height = prepared.page_size[0] if angle in {90, 270} else prepared.page_size[1]
-            local_containers = [
-                _rotate_bbox_to_upright(
-                    block["bbox"],
-                    prepared.page_size,
-                    angle,
+
+            title_members = [(line, bbox)]
+            cursor = index + 1
+            while cursor < len(geometry):
+                candidate_line, candidate_bbox = geometry[cursor]
+                candidate_scale = _line_effective_height(
+                    candidate_line,
+                    candidate_bbox,
                 )
-                for block in prepared.fixed_blocks
-                if isinstance(block.get("bbox"), (list, tuple))
-            ]
-            consumed_sources: set[int] = set()
-            for index, (line, bbox) in enumerate(geometry):
-                if line.source_index in consumed_sources:
-                    continue
-                line_scale = _line_effective_height(line, bbox)
-                width_ratio = (bbox[2] - bbox[0]) / max(
-                    0.1,
-                    local_page_width,
+                vertical_gap = max(
+                    0.0,
+                    candidate_bbox[1] - title_members[-1][1][3],
                 )
-                centered = abs(_bbox_center_x(bbox) - 0.5 * local_page_width) <= 0.08 * local_page_width
                 if (
-                    line_scale < 1.2 * body_height
-                    or not 0.45 <= width_ratio <= 0.85
-                    or not centered
-                    or not 0.12 * local_page_height <= _bbox_center_y(bbox) <= 0.75 * local_page_height
+                    candidate_scale < 1.2 * body_height
+                    or vertical_gap
+                    > 1.5
+                    * max(
+                        line_scale,
+                        candidate_scale,
+                    )
+                    or abs(_bbox_center_x(candidate_bbox) - 0.5 * local_page_width) > 0.1 * local_page_width
+                    or candidate_bbox[2] - candidate_bbox[0] > 0.85 * local_page_width
                     or _line_inside_visual_container(
-                        bbox,
+                        candidate_bbox,
                         local_containers,
                     )
-                ):
-                    continue
-
-                title_members = [(line, bbox)]
-                cursor = index + 1
-                while cursor < len(geometry):
-                    candidate_line, candidate_bbox = geometry[cursor]
-                    candidate_scale = _line_effective_height(
+                    or not _title_fonts_compatible(
+                        title_members[-1][0],
                         candidate_line,
-                        candidate_bbox,
                     )
-                    vertical_gap = max(
-                        0.0,
-                        candidate_bbox[1] - title_members[-1][1][3],
-                    )
-                    if (
-                        candidate_scale < 1.15 * body_height
-                        or vertical_gap
-                        > 1.5
-                        * max(
-                            line_scale,
-                            candidate_scale,
-                        )
-                        or abs(_bbox_center_x(candidate_bbox) - 0.5 * local_page_width) > 0.1 * local_page_width
-                        or candidate_bbox[2] - candidate_bbox[0] > 0.85 * local_page_width
-                        or not _title_fonts_compatible(
-                            title_members[-1][0],
-                            candidate_line,
-                        )
-                    ):
-                        break
-                    title_members.append(
-                        (candidate_line, candidate_bbox),
-                    )
-                    cursor += 1
+                ):
+                    break
+                title_members.append(
+                    (candidate_line, candidate_bbox),
+                )
+                cursor += 1
 
-                followers = geometry[cursor:]
-                if len(followers) < 3:
-                    continue
-                matched_metadata: list[tuple[_LineItem, BBox]] | None = None
-                for metadata_count in (2, 3):
-                    if len(followers) <= metadata_count:
-                        continue
-                    metadata = followers[:metadata_count]
-                    if any(
-                        not 0.2 * local_page_width <= metadata_bbox[2] - metadata_bbox[0] <= 0.7 * local_page_width
-                        or abs(_bbox_center_x(metadata_bbox) - 0.5 * local_page_width) > 0.12 * local_page_width
-                        or _line_effective_height(
-                            metadata_line,
-                            metadata_bbox,
-                        )
-                        > line_scale
-                        for metadata_line, metadata_bbox in metadata
-                    ):
-                        continue
-                    metadata_gaps = [
-                        max(
-                            0.0,
-                            current[1][1] - previous[1][3],
-                        )
-                        for previous, current in zip(
-                            metadata,
-                            metadata[1:],
-                        )
-                    ]
-                    _abstract_line, abstract_bbox = followers[metadata_count]
-                    title_to_metadata_gap = max(
-                        0.0,
-                        metadata[0][1][1] - title_members[-1][1][3],
-                    )
-                    abstract_gap = max(
-                        0.0,
-                        abstract_bbox[1] - metadata[-1][1][3],
-                    )
-                    if (
-                        title_to_metadata_gap <= 4.5 * body_height
-                        and all(gap <= 2.0 * body_height for gap in metadata_gaps)
-                        and abstract_gap <= 4.0 * body_height
-                        and abstract_bbox[2] - abstract_bbox[0] >= 0.7 * local_page_width
-                        and abstract_bbox[0] <= 0.15 * local_page_width
-                        and abstract_bbox[2] >= 0.85 * local_page_width
-                    ):
-                        matched_metadata = metadata
-                        break
-                if matched_metadata is None:
-                    continue
-                for title_line, _title_bbox in title_members:
-                    title_line.semantic_type = "doc_title"
-                    consumed_sources.add(title_line.source_index)
-                for metadata_line, _metadata_bbox in matched_metadata:
-                    metadata_line.title_suppressed = True
+            title_scales = [
+                _line_effective_height(title_line, title_bbox)
+                for title_line, title_bbox in title_members
+            ]
+            title_bbox = _bbox_union_many(
+                [member_bbox for _member_line, member_bbox in title_members],
+            )
+            page_candidates.append(
+                (
+                    (
+                        statistics.median(title_scales) / body_height,
+                        sum(member_bbox[2] - member_bbox[0] for _member_line, member_bbox in title_members)
+                        / local_page_width,
+                        len(title_members),
+                        -_bbox_center_y(title_bbox) / local_page_height,
+                    ),
+                    title_members,
+                )
+            )
+
+    if not page_candidates:
+        return
+    _score, title_members = max(
+        page_candidates,
+        key=lambda item: item[0],
+    )
+    for title_line, _title_bbox in title_members:
+        title_line.semantic_type = "doc_title"
 
 
 def _canonical_title_style_key(
@@ -1873,26 +1858,6 @@ def _classify_additional_document_title_bands(
         line.semantic_type = "doc_title"
         selected_bottoms.append(bbox[3])
     return max(selected_bottoms, default=document_title_bottom)
-
-
-def _demote_front_matter_non_document_titles(
-    line_geometry: list[tuple[_LineItem, BBox]],
-    local_page_height: float,
-    document_title_bottom: float | None,
-    *,
-    document_body_profile: _DocumentBodyProfile | None,
-) -> None:
-    """把首页最后标题带后的作者与单位行降回正文。"""
-
-    if document_title_bottom is None or document_body_profile is None or not document_body_profile.has_style_scale_repairs:
-        return
-    boundary = max(
-        document_title_bottom + 2.5 * document_body_profile.body_height,
-        0.46 * local_page_height,
-    )
-    for line, bbox in line_geometry:
-        if line.semantic_type == "paragraph_title" and _bbox_center_y(bbox) <= boundary:
-            line.semantic_type = None
 
 
 def _classify_cross_lane_centered_section_titles(

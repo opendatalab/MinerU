@@ -289,9 +289,9 @@
         "header": 19,
         "image": 5,
         "page_footnote": 1,
-        "paragraph_title": 13,
+        "paragraph_title": 14,
         "table": 5,
-        "text": 46
+        "text": 45
       },
       "exact_typed_text": [
         {"page_index": 0, "type": "paragraph_title", "text": "引言"},
@@ -314,6 +314,7 @@
         {"page_index": 3, "type": "paragraph_title", "text": "2．5逆温垂直结构特征分析"},
         {"page_index": 3, "type": "paragraph_title", "text": "3结论与讨论"},
         {"page_index": 4, "type": "caption", "text": "表519：00多层逆温次数分布"},
+        {"page_index": 4, "type": "paragraph_title", "text": "参考文献"},
         {"page_index": 4, "type": "doc_title", "text": "CharacteristicAnalysisofTemperatureInversioninLower－LevelAtmosphereoverChongqingBasedonL－BandRadarData"}
       ],
       "same_block_groups": [

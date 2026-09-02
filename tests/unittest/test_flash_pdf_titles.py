@@ -124,8 +124,8 @@ def test_document_regular_fonts_only_use_body_height_band() -> None:
     assert profile.regular_fonts == frozenset({body_font})
 
 
-def test_secondary_document_title_requires_author_affiliation_and_wide_body() -> None:
-    """验证非首页大标题只有在作者、单位和宽摘要结构完整时才成为 doc_title。"""
+def test_noninitial_document_title_requires_paragraph_title_candidate() -> None:
+    """验证非首页文档标题只能从已确认的段落标题候选升档。"""
 
     title_font = ("Title", 0)
     body_font = ("Body", 0)
@@ -145,6 +145,8 @@ def test_secondary_document_title_requires_author_affiliation_and_wide_body() ->
         font_signature=title_font,
         font_coverage=1.0,
     )
+    title_first.semantic_type = "paragraph_title"
+    title_second.semantic_type = "paragraph_title"
     author = _text_line(
         "Author One, Author Two",
         (20.0, 65.0, 80.0, 75.0),
@@ -169,11 +171,90 @@ def test_secondary_document_title_requires_author_affiliation_and_wide_body() ->
         font_signature=body_font,
         font_coverage=1.0,
     )
+    profile = titles._DocumentBodyProfile(
+        body_height=10.0,
+        body_weight=400.0,
+        regular_fonts=frozenset({body_font}),
+    )
+
+    titles._promote_noninitial_document_title_band(
+        [title_first, title_second, author, affiliation, abstract],
+        (100.0, 150.0),
+        page_index=1,
+        container_bboxes=[],
+        document_body_profile=profile,
+        title_candidate_source_indices={0, 1},
+    )
+
+    assert title_first.semantic_type == "doc_title"
+    assert title_second.semantic_type == "doc_title"
+    assert all(line.semantic_type is None for line in (author, affiliation, abstract))
+
+    ordinary_large_line = _text_line(
+        "large centered non-title",
+        (15.0, 20.0, 85.0, 38.0),
+        10,
+        effective_height=18.0,
+        font_signature=title_font,
+        font_coverage=1.0,
+    )
+    titles._promote_noninitial_document_title_band(
+        [ordinary_large_line],
+        (100.0, 150.0),
+        page_index=2,
+        container_bboxes=[],
+        document_body_profile=profile,
+        title_candidate_source_indices=set(),
+    )
+    assert ordinary_large_line.semantic_type is None
+
+
+def test_noninitial_document_titles_support_multiple_articles_without_metadata() -> None:
+    """验证杂志中的多篇文章可在各自起始页仅凭稳定标题版式成为 doc_title。"""
+
+    title_font = ("Title", 0)
+    body_font = ("Body", 0)
+    first_article_title = _text_line(
+        "First article title",
+        (15.0, 20.0, 85.0, 36.0),
+        0,
+        effective_height=16.0,
+        font_signature=title_font,
+        font_coverage=1.0,
+    )
+    first_article_title_tail = _text_line(
+        "continued title",
+        (20.0, 37.0, 80.0, 53.0),
+        1,
+        effective_height=16.0,
+        font_signature=title_font,
+        font_coverage=1.0,
+    )
+    second_article_title = _text_line(
+        "Second article title",
+        (18.0, 28.0, 82.0, 44.0),
+        0,
+        effective_height=16.0,
+        font_signature=title_font,
+        font_coverage=1.0,
+    )
+    later_section = _text_line(
+        "Centered section heading",
+        (25.0, 85.0, 75.0, 98.0),
+        2,
+        effective_height=13.0,
+        font_signature=title_font,
+        font_coverage=1.0,
+    )
+    first_article_title.semantic_type = "paragraph_title"
+    first_article_title_tail.semantic_type = "paragraph_title"
+    second_article_title.semantic_type = "paragraph_title"
+    later_section.semantic_type = "paragraph_title"
     pages = [
         _prepared_text_page(
             _text_line(
-                "ordinary first page body",
-                (0.0, 20.0, 100.0, 30.0),
+                "magazine cover",
+                (5.0, 20.0, 95.0, 30.0),
                 0,
                 effective_height=10.0,
                 font_signature=body_font,
@@ -182,11 +263,29 @@ def test_secondary_document_title_requires_author_affiliation_and_wide_body() ->
             page_size=(100.0, 150.0),
         ),
         _prepared_text_page(
-            title_first,
-            title_second,
-            author,
-            affiliation,
-            abstract,
+            first_article_title,
+            first_article_title_tail,
+            _text_line(
+                "first article body",
+                (5.0, 70.0, 95.0, 80.0),
+                2,
+                effective_height=10.0,
+                font_signature=body_font,
+                font_coverage=1.0,
+            ),
+            page_size=(100.0, 150.0),
+        ),
+        _prepared_text_page(
+            second_article_title,
+            _text_line(
+                "second article body",
+                (5.0, 55.0, 95.0, 65.0),
+                1,
+                effective_height=10.0,
+                font_signature=body_font,
+                font_coverage=1.0,
+            ),
+            later_section,
             page_size=(100.0, 150.0),
         ),
     ]
@@ -196,14 +295,27 @@ def test_secondary_document_title_requires_author_affiliation_and_wide_body() ->
         regular_fonts=frozenset({body_font}),
     )
 
-    titles._classify_secondary_document_title_bands(
-        pages,
-        profile,
+    titles._promote_noninitial_document_title_band(
+        pages[1].remaining_lines,
+        pages[1].page_size,
+        page_index=1,
+        container_bboxes=[],
+        document_body_profile=profile,
+        title_candidate_source_indices={0, 1},
+    )
+    titles._promote_noninitial_document_title_band(
+        pages[2].remaining_lines,
+        pages[2].page_size,
+        page_index=2,
+        container_bboxes=[],
+        document_body_profile=profile,
+        title_candidate_source_indices={0, 2},
     )
 
-    assert title_first.semantic_type == "doc_title"
-    assert title_second.semantic_type == "doc_title"
-    assert all(line.semantic_type is None for line in (author, affiliation, abstract))
+    assert first_article_title.semantic_type == "doc_title"
+    assert first_article_title_tail.semantic_type == "doc_title"
+    assert second_article_title.semantic_type == "doc_title"
+    assert later_section.semantic_type == "paragraph_title"
 
 
 def test_document_body_profile_prefers_width_support_over_footer_page_count() -> None:

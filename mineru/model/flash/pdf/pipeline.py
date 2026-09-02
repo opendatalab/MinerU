@@ -101,11 +101,11 @@ from .auxiliary_text import (
 from .titles import (
     _classify_body_height_section_titles,
     _classify_explicit_section_titles,
-    _classify_secondary_document_title_bands,
     _classify_document_structural_titles,
     _classify_page_titles,
     _infer_document_body_profile,
     _infer_document_title_profile,
+    _promote_noninitial_document_title_band,
 )
 from .text_blocks import (
     _build_text_blocks,
@@ -381,14 +381,11 @@ def _analyze_native_document(
         legacy_body_profile=document_body_profile,
         document_title_profile=document_title_profile,
     )
-    _classify_secondary_document_title_bands(
-        prepared_pages,
-        canonical_body_profile,
-    )
     finalized_pages = [
         _finalize_prepared_page(
             prepared,
             page_index,
+            canonical_body_profile=canonical_body_profile,
             document_body_profile=document_body_profile,
             document_title_profile=document_title_profile,
         )
@@ -723,6 +720,7 @@ def _finalize_prepared_page(
     prepared: _PreparedPage,
     page_index: int,
     *,
+    canonical_body_profile: _DocumentBodyProfile | None = None,
     document_body_profile: _DocumentBodyProfile | None = None,
     document_title_profile: _DocumentTitleProfile | None = None,
 ) -> list[dict[str, Any]]:
@@ -810,6 +808,16 @@ def _finalize_prepared_page(
         caption_container_bboxes=caption_container_bboxes,
         document_body_profile=document_body_profile,
         document_title_profile=document_title_profile,
+    )
+    _promote_noninitial_document_title_band(
+        remaining_lines,
+        prepared.page_size,
+        page_index=page_index,
+        container_bboxes=title_container_bboxes,
+        document_body_profile=(canonical_body_profile or document_body_profile),
+        title_candidate_source_indices={
+            line.source_index for line in remaining_lines if line.semantic_type == "paragraph_title"
+        },
     )
     remaining_lines = _merge_title_resolved_visual_rows(
         remaining_lines,
