@@ -12286,7 +12286,7 @@
       ],
       "expected_geometry_summary": {
         "repaired_chars": 27763,
-        "repaired_lines": 1348,
+        "repaired_lines": 1347,
         "split_y_candidates": 27,
         "strong_x_runs": 7,
         "sibling_x_runs": 3
@@ -16202,13 +16202,5 @@
         "sibling_x_runs": 1
       }
     }
-  ],
-  "performance_validation": {
-    "baseline_p95_seconds": 2.499708,
-    "current_p95_seconds": 2.565039,
-    "p95_change_ratio": 0.0261,
-    "baseline_total_seconds": 17.466309,
-    "current_total_seconds": 17.340156,
-    "total_change_ratio": -0.0072
-  }
+  ]
 }

@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from typing import TypeAlias
+
 from bs4 import NavigableString, Tag
 from pydantic import ValidationError
 
@@ -21,6 +23,7 @@ from .inline import LatexAnchorRegistry, escape_latex_text, escape_latex_url, re
 
 _BLOCK_TAGS = {"address", "article", "blockquote", "div", "figcaption", "footer", "header", "li", "p", "section"}
 _SKIPPED_TAGS = {"script", "style", "template", "noscript"}
+_HtmlCellToken: TypeAlias = InlineSpan | Tag
 
 
 class LatexTableError(HtmlTableError):
@@ -97,24 +100,7 @@ class LatexTableRenderer:
         depth: int,
     ) -> str:
         """渲染一个 origin cell，并组合 rowspan/colspan 声明。"""
-        parts: list[str] = []
-        spans = _html_cell_spans(cell)
-        if spans:
-            parts.append(render_inline_spans(spans, self.anchors))
-        for image in cell.find_all("img"):
-            if image.find_parent("table") is not cell.find_parent("table"):
-                continue
-            source = image.get("src", "")
-            if isinstance(source, list):
-                source = ""
-            alt = image.get("alt", "image")
-            if isinstance(alt, list):
-                alt = " ".join(str(item) for item in alt)
-            parts.append(self._render_image(str(source), str(alt)))
-        for nested in cell.find_all("table"):
-            if nested.find_parent(("td", "th")) is not cell:
-                continue
-            parts.append(self._render_source(nested, depth=depth + 1))
+        parts = self._render_cell_parts(cell, depth=depth)
         content = r"\par ".join(part for part in parts if part) or "~"
         if is_header:
             content = rf"\cellcolor{{MinerUTableHeader}}\textbf{{{content}}}"
@@ -124,6 +110,46 @@ class LatexTableRenderer:
         if colspan > 1:
             content = rf"\multicolumn{{{colspan}}}{{|p{{{width}}}|}}{{{content}}}"
         return content
+
+    def _render_cell_parts(self, cell: Tag, *, depth: int) -> list[str]:
+        """按 HTML 来源顺序交替渲染行内内容、图片与嵌套表格。"""
+
+        parts: list[str] = []
+        inline_buffer: list[InlineSpan] = []
+
+        def flush_inline_buffer() -> None:
+            """把当前连续行内 token 校验并渲染为一个 LaTeX 片段。"""
+
+            if not inline_buffer:
+                return
+            spans = _parse_cell_inline_spans(inline_buffer)
+            rendered = render_inline_spans(spans, self.anchors)
+            if rendered:
+                parts.append(rendered)
+            inline_buffer.clear()
+
+        for token in _html_cell_tokens(cell):
+            if not isinstance(token, Tag):
+                inline_buffer.append(token)
+                continue
+            flush_inline_buffer()
+            if token.name == "img":
+                parts.append(self._render_image_tag(token))
+            elif token.name == "table":
+                parts.append(self._render_source(token, depth=depth + 1))
+        flush_inline_buffer()
+        return parts
+
+    def _render_image_tag(self, image: Tag) -> str:
+        """读取一个单元格图片标签并渲染为 LaTeX 图片或可见回退。"""
+
+        source = image.get("src", "")
+        if isinstance(source, list):
+            source = ""
+        alt = image.get("alt", "image")
+        if isinstance(alt, list):
+            alt = " ".join(str(item) for item in alt)
+        return self._render_image(str(source), str(alt))
 
     def _render_image(self, source: str, alt_text: str) -> str:
         """渲染单元格图片；非本地 sidecar 退化为可见链接或占位。"""
@@ -182,29 +208,47 @@ def _row_rules(
     return rules
 
 
-def _html_cell_spans(cell: Tag) -> list[InlineSpan]:
-    """把单元格中非图片、非嵌套表内容转换为严格 InlineSpan。"""
-    spans: list[InlineSpan] = []
-    for child in cell.children:
-        spans.extend(_html_node_spans(child, styles=(), allow_links=True))
-    if not spans:
-        return []
+def _parse_cell_inline_spans(spans: list[InlineSpan]) -> list[InlineSpan]:
+    """校验一个不跨图片或嵌套表格的连续单元格行内片段。"""
+
     try:
         return parse_inline_spans(spans)
     except (TypeError, ValidationError, ValueError) as exc:
         raise LatexTableError("HTML table cell inline content is invalid") from exc
 
 
-def _html_node_spans(node: object, *, styles: tuple[InlineStyle, ...], allow_links: bool) -> list[InlineSpan]:
-    """递归解析表格单元格中的安全富文本标签。"""
+def _html_cell_tokens(cell: Tag) -> list[_HtmlCellToken]:
+    """按来源顺序返回单元格中的行内、图片与嵌套表格 token。"""
+
+    return [
+        token
+        for child in cell.children
+        for token in _html_node_tokens(
+            child,
+            styles=(),
+            allow_links=True,
+        )
+    ]
+
+
+def _html_node_tokens(
+    node: object,
+    *,
+    styles: tuple[InlineStyle, ...],
+    allow_links: bool,
+) -> list[_HtmlCellToken]:
+    """递归解析 HTML 节点，同时把图片和嵌套表格保留为顺序屏障。"""
+
     if isinstance(node, NavigableString):
         text = str(node)
         return [TextSpan(type="text", content=text, styles=list(styles))] if text else []
     if not isinstance(node, Tag):
         return []
     name = (node.name or "").lower()
-    if name in _SKIPPED_TAGS or name in {"img", "table"}:
+    if name in _SKIPPED_TAGS:
         return []
+    if name in {"img", "table"}:
+        return [node]
     if name == "br":
         return [TextSpan(type="text", content="\n", styles=list(styles))]
     if name == "eq":
@@ -227,10 +271,14 @@ def _html_node_spans(node: object, *, styles: tuple[InlineStyle, ...], allow_lin
     child_styles = tuple(dict.fromkeys((*styles, style_name))) if style_name is not None else styles
     if name == "a" and allow_links:
         children = [
-            span
+            token
             for child in node.children
-            for span in _html_node_spans(child, styles=child_styles, allow_links=False)
-            if not isinstance(span, HyperlinkSpan)
+            for token in _html_node_tokens(
+                child,
+                styles=child_styles,
+                allow_links=False,
+            )
+            if not isinstance(token, HyperlinkSpan)
         ]
         target = sanitize_hyperlink_target(
             node.get("href"),
@@ -238,21 +286,63 @@ def _html_node_spans(node: object, *, styles: tuple[InlineStyle, ...], allow_lin
             allow_relative=True,
             allow_fragment=True,
         )
-        if target is not None and children:
-            try:
-                return [HyperlinkSpan(type="hyperlink", url=target, content=children)]  # type: ignore[arg-type]
-            except ValidationError:
-                pass
-        return children
-    spans = [span for child in node.children for span in _html_node_spans(child, styles=child_styles, allow_links=allow_links)]
-    if name in _BLOCK_TAGS and spans and not _spans_end_with_newline(spans):
-        spans.append(TextSpan(type="text", content="\n"))
-    return spans
+        return _wrap_hyperlink_tokens(children, target)
+    tokens = [
+        token
+        for child in node.children
+        for token in _html_node_tokens(
+            child,
+            styles=child_styles,
+            allow_links=allow_links,
+        )
+    ]
+    if name in _BLOCK_TAGS and tokens and not _tokens_end_with_newline(tokens):
+        tokens.append(TextSpan(type="text", content="\n"))
+    return tokens
 
 
-def _spans_end_with_newline(spans: list[InlineSpan]) -> bool:
-    """判断当前 span 序列是否已经以普通文本换行结束。"""
-    return bool(spans and isinstance(spans[-1], TextSpan) and spans[-1].content.endswith("\n"))
+def _wrap_hyperlink_tokens(
+    tokens: list[_HtmlCellToken],
+    target: str | None,
+) -> list[_HtmlCellToken]:
+    """只包装链接内连续的 InlineSpan，让图片和嵌套表格保持原位。"""
+
+    if target is None:
+        return tokens
+    output: list[_HtmlCellToken] = []
+    inline_buffer: list[InlineSpan] = []
+
+    def flush_inline_buffer() -> None:
+        """把当前链接行内片段包装成一个 HyperlinkSpan。"""
+
+        if not inline_buffer:
+            return
+        try:
+            output.append(
+                HyperlinkSpan(
+                    type="hyperlink",
+                    url=target,
+                    content=list(inline_buffer),
+                )
+            )
+        except ValidationError:
+            output.extend(inline_buffer)
+        inline_buffer.clear()
+
+    for token in tokens:
+        if isinstance(token, Tag):
+            flush_inline_buffer()
+            output.append(token)
+        else:
+            inline_buffer.append(token)
+    flush_inline_buffer()
+    return output
+
+
+def _tokens_end_with_newline(tokens: list[_HtmlCellToken]) -> bool:
+    """判断当前 token 序列是否已经以普通文本换行结束。"""
+
+    return bool(tokens and isinstance(tokens[-1], TextSpan) and tokens[-1].content.endswith("\n"))
 
 
 __all__ = ["LatexTableError", "LatexTableRenderer"]

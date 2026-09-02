@@ -12,6 +12,7 @@ from typing import Any
 from mineru.model.flash.pdf.document import PDFDocument
 from mineru.model.flash.pdf.pipeline import _analyze_native_document
 from scripts.review_flash_layout_geometry import (
+    _geometry_summary_mismatch,
     _page_bbox_fingerprint,
     _page_fingerprint,
 )
@@ -387,3 +388,44 @@ def test_chinese_paper_continuation_caption_precedes_tight_table_body() -> None:
     assert _normalized_text(caption.get("content")) == "续表"
     assert "续表" not in str(table.get("content") or "")
     assert float(caption["bbox"][3]) < float(table["bbox"][1])
+
+
+def test_flash_layout_geometry_summary_comparison_is_strict() -> None:
+    """验证几何摘要缺失或任一计数漂移都会形成独立门禁失败。"""
+
+    expected = {
+        "expected_geometry_summary": {
+            "repaired_chars": 10,
+            "repaired_lines": 2,
+        }
+    }
+    actual = {
+        "geometry_summary": {
+            "repaired_chars": 10,
+            "repaired_lines": 2,
+        }
+    }
+
+    assert _geometry_summary_mismatch("sample.pdf", expected, actual) is None
+    assert _geometry_summary_mismatch("sample.pdf", {}, actual) == {
+        "file": "sample.pdf",
+        "reason": "geometry_summary_expectation_missing",
+    }
+    assert _geometry_summary_mismatch(
+        "sample.pdf",
+        expected,
+        {
+            "geometry_summary": {
+                "repaired_chars": 10,
+                "repaired_lines": 1,
+            }
+        },
+    ) == {
+        "file": "sample.pdf",
+        "reason": "geometry_summary_mismatch",
+        "expected": expected["expected_geometry_summary"],
+        "actual": {
+            "repaired_chars": 10,
+            "repaired_lines": 1,
+        },
+    }

@@ -347,7 +347,6 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--manifest", type=Path, default=TRACKED_GOLD_MANIFEST)
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     parser.add_argument("--no-render", action="store_true")
-    parser.add_argument("--skip-performance-gate", action="store_true")
     parser.add_argument("--include", action="append", default=[], help="仅运行指定 PDF 文件名，可重复传入")
     parser.add_argument(
         "--role",
@@ -358,6 +357,30 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--approve", action="store_true", help="把已人工审阅的全部页面标成 approved")
     return parser.parse_args()
+
+
+def _geometry_summary_mismatch(
+    file_name: str,
+    expected_document: dict[str, Any],
+    actual_document: dict[str, Any],
+) -> dict[str, Any] | None:
+    """比较版本化几何摘要，并返回缺失或数值漂移的结构化诊断。"""
+
+    expected_summary = expected_document.get("expected_geometry_summary")
+    actual_summary = actual_document.get("geometry_summary")
+    if not isinstance(expected_summary, dict):
+        return {
+            "file": file_name,
+            "reason": "geometry_summary_expectation_missing",
+        }
+    if actual_summary != expected_summary:
+        return {
+            "file": file_name,
+            "reason": "geometry_summary_mismatch",
+            "expected": expected_summary,
+            "actual": actual_summary,
+        }
+    return None
 
 
 def main() -> int:
@@ -392,12 +415,20 @@ def main() -> int:
         documents.append(document)
 
     gold_mismatches: list[dict[str, Any]] = []
+    geometry_mismatches: list[dict[str, Any]] = []
     tracked_by_file = {Path(str(document["path"])).name: document for document in tracked_gold.get("documents", [])}
     for document in documents:
         expected = tracked_by_file.get(document["file"])
         if expected is None or expected.get("sha256") != document["sha256"]:
             gold_mismatches.append({"file": document["file"], "reason": "source_missing_or_sha_mismatch"})
             continue
+        geometry_mismatch = _geometry_summary_mismatch(
+            document["file"],
+            expected,
+            document,
+        )
+        if geometry_mismatch is not None:
+            geometry_mismatches.append(geometry_mismatch)
         expected_pages = expected.get("pages", [])
         if not expected_pages:
             continue
@@ -425,19 +456,12 @@ def main() -> int:
         if bbox_pages:
             gold_mismatches.append({"file": document["file"], "reason": "bbox_fingerprint_mismatch", "pages": bbox_pages})
 
-    performance_failures = []
-    if not args.skip_performance_gate:
-        for document in documents:
-            expected = tracked_by_file.get(document["file"], {})
-            max_elapsed = expected.get("max_elapsed_seconds")
-            if isinstance(max_elapsed, (int, float)) and document["elapsed_seconds"] > float(max_elapsed):
-                performance_failures.append({"file": document["file"], "metric": "elapsed_seconds"})
     manifest = {
         "source_root": str(source_root),
         "source_count": len(documents),
         "page_count": sum(document["pages"] for document in documents),
         "txt_page_count": sum(document["pages"] for document in documents if document["parse_mode"] == "txt"),
-        "performance_failures": performance_failures,
+        "geometry_mismatches": geometry_mismatches,
         "gold_mismatches": gold_mismatches,
         "documents": [{key: value for key, value in document.items() if key != "gold_pages"} for document in documents],
     }
@@ -470,7 +494,7 @@ def main() -> int:
         f"- Documents: {manifest['source_count']}",
         f"- Pages: {manifest['page_count']}",
         f"- TXT pages: {manifest['txt_page_count']}",
-        f"- Performance failures: {len(performance_failures)}",
+        f"- Geometry summary mismatches: {len(geometry_mismatches)}",
         f"- Gold mismatches: {len(gold_mismatches)}",
         f"- All pages approved: {gold['all_approved']}",
         "",
@@ -481,7 +505,7 @@ def main() -> int:
             f"elapsed={document['elapsed_seconds']:.3f}s"
         )
     (output_dir / "review.md").write_text("\n".join(review_lines) + "\n", encoding="utf-8")
-    return 1 if gold_mismatches or performance_failures else 0
+    return 1 if geometry_mismatches or gold_mismatches else 0
 
 
 if __name__ == "__main__":

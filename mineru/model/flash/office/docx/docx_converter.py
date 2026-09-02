@@ -1695,15 +1695,14 @@ class DocxConverter:
     @staticmethod
     def _complex_field_hyperlink_target(instruction: str) -> tuple[str | None, bool]:
         """从复杂字段指令中提取外部 URL 或内部 bookmark fragment。"""
-        internal_match = re.search(r'\bHYPERLINK\s+\\l\s+"([^"]+)"', instruction, re.IGNORECASE)
-        if internal_match:
-            anchor = internal_match.group(1).strip()
-            return (f"#{anchor}" if anchor else None), True
-
         external_match = re.search(r'\bHYPERLINK\s+"([^"]+)"', instruction, re.IGNORECASE)
-        if external_match:
-            target = external_match.group(1).strip()
-            return (target or None), False
+        bookmark_match = re.search(r'\\l\s+"([^"]+)"', instruction, re.IGNORECASE)
+        address = external_match.group(1).strip() if external_match else ""
+        bookmark = bookmark_match.group(1).strip() if bookmark_match else ""
+        if address:
+            return (f"{address}#{bookmark}" if bookmark else address), False
+        if bookmark:
+            return f"#{bookmark}", True
         return None, False
 
     @classmethod

@@ -268,6 +268,37 @@ def test_latex_renders_visual_blocks_complex_tables_and_code_in_source_order() -
     assert r"{\small\ttfamily Step \(x^2\)\par}" in rendered
 
 
+def test_latex_table_cell_preserves_interleaved_text_image_and_nested_table_order() -> None:
+    """验证单元格文字、图片与嵌套表格严格保持 HTML 来源顺序。"""
+
+    table = TableBlock(
+        type="table",
+        index=0,
+        content=[
+            TableBodyBlock(
+                type="table_body",
+                index=0,
+                content=(
+                    "<table><tr><td><b>before<img src='images/cell.png' alt='cell'>after</b>"
+                    "<table><tr><td>nested</td></tr></table>tail</td></tr></table>"
+                ),
+            )
+        ],
+    )
+
+    rendered = render_latex(
+        _middle(_page(0, table)),
+        asset_base_path="assets",
+    )
+
+    before_index = rendered.index(r"\textbf{before}")
+    image_index = rendered.index(r"\detokenize{assets/images/cell.png}")
+    after_index = rendered.index(r"\textbf{after}")
+    nested_index = rendered.index("nested")
+    tail_index = rendered.index("tail")
+    assert before_index < image_index < after_index < nested_index < tail_index
+
+
 def test_latex_image_and_table_fallbacks_remain_visible_without_io() -> None:
     """验证远程、data URI、不支持格式和畸形表格均退化为可见内容。"""
     remote = ImageBlock(

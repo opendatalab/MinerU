@@ -13,6 +13,7 @@ from mineru.backend.postprocess.inline import inline_plain_text
 from mineru.model.flash import DocxModel
 from mineru.model.flash._shared.spans import inline_span_plain_text
 from mineru.types import IndexBlock, ParagraphTitleBlock, TextBlock
+from _span_test_utils import inline_urls
 
 
 def _append_field_char(paragraph: Paragraph, field_type: str) -> None:
@@ -128,6 +129,24 @@ def _build_complex_toc_docx() -> bytes:
     return output.getvalue()
 
 
+def _build_external_bookmark_field_docx() -> bytes:
+    """生成同时包含外部文档地址与 bookmark switch 的复杂字段。"""
+
+    document = Document()
+    paragraph = document.add_paragraph()
+    _append_field_char(paragraph, "begin")
+    _append_instruction(
+        paragraph,
+        ' HYPERLINK "chapter.docx" \\l "Section1" ',
+    )
+    _append_field_char(paragraph, "separate")
+    _append_result_text(paragraph, "Open section")
+    _append_field_char(paragraph, "end")
+    output = BytesIO()
+    document.save(output)
+    return output.getvalue()
+
+
 def test_nested_complex_toc_fields_preserve_titles_and_strict_index_targets() -> None:
     """验证拆分且嵌套的复杂域不会只剩页码，并按真实正文目标收敛目录 anchor。"""
     file_bytes = _build_complex_toc_docx()
@@ -148,3 +167,19 @@ def test_nested_complex_toc_fields_preserve_titles_and_strict_index_targets() ->
     assert isinstance(typed_index.content[1], TextBlock)
     assert typed_index.content[1].anchor is None
     assert inline_plain_text(typed_index.content[1].content) == "二、缺失章节\t9"
+
+
+def test_external_complex_hyperlink_preserves_bookmark_switch() -> None:
+    """验证外部复杂字段把文档地址与 bookmark 合成为同一个链接目标。"""
+
+    file_bytes = _build_external_bookmark_field_docx()
+    model_pages = DocxModel().predict(BytesIO(file_bytes))
+    raw_text = next(block for page in model_pages for block in page if block["type"] == "text")
+
+    assert inline_span_plain_text(raw_text["content"]) == "Open section"
+    assert inline_urls(raw_text["content"]) == ["chapter.docx#Section1"]
+
+    middle_json, _ = doc_analyze(file_bytes, effort="flash", parse_mode="auto", file_suffix="docx")
+    typed_text = next(block for page in middle_json.pages for block in page.blocks if isinstance(block, TextBlock))
+    assert inline_plain_text(typed_text.content) == "Open section"
+    assert inline_urls(typed_text.content) == ["chapter.docx#Section1"]
