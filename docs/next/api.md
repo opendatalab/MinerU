@@ -1,6 +1,6 @@
 # Unified API
 
-状态: Draft
+状态: Implemented
 读者: API 使用者、服务端开发者、SDK 开发者
 范围: MinerU v1 API 的资源模型、认证、上传、文件、任务、对话、用量和限流
 非目标: 本地 CLI 参数说明；SDK 封装细节

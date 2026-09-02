@@ -1,6 +1,6 @@
 # Page Naming Convention
 
-状态: Draft
+状态: Implemented
 读者: 核心开发者、编程 Agent、SDK/API/CLI 设计参与者、文档作者
 范围: MinerU Next 中页码、页码范围、页面数组和页数统计的命名约定
 非目标: 定义 page range 语法；定义 Middle JSON 页面结构

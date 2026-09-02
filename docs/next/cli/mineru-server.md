@@ -1,6 +1,6 @@
 # mineru server
 
-状态: Draft
+状态: Implemented
 读者: 核心开发者、Agent skill 作者、高级 CLI 用户
 范围: `mineru server` 的职责、生命周期、状态和 parse-server 协作
 非目标: parse-server API 字段级定义；Web UI 交互设计

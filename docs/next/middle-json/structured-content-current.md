@@ -11,6 +11,11 @@
 当前 `mineru.render.structured_content` 是严格 MiddleJson 到文档级 dict 的公共 renderer，
 其现行契约以 [Rendering Contract](rendering.md) 为准。下文中的“当前”均指 legacy 实现被删除前的历史快照。
 
+需要说明的是：本文的 Legacy 定位只针对“文档级 structured_content”这一输出面；
+本文盘点所用的 `ContentTypeV2` item 类型词汇（`paragraph`/`title`/`image`/`table`/`list`/`equation_interline` 等，
+`mineru/types.py`）仍是现行 Content List V2 renderer（`RenderFormat.CONTENT_LIST_V2`）输出的类型词汇，
+并非整体废弃。
+
 本文只回答:
 
 - 当前 `structured_content` 从哪里生成。

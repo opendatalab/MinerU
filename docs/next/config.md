@@ -291,7 +291,7 @@ mineru config parsing-rules add "*/合同/*" --tier standard --remote
 
 - 对 PDF/image，规则必须显式指定 remote，才允许上传远端。
 - 对 PDF/image，规则命中的 tier 必须经过能力检查。
-- 对 PDF/image，规则未指定 tier 时按 `standard` -> `advanced` -> `basic` -> `flash` 选择，并只记录实际使用的实体 tier。
+- 对 PDF/image，规则未指定 tier 时按 `standard` -> `basic` -> `flash` 选择，并只记录实际使用的实体 tier。
 - 对 OFD/EPUB/Office/HTML/CSV，parsing-rule 的 tier、page_range 和 remote 不生效，实际按 `flash` 整本解析并记录；其它 text 只入库和索引，不创建 parse row。
 - 完整归一规则见 [ADR-0024](decisions/0024-file-type-tier-normalization.md)。
 
