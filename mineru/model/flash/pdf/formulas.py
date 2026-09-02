@@ -715,12 +715,26 @@ def _formula_line_has_math_operator(text: str) -> bool:
     return any(character in _FORMULA_OPERATOR_CHARS for character in text)
 
 
+def _formula_prefix_has_prose(prefix: str) -> bool:
+    """用通用文字数量识别公式前的正文片段，不依赖特定引导词或标点。"""
+
+    prose_prefix = re.sub(
+        r"[({\[（［【｛][^)}\]）］】｝]*[)}\]）］】｝]",
+        " ",
+        prefix,
+    )
+    if len(re.findall(r"[\u3400-\u9fff]", prose_prefix)) >= 2:
+        return True
+    latin_word_count = sum(re.search(r"[A-Za-z]{2,}", token) is not None for token in prose_prefix.split())
+    return latin_word_count >= 2
+
+
 def _formula_component_has_left_prose(
     members: list[tuple[_LineItem, BBox]],
     lane: _TextLane,
     median_height: float,
 ) -> bool:
-    """识别贴栏左缘且在首个运算符前带正文引导语的伪行间公式。"""
+    """识别贴栏左缘且在首个运算符前带同行正文的伪行间公式。"""
 
     for line, bbox in members:
         if abs(bbox[0] - lane.left) > 0.75 * median_height:
@@ -730,23 +744,7 @@ def _formula_component_has_left_prose(
         if not operator_positions:
             continue
         prefix = normalized[: min(operator_positions)]
-        han_count = len(re.findall(r"[\u3400-\u9fff]", prefix))
-        has_clause_punctuation = (
-            re.search(
-                r"[,;:。！？!?）)]",
-                prefix,
-            )
-            is not None
-        )
-        has_english_lead = (
-            re.search(
-                r"\b(?:where|when|with|given|using|denote[ds]?|defined)\b",
-                prefix,
-                re.IGNORECASE,
-            )
-            is not None
-        )
-        if (han_count >= 2 and has_clause_punctuation) or has_english_lead:
+        if _formula_prefix_has_prose(prefix):
             return True
     return False
 

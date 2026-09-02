@@ -70,11 +70,20 @@ def test_formula_members_expose_union_of_tight_bboxes_with_one_point_padding() -
     )
 
 
-def test_formula_component_rejects_left_aligned_prose_lead() -> None:
-    """验证同栏左缘带正文引导语的复杂行内分式不升级为行间公式。"""
+@pytest.mark.parametrize(
+    "text",
+    [
+        "（℃/hm），用 I 表示：I=ΔT",
+        "温度可表示为T=ΔT",
+        "The temperature value T=ΔT",
+    ],
+    ids=["chinese-with-unit", "chinese-without-punctuation", "english-without-keyword"],
+)
+def test_formula_component_rejects_left_aligned_prose_prefix(text: str) -> None:
+    """验证同栏左缘带通用正文前缀的复杂行内分式不升级为行间公式。"""
 
     prose = _text_line(
-        "（℃/hm），用 I 表示：I=ΔT",
+        text,
         (0.0, 20.0, 55.0, 30.0),
         0,
         effective_height=10.0,
@@ -107,16 +116,106 @@ def test_formula_component_rejects_left_aligned_prose_lead() -> None:
         10.0,
     )
 
-    formula = replace(
-        prose,
-        text="I=ΔT",
-        bbox=(20.0, 20.0, 55.0, 30.0),
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "I=ΔT",
+        "x+y=z",
+        "Score=MLP(vCLS)",
+        "conf(Bm)=1",
+        "（摄氏度）=T",
+        "(temperature value)=T",
+    ],
+    ids=[
+        "single-variable",
+        "symbolic-expression",
+        "single-identifier",
+        "function-identifier",
+        "chinese-bracketed-unit",
+        "english-bracketed-unit",
+    ],
+)
+def test_formula_component_keeps_left_aligned_formula_identifiers(text: str) -> None:
+    """验证变量、符号表达式、无空白标识符和纯括号单位仍保留为独立公式。"""
+
+    formula = _text_line(
+        text,
+        (0.0, 20.0, 55.0, 30.0),
+        0,
+        effective_height=10.0,
     )
+    denominator = _text_line(
+        "ΔH",
+        (45.0, 30.0, 55.0, 38.0),
+        1,
+        effective_height=8.0,
+    )
+    lane = models._TextLane(
+        left=0.0,
+        right=100.0,
+        lines=[
+            (formula, formula.bbox),
+            (denominator, denominator.bbox),
+        ],
+    )
+
     assert not formulas._formula_component_has_left_prose(
         [(formula, formula.bbox), (denominator, denominator.bbox)],
         lane,
         10.0,
     )
+
+
+def test_inline_prose_formula_component_returns_to_paragraph_context() -> None:
+    """验证同行正文公式不生成公式块，并标记为后续正文聚合上下文。"""
+
+    body_font = ("Body", 0)
+    prose_formula = _text_line(
+        "温度可表示为T=ΔT",
+        (0.0, 40.0, 58.0, 50.0),
+        0,
+        effective_height=10.0,
+        font_signature=("Math", 0),
+        font_coverage=0.6,
+    )
+    denominator = _text_line(
+        "ΔH",
+        (25.0, 51.0, 55.0, 61.0),
+        1,
+        effective_height=10.0,
+        font_signature=("Math", 0),
+        font_coverage=0.6,
+    )
+    number = _text_line(
+        "(5)",
+        (91.0, 49.0, 100.0, 59.0),
+        2,
+        effective_height=10.0,
+    )
+    body_lines = [
+        _text_line(
+            f"body-{index}",
+            (0.0, top, 100.0, top + 10.0),
+            3 + index,
+            effective_height=10.0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        )
+        for index, top in enumerate((76.0, 88.0, 100.0, 112.0))
+    ]
+
+    blocks, remaining = formulas._build_formula_like_blocks(
+        [prose_formula, denominator, number, *body_lines],
+        [],
+        (100.0, 140.0),
+    )
+
+    assert blocks == []
+    assert prose_formula.paragraph_formula_context
+    assert denominator.paragraph_formula_context
+    assert number.paragraph_formula_context
+    assert {line.source_index for line in remaining} == set(range(7))
 
 
 def _vector_path(
