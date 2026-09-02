@@ -88,6 +88,7 @@ MinerU VLM 的跨页单元格检测保持关闭。任一功能启用时，`api_k
 | TCP | `doclib.tcp.host` | `127.0.0.1` | TCP 监听地址 |
 | TCP | `doclib.tcp.port` | `15980` | TCP 监听端口 |
 | TCP | `doclib.tcp.strict_port` | `False` | 端口占用时是否报错 |
+| TCP | `doclib.tcp.port_probe_count` | `100` | `strict_port` 为 `False` 时从 `port` 起向后探测的端口数量上限 |
 | TCP | `doclib.tcp.backlog` | `128` | socket backlog |
 | TCP | `doclib.tcp.timeout` | `600` | keep-alive timeout |
 | log | `doclib.log.dir` | `~/.mineru/logs` | 默认日志目录；未单独配置的日志路径会从该目录派生 |
@@ -95,9 +96,15 @@ MinerU VLM 的跨页单元格检测保持关闭。任一功能启用时，`api_k
 | log | `doclib.log.access_path` | unset → `<dir>/doclib.access.log` | HTTP access 日志路径 |
 | log | `doclib.log.stdout_path` | unset → `<dir>/doclib.stdout.log` | server 子进程 stdout fallback 日志路径 |
 | log | `doclib.log.stderr_path` | unset → `<dir>/doclib.stderr.log` | server 子进程 stderr fallback 日志路径 |
+| log | `doclib.log.parse_server_stdout_path` | unset → `<dir>/doclib.parse-server.stdout.log` | managed parse-server stdout 日志路径 |
+| log | `doclib.log.parse_server_stderr_path` | unset → `<dir>/doclib.parse-server.stderr.log` | managed parse-server stderr 日志路径 |
 | log | `doclib.log.level` | `info` | 日志级别 |
 | doclib | `doclib.endpoint_path` | `~/.mineru/doclib.endpoint.json` | 当前 server 实际可用 endpoint discovery 文件 |
 | doclib | `doclib.data_dir` | `~/.mineru/doclib` | 数据目录，默认取 `$MINERU_HOME/doclib`，但仍可通过配置文件或环境变量覆盖 |
+| doclib | `doclib.managed_parse_server.host` | `127.0.0.1` | managed parse-server 监听地址 |
+| doclib | `doclib.managed_parse_server.port` | `16580` | managed parse-server 监听端口 |
+| doclib | `doclib.managed_parse_server.strict_port` | `False` | 端口占用时是否报错 |
+| doclib | `doclib.managed_parse_server.port_probe_count` | `100` | `strict_port` 为 `False` 时从 `port` 起向后探测的端口数量上限 |
 | doclib | `doclib.ingest_workers` | `2` | ingest worker 数 |
 | doclib | `doclib.parse_workers` | `2` | parse worker 数 |
 | doclib | `doclib.scan_interval_sec` | `300` | watch 扫描间隔 |
@@ -111,6 +118,9 @@ MinerU VLM 的跨页单元格检测保持关闭。任一功能启用时，`api_k
 | doclib | `doclib.parse_server_startup_grace_sec` | `30` | managed parse-server 启动宽限时间 |
 | doclib | `doclib.parse_server_startup_timeout_sec` | `600` | managed parse-server 启动硬超时；超时后进入重启策略 |
 | doclib | `doclib.parse_server_stop_timeout_sec` | `10` | managed parse-server 停止超时 |
+| model | `model.base_dir` | `~/.mineru/models` | 模型文件根目录，默认取 `$MINERU_HOME/models` |
+| model | `model.source` | `auto` | 模型下载来源：`auto` / `huggingface` / `modelscope` / `local` |
+| model | `model.stack` | `auto` | 模型栈选择：`auto` / `light` / `full`；`auto` 依据设备能力自动选择 |
 | sqlite | `doclib.sqlite.path` | `~/.mineru/doclib.db` | SQLite DB 路径 |
 | sqlite | `doclib.sqlite.busy_timeout_ms` | `5000` | SQLite 锁等待时间（毫秒） |
 | sqlite | `doclib.sqlite.lock_retry_attempts` | `3` | `SQLITE_BUSY` / `SQLITE_LOCKED` 的额外重试次数 |

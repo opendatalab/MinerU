@@ -235,55 +235,35 @@
 
 ### E-008 compaction 仍有 DB / JSON 不一致风险
 
-状态: 未处理，高优先级。
+状态: 基本解决，残留一项。
 
-当前 compaction 逻辑大致是:
+已落地（`mineru/doclib/background/compaction.py`）:
 
-1. 删除旧 done parse rows。
-2. 插入 compacted parse rows。
-3. 读取旧 JSON。
-4. 删除旧 JSON。
-5. 写新 JSON。
+- JSON-first / DB-after: `_write_compacted_json_files` 先完整写入临时 JSON（`*.tmp-*`），全部成功后用 `os.replace` 原子提升为最终 JSON，之后才更新 DB parse rows。
+- 任一源 JSON 损坏时放弃本轮压缩（`_load_batch_payloads` 返回 `None`），旧 done rows 与旧 JSON 保持可读。
+- 旧 JSON 只在新缓存和数据库均就绪后删除（`_delete_obsolete_json_files`）。
+- 异常不吞: 写 JSON 失败清理临时文件并放弃本轮，不破坏旧状态。
 
-并且 JSON 读取、删除、写入中有异常吞掉的路径。
+残留风险:
 
-风险:
+- DB 侧 `DELETE` done / superseded rows 与 `INSERT` compacted rows 仍是多条独立 `db.execute`，未包在单个 transaction 中（compaction 中 "atomic replace" 段）。进程在该段中途退出时，DB 可能出现 rows 部分替换的状态。
 
-- DB 已经指向 compacted rows。
-- 但 compacted JSON 没有成功写入。
-- 后续读取内容时找不到对应 parsed JSON。
+后续建议:
 
-这和已修复的 `parse_json_write_failed` 是同类一致性问题，但发生在 compaction。
-
-建议:
-
-- 改为 JSON-first / DB-after:
-  1. 读取旧 JSON。
-  2. 写新 JSON 到临时文件。
-  3. fsync/rename 成最终 JSON。
-  4. DB transaction 中替换 parse rows。
-  5. 最后清理旧 JSON。
-- 如果任何一步失败，不改变旧 done rows。
-
-完成边界:
-
-- compaction JSON 写入失败时，旧 parse rows 和旧 JSON 仍可读。
-- 不吞异常，应记录日志并保留状态。
-- 测试覆盖写 JSON 失败、读 JSON 失败、删除旧 JSON 失败。
+- 将 compaction 的 DB `DELETE` + `INSERT` 包进单个 transaction。
 
 ### E-009 watch loop 异常不可观测
 
-状态: 未处理。
+状态: 解决一半。
 
-当前 watch loop 中一些异常被直接 `pass`:
+已落地（`mineru/doclib/background/watch.py`）:
 
-- initial scan fallback 异常
-- watch task 异常退出
+- initial scan fallback 异常和 watch task 异常退出都会 `logger.error` 并带 `exc_info` 记录 watch_id、path 和异常，不再静默 `pass`。
 
-问题:
+残留:
 
-- 用户无法从 server status 或 API 知道某个 watch 已经异常退出。
-- watch 可能失效但没有结构化错误。
+- `watches` 表仍没有错误字段，scan task 记录也未复用为 watch 失败摘要。
+- 用户无法从 `mineru server status` 或 API 知道某个 watch 已经异常退出，watch 可能失效但没有结构化错误。
 
 建议:
 
@@ -293,38 +273,17 @@
   - `last_error_at`
 - watch task 异常退出时应更新 watch 状态或创建 scan failed 记录。
 
-完成边界:
-
-- watch task 异常不再静默消失。
-- `mineru server status` 能看到 watch 错误摘要。
-- 测试覆盖 watch task 抛异常后的可观测状态。
-
 ### E-010 removable device 恢复后没有自动 rescan
 
-状态: 未处理。
+状态: 已解决。
 
-当前 device monitor 在 removable watch root 恢复可访问时，会把:
+当前 `mineru/doclib/background/device_monitor.py` 在 removable watch root 恢复可访问时:
 
-- watch status 改回 active
-- unreachable files 改回 active
+- 把 watch status 改回 active。
+- 把 unreachable files 改回 active。
+- 随即通过 `scan_svc.create_scan(..., kind=watch, source=system, watch_id=...)` 创建一次 watch scan，由该 scan 重新发现 deleted / changed / new / stat error。
 
-但不会自动创建一次 watch scan。
-
-问题:
-
-- 设备拔出期间文件可能增删改。
-- 仅恢复 active 状态不足以确认文件真实状态。
-
-建议:
-
-- device 从 unreachable 恢复 active 时创建一个 watch scan。
-- 该 scan 负责重新发现 deleted / changed / new / stat error。
-
-完成边界:
-
-- 恢复事件只 enqueue scan，不同步遍历所有文件。
-- 不在同步 API 调用中做大规模扫描。
-- 测试覆盖 unreachable -> active 后创建 scan。
+恢复事件只 enqueue scan，不在同步遍历中扫描所有文件。
 
 ### E-011 scan failed 没有 retry 策略
 
@@ -404,6 +363,29 @@
 - SDK client 能保留 response status code。
 - CLI 能根据错误输出稳定建议，而不是解析 message。
 
+### E-014 scan_interrupted 写入 DB 但未注册进全局错误码表
+
+状态: 未处理。
+
+当前 server startup 恢复逻辑会把上次被中断的 scan 置为 failed，并写入 `error_code="scan_interrupted"`:
+
+- `mineru/doclib/app.py` startup 段: `UPDATE scans SET ... error_code = COALESCE(error_code, 'scan_interrupted') ...`
+- `mineru/doclib/services/scan_svc.py` 中同样使用该码。
+
+但 `mineru/errors.py` 没有注册 `scan_interrupted`:
+
+- 不在 `_ERROR_TYPE_MAP` 中，无 error type 映射。
+- 不在 HTTP 状态映射中。
+
+问题:
+
+- 若该错误码经 API / SDK 返回给调用方，会落到默认分类而不是明确定义的 error type。
+- 违反 E-001 建立的"所有稳定错误码统一注册"约定。
+
+建议:
+
+- 在 `mineru/errors.py` 注册 `scan_interrupted`（归入 `internal_error` 类，HTTP 500），并同步更新 `docs/next/errors.md`。
+
 ## 当前错误处理原则
 
 ### 文件级错误
@@ -471,23 +453,23 @@
 
 | 优先级 | 项目 | 原因 |
 | --- | --- | --- |
-| P0 | E-008 compaction DB / JSON 一致性 | 有数据一致性风险 |
 | P0 | E-007 startup interrupted parse 错误码 | 当前 failed 无原因，不利于 Agent 判断 |
 | P0 | E-012 internal_error 信息泄漏 | 错误响应契约应尽早稳定 |
+| P1 | E-008 compaction DB rows 替换未包单事务 | JSON-first 已落地，残留 DB 段一致性风险 |
 | P1 | E-003 显式 retry ingest 入口 | P0 不做，需要先定 CLI/API 形态 |
 | P1 | E-005 parse 后处理阶段错误码 | 提升诊断能力 |
-| P1 | E-009 watch 异常可观测 | 提升稳定性和可维护性 |
-| P1 | E-010 removable 恢复后自动 scan | 与文件生命周期一致性相关 |
+| P1 | E-009 watch 异常可观测 | logger.error 已落地；缺结构化 watch 错误字段 |
+| P1 | E-014 scan_interrupted 注册进错误码表 | 已写入 DB 但未进 errors.py |
 | P1 | E-013 SDK 错误增强 | 依赖整体错误模型扩展 |
 | P2 | E-004 error_at / retry metadata | 可随 telemetry/status 一起做 |
 | P2 | E-011 scan retry 策略 | 当前可接受手动重试 |
 
 ## 下一步建议
 
-建议先处理 `E-008 compaction DB / JSON 一致性`。
+建议先处理 `E-014 scan_interrupted 注册进错误码表`（改动小、边界清晰），随后处理 `E-008` 残留的 compaction DB 单事务问题。
 
 原因:
 
-- 这是当前剩余问题中最接近真实数据损坏的一项。
+- compaction JSON-first 已经落地，剩余问题是最接近真实数据损坏的一项。
 - 它和已经修复的 `parse_json_write_failed` 属于同类问题。
 - 修复边界清晰，可以用单元测试验证。
