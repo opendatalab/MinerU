@@ -1,6 +1,6 @@
 # mineru-kit vlm-server
 
-状态: Draft
+状态: Implemented
 读者: 服务部署者、核心开发者、VLM backend 集成开发者
 范围: `mineru-kit vlm-server` 的定位、协议范围、与 `api-server` 的边界和命令参数
 非目标: 完整 Parse API；通用聊天能力说明；底层 engine 私有参数表

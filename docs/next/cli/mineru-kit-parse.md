@@ -135,7 +135,7 @@ remote 模式通过以下参数进入：
 1. `--remote` 与 `--remote-url` 互斥
 2. remote 模式允许传 `--tier`
 3. remote 模式禁止传 `--backend`
-4. remote 模式未传 `--tier` 时，PDF/image 使用目标服务的默认选择策略，按 `standard` -> `advanced` -> `basic` 选择
+4. remote 模式未传 `--tier` 时，PDF/image 使用目标服务的默认选择策略，按 `standard` -> `basic` 选择
 5. remote 模式传了 `--tier` 时：
    - 服务提供该 tier，则按该 tier 解析
    - 服务不提供该 tier，则报错

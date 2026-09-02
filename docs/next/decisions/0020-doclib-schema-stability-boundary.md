@@ -1,6 +1,6 @@
 # ADR-0020: Doclib Schema Stability Boundary
 
-状态: Accepted
+状态: Accepted，已实现
 日期: 2026-06-18
 相关文档: ../architecture.md, ../sdk/doclib-client.md, ../cli/mineru-server.md
 
@@ -96,6 +96,10 @@ v1 稳定 schema 绑定的是 **doclib public models 的字段**，而不是 SQL
 - `ServerStatusResponse.access_logs`
 - `ServerStatusResponse.stdout_logs`
 - `ServerStatusResponse.stderr_logs`
+- `ServerStatusResponse.parse_server_stdout_logs`
+- `ServerStatusResponse.parse_server_stderr_logs`
+
+其中 `parse_server_stdout_logs` / `parse_server_stderr_logs` 是本地 managed parse-server 子进程的 stdout/stderr 日志，与 doclib server 自身的 `stdout_logs` / `stderr_logs` 同属日志类 diagnostic 字段，纳入同一 `diagnostic / internal` 分类。
 
 这些字段可以继续暴露，但调用方不得把它们当作稳定 v1 契约。
 
