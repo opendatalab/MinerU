@@ -1,6 +1,6 @@
 # `mineru usage`
 
-状态: Accepted
+状态: Implemented
 范围: 查询当前配置的 Remote API 用量和限制
 
 ## 命令

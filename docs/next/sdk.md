@@ -1,6 +1,6 @@
 # SDK 设计
 
-状态: Draft
+状态: Implemented
 读者: SDK 开发者、集成方、核心开发者
 范围: Tool SDK、API-backed parser、Doclib SDK 的分层、公开接口和迁移路径
 非目标: HTTP API 全量字段说明；CLI 命令手册

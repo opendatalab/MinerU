@@ -1,6 +1,6 @@
 # Rendering Contract
 
-状态: 统一入口 / Markdown / Content List V1/V2 / Structured Content / DOCX / EPUB 3.3 / PDF / HTML v1
+状态: Implemented
 读者: render 开发者、backend 开发者、SDK 开发者
 范围: 严格 MiddleJson 到 Markdown、Content List V1/V2、Structured Content、DOCX、EPUB、PDF 和 HTML 的统一消费契约
 
@@ -365,7 +365,7 @@ structured_content = render_structured_content(
 ```
 
 `render_structured_content()` 只接受 `MiddleJson`，返回可以直接交给 `json.dumps()` 的
-文档级 dict。顶层保留 `pages/file_suffix/effort/parse_mode/mineru_version`，每页保留
+文档级 dict。顶层保留 `pages/is_full_document/file_suffix/effort/parse_mode/mineru_version`，每页保留
 `page_idx/blocks`，页面和顶层 block 的数量及顺序不变。它没有 `mode` 参数，也不使用
 Markdown/HTML 的展示型 planner，因此不隐藏页面辅助块，也不合并 `continues_prev` 文本、
 列表或跨页表格；`continues_prev` 和 `cell_merge` 等消费提示仍保留在对应 block。

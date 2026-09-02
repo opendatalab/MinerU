@@ -1,6 +1,6 @@
 # ADR-0022: Doclib 文件类型、Tier 与 Remote 语义
 
-状态: Accepted，已由 ADR-0024 补充，并由 ADR-0028 修订 CSV 语义
+状态: Accepted，已实现（已由 ADR-0024 补充，ADR-0028 修订 CSV 语义）
 日期: 2026-06-29
 相关文档: ../cli/mineru-parse.md, ../tiers.md, ../errors.md, 0024-file-type-tier-normalization.md, 0028-csv-structured-flash-parsing.md
 
@@ -47,14 +47,15 @@ image 扩展名只进入 `INGESTIBLE_EXTENSIONS`，不进入 `DISCOVERABLE_EXTEN
 | Office (`doc` / `docx` / `ppt` / `pptx` / `xls` / `xlsx` / `rtf` / `odt` / `ods` / `odp`) | 支持 | 不支持 | 不支持 | 不支持 |
 | HTML (`html` / `htm`) | 支持 | 不支持 | 不支持 | 不支持 |
 | CSV (`csv`) | 支持 | 不支持 | 不支持 | 不支持 |
+| EPUB (`epub`) | 支持 | 不支持 | 不支持 | 不支持 |
 | text (`txt` / `md` / `markdown` / `rst` / `tex`) | 无需解析 | 无需解析 | 无需解析 | 无需解析 |
 
-当 Office / HTML / CSV 在 doclib 单对象主动解析中显式请求质量 tier 时，doclib 不再自动降级为 `flash`，而是返回 `InvalidRequestError`。批量、parsing-rule、API Server 和 mineru-kit 的归一化例外见 [ADR-0024](0024-file-type-tier-normalization.md) 与 [ADR-0028](0028-csv-structured-flash-parsing.md)。
+当 Office / HTML / CSV / EPUB 在 doclib 单对象主动解析中显式请求质量 tier 时，doclib 不再自动降级为 `flash`，而是返回 `InvalidRequestError`。批量、parsing-rule、API Server 和 mineru-kit 的归一化例外见 [ADR-0024](0024-file-type-tier-normalization.md) 与 [ADR-0028](0028-csv-structured-flash-parsing.md)。
 
 - `code`: `tier_unsupported_for_file_type`
 - `param`: `tier`
 
-未显式传入 tier 的 Office / HTML / CSV 文件继续按 `flash` 语义处理。text 文件无论是否指定 tier，均返回 `parse_not_required`，`param` 为 `path`，提示调用方直接读取源文件。
+未显式传入 tier 的 Office / HTML / CSV / EPUB 文件继续按 `flash` 语义处理。text 文件无论是否指定 tier，均返回 `parse_not_required`，`param` 为 `path`，提示调用方直接读取源文件。
 
 ### Remote 能力矩阵
 
@@ -67,9 +68,10 @@ doclib 单对象主动解析中的 `--remote` 只支持 PDF 和 image，并且�
 | Office | 不支持 |
 | HTML | 不支持 |
 | CSV | 不支持 |
+| EPUB | 不支持 |
 | text | 无需解析；返回 `parse_not_required` |
 
-当 Office / HTML / CSV 在 doclib 单对象主动解析中请求 `--remote` 时，doclib 返回 `InvalidRequestError`：
+当 Office / HTML / CSV / EPUB 在 doclib 单对象主动解析中请求 `--remote` 时，doclib 返回 `InvalidRequestError`：
 
 - `code`: `remote_unsupported_for_file_type`
 - `param`: `remote`

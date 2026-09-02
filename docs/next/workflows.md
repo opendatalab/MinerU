@@ -103,7 +103,7 @@ watch 的目标是发现文件、建立基础索引和支持后续搜索，不�
 |------|-----------|
 | watch 自动发现 | `flash` |
 | parsing-rule 明确指定 | PDF/image 使用 rule 中的 tier；OFD/EPUB/Office/HTML/CSV 归一为 `flash`；其它 text 只入库和索引 |
-| parsing-rule 未指定 tier | PDF/image 按 `standard` -> `advanced` -> `basic` -> `flash`；OFD/EPUB/Office/HTML/CSV 归一为 `flash`；其它 text 只入库和索引 |
+| parsing-rule 未指定 tier | PDF/image 按 `standard` -> `basic` -> `flash`；OFD/EPUB/Office/HTML/CSV 归一为 `flash`；其它 text 只入库和索引 |
 
 ### 5.3 步骤
 
@@ -289,7 +289,7 @@ client.parse("report.pdf")
 3. 如果文件尚未入库，先同步执行 ingest，得到 `sha256`。
 4. 确定页码范围、输出格式、等待策略和隐私偏好。
 5. 如果用户未指定 tier，使用默认选择策略。
-6. PDF/image 默认选择策略通过当前可用 parse-server 能力发现，按 `standard` -> `advanced` -> `basic` 选择；OFD/EPUB/Office/HTML/CSV 归一为 `flash`；其它 text 直接读取。
+6. PDF/image 默认选择策略通过当前可用 parse-server 能力发现，按 `standard` -> `basic` 选择；OFD/EPUB/Office/HTML/CSV 归一为 `flash`；其它 text 直接读取。
 7. 将任务和缓存键落到实际使用的实体 tier。
 8. 查询 `(sha256, tier, page_range)` 是否已有可复用结果。
 9. 缓存命中则直接 render 并返回。
@@ -306,7 +306,7 @@ client.parse("report.pdf")
 
 | 请求 | 实际行为 |
 |------|----------|
-| 未指定 tier | PDF/image 按 `standard` -> `advanced` -> `basic` 选择可用的非 `flash` tier；OFD/EPUB/Office/HTML/CSV 归一为 `flash`；其它 text 直接读取 |
+| 未指定 tier | PDF/image 按 `standard` -> `basic` 选择可用的非 `flash` tier；OFD/EPUB/Office/HTML/CSV 归一为 `flash`；其它 text 直接读取 |
 | `tier=flash` | 显式使用本地 `flash` backend |
 | `tier=basic` | 使用本地或自部署 parse-server 的 `basic` 能力 |
 | `tier=standard` | 使用本地 `standard` 或 `mineru.net/api` 的 `standard` 能力 |

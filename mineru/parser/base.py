@@ -6,16 +6,12 @@ from abc import ABC, abstractmethod
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import Any, Literal, cast
 
 from ..render import render_markdown, render_structured_content
 from ..render.contracts import ImageRenderer, RenderMode
 from ..types import FILE_SUFFIXES, FileSuffix, MiddleJson, ModelJson, PageInfo
-from ..utils.image_payload import ImagePayloadCache
 from .writer import DataWriter
-
-if TYPE_CHECKING:
-    from ..model.flash.pdf.document import PDFDocument
 
 MIDDLE_JSON_SCHEMA_VERSION: str = "2.0"
 _LEGACY_SCHEMA_VERSION: str = "1.0"
@@ -90,21 +86,12 @@ class ParseResult:
     """
 
     middle_json: MiddleJson
-    _pdf_doc: PDFDocument | None = None
     _model_output: Any = None
-    _image_cache: ImagePayloadCache | dict[str, bytes] | None = None
 
     @property
     def pages(self) -> list[PageInfo]:
         """顶层页面列表，委托给 MiddleJson。"""
         return self.middle_json.pages
-
-    def __post_init__(self) -> None:
-        """规范化顶层图片缓存，确保 public middle_json 不再从 span 携带图片字节。"""
-        if self._image_cache is None:
-            self._image_cache = ImagePayloadCache()
-        elif isinstance(self._image_cache, dict):
-            self._image_cache = ImagePayloadCache(self._image_cache)
 
     @staticmethod
     def from_dict(d: dict[str, Any]) -> ParseResult:
@@ -217,23 +204,6 @@ class ParseResult:
                 "model_output.json",
                 json.dumps(model_output, ensure_ascii=False, indent=2),
             )
-
-        for img_path, img_bytes in self.images().items():
-            writer.write(img_path, img_bytes)
-
-    def images(self) -> dict[str, bytes]:
-        assert isinstance(self._image_cache, ImagePayloadCache)
-        return self._image_cache.images()
-
-    def attach_export_images(self, images: dict[str, bytes]) -> None:
-        """绑定 API sidecar 下载到的图片字节，供后续 images/save 统一写出。"""
-        assert isinstance(self._image_cache, ImagePayloadCache)
-        self._image_cache.update(images)
-
-    def refresh_export_cache(self, *, preserve_images: bool = False) -> None:
-        """保留历史方法名；当前仅按需清空顶层图片缓存。"""
-        if not preserve_images:
-            self._image_cache = ImagePayloadCache()
 
     def export_pages(self) -> list[PageInfo]:
         """返回页面树副本，避免调用方修改污染 ParseResult.pages。"""
