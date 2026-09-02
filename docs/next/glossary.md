@@ -57,7 +57,7 @@
 规范:
 
 - CLI/API/SDK 的用户可见参数应使用 `tier`。
-- CLI 不传 `--tier`、HTTP API 省略 `tier` 或传 JSON `null` 时按入口默认值处理；Python SDK 的 `parse()` 默认 `tier="standard"`，传 `None` 也归一为 `standard`。基于服务能力的默认选择策略（standard 优先于 basic）只在 doclib 层生效。
+- CLI 不传 `--tier`、HTTP API 省略 `tier` 或传 JSON `null` 时按入口默认值处理；Python SDK 的 `parse()` 默认 `tier="standard"`，显式传 `None` 不被接受（会抛 `ValueError`）。基于服务能力的默认选择策略（standard 优先于 basic）在服务能力发现层生效（doclib、本地 v1 server、kit router）。
 - 任务入队、缓存目录、产物 metadata 应记录实际使用的实体 tier，即 `flash`、`basic`、`standard` 或 `advanced`。
 - PDF/image 的默认选择策略不能解析为 `flash`；OFD/EPUB/Office/HTML/CSV 这类仅支持 flash tier 的输入归一规则见 [ADR-0024](decisions/0024-file-type-tier-normalization.md) 与 [ADR-0028](decisions/0028-csv-structured-flash-parsing.md)；其它 text 直接读取。
 
