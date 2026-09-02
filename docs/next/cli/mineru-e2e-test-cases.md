@@ -162,7 +162,7 @@ fixture 准备阶段允许使用 shell 文件操作创建隔离测试数据。`m
 PDF 样例使用仓库内覆盖元素更完整的 demo 文件:
 
 ```bash
-demo/pdfs/all_elements.pdf
+demo/pdfs/mixed_elements_pages_03_06.pdf
 ```
 
 图片样例使用仓库内 demo 文件:
@@ -180,7 +180,7 @@ export MINERU_E2E_FIXTURE_DIR="$MINERU_HOME/fixtures"
 rm -rf "$MINERU_E2E_FIXTURE_DIR"
 mkdir -p "$MINERU_E2E_FIXTURE_DIR/watch-dir" "$MINERU_E2E_FIXTURE_DIR/empty-dir" "$MINERU_E2E_FIXTURE_DIR/output-dir" "$MINERU_HOME/removable-watch"
 
-PDF_SOURCE="$HOME/MinerU-Repo/demo/pdfs/all_elements.pdf"
+PDF_SOURCE="$HOME/MinerU-Repo/demo/pdfs/mixed_elements_pages_03_06.pdf"
 
 cp "$PDF_SOURCE" "$MINERU_E2E_FIXTURE_DIR/sample.pdf"
 cp "$MINERU_E2E_FIXTURE_DIR/sample.pdf" "$MINERU_HOME/sample.pdf"

@@ -100,13 +100,13 @@ PDF/image 的默认选择策略通过当前目标 parse-server 的能力发现�
 分页文档使用物理页码：
 
 ```text
-<!-- next pages available. Use: mineru parse report.pdf --pages 11~20 -->
+<!-- Next: mineru parse report.pdf --pages 11~20 -->
 ```
 
 非分页文档当前也使用 `--after` cursor 继续读取：
 
 ```text
-<!-- next content available. Use: mineru parse long.docx --after doc:ab12cd3/tier:flash/page:1/block:12/char:520 -->
+<!-- Next: mineru parse long.docx --after doc:ab12cd3/tier:flash/page:1/block:12/char:520 -->
 ```
 
 marker 是 Agent 的控制协议，不应依赖自然语言猜测。
@@ -127,6 +127,7 @@ Markdown 中的可视图片使用 `mineru read` 可读取的 block locator，不
 {
   "parse": { "... parse summary ..." },
   "content": { "... DocContentResponse ..." } | null,
+  "output": { "status": "written", "path": "..." },  // 仅 `-o/--output` 时存在
   "error": { "... ErrorInfo ..." } | null
 }
 ```
@@ -135,6 +136,7 @@ Markdown 中的可视图片使用 `mineru read` 可读取的 block locator，不
 
 - 当解析结果已可读取时，`content` 为 `DocContentResponse`。
 - 当使用 `--no-wait` 或等待超时、解析尚未完成时，`content` 为 `null`。
+- 当同时指定 `-o/--output` 时，envelope 顶层额外包含 `output` 字段（`{"status": "written", "path": "..."}`），指向已写入的文件。
 - 当命令需要保留 parse 状态供调用方继续轮询或诊断时，失败或等待超时可以在同一 envelope 顶层包含 `error`。
 - `parse.status=parsing` 是 CLI 等待超时时的命令级状态；服务端 `ParseResponse.status` 只使用 `pending` 或 `done`。
 - 直接请求错误仍返回 [错误码体系](../errors.md) 定义的结构化错误 JSON。

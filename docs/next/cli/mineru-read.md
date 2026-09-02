@@ -142,6 +142,8 @@ image 输出路径必须带上述后缀。无后缀、其它后缀以及 `--outp
 
 `--json` 时，CLI 输出 `DocContentResponse`。
 
+同时指定 `--output`（且不为 `-`）时，CLI 仍输出 `DocContentResponse`，但内容写入文件：`content` 字段为 `null`，并额外增加 `output` 字段（`{"status": "written", "path": "..."}`）指向已写入的文件；`--format image` 时写入的是 server 返回的 asset。
+
 locator-first 读取时：
 
 - `request_scope.locator` 为规范化 locator。
