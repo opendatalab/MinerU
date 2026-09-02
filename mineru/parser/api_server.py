@@ -2120,6 +2120,26 @@ def _preload_server_models(tier: DeploymentTier, *, language: str) -> _ModelPrel
     return _ModelPreloadResult(tier=tier, engine=engine)
 
 
+_SHUTDOWN_FORCE_EXIT_SEC = 30.0
+
+
+def _start_force_exit_timer(
+    seconds: float = _SHUTDOWN_FORCE_EXIT_SEC,
+    *,
+    exit_fn: Callable[[int], None] = os._exit,
+) -> threading.Timer:
+    """优雅关闭的兜底强杀：托管子进程不应比父进程存活更久。
+
+    uvicorn 的 ``should_exit`` 是优雅语义，会等待 in-flight 请求完成；父进程
+    （doclib）死亡时正在执行的 parse 请求会让托管子进程以孤儿形态存活整个请求
+    时长并继续占用端口。控制通道触发的关闭因此附带强杀上限。
+    """
+    timer = threading.Timer(seconds, exit_fn, args=(1,))
+    timer.daemon = True
+    timer.start()
+    return timer
+
+
 def create_app(
     *,
     upload_dir: str = "",
@@ -2436,10 +2456,13 @@ def main(
     server_ref: list[uvicorn.Server | None] = [None]
 
     def _request_shutdown() -> None:
+        first_request = not shutdown_requested.is_set()
         shutdown_requested.set()
         server = server_ref[0]
         if server is not None:
             server.should_exit = True
+        if first_request:
+            _start_force_exit_timer()
 
     try:
         control_watcher = ManagedProcessControlWatcher.from_environment(_request_shutdown)
