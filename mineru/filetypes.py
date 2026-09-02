@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from pathlib import Path
 import re
+from pathlib import Path
 from typing import Final
 
 from .types import QUALITY_TIERS, Tier, validate_tier
@@ -17,6 +17,13 @@ from .types import QUALITY_TIERS, Tier, validate_tier
 # Unsupported mail formats:
 # "eml",
 # "mbox",
+# Other doc formats:
+# "djvu/djv"
+# "epdf",
+# "xps",
+# "ps",
+# "eps/epsi/epi"
+# "ept/ept2/ept3"
 
 PDF_EXTENSIONS: frozenset[str] = frozenset({"pdf"})
 
@@ -30,11 +37,13 @@ OFD_EXTENSIONS: frozenset[str] = frozenset({"ofd"})
 
 OFFICE_EXTENSIONS: frozenset[str] = frozenset({"doc", "docx", "ppt", "pptx", "xls", "xlsx", "rtf"}) | ODF_EXTENSIONS
 
-HTML_EXTENSIONS: frozenset[str] = frozenset({"html", "htm"})
+HTML_EXTENSIONS: frozenset[str] = frozenset({"html", "htm", "shtml"})
 
-CSV_EXTENSIONS: frozenset[str] = frozenset({"csv"})
+CSV_EXTENSIONS: frozenset[str] = frozenset({"csv", "tsv"})
 
-TEXT_EXTENSIONS: frozenset[str] = frozenset({"txt", "md", "markdown", "rst", "tex"})
+TEXT_EXTENSIONS: frozenset[str] = frozenset(
+    {"txt", "text", "ftxt", "md", "markdown", "mdx", "rst", "tex", "latex", "adoc", "asciidoc"}
+)
 
 TIERED_PARSE_EXTENSIONS: frozenset[str] = PDF_EXTENSIONS | IMAGE_EXTENSIONS
 
@@ -61,10 +70,16 @@ FILE_TYPE_BY_EXTENSION: dict[str, str] = {
     **dict.fromkeys(EPUB_EXTENSIONS, "epub"),
     **dict.fromkeys(OFD_EXTENSIONS, "ofd"),
     "txt": "text",
+    "text": "text",
+    "ftxt": "text",
     "md": "markdown",
     "markdown": "markdown",
+    "mdx": "markdown",
     "rst": "rst",
     "tex": "tex",
+    "latex": "tex",
+    "adoc": "asciidoc",
+    "asciidoc": "asciidoc",
 }
 
 TEXT_FILE_TYPES: frozenset[str] = frozenset(FILE_TYPE_BY_EXTENSION[ext] for ext in TEXT_EXTENSIONS)
@@ -82,11 +97,13 @@ MIME_TYPE_BY_EXTENSION: dict[str, str] = {
     "ods": "application/vnd.oasis.opendocument.spreadsheet",
     "odp": "application/vnd.oasis.opendocument.presentation",
     "csv": "text/csv",
+    "tsv": "text/tab-separated-values",
     "epub": "application/epub+zip",
     # OFD 尚无 IANA 注册 subtype；使用生态中通行的项目级 MIME 映射。
     "ofd": "application/ofd",
     "html": "text/html",
     "htm": "text/html",
+    "shtml": "text/html",
     "png": "image/png",
     "jpg": "image/jpeg",
     "jpeg": "image/jpeg",
@@ -95,6 +112,17 @@ MIME_TYPE_BY_EXTENSION: dict[str, str] = {
     "gif": "image/gif",
     "bmp": "image/bmp",
     "tiff": "image/tiff",
+    "txt": "text/plain",
+    "text": "text/plain",
+    "ftxt": "text/plain",
+    "md": "text/markdown",
+    "markdown": "text/markdown",
+    "mdx": "text/markdown",
+    "rst": "text/x-rst",
+    "tex": "text/x-tex",
+    "latex": "application/x-latex",
+    "adoc": "text/plain",
+    "asciidoc": "text/plain",
 }
 
 _RTF_HEADER_RE: Final = re.compile(
