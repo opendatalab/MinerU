@@ -536,9 +536,18 @@ def _split_unmarked_page_footnote_entries(
         previous_width = previous[1][2] - previous[1][0]
         previous_is_near_full = previous_width >= 0.8 * maximum_row_width
         current_is_indented = current[1][0] - base_left > indent_threshold
+        same_left_compact_continuation = (
+            not first_line_is_indented
+            and previous_width >= 0.7 * maximum_row_width
+            and abs(current[1][0] - previous[1][0]) <= 0.5 * indent_threshold
+            and _title_fonts_compatible(previous[0], current[0])
+            and _effective_text_row_gap(previous, current) <= indent_threshold
+        )
         # 满行后必然续接；其余行按首页观测到的首行/续行缩进模式决定边界。
-        continues_previous = previous_is_near_full or (
-            not current_is_indented if first_line_is_indented else current_is_indented
+        continues_previous = (
+            previous_is_near_full
+            or same_left_compact_continuation
+            or (not current_is_indented if first_line_is_indented else current_is_indented)
         )
         if continues_previous:
             entries[-1].append(current[0])
@@ -760,6 +769,96 @@ def _isolated_indented_paragraph_break_sources(
     return output
 
 
+def _centered_visual_reset_break_sources(
+    lane: _TextLane,
+    visual_bboxes: Sequence[BBox],
+    local_page_height: float,
+) -> set[int]:
+    """识别视觉主体下方短居中行到更宽居中行的独立注释重启。"""
+
+    if not visual_bboxes:
+        return set()
+    rows = sorted(
+        (item for item in lane.lines if item[0].semantic_type is None),
+        key=lambda item: (item[1][1], item[1][0], item[0].source_index),
+    )
+    output: set[int] = set()
+    for previous, current in zip(rows, rows[1:]):
+        previous_bbox = previous[1]
+        current_bbox = current[1]
+        previous_width = previous_bbox[2] - previous_bbox[0]
+        current_width = current_bbox[2] - current_bbox[0]
+        pair_height = max(
+            _line_effective_height(*previous),
+            _line_effective_height(*current),
+        )
+        if (
+            previous_width > 0.7 * current_width
+            or current_bbox[0] > previous_bbox[0] - 0.25 * pair_height
+            or current_bbox[2] < previous_bbox[2] + 0.25 * pair_height
+            or abs(_bbox_center_x(previous_bbox) - _bbox_center_x(current_bbox)) > 0.1 * current_width
+        ):
+            continue
+        vertical_gap = _effective_text_row_gap(previous, current)
+        if not -0.25 * pair_height <= vertical_gap <= 0.75 * pair_height:
+            continue
+        if any(
+            -0.25 * pair_height <= previous_bbox[1] - visual_bbox[3] <= max(2.0 * pair_height, 0.03 * local_page_height)
+            and _bbox_axis_overlap_ratio(current_bbox, visual_bbox, axis="x") >= 0.8
+            and abs(_bbox_center_x(current_bbox) - _bbox_center_x(visual_bbox))
+            <= 0.12 * max(current_width, visual_bbox[2] - visual_bbox[0])
+            for visual_bbox in visual_bboxes
+        ):
+            output.add(current[0].source_index)
+    return output
+
+
+def _leading_typography_reset_break_sources(
+    lane: _TextLane,
+    regular_gap: float,
+    gap_mad: float,
+) -> set[int]:
+    """识别短尾之后以独立行首字体 run 开启的宽行结构段。"""
+
+    rows = sorted(
+        (item for item in lane.lines if item[0].semantic_type is None),
+        key=lambda item: (item[1][1], item[1][0], item[0].source_index),
+    )
+    lane_width = max(0.1, lane.right - lane.left)
+    output: set[int] = set()
+    for previous, current in zip(rows, rows[1:]):
+        previous_width = previous[1][2] - previous[1][0]
+        current_width = current[1][2] - current[1][0]
+        pair_height = max(
+            _line_effective_height(*previous),
+            _line_effective_height(*current),
+        )
+        if (
+            current[0].leading_typography_width is None
+            or current[0].leading_typography_width > 0.2 * lane_width
+            or previous_width > 0.45 * lane_width
+            or current_width < 0.75 * lane_width
+            or abs(previous[1][0] - lane.left) > 0.75 * pair_height
+            or abs(current[1][0] - lane.left) > 0.75 * pair_height
+            or current[0].formula_candidate_only
+            or current[0].compact_formula_cluster
+            or current[0].inline_math_regions
+        ):
+            continue
+        vertical_gap = _effective_body_text_row_gap(previous, current)
+        if (
+            -0.25 * pair_height
+            <= vertical_gap
+            <= regular_gap
+            + max(
+                0.75 * pair_height,
+                3.0 * gap_mad,
+            )
+        ):
+            output.add(current[0].source_index)
+    return output
+
+
 def _front_matter_keyword_break_sources(
     lane: _TextLane,
     local_page_height: float,
@@ -877,6 +976,7 @@ def _build_text_blocks(
     *,
     page_footnote_groups: Sequence[set[int]] | None = None,
     page_index: int | None = None,
+    visual_bboxes: Sequence[BBox] | None = None,
 ) -> list[dict[str, Any]]:
     """先构建分组脚注，再按类型屏障、栏带和自然段边界聚合其余文本。"""
 
@@ -895,6 +995,7 @@ def _build_text_blocks(
         median_height = statistics.median(effective_heights) if effective_heights else 1.0
         local_page_width = page_size[1] if angle in {90, 270} else page_size[0]
         local_page_height = page_size[0] if angle in {90, 270} else page_size[1]
+        local_visual_bboxes = [_rotate_bbox_to_upright(bbox, page_size, angle) for bbox in (visual_bboxes or [])]
         lanes = _infer_text_lanes(line_geometry, local_page_width, median_height)
         local_axis_lines = _transform_axis_lines(drawing_lines or [], page_size, angle)
         split_row_counts: dict[int, int] = {}
@@ -921,7 +1022,21 @@ def _build_text_blocks(
             structured_break_sources.update(
                 isolated_break_sources,
             )
+            visual_reset_sources = _centered_visual_reset_break_sources(
+                lane,
+                local_visual_bboxes,
+                local_page_height,
+            )
+            typography_reset_sources = _leading_typography_reset_break_sources(
+                lane,
+                regular_gap,
+                gap_mad,
+            )
+            structured_break_sources.update(visual_reset_sources)
+            structured_break_sources.update(typography_reset_sources)
             protected_break_sources: set[int] = set()
+            protected_break_sources.update(visual_reset_sources)
+            protected_break_sources.update(typography_reset_sources)
             protected_break_sources.update(
                 _front_matter_keyword_break_sources(
                     lane,
@@ -2418,9 +2533,7 @@ def _merge_internal_text_block_group(
     merged["_local_output_line_bboxes"] = [
         bbox for index in ordered_indices for bbox in blocks[index].get("_local_output_line_bboxes", [])
     ]
-    merged["_output_bbox_repaired"] = any(
-        blocks[index].get("_output_bbox_repaired") is True for index in ordered_indices
-    )
+    merged["_output_bbox_repaired"] = any(blocks[index].get("_output_bbox_repaired") is True for index in ordered_indices)
     merged["_line_heights"] = [height for index in ordered_indices for height in blocks[index].get("_line_heights", [])]
     merged["_font_signatures"] = set().union(
         *[
@@ -2576,9 +2689,7 @@ def _merge_spatial_text_components(
         merged["_local_output_line_bboxes"] = [
             bbox for index in ordered_indices for bbox in blocks[index].get("_local_output_line_bboxes", [])
         ]
-        merged["_output_bbox_repaired"] = any(
-            blocks[index].get("_output_bbox_repaired") is True for index in ordered_indices
-        )
+        merged["_output_bbox_repaired"] = any(blocks[index].get("_output_bbox_repaired") is True for index in ordered_indices)
         merged["_line_heights"] = [height for index in ordered_indices for height in blocks[index].get("_line_heights", [])]
         merged["_font_signatures"] = set().union(
             *[

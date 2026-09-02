@@ -635,6 +635,51 @@ def _detect_leading_emphasis_width(
     return max(0.1, prefix_bbox[2] - prefix_bbox[0])
 
 
+def _normalized_font_family(
+    signature: tuple[str, int] | None,
+) -> str | None:
+    """移除 PDF 子集前缀并归一化字体族，供行首排版切换判断使用。"""
+
+    if signature is None:
+        return None
+    name = re.sub(r"^[A-Z]{6}\+", "", signature[0])
+    return re.sub(r"[\s_-]+", "", name).casefold() or None
+
+
+def _detect_leading_typography_width(
+    glyphs: list[tuple[BBox, tuple[str, int] | None, float | None]],
+) -> float | None:
+    """提取与同行主体字体族不同的连续行首 run 几何宽度。"""
+
+    if len(glyphs) < 4:
+        return None
+    first_signature = glyphs[0][1]
+    first_family = _normalized_font_family(first_signature)
+    if first_signature is None or first_family is None:
+        return None
+    prefix = []
+    body = []
+    reached_body = False
+    for glyph in glyphs:
+        if not reached_body and glyph[1] == first_signature:
+            prefix.append(glyph)
+            continue
+        reached_body = True
+        body.append(glyph)
+    if len(prefix) < 2 or len(body) < 2:
+        return None
+    body_signatures = Counter(signature for _bbox, signature, _weight in body if signature is not None)
+    if not body_signatures:
+        return None
+    body_signature, body_count = body_signatures.most_common(1)[0]
+    if body_count < 2 or _normalized_font_family(body_signature) == first_family:
+        return None
+    prefix_bbox = _bbox_union_many(
+        [bbox for bbox, _signature, _weight in prefix],
+    )
+    return max(0.1, prefix_bbox[2] - prefix_bbox[0])
+
+
 def _fill_native_typography(line: _LineItem, page_size: tuple[float, float]) -> None:
     """使用原始 bbox、PDF 字号和 dominant font 填充两套排版特征。"""
 
@@ -691,6 +736,9 @@ def _fill_native_typography(line: _LineItem, page_size: tuple[float, float]) -> 
         line.font_coverage = 0.0
         line.dominant_font_weight = None
     line.leading_emphasis_width = _detect_leading_emphasis_width(glyph_typography)
+    line.leading_typography_width = _detect_leading_typography_width(
+        glyph_typography,
+    )
 
 
 def _is_detached_inline_script_candidate(

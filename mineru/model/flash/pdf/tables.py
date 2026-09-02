@@ -51,7 +51,11 @@ from .geometry import (
     _rotate_bbox_to_upright,
     _transform_axis_lines,
 )
-from .line_layout import _line_effective_height, _line_tight_output_bbox
+from .line_layout import (
+    _font_signatures_share_family,
+    _line_effective_height,
+    _line_tight_output_bbox,
+)
 from .line_merging import _same_baseline_geometry
 from .native_text import _normalize_native_run_text
 
@@ -2146,25 +2150,79 @@ def _materialize_table_annotations(
         ),
     )
     for annotation in annotations:
-        block = _build_table_annotation_block(
+        annotation_blocks = _build_table_annotation_blocks(
             source,
             candidate,
             annotation,
         )
-        if block is None:
+        if not annotation_blocks:
             failed_annotations.append(annotation)
             continue
-        blocks.append(block)
+        blocks.extend(annotation_blocks)
         externalized_line_indices.update(annotation.line_indices)
     return blocks, externalized_line_indices, failed_annotations
 
 
-def _build_table_annotation_block(
+def _split_table_annotation_visual_groups(
+    line_geometry: list[tuple[_LineItem, BBox]],
+) -> list[list[tuple[_LineItem, BBox]]]:
+    """用短尾后的字体或字号重启拆分独立表格注释段。"""
+
+    if len(line_geometry) < 2:
+        return [line_geometry] if line_geometry else []
+    maximum_width = max(bbox[2] - bbox[0] for _line, bbox in line_geometry)
+    group_left = min(bbox[0] for _line, bbox in line_geometry)
+    groups = [[line_geometry[0]]]
+    for previous, current in zip(line_geometry, line_geometry[1:]):
+        previous_line, previous_bbox = previous
+        current_line, current_bbox = current
+        previous_width = previous_bbox[2] - previous_bbox[0]
+        current_width = current_bbox[2] - current_bbox[0]
+        pair_height = max(
+            _line_effective_height(*previous),
+            _line_effective_height(*current),
+        )
+        font_switch = (
+            previous_line.font_signature is not None
+            and current_line.font_signature is not None
+            and previous_line.font_coverage >= 0.6
+            and current_line.font_coverage >= 0.75
+            and not _font_signatures_share_family(
+                previous_line.font_signature,
+                current_line.font_signature,
+            )
+        )
+        scale_ratio = max(
+            previous_line.em_height or _line_effective_height(*previous),
+            current_line.em_height or _line_effective_height(*current),
+        ) / max(
+            0.1,
+            min(
+                previous_line.em_height or _line_effective_height(*previous),
+                current_line.em_height or _line_effective_height(*current),
+            ),
+        )
+        vertical_gap = current_bbox[1] - (previous_bbox[1] + _line_effective_height(*previous))
+        should_split = (
+            previous_width <= 0.45 * maximum_width
+            and current_width >= 0.75 * maximum_width
+            and current_bbox[0] - group_left <= 3.0 * pair_height
+            and -0.25 * pair_height <= vertical_gap <= 0.75 * pair_height
+            and (font_switch or scale_ratio >= 1.25)
+        )
+        if should_split:
+            groups.append([current])
+        else:
+            groups[-1].append(current)
+    return groups
+
+
+def _build_table_annotation_blocks(
     source: _PageSource,
     candidate: _TableCandidate,
     annotation: _TableAnnotation,
-) -> dict[str, Any] | None:
-    """按父表格局部方向整理原生行，并生成保留排版元数据的独立注释块。"""
+) -> list[dict[str, Any]]:
+    """按视觉重启切分原生行，并生成保留排版元数据的独立注释块。"""
 
     line_geometry = [
         (
@@ -2180,43 +2238,59 @@ def _build_table_annotation_block(
     ]
     # 原生来源顺序可抵抗旋转文字同一基线上的字形顶边抖动。
     line_geometry.sort(key=lambda item: item[0].source_index)
-    content = _merge_table_annotation_content(
-        [line.text for line, _local_bbox in line_geometry],
-    )
-    if not line_geometry or not content:
-        return None
-    local_output_line_bboxes = []
-    output_bbox_repaired = False
-    for line, local_bbox in line_geometry:
-        tight_candidate = _line_tight_output_bbox(line, source.page_size)
-        if tight_candidate is None:
-            local_output_line_bboxes.append(local_bbox)
-        else:
-            local_output_line_bboxes.append(
-                _rotate_bbox_to_upright(
-                    tight_candidate,
-                    source.page_size,
-                    candidate.angle,
-                )
+    blocks = []
+    for group in _split_table_annotation_visual_groups(line_geometry):
+        content = _merge_table_annotation_content(
+            [line.text for line, _local_bbox in group],
+        )
+        if not content:
+            continue
+        local_output_line_bboxes = []
+        output_bbox_repaired = False
+        for line, local_bbox in group:
+            tight_candidate = _line_tight_output_bbox(
+                line,
+                source.page_size,
             )
-            output_bbox_repaired = True
-    return {
-        "type": annotation.kind,
-        "bbox": annotation.bbox,
-        "angle": candidate.angle,
-        "content": content,
-        "_local_line_bboxes": [bbox for _line, bbox in line_geometry],
-        "_local_output_line_bboxes": local_output_line_bboxes,
-        "_output_bbox_repaired": output_bbox_repaired,
-        "_line_heights": [_line_effective_height(line, bbox) for line, bbox in line_geometry],
-        "_font_signatures": {
-            line.font_signature
-            for line, _bbox in line_geometry
-            if line.font_signature is not None and line.font_coverage >= 0.5
-        },
-        # 已由表格检测器给出完整边界，禁止通用表注规则继续向下扩张。
-        "_table_annotation_complete": True,
-    }
+            if tight_candidate is None:
+                local_output_line_bboxes.append(local_bbox)
+            else:
+                local_output_line_bboxes.append(
+                    _rotate_bbox_to_upright(
+                        tight_candidate,
+                        source.page_size,
+                        candidate.angle,
+                    )
+                )
+                output_bbox_repaired = True
+        blocks.append(
+            {
+                "type": annotation.kind,
+                "bbox": _bbox_union_many(
+                    [
+                        annotation.line_bboxes.get(
+                            line.source_index,
+                            line.bbox,
+                        )
+                        for line, _local_bbox in group
+                    ]
+                ),
+                "angle": candidate.angle,
+                "content": content,
+                "_local_line_bboxes": [bbox for _line, bbox in group],
+                "_local_output_line_bboxes": local_output_line_bboxes,
+                "_output_bbox_repaired": output_bbox_repaired,
+                "_line_heights": [_line_effective_height(line, bbox) for line, bbox in group],
+                "_font_signatures": {
+                    line.font_signature
+                    for line, _bbox in group
+                    if line.font_signature is not None and line.font_coverage >= 0.5
+                },
+                # 已由表格检测器给出完整边界，禁止通用表注规则继续向下扩张。
+                "_table_annotation_complete": True,
+            }
+        )
+    return blocks
 
 
 def _merge_table_annotation_content(line_texts: list[str]) -> str:

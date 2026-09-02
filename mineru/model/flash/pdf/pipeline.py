@@ -835,6 +835,11 @@ def _finalize_prepared_page(
         prepared.drawing_lines,
         page_footnote_groups=prepared.page_footnote_groups,
         page_index=page_index,
+        visual_bboxes=[
+            block["bbox"]
+            for block in prepared.fixed_blocks
+            if block.get("type") == "image"
+        ],
     )
     text_blocks = _merge_multiline_title_blocks(text_blocks)
     text_blocks = _merge_front_matter_column_blocks(

@@ -322,7 +322,7 @@ def test_explicit_pdf_fixtures_keep_expected_txt_block_inventory() -> None:
                 {
                     "caption": 10,
                     "doc_title": 1,
-                    "equation": 7,
+                    "equation": 6,
                     "footer": 1,
                     "footnote": 5,
                     "header": 12,
@@ -331,7 +331,7 @@ def test_explicit_pdf_fixtures_keep_expected_txt_block_inventory() -> None:
                     "page_number": 12,
                     "paragraph_title": 18,
                     "table": 5,
-                    "text": 85,
+                    "text": 84,
                 }
             ),
         ),
@@ -358,12 +358,12 @@ def test_explicit_pdf_fixtures_keep_expected_txt_block_inventory() -> None:
                     "aside_text": 1,
                     "caption": 8,
                     "doc_title": 1,
-                    "equation": 8,
+                    "equation": 7,
                     "image": 1,
                     "page_footnote": 6,
                     "paragraph_title": 21,
                     "table": 9,
-                    "text": 118,
+                    "text": 119,
                 }
             ),
         ),
@@ -444,17 +444,17 @@ def test_explicit_pdf_fixtures_keep_expected_txt_block_inventory() -> None:
             10,
             Counter(
                 {
-                    "caption": 18,
+                    "caption": 22,
                     "doc_title": 2,
                     "equation": 6,
-                    "footnote": 1,
+                    "footnote": 2,
                     "header": 24,
                     "image": 8,
                     "page_footnote": 4,
                     "page_number": 9,
                     "paragraph_title": 19,
                     "table": 3,
-                    "text": 106,
+                    "text": 107,
                 }
             ),
         ),
@@ -543,7 +543,7 @@ def test_demo1_keeps_five_real_tables_without_formula_false_positive() -> None:
 
     model_list = _native_model_list("demo1.pdf")
 
-    assert [len(page) for page in model_list] == [16, 9, 12, 18, 12, 13, 11, 10, 12, 7, 10, 26, 9]
+    assert [len(page) for page in model_list] == [16, 9, 12, 18, 10, 13, 11, 10, 12, 7, 10, 26, 9]
     assert [sum(block["type"] == "table" for block in page) for page in model_list] == [
         0,
         0,
@@ -562,7 +562,7 @@ def test_demo1_keeps_five_real_tables_without_formula_false_positive() -> None:
     assert sum(block["type"] == "doc_title" for page in model_list for block in page) == 1
     assert sum(block["type"] == "header" for page in model_list for block in page) == 12
     assert sum(block["type"] == "page_number" for page in model_list for block in page) == 12
-    assert sum(block["type"] == "equation" for page in model_list for block in page) == 7
+    assert sum(block["type"] == "equation" for page in model_list for block in page) == 6
     assert sum(block["type"] == "caption" for page in model_list for block in page) == 10
     assert sum(block["type"] == "footnote" for page in model_list for block in page) == 5
     middle_pages = model_json_to_pages(_model_json(model_list))
@@ -589,6 +589,15 @@ def test_demo1_keeps_five_real_tables_without_formula_false_positive() -> None:
     assert [block["angle"] for block in page5_visual_blocks] == [270, 270, 270]
     assert _visible_content(page5_visual_blocks[2]) == (
         "For *rainfall distribution, U, uniform; W, winter dominated; S, summer dominated. BFI, baseflow index."
+    )
+    inline_statistics = next(
+        block
+        for block in model_list[4]
+        if _visible_content(block).startswith("Due to the constraint")
+    )
+    assert inline_statistics["type"] == "text"
+    assert "The F-statistic was calculated as:" in _visible_content(
+        inline_statistics,
     )
     assert [[child["type"] for child in group["content"]] for group in _grouped_visual_blocks(model_list[5], "table")] == [
         ["table_caption", "table_body", "table_footnote"],
@@ -1011,8 +1020,8 @@ def test_demo3_auxiliary_text_types_match_real_page_geometry() -> None:
     assert not [block for page in model_list for block in page if block["type"] == "footer"]
 
 
-def test_demo3_pages1_and2_fix_title_front_matter_and_embedding_formula() -> None:
-    """验证首页标题稳定，第二页标题、公式和栏尾正文各自保持完整。"""
+def test_demo3_pages1_and2_fix_title_front_matter_and_embedding_list() -> None:
+    """验证首页标题稳定，第二页标题、嵌入列表和栏尾正文各自保持完整。"""
 
     page1, page2 = _native_model_list("demo3.pdf")[:2]
     title = next(block for block in page1 if _visible_content(block).startswith("TABLEFORMER:"))
@@ -1053,18 +1062,27 @@ def test_demo3_pages1_and2_fix_title_front_matter_and_embedding_formula() -> Non
     assert tables_body["type"] == "text"
 
     section_title = next(block for block in page2 if _visible_content(block).startswith("2 Preliminaries:"))
-    equations = [block for block in page2 if block["type"] == "equation"]
+    embedding_list = next(
+        block
+        for block in page2
+        if _visible_content(block).startswith("token ids (W)")
+    )
     assert section_title["type"] == "paragraph_title"
     assert _visible_content(section_title) == "2 Preliminaries: TAPAS for Table Encoding"
-    assert len(equations) == 1
-    assert equations[0]["content"].splitlines() == [
-        "token ids (W) = {wv1, wv2, · · · , wvn }",
-        "positional ids (B) = {b1, b2, · · · , bn}",
-        "segment ids (G) = {gseg1, gseg2, · · · , gsegn }",
-        "column ids (C) = {ccol1, ccol2, · · · , ccoln}",
-        "row ids (R) = {rrow1, rrow2, · · · , rrown }",
-        "rank ids (Z) = {zrank1, zrank2, · · · , zrankn}",
-    ]
+    assert embedding_list["type"] == "text"
+    assert not [block for block in page2 if block["type"] == "equation"]
+    embedding_text = _visible_content(embedding_list)
+    assert all(
+        label in embedding_text
+        for label in (
+            "token ids (W)",
+            "positional ids (B)",
+            "segment ids (G)",
+            "column ids (C)",
+            "row ids (R)",
+            "rank ids (Z)",
+        )
+    )
     as_model_blocks = [
         block
         for block in page2
@@ -1872,7 +1890,7 @@ def test_frozen_soil_page3_formula3_remains_one_equation() -> None:
     equations = [block for block in page if block["type"] == "equation"]
     formula3 = [block for block in equations if r"\tag{3}" in str(block.get("content", ""))]
 
-    assert len(page) == 30
+    assert len(page) == 31
     assert len(equations) == 4
     assert len(formula3) == 1
     assert formula3[0]["bbox"] == [0.651, 0.717, 0.893, 0.746]
@@ -1902,7 +1920,7 @@ def test_frozen_soil_reference_tails_remain_single_text_blocks() -> None:
     page = model_list[8]
 
     captions = [block for page_blocks in model_list for block in page_blocks if block["type"] == "caption"]
-    assert len(captions) == 18
+    assert len(captions) == 22
     page2 = model_list[1]
     image = next(block for block in page2 if block["type"] == "image")
     chinese_caption = _blocks_containing(page2, "图1 冻土抗剪强度试验流程示意图")
@@ -1918,12 +1936,14 @@ def test_frozen_soil_reference_tails_remain_single_text_blocks() -> None:
         "table_caption",
         "table_body",
         "table_footnote",
+        "table_footnote",
     ]
     assert [tuple(round(value * 1000) for value in child["bbox"]) for child in page3_table_group["content"]] == [
         (182, 688, 406, 700),
         (114, 706, 474, 715),
         (107, 721, 483, 838),
-        (105, 837, 484, 926),
+        (105, 837, 484, 879),
+        (105, 884, 482, 926),
     ]
     assert inline_text(page3_table_group["content"][0]["content"]).startswith("表1")
     assert inline_text(page3_table_group["content"][1]["content"]).startswith("Table 1")

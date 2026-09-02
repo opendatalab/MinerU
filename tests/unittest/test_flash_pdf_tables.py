@@ -1378,6 +1378,87 @@ def test_materialize_table_externalizes_multiline_annotations_once(
     assert claimed == {0, 1, 2, 3, 4}
 
 
+def test_table_annotation_splits_short_tail_before_wide_font_family_reset() -> None:
+    """验证表下注短尾后的宽行字体族重启形成两个独立注释块。"""
+
+    lines = [
+        models._LineItem(
+            "first body",
+            (10.0, 70.0, 90.0, 80.0),
+            0,
+            0,
+            effective_height=10.0,
+            em_height=10.0,
+            font_signature=("FirstFont", 0),
+            font_coverage=1.0,
+        ),
+        models._LineItem(
+            "tail",
+            (10.0, 82.0, 30.0, 92.0),
+            0,
+            1,
+            effective_height=10.0,
+            em_height=10.0,
+            font_signature=("FirstFont", 0),
+            font_coverage=1.0,
+        ),
+        models._LineItem(
+            "second body",
+            (12.0, 94.0, 88.0, 104.0),
+            0,
+            2,
+            effective_height=10.0,
+            em_height=10.0,
+            font_signature=("SecondFont", 0),
+            font_coverage=1.0,
+        ),
+    ]
+    source = models._PageSource(
+        page_size=(120.0, 120.0),
+        lines=lines,
+        chars=[],
+        drawing_lines=[],
+    )
+    candidate = models._TableCandidate(
+        bbox=(5.0, 10.0, 110.0, 110.0),
+        local_bbox=(5.0, 10.0, 110.0, 110.0),
+        angle=0,
+        score=1.0,
+        core_bbox=(5.0, 10.0, 110.0, 60.0),
+        line_indices=set(),
+    )
+    annotation = models._TableAnnotation(
+        kind="footnote",
+        bbox=(10.0, 70.0, 90.0, 104.0),
+        line_indices={0, 1, 2},
+        line_bboxes={line.source_index: line.bbox for line in lines},
+    )
+
+    blocks = tables._build_table_annotation_blocks(
+        source,
+        candidate,
+        annotation,
+    )
+    lines[2].font_signature = ("FirstFont", 0)
+    control = tables._build_table_annotation_blocks(
+        source,
+        candidate,
+        annotation,
+    )
+
+    assert [block["content"] for block in blocks] == [
+        "first body tail",
+        "second body",
+    ]
+    assert [block["type"] for block in blocks] == [
+        "footnote",
+        "footnote",
+    ]
+    assert [block["content"] for block in control] == [
+        "first body tail second body",
+    ]
+
+
 def test_invalid_table_annotation_falls_back_to_full_table_projection(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

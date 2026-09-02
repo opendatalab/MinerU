@@ -5,17 +5,17 @@
       "path": "demo/pdfs/中文论文.pdf",
       "sha256": "7fe627f5c376d1fd32a231648a6d9f3cd95a071e0773bb4a00cb9d359ea20a9a",
       "type_counts": {
-        "caption": 18,
+        "caption": 22,
         "doc_title": 2,
         "equation": 6,
-        "footnote": 1,
+        "footnote": 2,
         "header": 24,
         "image": 8,
         "page_footnote": 4,
         "page_number": 9,
         "paragraph_title": 19,
         "table": 3,
-        "text": 106
+        "text": 107
       },
       "exact_typed_text": [
         {"page_index": 0, "type": "header", "text": "2026年4月"},
@@ -37,6 +37,30 @@
         {
           "page_index": 0,
           "fragments": ["2026年4月", "DOI：10.7522"]
+        },
+        {
+          "page_index": 2,
+          "fragments": ["注：异常值采用", "Note：Outlier detection"]
+        },
+        {
+          "page_index": 5,
+          "fragments": ["图4 Stacking模型真实值", "Fig. 4 Comparison"]
+        },
+        {
+          "page_index": 5,
+          "fragments": ["图5 Voting模型真实值", "Fig. 5 Comparison"]
+        },
+        {
+          "page_index": 6,
+          "fragments": ["图6 Stacking模型SHAP", "Fig. 6 SHAP"]
+        },
+        {
+          "page_index": 6,
+          "fragments": ["图7 Voting模型SHAP", "Fig. 7 SHAP"]
+        },
+        {
+          "page_index": 9,
+          "fragments": ["Abstract： Traditional", "Key words： silty sand"]
         }
       ]
     },
@@ -47,17 +71,21 @@
         "caption": 5,
         "doc_title": 2,
         "equation": 14,
-        "footer": 1,
         "header": 50,
         "image": 5,
-        "page_footnote": 1,
+        "page_footnote": 2,
         "page_number": 22,
         "paragraph_title": 40,
         "table": 2,
         "text": 312
       },
       "exact_typed_text": [
-        {"page_index": 2, "type": "caption", "text": "续表"}
+        {"page_index": 2, "type": "caption", "text": "续表"},
+        {
+          "page_index": 0,
+          "type": "page_footnote",
+          "text": "收稿日期:2023-07-19定稿日期:2023-10-30基金项目:新一代人工智能国家科技重大专项(2022ZD0116308)"
+        }
       ],
       "same_block_groups": [
         {

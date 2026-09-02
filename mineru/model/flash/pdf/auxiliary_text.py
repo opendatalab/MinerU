@@ -556,7 +556,18 @@ def _footnote_lane_members(
     # 同时限制绝对短线、相对长线和左缘偏移，排除图标、公式线及跨栏正文分隔线。
     if rule_width < max(4.0 * median_height, 0.04 * local_page_width):
         return set()
-    if abs(rule_bbox[0] - lane.left) > max(2.0 * median_height, 0.04 * lane_width):
+    strict_left_tolerance = max(
+        2.0 * median_height,
+        0.04 * lane_width,
+    )
+    strict_left_alignment = (
+        abs(rule_bbox[0] - lane.left) <= strict_left_tolerance
+    )
+    relaxed_left_alignment = (
+        rule_bbox[0] < lane.left
+        and lane.left - rule_bbox[0] <= 2.25 * median_height
+    )
+    if not strict_left_alignment and not relaxed_left_alignment:
         return set()
 
     rule_center_y = _bbox_center_y(rule_bbox)
@@ -621,6 +632,24 @@ def _footnote_lane_members(
         if _effective_text_row_gap(members[-1], current) > continuation_gap_limit:
             break
         members.append(current)
+    if relaxed_left_alignment and not strict_left_alignment:
+        first_bbox = members[0][1]
+        first_height = _line_effective_height(*members[0])
+        reference_height = max(
+            median_height,
+            page_median_height or 0.0,
+        )
+        horizontal_overlap = max(
+            0.0,
+            min(rule_bbox[2], first_bbox[2])
+            - max(rule_bbox[0], first_bbox[0]),
+        )
+        if (
+            len(members) < 2
+            or first_height > 0.9 * reference_height
+            or horizontal_overlap / max(0.1, rule_width) < 0.8
+        ):
+            return set()
     return {line.source_index for line, _bbox in members}
 
 

@@ -385,6 +385,94 @@ def test_page_footnote_supports_independent_column_rules() -> None:
     assert page.page_footnote_groups == [{6, 7}, {8, 9}]
 
 
+def test_page_footnote_accepts_slightly_left_shifted_rule_with_two_small_rows() -> None:
+    """验证轻微早于栏左缘的短横线可凭高覆盖和连续小字号行确认脚注。"""
+
+    body = [
+        _text_line(
+            f"body {index}",
+            (122.0, 180.0 + 90.0 * index, 622.0, 190.0 + 90.0 * index),
+            index,
+            effective_height=10.0,
+        )
+        for index in range(4)
+    ]
+    notes = [
+        _text_line(
+            "note one",
+            (122.0, 862.0, 550.0, 870.0),
+            4,
+            effective_height=8.0,
+        ),
+        _text_line(
+            "note two",
+            (122.0, 874.0, 520.0, 882.0),
+            5,
+            effective_height=8.0,
+        ),
+    ]
+    page = _prepared_text_page(
+        *body,
+        *notes,
+        page_size=(1000.0, 1000.0),
+    )
+    page.drawing_lines = [
+        models._AxisLine(
+            (100.0, 850.0, 300.0, 852.0),
+            1.0,
+            "horizontal",
+        )
+    ]
+
+    auxiliary_text._classify_page_auxiliary_text(page)
+
+    assert all(line.semantic_type is None for line in body)
+    assert all(line.semantic_type == "page_footnote" for line in notes)
+    assert page.page_footnote_groups == [{4, 5}]
+
+
+def test_page_footnote_rejects_left_shifted_rule_with_single_or_body_size_row() -> None:
+    """验证轻微左偏横线缺少两行或字号收缩证据时不触发脚注。"""
+
+    for note_rows, note_height in ((1, 8.0), (2, 10.0)):
+        lines = [
+            *[
+                _text_line(
+                    f"body {index}",
+                    (122.0, 180.0 + 90.0 * index, 622.0, 190.0 + 90.0 * index),
+                    index,
+                    effective_height=10.0,
+                )
+                for index in range(4)
+            ],
+            *[
+                _text_line(
+                    f"note {index}",
+                    (122.0, 862.0 + 12.0 * index, 550.0, 862.0 + 12.0 * index + note_height),
+                    4 + index,
+                    effective_height=note_height,
+                )
+                for index in range(note_rows)
+            ],
+        ]
+        page = _prepared_text_page(
+            *lines,
+            page_size=(1000.0, 1000.0),
+        )
+        page.drawing_lines = [
+            models._AxisLine(
+                (100.0, 850.0, 300.0, 852.0),
+                1.0,
+                "horizontal",
+            )
+        ]
+
+        auxiliary_text._classify_page_auxiliary_text(page)
+
+        assert page.page_footnote_groups == []
+        assert all(line.semantic_type is None for line in lines)
+
+
 def test_page_footnote_accepts_lower_half_column_width_rule_with_smaller_text() -> None:
     """验证页面下半部的栏宽横线可凭字号收缩识别单栏脚注。"""
 
@@ -567,6 +655,40 @@ def test_page_footnote_entries_split_first_line_indent_without_text() -> None:
     assert [[line.source_index for line in entry] for entry in entries] == [
         [0],
         [1, 2, 3],
+    ]
+
+
+def test_page_footnote_entries_keep_same_left_compact_continuation() -> None:
+    """验证同左缘的次满首行与紧邻续行仍保留在同一脚注块。"""
+
+    lines = [
+        _text_line(
+            "first",
+            (70.0, 732.0, 220.0, 740.0),
+            0,
+            effective_height=8.0,
+            median_glyph_width=4.0,
+            font_signature=("NoteFont", 0),
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "continuation",
+            (70.0, 743.0, 270.0, 751.0),
+            1,
+            effective_height=8.0,
+            median_glyph_width=4.0,
+            font_signature=("NoteFont", 0),
+            font_coverage=1.0,
+        ),
+    ]
+
+    entries = text_blocks._split_page_footnote_entries(
+        lines,
+        (595.0, 842.0),
+    )
+
+    assert [[line.source_index for line in entry] for entry in entries] == [
+        [0, 1],
     ]
 
 

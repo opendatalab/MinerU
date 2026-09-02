@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 
 import pytest
 
@@ -2453,6 +2454,90 @@ def test_native_typography_caches_leading_emphasis_before_chars_are_cleared() ->
 
     assert line.leading_emphasis_width == 20.0
     assert not line.chars
+
+
+def test_native_typography_caches_leading_font_family_run_without_weight_change() -> None:
+    """验证同字重的独立行首字体 run 仍缓存为视觉排版宽度。"""
+
+    chars = []
+    for index, char in enumerate("Lead"):
+        chars.append(
+            {
+                "char": char,
+                "bbox": (float(index * 5), 0.0, float(index * 5 + 5), 10.0),
+                "font": {"name": "LeadFont", "flags": 0, "weight": 400},
+            }
+        )
+    for index, char in enumerate("body", start=5):
+        chars.append(
+            {
+                "char": char,
+                "bbox": (float(index * 5), 0.0, float(index * 5 + 5), 10.0),
+                "font": {"name": "BodyFont", "flags": 0, "weight": 400},
+            }
+        )
+    line = models._LineItem(
+        text="Lead body",
+        bbox=(0.0, 0.0, 45.0, 10.0),
+        angle=0,
+        source_index=0,
+        chars=chars,
+    )
+
+    native_text._fill_native_typography(line, (100.0, 100.0))
+    pipeline._compact_prepared_lines([line], (100.0, 100.0))
+
+    assert line.leading_emphasis_width is None
+    assert line.leading_typography_width == 20.0
+    assert not line.chars
+
+
+def test_image_adjacent_centered_short_to_wide_rows_split_without_text_markers() -> None:
+    """验证图片下方短居中行到宽居中行按纯视觉关系形成独立块。"""
+
+    first = _text_line("alpha", (35.0, 62.0, 65.0, 72.0), 0)
+    second = _text_line("beta", (10.0, 74.0, 90.0, 84.0), 1)
+
+    blocks = text_blocks._build_text_blocks(
+        [first, second],
+        [],
+        (100.0, 100.0),
+        visual_bboxes=[(5.0, 10.0, 95.0, 60.0)],
+    )
+    control = text_blocks._build_text_blocks(
+        [first, second],
+        [],
+        (100.0, 100.0),
+    )
+
+    assert [block["content"] for block in blocks] == ["alpha", "beta"]
+    assert [block["content"] for block in control] == ["alpha beta"]
+
+
+def test_short_tail_and_leading_typography_run_split_structured_text() -> None:
+    """验证短尾之后的宽行仅在存在独立行首字体 run 时形成新块。"""
+
+    previous = _text_line("tail", (0.0, 0.0, 35.0, 10.0), 0)
+    opener = _text_line(
+        "opener body",
+        (0.0, 12.0, 90.0, 22.0),
+        1,
+        leading_typography_width=12.0,
+    )
+
+    blocks = text_blocks._build_text_blocks(
+        [previous, opener],
+        [],
+        (100.0, 100.0),
+    )
+    control = text_blocks._build_text_blocks(
+        [previous, replace(opener, leading_typography_width=None)],
+        [],
+        (100.0, 100.0),
+    )
+
+    assert [block["content"] for block in blocks] == ["tail", "opener body"]
+    assert [block["content"] for block in control] == ["tail opener body"]
 
 
 def test_native_typography_separates_loose_height_from_canonical_em() -> None:

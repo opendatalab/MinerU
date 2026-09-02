@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 
-
 from mineru.model.flash.pdf import (
     models,
 )
@@ -22,6 +21,7 @@ def _text_line(
     dominant_font_weight: float | None = None,
     median_glyph_width: float | None = None,
     leading_emphasis_width: float | None = None,
+    leading_typography_width: float | None = None,
     preserve_split_boundary: bool = False,
     semantic_type: str | None = None,
     ink_bbox: tuple[float, float, float, float] | None = None,
@@ -42,6 +42,7 @@ def _text_line(
         dominant_font_weight=dominant_font_weight,
         median_glyph_width=median_glyph_width,
         leading_emphasis_width=leading_emphasis_width,
+        leading_typography_width=leading_typography_width,
         split_from_row=split_from_row,
         preserve_split_boundary=preserve_split_boundary,
         semantic_type=semantic_type,
