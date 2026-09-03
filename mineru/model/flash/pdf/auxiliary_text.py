@@ -40,6 +40,7 @@ from .line_layout import (
     _infer_text_lanes,
     _line_effective_height,
 )
+
 _PAGE_NUMBER_RE = re.compile(
     r"^\s*(?:page\s*)?[\-\u2013\u2014\u00b7\u2022]*\s*(?:\u7b2c\s*)?"
     r"(?P<value>\d{1,4}|[ivxlcdm]+|[\u3007\u96f6\u4e00\u4e8c\u4e09\u56db\u4e94\u516d\u4e03\u516b\u4e5d\u5341\u767e\u4e24]+)"
@@ -55,11 +56,7 @@ def _classify_page_auxiliary_text(prepared: _PreparedPage) -> None:
     _classify_aside_text(prepared.remaining_lines, prepared.page_size)
     _classify_image_footnotes(
         prepared.remaining_lines,
-        [
-            block["bbox"]
-            for block in prepared.fixed_blocks
-            if block.get("type") == "image"
-        ],
+        [block["bbox"] for block in prepared.fixed_blocks if block.get("type") == "image"],
         prepared.table_bboxes,
         prepared.drawing_lines,
         prepared.page_size,
@@ -69,11 +66,7 @@ def _classify_page_auxiliary_text(prepared: _PreparedPage) -> None:
         prepared.table_bboxes,
         prepared.drawing_lines,
         prepared.page_size,
-        visual_bboxes=[
-            block["bbox"]
-            for block in prepared.fixed_blocks
-            if block.get("type") == "image"
-        ],
+        visual_bboxes=[block["bbox"] for block in prepared.fixed_blocks if block.get("type") == "image"],
     )
 
 
@@ -103,10 +96,7 @@ def _classify_aside_text(
         if line.angle in {90, 270}
         and line.bbox[2] - line.bbox[0] <= 0.08 * page_width
         and line.bbox[3] - line.bbox[1] >= 0.15 * page_height
-        and (
-            line.bbox[2] <= 0.12 * page_width
-            or line.bbox[0] >= 0.88 * page_width
-        )
+        and (line.bbox[2] <= 0.12 * page_width or line.bbox[0] >= 0.88 * page_width)
     }
     for line in available:
         if line.source_index in aside_source_indices:
@@ -150,11 +140,7 @@ def _classify_image_footnotes(
         sorted(support_by_angle),
         key=lambda angle: support_by_angle[angle],
     )
-    local_page_size = (
-        (page_size[1], page_size[0])
-        if dominant_angle in {90, 270}
-        else page_size
-    )
+    local_page_size = (page_size[1], page_size[0]) if dominant_angle in {90, 270} else page_size
     local_page_width, local_page_height = local_page_size
     if local_page_width <= 0 or local_page_height <= 0:
         return
@@ -174,20 +160,12 @@ def _classify_image_footnotes(
         body_height = max(0.1, reference_body_height)
     else:
         body_samples = [
-            _line_effective_height(line, bbox)
-            for line, bbox in line_geometry
-            if bbox[2] - bbox[0] >= 0.2 * local_page_width
+            _line_effective_height(line, bbox) for line, bbox in line_geometry if bbox[2] - bbox[0] >= 0.2 * local_page_width
         ]
         if not body_samples:
-            body_samples = [
-                _line_effective_height(line, bbox)
-                for line, bbox in line_geometry
-            ]
+            body_samples = [_line_effective_height(line, bbox) for line, bbox in line_geometry]
         body_height = max(0.1, statistics.median(body_samples))
-    local_images = [
-        _rotate_bbox_to_upright(bbox, page_size, dominant_angle)
-        for bbox in image_bboxes
-    ]
+    local_images = [_rotate_bbox_to_upright(bbox, page_size, dominant_angle) for bbox in image_bboxes]
     local_axis_lines = _transform_axis_lines(
         drawing_lines,
         page_size,
@@ -199,27 +177,20 @@ def _classify_image_footnotes(
         image_width = max(0.1, image_bbox[2] - image_bbox[0])
         # 同一视觉行的并排图可能高度略有差异；共享较低下缘可避免把留白误作远距。
         row_bottom = max(
-            peer_bbox[3]
-            for peer_bbox in local_images
-            if _bbox_axis_overlap_ratio(image_bbox, peer_bbox, axis="y") >= 0.5
+            peer_bbox[3] for peer_bbox in local_images if _bbox_axis_overlap_ratio(image_bbox, peer_bbox, axis="y") >= 0.5
         )
         candidate_rules = [
             axis_line
             for axis_line in local_axis_lines
             if axis_line.orientation == "horizontal"
-            and 0.75 * image_width
-            <= axis_line.bbox[2] - axis_line.bbox[0]
-            <= 1.3 * image_width
+            and 0.75 * image_width <= axis_line.bbox[2] - axis_line.bbox[0] <= 1.3 * image_width
             and max(
                 0.0,
-                min(axis_line.bbox[2], image_bbox[2])
-                - max(axis_line.bbox[0], image_bbox[0]),
+                min(axis_line.bbox[2], image_bbox[2]) - max(axis_line.bbox[0], image_bbox[0]),
             )
             >= 0.85 * image_width
             # 图片外框的底边属于图形本身，不能拿来证明下方文字是图表脚注。
-            and 0.0
-            <= axis_line.bbox[1] - row_bottom
-            <= max(0.01 * local_page_height, 0.75 * body_height)
+            and 0.0 <= axis_line.bbox[1] - row_bottom <= max(0.01 * local_page_height, 0.75 * body_height)
             and not _rule_belongs_to_confirmed_table(
                 axis_line,
                 local_axis_lines,
@@ -258,11 +229,7 @@ def _classify_deferred_image_footnotes(
     for prepared in prepared_pages:
         _classify_image_footnotes(
             prepared.remaining_lines,
-            [
-                block["bbox"]
-                for block in prepared.fixed_blocks
-                if block.get("type") == "image"
-            ],
+            [block["bbox"] for block in prepared.fixed_blocks if block.get("type") == "image"],
             prepared.table_bboxes,
             prepared.drawing_lines,
             prepared.page_size,
@@ -336,18 +303,11 @@ def _classify_page_footnotes(
     if not line_geometry:
         return []
 
-    local_page_size = (
-        (page_size[1], page_size[0])
-        if dominant_angle in {90, 270}
-        else page_size
-    )
+    local_page_size = (page_size[1], page_size[0]) if dominant_angle in {90, 270} else page_size
     local_page_width, local_page_height = local_page_size
     if local_page_width <= 0 or local_page_height <= 0:
         return []
-    effective_heights = [
-        _line_effective_height(line, bbox)
-        for line, bbox in line_geometry
-    ]
+    effective_heights = [_line_effective_height(line, bbox) for line, bbox in line_geometry]
     median_height = statistics.median(effective_heights) if effective_heights else 1.0
     lanes = _infer_text_lanes(
         line_geometry,
@@ -414,14 +374,8 @@ def _classify_page_footnotes(
                         lanes,
                         median_height,
                     ),
-                    allow_column_width_rule=(
-                        rule_center_y >= 0.55 * local_page_height
-                    ),
-                    lower_barrier_y=(
-                        min(following_rule_tops)
-                        if following_rule_tops
-                        else None
-                    ),
+                    allow_column_width_rule=(rule_center_y >= 0.55 * local_page_height),
+                    lower_barrier_y=(min(following_rule_tops) if following_rule_tops else None),
                 )
             )
         if rule_source_indices:
@@ -447,16 +401,9 @@ def _augment_footnote_groups_with_edge_markers(
 ) -> None:
     """把脚注正文左侧同高的窄编号标记补入对应分隔线分组。"""
 
-    geometry_by_source = {
-        line.source_index: (line, bbox)
-        for line, bbox in line_geometry
-    }
+    geometry_by_source = {line.source_index: (line, bbox) for line, bbox in line_geometry}
     for group in groups:
-        members = [
-            geometry_by_source[source_index]
-            for source_index in group
-            if source_index in geometry_by_source
-        ]
+        members = [geometry_by_source[source_index] for source_index in group if source_index in geometry_by_source]
         if not members:
             continue
         group_top = min(bbox[1] for _line, bbox in members)
@@ -469,13 +416,9 @@ def _augment_footnote_groups_with_edge_markers(
             center_y = _bbox_center_y(bbox)
             if (
                 line_width <= 1.5 * median_height
-                and content_left - 2.0 * median_height
-                <= bbox[0]
-                <= content_left
+                and content_left - 2.0 * median_height <= bbox[0] <= content_left
                 and bbox[2] <= content_left + 0.5 * median_height
-                and group_top - median_height
-                <= center_y
-                <= group_bottom + median_height
+                and group_top - median_height <= center_y <= group_bottom + median_height
             ):
                 group.add(line.source_index)
 
@@ -560,35 +503,19 @@ def _footnote_lane_members(
         2.0 * median_height,
         0.04 * lane_width,
     )
-    strict_left_alignment = (
-        abs(rule_bbox[0] - lane.left) <= strict_left_tolerance
-    )
-    relaxed_left_alignment = (
-        rule_bbox[0] < lane.left
-        and lane.left - rule_bbox[0] <= 2.25 * median_height
-    )
+    strict_left_alignment = abs(rule_bbox[0] - lane.left) <= strict_left_tolerance
+    relaxed_left_alignment = rule_bbox[0] < lane.left and lane.left - rule_bbox[0] <= 2.25 * median_height
     rule_center_y = _bbox_center_y(rule_bbox)
     centered_short_alignment = (
         not lane.is_span
         and rule_center_y >= 0.7 * local_page_height
         and 0.35 * lane_width <= rule_width <= 0.7 * lane_width
-        and abs(
-            _bbox_center_x(rule_bbox)
-            - 0.5 * (lane.left + lane.right)
-        )
-        <= 0.08 * lane_width
+        and abs(_bbox_center_x(rule_bbox) - 0.5 * (lane.left + lane.right)) <= 0.08 * lane_width
     )
-    if (
-        not strict_left_alignment
-        and not relaxed_left_alignment
-        and not centered_short_alignment
-    ):
+    if not strict_left_alignment and not relaxed_left_alignment and not centered_short_alignment:
         return set()
 
-    is_regular_short_rule = (
-        rule_center_y >= 0.7 * local_page_height
-        and rule_width <= 0.65 * lane_width
-    )
+    is_regular_short_rule = rule_center_y >= 0.7 * local_page_height and rule_width <= 0.65 * lane_width
     endpoint_tolerance = max(2.0 * median_height, 0.05 * lane_width)
     is_column_width_rule = (
         allow_column_width_rule
@@ -596,11 +523,7 @@ def _footnote_lane_members(
         and 0.65 * lane_width <= rule_width <= 1.05 * lane_width
         and abs(rule_bbox[2] - lane.right) <= endpoint_tolerance
     )
-    if (
-        not is_regular_short_rule
-        and not is_column_width_rule
-        and not centered_short_alignment
-    ):
+    if not is_regular_short_rule and not is_column_width_rule and not centered_short_alignment:
         return set()
 
     # 首行采用较宽的 3.5% 页高窗口；命中后仅按紧凑的连续净空向下扩展。
@@ -622,9 +545,7 @@ def _footnote_lane_members(
         # 页面中段的栏宽横线只有在下方首行相对上方正文明显收缩时才可触发脚注，
         # 避免把章节分隔线或普通栏内横线误当成脚注边界。
         body_heights = [
-            _line_effective_height(line, bbox)
-            for line, bbox in lane_lines
-            if bbox[3] <= rule_bbox[1] + 0.5 * median_height
+            _line_effective_height(line, bbox) for line, bbox in lane_lines if bbox[3] <= rule_bbox[1] + 0.5 * median_height
         ]
         first_height = _line_effective_height(*lane_lines[first_index])
         body_reference_height = statistics.median(body_heights) if body_heights else 0.0
@@ -633,10 +554,7 @@ def _footnote_lane_members(
                 body_reference_height,
                 page_median_height,
             )
-        if (
-            len(body_heights) < 3
-            or first_height > 0.95 * body_reference_height
-        ):
+        if len(body_heights) < 3 or first_height > 0.95 * body_reference_height:
             return set()
 
     continuation_gap_limit = _page_footnote_continuation_gap_limit(
@@ -659,14 +577,9 @@ def _footnote_lane_members(
         )
         horizontal_overlap = max(
             0.0,
-            min(rule_bbox[2], first_bbox[2])
-            - max(rule_bbox[0], first_bbox[0]),
+            min(rule_bbox[2], first_bbox[2]) - max(rule_bbox[0], first_bbox[0]),
         )
-        if (
-            len(members) < 2
-            or first_height > 0.9 * reference_height
-            or horizontal_overlap / max(0.1, rule_width) < 0.8
-        ):
+        if len(members) < 2 or first_height > 0.9 * reference_height or horizontal_overlap / max(0.1, rule_width) < 0.8:
             return set()
     if centered_short_alignment:
         reference_height = max(
@@ -677,30 +590,16 @@ def _footnote_lane_members(
         for _line, bbox in lane_lines[:first_index]:
             overlap = max(
                 0.0,
-                min(rule_bbox[2], bbox[2])
-                - max(rule_bbox[0], bbox[0]),
+                min(rule_bbox[2], bbox[2]) - max(rule_bbox[0], bbox[0]),
             )
             row_width = max(0.1, bbox[2] - bbox[0])
-            if (
-                bbox[1] < rule_bbox[1]
-                and overlap
-                >= 0.2 * min(rule_width, row_width)
-            ):
+            if bbox[1] < rule_bbox[1] and overlap >= 0.2 * min(rule_width, row_width):
                 projecting_rows_above.append(bbox)
-        if any(
-            bbox[3]
-            > rule_bbox[1] - 0.75 * reference_height
-            for bbox in projecting_rows_above
-        ):
+        if any(bbox[3] > rule_bbox[1] - 0.75 * reference_height for bbox in projecting_rows_above):
             # 分式横线位于公式成员之间；真正的脚注分隔线上方应保留正文净空。
             return set()
-        member_height = statistics.median(
-            _line_effective_height(*member) for member in members
-        )
-        if (
-            len(members) < 2
-            or member_height > 0.9 * reference_height
-        ):
+        member_height = statistics.median(_line_effective_height(*member) for member in members)
+        if len(members) < 2 or member_height > 0.9 * reference_height:
             return set()
     return {line.source_index for line, _bbox in members}
 
@@ -723,11 +622,7 @@ def _footnote_lane_width_reference(
 
     lane_width = max(0.1, lane.right - lane.left)
     stable_lanes = sorted(
-        [
-            candidate
-            for candidate in lanes
-            if not candidate.is_span and len(candidate.lines) >= 3
-        ],
+        [candidate for candidate in lanes if not candidate.is_span and len(candidate.lines) >= 3],
         key=lambda candidate: candidate.left,
     )
     if lane not in stable_lanes:
@@ -747,11 +642,7 @@ def _classify_rule_delimited_headers(pages: list[_PreparedPage]) -> None:
     """在页码完成跨页判定后，用页首长横线补标其上方未分类文本。"""
 
     for page in pages:
-        available = [
-            line
-            for line in page.remaining_lines
-            if line.semantic_type is None
-        ]
+        available = [line for line in page.remaining_lines if line.semantic_type is None]
         if not available or not page.drawing_lines:
             continue
         support_by_angle = _geometric_text_support_by_angle(
@@ -764,14 +655,33 @@ def _classify_rule_delimited_headers(pages: list[_PreparedPage]) -> None:
             sorted(support_by_angle),
             key=lambda angle: support_by_angle[angle],
         )
-        local_page_size = (
-            (page.page_size[1], page.page_size[0])
-            if dominant_angle in {90, 270}
-            else page.page_size
-        )
+        local_page_size = (page.page_size[1], page.page_size[0]) if dominant_angle in {90, 270} else page.page_size
         local_page_width, local_page_height = local_page_size
         if local_page_width <= 0 or local_page_height <= 0:
             continue
+        local_lines = [
+            (
+                line,
+                _rotate_bbox_to_upright(
+                    line.ink_bbox or line.bbox,
+                    page.page_size,
+                    dominant_angle,
+                ),
+            )
+            for line in available
+            if line.angle == dominant_angle
+        ]
+        header_evidence_bboxes = [
+            _rotate_bbox_to_upright(
+                line.ink_bbox or line.bbox,
+                page.page_size,
+                dominant_angle,
+            )
+            for line in page.remaining_lines
+            if line.angle == dominant_angle and line.semantic_type in {None, "header", "page_number"}
+        ]
+        heights = [_line_effective_height(line, bbox) for line, bbox in local_lines]
+        median_height = statistics.median(heights) if heights else 1.0
         local_axis_lines = _transform_axis_lines(
             page.drawing_lines,
             page.page_size,
@@ -782,8 +692,8 @@ def _classify_rule_delimited_headers(pages: list[_PreparedPage]) -> None:
             for axis_line in local_axis_lines
             if axis_line.orientation == "horizontal"
             and _bbox_center_y(axis_line.bbox) <= 0.15 * local_page_height
-            and axis_line.bbox[2] - axis_line.bbox[0]
-            >= 0.6 * local_page_width
+            and axis_line.bbox[2] - axis_line.bbox[0] >= 0.6 * local_page_width
+            and any(bbox[3] <= _bbox_center_y(axis_line.bbox) for bbox in header_evidence_bboxes)
             and not _rule_belongs_to_confirmed_table(
                 axis_line,
                 local_axis_lines,
@@ -800,27 +710,7 @@ def _classify_rule_delimited_headers(pages: list[_PreparedPage]) -> None:
             continue
         separator = min(candidates, key=lambda item: _bbox_center_y(item.bbox))
         separator_y = _bbox_center_y(separator.bbox)
-        local_lines = [
-            (
-                line,
-                _rotate_bbox_to_upright(
-                    line.ink_bbox or line.bbox,
-                    page.page_size,
-                    dominant_angle,
-                ),
-            )
-            for line in available
-            if line.angle == dominant_angle
-        ]
-        heights = [
-            _line_effective_height(line, bbox)
-            for line, bbox in local_lines
-        ]
-        median_height = statistics.median(heights) if heights else 1.0
-        if not any(
-            _bbox_center_y(bbox) >= separator_y + median_height
-            for _line, bbox in local_lines
-        ):
+        if not any(_bbox_center_y(bbox) >= separator_y + median_height for _line, bbox in local_lines):
             continue
         for line, bbox in local_lines:
             if bbox[3] <= separator_y:
@@ -831,11 +721,7 @@ def _classify_rule_delimited_footers(pages: list[_PreparedPage]) -> None:
     """用页面底部横线确认双线间页脚或单线下方的小字号栏内页脚。"""
 
     for page in pages:
-        available = [
-            line
-            for line in page.remaining_lines
-            if line.semantic_type is None
-        ]
+        available = [line for line in page.remaining_lines if line.semantic_type is None]
         if not available or not page.drawing_lines:
             continue
         support_by_angle = _geometric_text_support_by_angle(
@@ -848,11 +734,7 @@ def _classify_rule_delimited_footers(pages: list[_PreparedPage]) -> None:
             sorted(support_by_angle),
             key=lambda angle: support_by_angle[angle],
         )
-        local_page_size = (
-            (page.page_size[1], page.page_size[0])
-            if dominant_angle in {90, 270}
-            else page.page_size
-        )
+        local_page_size = (page.page_size[1], page.page_size[0]) if dominant_angle in {90, 270} else page.page_size
         local_page_width, local_page_height = local_page_size
         if local_page_width <= 0 or local_page_height <= 0:
             continue
@@ -893,10 +775,7 @@ def _classify_rule_delimited_footers(pages: list[_PreparedPage]) -> None:
         ]
         if not local_lines:
             continue
-        median_height = statistics.median(
-            _line_effective_height(line, bbox)
-            for line, bbox in local_lines
-        )
+        median_height = statistics.median(_line_effective_height(line, bbox) for line, bbox in local_lines)
         lanes = [
             lane
             for lane in _infer_text_lanes(
@@ -967,10 +846,7 @@ def _single_rule_footer_members(
         return []
 
     lane = matching_lanes[0]
-    if (
-        len(lanes) > 1
-        and lane.left < max(candidate_lane.left for candidate_lane in lanes) - body_height
-    ):
+    if len(lanes) > 1 and lane.left < max(candidate_lane.left for candidate_lane in lanes) - body_height:
         return []
     tolerance = 0.5 * body_height
     rows_below = sorted(
@@ -987,10 +863,7 @@ def _single_rule_footer_members(
     if not rows_below:
         return []
     first_line, first_bbox = rows_below[0]
-    if (
-        first_bbox[1] - rule.bbox[3] > body_height
-        or _line_effective_height(first_line, first_bbox) > 0.9 * body_height
-    ):
+    if first_bbox[1] - rule.bbox[3] > body_height or _line_effective_height(first_line, first_bbox) > 0.9 * body_height:
         return []
 
     members = [(first_line, first_bbox)]
@@ -1037,18 +910,10 @@ def _classify_page_number_outer_companions(
     """把上下页码外侧的未分类文本和图片标为对应页眉或页脚。"""
 
     for page in pages:
-        page_numbers = [
-            line
-            for line in page.remaining_lines
-            if line.semantic_type == "page_number"
-        ]
+        page_numbers = [line for line in page.remaining_lines if line.semantic_type == "page_number"]
         for page_number in page_numbers:
             angle = page_number.angle
-            local_page_size = (
-                (page.page_size[1], page.page_size[0])
-                if angle in {90, 270}
-                else page.page_size
-            )
+            local_page_size = (page.page_size[1], page.page_size[0]) if angle in {90, 270} else page.page_size
             local_page_height = local_page_size[1]
             if local_page_height <= 0:
                 continue
@@ -1057,9 +922,7 @@ def _classify_page_number_outer_companions(
                 page.page_size,
                 angle,
             )
-            normalized_center_y = (
-                _bbox_center_y(page_number_bbox) / local_page_height
-            )
+            normalized_center_y = _bbox_center_y(page_number_bbox) / local_page_height
             if normalized_center_y <= 0.3:
                 target_type: Literal["header", "footer"] = "header"
                 outward_limit = page_number_bbox[1]
@@ -1076,11 +939,7 @@ def _classify_page_number_outer_companions(
                     page.page_size,
                     angle,
                 )
-                is_outward = (
-                    local_bbox[3] <= outward_limit
-                    if target_type == "header"
-                    else local_bbox[1] >= outward_limit
-                )
+                is_outward = local_bbox[3] <= outward_limit if target_type == "header" else local_bbox[1] >= outward_limit
                 same_marginal_row = (
                     _bbox_axis_overlap_ratio(
                         local_bbox,
@@ -1108,11 +967,7 @@ def _classify_page_number_outer_companions(
                     page.page_size,
                     angle,
                 )
-                is_outward = (
-                    local_bbox[3] <= outward_limit
-                    if target_type == "header"
-                    else local_bbox[1] >= outward_limit
-                )
+                is_outward = local_bbox[3] <= outward_limit if target_type == "header" else local_bbox[1] >= outward_limit
                 same_marginal_row = (
                     _bbox_axis_overlap_ratio(
                         local_bbox,
@@ -1135,34 +990,18 @@ def _classify_split_marginal_row_companions(
         for line in page.remaining_lines:
             if line.visual_row_id is None or not line.split_from_row:
                 continue
-            row_groups.setdefault((line.angle, line.visual_row_id), []).append(
-                line
-            )
+            row_groups.setdefault((line.angle, line.visual_row_id), []).append(line)
         for (angle, _row_id), members in row_groups.items():
-            local_page_height = (
-                page.page_size[0]
-                if angle in {90, 270}
-                else page.page_size[1]
-            )
-            local_bboxes = [
-                _rotate_bbox_to_upright(line.bbox, page.page_size, angle)
-                for line in members
-            ]
-            row_center = statistics.fmean(
-                _bbox_center_y(bbox)
-                for bbox in local_bboxes
-            )
+            local_page_height = page.page_size[0] if angle in {90, 270} else page.page_size[1]
+            local_bboxes = [_rotate_bbox_to_upright(line.bbox, page.page_size, angle) for line in members]
+            row_center = statistics.fmean(_bbox_center_y(bbox) for bbox in local_bboxes)
             if row_center <= 0.1 * local_page_height:
                 target_type: Literal["header", "footer"] = "header"
             elif row_center >= 0.9 * local_page_height:
                 target_type = "footer"
             else:
                 continue
-            anchor_types = {
-                line.semantic_type
-                for line in members
-                if line.semantic_type in {target_type, "page_number"}
-            }
+            anchor_types = {line.semantic_type for line in members if line.semantic_type in {target_type, "page_number"}}
             if not anchor_types:
                 continue
             for line in members:
@@ -1188,12 +1027,8 @@ def _classify_raw_page_marginals(sources: list[_PageSource]) -> None:
         )
         is not None
         and (
-            _bbox_center_y(candidate.local_bbox)
-            / candidate.local_page_size[1]
-            <= 0.08
-            or _bbox_center_y(candidate.local_bbox)
-            / candidate.local_page_size[1]
-            >= 0.92
+            _bbox_center_y(candidate.local_bbox) / candidate.local_page_size[1] <= 0.08
+            or _bbox_center_y(candidate.local_bbox) / candidate.local_page_size[1] >= 0.92
         )
     ]
     _classify_marginal_candidates(candidates)
@@ -1268,11 +1103,7 @@ def _classify_single_page_compound_headers(pages: list[_PreparedPage]) -> None:
 
     row_groups: dict[tuple[int, int], list[_LineItem]] = {}
     for line in page.remaining_lines:
-        if (
-            line.semantic_type is None
-            and line.visual_row_id is not None
-            and line.split_from_row
-        ):
+        if line.semantic_type is None and line.visual_row_id is not None and line.split_from_row:
             row_groups.setdefault((line.angle, line.visual_row_id), []).append(line)
 
     for (angle, _row_id), members in row_groups.items():
@@ -1280,10 +1111,7 @@ def _classify_single_page_compound_headers(pages: list[_PreparedPage]) -> None:
             continue
         local_page_width = page_height if angle in {90, 270} else page_width
         local_page_height = page_width if angle in {90, 270} else page_height
-        local_members = [
-            (line, _rotate_bbox_to_upright(line.bbox, page.page_size, angle))
-            for line in members
-        ]
+        local_members = [(line, _rotate_bbox_to_upright(line.bbox, page.page_size, angle)) for line in members]
         row_top = min(bbox[1] for _line, bbox in local_members)
         row_bottom = max(bbox[3] for _line, bbox in local_members)
         if row_top < 0 or row_bottom > 0.05 * local_page_height:
@@ -1315,14 +1143,8 @@ def _classify_single_page_compound_headers(pages: list[_PreparedPage]) -> None:
         ]
         if len(related_body) < 3:
             continue
-        body_height = statistics.median(
-            _line_effective_height(line, bbox)
-            for line, bbox in related_body
-        )
-        row_height = max(
-            _line_effective_height(line, bbox)
-            for line, bbox in local_members
-        )
+        body_height = statistics.median(_line_effective_height(line, bbox) for line, bbox in related_body)
+        row_height = max(_line_effective_height(line, bbox) for line, bbox in local_members)
         if row_height > 0.85 * body_height:
             continue
         body_right = statistics.median(bbox[2] for _line, bbox in related_body)
@@ -1342,17 +1164,13 @@ def _classify_page_footnote_trailing_footers(
     """把任意页脚注投影下方、已越过续行边界的紧凑尾段标为页脚。"""
 
     for page in pages:
-        line_by_source = {
-            line.source_index: line
-            for line in page.remaining_lines
-        }
+        line_by_source = {line.source_index: line for line in page.remaining_lines}
         ranked_groups: list[tuple[float, set[int]]] = []
         for source_indices in page.page_footnote_groups:
             anchor_lines = [
                 line_by_source[source_index]
                 for source_index in source_indices
-                if source_index in line_by_source
-                and line_by_source[source_index].semantic_type == "page_footnote"
+                if source_index in line_by_source and line_by_source[source_index].semantic_type == "page_footnote"
             ]
             angles = {line.angle for line in anchor_lines}
             if len(angles) != 1:
@@ -1387,25 +1205,17 @@ def _page_footnote_trailing_footer_members(
 ) -> list[_LineItem]:
     """返回脚注水平投影下方唯一、紧凑且小于正文尺度的页脚行。"""
 
-    line_by_source = {
-        line.source_index: line
-        for line in page.remaining_lines
-    }
+    line_by_source = {line.source_index: line for line in page.remaining_lines}
     anchor_lines = [
         line_by_source[source_index]
         for source_index in source_indices
-        if source_index in line_by_source
-        and line_by_source[source_index].semantic_type == "page_footnote"
+        if source_index in line_by_source and line_by_source[source_index].semantic_type == "page_footnote"
     ]
     angles = {line.angle for line in anchor_lines}
     if len(angles) != 1:
         return []
     angle = next(iter(angles))
-    local_page_size = (
-        (page.page_size[1], page.page_size[0])
-        if angle in {90, 270}
-        else page.page_size
-    )
+    local_page_size = (page.page_size[1], page.page_size[0]) if angle in {90, 270} else page.page_size
     local_page_width, local_page_height = local_page_size
     if local_page_width <= 0 or local_page_height <= 0:
         return []
@@ -1442,9 +1252,7 @@ def _page_footnote_trailing_footer_members(
         for line, bbox in unresolved_geometry
         if bbox[3] <= anchor_bbox[1]
         and bbox[2] - bbox[0] >= 0.3 * local_page_width
-        and 0.1 * local_page_height
-        <= _bbox_center_y(bbox)
-        <= 0.94 * local_page_height
+        and 0.1 * local_page_height <= _bbox_center_y(bbox) <= 0.94 * local_page_height
         and _bbox_axis_overlap_ratio(
             anchor_bbox,
             bbox,
@@ -1454,34 +1262,22 @@ def _page_footnote_trailing_footer_members(
     ]
     if len(body_geometry) < 3:
         return []
-    body_height = statistics.median(
-        _line_effective_height(line, bbox)
-        for line, bbox in body_geometry
-    )
+    body_height = statistics.median(_line_effective_height(line, bbox) for line, bbox in body_geometry)
     if body_height <= 0:
         return []
 
-    if any(
-        bbox[1] <= anchor_bbox[3] < bbox[3]
-        for _line, bbox in unresolved_geometry
-    ):
+    if any(bbox[1] <= anchor_bbox[3] < bbox[3] for _line, bbox in unresolved_geometry):
         # 另一栏正文仍跨过脚注底边时，不能把其下方局部文本猜成全页页脚。
         return []
     trailing_geometry = sorted(
-        (
-            (line, bbox)
-            for line, bbox in unresolved_geometry
-            if bbox[1] > anchor_bbox[3]
-        ),
+        ((line, bbox) for line, bbox in unresolved_geometry if bbox[1] > anchor_bbox[3]),
         key=lambda item: (item[1][1], item[1][0], item[0].source_index),
     )
     if not 1 <= len(trailing_geometry) <= 3:
         return []
 
     first = trailing_geometry[0]
-    candidate_bbox = _bbox_union_many(
-        [bbox for _line, bbox in trailing_geometry]
-    )
+    candidate_bbox = _bbox_union_many([bbox for _line, bbox in trailing_geometry])
     if first[1][1] < 0.82 * local_page_height:
         return []
     projection_tolerance = 0.5 * body_height
@@ -1498,10 +1294,7 @@ def _page_footnote_trailing_footer_members(
         return []
     if candidate_bbox[3] - candidate_bbox[1] > 4.0 * body_height:
         return []
-    if any(
-        _line_effective_height(line, bbox) > 0.95 * body_height
-        for line, bbox in trailing_geometry
-    ):
+    if any(_line_effective_height(line, bbox) > 0.95 * body_height for line, bbox in trailing_geometry):
         return []
 
     projecting_anchor_rows = [
@@ -1536,12 +1329,9 @@ def _page_footnote_trailing_footer_members(
     ):
         return []
 
-    original_candidate_bbox = _bbox_union_many(
-        [line.bbox for line, _bbox in trailing_geometry]
-    )
+    original_candidate_bbox = _bbox_union_many([line.bbox for line, _bbox in trailing_geometry])
     if any(
-        container_bbox is not None
-        and _bbox_intersects(original_candidate_bbox, container_bbox)
+        container_bbox is not None and _bbox_intersects(original_candidate_bbox, container_bbox)
         for block in page.fixed_blocks
         if (
             container_bbox := _clip_bbox(
@@ -1575,18 +1365,11 @@ def _classify_isolated_first_page_footer(pages: list[_PreparedPage]) -> None:
     ]
     if len(body_lines) < 4:
         return
-    body_height = statistics.median(
-        _line_effective_height(line, line.bbox)
-        for line in body_lines
-    )
+    body_height = statistics.median(_line_effective_height(line, line.bbox) for line in body_lines)
     body_bottom = max(line.bbox[3] for line in body_lines)
     if body_bottom < 0.7 * page_height:
         return
-    container_bboxes = [
-        bbox
-        for block in page.fixed_blocks
-        if (bbox := _coerce_bbox(block.get("bbox"))) is not None
-    ]
+    container_bboxes = [bbox for block in page.fixed_blocks if (bbox := _coerce_bbox(block.get("bbox"))) is not None]
     candidates = [
         line
         for line in page.remaining_lines
@@ -1597,10 +1380,7 @@ def _classify_isolated_first_page_footer(pages: list[_PreparedPage]) -> None:
         and abs(_bbox_center_x(line.bbox) - 0.5 * page_width) <= 0.08 * page_width
         and _line_effective_height(line, line.bbox) <= 0.95 * body_height
         and line.bbox[1] - body_bottom >= 1.5 * body_height
-        and not any(
-            _bbox_intersects(line.bbox, container_bbox)
-            for container_bbox in container_bboxes
-        )
+        and not any(_bbox_intersects(line.bbox, container_bbox) for container_bbox in container_bboxes)
     ]
     if len(candidates) == 1:
         candidates[0].semantic_type = "footer"
@@ -1660,17 +1440,11 @@ def _classify_repeated_visual_headers(pages: list[_PreparedPage]) -> None:
         first_angle,
     ) in enumerate(candidates):
         for second_index in range(first_index + 1, len(candidates)):
-            second_page, _second_block, second_bbox, second_angle = candidates[
-                second_index
-            ]
+            second_page, _second_block, second_bbox, second_angle = candidates[second_index]
             page_delta = second_page - first_page
             if page_delta > 2:
                 break
-            if (
-                page_delta > 0
-                and first_angle == second_angle
-                and _visual_header_geometry_matches(first_bbox, second_bbox)
-            ):
+            if page_delta > 0 and first_angle == second_angle and _visual_header_geometry_matches(first_bbox, second_bbox):
                 union(first_index, second_index)
 
     clusters: dict[int, list[int]] = {}
@@ -1765,10 +1539,15 @@ def _page_number_candidates_match(
         return False
     first_height = _line_effective_height(first.line, first.local_bbox) / first.local_page_size[1]
     second_height = _line_effective_height(second.line, second.local_bbox) / second.local_page_size[1]
-    return min(first_height, second_height) > 0 and max(first_height, second_height) / min(
-        first_height,
-        second_height,
-    ) <= 1.5
+    return (
+        min(first_height, second_height) > 0
+        and max(first_height, second_height)
+        / min(
+            first_height,
+            second_height,
+        )
+        <= 1.5
+    )
 
 
 def _marginal_geometry_matches(
@@ -1787,10 +1566,15 @@ def _marginal_geometry_matches(
         return False
     first_line_height = _line_effective_height(first.line, first.local_bbox) / first_height
     second_line_height = _line_effective_height(second.line, second.local_bbox) / second_height
-    if min(first_line_height, second_line_height) <= 0 or max(first_line_height, second_line_height) / min(
-        first_line_height,
-        second_line_height,
-    ) > 1.35:
+    if (
+        min(first_line_height, second_line_height) <= 0
+        or max(first_line_height, second_line_height)
+        / min(
+            first_line_height,
+            second_line_height,
+        )
+        > 1.35
+    ):
         return False
     if (
         first.line.font_signature is not None
@@ -1817,9 +1601,7 @@ def _marginal_geometry_matches(
         _bbox_axis_overlap_ratio(first_normalized_bbox, second_normalized_bbox, axis="x") >= 0.4
         or abs(_bbox_center_x(first_normalized_bbox) - _bbox_center_x(second_normalized_bbox)) <= 0.08
     )
-    mirrored = abs(
-        _bbox_center_x(first_normalized_bbox) + _bbox_center_x(second_normalized_bbox) - 1.0
-    ) <= 0.12
+    mirrored = abs(_bbox_center_x(first_normalized_bbox) + _bbox_center_x(second_normalized_bbox) - 1.0) <= 0.12
     return same_side or mirrored
 
 

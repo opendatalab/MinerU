@@ -6,6 +6,7 @@ from docx import Document
 from docx.enum.style import WD_STYLE_TYPE
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
+from docx.opc.constants import RELATIONSHIP_TYPE
 from docx.text.paragraph import Paragraph
 
 from mineru.backend.analyze import doc_analyze
@@ -35,13 +36,53 @@ def _append_instruction(paragraph: Paragraph, instruction: str) -> None:
     paragraph._p.append(run)
 
 
-def _append_result_text(paragraph: Paragraph, text: str) -> None:
+def _append_result_text(
+    paragraph: Paragraph,
+    text: str,
+    *,
+    bold: bool = False,
+) -> None:
     """向字段结果追加一个可见文本 run。"""
     run = OxmlElement("w:r")
+    if bold:
+        run_properties = OxmlElement("w:rPr")
+        run_properties.append(OxmlElement("w:b"))
+        run.append(run_properties)
     text_element = OxmlElement("w:t")
+    if text != text.strip():
+        text_element.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
     text_element.text = text
     run.append(text_element)
     paragraph._p.append(run)
+
+
+def _append_native_hyperlink(
+    paragraph: Paragraph,
+    target: str,
+    parts: list[tuple[str, bool]],
+) -> None:
+    """向段落追加由多个格式 run 组成的真实外部超链接。"""
+
+    relationship_id = paragraph.part.relate_to(
+        target,
+        RELATIONSHIP_TYPE.HYPERLINK,
+        is_external=True,
+    )
+    hyperlink = OxmlElement("w:hyperlink")
+    hyperlink.set(qn("r:id"), relationship_id)
+    for text, bold in parts:
+        run = OxmlElement("w:r")
+        if bold:
+            run_properties = OxmlElement("w:rPr")
+            run_properties.append(OxmlElement("w:b"))
+            run.append(run_properties)
+        text_element = OxmlElement("w:t")
+        if text != text.strip():
+            text_element.set("{http://www.w3.org/XML/1998/namespace}space", "preserve")
+        text_element.text = text
+        run.append(text_element)
+        hyperlink.append(run)
+    paragraph._p.append(hyperlink)
 
 
 def _append_result_tab(paragraph: Paragraph) -> None:
@@ -140,7 +181,8 @@ def _build_external_bookmark_field_docx() -> bytes:
         ' HYPERLINK "chapter.docx" \\l "Section1" ',
     )
     _append_field_char(paragraph, "separate")
-    _append_result_text(paragraph, "Open section")
+    _append_result_text(paragraph, "Open ")
+    _append_result_text(paragraph, "section", bold=True)
     _append_field_char(paragraph, "end")
     output = BytesIO()
     document.save(output)
@@ -178,8 +220,30 @@ def test_external_complex_hyperlink_preserves_bookmark_switch() -> None:
 
     assert inline_span_plain_text(raw_text["content"]) == "Open section"
     assert inline_urls(raw_text["content"]) == ["chapter.docx#Section1"]
+    assert [child["styles"] for child in raw_text["content"][0]["content"]] == [[], ["bold"]]
 
     middle_json, _ = doc_analyze(file_bytes, effort="flash", parse_mode="auto", file_suffix="docx")
     typed_text = next(block for page in middle_json.pages for block in page.blocks if isinstance(block, TextBlock))
     assert inline_plain_text(typed_text.content) == "Open section"
     assert inline_urls(typed_text.content) == ["chapter.docx#Section1"]
+
+
+def test_native_hyperlink_preserves_spaces_between_formatted_runs() -> None:
+    """验证真实超链接跨格式 run 时保留内部空格并维持单一链接目标。"""
+
+    document = Document()
+    paragraph = document.add_paragraph()
+    _append_native_hyperlink(
+        paragraph,
+        "https://example.test/section",
+        [("Open ", False), ("section", True)],
+    )
+    output = BytesIO()
+    document.save(output)
+
+    model_pages = DocxModel().predict(BytesIO(output.getvalue()))
+    raw_text = next(block for page in model_pages for block in page if block["type"] == "text")
+
+    assert inline_span_plain_text(raw_text["content"]) == "Open section"
+    assert inline_urls(raw_text["content"]) == ["https://example.test/section"]
+    assert [child["styles"] for child in raw_text["content"][0]["content"]] == [[], ["bold"]]

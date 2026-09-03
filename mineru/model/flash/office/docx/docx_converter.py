@@ -638,6 +638,39 @@ class DocxConverter:
         """追加段落元素；相邻同超链接且同格式的 run 合并为一个元素。"""
         append_rich_text_element(paragraph_elements, text, format_obj, hyperlink)
 
+    @classmethod
+    def _trim_hyperlink_group_boundaries(
+        cls,
+        paragraph_elements: list[_ParagraphElement],
+    ) -> list[_ParagraphElement]:
+        """只裁剪连续同目标链接组的外边界，保留不同格式 run 之间的原始空白。"""
+
+        output = list(paragraph_elements)
+        index = 0
+        while index < len(output):
+            hyperlink = output[index][2]
+            if hyperlink is None:
+                index += 1
+                continue
+            group_end = index + 1
+            while group_end < len(output) and output[group_end][2] is not None and str(output[group_end][2]) == str(hyperlink):
+                group_end += 1
+            first_text, first_format, first_hyperlink = output[index]
+            output[index] = (
+                first_text.lstrip(),
+                first_format,
+                first_hyperlink,
+            )
+            last_index = group_end - 1
+            last_text, last_format, last_hyperlink = output[last_index]
+            output[last_index] = (
+                last_text.rstrip(),
+                last_format,
+                last_hyperlink,
+            )
+            index = group_end
+        return [element for element in output if element[0] or element[2] is None or cls._has_visible_style(element[1])]
+
     @staticmethod
     def _is_hidden_run(run: Run) -> bool:
         """Check whether a run is marked as hidden text in Word."""
@@ -1933,7 +1966,7 @@ class DocxConverter:
 
                 # 如果有超链接，则立即添加
                 if hyperlink is not None:
-                    self._append_paragraph_element(paragraph_elements, text.strip(), format_obj, hyperlink)
+                    self._append_paragraph_element(paragraph_elements, text, format_obj, hyperlink)
                     text = ""
                 else:
                     previous_format = format_obj
@@ -1950,7 +1983,7 @@ class DocxConverter:
         if last_has_visible:
             paragraph_elements.append((group_text, previous_format, None))
 
-        return paragraph_elements
+        return self._trim_hyperlink_group_boundaries(paragraph_elements)
 
     def _iter_paragraph_inner_content(
         self,
