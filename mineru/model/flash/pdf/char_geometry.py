@@ -57,6 +57,7 @@ STYLE_TIER_MIN_MEMBER_SHARE = 0.15
 STYLE_TIER_GAP_RATIO = 1.35
 
 RunKey: TypeAlias = tuple[str, float, int, int, int, str]
+XRunStyleKey: TypeAlias = tuple[str, float, int, int, int]
 LineKey: TypeAlias = tuple[int, int]
 CharKey: TypeAlias = tuple[int, int]
 LooseTierSample: TypeAlias = tuple[float, float, float, float]
@@ -262,12 +263,7 @@ def _line_loose_tier_offsets(
     )
     tiers: list[list[tuple[float, float, float, float, float]]] = []
     for item in normalized:
-        if (
-            not tiers
-            or item[0]
-            > STYLE_TIER_GAP_RATIO
-            * statistics.median(member[0] for member in tiers[-1])
-        ):
+        if not tiers or item[0] > STYLE_TIER_GAP_RATIO * statistics.median(member[0] for member in tiers[-1]):
             tiers.append([item])
         else:
             tiers[-1].append(item)
@@ -279,35 +275,19 @@ def _line_loose_tier_offsets(
         STYLE_TIER_MIN_MEMBER_COUNT,
         math.ceil(STYLE_TIER_MIN_MEMBER_SHARE * len(samples)),
     )
-    if (
-        len(upper_tier) < minimum_members
-        or len(reference_tier) < STYLE_TIER_MIN_MEMBER_COUNT
-    ):
+    if len(upper_tier) < minimum_members or len(reference_tier) < STYLE_TIER_MIN_MEMBER_COUNT:
         return None
     upper_loose_heights = [member[1] + member[2] for member in upper_tier]
     upper_font_sizes = [member[4] for member in upper_tier if member[4] > 0]
     upper_tight_heights = [member[3] for member in upper_tier]
-    if (
-        statistics.median(upper_loose_heights)
-        <= STYLE_INFLATION_LOOSE_FONT_RATIO
-        * (
-            statistics.median(upper_font_sizes)
-            if upper_font_sizes
-            else 0.0
-        )
-        or statistics.median(upper_loose_heights)
-        <= STYLE_INFLATION_LOOSE_TIGHT_RATIO
-        * max(0.1, _quantile(upper_tight_heights, 0.75))
+    if statistics.median(upper_loose_heights) <= STYLE_INFLATION_LOOSE_FONT_RATIO * (
+        statistics.median(upper_font_sizes) if upper_font_sizes else 0.0
+    ) or statistics.median(upper_loose_heights) <= STYLE_INFLATION_LOOSE_TIGHT_RATIO * max(
+        0.1, _quantile(upper_tight_heights, 0.75)
     ):
         return None
-    reference_ascent_ratios = [
-        member[1] / max(member[4], member[3], 0.1)
-        for member in reference_tier
-    ]
-    reference_descent_ratios = [
-        member[2] / max(member[4], member[3], 0.1)
-        for member in reference_tier
-    ]
+    reference_ascent_ratios = [member[1] / max(member[4], member[3], 0.1) for member in reference_tier]
+    reference_descent_ratios = [member[2] / max(member[4], member[3], 0.1) for member in reference_tier]
     return (
         statistics.median(reference_ascent_ratios) * em_height,
         statistics.median(reference_descent_ratios) * em_height,
@@ -781,36 +761,15 @@ def _apply_style_scale_repairs(
     if not style_inflated_runs:
         return
     for line_key, line_samples in by_line.items():
-        anchor_samples = [
-            sample
-            for sample in line_samples
-            if sample.is_anchor
-        ]
+        anchor_samples = [sample for sample in line_samples if sample.is_anchor]
         if not anchor_samples:
             continue
-        dominant_run = Counter(
-            sample.run_key
-            for sample in anchor_samples
-        ).most_common(1)[0][0]
-        style_samples = [
-            sample
-            for sample in anchor_samples
-            if sample.run_key == dominant_run
-        ]
-        font_sizes = [
-            sample.font_size
-            for sample in style_samples
-            if sample.font_size > 0
-        ]
-        tight_heights = [
-            sample.local_tight_bbox[3]
-            - sample.local_tight_bbox[1]
-            for sample in style_samples
-        ]
+        dominant_run = Counter(sample.run_key for sample in anchor_samples).most_common(1)[0][0]
+        style_samples = [sample for sample in anchor_samples if sample.run_key == dominant_run]
+        font_sizes = [sample.font_size for sample in style_samples if sample.font_size > 0]
+        tight_heights = [sample.local_tight_bbox[3] - sample.local_tight_bbox[1] for sample in style_samples]
         style_scale = max(
-            statistics.median(font_sizes)
-            if font_sizes
-            else 0.0,
+            statistics.median(font_sizes) if font_sizes else 0.0,
             _quantile(tight_heights, 0.75),
             0.1,
         )
@@ -831,10 +790,7 @@ def _line_uses_repaired_style_scale(
     style_size = round(line.em_height * 4.0) / 4.0
     flags = line.font_signature[1]
     return any(
-        family == run_key[0]
-        and abs(style_size - run_key[1]) <= 0.25
-        and flags == run_key[2]
-        and line.angle == run_key[4]
+        family == run_key[0] and abs(style_size - run_key[1]) <= 0.25 and flags == run_key[2] and line.angle == run_key[4]
         for run_key in style_inflated_runs
     )
 
@@ -883,14 +839,210 @@ def _next_compatible_sample(
     return None
 
 
+def _x_run_style_key(run_key: RunKey) -> XRunStyleKey:
+    """移除文字类别，返回字体样式和方向一致的 X 修复分组键。"""
+
+    return run_key[:5]
+
+
+def _samples_share_baseline(first: _CharSample, second: _CharSample) -> bool:
+    """按 tight 字形高度判断两个字符是否位于同一局部基线。"""
+
+    tight_height = max(
+        first.local_tight_bbox[3] - first.local_tight_bbox[1],
+        second.local_tight_bbox[3] - second.local_tight_bbox[1],
+    )
+    return abs(first.local_origin[1] - second.local_origin[1]) <= max(0.5, 0.25 * tight_height)
+
+
+def _next_style_compatible_sample(
+    current: _CharSample,
+    line_samples: list[_CharSample],
+) -> _CharSample | None:
+    """返回同字体样式、同基线且 origin 正向的下一可见字符。"""
+
+    style_key = _x_run_style_key(current.run_key)
+    for candidate in line_samples:
+        if (
+            candidate.position <= current.position
+            or _x_run_style_key(candidate.run_key) != style_key
+            or not _samples_share_baseline(current, candidate)
+        ):
+            continue
+        if candidate.local_origin[0] - current.local_origin[0] > 0.1:
+            return candidate
+    return None
+
+
+def _build_x_char_repair(
+    sample: _CharSample,
+    donor_run: _RunStats,
+    next_sample: _CharSample | None,
+    page_size: tuple[float, float],
+    *,
+    left_bearing: float,
+    use_donor_advance: bool = False,
+) -> CharLayoutGeometry | None:
+    """用可靠 run 的 advance 为单个字符构造包含 tight 字形的 X-only 修复。"""
+
+    advance = (
+        donor_run.median_advance
+        if use_donor_advance or next_sample is None
+        else next_sample.local_origin[0] - sample.local_origin[0]
+    )
+    if advance is None or advance <= 0:
+        return None
+    left = min(sample.local_tight_bbox[0], sample.local_origin[0] + left_bearing)
+    right = max(sample.local_tight_bbox[2], sample.local_origin[0] + advance)
+    if next_sample is not None:
+        right = min(right, max(sample.local_tight_bbox[2], next_sample.local_origin[0]))
+    if right <= left:
+        return None
+    layout_bbox = _clip_bbox(
+        _rotate_bbox_from_upright(
+            (
+                left,
+                sample.local_source_bbox[1],
+                right,
+                sample.local_source_bbox[3],
+            ),
+            page_size,
+            sample.line.angle,
+        ),
+        page_size,
+    )
+    if layout_bbox is None:
+        return None
+    return CharLayoutGeometry(
+        source_bbox=sample.source_bbox,
+        tight_bbox=sample.tight_bbox,
+        origin=sample.origin,
+        layout_bbox=layout_bbox,
+        ink_bbox=sample.tight_bbox,
+        baseline=sample.local_origin[1],
+        advance=advance,
+        em_height=max(
+            sample.font_size,
+            sample.local_tight_bbox[3] - sample.local_tight_bbox[1],
+        ),
+        x_state="abnormal",
+        y_state="healthy",
+        confidence=min(1.0, len(donor_run.pair_ratios) / X_RELIABLE_PAIR_MIN),
+    )
+
+
+def _x_repair_donors(
+    runs: dict[RunKey, _RunStats],
+) -> dict[XRunStyleKey, _RunStats]:
+    """按强异常、pair 数和完整键稳定选择各字体样式的 X 修复 donor。"""
+
+    donors: dict[XRunStyleKey, _RunStats] = {}
+    candidates = [
+        run
+        for run in runs.values()
+        if (run.strong_x_bad or run.sibling_x_bad) and run.median_advance is not None and run.median_advance > 0
+    ]
+    for run in sorted(
+        candidates,
+        key=lambda item: (
+            not item.strong_x_bad,
+            -len(item.pair_ratios),
+            item.key,
+        ),
+    ):
+        donors.setdefault(_x_run_style_key(run.key), run)
+    return donors
+
+
+def _has_adjacent_repaired_style_sample(
+    sample: _CharSample,
+    line_samples: list[_CharSample],
+    page_index: int,
+    plan: DocumentGeometryPlan,
+) -> bool:
+    """确认稀疏字符紧邻同字体样式、同基线且已完成 X 修复的字符。"""
+
+    style_key = _x_run_style_key(sample.run_key)
+    return any(
+        abs(candidate.position - sample.position) == 1
+        and _x_run_style_key(candidate.run_key) == style_key
+        and _samples_share_baseline(sample, candidate)
+        and (page_index, candidate.char_idx) in plan.char_repairs
+        for candidate in line_samples
+    )
+
+
+def _sparse_x_repair_affects_layout(
+    sample: _CharSample,
+    line_samples: list[_CharSample],
+    donor_run: _RunStats,
+    page_size: tuple[float, float],
+) -> bool:
+    """仅接纳撑开行尾或遮蔽跨栏硬间隙的稀疏字符 X 异常。"""
+
+    donor_advance = donor_run.median_advance
+    if donor_advance is None or donor_advance <= 0:
+        return False
+    tight_width = max(
+        0.1,
+        sample.local_tight_bbox[2] - sample.local_tight_bbox[0],
+    )
+    canonical_width = max(donor_advance, tight_width)
+    source_width = sample.local_source_bbox[2] - sample.local_source_bbox[0]
+    canonical_right = max(
+        sample.local_tight_bbox[2],
+        sample.local_origin[0] + donor_advance,
+    )
+    local_page_width = page_size[1] if sample.line.angle in {90, 270} else page_size[0]
+    forward_overhang = sample.local_source_bbox[2] - canonical_right
+    if source_width <= X_STRONG_RATIO_THRESHOLD * canonical_width or forward_overhang < max(
+        2.0 * canonical_width, 0.01 * local_page_width
+    ):
+        return False
+
+    baseline_samples = sorted(
+        (
+            candidate
+            for candidate in line_samples
+            if candidate.position != sample.position and _samples_share_baseline(sample, candidate)
+        ),
+        key=lambda candidate: candidate.position,
+    )
+    following = next(
+        (candidate for candidate in baseline_samples if candidate.position > sample.position),
+        None,
+    )
+    if following is None:
+        right_edge = max(candidate.local_source_bbox[2] for candidate in [sample, *baseline_samples])
+        return abs(sample.local_source_bbox[2] - right_edge) <= 0.25
+
+    median_tight_width = statistics.median(
+        max(
+            0.1,
+            candidate.local_tight_bbox[2] - candidate.local_tight_bbox[0],
+        )
+        for candidate in [sample, *baseline_samples]
+    )
+    hard_gap_threshold = max(
+        15.0,
+        3.0 * median_tight_width,
+        0.02 * local_page_width,
+    )
+    return (
+        following.local_tight_bbox[0] - canonical_right >= hard_gap_threshold
+        and sample.local_source_bbox[2] >= following.local_origin[0]
+    )
+
+
 def _repair_x_chars(
     plan: DocumentGeometryPlan,
     runs: dict[RunKey, _RunStats],
     by_line: dict[LineKey, list[_CharSample]],
     page_sizes: list[tuple[float, float]],
 ) -> None:
-    """仅对强异常或同族高置信 run 重建前进方向 cell。"""
+    """对强异常 run 及其同样式稀疏邻接字符重建前进方向 cell。"""
 
+    donors = _x_repair_donors(runs)
     for line_key, line_samples in by_line.items():
         page_index, _source_index = line_key
         page_size = page_sizes[page_index]
@@ -899,41 +1051,49 @@ def _repair_x_chars(
             if not (run.strong_x_bad or run.sibling_x_bad):
                 continue
             next_sample = _next_compatible_sample(sample, line_samples)
-            advance = next_sample.local_origin[0] - sample.local_origin[0] if next_sample is not None else run.median_advance
-            if advance is None or advance <= 0:
-                continue
-            left_bearing = run.median_tight_left_bearing
-            left = min(sample.local_tight_bbox[0], sample.local_origin[0] + left_bearing)
-            right = max(sample.local_tight_bbox[2], sample.local_origin[0] + advance)
-            if next_sample is not None:
-                right = min(right, max(sample.local_tight_bbox[2], next_sample.local_origin[0]))
-            if right <= left:
-                continue
-            local_layout = (
-                left,
-                sample.local_source_bbox[1],
-                right,
-                sample.local_source_bbox[3],
-            )
-            layout_bbox = _clip_bbox(
-                _rotate_bbox_from_upright(local_layout, page_size, sample.line.angle),
+            repair = _build_x_char_repair(
+                sample,
+                run,
+                next_sample,
                 page_size,
+                left_bearing=run.median_tight_left_bearing,
             )
-            if layout_bbox is None:
+            if repair is None:
                 continue
-            plan.char_repairs[(page_index, sample.char_idx)] = CharLayoutGeometry(
-                source_bbox=sample.source_bbox,
-                tight_bbox=sample.tight_bbox,
-                origin=sample.origin,
-                layout_bbox=layout_bbox,
-                ink_bbox=sample.tight_bbox,
-                baseline=sample.local_origin[1],
-                advance=advance,
-                em_height=max(sample.font_size, sample.local_tight_bbox[3] - sample.local_tight_bbox[1]),
-                x_state="abnormal",
-                y_state="healthy",
-                confidence=min(1.0, len(run.pair_ratios) / X_RELIABLE_PAIR_MIN),
+            plan.char_repairs[(page_index, sample.char_idx)] = repair
+
+        for sample in line_samples:
+            char_key = (page_index, sample.char_idx)
+            run = runs[sample.run_key]
+            donor = donors.get(_x_run_style_key(sample.run_key))
+            if (
+                char_key in plan.char_repairs
+                or donor is None
+                or len(run.pair_ratios) >= X_SIBLING_PAIR_MIN
+                or not _has_adjacent_repaired_style_sample(
+                    sample,
+                    line_samples,
+                    page_index,
+                    plan,
+                )
+                or not _sparse_x_repair_affects_layout(
+                    sample,
+                    line_samples,
+                    donor,
+                    page_size,
+                )
+            ):
+                continue
+            repair = _build_x_char_repair(
+                sample,
+                donor,
+                _next_style_compatible_sample(sample, line_samples),
+                page_size,
+                left_bearing=sample.local_tight_bbox[0] - sample.local_origin[0],
+                use_donor_advance=True,
             )
+            if repair is not None:
+                plan.char_repairs[char_key] = repair
 
 
 def _baseline_clusters(samples: list[_CharSample]) -> tuple[list[list[_CharSample]], float]:
@@ -1235,16 +1395,13 @@ def _repair_y_lines(
                 (
                     max(
                         0.0,
-                        sample.local_origin[1]
-                        - sample.local_source_bbox[1],
+                        sample.local_origin[1] - sample.local_source_bbox[1],
                     ),
                     max(
                         0.0,
-                        sample.local_source_bbox[3]
-                        - sample.local_origin[1],
+                        sample.local_source_bbox[3] - sample.local_origin[1],
                     ),
-                    sample.local_tight_bbox[3]
-                    - sample.local_tight_bbox[1],
+                    sample.local_tight_bbox[3] - sample.local_tight_bbox[1],
                     sample.font_size,
                 )
                 for sample in analysis.dominant
@@ -1303,11 +1460,7 @@ def _repair_y_lines(
             continue
         current.layout_bbox = layout_bbox
         current.ink_bbox = _bbox_union_many([sample.tight_bbox for sample in analysis.samples])
-        current.em_height = (
-            analysis.line.effective_height
-            if preserve_legacy_typography
-            else max(0.1, bottom - top)
-        )
+        current.em_height = analysis.line.effective_height if preserve_legacy_typography else max(0.1, bottom - top)
         current.state = "repair_xy" if current.state == "repair_x" else "trim_y"
         current.confidence = min(analysis.geometry_coverage, analysis.dominant_share)
         current.y_intrusion_ratio = analysis.intrusion_ratio
@@ -1496,11 +1649,7 @@ def apply_line_geometry_repairs(
         line.geometry_confidence = repair.confidence
         line.split_y_candidate = repair.split_y_candidate
         line.bbox = layout
-        line.em_height = (
-            style_scale
-            if style_scale is not None
-            else repair.em_height
-        )
+        line.em_height = style_scale if style_scale is not None else repair.em_height
         if allow_y_trim and repair.state in {"trim_y", "repair_xy"}:
             line.effective_height = repair.em_height
 

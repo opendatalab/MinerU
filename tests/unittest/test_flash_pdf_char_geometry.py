@@ -12,6 +12,7 @@ from mineru.model.flash.pdf.char_geometry import (
 )
 from mineru.model.flash.pdf.document import PDFPageTextGeometry
 from mineru.model.flash.pdf.models import _LineItem
+from mineru.model.flash.pdf.native_text import _resplit_native_visual_runs
 
 
 _PDF_FIXTURE_XOR_KEY = b"MinerU flash layout fixture"
@@ -124,27 +125,12 @@ def test_two_page_repeated_loose_height_inflation_sets_canonical_em_scale() -> N
             line, geometry = _line_fixture(
                 source_index=line_index,
                 baseline=baseline,
-                loose_top=(
-                    baseline - 20.0
-                    if anomalous
-                    else baseline - 8.0
-                ),
-                loose_bottom=(
-                    baseline + 4.0
-                    if anomalous
-                    else baseline + 2.0
-                ),
+                loose_top=(baseline - 20.0 if anomalous else baseline - 8.0),
+                loose_bottom=(baseline + 4.0 if anomalous else baseline + 2.0),
                 loose_width=12.0 if anomalous else 6.0,
-                font_name=(
-                    "ABCDEF+Anomaly"
-                    if anomalous
-                    else "ABCDEF+Normal"
-                ),
+                font_name=("ABCDEF+Anomaly" if anomalous else "ABCDEF+Normal"),
                 font_size=10.0,
-                start_char_idx=(
-                    page_index * 10000
-                    + line_index * 100
-                ),
+                start_char_idx=(page_index * 10000 + line_index * 100),
             )
             page_lines.append(line)
             page_geometries.append(geometry)
@@ -173,8 +159,7 @@ def test_line_loose_tier_shrinks_repeated_largest_tier_to_second_tier() -> None:
     """验证同行重复最大 loose 档按次档的归一化 ascent/descent 回缩。"""
 
     offsets = _line_loose_tier_offsets(
-        [(8.0, 2.0, 7.0, 10.0)] * 6
-        + [(20.0, 4.0, 7.0, 10.0)] * 4,
+        [(8.0, 2.0, 7.0, 10.0)] * 6 + [(20.0, 4.0, 7.0, 10.0)] * 4,
         10.0,
     )
 
@@ -185,8 +170,7 @@ def test_line_loose_tier_preserves_legitimate_mixed_font_sizes() -> None:
     """验证按各自 em 归一化后相同的真实混合字号不会形成异常高度档。"""
 
     offsets = _line_loose_tier_offsets(
-        [(8.0, 2.0, 7.0, 10.0)] * 4
-        + [(16.0, 4.0, 14.0, 20.0)] * 4,
+        [(8.0, 2.0, 7.0, 10.0)] * 4 + [(16.0, 4.0, 14.0, 20.0)] * 4,
         10.0,
     )
 
@@ -197,8 +181,7 @@ def test_line_loose_tier_ignores_single_large_outlier() -> None:
     """验证单个 loose 高度离群字符不足以触发整行档位回缩。"""
 
     offsets = _line_loose_tier_offsets(
-        [(8.0, 2.0, 7.0, 10.0)] * 7
-        + [(20.0, 4.0, 7.0, 10.0)],
+        [(8.0, 2.0, 7.0, 10.0)] * 7 + [(20.0, 4.0, 7.0, 10.0)],
         10.0,
     )
 
@@ -218,6 +201,161 @@ def test_strong_x_run_repairs_advance_and_contains_tight_bbox() -> None:
     assert repair.layout_bbox[0] <= repair.tight_bbox[0]
     assert repair.layout_bbox[2] >= repair.tight_bbox[2]
     assert plan.line_repairs[(0, 0)].state == "repair_x"
+
+
+def test_sparse_trailing_punctuation_inherits_confirmed_x_repair() -> None:
+    """验证异常字体 run 尾部的稀疏标点使用同样式 donor 收紧字符和行框。"""
+
+    line, geometry = _line_fixture(
+        source_index=0,
+        baseline=20.0,
+        count=40,
+        loose_width=12.0,
+    )
+    punctuation = line.chars[-1]
+    char_idx = int(punctuation["char_idx"])
+    origin_x, origin_y = geometry.origins[char_idx]
+    inflated_bbox = (origin_x, 12.0, 400.0, 22.0)
+    punctuation["char"] = "."
+    punctuation["bbox"] = inflated_bbox
+    geometry.loose_bboxes[char_idx] = inflated_bbox
+    line.text = f"{line.text[:-1]}."
+    line.bbox = (line.bbox[0], line.bbox[1], 400.0, line.bbox[3])
+
+    plan = build_document_geometry_plan(
+        [[line]],
+        [geometry],
+        [(500.0, 100.0)],
+    )
+
+    punctuation_repair = plan.char_repairs[(0, char_idx)]
+    assert punctuation_repair.origin == (origin_x, origin_y)
+    assert punctuation_repair.layout_bbox == (244.5, 12.0, 250.0, 22.0)
+    assert punctuation_repair.layout_bbox[2] >= punctuation_repair.tight_bbox[2]
+    assert plan.line_repairs[(0, 0)].layout_bbox == (10.5, 12.0, 250.0, 22.0)
+    assert plan.line_repairs[(0, 0)].repaired_char_count == 40
+
+
+def test_sparse_punctuation_fallback_requires_inflated_matching_style() -> None:
+    """验证正常宽标点和不同字体标点不会仅因邻近异常字母而继承 donor。"""
+
+    normal, normal_geometry = _line_fixture(
+        source_index=0,
+        baseline=20.0,
+        count=40,
+        loose_width=12.0,
+    )
+    normal_punctuation = normal.chars[-1]
+    normal_idx = int(normal_punctuation["char_idx"])
+    normal_origin_x, _normal_origin_y = normal_geometry.origins[normal_idx]
+    normal_bbox = (normal_origin_x, 12.0, normal_origin_x + 6.0, 22.0)
+    normal_punctuation["char"] = "."
+    normal_punctuation["bbox"] = normal_bbox
+    normal_geometry.loose_bboxes[normal_idx] = normal_bbox
+    normal.text = f"{normal.text[:-1]}."
+    normal.bbox = (normal.bbox[0], normal.bbox[1], normal_bbox[2], normal.bbox[3])
+
+    different, different_geometry = _line_fixture(
+        source_index=1,
+        baseline=40.0,
+        count=40,
+        loose_width=12.0,
+        start_char_idx=100,
+    )
+    different_punctuation = different.chars[-1]
+    different_idx = int(different_punctuation["char_idx"])
+    different_origin_x, _different_origin_y = different_geometry.origins[different_idx]
+    different_bbox = (different_origin_x, 32.0, 400.0, 42.0)
+    different_punctuation["char"] = "."
+    different_punctuation["bbox"] = different_bbox
+    different_punctuation["font"] = {
+        "name": "ABCDEF+Different",
+        "flags": 0,
+        "size": 10.0,
+        "weight": 400,
+    }
+    different_geometry.loose_bboxes[different_idx] = different_bbox
+    different.text = f"{different.text[:-1]}."
+    different.bbox = (different.bbox[0], different.bbox[1], 400.0, different.bbox[3])
+
+    plan = build_document_geometry_plan(
+        [[normal, different]],
+        [_merge_geometries(normal_geometry, different_geometry)],
+        [(500.0, 100.0)],
+    )
+
+    assert (0, normal_idx) not in plan.char_repairs
+    assert (0, different_idx) not in plan.char_repairs
+
+
+def test_sparse_column_boundary_glyph_repair_restores_native_resplit() -> None:
+    """验证左栏末尾稀疏字符修复后恢复栏沟，使生产重切生成唯一来源序号。"""
+
+    line, geometry = _line_fixture(
+        source_index=0,
+        baseline=20.0,
+        count=80,
+        loose_width=12.0,
+    )
+    for position in range(40, 80):
+        char = line.chars[position]
+        char_idx = int(char["char_idx"])
+        source_bbox = geometry.loose_bboxes[char_idx]
+        tight_bbox = geometry.tight_bboxes[char_idx]
+        origin = geometry.origins[char_idx]
+        shifted_source = (
+            source_bbox[0] + 100.0,
+            source_bbox[1],
+            source_bbox[2] + 100.0,
+            source_bbox[3],
+        )
+        char["bbox"] = shifted_source
+        char["font"] = {
+            "name": "ABCDEF+RightColumn",
+            "flags": 0,
+            "size": 10.0,
+            "weight": 400,
+        }
+        geometry.loose_bboxes[char_idx] = shifted_source
+        geometry.tight_bboxes[char_idx] = (
+            tight_bbox[0] + 100.0,
+            tight_bbox[1],
+            tight_bbox[2] + 100.0,
+            tight_bbox[3],
+        )
+        geometry.origins[char_idx] = (origin[0] + 100.0, origin[1])
+    punctuation = line.chars[39]
+    punctuation_idx = int(punctuation["char_idx"])
+    punctuation_origin_x, _punctuation_origin_y = geometry.origins[punctuation_idx]
+    punctuation_bbox = (punctuation_origin_x, 12.0, geometry.origins[40][0], 22.0)
+    punctuation["char"] = "."
+    punctuation["bbox"] = punctuation_bbox
+    geometry.loose_bboxes[punctuation_idx] = punctuation_bbox
+    line.text = f"{line.text[:39]}.{line.text[40:]}"
+    line.bbox = (10.0, 12.0, max(bbox[2] for bbox in geometry.loose_bboxes.values()), 22.0)
+
+    plan = build_document_geometry_plan(
+        [[line]],
+        [geometry],
+        [(700.0, 100.0)],
+    )
+    apply_line_geometry_repairs(
+        [line],
+        page_index=0,
+        plan=plan,
+        allow_y_trim=False,
+    )
+    members, resplits = _resplit_native_visual_runs(
+        [line],
+        (700.0, 100.0),
+        {char_idx: repair.layout_bbox for (page_index, char_idx), repair in plan.char_repairs.items() if page_index == 0},
+        source_index_start=1,
+    )
+
+    assert (0, punctuation_idx) in plan.char_repairs
+    assert [member.source_index for member in members] == [0, 1]
+    assert [member.text for member in members] == [line.text[:40], line.text[40:]]
+    assert list(resplits) == [0]
 
 
 def test_short_rows_accumulate_enough_pairs_for_strong_x_repair() -> None:
@@ -376,8 +514,7 @@ def test_zero_rotation_ignores_untrusted_loose_side_map_shadow() -> None:
 
     line, geometry = _line_fixture(source_index=0, baseline=20.0, loose_width=6.0)
     perturbed = {
-        char_idx: (bbox[0], bbox[1] - 20.0, bbox[2] + 30.0, bbox[3] + 20.0)
-        for char_idx, bbox in geometry.loose_bboxes.items()
+        char_idx: (bbox[0], bbox[1] - 20.0, bbox[2] + 30.0, bbox[3] + 20.0) for char_idx, bbox in geometry.loose_bboxes.items()
     }
     geometry.loose_bboxes.clear()
     geometry.loose_bboxes.update(perturbed)
@@ -394,10 +531,7 @@ def test_rotated_char_rejects_implausible_side_map_x_expansion() -> None:
     line, geometry = _line_fixture(source_index=0, baseline=20.0, loose_width=6.0)
     for char in line.chars:
         char["rotation"] = 0.2
-    perturbed = {
-        char_idx: (bbox[0], bbox[1], bbox[2] + 30.0, bbox[3])
-        for char_idx, bbox in geometry.loose_bboxes.items()
-    }
+    perturbed = {char_idx: (bbox[0], bbox[1], bbox[2] + 30.0, bbox[3]) for char_idx, bbox in geometry.loose_bboxes.items()}
     geometry.loose_bboxes.clear()
     geometry.loose_bboxes.update(perturbed)
 
@@ -556,16 +690,8 @@ def test_versioned_mixed_text_fixture_keeps_normal_geometry_identity() -> None:
         (20, "4 常见问题"),
         (22, "5 附录："),
     ):
-        section = next(
-            block
-            for block in pages[page_index]
-            if section_text in str(block.get("content"))
-        )
-        security = next(
-            block
-            for block in pages[page_index]
-            if "文档密级：秘密" in str(block.get("content"))
-        )
+        section = next(block for block in pages[page_index] if section_text in str(block.get("content")))
+        security = next(block for block in pages[page_index] if "文档密级：秘密" in str(block.get("content")))
         assert section["type"] == "paragraph_title"
         assert security["type"] == "header"
 
