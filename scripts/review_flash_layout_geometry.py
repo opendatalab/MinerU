@@ -11,18 +11,11 @@ import time
 from pathlib import Path
 from typing import Any
 
-
-SOURCE_ROOT = Path(os.environ.get("MINERU_SOURCE_ROOT", Path(__file__).resolve().parents[1])).resolve()
-if str(SOURCE_ROOT) not in sys.path:
-    sys.path.insert(0, str(SOURCE_ROOT))
-
-import pypdfium2 as pdfium  # noqa: E402
-from PIL import Image, ImageDraw, ImageFont  # noqa: E402
-
-from mineru.model.flash.pdf.document import PDFDocument  # noqa: E402
-from mineru.model.flash.pdf.pipeline import _analyze_native_document  # noqa: E402
+import pypdfium2 as pdfium
+from PIL import Image, ImageDraw, ImageFont
 
 
+SOURCE_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_OUTPUT = SOURCE_ROOT / "output" / "pdf" / "flash_layout_geometry_review"
 TRACKED_GOLD_MANIFEST = SOURCE_ROOT / "tests" / "fixtures" / "flash_layout_geometry_manifest.json"
 _PDF_FIXTURE_XOR_KEY = b"MinerU flash layout fixture"
@@ -273,6 +266,9 @@ def _run_document(
 ) -> dict[str, Any]:
     """解析一份语料并返回耗时、overlay 和金标页面信息。"""
 
+    from mineru.model.flash.pdf.document import PDFDocument
+    from mineru.model.flash.pdf.pipeline import _analyze_native_document
+
     stored_bytes = path.read_bytes()
     pdf_bytes = read_pdf_fixture(path)
     pdf_sha = _sha256_bytes(stored_bytes)
@@ -342,10 +338,11 @@ def _run_document(
 def _parse_args() -> argparse.Namespace:
     """解析全量回测输出、筛选和渲染开关。"""
 
+    default_source_root = Path(os.environ.get("MINERU_SOURCE_ROOT", SOURCE_ROOT)).resolve()
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--source-root", type=Path, default=SOURCE_ROOT)
-    parser.add_argument("--manifest", type=Path, default=TRACKED_GOLD_MANIFEST)
-    parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
+    parser.add_argument("--source-root", type=Path, default=default_source_root)
+    parser.add_argument("--manifest", type=Path)
+    parser.add_argument("--output", type=Path)
     parser.add_argument("--no-render", action="store_true")
     parser.add_argument("--include", action="append", default=[], help="仅运行指定 PDF 文件名，可重复传入")
     parser.add_argument(
@@ -388,10 +385,9 @@ def main() -> int:
 
     args = _parse_args()
     source_root = args.source_root.resolve()
-    tracked_manifest_path = args.manifest.resolve()
+    tracked_manifest_path = (args.manifest or source_root / "tests" / "fixtures" / TRACKED_GOLD_MANIFEST.name).resolve()
     tracked_gold = json.loads(tracked_manifest_path.read_text(encoding="utf-8"))
-    output_dir = args.output.resolve()
-    output_dir.mkdir(parents=True, exist_ok=True)
+    output_dir = (args.output or source_root / "output" / "pdf" / DEFAULT_OUTPUT.name).resolve()
     documents = []
     role_by_name = {
         Path(str(document["path"])).name: str(document.get("role") or "") for document in tracked_gold.get("documents", [])
@@ -402,6 +398,17 @@ def main() -> int:
         if (not args.include or path.name in set(args.include))
         and (not args.role or role_by_name.get(path.name) in set(args.role))
     ]
+    if not corpus_paths:
+        include_filter = ",".join(args.include) if args.include else "<all>"
+        role_filter = ",".join(args.role) if args.role else "<all>"
+        print(
+            f"No review documents matched selection: include={include_filter}, role={role_filter}",
+            file=sys.stderr,
+        )
+        return 2
+    if str(source_root) not in sys.path:
+        sys.path.insert(0, str(source_root))
+    output_dir.mkdir(parents=True, exist_ok=True)
     for index, path in enumerate(corpus_paths, start=1):
         print(f"[{index}/{len(corpus_paths)}] {path.name}", flush=True)
         document = _run_document(

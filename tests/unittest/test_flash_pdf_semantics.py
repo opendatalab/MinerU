@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 import re
+import subprocess
+import sys
 import unicodedata
 from collections import Counter
 from functools import lru_cache
@@ -358,9 +361,7 @@ def test_chinese_paper_four_third_page_upper_band_inventory() -> None:
     upper_band = [
         block
         for block in pages[2]
-        if block.get("type") != "header"
-        and isinstance(block.get("bbox"), list)
-        and float(block["bbox"][3]) <= 0.56
+        if block.get("type") != "header" and isinstance(block.get("bbox"), list) and float(block["bbox"][3]) <= 0.56
     ]
 
     assert Counter(str(block.get("type")) for block in upper_band) == Counter(
@@ -429,3 +430,109 @@ def test_flash_layout_geometry_summary_comparison_is_strict() -> None:
             "repaired_lines": 1,
         },
     }
+
+
+def test_review_script_import_has_no_source_root_side_effect(tmp_path: Path) -> None:
+    """验证 import 审阅 helper 不读取 source-root 环境或修改全局模块搜索路径。"""
+
+    fake_root = tmp_path / "stale-checkout"
+    env = os.environ.copy()
+    env["MINERU_SOURCE_ROOT"] = str(fake_root)
+    probe = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            (
+                "import json, sys; before=list(sys.path); "
+                "import scripts.review_flash_layout_geometry as review; "
+                "print(json.dumps({'same_path': before == sys.path, "
+                "'source_root': str(review.SOURCE_ROOT), "
+                "'mineru_loaded': 'mineru' in sys.modules}))"
+            ),
+        ],
+        cwd=_PROJECT_ROOT,
+        env=env,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    payload = json.loads(probe.stdout)
+
+    assert payload == {
+        "same_path": True,
+        "source_root": str(_PROJECT_ROOT),
+        "mineru_loaded": False,
+    }
+
+
+def test_review_script_rejects_empty_explicit_selection(tmp_path: Path) -> None:
+    """验证拼错 include 时审阅脚本返回 2 且不生成零文档成功产物。"""
+
+    output_dir = tmp_path / "review"
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(_PROJECT_ROOT / "scripts" / "review_flash_layout_geometry.py"),
+            "--no-render",
+            "--include",
+            "definitely-missing.pdf",
+            "--output",
+            str(output_dir),
+        ],
+        cwd=_PROJECT_ROOT,
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+
+    assert result.returncode == 2
+    assert "No review documents matched selection" in result.stderr
+    assert not output_dir.exists()
+
+
+def test_review_script_rejects_empty_manifest_and_role_selection(tmp_path: Path) -> None:
+    """验证空 manifest 与无匹配角色均明确失败，不写审阅结果。"""
+
+    tracked = json.loads(_GEOMETRY_MANIFEST_PATH.read_text(encoding="utf-8"))
+    cases = [
+        ({"schema_version": 1, "documents": []}, []),
+        (
+            {
+                "schema_version": 1,
+                "documents": [
+                    {
+                        **tracked["documents"][0],
+                        "role": "normal",
+                    }
+                ],
+            },
+            ["--role", "abnormal"],
+        ),
+    ]
+    for case_index, (manifest, filters) in enumerate(cases):
+        manifest_path = tmp_path / f"manifest-{case_index}.json"
+        output_dir = tmp_path / f"review-{case_index}"
+        manifest_path.write_text(
+            json.dumps(manifest),
+            encoding="utf-8",
+        )
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(_PROJECT_ROOT / "scripts" / "review_flash_layout_geometry.py"),
+                "--no-render",
+                "--manifest",
+                str(manifest_path),
+                "--output",
+                str(output_dir),
+                *filters,
+            ],
+            cwd=_PROJECT_ROOT,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+
+        assert result.returncode == 2
+        assert "No review documents matched selection" in result.stderr
+        assert not output_dir.exists()

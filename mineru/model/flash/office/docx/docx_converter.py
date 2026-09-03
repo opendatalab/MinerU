@@ -136,6 +136,7 @@ class DocxConverter:
         self.equation_bookends: str = "<eq>{EQ}</eq>"  # 公式标记格式
         self.processed_textbox_elements: list = []
         self.toc_anchor_set: set[str] = set()  # TOC 超链接目标锚点集合
+        self.toc_anchor_aliases: dict[str, str] = {}  # 同一正文段落内 TOC bookmark 到唯一公开 anchor 的映射
         self._numbering_root: Optional[BaseOxmlElement] = None
         self._numbering_root_loaded: bool = False
         self._numbering_level_cache: dict[tuple[int, int], Optional[BaseOxmlElement]] = {}
@@ -807,6 +808,7 @@ class DocxConverter:
         self.heading_list_numids = set()
         self.processed_textbox_elements = []
         self.toc_anchor_set = set()
+        self.toc_anchor_aliases = {}
         self._numbering_root = None
         self._numbering_root_loaded = False
         self._numbering_level_cache = {}
@@ -824,6 +826,9 @@ class DocxConverter:
         self._mammoth_table_idx = 0
         self.docx_obj = Document(BytesIO(file_bytes))
         self.toc_anchor_set = self._collect_toc_anchor_set()
+        self.toc_anchor_aliases = self._collect_toc_anchor_aliases(
+            self.toc_anchor_set,
+        )
         # 预扫描文档，识别用作章节标题的列表numId
         self.heading_list_numids = self._detect_heading_list_numids()
         self.pages.append(self.cur_page)
@@ -850,15 +855,59 @@ class DocxConverter:
             anchor = hl.get(anchor_attr, "").strip()
             if anchor and anchor.startswith("_Toc"):
                 anchors.add(anchor)
-        for instruction in self.docx_obj.element.body.findall(
-            ".//w:instrText",
+        for paragraph in self.docx_obj.element.body.findall(
+            ".//w:p",
             namespaces=DocxConverter._BLIP_NAMESPACES,
         ):
-            target, is_internal = self._complex_field_hyperlink_target(instruction.text or "")
-            anchor = target.removeprefix("#") if target and is_internal else ""
-            if anchor.startswith("_Toc"):
-                anchors.add(anchor)
+            for instruction in self._complex_field_instructions(paragraph):
+                target, is_internal = self._complex_field_hyperlink_target(instruction)
+                anchor = target.removeprefix("#") if target and is_internal else ""
+                if anchor.startswith("_Toc"):
+                    anchors.add(anchor)
         return anchors
+
+    @classmethod
+    def _paragraph_bookmark_names(
+        cls,
+        paragraph_element: BaseOxmlElement,
+    ) -> list[str]:
+        """按文档顺序返回段落内可公开的 bookmark 名称，并排除 Word 导航标记。"""
+
+        bookmark_name_attr = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}name"
+        names: list[str] = []
+        for bookmark in paragraph_element.findall(
+            ".//w:bookmarkStart",
+            namespaces=cls._BLIP_NAMESPACES,
+        ):
+            name = bookmark.get(bookmark_name_attr, "").strip()
+            if name and not name.startswith("_GoBack"):
+                names.append(name)
+        return names
+
+    def _collect_toc_anchor_aliases(
+        self,
+        referenced_anchors: set[str],
+    ) -> dict[str, str]:
+        """把同一段落的多个 TOC bookmark 收敛到一个 Middle JSON canonical anchor。"""
+
+        aliases: dict[str, str] = {}
+        for paragraph in self.docx_obj.element.body.findall(
+            ".//w:p",
+            namespaces=DocxConverter._BLIP_NAMESPACES,
+        ):
+            toc_names = [name for name in self._paragraph_bookmark_names(paragraph) if name.startswith("_Toc")]
+            if not toc_names:
+                continue
+            referenced_names = [name for name in toc_names if name in referenced_anchors]
+            canonical = referenced_names[0] if referenced_names else toc_names[0]
+            for name in toc_names:
+                aliases.setdefault(name, canonical)
+        return aliases
+
+    def _canonical_toc_anchor(self, anchor: str) -> str:
+        """返回 bookmark alias 对应的唯一公开 anchor，未知名称保持原值。"""
+
+        return self.toc_anchor_aliases.get(anchor, anchor)
 
     def _walk_linear(
         self,
@@ -3016,16 +3065,7 @@ class DocxConverter:
 
     def _extract_paragraph_bookmark(self, paragraph_element: BaseOxmlElement) -> Optional[str]:
         """Extract a bookmark name from a paragraph, prioritizing TOC bookmarks."""
-        bookmark_name_attr = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}name"
-        names = []
-        for bm in paragraph_element.findall(".//w:bookmarkStart", namespaces=DocxConverter._BLIP_NAMESPACES):
-            name = bm.get(bookmark_name_attr, "").strip()
-            if not name:
-                continue
-            # skip Word navigation artifacts
-            if name.startswith("_GoBack"):
-                continue
-            names.append(name)
+        names = self._paragraph_bookmark_names(paragraph_element)
         if not names:
             return None
         toc_names = [name for name in names if name.startswith("_Toc")]
@@ -3033,8 +3073,8 @@ class DocxConverter:
             # Prefer anchors that are actually referenced by TOC hyperlinks.
             for name in toc_names:
                 if name in self.toc_anchor_set:
-                    return name
-            return toc_names[0]
+                    return self._canonical_toc_anchor(name)
+            return self._canonical_toc_anchor(toc_names[0])
         return names[0]
 
     def _extract_toc_target_anchor(self, paragraph_element: BaseOxmlElement) -> Optional[str]:
@@ -3047,7 +3087,7 @@ class DocxConverter:
                 anchors.append(anchor)
         for anchor in anchors:
             if anchor.startswith("_Toc"):
-                return anchor
+                return self._canonical_toc_anchor(anchor)
         if anchors:
             return anchors[0]
 
@@ -3061,7 +3101,7 @@ class DocxConverter:
                 field_anchors.append(anchor)
         for anchor in field_anchors:
             if anchor.startswith("_Toc"):
-                return anchor
+                return self._canonical_toc_anchor(anchor)
         return field_anchors[0] if field_anchors else None
 
     def _handle_plain_toc_paragraph_as_index(

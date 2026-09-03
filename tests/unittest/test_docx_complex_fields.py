@@ -109,8 +109,10 @@ def _append_toc_complex_field(
 
     _append_field_char(paragraph, "begin")
     if split_hyperlink_instruction:
+        split_at = max(1, len(anchor) // 2)
         _append_instruction(paragraph, " HYPER")
-        _append_instruction(paragraph, f'LINK \\l "{anchor}" ')
+        _append_instruction(paragraph, f'LINK \\l "{anchor[:split_at]}')
+        _append_instruction(paragraph, f'{anchor[split_at:]}" ')
     else:
         _append_instruction(paragraph, f' HYPERLINK \\l "{anchor}" ')
     _append_field_char(paragraph, "separate")
@@ -189,6 +191,43 @@ def _build_external_bookmark_field_docx() -> bytes:
     return output.getvalue()
 
 
+def _build_multi_alias_toc_docx() -> bytes:
+    """生成两个被引用 TOC bookmark 指向同一正文段落的 DOCX。"""
+
+    document = Document()
+    toc_style = document.styles.add_style("TOC 1", WD_STYLE_TYPE.PARAGRAPH)
+    for title, anchor in (
+        ("Primary entry", "_TocPrimary"),
+        ("Alias entry", "_TocAlias"),
+    ):
+        paragraph = document.add_paragraph(style=toc_style)
+        _append_toc_complex_field(
+            paragraph,
+            title=title,
+            page_number="1",
+            anchor=anchor,
+            include_outer_toc=False,
+            split_hyperlink_instruction=True,
+        )
+
+    heading = document.add_heading("Shared target", level=1)
+    insert_at = 1 if heading._p.pPr is not None else 0
+    for offset, (bookmark_id, anchor) in enumerate(
+        ((10, "_TocPrimary"), (11, "_TocAlias")),
+    ):
+        start = OxmlElement("w:bookmarkStart")
+        start.set(qn("w:id"), str(bookmark_id))
+        start.set(qn("w:name"), anchor)
+        heading._p.insert(insert_at + offset, start)
+        end = OxmlElement("w:bookmarkEnd")
+        end.set(qn("w:id"), str(bookmark_id))
+        heading._p.append(end)
+
+    output = BytesIO()
+    document.save(output)
+    return output.getvalue()
+
+
 def test_nested_complex_toc_fields_preserve_titles_and_strict_index_targets() -> None:
     """验证拆分且嵌套的复杂域不会只剩页码，并按真实正文目标收敛目录 anchor。"""
     file_bytes = _build_complex_toc_docx()
@@ -226,6 +265,45 @@ def test_external_complex_hyperlink_preserves_bookmark_switch() -> None:
     typed_text = next(block for page in middle_json.pages for block in page.blocks if isinstance(block, TextBlock))
     assert inline_plain_text(typed_text.content) == "Open section"
     assert inline_urls(typed_text.content) == ["chapter.docx#Section1"]
+
+
+def test_split_toc_bookmark_aliases_collapse_to_one_target_anchor() -> None:
+    """验证拆分字段引用的同段落 bookmark aliases 收敛为唯一公开 anchor。"""
+
+    file_bytes = _build_multi_alias_toc_docx()
+    model_pages = DocxModel().predict(BytesIO(file_bytes))
+    raw_index = next(block for page in model_pages for block in page if block["type"] == "index")
+    raw_heading = next(
+        block
+        for page in model_pages
+        for block in page
+        if block["type"] == "paragraph_title" and inline_span_plain_text(block["content"]) == "Shared target"
+    )
+
+    assert raw_heading["anchor"] == "_TocPrimary"
+    assert [child.get("anchor") for child in raw_index["content"]] == [
+        "_TocPrimary",
+        "_TocPrimary",
+    ]
+
+    middle_json, _ = doc_analyze(
+        file_bytes,
+        effort="flash",
+        parse_mode="auto",
+        file_suffix="docx",
+    )
+    typed_index = next(block for page in middle_json.pages for block in page.blocks if isinstance(block, IndexBlock))
+    typed_heading = next(
+        block
+        for page in middle_json.pages
+        for block in page.blocks
+        if isinstance(block, ParagraphTitleBlock) and inline_plain_text(block.content) == "Shared target"
+    )
+    assert typed_heading.anchor == "_TocPrimary"
+    assert [child.anchor for child in typed_index.content] == [
+        "_TocPrimary",
+        "_TocPrimary",
+    ]
 
 
 def test_native_hyperlink_preserves_spaces_between_formatted_runs() -> None:
