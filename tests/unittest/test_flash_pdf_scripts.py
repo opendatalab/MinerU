@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import sys
+from collections.abc import Iterator
 from dataclasses import replace
 from functools import lru_cache
 from pathlib import Path
@@ -9,7 +11,6 @@ import pytest
 from pdftext.schema import Bbox, Char
 
 from mineru.model.flash.pdf.geometry import _rotate_bbox_from_upright
-from mineru.model.flash import PdfModel
 from mineru.model.flash.pdf.document import PDFDocument
 from mineru.model.flash.pdf.models import _AxisLine, _LineItem
 from mineru.model.flash.pdf.pipeline import _analyze_native_document
@@ -138,11 +139,11 @@ _GENERAL_RECOVERY_EXPECTATIONS = {
     },
     "中文论文2.pdf": {
         (0, 41): (("[2]", "superscript"), ("[3]", "superscript")),
-        (2, 97): (("[12]", "superscript"),),
+        (2, 95): (("[12]", "superscript"),),
         (3, 14): (("[17]", "superscript"),),
         (3, 83): (("[30]", "superscript"),),
         (3, 87): (("[31]", "superscript"), ("[32]", "superscript"), ("[33]", "superscript")),
-        (13, 70): (("[41]", "superscript"),),
+        (13, 69): (("[41]", "superscript"),),
     },
 }
 
@@ -689,10 +690,22 @@ def test_late_inline_math_region_drops_unrebased_candidate() -> None:
     assert "_inline_math_regions" not in blocks[0]
 
 
-def _flash_script_runs(pdf_name: str) -> list[tuple[str, tuple[str, ...]]]:
-    """解析真实 Flash PDF 并收集最终 TextSpan 上下标。"""
+@lru_cache(maxsize=None)
+def _flash_script_analysis(
+    pdf_name: str,
+) -> tuple[tuple[tuple[dict[str, Any], ...], ...], tuple[dict[str, Any], ...]]:
+    """一次解析真实 Flash PDF，同时缓存最终页面和逐行脚本诊断。"""
+
+    diagnostics: list[dict[str, Any]] = []
     with PDFDocument(str(_DEMO_PDF_DIR / pdf_name)) as document:
-        pages = PdfModel().predict(document)
+        pages = _analyze_native_document(document, script_diagnostics=diagnostics)
+    return tuple(tuple(page) for page in pages), tuple(diagnostics)
+
+
+def _flash_script_runs(pdf_name: str) -> list[tuple[str, tuple[str, ...]]]:
+    """从缓存的真实 Flash 页面收集最终 TextSpan 上下标。"""
+
+    pages, _diagnostics = _flash_script_analysis(pdf_name)
     runs: list[tuple[str, tuple[str, ...]]] = []
 
     def walk(value: Any) -> None:
@@ -704,7 +717,7 @@ def _flash_script_runs(pdf_name: str) -> list[tuple[str, tuple[str, ...]]]:
                 runs.append((content, styles))
             for child in value.values():
                 walk(child)
-        elif isinstance(value, list):
+        elif isinstance(value, (list, tuple)):
             for child in value:
                 walk(child)
 
@@ -712,13 +725,81 @@ def _flash_script_runs(pdf_name: str) -> list[tuple[str, tuple[str, ...]]]:
     return runs
 
 
-@lru_cache(maxsize=None)
 def _flash_script_diagnostics(pdf_name: str) -> tuple[dict[str, Any], ...]:
-    """解析真实 Flash PDF 并缓存逐行上下标 sidecar。"""
-    diagnostics: list[dict[str, Any]] = []
-    with PDFDocument(str(_DEMO_PDF_DIR / pdf_name)) as document:
-        _analyze_native_document(document, script_diagnostics=diagnostics)
-    return tuple(diagnostics)
+    """返回统一分析缓存中的逐行上下标 sidecar。"""
+
+    _pages, diagnostics = _flash_script_analysis(pdf_name)
+    return diagnostics
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _clear_real_script_analysis_cache_after_module() -> Iterator[None]:
+    """模块结束后释放真实 PDF 页面和脚本诊断缓存。"""
+
+    yield
+    _flash_script_analysis.cache_clear()
+
+
+def test_real_script_pages_and_diagnostics_share_one_analysis(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """验证最终脚本 span 与逐行诊断共用同一次真实文档分析。"""
+
+    analyze_calls: list[object] = []
+
+    class FakePDFDocument:
+        """提供脚本缓存测试所需的最小上下文。"""
+
+        def __init__(self, path: str) -> None:
+            self.path = path
+
+        def __enter__(self) -> FakePDFDocument:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+    def fake_analyze(
+        document: object,
+        *,
+        script_diagnostics: list[dict[str, Any]],
+    ) -> list[list[dict[str, Any]]]:
+        """记录分析并同时构造页面和诊断。"""
+
+        analyze_calls.append(document)
+        script_diagnostics.append(
+            {
+                "script_lines": [],
+                "materialized_ranges": [],
+            }
+        )
+        return [
+            [
+                {
+                    "type": "text",
+                    "content": [
+                        {
+                            "type": "text",
+                            "content": "2",
+                            "styles": ["superscript"],
+                        }
+                    ],
+                }
+            ]
+        ]
+
+    module = sys.modules[__name__]
+    monkeypatch.setattr(module, "PDFDocument", FakePDFDocument)
+    monkeypatch.setattr(module, "_analyze_native_document", fake_analyze)
+    monkeypatch.setattr(module, "_DEMO_PDF_DIR", tmp_path)
+
+    diagnostics = _flash_script_diagnostics("cache-fixture.pdf")
+    runs = _flash_script_runs("cache-fixture.pdf")
+
+    assert len(analyze_calls) == 1
+    assert diagnostics == ({"script_lines": [], "materialized_ranges": []},)
+    assert runs == [("2", ("superscript",))]
 
 
 @pytest.mark.parametrize("pdf_name", tuple(_REVIEWED_SCRIPT_EXPECTATIONS))
@@ -791,9 +872,7 @@ def test_general_flash_script_recovery_candidates_materialize(pdf_name: str) -> 
 
 def test_chinese_paper_page_12_recovers_numbered_formula_regions() -> None:
     """验证栏顶公式 6、7、8 被完整认领为 equation，且不吸收相邻正文。"""
-    diagnostics: list[dict[str, Any]] = []
-    with PDFDocument(str(_DEMO_PDF_DIR / "中文论文2.pdf")) as document:
-        pages = _analyze_native_document(document, script_diagnostics=diagnostics)
+    pages, diagnostics = _flash_script_analysis("中文论文2.pdf")
 
     equations = {
         tag: block

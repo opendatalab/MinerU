@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import re
+import sys
 import unicodedata
 from collections import Counter
+from collections.abc import Iterator
 from copy import deepcopy
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+import pytest
 from bs4 import BeautifulSoup
 from pypdf import PdfReader
 
@@ -35,6 +39,40 @@ _FIXTURE_PDF_DIR = Path(__file__).resolve().parent / "pdfs"
 _FLASH_SYNTHETIC_PDF_NAME = "flash_table_annotations_synthetic.pdf"
 _CJK_SYNTHETIC_PDF_NAME = "native_cjk_layout_synthetic.pdf"
 _SAFE_WATERMARK_TEXT = "MINERU TEST WATERMARK"
+
+
+def _pdf_cache_key(pdf_path: Path) -> tuple[str, int, int]:
+    """以规范路径、文件大小和纳秒 mtime 构造单次 pytest 进程内缓存键。"""
+
+    resolved = pdf_path.resolve()
+    stat = resolved.stat()
+    return str(resolved), stat.st_size, stat.st_mtime_ns
+
+
+@lru_cache(maxsize=None)
+def _cached_model_list(
+    pdf_path: str,
+    _size: int,
+    _mtime_ns: int,
+) -> list[list[dict[str, Any]]]:
+    """每份不可变真实 PDF 只运行一次 Flash 预测，并缓存原始模型输出。"""
+
+    with PDFDocument(Path(pdf_path).read_bytes()) as pdf_doc:
+        return PdfModel().predict(pdf_doc)
+
+
+def _cached_model_list_copy(pdf_path: Path) -> list[list[dict[str, Any]]]:
+    """返回缓存模型输出的深拷贝，隔离不同测试对可变 block 的修改。"""
+
+    return deepcopy(_cached_model_list(*_pdf_cache_key(pdf_path)))
+
+
+@pytest.fixture(scope="module", autouse=True)
+def _clear_real_pdf_model_cache_after_module() -> Iterator[None]:
+    """模块结束后释放真实 PDF 模型缓存，避免影响后续 unittest 内存。"""
+
+    yield
+    _cached_model_list.cache_clear()
 
 
 def _model_json(
@@ -105,9 +143,7 @@ def _native_model_list(
 ) -> list[list[dict[str, Any]]]:
     """运行仓库内数字 PDF 样例并返回 Flash 原生模型输出。"""
 
-    pdf_path = pdf_dir / pdf_name
-    with PDFDocument(str(pdf_path)) as pdf_doc:
-        return PdfModel().predict(pdf_doc)
+    return _cached_model_list_copy(pdf_dir / pdf_name)
 
 
 def _txt_model_list(
@@ -117,9 +153,7 @@ def _txt_model_list(
 ) -> list[list[dict[str, Any]]]:
     """显式使用 Flash TXT 模式解析仓库内回归 PDF，禁止经过 auto 分类。"""
 
-    pdf_path = pdf_dir / pdf_name
-    with PDFDocument(pdf_path.read_bytes()) as pdf_doc:
-        return PdfModel().predict(pdf_doc)
+    return _cached_model_list_copy(pdf_dir / pdf_name)
 
 
 def _auto_model_list(pdf_name: str) -> list[list[dict[str, Any]]]:
@@ -128,13 +162,57 @@ def _auto_model_list(pdf_name: str) -> list[list[dict[str, Any]]]:
     pdf_path = Path(__file__).parents[2] / "demo" / "pdfs" / pdf_name
     with PDFDocument(pdf_path.read_bytes()) as pdf_doc:
         assert pdf_doc.classify() == "txt"
-        return PdfModel().predict(pdf_doc)
+    return _cached_model_list_copy(pdf_path)
 
 
 def _native_table_counts(pdf_name: str) -> list[int]:
     """返回仓库内数字 PDF 样例的逐页表格块数量。"""
 
     return [sum(block["type"] == "table" for block in page) for page in _native_model_list(pdf_name)]
+
+
+def test_real_pdf_model_cache_reuses_parse_and_isolates_mutation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """验证相同文件只预测一次，且调用方修改深拷贝不会污染缓存。"""
+
+    pdf_path = tmp_path / "cache-fixture.pdf"
+    pdf_path.write_bytes(b"cache fixture")
+    predict_calls: list[object] = []
+
+    class FakePDFDocument:
+        """提供缓存测试所需的最小 PDFDocument 上下文。"""
+
+        def __init__(self, _payload: bytes) -> None:
+            pass
+
+        def __enter__(self) -> FakePDFDocument:
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
+
+    class FakePdfModel:
+        """记录预测次数并返回可变模型块。"""
+
+        def predict(self, document: object) -> list[list[dict[str, Any]]]:
+            predict_calls.append(document)
+            return [[{"type": "text", "content": "stable"}]]
+
+    module = sys.modules[__name__]
+    monkeypatch.setattr(module, "PDFDocument", FakePDFDocument)
+    monkeypatch.setattr(module, "PdfModel", FakePdfModel)
+
+    first = _cached_model_list_copy(pdf_path)
+    second = _cached_model_list_copy(pdf_path)
+    first[0][0]["content"] = "changed"
+    third = _cached_model_list_copy(pdf_path)
+
+    assert len(predict_calls) == 1
+    assert first is not second
+    assert second[0][0]["content"] == "stable"
+    assert third[0][0]["content"] == "stable"
 
 
 def _native_page_source(pdf_name: str, page_idx: int) -> models._PageSource:
@@ -251,9 +329,9 @@ def test_explicit_pdf_fixtures_keep_expected_txt_block_inventory() -> None:
                     "image": 8,
                     "page_footnote": 1,
                     "page_number": 12,
-                    "paragraph_title": 18,
+                    "paragraph_title": 17,
                     "table": 5,
-                    "text": 85,
+                    "text": 86,
                 }
             ),
         ),
@@ -280,12 +358,12 @@ def test_explicit_pdf_fixtures_keep_expected_txt_block_inventory() -> None:
                     "aside_text": 1,
                     "caption": 8,
                     "doc_title": 1,
-                    "equation": 8,
+                    "equation": 7,
                     "image": 1,
                     "page_footnote": 6,
                     "paragraph_title": 21,
                     "table": 9,
-                    "text": 118,
+                    "text": 124,
                 }
             ),
         ),
@@ -306,7 +384,7 @@ def test_explicit_pdf_fixtures_keep_expected_txt_block_inventory() -> None:
                 }
             ),
         ),
-        "demo6.pdf": (7, Counter({"image": 2, "paragraph_title": 9, "text": 24})),
+        "demo6.pdf": (7, Counter({"image": 2, "paragraph_title": 9, "text": 22})),
         "mixed_elements_pages_03_06.pdf": (
             4,
             Counter(
@@ -331,10 +409,11 @@ def test_explicit_pdf_fixtures_keep_expected_txt_block_inventory() -> None:
                     "caption": 6,
                     "code": 3,
                     "doc_title": 1,
-                    "footer": 3,
+                    "footer": 1,
                     "image": 2,
                     "page_number": 4,
-                    "paragraph_title": 16,
+                    "page_footnote": 2,
+                    "paragraph_title": 15,
                     "table": 2,
                     "text": 57,
                 }
@@ -366,17 +445,47 @@ def test_explicit_pdf_fixtures_keep_expected_txt_block_inventory() -> None:
             10,
             Counter(
                 {
-                    "caption": 18,
-                    "doc_title": 1,
+                    "caption": 22,
+                    "doc_title": 2,
                     "equation": 6,
-                    "footnote": 1,
-                    "header": 22,
+                    "footnote": 2,
+                    "header": 24,
                     "image": 8,
                     "page_footnote": 4,
                     "page_number": 9,
                     "paragraph_title": 20,
                     "table": 3,
-                    "text": 106,
+                    "text": 107,
+                }
+            ),
+        ),
+        "中文论文3.pdf": (
+            4,
+            Counter(
+                {
+                    "caption": 6,
+                    "doc_title": 1,
+                    "header": 12,
+                    "image": 3,
+                    "page_footnote": 4,
+                    "page_number": 3,
+                    "paragraph_title": 6,
+                    "text": 56,
+                }
+            ),
+        ),
+        "中文论文4.pdf": (
+            5,
+            Counter(
+                {
+                    "caption": 10,
+                    "doc_title": 2,
+                    "header": 19,
+                    "image": 5,
+                    "page_footnote": 1,
+                    "paragraph_title": 14,
+                    "table": 5,
+                    "text": 45,
                 }
             ),
         ),
@@ -389,7 +498,8 @@ def test_explicit_pdf_fixtures_keep_expected_txt_block_inventory() -> None:
                     "footnote": 3,
                     "page_number": 8,
                     "table": 6,
-                    "text": 16,
+                    # 第 5 页三条等节奏句号行按当前正文段界规则拆开；视觉 gold 已完成人工批准。
+                    "text": 18,
                 }
             ),
         ),
@@ -473,14 +583,35 @@ def test_demo1_keeps_five_real_tables_without_formula_false_positive() -> None:
         "footnote",
     ]
     assert [block["bbox"] for block in page5_visual_blocks] == [
-        [0.078, 0.729, 0.107, 0.891],
+        [0.076, 0.727, 0.109, 0.892],
         [0.117, 0.125, 0.431, 0.891],
-        [0.44, 0.435, 0.452, 0.891],
+        [0.438, 0.434, 0.454, 0.892],
     ]
     assert [block["angle"] for block in page5_visual_blocks] == [270, 270, 270]
     assert _visible_content(page5_visual_blocks[2]) == (
         "For *rainfall distribution, U, uniform; W, winter dominated; S, summer dominated. BFI, baseflow index."
     )
+    inline_statistics = next(
+        block
+        for block in model_list[4]
+        if _visible_content(block).startswith("Due to the constraint")
+    )
+    assert inline_statistics["type"] == "text"
+    assert "The F-statistic was calculated as:" in _visible_content(
+        inline_statistics,
+    )
+    formula7 = next(
+        block
+        for block in model_list[4]
+        if block["type"] == "equation"
+        and r"\tag{7}" in str(block.get("content", ""))
+    )
+    formula_index = model_list[4].index(formula7)
+    assert [
+        model_list[4][formula_index - 1]["type"],
+        formula7["type"],
+        model_list[4][formula_index + 1]["type"],
+    ] == ["text", "equation", "text"]
     assert [[child["type"] for child in group["content"]] for group in _grouped_visual_blocks(model_list[5], "table")] == [
         ["table_caption", "table_body", "table_footnote"],
         ["table_caption", "table_body", "table_footnote"],
@@ -490,10 +621,16 @@ def test_demo1_keeps_five_real_tables_without_formula_false_positive() -> None:
     assert _visible_content(page1_footnotes[0]).startswith("* Corresponding author.")
     copyright_block = next(block for block in model_list[0] if _visible_content(block).startswith("0022-1694/$"))
     assert copyright_block["type"] == "footer"
-    assert copyright_block["bbox"] == [0.078, 0.87, 0.513, 0.894]
+    assert copyright_block["bbox"] == [0.077, 0.869, 0.514, 0.895]
     assert "doi:10.1016/j.jhydrol.2005.01.006" in _visible_content(copyright_block)
     assert model_list[0].index(page1_footnotes[0]) < model_list[0].index(copyright_block)
     assert next(block for block in model_list[0] if _visible_content(block) == "Abstract")["type"] == "paragraph_title"
+    received = next(
+        block
+        for block in model_list[0]
+        if _visible_content(block).startswith("Received 1 October")
+    )
+    assert received["type"] == "text"
     assert next(block for block in model_list[6] if _visible_content(block).startswith("4.2."))["type"] == "paragraph_title"
 
 
@@ -786,8 +923,8 @@ def test_demo3_keeps_tables_and_covers_every_native_source_line() -> None:
     """验证 demo3 容器、后续页段落边界及每条原生 source line 均保持稳定。"""
 
     pdf_path = Path(__file__).parents[2] / "demo" / "pdfs" / "demo3.pdf"
+    model_list = _native_model_list("demo3.pdf")
     with PDFDocument(str(pdf_path)) as pdf_doc:
-        model_list = PdfModel().predict(pdf_doc)
         source_lines_by_page: list[list[models._LineItem]] = []
         for page_idx in range(pdf_doc.page_count):
             page_size = pdf_doc.page_size(page_idx)
@@ -813,7 +950,7 @@ def test_demo3_keeps_tables_and_covers_every_native_source_line() -> None:
     ]
     assert [len(page) for page in model_list] == [
         23,
-        15,
+        20,
         13,
         21,
         19,
@@ -823,7 +960,7 @@ def test_demo3_keeps_tables_and_covers_every_native_source_line() -> None:
         17,
         18,
     ]
-    assert sum(len(page) for page in model_list) == 173
+    assert sum(len(page) for page in model_list) == 178
     assert sum(block["type"] == "caption" for page in model_list for block in page) == 8
     page7_tables = [block for block in model_list[6] if block["type"] == "table"]
     page7_table4 = next(block for block in page7_tables if "Number of parameters" in block["content"])
@@ -902,8 +1039,8 @@ def test_demo3_auxiliary_text_types_match_real_page_geometry() -> None:
     assert not [block for page in model_list for block in page if block["type"] == "footer"]
 
 
-def test_demo3_pages1_and2_fix_title_front_matter_and_embedding_formula() -> None:
-    """验证首页标题稳定，第二页标题、公式和栏尾正文各自保持完整。"""
+def test_demo3_pages1_and2_fix_title_front_matter_and_embedding_list() -> None:
+    """验证首页标题稳定，第二页标题、嵌入列表和栏尾正文各自保持完整。"""
 
     page1, page2 = _native_model_list("demo3.pdf")[:2]
     title = next(block for block in page1 if _visible_content(block).startswith("TABLEFORMER:"))
@@ -944,18 +1081,34 @@ def test_demo3_pages1_and2_fix_title_front_matter_and_embedding_formula() -> Non
     assert tables_body["type"] == "text"
 
     section_title = next(block for block in page2 if _visible_content(block).startswith("2 Preliminaries:"))
-    equations = [block for block in page2 if block["type"] == "equation"]
+    embedding_labels = (
+        "token ids (W)",
+        "positional ids (B)",
+        "segment ids (G)",
+        "column ids (C)",
+        "row ids (R)",
+        "rank ids (Z)",
+    )
+    embedding_blocks = [
+        next(
+            block
+            for block in page2
+            if _visible_content(block).startswith(label)
+        )
+        for label in embedding_labels
+    ]
     assert section_title["type"] == "paragraph_title"
     assert _visible_content(section_title) == "2 Preliminaries: TAPAS for Table Encoding"
-    assert len(equations) == 1
-    assert equations[0]["content"].splitlines() == [
-        "token ids (W) = {wv1, wv2, · · · , wvn }",
-        "positional ids (B) = {b1, b2, · · · , bn}",
-        "segment ids (G) = {gseg1, gseg2, · · · , gsegn }",
-        "column ids (C) = {ccol1, ccol2, · · · , ccoln}",
-        "row ids (R) = {rrow1, rrow2, · · · , rrown }",
-        "rank ids (Z) = {zrank1, zrank2, · · · , zrankn}",
-    ]
+    assert len({id(block) for block in embedding_blocks}) == 6
+    assert all(block["type"] == "text" for block in embedding_blocks)
+    assert all(
+        page2.index(first) < page2.index(second)
+        for first, second in zip(
+            embedding_blocks,
+            embedding_blocks[1:],
+        )
+    )
+    assert not [block for block in page2 if block["type"] == "equation"]
     as_model_blocks = [
         block
         for block in page2
@@ -1439,6 +1592,18 @@ def test_demo6_default3_targeted_title_regressions() -> None:
     assert sum("签名" in str(block["content"]) for block in model_list[6]) == 1
     assert sum("盖章" in str(block["content"]) for block in model_list[6]) == 1
     assert not [block for page in model_list for block in page if block["type"] in {"caption", "footnote"}]
+    page5 = model_list[4]
+    assert len(page5) == 1
+    assert page5[0]["type"] == "text"
+    assert all(
+        probe in _visible_content(page5[0])
+        for probe in (
+            "1.2",
+            "[2014]68 号",
+            "1.3",
+            "1.4",
+        )
+    )
 
 
 def test_mixed_elements_pages_03_06_force_txt_regressions() -> None:
@@ -1473,7 +1638,7 @@ def test_mixed_elements_pages_03_06_force_txt_regressions() -> None:
         "This allowed us to estimate the low-temperature hop distance",
     )
     assert len(math_paragraph) == 1
-    assert math_paragraph[0]["bbox"] == [0.081, 0.665, 0.475, 0.911]
+    assert math_paragraph[0]["bbox"] == [0.08, 0.666, 0.476, 0.912]
     assert set(math_paragraph[0]) == {"type", "bbox", "angle", "content", "lines"}
     for probe in (
         "where T0",
@@ -1494,16 +1659,16 @@ def test_mixed_elements_pages_03_06_force_txt_regressions() -> None:
     ] == []
     page4_footer = [block for block in page4 if block["type"] == "footer"]
     assert len(page4_footer) == 1
-    assert page4_footer[0]["bbox"] == [0.104, 0.93, 0.449, 0.941]
+    assert page4_footer[0]["bbox"] == [0.103, 0.929, 0.45, 0.94]
     assert math_paragraph[0]["bbox"][3] < page4_footer[0]["bbox"][1]
     assert [
         block["bbox"]
         for block in page4
         if block["type"] in {"text", "image", "caption"} and block["bbox"][0] >= 0.49 and block["bbox"][1] >= 0.49
     ] == [
-        [0.498, 0.509, 0.892, 0.634],
+        [0.496, 0.508, 0.893, 0.636],
         [0.503, 0.66, 0.886, 0.871],
-        [0.521, 0.889, 0.869, 0.911],
+        [0.52, 0.887, 0.87, 0.912],
     ]
 
     page5 = model_list[2]
@@ -1656,7 +1821,7 @@ def test_iebm_left_indented_compact_formula_is_equation() -> None:
     """验证右栏左缩进紧凑公式通过公共 auto 入口输出为 equation。"""
 
     page = _auto_model_list("IEBM_A_2667169_O-5.pdf")[0]
-    target = [block for block in page if block["bbox"] == [0.532, 0.292, 0.658, 0.312]]
+    target = [block for block in page if block["bbox"] == [0.531, 0.291, 0.658, 0.311]]
 
     assert len(target) == 1
     assert target[0]["type"] == "equation"
@@ -1701,6 +1866,10 @@ def test_synthetic_cjk_fixture_contains_only_safe_watermarks_and_links() -> None
     """验证合成 CJK PDF 仅含安全旋转水印和预期 URI 注解。"""
 
     pdf_path = _FIXTURE_PDF_DIR / _CJK_SYNTHETIC_PDF_NAME
+    model_list = _txt_model_list(
+        _CJK_SYNTHETIC_PDF_NAME,
+        pdf_dir=_FIXTURE_PDF_DIR,
+    )
     with PDFDocument(pdf_path.read_bytes()) as document:
         rotated_lines = [
             "".join(str(span.get("text", "")) for span in line.get("spans", []))
@@ -1708,7 +1877,6 @@ def test_synthetic_cjk_fixture_contains_only_safe_watermarks_and_links() -> None
             for line in document.get_page_lines(page_index)
             if float(line.get("rotation", 0.0))
         ]
-        model_list = PdfModel().predict(document)
 
     expected_watermark_row = " ".join([_SAFE_WATERMARK_TEXT] * 4)
     assert len(rotated_lines) == 16
@@ -1760,10 +1928,10 @@ def test_frozen_soil_page3_formula3_remains_one_equation() -> None:
     equations = [block for block in page if block["type"] == "equation"]
     formula3 = [block for block in equations if r"\tag{3}" in str(block.get("content", ""))]
 
-    assert len(page) == 30
+    assert len(page) == 31
     assert len(equations) == 4
     assert len(formula3) == 1
-    assert formula3[0]["bbox"] == [0.653, 0.703, 0.898, 0.751]
+    assert formula3[0]["bbox"] == [0.651, 0.717, 0.893, 0.746]
     assert all(probe in str(formula3[0]["content"]) for probe in ("at = 1", "2 ln", "1 - εt", "εt", r"\tag{3}"))
     assert not [
         block
@@ -1790,7 +1958,7 @@ def test_frozen_soil_reference_tails_remain_single_text_blocks() -> None:
     page = model_list[8]
 
     captions = [block for page_blocks in model_list for block in page_blocks if block["type"] == "caption"]
-    assert len(captions) == 18
+    assert len(captions) == 22
     page2 = model_list[1]
     image = next(block for block in page2 if block["type"] == "image")
     chinese_caption = _blocks_containing(page2, "图1 冻土抗剪强度试验流程示意图")
@@ -1806,12 +1974,14 @@ def test_frozen_soil_reference_tails_remain_single_text_blocks() -> None:
         "table_caption",
         "table_body",
         "table_footnote",
+        "table_footnote",
     ]
     assert [tuple(round(value * 1000) for value in child["bbox"]) for child in page3_table_group["content"]] == [
-        (184, 684, 411, 708),
-        (116, 700, 473, 725),
+        (182, 688, 406, 700),
+        (114, 706, 474, 715),
         (107, 721, 483, 838),
-        (107, 838, 489, 925),
+        (105, 837, 484, 879),
+        (105, 884, 482, 926),
     ]
     assert inline_text(page3_table_group["content"][0]["content"]).startswith("表1")
     assert inline_text(page3_table_group["content"][1]["content"]).startswith("Table 1")
@@ -1823,17 +1993,17 @@ def test_frozen_soil_reference_tails_remain_single_text_blocks() -> None:
     ]
     assert [
         [tuple(round(value * 1000) for value in child["bbox"]) for child in group["content"]] for group in page5_table_groups
-    ] == [
-        [
-            (217, 121, 373, 145),
-            (170, 137, 419, 162),
-            (107, 158, 483, 416),
-        ],
-        [
-            (209, 624, 380, 649),
-            (128, 641, 461, 665),
-            (107, 662, 483, 826),
-        ],
+        ] == [
+            [
+                (215, 124, 374, 137),
+                (169, 143, 421, 154),
+                (107, 158, 483, 416),
+            ],
+            [
+                (208, 628, 381, 640),
+                (127, 646, 462, 656),
+                (107, 662, 483, 826),
+            ],
     ]
 
     narrative_reference = _blocks_containing(
@@ -1875,6 +2045,17 @@ def test_mixed_elements_pages_07_10_force_txt_regressions() -> None:
         matches = _blocks_containing(page7, probe)
         assert len(matches) == 1
         assert matches[0]["type"] == "text"
+    keywords = _blocks_containing(
+        page7,
+        "Keywords-program slicing",
+    )
+    funding_note = _blocks_containing(
+        page7,
+        "The work was partially funded",
+    )
+    assert len(keywords) == len(funding_note) == 1
+    assert keywords[0]["type"] == "text"
+    assert funding_note[0]["type"] == "page_footnote"
 
     code_blocks = [block for block in page8 if block["type"] == "code"]
     assert len(code_blocks) == 3
@@ -1922,7 +2103,27 @@ def test_mixed_elements_pages_07_10_force_txt_regressions() -> None:
     assert experiment_title[0]["type"] == "paragraph_title"
     url_footer = _blocks_containing(page9, "http://klee.github.io")
     assert len(url_footer) == 1
-    assert url_footer[0]["type"] == "footer"
+    assert url_footer[0]["type"] == "page_footnote"
+    bottom_footnotes = [
+        block
+        for block in page9
+        if block["type"] == "page_footnote"
+        and block["bbox"][1] >= 0.85
+    ]
+    assert len(bottom_footnotes) == 1
+    assert all(
+        probe in _visible_content(bottom_footnotes[0])
+        for probe in (
+            "http://klee.github.io",
+            "llvm-slicing",
+            "liuml07/giri",
+        )
+    )
+    assert sum(
+        block["type"] == "page_footnote"
+        for page in model_list
+        for block in page
+    ) == 2
 
     reference5 = _blocks_containing(page10, "[5] A. Srivastava")
     assert len(reference5) == 1
@@ -1978,7 +2179,7 @@ def test_mixed_elements_pages_11_15_force_txt_regressions() -> None:
         "table_body",
     ]
     assert [tuple(round(value * 1000) for value in child["bbox"]) for child in table_group["content"]] == [
-        (79, 93, 798, 103),
+        (77, 92, 799, 104),
         (79, 109, 922, 247),
     ]
     assert "Table 1." not in str(table_group["content"][1]["content"])

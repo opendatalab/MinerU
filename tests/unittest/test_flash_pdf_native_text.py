@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from mineru.model.flash.pdf import native_text
+from mineru.model.flash.pdf import models, native_text
 
 
 def _span(
@@ -48,13 +48,38 @@ def _line(
     }
 
 
+def test_private_use_decorative_rule_becomes_axis_line() -> None:
+    """验证页首宽幅私用区重复字形不再进入文本输出。"""
+
+    decorative = models._LineItem(
+        text="\ue123" * 24,
+        bbox=(10.0, 12.0, 190.0, 16.0),
+        angle=0,
+        source_index=0,
+    )
+    body = models._LineItem(
+        text="body",
+        bbox=(10.0, 40.0, 80.0, 50.0),
+        angle=0,
+        source_index=1,
+    )
+
+    retained, rules = native_text._extract_decorative_text_rules(
+        [decorative, body],
+        (200.0, 200.0),
+    )
+
+    assert retained == [body]
+    assert [(rule.orientation, rule.bbox) for rule in rules] == [("horizontal", decorative.bbox)]
+
+
 def test_mixed_footer_and_315_degree_watermark_are_split_before_filtering() -> None:
     """验证接近 315 度的 span 不会继续借用父行 0 度方向与巨型 bbox。"""
 
     pdf_line = _line(
         [
             _span("文档问题反馈: aw-document@example.com", (30.0, 90.0, 80.0, 98.0), 0.0),
-            _span("深圳TCL智能家庭科技有限公司raynL", (5.0, 10.0, 25.0, 95.0), 315.000019),
+            _span("通用测试文档", (5.0, 10.0, 25.0, 95.0), 315.000019),
             _span("\r\n", (26.0, 20.0, 26.0, 20.0), 0.0),
         ],
         0.0,

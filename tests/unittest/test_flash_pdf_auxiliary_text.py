@@ -248,9 +248,7 @@ def test_image_footnote_requires_image_rule_and_smaller_text() -> None:
             "content": "",
         }
     ]
-    page.drawing_lines = [
-        models._AxisLine((50.0, 318.0, 300.0, 319.0), 1.0, "horizontal")
-    ]
+    page.drawing_lines = [models._AxisLine((50.0, 318.0, 300.0, 319.0), 1.0, "horizontal")]
 
     auxiliary_text._classify_page_auxiliary_text(page)
 
@@ -339,9 +337,7 @@ def test_image_footnote_rejects_incomplete_visual_evidence(
             }
         ]
     if missing_evidence != "rule":
-        page.drawing_lines = [
-            models._AxisLine((50.0, 318.0, 300.0, 319.0), 1.0, "horizontal")
-        ]
+        page.drawing_lines = [models._AxisLine((50.0, 318.0, 300.0, 319.0), 1.0, "horizontal")]
     if missing_evidence == "table_rule":
         page.table_bboxes = [(40.0, 300.0, 310.0, 340.0)]
 
@@ -385,6 +381,191 @@ def test_page_footnote_supports_independent_column_rules() -> None:
     assert page.page_footnote_groups == [{6, 7}, {8, 9}]
 
 
+def test_page_footnote_accepts_slightly_left_shifted_rule_with_two_small_rows() -> None:
+    """验证轻微早于栏左缘的短横线可凭高覆盖和连续小字号行确认脚注。"""
+
+    body = [
+        _text_line(
+            f"body {index}",
+            (122.0, 180.0 + 90.0 * index, 622.0, 190.0 + 90.0 * index),
+            index,
+            effective_height=10.0,
+        )
+        for index in range(4)
+    ]
+    notes = [
+        _text_line(
+            "note one",
+            (122.0, 862.0, 550.0, 870.0),
+            4,
+            effective_height=8.0,
+        ),
+        _text_line(
+            "note two",
+            (122.0, 874.0, 520.0, 882.0),
+            5,
+            effective_height=8.0,
+        ),
+    ]
+    page = _prepared_text_page(
+        *body,
+        *notes,
+        page_size=(1000.0, 1000.0),
+    )
+    page.drawing_lines = [
+        models._AxisLine(
+            (100.0, 850.0, 300.0, 852.0),
+            1.0,
+            "horizontal",
+        )
+    ]
+
+    auxiliary_text._classify_page_auxiliary_text(page)
+
+    assert all(line.semantic_type is None for line in body)
+    assert all(line.semantic_type == "page_footnote" for line in notes)
+    assert page.page_footnote_groups == [{4, 5}]
+
+
+def test_page_footnote_rejects_left_shifted_rule_with_single_or_body_size_row() -> None:
+    """验证轻微左偏横线缺少两行或字号收缩证据时不触发脚注。"""
+
+    for note_rows, note_height in ((1, 8.0), (2, 10.0)):
+        lines = [
+            *[
+                _text_line(
+                    f"body {index}",
+                    (122.0, 180.0 + 90.0 * index, 622.0, 190.0 + 90.0 * index),
+                    index,
+                    effective_height=10.0,
+                )
+                for index in range(4)
+            ],
+            *[
+                _text_line(
+                    f"note {index}",
+                    (122.0, 862.0 + 12.0 * index, 550.0, 862.0 + 12.0 * index + note_height),
+                    4 + index,
+                    effective_height=note_height,
+                )
+                for index in range(note_rows)
+            ],
+        ]
+        page = _prepared_text_page(
+            *lines,
+            page_size=(1000.0, 1000.0),
+        )
+        page.drawing_lines = [
+            models._AxisLine(
+                (100.0, 850.0, 300.0, 852.0),
+                1.0,
+                "horizontal",
+            )
+        ]
+
+        auxiliary_text._classify_page_auxiliary_text(page)
+
+        assert page.page_footnote_groups == []
+        assert all(line.semantic_type is None for line in lines)
+
+
+def test_page_footnote_accepts_centered_short_rule_with_small_rows() -> None:
+    """验证栏内居中短横线可凭页面位置和小字号连续行确认脚注。"""
+
+    body = [
+        _text_line(
+            f"body {index}",
+            (100.0, 180.0 + 80.0 * index, 500.0, 190.0 + 80.0 * index),
+            index,
+            effective_height=10.0,
+        )
+        for index in range(4)
+    ]
+    notes = [
+        _text_line(
+            "note one",
+            (100.0, 862.0, 490.0, 870.0),
+            4,
+            effective_height=8.0,
+        ),
+        _text_line(
+            "note two",
+            (100.0, 874.0, 460.0, 882.0),
+            5,
+            effective_height=8.0,
+        ),
+    ]
+    page = _prepared_text_page(
+        *body,
+        *notes,
+        page_size=(1000.0, 1000.0),
+    )
+    page.drawing_lines = [
+        models._AxisLine(
+            (200.0, 850.0, 400.0, 852.0),
+            1.0,
+            "horizontal",
+        )
+    ]
+
+    auxiliary_text._classify_page_auxiliary_text(page)
+
+    assert all(line.semantic_type is None for line in body)
+    assert all(line.semantic_type == "page_footnote" for line in notes)
+    assert page.page_footnote_groups == [{4, 5}]
+
+
+def test_page_footnote_rejects_centered_fraction_rule_without_upper_clearance() -> None:
+    """验证夹在上下公式层级之间的居中横线不会触发页脚注。"""
+
+    body = [
+        _text_line(
+            f"body {index}",
+            (100.0, 180.0 + 80.0 * index, 500.0, 190.0 + 80.0 * index),
+            index,
+            effective_height=10.0,
+        )
+        for index in range(4)
+    ]
+    formula_rows = [
+        _text_line(
+            "formula numerator",
+            (100.0, 842.0, 500.0, 852.0),
+            4,
+            effective_height=10.0,
+        ),
+        _text_line(
+            "formula denominator",
+            (100.0, 854.0, 490.0, 862.0),
+            5,
+            effective_height=8.0,
+        ),
+        _text_line(
+            "formula tail",
+            (100.0, 866.0, 460.0, 874.0),
+            6,
+            effective_height=8.0,
+        ),
+    ]
+    page = _prepared_text_page(
+        *body,
+        *formula_rows,
+        page_size=(1000.0, 1000.0),
+    )
+    page.drawing_lines = [
+        models._AxisLine(
+            (200.0, 850.0, 400.0, 852.0),
+            1.0,
+            "horizontal",
+        )
+    ]
+
+    auxiliary_text._classify_page_auxiliary_text(page)
+
+    assert page.page_footnote_groups == []
+    assert all(line.semantic_type is None for line in formula_rows)
+
+
 def test_page_footnote_accepts_lower_half_column_width_rule_with_smaller_text() -> None:
     """验证页面下半部的栏宽横线可凭字号收缩识别单栏脚注。"""
 
@@ -414,9 +595,7 @@ def test_page_footnote_accepts_lower_half_column_width_rule_with_smaller_text() 
         ]
     )
     page = _prepared_text_page(*lines, page_size=(1000.0, 1000.0))
-    page.drawing_lines = [
-        models._AxisLine((100.0, 600.0, 900.0, 602.0), 1.0, "horizontal")
-    ]
+    page.drawing_lines = [models._AxisLine((100.0, 600.0, 900.0, 602.0), 1.0, "horizontal")]
 
     auxiliary_text._classify_page_auxiliary_text(page)
 
@@ -499,9 +678,7 @@ def test_page_footnote_rejects_column_width_rule_without_size_contraction() -> N
         )
     )
     page = _prepared_text_page(*lines, page_size=(1000.0, 1000.0))
-    page.drawing_lines = [
-        models._AxisLine((100.0, 600.0, 900.0, 602.0), 1.0, "horizontal")
-    ]
+    page.drawing_lines = [models._AxisLine((100.0, 600.0, 900.0, 602.0), 1.0, "horizontal")]
 
     auxiliary_text._classify_page_auxiliary_text(page)
 
@@ -532,9 +709,7 @@ def test_page_footnote_unions_aligned_regular_and_span_lanes_only() -> None:
         _text_line("right body below rule", (520.0, 812.0, 900.0, 822.0), 11),
     ]
     page = _prepared_text_page(*lines, page_size=(1000.0, 1000.0))
-    page.drawing_lines = [
-        models._AxisLine((100.0, 800.0, 305.0, 802.0), 1.0, "horizontal")
-    ]
+    page.drawing_lines = [models._AxisLine((100.0, 800.0, 305.0, 802.0), 1.0, "horizontal")]
 
     auxiliary_text._classify_page_auxiliary_text(page)
 
@@ -567,6 +742,99 @@ def test_page_footnote_entries_split_first_line_indent_without_text() -> None:
     assert [[line.source_index for line in entry] for entry in entries] == [
         [0],
         [1, 2, 3],
+    ]
+
+
+def test_page_footnote_entries_keep_same_left_compact_continuation() -> None:
+    """验证同左缘的次满首行与紧邻续行仍保留在同一脚注块。"""
+
+    lines = [
+        _text_line(
+            "first",
+            (70.0, 732.0, 220.0, 740.0),
+            0,
+            effective_height=8.0,
+            median_glyph_width=4.0,
+            font_signature=("NoteFont", 0),
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "continuation",
+            (70.0, 743.0, 270.0, 751.0),
+            1,
+            effective_height=8.0,
+            median_glyph_width=4.0,
+            font_signature=("NoteFont", 0),
+            font_coverage=1.0,
+        ),
+    ]
+
+    entries = text_blocks._split_page_footnote_entries(
+        lines,
+        (595.0, 842.0),
+    )
+
+    assert [[line.source_index for line in entry] for entry in entries] == [
+        [0, 1],
+    ]
+
+
+def test_page_footnote_single_geometric_marker_keeps_group_together() -> None:
+    """验证 row id 缺失的单个窄编号首行仍可聚合整组连续脚注。"""
+
+    note_font = ("NoteFont", 0)
+    lines = [
+        _text_line(
+            "1",
+            (10.0, 80.0, 12.0, 88.0),
+            0,
+            visual_row_id=10,
+            effective_height=8.0,
+            font_signature=note_font,
+            font_coverage=1.0,
+            median_glyph_width=2.0,
+            semantic_type="page_footnote",
+        ),
+        _text_line(
+            "first source",
+            (14.0, 80.5, 60.0, 88.5),
+            1,
+            visual_row_id=11,
+            effective_height=8.0,
+            font_signature=note_font,
+            font_coverage=1.0,
+            median_glyph_width=2.0,
+            semantic_type="page_footnote",
+        ),
+        _text_line(
+            "second source",
+            (10.0, 92.0, 70.0, 100.0),
+            2,
+            effective_height=8.0,
+            font_signature=note_font,
+            font_coverage=1.0,
+            median_glyph_width=2.0,
+            semantic_type="page_footnote",
+        ),
+        _text_line(
+            "third source",
+            (10.0, 104.0, 65.0, 112.0),
+            3,
+            effective_height=8.0,
+            font_signature=note_font,
+            font_coverage=1.0,
+            median_glyph_width=2.0,
+            semantic_type="page_footnote",
+        ),
+    ]
+
+    entries = text_blocks._split_page_footnote_entries(
+        lines,
+        (100.0, 140.0),
+    )
+
+    assert [[line.source_index for line in entry] for entry in entries] == [
+        [0, 1, 2, 3],
     ]
 
 
@@ -619,11 +887,7 @@ def test_page_footnote_entries_split_hanging_indent_and_tighten_boxes() -> None:
     page = _prepared_text_page(*lines, page_size=page_size)
     page.page_footnote_groups = [{line.source_index for line in lines}]
 
-    blocks = [
-        block
-        for block in pipeline._finalize_prepared_page(page, page_index=0)
-        if block["type"] == "page_footnote"
-    ]
+    blocks = [block for block in pipeline._finalize_prepared_page(page, page_index=0) if block["type"] == "page_footnote"]
 
     assert [block["content"] for block in blocks] == [
         "receipt",
@@ -637,10 +901,7 @@ def test_page_footnote_entries_split_hanging_indent_and_tighten_boxes() -> None:
         [0.133, 0.904, 0.63, 0.914],
         [0.133, 0.916, 0.717, 0.927],
     ]
-    assert all(
-        previous["bbox"][3] < current["bbox"][1]
-        for previous, current in zip(blocks, blocks[1:])
-    )
+    assert all(previous["bbox"][3] < current["bbox"][1] for previous, current in zip(blocks, blocks[1:]))
 
 
 @pytest.mark.parametrize(
@@ -710,10 +971,7 @@ def test_aside_text_accepts_tall_vertical_text_in_either_edge_band(
     """验证横排正文占主导时，左右边缘的高占比垂直文字均标为侧栏。"""
 
     lines = [
-        *[
-            _text_line(f"body {index}", (100.0, 100.0 + 30.0 * index, 900.0, 110.0 + 30.0 * index), index)
-            for index in range(6)
-        ],
+        *[_text_line(f"body {index}", (100.0, 100.0 + 30.0 * index, 900.0, 110.0 + 30.0 * index), index) for index in range(6)],
         _text_line("aside", bbox, 6, angle=angle, effective_height=20.0),
     ]
     page = _prepared_text_page(*lines, page_size=(1000.0, 1000.0))
@@ -728,8 +986,7 @@ def test_aside_text_rejects_short_internal_wide_and_non_dominant_rotated_text() 
     """验证短旋转行、页内旋转行、过宽边缘行及旋转正文均不误报侧栏。"""
 
     upright_lines = [
-        _text_line(f"body {index}", (100.0, 100.0 + 30.0 * index, 900.0, 110.0 + 30.0 * index), index)
-        for index in range(10)
+        _text_line(f"body {index}", (100.0, 100.0 + 30.0 * index, 900.0, 110.0 + 30.0 * index), index) for index in range(10)
     ]
     rejected = [
         _text_line("short", (20.0, 250.0, 50.0, 350.0), 10, angle=270, effective_height=20.0),
@@ -741,12 +998,9 @@ def test_aside_text_rejects_short_internal_wide_and_non_dominant_rotated_text() 
     assert all(line.semantic_type is None for line in rejected)
 
     rotated_body = [
-        _text_line(f"upright {index}", (100.0, 100.0 + 20.0 * index, 300.0, 110.0 + 20.0 * index), index)
-        for index in range(4)
+        _text_line(f"upright {index}", (100.0, 100.0 + 20.0 * index, 300.0, 110.0 + 20.0 * index), index) for index in range(4)
     ]
-    rotated_body.append(
-        _text_line("edge but not aside", (20.0, 200.0, 50.0, 700.0), 4, angle=270, effective_height=20.0)
-    )
+    rotated_body.append(_text_line("edge but not aside", (20.0, 200.0, 50.0, 700.0), 4, angle=270, effective_height=20.0))
     rotated_page = _prepared_text_page(*rotated_body, page_size=(1000.0, 1000.0))
     auxiliary_text._classify_page_auxiliary_text(rotated_page)
     assert rotated_body[-1].semantic_type is None
@@ -767,14 +1021,10 @@ def test_auxiliary_text_classification_is_content_independent() -> None:
     first_page = _prepared_text_page(*first_lines, page_size=(1000.0, 1000.0))
     second_page = _prepared_text_page(*second_lines, page_size=(1000.0, 1000.0))
     for page in (first_page, second_page):
-        page.drawing_lines = [
-            models._AxisLine((100.0, 750.0, 260.0, 752.0), 1.0, "horizontal")
-        ]
+        page.drawing_lines = [models._AxisLine((100.0, 750.0, 260.0, 752.0), 1.0, "horizontal")]
         auxiliary_text._classify_page_auxiliary_text(page)
 
-    assert [line.semantic_type for line in first_lines] == [
-        line.semantic_type for line in second_lines
-    ]
+    assert [line.semantic_type for line in first_lines] == [line.semantic_type for line in second_lines]
     assert first_page.page_footnote_groups == second_page.page_footnote_groups
 
 
@@ -890,9 +1140,7 @@ def test_top_rule_marks_only_unclassified_text_above_it_as_header() -> None:
         body,
         page_size=(1000.0, 1000.0),
     )
-    page.drawing_lines = [
-        models._AxisLine((80.0, 60.0, 920.0, 62.0), 1.0, "horizontal")
-    ]
+    page.drawing_lines = [models._AxisLine((80.0, 60.0, 920.0, 62.0), 1.0, "horizontal")]
 
     auxiliary_text._classify_rule_delimited_headers([page])
 
@@ -902,6 +1150,111 @@ def test_top_rule_marks_only_unclassified_text_above_it_as_header() -> None:
         "header",
         None,
     ]
+
+
+def test_top_rule_uses_first_separator_before_later_section_rule() -> None:
+    """验证页首多条长横线只采用最上方有效页眉分隔线。"""
+
+    header = _text_line("header", (100.0, 30.0, 300.0, 40.0), 0)
+    section = _text_line("section", (100.0, 90.0, 300.0, 110.0), 1)
+    body = _text_line("body", (100.0, 150.0, 700.0, 160.0), 2)
+    page = _prepared_text_page(
+        header,
+        section,
+        body,
+        page_size=(1000.0, 1000.0),
+    )
+    page.drawing_lines = [
+        models._AxisLine(
+            (80.0, 60.0, 920.0, 62.0),
+            1.0,
+            "horizontal",
+        ),
+        models._AxisLine(
+            (80.0, 120.0, 920.0, 122.0),
+            1.0,
+            "horizontal",
+        ),
+    ]
+
+    auxiliary_text._classify_rule_delimited_headers([page])
+
+    assert header.semantic_type == "header"
+    assert section.semantic_type is None
+    assert body.semantic_type is None
+
+
+def test_top_decorative_rule_does_not_precede_real_header_separator() -> None:
+    """验证顶部无上方文字的装饰线不会抢占刊头文字下方的真实分隔线。"""
+
+    header = _text_line("letterhead", (100.0, 30.0, 400.0, 40.0), 0)
+    body = _text_line("body", (100.0, 80.0, 700.0, 90.0), 1)
+    page = _prepared_text_page(
+        header,
+        body,
+        page_size=(1000.0, 1000.0),
+    )
+    page.drawing_lines = [
+        models._AxisLine(
+            (80.0, 8.0, 920.0, 10.0),
+            1.0,
+            "horizontal",
+        ),
+        models._AxisLine(
+            (80.0, 60.0, 920.0, 62.0),
+            1.0,
+            "horizontal",
+        ),
+    ]
+
+    auxiliary_text._classify_rule_delimited_headers([page])
+
+    assert header.semantic_type == "header"
+    assert body.semantic_type is None
+
+
+def test_top_rule_uses_ink_bbox_when_loose_bbox_crosses_separator() -> None:
+    """验证 loose 框穿过页首横线时仍按真实字形区分线上日期和线下 DOI。"""
+
+    date = _text_line(
+        "2026 年 4 月",
+        (100.0, 30.0, 240.0, 64.0),
+        0,
+        effective_height=10.0,
+    )
+    date.ink_bbox = (100.0, 34.0, 240.0, 45.0)
+    doi = _text_line(
+        "DOI:10.1000/example",
+        (100.0, 58.0, 500.0, 76.0),
+        1,
+        effective_height=10.0,
+    )
+    doi.ink_bbox = (100.0, 64.0, 500.0, 74.0)
+    body = _text_line(
+        "body",
+        (100.0, 90.0, 700.0, 100.0),
+        2,
+        effective_height=10.0,
+    )
+    page = _prepared_text_page(
+        date,
+        doi,
+        body,
+        page_size=(1000.0, 1000.0),
+    )
+    page.drawing_lines = [
+        models._AxisLine(
+            (80.0, 60.0, 920.0, 62.0),
+            1.0,
+            "horizontal",
+        )
+    ]
+
+    auxiliary_text._classify_rule_delimited_headers([page])
+
+    assert date.semantic_type == "header"
+    assert doi.semantic_type is None
+    assert body.semantic_type is None
 
 
 def test_top_rule_inside_graphic_does_not_mark_header() -> None:
@@ -922,9 +1275,7 @@ def test_top_rule_inside_graphic_does_not_mark_header() -> None:
             "content": "",
         }
     ]
-    page.drawing_lines = [
-        models._AxisLine((80.0, 60.0, 920.0, 62.0), 1.0, "horizontal")
-    ]
+    page.drawing_lines = [models._AxisLine((80.0, 60.0, 920.0, 62.0), 1.0, "horizontal")]
 
     auxiliary_text._classify_rule_delimited_headers([page])
 
@@ -972,9 +1323,7 @@ def test_page_number_outer_companions_classify_top_and_bottom_text_and_images() 
         }
     ]
 
-    auxiliary_text._classify_page_number_outer_companions(
-        [top_page, bottom_page]
-    )
+    auxiliary_text._classify_page_number_outer_companions([top_page, bottom_page])
 
     assert [line.semantic_type for line in top_page.remaining_lines] == [
         "header",
@@ -990,10 +1339,7 @@ def test_page_number_outer_companions_classify_top_and_bottom_text_and_images() 
     assert bottom_page.fixed_blocks[0]["type"] == "footer"
 
     blocks = pipeline._finalize_prepared_page(bottom_page, page_index=1)
-    assert any(
-        block["type"] == "footer" and block["content"] == ""
-        for block in blocks
-    )
+    assert any(block["type"] == "footer" and block["content"] == "" for block in blocks)
 
 
 def test_page_number_sequence_survives_portrait_to_landscape_edge_change() -> None:
@@ -1068,10 +1414,9 @@ def test_extreme_page_footnotes_can_be_overridden_by_repeated_marginals() -> Non
 
     auxiliary_text._classify_repeated_page_marginals(pages)
 
-    assert [
-        [line.semantic_type for line in page.remaining_lines]
-        for page in pages
-    ] == [["footer", "page_number", "page_footnote"]] * 3
+    assert [[line.semantic_type for line in page.remaining_lines] for page in pages] == [
+        ["footer", "page_number", "page_footnote"]
+    ] * 3
 
 
 def test_single_page_compound_header_requires_small_split_row_and_body_edge() -> None:
@@ -1146,9 +1491,7 @@ def test_isolated_first_page_footer_uses_multi_page_geometry_only() -> None:
     multi_page, multi_footer = build_page()
     single_page, single_footer = build_page()
 
-    auxiliary_text._classify_isolated_first_page_footer(
-        [multi_page, _prepared_text_page()]
-    )
+    auxiliary_text._classify_isolated_first_page_footer([multi_page, _prepared_text_page()])
     auxiliary_text._classify_isolated_first_page_footer([single_page])
 
     assert multi_footer.semantic_type == "footer"
@@ -1352,9 +1695,7 @@ def test_single_bottom_rule_classifies_small_right_lane_rows_as_footer() -> None
         *footer_rows,
         page_size=(1000.0, 1000.0),
     )
-    page.drawing_lines = [
-        models._AxisLine((580.0, 850.0, 900.0, 851.0), 1.0, "horizontal")
-    ]
+    page.drawing_lines = [models._AxisLine((580.0, 850.0, 900.0, 851.0), 1.0, "horizontal")]
 
     auxiliary_text._classify_rule_delimited_footers([page])
 
@@ -1391,9 +1732,7 @@ def test_single_bottom_rule_rejects_body_sized_or_container_rows(
         *bottom_rows,
         page_size=(1000.0, 1000.0),
     )
-    page.drawing_lines = [
-        models._AxisLine((100.0, 850.0, 900.0, 851.0), 1.0, "horizontal")
-    ]
+    page.drawing_lines = [models._AxisLine((100.0, 850.0, 900.0, 851.0), 1.0, "horizontal")]
     if inside_image:
         page.fixed_blocks = [
             {
@@ -1441,9 +1780,7 @@ def test_single_bottom_rule_rejects_formula_fragments_with_unstable_left_edges()
         *formula_fragments,
         page_size=(1000.0, 1000.0),
     )
-    page.drawing_lines = [
-        models._AxisLine((600.0, 850.0, 850.0, 851.0), 1.0, "horizontal")
-    ]
+    page.drawing_lines = [models._AxisLine((600.0, 850.0, 850.0, 851.0), 1.0, "horizontal")]
 
     auxiliary_text._classify_rule_delimited_footers([page])
 

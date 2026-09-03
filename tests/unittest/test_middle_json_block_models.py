@@ -295,19 +295,21 @@ def test_formula_number_is_rejected_by_middle_json_boundary_and_schema() -> None
         )
 
 
-def test_continuable_text_models_share_marker_and_reject_unknown_fields() -> None:
-    """验证 Text/RefText 共用续接基类，同时继续执行严格字段校验。"""
+def test_continuable_text_models_share_marker_and_keep_text_anchor_strict() -> None:
+    """验证 Text 独有 anchor、Text/RefText 续接字段及未知字段校验。"""
     text = parse_block({"type": "text", "content": _inline("x"), "continues_prev": True})
+    anchored_text = parse_block({"type": "text", "content": _inline("x"), "anchor": "a"})
     ref_text = parse_block({"type": "ref_text", "content": _inline("r"), "continues_prev": True})
 
     assert isinstance(text, ContinuableTextBlockBase)
     assert isinstance(ref_text, RefTextBlock)
     assert isinstance(ref_text, ContinuableTextBlockBase)
-    assert set(TextBlock.model_fields) == set(RefTextBlock.model_fields)
+    assert set(TextBlock.model_fields) == {*RefTextBlock.model_fields, "anchor"}
     assert text.continues_prev is True
+    assert isinstance(anchored_text, TextBlock) and anchored_text.anchor == "a"
     assert ref_text.continues_prev is True
     with pytest.raises(ValidationError):
-        parse_block({"type": "text", "content": _inline("x"), "anchor": "a"})
+        parse_block({"type": "ref_text", "content": _inline("r"), "anchor": "a"})
     with pytest.raises(ValidationError):
         parse_block({"type": "text", "content": _inline("x"), "unknown": 1})
 

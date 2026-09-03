@@ -33,6 +33,7 @@ from ....types import (
     PageFootnoteBlock,
     PageBlock,
     ParagraphTitleBlock,
+    TextBlock,
     TableAnnotationBlock,
     TableBlock,
     TableBodyBlock,
@@ -102,6 +103,10 @@ def _render_content_block(
     )
     if isinstance(block, (DocTitleBlock, ParagraphTitleBlock)):
         content = render_title_inline_content(block, delimiters)
+        payload["content"] = escape_standalone_marker_rule(escape_text_block_markdown_prefix(content))
+        return payload
+    if isinstance(block, TextBlock):
+        content = render_inline_content(block.content, delimiters)
         payload["content"] = escape_standalone_marker_rule(escape_text_block_markdown_prefix(content))
         return payload
     if isinstance(block, EquationBlock):

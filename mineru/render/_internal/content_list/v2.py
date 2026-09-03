@@ -102,7 +102,9 @@ def _render_unit_content(
     if isinstance(unit, ReferenceGroup):
         return _reference_list_item(unit)
     if isinstance(unit, TextBlock):
-        return {"type": "paragraph", "content": {"paragraph_content": serialize_v2_spans(unit.content)}}
+        item = {"type": "paragraph", "content": {"paragraph_content": serialize_v2_spans(unit.content)}}
+        _add_anchor(item, unit.anchor)
+        return item
     if isinstance(unit, (DocTitleBlock, ParagraphTitleBlock)):
         item: dict[str, Any] = {
             "type": "title",
@@ -203,8 +205,7 @@ def _render_index(block: IndexBlock) -> dict[str, Any]:
             "item_type": "text",
             "item_content": serialize_v2_spans(content),
         }
-        if isinstance(leaf.block, (DocTitleBlock, ParagraphTitleBlock)):
-            _add_anchor(item, leaf.block.anchor)
+        _add_anchor(item, leaf.block.anchor)
         list_items.append(item)
     return {
         "type": "index",

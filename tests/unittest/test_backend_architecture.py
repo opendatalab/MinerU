@@ -43,10 +43,13 @@ _CHINESE_DOCSTRING_PATHS = (
     _PROJECT_ROOT / "mineru/model/ocr/results.py",
     _PROJECT_ROOT / "mineru/render/markdown.py",
     _PROJECT_ROOT / "mineru/render/html.py",
+    _PROJECT_ROOT / "mineru/render/latex.py",
     _PROJECT_ROOT / "mineru/render/docx.py",
     _PROJECT_ROOT / "mineru/render/epub.py",
     _PROJECT_ROOT / "mineru/render/pdf.py",
     _PROJECT_ROOT / "mineru/render/structured_content.py",
+    _PROJECT_ROOT / "mineru/render/_internal/common/html_table.py",
+    _PROJECT_ROOT / "mineru/render/_internal/latex",
     _PROJECT_ROOT / "mineru/utils/image.py",
 )
 _REMOVED_INTERNAL_MODULES = (
@@ -215,6 +218,29 @@ def test_layer_dependencies_are_one_way() -> None:
         if invalid:
             offenders[str(path.relative_to(_PROJECT_ROOT))] = invalid
     assert not offenders
+
+
+def test_latex_and_render_common_keep_private_dependencies_one_way() -> None:
+    """守卫 LaTeX 不跨入其它格式私有实现，common 也不反向依赖格式包。"""
+    format_names = ("content_list", "docx", "epub", "html", "markdown", "pdf", "structured_content")
+    latex_offenders = {
+        str(path.relative_to(_PROJECT_ROOT)): sorted(
+            module
+            for module in _resolved_imports(path)
+            if module.startswith(tuple(f"mineru.render._internal.{name}" for name in format_names))
+        )
+        for path in (_PROJECT_ROOT / "mineru/render/_internal/latex").rglob("*.py")
+    }
+    common_offenders = {
+        str(path.relative_to(_PROJECT_ROOT)): sorted(
+            module
+            for module in _resolved_imports(path)
+            if module.startswith(tuple(f"mineru.render._internal.{name}" for name in (*format_names, "latex")))
+        )
+        for path in (_PROJECT_ROOT / "mineru/render/_internal/common").rglob("*.py")
+    }
+    assert not {path: imports for path, imports in latex_offenders.items() if imports}
+    assert not {path: imports for path, imports in common_offenders.items() if imports}
 
 
 def test_flash_office_does_not_depend_on_pdf_implementation() -> None:

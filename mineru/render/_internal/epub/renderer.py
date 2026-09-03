@@ -171,7 +171,7 @@ class _TitleTarget:
 
 
 class _AnchorRegistry:
-    """为正文标题和页面脚注分配文档级唯一 XHTML id。"""
+    """为正文文本、标题和页面脚注分配文档级唯一 XHTML id。"""
 
     def __init__(self, middle_json: MiddleJson) -> None:
         """按页面与 block 顺序建立目标、来源 anchor 和标题索引。"""
@@ -181,6 +181,7 @@ class _AnchorRegistry:
         self.title_targets: list[_TitleTarget] = []
         used_ids: set[str] = {"content-start"}
         heading_position = 0
+        text_position = 0
         footnote_position = 0
         for page in middle_json.pages:
             for block in page.blocks:
@@ -195,6 +196,16 @@ class _AnchorRegistry:
                         used_ids=used_ids,
                     )
                     self.title_targets.append(_TitleTarget(visible, block.level, target_id))
+                elif isinstance(block, TextBlock):
+                    visible = inline_plain_text(block.content).strip()
+                    if not visible or not (block.anchor or "").strip():
+                        continue
+                    text_position += 1
+                    target_id = _allocate_target_id(
+                        block.anchor,
+                        fallback=f"text-{text_position}",
+                        used_ids=used_ids,
+                    )
                 elif isinstance(block, PageFootnoteBlock):
                     visible = inline_plain_text(block.content).strip()
                     if not visible:
@@ -320,6 +331,10 @@ class _EpubXhtmlRenderer:
                 _xhtml("p"),
                 attrib={"class": "mineru-ref-text" if isinstance(block, RefTextBlock) else "mineru-text"},
             )
+            if isinstance(block, TextBlock):
+                target_id = self.anchors.target_for_block(planned.page_idx, block)
+                if target_id:
+                    paragraph.set("id", target_id)
             self._append_inline_spans(paragraph, content)
             return paragraph if _has_visible_content(paragraph) else None
         if isinstance(block, (DocTitleBlock, ParagraphTitleBlock)):
@@ -447,7 +462,7 @@ class _EpubXhtmlRenderer:
             if not inline_plain_text(content).strip():
                 continue
             item = etree.SubElement(parent, _xhtml("li"))
-            target = self.anchors.target_for_anchor(child.anchor) if isinstance(child, TitleBlockBase) else None
+            target = self.anchors.target_for_anchor(child.anchor)
             inline_parent = item
             if target:
                 inline_parent = etree.SubElement(item, _xhtml("a"), href=f"#{quote(target, safe='-._~')}")
@@ -873,8 +888,6 @@ def _navigation_from_index(block: IndexBlock, anchors: _AnchorRegistry) -> list[
                 last_item.children.extend(nested)
             else:
                 result.extend(nested)
-            continue
-        if not isinstance(child, TitleBlockBase):
             continue
         target = anchors.target_for_anchor(child.anchor)
         title = inline_plain_text(strip_index_page_tail(child.content)).strip()

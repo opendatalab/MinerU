@@ -108,7 +108,9 @@ def _render_unit_content(
             "list_items": [render_inline_content(block.content, delimiters) for block in unit.blocks if block.content],
         }
     if isinstance(unit, TextBlock):
-        return {"type": "text", "text": render_inline_content(unit.content, delimiters)}
+        item = {"type": "text", "text": render_inline_content(unit.content, delimiters)}
+        _add_anchor(item, unit.anchor)
+        return item
     if isinstance(unit, (DocTitleBlock, ParagraphTitleBlock)):
         item: dict[str, Any] = {
             "type": "text",
@@ -163,7 +165,7 @@ def _render_index_items(block: IndexBlock, delimiters: LatexDelimitersConfig) ->
         label = render_inline_content(content, delimiters).strip()
         if not label:
             continue
-        if isinstance(leaf.block, (DocTitleBlock, ParagraphTitleBlock)) and leaf.block.anchor:
+        if leaf.block.anchor:
             label = render_internal_link(label, leaf.block.anchor)
         items.append(f"{'    ' * leaf.depth}- {label}")
     return items

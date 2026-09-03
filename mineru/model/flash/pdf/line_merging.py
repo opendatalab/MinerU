@@ -4,7 +4,9 @@
 
 from __future__ import annotations
 
+import re
 import statistics
+import unicodedata
 
 
 from ....types import BBox
@@ -27,6 +29,7 @@ from .native_text import (
 )
 from .line_layout import (
     _connection_crosses_table,
+    _font_signatures_share_family,
     _infer_text_lanes,
     _line_effective_height,
 )
@@ -148,6 +151,7 @@ def _merge_overlapping_inline_text_clusters(
                         second,
                         lane_median_height,
                         table_bboxes,
+                        local_page_width=local_page_width,
                     ):
                         union(first_index, second_index)
 
@@ -199,6 +203,8 @@ def _overlapping_inline_cluster_pair_is_connected(
     second: tuple[_LineItem, BBox],
     median_height: float,
     table_bboxes: list[BBox],
+    *,
+    local_page_width: float | None = None,
 ) -> bool:
     """判断两个同栏成员是否为同一二维物理行中的重叠片段。"""
 
@@ -217,6 +223,21 @@ def _overlapping_inline_cluster_pair_is_connected(
     ):
         return False
     if _bbox_axis_overlap_ratio(first_bbox, second_bbox, axis="y") < 0.55:
+        return False
+
+    first_guard_bbox = first_line.source_bbox or first_bbox
+    second_guard_bbox = second_line.source_bbox or second_bbox
+    left_bbox, right_bbox = sorted(
+        (first_guard_bbox, second_guard_bbox),
+        key=lambda bbox: bbox[0],
+    )
+    if (
+        local_page_width is not None
+        and (first_line.style_scale_repaired or second_line.style_scale_repaired)
+        and left_bbox[2] <= 0.5 * local_page_width
+        and right_bbox[0] >= 0.5 * local_page_width
+        and right_bbox[0] - left_bbox[2] >= 0.02 * local_page_width
+    ):
         return False
 
     horizontal_gap = _horizontal_bbox_gap(first_bbox, second_bbox)
@@ -328,21 +349,38 @@ def _merge_overlapping_inline_cluster(
         bbox=_bbox_union_many([line.bbox for line in ordered_members]),
         angle=host.angle,
         source_index=min(line.source_index for line in ordered_members),
+        source_bbox=_bbox_union_many(
+            [line.source_bbox or line.bbox for line in ordered_members],
+        ),
+        ink_bbox=(
+            _bbox_union_many(
+                [line.ink_bbox for line in ordered_members if line.ink_bbox is not None],
+            )
+            if any(line.ink_bbox is not None for line in ordered_members)
+            else None
+        ),
+        baseline=host.baseline,
         chars=[char for line in ordered_members for char in line.chars],
         visual_row_id=host.visual_row_id,
         run_index=host.run_index,
         effective_height=host.effective_height,
+        em_height=host.em_height or host.effective_height,
         font_signature=host.font_signature,
         font_coverage=host.font_coverage,
         dominant_font_weight=host.dominant_font_weight,
         median_glyph_width=host.median_glyph_width,
         leading_emphasis_width=ordered_members[0].leading_emphasis_width,
+        leading_typography_width=ordered_members[0].leading_typography_width,
+        paragraph_formula_context=any(
+            line.paragraph_formula_context for line in ordered_members
+        ),
         split_from_row=any(line.split_from_row for line in ordered_members),
         preserve_split_boundary=any(line.preserve_split_boundary for line in ordered_members),
         semantic_type=host.semantic_type,
         restored_inline_cluster=True,
         compact_formula_cluster=compact_formula_cluster,
         formula_candidate_only=all(line.formula_candidate_only for line in ordered_members),
+        style_scale_repaired=any(line.style_scale_repaired for line in ordered_members),
         inline_math_regions=[
             *(region for line in ordered_members for region in line.inline_math_regions),
             *detected_regions,
@@ -598,6 +636,21 @@ def _merge_same_baseline_group(
         bbox=_bbox_union_many([member.bbox for member in members]),
         angle=members[0].angle,
         source_index=min(member.source_index for member in members),
+        source_bbox=_bbox_union_many(
+            [member.source_bbox or member.bbox for member in members],
+        ),
+        ink_bbox=(
+            _bbox_union_many(
+                [member.ink_bbox for member in members if member.ink_bbox is not None],
+            )
+            if any(member.ink_bbox is not None for member in members)
+            else None
+        ),
+        baseline=(
+            statistics.median(member.baseline for member in members if member.baseline is not None)
+            if any(member.baseline is not None for member in members)
+            else None
+        ),
         chars=[char for member in members for char in member.chars],
         visual_row_id=min(
             (member.visual_row_id for member in members if member.visual_row_id is not None),
@@ -605,6 +658,7 @@ def _merge_same_baseline_group(
         ),
         run_index=min(member.run_index for member in members),
         effective_height=statistics.median(member.effective_height for member in members),
+        em_height=statistics.median(member.em_height or member.effective_height for member in members),
         font_signature=members[0].font_signature,
         font_coverage=min(member.font_coverage for member in members),
         dominant_font_weight=statistics.median(
@@ -618,12 +672,17 @@ def _merge_same_baseline_group(
         if any(member.median_glyph_width is not None for member in members)
         else None,
         leading_emphasis_width=members[0].leading_emphasis_width,
+        leading_typography_width=members[0].leading_typography_width,
+        paragraph_formula_context=any(
+            member.paragraph_formula_context for member in members
+        ),
         split_from_row=any(member.split_from_row for member in members),
         preserve_split_boundary=any(member.preserve_split_boundary for member in members),
         semantic_type=members[0].semantic_type,
         restored_inline_cluster=any(member.restored_inline_cluster for member in members),
         compact_formula_cluster=any(member.compact_formula_cluster for member in members),
         formula_candidate_only=all(member.formula_candidate_only for member in members),
+        style_scale_repaired=any(member.style_scale_repaired for member in members),
         inline_math_regions=[region for member in members for region in member.inline_math_regions],
     )
     if merged.chars:
@@ -746,8 +805,19 @@ def _merge_title_resolved_visual_rows(
             members,
             page_size,
         )
+        sparse_short_prefix_text = (
+            _is_sparse_short_prefix_two_run_row(
+                members,
+                page_size,
+            )
+        )
         if semantic_type != "paragraph_title" and not (
-            semantic_type is None and (len(font_signatures) > 1 or dense_same_font_text)
+            semantic_type is None
+            and (
+                len(font_signatures) > 1
+                or dense_same_font_text
+                or sparse_short_prefix_text
+            )
         ):
             continue
         local_geometry = [
@@ -764,7 +834,11 @@ def _merge_title_resolved_visual_rows(
                 _line_effective_height(*previous),
                 current[1],
                 _line_effective_height(*current),
-                maximum_gap=3.0
+                maximum_gap=(
+                    5.0
+                    if sparse_short_prefix_text
+                    else 3.0
+                )
                 * max(
                     _line_effective_height(*previous),
                     _line_effective_height(*current),
@@ -783,6 +857,98 @@ def _merge_title_resolved_visual_rows(
             line.angle,
             _rotate_bbox_to_upright(line.bbox, page_size, line.angle)[1],
             _rotate_bbox_to_upright(line.bbox, page_size, line.angle)[0],
+            line.source_index,
+        )
+    )
+    return _merge_numbered_title_fragments(
+        output,
+        page_size,
+    )
+
+
+def _merge_numbered_title_fragments(
+    lines: list[_LineItem],
+    page_size: tuple[float, float],
+) -> list[_LineItem]:
+    """合并 PDF 字体分割导致的章节编号与同基线标题文字。"""
+
+    marker_re = re.compile(
+        r"^\d+(?:\s*\.\s*\d+)*\.?$",
+    )
+    geometry = [
+        (
+            line,
+            _rotate_bbox_to_upright(
+                line.bbox,
+                page_size,
+                line.angle,
+            ),
+        )
+        for line in lines
+        if line.semantic_type == "paragraph_title"
+    ]
+    consumed: set[int] = set()
+    merged: list[_LineItem] = []
+    for marker, marker_bbox in geometry:
+        if marker.source_index in consumed:
+            continue
+        normalized = re.sub(
+            r"\s+",
+            " ",
+            unicodedata.normalize("NFKC", marker.text),
+        ).strip()
+        if marker_re.match(normalized) is None:
+            continue
+        marker_height = _line_effective_height(
+            marker,
+            marker_bbox,
+        )
+        companions = [
+            (candidate, candidate_bbox)
+            for candidate, candidate_bbox in geometry
+            if candidate is not marker
+            and candidate.source_index not in consumed
+            and candidate.angle == marker.angle
+            and candidate_bbox[0] >= marker_bbox[2]
+            and candidate_bbox[0] - marker_bbox[2] <= 4.0 * marker_height
+            and _bbox_axis_overlap_ratio(
+                marker_bbox,
+                candidate_bbox,
+                axis="y",
+            )
+            >= 0.5
+        ]
+        if not companions:
+            continue
+        companion, _companion_bbox = min(
+            companions,
+            key=lambda item: (
+                item[1][0] - marker_bbox[2],
+                item[1][1],
+            ),
+        )
+        merged.append(
+            _merge_dense_split_visual_row(
+                [marker, companion],
+                page_size,
+            )
+        )
+        consumed.update({marker.source_index, companion.source_index})
+    output = [line for line in lines if line.source_index not in consumed]
+    output.extend(merged)
+    output.sort(
+        key=lambda line: (
+            line.angle,
+            _rotate_bbox_to_upright(
+                line.bbox,
+                page_size,
+                line.angle,
+            )[1],
+            _rotate_bbox_to_upright(
+                line.bbox,
+                page_size,
+                line.angle,
+            )[0],
             line.source_index,
         )
     )
@@ -835,6 +1001,76 @@ def _is_dense_same_font_two_run_row(
     union_bbox = _bbox_union_many([bbox for _member, bbox in local_geometry])
     occupied_width = sum(bbox[2] - bbox[0] for _member, bbox in local_geometry)
     return occupied_width / max(0.1, union_bbox[2] - union_bbox[0]) >= 0.85
+
+
+def _is_sparse_short_prefix_two_run_row(
+    members: list[_LineItem],
+    page_size: tuple[float, float],
+) -> bool:
+    """识别同视觉行中被宽空白拆开的短前缀与宽正文。"""
+
+    if (
+        len(members) != 2
+        or not all(member.split_from_row for member in members)
+        or any(member.preserve_split_boundary for member in members)
+        or any(member.semantic_type is not None for member in members)
+        or any(member.font_signature is None for member in members)
+        or any(member.font_coverage < 0.7 for member in members)
+    ):
+        return False
+    ordered = sorted(members, key=lambda member: member.run_index)
+    if [member.run_index for member in ordered] != [0, 1]:
+        return False
+    if not _font_signatures_share_family(
+        ordered[0].font_signature,
+        ordered[1].font_signature,
+    ):
+        return False
+
+    local_geometry = [
+        (
+            member,
+            _rotate_bbox_to_upright(
+                member.bbox,
+                page_size,
+                member.angle,
+            ),
+        )
+        for member in ordered
+    ]
+    local_geometry.sort(
+        key=lambda item: (
+            item[1][0],
+            item[1][1],
+            item[0].source_index,
+        )
+    )
+    first, second = local_geometry
+    pair_height = max(
+        _line_effective_height(*first),
+        _line_effective_height(*second),
+    )
+    local_page_width = (
+        page_size[1]
+        if ordered[0].angle in {90, 270}
+        else page_size[0]
+    )
+    horizontal_gap = second[1][0] - first[1][2]
+    return (
+        first[1][2] - first[1][0] <= 2.0 * pair_height
+        and second[1][2] - second[1][0]
+        >= 0.3 * local_page_width
+        and 3.0 * pair_height
+        < horizontal_gap
+        <= 5.0 * pair_height
+        and _same_baseline_geometry(
+            first[1],
+            _line_effective_height(*first),
+            second[1],
+            _line_effective_height(*second),
+            maximum_gap=5.0 * pair_height,
+        )
+    )
 
 
 def _can_restore_dense_split_visual_row(
@@ -942,10 +1178,26 @@ def _merge_dense_split_visual_row(
         bbox=_bbox_union_many([member.bbox for member in ordered_members]),
         angle=ordered_members[0].angle,
         source_index=min(member.source_index for member in ordered_members),
+        source_bbox=_bbox_union_many(
+            [member.source_bbox or member.bbox for member in ordered_members],
+        ),
+        ink_bbox=(
+            _bbox_union_many(
+                [member.ink_bbox for member in ordered_members if member.ink_bbox is not None],
+            )
+            if any(member.ink_bbox is not None for member in ordered_members)
+            else None
+        ),
+        baseline=(
+            statistics.median(member.baseline for member in ordered_members if member.baseline is not None)
+            if any(member.baseline is not None for member in ordered_members)
+            else None
+        ),
         chars=[char for member in ordered_members for char in member.chars],
         visual_row_id=ordered_members[0].visual_row_id,
         run_index=0,
         effective_height=statistics.median(_line_effective_height(member, bbox) for member, bbox in ordered_geometry),
+        em_height=statistics.median(_line_effective_height(member, bbox) for member, bbox in ordered_geometry),
         font_signature=ordered_members[0].font_signature,
         font_coverage=min(member.font_coverage for member in ordered_members),
         dominant_font_weight=statistics.median(
@@ -959,12 +1211,17 @@ def _merge_dense_split_visual_row(
         if any(member.median_glyph_width is not None for member in ordered_members)
         else None,
         leading_emphasis_width=ordered_members[0].leading_emphasis_width,
+        leading_typography_width=ordered_members[0].leading_typography_width,
+        paragraph_formula_context=any(
+            member.paragraph_formula_context for member in ordered_members
+        ),
         split_from_row=False,
         preserve_split_boundary=any(member.preserve_split_boundary for member in ordered_members),
         semantic_type=ordered_members[0].semantic_type,
         restored_inline_cluster=any(member.restored_inline_cluster for member in ordered_members),
         compact_formula_cluster=any(member.compact_formula_cluster for member in ordered_members),
         formula_candidate_only=all(member.formula_candidate_only for member in ordered_members),
+        style_scale_repaired=any(member.style_scale_repaired for member in ordered_members),
         inline_math_regions=[region for member in ordered_members for region in member.inline_math_regions],
     )
     if merged.chars:

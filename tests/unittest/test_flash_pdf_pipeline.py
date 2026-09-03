@@ -8,6 +8,7 @@ import pytest
 from mineru.model.flash import PdfModel
 from mineru.model.flash.pdf import (
     auxiliary_text,
+    char_geometry,
     formulas,
     geometry,
     graphics,
@@ -19,6 +20,7 @@ from mineru.model.flash.pdf import (
     pipeline,
     tables,
     text_blocks,
+    text_styles,
     titles,
     visual_annotations,
 )
@@ -131,6 +133,356 @@ def test_prepare_page_uses_only_table_body_bbox_and_keeps_annotations_fixed(
         "caption",
         "table",
     ]
+
+
+def test_prepare_page_resplits_repaired_cross_column_row_before_text_classification(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证生产页面准备会按修复字符框重切跨栏粗行并分配唯一来源序号。"""
+
+    positions = (0.0, 6.0, 12.0, 18.0, 62.0, 68.0, 74.0, 80.0)
+    chars = [
+        {
+            "char": character,
+            "bbox": (position, 10.0, position + 20.0, 20.0),
+            "font": {
+                "name": "ABCDEF+Body",
+                "flags": 0,
+                "weight": 400,
+                "size": 10.0,
+            },
+            "char_idx": index,
+        }
+        for index, (character, position) in enumerate(
+            zip("ABCDEFGH", positions, strict=True),
+        )
+    ]
+    line = models._LineItem(
+        text="ABCDEFGH",
+        bbox=(0.0, 10.0, 100.0, 20.0),
+        angle=0,
+        source_index=5,
+        chars=chars,  # type: ignore[arg-type]
+        visual_row_id=3,
+        effective_height=10.0,
+        em_height=10.0,
+    )
+    plan = char_geometry.DocumentGeometryPlan(
+        char_repairs={
+            (0, index): char_geometry.CharLayoutGeometry(
+                source_bbox=tuple(float(value) for value in char["bbox"]),  # type: ignore[arg-type]
+                tight_bbox=(position, 10.0, position + 5.0, 20.0),
+                origin=(position, 20.0),
+                layout_bbox=(position, 10.0, position + 5.0, 20.0),
+                ink_bbox=(position, 10.0, position + 5.0, 20.0),
+                baseline=20.0,
+                advance=6.0,
+                em_height=10.0,
+                x_state="abnormal",
+                y_state="healthy",
+                confidence=1.0,
+            )
+            for index, (char, position) in enumerate(
+                zip(chars, positions, strict=True),
+            )
+        },
+    )
+    source = models._PageSource(
+        page_size=(100.0, 100.0),
+        lines=[line],
+        chars=chars,  # type: ignore[arg-type]
+        drawing_lines=[],
+    )
+    observed_next_indices: list[int] = []
+    untouched_style = text_styles.PDFTextStyleLine(
+        bbox=(0.0, 30.0, 20.0, 40.0),
+        text="plain",
+        style_ranges=(),
+        source_index=4,
+    )
+    style_lines = [
+        untouched_style,
+        text_styles.PDFTextStyleLine(
+            bbox=line.bbox,
+            text="ABCDEFGH",
+            style_ranges=(
+                text_styles.PDFTextStyleRange(0, 2, ("bold",)),
+                text_styles.PDFTextStyleRange(2, 6, ("bold", "underline")),
+                text_styles.PDFTextStyleRange(6, 8, ("underline",)),
+            ),
+            source_index=5,
+        ),
+    ]
+    link_lines = [
+        text_styles.PDFTextLinkLine(
+            bbox=line.bbox,
+            text="ABCDEFGH",
+            link_ranges=(
+                text_styles.PDFTextLinkRange(
+                    2,
+                    6,
+                    "https://example.test/split",
+                ),
+            ),
+            source_index=5,
+        ),
+    ]
+
+    def record_graphic_split_start(
+        lines: list[models._LineItem],
+        *_args: object,
+        source_index_start: int,
+    ) -> list[models._LineItem]:
+        """记录跨栏重切后传给后续 graphic split 的下一来源序号。"""
+
+        observed_next_indices.append(source_index_start)
+        return lines
+
+    monkeypatch.setattr(
+        pipeline,
+        "_split_parallel_graphic_rule_rows",
+        record_graphic_split_start,
+    )
+
+    prepared = pipeline._prepare_page_source(
+        source,
+        geometry_plan=plan,
+        page_index=0,
+        style_lines=style_lines,
+        link_lines=link_lines,
+    )
+
+    assert [member.text for member in prepared.remaining_lines] == ["ABCD", "EFGH"]
+    assert [member.source_index for member in prepared.remaining_lines] == [5, 6]
+    assert all(member.split_from_row for member in prepared.remaining_lines)
+    assert observed_next_indices == [7]
+    assert style_lines[0] is untouched_style
+    assert style_lines[1:] == [
+        text_styles.PDFTextStyleLine(
+            bbox=(0.0, 10.0, 23.0, 20.0),
+            text="ABCD",
+            style_ranges=(
+                text_styles.PDFTextStyleRange(0, 2, ("bold",)),
+                text_styles.PDFTextStyleRange(2, 4, ("bold", "underline")),
+            ),
+            source_index=5,
+        ),
+        text_styles.PDFTextStyleLine(
+            bbox=(62.0, 10.0, 85.0, 20.0),
+            text="EFGH",
+            style_ranges=(
+                text_styles.PDFTextStyleRange(0, 2, ("bold", "underline")),
+                text_styles.PDFTextStyleRange(2, 4, ("underline",)),
+            ),
+            source_index=6,
+        ),
+    ]
+    assert link_lines == [
+        text_styles.PDFTextLinkLine(
+            bbox=(0.0, 10.0, 23.0, 20.0),
+            text="ABCD",
+            link_ranges=(
+                text_styles.PDFTextLinkRange(
+                    2,
+                    4,
+                    "https://example.test/split",
+                ),
+            ),
+            source_index=5,
+        ),
+        text_styles.PDFTextLinkLine(
+            bbox=(62.0, 10.0, 85.0, 20.0),
+            text="EFGH",
+            link_ranges=(
+                text_styles.PDFTextLinkRange(
+                    0,
+                    2,
+                    "https://example.test/split",
+                ),
+            ),
+            source_index=6,
+        ),
+    ]
+    split_blocks = [
+        {
+            "type": "text",
+            "bbox": member.bbox,
+            "content": member.text,
+        }
+        for member in prepared.remaining_lines
+    ]
+    assert {
+        block_index: [line.source_index for line in lines]
+        for block_index, lines in text_styles._assign_lines_to_blocks(
+            split_blocks,
+            style_lines[1:],
+            source.page_size,
+        ).items()
+    } == {0: [5], 1: [6]}
+    assert {
+        block_index: [line.source_index for line in lines]
+        for block_index, lines in text_styles._assign_lines_to_blocks(
+            split_blocks,
+            link_lines,
+            source.page_size,
+        ).items()
+    } == {0: [5], 1: [6]}
+
+
+def test_prepare_page_realigns_unsplit_repaired_text_evidence() -> None:
+    """验证普通修复行未重切时，样式和链接 evidence 仍使用最终布局框。"""
+
+    line = _text_line("linked", (0.0, 80.0, 200.0, 100.0), 5)
+    source = models._PageSource(
+        page_size=(200.0, 200.0),
+        lines=[line],
+        chars=[],
+        drawing_lines=[],
+    )
+    repaired_bbox = (20.0, 80.0, 60.0, 100.0)
+    plan = char_geometry.DocumentGeometryPlan(
+        line_repairs={
+            (0, 5): char_geometry.LineGeometryRepair(
+                source_bbox=line.bbox,
+                layout_bbox=repaired_bbox,
+                ink_bbox=repaired_bbox,
+                baseline=100.0,
+                em_height=20.0,
+                state="repair_x",
+            )
+        }
+    )
+    style_lines = [
+        text_styles.PDFTextStyleLine(
+            bbox=line.bbox,
+            text=line.text,
+            style_ranges=(text_styles.PDFTextStyleRange(0, len(line.text), ("bold",)),),
+            source_index=line.source_index,
+        )
+    ]
+    link_lines = [
+        text_styles.PDFTextLinkLine(
+            bbox=line.bbox,
+            text=line.text,
+            link_ranges=(text_styles.PDFTextLinkRange(0, len(line.text), "https://example.test/repaired"),),
+            source_index=line.source_index,
+        )
+    ]
+
+    prepared = pipeline._prepare_page_source(
+        source,
+        geometry_plan=plan,
+        page_index=0,
+        style_lines=style_lines,
+        link_lines=link_lines,
+    )
+
+    assert [item.bbox for item in prepared.remaining_lines] == [repaired_bbox]
+    assert [item.bbox for item in style_lines] == [repaired_bbox]
+    assert [item.bbox for item in link_lines] == [repaired_bbox]
+    block = {"type": "text", "bbox": repaired_bbox, "content": line.text}
+    assert text_styles._assign_lines_to_blocks([block], style_lines, source.page_size)
+    assert text_styles._assign_lines_to_blocks([block], link_lines, source.page_size)
+
+
+def _repeated_separator_source(
+    header_text: str,
+    *,
+    connected_grid: bool = False,
+) -> models._PageSource:
+    """构造重复页首横线，并可把该横线作为闭合表格的真实顶边。"""
+
+    lines = [
+        _text_line(header_text, (20.0, 15.0, 180.0, 25.0), 0),
+        _text_line(f"{header_text} detail", (20.0, 30.0, 180.0, 40.0), 1),
+    ]
+    drawing_lines = [
+        models._AxisLine(
+            bbox=(10.0, 50.0, 190.0, 50.1),
+            width=0.1,
+            orientation="horizontal",
+        )
+    ]
+    if connected_grid:
+        lines.extend(
+            [
+                _text_line("left cell", (20.0, 65.0, 80.0, 75.0), 2),
+                _text_line("right cell", (110.0, 65.0, 170.0, 75.0), 3),
+            ]
+        )
+        drawing_lines.extend(
+            [
+                models._AxisLine((10.0, 90.0, 190.0, 90.1), 0.1, "horizontal"),
+                models._AxisLine((10.0, 50.0, 10.1, 90.0), 0.1, "vertical"),
+                models._AxisLine((100.0, 50.0, 100.1, 90.0), 0.1, "vertical"),
+                models._AxisLine((189.9, 50.0, 190.0, 90.0), 0.1, "vertical"),
+            ]
+        )
+    return models._PageSource(
+        page_size=(200.0, 400.0),
+        lines=lines,
+        chars=[],
+        drawing_lines=drawing_lines,
+    )
+
+
+def test_repeated_header_separator_requires_repeated_header_text() -> None:
+    """验证只有横线重复、而上方普通文本不重复时不会移除表格规则。"""
+
+    sources = [_repeated_separator_source(text) for text in ("alpha banner", "beta notice", "gamma heading")]
+
+    assert pipeline._detect_repeated_header_separator_bboxes(sources) == [set(), set(), set()]
+
+
+def test_repeated_header_separator_supports_alternating_headers() -> None:
+    """验证奇偶页各自重复的刊头可以共同确认同一页眉分隔线。"""
+
+    sources = [_repeated_separator_source("even journal" if page_index % 2 == 0 else "odd article") for page_index in range(4)]
+    expected = {(10.0, 50.0, 190.0, 50.1)}
+
+    assert pipeline._detect_repeated_header_separator_bboxes(sources) == [expected] * 4
+
+
+def test_repeated_table_top_rule_is_not_header_separator() -> None:
+    """验证重复表单的闭合网格顶边不会因上方重复标题而被删除。"""
+
+    sources = [_repeated_separator_source("repeated form", connected_grid=True) for _page_index in range(3)]
+
+    assert pipeline._detect_repeated_header_separator_bboxes(sources) == [set(), set(), set()]
+    assert [candidate.bbox for candidate in tables._detect_table_candidates(sources[0])] == [(10.0, 50.0, 190.0, 90.1)]
+
+
+def test_table_detection_excludes_confirmed_masthead_separator() -> None:
+    """验证页首通栏分隔线不与下方真表格边界组成巨型候选。"""
+
+    source = models._PageSource(
+        page_size=(200.0, 300.0),
+        lines=[
+            _text_line("left masthead", (10.0, 10.0, 60.0, 20.0), 0),
+            _text_line("center masthead", (70.0, 10.0, 130.0, 20.0), 1),
+            _text_line("body", (10.0, 50.0, 190.0, 60.0), 2),
+        ],
+        chars=[],
+        drawing_lines=[
+            models._AxisLine(
+                bbox=(10.0, 30.0, 190.0, 31.0),
+                width=1.0,
+                orientation="horizontal",
+            ),
+            models._AxisLine(
+                bbox=(10.0, 100.0, 190.0, 101.0),
+                width=1.0,
+                orientation="horizontal",
+            ),
+        ],
+    )
+
+    retained = pipeline._table_detection_drawing_lines(
+        source,
+        {(10.0, 30.0, 190.0, 31.0)},
+    )
+
+    assert [line.bbox for line in retained] == [(10.0, 100.0, 190.0, 101.0)]
 
 
 def test_repeated_large_image_requires_three_distinct_pages() -> None:

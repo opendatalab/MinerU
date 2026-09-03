@@ -202,7 +202,11 @@ class _HtmlRenderer:
         if isinstance(block, TextBlock):
             rendered = render_joined_inline_contents_html(planned.text_contents or [block.content])
             self._observe_inline(rendered)
-            return f'<p class="mineru-text">{rendered.html}</p>' if rendered.html else ""
+            if not rendered.html:
+                return ""
+            attrs = ['class="mineru-text"']
+            self._append_anchor_attribute(attrs, block.anchor, block_type=str(block.type))
+            return f"<p {' '.join(attrs)}>{rendered.html}</p>"
         if isinstance(block, RefTextBlock):
             rendered = render_joined_inline_contents_html(planned.text_contents or [block.content])
             self._observe_inline(rendered)
@@ -413,7 +417,7 @@ class _HtmlRenderer:
         self._observe_inline(rendered)
         if not rendered.html:
             return "", _wire_block_attributes(block)
-        anchor = _anchor_key(block.anchor) if isinstance(block, TitleBlockBase) else ""
+        anchor = _anchor_key(block.anchor)
         if anchor and (anchor_id := self.anchor_targets.get(anchor)):
             href = quote(anchor_id, safe="-._~")
             return f'<a href="#{href}">{rendered.html}</a>', _wire_block_attributes(block)
@@ -810,12 +814,12 @@ def _wrap_visual_body(
 
 
 def _collect_document_anchor_ids(middle_json: MiddleJson) -> dict[str, str]:
-    """为标题和页面脚注的首次非空 anchor 分配 document-wide 唯一 HTML id。"""
+    """为正文、标题和页面脚注的首次非空 anchor 分配文档级唯一 HTML id。"""
     anchor_ids: dict[str, str] = {}
     used_ids: set[str] = set()
     for page in middle_json.pages:
         for block in page.blocks:
-            if isinstance(block, TitleBlockBase):
+            if isinstance(block, (TextBlock, TitleBlockBase)):
                 visible_content = inline_plain_text(block.content).strip()
             elif isinstance(block, PageFootnoteBlock):
                 visible_content = inline_plain_text(block.content).strip()

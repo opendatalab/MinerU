@@ -599,7 +599,7 @@ def test_extract_page_char_extended_geometry_isolates_single_char_failures(
         {
             "char": text,
             "bbox": Bbox([float(index), 0.0, float(index + 1), 1.0]),
-            "rotation": 0.0,
+            "rotation": 0.1 if index == 0 else 0.0,
             "font": {},
             "char_idx": index,
         }
@@ -620,6 +620,17 @@ def test_extract_page_char_extended_geometry_isolates_single_char_failures(
         left.value, right.value, bottom.value, top.value = 10.0, 15.0, 180.0, 190.0
         return True
 
+    def fake_get_loose_char_box(
+        _textpage: object,
+        index: int,
+        rect: Any,
+    ) -> bool:
+        """只为第一个字符返回合法 loose bbox。"""
+        if index != 0:
+            return False
+        rect.left, rect.right, rect.bottom, rect.top = 9.0, 16.0, 179.0, 191.0
+        return True
+
     def fake_get_char_origin(
         _textpage: object,
         index: int,
@@ -631,16 +642,18 @@ def test_extract_page_char_extended_geometry_isolates_single_char_failures(
         origin_y.value = 180.0 if index == 0 else float("nan")
         return True
 
+    monkeypatch.setattr(pdf_document.pdfium_c, "FPDFText_GetLooseCharBox", fake_get_loose_char_box)
     monkeypatch.setattr(pdf_document.pdfium_c, "FPDFText_GetCharBox", fake_get_char_box)
     monkeypatch.setattr(pdf_document.pdfium_c, "FPDFText_GetCharOrigin", fake_get_char_origin)
 
-    tight_bboxes, origins = pdf_document._extract_page_char_extended_geometry(
+    loose_bboxes, tight_bboxes, origins = pdf_document._extract_page_char_extended_geometry(
         _FakeTextPage(),  # type: ignore[arg-type]
         chars,  # type: ignore[arg-type]
         (0.0, 0.0, 100.0, 200.0),
         0,
     )
 
+    assert loose_bboxes == {0: (9.0, 9.0, 16.0, 21.0)}
     assert tight_bboxes == {0: (10.0, 10.0, 15.0, 20.0)}
     assert origins == {0: (10.0, 20.0)}
 
@@ -669,6 +682,7 @@ def test_get_page_chars_with_geometry_preserves_legacy_char_output() -> None:
 
     assert snapshot(geometry.chars) == snapshot(legacy_chars)  # type: ignore[arg-type]
     visible_indices = {int(char["char_idx"]) for char in geometry.chars if str(char.get("char", "")).strip()}
+    assert geometry.loose_bboxes == {}
     assert visible_indices <= geometry.tight_bboxes.keys()
     assert visible_indices <= geometry.origins.keys()
 

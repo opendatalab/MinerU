@@ -57,12 +57,17 @@ def build_render_plan(
 
 
 def _merge_continued_text_blocks(blocks: list[PlannedBlock], mode: RenderMode) -> None:
-    """把 continues_prev 文本吸收到最近的前序文本逻辑块。"""
+    """把无独立正文锚点的 continues_prev 文本吸收到最近的前序文本逻辑块。"""
     for current_index, current in enumerate(blocks):
         if (
             current.removed
             or not isinstance(current.block, ContinuableTextBlockBase)
             or current.block.continues_prev is not True
+            or (
+                isinstance(current.block, TextBlock)
+                and isinstance(current.block.anchor, str)
+                and bool(current.block.anchor.strip())
+            )
         ):
             continue
         previous = _find_previous_planned_text(blocks, current_index)

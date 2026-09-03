@@ -8,7 +8,7 @@ import math
 import os
 import time
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from io import BytesIO
 from typing import Any, Iterator, Literal, TypeAlias, cast
 
@@ -73,11 +73,12 @@ class PDFPageImage:
 
 @dataclass(frozen=True, slots=True)
 class PDFPageTextGeometry:
-    """保存 Hybrid TXT 需要的原始字符、tight bbox 和视觉字符原点。"""
+    """保存原始字符及 loose/tight/origin 三套视觉几何。"""
 
     chars: list[Char]
     tight_bboxes: dict[int, BBox]
     origins: dict[int, tuple[float, float]]
+    loose_bboxes: dict[int, BBox] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -423,20 +424,21 @@ class PDFDocument:
                 chars = _restore_pdfium_surrogate_pairs(chars, textpage)
                 chars = _deduplicate_near_identical_chars(chars)
                 if include_extended_geometry:
-                    tight_bboxes, origins = _extract_page_char_extended_geometry(
+                    loose_bboxes, tight_bboxes, origins = _extract_page_char_extended_geometry(
                         textpage,
                         chars,
                         page_bbox,
                         page_rotation,
                     )
                 else:
-                    tight_bboxes, origins = {}, {}
+                    loose_bboxes, tight_bboxes, origins = {}, {}, {}
             finally:
                 _try_close(textpage)
         return PDFPageTextGeometry(
             chars=chars,
             tight_bboxes=tight_bboxes,
             origins=origins,
+            loose_bboxes=loose_bboxes,
         )
 
     def get_page_lines(self, page_idx: int) -> list[Line]:
@@ -653,8 +655,9 @@ def _extract_page_char_extended_geometry(
     chars: list[Char],
     page_bbox: BBox,
     page_rotation: int,
-) -> tuple[dict[int, BBox], dict[int, tuple[float, float]]]:
-    """逐字符读取 tight bbox 和 origin；单字符失败不影响其余文本。"""
+) -> tuple[dict[int, BBox], dict[int, BBox], dict[int, tuple[float, float]]]:
+    """逐字符读取 loose/tight/origin；单字符失败不影响其余文本。"""
+    loose_bboxes: dict[int, BBox] = {}
     tight_bboxes: dict[int, BBox] = {}
     origins: dict[int, tuple[float, float]] = {}
     textpage_raw = textpage.raw
@@ -663,6 +666,34 @@ def _extract_page_char_extended_geometry(
         raw_char_idx = char.get("char_idx")
         if isinstance(raw_char_idx, bool) or not isinstance(raw_char_idx, int):
             continue
+
+        try:
+            char_rotation = float(char.get("rotation") or 0.0)
+        except (TypeError, ValueError):
+            char_rotation = math.nan
+        # pdftext 已在 char["bbox"] 中保留零旋转 loose；side-map 只记录
+        # 非零旋转或来源不明字符的显式覆盖，避免整本重复分配 bbox tuple。
+        if not math.isfinite(char_rotation) or abs(char_rotation) > 1e-9:
+            loose_rect = pdfium_c.FS_RECTF()
+            try:
+                has_loose_bbox = pdfium_c.FPDFText_GetLooseCharBox(
+                    textpage_raw,
+                    raw_char_idx,
+                    loose_rect,
+                )
+            except Exception:
+                has_loose_bbox = False
+            if has_loose_bbox:
+                loose_bbox = _char_visual_bbox_from_pdfium(
+                    float(loose_rect.left),
+                    float(loose_rect.right),
+                    float(loose_rect.bottom),
+                    float(loose_rect.top),
+                    page_bbox,
+                    page_rotation,
+                )
+                if loose_bbox is not None:
+                    loose_bboxes[raw_char_idx] = loose_bbox
 
         left = ctypes.c_double()
         right = ctypes.c_double()
@@ -711,7 +742,7 @@ def _extract_page_char_extended_geometry(
             if all(math.isfinite(value) for value in origin):
                 origins[raw_char_idx] = origin
 
-    return tight_bboxes, origins
+    return loose_bboxes, tight_bboxes, origins
 
 
 def _multiply_pdf_matrices(

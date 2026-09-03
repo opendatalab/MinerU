@@ -18,12 +18,19 @@ if TYPE_CHECKING:
 
 @dataclass(slots=True)
 class _LineItem:
-    """保存单个可视文本行及其原始几何信息。"""
+    """保存单个可视文本行及其 source/ink/canonical 几何。"""
 
     text: str
     bbox: BBox
     angle: int
     source_index: int
+    source_bbox: BBox | None = None
+    ink_bbox: BBox | None = None
+    baseline: float | None = None
+    em_height: float = 0.0
+    geometry_state: Literal["healthy", "repair_x", "trim_y", "repair_xy", "uncertain"] = "healthy"
+    geometry_confidence: float = 1.0
+    split_y_candidate: bool = False
     chars: list[Char] = field(default_factory=list)
     visual_row_id: int | None = None
     run_index: int = 0
@@ -33,13 +40,25 @@ class _LineItem:
     dominant_font_weight: float | None = None
     median_glyph_width: float | None = None
     leading_emphasis_width: float | None = None
+    leading_typography_width: float | None = None
     split_from_row: bool = False
     preserve_split_boundary: bool = False
     semantic_type: str | None = None
     restored_inline_cluster: bool = False
     compact_formula_cluster: bool = False
     formula_candidate_only: bool = False
+    paragraph_formula_context: bool = False
+    structural_title: bool = False
+    explicit_section_title: bool = False
+    title_suppressed: bool = False
+    style_scale_repaired: bool = False
     inline_math_regions: list[BBox] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        """为旧调用与合成测试补齐可选来源几何字段。"""
+
+        if self.source_bbox is None:
+            self.source_bbox = self.bbox
 
 
 @dataclass(slots=True)
@@ -168,6 +187,8 @@ class _PreparedPage:
     table_bboxes: list[BBox]
     drawing_lines: list[_AxisLine]
     fixed_blocks: list[dict[str, Any]]
+    canonical_formula_geometry: bool = False
+    canonical_formula_source_lines: list[_LineItem] = field(default_factory=list)
     page_footnote_groups: list[set[int]] = field(default_factory=list)
     script_lines: list[PDFTextScriptLine] = field(default_factory=list)
     formula_candidate_lines: list[_LineItem] = field(default_factory=list)
@@ -203,6 +224,7 @@ class _DocumentBodyProfile:
     body_height: float
     body_weight: float | None
     regular_fonts: frozenset[tuple[str, int]]
+    has_style_scale_repairs: bool = False
 
 
 @dataclass(frozen=True, slots=True)

@@ -113,6 +113,28 @@ def test_strong_caption_markers_reject_body_references(content: str) -> None:
     assert not visual_annotations._is_strong_caption_text(content)
 
 
+def test_stacked_bilingual_captions_share_visual_parent() -> None:
+    """验证编号相同、上下紧邻的中英文图题共同绑定一个图片。"""
+
+    image = _visual_block((20.0, 20.0, 180.0, 120.0))
+    chinese = _text_block(
+        "图 1 系统结构",
+        (55.0, 125.0, 145.0, 135.0),
+    )
+    english = _text_block(
+        "Fig. 1 System architecture",
+        (50.0, 138.0, 150.0, 145.0),
+        line_height=7.0,
+        font_signature=("EnglishCaption", 400),
+    )
+    blocks = [image, chinese, english]
+
+    regions = _classify_with_text_block_merge(blocks)
+
+    assert chinese["type"] == english["type"] == "caption"
+    assert regions == [[image, chinese, english]]
+
+
 @pytest.mark.parametrize(
     "content",
     [
@@ -715,28 +737,14 @@ def test_cross_lane_caption_companion_rejects_unsafe_geometry(case: str) -> None
         (20.0, 90.5, 90.0, 110.5),
         lane_interval=(20.0, 90.0),
     )
-    companion_bbox = (
-        (110.0, 94.0, 180.0, 114.0)
-        if case == "misaligned"
-        else (110.0, 90.0, 180.0, 110.0)
-    )
+    companion_bbox = (110.0, 94.0, 180.0, 114.0) if case == "misaligned" else (110.0, 90.0, 180.0, 110.0)
     companion = _text_block(
         "plain continuation",
         companion_bbox,
         line_height=12.0 if case == "line_height" else 10.0,
-        lane_interval=(
-            (20.0, 90.0)
-            if case == "same_lane"
-            else (110.0, 180.0)
-        ),
+        lane_interval=((20.0, 90.0) if case == "same_lane" else (110.0, 180.0)),
         lane_is_span=case == "span_lane",
-        font_signature=(
-            None
-            if case == "missing_font"
-            else ("OtherFont", 400)
-            if case == "font"
-            else ("TestFont", 400)
-        ),
+        font_signature=(None if case == "missing_font" else ("OtherFont", 400) if case == "font" else ("TestFont", 400)),
     )
     extra_blocks: list[dict[str, object]] = []
     if case == "narrow_parent":
@@ -750,9 +758,7 @@ def test_cross_lane_caption_companion_rejects_unsafe_geometry(case: str) -> None
             )
         )
     elif case == "competing_parent":
-        extra_blocks.append(
-            _visual_block((110.0, 82.0, 180.0, 86.0))
-        )
+        extra_blocks.append(_visual_block((110.0, 82.0, 180.0, 86.0)))
     blocks = [parent, anchor, *extra_blocks, companion]
 
     _classify_with_text_block_merge(blocks)

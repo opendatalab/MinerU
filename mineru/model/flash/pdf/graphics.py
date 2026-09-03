@@ -75,11 +75,7 @@ def _form_supersedes_nested_bbox(form_bbox: BBox, nested_bbox: BBox) -> bool:
 
     form_area = _bbox_area(form_bbox)
     nested_area = _bbox_area(nested_bbox)
-    return (
-        form_area > 0
-        and nested_area < 0.5 * form_area
-        and _bbox_overlap_in_first(nested_bbox, form_bbox) >= 0.9
-    )
+    return form_area > 0 and nested_area < 0.5 * form_area and _bbox_overlap_in_first(nested_bbox, form_bbox) >= 0.9
 
 
 def _tighten_form_image_bbox(
@@ -91,8 +87,7 @@ def _tighten_form_image_bbox(
     internal_paths = [
         path_info.bbox
         for path_info in source.path_infos
-        if path_info.form_depth > 0
-        and _bbox_overlap_in_first(path_info.bbox, form_bbox) >= 0.9
+        if path_info.form_depth > 0 and _bbox_overlap_in_first(path_info.bbox, form_bbox) >= 0.9
     ]
     internal_drawing_lines = [
         drawing_line.bbox
@@ -102,15 +97,9 @@ def _tighten_form_image_bbox(
     # 至少两个嵌套 Path 和四个矢量元素，避免只凭普通边框或少量文本裁剪 Form。
     if len(internal_paths) < 2 or len(internal_paths) + len(internal_drawing_lines) < 4:
         return form_bbox
-    internal_text = [
-        line.bbox
-        for line in source.lines
-        if _bbox_overlap_in_first(line.bbox, form_bbox) >= 0.9
-    ]
+    internal_text = [line.bbox for line in source.lines if _bbox_overlap_in_first(line.bbox, form_bbox) >= 0.9]
     evidence_bbox = _clip_bbox(
-        _bbox_union_many(
-            internal_paths + internal_drawing_lines + internal_text
-        ),
+        _bbox_union_many(internal_paths + internal_drawing_lines + internal_text),
         source.page_size,
     )
     if evidence_bbox is None:
@@ -134,11 +123,7 @@ def _select_form_image_bboxes(source: _PageSource) -> list[BBox]:
     page_area = max(0.0, source.page_size[0]) * max(0.0, source.page_size[1])
     if page_area <= 0 or not source.form_bboxes:
         return []
-    effective_heights = [
-        _line_effective_height(line, line.bbox)
-        for line in source.lines
-        if line.angle == 0
-    ]
+    effective_heights = [_line_effective_height(line, line.bbox) for line in source.lines if line.angle == 0]
     median_height = statistics.median(effective_heights) if effective_heights else 1.0
     output: list[BBox] = []
     for raw_bbox in source.form_bboxes:
@@ -161,8 +146,7 @@ def _select_form_image_bboxes(source: _PageSource) -> list[BBox]:
             if _bbox_overlap_in_first(line.bbox, bbox) >= 0.9
         }
         internal_drawing_count = sum(
-            _bbox_overlap_in_first(drawing_line.bbox, bbox) >= 0.9
-            for drawing_line in source.drawing_lines
+            _bbox_overlap_in_first(drawing_line.bbox, bbox) >= 0.9 for drawing_line in source.drawing_lines
         )
         if len(member_rows) < 2 and internal_drawing_count < 4:
             continue
@@ -250,10 +234,7 @@ def _build_graphic_like_blocks(
     candidates = [
         candidate
         for candidate in line_candidates
-        if not any(
-            _bbox_overlap_in_smaller(candidate.core_bbox, core_bbox) >= 0.5
-            for core_bbox in strong_core_bboxes
-        )
+        if not any(_bbox_overlap_in_smaller(candidate.core_bbox, core_bbox) >= 0.5 for core_bbox in strong_core_bboxes)
     ]
     candidates.extend(
         _GraphicCandidate(
@@ -274,10 +255,7 @@ def _build_graphic_like_blocks(
             ),
         )
         for core_bbox in strong_core_bboxes
-        if not any(
-            _bbox_overlap_in_smaller(core_bbox, table_bbox) >= 0.5
-            for table_bbox in table_bboxes
-        )
+        if not any(_bbox_overlap_in_smaller(core_bbox, table_bbox) >= 0.5 for table_bbox in table_bboxes)
     )
     if not candidates:
         return [], set()
@@ -307,10 +285,7 @@ def _build_graphic_like_blocks(
     )
 
     for row_lines in row_groups.values():
-        if any(
-            line.source_index in protected_caption_indices | protected_body_tail_indices
-            for line in row_lines
-        ):
+        if any(line.source_index in protected_caption_indices | protected_body_tail_indices for line in row_lines):
             continue
         row_lane_index = _graphic_lane_index(row_lines[0].bbox, lanes)
         matches: list[tuple[int, float, int]] = []
@@ -336,9 +311,7 @@ def _build_graphic_like_blocks(
                 )
                 for line in row_lines
             )
-            mean_distance = statistics.fmean(
-                _bbox_distance(line.bbox, candidate.core_bbox) for line in row_lines
-            )
+            mean_distance = statistics.fmean(_bbox_distance(line.bbox, candidate.core_bbox) for line in row_lines)
             matches.append((-inside_count, mean_distance, candidate_index))
         if not matches:
             continue
@@ -350,9 +323,7 @@ def _build_graphic_like_blocks(
     lines_by_index = {line.source_index: line for line in lines}
     for candidate in candidates:
         members = [
-            lines_by_index[source_index]
-            for source_index in sorted(candidate.line_indices)
-            if source_index in lines_by_index
+            lines_by_index[source_index] for source_index in sorted(candidate.line_indices) if source_index in lines_by_index
         ]
         if len(members) < 2:
             continue
@@ -400,8 +371,7 @@ def _parallel_graphic_rule_pairs(
             right_height = max(0.1, right_image[3] - right_image[1])
             image_overlap = max(
                 0.0,
-                min(left_image[3], right_image[3])
-                - max(left_image[1], right_image[1]),
+                min(left_image[3], right_image[3]) - max(left_image[1], right_image[1]),
             )
             if image_overlap < 0.7 * min(left_height, right_height):
                 continue
@@ -416,26 +386,19 @@ def _parallel_graphic_rule_pairs(
                 rule_bbox
                 for rule_bbox in long_rules
                 if _bbox_axis_overlap_ratio(rule_bbox, left_image, axis="x") >= 0.8
-                and -0.25 * median_height
-                <= left_image[1] - rule_bbox[3]
-                <= 3.0 * median_height
+                and -0.25 * median_height <= left_image[1] - rule_bbox[3] <= 3.0 * median_height
             ]
             right_rules = [
                 rule_bbox
                 for rule_bbox in long_rules
                 if _bbox_axis_overlap_ratio(rule_bbox, right_image, axis="x") >= 0.8
-                and -0.25 * median_height
-                <= right_image[1] - rule_bbox[3]
-                <= 3.0 * median_height
+                and -0.25 * median_height <= right_image[1] - rule_bbox[3] <= 3.0 * median_height
             ]
             for left_rule in left_rules:
                 for right_rule in right_rules:
                     if left_rule[2] >= right_rule[0]:
                         continue
-                    if (
-                        abs(_bbox_center_y(left_rule) - _bbox_center_y(right_rule))
-                        > 0.5 * median_height
-                    ):
+                    if abs(_bbox_center_y(left_rule) - _bbox_center_y(right_rule)) > 0.5 * median_height:
                         continue
                     rule_gap = right_rule[0] - left_rule[2]
                     if not 0.5 * median_height <= rule_gap <= 5.0 * median_height:
@@ -457,11 +420,7 @@ def _parallel_graphic_row_split_boundary(
 ) -> float | None:
     """用横线栏沟和字符投影确认并排图形上方文本的安全切分点。"""
 
-    if (
-        not members
-        or any(member.angle != 0 for member in members)
-        or len({member.semantic_type for member in members}) != 1
-    ):
+    if not members or any(member.angle != 0 for member in members) or len({member.semantic_type for member in members}) != 1:
         return None
     row_bbox = _bbox_union_many([member.bbox for member in members])
     if any(_bbox_intersects(row_bbox, table_bbox) for table_bbox in table_bboxes):
@@ -476,15 +435,13 @@ def _parallel_graphic_row_split_boundary(
         for char in member.chars
         if str(char.get("char") or "").isprintable()
         and not str(char.get("char") or "").isspace()
-        and (bbox := _clip_bbox(_coerce_bbox(char.get("bbox")), page_size))
-        is not None
+        and (bbox := _clip_bbox(_coerce_bbox(char.get("bbox")), page_size)) is not None
     ]
     if not glyph_bboxes:
         return None
     boundary = 0.5 * (left_rule[2] + right_rule[0])
     if any(
-        _bbox_center_x(bbox) < left_rule[0] - median_height
-        or _bbox_center_x(bbox) > right_rule[2] + median_height
+        _bbox_center_x(bbox) < left_rule[0] - median_height or _bbox_center_x(bbox) > right_rule[2] + median_height
         for bbox in glyph_bboxes
     ):
         return None
@@ -492,22 +449,15 @@ def _parallel_graphic_row_split_boundary(
     right_glyphs = [bbox for bbox in glyph_bboxes if _bbox_center_x(bbox) > boundary]
     if len(left_glyphs) < 3 or len(right_glyphs) < 3:
         return None
-    left_width = max(bbox[2] for bbox in left_glyphs) - min(
-        bbox[0] for bbox in left_glyphs
-    )
-    right_width = max(bbox[2] for bbox in right_glyphs) - min(
-        bbox[0] for bbox in right_glyphs
-    )
+    left_width = max(bbox[2] for bbox in left_glyphs) - min(bbox[0] for bbox in left_glyphs)
+    right_width = max(bbox[2] for bbox in right_glyphs) - min(bbox[0] for bbox in right_glyphs)
     if min(left_width, right_width) < 4.0 * median_height:
         return None
     left_edge = max(bbox[2] for bbox in left_glyphs)
     right_edge = min(bbox[0] for bbox in right_glyphs)
     if right_edge - left_edge < 0.75 * median_height:
         return None
-    if not (
-        left_edge <= left_rule[2] <= right_edge
-        and left_edge <= right_rule[0] <= right_edge
-    ):
+    if not (left_edge <= left_rule[2] <= right_edge and left_edge <= right_rule[0] <= right_edge):
         return None
     return boundary
 
@@ -523,14 +473,10 @@ def _split_parallel_graphic_rule_rows(
 ) -> list[_LineItem]:
     """按成对图形、独立顶边横线和栏沟字符投影拆分并排图形上方文本。"""
 
-    horizontal_lines = [
-        line for line in lines if line.angle == 0 and line.effective_height > 0
-    ]
+    horizontal_lines = [line for line in lines if line.angle == 0 and line.effective_height > 0]
     if len(horizontal_lines) < 1 or len(image_bboxes) < 2:
         return list(lines)
-    median_height = statistics.median(
-        line.effective_height for line in horizontal_lines
-    )
+    median_height = statistics.median(line.effective_height for line in horizontal_lines)
     rule_pairs = _parallel_graphic_rule_pairs(
         drawing_lines,
         image_bboxes,
@@ -559,10 +505,7 @@ def _split_parallel_graphic_rule_rows(
             if boundary is None:
                 continue
             row_boundaries = boundaries_by_row.setdefault(row_key, [])
-            if not any(
-                abs(boundary - existing) <= 0.5 * median_height
-                for existing in row_boundaries
-            ):
+            if not any(abs(boundary - existing) <= 0.5 * median_height for existing in row_boundaries):
                 row_boundaries.append(boundary)
     if not boundaries_by_row:
         return list(lines)
@@ -626,9 +569,7 @@ def _split_parallel_graphic_rule_rows(
                 )
                 is not None
             ]
-            run_text = _normalize_native_run_text(
-                "".join(str(char.get("char") or "") for char in run_chars)
-            )
+            run_text = _normalize_native_run_text("".join(str(char.get("char") or "") for char in run_chars))
             if not run_text or not run_bboxes:
                 continue
             if run_index < len(source_indices):
@@ -655,9 +596,7 @@ def _split_parallel_graphic_rule_rows(
         consumed_source_indices.update(member.source_index for member in members)
         split_lines.extend(rebuilt)
 
-    output = [
-        line for line in lines if line.source_index not in consumed_source_indices
-    ]
+    output = [line for line in lines if line.source_index not in consumed_source_indices]
     output.extend(split_lines)
     output.sort(key=lambda line: (line.angle, line.bbox[1], line.bbox[0], line.source_index))
     return output
@@ -700,13 +639,10 @@ def _graphic_caption_line_indices_to_preserve(
                 break
             if _bbox_center_y(candidate_line.bbox) <= _bbox_center_y(previous.bbox):
                 continue
-            if (
-                abs(candidate_line.bbox[0] - seed.bbox[0]) > median_height
-                or (
-                    seed.font_signature is not None
-                    and candidate_line.font_signature is not None
-                    and seed.font_signature != candidate_line.font_signature
-                )
+            if abs(candidate_line.bbox[0] - seed.bbox[0]) > median_height or (
+                seed.font_signature is not None
+                and candidate_line.font_signature is not None
+                and seed.font_signature != candidate_line.font_signature
             ):
                 continue
             protected.add(candidate_line.source_index)
@@ -797,11 +733,7 @@ def _detect_strong_graphic_bboxes(source: _PageSource) -> list[BBox]:
 
     if not source.path_infos:
         return []
-    effective_heights = [
-        _line_effective_height(line, line.bbox)
-        for line in source.lines
-        if line.angle == 0
-    ]
+    effective_heights = [_line_effective_height(line, line.bbox) for line in source.lines if line.angle == 0]
     median_height = statistics.median(effective_heights) if effective_heights else 1.0
     candidates = [
         *_detect_complex_path_containers(
@@ -898,14 +830,20 @@ def _detect_axis_path_graphics(
         horizontal_y = _bbox_center_y(horizontal.bbox)
         for vertical in vertical_axes:
             vertical_x = _bbox_center_x(vertical.bbox)
-            touches_x = min(
-                abs(vertical_x - horizontal.bbox[0]),
-                abs(vertical_x - horizontal.bbox[2]),
-            ) <= tolerance
-            touches_y = min(
-                abs(horizontal_y - vertical.bbox[1]),
-                abs(horizontal_y - vertical.bbox[3]),
-            ) <= tolerance
+            touches_x = (
+                min(
+                    abs(vertical_x - horizontal.bbox[0]),
+                    abs(vertical_x - horizontal.bbox[2]),
+                )
+                <= tolerance
+            )
+            touches_y = (
+                min(
+                    abs(horizontal_y - vertical.bbox[1]),
+                    abs(horizontal_y - vertical.bbox[3]),
+                )
+                <= tolerance
+            )
             if not (touches_x and touches_y):
                 continue
             plot_bbox = _bbox_union(horizontal.bbox, vertical.bbox)
@@ -1048,11 +986,7 @@ def _strong_graphic_lane_index(
             0.0,
             min(core_bbox[2], lane.right) - max(core_bbox[0], lane.left),
         )
-        if (
-            overlap / core_width >= 0.9
-            and core_bbox[0] >= lane.left - tolerance
-            and core_bbox[2] <= lane.right + tolerance
-        ):
+        if overlap / core_width >= 0.9 and core_bbox[0] >= lane.left - tolerance and core_bbox[2] <= lane.right + tolerance:
             matching_indices.append(lane_index)
     return matching_indices[0] if len(matching_indices) == 1 else -1
 
@@ -1207,10 +1141,7 @@ def _image_members_to_content(
     for row_lines in row_groups.values():
         row_bbox = _bbox_union_many([line.bbox for line in row_lines])
         angle = row_lines[0].angle
-        local_geometry = [
-            (line, _rotate_bbox_to_upright(line.bbox, page_size, angle))
-            for line in row_lines
-        ]
+        local_geometry = [(line, _rotate_bbox_to_upright(line.bbox, page_size, angle)) for line in row_lines]
         content = _join_formula_visual_row(local_geometry, page_size)
         if content:
             rows.append((row_bbox, content))
@@ -1252,8 +1183,7 @@ def _inline_raster_gap_member(
     right_height = max(0.1, right_bbox[3] - right_bbox[1])
     vertical_overlap = max(
         0.0,
-        min(left_bbox[3], right_bbox[3])
-        - max(left_bbox[1], right_bbox[1]),
+        min(left_bbox[3], right_bbox[3]) - max(left_bbox[1], right_bbox[1]),
     )
     horizontal_gap = right_bbox[0] - left_bbox[2]
     if (
@@ -1273,20 +1203,13 @@ def _inline_raster_gap_member(
         and line.angle == 0
         and line.split_from_row
         and line.visual_row_id is not None
-        and left_bbox[2] - edge_tolerance
-        <= _bbox_center_x(line.bbox)
-        <= right_bbox[0] + edge_tolerance
-        and band_top - edge_tolerance
-        <= _bbox_center_y(line.bbox)
-        <= band_bottom + edge_tolerance
+        and left_bbox[2] - edge_tolerance <= _bbox_center_x(line.bbox) <= right_bbox[0] + edge_tolerance
+        and band_top - edge_tolerance <= _bbox_center_y(line.bbox) <= band_bottom + edge_tolerance
     ]
     if len(gap_members) != 1:
         return None
     member = gap_members[0]
-    if (
-        abs(member.bbox[0] - left_bbox[2]) > edge_tolerance
-        or abs(member.bbox[2] - right_bbox[0]) > edge_tolerance
-    ):
+    if abs(member.bbox[0] - left_bbox[2]) > edge_tolerance or abs(member.bbox[2] - right_bbox[0]) > edge_tolerance:
         return None
     return member
 
@@ -1332,9 +1255,7 @@ def _merge_inline_raster_image_candidates(
     ]
     median_height = statistics.median(effective_heights) if effective_heights else 1.0
 
-    adjacency: dict[int, set[int]] = {
-        index: set() for index in range(len(candidate_bboxes))
-    }
+    adjacency: dict[int, set[int]] = {index: set() for index in range(len(candidate_bboxes))}
     gap_members: dict[tuple[int, int], _LineItem] = {}
     for first_index, first_bbox in enumerate(candidate_bboxes):
         for second_index, second_bbox in enumerate(candidate_bboxes):
@@ -1390,8 +1311,7 @@ def _merge_inline_raster_image_candidates(
             [*image_bboxes, *[member.bbox for member in members]],
         )
         if any(
-            _bbox_overlap_in_smaller(group_bbox, container_bbox)
-            >= _IMAGE_CONTAINER_OVERLAP_THRESHOLD
+            _bbox_overlap_in_smaller(group_bbox, container_bbox) >= _IMAGE_CONTAINER_OVERLAP_THRESHOLD
             for container_bbox in container_bboxes
         ):
             continue
@@ -1406,11 +1326,7 @@ def _merge_inline_raster_image_candidates(
         merged_specs.append((group_bbox, next(iter(visual_row_ids))))
         consumed_indices.update(ordered_indices)
 
-    merged_specs.extend(
-        (bbox, None)
-        for index, bbox in enumerate(candidate_bboxes)
-        if index not in consumed_indices
-    )
+    merged_specs.extend((bbox, None) for index, bbox in enumerate(candidate_bboxes) if index not in consumed_indices)
     merged_specs.sort(key=lambda item: (item[0][1], item[0][0], item[0][3], item[0][2]))
     return merged_specs
 
@@ -1421,6 +1337,83 @@ def _image_bboxes_are_near_equal(first: BBox, second: BBox) -> bool:
     return all(
         abs(first_value - second_value) <= _SIGNATURE_IMAGE_BBOX_DEDUP_TOLERANCE
         for first_value, second_value in zip(first, second, strict=True)
+    )
+
+
+def _merge_vertical_raster_tiles(
+    bboxes: list[BBox],
+    page_size: tuple[float, float],
+) -> list[BBox]:
+    """把同宽且纵向连续的点阵切片合成一张完整图片。"""
+
+    page_width, page_height = page_size
+    page_area = max(0.0, page_width) * max(0.0, page_height)
+    if len(bboxes) < 3 or page_area <= 0:
+        return list(bboxes)
+
+    endpoint_tolerance = max(0.75, 0.002 * page_width)
+    endpoint_groups: list[list[tuple[int, BBox]]] = []
+    for index, bbox in sorted(
+        enumerate(bboxes),
+        key=lambda item: (item[1][0], item[1][2], item[1][1]),
+    ):
+        target = next(
+            (
+                group
+                for group in endpoint_groups
+                if abs(bbox[0] - statistics.median(item[1][0] for item in group)) <= endpoint_tolerance
+                and abs(bbox[2] - statistics.median(item[1][2] for item in group)) <= endpoint_tolerance
+            ),
+            None,
+        )
+        if target is None:
+            endpoint_groups.append([(index, bbox)])
+        else:
+            target.append((index, bbox))
+
+    merged: list[BBox] = []
+    consumed: set[int] = set()
+    for group in endpoint_groups:
+        ordered = sorted(group, key=lambda item: (item[1][1], item[1][3]))
+        segments: list[list[tuple[int, BBox]]] = []
+        for item in ordered:
+            if not segments:
+                segments.append([item])
+                continue
+            previous_bbox = segments[-1][-1][1]
+            current_bbox = item[1]
+            previous_height = max(0.1, previous_bbox[3] - previous_bbox[1])
+            current_height = max(0.1, current_bbox[3] - current_bbox[1])
+            maximum_gap = max(
+                1.0,
+                0.5 * max(previous_height, current_height),
+            )
+            if current_bbox[1] - previous_bbox[3] <= maximum_gap:
+                segments[-1].append(item)
+            else:
+                segments.append([item])
+
+        for segment in segments:
+            if len(segment) < 3:
+                continue
+            segment_bboxes = [bbox for _index, bbox in segment]
+            union_bbox = _bbox_union_many(segment_bboxes)
+            union_height = max(0.1, union_bbox[3] - union_bbox[1])
+            covered_height = sum(max(0.0, bbox[3] - bbox[1]) for bbox in segment_bboxes)
+            if (
+                _bbox_area(union_bbox) / page_area < _MIN_RASTER_IMAGE_PAGE_AREA_RATIO
+                or union_bbox[2] - union_bbox[0] < 0.12 * page_width
+                or union_bbox[2] - union_bbox[0] > 0.9 * page_width
+                or covered_height / union_height < 0.9
+            ):
+                continue
+            merged.append(union_bbox)
+            consumed.update(index for index, _bbox in segment)
+
+    merged.extend(bbox for index, bbox in enumerate(bboxes) if index not in consumed)
+    return sorted(
+        merged,
+        key=lambda bbox: (bbox[1], bbox[0], bbox[3], bbox[2]),
     )
 
 
@@ -1435,43 +1428,37 @@ def _build_raster_image_blocks(
     if page_area <= 0:
         return [], set()
 
-    container_bboxes = [
-        bbox
-        for block in container_blocks
-        if (bbox := _coerce_bbox(block.get("bbox"))) is not None
-    ]
+    container_bboxes = [bbox for block in container_blocks if (bbox := _coerce_bbox(block.get("bbox"))) is not None]
     signature_bboxes: list[BBox] = []
     for raw_bbox in source.signature_bboxes:
         bbox = _clip_bbox(_coerce_bbox(raw_bbox), source.page_size)
         if bbox is None:
             continue
         if any(
-            _bbox_overlap_in_smaller(bbox, container_bbox)
-            >= _IMAGE_CONTAINER_OVERLAP_THRESHOLD
+            _bbox_overlap_in_smaller(bbox, container_bbox) >= _IMAGE_CONTAINER_OVERLAP_THRESHOLD
             for container_bbox in container_bboxes
         ):
             continue
-        if not any(
-            _image_bboxes_are_near_equal(bbox, existing_bbox)
-            for existing_bbox in signature_bboxes
-        ):
+        if not any(_image_bboxes_are_near_equal(bbox, existing_bbox) for existing_bbox in signature_bboxes):
             # 已由注释可见性和 /AP 严格确认的签名不再套用普通点阵图面积门槛。
             signature_bboxes.append(bbox)
 
+    clipped_raster_bboxes = [
+        bbox for raw_bbox in source.image_bboxes if (bbox := _clip_bbox(_coerce_bbox(raw_bbox), source.page_size)) is not None
+    ]
     raster_bboxes: list[BBox] = []
-    for raw_bbox in source.image_bboxes:
-        bbox = _clip_bbox(_coerce_bbox(raw_bbox), source.page_size)
-        if bbox is None or _bbox_area(bbox) / page_area < _MIN_RASTER_IMAGE_PAGE_AREA_RATIO:
+    for bbox in _merge_vertical_raster_tiles(
+        clipped_raster_bboxes,
+        source.page_size,
+    ):
+        if _bbox_area(bbox) / page_area < _MIN_RASTER_IMAGE_PAGE_AREA_RATIO:
             continue
         if any(
             _bbox_overlap_in_smaller(bbox, container_bbox) >= _IMAGE_CONTAINER_OVERLAP_THRESHOLD
             for container_bbox in container_bboxes
         ):
             continue
-        if any(
-            _image_bboxes_are_near_equal(bbox, signature_bbox)
-            for signature_bbox in signature_bboxes
-        ):
+        if any(_image_bboxes_are_near_equal(bbox, signature_bbox) for signature_bbox in signature_bboxes):
             continue
         raster_bboxes.append(bbox)
     if not raster_bboxes and not signature_bboxes:
@@ -1488,9 +1475,7 @@ def _build_raster_image_blocks(
         else []
     )
     candidate_specs.extend((bbox, None) for bbox in signature_bboxes)
-    candidate_specs.sort(
-        key=lambda item: (item[0][1], item[0][0], item[0][3], item[0][2])
-    )
+    candidate_specs.sort(key=lambda item: (item[0][1], item[0][0], item[0][3], item[0][2]))
     candidate_bboxes = [bbox for bbox, _row_id in candidate_specs]
 
     members_by_candidate: list[list[_LineItem]] = [[] for _ in candidate_bboxes]
@@ -1500,9 +1485,7 @@ def _build_raster_image_blocks(
             continue
         center = (_bbox_center_x(line.bbox), _bbox_center_y(line.bbox))
         matching_indices = [
-            candidate_index
-            for candidate_index, bbox in enumerate(candidate_bboxes)
-            if _point_in_bbox(center, bbox)
+            candidate_index for candidate_index, bbox in enumerate(candidate_bboxes) if _point_in_bbox(center, bbox)
         ]
         if not matching_indices:
             continue

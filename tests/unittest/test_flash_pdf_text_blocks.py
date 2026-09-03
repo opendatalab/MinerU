@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from dataclasses import replace
 
 import pytest
 
 from mineru.model.flash.pdf import (
+    geometry,
     line_layout,
     line_merging,
     models,
@@ -16,6 +18,32 @@ from mineru.model.flash.pdf import (
 from _flash_pdf_test_utils import (
     _text_line,
 )
+
+
+def _span_text_block(
+    content: str,
+    bbox: tuple[float, float, float, float],
+) -> dict[str, object]:
+    """构造全宽 span 正文回并测试使用的最小内部文本块。"""
+
+    return {
+        "type": "text",
+        "bbox": bbox,
+        "angle": 0,
+        "content": content,
+        "_visual_row_ids": set(),
+        "_single_run_row_id": None,
+        "_local_line_bboxes": [bbox],
+        "_line_heights": [4.0],
+        "_font_signatures": {("Body", 0)},
+        "_inline_math_regions": [],
+        "_lane_interval": (0.0, 100.0),
+        "_lane_is_span": True,
+        "_hard_break_before": False,
+        "_protected_hard_break_before": False,
+        "_hanging_indent_group": None,
+        "_leading_emphasis_start": False,
+    }
 
 
 def test_hanging_indent_groups_neutral_entries_and_ignores_centered_heading() -> None:
@@ -62,6 +90,288 @@ def test_hanging_indent_groups_neutral_entries_and_ignores_centered_heading() ->
         "Beta begins beta continues",
         "Gamma begins gamma continues",
     ]
+
+
+def test_nested_columns_ignore_intervening_full_width_metadata_band() -> None:
+    """验证左右栏行交错时，中间全宽元数据簇不阻断局部双栏推断。"""
+
+    lines = [
+        _text_line("full width", (0.0, 0.0, 100.0, 10.0), 0),
+        *[
+            _text_line(
+                f"left {index}",
+                (0.0, 30.0 + 12.0 * index, 45.0, 40.0 + 12.0 * index),
+                1 + 2 * index,
+            )
+            for index in range(4)
+        ],
+        *[
+            _text_line(
+                f"right {index}",
+                (55.0, 30.0 + 12.0 * index, 100.0, 40.0 + 12.0 * index),
+                2 + 2 * index,
+            )
+            for index in range(4)
+        ],
+        _text_line("author one", (20.0, 100.0, 80.0, 110.0), 20),
+        _text_line("author two", (20.0, 112.0, 80.0, 122.0), 21),
+        _text_line("author three", (20.0, 124.0, 80.0, 134.0), 22),
+    ]
+
+    lanes = line_layout._infer_text_lanes(
+        [(line, line.bbox) for line in lines],
+        100.0,
+        10.0,
+    )
+    regular = sorted(
+        (
+            lane
+            for lane in lanes
+            if not lane.is_span and len(lane.lines) >= 4 and min(item[1][1] for item in lane.lines) >= 30.0
+        ),
+        key=lambda lane: lane.left,
+    )
+
+    assert [(lane.left, lane.right) for lane in regular[:2]] == [
+        (0.0, 45.0),
+        (55.0, 100.0),
+    ]
+
+
+def test_paragraph_formula_context_merges_dense_same_lane_text() -> None:
+    """验证复杂行内分式及其同栏前后正文恢复为一个文本块。"""
+
+    def block(
+        content: str,
+        bbox: tuple[float, float, float, float],
+    ) -> dict[str, object]:
+        """构造含栏带和行框的最小文本块。"""
+
+        return {
+            "type": "text",
+            "bbox": bbox,
+            "angle": 0,
+            "content": content,
+            "_local_line_bboxes": [bbox],
+            "_line_heights": [10.0],
+            "_font_signatures": {("Body", 0)},
+            "_lane_interval": (0.0, 100.0),
+            "_lane_is_span": False,
+            "_hard_break_before": False,
+            "_leading_emphasis_start": False,
+        }
+
+    blocks = [
+        block("prefix", (0.0, 0.0, 30.0, 10.0)),
+        block("body:", (0.0, 10.0, 100.0, 20.0)),
+        block("I=ΔT/ΔH", (0.0, 21.0, 100.0, 31.0)),
+        block("tail", (0.0, 32.0, 100.0, 42.0)),
+        {
+            **block("other lane", (120.0, 0.0, 220.0, 10.0)),
+            "_lane_interval": (120.0, 220.0),
+        },
+    ]
+    blocks[2]["_paragraph_formula_context"] = True
+
+    merged = text_blocks._merge_paragraph_formula_context_blocks(
+        blocks,
+        (220.0, 100.0),
+    )
+
+    assert [item["content"] for item in merged] == [
+        "prefix body: I=ΔT/ΔH tail",
+        "other lane",
+    ]
+
+
+@pytest.mark.parametrize("angle", [90, 270])
+def test_rotated_paragraph_formula_context_uses_upright_gap(
+    angle: int,
+) -> None:
+    """验证旋转公式上下文只合并正向坐标中真正相邻的同栏正文。"""
+
+    page_size = (200.0, 200.0)
+
+    def block(
+        content: str,
+        local_bbox: tuple[float, float, float, float],
+        *,
+        formula_context: bool = False,
+    ) -> dict[str, object]:
+        """构造页面框与正向行框分离的旋转文本块。"""
+
+        return {
+            "type": "text",
+            "bbox": geometry._rotate_bbox_from_upright(
+                local_bbox,
+                page_size,
+                angle,
+            ),
+            "angle": angle,
+            "content": content,
+            "_local_line_bboxes": [local_bbox],
+            "_line_heights": [10.0],
+            "_font_signatures": {("Body", 0)},
+            "_lane_interval": (0.0, 80.0),
+            "_lane_is_span": False,
+            "_hard_break_before": False,
+            "_paragraph_formula_context": formula_context,
+        }
+
+    adjacent = text_blocks._merge_paragraph_formula_context_blocks(
+        [
+            block("formula", (0.0, 0.0, 80.0, 10.0), formula_context=True),
+            block("adjacent body", (0.0, 11.0, 80.0, 21.0)),
+        ],
+        page_size,
+    )
+    distant = text_blocks._merge_paragraph_formula_context_blocks(
+        [
+            block("formula", (0.0, 0.0, 80.0, 10.0), formula_context=True),
+            block("distant body", (0.0, 100.0, 80.0, 110.0)),
+        ],
+        page_size,
+    )
+    missing_geometry_seed = block(
+        "formula",
+        (0.0, 0.0, 80.0, 10.0),
+        formula_context=True,
+    )
+    missing_geometry_seed.pop("_local_line_bboxes")
+    missing_geometry = text_blocks._merge_paragraph_formula_context_blocks(
+        [
+            missing_geometry_seed,
+            block("adjacent body", (0.0, 11.0, 80.0, 21.0)),
+        ],
+        page_size,
+    )
+
+    assert [item["content"] for item in adjacent] == ["formula adjacent body"]
+    assert adjacent[0]["bbox"] == geometry._rotate_bbox_from_upright(
+        (0.0, 0.0, 80.0, 21.0),
+        page_size,
+        angle,
+    )
+    assert [item["content"] for item in distant] == [
+        "formula",
+        "distant body",
+    ]
+    assert [item["content"] for item in missing_geometry] == [
+        "formula",
+        "adjacent body",
+    ]
+
+
+def test_full_width_span_text_merges_without_terminal_punctuation_dependency() -> None:
+    """验证同栏满宽 span 正文可跨句号连续回并，并沿用英文断词恢复。"""
+
+    blocks = [
+        _span_text_block(
+            "Abstract first sentence.",
+            (0.0, 0.0, 90.0, 10.0),
+        ),
+        _span_text_block(
+            "Continuation remains in the same paragraph.",
+            (0.0, 16.0, 90.0, 26.0),
+        ),
+        _span_text_block(
+            "Another impor-",
+            (0.0, 32.0, 90.0, 42.0),
+        ),
+        _span_text_block(
+            "tant detail",
+            (0.0, 48.0, 90.0, 58.0),
+        ),
+        {
+            **_span_text_block(
+                "Keywords: separate metadata",
+                (0.0, 64.0, 90.0, 74.0),
+            ),
+            "_lane_is_span": False,
+            "_hard_break_before": True,
+            "_protected_hard_break_before": True,
+        },
+    ]
+
+    merged = text_blocks._merge_unterminated_text_components(
+        blocks,
+    )
+
+    assert [block["content"] for block in merged] == [
+        "Abstract first sentence. Continuation remains in the same paragraph. Another important detail",
+        "Keywords: separate metadata",
+    ]
+
+
+@pytest.mark.parametrize(
+    "barrier",
+    [
+        "hard_break",
+        "protected_break",
+        "leading_emphasis",
+        "font_conflict",
+        "narrow_row",
+        "different_lane",
+        "different_angle",
+        "labelled_metadata",
+        "intervening_block",
+        "ordinary_lane_terminal",
+    ],
+)
+def test_full_width_span_text_respects_structural_barriers(
+    barrier: str,
+) -> None:
+    """验证 span 回并仍受硬边界、栏带、字体、宽度和阻隔块约束。"""
+
+    first = _span_text_block(
+        "First sentence.",
+        (0.0, 0.0, 90.0, 10.0),
+    )
+    second = _span_text_block(
+        "Second sentence",
+        (0.0, 16.0, 90.0, 26.0),
+    )
+    blocks = [first, second]
+    if barrier == "hard_break":
+        second["_hard_break_before"] = True
+    elif barrier == "protected_break":
+        second["_protected_hard_break_before"] = True
+    elif barrier == "leading_emphasis":
+        second["_leading_emphasis_start"] = True
+    elif barrier == "font_conflict":
+        second["_font_signatures"] = {("Other", 0)}
+    elif barrier == "narrow_row":
+        second["bbox"] = (0.0, 16.0, 79.0, 26.0)
+        second["_local_line_bboxes"] = [second["bbox"]]
+    elif barrier == "different_lane":
+        second["_lane_interval"] = (0.0, 120.0)
+    elif barrier == "different_angle":
+        second["angle"] = 90
+    elif barrier == "labelled_metadata":
+        second["content"] = "Keywords: separate metadata"
+    elif barrier == "intervening_block":
+        blocks.insert(
+            1,
+            {
+                **_span_text_block(
+                    "visual barrier",
+                    (0.0, 11.0, 90.0, 15.0),
+                ),
+                "type": "caption",
+            },
+        )
+    elif barrier == "ordinary_lane_terminal":
+        first["_lane_is_span"] = False
+        second["_lane_is_span"] = False
+
+    merged = text_blocks._merge_unterminated_text_components(
+        blocks,
+    )
+
+    assert not any(
+        "First sentence." in str(block.get("content") or "") and "Second sentence" in str(block.get("content") or "")
+        for block in merged
+    )
 
 
 def test_hanging_indent_accepts_reference_spacing_and_italic_tail() -> None:
@@ -180,6 +490,81 @@ def test_hanging_indent_keeps_confirmed_entries_before_plain_trailing_paragraph(
     assert [group_map[index] for index in range(6)] == [0, 0, 1, 1, 2, 2]
     assert 6 not in group_map
     assert 7 not in group_map
+
+
+def test_full_width_hanging_entries_can_start_after_aligned_prose() -> None:
+    """验证近满栏的重复悬挂条目可在同左缘正文之后启动，普通单行仍留在前文。"""
+
+    lines = [
+        _text_line("plain disclosure", (0.0, 0.0, 100.0, 10.0), 0),
+        _text_line("plain single row", (0.0, 10.0, 100.0, 20.0), 1),
+        _text_line("first entry", (0.0, 20.0, 100.0, 30.0), 2),
+        _text_line("first entry tail", (15.0, 30.0, 70.0, 40.0), 3),
+        _text_line("second entry", (0.0, 40.0, 100.0, 50.0), 4),
+        _text_line("second entry tail", (15.0, 50.0, 80.0, 60.0), 5),
+    ]
+    lane = models._TextLane(
+        left=0.0,
+        right=100.0,
+        lines=[(line, line.bbox) for line in lines],
+    )
+
+    group_map = text_blocks._build_hanging_indent_group_map(lane, [], [])
+
+    assert 0 not in group_map
+    assert 1 not in group_map
+    assert [group_map[index] for index in range(2, 6)] == [0, 0, 1, 1]
+
+
+def test_bullet_rows_remain_independent_text_blocks() -> None:
+    """验证近满栏项目符号为显式段界，连续披露条目不会在后处理阶段串联。"""
+
+    lines = [
+        _text_line("• first disclosure.", (0.0, 0.0, 100.0, 10.0), 0),
+        _text_line("• second disclosure.", (0.0, 10.0, 100.0, 20.0), 1),
+        _text_line("• third disclosure.", (0.0, 20.0, 100.0, 30.0), 2),
+    ]
+
+    blocks = text_blocks._build_text_blocks(lines, [], (120.0, 100.0))
+
+    assert [block["content"] for block in blocks] == [
+        "• first disclosure.",
+        "• second disclosure.",
+        "• third disclosure.",
+    ]
+
+
+def test_compact_bullet_rows_keep_one_list_block() -> None:
+    """验证短项目符号列表继续按紧凑列表成块，不套用近满栏披露条目的边界。"""
+
+    lines = [
+        _text_line("• first tool", (0.0, 0.0, 45.0, 10.0), 0),
+        _text_line("• second tool", (0.0, 10.0, 48.0, 20.0), 1),
+        _text_line("• third tool", (0.0, 20.0, 42.0, 30.0), 2),
+    ]
+    lane = models._TextLane(
+        left=0.0,
+        right=100.0,
+        lines=[(line, line.bbox) for line in lines],
+    )
+
+    assert text_blocks._explicit_text_break_sources(lane) == set()
+
+
+def test_adjacent_compact_label_rows_remain_separate() -> None:
+    """验证连续的短键值元数据行形成独立块，不因缺少句末标点而串联。"""
+
+    lines = [
+        _text_line("递交截止时间：09:30", (0.0, 0.0, 55.0, 10.0), 0),
+        _text_line("递交方式：paper", (0.0, 10.0, 60.0, 20.0), 1),
+    ]
+    lane = models._TextLane(
+        left=0.0,
+        right=100.0,
+        lines=[(line, line.bbox) for line in lines],
+    )
+
+    assert text_blocks._explicit_text_break_sources(lane) == {1}
 
 
 def test_twelve_point_gutter_keeps_two_text_lanes_and_paragraphs_separate() -> None:
@@ -374,6 +759,99 @@ def test_effective_height_connects_body_line_after_tall_math_glyph() -> None:
     )
 
 
+def test_body_row_gap_uses_canonical_baseline_without_changing_semantic_gap() -> None:
+    """验证正文连接使用 baseline 节奏，而其它语义路径仍保留 bbox 净空。"""
+
+    previous = _text_line(
+        "previous full body row",
+        (0.0, 0.0, 100.0, 24.0),
+        0,
+        effective_height=24.0,
+    )
+    current = _text_line(
+        "current full body row",
+        (0.0, 30.0, 100.0, 54.0),
+        1,
+        effective_height=24.0,
+    )
+    for line, baseline in ((previous, 20.0), (current, 36.0)):
+        line.em_height = 10.0
+        line.style_scale_repaired = True
+        line.baseline = baseline
+    lane = models._TextLane(
+        left=0.0,
+        right=100.0,
+        lines=[(previous, previous.bbox), (current, current.bbox)],
+    )
+
+    assert (
+        line_layout._effective_text_row_gap(
+            (previous, previous.bbox),
+            (current, current.bbox),
+        )
+        == 20.0
+    )
+    assert (
+        line_layout._effective_body_text_row_gap(
+            (previous, previous.bbox),
+            (current, current.bbox),
+        )
+        == 6.0
+    )
+    assert line_layout._should_connect_text_rows(
+        (previous, previous.bbox),
+        (current, current.bbox),
+        lane,
+        6.0,
+        0.0,
+        [],
+        [],
+    )
+
+
+def test_cross_lane_short_tail_returns_to_unique_preceding_lane() -> None:
+    """验证完整落在唯一正文栏内的短尾不会继续停留在 span lane。"""
+
+    previous = _text_line(
+        "full preceding row",
+        (0.0, 10.0, 100.0, 20.0),
+        0,
+        visual_row_id=1,
+        effective_height=10.0,
+    )
+    tail = _text_line(
+        "short tail",
+        (0.0, 20.0, 40.0, 30.0),
+        1,
+        visual_row_id=2,
+        effective_height=10.0,
+    )
+    previous.baseline = 20.0
+    tail.baseline = 30.0
+    body_lane = models._TextLane(
+        left=0.0,
+        right=100.0,
+        lines=[(previous, previous.bbox)],
+    )
+    span_lane = models._TextLane(
+        left=0.0,
+        right=180.0,
+        lines=[(tail, tail.bbox)],
+        is_span=True,
+    )
+
+    line_layout._reattach_cross_lane_short_tails(
+        [body_lane, span_lane],
+        10.0,
+    )
+
+    assert [line.text for line, _bbox in body_lane.lines] == [
+        "full preceding row",
+        "short tail",
+    ]
+    assert span_lane.lines == []
+
+
 def test_inline_scripts_and_touching_low_coverage_runs_are_recovered() -> None:
     """验证紧贴上下标与低覆盖率同行后缀恢复，同时保留外置公式编号。"""
 
@@ -432,6 +910,316 @@ def test_inline_scripts_and_touching_low_coverage_runs_are_recovered() -> None:
         formula_number.bbox,
         [],
     )
+
+
+def test_title_resolved_visual_row_merges_sparse_short_prefix() -> None:
+    """验证同视觉行的短前缀与远端宽正文按字体族和基线恢复。"""
+
+    lines = [
+        _text_line(
+            "prefix",
+            (0.0, 0.0, 15.0, 10.0),
+            0,
+            visual_row_id=7,
+            run_index=0,
+            split_from_row=True,
+            font_signature=("SimSun", 0),
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "wide body",
+            (60.0, 0.0, 140.0, 10.0),
+            1,
+            visual_row_id=7,
+            run_index=1,
+            split_from_row=True,
+            font_signature=("ABCDEF+SimSun", 0),
+            font_coverage=1.0,
+        ),
+    ]
+
+    merged = line_merging._merge_title_resolved_visual_rows(
+        lines,
+        (200.0, 100.0),
+    )
+
+    assert len(merged) == 1
+    assert merged[0].text == "prefix wide body"
+
+
+@pytest.mark.parametrize(
+    "failure_mode",
+    [
+        "font-conflict",
+        "different-row",
+        "protected-boundary",
+        "two-wide-runs",
+    ],
+)
+def test_title_resolved_visual_row_rejects_weak_sparse_prefix(
+    failure_mode: str,
+) -> None:
+    """验证字体、行身份、保护边界或前缀宽度不符时保留拆分。"""
+
+    prefix_bbox = (
+        (0.0, 0.0, 40.0, 10.0)
+        if failure_mode == "two-wide-runs"
+        else (0.0, 0.0, 15.0, 10.0)
+    )
+    lines = [
+        _text_line(
+            "prefix",
+            prefix_bbox,
+            0,
+            visual_row_id=7,
+            run_index=0,
+            split_from_row=True,
+            preserve_split_boundary=(
+                failure_mode == "protected-boundary"
+            ),
+            font_signature=("SimSun", 0),
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "wide body",
+            (85.0, 0.0, 165.0, 10.0)
+            if failure_mode == "two-wide-runs"
+            else (60.0, 0.0, 140.0, 10.0),
+            1,
+            visual_row_id=(
+                8 if failure_mode == "different-row" else 7
+            ),
+            run_index=1,
+            split_from_row=True,
+            font_signature=(
+                ("OtherFont", 0)
+                if failure_mode == "font-conflict"
+                else ("ABCDEF+SimSun", 0)
+            ),
+            font_coverage=1.0,
+        ),
+    ]
+
+    merged = line_merging._merge_title_resolved_visual_rows(
+        lines,
+        (200.0, 100.0),
+    )
+
+    assert [line.text for line in merged] == [
+        "prefix",
+        "wide body",
+    ]
+
+
+def test_canonical_reference_scale_merges_bracket_marker_but_not_plain_number() -> None:
+    """验证 loose 高度相同的括号引用可按 PDF 字号并入宿主，普通数字保持独立。"""
+
+    def sized_line(
+        text: str,
+        bbox: tuple[float, float, float, float],
+        source_index: int,
+        font_size: float,
+    ) -> models._LineItem:
+        """构造带 PDF 字号证据的单字符原生行。"""
+
+        line = _text_line(
+            text,
+            bbox,
+            source_index,
+            visual_row_id=source_index,
+            effective_height=12.0,
+        )
+        line.chars = [
+            {
+                "char": text[0],
+                "bbox": bbox,
+                "font": {
+                    "name": "Fixture",
+                    "flags": 0,
+                    "size": font_size,
+                    "weight": 400,
+                },
+            }
+        ]  # type: ignore[list-item]
+        return line
+
+    base = sized_line(
+        "TriviaQA",
+        (0.0, 10.0, 50.0, 22.0),
+        0,
+        10.0,
+    )
+    reference = sized_line(
+        "[38]",
+        (50.1, 5.0, 57.1, 14.0),
+        1,
+        6.0,
+    )
+    plain_number = sized_line(
+        "1",
+        (50.1, 5.0, 57.1, 14.0),
+        2,
+        6.0,
+    )
+
+    merged_reference = native_text._merge_native_inline_scripts(
+        [base, reference],
+        (120.0, 100.0),
+    )
+    separate_number = native_text._merge_native_inline_scripts(
+        [
+            sized_line(
+                "TriviaQA",
+                (0.0, 10.0, 50.0, 22.0),
+                0,
+                10.0,
+            ),
+            plain_number,
+        ],
+        (120.0, 100.0),
+    )
+
+    assert [line.text for line in merged_reference] == [
+        "TriviaQA[38]",
+    ]
+    assert [line.text for line in separate_number] == [
+        "TriviaQA",
+        "1",
+    ]
+
+
+def test_same_repeated_indent_continues_after_terminal_punctuation() -> None:
+    """验证同一悬挂缩进锚点的紧邻尾行不会因前行句号被再次切开。"""
+
+    previous = _text_line(
+        "first indented line.",
+        (20.0, 0.0, 100.0, 10.0),
+        0,
+        effective_height=10.0,
+    )
+    current = _text_line(
+        "second indented line",
+        (20.0, 10.0, 80.0, 20.0),
+        1,
+        effective_height=10.0,
+    )
+    lane = models._TextLane(
+        left=0.0,
+        right=100.0,
+        lines=[(previous, previous.bbox), (current, current.bbox)],
+    )
+
+    assert line_layout._should_connect_text_rows(
+        (previous, previous.bbox),
+        (current, current.bbox),
+        lane,
+        0.0,
+        0.0,
+        [],
+        [],
+    )
+
+
+def test_sparse_lane_terminal_gap_remains_paragraph_boundary() -> None:
+    """验证稀疏页不会把唯一的句号后大间距反向估计成常规行距。"""
+
+    previous = _text_line(
+        "first generated paragraph.",
+        (0.0, 0.0, 100.0, 10.0),
+        0,
+        effective_height=10.0,
+    )
+    current = _text_line(
+        "second generated paragraph",
+        (0.0, 18.0, 100.0, 28.0),
+        1,
+        effective_height=10.0,
+    )
+    lane = models._TextLane(
+        left=0.0,
+        right=100.0,
+        lines=[(previous, previous.bbox), (current, current.bbox)],
+    )
+
+    assert not line_layout._should_connect_text_rows(
+        (previous, previous.bbox),
+        (current, current.bbox),
+        lane,
+        8.0,
+        0.0,
+        [],
+        [],
+    )
+
+
+def test_list_intro_chain_splits_before_item_and_keeps_intro_together() -> None:
+    """验证列表前的连续引导段与冒号短尾合并，而编号项保持硬边界。"""
+
+    lines = [
+        _text_line("paragraph continues", (0.0, 0.0, 100.0, 10.0), 0),
+        _text_line("paragraph closes.", (0.0, 10.0, 100.0, 20.0), 1),
+        _text_line("list introduction", (10.0, 20.0, 100.0, 30.0), 2),
+        _text_line("directions:", (0.0, 30.0, 25.0, 40.0), 3),
+        _text_line("(1) first item", (10.0, 40.0, 100.0, 50.0), 4),
+        _text_line("item continuation", (0.0, 50.0, 100.0, 60.0), 5),
+    ]
+
+    blocks = text_blocks._build_text_blocks(
+        lines,
+        [],
+        (120.0, 100.0),
+    )
+
+    assert [block["content"] for block in blocks] == [
+        "paragraph continues paragraph closes. list introduction directions:",
+        "(1) first item item continuation",
+    ]
+
+
+def test_single_numbered_tail_merges_back_into_colon_line() -> None:
+    """验证没有续行的单个编号尾项回并冒号行，不被稀疏页段界永久拆开。"""
+
+    lines = [
+        _text_line("scope includes:", (0.0, 0.0, 90.0, 10.0), 0),
+        _text_line("(001) only entry;", (10.0, 23.0, 70.0, 33.0), 1),
+    ]
+
+    blocks = text_blocks._build_text_blocks(lines, [], (120.0, 100.0))
+
+    assert [block["content"] for block in blocks] == [
+        "scope includes: (001) only entry;",
+    ]
+
+
+def test_multiline_component_absorbs_aligned_short_tail() -> None:
+    """验证多行正文吸收同左缘的单行短尾，不要求短尾达到正文满栏宽度。"""
+
+    lines = [
+        _text_line("body starts", (0.0, 0.0, 100.0, 10.0), 0),
+        _text_line("body continues", (0.0, 10.0, 100.0, 20.0), 1),
+        _text_line("short tail", (0.0, 35.0, 35.0, 45.0), 2),
+    ]
+
+    blocks = text_blocks._build_text_blocks(lines, [], (120.0, 100.0))
+
+    assert [block["content"] for block in blocks] == [
+        "body starts body continues short tail",
+    ]
+
+
+def test_url_rows_continue_colon_introduction() -> None:
+    """验证冒号引导后的 URL 行继续属于前一正文块，即使 URL 自身不满栏。"""
+
+    lines = [
+        _text_line("reference link:", (0.0, 0.0, 80.0, 10.0), 0),
+        _text_line("https://example.test/path", (0.0, 24.0, 55.0, 34.0), 1),
+    ]
+
+    blocks = text_blocks._build_text_blocks(lines, [], (120.0, 100.0))
+
+    assert [block["content"] for block in blocks] == [
+        "reference link: https://example.test/path",
+    ]
 
 
 def test_low_overlap_detached_script_preserves_following_row_gap() -> None:
@@ -977,9 +1765,7 @@ def test_nested_lane_accepts_wider_one_sided_rows_and_expands_interval() -> None
             (10.0, top, 190.0, top + 8.0),
             30 + row_index,
         )
-        for row_index, top in enumerate(
-            (90.0, 100.0, 110.0, 120.0, 130.0, 140.0, 150.0, 160.0, 170.0, 180.0)
-        )
+        for row_index, top in enumerate((90.0, 100.0, 110.0, 120.0, 130.0, 140.0, 150.0, 160.0, 170.0, 180.0))
     )
 
     lanes = line_layout._infer_text_lanes(
@@ -988,18 +1774,13 @@ def test_nested_lane_accepts_wider_one_sided_rows_and_expands_interval() -> None
         8.0,
     )
 
-    left_lane = next(
-        lane
-        for lane in lanes
-        if any(line.text == "wide-left-one" for line, _bbox in lane.lines)
-    )
+    left_lane = next(lane for lane in lanes if any(line.text == "wide-left-one" for line, _bbox in lane.lines))
     assert not left_lane.is_span
     assert left_lane.right == pytest.approx(105.0)
-    assert {
-        line.text
-        for line, _bbox in left_lane.lines
-        if line.text.startswith("wide-left")
-    } == {"wide-left-one", "wide-left-two"}
+    assert {line.text for line, _bbox in left_lane.lines if line.text.startswith("wide-left")} == {
+        "wide-left-one",
+        "wide-left-two",
+    }
 
 
 def test_regular_lanes_accept_wider_one_sided_rows_but_keep_gutter_crossing_span() -> None:
@@ -1035,16 +1816,8 @@ def test_regular_lanes_accept_wider_one_sided_rows_but_keep_gutter_crossing_span
         8.0,
     )
 
-    left_lane = next(
-        lane
-        for lane in lanes
-        if any(line.text == "wide-left-one" for line, _bbox in lane.lines)
-    )
-    span_lane = next(
-        lane
-        for lane in lanes
-        if any(line.text == "crosses-gutter" for line, _bbox in lane.lines)
-    )
+    left_lane = next(lane for lane in lanes if any(line.text == "wide-left-one" for line, _bbox in lane.lines))
+    span_lane = next(lane for lane in lanes if any(line.text == "crosses-gutter" for line, _bbox in lane.lines))
     assert not left_lane.is_span
     assert left_lane.right == pytest.approx(105.0)
     assert span_lane.is_span
@@ -1862,6 +2635,268 @@ def test_native_typography_caches_leading_emphasis_before_chars_are_cleared() ->
     assert not line.chars
 
 
+def test_native_typography_caches_leading_font_family_run_without_weight_change() -> None:
+    """验证同字重的独立行首字体 run 仍缓存为视觉排版宽度。"""
+
+    chars = []
+    for index, char in enumerate("Lead"):
+        chars.append(
+            {
+                "char": char,
+                "bbox": (float(index * 5), 0.0, float(index * 5 + 5), 10.0),
+                "font": {"name": "LeadFont", "flags": 0, "weight": 400},
+            }
+        )
+    for index, char in enumerate("body", start=5):
+        chars.append(
+            {
+                "char": char,
+                "bbox": (float(index * 5), 0.0, float(index * 5 + 5), 10.0),
+                "font": {"name": "BodyFont", "flags": 0, "weight": 400},
+            }
+        )
+    line = models._LineItem(
+        text="Lead body",
+        bbox=(0.0, 0.0, 45.0, 10.0),
+        angle=0,
+        source_index=0,
+        chars=chars,
+    )
+
+    native_text._fill_native_typography(line, (100.0, 100.0))
+    pipeline._compact_prepared_lines([line], (100.0, 100.0))
+
+    assert line.leading_emphasis_width is None
+    assert line.leading_typography_width == 20.0
+    assert not line.chars
+
+
+def test_image_adjacent_centered_short_to_wide_rows_split_without_text_markers() -> None:
+    """验证图片下方短居中行到宽居中行按纯视觉关系形成独立块。"""
+
+    first = _text_line("alpha", (35.0, 62.0, 65.0, 72.0), 0)
+    second = _text_line("beta", (10.0, 74.0, 90.0, 84.0), 1)
+
+    blocks = text_blocks._build_text_blocks(
+        [first, second],
+        [],
+        (100.0, 100.0),
+        visual_bboxes=[(5.0, 10.0, 95.0, 60.0)],
+    )
+    control = text_blocks._build_text_blocks(
+        [first, second],
+        [],
+        (100.0, 100.0),
+    )
+
+    assert [block["content"] for block in blocks] == ["alpha", "beta"]
+    assert [block["content"] for block in control] == ["alpha beta"]
+
+
+def test_short_tail_and_leading_typography_run_split_structured_text() -> None:
+    """验证短尾之后的宽行仅在存在独立行首字体 run 时形成新块。"""
+
+    previous = _text_line("tail", (0.0, 0.0, 35.0, 10.0), 0)
+    opener = _text_line(
+        "opener body",
+        (0.0, 12.0, 90.0, 22.0),
+        1,
+        leading_typography_width=12.0,
+    )
+
+    blocks = text_blocks._build_text_blocks(
+        [previous, opener],
+        [],
+        (100.0, 100.0),
+    )
+    control = text_blocks._build_text_blocks(
+        [previous, replace(opener, leading_typography_width=None)],
+        [],
+        (100.0, 100.0),
+    )
+
+    assert [block["content"] for block in blocks] == ["tail", "opener body"]
+    assert [block["content"] for block in control] == ["tail opener body"]
+
+
+def test_same_baseline_merge_preserves_paragraph_formula_context() -> None:
+    """验证公式回退上下文在同行碎片合并后不会丢失。"""
+
+    fragments = [
+        _text_line(
+            "left",
+            (0.0, 0.0, 40.0, 10.0),
+            0,
+            font_signature=("Math", 0),
+            font_coverage=0.5,
+            paragraph_formula_context=True,
+        ),
+        _text_line(
+            "right",
+            (40.1, 0.0, 80.0, 10.0),
+            1,
+            font_signature=("Math", 0),
+            font_coverage=0.5,
+        ),
+    ]
+
+    merged = line_merging._merge_same_baseline_text_lines(
+        fragments,
+        (100.0, 100.0),
+        [],
+    )
+
+    assert len(merged) == 1
+    assert merged[0].paragraph_formula_context
+
+
+@pytest.mark.parametrize("row_count", [2, 3, 6])
+def test_formula_style_text_rows_split_pairwise_without_count_gate(
+    row_count: int,
+) -> None:
+    """验证两行起任意长度的独立公式样式文本均按相邻行拆分。"""
+
+    rows = [
+        _text_line(
+            f"row {index}",
+            (20.0 - index, 14.0 * index, 80.0 + index, 14.0 * index + 10.0),
+            index,
+            font_signature=("Math", 0),
+            font_coverage=0.5,
+            paragraph_formula_context=True,
+        )
+        for index in range(row_count)
+    ]
+    lane = models._TextLane(
+        left=0.0,
+        right=100.0,
+        lines=[(row, row.bbox) for row in rows],
+    )
+
+    break_sources = text_blocks._formula_style_text_row_break_sources(lane)
+
+    assert break_sources == set(range(row_count))
+
+
+@pytest.mark.parametrize(
+    "second_bbox",
+    [
+        (35.0, 11.0, 65.0, 21.0),
+        (20.0, 5.0, 80.0, 15.0),
+    ],
+    ids=["narrow-denominator", "overlapping-script-tier"],
+)
+def test_formula_style_text_rows_keep_connected_math_fragments(
+    second_bbox: tuple[float, float, float, float],
+) -> None:
+    """验证窄分母和垂直重叠层级不会被拆成独立正文块。"""
+
+    rows = [
+        _text_line(
+            "formula body",
+            (20.0, 0.0, 80.0, 10.0),
+            0,
+            paragraph_formula_context=True,
+        ),
+        _text_line(
+            "math fragment",
+            second_bbox,
+            1,
+            paragraph_formula_context=True,
+        ),
+    ]
+
+    blocks = text_blocks._build_text_blocks(
+        rows,
+        [],
+        (100.0, 100.0),
+    )
+
+    assert [block["content"] for block in blocks] == [
+        "formula body math fragment",
+    ]
+
+
+def test_native_typography_separates_loose_height_from_canonical_em() -> None:
+    """验证异常 loose 字符高度不会覆盖 PDF 字号形成的 canonical 尺度。"""
+
+    chars = [
+        {
+            "char": character,
+            "bbox": (float(index * 6), 0.0, float(index * 6 + 6), 24.0),
+            "font": {
+                "name": "ABCDEF+Body",
+                "flags": 0,
+                "weight": 400,
+                "size": 10.0,
+            },
+            "char_idx": index,
+        }
+        for index, character in enumerate("Body")
+    ]
+    line = models._LineItem(
+        text="Body",
+        bbox=(0.0, 0.0, 24.0, 24.0),
+        angle=0,
+        source_index=0,
+        chars=chars,
+        em_height=10.0,
+        style_scale_repaired=True,
+    )
+
+    native_text._fill_native_typography(line, (100.0, 100.0))
+
+    assert line.effective_height == 24.0
+    assert line.em_height == 10.0
+    assert line_layout._line_effective_height(line, line.bbox) == 10.0
+    assert line_layout._line_layout_height(line, line.bbox) == 24.0
+
+
+def test_canonical_visual_resplit_separates_cross_column_coarse_row() -> None:
+    """验证 repaired/tight 字符间隙可把跨栏粗行重切成唯一视觉 run。"""
+
+    positions = (0.0, 6.0, 12.0, 18.0, 62.0, 68.0, 74.0, 80.0)
+    chars = [
+        {
+            "char": character,
+            "bbox": (position, 10.0, position + 20.0, 20.0),
+            "font": {
+                "name": "ABCDEF+Body",
+                "flags": 0,
+                "weight": 400,
+                "size": 10.0,
+            },
+            "char_idx": index,
+        }
+        for index, (character, position) in enumerate(
+            zip("ABCDEFGH", positions, strict=True),
+        )
+    ]
+    visual_bboxes = {index: (position, 10.0, position + 5.0, 20.0) for index, position in enumerate(positions)}
+    line = models._LineItem(
+        text="ABCDEFGH",
+        bbox=(0.0, 10.0, 100.0, 20.0),
+        angle=0,
+        source_index=5,
+        chars=chars,
+        visual_row_id=3,
+    )
+
+    output, resplits = native_text._resplit_native_visual_runs(
+        [line],
+        (100.0, 100.0),
+        visual_bboxes,
+        source_index_start=10,
+    )
+
+    assert [item.text for item in output] == ["ABCD", "EFGH"]
+    assert [item.source_index for item in output] == [5, 10]
+    assert all(item.visual_row_id == 3 for item in output)
+    assert all(item.split_from_row for item in output)
+    assert resplits[5].source is line
+    assert resplits[5].members == tuple(output)
+
+
 def test_two_leading_emphasis_rows_do_not_activate_structured_text_split() -> None:
     """验证不足三个重复强调首行时不会把普通混排正文切碎。"""
 
@@ -1993,13 +3028,10 @@ def test_local_aligned_column_replaces_polluted_full_width_lane() -> None:
     ]
 
     blocks = text_blocks._build_text_blocks(lines, [], (200.0, 120.0))
-    introduction_body = next(
-        block for block in blocks if "local first sentence" in block["content"]
-    )
+    introduction_body = next(block for block in blocks if "local first sentence" in block["content"])
 
     assert introduction_body["content"] == (
-        "local first sentence. local second sentence local third sentence "
-        "local final sentence."
+        "local first sentence. local second sentence local third sentence local final sentence."
     )
     assert introduction_body["_lane_interval"] == (110.0, 200.0)
 
@@ -2301,10 +3333,7 @@ def test_inline_math_fragments_merge_into_wide_split_text_row() -> None:
 
     assert len(merged) == 1
     assert merged[0]["bbox"] == (10.0, 34.0, 90.0, 56.0)
-    assert all(
-        token in merged[0]["content"]
-        for token in ("body host", "numerator", "denominator", "power")
-    )
+    assert all(token in merged[0]["content"] for token in ("body host", "numerator", "denominator", "power"))
     assert merged[0][text_blocks._INLINE_MATH_RECOVERY_MARKER] is True
 
 
@@ -2413,10 +3442,7 @@ def test_inline_math_paragraph_continuations_merge_five_wide_blocks() -> None:
 
     assert len(merged) == 1
     assert merged[0]["bbox"] == (20.0, 40.0, 172.0, 175.0)
-    assert all(
-        f"paragraph part {index}" in str(merged[0]["content"])
-        for index in range(5)
-    )
+    assert all(f"paragraph part {index}" in str(merged[0]["content"]) for index in range(5))
     assert merged[0][text_blocks._INLINE_MATH_RECOVERY_MARKER] is True
 
 
@@ -2649,7 +3675,4 @@ def test_front_matter_grid_merges_each_author_column_independently() -> None:
 
     assert len(merged_authors) == 4
     for column_index, block in enumerate(merged_authors):
-        assert all(
-            f"author-{column_index}-row-{row_index}" in block["content"]
-            for row_index in range(3)
-        )
+        assert all(f"author-{column_index}-row-{row_index}" in block["content"] for row_index in range(3))

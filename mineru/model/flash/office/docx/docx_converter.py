@@ -1,9 +1,10 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import hashlib
 import re
+from dataclasses import dataclass, field
 from io import BytesIO
 from pathlib import Path
-from typing import Any, BinaryIO, Final, Iterator, Optional, Union
+from typing import Any, BinaryIO, Final, Iterator, Optional, TypeAlias, Union
 
 from docx import Document
 from docx.document import Document as DocxDocument
@@ -54,6 +55,19 @@ from ..rich_text import (
     normalize_format_for_text,
     should_keep_group_text,
 )
+
+
+_ParagraphHyperlink: TypeAlias = Optional[Union[AnyUrl, Path, str]]
+_ParagraphElement: TypeAlias = tuple[str, Optional[Formatting], _ParagraphHyperlink]
+
+
+@dataclass(slots=True)
+class _DocxComplexFieldFrame:
+    """保存一个 DOCX 复杂字段的指令、阶段与已解析结果元素。"""
+
+    instruction_parts: list[str] = field(default_factory=list)
+    phase: str = "instr"
+    result_elements: list[_ParagraphElement] = field(default_factory=list)
 
 
 class DocxConverter:
@@ -122,6 +136,7 @@ class DocxConverter:
         self.equation_bookends: str = "<eq>{EQ}</eq>"  # 公式标记格式
         self.processed_textbox_elements: list = []
         self.toc_anchor_set: set[str] = set()  # TOC 超链接目标锚点集合
+        self.toc_anchor_aliases: dict[str, str] = {}  # 同一正文段落内 TOC bookmark 到唯一公开 anchor 的映射
         self._numbering_root: Optional[BaseOxmlElement] = None
         self._numbering_root_loaded: bool = False
         self._numbering_level_cache: dict[tuple[int, int], Optional[BaseOxmlElement]] = {}
@@ -625,6 +640,65 @@ class DocxConverter:
         append_rich_text_element(paragraph_elements, text, format_obj, hyperlink)
 
     @staticmethod
+    def _normalize_hyperlink_group_boundaries(
+        paragraph_elements: list[_ParagraphElement],
+    ) -> list[_ParagraphElement]:
+        """把链接组边界空白移为普通文本，仅裁剪整段首尾并保留组内空白。"""
+
+        output: list[_ParagraphElement] = []
+        index = 0
+        while index < len(paragraph_elements):
+            element = paragraph_elements[index]
+            hyperlink = element[2]
+            if hyperlink is None:
+                output.append(element)
+                index += 1
+                continue
+            group_end = index + 1
+            while (
+                group_end < len(paragraph_elements)
+                and paragraph_elements[group_end][2] is not None
+                and str(paragraph_elements[group_end][2]) == str(hyperlink)
+            ):
+                group_end += 1
+            group = list(paragraph_elements[index:group_end])
+            first_text, first_format, first_hyperlink = group[0]
+            last_text, last_format, last_hyperlink = group[-1]
+            if len(group) == 1 and not first_text.strip():
+                leading_space = ""
+                trailing_space = first_text
+                group[0] = ("", first_format, first_hyperlink)
+            else:
+                leading_length = len(first_text) - len(first_text.lstrip())
+                trailing_length = len(last_text) - len(last_text.rstrip())
+                leading_space = first_text[:leading_length]
+                trailing_space = last_text[len(last_text) - trailing_length :] if trailing_length else ""
+                if len(group) == 1:
+                    group[0] = (
+                        first_text[leading_length : len(first_text) - trailing_length if trailing_length else len(first_text)],
+                        first_format,
+                        first_hyperlink,
+                    )
+                else:
+                    group[0] = (
+                        first_text[leading_length:],
+                        first_format,
+                        first_hyperlink,
+                    )
+                    group[-1] = (
+                        last_text[: len(last_text) - trailing_length] if trailing_length else last_text,
+                        last_format,
+                        last_hyperlink,
+                    )
+            if leading_space and output:
+                output.append((leading_space, first_format, None))
+            output.extend(item for item in group if item[0])
+            if trailing_space and group_end < len(paragraph_elements):
+                output.append((trailing_space, last_format, None))
+            index = group_end
+        return output
+
+    @staticmethod
     def _is_hidden_run(run: Run) -> bool:
         """Check whether a run is marked as hidden text in Word."""
         _W = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
@@ -760,6 +834,7 @@ class DocxConverter:
         self.heading_list_numids = set()
         self.processed_textbox_elements = []
         self.toc_anchor_set = set()
+        self.toc_anchor_aliases = {}
         self._numbering_root = None
         self._numbering_root_loaded = False
         self._numbering_level_cache = {}
@@ -777,6 +852,9 @@ class DocxConverter:
         self._mammoth_table_idx = 0
         self.docx_obj = Document(BytesIO(file_bytes))
         self.toc_anchor_set = self._collect_toc_anchor_set()
+        self.toc_anchor_aliases = self._collect_toc_anchor_aliases(
+            self.toc_anchor_set,
+        )
         # 预扫描文档，识别用作章节标题的列表numId
         self.heading_list_numids = self._detect_heading_list_numids()
         self.pages.append(self.cur_page)
@@ -796,14 +874,66 @@ class DocxConverter:
         self.plain_toc_base_level = None
 
     def _collect_toc_anchor_set(self) -> set[str]:
-        """Collect TOC hyperlink anchors from the entire document body."""
+        """从真实超链接和复杂域中收集整份文档的 TOC bookmark 目标。"""
         anchor_attr = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}anchor"
         anchors: set[str] = set()
         for hl in self.docx_obj.element.body.findall(".//w:hyperlink", namespaces=DocxConverter._BLIP_NAMESPACES):
             anchor = hl.get(anchor_attr, "").strip()
             if anchor and anchor.startswith("_Toc"):
                 anchors.add(anchor)
+        for paragraph in self.docx_obj.element.body.findall(
+            ".//w:p",
+            namespaces=DocxConverter._BLIP_NAMESPACES,
+        ):
+            for instruction in self._complex_field_instructions(paragraph):
+                target, is_internal = self._complex_field_hyperlink_target(instruction)
+                anchor = target.removeprefix("#") if target and is_internal else ""
+                if anchor.startswith("_Toc"):
+                    anchors.add(anchor)
         return anchors
+
+    @classmethod
+    def _paragraph_bookmark_names(
+        cls,
+        paragraph_element: BaseOxmlElement,
+    ) -> list[str]:
+        """按文档顺序返回段落内可公开的 bookmark 名称，并排除 Word 导航标记。"""
+
+        bookmark_name_attr = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}name"
+        names: list[str] = []
+        for bookmark in paragraph_element.findall(
+            ".//w:bookmarkStart",
+            namespaces=cls._BLIP_NAMESPACES,
+        ):
+            name = bookmark.get(bookmark_name_attr, "").strip()
+            if name and not name.startswith("_GoBack"):
+                names.append(name)
+        return names
+
+    def _collect_toc_anchor_aliases(
+        self,
+        referenced_anchors: set[str],
+    ) -> dict[str, str]:
+        """把同一段落的多个 TOC bookmark 收敛到一个 Middle JSON canonical anchor。"""
+
+        aliases: dict[str, str] = {}
+        for paragraph in self.docx_obj.element.body.findall(
+            ".//w:p",
+            namespaces=DocxConverter._BLIP_NAMESPACES,
+        ):
+            toc_names = [name for name in self._paragraph_bookmark_names(paragraph) if name.startswith("_Toc")]
+            if not toc_names:
+                continue
+            referenced_names = [name for name in toc_names if name in referenced_anchors]
+            canonical = referenced_names[0] if referenced_names else toc_names[0]
+            for name in toc_names:
+                aliases.setdefault(name, canonical)
+        return aliases
+
+    def _canonical_toc_anchor(self, anchor: str) -> str:
+        """返回 bookmark alias 对应的唯一公开 anchor，未知名称保持原值。"""
+
+        return self.toc_anchor_aliases.get(anchor, anchor)
 
     def _walk_linear(
         self,
@@ -1106,7 +1236,7 @@ class DocxConverter:
         )
         text = "".join(DocxConverter._xml_table_char_fragment(node) for node in xml_table.iter() if node.tag in char_tags)
         return {
-            "row_count": len(xml_table.xpath('./*[local-name()="tr"]')),
+            "row_count": len(xml_table.xpath('.//*[local-name()="tr"]')),
             "cell_count": len(xml_table.xpath('.//*[local-name()="tc"]')),
             "image_count": len(xml_table.xpath('.//*[local-name()="blip" or local-name()="imagedata"]')),
             "text": DocxConverter._normalize_table_match_text(text),
@@ -1670,7 +1800,191 @@ class DocxConverter:
             }
             self.cur_page.append(image_block)
 
-    def _get_paragraph_elements(self, paragraph: Paragraph):
+    @staticmethod
+    def _complex_field_hyperlink_target(instruction: str) -> tuple[str | None, bool]:
+        """从复杂字段指令中提取外部 URL 或内部 bookmark fragment。"""
+        external_match = re.search(r'\bHYPERLINK\s+"([^"]+)"', instruction, re.IGNORECASE)
+        bookmark_match = re.search(r'\\l\s+"([^"]+)"', instruction, re.IGNORECASE)
+        address = external_match.group(1).strip() if external_match else ""
+        bookmark = bookmark_match.group(1).strip() if bookmark_match else ""
+        if address:
+            return (f"{address}#{bookmark}" if bookmark else address), False
+        if bookmark:
+            return f"#{bookmark}", True
+        return None, False
+
+    @classmethod
+    def _complex_field_instructions(
+        cls,
+        paragraph_element: BaseOxmlElement,
+    ) -> list[str]:
+        """按字段边界与嵌套顺序合并段落中被拆分的复杂字段指令。"""
+
+        word_namespace = cls._BLIP_NAMESPACES["w"]
+        field_char_tag = f"{{{word_namespace}}}fldChar"
+        instruction_tag = f"{{{word_namespace}}}instrText"
+        field_type_attr = f"{{{word_namespace}}}fldCharType"
+        field_stack: list[_DocxComplexFieldFrame] = []
+        instructions: list[str] = []
+
+        def append_instruction(frame: _DocxComplexFieldFrame) -> None:
+            """把一个字段已累计的非空指令追加到输出。"""
+
+            instruction = "".join(frame.instruction_parts).strip()
+            if instruction:
+                instructions.append(instruction)
+
+        for element in paragraph_element.iter():
+            if element.tag == field_char_tag:
+                field_type = element.get(field_type_attr)
+                if field_type == "begin":
+                    field_stack.append(_DocxComplexFieldFrame())
+                elif field_type == "separate" and field_stack:
+                    frame = field_stack[-1]
+                    if frame.phase == "instr":
+                        append_instruction(frame)
+                        frame.phase = "result"
+                elif field_type == "end" and field_stack:
+                    frame = field_stack.pop()
+                    if frame.phase == "instr":
+                        append_instruction(frame)
+                continue
+            if element.tag != instruction_tag:
+                continue
+            text = element.text or ""
+            if field_stack and field_stack[-1].phase == "instr":
+                field_stack[-1].instruction_parts.append(text)
+            elif text.strip():
+                # 兼容缺少 fldChar 包裹、但过去可被逐节点解析的非规范指令。
+                instructions.append(text.strip())
+
+        for frame in field_stack:
+            if frame.phase == "instr":
+                append_instruction(frame)
+        return instructions
+
+    @staticmethod
+    def _python_docx_hyperlink_target(hyperlink: Hyperlink) -> _ParagraphHyperlink:
+        """把 python-docx Hyperlink 的地址或 fragment 转换为行内目标。"""
+        address = hyperlink.address
+        fragment = hyperlink.fragment
+        if address and fragment:
+            return f"{address}#{fragment}"
+        if address and "://" in address:
+            return address
+        if address:
+            return Path(address)
+        if fragment:
+            return f"#{fragment}"
+        return Path(".")
+
+    def _resolve_complex_field_elements(
+        self,
+        frame: _DocxComplexFieldFrame,
+        *,
+        suppress_internal_links: bool,
+    ) -> list[_ParagraphElement]:
+        """闭合复杂字段，并把字段结果绑定到解析出的超链接目标。"""
+        target, is_internal = self._complex_field_hyperlink_target("".join(frame.instruction_parts))
+        if target is None or (is_internal and suppress_internal_links):
+            return frame.result_elements
+        return [(text, format_obj, existing_target or target) for text, format_obj, existing_target in frame.result_elements]
+
+    def _flatten_paragraph_elements(
+        self,
+        paragraph: Paragraph,
+        inner_contents: list[Union[Run, Hyperlink]],
+    ) -> list[_ParagraphElement]:
+        """按文档顺序展开普通 run、真实超链接与可嵌套复杂字段。"""
+        elements: list[_ParagraphElement] = []
+        field_stack: list[_DocxComplexFieldFrame] = []
+        suppress_internal_links = self._get_toc_item_level(paragraph) is not None
+        word_namespace = DocxConverter._BLIP_NAMESPACES["w"]
+
+        for content_index, content in enumerate(inner_contents):
+            if isinstance(content, Hyperlink):
+                hyperlink_target = self._python_docx_hyperlink_target(content)
+                if suppress_internal_links and isinstance(hyperlink_target, str) and hyperlink_target.startswith("#"):
+                    hyperlink_target = None
+                hyperlink_elements: list[_ParagraphElement] = []
+                for hyperlink_run in content.runs:
+                    if self._is_hidden_run(hyperlink_run):
+                        continue
+                    text = hyperlink_run.text or ""
+                    format_obj = self._normalize_format_for_text(
+                        self._get_format_from_run(hyperlink_run),
+                        text,
+                        preserve_blank_non_visible_style=True,
+                    )
+                    if text != "" or self._has_visible_style(format_obj):
+                        hyperlink_elements.append((text, format_obj, hyperlink_target))
+                if field_stack and field_stack[-1].phase == "result":
+                    field_stack[-1].result_elements.extend(hyperlink_elements)
+                else:
+                    elements.extend(hyperlink_elements)
+                continue
+
+            if not isinstance(content, Run):
+                continue
+
+            field_char = content._element.find(f"{{{word_namespace}}}fldChar")
+            if field_char is not None:
+                field_type = field_char.get(f"{{{word_namespace}}}fldCharType")
+                if field_type == "begin":
+                    field_stack.append(_DocxComplexFieldFrame())
+                elif field_type == "separate" and field_stack:
+                    field_stack[-1].phase = "result"
+                elif field_type == "end" and field_stack:
+                    frame = field_stack.pop()
+                    resolved = self._resolve_complex_field_elements(
+                        frame,
+                        suppress_internal_links=suppress_internal_links,
+                    )
+                    if field_stack and field_stack[-1].phase == "result":
+                        field_stack[-1].result_elements.extend(resolved)
+                    else:
+                        elements.extend(resolved)
+                continue
+
+            instruction = content._element.find(f"{{{word_namespace}}}instrText")
+            if instruction is not None and field_stack and field_stack[-1].phase == "instr":
+                if instruction.text:
+                    field_stack[-1].instruction_parts.append(instruction.text)
+                continue
+
+            text = content.text or ""
+            raw_format = self._get_format_from_run(content)
+            preserve_blank_non_visible_style = self._should_preserve_blank_non_visible_style(
+                inner_contents,
+                content_index,
+                text,
+                raw_format,
+            )
+            format_obj = self._normalize_format_for_text(
+                raw_format,
+                text,
+                preserve_blank_non_visible_style=preserve_blank_non_visible_style,
+            )
+            element = (text, format_obj, None)
+            if field_stack:
+                if field_stack[-1].phase == "result":
+                    field_stack[-1].result_elements.append(element)
+                continue
+            elements.append(element)
+
+        while field_stack:
+            frame = field_stack.pop()
+            resolved = self._resolve_complex_field_elements(
+                frame,
+                suppress_internal_links=suppress_internal_links,
+            )
+            if field_stack and field_stack[-1].phase == "result":
+                field_stack[-1].result_elements.extend(resolved)
+            else:
+                elements.extend(resolved)
+        return elements
+
+    def _get_paragraph_elements(self, paragraph: Paragraph) -> list[_ParagraphElement]:
         """
         提取段落元素及其格式和超链接信息。
 
@@ -1678,7 +1992,7 @@ class DocxConverter:
             paragraph: 段落对象
 
         Returns:
-            list[tuple[str, Optional[Formatting], Optional[Union[AnyUrl, Path, str]]]]:
+            list[_ParagraphElement]:
             段落元素列表，每个元素包含文本、格式和超链接信息
         """
 
@@ -1696,152 +2010,25 @@ class DocxConverter:
             if not has_visible_style_run:
                 return [("", None, None)]
 
-        paragraph_elements: list[tuple[str, Optional[Formatting], Optional[Union[AnyUrl, Path, str]]]] = []
+        paragraph_elements: list[_ParagraphElement] = []
         group_text = ""
-        previous_format = None
+        previous_format: Optional[Formatting] = None
 
-        # 字段代码超链接内联检测状态（处理 w:fldChar + w:instrText 形式的超链接）
-        _W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
-        _field_in = False  # 当前是否在字段域内
-        _field_url = None  # 当前字段域解析出的 URL
-        _field_phase = None  # 'instr' 或 'result'
-        _field_acc_text = ""  # 累积的显示文本
-        _field_acc_format = None  # 首个显示 run 的格式
-
-        # 遍历段落的 runs 并按格式分组
-        for content_index, c in enumerate(inner_contents):
-            if isinstance(c, Hyperlink):
-                # 若地址为 URL（含 ://），直接保留字符串，避免 Path 将 // 规范化为 /
-                address = c.address
-                if address and "://" in address:
-                    hyperlink = address
-                else:
-                    hyperlink = Path(address) if address else Path(".")
-                # Hyperlink 内可能包含多个 run（且样式不同，如 TOC 项中的删除线/斜体）。
-                # 按 run 粒度展开，避免只取首个 run 导致样式丢失。
-                if c.runs and len(c.runs) > 0:
-                    # 先落盘当前累积的普通文本分组
-                    prev_has_visible = self._should_keep_group_text(
-                        group_text,
-                        previous_format,
-                    )
-                    if prev_has_visible:
-                        paragraph_elements.append((group_text, previous_format, None))
-                    group_text = ""
-
-                    for h_run in c.runs:
-                        # Skip hidden runs in hyperlinks, especially TOC page-number fields.
-                        if self._is_hidden_run(h_run):
-                            continue
-                        h_text = h_run.text or ""
-                        h_format = self._normalize_format_for_text(
-                            self._get_format_from_run(h_run),
-                            h_text,
-                            preserve_blank_non_visible_style=True,
-                        )
-                        # 保留非空文本（含制表符）以及带可见样式的空白 run
-                        if h_text != "" or self._has_visible_style(h_format):
-                            self._append_paragraph_element(
-                                paragraph_elements,
-                                h_text,
-                                h_format,
-                                hyperlink,
-                            )
-                    # 保持 previous_format 为最近的普通文本格式，不跨越超链接合并
-                    continue
-                else:
-                    text = c.text
-                    format = None
-            elif isinstance(c, Run):
-                # ---- 字段代码超链接内联检测 ----
-                fld_char = c._element.find(f"{{{_W_NS}}}fldChar")
-                if fld_char is not None:
-                    fld_type = fld_char.get(f"{{{_W_NS}}}fldCharType")
-                    if fld_type == "begin":
-                        _field_in = True
-                        _field_url = None
-                        _field_phase = "instr"
-                        _field_acc_text = ""
-                        _field_acc_format = None
-                        continue
-                    elif fld_type == "separate":
-                        _field_phase = "result"
-                        continue
-                    elif fld_type == "end":
-                        if _field_url and _field_acc_text.strip():
-                            # 将累积的字段代码超链接作为一个整体处理
-                            text = _field_acc_text
-                            hyperlink = _field_url
-                            format = _field_acc_format
-                        elif _field_acc_text.strip():
-                            # 非超链接字段（如 SEQ 序号字段），将累积的显示文本作为普通文本处理
-                            text = _field_acc_text
-                            hyperlink = None
-                            format = _field_acc_format
-                        else:
-                            _field_in = False
-                            _field_url = None
-                            _field_phase = None
-                            _field_acc_text = ""
-                            _field_acc_format = None
-                            continue
-                        _field_in = False
-                        _field_url = None
-                        _field_phase = None
-                        _field_acc_text = ""
-                        _field_acc_format = None
-                        # 继续执行下方的 hyperlink 统一处理逻辑
-                    else:
-                        continue
-                else:
-                    instr_elem = c._element.find(f"{{{_W_NS}}}instrText")
-                    if instr_elem is not None and _field_phase == "instr":
-                        # 捕获 HYPERLINK 指令中的 URL
-                        if instr_elem.text:
-                            m = re.search(r'HYPERLINK\s+"([^"]+)"', instr_elem.text)
-                            if m:
-                                _field_url = m.group(1)
-                        continue
-
-                    if _field_in and _field_phase == "result":
-                        # 显示文本 run：累积到字段文本
-                        t_elem = c._element.find(f"{{{_W_NS}}}t")
-                        if t_elem is not None:
-                            _field_acc_text += c.text
-                            if _field_acc_format is None:
-                                _field_acc_format = self._get_format_from_run(c)
-                        continue
-
-                    # 普通 run
-                    text = c.text
-                    hyperlink = None
-                    raw_format = self._get_format_from_run(c)
-                    preserve_blank_non_visible_style = self._should_preserve_blank_non_visible_style(
-                        inner_contents,
-                        content_index,
-                        text,
-                        raw_format,
-                    )
-                    format = self._normalize_format_for_text(
-                        raw_format,
-                        text,
-                        preserve_blank_non_visible_style=preserve_blank_non_visible_style,
-                    )
-            else:
-                continue
-
+        # 遍历已经展开的普通 run、超链接与复杂字段结果，并按格式分组。
+        flattened_elements = self._flatten_paragraph_elements(paragraph, inner_contents)
+        for text, format_obj, hyperlink in flattened_elements:
             # 当新 run 有可见内容（非空或带可见样式的空白）且格式变化时触发分组
-            has_visible_content = len(text.strip()) > 0 or self._has_visible_style(format)
+            has_visible_content = len(text.strip()) > 0 or self._has_visible_style(format_obj)
             is_blank_text = bool(text) and not text.strip()
-            format_changed = format != previous_format
-            has_visible_boundary = self._has_visible_style(previous_format) or self._has_visible_style(format)
+            format_changed = format_obj != previous_format
+            has_visible_boundary = self._has_visible_style(previous_format) or self._has_visible_style(format_obj)
             should_split_blank_boundary = is_blank_text and bool(group_text) and format_changed and has_visible_boundary
             if (has_visible_content and format_changed) or should_split_blank_boundary or (hyperlink is not None):
                 # 前一组有实质内容（非空或带可见样式的空白）时才保存
                 preserve_plain_blank = (
                     bool(group_text)
                     and not group_text.strip()
-                    and (self._has_visible_style(previous_format) or self._has_visible_style(format))
+                    and (self._has_visible_style(previous_format) or self._has_visible_style(format_obj))
                 )
                 prev_has_visible = self._should_keep_group_text(
                     group_text,
@@ -1854,10 +2041,10 @@ class DocxConverter:
 
                 # 如果有超链接，则立即添加
                 if hyperlink is not None:
-                    paragraph_elements.append((text.strip(), format, hyperlink))
+                    self._append_paragraph_element(paragraph_elements, text, format_obj, hyperlink)
                     text = ""
                 else:
-                    previous_format = format
+                    previous_format = format_obj
 
             group_text += text
 
@@ -1871,7 +2058,7 @@ class DocxConverter:
         if last_has_visible:
             paragraph_elements.append((group_text, previous_format, None))
 
-        return paragraph_elements
+        return self._normalize_hyperlink_group_boundaries(paragraph_elements)
 
     def _iter_paragraph_inner_content(
         self,
@@ -2904,16 +3091,7 @@ class DocxConverter:
 
     def _extract_paragraph_bookmark(self, paragraph_element: BaseOxmlElement) -> Optional[str]:
         """Extract a bookmark name from a paragraph, prioritizing TOC bookmarks."""
-        bookmark_name_attr = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}name"
-        names = []
-        for bm in paragraph_element.findall(".//w:bookmarkStart", namespaces=DocxConverter._BLIP_NAMESPACES):
-            name = bm.get(bookmark_name_attr, "").strip()
-            if not name:
-                continue
-            # skip Word navigation artifacts
-            if name.startswith("_GoBack"):
-                continue
-            names.append(name)
+        names = self._paragraph_bookmark_names(paragraph_element)
         if not names:
             return None
         toc_names = [name for name in names if name.startswith("_Toc")]
@@ -2921,24 +3099,36 @@ class DocxConverter:
             # Prefer anchors that are actually referenced by TOC hyperlinks.
             for name in toc_names:
                 if name in self.toc_anchor_set:
-                    return name
-            return toc_names[0]
+                    return self._canonical_toc_anchor(name)
+            return self._canonical_toc_anchor(toc_names[0])
         return names[0]
 
     def _extract_toc_target_anchor(self, paragraph_element: BaseOxmlElement) -> Optional[str]:
-        """Extract internal bookmark target from a TOC paragraph hyperlink."""
+        """从真实超链接或复杂域中提取 TOC 段落的内部 bookmark。"""
         anchor_attr = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}anchor"
         anchors = []
         for hl in paragraph_element.findall(".//w:hyperlink", namespaces=DocxConverter._BLIP_NAMESPACES):
             anchor = hl.get(anchor_attr, "").strip()
             if anchor:
                 anchors.append(anchor)
-        if not anchors:
-            return None
         for anchor in anchors:
             if anchor.startswith("_Toc"):
-                return anchor
-        return anchors[0]
+                return self._canonical_toc_anchor(anchor)
+        if anchors:
+            return anchors[0]
+
+        field_anchors: list[str] = []
+        for instruction in self._complex_field_instructions(
+            paragraph_element,
+        ):
+            target, is_internal = self._complex_field_hyperlink_target(instruction)
+            anchor = target.removeprefix("#") if target and is_internal else ""
+            if anchor:
+                field_anchors.append(anchor)
+        for anchor in field_anchors:
+            if anchor.startswith("_Toc"):
+                return self._canonical_toc_anchor(anchor)
+        return field_anchors[0] if field_anchors else None
 
     def _handle_plain_toc_paragraph_as_index(
         self,

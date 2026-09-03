@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 
-
 from mineru.model.flash.pdf import (
     models,
 )
@@ -22,14 +21,18 @@ def _text_line(
     dominant_font_weight: float | None = None,
     median_glyph_width: float | None = None,
     leading_emphasis_width: float | None = None,
+    leading_typography_width: float | None = None,
+    paragraph_formula_context: bool = False,
     preserve_split_boundary: bool = False,
     semantic_type: str | None = None,
+    ink_bbox: tuple[float, float, float, float] | None = None,
 ) -> models._LineItem:
     """构造栏带、排版恢复与图形标签测试使用的原生文本行。"""
 
     return models._LineItem(
         text=text,
         bbox=bbox,
+        ink_bbox=ink_bbox,
         angle=angle,
         source_index=source_index,
         visual_row_id=visual_row_id,
@@ -40,6 +43,8 @@ def _text_line(
         dominant_font_weight=dominant_font_weight,
         median_glyph_width=median_glyph_width,
         leading_emphasis_width=leading_emphasis_width,
+        leading_typography_width=leading_typography_width,
+        paragraph_formula_context=paragraph_formula_context,
         split_from_row=split_from_row,
         preserve_split_boundary=preserve_split_boundary,
         semantic_type=semantic_type,

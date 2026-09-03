@@ -3,64 +3,30 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-import re
-from typing import Protocol, TypeAlias
+from typing import Protocol
 
-from bs4 import BeautifulSoup, NavigableString, Tag
+from bs4 import NavigableString, Tag
 from pydantic import ValidationError
 from reportlab.platypus import Flowable, LongTable, Paragraph, Table, TableStyle
 
 from ....types import CodeInlineSpan, EquationInlineSpan, HyperlinkSpan, InlineSpan, InlineStyle, TextSpan, parse_inline_spans
 from ....utils.hyperlink import OFFICE_EXTERNAL_HYPERLINK_SCHEMES, sanitize_hyperlink_target
+from ..common.html_table import (
+    HtmlTableCell,
+    HtmlTableError,
+    HtmlTableGrid,
+    HtmlTableSource,
+    MAX_NESTED_TABLE_DEPTH,
+    parse_html_tables as _parse_common_html_tables,
+)
 from .styles import BORDER_COLOR, SURFACE_COLOR, PdfStyleSet
 
-MAX_NESTED_TABLE_DEPTH = 4
-MAX_TABLE_ROWS = 500
-MAX_TABLE_COLUMNS = 100
-MAX_TABLE_SLOTS = 10_000
-_POSITIVE_INTEGER_RE = re.compile(r"[0-9]+")
 _BLOCK_TAGS = {"address", "article", "blockquote", "div", "figcaption", "footer", "header", "li", "p", "section"}
 _SKIPPED_TAGS = {"script", "style", "template", "noscript"}
 
-HtmlTableSource: TypeAlias = str | BeautifulSoup | Tag
 
-
-class PdfTableError(ValueError):
+class PdfTableError(HtmlTableError):
     """表示 HTML 表格结构或 PDF 表格几何无法安全物化。"""
-
-
-@dataclass(frozen=True, slots=True)
-class HtmlTableCell:
-    """保存原始 HTML 单元格在逻辑占位网格中的位置。"""
-
-    tag: Tag
-    row: int
-    column: int
-    rowspan: int
-    colspan: int
-    is_header: bool
-
-    @property
-    def end_row(self) -> int:
-        """返回单元格占用的末行下标。"""
-        return self.row + self.rowspan - 1
-
-    @property
-    def end_column(self) -> int:
-        """返回单元格占用的末列下标。"""
-        return self.column + self.colspan - 1
-
-
-@dataclass(frozen=True, slots=True)
-class HtmlTableGrid:
-    """保存经过重叠、边界、规模与矩形校验的 HTML 表格网格。"""
-
-    tag: Tag
-    row_count: int
-    column_count: int
-    cells: tuple[HtmlTableCell, ...]
-    header_rows: tuple[int, ...]
 
 
 class ParagraphBuilder(Protocol):
@@ -80,18 +46,11 @@ class HtmlImageBuilder(Protocol):
 
 
 def parse_html_tables(source: HtmlTableSource) -> tuple[HtmlTableGrid, ...]:
-    """解析 source 中相对当前上下文的一个或多个顶层 table。"""
-    root = BeautifulSoup(source, "html.parser") if isinstance(source, str) else source
-    if not isinstance(root, (BeautifulSoup, Tag)):
-        raise PdfTableError("HTML table source must be a string or BeautifulSoup Tag")
-    if isinstance(root, Tag) and root.name == "table":
-        table_tags = (root,)
-    else:
-        parent_table = root.find_parent("table") if isinstance(root, Tag) else None
-        table_tags = tuple(table for table in root.find_all("table") if table.find_parent("table") is parent_table)
-    if not table_tags:
-        raise PdfTableError("HTML does not contain a top-level table")
-    return tuple(_parse_html_table(table) for table in table_tags)
+    """复用共用网格解析，并保持 PDF 私有异常类型不变。"""
+    try:
+        return _parse_common_html_tables(source)
+    except HtmlTableError as exc:
+        raise PdfTableError(str(exc)) from exc
 
 
 def build_pdf_tables(
@@ -119,76 +78,6 @@ def build_pdf_tables(
             depth=depth,
         )
         for grid in grids
-    )
-
-
-def _parse_html_table(table: Tag) -> HtmlTableGrid:
-    """把单个 table 标签解析为严格矩形占位网格。"""
-    if table.name != "table":
-        raise PdfTableError("Expected a <table> tag")
-    rows = tuple(row for row in table.find_all("tr") if row.find_parent("table") is table)
-    if not rows or len(rows) > MAX_TABLE_ROWS:
-        raise PdfTableError(f"Table row count must be between 1 and {MAX_TABLE_ROWS}")
-    occupied: dict[tuple[int, int], HtmlTableCell] = {}
-    cells: list[HtmlTableCell] = []
-    for row_index, row in enumerate(rows):
-        column_index = 0
-        for source_cell in row.find_all(("td", "th"), recursive=False):
-            while (row_index, column_index) in occupied:
-                column_index += 1
-            rowspan = _parse_span(source_cell, "rowspan")
-            colspan = _parse_span(source_cell, "colspan")
-            if row_index + rowspan > len(rows):
-                raise PdfTableError(f"rowspan exceeds table bounds at row={row_index}, column={column_index}")
-            if column_index + colspan > MAX_TABLE_COLUMNS:
-                raise PdfTableError(f"Table column count exceeds {MAX_TABLE_COLUMNS}")
-            coordinates = tuple(
-                (target_row, target_column)
-                for target_row in range(row_index, row_index + rowspan)
-                for target_column in range(column_index, column_index + colspan)
-            )
-            overlap = next((coordinate for coordinate in coordinates if coordinate in occupied), None)
-            if overlap is not None:
-                raise PdfTableError(f"Cell span overlaps row={overlap[0]}, column={overlap[1]}")
-            placement = HtmlTableCell(
-                tag=source_cell,
-                row=row_index,
-                column=column_index,
-                rowspan=rowspan,
-                colspan=colspan,
-                is_header=source_cell.name == "th",
-            )
-            cells.append(placement)
-            occupied.update(dict.fromkeys(coordinates, placement))
-            if len(occupied) > MAX_TABLE_SLOTS:
-                raise PdfTableError(f"Table occupancy exceeds {MAX_TABLE_SLOTS} slots")
-            column_index += colspan
-    if not occupied:
-        raise PdfTableError("Table must contain at least one cell")
-    column_count = max(column for _, column in occupied) + 1
-    missing = next(
-        (
-            (row_index, column_index)
-            for row_index in range(len(rows))
-            for column_index in range(column_count)
-            if (row_index, column_index) not in occupied
-        ),
-        None,
-    )
-    if missing is not None:
-        raise PdfTableError(f"Table occupancy is not rectangular at row={missing[0]}, column={missing[1]}")
-    header_rows = tuple(
-        row_index
-        for row_index, row in enumerate(rows)
-        if _row_belongs_to_thead(row, table)
-        or all(occupied[(row_index, column_index)].is_header for column_index in range(column_count))
-    )
-    return HtmlTableGrid(
-        tag=table,
-        row_count=len(rows),
-        column_count=column_count,
-        cells=tuple(cells),
-        header_rows=header_rows,
     )
 
 
@@ -364,30 +253,6 @@ def _html_node_spans(node: object, *, styles: tuple[InlineStyle, ...], allow_lin
 def _spans_end_with_newline(spans: list[InlineSpan]) -> bool:
     """判断当前 span 序列是否已经以普通文本换行结束。"""
     return bool(spans and isinstance(spans[-1], TextSpan) and spans[-1].content.endswith("\n"))
-
-
-def _parse_span(cell: Tag, attribute: str) -> int:
-    """读取严格正整数 rowspan/colspan，缺失时返回一。"""
-    raw_value = cell.get(attribute, "1")
-    if isinstance(raw_value, list):
-        raise PdfTableError(f"Invalid {attribute}: {raw_value!r}")
-    value = str(raw_value).strip()
-    if _POSITIVE_INTEGER_RE.fullmatch(value) is None:
-        raise PdfTableError(f"Invalid {attribute}: {raw_value!r}")
-    span = int(value)
-    if span < 1 or span > MAX_TABLE_SLOTS:
-        raise PdfTableError(f"Invalid {attribute}: {raw_value!r}")
-    return span
-
-
-def _row_belongs_to_thead(row: Tag, table: Tag) -> bool:
-    """判断 tr 是否位于当前 table 的 thead 内。"""
-    parent = row.parent
-    while isinstance(parent, Tag) and parent is not table:
-        if parent.name == "thead":
-            return True
-        parent = parent.parent
-    return False
 
 
 def _column_widths(total_width: float, column_count: int) -> list[float]:

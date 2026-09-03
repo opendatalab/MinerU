@@ -9,7 +9,7 @@ import re
 import statistics
 import unicodedata
 from dataclasses import dataclass
-from typing import Any, Iterable, Literal, Sequence, TypeVar, cast
+from typing import TYPE_CHECKING, Any, Iterable, Literal, Sequence, TypeVar, cast
 
 from loguru import logger
 
@@ -25,6 +25,10 @@ from .document import PDFLinkAnnotation
 from .geometry import _rotate_bbox_to_upright
 from .script_geometry import ScriptRole, classify_char_script_roles
 from ....utils.text import is_hyphen_at_line_end
+
+if TYPE_CHECKING:
+    from .models import _LineItem
+    from .native_text import _NativeVisualResplit
 
 
 TEXT_DECORATION_MIN_LENGTH_HEIGHT_RATIO = 1.8
@@ -361,6 +365,197 @@ def _normalize_match_fragment(value: Any) -> str:
             continue
         output.append(_LIGATURE_REPLACEMENTS.get(char, char))
     return "".join(output)
+
+
+def _resplit_evidence_segments(
+    evidence_text: str,
+    resplit: _NativeVisualResplit,
+) -> list[tuple[_LineItem, int, int, str]] | None:
+    """按原字符身份把紧凑 evidence 文本映射到每个重切成员区间。"""
+
+    source_spans: list[tuple[int, int]] = []
+    spans_by_object_id: dict[int, tuple[int, int]] = {}
+    spans_by_char_idx: dict[int, list[tuple[int, int]]] = {}
+    source_parts: list[str] = []
+    cursor = 0
+    for char in _ordered_line_chars(resplit.source):
+        fragment = _normalize_match_fragment(char.get("char"))
+        if not fragment:
+            continue
+        span = (cursor, cursor + len(fragment))
+        source_spans.append(span)
+        spans_by_object_id[id(char)] = span
+        char_idx = char.get("char_idx")
+        if isinstance(char_idx, int) and not isinstance(char_idx, bool):
+            spans_by_char_idx.setdefault(char_idx, []).append(span)
+        source_parts.append(fragment)
+        cursor = span[1]
+    if "".join(source_parts) != evidence_text:
+        return None
+
+    used_spans: list[tuple[int, int]] = []
+    segments: list[tuple[_LineItem, int, int, str]] = []
+    for member in sorted(
+        resplit.members,
+        key=lambda item: (item.run_index, item.source_index),
+    ):
+        member_spans: list[tuple[int, int]] = []
+        member_parts: list[str] = []
+        for char in _ordered_line_chars(member):
+            fragment = _normalize_match_fragment(char.get("char"))
+            if not fragment:
+                continue
+            span = spans_by_object_id.get(id(char))
+            if span is None:
+                char_idx = char.get("char_idx")
+                candidates = (
+                    spans_by_char_idx.get(char_idx, []) if isinstance(char_idx, int) and not isinstance(char_idx, bool) else []
+                )
+                span = candidates[0] if len(candidates) == 1 else None
+            if span is None or evidence_text[span[0] : span[1]] != fragment:
+                return None
+            member_spans.append(span)
+            member_parts.append(fragment)
+        if not member_spans:
+            return None
+        member_start = min(start for start, _end in member_spans)
+        member_end = max(end for _start, end in member_spans)
+        member_text = "".join(member_parts)
+        if (
+            sum(end - start for start, end in member_spans) != member_end - member_start
+            or evidence_text[member_start:member_end] != member_text
+        ):
+            return None
+        used_spans.extend(member_spans)
+        segments.append(
+            (member, member_start, member_end, member_text),
+        )
+    if sorted(used_spans) != source_spans:
+        return None
+    return segments
+
+
+def _partition_resplit_text_evidence(
+    style_lines: list[PDFTextStyleLine],
+    link_lines: list[PDFTextLinkLine],
+    resplits: dict[int, _NativeVisualResplit],
+) -> tuple[list[PDFTextStyleLine], list[PDFTextLinkLine]]:
+    """只替换被重切粗行的样式与链接 evidence，其它行保持原对象和顺序。"""
+
+    if not resplits:
+        return style_lines, link_lines
+
+    partitioned_styles: list[PDFTextStyleLine] = []
+    for line in style_lines:
+        resplit = resplits.get(line.source_index)
+        if resplit is None:
+            partitioned_styles.append(line)
+            continue
+        segments = _resplit_evidence_segments(line.text, resplit)
+        if segments is None:
+            logger.warning(
+                "Keep coarse PDF style evidence after an unsafe resplit mapping: "
+                f"source_index={line.source_index}, text={line.text!r}"
+            )
+            partitioned_styles.append(line)
+            continue
+        for member, member_start, member_end, member_text in segments:
+            style_ranges = tuple(
+                PDFTextStyleRange(
+                    start=max(member_start, style_range.start) - member_start,
+                    end=min(member_end, style_range.end) - member_start,
+                    styles=style_range.styles,
+                )
+                for style_range in line.style_ranges
+                if max(member_start, style_range.start) < min(member_end, style_range.end)
+            )
+            partitioned_styles.append(
+                PDFTextStyleLine(
+                    bbox=member.bbox,
+                    text=member_text,
+                    style_ranges=style_ranges,
+                    source_index=member.source_index,
+                )
+            )
+
+    partitioned_links: list[PDFTextLinkLine] = []
+    for line in link_lines:
+        resplit = resplits.get(line.source_index)
+        if resplit is None:
+            partitioned_links.append(line)
+            continue
+        segments = _resplit_evidence_segments(line.text, resplit)
+        if segments is None:
+            logger.warning(
+                "Keep coarse PDF link evidence after an unsafe resplit mapping: "
+                f"source_index={line.source_index}, text={line.text!r}"
+            )
+            partitioned_links.append(line)
+            continue
+        for member, member_start, member_end, member_text in segments:
+            link_ranges = tuple(
+                PDFTextLinkRange(
+                    start=max(member_start, link_range.start) - member_start,
+                    end=min(member_end, link_range.end) - member_start,
+                    target=link_range.target,
+                )
+                for link_range in line.link_ranges
+                if max(member_start, link_range.start) < min(member_end, link_range.end)
+            )
+            if not link_ranges:
+                continue
+            partitioned_links.append(
+                PDFTextLinkLine(
+                    bbox=member.bbox,
+                    text=member_text,
+                    link_ranges=link_ranges,
+                    source_index=member.source_index,
+                )
+            )
+    return partitioned_styles, partitioned_links
+
+
+def _realign_repaired_text_evidence(
+    style_lines: list[PDFTextStyleLine],
+    link_lines: list[PDFTextLinkLine],
+    line_bboxes: dict[int, BBox],
+    resplits: dict[int, _NativeVisualResplit],
+) -> tuple[list[PDFTextStyleLine], list[PDFTextLinkLine]]:
+    """同步未重切修复行的 evidence 框，再按字符身份切分发生重切的样式与链接。"""
+
+    aligned_styles = style_lines
+    for index, line in enumerate(style_lines):
+        bbox = line_bboxes.get(line.source_index)
+        if line.source_index in resplits or bbox is None or bbox == line.bbox:
+            continue
+        if aligned_styles is style_lines:
+            aligned_styles = list(style_lines)
+        aligned_styles[index] = PDFTextStyleLine(
+            bbox=bbox,
+            text=line.text,
+            style_ranges=line.style_ranges,
+            source_index=line.source_index,
+        )
+
+    aligned_links = link_lines
+    for index, line in enumerate(link_lines):
+        bbox = line_bboxes.get(line.source_index)
+        if line.source_index in resplits or bbox is None or bbox == line.bbox:
+            continue
+        if aligned_links is link_lines:
+            aligned_links = list(link_lines)
+        aligned_links[index] = PDFTextLinkLine(
+            bbox=bbox,
+            text=line.text,
+            link_ranges=line.link_ranges,
+            source_index=line.source_index,
+        )
+
+    return _partition_resplit_text_evidence(
+        aligned_styles,
+        aligned_links,
+        resplits,
+    )
 
 
 def _canonical_styles(styles: Iterable[str]) -> tuple[PDFTextStyle, ...]:

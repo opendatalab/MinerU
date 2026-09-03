@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "documents": [
+    {
+      "path": "demo/pdfs/中文论文2.pdf",
+      "sha256": "937cfb51e9e8abc6b3a2d8c46d38003cd2ad795a0692eab3f9e92ac604fcc9ad",
+      "doc_titles": [
+        {"page_index": 0, "text": "大语言模型评测综述"},
+        {"page_index": 0, "text": "EvaluatingLargeLanguageModels:ASurveyofResearchProgress"}
+      ],
+      "paragraph_titles": [
+        {"page_index": 0, "text": "0引言"},
+        {"page_index": 1, "text": "1自然语言处理的评测范式"},
+        {"page_index": 2, "text": "1.1经典的自然语言处理评测"},
+        {"page_index": 2, "text": "1.1.1自然语言理解能力评测"},
+        {"page_index": 2, "text": "1.1.2自然语言生成能力评测"},
+        {"page_index": 3, "text": "1.1.3同时考虑理解和生成的能力评测"},
+        {"page_index": 3, "text": "1.2面向多种能力的新型评测范式"},
+        {"page_index": 3, "text": "1.2.1多种属性的能力评测"},
+        {"page_index": 5, "text": "1.2.2模型评测实例———GPT-4的评测"},
+        {"page_index": 6, "text": "1.3现有评测的不足"},
+        {"page_index": 6, "text": "1.3.1新生任务缺乏相应的评测基准"},
+        {"page_index": 6, "text": "1.3.2评测任务缺乏区分度"},
+        {"page_index": 6, "text": "1.3.3评估方式不公平"},
+        {"page_index": 6, "text": "1.3.4评估不全面"},
+        {"page_index": 6, "text": "1.3.5评测基准的污染问题"},
+        {"page_index": 6, "text": "1.3.6评估结果缺乏可解释性"},
+        {"page_index": 7, "text": "2全面的大语言模型评测"},
+        {"page_index": 7, "text": "2.1准确率"},
+        {"page_index": 7, "text": "2.2校准度"},
+        {"page_index": 8, "text": "2.3泛化能力"},
+        {"page_index": 8, "text": "2.4适配能力"},
+        {"page_index": 8, "text": "2.5鲁棒性"},
+        {"page_index": 9, "text": "2.6效率"},
+        {"page_index": 9, "text": "2.7偏见和刻板印象"},
+        {"page_index": 9, "text": "2.8公平性"},
+        {"page_index": 10, "text": "2.9有害性"},
+        {"page_index": 10, "text": "3大语言模型评测的一些新方向"},
+        {"page_index": 10, "text": "3.1基于模型的评测"},
+        {"page_index": 11, "text": "3.1.1BERTScore"},
+        {"page_index": 11, "text": "3.1.2BERTforMTE"},
+        {"page_index": 11, "text": "3.1.3GPTScore"},
+        {"page_index": 12, "text": "3.1.4Kocmi&Federmann"},
+        {"page_index": 12, "text": "3.1.5PandaLM"},
+        {"page_index": 13, "text": "3.2幻觉问题的评测"},
+        {"page_index": 14, "text": "3.3元评测"},
+        {"page_index": 14, "text": "3.3.1皮尔逊相关系数"},
+        {"page_index": 14, "text": "3.3.2斯皮尔曼相关系数"},
+        {"page_index": 15, "text": "3.3.3肯德尔τ系数"},
+        {"page_index": 15, "text": "4结论"},
+        {"page_index": 16, "text": "参考文献"}
+      ],
+      "equation_tags": ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14"],
+      "forbidden_title_fragments": ["E-mail:", "25.", "Swahili", "BERT进行句子对编码"],
+      "forbidden_equation_fragments": ["如式", "所示", "如下:", "即ECE"],
+      "control_counts": {
+        "table": 2,
+        "image": 5,
+        "page_number": 22
+      }
+    }
+  ]
+}

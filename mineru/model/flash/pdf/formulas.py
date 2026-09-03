@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import re
 import statistics
+import unicodedata
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -15,6 +16,7 @@ from .document import PDFPathInfo
 from ....utils.text import build_tagged_formula_content
 
 from .models import (
+    _AxisLine,
     _FormulaAnchor,
     _LineItem,
     _PageSource,
@@ -34,17 +36,25 @@ from .geometry import (
     _coerce_bbox,
     _expand_bbox,
     _rotate_bbox_to_upright,
+    _transform_axis_lines,
 )
 from .native_text import _sanitize_pdf_control_text
 from .line_layout import (
     _connection_crosses_table,
     _infer_text_lanes,
     _line_effective_height,
+    _line_style_scale,
+    _line_tight_output_bbox,
+    _lines_tight_output_bbox,
 )
 from .line_merging import _join_formula_visual_row
 
 
 _FORMULA_NUMBER_SUFFIX_RE = re.compile(r"^(?P<prefix>.*?)(?P<marker>[(（﹙][^()（）﹙﹚\r\n]+[)）﹚])\s*$")
+_FORMULA_NUMBER_MARKER_RE = re.compile(
+    r"^[（(﹙]\s*(?:[A-Za-z]?\d+(?:[.\-]\d+)*)\s*[)）﹚]$",
+)
+_FORMULA_OPERATOR_CHARS = frozenset("=∑∫√±×÷")
 
 
 _FORMULA_PAGE_MARGIN_RATIO = 0.05
@@ -506,6 +516,8 @@ def _build_formula_like_blocks(
     lines: list[_LineItem],
     table_bboxes: list[BBox],
     page_size: tuple[float, float],
+    *,
+    drawing_lines: list[_AxisLine] | None = None,
 ) -> tuple[list[dict[str, Any]], list[_LineItem]]:
     """仅依据栏带、右侧短锚点和空间连通关系聚合公式状区域。"""
 
@@ -526,6 +538,15 @@ def _build_formula_like_blocks(
         median_height = statistics.median(effective_heights) if effective_heights else 1.0
         local_page_width = page_size[1] if angle in {90, 270} else page_size[0]
         local_page_height = page_size[0] if angle in {90, 270} else page_size[1]
+        local_horizontal_rules = [
+            rule.bbox
+            for rule in _transform_axis_lines(
+                drawing_lines or [],
+                page_size,
+                angle,
+            )
+            if rule.orientation == "horizontal"
+        ]
         lanes = _infer_text_lanes(angle_geometry, local_page_width, median_height)
         for lane in lanes:
             if lane.is_span:
@@ -535,6 +556,32 @@ def _build_formula_like_blocks(
                 lane,
                 median_height,
             )
+            for line, bbox in list(lane.lines):
+                if not _is_single_line_numbered_formula(
+                    (line, bbox),
+                    lane,
+                    median_height,
+                ):
+                    continue
+                members = _expand_single_line_numbered_formula_members(
+                    (line, bbox),
+                    lane,
+                    claimed_source_indices,
+                    table_bboxes,
+                    dominant_body_font,
+                    median_height,
+                )
+                block = _formula_members_to_block(
+                    members,
+                    page_size,
+                    angle,
+                    anchor_source_index=line.source_index,
+                )
+                if block is None:
+                    continue
+                blocks.append(block)
+                claimed_source_indices.update(member_line.source_index for member_line, _member_bbox in members)
+            lane.lines = [item for item in lane.lines if item[0].source_index not in claimed_source_indices]
             for line, bbox in list(lane.lines):
                 if (
                     (
@@ -566,14 +613,19 @@ def _build_formula_like_blocks(
                     ).strip()
                     if not content:
                         continue
-                    blocks.append(
-                        {
-                            "type": "equation",
-                            "bbox": line.bbox,
-                            "angle": angle,
-                            "content": content,
-                        }
+                    block = {
+                        "type": "equation",
+                        "bbox": line.bbox,
+                        "angle": angle,
+                        "content": content,
+                    }
+                    tight_output_bbox = _line_tight_output_bbox(
+                        line,
+                        page_size,
                     )
+                    if tight_output_bbox is not None:
+                        block["_tight_output_bbox"] = tight_output_bbox
+                    blocks.append(block)
                     claimed_source_indices.add(line.source_index)
             lane.lines = [item for item in lane.lines if item[0].source_index not in claimed_source_indices]
             if len(lane.lines) < 2:
@@ -614,6 +666,25 @@ def _build_formula_like_blocks(
                     dominant_body_font,
                     median_height,
                 )
+                has_isolated_numbered_fraction = (
+                    _formula_component_has_isolated_numbered_fraction(
+                        members,
+                        lane,
+                        median_height,
+                        local_horizontal_rules,
+                    )
+                )
+                if (
+                    _formula_component_has_left_prose(
+                        members,
+                        lane,
+                        median_height,
+                    )
+                    and not has_isolated_numbered_fraction
+                ):
+                    for member_line, _member_bbox in members:
+                        member_line.paragraph_formula_context = True
+                    continue
                 if len(members) < 2:
                     continue
                 if (
@@ -624,6 +695,16 @@ def _build_formula_like_blocks(
                         axis="y",
                     )
                     < 0.2
+                    and not any(
+                        _is_wide_tagged_formula_member(
+                            anchor_line,
+                            member_line,
+                            member_bbox,
+                            max(0.1, lane.right - lane.left),
+                        )
+                        for member_line, member_bbox in members
+                        if member_line is not anchor_line
+                    )
                 ):
                     continue
                 component_bbox = _bbox_union_many([member_bbox for _member_line, member_bbox in members])
@@ -644,9 +725,292 @@ def _build_formula_like_blocks(
                 claimed_source_indices.update(line.source_index for line, _bbox in members)
 
     remaining_lines = [
-        line for line in lines if line.source_index not in claimed_source_indices and not line.formula_candidate_only
+        line
+        for line in lines
+        if line.source_index not in claimed_source_indices
+        and (not line.formula_candidate_only or line.paragraph_formula_context)
     ]
     return blocks, remaining_lines
+
+
+def _formula_line_has_math_operator(text: str) -> bool:
+    """检查文本行是否具有独立公式常见的数学运算符。"""
+
+    return any(character in _FORMULA_OPERATOR_CHARS for character in text)
+
+
+def _formula_prefix_has_prose(prefix: str) -> bool:
+    """用通用文字数量识别公式前的正文片段，不依赖特定引导词或标点。"""
+
+    prose_prefix = re.sub(
+        r"[({\[（［【｛][^)}\]）］】｝]*[)}\]）］】｝]",
+        " ",
+        prefix,
+    )
+    if len(re.findall(r"[\u3400-\u9fff]", prose_prefix)) >= 2:
+        return True
+    latin_word_count = sum(re.search(r"[A-Za-z]{2,}", token) is not None for token in prose_prefix.split())
+    return latin_word_count >= 2
+
+
+def _formula_component_has_left_prose(
+    members: list[tuple[_LineItem, BBox]],
+    lane: _TextLane,
+    median_height: float,
+) -> bool:
+    """识别贴栏左缘且在首个运算符前带同行正文的伪行间公式。"""
+
+    for line, bbox in members:
+        if abs(bbox[0] - lane.left) > 0.75 * median_height:
+            continue
+        normalized = unicodedata.normalize("NFKC", line.text).strip()
+        operator_positions = [index for index, character in enumerate(normalized) if character in _FORMULA_OPERATOR_CHARS]
+        if not operator_positions:
+            continue
+        prefix = normalized[: min(operator_positions)]
+        if _formula_prefix_has_prose(prefix):
+            return True
+    return False
+
+
+def _formula_component_has_isolated_numbered_fraction(
+    members: list[tuple[_LineItem, BBox]],
+    lane: _TextLane,
+    median_height: float,
+    horizontal_rules: list[BBox],
+) -> bool:
+    """用右侧编号、内部分数线和上下留白确认独立多层公式。"""
+
+    if len(members) < 3 or not horizontal_rules:
+        return False
+    markers = [
+        (line, bbox)
+        for line, bbox in members
+        if _standalone_formula_number_marker(line.text) is not None
+    ]
+    if len(markers) != 1:
+        return False
+    marker_line, marker_bbox = markers[0]
+    lane_width = max(0.1, lane.right - lane.left)
+    if (
+        marker_bbox[2] < lane.right - max(3.0, 0.08 * lane_width)
+        or marker_bbox[2] - marker_bbox[0] > 0.12 * lane_width
+    ):
+        return False
+    body_members = [
+        (line, bbox)
+        for line, bbox in members
+        if line is not marker_line
+    ]
+    if len(body_members) < 2:
+        return False
+    body_bbox = _bbox_union_many(
+        [bbox for _line, bbox in body_members],
+    )
+    member_sources = {
+        line.source_index for line, _bbox in members
+    }
+    rows_above = [
+        bbox
+        for line, bbox in lane.lines
+        if line.source_index not in member_sources
+        and bbox[3] <= body_bbox[1]
+    ]
+    rows_below = [
+        bbox
+        for line, bbox in lane.lines
+        if line.source_index not in member_sources
+        and bbox[1] >= body_bbox[3]
+    ]
+    if not rows_above or not rows_below:
+        return False
+    gap_above = body_bbox[1] - max(bbox[3] for bbox in rows_above)
+    gap_below = min(bbox[1] for bbox in rows_below) - body_bbox[3]
+    if min(gap_above, gap_below) < 0.75 * median_height:
+        return False
+
+    body_centers = [
+        _bbox_center_y(bbox) for _line, bbox in body_members
+    ]
+    for rule_bbox in horizontal_rules:
+        rule_width = rule_bbox[2] - rule_bbox[0]
+        if not (
+            3.0 * median_height
+            <= rule_width
+            <= 0.75 * lane_width
+        ):
+            continue
+        horizontal_overlap = max(
+            0.0,
+            min(rule_bbox[2], body_bbox[2])
+            - max(rule_bbox[0], body_bbox[0]),
+        )
+        if horizontal_overlap < 0.6 * rule_width:
+            continue
+        rule_center = _bbox_center_y(rule_bbox)
+        if (
+            any(
+                center <= rule_center - 0.1 * median_height
+                for center in body_centers
+            )
+            and any(
+                center >= rule_center + 0.1 * median_height
+                for center in body_centers
+            )
+        ):
+            return True
+    return False
+
+
+def _is_wide_tagged_formula_member(
+    anchor_line: _LineItem,
+    member_line: _LineItem,
+    member_bbox: BBox,
+    lane_width: float,
+) -> bool:
+    """判断独立编号左侧是否为接近满栏的单行公式主体。"""
+
+    member_width = member_bbox[2] - member_bbox[0]
+    marker = _standalone_formula_number_marker(anchor_line.text)
+    return (
+        anchor_line.style_scale_repaired
+        and marker is not None
+        and _FORMULA_NUMBER_MARKER_RE.fullmatch(marker)
+        and 0.75 * lane_width < member_width <= 0.95 * lane_width
+        and _formula_line_has_math_operator(member_line.text)
+    )
+
+
+def _is_single_line_numbered_formula(
+    candidate: tuple[_LineItem, BBox],
+    lane: _TextLane,
+    median_height: float,
+) -> bool:
+    """识别公式主体与右侧编号已落在同一原生文本行的情形。"""
+
+    line, bbox = candidate
+    if not line.style_scale_repaired:
+        return False
+    parts = _split_trailing_formula_number(line.text)
+    if parts is None:
+        return False
+    prefix, marker = parts
+    if not prefix or not _FORMULA_NUMBER_MARKER_RE.fullmatch(marker) or not _formula_line_has_math_operator(prefix):
+        return False
+    lane_width = max(0.1, lane.right - lane.left)
+    width_ratio = (bbox[2] - bbox[0]) / lane_width
+    if not 0.12 <= width_ratio <= 0.98:
+        return False
+    if abs(_bbox_center_x(bbox) - 0.5 * (lane.left + lane.right)) > 0.2 * lane_width:
+        return False
+    if bbox[3] - bbox[1] > 4.0 * median_height:
+        return False
+    return not _is_hanging_indent_tail_line(
+        candidate,
+        lane,
+        median_height,
+    )
+
+
+def _expand_single_line_numbered_formula_members(
+    core: tuple[_LineItem, BBox],
+    lane: _TextLane,
+    claimed_source_indices: set[int],
+    table_bboxes: list[BBox],
+    dominant_body_font: tuple[str, int] | None,
+    median_height: float,
+) -> list[tuple[_LineItem, BBox]]:
+    """为已带编号的公式核心吸收同栏连通的等号前缀和窄分式碎片。"""
+
+    core_line, core_bbox = core
+    lane_width = max(0.1, lane.right - lane.left)
+    candidates = []
+    for candidate_line, candidate_bbox in lane.lines:
+        if (
+            candidate_line.source_index == core_line.source_index
+            or candidate_line.source_index in claimed_source_indices
+            or candidate_bbox[2] - candidate_bbox[0] > 0.35 * lane_width
+            or _is_formula_body_barrier(
+                (candidate_line, candidate_bbox),
+                lane,
+                dominant_body_font,
+                median_height,
+            )
+            or _is_formula_title_barrier(
+                (candidate_line, candidate_bbox),
+                lane,
+                dominant_body_font,
+                median_height,
+            )
+        ):
+            continue
+        narrow_fragment = (
+            candidate_bbox[2] - candidate_bbox[0] <= 1.5 * median_height
+            and core_bbox[0] - median_height <= _bbox_center_x(candidate_bbox) <= core_bbox[2] + median_height
+        )
+        if not (
+            _formula_line_has_math_operator(candidate_line.text)
+            or candidate_line.compact_formula_cluster
+            or candidate_line.formula_candidate_only
+            or narrow_fragment
+        ):
+            continue
+        if not _formula_lines_are_connected(
+            core_line,
+            core_bbox,
+            candidate_line,
+            candidate_bbox,
+            table_bboxes,
+        ):
+            continue
+        candidates.append(
+            (candidate_line, candidate_bbox),
+        )
+
+    members = [core, *candidates]
+    member_sources = {line.source_index for line, _bbox in members}
+    changed = True
+    while changed:
+        changed = False
+        for candidate in lane.lines:
+            candidate_line, candidate_bbox = candidate
+            if (
+                candidate_line.source_index in member_sources
+                or candidate_line.source_index in claimed_source_indices
+                or candidate_bbox[2] - candidate_bbox[0] > 0.35 * lane_width
+                or _is_formula_body_barrier(
+                    candidate,
+                    lane,
+                    dominant_body_font,
+                    median_height,
+                )
+                or _is_formula_title_barrier(
+                    candidate,
+                    lane,
+                    dominant_body_font,
+                    median_height,
+                )
+            ):
+                continue
+            if any(
+                _formula_lines_are_connected(
+                    member_line,
+                    member_bbox,
+                    candidate_line,
+                    candidate_bbox,
+                    table_bboxes,
+                )
+                for member_line, member_bbox in members
+            ) and (
+                _formula_line_has_math_operator(candidate_line.text)
+                or candidate_line.compact_formula_cluster
+                or candidate_line.formula_candidate_only
+                or candidate_bbox[2] - candidate_bbox[0] <= 1.5 * median_height
+            ):
+                members.append(candidate)
+                member_sources.add(candidate_line.source_index)
+                changed = True
+    return members
 
 
 def _build_split_visual_row_formula_blocks(
@@ -1066,7 +1430,15 @@ def _find_formula_spatial_anchors(
             (other_line, other_bbox)
             for other_line, other_bbox in lane.lines
             if other_line.source_index != line.source_index
-            and other_bbox[2] - other_bbox[0] <= 0.75 * lane_width
+            and (
+                other_bbox[2] - other_bbox[0] <= 0.75 * lane_width
+                or _is_wide_tagged_formula_member(
+                    line,
+                    other_line,
+                    other_bbox,
+                    lane_width,
+                )
+            )
             and _bbox_center_x(other_bbox) < bbox[0]
             and (
                 _formula_detached_seed_vertical_match(
@@ -1075,7 +1447,14 @@ def _find_formula_spatial_anchors(
                     other_bbox,
                     _line_effective_height(other_line, other_bbox),
                 )
-                if detached_below_body or detached_above_body
+                if detached_below_body
+                or detached_above_body
+                or _is_wide_tagged_formula_member(
+                    line,
+                    other_line,
+                    other_bbox,
+                    lane_width,
+                )
                 else _formula_seed_vertical_match(
                     bbox,
                     line_height,
@@ -1238,7 +1617,15 @@ def _grow_formula_spatial_component(
         item
         for item in lane.lines
         if item[0].source_index not in claimed_source_indices
-        and item[1][2] - item[1][0] <= 0.8 * lane_width
+        and (
+            item[1][2] - item[1][0] <= 0.8 * lane_width
+            or _is_wide_tagged_formula_member(
+                anchor_line,
+                item[0],
+                item[1],
+                lane_width,
+            )
+        )
         and band_top <= _bbox_center_y(item[1]) <= band_bottom
         and not _is_formula_body_barrier(
             item,
@@ -1273,7 +1660,14 @@ def _grow_formula_spatial_component(
                 item[1],
                 _line_effective_height(*item),
             )
-            if anchor.detached_below_body or anchor.detached_above_body
+            if anchor.detached_below_body
+            or anchor.detached_above_body
+            or _is_wide_tagged_formula_member(
+                anchor_line,
+                item[0],
+                item[1],
+                lane_width,
+            )
             else _formula_seed_vertical_match(
                 anchor_bbox,
                 _line_effective_height(anchor_line, anchor_bbox),
@@ -1319,16 +1713,36 @@ def _is_formula_body_barrier(
 ) -> bool:
     """识别具有稳定正文排版的行，阻止公式分量吸收正文尾行。"""
 
-    if dominant_body_font is None:
-        return False
     line, bbox = candidate
+    if not line.style_scale_repaired:
+        if dominant_body_font is None:
+            return False
+        line_height = _line_effective_height(line, bbox)
+        lane_width = max(0.1, lane.right - lane.left)
+        return (
+            line.font_signature == dominant_body_font
+            and line.font_coverage >= 0.75
+            and bbox[2] - bbox[0] >= 0.3 * lane_width
+            and 0.8 * median_height <= line_height <= 1.25 * median_height
+        )
     lane_width = max(0.1, lane.right - lane.left)
-    line_height = _line_effective_height(line, bbox)
+    body_style_scales = [
+        _line_style_scale(other_line, other_bbox)
+        for other_line, other_bbox in lane.lines
+        if other_bbox[2] - other_bbox[0] >= 0.35 * lane_width and not _formula_line_has_math_operator(other_line.text)
+    ]
+    body_scale = statistics.median(body_style_scales) if body_style_scales else median_height
+    line_scale = _line_style_scale(line, bbox)
+    line_width = bbox[2] - bbox[0]
+    left_aligned = abs(bbox[0] - lane.left) <= max(3.0, 0.75 * body_scale)
     return (
-        line.font_signature == dominant_body_font
-        and line.font_coverage >= 0.75
-        and bbox[2] - bbox[0] >= 0.3 * lane_width
-        and 0.8 * median_height <= line_height <= 1.25 * median_height
+        not _formula_line_has_math_operator(line.text)
+        and (line_width >= 0.3 * lane_width or (left_aligned and line_width >= 0.08 * lane_width))
+        and 0.75 * body_scale <= line_scale <= 1.35 * body_scale
+        and (
+            (dominant_body_font is not None and line.font_signature == dominant_body_font and line.font_coverage >= 0.75)
+            or left_aligned
+        )
     )
 
 
@@ -1366,8 +1780,6 @@ def _is_formula_body_prefix(
 ) -> bool:
     """识别锚点上方左对齐的常规正文行，防止公式空间扩张越界认领。"""
 
-    if dominant_body_font is None:
-        return False
     line, bbox = candidate
     anchor_line, anchor_bbox = anchor
     if line.formula_candidate_only:
@@ -1378,10 +1790,29 @@ def _is_formula_body_prefix(
         return False
     if abs(bbox[0] - lane.left) > max(3.0, 0.75 * median_height):
         return False
-    return (
-        line.font_signature == dominant_body_font
-        and line.font_coverage >= minimum_font_coverage
-        and 0.8 * median_height <= line_height <= 1.25 * median_height
+    if not line.style_scale_repaired and not anchor_line.style_scale_repaired:
+        return (
+            dominant_body_font is not None
+            and line.font_signature == dominant_body_font
+            and line.font_coverage >= minimum_font_coverage
+            and 0.8 * median_height <= line_height <= 1.25 * median_height
+        )
+    lane_width = max(0.1, lane.right - lane.left)
+    if bbox[2] - bbox[0] < 0.08 * lane_width:
+        return False
+    if _formula_line_has_math_operator(line.text):
+        return False
+    body_style_scales = [
+        _line_style_scale(other_line, other_bbox)
+        for other_line, other_bbox in lane.lines
+        if other_bbox[2] - other_bbox[0] >= 0.35 * lane_width
+        and abs(other_bbox[0] - lane.left) <= max(3.0, 0.75 * median_height)
+        and not _formula_line_has_math_operator(other_line.text)
+    ]
+    body_scale = statistics.median(body_style_scales) if body_style_scales else median_height
+    line_scale = _line_style_scale(line, bbox)
+    return 0.75 * body_scale <= line_scale <= 1.35 * body_scale and (
+        dominant_body_font is None or line.font_signature == dominant_body_font or line.font_coverage <= minimum_font_coverage
     )
 
 
@@ -1543,9 +1974,16 @@ def _formula_members_to_block(
                 content = tagged_content
     if not content.strip():
         return None
-    return {
+    block = {
         "type": "equation",
         "bbox": _bbox_union_many([line.bbox for line, _bbox in members]),
         "angle": angle,
         "content": content,
     }
+    tight_output_bbox = _lines_tight_output_bbox(
+        [line for line, _bbox in members],
+        page_size,
+    )
+    if tight_output_bbox is not None:
+        block["_tight_output_bbox"] = tight_output_bbox
+    return block

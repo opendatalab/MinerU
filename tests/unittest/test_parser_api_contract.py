@@ -2089,6 +2089,49 @@ def test_api_server_zip_includes_model_output_when_parse_result_has_it(
         assert "\n    " in model_output_text
 
 
+def test_api_server_zip_rejects_unsafe_image_sidecar_path(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    class _UnsafeResult:
+        """模拟非标准解析结果，验证 ZIP writer 的下游路径防护仍生效。"""
+
+        def save(self, writer: Any) -> None:
+            """尝试写出不安全 sidecar 路径。"""
+            writer.write("../escape.png", b"bad-image")
+
+    async def fake_parse_async(*args: object, **kwargs: object) -> Any:
+        return _UnsafeResult()
+
+    monkeypatch.setattr("mineru.parser.api_server.parse_async", fake_parse_async)
+    file_store = FileStore(tmp_path / "api-files")
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(b"%PDF-1.7\n")
+    request = CreateJobRequest.model_validate(
+        {
+            "files": [{"source": {"type": "local", "path": str(source)}}],
+            "tier": "standard",
+            "output_formats": ["zip"],
+        }
+    )
+    rec = api_server.JobStore().create(request, file_store)
+
+    asyncio.run(
+        api_server._run_job(
+            rec,
+            request,
+            file_store,
+            ocr_mode="auto",
+            image_analysis=True,
+            allow_local_source=True,
+        )
+    )
+
+    assert rec.files[0].status == "failed"
+    assert rec.files[0].error is not None
+    assert "Unsafe image sidecar path" in rec.files[0].error.message
+
+
 def test_api_server_zip_skips_model_output_when_parse_result_has_none(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

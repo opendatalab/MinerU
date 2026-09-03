@@ -1,0 +1,382 @@
+{
+  "schema_version": 1,
+  "documents": [
+    {
+      "path": "demo/pdfs/中文论文.pdf",
+      "sha256": "7fe627f5c376d1fd32a231648a6d9f3cd95a071e0773bb4a00cb9d359ea20a9a",
+      "type_counts": {
+        "caption": 22,
+        "doc_title": 2,
+        "equation": 6,
+        "footnote": 2,
+        "header": 24,
+        "image": 8,
+        "page_footnote": 4,
+        "page_number": 9,
+        "paragraph_title": 20,
+        "table": 3,
+        "text": 107
+      },
+      "exact_typed_text": [
+        {"page_index": 0, "type": "header", "text": "2026年4月"},
+        {"page_index": 0, "type": "header", "text": "Apr.2026"},
+        {
+          "page_index": 9,
+          "type": "doc_title",
+          "text": "Predictionoffrozensiltysandshearstrengthbasedonfourensemblelearningmethods：Boosting，Bagging，Stacking，andVoting"
+        },
+        {
+          "page_index": 6,
+          "type": "paragraph_title",
+          "text": "6.3模型可解释性分析"
+        }
+      ],
+      "same_block_groups": [
+        {
+          "page_index": 8,
+          "type": "text",
+          "fragments": ["大冻结深度未来变化预测", "冰川冻土，2023，45（2）：798-807.］"]
+        }
+      ],
+      "different_block_groups": [
+        {
+          "page_index": 0,
+          "fragments": ["2026年4月", "DOI：10.7522"]
+        },
+        {
+          "page_index": 2,
+          "fragments": ["注：异常值采用", "Note：Outlier detection"]
+        },
+        {
+          "page_index": 5,
+          "fragments": ["图4 Stacking模型真实值", "Fig. 4 Comparison"]
+        },
+        {
+          "page_index": 5,
+          "fragments": ["图5 Voting模型真实值", "Fig. 5 Comparison"]
+        },
+        {
+          "page_index": 6,
+          "fragments": ["图6 Stacking模型SHAP", "Fig. 6 SHAP"]
+        },
+        {
+          "page_index": 6,
+          "fragments": ["图7 Voting模型SHAP", "Fig. 7 SHAP"]
+        },
+        {
+          "page_index": 6,
+          "fragments": ["复杂非线性关系", "6. 3 模型可解释性分析"]
+        },
+        {
+          "page_index": 9,
+          "fragments": ["Abstract： Traditional", "Key words： silty sand"]
+        }
+      ]
+    },
+    {
+      "path": "demo/pdfs/中文论文2.pdf",
+      "sha256": "937cfb51e9e8abc6b3a2d8c46d38003cd2ad795a0692eab3f9e92ac604fcc9ad",
+      "type_counts": {
+        "caption": 5,
+        "doc_title": 2,
+        "equation": 14,
+        "header": 50,
+        "image": 5,
+        "page_footnote": 2,
+        "page_number": 22,
+        "paragraph_title": 40,
+        "table": 2,
+        "text": 312
+      },
+      "exact_typed_text": [
+        {"page_index": 2, "type": "caption", "text": "续表"},
+        {
+          "page_index": 0,
+          "type": "page_footnote",
+          "text": "收稿日期:2023-07-19定稿日期:2023-10-30基金项目:新一代人工智能国家科技重大专项(2022ZD0116308)"
+        }
+      ],
+      "same_block_groups": [
+        {
+          "page_index": 0,
+          "type": "text",
+          "fragments": ["摘 要:大语言模型", "探讨了大语言模型评测的一些新方向"]
+        },
+        {
+          "page_index": 2,
+          "type": "text",
+          "fragments": ["自然语言处理分为自然语言理解", "经典评测的结构如图1所示"]
+        },
+        {
+          "page_index": 2,
+          "type": "text",
+          "fragments": ["常见的自然语言理解任务有情感分析", "然后再计算模型答案与参考答案的匹配程度"]
+        },
+        {
+          "page_index": 2,
+          "type": "text",
+          "fragments": ["上述基准仅限于英语", "涵盖19种语言"]
+        },
+        {
+          "page_index": 2,
+          "type": "text",
+          "fragments": ["在中文信息处理方面", "标准化的评估方式来测评模型的中文理解能力"]
+        },
+        {
+          "page_index": 2,
+          "type": "text",
+          "fragments": ["自然语言生成的典型任务", "BLEU值越接近1"]
+        },
+        {
+          "page_index": 3,
+          "type": "text",
+          "fragments": ["在国内,四川大学和微软", "GLGE-difficult"]
+        },
+        {
+          "page_index": 3,
+          "type": "text",
+          "fragments": ["为了更好地对通用语言能力", "精心设计的"]
+        },
+        {
+          "page_index": 3,
+          "type": "text",
+          "fragments": ["在国外,为了解决大语言模型", "版本控制"]
+        },
+        {
+          "page_index": 4,
+          "type": "text",
+          "fragments": ["响,探究大语言模型本身", "为更加全面地评测大语言模型提供了更多可能"]
+        },
+        {
+          "page_index": 4,
+          "type": "text",
+          "fragments": ["SAFETYPROMPTS", "指令攻击场景"]
+        },
+        {
+          "page_index": 5,
+          "type": "text",
+          "fragments": ["除了上述评测基准以外", "HaluEval[41]等"]
+        },
+        {
+          "page_index": 5,
+          "type": "text",
+          "fragments": ["为了凸显GPT-4的总体表现", "围绕日常"]
+        },
+        {
+          "page_index": 5,
+          "type": "text",
+          "fragments": ["事件的常识性推理", "(Swahili)等小语种"]
+        },
+        {
+          "page_index": 5,
+          "type": "text",
+          "fragments": ["以体现人类级别的认知能力", "当前的大语言模型"]
+        },
+        {
+          "page_index": 7,
+          "type": "text",
+          "fragments": ["准确率的评估方法因场景和任务而异", "NormalizedDiscountedCumulativeGain"]
+        },
+        {
+          "page_index": 7,
+          "type": "text",
+          "fragments": ["首先需要估计期望准确率", "如式(1)所示"]
+        },
+        {
+          "page_index": 7,
+          "type": "equation",
+          "fragments": ["acc(Bm)=", "\\tag{1}"]
+        },
+        {
+          "page_index": 8,
+          "type": "text",
+          "fragments": ["其中,^pi是模型对样例", "即ECE"]
+        },
+        {
+          "page_index": 8,
+          "type": "text",
+          "fragments": ["模型泛化能力的评估重点", "zero-shot)设置"]
+        },
+        {
+          "page_index": 8,
+          "type": "text",
+          "fragments": ["小样本是指模型在预测时", "In-ContextLearning"]
+        },
+        {
+          "page_index": 8,
+          "type": "text",
+          "fragments": ["在不更新模型参数的适配中", "明显不同"]
+        },
+        {
+          "page_index": 9,
+          "type": "text",
+          "fragments": ["基于表示端的评估方法主要利用词向量", "闭源大语言模型"]
+        },
+        {
+          "page_index": 12,
+          "type": "text",
+          "fragments": ["与GPTScore类似", "指标分数"]
+        },
+        {
+          "page_index": 12,
+          "type": "text",
+          "fragments": ["与GPTScore和Kocmi", "给出评判的原因"]
+        },
+        {
+          "page_index": 12,
+          "type": "text",
+          "fragments": ["由于PandaLM评测方法", "同时识别和纠正任务模"]
+        },
+        {
+          "page_index": 12,
+          "type": "text",
+          "fragments": ["型生成内容中可能存在", "研究方向:"]
+        },
+        {
+          "page_index": 12,
+          "type": "text",
+          "fragments": ["(1)更具鲁棒性的指标", "稳定性和可靠性"]
+        },
+        {
+          "page_index": 16,
+          "type": "text",
+          "fragments": ["为自然语言理解任务", "方向。"]
+        },
+        {
+          "page_index": 19,
+          "type": "text",
+          "fragments": ["ityofdeepneuralnetworks", "Knowledge-basedSystems"]
+        }
+      ],
+      "different_block_groups": [
+        {
+          "page_index": 0,
+          "fragments": ["Abstract:LargeLanguageModels", "Keywords:naturallanguageprocessing"]
+        },
+        {
+          "page_index": 12,
+          "fragments": ["研究方向:", "(1)更具鲁棒性的指标"]
+        }
+      ],
+      "forbidden_type_fragments": [
+        {"page_index": 2, "type": "table", "fragment": "续表"},
+        {"page_index": 7, "type": "text", "fragment": "acc(Bm)="}
+      ]
+    },
+    {
+      "path": "demo/pdfs/中文论文3.pdf",
+      "sha256": "a9edebcdff03ea03d80f61cfe0b5a875ea2f7122beacaf8177d59327eeab8154",
+      "type_counts": {
+        "caption": 6,
+        "doc_title": 1,
+        "header": 12,
+        "image": 3,
+        "page_footnote": 4,
+        "page_number": 3,
+        "paragraph_title": 6,
+        "text": 56
+      },
+      "exact_typed_text": [
+        {"page_index": 0, "type": "header", "text": "DOI:10.16270/j.cnki.slgc.2013.03.029"},
+        {"page_index": 0, "type": "header", "text": "FORESTENGINEERING"},
+        {"page_index": 0, "type": "paragraph_title", "text": "1APS与ERP简介"},
+        {"page_index": 0, "type": "paragraph_title", "text": "1.1ERP系统的弱点"},
+        {"page_index": 2, "type": "caption", "text": "图1高级计划与排程系统业务流程"},
+        {"page_index": 2, "type": "caption", "text": "Fig.1BusinessprocessofAPS"},
+        {"page_index": 2, "type": "caption", "text": "图2APS结构模块示意图"},
+        {"page_index": 2, "type": "caption", "text": "Fig.2SchematicdiagramofstructuremoduleinAPS"},
+        {"page_index": 3, "type": "caption", "text": "图3APS与ERP系统集成计划管理流程"},
+        {"page_index": 3, "type": "caption", "text": "Fig.3ManagementprocessofintegratedProjectbetweenAPSandERP"},
+        {"page_index": 3, "type": "paragraph_title", "text": "【参考文献】"}
+      ],
+      "same_block_groups": [
+        {
+          "page_index": 0,
+          "type": "text",
+          "fragments": [
+            "Abstract: Advanced planning and scheduling",
+            "based on the Theory of Constraint",
+            "huge advantage in production planning",
+            "important role in the production planning"
+          ]
+        }
+      ],
+      "different_block_groups": [
+        {
+          "page_index": 0,
+          "fragments": ["关键词:高级计划与排程", "中图分类号:F406.2", "文献标识码:A", "文章编号:1001"]
+        },
+        {
+          "page_index": 0,
+          "fragments": ["1APS与ERP简介", "1.1ERP系统的弱点"]
+        },
+        {
+          "page_index": 0,
+          "fragments": ["Abstract: Advanced planning and scheduling", "Keywords: APS"]
+        }
+      ]
+    },
+    {
+      "path": "demo/pdfs/中文论文4.pdf",
+      "sha256": "697f37feb86cb49c905ceac0074e2569969e25043c15768cf6c0a86973fdc899",
+      "normalize_nfkc": true,
+      "type_counts": {
+        "caption": 10,
+        "doc_title": 2,
+        "header": 19,
+        "image": 5,
+        "page_footnote": 1,
+        "paragraph_title": 14,
+        "table": 5,
+        "text": 45
+      },
+      "exact_typed_text": [
+        {"page_index": 0, "type": "paragraph_title", "text": "引言"},
+        {"page_index": 0, "type": "paragraph_title", "text": "1资料与分析方法"},
+        {"page_index": 0, "type": "text", "text": "http：／／www．qxkj．net．cn气象科技"},
+        {"page_index": 1, "type": "caption", "text": "表1逆温强度分级"},
+        {"page_index": 1, "type": "caption", "text": "图12005—2009年逆温发生频率年变化"},
+        {"page_index": 1, "type": "paragraph_title", "text": "2重庆市区低空逆温时空分布特征"},
+        {"page_index": 1, "type": "paragraph_title", "text": "2．1低空逆温出现频率"},
+        {"page_index": 1, "type": "paragraph_title", "text": "2．2逆温厚度分布特征"},
+        {"page_index": 1, "type": "paragraph_title", "text": "2．2．1接地逆温厚度分布特征"},
+        {"page_index": 2, "type": "paragraph_title", "text": "2．2．2悬浮逆温厚度分布特征"},
+        {"page_index": 2, "type": "caption", "text": "图22005—2009年逆温厚度年变化"},
+        {"page_index": 2, "type": "caption", "text": "表22005—2009年悬浮逆温分布特征"},
+        {"page_index": 2, "type": "caption", "text": "图32005—2009年悬浮逆温层底高和顶高的年变化"},
+        {"page_index": 2, "type": "caption", "text": "图42005—2009年悬浮逆温高度分布"},
+        {"page_index": 3, "type": "caption", "text": "表3逆温强度的次数和频率"},
+        {"page_index": 3, "type": "caption", "text": "图52005—2009年逆温强度年变化"},
+        {"page_index": 3, "type": "caption", "text": "表407：00多层逆温次数分布"},
+        {"page_index": 3, "type": "paragraph_title", "text": "2．5逆温垂直结构特征分析"},
+        {"page_index": 3, "type": "paragraph_title", "text": "3结论与讨论"},
+        {"page_index": 4, "type": "caption", "text": "表519：00多层逆温次数分布"},
+        {"page_index": 4, "type": "paragraph_title", "text": "参考文献"},
+        {"page_index": 4, "type": "doc_title", "text": "CharacteristicAnalysisofTemperatureInversioninLower－LevelAtmosphereoverChongqingBasedonL－BandRadarData"}
+      ],
+      "same_block_groups": [
+        {"page_index": 0, "type": "text", "fragments": ["（1南京信息工程大学", "重庆401147）"]},
+        {"page_index": 1, "type": "text", "fragments": ["差：ΔT＝T2－T1", "逆温强度定义为", "Ｉ＝ΔＴ×１００％", "100％。逆温日数统计算法"]},
+        {"page_index": 1, "type": "text", "fragments": ["07：00悬浮逆温频次", "19：00悬浮逆温年平均值"]},
+        {"page_index": 1, "type": "text", "fragments": ["逆温层厚度反映", "也只有134m。"]},
+        {"page_index": 2, "type": "text", "fragments": ["悬浮逆温是悬浮在离地面", "的厚度即为顶高减底高的差值"]},
+        {"page_index": 4, "type": "text", "fragments": ["（3）重庆市区低空逆温强度不大", "没有大的季节变化。"]},
+        {"page_index": 4, "type": "text", "fragments": ["（4）重庆市区低空逆温厚度薄且层次多", "待今后开展更深入的分析。"]},
+        {"page_index": 4, "type": "text", "fragments": ["［2］姜大膀", "200l，37（4）：133－139．"]},
+        {"page_index": 4, "type": "text", "fragments": ["［3］刘焕彬", "象，2005，25（1）：27－28．"]},
+        {"page_index": 4, "type": "text", "fragments": ["［4］刘增强", "分析［J］．干旱区地理"]},
+        {"page_index": 4, "type": "text", "fragments": ["［5］戴安国", "14（3）：58－62．"]},
+        {"page_index": 4, "type": "text", "fragments": ["［6］马力", "105－107．"]},
+        {"page_index": 4, "type": "text", "fragments": ["［7］胡春梅", "665－669．"]},
+        {"page_index": 4, "type": "text", "fragments": ["［8］王荣基", "106－109．"]},
+        {"page_index": 4, "type": "doc_title", "fragments": ["CharacteristicAnalysisofTemperatureInversioninLower－Level", "AtmosphereoverChongqingBasedonL－BandRadarData"]}
+      ],
+      "forbidden_type_fragments": [
+        {"page_index": 1, "type": "equation", "fragment": "Ｉ＝ΔＴ"},
+        {"page_index": 1, "type": "paragraph_title", "fragment": "也只有134m。"},
+        {"page_index": 2, "type": "table", "fragment": "2．2．2悬浮逆温厚度"},
+        {"page_index": 4, "type": "paragraph_title", "fragment": "2ChongqingMeteorologicalService"}
+      ]
+    }
+  ]
+}

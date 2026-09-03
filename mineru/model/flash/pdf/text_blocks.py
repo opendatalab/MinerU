@@ -34,14 +34,18 @@ from .geometry import (
 from .native_text import _normalize_native_run_text
 from .line_layout import (
     _connection_crosses_table,
+    _effective_body_text_row_gap,
     _effective_text_row_gap,
     _estimate_lane_gap,
     _horizontal_rule_separates_rows,
     _infer_text_lanes,
     _is_structural_typography_gap,
     _line_effective_height,
+    _line_tight_output_bbox,
+    _lines_tight_output_bbox,
     _should_connect_semantic_rows,
     _should_connect_text_rows,
+    _title_fonts_compatible,
 )
 
 
@@ -51,6 +55,58 @@ _FIGURE_CAPTION_MARKER_RE = re.compile(
     re.IGNORECASE,
 )
 _INLINE_MATH_RECOVERY_MARKER = "_recovered_inline_math_fragments"
+_PARAGRAPH_FORMULA_CONTEXT_MARKER = "_paragraph_formula_context"
+_FRONT_MATTER_FIELD_RE = re.compile(
+    r"^\s*(?:keywords?|key\s+words?|关键词|中图分类号|文献标识码|文章编号)\s*[:：]",
+    re.IGNORECASE,
+)
+_LIST_ITEM_RE = re.compile(
+    r"^\s*(?:[（(]\s*(?:\d+|[ivxlcdm]+)\s*[）)]|[①-⑳]|[•●▪])",
+    re.IGNORECASE,
+)
+_BULLET_ITEM_RE = re.compile(
+    r"^\s*[•●▪]",
+)
+_EMAIL_METADATA_RE = re.compile(
+    r"^\s*e[\s-]*mail\s*[:：]",
+    re.IGNORECASE,
+)
+_ABSTRACT_METADATA_RE = re.compile(
+    r"^\s*(?:abstract|摘\s*要)\s*[:：]",
+    re.IGNORECASE,
+)
+_LABELLED_METADATA_RE = re.compile(
+    r"^\s*(?P<label>[A-Za-z\u3400-\u9fff]{1,12})\s*[:：]",
+)
+_URL_LINE_RE = re.compile(
+    r"^\s*(?:https?://|www\.)",
+    re.IGNORECASE,
+)
+_SHORT_SAME_BASELINE_PREFIX_RE = re.compile(
+    r"^(?:[（(]\s*\d{1,3}|\d{1,2}\s*[:：]\s*\d{2})$",
+)
+
+
+def _local_tight_output_line_bboxes(
+    lines: Sequence[_LineItem],
+    page_size: tuple[float, float],
+    angle: int,
+) -> tuple[list[BBox], bool]:
+    """返回与原行顺序一致的 tight+1pt 局部框及是否存在可靠候选。"""
+
+    output = []
+    changed = False
+    for line in lines:
+        candidate = _line_tight_output_bbox(line, page_size)
+        output.append(
+            _rotate_bbox_to_upright(
+                candidate or line.bbox,
+                page_size,
+                angle,
+            )
+        )
+        changed = changed or candidate is not None
+    return output, changed
 
 
 def _starts_structural_reference_entry(
@@ -123,6 +179,23 @@ def _build_hanging_indent_group_map(
     ) -> tuple[int, float] | None:
         """消费一个左突首行及其续行，并返回下一条首行位置。"""
 
+        lane_width = max(0.1, lane.right - lane.left)
+        full_width_midparagraph_entry = (
+            rows[start_index][1][2] - rows[start_index][1][0] >= 0.8 * lane_width
+            and start_index + 1 < len(rows)
+            and rows[start_index + 1][1][2] - rows[start_index + 1][1][0] <= 0.75 * lane_width
+        )
+        if (
+            start_index > 0
+            and rows_are_adjacent(
+                rows[start_index - 1],
+                rows[start_index],
+            )
+            and abs(rows[start_index - 1][1][0] - start_left) <= start_tolerance
+            and not full_width_midparagraph_entry
+        ):
+            # 同左缘正文仍在连续时不能从段落中部启动悬挂条目序列。
+            return None
         if (
             start_index > 0
             and is_hyphen_at_line_end(rows[start_index - 1][0].text)
@@ -280,17 +353,22 @@ def _build_grouped_page_footnote_blocks(
                     and ordered_lines[0].visual_row_id is not None
                     else None
                 )
-                blocks.append(
-                    {
-                        "type": "page_footnote",
-                        "bbox": _bbox_union_many([tight_bboxes[line.source_index] for line in ordered_lines]),
-                        "angle": angle,
-                        "content": content,
-                        "_visual_row_ids": visual_row_ids,
-                        "_single_run_row_id": single_run_row_id,
-                        "_inline_math_regions": [region for line in ordered_lines for region in line.inline_math_regions],
-                    }
+                block = {
+                    "type": "page_footnote",
+                    "bbox": _bbox_union_many([tight_bboxes[line.source_index] for line in ordered_lines]),
+                    "angle": angle,
+                    "content": content,
+                    "_visual_row_ids": visual_row_ids,
+                    "_single_run_row_id": single_run_row_id,
+                    "_inline_math_regions": [region for line in ordered_lines for region in line.inline_math_regions],
+                }
+                tight_output_bbox = _lines_tight_output_bbox(
+                    ordered_lines,
+                    page_size,
                 )
+                if tight_output_bbox is not None:
+                    block["_tight_output_bbox"] = tight_output_bbox
+                blocks.append(block)
                 consumed_source_indices.update(line.source_index for line in ordered_lines)
     return blocks, consumed_source_indices
 
@@ -322,7 +400,7 @@ def _split_page_footnote_entries(
         median_glyph_width,
         base_left,
     )
-    if len(marker_rows) >= 2:
+    if marker_rows:
         return _split_marked_page_footnote_entries(
             line_geometry,
             marker_rows,
@@ -376,7 +454,98 @@ def _find_page_footnote_marker_rows(
             continue
         marker_rows.append((marker, body))
     marker_rows.sort(key=lambda pair: (min(pair[0][1][1], pair[1][1][1]), pair[0][1][0]))
+    if not marker_rows:
+        marker_rows = _find_geometric_page_footnote_marker_rows(
+            line_geometry,
+            median_height,
+            median_glyph_width,
+            base_left,
+        )
     return marker_rows
+
+
+def _find_geometric_page_footnote_marker_rows(
+    line_geometry: list[tuple[_LineItem, BBox]],
+    median_height: float,
+    median_glyph_width: float,
+    base_left: float,
+) -> list[tuple[tuple[_LineItem, BBox], tuple[_LineItem, BBox]]]:
+    """在 row id 缺失时用同基线窄标记和右侧正文恢复脚注首行。"""
+
+    marker_width_limit = max(
+        1.5 * median_glyph_width,
+        0.75 * median_height,
+    )
+    candidates: list[
+        tuple[
+            float,
+            tuple[_LineItem, BBox],
+            tuple[_LineItem, BBox],
+        ]
+    ] = []
+    for marker in line_geometry:
+        marker_width = marker[1][2] - marker[1][0]
+        if (
+            marker_width > marker_width_limit
+            or marker[1][0] - base_left > 0.5 * median_height
+        ):
+            continue
+        for body in line_geometry:
+            if body is marker:
+                continue
+            body_width = body[1][2] - body[1][0]
+            horizontal_gap = body[1][0] - marker[1][2]
+            if (
+                not 0.0 <= horizontal_gap <= 1.5 * median_height
+                or body[1][0] - base_left
+                < max(
+                    1.5 * marker_width,
+                    0.4 * median_height,
+                )
+                or body_width
+                < max(
+                    4.0 * marker_width,
+                    4.0 * median_glyph_width,
+                )
+                or abs(
+                    _bbox_center_y(marker[1])
+                    - _bbox_center_y(body[1])
+                )
+                > 0.4 * median_height
+                or not _title_fonts_compatible(
+                    marker[0],
+                    body[0],
+                )
+            ):
+                continue
+            candidates.append(
+                (
+                    horizontal_gap,
+                    marker,
+                    body,
+                )
+            )
+
+    output = []
+    consumed_sources: set[int] = set()
+    for _gap, marker, body in sorted(
+        candidates,
+        key=lambda item: (
+            min(item[1][1][1], item[2][1][1]),
+            item[0],
+            item[1][0].source_index,
+            item[2][0].source_index,
+        ),
+    ):
+        pair_sources = {
+            marker[0].source_index,
+            body[0].source_index,
+        }
+        if pair_sources & consumed_sources:
+            continue
+        output.append((marker, body))
+        consumed_sources.update(pair_sources)
+    return output
 
 
 def _split_marked_page_footnote_entries(
@@ -458,9 +627,18 @@ def _split_unmarked_page_footnote_entries(
         previous_width = previous[1][2] - previous[1][0]
         previous_is_near_full = previous_width >= 0.8 * maximum_row_width
         current_is_indented = current[1][0] - base_left > indent_threshold
+        same_left_compact_continuation = (
+            not first_line_is_indented
+            and previous_width >= 0.7 * maximum_row_width
+            and abs(current[1][0] - previous[1][0]) <= 0.5 * indent_threshold
+            and _title_fonts_compatible(previous[0], current[0])
+            and _effective_text_row_gap(previous, current) <= indent_threshold
+        )
         # 满行后必然续接；其余行按首页观测到的首行/续行缩进模式决定边界。
-        continues_previous = previous_is_near_full or (
-            not current_is_indented if first_line_is_indented else current_is_indented
+        continues_previous = (
+            previous_is_near_full
+            or same_left_compact_continuation
+            or (not current_is_indented if first_line_is_indented else current_is_indented)
         )
         if continues_previous:
             entries[-1].append(current[0])
@@ -633,6 +811,315 @@ def _structured_text_break_sources(
     return break_sources
 
 
+def _isolated_indented_paragraph_break_sources(
+    lane: _TextLane,
+    regular_gap: float,
+    gap_mad: float,
+) -> set[int]:
+    """识别短终止尾行之后的缩进首行，并要求下一行回到稳定栏左缘。"""
+
+    rows = sorted(
+        (item for item in lane.lines if item[0].semantic_type is None),
+        key=lambda item: (item[1][1], item[1][0], item[0].source_index),
+    )
+    lane_width = max(0.1, lane.right - lane.left)
+    output: set[int] = set()
+    terminal_re = re.compile(r"[.!?。！？:：;；][\]\)}）】》”’'\"]*$")
+    for previous, current, following in zip(
+        rows,
+        rows[1:],
+        rows[2:],
+    ):
+        previous_height = _line_effective_height(*previous)
+        current_height = _line_effective_height(*current)
+        following_height = _line_effective_height(*following)
+        pair_height = max(
+            previous_height,
+            current_height,
+            following_height,
+        )
+        current_indent = current[1][0] - lane.left
+        if (
+            previous[1][2] - previous[1][0] > 0.3 * lane_width
+            or terminal_re.search(previous[0].text.rstrip()) is None
+            or not max(5.0, 0.65 * pair_height) <= current_indent <= 3.0 * pair_height
+            or current[1][2] - current[1][0] < 0.75 * lane_width
+            or abs(following[1][0] - lane.left) > 0.75 * pair_height
+            or following[1][2] - following[1][0] < 0.65 * lane_width
+            or not _title_fonts_compatible(current[0], following[0])
+        ):
+            continue
+        first_gap = _effective_body_text_row_gap(previous, current)
+        second_gap = _effective_body_text_row_gap(current, following)
+        gap_limit = regular_gap + max(
+            0.75 * pair_height,
+            3.0 * gap_mad,
+        )
+        if -0.25 * pair_height <= first_gap <= gap_limit and -0.25 * pair_height <= second_gap <= gap_limit:
+            output.add(current[0].source_index)
+    return output
+
+
+def _centered_visual_reset_break_sources(
+    lane: _TextLane,
+    visual_bboxes: Sequence[BBox],
+    local_page_height: float,
+) -> set[int]:
+    """识别视觉主体下方短居中行到更宽居中行的独立注释重启。"""
+
+    if not visual_bboxes:
+        return set()
+    rows = sorted(
+        (item for item in lane.lines if item[0].semantic_type is None),
+        key=lambda item: (item[1][1], item[1][0], item[0].source_index),
+    )
+    output: set[int] = set()
+    for previous, current in zip(rows, rows[1:]):
+        previous_bbox = previous[1]
+        current_bbox = current[1]
+        previous_width = previous_bbox[2] - previous_bbox[0]
+        current_width = current_bbox[2] - current_bbox[0]
+        pair_height = max(
+            _line_effective_height(*previous),
+            _line_effective_height(*current),
+        )
+        if (
+            previous_width > 0.7 * current_width
+            or current_bbox[0] > previous_bbox[0] - 0.25 * pair_height
+            or current_bbox[2] < previous_bbox[2] + 0.25 * pair_height
+            or abs(_bbox_center_x(previous_bbox) - _bbox_center_x(current_bbox)) > 0.1 * current_width
+        ):
+            continue
+        vertical_gap = _effective_text_row_gap(previous, current)
+        if not -0.25 * pair_height <= vertical_gap <= 0.75 * pair_height:
+            continue
+        if any(
+            -0.25 * pair_height <= previous_bbox[1] - visual_bbox[3] <= max(2.0 * pair_height, 0.03 * local_page_height)
+            and _bbox_axis_overlap_ratio(current_bbox, visual_bbox, axis="x") >= 0.8
+            and abs(_bbox_center_x(current_bbox) - _bbox_center_x(visual_bbox))
+            <= 0.12 * max(current_width, visual_bbox[2] - visual_bbox[0])
+            for visual_bbox in visual_bboxes
+        ):
+            output.add(current[0].source_index)
+    return output
+
+
+def _leading_typography_reset_break_sources(
+    lane: _TextLane,
+    regular_gap: float,
+    gap_mad: float,
+) -> set[int]:
+    """识别短尾之后以独立行首字体 run 开启的宽行结构段。"""
+
+    rows = sorted(
+        (item for item in lane.lines if item[0].semantic_type is None),
+        key=lambda item: (item[1][1], item[1][0], item[0].source_index),
+    )
+    lane_width = max(0.1, lane.right - lane.left)
+    output: set[int] = set()
+    for previous, current in zip(rows, rows[1:]):
+        previous_width = previous[1][2] - previous[1][0]
+        current_width = current[1][2] - current[1][0]
+        pair_height = max(
+            _line_effective_height(*previous),
+            _line_effective_height(*current),
+        )
+        if (
+            current[0].leading_typography_width is None
+            or current[0].leading_typography_width > 0.2 * lane_width
+            or previous_width > 0.45 * lane_width
+            or current_width < 0.75 * lane_width
+            or abs(previous[1][0] - lane.left) > 0.75 * pair_height
+            or abs(current[1][0] - lane.left) > 0.75 * pair_height
+            or current[0].formula_candidate_only
+            or current[0].compact_formula_cluster
+            or current[0].inline_math_regions
+        ):
+            continue
+        vertical_gap = _effective_body_text_row_gap(previous, current)
+        if (
+            -0.25 * pair_height
+            <= vertical_gap
+            <= regular_gap
+            + max(
+                0.75 * pair_height,
+                3.0 * gap_mad,
+            )
+        ):
+            output.add(current[0].source_index)
+    return output
+
+
+def _formula_style_text_row_break_sources(
+    lane: _TextLane,
+) -> set[int]:
+    """按相邻显示行几何拆分被公式检测回退为正文的独立文本行。"""
+
+    rows = sorted(
+        (item for item in lane.lines if item[0].semantic_type is None),
+        key=lambda item: (item[1][1], item[1][0], item[0].source_index),
+    )
+    lane_width = max(0.1, lane.right - lane.left)
+    matching_edges: set[int] = set()
+    for index, (previous, current) in enumerate(zip(rows, rows[1:])):
+        previous_line, previous_bbox = previous
+        current_line, current_bbox = current
+        if not (
+            previous_line.paragraph_formula_context
+            and current_line.paragraph_formula_context
+        ):
+            continue
+        previous_height = _line_effective_height(*previous)
+        current_height = _line_effective_height(*current)
+        minimum_height = min(previous_height, current_height)
+        maximum_height = max(previous_height, current_height)
+        if minimum_height < 0.75 * maximum_height:
+            continue
+        previous_width = previous_bbox[2] - previous_bbox[0]
+        current_width = current_bbox[2] - current_bbox[0]
+        if (
+            min(previous_width, current_width) < 0.45 * lane_width
+            or max(previous_width, current_width) > 0.95 * lane_width
+        ):
+            continue
+        lane_center = 0.5 * (lane.left + lane.right)
+        if (
+            abs(_bbox_center_x(previous_bbox) - lane_center) > 0.15 * lane_width
+            or abs(_bbox_center_x(current_bbox) - lane_center) > 0.15 * lane_width
+        ):
+            continue
+        vertical_overlap = max(
+            0.0,
+            min(previous_bbox[3], current_bbox[3])
+            - max(previous_bbox[1], current_bbox[1]),
+        )
+        top_pitch = current_bbox[1] - previous_bbox[1]
+        pair_height = statistics.median((previous_height, current_height))
+        if (
+            vertical_overlap <= 0.2 * minimum_height
+            and 0.9 * pair_height <= top_pitch <= 2.0 * pair_height
+        ):
+            matching_edges.add(index)
+
+    output: set[int] = set()
+    for index in matching_edges:
+        output.add(rows[index][0].source_index)
+        output.add(rows[index + 1][0].source_index)
+        if index + 2 < len(rows):
+            # 同时保护显示行组后的正文起点，避免上下文恢复阶段重新跨界合并。
+            output.add(rows[index + 2][0].source_index)
+    return output
+
+
+def _front_matter_keyword_break_sources(
+    lane: _TextLane,
+    local_page_height: float,
+    page_index: int | None,
+) -> set[int]:
+    """把首页关键词和文献元数据行固定为独立文本块起点。"""
+
+    if page_index != 0:
+        return set()
+    return {
+        line.source_index
+        for line, bbox in lane.lines
+        if line.semantic_type is None
+        and bbox[1] <= 0.65 * local_page_height
+        and _FRONT_MATTER_FIELD_RE.match(line.text) is not None
+    }
+
+
+def _component_starts_with_emphasized_row(
+    lines: list[_LineItem],
+) -> bool:
+    """识别行内强调或首行字重显著高于后续正文的组件起点。"""
+
+    if not lines:
+        return False
+    if lines[0].leading_emphasis_width is not None:
+        return True
+    first_weight = lines[0].dominant_font_weight
+    following_weights = [line.dominant_font_weight for line in lines[1:] if line.dominant_font_weight is not None]
+    if first_weight is None or not following_weights:
+        return False
+    body_weight = statistics.median(following_weights)
+    return first_weight - body_weight >= 100.0 and first_weight >= 1.15 * max(1.0, body_weight)
+
+
+def _explicit_text_break_sources(
+    lane: _TextLane,
+) -> set[int]:
+    """用通用列表标记和 E-mail 元数据确认正文中的显式硬分段。"""
+
+    rows = sorted(
+        (item for item in lane.lines if item[0].semantic_type is None),
+        key=lambda item: (item[1][1], item[1][0], item[0].source_index),
+    )
+    output = {line.source_index for line, _bbox in rows if _ABSTRACT_METADATA_RE.match(line.text) is not None}
+    lane_width = max(0.1, lane.right - lane.left)
+    output.update(
+        line.source_index
+        for line, bbox in rows
+        if _BULLET_ITEM_RE.match(line.text) is not None and bbox[2] - bbox[0] >= 0.8 * lane_width
+    )
+    for index, (line, bbox) in enumerate(rows):
+        if _EMAIL_METADATA_RE.match(line.text) is None or index == 0:
+            continue
+        previous_line, previous_bbox = rows[index - 1]
+        pair_height = max(
+            _line_effective_height(previous_line, previous_bbox),
+            _line_effective_height(line, bbox),
+        )
+        if abs(bbox[0] - previous_bbox[0]) <= 0.75 * pair_height:
+            output.add(line.source_index)
+    for row_index, (previous, current) in enumerate(
+        zip(rows, rows[1:]),
+    ):
+        previous_is_label = _LABELLED_METADATA_RE.match(
+            previous[0].text,
+        )
+        current_is_label = _LABELLED_METADATA_RE.match(
+            current[0].text,
+        )
+        label_pair_height = max(
+            _line_effective_height(*previous),
+            _line_effective_height(*current),
+        )
+        if (
+            previous_is_label is not None
+            and current_is_label is not None
+            and _URL_LINE_RE.match(current[0].text) is None
+            and len(previous_is_label.group("label")) >= 4
+            and len(current_is_label.group("label")) >= 4
+            and any("\u3400" <= char <= "\u9fff" for char in previous_is_label.group("label"))
+            and any("\u3400" <= char <= "\u9fff" for char in current_is_label.group("label"))
+            and previous_is_label.group("label").casefold() != current_is_label.group("label").casefold()
+            and current[1][1] - previous[1][1] <= 2.0 * label_pair_height
+            and previous[1][2] - previous[1][0] <= 0.75 * lane_width
+            and current[1][2] - current[1][0] <= 0.75 * lane_width
+        ):
+            output.add(current[0].source_index)
+        pair_height = max(
+            _line_effective_height(*previous),
+            _line_effective_height(*current),
+        )
+        next_row = rows[row_index + 2] if row_index + 2 < len(rows) else None
+        indented_item_continuation = (
+            current[1][0] - lane.left >= max(5.0, 0.65 * pair_height)
+            and next_row is not None
+            and next_row[1][0] - lane.left <= 0.5 * pair_height
+            and 0.5 * pair_height <= next_row[1][1] - current[1][1] <= 2.25 * pair_height
+        )
+        if (
+            _LIST_ITEM_RE.match(current[0].text) is not None
+            and previous[0].text.rstrip().endswith((":", "："))
+            and previous[1][2] - previous[1][0] <= 0.8 * lane_width
+            and indented_item_continuation
+        ):
+            output.add(current[0].source_index)
+    return output
+
+
 def _build_text_blocks(
     lines: list[_LineItem],
     table_bboxes: list[BBox],
@@ -640,6 +1127,8 @@ def _build_text_blocks(
     drawing_lines: list[_AxisLine] | None = None,
     *,
     page_footnote_groups: Sequence[set[int]] | None = None,
+    page_index: int | None = None,
+    visual_bboxes: Sequence[BBox] | None = None,
 ) -> list[dict[str, Any]]:
     """先构建分组脚注，再按类型屏障、栏带和自然段边界聚合其余文本。"""
 
@@ -657,8 +1146,14 @@ def _build_text_blocks(
         effective_heights = [_line_effective_height(line, bbox) for line, bbox in line_geometry]
         median_height = statistics.median(effective_heights) if effective_heights else 1.0
         local_page_width = page_size[1] if angle in {90, 270} else page_size[0]
+        local_page_height = page_size[0] if angle in {90, 270} else page_size[1]
+        local_visual_bboxes = [_rotate_bbox_to_upright(bbox, page_size, angle) for bbox in (visual_bboxes or [])]
         lanes = _infer_text_lanes(line_geometry, local_page_width, median_height)
         local_axis_lines = _transform_axis_lines(drawing_lines or [], page_size, angle)
+        split_row_counts: dict[int, int] = {}
+        for line, _bbox in line_geometry:
+            if line.visual_row_id is not None and line.split_from_row:
+                split_row_counts[line.visual_row_id] = split_row_counts.get(line.visual_row_id, 0) + 1
 
         for lane in lanes:
             lane.lines.sort(key=lambda item: (item[1][1], item[1][0], item[0].source_index))
@@ -670,6 +1165,47 @@ def _build_text_blocks(
                 lane,
                 regular_gap,
                 gap_mad,
+            )
+            isolated_break_sources = _isolated_indented_paragraph_break_sources(
+                lane,
+                regular_gap,
+                gap_mad,
+            )
+            structured_break_sources.update(
+                isolated_break_sources,
+            )
+            visual_reset_sources = _centered_visual_reset_break_sources(
+                lane,
+                local_visual_bboxes,
+                local_page_height,
+            )
+            typography_reset_sources = _leading_typography_reset_break_sources(
+                lane,
+                regular_gap,
+                gap_mad,
+            )
+            formula_text_break_sources = _formula_style_text_row_break_sources(
+                lane,
+            )
+            structured_break_sources.update(visual_reset_sources)
+            structured_break_sources.update(typography_reset_sources)
+            structured_break_sources.update(formula_text_break_sources)
+            protected_break_sources: set[int] = set()
+            protected_break_sources.update(visual_reset_sources)
+            protected_break_sources.update(typography_reset_sources)
+            protected_break_sources.update(formula_text_break_sources)
+            protected_break_sources.update(
+                _front_matter_keyword_break_sources(
+                    lane,
+                    local_page_height,
+                    page_index,
+                )
+            )
+            protected_break_sources.update(
+                _explicit_text_break_sources(lane),
+            )
+            structured_break_sources.update(
+                protected_break_sources,
             )
             hanging_indent_groups = _build_hanging_indent_group_map(
                 lane,
@@ -702,7 +1238,18 @@ def _build_text_blocks(
                         if current_local_lane is not None and previous_local_lane is current_local_lane
                         else lane
                     )
-                    if current[0].source_index in structured_break_sources:
+                    if (
+                        current[0].style_scale_repaired
+                        and current[0].split_from_row
+                        and current[0].visual_row_id is not None
+                        and split_row_counts.get(
+                            current[0].visual_row_id,
+                            0,
+                        )
+                        >= 2
+                    ):
+                        should_connect = False
+                    elif current[0].source_index in structured_break_sources:
                         should_connect = False
                     elif _starts_structural_reference_entry(previous, current):
                         # 编号只确认已经由悬挂缩进几何形成的新条目，不能单独扩张范围。
@@ -761,6 +1308,11 @@ def _build_text_blocks(
                     and component_lines[0].visual_row_id is not None
                     else None
                 )
+                local_output_line_bboxes, output_bbox_repaired = _local_tight_output_line_bboxes(
+                    component_lines,
+                    page_size,
+                    angle,
+                )
                 blocks.append(
                     {
                         "type": component_lines[0].semantic_type or "text",
@@ -770,6 +1322,8 @@ def _build_text_blocks(
                         "_visual_row_ids": visual_row_ids,
                         "_single_run_row_id": single_run_row_id,
                         "_local_line_bboxes": [bbox for _line, bbox in component_geometry],
+                        "_local_output_line_bboxes": local_output_line_bboxes,
+                        "_output_bbox_repaired": output_bbox_repaired,
                         "_line_heights": [_line_effective_height(line, bbox) for line, bbox in component_geometry],
                         "_font_signatures": {
                             line.font_signature
@@ -777,16 +1331,111 @@ def _build_text_blocks(
                             if line.font_signature is not None and line.font_coverage >= 0.5
                         },
                         "_inline_math_regions": [region for line in component_lines for region in line.inline_math_regions],
+                        _PARAGRAPH_FORMULA_CONTEXT_MARKER: any(line.paragraph_formula_context for line in component_lines),
                         "_lane_interval": (
                             component_local_lane.left,
                             component_local_lane.right,
                         ),
                         "_lane_is_span": component_local_lane.is_span,
+                        "_hard_break_before": (component_lines[0].source_index in structured_break_sources),
+                        "_protected_hard_break_before": (component_lines[0].source_index in protected_break_sources),
+                        "_hanging_indent_group": hanging_indent_groups.get(
+                            component_lines[0].source_index,
+                        ),
+                        "_leading_emphasis_start": _component_starts_with_emphasized_row(
+                            component_lines,
+                        ),
                     }
                 )
+    blocks = _merge_short_same_baseline_prefix_blocks(
+        blocks,
+        page_size,
+    )
     blocks = _merge_spatial_text_components(blocks, page_size)
+    blocks = _merge_list_intro_text_components(blocks)
+    blocks = _merge_unterminated_text_components(blocks)
     blocks = _merge_overlapping_same_line_text_blocks(blocks, page_size)
-    return _merge_inline_math_fragment_text_blocks(blocks, page_size)
+    blocks = _merge_inline_math_fragment_text_blocks(
+        blocks,
+        page_size,
+    )
+    return _merge_paragraph_formula_context_blocks(
+        blocks,
+        page_size,
+    )
+
+
+def _merge_short_same_baseline_prefix_blocks(
+    blocks: list[dict[str, Any]],
+    page_size: tuple[float, float],
+) -> list[dict[str, Any]]:
+    """合并括号序号或时刻等短前缀与右侧同基线正文。"""
+
+    replacements: dict[int, dict[str, Any]] = {}
+    consumed: set[int] = set()
+    for prefix_index, prefix in enumerate(blocks):
+        prefix_rows = prefix.get("_local_line_bboxes")
+        prefix_content = str(prefix.get("content") or "").strip()
+        if (
+            prefix_index in consumed
+            or prefix.get("type") != "text"
+            or not isinstance(prefix_rows, list)
+            or len(prefix_rows) != 1
+            or _SHORT_SAME_BASELINE_PREFIX_RE.match(prefix_content) is None
+        ):
+            continue
+        prefix_bbox = prefix_rows[0]
+        prefix_heights = [
+            float(height)
+            for height in prefix.get("_line_heights", [])
+            if isinstance(height, (int, float)) and float(height) > 0
+        ]
+        prefix_height = statistics.median(prefix_heights) if prefix_heights else max(0.1, prefix_bbox[3] - prefix_bbox[1])
+        angle = int(prefix.get("angle", 0) or 0) % 360
+        local_page_width = page_size[1] if angle in {90, 270} else page_size[0]
+        matches: list[tuple[float, int]] = []
+        for host_index, host in enumerate(blocks):
+            host_rows = host.get("_local_line_bboxes")
+            if (
+                host_index == prefix_index
+                or host_index in consumed
+                or host.get("type") != "text"
+                or int(host.get("angle", 0) or 0) % 360 != angle
+                or not isinstance(host_rows, list)
+                or not host_rows
+            ):
+                continue
+            host_bbox = host_rows[0]
+            host_width = host_bbox[2] - host_bbox[0]
+            horizontal_gap = host_bbox[0] - prefix_bbox[2]
+            if (
+                host_bbox[0] < prefix_bbox[2]
+                or horizontal_gap > 1.25 * prefix_height
+                or host_width < 0.15 * local_page_width
+                or _bbox_axis_overlap_ratio(
+                    prefix_bbox,
+                    host_bbox,
+                    axis="y",
+                )
+                < 0.5
+            ):
+                continue
+            matches.append((horizontal_gap, host_index))
+        if not matches:
+            continue
+        _gap, host_index = min(matches)
+        replacement_index = min(prefix_index, host_index)
+        replacement = _merge_internal_text_block_group(
+            blocks,
+            [prefix_index, host_index],
+            preserve_visual_spaces=True,
+        )
+        replacement["type"] = "text"
+        replacements[replacement_index] = replacement
+        consumed.update({prefix_index, host_index})
+    return [
+        replacements.get(index, block) for index, block in enumerate(blocks) if index not in consumed or index in replacements
+    ]
 
 
 def _blocks_share_boundary_visual_row(
@@ -871,6 +1520,12 @@ def _merge_overlapping_same_line_text_blocks(
                 or not 1 <= len(second_rows) <= 5
                 or second_bbox[2] - second_bbox[0] < 0.3 * local_page_width
             ):
+                continue
+            later_block = max(
+                (first, second),
+                key=_text_component_sort_key,
+            )
+            if later_block.get("_hard_break_before") is True:
                 continue
             second_heights = [
                 float(height) for height in second.get("_line_heights", []) if isinstance(height, (int, float)) and height > 0
@@ -997,6 +1652,137 @@ def _merge_inline_math_fragment_text_blocks(
     output = _merge_hostless_inline_math_fragment_blocks(output, page_size)
     output = _merge_residual_narrow_math_text_blocks(output, page_size)
     return _merge_inline_math_paragraph_continuations(output, page_size)
+
+
+def _component_local_union_bbox(
+    block: dict[str, Any],
+) -> BBox | None:
+    """合并正文组件持有的正向行框，非法或缺失元数据时返回空。"""
+
+    rows = block.get("_local_line_bboxes")
+    if not isinstance(rows, list):
+        return None
+    bboxes: list[BBox] = []
+    for row in rows:
+        if not isinstance(row, (list, tuple)) or len(row) != 4:
+            continue
+        try:
+            bbox = tuple(float(value) for value in row)
+        except (TypeError, ValueError):
+            continue
+        if bbox[2] > bbox[0] and bbox[3] > bbox[1]:
+            bboxes.append(bbox)  # type: ignore[arg-type]
+    return _bbox_union_many(bboxes) if bboxes else None
+
+
+def _merge_paragraph_formula_context_blocks(
+    blocks: list[dict[str, Any]],
+    page_size: tuple[float, float],
+) -> list[dict[str, Any]]:
+    """把误似行间公式的复杂行内分式与同栏前后正文恢复成一个块。"""
+
+    terminal_re = re.compile(
+        r"[.!?。！？][\]\)}）】》”’'\"]*$",
+    )
+    consumed: set[int] = set()
+    replacements: dict[int, dict[str, Any]] = {}
+    seed_indices = [
+        index
+        for index, block in enumerate(blocks)
+        if block.get("type") == "text" and block.get(_PARAGRAPH_FORMULA_CONTEXT_MARKER) is True
+    ]
+    for seed_index in seed_indices:
+        if seed_index in consumed:
+            continue
+        group = {seed_index}
+        changed = True
+        while changed:
+            changed = False
+            for candidate_index, candidate in enumerate(blocks):
+                if candidate_index in group or candidate_index in consumed or candidate.get("type") != "text":
+                    continue
+                for member_index in group:
+                    member = blocks[member_index]
+                    if int(candidate.get("angle", 0) or 0) % 360 != int(member.get("angle", 0) or 0) % 360:
+                        continue
+                    pair_heights = [
+                        float(height)
+                        for block in (candidate, member)
+                        for height in block.get("_line_heights", [])
+                        if isinstance(height, (int, float)) and float(height) > 0
+                    ]
+                    if not pair_heights:
+                        continue
+                    pair_height = statistics.median(pair_heights)
+                    if not _components_share_lane_role(
+                        candidate,
+                        member,
+                        pair_height,
+                    ):
+                        continue
+                    candidate_bbox = _component_local_union_bbox(candidate)
+                    member_bbox = _component_local_union_bbox(member)
+                    if candidate_bbox is None or member_bbox is None:
+                        continue
+                    vertical_gap = max(
+                        candidate_bbox[1] - member_bbox[3],
+                        member_bbox[1] - candidate_bbox[3],
+                        0.0,
+                    )
+                    if vertical_gap > 1.5 * pair_height:
+                        continue
+                    candidate_below = candidate_bbox[1] >= member_bbox[3]
+                    member_below = member_bbox[1] >= candidate_bbox[3]
+                    if candidate_below and (
+                        candidate.get("_hard_break_before") is True
+                        or terminal_re.search(str(member.get("content") or "").rstrip()) is not None
+                    ):
+                        continue
+                    if member_below and (
+                        member.get("_hard_break_before") is True
+                        or terminal_re.search(str(candidate.get("content") or "").rstrip()) is not None
+                    ):
+                        continue
+                    group.add(candidate_index)
+                    changed = True
+                    break
+                if changed:
+                    break
+        if len(group) < 2:
+            continue
+        ordered_group = sorted(group)
+        replacement_index = min(ordered_group)
+        merged = _merge_internal_text_block_group(
+            blocks,
+            ordered_group,
+        )
+        local_rows = [
+            bbox for bbox in merged.get("_local_line_bboxes", []) if isinstance(bbox, (list, tuple)) and len(bbox) == 4
+        ]
+        maximum_width = max(
+            (bbox[2] - bbox[0] for bbox in local_rows),
+            default=0.0,
+        )
+        body_rows = [bbox for bbox in local_rows if bbox[2] - bbox[0] >= 0.75 * maximum_width]
+        if len(body_rows) >= 2:
+            # 复杂分式可能比正文左缘多探出少量 glyph；公开框按重复满行边界稳定收口。
+            local_merged_bbox = _bbox_union_many(local_rows)
+            local_output_bbox = (
+                min(bbox[0] for bbox in body_rows),
+                local_merged_bbox[1],
+                max(bbox[2] for bbox in body_rows),
+                local_merged_bbox[3],
+            )
+            merged["bbox"] = _rotate_bbox_from_upright(
+                local_output_bbox,
+                page_size,
+                int(merged.get("angle", 0) or 0) % 360,
+            )
+        replacements[replacement_index] = merged
+        consumed.update(ordered_group)
+    return [
+        replacements.get(index, block) for index, block in enumerate(blocks) if index not in consumed or index in replacements
+    ]
 
 
 def _merge_residual_narrow_math_text_blocks(
@@ -1931,6 +2717,10 @@ def _merge_internal_text_block_group(
     )
     merged["_single_run_row_id"] = None
     merged["_local_line_bboxes"] = [bbox for index in ordered_indices for bbox in blocks[index].get("_local_line_bboxes", [])]
+    merged["_local_output_line_bboxes"] = [
+        bbox for index in ordered_indices for bbox in blocks[index].get("_local_output_line_bboxes", [])
+    ]
+    merged["_output_bbox_repaired"] = any(blocks[index].get("_output_bbox_repaired") is True for index in ordered_indices)
     merged["_line_heights"] = [height for index in ordered_indices for height in blocks[index].get("_line_heights", [])]
     merged["_font_signatures"] = set().union(
         *[
@@ -1945,6 +2735,9 @@ def _merge_internal_text_block_group(
     merged["_inline_math_regions"] = [
         region for index in ordered_indices for region in blocks[index].get("_inline_math_regions", [])
     ]
+    merged[_PARAGRAPH_FORMULA_CONTEXT_MARKER] = any(
+        blocks[index].get(_PARAGRAPH_FORMULA_CONTEXT_MARKER) is True for index in ordered_indices
+    )
     return merged
 
 
@@ -2080,6 +2873,10 @@ def _merge_spatial_text_components(
         merged["_local_line_bboxes"] = [
             bbox for index in ordered_indices for bbox in blocks[index].get("_local_line_bboxes", [])
         ]
+        merged["_local_output_line_bboxes"] = [
+            bbox for index in ordered_indices for bbox in blocks[index].get("_local_output_line_bboxes", [])
+        ]
+        merged["_output_bbox_repaired"] = any(blocks[index].get("_output_bbox_repaired") is True for index in ordered_indices)
         merged["_line_heights"] = [height for index in ordered_indices for height in blocks[index].get("_line_heights", [])]
         merged["_font_signatures"] = set().union(
             *[
@@ -2098,13 +2895,316 @@ def _merge_spatial_text_components(
     return output
 
 
-def _component_lane_interval(
+def _merge_list_intro_text_components(
+    blocks: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """在编号列表硬边界前合并被误拆的连续引导段和冒号短尾。"""
+
+    consumed: set[int] = set()
+    replacements: dict[int, dict[str, Any]] = {}
+    text_indices = [
+        index
+        for index, block in enumerate(blocks)
+        if block.get("type") == "text" and isinstance(block.get("_local_line_bboxes"), list) and block["_local_line_bboxes"]
+    ]
+    for boundary_index in text_indices:
+        boundary = blocks[boundary_index]
+        if (
+            boundary.get("_hard_break_before") is not True
+            or _LIST_ITEM_RE.match(
+                str(boundary.get("content") or ""),
+            )
+            is None
+        ):
+            continue
+        preceding = [
+            index
+            for index in text_indices
+            if index not in consumed and _text_component_sort_key(blocks[index]) < _text_component_sort_key(boundary)
+        ]
+        if not preceding:
+            continue
+        immediate_index = max(
+            preceding,
+            key=lambda index: _text_component_sort_key(blocks[index]),
+        )
+        immediate = blocks[immediate_index]
+        immediate_rows = immediate["_local_line_bboxes"]
+        immediate_heights = [
+            float(height) for height in immediate.get("_line_heights", []) if isinstance(height, (int, float)) and height > 0
+        ]
+        pair_height = statistics.median(
+            immediate_heights
+            or [
+                immediate_rows[-1][3] - immediate_rows[-1][1],
+            ],
+        )
+        interval = _component_lane_interval(immediate)
+        if (
+            interval is None
+            or immediate_rows[-1][2] - immediate_rows[-1][0] > 0.35 * (interval[1] - interval[0])
+            or not str(immediate.get("content") or "").rstrip().endswith((":", "："))
+            or not _components_share_lane_role(
+                immediate,
+                boundary,
+                pair_height,
+            )
+        ):
+            continue
+
+        group = [immediate_index]
+        cursor_index = immediate_index
+        while len(group) < 3:
+            earlier = [
+                index
+                for index in preceding
+                if index not in group
+                and _text_component_sort_key(blocks[index]) < _text_component_sort_key(blocks[cursor_index])
+                and _components_share_lane_role(
+                    blocks[index],
+                    blocks[cursor_index],
+                    pair_height,
+                )
+            ]
+            if not earlier:
+                break
+            previous_index = max(
+                earlier,
+                key=lambda index: _text_component_sort_key(blocks[index]),
+            )
+            previous = blocks[previous_index]
+            current = blocks[cursor_index]
+            previous_rows = previous["_local_line_bboxes"]
+            current_rows = current["_local_line_bboxes"]
+            heights = [
+                float(height)
+                for block in (previous, current)
+                for height in block.get("_line_heights", [])
+                if isinstance(height, (int, float)) and height > 0
+            ]
+            local_height = statistics.median(heights or [pair_height])
+            vertical_gap = current_rows[0][1] - previous_rows[-1][3]
+            if (
+                previous.get("_hard_break_before") is True
+                or not _components_share_lane_role(
+                    previous,
+                    current,
+                    local_height,
+                )
+                or not -local_height <= vertical_gap <= local_height
+            ):
+                break
+            group.append(previous_index)
+            cursor_index = previous_index
+        if len(group) < 2:
+            continue
+        ordered_group = sorted(
+            group,
+            key=lambda index: _text_component_sort_key(blocks[index]),
+        )
+        replacement_index = min(ordered_group)
+        replacements[replacement_index] = _merge_internal_text_block_group(
+            blocks,
+            ordered_group,
+        )
+        consumed.update(ordered_group)
+
+    return [
+        replacements.get(index, block) for index, block in enumerate(blocks) if index not in consumed or index in replacements
+    ]
+
+
+def _merge_unterminated_text_components(
+    blocks: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """合并普通栏未终止正文，以及满足严格结构约束的满宽 span 正文。"""
+
+    output = list(blocks)
+    terminal_re = re.compile(
+        r"[.!?。！？:：;；][\]\)}）】》”’'\"]*$",
+    )
+    while True:
+        text_indices = sorted(
+            (
+                index
+                for index, block in enumerate(output)
+                if block.get("type") == "text"
+                and isinstance(
+                    block.get("_local_line_bboxes"),
+                    list,
+                )
+                and block["_local_line_bboxes"]
+            ),
+            key=lambda index: _text_component_sort_key(output[index]),
+        )
+        merged_pair: tuple[int, int] | None = None
+        for first_index, second_index in zip(
+            text_indices,
+            text_indices[1:],
+        ):
+            first = output[first_index]
+            second = output[second_index]
+            second_rows = second["_local_line_bboxes"]
+            first_rows = first["_local_line_bboxes"]
+            heights = [
+                float(height)
+                for block in (first, second)
+                for height in block.get("_line_heights", [])
+                if isinstance(height, (int, float)) and height > 0
+            ]
+            pair_height = statistics.median(
+                heights
+                or [
+                    first_rows[-1][3] - first_rows[-1][1],
+                    second_rows[0][3] - second_rows[0][1],
+                ],
+            )
+            second_interval = _component_lane_interval(second)
+            first_declared_interval = _component_declared_lane_interval(
+                first,
+            )
+            second_declared_interval = _component_declared_lane_interval(
+                second,
+            )
+            row_pair_height = statistics.median(
+                [
+                    max(
+                        0.1,
+                        first_rows[-1][3] - first_rows[-1][1],
+                    ),
+                    max(
+                        0.1,
+                        second_rows[0][3] - second_rows[0][1],
+                    ),
+                ],
+            )
+            span_connection_height = max(
+                pair_height,
+                row_pair_height,
+            )
+            span_tolerance = 0.75 * span_connection_height
+            span_pair = (
+                first.get("_lane_is_span") is True
+                and second.get("_lane_is_span") is True
+                and int(first.get("angle", 0) or 0) % 360 == int(second.get("angle", 0) or 0) % 360
+                and first_declared_interval is not None
+                and second_declared_interval is not None
+                and abs(
+                    first_declared_interval[0] - second_declared_interval[0],
+                )
+                <= span_tolerance
+                and abs(
+                    first_declared_interval[1] - second_declared_interval[1],
+                )
+                <= span_tolerance
+            )
+            first_content = str(first.get("content") or "")
+            second_content = str(second.get("content") or "")
+            single_numbered_tail = (
+                len(second_rows) == 1
+                and second.get("_hard_break_before") is not True
+                and _LIST_ITEM_RE.match(second_content) is not None
+                and first_content.rstrip().endswith((":", "："))
+            )
+            url_continuation = _URL_LINE_RE.match(second_content) is not None
+            aligned_short_tail = (
+                len(first_rows) >= 2
+                and len(second_rows) == 1
+                and abs(second_rows[0][0] - first_rows[-1][0]) <= 0.75 * pair_height
+            )
+            narrow_continuation = single_numbered_tail or url_continuation or aligned_short_tail
+            starts_wide_label = (
+                not url_continuation
+                and _LABELLED_METADATA_RE.match(
+                    second_content,
+                )
+                is not None
+                and (reference_interval := (second_declared_interval if span_pair else second_interval)) is not None
+                and second_rows[0][2] - second_rows[0][0] >= 0.5 * (reference_interval[1] - reference_interval[0])
+            )
+            if (
+                second.get("_protected_hard_break_before") is True
+                or (second.get("_hard_break_before") is True and (span_pair or not narrow_continuation))
+                or second.get("_leading_emphasis_start") is True
+                or (starts_wide_label and (span_pair or not aligned_short_tail))
+                or first.get("_hanging_indent_group") is not None
+                or second.get("_hanging_indent_group") is not None
+                or _FIGURE_CAPTION_MARKER_RE.match(
+                    first_content,
+                )
+                is not None
+                or (
+                    not span_pair
+                    and not single_numbered_tail
+                    and not url_continuation
+                    and terminal_re.search(
+                        first_content.rstrip(),
+                    )
+                    is not None
+                )
+            ):
+                continue
+            interval = _component_lane_interval(first)
+            if span_pair:
+                interval = first_declared_interval
+            elif interval is None or not _components_share_lane_role(
+                first,
+                second,
+                pair_height,
+            ):
+                continue
+            if interval is None:
+                continue
+            lane_width = interval[1] - interval[0]
+            vertical_gap = second_rows[0][1] - first_rows[-1][3]
+            minimum_first_fill = 0.8 if span_pair else 0.5 if single_numbered_tail else 0.65
+            minimum_second_fill = 0.8 if span_pair else 0.65
+            connection_height = span_connection_height if span_pair else pair_height
+            first_reference_width = (
+                max(row[2] - row[0] for row in first_rows) if narrow_continuation else first_rows[-1][2] - first_rows[-1][0]
+            )
+            first_fonts = first.get("_font_signatures")
+            second_fonts = second.get("_font_signatures")
+            fonts_conflict = (
+                isinstance(first_fonts, set)
+                and isinstance(second_fonts, set)
+                and first_fonts
+                and second_fonts
+                and first_fonts.isdisjoint(second_fonts)
+            )
+            if (
+                first_reference_width < minimum_first_fill * lane_width
+                or (
+                    (span_pair or not narrow_continuation)
+                    and second_rows[0][2] - second_rows[0][0] < minimum_second_fill * lane_width
+                )
+                or not -connection_height <= vertical_gap <= 1.5 * connection_height
+                or fonts_conflict
+                or _component_connection_skips_block(
+                    output,
+                    first_index,
+                    second_index,
+                    connection_height,
+                )
+            ):
+                continue
+            merged_pair = (first_index, second_index)
+            break
+        if merged_pair is None:
+            return output
+        first_index, second_index = merged_pair
+        output[first_index] = _merge_internal_text_block_group(
+            output,
+            [first_index, second_index],
+        )
+        output.pop(second_index)
+
+
+def _component_declared_lane_interval(
     block: dict[str, Any],
 ) -> tuple[float, float] | None:
-    """读取普通文本组件所属的有效非跨栏栏带区间。"""
+    """读取组件声明的有效栏带区间，不区分普通栏或跨栏。"""
 
-    if block.get("_lane_is_span") is not False:
-        return None
     interval = block.get("_lane_interval")
     if (
         not isinstance(interval, (list, tuple))
@@ -2114,6 +3214,16 @@ def _component_lane_interval(
         return None
     left, right = float(interval[0]), float(interval[1])
     return (left, right) if right > left else None
+
+
+def _component_lane_interval(
+    block: dict[str, Any],
+) -> tuple[float, float] | None:
+    """读取普通文本组件所属的有效非跨栏栏带区间。"""
+
+    if block.get("_lane_is_span") is not False:
+        return None
+    return _component_declared_lane_interval(block)
 
 
 def _component_reference_width(
@@ -2209,6 +3319,8 @@ def _find_short_opener_pairs(
         for body_index in candidate_indices:
             if body_index == opener_index:
                 continue
+            if blocks[body_index].get("_hard_break_before") is True:
+                continue
             if not _components_share_lane_role(
                 blocks[opener_index],
                 blocks[body_index],
@@ -2257,6 +3369,8 @@ def _nearest_following_text_component(
     matches: list[tuple[float, float, int]] = []
     for candidate_index in candidate_indices:
         if candidate_index == current_index or candidate_index in section_starts:
+            continue
+        if blocks[candidate_index].get("_hard_break_before") is True:
             continue
         if not _components_share_lane_role(
             blocks[current_index],
@@ -2319,6 +3433,8 @@ def _nearest_tapered_tail_component(
     matches: list[tuple[float, int]] = []
     for candidate_index in candidate_indices:
         if candidate_index == current_index or candidate_index in section_starts:
+            continue
+        if blocks[candidate_index].get("_hard_break_before") is True:
             continue
         if not _components_share_lane_role(
             blocks[current_index],

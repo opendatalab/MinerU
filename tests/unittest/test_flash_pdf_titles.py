@@ -7,6 +7,7 @@ import pytest
 from mineru.model.flash.pdf import (
     line_layout,
     line_merging,
+    models,
     text_blocks,
     titles,
 )
@@ -59,6 +60,37 @@ def test_heading_like_content_with_body_layout_remains_text() -> None:
     assert lines[2].semantic_type is None
 
 
+def test_explicit_section_number_rejects_century_and_decimal_sentence() -> None:
+    """验证通用章节编号补标标题，同时排除世纪年代和小数正文。"""
+
+    body_font = ("Body", 0)
+    lines = [
+        _text_line("20 century body", (0.0, 10.0, 80.0, 20.0), 0, font_signature=body_font),
+        _text_line("ordinary body one", (0.0, 22.0, 100.0, 32.0), 1, font_signature=body_font),
+        _text_line("2 Section heading", (0.0, 45.0, 55.0, 55.0), 2, font_signature=body_font),
+        _text_line("ordinary body two", (0.0, 62.0, 100.0, 72.0), 3, font_signature=body_font),
+        _text_line("ordinary body three", (0.0, 74.0, 100.0, 84.0), 4, font_signature=body_font),
+        _text_line("0.26 value, continues", (0.0, 96.0, 100.0, 106.0), 5, font_signature=body_font),
+        _text_line("ordinary body four", (0.0, 108.0, 100.0, 118.0), 6, font_signature=body_font),
+    ]
+    profile = titles._DocumentBodyProfile(
+        body_height=10.0,
+        body_weight=400.0,
+        regular_fonts=frozenset({body_font}),
+    )
+
+    titles._classify_explicit_section_titles(
+        lines,
+        (120.0, 150.0),
+        container_bboxes=[],
+        document_body_profile=profile,
+    )
+
+    assert lines[0].semantic_type is None
+    assert lines[2].semantic_type == "paragraph_title"
+    assert lines[5].semantic_type is None
+
+
 def test_document_regular_fonts_only_use_body_height_band() -> None:
     """验证跨页重复的大字号标题字体不会进入全文常规正文字体集合。"""
 
@@ -91,6 +123,200 @@ def test_document_regular_fonts_only_use_body_height_band() -> None:
     assert profile is not None
     assert profile.body_height == pytest.approx(10.0)
     assert profile.regular_fonts == frozenset({body_font})
+
+
+def test_noninitial_document_title_requires_paragraph_title_candidate() -> None:
+    """验证非首页文档标题只能从已确认的段落标题候选升档。"""
+
+    title_font = ("Title", 0)
+    body_font = ("Body", 0)
+    title_first = _text_line(
+        "Translated document title first",
+        (15.0, 20.0, 85.0, 38.0),
+        0,
+        effective_height=18.0,
+        font_signature=title_font,
+        font_coverage=1.0,
+    )
+    title_second = _text_line(
+        "translated title second",
+        (20.0, 38.0, 80.0, 56.0),
+        1,
+        effective_height=18.0,
+        font_signature=title_font,
+        font_coverage=1.0,
+    )
+    title_first.semantic_type = "paragraph_title"
+    title_second.semantic_type = "paragraph_title"
+    author = _text_line(
+        "Author One, Author Two",
+        (20.0, 65.0, 80.0, 75.0),
+        2,
+        effective_height=10.0,
+        font_signature=body_font,
+        font_coverage=1.0,
+    )
+    affiliation = _text_line(
+        "University affiliation",
+        (25.0, 77.0, 75.0, 87.0),
+        3,
+        effective_height=10.0,
+        font_signature=body_font,
+        font_coverage=1.0,
+    )
+    abstract = _text_line(
+        "wide abstract body",
+        (5.0, 96.0, 95.0, 106.0),
+        4,
+        effective_height=10.0,
+        font_signature=body_font,
+        font_coverage=1.0,
+    )
+    profile = titles._DocumentBodyProfile(
+        body_height=10.0,
+        body_weight=400.0,
+        regular_fonts=frozenset({body_font}),
+    )
+
+    titles._promote_noninitial_document_title_band(
+        [title_first, title_second, author, affiliation, abstract],
+        (100.0, 150.0),
+        page_index=1,
+        container_bboxes=[],
+        document_body_profile=profile,
+        title_candidate_source_indices={0, 1},
+    )
+
+    assert title_first.semantic_type == "doc_title"
+    assert title_second.semantic_type == "doc_title"
+    assert all(line.semantic_type is None for line in (author, affiliation, abstract))
+
+    ordinary_large_line = _text_line(
+        "large centered non-title",
+        (15.0, 20.0, 85.0, 38.0),
+        10,
+        effective_height=18.0,
+        font_signature=title_font,
+        font_coverage=1.0,
+    )
+    titles._promote_noninitial_document_title_band(
+        [ordinary_large_line],
+        (100.0, 150.0),
+        page_index=2,
+        container_bboxes=[],
+        document_body_profile=profile,
+        title_candidate_source_indices=set(),
+    )
+    assert ordinary_large_line.semantic_type is None
+
+
+def test_noninitial_document_titles_support_multiple_articles_without_metadata() -> None:
+    """验证杂志中的多篇文章可在各自起始页仅凭稳定标题版式成为 doc_title。"""
+
+    title_font = ("Title", 0)
+    body_font = ("Body", 0)
+    first_article_title = _text_line(
+        "First article title",
+        (15.0, 20.0, 85.0, 36.0),
+        0,
+        effective_height=16.0,
+        font_signature=title_font,
+        font_coverage=1.0,
+    )
+    first_article_title_tail = _text_line(
+        "continued title",
+        (20.0, 37.0, 80.0, 53.0),
+        1,
+        effective_height=16.0,
+        font_signature=title_font,
+        font_coverage=1.0,
+    )
+    second_article_title = _text_line(
+        "Second article title",
+        (18.0, 28.0, 82.0, 44.0),
+        0,
+        effective_height=16.0,
+        font_signature=title_font,
+        font_coverage=1.0,
+    )
+    later_section = _text_line(
+        "Centered section heading",
+        (25.0, 85.0, 75.0, 98.0),
+        2,
+        effective_height=13.0,
+        font_signature=title_font,
+        font_coverage=1.0,
+    )
+    first_article_title.semantic_type = "paragraph_title"
+    first_article_title_tail.semantic_type = "paragraph_title"
+    second_article_title.semantic_type = "paragraph_title"
+    later_section.semantic_type = "paragraph_title"
+    pages = [
+        _prepared_text_page(
+            _text_line(
+                "magazine cover",
+                (5.0, 20.0, 95.0, 30.0),
+                0,
+                effective_height=10.0,
+                font_signature=body_font,
+                font_coverage=1.0,
+            ),
+            page_size=(100.0, 150.0),
+        ),
+        _prepared_text_page(
+            first_article_title,
+            first_article_title_tail,
+            _text_line(
+                "first article body",
+                (5.0, 70.0, 95.0, 80.0),
+                2,
+                effective_height=10.0,
+                font_signature=body_font,
+                font_coverage=1.0,
+            ),
+            page_size=(100.0, 150.0),
+        ),
+        _prepared_text_page(
+            second_article_title,
+            _text_line(
+                "second article body",
+                (5.0, 55.0, 95.0, 65.0),
+                1,
+                effective_height=10.0,
+                font_signature=body_font,
+                font_coverage=1.0,
+            ),
+            later_section,
+            page_size=(100.0, 150.0),
+        ),
+    ]
+    profile = titles._DocumentBodyProfile(
+        body_height=10.0,
+        body_weight=400.0,
+        regular_fonts=frozenset({body_font}),
+    )
+
+    titles._promote_noninitial_document_title_band(
+        pages[1].remaining_lines,
+        pages[1].page_size,
+        page_index=1,
+        container_bboxes=[],
+        document_body_profile=profile,
+        title_candidate_source_indices={0, 1},
+    )
+    titles._promote_noninitial_document_title_band(
+        pages[2].remaining_lines,
+        pages[2].page_size,
+        page_index=2,
+        container_bboxes=[],
+        document_body_profile=profile,
+        title_candidate_source_indices={0, 2},
+    )
+
+    assert first_article_title.semantic_type == "doc_title"
+    assert first_article_title_tail.semantic_type == "doc_title"
+    assert second_article_title.semantic_type == "doc_title"
+    assert later_section.semantic_type == "paragraph_title"
 
 
 def test_document_body_profile_prefers_width_support_over_footer_page_count() -> None:
@@ -174,11 +400,7 @@ def test_body_height_section_titles_mark_only_repeated_short_anchors() -> None:
         "paragraph_title",
         "paragraph_title",
     ]
-    assert all(
-        line.semantic_type is None
-        for index, line in enumerate(lines)
-        if index not in {0, 4}
-    )
+    assert all(line.semantic_type is None for index, line in enumerate(lines) if index not in {0, 4})
 
 
 def test_physical_title_gap_ignores_disjoint_column_and_keeps_overlapping_row() -> None:
@@ -242,9 +464,7 @@ def test_grid_title_suppression_requires_two_distinct_parallel_bands() -> None:
             source_index,
         )
         source_index += 1
-        lane.lines.extend(
-            [(second_opener, second_opener.bbox), (second_body, second_body.bbox)]
-        )
+        lane.lines.extend([(second_opener, second_opener.bbox), (second_body, second_body.bbox)])
 
     suppressions = titles._find_repeated_grid_title_suppressions(lanes, 10.0)
 
@@ -638,6 +858,187 @@ def test_first_page_centered_body_style_metadata_does_not_use_title_fallback() -
     )
 
     assert lines[0].semantic_type is None
+
+
+def test_first_page_centered_small_regular_metadata_requires_emphasis() -> None:
+    """验证首页正文区的小字号常规字体元数据不会仅凭居中和留白晋升。"""
+
+    body_font = ("Body", 0)
+    lines = [
+        _text_line(
+            "body above one",
+            (0.0, 10.0, 100.0, 20.0),
+            0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "body above two",
+            (0.0, 22.0, 100.0, 32.0),
+            1,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "centered metadata",
+            (25.0, 48.0, 75.0, 55.0),
+            2,
+            effective_height=7.0,
+            font_signature=body_font,
+            font_coverage=1.0,
+            dominant_font_weight=400.0,
+        ),
+        _text_line(
+            "compact body one",
+            (0.0, 72.0, 100.0, 80.0),
+            3,
+            effective_height=8.0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "compact body two",
+            (0.0, 82.0, 100.0, 90.0),
+            4,
+            effective_height=8.0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "compact body three",
+            (0.0, 92.0, 100.0, 100.0),
+            5,
+            effective_height=8.0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+    ]
+    profile = models._DocumentBodyProfile(
+        body_height=10.0,
+        body_weight=400.0,
+        regular_fonts=frozenset({body_font}),
+    )
+
+    titles._classify_page_titles(
+        lines,
+        (100.0, 140.0),
+        page_index=0,
+        container_bboxes=[],
+        document_body_profile=profile,
+    )
+
+    assert lines[2].semantic_type is None
+
+
+def test_first_page_hanging_title_rows_demote_to_text_geometry() -> None:
+    """验证近满栏缩进首行接栏左续行的标题组在首页降回正文。"""
+
+    heading_font = ("Heading", 0)
+    first = _text_line(
+        "first row",
+        (10.0, 10.0, 100.0, 20.0),
+        0,
+        font_signature=heading_font,
+        font_coverage=1.0,
+        semantic_type="paragraph_title",
+    )
+    second = _text_line(
+        "second row",
+        (0.0, 20.2, 55.0, 30.2),
+        1,
+        font_signature=heading_font,
+        font_coverage=1.0,
+        semantic_type="paragraph_title",
+    )
+    lane = models._TextLane(
+        left=0.0,
+        right=100.0,
+        lines=[
+            (first, first.bbox),
+            (second, second.bbox),
+        ],
+    )
+    profile = models._DocumentBodyProfile(
+        body_height=10.0,
+        body_weight=400.0,
+        regular_fonts=frozenset({("Body", 0)}),
+    )
+
+    titles._demote_hanging_multiline_text_titles(
+        [lane],
+        profile,
+        page_index=0,
+    )
+
+    assert first.semantic_type is None
+    assert second.semantic_type is None
+    assert first.title_suppressed
+    assert second.title_suppressed
+
+
+def test_inline_typography_reset_promotes_only_distinct_middle_row() -> None:
+    """验证短段尾、异字体短行和缩进正文的三行结构只提升中间行。"""
+
+    body_font = ("Body", 0)
+    heading_font = ("Heading", 0)
+    lines = [
+        _text_line(
+            "short tail",
+            (0.0, 0.0, 25.0, 10.0),
+            0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "inline heading",
+            (0.0, 11.0, 45.0, 21.0),
+            1,
+            font_signature=heading_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "indented body",
+            (18.0, 22.0, 100.0, 32.0),
+            2,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+    ]
+    profile = models._DocumentBodyProfile(
+        body_height=10.0,
+        body_weight=400.0,
+        regular_fonts=frozenset({body_font}),
+    )
+
+    titles._classify_inline_typography_reset_titles(
+        lines,
+        (100.0, 100.0),
+        container_bboxes=[],
+        document_body_profile=profile,
+    )
+    control = [
+        _text_line(
+            line.text,
+            line.bbox,
+            line.source_index,
+            font_signature=body_font,
+            font_coverage=1.0,
+        )
+        for line in lines
+    ]
+    titles._classify_inline_typography_reset_titles(
+        control,
+        (100.0, 100.0),
+        container_bboxes=[],
+        document_body_profile=profile,
+    )
+
+    assert [line.semantic_type for line in lines] == [
+        None,
+        "paragraph_title",
+        None,
+    ]
+    assert all(line.semantic_type is None for line in control)
 
 
 def test_cross_column_document_title_uses_thirteen_tenths_body_height_fallback() -> None:
@@ -1044,6 +1445,7 @@ def test_paragraph_title_detector_does_not_read_line_text() -> None:
         inspect.getsource(function)
         for function in (
             titles._classify_page_titles,
+            titles._classify_inline_typography_reset_titles,
             titles._infer_document_body_profile,
             titles._classify_body_height_section_titles,
             titles._body_height_section_followers,
@@ -1075,6 +1477,7 @@ def test_paragraph_title_detector_does_not_read_line_text() -> None:
             titles._normalized_title_gap,
             titles._line_near_visual_container,
             titles._is_wide_leading_title_continuation,
+            titles._demote_hanging_multiline_text_titles,
             line_layout._title_fonts_compatible,
             titles._expand_paragraph_title_neighbors,
         )

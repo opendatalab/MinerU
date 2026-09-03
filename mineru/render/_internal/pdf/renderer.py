@@ -221,7 +221,8 @@ class _PdfRenderer:
         block = planned.block
         if isinstance(block, (TextBlock, RefTextBlock)):
             spans = join_inline_spans(planned.text_contents or [block.content])
-            return [self._paragraph(spans, self.styles.body, planned.page_idx, block)]
+            anchor = block.anchor if isinstance(block, TextBlock) else None
+            return [self._paragraph(spans, self.styles.body, planned.page_idx, block, anchor=anchor)]
         if isinstance(block, (DocTitleBlock, ParagraphTitleBlock)):
             return [
                 self._paragraph(
@@ -348,7 +349,7 @@ class _PdfRenderer:
             if not content:
                 continue
             spans: list[InlineSpan] = [TextSpan(type="text", content="• ")]
-            if isinstance(child, TitleBlockBase) and child.anchor:
+            if child.anchor:
                 link_content = _flatten_non_link_spans(content)
                 if link_content:
                     spans.append(HyperlinkSpan(type="hyperlink", url=f"#{child.anchor}", content=link_content))
@@ -695,10 +696,10 @@ def _resolve_document_title(middle_json: MiddleJson, explicit: str | None) -> st
 
 
 def _iter_document_anchors(middle_json: MiddleJson) -> Iterable[str]:
-    """按文档顺序枚举标题和页面脚注的非空 anchor。"""
+    """按文档顺序枚举正文、标题和页面脚注的非空 anchor。"""
     for page in middle_json.pages:
         for block in page.blocks:
-            if isinstance(block, TitleBlockBase) and block.anchor:
+            if isinstance(block, (TextBlock, TitleBlockBase)) and block.anchor:
                 yield block.anchor
             elif isinstance(block, PageFootnoteBlock) and block.anchor:
                 yield block.anchor

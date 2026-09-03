@@ -38,6 +38,247 @@ def _formula_member(
     )
 
 
+def test_formula_members_expose_union_of_tight_bboxes_with_one_point_padding() -> None:
+    """验证文本公式聚合后保留全部成员的 tight+1pt 输出包络。"""
+
+    body, body_bbox = _formula_member(
+        "x=1",
+        (10.0, 20.0, 50.0, 40.0),
+        0,
+    )
+    number, number_bbox = _formula_member(
+        "(1)",
+        (80.0, 25.0, 90.0, 35.0),
+        1,
+    )
+    body.ink_bbox = (12.0, 25.0, 48.0, 35.0)
+    number.ink_bbox = (82.0, 27.0, 89.0, 33.0)
+
+    block = formulas._formula_members_to_block(
+        [(body, body_bbox), (number, number_bbox)],
+        (100.0, 100.0),
+        0,
+        anchor_source_index=1,
+    )
+
+    assert block is not None
+    assert block["_tight_output_bbox"] == (
+        11.0,
+        24.0,
+        90.0,
+        36.0,
+    )
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "（℃/hm），用 I 表示：I=ΔT",
+        "温度可表示为T=ΔT",
+        "The temperature value T=ΔT",
+    ],
+    ids=["chinese-with-unit", "chinese-without-punctuation", "english-without-keyword"],
+)
+def test_formula_component_rejects_left_aligned_prose_prefix(text: str) -> None:
+    """验证同栏左缘带通用正文前缀的复杂行内分式不升级为行间公式。"""
+
+    prose = _text_line(
+        text,
+        (0.0, 20.0, 55.0, 30.0),
+        0,
+        effective_height=10.0,
+    )
+    numerator = _text_line(
+        "×100%",
+        (56.0, 20.0, 78.0, 30.0),
+        1,
+        effective_height=10.0,
+    )
+    denominator = _text_line(
+        "ΔH",
+        (45.0, 30.0, 55.0, 38.0),
+        2,
+        effective_height=8.0,
+    )
+    lane = models._TextLane(
+        left=0.0,
+        right=100.0,
+        lines=[
+            (prose, prose.bbox),
+            (numerator, numerator.bbox),
+            (denominator, denominator.bbox),
+        ],
+    )
+
+    assert formulas._formula_component_has_left_prose(
+        lane.lines,
+        lane,
+        10.0,
+    )
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "I=ΔT",
+        "x+y=z",
+        "Score=MLP(vCLS)",
+        "conf(Bm)=1",
+        "（摄氏度）=T",
+        "(temperature value)=T",
+    ],
+    ids=[
+        "single-variable",
+        "symbolic-expression",
+        "single-identifier",
+        "function-identifier",
+        "chinese-bracketed-unit",
+        "english-bracketed-unit",
+    ],
+)
+def test_formula_component_keeps_left_aligned_formula_identifiers(text: str) -> None:
+    """验证变量、符号表达式、无空白标识符和纯括号单位仍保留为独立公式。"""
+
+    formula = _text_line(
+        text,
+        (0.0, 20.0, 55.0, 30.0),
+        0,
+        effective_height=10.0,
+    )
+    denominator = _text_line(
+        "ΔH",
+        (45.0, 30.0, 55.0, 38.0),
+        1,
+        effective_height=8.0,
+    )
+    lane = models._TextLane(
+        left=0.0,
+        right=100.0,
+        lines=[
+            (formula, formula.bbox),
+            (denominator, denominator.bbox),
+        ],
+    )
+
+    assert not formulas._formula_component_has_left_prose(
+        [(formula, formula.bbox), (denominator, denominator.bbox)],
+        lane,
+        10.0,
+    )
+
+
+def test_inline_prose_formula_component_returns_to_paragraph_context() -> None:
+    """验证同行正文公式不生成公式块，并标记为后续正文聚合上下文。"""
+
+    body_font = ("Body", 0)
+    prose_formula = _text_line(
+        "温度可表示为T=ΔT",
+        (0.0, 40.0, 58.0, 50.0),
+        0,
+        effective_height=10.0,
+        font_signature=("Math", 0),
+        font_coverage=0.6,
+    )
+    denominator = _text_line(
+        "ΔH",
+        (25.0, 51.0, 55.0, 61.0),
+        1,
+        effective_height=10.0,
+        font_signature=("Math", 0),
+        font_coverage=0.6,
+    )
+    number = _text_line(
+        "(5)",
+        (91.0, 49.0, 100.0, 59.0),
+        2,
+        effective_height=10.0,
+    )
+    body_lines = [
+        _text_line(
+            f"body-{index}",
+            (0.0, top, 100.0, top + 10.0),
+            3 + index,
+            effective_height=10.0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        )
+        for index, top in enumerate((76.0, 88.0, 100.0, 112.0))
+    ]
+
+    blocks, remaining = formulas._build_formula_like_blocks(
+        [prose_formula, denominator, number, *body_lines],
+        [],
+        (100.0, 140.0),
+    )
+
+    assert blocks == []
+    assert prose_formula.paragraph_formula_context
+    assert denominator.paragraph_formula_context
+    assert number.paragraph_formula_context
+    assert {line.source_index for line in remaining} == set(range(7))
+
+
+def test_isolated_numbered_fraction_overrides_left_prose_shape() -> None:
+    """验证带分数线和上下净空的编号多层公式不被变量名误判为正文。"""
+
+    body_font = ("Body", 0)
+    lines = [
+        _text_line(
+            "preceding body",
+            (0.0, 0.0, 100.0, 10.0),
+            0,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "FZ SSEs KSSEc=SSEx",
+            (0.0, 25.0, 60.0, 35.0),
+            1,
+            font_signature=("Math", 0),
+            font_coverage=0.6,
+        ),
+        _text_line(
+            "SSEc=dfc",
+            (25.0, 36.0, 45.0, 46.0),
+            2,
+            font_signature=("Math", 0),
+            font_coverage=0.6,
+        ),
+        _text_line(
+            "(7)",
+            (91.0, 31.0, 100.0, 41.0),
+            3,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+        _text_line(
+            "following body",
+            (0.0, 60.0, 100.0, 70.0),
+            4,
+            font_signature=body_font,
+            font_coverage=1.0,
+        ),
+    ]
+
+    lane = models._TextLane(
+        left=0.0,
+        right=100.0,
+        lines=[(line, line.bbox) for line in lines],
+    )
+
+    assert formulas._formula_component_has_left_prose(
+        [(line, line.bbox) for line in lines[1:4]],
+        lane,
+        10.0,
+    )
+    assert formulas._formula_component_has_isolated_numbered_fraction(
+        [(line, line.bbox) for line in lines[1:4]],
+        lane,
+        10.0,
+        [(10.0, 34.5, 60.0, 35.0)],
+    )
+
+
 def _vector_path(
     bbox: tuple[float, float, float, float],
     source_index: int,
@@ -105,14 +346,111 @@ def _vector_formula_source(
     )
 
 
+def test_single_line_formula_requires_numeric_trailing_marker() -> None:
+    """验证同行公式只把数字编号识别为 tag，不把函数参数当编号。"""
+
+    numbered = _text_line(
+        "score=f(x) (3)",
+        (15.0, 30.0, 90.0, 40.0),
+        0,
+        effective_height=10.0,
+    )
+    parenthesized_argument = _text_line(
+        "Score=MLP(vCLS)",
+        (15.0, 50.0, 90.0, 60.0),
+        1,
+        effective_height=10.0,
+    )
+    numbered.style_scale_repaired = True
+    parenthesized_argument.style_scale_repaired = True
+    lane = models._TextLane(
+        left=0.0,
+        right=100.0,
+        lines=[
+            (numbered, numbered.bbox),
+            (parenthesized_argument, parenthesized_argument.bbox),
+        ],
+    )
+
+    assert formulas._is_single_line_numbered_formula(
+        (numbered, numbered.bbox),
+        lane,
+        10.0,
+    )
+    assert not formulas._is_single_line_numbered_formula(
+        (parenthesized_argument, parenthesized_argument.bbox),
+        lane,
+        10.0,
+    )
+
+
+def test_single_line_numbered_formula_absorbs_connected_math_sidecars() -> None:
+    """验证带编号公式核心吸收等号前缀和窄分子，但不吸收后续正文。"""
+
+    core = _text_line(
+        "|Bm| sum(yi) (1)",
+        (40.0, 20.0, 95.0, 35.0),
+        0,
+        effective_height=10.0,
+    )
+    prefix = _text_line(
+        "acc(Bm)=",
+        (10.0, 24.0, 39.5, 34.0),
+        1,
+        effective_height=10.0,
+    )
+    numerator = _text_line(
+        "1",
+        (55.0, 15.0, 60.0, 23.0),
+        2,
+        effective_height=8.0,
+    )
+    body = _text_line(
+        "ordinary following prose",
+        (0.0, 40.0, 100.0, 50.0),
+        3,
+        effective_height=10.0,
+        font_signature=("Body", 0),
+        font_coverage=1.0,
+    )
+    core.style_scale_repaired = True
+    lane = models._TextLane(
+        left=0.0,
+        right=100.0,
+        lines=[
+            (core, core.bbox),
+            (prefix, prefix.bbox),
+            (numerator, numerator.bbox),
+            (body, body.bbox),
+        ],
+    )
+
+    members = formulas._expand_single_line_numbered_formula_members(
+        (core, core.bbox),
+        lane,
+        set(),
+        [],
+        ("Body", 0),
+        10.0,
+    )
+    block = formulas._formula_members_to_block(
+        members,
+        (100.0, 100.0),
+        0,
+        anchor_source_index=core.source_index,
+    )
+
+    assert {line.source_index for line, _bbox in members} == {0, 1, 2}
+    assert block is not None
+    assert "acc(Bm)=" in block["content"]
+    assert block["content"].count("\\tag{1}") == 1
+
+
 def test_vector_formula_paths_and_detached_path_number_form_one_empty_equation() -> None:
     """验证矢量主体与远距栏右缘路径编号形成一个空内容公式。"""
 
     body_paths = _vector_formula_body_paths()
-    number_paths = [
-        _vector_path((91.0 + index * 3.0, 51.0, 93.0 + index * 3.0, 60.0), 10 + index)
-        for index in range(3)
-    ]
+    number_paths = [_vector_path((91.0 + index * 3.0, 51.0, 93.0 + index * 3.0, 60.0), 10 + index) for index in range(3)]
     blocks, claimed = formulas._build_vector_formula_blocks(
         _vector_formula_source(*body_paths, *number_paths),
         [],
@@ -149,13 +487,9 @@ def test_vector_formula_claims_text_number_but_keeps_content_empty() -> None:
 def test_vector_formula_rejects_unmatched_number_rules_strokes_forms_and_inline_paths() -> None:
     """验证无主体编号、细规则、描边、Form 图标和正文同行路径均不会误报。"""
 
-    unmatched_number = [
-        _vector_path((91.0 + index * 3.0, 51.0, 93.0 + index * 3.0, 60.0), index)
-        for index in range(3)
-    ]
+    unmatched_number = [_vector_path((91.0 + index * 3.0, 51.0, 93.0 + index * 3.0, 60.0), index) for index in range(3)]
     rules = [
-        _vector_path((10.0 + index * 12.0, 70.0, 20.0 + index * 12.0, 70.5), 10 + index, segment_count=5)
-        for index in range(6)
+        _vector_path((10.0 + index * 12.0, 70.0, 20.0 + index * 12.0, 70.5), 10 + index, segment_count=5) for index in range(6)
     ]
     excluded = [
         _vector_path((20.0, 50.0, 24.0, 62.0), 30, stroke_visible=True),

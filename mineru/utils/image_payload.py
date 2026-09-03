@@ -230,14 +230,20 @@ def extract_mineru_generated_svg_fallback(payload: bytes) -> tuple[bytes, int, i
 
 def validate_image_sidecar_path(image_path: str) -> str:
     """校验图片 sidecar 路径只能是安全的相对子路径，并返回规范化 POSIX 路径。"""
-    posix_path = Path(image_path)
-    windows_path = PureWindowsPath(image_path)
     if (
         not image_path
         or image_path == "."
-        or "\x00" in image_path
         or "\\" in image_path
-        or posix_path.is_absolute()
+        or any(ord(char) < 0x20 or ord(char) == 0x7F for char in image_path)
+    ):
+        raise ValueError(f"Unsafe image sidecar path: {image_path}")
+    parsed = urlsplit(image_path)
+    if parsed.scheme or parsed.netloc:
+        raise ValueError(f"Unsafe image sidecar path: {image_path}")
+    posix_path = Path(image_path)
+    windows_path = PureWindowsPath(image_path)
+    if (
+        posix_path.is_absolute()
         or windows_path.is_absolute()
         or windows_path.drive
         or windows_path.root

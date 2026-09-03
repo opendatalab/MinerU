@@ -20,12 +20,15 @@ from .text_styles import (
     detect_pdf_text_link_lines,
     detect_pdf_text_style_lines,
     materialize_pdf_inline_spans,
+    _realign_repaired_text_evidence,
 )
 
 from .models import (
+    _AxisLine,
     _DocumentBodyProfile,
     _DocumentTitleProfile,
     _LineItem,
+    _MarginalCandidate,
     _PageSource,
     _PreparedPage,
 )
@@ -43,9 +46,16 @@ from .geometry import (
 )
 from .native_text import (
     _build_native_line_items,
+    _extract_decorative_text_rules,
     _get_pdf_drawing_lines,
     _median_native_glyph_width,
     _sanitize_pdf_control_text,
+    _resplit_native_visual_runs,
+)
+from .char_geometry import (
+    DocumentGeometryPlan,
+    apply_line_geometry_repairs,
+    build_document_geometry_plan,
 )
 from .line_merging import (
     _merge_overlapping_inline_text_clusters,
@@ -56,6 +66,7 @@ from .line_merging import (
 )
 from .index_blocks import _extract_index_blocks
 from .tables import (
+    _connected_horizontal_rule_bboxes,
     _detect_table_candidates,
     _materialize_table_blocks,
 )
@@ -78,6 +89,7 @@ from .code_blocks import (
     _build_rule_delimited_code_blocks,
 )
 from .auxiliary_text import (
+    _build_marginal_candidate,
     _classify_deferred_image_footnotes,
     _classify_isolated_first_page_footer,
     _classify_page_footnote_trailing_footers,
@@ -90,12 +102,18 @@ from .auxiliary_text import (
     _classify_repeated_page_marginals,
     _classify_repeated_visual_headers,
     _classify_single_page_compound_headers,
+    _marginal_geometry_matches,
+    _marginal_text_matches,
 )
 from .titles import (
     _classify_body_height_section_titles,
+    _classify_explicit_section_titles,
+    _classify_inline_typography_reset_titles,
+    _classify_document_structural_titles,
     _classify_page_titles,
     _infer_document_body_profile,
     _infer_document_title_profile,
+    _promote_noninitial_document_title_band,
 )
 from .text_blocks import (
     _build_text_blocks,
@@ -181,10 +199,105 @@ def _filter_repeated_raster_watermark_bboxes(
     ]
 
 
+def _table_detection_drawing_lines(
+    source: _PageSource,
+    confirmed_header_separators: set[BBox] | None = None,
+) -> list[_AxisLine]:
+    """从表格候选路径中移除已确认页眉下方的通栏分隔线。"""
+
+    confirmed = confirmed_header_separators or set()
+    return [drawing_line for drawing_line in source.drawing_lines if drawing_line.bbox not in confirmed]
+
+
+def _detect_repeated_header_separator_bboxes(
+    sources: list[_PageSource],
+) -> list[set[BBox]]:
+    """用重复刊头文本和非表格横线共同确认跨页页眉分隔线。"""
+
+    candidates_by_signature: dict[
+        tuple[float, float, float],
+        list[tuple[int, BBox]],
+    ] = {}
+    for page_index, source in enumerate(sources):
+        page_width, page_height = source.page_size
+        if page_width <= 0 or page_height <= 0:
+            continue
+        connected_table_rules = _connected_horizontal_rule_bboxes(source)
+        for drawing_line in source.drawing_lines:
+            bbox = drawing_line.bbox
+            center_y = _bbox_center_y(bbox)
+            if (
+                drawing_line.orientation != "horizontal"
+                or center_y > 0.15 * page_height
+                or bbox[2] - bbox[0] < 0.6 * page_width
+                or sum(line.angle == 0 and line.bbox[3] <= center_y for line in source.lines) < 2
+                or bbox in connected_table_rules
+            ):
+                continue
+            signature = (
+                round(bbox[0] / page_width, 2),
+                round(bbox[2] / page_width, 2),
+                round(center_y / page_height, 3),
+            )
+            candidates_by_signature.setdefault(
+                signature,
+                [],
+            ).append((page_index, bbox))
+
+    output = [set() for _source in sources]
+    for members in candidates_by_signature.values():
+        if len({page_index for page_index, _bbox in members}) < 3:
+            continue
+        if len(_repeated_header_evidence_pages(sources, members)) < 2:
+            continue
+        for page_index, bbox in members:
+            output[page_index].add(bbox)
+    return output
+
+
+def _repeated_header_evidence_pages(
+    sources: list[_PageSource],
+    separator_members: list[tuple[int, BBox]],
+) -> set[int]:
+    """返回具有已分类或跨页重复刊头文本证据的页号集合。"""
+
+    supported_pages: set[int] = set()
+    candidates: list[tuple[int, _MarginalCandidate]] = []
+    for page_index, separator_bbox in separator_members:
+        center_y = _bbox_center_y(separator_bbox)
+        for line in sources[page_index].lines:
+            if line.angle != 0 or line.bbox[3] > center_y:
+                continue
+            if line.semantic_type == "header":
+                supported_pages.add(page_index)
+                continue
+            candidate = _build_marginal_candidate(
+                page_index,
+                line,
+                sources[page_index].page_size,
+            )
+            if candidate is not None and candidate.region == "header":
+                candidates.append((page_index, candidate))
+
+    for left_index, (left_page, left) in enumerate(candidates):
+        for right_page, right in candidates[left_index + 1 :]:
+            page_delta = right_page - left_page
+            if page_delta > 2:
+                break
+            if (
+                page_delta > 0
+                and _marginal_geometry_matches(left, right)
+                and _marginal_text_matches(left.line.text, right.line.text)
+            ):
+                supported_pages.update((left_page, right_page))
+    return supported_pages
+
+
 def _analyze_native_document(
     pdf_doc: PDFDocument,
     *,
     script_diagnostics: list[dict[str, Any]] | None = None,
+    geometry_diagnostics: list[dict[str, Any]] | None = None,
 ) -> list[list[dict[str, Any]]]:
     """逐页读取数字 PDF，并在轻量页面上完成跨页文本类型判定。"""
 
@@ -210,6 +323,11 @@ def _analyze_native_document(
             page_rotation=pdf_doc.page_rotation(page_idx),
         )
         drawing_lines = _get_pdf_drawing_lines(pdf_doc, page_idx)
+        lines, decorative_rules = _extract_decorative_text_rules(
+            lines,
+            page_size,
+        )
+        drawing_lines.extend(decorative_rules)
         page_style_lines.append(detect_pdf_text_style_lines(lines, drawing_lines))
         page_link_lines.append(
             detect_pdf_text_link_lines(
@@ -234,14 +352,38 @@ def _analyze_native_document(
         page_sources.append(source)
         page_text_geometries.append(text_geometry)
 
+    geometry_plan = build_document_geometry_plan(
+        [source.lines for source in page_sources],
+        page_text_geometries,
+        page_sizes,
+    )
+    for page_index, source in enumerate(page_sources):
+        # 容器认领前只启用高置信 X 修复；Y trim 等表格、公式和图片行被排除后再应用。
+        apply_line_geometry_repairs(
+            source.lines,
+            page_index=page_index,
+            plan=geometry_plan,
+            allow_y_trim=False,
+        )
+    if geometry_diagnostics is not None:
+        geometry_diagnostics.append(geometry_plan.to_dict())
+
     _classify_raw_page_marginals(page_sources)
+    repeated_header_separators = _detect_repeated_header_separator_bboxes(
+        page_sources,
+    )
     prepared_pages = [
         _prepare_page_source(
             source,
             tight_bboxes=geometry.tight_bboxes,
             origins=geometry.origins,
+            geometry_plan=geometry_plan,
+            page_index=page_index,
+            style_lines=page_style_lines[page_index],
+            link_lines=page_link_lines[page_index],
+            table_header_separator_bboxes=(repeated_header_separators[page_index]),
         )
-        for source, geometry in zip(page_sources, page_text_geometries, strict=True)
+        for page_index, (source, geometry) in enumerate(zip(page_sources, page_text_geometries, strict=True))
     ]
     if script_diagnostics is not None:
         script_diagnostics.extend(
@@ -272,6 +414,10 @@ def _analyze_native_document(
     _classify_page_footnote_trailing_footers(prepared_pages)
     _classify_isolated_first_page_footer(prepared_pages)
     document_body_profile = _infer_document_body_profile(prepared_pages)
+    canonical_body_profile = _infer_document_body_profile(
+        prepared_pages,
+        use_canonical_scale=True,
+    )
     if document_body_profile is not None:
         _classify_deferred_image_footnotes(
             prepared_pages,
@@ -281,10 +427,17 @@ def _analyze_native_document(
         prepared_pages,
         document_body_profile,
     )
+    _classify_document_structural_titles(
+        prepared_pages,
+        canonical_body_profile,
+        legacy_body_profile=document_body_profile,
+        document_title_profile=document_title_profile,
+    )
     finalized_pages = [
         _finalize_prepared_page(
             prepared,
             page_index,
+            canonical_body_profile=canonical_body_profile,
             document_body_profile=document_body_profile,
             document_title_profile=document_title_profile,
         )
@@ -321,6 +474,11 @@ def _prepare_page_source(
     *,
     tight_bboxes: dict[int, BBox] | None = None,
     origins: dict[int, tuple[float, float]] | None = None,
+    geometry_plan: DocumentGeometryPlan | None = None,
+    page_index: int = 0,
+    style_lines: list[PDFTextStyleLine] | None = None,
+    link_lines: list[PDFTextLinkLine] | None = None,
+    table_header_separator_bboxes: set[BBox] | None = None,
 ) -> _PreparedPage:
     """先认领视觉容器，再标注辅助文本并留下可跨页比较的轻量文本行。"""
 
@@ -336,10 +494,17 @@ def _prepare_page_source(
         form_bboxes + strong_graphic_bboxes + list(source.image_bboxes) + list(source.signature_bboxes),
     )
     rule_code_bboxes = [block["bbox"] for block in rule_code_blocks]
+    table_analysis_source = replace(
+        analysis_source,
+        drawing_lines=_table_detection_drawing_lines(
+            source,
+            table_header_separator_bboxes,
+        ),
+    )
     candidates = [
         candidate
         for candidate in _detect_table_candidates(
-            analysis_source,
+            table_analysis_source,
             excluded_bboxes=strong_graphic_bboxes + rule_code_bboxes,
         )
         if not any(_form_supersedes_nested_bbox(form_bbox, candidate.bbox) for form_bbox in form_bboxes)
@@ -400,17 +565,71 @@ def _prepare_page_source(
         | claimed_raster_line_indices
         | claimed_vector_number_indices
     )
+    unclaimed_lines = [line for line in source.lines if line.source_index not in claimed_line_indices]
+    if geometry_plan is not None:
+        apply_line_geometry_repairs(
+            unclaimed_lines,
+            page_index=page_index,
+            plan=geometry_plan,
+            allow_y_trim=True,
+        )
+    next_source_index = (
+        max(
+            (line.source_index for line in source.lines),
+            default=-1,
+        )
+        + 1
+    )
+    if geometry_plan is not None:
+        repaired_line_bboxes = {line.source_index: line.bbox for line in source.lines}
+        repaired_char_bboxes = {
+            char_idx: repair.layout_bbox
+            for (repair_page_index, char_idx), repair in geometry_plan.char_repairs.items()
+            if repair_page_index == page_index
+        }
+        unclaimed_lines, resplits = _resplit_native_visual_runs(
+            unclaimed_lines,
+            source.page_size,
+            repaired_char_bboxes,
+            source_index_start=next_source_index,
+        )
+        aligned_styles, aligned_links = _realign_repaired_text_evidence(
+            style_lines or [],
+            link_lines or [],
+            repaired_line_bboxes,
+            resplits,
+        )
+        if style_lines is not None and aligned_styles is not style_lines:
+            style_lines[:] = aligned_styles
+        if link_lines is not None and aligned_links is not link_lines:
+            link_lines[:] = aligned_links
+        next_source_index = max(
+            next_source_index,
+            max(
+                (line.source_index for line in unclaimed_lines),
+                default=-1,
+            )
+            + 1,
+        )
     remaining_lines = _split_parallel_graphic_rule_rows(
-        [line for line in source.lines if line.source_index not in claimed_line_indices],
+        unclaimed_lines,
         source.drawing_lines,
         [block["bbox"] for block in (form_image_blocks + graphic_blocks + raster_image_blocks)],
         table_bboxes,
         source.page_size,
-        source_index_start=max(
-            (line.source_index for line in source.lines),
-            default=-1,
-        )
-        + 1,
+        source_index_start=next_source_index,
+    )
+    canonical_formula_source_lines = (
+        [
+            replace(
+                line,
+                chars=list(line.chars),
+                inline_math_regions=list(line.inline_math_regions),
+            )
+            for line in remaining_lines
+        ]
+        if geometry_plan is not None and geometry_plan.document_style_anomaly
+        else []
     )
     remaining_lines = _merge_same_baseline_text_lines(
         remaining_lines,
@@ -455,6 +674,7 @@ def _prepare_page_source(
             + raster_image_blocks
             + vector_formula_blocks
         ),
+        canonical_formula_source_lines=canonical_formula_source_lines,
         script_lines=script_lines,
         formula_candidate_lines=formula_candidate_lines,
     )
@@ -474,10 +694,114 @@ def _compact_prepared_lines(
         line.chars.clear()
 
 
+def _rebuild_canonical_formula_blocks(
+    prepared: _PreparedPage,
+    excluded_source_indices: set[int],
+) -> list[dict[str, Any]]:
+    """从容器认领后的未合并行重放 canonical 公式路径，避免 loose 行高改变公式成员顺序。"""
+
+    replay_lines = [
+        replace(
+            line,
+            chars=list(line.chars),
+            style_scale_repaired=True,
+            inline_math_regions=list(line.inline_math_regions),
+        )
+        for line in prepared.canonical_formula_source_lines
+        if line.source_index not in excluded_source_indices
+    ]
+    replay_lines = _merge_same_baseline_text_lines(
+        replay_lines,
+        prepared.page_size,
+        prepared.table_bboxes,
+    )
+    replay_lines = _merge_overlapping_inline_text_clusters(
+        replay_lines,
+        prepared.page_size,
+        prepared.table_bboxes,
+    )
+    replay_lines = _merge_same_baseline_text_lines(
+        replay_lines,
+        prepared.page_size,
+        prepared.table_bboxes,
+    )
+    formula_candidate_lines = [line for line in replay_lines if line.formula_candidate_only]
+    replay_lines = [line for line in replay_lines if not line.formula_candidate_only]
+    formula_input = _restore_dense_split_visual_rows(
+        replay_lines + formula_candidate_lines,
+        prepared.page_size,
+        prepared.table_bboxes,
+    )
+    formula_input = _merge_same_baseline_text_lines(
+        formula_input,
+        prepared.page_size,
+        prepared.table_bboxes,
+    )
+    blocks, _remaining_lines = _build_formula_like_blocks(
+        formula_input,
+        prepared.table_bboxes,
+        prepared.page_size,
+        drawing_lines=prepared.drawing_lines,
+    )
+    return blocks
+
+
+def _formula_block_inventory(
+    blocks: list[dict[str, Any]],
+) -> list[tuple[float, float, float, float]]:
+    """返回公式重放与正常路径可比较的稳定 bbox 库存。"""
+
+    return sorted(
+        tuple(float(value) for value in block["bbox"])
+        for block in blocks
+        if block.get("type") == "equation" and isinstance(block.get("bbox"), (list, tuple)) and len(block["bbox"]) == 4
+    )
+
+
+def _apply_post_aggregation_tight_bboxes(
+    blocks: list[dict[str, Any]],
+    page_size: tuple[float, float],
+) -> None:
+    """在 block 聚合完成后应用 tight+1pt 框，并同步最终公开行框。"""
+
+    for block in blocks:
+        candidate_bbox = _coerce_bbox(
+            block.pop("_tight_output_bbox", None),
+        )
+        output_line_bboxes = block.pop(
+            "_local_output_line_bboxes",
+            None,
+        )
+        output_bbox_repaired = block.pop(
+            "_output_bbox_repaired",
+            False,
+        )
+        if output_bbox_repaired is True and isinstance(output_line_bboxes, list) and output_line_bboxes:
+            local_bboxes = [_coerce_bbox(value) for value in output_line_bboxes]
+            if all(value is not None for value in local_bboxes):
+                resolved_local_bboxes = [value for value in local_bboxes if value is not None]
+                block["_local_line_bboxes"] = resolved_local_bboxes
+                angle = int(block.get("angle", 0) or 0) % 360
+                candidate_bbox = _bbox_union_many(
+                    [
+                        _rotate_bbox_from_upright(
+                            value,
+                            page_size,
+                            angle,
+                        )
+                        for value in resolved_local_bboxes
+                    ]
+                )
+        clipped_bbox = _clip_bbox(candidate_bbox, page_size)
+        if clipped_bbox is not None:
+            block["bbox"] = clipped_bbox
+
+
 def _finalize_prepared_page(
     prepared: _PreparedPage,
     page_index: int,
     *,
+    canonical_body_profile: _DocumentBodyProfile | None = None,
     document_body_profile: _DocumentBodyProfile | None = None,
     document_title_profile: _DocumentTitleProfile | None = None,
 ) -> list[dict[str, Any]]:
@@ -497,6 +821,10 @@ def _finalize_prepared_page(
         *(line for line in unresolved_lines if line.semantic_type is None),
         *prepared.formula_candidate_lines,
     ]
+    original_style_scale_state = {line.source_index: line.style_scale_repaired for line in formula_input}
+    if prepared.canonical_formula_geometry:
+        for line in formula_input:
+            line.style_scale_repaired = True
     formula_input = _restore_dense_split_visual_rows(
         formula_input,
         prepared.page_size,
@@ -511,7 +839,24 @@ def _finalize_prepared_page(
         formula_input,
         prepared.table_bboxes,
         prepared.page_size,
+        drawing_lines=prepared.drawing_lines,
     )
+    if prepared.canonical_formula_geometry and prepared.canonical_formula_source_lines:
+        canonical_formula_blocks = _rebuild_canonical_formula_blocks(
+            prepared,
+            {line.source_index for line in semantic_lines},
+        )
+        if _formula_block_inventory(
+            canonical_formula_blocks,
+        ) == _formula_block_inventory(formula_blocks):
+            formula_blocks = canonical_formula_blocks
+    prepared.canonical_formula_source_lines.clear()
+    if prepared.canonical_formula_geometry:
+        for line in remaining_lines:
+            line.style_scale_repaired = original_style_scale_state.get(
+                line.source_index,
+                line.style_scale_repaired,
+            )
     fallback_index_blocks, remaining_lines = _extract_index_blocks(
         remaining_lines,
         prepared.page_size,
@@ -524,11 +869,24 @@ def _finalize_prepared_page(
         block["bbox"] for block in prepared.fixed_blocks if not isinstance(block.get("_inline_visual_row_id"), int)
     ]
     caption_container_bboxes = [block["bbox"] for block in prepared.fixed_blocks if block.get("type") in {"image", "code"}]
+    _classify_explicit_section_titles(
+        remaining_lines,
+        prepared.page_size,
+        container_bboxes=title_container_bboxes,
+        document_body_profile=document_body_profile,
+    )
+    _classify_inline_typography_reset_titles(
+        remaining_lines,
+        prepared.page_size,
+        container_bboxes=title_container_bboxes,
+        document_body_profile=document_body_profile,
+    )
     _classify_body_height_section_titles(
         remaining_lines,
         prepared.page_size,
         container_bboxes=title_container_bboxes,
         document_body_profile=document_body_profile,
+        page_index=page_index,
     )
     _classify_page_titles(
         remaining_lines,
@@ -538,6 +896,16 @@ def _finalize_prepared_page(
         caption_container_bboxes=caption_container_bboxes,
         document_body_profile=document_body_profile,
         document_title_profile=document_title_profile,
+    )
+    _promote_noninitial_document_title_band(
+        remaining_lines,
+        prepared.page_size,
+        page_index=page_index,
+        container_bboxes=title_container_bboxes,
+        document_body_profile=(canonical_body_profile or document_body_profile),
+        title_candidate_source_indices={
+            line.source_index for line in remaining_lines if line.semantic_type == "paragraph_title"
+        },
     )
     remaining_lines = _merge_title_resolved_visual_rows(
         remaining_lines,
@@ -554,6 +922,8 @@ def _finalize_prepared_page(
         prepared.page_size,
         prepared.drawing_lines,
         page_footnote_groups=prepared.page_footnote_groups,
+        page_index=page_index,
+        visual_bboxes=[block["bbox"] for block in prepared.fixed_blocks if block.get("type") == "image"],
     )
     text_blocks = _merge_multiline_title_blocks(text_blocks)
     text_blocks = _merge_front_matter_column_blocks(
@@ -571,6 +941,10 @@ def _finalize_prepared_page(
         prepared.page_size,
     )
     absolute_blocks = prepared.fixed_blocks + formula_blocks + index_blocks + text_blocks
+    _apply_post_aggregation_tight_bboxes(
+        absolute_blocks,
+        prepared.page_size,
+    )
     visual_annotation_regions = _classify_and_bind_visual_annotations(
         absolute_blocks,
         prepared.page_size,

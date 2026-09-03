@@ -2,7 +2,7 @@
 
 状态: Implemented
 读者: render 开发者、backend 开发者、SDK 开发者
-范围: 严格 MiddleJson 到 Markdown、Content List V1/V2、Structured Content、DOCX、EPUB、PDF 和 HTML 的统一消费契约
+范围: 严格 MiddleJson 到 Markdown、LaTeX、Content List V1/V2、Structured Content、DOCX、EPUB、PDF 和 HTML 的统一消费契约
 
 ## 统一入口
 
@@ -30,6 +30,7 @@ markdown = render(
 | --- | --- | --- |
 | `MARKDOWN` | `MarkdownRenderOptions(mode, asset_base_url, image_renderer)` | `str` |
 | `HTML` | `HtmlRenderOptions(mode, asset_base_url, standalone, document_title)` | `str` |
+| `LATEX` | `LatexRenderOptions(asset_base_path, document_title)` | `str` |
 | `DOCX` | `DocxRenderOptions(asset_resolver)` | `bytes` |
 | `EPUB` | `EpubRenderOptions(title, authors, language, identifier, modified_at, asset_resolver)` | `bytes` |
 | `PDF` | `PdfRenderOptions(asset_resolver, document_title)` | `bytes` |
@@ -43,12 +44,13 @@ markdown = render(
 只有 Markdown 与 HTML 的专用函数和 Options 暴露 `mode`；其它格式传入 `mode` 会按严格签名
 直接抛出 `TypeError`，不会兼容或静默忽略。
 
-所有入口均不修改传入的 `MiddleJson`。renderer 不负责把结果或图片写到文件系统；DOCX、
-EPUB 与 PDF 需要读取相对图片 sidecar 时，只能通过显式 `asset_resolver` 获取字节。
+所有入口均不修改传入的 `MiddleJson`。renderer 不负责把结果或图片写到文件系统；LaTeX 只在
+源码中引用现有 sidecar，DOCX、EPUB 与 PDF 需要读取相对图片 sidecar 时只能通过显式
+`asset_resolver` 获取字节。
 
 ### 内部依赖边界
 
-`markdown.py`、`html.py`、`docx.py`、`epub.py`、`pdf.py`、`content_list.py`、`content_list_v2.py` 和
+`markdown.py`、`html.py`、`latex.py`、`docx.py`、`epub.py`、`pdf.py`、`content_list.py`、`content_list_v2.py` 和
 `structured_content.py` 是稳定公共门面；实现代码位于非公共
 `mineru.render._internal`。`common` 只保存跨格式 AST、解析、列表/目录语义和 render planner，
 不得依赖任一格式实现。各格式私有子包只能依赖 `common`、基础层与自身模块，彼此
@@ -77,6 +79,45 @@ backend 参数或旧 `Line/Span` renderer。渲染过程基于深拷贝，不修
 image block 及无结构内容的 table/chart/equation 可以改用调用方提供的图片引用；结构化 table
 仍保留文本或表格内容，但会移除由自定义 renderer 接管的内嵌 `<img>`。清理后只剩图片的
 table 会回退到自定义 renderer。
+
+## TeX Live LaTeX
+
+```python
+from pathlib import Path
+
+from mineru.render import render_latex
+
+latex_source = render_latex(
+    middle_json,
+    asset_base_path=".",
+    document_title=None,
+)
+Path("main.tex").write_text(latex_source, encoding="utf-8")
+```
+
+`render_latex()` 返回完整 UTF-8 `.tex` 字符串，不写文件、不读取 cwd、不访问网络。标准编译命令为：
+
+```bash
+latexmk -xelatex main.tex
+```
+
+编译环境合同是 TeX Live 官方安装器的默认 `scheme-full`，不是 Linux 发行版可能裁剪过的同名
+系统包。文档固定使用 `ctexart` 与 TeX Live 自带 Fandol 字体，因此 Windows、macOS 和 Linux
+都不依赖系统中文字体，也不需要 `.latexmkrc`、Shell Escape 或额外下载宏包。
+
+LaTeX 固定使用共享 planner 的 DEFAULT 连续语义：隐藏页面辅助块、合并跨页续段、续列表和续表，
+不保留空源页或源页面硬分页，`page_footnote` 继续输出。标题、正文和页面脚注 anchor 使用稳定安全的
+document-wide target；Index 与 fragment 链接只跳转到真实目标。普通文字、样式、代码、metadata、
+链接和路径均执行 TeX 转义；MiddleJson 中不含外层定界符的行内/行间 LaTeX 公式按原始内容输出。
+
+图片只引用 `png`、`jpg/jpeg` 或 `pdf` 的安全 `image_path`。`asset_base_path` 相对于实际编译目录
+拼接 sidecar；renderer 不复制图片。data URI、远程 URL、缺失路径和 XeLaTeX 不支持的格式会输出
+可见替代信息，远程 URL 保留为链接。HTML table 使用 `longtable`，支持 `rowspan/colspan`、嵌套表、
+富文本、公式、链接和相对图片；结构无效时依次回退表格图片、可见文本与占位。
+
+renderer 不执行生成的源码。裸公式属于保真通道，可能包含任意 TeX 指令；来自不可信文档的 `.tex`
+必须在隔离环境中以禁用 Shell Escape 的方式编译。该能力只属于严格 `mineru.render` 公共面，不新增
+ParseResult 方法，也不迁移 CLI、API、doclib 或 parse-job `output_formats`。
 
 ## 可编辑 DOCX
 

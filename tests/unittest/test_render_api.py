@@ -18,6 +18,7 @@ from mineru.render import (
     DocxRenderOptions,
     EpubRenderOptions,
     HtmlRenderOptions,
+    LatexRenderOptions,
     MarkdownRenderOptions,
     PdfRenderOptions,
     RenderFormat,
@@ -59,6 +60,7 @@ def test_unified_render_dispatches_all_native_output_types_without_mutation() ->
 
     markdown = render(middle, RenderFormat.MARKDOWN)
     html = render(middle, RenderFormat.HTML)
+    latex = render(middle, RenderFormat.LATEX)
     docx = render(middle, RenderFormat.DOCX)
     epub = render(
         middle,
@@ -72,6 +74,7 @@ def test_unified_render_dispatches_all_native_output_types_without_mutation() ->
 
     assert markdown == "hello"
     assert isinstance(html, str) and "<html" in html and "hello" in html
+    assert latex.startswith("% !TeX program = xelatex") and "hello\\par" in latex
     assert isinstance(docx, bytes) and docx.startswith(b"PK\x03\x04")
     assert isinstance(epub, bytes) and epub.startswith(b"PK\x03\x04")
     assert isinstance(pdf, bytes) and pdf.startswith(b"%PDF-")
@@ -146,6 +149,14 @@ def test_unified_render_forwards_format_specific_options() -> None:
             document_title="Unified Render",
         ),
     )
+    latex_document = render(
+        image_middle,
+        RenderFormat.LATEX,
+        options=LatexRenderOptions(
+            asset_base_path="document assets",
+            document_title="Unified Render",
+        ),
+    )
     pdf = render(
         middle,
         RenderFormat.PDF,
@@ -165,6 +176,13 @@ def test_unified_render_forwards_format_specific_options() -> None:
     assert "https://cdn.example/doc/images/a%20b.png" in image_markdown
     assert "<title>Unified Render</title>" in html_document
     assert 'src="https://cdn.example/doc/images/a%20b.png"' in html_document
+    assert r"\hypersetup{pdftitle={Unified Render}}" in latex_document
+    assert r"\detokenize{document assets/images/a b.png}" in latex_document
+    assert latex_document == render_module.render_latex(
+        image_middle,
+        asset_base_path="document assets",
+        document_title="Unified Render",
+    )
     assert pdf == render_module.render_pdf(middle, document_title="Unified Render")
     assert [page["blocks"][0]["content"] for page in original_tree["pages"]] == ["first-", "second"]
     assert original_tree["pages"][1]["blocks"][0]["continues_prev"] is True
@@ -227,6 +245,8 @@ def test_unified_render_rejects_legacy_format_and_mismatched_options() -> None:
         render(middle, RenderFormat.MARKDOWN, options=HtmlRenderOptions())  # type: ignore[arg-type]
     with pytest.raises(TypeError, match="StructuredContentRenderOptions"):
         render(middle, RenderFormat.STRUCTURED_CONTENT, options=DocxRenderOptions())  # type: ignore[arg-type]
+    with pytest.raises(TypeError, match="LatexRenderOptions"):
+        render(middle, RenderFormat.LATEX, options=HtmlRenderOptions())  # type: ignore[arg-type]
     with pytest.raises(TypeError, match="EpubRenderOptions"):
         render(middle, RenderFormat.EPUB, options=DocxRenderOptions())  # type: ignore[arg-type]
     with pytest.raises(TypeError, match="PdfRenderOptions"):
@@ -242,6 +262,7 @@ def test_public_options_validate_fields() -> None:
     assert [item.value for item in RenderFormat] == [
         "markdown",
         "html",
+        "latex",
         "docx",
         "epub",
         "structured_content",
@@ -257,6 +278,7 @@ def test_public_options_validate_fields() -> None:
     for options_type in (
         DocxRenderOptions,
         EpubRenderOptions,
+        LatexRenderOptions,
         PdfRenderOptions,
         StructuredContentRenderOptions,
         ContentListRenderOptions,
@@ -291,6 +313,10 @@ def test_public_options_validate_fields() -> None:
         PdfRenderOptions(asset_resolver="images")  # type: ignore[arg-type]
     with pytest.raises(TypeError, match="document_title"):
         PdfRenderOptions(document_title=1)  # type: ignore[arg-type]
+    with pytest.raises(TypeError, match="asset_base_path"):
+        LatexRenderOptions(asset_base_path=1)  # type: ignore[arg-type]
+    with pytest.raises(TypeError, match="document_title"):
+        LatexRenderOptions(document_title=1)  # type: ignore[arg-type]
 
 
 def test_public_render_exposes_all_three_structured_output_names() -> None:
@@ -300,8 +326,11 @@ def test_public_render_exposes_all_three_structured_output_names() -> None:
     assert callable(render_module.render_content_list_v2)
     assert callable(render_module.render_epub)
     assert callable(render_module.render_pdf)
+    assert callable(render_module.render_latex)
     assert not hasattr(render_module, "MarkdownRenderMode")
     assert ContentListRenderOptions is render_module.ContentListRenderOptions
     assert ContentListV2RenderOptions is render_module.ContentListV2RenderOptions
+    assert LatexRenderOptions is render_module.LatexRenderOptions
+    assert "LATEX" in RenderFormat.__members__
     assert "CONTENT_LIST" in RenderFormat.__members__
     assert "CONTENT_LIST_V2" in RenderFormat.__members__
