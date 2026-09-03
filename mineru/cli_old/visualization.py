@@ -3,9 +3,9 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from mineru.parser.base import ParseResult
-from mineru.types import PageInfo
-from mineru.utils.pdf_document import PDFDocument
+from ..model.flash.pdf.document import PDFDocument
+from ..parser.base import ParseResult
+from ..types import PageInfo
 
 VISUALIZATION_FINISHED = "finished"
 VISUALIZATION_SKIPPED = "skipped"
@@ -17,7 +17,6 @@ class VisualizationJob:
     backend: str
     parse_method: str
     parse_dir: Path
-    draw_span: bool
 
 
 @dataclass(frozen=True)
@@ -37,11 +36,7 @@ def select_pages_for_pdf_visualization(
     if retained_page_indices is None:
         return pages
     pages_by_original_index = {page.page_idx: page for page in pages}
-    return [
-        pages_by_original_index[page_idx]
-        for page_idx in retained_page_indices
-        if page_idx in pages_by_original_index
-    ]
+    return [pages_by_original_index[page_idx] for page_idx in retained_page_indices if page_idx in pages_by_original_index]
 
 
 def run_visualization_job(job: VisualizationJob) -> VisualizationResult:
@@ -91,9 +86,6 @@ def run_visualization_job(job: VisualizationJob) -> VisualizationResult:
         doc = PDFDocument(pdf_bytes)
         generated_files = [f"{job.document_stem}_layout.pdf"]
         doc.draw_layout_bbox(pages, str(job.parse_dir / generated_files[0]))
-        if job.draw_span:
-            generated_files.append(f"{job.document_stem}_span.pdf")
-            doc.draw_span_bbox(pages, str(job.parse_dir / generated_files[1]))
     except Exception as exc:
         return VisualizationResult(
             document_stem=job.document_stem,

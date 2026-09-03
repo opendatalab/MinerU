@@ -32,26 +32,6 @@
 
 ![layout 页面示例](../images/layout_example.png)
 
-### 文本片段文件 (span.pdf)
-
-> [!NOTE]
-> 仅在显式启用 span 可视化时生成。
-
-**文件命名格式**：`{原文件名}_span.pdf`
-
-**功能说明**：
-
-- 根据 span 类型使用不同颜色线框标注页面内容
-- 用于质量检查和问题排查
-
-**使用场景**：
-
-- 快速排查文本丢失问题
-- 检查行内公式识别情况
-- 验证文本分割准确性
-
-![span 页面示例](../images/spans_example.png)
-
 ## 结构化数据文件
 
 > [!IMPORTANT]
@@ -481,7 +461,6 @@ schema 2.0 已移除旧字段 `preproc_blocks`/`para_blocks`/`page_size`/`images
 
 - **调试和验证**(使用可视化文件):
     * layout.pdf
-    * span.pdf 
   
 - **内容提取**(使用简化文件):
     * *.md

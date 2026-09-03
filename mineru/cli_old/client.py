@@ -418,7 +418,6 @@ def build_visualization_jobs(
                 parse_method,
                 is_office=document.suffix in office_suffixes,
             ),
-            draw_span=False,
         )
         for document in planned_task.documents
     ]

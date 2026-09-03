@@ -19,7 +19,7 @@ from ..render import render_markdown, render_structured_content
 from ..render.writer import FileBasedDataWriter
 from ..types import MiddleJson, PageInfo
 from ..utils.backend_options import DEFAULT_BACKEND, DEFAULT_HYBRID_EFFORT, LOCAL_HYBRID_EFFORT, resolve_backend_and_effort
-from ..utils.draw_bbox import draw_layout_bbox, draw_span_bbox
+from ..utils.draw_bbox import draw_layout_bbox
 from ..utils.engine_utils import get_vlm_engine
 from ..utils.guess_suffix_or_lang import guess_suffix_by_bytes
 from ..utils.image_payload import ImagePayloadCache
@@ -243,7 +243,6 @@ def _process_output(
     local_image_dir: str,
     md_writer: Any,
     f_draw_layout_bbox: bool,
-    f_draw_span_bbox: bool,
     f_dump_orig_pdf: bool,
     f_dump_md: bool,
     f_dump_content_list: bool,
@@ -265,12 +264,6 @@ def _process_output(
             draw_layout_bbox(visualization_pages, pdf_bytes, local_md_dir, f"{pdf_file_name}_layout.pdf")
         except Exception as exc:
             logger.warning(f"Skipping layout bbox visualization for {pdf_file_name}: {exc}")
-
-    if f_draw_span_bbox:
-        try:
-            draw_span_bbox(visualization_pages, pdf_bytes, local_md_dir, f"{pdf_file_name}_span.pdf")
-        except Exception as exc:
-            logger.warning(f"Skipping span bbox visualization for {pdf_file_name}: {exc}")
 
     if f_dump_orig_pdf:
         if process_mode in ["hybrid", "vlm"]:
@@ -355,7 +348,6 @@ def _process_hybrid(
     parse_method: str,
     backend: str,
     f_draw_layout_bbox: bool,
-    f_draw_span_bbox: bool,
     f_dump_md: bool,
     f_dump_middle_json: bool,
     f_dump_model_output: bool,
@@ -381,7 +373,7 @@ def _process_hybrid(
         md_writer = FileBasedDataWriter(local_md_dir)
         image_cache = ImagePayloadCache()
 
-        middle_json, infer_result, _vlm_ocr_enable = hybrid_doc_analyze(
+        middle_json, infer_result, _ = hybrid_doc_analyze(
             pdf_bytes,
             backend=backend,
             parse_method=parse_method,
@@ -392,9 +384,6 @@ def _process_hybrid(
             **kwargs,
         )
 
-        # f_draw_span_bbox = not _vlm_ocr_enable
-        f_draw_span_bbox = False
-
         _process_output(
             middle_json,
             pdf_bytes,
@@ -403,7 +392,6 @@ def _process_hybrid(
             local_image_dir,
             md_writer,
             f_draw_layout_bbox,
-            f_draw_span_bbox,
             f_dump_orig_pdf,
             f_dump_md,
             f_dump_content_list,
@@ -427,7 +415,6 @@ async def _async_process_hybrid(
     parse_method: str,
     backend: str,
     f_draw_layout_bbox: bool,
-    f_draw_span_bbox: bool,
     f_dump_md: bool,
     f_dump_middle_json: bool,
     f_dump_model_output: bool,
@@ -453,7 +440,7 @@ async def _async_process_hybrid(
         md_writer = FileBasedDataWriter(local_md_dir)
         image_cache = ImagePayloadCache()
 
-        middle_json, infer_result, _vlm_ocr_enable = await aio_hybrid_doc_analyze(
+        middle_json, infer_result, _ = await aio_hybrid_doc_analyze(
             pdf_bytes,
             backend=backend,
             parse_method=parse_method,
@@ -464,9 +451,6 @@ async def _async_process_hybrid(
             **kwargs,
         )
 
-        # f_draw_span_bbox = not _vlm_ocr_enable
-        f_draw_span_bbox = False
-
         _process_output(
             middle_json,
             pdf_bytes,
@@ -475,7 +459,6 @@ async def _async_process_hybrid(
             local_image_dir,
             md_writer,
             f_draw_layout_bbox,
-            f_draw_span_bbox,
             f_dump_orig_pdf,
             f_dump_md,
             f_dump_content_list,
@@ -520,7 +503,6 @@ def _process_office_doc(
             )
 
             f_draw_layout_bbox = False
-            f_draw_span_bbox = False
 
             _process_output(
                 middle_json,
@@ -530,7 +512,6 @@ def _process_office_doc(
                 local_image_dir,
                 md_writer,
                 f_draw_layout_bbox,
-                f_draw_span_bbox,
                 f_dump_orig_file,
                 f_dump_md,
                 f_dump_content_list,
@@ -555,7 +536,6 @@ def do_parse(
     parse_method: str = "auto",
     server_url: str | None = None,
     f_draw_layout_bbox: bool = True,
-    f_draw_span_bbox: bool = True,
     f_dump_md: bool = True,
     f_dump_middle_json: bool = True,
     f_dump_model_output: bool = True,
@@ -569,6 +549,8 @@ def do_parse(
     client_side_output_generation: bool = False,
     **kwargs: Any,
 ) -> None:
+    if "f_draw_span_bbox" in kwargs:
+        raise TypeError("f_draw_span_bbox is no longer supported because InlineSpan has no bbox")
     backend, effort = resolve_backend_and_effort(backend, effort)
     need_remove_index = _process_office_doc(
         output_dir,
@@ -610,7 +592,6 @@ def do_parse(
             parse_method,
             backend,
             f_draw_layout_bbox,
-            f_draw_span_bbox,
             f_dump_md,
             f_dump_middle_json,
             f_dump_model_output,
@@ -638,7 +619,6 @@ async def aio_do_parse(
     parse_method: str = "auto",
     server_url: str | None = None,
     f_draw_layout_bbox: bool = True,
-    f_draw_span_bbox: bool = True,
     f_dump_md: bool = True,
     f_dump_middle_json: bool = True,
     f_dump_model_output: bool = True,
@@ -652,6 +632,8 @@ async def aio_do_parse(
     client_side_output_generation: bool = False,
     **kwargs: Any,
 ) -> None:
+    if "f_draw_span_bbox" in kwargs:
+        raise TypeError("f_draw_span_bbox is no longer supported because InlineSpan has no bbox")
     backend, effort = resolve_backend_and_effort(backend, effort)
     # Office 解析是同步且可能耗时的操作，异步入口需要放到线程中避免阻塞事件循环。
     need_remove_index = await asyncio.to_thread(
@@ -695,7 +677,6 @@ async def aio_do_parse(
             parse_method,
             backend,
             f_draw_layout_bbox,
-            f_draw_span_bbox,
             f_dump_md,
             f_dump_middle_json,
             f_dump_model_output,

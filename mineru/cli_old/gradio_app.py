@@ -1080,7 +1080,6 @@ def _generate_v1_gradio_layout_preview(
             backend=backend,
             parse_method="auto",
             parse_dir=local_md_dir,
-            draw_span=False,
         )
     )
     if result.status != VISUALIZATION_FINISHED:

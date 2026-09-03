@@ -836,7 +836,6 @@ async def run_parse_job(
         image_analysis=request_options.image_analysis,
         server_url=request_options.server_url,
         f_draw_layout_bbox=False,
-        f_draw_span_bbox=False,
         f_dump_md=request_options.return_md,
         f_dump_middle_json=request_options.return_middle_json,
         f_dump_model_output=request_options.return_model_output,

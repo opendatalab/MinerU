@@ -172,7 +172,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 - 自动检测扫描版PDF和乱码PDF，并启用OCR功能
 - OCR支持109种语言的检测与识别
 - 支持多种输出格式，如多模态与NLP的Markdown、按阅读顺序排序的JSON、含有丰富信息的中间格式等
-- 支持多种可视化结果，包括layout可视化、span可视化等，便于高效确认输出效果与质检
+- 支持layout可视化，便于高效确认输出效果与质检
 - 内置命令行、FastAPI、Gradio WebUI，支持本地编排和多服务部署
 - 支持纯CPU环境运行，并支持 GPU/MPS加速，以及十余款国产算力平台的推理加速
 - 兼容Windows、Linux和Mac平台
