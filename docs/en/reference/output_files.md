@@ -32,26 +32,6 @@ The following sections provide detailed descriptions of each file's purpose and 
 
 ![layout page example](../images/layout_example.png)
 
-### Text Spans File (span.pdf)
-
-> [!NOTE]
-> Only generated when span visualization is explicitly enabled.
-
-**File naming format**: `{original_filename}_span.pdf`
-
-**Functionality**:
-
-- Uses different colored line boxes to annotate page content based on span type
-- Used for quality inspection and issue troubleshooting
-
-**Use cases**:
-
-- Quickly troubleshoot text loss issues
-- Check inline formula recognition
-- Verify text segmentation accuracy
-
-![span page example](../images/spans_example.png)
-
 ## Structured Data Files
 
 > [!IMPORTANT]
@@ -452,7 +432,6 @@ The above files constitute MinerU's complete output results. Users can choose ap
   
 - **Debugging and verification** (Use visualization files):
     * layout.pdf
-    * span.pdf 
   
 - **Content extraction**: (Use simplified files):
     * *.md

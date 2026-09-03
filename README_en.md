@@ -173,7 +173,7 @@ https://github.com/user-attachments/assets/4bea02c9-6d54-4cd6-97ed-dff14340982c
 - Automatically detect scanned PDFs and garbled PDFs and enable OCR functionality.
 - OCR supports detection and recognition of 109 languages.
 - Supports multiple output formats, such as multimodal and NLP Markdown, JSON sorted by reading order, and rich intermediate formats.
-- Supports various visualization results, including layout visualization and span visualization, for efficient confirmation of output quality.
+- Supports layout visualization for efficient confirmation of output quality.
 - Built-in CLI, FastAPI, Gradio WebUI, for local orchestration and multi-service deployment.
 - Supports running in a pure CPU environment, and also supports GPU/MPS acceleration
 - Compatible with Windows, Linux, and Mac platforms.

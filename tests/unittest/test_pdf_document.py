@@ -23,6 +23,12 @@ from reportlab.pdfgen.canvas import Canvas
 from mineru.model.flash.pdf import document as pdf_document
 
 
+def test_pdf_document_does_not_expose_span_bbox_visualization() -> None:
+    """验证公开 PDFDocument 不再暴露无法支持的 span bbox 绘制接口。"""
+
+    assert not hasattr(pdf_document.PDFDocument, "draw_span_bbox")
+
+
 def test_pdf_page_exposes_path_infos_without_raw_pdfium_access() -> None:
     """验证 PDFPage 只读代理当前页 Path 摘要并保留页索引。"""
 

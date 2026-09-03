@@ -551,13 +551,6 @@ class PDFDocument:
         filename = os.path.basename(output_path)
         draw_layout_bbox(pages, self._pdf_bytes, out_dir, filename)
 
-    def draw_span_bbox(self, pages: list[PageInfo], output_path: str) -> None:
-        from .diagnostics import draw_span_bbox
-
-        out_dir = os.path.dirname(output_path) or "."
-        filename = os.path.basename(output_path)
-        draw_span_bbox(pages, self._pdf_bytes, out_dir, filename)
-
     # ------------------------------------------------------------------ #
     #  Internal
     # ------------------------------------------------------------------ #
