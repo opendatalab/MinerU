@@ -639,38 +639,64 @@ class DocxConverter:
         """追加段落元素；相邻同超链接且同格式的 run 合并为一个元素。"""
         append_rich_text_element(paragraph_elements, text, format_obj, hyperlink)
 
-    @classmethod
-    def _trim_hyperlink_group_boundaries(
-        cls,
+    @staticmethod
+    def _normalize_hyperlink_group_boundaries(
         paragraph_elements: list[_ParagraphElement],
     ) -> list[_ParagraphElement]:
-        """只裁剪连续同目标链接组的外边界，保留不同格式 run 之间的原始空白。"""
+        """把链接组边界空白移为普通文本，仅裁剪整段首尾并保留组内空白。"""
 
-        output = list(paragraph_elements)
+        output: list[_ParagraphElement] = []
         index = 0
-        while index < len(output):
-            hyperlink = output[index][2]
+        while index < len(paragraph_elements):
+            element = paragraph_elements[index]
+            hyperlink = element[2]
             if hyperlink is None:
+                output.append(element)
                 index += 1
                 continue
             group_end = index + 1
-            while group_end < len(output) and output[group_end][2] is not None and str(output[group_end][2]) == str(hyperlink):
+            while (
+                group_end < len(paragraph_elements)
+                and paragraph_elements[group_end][2] is not None
+                and str(paragraph_elements[group_end][2]) == str(hyperlink)
+            ):
                 group_end += 1
-            first_text, first_format, first_hyperlink = output[index]
-            output[index] = (
-                first_text.lstrip(),
-                first_format,
-                first_hyperlink,
-            )
-            last_index = group_end - 1
-            last_text, last_format, last_hyperlink = output[last_index]
-            output[last_index] = (
-                last_text.rstrip(),
-                last_format,
-                last_hyperlink,
-            )
+            group = list(paragraph_elements[index:group_end])
+            first_text, first_format, first_hyperlink = group[0]
+            last_text, last_format, last_hyperlink = group[-1]
+            if len(group) == 1 and not first_text.strip():
+                leading_space = ""
+                trailing_space = first_text
+                group[0] = ("", first_format, first_hyperlink)
+            else:
+                leading_length = len(first_text) - len(first_text.lstrip())
+                trailing_length = len(last_text) - len(last_text.rstrip())
+                leading_space = first_text[:leading_length]
+                trailing_space = last_text[len(last_text) - trailing_length :] if trailing_length else ""
+                if len(group) == 1:
+                    group[0] = (
+                        first_text[leading_length : len(first_text) - trailing_length if trailing_length else len(first_text)],
+                        first_format,
+                        first_hyperlink,
+                    )
+                else:
+                    group[0] = (
+                        first_text[leading_length:],
+                        first_format,
+                        first_hyperlink,
+                    )
+                    group[-1] = (
+                        last_text[: len(last_text) - trailing_length] if trailing_length else last_text,
+                        last_format,
+                        last_hyperlink,
+                    )
+            if leading_space and output:
+                output.append((leading_space, first_format, None))
+            output.extend(item for item in group if item[0])
+            if trailing_space and group_end < len(paragraph_elements):
+                output.append((trailing_space, last_format, None))
             index = group_end
-        return [element for element in output if element[0] or element[2] is None or cls._has_visible_style(element[1])]
+        return output
 
     @staticmethod
     def _is_hidden_run(run: Run) -> bool:
@@ -2032,7 +2058,7 @@ class DocxConverter:
         if last_has_visible:
             paragraph_elements.append((group_text, previous_format, None))
 
-        return self._trim_hyperlink_group_boundaries(paragraph_elements)
+        return self._normalize_hyperlink_group_boundaries(paragraph_elements)
 
     def _iter_paragraph_inner_content(
         self,

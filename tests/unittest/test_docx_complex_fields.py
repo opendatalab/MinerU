@@ -13,6 +13,7 @@ from mineru.backend.analyze import doc_analyze
 from mineru.backend.postprocess.inline import inline_plain_text
 from mineru.model.flash import DocxModel
 from mineru.model.flash._shared.spans import inline_span_plain_text
+from mineru.model.flash.office.docx.docx_converter import DocxConverter
 from mineru.types import IndexBlock, ParagraphTitleBlock, TextBlock
 from _span_test_utils import inline_urls
 
@@ -325,3 +326,63 @@ def test_native_hyperlink_preserves_spaces_between_formatted_runs() -> None:
     assert inline_span_plain_text(raw_text["content"]) == "Open section"
     assert inline_urls(raw_text["content"]) == ["https://example.test/section"]
     assert [child["styles"] for child in raw_text["content"][0]["content"]] == [[], ["bold"]]
+
+
+def test_native_hyperlink_moves_trailing_space_to_plain_text() -> None:
+    """验证链接尾部空格移到后续普通文本，既保留分隔也不扩大可点击范围。"""
+
+    document = Document()
+    paragraph = document.add_paragraph()
+    _append_native_hyperlink(
+        paragraph,
+        "https://example.test/link",
+        [("link ", False)],
+    )
+    paragraph.add_run("after")
+    output = BytesIO()
+    document.save(output)
+
+    model_pages = DocxModel().predict(BytesIO(output.getvalue()))
+    raw_text = next(block for page in model_pages for block in page if block["type"] == "text")
+
+    assert inline_span_plain_text(raw_text["content"]) == "link after"
+    assert inline_urls(raw_text["content"]) == ["https://example.test/link"]
+    assert inline_span_plain_text(raw_text["content"][0]["content"]) == "link"
+    assert raw_text["content"][1] == {
+        "type": "text",
+        "content": " after",
+    }
+
+
+def test_hyperlink_boundary_spaces_are_plain_and_only_paragraph_edges_trim() -> None:
+    """验证链接首尾空格移为普通元素，不同链接间保留间隔且仅段落外缘裁剪。"""
+
+    first_target = "https://example.test/first"
+    second_target = "https://example.test/second"
+
+    assert DocxConverter._normalize_hyperlink_group_boundaries(
+        [
+            ("before", None, None),
+            (" link ", None, first_target),
+            ("after", None, None),
+        ]
+    ) == [
+        ("before", None, None),
+        (" ", None, None),
+        ("link", None, first_target),
+        (" ", None, None),
+        ("after", None, None),
+    ]
+    assert DocxConverter._normalize_hyperlink_group_boundaries(
+        [
+            ("first ", None, first_target),
+            ("second", None, second_target),
+        ]
+    ) == [
+        ("first", None, first_target),
+        (" ", None, None),
+        ("second", None, second_target),
+    ]
+    assert DocxConverter._normalize_hyperlink_group_boundaries([(" link ", None, first_target)]) == [
+        ("link", None, first_target)
+    ]
