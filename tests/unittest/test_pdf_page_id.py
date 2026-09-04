@@ -29,6 +29,7 @@ from mineru.parser.page_range import (
     expand_page_range,
     format_page_range,
     normalize_page_range_input,
+    normalize_result_page_range,
     parse_page_range,
     parse_page_range_set,
 )
@@ -49,6 +50,7 @@ VALID_RANGES = [
     ("5-5", [5], "5"),
 ]
 INVALID_RANGES = [
+    "1～5",
     "1~5",
     "-1",
     "-5~-1",
@@ -365,3 +367,33 @@ def test_doclib_relative_selection_coverage_and_export(tmp_path: Path) -> None:
             await db.close()
 
     asyncio.run(verify())
+
+
+@pytest.mark.parametrize(
+    ("raw", "canonical", "pages"),
+    [
+        ("1~5,8", "1-5,8", {1, 2, 3, 4, 5, 8}),
+        ("1~3,5-7", "1-3,5-7", {1, 2, 3, 5, 6, 7}),
+        (" 5 , 1 ~ 3 , 2-5 ", "1-5", {1, 2, 3, 4, 5}),
+        ("5~5", "5", {5}),
+        ("", "", set()),
+        ("  ", "", set()),
+    ],
+)
+def test_historical_result_ranges_are_read_without_relaxing_inputs(raw: str, canonical: str, pages: set[int]) -> None:
+    """历史半角波浪号仅在已求值结果读取中生效，规范输出仍使用连字符。"""
+    assert normalize_result_page_range(raw) == canonical
+    assert parse_page_range_set(raw) == pages
+    assert count_pages_in_range(raw) == len(pages)
+    if "~" in raw:
+        with pytest.raises(InvalidRequestError):
+            normalize_page_range_input(raw)
+
+
+@pytest.mark.parametrize("raw", ["1～5", "-1", "-5~-1", "1~-1", "r1", "r5-r1", "all", "5~3", "1~~5", "0~3"])
+def test_result_readers_reject_fullwidth_negative_or_unresolved_ranges(raw: str) -> None:
+    """历史结果读取不支持全角波浪号、负号倒数页码、符号端点或非法区间。"""
+    for reader in (normalize_result_page_range, parse_page_range_set, count_pages_in_range):
+        with pytest.raises(InvalidRequestError) as error:
+            reader(raw)
+        assert error.value.code == "page_range_invalid"

@@ -28,6 +28,7 @@ from ..parser.page_range import (
     expand_page_range as _expand_page_range,
     format_page_range as _page_numbers_to_range_str,
     normalize_page_range_input,
+    normalize_result_page_range,
 )
 from ..parser.tier import TierDependencyError, ensure_tier_runtime_dependencies
 from ..render._internal.markdown.assets import build_markdown_image
@@ -2327,12 +2328,15 @@ def _doc_info(row: DocRow, *, files: list[FileInfo] | None = None) -> DocInfo:
 
 def _parse_info(row: ParseRow, *, coverage: ParseCoverage | None = None) -> ParseInfo:
     data = dict(row)
+    data["page_range"] = normalize_result_page_range(row["page_range"])
     data["coverage"] = coverage
     return ParseInfo.model_validate(data)
 
 
 def _tier_parse_info(row: ParseRow) -> TierParseInfo:
-    return TierParseInfo.model_validate(row)
+    data = dict(row)
+    data["page_range"] = normalize_result_page_range(row["page_range"])
+    return TierParseInfo.model_validate(data)
 
 
 def _watch_info(row: WatchTargetRow) -> WatchInfo:
