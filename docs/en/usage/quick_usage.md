@@ -106,3 +106,13 @@ model:
 ```
 
 See [Model Source Documentation](./model_source.md) for model download and local-source details.
+
+## PDF page selection
+
+Use `--pages "1-5,8,r3-r1"`: page numbers start at 1, ranges include both endpoints,
+and `r1` means the last page. Use `all` for every page. Results are sorted and deduplicated;
+partially out-of-bounds ranges select their valid intersection. Reversed or empty selections
+fail with `page_range_invalid`. Without `--pages`, `mineru parse` starts with the first 10 pages;
+`mineru-kit parse`, Python and Gradio select all pages. The old `~` and negative-number syntax
+is no longer accepted. Upgrade clients and servers together and rebuild old Doclib caches
+in a fresh data directory. See the [shared page-range contract](../../next/page-ranges.md).

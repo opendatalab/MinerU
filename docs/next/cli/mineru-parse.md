@@ -1,5 +1,7 @@
 # mineru parse
 
+页码表达式、默认范围及不兼容升级要求统一见 [PDF 页码范围规范](../page-ranges.md)。
+
 状态: Draft
 读者: Agent skill 作者、CLI 使用者、核心开发者
 范围: `mineru parse` 的默认行为、参数、隐私、tier、输出、等待和缓存
@@ -100,7 +102,7 @@ PDF/image 的默认选择策略通过当前目标 parse-server 的能力发现�
 分页文档使用物理页码：
 
 ```text
-<!-- Next: mineru parse report.pdf --pages 11~20 -->
+<!-- Next: mineru parse report.pdf --pages 11-20 -->
 ```
 
 非分页文档当前也使用 `--after` cursor 继续读取：

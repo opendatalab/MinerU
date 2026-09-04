@@ -181,7 +181,7 @@ parse read 返回示例:
   "format": "markdown",
   "content": "...",
   "request_scope": {
-    "page_range": "1~10",
+    "page_range": "1-10",
     "after": null,
     "limit": 30000,
     "locator": null,
@@ -189,14 +189,14 @@ parse read 返回示例:
   },
   "content_ranges": [
     {
-      "page_range": "1~10",
+      "page_range": "1-10",
       "start": "doc:ab12cd3/tier:basic/page:1",
       "end": "doc:ab12cd3/tier:basic/page:10/block:18"
     }
   ],
   "truncated": false,
   "next_request": {
-    "page_range": "11~20",
+    "page_range": "11-20",
     "after": null,
     "locator": null
   },

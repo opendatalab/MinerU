@@ -54,7 +54,7 @@
 | `mineru-kit parse` local/remote | local 支持 `tier/backend` 并校验兼容，PDF/image 二者都不传时默认 `standard`，OFD/EPUB/Office/HTML/CSV 按 ADR-0024/0028 归一，其它 text 不作为解析输入；remote 支持 `--remote`/`--remote-url`/`--api-key`，允许传 `tier`，禁止传 `backend`。 |
 | parsing-rules 默认 tier | parsing-rules 允许不指定 tier；PDF/image 按 `standard` -> `basic` -> `flash` 选择，OFD/EPUB/Office/HTML/CSV 归一为 `flash`，其它 text 只入库和索引；只记录实际 tier。 |
 | Telemetry P0 | P0 必须实现 doclib server telemetry 状态、聚合、flush 和 CLI 管理入口；纯工具无 telemetry 能力。 |
-| `mineru parse` 默认页码范围 | 分页文档默认解析和读取 `1~min(page_count,10)`；该默认由 doclib 读取/解析计划负责，CLI 参数层不硬编码默认 `--pages`。 |
+| `mineru parse` 默认页码范围 | 分页文档默认解析和读取 `1-min(page_count,10)`；该默认由 doclib 读取/解析计划负责，CLI 参数层不硬编码默认 `--pages`。 |
 | 渐进式阅读协议 | Server 返回结构化 `next_request`；CLI marker 只由 `next_request` 渲染，不作为协议源头，详见 [ADR-0013](decisions/0013-doc-content-progressive-reading.md)。 |
 | 非分页文档增量读取 | 非分页长文档通过 `after` cursor 继续读取；当前不为 `mineru parse` 暴露单独的 `--offset` 参数。 |
 | Doc short id | `docs.short_id` 按 SHA256 7 位前缀起步、冲突递增长度、写入后保持稳定，详见 [ADR-0011](decisions/0011-doclib-doc-short-id.md)。 |

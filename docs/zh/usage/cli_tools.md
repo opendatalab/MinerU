@@ -73,3 +73,11 @@ mineru-kit vlm-server --engine auto --port 30000
 - `MINERU_INTRA_OP_NUM_THREADS` / `MINERU_INTER_OP_NUM_THREADS`：ONNX 算子线程配置。
 
 当前默认值以各命令的 `--help` 和[模型源说明](./model_source.md)为准。
+
+## PDF 页码选择
+
+使用 `--pages "1-5,8,r3-r1"`：页码从 1 开始，包含区间两端，`r1` 表示最后一页，`all` 表示全部。
+结果去重并按原页序排列；部分越界取有效交集，倒序或选不到页面时返回 `page_range_invalid`。
+省略页码时 `mineru parse` 默认前 10 页，`mineru-kit parse`、Python 和 Gradio 默认全部。
+不再接受 `~` 和负数页码；升级调用方和服务端后，在新 Doclib 数据目录重建解析缓存。
+完整说明见 [PDF 页码范围规范](../../next/page-ranges.md)。

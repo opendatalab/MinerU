@@ -107,7 +107,7 @@ Then answer from `content.content`. If `next_request` exists and the question ne
 ### Continue progressively
 
 ```bash
-mineru parse "book.pdf" --pages 1~10 --limit 12000 --json
+mineru parse "book.pdf" --pages 1-10 --limit 12000 --json
 mineru read "doc:ab12cd3/tier:standard/page:11" --limit 12000 --json
 ```
 
@@ -498,10 +498,12 @@ Use JSON when you need structured status, tier, content, and continuation:
 mineru parse "report.pdf" --json
 ```
 
-For a specific page range:
+PDF page selection is shared across CLI, Doclib, API, Gradio and Python. See the [page-range contract and breaking upgrade instructions](docs/next/page-ranges.md). The old `~` and negative page-number syntax is no longer supported.
+
+For a specific page range (1-based, inclusive; `r1` is the last page, `all` selects every page):
 
 ```bash
-mineru parse "report.pdf" --pages 1~10
+mineru parse "report.pdf" --pages 1-10
 mineru parse "report.pdf" --pages all
 ```
 
@@ -532,7 +534,7 @@ mineru parse "report.pdf" --output ./report.md
 Rules:
 
 - Quote paths with spaces.
-- For paged documents, the default active read range is the first page window, usually `1~10`; continue with the returned marker or `next_request` instead of reading the whole document by default.
+- For paged documents, the default active read range is the first page window, usually `1-10`; continue with the returned marker or `next_request` instead of reading the whole document by default.
 - Use the default tier unless the user has a quality/speed/privacy preference.
 - Use `--pages all` only when the user asks for the whole document or the document is known to be small enough.
 - Prefer `--limit` and continuation for long documents.
@@ -549,7 +551,7 @@ MinerU output may include a command to continue reading:
 or:
 
 ```text
-<!-- Next: mineru parse report.pdf --pages 11~20 -->
+<!-- Next: mineru parse report.pdf --pages 11-20 -->
 ```
 
 Run the suggested command exactly unless the user asks for a different page, block, format, or limit.

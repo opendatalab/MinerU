@@ -18,6 +18,7 @@ import httpx
 
 from ...parser.api_client import MinerUApiParser, should_trust_env_for_url
 from ...parser.base import ParseResult
+from ...parser.page_range import normalize_page_range_input
 from ...parser.process_control import ManagedProcessControl
 from ...types import SERVER_TIERS, TIERS, ServerTier, Tier
 from ...utils.stdio import utf8_subprocess_env
@@ -183,6 +184,7 @@ class V1ArtifactClient:
         status_callback: Callable[[str], None] | None = None,
     ) -> ParseResult:
         """通过 V1 API 解析单个文件，并返回带图片/模型输出的 `ParseResult`。"""
+        page_range = normalize_page_range_input(page_range)
         if not path.is_file():
             raise FileNotFoundError(path)
         if tier not in TIERS:

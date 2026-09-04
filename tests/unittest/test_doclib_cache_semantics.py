@@ -319,12 +319,12 @@ def test_load_pages_from_done_batches_keeps_newest_page_idx(tmp_path: Path) -> N
         "blocks": [{"type": "text", "index": 0, "bbox": [0.0, 0.0, 0.1, 0.1], "content": _inline("newer")}],
     }
 
-    _write_batch(tmp_path, sha256, tier, "1~2", 1000, [older_page, older_duplicate])
+    _write_batch(tmp_path, sha256, tier, "1-2", 1000, [older_page, older_duplicate])
     _write_batch(tmp_path, sha256, tier, "2", 2000, [newer_duplicate])
 
     done_rows = [
         {"page_range": "2", "done_at": 2000},
-        {"page_range": "1~2", "done_at": 1000},
+        {"page_range": "1-2", "done_at": 1000},
     ]
 
     pages = load_pages_from_done_batches(str(tmp_path), sha256, tier, done_rows)
@@ -1225,24 +1225,24 @@ def test_compaction_uses_configured_data_dir(tmp_path: Path) -> None:
     older_duplicate = {"page_idx": 1, "content": "old"}
     newer_duplicate = {"page_idx": 1, "content": "new"}
 
-    _write_batch(tmp_path, sha256, tier, "1~2", 1000, [older_page, older_duplicate])
+    _write_batch(tmp_path, sha256, tier, "1-2", 1000, [older_page, older_duplicate])
     _write_batch(tmp_path, sha256, tier, "2", 2000, [newer_duplicate])
 
     compaction = Compaction(db=None, interval_sec=600, data_dir=str(tmp_path))
     done_rows = [
         {"page_range": "2", "done_at": 2000},
-        {"page_range": "1~2", "done_at": 1000},
+        {"page_range": "1-2", "done_at": 1000},
     ]
 
-    asyncio.run(compaction._compact_json(sha256, tier, ["1~2"], done_rows, 2000))
+    asyncio.run(compaction._compact_json(sha256, tier, ["1-2"], done_rows, 2000))
 
-    compacted_path = Path(parse_batch_json_path(str(tmp_path), sha256, tier, "1~2", 2000))
+    compacted_path = Path(parse_batch_json_path(str(tmp_path), sha256, tier, "1-2", 2000))
     compacted = json.loads(compacted_path.read_text(encoding="utf-8"))
 
     assert compacted["schema_version"] == MIDDLE_JSON_SCHEMA_VERSION
     assert compacted["is_full_document"] is True
     assert compacted["pages"] == [older_page, newer_duplicate]
-    assert sorted(path.name for path in compacted_path.parent.glob("*.json")) == ["1~2_2000.json"]
+    assert sorted(path.name for path in compacted_path.parent.glob("*.json")) == ["1-2_2000.json"]
 
 
 def test_compaction_repairs_underreported_full_document_ranges(tmp_path: Path) -> None:
@@ -1263,13 +1263,13 @@ def test_compaction_repairs_underreported_full_document_ranges(tmp_path: Path) -
             await db.execute(
                 "INSERT INTO parses (sha256, tier, page_range, status, done_at, created_at, updated_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?)",
-                (sha256, tier, "1~10", "done", done_at, done_at, done_at),
+                (sha256, tier, "1-10", "done", done_at, done_at, done_at),
             )
             _write_batch(
                 tmp_path,
                 sha256,
                 tier,
-                "1~10",
+                "1-10",
                 done_at,
                 [{"page_idx": page_idx, "blocks": []} for page_idx in range(12)],
                 file_suffix="epub",
@@ -1280,13 +1280,13 @@ def test_compaction_repairs_underreported_full_document_ranges(tmp_path: Path) -
 
         rows = await db.fetchall("SELECT page_range, done_at FROM parses WHERE sha256=? AND tier=?", (sha256, tier))
         doc = await db.fetchone("SELECT page_count FROM docs WHERE sha256=?", (sha256,))
-        compacted_path = Path(parse_batch_json_path(str(tmp_path), sha256, tier, "1~12", 2000))
+        compacted_path = Path(parse_batch_json_path(str(tmp_path), sha256, tier, "1-12", 2000))
         compacted = json.loads(compacted_path.read_text(encoding="utf-8"))
-        assert rows == [{"page_range": "1~12", "done_at": 2000}]
+        assert rows == [{"page_range": "1-12", "done_at": 2000}]
         assert doc == {"page_count": 12}
         assert compacted["is_full_document"] is True
         assert [page["page_idx"] for page in compacted["pages"]] == list(range(12))
-        assert sorted(path.name for path in compacted_path.parent.glob("*.json")) == ["1~12_2000.json"]
+        assert sorted(path.name for path in compacted_path.parent.glob("*.json")) == ["1-12_2000.json"]
 
     asyncio.run(_run())
 
@@ -1305,7 +1305,7 @@ def test_compaction_keeps_rows_when_any_source_batch_is_missing(tmp_path: Path) 
             "VALUES (?, ?, ?, ?, ?, ?, ?)",
             (sha256, "eeeeeee", 1, "epub", 12, 1, 1),
         )
-        for page_range, done_at in (("1~10", 1000), ("11~12", 2000)):
+        for page_range, done_at in (("1-10", 1000), ("11-12", 2000)):
             await db.execute(
                 "INSERT INTO parses (sha256, tier, page_range, status, done_at, created_at, updated_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?)",
@@ -1315,7 +1315,7 @@ def test_compaction_keeps_rows_when_any_source_batch_is_missing(tmp_path: Path) 
             tmp_path,
             sha256,
             tier,
-            "1~10",
+            "1-10",
             1000,
             [{"page_idx": page_idx, "blocks": []} for page_idx in range(10)],
             file_suffix="epub",
@@ -1327,8 +1327,8 @@ def test_compaction_keeps_rows_when_any_source_batch_is_missing(tmp_path: Path) 
             "SELECT page_range, done_at FROM parses WHERE sha256=? AND tier=? ORDER BY done_at",
             (sha256, tier),
         )
-        assert rows == [{"page_range": "1~10", "done_at": 1000}, {"page_range": "11~12", "done_at": 2000}]
-        assert Path(parse_batch_json_path(str(tmp_path), sha256, tier, "1~10", 1000)).is_file()
+        assert rows == [{"page_range": "1-10", "done_at": 1000}, {"page_range": "11-12", "done_at": 2000}]
+        assert Path(parse_batch_json_path(str(tmp_path), sha256, tier, "1-10", 1000)).is_file()
 
     asyncio.run(_run())
 
@@ -1970,7 +1970,7 @@ def test_force_request_reuses_active_and_creates_only_uncovered_parse(tmp_path: 
             "id": 10,
             "sha256": sha256,
             "tier": "standard",
-            "page_range": "1~5",
+            "page_range": "1-5",
             "status": "done",
             "priority": 0,
             "done_at": 1000,
@@ -1980,7 +1980,7 @@ def test_force_request_reuses_active_and_creates_only_uncovered_parse(tmp_path: 
             "id": 11,
             "sha256": sha256,
             "tier": "standard",
-            "page_range": "6~8",
+            "page_range": "6-8",
             "status": "pending",
             "priority": 0,
             "done_at": None,
@@ -2004,18 +2004,18 @@ def test_force_request_reuses_active_and_creates_only_uncovered_parse(tmp_path: 
     )
     service = ParseService(db=db, fts=_FakeFTS(), config_svc=None, data_dir=str(tmp_path), parse_lock_timeout_sec=1800)
 
-    result = asyncio.run(service.request_parse(path, tier="standard", page_range="1~10", force=True))
+    result = asyncio.run(service.request_parse(path, tier="standard", page_range="1-10", force=True))
 
     assert isinstance(result, ParseResponse)
     assert result.wait_parse_ids == [11, 12]
     assert result.reused_parse_ids == [11]
     assert result.created_parse_ids == [12]
-    assert result.page_range == "1~10"
+    assert result.page_range == "1-10"
     assert result.short_id == "eeeeeee"
     assert result.status == "pending"
     assert result.cache_hit is False
     assert db.updated_priorities == [11]
-    assert parses[-1]["page_range"] == "1~5,9~10"
+    assert parses[-1]["page_range"] == "1-5,9-10"
 
 
 def test_non_pdf_requests_use_one_full_document_batch(
@@ -2059,7 +2059,7 @@ def test_non_pdf_requests_use_one_full_document_batch(
         monkeypatch.setattr(parse_svc_module, "extract_metadata", _metadata)
 
         initial = await service.request_parse(str(source))
-        assert initial.page_range == "1~12"
+        assert initial.page_range == "1-12"
         assert initial.created_parse_ids == []
         assert len(initial.reused_parse_ids) == 1
         initial_id = initial.reused_parse_ids[0]
@@ -2069,41 +2069,41 @@ def test_non_pdf_requests_use_one_full_document_batch(
 
         await db.execute(
             "UPDATE parses SET page_range=?, status=?, done_at=?, updated_at=? WHERE id=?",
-            ("1~10", "done", 1000, 1000, initial_id),
+            ("1-10", "done", 1000, 1000, initial_id),
         )
         _write_batch(
             tmp_path / "data",
             sha256,
             "flash",
-            "1~10",
+            "1-10",
             1000,
             [{"page_idx": page_idx, "blocks": []} for page_idx in range(12)],
             file_suffix="epub",
         )
 
         repaired = await service.request_parse(str(source))
-        assert repaired.page_range == "1~12"
+        assert repaired.page_range == "1-12"
         assert len(repaired.created_parse_ids) == 1
         repaired_id = repaired.created_parse_ids[0]
         repaired_row = await db.fetchone("SELECT page_range, status FROM parses WHERE id=?", (repaired_id,))
-        assert repaired_row == {"page_range": "1~12", "status": "pending"}
+        assert repaired_row == {"page_range": "1-12", "status": "pending"}
 
         reused = await service.request_parse(str(source), force=True)
         assert reused.created_parse_ids == []
         assert reused.reused_parse_ids == [repaired_id]
-        assert reused.page_range == "1~12"
+        assert reused.page_range == "1-12"
 
     asyncio.run(_run())
 
 
 def test_list_parse_records_by_ids_returns_precise_status(tmp_path: Path) -> None:
     parses = [
-        {"id": 1, "sha256": "f" * 64, "tier": "standard", "page_range": "1~5", "status": "done", "done_at": 1000},
+        {"id": 1, "sha256": "f" * 64, "tier": "standard", "page_range": "1-5", "status": "done", "done_at": 1000},
         {
             "id": 2,
             "sha256": "f" * 64,
             "tier": "standard",
-            "page_range": "6~10",
+            "page_range": "6-10",
             "status": "failed",
             "error_code": "parse_failed",
             "error_msg": "boom",
@@ -2119,7 +2119,7 @@ def test_list_parse_records_by_ids_returns_precise_status(tmp_path: Path) -> Non
             "id": 2,
             "sha256": "f" * 64,
             "tier": "standard",
-            "page_range": "6~10",
+            "page_range": "6-10",
             "status": "failed",
             "done_at": None,
             "created_at": None,
@@ -2130,7 +2130,7 @@ def test_list_parse_records_by_ids_returns_precise_status(tmp_path: Path) -> Non
             "id": 1,
             "sha256": "f" * 64,
             "tier": "standard",
-            "page_range": "1~5",
+            "page_range": "1-5",
             "status": "done",
             "done_at": 1000,
             "created_at": None,
@@ -2149,12 +2149,12 @@ def test_filter_pages_by_user_range_uses_one_based_page_numbers() -> None:
 
 
 def test_expand_page_range_uses_available_subset_and_merges_ranges() -> None:
-    assert expand_page_range("1~10,3,4~5", 5) == "1~5"
+    assert expand_page_range("1-10,3,4-5", 5) == "1-5"
 
 
 def test_expand_page_range_rejects_empty_available_subset() -> None:
     with pytest.raises(InvalidRequestError) as exc_info:
-        expand_page_range("6~10", 5)
+        expand_page_range("6-10", 5)
 
     assert exc_info.value.code == "page_range_invalid"
 
@@ -2173,7 +2173,7 @@ def test_remap_api_result_pages_to_non_contiguous_page_range() -> None:
         )
     )
 
-    _remap_api_result_pages_to_page_range(result, "11,13~14")
+    _remap_api_result_pages_to_page_range(result, "11,13-14")
 
     assert [page.page_idx for page in result.pages] == [10, 12, 13]
 
@@ -2213,7 +2213,7 @@ def test_remap_api_result_pages_rejects_count_mismatch() -> None:
     )
 
     with pytest.raises(ParseFailure) as exc:
-        _remap_api_result_pages_to_page_range(result, "11~13")
+        _remap_api_result_pages_to_page_range(result, "11-13")
 
     assert exc.value.code == "parse_page_remap_failed"
 
@@ -3673,7 +3673,7 @@ def test_read_locator_out_of_range_page_returns_page_range_invalid(tmp_path: Pat
 
             assert exc_info.value.code == "page_range_invalid"
             assert exc_info.value.param == "page_range"
-            assert exc_info.value.message == "Page range does not select any pages: 500"
+            assert "500" in exc_info.value.message and "available pages" in exc_info.value.message
         finally:
             await db.close()
 
@@ -4680,7 +4680,7 @@ def test_process_doc_normalizes_full_document_range_from_actual_pages(tmp_path: 
         "id": 1,
         "sha256": sha256,
         "tier": "flash",
-        "page_range": "1~10",
+        "page_range": "1-10",
         "status": "parsing",
         "privacy": "local",
     }
@@ -4714,7 +4714,7 @@ def test_process_doc_normalizes_full_document_range_from_actual_pages(tmp_path: 
 
     async def _parse(file_row: dict, tier: Tier, page_range: str) -> ParseResult:
         """返回十二页整本 EPUB 结果。"""
-        assert page_range == "1~10"
+        assert page_range == "1-10"
         return ParseResult(
             middle_json=MiddleJson(
                 pages=[PageInfo(page_idx=page_idx) for page_idx in range(12)],
@@ -4736,11 +4736,11 @@ def test_process_doc_normalizes_full_document_range_from_actual_pages(tmp_path: 
 
     assert asyncio.run(service.process_doc(task)) is True
     assert parses[0]["status"] == "done"
-    assert parses[0]["page_range"] == "1~12"
+    assert parses[0]["page_range"] == "1-12"
     assert doc_row["page_count"] == 12
-    batch_path = Path(parse_batch_json_path(str(tmp_path), sha256, "flash", "1~12", parses[0]["done_at"]))
+    batch_path = Path(parse_batch_json_path(str(tmp_path), sha256, "flash", "1-12", parses[0]["done_at"]))
     assert batch_path.is_file()
-    assert not Path(parse_batch_json_path(str(tmp_path), sha256, "flash", "1~10", parses[0]["done_at"])).exists()
+    assert not Path(parse_batch_json_path(str(tmp_path), sha256, "flash", "1-10", parses[0]["done_at"])).exists()
     assert len(json.loads(batch_path.read_text(encoding="utf-8"))["pages"]) == 12
 
 

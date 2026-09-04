@@ -383,7 +383,7 @@ watch -> flash index -> search result -> Agent chooses document -> mineru parse
 当输出被截断或只解析部分页时，应输出可机器理解的 marker:
 
 ```text
-<!-- mineru:next page_range=6~10 tier=standard -->
+<!-- mineru:next page_range=6-10 tier=standard -->
 ```
 
 marker 不应依赖自然语言提示。具体 marker 格式可在 CLI 或 Agent 文档中继续细化。
@@ -481,16 +481,16 @@ doclib 解析产物按内容和实际使用的 tier 隔离。`parsed/` 目录下
       ab/
         ab3f...7e2d/
           flash/
-            1~5_1710000000000.json
-            98~102_1710000123000.json
+            1-5_1710000000000.json
+            98-102_1710000123000.json
           basic/
-            1~10_1710001234000.json
-            11~20_1710002234000.json
+            1-10_1710001234000.json
+            11-20_1710002234000.json
             images/              # 可选，仅保存解析产生的必要 sidecar
           standard/
-            1~20_1710003234000.json
+            1-20_1710003234000.json
           advanced/
-            1~20_1710004234000.json
+            1-20_1710004234000.json
 ```
 
 单个 JSON 文件表示一次解析批次，基本形态:
@@ -732,8 +732,8 @@ mineru parse report.pdf --tier flash
 输入:
 
 ```bash
-mineru parse report.pdf --tier basic --pages 1~5
-mineru parse report.pdf --tier basic --pages 6~10
+mineru parse report.pdf --tier basic --pages 1-5
+mineru parse report.pdf --tier basic --pages 6-10
 ```
 
 期望:
@@ -741,7 +741,7 @@ mineru parse report.pdf --tier basic --pages 6~10
 1. 两次请求可以生成两个 done parse batch。
 2. `parsed/<sha-prefix>/<sha>/basic/` 下保存两个 JSON 文件。
 3. 每个 JSON 文件只包含对应页码范围的 `pages`。
-4. 后续请求 `--pages 1~10` 可以由已完成批次覆盖，不需要重新解析。
+4. 后续请求 `--pages 1-10` 可以由已完成批次覆盖，不需要重新解析。
 5. compaction 可以将两个批次合并成更少的 parse row 和 JSON 文件。
 6. 合并时按 `page_idx` 组织页面；同一页如果被重复解析，较新批次覆盖较旧批次。
 
@@ -750,18 +750,18 @@ mineru parse report.pdf --tier basic --pages 6~10
 输入:
 
 ```bash
-mineru parse report.pdf --tier basic --pages 1~5
-mineru parse report.pdf --tier basic --pages 1~5 --force
+mineru parse report.pdf --tier basic --pages 1-5
+mineru parse report.pdf --tier basic --pages 1-5 --force
 ```
 
 期望:
 
 1. 第二次请求调用 `POST /parses`，返回 `wait_parse_ids`。
 2. 旧 done batch 不被删除，也不被标记失效。
-3. 如果已有 active parse 覆盖 `1~5`，第二次请求可以复用该 parse，并把 id 放入 `reused_parse_ids`。
+3. 如果已有 active parse 覆盖 `1-5`，第二次请求可以复用该 parse，并把 id 放入 `reused_parse_ids`。
 4. 如果没有 active parse 覆盖，第二次请求创建新 parse，并把 id 放入 `created_parse_ids`。
 5. CLI wait 查询 `GET /parses?ids=...`，等待所有 `wait_parse_ids` 完成。
-6. 如果第二次解析成功，读取 `1~5` 时使用 `done_at` 更新的有效 batch。
+6. 如果第二次解析成功，读取 `1-5` 时使用 `done_at` 更新的有效 batch。
 7. 如果第二次解析失败，第一次解析结果仍然可读、可搜索，但本次 force 请求显示为失败。
 
 ### 13.8 Invalidate 缓存

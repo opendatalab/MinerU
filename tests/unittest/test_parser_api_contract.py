@@ -447,10 +447,10 @@ def test_api_client_builds_file_page_range_without_options(tmp_path: Path) -> No
     pdf.write_bytes(b"%PDF-1.7\n")
 
     parser = MinerUApiParser(api_url="http://localhost:8000", tier="standard")
-    payload = parser._build_payload({"type": "local", "path": str(pdf)}, "1,3~5")
+    payload = parser._build_payload({"type": "local", "path": str(pdf)}, "1,3-5")
 
     assert payload["output_formats"] == ["middle_json"]
-    assert payload["files"] == [{"source": {"type": "local", "path": str(pdf)}, "page_range": "1,3~5"}]
+    assert payload["files"] == [{"source": {"type": "local", "path": str(pdf)}, "page_range": "1,3-5"}]
     assert "options" not in payload["files"][0]
 
 

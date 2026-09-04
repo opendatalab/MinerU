@@ -23,22 +23,22 @@ def _page(page_idx: int, *texts: str) -> PageInfo:
 def test_paginated_default_content_pages_are_first_ten() -> None:
     doc = {"page_count": 38}
 
-    assert _normalize_content_page_range(None, None, doc) == "1~10"
-    assert _normalize_content_page_range("all", None, doc) == "1~38"
-    assert _normalize_content_page_range("1~5,-5~-1", None, doc) == "1~5,34~38"
+    assert _normalize_content_page_range(None, None, doc) == "1-10"
+    assert _normalize_content_page_range("all", None, doc) == "1-38"
+    assert _normalize_content_page_range("1-5,r5-r1", None, doc) == "1-5,34-38"
 
 
 def test_content_page_range_uses_available_subset_and_merges_ranges() -> None:
     doc = {"page_count": 5}
 
-    assert _normalize_content_page_range("1~10,3,4~5", None, doc) == "1~5"
+    assert _normalize_content_page_range("1-10,3,4-5", None, doc) == "1-5"
 
 
 def test_content_page_range_rejects_empty_available_subset() -> None:
     doc = {"page_count": 5}
 
     with pytest.raises(InvalidRequestError) as exc_info:
-        _normalize_content_page_range("6~10", None, doc)
+        _normalize_content_page_range("6-10", None, doc)
 
     assert exc_info.value.code == "page_range_invalid"
 
@@ -48,16 +48,16 @@ def test_paginated_page_boundary_truncation_suggests_pages_only() -> None:
     rendered = _render_progressive_markdown(pages, short_id="ab12cd3", tier="standard", after=None, limit=40, add_markers=False)
     next_request = _next_content_request(
         rendered=rendered,
-        request_page_range="1~10",
+        request_page_range="1-10",
         after=None,
         page_count=38,
         paginated=True,
     )
 
     assert rendered.truncated is True
-    assert rendered.content_ranges[0].page_range == "1~5"
+    assert rendered.content_ranges[0].page_range == "1-5"
     assert next_request is not None
-    assert next_request.page_range == "6~10"
+    assert next_request.page_range == "6-10"
     assert next_request.after is None
 
 
@@ -66,7 +66,7 @@ def test_paginated_long_single_page_truncation_keeps_pages_with_after() -> None:
     rendered = _render_progressive_markdown(pages, short_id="ab12cd3", tier="standard", after=None, limit=40, add_markers=False)
     next_request = _next_content_request(
         rendered=rendered,
-        request_page_range="7~10",
+        request_page_range="7-10",
         after=None,
         page_count=38,
         paginated=True,
@@ -75,7 +75,7 @@ def test_paginated_long_single_page_truncation_keeps_pages_with_after() -> None:
     assert rendered.truncated is True
     assert rendered.content_ranges[-1].end.startswith("doc:ab12cd3/tier:standard/page:7/block:1/char:")
     assert next_request is not None
-    assert next_request.page_range == "7~10"
+    assert next_request.page_range == "7-10"
     assert next_request.after == rendered.content_ranges[-1].end
 
 
@@ -113,14 +113,14 @@ def test_non_contiguous_pages_suggest_after_last_requested_page() -> None:
     )
     next_request = _next_content_request(
         rendered=rendered,
-        request_page_range="1~5,20~25",
+        request_page_range="1-5,20-25",
         after=None,
         page_count=38,
         paginated=True,
     )
 
     assert next_request is not None
-    assert next_request.page_range == "26~35"
+    assert next_request.page_range == "26-35"
 
 
 def test_truncated_false_can_still_have_next_request() -> None:
@@ -134,7 +134,7 @@ def test_truncated_false_can_still_have_next_request() -> None:
     )
     next_request = _next_content_request(
         rendered=rendered,
-        request_page_range="1~10",
+        request_page_range="1-10",
         after=None,
         page_count=38,
         paginated=True,
@@ -142,7 +142,7 @@ def test_truncated_false_can_still_have_next_request() -> None:
 
     assert rendered.truncated is False
     assert next_request is not None
-    assert next_request.page_range == "11~20"
+    assert next_request.page_range == "11-20"
 
 
 def test_paginated_next_request_is_never_after_only() -> None:
@@ -164,14 +164,14 @@ def test_paginated_next_request_is_never_after_only() -> None:
                 "cut_inside_page": True,
             },
         )(),
-        request_page_range="7~10",
+        request_page_range="7-10",
         after=None,
         page_count=38,
         paginated=True,
     )
 
     assert next_request is not None
-    assert next_request.page_range == "7~10"
+    assert next_request.page_range == "7-10"
     assert next_request.after is not None
 
 

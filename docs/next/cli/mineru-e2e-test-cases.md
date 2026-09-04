@@ -815,7 +815,7 @@ mineru search "mineru-e2e-query-that-should-not-exist" --limit 1
 
 ```bash
 mineru telemetry enable --json
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1-1 --wait 60 --json
 mineru search "mineru-e2e-query-that-should-not-exist" --limit 1 --json
 mineru telemetry preview
 ```
@@ -1072,7 +1072,7 @@ mineru config parsing-rules list
 命令:
 
 ```bash
-mineru config parsing-rules add "*/mineru-e2e-remove/*" --tier flash --pages 1~1 --name e2e-remove-rule --json
+mineru config parsing-rules add "*/mineru-e2e-remove/*" --tier flash --pages 1-1 --name e2e-remove-rule --json
 mineru config parsing-rules list --json
 mineru config parsing-rules remove <rule_id>
 mineru config parsing-rules list --json
@@ -1086,7 +1086,7 @@ mineru config parsing-rules list --json
 
 - 四条 exit code = 0
 - add/list JSON 均可直接解析
-- remove 前 list 中包含 pattern、`flash`、`1~1`
+- remove 前 list 中包含 pattern、`flash`、`1-1`
 - remove 输出包含 `removed`、`Parsing rule` 或等价成功信息
 - remove 后 list 中不再包含该 rule id
 
@@ -1457,7 +1457,7 @@ mineru parse "$MINERU_E2E_FIXTURE_DIR/not-exist.pdf"
 命令:
 
 ```bash
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --wait 60
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1-1 --wait 60
 ```
 
 预期:
@@ -1471,7 +1471,7 @@ mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --wai
 命令:
 
 ```bash
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1-1 --wait 60 --json
 ```
 
 预期:
@@ -1490,7 +1490,7 @@ mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --wai
 重复执行:
 
 ```bash
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1-1 --wait 60 --json
 ```
 
 预期:
@@ -1505,7 +1505,7 @@ mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --wai
 命令:
 
 ```bash
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --no-wait --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1-1 --no-wait --json
 ```
 
 预期:
@@ -1523,7 +1523,7 @@ mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --no-
 命令:
 
 ```bash
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --force --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1-1 --force --wait 60 --json
 ```
 
 预期:
@@ -1537,7 +1537,7 @@ mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --for
 命令:
 
 ```bash
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --force --wait 60
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1-1 --force --wait 60
 ```
 
 预期:
@@ -1553,7 +1553,7 @@ mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --for
 命令:
 
 ```bash
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --force --wait 60 --verbose
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1-1 --force --wait 60 --verbose
 ```
 
 预期:
@@ -1574,7 +1574,7 @@ Profile 前置条件: `MINERU_MODEL_STACK=light`，doclib server 及 managed par
 mineru config set parse_server.local.managed_tier standard
 mineru config set parse_server.local.mode managed
 mineru server status --json
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --pages 1~1 --force --wait 180 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --pages 1-1 --force --wait 180 --json
 mineru show parse <created_parse_id> --json
 ```
 
@@ -1600,7 +1600,7 @@ mineru show parse <created_parse_id> --json
 mineru config set parse_server.local.managed_tier basic
 mineru config set parse_server.local.mode managed
 mineru server status --json
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier basic --pages 1~1 --force --wait 120 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier basic --pages 1-1 --force --wait 120 --json
 mineru show parse <created_parse_id> --json
 ```
 
@@ -1627,7 +1627,7 @@ mineru show parse <created_parse_id> --json
 mineru config set parse_server.local.managed_tier standard
 mineru config set parse_server.local.mode managed
 mineru server status --json
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier standard --pages 1~1 --force --wait 180 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier standard --pages 1-1 --force --wait 180 --json
 mineru show parse <created_parse_id> --json
 ```
 
@@ -1654,7 +1654,7 @@ mineru show parse <created_parse_id> --json
 mineru config set parse_server.local.managed_tier standard
 mineru config set parse_server.local.mode managed
 mineru server status --json
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier advanced --pages 1~1 --force --wait 300 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier advanced --pages 1-1 --force --wait 300 --json
 mineru show parse <created_parse_id> --json
 ```
 
@@ -1686,7 +1686,7 @@ mineru show parse <created_parse_id> --json
 mineru config set parse_server.local.managed_tier basic
 mineru config set parse_server.local.mode managed
 mineru server status --json
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier basic --pages 1~1 --force --wait 120 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier basic --pages 1-1 --force --wait 120 --json
 mineru show parse <created_parse_id> --json
 ```
 
@@ -1713,7 +1713,7 @@ mineru show parse <created_parse_id> --json
 mineru config set parse_server.local.managed_tier standard
 mineru config set parse_server.local.mode managed
 mineru server status --json
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier standard --pages 1~1 --force --wait 180 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier standard --pages 1-1 --force --wait 180 --json
 mineru show parse <created_parse_id> --json
 ```
 
@@ -1738,7 +1738,7 @@ mineru show parse <created_parse_id> --json
 
 ```bash
 mineru server status --json
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier advanced --pages 1~1 --force --wait 300 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier advanced --pages 1-1 --force --wait 300 --json
 mineru show parse <created_parse_id> --json
 ```
 
@@ -1760,10 +1760,10 @@ mineru show parse <created_parse_id> --json
 命令:
 
 ```bash
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier medium --pages 1~1
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier high --pages 1~1
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier xhigh --pages 1~1
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier pro --pages 1~1
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier medium --pages 1-1
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier high --pages 1-1
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier xhigh --pages 1-1
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier pro --pages 1-1
 ```
 
 预期:
@@ -1778,7 +1778,7 @@ mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier pro --pages 1~1
 命令:
 
 ```bash
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --wait 60 --output "$MINERU_E2E_FIXTURE_DIR/parse-output.md"
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1-1 --wait 60 --output "$MINERU_E2E_FIXTURE_DIR/parse-output.md"
 ```
 
 预期:
@@ -1794,7 +1794,7 @@ mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --wai
 命令:
 
 ```bash
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --wait 60 --output "$MINERU_E2E_FIXTURE_DIR/parse-output-json.md" --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1-1 --wait 60 --output "$MINERU_E2E_FIXTURE_DIR/parse-output-json.md" --json
 ```
 
 预期:
@@ -1815,7 +1815,7 @@ mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --wai
 命令:
 
 ```bash
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --wait 60 --limit 20 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1-1 --wait 60 --limit 20 --json
 ```
 
 预期:
@@ -1834,7 +1834,7 @@ mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --wai
 命令模板:
 
 ```bash
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --after <after_cursor> --limit 30000 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1-1 --after <after_cursor> --limit 30000 --json
 ```
 
 预期:
@@ -1850,7 +1850,7 @@ mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --aft
 命令:
 
 ```bash
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --wait 60 --limit 20 --no-marker
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1-1 --wait 60 --limit 20 --no-marker
 ```
 
 预期:
@@ -1864,7 +1864,7 @@ mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --wai
 命令:
 
 ```bash
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --remote --wait 20 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1-1 --remote --wait 20 --json
 ```
 
 预期分支:
@@ -1881,7 +1881,7 @@ mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --rem
 命令:
 
 ```bash
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --remote --pages 1~1 --force --wait 180 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --remote --pages 1-1 --force --wait 180 --json
 mineru show parse <created_parse_id> --json
 ```
 
@@ -1907,7 +1907,7 @@ mineru show parse <created_parse_id> --json
 命令:
 
 ```bash
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier standard --remote --pages 1~1 --force --wait 180 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier standard --remote --pages 1-1 --force --wait 180 --json
 mineru show parse <created_parse_id> --json
 ```
 
@@ -1929,7 +1929,7 @@ mineru show parse <created_parse_id> --json
 命令:
 
 ```bash
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier standard --remote --pages 1~1 --force --no-wait --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier standard --remote --pages 1-1 --force --no-wait --json
 mineru show parse <created_parse_id> --json
 ```
 
@@ -1952,7 +1952,7 @@ mineru show parse <created_parse_id> --json
 命令:
 
 ```bash
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier standard --remote --pages 1~1 --force --wait 180 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier standard --remote --pages 1-1 --force --wait 180 --json
 mineru show parse <created_parse_id> --json
 ```
 
@@ -1980,7 +1980,7 @@ mineru show parse <created_parse_id> --json
 命令:
 
 ```bash
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier standard --remote --pages 1~1 --force --wait 180 --output "$MINERU_E2E_FIXTURE_DIR/output-dir/remote-output.md"
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier standard --remote --pages 1-1 --force --wait 180 --output "$MINERU_E2E_FIXTURE_DIR/output-dir/remote-output.md"
 ```
 
 预期分支:
@@ -2001,9 +2001,9 @@ mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier standard --remote --pag
 命令:
 
 ```bash
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --wait 60 --json
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier standard --remote --pages 1~1 --force --wait 180 --json
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1-1 --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier standard --remote --pages 1-1 --force --wait 180 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1-1 --wait 60 --json
 ```
 
 预期:
@@ -2018,7 +2018,7 @@ mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --wai
 命令:
 
 ```bash
-mineru config parsing-rules add "*/sample.pdf" --tier standard --remote --pages 1~1 --name e2e-remote-rule --json
+mineru config parsing-rules add "*/sample.pdf" --tier standard --remote --pages 1-1 --name e2e-remote-rule --json
 mineru watch add "$MINERU_E2E_FIXTURE_DIR" --label e2e-remote-rule-watch --json
 mineru watch rescan "$MINERU_E2E_FIXTURE_DIR" --wait 60 --json
 mineru list parses --limit 20 --json
@@ -2080,7 +2080,7 @@ mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --format json
 命令:
 
 ```bash
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --force --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1-1 --force --wait 60 --json
 ```
 
 预期:
@@ -2891,7 +2891,7 @@ mineru invalidate "$MINERU_E2E_FIXTURE_DIR/not-exist.pdf" --tier flash
 命令:
 
 ```bash
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1-1 --wait 60 --json
 ```
 
 预期:
@@ -3328,8 +3328,8 @@ mineru find "sample" --limit 1 --offset 1 --json
 
 ```bash
 mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages all --wait 60 --json
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 2~1 --wait 60 --json
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 999~1000 --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 2-1 --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 999-1000 --wait 60 --json
 ```
 
 预期:
@@ -3443,11 +3443,11 @@ mineru parse "$MINERU_E2E_FIXTURE_DIR/no-read.pdf" --tier flash --wait 60 --json
 命令:
 
 ```bash
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.docx" --tier flash --pages 1~1 --wait 60 --json
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.epub" --tier flash --pages 1~1 --wait 60 --json
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.ofd" --tier flash --pages 1~1 --wait 60 --json
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.html" --tier flash --pages 1~1 --wait 60 --json
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.odt" --tier flash --pages 1~1 --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.docx" --tier flash --pages 1-1 --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.epub" --tier flash --pages 1-1 --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.ofd" --tier flash --pages 1-1 --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.html" --tier flash --pages 1-1 --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.odt" --tier flash --pages 1-1 --wait 60 --json
 ```
 
 预期:
@@ -3502,9 +3502,9 @@ mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.html" --tier flash --wait 60 --json
 命令:
 
 ```bash
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample doc.pdf" --tier flash --pages 1~1 --wait 60 --json
-mineru parse "$MINERU_E2E_FIXTURE_DIR/中文样例.pdf" --tier flash --pages 1~1 --wait 60 --json
-mineru parse "$MINERU_E2E_FIXTURE_DIR/symlink-sample.pdf" --tier flash --pages 1~1 --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample doc.pdf" --tier flash --pages 1-1 --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/中文样例.pdf" --tier flash --pages 1-1 --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/symlink-sample.pdf" --tier flash --pages 1-1 --wait 60 --json
 ```
 
 预期:
@@ -3519,9 +3519,9 @@ mineru parse "$MINERU_E2E_FIXTURE_DIR/symlink-sample.pdf" --tier flash --pages 1
 命令:
 
 ```bash
-mineru parse "sample.pdf" --tier flash --pages 1~1 --wait 60 --json
+mineru parse "sample.pdf" --tier flash --pages 1-1 --wait 60 --json
 mineru show file "sample.pdf" --json
-mineru parse "~/mineru-e2e-test/sample.pdf" --tier flash --pages 1~1 --wait 60 --json
+mineru parse "~/mineru-e2e-test/sample.pdf" --tier flash --pages 1-1 --wait 60 --json
 ```
 
 预期:
@@ -3538,10 +3538,10 @@ mineru parse "~/mineru-e2e-test/sample.pdf" --tier flash --pages 1~1 --wait 60 -
 命令:
 
 ```bash
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --wait 60 --output -
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --wait 60 --output "$MINERU_E2E_FIXTURE_DIR/output-dir/existing.md"
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --wait 60 --output "$MINERU_E2E_FIXTURE_DIR/not-exist-dir/out.md"
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --wait 60 --output "~/mineru-e2e-test/output-dir/home-output.md"
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1-1 --wait 60 --output -
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1-1 --wait 60 --output "$MINERU_E2E_FIXTURE_DIR/output-dir/existing.md"
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1-1 --wait 60 --output "$MINERU_E2E_FIXTURE_DIR/not-exist-dir/out.md"
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1-1 --wait 60 --output "~/mineru-e2e-test/output-dir/home-output.md"
 ```
 
 预期:
@@ -3558,7 +3558,7 @@ mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --wai
 命令:
 
 ```bash
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --wait 60 --output - --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1-1 --wait 60 --output - --json
 mineru read "doc:<short_id>/tier:flash/page:1" --output - --json
 ```
 
@@ -3616,8 +3616,8 @@ mineru read "doc:<short_id>/tier:flash/page:1" --format image --output "$MINERU_
 命令:
 
 ```bash
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --force --wait 60 --json
-mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1~1 --force --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1-1 --force --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1-1 --force --wait 60 --json
 ```
 
 预期:
@@ -4156,3 +4156,22 @@ Environment:
 - remote Standard available: yes
 - pdf fixture source: ...
 ```
+
+## PDF 页码语法验收
+
+以下用例使用已知 10 页的 PDF；完整语义见 [PDF 页码范围规范](../page-ranges.md)。
+
+| 用例 | 输入 `--pages` | 预期 |
+|---|---|---|
+| PAGE-RANGE-001 | `1-3,7,r2-r1` | 实际范围 `1-3,7,9-10`；原始 `page_idx` 为 `0,1,2,6,8,9` |
+| PAGE-RANGE-002 | `3,1-3,2` | 合并为 `1-3`；不重排、不重复页面 |
+| PAGE-RANGE-003 | `r1` | 第 10 页 |
+| PAGE-RANGE-004 | `8-15` | 取有效交集 `8-10` |
+| PAGE-RANGE-005 | `20` | `page_range_invalid`，不回退到全文 |
+| PAGE-RANGE-006 | `5-3`、`r1-r5`、`8-r5` | `page_range_invalid` |
+| PAGE-RANGE-007 | `1~5`、`-1`、`-5~-1` | 旧语法统一拒绝 |
+| PAGE-RANGE-008 | `all` | 全部页面；直接 Python/API/Gradio 的留空也选择全部 |
+| PAGE-RANGE-009 | `1,,3`、`5-`、`r0`、`1，3` | `page_range_invalid` |
+
+对更长文档另行验证：`mineru parse` 不传页码仍首次处理前 10 页，续读命令使用 `11-20`。
+重复请求应命中新格式缓存；覆盖状态、新缓存文件名、API 页数统计均使用同一实际页面集合。

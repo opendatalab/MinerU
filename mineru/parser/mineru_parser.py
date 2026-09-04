@@ -129,6 +129,9 @@ class MinerUParser(DocumentParser):
     ) -> _PreparedInput:
         """读取路径、检测类型并补齐 HTML 来源或 PDF 页范围状态。"""
         from .file_type import guess_suffix_by_path
+        from .page_range import normalize_page_range_input
+
+        page_range = normalize_page_range_input(page_range)
 
         file_name = path.stem
         file_bytes = path.read_bytes()
@@ -201,16 +204,11 @@ class MinerUParser(DocumentParser):
         from ..model.flash.pdf.document import PDFDocument
         from .page_range import parse_page_range
 
-        doc = PDFDocument(file_bytes)
-        page_indices = parse_page_range(page_range, doc.page_count)
-        if page_range.strip() and not page_indices:
-            raise InvalidRequestError(
-                "page_range_invalid",
-                f"Page range does not select any pages: {page_range}",
-                "page_range",
-            )
+        with PDFDocument(file_bytes) as doc:
+            page_count = doc.page_count
+        page_indices = parse_page_range(page_range, page_count)
 
-        if page_indices == list(range(doc.page_count)):
+        if page_indices == list(range(page_count)):
             return file_bytes, None, None
 
         from ..model.flash.pdf.pdfium import safe_rewrite_pdf_bytes_with_pdfium_result

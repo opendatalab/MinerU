@@ -56,6 +56,12 @@ from ..utils.stdio import configure_standard_streams
 from ..version import __version__
 from . import parse_async
 from .base import ParseResult
+from .page_range import (
+    PAGE_RANGE_DESCRIPTION,
+    count_pages_in_range as _count_pages_in_range,
+    format_page_range as _compact_page_numbers,
+    normalize_page_range_input,
+)
 from .tier import (
     ParserRuntimeOptions,
     TierDependencyError,
@@ -445,7 +451,7 @@ FileSource = Annotated[
 class JobFileEntry(BaseModel):
     model_config = _PYDANTIC_CONFIG
     source: FileSource
-    page_range: str | None = None
+    page_range: str | None = Field(default=None, description=PAGE_RANGE_DESCRIPTION, examples=["1-5,8,r3-r1", "all"])
 
 
 class CallbackConfig(BaseModel):
@@ -1245,22 +1251,6 @@ def _job_has_any_flash_only_inputs(req: CreateJobRequest, file_store: FileStore)
     return any(is_flash_only_parse_extension(_source_name(entry.source, file_store)) for entry in req.files)
 
 
-def _compact_page_numbers(page_numbers: list[int]) -> str:
-    if not page_numbers:
-        return ""
-    ordered = sorted(set(page_numbers))
-    ranges: list[str] = []
-    start = prev = ordered[0]
-    for page in ordered[1:]:
-        if page == prev + 1:
-            prev = page
-            continue
-        ranges.append(str(start) if start == prev else f"{start}~{prev}")
-        start = prev = page
-    ranges.append(str(start) if start == prev else f"{start}~{prev}")
-    return ",".join(ranges)
-
-
 def _page_range_from_result_pages(pages: list[PageInfo]) -> str:
     page_numbers: list[int] = []
     for i, page in enumerate(pages):
@@ -1268,26 +1258,6 @@ def _page_range_from_result_pages(pages: list[PageInfo]) -> str:
         if isinstance(page_idx, int):
             page_numbers.append(page_idx + 1)
     return _compact_page_numbers(page_numbers)
-
-
-def _count_pages_in_range(page_range: str) -> int:
-    total = 0
-    for part in page_range.split(","):
-        token = part.strip()
-        if not token:
-            continue
-        if "~" not in token:
-            total += 1
-            continue
-        left, right = token.split("~", 1)
-        try:
-            start = int(left)
-            end = int(right)
-        except ValueError:
-            total += 1
-            continue
-        total += max(0, end - start + 1)
-    return total
 
 
 @dataclass(frozen=True, slots=True)
@@ -1787,6 +1757,13 @@ async def create_job(
     access_level: AccessLevel = Depends(_resolve_access_level),
 ) -> Response:
     """Create a parse job."""
+    for index, entry in enumerate(body.files):
+        try:
+            entry.page_range = normalize_page_range_input(entry.page_range) or None
+        except MineruError as exc:
+            _raise_api_error(
+                400, error_type=exc.type, code=exc.code, message=str(exc), param=f"files.{index}.page_range"
+            )
     _require_model_preload_ready(request)
     if body.callback is not None:
         _raise_api_error(

@@ -358,7 +358,7 @@ def test_list_renderers_return_tables(monkeypatch: Any) -> None:
         sha256="a" * 64,
         short_id="aaaaaaa",
         tier="basic",
-        page_range="1~2",
+        page_range="1-2",
         status="done",
         privacy="local",
         created_at=1,
@@ -405,7 +405,7 @@ def test_list_renderers_return_tables(monkeypatch: Any) -> None:
     docs_table = list_resources._render_list_docs(ListDocsResponse(docs=[doc], total=1, limit=50))
 
     assert parses_table.title == "Parses (1 total)"
-    assert ("7", "done", "basic", "1~2", "aaaaaaa") in parses_table.rows
+    assert ("7", "done", "basic", "1-2", "aaaaaaa") in parses_table.rows
     assert scans_table.title == "Scans (1 total)"
     assert ("8", "done", "manual", "/tmp/docs", "3", "2", "1") in scans_table.rows
     assert files_table.title == "Files (1 total)"
@@ -426,7 +426,7 @@ def test_config_and_rule_renderers_return_tables(monkeypatch: Any) -> None:
     parsing_table = config._render_parsing_rules(
         ParsingRuleListResponse(
             rules=[
-                ParsingRuleInfo(id=4, pattern="*.pdf", tier="basic", page_range="1~2", remote=True, name="pdfs")
+                ParsingRuleInfo(id=4, pattern="*.pdf", tier="basic", page_range="1-2", remote=True, name="pdfs")
             ]
         )
     )
@@ -436,7 +436,7 @@ def test_config_and_rule_renderers_return_tables(monkeypatch: Any) -> None:
     assert exclude_table.title == "Exclude Rules"
     assert ("3", "*.tmp", "10") in exclude_table.rows
     assert parsing_table.title == "Parsing Rules"
-    assert ("4", "*.pdf", "basic", "1~2", "yes", "pdfs") in parsing_table.rows
+    assert ("4", "*.pdf", "basic", "1-2", "yes", "pdfs") in parsing_table.rows
 
 
 def test_watch_list_renderer_returns_table(monkeypatch: Any) -> None:
@@ -738,7 +738,7 @@ def test_parse_wait_ignores_failed_rows_outside_wait_ids(monkeypatch: Any, tmp_p
         sha256="a" * 64,
         short_id="aaaaaaa",
         tier="standard",
-        page_range="1~10",
+        page_range="1-10",
         status="failed",
         privacy="remote",
         created_at=1,
@@ -751,7 +751,7 @@ def test_parse_wait_ignores_failed_rows_outside_wait_ids(monkeypatch: Any, tmp_p
         sha256="a" * 64,
         short_id="aaaaaaa",
         tier="standard",
-        page_range="1~10",
+        page_range="1-10",
         status="done",
         privacy="remote",
         via="remote",
@@ -768,7 +768,7 @@ def test_parse_wait_ignores_failed_rows_outside_wait_ids(monkeypatch: Any, tmp_p
             return ParseResponse(
                 sha256="a" * 64,
                 tier="standard",
-                page_range="1~10",
+                page_range="1-10",
                 status="pending",
                 wait_parse_ids=[3],
                 created_parse_ids=[3],
@@ -785,7 +785,7 @@ def test_parse_wait_ignores_failed_rows_outside_wait_ids(monkeypatch: Any, tmp_p
                 tier="standard",
                 format="markdown",
                 content="parsed",
-                request_scope=ContentRequestScope(page_range="1~10", after=None, limit=30000),
+                request_scope=ContentRequestScope(page_range="1-10", after=None, limit=30000),
             )
 
     monkeypatch.setattr(parse, "DoclibClient", _Client)
@@ -810,7 +810,7 @@ def test_parse_wait_json_maps_invalid_api_key_param(monkeypatch: Any, tmp_path: 
         sha256="a" * 64,
         short_id="aaaaaaa",
         tier="standard",
-        page_range="1~1",
+        page_range="1-1",
         status="failed",
         privacy="remote",
         created_at=3,
@@ -827,7 +827,7 @@ def test_parse_wait_json_maps_invalid_api_key_param(monkeypatch: Any, tmp_path: 
             return ParseResponse(
                 sha256="a" * 64,
                 tier="standard",
-                page_range="1~1",
+                page_range="1-1",
                 status="pending",
                 wait_parse_ids=[3],
                 created_parse_ids=[3],
@@ -917,7 +917,7 @@ def test_parse_verbose_json_writes_cache_hit_notice_to_stderr(monkeypatch: Any, 
             assert timeout == 90
 
         def ensure_parse(self, request: Any) -> ParseResponse:
-            return ParseResponse(sha256="a" * 64, tier="flash", page_range="1~1", status="done", cache_hit=True)
+            return ParseResponse(sha256="a" * 64, tier="flash", page_range="1-1", status="done", cache_hit=True)
 
         def get_doc_content(self, *args: Any, **kwargs: Any) -> DocContentResponse:
             return DocContentResponse(
@@ -926,7 +926,7 @@ def test_parse_verbose_json_writes_cache_hit_notice_to_stderr(monkeypatch: Any, 
                 tier="flash",
                 format="markdown",
                 content="parsed",
-                request_scope=ContentRequestScope(page_range="1~1", limit=30000),
+                request_scope=ContentRequestScope(page_range="1-1", limit=30000),
             )
 
     monkeypatch.setattr(parse, "DoclibClient", _Client)
@@ -950,7 +950,7 @@ def test_parse_verbose_json_writes_queue_notice_to_stderr(monkeypatch: Any, tmp_
         sha256="a" * 64,
         short_id="aaaaaaa",
         tier="flash",
-        page_range="1~1",
+        page_range="1-1",
         status="done",
         privacy="local",
         created_at=3,
@@ -966,7 +966,7 @@ def test_parse_verbose_json_writes_queue_notice_to_stderr(monkeypatch: Any, tmp_
             return ParseResponse(
                 sha256="a" * 64,
                 tier="flash",
-                page_range="1~1",
+                page_range="1-1",
                 status="pending",
                 wait_parse_ids=[3],
                 created_parse_ids=[3],
@@ -982,7 +982,7 @@ def test_parse_verbose_json_writes_queue_notice_to_stderr(monkeypatch: Any, tmp_
                 tier="flash",
                 format="markdown",
                 content="parsed",
-                request_scope=ContentRequestScope(page_range="1~1", limit=30000),
+                request_scope=ContentRequestScope(page_range="1-1", limit=30000),
             )
 
     monkeypatch.setattr(parse, "DoclibClient", _Client)
@@ -1114,20 +1114,20 @@ def test_parse_ingest_error_json_is_machine_readable(monkeypatch: Any, tmp_path:
 
 def test_parse_next_marker_quotes_windows_path() -> None:
     path = r"C:\Users\jinzhenj\Downloads\2606.20787v1.pdf"
-    marker = parse._parse_next_marker(path, ContentNextRequest(page_range="7~10"))
+    marker = parse._parse_next_marker(path, ContentNextRequest(page_range="7-10"))
 
     assert marker is not None
     command = marker.removeprefix("<!-- Next: ").removesuffix(" -->")
-    assert shlex.split(command) == ["mineru", "parse", path, "--pages", "7~10"]
+    assert shlex.split(command) == ["mineru", "parse", path, "--pages", "7-10"]
 
 
 def test_parse_next_marker_escapes_double_quotes_in_path() -> None:
     path = r'C:\Users\jinzhenj\Downloads\bad"name.pdf'
-    marker = parse._parse_next_marker(path, ContentNextRequest(page_range="7~10"))
+    marker = parse._parse_next_marker(path, ContentNextRequest(page_range="7-10"))
 
     assert marker is not None
     command = marker.removeprefix("<!-- Next: ").removesuffix(" -->")
-    assert shlex.split(command) == ["mineru", "parse", path, "--pages", "7~10"]
+    assert shlex.split(command) == ["mineru", "parse", path, "--pages", "7-10"]
 
 
 def test_parse_next_marker_preserves_explicit_parse_context(monkeypatch: Any, tmp_path: Path) -> None:
@@ -1141,7 +1141,7 @@ def test_parse_next_marker_preserves_explicit_parse_context(monkeypatch: Any, tm
         def ensure_parse(self, request: Any) -> ParseResponse:
             assert request.tier == "flash"
             assert request.remote is True
-            return ParseResponse(sha256="a" * 64, tier="flash", page_range="1~10", status="done", cache_hit=True)
+            return ParseResponse(sha256="a" * 64, tier="flash", page_range="1-10", status="done", cache_hit=True)
 
         def get_doc_content(self, *args: Any, **kwargs: Any) -> DocContentResponse:
             assert kwargs["limit"] == 30000
@@ -1151,8 +1151,8 @@ def test_parse_next_marker_preserves_explicit_parse_context(monkeypatch: Any, tm
                 tier="flash",
                 format="markdown",
                 content="parsed",
-                request_scope=ContentRequestScope(page_range="1~10", limit=30000),
-                next_request=ContentNextRequest(page_range="11~20"),
+                request_scope=ContentRequestScope(page_range="1-10", limit=30000),
+                next_request=ContentNextRequest(page_range="11-20"),
             )
 
     monkeypatch.setattr(parse, "DoclibClient", _Client)
@@ -1172,7 +1172,7 @@ def test_parse_next_marker_preserves_explicit_parse_context(monkeypatch: Any, tm
         "--limit",
         "30000",
         "--pages",
-        "11~20",
+        "11-20",
     ]
 
 
@@ -1187,7 +1187,7 @@ def test_parse_next_marker_omits_default_parse_context(monkeypatch: Any, tmp_pat
         def ensure_parse(self, request: Any) -> ParseResponse:
             assert request.tier is None
             assert request.remote is False
-            return ParseResponse(sha256="a" * 64, tier="basic", page_range="1~10", status="done", cache_hit=True)
+            return ParseResponse(sha256="a" * 64, tier="basic", page_range="1-10", status="done", cache_hit=True)
 
         def get_doc_content(self, *args: Any, **kwargs: Any) -> DocContentResponse:
             assert kwargs["limit"] == 30000
@@ -1197,8 +1197,8 @@ def test_parse_next_marker_omits_default_parse_context(monkeypatch: Any, tmp_pat
                 tier="basic",
                 format="markdown",
                 content="parsed",
-                request_scope=ContentRequestScope(page_range="1~10", limit=30000),
-                next_request=ContentNextRequest(page_range="11~20"),
+                request_scope=ContentRequestScope(page_range="1-10", limit=30000),
+                next_request=ContentNextRequest(page_range="11-20"),
             )
 
     monkeypatch.setattr(parse, "DoclibClient", _Client)
@@ -1208,7 +1208,7 @@ def test_parse_next_marker_omits_default_parse_context(monkeypatch: Any, tmp_pat
     assert result.exit_code == 0
     marker = result.output.strip().splitlines()[-1]
     command = marker.removeprefix("<!-- Next: ").removesuffix(" -->")
-    assert shlex.split(command) == ["mineru", "parse", str(source.resolve()), "--pages", "11~20"]
+    assert shlex.split(command) == ["mineru", "parse", str(source.resolve()), "--pages", "11-20"]
 
 
 def test_parse_json_no_wait_wraps_parse_and_null_content(monkeypatch: Any, tmp_path: Path) -> None:
@@ -1223,7 +1223,7 @@ def test_parse_json_no_wait_wraps_parse_and_null_content(monkeypatch: Any, tmp_p
             return ParseResponse(
                 sha256="a" * 64,
                 tier="flash",
-                page_range="1~1",
+                page_range="1-1",
                 status="pending",
                 wait_parse_ids=[3],
                 created_parse_ids=[3],
@@ -1252,7 +1252,7 @@ def test_parse_no_wait_text_prints_parse_id_tracking_hint(monkeypatch: Any, tmp_
             return ParseResponse(
                 sha256="a" * 64,
                 tier="standard",
-                page_range="1~1",
+                page_range="1-1",
                 status="pending",
                 wait_parse_ids=[4686],
                 created_parse_ids=[4686],
@@ -1282,7 +1282,7 @@ def test_parse_no_wait_text_prints_multiple_parse_id_tracking_hints(monkeypatch:
             return ParseResponse(
                 sha256="a" * 64,
                 tier="standard",
-                page_range="1~2",
+                page_range="1-2",
                 status="pending",
                 wait_parse_ids=[4686, 4687],
                 created_parse_ids=[4687],
@@ -1319,7 +1319,7 @@ def test_parse_expands_user_home_in_input_path(monkeypatch: Any, tmp_path: Path)
             return ParseResponse(
                 sha256="a" * 64,
                 tier="flash",
-                page_range="1~1",
+                page_range="1-1",
                 status="pending",
                 wait_parse_ids=[3],
                 created_parse_ids=[3],
@@ -1386,7 +1386,7 @@ def test_parse_json_output_writes_file_and_returns_output_object(monkeypatch: An
             assert timeout == 90
 
         def ensure_parse(self, request: Any) -> ParseResponse:
-            return ParseResponse(sha256="a" * 64, tier="flash", page_range="1~1", status="done", cache_hit=True)
+            return ParseResponse(sha256="a" * 64, tier="flash", page_range="1-1", status="done", cache_hit=True)
 
         def export_doc_content(self, doc_ref: str, request: Any) -> Any:
             Path(request.output).write_text("exported", encoding="utf-8")
@@ -1414,7 +1414,7 @@ def test_parse_wait_status_line_is_verbose_only(monkeypatch: Any, tmp_path: Path
         sha256="a" * 64,
         short_id="aaaaaaa",
         tier="flash",
-        page_range="1~1",
+        page_range="1-1",
         status="done",
         privacy="local",
         via="local",
@@ -1431,7 +1431,7 @@ def test_parse_wait_status_line_is_verbose_only(monkeypatch: Any, tmp_path: Path
             return ParseResponse(
                 sha256="a" * 64,
                 tier="flash",
-                page_range="1~1",
+                page_range="1-1",
                 status="pending",
                 wait_parse_ids=[3],
                 created_parse_ids=[3],
@@ -1472,7 +1472,7 @@ def test_parse_wait_timeout_json_returns_timeout_error(monkeypatch: Any, tmp_pat
         sha256="a" * 64,
         short_id="aaaaaaa",
         tier="flash",
-        page_range="1~1",
+        page_range="1-1",
         status="pending",
         privacy="local",
         via="local",
@@ -1488,7 +1488,7 @@ def test_parse_wait_timeout_json_returns_timeout_error(monkeypatch: Any, tmp_pat
             return ParseResponse(
                 sha256="a" * 64,
                 tier="flash",
-                page_range="1~1",
+                page_range="1-1",
                 status="pending",
                 wait_parse_ids=[3],
                 created_parse_ids=[3],
@@ -1528,7 +1528,7 @@ def test_parse_wait_timeout_text_returns_nonzero_exit(monkeypatch: Any, tmp_path
             return ParseResponse(
                 sha256="a" * 64,
                 tier="flash",
-                page_range="1~1",
+                page_range="1-1",
                 status="pending",
                 wait_parse_ids=[3],
                 created_parse_ids=[3],
@@ -1559,7 +1559,7 @@ def test_parse_wait_timeout_json_uses_latest_parsing_status(monkeypatch: Any, tm
         sha256="a" * 64,
         short_id="aaaaaaa",
         tier="flash",
-        page_range="1~1",
+        page_range="1-1",
         status="parsing",
         privacy="local",
         via="local",
@@ -1575,7 +1575,7 @@ def test_parse_wait_timeout_json_uses_latest_parsing_status(monkeypatch: Any, tm
             return ParseResponse(
                 sha256="a" * 64,
                 tier="flash",
-                page_range="1~1",
+                page_range="1-1",
                 status="pending",
                 wait_parse_ids=[3],
                 created_parse_ids=[3],
@@ -1709,7 +1709,7 @@ def test_parse_rejects_reverse_page_range_as_json_error(monkeypatch: Any, tmp_pa
 
     monkeypatch.setattr(parse, "DoclibClient", _Client)
 
-    result = runner.invoke(app, ["parse", str(source), "--tier", "flash", "--pages", "2~1", "--json"])
+    result = runner.invoke(app, ["parse", str(source), "--tier", "flash", "--pages", "2-1", "--json"])
 
     assert result.exit_code == 1
     payload = json.loads(result.output)

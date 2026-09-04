@@ -28,6 +28,12 @@ from ...filetypes import (
 )
 from ...parser.api_client import _APITransportError, _V1APIError
 from ...parser.base import ParseResult
+from ...parser.page_range import (
+    expand_page_range,
+    format_page_range as _page_numbers_to_range_str,
+    normalize_page_range_input,
+    parse_page_range_set,
+)
 from ...types import QUALITY_TIERS, TIER_ORDER, PageInfo, Tier, select_default_quality_tier, select_parsing_rule_tier
 from ..core.db import DatabaseManager
 from ..core.file_io import FileStat, MetadataExtractionError, compute_sha256, extract_metadata, get_file_stat
@@ -124,21 +130,6 @@ def _raise_refresh_error(refreshed: FileRefreshResult) -> None:
 # ── range helpers ──────────────────────────────────────────────────
 
 
-def parse_page_range_set(page_range: str) -> set[int]:
-    """Parse a page_range string like '1~5,10~15' into 1-based page numbers."""
-    page_numbers: set[int] = set()
-    for part in page_range.split(","):
-        part = part.strip()
-        if not part:
-            continue
-        if "~" in part:
-            a, b = part.split("~", 1)
-            page_numbers.update(range(int(a.strip()), int(b.strip()) + 1))
-        else:
-            page_numbers.add(int(part))
-    return page_numbers
-
-
 def filter_pages_by_user_range(pages: list[PageInfo], page_range: str) -> list[PageInfo]:
     """Filter 0-based PageInfo objects by a user-facing 1-based page range."""
     requested_page_numbers = parse_page_range_set(page_range)
@@ -166,64 +157,10 @@ def page_range_uncovered(request_page_range: str, done_batches: list[ParseRow]) 
     return needed_page_numbers - covered_page_numbers
 
 
-def _page_numbers_to_range_str(page_numbers: set[int]) -> str:
-    """Convert a set of page numbers (1-based) to a compact range string."""
-    if not page_numbers:
-        return ""
-    sorted_page_numbers = sorted(page_numbers)
-    ranges: list[str] = []
-    start = sorted_page_numbers[0]
-    end = start
-    for page_no in sorted_page_numbers[1:]:
-        if page_no == end + 1:
-            end = page_no
-        else:
-            ranges.append(f"{start}~{end}" if start != end else str(start))
-            start = page_no
-            end = page_no
-    ranges.append(f"{start}~{end}" if start != end else str(start))
-    return ",".join(ranges)
-
-
-def expand_page_range(page_range: str | None, page_count: int) -> str:
-    """Expand shorthand page_range like 'all' or negative ranges like '-5~-1'
-    into positive page ranges.  Returns '1~{page_count}' for None/empty."""
-    available_page_numbers = set(range(1, page_count + 1))
-    if not page_range or page_range.strip() == "all":
-        page_numbers = available_page_numbers
-    else:
-        page_numbers: set[int] = set()
-        for part in page_range.split(","):
-            part = part.strip()
-            if not part:
-                continue
-            if "~" in part:
-                a, b = part.split("~", 1)
-                a, b = a.strip(), b.strip()
-                start = int(a)
-                end = int(b)
-                # negative index: -5 means page_count-5+1
-                if start < 0:
-                    start = page_count + start + 1
-                if end < 0:
-                    end = page_count + end + 1
-                if start <= end:
-                    page_numbers.update(range(start, end + 1))
-            else:
-                page_no = int(part.strip())
-                if page_no < 0:
-                    page_no = page_count + page_no + 1
-                page_numbers.add(page_no)
-        page_numbers &= available_page_numbers
-    if not page_numbers:
-        raise InvalidRequestError("page_range_invalid", f"Page range does not select any pages: {page_range}", "page_range")
-    return _page_numbers_to_range_str(page_numbers)
-
-
 def default_parse_range(page_count: int | None) -> str:
     """Return the default page range for active reading."""
     if page_count and page_count > 0:
-        return f"1~{min(page_count, 10)}"
+        return expand_page_range("1-10", page_count)
     return "1"
 
 
@@ -726,6 +663,7 @@ class ParseService:
         remote: bool = False,
     ) -> ParseResponse:
         """Handle a parse request from CLI.  Returns info for status polling."""
+        page_range = normalize_page_range_input(page_range) or None
         # ensure the path is current before trusting files.sha256
         refreshed = await self.refresh_file(path, ensure_ingested=True, allow_images=True)
         if refreshed.status == "unsupported":
@@ -1383,8 +1321,12 @@ class ParseService:
         sql += " ORDER BY created_at DESC"
         rows = cast(list[ParseRow], await self.db.fetchall(sql, tuple(params)))
         result: dict[str, object] = {"parses": [_parse_record_response(row) for row in rows]}
+        page_range = normalize_page_range_input(page_range)
         if sha256 and tier and page_range:
-            result["coverage"] = _parse_coverage(page_range, rows)
+            doc = await self.db.fetchone("SELECT * FROM docs WHERE sha256=?", (sha256,))
+            if doc is None:
+                raise InvalidRequestError("doc_not_found", f"Document {sha256} not found.", "doc_ref")
+            result["coverage"] = _parse_coverage(expand_page_range(page_range, doc["page_count"] or 1), rows)
         return result
 
     async def invalidate(self, sha256: str, tier: Tier | None = None) -> int:

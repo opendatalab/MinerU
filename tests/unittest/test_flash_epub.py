@@ -410,11 +410,11 @@ def test_public_parser_rejects_epub_page_range(tmp_path: Path) -> None:
     source.write_bytes(build_epub_fixture())
 
     with pytest.raises(InvalidRequestError, match="only supported for PDF") as exc_info:
-        parse(source, page_range="2~3")
+        parse(source, page_range="2-3")
     assert exc_info.value.code == "page_range_invalid"
 
     with pytest.raises(InvalidRequestError, match="only supported for PDF"):
-        asyncio.run(parse_async(source, page_range="2~3"))
+        asyncio.run(parse_async(source, page_range="2-3"))
 
 
 @pytest.mark.parametrize(
@@ -976,7 +976,7 @@ def test_doclib_ingests_epub_as_local_flash_with_spine_page_count(tmp_path: Path
         )
         assert response.tier == "flash"
         assert doc == {"file_type": "epub", "page_count": 3}
-        assert parses == [{"tier": "flash", "status": "pending", "privacy": "local", "page_range": "1~3"}]
+        assert parses == [{"tier": "flash", "status": "pending", "privacy": "local", "page_range": "1-3"}]
 
         with pytest.raises(InvalidRequestError) as range_exc:
             await service.request_parse(str(source), tier="flash", page_range="2")
@@ -1005,7 +1005,7 @@ def test_doclib_local_epub_task_clears_persisted_full_page_range(monkeypatch: py
         service._parse_via_local(  # type: ignore[arg-type]
             {"path": "/tmp/book.epub", "ext": "epub"},
             "flash",
-            "1~3",
+            "1-3",
         )
     )
     assert result is expected

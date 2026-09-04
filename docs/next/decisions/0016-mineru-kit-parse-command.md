@@ -65,7 +65,7 @@ mineru-kit parse <input...> -o <output> [flags]
 
 其中：
 
-- `--pages` 支持如 `1~5` 或 `all`
+- `--pages` 支持如 `1-5` 或 `all`
 - `--format` 当前只支持 `markdown`、`middle_json`、`zip`
 - 默认 `--format` 为 `markdown`
 

@@ -463,7 +463,7 @@ def test_parse_wait_observation_uses_parse_rows_for_tier_and_pages_bucket(tmp_pa
         )
         await db.execute(
             "INSERT INTO parses (sha256, tier, page_range, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
-            ("sha", "standard", "1~3", "done", now, now),
+            ("sha", "standard", "1-3", "done", now, now),
         )
         row = await db.fetchone("SELECT id FROM parses WHERE sha256=?", ("sha",))
 

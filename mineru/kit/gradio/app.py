@@ -4,13 +4,17 @@ from __future__ import annotations
 
 import asyncio
 import html
+import json
 import os
 from pathlib import Path
 from collections.abc import Callable
 from typing import Any, Literal
 from urllib.parse import quote
 
+from ...errors import MineruError
 from ...filetypes import IMAGE_EXTENSIONS, OFFICE_EXTENSIONS, PARSEABLE_EXTENSIONS, PDF_EXTENSIONS
+from ...parser.page_range import normalize_page_range_input
+from ...types import TIERS, Tier
 from ...utils.stdio import configure_standard_streams
 from .artifacts import RunArtifacts, markdown_for_gradio, persist_parse_result, render_download
 from .client import (
@@ -131,6 +135,13 @@ def _default_tier(capabilities: V1ServerCapabilities) -> str:
     return capabilities.tiers[0]
 
 
+def _tier_for_position(position: int | float, tier_choices: list[Tier]) -> Tier:
+    """把离散滑块位置映射为服务支持的 tier，并拒绝越界或非整数位置。"""
+    if isinstance(position, bool) or position not in range(len(tier_choices)):
+        raise ValueError("Invalid tier slider position")
+    return tier_choices[int(position)]
+
+
 def _status_html(message: str) -> str:
     """生成不解释协议细节、只显示当前阶段的安全状态片段。"""
     raw_message = str(message or _DEFAULT_STATUS)
@@ -186,7 +197,7 @@ def _effective_page_range(path_value: str | Path | None, raw_page_range: str | N
     """仅为 PDF 保留用户输入的 V1 page_range，其它格式统一返回空字符串。"""
     if _file_suffix(path_value) not in PDF_EXTENSIONS:
         return ""
-    return str(raw_page_range or "").strip()
+    return normalize_page_range_input(raw_page_range)
 
 
 def _is_pdf_or_image(path_value: str | Path | None) -> bool:
@@ -232,9 +243,9 @@ def build_gradio_app(
     import gradio as gr
     from gradio_pdf import PDF
 
-    if not capabilities.tiers:
+    tier_choices = [tier for tier in TIERS if tier in capabilities.tiers]
+    if not tier_choices:
         raise ValueError("V1 API server did not advertise any parsing tier")
-    tier_choices = list(capabilities.tiers)
     preferred_tier = _default_tier(capabilities)
     file_types = _supported_file_types()
     markdown_copy_kwargs = {"buttons": ["copy"]} if _gradio_major_version(gr) >= 6 else {"show_copy_button": True}
@@ -253,16 +264,28 @@ def build_gradio_app(
                     type="filepath",
                     elem_classes=["mineru-upload-file"],
                 )
-                tier = gr.Dropdown(
-                    choices=tier_choices,
-                    value=preferred_tier,
-                    label="解析 tier",
-                    elem_classes=["mineru-tier-select"],
-                )
+                with gr.Group():
+                    tier_label = gr.Markdown(
+                        value=f"解析 tier：{preferred_tier}",
+                        padding=True,
+                        elem_classes=["mineru-tier-label"],
+                    )
+                    tier = gr.Slider(
+                        minimum=0,
+                        # 单档位时保留非零跨度，避免原生滑块计算进度时除零。
+                        maximum=max(1, len(tier_choices) - 1),
+                        value=tier_choices.index(preferred_tier),
+                        step=1,
+                        precision=0,
+                        interactive=len(tier_choices) > 1,
+                        label="解析 tier",
+                        show_label=False,
+                        elem_classes=["mineru-tier-slider"],
+                    )
                 page_range = gr.Textbox(
                     value="",
                     label="页码范围",
-                    placeholder="例如 1~5,8,-1；留空表示全部",
+                    placeholder="例如 1-5,8,r1 或 all；留空表示全部",
                     interactive=False,
                     elem_classes=["mineru-kit-page-range"],
                 )
@@ -415,6 +438,18 @@ def build_gradio_app(
             )
 
         private_event_kwargs = _private_event_kwargs(gr)
+        tier.input(
+            fn=None,
+            inputs=tier,
+            outputs=tier_label,
+            js="""(position) => {
+                // 在浏览器端即时显示当前档位；实际解析独立读取滑块位置。
+                const tiers = %s;
+                return ["解析 tier：" + tiers[position]];
+            }"""
+            % json.dumps(tier_choices),
+            **private_event_kwargs,
+        )
         input_file.change(
             fn=update_file_preview,
             inputs=input_file,
@@ -436,7 +471,7 @@ def build_gradio_app(
 
         async def convert_handler(
             file_path: str | None,
-            selected_tier: str,
+            tier_position: int | float,
             raw_page_range: str,
             request: object | None = None,
         ) -> Any:
@@ -464,7 +499,16 @@ def build_gradio_app(
             if suffix not in PARSEABLE_EXTENSIONS:
                 yield (_status_html(f"Failed: unsupported file type '.{suffix}'"), "", "", "", *empty_result[4:])
                 return
-            page_text = _effective_page_range(source_path, raw_page_range)
+            try:
+                selected_tier = _tier_for_position(tier_position, tier_choices)
+            except ValueError as exc:
+                yield (_status_html(f"Failed: {exc}"), "", "", "", *empty_result[4:])
+                return
+            try:
+                page_text = _effective_page_range(source_path, raw_page_range)
+            except MineruError as exc:
+                yield (_status_html(f"Failed: {exc.code}: {exc}"), "", "", "", *empty_result[4:])
+                return
             yield (_status_html(STATUS_PREPARING_REQUEST), "", "", "", *empty_result[4:])
             status_queue: asyncio.Queue[str] = asyncio.Queue()
             loop = asyncio.get_running_loop()

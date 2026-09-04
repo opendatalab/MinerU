@@ -1,5 +1,7 @@
 # mineru-kit parse
 
+页码表达式、默认范围及不兼容升级要求统一见 [PDF 页码范围规范](../page-ranges.md)。
+
 状态: Draft
 读者: 批处理开发者、解析内核开发者
 范围: `mineru-kit parse` 的输入、输出、local/remote 规则和命名约定

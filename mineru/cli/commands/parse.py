@@ -21,6 +21,7 @@ from ...doclib.types import (
     TelemetryObservationsRequest,
 )
 from ...errors import MineruError, error_response
+from ...parser.page_range import normalize_page_range_input
 from ...types import Tier
 from ..contracts import CliContext, CliResult
 from ..guidance import api_key_guidance_for_error
@@ -66,23 +67,11 @@ def _emit_notice(message: str, *, json_mode: bool) -> None:
 
 
 def _validate_page_range_input(page_range: str | None) -> None:
-    if page_range is None or page_range.strip() == "" or page_range.strip() == "all":
-        return
+    """复用共享语法校验，并把错误参数定位到 CLI 的 pages 选项。"""
     try:
-        for raw_part in page_range.split(","):
-            part = raw_part.strip()
-            if not part:
-                raise ValueError
-            if "~" in part:
-                raw_start, raw_end = part.split("~", 1)
-                start = int(raw_start.strip())
-                end = int(raw_end.strip())
-                if start > 0 and end > 0 and start > end:
-                    raise ValueError
-            else:
-                int(part)
-    except ValueError:
-        raise MineruError("page_range_invalid", f"Invalid page range: {page_range}", "pages") from None
+        normalize_page_range_input(page_range)
+    except MineruError as exc:
+        raise MineruError(exc.code, str(exc), "pages") from None
 
 
 def parse_cmd(
@@ -92,7 +81,7 @@ def parse_cmd(
         "--tier",
         help="Parse tier: flash, basic, standard, advanced (default: server decides)",
     ),
-    pages: str = typer.Option(None, "-p", "--pages", help="Page range, e.g. '1~5' or 'all'"),
+    pages: str = typer.Option(None, "-p", "--pages", help="PDF pages: '1-5,8,r3-r1' or 'all'; default: first 10 pages"),
     after: str = typer.Option(None, "--after", help="Continue reading after a content cursor"),
     limit: int | None = typer.Option(None, "--limit", help="Soft character limit for STDOUT content"),
     format: Literal["markdown"] = typer.Option("markdown", "-f", "--format", help="Output format: markdown"),
@@ -159,6 +148,7 @@ def _parse(
         raise MineruError("file_not_found", f"File not found: {file_path}", "path")
 
     _validate_page_range_input(pages)
+    pages = normalize_page_range_input(pages) or None
 
     client = DoclibClient(timeout=wait + 30)
 

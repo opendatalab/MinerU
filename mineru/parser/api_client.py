@@ -29,6 +29,7 @@ from ..filetypes import mime_type_for_extension
 from ..types import PageInfo, Tier, validate_tier
 from ..utils.image_payload import validate_image_sidecar_path
 from .base import DocumentParser, ParseResult
+from .page_range import normalize_page_range_input
 
 _POLL_INTERVAL_SECONDS = 1
 _POLL_MAX_ATTEMPTS = 3600
@@ -99,6 +100,7 @@ class MinerUApiParser(DocumentParser):
     # ── DocumentParser interface ─────────────────────────────────────
 
     def parse(self, path: str | Path, *, page_range: str = "") -> ParseResult:
+        page_range = normalize_page_range_input(page_range)
         file_path = Path(path)
         if not file_path.exists():
             raise FileNotFoundError(file_path)
@@ -108,6 +110,7 @@ class MinerUApiParser(DocumentParser):
         return self._build_result(job, file_path.name)
 
     async def parse_async(self, path: str | Path, *, page_range: str = "") -> ParseResult:
+        page_range = normalize_page_range_input(page_range)
         file_path = Path(path)
         if not file_path.exists():
             raise FileNotFoundError(file_path)
@@ -160,6 +163,7 @@ class MinerUApiParser(DocumentParser):
         return source
 
     def _build_payload(self, source: dict[str, Any], page_range: str) -> dict[str, Any]:
+        page_range = normalize_page_range_input(page_range)
         file_entry: dict[str, Any] = {"source": source}
         if page_range:
             file_entry["page_range"] = page_range

@@ -125,8 +125,8 @@ JSON 输出为 `FileInfoResponse` 顶层对象，至少包含:
 
 ```json
 [
-  {"tier": "flash", "page_range": "1~20", "status": "done", "done_at": 1730000000},
-  {"tier": "basic", "page_range": "1~5,18~20", "status": "done", "done_at": 1730000100}
+  {"tier": "flash", "page_range": "1-20", "status": "done", "done_at": 1730000000},
+  {"tier": "basic", "page_range": "1-5,18-20", "status": "done", "done_at": 1730000100}
 ]
 ```
 
@@ -134,7 +134,7 @@ JSON 输出为 `FileInfoResponse` 顶层对象，至少包含:
 
 ```json
 [
-  {"id": 123, "tier": "standard", "page_range": "6~17", "status": "parsing"}
+  {"id": 123, "tier": "standard", "page_range": "6-17", "status": "parsing"}
 ]
 ```
 

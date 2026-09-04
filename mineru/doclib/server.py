@@ -24,6 +24,11 @@ from pydantic import ValidationError
 from ..config import config
 from ..errors import InvalidRequestError, MineruError, NotFoundError, error_response, http_status_for
 from ..filetypes import IMAGE_EXTENSIONS, TEXT_EXTENSIONS, TEXT_FILE_TYPES
+from ..parser.page_range import (
+    expand_page_range as _expand_page_range,
+    format_page_range as _page_numbers_to_range_str,
+    normalize_page_range_input,
+)
 from ..parser.tier import TierDependencyError, ensure_tier_runtime_dependencies
 from ..render._internal.markdown.assets import build_markdown_image
 from ..render._internal.markdown.blocks import render_single_block
@@ -406,6 +411,12 @@ class DoclibServer(AsyncDoclibInterface):
             limit=limit,
             offset=offset,
         )
+        page_range = normalize_page_range_input(page_range)
+        if resolved_sha256 and tier and page_range:
+            doc = await self.state.db.fetchone("SELECT * FROM docs WHERE sha256=?", (resolved_sha256,))
+            if doc is None:
+                raise NotFoundError("doc_not_found", f"Document {resolved_sha256} not found.", "doc_ref")
+            page_range = _expand_page_range(page_range, doc["page_count"] or 1)
         coverage = _parse_coverage(page_range, rows) if resolved_sha256 and tier and page_range else None
         return ListParsesResponse(
             parses=[_parse_info(row, coverage=coverage) for row in rows],
@@ -1210,13 +1221,17 @@ class DoclibServer(AsyncDoclibInterface):
             (sha256, tier, PARSE_STATUS_DONE),
         )
         loaded_pages = load_pages_from_done_batches(data_dir, sha256, tier, cast(list[ParseBatchRow], rows))
-        if page_range:
-            loaded_pages = filter_pages_by_user_range(loaded_pages, page_range)
-        if not loaded_pages:
-            raise NotFoundError("not_cached", "Requested parsed content is not cached.", "page_range")
         doc = cast(DocRow | None, await self.state.db.fetchone("SELECT * FROM docs WHERE sha256=?", (sha256,)))
         if doc is None:
             raise NotFoundError("doc_not_found", f"Document {sha256} not found.", "doc_ref")
+        page_range = normalize_page_range_input(page_range)
+        if page_range and doc["page_count"] is not None:
+            loaded_pages = filter_pages_by_user_range(loaded_pages, _expand_page_range(page_range, doc["page_count"]))
+        elif page_range and page_range != "all":
+            # 总页数未知时只允许绝对页码，不能用已缓存页数推断文档末页。
+            loaded_pages = filter_pages_by_user_range(loaded_pages, page_range)
+        if not loaded_pages:
+            raise NotFoundError("not_cached", "Requested parsed content is not cached.", "page_range")
         output: list[str] = []
         page_count = doc["page_count"]
         for page in loaded_pages:
@@ -1695,19 +1710,20 @@ def _is_paginated_doc(doc: DocRow) -> bool:
 
 
 def _normalize_content_page_range(page_range: str | None, after: str | None, doc: DocRow) -> str | None:
+    page_range = normalize_page_range_input(page_range)
     page_count = doc.get("page_count") or 1
     if _is_paginated_doc(doc):
         if page_range and page_range.strip() == "all":
-            return f"1~{page_count}"
+            return _expand_page_range("all", page_count)
         if page_range:
             return _normalize_page_range(page_range, page_count)
         if after:
             cursor = _parse_after_cursor(after)
             assert cursor is not None
             end = min(page_count, cursor.page_no + 9)
-            return f"{cursor.page_no}~{end}" if cursor.page_no != end else str(cursor.page_no)
+            return _range_str(cursor.page_no, end)
         end = min(page_count, 10)
-        return f"1~{end}" if end > 1 else "1"
+        return _range_str(1, end)
     if page_range and page_range.strip() == "all":
         return None
     return _normalize_page_range(page_range, page_count) if page_range else None
@@ -1715,55 +1731,6 @@ def _normalize_content_page_range(page_range: str | None, after: str | None, doc
 
 def _normalize_page_range(page_range: str, page_count: int) -> str:
     return _expand_page_range(page_range, page_count)
-
-
-def _expand_page_range(page_range: str, page_count: int) -> str:
-    available_page_numbers = set(range(1, page_count + 1))
-    if not page_range or page_range.strip() == "all":
-        page_numbers = available_page_numbers
-    else:
-        page_numbers: set[int] = set()
-        for part in page_range.split(","):
-            part = part.strip()
-            if not part:
-                continue
-            if "~" in part:
-                raw_start, raw_end = part.split("~", 1)
-                start = int(raw_start.strip())
-                end = int(raw_end.strip())
-                if start < 0:
-                    start = page_count + start + 1
-                if end < 0:
-                    end = page_count + end + 1
-                if start <= end:
-                    page_numbers.update(range(start, end + 1))
-            else:
-                page_no = int(part)
-                if page_no < 0:
-                    page_no = page_count + page_no + 1
-                page_numbers.add(page_no)
-        page_numbers &= available_page_numbers
-    if not page_numbers:
-        raise InvalidRequestError("page_range_invalid", f"Page range does not select any pages: {page_range}", "page_range")
-    return _page_numbers_to_range_str(page_numbers)
-
-
-def _page_numbers_to_range_str(page_numbers: set[int]) -> str:
-    if not page_numbers:
-        return ""
-    ranges: list[str] = []
-    ordered = sorted(page_numbers)
-    start = ordered[0]
-    end = ordered[0]
-    for page_no in ordered[1:]:
-        if page_no == end + 1:
-            end = page_no
-            continue
-        ranges.append(f"{start}~{end}" if start != end else str(start))
-        start = page_no
-        end = page_no
-    ranges.append(f"{start}~{end}" if start != end else str(start))
-    return ",".join(ranges)
 
 
 def _select_context_pages(pages: list[PageInfo], target: ContentCursor | None, context: int) -> list[PageInfo]:
@@ -2179,7 +2146,7 @@ def _last_requested_page(page_range: str | None) -> int | None:
 
 
 def _range_str(start: int, end: int) -> str:
-    return f"{start}~{end}" if start != end else str(start)
+    return _page_numbers_to_range_str(range(start, end + 1))
 
 
 def _effective_data_dir(state: Any) -> str:
