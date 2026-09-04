@@ -6,6 +6,8 @@ import asyncio
 import html
 import json
 import os
+import time
+from contextlib import aclosing
 from pathlib import Path
 from collections.abc import Callable
 from typing import Any, Literal
@@ -18,14 +20,21 @@ from ...utils.stdio import configure_standard_streams
 from .artifacts import RunArtifacts, markdown_for_gradio, persist_parse_result, render_download
 from .client import (
     ManagedLocalApiServer,
-    STATUS_COMPLETED,
-    STATUS_PREPARING_REQUEST,
-    STATUS_PROCESSING_OUTPUT,
     V1ArtifactClient,
     V1ServerCapabilities,
 )
 from .page_range import effective_page_range as _effective_page_range
 from .page_range import pdf_page_metadata, validate_max_pages
+from .status import (
+    DEFAULT_STATUS as _DEFAULT_STATUS,
+    STATUS_COMPLETED,
+    STATUS_PREPARING_REQUEST,
+    STATUS_PROCESSING_OUTPUT,
+    STATUS_QUEUED_LOCALLY,
+    StatusPanelState,
+    status_html as _status_html,
+    stream_status_updates,
+)
 
 _DOWNLOAD_FORMATS: tuple[tuple[str, str], ...] = (
     ("zip", "ZIP"),
@@ -36,16 +45,6 @@ _DOWNLOAD_FORMATS: tuple[tuple[str, str], ...] = (
     ("pdf", "PDF"),
 )
 _DEFAULT_TIER = "standard"
-_DEFAULT_STATUS = "Upload a file and start conversion."
-_STATUS_STEPS = (
-    ("prepare", "准备"),
-    ("check", "检查服务"),
-    ("submit", "提交任务"),
-    ("process", "服务端解析"),
-    ("download", "下载结果"),
-    ("output", "整理输出"),
-    ("done", "完成"),
-)
 _LATEX_DELIMITERS_A = [
     {"left": "$$", "right": "$$", "display": True},
     {"left": "$", "right": "$", "display": False},
@@ -110,16 +109,6 @@ _KIT_MENU_CSS = """
     border: 0; border-radius: 6px; background: transparent; box-shadow: none; text-align: left;
 }
 .mineru-kit-download-options :is(button, a):hover { background: var(--background-fill-secondary, #f3f4f6); }
-.mineru-kit-status { min-height: 84px; }
-.mineru-kit-status-steps { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
-.mineru-kit-status-steps .status-step {
-    display: inline-flex; align-items: center; gap: 4px;
-    color: var(--body-text-color-subdued, #6b7280); font-size: 12px;
-}
-.mineru-kit-status-steps .status-step i { width: 7px; height: 7px; border-radius: 50%; background: currentColor; opacity: .35; }
-.mineru-kit-status-steps .status-step.is-active { color: var(--mineru-accent, #f97316); font-weight: 600; }
-.mineru-kit-status-steps .status-step.is-active i, .mineru-kit-status-steps .status-step.is-done i { opacity: 1; }
-.mineru-kit-status-steps .status-step.is-error { color: #dc2626; font-weight: 600; }
 .mineru-kit-empty-preview { min-height: 160px; display: grid; place-items: center; opacity: .65; }
 .mineru-kit-image-preview img { max-height: var(--mineru-pdf-page-height, 720px); object-fit: contain; }
 @media (max-width: 900px) {
@@ -183,52 +172,8 @@ def _tier_for_position(position: int | float, tier_choices: list[Tier]) -> Tier:
     return tier_choices[int(position)]
 
 
-def _status_html(message: str) -> str:
-    """生成不解释协议细节、只显示当前阶段的安全状态片段。"""
-    raw_message = str(message or _DEFAULT_STATUS)
-    safe_message = html.escape(raw_message)
-    lowered = raw_message.lower()
-    if raw_message.startswith("Failed:"):
-        current_index = len(_STATUS_STEPS) - 1
-        state_for_index = "error"
-    elif "downloading" in lowered or "downloaded" in lowered:
-        current_index, state_for_index = 4, "active"
-    elif "completed" in lowered:
-        current_index = len(_STATUS_STEPS) - 1
-        state_for_index = "done"
-    elif "preparing outputs" in lowered:
-        current_index, state_for_index = 5, "active"
-    elif "preparing" in lowered:
-        current_index, state_for_index = 0, "active"
-    elif "checking" in lowered:
-        current_index, state_for_index = 1, "active"
-    elif "submitting" in lowered:
-        current_index, state_for_index = 2, "active"
-    elif "processing" in lowered:
-        current_index, state_for_index = 3, "active"
-    else:
-        current_index, state_for_index = -1, "pending"
-    items: list[str] = []
-    for index, (_key, label) in enumerate(_STATUS_STEPS):
-        if state_for_index == "error" and index == current_index:
-            state = "is-error"
-        elif state_for_index == "done" or index < current_index:
-            state = "is-done"
-        elif index == current_index:
-            state = "is-active"
-        else:
-            state = "is-pending"
-        items.append(f'<span class="status-step {state}"><i></i>{label}</span>')
-    return (
-        '<div class="mineru-kit-status">'
-        f'<div class="mineru-kit-status-steps">{"".join(items)}</div>'
-        f"<strong>{safe_message}</strong>"
-        "</div>"
-    )
-
-
 def _file_suffix(path_value: str | Path | None) -> str:
-    """读取上传文件的小写后缀，供 UI 预览和页码控件判断。"""
+    """读取上传文件的小写后缀，供预览、选页与 OCR 控件判断。"""
     if not path_value:
         return ""
     return Path(path_value).suffix.lower().lstrip(".")
@@ -289,6 +234,9 @@ def build_gradio_app(
     app_js = _resource_text("gradio_app.js")
     # Gradio 5 在 Blocks 构造时接收静态资源，6 则在 launch 时接收。
     blocks_kwargs = {"css": app_css, "js": app_js} if _gradio_major_version(gr) < 6 else {}
+    # 等待限制放在生成器内部，使其他会话也能立即显示本地排队状态。
+    conversion_slot = asyncio.Semaphore(1)
+    session_tasks: dict[str, set[asyncio.Task[tuple[Any, ...]]]] = {}
 
     with gr.Blocks(**blocks_kwargs) as demo:
         gr.HTML(
@@ -322,6 +270,14 @@ def build_gradio_app(
                         show_label=False,
                         elem_classes=["mineru-tier-slider"],
                     )
+                force_ocr = gr.Checkbox(
+                    value=False,
+                    label="强制 OCR",
+                    info="忽略 PDF 文本层并进行 OCR；关闭时自动判断。",
+                    visible=False,
+                    interactive=True,
+                    elem_classes=["mineru-force-ocr"],
+                )
                 page_range = gr.Textbox(
                     value="",
                     label="页码范围",
@@ -360,7 +316,7 @@ def build_gradio_app(
                 with gr.Row(elem_classes=["mineru-actions"]):
                     convert_button = gr.Button("转换", variant="primary", scale=1, min_width=0, interactive=False)
                     clear_button = gr.ClearButton(value="清除", scale=1, min_width=1)
-                status_panel = gr.HTML(_status_html(_DEFAULT_STATUS), elem_classes=["mineru-kit-status"])
+                status_panel = gr.HTML(_status_html(), elem_classes=["mineru-status-panel"])
 
             with gr.Column(scale=4, min_width=340, elem_classes=["mineru-kit-preview", "mineru-preview-pane"]):
                 pdf_preview = PDF(
@@ -444,6 +400,7 @@ def build_gradio_app(
             [
                 input_file,
                 page_range,
+                force_ocr,
                 markdown_output,
                 markdown_source,
                 structured_source,
@@ -504,6 +461,29 @@ def build_gradio_app(
             )
 
         private_event_kwargs = _private_event_kwargs(gr)
+
+        def update_ocr_control(file_path: str | None) -> Any:
+            """仅为原始 PDF 显示开关，并在更换或清除文件时重置为自动判断。"""
+            return gr.update(value=False, visible=_file_suffix(file_path) in PDF_EXTENSIONS)
+
+        input_file.change(
+            fn=update_ocr_control,
+            inputs=input_file,
+            outputs=force_ocr,
+            trigger_mode="always_last",
+            **private_event_kwargs,
+        )
+
+        async def cancel_session_conversion(request: object | None = None) -> None:
+            """主动回收当前会话的任务，不依赖 Gradio 5/6 对异步生成器的关闭实现。"""
+            session_hash = getattr(request, "session_hash", None)
+            tasks = session_tasks.pop(session_hash, set())
+            for task in tasks:
+                task.cancel()
+            if tasks:
+                await asyncio.gather(*tasks, return_exceptions=True)
+
+        cancel_session_conversion.__annotations__["request"] = gr.Request
         # 显式注册加载事件，确保两个主版本都会执行前端初始化函数而不只加载其文本。
         demo.load(fn=None, js=app_js, **private_event_kwargs)
         tier.input(
@@ -518,23 +498,18 @@ def build_gradio_app(
             % json.dumps(tier_choices),
             **private_event_kwargs,
         )
-        input_file.change(
-            fn=update_file_preview,
-            inputs=input_file,
-            outputs=[
-                pdf_preview,
-                image_preview,
-                office_preview,
-                generic_preview,
-                status_panel,
-                markdown_output,
-                markdown_source,
-                structured_source,
-                artifact_state,
-                *download_buttons.values(),
-            ],
-            **private_event_kwargs,
-        )
+        preview_outputs = [
+            pdf_preview,
+            image_preview,
+            office_preview,
+            generic_preview,
+            status_panel,
+            markdown_output,
+            markdown_source,
+            structured_source,
+            artifact_state,
+            *download_buttons.values(),
+        ]
 
         # 文件页数只在上传后读取；前端缓存元数据，tier 切换和拖动不发起 Python 请求。
         range_inputs = [input_file, tier, page_metadata, page_selection, page_handle_a, page_handle_b]
@@ -576,6 +551,7 @@ def build_gradio_app(
             file_path: str | None,
             tier_position: int | float,
             raw_page_range: str,
+            force_ocr: bool = False,
             request: object | None = None,
         ) -> Any:
             """执行单文件 V1 解析并流式更新状态与三个结果标签。"""
@@ -614,64 +590,90 @@ def build_gradio_app(
             except MineruError as exc:
                 yield (_status_html(f"Failed: {exc.code}: {exc}"), "", "", "", *empty_result[4:])
                 return
-            yield (_status_html(STATUS_PREPARING_REQUEST), "", "", "", *empty_result[4:])
-            status_queue: asyncio.Queue[str] = asyncio.Queue()
+            state = StatusPanelState()
+            state.append(STATUS_PREPARING_REQUEST)
+            yield (state.render(), *empty_result[1:])
+            status_queue: asyncio.Queue[tuple[str, float]] = asyncio.Queue()
             loop = asyncio.get_running_loop()
 
             def emit(message: str) -> None:
-                """把同步 client 状态安全投递到当前 Gradio 事件循环。"""
-                loop.call_soon_threadsafe(status_queue.put_nowait, message)
+                """记录通知时刻，避免队列消费延迟被误算为服务端解析耗时。"""
+                loop.call_soon_threadsafe(status_queue.put_nowait, (message, time.monotonic()))
 
-            task = asyncio.create_task(
-                client.parse_file(
-                    source_path,
-                    tier=selected_tier,
-                    page_range=page_text,
-                    status_callback=emit,
-                )
-            )
+            async def run_conversion() -> tuple[Any, ...]:
+                """在单任务槽内解析和整理结果；取消或失败均自动释放等待位置。"""
+                if conversion_slot.locked():
+                    emit(STATUS_QUEUED_LOCALLY)
+                async with conversion_slot:
+                    result = await client.parse_file(
+                        source_path,
+                        tier=selected_tier,
+                        page_range=page_text,
+                        # 再次检查源文件类型，避免事件 API 或隐藏控件残留值强制处理非 PDF。
+                        ocr_mode="ocr" if suffix in PDF_EXTENSIONS and force_ocr else "auto",
+                        status_callback=emit,
+                    )
+                    emit(STATUS_PROCESSING_OUTPUT)
+                    artifacts = await asyncio.to_thread(
+                        persist_parse_result,
+                        result,
+                        source_path,
+                        output_root=output_root,
+                        page_range=page_text,
+                    )
+                    markdown_text = artifacts.markdown_path.read_text(encoding="utf-8")
+                    structured_text = artifacts.structured_content_path.read_text(encoding="utf-8")
+                    preview_path = artifacts.layout_pdf_path or artifacts.origin_pdf_path
+                    office_html = _build_office_result_html(artifacts, request) if _is_office(source_path) else ""
+                    generic_html = (
+                        "" if preview_path or office_html else '<div class="mineru-kit-empty-preview">结果已生成</div>'
+                    )
+                    show_image_preview = suffix in IMAGE_EXTENSIONS and preview_path is None
+                    return (
+                        markdown_for_gradio(markdown_text, artifacts),
+                        markdown_text,
+                        structured_text,
+                        gr.update(value=str(preview_path) if preview_path else None, visible=preview_path is not None),
+                        gr.update(value=str(source_path) if show_image_preview else None, visible=show_image_preview),
+                        gr.update(value=office_html, visible=bool(office_html)),
+                        gr.update(value=generic_html, visible=bool(generic_html)),
+                        artifacts.as_state(),
+                        *_download_updates(gr, interactive=True),
+                    )
+
+            task = asyncio.create_task(run_conversion())
+            session_hash = getattr(request, "session_hash", None)
+            if session_hash:
+                session_tasks.setdefault(session_hash, set()).add(task)
+
+                def forget_task(done_task: asyncio.Task[tuple[Any, ...]]) -> None:
+                    """任务结束即释放会话索引，即使前端已丢弃生成器也不保留任务引用。"""
+                    tasks = session_tasks.get(session_hash)
+                    if tasks is not None:
+                        tasks.discard(done_task)
+                        if not tasks:
+                            session_tasks.pop(session_hash, None)
+
+                task.add_done_callback(forget_task)
             try:
-                while not task.done():
-                    try:
-                        message = await asyncio.wait_for(status_queue.get(), timeout=0.25)
-                    except asyncio.TimeoutError:
-                        continue
-                    yield (_status_html(message), "", "", "", *empty_result[4:])
-                while not status_queue.empty():
-                    yield (_status_html(status_queue.get_nowait()), "", "", "", *empty_result[4:])
-                result = await task
-                emit(STATUS_PROCESSING_OUTPUT)
-                yield (_status_html(STATUS_PROCESSING_OUTPUT), "", "", "", *empty_result[4:])
-                artifacts = await asyncio.to_thread(
-                    persist_parse_result,
-                    result,
-                    source_path,
-                    output_root=output_root,
-                    page_range=page_text,
-                )
-                markdown_text = artifacts.markdown_path.read_text(encoding="utf-8")
-                structured_text = artifacts.structured_content_path.read_text(encoding="utf-8")
-                preview_path = artifacts.layout_pdf_path or artifacts.origin_pdf_path
-                office_html = _build_office_result_html(artifacts, request) if _is_office(source_path) else ""
-                generic_html = "" if preview_path or office_html else '<div class="mineru-kit-empty-preview">结果已生成</div>'
-                show_image_preview = suffix in IMAGE_EXTENSIONS and preview_path is None
-                yield (
-                    _status_html(STATUS_COMPLETED),
-                    markdown_for_gradio(markdown_text, artifacts),
-                    markdown_text,
-                    structured_text,
-                    gr.update(value=str(preview_path) if preview_path else None, visible=preview_path is not None),
-                    gr.update(value=str(source_path) if show_image_preview else None, visible=show_image_preview),
-                    gr.update(value=office_html, visible=bool(office_html)),
-                    gr.update(value=generic_html, visible=bool(generic_html)),
-                    artifacts.as_state(),
-                    *_download_updates(gr, interactive=True),
-                )
+                async with aclosing(stream_status_updates(task, status_queue, state)) as updates:
+                    async for status in updates:
+                        # 动画只更新状态卡片，避免反复重建预览和清空结果组件。
+                        yield (status, *(gr.skip() for _ in empty_result[1:]))
+                result_outputs = await task
+                state.append(STATUS_COMPLETED)
+                yield (state.render(), *result_outputs)
+            except asyncio.CancelledError:
+                # 会话重置后静默结束旧流，避免把取消异常或旧状态写回新界面。
+                return
             except Exception as exc:
+                state.append(f"Failed: {exc}")
+                yield (state.render(), *empty_result[1:])
+            finally:
+                # 清除、换文件或断开流时仅取消本地等待，不发送远端取消请求。
                 if not task.done():
                     task.cancel()
-                    await asyncio.gather(task, return_exceptions=True)
-                yield (_status_html(f"Failed: {exc}"), "", "", "", *empty_result[4:])
+                await asyncio.gather(task, return_exceptions=True)
 
         convert_outputs = [
             status_panel,
@@ -687,17 +689,25 @@ def build_gradio_app(
         ]
         # Gradio 在读取函数签名时需要真实的 Request 类型对象；注解在运行时补回以保持延迟导入。
         convert_handler.__annotations__["request"] = gr.Request
-        event_kwargs: dict[str, Any] = {"queue": True, "show_progress": "hidden"}
+        event_kwargs: dict[str, Any] = {"queue": True, "show_progress": "hidden", "concurrency_limit": None}
         if _gradio_major_version(gr) >= 6:
             event_kwargs["api_visibility"] = "public" if enable_api else "private"
         else:
             event_kwargs["api_name"] = "to_markdown" if enable_api else False
-        convert_button.click(
+        convert_event = convert_button.click(
             fn=convert_handler,
-            inputs=[input_file, tier, page_range],
+            inputs=[input_file, tier, page_range, force_ocr],
             outputs=convert_outputs,
             **event_kwargs,
         )
+        input_file.change(
+            fn=update_file_preview,
+            inputs=input_file,
+            outputs=preview_outputs,
+            cancels=[convert_event],
+            **private_event_kwargs,
+        )
+        input_file.change(fn=cancel_session_conversion, inputs=[], outputs=[], **private_event_kwargs)
 
         reset_outputs = [
             status_panel,
@@ -727,7 +737,8 @@ def build_gradio_app(
                 *_download_updates(gr, interactive=False),
             )
 
-        clear_button.click(fn=reset_ui, inputs=[], outputs=reset_outputs, queue=False)
+        clear_button.click(fn=reset_ui, inputs=[], outputs=reset_outputs, cancels=[convert_event], queue=False)
+        clear_button.click(fn=cancel_session_conversion, inputs=[], outputs=[], **private_event_kwargs)
 
         for format_name, _label in _DOWNLOAD_FORMATS:
             download_buttons[format_name].click(
@@ -759,7 +770,6 @@ def launch_gradio(
     api_server_no_flash: bool,
     api_server_concurrency: int,
     api_server_language: str,
-    api_server_ocr_mode: Literal["auto", "txt", "ocr"],
     api_server_disable_image_analysis: bool,
     api_server_preload_models: bool,
     max_pages: int | None = None,
@@ -779,7 +789,6 @@ def launch_gradio(
                 no_flash=api_server_no_flash,
                 concurrency=api_server_concurrency,
                 language=api_server_language,
-                ocr_mode=api_server_ocr_mode,
                 disable_image_analysis=api_server_disable_image_analysis,
                 preload_models=api_server_preload_models,
                 api_key=resolved_api_key,

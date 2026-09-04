@@ -89,13 +89,14 @@ backend 不是普通 API 协议层字段。
 #### 稳定解析参数
 
 - `--language`
-- `--ocr-mode`
 - `--disable-image-analysis`
 - `--concurrency`
 - `--upload-dir`
 - `--url-timeout`
 
 ### 6. 不进入正式契约的参数
+
+OCR 模式使用 V1 任务级 `ocr_mode` 参数，省略时默认 `auto`。服务启动参数 `--ocr-mode` 已移除，不保留全局默认值或兼容透传。
 
 `--reload` 不进入正式命令设计。
 

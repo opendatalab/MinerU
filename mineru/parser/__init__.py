@@ -6,12 +6,13 @@ from typing import Literal
 
 from ..model.flash.html import HtmlSourceContext
 from ..types import Tier
-from .api_client import MinerUApiParser
+from .api_client import ApiJobStatus, MinerUApiParser
 from .base import MIDDLE_JSON_SCHEMA_VERSION, DocumentParser, ParseResult
 from .mineru_parser import MinerUParser
 from .tier import PARSER_BACKENDS, backend_for_tier
 
 __all__ = [
+    "ApiJobStatus",
     "backend_for_tier",
     "PARSER_BACKENDS",
     "DocumentParser",

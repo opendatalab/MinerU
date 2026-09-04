@@ -560,6 +560,21 @@ def test_api_server_rejects_backend_and_effort_options() -> None:
     assert "--effort" in effort_result.output
 
 
+@pytest.mark.parametrize(
+    ("command", "option"),
+    [("api-server", "--ocr-mode"), ("gradio", "--ocr-mode"), ("gradio", "--api-server-ocr-mode")],
+)
+def test_server_commands_reject_startup_ocr_configuration(command: str, option: str) -> None:
+    """服务启动命令不再接受或展示 OCR 配置，单次解析命令继续提供该参数。"""
+    result = runner.invoke(app, [command, option, "ocr"])
+    assert result.exit_code != 0
+    assert "No such option" in result.output
+    help_result = runner.invoke(app, [command, "--help"])
+    assert help_result.exit_code == 0
+    assert option not in help_result.output
+    assert "--ocr-mode" in runner.invoke(app, ["parse", "--help"]).output
+
+
 def test_kit_commands_do_not_expose_formula_table_switches() -> None:
     """校验 mineru-kit 公开命令不再暴露公式/表格识别开关。"""
     parse_help = runner.invoke(app, ["parse", "--help"])
@@ -591,6 +606,7 @@ def test_api_server_forwards_single_tier_and_no_flash(monkeypatch: Any) -> None:
     assert [seen["args"][index + 1] for index, item in enumerate(seen["args"]) if item == "--tier"] == ["standard"]
     assert "--no-flash" in seen["args"]
     assert "--preload-models" in seen["args"]
+    assert "--ocr-mode" not in seen["args"]
 
 
 def test_api_server_without_tier_lets_parser_api_apply_standard_default(monkeypatch: Any) -> None:

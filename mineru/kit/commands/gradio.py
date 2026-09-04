@@ -73,9 +73,6 @@ def gradio_cmd(
         1, "--api-server-concurrency", "--concurrency", help="Managed server job concurrency"
     ),
     api_server_language: str = typer.Option("ch", "--api-server-language", "--language", help="Managed server OCR language"),
-    api_server_ocr_mode: Literal["auto", "txt", "ocr"] = typer.Option(
-        "auto", "--api-server-ocr-mode", "--ocr-mode", help="Managed server OCR mode"
-    ),
     api_server_disable_image_analysis: bool = typer.Option(
         False,
         "--api-server-disable-image-analysis/--disable-image-analysis",
@@ -116,7 +113,6 @@ def gradio_cmd(
             api_server_no_flash=api_server_no_flash,
             api_server_concurrency=api_server_concurrency,
             api_server_language=normalized_language,
-            api_server_ocr_mode=api_server_ocr_mode,
             api_server_disable_image_analysis=api_server_disable_image_analysis,
             api_server_preload_models=api_server_preload_models,
         )

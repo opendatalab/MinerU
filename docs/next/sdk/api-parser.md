@@ -48,6 +48,7 @@ class MinerUApiParser(DocumentParser):
         api_url: str | None = None,
         api_key: str | None = None,
         tier: str | None = None,
+        ocr_mode: Literal["auto", "txt", "ocr"] | None = None,
         include_images: bool = False,
         include_model_output: bool = False,
     ) -> None: ...
@@ -61,6 +62,7 @@ class MinerUApiParser(DocumentParser):
 | `api_key` | Bearer token。省略时读取 `MINERU_API_KEY`；Local Parse Server 未启用鉴权时可为空。 |
 | `tier` | `flash`、`basic`、`standard`、`advanced` 或 `None`。`None` 表示 SDK 在 HTTP 请求中省略 `tier`，让 v1 API 使用默认选择策略；非 PDF/image 文件按 API Server 批量规则归一，见 [ADR-0024](../decisions/0024-file-type-tier-normalization.md)。 |
 | `include_images` | 是否从 zip 产物读取图片 sidecar，并挂载到 `ParseResult` 图片缓存。 |
+| `ocr_mode` | 请求级 OCR 模式：`auto` 自动判断、`txt` 使用文本层、`ocr` 强制 OCR。默认 `None`，在 HTTP 请求中省略字段，由服务端按 `auto` 处理；显式设置时同步与异步解析均传入任务顶层。 |
 | `include_model_output` | 是否请求并保留模型原始输出；开启时通过 zip 产物读取。 |
 
 ## 行为流程

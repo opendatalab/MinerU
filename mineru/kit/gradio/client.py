@@ -12,24 +12,26 @@ import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import httpx
 
-from ...parser.api_client import MinerUApiParser, should_trust_env_for_url
+from ...parser.api_client import ApiJobStatus, MinerUApiParser, should_trust_env_for_url
 from ...parser.base import ParseResult
 from ...parser.page_range import normalize_page_range_input
 from ...parser.process_control import ManagedProcessControl
 from ...types import SERVER_TIERS, TIERS, ServerTier, Tier
 from ...utils.stdio import utf8_subprocess_env
-
-STATUS_PREPARING_REQUEST = "Preparing request..."
-STATUS_CHECKING_SERVER = "Checking server status..."
-STATUS_SUBMITTING_TASK = "Submitting task..."
-STATUS_PROCESSING_ON_SERVER = "Processing on server..."
-STATUS_DOWNLOADING_RESULT = "Result archive downloaded."
-STATUS_PROCESSING_OUTPUT = "Preparing outputs..."
-STATUS_COMPLETED = "Completed"
+from .status import (
+    STATUS_CHECKING_SERVER,
+    STATUS_COMPLETED,
+    STATUS_DOWNLOADING_RESULT,
+    STATUS_PREPARING_REQUEST,
+    STATUS_PROCESSING_ON_SERVER,
+    STATUS_PROCESSING_OUTPUT,
+    STATUS_QUEUED_ON_SERVER,
+    STATUS_SUBMITTING_TASK,
+)
 
 
 class V1ArtifactError(RuntimeError):
@@ -181,6 +183,7 @@ class V1ArtifactClient:
         *,
         tier: str,
         page_range: str,
+        ocr_mode: Literal["auto", "txt", "ocr"] = "auto",
         status_callback: Callable[[str], None] | None = None,
     ) -> ParseResult:
         """通过 V1 API 解析单个文件，并返回带图片/模型输出的 `ParseResult`。"""
@@ -203,18 +206,30 @@ class V1ArtifactClient:
             api_url=self.base_url,
             api_key=self.api_key,
             tier=cast(Tier, tier),
+            ocr_mode=ocr_mode,
             include_images=True,
             include_model_output=True,
         )
-        emit(STATUS_PROCESSING_ON_SERVER)
+
+        def on_job_status(status: ApiJobStatus) -> None:
+            """将真实 V1 状态映射到卡片阶段，服务端完成仅代表开始下载。"""
+            messages: dict[ApiJobStatus, str] = {
+                "queued": STATUS_QUEUED_ON_SERVER,
+                "running": STATUS_PROCESSING_ON_SERVER,
+                "completed": STATUS_DOWNLOADING_RESULT,
+                "partial": STATUS_DOWNLOADING_RESULT,
+                "failed": "Failed: server task failed",
+                "canceled": "Failed: server task canceled",
+            }
+            emit(messages[status])
+
         try:
-            result = await parser.parse_async(path, page_range=page_range)
+            result = await parser.parse_async(path, page_range=page_range, status_callback=on_job_status)
         except Exception as exc:
             emit(f"Failed: {exc}")
             if isinstance(exc, (FileNotFoundError, V1ArtifactError)):
                 raise
             raise V1ArtifactError(str(exc), code=getattr(exc, "code", "parse_failed")) from exc
-        emit(STATUS_DOWNLOADING_RESULT)
         return result
 
     def _headers(self) -> dict[str, str]:
@@ -248,7 +263,6 @@ class ManagedLocalApiServer:
         no_flash: bool = False,
         concurrency: int = 1,
         language: str = "ch",
-        ocr_mode: str = "auto",
         disable_image_analysis: bool = False,
         preload_models: bool = False,
         api_key: str | None = None,
@@ -262,7 +276,6 @@ class ManagedLocalApiServer:
         self.no_flash = no_flash
         self.concurrency = concurrency
         self.language = language
-        self.ocr_mode = ocr_mode
         self.disable_image_analysis = disable_image_analysis
         self.preload_models = preload_models
         self.api_key = api_key
@@ -373,8 +386,6 @@ class ManagedLocalApiServer:
             str(self.concurrency),
             "--language",
             self.language,
-            "--ocr-mode",
-            self.ocr_mode,
             *(["--no-flash"] if self.no_flash else []),
             *(["--disable-image-analysis"] if self.disable_image_analysis else []),
             *(["--preload-models"] if self.preload_models else []),

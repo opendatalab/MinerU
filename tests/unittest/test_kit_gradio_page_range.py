@@ -83,7 +83,6 @@ def test_launch_forwards_limit_and_versioned_assets(monkeypatch: pytest.MonkeyPa
         api_server_no_flash=False,
         api_server_concurrency=1,
         api_server_language="ch",
-        api_server_ocr_mode="auto",
         api_server_disable_image_analysis=False,
         api_server_preload_models=False,
         max_pages=20,
@@ -201,7 +200,7 @@ def test_metadata_does_not_read_non_pdf(monkeypatch: pytest.MonkeyPatch) -> None
 
 
 def test_native_range_components_and_frontend_only_events(tmp_path: Path) -> None:
-    """双滑块使用原生组件，联动与档位切换不请求 Python，公开转换输入仍为三项。"""
+    """双滑块联动与档位切换不请求 Python，公开转换输入在页码之后增加 OCR 开关。"""
     capabilities = V1ServerCapabilities("http://127.0.0.1:1", ("flash", "standard"), ("zip",), ("file_id",))
     demo = gradio_app.build_gradio_app(Mock(), capabilities, output_root=tmp_path, max_pages=20, enable_example=False)
     sliders = [block for block in demo.blocks.values() if block.__class__.__name__ == "Slider"]
@@ -216,8 +215,9 @@ def test_native_range_components_and_frontend_only_events(tmp_path: Path) -> Non
         assert len(events[0]["targets"]) == 5
         assert events[0]["outputs"][:2] == [sliders[1]._id, sliders[2]._id]
     handler = next(fn for fn in demo.fns.values() if fn.name == "convert_handler")
-    assert len(handler.inputs) == 3
+    assert len(handler.inputs) == 4
     assert handler.inputs[2].__class__.__name__ == "Textbox" and handler.inputs[2].visible is False
+    assert handler.inputs[3].__class__.__name__ == "Checkbox" and handler.inputs[3].value is False
     metadata_handler = next(fn for fn in demo.fns.values() if fn.name == "read_page_metadata")
     assert metadata_handler.outputs[0].__class__.__name__ == "Textbox"
     metadata = json.loads(metadata_handler.fn(str(_pdf(tmp_path, 12))))

@@ -1442,9 +1442,11 @@ def test_api_client_omits_tier_when_unspecified(tmp_path: Path) -> None:
     assert "tier" not in payload
 
 
-def test_api_client_constructor_does_not_expose_ocr_or_image_options() -> None:
+def test_api_client_constructor_exposes_request_ocr_without_legacy_options() -> None:
+    """验证 OCR 使用显式请求参数，且不恢复旧 method 或图片分析选项。"""
     parameters = inspect.signature(MinerUApiParser).parameters
 
+    assert parameters["ocr_mode"].default is None
     assert "method" not in parameters
     assert "image_analysis" not in parameters
 
@@ -1796,7 +1798,7 @@ def test_create_app_does_not_read_runtime_settings_from_env(tmp_path: Path, monk
     assert app.state.max_inline_bytes == 1024 * 1024
     assert app.state.allow_http_source is False
     assert app.state.language == "ch"
-    assert app.state.ocr_mode == "auto"
+    assert not hasattr(app.state, "ocr_mode")
     assert app.state.effort == "high"
     assert app.state.image_analysis is True
     assert not hasattr(app.state, _REMOVED_TABLE_ENABLE_PARAM)
@@ -1900,7 +1902,6 @@ def test_api_server_rendered_outputs_do_not_return_image_sidecars(
             rec,
             request,
             file_store,
-            ocr_mode="auto",
             image_analysis=True,
             allow_local_source=True,
         )
@@ -1939,7 +1940,6 @@ def test_api_server_run_job_normalizes_lightweight_file_tier_to_flash(
             rec,
             request,
             file_store,
-            ocr_mode="auto",
             image_analysis=True,
             allow_local_source=True,
         )
@@ -2072,7 +2072,6 @@ def test_api_server_zip_includes_model_output_when_parse_result_has_it(
             rec,
             request,
             file_store,
-            ocr_mode="auto",
             image_analysis=True,
             allow_local_source=True,
         )
@@ -2121,7 +2120,6 @@ def test_api_server_zip_rejects_unsafe_image_sidecar_path(
             rec,
             request,
             file_store,
-            ocr_mode="auto",
             image_analysis=True,
             allow_local_source=True,
         )
@@ -2163,7 +2161,6 @@ def test_api_server_zip_skips_model_output_when_parse_result_has_none(
             rec,
             request,
             file_store,
-            ocr_mode="auto",
             image_analysis=True,
             allow_local_source=True,
         )
@@ -2209,7 +2206,6 @@ def test_api_server_logs_traceback_when_job_file_fails(
                 rec,
                 request,
                 file_store,
-                ocr_mode="auto",
                 image_analysis=True,
                 allow_local_source=True,
             )
@@ -2427,7 +2423,6 @@ def test_api_server_standard_jobs_use_requested_tier(tmp_path: Path, monkeypatch
             rec,
             request,
             file_store,
-            ocr_mode=app.state.ocr_mode,
             image_analysis=app.state.image_analysis,
             allow_local_source=app.state.allow_local_source,
             max_inline_bytes=app.state.max_inline_bytes,
@@ -2629,12 +2624,11 @@ def test_api_server_stores_parser_runtime_options(tmp_path: Path, monkeypatch: p
         upload_dir=str(tmp_path),
         tier="basic",
         language="en",
-        ocr_mode="ocr",
         image_analysis=False,
     )
 
     assert app.state.language == "ch"
-    assert app.state.ocr_mode == "ocr"
+    assert not hasattr(app.state, "ocr_mode")
     assert app.state.effort == "medium"
     assert app.state.image_analysis is False
     assert not hasattr(app.state, _REMOVED_TABLE_ENABLE_PARAM)
@@ -2652,7 +2646,7 @@ def test_api_server_cli_exposes_parser_runtime_options() -> None:
     assert "--tier" in option_names
     assert "--backend" not in option_names
     assert "--language" in option_names
-    assert "--ocr-mode" in option_names
+    assert "--ocr-mode" not in option_names
     assert "--allow-local-source" in option_names
     assert "--max-inline-bytes" in option_names
     assert "--allow-http-source" in option_names

@@ -259,7 +259,7 @@ def test_async_job_resolves_relative_ranges_and_reports_file_errors(tmp_path: Pa
         }
     )
     record = api_server.JobStore().create(request, store)
-    asyncio.run(api_server._run_job(record, request, store, ocr_mode="auto", image_analysis=True, allow_local_source=True))
+    asyncio.run(api_server._run_job(record, request, store, image_analysis=True, allow_local_source=True))
     assert record.status == "partial"
     assert record.files[0].page_range == "1,4-5"
     assert record.files[0].status == "completed"

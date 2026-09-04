@@ -464,6 +464,9 @@ class CreateJobRequest(BaseModel):
     model_config = _PYDANTIC_CONFIG
     files: list[JobFileEntry] = Field(min_length=1)
     tier: Tier | None = None
+    ocr_mode: Literal["auto", "txt", "ocr"] = Field(
+        default="auto", description="OCR mode for this parse job: auto-detect, native text, or forced OCR."
+    )
     output_formats: list[str] = ["markdown"]
     callback: CallbackConfig | None = None
 
@@ -1323,7 +1326,6 @@ async def _run_job(
     req: CreateJobRequest,
     file_store: FileStore,
     *,
-    ocr_mode: str,
     image_analysis: bool,
     url_timeout: int = 60,
     allow_local_source: bool = False,
@@ -1380,7 +1382,7 @@ async def _run_job(
                 result = await parse_async(
                     str(tmp_path),
                     tier=effective_tier,
-                    ocr_mode=ocr_mode,
+                    ocr_mode=req.ocr_mode,
                     image_analysis=image_analysis,
                     page_range=page_range,
                     source_context=source_context,
@@ -1843,7 +1845,6 @@ async def create_job(
     max_inline_bytes_val: int = request.app.state.max_inline_bytes
     allow_http_source_val: bool = request.app.state.allow_http_source
     flash_enabled_val: bool = request.app.state.flash_enabled
-    ocr_mode_val: str = request.app.state.ocr_mode
     image_analysis_val: bool = request.app.state.image_analysis
 
     # async — fire and forget
@@ -1853,7 +1854,6 @@ async def create_job(
                 rec,
                 body,
                 file_store,
-                ocr_mode=ocr_mode_val,
                 image_analysis=image_analysis_val,
                 url_timeout=url_timeout_val,
                 allow_local_source=allow_local_source_val,
@@ -1947,9 +1947,6 @@ async def get_usage(
 def _build_v1_router() -> APIRouter:
     """Build and return the /v1 router."""
     return _router
-
-
-_OCR_MODES = ("auto", "txt", "ocr")
 
 
 def _normalize_server_tier(tier: str | None) -> ServerTier:
@@ -2129,7 +2126,6 @@ def create_app(
     allow_http_source: bool = False,
     api_key: str | None = None,
     language: str = "ch",
-    ocr_mode: str = "auto",
     image_analysis: bool = True,
     preload_models: bool = False,
 ) -> FastAPI:
@@ -2159,8 +2155,6 @@ def create_app(
         to access list endpoints and advanced output formats.
     language:
         Hybrid medium OCR language hint; accepted by other efforts for compatibility.
-    ocr_mode:
-        PDF OCR/text extraction mode for Hybrid backends.
     image_analysis:
         Whether image analysis is enabled for Hybrid backends.
     preload_models:
@@ -2204,7 +2198,6 @@ def create_app(
         application.state.allow_http_source = allow_http_source
         application.state.api_key = _api_key
         application.state.language = language
-        application.state.ocr_mode = ocr_mode
         application.state.effort = effort
         application.state.image_analysis = image_analysis
         application.state.preload_models = preload_models
@@ -2259,7 +2252,6 @@ def create_app(
     application.state.allow_http_source = allow_http_source
     application.state.api_key = _api_key
     application.state.language = language
-    application.state.ocr_mode = ocr_mode
     application.state.effort = effort
     application.state.image_analysis = image_analysis
     application.state.preload_models = preload_models
@@ -2389,12 +2381,6 @@ def create_app(
     help="Hybrid medium OCR language hint; accepted by other efforts for compatibility.",
 )
 @click.option(
-    "--ocr-mode",
-    default="auto",
-    type=click.Choice(_OCR_MODES),
-    help="PDF OCR/text extraction mode. Applies to hybrid-* backends.",
-)
-@click.option(
     "--disable-image-analysis",
     is_flag=True,
     help="Disable image analysis for Hybrid backends.",
@@ -2422,7 +2408,6 @@ def main(
     max_inline_bytes: int,
     allow_http_source: bool,
     language: str,
-    ocr_mode: str,
     disable_image_analysis: bool,
     preload_models: bool,
     api_key: str | None,
@@ -2459,7 +2444,6 @@ def main(
             allow_http_source=allow_http_source,
             api_key=api_key,
             language=language,
-            ocr_mode=ocr_mode,
             image_analysis=not disable_image_analysis,
             preload_models=preload_models,
         )
