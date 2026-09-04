@@ -14,7 +14,7 @@ from typing import Any, Literal
 from urllib.parse import quote
 
 from ...errors import MineruError
-from ...filetypes import IMAGE_EXTENSIONS, OFFICE_EXTENSIONS, PARSEABLE_EXTENSIONS, PDF_EXTENSIONS
+from ...filetypes import FLASH_ONLY_PARSE_EXTENSIONS, IMAGE_EXTENSIONS, OFFICE_EXTENSIONS, PARSEABLE_EXTENSIONS, PDF_EXTENSIONS
 from ...types import TIERS, Tier
 from ...utils.stdio import configure_standard_streams
 from .artifacts import RunArtifacts, markdown_for_gradio, persist_parse_result, render_download
@@ -270,6 +270,8 @@ def build_gradio_app(
                         show_label=False,
                         elem_classes=["mineru-tier-slider"],
                     )
+                    # 独立保存会话的未锁定档位，不随文件和页码选区一起重置。
+                    tier_selection = gr.Textbox(value=json.dumps({"tier": preferred_tier, "locked": False}), visible=False)
                 force_ocr = gr.Checkbox(
                     value=False,
                     label="强制 OCR",
@@ -486,18 +488,6 @@ def build_gradio_app(
         cancel_session_conversion.__annotations__["request"] = gr.Request
         # 显式注册加载事件，确保两个主版本都会执行前端初始化函数而不只加载其文本。
         demo.load(fn=None, js=app_js, **private_event_kwargs)
-        tier.input(
-            fn=None,
-            inputs=tier,
-            outputs=tier_label,
-            js="""(position) => {
-                // 在浏览器端即时显示当前档位；实际解析独立读取滑块位置。
-                const tiers = %s;
-                return ["解析 tier：" + tiers[position]];
-            }"""
-            % json.dumps(tier_choices),
-            **private_event_kwargs,
-        )
         preview_outputs = [
             pdf_preview,
             image_preview,
@@ -512,7 +502,7 @@ def build_gradio_app(
         ]
 
         # 文件页数只在上传后读取；前端缓存元数据，tier 切换和拖动不发起 Python 请求。
-        range_inputs = [input_file, tier, page_metadata, page_selection, page_handle_a, page_handle_b]
+        range_inputs = [input_file, tier, page_metadata, page_selection, page_handle_a, page_handle_b, tier_selection]
         range_outputs = [
             page_handle_a,
             page_handle_b,
@@ -521,6 +511,9 @@ def build_gradio_app(
             page_selection,
             convert_button,
             page_notice,
+            tier,
+            tier_label,
+            tier_selection,
         ]
         range_script = _resource_text("gradio_page_range.js")
         # 共用一个 always_last 事件流，避免文件、元数据、清除与拖动的并行回调互相覆盖。
@@ -529,7 +522,10 @@ def build_gradio_app(
             fn=None,
             inputs=range_inputs,
             outputs=range_outputs,
-            js=f"(...args) => ({range_script})({json.dumps(tier_choices)}, {json.dumps(max_pages)}, ...args)",
+            js=(
+                f"(...args) => ({range_script})({json.dumps(tier_choices)}, "
+                f"{json.dumps(sorted(FLASH_ONLY_PARSE_EXTENSIONS))}, {json.dumps(max_pages)}, ...args)"
+            ),
             trigger_mode="always_last",
             **private_event_kwargs,
         )
@@ -583,6 +579,13 @@ def build_gradio_app(
             except ValueError as exc:
                 yield (_status_html(f"Failed: {exc}"), "", "", "", *empty_result[4:])
                 return
+            if suffix in FLASH_ONLY_PARSE_EXTENSIONS:
+                # 提交端独立约束有效档位，避免事件 API 或前端残留值绕过 Flash 锁定。
+                if "flash" not in tier_choices:
+                    message = "Failed: tier_unavailable: 该格式仅支持 Flash，当前服务不可用"
+                    yield (_status_html(message), "", "", "", *empty_result[4:])
+                    return
+                selected_tier = "flash"
             try:
                 page_text = await asyncio.to_thread(
                     _effective_page_range, source_path, raw_page_range, tier=selected_tier, max_pages=max_pages

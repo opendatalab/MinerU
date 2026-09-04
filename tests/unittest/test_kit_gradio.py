@@ -18,7 +18,7 @@ from PIL import Image, ImageStat
 from pypdf import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 
-from mineru.filetypes import PARSEABLE_EXTENSIONS
+from mineru.filetypes import FLASH_ONLY_PARSE_EXTENSIONS, IMAGE_EXTENSIONS, PARSEABLE_EXTENSIONS
 from mineru.kit.commands import gradio as gradio_command
 from mineru.kit.gradio import app as gradio_app
 from mineru.kit.gradio import client as gradio_client
@@ -910,16 +910,69 @@ def test_gradio_tier_slider_uses_available_tiers_and_preserves_selection(
     assert slider.interactive is (len(tiers) > 1)
     assert label.value == f"解析 tier：{default_tier}"
     assert not any(block.__class__.__name__ == "Dropdown" for block in demo.blocks.values())
-    label_event = next(event for event in demo.config["dependencies"] if event["targets"] == [(slider._id, "input")])
+    label_events = [event for event in demo.config["dependencies"] if (slider._id, "input") in event["targets"]]
+    assert len(label_events) == 1
+    label_event = label_events[0]
     assert label_event["backend_fn"] is False
     assert label_event["queue"] is False
-    assert label_event["outputs"] == [label._id]
+    assert label_event["trigger_mode"] == "always_last"
+    assert label_event["outputs"][7:9] == [slider._id, label._id]
+    preference = demo.blocks[label_event["outputs"][9]]
+    assert preference.visible is False
+    assert json.loads(preference.value) == {"tier": default_tier, "locked": False}
+    assert preference._id in label_event["inputs"]
+    assert json.dumps(sorted(FLASH_ONLY_PARSE_EXTENSIONS)) in label_event["js"]
     for fn in demo.fns.values():
         if fn.name in {"update_file_preview", "reset_ui"}:
             assert slider not in fn.outputs and label not in fn.outputs
         if fn.name == "convert_handler":
             assert fn.inputs[1] is slider
     assert slider.api_info()["type"] == "integer"
+
+
+@pytest.mark.parametrize("extension", sorted(FLASH_ONLY_PARSE_EXTENSIONS | IMAGE_EXTENSIONS))
+@pytest.mark.parametrize("uppercase", [False, True])
+def test_gradio_conversion_enforces_file_type_tier(tmp_path: Path, extension: str, uppercase: bool) -> None:
+    """高档位残留值对所有轻量格式固定为 Flash，图片则保留用户选择，后缀不区分大小写。"""
+    source = tmp_path / f"source.{extension.upper() if uppercase else extension}"
+    source.write_bytes(b"placeholder")
+    client = SimpleNamespace(parse_file=AsyncMock(side_effect=V1ArtifactError("stop after request")))
+    capabilities = V1ServerCapabilities("http://127.0.0.1:1", ("standard", "flash"), ("zip",), ("file_id",))
+    demo = build_gradio_app(client, capabilities, output_root=tmp_path / "output", enable_example=False)
+    handler = next(fn.fn for fn in demo.fns.values() if fn.name == "convert_handler")
+
+    async def convert() -> None:
+        """模拟直接调用事件，并携带不应影响非 PDF 的选页与 OCR 残留值。"""
+        updates = [update async for update in handler(str(source), 1, "bad range", True)]
+        assert "stop after request" in updates[-1][0]
+
+    asyncio.run(convert())
+    client.parse_file.assert_awaited_once()
+    kwargs = client.parse_file.call_args.kwargs
+    assert kwargs["tier"] == ("flash" if extension in FLASH_ONLY_PARSE_EXTENSIONS else "standard")
+    assert kwargs["page_range"] == "" and kwargs["ocr_mode"] == "auto"
+
+
+@pytest.mark.parametrize("tiers", [("standard",), ("advanced", "basic"), ("basic", "standard", "advanced")])
+def test_gradio_flash_only_input_requires_available_flash(tmp_path: Path, tiers: tuple[str, ...]) -> None:
+    """服务缺少 Flash 时在事件入口报错，不发起解析请求，也不保留旧下载。"""
+    source = tmp_path / "source.csv"
+    source.write_text("name,value\na,1\n", encoding="utf-8")
+    client = SimpleNamespace(parse_file=AsyncMock())
+    capabilities = V1ServerCapabilities("http://127.0.0.1:1", tiers, ("zip",), ("file_id",))
+    demo = build_gradio_app(client, capabilities, output_root=tmp_path / "output", enable_example=False)
+    handler = next(fn.fn for fn in demo.fns.values() if fn.name == "convert_handler")
+
+    async def convert() -> list[tuple[Any, ...]]:
+        """收集合法位置的错误响应，验证不是滑杆越界触发的拒绝。"""
+        return [update async for update in handler(str(source), 0, "")]
+
+    updates = asyncio.run(convert())
+    assert "tier_unavailable" in updates[-1][0]
+    assert "该格式仅支持 Flash，当前服务不可用" in updates[-1][0]
+    assert updates[-1][8] is None
+    assert all(item["interactive"] is False and item["value"] is None for item in updates[-1][-6:])
+    client.parse_file.assert_not_called()
 
 
 @pytest.mark.parametrize(

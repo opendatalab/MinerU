@@ -16,6 +16,7 @@ from pypdf import PdfWriter
 from typer.testing import CliRunner
 
 from mineru.errors import InvalidRequestError
+from mineru.filetypes import FLASH_ONLY_PARSE_EXTENSIONS, TIERED_PARSE_EXTENSIONS
 from mineru.kit.gradio import app as gradio_app
 from mineru.kit.gradio import page_range as ranges
 from mineru.kit.gradio.client import V1ServerCapabilities
@@ -238,5 +239,15 @@ def test_frontend_page_range_state_machine() -> None:
     node = shutil.which("node")
     if node is None:
         pytest.skip("Node.js is required for frontend state tests")
-    result = subprocess.run([node, str(Path(__file__).with_suffix(".cjs"))], capture_output=True, text=True, check=False)
+    result = subprocess.run(
+        [
+            node,
+            str(Path(__file__).with_suffix(".cjs")),
+            json.dumps(sorted(FLASH_ONLY_PARSE_EXTENSIONS)),
+            json.dumps(sorted(TIERED_PARSE_EXTENSIONS)),
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
     assert result.returncode == 0, result.stdout + result.stderr

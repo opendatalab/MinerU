@@ -4,10 +4,17 @@ const path = require("node:path");
 const vm = require("node:vm");
 const reduce = vm.runInThisContext(fs.readFileSync(path.join(__dirname, "../../mineru/resources/gradio_page_range.js"), "utf8"));
 const tiers = ["flash", "basic", "standard", "advanced"];
+// 使用 Python 测试传入的统一格式集合，测试和产品代码均不维护另一份后缀清单。
+const flashOnlyExtensions = JSON.parse(process.argv[2]);
+const tieredExtensions = JSON.parse(process.argv[3]);
 
 // 模拟原生 Gradio 组件值与纯前端输出更新，不复制实际联动算法。
-function createUi(limit = 20) {
-    const state = { file: null, position: 2, metadata: {}, previous: {}, a: 1, b: 1 };
+function createUi(limit = 20, availableTiers = tiers) {
+    const defaultTier = availableTiers.includes("standard") ? "standard" : availableTiers.at(-1);
+    const state = {
+        file: null, position: availableTiers.indexOf(defaultTier), metadata: {}, previous: {}, a: 1, b: 1,
+        tierSelection: { tier: defaultTier, locked: false },
+    };
     return {
         state,
         step(action, patch = {}) {
@@ -15,12 +22,15 @@ function createUi(limit = 20) {
             Object.assign(state, patch);
             if (action === "clear") state.file = null;
             const result = reduce(
-                tiers, limit, state.file, state.position,
-                JSON.stringify(state.metadata), JSON.stringify(state.previous), state.a, state.b
+                availableTiers, flashOnlyExtensions, limit, state.file, state.position,
+                JSON.stringify(state.metadata), JSON.stringify(state.previous), state.a, state.b,
+                JSON.stringify(state.tierSelection)
             );
             if ("value" in result[0]) state.a = result[0].value;
             if ("value" in result[1]) state.b = result[1].value;
             if (result[4].__type__ !== "update") state.previous = JSON.parse(result[4]);
+            if ("value" in result[7]) state.position = result[7].value;
+            state.tierSelection = JSON.parse(result[9]);
             return result;
         },
         upload(count, filename = "/report.pdf") {
@@ -29,6 +39,87 @@ function createUi(limit = 20) {
             return this.step("metadata", { metadata: { path: filename, page_count: count, error: "" } });
         },
     };
+}
+
+// 所有轻量格式（含大写后缀）锁定 Flash；连续上传和残留输入不能覆盖原先选择。
+for (const extension of flashOnlyExtensions.flatMap((extension) => [extension, extension.toUpperCase()])) {
+    const ui = createUi();
+    ui.step("tier", { position: 3 });
+    const out = ui.step("file", { file: { path: `/source.${extension}` } });
+    assert.equal(out[7].value, 0);
+    assert.equal(out[7].interactive, false);
+    assert.equal(out[8], "解析 tier：flash");
+    assert.equal(out[5].interactive, true);
+    assert.equal(out[3], "");
+    assert.match(out[2], /data-range-visible="false"/);
+    assert.deepEqual(ui.state.tierSelection, { tier: "advanced", locked: true });
+    // 即使模拟一个已经排队的高档位 input，也不能改变锁定值或恢复偏好。
+    assert.equal(ui.step("tier", { position: 1 })[7].value, 0);
+    ui.step("file", { file: `/another.${extension}` });
+    assert.equal(ui.state.tierSelection.tier, "advanced");
+    const cleared = ui.step("clear");
+    assert.equal(cleared[7].value, 3);
+    assert.equal(cleared[7].interactive, true);
+    assert.equal(cleared[8], "解析 tier：advanced");
+    assert.equal(cleared[5].interactive, false);
+}
+
+// 切回任意 PDF/图片后在同一次事件恢复档位，PDF 等待页数、图片可立即转换。
+for (const extension of tieredExtensions.flatMap((extension) => [extension, extension.toUpperCase()])) {
+    const ui = createUi();
+    ui.step("file", { file: "/source.csv" });
+    const out = ui.step("file", { file: { path: `/source.${extension}` } });
+    assert.equal(out[7].value, 2);
+    assert.equal(out[7].interactive, true);
+    assert.equal(out[8], "解析 tier：standard");
+    assert.equal(out[5].interactive, extension.toLowerCase() !== "pdf");
+    assert.deepEqual(ui.state.tierSelection, { tier: "standard", locked: false });
+}
+
+// 缺少 Flash 不伪造滑杆位置，始终阻止提交；恢复可分档文件后沿用原先能力和选择。
+for (const availableTiers of [["basic", "standard", "advanced"], ["advanced"], ["flash"], ["flash", "advanced"]]) {
+    const ui = createUi(20, availableTiers);
+    const originalPosition = ui.state.position;
+    const available = availableTiers.includes("flash");
+    const out = ui.step("file", { file: "/source.csv" });
+    assert.equal(out[7].interactive, false);
+    assert.equal(out[7].value, available ? availableTiers.indexOf("flash") : originalPosition);
+    assert.equal(out[5].interactive, available);
+    assert.equal(out[6].visible, !available);
+    if (!available) {
+        assert.equal(out[6].value, "该格式仅支持 Flash，当前服务不可用");
+        assert.match(out[8], /flash.*当前服务不可用/);
+    }
+    const restored = ui.step("file", { file: "/source.png" });
+    assert.equal(restored[7].value, originalPosition);
+    assert.equal(restored[7].interactive, availableTiers.length > 1);
+    assert.equal(restored[5].interactive, true);
+    assert.equal(restored[6].visible, false);
+}
+
+// 文件连续切换与旧 PDF 元数据晚到时，锁定状态和偏好只跟随当前文件。
+{
+    const ui = createUi();
+    ui.upload(100);
+    ui.step("tier", { position: 3 });
+    ui.step("file", { file: "/source.csv" });
+    ui.step("metadata", { metadata: { path: "/report.pdf", page_count: 100, error: "" } });
+    assert.equal(ui.state.position, 0);
+    assert.equal(ui.state.tierSelection.tier, "advanced");
+    let out = ui.step("file", { file: "/new.pdf" });
+    assert.equal(out[7].value, 3);
+    assert.equal(out[5].interactive, false);
+    assert.match(out[6].value, /正在读取/);
+    out = ui.step("metadata", { metadata: { path: "/report.pdf", page_count: 100, error: "" } });
+    assert.equal(out[5].interactive, false);
+    out = ui.step("metadata", { metadata: { path: "/new.pdf", page_count: 12, error: "" } });
+    assert.equal(out[5].interactive, true);
+    assert.equal(out[3], "1-12");
+    ui.step("tier", { position: 1 });
+    ui.step("file", { file: "/second.csv" });
+    assert.equal(ui.step("clear")[7].value, 1);
+    // 会话互不共享偏好。
+    assert.equal(createUi().state.tierSelection.tier, "standard");
 }
 
 // 同时检查组件身份、语义角色、提交范围及无障碍标签，不能只验证排序后的数字。
