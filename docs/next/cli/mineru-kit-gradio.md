@@ -40,6 +40,7 @@ mineru-kit gradio \
 | `--api-key` | Bearer API Key；省略时读取 `MINERU_API_KEY`。 |
 | `--server-name` / `--server-port` | Gradio UI 的监听地址和端口；省略端口时自动寻找空闲端口。 |
 | `--output-dir` | 本地 UI 产物根目录，默认 `./output`。 |
+| `--max-pages` | 单次非 Flash PDF 解析的最多页数，必须为正整数；省略则不限制。不限制 Flash 或非 PDF。 |
 | `--api-server-tier` | 自动启动 server 的能力档位：`flash`、`basic`、`standard`。 |
 | `--api-server-concurrency` | 自动启动 server 的最大并发任务数。 |
 | `--api-server-language` | 自动启动 server 的 OCR 语言提示。 |
@@ -59,7 +60,15 @@ mineru-kit gradio \
 
 启用 Gradio 事件 API 时，转换事件的 `tier_position` 参数为从 `0` 开始的整数位置，替代原来的 tier 字符串。例如四档齐全时 `3` 对应 `advanced`；仅支持 `basic/standard/advanced` 时 `2` 对应 `advanced`。位置始终按照上述顺序对实际可用档位编号，越界位置会报错。V1 API 的 `tier` 参数仍使用字符串，启动参数不变。
 
-页码输入使用 V1 `page_range` 语法，例如 `1-5,8,r1`；留空表示全部页面。只有原始 PDF 支持显式页码范围，其他格式会自动清空并禁用页码控件。
+仅在已上传原始 PDF 且 tier 不是 `flash` 时显示页码双滑块。轨道范围由 `pypdfium2` 读取的实际页数确定，为 `1～n`，两端对应包含首尾页的连续选区。Flash 和其他文件格式隐藏控件，并始终全部解析。
+
+默认选择全部页；配置 `mineru-kit gradio --max-pages 20` 后，100 页 PDF 的初始选区为 `[1-20]`，轨道仍为 `1～100`。选区最多 20 页，允许缩小；只有超限时才联动另一端。例如将右端拖到 40 得到 `[21-40]`，再把左端拖到 15 得到 `[15-34]`，随后把左端拖到 20 得到 `[20-34]`。
+
+两个滑块可以互相越过并实时交换起止角色，拖动过程中始终抓住同一个滑块，不需要松手。显示和提交的范围始终从小到大排列。例如从 `[20-35]` 把原左滑块拖到 40，得到 `[35-40]`；同一滑块继续到 60，按上限联动为 `[41-60]`；不松手退到 30，则得到 `[30-41]`。两端重合表示单页，此时保留原来的角色，直到严格越过才交换；键盘操作遵循相同规则。
+
+更换或清除文件会重置选区与角色；同一 PDF 切换 tier 保留两个滑块的位置和角色，包括切到 Flash 后再切回。读取页数期间，非 Flash PDF 暂不可提交；文件损坏或需要密码时显示错误，不降级为全部解析。
+
+Gradio 转换事件保留 `raw_page_range` 字符串接口，仍接受 V1 `page_range` 语法，例如 `1-5,8,r1`。未指定时按当前上限选择前若干页，无上限则全部；显式选区（包括 `all`）超限会返回 `page_range_invalid`，不会截断。提交端按真实页数复核，直接调用事件也不能绕过上限。该限制不改变通用 Python、V1 API 或 Doclib 的选页规则。
 
 Gradio 首先发现 `/v1/health` 和 `/v1/tiers`，然后通过 `MinerUApiParser` 上传文件、创建 `/v1/parse/jobs`、轮询任务并下载 ZIP 结果。解析结果保存为严格 Middle JSON 2.0。
 

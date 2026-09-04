@@ -57,6 +57,9 @@ def gradio_cmd(
         None, "--server-port", help="Gradio bind port; omitted: auto-select from 7860 or GRADIO_SERVER_PORT"
     ),
     output_dir: str = typer.Option("./output", "--output-dir", help="Directory for Gradio artifacts"),
+    max_pages: int | None = typer.Option(
+        None, "--max-pages", help="Maximum pages per non-Flash PDF conversion; omitted: unlimited"
+    ),
     enable_example: bool = typer.Option(True, "--enable-example/--no-enable-example", help="Show local examples"),
     enable_api: bool = typer.Option(True, "--enable-api/--no-enable-api", help="Expose the Gradio event API"),
     latex_delimiters_type: Literal["a", "b", "all"] = typer.Option(
@@ -86,6 +89,8 @@ def gradio_cmd(
     _require_gradio_dependencies()
     if server_port is not None:
         _validate_server_port(server_port)
+    if max_pages is not None:
+        _validate_positive_option(max_pages, name="max_pages")
     _validate_positive_option(api_server_concurrency, name="api_server_concurrency")
     normalized_tier = _validate_server_tier(api_server_tier)
     try:
@@ -103,6 +108,7 @@ def gradio_cmd(
             server_name=server_name,
             server_port=server_port,
             output_dir=output_dir,
+            max_pages=max_pages,
             enable_example=enable_example,
             enable_api=enable_api,
             latex_delimiters_type=latex_delimiters_type,

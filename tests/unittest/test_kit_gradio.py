@@ -724,11 +724,14 @@ def test_render_download_rejects_state_outside_allowed_root(tmp_path: Path) -> N
     assert not (tmp_path / "escaped.html").exists()
 
 
-def test_gradio_file_types_page_range_and_header_follow_new_contract() -> None:
+def test_gradio_file_types_page_range_and_header_follow_new_contract(tmp_path: Path) -> None:
     """验证完整扩展名、PDF-only 页码规则和复用后的 Header。"""
     assert set(gradio_app._supported_file_types()) == {f".{extension}" for extension in PARSEABLE_EXTENSIONS}
-    assert gradio_app._effective_page_range("report.PDF", " 1-3,r1 ") == "1-3,r1"
-    assert gradio_app._effective_page_range("report.docx", "1-3") == ""
+    source = tmp_path / "report.PDF"
+    source.write_bytes(_pdf_bytes(5))
+    assert gradio_app._effective_page_range(source, " 1-3,r1 ", tier="standard") == "1-3,r1"
+    assert gradio_app._effective_page_range(source, " 1-3,r1 ", tier="flash") == ""
+    assert gradio_app._effective_page_range("report.docx", "1-3", tier="standard") == ""
     header = gradio_app._render_header(gradio_major_version=6)
     assert "mineru-gradio6-header" in header
     assert "mineru-header-popover mineru-model-popover" in header
@@ -761,10 +764,11 @@ def test_build_gradio_app_exposes_three_tabs_and_download_menu(tmp_path: Path) -
     assert file_inputs[0].file_count == "single"
     assert set(file_inputs[0].file_types) == {f".{extension}" for extension in PARSEABLE_EXTENSIONS}
     preview_handler = next(fn.fn for fn in app.fns.values() if fn.name == "update_file_preview")
-    assert preview_handler("report.pdf")[0]["interactive"] is True
-    non_pdf_page_update = preview_handler("report.docx")[0]
-    assert non_pdf_page_update["interactive"] is False
-    assert non_pdf_page_update["value"] == ""
+    assert preview_handler("report.pdf")[0] == {"__type__": "update", "value": "report.pdf", "visible": True}
+    assert preview_handler("report.docx")[0]["visible"] is False
+    range_group = next(block for block in app.blocks.values() if "mineru-kit-page-range" in (block.elem_classes or []))
+    assert range_group.visible is True
+    assert '[data-range-visible="true"]' in app._mineru_kit_css
     assert sum(1 for dependency in app.config["dependencies"] if dependency.get("queue") is True) >= 7
 
 
@@ -861,7 +865,7 @@ def test_gradio_conversion_forwards_page_range_and_enables_fresh_downloads(
     convert_handler = next(fn.fn for fn in demo.fns.values() if fn.name == "convert_handler")
     updates = asyncio.run(collect_updates(convert_handler))
 
-    assert client.calls == [(source.resolve(), expected_tier, "1")]
+    assert client.calls == [(source.resolve(), expected_tier, "" if expected_tier == "flash" else "1")]
     assert len(updates[-1]) == 15
     assert updates[-1][8] is not None
     assert all(update["interactive"] is True and update["value"] is None for update in updates[-1][-6:])

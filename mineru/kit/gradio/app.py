@@ -13,7 +13,6 @@ from urllib.parse import quote
 
 from ...errors import MineruError
 from ...filetypes import IMAGE_EXTENSIONS, OFFICE_EXTENSIONS, PARSEABLE_EXTENSIONS, PDF_EXTENSIONS
-from ...parser.page_range import normalize_page_range_input
 from ...types import TIERS, Tier
 from ...utils.stdio import configure_standard_streams
 from .artifacts import RunArtifacts, markdown_for_gradio, persist_parse_result, render_download
@@ -25,6 +24,8 @@ from .client import (
     V1ArtifactClient,
     V1ServerCapabilities,
 )
+from .page_range import effective_page_range as _effective_page_range
+from .page_range import pdf_page_metadata, validate_max_pages
 
 _DOWNLOAD_FORMATS: tuple[tuple[str, str], ...] = (
     ("zip", "ZIP"),
@@ -233,13 +234,6 @@ def _file_suffix(path_value: str | Path | None) -> str:
     return Path(path_value).suffix.lower().lstrip(".")
 
 
-def _effective_page_range(path_value: str | Path | None, raw_page_range: str | None) -> str:
-    """仅为 PDF 保留用户输入的 V1 page_range，其它格式统一返回空字符串。"""
-    if _file_suffix(path_value) not in PDF_EXTENSIONS:
-        return ""
-    return normalize_page_range_input(raw_page_range)
-
-
 def _is_pdf_or_image(path_value: str | Path | None) -> bool:
     """判断上传文件是否可以在 PDF 预览组件中展示。"""
     suffix = _file_suffix(path_value)
@@ -278,19 +272,25 @@ def build_gradio_app(
     enable_example: bool = True,
     enable_api: bool = True,
     latex_delimiters_type: Literal["a", "b", "all"] = "all",
+    max_pages: int | None = None,
 ) -> Any:
     """构建不启动监听端口的 Gradio Blocks 应用，便于单元测试和外部托管。"""
     import gradio as gr
     from gradio_pdf import PDF
 
+    validate_max_pages(max_pages)
     tier_choices = [tier for tier in TIERS if tier in capabilities.tiers]
     if not tier_choices:
         raise ValueError("V1 API server did not advertise any parsing tier")
     preferred_tier = _default_tier(capabilities)
     file_types = _supported_file_types()
     markdown_copy_kwargs = {"buttons": ["copy"]} if _gradio_major_version(gr) >= 6 else {"show_copy_button": True}
+    app_css = _resource_text("gradio_app.css") + _KIT_MENU_CSS
+    app_js = _resource_text("gradio_app.js")
+    # Gradio 5 在 Blocks 构造时接收静态资源，6 则在 launch 时接收。
+    blocks_kwargs = {"css": app_css, "js": app_js} if _gradio_major_version(gr) < 6 else {}
 
-    with gr.Blocks() as demo:
+    with gr.Blocks(**blocks_kwargs) as demo:
         gr.HTML(
             _render_header(gradio_major_version=_gradio_major_version(gr)),
             elem_classes=["mineru-header-html"],
@@ -325,12 +325,40 @@ def build_gradio_app(
                 page_range = gr.Textbox(
                     value="",
                     label="页码范围",
-                    placeholder="例如 1-5,8,r1 或 all；留空表示全部",
-                    interactive=False,
-                    elem_classes=["mineru-kit-page-range"],
+                    visible=False,
                 )
+                # 用 JSON 文本承载内部状态，避开 Gradio 5/6 JSON 组件的序列化差异。
+                page_metadata = gr.Textbox(value="{}", visible=False)
+                page_selection = gr.Textbox(value="{}", visible=False)
+                # 布局容器在两个主版本的纯 JS 属性更新行为不同；显隐由子 HTML 的明确状态控制。
+                with gr.Column(min_width=0, elem_classes=["mineru-kit-page-range"]):
+                    page_summary = gr.HTML(value="", elem_classes=["mineru-page-summary"])
+                    with gr.Row(elem_classes=["mineru-page-sliders"]):
+                        page_handle_a = gr.Slider(
+                            minimum=1,
+                            maximum=1,
+                            value=1,
+                            step=1,
+                            precision=0,
+                            label="起始页",
+                            interactive=False,
+                            container=False,
+                            elem_classes=["mineru-page-handle-a"],
+                        )
+                        page_handle_b = gr.Slider(
+                            minimum=1,
+                            maximum=1,
+                            value=1,
+                            step=1,
+                            precision=0,
+                            label="结束页",
+                            interactive=False,
+                            container=False,
+                            elem_classes=["mineru-page-handle-b"],
+                        )
+                page_notice = gr.HTML(value="", visible=False, elem_classes=["mineru-page-notice"])
                 with gr.Row(elem_classes=["mineru-actions"]):
-                    convert_button = gr.Button("转换", variant="primary", scale=1, min_width=0)
+                    convert_button = gr.Button("转换", variant="primary", scale=1, min_width=0, interactive=False)
                     clear_button = gr.ClearButton(value="清除", scale=1, min_width=1)
                 status_panel = gr.HTML(_status_html(_DEFAULT_STATUS), elem_classes=["mineru-kit-status"])
 
@@ -432,7 +460,6 @@ def build_gradio_app(
             reset_result = (_status_html(_DEFAULT_STATUS), "", "", "", None, *_download_updates(gr, interactive=False))
             if not file_path:
                 return (
-                    gr.update(value="", interactive=False),
                     _preview_update(gr, None, visible=False),
                     _preview_update(gr, None, visible=False),
                     _preview_update(gr, "", visible=False),
@@ -440,10 +467,8 @@ def build_gradio_app(
                     *reset_result,
                 )
             suffix = _file_suffix(file_path)
-            page_update = gr.update(interactive=suffix in PDF_EXTENSIONS, value="")
             if suffix in PDF_EXTENSIONS:
                 return (
-                    page_update,
                     _preview_update(gr, file_path, visible=True),
                     _preview_update(gr, None, visible=False),
                     _preview_update(gr, "", visible=False),
@@ -452,7 +477,6 @@ def build_gradio_app(
                 )
             if suffix in IMAGE_EXTENSIONS:
                 return (
-                    page_update,
                     _preview_update(gr, None, visible=False),
                     _preview_update(gr, file_path, visible=True),
                     _preview_update(gr, "", visible=False),
@@ -461,7 +485,6 @@ def build_gradio_app(
                 )
             if _is_office(file_path):
                 return (
-                    page_update,
                     _preview_update(gr, None, visible=False),
                     _preview_update(gr, None, visible=False),
                     _preview_update(
@@ -473,7 +496,6 @@ def build_gradio_app(
                     *reset_result,
                 )
             return (
-                page_update,
                 _preview_update(gr, None, visible=False),
                 _preview_update(gr, None, visible=False),
                 _preview_update(gr, "", visible=False),
@@ -482,6 +504,8 @@ def build_gradio_app(
             )
 
         private_event_kwargs = _private_event_kwargs(gr)
+        # 显式注册加载事件，确保两个主版本都会执行前端初始化函数而不只加载其文本。
+        demo.load(fn=None, js=app_js, **private_event_kwargs)
         tier.input(
             fn=None,
             inputs=tier,
@@ -498,7 +522,6 @@ def build_gradio_app(
             fn=update_file_preview,
             inputs=input_file,
             outputs=[
-                page_range,
                 pdf_preview,
                 image_preview,
                 office_preview,
@@ -510,6 +533,42 @@ def build_gradio_app(
                 artifact_state,
                 *download_buttons.values(),
             ],
+            **private_event_kwargs,
+        )
+
+        # 文件页数只在上传后读取；前端缓存元数据，tier 切换和拖动不发起 Python 请求。
+        range_inputs = [input_file, tier, page_metadata, page_selection, page_handle_a, page_handle_b]
+        range_outputs = [
+            page_handle_a,
+            page_handle_b,
+            page_summary,
+            page_range,
+            page_selection,
+            convert_button,
+            page_notice,
+        ]
+        range_script = _resource_text("gradio_page_range.js")
+        # 共用一个 always_last 事件流，避免文件、元数据、清除与拖动的并行回调互相覆盖。
+        gr.on(
+            triggers=[input_file.change, tier.input, page_metadata.change, page_handle_a.input, page_handle_b.input],
+            fn=None,
+            inputs=range_inputs,
+            outputs=range_outputs,
+            js=f"(...args) => ({range_script})({json.dumps(tier_choices)}, {json.dumps(max_pages)}, ...args)",
+            trigger_mode="always_last",
+            **private_event_kwargs,
+        )
+
+        def read_page_metadata(file_path: str | None) -> str:
+            """把页数元数据编码为稳定的 JSON 文本，供两个 Gradio 主版本共用。"""
+            return json.dumps(pdf_page_metadata(file_path), ensure_ascii=False)
+
+        input_file.change(
+            fn=read_page_metadata,
+            inputs=input_file,
+            outputs=page_metadata,
+            trigger_mode="always_last",
+            show_progress="hidden",
             **private_event_kwargs,
         )
 
@@ -549,7 +608,9 @@ def build_gradio_app(
                 yield (_status_html(f"Failed: {exc}"), "", "", "", *empty_result[4:])
                 return
             try:
-                page_text = _effective_page_range(source_path, raw_page_range)
+                page_text = await asyncio.to_thread(
+                    _effective_page_range, source_path, raw_page_range, tier=selected_tier, max_pages=max_pages
+                )
             except MineruError as exc:
                 yield (_status_html(f"Failed: {exc.code}: {exc}"), "", "", "", *empty_result[4:])
                 return
@@ -677,8 +738,9 @@ def build_gradio_app(
                 api_name=False,
             )
 
-    demo._mineru_kit_css = _resource_text("gradio_app.css") + _KIT_MENU_CSS
-    demo._mineru_kit_js = _resource_text("gradio_app.js")
+    demo._mineru_kit_css = app_css
+    demo._mineru_kit_js = app_js
+    demo._mineru_kit_launch_kwargs = {"css": app_css, "js": app_js} if _gradio_major_version(gr) >= 6 else {}
     demo.queue(default_concurrency_limit=1)
     return demo
 
@@ -700,9 +762,11 @@ def launch_gradio(
     api_server_ocr_mode: Literal["auto", "txt", "ocr"],
     api_server_disable_image_analysis: bool,
     api_server_preload_models: bool,
+    max_pages: int | None = None,
 ) -> None:
     """启动 Gradio；未指定端口时自动选择，未指定外部 URL 时托管本地 V1 API server。"""
     configure_standard_streams()
+    validate_max_pages(max_pages)
     resolved_api_key = api_key if api_key is not None else os.environ.get("MINERU_API_KEY")
     output_root = Path(output_dir).expanduser().resolve()
     output_root.mkdir(parents=True, exist_ok=True)
@@ -730,13 +794,13 @@ def launch_gradio(
             enable_example=enable_example,
             enable_api=enable_api,
             latex_delimiters_type=latex_delimiters_type,
+            max_pages=max_pages,
         )
         demo.launch(
             server_name=server_name,
             server_port=server_port,
             allowed_paths=[str(output_root)],
-            css=getattr(demo, "_mineru_kit_css", None),
-            js=getattr(demo, "_mineru_kit_js", None),
+            **demo._mineru_kit_launch_kwargs,
         )
     finally:
         if managed_server is not None:

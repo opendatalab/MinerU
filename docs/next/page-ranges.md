@@ -2,7 +2,7 @@
 
 状态: Implemented
 
-CLI 的 `--pages`、Python/Doclib/API 的 `page_range` 和 Gradio 页码输入使用同一套语法。
+CLI 的 `--pages`、Python/Doclib/API 的 `page_range` 和 Gradio 转换事件的页码参数使用同一套语法；Gradio 界面通过双滑块生成连续选区。
 页码表示 PDF 文件内的页面顺序，从 1 开始，不使用正文印刷页码或 PDF page label。
 内部 `page_idx` / `page_indices` 仍从 0 开始，抽页后保留原始页索引。
 
@@ -43,10 +43,13 @@ CLI 的 `--pages`、Python/Doclib/API 的 `page_range` 和 Gradio 页码输入�
 | Doclib 内容导出 | 导出已有缓存内容 |
 | Python `parse` / `parse_async` | 全部 |
 | V1 Parse Jobs / `MinerUApiParser` | 全部 |
-| `mineru-kit parse` / Gradio | 全部 |
+| `mineru-kit parse` | 全部 |
+| Gradio 非 Flash PDF | 默认全部；配置 `--max-pages M` 后选择前 M 页，不足则全部 |
+| Gradio Flash | 始终全部，忽略页码参数 |
 
 显式 `all` 选择全部 PDF 页面；内容读取/导出仍受实际缓存可用性约束。
-非 PDF 的解析限制不变：不能显式设置页码（包括 `all`）；Gradio 对非 PDF 自动清空并禁用此控件。
+非 PDF 的解析限制不变：不能显式设置页码（包括 `all`）；Gradio 对非 PDF 自动清空并隐藏此控件。
+Gradio 仅对已上传的非 Flash PDF 显示选页控件；配置的页数上限也适用于直接调用 Gradio 转换事件，显式超限选区报 `page_range_invalid`。
 
 ## 输入与输出
 
