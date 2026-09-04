@@ -30,13 +30,15 @@ mineru-kit gradio \
 
 未指定 `--api-url` 时，Gradio 会启动一个 loopback `mineru-kit api-server`。本地 server 默认使用 Standard 能力上限、开启 Flash、关闭 `local` source，文件通过 V1 Uploads API 提交。
 
+未指定 `--server-port` 时，界面由 Gradio 从 `7860` 开始寻找空闲端口；可通过 `GRADIO_SERVER_PORT` 设置起始端口、`GRADIO_NUM_PORTS` 设置尝试数量（默认 `100`）。显式指定 `--server-port 7861` 时只尝试该端口，覆盖环境变量；该端口已被占用则启动失败。界面最终访问地址以启动输出为准，与内部 API server 的端口不同。
+
 ## 主要参数
 
 | 参数 | 说明 |
 |------|------|
 | `--api-url` | 已有 V1 API base URL；不传则自动启动本地 server。 |
 | `--api-key` | Bearer API Key；省略时读取 `MINERU_API_KEY`。 |
-| `--server-name` / `--server-port` | Gradio UI 的监听地址和端口。 |
+| `--server-name` / `--server-port` | Gradio UI 的监听地址和端口；省略端口时自动寻找空闲端口。 |
 | `--output-dir` | 本地 UI 产物根目录，默认 `./output`。 |
 | `--api-server-tier` | 自动启动 server 的能力档位：`flash`、`basic`、`standard`。 |
 | `--api-server-concurrency` | 自动启动 server 的最大并发任务数。 |
@@ -69,7 +71,7 @@ Gradio 首先发现 `/v1/health` 和 `/v1/tiers`，然后通过 `MinerUApiParser
 - Markdown 源码；
 - Structured Content 源码。
 
-下载菜单包含 ZIP、HTML、DOCX、LaTeX bundle、EPUB 和 PDF。HTML、DOCX、EPUB、PDF 和 LaTeX 不作为 API job 输出请求，而是在用户点击菜单后从本次保存的 Middle JSON 按需渲染。LaTeX 下载包包含 `.tex` 与 `images/`，可交给 XeLaTeX 使用；Gradio 不自动执行 TeX 编译。
+下载图标位于右侧结果栏的标签行最右端，鼠标悬停或键盘聚焦即可展开菜单。菜单包含 ZIP、HTML、DOCX、LaTeX bundle、EPUB 和 PDF。HTML、DOCX、EPUB、PDF 和 LaTeX 不作为 API job 输出请求，而是在用户点击菜单后从本次保存的 Middle JSON 按需渲染。LaTeX 下载包包含 `.tex` 与 `images/`，可交给 XeLaTeX 使用；Gradio 不自动执行 TeX 编译。
 
 每次解析的文件保存在独立的 `output-dir/gradio/<run-id>/` 目录，包含源文件、Middle JSON、基础文本产物以及可选的 `origin.pdf`、`layout.pdf` 和图片资源。路径只向 Gradio 暴露在配置的 output root 内。
 

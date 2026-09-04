@@ -53,11 +53,45 @@ _LATEX_DELIMITERS_B = [
     {"left": "\\(", "right": "\\)", "display": False},
     {"left": "\\[", "right": "\\]", "display": True},
 ]
+_DOWNLOAD_ICON_HTML = """
+<button type="button" class="mineru-kit-download-icon" title="下载结果" aria-label="下载结果"
+        aria-controls="mineru-kit-download-options">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+        <path d="M12 3v12m-5-5 5 5 5-5M5 16v4h14v-4" />
+    </svg>
+</button>
+"""
 _KIT_MENU_CSS = """
-.mineru-kit-download-menu { position: relative; width: 100%; }
-.mineru-kit-download-trigger { width: 100%; }
+.mineru-kit-results { position: relative; padding: 12px !important; overflow: visible; }
+/* Gradio 5/6 的导航容器不同；只缩窄标题行，让正文继续占满结果栏。 */
+.mineru-kit-results > .mineru-markdown-tabs > .tab-nav,
+.mineru-kit-results > .mineru-markdown-tabs > .tab-wrapper {
+    width: calc(100% - 40px);
+}
+.mineru-kit-results > .mineru-kit-download-menu {
+    position: absolute; top: 12px; right: 12px; z-index: 40;
+    width: 32px !important; min-width: 0 !important; height: 32px; gap: 0;
+    overflow: visible;
+}
+.mineru-kit-download-trigger,
+.mineru-kit-download-trigger .html-container,
+.mineru-kit-download-trigger .prose {
+    min-width: 0 !important; padding: 0 !important; margin: 0; line-height: 0; overflow: visible;
+}
+.mineru-kit-download-trigger { min-height: 32px; border: 0; background: transparent; }
+.mineru-kit-download-trigger .mineru-kit-download-icon {
+    display: flex; align-items: center; justify-content: center;
+    width: 32px; height: 32px; margin: 0; padding: 6px; border: 0; border-radius: 6px;
+    color: var(--body-text-color, #1f2937); background: transparent; cursor: pointer;
+}
+.mineru-kit-download-icon svg { width: 20px; height: 20px; margin: 0; }
+.mineru-kit-download-menu:hover .mineru-kit-download-icon,
+.mineru-kit-download-icon:focus-visible { background: var(--background-fill-secondary, #f3f4f6); }
+.mineru-kit-download-icon:focus-visible { outline: 2px solid var(--mineru-accent, #f97316); outline-offset: 2px; }
 .mineru-kit-download-options {
-    position: absolute; left: 0; right: 0; top: calc(100% + 6px); z-index: 40;
+    position: absolute; right: 0; top: calc(100% + 6px); z-index: 40;
+    width: 192px !important; min-width: 0 !important;
     display: flex !important; flex-direction: column; gap: 4px; padding: 6px;
     border: 1px solid var(--mineru-panel-border, rgba(17,24,39,.12)); border-radius: 8px;
     background: var(--background-fill-primary, #fff); box-shadow: 0 12px 28px rgba(15,23,42,.18);
@@ -68,7 +102,13 @@ _KIT_MENU_CSS = """
 .mineru-kit-download-menu:focus-within .mineru-kit-download-options {
     opacity: 1; pointer-events: auto; transform: translateY(0); visibility: visible;
 }
-.mineru-kit-download-options button { width: 100%; min-height: 34px; }
+/* 填满图标与浮层之间的间隙，避免鼠标移向下载项时菜单提前关闭。 */
+.mineru-kit-download-options::before { content: ""; position: absolute; left: 0; right: 0; top: -7px; height: 7px; }
+.mineru-kit-download-options :is(button, a) {
+    justify-content: flex-start; width: 100%; min-height: 34px; padding: 6px 10px;
+    border: 0; border-radius: 6px; background: transparent; box-shadow: none; text-align: left;
+}
+.mineru-kit-download-options :is(button, a):hover { background: var(--background-fill-secondary, #f3f4f6); }
 .mineru-kit-status { min-height: 84px; }
 .mineru-kit-status-steps { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
 .mineru-kit-status-steps .status-step {
@@ -292,18 +332,6 @@ def build_gradio_app(
                 with gr.Row(elem_classes=["mineru-actions"]):
                     convert_button = gr.Button("转换", variant="primary", scale=1, min_width=0)
                     clear_button = gr.ClearButton(value="清除", scale=1, min_width=1)
-                with gr.Column(elem_classes=["mineru-kit-download-menu"]):
-                    gr.Button("下载", elem_classes=["mineru-kit-download-trigger"])
-                    with gr.Column(elem_classes=["mineru-kit-download-options"]):
-                        download_buttons: dict[str, Any] = {}
-                        for format_name, label in _DOWNLOAD_FORMATS:
-                            download_buttons[format_name] = gr.DownloadButton(
-                                label,
-                                visible=True,
-                                interactive=False,
-                                size="sm",
-                                elem_classes=[f"mineru-kit-download-{format_name}"],
-                            )
                 status_panel = gr.HTML(_status_html(_DEFAULT_STATUS), elem_classes=["mineru-kit-status"])
 
             with gr.Column(scale=4, min_width=340, elem_classes=["mineru-kit-preview", "mineru-preview-pane"]):
@@ -361,6 +389,22 @@ def build_gradio_app(
                             interactive=False,
                             elem_classes=["mineru-structured-content"],
                         )
+                with gr.Column(scale=0, min_width=0, elem_classes=["mineru-kit-download-menu"]):
+                    gr.HTML(_DOWNLOAD_ICON_HTML, elem_classes=["mineru-kit-download-trigger"])
+                    with gr.Column(
+                        min_width=0,
+                        elem_id="mineru-kit-download-options",
+                        elem_classes=["mineru-kit-download-options"],
+                    ):
+                        download_buttons: dict[str, Any] = {}
+                        for format_name, label in _DOWNLOAD_FORMATS:
+                            download_buttons[format_name] = gr.DownloadButton(
+                                label,
+                                visible=True,
+                                interactive=False,
+                                size="sm",
+                                elem_classes=[f"mineru-kit-download-{format_name}"],
+                            )
 
         if enable_example:
             examples = _example_files(file_types)
@@ -644,7 +688,7 @@ def launch_gradio(
     api_url: str | None,
     api_key: str | None,
     server_name: str,
-    server_port: int,
+    server_port: int | None,
     output_dir: str,
     enable_example: bool,
     enable_api: bool,
@@ -657,7 +701,7 @@ def launch_gradio(
     api_server_disable_image_analysis: bool,
     api_server_preload_models: bool,
 ) -> None:
-    """启动 Gradio，并在未指定外部 URL 时托管一个本地 V1 API server。"""
+    """启动 Gradio；未指定端口时自动选择，未指定外部 URL 时托管本地 V1 API server。"""
     configure_standard_streams()
     resolved_api_key = api_key if api_key is not None else os.environ.get("MINERU_API_KEY")
     output_root = Path(output_dir).expanduser().resolve()
