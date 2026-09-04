@@ -641,11 +641,11 @@ M1 和 M2 的部分测试任务可以并行，但 `ParseResult.from_dict()`、JS
 
 具体步骤:
 
-1. 准备已有 done batch: `page_range=1~5`。
-2. 请求 `page_range=1~10`。
-3. 期望只创建 `6~10` 的 pending batch。
-4. 准备已有 pending batch: `page_range=6~10`。
-5. 再请求 `1~10`，期望不重复创建，而是提升 priority。
+1. 准备已有 done batch: `page_range=1-5`。
+2. 请求 `page_range=1-10`。
+3. 期望只创建 `6-10` 的 pending batch。
+4. 准备已有 pending batch: `page_range=6-10`。
+5. 再请求 `1-10`，期望不重复创建，而是提升 priority。
 6. 测试 `force=True` 时跳过 done cache，但复用 active batch。
 7. 测试 `force=True` 只为 active 未覆盖页创建新 parse。
 8. 测试返回 `wait_parse_ids`、`created_parse_ids`、`reused_parse_ids`。

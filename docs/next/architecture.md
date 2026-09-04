@@ -154,7 +154,7 @@ metadata 更新规则：入库阶段写基础 metadata；解析完成后，只�
 |------|------|
 | `sha256` | 指向文档内容 |
 | `tier` | 实体 tier：`flash` / `basic` / `standard` / `advanced`；未指定 tier 应在入队前或执行前解析为实体 tier |
-| `page_range` | 正值页码范围字符串，如 `1~5,46~50` |
+| `page_range` | 正值页码范围字符串，如 `1-5,46-50` |
 | `status` | `pending` / `parsing` / `done` / `failed` / `superseded` |
 | `priority` | Agent 同步请求高于 watch 后台任务 |
 | `privacy` | 用户请求偏好：`local` / `remote` |
@@ -314,16 +314,16 @@ ParseWorker 按 `tier`、`privacy` 和 parse-server 健康状态路由：
       ab/
         ab3f...7e2d/
           flash/
-            1~5_1710000000000.json
-            98~102_1710000123000.json
+            1-5_1710000000000.json
+            98-102_1710000123000.json
           basic/
-            1~10_1710001234000.json
-            11~20_1710002234000.json
+            1-10_1710001234000.json
+            11-20_1710002234000.json
             images/              # 仅在解析结果包含必要 sidecar 时存在
           standard/
-            1~20_1710003234000.json
+            1-20_1710003234000.json
           advanced/
-            1~20_1710004234000.json
+            1-20_1710004234000.json
 ```
 
 每个 JSON 文件表示一次解析批次，文件名由页码范围和完成时间组成。每个 tier 独立目录，互不覆盖。remote 解析完成后也写入同一结构，供 CLI、SDK、搜索和缓存统一读取。

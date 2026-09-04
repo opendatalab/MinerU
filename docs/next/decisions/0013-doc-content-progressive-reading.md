@@ -82,8 +82,8 @@ def get_doc_content(
 HTTP API 使用 GET query，不使用 request body:
 
 ```http
-GET /api/v1/docs/{sha256}/content?tier=basic&page_range=1~10&limit=30000
-GET /api/v1/docs/{sha256}/content?tier=basic&page_range=7~10&after=doc:ab12cd3/tier:basic/page:7/block:4&limit=30000
+GET /api/v1/docs/{sha256}/content?tier=basic&page_range=1-10&limit=30000
+GET /api/v1/docs/{sha256}/content?tier=basic&page_range=7-10&after=doc:ab12cd3/tier:basic/page:7/block:4&limit=30000
 GET /api/v1/docs/{sha256}/content?tier=basic&after=doc:ab12cd3/tier:basic/page:1/block:42&limit=30000
 ```
 
@@ -92,8 +92,8 @@ GET /api/v1/docs/{sha256}/content?tier=basic&after=doc:ab12cd3/tier:basic/page:1
 - content 接口的默认 `limit` 是 `30000`。
 - CLI、HTTP API、SDK 使用同一个默认 `limit`。
 - export 接口没有 `limit`，也不设计 `limit` 参数。
-- 分页文档默认 `page_range=1~10`。
-- 分页文档如果显式传 `page_range=all`，Server 规范化为 `1~{page_count}`。
+- 分页文档默认 `page_range=1-10`。
+- 分页文档如果显式传 `page_range=all`，Server 规范化为 `1-{page_count}`。
 - 非分页文档可以不传 `page_range`，也可以只传 `after`。
 
 `limit` 是 soft limit，单位是渲染后的字符预算。Server 应尽量在自然边界停止，但协议不承诺精确等于 `limit`。
@@ -122,7 +122,7 @@ doc:{short_id}/tier:{tier}/page:{page_no}/block:{block_no}/char:{offset}
 
 ```json
 {
-  "page_range": "1~10",
+  "page_range": "1-10",
   "after": null,
   "limit": 30000
 }
@@ -147,7 +147,7 @@ GET /api/v1/docs/{sha}/content?tier=basic&after=doc:ab12cd3/tier:basic/page:21
 ```json
 {
   "request_scope": {
-    "page_range": "21~30",
+    "page_range": "21-30",
     "after": "doc:ab12cd3/tier:basic/page:21",
     "limit": 30000
   }
@@ -165,13 +165,13 @@ GET /api/v1/docs/{sha}/content?tier=basic&after=doc:ab12cd3/tier:basic/page:21
 - 非分页文档常规情况下使用 block 级 cursor。
 - 只有在单页或单 block 过长时，才细化到 block 或 char。
 
-默认 `page_range=1~10` 且未截断:
+默认 `page_range=1-10` 且未截断:
 
 ```json
 {
   "content_ranges": [
     {
-      "page_range": "1~10",
+      "page_range": "1-10",
       "start": "doc:ab12cd3/tier:basic/page:1",
       "end": "doc:ab12cd3/tier:basic/page:10"
     }
@@ -184,18 +184,18 @@ GET /api/v1/docs/{sha}/content?tier=basic&after=doc:ab12cd3/tier:basic/page:21
 ```json
 {
   "request_scope": {
-    "page_range": "1~5,20~25",
+    "page_range": "1-5,20-25",
     "after": null,
     "limit": 30000
   },
   "content_ranges": [
     {
-      "page_range": "1~5",
+      "page_range": "1-5",
       "start": "doc:ab12cd3/tier:basic/page:1",
       "end": "doc:ab12cd3/tier:basic/page:5"
     },
     {
-      "page_range": "20~25",
+      "page_range": "20-25",
       "start": "doc:ab12cd3/tier:basic/page:20",
       "end": "doc:ab12cd3/tier:basic/page:25"
     }
@@ -240,7 +240,7 @@ truncated=false => next_request may be null or non-null
 请求:
 
 ```http
-GET /api/v1/docs/{sha}/content?tier=basic&page_range=1~10&limit=30000
+GET /api/v1/docs/{sha}/content?tier=basic&page_range=1-10&limit=30000
 ```
 
 响应:
@@ -248,20 +248,20 @@ GET /api/v1/docs/{sha}/content?tier=basic&page_range=1~10&limit=30000
 ```json
 {
   "request_scope": {
-    "page_range": "1~10",
+    "page_range": "1-10",
     "after": null,
     "limit": 30000
   },
   "content_ranges": [
     {
-      "page_range": "1~10",
+      "page_range": "1-10",
       "start": "doc:ab12cd3/tier:basic/page:1",
       "end": "doc:ab12cd3/tier:basic/page:10"
     }
   ],
   "truncated": false,
   "next_request": {
-    "page_range": "11~20"
+    "page_range": "11-20"
   }
 }
 ```
@@ -273,7 +273,7 @@ GET /api/v1/docs/{sha}/content?tier=basic&page_range=1~10&limit=30000
 ```json
 {
   "next_request": {
-    "page_range": "36~38"
+    "page_range": "36-38"
   }
 }
 ```
@@ -292,7 +292,7 @@ GET /api/v1/docs/{sha}/content?tier=basic&page_range=1~10&limit=30000
 请求:
 
 ```http
-GET /api/v1/docs/{sha}/content?tier=basic&page_range=1~10&limit=30000
+GET /api/v1/docs/{sha}/content?tier=basic&page_range=1-10&limit=30000
 ```
 
 如果 Server 只输出到第 6 页，并在页边缘停止:
@@ -301,14 +301,14 @@ GET /api/v1/docs/{sha}/content?tier=basic&page_range=1~10&limit=30000
 {
   "content_ranges": [
     {
-      "page_range": "1~6",
+      "page_range": "1-6",
       "start": "doc:ab12cd3/tier:basic/page:1",
       "end": "doc:ab12cd3/tier:basic/page:6"
     }
   ],
   "truncated": true,
   "next_request": {
-    "page_range": "7~10"
+    "page_range": "7-10"
   }
 }
 ```
@@ -322,7 +322,7 @@ GET /api/v1/docs/{sha}/content?tier=basic&page_range=1~10&limit=30000
 请求:
 
 ```http
-GET /api/v1/docs/{sha}/content?tier=basic&page_range=7~10&limit=30000
+GET /api/v1/docs/{sha}/content?tier=basic&page_range=7-10&limit=30000
 ```
 
 响应:
@@ -338,7 +338,7 @@ GET /api/v1/docs/{sha}/content?tier=basic&page_range=7~10&limit=30000
   ],
   "truncated": true,
   "next_request": {
-    "page_range": "7~10",
+    "page_range": "7-10",
     "after": "doc:ab12cd3/tier:basic/page:7/block:4"
   }
 }
@@ -357,7 +357,7 @@ GET /api/v1/docs/{sha}/content?tier=basic&page_range=7~10&limit=30000
   ],
   "truncated": true,
   "next_request": {
-    "page_range": "7~10",
+    "page_range": "7-10",
     "after": "doc:ab12cd3/tier:basic/page:7/block:4/char:32784"
   }
 }
@@ -372,7 +372,7 @@ GET /api/v1/docs/{sha}/content?tier=basic&page_range=7~10&limit=30000
 示例:
 
 ```http
-GET /api/v1/docs/{sha}/content?tier=basic&page_range=1~5,20~25
+GET /api/v1/docs/{sha}/content?tier=basic&page_range=1-5,20-25
 ```
 
 若文档还有第 26 页之后的内容:
@@ -380,18 +380,18 @@ GET /api/v1/docs/{sha}/content?tier=basic&page_range=1~5,20~25
 ```json
 {
   "request_scope": {
-    "page_range": "1~5,20~25",
+    "page_range": "1-5,20-25",
     "after": null,
     "limit": 30000
   },
   "truncated": false,
   "next_request": {
-    "page_range": "26~35"
+    "page_range": "26-35"
   }
 }
 ```
 
-`6~19` 不会被自动补读。用户显式跳过的页段不属于 Server 的下一段建议。
+`6-19` 不会被自动补读。用户显式跳过的页段不属于 Server 的下一段建议。
 
 ## 非分页文档
 
@@ -452,13 +452,13 @@ CLI marker 是展示层，不是协议源头。Server 返回 `next_request`，CL
 分页文档:
 
 ```html
-<!-- Next: mineru parse report.pdf --pages 11~20 -->
+<!-- Next: mineru parse report.pdf --pages 11-20 -->
 ```
 
 分页文档页内 continuation:
 
 ```html
-<!-- Next: mineru parse report.pdf --pages 7~10 --after doc:ab12cd3/tier:basic/page:7/block:4 -->
+<!-- Next: mineru parse report.pdf --pages 7-10 --after doc:ab12cd3/tier:basic/page:7/block:4 -->
 ```
 
 非分页文档:
@@ -481,15 +481,15 @@ CLI marker 是展示层，不是协议源头。Server 返回 `next_request`，CL
 
 ### 方案 C: 用 server-side read session 记录已读页
 
-拒绝。它需要状态存储、过期、清理和并发语义。P0 采用无状态请求。默认页改为线性 `1~10` 后，分页文档可以用简单的下一段 `page_range` 推荐避免尾页重复。
+拒绝。它需要状态存储、过期、清理和并发语义。P0 采用无状态请求。默认页改为线性 `1-10` 后，分页文档可以用简单的下一段 `page_range` 推荐避免尾页重复。
 
 ### 方案 D: 分页文档 continuation 总是用 `after`
 
 拒绝。分页文档最自然的继续方式是页码范围。常规页边缘截断应简化为 `next_request.page_range`，只有页内 block/char 截断才需要 `after`。
 
-### 方案 E: 继续使用默认 `1~5,-5~-1`
+### 方案 E: 继续使用默认 `1-5,r5-r1`
 
-拒绝。头尾采样会导致无状态渐进阅读时容易重复读取尾页，也让 `next_request` 必须携带额外 read state 才能正确推荐后续页。P0 改为默认 `1~10`，使阅读计划线性、可预测。
+拒绝。头尾采样会导致无状态渐进阅读时容易重复读取尾页，也让 `next_request` 必须携带额外 read state 才能正确推荐后续页。P0 改为默认 `1-10`，使阅读计划线性、可预测。
 
 ## 影响
 
@@ -499,7 +499,7 @@ CLI marker 是展示层，不是协议源头。Server 返回 `next_request`，CL
 - CLI 应根据 `next_request` 渲染下一条命令提示。
 - CLI 不应反解析 Markdown marker 来决定下一次请求。
 - export 接口保持不截断，不增加 `limit`。
-- 分页文档默认页码范围使用 `1~10`。
+- 分页文档默认页码范围使用 `1-10`。
 - 分页文档只要 `next_request` 非空，就必须包含 `page_range`。
 
 ## 后续动作
@@ -507,14 +507,14 @@ CLI marker 是展示层，不是协议源头。Server 返回 `next_request`，CL
 1. 更新 doclib Interface、Client、Server 类型和签名。
 2. 实现 content cursor parser 和 validator。
 3. 实现 `request_scope` 规范化:
-   - 默认 `page_range=1~10`。
+   - 默认 `page_range=1-10`。
    - 分页文档只传 `after` 时推导连续 10 页。
    - 校验 `after` 属于 `page_range` scope。
 4. 实现 `content_ranges` 和 `next_request` 计算。
 5. 为 Markdown render 增加 soft limit。
 6. 更新 CLI parse 输出 marker，使其从 `next_request` 生成。
 7. 增加测试:
-   - 默认 `1~10`。
+   - 默认 `1-10`。
    - 未截断时生成下一段 `page_range`。
    - 页边缘截断时只返回 `next_request.page_range`。
    - 页内 block/char 截断时返回 `page_range + after`。

@@ -21,6 +21,7 @@ from ...doclib.types import (
     RemoveExcludeRuleResponse,
     RemoveParsingRuleResponse,
 )
+from ...parser.page_range import normalize_page_range_input
 from ...types import Tier
 from ..contracts import CliContext
 from ..runtime import run_cli
@@ -101,7 +102,7 @@ def exclude_rules_remove(rule_id: int = typer.Argument(..., help="Rule id to rem
 def parsing_rules_add(
     pattern: str = typer.Argument(..., help="Glob pattern to match"),
     tier: Tier | None = typer.Option(None, "--tier", help="Parse tier: flash, basic, standard, advanced"),
-    pages: str | None = typer.Option(None, "--pages", help="Page range, e.g. all or 1~10"),
+    pages: str | None = typer.Option(None, "--pages", help="PDF pages, e.g. all, 1-10 or r3-r1"),
     remote: bool = typer.Option(False, "--remote", help="Allow remote parsing"),
     name: str | None = typer.Option(None, "--name", help="Rule name"),
     json_mode: bool = typer.Option(False, "--json", help="JSON output"),
@@ -110,10 +111,18 @@ def parsing_rules_add(
     ctx = CliContext(json_mode=json_mode)
     run_cli(
         ctx,
-        lambda: _client().add_parsing_rule(
-            ParsingRuleRequest(pattern=pattern, tier=tier, page_range=pages, remote=remote, name=name)
-        ),
+        lambda: _add_parsing_rule(pattern, tier=tier, page_range=pages, remote=remote, name=name),
         render=_render_parsing_rule_added,
+    )
+
+
+def _add_parsing_rule(
+    pattern: str, *, tier: Tier | None, page_range: str | None, remote: bool, name: str | None
+) -> ParsingRuleInfo:
+    """在访问 Doclib 前校验规则中的页码表达式。"""
+    page_range = normalize_page_range_input(page_range) or None
+    return _client().add_parsing_rule(
+        ParsingRuleRequest(pattern=pattern, tier=tier, page_range=page_range, remote=remote, name=name)
     )
 
 

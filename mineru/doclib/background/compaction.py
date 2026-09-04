@@ -11,6 +11,7 @@ from collections.abc import Sequence
 from typing import Any, cast
 
 from ...parser.base import MIDDLE_JSON_SCHEMA_VERSION
+from ...parser.page_range import format_page_range
 from ...types import Tier
 from ..core.db import DatabaseManager
 from ..rows import ParseBatchRow, ParseGroupRow, ParseRow
@@ -124,19 +125,8 @@ class Compaction:
             if r["done_at"] and r["done_at"] > max_done_at:
                 max_done_at = r["done_at"]
 
-        # merge contiguous ranges
-        sorted_page_numbers = sorted(all_page_numbers)
-        merged_ranges: list[str] = []
-        start = sorted_page_numbers[0]
-        end = start
-        for page_no in sorted_page_numbers[1:]:
-            if page_no == end + 1:
-                end = page_no
-            else:
-                merged_ranges.append(f"{start}~{end}" if start != end else str(start))
-                start = page_no
-                end = page_no
-        merged_ranges.append(f"{start}~{end}" if start != end else str(start))
+        # 使用统一格式化逻辑生成每段连续页的缓存范围。
+        merged_ranges = format_page_range(all_page_numbers).split(",")
 
         # check if merge actually reduced row count
         if len(merged_ranges) >= len(rows):

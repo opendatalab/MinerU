@@ -363,7 +363,7 @@ def test_cleanup_temp_rejects_negative_older_than(tmp_path) -> None:
 
 
 def test_core_doclib_schemas_are_instantiable() -> None:
-    parse_request = ParseRequest(path="/tmp/a.pdf", tier=None, page_range="1~5")
+    parse_request = ParseRequest(path="/tmp/a.pdf", tier=None, page_range="1-5")
     forget_request = ForgetPathRequest(path="/tmp/a.pdf")
     forget_response = ForgetPathResponse(path="/tmp/a.pdf", matched_as="file", forgotten_files=1, dry_run=True)
     scan_request = ScanRequest(path="/tmp", kind="manual", source="cli")
@@ -436,7 +436,7 @@ def test_core_doclib_schemas_are_instantiable() -> None:
         sha256="abc",
         short_id="abc",
         tier="standard",
-        page_range="1~2",
+        page_range="1-2",
         status="pending",
         priority=10,
         privacy="local",
@@ -447,7 +447,7 @@ def test_core_doclib_schemas_are_instantiable() -> None:
         error_code="parse_failed",
         error_msg="failed",
     )
-    tier_info = TierParseInfo(tier="standard", page_range="1~2", status="pending")
+    tier_info = TierParseInfo(tier="standard", page_range="1-2", status="pending")
     info = FileInfoResponse(
         file=file_info,
         doc=doc_info,
@@ -456,7 +456,7 @@ def test_core_doclib_schemas_are_instantiable() -> None:
     )
     watch = WatchInfo(id=1, path="/tmp", recursive=True, status="active", last_scan_at=100, last_scan_files=3)
     exclude_rule = ExcludeRuleInfo(id=2, pattern="*.tmp", hit_count=4)
-    parsing_rule = ParsingRuleInfo(id=3, pattern="*.pdf", tier="standard", page_range="1~5", remote=True)
+    parsing_rule = ParsingRuleInfo(id=3, pattern="*.pdf", tier="standard", page_range="1-5", remote=True)
     watches = WatchListResponse(watches=[watch])
     exclude_rules = ExcludeRuleListResponse(rules=[exclude_rule])
     parsing_rules = ParsingRuleListResponse(rules=[parsing_rule])
@@ -498,7 +498,7 @@ def test_core_doclib_schemas_are_instantiable() -> None:
     remove_exclude_response = RemoveExcludeRuleResponse(rule_id=2, removed=True)
     remove_parsing_response = RemoveParsingRuleResponse(rule_id=3, removed=True)
     exclude_rule_request = ExcludeRuleRequest(pattern="*.tmp")
-    parsing_rule_request = ParsingRuleRequest(pattern="*.pdf", tier="standard", page_range="1~5")
+    parsing_rule_request = ParsingRuleRequest(pattern="*.pdf", tier="standard", page_range="1-5")
     error_info = ErrorInfo(type="invalid_request_error", code="file_not_found", message="missing", param="path")
     error_response = ErrorResponse(error=error_info)
 
@@ -555,7 +555,7 @@ def test_core_doclib_schemas_are_instantiable() -> None:
 
 def test_parse_request_rejects_auto_tier() -> None:
     with pytest.raises(ValidationError):
-        ParseRequest(path="/tmp/a.pdf", tier="auto", page_range="1~5")
+        ParseRequest(path="/tmp/a.pdf", tier="auto", page_range="1-5")
 
 
 def test_parse_response_status_is_submit_state_only() -> None:

@@ -1,5 +1,7 @@
 # Tool SDK: `mineru.parser`
 
+页码表达式、默认范围及不兼容升级要求统一见 [PDF 页码范围规范](../page-ranges.md)。
+
 状态: Draft
 读者: SDK 开发者、`mineru-kit` 开发者、核心开发者
 范围: 无状态解析工具层的公开入口、统一 parser 类和目标契约
@@ -148,7 +150,7 @@ class DocumentParser:
 ```python
 from mineru.parser import parse
 
-result = parse("report.pdf", tier="basic", page_range="1~5")
+result = parse("report.pdf", tier="basic", page_range="1-5")
 print(result.markdown())
 ```
 
@@ -158,7 +160,7 @@ print(result.markdown())
 from mineru.parser import MinerUParser
 
 with MinerUParser(tier="basic") as parser:
-    result = parser.parse("report.pdf", page_range="1~10")
+    result = parser.parse("report.pdf", page_range="1-10")
     images = result.images()
 ```
 

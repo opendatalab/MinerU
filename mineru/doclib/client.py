@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from pydantic_core import to_jsonable_python
 
 from ..errors import MineruError, ServerNotRunningError
+from ..parser.page_range import normalize_page_range_input
 from ..types import Tier
 from .base import DoclibInterface
 from .endpoint import (
@@ -128,6 +129,7 @@ class DoclibClient(DoclibInterface):
 
     @route("POST", "/parses", tags=("parse",))
     def ensure_parse(self, request: ParseRequest) -> ParseResponse:
+        request = request.model_copy(update={"page_range": normalize_page_range_input(request.page_range) or None})
         return self._request_model(ParseResponse, body=request)
 
     @route("GET", "/parses", tags=("parse",))
@@ -143,6 +145,7 @@ class DoclibClient(DoclibInterface):
         limit: int = 50,
         offset: int = 0,
     ) -> ListParsesResponse:
+        page_range = normalize_page_range_input(page_range) or None
         return self._request_model(
             ListParsesResponse,
             params={
@@ -237,6 +240,7 @@ class DoclibClient(DoclibInterface):
         format: str = "markdown",
         no_marker: bool = False,
     ) -> DocContentResponse:
+        page_range = normalize_page_range_input(page_range) or None
         return self._request_model(
             DocContentResponse,
             path_params={"doc_ref": doc_ref},
@@ -275,6 +279,7 @@ class DoclibClient(DoclibInterface):
 
     @route("POST", "/docs/{doc_ref}/exports", tags=("docs",))
     def export_doc_content(self, doc_ref: str, request: DocContentExportRequest) -> DocContentExportResponse:
+        request = request.model_copy(update={"page_range": normalize_page_range_input(request.page_range) or None})
         return self._request_model(DocContentExportResponse, path_params={"doc_ref": doc_ref}, body=request)
 
     @route("GET", "/search", tags=("search",))
@@ -354,6 +359,7 @@ class DoclibClient(DoclibInterface):
 
     @route("POST", "/parsing-rules", tags=("rules",))
     def add_parsing_rule(self, request: ParsingRuleRequest) -> ParsingRuleInfo:
+        request = request.model_copy(update={"page_range": normalize_page_range_input(request.page_range) or None})
         return self._request_model(ParsingRuleInfo, body=request)
 
     @route("GET", "/parsing-rules", tags=("rules",))

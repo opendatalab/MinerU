@@ -6,6 +6,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from ..parser.page_range import PAGE_RANGE_DESCRIPTION
 from ..types import Tier
 
 ParseSubmitStatus = Literal["pending", "done"]
@@ -95,7 +96,7 @@ class RemoveParsingRuleResponse(DoclibModel):
 class ParseRequest(DoclibModel):
     path: str
     tier: Tier | None = None
-    page_range: str | None = None
+    page_range: str | None = Field(default=None, description=PAGE_RANGE_DESCRIPTION)
     force: bool = False
     remote: bool = False
 
@@ -104,7 +105,7 @@ class ParseResponse(DoclibModel):
     sha256: str
     short_id: str | None = None
     tier: Tier
-    page_range: str
+    page_range: str = Field(description="Resolved 1-based inclusive page ranges, e.g. 1-5,8.")
     status: ParseSubmitStatus
     cache_hit: bool = False
     wait_parse_ids: list[int] = Field(default_factory=list)
@@ -114,9 +115,9 @@ class ParseResponse(DoclibModel):
 
 
 class ParseCoverage(DoclibModel):
-    done_page_range: str
-    active_page_range: str
-    missing_page_range: str
+    done_page_range: str = Field(description="Resolved 1-based page ranges; an empty string denotes no pages.")
+    active_page_range: str = Field(description="Resolved 1-based page ranges; an empty string denotes no pages.")
+    missing_page_range: str = Field(description="Resolved 1-based page ranges; an empty string denotes no pages.")
 
 
 class ParseInfo(DoclibModel):
@@ -124,7 +125,7 @@ class ParseInfo(DoclibModel):
     sha256: str
     short_id: str
     tier: Tier
-    page_range: str
+    page_range: str = Field(description="Resolved 1-based inclusive page ranges, e.g. 1-5,8.")
     status: ParseStatus
     priority: int = 0
     privacy: str
@@ -276,7 +277,7 @@ class DocContentResponse(DoclibModel):
 
 
 class ContentRequestScope(DoclibModel):
-    page_range: str | None = None
+    page_range: str | None = Field(default=None, description=PAGE_RANGE_DESCRIPTION)
     after: str | None = None
     limit: int = 30000
     locator: str | None = None
@@ -285,13 +286,13 @@ class ContentRequestScope(DoclibModel):
 
 
 class ContentRange(DoclibModel):
-    page_range: str | None = None
+    page_range: str | None = Field(default=None, description=PAGE_RANGE_DESCRIPTION)
     start: str
     end: str
 
 
 class ContentNextRequest(DoclibModel):
-    page_range: str | None = None
+    page_range: str | None = Field(default=None, description=PAGE_RANGE_DESCRIPTION)
     after: str | None = None
     locator: str | None = None
 
@@ -306,7 +307,7 @@ class ContentAsset(DoclibModel):
 
 class DocContentExportRequest(DoclibModel):
     tier: Tier
-    page_range: str | None = None
+    page_range: str | None = Field(default=None, description=PAGE_RANGE_DESCRIPTION)
     format: str = "markdown"
     output: str
     no_marker: bool = False
@@ -368,7 +369,7 @@ class FileInfoResponse(DoclibModel):
 class TierParseInfo(DoclibModel):
     tier: Tier
     status: ParseStatus
-    page_range: str
+    page_range: str = Field(description="Resolved 1-based inclusive page ranges, e.g. 1-5,8.")
     done_at: int | None = None
 
 
@@ -461,7 +462,7 @@ class ParsingRuleRequest(DoclibModel):
     pattern: str
     name: str | None = None
     tier: Tier | None = None
-    page_range: str | None = None
+    page_range: str | None = Field(default=None, description=PAGE_RANGE_DESCRIPTION)
     remote: bool = False
     priority: int = 0
 
@@ -482,7 +483,7 @@ class ParsingRuleInfo(DoclibModel):
     pattern: str
     name: str | None = None
     tier: Tier | None = None
-    page_range: str | None = None
+    page_range: str | None = Field(default=None, description=PAGE_RANGE_DESCRIPTION)
     remote: bool = False
     enabled: bool = True
     priority: int = 0

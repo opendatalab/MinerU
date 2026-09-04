@@ -514,8 +514,6 @@ def _prepare_origin_pdf(
     with PDFDocument(source_bytes) as doc:
         page_count = doc.page_count
     page_indices = parse_page_range(page_range, page_count)
-    if page_range.strip() and not page_indices:
-        raise ValueError(f"Page range does not select any pages: {page_range}")
     if page_indices == list(range(page_count)):
         output_path.write_bytes(source_bytes)
         return output_path, page_indices

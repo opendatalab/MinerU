@@ -46,6 +46,12 @@ body.dark .gradio-container {
     top: 12px;
     align-self: flex-start;
 }
+/* 档位名称由上方 Markdown 显示，仅隐藏原生滑块的数字区，不修改轨道和滑块样式。 */
+.mineru-tier-slider .head,
+.mineru-tier-slider .min_value,
+.mineru-tier-slider .max_value {
+    display: none;
+}
 .mineru-upload-file label[data-testid="block-label"] {
     align-items: flex-start !important;
     line-height: 1.35 !important;

@@ -6,11 +6,14 @@ from typing import Literal, cast
 
 import typer
 
+from ...errors import MineruError
 from ...filetypes import ensure_tier_supported_for_parse_extension, is_flash_only_parse_extension
 from ...parser import MinerUApiParser
 from ...parser import parse as local_parse
-from ...types import Tier
+from ...parser.api_client import _V1APIError
+from ...parser.page_range import normalize_page_range_input
 from ...parser.tier import normalize_backend
+from ...types import Tier
 from ..common import (
     build_remote_api_url,
     effective_local_tier_and_backend,
@@ -27,7 +30,7 @@ from ..output import print_info, print_success
 def parse_cmd(
     inputs: list[str] = typer.Argument(..., help="Input files or directories"),
     output: str = typer.Option(..., "-o", "--output", help="Output path; required"),
-    pages: str | None = typer.Option(None, "-p", "--pages", help="Page range, e.g. '1~5' or 'all'"),
+    pages: str | None = typer.Option(None, "-p", "--pages", help="PDF pages: '1-5,8,r3-r1' or 'all'; default: all pages"),
     format: str = typer.Option(
         "markdown",
         "-f",
@@ -44,6 +47,10 @@ def parse_cmd(
     disable_image_analysis: bool = typer.Option(False, "--disable-image-analysis", help="Disable image analysis"),
 ) -> None:
     """Parse files or directories into markdown, middle JSON, or zip outputs."""
+    try:
+        pages = normalize_page_range_input(pages)
+    except MineruError as exc:
+        exit_with_message(exc.code, str(exc), "pages")
     output_format = cast(Literal["markdown", "middle_json", "zip"], format)
     parse_tier = cast(Tier | None, tier)
     parse_ocr_mode = cast(Literal["auto", "txt", "ocr"], ocr_mode)
@@ -107,6 +114,8 @@ def parse_cmd(
             save_parse_result(result, dest, output_format)
             if verbose:
                 print_info(str(parse_result_payload(path, dest, output_format)))
+        except (MineruError, _V1APIError) as exc:
+            exit_with_message(exc.code, str(exc), exc.param)
         except Exception as exc:
             exit_with_message("parse_failed", f"Failed to parse {path}: {exc}")
     print_success(f"Parsed {len(paths)} input(s).")

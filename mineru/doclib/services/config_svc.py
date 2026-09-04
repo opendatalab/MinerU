@@ -9,6 +9,7 @@ import time
 from typing import cast
 
 from ...errors import InvalidRequestError
+from ...parser.page_range import normalize_page_range_input
 from ...types import Tier
 from ..config_defaults import CONFIG_DEFAULTS, CONFIG_SOURCE_DEFAULT, CONFIG_SOURCE_OVERRIDE, ConfigSource
 from ..config_schema import validate_config_key, validate_config_value
@@ -208,6 +209,7 @@ class ConfigService:
                 (name, pattern, priority, now, now),
             )
         if rule_type == RULE_TYPE_PARSING_RULE:
+            page_range = normalize_page_range_input(page_range) or None
             return await self.db.execute_insert(
                 "INSERT INTO parsing_rules (name, pattern, tier, page_range, remote, priority, created_at, updated_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",

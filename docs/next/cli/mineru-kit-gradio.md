@@ -1,5 +1,7 @@
 # mineru-kit gradio
 
+页码表达式、默认范围及不兼容升级要求统一见 [PDF 页码范围规范](../page-ranges.md)。
+
 状态: Implemented
 
 `mineru-kit gradio` 提供一个基于 MinerU V1 API 的文档解析界面。它不直接调用旧 `/file_parse` 或 `/tasks` 接口，也不使用 `doclib` 缓存。
@@ -51,7 +53,11 @@ mineru-kit gradio \
 
 界面一次提交一个文件，支持 `filetypes.PARSEABLE_EXTENSIONS` 中的 PDF、图片、Office/ODF、RTF、HTML、CSV/TSV、EPUB 和 OFD。
 
-页码输入使用 V1 `page_range` 语法，例如 `1~5,8,-1`；留空表示全部页面。只有原始 PDF 支持显式页码范围，其他格式会自动清空并禁用页码控件。
+解析 tier 使用原生离散滑块选择，上方即时显示当前档位。滑块按 `flash → basic → standard → advanced` 排列，仅包含服务实际支持的档位。默认优先选择 `standard`，否则选择最高可用档位；仅有一个档位时禁用滑块。上传新文件或清除结果会保留当前选择。
+
+启用 Gradio 事件 API 时，转换事件的 `tier_position` 参数为从 `0` 开始的整数位置，替代原来的 tier 字符串。例如四档齐全时 `3` 对应 `advanced`；仅支持 `basic/standard/advanced` 时 `2` 对应 `advanced`。位置始终按照上述顺序对实际可用档位编号，越界位置会报错。V1 API 的 `tier` 参数仍使用字符串，启动参数不变。
+
+页码输入使用 V1 `page_range` 语法，例如 `1-5,8,r1`；留空表示全部页面。只有原始 PDF 支持显式页码范围，其他格式会自动清空并禁用页码控件。
 
 Gradio 首先发现 `/v1/health` 和 `/v1/tiers`，然后通过 `MinerUApiParser` 上传文件、创建 `/v1/parse/jobs`、轮询任务并下载 ZIP 结果。解析结果保存为严格 Middle JSON 2.0。
 

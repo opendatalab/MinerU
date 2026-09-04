@@ -8,6 +8,7 @@ import zipfile
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
+from unittest.mock import AsyncMock
 
 import httpx
 import pytest
@@ -398,15 +399,15 @@ def test_v1_client_preserves_v1_error_code(monkeypatch: pytest.MonkeyPatch, tmp_
         async def parse_async(self, _path: Path, *, page_range: str) -> ParseResult:
             """抛出与正式 API client 一致的错误形态。"""
             error = RuntimeError(f"bad range: {page_range}")
-            error.code = "invalid_page_range"  # type: ignore[attr-defined]
+            error.code = "page_range_invalid"  # type: ignore[attr-defined]
             raise error
 
     monkeypatch.setattr(gradio_client, "MinerUApiParser", FailingParser)
     client = V1ArtifactClient(api_url="http://example.test")
     client._capabilities = V1ServerCapabilities("http://example.test", ("flash",), ("zip",), ("file_id",))
     with pytest.raises(V1ArtifactError) as error:
-        asyncio.run(client.parse_file(source, tier="flash", page_range="bad"))
-    assert error.value.code == "invalid_page_range"
+        asyncio.run(client.parse_file(source, tier="flash", page_range="999"))
+    assert error.value.code == "page_range_invalid"
 
 
 def test_v1_client_parse_uses_api_parser_zip_contract(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -437,12 +438,12 @@ def test_v1_client_parse_uses_api_parser_zip_contract(monkeypatch: pytest.Monkey
         ("file_id",),
     )
     statuses: list[str] = []
-    result = asyncio.run(client.parse_file(source, tier="standard", page_range="1~2", status_callback=statuses.append))
+    result = asyncio.run(client.parse_file(source, tier="standard", page_range="1-2", status_callback=statuses.append))
     assert isinstance(result, ParseResult)
     assert calls["include_images"] is True
     assert calls["include_model_output"] is True
     assert calls["tier"] == "standard"
-    assert calls["page_range"] == "1~2"
+    assert calls["page_range"] == "1-2"
     assert statuses[0] == "Preparing request..."
     assert statuses[-1] == STATUS_DOWNLOADING_RESULT
 
@@ -625,7 +626,7 @@ def test_page_range_image_crops_follow_original_page_indices(tmp_path: Path) -> 
         ParseResult(middle_json=_middle_json(page_indices=(1, 2))),
         source,
         output_root=tmp_path / "output",
-        page_range="2~3",
+        page_range="2-3",
     )
     images = sorted((artifacts.root / "images").glob("*.jpg"))
     assert len(images) == 2
@@ -644,7 +645,7 @@ def test_persist_page_range_keeps_cropped_origin_page_order(tmp_path: Path) -> N
         ParseResult(middle_json=_middle_json(with_image=False, page_indices=(1, 2))),
         source,
         output_root=tmp_path / "output",
-        page_range="2~3",
+        page_range="2-3",
     )
     assert artifacts.page_indices == (1, 2)
     assert artifacts.origin_pdf_path is not None
@@ -701,8 +702,8 @@ def test_render_download_rejects_state_outside_allowed_root(tmp_path: Path) -> N
 def test_gradio_file_types_page_range_and_header_follow_new_contract() -> None:
     """验证完整扩展名、PDF-only 页码规则和复用后的 Header。"""
     assert set(gradio_app._supported_file_types()) == {f".{extension}" for extension in PARSEABLE_EXTENSIONS}
-    assert gradio_app._effective_page_range("report.PDF", " 1~3,-1 ") == "1~3,-1"
-    assert gradio_app._effective_page_range("report.docx", "1~3") == ""
+    assert gradio_app._effective_page_range("report.PDF", " 1-3,r1 ") == "1-3,r1"
+    assert gradio_app._effective_page_range("report.docx", "1-3") == ""
     header = gradio_app._render_header(gradio_major_version=6)
     assert "mineru-gradio6-header" in header
     assert "mineru-header-popover mineru-model-popover" in header
@@ -742,8 +743,60 @@ def test_build_gradio_app_exposes_three_tabs_and_download_menu(tmp_path: Path) -
     assert sum(1 for dependency in app.config["dependencies"] if dependency.get("queue") is True) >= 7
 
 
-def test_gradio_conversion_forwards_page_range_and_enables_fresh_downloads(tmp_path: Path) -> None:
-    """验证转换事件透传 PDF page_range，并只在新结果完成后启用下载。"""
+@pytest.mark.parametrize(
+    ("tiers", "default_position", "default_tier", "maximum"),
+    [
+        (("advanced", "flash", "standard", "basic"), 2, "standard", 3),
+        (("advanced", "standard", "basic"), 1, "standard", 2),
+        (("advanced", "flash"), 1, "advanced", 1),
+        (("basic", "flash"), 1, "basic", 1),
+        (("flash",), 0, "flash", 1),
+        (("advanced",), 0, "advanced", 1),
+    ],
+)
+def test_gradio_tier_slider_uses_available_tiers_and_preserves_selection(
+    tmp_path: Path, tiers: tuple[str, ...], default_position: int, default_tier: str, maximum: int
+) -> None:
+    """验证乱序、缺档及单档位下的原生滑块默认值与文件切换、清除行为。"""
+    capabilities = V1ServerCapabilities("http://127.0.0.1:1", tiers, ("zip",), ("file_id",))
+    demo = build_gradio_app(
+        V1ArtifactClient(api_url=capabilities.base_url), capabilities, output_root=tmp_path, enable_example=False
+    )
+    slider = next(block for block in demo.blocks.values() if block.__class__.__name__ == "Slider")
+    label = next(block for block in demo.blocks.values() if "mineru-tier-label" in (block.elem_classes or []))
+    assert (slider.minimum, slider.maximum, slider.step, slider.precision) == (0, maximum, 1, 0)
+    assert slider.value == default_position
+    assert slider.interactive is (len(tiers) > 1)
+    assert label.value == f"解析 tier：{default_tier}"
+    assert not any(block.__class__.__name__ == "Dropdown" for block in demo.blocks.values())
+    label_event = next(event for event in demo.config["dependencies"] if event["targets"] == [(slider._id, "input")])
+    assert label_event["backend_fn"] is False
+    assert label_event["queue"] is False
+    assert label_event["outputs"] == [label._id]
+    for fn in demo.fns.values():
+        if fn.name in {"update_file_preview", "reset_ui"}:
+            assert slider not in fn.outputs and label not in fn.outputs
+        if fn.name == "convert_handler":
+            assert fn.inputs[1] is slider
+    assert slider.api_info()["type"] == "integer"
+
+
+@pytest.mark.parametrize(
+    ("tiers", "position", "expected_tier"),
+    [
+        (("advanced", "flash", "standard", "basic"), 0, "flash"),
+        (("advanced", "flash", "standard", "basic"), 1, "basic"),
+        (("advanced", "flash", "standard", "basic"), 2, "standard"),
+        (("advanced", "flash", "standard", "basic"), 3, "advanced"),
+        (("advanced", "standard", "basic"), 2, "advanced"),
+        (("advanced", "flash"), 1, "advanced"),
+        (("flash",), 0, "flash"),
+    ],
+)
+def test_gradio_conversion_forwards_page_range_and_enables_fresh_downloads(
+    tmp_path: Path, tiers: tuple[str, ...], position: int, expected_tier: str
+) -> None:
+    """验证滑块位置映射与 PDF page_range 透传，并只在新结果完成后启用下载。"""
     source = tmp_path / "demo.pdf"
     source.write_bytes(_pdf_bytes())
 
@@ -770,9 +823,9 @@ def test_gradio_conversion_forwards_page_range_and_enables_fresh_downloads(tmp_p
 
     async def collect_updates(handler: Any) -> list[tuple[Any, ...]]:
         """收集 Gradio 异步生成器的全部增量输出。"""
-        return [update async for update in handler(str(source), "flash", " 1 ")]
+        return [update async for update in handler(str(source), position, " 1 ")]
 
-    capabilities = V1ServerCapabilities("http://127.0.0.1:1", ("flash",), ("zip",), ("file_id",))
+    capabilities = V1ServerCapabilities("http://127.0.0.1:1", tiers, ("zip",), ("file_id",))
     client = FakeClient()
     demo = build_gradio_app(
         client,  # type: ignore[arg-type]
@@ -783,11 +836,42 @@ def test_gradio_conversion_forwards_page_range_and_enables_fresh_downloads(tmp_p
     convert_handler = next(fn.fn for fn in demo.fns.values() if fn.name == "convert_handler")
     updates = asyncio.run(collect_updates(convert_handler))
 
-    assert client.calls == [(source.resolve(), "flash", "1")]
+    assert client.calls == [(source.resolve(), expected_tier, "1")]
     assert len(updates[-1]) == 15
     assert updates[-1][8] is not None
     assert all(update["interactive"] is True and update["value"] is None for update in updates[-1][-6:])
     assert all(update["interactive"] is False and update["value"] is None for update in updates[0][-6:])
+
+
+@pytest.mark.parametrize(
+    ("tiers", "position"),
+    [
+        (("flash", "basic", "standard", "advanced"), -1),
+        (("flash", "basic", "standard", "advanced"), 4),
+        (("flash",), 1),
+        (("flash", "advanced"), 0.5),
+        (("flash", "advanced"), float("nan")),
+        (("flash", "advanced"), True),
+    ],
+)
+def test_gradio_conversion_rejects_invalid_tier_position(tmp_path: Path, tiers: tuple[str, ...], position: int | float) -> None:
+    """验证非法位置会清除结果且不会向解析服务提交请求，包括单档位的占位上界。"""
+    source = tmp_path / "demo.csv"
+    source.write_text("name,value\na,1\n", encoding="utf-8")
+    client = SimpleNamespace(parse_file=AsyncMock())
+    capabilities = V1ServerCapabilities("http://127.0.0.1:1", tiers, ("zip",), ("file_id",))
+    demo = build_gradio_app(client, capabilities, output_root=tmp_path, enable_example=False)
+    handler = next(fn.fn for fn in demo.fns.values() if fn.name == "convert_handler")
+
+    async def collect_updates() -> list[tuple[Any, ...]]:
+        """收集非法滑块位置对应的错误输出。"""
+        return [update async for update in handler(str(source), position, "")]
+
+    updates = asyncio.run(collect_updates())
+    assert "Failed: Invalid tier slider position" in updates[-1][0]
+    assert updates[-1][8] is None
+    assert all(item["interactive"] is False and item["value"] is None for item in updates[-1][-6:])
+    client.parse_file.assert_not_called()
 
 
 def test_gradio_conversion_failure_clears_previous_downloads(tmp_path: Path) -> None:
@@ -804,7 +888,7 @@ def test_gradio_conversion_failure_clears_previous_downloads(tmp_path: Path) -> 
 
     async def final_update(handler: Any) -> tuple[Any, ...]:
         """返回 Gradio 异步生成器的最后一次更新。"""
-        updates = [update async for update in handler(str(source), "flash", "")]
+        updates = [update async for update in handler(str(source), 0, "")]
         return updates[-1]
 
     capabilities = V1ServerCapabilities("http://127.0.0.1:1", ("flash",), ("zip",), ("file_id",))

@@ -1,5 +1,7 @@
 # Page Naming Convention
 
+页码表达式、默认范围及不兼容升级要求统一见 [PDF 页码范围规范](page-ranges.md)。
+
 状态: Implemented
 读者: 核心开发者、编程 Agent、SDK/API/CLI 设计参与者、文档作者
 范围: MinerU Next 中页码、页码范围、页面数组和页数统计的命名约定
@@ -21,7 +23,7 @@
 
 | 名称 | 含义 | 类型示例 | 说明 |
 |------|------|----------|------|
-| `page_range` | 页码范围字符串 | `str \| None` | 例如 `"1~10"`、`"1,3,5~7"`、`"all"`。是否已经规范化由所在层契约定义。 |
+| `page_range` | 页码范围字符串 | `str \| None` | 例如 `"1-10"`、`"1,3,5-7"`、`"all"`。是否已经规范化由所在层契约定义。 |
 | `pages` | 页面对象列表 | `list[PageInfo]` / `list[dict]` | 只用于真实页面结构，例如 `ParseResult.pages`、Middle JSON 顶层 `{"pages": [...]}`。 |
 | `<state>_pages` | 某状态下的页面对象列表 | `done_pages: list[PageInfo]` | 仅当值仍然是 `PageInfo` / page dict 列表时使用。 |
 | `page_idx` | 0-based 页面索引 | `int` | 第一页为 `0`。对应 `PageInfo.page_idx`。 |
@@ -45,7 +47,7 @@
 | 避免写法 | 推荐写法 |
 |----------|----------|
 | `pages: str` | `page_range: str` |
-| `result.pages == "1~10"` | `result.page_range == "1~10"` |
+| `result.pages == "1-10"` | `result.page_range == "1-10"` |
 | `num_pages` | `page_count` 或 `total_page_count` |
 | `total_pages` | `page_count` 或 `total_page_count` |
 | `done_pages: str` | `done_page_range: str` |
@@ -69,9 +71,9 @@
 示例:
 
 ```python
-ParseRequest(page_range="1~10")
-ParseInfo(page_range="1~5")
-ContentNextRequest(page_range="11~20")
+ParseRequest(page_range="1-10")
+ParseInfo(page_range="1-5")
+ContentNextRequest(page_range="11-20")
 ```
 
 ### 4.2 `pages`
@@ -157,7 +159,7 @@ page_numbers = sorted(parse_page_range_set(page_range))
 
 命名时先问这几个问题:
 
-1. 值是不是 `"1~10"` 这样的范围字符串？
+1. 值是不是 `"1-10"` 这样的范围字符串？
    - 是: 用 `page_range`。
 2. 值是不是 `PageInfo` 或 page dict 的列表？
    - 是: 用 `pages` 或 `<state>_pages`。

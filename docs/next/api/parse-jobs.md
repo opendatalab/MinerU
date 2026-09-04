@@ -1,5 +1,7 @@
 # Parse Jobs
 
+页码表达式、默认范围及不兼容升级要求统一见 [PDF 页码范围规范](../page-ranges.md)。
+
 状态: Draft
 读者: API 使用者、服务端开发者、SDK 开发者
 范围: 解析任务创建、查询和轮询
@@ -34,7 +36,7 @@ Job 状态:
         "type": "file_id",
         "file_id": "file-01HXYZ123ABCDEF"
       },
-      "page_range": "1~10"
+      "page_range": "1-10"
     }
   ],
   "tier": null,
@@ -125,7 +127,7 @@ Local Parse Server 的 source 策略由启动参数决定:
 
 | 字段 | 类型 | 默认 | 说明 |
 |------|------|------|------|
-| `page_range` | string | `null` | PDF 页码范围。省略或传 `null` 表示解析整个文件；图片及其他非 PDF 输入只允许省略或传 `null`。推荐 `~` 分隔，如 `1~10`、`1,3,5~7`、`-5~-1`。 |
+| `page_range` | string | `null` | PDF 页码范围。省略或传 `null` 表示解析整个文件；图片及其他非 PDF 输入只允许省略或传 `null`。使用 `-` 分隔，如 `1-10`、`1,3,5-7`、`r5-r1`。 |
 
 OCR 策略和图片分析能力由 `tier` 与服务端实际引擎自动决定，客户端不能通过文件级参数单独关闭或开启。
 
@@ -165,7 +167,7 @@ OCR 策略和图片分析能力由 `tier` 与服务端实际引擎自动决定�
     {
       "file_id": "file-01HXYZ123ABCDEF",
       "name": "report.pdf",
-      "page_range": "1~12",
+      "page_range": "1-12",
       "status": "queued"
     }
   ],
@@ -213,7 +215,7 @@ OCR 策略和图片分析能力由 `tier` 与服务端实际引擎自动决定�
     {
       "file_id": "file-01HXYZ123ABCDEF",
       "name": "report.pdf",
-      "page_range": "1~12",
+      "page_range": "1-12",
       "status": "completed",
       "parse": {
         "model_used": "MinerU2.5-Pro-2605-1.2B",
@@ -245,7 +247,7 @@ OCR 策略和图片分析能力由 `tier` 与服务端实际引擎自动决定�
 |------|------|------|
 | `file_id` | string 或 null | 输入 File ID。`local` source 可以为 `null`。 |
 | `name` | string | 文件显示名。 |
-| `page_range` | string | 服务端规范化后的实际解析页码范围。请求未指定时为 `1~{total}`；请求指定时，服务端先按文件总页数展开负数页码，再去重并合并连续页码区间。例如 `1,2,3,-1,-1` 在 10 页文件中规范化为 `1~3,10`。 |
+| `page_range` | string | 服务端规范化后的实际解析页码范围。请求未指定时为 `1-{total}`；请求指定时，服务端先按文件总页数展开倒数页码 `rN`，再去重并合并连续页码区间。例如 `1,2,3,r1,r1` 在 10 页文件中规范化为 `1-3,10`。 |
 | `status` | string | 文件级状态。 |
 | `parse.model_used` | string | 实际模型 ID。仅当该文件 `status="completed"` 时出现。 |
 | `parse.duration_ms` | integer | 单文件从开始解析到结束的耗时，不包含排队时间。仅当该文件 `status="completed"` 时出现。 |
