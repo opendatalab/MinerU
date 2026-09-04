@@ -79,5 +79,6 @@ mineru-kit vlm-server --engine auto --port 30000
 使用 `--pages "1-5,8,r3-r1"`：页码从 1 开始，包含区间两端，`r1` 表示最后一页，`all` 表示全部。
 结果去重并按原页序排列；部分越界取有效交集，倒序或选不到页面时返回 `page_range_invalid`。
 省略页码时 `mineru parse` 默认前 10 页，`mineru-kit parse`、Python 和 Gradio 默认全部。
-不再接受 `~` 和负数页码；升级调用方和服务端后，在新 Doclib 数据目录重建解析缓存。
-完整说明见 [PDF 页码范围规范](../../next/page-ranges.md)。
+新请求使用新规范；历史正整数半角 `~` 结果可直接读取，无需重建 Doclib 缓存。
+结果返回值和新缓存使用 `-`，全角 `～` 及负号倒数页码不受支持。
+完整说明见 [页码规范与历史结果兼容](../../next/page-ranges.md)。

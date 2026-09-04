@@ -498,7 +498,7 @@ Use JSON when you need structured status, tier, content, and continuation:
 mineru parse "report.pdf" --json
 ```
 
-PDF page selection is shared across CLI, Doclib, API, Gradio and Python. See the [page-range contract and breaking upgrade instructions](docs/next/page-ranges.md). The old `~` and negative page-number syntax is no longer supported.
+PDF page selection is shared across CLI, Doclib, API, Gradio and Python. See the [page-range syntax and historical result compatibility](docs/next/page-ranges.md). New requests use the current syntax; stored positive page ranges using ASCII `~` remain readable without rebuilding Doclib caches. Fullwidth `～` and negative page-number notation are not supported.
 
 For a specific page range (1-based, inclusive; `r1` is the last page, `all` selects every page):
 

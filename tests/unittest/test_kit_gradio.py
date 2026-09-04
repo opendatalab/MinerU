@@ -8,7 +8,7 @@ import zipfile
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, Mock
 
 import httpx
 import pytest
@@ -168,6 +168,31 @@ def test_gradio_command_is_registered_and_help_is_available() -> None:
     assert "gradio" in result.output
     assert "--api-url" in gradio_result.output
     assert "--api-server-tier" in gradio_result.output
+
+
+@pytest.mark.parametrize(("port_args", "expected_port"), [([], None), (["--server-port", "7861"], 7861)])
+def test_gradio_command_preserves_automatic_or_explicit_port(
+    monkeypatch: pytest.MonkeyPatch, port_args: list[str], expected_port: int | None
+) -> None:
+    """验证省略端口时保留 Gradio 原生自动选择，显式端口则优先于环境变量。"""
+    launch = Mock()
+    monkeypatch.setenv("GRADIO_SERVER_PORT", "17860")
+    monkeypatch.setattr(gradio_app, "launch_gradio", launch)
+    result = runner.invoke(app, ["gradio", *port_args])
+    assert result.exit_code == 0, result.output
+    launch.assert_called_once()
+    assert launch.call_args.kwargs["server_port"] == expected_port
+
+
+@pytest.mark.parametrize("port", [0, -1, 65536])
+def test_gradio_command_rejects_invalid_explicit_port(monkeypatch: pytest.MonkeyPatch, port: int) -> None:
+    """验证显式端口仍遵循 TCP 范围约束，并在启动服务前报错。"""
+    launch = Mock()
+    monkeypatch.setattr(gradio_app, "launch_gradio", launch)
+    result = runner.invoke(app, ["gradio", "--server-port", str(port)])
+    assert result.exit_code == 1
+    assert "server_port must be between 1 and 65535" in result.output
+    launch.assert_not_called()
 
 
 def test_importing_kit_cli_does_not_import_optional_gradio_runtime() -> None:

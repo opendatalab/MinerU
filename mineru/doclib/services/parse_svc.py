@@ -32,6 +32,7 @@ from ...parser.page_range import (
     expand_page_range,
     format_page_range as _page_numbers_to_range_str,
     normalize_page_range_input,
+    normalize_result_page_range,
     parse_page_range_set,
 )
 from ...types import QUALITY_TIERS, TIER_ORDER, PageInfo, Tier, select_default_quality_tier, select_parsing_rule_tier
@@ -1547,7 +1548,7 @@ def _parse_record_response(row: ParseRow) -> dict:
         "id": row["id"],
         "sha256": row["sha256"],
         "tier": row["tier"],
-        "page_range": row["page_range"],
+        "page_range": normalize_result_page_range(row["page_range"]),
         "status": row["status"],
         "done_at": row.get("done_at"),
         "created_at": row.get("created_at"),

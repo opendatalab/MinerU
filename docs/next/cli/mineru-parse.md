@@ -1,6 +1,6 @@
 # mineru parse
 
-页码表达式、默认范围及不兼容升级要求统一见 [PDF 页码范围规范](../page-ranges.md)。
+页码规范与历史结果兼容说明见 [PDF 页码范围规范](../page-ranges.md)。
 
 状态: Draft
 读者: Agent skill 作者、CLI 使用者、核心开发者

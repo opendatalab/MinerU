@@ -80,6 +80,7 @@ Use `--pages "1-5,8,r3-r1"`: page numbers start at 1, ranges include both endpoi
 and `r1` means the last page. Use `all` for every page. Results are sorted and deduplicated;
 partially out-of-bounds ranges select their valid intersection. Reversed or empty selections
 fail with `page_range_invalid`. Without `--pages`, `mineru parse` starts with the first 10 pages;
-`mineru-kit parse`, Python and Gradio select all pages. The old `~` and negative-number syntax
-is no longer accepted. Upgrade clients and servers together and rebuild old Doclib caches
-in a fresh data directory. See the [shared page-range contract](../../next/page-ranges.md).
+`mineru-kit parse`, Python and Gradio select all pages. New requests use the current syntax. Historical positive result ranges using ASCII `~`
+remain readable without rebuilding Doclib caches; result responses and new cache entries use `-`.
+Fullwidth `～` and negative page-number notation are not supported.
+See [page-range syntax and historical result compatibility](../../next/page-ranges.md).

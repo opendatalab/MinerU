@@ -53,7 +53,9 @@ def gradio_cmd(
     api_url: str | None = typer.Option(None, "--api-url", help="External MinerU V1 API base URL"),
     api_key: str | None = typer.Option(None, "--api-key", help="Bearer API key; falls back to MINERU_API_KEY"),
     server_name: str = typer.Option("127.0.0.1", "--server-name", help="Gradio bind host"),
-    server_port: int = typer.Option(7860, "--server-port", help="Gradio bind port"),
+    server_port: int | None = typer.Option(
+        None, "--server-port", help="Gradio bind port; omitted: auto-select from 7860 or GRADIO_SERVER_PORT"
+    ),
     output_dir: str = typer.Option("./output", "--output-dir", help="Directory for Gradio artifacts"),
     enable_example: bool = typer.Option(True, "--enable-example/--no-enable-example", help="Show local examples"),
     enable_api: bool = typer.Option(True, "--enable-api/--no-enable-api", help="Expose the Gradio event API"),
@@ -82,7 +84,8 @@ def gradio_cmd(
 ) -> None:
     """启动基于 MinerU V1 API 的 Gradio 文档解析界面。"""
     _require_gradio_dependencies()
-    _validate_server_port(server_port)
+    if server_port is not None:
+        _validate_server_port(server_port)
     _validate_positive_option(api_server_concurrency, name="api_server_concurrency")
     normalized_tier = _validate_server_tier(api_server_tier)
     try:

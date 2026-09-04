@@ -125,13 +125,19 @@ def expand_page_range(raw: str | None, page_count: int) -> str:
 
 
 def _absolute_intervals(raw: str) -> list[tuple[int, int]]:
-    """读取已求值的覆盖范围；空文本表示空集合，禁止未经求值的 all/rN。"""
+    """读取已求值范围，兼容历史半角 ~；空文本为空集合，禁止 all/rN。"""
     if not raw.strip():
         return []
-    segments = _parse_segments(raw)
+    # 只在结果读取边界兼容旧分隔符，新请求及全角波浪号仍由严格语法拒绝。
+    segments = _parse_segments(raw.replace("~", "-"))
     if segments is None or any(start < 0 or end < 0 for start, end in segments):
         raise _invalid_range(raw, "page count is required to resolve all/rN")
     return _merge_intervals(segments)
+
+
+def normalize_result_page_range(raw: str) -> str:
+    """将已求值的新旧结果范围规范化为连字符格式，不修改持久化记录或文件名。"""
+    return _format_intervals(_absolute_intervals(raw))
 
 
 def parse_page_range_set(raw: str) -> set[int]:
@@ -156,6 +162,7 @@ __all__ = [
     "format_page_range",
     "get_end_page_id",
     "normalize_page_range_input",
+    "normalize_result_page_range",
     "parse_page_range",
     "parse_page_range_set",
 ]
