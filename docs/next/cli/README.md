@@ -43,8 +43,9 @@ MinerU 仓库提供两款命令行工具：
 7. [mineru-kit](mineru-kit.md): 理解无状态工具定位。
 8. [mineru-kit models](mineru-kit-models.md): 理解模型下载、当前模型配置查看和轻量校验。
 9. [mineru-kit parse](mineru-kit-parse.md): 理解批处理解析、目录输入、local/remote 规则和输出命名。
-10. [mineru-kit api-server](mineru-kit-api-server.md): 理解本地/自部署 parse-server。
-11. [mineru-kit vlm-server](mineru-kit-vlm-server.md): 理解本地 VLM 服务与 api-server backend 的边界。
+10. [mineru-kit gradio](mineru-kit-gradio.md): 理解基于 V1 API 的文档解析 Web UI。
+11. [mineru-kit api-server](mineru-kit-api-server.md): 理解本地/自部署 parse-server。
+12. [mineru-kit vlm-server](mineru-kit-vlm-server.md): 理解本地 VLM 服务与 api-server backend 的边界。
 
 ## 4. 共享约束
 

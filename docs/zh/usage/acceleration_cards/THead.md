@@ -89,7 +89,7 @@ docker run --privileged=true \
       <td>🟢</td>
     </tr>
     <tr>
-      <td rowspan="3">fastapi服务(mineru-api)</td>
+      <td rowspan="3">FastAPI 服务(mineru-kit api-server)</td>
       <td>pipeline</td>
       <td>🟢</td>
       <td>🟢</td>
@@ -105,7 +105,7 @@ docker run --privileged=true \
       <td>🟢</td>
     </tr>
     <tr>
-      <td rowspan="3">gradio界面(mineru-gradio)</td>
+      <td rowspan="3">gradio界面(mineru-kit gradio)</td>
       <td>pipeline</td>
       <td>🟢</td>
       <td>🟢</td>

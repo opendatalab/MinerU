@@ -8,6 +8,7 @@ import typer
 from ...parser import api_server as parser_api_server
 from ...types import SERVER_TIERS, ServerTier
 from ...model.ocr.language import PUBLIC_OCR_LANGUAGES, validate_public_ocr_lang
+from ...utils.stdio import configure_standard_streams
 from ..errors import exit_with_message
 
 API_SERVER_LANGUAGES = PUBLIC_OCR_LANGUAGES
@@ -92,3 +93,12 @@ def api_server_cmd(
         raise typer.Exit(exc.code) from None
     except click.ClickException as exc:
         exit_with_message("invalid_request", exc.format_message())
+
+
+def main() -> None:
+    """配置标准流后，以独立命令运行新版 API 服务入口。"""
+    configure_standard_streams()
+    typer.run(api_server_cmd)
+
+
+__all__ = ["API_SERVER_LANGUAGES", "api_server_cmd", "main"]

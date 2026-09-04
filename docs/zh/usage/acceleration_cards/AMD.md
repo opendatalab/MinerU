@@ -9,7 +9,7 @@
 Two Step Extraction: 100%|████████████████████████████████████████| 200/200 [01:40<00:00,  1.99it/s]
 
 **下面为之前14学术论文测试结果：**
-7900xtx mineru-gradio --server-name 0.0.0.0 --server-port 7860 --enable-vllm-engine true 速度大概为**1.6-1.8s/it**，没有仔细测试，简单试了两个文档。第二种矩阵乘法代替原来的dots点乘可以进一步提速到1.3s/it，优化后的主要算子耗时在hipblast(这个没法提升了)和vllm triton后端，各占25%耗时吧，vllm tirion后端这个这个只能等官方优化了。。。。
+7900xtx 使用 `mineru-kit gradio --server-name 0.0.0.0 --server-port 7860 --api-server-tier standard` 时速度大概为**1.6-1.8s/it**，没有仔细测试，简单试了两个文档。第二种矩阵乘法代替原来的dots点乘可以进一步提速到1.3s/it，优化后的主要算子耗时在hipblast(这个没法提升了)和vllm triton后端，各占25%耗时吧，vllm tirion后端这个这个只能等官方优化了。。。。
 doclayout-yolo的layout速度从原来的1.6it/s提高到15it/s，注意需要缓存一下输入的pdf尺寸后，triton必须要缓存尺寸没办法。主要是为了保留模型输入输出接口，最小代码改动。
 采用-b vlm-vllm-engine模式举个例子
 
@@ -21,7 +21,7 @@ Processed prompts: 100%|██████████████████�
 Adding requests: 100%|█████████████████████████████████████████████████████████████████████████████| 278/278 [00:00<00:00, 323.03it/s]
 Processed prompts: 100%|██████████████████| 278/278 [00:07<00:00, 37.63it/s, est. speed input: 5264.66 toks/s, output: 2733.31 toks/s]
 
-mineru-gradio --server-name 0.0.0.0 --server-port 7860 --enable-vllm-engine true测试：
+`mineru-kit gradio --server-name 0.0.0.0 --server-port 7860 --api-server-tier standard` 测试：
 2025-10-05 15:46:55.953 | WARNING  | mineru.cli_old.common:convert_pdf_bytes_to_bytes_by_pypdfium2:54 - end_page_id is out of range, use pdf_docs length
 Two Step Extraction: 100%|████████████████████████████████████████████████████████████████████████████| 14/14 [00:18<00:00,  1.30s/it]
 
@@ -335,7 +335,7 @@ def triton_conv3d_patchify(x_5d: torch.Tensor, weight_5d: torch.Tensor) -> torch
     return C
 ```
 ---
-**4.关闭终端后再次使用mineru-gradio会报一个Lora错误，修改代码跳过它**
+**4.关闭终端后再次使用 `mineru-kit gradio` 会报一个 Lora 错误，修改代码跳过它**
 ```
 pip show mineru_vl_utils
 ```
@@ -362,4 +362,3 @@ export TORCH_ROCM_AOTRITON_ENABLE_EXPERIMENTAL=1
 ```
 pip show doclayout-yolo
 ```
-

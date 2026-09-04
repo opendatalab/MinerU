@@ -37,7 +37,7 @@
 
 ## 开始使用
 
-自 3.0 起，`mineru` 默认作为基于 `mineru-api` 的编排客户端运行；`mineru-router` 的多服务、多 GPU 用法也会在本章的基础使用与命令行工具章节中说明。
+`mineru` 是面向交互和 Agent 工作流的文档库 CLI；无状态批处理、V1 API Server、Gradio、模型管理和多服务 Router 使用 `mineru-kit`。
 
 建议按照上述顺序阅读文档，这样可以帮助您更好地理解和使用项目功能。
 

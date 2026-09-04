@@ -53,6 +53,7 @@ _CHINESE_DOCSTRING_PATHS = (
     _PROJECT_ROOT / "mineru/utils/image.py",
 )
 _REMOVED_INTERNAL_MODULES = (
+    "mineru.cli_old",
     "mineru.backend.local_model_runtime",
     "mineru.model.model_types",
     "mineru.model.flash.model",
@@ -163,8 +164,6 @@ def test_active_mineru_imports_use_relative_form() -> None:
     """守卫活动生产代码的 MinerU 内部引用统一使用相对 import。"""
     offenders: list[str] = []
     for path in (_PROJECT_ROOT / "mineru").rglob("*.py"):
-        if "cli_old" in path.parts:
-            continue
         tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if (
@@ -311,8 +310,6 @@ def test_removed_private_module_paths_have_no_active_references() -> None:
     """守卫严格迁移后的活动生产代码不再引用旧私有路径。"""
     offenders: list[str] = []
     for path in (_PROJECT_ROOT / "mineru").rglob("*.py"):
-        if "cli_old" in path.parts:
-            continue
         text = path.read_text(encoding="utf-8")
         for module_name in _REMOVED_INTERNAL_MODULES:
             if module_name in text:
@@ -320,14 +317,9 @@ def test_removed_private_module_paths_have_no_active_references() -> None:
     assert not offenders
 
 
-def test_mineru_kit_does_not_depend_on_cli_old() -> None:
-    """守卫正式 mineru-kit 命令与服务实现不再依赖待删除的 cli_old。"""
-    offenders: dict[str, list[str]] = {}
-    for path in (_PROJECT_ROOT / "mineru/kit").rglob("*.py"):
-        invalid = sorted(module for module in _resolved_imports(path) if module.startswith("mineru.cli_old"))
-        if invalid:
-            offenders[str(path.relative_to(_PROJECT_ROOT))] = invalid
-    assert not offenders
+def test_legacy_cli_package_is_removed() -> None:
+    """守卫旧 CLI 源码目录不会重新进入发布包。"""
+    assert not (_PROJECT_ROOT / "mineru/cli_old").exists()
 
 
 def test_removed_private_module_paths_are_not_importable() -> None:

@@ -282,13 +282,19 @@ class MinerUApiParser(DocumentParser):
             upload_headers = resp.get("upload_headers", {})
             if upload_url.startswith("/"):
                 upload_url = f"{self._base_url}{upload_url}"
+            request_headers = _same_origin_upload_headers(
+                self._base_url,
+                upload_url,
+                upload_headers,
+                self._headers(),
+            )
             with file_path.open("rb") as fh:
                 r2 = _request_with_retry(
                     cli,
                     "PUT",
                     upload_url,
                     stage="upload content",
-                    headers=upload_headers,
+                    headers=request_headers,
                     content=fh.read(),
                 )
             self._check(r2)
@@ -323,13 +329,19 @@ class MinerUApiParser(DocumentParser):
             upload_headers = resp.get("upload_headers", {})
             if upload_url.startswith("/"):
                 upload_url = f"{self._base_url}{upload_url}"
+            request_headers = _same_origin_upload_headers(
+                self._base_url,
+                upload_url,
+                upload_headers,
+                self._headers(),
+            )
             data = file_path.read_bytes()
             r2 = await _async_request_with_retry(
                 cli,
                 "PUT",
                 upload_url,
                 stage="upload content",
-                headers=upload_headers,
+                headers=request_headers,
                 content=data,
             )
             self._check(r2)
@@ -982,6 +994,36 @@ async def _async_download_bytes(parser: MinerUApiParser, ref: dict[str, Any]) ->
         )
         _check_download_response(r)
         return r.content
+
+
+def _same_origin_upload_headers(
+    base_url: str,
+    upload_url: str,
+    upload_headers: object,
+    auth_headers: dict[str, str],
+) -> dict[str, str]:
+    """仅为 API 同源上传合并鉴权头，避免向外部预签名地址泄露密钥。"""
+    if not isinstance(upload_headers, dict) or any(
+        not isinstance(key, str) or not isinstance(value, str) for key, value in upload_headers.items()
+    ):
+        raise _V1APIError("invalid_response", "upload_headers must be a string mapping")
+    headers = dict(upload_headers)
+    if _http_origin(base_url) == _http_origin(upload_url):
+        headers.update(auth_headers)
+    return headers
+
+
+def _http_origin(url: str) -> tuple[str, str, int | None]:
+    """将 HTTP URL 规范为 scheme、host、effective-port 三元组。"""
+    parsed = urlparse(url)
+    try:
+        port = parsed.port
+    except ValueError as exc:
+        raise _V1APIError("invalid_response", f"Invalid upload URL: {url}") from exc
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise _V1APIError("invalid_response", f"Invalid upload URL: {url}")
+    effective_port = port if port is not None else (443 if parsed.scheme == "https" else 80)
+    return parsed.scheme.lower(), parsed.hostname.lower(), effective_port
 
 
 def should_trust_env_for_url(url: str) -> bool:

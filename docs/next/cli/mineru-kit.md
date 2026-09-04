@@ -23,9 +23,28 @@
 |--------|------|------|
 | `mineru-kit models` | 下载、查看和校验本地模型配置 | [mineru-kit models](mineru-kit-models.md) |
 | `mineru-kit parse` | 无状态文件/目录批处理解析 | [mineru-kit parse](mineru-kit-parse.md) |
+| `mineru-kit gradio` | 基于 V1 API 的本地文档解析 Web UI | [mineru-kit gradio](mineru-kit-gradio.md) |
 | `mineru-kit api-server` | 启动兼容统一 API 的本地解析服务 | [mineru-kit api-server](mineru-kit-api-server.md) |
 | `mineru-kit vlm-server` | 本地 VLM 服务，兼容 OpenAI Chat Completions 协议 | [mineru-kit vlm-server](mineru-kit-vlm-server.md) |
 | `mineru-kit router` | 启动 V1 路由服务，转发到已有 upstream 或管理本地 worker | 仅暴露 `/v1/*` |
+
+### 独立命令别名
+
+以下独立命令直接复用新版 kit 的参数、默认值、校验和行为，仅保留命令名，不恢复旧 CLI 参数或协议：
+
+| 独立命令 | 等价命令 |
+|----------|----------|
+| `mineru-openai-server` | `mineru-kit vlm-server` |
+| `mineru-models-download` | `mineru-kit models download` |
+| `mineru-api` | `mineru-kit api-server` |
+
+```bash
+mineru-openai-server --engine vllm --host 127.0.0.1 --port 30000
+mineru-models-download --tier standard --source modelscope
+mineru-api --host 127.0.0.1 --port 8000 --tier standard
+```
+
+`mineru-openai-server` 保留向底层引擎透传额外参数的能力。`mineru-models-download` 后直接填写模型仓库名或 `--tier` 等下载参数，不需要再输入 `download`。
 
 ## 3. 与 mineru 的边界
 
@@ -44,6 +63,8 @@
 `mineru-kit parse` 完全不复用 `mineru` 的本地 doclib 缓存。它是纯工具，不感知 doclib、watch、search 或长期数据库状态。
 
 `mineru-kit` 参数暂不划分 `stable` / `experimental` 等稳定性等级。第一阶段保持参数体系简单，后续只有在兼容性压力明确出现时再引入分级。
+
+`mineru-kit gradio` 是无状态的 V1 API 客户端界面。未指定 `--api-url` 时，它会自动托管一个 loopback `mineru-kit api-server`；指定 URL 时只连接已有的 V1 服务，不会静默改连官方远程服务。`mineru-gradio` 保留为同一新版命令的兼容别名，不再提供旧 HTTP 协议或旧参数。
 
 当前 `mineru-kit parse` 已确定：
 

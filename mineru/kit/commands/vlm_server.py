@@ -10,7 +10,13 @@ import typer
 from loguru import logger
 
 from ...utils.platform import is_mac_os_version_supported
+from ...utils.stdio import configure_standard_streams
 from ..errors import exit_with_message
+
+FORWARD_CONTEXT_SETTINGS = {
+    "ignore_unknown_options": True,
+    "allow_extra_args": True,
+}
 
 
 def _module_available(module_name: str) -> bool:
@@ -95,3 +101,14 @@ def vlm_server_cmd(
             prog_name="mineru-kit vlm-server",
             standalone_mode=False,
         )
+
+
+def main() -> None:
+    """以独立命令启动 VLM 服务，复用 kit 的未知引擎参数透传规则。"""
+    configure_standard_streams()
+    app = typer.Typer(add_completion=False)
+    app.command(context_settings=FORWARD_CONTEXT_SETTINGS)(vlm_server_cmd)
+    app()
+
+
+__all__ = ["FORWARD_CONTEXT_SETTINGS", "main", "vlm_server_cmd"]

@@ -191,7 +191,7 @@ https://example.com/doc3.pdf
 
 ### 无法启动 MCP 服务
 
-**问题**：运行 *`uv run -m mineru.cli_old`*` `时报错。
+**问题**：运行 *`uvx mineru-mcp`* 时无法启动 MCP 服务。
 
 **解决方案**：
 
@@ -199,7 +199,7 @@ https://example.com/doc3.pdf
 
 ● 检查是否已安装所有依赖
 
-● 尝试使用 *`python -m mineru.cli_old`*` `命令替代
+● 重新运行 *`uvx mineru-mcp`* 并检查终端中的依赖安装与启动日志
 
 ### 文件转换失败
 

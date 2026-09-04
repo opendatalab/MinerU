@@ -37,20 +37,20 @@
 > - If you have multiple GPUs and need to start two `openai-server` services on GPU 0 and GPU 1, each listening on a different port, you can use the following commands:
 >   ```bash
 >   # In terminal 1
->   CUDA_VISIBLE_DEVICES=0 mineru-openai-server --engine vllm --port 30000
+>   CUDA_VISIBLE_DEVICES=0 mineru-kit vlm-server --engine vllm --port 30000
 >   # In terminal 2
->   CUDA_VISIBLE_DEVICES=1 mineru-openai-server --engine vllm --port 30001
+>   CUDA_VISIBLE_DEVICES=1 mineru-kit vlm-server --engine vllm --port 30001
 >   ```
 > 
 > - If you have multiple GPUs and need to start two `fastapi` services on GPU 0 and GPU 1, each listening on a different port, you can use the following commands:
 >   ```bash
 >   # In terminal 1
->   CUDA_VISIBLE_DEVICES=0 mineru-api --host 127.0.0.1 --port 8000
+>   CUDA_VISIBLE_DEVICES=0 mineru-kit api-server --host 127.0.0.1 --port 8000
 >   # In terminal 2
->   CUDA_VISIBLE_DEVICES=1 mineru-api --host 127.0.0.1 --port 8001
+>   CUDA_VISIBLE_DEVICES=1 mineru-kit api-server --host 127.0.0.1 --port 8001
 >   ```
 > 
 > - If you have multiple GPUs and want to use `router` to launch and manage `fastapi` services across four GPUs, you can use the following command:
 >   ```bash
->   CUDA_VISIBLE_DEVICES=0,1,2,3 mineru-router --host 127.0.0.1 --port 8002
+>   CUDA_VISIBLE_DEVICES=0,1,2,3 mineru-kit router --host 127.0.0.1 --port 8002
 >   ```
