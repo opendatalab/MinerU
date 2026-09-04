@@ -862,7 +862,6 @@ def test_managed_router_worker_builds_new_api_server_command(tmp_path: Path) -> 
     assert ["--tier", "basic"] == command[command.index("--tier") : command.index("--tier") + 2]
     assert ["--concurrency", "3"] == command[command.index("--concurrency") : command.index("--concurrency") + 2]
     assert "--preload-models" in command
-    assert "mineru.cli_old" not in " ".join(command)
 
 
 @pytest.mark.parametrize(
@@ -1056,7 +1055,7 @@ def test_local_worker_replacement_invalidates_previous_generation_routes() -> No
 
 
 def test_router_console_script_points_to_new_cli() -> None:
-    """校验过渡 mineru-router console script 不再指向 cli_old。"""
+    """校验过渡 mineru-router console script 指向正式 Router CLI。"""
     repo_root = Path(__file__).resolve().parents[2]
     pyproject = tomllib.loads((repo_root / "pyproject.toml").read_text(encoding="utf-8"))
 

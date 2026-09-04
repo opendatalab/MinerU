@@ -1,5 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
-"""独立于 cli_old 的 MinerU V1 Router FastAPI 实现。"""
+"""MinerU V1 Router 的独立 FastAPI 实现。"""
 
 from __future__ import annotations
 

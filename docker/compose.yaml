@@ -110,14 +110,15 @@ services:
       - 7860:7860
     environment:
       MINERU_MODEL_SOURCE: local
-    entrypoint: mineru-gradio
+    entrypoint: ["mineru-kit"]
     command:
-      --server-name 0.0.0.0
-      --server-port 7860
-      # --enable-api false  # If you want to disable the API, set this to false
-      # --max-convert-pages 20  # If you want to limit the number of pages for conversion, set this to a specific number
-      # parameters for vllm-engine
-      # --gpu-memory-utilization 0.5  # If encountering VRAM shortage, reduce the KV cache size by this parameter; if VRAM issues persist, try lowering it further to `0.4` or below.
+      - gradio
+      - --server-name
+      - 0.0.0.0
+      - --server-port
+      - "7860"
+      # --no-enable-api  # Disable the Gradio event API.
+      # --api-server-tier standard  # Configure the managed V1 API server capability tier.
     ulimits:
       memlock: -1
       stack: 67108864

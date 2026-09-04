@@ -16,7 +16,7 @@
 | `mineru` | `mineru.cli.main:main` |
 | `mineru-kit` | `mineru.kit.main:main` |
 | `mineru-router` | `mineru.kit.router.cli:main` |
-| `mineru-gradio` | `mineru.cli_old.gradio_app:main` |
+| `mineru-gradio` | `mineru.kit.commands.gradio:main`（`mineru-kit gradio` 兼容别名） |
 
 ## 2. 模块职责表
 
@@ -29,8 +29,7 @@
 | `mineru/backend/` | 解析引擎：`analyze.py`（`doc_analyze` 统一门面）→ `analysis/`（按格式分派：`pdf/`、`csv.py`、`epub.py`、`html.py`、`ofd.py`、`office.py`）→ `postprocess/`（Middle JSON 组装、段落/标题/列表/表格合并、`llm_aided.py`、`legacy_schema_adapter.py`） | `backend/analyze.py`、`backend/analysis/pdf/pipeline.py` |
 | `mineru/model/` | 模型层：`flash/`（纯 CPU 本地结构化解析器族：pdf / office / epub / html / ofd / csv）；`runtime/`（`device.py` 设备与 light/full 栈、`hybrid.py` 原子模型分派、`onnx.py`）；`layout/ mfr/ ocr/ table/ vlm/`（ML 模型实现）；`_internal/pytorchocr` | `model/runtime/device.py:48`、`model/runtime/hybrid.py` |
 | `mineru/render/` | 输出渲染：markdown / content_list(v2) / structured_content / docx / epub / html / pdf | `render/api.py`（唯一渲染入口）、`render/contracts.py` |
-| `mineru/kit/` | 服务端工具 CLI：`parse` / `api-server` / `vlm-server` / `router` / `models`，面向自部署/多卡部署 | `kit/main.py`、`kit/commands/*.py` |
-| `mineru/cli_old/` | 3.x CLI 原样迁入的兼容层（client / fast_api / gradio_app / router 等），仅改导入路径与裁剪 | 仅 `mineru-gradio` 入口引用 |
+| `mineru/kit/` | 服务端与 Web 工具 CLI：`parse` / `gradio` / `api-server` / `vlm-server` / `router` / `models`，面向无状态批处理、自部署和多卡部署 | `kit/main.py`、`kit/commands/*.py`、`kit/gradio/` |
 | 顶层类型/配置 | `types.py`（1317 行，Tier / locator / 各 Response 模型）、`errors.py`（错误协议）、`config.py`（MINERU_HOME、UDS/TCP、model stack）、`filetypes.py`（扩展名→tier 语义） | `config.py`（`Config`）、`errors.py:20` |
 | `docs/next/` | 4.x 全套设计文档：architecture / tiers / errors / middle-json + 33 篇 ADR（`decisions/0001-0033`）+ 实施计划 `docs/plans/` | `docs/next/README.md` |
 | `tests/unittest/` | 约 2372 个测试函数 | — |

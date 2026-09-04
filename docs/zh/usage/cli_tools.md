@@ -1,182 +1,75 @@
-# 命令行工具使用说明
+# 命令行工具
 
-## 查看帮助信息
-要查看 MinerU 命令行工具的帮助信息，可以使用 `--help` 参数。以下是各个命令行工具的帮助信息示例：
-```bash
-mineru --help
-Usage: mineru [OPTIONS]
+MinerU 提供两个主要命令树：`mineru` 是面向交互和 Agent 工作流的文档库客户端，`mineru-kit` 提供无状态解析、服务、模型、Router 和 WebUI 工具。
 
-Options:
-  -v, --version                   显示版本并退出
-  -p, --path PATH                 输入文件路径或目录（必填）
-  -o, --output PATH               输出目录（必填）
-  --api-url TEXT                  MinerU FastAPI 服务地址；不传时自动拉起本地临时 mineru-api
-  -m, --method [auto|txt|ocr]     解析方法：auto（默认）、txt、ocr（仅用于 hybrid* 后端）
-  -b, --backend [hybrid-engine|hybrid-http-client]
-                                  解析后端（默认为 hybrid-engine）
-  --effort [medium|high|xhigh]    Hybrid 解析强度（默认：high）
-  -l, --lang [ch|ch_server|korean|ta|te|ka|th|el|arabic|east_slavic|cyrillic|devanagari]
-                                  指定文档语言（可提升 OCR 准确率，仅用于 hybrid* 后端）
-  -u, --url TEXT                  当使用 http-client 时，传给服务端后端的 OpenAI 兼容地址
-  -s, --start INTEGER             开始解析的页码（从 0 开始）
-  -e, --end INTEGER               结束解析的页码（从 0 开始）
-  --image-analysis BOOLEAN        是否启用 hybrid 的图片/图表分析；Hybrid
-                                  medium 和 high effort 会自动关闭图片/图表分析（默认开启）
-  --client-side-output-generation BOOLEAN
-                                  在客户端基于服务端返回的 middle JSON、图片与原文件
-                                  生成 Markdown 和 content list（默认关闭）
-  --help                          显示帮助信息
-```
-> [!TIP]
-> `mineru` 当前支持本地 `PDF`、`OFD`、`EPUB`、静态 `HTML`、图片、`CSV`、`RTF`、`DOC`/`DOCX`、`PPT`/`PPTX`、`XLS`/`XLSX`、`ODT`/`ODS`/`ODP` 文件或目录输入。只有 PDF 接受页范围；其他输入均按一个完整文件解析和缓存，但各格式自身的边界仍作为结构化输出中的逻辑页保留。EPUB 页面严格遵循 OPF spine 顺序，并保留作者目录中可解析的内部跳转。
+## 文档库 CLI
+
+使用 `mineru --help` 查看全部文档库命令。最常见的解析方式是：
 
 ```bash
-mineru-api --help
-Usage: mineru-api [OPTIONS]
-
-Options:
-  --host TEXT     服务器主机地址（默认：127.0.0.1）
-  --port INTEGER  服务器端口（默认：8000）
-  --reload        启用自动重载（开发模式）
-  --enable-vlm-preload BOOLEAN
-                  在 mineru-api 启动阶段预加载本地 VLM 模型
-  --help          显示此帮助信息并退出
+mineru parse report.pdf --pages all -o report.md
 ```
+
+未指定 `-o/--output` 时，渲染结果写入标准输出。PDF 默认解析前 10 页；使用 `--pages all` 解析整份文档。文档库负责入库、缓存、后台解析、阅读、搜索和清理。
+
+使用以下命令管理本地文档库服务：
+
 ```bash
-mineru-gradio --help
-Usage: mineru-gradio [OPTIONS]
-
-Options:
-  --enable-example BOOLEAN        启用示例文件输入(需要将示例文件放置在当前
-                                  执行命令目录下的 `examples` 文件夹中)
-  --enable-http-client BOOLEAN    在后端选项中启用 HTTP 客户端选项
-  --enable-api BOOLEAN            启用 Gradio API 以提供应用程序服务
-  --max-convert-pages INTEGER     设置从 PDF 转换为 Markdown 的最大页数
-  --server-name TEXT              设置 Gradio 应用程序的服务器主机名
-  --server-port INTEGER           设置 Gradio 应用程序的服务器端口
-  --api-url TEXT                  MinerU FastAPI 服务地址；不传时自动拉起可复用的本地
-                                  mineru-api
-  --enable-vlm-preload BOOLEAN    在 Gradio 拉起本地 mineru-api 时预加载本地
-                                  VLM 模型
-  --client-side-output-generation BOOLEAN
-                                  在客户端基于服务端返回的 middle JSON 生成 Markdown
-                                  和 content list
-  --latex-delimiters-type [a|b|all]
-                                  设置在 Markdown 渲染中使用的 LaTeX 分隔符类型
-                                  ('a' 表示 '$' 类型，'b' 表示 '()[]' 类型，
-                                  'all' 表示两种类型都使用)
-  --help                          显示此帮助信息并退出
+mineru server start
+mineru server status
+mineru server stop
 ```
+
+各命令的权威参数以 `mineru <command> --help` 为准。
+
+## 无状态与服务工具
+
+使用 `mineru-kit --help` 查看所有工具。
+
+### 批量解析
+
 ```bash
-mineru-router --help
-Usage: mineru-router [OPTIONS]
-
-Options:
-  --host TEXT             路由服务主机地址（默认：127.0.0.1）
-  --port INTEGER          路由服务端口（默认：8002）
-  --reload                启用自动重载（开发模式）
-  --upstream-url TEXT     现有 MinerU FastAPI 服务地址；可重复传入多个
-  --local-gpus TEXT       本地 GPU worker 配置：auto、none 或 0,1,2 形式
-  --worker-host TEXT      路由托管 worker 的监听地址（默认：127.0.0.1）
-  --worker-tier TEXT      托管 worker 档位：flash、basic、standard
-  --worker-concurrency INTEGER
-                          每个托管 worker 的并发数
-  --preload-models        在托管 worker 中预加载模型
-  --help                  显示此帮助信息并退出
+mineru-kit parse report.pdf -o report.md --tier standard
+mineru-kit parse ./documents -o ./output --format zip
 ```
 
-`mineru-router` 是 `mineru-kit router` 的过渡别名。两个命令都只暴露 MinerU V1 API，并拒绝未知 worker 参数透传。
+`mineru-kit parse` 不使用文档库数据库或缓存，支持本地解析和显式 V1 远程解析。tier、backend、页范围和输出参数以 `mineru-kit parse --help` 为准。
 
-## 环境变量说明
+### V1 API Server
 
-> [!NOTE]
-> 从当前版本开始，`mineru` 是基于 `mineru-api` 的编排客户端：
-> 
->- 未传 `--api-url` 时，CLI 会自动拉起本地临时 `mineru-api`
->- 传入 `--api-url` 时，CLI 会直连该 FastAPI 服务
->- `--url` 不再表示 MinerU API 地址，而是服务端 `vlm/hybrid-http-client` 所需的 OpenAI 兼容地址
+```bash
+mineru-kit api-server --host 127.0.0.1 --port 8000 --tier standard
+```
 
-MinerU命令行工具的某些参数存在相同功能的环境变量配置，通常环境变量配置的优先级高于命令行参数，且在所有命令行工具中都生效。
-以下是常用的环境变量及其说明： 
+在浏览器打开 `http://127.0.0.1:8000/docs` 查看自动生成的 OpenAPI 文档。当前服务接口统一位于 `/v1/*`；已删除的 `/file_parse` 和 `/tasks` 不再提供。
 
-- `MINERU_TOOLS_CONFIG_JSON`：
-    * 用于指定配置文件路径
-    * 默认为用户目录下的`mineru.json`，可通过环境变量指定其他配置文件路径。
-  
-- `MINERU_FORMULA_CH_SUPPORT`：
-    * 用于启用中文公式解析优化（实验性功能）
-    * 默认为`false`，可通过环境变量设置为`true`来启用中文公式解析优化。
-    * 仅对本地 Hybrid 模型执行生效。
-  
-- `MINERU_PDF_RENDER_TIMEOUT`：
-    * 用于设置将PDF渲染为图片的超时时间（秒）
-    * 默认为`300`秒，可通过环境变量设置为其他值以调整渲染图片的超时时间。
-    * 在 Linux、macOS 和 Windows 系统中生效。
+### Gradio WebUI
 
-- `MINERU_PDF_RENDER_THREADS`：
-    * 用于设置将PDF渲染为图片时使用的渲染 worker 并发数
-    * 默认为`4`，可通过环境变量设置为其他值以调整渲染 worker 并发数。
-    * 在 Linux、macOS 和 Windows 系统中生效。
+```bash
+mineru-kit gradio --server-name 127.0.0.1 --server-port 7860
+```
 
-- `MINERU_PROCESSING_WINDOW_SIZE`：
-    * 用于设置单次处理窗口大小，影响大文档处理时的内存占用和吞吐表现
-    * 默认为`64`，可通过环境变量设置为其他正整数。
+未传 `--api-url` 时，Gradio 会托管 loopback `mineru-kit api-server`；传入后只连接指定的 V1 服务。`mineru-gradio` 保留为命令名兼容别名，接受相同的新版参数，不恢复旧 Gradio 参数或 HTTP 路由。
 
-- `MINERU_API_MAX_CONCURRENT_REQUESTS`：
-    * 用于设置 `mineru-api` 或 `mineru-router` 管理的 worker 最大并发请求数
-    * 默认为`3`，需设置为正整数。
+### Router 与 VLM Server
 
-- `MINERU_API_ENABLE_FASTAPI_DOCS`：
-    * 用于控制是否启用 FastAPI 自动生成的 `/docs`、`/openapi.json`、`/redoc`
-    * 默认为`true`。
+```bash
+mineru-kit router --host 127.0.0.1 --port 8002 --local-gpus auto
+mineru-kit vlm-server --engine auto --port 30000
+```
 
-- `MINERU_API_OUTPUT_ROOT`：
-    * 用于指定 `mineru-api` 输出目录根路径
-    * 默认为当前工作目录下的 `./output`。
+`mineru-router` 保留为 `mineru-kit router` 的命令名别名。Router 只暴露 V1 API，并且只接受文档中声明的 worker 参数。
 
-- `MINERU_LOCAL_API_STARTUP_TIMEOUT_SECONDS`：
-    * 用于控制各命令行工具等待本地拉起的 `mineru-api` 进入健康状态的最长时间
-    * 默认为 `300` 秒。
-    * 适用于 `mineru` 的临时本地 API、`mineru-gradio` 的 preload 启动，以及 `mineru-router` 托管的本地 worker。
+## 环境变量
 
-- `MINERU_TASK_RESULT_TIMEOUT_SECONDS`：
-    * 用于控制客户端等待任务完成并进入终态的最长时间。
-    * 默认为 `3600` 秒，需设置为大于等于 `1` 的数值。
-    * 适用于 `mineru`、`mineru-gradio` 和 `mineru-router` 等通过 API 客户端轮询任务状态的场景。
+- `MINERU_HOME`：MinerU 配置、缓存和文档库状态的根目录。
+- `MINERU_CONFIG`：显式指定 `config.yaml` 路径。
+- `MINERU_MODEL_SOURCE`：模型源，例如 `huggingface`、`modelscope` 或 `local`。
+- `MINERU_API_URL` / `MINERU_API_KEY`：API 客户端默认使用的 V1 地址和 Bearer Key。
+- `MINERU_LOCAL_API_STARTUP_TIMEOUT_SECONDS`：Gradio 托管本地 V1 服务的启动超时，默认 `300` 秒。
+- `MINERU_API_ENABLE_FASTAPI_DOCS`：是否为 V1 API Server 启用 `/docs`、`/openapi.json` 和 `/redoc`，默认 `true`。
+- `MINERU_PDF_RENDER_TIMEOUT` / `MINERU_PDF_RENDER_THREADS`：PDF 渲染超时和 worker 数量。
+- `MINERU_PROCESSING_WINDOW_SIZE`：大文档处理窗口大小。
+- `MINERU_INTRA_OP_NUM_THREADS` / `MINERU_INTER_OP_NUM_THREADS`：ONNX 算子线程配置。
 
-- `MINERU_TASK_RESULT_DOWNLOAD_TIMEOUT_SECONDS`：
-    * 用于控制任务完成后获取结果的读取超时时间，包括服务端生成 ZIP 的等待和结果 ZIP 下载。
-    * 默认为 `600` 秒，需设置为大于等于 `1` 的数值。
-    * 该配置不代表整个下载过程的总耗时硬上限；如果服务端持续返回数据，整体下载时间可能超过该值。
-
-- `MINERU_API_TASK_RETENTION_SECONDS`：
-    * 用于设置任务完成或失败后的保留时长（秒）
-    * 默认为 `86400` 秒（24 小时）。
-
-- `MINERU_API_TASK_CLEANUP_INTERVAL_SECONDS`：
-    * 用于设置任务清理轮询间隔（秒）
-    * 默认为 `300` 秒（5 分钟）。
-
-- `MINERU_INTRA_OP_NUM_THREADS`：
-    * 用于设置onnx模型的intra_op线程数，影响单个算子的计算速度
-    * 默认为`-1`（自动选择），可通过环境变量设置为其他值以调整线程数。
-
-- `MINERU_INTER_OP_NUM_THREADS`：
-    * 用于设置onnx模型的inter_op线程数，影响多个算子的并行执行
-    * 默认为`-1`（自动选择），可通过环境变量设置为其他值以调整线程数。
-
-- `MINERU_HYBRID_BATCH_RATIO`：
-    * 用于设置 hybrid-* 后端中 小模型处理的batch倍率
-    * 在hybrid-http-client中较为常用，可以通过控制小模型的batch倍率来调整单个客户端的显存占用量
-    * 单个client端显存大小 | MINERU_HYBRID_BATCH_RATIO
-      ------------------|------------------------
-      <= 6   GB         | 8
-      <= 4   GB         | 4
-      <= 3   GB         | 2
-      <= 2   GB         | 1
-
-- `MINERU_VL_MODEL_NAME`：
-    * 用于指定 vlm/hybrid 后端使用的模型名称，这将允许您在同时存在多个模型的远程openai-server中指定 MinerU 运行所需的模型。
-
-- `MINERU_VL_API_KEY`:
-    * 用于指定 vlm/hybrid 后端使用的API Key，这将允许您在远程openai-server中进行身份验证。
+当前默认值以各命令的 `--help` 和[模型源说明](./model_source.md)为准。

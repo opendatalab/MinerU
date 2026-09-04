@@ -137,7 +137,10 @@ License = "https://github.com/opendatalab/MinerU/blob/master/LICENSE.md"
 mineru = "mineru.cli.main:main"
 mineru-kit = "mineru.kit.main:main"
 mineru-router = "mineru.kit.router.cli:main"
-mineru-gradio = "mineru.cli_old.gradio_app:main"
+mineru-gradio = "mineru.kit.commands.gradio:main"
+mineru-openai-server = "mineru.kit.commands.vlm_server:main"
+mineru-models-download = "mineru.kit.commands.models:download_main"
+mineru-api = "mineru.kit.commands.api_server:main"
 
 [tool.setuptools.dynamic]
 version = { attr = "mineru.version.__version__" }

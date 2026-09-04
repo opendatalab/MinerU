@@ -38,20 +38,20 @@
 > - 如果您有多张显卡，需要在卡0和卡1上启动两个`openai-server`服务，并分别监听不同的端口，可以使用以下命令： 
 >   ```bash
 >   # 在终端1中
->   CUDA_VISIBLE_DEVICES=0 mineru-openai-server --engine vllm --port 30000
+>   CUDA_VISIBLE_DEVICES=0 mineru-kit vlm-server --engine vllm --port 30000
 >   # 在终端2中
->   CUDA_VISIBLE_DEVICES=1 mineru-openai-server --engine vllm --port 30001
+>   CUDA_VISIBLE_DEVICES=1 mineru-kit vlm-server --engine vllm --port 30001
 >   ```
 >   
 > - 如果您有多张显卡，需要在卡0和卡1上启动两个`fastapi`服务，并分别监听不同的端口，可以使用以下命令： 
 >   ```bash
 >   # 在终端1中
->   CUDA_VISIBLE_DEVICES=0 mineru-api --host 127.0.0.1 --port 8000
+>   CUDA_VISIBLE_DEVICES=0 mineru-kit api-server --host 127.0.0.1 --port 8000
 >   # 在终端2中
->   CUDA_VISIBLE_DEVICES=1 mineru-api --host 127.0.0.1 --port 8001
+>   CUDA_VISIBLE_DEVICES=1 mineru-kit api-server --host 127.0.0.1 --port 8001
 >   ```
 >   
 > - 如果您有多张显卡，需要通过`router`在其中4张卡上启动`fastapi`服务并统一管理，可以使用以下命令： 
 >   ```bash
->   CUDA_VISIBLE_DEVICES=0,1,2,3 mineru-router --host 127.0.0.1 --port 8002
+>   CUDA_VISIBLE_DEVICES=0,1,2,3 mineru-kit router --host 127.0.0.1 --port 8002
 >   ```

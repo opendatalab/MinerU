@@ -159,7 +159,7 @@
       <td>🟢</td>
     </tr>
     <tr>
-      <td rowspan="5">fastapi服务(mineru-api)</td>
+      <td rowspan="5">FastAPI 服务(mineru-kit api-server)</td>
       <td>pipeline</td>
       <td>🔴</td>
     </tr>
@@ -180,7 +180,7 @@
       <td>🟢</td>
     </tr>
     <tr>
-      <td rowspan="5">gradio界面(mineru-gradio)</td>
+      <td rowspan="5">gradio界面(mineru-kit gradio)</td>
       <td>pipeline</td>
       <td>🔴</td>
     </tr>

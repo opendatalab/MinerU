@@ -10,13 +10,12 @@ export MINERU_MODEL_SOURCE=modelscope
 ## 通过命令行快速使用
 MinerU内置了命令行工具，用户可以通过命令行快速使用MinerU进行文档解析：
 ```bash
-mineru -p <input_path> -o <output_path>
+mineru parse <input_path> --pages all -o <output_path>
 ```
 > [!TIP]
-> - `<input_path>`：本地 `PDF` / `OFD` / `EPUB` / 静态 `HTML` / 图片 / `CSV` / `RTF` / `DOC`/`DOCX` / `PPT`/`PPTX` / `XLS`/`XLSX` / `ODT`/`ODS`/`ODP` 文件或目录
-> - `<output_path>`：输出目录
-> - 未传 `--api-url` 时，CLI 会自动拉起本地临时 `mineru-api`
-> - 传入 `--api-url` 时，CLI 会直连远端或已有本地 FastAPI 服务
+> - `<input_path>`：单个本地 `PDF` / `OFD` / `EPUB` / 静态 `HTML` / 图片 / `CSV` / `RTF` / `DOC`/`DOCX` / `PPT`/`PPTX` / `XLS`/`XLSX` / `ODT`/`ODS`/`ODP` 文件
+> - `<output_path>`：可选输出文件；未指定时 Markdown 写入标准输出
+> - PDF 默认解析前 10 页；使用 `--pages all` 解析整份文档
 > 
 > 更多关于输出文件的信息，请参考[输出文件说明](../reference/output_files.md)。
 
@@ -26,65 +25,27 @@ mineru -p <input_path> -o <output_path>
 
 如果需要通过自定义参数调整解析选项，您也可以在文档中查看更详细的[命令行工具使用说明](./cli_tools.md)。
 
-## 通过api、webui、http-client/server进阶使用
+## 通过 API、WebUI 和服务进阶使用
 
-- 通过fast api方式调用：
+- 启动自部署 V1 API：
   ```bash
-  mineru-api --host 0.0.0.0 --port 8000
+  mineru-kit api-server --host 0.0.0.0 --port 8000 --tier standard
   ```
   >[!TIP]
-  >在浏览器中访问 `http://127.0.0.1:8000/docs` 查看API文档。
-  >
-  >- 健康检查接口：`GET /health`
-  >  返回 `protocol_version`、`processing_window_size`、`max_concurrent_requests` 等服务信息
-  >- 异步任务提交接口：`POST /tasks`
-  >- 同步解析接口：`POST /file_parse`
-  >- 任务查询接口：`GET /tasks/{task_id}`、`GET /tasks/{task_id}/result`
-  >- API 输出目录由服务端固定控制，默认写入 `./output`
-  >- 上传文件当前支持 `PDF`、`OFD`、`EPUB`、`HTML`、图片、`CSV`、`RTF`、`DOC`/`DOCX`、`PPT`/`PPTX`、`XLS`/`XLSX`、`ODT`/`ODS`/`ODP`
-  >
-  >- `POST /tasks` 会立即返回 `task_id`；`POST /file_parse` 会在内部提交到同一个任务管理器，等待任务完成后同步返回最终结果。
-  >- 当任务处于排队状态时，任务提交结果和状态查询结果中可能会返回 `queued_ahead` 字段，用于表示前方排队任务数。
-  >- 任务为单进程、进程内状态实现，服务重启、`--reload` 热重载或多进程部署后不保证仍可查询历史任务状态。
-  >- 默认任务完成或失败后保留 24 小时，随后自动清理任务状态和输出目录；清理后访问任务状态或结果会返回 `404`。
-  >- 可通过环境变量 `MINERU_API_TASK_RETENTION_SECONDS` 和 `MINERU_API_TASK_CLEANUP_INTERVAL_SECONDS` 调整保留时长与清理轮询间隔。
-  >- 可通过 `--enable-vlm-preload true` 在服务启动阶段预热本地 VLM 模型，避免首次 VLM 或 hybrid 请求时再初始化。
-  >
-  >异步任务提交示例：
-  >```bash
-  >curl -X POST http://127.0.0.1:8000/tasks \
-  >  -F "files=@demo/pdfs/demo1.pdf" \
-  >  -F "return_md=true"
-  >```
-  >
-  >同步解析示例：
-  >```bash
-  >curl -X POST http://127.0.0.1:8000/file_parse \
-  >  -F "files=@demo/pdfs/demo1.pdf" \
-  >  -F "return_md=true" \
-  >  -F "response_format_zip=true" \
-  >  -F "return_original_file=true"
-  >```
-  >
-  >轮询任务状态与结果：
-  >```bash
-  >curl http://127.0.0.1:8000/tasks/<task_id>
-  >curl http://127.0.0.1:8000/tasks/<task_id>/result
-  >curl http://127.0.0.1:8000/health
-  >```
+  >在浏览器中访问 `http://127.0.0.1:8000/docs` 查看 OpenAPI 文档。服务只提供 `/v1/*` 接口，包括健康检查、能力发现、上传、文件、解析任务和用量查询。
   >
   >http异步调用代码示例：[Python版本](https://github.com/opendatalab/MinerU/blob/master/demo/demo.py)
 
 - 启动gradio webui 可视化前端：
   ```bash
-  mineru-gradio --server-name 0.0.0.0 --server-port 7860
+  mineru-kit gradio --server-name 0.0.0.0 --server-port 7860
   ```
   >[!TIP]
   > 
   >- 在浏览器中访问 `http://127.0.0.1:7860` 使用 Gradio WebUI。
-  >- 未传 `--api-url` 时，Gradio 会自动拉起可复用的本地 `mineru-api`；传入 `--api-url` 时则会复用已有本地或远端服务。
-  >- `--enable-vlm-preload true` 会让 Gradio 在 WebUI 启动阶段主动拉起本地 `mineru-api` 并等待 VLM 预加载完成；传入 `--api-url` 时会被忽略。
-  >- WebUI 当前支持上传 `PDF`、图片与 `DOCX`、`PPTX`、`XLSX` 文件。
+  >- 未传 `--api-url` 时，Gradio 会托管 loopback `mineru-kit api-server`；传入后只连接指定的 V1 服务。
+  >- 使用 `--api-server-preload-models` 为托管的本地服务预加载模型。
+  >- `mineru-gradio` 仍作为命令名兼容别名，使用相同的新版参数。
 
 - 通过 `mineru-router` 进行多服务 / 多 GPU 编排：
   ```bash
@@ -92,24 +53,16 @@ mineru -p <input_path> -o <output_path>
   ```
   >[!TIP]
   >
-  >- `mineru-router` 与 `mineru-kit router` 都只暴露完整 `/v1/*` API，不再提供 `/tasks` 或 `/file_parse`。
+  >- `mineru-router` 与 `mineru-kit router` 都只暴露完整 `/v1/*` API。
   >- 可重复使用 `--upstream-url` 聚合多个 V1 api-server，也可通过 `--local-gpus` 自动拉起 `mineru-kit api-server` worker。
   >- `--preload-models` 只作用于 Router 托管的本地 worker，远端 upstream 保持自己的启动配置。
   >- Router 不再透传未知模型引擎参数。
   >- 适用于多服务、多 GPU 和统一入口部署场景。
 
-- 使用`http-client/server`方式调用：
+- 启动 OpenAI 兼容 VLM 服务：
   ```bash
-  # 启动openai兼容服务器(需要安装vllm或lmdeploy环境)
-  mineru-openai-server --port 30000
-  ``` 
-  >[!TIP]
-  >在另一个终端中通过http client连接openai server
-  > ```bash
-  > mineru -p <input_path> -o <output_path> -b hybrid-http-client -u http://127.0.0.1:30000
-  > ```
-  >`hybrid-http-client` 需要本地具备 `mineru[pipeline]` 及 `torch` 等 pipeline 依赖。
-  >兼容旧输入 `vlm-http-client`，但会映射为 `hybrid-http-client` 且使用 `--effort high`。
+  mineru-kit vlm-server --engine auto --port 30000
+  ```
 
 > [!NOTE]
 > 模型引擎参数只适用于显式声明它们的命令；`mineru-router` 仅接受文档列出的 Router/worker 参数，不透传未知参数。
@@ -141,10 +94,15 @@ llm_aided:
 
 ## 基于配置文件扩展 MinerU 功能
 
-MinerU 现已实现开箱即用，但也支持通过配置文件扩展功能。LaTeX 分隔符、LLM 辅助标题分级等旧工具配置仍使用用户目录下的 `mineru.json`。模型存储目录和模型源配置使用 `config.yaml`，详见[模型源说明](./model_source.md)。
+MinerU 可开箱即用，并从 `$MINERU_HOME/config.yaml` 读取当前配置；可通过 `MINERU_CONFIG` 指定其他配置文件。旧 `mineru.json` CLI 配置不再支持，Gradio 的 LaTeX 分隔符通过 `--latex-delimiters-type` 选择。
 
-以下是一些可用的配置选项： 
+模型目录和模型源使用 `model` 配置段：
 
-- `models-dir`：
-    * 用于指定本地模型存储目录，请分别指定本地小模型 bundle（`models-dir.pipeline`）和 VLM bundle（`models-dir.vlm`）的模型目录，
-    * 指定目录后您可通过配置环境变量`export MINERU_MODEL_SOURCE=local`来使用本地模型。
+```yaml
+model:
+  base_dir: ~/.mineru/models
+  source: auto
+  stack: auto
+```
+
+模型下载和本地模型源的详细说明见[模型源说明](./model_source.md)。

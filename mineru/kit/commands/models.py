@@ -21,6 +21,7 @@ from ...model.download import (
     download_model_repo,
     verify_model_repo,
 )
+from ...utils.stdio import configure_standard_streams
 from ..errors import exit_with_message
 from ..output import print_info, print_success
 
@@ -182,4 +183,10 @@ def verify_cmd(
         raise typer.Exit(1)
 
 
-__all__ = ["app", "download_cmd", "show_cmd", "verify_cmd", "model_repo_names"]
+def download_main() -> None:
+    """配置标准流后直接运行模型下载命令，无需再输入 download 子命令。"""
+    configure_standard_streams()
+    typer.run(download_cmd)
+
+
+__all__ = ["app", "download_cmd", "download_main", "show_cmd", "verify_cmd", "model_repo_names"]

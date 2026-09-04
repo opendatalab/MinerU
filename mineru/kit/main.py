@@ -8,21 +8,17 @@ from typer.core import TyperGroup
 
 from ..cli.version_command import show_version, version_cmd
 from ..utils.stdio import configure_standard_streams
-from .commands import api_server, models, parse, router, vlm_server
+from .commands import api_server, gradio, models, parse, router, vlm_server
 
 TOP_LEVEL_COMMAND_ORDER = [
     "parse",
+    "gradio",
     "api-server",
     "vlm-server",
     "router",
     "models",
     "version",
 ]
-
-FORWARD_CONTEXT_SETTINGS = {
-    "ignore_unknown_options": True,
-    "allow_extra_args": True,
-}
 
 
 class OrderedRootGroup(TyperGroup):
@@ -55,8 +51,9 @@ def root(
 
 app.add_typer(models.app, name="models")
 app.command("parse")(parse.parse_cmd)
+app.command("gradio")(gradio.gradio_cmd)
 app.command("api-server")(api_server.api_server_cmd)
-app.command("vlm-server", context_settings=FORWARD_CONTEXT_SETTINGS)(vlm_server.vlm_server_cmd)
+app.command("vlm-server", context_settings=vlm_server.FORWARD_CONTEXT_SETTINGS)(vlm_server.vlm_server_cmd)
 app.command("router")(router.router_cmd)
 app.command("version")(version_cmd)
 
