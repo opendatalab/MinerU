@@ -37,6 +37,7 @@ def api_server_cmd(
         help="Server capability tier: flash, basic, or standard",
     ),
     no_flash: bool = typer.Option(False, "--no-flash", help="Disable Flash tier advertisement and execution"),
+    no_advanced: bool = typer.Option(False, "--no-advanced", help="Disable Advanced tier advertisement and execution"),
     concurrency: int = typer.Option(1, "--concurrency", help="Maximum concurrent parse jobs"),
     url_timeout: int = typer.Option(60, "--url-timeout", help="Timeout for URL source downloads"),
     allow_local_source: bool = typer.Option(False, "--allow-local-source", help="Allow local source paths"),
@@ -47,18 +48,38 @@ def api_server_cmd(
         "--language",
         help="Hybrid medium OCR language hint; accepted by other efforts for compatibility",
     ),
-    ocr_mode: str = typer.Option("auto", "--ocr-mode", help="OCR mode: auto, txt, ocr"),
     disable_image_analysis: bool = typer.Option(False, "--disable-image-analysis", help="Disable image analysis"),
-    preload_models: bool = typer.Option(False, "--preload-models", help="Load local models during server startup"),
+    preload_models: bool = typer.Option(
+        False, "--preload-models", help="Initialize VLM client and local Hybrid models at startup"
+    ),
     api_key: str | None = typer.Option(None, "--api-key", help="Optional fixed API key"),
+    vlm_server_url: str | None = typer.Option(None, "--vlm-server-url", help="Remote VLM URL; empty value selects local VLM"),
+    vlm_api_key: str | None = typer.Option(None, "--vlm-api-key", help="Bearer key for the remote VLM server"),
+    vlm_model: str | None = typer.Option(None, "--vlm-model", help="Remote VLM model name; empty value enables discovery"),
+    vlm_http_timeout: int | None = typer.Option(
+        None, "--vlm-http-timeout", min=1, help="VLM HTTP timeout in seconds (default: 600)"
+    ),
+    vlm_max_concurrency: int | None = typer.Option(
+        None, "--vlm-max-concurrency", min=1, help="VLM inference concurrency (default: 100)"
+    ),
 ) -> None:
-    """Start the self-hosted MinerU parse API server."""
+    """转发显式启动参数，启动 self-hosted MinerU 解析 API 服务。"""
     try:
         normalized_language = validate_public_ocr_lang(language)
     except ValueError as exc:
         exit_with_message("invalid_request", str(exc), "language")
     tier_value = _normalize_tier_option(tier)
     tier_args = ["--tier", tier_value] if tier_value is not None else []
+    vlm_args: list[str] = []
+    for option, value in (
+        ("--vlm-server-url", vlm_server_url),
+        ("--vlm-api-key", vlm_api_key),
+        ("--vlm-model", vlm_model),
+        ("--vlm-http-timeout", vlm_http_timeout),
+        ("--vlm-max-concurrency", vlm_max_concurrency),
+    ):
+        if value is not None:
+            vlm_args.extend([option, str(value)])
     try:
         parser_api_server.main.main(
             args=[
@@ -74,10 +95,10 @@ def api_server_cmd(
                 str(max_inline_bytes),
                 "--language",
                 normalized_language,
-                "--ocr-mode",
-                ocr_mode,
                 *tier_args,
+                *vlm_args,
                 *(["--no-flash"] if no_flash else []),
+                *(["--no-advanced"] if no_advanced else []),
                 *(["--allow-local-source"] if allow_local_source else []),
                 *(["--allow-http-source"] if allow_http_source else []),
                 *(["--upload-dir", upload_dir] if upload_dir else []),

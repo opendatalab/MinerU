@@ -40,6 +40,7 @@ Job 状态:
     }
   ],
   "tier": null,
+  "ocr_mode": "auto",
   "output_formats": ["markdown", "middle_json", "structured_content", "zip"],
   "callback": {
     "url": "https://your.app/mineru-webhook",
@@ -54,8 +55,11 @@ Job 状态:
 |------|------|:--:|------|------|
 | `files` | array | 是 | 无 | 至少 1 个，最多由 access level 决定。 |
 | `tier` | string 或 null | 否 | `null` | 当前服务支持的 tier 或 `null`。省略或传 `null` 表示使用默认选择策略；完整 tier 语义见 [解析 Tier](../tiers.md) 与 [ADR-0024](../decisions/0024-file-type-tier-normalization.md)。HTML 输入自动路由到 HTML 解析器。 |
+| `ocr_mode` | string | 否 | `"auto"` | 本次任务的解析模式：`auto` 自动判断、`txt` 使用文本层、`ocr` 强制 OCR。覆盖所有 tier，沿用底层 PDF/图片解析语义；其他格式使用各自的固定解析路径。非法值或 `null` 返回 HTTP 400。 |
 | `output_formats` | array | 否 | `["markdown"]` | 请求产物格式。 |
 | `callback` | object | 否 | `null` | Webhook 回调配置，官方 API registered 用户可用。 |
+
+`ocr_mode` 在同一任务的文件间共用，任务之间独立。省略时固定使用 `auto`；Local Parse Server 不再通过启动参数设置全局 OCR 模式。
 
 HTML job 固定使用静态 `auto` 正文选择，不执行 JavaScript，也不下载页面引用的远程图片。URL source 的来源 URL
 会用于解析相对链接；本地 source 的相对图片仅允许位于源 HTML 的安全根目录内。

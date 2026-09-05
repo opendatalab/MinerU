@@ -19,8 +19,9 @@ import os
 import random
 import time
 import zipfile
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Literal, cast
 from urllib.parse import urlparse
 
 import httpx
@@ -41,6 +42,19 @@ _TRANSPORT_RETRY_MAX_DELAY_SECONDS = 2.0
 logger = logging.getLogger("mineru.api_client")
 
 _RequestMethod = Literal["GET", "POST", "PUT"]
+ApiJobStatus = Literal["queued", "running", "completed", "partial", "failed", "canceled"]
+_JOB_STATUSES = {"queued", "running", *_TERMINAL_JOB_STATUSES}
+
+
+def _notify_job_status(job: dict[str, Any], callback: Callable[[ApiJobStatus], None] | None) -> None:
+    """通知观察者真实任务状态，隔离回调错误并忽略未知的扩展状态。"""
+    status = job.get("status")
+    if callback is None or not isinstance(status, str) or status not in _JOB_STATUSES:
+        return
+    try:
+        callback(cast(ApiJobStatus, status))
+    except Exception:
+        logger.exception("Parse job status callback failed")
 
 
 class _APITransportError(Exception):
@@ -74,6 +88,7 @@ class MinerUApiParser(DocumentParser):
     Constructor parameters:
 
     - ``tier`` → v1 ``tier`` (``"flash"`` / ``"basic"`` / ``"standard"`` / ``"advanced"``); ``None`` omits the field
+    - ``ocr_mode`` → v1 request OCR mode; ``None`` omits the field (server default: ``"auto"``)
     - ``page_range`` → per-file v1 ``page_range``
     """
 
@@ -85,38 +100,57 @@ class MinerUApiParser(DocumentParser):
         api_url: str | None = None,
         api_key: str | None = None,
         tier: Tier | None = None,
+        ocr_mode: Literal["auto", "txt", "ocr"] | None = None,
         include_images: bool = False,
         include_model_output: bool = False,
     ) -> None:
+        """保存请求配置；未指定 OCR 模式时省略字段，保留既有客户端的请求结构。"""
+        if ocr_mode is not None and ocr_mode not in ("auto", "txt", "ocr"):
+            raise ValueError(f"Unsupported OCR mode '{ocr_mode}'")
         self._base_url = (api_url or os.environ.get("MINERU_API_URL") or self.DEFAULT_API_URL).rstrip("/")
         self._api_key = (api_key if api_key is not None else os.environ.get("MINERU_API_KEY")) or None
         self._local = _is_local_network_url(self._base_url)
         self._trust_env = should_trust_env_for_url(self._base_url)
         self._source_features: set[str] | None = None
         self.tier = validate_tier(tier) if tier is not None else None
+        self.ocr_mode = ocr_mode
         self.include_images = include_images
         self.include_model_output = include_model_output
 
     # ── DocumentParser interface ─────────────────────────────────────
 
-    def parse(self, path: str | Path, *, page_range: str = "") -> ParseResult:
+    def parse(
+        self,
+        path: str | Path,
+        *,
+        page_range: str = "",
+        status_callback: Callable[[ApiJobStatus], None] | None = None,
+    ) -> ParseResult:
+        """同步解析文件；可选回调观察任务状态，服务端完成后仍需下载并构造结果。"""
         page_range = normalize_page_range_input(page_range)
         file_path = Path(path)
         if not file_path.exists():
             raise FileNotFoundError(file_path)
 
         payload = self._build_payload(self._build_source(file_path), page_range)
-        job = self._do_parse(payload)
+        job = self._do_parse(payload, status_callback=status_callback)
         return self._build_result(job, file_path.name)
 
-    async def parse_async(self, path: str | Path, *, page_range: str = "") -> ParseResult:
+    async def parse_async(
+        self,
+        path: str | Path,
+        *,
+        page_range: str = "",
+        status_callback: Callable[[ApiJobStatus], None] | None = None,
+    ) -> ParseResult:
+        """异步解析文件；回调属于本次调用，不在复用的 parser 实例上保存。"""
         page_range = normalize_page_range_input(page_range)
         file_path = Path(path)
         if not file_path.exists():
             raise FileNotFoundError(file_path)
 
         payload = self._build_payload(await self._async_build_source(file_path), page_range)
-        job = await self._async_do_parse(payload)
+        job = await self._async_do_parse(payload, status_callback=status_callback)
         return await self._async_build_result(job, file_path.name)
 
     def get_usage(self) -> dict[str, Any]:
@@ -174,6 +208,8 @@ class MinerUApiParser(DocumentParser):
         }
         if self.tier is not None:
             payload["tier"] = self.tier
+        if self.ocr_mode is not None:
+            payload["ocr_mode"] = self.ocr_mode
         return payload
 
     def _supports_local_source(self) -> bool:
@@ -433,7 +469,10 @@ class MinerUApiParser(DocumentParser):
 
     # ── parse execution ──────────────────────────────────────────────
 
-    def _do_parse(self, payload: dict[str, Any]) -> dict[str, Any]:
+    def _do_parse(
+        self, payload: dict[str, Any], *, status_callback: Callable[[ApiJobStatus], None] | None = None
+    ) -> dict[str, Any]:
+        """提交同步任务，并从提交响应开始通知实际状态。"""
         with httpx.Client(timeout=httpx.Timeout(120, connect=30), trust_env=self._trust_env) as cli:
             r = _request_once(
                 cli,
@@ -444,11 +483,15 @@ class MinerUApiParser(DocumentParser):
                 json_body=payload,
             )
             job = self._check(r)
+            _notify_job_status(job, status_callback)
             if job.get("status") not in _TERMINAL_JOB_STATUSES:
-                job = self._poll(cli, job["job_id"])
+                job = self._poll(cli, job["job_id"], status_callback=status_callback)
         return job
 
-    async def _async_do_parse(self, payload: dict[str, Any]) -> dict[str, Any]:
+    async def _async_do_parse(
+        self, payload: dict[str, Any], *, status_callback: Callable[[ApiJobStatus], None] | None = None
+    ) -> dict[str, Any]:
+        """提交异步任务，并从提交响应开始通知实际状态。"""
         async with httpx.AsyncClient(timeout=httpx.Timeout(120, connect=30), trust_env=self._trust_env) as cli:
             r = await _async_request_once(
                 cli,
@@ -459,11 +502,13 @@ class MinerUApiParser(DocumentParser):
                 json_body=payload,
             )
             job = self._check(r)
+            _notify_job_status(job, status_callback)
             if job.get("status") not in _TERMINAL_JOB_STATUSES:
-                job = await self._async_poll(cli, job["job_id"])
+                job = await self._async_poll(cli, job["job_id"], status_callback=status_callback)
         return job
 
-    def _poll(self, cli: Any, job_id: str) -> dict[str, Any]:
+    def _poll(self, cli: Any, job_id: str, *, status_callback: Callable[[ApiJobStatus], None] | None = None) -> dict[str, Any]:
+        """保持每秒一次的同步轮询，并通知每次响应中的任务状态。"""
         for _ in range(_POLL_MAX_ATTEMPTS):  # max 1 hour
             time.sleep(_POLL_INTERVAL_SECONDS)
             r = _request_with_retry(
@@ -474,11 +519,15 @@ class MinerUApiParser(DocumentParser):
                 headers=self._headers(),
             )
             job = self._check(r)
+            _notify_job_status(job, status_callback)
             if job.get("status") in _TERMINAL_JOB_STATUSES:
                 return job
         raise _V1APIError("timeout", f"Job {job_id} did not complete within timeout")
 
-    async def _async_poll(self, cli: Any, job_id: str) -> dict[str, Any]:
+    async def _async_poll(
+        self, cli: Any, job_id: str, *, status_callback: Callable[[ApiJobStatus], None] | None = None
+    ) -> dict[str, Any]:
+        """保持每秒一次的异步轮询，状态刷新不额外增加网络请求。"""
         for _ in range(_POLL_MAX_ATTEMPTS):
             await asyncio.sleep(_POLL_INTERVAL_SECONDS)
             r = await _async_request_with_retry(
@@ -489,6 +538,7 @@ class MinerUApiParser(DocumentParser):
                 headers=self._headers(),
             )
             job = self._check(r)
+            _notify_job_status(job, status_callback)
             if job.get("status") in _TERMINAL_JOB_STATUSES:
                 return job
         raise _V1APIError("timeout", f"Job {job_id} did not complete within timeout")

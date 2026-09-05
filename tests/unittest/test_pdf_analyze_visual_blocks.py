@@ -1266,6 +1266,7 @@ def test_aio_doc_analyze_runs_sync_entrypoint_in_thread_and_forwards_arguments(
         "page_index_map": [3, 5],
         "file_suffix": "pptx",
         "source_context": None,
+        "vlm_config": None,
     }
     assert observed["thread_id"] != caller_thread_id
 
@@ -1476,8 +1477,7 @@ def test_pdf_flash_ocr_uses_local_ocr_without_vlm(
     hybrid_singleton = MagicMock()
     hybrid_singleton.get_model.return_value = hybrid_model
     process_pdf_windows = MagicMock(return_value=[])
-    load_vlm_runtime = MagicMock()
-    get_vlm_engine = MagicMock()
+    get_vlm_predictor = MagicMock()
 
     monkeypatch.setattr(pipeline, "PDFDocument", MagicMock(return_value=fake_document))
     monkeypatch.setattr(
@@ -1487,8 +1487,7 @@ def test_pdf_flash_ocr_uses_local_ocr_without_vlm(
     )
     monkeypatch.setattr(pipeline, "process_pdf_windows", process_pdf_windows)
     monkeypatch.setattr(pipeline, "clean_memory", MagicMock())
-    monkeypatch.setattr(pipeline, "_load_vlm_runtime", load_vlm_runtime)
-    monkeypatch.setattr(pipeline, "get_vlm_engine", get_vlm_engine)
+    monkeypatch.setattr(pipeline, "get_vlm_predictor", get_vlm_predictor)
 
     result = pipeline.analyze_pdf(
         b"ocr-pdf",
@@ -1505,8 +1504,7 @@ def test_pdf_flash_ocr_uses_local_ocr_without_vlm(
         fake_document.classify.assert_called_once_with()
     else:
         fake_document.classify.assert_not_called()
-    load_vlm_runtime.assert_not_called()
-    get_vlm_engine.assert_not_called()
+    get_vlm_predictor.assert_not_called()
 
 
 @pytest.mark.parametrize("parse_mode", ["txt", "auto"])
@@ -1518,14 +1516,12 @@ def test_pdf_flash_txt_skips_all_neural_model_loading(
     fake_document = MagicMock()
     fake_document.classify.return_value = "txt"
     hybrid_model_factory = MagicMock()
-    load_vlm_runtime = MagicMock()
-    get_vlm_engine = MagicMock()
+    get_vlm_predictor = MagicMock()
     clean_memory = MagicMock()
     process_pdf_windows = MagicMock(return_value=[])
     monkeypatch.setattr(pipeline, "PDFDocument", MagicMock(return_value=fake_document))
     monkeypatch.setattr(pipeline, "HybridLocalModelContextSingleton", hybrid_model_factory)
-    monkeypatch.setattr(pipeline, "_load_vlm_runtime", load_vlm_runtime)
-    monkeypatch.setattr(pipeline, "get_vlm_engine", get_vlm_engine)
+    monkeypatch.setattr(pipeline, "get_vlm_predictor", get_vlm_predictor)
     monkeypatch.setattr(pipeline, "clean_memory", clean_memory)
     monkeypatch.setattr(pipeline, "process_pdf_windows", process_pdf_windows)
 
@@ -1545,8 +1541,7 @@ def test_pdf_flash_txt_skips_all_neural_model_loading(
     else:
         fake_document.classify.assert_not_called()
     hybrid_model_factory.assert_not_called()
-    load_vlm_runtime.assert_not_called()
-    get_vlm_engine.assert_not_called()
+    get_vlm_predictor.assert_not_called()
     clean_memory.assert_not_called()
 
 
@@ -1574,19 +1569,11 @@ def test_pdf_infer_timer_excludes_hybrid_vlm_initialization_and_cleanup(
 
     hybrid_singleton.get_model.side_effect = fake_hybrid_get_model
     vlm_predictor = MagicMock()
-    vlm_singleton = MagicMock()
 
-    def fake_vlm_get_model(**_kwargs: object) -> MagicMock:
+    def fake_vlm_get_model(_config: object) -> tuple[MagicMock, str]:
         """记录 VLM predictor 初始化顺序。"""
         events.append("vlm_init")
-        return vlm_predictor
-
-    vlm_singleton.get_model.side_effect = fake_vlm_get_model
-
-    def fake_enable_serial_execution(predictor: MagicMock, _backend: str) -> MagicMock:
-        """记录 VLM predictor 包装顺序并原样返回。"""
-        events.append("vlm_wrap")
-        return predictor
+        return vlm_predictor, "transformers"
 
     perf_counter_values = iter([20.0, 22.0])
 
@@ -1606,15 +1593,7 @@ def test_pdf_infer_timer_excludes_hybrid_vlm_initialization_and_cleanup(
 
     monkeypatch.setattr(pipeline, "PDFDocument", MagicMock(return_value=fake_document))
     monkeypatch.setattr(pipeline, "HybridLocalModelContextSingleton", MagicMock(return_value=hybrid_singleton))
-    monkeypatch.setattr(
-        pipeline,
-        "_load_vlm_runtime",
-        lambda: {
-            "ModelSingleton": MagicMock(return_value=vlm_singleton),
-            "_maybe_enable_serial_execution": fake_enable_serial_execution,
-        },
-    )
-    monkeypatch.setattr(pipeline, "get_vlm_engine", MagicMock(return_value="transformers"))
+    monkeypatch.setattr(pipeline, "get_vlm_predictor", fake_vlm_get_model)
     monkeypatch.setattr(pipeline.time, "perf_counter", fake_perf_counter)
     monkeypatch.setattr(pipeline, "_normalize_pdf_model_list", fake_normalize_model_list)
     monkeypatch.setattr(pipeline, "clean_memory", fake_clean_memory)
@@ -1635,7 +1614,6 @@ def test_pdf_infer_timer_excludes_hybrid_vlm_initialization_and_cleanup(
     assert events == [
         "hybrid_init",
         "vlm_init",
-        "vlm_wrap",
         "timer_20.0",
         "normalize_model_list",
         "timer_22.0",

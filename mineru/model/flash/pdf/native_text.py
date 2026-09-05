@@ -15,8 +15,9 @@ from typing import Any, Literal, Mapping, Sequence
 from pdftext.schema import Char
 
 from ....types import BBox
-from .document import PDFDocument
+from .document import PDFDocument, PDFDrawingLine
 
+from .typography import _normalized_font_family
 from .models import (
     _AxisLine,
     _LineItem,
@@ -649,17 +650,6 @@ def _detect_leading_emphasis_width(
     return max(0.1, prefix_bbox[2] - prefix_bbox[0])
 
 
-def _normalized_font_family(
-    signature: tuple[str, int] | None,
-) -> str | None:
-    """移除 PDF 子集前缀并归一化字体族，供行首排版切换判断使用。"""
-
-    if signature is None:
-        return None
-    name = re.sub(r"^[A-Z]{6}\+", "", signature[0])
-    return re.sub(r"[\s_-]+", "", name).casefold() or None
-
-
 def _detect_leading_typography_width(
     glyphs: list[tuple[BBox, tuple[str, int] | None, float | None]],
 ) -> float | None:
@@ -811,23 +801,28 @@ def _merge_native_inline_scripts(
 
     candidates: list[tuple[float, int, int, Literal["prefix", "suffix"]]] = []
     detached_candidate_pairs: set[tuple[int, int, Literal["prefix", "suffix"]]] = set()
+    # 候选生成期间行不会修改，按本轮索引缓存字符统计，避免每对行重算字号中位数。
+    compact_texts = ["".join(char for char in line.text if not char.isspace()) for line in lines]
+    reference_markers = [_INLINE_REFERENCE_MARKER_RE.fullmatch(text) is not None for text in compact_texts]
+    local_bboxes = [_rotate_bbox_to_upright(line.bbox, page_size, line.angle) for line in lines]
+    canonical_scales = [_native_typographic_scale(line) for line in lines]
     for small_index, small in enumerate(lines):
-        compact_text = "".join(char for char in small.text if not char.isspace())
+        compact_text = compact_texts[small_index]
         if not compact_text:
             continue
-        small_local_bbox = _rotate_bbox_to_upright(small.bbox, page_size, small.angle)
+        small_local_bbox = local_bboxes[small_index]
         for base_index, base in enumerate(lines):
             if small_index == base_index or small.angle != base.angle or small.visual_row_id == base.visual_row_id:
                 continue
             if small.effective_height <= 0 or base.effective_height <= 0:
                 continue
-            canonical_small_scale = _native_typographic_scale(small)
-            canonical_base_scale = _native_typographic_scale(base)
+            canonical_small_scale = canonical_scales[small_index]
+            canonical_base_scale = canonical_scales[base_index]
             legacy_small_scale = max(0.1, small.effective_height)
             legacy_base_scale = max(0.1, base.effective_height)
             legacy_ratio = legacy_small_scale / legacy_base_scale
             use_canonical_reference_scale = (
-                _INLINE_REFERENCE_MARKER_RE.fullmatch(compact_text) is not None
+                reference_markers[small_index]
                 and not 0.35 <= legacy_ratio <= 0.8
                 and 0.35 <= canonical_small_scale / canonical_base_scale <= 0.8
             )
@@ -838,7 +833,7 @@ def _merge_native_inline_scripts(
                 continue
             if len(compact_text) > 8 and small_local_bbox[2] - small_local_bbox[0] > 3.0 * base_scale:
                 continue
-            base_local_bbox = _rotate_bbox_to_upright(base.bbox, page_size, base.angle)
+            base_local_bbox = local_bboxes[base_index]
             vertical_overlap = max(
                 0.0,
                 min(small_local_bbox[3], base_local_bbox[3]) - max(small_local_bbox[1], base_local_bbox[1]),
@@ -975,8 +970,14 @@ def _normalize_pdftext_angle(value: Any) -> int:
 def _get_pdf_drawing_lines(pdf_doc: PDFDocument, page_idx: int) -> list[_AxisLine]:
     """读取 PDFDocument 的公共绘图线结果，并隔离具体 PDFium 类型。"""
 
+    return _coerce_pdf_drawing_lines(pdf_doc.get_page_drawing_lines(page_idx))
+
+
+def _coerce_pdf_drawing_lines(drawing_lines: Sequence[PDFDrawingLine]) -> list[_AxisLine]:
+    """把独立接口或批量快照中的绘图线统一转换为 Flash 内部坐标类型。"""
+
     output: list[_AxisLine] = []
-    for drawing_line in pdf_doc.get_page_drawing_lines(page_idx):
+    for drawing_line in drawing_lines:
         bbox = _coerce_bbox(drawing_line.bbox)
         if bbox is None:
             continue

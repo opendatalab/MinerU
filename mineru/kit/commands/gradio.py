@@ -57,22 +57,19 @@ def gradio_cmd(
         None, "--server-port", help="Gradio bind port; omitted: auto-select from 7860 or GRADIO_SERVER_PORT"
     ),
     output_dir: str = typer.Option("./output", "--output-dir", help="Directory for Gradio artifacts"),
+    max_pages: int | None = typer.Option(
+        None, "--max-pages", help="Maximum pages per non-Flash PDF conversion; omitted: unlimited"
+    ),
     enable_example: bool = typer.Option(True, "--enable-example/--no-enable-example", help="Show local examples"),
     enable_api: bool = typer.Option(True, "--enable-api/--no-enable-api", help="Expose the Gradio event API"),
     latex_delimiters_type: Literal["a", "b", "all"] = typer.Option(
         "all", "--latex-delimiters-type", help="LaTeX delimiters used by the Markdown preview"
     ),
     api_server_tier: str = typer.Option("standard", "--api-server-tier", "--tier", help="Managed API server capability tier"),
-    api_server_no_flash: bool = typer.Option(
-        False, "--api-server-no-flash/--no-flash", help="Disable Flash on the managed server"
-    ),
     api_server_concurrency: int = typer.Option(
         1, "--api-server-concurrency", "--concurrency", help="Managed server job concurrency"
     ),
     api_server_language: str = typer.Option("ch", "--api-server-language", "--language", help="Managed server OCR language"),
-    api_server_ocr_mode: Literal["auto", "txt", "ocr"] = typer.Option(
-        "auto", "--api-server-ocr-mode", "--ocr-mode", help="Managed server OCR mode"
-    ),
     api_server_disable_image_analysis: bool = typer.Option(
         False,
         "--api-server-disable-image-analysis/--disable-image-analysis",
@@ -86,6 +83,8 @@ def gradio_cmd(
     _require_gradio_dependencies()
     if server_port is not None:
         _validate_server_port(server_port)
+    if max_pages is not None:
+        _validate_positive_option(max_pages, name="max_pages")
     _validate_positive_option(api_server_concurrency, name="api_server_concurrency")
     normalized_tier = _validate_server_tier(api_server_tier)
     try:
@@ -103,14 +102,13 @@ def gradio_cmd(
             server_name=server_name,
             server_port=server_port,
             output_dir=output_dir,
+            max_pages=max_pages,
             enable_example=enable_example,
             enable_api=enable_api,
             latex_delimiters_type=latex_delimiters_type,
             api_server_tier=normalized_tier,
-            api_server_no_flash=api_server_no_flash,
             api_server_concurrency=api_server_concurrency,
             api_server_language=normalized_language,
-            api_server_ocr_mode=api_server_ocr_mode,
             api_server_disable_image_analysis=api_server_disable_image_analysis,
             api_server_preload_models=api_server_preload_models,
         )

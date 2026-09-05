@@ -48,12 +48,17 @@ api-server 必须提供能力发现接口，让 doclib 或客户端知道当前�
 | `--tier flash` | `flash` | 返回 `quality_tier_unavailable`，除非请求显式传 `tier=flash` |
 | `--tier basic` | `flash`、`basic` | `basic` |
 | `--tier basic --no-flash` | `basic` | `basic` |
+| `--tier basic --no-advanced` | `flash`、`basic` | `basic` |
 | `--tier standard` 或未传 `--tier` | `flash`、`basic`、`standard`、`advanced` | `standard` |
 | `--tier standard --no-flash` | `basic`、`standard`、`advanced` | `standard` |
+| `--tier standard --no-advanced` | `flash`、`basic`、`standard` | `standard` |
+| `--tier standard --no-flash --no-advanced` | `basic`、`standard` | `standard` |
 
 因此，如果只以 `--tier flash` 启动裸 api-server，请求未指定 tier 时不应静默使用 `flash`。需要 `flash` 时调用方必须显式传 `tier=flash`；非 PDF/image 文件的批量归一规则见 [ADR-0024](../decisions/0024-file-type-tier-normalization.md)。
 
 `--no-flash` 会同时关闭 Flash 能力发现和执行。显式 Flash 请求以及 OFD/EPUB/Office/HTML/CSV 等必须归一到 Flash 的输入都会被拒绝。`--tier flash --no-flash` 因为没有可用能力而启动失败。
+
+`--no-advanced` 会同时关闭 Advanced 能力发现和执行：`GET /v1/tiers` 不再发布 `advanced`，显式 Advanced 请求返回该 tier 不可用。Advanced 不是启动 tier，因此它与 `--tier flash` 或 `--tier basic` 组合时不会改变原有能力；Standard 仍保留自身所需的共享模型。
 
 如果不同启动能力需要不同硬件、并发或生命周期策略，应启动多个 api-server 进程并由 doclib 或上层配置分别管理 URL。Doclib managed server 固定使用 `--no-flash`，因为 Flash 在 doclib 进程内执行。
 
@@ -74,13 +79,57 @@ api-server 启动时可使用单个 `--tier` 指定能力上限：
 mineru-kit api-server --tier basic --port 16580
 mineru-kit api-server --tier standard --port 15982
 mineru-kit api-server --tier standard --no-flash --port 8000
+mineru-kit api-server --tier standard --no-advanced --port 8000
+mineru-kit api-server --tier standard --no-flash --no-advanced --port 8000
 mineru-kit api-server --tier standard --preload-models
-mineru-kit api-server --tier standard --language en --ocr-mode ocr --disable-image-analysis
+mineru-kit api-server --tier standard --language en --disable-image-analysis
 ```
 
 未传 `--tier` 时暴露 `flash`、`basic`、`standard`、`advanced`；PDF/image 请求未指定 tier 时默认 `standard`。
 
-模型默认在首次解析时懒加载。`--preload-models` 会在 Basic 或 Standard 服务启动时提前加载所需模型，并在加载失败时让能力接口返回明确错误；Flash 没有本地模型，该参数对 Flash 无操作。Doclib managed parse-server 会自动启用模型预加载。
+OCR 模式通过每次 `POST /v1/parse/jobs` 请求的 `ocr_mode` 设置，可选 `auto`、`txt`、`ocr`，省略时为 `auto`。启动参数 `--ocr-mode` 已移除，传入会报错；Python `create_app()` 同样不再接受该参数。
+
+模型默认在首次解析时懒加载。`--preload-models` 会在 Basic 或 Standard 服务启动时提前初始化所需模型或 VLM 客户端，并在失败时让能力接口返回明确错误；Flash 没有本地模型，该参数对 Flash 无操作。Doclib managed parse-server 会自动启用模型预加载。
+
+### 使用远程 MinerU VLM 服务
+
+```bash
+mineru-kit api-server --tier standard --vlm-server-url http://127.0.0.1:30000/v1
+mineru-api --vlm-server-url https://vlm.example.com/proxy/v1 --vlm-model mineru-model --preload-models
+```
+
+两个命令和 `python -m mineru.parser.api_server` 支持相同的连接参数：
+
+| 参数 | 默认值 | 说明 |
+|------|--------|------|
+| `--vlm-server-url` | 空 | 远程服务地址，空值选择本地 VLM |
+| `--vlm-api-key` | 空 | 远程 VLM 服务的 Bearer Key |
+| `--vlm-model` | 空 | 上游模型名；为空时通过 `/v1/models` 唯一发现 |
+| `--vlm-http-timeout` | 600 | VLM HTTP 读写超时，单位秒，必须为正整数 |
+| `--vlm-max-concurrency` | 100 | VLM 推理请求并发，必须为正整数 |
+
+表中为未配置时的默认值。命令行只覆盖显式传入的字段，其余读取全局 `model.vlm`；
+环境变量覆盖 YAML。详见 [远程 VLM 配置](../config.md#远程-vlm)。例如：
+
+```bash
+export MINERU_MODEL_VLM_SERVER_URL=http://127.0.0.1:30000/v1
+export MINERU_MODEL_VLM_API_KEY=your-vlm-key
+mineru-kit api-server --vlm-http-timeout 120 --vlm-max-concurrency 16
+# 本次启动覆盖全局地址，恢复本地 VLM：
+mineru-kit api-server --vlm-server-url ""
+```
+
+`--api-key` 认证解析 API 的调用方，`--vlm-api-key` 认证 API server 对上游 VLM 的请求，
+两者独立。远程连接只用于 Standard/Advanced 的 VLM 推理，仍需本地 Hybrid 模型；
+启动依赖预检不要求本地 VLM 引擎。Basic/Flash 不会连接远程 VLM。
+
+启用 `--preload-models` 时，Standard 服务连接上游进行模型发现或校验，并预加载本地
+Hybrid 模型；否则上游连接推迟到首次 Standard/Advanced 解析。连接、认证或模型校验失败
+通过已有预加载错误或解析任务错误返回，不自动回退本地 VLM。推理重试继续使用底层默认设置。
+
+Python 可使用 `create_app(vlm_config=VlmConfig(...))` 完整覆盖全局配置。配置由服务实例
+传入其任务，不写回全局设置。此功能不增加 HTTP 请求字段；`/v1/models` 和 `/v1/tiers`
+继续发布 MinerU 逻辑模型及质量档位，上游 serving 模型别名仅用于推理请求。
 
 启动完成后，HTTP API 不暴露 backend。`GET /v1/tiers` 也不新增 backend 字段；调用方如需推断实现，只能从 `current_model` 做弱推断。
 
@@ -93,13 +142,14 @@ mineru-kit api-server --tier standard --language en --ocr-mode ocr --disable-ima
 - host / port
 - tier，单值 `flash` / `basic` / `standard`
 - no-flash
+- no-advanced
 - preload-models
 - API key
+- vlm-server-url / vlm-api-key / vlm-model / vlm-http-timeout / vlm-max-concurrency
 
 ### 稳定解析参数
 
 - language
-- ocr-mode
 - disable-image-analysis
 - concurrency
 - upload-dir

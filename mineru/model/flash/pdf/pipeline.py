@@ -4,24 +4,23 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
+from collections import deque
+from dataclasses import dataclass, replace
 from typing import Any
 
 from ....types import BBox
 from .._shared.xycut import sort_entries
-from .document import PDFDocument, PDFImageInfo, get_lines_from_chars
-from .text_styles import (
-    PDFTextLinkLine,
-    PDFTextStyleLine,
+from .document import PDFDocument, PDFImageInfo, PDFPageTextGeometry, get_lines_from_chars
+from .inline.detection import detect_pdf_text_link_lines, detect_pdf_text_style_lines
+from .inline.matching import _realign_repaired_text_evidence
+from .inline.materialize import (
     apply_pdf_text_links,
     apply_pdf_text_scripts,
     apply_pdf_text_styles,
-    detect_pdf_text_script_lines,
-    detect_pdf_text_link_lines,
-    detect_pdf_text_style_lines,
     materialize_pdf_inline_spans,
-    _realign_repaired_text_evidence,
 )
+from .inline.scripts import detect_pdf_text_script_lines
+from .inline.types import PDFTextLinkLine, PDFTextStyleLine
 
 from .models import (
     _AxisLine,
@@ -47,7 +46,7 @@ from .geometry import (
 from .native_text import (
     _build_native_line_items,
     _extract_decorative_text_rules,
-    _get_pdf_drawing_lines,
+    _coerce_pdf_drawing_lines,
     _median_native_glyph_width,
     _sanitize_pdf_control_text,
     _resplit_native_visual_runs,
@@ -105,25 +104,25 @@ from .auxiliary_text import (
     _marginal_geometry_matches,
     _marginal_text_matches,
 )
-from .titles import (
+from .title_analysis.body_profile import _infer_document_body_profile
+from .title_analysis.document_profile import _infer_document_title_profile
+from .title_analysis.page_titles import _classify_page_titles
+from .title_analysis.structural import (
     _classify_body_height_section_titles,
     _classify_explicit_section_titles,
     _classify_inline_typography_reset_titles,
     _classify_document_structural_titles,
-    _classify_page_titles,
-    _infer_document_body_profile,
-    _infer_document_title_profile,
     _promote_noninitial_document_title_band,
 )
-from .text_blocks import (
-    _build_text_blocks,
+from .text_assembly.annotations import (
     _merge_fragmented_header_blocks,
     _merge_front_matter_column_blocks,
     _merge_image_caption_text_blocks,
-    _merge_internal_text_block_group,
     _merge_multiline_title_blocks,
     _merge_repeated_compact_title_continuations,
 )
+from .text_assembly.assembly import _build_text_blocks
+from .text_assembly.common import _merge_internal_text_block_group
 from .visual_annotations import _classify_and_bind_visual_annotations
 
 
@@ -293,36 +292,39 @@ def _repeated_header_evidence_pages(
     return supported_pages
 
 
-def _analyze_native_document(
-    pdf_doc: PDFDocument,
-    *,
-    script_diagnostics: list[dict[str, Any]] | None = None,
-    geometry_diagnostics: list[dict[str, Any]] | None = None,
-) -> list[list[dict[str, Any]]]:
-    """逐页读取数字 PDF，并在轻量页面上完成跨页文本类型判定。"""
+@dataclass(slots=True)
+class _DocumentSources:
+    """持有跨页校准前的原始页面，以及最终物化仍需的紧凑样式证据。"""
 
-    page_sizes = [pdf_doc.page_size(page_idx) for page_idx in range(pdf_doc.page_count)]
-    page_image_infos = [pdf_doc.get_page_image_infos(page_idx) for page_idx in range(pdf_doc.page_count)]
-    page_signature_bboxes = [pdf_doc.get_page_signature_bboxes(page_idx) for page_idx in range(pdf_doc.page_count)]
-    watermark_fingerprints = _detect_repeated_raster_watermark_fingerprints(
-        page_image_infos,
-        page_sizes,
-    )
+    page_sources: list[_PageSource]
+    page_text_geometries: list[PDFPageTextGeometry]
+    page_sizes: list[tuple[float, float]]
+    page_style_lines: list[list[PDFTextStyleLine]]
+    page_link_lines: list[list[PDFTextLinkLine]]
 
+
+def _collect_document_sources(pdf_doc: PDFDocument) -> _DocumentSources:
+    """逐页收集原生证据，局部快照与字符引用在收集阶段退出时释放。"""
+
+    page_sizes: list[tuple[float, float]] = []
+    page_image_infos: list[list[PDFImageInfo]] = []
     page_sources: list[_PageSource] = []
     page_text_geometries = []
     page_style_lines: list[list[PDFTextStyleLine]] = []
     page_link_lines: list[list[PDFTextLinkLine]] = []
     for page_idx in range(pdf_doc.page_count):
-        page_size = page_sizes[page_idx]
-        text_geometry = pdf_doc.get_page_chars_with_geometry(page_idx)
+        snapshot = pdf_doc._extract_native_page(page_idx)
+        page_size = snapshot.page_size
+        page_sizes.append(page_size)
+        page_image_infos.append(snapshot.image_infos)
+        text_geometry = snapshot.text_geometry
         chars = text_geometry.chars
         lines = _build_native_line_items(
             get_lines_from_chars(chars),
             page_size,
-            page_rotation=pdf_doc.page_rotation(page_idx),
+            page_rotation=snapshot.rotation,
         )
-        drawing_lines = _get_pdf_drawing_lines(pdf_doc, page_idx)
+        drawing_lines = _coerce_pdf_drawing_lines(snapshot.drawing_lines)
         lines, decorative_rules = _extract_decorative_text_rules(
             lines,
             page_size,
@@ -332,7 +334,7 @@ def _analyze_native_document(
         page_link_lines.append(
             detect_pdf_text_link_lines(
                 lines,
-                pdf_doc.get_page_link_annotations(page_idx),
+                snapshot.link_annotations,
             )
         )
         source = _PageSource(
@@ -340,69 +342,83 @@ def _analyze_native_document(
             lines=lines,
             chars=chars,
             drawing_lines=drawing_lines,
-            image_bboxes=_filter_repeated_raster_watermark_bboxes(
-                page_image_infos[page_idx],
-                page_size,
-                watermark_fingerprints,
-            ),
-            signature_bboxes=page_signature_bboxes[page_idx],
-            form_bboxes=pdf_doc.get_page_form_bboxes(page_idx),
-            path_infos=pdf_doc.get_page_path_infos(page_idx),
+            signature_bboxes=snapshot.signature_bboxes,
+            form_bboxes=snapshot.form_bboxes,
+            path_infos=snapshot.path_infos,
         )
         page_sources.append(source)
         page_text_geometries.append(text_geometry)
 
-    geometry_plan = build_document_geometry_plan(
-        [source.lines for source in page_sources],
-        page_text_geometries,
-        page_sizes,
-    )
-    for page_index, source in enumerate(page_sources):
-        # 容器认领前只启用高置信 X 修复；Y trim 等表格、公式和图片行被排除后再应用。
-        apply_line_geometry_repairs(
-            source.lines,
-            page_index=page_index,
-            plan=geometry_plan,
-            allow_y_trim=False,
+    watermark_fingerprints = _detect_repeated_raster_watermark_fingerprints(page_image_infos, page_sizes)
+    for source, image_infos in zip(page_sources, page_image_infos, strict=True):
+        source.image_bboxes = _filter_repeated_raster_watermark_bboxes(
+            image_infos,
+            source.page_size,
+            watermark_fingerprints,
         )
+
+    return _DocumentSources(page_sources, page_text_geometries, page_sizes, page_style_lines, page_link_lines)
+
+
+def _prepare_document_sources(
+    sources: _DocumentSources,
+    *,
+    geometry_diagnostics: list[dict[str, Any]] | None = None,
+) -> list[_PreparedPage]:
+    """先完成全文几何和页眉判定，再按顺序消费原始页面并释放已用证据。"""
+
+    geometry_plan = build_document_geometry_plan(
+        [source.lines for source in sources.page_sources],
+        sources.page_text_geometries,
+        sources.page_sizes,
+    )
+    for page_index, source in enumerate(sources.page_sources):
+        # 容器认领前只允许 X 修复，表格和图形认领后再启用 Y trim。
+        apply_line_geometry_repairs(source.lines, page_index=page_index, plan=geometry_plan, allow_y_trim=False)
     if geometry_diagnostics is not None:
         geometry_diagnostics.append(geometry_plan.to_dict())
+    _classify_raw_page_marginals(sources.page_sources)
+    separators = _detect_repeated_header_separator_bboxes(sources.page_sources)
+    repaired_chars_by_page: dict[int, dict[int, BBox]] = {}
+    for (page_index, char_idx), repair in geometry_plan.char_repairs.items():
+        repaired_chars_by_page.setdefault(page_index, {})[char_idx] = repair.layout_bbox
 
-    _classify_raw_page_marginals(page_sources)
-    repeated_header_separators = _detect_repeated_header_separator_bboxes(
-        page_sources,
-    )
-    prepared_pages = [
-        _prepare_page_source(
-            source,
-            tight_bboxes=geometry.tight_bboxes,
-            origins=geometry.origins,
-            geometry_plan=geometry_plan,
-            page_index=page_index,
-            style_lines=page_style_lines[page_index],
-            link_lines=page_link_lines[page_index],
-            table_header_separator_bboxes=(repeated_header_separators[page_index]),
+    pending = deque(zip(sources.page_sources, sources.page_text_geometries, strict=True))
+    sources.page_sources.clear()
+    sources.page_text_geometries.clear()
+    prepared_pages: list[_PreparedPage] = []
+    while pending:
+        page_index = len(prepared_pages)
+        source, geometry = pending.popleft()
+        prepared_pages.append(
+            _prepare_page_source(
+                source,
+                tight_bboxes=geometry.tight_bboxes,
+                origins=geometry.origins,
+                geometry_plan=geometry_plan,
+                page_index=page_index,
+                style_lines=sources.page_style_lines[page_index],
+                link_lines=sources.page_link_lines[page_index],
+                table_header_separator_bboxes=separators[page_index],
+                repaired_char_bboxes=repaired_chars_by_page.pop(page_index, {}),
+            )
         )
-        for page_index, (source, geometry) in enumerate(zip(page_sources, page_text_geometries, strict=True))
-    ]
-    if script_diagnostics is not None:
-        script_diagnostics.extend(
-            {
-                "page_index": page_index,
-                "page_size": prepared.page_size,
-                "script_lines": list(prepared.script_lines),
-                "lines": [
-                    {
-                        "source_index": line.source_index,
-                        "text": line.text,
-                        "bbox": line.bbox,
-                        "angle": line.angle,
-                    }
-                    for line in prepared.remaining_lines
-                ],
-            }
-            for page_index, prepared in enumerate(prepared_pages)
-        )
+        # 删除对象所有者引用，不清空共享字符容器，公式重建副本仍可安全使用。
+        del source, geometry
+    return prepared_pages
+
+
+@dataclass(frozen=True, slots=True)
+class _DocumentTextProfiles:
+    """分别保存原始正文尺度、规范正文尺度及全文标题原型。"""
+
+    body: _DocumentBodyProfile | None
+    canonical_body: _DocumentBodyProfile | None
+    title: _DocumentTitleProfile | None
+
+
+def _classify_document_text(prepared_pages: list[_PreparedPage]) -> _DocumentTextProfiles:
+    """按既有顺序分类跨页辅助文本，再统计正文并确认结构标题。"""
 
     _classify_repeated_visual_headers(prepared_pages)
     _classify_repeated_page_marginals(prepared_pages)
@@ -433,23 +449,24 @@ def _analyze_native_document(
         legacy_body_profile=document_body_profile,
         document_title_profile=document_title_profile,
     )
-    finalized_pages = [
-        _finalize_prepared_page(
-            prepared,
-            page_index,
-            canonical_body_profile=canonical_body_profile,
-            document_body_profile=document_body_profile,
-            document_title_profile=document_title_profile,
-        )
-        for page_index, prepared in enumerate(prepared_pages)
-    ]
+    return _DocumentTextProfiles(document_body_profile, canonical_body_profile, document_title_profile)
+
+
+def _materialize_document_inline(
+    finalized_pages: list[list[dict[str, Any]]],
+    prepared_pages: list[_PreparedPage],
+    sources: _DocumentSources,
+    script_diagnostics: list[dict[str, Any]] | None,
+) -> None:
+    """在页面归一化后按链接、样式、上下标顺序物化最终行内语义。"""
+
     for page_index, (page_blocks, prepared, style_lines, link_lines, page_size) in enumerate(
         zip(
             finalized_pages,
             prepared_pages,
-            page_style_lines,
-            page_link_lines,
-            page_sizes,
+            sources.page_style_lines,
+            sources.page_link_lines,
+            sources.page_sizes,
             strict=True,
         )
     ):
@@ -466,6 +483,49 @@ def _analyze_native_document(
             materialized_diagnostics=materialized_diagnostics,
         )
         materialize_pdf_inline_spans(page_blocks)
+
+
+def _analyze_native_document(
+    pdf_doc: PDFDocument,
+    *,
+    script_diagnostics: list[dict[str, Any]] | None = None,
+    geometry_diagnostics: list[dict[str, Any]] | None = None,
+) -> list[list[dict[str, Any]]]:
+    """逐页读取数字 PDF，并在轻量页面上完成跨页文本类型判定。"""
+
+    sources = _collect_document_sources(pdf_doc)
+    prepared_pages = _prepare_document_sources(sources, geometry_diagnostics=geometry_diagnostics)
+    if script_diagnostics is not None:
+        script_diagnostics.extend(
+            {
+                "page_index": page_index,
+                "page_size": prepared.page_size,
+                "script_lines": list(prepared.script_lines),
+                "lines": [
+                    {
+                        "source_index": line.source_index,
+                        "text": line.text,
+                        "bbox": line.bbox,
+                        "angle": line.angle,
+                    }
+                    for line in prepared.remaining_lines
+                ],
+            }
+            for page_index, prepared in enumerate(prepared_pages)
+        )
+
+    profiles = _classify_document_text(prepared_pages)
+    finalized_pages = [
+        _finalize_prepared_page(
+            prepared,
+            page_index,
+            canonical_body_profile=profiles.canonical_body,
+            document_body_profile=profiles.body,
+            document_title_profile=profiles.title,
+        )
+        for page_index, prepared in enumerate(prepared_pages)
+    ]
+    _materialize_document_inline(finalized_pages, prepared_pages, sources, script_diagnostics)
     return finalized_pages
 
 
@@ -479,6 +539,7 @@ def _prepare_page_source(
     style_lines: list[PDFTextStyleLine] | None = None,
     link_lines: list[PDFTextLinkLine] | None = None,
     table_header_separator_bboxes: set[BBox] | None = None,
+    repaired_char_bboxes: dict[int, BBox] | None = None,
 ) -> _PreparedPage:
     """先认领视觉容器，再标注辅助文本并留下可跨页比较的轻量文本行。"""
 
@@ -582,11 +643,13 @@ def _prepare_page_source(
     )
     if geometry_plan is not None:
         repaired_line_bboxes = {line.source_index: line.bbox for line in source.lines}
-        repaired_char_bboxes = {
-            char_idx: repair.layout_bbox
-            for (repair_page_index, char_idx), repair in geometry_plan.char_repairs.items()
-            if repair_page_index == page_index
-        }
+        if repaired_char_bboxes is None:
+            # 单页内部入口保留独立调用能力；文档主链路已提前按页建立索引。
+            repaired_char_bboxes = {
+                char_idx: repair.layout_bbox
+                for (repair_page_index, char_idx), repair in geometry_plan.char_repairs.items()
+                if repair_page_index == page_index
+            }
         unclaimed_lines, resplits = _resplit_native_visual_runs(
             unclaimed_lines,
             source.page_size,

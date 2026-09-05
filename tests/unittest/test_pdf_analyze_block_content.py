@@ -164,9 +164,6 @@ def test_doc_analyze_converts_vlm_results_before_downstream_processing(
 
     vlm_predictor = MagicMock()
     getattr(vlm_predictor, vlm_method_name).return_value = [source_page]
-    vlm_singleton = MagicMock()
-    vlm_singleton.get_model.return_value = vlm_predictor
-    serial_wrapper = MagicMock(return_value=vlm_predictor)
     page_image = Image.new("RGB", (64, 96), "white")
 
     def fake_process_text_and_formulas(
@@ -196,15 +193,9 @@ def test_doc_analyze_converts_vlm_results_before_downstream_processing(
     monkeypatch.setattr(pipeline, "HybridLocalModelContextSingleton", MagicMock(return_value=hybrid_singleton))
     monkeypatch.setattr(
         pipeline,
-        "_load_vlm_runtime",
-        MagicMock(
-            return_value={
-                "ModelSingleton": MagicMock(return_value=vlm_singleton),
-                "_maybe_enable_serial_execution": serial_wrapper,
-            }
-        ),
+        "get_vlm_predictor",
+        MagicMock(return_value=(vlm_predictor, "transformers")),
     )
-    monkeypatch.setattr(pipeline, "get_vlm_engine", MagicMock(return_value="transformers"))
     monkeypatch.setattr(
         window,
         "load_images_from_pdf_bytes_range",

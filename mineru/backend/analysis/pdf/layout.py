@@ -22,25 +22,6 @@ from .constants import (
 )
 
 
-def _load_vlm_runtime() -> dict[str, Any]:
-    """按需加载 VLM runtime 组件，确保只有 high/extra_high 路径触发 VLM 依赖。"""
-    from ....model.vlm.runtime import (
-        ModelSingleton,
-        _get_model_async,
-        _maybe_enable_serial_execution,
-        aio_predictor_execution_guard,
-        predictor_execution_guard,
-    )
-
-    return {
-        "ModelSingleton": ModelSingleton,
-        "_get_model_async": _get_model_async,
-        "_maybe_enable_serial_execution": _maybe_enable_serial_execution,
-        "aio_predictor_execution_guard": aio_predictor_execution_guard,
-        "predictor_execution_guard": predictor_execution_guard,
-    }
-
-
 def _layout_item_to_content_block(layout_item: dict[str, Any], page_size: tuple[int, int]) -> dict | None:
     """将本地 layout 小模型检测项转换为 mineru-vl-utils 的 ContentBlock。"""
     label = layout_item.get("label") or layout_item.get("type")

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+import json
 import subprocess
 import sys
 import zipfile
@@ -17,13 +18,14 @@ from PIL import Image, ImageStat
 from pypdf import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
 
-from mineru.filetypes import PARSEABLE_EXTENSIONS
+from mineru.filetypes import FLASH_ONLY_PARSE_EXTENSIONS, IMAGE_EXTENSIONS, PARSEABLE_EXTENSIONS
 from mineru.kit.commands import gradio as gradio_command
 from mineru.kit.gradio import app as gradio_app
 from mineru.kit.gradio import client as gradio_client
 from mineru.kit.gradio.app import build_gradio_app
 from mineru.kit.gradio.artifacts import create_run_artifacts, persist_parse_result, render_download
 from mineru.kit.gradio.client import (
+    GradioArtifactClient,
     ManagedLocalApiServer,
     STATUS_DOWNLOADING_RESULT,
     V1ArtifactClient,
@@ -35,8 +37,9 @@ from mineru.kit.main import app
 from mineru.parser import api_client as parser_api_client
 from mineru.parser import api_server as parser_api_server
 from mineru.parser.base import ParseResult
-from mineru.types import BlockType, ImageBlock, ImageBodyBlock, MiddleJson, PageInfo, TextBlock, TextSpan
+from mineru.types import BlockType, ImageBlock, ImageBodyBlock, MiddleJson, ModelJson, PageInfo, TextBlock, TextSpan
 from mineru.version import __version__
+from typer.main import get_command
 from typer.testing import CliRunner
 
 runner = CliRunner()
@@ -168,6 +171,50 @@ def test_gradio_command_is_registered_and_help_is_available() -> None:
     assert "gradio" in result.output
     assert "--api-url" in gradio_result.output
     assert "--api-server-tier" in gradio_result.output
+    assert "Disable Advanced on" not in gradio_result.output
+    assert "Disable Flash on" not in gradio_result.output
+
+
+def test_gradio_managed_tier_disable_option_names_are_removed() -> None:
+    """验证禁用档位的参数完整删除，不仅从帮助中隐藏。"""
+    root_command = get_command(app)
+    command = root_command.get_command(None, "gradio")
+    assert command is not None
+    options = {parameter.name: tuple(parameter.opts) for parameter in command.params}
+
+    assert "api_server_no_flash" not in options
+    assert "api_server_no_advanced" not in options
+
+
+@pytest.mark.parametrize(
+    "flag",
+    [
+        "--api-server-no-flash",
+        "--no-flash",
+        "--api-server-no-advanced",
+        "--no-advanced",
+    ],
+)
+@pytest.mark.parametrize("standalone", [False, True])
+def test_gradio_rejects_removed_tier_disable_options(
+    monkeypatch: pytest.MonkeyPatch,
+    flag: str,
+    standalone: bool,
+) -> None:
+    """验证两个命令入口在启动服务前拒绝所有已移除的禁用档位参数。"""
+    launch = Mock()
+    monkeypatch.setattr(gradio_app, "launch_gradio", launch)
+
+    if standalone:
+        monkeypatch.setattr(sys, "argv", ["mineru-gradio", flag])
+        with pytest.raises(SystemExit) as error:
+            gradio_command.main()
+        assert error.value.code == 2
+    else:
+        result = runner.invoke(app, ["gradio", flag])
+        assert result.exit_code == 2, result.output
+        assert "No such option" in result.output
+    launch.assert_not_called()
 
 
 @pytest.mark.parametrize(("port_args", "expected_port"), [([], None), (["--server-port", "7861"], 7861)])
@@ -282,6 +329,28 @@ def test_v1_client_discovers_health_and_tiers_and_sends_api_key() -> None:
     assert requests == [("GET", "/api/v1/health"), ("GET", "/api/v1/tiers")]
 
 
+def test_v1_client_discovers_api_server_without_advanced(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """验证真实 API server 禁用 Advanced 后，Gradio 能力快照不会重新补回该档位。"""
+    monkeypatch.setattr(parser_api_server, "_preflight_tier_dependencies", Mock())
+    api = parser_api_server.create_app(
+        upload_dir=str(tmp_path / "api"),
+        tier="standard",
+        no_advanced=True,
+    )
+    request_log: list[tuple[str, str, str | None]] = []
+
+    with TestClient(api, base_url="http://testserver") as test_client:
+        proxy = _httpx_proxy_for_test_client(test_client, request_log)
+        monkeypatch.setattr(gradio_client, "httpx", proxy)
+        capabilities = asyncio.run(V1ArtifactClient(api_url="http://testserver").discover())
+
+    assert capabilities.tiers == ("flash", "basic", "standard")
+    assert [path for _method, path, _authorization in request_log] == ["/v1/health", "/v1/tiers"]
+
+
 def test_v1_client_rejects_server_without_zip() -> None:
     """验证缺少 ZIP 能力时在 UI 启动前给出稳定错误。"""
 
@@ -392,6 +461,111 @@ def test_v1_client_full_asgi_upload_job_poll_and_zip(
     assert parse_calls[0]["page_range"] == "1"
 
 
+def test_gradio_routes_real_v1_jobs_and_isolates_remote_auth(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """贯通两套真实 V1 路由，验证本地 Flash 不上传远程且环境密钥只用于远程任务。"""
+    source = tmp_path / "report.pdf"
+    source.write_bytes(_pdf_bytes())
+    monkeypatch.setenv("MINERU_API_KEY", "remote-secret")
+    monkeypatch.setattr(parser_api_server, "_preflight_tier_dependencies", Mock())
+
+    async def fake_parse_async(path: str, **kwargs: Any) -> ParseResult:
+        """只替换模型推理，保留两套服务各自的上传、任务和 ZIP 打包流程。"""
+        return ParseResult(middle_json=_middle_json(with_image=False), _model_output={"raw": "model"})
+
+    monkeypatch.setattr(parser_api_server, "parse_async", fake_parse_async)
+    remote_api = parser_api_server.create_app(
+        upload_dir=str(tmp_path / "remote"), tier="standard", no_flash=True, no_advanced=True, api_key="remote-secret"
+    )
+    local_api = parser_api_server.create_app(upload_dir=str(tmp_path / "local"), tier="flash")
+    requests: list[tuple[str, str, str, str | None]] = []
+    with TestClient(remote_api, base_url="http://remote.test") as remote_http:
+        with TestClient(local_api, base_url="http://local.test") as local_http:
+
+            async def handle(request: httpx.Request) -> httpx.Response:
+                """按目标主机转入对应 ASGI 服务，记录完整请求目的地和鉴权头。"""
+                host = request.url.host
+                requests.append((host, request.method, request.url.path, request.headers.get("authorization")))
+                target = {"remote.test": remote_http, "local.test": local_http}[host]
+                response = target.request(
+                    request.method,
+                    str(request.url),
+                    headers=dict(request.headers),
+                    content=request.content,
+                )
+                return httpx.Response(response.status_code, headers=response.headers, content=response.content)
+
+            def async_client(**kwargs: Any) -> httpx.AsyncClient:
+                """为能力发现和 API parser 注入同一双服务传输层。"""
+                kwargs["transport"] = httpx.MockTransport(handle)
+                return httpx.AsyncClient(**kwargs)
+
+            proxy = SimpleNamespace(**{**vars(httpx), "AsyncClient": async_client})
+            monkeypatch.setattr(gradio_client, "httpx", proxy)
+            monkeypatch.setattr(parser_api_client, "httpx", proxy)
+            remote = V1ArtifactClient(api_url="http://remote.test")
+            local = V1ArtifactClient(api_url="http://local.test", api_key="")
+            remote_capabilities = asyncio.run(remote.discover())
+            local_capabilities = asyncio.run(local.discover())
+            routed = GradioArtifactClient(remote, local_flash=local)
+            assert routed.capabilities.tiers == ("flash", "basic", "standard")
+            assert remote.capabilities is remote_capabilities
+            assert remote_capabilities.tiers == ("basic", "standard")
+            assert local.capabilities is local_capabilities
+            requests.clear()
+
+            flash_result = asyncio.run(routed.parse_file(source, tier="flash", page_range=""))
+            assert flash_result._model_output == {"raw": "model"}
+            assert requests and all(host == "local.test" and auth is None for host, _method, _path, auth in requests)
+            assert any(method == "POST" and path == "/v1/parse/jobs" for _host, method, path, _auth in requests)
+            requests.clear()
+
+            remote_result = asyncio.run(routed.parse_file(source, tier="standard", page_range="1"))
+            assert remote_result._model_output == {"raw": "model"}
+            assert requests and all(
+                host == "remote.test" and auth == "Bearer remote-secret" for host, _method, _path, auth in requests
+            )
+            assert any(method == "POST" and path == "/v1/parse/jobs" for _host, method, path, _auth in requests)
+
+
+@pytest.mark.parametrize("failure", [None, V1ArtifactError("remote failed", code="parse_failed"), asyncio.CancelledError()])
+def test_gradio_router_preserves_remote_flash_results_errors_and_cancellation(failure: BaseException | None) -> None:
+    """验证远程已有 Flash 时优先远程，并原样传递结果、失败和取消而不重试本地。"""
+    result = ParseResult(middle_json=_middle_json(with_image=False))
+    primary = Mock(spec=V1ArtifactClient)
+    primary.capabilities = V1ServerCapabilities("http://remote.test", ("standard", "flash"), ("zip",), ("file_id",))
+    primary.parse_file = AsyncMock(return_value=result, side_effect=failure)
+    local = Mock(spec=V1ArtifactClient)
+    routed = GradioArtifactClient(primary, local_flash=local)
+    callback = Mock()
+    request = routed.parse_file(Path("report.pdf"), tier="flash", page_range="1-2", ocr_mode="ocr", status_callback=callback)
+    if failure is None:
+        assert asyncio.run(request) is result
+    else:
+        with pytest.raises(type(failure)) as error:
+            asyncio.run(request)
+        assert error.value is failure
+    primary.parse_file.assert_awaited_once_with(
+        Path("report.pdf"), tier="flash", page_range="1-2", ocr_mode="ocr", status_callback=callback
+    )
+    local.parse_file.assert_not_called()
+
+
+@pytest.mark.parametrize(("tier", "code"), [("advanced", "tier_unavailable"), ("unknown", "invalid_request")])
+def test_gradio_router_rejects_unavailable_tiers(tier: str, code: str) -> None:
+    """验证路由层只补充 Flash，拒绝未声明的 Advanced 及未知档位。"""
+    primary = Mock(spec=V1ArtifactClient)
+    primary.capabilities = V1ServerCapabilities("http://remote.test", ("standard",), ("zip",), ("file_id",))
+    local = Mock(spec=V1ArtifactClient)
+    local.capabilities = V1ServerCapabilities("http://local.test", ("flash", "advanced"), ("zip",), ("file_id",))
+    routed = GradioArtifactClient(primary, local_flash=local)
+    assert routed.capabilities.tiers == ("flash", "standard")
+    with pytest.raises(V1ArtifactError) as error:
+        asyncio.run(routed.parse_file(Path("report.pdf"), tier=tier, page_range=""))
+    assert error.value.code == code
+    primary.parse_file.assert_not_called()
+    local.parse_file.assert_not_called()
+
+
 def test_api_client_upload_auth_is_limited_to_same_origin() -> None:
     """验证 Bearer Key 会用于同源上传，但不会泄露给外部预签名地址。"""
     same_origin = parser_api_client._same_origin_upload_headers(
@@ -410,6 +584,60 @@ def test_api_client_upload_auth_is_limited_to_same_origin() -> None:
     assert "Authorization" not in external
 
 
+def test_gradio_ocr_reaches_analysis_through_real_v1_jobs(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """贯通 UI、上传、V1 任务与统一解析器，仅替换分析推理并检查连续请求之间的模式隔离。"""
+    from mineru.parser import mineru_parser
+
+    source = tmp_path / "report.PDF"
+    source.write_bytes(_pdf_bytes())
+    received_modes: list[str] = []
+
+    async def fake_analyze(file_bytes: bytes, **kwargs: Any) -> tuple[MiddleJson, ModelJson]:
+        """记录真正传入分析层的模式，并生成与模式一致的严格结果和模型输出。"""
+        assert file_bytes.startswith(b"%PDF")
+        received_modes.append(kwargs["parse_mode"])
+        middle = _middle_json(with_image=False)
+        middle.parse_mode = "ocr" if kwargs["parse_mode"] == "ocr" else "txt"
+        model = ModelJson(
+            pages=[[]],
+            page_index_map=[],
+            file_suffix="pdf",
+            effort="flash",
+            parse_mode=middle.parse_mode,
+            mineru_version=__version__,
+        )
+        return middle, model
+
+    monkeypatch.setattr(mineru_parser, "aio_doc_analyze", fake_analyze)
+    api = parser_api_server.create_app(upload_dir=str(tmp_path / "api"), tier="flash")
+    with TestClient(api, base_url="http://testserver") as test_client:
+        request_log: list[tuple[str, str, str | None]] = []
+        proxy = _httpx_proxy_for_test_client(test_client, request_log)
+        monkeypatch.setattr(gradio_client, "httpx", proxy)
+        monkeypatch.setattr(parser_api_client, "httpx", proxy)
+        client = V1ArtifactClient(api_url="http://testserver")
+
+        async def convert_requests() -> None:
+            """同一 Gradio 实例依次强制、自动、强制解析，再通过缺省 SDK 请求验证默认模式。"""
+            capabilities = await client.discover()
+            demo = build_gradio_app(client, capabilities, output_root=tmp_path / "output", enable_example=False)
+            handler = next(fn.fn for fn in demo.fns.values() if fn.name == "convert_handler")
+            for enabled in (True, False, True):
+                updates = [update async for update in handler(str(source), 0, "", enabled)]
+                state = updates[-1][8]
+                assert state is not None, updates[-1][0]
+                payload = json.loads(Path(state["middle_json_path"]).read_text())
+                assert payload["parse_mode"] == ("ocr" if enabled else "txt")
+            default_parser = parser_api_client.MinerUApiParser(api_url="http://testserver", tier="flash")
+            result = await default_parser.parse_async(source)
+            assert result.middle_json.parse_mode == "txt"
+
+        asyncio.run(convert_requests())
+        assert not hasattr(api.state, "ocr_mode")
+    assert received_modes == ["ocr", "auto", "ocr", "auto"]
+    assert sum(method == "POST" and path == "/v1/parse/jobs" for method, path, _ in request_log) == 4
+
+
 def test_v1_client_preserves_v1_error_code(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """验证 V1 error envelope 会保留错误码并清晰传给 UI。"""
     source = tmp_path / "demo.pdf"
@@ -421,7 +649,7 @@ def test_v1_client_preserves_v1_error_code(monkeypatch: pytest.MonkeyPatch, tmp_
         def __init__(self, **_kwargs: Any) -> None:
             """忽略构造参数。"""
 
-        async def parse_async(self, _path: Path, *, page_range: str) -> ParseResult:
+        async def parse_async(self, _path: Path, *, page_range: str, status_callback: Any = None) -> ParseResult:
             """抛出与正式 API client 一致的错误形态。"""
             error = RuntimeError(f"bad range: {page_range}")
             error.code = "page_range_invalid"  # type: ignore[attr-defined]
@@ -435,7 +663,8 @@ def test_v1_client_preserves_v1_error_code(monkeypatch: pytest.MonkeyPatch, tmp_
     assert error.value.code == "page_range_invalid"
 
 
-def test_v1_client_parse_uses_api_parser_zip_contract(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+@pytest.mark.parametrize("ocr_mode", ["auto", "txt", "ocr"])
+def test_v1_client_parse_uses_api_parser_zip_contract(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, ocr_mode: str) -> None:
     """验证 Gradio client 固定请求带图片和模型输出的 V1 ZIP 结果。"""
     source = tmp_path / "demo.pdf"
     source.write_bytes(_pdf_bytes())
@@ -448,10 +677,16 @@ def test_v1_client_parse_uses_api_parser_zip_contract(monkeypatch: pytest.Monkey
             """保存构造参数，供断言 V1 ZIP 契约。"""
             calls.update(kwargs)
 
-        async def parse_async(self, path: Path, *, page_range: str) -> ParseResult:
+        async def parse_async(self, path: Path, *, page_range: str, status_callback: Any = None) -> ParseResult:
             """返回最小解析结果。"""
             calls["path"] = path
             calls["page_range"] = page_range
+            assert statuses == ["Preparing request...", "Submitting task..."]
+            assert status_callback is not None
+            status_callback("queued")
+            status_callback("running")
+            status_callback("completed")
+            assert statuses[-1] == STATUS_DOWNLOADING_RESULT
             return ParseResult(middle_json=_middle_json(with_image=False))
 
     monkeypatch.setattr("mineru.kit.gradio.client.MinerUApiParser", FakeParser)
@@ -463,24 +698,26 @@ def test_v1_client_parse_uses_api_parser_zip_contract(monkeypatch: pytest.Monkey
         ("file_id",),
     )
     statuses: list[str] = []
-    result = asyncio.run(client.parse_file(source, tier="standard", page_range="1-2", status_callback=statuses.append))
+    result = asyncio.run(
+        client.parse_file(source, tier="standard", page_range="1-2", ocr_mode=ocr_mode, status_callback=statuses.append)
+    )
     assert isinstance(result, ParseResult)
     assert calls["include_images"] is True
     assert calls["include_model_output"] is True
     assert calls["tier"] == "standard"
+    assert calls["ocr_mode"] == ocr_mode
     assert calls["page_range"] == "1-2"
     assert statuses[0] == "Preparing request..."
     assert statuses[-1] == STATUS_DOWNLOADING_RESULT
+    assert statuses[2:4] == ["Queued on server", "Processing on server..."]
 
 
 def test_managed_local_api_command_uses_kit_entrypoint() -> None:
     """验证托管 server 使用正式 mineru-kit api-server 命令。"""
     server = ManagedLocalApiServer(
         tier="standard",
-        no_flash=True,
         concurrency=3,
         language="en",
-        ocr_mode="ocr",
         disable_image_analysis=True,
         preload_models=True,
         api_key="secret",
@@ -488,9 +725,20 @@ def test_managed_local_api_command_uses_kit_entrypoint() -> None:
     command = server._command(8123, Path("/tmp/mineru-upload"))
     assert command[:4] == [server._command(8123, Path("/tmp/mineru-upload"))[0], "-m", "mineru.kit.main", "api-server"]
     assert "--tier" in command and command[command.index("--tier") + 1] == "standard"
-    assert "--no-flash" in command
+    assert "--no-flash" not in command
+    assert "--no-advanced" not in command
     assert "--preload-models" in command
+    assert "--ocr-mode" not in command
     assert command[command.index("--api-key") + 1] == "secret"
+    with pytest.raises(TypeError, match="ocr_mode"):
+        ManagedLocalApiServer(ocr_mode="ocr")  # type: ignore[call-arg]
+    with pytest.raises(TypeError, match="api_server_ocr_mode"):
+        gradio_app.launch_gradio(api_server_ocr_mode="ocr")  # type: ignore[call-arg]
+    for option in ("no_flash", "no_advanced"):
+        with pytest.raises(TypeError, match=option):
+            ManagedLocalApiServer(**{option: True})  # type: ignore[arg-type]
+        with pytest.raises(TypeError, match=f"api_server_{option}"):
+            gradio_app.launch_gradio(**{f"api_server_{option}": True})  # type: ignore[arg-type]
 
 
 def test_managed_local_api_server_cleans_process_control_and_temp_dir(
@@ -569,6 +817,7 @@ def test_managed_local_api_server_cleans_process_control_and_temp_dir(
     temp_root = Path(server._temp_dir.name)
     assert temp_root.is_dir()
     assert "--allow-local-source" not in captured["command"]
+    assert "--no-advanced" not in captured["command"]
     assert captured["accepting"] is True
 
     server.stop()
@@ -724,16 +973,61 @@ def test_render_download_rejects_state_outside_allowed_root(tmp_path: Path) -> N
     assert not (tmp_path / "escaped.html").exists()
 
 
-def test_gradio_file_types_page_range_and_header_follow_new_contract() -> None:
+def test_gradio_file_types_page_range_and_header_follow_new_contract(tmp_path: Path) -> None:
     """验证完整扩展名、PDF-only 页码规则和复用后的 Header。"""
     assert set(gradio_app._supported_file_types()) == {f".{extension}" for extension in PARSEABLE_EXTENSIONS}
-    assert gradio_app._effective_page_range("report.PDF", " 1-3,r1 ") == "1-3,r1"
-    assert gradio_app._effective_page_range("report.docx", "1-3") == ""
+    source = tmp_path / "report.PDF"
+    source.write_bytes(_pdf_bytes(5))
+    assert gradio_app._effective_page_range(source, " 1-3,r1 ", tier="standard") == "1-3,r1"
+    assert gradio_app._effective_page_range(source, " 1-3,r1 ", tier="flash") == ""
+    assert gradio_app._effective_page_range("report.docx", "1-3", tier="standard") == ""
     header = gradio_app._render_header(gradio_major_version=6)
     assert "mineru-gradio6-header" in header
     assert "mineru-header-popover mineru-model-popover" in header
     assert "mineru-header-popover mineru-paper-popover" in header
     assert "{{HEADER_" not in header
+
+
+def test_gradio_ocr_control_visibility_reset_and_event_binding(tmp_path: Path) -> None:
+    """验证 PDF 专属开关的缺省值、文件重置、清除绑定和独立于 tier 的可见性。"""
+    capabilities = V1ServerCapabilities("http://127.0.0.1:1", ("flash", "standard"), ("zip",), ("file_id",))
+    demo = build_gradio_app(Mock(), capabilities, output_root=tmp_path, enable_example=False)
+    checkbox = next(block for block in demo.blocks.values() if block.__class__.__name__ == "Checkbox")
+    assert checkbox.label == "强制 OCR" and checkbox.value is False and checkbox.visible is False
+    update = next(fn for fn in demo.fns.values() if fn.name == "update_ocr_control")
+    assert len(update.inputs) == 1 and update.inputs[0].__class__.__name__ == "File"
+    for path, visible in (("first.pdf", True), ("second.PDF", True), ("photo.png", False), ("book.docx", False), (None, False)):
+        assert update.fn(path) == {"__type__": "update", "value": False, "visible": visible}
+    convert = next(fn for fn in demo.fns.values() if fn.name == "convert_handler")
+    assert convert.inputs[-1] is checkbox
+    slider = next(block for block in demo.blocks.values() if "mineru-tier-slider" in (block.elem_classes or []))
+    clear = next(block for block in demo.blocks.values() if block.__class__.__name__ == "ClearButton")
+    events = demo.config["dependencies"]
+    assert all(checkbox._id not in event["outputs"] for event in events if (slider._id, "input") in event["targets"])
+    assert any(checkbox._id in event["outputs"] for event in events if (clear._id, "click") in event["targets"])
+    change = next(event for event in events if event["id"] == update._id)
+    assert change["queue"] is False and change["trigger_mode"] == "always_last"
+
+
+@pytest.mark.parametrize("suffix", [".png", ".docx", ".csv"])
+def test_gradio_non_pdf_ignores_hidden_force_ocr(tmp_path: Path, suffix: str) -> None:
+    """直接调用事件并传入残留 True，非 PDF 请求仍使用 auto。"""
+    source = tmp_path / f"source{suffix}"
+    source.write_bytes(b"placeholder")
+    client = SimpleNamespace(parse_file=AsyncMock(side_effect=V1ArtifactError("stop after request")))
+    capabilities = V1ServerCapabilities("http://127.0.0.1:1", ("flash",), ("zip",), ("file_id",))
+    demo = build_gradio_app(client, capabilities, output_root=tmp_path / "output", enable_example=False)
+    handler = next(fn.fn for fn in demo.fns.values() if fn.name == "convert_handler")
+
+    async def convert() -> None:
+        """消费完整转换事件，以等待参数进入 client。"""
+        updates = [update async for update in handler(str(source), 0, "1-3", True)]
+        assert "stop after request" in updates[-1][0]
+
+    asyncio.run(convert())
+    client.parse_file.assert_awaited_once()
+    assert client.parse_file.call_args.kwargs["ocr_mode"] == "auto"
+    assert client.parse_file.call_args.kwargs["page_range"] == ""
 
 
 def test_build_gradio_app_exposes_three_tabs_and_download_menu(tmp_path: Path) -> None:
@@ -752,19 +1046,32 @@ def test_build_gradio_app_exposes_three_tabs_and_download_menu(tmp_path: Path) -
     )
     tab_labels = [component.label for component in app.blocks.values() if component.__class__.__name__ == "Tab"]
     assert tab_labels == ["Markdown 渲染", "Markdown 源码", "Structured Content 源码"]
-    download_labels = [component.label for component in app.blocks.values() if component.__class__.__name__ == "DownloadButton"]
-    assert download_labels == ["ZIP", "HTML", "DOCX", "LaTeX bundle", "EPUB", "PDF"]
-    download_buttons = [component for component in app.blocks.values() if component.__class__.__name__ == "DownloadButton"]
+    download_buttons = [
+        component
+        for component in app.blocks.values()
+        if component.__class__.__name__ == "Button"
+        and any(name.startswith("mineru-kit-download-") for name in (component.elem_classes or []))
+    ]
+    assert [component.value for component in download_buttons] == ["ZIP", "HTML", "DOCX", "LaTeX bundle", "EPUB", "PDF"]
+    assert not any(component.__class__.__name__ == "DownloadButton" for component in app.blocks.values())
     assert all(component.interactive is False for component in download_buttons)
-    file_inputs = [component for component in app.blocks.values() if component.__class__.__name__ == "File"]
+    file_inputs = [
+        component for component in app.blocks.values() if component.__class__.__name__ == "File" and component.visible
+    ]
     assert len(file_inputs) == 1
     assert file_inputs[0].file_count == "single"
     assert set(file_inputs[0].file_types) == {f".{extension}" for extension in PARSEABLE_EXTENSIONS}
     preview_handler = next(fn.fn for fn in app.fns.values() if fn.name == "update_file_preview")
-    assert preview_handler("report.pdf")[0]["interactive"] is True
-    non_pdf_page_update = preview_handler("report.docx")[0]
-    assert non_pdf_page_update["interactive"] is False
-    assert non_pdf_page_update["value"] == ""
+    assert preview_handler("report.pdf")[0] == {
+        "__type__": "update",
+        "value": "report.pdf",
+        "visible": True,
+        "elem_classes": ["mineru-kit-pdf-preview"],
+    }
+    assert preview_handler("report.docx")[0]["visible"] == "hidden"
+    range_group = next(block for block in app.blocks.values() if "mineru-kit-page-range" in (block.elem_classes or []))
+    assert range_group.visible is True
+    assert '[data-range-visible="true"]' in app._mineru_kit_css
     assert sum(1 for dependency in app.config["dependencies"] if dependency.get("queue") is True) >= 7
 
 
@@ -773,6 +1080,7 @@ def test_build_gradio_app_exposes_three_tabs_and_download_menu(tmp_path: Path) -
     [
         (("advanced", "flash", "standard", "basic"), 2, "standard", 3),
         (("advanced", "standard", "basic"), 1, "standard", 2),
+        (("flash", "basic", "standard"), 2, "standard", 2),
         (("advanced", "flash"), 1, "advanced", 1),
         (("basic", "flash"), 1, "basic", 1),
         (("flash",), 0, "flash", 1),
@@ -794,16 +1102,69 @@ def test_gradio_tier_slider_uses_available_tiers_and_preserves_selection(
     assert slider.interactive is (len(tiers) > 1)
     assert label.value == f"解析 tier：{default_tier}"
     assert not any(block.__class__.__name__ == "Dropdown" for block in demo.blocks.values())
-    label_event = next(event for event in demo.config["dependencies"] if event["targets"] == [(slider._id, "input")])
+    label_events = [event for event in demo.config["dependencies"] if (slider._id, "input") in event["targets"]]
+    assert len(label_events) == 1
+    label_event = label_events[0]
     assert label_event["backend_fn"] is False
     assert label_event["queue"] is False
-    assert label_event["outputs"] == [label._id]
+    assert label_event["trigger_mode"] == "always_last"
+    assert label_event["outputs"][7:9] == [slider._id, label._id]
+    preference = demo.blocks[label_event["outputs"][9]]
+    assert preference.visible is False
+    assert json.loads(preference.value) == {"tier": default_tier, "locked": False}
+    assert preference._id in label_event["inputs"]
+    assert json.dumps(sorted(FLASH_ONLY_PARSE_EXTENSIONS)) in label_event["js"]
     for fn in demo.fns.values():
         if fn.name in {"update_file_preview", "reset_ui"}:
             assert slider not in fn.outputs and label not in fn.outputs
         if fn.name == "convert_handler":
             assert fn.inputs[1] is slider
     assert slider.api_info()["type"] == "integer"
+
+
+@pytest.mark.parametrize("extension", sorted(FLASH_ONLY_PARSE_EXTENSIONS | IMAGE_EXTENSIONS))
+@pytest.mark.parametrize("uppercase", [False, True])
+def test_gradio_conversion_enforces_file_type_tier(tmp_path: Path, extension: str, uppercase: bool) -> None:
+    """高档位残留值对所有轻量格式固定为 Flash，图片则保留用户选择，后缀不区分大小写。"""
+    source = tmp_path / f"source.{extension.upper() if uppercase else extension}"
+    source.write_bytes(b"placeholder")
+    client = SimpleNamespace(parse_file=AsyncMock(side_effect=V1ArtifactError("stop after request")))
+    capabilities = V1ServerCapabilities("http://127.0.0.1:1", ("standard", "flash"), ("zip",), ("file_id",))
+    demo = build_gradio_app(client, capabilities, output_root=tmp_path / "output", enable_example=False)
+    handler = next(fn.fn for fn in demo.fns.values() if fn.name == "convert_handler")
+
+    async def convert() -> None:
+        """模拟直接调用事件，并携带不应影响非 PDF 的选页与 OCR 残留值。"""
+        updates = [update async for update in handler(str(source), 1, "bad range", True)]
+        assert "stop after request" in updates[-1][0]
+
+    asyncio.run(convert())
+    client.parse_file.assert_awaited_once()
+    kwargs = client.parse_file.call_args.kwargs
+    assert kwargs["tier"] == ("flash" if extension in FLASH_ONLY_PARSE_EXTENSIONS else "standard")
+    assert kwargs["page_range"] == "" and kwargs["ocr_mode"] == "auto"
+
+
+@pytest.mark.parametrize("tiers", [("standard",), ("advanced", "basic"), ("basic", "standard", "advanced")])
+def test_gradio_flash_only_input_requires_available_flash(tmp_path: Path, tiers: tuple[str, ...]) -> None:
+    """服务缺少 Flash 时在事件入口报错，不发起解析请求，也不保留旧下载。"""
+    source = tmp_path / "source.csv"
+    source.write_text("name,value\na,1\n", encoding="utf-8")
+    client = SimpleNamespace(parse_file=AsyncMock())
+    capabilities = V1ServerCapabilities("http://127.0.0.1:1", tiers, ("zip",), ("file_id",))
+    demo = build_gradio_app(client, capabilities, output_root=tmp_path / "output", enable_example=False)
+    handler = next(fn.fn for fn in demo.fns.values() if fn.name == "convert_handler")
+
+    async def convert() -> list[tuple[Any, ...]]:
+        """收集合法位置的错误响应，验证不是滑杆越界触发的拒绝。"""
+        return [update async for update in handler(str(source), 0, "")]
+
+    updates = asyncio.run(convert())
+    assert "tier_unavailable" in updates[-1][0]
+    assert "该格式仅支持 Flash，当前服务不可用" in updates[-1][0]
+    assert updates[-1][8] is None
+    assert all(item["interactive"] is False for item in updates[-1][-6:])
+    client.parse_file.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -818,8 +1179,9 @@ def test_gradio_tier_slider_uses_available_tiers_and_preserves_selection(
         (("flash",), 0, "flash"),
     ],
 )
+@pytest.mark.parametrize("force_ocr", [False, True])
 def test_gradio_conversion_forwards_page_range_and_enables_fresh_downloads(
-    tmp_path: Path, tiers: tuple[str, ...], position: int, expected_tier: str
+    tmp_path: Path, tiers: tuple[str, ...], position: int, expected_tier: str, force_ocr: bool
 ) -> None:
     """验证滑块位置映射与 PDF page_range 透传，并只在新结果完成后启用下载。"""
     source = tmp_path / "demo.pdf"
@@ -838,17 +1200,19 @@ def test_gradio_conversion_forwards_page_range_and_enables_fresh_downloads(
             *,
             tier: str,
             page_range: str,
+            ocr_mode: str = "auto",
             status_callback: Any = None,
         ) -> ParseResult:
             """返回最小解析结果并记录页码。"""
             self.calls.append((path, tier, page_range))
+            assert ocr_mode == ("ocr" if force_ocr else "auto")
             if status_callback is not None:
                 status_callback("Processing on server...")
             return ParseResult(middle_json=_middle_json(with_image=False))
 
     async def collect_updates(handler: Any) -> list[tuple[Any, ...]]:
         """收集 Gradio 异步生成器的全部增量输出。"""
-        return [update async for update in handler(str(source), position, " 1 ")]
+        return [update async for update in handler(str(source), position, " 1 ", force_ocr)]
 
     capabilities = V1ServerCapabilities("http://127.0.0.1:1", tiers, ("zip",), ("file_id",))
     client = FakeClient()
@@ -861,11 +1225,12 @@ def test_gradio_conversion_forwards_page_range_and_enables_fresh_downloads(
     convert_handler = next(fn.fn for fn in demo.fns.values() if fn.name == "convert_handler")
     updates = asyncio.run(collect_updates(convert_handler))
 
-    assert client.calls == [(source.resolve(), expected_tier, "1")]
-    assert len(updates[-1]) == 15
+    assert client.calls == [(source.resolve(), expected_tier, "" if expected_tier == "flash" else "1")]
+    assert len(updates[-1]) == 16
+    assert updates[-1][9] == Path(updates[-1][8]["root"]).name
     assert updates[-1][8] is not None
-    assert all(update["interactive"] is True and update["value"] is None for update in updates[-1][-6:])
-    assert all(update["interactive"] is False and update["value"] is None for update in updates[0][-6:])
+    assert all(update["interactive"] is True for update in updates[-1][-6:])
+    assert all(update["interactive"] is False for update in updates[0][-6:])
 
 
 @pytest.mark.parametrize(
@@ -895,7 +1260,7 @@ def test_gradio_conversion_rejects_invalid_tier_position(tmp_path: Path, tiers: 
     updates = asyncio.run(collect_updates())
     assert "Failed: Invalid tier slider position" in updates[-1][0]
     assert updates[-1][8] is None
-    assert all(item["interactive"] is False and item["value"] is None for item in updates[-1][-6:])
+    assert all(item["interactive"] is False for item in updates[-1][-6:])
     client.parse_file.assert_not_called()
 
 
@@ -928,4 +1293,120 @@ def test_gradio_conversion_failure_clears_previous_downloads(tmp_path: Path) -> 
 
     assert "Failed: boom" in update[0]
     assert update[8] is None
-    assert all(item["interactive"] is False and item["value"] is None for item in update[-6:])
+    assert all(item["interactive"] is False for item in update[-6:])
+
+
+@pytest.mark.parametrize("explicit_session_cancel", [False, True])
+def test_gradio_local_queue_cancellation_releases_slot_and_keeps_sessions_isolated(
+    tmp_path: Path, explicit_session_cancel: bool
+) -> None:
+    """验证等待和运行中的生成器被关闭后释放任务槽，其他会话仍能完成自己的结果。"""
+    sources = [tmp_path / f"session-{index}.csv" for index in range(3)]
+    for source in sources:
+        source.write_text("name,value\na,1\n", encoding="utf-8")
+
+    async def scenario() -> None:
+        """模拟两个会话取消后由第三个会话接续执行，不依赖真实服务等待。"""
+        finish = asyncio.Event()
+        calls: list[Path] = []
+        canceled: list[Path] = []
+
+        class WaitingClient:
+            """按测试事件控制解析完成时机。"""
+
+            async def parse_file(self, path: Path, *, status_callback: Any, **_kwargs: Any) -> ParseResult:
+                """记录实际进入任务槽的会话，并传播本地取消。"""
+                calls.append(path)
+                status_callback("Processing on server...")
+                try:
+                    await finish.wait()
+                except asyncio.CancelledError:
+                    canceled.append(path)
+                    raise
+                status_callback(STATUS_DOWNLOADING_RESULT)
+                return ParseResult(middle_json=_middle_json(with_image=False))
+
+        capabilities = V1ServerCapabilities("http://127.0.0.1:1", ("flash",), ("zip",), ("file_id",))
+        demo = build_gradio_app(WaitingClient(), capabilities, output_root=tmp_path / "output", enable_example=False)
+        handler_fn = next(fn for fn in demo.fns.values() if fn.name == "convert_handler")
+        assert handler_fn.concurrency_limit is None
+        # 清除和文件切换都使用 Gradio 的会话级取消事件。
+        cancellation_events = [dependency for dependency in demo.config["dependencies"] if dependency["cancels"]]
+        assert len(cancellation_events) >= 2
+        assert all(handler_fn._id in dependency["cancels"] for dependency in cancellation_events)
+
+        async def advance_until(stream: Any, marker: str) -> tuple[Any, ...]:
+            """推进生成器直到目标阶段，并给测试死锁设置明确超时。"""
+            while True:
+                update = await asyncio.wait_for(anext(stream), timeout=2)
+                if marker in update[0]:
+                    return update
+
+        requests = [SimpleNamespace(session_hash=f"session-{index}") for index in range(3)]
+        first, second, third = [
+            handler_fn.fn(str(source), 0, "", request=request) for source, request in zip(sources, requests)
+        ]
+        cancel_session = next(fn.fn for fn in demo.fns.values() if fn.name == "cancel_session_conversion")
+        await advance_until(first, "Processing on server")
+        queued = await advance_until(second, "Queued locally.")
+        assert all(value == {"__type__": "update"} for value in queued[1:])
+        assert calls == [sources[0]]
+        if explicit_session_cancel:
+            await cancel_session(requests[1])
+            with pytest.raises(StopAsyncIteration):
+                await anext(second)
+        else:
+            await second.aclose()
+        await advance_until(third, "Queued locally.")
+        if explicit_session_cancel:
+            await cancel_session(requests[0])
+            with pytest.raises(StopAsyncIteration):
+                await anext(first)
+        else:
+            await first.aclose()
+        await advance_until(third, "Processing on server")
+        assert canceled == [sources[0]]
+        assert calls == [sources[0], sources[2]]
+        finish.set()
+        updates = [update async for update in third]
+        final = updates[-1]
+        assert "Completed (" in final[0]
+        assert final[8]["stem"] == sources[2].stem
+        assert all(item["interactive"] is True for item in final[-6:])
+
+    asyncio.run(scenario())
+
+
+def test_gradio_output_failure_stops_timer_and_allows_next_conversion(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证解析完成后的输出整理错误仍显示失败，并释放槽位供下一次转换使用。"""
+    source = tmp_path / "source.csv"
+    source.write_text("name,value\na,1\n", encoding="utf-8")
+
+    class CompletedClient:
+        """模拟已完成远端解析和下载的任务。"""
+
+        async def parse_file(self, _path: Path, *, status_callback: Any, **_kwargs: Any) -> ParseResult:
+            """按真实阶段通知后返回解析结果。"""
+            status_callback("Processing on server...")
+            status_callback(STATUS_DOWNLOADING_RESULT)
+            return ParseResult(middle_json=_middle_json(with_image=False))
+
+    def fail_persistence(*_args: Any, **_kwargs: Any) -> Any:
+        """模拟产物磁盘写入失败。"""
+        raise OSError("output disk unavailable")
+
+    monkeypatch.setattr(gradio_app, "persist_parse_result", fail_persistence)
+    capabilities = V1ServerCapabilities("http://127.0.0.1:1", ("flash",), ("zip",), ("file_id",))
+    demo = build_gradio_app(CompletedClient(), capabilities, output_root=tmp_path, enable_example=False)
+    handler = next(fn.fn for fn in demo.fns.values() if fn.name == "convert_handler")
+
+    async def scenario() -> None:
+        """连续运行两次，验证异常分支没有泄漏执行槽。"""
+        for _ in range(2):
+            updates = [update async for update in handler(str(source), 0, "")]
+            assert "Failed: output disk unavailable" in updates[-1][0]
+            assert "is-error" in updates[-1][0]
+            assert updates[-1][8] is None
+            assert all(item["interactive"] is False for item in updates[-1][-6:])
+
+    asyncio.run(scenario())

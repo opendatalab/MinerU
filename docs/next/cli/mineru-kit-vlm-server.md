@@ -21,10 +21,10 @@
 
 ## 2. 与 api-server 的边界
 
-`mineru-kit vlm-server` 可作为 `mineru-kit api-server` 的后端，尤其服务于：
-
-- `vlm-http-client`
-- `hybrid-http-client`
+`mineru-kit vlm-server` 可作为 `mineru-kit api-server` 的远程 VLM 后端。
+API 服务通过 `--vlm-server-url` 或全局 `model.vlm.server_url` 连接它，内部使用
+`http-client` 执行 Standard/Advanced 的 VLM 推理；本地 Hybrid 处理仍在 API 服务进程中执行。
+连接、鉴权及模型名配置见 [api-server](mineru-kit-api-server.md#使用远程-mineru-vlm-服务)。
 
 边界:
 

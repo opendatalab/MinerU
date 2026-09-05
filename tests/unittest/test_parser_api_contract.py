@@ -22,6 +22,7 @@ from pydantic import ValidationError
 import mineru.parser.api_client as api_client
 import mineru.parser.api_server as api_server
 import mineru.parser.tier as parser_tier
+from mineru.config import VlmConfig
 from mineru.parser import MIDDLE_JSON_SCHEMA_VERSION
 from mineru.parser.api_client import MinerUApiParser, _pages_from_middle_json, _parse_result_from_job, should_trust_env_for_url
 from mineru.parser.api_server import (
@@ -53,6 +54,7 @@ from mineru.types import (
     ImageBodyBlock,
     MiddleJson,
     PageInfo,
+    ServerTier,
     select_default_quality_tier,
     select_parsing_rule_tier,
     validate_tier,
@@ -1442,9 +1444,11 @@ def test_api_client_omits_tier_when_unspecified(tmp_path: Path) -> None:
     assert "tier" not in payload
 
 
-def test_api_client_constructor_does_not_expose_ocr_or_image_options() -> None:
+def test_api_client_constructor_exposes_request_ocr_without_legacy_options() -> None:
+    """验证 OCR 使用显式请求参数，且不恢复旧 method 或图片分析选项。"""
     parameters = inspect.signature(MinerUApiParser).parameters
 
+    assert parameters["ocr_mode"].default is None
     assert "method" not in parameters
     assert "image_analysis" not in parameters
 
@@ -1796,7 +1800,7 @@ def test_create_app_does_not_read_runtime_settings_from_env(tmp_path: Path, monk
     assert app.state.max_inline_bytes == 1024 * 1024
     assert app.state.allow_http_source is False
     assert app.state.language == "ch"
-    assert app.state.ocr_mode == "auto"
+    assert not hasattr(app.state, "ocr_mode")
     assert app.state.effort == "high"
     assert app.state.image_analysis is True
     assert not hasattr(app.state, _REMOVED_TABLE_ENABLE_PARAM)
@@ -1900,7 +1904,6 @@ def test_api_server_rendered_outputs_do_not_return_image_sidecars(
             rec,
             request,
             file_store,
-            ocr_mode="auto",
             image_analysis=True,
             allow_local_source=True,
         )
@@ -1939,7 +1942,6 @@ def test_api_server_run_job_normalizes_lightweight_file_tier_to_flash(
             rec,
             request,
             file_store,
-            ocr_mode="auto",
             image_analysis=True,
             allow_local_source=True,
         )
@@ -2072,7 +2074,6 @@ def test_api_server_zip_includes_model_output_when_parse_result_has_it(
             rec,
             request,
             file_store,
-            ocr_mode="auto",
             image_analysis=True,
             allow_local_source=True,
         )
@@ -2121,7 +2122,6 @@ def test_api_server_zip_rejects_unsafe_image_sidecar_path(
             rec,
             request,
             file_store,
-            ocr_mode="auto",
             image_analysis=True,
             allow_local_source=True,
         )
@@ -2163,7 +2163,6 @@ def test_api_server_zip_skips_model_output_when_parse_result_has_none(
             rec,
             request,
             file_store,
-            ocr_mode="auto",
             image_analysis=True,
             allow_local_source=True,
         )
@@ -2209,7 +2208,6 @@ def test_api_server_logs_traceback_when_job_file_fails(
                 rec,
                 request,
                 file_store,
-                ocr_mode="auto",
                 image_analysis=True,
                 allow_local_source=True,
             )
@@ -2331,6 +2329,37 @@ def test_api_server_standard_no_flash_state_and_metadata(tmp_path: Path, monkeyp
     }
 
 
+@pytest.mark.parametrize(
+    ("tier", "no_flash", "expected_tiers", "expected_default_tier"),
+    [
+        ("standard", False, ("flash", "basic", "standard"), "standard"),
+        ("standard", True, ("basic", "standard"), "standard"),
+        ("basic", False, ("flash", "basic"), "basic"),
+        ("flash", False, ("flash",), None),
+    ],
+)
+def test_api_server_no_advanced_capability_matrix(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tier: ServerTier,
+    no_flash: bool,
+    expected_tiers: tuple[str, ...],
+    expected_default_tier: str | None,
+) -> None:
+    """验证禁用 Advanced 可与 server tier 和禁用 Flash 组合，且不改变其它档位。"""
+    _stub_api_server_dependency_preflight(monkeypatch)
+    app = create_app(
+        upload_dir=str(tmp_path / f"{tier}-{no_flash}"),
+        tier=tier,
+        no_flash=no_flash,
+        no_advanced=True,
+    )
+
+    assert tuple(tier_info["id"] for tier_info in app.state.tiers) == expected_tiers
+    assert tuple(app.state.tier_runtime_options) == expected_tiers
+    assert app.state.default_tier == expected_default_tier
+
+
 def test_api_server_standard_http_metadata(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """校验 /v1/tiers 与 /v1/models 返回 Standard 上限展开后的全部能力。"""
     _stub_api_server_dependency_preflight(monkeypatch)
@@ -2357,12 +2386,38 @@ def test_api_server_standard_http_metadata(tmp_path: Path, monkeypatch: pytest.M
     ]
 
 
+def test_api_server_no_advanced_http_metadata_keeps_shared_models(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证能力接口隐藏 Advanced，同时保留 Standard 仍需使用的共享模型。"""
+    _stub_api_server_dependency_preflight(monkeypatch)
+    app = create_app(upload_dir=str(tmp_path), tier="standard", no_advanced=True)
+
+    with TestClient(app) as client:
+        tiers_response = client.get("/v1/tiers")
+        models_response = client.get("/v1/models")
+
+    assert tiers_response.status_code == 200
+    assert [tier["id"] for tier in tiers_response.json()["data"]] == ["flash", "basic", "standard"]
+    assert models_response.status_code == 200
+    assert [model["id"] for model in models_response.json()["data"]] == [
+        "MinerU-Flash",
+        "Hybrid-Basic",
+        "MinerU-HTML",
+        "MinerU2.5-Pro-2605-1.2B",
+    ]
+
+
 def test_api_server_model_preload_failure_keeps_health_diagnostics_and_rejects_capabilities(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     _stub_api_server_dependency_preflight(monkeypatch)
 
-    def _fail_preload(startup_tier: DeploymentTier, *, language: str) -> api_server._ModelPreloadResult:
+    def _fail_preload(
+        startup_tier: DeploymentTier, *, language: str, vlm_config: VlmConfig | None = None
+    ) -> api_server._ModelPreloadResult:
+        """模拟包含 VLM 初始化在内的服务预加载失败。"""
         raise ValueError("CUDA is not available.")
 
     monkeypatch.setattr(api_server, "_preload_server_models", _fail_preload)
@@ -2386,7 +2441,10 @@ def test_api_server_model_preload_is_opt_in_and_ignored_for_flash(tmp_path: Path
     _stub_api_server_dependency_preflight(monkeypatch)
     calls: list[tuple[str, str]] = []
 
-    def _preload(startup_tier: DeploymentTier, *, language: str) -> api_server._ModelPreloadResult:
+    def _preload(
+        startup_tier: DeploymentTier, *, language: str, vlm_config: VlmConfig | None = None
+    ) -> api_server._ModelPreloadResult:
+        """记录预加载调用，兼容显式 VLM 配置传入。"""
         calls.append((startup_tier, language))
         return api_server._ModelPreloadResult(tier=startup_tier, engine="test")
 
@@ -2427,7 +2485,6 @@ def test_api_server_standard_jobs_use_requested_tier(tmp_path: Path, monkeypatch
             rec,
             request,
             file_store,
-            ocr_mode=app.state.ocr_mode,
             image_analysis=app.state.image_analysis,
             allow_local_source=app.state.allow_local_source,
             max_inline_bytes=app.state.max_inline_bytes,
@@ -2474,6 +2531,31 @@ def test_api_server_basic_rejects_advanced_request(tmp_path: Path, monkeypatch: 
     source = tmp_path / "demo.pdf"
     source.write_bytes(b"%PDF-1.7\n")
     app = create_app(upload_dir=str(tmp_path / "api"), tier="basic", allow_local_source=True)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/parse/jobs",
+            json={
+                "files": [{"source": {"type": "local", "path": str(source)}}],
+                "tier": "advanced",
+            },
+        )
+
+    assert response.status_code == 400
+    assert "Tier 'advanced' not available in this server" in response.text
+
+
+def test_api_server_no_advanced_rejects_advanced_request(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证 Standard server 禁用 Advanced 后不会只隐藏能力而仍允许执行。"""
+    _stub_api_server_dependency_preflight(monkeypatch)
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(b"%PDF-1.7\n")
+    app = create_app(
+        upload_dir=str(tmp_path / "api"),
+        tier="standard",
+        no_advanced=True,
+        allow_local_source=True,
+    )
 
     with TestClient(app) as client:
         response = client.post(
@@ -2629,12 +2711,11 @@ def test_api_server_stores_parser_runtime_options(tmp_path: Path, monkeypatch: p
         upload_dir=str(tmp_path),
         tier="basic",
         language="en",
-        ocr_mode="ocr",
         image_analysis=False,
     )
 
     assert app.state.language == "ch"
-    assert app.state.ocr_mode == "ocr"
+    assert not hasattr(app.state, "ocr_mode")
     assert app.state.effort == "medium"
     assert app.state.image_analysis is False
     assert not hasattr(app.state, _REMOVED_TABLE_ENABLE_PARAM)
@@ -2652,7 +2733,7 @@ def test_api_server_cli_exposes_parser_runtime_options() -> None:
     assert "--tier" in option_names
     assert "--backend" not in option_names
     assert "--language" in option_names
-    assert "--ocr-mode" in option_names
+    assert "--ocr-mode" not in option_names
     assert "--allow-local-source" in option_names
     assert "--max-inline-bytes" in option_names
     assert "--allow-http-source" in option_names
@@ -2735,6 +2816,30 @@ def test_api_server_cli_accepts_single_tier_and_no_flash(monkeypatch: pytest.Mon
     }
 
 
+def test_api_server_cli_accepts_no_advanced(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证底层 Click 入口将 --no-advanced 应用于能力发布与 runtime。"""
+    seen: dict[str, object] = {}
+
+    def _fake_run(server: Any) -> None:
+        """记录禁用 Advanced 后的 API server 能力。"""
+        seen["tiers"] = [tier["id"] for tier in server.config.app.state.tiers]
+        seen["default_tier"] = server.config.app.state.default_tier
+        seen["effort_by_tier"] = {
+            tier: runtime.effort for tier, runtime in server.config.app.state.tier_runtime_options.items()
+        }
+
+    monkeypatch.setattr("uvicorn.Server.run", _fake_run)
+
+    result = runner.invoke(main, ["--tier", "standard", "--no-advanced", "--host", "0.0.0.0", "--port", "15984"])
+
+    assert result.exit_code == 0
+    assert seen == {
+        "tiers": ["flash", "basic", "standard"],
+        "default_tier": "standard",
+        "effort_by_tier": {"flash": "flash", "basic": "medium", "standard": "high"},
+    }
+
+
 def test_api_server_cli_enables_model_preload(monkeypatch: pytest.MonkeyPatch) -> None:
     seen: dict[str, bool] = {}
 
@@ -2795,6 +2900,7 @@ def test_api_server_cli_help_exposes_tier_only_runtime_selection() -> None:
     assert "basic" in normalized_output
     assert "standard" in normalized_output
     assert "advanced" in normalized_output
+    assert "--no-advanced" in normalized_output
     assert "--backend" not in normalized_output
     assert "--effort" not in normalized_output
     assert "hybrid-engine" not in normalized_output

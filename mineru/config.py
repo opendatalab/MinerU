@@ -11,6 +11,7 @@ import tempfile
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Literal, get_args, get_origin
+from urllib.parse import urlsplit, urlunsplit
 
 import yaml
 from filelock import FileLock
@@ -422,10 +423,80 @@ class LLMAidedConfig(BaseModel):
         return self
 
 
+class VlmConfig(BaseModel):
+    """所有本地解析入口共享的远程 VLM 连接配置；空地址表示使用本地引擎。"""
+
+    model_config = {"hide_input_in_errors": True}
+
+    server_url: str = ""
+    api_key: str = Field(default="", repr=False)
+    model: str = ""
+    http_timeout: int = Field(default=600, ge=1)
+    max_concurrency: int = Field(default=100, ge=1)
+
+    @field_validator("api_key", "model")
+    @classmethod
+    def _strip_connection_value(cls, value: str) -> str:
+        """清理连接字段首尾空白，保持显式空值可覆盖全局配置。"""
+        return value.strip()
+
+    @field_validator("server_url")
+    @classmethod
+    def _normalize_server_url(cls, value: str) -> str:
+        """保留代理前缀并移除末尾 v1，以尾斜线阻止底层客户端丢弃路径。"""
+        value = value.strip()
+        if not value:
+            return ""
+        try:
+            parts = urlsplit(value)
+            valid = (
+                parts.scheme in {"http", "https"}
+                and bool(parts.hostname)
+                and parts.username is None
+                and parts.password is None
+                and not parts.query
+                and not parts.fragment
+                and not any(char.isspace() for char in value)
+            )
+            _ = parts.port
+        except ValueError:
+            valid = False
+        if not valid:
+            raise ValueError("model.vlm.server_url must be an HTTP(S) service URL without credentials, query or fragment")
+        path = parts.path.rstrip("/")
+        if path.endswith("/v1"):
+            path = path[:-3]
+        return urlunsplit((parts.scheme, parts.netloc, path + "/", "", ""))
+
+    @field_validator("http_timeout", "max_concurrency", mode="before")
+    @classmethod
+    def _reject_boolean_limit(cls, value: Any) -> Any:
+        """拒绝布尔数值，同时允许配置环境变量提供整数文本。"""
+        if isinstance(value, bool):
+            raise ValueError("VLM timeout and concurrency must be positive integers")
+        return value
+
+    def validate_environment(self) -> None:
+        """远程推理前拒绝会隐式覆盖显式配置的旧环境变量，错误不包含凭据。"""
+        if not self.server_url:
+            return
+        for env_name, expected, field in (
+            ("MINERU_VL_API_KEY", self.api_key, "api_key"),
+            ("MINERU_VL_MODEL_NAME", self.model, "model"),
+        ):
+            # 底层只清理 API Key；模型名按原始环境变量值读取。
+            actual = os.getenv(env_name, "")
+            if field == "api_key":
+                actual = actual.strip()
+            if actual and actual != expected:
+                raise ValueError(f"{env_name} conflicts with model.vlm.{field}; unset the legacy environment variable")
+
+
 class ModelConfig(BaseModel):
     base_dir: str = _default_path("models")
     source: str = "auto"
     stack: str = "auto"  # "auto" | "light" | "full"
+    vlm: VlmConfig = Field(default_factory=VlmConfig)
 
 
 class DoclibConfig(BaseModel):
@@ -493,6 +564,7 @@ __all__ = [
     "ConfigSource",
     "LoadedConfig",
     "ModelConfig",
+    "VlmConfig",
     "ModelSource",
     "config",
     "Config",

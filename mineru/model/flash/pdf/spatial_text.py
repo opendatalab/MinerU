@@ -11,6 +11,7 @@ import numpy as np
 from pdftext.schema import Char
 
 from ....types import BBox
+from .table_geometry import normalize_bbox as _coerce_bbox, rotate_local_bbox as _rotate_local_bbox
 
 
 # 空间投影思路参考 LiteParse v2.6.0 的字符分段和网格投影；
@@ -67,19 +68,6 @@ def _normalize_table_text(value: Any) -> str:
     return value.translate(_PUNCTUATION_TRANSLATION)
 
 
-def _coerce_bbox(value: Any) -> BBox | None:
-    """把 bbox 规范成有效浮点四元组，异常或退化框返回 None。"""
-    try:
-        x0, y0, x1, y1 = [float(item) for item in value]
-    except (TypeError, ValueError):
-        return None
-    left, right = sorted((x0, x1))
-    top, bottom = sorted((y0, y1))
-    if right <= left or bottom <= top:
-        return None
-    return (left, top, right, bottom)
-
-
 def _bbox_union(bbox1: BBox, bbox2: BBox) -> BBox:
     """合并两个字符框，得到当前文本片段的外接框。"""
     return (
@@ -97,18 +85,6 @@ def _normalize_angle(angle: Any) -> int:
     except (TypeError, ValueError):
         return 0
     return normalized_angle if normalized_angle in {0, 90, 180, 270} else 0
-
-
-def _rotate_local_bbox(bbox: BBox, width: float, height: float, angle: int) -> BBox:
-    """把表格局部 bbox 旋转到与正向表格裁图一致的坐标系。"""
-    x0, y0, x1, y1 = bbox
-    if angle == 270:
-        return (height - y1, x0, height - y0, x1)
-    if angle == 90:
-        return (y0, width - x1, y1, width - x0)
-    if angle == 180:
-        return (width - x1, height - y1, width - x0, height - y0)
-    return bbox
 
 
 def _select_table_chars(chars: list[Char], table_bbox: BBox) -> list[Char]:

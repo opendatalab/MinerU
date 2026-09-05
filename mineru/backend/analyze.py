@@ -9,7 +9,7 @@ from typing import cast
 from loguru import logger
 
 from .analysis.contracts import AnalyzeEffort, OfficeSuffix, ParseMode
-from ..config import config
+from ..config import VlmConfig, config
 from ..model.flash.html import HtmlSourceContext
 from ..types import FILE_SUFFIXES, FileSuffix, MiddleJson, ModelJson
 from ..version import __version__ as mineru_version
@@ -34,6 +34,7 @@ def doc_analyze(
     page_index_map: list[int] | None = None,
     file_suffix: FileSuffix = "pdf",
     source_context: HtmlSourceContext | None = None,
+    vlm_config: VlmConfig | None = None,
 ) -> tuple[MiddleJson, ModelJson]:
     """生产严格 ModelJson，并在统一边界构造严格 MiddleJson。"""
     if file_suffix not in FILE_SUFFIXES:
@@ -51,6 +52,7 @@ def doc_analyze(
             effort=effort,
             parse_mode=parse_mode,
             image_analysis=image_analysis,
+            vlm_config=vlm_config,
         )
     elif file_suffix == "csv":
         from .analysis.csv import analyze_csv
@@ -99,6 +101,7 @@ async def aio_doc_analyze(
     page_index_map: list[int] | None = None,
     file_suffix: FileSuffix = "pdf",
     source_context: HtmlSourceContext | None = None,
+    vlm_config: VlmConfig | None = None,
 ) -> tuple[MiddleJson, ModelJson]:
     """在线程中执行统一文档分析，避免阻塞调用方事件循环。"""
     return await asyncio.to_thread(
@@ -110,4 +113,5 @@ async def aio_doc_analyze(
         page_index_map=page_index_map,
         file_suffix=file_suffix,
         source_context=source_context,
+        vlm_config=vlm_config,
     )

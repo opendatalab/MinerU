@@ -10,26 +10,28 @@ import sys
 import tempfile
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 
 import httpx
 
-from ...parser.api_client import MinerUApiParser, should_trust_env_for_url
+from ...parser.api_client import ApiJobStatus, MinerUApiParser, should_trust_env_for_url
 from ...parser.base import ParseResult
 from ...parser.page_range import normalize_page_range_input
 from ...parser.process_control import ManagedProcessControl
 from ...types import SERVER_TIERS, TIERS, ServerTier, Tier
 from ...utils.stdio import utf8_subprocess_env
-
-STATUS_PREPARING_REQUEST = "Preparing request..."
-STATUS_CHECKING_SERVER = "Checking server status..."
-STATUS_SUBMITTING_TASK = "Submitting task..."
-STATUS_PROCESSING_ON_SERVER = "Processing on server..."
-STATUS_DOWNLOADING_RESULT = "Result archive downloaded."
-STATUS_PROCESSING_OUTPUT = "Preparing outputs..."
-STATUS_COMPLETED = "Completed"
+from .status import (
+    STATUS_CHECKING_SERVER,
+    STATUS_COMPLETED,
+    STATUS_DOWNLOADING_RESULT,
+    STATUS_PREPARING_REQUEST,
+    STATUS_PROCESSING_ON_SERVER,
+    STATUS_PROCESSING_OUTPUT,
+    STATUS_QUEUED_ON_SERVER,
+    STATUS_SUBMITTING_TASK,
+)
 
 
 class V1ArtifactError(RuntimeError):
@@ -181,6 +183,7 @@ class V1ArtifactClient:
         *,
         tier: str,
         page_range: str,
+        ocr_mode: Literal["auto", "txt", "ocr"] = "auto",
         status_callback: Callable[[str], None] | None = None,
     ) -> ParseResult:
         """通过 V1 API 解析单个文件，并返回带图片/模型输出的 `ParseResult`。"""
@@ -203,18 +206,30 @@ class V1ArtifactClient:
             api_url=self.base_url,
             api_key=self.api_key,
             tier=cast(Tier, tier),
+            ocr_mode=ocr_mode,
             include_images=True,
             include_model_output=True,
         )
-        emit(STATUS_PROCESSING_ON_SERVER)
+
+        def on_job_status(status: ApiJobStatus) -> None:
+            """将真实 V1 状态映射到卡片阶段，服务端完成仅代表开始下载。"""
+            messages: dict[ApiJobStatus, str] = {
+                "queued": STATUS_QUEUED_ON_SERVER,
+                "running": STATUS_PROCESSING_ON_SERVER,
+                "completed": STATUS_DOWNLOADING_RESULT,
+                "partial": STATUS_DOWNLOADING_RESULT,
+                "failed": "Failed: server task failed",
+                "canceled": "Failed: server task canceled",
+            }
+            emit(messages[status])
+
         try:
-            result = await parser.parse_async(path, page_range=page_range)
+            result = await parser.parse_async(path, page_range=page_range, status_callback=on_job_status)
         except Exception as exc:
             emit(f"Failed: {exc}")
             if isinstance(exc, (FileNotFoundError, V1ArtifactError)):
                 raise
             raise V1ArtifactError(str(exc), code=getattr(exc, "code", "parse_failed")) from exc
-        emit(STATUS_DOWNLOADING_RESULT)
         return result
 
     def _headers(self) -> dict[str, str]:
@@ -222,6 +237,46 @@ class V1ArtifactClient:
         if not self.api_key:
             return {}
         return {"Authorization": f"Bearer {self.api_key}"}
+
+
+class GradioArtifactClient:
+    """合并已发现的服务能力，并将缺失的 Flash 请求路由到本地 V1 服务。"""
+
+    def __init__(self, primary: V1ArtifactClient, *, local_flash: V1ArtifactClient | None = None) -> None:
+        """根据独立能力快照建立明确的档位映射，不修改任何服务声明。"""
+        capabilities = primary.capabilities
+        if capabilities is None:
+            raise ValueError("Discover the primary V1 API capabilities before constructing the Gradio client")
+        self._clients_by_tier = dict.fromkeys(capabilities.tiers, primary)
+        if local_flash is not None and "flash" not in self._clients_by_tier:
+            if local_flash.capabilities is None or "flash" not in local_flash.capabilities.tiers:
+                raise V1ArtifactError("The local V1 API server did not advertise Flash", code="tier_unavailable")
+            self._clients_by_tier["flash"] = local_flash
+        self._capabilities = replace(capabilities, tiers=tuple(tier for tier in TIERS if tier in self._clients_by_tier))
+
+    @property
+    def capabilities(self) -> V1ServerCapabilities:
+        """返回供界面使用的有效档位集合，主服务地址和协议能力保持原值。"""
+        return self._capabilities
+
+    async def parse_file(
+        self,
+        path: Path,
+        *,
+        tier: str,
+        page_range: str,
+        ocr_mode: Literal["auto", "txt", "ocr"] = "auto",
+        status_callback: Callable[[str], None] | None = None,
+    ) -> ParseResult:
+        """仅向该档位对应的服务提交文件，复用原有状态、取消和产物流程。"""
+        if tier not in TIERS:
+            raise V1ArtifactError(f"Unsupported parse tier: {tier}", code="invalid_request")
+        client = self._clients_by_tier.get(tier)
+        if client is None:
+            raise V1ArtifactError(f"Tier '{tier}' is not available in Gradio", code="tier_unavailable")
+        return await client.parse_file(
+            path, tier=tier, page_range=page_range, ocr_mode=ocr_mode, status_callback=status_callback
+        )
 
 
 def _string_tuple(value: object, field_name: str) -> tuple[str, ...]:
@@ -245,10 +300,8 @@ class ManagedLocalApiServer:
         self,
         *,
         tier: ServerTier = "standard",
-        no_flash: bool = False,
         concurrency: int = 1,
         language: str = "ch",
-        ocr_mode: str = "auto",
         disable_image_analysis: bool = False,
         preload_models: bool = False,
         api_key: str | None = None,
@@ -259,10 +312,8 @@ class ManagedLocalApiServer:
         if concurrency <= 0:
             raise ValueError("API server concurrency must be positive")
         self.tier = tier
-        self.no_flash = no_flash
         self.concurrency = concurrency
         self.language = language
-        self.ocr_mode = ocr_mode
         self.disable_image_analysis = disable_image_analysis
         self.preload_models = preload_models
         self.api_key = api_key
@@ -373,9 +424,6 @@ class ManagedLocalApiServer:
             str(self.concurrency),
             "--language",
             self.language,
-            "--ocr-mode",
-            self.ocr_mode,
-            *(["--no-flash"] if self.no_flash else []),
             *(["--disable-image-analysis"] if self.disable_image_analysis else []),
             *(["--preload-models"] if self.preload_models else []),
             *(["--api-key", self.api_key] if self.api_key else []),
@@ -432,6 +480,7 @@ def _new_session_kwargs() -> dict[str, Any]:
 
 
 __all__ = [
+    "GradioArtifactClient",
     "ManagedLocalApiServer",
     "STATUS_CHECKING_SERVER",
     "STATUS_COMPLETED",

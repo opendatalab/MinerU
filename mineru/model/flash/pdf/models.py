@@ -13,7 +13,7 @@ from ....types import BBox
 from .document import PDFPathInfo
 
 if TYPE_CHECKING:
-    from .text_styles import PDFTextScriptLine
+    from .inline.types import PDFTextScriptLine
 
 
 @dataclass(slots=True)

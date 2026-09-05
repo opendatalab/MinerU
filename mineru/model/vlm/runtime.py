@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import atexit
 import gc
+import hashlib
 import json
 import os
 import threading
@@ -51,11 +52,25 @@ class ModelSingleton:
         ],
         model_path: str | None,
         server_url: str | None,
+        *,
+        model_name: str | None = None,
         **kwargs: Any,
     ) -> MinerUClient:
-        key = (backend, model_path, server_url)
+        """缓存模型实例，远程客户端按模型、凭据与连接选项隔离。"""
+        cache_key = (backend, model_path, server_url)
+        if backend == "http-client":
+            connection_options = {
+                "model_name": model_name,
+                "server_headers": kwargs.get("server_headers") or {},
+                "http_timeout": kwargs.get("http_timeout", 600),
+                "max_concurrency": kwargs.get("max_concurrency", 100),
+                "max_retries": kwargs.get("max_retries", 3),
+                "retry_backoff_factor": kwargs.get("retry_backoff_factor", 0.5),
+            }
+            fingerprint = hashlib.sha256(json.dumps(connection_options, sort_keys=True).encode()).hexdigest()
+            cache_key = (*cache_key, fingerprint)
         with self._lock:
-            if key not in self._models:
+            if cache_key not in self._models:
                 start_time = time.time()
                 model = None
                 processor = None
@@ -141,7 +156,7 @@ class ModelSingleton:
                     from mineru_vl_utils.mlx_compat import load_mlx_model
 
                     model, processor = load_mlx_model(model_path)
-                else:
+                elif backend != "http-client":
                     if os.getenv("OMP_NUM_THREADS") is None:
                         os.environ["OMP_NUM_THREADS"] = "1"
 
@@ -256,6 +271,7 @@ class ModelSingleton:
                         )
                 predictor = MinerUClient(
                     backend=backend,
+                    model_name=model_name,
                     model=model,
                     processor=processor,
                     lmdeploy_engine=lmdeploy_engine,
@@ -283,10 +299,10 @@ class ModelSingleton:
                     "llama_cpp_engine": llama_cpp_engine,
                 }
                 _maybe_enable_serial_execution(predictor, backend)
-                self._models[key] = predictor
+                self._models[cache_key] = predictor
                 elapsed = round(time.time() - start_time, 2)
                 logger.info(f"get {backend} predictor cost: {elapsed}s")
-        return self._models[key]
+        return self._models[cache_key]
 
     def shutdown(self) -> None:
         with self._lock:
