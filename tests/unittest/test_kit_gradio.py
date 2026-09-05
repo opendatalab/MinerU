@@ -1046,17 +1046,29 @@ def test_build_gradio_app_exposes_three_tabs_and_download_menu(tmp_path: Path) -
     )
     tab_labels = [component.label for component in app.blocks.values() if component.__class__.__name__ == "Tab"]
     assert tab_labels == ["Markdown 渲染", "Markdown 源码", "Structured Content 源码"]
-    download_labels = [component.label for component in app.blocks.values() if component.__class__.__name__ == "DownloadButton"]
-    assert download_labels == ["ZIP", "HTML", "DOCX", "LaTeX bundle", "EPUB", "PDF"]
-    download_buttons = [component for component in app.blocks.values() if component.__class__.__name__ == "DownloadButton"]
+    download_buttons = [
+        component
+        for component in app.blocks.values()
+        if component.__class__.__name__ == "Button"
+        and any(name.startswith("mineru-kit-download-") for name in (component.elem_classes or []))
+    ]
+    assert [component.value for component in download_buttons] == ["ZIP", "HTML", "DOCX", "LaTeX bundle", "EPUB", "PDF"]
+    assert not any(component.__class__.__name__ == "DownloadButton" for component in app.blocks.values())
     assert all(component.interactive is False for component in download_buttons)
-    file_inputs = [component for component in app.blocks.values() if component.__class__.__name__ == "File"]
+    file_inputs = [
+        component for component in app.blocks.values() if component.__class__.__name__ == "File" and component.visible
+    ]
     assert len(file_inputs) == 1
     assert file_inputs[0].file_count == "single"
     assert set(file_inputs[0].file_types) == {f".{extension}" for extension in PARSEABLE_EXTENSIONS}
     preview_handler = next(fn.fn for fn in app.fns.values() if fn.name == "update_file_preview")
-    assert preview_handler("report.pdf")[0] == {"__type__": "update", "value": "report.pdf", "visible": True}
-    assert preview_handler("report.docx")[0]["visible"] is False
+    assert preview_handler("report.pdf")[0] == {
+        "__type__": "update",
+        "value": "report.pdf",
+        "visible": True,
+        "elem_classes": ["mineru-kit-pdf-preview"],
+    }
+    assert preview_handler("report.docx")[0]["visible"] == "hidden"
     range_group = next(block for block in app.blocks.values() if "mineru-kit-page-range" in (block.elem_classes or []))
     assert range_group.visible is True
     assert '[data-range-visible="true"]' in app._mineru_kit_css
@@ -1151,7 +1163,7 @@ def test_gradio_flash_only_input_requires_available_flash(tmp_path: Path, tiers:
     assert "tier_unavailable" in updates[-1][0]
     assert "该格式仅支持 Flash，当前服务不可用" in updates[-1][0]
     assert updates[-1][8] is None
-    assert all(item["interactive"] is False and item["value"] is None for item in updates[-1][-6:])
+    assert all(item["interactive"] is False for item in updates[-1][-6:])
     client.parse_file.assert_not_called()
 
 
@@ -1214,10 +1226,11 @@ def test_gradio_conversion_forwards_page_range_and_enables_fresh_downloads(
     updates = asyncio.run(collect_updates(convert_handler))
 
     assert client.calls == [(source.resolve(), expected_tier, "" if expected_tier == "flash" else "1")]
-    assert len(updates[-1]) == 15
+    assert len(updates[-1]) == 16
+    assert updates[-1][9] == Path(updates[-1][8]["root"]).name
     assert updates[-1][8] is not None
-    assert all(update["interactive"] is True and update["value"] is None for update in updates[-1][-6:])
-    assert all(update["interactive"] is False and update["value"] is None for update in updates[0][-6:])
+    assert all(update["interactive"] is True for update in updates[-1][-6:])
+    assert all(update["interactive"] is False for update in updates[0][-6:])
 
 
 @pytest.mark.parametrize(
@@ -1247,7 +1260,7 @@ def test_gradio_conversion_rejects_invalid_tier_position(tmp_path: Path, tiers: 
     updates = asyncio.run(collect_updates())
     assert "Failed: Invalid tier slider position" in updates[-1][0]
     assert updates[-1][8] is None
-    assert all(item["interactive"] is False and item["value"] is None for item in updates[-1][-6:])
+    assert all(item["interactive"] is False for item in updates[-1][-6:])
     client.parse_file.assert_not_called()
 
 
@@ -1280,7 +1293,7 @@ def test_gradio_conversion_failure_clears_previous_downloads(tmp_path: Path) -> 
 
     assert "Failed: boom" in update[0]
     assert update[8] is None
-    assert all(item["interactive"] is False and item["value"] is None for item in update[-6:])
+    assert all(item["interactive"] is False for item in update[-6:])
 
 
 @pytest.mark.parametrize("explicit_session_cancel", [False, True])

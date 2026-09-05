@@ -111,6 +111,8 @@ _KIT_MENU_CSS = """
 }
 .mineru-kit-download-options :is(button, a):hover { background: var(--background-fill-secondary, #f3f4f6); }
 .mineru-kit-empty-preview { min-height: 160px; display: grid; place-items: center; opacity: .65; }
+/* gradio-pdf 0.0.22 的内部容器不识别 hidden，显式隐藏空组件，同时保持挂载。 */
+.mineru-kit-pdf-preview.mineru-kit-pdf-empty { display: none !important; }
 .mineru-kit-image-preview img { max-height: var(--mineru-pdf-page-height, 720px); object-fit: contain; }
 @media (max-width: 900px) {
   .mineru-kit-workspace { flex-direction: column !important; }
@@ -196,9 +198,17 @@ def _preview_update(gr: Any, value: object, *, visible: bool) -> Any:
     return gr.update(value=value, visible=visible)
 
 
-def _download_updates(gr: Any, *, interactive: bool) -> tuple[Any, ...]:
-    """清空全部下载按钮的旧文件，并统一切换交互状态。"""
-    return tuple(gr.update(value=None, interactive=interactive) for _format_name, _label in _DOWNLOAD_FORMATS)
+def _pdf_preview_update(gr: Any, value: str | None) -> Any:
+    """让空 PDF 保持挂载，并兼容旧版自定义组件不识别 hidden 的视觉隐藏行为。"""
+    classes = ["mineru-kit-pdf-preview"]
+    if not value:
+        classes.append("mineru-kit-pdf-empty")
+    return gr.update(value=value, visible=True if value else "hidden", elem_classes=classes)
+
+
+def _download_updates(gr: Any, *, interactive: bool, run_id: str = "") -> tuple[Any, ...]:
+    """同步当前结果标识，并恢复全部下载按钮的标签与交互状态。"""
+    return (run_id, *(gr.update(value=label, interactive=interactive) for _format_name, label in _DOWNLOAD_FORMATS))
 
 
 def _latex_delimiters(delimiters_type: Literal["a", "b", "all"]) -> list[dict[str, Any]]:
@@ -325,9 +335,10 @@ def build_gradio_app(
                 pdf_preview = PDF(
                     label="文档预览",
                     interactive=False,
-                    visible=False,
+                    # 预先挂载空组件，避免 gradio-pdf 首次带值挂载时漏掉文件加载。
+                    visible="hidden",
                     height=720,
-                    elem_classes=["mineru-kit-pdf-preview"],
+                    elem_classes=["mineru-kit-pdf-preview", "mineru-kit-pdf-empty"],
                 )
                 image_preview = gr.Image(
                     label="文档预览",
@@ -385,13 +396,14 @@ def build_gradio_app(
                     ):
                         download_buttons: dict[str, Any] = {}
                         for format_name, label in _DOWNLOAD_FORMATS:
-                            download_buttons[format_name] = gr.DownloadButton(
+                            download_buttons[format_name] = gr.Button(
                                 label,
                                 visible=True,
                                 interactive=False,
                                 size="sm",
                                 elem_classes=[f"mineru-kit-download-{format_name}"],
                             )
+                download_notice = gr.HTML(value="", elem_classes=["mineru-kit-download-notice"])
 
         if enable_example:
             examples = _example_files(file_types)
@@ -399,6 +411,10 @@ def build_gradio_app(
                 gr.Examples(examples=examples, inputs=input_file, label="示例", elem_id="mineru-kit-examples")
 
         artifact_state = gr.State(value=None)
+        active_run_id = gr.Textbox(value="", visible=False)
+        download_files = {name: gr.File(visible=False, interactive=False) for name, _label in _DOWNLOAD_FORMATS}
+        download_requests = {name: gr.Textbox(value="", visible=False) for name, _label in _DOWNLOAD_FORMATS}
+        download_receipts = {name: gr.Textbox(value="", visible=False) for name, _label in _DOWNLOAD_FORMATS}
         clear_button.add(
             [
                 input_file,
@@ -420,7 +436,7 @@ def build_gradio_app(
             reset_result = (_status_html(_DEFAULT_STATUS), "", "", "", None, *_download_updates(gr, interactive=False))
             if not file_path:
                 return (
-                    _preview_update(gr, None, visible=False),
+                    _pdf_preview_update(gr, None),
                     _preview_update(gr, None, visible=False),
                     _preview_update(gr, "", visible=False),
                     _preview_update(gr, '<div class="mineru-kit-empty-preview">暂无源文档预览</div>', visible=True),
@@ -429,7 +445,7 @@ def build_gradio_app(
             suffix = _file_suffix(file_path)
             if suffix in PDF_EXTENSIONS:
                 return (
-                    _preview_update(gr, file_path, visible=True),
+                    _pdf_preview_update(gr, file_path),
                     _preview_update(gr, None, visible=False),
                     _preview_update(gr, "", visible=False),
                     _preview_update(gr, '<div class="mineru-kit-empty-preview">源文档预览</div>', visible=False),
@@ -437,7 +453,7 @@ def build_gradio_app(
                 )
             if suffix in IMAGE_EXTENSIONS:
                 return (
-                    _preview_update(gr, None, visible=False),
+                    _pdf_preview_update(gr, None),
                     _preview_update(gr, file_path, visible=True),
                     _preview_update(gr, "", visible=False),
                     _preview_update(gr, '<div class="mineru-kit-empty-preview">源文档预览</div>', visible=False),
@@ -445,7 +461,7 @@ def build_gradio_app(
                 )
             if _is_office(file_path):
                 return (
-                    _preview_update(gr, None, visible=False),
+                    _pdf_preview_update(gr, None),
                     _preview_update(gr, None, visible=False),
                     _preview_update(
                         gr,
@@ -456,7 +472,7 @@ def build_gradio_app(
                     *reset_result,
                 )
             return (
-                _preview_update(gr, None, visible=False),
+                _pdf_preview_update(gr, None),
                 _preview_update(gr, None, visible=False),
                 _preview_update(gr, "", visible=False),
                 _preview_update(gr, '<div class="mineru-kit-empty-preview">该格式暂无源文档预览</div>', visible=True),
@@ -464,6 +480,38 @@ def build_gradio_app(
             )
 
         private_event_kwargs = _private_event_kwargs(gr)
+
+        download_script = _resource_text("gradio_download.js")
+
+        def download_js(action: str, format_name: str = "", label: str = "") -> str:
+            """为下载事件绑定明确的动作与格式，复用同一份前端状态处理脚本。"""
+            arguments = ", ".join(json.dumps(value) for value in (action, _DOWNLOAD_FORMATS, format_name, label))
+            return f"(...args) => ({download_script})({arguments}, ...args)"
+
+        def reset_download_ui() -> tuple[Any, ...]:
+            """返回下载组件的初始状态，为转换提供可可靠串联的完成事件。"""
+            count = len(_DOWNLOAD_FORMATS)
+            return ("", *((None,) * count), *(("",) * count * 2), *_download_updates(gr, interactive=False)[1:], "")
+
+        download_reset_outputs = [
+            active_run_id,
+            *download_files.values(),
+            *download_requests.values(),
+            *download_receipts.values(),
+            *download_buttons.values(),
+            download_notice,
+        ]
+
+        # 先在前端失效旧请求，再等待上传/清除/转换的 Python 回调，防止迟到的下载被触发。
+        gr.on(
+            triggers=[input_file.change, clear_button.click],
+            fn=None,
+            inputs=[],
+            outputs=download_reset_outputs,
+            js=download_js("reset"),
+            **private_event_kwargs,
+        )
+        active_run_id.change(fn=None, inputs=active_run_id, outputs=[], js=download_js("activate"), **private_event_kwargs)
 
         def update_ocr_control(file_path: str | None) -> Any:
             """仅为原始 PDF 显示开关，并在更换或清除文件时重置为自动判断。"""
@@ -499,6 +547,7 @@ def build_gradio_app(
             markdown_source,
             structured_source,
             artifact_state,
+            active_run_id,
             *download_buttons.values(),
         ]
 
@@ -557,7 +606,7 @@ def build_gradio_app(
                 "",
                 "",
                 "",
-                gr.update(value=None, visible=False),
+                _pdf_preview_update(gr, None),
                 gr.update(value=None, visible=False),
                 gr.update(value="", visible=False),
                 gr.update(value='<div class="mineru-kit-empty-preview">暂无源文档预览</div>', visible=True),
@@ -637,12 +686,12 @@ def build_gradio_app(
                         markdown_for_gradio(markdown_text, artifacts),
                         markdown_text,
                         structured_text,
-                        gr.update(value=str(preview_path) if preview_path else None, visible=preview_path is not None),
+                        _pdf_preview_update(gr, str(preview_path) if preview_path else None),
                         gr.update(value=str(source_path) if show_image_preview else None, visible=show_image_preview),
                         gr.update(value=office_html, visible=bool(office_html)),
                         gr.update(value=generic_html, visible=bool(generic_html)),
                         artifacts.as_state(),
-                        *_download_updates(gr, interactive=True),
+                        *_download_updates(gr, interactive=True, run_id=artifacts.root.name),
                     )
 
             task = asyncio.create_task(run_conversion())
@@ -689,6 +738,7 @@ def build_gradio_app(
             office_preview,
             generic_preview,
             artifact_state,
+            active_run_id,
             *download_buttons.values(),
         ]
         # Gradio 在读取函数签名时需要真实的 Request 类型对象；注解在运行时补回以保持延迟导入。
@@ -698,7 +748,15 @@ def build_gradio_app(
             event_kwargs["api_visibility"] = "public" if enable_api else "private"
         else:
             event_kwargs["api_name"] = "to_markdown" if enable_api else False
-        convert_event = convert_button.click(
+        # 重置与转换必须显式串联；独立 click 监听可能在转换完成后才执行重置。
+        begin_conversion = convert_button.click(
+            fn=reset_download_ui,
+            inputs=[],
+            outputs=download_reset_outputs,
+            js=f"() => {{ ({download_js('reset')})(); return []; }}",
+            **private_event_kwargs,
+        )
+        convert_event = begin_conversion.then(
             fn=convert_handler,
             inputs=[input_file, tier, page_range, force_ocr],
             outputs=convert_outputs,
@@ -723,6 +781,7 @@ def build_gradio_app(
             office_preview,
             generic_preview,
             artifact_state,
+            active_run_id,
             *download_buttons.values(),
         ]
 
@@ -733,7 +792,7 @@ def build_gradio_app(
                 "",
                 "",
                 "",
-                gr.update(value=None, visible=False),
+                _pdf_preview_update(gr, None),
                 gr.update(value=None, visible=False),
                 gr.update(value="", visible=False),
                 gr.update(value='<div class="mineru-kit-empty-preview">暂无源文档预览</div>', visible=True),
@@ -744,13 +803,36 @@ def build_gradio_app(
         clear_button.click(fn=reset_ui, inputs=[], outputs=reset_outputs, cancels=[convert_event], queue=False)
         clear_button.click(fn=cancel_session_conversion, inputs=[], outputs=[], **private_event_kwargs)
 
-        for format_name, _label in _DOWNLOAD_FORMATS:
-            download_buttons[format_name].click(
+        for format_name, label in _DOWNLOAD_FORMATS:
+            begin_download = download_buttons[format_name].click(
+                fn=_download_request_handler,
+                inputs=active_run_id,
+                outputs=download_requests[format_name],
+                js=f"(...args) => [({download_js('begin', format_name, label)})(...args)[0]]",
+                **private_event_kwargs,
+            )
+            # 开始回执也必须经过前端令牌校验，避免慢请求在清除后重新显示旧的“准备中”。
+            begin_download.success(
+                fn=None,
+                inputs=[download_requests[format_name], active_run_id],
+                outputs=[download_buttons[format_name], download_notice],
+                js=download_js("busy", format_name, label),
+                **private_event_kwargs,
+            )
+            prepare_download = begin_download.then(
                 fn=_download_handler(format_name, output_root),
-                inputs=artifact_state,
-                outputs=download_buttons[format_name],
+                inputs=[artifact_state, download_requests[format_name]],
+                outputs=[download_files[format_name], download_receipts[format_name]],
                 queue=True,
+                show_progress="hidden",
                 api_name=False,
+            )
+            prepare_download.success(
+                fn=None,
+                inputs=[download_files[format_name], download_receipts[format_name], active_run_id],
+                outputs=[download_buttons[format_name], download_notice],
+                js=download_js("complete", format_name, label),
+                **private_event_kwargs,
             )
 
     demo._mineru_kit_css = app_css
@@ -882,12 +964,27 @@ def _private_event_kwargs(gr: Any) -> dict[str, Any]:
     return {"queue": False, "api_name": False}
 
 
-def _download_handler(format_name: str, output_root: Path) -> Callable[[object], str]:
+def _download_request_handler(request_token: str) -> str:
+    """传回前端下载令牌以可靠触发后续事件，不直接修改可能已属于新文档的按钮。"""
+    return request_token if isinstance(request_token, str) else ""
+
+
+def _download_handler(format_name: str, output_root: Path) -> Callable[[object, str], tuple[str | None, str]]:
     """创建一个绑定格式和 output root 的 Gradio 下载回调。"""
 
-    def handler(state: object) -> str:
-        """从当前任务 State 生成或读取指定格式的下载文件。"""
-        return render_download(state, format_name, allowed_root=output_root)
+    def handler(state: object, request_token: str) -> tuple[str | None, str]:
+        """校验请求所属结果，返回文件与回执；生成失败也交给前端按请求标识恢复按钮。"""
+        receipt = {"request": request_token, "error": ""}
+        try:
+            request = json.loads(request_token)
+            artifacts = RunArtifacts.from_state(state)
+            if request["run_id"] != artifacts.root.name:
+                raise ValueError("解析结果已变更，请重新下载。")
+            path = render_download(state, format_name, allowed_root=output_root)
+            return path, json.dumps(receipt, ensure_ascii=False)
+        except Exception as exc:
+            receipt["error"] = str(exc)
+            return None, json.dumps(receipt, ensure_ascii=False)
 
     return handler
 

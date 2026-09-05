@@ -102,6 +102,8 @@ Gradio 首先发现 `/v1/health` 和 `/v1/tiers`，然后通过 `MinerUApiParser
 
 下载图标位于右侧结果栏的标签行最右端，鼠标悬停或键盘聚焦即可展开菜单。菜单包含 ZIP、HTML、DOCX、LaTeX bundle、EPUB 和 PDF。HTML、DOCX、EPUB、PDF 和 LaTeX 不作为 API job 输出请求，而是在用户点击菜单后从本次保存的 Middle JSON 按需渲染。LaTeX 下载包包含 `.tex` 与 `images/`，可交给 XeLaTeX 使用；Gradio 不自动执行 TeX 编译。
 
+每次选择格式后，按钮会显示“准备中”，文件就绪后自动开始下载，无需再次点击。再次下载同一格式复用已有文件；生成失败时显示错误并允许重试。清除、更换文件或重新解析会使旧下载请求失效。
+
 每次解析的文件保存在独立的 `output-dir/gradio/<run-id>/` 目录，包含源文件、Middle JSON、基础文本产物以及可选的 `origin.pdf`、`layout.pdf` 和图片资源。路径只向 Gradio 暴露在配置的 output root 内。
 
 ## 预览与兼容边界
