@@ -1,7 +1,11 @@
 <html><head>
   <link rel="stylesheet" href="https://use.fontawesome.com/releases/v5.15.4/css/all.css">
 <style>
-  .link-block {
+  /* 统一链接和菜单按钮的外框布局，避免行内基线额外撑高菜单按钮。 */
+  .mineru-demo-header .link-block {
+    display: inline-flex;
+    align-items: center;
+    vertical-align: middle;
     border: 1px solid transparent;
     border-radius: 24px;
     background-color: rgba(54, 54, 54, 1);
@@ -11,12 +15,12 @@
     background-color: rgba(54, 54, 54, 0.75) !important;
     cursor: pointer !important;
   }
-  .external-link {
+  .mineru-demo-header .external-link {
     display: inline-flex;
     align-items: center;
     height: 36px;
     line-height: 36px;
-    padding: 0 16px;
+    padding: 0 16px !important;
     cursor: pointer !important;
   }
   .external-link,
@@ -41,7 +45,8 @@
     height: 36px;
     line-height: 36px;
     padding: 0 16px !important;
-    margin: 0;
+    /* 覆盖 Gradio 为 HTML 按钮添加的底部外边距，保持外框高度一致。 */
+    margin: 0 !important;
     background: transparent !important;
     border: 0;
     border-color: transparent !important;
@@ -69,7 +74,8 @@
     left: 50%;
     top: calc(100% + 10px);
     z-index: 20;
-    width: 280px;
+    /* 按最长链接文字确定宽度，避免固定宽度产生过多左右留白。 */
+    width: max-content;
     max-width: calc(100vw - 48px);
     padding: 8px;
     border: 1px solid rgba(255, 255, 255, 0.18);
@@ -82,9 +88,6 @@
     transform: translate(-50%, 8px);
     transition: opacity 120ms ease, transform 120ms ease, visibility 120ms ease;
     visibility: hidden;
-  }
-  .mineru-model-popover {
-    width: 160px;
   }
   .mineru-header-menu:hover .mineru-header-popover,
   .mineru-header-menu:focus-within .mineru-header-popover {
@@ -190,9 +193,6 @@
         </a>
     </p>
     <style>
-      .link-block {
-        display: inline-block;
-      }
       .link-block + .link-block {
         margin-left: 20px;
       }
