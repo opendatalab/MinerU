@@ -21,12 +21,34 @@ def _generated_svg_data_uri(extra_markup: str = "") -> str:
     """构造带 PNG fallback 的最小 MinerU 安全 SVG data URI。"""
     svg = (
         '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1" viewBox="0 0 1 1" '
-        'data-mineru-generated="wmf-emf">'
-        f'<metadata id="mineru-raster-fallback" data-mime="image/png">{_SAFE_PNG_BASE64}</metadata>'
+        'data-metafile-render="wmf-emf">'
+        f'<metadata id="metafile-render-raster-fallback" data-mime="image/png">{_SAFE_PNG_BASE64}</metadata>'
         '<path d="M 0 0 L 1 0 L 1 1 Z" fill="#000000"/>'
         f"{extra_markup}</svg>"
     ).encode()
     return f"data:image/svg+xml;base64,{base64.b64encode(svg).decode('ascii')}"
+
+
+@pytest.mark.parametrize(
+    ("current", "obsolete"),
+    [
+        (b"data-metafile-render", b"data-mineru-generated"),
+        (b"metafile-render-raster-fallback", b"mineru-raster-fallback"),
+        (b"metafile-render-clip-1", b"mineru-clip-1"),
+    ],
+)
+def test_generated_svg_accepts_new_contract_and_rejects_obsolete_markers(current: bytes, obsolete: bytes) -> None:
+    """消费端只接受独立包的新 SVG 标识，不保留旧根属性、元数据或裁剪引用。"""
+    data_uri = _generated_svg_data_uri(
+        '<defs><clipPath id="metafile-render-clip-1"><path d="M 0 0 L 1 0 L 1 1 Z"/></clipPath></defs>'
+        '<g clip-path="url(#metafile-render-clip-1)"><path d="M 0 0 L 1 1"/></g>'
+    )
+    payload = base64.b64decode(data_uri.split(",", 1)[1])
+    fallback, width, height = image_payload.extract_generated_svg_fallback(payload)
+    assert fallback.startswith(b"\x89PNG")
+    assert (width, height) == (1, 1)
+    with pytest.raises(ValueError):
+        image_payload.extract_generated_svg_fallback(payload.replace(current, obsolete))
 
 
 @pytest.mark.parametrize(

@@ -2,18 +2,18 @@
 """Flash Office 文档的图片识别、转码与占位图生成。"""
 
 import base64
+import struct
 from functools import lru_cache
 from io import BytesIO
 from pathlib import PurePosixPath
-import struct
 from typing import Final
 
 from loguru import logger
+from metafile_render import MetafileError, MetafileResourceLimitError, render_metafile
 from PIL import Image, ImageDraw, ImageFont, UnidentifiedImageError
 
 from ....utils.platform import is_windows_environment
 from .._shared.image import image_to_b64str
-from .metafile import MetafileError, MetafileResourceLimitError, render_metafile
 
 VECTOR_IMAGE_FORMATS = frozenset({"WMF", "EMF"})
 VECTOR_IMAGE_EXTENSIONS = frozenset({".wmf", ".emf"})
@@ -203,7 +203,7 @@ def _serialize_native_metafile(image_data: bytes, image_format: str) -> str | No
         pil_image.load(dpi=VECTOR_IMAGE_RENDER_DPI)
         return image_to_b64str(pil_image, image_format="PNG")
     except PIL_IMAGE_LOAD_ERRORS as exc:
-        logger.warning(f"Native Windows rendering failed for {image_format}: {exc}. Falling back to MinerU renderer.")
+        logger.warning(f"Native Windows rendering failed for {image_format}: {exc}.")
         return None
 
 
@@ -224,7 +224,7 @@ def _serialize_cross_platform_metafile(
     *,
     size_hint: tuple[int, int] | None = None,
 ) -> str | None:
-    """调用 MinerU 内部 WMF/EMF 引擎并生成带 PNG fallback 的 SVG。"""
+    """调用 metafile-render WMF/EMF 引擎并生成带 PNG fallback 的 SVG。"""
     try:
         rendered = render_metafile(
             image_data,
@@ -242,15 +242,17 @@ def _serialize_cross_platform_metafile(
                 size_hint=size_hint,
             )
         except MetafileError as png_exc:
-            logger.warning(f"Failed to render {image_format} PNG fallback with MinerU: {png_exc}. Using placeholder instead.")
+            logger.warning(
+                f"Failed to render {image_format} PNG fallback with metafile-render: {png_exc}. Using placeholder instead."
+            )
             return None
     except MetafileError as exc:
-        logger.warning(f"Failed to render {image_format} image with MinerU: {exc}. Using placeholder instead.")
+        logger.warning(f"Failed to render {image_format} image with metafile-render: {exc}. Using placeholder instead.")
         return None
     if rendered.partial:
         diagnostic_codes = sorted({diagnostic.code for diagnostic in rendered.diagnostics})
         logger.warning(
-            f"Rendered partial {image_format} image with MinerU, diagnostics={diagnostic_codes[:16]}, "
+            f"Rendered partial {image_format} image with metafile-render, diagnostics={diagnostic_codes[:16]}, "
             f"size={rendered.width}x{rendered.height}"
         )
     encoded = base64.b64encode(rendered.data).decode("ascii")

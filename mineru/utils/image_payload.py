@@ -11,8 +11,8 @@ from urllib.parse import urlsplit
 
 INLINE_IMAGE_DATA_URI_RE = re.compile(r"data:image/([^;\"']+);base64,([^\"']+)", re.DOTALL)
 _SVG_NAMESPACE = "http://www.w3.org/2000/svg"
-_MINERU_SVG_MARKER = "wmf-emf"
-_MINERU_SVG_FALLBACK_ID = "mineru-raster-fallback"
+_METAFILE_SVG_MARKER = "wmf-emf"
+_METAFILE_SVG_FALLBACK_ID = "metafile-render-raster-fallback"
 MAX_IMAGE_PAYLOAD_BYTES: Final = 64 * 1024 * 1024
 MAX_GENERATED_SVG_BYTES: Final = MAX_IMAGE_PAYLOAD_BYTES
 MAX_RASTER_IMAGE_BYTES: Final = MAX_IMAGE_PAYLOAD_BYTES
@@ -21,7 +21,7 @@ MAX_DECODED_RASTER_DIMENSION: Final = 8_192
 MAX_DECODED_RASTER_PIXELS: Final = 16_000_000
 _MAX_GENERATED_SVG_NODES = 100_000
 _SAFE_SVG_ATTRIBUTES: dict[str, set[str]] = {
-    "svg": {"width", "height", "viewBox", "data-mineru-generated"},
+    "svg": {"width", "height", "viewBox", "data-metafile-render"},
     "metadata": {"id", "data-mime"},
     "defs": set(),
     "clipPath": {"id"},
@@ -176,21 +176,21 @@ def _validate_generated_svg_attribute(tag: str, name: str, value: str) -> None:
         raise ValueError(f"Generated SVG contains an unsafe attribute value: {tag}.{name}")
     if name == "href":
         _decode_png_data_uri(value)
-    elif name == "clip-path" and re.fullmatch(r"url\(#mineru-clip-\d+\)", value) is None:
-        raise ValueError("Generated SVG clip-path must reference a local MinerU clip")
+    elif name == "clip-path" and re.fullmatch(r"url\(#metafile-render-clip-\d+\)", value) is None:
+        raise ValueError("Generated SVG clip-path must reference a local metafile-render clip")
     elif name == "transform" and re.fullmatch(r"(?:matrix|rotate)\([0-9eE+.,\- ]+\)", value) is None:
         raise ValueError("Generated SVG transform is outside the supported subset")
     elif name == "d" and re.fullmatch(r"[MmLlCcZz0-9eE+.,\- ]*", value) is None:
         raise ValueError("Generated SVG path data is outside the supported subset")
 
 
-def extract_mineru_generated_svg_fallback(payload: bytes) -> tuple[bytes, int, int]:
-    """验证 MinerU 生成 SVG，并返回 PNG fallback 与逻辑像素尺寸。"""
+def extract_generated_svg_fallback(payload: bytes) -> tuple[bytes, int, int]:
+    """验证 metafile-render 生成 SVG，并返回 PNG fallback 与逻辑像素尺寸。"""
     if not isinstance(payload, bytes) or not payload:
         raise ValueError("Generated SVG payload is empty or exceeds its byte limit")
     root = _parse_svg_root_strict(payload)
-    if root.tag != f"{{{_SVG_NAMESPACE}}}svg" or root.get("data-mineru-generated") != _MINERU_SVG_MARKER:
-        raise ValueError("SVG is not marked as a MinerU generated metafile")
+    if root.tag != f"{{{_SVG_NAMESPACE}}}svg" or root.get("data-metafile-render") != _METAFILE_SVG_MARKER:
+        raise ValueError("SVG is not marked as a metafile-render generated image")
     try:
         width = int(root.get("width", ""))
         height = int(root.get("height", ""))
@@ -217,7 +217,11 @@ def extract_mineru_generated_svg_fallback(payload: bytes) -> tuple[bytes, int, i
         if element.tail and element.tail.strip():
             raise ValueError("Generated SVG contains unexpected tail text")
         if tag == "metadata":
-            if element.get("id") != _MINERU_SVG_FALLBACK_ID or element.get("data-mime") != "image/png" or fallback is not None:
+            if (
+                element.get("id") != _METAFILE_SVG_FALLBACK_ID
+                or element.get("data-mime") != "image/png"
+                or fallback is not None
+            ):
                 raise ValueError("Generated SVG fallback metadata is invalid or duplicated")
             encoded = (element.text or "").strip()
             fallback = _decode_png_data_uri(f"data:image/png;base64,{encoded}")

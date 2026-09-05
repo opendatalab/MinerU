@@ -39,6 +39,7 @@ classifiers = [
 ]
 dependencies = [
     "mineru-vl-utils>=1.2.1,<2",
+    "metafile-render>=0.1.0,<0.2.0",
     "mineru-llama-cpp>=0.1.0,<1",
     "click>=8.1.7",
     "loguru>=0.7.2",

@@ -10,7 +10,7 @@ from urllib.parse import quote, unquote, urlsplit
 import nh3
 from bs4 import BeautifulSoup, NavigableString, Tag
 
-from ....utils.image_payload import extract_mineru_generated_svg_fallback, parse_image_data_uri_strict
+from ....utils.image_payload import extract_generated_svg_fallback, parse_image_data_uri_strict
 
 
 _ALLOWED_TAGS = {
@@ -255,7 +255,7 @@ def _sanitize_raster_data_uri(source: str) -> str | None:
         return None
     if extension == "svg":
         try:
-            extract_mineru_generated_svg_fallback(payload)
+            extract_generated_svg_fallback(payload)
         except ValueError:
             return None
     return source
