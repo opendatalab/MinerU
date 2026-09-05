@@ -130,16 +130,15 @@ def test_oversized_generated_svg_degrades_to_png_for_office_consumers(monkeypatc
     png = render_metafile(data, output_format="png")
     render = Mock(side_effect=[MetafileResourceLimitError("generated SVG exceeds budget"), png])
     monkeypatch.setattr(office_image, "render_metafile", render)
-    monkeypatch.setattr(office_image, "is_windows_environment", lambda: False)
     data_uri = office_image.serialize_office_image(data, part_name="image.emf", content_type="image/emf")
     assert data_uri is not None
     assert data_uri.startswith("data:image/png;base64,")
     assert [call.kwargs["output_format"] for call in render.call_args_list] == ["svg", "png"]
+    assert all(call.kwargs["dpi"] == 200 and call.kwargs["backend"] == "auto" for call in render.call_args_list)
 
 
-def test_non_windows_office_serializer_returns_generated_svg(monkeypatch: pytest.MonkeyPatch) -> None:
-    """验证非 Windows Office 图片入口返回安全 SVG 和 PNG fallback。"""
-    monkeypatch.setattr(office_image, "is_windows_environment", lambda: False)
+def test_office_serializer_returns_generated_svg(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证 Office 图片入口返回安全 SVG 和 PNG fallback。"""
     data_uri = office_image.serialize_office_image(
         build_emf(_basic_emf_records()),
         part_name="/word/media/image1.emf",
@@ -148,14 +147,13 @@ def test_non_windows_office_serializer_returns_generated_svg(monkeypatch: pytest
 
     assert data_uri is not None
     fallback, logical_size, svg = _svg_data_uri_fallback(data_uri)
-    assert logical_size == (144, 144)
+    assert logical_size == (200, 200)
     assert fallback.getbbox() is not None
     assert b"<path" in svg
 
 
 def test_officeart_emu_size_controls_standard_wmf_output(monkeypatch: pytest.MonkeyPatch) -> None:
     """验证无 placeable header 的 OfficeArt WMF 使用 ptSize EMU 定标。"""
-    monkeypatch.setattr(office_image, "is_windows_environment", lambda: False)
     standard_wmf = basic_wmf()[22:]
     data_uri = office_image.serialize_office_image(
         standard_wmf,
@@ -166,8 +164,8 @@ def test_officeart_emu_size_controls_standard_wmf_output(monkeypatch: pytest.Mon
 
     assert data_uri is not None
     fallback, logical_size, _svg = _svg_data_uri_fallback(data_uri)
-    assert logical_size == (144, 72)
-    assert fallback.size == (288, 144)
+    assert logical_size == (200, 100)
+    assert fallback.size == (400, 200)
 
 
 def test_officeart_metafile_header_preserves_payload_and_emu_size() -> None:
@@ -194,21 +192,18 @@ def test_officeart_metafile_header_preserves_payload_and_emu_size() -> None:
     assert decoded.render_size_emu == (914_400, 457_200)
 
 
-def test_windows_office_serializer_prefers_svg_then_uses_native_fallback(monkeypatch: pytest.MonkeyPatch) -> None:
-    """验证 Windows 优先保留 SVG，并在引擎失败时调用原生 GDI。"""
+def test_office_serializer_uses_only_library_backend(monkeypatch: pytest.MonkeyPatch) -> None:
+    """所有平台都只调用独立库，失败后直接使用占位图。"""
     data = build_emf(_basic_emf_records())
-    native = Mock(return_value="data:image/png;base64,native")
     generated = Mock(return_value="data:image/svg+xml;base64,generated")
-    monkeypatch.setattr(office_image, "is_windows_environment", lambda: True)
-    monkeypatch.setattr(office_image, "_serialize_native_metafile", native)
-    monkeypatch.setattr(office_image, "_serialize_cross_platform_metafile", generated)
-
+    pillow_open = Mock(side_effect=AssertionError("MinerU must not render metafiles with Pillow"))
+    monkeypatch.setattr(office_image, "_serialize_metafile", generated)
+    monkeypatch.setattr(office_image.Image, "open", pillow_open)
+    monkeypatch.setattr(office_image, "get_standard_vector_placeholder_data_uri", lambda: "placeholder")
     assert office_image.serialize_office_image(data) == "data:image/svg+xml;base64,generated"
-    native.assert_not_called()
-
     generated.return_value = None
-    assert office_image.serialize_office_image(data) == "data:image/png;base64,native"
-    native.assert_called_once()
+    assert office_image.serialize_office_image(data) == "placeholder"
+    pillow_open.assert_not_called()
 
 
 def test_pptx_picture_path_uses_cross_platform_metafile_renderer(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -221,7 +216,6 @@ def test_pptx_picture_path_uses_cross_platform_metafile_renderer(monkeypatch: py
         return data, "image/x-emf"
 
     monkeypatch.setattr(converter, "_get_shape_image_data", fake_image_data)
-    monkeypatch.setattr(office_image, "is_windows_environment", lambda: False)
     converter._handle_pictures(object())
 
     assert converter.cur_page[0]["image_base64"].startswith("data:image/svg+xml;base64,")
@@ -235,7 +229,6 @@ def test_xlsx_wps_cell_image_uses_cross_platform_metafile_renderer(monkeypatch: 
     converter = XlsxConverter()
     converter.zf = ZipFile(BytesIO(package.getvalue()))
     converter.cell_image_map = {"image-id": "media/image1.emf"}
-    monkeypatch.setattr(office_image, "is_windows_environment", lambda: False)
     try:
         html = converter._resolve_cell_image('DISPIMG("image-id")')
     finally:
@@ -259,7 +252,6 @@ def test_modern_office_models_emit_rendered_emf_svg(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """验证 DOCX/PPTX/XLSX 完整模型链都产出安全 EMF SVG。"""
-    monkeypatch.setattr(office_image, "is_windows_environment", lambda: False)
     package = builder(build_emf(_basic_emf_records()))  # type: ignore[operator]
     pages = model.predict(BytesIO(package))  # type: ignore[attr-defined]
     images = _collect_image_data_uris(pages)
@@ -267,7 +259,7 @@ def test_modern_office_models_emit_rendered_emf_svg(
     assert images
     assert all(image.startswith("data:image/svg+xml;base64,") for image in images)
     _fallback, logical_size, _svg = _svg_data_uri_fallback(images[0])
-    assert logical_size == (144, 144)
+    assert logical_size == (200, 200)
 
 
 @pytest.mark.parametrize(
@@ -285,20 +277,18 @@ def test_legacy_office_models_emit_rendered_wmf_svg(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """验证 DOC/PPT/XLS 的 OfficeArt/PICF WMF 预览进入跨平台 SVG。"""
-    monkeypatch.setattr(office_image, "is_windows_environment", lambda: False)
     pages = model.predict(BytesIO(builder(basic_wmf())))  # type: ignore[attr-defined,operator]
     images = _collect_image_data_uris(pages)
 
     assert images
     assert all(image.startswith("data:image/svg+xml;base64,") for image in images)
     fallback, logical_size, _svg = _svg_data_uri_fallback(images[0])
-    assert logical_size == (144, 144)
-    assert fallback.size == (288, 288)
+    assert logical_size == (200, 200)
+    assert fallback.size == (400, 400)
 
 
 def test_rtf_model_emf_picture_emits_rendered_svg(monkeypatch: pytest.MonkeyPatch) -> None:
     """验证 RTF emfblip 从 pict 捕获一路进入跨平台 SVG。"""
-    monkeypatch.setattr(office_image, "is_windows_environment", lambda: False)
     emf = build_emf(_basic_emf_records())
     rtf = b"{\\rtf1 before {\\pict\\emfblip " + emf.hex().encode("ascii") + b"} after\\par}"
     images = _collect_image_data_uris(RtfModel().predict(BytesIO(rtf)))
@@ -322,10 +312,22 @@ def test_odf_models_emit_rendered_emf_svg(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """验证 ODT/ODS/ODP 包内 WMF/EMF 图片都复用统一渲染入口。"""
-    monkeypatch.setattr(office_image, "is_windows_environment", lambda: False)
     package = builder()  # type: ignore[operator]
     package = _replace_zip_member(package, "Pictures/pixel.png", build_emf(_basic_emf_records()))
     images = _collect_image_data_uris(model.predict(BytesIO(package)))  # type: ignore[attr-defined]
 
     assert images
     assert all(image.startswith("data:image/svg+xml;base64,") for image in images)
+
+
+def test_pillow_identified_metafile_is_routed_before_load(monkeypatch: pytest.MonkeyPatch) -> None:
+    """由 Pillow 补充识别的矢量图也交给库处理，禁止触发 MinerU 内部原生加载。"""
+    image = Mock(format="WMF")
+    generated = Mock(return_value="data:image/svg+xml;base64,generated")
+    monkeypatch.setattr(office_image.Image, "open", Mock(return_value=image))
+    monkeypatch.setattr(office_image, "_serialize_metafile", generated)
+    data = b"identified-by-pillow"
+    result = office_image.serialize_office_image(data, render_size_emu=(914400, 457200))
+    assert result == "data:image/svg+xml;base64,generated"
+    generated.assert_called_once_with(data, "WMF", size_hint=(200, 100))
+    image.load.assert_not_called()

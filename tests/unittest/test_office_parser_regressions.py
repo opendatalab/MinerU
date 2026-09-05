@@ -1,5 +1,4 @@
 from pathlib import Path
-from unittest.mock import Mock
 
 from pytest import MonkeyPatch
 
@@ -46,18 +45,11 @@ def test_vector_image_part_skip_log_is_debug(monkeypatch: MonkeyPatch) -> None:
     assert fake_logger.warning_messages == []
 
 
-def test_vector_image_windows_render_uses_144_dpi(monkeypatch: MonkeyPatch) -> None:
-    """验证 Windows 下 WMF/EMF 统一按 144 DPI 栅格化。"""
-
-    fake_image = Mock(format="WMF", size=(640, 360))
-    fake_encoder = Mock(return_value="data:image/png;base64,rendered")
-    monkeypatch.setattr(office_image, "is_windows_environment", lambda: True)
-    monkeypatch.setattr(office_image, "image_to_b64str", fake_encoder)
-
-    assert office_image.serialize_vector_image_with_placeholder(fake_image) == "data:image/png;base64,rendered"
-    fake_image.load.assert_called_once_with(dpi=office_image.VECTOR_IMAGE_RENDER_DPI)
-    fake_encoder.assert_called_once_with(fake_image, image_format="PNG")
-    assert office_image.VECTOR_IMAGE_RENDER_DPI == 144
+def test_vector_image_emu_size_uses_200_dpi() -> None:
+    """验证统一入口使用 200 DPI，并显式传递 EMU 换算分辨率。"""
+    assert office_image.VECTOR_IMAGE_RENDER_DPI == 200
+    assert office_image._render_size_from_emu((914400, 457200), dpi=200) == (200, 100)
+    assert office_image._render_size_from_emu((914400, 457200), dpi=144) == (144, 72)
 
 
 def test_docx_nested_ordered_lists_render_with_local_markers() -> None:
@@ -70,7 +62,9 @@ def test_docx_nested_ordered_lists_render_with_local_markers() -> None:
     end_marker = "    - 本合同一式四份，省政府采购中心各一份"
     end = markdown.index(end_marker, start) + len(end_marker)
 
-    assert markdown[start:end] == r"""1. 如有未尽事宜，由双方依法订立[补充合同](https://github.com/opendatalab/MinerU)。
+    assert (
+        markdown[start:end]
+        == r"""1. 如有未尽事宜，由双方依法订立[补充合同](https://github.com/opendatalab/MinerU)。
 2. 本合同双方应加盖骑缝章。
     - 本合同一式四份，自双方签章并经省政府采购中心审核编号后生效。
     - 甲方、乙方、政府采购管理部门、<u>___广东__</u>省政府采购中心各一份
@@ -85,3 +79,4 @@ def test_docx_nested_ordered_lists_render_with_local_markers() -> None:
             2. 合同一式四份，采购管理部门各一份
         4. 文本[超链接](https://github.com/opendatalab/MinerU)支持，由双方依法订立补充公式$x=\frac{-b\pm \sqrt{b^{2}-4ac}}{2a}$
     - 本合同一式四份，省政府采购中心各一份"""
+    )
