@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from io import BytesIO
 from typing import Any
 from unittest.mock import MagicMock
@@ -1117,3 +1119,96 @@ def test_get_page_path_infos_skips_one_bad_path(monkeypatch: pytest.MonkeyPatch)
     assert call_count >= 8
     assert len(path_infos) == 6
     assert all(item.source_index != 0 for item in path_infos)
+
+
+@pytest.mark.parametrize(
+    "builder",
+    [
+        _build_drawing_pdf,
+        _build_rotated_cropped_drawing_pdf,
+        _build_colored_path_pdf,
+        _build_rotated_cropped_image_pdf,
+        _build_rotated_cropped_signature_pdf,
+        _build_rotated_cropped_link_pdf,
+    ],
+)
+def test_native_page_snapshot_matches_independent_accessors(builder: Callable[[], bytes]) -> None:
+    """批量提取与独立接口在旋转、裁剪、Form、签名和链接语料上完全一致。"""
+
+    with pdf_document.PDFDocument(builder()) as document:
+        snapshot = document._extract_native_page(0)
+        assert snapshot.page_size == document.page_size(0)
+        assert snapshot.rotation == document.page_rotation(0)
+        assert snapshot.drawing_lines == document.get_page_drawing_lines(0)
+        assert snapshot.path_infos == document.get_page_path_infos(0)
+        assert snapshot.image_infos == document.get_page_image_infos(0)
+        assert snapshot.form_bboxes == document.get_page_form_bboxes(0)
+        assert snapshot.signature_bboxes == document.get_page_signature_bboxes(0)
+        assert snapshot.link_annotations == document.get_page_link_annotations(0)
+        geometry = document.get_page_chars_with_geometry(0)
+        assert snapshot.text_geometry.tight_bboxes == geometry.tight_bboxes
+        assert snapshot.text_geometry.loose_bboxes == geometry.loose_bboxes
+        assert snapshot.text_geometry.origins == geometry.origins
+        assert [(char["char"], char["char_idx"], tuple(char["bbox"])) for char in snapshot.text_geometry.chars] == [
+            (char["char"], char["char_idx"], tuple(char["bbox"])) for char in geometry.chars
+        ]
+
+
+def test_native_page_snapshot_opens_once_and_closes_after_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    """批量读取只打开一次页面，字符提取抛错时同样关闭原生页面。"""
+
+    opened: list[pdf_document.pdfium.PdfPage] = []
+    original = pdf_document.PDFDocument._open_page
+
+    @contextmanager
+    def record_page(document: pdf_document.PDFDocument, page_idx: int) -> Iterator[pdf_document.pdfium.PdfPage]:
+        """记录真实页面对象，使用原生命周期管理检查成功和失败后的关闭状态。"""
+
+        with original(document, page_idx) as page:
+            opened.append(page)
+            yield page
+
+    monkeypatch.setattr(pdf_document.PDFDocument, "_open_page", record_page)
+    with pdf_document.PDFDocument(_build_drawing_pdf()) as document:
+        document._extract_native_page(0)
+        assert len(opened) == 1
+        assert opened[0].raw is None
+
+        def fail_text(
+            page: pdf_document.pdfium.PdfPage, *, include_extended_geometry: bool
+        ) -> pdf_document.PDFPageTextGeometry:
+            """模拟字符提取失败，验证页面生命周期仍由外层上下文管理。"""
+
+            raise RuntimeError("broken text")
+
+        monkeypatch.setattr(pdf_document, "_extract_page_text_geometry", fail_text)
+        with pytest.raises(RuntimeError, match="broken text"):
+            document._extract_native_page(0)
+        assert len(opened) == 2
+        assert opened[1].raw is None
+
+
+def test_native_page_snapshot_decodes_each_path_once(monkeypatch: pytest.MonkeyPatch) -> None:
+    """同一 Path 解码由绘图线和路径信息共享，避免独立接口的重复工作。"""
+
+    counts: list[object] = []
+    original = pdf_document._read_raw_path_subpaths
+
+    def record_decode(raw_object: Any) -> list[pdf_document._PathSubpath]:
+        """统计真实 Path 解码次数，不替换解码结果。"""
+
+        counts.append(raw_object)
+        return original(raw_object)
+
+    monkeypatch.setattr(pdf_document, "_read_raw_path_subpaths", record_decode)
+    with pdf_document.PDFDocument(_build_drawing_pdf()) as document:
+        document.get_page_drawing_lines(0)
+        document.get_page_path_infos(0)
+        separate_count = len(counts)
+        counts.clear()
+        document._extract_native_page(0)
+        shared_count = len(counts)
+        with document._open_page(0) as page:
+            expected_count = len(list(pdf_document._iter_raw_path_objects_with_depth(page)))
+        assert shared_count == expected_count
+        assert shared_count < separate_count

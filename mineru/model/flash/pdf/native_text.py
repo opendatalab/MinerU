@@ -15,7 +15,7 @@ from typing import Any, Literal, Mapping, Sequence
 from pdftext.schema import Char
 
 from ....types import BBox
-from .document import PDFDocument
+from .document import PDFDocument, PDFDrawingLine
 
 from .models import (
     _AxisLine,
@@ -980,8 +980,14 @@ def _normalize_pdftext_angle(value: Any) -> int:
 def _get_pdf_drawing_lines(pdf_doc: PDFDocument, page_idx: int) -> list[_AxisLine]:
     """读取 PDFDocument 的公共绘图线结果，并隔离具体 PDFium 类型。"""
 
+    return _coerce_pdf_drawing_lines(pdf_doc.get_page_drawing_lines(page_idx))
+
+
+def _coerce_pdf_drawing_lines(drawing_lines: Sequence[PDFDrawingLine]) -> list[_AxisLine]:
+    """把独立接口或批量快照中的绘图线统一转换为 Flash 内部坐标类型。"""
+
     output: list[_AxisLine] = []
-    for drawing_line in pdf_doc.get_page_drawing_lines(page_idx):
+    for drawing_line in drawing_lines:
         bbox = _coerce_bbox(drawing_line.bbox)
         if bbox is None:
             continue
