@@ -47,7 +47,7 @@ from .geometry import (
 from .native_text import (
     _build_native_line_items,
     _extract_decorative_text_rules,
-    _get_pdf_drawing_lines,
+    _coerce_pdf_drawing_lines,
     _median_native_glyph_width,
     _sanitize_pdf_control_text,
     _resplit_native_visual_runs,
@@ -301,28 +301,25 @@ def _analyze_native_document(
 ) -> list[list[dict[str, Any]]]:
     """逐页读取数字 PDF，并在轻量页面上完成跨页文本类型判定。"""
 
-    page_sizes = [pdf_doc.page_size(page_idx) for page_idx in range(pdf_doc.page_count)]
-    page_image_infos = [pdf_doc.get_page_image_infos(page_idx) for page_idx in range(pdf_doc.page_count)]
-    page_signature_bboxes = [pdf_doc.get_page_signature_bboxes(page_idx) for page_idx in range(pdf_doc.page_count)]
-    watermark_fingerprints = _detect_repeated_raster_watermark_fingerprints(
-        page_image_infos,
-        page_sizes,
-    )
-
+    page_sizes: list[tuple[float, float]] = []
+    page_image_infos: list[list[PDFImageInfo]] = []
     page_sources: list[_PageSource] = []
     page_text_geometries = []
     page_style_lines: list[list[PDFTextStyleLine]] = []
     page_link_lines: list[list[PDFTextLinkLine]] = []
     for page_idx in range(pdf_doc.page_count):
-        page_size = page_sizes[page_idx]
-        text_geometry = pdf_doc.get_page_chars_with_geometry(page_idx)
+        snapshot = pdf_doc._extract_native_page(page_idx)
+        page_size = snapshot.page_size
+        page_sizes.append(page_size)
+        page_image_infos.append(snapshot.image_infos)
+        text_geometry = snapshot.text_geometry
         chars = text_geometry.chars
         lines = _build_native_line_items(
             get_lines_from_chars(chars),
             page_size,
-            page_rotation=pdf_doc.page_rotation(page_idx),
+            page_rotation=snapshot.rotation,
         )
-        drawing_lines = _get_pdf_drawing_lines(pdf_doc, page_idx)
+        drawing_lines = _coerce_pdf_drawing_lines(snapshot.drawing_lines)
         lines, decorative_rules = _extract_decorative_text_rules(
             lines,
             page_size,
@@ -332,7 +329,7 @@ def _analyze_native_document(
         page_link_lines.append(
             detect_pdf_text_link_lines(
                 lines,
-                pdf_doc.get_page_link_annotations(page_idx),
+                snapshot.link_annotations,
             )
         )
         source = _PageSource(
@@ -340,17 +337,18 @@ def _analyze_native_document(
             lines=lines,
             chars=chars,
             drawing_lines=drawing_lines,
-            image_bboxes=_filter_repeated_raster_watermark_bboxes(
-                page_image_infos[page_idx],
-                page_size,
-                watermark_fingerprints,
-            ),
-            signature_bboxes=page_signature_bboxes[page_idx],
-            form_bboxes=pdf_doc.get_page_form_bboxes(page_idx),
-            path_infos=pdf_doc.get_page_path_infos(page_idx),
+            signature_bboxes=snapshot.signature_bboxes,
+            form_bboxes=snapshot.form_bboxes,
+            path_infos=snapshot.path_infos,
         )
         page_sources.append(source)
         page_text_geometries.append(text_geometry)
+
+    watermark_fingerprints = _detect_repeated_raster_watermark_fingerprints(page_image_infos, page_sizes)
+    for source, image_infos in zip(page_sources, page_image_infos, strict=True):
+        source.image_bboxes = _filter_repeated_raster_watermark_bboxes(
+            image_infos, source.page_size, watermark_fingerprints,
+        )
 
     geometry_plan = build_document_geometry_plan(
         [source.lines for source in page_sources],

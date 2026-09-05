@@ -12,12 +12,10 @@ from dataclasses import dataclass, field
 from io import BytesIO
 from typing import Any, Iterator, Literal, TypeAlias, cast
 
-import numpy as np
 import pypdfium2 as pdfium
 import pypdfium2.raw as pdfium_c
-from pdftext.pdf.chars import deduplicate_chars, get_chars
-from pdftext.pdf.pages import assign_scripts, get_lines, get_spans
-from pdftext.schema import Bbox, Char, Line
+from pdftext.pdf.chars import get_chars
+from pdftext.schema import Char, Line
 from PIL import Image, ImageOps
 
 from ....types import BBox, PageInfo
@@ -26,6 +24,8 @@ from .._shared.hyperlink import sanitize_hyperlink_target
 from .._shared.image import image_to_bytes
 from .classify import classify
 from .pdfium import _pdfium_lock
+from .pdftext_adapter import _char_bbox_values, _deduplicate_pdftext_chars, _ensure_legacy_chars
+from .pdftext_adapter import get_lines_from_chars as get_lines_from_chars
 
 logger = logging.getLogger(__name__)
 
@@ -47,10 +47,6 @@ DRAWING_THIN_RECT_MIN_ASPECT_RATIO = 4.0
 PDF_IMAGE_FINGERPRINT_MAX_RAW_BYTES = 16 * 1024 * 1024
 _PDF_EXTERNAL_LINK_SCHEMES = frozenset({"http", "https", "mailto", "tel"})
 
-try:
-    from pdftext.pdf.chars import PageChars
-except ImportError:
-    PageChars = None
 
 # See: pdfium.PdfDocument.METADATA_KEYS
 PDFMetadataKey: TypeAlias = Literal[
@@ -120,6 +116,21 @@ class PDFImageInfo:
 
     bbox: BBox
     fingerprint: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class _PDFPageSnapshot:
+    """保存单次页面生命周期提取的纯 Python 数据，不持有 PDFium 子对象。"""
+
+    page_size: tuple[float, float]
+    rotation: Literal[0, 90, 180, 270]
+    text_geometry: PDFPageTextGeometry
+    drawing_lines: list[PDFDrawingLine]
+    path_infos: list[PDFPathInfo]
+    image_infos: list[PDFImageInfo]
+    form_bboxes: list[BBox]
+    signature_bboxes: list[BBox]
+    link_annotations: list[PDFLinkAnnotation]
 
 
 @dataclass
@@ -400,6 +411,34 @@ class PDFDocument:
         """一次读取字符、tight bbox 和字符原点，避免 Hybrid 重复打开 textpage。"""
         return self._get_page_text_geometry(page_idx, include_extended_geometry=True)
 
+    def _extract_native_page(self, page_idx: int) -> _PDFPageSnapshot:
+        """在一次加锁打开中收集 Flash 页面证据，并共享 Path 子路径解码。"""
+
+        with self._open_page(page_idx) as page:
+            page_bbox = _normalize_pdf_page_bbox(page.get_bbox())
+            try:
+                raw_rotation = int(page.get_rotation()) % 360
+            except Exception:
+                raw_rotation = 0
+            rotation = raw_rotation if raw_rotation in {0, 90, 180, 270} else 0
+            drawings, paths = _extract_page_paths_and_lines(page, page_bbox, raw_rotation)
+            return _PDFPageSnapshot(
+                page_size=_drawing_page_size(page_bbox, raw_rotation),
+                rotation=cast(Literal[0, 90, 180, 270], rotation),
+                text_geometry=_extract_page_text_geometry(page, include_extended_geometry=True),
+                drawing_lines=drawings,
+                path_infos=paths,
+                image_infos=_extract_page_image_infos(page, page_bbox, raw_rotation),
+                form_bboxes=_extract_page_form_bboxes(page, page_bbox, raw_rotation),
+                signature_bboxes=_extract_page_signature_bboxes(
+                    page,
+                    page_bbox,
+                    raw_rotation,
+                    form_handle=getattr(self._pdf_doc, "formenv", None),
+                ),
+                link_annotations=_extract_page_link_annotations(page, self._pdf_doc.raw, page_bbox, raw_rotation),
+            )
+
     def _get_page_text_geometry(
         self,
         page_idx: int,
@@ -408,38 +447,7 @@ class PDFDocument:
     ) -> PDFPageTextGeometry:
         """在同一 PDFium textpage 生命周期内物化字符及可选扩展几何。"""
         with self._open_page(page_idx) as page:
-            textpage = None
-            try:
-                textpage = page.get_textpage()
-                raw_page_bbox: list[float] = list(page.get_bbox())
-                page_bbox = _normalize_pdf_page_bbox(tuple(raw_page_bbox))
-                page_rotation: int = 0
-                try:
-                    page_rotation = page.get_rotation()
-                except Exception:
-                    pass
-                chars = get_chars(textpage, raw_page_bbox, page_rotation)
-                chars = _deduplicate_pdftext_chars(chars)
-                chars = _ensure_legacy_chars(chars)
-                chars = _restore_pdfium_surrogate_pairs(chars, textpage)
-                chars = _deduplicate_near_identical_chars(chars)
-                if include_extended_geometry:
-                    loose_bboxes, tight_bboxes, origins = _extract_page_char_extended_geometry(
-                        textpage,
-                        chars,
-                        page_bbox,
-                        page_rotation,
-                    )
-                else:
-                    loose_bboxes, tight_bboxes, origins = {}, {}, {}
-            finally:
-                _try_close(textpage)
-        return PDFPageTextGeometry(
-            chars=chars,
-            tight_bboxes=tight_bboxes,
-            origins=origins,
-            loose_bboxes=loose_bboxes,
-        )
+            return _extract_page_text_geometry(page, include_extended_geometry=include_extended_geometry)
 
     def get_page_lines(self, page_idx: int) -> list[Line]:
         chars = self.get_page_chars(page_idx)
@@ -1104,6 +1112,8 @@ def _path_info_from_object(
     page_rotation: int,
     form_depth: int,
     source_index: int,
+    *,
+    subpaths: list[_PathSubpath] | None = None,
 ) -> PDFPathInfo | None:
     """将一个原始 Path 转换为页面几何；贝塞尔控制点也纳入保守 bbox。"""
 
@@ -1117,7 +1127,7 @@ def _path_info_from_object(
     fill_visible, stroke_visible = _get_path_visibility(raw_obj)
     points = [
         point
-        for raw_subpath in _read_raw_path_subpaths(raw_obj)
+        for raw_subpath in (_read_raw_path_subpaths(raw_obj) if subpaths is None else subpaths)
         for point in _transform_path_subpath(
             raw_subpath,
             matrix,
@@ -1265,6 +1275,8 @@ def _extract_path_drawing_lines(
     matrix: tuple[float, float, float, float, float, float],
     page_bbox: BBox,
     page_rotation: int,
+    *,
+    subpaths: list[_PathSubpath] | None = None,
 ) -> list[PDFDrawingLine]:
     """从单个 Path 提取可见直线，坏 Path 返回空结果且不影响同页其他对象。"""
     fill_visible, stroke_visible = _get_path_visibility(raw_obj)
@@ -1274,7 +1286,7 @@ def _extract_path_drawing_lines(
     page_size = _drawing_page_size(page_bbox, page_rotation)
     raw_stroke_width = _get_raw_stroke_width(raw_obj) if stroke_visible else 0.0
     drawing_lines: list[PDFDrawingLine] = []
-    for raw_subpath in _read_raw_path_subpaths(raw_obj):
+    for raw_subpath in _read_raw_path_subpaths(raw_obj) if subpaths is None else subpaths:
         subpath = _transform_path_subpath(raw_subpath, matrix, page_bbox, page_rotation)
         if fill_visible:
             filled_line = _get_thin_filled_subpath_line(subpath, page_size)
@@ -1937,6 +1949,41 @@ def _extract_page_path_infos(
     return path_infos
 
 
+def _extract_page_paths_and_lines(
+    page: pdfium.PdfPage,
+    page_bbox: BBox,
+    page_rotation: int,
+) -> tuple[list[PDFDrawingLine], list[PDFPathInfo]]:
+    """一次遍历和解码 Path，分别隔离绘图线与路径信息的派生异常。"""
+
+    drawing_lines: list[PDFDrawingLine] = []
+    path_infos: list[PDFPathInfo] = []
+    for source_index, (raw_obj, matrix, form_depth) in enumerate(_iter_raw_path_objects_with_depth(page)):
+        try:
+            subpaths = _read_raw_path_subpaths(raw_obj)
+        except Exception:
+            continue
+        try:
+            drawing_lines.extend(_extract_path_drawing_lines(raw_obj, matrix, page_bbox, page_rotation, subpaths=subpaths))
+        except Exception:
+            pass
+        try:
+            info = _path_info_from_object(
+                raw_obj,
+                matrix,
+                page_bbox,
+                page_rotation,
+                form_depth,
+                source_index,
+                subpaths=subpaths,
+            )
+        except Exception:
+            continue
+        if info is not None:
+            path_infos.append(info)
+    return _merge_collinear_drawing_lines(drawing_lines, _drawing_page_size(page_bbox, page_rotation)), path_infos
+
+
 def _extract_page_drawing_lines(
     page: pdfium.PdfPage,
     page_bbox: BBox,
@@ -2119,47 +2166,6 @@ def _deduplicate_near_identical_chars(chars: list[Char]) -> list[Char]:
     return deduplicated_chars
 
 
-def _is_pdftext_page_chars(chars: Any) -> bool:
-    """判断对象是否为 pdftext 0.7 引入的 PageChars 列式字符容器。"""
-    return PageChars is not None and isinstance(chars, PageChars)
-
-
-def _deduplicate_pdftext_chars(chars: Any) -> Any:
-    """按当前 pdftext 返回类型调用官方去重，兼容测试或旧版本的 list 字符。"""
-    if _is_pdftext_page_chars(chars) or PageChars is None:
-        return deduplicate_chars(chars)
-    return chars
-
-
-def _materialize_page_chars(chars: Any) -> list[Char]:
-    """将 pdftext 0.7 的 PageChars 物化为 MinerU 既有 char dict 列表。"""
-    boxes = chars.boxes.tolist()
-    rotations = chars.rotations.tolist()
-    font_ids = chars.font_ids.tolist()
-    char_indices = chars.char_indices.tolist()
-
-    return [
-        cast(
-            Char,
-            {
-                "bbox": Bbox([float(coord) for coord in boxes[index]]),
-                "char": chars.text[index],
-                "rotation": float(rotations[index]),
-                "font": chars.fonts[int(font_ids[index])],
-                "char_idx": int(char_indices[index]),
-            },
-        )
-        for index in range(len(chars))
-    ]
-
-
-def _ensure_legacy_chars(chars: Any) -> list[Char]:
-    """统一输出旧版 char dict 列表，隔离 pdftext 0.7 的返回结构变化。"""
-    if _is_pdftext_page_chars(chars):
-        return _materialize_page_chars(chars)
-    return cast(list[Char], chars)
-
-
 def _restore_pdfium_surrogate_pairs(
     chars: list[Char],
     textpage: pdfium.PdfTextPage,
@@ -2232,121 +2238,6 @@ def _restore_pdfium_surrogate_pairs(
     return restored_chars
 
 
-def _char_bbox_values(bbox: object) -> tuple[float, float, float, float] | None:
-    """将 tuple/list 或 pdftext Bbox 对象统一转换为四元组坐标。"""
-    if bbox is None:
-        return None
-    if isinstance(bbox, (list, tuple)) and len(bbox) == 4:
-        return tuple(float(value) for value in bbox)  # type: ignore[return-value]
-
-    attrs = ("x_start", "y_start", "x_end", "y_end")
-    if all(hasattr(bbox, attr) for attr in attrs):
-        return tuple(float(getattr(bbox, attr)) for attr in attrs)  # type: ignore[return-value]
-    return None
-
-
-def _get_single_char_text(char: Char) -> str:
-    """提取单个 PDF 字符文本，异常空值用替换符保证 PageChars 长度一致。"""
-    text = str(char.get("char", ""))
-    if len(text) == 1:
-        return text
-    return text[:1] or "\ufffd"
-
-
-def _get_char_font_id(
-    char: Char,
-    fonts: list[dict[str, Any]],
-    font_cache: dict[tuple[Any, Any, Any, Any], int],
-) -> int:
-    """为旧版字符 font 生成 PageChars 需要的页内 font id。"""
-    font = char.get("font") or {}
-    font_key = (
-        font.get("name"),
-        font.get("flags"),
-        font.get("size"),
-        font.get("weight"),
-    )
-    font_id = font_cache.get(font_key)
-    if font_id is None:
-        font_id = len(fonts)
-        font_cache[font_key] = font_id
-        fonts.append(
-            {
-                "name": font.get("name"),
-                "flags": font.get("flags"),
-                "size": font.get("size"),
-                "weight": font.get("weight"),
-            }
-        )
-    return font_id
-
-
-def _get_char_index(char: Char, fallback_idx: int) -> int:
-    """提取旧版字符索引，缺失或为空时回退到当前列表位置。"""
-    char_idx = char.get("char_idx")
-    if char_idx is None:
-        char_idx = fallback_idx
-    return int(char_idx)
-
-
-def _legacy_chars_to_page_chars(chars: Any) -> Any:
-    """将旧版 char dict 列表打包回 pdftext 0.7 get_spans 所需的 PageChars。"""
-    if PageChars is None or _is_pdftext_page_chars(chars):
-        return chars
-
-    fonts: list[dict[str, Any]] = []
-    font_cache: dict[tuple[Any, Any, Any, Any], int] = {}
-    text_parts: list[str] = []
-    codes: list[int] = []
-    rotations: list[float] = []
-    boxes: list[tuple[float, float, float, float]] = []
-    font_ids: list[int] = []
-    char_indices: list[int] = []
-
-    for fallback_idx, char in enumerate(cast(list[Char], chars)):
-        char_text = _get_single_char_text(char)
-        bbox_values = _char_bbox_values(char.get("bbox"))
-        if bbox_values is None:
-            bbox_values = (0.0, 0.0, 0.0, 0.0)
-        text_parts.append(char_text)
-        codes.append(ord(char_text))
-        rotations.append(float(char.get("rotation") or 0.0))
-        boxes.append(bbox_values)
-        font_ids.append(_get_char_font_id(char, fonts, font_cache))
-        char_indices.append(_get_char_index(char, fallback_idx))
-
-    return PageChars(
-        "".join(text_parts),
-        np.array(codes, dtype=np.uint32),
-        np.array(rotations, dtype=np.float64),
-        np.array(boxes, dtype=np.float64).reshape((len(boxes), 4)),
-        np.array(font_ids, dtype=np.int32),
-        fonts,
-        np.array(char_indices, dtype=np.int64),
-    )
-
-
-def get_lines_from_chars(
-    chars: list[Char],
-    superscript_height_threshold: float = 0.7,
-    line_distance_threshold: float = 0.1,
-) -> list[Line]:
-    """从已提取的字符构建 pdftext lines，避免重复读取 PDFium textpage。"""
-    chars = _legacy_chars_to_page_chars(chars)
-    spans = get_spans(
-        chars,
-        superscript_height_threshold=superscript_height_threshold,
-        line_distance_threshold=line_distance_threshold,
-    )
-    lines = get_lines(spans)
-    assign_scripts(
-        lines,
-        height_threshold=superscript_height_threshold,
-        line_distance_threshold=line_distance_threshold,
-    )
-    return lines
-
-
 def _page_to_image(page: pdfium.PdfPage, scale: float, max_edge: int) -> PDFPageImage:
     long_edge_length = max(*page.get_size())
     if (long_edge_length * scale) > max_edge:
@@ -2361,3 +2252,43 @@ def _page_to_image(page: pdfium.PdfPage, scale: float, max_edge: int) -> PDFPage
         _try_close(bitmap)
 
     return PDFPageImage(pil_image=pil_image, scale=scale)
+
+
+def _extract_page_text_geometry(
+    page: pdfium.PdfPage,
+    *,
+    include_extended_geometry: bool,
+) -> PDFPageTextGeometry:
+    """在调用方持有的页面和锁内读取字符，使批量提取与独立接口共用实现。"""
+    textpage = None
+    try:
+        textpage = page.get_textpage()
+        raw_page_bbox: list[float] = list(page.get_bbox())
+        page_bbox = _normalize_pdf_page_bbox(tuple(raw_page_bbox))
+        page_rotation: int = 0
+        try:
+            page_rotation = page.get_rotation()
+        except Exception:
+            pass
+        chars = get_chars(textpage, raw_page_bbox, page_rotation)
+        chars = _deduplicate_pdftext_chars(chars)
+        chars = _ensure_legacy_chars(chars)
+        chars = _restore_pdfium_surrogate_pairs(chars, textpage)
+        chars = _deduplicate_near_identical_chars(chars)
+        if include_extended_geometry:
+            loose_bboxes, tight_bboxes, origins = _extract_page_char_extended_geometry(
+                textpage,
+                chars,
+                page_bbox,
+                page_rotation,
+            )
+        else:
+            loose_bboxes, tight_bboxes, origins = {}, {}, {}
+    finally:
+        _try_close(textpage)
+    return PDFPageTextGeometry(
+        chars=chars,
+        tight_bboxes=tight_bboxes,
+        origins=origins,
+        loose_bboxes=loose_bboxes,
+    )
