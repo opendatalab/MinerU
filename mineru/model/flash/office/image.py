@@ -2,18 +2,17 @@
 """Flash Office 文档的图片识别、转码与占位图生成。"""
 
 import base64
+import struct
 from functools import lru_cache
 from io import BytesIO
 from pathlib import PurePosixPath
-import struct
 from typing import Final
 
 from loguru import logger
+from metafile_render import MetafileError, MetafileResourceLimitError, render_metafile
 from PIL import Image, ImageDraw, ImageFont, UnidentifiedImageError
 
-from ....utils.platform import is_windows_environment
 from .._shared.image import image_to_b64str
-from .metafile import MetafileError, MetafileResourceLimitError, render_metafile
 
 VECTOR_IMAGE_FORMATS = frozenset({"WMF", "EMF"})
 VECTOR_IMAGE_EXTENSIONS = frozenset({".wmf", ".emf"})
@@ -27,12 +26,12 @@ VECTOR_IMAGE_CONTENT_TYPES = frozenset(
     }
 )
 PIL_IMAGE_LOAD_ERRORS = (UnidentifiedImageError, OSError, SyntaxError)
-VECTOR_IMAGE_RENDER_DPI: Final = 144
+VECTOR_IMAGE_RENDER_DPI: Final = 200
 STANDARD_VECTOR_PLACEHOLDER_SIZE: Final = (320, 180)
 STANDARD_VECTOR_PLACEHOLDER_LINES: Final = (
     "WMF/EMF placeholder",
-    "Use Windows to parse",
-    "the original image",
+    "Metafile preview unavailable",
+    "See the original document",
 )
 
 
@@ -166,22 +165,6 @@ def get_standard_vector_placeholder_data_uri() -> str:
     return _standard_vector_placeholder_data_uri()
 
 
-def serialize_vector_image_with_placeholder(pil_image: Image.Image, image_format_override: str | None = None) -> str:
-    """在支持的平台序列化矢量图，失败或不支持时返回标准占位图。"""
-    image_format = (image_format_override or getattr(pil_image, "format", None) or "WMF/EMF").upper()
-
-    if is_windows_environment():
-        try:
-            pil_image.load(dpi=VECTOR_IMAGE_RENDER_DPI)
-            return image_to_b64str(pil_image, image_format="PNG")
-        except PIL_IMAGE_LOAD_ERRORS as e:
-            logger.warning(f"Failed to render {image_format} image: {e}, size: {pil_image.size}. Using placeholder instead.")
-    else:
-        logger.warning(f"Skipping {image_format} image on non-Windows environment, size: {pil_image.size}")
-
-    return get_standard_vector_placeholder_data_uri()
-
-
 def serialize_vector_part_with_placeholder(
     part_name: object | None = None,
     content_type: str | None = None,
@@ -196,41 +179,31 @@ def serialize_vector_part_with_placeholder(
     return get_standard_vector_placeholder_data_uri()
 
 
-def _serialize_native_metafile(image_data: bytes, image_format: str) -> str | None:
-    """在 Windows 上优先调用 Pillow/GDI 渲染原始 WMF/EMF。"""
-    try:
-        pil_image = Image.open(BytesIO(image_data))
-        pil_image.load(dpi=VECTOR_IMAGE_RENDER_DPI)
-        return image_to_b64str(pil_image, image_format="PNG")
-    except PIL_IMAGE_LOAD_ERRORS as exc:
-        logger.warning(f"Native Windows rendering failed for {image_format}: {exc}. Falling back to MinerU renderer.")
-        return None
-
-
-def _render_size_from_emu(render_size_emu: tuple[int, int] | None) -> tuple[int, int] | None:
-    """把 OfficeArt ptSize 的 EMU 尺寸转换为 144 DPI 像素提示。"""
+def _render_size_from_emu(render_size_emu: tuple[int, int] | None, *, dpi: int) -> tuple[int, int] | None:
+    """把 OfficeArt ptSize 的 EMU 尺寸按指定 DPI 转换为像素提示。"""
     if render_size_emu is None or render_size_emu[0] <= 0 or render_size_emu[1] <= 0:
         return None
     emu_per_inch = 914_400
     return (
-        max(1, round(render_size_emu[0] * VECTOR_IMAGE_RENDER_DPI / emu_per_inch)),
-        max(1, round(render_size_emu[1] * VECTOR_IMAGE_RENDER_DPI / emu_per_inch)),
+        max(1, round(render_size_emu[0] * dpi / emu_per_inch)),
+        max(1, round(render_size_emu[1] * dpi / emu_per_inch)),
     )
 
 
-def _serialize_cross_platform_metafile(
+def _serialize_metafile(
     image_data: bytes,
     image_format: str,
     *,
     size_hint: tuple[int, int] | None = None,
 ) -> str | None:
-    """调用 MinerU 内部 WMF/EMF 引擎并生成带 PNG fallback 的 SVG。"""
+    """调用 metafile-render WMF/EMF 引擎并生成带 PNG fallback 的 SVG。"""
     try:
         rendered = render_metafile(
             image_data,
             output_format="svg",
             dpi=VECTOR_IMAGE_RENDER_DPI,
             size_hint=size_hint,
+            backend="auto",
         )
     except MetafileResourceLimitError as exc:
         logger.warning(f"Generated {image_format} SVG cannot be consumed safely: {exc}. Falling back to PNG.")
@@ -240,17 +213,20 @@ def _serialize_cross_platform_metafile(
                 output_format="png",
                 dpi=VECTOR_IMAGE_RENDER_DPI,
                 size_hint=size_hint,
+                backend="auto",
             )
         except MetafileError as png_exc:
-            logger.warning(f"Failed to render {image_format} PNG fallback with MinerU: {png_exc}. Using placeholder instead.")
+            logger.warning(
+                f"Failed to render {image_format} PNG fallback with metafile-render: {png_exc}. Using placeholder instead."
+            )
             return None
     except MetafileError as exc:
-        logger.warning(f"Failed to render {image_format} image with MinerU: {exc}. Using placeholder instead.")
+        logger.warning(f"Failed to render {image_format} image with metafile-render: {exc}. Using placeholder instead.")
         return None
     if rendered.partial:
         diagnostic_codes = sorted({diagnostic.code for diagnostic in rendered.diagnostics})
         logger.warning(
-            f"Rendered partial {image_format} image with MinerU, diagnostics={diagnostic_codes[:16]}, "
+            f"Rendered partial {image_format} image with metafile-render, diagnostics={diagnostic_codes[:16]}, "
             f"size={rendered.width}x{rendered.height}"
         )
     encoded = base64.b64encode(rendered.data).decode("ascii")
@@ -283,28 +259,28 @@ def serialize_office_image(
                 "Using placeholder instead."
             )
             return serialize_vector_part_with_placeholder(part_name, content_type)
-        rendered = _serialize_cross_platform_metafile(
+        rendered = _serialize_metafile(
             image_data,
             image_format,
-            size_hint=_render_size_from_emu(render_size_emu),
+            size_hint=_render_size_from_emu(render_size_emu, dpi=VECTOR_IMAGE_RENDER_DPI),
         )
         if rendered is not None:
             return rendered
-        if is_windows_environment():
-            native = _serialize_native_metafile(image_data, image_format)
-            if native is not None:
-                return native
         return serialize_vector_part_with_placeholder(part_name, content_type)
 
     try:
         pil_image = Image.open(BytesIO(image_data))
+        if is_vector_image(pil_image):
+            rendered = _serialize_metafile(
+                image_data,
+                str(pil_image.format),
+                size_hint=_render_size_from_emu(render_size_emu, dpi=VECTOR_IMAGE_RENDER_DPI),
+            )
+            return rendered if rendered is not None else get_standard_vector_placeholder_data_uri()
         pil_image.load()
     except PIL_IMAGE_LOAD_ERRORS as e:
         logger.warning(f"Warning: image cannot be loaded by Pillow: {e}, part_name={part_name}, content_type={content_type}")
         return None
-
-    if is_vector_image(pil_image):
-        return serialize_vector_image_with_placeholder(pil_image)
 
     if pil_image.mode == "RGB":
         return image_to_b64str(pil_image, image_format="JPEG")

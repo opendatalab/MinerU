@@ -40,8 +40,8 @@ def _generated_svg(*, logical_size: tuple[int, int] = (7, 5), fallback_size: tup
     width, height = logical_size
     return (
         f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
-        f'viewBox="0 0 {width} {height}" data-mineru-generated="wmf-emf">'
-        f'<metadata id="mineru-raster-fallback" data-mime="image/png">{fallback}</metadata>'
+        f'viewBox="0 0 {width} {height}" data-metafile-render="wmf-emf">'
+        f'<metadata id="metafile-render-raster-fallback" data-mime="image/png">{fallback}</metadata>'
         f'<path d="M 0 0 L {width} 0 L {width} {height} Z" fill="#000000"/>'
         "</svg>"
     ).encode()

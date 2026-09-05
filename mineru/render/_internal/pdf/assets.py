@@ -15,7 +15,7 @@ from ...contracts import AssetResolver
 from ....types import ImagePayloadBlock
 from ....utils.image_payload import (
     MAX_IMAGE_PAYLOAD_BYTES,
-    extract_mineru_generated_svg_fallback,
+    extract_generated_svg_fallback,
     parse_image_data_uri_strict,
     validate_decoded_raster_size,
     validate_image_sidecar_path,
@@ -94,7 +94,7 @@ def prepare_image_bytes(data: bytes, *, declared_extension: str | None = None) -
     expected_extension = _normalize_extension(declared_extension)
     if expected_extension == "svg" or _looks_like_svg(data):
         try:
-            fallback, logical_width, logical_height = extract_mineru_generated_svg_fallback(data)
+            fallback, logical_width, logical_height = extract_generated_svg_fallback(data)
         except ValueError as exc:
             raise PdfAssetError("SVG images require a validated MinerU PNG fallback") from exc
         prepared = prepare_image_bytes(fallback, declared_extension="png")

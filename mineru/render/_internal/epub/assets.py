@@ -17,7 +17,7 @@ from ....types import ImagePayloadBlock
 from ....utils.image_payload import (
     MAX_IMAGE_DATA_URI_BYTES,
     MAX_IMAGE_PAYLOAD_BYTES,
-    extract_mineru_generated_svg_fallback,
+    extract_generated_svg_fallback,
     normalize_image_extension,
     parse_image_data_uri_strict,
     validate_decoded_raster_size,
@@ -148,7 +148,7 @@ def _prepare_epub_image(data: bytes, *, declared_extension: str | None) -> tuple
     if expected == "svg" or _SVG_START_RE.match(data[:4096]) is not None:
         if expected not in {None, "svg"}:
             raise ValueError("Image bytes do not match the declared format")
-        fallback, _, _ = extract_mineru_generated_svg_fallback(data)
+        fallback, _, _ = extract_generated_svg_fallback(data)
         return _prepare_epub_image(fallback, declared_extension="png")
 
     try:
