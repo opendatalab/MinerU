@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 import inspect
+import weakref
 
 import pytest
 
@@ -24,7 +25,7 @@ from mineru.model.flash.pdf import (
     titles,
     visual_annotations,
 )
-from mineru.model.flash.pdf.document import PDFImageInfo
+from mineru.model.flash.pdf.document import PDFImageInfo, PDFPageTextGeometry
 
 from _flash_pdf_test_utils import (
     _prepared_text_page,
@@ -761,3 +762,54 @@ def test_numbered_formula_rows_are_not_claimed_as_index() -> None:
 
     assert sum(block["type"] == "equation" for block in blocks) == 6
     assert not [block for block in blocks if block["type"] == "index"]
+
+
+@pytest.mark.parametrize("retain_formula", [False, True])
+def test_document_preparation_releases_sources_but_keeps_formula_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+    retain_formula: bool,
+) -> None:
+    """页面准备释放原始字符所有者，同时保留公式重建明确持有的独立副本。"""
+
+    class TrackedChar(dict):
+        """允许弱引用观察字符字典的实际存活期。"""
+
+    references: list[weakref.ReferenceType[TrackedChar]] = []
+
+    def sources() -> pipeline._DocumentSources:
+        """在独立作用域构建字符来源，避免测试局部变量额外延长存活期。"""
+
+        chars = [TrackedChar(char="x", char_idx=0, bbox=(10.0, 20.0, 20.0, 30.0))]
+        references.append(weakref.ref(chars[0]))
+        return pipeline._DocumentSources(
+            [models._PageSource((100.0, 100.0), [], chars, [])],
+            [PDFPageTextGeometry(chars, {}, {})],
+            [(100.0, 100.0)],
+            [[]],
+            [[]],
+        )
+
+    def prepare(source: models._PageSource, **kwargs: object) -> models._PreparedPage:
+        """仅保留模拟公式重建需要的字符副本，其它原始引用应被释放。"""
+
+        prepared = models._PreparedPage(source.page_size, [], [], [], [])
+        if retain_formula:
+            prepared.canonical_formula_source_lines.append(
+                models._LineItem(
+                    text="x",
+                    bbox=(10.0, 20.0, 20.0, 30.0),
+                    angle=0,
+                    source_index=0,
+                    chars=list(source.chars),
+                )
+            )
+        return prepared
+
+    monkeypatch.setattr(pipeline, "_prepare_page_source", prepare)
+    raw = sources()
+    prepared = pipeline._prepare_document_sources(raw)
+    assert raw.page_sources == []
+    assert raw.page_text_geometries == []
+    assert (references[0]() is not None) == retain_formula
+    prepared[0].canonical_formula_source_lines.clear()
+    assert references[0]() is None
