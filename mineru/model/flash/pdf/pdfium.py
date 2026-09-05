@@ -45,7 +45,7 @@ def close_pdfium_child(pdfium_obj: Any) -> None:
             close()
 
 
-def close_pdfium_objects_safely(*pdfium_objs, owner: str = "pdfium cleanup") -> None:
+def close_pdfium_objects_safely(*pdfium_objs: object, owner: str = "pdfium cleanup") -> None:
     """清理多个 PDFium 对象时逐个尝试关闭，避免前一个关闭失败阻断后续对象释放。"""
     for pdfium_obj in pdfium_objs:
         if pdfium_obj is None:

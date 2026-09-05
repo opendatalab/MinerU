@@ -13,7 +13,7 @@ from typing import Literal
 
 
 from ....types import BBox
-from .text_styles import (
+from .inline.types import (
     PDF_FONT_FORCE_BOLD_FLAG,
     PDF_FONT_ITALIC_FLAG,
 )

@@ -17,6 +17,7 @@ from pdftext.schema import Char
 from ....types import BBox
 from .document import PDFDocument, PDFDrawingLine
 
+from .typography import _normalized_font_family
 from .models import (
     _AxisLine,
     _LineItem,
@@ -647,17 +648,6 @@ def _detect_leading_emphasis_width(
 
     prefix_bbox = _bbox_union_many([bbox for bbox, _signature, _weight in prefix])
     return max(0.1, prefix_bbox[2] - prefix_bbox[0])
-
-
-def _normalized_font_family(
-    signature: tuple[str, int] | None,
-) -> str | None:
-    """移除 PDF 子集前缀并归一化字体族，供行首排版切换判断使用。"""
-
-    if signature is None:
-        return None
-    name = re.sub(r"^[A-Z]{6}\+", "", signature[0])
-    return re.sub(r"[\s_-]+", "", name).casefold() or None
 
 
 def _detect_leading_typography_width(

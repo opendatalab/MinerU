@@ -18,6 +18,7 @@ from mineru.backend.analysis.pdf.text.models import _AnalyzeLine, _AnalyzeSpan
 from mineru.backend.analysis.pdf.text.native import txt_spans_extract
 from mineru.backend.postprocess.pages import model_json_to_pages
 from mineru.model.flash import PdfModel
+from mineru.model.flash.pdf.inline import matching as inline_matching
 from mineru.model.flash.pdf import models, native_text, text_styles as flash_text_styles
 from mineru.render import render_docx, render_html, render_markdown, render_structured_content
 from mineru.types import (
@@ -363,7 +364,7 @@ def test_resplit_text_evidence_preserves_identity_and_unsafe_mapping(
     original_links = [link_line]
     warnings: list[str] = []
     monkeypatch.setattr(
-        flash_text_styles,
+        inline_matching,
         "logger",
         SimpleNamespace(warning=warnings.append),
     )
