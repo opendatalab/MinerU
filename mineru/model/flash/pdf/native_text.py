@@ -811,23 +811,28 @@ def _merge_native_inline_scripts(
 
     candidates: list[tuple[float, int, int, Literal["prefix", "suffix"]]] = []
     detached_candidate_pairs: set[tuple[int, int, Literal["prefix", "suffix"]]] = set()
+    # 候选生成期间行不会修改，按本轮索引缓存字符统计，避免每对行重算字号中位数。
+    compact_texts = ["".join(char for char in line.text if not char.isspace()) for line in lines]
+    reference_markers = [_INLINE_REFERENCE_MARKER_RE.fullmatch(text) is not None for text in compact_texts]
+    local_bboxes = [_rotate_bbox_to_upright(line.bbox, page_size, line.angle) for line in lines]
+    canonical_scales = [_native_typographic_scale(line) for line in lines]
     for small_index, small in enumerate(lines):
-        compact_text = "".join(char for char in small.text if not char.isspace())
+        compact_text = compact_texts[small_index]
         if not compact_text:
             continue
-        small_local_bbox = _rotate_bbox_to_upright(small.bbox, page_size, small.angle)
+        small_local_bbox = local_bboxes[small_index]
         for base_index, base in enumerate(lines):
             if small_index == base_index or small.angle != base.angle or small.visual_row_id == base.visual_row_id:
                 continue
             if small.effective_height <= 0 or base.effective_height <= 0:
                 continue
-            canonical_small_scale = _native_typographic_scale(small)
-            canonical_base_scale = _native_typographic_scale(base)
+            canonical_small_scale = canonical_scales[small_index]
+            canonical_base_scale = canonical_scales[base_index]
             legacy_small_scale = max(0.1, small.effective_height)
             legacy_base_scale = max(0.1, base.effective_height)
             legacy_ratio = legacy_small_scale / legacy_base_scale
             use_canonical_reference_scale = (
-                _INLINE_REFERENCE_MARKER_RE.fullmatch(compact_text) is not None
+                reference_markers[small_index]
                 and not 0.35 <= legacy_ratio <= 0.8
                 and 0.35 <= canonical_small_scale / canonical_base_scale <= 0.8
             )
@@ -838,7 +843,7 @@ def _merge_native_inline_scripts(
                 continue
             if len(compact_text) > 8 and small_local_bbox[2] - small_local_bbox[0] > 3.0 * base_scale:
                 continue
-            base_local_bbox = _rotate_bbox_to_upright(base.bbox, page_size, base.angle)
+            base_local_bbox = local_bboxes[base_index]
             vertical_overlap = max(
                 0.0,
                 min(small_local_bbox[3], base_local_bbox[3]) - max(small_local_bbox[1], base_local_bbox[1]),

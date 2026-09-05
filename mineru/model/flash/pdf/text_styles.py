@@ -1610,14 +1610,14 @@ def _script_line_char_roles(
         local_origins,
         memberships,
     )
-    strong_structural_roles = _strong_structural_script_roles(
-        local_chars,
-        local_tight_bboxes,
-        local_origins,
-    )
     if bool(getattr(line, "compact_formula_cluster", False)) or (
         bool(getattr(line, "restored_inline_cluster", False)) and bool(regions)
     ):
+        strong_structural_roles = _strong_structural_script_roles(
+            local_chars,
+            local_tight_bboxes,
+            local_origins,
+        )
         roles = [strong_structural_roles.get(index, "body") for index in range(len(roles))]
     for index, char in enumerate(chars):
         char_idx = char.get("char_idx")

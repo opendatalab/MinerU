@@ -63,8 +63,14 @@ def _merge_same_baseline_text_lines(
         if left_root != right_root:
             parents[right_root] = left_root
 
+    # 只枚举满足必要分类条件的行对，组内仍按原索引递增，保持并查集认领顺序。
+    compatible_indices: dict[tuple[int, bool, str | None], list[int]] = {}
+    for index, line in enumerate(lines):
+        compatible_indices.setdefault((line.angle, line.formula_candidate_only, line.semantic_type), []).append(index)
     for left_index, left_line in enumerate(lines):
-        for right_index in range(left_index + 1, len(lines)):
+        for right_index in compatible_indices[(left_line.angle, left_line.formula_candidate_only, left_line.semantic_type)]:
+            if right_index <= left_index:
+                continue
             right_line = lines[right_index]
             if _can_merge_same_baseline_pair(
                 left_line,
@@ -531,8 +537,6 @@ def _can_merge_same_baseline_pair(
         return False
     if first.visual_row_id == second.visual_row_id and (first.split_from_row or second.split_from_row):
         return False
-    if _connection_crosses_table(first.bbox, second.bbox, table_bboxes):
-        return False
     first_height = _line_effective_height(first, first_bbox)
     second_height = _line_effective_height(second, second_bbox)
     has_compatible_dominant_font = not (
@@ -548,13 +552,13 @@ def _can_merge_same_baseline_pair(
         second_bbox,
         second_height,
     ):
-        return True
+        return not _connection_crosses_table(first.bbox, second.bbox, table_bboxes)
     return _touching_same_baseline_geometry(
         first_bbox,
         first_height,
         second_bbox,
         second_height,
-    )
+    ) and not _connection_crosses_table(first.bbox, second.bbox, table_bboxes)
 
 
 def _touching_same_baseline_geometry(
