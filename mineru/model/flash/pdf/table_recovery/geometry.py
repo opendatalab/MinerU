@@ -6,20 +6,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 
 from .....types import BBox
-
-
-def normalize_bbox(value: object) -> BBox | None:
-    """把任意四元组规范为有效浮点 bbox，异常或退化框返回空。"""
-
-    try:
-        x0, y0, x1, y1 = [float(item) for item in value]  # type: ignore[arg-type]
-    except (TypeError, ValueError):
-        return None
-    left, right = sorted((x0, x1))
-    top, bottom = sorted((y0, y1))
-    if right <= left or bottom <= top:
-        return None
-    return left, top, right, bottom
+from ..table_geometry import normalize_bbox as normalize_bbox, rotate_local_bbox as rotate_local_bbox
 
 
 def normalize_angle(value: object) -> int:
@@ -81,24 +68,6 @@ def bbox_center(bbox: BBox) -> tuple[float, float]:
     """返回 bbox 的中心坐标。"""
 
     return (bbox[0] + bbox[2]) / 2.0, (bbox[1] + bbox[3]) / 2.0
-
-
-def rotate_local_bbox(
-    bbox: BBox,
-    width: float,
-    height: float,
-    angle: int,
-) -> BBox:
-    """把表格裁剪框内 bbox 转换到正向表格局部坐标。"""
-
-    x0, y0, x1, y1 = bbox
-    if angle == 270:
-        return height - y1, x0, height - y0, x1
-    if angle == 90:
-        return y0, width - x1, y1, width - x0
-    if angle == 180:
-        return width - x1, height - y1, width - x0, height - y0
-    return bbox
 
 
 def page_bbox_to_table_local(

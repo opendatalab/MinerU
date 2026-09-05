@@ -27,7 +27,7 @@ from .table_recovery.contracts import (
 )
 from .table_recovery.geometry import page_bbox_to_table_local
 from .table_recovery.text import build_cell_text_parts
-from .text_styles import _fraction_member_indices, _script_line_char_roles
+from .inline.scripts import _fraction_member_indices, _script_line_char_roles
 
 
 def _table_char_map(chars: tuple[Char, ...]) -> dict[int, Char]:

@@ -11,18 +11,16 @@ from typing import Any
 from ....types import BBox
 from .._shared.xycut import sort_entries
 from .document import PDFDocument, PDFImageInfo, PDFPageTextGeometry, get_lines_from_chars
-from .text_styles import (
-    PDFTextLinkLine,
-    PDFTextStyleLine,
+from .inline.detection import detect_pdf_text_link_lines, detect_pdf_text_style_lines
+from .inline.matching import _realign_repaired_text_evidence
+from .inline.materialize import (
     apply_pdf_text_links,
     apply_pdf_text_scripts,
     apply_pdf_text_styles,
-    detect_pdf_text_script_lines,
-    detect_pdf_text_link_lines,
-    detect_pdf_text_style_lines,
     materialize_pdf_inline_spans,
-    _realign_repaired_text_evidence,
 )
+from .inline.scripts import detect_pdf_text_script_lines
+from .inline.types import PDFTextLinkLine, PDFTextStyleLine
 
 from .models import (
     _AxisLine,
@@ -354,7 +352,9 @@ def _collect_document_sources(pdf_doc: PDFDocument) -> _DocumentSources:
     watermark_fingerprints = _detect_repeated_raster_watermark_fingerprints(page_image_infos, page_sizes)
     for source, image_infos in zip(page_sources, page_image_infos, strict=True):
         source.image_bboxes = _filter_repeated_raster_watermark_bboxes(
-            image_infos, source.page_size, watermark_fingerprints,
+            image_infos,
+            source.page_size,
+            watermark_fingerprints,
         )
 
     return _DocumentSources(page_sources, page_text_geometries, page_sizes, page_style_lines, page_link_lines)
@@ -390,17 +390,19 @@ def _prepare_document_sources(
     while pending:
         page_index = len(prepared_pages)
         source, geometry = pending.popleft()
-        prepared_pages.append(_prepare_page_source(
-            source,
-            tight_bboxes=geometry.tight_bboxes,
-            origins=geometry.origins,
-            geometry_plan=geometry_plan,
-            page_index=page_index,
-            style_lines=sources.page_style_lines[page_index],
-            link_lines=sources.page_link_lines[page_index],
-            table_header_separator_bboxes=separators[page_index],
-            repaired_char_bboxes=repaired_chars_by_page.pop(page_index, {}),
-        ))
+        prepared_pages.append(
+            _prepare_page_source(
+                source,
+                tight_bboxes=geometry.tight_bboxes,
+                origins=geometry.origins,
+                geometry_plan=geometry_plan,
+                page_index=page_index,
+                style_lines=sources.page_style_lines[page_index],
+                link_lines=sources.page_link_lines[page_index],
+                table_header_separator_bboxes=separators[page_index],
+                repaired_char_bboxes=repaired_chars_by_page.pop(page_index, {}),
+            )
+        )
         # 删除对象所有者引用，不清空共享字符容器，公式重建副本仍可安全使用。
         del source, geometry
     return prepared_pages
