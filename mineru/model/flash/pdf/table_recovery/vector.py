@@ -1152,27 +1152,57 @@ def _looks_like_single_column_tracks(
     )
 
 
-def _build_vector_candidate(
+@dataclass(frozen=True, slots=True)
+class _VectorTracks:
+    """保存已通过别名、尺寸和物理行数校验的规范轨道。"""
+
+    snap_tolerance: float
+    local_width: float
+    rules: list[_MergedRule]
+    canonical_x_tracks: list[_CanonicalTrack]
+    canonical_y_tracks: list[_CanonicalTrack]
+    x_tracks: list[float]
+    y_tracks: list[float]
+    narrow_empty_threshold: float
+    is_line_grid: bool
+    is_single_row_shape: bool
+    is_single_column_shape: bool
+    rows: int
+    cols: int
+
+
+@dataclass(frozen=True, slots=True)
+class _VectorTopology:
+    """保存隔断连接后的逻辑单元格及独立物理证据。"""
+
+    specs: tuple[GridCellSpec, ...]
+    separator_decisions: list[float]
+    ambiguous_ratio: float
+    alias_separator_recoveries: int
+    y_alias_separator_recoveries: int
+    alias_affected_rows: set[int]
+    single_row_evidence: _SingleRowEvidence | None
+    single_column_evidence: _SingleColumnEvidence | None
+
+
+def _reject_vector_candidate(diagnostics: dict[str, Any] | None, gate: str) -> None:
+    """记录当前假设的首个拒绝门，供各显式阶段保留统一诊断行为。"""
+
+    if diagnostics is not None:
+        diagnostics["first_rejection_gate"] = gate
+    return None
+
+
+def _build_vector_tracks(
     table_input: NativeTableInput,
     text: NativeTableText,
     *,
     include_drawing: bool,
     include_rectangles: bool,
-    evidence_label: str,
-    prune_unsupported_horizontal: bool = False,
-    diagnostics: dict[str, Any] | None = None,
-) -> NativeTableCandidate | None:
-    """按单一证据来源构造一个显式 rowspan/colspan 候选。"""
-
-    if diagnostics is not None:
-        diagnostics["evidence"] = evidence_label
-
-    def reject(gate: str) -> None:
-        """记录当前假设的首个拒绝门并返回空候选。"""
-
-        if diagnostics is not None:
-            diagnostics["first_rejection_gate"] = gate
-        return None
+    prune_unsupported_horizontal: bool,
+    diagnostics: dict[str, Any] | None,
+) -> _VectorTracks | None:
+    """构造并规范化轨道，保持 halo、别名及物理行数的原有拒绝顺序。"""
 
     snap_tolerance = clamp(
         0.08 * text.median_glyph_height,
@@ -1195,7 +1225,7 @@ def _build_vector_candidate(
     )
     table_bbox = normalize_bbox(table_input.table_bbox)
     if table_bbox is None:
-        return reject("table_geometry")
+        return _reject_vector_candidate(diagnostics, "table_geometry")
     local_width, local_height = table_local_size(
         table_bbox,
         normalize_angle(table_input.angle),
@@ -1208,7 +1238,7 @@ def _build_vector_candidate(
         evidence_halo=0.0,
     )
     if not exact_fragments or len(exact_fragments) > MAX_PRIMITIVES_PER_TABLE:
-        return reject("raw_fragments")
+        return _reject_vector_candidate(diagnostics, "raw_fragments")
     exact_rules = _merge_rule_fragments(
         exact_fragments,
         snap_tolerance,
@@ -1295,7 +1325,7 @@ def _build_vector_candidate(
             snap_tolerance,
         )
     ):
-        return reject("rect_lattice")
+        return _reject_vector_candidate(diagnostics, "rect_lattice")
     line_widths = [rule.width for rule in table_input.drawing_lines if rule.width > 0]
     median_line_width = float(statistics.median(line_widths)) if line_widths else 0.0
     narrow_empty_threshold = max(
@@ -1347,7 +1377,7 @@ def _build_vector_candidate(
             snap_tolerance,
         )
     ):
-        return reject("canonical_alias")
+        return _reject_vector_candidate(diagnostics, "canonical_alias")
     x_tracks = _canonical_track_coordinates(canonical_x_tracks)
     y_tracks = _canonical_track_coordinates(canonical_y_tracks)
     if diagnostics is not None:
@@ -1373,7 +1403,7 @@ def _build_vector_candidate(
         right - left <= narrow_empty_threshold and not any(left < center < right for center in glyph_centers_x)
         for left, right in zip(x_tracks, x_tracks[1:])
     ):
-        return reject("remaining_narrow_track")
+        return _reject_vector_candidate(diagnostics, "remaining_narrow_track")
     if any(
         bottom_track.coordinate - top_track.coordinate <= narrow_empty_threshold
         and not any(top_track.coordinate < center < bottom_track.coordinate for center in glyph_centers_y)
@@ -1400,7 +1430,7 @@ def _build_vector_candidate(
             canonical_y_tracks[1:],
         )
     ):
-        return reject("remaining_narrow_track")
+        return _reject_vector_candidate(diagnostics, "remaining_narrow_track")
     is_line_grid = include_drawing and not include_rectangles
     is_single_row_shape = is_line_grid and len(y_tracks) == 2 and len(x_tracks) >= 3
     is_single_column_shape = is_line_grid and len(x_tracks) == 2 and len(y_tracks) >= 3
@@ -1410,13 +1440,13 @@ def _build_vector_candidate(
         or len(x_tracks) > MAX_TRACKS_PER_AXIS
         or len(y_tracks) > MAX_TRACKS_PER_AXIS
     ):
-        return reject("track_count")
+        return _reject_vector_candidate(diagnostics, "track_count")
     rows = len(y_tracks) - 1
     cols = len(x_tracks) - 1
     if diagnostics is not None:
         diagnostics["grid"] = {"rows": rows, "cols": cols}
     if rows * cols > MAX_ATOMIC_CELLS:
-        return reject("atomic_cell_limit")
+        return _reject_vector_candidate(diagnostics, "atomic_cell_limit")
     dense_baseline_pairs = (
         _physical_row_dense_baseline_pairs(
             text,
@@ -1429,7 +1459,43 @@ def _build_vector_candidate(
     if diagnostics is not None:
         diagnostics["physical_row_dense_baseline_pairs"] = list(dense_baseline_pairs)
     if dense_baseline_pairs:
-        return reject("physical_row_undercount")
+        return _reject_vector_candidate(diagnostics, "physical_row_undercount")
+
+    return _VectorTracks(
+        snap_tolerance=snap_tolerance,
+        local_width=local_width,
+        rules=rules,
+        canonical_x_tracks=canonical_x_tracks,
+        canonical_y_tracks=canonical_y_tracks,
+        x_tracks=x_tracks,
+        y_tracks=y_tracks,
+        narrow_empty_threshold=narrow_empty_threshold,
+        is_line_grid=is_line_grid,
+        is_single_row_shape=is_single_row_shape,
+        is_single_column_shape=is_single_column_shape,
+        rows=rows,
+        cols=cols,
+    )
+
+
+def _build_vector_topology(
+    tracks: _VectorTracks,
+    text: NativeTableText,
+    diagnostics: dict[str, Any] | None,
+) -> _VectorTopology | None:
+    """连接原子格并验证矩形拓扑，保留单行和单列的独立物理证据。"""
+
+    snap_tolerance = tracks.snap_tolerance
+    rules = tracks.rules
+    canonical_x_tracks = tracks.canonical_x_tracks
+    canonical_y_tracks = tracks.canonical_y_tracks
+    x_tracks = tracks.x_tracks
+    y_tracks = tracks.y_tracks
+    narrow_empty_threshold = tracks.narrow_empty_threshold
+    is_single_row_shape = tracks.is_single_row_shape
+    is_single_column_shape = tracks.is_single_column_shape
+    rows = tracks.rows
+    cols = tracks.cols
 
     union_find = _UnionFind(rows * cols)
     separator_decisions: list[float] = []
@@ -1517,7 +1583,7 @@ def _build_vector_candidate(
         diagnostics["y_alias_separator_recoveries"] = y_alias_separator_recoveries
         diagnostics["alias_affected_rows"] = sorted(alias_affected_rows)
     if ambiguous_ratio > 0.05:
-        return reject("ambiguous_separator")
+        return _reject_vector_candidate(diagnostics, "ambiguous_separator")
 
     single_row_evidence: _SingleRowEvidence | None = None
     if is_single_row_shape:
@@ -1541,7 +1607,7 @@ def _build_vector_candidate(
                 "glyph_crossing": single_row_evidence.glyph_crossing,
             }
         if not single_row_evidence.verified:
-            return reject("single_row_physical_evidence")
+            return _reject_vector_candidate(diagnostics, "single_row_physical_evidence")
 
     single_column_evidence: _SingleColumnEvidence | None = None
     if is_single_column_shape:
@@ -1565,7 +1631,7 @@ def _build_vector_candidate(
                 "glyph_crossing": single_column_evidence.glyph_crossing,
             }
         if not single_column_evidence.verified:
-            return reject("single_column_physical_evidence")
+            return _reject_vector_candidate(diagnostics, "single_column_physical_evidence")
 
     specs = _build_component_specs(
         union_find,
@@ -1575,11 +1641,55 @@ def _build_vector_candidate(
         y_tracks,
     )
     if specs is None:
-        return reject("nonrectangular_topology")
+        return _reject_vector_candidate(diagnostics, "nonrectangular_topology")
     maximum_row_cells = max(sum(spec.row <= row_index < spec.row + spec.rowspan for spec in specs) for row_index in range(rows))
     maximum_col_cells = max(sum(spec.col <= col_index < spec.col + spec.colspan for spec in specs) for col_index in range(cols))
     if (maximum_row_cells < 2 and not is_single_column_shape) or (maximum_col_cells < 2 and not is_single_row_shape):
-        return reject("degenerate_grid")
+        return _reject_vector_candidate(diagnostics, "degenerate_grid")
+    return _VectorTopology(
+        specs=specs,
+        separator_decisions=separator_decisions,
+        ambiguous_ratio=ambiguous_ratio,
+        alias_separator_recoveries=alias_separator_recoveries,
+        y_alias_separator_recoveries=y_alias_separator_recoveries,
+        alias_affected_rows=alias_affected_rows,
+        single_row_evidence=single_row_evidence,
+        single_column_evidence=single_column_evidence,
+    )
+
+
+def _materialize_vector_candidate(
+    tracks: _VectorTracks,
+    topology: _VectorTopology,
+    text: NativeTableText,
+    evidence_label: str,
+    diagnostics: dict[str, Any] | None,
+) -> NativeTableCandidate | None:
+    """将文本落格并评分，按原顺序执行完整性与空行发布门。"""
+
+    snap_tolerance = tracks.snap_tolerance
+    local_width = tracks.local_width
+    rules = tracks.rules
+    canonical_x_tracks = tracks.canonical_x_tracks
+    canonical_y_tracks = tracks.canonical_y_tracks
+    x_tracks = tracks.x_tracks
+    y_tracks = tracks.y_tracks
+    narrow_empty_threshold = tracks.narrow_empty_threshold
+    is_line_grid = tracks.is_line_grid
+    is_single_row_shape = tracks.is_single_row_shape
+    is_single_column_shape = tracks.is_single_column_shape
+    rows = tracks.rows
+    cols = tracks.cols
+
+    specs = topology.specs
+    separator_decisions = topology.separator_decisions
+    ambiguous_ratio = topology.ambiguous_ratio
+    alias_separator_recoveries = topology.alias_separator_recoveries
+    y_alias_separator_recoveries = topology.y_alias_separator_recoveries
+    alias_affected_rows = topology.alias_affected_rows
+    single_row_evidence = topology.single_row_evidence
+    single_column_evidence = topology.single_column_evidence
+
     decisiveness = float(statistics.mean(separator_decisions)) if separator_decisions else 1.0
     if single_row_evidence is not None:
         decisiveness = max(
@@ -1684,11 +1794,11 @@ def _build_vector_candidate(
             if diagnostics is not None and diagnostics.get("candidate_rejection_gate")
             else "candidate_hard_gate"
         )
-        return reject(candidate_gate)
+        return _reject_vector_candidate(diagnostics, candidate_gate)
     if is_single_row_shape and (candidate.text_capture < 1.0 or candidate.order_consistency < 1.0):
-        return reject("single_row_text_integrity")
+        return _reject_vector_candidate(diagnostics, "single_row_text_integrity")
     if is_single_column_shape and (candidate.text_capture < 1.0 or candidate.order_consistency < 1.0):
-        return reject("single_column_text_integrity")
+        return _reject_vector_candidate(diagnostics, "single_column_text_integrity")
     row_content_support = [
         sum(bool(cell.content.strip()) for cell in candidate.cells if cell.row <= row_index < cell.row + cell.rowspan)
         for row_index in range(candidate.rows)
@@ -1702,12 +1812,42 @@ def _build_vector_candidate(
         ):
             if diagnostics is not None:
                 diagnostics["empty_rows"] = sorted(empty_rows)
-            return reject("empty_row")
+            return _reject_vector_candidate(diagnostics, "empty_row")
     if diagnostics is not None:
         diagnostics["first_rejection_gate"] = None
         diagnostics["score"] = candidate.score
         diagnostics["empty_rows"] = sorted(empty_rows)
     return candidate
+
+
+def _build_vector_candidate(
+    table_input: NativeTableInput,
+    text: NativeTableText,
+    *,
+    include_drawing: bool,
+    include_rectangles: bool,
+    evidence_label: str,
+    prune_unsupported_horizontal: bool = False,
+    diagnostics: dict[str, Any] | None = None,
+) -> NativeTableCandidate | None:
+    """按轨道、拓扑、文本落格及评分的固定顺序构造矢量候选。"""
+
+    if diagnostics is not None:
+        diagnostics["evidence"] = evidence_label
+    tracks = _build_vector_tracks(
+        table_input,
+        text,
+        include_drawing=include_drawing,
+        include_rectangles=include_rectangles,
+        prune_unsupported_horizontal=prune_unsupported_horizontal,
+        diagnostics=diagnostics,
+    )
+    if tracks is None:
+        return None
+    topology = _build_vector_topology(tracks, text, diagnostics)
+    if topology is None:
+        return None
+    return _materialize_vector_candidate(tracks, topology, text, evidence_label, diagnostics)
 
 
 def build_vector_candidates(

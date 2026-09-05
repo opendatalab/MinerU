@@ -73,7 +73,7 @@ def test_explicit_section_number_rejects_century_and_decimal_sentence() -> None:
         _text_line("0.26 value, continues", (0.0, 96.0, 100.0, 106.0), 5, font_signature=body_font),
         _text_line("ordinary body four", (0.0, 108.0, 100.0, 118.0), 6, font_signature=body_font),
     ]
-    profile = titles._DocumentBodyProfile(
+    profile = models._DocumentBodyProfile(
         body_height=10.0,
         body_weight=400.0,
         regular_fonts=frozenset({body_font}),
@@ -172,7 +172,7 @@ def test_noninitial_document_title_requires_paragraph_title_candidate() -> None:
         font_signature=body_font,
         font_coverage=1.0,
     )
-    profile = titles._DocumentBodyProfile(
+    profile = models._DocumentBodyProfile(
         body_height=10.0,
         body_weight=400.0,
         regular_fonts=frozenset({body_font}),
@@ -290,7 +290,7 @@ def test_noninitial_document_titles_support_multiple_articles_without_metadata()
             page_size=(100.0, 150.0),
         ),
     ]
-    profile = titles._DocumentBodyProfile(
+    profile = models._DocumentBodyProfile(
         body_height=10.0,
         body_weight=400.0,
         regular_fonts=frozenset({body_font}),
@@ -389,7 +389,7 @@ def test_body_height_section_titles_mark_only_repeated_short_anchors() -> None:
         lines,
         (100.0, 280.0),
         container_bboxes=[(0.0, 128.0, 100.0, 180.0)],
-        document_body_profile=titles._DocumentBodyProfile(
+        document_body_profile=models._DocumentBodyProfile(
             body_height=10.0,
             body_weight=250.0,
             regular_fonts=frozenset({body_font}),
@@ -437,7 +437,7 @@ def test_grid_title_suppression_requires_two_distinct_parallel_bands() -> None:
         )
         source_index += 1
         lanes.append(
-            titles._TextLane(
+            models._TextLane(
                 left=left,
                 right=left + 100.0,
                 lines=[
@@ -792,7 +792,7 @@ def test_subset_font_visual_row_continues_into_short_body_tail() -> None:
         font_coverage=1.0,
     )
     rows = [(line, line.bbox) for line in (first, second, tail)]
-    profile = titles._LaneBodyProfile(
+    profile = models._LaneBodyProfile(
         body_height=10.0,
         body_font=("ABCDEF+SimSun", 0),
         body_weight=400.0,

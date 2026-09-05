@@ -104,25 +104,25 @@ from .auxiliary_text import (
     _marginal_geometry_matches,
     _marginal_text_matches,
 )
-from .titles import (
+from .title_analysis.body_profile import _infer_document_body_profile
+from .title_analysis.document_profile import _infer_document_title_profile
+from .title_analysis.page_titles import _classify_page_titles
+from .title_analysis.structural import (
     _classify_body_height_section_titles,
     _classify_explicit_section_titles,
     _classify_inline_typography_reset_titles,
     _classify_document_structural_titles,
-    _classify_page_titles,
-    _infer_document_body_profile,
-    _infer_document_title_profile,
     _promote_noninitial_document_title_band,
 )
-from .text_blocks import (
-    _build_text_blocks,
+from .text_assembly.annotations import (
     _merge_fragmented_header_blocks,
     _merge_front_matter_column_blocks,
     _merge_image_caption_text_blocks,
-    _merge_internal_text_block_group,
     _merge_multiline_title_blocks,
     _merge_repeated_compact_title_continuations,
 )
+from .text_assembly.assembly import _build_text_blocks
+from .text_assembly.common import _merge_internal_text_block_group
 from .visual_annotations import _classify_and_bind_visual_annotations
 
 
@@ -408,34 +408,17 @@ def _prepare_document_sources(
     return prepared_pages
 
 
-def _analyze_native_document(
-    pdf_doc: PDFDocument,
-    *,
-    script_diagnostics: list[dict[str, Any]] | None = None,
-    geometry_diagnostics: list[dict[str, Any]] | None = None,
-) -> list[list[dict[str, Any]]]:
-    """逐页读取数字 PDF，并在轻量页面上完成跨页文本类型判定。"""
+@dataclass(frozen=True, slots=True)
+class _DocumentTextProfiles:
+    """分别保存原始正文尺度、规范正文尺度及全文标题原型。"""
 
-    sources = _collect_document_sources(pdf_doc)
-    prepared_pages = _prepare_document_sources(sources, geometry_diagnostics=geometry_diagnostics)
-    if script_diagnostics is not None:
-        script_diagnostics.extend(
-            {
-                "page_index": page_index,
-                "page_size": prepared.page_size,
-                "script_lines": list(prepared.script_lines),
-                "lines": [
-                    {
-                        "source_index": line.source_index,
-                        "text": line.text,
-                        "bbox": line.bbox,
-                        "angle": line.angle,
-                    }
-                    for line in prepared.remaining_lines
-                ],
-            }
-            for page_index, prepared in enumerate(prepared_pages)
-        )
+    body: _DocumentBodyProfile | None
+    canonical_body: _DocumentBodyProfile | None
+    title: _DocumentTitleProfile | None
+
+
+def _classify_document_text(prepared_pages: list[_PreparedPage]) -> _DocumentTextProfiles:
+    """按既有顺序分类跨页辅助文本，再统计正文并确认结构标题。"""
 
     _classify_repeated_visual_headers(prepared_pages)
     _classify_repeated_page_marginals(prepared_pages)
@@ -466,16 +449,17 @@ def _analyze_native_document(
         legacy_body_profile=document_body_profile,
         document_title_profile=document_title_profile,
     )
-    finalized_pages = [
-        _finalize_prepared_page(
-            prepared,
-            page_index,
-            canonical_body_profile=canonical_body_profile,
-            document_body_profile=document_body_profile,
-            document_title_profile=document_title_profile,
-        )
-        for page_index, prepared in enumerate(prepared_pages)
-    ]
+    return _DocumentTextProfiles(document_body_profile, canonical_body_profile, document_title_profile)
+
+
+def _materialize_document_inline(
+    finalized_pages: list[list[dict[str, Any]]],
+    prepared_pages: list[_PreparedPage],
+    sources: _DocumentSources,
+    script_diagnostics: list[dict[str, Any]] | None,
+) -> None:
+    """在页面归一化后按链接、样式、上下标顺序物化最终行内语义。"""
+
     for page_index, (page_blocks, prepared, style_lines, link_lines, page_size) in enumerate(
         zip(
             finalized_pages,
@@ -499,6 +483,49 @@ def _analyze_native_document(
             materialized_diagnostics=materialized_diagnostics,
         )
         materialize_pdf_inline_spans(page_blocks)
+
+
+def _analyze_native_document(
+    pdf_doc: PDFDocument,
+    *,
+    script_diagnostics: list[dict[str, Any]] | None = None,
+    geometry_diagnostics: list[dict[str, Any]] | None = None,
+) -> list[list[dict[str, Any]]]:
+    """逐页读取数字 PDF，并在轻量页面上完成跨页文本类型判定。"""
+
+    sources = _collect_document_sources(pdf_doc)
+    prepared_pages = _prepare_document_sources(sources, geometry_diagnostics=geometry_diagnostics)
+    if script_diagnostics is not None:
+        script_diagnostics.extend(
+            {
+                "page_index": page_index,
+                "page_size": prepared.page_size,
+                "script_lines": list(prepared.script_lines),
+                "lines": [
+                    {
+                        "source_index": line.source_index,
+                        "text": line.text,
+                        "bbox": line.bbox,
+                        "angle": line.angle,
+                    }
+                    for line in prepared.remaining_lines
+                ],
+            }
+            for page_index, prepared in enumerate(prepared_pages)
+        )
+
+    profiles = _classify_document_text(prepared_pages)
+    finalized_pages = [
+        _finalize_prepared_page(
+            prepared,
+            page_index,
+            canonical_body_profile=profiles.canonical_body,
+            document_body_profile=profiles.body,
+            document_title_profile=profiles.title,
+        )
+        for page_index, prepared in enumerate(prepared_pages)
+    ]
+    _materialize_document_inline(finalized_pages, prepared_pages, sources, script_diagnostics)
     return finalized_pages
 
 
