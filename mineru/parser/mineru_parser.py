@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Literal, cast
 
 from ..backend.analyze import aio_doc_analyze, doc_analyze
+from ..config import VlmConfig, config
 from ..errors import InvalidRequestError
 from ..filetypes import IMAGE_EXTENSIONS, PAGE_RANGE_PARSE_EXTENSIONS
 from ..model.flash.html import HtmlSourceContext
@@ -49,11 +50,14 @@ class MinerUParser(DocumentParser):
         tier: Tier = "standard",
         parse_mode: _ParseMode = "auto",
         image_analysis: bool = True,
+        vlm_config: VlmConfig | None = None,
     ) -> None:
+        """保存当前解析器的 VLM 配置副本，避免其他应用或调用修改连接设置。"""
         self.tier: Tier = tier
         self.effort: _Effort = effort_for_tier(tier)  # type: ignore[assignment]
         self.parse_mode: _ParseMode = parse_mode
         self.image_analysis: bool = image_analysis
+        self.vlm_config = (vlm_config if vlm_config is not None else config.model.vlm).model_copy(deep=True)
 
     def parse(
         self,
@@ -100,6 +104,7 @@ class MinerUParser(DocumentParser):
         return self._build_result(middle_json, model_output)
 
     def _run_analysis(self, prepared: _PreparedInput) -> tuple[MiddleJson, ModelJson]:
+        """将准备后的输入和实例连接配置传入同步分析入口。"""
         return doc_analyze(
             prepared.file_bytes,
             effort=self.effort,
@@ -108,9 +113,11 @@ class MinerUParser(DocumentParser):
             page_index_map=prepared.retained_page_indices,
             file_suffix=prepared.file_suffix,
             source_context=prepared.source_context,
+            vlm_config=self.vlm_config,
         )
 
     async def _arun_analysis(self, prepared: _PreparedInput) -> tuple[MiddleJson, ModelJson]:
+        """将准备后的输入和实例连接配置传入异步分析入口。"""
         return await aio_doc_analyze(
             prepared.file_bytes,
             effort=self.effort,
@@ -119,6 +126,7 @@ class MinerUParser(DocumentParser):
             page_index_map=prepared.retained_page_indices,
             file_suffix=prepared.file_suffix,
             source_context=prepared.source_context,
+            vlm_config=self.vlm_config,
         )
 
     def _prepare_input(

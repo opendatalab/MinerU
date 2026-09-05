@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
+from ..config import VlmConfig
 from ..model.flash.html import HtmlSourceContext
 from ..types import Tier
 from .api_client import ApiJobStatus, MinerUApiParser
@@ -33,9 +34,10 @@ def parse(
     image_analysis: bool = True,
     page_range: str = "",
     source_context: HtmlSourceContext | None = None,
+    vlm_config: VlmConfig | None = None,
 ) -> ParseResult:
     """同步解析文档；source_context 仅供保留 HTML 原始来源的内部调用方使用。"""
-    parser = MinerUParser(tier=tier, parse_mode=ocr_mode, image_analysis=image_analysis)
+    parser = MinerUParser(tier=tier, parse_mode=ocr_mode, image_analysis=image_analysis, vlm_config=vlm_config)
     return parser.parse(path, page_range=page_range, source_context=source_context)
 
 
@@ -47,7 +49,8 @@ async def parse_async(
     image_analysis: bool = True,
     page_range: str = "",
     source_context: HtmlSourceContext | None = None,
+    vlm_config: VlmConfig | None = None,
 ) -> ParseResult:
     """异步解析文档；source_context 仅供保留 HTML 原始来源的内部调用方使用。"""
-    parser = MinerUParser(tier=tier, parse_mode=ocr_mode, image_analysis=image_analysis)
+    parser = MinerUParser(tier=tier, parse_mode=ocr_mode, image_analysis=image_analysis, vlm_config=vlm_config)
     return await parser.parse_async(path, page_range=page_range, source_context=source_context)

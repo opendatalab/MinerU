@@ -7,12 +7,12 @@ import time
 from typing import Any, cast
 
 from ..contracts import AnalysisResult, AnalyzeEffort, ParseMode, ResolvedParseMode
+from ....config import VlmConfig
 from ....model.runtime.hybrid import HybridLocalModelContextSingleton
 from ....model.runtime.memory import clean_memory
-from ....model.vlm.selector import get_vlm_engine
+from ....model.vlm.client import get_vlm_predictor
 from ....model.flash.pdf.document import PDFDocument
 
-from .layout import _load_vlm_runtime
 from .normalization import _normalize_pdf_model_list
 from .window import process_pdf_windows
 
@@ -24,6 +24,7 @@ def analyze_pdf(
     effort: AnalyzeEffort = "high",
     parse_mode: ParseMode = "auto",
     image_analysis: bool = True,
+    vlm_config: VlmConfig | None = None,
 ) -> AnalysisResult:
     """生产 PDF model-list，并返回最终路由元数据和精确推理耗时。"""
     # 只在真实 PDF 分析开始时配置 MPS 回退，避免 import backend 修改进程环境。
@@ -49,14 +50,7 @@ def analyze_pdf(
             hybrid_model = hybrid_model_singleton.get_model()
 
             if effort in ["high", "xhigh"]:
-                vlm_runtime = _load_vlm_runtime()
-                vlm_backend = get_vlm_engine(inference_engine="auto", is_async=False)
-                vlm_predictor = vlm_runtime["ModelSingleton"]().get_model(
-                    backend=vlm_backend,
-                    model_path=None,
-                    server_url=None,
-                )
-                vlm_predictor = vlm_runtime["_maybe_enable_serial_execution"](vlm_predictor, vlm_backend)
+                vlm_predictor, _vlm_backend = get_vlm_predictor(vlm_config)
             else:
                 vlm_predictor = None
 

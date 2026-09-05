@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import sys
 import types
+from pathlib import Path
 
 import pytest
 
 import mineru.parser.api_server as api_server
+from mineru.config import VlmConfig
 
 
 def test_preload_local_models_initializes_conditional_model_families(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -72,6 +74,34 @@ def test_preload_standard_models_initializes_platform_engine_and_local_models(mo
 
     assert result == api_server._ModelPreloadResult(tier="standard", engine="lmdeploy-engine")
     assert calls == [("vlm", "lmdeploy-engine", None, None), ("local", "en")]
+
+
+def test_local_preload_and_parse_reuse_llama_predictor(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """本地预加载与解析共用同步引擎缓存，llama 参数循环不能覆盖模型缓存键。"""
+    from unittest.mock import MagicMock
+
+    from mineru.model.vlm import runtime, selector
+    from mineru.model.vlm.client import get_vlm_predictor
+
+    engine_factory = MagicMock()
+    predictor_factory = MagicMock()
+    engine_module = types.ModuleType("mineru_llama_cpp")
+    engine_module.Engine = engine_factory
+    monkeypatch.setitem(sys.modules, "mineru_llama_cpp", engine_module)
+    monkeypatch.setattr(runtime.ModelSingleton, "_models", {})
+    monkeypatch.setattr(runtime, "MinerUClient", predictor_factory)
+    monkeypatch.setattr(type(runtime.MINERU_2_5_PRO_2605_1_2B), "ensure", lambda self: tmp_path)
+    engine_selector = MagicMock(return_value="llama-cpp-engine")
+    monkeypatch.setattr(selector, "get_vlm_engine", engine_selector)
+    monkeypatch.setattr(api_server, "_preload_local_models", lambda language: None)
+
+    api_server._preload_server_models("standard", language="ch", vlm_config=VlmConfig())
+    predictor, engine = get_vlm_predictor(VlmConfig())
+    assert predictor is predictor_factory.return_value
+    assert engine == "llama-cpp-engine"
+    predictor_factory.assert_called_once()
+    engine_factory.assert_called_once()
+    assert all(call.kwargs == {"is_async": False} for call in engine_selector.call_args_list)
 
 
 @pytest.mark.parametrize(

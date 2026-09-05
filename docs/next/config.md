@@ -24,6 +24,51 @@ MinerU 有两类配置：
 - 默认 DB、日志和 UDS socket 从 `MINERU_HOME` 派生；默认 `data_dir` 是 `$MINERU_HOME/doclib`，其下包含 `parsed/` 和 `temp/`。
 - `MINERU_CONFIG` 仍可显式指定配置文件路径；`MINERU_HOME` 只影响默认 home 和默认配置文件位置。
 
+### 远程 VLM
+
+`model.vlm` 是所有本地解析入口的 VLM 默认配置，适用于 API server、Python
+`parse()` / `parse_async()` 和 `mineru-kit parse`。Standard/Advanced 将 VLM 推理交给
+远程 MinerU OpenAI-compatible 服务，本地继续执行 Hybrid 处理；Flash/Basic 不调用远程 VLM。
+上游须部署支持 MinerU 文档理解输出的模型，并提供 `/v1/models` 和 `/v1/chat/completions`。
+
+```yaml
+model:
+  vlm:
+    server_url: http://127.0.0.1:30000/v1
+    api_key: ${VLM_API_KEY:-}
+    model: ""
+    http_timeout: 600
+    max_concurrency: 100
+```
+
+未配置 `server_url` 或显式设为空字符串时使用本地 VLM。地址可使用 HTTP/HTTPS
+服务根地址或以 `/v1` 结尾的地址；反向代理前缀会保留，例如 `https://host/proxy/v1`
+对应 `https://host/proxy/v1/chat/completions`。URL 不接受内嵌用户名、密码、query 或 fragment。
+`api_key` 可为空；`model` 为空时要求上游模型列表恰好包含一个模型，多模型服务须显式指定模型名。
+显式模型名也会通过模型列表校验。`http_timeout` 单位为秒，`max_concurrency` 是 VLM
+推理请求并发，两者均为正整数；API 的 `--concurrency` 则控制解析任务并发。
+
+环境变量包括 `MINERU_MODEL_VLM_SERVER_URL`、`MINERU_MODEL_VLM_API_KEY`、
+`MINERU_MODEL_VLM_MODEL`、`MINERU_MODEL_VLM_HTTP_TIMEOUT` 和
+`MINERU_MODEL_VLM_MAX_CONCURRENCY`。API 启动时的优先级为：显式启动参数 > 环境变量 >
+YAML > 默认值。启动参数及示例见 [api-server](cli/mineru-kit-api-server.md)。
+
+Python 的 `create_app()`、`MinerUParser`、`parse()` / `parse_async()` 以及底层分析入口
+可传入 `vlm_config: VlmConfig | None`：`None` 使用全局设置；显式对象完整覆盖全局设置。
+应用与解析器各自保存配置副本，不修改全局配置或进程环境。
+
+```python
+from mineru.config import VlmConfig
+from mineru.parser import parse
+
+result = parse("document.pdf", tier="standard")  # 使用全局 model.vlm
+local_result = parse("document.pdf", vlm_config=VlmConfig())  # 本次使用本地 VLM
+```
+
+远程模式不会自动回退本地 VLM。旧底层环境变量 `MINERU_VL_API_KEY`、
+`MINERU_VL_MODEL_NAME` 若与有效的新配置冲突，会明确报错；应清除旧变量并使用上述
+`MINERU_MODEL_VLM_*` 配置。未配置远程地址时，旧 `MINERU_VL_SERVER` 不会启用远程 VLM。
+
 Markdown render 同样读取启动前 `config.yaml`，当前支持以下配置：
 
 ```yaml

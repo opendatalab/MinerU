@@ -22,6 +22,7 @@ from pydantic import ValidationError
 import mineru.parser.api_client as api_client
 import mineru.parser.api_server as api_server
 import mineru.parser.tier as parser_tier
+from mineru.config import VlmConfig
 from mineru.parser import MIDDLE_JSON_SCHEMA_VERSION
 from mineru.parser.api_client import MinerUApiParser, _pages_from_middle_json, _parse_result_from_job, should_trust_env_for_url
 from mineru.parser.api_server import (
@@ -2413,7 +2414,10 @@ def test_api_server_model_preload_failure_keeps_health_diagnostics_and_rejects_c
 ) -> None:
     _stub_api_server_dependency_preflight(monkeypatch)
 
-    def _fail_preload(startup_tier: DeploymentTier, *, language: str) -> api_server._ModelPreloadResult:
+    def _fail_preload(
+        startup_tier: DeploymentTier, *, language: str, vlm_config: VlmConfig | None = None
+    ) -> api_server._ModelPreloadResult:
+        """模拟包含 VLM 初始化在内的服务预加载失败。"""
         raise ValueError("CUDA is not available.")
 
     monkeypatch.setattr(api_server, "_preload_server_models", _fail_preload)
@@ -2437,7 +2441,10 @@ def test_api_server_model_preload_is_opt_in_and_ignored_for_flash(tmp_path: Path
     _stub_api_server_dependency_preflight(monkeypatch)
     calls: list[tuple[str, str]] = []
 
-    def _preload(startup_tier: DeploymentTier, *, language: str) -> api_server._ModelPreloadResult:
+    def _preload(
+        startup_tier: DeploymentTier, *, language: str, vlm_config: VlmConfig | None = None
+    ) -> api_server._ModelPreloadResult:
+        """记录预加载调用，兼容显式 VLM 配置传入。"""
         calls.append((startup_tier, language))
         return api_server._ModelPreloadResult(tier=startup_tier, engine="test")
 

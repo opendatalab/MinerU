@@ -39,6 +39,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.datastructures import State
 
+from ..config import VlmConfig, config as mineru_config
 from ..errors import MineruError
 from ..filetypes import (
     PARSEABLE_EXTENSIONS,
@@ -1332,7 +1333,9 @@ async def _run_job(
     max_inline_bytes: int = _MAX_INLINE_BYTES_DEFAULT,
     allow_http_source: bool = False,
     flash_enabled: bool = True,
+    vlm_config: VlmConfig | None = None,
 ) -> None:
+    """执行解析任务，使用所属服务的 VLM 配置并记录每个文件的成功或失败。"""
     rec.status = "running"
     rec.started_at = JobStore._now()
 
@@ -1386,6 +1389,7 @@ async def _run_job(
                     image_analysis=image_analysis,
                     page_range=page_range,
                     source_context=source_context,
+                    vlm_config=vlm_config,
                 )
 
                 # collect outputs
@@ -1844,6 +1848,7 @@ async def create_job(
     allow_http_source_val: bool = request.app.state.allow_http_source
     flash_enabled_val: bool = request.app.state.flash_enabled
     image_analysis_val: bool = request.app.state.image_analysis
+    vlm_config_val: VlmConfig = request.app.state.vlm_config
 
     # async — fire and forget
     async def _bg_run() -> None:
@@ -1858,6 +1863,7 @@ async def create_job(
                 max_inline_bytes=max_inline_bytes_val,
                 allow_http_source=allow_http_source_val,
                 flash_enabled=flash_enabled_val,
+                vlm_config=vlm_config_val,
             )
 
     asyncio.create_task(_bg_run())
@@ -2022,11 +2028,15 @@ def _model_ids_and_tiers_for_server_tiers(tiers: list[Tier]) -> tuple[list[str],
     return model_ids, tier_infos
 
 
-def _preflight_tier_dependencies(tier: ServerTier) -> None:
+def _preflight_tier_dependencies(tier: ServerTier, vlm_config: VlmConfig | None = None) -> None:
+    """远程 VLM 仅预检本地 Hybrid 依赖，避免要求安装本地 VLM serving 引擎。"""
     if tier == "flash":
         return
+    settings = vlm_config if vlm_config is not None else mineru_config.model.vlm
+    if tier == "standard":
+        settings.validate_environment()
     try:
-        ensure_tier_runtime_dependencies(tier)
+        ensure_tier_runtime_dependencies("basic" if settings.server_url else tier)
     except TierDependencyError as exc:
         raise ParseServerStartupError(str(exc)) from exc
 
@@ -2081,17 +2091,15 @@ def _preload_local_models(language: str) -> None:
     manager.get_atom_model(atom_model_name=AtomicModelName.OCR, lang="seal")
 
 
-def _preload_server_models(tier: DeploymentTier, *, language: str) -> _ModelPreloadResult:
+def _preload_server_models(tier: DeploymentTier, *, language: str, vlm_config: VlmConfig | None = None) -> _ModelPreloadResult:
+    """使用与实际解析相同的 VLM 客户端，并预加载本地 Hybrid 模型。"""
     if tier == "basic":
         _preload_local_models(language)
         return _ModelPreloadResult(tier=tier, engine="hybrid-local")
 
-    from ..model.vlm.selector import get_vlm_engine
+    from ..model.vlm.client import get_vlm_predictor
 
-    engine = get_vlm_engine("auto", is_async=True)
-    from ..model.vlm.runtime import ModelSingleton
-
-    ModelSingleton().get_model(engine, None, None)  # type: ignore[arg-type]
+    _predictor, engine = get_vlm_predictor(vlm_config)
     _preload_local_models(language)
     return _ModelPreloadResult(tier=tier, engine=engine)
 
@@ -2131,6 +2139,7 @@ def create_app(
     language: str = "ch",
     image_analysis: bool = True,
     preload_models: bool = False,
+    vlm_config: VlmConfig | None = None,
 ) -> FastAPI:
     """Create a FastAPI application implementing the MinerU v1 REST API.
 
@@ -2163,7 +2172,9 @@ def create_app(
     image_analysis:
         Whether image analysis is enabled for Hybrid backends.
     preload_models:
-        Load the configured local models during server startup. Flash has no local models to preload.
+        Initialize the VLM client and local Hybrid models at startup. Ignored for Flash.
+    vlm_config:
+        Complete VLM connection configuration override; defaults to global model.vlm settings.
     """
     upload_dir = upload_dir or ""
     tier = _normalize_server_tier(tier)
@@ -2173,7 +2184,8 @@ def create_app(
     startup_runtime = runtime_options_for_tier(tier)
     backend = startup_runtime.backend
     effort = effort_for_tier(tier)
-    _preflight_tier_dependencies(tier)
+    vlm_config = (vlm_config if vlm_config is not None else mineru_config.model.vlm).model_copy(deep=True)
+    _preflight_tier_dependencies(tier, vlm_config)
     _api_key: str | None = api_key or None
     _upload_dir = pathlib.Path(upload_dir) if upload_dir else pathlib.Path(tempfile.mkdtemp(prefix="mineru_"))
     _upload_dir.mkdir(parents=True, exist_ok=True)
@@ -2206,14 +2218,16 @@ def create_app(
         application.state.effort = effort
         application.state.image_analysis = image_analysis
         application.state.preload_models = preload_models
+        application.state.vlm_config = vlm_config
         application.state.model_preload_error = None
         if _preload_tier is not None:
-            logger.info("Preloading local models for startup tier %s", _preload_tier)
+            logger.info("Initializing VLM client and local models for startup tier %s", _preload_tier)
             try:
                 preload_result = await asyncio.to_thread(
                     _preload_server_models,
                     _preload_tier,
                     language=language,
+                    vlm_config=vlm_config,
                 )
             except Exception as exc:
                 error_code, error_msg = _classify_model_preload_error(exc)
@@ -2221,10 +2235,10 @@ def create_app(
                     code=error_code,
                     message=error_msg,
                 )
-                logger.exception("Local model preload failed for startup tier %s", _preload_tier)
+                logger.exception("Model initialization failed for startup tier %s", _preload_tier)
             else:
                 logger.info(
-                    "Local model preload completed for startup tier %s (engine=%s)",
+                    "Model initialization completed for startup tier %s (engine=%s)",
                     _preload_tier,
                     preload_result.engine,
                 )
@@ -2260,6 +2274,7 @@ def create_app(
     application.state.effort = effort
     application.state.image_analysis = image_analysis
     application.state.preload_models = preload_models
+    application.state.vlm_config = vlm_config
     application.state.model_preload_error = None
     FileStore(_upload_dir).install(application.state)
     JobStore(concurrency=concurrency).install(application.state)
@@ -2398,7 +2413,16 @@ def create_app(
 @click.option(
     "--preload-models",
     is_flag=True,
-    help="Load local models during server startup. Ignored for Flash.",
+    help="Initialize VLM client and local Hybrid models at startup. Ignored for Flash.",
+)
+@click.option("--vlm-server-url", default=None, type=str, help="Remote VLM URL; empty value selects local VLM.")
+@click.option("--vlm-api-key", default=None, type=str, help="Bearer key for the remote VLM server.")
+@click.option("--vlm-model", default=None, type=str, help="Remote VLM model name; empty value enables discovery.")
+@click.option(
+    "--vlm-http-timeout", default=None, type=click.IntRange(min=1), help="VLM HTTP timeout in seconds (default: 600)."
+)
+@click.option(
+    "--vlm-max-concurrency", default=None, type=click.IntRange(min=1), help="VLM inference concurrency (default: 100)."
 )
 @click.option(
     "--api-key",
@@ -2422,8 +2446,13 @@ def main(
     disable_image_analysis: bool,
     preload_models: bool,
     api_key: str | None,
+    vlm_server_url: str | None,
+    vlm_api_key: str | None,
+    vlm_model: str | None,
+    vlm_http_timeout: int | None,
+    vlm_max_concurrency: int | None,
 ) -> None:
-    """Start the MinerU v1 REST API server."""
+    """合并显式 VLM 参数后启动 MinerU v1 REST API 服务，不修改全局配置。"""
     configure_standard_streams()
     shutdown_requested = threading.Event()
     server_ref: list[uvicorn.Server | None] = [None]
@@ -2444,6 +2473,19 @@ def main(
     if control_watcher is not None:
         control_watcher.start()
     try:
+        vlm_overrides = {
+            "server_url": vlm_server_url,
+            "api_key": vlm_api_key,
+            "model": vlm_model,
+            "http_timeout": vlm_http_timeout,
+            "max_concurrency": vlm_max_concurrency,
+        }
+        vlm_settings = VlmConfig.model_validate(
+            {
+                **mineru_config.model.vlm.model_dump(),
+                **{key: value for key, value in vlm_overrides.items() if value is not None},
+            }
+        )
         application = create_app(
             upload_dir=upload_dir,
             tier=tier,
@@ -2458,6 +2500,7 @@ def main(
             language=language,
             image_analysis=not disable_image_analysis,
             preload_models=preload_models,
+            vlm_config=vlm_settings,
         )
     except ParseServerStartupError as exc:
         if control_watcher is not None:
