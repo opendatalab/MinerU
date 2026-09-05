@@ -1,4 +1,9 @@
 from __future__ import annotations
+import json
+from docgale.codecs.json import load_middle, load_model
+from docgale.schema import Producer
+from docgale.compat.mineru import from_mineru_model, from_mineru_middle, to_mineru_model, to_mineru_middle
+from mineru.integrations.docgale import build_metadata
 
 import pytest
 from pydantic import ValidationError
@@ -22,9 +27,8 @@ def _model_json(
         pages=pages if pages is not None else [[{"type": "text", "content": inline("正文")}]],
         page_index_map=page_index_map if page_index_map is not None else [],
         file_suffix="docx",
-        effort="flash",
-        parse_mode="txt",
-        mineru_version="3.4.0",
+        producer=Producer(name="mineru", version="3.4.0"),
+        extensions=build_metadata(effort="flash", parse_mode="txt", mineru_version="3.4.0"),
     )
 
 
@@ -32,7 +36,7 @@ def test_model_json_is_public_and_serializes_exact_envelope() -> None:
     """验证公开 ModelJson 固定输出六个顶层字段且空映射不会被省略。"""
     model_json = _model_json()
 
-    payload = model_json.to_dict()
+    payload = to_mineru_model(model_json)
 
     assert PublicModelJson is ModelJson
     assert list(payload) == [
@@ -55,7 +59,7 @@ def test_model_json_is_public_and_serializes_exact_envelope() -> None:
     assert model_json.resolved_page_indices == [0]
     assert "is_full_document" not in payload
     assert "resolved_page_indices" not in payload
-    assert ModelJson.model_validate_json(model_json.to_json()) == model_json
+    assert load_model(json.loads(model_json.to_json())) == model_json
 
 
 def test_non_empty_page_index_map_represents_partial_input() -> None:
@@ -98,12 +102,11 @@ def test_model_json_rejects_invalid_page_structure(pages: object) -> None:
     """验证 pages 必须保持页列表、块列表和块字典三层结构。"""
     with pytest.raises(ValidationError):
         ModelJson(
-            pages=pages,  # type: ignore[arg-type]
+            pages=pages,
             page_index_map=[],
             file_suffix="pdf",
-            effort="flash",
-            parse_mode="txt",
-            mineru_version="3.4.0",
+            producer=Producer(name="mineru", version="3.4.0"),
+            extensions=build_metadata(effort="flash", parse_mode="txt", mineru_version="3.4.0"),
         )
 
 
@@ -117,16 +120,16 @@ def test_model_json_requires_page_index_map_and_forbids_extra_fields() -> None:
         "mineru_version": "3.4.0",
     }
     with pytest.raises(ValidationError, match="page_index_map"):
-        ModelJson.model_validate(payload)
+        from_mineru_model(payload)
 
     with pytest.raises(ValidationError, match="extra_forbidden"):
-        ModelJson.model_validate({**payload, "page_index_map": [], "unexpected": True})
+        from_mineru_model({**payload, "page_index_map": [], "unexpected": True})
 
 
 def test_strict_document_models_reject_removed_low_effort() -> None:
     """验证 ModelJson 与 MiddleJson 的 schema 2.0 均不再接受 Low effort。"""
     with pytest.raises(ValidationError, match="literal_error"):
-        ModelJson.model_validate(
+        from_mineru_model(
             {
                 "pages": [],
                 "page_index_map": [],
@@ -138,7 +141,7 @@ def test_strict_document_models_reject_removed_low_effort() -> None:
         )
 
     with pytest.raises(ValidationError, match="literal_error"):
-        MiddleJson.model_validate(
+        from_mineru_middle(
             {
                 "pages": [],
                 "is_full_document": True,
@@ -156,12 +159,11 @@ def test_middle_json_requires_and_serializes_full_document_flag() -> None:
         pages=[],
         is_full_document=False,
         file_suffix="pdf",
-        effort="flash",
-        parse_mode="txt",
-        mineru_version="3.4.0",
+        producer=Producer(name="mineru", version="3.4.0"),
+        extensions=build_metadata(effort="flash", parse_mode="txt", mineru_version="3.4.0"),
     )
 
-    payload = middle_json.to_dict()
+    payload = to_mineru_middle(middle_json, include_schema_version=False)
 
     assert list(payload) == [
         "pages",
@@ -172,7 +174,7 @@ def test_middle_json_requires_and_serializes_full_document_flag() -> None:
         "mineru_version",
     ]
     assert payload["is_full_document"] is False
-    assert MiddleJson.model_validate_json(middle_json.to_json()) == middle_json
+    assert load_middle(json.loads(middle_json.to_json())) == middle_json
 
 
 def test_model_json_to_middle_json_builds_strict_document_before_pdf_llm(
@@ -183,9 +185,8 @@ def test_model_json_to_middle_json_builds_strict_document_before_pdf_llm(
         pages=[[]],
         page_index_map=[3],
         file_suffix="pdf",
-        effort="xhigh",
-        parse_mode="ocr",
-        mineru_version="3.4.0",
+        producer=Producer(name="mineru", version="3.4.0"),
+        extensions=build_metadata(effort="xhigh", parse_mode="ocr", mineru_version="3.4.0"),
     )
     observed: list[MiddleJson] = []
 
@@ -201,9 +202,9 @@ def test_model_json_to_middle_json_builds_strict_document_before_pdf_llm(
 
     assert observed == [middle_json]
     assert middle_json.file_suffix == "pdf"
-    assert middle_json.effort == "xhigh"
-    assert middle_json.parse_mode == "ocr"
-    assert middle_json.mineru_version == "3.4.0"
+    assert middle_json.extensions["mineru"]["effort"] == "xhigh"
+    assert middle_json.extensions["mineru"]["parse_mode"] == "ocr"
+    assert middle_json.extensions["mineru"]["mineru_version"] == "3.4.0"
 
 
 @pytest.mark.parametrize("invalid_value", [None, 0, 1, "true"])
@@ -220,4 +221,4 @@ def test_middle_json_rejects_missing_or_non_boolean_full_document_flag(invalid_v
         payload["is_full_document"] = invalid_value
 
     with pytest.raises(ValidationError, match="is_full_document"):
-        MiddleJson.model_validate(payload)
+        from_mineru_middle(payload)

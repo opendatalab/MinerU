@@ -1,4 +1,5 @@
 from __future__ import annotations
+from docgale.export.middle import export_middle_json
 
 import asyncio
 from io import BytesIO
@@ -9,14 +10,18 @@ from bs4 import BeautifulSoup
 import pytest
 
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
-from mineru.model.flash import PptModel
-from mineru.model.flash._shared.hyperlink import sanitize_hyperlink_target
-from mineru.model.flash.office.errors import LegacyOfficeEncryptedError, LegacyOfficeResourceLimitError
-from mineru.model.flash.office.ppt import parser as ppt_parser
-from mineru.model.flash.office.ppt.models import PptPresentation, PptSlide
-from mineru.model.flash.office.ppt.ppt_converter import PptConverter
-from mineru.model.flash.office.ppt.records import PptRecord, RecordBudget
-from mineru.model.flash.office.ppt.style_text import CharacterRun, StyleRuns
+from docgale.analyzers.native import PptModel
+from docgale.analyzers.native._shared.hyperlink import sanitize_hyperlink_target
+from docgale.analyzers.native.office.errors import LegacyOfficeEncryptedError
+from docgale.analyzers.native.office.errors import LegacyOfficeResourceLimitError
+from docgale.analyzers.native.office.ppt import parser as ppt_parser
+from docgale.analyzers.native.office.ppt.models import PptPresentation
+from docgale.analyzers.native.office.ppt.models import PptSlide
+from docgale.analyzers.native.office.ppt.ppt_converter import PptConverter
+from docgale.analyzers.native.office.ppt.records import PptRecord
+from docgale.analyzers.native.office.ppt.records import RecordBudget
+from docgale.analyzers.native.office.ppt.style_text import CharacterRun
+from docgale.analyzers.native.office.ppt.style_text import StyleRuns
 from mineru.parser import parse
 from mineru.types import BlockType, ChartBlock, ImageBlock, MiddleJson, ModelJson, TableBlock
 
@@ -60,8 +65,8 @@ def test_backend_analyze_accepts_ppt_and_async_contract() -> None:
     assert isinstance(middle_json, MiddleJson)
     assert model_json.file_suffix == "ppt"
     assert middle_json.file_suffix == "ppt"
-    assert model_json.effort == middle_json.effort == "flash"
-    assert model_json.parse_mode == middle_json.parse_mode == "txt"
+    assert model_json.extensions["mineru"]["effort"] == middle_json.extensions["mineru"]["effort"] == "flash"
+    assert model_json.extensions["mineru"]["parse_mode"] == middle_json.extensions["mineru"]["parse_mode"] == "txt"
     assert model_json.is_full_document is middle_json.is_full_document is True
     assert [page.page_idx for page in middle_json.pages] == [0, 1]
     assert async_middle_json == middle_json
@@ -247,7 +252,7 @@ def test_real_ppt_recovers_table_notes_images_and_exports(tmp_path: Path) -> Non
     assert page_six_lists[-1]["attribute"] == "ordered"
     assert page_six_lists[-1]["start"] == 3
 
-    export_result = middle_json.export(tmp_path / "export")
+    export_result = export_middle_json(middle_json, tmp_path / "export")
     exported_payload = export_result.middle_json.model_dump(mode="json", exclude_none=True)
     assert export_result.json_path.exists()
     assert export_result.image_paths

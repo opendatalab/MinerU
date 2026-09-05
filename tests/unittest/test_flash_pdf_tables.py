@@ -4,12 +4,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from mineru.model.flash.pdf import (
-    geometry,
-    models,
-    tables,
-)
-from mineru.model.flash.pdf.document import PDFPathInfo
+from docgale.analyzers.native.pdf import geometry
+from docgale.analyzers.native.pdf import models
+from docgale.analyzers.native.pdf import tables
+from docgale.document.pdf.document import PDFPathInfo
 
 
 def _axis_line(

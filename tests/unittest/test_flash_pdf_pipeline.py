@@ -6,26 +6,25 @@ import weakref
 
 import pytest
 
-from mineru.model.flash import PdfModel
-from mineru.model.flash.pdf import (
-    auxiliary_text,
-    char_geometry,
-    formulas,
-    geometry,
-    graphics,
-    index_blocks,
-    line_layout,
-    line_merging,
-    models,
-    native_text,
-    pipeline,
-    tables,
-    text_blocks,
-    text_styles,
-    titles,
-    visual_annotations,
-)
-from mineru.model.flash.pdf.document import PDFImageInfo, PDFPageTextGeometry
+from docgale.analyzers.native import PdfModel
+from docgale.analyzers.native.pdf import auxiliary_text
+from docgale.analyzers.native.pdf import char_geometry
+from docgale.analyzers.native.pdf import formulas
+from docgale.analyzers.native.pdf import geometry
+from docgale.analyzers.native.pdf import graphics
+from docgale.analyzers.native.pdf import index_blocks
+from docgale.analyzers.native.pdf import line_layout
+from docgale.analyzers.native.pdf import line_merging
+from docgale.analyzers.native.pdf import models
+from docgale.analyzers.native.pdf import native_text
+from docgale.analyzers.native.pdf import pipeline
+from docgale.analyzers.native.pdf import tables
+from docgale.analyzers.native.pdf import text_blocks
+from docgale.analyzers.native.pdf import text_styles
+from docgale.analyzers.native.pdf import titles
+from docgale.analyzers.native.pdf import visual_annotations
+from docgale.document.pdf.document import PDFImageInfo
+from docgale.document.pdf.document import PDFPageTextGeometry
 
 from _flash_pdf_test_utils import (
     _prepared_text_page,

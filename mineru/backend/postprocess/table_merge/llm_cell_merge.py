@@ -10,8 +10,10 @@ from typing import Literal, cast
 
 from ....types import PageInfo, TableBlock, TableBodyBlock
 
-from .html import build_row_rendered_cell_segments, build_table_state_from_html
-from .structure import _expand_header_count_by_rowspan, detect_table_headers
+from docgale.content.table.html import build_row_rendered_cell_segments
+from docgale.content.table.html import build_table_state_from_html
+from docgale.content.table import expand_header_count_by_rowspan as _expand_header_count_by_rowspan
+from docgale.content.table.structure import detect_table_headers
 from ..llm_client import LLMAidedClient
 
 CellMergeFlag = Literal[0, 1]
@@ -43,11 +45,7 @@ def _find_continued_table_pairs(pages: list[PageInfo]) -> list[tuple[TableBlock,
         if current_page.page_idx != previous_page.page_idx + 1:
             continue
         current_table = next(
-            (
-                block
-                for block in current_page.blocks
-                if isinstance(block, TableBlock) and block.continues_prev is True
-            ),
+            (block for block in current_page.blocks if isinstance(block, TableBlock) and block.continues_prev is True),
             None,
         )
         if current_table is None:

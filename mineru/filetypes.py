@@ -8,7 +8,7 @@ from .types import QUALITY_TIERS, Tier, validate_tier
 
 # ── file types ─────────────────────────────────────────────────────
 
-# Legacy Office binary formats and RTF are natively parsed by model.flash.office converters.
+# Legacy Office binary formats and RTF are natively parsed by DocGale native Office converters.
 # Unsupported document/e-book/archive-like formats:
 # "key",
 # "mobi",

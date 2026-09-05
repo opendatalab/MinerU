@@ -6,7 +6,16 @@ from __future__ import annotations
 import time
 from io import BytesIO
 
-from ...model.flash import DocModel, DocxModel, OdpModel, OdsModel, OdtModel, PptModel, PptxModel, RtfModel, XlsModel, XlsxModel
+from docgale.analyzers.native import DocModel
+from docgale.analyzers.native import DocxModel
+from docgale.analyzers.native import OdpModel
+from docgale.analyzers.native import OdsModel
+from docgale.analyzers.native import OdtModel
+from docgale.analyzers.native import PptModel
+from docgale.analyzers.native import PptxModel
+from docgale.analyzers.native import RtfModel
+from docgale.analyzers.native import XlsModel
+from docgale.analyzers.native import XlsxModel
 
 from .contracts import AnalysisResult, OfficeSuffix
 

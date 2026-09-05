@@ -10,15 +10,13 @@ from typing import Any
 
 from bs4 import BeautifulSoup
 
-from mineru.model.flash import PdfModel
-from mineru.model.flash.pdf.table_recovery import (
-    NativeTableInput,
-    coerce_native_table_rectangles,
-    coerce_native_table_rules,
-    recover_native_pdf_table,
-)
-from mineru.model.flash.pdf.table_recovery.engine import diagnose_native_pdf_table
-from mineru.model.flash.pdf.document import PDFDocument
+from docgale.analyzers.native import PdfModel
+from docgale.analyzers.native.pdf.table_recovery import NativeTableInput
+from docgale.analyzers.native.pdf.table_recovery import coerce_native_table_rectangles
+from docgale.analyzers.native.pdf.table_recovery import coerce_native_table_rules
+from docgale.analyzers.native.pdf.table_recovery import recover_native_pdf_table
+from docgale.analyzers.native.pdf.table_recovery.engine import diagnose_native_pdf_table
+from docgale.document.pdf.document import PDFDocument
 
 
 _PROJECT_ROOT = Path(__file__).parents[2]

@@ -1,4 +1,6 @@
 from __future__ import annotations
+import json
+from docgale.codecs.json import load_middle, load_model
 
 import asyncio
 import base64
@@ -15,7 +17,13 @@ from PIL import Image, ImageDraw
 
 from mineru.backend import analyze
 from mineru.backend.analysis import office
-from mineru.backend.analysis.pdf import constants, formulas, normalization, pipeline, tables, visuals, window
+from mineru.backend.analysis.pdf import constants
+from mineru.backend.analysis.pdf import formulas
+from mineru.backend.analysis.pdf import normalization
+from mineru.backend.analysis.pdf import pipeline
+from mineru.backend.analysis.pdf import tables
+from docgale.document.pdf import visuals
+from mineru.backend.analysis.pdf import window
 from mineru.types import RAW_ALGORITHM, RAW_CAPTION, RAW_FOOTNOTE, RAW_FORMULA_NUMBER, RAW_PHONETIC
 from mineru.types import FILE_SUFFIXES, BlockType, FileSuffix, MiddleJson, ModelJson
 from mineru.version import __version__ as mineru_version
@@ -1342,17 +1350,17 @@ def test_doc_analyze_office_returns_model_json_without_pdf_processing(
     assert isinstance(middle_json, MiddleJson)
     assert len(middle_json.pages) == 1
     assert middle_json.file_suffix == file_suffix
-    assert middle_json.effort == "flash"
-    assert middle_json.parse_mode == "txt"
+    assert middle_json.extensions["mineru"]["effort"] == "flash"
+    assert middle_json.extensions["mineru"]["parse_mode"] == "txt"
     assert middle_json.is_full_document is True
     assert isinstance(model_json, ModelJson)
     assert model_json.pages == source_model_list
     assert model_json.page_index_map == []
     assert model_json.is_full_document is True
     assert model_json.file_suffix == file_suffix
-    assert model_json.effort == "flash"
-    assert model_json.parse_mode == "txt"
-    assert model_json.mineru_version == mineru_version
+    assert model_json.extensions["mineru"]["effort"] == "flash"
+    assert model_json.extensions["mineru"]["parse_mode"] == "txt"
+    assert model_json.extensions["mineru"]["mineru_version"] == mineru_version
     assert inline_text(model_json.pages[0][0]["content"]) == "原始 \\(office\\) 内容"
     for suffix, model_factory in model_factories.items():
         assert model_factory.call_count == (1 if suffix == file_suffix else 0)
@@ -1711,8 +1719,8 @@ def test_doc_analyze_office_real_samples(file_suffix: str, expected_page_count: 
     assert all(isinstance(page, list) for page in model_json.pages)
     assert model_json.page_index_map == []
     assert model_json.file_suffix == file_suffix
-    assert model_json.effort == "flash"
-    assert model_json.parse_mode == "txt"
+    assert model_json.extensions["mineru"]["effort"] == "flash"
+    assert model_json.extensions["mineru"]["parse_mode"] == "txt"
     if file_suffix == "docx":
         model_equations = [
             block
@@ -1745,11 +1753,11 @@ def test_doc_analyze_flash_real_pdf_returns_typed_middle_json() -> None:
     assert all("merge_prev" not in block for page in model_json.pages for block in page)
     assert model_json.page_index_map == []
     assert model_json.file_suffix == "pdf"
-    assert model_json.effort == "flash"
-    assert model_json.parse_mode == "txt"
-    assert model_json.mineru_version == mineru_version
-    assert MiddleJson.model_validate_json(middle_json.to_json()) == middle_json
-    assert ModelJson.model_validate_json(model_json.to_json()) == model_json
+    assert model_json.extensions["mineru"]["effort"] == "flash"
+    assert model_json.extensions["mineru"]["parse_mode"] == "txt"
+    assert model_json.extensions["mineru"]["mineru_version"] == mineru_version
+    assert load_middle(json.loads(middle_json.to_json())) == middle_json
+    assert load_model(json.loads(model_json.to_json())) == model_json
 
 
 def test_doc_analyze_flash_demo1_uses_canonical_equation_type() -> None:
@@ -1785,7 +1793,7 @@ def test_doc_analyze_flash_demo1_uses_canonical_equation_type() -> None:
 
 def test_doc_analyze_flash_returns_complete_model_json_and_typed_middle_json(monkeypatch: pytest.MonkeyPatch) -> None:
     """验证 Flash 多窗口补充完整 raw pages，并返回严格 ModelJson 与 MiddleJson。"""
-    from mineru.model import flash as flash_model
+    from docgale.analyzers import native as flash_model
 
     events: list[str] = []
     source_model_list = [

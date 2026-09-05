@@ -7,10 +7,13 @@ import math
 import re
 from typing import Any
 
-from ....model.flash._shared.spans import append_equation_span, append_text_span, inline_span_plain_text, strip_span_dicts
+from docgale.content.spans import append_equation_span
+from docgale.content.spans import append_text_span
+from docgale.content.spans import inline_span_plain_text
+from docgale.content.spans import strip_span_dicts
 from ....types import BBox, BlockType, RAW_ALGORITHM, RAW_PHONETIC
-from ....utils.geometry import calculate_overlap_area_2_minbox_area_ratio
-from ....utils.text import full_to_half_exclude_marks
+from docgale.foundation.geometry import calculate_overlap_area_2_minbox_area_ratio
+from docgale.foundation.text import full_to_half_exclude_marks
 
 from .constants import (
     LAYOUT_TITLE_SPLIT_OVERLAP_THRESHOLD,
@@ -18,7 +21,7 @@ from .constants import (
     NATURAL_LANGUAGE_CONTENT_BLOCK_TYPES,
     _VLM_UNCLASSIFIED_TITLE_TYPE,
 )
-from .geometry import _bbox_to_pixel_bbox
+from docgale.document.pdf.geometry import bbox_to_pixel_bbox as _bbox_to_pixel_bbox
 
 
 def _collect_layout_doc_title_bboxes(layout_res: list[dict[str, Any]], page_size: tuple[int, int]) -> list[BBox]:

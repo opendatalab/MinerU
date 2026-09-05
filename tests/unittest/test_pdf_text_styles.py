@@ -1,4 +1,6 @@
 from __future__ import annotations
+from docgale.schema import Producer
+from mineru.integrations.docgale import build_metadata
 
 import html
 import math
@@ -16,10 +18,12 @@ from mineru.backend.analysis.pdf.text import content as text_content
 from mineru.backend.analysis.pdf.text import styles as text_style_enrichment
 from mineru.backend.analysis.pdf.text.models import _AnalyzeLine, _AnalyzeSpan
 from mineru.backend.analysis.pdf.text.native import txt_spans_extract
-from mineru.backend.postprocess.pages import model_json_to_pages
-from mineru.model.flash import PdfModel
-from mineru.model.flash.pdf.inline import matching as inline_matching
-from mineru.model.flash.pdf import models, native_text, text_styles as flash_text_styles
+from docgale.postprocess.pages import model_json_to_pages
+from docgale.analyzers.native import PdfModel
+from docgale.analyzers.native.pdf.inline import matching as inline_matching
+from docgale.analyzers.native.pdf import models
+from docgale.analyzers.native.pdf import native_text
+from docgale.analyzers.native.pdf import text_styles as flash_text_styles
 from mineru.render import render_docx, render_html, render_markdown, render_structured_content
 from mineru.types import (
     RAW_CAPTION,
@@ -30,25 +34,25 @@ from mineru.types import (
     ModelJson,
     PageInfo,
 )
-from mineru.model.flash.pdf.document import PDFDocument, PDFLinkAnnotation, PDFPageTextGeometry
-from mineru.model.flash.pdf.text_styles import (
-    PDF_FONT_FORCE_BOLD_FLAG,
-    PDF_FONT_ITALIC_FLAG,
-    PDF_NATIVE_SCRIPT_MARKUP_KEY,
-    PDFTextLinkLine,
-    PDFTextLinkRange,
-    PDFTextScriptLine,
-    PDFTextScriptRange,
-    PDFTextStyleLine,
-    PDFTextStyleRange,
-    apply_pdf_text_links as _apply_pdf_text_links,
-    apply_pdf_text_styles as _apply_pdf_text_styles,
-    detect_pdf_text_link_lines,
-    detect_pdf_text_style_lines,
-    materialize_pdf_inline_spans,
-    _partition_resplit_text_evidence,
-    _realign_repaired_text_evidence,
-)
+from docgale.document.pdf.document import PDFDocument
+from docgale.document.pdf.document import PDFLinkAnnotation
+from docgale.document.pdf.document import PDFPageTextGeometry
+from docgale.analyzers.native.pdf.text_styles import PDF_FONT_FORCE_BOLD_FLAG
+from docgale.analyzers.native.pdf.text_styles import PDF_FONT_ITALIC_FLAG
+from docgale.analyzers.native.pdf.text_styles import PDF_NATIVE_SCRIPT_MARKUP_KEY
+from docgale.analyzers.native.pdf.text_styles import PDFTextLinkLine
+from docgale.analyzers.native.pdf.text_styles import PDFTextLinkRange
+from docgale.analyzers.native.pdf.text_styles import PDFTextScriptLine
+from docgale.analyzers.native.pdf.text_styles import PDFTextScriptRange
+from docgale.analyzers.native.pdf.text_styles import PDFTextStyleLine
+from docgale.analyzers.native.pdf.text_styles import PDFTextStyleRange
+from docgale.analyzers.native.pdf.text_styles import apply_pdf_text_links as _apply_pdf_text_links
+from docgale.analyzers.native.pdf.text_styles import apply_pdf_text_styles as _apply_pdf_text_styles
+from docgale.analyzers.native.pdf.text_styles import detect_pdf_text_link_lines
+from docgale.analyzers.native.pdf.text_styles import detect_pdf_text_style_lines
+from docgale.analyzers.native.pdf.text_styles import materialize_pdf_inline_spans
+from docgale.analyzers.native.pdf.text_styles import _partition_resplit_text_evidence
+from docgale.analyzers.native.pdf.text_styles import _realign_repaired_text_evidence
 from _span_test_utils import inline_text, inline_urls
 
 
@@ -106,9 +110,8 @@ def _model_json(pages: list[list[dict[str, Any]]]) -> ModelJson:
         pages=pages,
         page_index_map=[],
         file_suffix="pdf",
-        effort="flash",
-        parse_mode="txt",
-        mineru_version="test",
+        producer=Producer(name="mineru", version="test"),
+        extensions=build_metadata(effort="flash", parse_mode="txt", mineru_version="test"),
     )
 
 
@@ -2200,9 +2203,8 @@ def test_flash_native_pdf_styles_reach_model_middle_and_renderers() -> None:
         pages=model_json_to_pages(_model_json(model_list)),
         is_full_document=True,
         file_suffix="pdf",
-        effort="flash",
-        parse_mode="txt",
-        mineru_version="test",
+        producer=Producer(name="mineru", version="test"),
+        extensions=build_metadata(effort="flash", parse_mode="txt", mineru_version="test"),
     )
     markdown = render_markdown(middle)
     html = render_html(middle, standalone=False)
@@ -2242,9 +2244,8 @@ def test_demo1_pdf_link_reaches_model_middle_and_all_renderers() -> None:
         pages=model_json_to_pages(_model_json(model_list)),
         is_full_document=True,
         file_suffix="pdf",
-        effort="flash",
-        parse_mode="txt",
-        mineru_version="test",
+        producer=Producer(name="mineru", version="test"),
+        extensions=build_metadata(effort="flash", parse_mode="txt", mineru_version="test"),
     )
     link_block = next(
         block
@@ -2255,9 +2256,8 @@ def test_demo1_pdf_link_reaches_model_middle_and_all_renderers() -> None:
         pages=[PageInfo(page_idx=0, blocks=[link_block])],
         is_full_document=True,
         file_suffix="pdf",
-        effort="flash",
-        parse_mode="txt",
-        mineru_version="test",
+        producer=Producer(name="mineru", version="test"),
+        extensions=build_metadata(effort="flash", parse_mode="txt", mineru_version="test"),
     )
     assert f"[{label}]({target})" in render_markdown(link_middle)
     assert f'href="{target}"' in render_html(link_middle, standalone=False)

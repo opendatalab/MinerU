@@ -32,23 +32,22 @@ from metafile_render import (
 )
 from PIL import Image
 
-from mineru.model.flash import (
-    DocModel,
-    DocxModel,
-    OdpModel,
-    OdsModel,
-    OdtModel,
-    PptModel,
-    PptxModel,
-    RtfModel,
-    XlsModel,
-    XlsxModel,
-)
-from mineru.model.flash.office import image as office_image
-from mineru.model.flash.office.legacy.officeart import OfficeArtRecord, decode_blip
-from mineru.model.flash.office.pptx.pptx_converter import PptxConverter
-from mineru.model.flash.office.xlsx.xlsx_converter import XlsxConverter
-from mineru.utils.image_payload import extract_generated_svg_fallback
+from docgale.analyzers.native import DocModel
+from docgale.analyzers.native import DocxModel
+from docgale.analyzers.native import OdpModel
+from docgale.analyzers.native import OdsModel
+from docgale.analyzers.native import OdtModel
+from docgale.analyzers.native import PptModel
+from docgale.analyzers.native import PptxModel
+from docgale.analyzers.native import RtfModel
+from docgale.analyzers.native import XlsModel
+from docgale.analyzers.native import XlsxModel
+from docgale.analyzers.native.office import image as office_image
+from docgale.analyzers.native.office.legacy.officeart import OfficeArtRecord
+from docgale.analyzers.native.office.legacy.officeart import decode_blip
+from docgale.analyzers.native.office.pptx.pptx_converter import PptxConverter
+from docgale.analyzers.native.office.xlsx.xlsx_converter import XlsxConverter
+from docgale.foundation.image_payload import extract_generated_svg_fallback
 
 
 def _open_result(payload: bytes) -> Image.Image:

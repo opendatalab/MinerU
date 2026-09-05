@@ -281,7 +281,7 @@ def test_python_parse_uses_global_remote_vlm(
         Image.new("RGB", (300, 200), "white").save(source)
     result = asyncio.run(parse_async(source, ocr_mode="ocr")) if async_mode else parse(source, ocr_mode="ocr")
     assert result.middle_json.file_suffix == "pdf"
-    assert result.middle_json.effort == "high"
+    assert result.middle_json.extensions["mineru"]["effort"] == "high"
     assert result.middle_json.pages[0].page_idx == 0
     assert "Remote VLM text" in result.markdown()
     assert any(request[2] is not None for request in openai_server.requests)

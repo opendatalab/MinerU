@@ -10,34 +10,32 @@ from unittest.mock import MagicMock
 
 import pytest
 
-import mineru.model.flash as flash_models
-import mineru.model.flash.models as flat_model_module
-from mineru.model.flash import (
-    DocModel,
-    DocxModel,
-    EpubModel,
-    OdpModel,
-    OdsModel,
-    OdtModel,
-    OfdModel,
-    PdfModel,
-    PptModel,
-    PptxModel,
-    RtfModel,
-    XlsModel,
-    XlsxModel,
-)
-from mineru.model.flash.office.doc import doc_converter as doc_converter_module
-from mineru.model.flash.office.docx import docx_converter as docx_converter_module
-from mineru.model.flash.office.docx import main as docx_main
-from mineru.model.flash.office.odf import converters as odf_converter_module
-from mineru.model.flash.office.pptx import main as pptx_main
-from mineru.model.flash.office.pptx import pptx_converter as pptx_converter_module
-from mineru.model.flash.office.ppt import ppt_converter as ppt_converter_module
-from mineru.model.flash.office.rtf import converter as rtf_converter_module
-from mineru.model.flash.office.xls import xls_converter as xls_converter_module
-from mineru.model.flash.office.xlsx import main as xlsx_main
-from mineru.model.flash.office.xlsx import xlsx_converter as xlsx_converter_module
+import docgale.analyzers.native as flash_models
+import docgale.analyzers.native.models as flat_model_module
+from docgale.analyzers.native import DocModel
+from docgale.analyzers.native import DocxModel
+from docgale.analyzers.native import EpubModel
+from docgale.analyzers.native import OdpModel
+from docgale.analyzers.native import OdsModel
+from docgale.analyzers.native import OdtModel
+from docgale.analyzers.native import OfdModel
+from docgale.analyzers.native import PdfModel
+from docgale.analyzers.native import PptModel
+from docgale.analyzers.native import PptxModel
+from docgale.analyzers.native import RtfModel
+from docgale.analyzers.native import XlsModel
+from docgale.analyzers.native import XlsxModel
+from docgale.analyzers.native.office.doc import doc_converter as doc_converter_module
+from docgale.analyzers.native.office.docx import docx_converter as docx_converter_module
+from docgale.analyzers.native.office.docx import main as docx_main
+from docgale.analyzers.native.office.odf import converters as odf_converter_module
+from docgale.analyzers.native.office.pptx import main as pptx_main
+from docgale.analyzers.native.office.pptx import pptx_converter as pptx_converter_module
+from docgale.analyzers.native.office.ppt import ppt_converter as ppt_converter_module
+from docgale.analyzers.native.office.rtf import converter as rtf_converter_module
+from docgale.analyzers.native.office.xls import xls_converter as xls_converter_module
+from docgale.analyzers.native.office.xlsx import main as xlsx_main
+from docgale.analyzers.native.office.xlsx import xlsx_converter as xlsx_converter_module
 
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -208,16 +206,16 @@ def test_models_are_exported_from_flash_root() -> None:
 @pytest.mark.parametrize(
     ("package_name", "model_name"),
     [
-        ("mineru.model.flash.office.doc", "DocModel"),
-        ("mineru.model.flash.office.docx", "DocxModel"),
-        ("mineru.model.flash.office.pptx", "PptxModel"),
-        ("mineru.model.flash.office.ppt", "PptModel"),
-        ("mineru.model.flash.office.xls", "XlsModel"),
-        ("mineru.model.flash.office.xlsx", "XlsxModel"),
-        ("mineru.model.flash.office.rtf", "RtfModel"),
-        ("mineru.model.flash.office.odf", "OdtModel"),
-        ("mineru.model.flash.office.odf", "OdsModel"),
-        ("mineru.model.flash.office.odf", "OdpModel"),
+        ("docgale.analyzers.native.office.doc", "DocModel"),
+        ("docgale.analyzers.native.office.docx", "DocxModel"),
+        ("docgale.analyzers.native.office.pptx", "PptxModel"),
+        ("docgale.analyzers.native.office.ppt", "PptModel"),
+        ("docgale.analyzers.native.office.xls", "XlsModel"),
+        ("docgale.analyzers.native.office.xlsx", "XlsxModel"),
+        ("docgale.analyzers.native.office.rtf", "RtfModel"),
+        ("docgale.analyzers.native.office.odf", "OdtModel"),
+        ("docgale.analyzers.native.office.odf", "OdsModel"),
+        ("docgale.analyzers.native.office.odf", "OdpModel"),
     ],
 )
 def test_office_subpackages_do_not_export_models(package_name: str, model_name: str) -> None:
@@ -234,17 +232,17 @@ def test_importing_pdf_model_does_not_load_office_converters() -> None:
     script = "\n".join(
         [
             "import sys",
-            "from mineru.model.flash import PdfModel",
+            "from docgale.analyzers.native import PdfModel",
             "assert PdfModel.__name__ == 'PdfModel'",
-            "assert 'mineru.model.flash.office.docx.docx_converter' not in sys.modules",
-            "assert 'mineru.model.flash.office.doc.doc_converter' not in sys.modules",
-            "assert 'mineru.model.flash.office.pptx.pptx_converter' not in sys.modules",
-            "assert 'mineru.model.flash.office.ppt.ppt_converter' not in sys.modules",
-            "assert 'mineru.model.flash.office.xls.xls_converter' not in sys.modules",
+            "assert 'docgale.analyzers.native.office.docx.docx_converter' not in sys.modules",
+            "assert 'docgale.analyzers.native.office.doc.doc_converter' not in sys.modules",
+            "assert 'docgale.analyzers.native.office.pptx.pptx_converter' not in sys.modules",
+            "assert 'docgale.analyzers.native.office.ppt.ppt_converter' not in sys.modules",
+            "assert 'docgale.analyzers.native.office.xls.xls_converter' not in sys.modules",
             "assert 'olefile' not in sys.modules",
-            "assert 'mineru.model.flash.office.xlsx.xlsx_converter' not in sys.modules",
-            "assert 'mineru.model.flash.office.rtf.converter' not in sys.modules",
-            "assert 'mineru.model.flash.office.odf.converters' not in sys.modules",
+            "assert 'docgale.analyzers.native.office.xlsx.xlsx_converter' not in sys.modules",
+            "assert 'docgale.analyzers.native.office.rtf.converter' not in sys.modules",
+            "assert 'docgale.analyzers.native.office.odf.converters' not in sys.modules",
         ]
     )
     result = subprocess.run(

@@ -1,3 +1,5 @@
+from docgale.schema import Producer
+from mineru.integrations.docgale import build_metadata
 from _span_test_utils import inline as _inline
 from dataclasses import fields
 import json
@@ -42,9 +44,8 @@ def test_parse_result_from_dict_restores_pages() -> None:
             ],
             is_full_document=True,
             file_suffix="pdf",
-            effort="medium",
-            parse_mode="txt",
-            mineru_version=__version__,
+            producer=Producer(name="mineru", version=__version__),
+            extensions=build_metadata(effort="medium", parse_mode="txt", mineru_version=__version__),
         )
     )
 
@@ -62,9 +63,8 @@ def test_parse_result_to_dict_includes_schema_version_without_meta() -> None:
             pages=[PageInfo(page_idx=0)],
             is_full_document=True,
             file_suffix="pdf",
-            effort="medium",
-            parse_mode="txt",
-            mineru_version=__version__,
+            producer=Producer(name="mineru", version=__version__),
+            extensions=build_metadata(effort="medium", parse_mode="txt", mineru_version=__version__),
         )
     )
 
@@ -94,9 +94,8 @@ def test_parse_result_roundtrip_preserves_page_footnote_anchor() -> None:
             ],
             is_full_document=True,
             file_suffix="epub",
-            effort="flash",
-            parse_mode="txt",
-            mineru_version=__version__,
+            producer=Producer(name="mineru", version=__version__),
+            extensions=build_metadata(effort="flash", parse_mode="txt", mineru_version=__version__),
         )
     )
 
@@ -162,9 +161,9 @@ def test_parse_result_from_json_converts_mineru_3_4_5_middle_json() -> None:
     assert restored.pages[0].page_idx == 2
     assert restored.pages[0].blocks[0].content[0].content == "round trip"
     assert restored.middle_json.is_full_document is False
-    assert restored.middle_json.effort == "high"
-    assert restored.middle_json.parse_mode == "ocr"
-    assert restored.middle_json.mineru_version == "3.4.4"
+    assert restored.middle_json.extensions["mineru"]["effort"] == "high"
+    assert restored.middle_json.extensions["mineru"]["parse_mode"] == "ocr"
+    assert restored.middle_json.extensions["mineru"]["mineru_version"] == "3.4.4"
 
 
 def test_parse_result_accepts_schema_v1_page_wrapper() -> None:
@@ -212,9 +211,8 @@ def test_parse_result_export_pages_returns_defensive_copy() -> None:
             pages=[page],
             is_full_document=True,
             file_suffix="pdf",
-            effort="medium",
-            parse_mode="txt",
-            mineru_version=__version__,
+            producer=Producer(name="mineru", version=__version__),
+            extensions=build_metadata(effort="medium", parse_mode="txt", mineru_version=__version__),
         ),
     )
     first_export = result.export_pages()

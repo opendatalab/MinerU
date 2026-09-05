@@ -1,4 +1,6 @@
 from __future__ import annotations
+from docgale.schema import Producer
+from mineru.integrations.docgale import build_metadata
 from _span_test_utils import inline as _inline
 
 import json
@@ -36,9 +38,8 @@ def _middle(*pages: PageInfo, file_suffix: str = "docx") -> MiddleJson:
         pages=list(pages),
         is_full_document=True,
         file_suffix=file_suffix,
-        effort="flash",
-        parse_mode="txt",
-        mineru_version="test",
+        producer=Producer(name="mineru", version="test"),
+        extensions=build_metadata(effort="flash", parse_mode="txt", mineru_version="test"),
     )
 
 
@@ -375,7 +376,7 @@ def test_structured_content_keeps_chart_content_separate_from_base64_source(
             }
         }
     )
-    monkeypatch.setattr("mineru.render._internal.structured_content.renderer.config", configured)
+    monkeypatch.setattr("mineru.config.config", configured)
     chart = ChartBlock(
         type="chart",
         index=0,
@@ -421,7 +422,7 @@ def test_structured_content_renders_equation_as_raw_latex_with_single_image_sour
             }
         }
     )
-    monkeypatch.setattr("mineru.render._internal.structured_content.renderer.config", configured)
+    monkeypatch.setattr("mineru.config.config", configured)
     middle = _middle(
         _page(
             0,

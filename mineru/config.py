@@ -1,6 +1,7 @@
 """MinerU startup configuration."""
 
 from __future__ import annotations
+from docgale.options import LatexDelimiterConfig, LatexDelimitersConfig
 
 import copy
 import logging
@@ -352,30 +353,6 @@ class ManagedParseServerConfig(BaseModel):
     port: int = 16580
     strict_port: bool = False
     port_probe_count: int = Field(default=100, ge=1)
-
-
-class LatexDelimiterConfig(BaseModel):
-    """单组 LaTeX 左右定界符配置。"""
-
-    left: str = Field(min_length=1)
-    right: str = Field(min_length=1)
-
-
-def _default_display_latex_delimiter() -> LatexDelimiterConfig:
-    """构造缺省行间公式定界符。"""
-    return LatexDelimiterConfig(left="$$", right="$$")
-
-
-def _default_inline_latex_delimiter() -> LatexDelimiterConfig:
-    """构造缺省行内公式定界符。"""
-    return LatexDelimiterConfig(left="$", right="$")
-
-
-class LatexDelimitersConfig(BaseModel):
-    """Markdown 行内与行间公式定界符配置。"""
-
-    display: LatexDelimiterConfig = Field(default_factory=_default_display_latex_delimiter)
-    inline: LatexDelimiterConfig = Field(default_factory=_default_inline_latex_delimiter)
 
 
 class RenderConfig(BaseModel):

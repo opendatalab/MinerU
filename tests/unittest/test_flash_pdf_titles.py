@@ -4,13 +4,11 @@ import inspect
 
 import pytest
 
-from mineru.model.flash.pdf import (
-    line_layout,
-    line_merging,
-    models,
-    text_blocks,
-    titles,
-)
+from docgale.analyzers.native.pdf import line_layout
+from docgale.analyzers.native.pdf import line_merging
+from docgale.analyzers.native.pdf import models
+from docgale.analyzers.native.pdf import text_blocks
+from docgale.analyzers.native.pdf import titles
 
 
 from _flash_pdf_test_utils import (

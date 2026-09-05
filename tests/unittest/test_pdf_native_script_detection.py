@@ -6,12 +6,14 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
-from pdftext.schema import Bbox, Char
+from docgale.document.pdf.text.contracts import Bbox
+from docgale.document.pdf.text.contracts import Char
 
 from mineru.backend.analysis.pdf.text import native
 from mineru.backend.analysis.pdf.text.models import _AnalyzeSpan
-from mineru.model.flash.pdf.document import PDFDocument, get_lines_from_chars
-from mineru.model.flash.pdf.text_styles import PDF_NATIVE_SCRIPT_MARKUP_KEY
+from docgale.document.pdf.document import PDFDocument
+from docgale.document.pdf.document import get_lines_from_chars
+from docgale.analyzers.native.pdf.text_styles import PDF_NATIVE_SCRIPT_MARKUP_KEY
 from mineru.types import BBox, ContentType
 
 

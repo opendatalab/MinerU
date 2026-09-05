@@ -3,7 +3,7 @@ from pathlib import Path
 from pytest import MonkeyPatch
 
 from mineru.backend.analyze import doc_analyze
-from mineru.model.flash.office import image as office_image
+from docgale.analyzers.native.office import image as office_image
 from mineru.render.markdown import render_markdown
 
 

@@ -1,4 +1,6 @@
 from __future__ import annotations
+from docgale.schema import Producer
+from mineru.integrations.docgale import build_metadata
 
 import base64
 from copy import deepcopy
@@ -12,9 +14,9 @@ from PIL import Image
 import pytest
 
 from mineru.backend.analyze import doc_analyze
-from mineru.model.flash.epub import EpubPackage
+from docgale.analyzers.native.epub import EpubPackage
 from mineru.render import render_epub
-from mineru.render._internal.epub import assets as epub_assets
+from docgale.render._internal.epub import assets as epub_assets
 from mineru.types import (
     AlgorithmBodyBlock,
     ChartBlock,
@@ -36,12 +38,10 @@ from mineru.types import (
     TableBodyBlock,
     TextBlock,
 )
-from mineru.utils.image_payload import (
-    MAX_DECODED_RASTER_DIMENSION,
-    MAX_DECODED_RASTER_PIXELS,
-    validate_decoded_raster_size,
-)
-from mineru.utils import image_payload as image_payload_utils
+from docgale.foundation.image_payload import MAX_DECODED_RASTER_DIMENSION
+from docgale.foundation.image_payload import MAX_DECODED_RASTER_PIXELS
+from docgale.foundation.image_payload import validate_decoded_raster_size
+from docgale.foundation import image_payload as image_payload_utils
 
 from _epub_test_utils import build_epub_fixture
 from _span_test_utils import equation, hyperlink, inline
@@ -65,9 +65,8 @@ def _middle(*pages: PageInfo) -> MiddleJson:
         pages=list(pages),
         is_full_document=True,
         file_suffix="docx",
-        effort="flash",
-        parse_mode="txt",
-        mineru_version="test",
+        producer=Producer(name="mineru", version="test"),
+        extensions=build_metadata(effort="flash", parse_mode="txt", mineru_version="test"),
     )
 
 

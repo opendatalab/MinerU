@@ -1,4 +1,6 @@
 from __future__ import annotations
+from docgale.schema import Producer
+from mineru.integrations.docgale import build_metadata
 
 from datetime import datetime, timezone
 from io import BytesIO
@@ -21,7 +23,7 @@ from mineru.render import (
     render_pdf,
     render_structured_content,
 )
-from mineru.render._internal.common.planner import build_render_plan
+from docgale.render._internal.common.planner import build_render_plan
 from mineru.types import IndexBlock, MiddleJson, PageInfo, RefTextBlock, TextBlock
 
 
@@ -51,9 +53,8 @@ def _middle_with_text_anchor() -> MiddleJson:
         ],
         is_full_document=True,
         file_suffix="docx",
-        effort="flash",
-        parse_mode="txt",
-        mineru_version="test",
+        producer=Producer(name="mineru", version="test"),
+        extensions=build_metadata(effort="flash", parse_mode="txt", mineru_version="test"),
     )
 
 
@@ -73,9 +74,8 @@ def test_text_anchor_is_strict_and_blocks_continuation_merge() -> None:
         ],
         is_full_document=True,
         file_suffix="docx",
-        effort="flash",
-        parse_mode="txt",
-        mineru_version="test",
+        producer=Producer(name="mineru", version="test"),
+        extensions=build_metadata(effort="flash", parse_mode="txt", mineru_version="test"),
     )
 
     planned = build_render_plan(middle)
@@ -100,9 +100,8 @@ def test_duplicate_and_empty_text_anchors_emit_only_the_first_visible_target() -
         ],
         is_full_document=True,
         file_suffix="docx",
-        effort="flash",
-        parse_mode="txt",
-        mineru_version="test",
+        producer=Producer(name="mineru", version="test"),
+        extensions=build_metadata(effort="flash", parse_mode="txt", mineru_version="test"),
     )
 
     assert render_markdown(middle).count('<a id="same"></a>') == 1

@@ -1,4 +1,6 @@
 from __future__ import annotations
+from docgale.compat.mineru import from_mineru_middle
+from docgale.export.middle import export_middle_json
 
 import asyncio
 import base64
@@ -20,15 +22,16 @@ from PIL import Image
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
 from mineru.errors import InvalidRequestError
 from mineru.doclib.services.parse_svc import ParseService
-from mineru.model.flash import HtmlModel
-from mineru.model.flash._shared.markup import MarkupProjector
-from mineru.model.flash.html import HtmlResourceLimitError, HtmlSourceContext
-from mineru.model.flash.html import converter as html_converter_module
-from mineru.model.flash.html import document as html_document_module
-from mineru.model.flash.html import resources as html_resources_module
-from mineru.model.flash.html import selector as html_selector_module
-from mineru.model.flash.html.resources import HtmlResourceContext
-from mineru.model.flash.html.wire import decode_mineru_html_wire
+from docgale.analyzers.native import HtmlModel
+from docgale.analyzers.native._shared.markup import MarkupProjector
+from docgale.analyzers.native.html import HtmlResourceLimitError
+from docgale.analyzers.native.html import HtmlSourceContext
+from docgale.analyzers.native.html import converter as html_converter_module
+from docgale.analyzers.native.html import document as html_document_module
+from docgale.analyzers.native.html import resources as html_resources_module
+from docgale.analyzers.native.html import selector as html_selector_module
+from docgale.analyzers.native.html.resources import HtmlResourceContext
+from docgale.codecs.html import decode_mineru_html_wire
 from mineru.parser import ParseResult, parse, parse_async
 from mineru.parser import api_server
 from mineru.parser.api_server import CreateJobRequest, FileStore
@@ -58,7 +61,7 @@ def _image_body(middle: MiddleJson) -> ImageBodyBlock:
 
 def _wire_contract_middle() -> MiddleJson:
     """构造覆盖全部顶层类型、visual child、列表和目录叶子的严格文档。"""
-    return MiddleJson.model_validate(
+    return from_mineru_middle(
         {
             "pages": [
                 {
@@ -242,8 +245,8 @@ def test_html_doc_analyze_projects_static_semantics_and_renderers() -> None:
     assert middle.model_dump() == async_middle.model_dump()
     assert model.pages == async_model.pages
     assert middle.file_suffix == model.file_suffix == "html"
-    assert middle.effort == model.effort == "flash"
-    assert middle.parse_mode == model.parse_mode == "txt"
+    assert middle.extensions["mineru"]["effort"] == model.extensions["mineru"]["effort"] == "flash"
+    assert middle.extensions["mineru"]["parse_mode"] == model.extensions["mineru"]["parse_mode"] == "txt"
     assert middle.is_full_document is True
     assert [page.page_idx for page in middle.pages] == [0]
     assert all(block.bbox is None for block in middle.pages[0].blocks)
@@ -347,7 +350,6 @@ def test_html_parse_server_url_preserves_http_declared_charset(tmp_path: Path, m
             record,
             request,
             file_store,
-            ocr_mode="auto",
             image_analysis=True,
         )
     )
@@ -398,7 +400,6 @@ def test_html_parse_server_url_accepts_extensionless_text_html(
             record,
             request,
             file_store,
-            ocr_mode="auto",
             image_analysis=True,
         )
     )
@@ -466,7 +467,6 @@ def test_html_parse_server_no_flash_rejects_extensionless_text_html_after_fetch(
             record,
             request,
             file_store,
-            ocr_mode="auto",
             image_analysis=True,
             flash_enabled=False,
         )
@@ -1263,7 +1263,7 @@ def test_html_local_base_images_styles_and_escape_are_bounded(tmp_path: Path) ->
     markdown = result.markdown()
     assert "hidden css" not in markdown
     assert "Outside" in markdown
-    exported = result.middle_json.export(tmp_path / "export")
+    exported = export_middle_json(result.middle_json, tmp_path / "export")
     assert len(exported.image_paths) == 1
     assert exported.image_paths[0].read_bytes() == image_path.read_bytes()
     assert _image_body(exported.middle_json).image_base64 is None
@@ -1354,7 +1354,6 @@ def test_html_parse_server_local_source_keeps_relative_assets(tmp_path: Path) ->
             record,
             request,
             file_store,
-            ocr_mode="auto",
             image_analysis=True,
             allow_local_source=True,
         )
@@ -1387,7 +1386,7 @@ def test_html_doclib_local_bridge_uses_flash_parser(tmp_path: Path) -> None:
     )
 
     assert result.middle_json.file_suffix == "html"
-    assert result.middle_json.effort == "flash"
+    assert result.middle_json.extensions["mineru"]["effort"] == "flash"
     assert "Doclib HTML" in result.markdown()
 
 
@@ -1480,7 +1479,7 @@ def test_html_remote_image_url_contract_rejects_unsafe_sources(image_url: str) -
 
 def test_html_versioned_wire_roundtrips_empty_code_body() -> None:
     """验证空代码主体仍携带 wire marker，并在 HTML 往返后保留代码块元数据。"""
-    source = MiddleJson.model_validate(
+    source = from_mineru_middle(
         {
             "pages": [
                 {
@@ -1553,7 +1552,7 @@ def test_html_versioned_wire_roundtrips_all_semantic_types() -> None:
 
 def test_html_wire_decode_distinguishes_absent_empty_and_noncanonical() -> None:
     """验证单一 decode 入口区分普通 HTML、合法空 wire 与非 canonical v1。"""
-    source = MiddleJson.model_validate(
+    source = from_mineru_middle(
         {
             "pages": [{"page_idx": 0, "blocks": []}],
             "is_full_document": True,
@@ -1599,7 +1598,7 @@ def test_html_versioned_wire_preserves_visual_rich_content(
     }
     if with_main_image:
         body["image_url"] = "https://example.com/main.png"
-    source = MiddleJson.model_validate(
+    source = from_mineru_middle(
         {
             "pages": [
                 {
@@ -1643,7 +1642,7 @@ def test_html_versioned_wire_preserves_visual_rich_content(
 
 def test_html_versioned_wire_roundtrips_canonical_visual_body_variants() -> None:
     """验证 flowchart 与 table 的固定载荷分支都通过 exact typed plan 往返。"""
-    source = MiddleJson.model_validate(
+    source = from_mineru_middle(
         {
             "pages": [
                 {
@@ -1723,7 +1722,7 @@ def test_html_versioned_wire_roundtrips_canonical_visual_body_variants() -> None
 
 def test_html_versioned_wire_distinguishes_index_carrier_from_inline_link() -> None:
     """验证未链接目录项中的普通 anchor 不会被误认为 renderer 目录外壳。"""
-    source = MiddleJson.model_validate(
+    source = from_mineru_middle(
         {
             "pages": [
                 {
@@ -1763,7 +1762,7 @@ def test_html_versioned_wire_distinguishes_index_carrier_from_inline_link() -> N
 def test_html_noncanonical_wire_structural_edits_use_generic_fallback(edit_kind: str) -> None:
     """验证 carrier 外结构统一触发 generic fallback，而不是增加逐 case 物化兼容。"""
     if edit_kind == "index_sibling":
-        source = MiddleJson.model_validate(
+        source = from_mineru_middle(
             {
                 "pages": [
                     {
@@ -1824,7 +1823,7 @@ def test_html_noncanonical_wire_structural_edits_use_generic_fallback(edit_kind:
 @pytest.mark.parametrize("outside_kind", ["text", "inline"])
 def test_html_versioned_list_content_outside_carrier_falls_back_without_loss(outside_kind: str) -> None:
     """验证列表 carrier 外的编辑内容触发通用投影并完整保留。"""
-    source = MiddleJson.model_validate(
+    source = from_mineru_middle(
         {
             "pages": [
                 {
@@ -1863,7 +1862,7 @@ def test_html_versioned_list_content_outside_carrier_falls_back_without_loss(out
 
 def test_html_invalid_versioned_markers_fallback_without_partial_results() -> None:
     """验证未知版本和多类非法 marker 都整体回退，且可见正文不会重复。"""
-    source = MiddleJson.model_validate(
+    source = from_mineru_middle(
         {
             "pages": [
                 {
@@ -1948,7 +1947,7 @@ def test_html_versioned_wire_multiple_owned_images_fall_back_without_loss(
     owned_class: str,
 ) -> None:
     """验证普通图片和图表 body 被追加 renderer 图片时回退并保留全部载荷。"""
-    source = MiddleJson.model_validate(
+    source = from_mineru_middle(
         {
             "pages": [
                 {
@@ -1992,7 +1991,7 @@ def test_html_versioned_wire_multiple_owned_images_fall_back_without_loss(
 
 def test_html_versioned_wire_visible_structural_text_falls_back_without_loss() -> None:
     """验证机器结构容器中新增的可见文本会整体回退，并保留编辑内容。"""
-    source = MiddleJson.model_validate(
+    source = from_mineru_middle(
         {
             "pages": [{"page_idx": 0, "blocks": [{"type": "text", "index": 0, "content": inline("Original wire text")}]}],
             "is_full_document": True,
@@ -2031,7 +2030,7 @@ def test_html_versioned_wire_visible_structural_text_falls_back_without_loss() -
 @pytest.mark.parametrize("position", ["before", "after"])
 def test_html_versioned_wire_visible_sibling_falls_back_without_loss(position: str) -> None:
     """验证 wire 根前后的可见兄弟会整体回退，避免精确物化静默丢弃正文。"""
-    source = MiddleJson.model_validate(
+    source = from_mineru_middle(
         {
             "pages": [{"page_idx": 0, "blocks": [{"type": "text", "index": 0, "content": inline("Original wire text")}]}],
             "is_full_document": True,
@@ -2058,7 +2057,7 @@ def test_html_versioned_wire_visible_sibling_falls_back_without_loss(position: s
 
 def test_html_versioned_wire_markerless_block_child_falls_back_without_crash() -> None:
     """验证行内容器内新增的无 marker 块节点会事务式回退，而不是在物化阶段抛错。"""
-    source = MiddleJson.model_validate(
+    source = from_mineru_middle(
         {
             "pages": [
                 {
@@ -2093,7 +2092,7 @@ def test_html_versioned_wire_markerless_block_child_falls_back_without_crash() -
 
 def test_html_versioned_wire_edited_code_body_falls_back_without_loss() -> None:
     """验证普通代码 body 中新增可见节点会整体回退并保留代码与编辑内容。"""
-    source = MiddleJson.model_validate(
+    source = from_mineru_middle(
         {
             "pages": [
                 {
@@ -2129,7 +2128,7 @@ def test_html_versioned_wire_edited_code_body_falls_back_without_loss() -> None:
 
 def test_html_versioned_wire_edited_algorithm_body_falls_back_without_loss() -> None:
     """验证 algorithm body 中新增可见节点会整体回退并保留算法与编辑内容。"""
-    source = MiddleJson.model_validate(
+    source = from_mineru_middle(
         {
             "pages": [
                 {
@@ -2170,7 +2169,7 @@ def test_html_versioned_wire_edited_algorithm_body_falls_back_without_loss() -> 
 
 def test_html_versioned_wire_edited_table_body_falls_back_without_loss() -> None:
     """验证表格 body 中新增可见节点会整体回退并保留表格与编辑内容。"""
-    source = MiddleJson.model_validate(
+    source = from_mineru_middle(
         {
             "pages": [
                 {
@@ -2210,7 +2209,7 @@ def test_html_versioned_wire_edited_table_body_falls_back_without_loss() -> None
 
 def test_html_versioned_wire_edited_flowchart_body_falls_back_without_loss() -> None:
     """验证流程图 body 中新增可见节点会整体回退并保留源码与编辑内容。"""
-    source = MiddleJson.model_validate(
+    source = from_mineru_middle(
         {
             "pages": [
                 {
@@ -2251,7 +2250,7 @@ def test_html_versioned_wire_edited_flowchart_body_falls_back_without_loss() -> 
 
 def test_html_marker_fallback_does_not_double_resolve_images(monkeypatch: pytest.MonkeyPatch) -> None:
     """验证结构校验先于资源物化，非法 marker 回退只解析一次图片。"""
-    source = MiddleJson.model_validate(
+    source = from_mineru_middle(
         {
             "pages": [
                 {

@@ -8,14 +8,12 @@ from docx import Document
 from docx.oxml.ns import qn
 from docx.table import _Cell
 
-from mineru.render._internal.docx.table import (
-    DocxTableError,
-    NestedTableWriter,
-    materialize_docx_table,
-    materialize_docx_tables,
-    parse_html_table,
-    parse_html_tables,
-)
+from docgale.render._internal.docx.table import DocxTableError
+from docgale.render._internal.docx.table import NestedTableWriter
+from docgale.render._internal.docx.table import materialize_docx_table
+from docgale.render._internal.docx.table import materialize_docx_tables
+from docgale.render._internal.docx.table import parse_html_table
+from docgale.render._internal.docx.table import parse_html_tables
 
 
 def _text_filler(

@@ -9,8 +9,8 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-from mineru.model.flash.pdf.document import PDFDocument
-from mineru.model.flash.pdf.pipeline import _analyze_native_document
+from docgale.document.pdf.document import PDFDocument
+from docgale.analyzers.native.pdf.pipeline import _analyze_native_document
 from _flash_pdf_test_utils import (
     _geometry_summary_mismatch,
     _page_bbox_fingerprint,

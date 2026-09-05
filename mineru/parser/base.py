@@ -1,5 +1,8 @@
 # Copyright (c) Opendatalab. All rights reserved.
 from __future__ import annotations
+from docgale.compat.mineru import from_mineru_middle, to_mineru_middle, to_mineru_model
+from docgale.schema import Producer
+from ..integrations.docgale import build_metadata
 
 import json
 from abc import ABC, abstractmethod
@@ -116,13 +119,12 @@ class ParseResult:
     def _build_middle_json_from_current(d: dict[str, Any]) -> MiddleJson:
         """从当前版本 schema 直接构造 Span 化 MiddleJson。"""
         payload = {k: v for k, v in d.items() if k not in _TO_DICT_EXCLUDED_KEYS}
-        return MiddleJson.model_validate(payload)
+        return from_mineru_middle(payload)
 
     @staticmethod
     def _build_middle_json_from_legacy(d: dict[str, Any], raw_pages: list[dict[str, Any]]) -> MiddleJson:
         """把 3.4.5 页面回推为 raw ModelJson，再走当前统一后处理生成 2.0。"""
-        from ..backend.postprocess.legacy_schema_adapter import legacy_page_to_model_list
-        from ..backend.postprocess.pages import model_json_to_pages
+        from docgale.compat.legacy_schema_adapter import legacy_page_to_model_list
         from ..version import __version__ as current_mineru_version
 
         source_version = d.get("_version_name", d.get("mineru_version"))
@@ -133,27 +135,22 @@ class ParseResult:
             pages=[legacy_page_to_model_list(page) for page in raw_pages],
             page_index_map=_legacy_page_index_map(raw_pages),
             file_suffix=_legacy_file_suffix(d),
-            effort=_legacy_effort(d),
-            parse_mode=_legacy_parse_mode(d),
-            mineru_version=mineru_version,
+            producer=Producer(name="mineru", version=mineru_version),
+            extensions=build_metadata(
+                effort=_legacy_effort(d), parse_mode=_legacy_parse_mode(d), mineru_version=mineru_version
+            ),
         )
-        return MiddleJson(
-            pages=model_json_to_pages(model_json),
-            is_full_document=model_json.is_full_document,
-            file_suffix=model_json.file_suffix,
-            effort=model_json.effort,
-            parse_mode=model_json.parse_mode,
-            mineru_version=model_json.mineru_version,
-        )
+        from docgale.postprocess.document import model_json_to_middle_json
+
+        return model_json_to_middle_json(model_json)
 
     def to_dict(self, *, skip_defaults: bool = True) -> dict[str, Any]:
-        payload: dict[str, Any] = {"schema_version": MIDDLE_JSON_SCHEMA_VERSION}
-        options: dict[str, Any] = {"skip_defaults": skip_defaults}
-        # image block in PDF can be rendered and cropped again.
-        if self.middle_json.file_suffix == "pdf":
-            options["exclude_block_fields"] = {"image_base64"}
-        payload.update(self.middle_json.to_dict(**options))
-        return payload
+        """保留 schema 2.0 输出及 PDF 图片省略约定，由独立 codec 还原封装。"""
+        return to_mineru_middle(
+            self.middle_json,
+            skip_defaults=skip_defaults,
+            exclude_block_fields={"image_base64"} if self.middle_json.file_suffix == "pdf" else None,
+        )
 
     @staticmethod
     def from_json(s: str) -> ParseResult:
@@ -196,7 +193,7 @@ class ParseResult:
 
         if self._model_output is not None:
             model_output = (
-                self._model_output.to_dict(skip_defaults=False)
+                to_mineru_model(self._model_output, skip_defaults=False)
                 if isinstance(self._model_output, ModelJson)
                 else self._model_output
             )

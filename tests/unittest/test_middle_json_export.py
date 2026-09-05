@@ -1,7 +1,11 @@
 from __future__ import annotations
+import json
+from docgale.codecs.json import load_middle
+from docgale.export.middle import export_middle_json
+from docgale.schema import Producer
+from mineru.integrations.docgale import build_metadata
 
 import base64
-import json
 import os
 from pathlib import Path
 
@@ -22,9 +26,8 @@ def _middle_json_with_table(body: TableBodyBlock) -> MiddleJson:
         pages=[PageInfo(page_idx=3, blocks=[table])],
         is_full_document=True,
         file_suffix="docx",
-        effort="flash",
-        parse_mode="txt",
-        mineru_version="test",
+        producer=Producer(name="mineru", version="test"),
+        extensions=build_metadata(effort="flash", parse_mode="txt", mineru_version="test"),
     )
 
 
@@ -39,7 +42,7 @@ def test_full_serialization_round_trip_and_recursive_field_exclusion() -> None:
     excluded = middle_json.to_dict(exclude_block_fields={"image_base64"})
 
     assert jpeg_uri in full_json
-    assert MiddleJson.model_validate_json(full_json) == middle_json
+    assert load_middle(json.loads(full_json)) == middle_json
     assert "image_base64" not in excluded["pages"][0]["blocks"][0]["content"][0]
 
 
@@ -56,12 +59,11 @@ def test_equation_export_uses_canonical_sidecar_name(tmp_path: Path) -> None:
         pages=[PageInfo(page_idx=3, blocks=[equation])],
         is_full_document=True,
         file_suffix="docx",
-        effort="flash",
-        parse_mode="txt",
-        mineru_version="test",
+        producer=Producer(name="mineru", version="test"),
+        extensions=build_metadata(effort="flash", parse_mode="txt", mineru_version="test"),
     )
 
-    result = middle_json.export(tmp_path)
+    result = export_middle_json(middle_json, tmp_path)
     exported_equation = result.middle_json.pages[0].blocks[0]
 
     assert [path.name for path in result.image_paths] == ["page_3_equation_6.jpg"]
@@ -80,11 +82,9 @@ def test_export_writes_direct_and_multiple_html_images_without_mutating_source(t
     gif_uri = _data_uri("gif", gif_payload)
     png_uri = _data_uri("png", png_payload)
     html = f'<table><img src="{gif_uri}"><img src="{png_uri}"></table>'
-    middle_json = _middle_json_with_table(
-        TableBodyBlock(type="table_body", index=4, content=html, image_base64=jpeg_uri)
-    )
+    middle_json = _middle_json_with_table(TableBodyBlock(type="table_body", index=4, content=html, image_base64=jpeg_uri))
 
-    result = middle_json.export(tmp_path)
+    result = export_middle_json(middle_json, tmp_path)
     exported_json = result.json_path.read_text()
     exported_body = result.middle_json.pages[0].blocks[0].content[0]
 
@@ -118,7 +118,7 @@ def test_export_supports_strict_svg_payload(tmp_path: Path) -> None:
         )
     )
 
-    result = middle_json.export(tmp_path)
+    result = export_middle_json(middle_json, tmp_path)
 
     assert (tmp_path / "images/page_3_table_body_2.svg").read_bytes() == svg_payload
     assert result.middle_json.pages[0].blocks[0].content[0].image_path.endswith(".svg")
@@ -138,7 +138,7 @@ def test_export_supports_direct_png_and_html_jpeg(tmp_path: Path) -> None:
         )
     )
 
-    result = middle_json.export(tmp_path)
+    result = export_middle_json(middle_json, tmp_path)
 
     assert (tmp_path / "images/page_3_table_body_5.png").read_bytes() == png_payload
     assert (tmp_path / "images/page_3_table_body_5_1.jpg").read_bytes() == jpeg_payload
@@ -162,7 +162,7 @@ def test_export_rejects_invalid_payload_before_writing(tmp_path: Path, data_uri:
     )
 
     with pytest.raises(ValueError):
-        middle_json.export(output_dir)
+        export_middle_json(middle_json, output_dir)
 
     assert not output_dir.exists()
 
@@ -179,7 +179,7 @@ def test_export_rejects_unparsed_inline_data_uri_before_writing(tmp_path: Path) 
     )
 
     with pytest.raises(ValueError, match="inline image data URI"):
-        middle_json.export(output_dir)
+        export_middle_json(middle_json, output_dir)
 
     assert not output_dir.exists()
 
@@ -205,14 +205,14 @@ def test_export_preflights_conflicts_and_supports_explicit_overwrite(tmp_path: P
         )
     )
 
-    first.export(tmp_path)
-    first.export(tmp_path)
+    export_middle_json(first, tmp_path)
+    export_middle_json(first, tmp_path)
     image_path = tmp_path / "images/page_3_table_body_0.jpg"
     with pytest.raises(FileExistsError):
-        second.export(tmp_path)
+        export_middle_json(second, tmp_path)
     assert image_path.read_bytes() == first_payload
 
-    second.export(tmp_path, overwrite=True)
+    export_middle_json(second, tmp_path, overwrite=True)
     assert image_path.read_bytes() == second_payload
 
 
@@ -229,7 +229,7 @@ def test_export_conflicting_json_rolls_back_before_any_image_write(tmp_path: Pat
     )
 
     with pytest.raises(FileExistsError):
-        middle_json.export(tmp_path)
+        export_middle_json(middle_json, tmp_path)
 
     assert not (tmp_path / "images/page_3_table_body_9.jpg").exists()
     assert (tmp_path / "middle_json.json").read_text() == "occupied"
@@ -264,24 +264,22 @@ def test_export_restores_existing_files_after_commit_failure(
             raise OSError("simulated commit failure")
         original_replace(source, target)
 
-    monkeypatch.setattr("mineru.types.os.replace", fail_second_replace)
+    monkeypatch.setattr("docgale.export.middle.os.replace", fail_second_replace)
 
     with pytest.raises(OSError, match="simulated commit failure"):
-        middle_json.export(tmp_path, overwrite=True)
+        export_middle_json(middle_json, tmp_path, overwrite=True)
 
     assert image_path.read_bytes() == b"old-image"
     assert json_path.read_bytes() == b"old-json"
-    assert not list(tmp_path.rglob(".mineru-export-*"))
+    assert not list(tmp_path.rglob(".docgale-export-*"))
 
 
 @pytest.mark.parametrize("json_name", ["../middle.json", "/tmp/middle.json", "..\\middle.json"])
 def test_export_rejects_path_escape(tmp_path: Path, json_name: str) -> None:
     """验证 JSON 输出名不能使用绝对路径或逃逸文档目录。"""
-    middle_json = _middle_json_with_table(
-        TableBodyBlock(type="table_body", index=0, content="<table></table>")
-    )
+    middle_json = _middle_json_with_table(TableBodyBlock(type="table_body", index=0, content="<table></table>"))
     with pytest.raises(ValueError):
-        middle_json.export(tmp_path, json_name=json_name)
+        export_middle_json(middle_json, tmp_path, json_name=json_name)
 
 
 def test_export_rejects_file_and_directory_path_collision(tmp_path: Path) -> None:
@@ -297,7 +295,7 @@ def test_export_rejects_file_and_directory_path_collision(tmp_path: Path) -> Non
     )
 
     with pytest.raises(ValueError, match="required directory"):
-        middle_json.export(output_dir, json_name="images")
+        export_middle_json(middle_json, output_dir, json_name="images")
 
     assert not output_dir.exists()
 
@@ -308,12 +306,10 @@ def test_export_rejects_symlink_output_directory(tmp_path: Path) -> None:
     actual_dir.mkdir()
     link_dir = tmp_path / "link"
     os.symlink(actual_dir, link_dir)
-    middle_json = _middle_json_with_table(
-        TableBodyBlock(type="table_body", index=0, content="<table></table>")
-    )
+    middle_json = _middle_json_with_table(TableBodyBlock(type="table_body", index=0, content="<table></table>"))
 
     with pytest.raises(ValueError, match="symlink"):
-        middle_json.export(link_dir)
+        export_middle_json(middle_json, link_dir)
 
     assert list(actual_dir.iterdir()) == []
 
@@ -335,7 +331,7 @@ def test_export_rejects_symlink_sidecar_directory(tmp_path: Path) -> None:
     )
 
     with pytest.raises(ValueError, match="symlink"):
-        middle_json.export(output_dir)
+        export_middle_json(middle_json, output_dir)
 
     assert list(outside_dir.iterdir()) == []
 
@@ -354,12 +350,10 @@ def test_image_path_is_validated_during_deserialization() -> None:
 
 def test_exported_json_is_a_pure_middle_json_object(tmp_path: Path) -> None:
     """验证导出 JSON 可独立严格反序列化且不依赖导出结果包装对象。"""
-    middle_json = _middle_json_with_table(
-        TableBodyBlock(type="table_body", index=0, content="<table></table>")
-    )
-    result = middle_json.export(tmp_path)
+    middle_json = _middle_json_with_table(TableBodyBlock(type="table_body", index=0, content="<table></table>"))
+    result = export_middle_json(middle_json, tmp_path)
 
     payload = json.loads(result.json_path.read_text())
-    restored = MiddleJson.model_validate(payload)
+    restored = load_middle(payload)
 
     assert restored == result.middle_json

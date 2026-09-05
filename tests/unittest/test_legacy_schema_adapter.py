@@ -1,9 +1,11 @@
+from docgale.schema import Producer
+from mineru.integrations.docgale import build_metadata
 from copy import deepcopy
 
 import pytest
 
-from mineru.backend.postprocess.legacy_schema_adapter import legacy_page_to_model_list
-from mineru.backend.postprocess.pages import model_json_to_pages
+from docgale.compat.legacy_schema_adapter import legacy_page_to_model_list
+from docgale.postprocess.pages import model_json_to_pages
 from mineru.doclib.background.compaction import _normalize_batch_pages
 from mineru.types import BlockType, ModelJson
 
@@ -22,9 +24,8 @@ def _current_pages(raw_pages: list[list[dict]]) -> list:
         pages=raw_pages,
         page_index_map=[],
         file_suffix="pdf",
-        effort="medium",
-        parse_mode="txt",
-        mineru_version="3.4.5",
+        producer=Producer(name="mineru", version="3.4.5"),
+        extensions=build_metadata(effort="medium", parse_mode="txt", mineru_version="3.4.5"),
     )
     return model_json_to_pages(model_json)
 

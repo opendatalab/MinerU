@@ -8,13 +8,11 @@ from pathlib import Path
 from PIL import Image, features
 import pytest
 
-from mineru.render._internal.docx.assets import (
-    DocxAssetError,
-    PreparedImage,
-    prepare_block_image,
-    prepare_html_image,
-    prepare_image_bytes,
-)
+from docgale.render._internal.docx.assets import DocxAssetError
+from docgale.render._internal.docx.assets import PreparedImage
+from docgale.render._internal.docx.assets import prepare_block_image
+from docgale.render._internal.docx.assets import prepare_html_image
+from docgale.render._internal.docx.assets import prepare_image_bytes
 from mineru.types import ImageBodyBlock
 
 

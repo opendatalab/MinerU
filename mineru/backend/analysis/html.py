@@ -6,8 +6,8 @@ from __future__ import annotations
 import time
 from io import BytesIO
 
-from ...model.flash import HtmlModel
-from ...model.flash.html import HtmlSourceContext
+from docgale.analyzers.native import HtmlModel
+from docgale.analyzers.native.html import HtmlSourceContext
 from .contracts import AnalysisResult
 
 

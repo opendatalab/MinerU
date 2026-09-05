@@ -2,12 +2,10 @@ from __future__ import annotations
 
 import pytest
 
-from mineru.model.flash.pdf import (
-    geometry,
-    pipeline,
-    text_blocks,
-    visual_annotations,
-)
+from docgale.analyzers.native.pdf import geometry
+from docgale.analyzers.native.pdf import pipeline
+from docgale.analyzers.native.pdf import text_blocks
+from docgale.analyzers.native.pdf import visual_annotations
 
 
 _PAGE_SIZE = (200.0, 200.0)

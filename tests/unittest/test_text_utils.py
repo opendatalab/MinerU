@@ -1,9 +1,7 @@
 import pytest
 
-from mineru.utils.text import (
-    merge_text_line_contents,
-    resolve_text_line_boundary,
-)
+from docgale.foundation.text import merge_text_line_contents
+from docgale.foundation.text import resolve_text_line_boundary
 
 
 @pytest.mark.parametrize(
@@ -118,21 +116,24 @@ def test_merge_text_line_contents_keeps_accumulated_url_context() -> None:
             "TABLEFORMER.md",
         ],
         block_language="en",
-    ) == (
-        "Code at "
-        "https://github.com/google-research/tapas/blob/master/TABLEFORMER.md"
+    ) == ("Code at https://github.com/google-research/tapas/blob/master/TABLEFORMER.md")
+    assert (
+        merge_text_line_contents(
+            [
+                "ETC: Encoding long and structured inputs",
+                "in transformers",
+            ],
+            block_language="en",
+        )
+        == "ETC: Encoding long and structured inputs in transformers"
     )
-    assert merge_text_line_contents(
-        [
-            "ETC: Encoding long and structured inputs",
-            "in transformers",
-        ],
-        block_language="en",
-    ) == "ETC: Encoding long and structured inputs in transformers"
-    assert merge_text_line_contents(
-        [
-            "https://example.test/first",
-            "https://example.test/second",
-        ],
-        block_language="en",
-    ) == "https://example.test/first https://example.test/second"
+    assert (
+        merge_text_line_contents(
+            [
+                "https://example.test/first",
+                "https://example.test/second",
+            ],
+            block_language="en",
+        )
+        == "https://example.test/first https://example.test/second"
+    )

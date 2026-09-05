@@ -1,4 +1,5 @@
 from __future__ import annotations
+from docgale.export.middle import export_middle_json
 
 import asyncio
 from io import BytesIO
@@ -9,17 +10,17 @@ from bs4 import BeautifulSoup
 import pytest
 
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
-from mineru.model.flash import XlsModel
-from mineru.model.flash._shared.hyperlink import OFFICE_EXTERNAL_HYPERLINK_SCHEMES, sanitize_hyperlink_target
-from mineru.model.flash.office.errors import (
-    LegacyOfficeEncryptedError,
-    LegacyOfficeMissingPartError,
-    LegacyOfficeResourceLimitError,
-)
-from mineru.model.flash.office.limits import MAX_RECORDS
-from mineru.model.flash.office.xls import xls_converter as xls_converter_module
-from mineru.model.flash.office.xls.number_format import format_number, format_text
-from mineru.model.flash.office.xls.records import RecordBudget
+from docgale.analyzers.native import XlsModel
+from docgale.analyzers.native._shared.hyperlink import OFFICE_EXTERNAL_HYPERLINK_SCHEMES
+from docgale.analyzers.native._shared.hyperlink import sanitize_hyperlink_target
+from docgale.analyzers.native.office.errors import LegacyOfficeEncryptedError
+from docgale.analyzers.native.office.errors import LegacyOfficeMissingPartError
+from docgale.analyzers.native.office.errors import LegacyOfficeResourceLimitError
+from docgale.analyzers.native.office.limits import MAX_RECORDS
+from docgale.analyzers.native.office.xls import xls_converter as xls_converter_module
+from docgale.analyzers.native.office.xls.number_format import format_number
+from docgale.analyzers.native.office.xls.number_format import format_text
+from docgale.analyzers.native.office.xls.records import RecordBudget
 from mineru.parser import parse
 from mineru.types import BlockType, ImageBlock, MiddleJson, ModelJson, TableBlock
 
@@ -74,8 +75,8 @@ def test_backend_analyze_accepts_xls_and_async_contract() -> None:
     assert isinstance(model_json, ModelJson)
     assert isinstance(middle_json, MiddleJson)
     assert model_json.file_suffix == middle_json.file_suffix == "xls"
-    assert model_json.effort == middle_json.effort == "flash"
-    assert model_json.parse_mode == middle_json.parse_mode == "txt"
+    assert model_json.extensions["mineru"]["effort"] == middle_json.extensions["mineru"]["effort"] == "flash"
+    assert model_json.extensions["mineru"]["parse_mode"] == middle_json.extensions["mineru"]["parse_mode"] == "txt"
     assert model_json.is_full_document is middle_json.is_full_document is True
     assert async_model == model_json
     assert async_middle == middle_json
@@ -376,7 +377,7 @@ def test_real_xls_recovers_tables_charts_image_link_and_exports(tmp_path: Path) 
     )
     assert sum(isinstance(block, ImageBlock) for block in middle_json.pages[2].blocks) == 1
 
-    export_result = middle_json.export(tmp_path / "export")
+    export_result = export_middle_json(middle_json, tmp_path / "export")
     exported = export_result.middle_json.model_dump(mode="json", exclude_none=True)
     assert export_result.json_path.exists()
     assert len(export_result.image_paths) == 1

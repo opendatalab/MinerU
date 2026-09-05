@@ -9,32 +9,26 @@ from io import BytesIO
 import pytest
 from reportlab.pdfgen.canvas import Canvas
 
-from mineru.model.flash.pdf.table_recovery import (
-    NativeTableCell,
-    NativeTableInput,
-    NativeTableRectangle,
-    NativeTableRule,
-    coerce_native_table_rectangles,
-    coerce_native_table_rules,
-    recover_native_pdf_table,
-)
-from mineru.model.flash.pdf.table_recovery.candidate import GridCellSpec, build_candidate
-from mineru.model.flash.pdf.table_recovery.contracts import NativeTableCandidate, NativeTableGlyph
-from mineru.model.flash.pdf.table_recovery.engine import (
-    _remove_undercounted_vector_candidates,
-    _select_candidate,
-    diagnose_native_pdf_table,
-)
-from mineru.model.flash.pdf.table_recovery.text import (
-    build_cell_text,
-    build_cell_text_parts,
-    build_native_table_text,
-)
-from mineru.model.flash.pdf.table_recovery.vector import (
-    MAX_PRIMITIVES_PER_TABLE,
-    build_vector_candidates,
-)
-from mineru.model.flash.pdf.document import PDFDocument
+from docgale.analyzers.native.pdf.table_recovery import NativeTableCell
+from docgale.analyzers.native.pdf.table_recovery import NativeTableInput
+from docgale.analyzers.native.pdf.table_recovery import NativeTableRectangle
+from docgale.analyzers.native.pdf.table_recovery import NativeTableRule
+from docgale.analyzers.native.pdf.table_recovery import coerce_native_table_rectangles
+from docgale.analyzers.native.pdf.table_recovery import coerce_native_table_rules
+from docgale.analyzers.native.pdf.table_recovery import recover_native_pdf_table
+from docgale.analyzers.native.pdf.table_recovery.candidate import GridCellSpec
+from docgale.analyzers.native.pdf.table_recovery.candidate import build_candidate
+from docgale.analyzers.native.pdf.table_recovery.contracts import NativeTableCandidate
+from docgale.analyzers.native.pdf.table_recovery.contracts import NativeTableGlyph
+from docgale.analyzers.native.pdf.table_recovery.engine import _remove_undercounted_vector_candidates
+from docgale.analyzers.native.pdf.table_recovery.engine import _select_candidate
+from docgale.analyzers.native.pdf.table_recovery.engine import diagnose_native_pdf_table
+from docgale.analyzers.native.pdf.table_recovery.text import build_cell_text
+from docgale.analyzers.native.pdf.table_recovery.text import build_cell_text_parts
+from docgale.analyzers.native.pdf.table_recovery.text import build_native_table_text
+from docgale.analyzers.native.pdf.table_recovery.vector import MAX_PRIMITIVES_PER_TABLE
+from docgale.analyzers.native.pdf.table_recovery.vector import build_vector_candidates
+from docgale.document.pdf.document import PDFDocument
 
 
 def _char_items(

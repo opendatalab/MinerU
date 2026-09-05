@@ -6,7 +6,8 @@ from typing import Any, Literal
 from loguru import logger
 from packaging import version
 
-from ...utils.platform import is_linux_environment, is_windows_environment
+from docgale.foundation.platform import is_linux_environment
+from docgale.foundation.platform import is_windows_environment
 from ..runtime.device import get_device
 from ..runtime.memory import get_vram
 
@@ -97,14 +98,12 @@ def set_default_gpu_memory_utilization(backend: Literal["vllm", "lmdeploy"] = "v
     min_memory = 4
     if backend == "vllm":
         from vllm import __version__ as vllm_version  # type: ignore
+
         if version.parse(vllm_version) >= version.parse("0.11.0"):
             min_memory = 6
     default_gpu_memory_utilization = round(min_memory / gpu_memory, 2)
 
-    logger.debug(
-        f"gpu_memory: {gpu_memory} GB, "
-        f"default_gpu_memory_utilization: {default_gpu_memory_utilization}"
-    )
+    logger.debug(f"gpu_memory: {gpu_memory} GB, default_gpu_memory_utilization: {default_gpu_memory_utilization}")
     return default_gpu_memory_utilization
 
 

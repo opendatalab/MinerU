@@ -4,12 +4,10 @@ import inspect
 
 import pytest
 
-from mineru.model.flash.pdf import (
-    auxiliary_text,
-    models,
-    pipeline,
-    text_blocks,
-)
+from docgale.analyzers.native.pdf import auxiliary_text
+from docgale.analyzers.native.pdf import models
+from docgale.analyzers.native.pdf import pipeline
+from docgale.analyzers.native.pdf import text_blocks
 
 
 from _flash_pdf_test_utils import (

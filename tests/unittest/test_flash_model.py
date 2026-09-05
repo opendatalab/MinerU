@@ -5,9 +5,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from mineru.model.flash import PdfModel
-from mineru.model.flash.pdf import pipeline
-from mineru.model.flash.pdf.document import PDFDocument
+from docgale.analyzers.native import PdfModel
+from docgale.analyzers.native.pdf import pipeline
+from docgale.document.pdf.document import PDFDocument
 
 
 def test_pdf_model_predict_returns_native_model_list_without_owning_document(
@@ -31,7 +31,7 @@ def test_pdf_model_predict_returns_native_model_list_without_owning_document(
 def test_pdf_model_is_public_and_old_flash_model_is_removed() -> None:
     """验证 PdfModel 公开可用，旧 FlashModel 名称不再兼容。"""
 
-    flash_module = importlib.import_module("mineru.model.flash")
+    flash_module = importlib.import_module("docgale.analyzers.native")
     assert flash_module.PdfModel is PdfModel
     assert not hasattr(flash_module, "FlashModel")
 

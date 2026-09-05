@@ -4,15 +4,13 @@ import hashlib
 import json
 from pathlib import Path
 
-from mineru.model.flash.pdf import pipeline
-from mineru.model.flash.pdf.char_geometry import (
-    _line_loose_tier_offsets,
-    apply_line_geometry_repairs,
-    build_document_geometry_plan,
-)
-from mineru.model.flash.pdf.document import PDFPageTextGeometry
-from mineru.model.flash.pdf.models import _LineItem
-from mineru.model.flash.pdf.native_text import _resplit_native_visual_runs
+from docgale.analyzers.native.pdf import pipeline
+from docgale.analyzers.native.pdf.char_geometry import _line_loose_tier_offsets
+from docgale.analyzers.native.pdf.char_geometry import apply_line_geometry_repairs
+from docgale.analyzers.native.pdf.char_geometry import build_document_geometry_plan
+from docgale.document.pdf.document import PDFPageTextGeometry
+from docgale.analyzers.native.pdf.models import _LineItem
+from docgale.analyzers.native.pdf.native_text import _resplit_native_visual_runs
 
 
 _PDF_FIXTURE_XOR_KEY = b"MinerU flash layout fixture"

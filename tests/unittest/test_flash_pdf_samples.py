@@ -1,4 +1,6 @@
 from __future__ import annotations
+from docgale.schema import Producer
+from mineru.integrations.docgale import build_metadata
 
 import re
 import sys
@@ -14,21 +16,20 @@ import pytest
 from bs4 import BeautifulSoup
 from pypdf import PdfReader
 
-from mineru.backend.postprocess.page_blocks import process_page_blocks
-from mineru.backend.postprocess.pages import model_json_to_pages
-from mineru.model.flash import PdfModel
-from mineru.model.flash.pdf import (
-    formulas,
-    geometry,
-    graphics,
-    line_merging,
-    models,
-    native_text,
-    tables,
-)
+from docgale.postprocess.page_blocks import process_page_blocks
+from docgale.postprocess.pages import model_json_to_pages
+from docgale.analyzers.native import PdfModel
+from docgale.analyzers.native.pdf import formulas
+from docgale.analyzers.native.pdf import geometry
+from docgale.analyzers.native.pdf import graphics
+from docgale.analyzers.native.pdf import line_merging
+from docgale.analyzers.native.pdf import models
+from docgale.analyzers.native.pdf import native_text
+from docgale.analyzers.native.pdf import tables
 from mineru.render import render_markdown
 from mineru.types import MiddleJson, ModelJson
-from mineru.model.flash.pdf.document import PDFDocument, get_lines_from_chars
+from docgale.document.pdf.document import PDFDocument
+from docgale.document.pdf.document import get_lines_from_chars
 
 from _span_test_utils import inline_text, inline_urls, visible_content
 
@@ -85,9 +86,8 @@ def _model_json(
         pages=pages,
         page_index_map=page_index_map or [],
         file_suffix="pdf",
-        effort="flash",
-        parse_mode="txt",
-        mineru_version="test",
+        producer=Producer(name="mineru", version="test"),
+        extensions=build_metadata(effort="flash", parse_mode="txt", mineru_version="test"),
     )
 
 
@@ -591,20 +591,13 @@ def test_demo1_keeps_five_real_tables_without_formula_false_positive() -> None:
     assert _visible_content(page5_visual_blocks[2]) == (
         "For *rainfall distribution, U, uniform; W, winter dominated; S, summer dominated. BFI, baseflow index."
     )
-    inline_statistics = next(
-        block
-        for block in model_list[4]
-        if _visible_content(block).startswith("Due to the constraint")
-    )
+    inline_statistics = next(block for block in model_list[4] if _visible_content(block).startswith("Due to the constraint"))
     assert inline_statistics["type"] == "text"
     assert "The F-statistic was calculated as:" in _visible_content(
         inline_statistics,
     )
     formula7 = next(
-        block
-        for block in model_list[4]
-        if block["type"] == "equation"
-        and r"\tag{7}" in str(block.get("content", ""))
+        block for block in model_list[4] if block["type"] == "equation" and r"\tag{7}" in str(block.get("content", ""))
     )
     formula_index = model_list[4].index(formula7)
     assert [
@@ -625,11 +618,7 @@ def test_demo1_keeps_five_real_tables_without_formula_false_positive() -> None:
     assert "doi:10.1016/j.jhydrol.2005.01.006" in _visible_content(copyright_block)
     assert model_list[0].index(page1_footnotes[0]) < model_list[0].index(copyright_block)
     assert next(block for block in model_list[0] if _visible_content(block) == "Abstract")["type"] == "paragraph_title"
-    received = next(
-        block
-        for block in model_list[0]
-        if _visible_content(block).startswith("Received 1 October")
-    )
+    received = next(block for block in model_list[0] if _visible_content(block).startswith("Received 1 October"))
     assert received["type"] == "text"
     assert next(block for block in model_list[6] if _visible_content(block).startswith("4.2."))["type"] == "paragraph_title"
 
@@ -711,9 +700,8 @@ def test_demo2_page1_forms_sixteen_blocks_and_keeps_figure_caption_separate() ->
             pages=model_json_to_pages(_model_json([page], page_index_map=[0])),
             is_full_document=False,
             file_suffix="pdf",
-            effort="flash",
-            parse_mode="txt",
-            mineru_version="test",
+            producer=Producer(name="mineru", version="test"),
+            extensions=build_metadata(effort="flash", parse_mode="txt", mineru_version="test"),
         )
     )
     abstract_markdown = next(
@@ -1090,12 +1078,7 @@ def test_demo3_pages1_and2_fix_title_front_matter_and_embedding_list() -> None:
         "rank ids (Z)",
     )
     embedding_blocks = [
-        next(
-            block
-            for block in page2
-            if _visible_content(block).startswith(label)
-        )
-        for label in embedding_labels
+        next(block for block in page2 if _visible_content(block).startswith(label)) for label in embedding_labels
     ]
     assert section_title["type"] == "paragraph_title"
     assert _visible_content(section_title) == "2 Preliminaries: TAPAS for Table Encoding"
@@ -1161,9 +1144,8 @@ def test_demo3_pages6_7_and10_fix_caption_inline_titles_and_reference_tail() -> 
             pages=model_json_to_pages(_model_json([page7], page_index_map=[6])),
             is_full_document=False,
             file_suffix="pdf",
-            effort="flash",
-            parse_mode="txt",
-            mineru_version="test",
+            producer=Producer(name="mineru", version="test"),
+            extensions=build_metadata(effort="flash", parse_mode="txt", mineru_version="test"),
         )
     )
     assert "**Attention Bias Scaling.** Unlike" in page7_markdown
@@ -1993,17 +1975,17 @@ def test_frozen_soil_reference_tails_remain_single_text_blocks() -> None:
     ]
     assert [
         [tuple(round(value * 1000) for value in child["bbox"]) for child in group["content"]] for group in page5_table_groups
-        ] == [
-            [
-                (215, 124, 374, 137),
-                (169, 143, 421, 154),
-                (107, 158, 483, 416),
-            ],
-            [
-                (208, 628, 381, 640),
-                (127, 646, 462, 656),
-                (107, 662, 483, 826),
-            ],
+    ] == [
+        [
+            (215, 124, 374, 137),
+            (169, 143, 421, 154),
+            (107, 158, 483, 416),
+        ],
+        [
+            (208, 628, 381, 640),
+            (127, 646, 462, 656),
+            (107, 662, 483, 826),
+        ],
     ]
 
     narrative_reference = _blocks_containing(
@@ -2104,12 +2086,7 @@ def test_mixed_elements_pages_07_10_force_txt_regressions() -> None:
     url_footer = _blocks_containing(page9, "http://klee.github.io")
     assert len(url_footer) == 1
     assert url_footer[0]["type"] == "page_footnote"
-    bottom_footnotes = [
-        block
-        for block in page9
-        if block["type"] == "page_footnote"
-        and block["bbox"][1] >= 0.85
-    ]
+    bottom_footnotes = [block for block in page9 if block["type"] == "page_footnote" and block["bbox"][1] >= 0.85]
     assert len(bottom_footnotes) == 1
     assert all(
         probe in _visible_content(bottom_footnotes[0])
@@ -2119,11 +2096,7 @@ def test_mixed_elements_pages_07_10_force_txt_regressions() -> None:
             "liuml07/giri",
         )
     )
-    assert sum(
-        block["type"] == "page_footnote"
-        for page in model_list
-        for block in page
-    ) == 2
+    assert sum(block["type"] == "page_footnote" for page in model_list for block in page) == 2
 
     reference5 = _blocks_containing(page10, "[5] A. Srivastava")
     assert len(reference5) == 1

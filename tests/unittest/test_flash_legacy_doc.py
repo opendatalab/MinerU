@@ -1,4 +1,5 @@
 from __future__ import annotations
+from docgale.export.middle import export_middle_json
 
 import asyncio
 from collections import Counter
@@ -10,21 +11,22 @@ from bs4 import BeautifulSoup
 import pytest
 
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
-from mineru.backend.postprocess.lists import fix_office_list_blocks
-from mineru.model.flash import DocModel
-from mineru.model.flash._shared.hyperlink import OFFICE_EXTERNAL_HYPERLINK_SCHEMES, sanitize_hyperlink_target
-from mineru.model.flash.office.doc.models import DocCharStyle, DocTableCell
-from mineru.model.flash.office.doc.images import ImageStore
-from mineru.model.flash.office.doc.parser import _RawTableRow, _materialize_table_rows
-from mineru.model.flash.office.doc.records import DocBudget
-from mineru.model.flash.office.doc.sprm import apply_character_sprms
-from mineru.model.flash.office.errors import (
-    LegacyOfficeEncryptedError,
-    LegacyOfficeMalformedError,
-    LegacyOfficeMissingPartError,
-    LegacyOfficeResourceLimitError,
-)
-from mineru.model.flash.office.legacy.officeart import OfficeImagePayload
+from docgale.postprocess.lists import fix_office_list_blocks
+from docgale.analyzers.native import DocModel
+from docgale.analyzers.native._shared.hyperlink import OFFICE_EXTERNAL_HYPERLINK_SCHEMES
+from docgale.analyzers.native._shared.hyperlink import sanitize_hyperlink_target
+from docgale.analyzers.native.office.doc.models import DocCharStyle
+from docgale.analyzers.native.office.doc.models import DocTableCell
+from docgale.analyzers.native.office.doc.images import ImageStore
+from docgale.analyzers.native.office.doc.parser import _RawTableRow
+from docgale.analyzers.native.office.doc.parser import _materialize_table_rows
+from docgale.analyzers.native.office.doc.records import DocBudget
+from docgale.analyzers.native.office.doc.sprm import apply_character_sprms
+from docgale.analyzers.native.office.errors import LegacyOfficeEncryptedError
+from docgale.analyzers.native.office.errors import LegacyOfficeMalformedError
+from docgale.analyzers.native.office.errors import LegacyOfficeMissingPartError
+from docgale.analyzers.native.office.errors import LegacyOfficeResourceLimitError
+from docgale.analyzers.native.office.legacy.officeart import OfficeImagePayload
 from mineru.parser import parse
 from mineru.types import BlockType, ChartBlock, MiddleJson, ModelJson, TableBlock
 
@@ -83,8 +85,8 @@ def test_doc_analyze_sync_and_async_return_strict_doc_contract() -> None:
     assert isinstance(model, ModelJson)
     assert isinstance(middle, MiddleJson)
     assert model.file_suffix == middle.file_suffix == "doc"
-    assert model.effort == middle.effort == "flash"
-    assert model.parse_mode == middle.parse_mode == "txt"
+    assert model.extensions["mineru"]["effort"] == middle.extensions["mineru"]["effort"] == "flash"
+    assert model.extensions["mineru"]["parse_mode"] == middle.extensions["mineru"]["parse_mode"] == "txt"
     assert async_model == model
     assert async_middle == middle
 
@@ -208,7 +210,8 @@ def test_doc_exact_list_label_is_consumed_before_strict_projection() -> None:
 def test_doc_table_grid_materializes_colspan_and_rowspan() -> None:
     """验证 Word table edge 网格能同时恢复横向和纵向合并。"""
 
-    from mineru.model.flash.office.doc.models import DocTableCellFormat, DocTableFormat
+    from docgale.analyzers.native.office.doc.models import DocTableCellFormat
+    from docgale.analyzers.native.office.doc.models import DocTableFormat
 
     first = DocTableCell(blocks=[])
     raw_rows = [
@@ -256,7 +259,7 @@ def test_doc_rejects_word95_encryption_rtf_and_missing_word_stream() -> None:
 def test_doc_budget_uses_stable_resource_limit(monkeypatch: pytest.MonkeyPatch) -> None:
     """验证 DOC 记录预算超过固定上限时使用共享错误类型。"""
 
-    import mineru.model.flash.office.doc.records as records
+    import docgale.analyzers.native.office.doc.records as records
 
     monkeypatch.setattr(records, "MAX_RECORDS", 1)
     budget = records.DocBudget()
@@ -307,7 +310,7 @@ def test_real_doc_recovers_sections_structure_and_sidecars(tmp_path: Path) -> No
     ]
     assert chart.content[0].image_base64 is not None
 
-    export = middle.export(tmp_path / "export")
+    export = export_middle_json(middle, tmp_path / "export")
     payload = export.middle_json.model_dump_json(exclude_none=True)
     assert export.json_path.exists()
     assert len(export.image_paths) >= 49

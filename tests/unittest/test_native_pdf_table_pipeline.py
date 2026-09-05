@@ -17,9 +17,10 @@ from mineru.backend.analysis.pdf import formulas as pdf_formulas
 from mineru.backend.analysis.pdf import layout as pdf_layout
 from mineru.backend.analysis.pdf import tables as pdf_tables
 from mineru.backend.analysis.pdf import window as pdf_window
-from mineru.model.flash.pdf import models as flash_models
-from mineru.model.flash.pdf import tables as flash_tables
-from mineru.model.flash.pdf.document import PDFDocument, PDFPageTextGeometry
+from docgale.analyzers.native.pdf import models as flash_models
+from docgale.analyzers.native.pdf import tables as flash_tables
+from docgale.document.pdf.document import PDFDocument
+from docgale.document.pdf.document import PDFPageTextGeometry
 from mineru.types import RAW_FORMULA_NUMBER, BlockType
 
 

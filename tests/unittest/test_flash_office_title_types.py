@@ -8,17 +8,17 @@ from docx import Document
 from pptx import Presentation
 from pptx.enum.shapes import PP_PLACEHOLDER
 
-from mineru.model.flash import DocxModel, PptxModel, XlsxModel
-from mineru.model.flash.office.pptx.pptx_converter import (
-    PptxConverter,
-    _EFFECTIVE_ALL_BOLD_KEY,
-    _EFFECTIVE_FONT_SIZE_KEY,
-    _PPTX_TITLE_CANDIDATE_KEY,
-    _PPTX_TITLE_ROLE_CENTER,
-    _PPTX_TITLE_ROLE_KEY,
-    _PPTX_TITLE_ROLE_SUBTITLE,
-    _PPTX_TITLE_ROLE_TITLE,
-)
+from docgale.analyzers.native import DocxModel
+from docgale.analyzers.native import PptxModel
+from docgale.analyzers.native import XlsxModel
+from docgale.analyzers.native.office.pptx.pptx_converter import PptxConverter
+from docgale.analyzers.native.office.pptx.pptx_converter import _EFFECTIVE_ALL_BOLD_KEY
+from docgale.analyzers.native.office.pptx.pptx_converter import _EFFECTIVE_FONT_SIZE_KEY
+from docgale.analyzers.native.office.pptx.pptx_converter import _PPTX_TITLE_CANDIDATE_KEY
+from docgale.analyzers.native.office.pptx.pptx_converter import _PPTX_TITLE_ROLE_CENTER
+from docgale.analyzers.native.office.pptx.pptx_converter import _PPTX_TITLE_ROLE_KEY
+from docgale.analyzers.native.office.pptx.pptx_converter import _PPTX_TITLE_ROLE_SUBTITLE
+from docgale.analyzers.native.office.pptx.pptx_converter import _PPTX_TITLE_ROLE_TITLE
 from mineru.types import BlockType
 
 from _span_test_utils import inline_text

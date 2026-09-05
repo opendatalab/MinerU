@@ -38,6 +38,7 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
+    "docgale>=0.1.0,<0.2.0",
     "mineru-vl-utils>=1.2.1,<2",
     "metafile-render>=0.3.0,<1.0.0",
     "mineru-llama-cpp>=0.1.0,<1",
@@ -48,13 +49,12 @@ dependencies = [
     "requests",
     "httpx",
     "pillow>=11.0.0",
-    "pypdfium2>=4.30.0,<6.0.0",
+    "pypdfium2>=5.10.1",
     "pypdf>=5.6.0",
     "PyYAML>=6.0.1,<7",
     "packaging",
     "reportlab",
     "ziamath>=0.13,<0.14",
-    "pdftext>=0.6.3,<0.8.0",
     "modelscope>=1.26.0",
     "huggingface-hub[hf_xet]>=0.32.4",
     "filelock>=3.0.0",

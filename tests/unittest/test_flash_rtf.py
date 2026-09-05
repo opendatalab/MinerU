@@ -1,4 +1,5 @@
 from __future__ import annotations
+from docgale.export.middle import export_middle_json
 
 import asyncio
 from io import BytesIO
@@ -17,15 +18,14 @@ from mineru.doclib.core.db import DatabaseManager
 from mineru.doclib.core.fts import FTSManager
 from mineru.doclib.services.parse_svc import ParseService
 from mineru.errors import InvalidRequestError
-from mineru.model.flash import RtfModel
-from mineru.model.flash.office.errors import (
-    LegacyOfficeMalformedError,
-    LegacyOfficeResourceLimitError,
-)
-from mineru.model.flash.office.rtf import lexer as lexer_module
-from mineru.model.flash.office.rtf import parser as parser_module
-from mineru.model.flash.office.rtf.converter import extract_rtf_metadata
-from mineru.model.flash.office.rtf.lexer import RtfBinary, RtfLexer
+from docgale.analyzers.native import RtfModel
+from docgale.analyzers.native.office.errors import LegacyOfficeMalformedError
+from docgale.analyzers.native.office.errors import LegacyOfficeResourceLimitError
+from docgale.analyzers.native.office.rtf import lexer as lexer_module
+from docgale.analyzers.native.office.rtf import parser as parser_module
+from docgale.analyzers.native.office.rtf.converter import extract_rtf_metadata
+from docgale.analyzers.native.office.rtf.lexer import RtfBinary
+from docgale.analyzers.native.office.rtf.lexer import RtfLexer
 from mineru.parser import parse
 from mineru.render import RenderMode, render_docx, render_html, render_markdown, render_structured_content
 from mineru.types import BlockType
@@ -292,8 +292,8 @@ def test_rtf_doc_analyze_and_renderers_share_strict_metadata() -> None:
     )
 
     assert middle.file_suffix == model.file_suffix == "rtf"
-    assert middle.effort == model.effort == "flash"
-    assert middle.parse_mode == model.parse_mode == "txt"
+    assert middle.extensions["mineru"]["effort"] == model.extensions["mineru"]["effort"] == "flash"
+    assert middle.extensions["mineru"]["parse_mode"] == model.extensions["mineru"]["parse_mode"] == "txt"
     assert middle.is_full_document is model.is_full_document is True
     assert len(middle.pages) == len(model.pages) == 1
     assert async_middle == middle
@@ -324,7 +324,7 @@ def test_public_parser_detects_rtf_content_before_extension(tmp_path: Path) -> N
     assert result.middle_json.file_suffix == "rtf"
     assert result.middle_json.is_full_document is True
     assert len(result.pages) == 1
-    exported = result.middle_json.export(tmp_path / "export")
+    exported = export_middle_json(result.middle_json, tmp_path / "export")
     assert exported.image_paths
     assert all(path.exists() for path in exported.image_paths)
     assert "image_base64" not in exported.middle_json.to_json()
@@ -621,8 +621,8 @@ def test_rtf_runtime_has_no_anydoc_dependency() -> None:
     script = "\n".join(
         [
             "import sys",
-            "from mineru.model.flash import RtfModel",
-            "assert 'mineru.model.flash.office.rtf.converter' not in sys.modules",
+            "from docgale.analyzers.native import RtfModel",
+            "assert 'docgale.analyzers.native.office.rtf.converter' not in sys.modules",
             "pages = RtfModel().predict(__import__('io').BytesIO(b'{\\\\rtf1 ok}'))",
             "assert pages == [[{'type': 'text', 'content': [{'type': 'text', 'content': 'ok'}]}]]",
             "assert 'anydoc' not in sys.modules",

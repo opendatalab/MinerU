@@ -5,7 +5,8 @@ from typing import Any
 
 import pytest
 
-from mineru.model.flash.pdf import models, native_text
+from docgale.analyzers.native.pdf import models
+from docgale.analyzers.native.pdf import native_text
 
 
 def _span(

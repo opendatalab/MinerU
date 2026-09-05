@@ -6,7 +6,7 @@ from __future__ import annotations
 import time
 from io import BytesIO
 
-from ...model.flash import OfdModel
+from docgale.analyzers.native import OfdModel
 from .contracts import AnalysisResult
 
 

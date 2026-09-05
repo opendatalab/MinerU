@@ -1,4 +1,6 @@
 from __future__ import annotations
+from docgale.schema import Producer
+from mineru.integrations.docgale import build_metadata
 
 from copy import deepcopy
 
@@ -34,9 +36,8 @@ def _middle(*pages: PageInfo) -> MiddleJson:
         pages=list(pages),
         is_full_document=True,
         file_suffix="docx",
-        effort="flash",
-        parse_mode="txt",
-        mineru_version="test",
+        producer=Producer(name="mineru", version="test"),
+        extensions=build_metadata(effort="flash", parse_mode="txt", mineru_version="test"),
     )
 
 

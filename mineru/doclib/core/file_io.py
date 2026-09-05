@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ...filetypes import CSV_EXTENSIONS, EPUB_EXTENSIONS, ODF_EXTENSIONS, OFD_EXTENSIONS, OFFICE_EXTENSIONS
-from ...model.flash.pdf.document import PDFDocument
+from docgale.document.pdf.document import PDFDocument
 
 # Optional office doc support
 try:
@@ -210,7 +210,7 @@ async def _extract_office_meta(filepath: str, ext: str, result: dict) -> None:
                     wb.close()
 
         elif ext in ODF_EXTENSIONS:
-            from ...model.flash.office.odf.metadata import extract_odf_metadata
+            from docgale.analyzers.native.office.odf.metadata import extract_odf_metadata
 
             try:
                 with open(filepath, "rb") as odf_file:
@@ -220,7 +220,7 @@ async def _extract_office_meta(filepath: str, ext: str, result: dict) -> None:
             result.update(metadata)
 
         elif ext == "rtf":
-            from ...model.flash.office.rtf.converter import extract_rtf_metadata
+            from docgale.analyzers.native.office.rtf.converter import extract_rtf_metadata
 
             try:
                 with open(filepath, "rb") as rtf_file:
@@ -241,7 +241,7 @@ async def _extract_epub_meta(filepath: str, result: dict) -> None:
 
     def _extract() -> None:
         """打开 EPUB 文件流并把原生 metadata 合并到 doclib 结果。"""
-        from ...model.flash.epub import extract_epub_metadata
+        from docgale.analyzers.native.epub import extract_epub_metadata
 
         try:
             with open(filepath, "rb") as epub_file:
@@ -258,7 +258,7 @@ async def _extract_ofd_meta(filepath: str, result: dict) -> None:
 
     def _extract() -> None:
         """打开 OFD 文件流并合并原生元数据。"""
-        from ...model.flash.ofd import extract_ofd_metadata
+        from docgale.analyzers.native.ofd import extract_ofd_metadata
 
         try:
             with open(filepath, "rb") as ofd_file:

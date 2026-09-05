@@ -5,10 +5,13 @@ from typing import Any
 
 import pytest
 
-from mineru.model.flash import PdfModel
-from mineru.model.flash.pdf import code_blocks, models, pipeline
-from mineru.model.flash.pdf.document import PDFDocument, PDFPathInfo
-from mineru.model.flash.pdf.spatial_text import project_pdf_spatial_text
+from docgale.analyzers.native import PdfModel
+from docgale.analyzers.native.pdf import code_blocks
+from docgale.analyzers.native.pdf import models
+from docgale.analyzers.native.pdf import pipeline
+from docgale.document.pdf.document import PDFDocument
+from docgale.document.pdf.document import PDFPathInfo
+from docgale.analyzers.native.pdf.spatial_text import project_pdf_spatial_text
 
 from _flash_pdf_test_utils import _text_line
 from _span_test_utils import inline_text

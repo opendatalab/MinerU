@@ -13,7 +13,7 @@ def render_latex(
     document_title: str | None = None,
 ) -> str:
     """惰性加载 LaTeX 实现并返回完整 UTF-8 文档源码。"""
-    from ._internal.latex.renderer import render_latex as _render_latex
+    from docgale.render.latex import render_latex as _render_latex
 
     return _render_latex(
         middle_json,

@@ -1,6 +1,8 @@
+from docgale.schema import Producer
+from mineru.integrations.docgale import build_metadata
 from typing import Any
 
-from mineru.backend.postprocess.pages import model_json_to_pages
+from docgale.postprocess.pages import model_json_to_pages
 from mineru.types import BlockType, ImageBlock, ModelJson
 
 from _span_test_utils import inline
@@ -12,9 +14,8 @@ def _model_json(pages: list[list[dict[str, Any]]]) -> ModelJson:
         pages=pages,
         page_index_map=[],
         file_suffix="pdf",
-        effort="flash",
-        parse_mode="txt",
-        mineru_version="test",
+        producer=Producer(name="mineru", version="test"),
+        extensions=build_metadata(effort="flash", parse_mode="txt", mineru_version="test"),
     )
 
 

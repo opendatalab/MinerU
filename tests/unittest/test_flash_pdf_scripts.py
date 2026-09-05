@@ -8,27 +8,27 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from pdftext.schema import Bbox, Char
+from docgale.document.pdf.text.contracts import Bbox
+from docgale.document.pdf.text.contracts import Char
 
-from mineru.model.flash.pdf.geometry import _rotate_bbox_from_upright
-from mineru.model.flash.pdf.document import PDFDocument
-from mineru.model.flash.pdf.models import _AxisLine, _LineItem
-from mineru.model.flash.pdf.pipeline import _analyze_native_document
-from mineru.model.flash.pdf.script_geometry import ScriptRole
-from mineru.model.flash.pdf.text_styles import (
-    PDFTextLinkLine,
-    PDFTextLinkRange,
-    PDFTextScriptLine,
-    PDFTextScriptRange,
-    PDFTextStyleLine,
-    PDFTextStyleRange,
-    apply_pdf_text_links,
-    apply_pdf_text_scripts,
-    apply_pdf_text_styles,
-    detect_pdf_text_script_lines,
-    materialize_pdf_inline_spans,
-    _refine_math_script_tokens,
-)
+from docgale.analyzers.native.pdf.geometry import _rotate_bbox_from_upright
+from docgale.document.pdf.document import PDFDocument
+from docgale.analyzers.native.pdf.models import _AxisLine
+from docgale.analyzers.native.pdf.models import _LineItem
+from docgale.analyzers.native.pdf.pipeline import _analyze_native_document
+from docgale.analyzers.native.pdf.script_geometry import ScriptRole
+from docgale.analyzers.native.pdf.text_styles import PDFTextLinkLine
+from docgale.analyzers.native.pdf.text_styles import PDFTextLinkRange
+from docgale.analyzers.native.pdf.text_styles import PDFTextScriptLine
+from docgale.analyzers.native.pdf.text_styles import PDFTextScriptRange
+from docgale.analyzers.native.pdf.text_styles import PDFTextStyleLine
+from docgale.analyzers.native.pdf.text_styles import PDFTextStyleRange
+from docgale.analyzers.native.pdf.text_styles import apply_pdf_text_links
+from docgale.analyzers.native.pdf.text_styles import apply_pdf_text_scripts
+from docgale.analyzers.native.pdf.text_styles import apply_pdf_text_styles
+from docgale.analyzers.native.pdf.text_styles import detect_pdf_text_script_lines
+from docgale.analyzers.native.pdf.text_styles import materialize_pdf_inline_spans
+from docgale.analyzers.native.pdf.text_styles import _refine_math_script_tokens
 from mineru.types import BBox
 
 

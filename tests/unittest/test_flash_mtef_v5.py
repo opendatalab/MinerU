@@ -4,16 +4,14 @@ import struct
 
 import pytest
 
-from mineru.model.flash.office.equation import mtef_v5 as mtef_v5_module
-from mineru.model.flash.office.equation import mtef as mtef_module
-from mineru.model.flash.office.errors import LegacyOfficeResourceLimitError
-from mineru.model.flash.office.equation.mtef import (
-    decode_equation_native,
-    decode_equation_object,
-    decode_mtef,
-    decode_mtef_v3,
-    decode_mtef_v5,
-)
+from docgale.analyzers.native.office.equation import mtef_v5 as mtef_v5_module
+from docgale.analyzers.native.office.equation import mtef as mtef_module
+from docgale.analyzers.native.office.errors import LegacyOfficeResourceLimitError
+from docgale.analyzers.native.office.equation.mtef import decode_equation_native
+from docgale.analyzers.native.office.equation.mtef import decode_equation_object
+from docgale.analyzers.native.office.equation.mtef import decode_mtef
+from docgale.analyzers.native.office.equation.mtef import decode_mtef_v3
+from docgale.analyzers.native.office.equation.mtef import decode_mtef_v5
 
 from _mtef_test_utils import build_equation_object, equation_native, formula_corpus
 from _mtef_v5_test_utils import (
@@ -174,9 +172,7 @@ def test_mtef_v5_extended_embellishment_mapping(
 ) -> None:
     """验证 v5 新增的反向 prime、harpoon、strike 和下方修饰符。"""
 
-    assert decode_mtef_v5(
-        v5_equation(v5_char("x", embellishments=(embellishment,)))
-    ) == expected
+    assert decode_mtef_v5(v5_equation(v5_char("x", embellishments=(embellishment,)))) == expected
 
 
 def test_mtef_v5_16bit_font_position_and_large_future_record() -> None:
@@ -208,25 +204,23 @@ def test_mtef_v5_color_and_size_metadata_stays_synchronized() -> None:
     color_reference = b"\x0f\x01"
     size = b"\x09\x00\x80"
 
-    assert decode_mtef_v5(
-        v5_equation(
-            v5_char("x"),
-            definitions=(color_definition, color_reference, size),
+    assert (
+        decode_mtef_v5(
+            v5_equation(
+                v5_char("x"),
+                definitions=(color_definition, color_reference, size),
+            )
         )
-    ) == "x"
-    assert decode_mtef_v5(
-        v5_equation(v5_char("x"), definitions=(color_reference,))
-    ) is None
+        == "x"
+    )
+    assert decode_mtef_v5(v5_equation(v5_char("x"), definitions=(color_reference,))) is None
 
 
 def test_mtef_v5_function_start_groups_function_style_characters() -> None:
     """验证 FUNC_START 将连续 FUNCTION 字符恢复为 LaTeX operator。"""
 
     function = (
-        v5_char("s", typeface=2, function_start=True)
-        + v5_char("i", typeface=2)
-        + v5_char("n", typeface=2)
-        + v5_char("x")
+        v5_char("s", typeface=2, function_start=True) + v5_char("i", typeface=2) + v5_char("n", typeface=2) + v5_char("x")
     )
 
     assert decode_mtef_v5(v5_equation(function)) == r"\sin x"
@@ -235,9 +229,7 @@ def test_mtef_v5_function_start_groups_function_style_characters() -> None:
 def test_mtef_v5_text_style_groups_and_escapes_visible_text() -> None:
     """验证 TEXT/TEXT_FE 连续字符使用单一 text 节点并安全转义。"""
 
-    assert decode_mtef_v5(
-        v5_equation(v5_text("rate_1 & rate_2", typeface=1))
-    ) == r"\text{rate\_1 \& rate\_2}"
+    assert decode_mtef_v5(v5_equation(v5_text("rate_1 & rate_2", typeface=1))) == r"\text{rate\_1 \& rate\_2}"
 
 
 @pytest.mark.parametrize(
@@ -295,9 +287,7 @@ def test_mtef_v5_record_and_depth_limits_raise_stable_error(
 
     monkeypatch.setattr(mtef_v5_module, "MAX_RECORDS", 100)
     monkeypatch.setattr(mtef_v5_module, "MAX_RECORD_DEPTH", 1)
-    nested = v5_equation(
-        v5_template(11, v5_line(v5_char("a")), v5_line(v5_char("b")))
-    )
+    nested = v5_equation(v5_template(11, v5_line(v5_char("a")), v5_line(v5_char("b"))))
     with pytest.raises(LegacyOfficeResourceLimitError, match="max_record_depth"):
         decode_mtef_v5(nested)
 
@@ -323,6 +313,4 @@ def test_mtef_v5_equation_preferences_style_reference_is_validated() -> None:
 
     invalid_preferences = v5_equation_preferences([(1, 0)])
 
-    assert decode_mtef_v5(
-        v5_equation(v5_char("x"), definitions=(invalid_preferences,))
-    ) is None
+    assert decode_mtef_v5(v5_equation(v5_char("x"), definitions=(invalid_preferences,))) is None

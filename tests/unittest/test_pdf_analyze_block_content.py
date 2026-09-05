@@ -1,4 +1,6 @@
 from __future__ import annotations
+from docgale.schema import Producer
+from mineru.integrations.docgale import build_metadata
 
 from unittest.mock import MagicMock
 
@@ -13,13 +15,14 @@ from mineru.backend.analysis.pdf import constants, layout, normalization, ocr, p
 from mineru.backend.analysis.pdf.text import content as text_content
 from mineru.backend.analysis.pdf.text.models import _AnalyzeLine, _AnalyzeSpan
 from mineru.backend.postprocess import document as postprocess_document
-from mineru.model.flash.pdf.document import PDFPageTextGeometry
+from docgale.document.pdf.document import PDFPageTextGeometry
 from mineru.types import RAW_ALGORITHM, RAW_CAPTION, RAW_FOOTNOTE
 from mineru.backend.analysis.pdf.text.native import (
     POST_OCR_FALLBACK_CONTENT_KEY,
     POST_OCR_FALLBACK_SCORE_KEY,
 )
-from mineru.model.flash.pdf.text_styles import PDF_NATIVE_SCRIPT_MARKUP_KEY, materialize_pdf_inline_spans
+from docgale.analyzers.native.pdf.text_styles import PDF_NATIVE_SCRIPT_MARKUP_KEY
+from docgale.analyzers.native.pdf.text_styles import materialize_pdf_inline_spans
 from mineru.types import BlockType, ContentType, MiddleJson, ModelJson
 
 from _span_test_utils import inline, inline_text
@@ -211,9 +214,8 @@ def test_doc_analyze_converts_vlm_results_before_downstream_processing(
         pages=[],
         is_full_document=True,
         file_suffix="pdf",
-        effort=effort,  # type: ignore[arg-type]
-        parse_mode=parse_mode,  # type: ignore[arg-type]
-        mineru_version="test",
+        producer=Producer(name="mineru", version="test"),
+        extensions=build_metadata(effort=effort, parse_mode=parse_mode, mineru_version="test"),
     )
     monkeypatch.setattr(postprocess_document, "model_json_to_middle_json", MagicMock(return_value=expected_middle_json))
     monkeypatch.setattr(pipeline, "clean_memory", MagicMock())
@@ -231,14 +233,14 @@ def test_doc_analyze_converts_vlm_results_before_downstream_processing(
     assert model_json.pages == [[{"type": BlockType.PAGE_NUMBER, "bbox": [0.45, 0.9, 0.55, 0.95], "content": inline("1")}]]
     assert model_json.page_index_map == []
     assert model_json.file_suffix == "pdf"
-    assert model_json.effort == effort
-    assert model_json.parse_mode == parse_mode
+    assert model_json.extensions["mineru"]["effort"] == effort
+    assert model_json.extensions["mineru"]["parse_mode"] == parse_mode
     assert isinstance(middle_json, MiddleJson)
     assert middle_json is expected_middle_json
     assert middle_json.pages == []
     assert middle_json.is_full_document is True
-    assert middle_json.effort == effort
-    assert middle_json.parse_mode == parse_mode
+    assert middle_json.extensions["mineru"]["effort"] == effort
+    assert middle_json.extensions["mineru"]["parse_mode"] == parse_mode
     assert type(source_page) is ExtractResult
     assert type(source_block) is VlmContentBlock
     assert source_block["angle"] == 0

@@ -7,17 +7,15 @@ from io import BytesIO
 import pytest
 
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
-from mineru.model.flash import (
-    DocModel,
-    DocxModel,
-    PptModel,
-    PptxModel,
-    XlsModel,
-    XlsxModel,
-)
-from mineru.model.flash.office.docx.docx_converter import DocxConverter
-from mineru.model.flash.office.pptx.pptx_converter import PptxConverter
-from mineru.model.flash.office.xlsx.xlsx_converter import XlsxConverter
+from docgale.analyzers.native import DocModel
+from docgale.analyzers.native import DocxModel
+from docgale.analyzers.native import PptModel
+from docgale.analyzers.native import PptxModel
+from docgale.analyzers.native import XlsModel
+from docgale.analyzers.native import XlsxModel
+from docgale.analyzers.native.office.docx.docx_converter import DocxConverter
+from docgale.analyzers.native.office.pptx.pptx_converter import PptxConverter
+from docgale.analyzers.native.office.xlsx.xlsx_converter import XlsxConverter
 from mineru.types import BlockType, MiddleJson, ModelJson
 
 from _docx_equationxml_test_utils import (

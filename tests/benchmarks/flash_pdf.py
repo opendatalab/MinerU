@@ -3,6 +3,8 @@
 """生成 Flash PDF 完整输出基线，并在独立进程中测量耗时和峰值内存。"""
 
 from __future__ import annotations
+from docgale.schema import Producer
+from mineru.integrations.docgale import build_metadata
 
 import argparse
 import cProfile
@@ -29,8 +31,8 @@ from _flash_pdf_test_utils import _page_bbox_fingerprint, _page_fingerprint
 
 from mineru.backend.postprocess.document import model_json_to_middle_json
 from mineru.config import LLMAidedConfig
-from mineru.model.flash.pdf.document import PDFDocument
-from mineru.model.flash.pdf.pipeline import _analyze_native_document
+from docgale.document.pdf.document import PDFDocument
+from docgale.analyzers.native.pdf.pipeline import _analyze_native_document
 from mineru.types import ModelJson
 
 
@@ -87,9 +89,8 @@ def _worker(path: Path, destination: Path, runs: int, profile: bool) -> None:
             pages=deepcopy(pages),
             page_index_map=[],
             file_suffix="pdf",
-            effort="flash",
-            parse_mode="txt",
-            mineru_version="refactor-baseline",
+            producer=Producer(name="mineru", version="refactor-baseline"),
+            extensions=build_metadata(effort="flash", parse_mode="txt", mineru_version="refactor-baseline"),
         ),
         llm_aided_config=LLMAidedConfig(),
     ).model_dump(mode="json")

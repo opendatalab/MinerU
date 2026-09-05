@@ -148,71 +148,52 @@ class MinerUParser(DocumentParser):
         ...
 ```
 
-## Middle JSON Schema 2.0 架构
+## DocGale 与 MinerU 的文档架构
 
-Middle JSON 已收敛为 schema 2.0 的统一结构，并使用结构化 InlineSpan 表达自然语言行内语义，不再有 pipeline/vlm/office 三套独立实现。
+### 1. 唯一实现归属
 
-### 1. 统一分析入口
+`docgale` 独立拥有原生文档解析、PDF 基础访问与分类、公共文档类型、确定性后处理、素材、九种渲染格式和导出实现，不得反向依赖 MinerU。
 
-`backend/analyze.py:doc_analyze()` 是 PDF、OFD、EPUB、HTML、CSV 与 Office 文档的唯一公共入口，通过 `file_suffix` 路由到 `backend/analysis/pdf/pipeline.py:analyze_pdf`、`backend/analysis/ofd.py:analyze_ofd`、`backend/analysis/epub.py:analyze_epub`、`backend/analysis/html.py:analyze_html`、`backend/analysis/csv.py:analyze_csv` 或 `backend/analysis/office.py:analyze_office`，生成严格 `ModelJson` 后统一交给 `backend/postprocess/document.py:model_json_to_middle_json()` 构造 `MiddleJson`。`MinerUParser` 是本地解析的统一 `DocumentParser` 实现，替代旧的 `PdfHybridParser`/`PdfFlashParser`/`DocxParser` 等；`MinerUApiParser`（`parser/api_client.py`）通过 v1 API 委托解析，是 `DocumentParser` 的另一个实现。
+MinerU 保留 OCR/VLM/Hybrid 推理、模型生命周期、LLM 增强、tier 策略、CLI/API/Gradio/Doclib。通过 DocGale 公开接口复用能力，不导入其私有实现。
 
-### 2. MiddleJson 顶层字段（schema 2.0）
+### 2. 路由
 
-`mineru/types.py:MiddleJson` 严格定义：
+`backend/analyze.py:doc_analyze()` 仍是 MinerU 的统一分析门面。只有 `parse_mode="auto"` 调用共享 `PDFDocument.classify()`。
 
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `pages` | `list[PageInfo]` | 严格按 `page_idx` 升序的页面数组 |
-| `is_full_document` | `bool` | 是否整本文档解析（空 `page_index_map` 时为 `True`） |
-| `file_suffix` | `Literal["pdf", "doc", "docx", "ppt", "pptx", "xls", "xlsx", "rtf", "csv", "epub", "html", "ofd", "odt", "ods", "odp"]` | 输入文件类型 |
-| `effort` | `Literal["flash", "medium", "high", "xhigh"]` | 分析强度 |
-| `parse_mode` | `Literal["txt", "ocr"]` | 解析模式 |
-| `mineru_version` | `str` | MinerU 版本号 |
+- Flash + txt：使用 DocGale 的原生 PDF 模型。
+- Flash + auto：txt 分类走 DocGale；ocr 分类走 MinerU 现有 Flash OCR。
+- Flash + ocr：直接走现有 Flash OCR。
+- 其他 tier：保持已有推理流程，共享 DocGale 的基础 PDF、类型、后处理和渲染能力。
 
-schema 2.0 输出不再有 `_backend`/`_version_name`/`pdf_info`/`_ocr_enable`/`_vlm_ocr_enable` 等旧字段；这些字段只能作为受支持旧 payload 的迁移输入出现。
+原生解析不自行追加分类或 OCR 回退。非 PDF 原生格式仍只支持整本解析，PDF 页范围继续采用 `1-5`、`r1`、`all`。
 
-### 2.1 ModelJson 严格容器
+### 3. 协议与类型
 
-`doc_analyze` 返回 `tuple[MiddleJson, ModelJson]`。`ModelJson` 持有 raw model-list（`pages: list[list[dict]]`）+ `page_index_map: list[int]`（空列表表示整本文档），并提供 `is_full_document`/`resolved_page_indices` 派生属性。只有 PDF Analyze 接受非空 `page_index_map`；其它 Flash 格式只支持整本解析。EPUB 逻辑页严格对应 OPF spine 顺序，不再前插合成目录页；位于 spine 中的 navigation XHTML 作为普通内容页保留，spine 外的 nav/NCX 不生成页面。`backend/postprocess/document.py:model_json_to_middle_json()` 是 ModelJson → MiddleJson 的唯一编排入口，内部调用 `model_json_to_pages()` + `apply_llm_aided_postprocess()`。
+`mineru.types` 重新导出 `docgale.schema` 的文档类型，并保留 MinerU 产品档位类型。
 
-### 3. PageInfo 结构
+DocGale 的 ModelJson/MiddleJson 原生 JSON 使用独立 schema 标识和版本 1.0，持有 `producer` 与 `extensions`。MinerU 的 `effort`、`parse_mode`、`mineru_version` 位于 `extensions["mineru"]`，由 `mineru.integrations.docgale.build_metadata()` 校验。
 
-`PageInfo` 只有两个字段：`page_idx: int`（从 0 起）+ `blocks: list[PageBlock]`。不再有 `page_size`/`preproc_blocks`/`para_blocks`/`discarded_blocks`/`images`/`tables`/`interline_equations`/`_layout_tree`/`layout_bboxes` 等字段——所有内容统一在 `blocks` 树里表达。
+MinerU 的 ParseResult、CLI、HTTP API 和 Doclib 继续通过 `docgale.compat.mineru` 读写原有 schema 2.0 封装，并保留已有旧结果读取边界。不要为旧底层构造参数增加动态兼容别名。
 
-### 4. Block 类型体系
+ModelJson 仍保存 raw pages 与 page_index_map；MiddleJson 仍保存有序 PageInfo 数组。PageInfo 只有 page_idx 与 blocks。Block/InlineSpan 的现有语义、几何和父子约束保持不变；自然语言 InlineSpan 不携带字体或几何信息。
 
-`mineru/types.py` 使用严格 Pydantic 模型替代旧 `Block`/`Line`/几何 `Span` dataclass：
+### 4. 后处理与渲染
 
-- 自然语言块（正文、标题、页眉页脚、脚注、视觉注释与算法正文）持有 `content: list[InlineSpan]`
-- `InlineSpan` 是 `TextSpan`/`EquationInlineSpan`/`CodeInlineSpan`/`HyperlinkSpan` 的严格联合，只表达行内语义，不携带 bbox、score、字体或图片字段
-- `EquationBlock`、图片/表格/图表 body 与普通 `CodeBodyBlock` 等专用叶子继续使用各自的字符串或图片载荷字段
-- 视觉父块（`ImageBlock`/`TableBlock`/`ChartBlock`/`CodeBlock`）持有 `content: list[child blocks]`，子块包含唯一 body + 可选 caption/footnote
-- `BlockType.INTERLINE_EQUATION` 已重命名为 `BlockType.EQUATION`
-- 不再生成旧版独立 `Line`/几何 `Span` 类型及行级、span 级 bbox
+DocGale 的确定性后处理独立构造有效 MiddleJson。`mineru.backend.postprocess.document` 在其后显式执行 MinerU 的可选 LLM 增强。
 
-### 5. 统一 render 入口
+`mineru.render` 是稳定兼容门面，底层 renderer、RenderPlan、选项类型与错误类型均来自 DocGale。公式定界符等宿主配置显式传入，不让 DocGale 读取 MinerU 配置。
 
-`render/api.py:render(middle_json, output_format, options)` 是唯一渲染入口，支持：
+九种输出为 Markdown、HTML、LaTeX、DOCX、EPUB、PDF、Structured Content、Content List V1/V2。LaTeX/EPUB/PDF/Content List 的低层能力不自动扩展所有产品入口。PDF 输出继续采用语义重排版。
 
-- `RenderFormat.MARKDOWN` → `render_markdown`
-- `RenderFormat.HTML` → `render_html`
-- `RenderFormat.LATEX` → `render_latex`
-- `RenderFormat.DOCX` → `render_docx`
-- `RenderFormat.EPUB` → `render_epub`
-- `RenderFormat.STRUCTURED_CONTENT` → `render_structured_content`
-- `RenderFormat.CONTENT_LIST` → `render_content_list`
-- `RenderFormat.CONTENT_LIST_V2` → `render_content_list_v2`
-- `RenderFormat.PDF` → `render_pdf`
+文件写出属于 `docgale.export`；语义类型不再提供文件导出方法。结果包保存中间协议和物化素材，渲染不依赖已关闭的 PDFium 对象或源文件，也不修改原始语义树。
 
-`render/_internal/` 下按目标格式分目录组织共享逻辑（`common/`/`markdown/`/`html/`/`latex/`/`docx/`/`epub/`/`pdf/`/`content_list/`/`structured_content/`），顶层同名模块只是惰性公共门面。InlineSpan 的规范化、连接、裁剪和可见文本操作归 `backend/postprocess/inline.py`，renderer 按 Span discriminator 分派，并只能单向依赖该模块和 `backend/postprocess/table_merge`。不再有 `pipeline_union_make`/`vlm_union_make`/`office_union_make` 三套逻辑；Content List V1/V2 是由严格 MiddleJson 派生的正式兼容输出，不恢复旧 backend 并行实现。LaTeX、EPUB、PDF 与两套 Content List 只扩展低层 `mineru.render` 公共面，不自动扩展 ParseResult、CLI、API Server 或 doclib 输出合同。
+### 5. PDF 与依赖方向
 
-### 5.1 目录职责
+PDF 字符、片段、行和矩形类型由 DocGale 维护；项目不再依赖 pdftext，也没有其 0.6/0.7 运行时分支。pypdfium2 最低版本为 5.10.1，不设置固定上限。
 
-- `model/runtime/` 负责设备、显存、ONNX 与 Hybrid 本地模型生命周期；模型仓库和下载分别位于 `model/registry.py`、`model/download.py`。
-- `model/flash/pdf/` 负责 PDFDocument、PDFium、原生文本、样式和表格恢复；`model/flash/ofd/` 负责 OFD 包、资源、固定版式场景与阅读顺序；`model/flash/epub/` 负责 OCF、OPF、spine 与 XHTML/SVG；`model/flash/csv.py` 负责分隔符文本解析；`model/flash/office/` 负责十类 Office/RTF/ODF 格式。
-- `utils/` 只保留 geometry、image、image payload、language/text、URL/超链接目标校验与共享安全 scheme 集合、platform 和 stdio 等无业务依赖的叶子能力；是否允许相对链接、fragment 等格式策略由调用方显式选择，活动代码不得把格式解析或其它业务实现放入 utils。
-- `utils/types` 共同组成基础能力层，`types.py` 可以复用不依赖上层模块的 leaf utility；稳定依赖方向为 `utils/types → model → backend → render → parser/kit/doclib`，禁止上层模块被基础层反向引用。
+访问同一 PDFium 运行时必须使用 DocGale 的共享锁及资源管理。跨进程传递字节和物化数据，不传递裸句柄。
 
-### 6. ParseResult 与 MiddleJson 的关系
-
-`ParseResult` 持有 `MiddleJson` 实例，`pages` property 委托给 `middle_json.pages`。`to_dict()` 只输出 schema 2.0；`from_dict()` 直接读取 2.0，并将 MinerU 3.4.5 `pdf_info` 与对应 schema 1.0 `pages` 包装经 `backend/postprocess/legacy_schema_adapter.py:legacy_page_to_model_list` 单向回推为 raw model-list 后重走统一后处理。其它未知版本旧 payload 不自动迁移，必须从源文件重新解析。
+- DocGale：schema/foundation → document/content → analyzers/postprocess/render/export → api/result。
+- MinerU：共享 DocGale 能力 → model/backend → parser/kit/doclib/cli。
+- `model/runtime` 继续负责 MinerU 设备、显存、ONNX 与本地模型生命周期；`model/registry.py`、`model/download.py` 保持产品模型管理职责。
+- 已迁移的 Flash、通用后处理、renderer 私有目录及共享 leaf utilities 不在 MinerU 中保留第二份实现。

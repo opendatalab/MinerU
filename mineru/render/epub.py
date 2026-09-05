@@ -20,7 +20,7 @@ def render_epub(
     asset_resolver: AssetResolver | None = None,
 ) -> bytes:
     """惰性加载 EPUB 实现并返回完整 EPUB 3.3 容器字节。"""
-    from ._internal.epub.renderer import render_epub as _render_epub
+    from docgale.render.epub import render_epub as _render_epub
 
     return _render_epub(
         middle_json,

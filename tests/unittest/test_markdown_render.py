@@ -1,4 +1,6 @@
 from __future__ import annotations
+from docgale.schema import Producer
+from mineru.integrations.docgale import build_metadata
 from _span_test_utils import inline as _inline
 
 from copy import deepcopy
@@ -38,9 +40,8 @@ def _middle(*pages: PageInfo, file_suffix: str = "docx") -> MiddleJson:
         pages=list(pages),
         is_full_document=True,
         file_suffix=file_suffix,
-        effort="flash",
-        parse_mode="txt",
-        mineru_version="test",
+        producer=Producer(name="mineru", version="test"),
+        extensions=build_metadata(effort="flash", parse_mode="txt", mineru_version="test"),
     )
 
 
@@ -659,7 +660,7 @@ def test_equation_uses_content_then_image_fallback(monkeypatch: pytest.MonkeyPat
             }
         }
     )
-    monkeypatch.setattr("mineru.render._internal.markdown.renderer.config", configured)
+    monkeypatch.setattr("mineru.config.config", configured)
     middle = _middle(
         _page(
             0,

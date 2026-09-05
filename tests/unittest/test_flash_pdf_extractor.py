@@ -1,4 +1,4 @@
-from mineru.model.flash.pdf import pipeline
+from docgale.analyzers.native.pdf import pipeline
 
 
 def test_marginal_header_row_does_not_break_two_column_reading_order() -> None:
