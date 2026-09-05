@@ -48,6 +48,40 @@ def _line(
     }
 
 
+def test_inline_script_scale_cache_is_linear_and_local_to_each_pass(monkeypatch: pytest.MonkeyPatch) -> None:
+    """每轮字号计算随行数线性增长，后续轮次重新读取已变化的字符字号。"""
+
+    lines = [
+        models._LineItem(
+            text="body",
+            bbox=(10.0, index * 30.0, 30.0, index * 30.0 + 10.0),
+            angle=0,
+            source_index=index,
+            visual_row_id=index,
+            effective_height=10.0,
+            chars=[{"char": "a", "font": {"size": 10.0}}],
+        )
+        for index in range(20)
+    ]
+    observed: list[float] = []
+    original = native_text._native_typographic_scale
+
+    def record_scale(line: models._LineItem) -> float:
+        """记录真实字号计算，验证缓存不跨越行变更边界。"""
+
+        value = original(line)
+        observed.append(value)
+        return value
+
+    monkeypatch.setattr(native_text, "_native_typographic_scale", record_scale)
+    native_text._merge_native_inline_scripts(lines, (100.0, 700.0))
+    assert observed == [10.0] * 20
+    lines[0].chars[0]["font"]["size"] = 12.0
+    observed.clear()
+    native_text._merge_native_inline_scripts(lines, (100.0, 700.0))
+    assert observed == [12.0, *([10.0] * 19)]
+
+
 def test_private_use_decorative_rule_becomes_axis_line() -> None:
     """验证页首宽幅私用区重复字形不再进入文本输出。"""
 
