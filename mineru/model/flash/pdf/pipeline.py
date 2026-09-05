@@ -4,12 +4,13 @@
 
 from __future__ import annotations
 
-from dataclasses import replace
+from collections import deque
+from dataclasses import dataclass, replace
 from typing import Any
 
 from ....types import BBox
 from .._shared.xycut import sort_entries
-from .document import PDFDocument, PDFImageInfo, get_lines_from_chars
+from .document import PDFDocument, PDFImageInfo, PDFPageTextGeometry, get_lines_from_chars
 from .text_styles import (
     PDFTextLinkLine,
     PDFTextStyleLine,
@@ -293,13 +294,19 @@ def _repeated_header_evidence_pages(
     return supported_pages
 
 
-def _analyze_native_document(
-    pdf_doc: PDFDocument,
-    *,
-    script_diagnostics: list[dict[str, Any]] | None = None,
-    geometry_diagnostics: list[dict[str, Any]] | None = None,
-) -> list[list[dict[str, Any]]]:
-    """逐页读取数字 PDF，并在轻量页面上完成跨页文本类型判定。"""
+@dataclass(slots=True)
+class _DocumentSources:
+    """持有跨页校准前的原始页面，以及最终物化仍需的紧凑样式证据。"""
+
+    page_sources: list[_PageSource]
+    page_text_geometries: list[PDFPageTextGeometry]
+    page_sizes: list[tuple[float, float]]
+    page_style_lines: list[list[PDFTextStyleLine]]
+    page_link_lines: list[list[PDFTextLinkLine]]
+
+
+def _collect_document_sources(pdf_doc: PDFDocument) -> _DocumentSources:
+    """逐页收集原生证据，局部快照与字符引用在收集阶段退出时释放。"""
 
     page_sizes: list[tuple[float, float]] = []
     page_image_infos: list[list[PDFImageInfo]] = []
@@ -350,39 +357,65 @@ def _analyze_native_document(
             image_infos, source.page_size, watermark_fingerprints,
         )
 
+    return _DocumentSources(page_sources, page_text_geometries, page_sizes, page_style_lines, page_link_lines)
+
+
+def _prepare_document_sources(
+    sources: _DocumentSources,
+    *,
+    geometry_diagnostics: list[dict[str, Any]] | None = None,
+) -> list[_PreparedPage]:
+    """先完成全文几何和页眉判定，再按顺序消费原始页面并释放已用证据。"""
+
     geometry_plan = build_document_geometry_plan(
-        [source.lines for source in page_sources],
-        page_text_geometries,
-        page_sizes,
+        [source.lines for source in sources.page_sources],
+        sources.page_text_geometries,
+        sources.page_sizes,
     )
-    for page_index, source in enumerate(page_sources):
-        # 容器认领前只启用高置信 X 修复；Y trim 等表格、公式和图片行被排除后再应用。
-        apply_line_geometry_repairs(
-            source.lines,
-            page_index=page_index,
-            plan=geometry_plan,
-            allow_y_trim=False,
-        )
+    for page_index, source in enumerate(sources.page_sources):
+        # 容器认领前只允许 X 修复，表格和图形认领后再启用 Y trim。
+        apply_line_geometry_repairs(source.lines, page_index=page_index, plan=geometry_plan, allow_y_trim=False)
     if geometry_diagnostics is not None:
         geometry_diagnostics.append(geometry_plan.to_dict())
+    _classify_raw_page_marginals(sources.page_sources)
+    separators = _detect_repeated_header_separator_bboxes(sources.page_sources)
+    repaired_chars_by_page: dict[int, dict[int, BBox]] = {}
+    for (page_index, char_idx), repair in geometry_plan.char_repairs.items():
+        repaired_chars_by_page.setdefault(page_index, {})[char_idx] = repair.layout_bbox
 
-    _classify_raw_page_marginals(page_sources)
-    repeated_header_separators = _detect_repeated_header_separator_bboxes(
-        page_sources,
-    )
-    prepared_pages = [
-        _prepare_page_source(
+    pending = deque(zip(sources.page_sources, sources.page_text_geometries, strict=True))
+    sources.page_sources.clear()
+    sources.page_text_geometries.clear()
+    prepared_pages: list[_PreparedPage] = []
+    while pending:
+        page_index = len(prepared_pages)
+        source, geometry = pending.popleft()
+        prepared_pages.append(_prepare_page_source(
             source,
             tight_bboxes=geometry.tight_bboxes,
             origins=geometry.origins,
             geometry_plan=geometry_plan,
             page_index=page_index,
-            style_lines=page_style_lines[page_index],
-            link_lines=page_link_lines[page_index],
-            table_header_separator_bboxes=(repeated_header_separators[page_index]),
-        )
-        for page_index, (source, geometry) in enumerate(zip(page_sources, page_text_geometries, strict=True))
-    ]
+            style_lines=sources.page_style_lines[page_index],
+            link_lines=sources.page_link_lines[page_index],
+            table_header_separator_bboxes=separators[page_index],
+            repaired_char_bboxes=repaired_chars_by_page.pop(page_index, {}),
+        ))
+        # 删除对象所有者引用，不清空共享字符容器，公式重建副本仍可安全使用。
+        del source, geometry
+    return prepared_pages
+
+
+def _analyze_native_document(
+    pdf_doc: PDFDocument,
+    *,
+    script_diagnostics: list[dict[str, Any]] | None = None,
+    geometry_diagnostics: list[dict[str, Any]] | None = None,
+) -> list[list[dict[str, Any]]]:
+    """逐页读取数字 PDF，并在轻量页面上完成跨页文本类型判定。"""
+
+    sources = _collect_document_sources(pdf_doc)
+    prepared_pages = _prepare_document_sources(sources, geometry_diagnostics=geometry_diagnostics)
     if script_diagnostics is not None:
         script_diagnostics.extend(
             {
@@ -445,9 +478,9 @@ def _analyze_native_document(
         zip(
             finalized_pages,
             prepared_pages,
-            page_style_lines,
-            page_link_lines,
-            page_sizes,
+            sources.page_style_lines,
+            sources.page_link_lines,
+            sources.page_sizes,
             strict=True,
         )
     ):
@@ -477,6 +510,7 @@ def _prepare_page_source(
     style_lines: list[PDFTextStyleLine] | None = None,
     link_lines: list[PDFTextLinkLine] | None = None,
     table_header_separator_bboxes: set[BBox] | None = None,
+    repaired_char_bboxes: dict[int, BBox] | None = None,
 ) -> _PreparedPage:
     """先认领视觉容器，再标注辅助文本并留下可跨页比较的轻量文本行。"""
 
@@ -580,11 +614,13 @@ def _prepare_page_source(
     )
     if geometry_plan is not None:
         repaired_line_bboxes = {line.source_index: line.bbox for line in source.lines}
-        repaired_char_bboxes = {
-            char_idx: repair.layout_bbox
-            for (repair_page_index, char_idx), repair in geometry_plan.char_repairs.items()
-            if repair_page_index == page_index
-        }
+        if repaired_char_bboxes is None:
+            # 单页内部入口保留独立调用能力；文档主链路已提前按页建立索引。
+            repaired_char_bboxes = {
+                char_idx: repair.layout_bbox
+                for (repair_page_index, char_idx), repair in geometry_plan.char_repairs.items()
+                if repair_page_index == page_index
+            }
         unclaimed_lines, resplits = _resplit_native_visual_runs(
             unclaimed_lines,
             source.page_size,
