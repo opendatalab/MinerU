@@ -19,6 +19,7 @@ from ...types import TIERS, Tier
 from ...utils.stdio import configure_standard_streams
 from .artifacts import RunArtifacts, markdown_for_gradio, persist_parse_result, render_download
 from .client import (
+    GradioArtifactClient,
     ManagedLocalApiServer,
     V1ArtifactClient,
     V1ServerCapabilities,
@@ -210,7 +211,7 @@ def _latex_delimiters(delimiters_type: Literal["a", "b", "all"]) -> list[dict[st
 
 
 def build_gradio_app(
-    client: V1ArtifactClient,
+    client: V1ArtifactClient | GradioArtifactClient,
     capabilities: V1ServerCapabilities,
     *,
     output_root: Path,
@@ -770,14 +771,13 @@ def launch_gradio(
     enable_api: bool,
     latex_delimiters_type: Literal["a", "b", "all"],
     api_server_tier: str,
-    api_server_no_flash: bool,
     api_server_concurrency: int,
     api_server_language: str,
     api_server_disable_image_analysis: bool,
     api_server_preload_models: bool,
     max_pages: int | None = None,
 ) -> None:
-    """启动 Gradio；未指定端口时自动选择，未指定外部 URL 时托管本地 V1 API server。"""
+    """启动 Gradio，并在外部服务缺少 Flash 时托管本地 Flash V1 服务。"""
     configure_standard_streams()
     validate_max_pages(max_pages)
     resolved_api_key = api_key if api_key is not None else os.environ.get("MINERU_API_KEY")
@@ -789,7 +789,6 @@ def launch_gradio(
         if resolved_api_url is None:
             managed_server = ManagedLocalApiServer(
                 tier=api_server_tier,  # type: ignore[arg-type]
-                no_flash=api_server_no_flash,
                 concurrency=api_server_concurrency,
                 language=api_server_language,
                 disable_image_analysis=api_server_disable_image_analysis,
@@ -799,9 +798,22 @@ def launch_gradio(
             resolved_api_url = managed_server.start()
         client = V1ArtifactClient(api_url=resolved_api_url, api_key=resolved_api_key)
         capabilities = asyncio.run(client.discover())
+        local_flash: V1ArtifactClient | None = None
+        if api_url is not None and "flash" not in capabilities.tiers:
+            managed_server = ManagedLocalApiServer(
+                tier="flash",
+                concurrency=api_server_concurrency,
+                language=api_server_language,
+                disable_image_analysis=api_server_disable_image_analysis,
+                preload_models=api_server_preload_models,
+                api_key="",
+            )
+            local_flash = V1ArtifactClient(api_url=managed_server.start(), api_key="")
+            asyncio.run(local_flash.discover())
+        routed_client = GradioArtifactClient(client, local_flash=local_flash)
         demo = build_gradio_app(
-            client,
-            capabilities,
+            routed_client,
+            routed_client.capabilities,
             output_root=output_root,
             enable_example=enable_example,
             enable_api=enable_api,

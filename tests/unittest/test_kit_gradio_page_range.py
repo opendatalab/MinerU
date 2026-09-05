@@ -19,7 +19,7 @@ from mineru.errors import InvalidRequestError
 from mineru.filetypes import FLASH_ONLY_PARSE_EXTENSIONS, TIERED_PARSE_EXTENSIONS
 from mineru.kit.gradio import app as gradio_app
 from mineru.kit.gradio import page_range as ranges
-from mineru.kit.gradio.client import V1ServerCapabilities
+from mineru.kit.gradio.client import V1ArtifactError, V1ServerCapabilities
 from mineru.kit.main import app
 from mineru.model.flash.pdf.pdfium import _pdfium_lock
 
@@ -65,10 +65,13 @@ def test_programmatic_max_pages_validation(value: object) -> None:
 
 
 def test_launch_forwards_limit_and_versioned_assets(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """验证启动链路向界面传入上限，并使用构建阶段确定的版本兼容资源参数。"""
-    client = SimpleNamespace(discover=AsyncMock(return_value=Mock()))
+    """验证外部 API 已有 Flash 时不启动本地服务，并传入页数上限和资源参数。"""
+    capabilities = V1ServerCapabilities("http://127.0.0.1:1", ("flash", "standard"), ("zip",), ("file_id",))
+    client = SimpleNamespace(discover=AsyncMock(return_value=capabilities), capabilities=capabilities)
     demo = SimpleNamespace(launch=Mock(), _mineru_kit_launch_kwargs={"css": "test-css", "js": "test-js"})
     build = Mock(return_value=demo)
+    managed_server = Mock()
+    monkeypatch.setattr(gradio_app, "ManagedLocalApiServer", managed_server)
     monkeypatch.setattr(gradio_app, "V1ArtifactClient", Mock(return_value=client))
     monkeypatch.setattr(gradio_app, "build_gradio_app", build)
     gradio_app.launch_gradio(
@@ -81,7 +84,6 @@ def test_launch_forwards_limit_and_versioned_assets(monkeypatch: pytest.MonkeyPa
         enable_api=True,
         latex_delimiters_type="all",
         api_server_tier="standard",
-        api_server_no_flash=False,
         api_server_concurrency=1,
         api_server_language="ch",
         api_server_disable_image_analysis=False,
@@ -91,6 +93,153 @@ def test_launch_forwards_limit_and_versioned_assets(monkeypatch: pytest.MonkeyPa
     assert build.call_args.kwargs["max_pages"] == 20
     assert demo.launch.call_args.kwargs["css"] == "test-css"
     assert demo.launch.call_args.kwargs["js"] == "test-js"
+    managed_server.assert_not_called()
+
+
+def test_launch_forwards_managed_options_and_stops_server(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """验证无远程地址时托管 API server 沿用配置、不禁用档位并在退出时停止。"""
+    captured: dict[str, object] = {}
+
+    class FakeManagedLocalApiServer:
+        """记录托管 API server 的构造参数和生命周期。"""
+
+        def __init__(self, **kwargs: object) -> None:
+            """保存 Gradio 向托管进程传入的配置。"""
+            captured["options"] = kwargs
+
+        def start(self) -> str:
+            """返回测试用 API 地址。"""
+            captured["started"] = True
+            return "http://127.0.0.1:18000"
+
+        def stop(self) -> None:
+            """记录启动器执行了托管进程清理。"""
+            captured["stopped"] = True
+
+    capabilities = V1ServerCapabilities("http://127.0.0.1:18000", ("flash", "standard"), ("zip",), ("file_id",))
+    client = SimpleNamespace(discover=AsyncMock(return_value=capabilities), capabilities=capabilities)
+    demo = SimpleNamespace(launch=Mock(), _mineru_kit_launch_kwargs={})
+    monkeypatch.setattr(gradio_app, "ManagedLocalApiServer", FakeManagedLocalApiServer)
+    monkeypatch.setattr(gradio_app, "V1ArtifactClient", Mock(return_value=client))
+    monkeypatch.setattr(gradio_app, "build_gradio_app", Mock(return_value=demo))
+
+    gradio_app.launch_gradio(
+        api_url=None,
+        api_key=None,
+        server_name="127.0.0.1",
+        server_port=None,
+        output_dir=str(tmp_path),
+        enable_example=False,
+        enable_api=True,
+        latex_delimiters_type="all",
+        api_server_tier="standard",
+        api_server_concurrency=2,
+        api_server_language="ch",
+        api_server_disable_image_analysis=False,
+        api_server_preload_models=False,
+    )
+
+    assert captured["options"] == {
+        "tier": "standard",
+        "concurrency": 2,
+        "language": "ch",
+        "disable_image_analysis": False,
+        "preload_models": False,
+        "api_key": None,
+    }
+    assert captured["started"] is True
+    assert captured["stopped"] is True
+
+
+@pytest.mark.parametrize("remote_tiers", [("basic", "standard"), ("basic", "standard", "advanced"), ("flash", "standard")])
+@pytest.mark.parametrize("failure_stage", [None, "remote", "start", "local", "missing_flash", "build", "launch"])
+def test_launch_remote_flash_fallback_and_cleanup(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, remote_tiers: tuple[str, ...], failure_stage: str | None
+) -> None:
+    """验证能力发现决定是否补充 Flash，且发现、启动、构建和运行失败均清理托管进程。"""
+    needs_local = "flash" not in remote_tiers
+    if not needs_local and failure_stage in {"start", "local", "missing_flash"}:
+        pytest.skip("远程已有 Flash 时不进入本地服务阶段")
+    events: list[str] = []
+    failure = V1ArtifactError("startup failure", code="server_start_failed")
+    remote_cap = V1ServerCapabilities("http://remote.test", remote_tiers, ("zip",), ("file_id",))
+    local_tiers = ("basic",) if failure_stage == "missing_flash" else ("flash",)
+    local_cap = V1ServerCapabilities("http://local.test", local_tiers, ("zip",), ("file_id",))
+
+    async def discover_remote() -> V1ServerCapabilities:
+        """记录主服务完成能力发现的时间点。"""
+        events.append("remote")
+        if failure_stage == "remote":
+            raise failure
+        return remote_cap
+
+    async def discover_local() -> V1ServerCapabilities:
+        """记录本地服务完成能力发现的时间点。"""
+        events.append("local")
+        if failure_stage == "local":
+            raise failure
+        return local_cap
+
+    def start() -> str:
+        """记录本地进程启动，并可模拟启动失败。"""
+        events.append("start")
+        if failure_stage == "start":
+            raise failure
+        return local_cap.base_url
+
+    remote = SimpleNamespace(capabilities=remote_cap, discover=AsyncMock(side_effect=discover_remote))
+    local = SimpleNamespace(capabilities=local_cap, discover=AsyncMock(side_effect=discover_local))
+    factory = Mock(side_effect=[remote, local])
+    server = Mock(start=Mock(side_effect=start))
+    server_factory = Mock(return_value=server)
+    demo = SimpleNamespace(launch=Mock(), _mineru_kit_launch_kwargs={})
+    build = Mock(return_value=demo)
+    if failure_stage == "build":
+        build.side_effect = failure
+    if failure_stage == "launch":
+        demo.launch.side_effect = failure
+    monkeypatch.setenv("MINERU_API_KEY", "remote-secret")
+    monkeypatch.setattr(gradio_app, "V1ArtifactClient", factory)
+    monkeypatch.setattr(gradio_app, "ManagedLocalApiServer", server_factory)
+    monkeypatch.setattr(gradio_app, "build_gradio_app", build)
+    options = {
+        "api_url": remote_cap.base_url,
+        "api_key": None,
+        "server_name": "127.0.0.1",
+        "server_port": None,
+        "output_dir": str(tmp_path),
+        "enable_example": False,
+        "enable_api": True,
+        "latex_delimiters_type": "all",
+        "api_server_tier": "standard",
+        "api_server_concurrency": 2,
+        "api_server_language": "en",
+        "api_server_disable_image_analysis": True,
+        "api_server_preload_models": True,
+    }
+    if failure_stage is not None:
+        with pytest.raises(V1ArtifactError):
+            gradio_app.launch_gradio(**options)
+    else:
+        gradio_app.launch_gradio(**options)
+        expected = tuple(tier for tier in ("flash", "basic", "standard", "advanced") if tier in (*remote_tiers, "flash"))
+        assert build.call_args.args[1].tiers == expected
+    assert remote.capabilities is remote_cap
+    assert factory.call_args_list[0].kwargs == {"api_url": remote_cap.base_url, "api_key": "remote-secret"}
+    if needs_local and failure_stage != "remote":
+        server_factory.assert_called_once_with(
+            tier="flash", concurrency=2, language="en", disable_image_analysis=True, preload_models=True, api_key=""
+        )
+        server.stop.assert_called_once()
+        assert events[:2] == ["remote", "start"]
+        if failure_stage != "start":
+            assert events == ["remote", "start", "local"]
+            assert factory.call_args_list[1].kwargs == {"api_url": local_cap.base_url, "api_key": ""}
+    else:
+        server_factory.assert_not_called()
+        assert events == ["remote"]
+    if failure_stage in {"remote", "start", "local", "missing_flash", "build"}:
+        demo.launch.assert_not_called()
 
 
 @pytest.mark.parametrize("count", [1, 12, 20, 100])

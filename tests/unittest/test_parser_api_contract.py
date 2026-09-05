@@ -53,6 +53,7 @@ from mineru.types import (
     ImageBodyBlock,
     MiddleJson,
     PageInfo,
+    ServerTier,
     select_default_quality_tier,
     select_parsing_rule_tier,
     validate_tier,
@@ -2327,6 +2328,37 @@ def test_api_server_standard_no_flash_state_and_metadata(tmp_path: Path, monkeyp
     }
 
 
+@pytest.mark.parametrize(
+    ("tier", "no_flash", "expected_tiers", "expected_default_tier"),
+    [
+        ("standard", False, ("flash", "basic", "standard"), "standard"),
+        ("standard", True, ("basic", "standard"), "standard"),
+        ("basic", False, ("flash", "basic"), "basic"),
+        ("flash", False, ("flash",), None),
+    ],
+)
+def test_api_server_no_advanced_capability_matrix(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tier: ServerTier,
+    no_flash: bool,
+    expected_tiers: tuple[str, ...],
+    expected_default_tier: str | None,
+) -> None:
+    """验证禁用 Advanced 可与 server tier 和禁用 Flash 组合，且不改变其它档位。"""
+    _stub_api_server_dependency_preflight(monkeypatch)
+    app = create_app(
+        upload_dir=str(tmp_path / f"{tier}-{no_flash}"),
+        tier=tier,
+        no_flash=no_flash,
+        no_advanced=True,
+    )
+
+    assert tuple(tier_info["id"] for tier_info in app.state.tiers) == expected_tiers
+    assert tuple(app.state.tier_runtime_options) == expected_tiers
+    assert app.state.default_tier == expected_default_tier
+
+
 def test_api_server_standard_http_metadata(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """校验 /v1/tiers 与 /v1/models 返回 Standard 上限展开后的全部能力。"""
     _stub_api_server_dependency_preflight(monkeypatch)
@@ -2344,6 +2376,29 @@ def test_api_server_standard_http_metadata(tmp_path: Path, monkeypatch: pytest.M
     assert "runtime" not in health_response.json()
     assert tiers_response.status_code == 200
     assert [tier["id"] for tier in tiers_response.json()["data"]] == ["flash", "basic", "standard", "advanced"]
+    assert models_response.status_code == 200
+    assert [model["id"] for model in models_response.json()["data"]] == [
+        "MinerU-Flash",
+        "Hybrid-Basic",
+        "MinerU-HTML",
+        "MinerU2.5-Pro-2605-1.2B",
+    ]
+
+
+def test_api_server_no_advanced_http_metadata_keeps_shared_models(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证能力接口隐藏 Advanced，同时保留 Standard 仍需使用的共享模型。"""
+    _stub_api_server_dependency_preflight(monkeypatch)
+    app = create_app(upload_dir=str(tmp_path), tier="standard", no_advanced=True)
+
+    with TestClient(app) as client:
+        tiers_response = client.get("/v1/tiers")
+        models_response = client.get("/v1/models")
+
+    assert tiers_response.status_code == 200
+    assert [tier["id"] for tier in tiers_response.json()["data"]] == ["flash", "basic", "standard"]
     assert models_response.status_code == 200
     assert [model["id"] for model in models_response.json()["data"]] == [
         "MinerU-Flash",
@@ -2469,6 +2524,31 @@ def test_api_server_basic_rejects_advanced_request(tmp_path: Path, monkeypatch: 
     source = tmp_path / "demo.pdf"
     source.write_bytes(b"%PDF-1.7\n")
     app = create_app(upload_dir=str(tmp_path / "api"), tier="basic", allow_local_source=True)
+
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/parse/jobs",
+            json={
+                "files": [{"source": {"type": "local", "path": str(source)}}],
+                "tier": "advanced",
+            },
+        )
+
+    assert response.status_code == 400
+    assert "Tier 'advanced' not available in this server" in response.text
+
+
+def test_api_server_no_advanced_rejects_advanced_request(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证 Standard server 禁用 Advanced 后不会只隐藏能力而仍允许执行。"""
+    _stub_api_server_dependency_preflight(monkeypatch)
+    source = tmp_path / "demo.pdf"
+    source.write_bytes(b"%PDF-1.7\n")
+    app = create_app(
+        upload_dir=str(tmp_path / "api"),
+        tier="standard",
+        no_advanced=True,
+        allow_local_source=True,
+    )
 
     with TestClient(app) as client:
         response = client.post(
@@ -2729,6 +2809,30 @@ def test_api_server_cli_accepts_single_tier_and_no_flash(monkeypatch: pytest.Mon
     }
 
 
+def test_api_server_cli_accepts_no_advanced(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证底层 Click 入口将 --no-advanced 应用于能力发布与 runtime。"""
+    seen: dict[str, object] = {}
+
+    def _fake_run(server: Any) -> None:
+        """记录禁用 Advanced 后的 API server 能力。"""
+        seen["tiers"] = [tier["id"] for tier in server.config.app.state.tiers]
+        seen["default_tier"] = server.config.app.state.default_tier
+        seen["effort_by_tier"] = {
+            tier: runtime.effort for tier, runtime in server.config.app.state.tier_runtime_options.items()
+        }
+
+    monkeypatch.setattr("uvicorn.Server.run", _fake_run)
+
+    result = runner.invoke(main, ["--tier", "standard", "--no-advanced", "--host", "0.0.0.0", "--port", "15984"])
+
+    assert result.exit_code == 0
+    assert seen == {
+        "tiers": ["flash", "basic", "standard"],
+        "default_tier": "standard",
+        "effort_by_tier": {"flash": "flash", "basic": "medium", "standard": "high"},
+    }
+
+
 def test_api_server_cli_enables_model_preload(monkeypatch: pytest.MonkeyPatch) -> None:
     seen: dict[str, bool] = {}
 
@@ -2789,6 +2893,7 @@ def test_api_server_cli_help_exposes_tier_only_runtime_selection() -> None:
     assert "basic" in normalized_output
     assert "standard" in normalized_output
     assert "advanced" in normalized_output
+    assert "--no-advanced" in normalized_output
     assert "--backend" not in normalized_output
     assert "--effort" not in normalized_output
     assert "hybrid-engine" not in normalized_output

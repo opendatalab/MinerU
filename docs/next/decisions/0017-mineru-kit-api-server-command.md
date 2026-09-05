@@ -62,6 +62,8 @@ Advanced 仍是公开请求 tier，但不是启动 tier；Standard 的依赖和�
 4. 未传 `--tier` 等价于 `--tier standard`
 5. `--no-flash` 从能力中移除 Flash，并禁止该进程执行 Flash backend
 6. `--tier flash --no-flash` 启动失败
+7. `--no-advanced` 从能力中移除 Advanced，并禁止该进程接受 Advanced 请求
+8. `--no-flash --no-advanced` 可组合使用；Standard server 此时只发布 Basic 与 Standard
 
 ### 4. backend 的公开边界
 
@@ -84,6 +86,7 @@ backend 不是普通 API 协议层字段。
 - `--port`
 - `--tier`
 - `--no-flash`
+- `--no-advanced`
 - `--api-key`
 
 #### 稳定解析参数

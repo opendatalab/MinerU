@@ -1763,9 +1763,7 @@ async def create_job(
         try:
             entry.page_range = normalize_page_range_input(entry.page_range) or None
         except MineruError as exc:
-            _raise_api_error(
-                400, error_type=exc.type, code=exc.code, message=str(exc), param=f"files.{index}.page_range"
-            )
+            _raise_api_error(400, error_type=exc.type, code=exc.code, message=str(exc), param=f"files.{index}.page_range")
     _require_model_preload_ready(request)
     if body.callback is not None:
         _raise_api_error(
@@ -1960,11 +1958,15 @@ def _normalize_server_tier(tier: str | None) -> ServerTier:
     raise ValueError(f"Unsupported server tier '{tier}'. Supported server tiers: {supported}")
 
 
-def _request_tiers_for_server_tier(tier: ServerTier, *, no_flash: bool) -> list[Tier]:
+def _request_tiers_for_server_tier(tier: ServerTier, *, no_flash: bool, no_advanced: bool = False) -> list[Tier]:
     """将单个启动档位展开为该进程可接受的请求 tier。"""
     if tier == "flash" and no_flash:
         raise ValueError("--tier flash cannot be combined with --no-flash")
-    return [request_tier for request_tier in TIERS_BY_SERVER_TIER[tier] if not no_flash or request_tier != "flash"]
+    return [
+        request_tier
+        for request_tier in TIERS_BY_SERVER_TIER[tier]
+        if (not no_flash or request_tier != "flash") and (not no_advanced or request_tier != "advanced")
+    ]
 
 
 def _runtime_options_for_server_tiers(tiers: list[Tier]) -> dict[Tier, ParserRuntimeOptions]:
@@ -2119,6 +2121,7 @@ def create_app(
     upload_dir: str = "",
     tier: ServerTier | None = None,
     no_flash: bool = False,
+    no_advanced: bool = False,
     concurrency: int = 1,
     url_timeout: int = 60,
     allow_local_source: bool = False,
@@ -2140,6 +2143,8 @@ def create_app(
         exposes Flash and Basic, and ``"standard"`` exposes all request tiers.
     no_flash:
         Disable Flash advertisement and execution. Invalid with ``tier="flash"``.
+    no_advanced:
+        Disable Advanced advertisement and execution.
     concurrency:
         Maximum concurrent parse jobs (default 1).
     url_timeout:
@@ -2162,7 +2167,7 @@ def create_app(
     """
     upload_dir = upload_dir or ""
     tier = _normalize_server_tier(tier)
-    server_tiers = _request_tiers_for_server_tier(tier, no_flash=no_flash)
+    server_tiers = _request_tiers_for_server_tier(tier, no_flash=no_flash, no_advanced=no_advanced)
     tier_runtime_options = _runtime_options_for_server_tiers(server_tiers)
     default_tier = select_default_quality_tier(tier_runtime_options)
     startup_runtime = runtime_options_for_tier(tier)
@@ -2346,6 +2351,11 @@ def create_app(
     help="Disable Flash tier advertisement and execution.",
 )
 @click.option(
+    "--no-advanced",
+    is_flag=True,
+    help="Disable Advanced tier advertisement and execution.",
+)
+@click.option(
     "--concurrency",
     default=1,
     type=int,
@@ -2402,6 +2412,7 @@ def main(
     upload_dir: str,
     tier: ServerTier | None,
     no_flash: bool,
+    no_advanced: bool,
     concurrency: int,
     url_timeout: int,
     allow_local_source: bool,
@@ -2437,6 +2448,7 @@ def main(
             upload_dir=upload_dir,
             tier=tier,
             no_flash=no_flash,
+            no_advanced=no_advanced,
             concurrency=concurrency,
             url_timeout=url_timeout,
             allow_local_source=allow_local_source,

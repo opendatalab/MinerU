@@ -48,12 +48,17 @@ api-server 必须提供能力发现接口，让 doclib 或客户端知道当前�
 | `--tier flash` | `flash` | 返回 `quality_tier_unavailable`，除非请求显式传 `tier=flash` |
 | `--tier basic` | `flash`、`basic` | `basic` |
 | `--tier basic --no-flash` | `basic` | `basic` |
+| `--tier basic --no-advanced` | `flash`、`basic` | `basic` |
 | `--tier standard` 或未传 `--tier` | `flash`、`basic`、`standard`、`advanced` | `standard` |
 | `--tier standard --no-flash` | `basic`、`standard`、`advanced` | `standard` |
+| `--tier standard --no-advanced` | `flash`、`basic`、`standard` | `standard` |
+| `--tier standard --no-flash --no-advanced` | `basic`、`standard` | `standard` |
 
 因此，如果只以 `--tier flash` 启动裸 api-server，请求未指定 tier 时不应静默使用 `flash`。需要 `flash` 时调用方必须显式传 `tier=flash`；非 PDF/image 文件的批量归一规则见 [ADR-0024](../decisions/0024-file-type-tier-normalization.md)。
 
 `--no-flash` 会同时关闭 Flash 能力发现和执行。显式 Flash 请求以及 OFD/EPUB/Office/HTML/CSV 等必须归一到 Flash 的输入都会被拒绝。`--tier flash --no-flash` 因为没有可用能力而启动失败。
+
+`--no-advanced` 会同时关闭 Advanced 能力发现和执行：`GET /v1/tiers` 不再发布 `advanced`，显式 Advanced 请求返回该 tier 不可用。Advanced 不是启动 tier，因此它与 `--tier flash` 或 `--tier basic` 组合时不会改变原有能力；Standard 仍保留自身所需的共享模型。
 
 如果不同启动能力需要不同硬件、并发或生命周期策略，应启动多个 api-server 进程并由 doclib 或上层配置分别管理 URL。Doclib managed server 固定使用 `--no-flash`，因为 Flash 在 doclib 进程内执行。
 
@@ -74,6 +79,8 @@ api-server 启动时可使用单个 `--tier` 指定能力上限：
 mineru-kit api-server --tier basic --port 16580
 mineru-kit api-server --tier standard --port 15982
 mineru-kit api-server --tier standard --no-flash --port 8000
+mineru-kit api-server --tier standard --no-advanced --port 8000
+mineru-kit api-server --tier standard --no-flash --no-advanced --port 8000
 mineru-kit api-server --tier standard --preload-models
 mineru-kit api-server --tier standard --language en --disable-image-analysis
 ```
@@ -95,6 +102,7 @@ OCR 模式通过每次 `POST /v1/parse/jobs` 请求的 `ocr_mode` 设置，可�
 - host / port
 - tier，单值 `flash` / `basic` / `standard`
 - no-flash
+- no-advanced
 - preload-models
 - API key
 

@@ -25,6 +25,7 @@ from mineru.kit.gradio import client as gradio_client
 from mineru.kit.gradio.app import build_gradio_app
 from mineru.kit.gradio.artifacts import create_run_artifacts, persist_parse_result, render_download
 from mineru.kit.gradio.client import (
+    GradioArtifactClient,
     ManagedLocalApiServer,
     STATUS_DOWNLOADING_RESULT,
     V1ArtifactClient,
@@ -38,6 +39,7 @@ from mineru.parser import api_server as parser_api_server
 from mineru.parser.base import ParseResult
 from mineru.types import BlockType, ImageBlock, ImageBodyBlock, MiddleJson, ModelJson, PageInfo, TextBlock, TextSpan
 from mineru.version import __version__
+from typer.main import get_command
 from typer.testing import CliRunner
 
 runner = CliRunner()
@@ -169,6 +171,50 @@ def test_gradio_command_is_registered_and_help_is_available() -> None:
     assert "gradio" in result.output
     assert "--api-url" in gradio_result.output
     assert "--api-server-tier" in gradio_result.output
+    assert "Disable Advanced on" not in gradio_result.output
+    assert "Disable Flash on" not in gradio_result.output
+
+
+def test_gradio_managed_tier_disable_option_names_are_removed() -> None:
+    """验证禁用档位的参数完整删除，不仅从帮助中隐藏。"""
+    root_command = get_command(app)
+    command = root_command.get_command(None, "gradio")
+    assert command is not None
+    options = {parameter.name: tuple(parameter.opts) for parameter in command.params}
+
+    assert "api_server_no_flash" not in options
+    assert "api_server_no_advanced" not in options
+
+
+@pytest.mark.parametrize(
+    "flag",
+    [
+        "--api-server-no-flash",
+        "--no-flash",
+        "--api-server-no-advanced",
+        "--no-advanced",
+    ],
+)
+@pytest.mark.parametrize("standalone", [False, True])
+def test_gradio_rejects_removed_tier_disable_options(
+    monkeypatch: pytest.MonkeyPatch,
+    flag: str,
+    standalone: bool,
+) -> None:
+    """验证两个命令入口在启动服务前拒绝所有已移除的禁用档位参数。"""
+    launch = Mock()
+    monkeypatch.setattr(gradio_app, "launch_gradio", launch)
+
+    if standalone:
+        monkeypatch.setattr(sys, "argv", ["mineru-gradio", flag])
+        with pytest.raises(SystemExit) as error:
+            gradio_command.main()
+        assert error.value.code == 2
+    else:
+        result = runner.invoke(app, ["gradio", flag])
+        assert result.exit_code == 2, result.output
+        assert "No such option" in result.output
+    launch.assert_not_called()
 
 
 @pytest.mark.parametrize(("port_args", "expected_port"), [([], None), (["--server-port", "7861"], 7861)])
@@ -283,6 +329,28 @@ def test_v1_client_discovers_health_and_tiers_and_sends_api_key() -> None:
     assert requests == [("GET", "/api/v1/health"), ("GET", "/api/v1/tiers")]
 
 
+def test_v1_client_discovers_api_server_without_advanced(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """验证真实 API server 禁用 Advanced 后，Gradio 能力快照不会重新补回该档位。"""
+    monkeypatch.setattr(parser_api_server, "_preflight_tier_dependencies", Mock())
+    api = parser_api_server.create_app(
+        upload_dir=str(tmp_path / "api"),
+        tier="standard",
+        no_advanced=True,
+    )
+    request_log: list[tuple[str, str, str | None]] = []
+
+    with TestClient(api, base_url="http://testserver") as test_client:
+        proxy = _httpx_proxy_for_test_client(test_client, request_log)
+        monkeypatch.setattr(gradio_client, "httpx", proxy)
+        capabilities = asyncio.run(V1ArtifactClient(api_url="http://testserver").discover())
+
+    assert capabilities.tiers == ("flash", "basic", "standard")
+    assert [path for _method, path, _authorization in request_log] == ["/v1/health", "/v1/tiers"]
+
+
 def test_v1_client_rejects_server_without_zip() -> None:
     """验证缺少 ZIP 能力时在 UI 启动前给出稳定错误。"""
 
@@ -391,6 +459,111 @@ def test_v1_client_full_asgi_upload_job_poll_and_zip(
     assert protected_requests and all(authorization == "Bearer secret" for _method, _path, authorization in protected_requests)
     assert result._model_output == {"raw": "model"}
     assert parse_calls[0]["page_range"] == "1"
+
+
+def test_gradio_routes_real_v1_jobs_and_isolates_remote_auth(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """贯通两套真实 V1 路由，验证本地 Flash 不上传远程且环境密钥只用于远程任务。"""
+    source = tmp_path / "report.pdf"
+    source.write_bytes(_pdf_bytes())
+    monkeypatch.setenv("MINERU_API_KEY", "remote-secret")
+    monkeypatch.setattr(parser_api_server, "_preflight_tier_dependencies", Mock())
+
+    async def fake_parse_async(path: str, **kwargs: Any) -> ParseResult:
+        """只替换模型推理，保留两套服务各自的上传、任务和 ZIP 打包流程。"""
+        return ParseResult(middle_json=_middle_json(with_image=False), _model_output={"raw": "model"})
+
+    monkeypatch.setattr(parser_api_server, "parse_async", fake_parse_async)
+    remote_api = parser_api_server.create_app(
+        upload_dir=str(tmp_path / "remote"), tier="standard", no_flash=True, no_advanced=True, api_key="remote-secret"
+    )
+    local_api = parser_api_server.create_app(upload_dir=str(tmp_path / "local"), tier="flash")
+    requests: list[tuple[str, str, str, str | None]] = []
+    with TestClient(remote_api, base_url="http://remote.test") as remote_http:
+        with TestClient(local_api, base_url="http://local.test") as local_http:
+
+            async def handle(request: httpx.Request) -> httpx.Response:
+                """按目标主机转入对应 ASGI 服务，记录完整请求目的地和鉴权头。"""
+                host = request.url.host
+                requests.append((host, request.method, request.url.path, request.headers.get("authorization")))
+                target = {"remote.test": remote_http, "local.test": local_http}[host]
+                response = target.request(
+                    request.method,
+                    str(request.url),
+                    headers=dict(request.headers),
+                    content=request.content,
+                )
+                return httpx.Response(response.status_code, headers=response.headers, content=response.content)
+
+            def async_client(**kwargs: Any) -> httpx.AsyncClient:
+                """为能力发现和 API parser 注入同一双服务传输层。"""
+                kwargs["transport"] = httpx.MockTransport(handle)
+                return httpx.AsyncClient(**kwargs)
+
+            proxy = SimpleNamespace(**{**vars(httpx), "AsyncClient": async_client})
+            monkeypatch.setattr(gradio_client, "httpx", proxy)
+            monkeypatch.setattr(parser_api_client, "httpx", proxy)
+            remote = V1ArtifactClient(api_url="http://remote.test")
+            local = V1ArtifactClient(api_url="http://local.test", api_key="")
+            remote_capabilities = asyncio.run(remote.discover())
+            local_capabilities = asyncio.run(local.discover())
+            routed = GradioArtifactClient(remote, local_flash=local)
+            assert routed.capabilities.tiers == ("flash", "basic", "standard")
+            assert remote.capabilities is remote_capabilities
+            assert remote_capabilities.tiers == ("basic", "standard")
+            assert local.capabilities is local_capabilities
+            requests.clear()
+
+            flash_result = asyncio.run(routed.parse_file(source, tier="flash", page_range=""))
+            assert flash_result._model_output == {"raw": "model"}
+            assert requests and all(host == "local.test" and auth is None for host, _method, _path, auth in requests)
+            assert any(method == "POST" and path == "/v1/parse/jobs" for _host, method, path, _auth in requests)
+            requests.clear()
+
+            remote_result = asyncio.run(routed.parse_file(source, tier="standard", page_range="1"))
+            assert remote_result._model_output == {"raw": "model"}
+            assert requests and all(
+                host == "remote.test" and auth == "Bearer remote-secret" for host, _method, _path, auth in requests
+            )
+            assert any(method == "POST" and path == "/v1/parse/jobs" for _host, method, path, _auth in requests)
+
+
+@pytest.mark.parametrize("failure", [None, V1ArtifactError("remote failed", code="parse_failed"), asyncio.CancelledError()])
+def test_gradio_router_preserves_remote_flash_results_errors_and_cancellation(failure: BaseException | None) -> None:
+    """验证远程已有 Flash 时优先远程，并原样传递结果、失败和取消而不重试本地。"""
+    result = ParseResult(middle_json=_middle_json(with_image=False))
+    primary = Mock(spec=V1ArtifactClient)
+    primary.capabilities = V1ServerCapabilities("http://remote.test", ("standard", "flash"), ("zip",), ("file_id",))
+    primary.parse_file = AsyncMock(return_value=result, side_effect=failure)
+    local = Mock(spec=V1ArtifactClient)
+    routed = GradioArtifactClient(primary, local_flash=local)
+    callback = Mock()
+    request = routed.parse_file(Path("report.pdf"), tier="flash", page_range="1-2", ocr_mode="ocr", status_callback=callback)
+    if failure is None:
+        assert asyncio.run(request) is result
+    else:
+        with pytest.raises(type(failure)) as error:
+            asyncio.run(request)
+        assert error.value is failure
+    primary.parse_file.assert_awaited_once_with(
+        Path("report.pdf"), tier="flash", page_range="1-2", ocr_mode="ocr", status_callback=callback
+    )
+    local.parse_file.assert_not_called()
+
+
+@pytest.mark.parametrize(("tier", "code"), [("advanced", "tier_unavailable"), ("unknown", "invalid_request")])
+def test_gradio_router_rejects_unavailable_tiers(tier: str, code: str) -> None:
+    """验证路由层只补充 Flash，拒绝未声明的 Advanced 及未知档位。"""
+    primary = Mock(spec=V1ArtifactClient)
+    primary.capabilities = V1ServerCapabilities("http://remote.test", ("standard",), ("zip",), ("file_id",))
+    local = Mock(spec=V1ArtifactClient)
+    local.capabilities = V1ServerCapabilities("http://local.test", ("flash", "advanced"), ("zip",), ("file_id",))
+    routed = GradioArtifactClient(primary, local_flash=local)
+    assert routed.capabilities.tiers == ("flash", "standard")
+    with pytest.raises(V1ArtifactError) as error:
+        asyncio.run(routed.parse_file(Path("report.pdf"), tier=tier, page_range=""))
+    assert error.value.code == code
+    primary.parse_file.assert_not_called()
+    local.parse_file.assert_not_called()
 
 
 def test_api_client_upload_auth_is_limited_to_same_origin() -> None:
@@ -543,7 +716,6 @@ def test_managed_local_api_command_uses_kit_entrypoint() -> None:
     """验证托管 server 使用正式 mineru-kit api-server 命令。"""
     server = ManagedLocalApiServer(
         tier="standard",
-        no_flash=True,
         concurrency=3,
         language="en",
         disable_image_analysis=True,
@@ -553,7 +725,8 @@ def test_managed_local_api_command_uses_kit_entrypoint() -> None:
     command = server._command(8123, Path("/tmp/mineru-upload"))
     assert command[:4] == [server._command(8123, Path("/tmp/mineru-upload"))[0], "-m", "mineru.kit.main", "api-server"]
     assert "--tier" in command and command[command.index("--tier") + 1] == "standard"
-    assert "--no-flash" in command
+    assert "--no-flash" not in command
+    assert "--no-advanced" not in command
     assert "--preload-models" in command
     assert "--ocr-mode" not in command
     assert command[command.index("--api-key") + 1] == "secret"
@@ -561,6 +734,11 @@ def test_managed_local_api_command_uses_kit_entrypoint() -> None:
         ManagedLocalApiServer(ocr_mode="ocr")  # type: ignore[call-arg]
     with pytest.raises(TypeError, match="api_server_ocr_mode"):
         gradio_app.launch_gradio(api_server_ocr_mode="ocr")  # type: ignore[call-arg]
+    for option in ("no_flash", "no_advanced"):
+        with pytest.raises(TypeError, match=option):
+            ManagedLocalApiServer(**{option: True})  # type: ignore[arg-type]
+        with pytest.raises(TypeError, match=f"api_server_{option}"):
+            gradio_app.launch_gradio(**{f"api_server_{option}": True})  # type: ignore[arg-type]
 
 
 def test_managed_local_api_server_cleans_process_control_and_temp_dir(
@@ -639,6 +817,7 @@ def test_managed_local_api_server_cleans_process_control_and_temp_dir(
     temp_root = Path(server._temp_dir.name)
     assert temp_root.is_dir()
     assert "--allow-local-source" not in captured["command"]
+    assert "--no-advanced" not in captured["command"]
     assert captured["accepting"] is True
 
     server.stop()
@@ -889,6 +1068,7 @@ def test_build_gradio_app_exposes_three_tabs_and_download_menu(tmp_path: Path) -
     [
         (("advanced", "flash", "standard", "basic"), 2, "standard", 3),
         (("advanced", "standard", "basic"), 1, "standard", 2),
+        (("flash", "basic", "standard"), 2, "standard", 2),
         (("advanced", "flash"), 1, "advanced", 1),
         (("basic", "flash"), 1, "basic", 1),
         (("flash",), 0, "flash", 1),

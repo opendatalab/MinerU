@@ -66,9 +66,6 @@ def gradio_cmd(
         "all", "--latex-delimiters-type", help="LaTeX delimiters used by the Markdown preview"
     ),
     api_server_tier: str = typer.Option("standard", "--api-server-tier", "--tier", help="Managed API server capability tier"),
-    api_server_no_flash: bool = typer.Option(
-        False, "--api-server-no-flash/--no-flash", help="Disable Flash on the managed server"
-    ),
     api_server_concurrency: int = typer.Option(
         1, "--api-server-concurrency", "--concurrency", help="Managed server job concurrency"
     ),
@@ -110,7 +107,6 @@ def gradio_cmd(
             enable_api=enable_api,
             latex_delimiters_type=latex_delimiters_type,
             api_server_tier=normalized_tier,
-            api_server_no_flash=api_server_no_flash,
             api_server_concurrency=api_server_concurrency,
             api_server_language=normalized_language,
             api_server_disable_image_analysis=api_server_disable_image_analysis,

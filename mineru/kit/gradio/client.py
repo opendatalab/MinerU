@@ -10,7 +10,7 @@ import sys
 import tempfile
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -239,6 +239,46 @@ class V1ArtifactClient:
         return {"Authorization": f"Bearer {self.api_key}"}
 
 
+class GradioArtifactClient:
+    """合并已发现的服务能力，并将缺失的 Flash 请求路由到本地 V1 服务。"""
+
+    def __init__(self, primary: V1ArtifactClient, *, local_flash: V1ArtifactClient | None = None) -> None:
+        """根据独立能力快照建立明确的档位映射，不修改任何服务声明。"""
+        capabilities = primary.capabilities
+        if capabilities is None:
+            raise ValueError("Discover the primary V1 API capabilities before constructing the Gradio client")
+        self._clients_by_tier = dict.fromkeys(capabilities.tiers, primary)
+        if local_flash is not None and "flash" not in self._clients_by_tier:
+            if local_flash.capabilities is None or "flash" not in local_flash.capabilities.tiers:
+                raise V1ArtifactError("The local V1 API server did not advertise Flash", code="tier_unavailable")
+            self._clients_by_tier["flash"] = local_flash
+        self._capabilities = replace(capabilities, tiers=tuple(tier for tier in TIERS if tier in self._clients_by_tier))
+
+    @property
+    def capabilities(self) -> V1ServerCapabilities:
+        """返回供界面使用的有效档位集合，主服务地址和协议能力保持原值。"""
+        return self._capabilities
+
+    async def parse_file(
+        self,
+        path: Path,
+        *,
+        tier: str,
+        page_range: str,
+        ocr_mode: Literal["auto", "txt", "ocr"] = "auto",
+        status_callback: Callable[[str], None] | None = None,
+    ) -> ParseResult:
+        """仅向该档位对应的服务提交文件，复用原有状态、取消和产物流程。"""
+        if tier not in TIERS:
+            raise V1ArtifactError(f"Unsupported parse tier: {tier}", code="invalid_request")
+        client = self._clients_by_tier.get(tier)
+        if client is None:
+            raise V1ArtifactError(f"Tier '{tier}' is not available in Gradio", code="tier_unavailable")
+        return await client.parse_file(
+            path, tier=tier, page_range=page_range, ocr_mode=ocr_mode, status_callback=status_callback
+        )
+
+
 def _string_tuple(value: object, field_name: str) -> tuple[str, ...]:
     """把能力字段严格收敛为字符串元组。"""
     if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
@@ -260,7 +300,6 @@ class ManagedLocalApiServer:
         self,
         *,
         tier: ServerTier = "standard",
-        no_flash: bool = False,
         concurrency: int = 1,
         language: str = "ch",
         disable_image_analysis: bool = False,
@@ -273,7 +312,6 @@ class ManagedLocalApiServer:
         if concurrency <= 0:
             raise ValueError("API server concurrency must be positive")
         self.tier = tier
-        self.no_flash = no_flash
         self.concurrency = concurrency
         self.language = language
         self.disable_image_analysis = disable_image_analysis
@@ -386,7 +424,6 @@ class ManagedLocalApiServer:
             str(self.concurrency),
             "--language",
             self.language,
-            *(["--no-flash"] if self.no_flash else []),
             *(["--disable-image-analysis"] if self.disable_image_analysis else []),
             *(["--preload-models"] if self.preload_models else []),
             *(["--api-key", self.api_key] if self.api_key else []),
@@ -443,6 +480,7 @@ def _new_session_kwargs() -> dict[str, Any]:
 
 
 __all__ = [
+    "GradioArtifactClient",
     "ManagedLocalApiServer",
     "STATUS_CHECKING_SERVER",
     "STATUS_COMPLETED",

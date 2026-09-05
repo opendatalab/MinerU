@@ -28,7 +28,7 @@ mineru-kit gradio \
   --api-key "$MINERU_API_KEY"
 ```
 
-未指定 `--api-url` 时，Gradio 会启动一个 loopback `mineru-kit api-server`。本地 server 默认使用 Standard 能力上限、开启 Flash、关闭 `local` source，文件通过 V1 Uploads API 提交。
+未指定 `--api-url` 时，Gradio 会启动一个 loopback `mineru-kit api-server`。本地 server 默认使用 Standard 能力上限、开启 Flash 和 Advanced、关闭 `local` source，文件通过 V1 Uploads API 提交。
 
 未指定 `--server-port` 时，界面由 Gradio 从 `7860` 开始寻找空闲端口；可通过 `GRADIO_SERVER_PORT` 设置起始端口、`GRADIO_NUM_PORTS` 设置尝试数量（默认 `100`）。显式指定 `--server-port 7861` 时只尝试该端口，覆盖环境变量；该端口已被占用则启动失败。界面最终访问地址以启动输出为准，与内部 API server 的端口不同。
 
@@ -45,21 +45,26 @@ mineru-kit gradio \
 | `--api-server-concurrency` | 自动启动 server 的最大并发任务数。 |
 | `--api-server-language` | 自动启动 server 的 OCR 语言提示。 |
 | `--api-server-preload-models` | 在自动启动阶段预加载模型。 |
-| `--api-server-no-flash` | 自动启动 server 时关闭 Flash。 |
 | `--api-server-disable-image-analysis` | 自动启动 server 时关闭图片分析。 |
 | `--enable-example` | 显示当前工作目录 `examples/` 中的示例文件。 |
 | `--enable-api` | 暴露 Gradio 转换事件 API。 |
 | `--latex-delimiters-type` | Markdown 预览公式分隔符：`a`、`b` 或 `all`。 |
 
+Gradio 不接受 `--api-server-no-flash`、`--no-flash`、`--api-server-no-advanced`、`--no-advanced`；传入会报错。独立 API 启动命令仍保留 `--no-flash` 和 `--no-advanced`。
+
+指定外部 `--api-url` 时，Gradio 先校验 `/v1/health` 和 `/v1/tiers`。远程已提供 Flash 时，全部请求使用远程；远程缺少 Flash 时，在运行 Gradio 的机器上自动启动仅提供 Flash 的 loopback V1 API，并完成能力发现后启动界面。Flash 请求只上传至本地服务，其他档位继续使用远程；远程未提供的 Advanced 不会补充。
+
+补充服务固定使用 `--tier flash`，其余托管配置沿用上述参数；远程 API Key 只用于远程客户端，本地服务和客户端使用空密钥。本地服务启动失败会报告启动错误，Gradio 退出时自动清理托管进程和临时目录。能力判断以启动时的声明为准，远程连接或解析失败仍报告原错误，不触发本地重试。
+
 ## 解析流程
 
 界面一次提交一个文件，支持 `filetypes.PARSEABLE_EXTENSIONS` 中的 PDF、图片、Office/ODF、RTF、HTML、CSV/TSV、EPUB 和 OFD。
 
-解析 tier 使用原生离散滑块选择，上方即时显示当前档位。滑块按 `flash → basic → standard → advanced` 排列，仅包含服务实际支持的档位。默认优先选择 `standard`，否则选择最高可用档位；仅有一个档位时禁用滑块。
+解析 tier 使用原生离散滑块选择，上方即时显示当前档位。滑块按 `flash → basic → standard → advanced` 排列，包含远程档位与补充的本地 Flash；未指定远程时使用托管服务的档位。默认优先选择 `standard`，否则选择最高可用档位；仅有一个档位时禁用滑块。
 
 上传 Office/ODF、RTF、HTML、CSV/TSV、EPUB、OFD 时，tier 自动切到 `flash` 并锁定滑块。界面记住本会话最后一次未锁定的档位，连续更换这类文件不会覆盖记忆；切回 PDF/图片或清除文件时恢复此前选择。PDF/图片之间切换继续保留当前档位。锁定与恢复同时更新档位标签、页码控件和转换按钮，无需向 Python 发送滑块拖动请求。
 
-如果服务未提供 Flash，上传上述格式会禁用滑块和转换按钮，并提示“该格式仅支持 Flash，当前服务不可用”，不增加服务未声明的档位。转换事件仍校验 `tier_position` 的合法性；合法位置对这类文件始终使用 `flash`，服务缺少 Flash 时返回 `tier_unavailable`，不提交解析请求。
+远程未提供 Flash 时，上述格式自动使用本地 Flash，可以正常转换。转换事件仍校验 `tier_position` 的合法性，并对这些格式强制使用 `flash`。直接调用 Python 构建界面而未接入补充服务时，仍会拒绝不可用档位。
 
 上传原始 PDF 时，tier 下方显示“强制 OCR”开关，所有档位（包括 Flash）均可使用。默认关闭，提交 `ocr_mode:"auto"` 自动判断；开启时提交 `ocr_mode:"ocr"`，忽略 PDF 文本层并进行 OCR。更换或清除文件会重置开关，同一文件切换 tier 保留选择。图片与其他格式隐藏开关，提交时固定使用 `auto`。
 
@@ -67,7 +72,7 @@ Gradio 转换事件新增 `force_ocr` 布尔参数，默认 `false`，位于 `ra
 
 OCR 模式由每次 V1 解析任务决定；API Server 不再提供启动时的 OCR 配置，Gradio 的 `--api-server-ocr-mode` 及其 `--ocr-mode` 别名已移除，传入会报错。连接外部 V1 服务时，需要该服务支持任务级 `ocr_mode` 字段。
 
-启用 Gradio 事件 API 时，转换事件的 `tier_position` 参数为从 `0` 开始的整数位置，替代原来的 tier 字符串。例如四档齐全时 `3` 对应 `advanced`；仅支持 `basic/standard/advanced` 时 `2` 对应 `advanced`。位置始终按照上述顺序对实际可用档位编号，越界位置会报错。V1 API 的 `tier` 参数仍使用字符串，启动参数不变。
+启用 Gradio 事件 API 时，转换事件的 `tier_position` 参数为从 `0` 开始的整数位置，替代原来的 tier 字符串。例如四档齐全时 `3` 对应 `advanced`；远程仅支持 `basic/standard` 时，本地补充 Flash 后 `0` 对应 `flash`，`2` 对应 `standard`。位置始终按照上述顺序对实际可用档位编号，越界位置会报错。V1 API 的 `tier` 参数仍使用字符串。
 
 仅在已上传原始 PDF 且 tier 不是 `flash` 时显示页码双滑块。轨道范围由 `pypdfium2` 读取的实际页数确定，为 `1～n`，两端对应包含首尾页的连续选区。Flash 和其他文件格式隐藏控件，并始终全部解析。
 

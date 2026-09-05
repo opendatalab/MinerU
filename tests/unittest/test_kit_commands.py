@@ -130,9 +130,14 @@ def test_standalone_vlm_main_configures_streams_and_forwards_extra_args(monkeypa
 @pytest.mark.parametrize(
     ("script", "entrypoint", "expected_options"),
     [
+        ("mineru-gradio", gradio.main, ("--api-url", "--api-server-tier")),
         ("mineru-openai-server", vlm_server.main, ("--engine",)),
         ("mineru-models-download", models.download_main, ("--tier", "--stack", "--source", "--verbose")),
-        ("mineru-api", api_server.main, ("--host", "--port", "--tier", "--no-flash", "--preload-models")),
+        (
+            "mineru-api",
+            api_server.main,
+            ("--host", "--port", "--tier", "--no-flash", "--no-advanced", "--preload-models"),
+        ),
     ],
 )
 def test_standalone_command_help(
@@ -158,7 +163,20 @@ def test_standalone_command_help(
 @pytest.mark.parametrize("exit_code", [0, 7])
 @pytest.mark.parametrize(
     "args",
-    [[], ["--host", "0.0.0.0", "--port", "18000", "--tier", "basic", "--no-flash", "--preload-models"]],
+    [
+        [],
+        [
+            "--host",
+            "0.0.0.0",
+            "--port",
+            "18000",
+            "--tier",
+            "basic",
+            "--no-flash",
+            "--no-advanced",
+            "--preload-models",
+        ],
+    ],
 )
 def test_standalone_api_matches_kit_arguments_and_exit_code(
     monkeypatch: pytest.MonkeyPatch, args: list[str], exit_code: int
@@ -319,7 +337,7 @@ def test_top_level_commands_register_implementation_callbacks_directly() -> None
     [
         ("parse", ("--output", "--format", "--tier")),
         ("gradio", ("--api-url", "--server-name", "--api-server-tier")),
-        ("api-server", ("--host", "--port", "--tier", "--no-flash", "--preload-models")),
+        ("api-server", ("--host", "--port", "--tier", "--no-flash", "--no-advanced", "--preload-models")),
         ("vlm-server", ("--engine",)),
         ("router", ("--host", "--upstream-url", "--local-gpus")),
         ("version", ("--json",)),
@@ -587,7 +605,7 @@ def test_kit_commands_do_not_expose_formula_table_switches() -> None:
         assert _REMOVED_DISABLE_FORMULA_OPTION not in output
 
 
-def test_api_server_forwards_single_tier_and_no_flash(monkeypatch: Any) -> None:
+def test_api_server_forwards_single_tier_and_disabled_tiers(monkeypatch: Any) -> None:
     seen: dict[str, Any] = {}
 
     def _fake_main(*, args: list[str], prog_name: str, standalone_mode: bool) -> None:
@@ -598,13 +616,17 @@ def test_api_server_forwards_single_tier_and_no_flash(monkeypatch: Any) -> None:
 
     monkeypatch.setattr(api_server.parser_api_server.main, "main", _fake_main)
 
-    result = runner.invoke(app, ["api-server", "--tier", "standard", "--no-flash", "--preload-models"])
+    result = runner.invoke(
+        app,
+        ["api-server", "--tier", "standard", "--no-flash", "--no-advanced", "--preload-models"],
+    )
 
     assert result.exit_code == 0
     assert seen["prog_name"] == "mineru-kit api-server"
     assert seen["standalone_mode"] is False
     assert [seen["args"][index + 1] for index, item in enumerate(seen["args"]) if item == "--tier"] == ["standard"]
     assert "--no-flash" in seen["args"]
+    assert "--no-advanced" in seen["args"]
     assert "--preload-models" in seen["args"]
     assert "--ocr-mode" not in seen["args"]
 
@@ -626,6 +648,8 @@ def test_api_server_without_tier_lets_parser_api_apply_standard_default(monkeypa
     assert seen["prog_name"] == "mineru-kit api-server"
     assert seen["standalone_mode"] is False
     assert "--tier" not in seen["args"]
+    assert "--no-flash" not in seen["args"]
+    assert "--no-advanced" not in seen["args"]
     assert "--preload-models" not in seen["args"]
 
 

@@ -92,7 +92,7 @@ GET /v1/models HTTP/1.1
 ```
 
 - 描述性 tier 文案（如 `Standard parsing for most documents.`）属于 `/v1/tiers` 返回的 tier info；`/v1/models` 的 `description` 当前为 `null`。
-Local Parse Server 默认（`--tier standard`）按上述顺序返回 `MinerU-Flash`、`Hybrid-Basic`、`MinerU-HTML`、`MinerU2.5-Pro-2605-1.2B`；实际模型列表由启动 `--tier`（与 `--no-flash`）决定。
+Local Parse Server 默认（`--tier standard`）按上述顺序返回 `MinerU-Flash`、`Hybrid-Basic`、`MinerU-HTML`、`MinerU2.5-Pro-2605-1.2B`；实际模型列表由启动 `--tier` 与 tier 禁用开关决定。禁用 Advanced 后，Standard 仍需使用的共享模型不会从列表移除。
 
 模型对象字段:
 
@@ -198,8 +198,11 @@ Local Parse Server 的 `health` 通常返回:
 | `--tier flash` | `flash`；默认选择请求应失败，除非显式请求 Flash。 |
 | `--tier basic` | `flash`、`basic` |
 | `--tier basic --no-flash` | `basic` |
+| `--tier basic --no-advanced` | `flash`、`basic` |
 | `--tier standard` | `flash`、`basic`、`standard`、`advanced` |
 | `--tier standard --no-flash` | `basic`、`standard`、`advanced` |
+| `--tier standard --no-advanced` | `flash`、`basic`、`standard` |
+| `--tier standard --no-flash --no-advanced` | `basic`、`standard` |
 
 本地或兼容服务应以 `/v1/tiers` 返回值作为能力发现事实。客户端不应根据启动参数猜测具体能力。
 
