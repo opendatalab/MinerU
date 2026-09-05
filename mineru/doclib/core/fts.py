@@ -120,7 +120,7 @@ class FTSManager:
                     "SELECT file_id, ext, "
                     "snippet(fts_filenames, 1, '<mark>', '</mark>', '...', 40) AS snippet "
                     "FROM fts_filenames WHERE fts_filenames MATCH ? "
-                    "ORDER BY rank LIMIT ?",
+                    "ORDER BY rank, file_id LIMIT ?",
                     (fts_query, limit),
                 ),
             )

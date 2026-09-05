@@ -187,8 +187,28 @@ def test_search_and_find_help_list_filter_values() -> None:
     for token in dict.fromkeys(FILE_TYPE_BY_EXTENSION.values()):
         assert token in search_result.output
     assert "File extension filter:" in find_result.output
+    assert "--offset" in find_result.output
     for token in FILE_TYPE_BY_EXTENSION:
         assert token in find_result.output
+
+
+def test_find_passes_pagination_options_to_client(monkeypatch: Any) -> None:
+    calls: list[tuple[str, dict[str, Any]]] = []
+
+    class _Client:
+        def __init__(self, *, timeout: int) -> None:
+            assert timeout == 10
+
+        def find(self, query: str, **kwargs: Any) -> FindResponse:
+            calls.append((query, kwargs))
+            return FindResponse(results=[], total=0, query=query)
+
+    monkeypatch.setattr(search_mod, "DoclibClient", _Client)
+
+    result = runner.invoke(app, ["find", "sample", "--limit", "2", "--offset", "1", "--json"])
+
+    assert result.exit_code == 0
+    assert calls == [("sample", {"ext": None, "limit": 2, "offset": 1})]
 
 
 def test_print_error_uses_single_rich_render(monkeypatch: Any) -> None:
