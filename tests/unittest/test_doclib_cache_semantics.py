@@ -2664,6 +2664,48 @@ def test_content_search_does_not_match_filename_but_find_does(tmp_path: Path) ->
     asyncio.run(_run())
 
 
+def test_filename_search_applies_prefix_only_to_final_query_token(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        fts = FTSManager(db)
+        filenames = (
+            (1, "bench1.pdf"),
+            (2, "bench5.pdf"),
+            (3, "annual report2026.pdf"),
+            (4, "项目报告2026.pdf"),
+            (5, "annualized report2026.pdf"),
+        )
+        for file_id, filename in filenames:
+            await fts.upsert_filename(file_id, filename, "pdf")
+        await fts.replace(
+            sha256="f" * 64,
+            tier="standard",
+            text="benchmark content",
+            title="",
+            author="",
+        )
+
+        try:
+            implicit_prefix = await fts.search_filenames("bench")
+            explicit_prefix = await fts.search_filenames("bench*  ")
+            exact = await fts.search_filenames("bench1")
+            multi_token = await fts.search_filenames("annual rep")
+            cjk = await fts.search_filenames("项目报告")
+            content_prefix = await fts.search("bench")
+
+            assert {row["file_id"] for row in implicit_prefix} == {1, 2}
+            assert {row["file_id"] for row in explicit_prefix} == {1, 2}
+            assert [row["file_id"] for row in exact] == [1]
+            assert [row["file_id"] for row in multi_token] == [3]
+            assert [row["file_id"] for row in cjk] == [4]
+            assert content_prefix == []
+        finally:
+            await db.close()
+
+    asyncio.run(_run())
+
+
 def test_search_returns_all_files_in_reverse_insertion_order(tmp_path: Path) -> None:
     async def _run() -> None:
         db = DatabaseManager(str(tmp_path / "doclib.db"))
