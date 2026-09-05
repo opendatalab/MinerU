@@ -1207,5 +1207,8 @@ def test_native_page_snapshot_decodes_each_path_once(monkeypatch: pytest.MonkeyP
         separate_count = len(counts)
         counts.clear()
         document._extract_native_page(0)
-        assert separate_count > 0
-        assert len(counts) * 2 == separate_count
+        shared_count = len(counts)
+        with document._open_page(0) as page:
+            expected_count = len(list(pdf_document._iter_raw_path_objects_with_depth(page)))
+        assert shared_count == expected_count
+        assert shared_count < separate_count
