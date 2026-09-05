@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from mineru.model.flash.pdf import titles
+from mineru.model.flash.pdf import models, titles
 
 from _flash_pdf_test_utils import _prepared_text_page, _text_line
 
@@ -173,7 +173,7 @@ def test_document_regular_font_suppresses_code_page_false_title() -> None:
             dominant_font_weight=400.0,
         ),
     ]
-    profile = titles._DocumentBodyProfile(
+    profile = models._DocumentBodyProfile(
         body_height=10.0,
         body_weight=400.0,
         regular_fonts=frozenset({mono_font, regular_font}),
@@ -213,14 +213,14 @@ def test_document_title_profile_promotes_table_adjacent_style_but_not_container_
         font_coverage=1.0,
         dominant_font_weight=600.0,
     )
-    body_profile = titles._DocumentBodyProfile(
+    body_profile = models._DocumentBodyProfile(
         body_height=10.0,
         body_weight=400.0,
         regular_fonts=frozenset({("Body", 0)}),
     )
-    title_profile = titles._DocumentTitleProfile(
+    title_profile = models._DocumentTitleProfile(
         (
-            titles._TitleStylePrototype(
+            models._TitleStylePrototype(
                 font_family="heading",
                 font_flags=0,
                 height_ratio=1.4,
@@ -268,14 +268,14 @@ def test_document_title_profile_promotes_body_height_centered_section() -> None:
         font_coverage=1.0,
         dominant_font_weight=400.0,
     )
-    body_profile = titles._DocumentBodyProfile(
+    body_profile = models._DocumentBodyProfile(
         body_height=10.0,
         body_weight=400.0,
         regular_fonts=frozenset({regular_font}),
     )
-    title_profile = titles._DocumentTitleProfile(
+    title_profile = models._DocumentTitleProfile(
         (
-            titles._TitleStylePrototype(
+            models._TitleStylePrototype(
                 font_family="body",
                 font_flags=0,
                 height_ratio=1.0,
@@ -343,7 +343,7 @@ def test_document_title_profile_infers_repeated_large_left_aligned_style() -> No
                 page_size=(100.0, 100.0),
             )
         )
-    body_profile = titles._DocumentBodyProfile(
+    body_profile = models._DocumentBodyProfile(
         body_height=10.0,
         body_weight=400.0,
         regular_fonts=frozenset({body_font}),
@@ -385,7 +385,7 @@ def test_regular_pitch_style_change_does_not_become_title() -> None:
             font_coverage=1.0,
         ),
     ]
-    profile = titles._DocumentBodyProfile(
+    profile = models._DocumentBodyProfile(
         body_height=10.0,
         body_weight=400.0,
         regular_fonts=frozenset({body_font}),
@@ -431,14 +431,14 @@ def test_title_font_at_body_size_does_not_override_document_size_profile() -> No
             font_coverage=1.0,
         ),
     ]
-    body_profile = titles._DocumentBodyProfile(
+    body_profile = models._DocumentBodyProfile(
         body_height=10.0,
         body_weight=400.0,
         regular_fonts=frozenset({("Body", 0)}),
     )
-    title_profile = titles._DocumentTitleProfile(
+    title_profile = models._DocumentTitleProfile(
         (
-            titles._TitleStylePrototype(
+            models._TitleStylePrototype(
                 font_family="heading",
                 font_flags=0,
                 height_ratio=1.4,
@@ -515,7 +515,7 @@ def test_smaller_recurrent_regular_font_does_not_gain_title_style_signal() -> No
             dominant_font_weight=400.0,
         ),
     ]
-    profile = titles._DocumentBodyProfile(
+    profile = models._DocumentBodyProfile(
         body_height=10.0,
         body_weight=400.0,
         regular_fonts=frozenset({body_font, mono_font}),
@@ -575,7 +575,7 @@ def test_document_profile_finds_cover_title_without_promoting_bottom_metadata() 
             dominant_font_weight=800.0,
         ),
     ]
-    profile = titles._DocumentBodyProfile(10.0, 400.0, frozenset())
+    profile = models._DocumentBodyProfile(10.0, 400.0, frozenset())
 
     titles._classify_page_titles(
         lines,
