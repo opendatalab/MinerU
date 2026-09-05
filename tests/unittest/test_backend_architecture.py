@@ -399,3 +399,10 @@ def test_table_merge_public_contract_remains_callable() -> None:
     ]
     assert table_merge.__all__ == function_names
     assert all(callable(getattr(table_merge, name, None)) for name in function_names)
+
+
+def test_host_postprocess_remains_a_regular_package() -> None:
+    """宿主 LLM 目录必须参与 wheel 包发现，避免源码可导入但发行包遗漏。"""
+    spec = importlib.util.find_spec("mineru.backend.postprocess")
+    assert spec is not None and spec.origin is not None
+    assert spec.origin.endswith("__init__.py")
