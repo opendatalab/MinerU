@@ -3680,6 +3680,77 @@ def test_read_locator_out_of_range_page_returns_page_range_invalid(tmp_path: Pat
     asyncio.run(_run())
 
 
+def test_read_last_page_locator_resolves_to_canonical_numeric_locator(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.sqlite"))
+        await db.initialize()
+        server = DoclibServer(SimpleNamespace(db=db, data_dir=str(tmp_path)))
+        now = 1000
+        sha256 = "a" * 64
+        short_id = "aaaaaaa"
+        await db.execute(
+            "INSERT INTO docs (sha256, short_id, size_bytes, file_type, page_count, first_seen_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (sha256, short_id, 12, "pdf", 4, now, now),
+        )
+        await db.execute(
+            "INSERT INTO parses (sha256, tier, page_range, status, privacy, done_at, created_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+            (sha256, "flash", "4", "done", "local", now, now, now),
+        )
+        last_page = _text_page("last page content")
+        last_page.page_idx = 3
+        _write_batch(
+            tmp_path,
+            sha256,
+            "flash",
+            "4",
+            now,
+            ParseResult([last_page]).to_dict(skip_defaults=True)["pages"],
+        )
+
+        try:
+            response = await server.read_content(f"doc:{short_id}/tier:flash/page:last")
+
+            assert "last page content" in response.content
+            assert response.request_scope.page_range == "4"
+            assert response.request_scope.locator == f"doc:{short_id}/tier:flash/page:4"
+            assert response.content_ranges[0].page_range == "4"
+            assert response.content_ranges[0].start == f"doc:{short_id}/tier:flash/page:4"
+            assert response.content_ranges[0].end == f"doc:{short_id}/tier:flash/page:4/block:1"
+        finally:
+            await db.close()
+
+    asyncio.run(_run())
+
+
+def test_read_last_page_locator_rejects_unknown_page_count(tmp_path: Path) -> None:
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.sqlite"))
+        await db.initialize()
+        server = DoclibServer(SimpleNamespace(db=db, data_dir=str(tmp_path)))
+        now = 1000
+        sha256 = "a" * 64
+        short_id = "aaaaaaa"
+        await db.execute(
+            "INSERT INTO docs (sha256, short_id, size_bytes, file_type, page_count, first_seen_at, updated_at) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?)",
+            (sha256, short_id, 12, "pdf", None, now, now),
+        )
+
+        try:
+            with pytest.raises(InvalidRequestError) as exc_info:
+                await server.read_content(f"doc:{short_id}/tier:flash/page:last")
+
+            assert exc_info.value.code == "invalid_locator"
+            assert exc_info.value.param == "locator"
+            assert "page count is unavailable" in exc_info.value.message
+        finally:
+            await db.close()
+
+    asyncio.run(_run())
+
+
 def test_get_file_by_path_missing_doclib_record_message_is_not_disk_file_not_found(tmp_path: Path) -> None:
     class _ParseSvc:
         async def ensure_ingested(self, path: str) -> None:
