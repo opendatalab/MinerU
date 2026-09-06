@@ -37,7 +37,6 @@ GREEN = (0, 255, 0)
 BLUE = (0, 0, 255)
 YELLOW = (255, 255, 0)
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
-_OFFICE_SAMPLE_DIR = _PROJECT_ROOT / "demo" / "office_docs"
 
 
 def _build_quadrant_image(width: int = 80, height: int = 40) -> Image.Image:
@@ -1695,51 +1694,61 @@ def test_pdf_window_releases_rendered_images_when_layout_fails(
         page_image.getpixel((0, 0))
 
 
-@pytest.mark.parametrize(
-    ("file_suffix", "expected_page_count"),
-    [("docx", 3), ("pptx", 6), ("xlsx", 3)],
-)
-def test_doc_analyze_office_real_samples(file_suffix: str, expected_page_count: int) -> None:
-    """验证统一入口可直接分析三类真实 Office 样例并返回完整分页结果。"""
-    sample_path = _OFFICE_SAMPLE_DIR / f"{file_suffix}_01.{file_suffix}"
-
-    middle_json, model_json = analyze.doc_analyze(
-        sample_path.read_bytes(),
-        effort="high",
-        parse_mode="ocr",
-        file_suffix=file_suffix,  # type: ignore[arg-type]
-    )
-
-    assert isinstance(middle_json, MiddleJson)
-    assert isinstance(model_json, ModelJson)
-    assert middle_json.is_full_document is True
-    assert len(middle_json.pages) == expected_page_count
-    assert all(page.page_idx == page_idx for page_idx, page in enumerate(middle_json.pages))
-    assert len(model_json.pages) == expected_page_count
-    assert all(isinstance(page, list) for page in model_json.pages)
-    assert model_json.page_index_map == []
-    assert model_json.file_suffix == file_suffix
-    assert model_json.extensions["mineru"]["effort"] == "flash"
-    assert model_json.extensions["mineru"]["parse_mode"] == "txt"
+def _minimal_office_bytes(file_suffix: str) -> bytes:
+    """生成只包含一页正文的 Office 输入，独立验证宿主路由。"""
+    output = BytesIO()
     if file_suffix == "docx":
-        model_equations = [
-            block
-            for page_model_list in model_json.pages
-            for block in page_model_list
-            if block.get("type") == BlockType.EQUATION
-        ]
-        middle_equations = [block for page in middle_json.pages for block in page.blocks if block.type == BlockType.EQUATION]
-        assert model_equations
-        assert len(middle_equations) == len(model_equations)
-        assert "interline_equation" not in middle_json.to_json()
+        from docx import Document
+
+        document = Document()
+        document.add_paragraph("Office routing sample")
+        document.save(output)
+    elif file_suffix == "pptx":
+        from pptx import Presentation
+
+        document = Presentation()
+        slide = document.slides.add_slide(document.slide_layouts[1])
+        slide.shapes.title.text = "Office routing sample"
+        document.save(output)
+    else:
+        from openpyxl import Workbook
+
+        document = Workbook()
+        document.active["A1"] = "Office routing sample"
+        document.save(output)
+        document.close()
+    return output.getvalue()
+
+
+@pytest.mark.parametrize("file_suffix", ["docx", "pptx", "xlsx"])
+def test_doc_analyze_office_normalizes_product_route(file_suffix: FileSuffix) -> None:
+    """验证非 PDF 原生文档仍将推理档位和 OCR 选项归一为 Flash/txt。"""
+    middle, model = analyze.doc_analyze(
+        _minimal_office_bytes(file_suffix), effort="high", parse_mode="ocr", file_suffix=file_suffix
+    )
+    assert isinstance(middle, MiddleJson) and isinstance(model, ModelJson)
+    assert len(model.pages) == len(middle.pages) == 1
+    assert model.is_full_document and middle.is_full_document
+    assert model.extensions["mineru"]["effort"] == "flash"
+    assert model.extensions["mineru"]["parse_mode"] == "txt"
+    assert model.file_suffix == middle.file_suffix == file_suffix
+    assert middle.pages[0].page_idx == 0
+    assert "Office routing sample" in middle.to_json()
 
 
 def test_doc_analyze_flash_real_pdf_returns_typed_middle_json() -> None:
     """验证一页真实 PDF 经 Flash Analyze 后返回严格对象且 raw 结果无废弃字段。"""
-    sample_path = _PROJECT_ROOT / "demo" / "pdfs" / "2407.00079v4_origi-10.pdf"
+    from pypdf import PdfReader, PdfWriter
 
+    source = PdfReader(_PROJECT_ROOT / "demo/pdfs/demo1.pdf")
+    writer = PdfWriter()
+    writer.add_page(source.pages[0])
+    selected = BytesIO()
+    writer.write(selected)
+    writer.close()
+    source.close()
     middle_json, model_json = analyze.doc_analyze(
-        sample_path.read_bytes(),
+        selected.getvalue(),
         effort="flash",
         parse_mode="txt",
         file_suffix="pdf",

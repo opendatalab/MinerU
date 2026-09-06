@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Literal
@@ -323,13 +322,9 @@ def test_hybrid_native_table_priority_accepts_real_rotated_table(
 ) -> None:
     """验证真实 270 度表格在 Medium/High 中都能直接生成原生 HTML。"""
 
-    manifest = json.loads((_PROJECT_ROOT / "tests" / "fixtures" / "native_pdf_table_demo_manifest.json").read_text())
-    target = next(
-        item
-        for item in manifest["tables"]
-        if item["file"] == "demo1.pdf" and item["page_index"] == 4 and item["table_index"] == 0
-    )
-    pdf_path = _PROJECT_ROOT / manifest["source_root"] / target["file"]
+    # 仅保留此宿主集成用例需要的真值，完整表格清单归 DocGale 维护。
+    target = {"page_index": 4, "bbox": [0.117, 0.125, 0.431, 0.891], "angle": 270, "rows": 11}
+    pdf_path = _PROJECT_ROOT / "demo/pdfs/demo1.pdf"
     with PDFDocument(pdf_path.read_bytes()) as document:
         page = document[target["page_index"]]
         image = Image.new("RGB", (round(page.size[0]), round(page.size[1])), "white")

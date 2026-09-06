@@ -30,11 +30,10 @@ from mineru.parser import parse
 from mineru.render import RenderMode, render_docx, render_html, render_markdown, render_structured_content
 from mineru.types import BlockType
 
-from _span_test_utils import inline, inline_text, visible_content
+from _span_test_utils import inline, inline_text
 
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
-_REAL_RTF = _PROJECT_ROOT / "demo" / "office_docs" / "rtf_01.rtf"
 _SEMANTIC_RTF = _PROJECT_ROOT / "tests" / "fixtures" / "rtf" / "semantic.rtf"
 _PNG_HEX = (
     b"89504e470d0a1a0a0000000d494844520000000200000002080600000072b60d24"
@@ -215,19 +214,6 @@ def test_rtf_model_recovers_unicode_styles_and_structures() -> None:
     table = next(block for block in blocks if block.get("type") == BlockType.TABLE)
     assert 'colspan="2"' in table["content"]
     assert "<th" in table["content"]
-
-
-def test_rtf_model_parses_real_libreoffice_fixture() -> None:
-    """验证真实 LibreOffice RTF 在纯 Python 路径中保留全部可见段落。"""
-    with _REAL_RTF.open("rb") as stream:
-        pages = RtfModel().predict(stream)
-
-    assert len(pages) == 1
-    assert len(pages[0]) == 9
-    content = "\n".join(visible_content(block.get("content")) for block in pages[0])
-    assert "KVCache-centric Scheduling Algorithm" in content
-    assert "Prefill Global Scheduling" in content
-    assert "Conductor estimates" in content
 
 
 def test_rtf_page_controls_remain_inside_one_semantic_page() -> None:

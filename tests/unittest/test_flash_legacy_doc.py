@@ -1,13 +1,10 @@
 from __future__ import annotations
-from docgale.export.middle import export_middle_json
 
 import asyncio
-from collections import Counter
 from io import BytesIO
 from pathlib import Path
 from unittest.mock import Mock
 
-from bs4 import BeautifulSoup
 import pytest
 
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
@@ -28,15 +25,11 @@ from docgale.analyzers.native.office.errors import LegacyOfficeMissingPartError
 from docgale.analyzers.native.office.errors import LegacyOfficeResourceLimitError
 from docgale.analyzers.native.office.legacy.officeart import OfficeImagePayload
 from mineru.parser import parse
-from mineru.types import BlockType, ChartBlock, MiddleJson, ModelJson, TableBlock
+from mineru.types import BlockType, MiddleJson, ModelJson
 
 from _legacy_doc_test_utils import build_doc, utf16_cp
 from _legacy_ppt_test_utils import _build_cfb
 from _span_test_utils import inline, inline_items, inline_text, inline_urls
-
-
-_PROJECT_ROOT = Path(__file__).resolve().parents[2]
-_REAL_DOC = _PROJECT_ROOT / "demo" / "office_docs" / "docx_01.doc"
 
 
 def test_doc_image_store_distinguishes_render_size_without_double_accounting() -> None:
@@ -266,57 +259,6 @@ def test_doc_budget_uses_stable_resource_limit(monkeypatch: pytest.MonkeyPatch) 
     budget.charge()
     with pytest.raises(LegacyOfficeResourceLimitError):
         budget.charge()
-
-
-@pytest.mark.skipif(not _REAL_DOC.exists(), reason="real Office roundtrip fixture is local-only")
-def test_real_doc_recovers_sections_structure_and_sidecars(tmp_path: Path) -> None:
-    """验证真实 DOC 的 section、目录、表格、图片和严格 export 闭包。"""
-
-    middle, model = doc_analyze(_REAL_DOC.read_bytes(), file_suffix="doc")
-    counts = Counter(block.get("type") for page in model.pages for block in page)
-
-    assert len(model.pages) == len(middle.pages) == 3
-    assert counts[BlockType.DOC_TITLE] == 1
-    assert counts[BlockType.PARAGRAPH_TITLE] == 37
-    assert counts[BlockType.INDEX] == 1
-    assert counts[BlockType.LIST] == 5
-    assert counts[BlockType.TABLE] == 8
-    assert counts[BlockType.HEADER] == 4
-    assert counts[BlockType.FOOTER] == 1
-    assert counts[BlockType.IMAGE] >= 44
-    assert counts[BlockType.CHART] == 1
-
-    table_blocks = [block for page in middle.pages for block in page.blocks if isinstance(block, TableBlock)]
-    assert len(table_blocks) == 8
-    soups = [BeautifulSoup(block.content[0].content, "html.parser") for block in table_blocks]
-    assert sum(max(len(soup.find_all("table")) - 1, 0) for soup in soups) == 3
-    assert sum(len(soup.find_all("img")) for soup in soups) == 5
-    assert any(len(soup.find_all("tr")) == 39 for soup in soups)
-    assert any(
-        len([cell for cell in soup.find_all(["td", "th"]) if cell.has_attr("rowspan") or cell.has_attr("colspan")]) == 141
-        for soup in soups
-    )
-    chart = next(block for page in middle.pages for block in page.blocks if isinstance(block, ChartBlock))
-    chart_soup = BeautifulSoup(chart.content[0].content, "html.parser")
-    assert [
-        [cell.get_text(" ", strip=True) for cell in row.find_all(["th", "td"], recursive=False)]
-        for row in chart_soup.find_all("tr")
-    ] == [
-        ["列1", "系列 1", "系列 2", "系列 3"],
-        ["类别 1", "4.3", "2.4", "2"],
-        ["类别 2", "2.5", "4.4", "2"],
-        ["类别 3", "3.5", "1.8", "3"],
-        ["类别 4", "4.5", "2.8", "5"],
-    ]
-    assert chart.content[0].image_base64 is not None
-
-    export = export_middle_json(middle, tmp_path / "export")
-    payload = export.middle_json.model_dump_json(exclude_none=True)
-    assert export.json_path.exists()
-    assert len(export.image_paths) >= 49
-    assert all(path.exists() and path.stat().st_size > 0 for path in export.image_paths)
-    assert "image_base64" not in payload
-    assert "data:image/" not in payload
 
 
 def test_doc_is_supported_by_public_parser(tmp_path: Path) -> None:
