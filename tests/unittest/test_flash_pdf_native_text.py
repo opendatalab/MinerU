@@ -5,8 +5,8 @@ from typing import Any
 
 import pytest
 
-from docgale.analyzers.native.pdf import models
-from docgale.analyzers.native.pdf import native_text
+from docvortex.analyzers.native.pdf import models
+from docvortex.analyzers.native.pdf import native_text
 
 
 def _span(

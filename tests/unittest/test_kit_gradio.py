@@ -1,6 +1,6 @@
 from __future__ import annotations
-from docgale.schema import Producer
-from mineru.integrations.docgale import build_metadata
+from docvortex.schema import Producer
+from mineru.integrations.docvortex import build_metadata
 
 import asyncio
 import io

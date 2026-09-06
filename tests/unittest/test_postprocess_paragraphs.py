@@ -4,9 +4,9 @@ from copy import deepcopy
 
 import pytest
 
-from docgale.postprocess.paragraphs import can_auto_merge_ref_text_blocks
-from docgale.postprocess.paragraphs import can_auto_merge_text_blocks
-from docgale.postprocess.paragraphs import merge_para_text_blocks
+from docvortex.postprocess.paragraphs import can_auto_merge_ref_text_blocks
+from docvortex.postprocess.paragraphs import can_auto_merge_text_blocks
+from docvortex.postprocess.paragraphs import merge_para_text_blocks
 from mineru.types import BlockType
 
 from _span_test_utils import inline as _inline, inline_text

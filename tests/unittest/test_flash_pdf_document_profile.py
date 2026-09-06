@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from docgale.analyzers.native.pdf import models
-from docgale.analyzers.native.pdf import titles
+from docvortex.analyzers.native.pdf import models
+from docvortex.analyzers.native.pdf import titles
 
 from _flash_pdf_test_utils import _prepared_text_page, _text_line
 

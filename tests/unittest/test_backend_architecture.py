@@ -9,7 +9,7 @@ import sys
 from mineru.backend.postprocess import table_merge
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
-_DOCGALE_ROOT = Path(importlib.util.find_spec("docgale").origin).parent
+_DOCVORTEX_ROOT = Path(importlib.util.find_spec("docvortex").origin).parent
 _COPYRIGHT_HEADER = "# Copyright (c) Opendatalab. All rights reserved."
 _SOURCE_ROOTS = (
     _PROJECT_ROOT / "mineru/backend",
@@ -48,29 +48,29 @@ _CHINESE_DOCSTRING_PATHS = (
     _PROJECT_ROOT / "mineru/render/epub.py",
     _PROJECT_ROOT / "mineru/render/pdf.py",
     _PROJECT_ROOT / "mineru/render/structured_content.py",
-    _DOCGALE_ROOT / "render/_internal/common/html_table.py",
-    _DOCGALE_ROOT / "render/_internal/latex",
+    _DOCVORTEX_ROOT / "render/_internal/common/html_table.py",
+    _DOCVORTEX_ROOT / "render/_internal/latex",
 )
 _REMOVED_INTERNAL_MODULES = (
     "mineru.cli_old",
     "mineru.backend.local_model_runtime",
     "mineru.model.model_types",
-    "docgale.analyzers.native.model",
-    "docgale.analyzers.native.native_pdf",
-    "docgale.analyzers.native.office.chart",
-    "docgale.analyzers.native.office.docx.tools",
-    "docgale.analyzers.native.office.docx.tools.math",
-    "docgale.analyzers.native.office.image_equation",
-    "docgale.analyzers.native.office.legacy.errors",
-    "docgale.analyzers.native.office.legacy.limits",
-    "docgale.analyzers.native.office.legacy.mtef",
-    "docgale.analyzers.native.office.legacy.mtef_v5",
-    "docgale.analyzers.native.office.legacy.stream",
-    "docgale.analyzers.native.office.math",
-    "docgale.analyzers.native.office.ooxml_equation",
+    "docvortex.analyzers.native.model",
+    "docvortex.analyzers.native.native_pdf",
+    "docvortex.analyzers.native.office.chart",
+    "docvortex.analyzers.native.office.docx.tools",
+    "docvortex.analyzers.native.office.docx.tools.math",
+    "docvortex.analyzers.native.office.image_equation",
+    "docvortex.analyzers.native.office.legacy.errors",
+    "docvortex.analyzers.native.office.legacy.limits",
+    "docvortex.analyzers.native.office.legacy.mtef",
+    "docvortex.analyzers.native.office.legacy.mtef_v5",
+    "docvortex.analyzers.native.office.legacy.stream",
+    "docvortex.analyzers.native.office.math",
+    "docvortex.analyzers.native.office.ooxml_equation",
     "mineru.model.utils",
     "mineru.render.writer",
-    "docgale.render._internal.common.inline",
+    "docvortex.render._internal.common.inline",
     "mineru.utils.backend_options",
     "mineru.utils.config_reader",
     "mineru.utils.model_registry",
@@ -82,7 +82,7 @@ _REMOVED_INTERNAL_MODULES = (
 
 def _module_name(path: Path) -> str:
     """把项目内 Python 路径转换为完整模块名。"""
-    relative = path.relative_to(_DOCGALE_ROOT.parent if path.is_relative_to(_DOCGALE_ROOT) else _PROJECT_ROOT).with_suffix("")
+    relative = path.relative_to(_DOCVORTEX_ROOT.parent if path.is_relative_to(_DOCVORTEX_ROOT) else _PROJECT_ROOT).with_suffix("")
     parts = list(relative.parts)
     if parts[-1] == "__init__":
         parts.pop()
@@ -199,11 +199,11 @@ def test_layer_dependencies_are_one_way() -> None:
         if invalid:
             offenders[str(path.relative_to(_PROJECT_ROOT))] = invalid
     for path in _PROJECT_ROOT.glob("mineru/backend/analysis/**/*.py"):
-        invalid = sorted(module for module in _resolved_imports(path) if module.startswith("docgale.postprocess"))
+        invalid = sorted(module for module in _resolved_imports(path) if module.startswith("docvortex.postprocess"))
         if invalid:
             offenders[str(path.relative_to(_PROJECT_ROOT))] = invalid
     allowed_render_backend = (
-        "docgale.content.inline",
+        "docvortex.content.inline",
         "mineru.backend.postprocess.table_merge",
     )
     for path in _PROJECT_ROOT.glob("mineru/render/**/*.py"):
@@ -225,17 +225,17 @@ def test_latex_and_render_common_keep_private_dependencies_one_way() -> None:
         str(path): sorted(
             module
             for module in _resolved_imports(path)
-            if module.startswith(tuple(f"docgale.render._internal.{name}" for name in format_names))
+            if module.startswith(tuple(f"docvortex.render._internal.{name}" for name in format_names))
         )
-        for path in (_DOCGALE_ROOT / "render/_internal/latex").rglob("*.py")
+        for path in (_DOCVORTEX_ROOT / "render/_internal/latex").rglob("*.py")
     }
     common_offenders = {
         str(path): sorted(
             module
             for module in _resolved_imports(path)
-            if module.startswith(tuple(f"docgale.render._internal.{name}" for name in (*format_names, "latex")))
+            if module.startswith(tuple(f"docvortex.render._internal.{name}" for name in (*format_names, "latex")))
         )
-        for path in (_DOCGALE_ROOT / "render/_internal/common").rglob("*.py")
+        for path in (_DOCVORTEX_ROOT / "render/_internal/common").rglob("*.py")
     }
     assert not {path: imports for path, imports in latex_offenders.items() if imports}
     assert not {path: imports for path, imports in common_offenders.items() if imports}
@@ -244,7 +244,7 @@ def test_latex_and_render_common_keep_private_dependencies_one_way() -> None:
 def test_flash_office_does_not_depend_on_pdf_implementation() -> None:
     """守卫 Office 格式只复用中立能力，不反向依赖 Flash PDF 实现。"""
     offenders = {
-        str(path): sorted(module for module in _resolved_imports(path) if module.startswith("docgale.analyzers.native.pdf"))
+        str(path): sorted(module for module in _resolved_imports(path) if module.startswith("docvortex.analyzers.native.pdf"))
         for path in (_PROJECT_ROOT / "mineru/model/flash/office").rglob("*.py")
     }
     assert not {path: imports for path, imports in offenders.items() if imports}
@@ -254,7 +254,7 @@ def test_flash_spreadsheet_dependencies_are_one_way() -> None:
     """守卫 XLS/XLSX 只依赖中立 spreadsheet 层且共享层不反向引用格式实现。"""
     xls_offenders = {
         str(path): sorted(
-            module for module in _resolved_imports(path) if module.startswith("docgale.analyzers.native.office.xlsx")
+            module for module in _resolved_imports(path) if module.startswith("docvortex.analyzers.native.office.xlsx")
         )
         for path in (_PROJECT_ROOT / "mineru/model/flash/office/xls").rglob("*.py")
     }
@@ -262,7 +262,7 @@ def test_flash_spreadsheet_dependencies_are_one_way() -> None:
         str(path): sorted(
             module
             for module in _resolved_imports(path)
-            if module.startswith(("docgale.analyzers.native.office.xls", "docgale.analyzers.native.office.xlsx"))
+            if module.startswith(("docvortex.analyzers.native.office.xls", "docvortex.analyzers.native.office.xlsx"))
         )
         for path in (_PROJECT_ROOT / "mineru/model/flash/office/spreadsheet").rglob("*.py")
     }
@@ -273,7 +273,7 @@ def test_flash_spreadsheet_dependencies_are_one_way() -> None:
 def test_flash_equation_and_legacy_dependencies_are_one_way() -> None:
     """守卫公式层不反向引用格式实现，legacy 层也不重新承载公式解析。"""
     format_prefixes = tuple(
-        f"docgale.analyzers.native.office.{name}"
+        f"docvortex.analyzers.native.office.{name}"
         for name in ("doc", "docx", "odf", "ppt", "pptx", "rtf", "spreadsheet", "xls", "xlsx")
     )
     equation_offenders = {
@@ -282,7 +282,7 @@ def test_flash_equation_and_legacy_dependencies_are_one_way() -> None:
     }
     legacy_offenders = {
         str(path): sorted(
-            module for module in _resolved_imports(path) if module.startswith("docgale.analyzers.native.office.equation")
+            module for module in _resolved_imports(path) if module.startswith("docvortex.analyzers.native.office.equation")
         )
         for path in (_PROJECT_ROOT / "mineru/model/flash/office/legacy").rglob("*.py")
     }
@@ -339,7 +339,7 @@ import sys
 before_env = dict(os.environ)
 import mineru.backend.analyze
 import mineru.render
-from docgale.analyzers.native import PdfModel
+from docvortex.analyzers.native import PdfModel
 
 assert PdfModel.__name__ == "PdfModel"
 for prefix in (
@@ -372,7 +372,7 @@ assert before_env == dict(os.environ)
 
 def test_table_merge_package_keeps_one_way_internal_dependencies() -> None:
     """守卫 table_merge 低层模块不反向导入内容合并或文档编排模块。"""
-    package_path = _DOCGALE_ROOT / "content/table"
+    package_path = _DOCVORTEX_ROOT / "content/table"
     allowed_imports = {
         "models.py": set(),
         "html.py": {"models"},

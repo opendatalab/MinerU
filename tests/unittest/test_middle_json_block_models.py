@@ -1,8 +1,8 @@
 from __future__ import annotations
 import json
-from docgale.codecs.json import load_middle
-from docgale.schema import Producer
-from mineru.integrations.docgale import build_metadata
+from docvortex.codecs.json import load_middle
+from docvortex.schema import Producer
+from mineru.integrations.docvortex import build_metadata
 from _span_test_utils import inline as _inline
 
 from copy import deepcopy
@@ -12,9 +12,9 @@ import pytest
 from pydantic import ValidationError
 
 import mineru.types as types_module
-from docgale.postprocess.pages import model_json_to_pages
-from docgale.content.inline import inline_plain_text
-from docgale.content.inline import normalize_inline_spans
+from docvortex.postprocess.pages import model_json_to_pages
+from docvortex.content.inline import inline_plain_text
+from docvortex.content.inline import normalize_inline_spans
 from mineru.types import (
     BLOCK_ADAPTER,
     BLOCK_TYPES,

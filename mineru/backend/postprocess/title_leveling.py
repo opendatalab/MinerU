@@ -8,7 +8,7 @@ import json
 from typing import Any
 
 from ...types import DocTitleBlock, PageInfo, ParagraphTitleBlock
-from docgale.content.inline import inline_plain_text
+from docvortex.content.inline import inline_plain_text
 
 from .llm_client import LLMAidedClient
 

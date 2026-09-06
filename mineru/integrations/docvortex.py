@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from docgale.compat.mineru import MinerUMetadata
+from docvortex.compat.mineru import MinerUMetadata
 from pydantic import JsonValue
 
 

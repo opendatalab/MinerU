@@ -8,22 +8,22 @@ from unittest.mock import Mock
 import pytest
 
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
-from docgale.postprocess.lists import fix_office_list_blocks
-from docgale.analyzers.native import DocModel
-from docgale.analyzers.native._shared.hyperlink import OFFICE_EXTERNAL_HYPERLINK_SCHEMES
-from docgale.analyzers.native._shared.hyperlink import sanitize_hyperlink_target
-from docgale.analyzers.native.office.doc.models import DocCharStyle
-from docgale.analyzers.native.office.doc.models import DocTableCell
-from docgale.analyzers.native.office.doc.images import ImageStore
-from docgale.analyzers.native.office.doc.parser import _RawTableRow
-from docgale.analyzers.native.office.doc.parser import _materialize_table_rows
-from docgale.analyzers.native.office.doc.records import DocBudget
-from docgale.analyzers.native.office.doc.sprm import apply_character_sprms
-from docgale.analyzers.native.office.errors import LegacyOfficeEncryptedError
-from docgale.analyzers.native.office.errors import LegacyOfficeMalformedError
-from docgale.analyzers.native.office.errors import LegacyOfficeMissingPartError
-from docgale.analyzers.native.office.errors import LegacyOfficeResourceLimitError
-from docgale.analyzers.native.office.legacy.officeart import OfficeImagePayload
+from docvortex.postprocess.lists import fix_office_list_blocks
+from docvortex.analyzers.native import DocModel
+from docvortex.analyzers.native._shared.hyperlink import OFFICE_EXTERNAL_HYPERLINK_SCHEMES
+from docvortex.analyzers.native._shared.hyperlink import sanitize_hyperlink_target
+from docvortex.analyzers.native.office.doc.models import DocCharStyle
+from docvortex.analyzers.native.office.doc.models import DocTableCell
+from docvortex.analyzers.native.office.doc.images import ImageStore
+from docvortex.analyzers.native.office.doc.parser import _RawTableRow
+from docvortex.analyzers.native.office.doc.parser import _materialize_table_rows
+from docvortex.analyzers.native.office.doc.records import DocBudget
+from docvortex.analyzers.native.office.doc.sprm import apply_character_sprms
+from docvortex.analyzers.native.office.errors import LegacyOfficeEncryptedError
+from docvortex.analyzers.native.office.errors import LegacyOfficeMalformedError
+from docvortex.analyzers.native.office.errors import LegacyOfficeMissingPartError
+from docvortex.analyzers.native.office.errors import LegacyOfficeResourceLimitError
+from docvortex.analyzers.native.office.legacy.officeart import OfficeImagePayload
 from mineru.parser import parse
 from mineru.types import BlockType, MiddleJson, ModelJson
 
@@ -203,8 +203,8 @@ def test_doc_exact_list_label_is_consumed_before_strict_projection() -> None:
 def test_doc_table_grid_materializes_colspan_and_rowspan() -> None:
     """验证 Word table edge 网格能同时恢复横向和纵向合并。"""
 
-    from docgale.analyzers.native.office.doc.models import DocTableCellFormat
-    from docgale.analyzers.native.office.doc.models import DocTableFormat
+    from docvortex.analyzers.native.office.doc.models import DocTableCellFormat
+    from docvortex.analyzers.native.office.doc.models import DocTableFormat
 
     first = DocTableCell(blocks=[])
     raw_rows = [
@@ -252,7 +252,7 @@ def test_doc_rejects_word95_encryption_rtf_and_missing_word_stream() -> None:
 def test_doc_budget_uses_stable_resource_limit(monkeypatch: pytest.MonkeyPatch) -> None:
     """验证 DOC 记录预算超过固定上限时使用共享错误类型。"""
 
-    import docgale.analyzers.native.office.doc.records as records
+    import docvortex.analyzers.native.office.doc.records as records
 
     monkeypatch.setattr(records, "MAX_RECORDS", 1)
     budget = records.DocBudget()

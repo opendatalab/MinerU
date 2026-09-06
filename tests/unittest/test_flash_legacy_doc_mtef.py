@@ -6,10 +6,10 @@ from io import BytesIO
 import pytest
 
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
-from docgale.analyzers.native import DocModel
-from docgale.analyzers.native.office.equation.mtef import decode_equation_native
-from docgale.analyzers.native.office.equation.mtef import decode_equation_object
-from docgale.analyzers.native.office.equation.mtef import decode_mtef_v3
+from docvortex.analyzers.native import DocModel
+from docvortex.analyzers.native.office.equation.mtef import decode_equation_native
+from docvortex.analyzers.native.office.equation.mtef import decode_equation_object
+from docvortex.analyzers.native.office.equation.mtef import decode_mtef_v3
 from mineru.render.contracts import RenderMode
 from mineru.render.html import render_html
 from mineru.render.markdown import render_markdown

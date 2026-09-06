@@ -1,6 +1,6 @@
 from __future__ import annotations
-from docgale.schema import Producer
-from mineru.integrations.docgale import build_metadata
+from docvortex.schema import Producer
+from mineru.integrations.docvortex import build_metadata
 from _span_test_utils import inline as _inline
 
 import json

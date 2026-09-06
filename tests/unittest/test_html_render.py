@@ -1,6 +1,6 @@
 from __future__ import annotations
-from docgale.schema import Producer
-from mineru.integrations.docgale import build_metadata
+from docvortex.schema import Producer
+from mineru.integrations.docvortex import build_metadata
 from _span_test_utils import inline as _inline
 
 from copy import deepcopy
@@ -116,12 +116,12 @@ def test_public_contract_fragment_standalone_title_and_input_immutability() -> N
     fragment = render_html(middle, standalone=False)
     standalone = render_html(middle)
 
-    assert fragment.startswith('<article class="docgale-document docgale-document--default" ')
-    assert 'data-docgale-html-version="1" data-render-mode="default"' in fragment
+    assert fragment.startswith('<article class="docvortex-document docvortex-document--default" ')
+    assert 'data-docvortex-html-version="1" data-render-mode="default"' in fragment
     assert fragment in standalone
     assert '<html lang="und">' in standalone
     assert "<title>Demo &lt;unsafe&gt;</title>" in standalone
-    assert '<body class="docgale-html-body">' in standalone
+    assert '<body class="docvortex-html-body">' in standalone
     assert "<style>" in standalone
     assert "mathjax@" not in standalone
     assert "prismjs@" not in standalone
@@ -157,14 +157,14 @@ def test_default_and_full_modes_preserve_their_page_contracts() -> None:
     default = BeautifulSoup(render_html(middle, standalone=False), "html.parser")
     full = BeautifulSoup(render_html(middle, mode=RenderMode.FULL, standalone=False), "html.parser")
 
-    assert default.select_one(".docgale-text").get_text() == "international"
+    assert default.select_one(".docvortex-text").get_text() == "international"
     assert default.select_one('[data-block-type="text"]')["data-page-idx"] == "0"
-    assert not default.select(".docgale-page")
+    assert not default.select(".docvortex-page")
     assert "HEADER" not in default.get_text()
 
-    assert [section["data-page-idx"] for section in full.select(".docgale-page")] == ["0", "5", "9"]
-    assert len(full.select(".docgale-page-break")) == 2
-    assert [item.get_text() for item in full.select(".docgale-text")] == ["inter-", "national"]
+    assert [section["data-page-idx"] for section in full.select(".docvortex-page")] == ["0", "5", "9"]
+    assert len(full.select(".docvortex-page-break")) == 2
+    assert [item.get_text() for item in full.select(".docvortex-text")] == ["inter-", "national"]
     assert "HEADER" in full.get_text() and "FOOTER" in full.get_text()
 
 
@@ -196,7 +196,7 @@ def test_default_and_full_html_link_to_visible_page_footnote_anchor() -> None:
 
     assert default.select_one('a[href="#note-one"]') is not None
     for output in (default, full):
-        target = output.select_one("#note-one.docgale-page-footnote")
+        target = output.select_one("#note-one.docvortex-page-footnote")
         assert target is not None
         assert target["data-block-type"] == "page_footnote"
         assert target.get_text() == "Footnote body."
@@ -216,17 +216,17 @@ def test_inline_html_escapes_plain_text_and_renders_styles_links_and_math() -> N
     result = render_html(_middle(_page(0, TextBlock(type="text", index=0, content=content))))
     soup = BeautifulSoup(result, "html.parser")
 
-    paragraph = soup.select_one(".docgale-text")
+    paragraph = soup.select_one(".docvortex-text")
     assert "p <0.05 <local_dir>" in paragraph.get_text()
     assert paragraph.select_one("em strong u") is not None
-    assert paragraph.select_one(".docgale-preserve-whitespace") is not None
+    assert paragraph.select_one(".docvortex-preserve-whitespace") is not None
     assert paragraph.select_one('a[href="https://example.test/a%20b"]') is not None
     assert "bad" in paragraph.get_text()
     assert paragraph.select_one('a[href^="javascript:"]') is None
-    assert paragraph.select_one(".docgale-math").get_text() == r"\(x < y & z\)"
+    assert paragraph.select_one(".docvortex-math").get_text() == r"\(x < y & z\)"
     assert "mathjax@4.1.2/tex-chtml.js" in result
     assert "loader: {load: ['ui/safe']}" in result
-    assert "ignoreHtmlClass: 'docgale-document'" in result
+    assert "ignoreHtmlClass: 'docvortex-document'" in result
     assert "packages: {'[-]': ['require']}" in result
 
 
@@ -243,7 +243,7 @@ def test_plain_text_autolinks_mpe_style_urls_domains_and_email() -> None:
         "html.parser",
     )
 
-    links = soup.select(".docgale-text a")
+    links = soup.select(".docvortex-text a")
     assert [link["href"] for link in links] == [
         "https://example.com/a_%28b%29",
         "https://www.example.org/path?x=1",
@@ -262,7 +262,7 @@ def test_plain_text_autolinks_mpe_style_urls_domains_and_email() -> None:
         "https://one.example/a",
         "https://two.example/b",
     ]
-    assert "docs。Email" in soup.select_one(".docgale-text").get_text()
+    assert "docs。Email" in soup.select_one(".docvortex-text").get_text()
 
 
 @pytest.mark.parametrize(
@@ -313,7 +313,7 @@ def test_common_engineering_bare_domain_suffixes_linkify(tld: str) -> None:
         "html.parser",
     )
 
-    link = soup.select_one(".docgale-text a")
+    link = soup.select_one(".docvortex-text a")
     assert link["href"] == f"https://Project.Example.{tld}/docs?x=1#intro"
     assert link.get_text() == content
 
@@ -341,8 +341,8 @@ def test_non_common_bare_domain_suffixes_remain_plain_text(content: str) -> None
         "html.parser",
     )
 
-    assert soup.select_one(".docgale-text a") is None
-    assert soup.select_one(".docgale-text").get_text() == content
+    assert soup.select_one(".docvortex-text a") is None
+    assert soup.select_one(".docvortex-text").get_text() == content
 
 
 def test_strong_link_syntax_bypasses_bare_domain_suffix_allowlist() -> None:
@@ -353,7 +353,7 @@ def test_strong_link_syntax_bypasses_bare_domain_suffix_allowlist() -> None:
         "html.parser",
     )
 
-    assert [link["href"] for link in soup.select(".docgale-text a")] == [
+    assert [link["href"] for link in soup.select(".docvortex-text a")] == [
         "https://example.ch",
         "https://www.example.ch",
         "mailto:user@example.ua",
@@ -406,10 +406,10 @@ def test_autolink_excludes_existing_links_code_math_algorithm_and_raw_html() -> 
     assert len(links) == 1
     assert links[0]["href"] == "https://target.test"
     assert links[0].get_text() == "example.com"
-    assert soup.select_one(".docgale-math").get_text() == r"\(math.example.com\)"
-    assert soup.select_one(".docgale-code").get_text() == "https://code.example.com"
-    assert soup.select_one(".docgale-algorithm").get_text() == "visit algorithm.example.com"
-    assert soup.select_one(".docgale-figure--chart p").get_text() == "raw.example.com"
+    assert soup.select_one(".docvortex-math").get_text() == r"\(math.example.com\)"
+    assert soup.select_one(".docvortex-code").get_text() == "https://code.example.com"
+    assert soup.select_one(".docvortex-algorithm").get_text() == "visit algorithm.example.com"
+    assert soup.select_one(".docvortex-figure--chart p").get_text() == "raw.example.com"
 
 
 def test_formula_body_closing_delimiters_are_neutralized_before_mathjax_scanning() -> None:
@@ -427,8 +427,8 @@ def test_formula_body_closing_delimiters_are_neutralized_before_mathjax_scanning
     )
     soup = BeautifulSoup(render_html(middle, standalone=False), "html.parser")
 
-    assert soup.select_one(".docgale-math--inline").get_text() == r"\(x\mathclose{)}y\)"
-    assert soup.select_one(".docgale-math--block").get_text().replace("\n", "") == r"\[x\mathclose{]}y\]"
+    assert soup.select_one(".docvortex-math--inline").get_text() == r"\(x\mathclose{)}y\)"
+    assert soup.select_one(".docvortex-math--block").get_text().replace("\n", "") == r"\[x\mathclose{]}y\]"
 
 
 def test_lists_cover_native_explicit_reference_nested_and_orphan_shapes() -> None:
@@ -472,21 +472,21 @@ def test_lists_cover_native_explicit_reference_nested_and_orphan_shapes() -> Non
     assert ordered_html.find_all("li", recursive=False)[1]["value"] == "3"
     assert ordered_html.get_text(" ", strip=True) == "first third"
     assert soup.select_one('[data-block-index="1"] ol')["type"] == "a"
-    assert [marker.get_text() for marker in soup.select('[data-block-index="2"] .docgale-list-marker')] == [
+    assert [marker.get_text() for marker in soup.select('[data-block-index="2"] .docvortex-list-marker')] == [
         "(1)",
         "[x]",
         "",
     ]
     assert "[1] first" in soup.select_one('[data-block-index="3"] li').get_text()
-    parent_item = soup.select_one('[data-block-index="4"] > .docgale-list > li')
+    parent_item = soup.select_one('[data-block-index="4"] > .docvortex-list > li')
     assert parent_item.find("ul", recursive=False) is not None
-    assert soup.select_one('[data-block-index="5"] .docgale-list-item--orphan') is not None
-    assert [marker.get_text() for marker in soup.select('[data-block-index="6"] .docgale-list-marker')] == [
+    assert soup.select_one('[data-block-index="5"] .docvortex-list-item--orphan') is not None
+    assert [marker.get_text() for marker in soup.select('[data-block-index="6"] .docvortex-list-marker')] == [
         "1.",
         "-",
         "",
     ]
-    assert soup.select_one('[data-block-index="7"] .docgale-list-item--markerless > ul') is not None
+    assert soup.select_one('[data-block-index="7"] .docvortex-list-item--markerless > ul') is not None
 
 
 def test_index_uses_real_forward_anchor_and_omits_duplicate_ids() -> None:
@@ -508,10 +508,10 @@ def test_index_uses_real_forward_anchor_and_omits_duplicate_ids() -> None:
     duplicate = ParagraphTitleBlock(type="paragraph_title", index=2, level=6, anchor="sec 1", content=_inline("Duplicate"))
     soup = BeautifulSoup(render_html(_middle(_page(0, index, first, duplicate)), standalone=False), "html.parser")
 
-    assert soup.select_one('.docgale-index a[href="#sec-1"]').get_text() == "Section"
-    assert "3" not in soup.select_one(".docgale-index").get_text()
-    assert soup.select_one(".docgale-index li ul") is not None
-    assert soup.select_one(".docgale-index li ul a") is None
+    assert soup.select_one('.docvortex-index a[href="#sec-1"]').get_text() == "Section"
+    assert "3" not in soup.select_one(".docvortex-index").get_text()
+    assert soup.select_one(".docvortex-index li ul") is not None
+    assert soup.select_one(".docvortex-index li ul a") is None
     assert len(soup.select('[id="sec-1"]')) == 1
     assert soup.find("h6", attrs={"data-heading-level": "6"}).get_text() == "Duplicate"
 
@@ -541,7 +541,7 @@ def test_empty_title_does_not_create_a_broken_index_target_and_anchor_controls_a
         "html.parser",
     )
 
-    links = soup.select(".docgale-index a")
+    links = soup.select(".docvortex-index a")
     assert len(links) == 2
     assert links[0]["href"] == "#bad%EF%BF%BDid"
     assert links[1]["href"] == "#bad%EF%BF%BDid-2"
@@ -561,7 +561,7 @@ def test_empty_index_leaf_owns_its_following_nested_index() -> None:
         ],
     )
     soup = BeautifulSoup(render_html(_middle(_page(0, index)), standalone=False), "html.parser")
-    top_items = soup.select(".docgale-index > ul > li")
+    top_items = soup.select(".docvortex-index > ul > li")
 
     assert len(top_items) == 2
     assert top_items[0].find("ul", recursive=False) is None
@@ -599,8 +599,8 @@ def test_visual_child_order_image_details_and_asset_precedence() -> None:
     assert rendered.index("before") < rendered.index("images/a%20b.png") < rendered.index("after") < rendered.index("again")
     assert soup.select_one("img")["src"] == "https://cdn.example/doc/images/a%20b.png"
     assert "data:image" not in rendered
-    assert soup.select_one("details .docgale-math") is not None
-    assert len(soup.select(".docgale-caption")) == 2
+    assert soup.select_one("details .docvortex-math") is not None
+    assert len(soup.select(".docvortex-caption")) == 2
 
 
 def test_mermaid_flowchart_uses_live_canvas_raster_fallback_and_safe_config() -> None:
@@ -611,14 +611,14 @@ def test_mermaid_flowchart_uses_live_canvas_raster_fallback_and_safe_config() ->
     standalone = render_html(middle)
     soup = BeautifulSoup(fragment, "html.parser")
 
-    host = soup.select_one(".docgale-flowchart")
+    host = soup.select_one(".docvortex-flowchart")
     assert host["data-mermaid-state"] == "pending"
-    assert "docgale-flowchart--has-raster" in host["class"]
-    assert host.select_one('.docgale-flowchart-canvas[role="img"]') is not None
-    assert host.select_one(".docgale-flowchart-fallback")["src"].startswith("data:image/png")
+    assert "docvortex-flowchart--has-raster" in host["class"]
+    assert host.select_one('.docvortex-flowchart-canvas[role="img"]') is not None
+    assert host.select_one(".docvortex-flowchart-fallback")["src"].startswith("data:image/png")
     details = host.find_next_sibling("details")
     assert "open" not in details.attrs
-    assert details.select_one(".docgale-flowchart-source code").get_text() == source_text
+    assert details.select_one(".docvortex-flowchart-source code").get_text() == source_text
     assert soup.find("script") is None
     assert "mermaid@" not in fragment
     assert "mermaid@11.16.1/dist/mermaid.min.js" in standalone
@@ -640,8 +640,8 @@ def test_mermaid_flowchart_without_raster_opens_source_fallback() -> None:
         "html.parser",
     )
 
-    host = soup.select_one(".docgale-flowchart")
-    assert "docgale-flowchart--has-raster" not in host.get("class", [])
+    host = soup.select_one(".docvortex-flowchart")
+    assert "docvortex-flowchart--has-raster" not in host.get("class", [])
     assert host.select_one("img") is None
     assert "open" in host.find_next_sibling("details").attrs
 
@@ -661,10 +661,10 @@ def test_invalid_or_out_of_scope_mermaid_keeps_existing_image_path(content: str)
     rendered = render_html(_middle(_page(0, _flowchart(content))))
     soup = BeautifulSoup(rendered, "html.parser")
 
-    assert soup.select_one(".docgale-flowchart") is None
-    assert soup.select_one(".docgale-image") is not None
-    assert soup.select_one(".docgale-details") is not None
-    assert soup.select_one(".docgale-details a") is None
+    assert soup.select_one(".docvortex-flowchart") is None
+    assert soup.select_one(".docvortex-image") is not None
+    assert soup.select_one(".docvortex-details") is not None
+    assert soup.select_one(".docvortex-details a") is None
     assert "mermaid@" not in rendered
 
 
@@ -700,8 +700,8 @@ def test_table_keeps_safe_html_and_spatial_or_image_fallbacks() -> None:
     cell = soup.select_one('[data-block-index="0"] td')
     assert cell["rowspan"] == "2"
     assert "onclick" not in cell.attrs and "border" not in soup.select_one("table").attrs
-    assert cell.select_one(".docgale-math") is not None
-    assert soup.select_one('[data-block-index="1"] .docgale-table-text').get_text() == "A < B\nC   D"
+    assert cell.select_one(".docvortex-math") is not None
+    assert soup.select_one('[data-block-index="1"] .docvortex-table-text').get_text() == "A < B\nC   D"
     assert soup.select_one('[data-block-index="2"] img')["src"].startswith("data:image/png")
 
 
@@ -751,7 +751,7 @@ def test_discarded_invalid_table_math_does_not_load_mathjax() -> None:
     )
     rendered = render_html(_middle(_page(0, table)))
 
-    assert BeautifulSoup(rendered, "html.parser").select_one("article .docgale-math") is None
+    assert BeautifulSoup(rendered, "html.parser").select_one("article .docvortex-math") is None
     assert "mathjax@" not in rendered
     assert "data:image/png" in rendered
 
@@ -808,23 +808,23 @@ def test_chart_gfm_details_code_prism_and_algorithm_html() -> None:
     result = render_html(_middle(_page(0, chart, code, algorithm)))
     soup = BeautifulSoup(result, "html.parser")
 
-    assert soup.select_one("details .docgale-chart-table") is not None
-    assert soup.select_one("th.docgale-align-left") is not None
-    assert soup.select_one("th.docgale-align-right") is not None
+    assert soup.select_one("details .docvortex-chart-table") is not None
+    assert soup.select_one("th.docvortex-align-left") is not None
+    assert soup.select_one("th.docvortex-align-right") is not None
     assert soup.select_one("pre.language-bash code.language-bash").get_text() == 'echo "<x>"\n'
     assert "prismjs@1.30.0/components/prism-core.min.js" in result
     assert "prismjs@1.30.0/plugins/autoloader/prism-autoloader.min.js" in result
     assert "Prism.highlightAllUnder(root)" in result
     assert "sha384-zLRFO4dw" in result and "sha384-Uq05+JLk" in result
-    algorithm_html = soup.select_one(".docgale-algorithm")
+    algorithm_html = soup.select_one(".docvortex-algorithm")
     assert "if a < b:" in algorithm_html.get_text()
     assert algorithm_html.select_one("strong").get_text() == "bold"
     assert algorithm_html.select_one("em").get_text() == "italic"
     assert algorithm_html.select_one("s").get_text() == "strike"
     assert algorithm_html.select_one("u").get_text() == "under"
-    assert algorithm_html.select_one(".docgale-text-emphasis").get_text() == "dot"
+    assert algorithm_html.select_one(".docvortex-text-emphasis").get_text() == "dot"
     assert algorithm_html.select_one("sub").get_text() == "q"
-    assert len(algorithm_html.select(".docgale-math")) == 2
+    assert len(algorithm_html.select(".docvortex-math")) == 2
     assert r"\(x\) \(y\)" in algorithm_html.get_text()
     assert "<br" not in str(algorithm_html)
     assert "if a &lt; b:\n  " in str(algorithm_html)
@@ -857,7 +857,7 @@ def test_empty_code_and_literal_class_text_do_not_load_external_runtimes() -> No
     middle = _middle(
         _page(
             0,
-            TextBlock(type="text", index=0, content=_inline('class="docgale-math fake" class="language-python"')),
+            TextBlock(type="text", index=0, content=_inline('class="docvortex-math fake" class="language-python"')),
             CodeBlock(
                 type="code",
                 index=1,
@@ -871,7 +871,7 @@ def test_empty_code_and_literal_class_text_do_not_load_external_runtimes() -> No
 
     assert "mathjax@" not in rendered
     assert "prismjs@" not in rendered
-    assert '<pre class="docgale-code"><code></code></pre>' in rendered
+    assert '<pre class="docvortex-code"><code></code></pre>' in rendered
 
 
 def test_crlf_and_cr_are_normalized_to_visible_line_breaks() -> None:
@@ -880,7 +880,7 @@ def test_crlf_and_cr_are_normalized_to_visible_line_breaks() -> None:
         _middle(_page(0, TextBlock(type="text", index=0, content=_inline("one\r\ntwo\rthree")))),
         standalone=False,
     )
-    paragraph = BeautifulSoup(rendered, "html.parser").select_one(".docgale-text")
+    paragraph = BeautifulSoup(rendered, "html.parser").select_one(".docvortex-text")
 
     assert len(paragraph.find_all("br")) == 2
     assert paragraph.get_text("|", strip=True) == "one|two|three"
@@ -932,8 +932,8 @@ def test_setext_heading_shape_is_not_misclassified_as_a_gfm_chart_table() -> Non
     )
     soup = BeautifulSoup(render_html(_middle(_page(0, chart)), standalone=False), "html.parser")
 
-    assert soup.select_one(".docgale-chart-table") is None
-    assert soup.select_one(".docgale-figure--chart").get_text(" ", strip=True) == "Title --- body"
+    assert soup.select_one(".docvortex-chart-table") is None
+    assert soup.select_one(".docvortex-figure--chart").get_text(" ", strip=True) == "Title --- body"
 
 
 @pytest.mark.parametrize(
@@ -955,20 +955,20 @@ def test_chart_gfm_pipe_matches_markdown_it_backslash_decoding(slash_count: int,
     )
     soup = BeautifulSoup(render_html(_middle(_page(0, chart)), standalone=False), "html.parser")
 
-    assert soup.select_one(".docgale-chart-table td").get_text() == expected
+    assert soup.select_one(".docvortex-chart-table td").get_text() == expected
 
 
 def test_mineru_styles_are_minified_scoped_and_inlined_byte_exact() -> None:
     """验证独立样式产物体积、作用域及 standalone 的逐字内联契约。"""
-    root = resources.files("docgale").joinpath("resources", "html")
-    source = root.joinpath("docgale.css").read_text(encoding="utf-8")
-    minified = root.joinpath("docgale.min.css").read_text(encoding="utf-8")
+    root = resources.files("docvortex").joinpath("resources", "html")
+    source = root.joinpath("docvortex.css").read_text(encoding="utf-8")
+    minified = root.joinpath("docvortex.min.css").read_text(encoding="utf-8")
     standalone = render_html(_middle())
     style = BeautifulSoup(standalone, "html.parser").style
 
     assert len(minified.encode("utf-8")) <= 10 * 1024
     assert "\n" not in minified and "/*" not in minified
-    assert ".docgale-document" in source and ".docgale-html-body" in source
+    assert ".docvortex-document" in source and ".docvortex-html-body" in source
     assert style is not None and style.string == minified
     assert f"<style>{minified}</style>" in standalone
     assert not root.joinpath("crossnote").is_dir()
@@ -980,8 +980,8 @@ def test_empty_document_and_equation_image_do_not_load_external_scripts() -> Non
     image_equation = render_html(_middle(_page(0, EquationBlock(type="equation", index=0, content="", image_base64=_PNG_URI))))
 
     assert (
-        '<article class="docgale-document docgale-document--default" '
-        'data-docgale-html-version="1" data-render-mode="default">\n\n</article>'
+        '<article class="docvortex-document docvortex-document--default" '
+        'data-docvortex-html-version="1" data-render-mode="default">\n\n</article>'
     ) in empty
     assert "mathjax@" not in empty and "prismjs@" not in empty and "mermaid@" not in empty
     assert "mathjax@" not in image_equation and "prismjs@" not in image_equation and "mermaid@" not in image_equation

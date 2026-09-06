@@ -1,8 +1,8 @@
-from docgale.schema import Producer
-from mineru.integrations.docgale import build_metadata
+from docvortex.schema import Producer
+from mineru.integrations.docvortex import build_metadata
 from typing import Any
 
-from docgale.postprocess.pages import model_json_to_pages
+from docvortex.postprocess.pages import model_json_to_pages
 from mineru.types import BlockType, ImageBlock, ModelJson
 
 from _span_test_utils import inline

@@ -3,8 +3,8 @@
 
 from __future__ import annotations
 from typing import Iterable
-from docgale.document import page_range as _ranges
-from docgale.errors import InvalidRequestError as _DocumentInvalidRequest
+from docvortex.document import page_range as _ranges
+from docvortex.errors import InvalidRequestError as _DocumentInvalidRequest
 from ..errors import InvalidRequestError
 
 PAGE_RANGE_DESCRIPTION = _ranges.PAGE_RANGE_DESCRIPTION

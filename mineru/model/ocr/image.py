@@ -8,7 +8,7 @@ from typing import Any
 import cv2
 import numpy as np
 
-from docgale.foundation.geometry import normalize_to_int_bbox
+from docvortex.foundation.geometry import normalize_to_int_bbox
 from .geometry import is_bbox_aligned_rect
 
 TEXT_REC_ROTATE_RATIO = 1.5

@@ -5,7 +5,7 @@ from docx import Document
 from docx.oxml.ns import qn
 from lxml import etree
 
-from docgale.analyzers.native.office.docx.docx_converter import DocxConverter
+from docvortex.analyzers.native.office.docx.docx_converter import DocxConverter
 
 
 NO_BREAK_HYPHEN = "‑"

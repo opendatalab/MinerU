@@ -1,9 +1,9 @@
 # Copyright (c) Opendatalab. All rights reserved.
-"""MinerU 产品档位与 DocGale 共享文档类型的稳定入口。"""
+"""MinerU 产品档位与 DocVortex 共享文档类型的稳定入口。"""
 
 from __future__ import annotations
 from typing import Iterable, Literal
-from docgale.schema import (
+from docvortex.schema import (
     RawBlockType,
     RAW_ALGORITHM,
     RAW_CAPTION,

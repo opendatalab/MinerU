@@ -34,7 +34,7 @@ If you need to adjust parsing options through custom parameters, you can also ch
   >[!TIP]
   >Access `http://127.0.0.1:8000/docs` for the OpenAPI documentation. The supported service surface is `/v1/*`, including health, capability discovery, uploads, files, parse jobs, and usage.
   >
-  >Native document parsing example: [DocGale Python example](https://github.com/myhloli/docgale/blob/main/demo/demo.py)
+  >Native document parsing example: [DocVortex Python example](https://github.com/myhloli/docvortex/blob/main/demo/demo.py)
 
 - Start Gradio WebUI visual frontend:
   ```bash

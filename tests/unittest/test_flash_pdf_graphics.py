@@ -5,10 +5,10 @@ import inspect
 import pytest
 
 
-from docgale.analyzers.native.pdf import graphics
-from docgale.analyzers.native.pdf import models
-from docgale.analyzers.native.pdf import pipeline
-from docgale.document.pdf.document import PDFPathInfo
+from docvortex.analyzers.native.pdf import graphics
+from docvortex.analyzers.native.pdf import models
+from docvortex.analyzers.native.pdf import pipeline
+from docvortex.document.pdf.document import PDFPathInfo
 
 
 from _flash_pdf_test_utils import (

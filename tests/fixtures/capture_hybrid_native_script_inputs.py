@@ -1,4 +1,4 @@
-"""从 DocGale 原始语料再生 Hybrid 测试所需的最小字符输入。"""
+"""从 DocVortex 原始语料再生 Hybrid 测试所需的最小字符输入。"""
 
 from __future__ import annotations
 
@@ -9,8 +9,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from docgale.document.pdf import PDFDocument
-from docgale.document.pdf.document import get_lines_from_chars
+from docvortex.document.pdf import PDFDocument
+from docvortex.document.pdf.document import get_lines_from_chars
 
 _CONTROL_CHARS = {"\r", "\n", "\x02", "\ufffe", "\uffff"}
 
@@ -54,7 +54,7 @@ def extract_case(source_root: Path, case: dict[str, Any]) -> dict[str, Any]:
 def main() -> None:
     """校验源文件身份后检查或显式更新 fixture；日常 pytest 无需源文件。"""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--source-root", required=True, type=Path, help="DocGale demo/pdfs 目录")
+    parser.add_argument("--source-root", required=True, type=Path, help="DocVortex demo/pdfs 目录")
     parser.add_argument("--fixture", type=Path, default=Path(__file__).with_name("hybrid_native_script_inputs.json"))
     parser.add_argument("--check", action="store_true", help="只比较，不写出")
     args = parser.parse_args()
@@ -64,7 +64,7 @@ def main() -> None:
             raise ValueError(f"Source hash mismatch: {name}")
     updated = {
         **original,
-        "producer": {"docgale": version("docgale"), "pypdfium2": version("pypdfium2")},
+        "producer": {"docvortex": version("docvortex"), "pypdfium2": version("pypdfium2")},
         "cases": [extract_case(args.source_root, case) for case in original["cases"]],
     }
     serialized = json.dumps(updated, ensure_ascii=False, indent=2, default=list) + "\n"

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-from docgale.postprocess.lists import fix_pdf_list_blocks
-from docgale.postprocess.page_blocks import process_page_blocks
+from docvortex.postprocess.lists import fix_pdf_list_blocks
+from docvortex.postprocess.page_blocks import process_page_blocks
 from mineru.types import BlockType
 
 from _span_test_utils import inline as _inline

@@ -8,18 +8,18 @@ import struct
 import pytest
 
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
-from docgale.analyzers.native import PptModel
-from docgale.analyzers.native._shared.hyperlink import sanitize_hyperlink_target
-from docgale.analyzers.native.office.errors import LegacyOfficeEncryptedError
-from docgale.analyzers.native.office.errors import LegacyOfficeResourceLimitError
-from docgale.analyzers.native.office.ppt import parser as ppt_parser
-from docgale.analyzers.native.office.ppt.models import PptPresentation
-from docgale.analyzers.native.office.ppt.models import PptSlide
-from docgale.analyzers.native.office.ppt.ppt_converter import PptConverter
-from docgale.analyzers.native.office.ppt.records import PptRecord
-from docgale.analyzers.native.office.ppt.records import RecordBudget
-from docgale.analyzers.native.office.ppt.style_text import CharacterRun
-from docgale.analyzers.native.office.ppt.style_text import StyleRuns
+from docvortex.analyzers.native import PptModel
+from docvortex.analyzers.native._shared.hyperlink import sanitize_hyperlink_target
+from docvortex.analyzers.native.office.errors import LegacyOfficeEncryptedError
+from docvortex.analyzers.native.office.errors import LegacyOfficeResourceLimitError
+from docvortex.analyzers.native.office.ppt import parser as ppt_parser
+from docvortex.analyzers.native.office.ppt.models import PptPresentation
+from docvortex.analyzers.native.office.ppt.models import PptSlide
+from docvortex.analyzers.native.office.ppt.ppt_converter import PptConverter
+from docvortex.analyzers.native.office.ppt.records import PptRecord
+from docvortex.analyzers.native.office.ppt.records import RecordBudget
+from docvortex.analyzers.native.office.ppt.style_text import CharacterRun
+from docvortex.analyzers.native.office.ppt.style_text import StyleRuns
 from mineru.parser import parse
 from mineru.types import BlockType, MiddleJson, ModelJson
 

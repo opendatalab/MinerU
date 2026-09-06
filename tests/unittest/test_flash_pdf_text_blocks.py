@@ -4,13 +4,13 @@ from dataclasses import replace
 
 import pytest
 
-from docgale.analyzers.native.pdf import geometry
-from docgale.analyzers.native.pdf import line_layout
-from docgale.analyzers.native.pdf import line_merging
-from docgale.analyzers.native.pdf import models
-from docgale.analyzers.native.pdf import native_text
-from docgale.analyzers.native.pdf import pipeline
-from docgale.analyzers.native.pdf import text_blocks
+from docvortex.analyzers.native.pdf import geometry
+from docvortex.analyzers.native.pdf import line_layout
+from docvortex.analyzers.native.pdf import line_merging
+from docvortex.analyzers.native.pdf import models
+from docvortex.analyzers.native.pdf import native_text
+from docvortex.analyzers.native.pdf import pipeline
+from docvortex.analyzers.native.pdf import text_blocks
 
 
 from _flash_pdf_test_utils import (

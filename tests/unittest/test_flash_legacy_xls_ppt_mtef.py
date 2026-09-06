@@ -7,10 +7,10 @@ from io import BytesIO
 import pytest
 
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
-from docgale.analyzers.native import PptModel
-from docgale.analyzers.native import XlsModel
-from docgale.analyzers.native.office.errors import LegacyOfficeResourceLimitError
-from docgale.analyzers.native.office.limits import MAX_ENTRY_BYTES
+from docvortex.analyzers.native import PptModel
+from docvortex.analyzers.native import XlsModel
+from docvortex.analyzers.native.office.errors import LegacyOfficeResourceLimitError
+from docvortex.analyzers.native.office.limits import MAX_ENTRY_BYTES
 from mineru.types import BlockType, MiddleJson, ModelJson
 
 from _legacy_ppt_test_utils import build_equation_ppt

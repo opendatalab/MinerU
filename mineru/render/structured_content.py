@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from docgale.compat.mineru import to_mineru_structured_content
+from docvortex.compat.mineru import to_mineru_structured_content
 from typing import Any
 
 from ..types import MiddleJson
@@ -16,7 +16,7 @@ def render_structured_content(
 ) -> dict[str, Any]:
     """惰性加载 Structured Content 实现并渲染严格 MiddleJson。"""
     from ..config import config
-    from docgale.render.structured_content import render_structured_content as _render_structured_content
+    from docvortex.render.structured_content import render_structured_content as _render_structured_content
 
     return to_mineru_structured_content(
         _render_structured_content(middle_json, asset_base_url=asset_base_url, latex_delimiters=config.render.latex_delimiters)

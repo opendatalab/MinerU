@@ -6,8 +6,8 @@ from __future__ import annotations
 import time
 from io import BytesIO
 
-from docgale.analyzers.native import HtmlModel
-from docgale.analyzers.native.html import HtmlSourceContext
+from docvortex.analyzers.native import HtmlModel
+from docvortex.analyzers.native.html import HtmlSourceContext
 from .contracts import AnalysisResult
 
 

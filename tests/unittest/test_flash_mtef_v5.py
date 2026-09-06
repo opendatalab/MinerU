@@ -4,14 +4,14 @@ import struct
 
 import pytest
 
-from docgale.analyzers.native.office.equation import mtef_v5 as mtef_v5_module
-from docgale.analyzers.native.office.equation import mtef as mtef_module
-from docgale.analyzers.native.office.errors import LegacyOfficeResourceLimitError
-from docgale.analyzers.native.office.equation.mtef import decode_equation_native
-from docgale.analyzers.native.office.equation.mtef import decode_equation_object
-from docgale.analyzers.native.office.equation.mtef import decode_mtef
-from docgale.analyzers.native.office.equation.mtef import decode_mtef_v3
-from docgale.analyzers.native.office.equation.mtef import decode_mtef_v5
+from docvortex.analyzers.native.office.equation import mtef_v5 as mtef_v5_module
+from docvortex.analyzers.native.office.equation import mtef as mtef_module
+from docvortex.analyzers.native.office.errors import LegacyOfficeResourceLimitError
+from docvortex.analyzers.native.office.equation.mtef import decode_equation_native
+from docvortex.analyzers.native.office.equation.mtef import decode_equation_object
+from docvortex.analyzers.native.office.equation.mtef import decode_mtef
+from docvortex.analyzers.native.office.equation.mtef import decode_mtef_v3
+from docvortex.analyzers.native.office.equation.mtef import decode_mtef_v5
 
 from _mtef_test_utils import build_equation_object, equation_native, formula_corpus
 from _mtef_v5_test_utils import (

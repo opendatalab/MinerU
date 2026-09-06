@@ -4,13 +4,13 @@ from dataclasses import dataclass
 
 from lxml import etree
 
-from docgale.analyzers.native._shared.markup import AnchorVisibilityScope
-from docgale.analyzers.native._shared.markup import MarkupAnchorDocument
-from docgale.analyzers.native._shared.markup import MarkupAnchorRegistry
-from docgale.analyzers.native._shared.markup import MarkupStylesheet
-from docgale.analyzers.native._shared.markup import canonical_anchor
-from docgale.analyzers.native._shared.markup import element_id
-from docgale.analyzers.native._shared.markup import visible_element_text
+from docvortex.analyzers.native._shared.markup import AnchorVisibilityScope
+from docvortex.analyzers.native._shared.markup import MarkupAnchorDocument
+from docvortex.analyzers.native._shared.markup import MarkupAnchorRegistry
+from docvortex.analyzers.native._shared.markup import MarkupStylesheet
+from docvortex.analyzers.native._shared.markup import canonical_anchor
+from docvortex.analyzers.native._shared.markup import element_id
+from docvortex.analyzers.native._shared.markup import visible_element_text
 
 
 @dataclass(frozen=True, slots=True)

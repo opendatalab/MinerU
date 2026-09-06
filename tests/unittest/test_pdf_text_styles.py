@@ -1,6 +1,6 @@
 from __future__ import annotations
-from docgale.schema import Producer
-from mineru.integrations.docgale import build_metadata
+from docvortex.schema import Producer
+from mineru.integrations.docvortex import build_metadata
 
 import html
 import math
@@ -17,12 +17,12 @@ from mineru.backend.analysis.pdf.text import content as text_content
 from mineru.backend.analysis.pdf.text import styles as text_style_enrichment
 from mineru.backend.analysis.pdf.text.models import _AnalyzeLine, _AnalyzeSpan
 from mineru.backend.analysis.pdf.text.native import txt_spans_extract
-from docgale.postprocess.pages import model_json_to_pages
-from docgale.analyzers.native import PdfModel
-from docgale.analyzers.native.pdf.inline import matching as inline_matching
-from docgale.analyzers.native.pdf import models
-from docgale.analyzers.native.pdf import native_text
-from docgale.analyzers.native.pdf import text_styles as flash_text_styles
+from docvortex.postprocess.pages import model_json_to_pages
+from docvortex.analyzers.native import PdfModel
+from docvortex.analyzers.native.pdf.inline import matching as inline_matching
+from docvortex.analyzers.native.pdf import models
+from docvortex.analyzers.native.pdf import native_text
+from docvortex.analyzers.native.pdf import text_styles as flash_text_styles
 from mineru.render import render_docx, render_html, render_markdown
 from mineru.types import (
     RAW_CAPTION,
@@ -32,25 +32,25 @@ from mineru.types import (
     MiddleJson,
     ModelJson,
 )
-from docgale.document.pdf.document import PDFDocument
-from docgale.document.pdf.document import PDFLinkAnnotation
-from docgale.document.pdf.document import PDFPageTextGeometry
-from docgale.analyzers.native.pdf.text_styles import PDF_FONT_FORCE_BOLD_FLAG
-from docgale.analyzers.native.pdf.text_styles import PDF_FONT_ITALIC_FLAG
-from docgale.analyzers.native.pdf.text_styles import PDF_NATIVE_SCRIPT_MARKUP_KEY
-from docgale.analyzers.native.pdf.text_styles import PDFTextLinkLine
-from docgale.analyzers.native.pdf.text_styles import PDFTextLinkRange
-from docgale.analyzers.native.pdf.text_styles import PDFTextScriptLine
-from docgale.analyzers.native.pdf.text_styles import PDFTextScriptRange
-from docgale.analyzers.native.pdf.text_styles import PDFTextStyleLine
-from docgale.analyzers.native.pdf.text_styles import PDFTextStyleRange
-from docgale.analyzers.native.pdf.text_styles import apply_pdf_text_links as _apply_pdf_text_links
-from docgale.analyzers.native.pdf.text_styles import apply_pdf_text_styles as _apply_pdf_text_styles
-from docgale.analyzers.native.pdf.text_styles import detect_pdf_text_link_lines
-from docgale.analyzers.native.pdf.text_styles import detect_pdf_text_style_lines
-from docgale.analyzers.native.pdf.text_styles import materialize_pdf_inline_spans
-from docgale.analyzers.native.pdf.text_styles import _partition_resplit_text_evidence
-from docgale.analyzers.native.pdf.text_styles import _realign_repaired_text_evidence
+from docvortex.document.pdf.document import PDFDocument
+from docvortex.document.pdf.document import PDFLinkAnnotation
+from docvortex.document.pdf.document import PDFPageTextGeometry
+from docvortex.analyzers.native.pdf.text_styles import PDF_FONT_FORCE_BOLD_FLAG
+from docvortex.analyzers.native.pdf.text_styles import PDF_FONT_ITALIC_FLAG
+from docvortex.analyzers.native.pdf.text_styles import PDF_NATIVE_SCRIPT_MARKUP_KEY
+from docvortex.analyzers.native.pdf.text_styles import PDFTextLinkLine
+from docvortex.analyzers.native.pdf.text_styles import PDFTextLinkRange
+from docvortex.analyzers.native.pdf.text_styles import PDFTextScriptLine
+from docvortex.analyzers.native.pdf.text_styles import PDFTextScriptRange
+from docvortex.analyzers.native.pdf.text_styles import PDFTextStyleLine
+from docvortex.analyzers.native.pdf.text_styles import PDFTextStyleRange
+from docvortex.analyzers.native.pdf.text_styles import apply_pdf_text_links as _apply_pdf_text_links
+from docvortex.analyzers.native.pdf.text_styles import apply_pdf_text_styles as _apply_pdf_text_styles
+from docvortex.analyzers.native.pdf.text_styles import detect_pdf_text_link_lines
+from docvortex.analyzers.native.pdf.text_styles import detect_pdf_text_style_lines
+from docvortex.analyzers.native.pdf.text_styles import materialize_pdf_inline_spans
+from docvortex.analyzers.native.pdf.text_styles import _partition_resplit_text_evidence
+from docvortex.analyzers.native.pdf.text_styles import _realign_repaired_text_evidence
 from _span_test_utils import inline_text
 
 

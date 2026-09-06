@@ -4,10 +4,10 @@ import inspect
 
 import pytest
 
-from docgale.analyzers.native.pdf import auxiliary_text
-from docgale.analyzers.native.pdf import models
-from docgale.analyzers.native.pdf import pipeline
-from docgale.analyzers.native.pdf import text_blocks
+from docvortex.analyzers.native.pdf import auxiliary_text
+from docvortex.analyzers.native.pdf import models
+from docvortex.analyzers.native.pdf import pipeline
+from docvortex.analyzers.native.pdf import text_blocks
 
 
 from _flash_pdf_test_utils import (

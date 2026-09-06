@@ -6,11 +6,11 @@ from unittest.mock import Mock
 import pytest
 from bs4 import BeautifulSoup, Tag
 
-from docgale.render._internal.html.sanitizer import is_supported_html_markup
-from docgale.render._internal.html.sanitizer import sanitize_html_fragment
-from docgale.render._internal.html.sanitizer import sanitize_image_source
-from docgale.render._internal.html.sanitizer import sanitize_link_url
-from docgale.foundation import image_payload
+from docvortex.render._internal.html.sanitizer import is_supported_html_markup
+from docvortex.render._internal.html.sanitizer import sanitize_html_fragment
+from docvortex.render._internal.html.sanitizer import sanitize_image_source
+from docvortex.render._internal.html.sanitizer import sanitize_link_url
+from docvortex.foundation import image_payload
 
 _SAFE_PNG_BASE64 = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2l9sAAAAASUVORK5CYII="
 

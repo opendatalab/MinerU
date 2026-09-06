@@ -6,25 +6,25 @@ import weakref
 
 import pytest
 
-from docgale.analyzers.native import PdfModel
-from docgale.analyzers.native.pdf import auxiliary_text
-from docgale.analyzers.native.pdf import char_geometry
-from docgale.analyzers.native.pdf import formulas
-from docgale.analyzers.native.pdf import geometry
-from docgale.analyzers.native.pdf import graphics
-from docgale.analyzers.native.pdf import index_blocks
-from docgale.analyzers.native.pdf import line_layout
-from docgale.analyzers.native.pdf import line_merging
-from docgale.analyzers.native.pdf import models
-from docgale.analyzers.native.pdf import native_text
-from docgale.analyzers.native.pdf import pipeline
-from docgale.analyzers.native.pdf import tables
-from docgale.analyzers.native.pdf import text_blocks
-from docgale.analyzers.native.pdf import text_styles
-from docgale.analyzers.native.pdf import titles
-from docgale.analyzers.native.pdf import visual_annotations
-from docgale.document.pdf.document import PDFImageInfo
-from docgale.document.pdf.document import PDFPageTextGeometry
+from docvortex.analyzers.native import PdfModel
+from docvortex.analyzers.native.pdf import auxiliary_text
+from docvortex.analyzers.native.pdf import char_geometry
+from docvortex.analyzers.native.pdf import formulas
+from docvortex.analyzers.native.pdf import geometry
+from docvortex.analyzers.native.pdf import graphics
+from docvortex.analyzers.native.pdf import index_blocks
+from docvortex.analyzers.native.pdf import line_layout
+from docvortex.analyzers.native.pdf import line_merging
+from docvortex.analyzers.native.pdf import models
+from docvortex.analyzers.native.pdf import native_text
+from docvortex.analyzers.native.pdf import pipeline
+from docvortex.analyzers.native.pdf import tables
+from docvortex.analyzers.native.pdf import text_blocks
+from docvortex.analyzers.native.pdf import text_styles
+from docvortex.analyzers.native.pdf import titles
+from docvortex.analyzers.native.pdf import visual_annotations
+from docvortex.document.pdf.document import PDFImageInfo
+from docvortex.document.pdf.document import PDFPageTextGeometry
 
 from _flash_pdf_test_utils import (
     _prepared_text_page,

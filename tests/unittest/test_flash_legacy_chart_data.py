@@ -6,9 +6,9 @@ import zlib
 from bs4 import BeautifulSoup
 
 from mineru.backend.analyze import doc_analyze
-from docgale.analyzers.native.office.ppt import parser as ppt_parser
-from docgale.analyzers.native.office.ppt.records import PptRecord
-from docgale.analyzers.native.office.xls.embedded_chart import extract_embedded_chart_html
+from docvortex.analyzers.native.office.ppt import parser as ppt_parser
+from docvortex.analyzers.native.office.ppt.records import PptRecord
+from docvortex.analyzers.native.office.xls.embedded_chart import extract_embedded_chart_html
 from mineru.types import BlockType, ChartBlock
 
 from _legacy_ppt_test_utils import _build_cfb

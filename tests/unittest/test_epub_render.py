@@ -1,6 +1,6 @@
 from __future__ import annotations
-from docgale.schema import Producer
-from mineru.integrations.docgale import build_metadata
+from docvortex.schema import Producer
+from mineru.integrations.docvortex import build_metadata
 
 import base64
 from copy import deepcopy
@@ -14,9 +14,9 @@ from PIL import Image
 import pytest
 
 from mineru.backend.analyze import doc_analyze
-from docgale.analyzers.native.epub import EpubPackage
+from docvortex.analyzers.native.epub import EpubPackage
 from mineru.render import render_epub
-from docgale.render._internal.epub import assets as epub_assets
+from docvortex.render._internal.epub import assets as epub_assets
 from mineru.types import (
     AlgorithmBodyBlock,
     ChartBlock,
@@ -38,10 +38,10 @@ from mineru.types import (
     TableBodyBlock,
     TextBlock,
 )
-from docgale.foundation.image_payload import MAX_DECODED_RASTER_DIMENSION
-from docgale.foundation.image_payload import MAX_DECODED_RASTER_PIXELS
-from docgale.foundation.image_payload import validate_decoded_raster_size
-from docgale.foundation import image_payload as image_payload_utils
+from docvortex.foundation.image_payload import MAX_DECODED_RASTER_DIMENSION
+from docvortex.foundation.image_payload import MAX_DECODED_RASTER_PIXELS
+from docvortex.foundation.image_payload import validate_decoded_raster_size
+from docvortex.foundation import image_payload as image_payload_utils
 
 from _epub_test_utils import build_epub_fixture
 from _span_test_utils import equation, hyperlink, inline
@@ -223,11 +223,11 @@ def test_epub_uses_default_planner_without_source_page_boundaries() -> None:
 
     with _archive(payload) as archive:
         content = _xml(archive, "EPUB/text/content.xhtml")
-        paragraphs = content.xpath("//xhtml:p[contains(@class, 'docgale-text')]", namespaces=_NS)
+        paragraphs = content.xpath("//xhtml:p[contains(@class, 'docvortex-text')]", namespaces=_NS)
         assert [_text(item) for item in paragraphs] == ["international"]
-        assert content.xpath("string(//xhtml:article/@class)", namespaces=_NS) == "docgale-document"
-        assert not content.xpath("//xhtml:section[contains(@class, 'docgale-page')]", namespaces=_NS)
-        assert not content.xpath("//xhtml:hr[contains(@class, 'docgale-page-break')]", namespaces=_NS)
+        assert content.xpath("string(//xhtml:article/@class)", namespaces=_NS) == "docvortex-document"
+        assert not content.xpath("//xhtml:section[contains(@class, 'docvortex-page')]", namespaces=_NS)
+        assert not content.xpath("//xhtml:hr[contains(@class, 'docvortex-page-break')]", namespaces=_NS)
         assert "HEADER" not in _text(content) and "FOOTER" not in _text(content)
     with pytest.raises(TypeError, match="unexpected keyword argument 'mode'"):
         render_epub(middle, mode="default")  # type: ignore[call-arg]
@@ -469,7 +469,7 @@ def test_epub_mathml_failure_uses_visible_latex_without_false_manifest_property(
         assert package.xpath("string(opf:manifest/opf:item[@id='content']/@properties)", namespaces=_NS) == ""
         content = _xml(archive, "EPUB/text/content.xhtml")
         assert not content.xpath("//math:math", namespaces=_NS)
-        fallback = content.xpath("//xhtml:code[contains(@class, 'docgale-latex-fallback')]", namespaces=_NS)
+        fallback = content.xpath("//xhtml:code[contains(@class, 'docvortex-latex-fallback')]", namespaces=_NS)
         assert len(fallback) == 1 and _text(fallback[0]) == "{"
 
 
@@ -514,10 +514,10 @@ def test_epub_static_chart_code_and_algorithm_cover_remaining_visual_bodies() ->
     with _archive(render_epub(middle, modified_at=_FIXED_TIME)) as archive:
         content = _xml(archive, "EPUB/text/content.xhtml")
         assert "| A | B |" in _text(content)
-        code = content.xpath("//xhtml:pre[contains(@class, 'docgale-code')]/xhtml:code", namespaces=_NS)
+        code = content.xpath("//xhtml:pre[contains(@class, 'docvortex-code')]/xhtml:code", namespaces=_NS)
         assert len(code) == 1 and code[0].get("class") == "language-python"
-        assert content.xpath("//xhtml:div[contains(@class, 'docgale-algorithm')]//xhtml:strong", namespaces=_NS)
-        assert content.xpath("//xhtml:div[contains(@class, 'docgale-algorithm')]//math:math", namespaces=_NS)
+        assert content.xpath("//xhtml:div[contains(@class, 'docvortex-algorithm')]//xhtml:strong", namespaces=_NS)
+        assert content.xpath("//xhtml:div[contains(@class, 'docvortex-algorithm')]//math:math", namespaces=_NS)
         assert not content.xpath("//xhtml:script", namespaces=_NS)
 
 

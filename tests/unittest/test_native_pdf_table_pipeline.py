@@ -16,10 +16,10 @@ from mineru.backend.analysis.pdf import formulas as pdf_formulas
 from mineru.backend.analysis.pdf import layout as pdf_layout
 from mineru.backend.analysis.pdf import tables as pdf_tables
 from mineru.backend.analysis.pdf import window as pdf_window
-from docgale.analyzers.native.pdf import models as flash_models
-from docgale.analyzers.native.pdf import tables as flash_tables
-from docgale.document.pdf.document import PDFDocument
-from docgale.document.pdf.document import PDFPageTextGeometry
+from docvortex.analyzers.native.pdf import models as flash_models
+from docvortex.analyzers.native.pdf import tables as flash_tables
+from docvortex.document.pdf.document import PDFDocument
+from docvortex.document.pdf.document import PDFPageTextGeometry
 from mineru.types import RAW_FORMULA_NUMBER, BlockType
 
 
@@ -322,7 +322,7 @@ def test_hybrid_native_table_priority_accepts_real_rotated_table(
 ) -> None:
     """验证真实 270 度表格在 Medium/High 中都能直接生成原生 HTML。"""
 
-    # 仅保留此宿主集成用例需要的真值，完整表格清单归 DocGale 维护。
+    # 仅保留此宿主集成用例需要的真值，完整表格清单归 DocVortex 维护。
     target = {"page_index": 4, "bbox": [0.117, 0.125, 0.431, 0.891], "angle": 270, "rows": 11}
     pdf_path = _PROJECT_ROOT / "demo/pdfs/demo1.pdf"
     with PDFDocument(pdf_path.read_bytes()) as document:

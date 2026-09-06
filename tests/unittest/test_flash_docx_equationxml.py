@@ -1,5 +1,5 @@
 from __future__ import annotations
-from docgale.export.middle import export_middle_json
+from docvortex.export.middle import export_middle_json
 
 import asyncio
 from io import BytesIO
@@ -11,14 +11,14 @@ from lxml import etree  # type: ignore[reportAttributeAccessIssue]
 import pytest
 
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
-from docgale.analyzers.native import DocxModel
-from docgale.analyzers.native.office.docx.docx_converter import DocxConverter
-from docgale.analyzers.native.office.docx.equationxml import DocxEquationXmlDecoder
-from docgale.analyzers.native.office.errors import LegacyOfficeResourceLimitError
-from docgale.render._internal.docx.math import latex_to_omml
+from docvortex.analyzers.native import DocxModel
+from docvortex.analyzers.native.office.docx.docx_converter import DocxConverter
+from docvortex.analyzers.native.office.docx.equationxml import DocxEquationXmlDecoder
+from docvortex.analyzers.native.office.errors import LegacyOfficeResourceLimitError
+from docvortex.render._internal.docx.math import latex_to_omml
 from mineru.types import BlockType, MiddleJson, ModelJson
 
-import docgale.analyzers.native.office.docx.equationxml as equationxml_module
+import docvortex.analyzers.native.office.docx.equationxml as equationxml_module
 from _docx_equationxml_test_utils import (
     M_NS,
     WORD_2003_NS,

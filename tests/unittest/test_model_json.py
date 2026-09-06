@@ -1,9 +1,9 @@
 from __future__ import annotations
 import json
-from docgale.codecs.json import load_middle, load_model
-from docgale.schema import Producer
-from docgale.compat.mineru import from_mineru_model, from_mineru_middle, to_mineru_model, to_mineru_middle
-from mineru.integrations.docgale import build_metadata
+from docvortex.codecs.json import load_middle, load_model
+from docvortex.schema import Producer
+from docvortex.compat.mineru import from_mineru_model, from_mineru_middle, to_mineru_model, to_mineru_middle
+from mineru.integrations.docvortex import build_metadata
 
 import pytest
 from pydantic import ValidationError

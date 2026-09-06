@@ -1,6 +1,6 @@
 from __future__ import annotations
-from docgale.schema import Producer
-from mineru.integrations.docgale import build_metadata
+from docvortex.schema import Producer
+from mineru.integrations.docvortex import build_metadata
 
 from datetime import datetime, timezone
 from io import BytesIO
@@ -23,7 +23,7 @@ from mineru.render import (
     render_pdf,
     render_structured_content,
 )
-from docgale.render._internal.common.planner import build_render_plan
+from docvortex.render._internal.common.planner import build_render_plan
 from mineru.types import IndexBlock, MiddleJson, PageInfo, RefTextBlock, TextBlock
 
 
@@ -120,7 +120,7 @@ def test_text_anchor_markdown_html_and_html_wire_roundtrip() -> None:
 
     rendered_html = render_html(middle)
     soup = BeautifulSoup(rendered_html, "html.parser")
-    target_wrapper = soup.select_one('.docgale-block[data-block-type="text"][data-anchor="body target"]')
+    target_wrapper = soup.select_one('.docvortex-block[data-block-type="text"][data-anchor="body target"]')
     assert target_wrapper is not None
     assert target_wrapper.find("p")["id"] == "body-target"
     assert soup.select_one('[data-block-type="index"] a')["href"] == "#body-target"

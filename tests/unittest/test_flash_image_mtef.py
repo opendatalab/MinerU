@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import pytest
 
-from docgale.analyzers.native.office.errors import LegacyOfficeResourceLimitError
-from docgale.analyzers.native.office.equation import image as image_equation_module
-from docgale.analyzers.native.office.equation.image import OfficeImageEquationDecoder
-from docgale.analyzers.native.office.equation.image import decode_image_embedded_equation
+from docvortex.analyzers.native.office.errors import LegacyOfficeResourceLimitError
+from docvortex.analyzers.native.office.equation import image as image_equation_module
+from docvortex.analyzers.native.office.equation.image import OfficeImageEquationDecoder
+from docvortex.analyzers.native.office.equation.image import decode_image_embedded_equation
 
 from _image_mtef_test_utils import (
     apps_mfcc_comment,

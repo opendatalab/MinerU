@@ -28,7 +28,7 @@ import httpx
 
 from ..filetypes import mime_type_for_extension
 from ..types import PageInfo, Tier, validate_tier
-from docgale.foundation.image_payload import validate_image_sidecar_path
+from docvortex.foundation.image_payload import validate_image_sidecar_path
 from .base import DocumentParser, ParseResult
 from .page_range import normalize_page_range_input
 

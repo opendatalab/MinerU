@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-from docgale.postprocess.visual import VISUAL_MAIN_TYPES
-from docgale.postprocess.visual import _bbox_for_calculation
-from docgale.postprocess.visual import fallback_inline_caption_fragments
-from docgale.postprocess.visual import fallback_leading_table_continuation_captions
-from docgale.postprocess.visual import fallback_no_bbox_caption_fragments
-from docgale.postprocess.visual import find_best_visual_parent
-from docgale.postprocess.visual import is_block_outside_visual_gap
-from docgale.postprocess.visual import regroup_visual_blocks
+from docvortex.postprocess.visual import VISUAL_MAIN_TYPES
+from docvortex.postprocess.visual import _bbox_for_calculation
+from docvortex.postprocess.visual import fallback_inline_caption_fragments
+from docvortex.postprocess.visual import fallback_leading_table_continuation_captions
+from docvortex.postprocess.visual import fallback_no_bbox_caption_fragments
+from docvortex.postprocess.visual import find_best_visual_parent
+from docvortex.postprocess.visual import is_block_outside_visual_gap
+from docvortex.postprocess.visual import regroup_visual_blocks
 from mineru.types import RAW_CAPTION, RAW_FOOTNOTE
 from mineru.types import BlockType
 

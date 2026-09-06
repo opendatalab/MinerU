@@ -14,7 +14,7 @@ def render_pdf(
     document_title: str | None = None,
 ) -> bytes:
     """惰性加载 PDF 实现并渲染严格 MiddleJson。"""
-    from docgale.render.pdf import render_pdf as _render_pdf
+    from docvortex.render.pdf import render_pdf as _render_pdf
 
     return _render_pdf(
         middle_json,

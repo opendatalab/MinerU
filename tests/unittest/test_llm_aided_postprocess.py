@@ -1,6 +1,6 @@
 from __future__ import annotations
-from docgale.schema import Producer
-from mineru.integrations.docgale import build_metadata
+from docvortex.schema import Producer
+from mineru.integrations.docvortex import build_metadata
 from _span_test_utils import inline as _inline, inline_text
 
 import asyncio
@@ -17,7 +17,7 @@ from mineru.backend.postprocess.llm_aided import apply_llm_aided_postprocess
 from mineru.backend.postprocess.table_merge.llm_cell_merge import apply_llm_cross_page_cell_merge
 from mineru.backend.postprocess.title_leveling import apply_llm_title_leveling
 from mineru.config import LLMAidedConfig, LLMAidedFeaturesConfig
-from docgale.render._internal.common.planner import build_render_plan
+from docvortex.render._internal.common.planner import build_render_plan
 from mineru.render.contracts import RenderMode
 from mineru.types import (
     BlockType,

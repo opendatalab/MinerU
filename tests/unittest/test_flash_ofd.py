@@ -20,45 +20,45 @@ from mineru.doclib.core.db import DatabaseManager
 from mineru.doclib.core.fts import FTSManager
 from mineru.doclib.services.parse_svc import ParseService
 from mineru.errors import InvalidRequestError
-from docgale.analyzers.native import OfdModel
-from docgale.analyzers.native.ofd import OfdParseError
-from docgale.analyzers.native.ofd import OfdResourceLimitError
-from docgale.analyzers.native.ofd import detect_ofd
-from docgale.analyzers.native.ofd import images as ofd_images
-from docgale.analyzers.native.ofd import metadata as ofd_metadata
-from docgale.analyzers.native.ofd import scene as ofd_scene
-from docgale.analyzers.native.ofd import table as ofd_table
-from docgale.analyzers.native.ofd import text as ofd_text
-from docgale.analyzers.native.ofd.constants import MAX_DELTA_TOKENS
-from docgale.analyzers.native.ofd.constants import MAX_DOCUMENT_COUNT
-from docgale.analyzers.native.ofd.constants import MAX_DRAW_PARAM_INHERITANCE
-from docgale.analyzers.native.ofd.constants import MAX_EXPANDED_GLYPHS
-from docgale.analyzers.native.ofd.constants import MAX_GLYPH_TOKENS
-from docgale.analyzers.native.ofd.constants import MAX_PAGE_COUNT
-from docgale.analyzers.native.ofd.constants import MAX_PATH_TOKENS
-from docgale.analyzers.native.ofd.geometry import Affine
-from docgale.analyzers.native.ofd.geometry import canonical_angle
-from docgale.analyzers.native.ofd.images import build_image_item
-from docgale.analyzers.native.ofd.models import AxisLine
-from docgale.analyzers.native.ofd.models import MediaResource
-from docgale.analyzers.native.ofd.models import OfdPageScene
-from docgale.analyzers.native.ofd.models import ResourceRegistry
-from docgale.analyzers.native.ofd.models import TextLine
-from docgale.analyzers.native.ofd.package import OfdPackage
-from docgale.analyzers.native.ofd.path import OfdPathBudget
-from docgale.analyzers.native.ofd.path import _segments
-from docgale.analyzers.native.ofd.path import build_axis_lines
-from docgale.analyzers.native.ofd.reading_order import OfdReadingOrderProjector
-from docgale.analyzers.native.ofd.resources import parse_resource_part
-from docgale.analyzers.native.ofd.resources import resolve_draw_param
-from docgale.analyzers.native.ofd.text import FontMetricResolver
-from docgale.analyzers.native.ofd.text import OfdTextBudget
-from docgale.analyzers.native.ofd.text import build_text_lines
-from docgale.analyzers.native.ofd.text import parse_delta
+from docvortex.analyzers.native import OfdModel
+from docvortex.analyzers.native.ofd import OfdParseError
+from docvortex.analyzers.native.ofd import OfdResourceLimitError
+from docvortex.analyzers.native.ofd import detect_ofd
+from docvortex.analyzers.native.ofd import images as ofd_images
+from docvortex.analyzers.native.ofd import metadata as ofd_metadata
+from docvortex.analyzers.native.ofd import scene as ofd_scene
+from docvortex.analyzers.native.ofd import table as ofd_table
+from docvortex.analyzers.native.ofd import text as ofd_text
+from docvortex.analyzers.native.ofd.constants import MAX_DELTA_TOKENS
+from docvortex.analyzers.native.ofd.constants import MAX_DOCUMENT_COUNT
+from docvortex.analyzers.native.ofd.constants import MAX_DRAW_PARAM_INHERITANCE
+from docvortex.analyzers.native.ofd.constants import MAX_EXPANDED_GLYPHS
+from docvortex.analyzers.native.ofd.constants import MAX_GLYPH_TOKENS
+from docvortex.analyzers.native.ofd.constants import MAX_PAGE_COUNT
+from docvortex.analyzers.native.ofd.constants import MAX_PATH_TOKENS
+from docvortex.analyzers.native.ofd.geometry import Affine
+from docvortex.analyzers.native.ofd.geometry import canonical_angle
+from docvortex.analyzers.native.ofd.images import build_image_item
+from docvortex.analyzers.native.ofd.models import AxisLine
+from docvortex.analyzers.native.ofd.models import MediaResource
+from docvortex.analyzers.native.ofd.models import OfdPageScene
+from docvortex.analyzers.native.ofd.models import ResourceRegistry
+from docvortex.analyzers.native.ofd.models import TextLine
+from docvortex.analyzers.native.ofd.package import OfdPackage
+from docvortex.analyzers.native.ofd.path import OfdPathBudget
+from docvortex.analyzers.native.ofd.path import _segments
+from docvortex.analyzers.native.ofd.path import build_axis_lines
+from docvortex.analyzers.native.ofd.reading_order import OfdReadingOrderProjector
+from docvortex.analyzers.native.ofd.resources import parse_resource_part
+from docvortex.analyzers.native.ofd.resources import resolve_draw_param
+from docvortex.analyzers.native.ofd.text import FontMetricResolver
+from docvortex.analyzers.native.ofd.text import OfdTextBudget
+from docvortex.analyzers.native.ofd.text import build_text_lines
+from docvortex.analyzers.native.ofd.text import parse_delta
 from mineru.parser import MinerUParser
 from mineru.parser import api_server
 from mineru.parser.api_server import CreateJobRequest, FileStore
-from docgale.document.detection import guess_suffix_by_bytes, guess_suffix_by_path
+from docvortex.document.detection import guess_suffix_by_bytes, guess_suffix_by_path
 from mineru.render import render_docx, render_html, render_markdown, render_structured_content
 from mineru.types import BlockType
 

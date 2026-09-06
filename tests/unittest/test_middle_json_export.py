@@ -1,9 +1,9 @@
 from __future__ import annotations
 import json
-from docgale.codecs.json import load_middle
-from docgale.export.middle import export_middle_json
-from docgale.schema import Producer
-from mineru.integrations.docgale import build_metadata
+from docvortex.codecs.json import load_middle
+from docvortex.export.middle import export_middle_json
+from docvortex.schema import Producer
+from mineru.integrations.docvortex import build_metadata
 
 import base64
 import os
@@ -264,14 +264,14 @@ def test_export_restores_existing_files_after_commit_failure(
             raise OSError("simulated commit failure")
         original_replace(source, target)
 
-    monkeypatch.setattr("docgale.export.middle.os.replace", fail_second_replace)
+    monkeypatch.setattr("docvortex.export.middle.os.replace", fail_second_replace)
 
     with pytest.raises(OSError, match="simulated commit failure"):
         export_middle_json(middle_json, tmp_path, overwrite=True)
 
     assert image_path.read_bytes() == b"old-image"
     assert json_path.read_bytes() == b"old-json"
-    assert not list(tmp_path.rglob(".docgale-export-*"))
+    assert not list(tmp_path.rglob(".docvortex-export-*"))
 
 
 @pytest.mark.parametrize("json_name", ["../middle.json", "/tmp/middle.json", "..\\middle.json"])

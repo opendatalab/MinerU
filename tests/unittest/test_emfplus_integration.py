@@ -13,7 +13,7 @@ from PIL import Image
 from pypdf import PdfReader
 
 from mineru.backend.analyze import doc_analyze
-from docgale.analyzers.native.office import image as office_image
+from docvortex.analyzers.native.office import image as office_image
 from mineru.render import render_docx, render_epub, render_html, render_pdf
 
 _FIXTURES = Path(__file__).parent / "fixtures" / "emfplus"

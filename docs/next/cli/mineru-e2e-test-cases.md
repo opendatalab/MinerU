@@ -180,7 +180,7 @@ export MINERU_E2E_FIXTURE_DIR="$MINERU_HOME/fixtures"
 rm -rf "$MINERU_E2E_FIXTURE_DIR"
 mkdir -p "$MINERU_E2E_FIXTURE_DIR/watch-dir" "$MINERU_E2E_FIXTURE_DIR/empty-dir" "$MINERU_E2E_FIXTURE_DIR/output-dir" "$MINERU_HOME/removable-watch"
 
-# Office 真实样例已归 DocGale；手工测试前将该仓库克隆到 $HOME/docgale。
+# Office 真实样例已归 DocVortex；手工测试前将该仓库克隆到 $HOME/docvortex。
 PDF_SOURCE="$HOME/MinerU-Repo/demo/pdfs/demo1.pdf"
 
 cp "$PDF_SOURCE" "$MINERU_E2E_FIXTURE_DIR/sample.pdf"
@@ -190,13 +190,13 @@ cp "$MINERU_E2E_FIXTURE_DIR/sample.pdf" "$MINERU_E2E_FIXTURE_DIR/watch-dir/watch
 cp "$MINERU_E2E_FIXTURE_DIR/sample.pdf" "$MINERU_E2E_FIXTURE_DIR/sample doc.pdf"
 cp "$MINERU_E2E_FIXTURE_DIR/sample.pdf" "$MINERU_E2E_FIXTURE_DIR/中文样例.pdf"
 
-cp "$HOME/docgale/demo/office_docs/docx_01.docx" "$MINERU_E2E_FIXTURE_DIR/sample.docx"
-cp "$HOME/docgale/demo/office_docs/pptx_01.pptx" "$MINERU_E2E_FIXTURE_DIR/sample.pptx"
-cp "$HOME/docgale/demo/office_docs/xlsx_01.xlsx" "$MINERU_E2E_FIXTURE_DIR/sample.xlsx"
-cp "$HOME/docgale/demo/office_docs/docx_01.doc" "$MINERU_E2E_FIXTURE_DIR/sample.doc"
-cp "$HOME/docgale/demo/office_docs/pptx_01.ppt" "$MINERU_E2E_FIXTURE_DIR/sample.ppt"
-cp "$HOME/docgale/demo/office_docs/xlsx_01.xls" "$MINERU_E2E_FIXTURE_DIR/sample.xls"
-cp "$HOME/docgale/demo/office_docs/rtf_01.rtf" "$MINERU_E2E_FIXTURE_DIR/sample.rtf"
+cp "$HOME/docvortex/demo/office_docs/docx_01.docx" "$MINERU_E2E_FIXTURE_DIR/sample.docx"
+cp "$HOME/docvortex/demo/office_docs/pptx_01.pptx" "$MINERU_E2E_FIXTURE_DIR/sample.pptx"
+cp "$HOME/docvortex/demo/office_docs/xlsx_01.xlsx" "$MINERU_E2E_FIXTURE_DIR/sample.xlsx"
+cp "$HOME/docvortex/demo/office_docs/docx_01.doc" "$MINERU_E2E_FIXTURE_DIR/sample.doc"
+cp "$HOME/docvortex/demo/office_docs/pptx_01.ppt" "$MINERU_E2E_FIXTURE_DIR/sample.ppt"
+cp "$HOME/docvortex/demo/office_docs/xlsx_01.xls" "$MINERU_E2E_FIXTURE_DIR/sample.xls"
+cp "$HOME/docvortex/demo/office_docs/rtf_01.rtf" "$MINERU_E2E_FIXTURE_DIR/sample.rtf"
 
 # OFD/ODT/ODS/ODP 来自 OFDRW（Apache 2.0）与 Apache ODF Toolkit（Apache 2.0）公开测试资源
 curl -sL -o "$MINERU_E2E_FIXTURE_DIR/sample.ofd" "https://raw.githubusercontent.com/ofdrw/ofdrw/7459e35082170061efa6b399a6518dbc219f08ac/ofdrw-converter/src/test/resources/helloworld.ofd"

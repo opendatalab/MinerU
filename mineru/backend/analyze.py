@@ -2,8 +2,8 @@
 """统一 PDF、EPUB、HTML、OFD、CSV 与 Office/RTF 文档分析的稳定公共门面。"""
 
 from __future__ import annotations
-from docgale.schema import Producer
-from ..integrations.docgale import build_metadata
+from docvortex.schema import Producer
+from ..integrations.docvortex import build_metadata
 
 import asyncio
 from typing import cast
@@ -12,7 +12,7 @@ from loguru import logger
 
 from .analysis.contracts import AnalyzeEffort, OfficeSuffix, ParseMode
 from ..config import VlmConfig, config
-from docgale.analyzers.native.html import HtmlSourceContext
+from docvortex.analyzers.native.html import HtmlSourceContext
 from ..types import FILE_SUFFIXES, FileSuffix, MiddleJson, ModelJson
 from ..version import __version__ as mineru_version
 

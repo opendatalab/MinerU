@@ -15,7 +15,7 @@ def render_content_list(
 ) -> list[dict[str, Any]]:
     """惰性加载 Content List V1 实现并渲染严格 MiddleJson。"""
     from ..config import config
-    from docgale.render.content_list import render_content_list as _render_content_list
+    from docvortex.render.content_list import render_content_list as _render_content_list
 
     return _render_content_list(middle_json, asset_base_url=asset_base_url, latex_delimiters=config.render.latex_delimiters)
 

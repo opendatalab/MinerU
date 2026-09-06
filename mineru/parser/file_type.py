@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 from pathlib import Path
-from docgale.document import detection
+from docvortex.document import detection
 
 
 def guess_suffix_by_bytes(file_bytes: bytes, file_path: str | None = None) -> str:

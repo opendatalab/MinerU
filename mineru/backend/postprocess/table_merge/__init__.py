@@ -1,7 +1,7 @@
 # Copyright (c) Opendatalab. All rights reserved.
 """共享跨页表格内容操作的稳定入口。"""
 
-from docgale.content.table import (
+from docvortex.content.table import (
     merge_table,
     merge_table_content,
     build_table_state_from_html,

@@ -6,7 +6,7 @@ from typing import Any, cast
 import pytest
 from loguru import logger
 
-from docgale.document.pdf import images as pdf_image_tools
+from docvortex.document.pdf import images as pdf_image_tools
 
 
 class _FakeProcess:
@@ -82,7 +82,7 @@ def test_pdf_render_parent_exit_watcher_is_daemon(monkeypatch: pytest.MonkeyPatc
     assert events == [
         (
             pdf_image_tools._exit_pdf_render_worker_when_parent_exits,
-            "docgale-pdf-render-parent-exit-watcher",
+            "docvortex-pdf-render-parent-exit-watcher",
             True,
         ),
         "start",

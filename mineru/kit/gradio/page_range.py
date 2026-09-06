@@ -28,7 +28,7 @@ def read_pdf_page_count(path: str | Path) -> int:
     """在共享 PDFium 锁内读取页数，并在成功或异常时及时释放文档。"""
     import pypdfium2 as pdfium
 
-    from docgale.document.pdf.pdfium import pdfium_guard
+    from docvortex.document.pdf.pdfium import pdfium_guard
 
     try:
         with pdfium_guard():

@@ -9,23 +9,23 @@ from PIL import Image
 import pytest
 from lxml import etree
 
-from docgale.analyzers.native._shared.hyperlink import OFFICE_EXTERNAL_HYPERLINK_SCHEMES
-from docgale.analyzers.native._shared.hyperlink import sanitize_hyperlink_target
-from docgale.analyzers.native._shared.image import image_to_b64str
-from docgale.analyzers.native._shared.image import image_to_bytes
-from docgale.analyzers.native._shared.mathml import mathml_to_latex
-from docgale.analyzers.native.office.doc import records as doc_records
-from docgale.analyzers.native.office.legacy.binary import bounded_slice
-from docgale.analyzers.native.office.legacy.binary import get_f64
-from docgale.analyzers.native.office.legacy.binary import get_i16
-from docgale.analyzers.native.office.legacy.binary import get_u16
-from docgale.analyzers.native.office.legacy.binary import get_u32
-from docgale.analyzers.native.office.opc import relationship_source_base_dir
-from docgale.analyzers.native.office.opc import write_zip_package
-from docgale.analyzers.native.office.ppt import records as ppt_records
-from docgale.analyzers.native.office.rich_text import OfficeRichTextSegment
-from docgale.analyzers.native.office.rich_text import build_rich_text_from_segments
-from docgale.analyzers.native.office.xls import records as xls_records
+from docvortex.analyzers.native._shared.hyperlink import OFFICE_EXTERNAL_HYPERLINK_SCHEMES
+from docvortex.analyzers.native._shared.hyperlink import sanitize_hyperlink_target
+from docvortex.analyzers.native._shared.image import image_to_b64str
+from docvortex.analyzers.native._shared.image import image_to_bytes
+from docvortex.analyzers.native._shared.mathml import mathml_to_latex
+from docvortex.analyzers.native.office.doc import records as doc_records
+from docvortex.analyzers.native.office.legacy.binary import bounded_slice
+from docvortex.analyzers.native.office.legacy.binary import get_f64
+from docvortex.analyzers.native.office.legacy.binary import get_i16
+from docvortex.analyzers.native.office.legacy.binary import get_u16
+from docvortex.analyzers.native.office.legacy.binary import get_u32
+from docvortex.analyzers.native.office.opc import relationship_source_base_dir
+from docvortex.analyzers.native.office.opc import write_zip_package
+from docvortex.analyzers.native.office.ppt import records as ppt_records
+from docvortex.analyzers.native.office.rich_text import OfficeRichTextSegment
+from docvortex.analyzers.native.office.rich_text import build_rich_text_from_segments
+from docvortex.analyzers.native.office.xls import records as xls_records
 
 
 @pytest.mark.parametrize(

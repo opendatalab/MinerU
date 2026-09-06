@@ -7,13 +7,13 @@ import math
 import re
 from typing import Any
 
-from docgale.content.spans import append_equation_span
-from docgale.content.spans import append_text_span
-from docgale.content.spans import inline_span_plain_text
-from docgale.content.spans import strip_span_dicts
+from docvortex.content.spans import append_equation_span
+from docvortex.content.spans import append_text_span
+from docvortex.content.spans import inline_span_plain_text
+from docvortex.content.spans import strip_span_dicts
 from ....types import BBox, BlockType, RAW_ALGORITHM, RAW_PHONETIC
-from docgale.foundation.geometry import calculate_overlap_area_2_minbox_area_ratio
-from docgale.content import normalize_pdf_model_text
+from docvortex.foundation.geometry import calculate_overlap_area_2_minbox_area_ratio
+from docvortex.content import normalize_pdf_model_text
 
 from .constants import (
     LAYOUT_TITLE_SPLIT_OVERLAP_THRESHOLD,
@@ -21,7 +21,7 @@ from .constants import (
     NATURAL_LANGUAGE_CONTENT_BLOCK_TYPES,
     _VLM_UNCLASSIFIED_TITLE_TYPE,
 )
-from docgale.document.pdf.geometry import bbox_to_pixel_bbox as _bbox_to_pixel_bbox
+from docvortex.document.pdf.geometry import bbox_to_pixel_bbox as _bbox_to_pixel_bbox
 
 
 def _collect_layout_doc_title_bboxes(layout_res: list[dict[str, Any]], page_size: tuple[int, int]) -> list[BBox]:

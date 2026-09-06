@@ -12,12 +12,12 @@ from collections import defaultdict
 from pathlib import Path, PureWindowsPath
 from typing import Any
 
-from docgale.analyzers.native.pdf.table_recovery import NativeTableInput
-from docgale.analyzers.native.pdf.table_recovery import coerce_native_table_rectangles
-from docgale.analyzers.native.pdf.table_recovery import coerce_native_table_rules
-from docgale.analyzers.native.pdf.table_recovery import recover_native_pdf_table
-from docgale.analyzers.native.pdf.table_recovery.engine import diagnose_native_pdf_table
-from docgale.document.pdf.document import PDFDocument
+from docvortex.analyzers.native.pdf.table_recovery import NativeTableInput
+from docvortex.analyzers.native.pdf.table_recovery import coerce_native_table_rectangles
+from docvortex.analyzers.native.pdf.table_recovery import coerce_native_table_rules
+from docvortex.analyzers.native.pdf.table_recovery import recover_native_pdf_table
+from docvortex.analyzers.native.pdf.table_recovery.engine import diagnose_native_pdf_table
+from docvortex.document.pdf.document import PDFDocument
 
 _DEFAULT_SOURCE_ROOT = Path(__file__).resolve().parents[1] / "unittest" / "pdfs" / "native_pdf_tables"
 

@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import pytest
 
-from docgale.analyzers.native.pdf import geometry
-from docgale.analyzers.native.pdf import pipeline
-from docgale.analyzers.native.pdf import text_blocks
-from docgale.analyzers.native.pdf import visual_annotations
+from docvortex.analyzers.native.pdf import geometry
+from docvortex.analyzers.native.pdf import pipeline
+from docvortex.analyzers.native.pdf import text_blocks
+from docvortex.analyzers.native.pdf import visual_annotations
 
 
 _PAGE_SIZE = (200.0, 200.0)

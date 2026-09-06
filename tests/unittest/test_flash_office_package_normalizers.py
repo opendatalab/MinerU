@@ -6,9 +6,9 @@ import xml.etree.ElementTree as ET
 
 from lxml import etree
 
-from docgale.analyzers.native.office.docx.package_normalizer import normalize_docx_package
-from docgale.analyzers.native.office.pptx.package_normalizer import normalize_pptx_package
-from docgale.analyzers.native.office.xlsx.package_normalizer import normalize_xlsx_package
+from docvortex.analyzers.native.office.docx.package_normalizer import normalize_docx_package
+from docvortex.analyzers.native.office.pptx.package_normalizer import normalize_pptx_package
+from docvortex.analyzers.native.office.xlsx.package_normalizer import normalize_xlsx_package
 
 
 _PACKAGE_RELATIONSHIPS_NS = "http://schemas.openxmlformats.org/package/2006/relationships"

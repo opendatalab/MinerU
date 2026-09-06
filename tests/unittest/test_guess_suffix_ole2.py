@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from docgale.document.detection import (
+from docvortex.document.detection import (
     _guess_ole2_suffix_by_bytes,
     guess_suffix_by_bytes,
 )

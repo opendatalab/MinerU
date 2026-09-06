@@ -6,16 +6,16 @@ from __future__ import annotations
 import time
 from io import BytesIO
 
-from docgale.analyzers.native import DocModel
-from docgale.analyzers.native import DocxModel
-from docgale.analyzers.native import OdpModel
-from docgale.analyzers.native import OdsModel
-from docgale.analyzers.native import OdtModel
-from docgale.analyzers.native import PptModel
-from docgale.analyzers.native import PptxModel
-from docgale.analyzers.native import RtfModel
-from docgale.analyzers.native import XlsModel
-from docgale.analyzers.native import XlsxModel
+from docvortex.analyzers.native import DocModel
+from docvortex.analyzers.native import DocxModel
+from docvortex.analyzers.native import OdpModel
+from docvortex.analyzers.native import OdsModel
+from docvortex.analyzers.native import OdtModel
+from docvortex.analyzers.native import PptModel
+from docvortex.analyzers.native import PptxModel
+from docvortex.analyzers.native import RtfModel
+from docvortex.analyzers.native import XlsModel
+from docvortex.analyzers.native import XlsxModel
 
 from .contracts import AnalysisResult, OfficeSuffix
 

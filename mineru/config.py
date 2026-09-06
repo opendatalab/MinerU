@@ -1,7 +1,7 @@
 """MinerU startup configuration."""
 
 from __future__ import annotations
-from docgale.options import LatexDelimiterConfig, LatexDelimitersConfig
+from docvortex.options import LatexDelimiterConfig, LatexDelimitersConfig
 
 import copy
 import logging

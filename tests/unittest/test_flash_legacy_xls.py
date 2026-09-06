@@ -9,17 +9,17 @@ from bs4 import BeautifulSoup
 import pytest
 
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
-from docgale.analyzers.native import XlsModel
-from docgale.analyzers.native._shared.hyperlink import OFFICE_EXTERNAL_HYPERLINK_SCHEMES
-from docgale.analyzers.native._shared.hyperlink import sanitize_hyperlink_target
-from docgale.analyzers.native.office.errors import LegacyOfficeEncryptedError
-from docgale.analyzers.native.office.errors import LegacyOfficeMissingPartError
-from docgale.analyzers.native.office.errors import LegacyOfficeResourceLimitError
-from docgale.analyzers.native.office.limits import MAX_RECORDS
-from docgale.analyzers.native.office.xls import xls_converter as xls_converter_module
-from docgale.analyzers.native.office.xls.number_format import format_number
-from docgale.analyzers.native.office.xls.number_format import format_text
-from docgale.analyzers.native.office.xls.records import RecordBudget
+from docvortex.analyzers.native import XlsModel
+from docvortex.analyzers.native._shared.hyperlink import OFFICE_EXTERNAL_HYPERLINK_SCHEMES
+from docvortex.analyzers.native._shared.hyperlink import sanitize_hyperlink_target
+from docvortex.analyzers.native.office.errors import LegacyOfficeEncryptedError
+from docvortex.analyzers.native.office.errors import LegacyOfficeMissingPartError
+from docvortex.analyzers.native.office.errors import LegacyOfficeResourceLimitError
+from docvortex.analyzers.native.office.limits import MAX_RECORDS
+from docvortex.analyzers.native.office.xls import xls_converter as xls_converter_module
+from docvortex.analyzers.native.office.xls.number_format import format_number
+from docvortex.analyzers.native.office.xls.number_format import format_text
+from docvortex.analyzers.native.office.xls.records import RecordBudget
 from mineru.parser import parse
 from mineru.types import BlockType, MiddleJson, ModelJson
 

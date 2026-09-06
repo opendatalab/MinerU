@@ -72,7 +72,7 @@ def test_flash_routes_classification_and_native_analysis_explicitly(
 
 @pytest.mark.parametrize("effort", ["medium", "high", "xhigh"])
 @pytest.mark.parametrize("parse_mode", ["txt", "ocr"])
-def test_hybrid_and_vlm_pdf_outputs_share_docgale_text_cleanup(
+def test_hybrid_and_vlm_pdf_outputs_share_docvortex_text_cleanup(
     monkeypatch: pytest.MonkeyPatch,
     effort: str,
     parse_mode: str,

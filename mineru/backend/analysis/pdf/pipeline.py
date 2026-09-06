@@ -11,7 +11,7 @@ from ....config import VlmConfig
 from ....model.runtime.hybrid import HybridLocalModelContextSingleton
 from ....model.runtime.memory import clean_memory
 from ....model.vlm.client import get_vlm_predictor
-from docgale.document.pdf.document import PDFDocument
+from docvortex.document.pdf.document import PDFDocument
 
 from .normalization import _normalize_pdf_model_list
 from .window import process_pdf_windows

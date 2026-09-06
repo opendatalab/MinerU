@@ -7,15 +7,15 @@ from openpyxl.cell.text import InlineFont
 from openpyxl.worksheet.worksheet import Worksheet
 import pytest
 
-from docgale.analyzers.native.office.spreadsheet.html import render_spreadsheet_table
-from docgale.analyzers.native.office.spreadsheet.models import AnchoredBlock
-from docgale.analyzers.native.office.spreadsheet.models import ExcelCell
-from docgale.analyzers.native.office.spreadsheet.models import ExcelTable
-from docgale.analyzers.native.office.spreadsheet.models import SheetImage
-from docgale.analyzers.native.office.spreadsheet.projector import SpreadsheetProjector
-from docgale.analyzers.native.office.xls.xls_converter import _XlsPageBuilder
-from docgale.analyzers.native.office.xlsx import xlsx_converter as xlsx_converter_module
-from docgale.analyzers.native.office.xlsx.xlsx_converter import XlsxConverter
+from docvortex.analyzers.native.office.spreadsheet.html import render_spreadsheet_table
+from docvortex.analyzers.native.office.spreadsheet.models import AnchoredBlock
+from docvortex.analyzers.native.office.spreadsheet.models import ExcelCell
+from docvortex.analyzers.native.office.spreadsheet.models import ExcelTable
+from docvortex.analyzers.native.office.spreadsheet.models import SheetImage
+from docvortex.analyzers.native.office.spreadsheet.projector import SpreadsheetProjector
+from docvortex.analyzers.native.office.xls.xls_converter import _XlsPageBuilder
+from docvortex.analyzers.native.office.xlsx import xlsx_converter as xlsx_converter_module
+from docvortex.analyzers.native.office.xlsx.xlsx_converter import XlsxConverter
 from mineru.types import BlockType
 
 from _span_test_utils import inline

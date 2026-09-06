@@ -4,9 +4,9 @@
 from __future__ import annotations
 import os
 from typing import Any, Literal
-from docgale.document.pdf import images as _images
-from docgale.document.pdf.images import DEFAULT_PDF_IMAGE_DPI
-from docgale.document.pdf.images import (
+from docvortex.document.pdf import images as _images
+from docvortex.document.pdf.images import DEFAULT_PDF_IMAGE_DPI
+from docvortex.document.pdf.images import (
     ImageType,
     pdf_page_to_image,
     shutdown_pdf_render_executor,

@@ -1,6 +1,6 @@
 from __future__ import annotations
 import json
-from docgale.codecs.json import load_middle, load_model
+from docvortex.codecs.json import load_middle, load_model
 
 import asyncio
 import base64
@@ -22,7 +22,7 @@ from mineru.backend.analysis.pdf import formulas
 from mineru.backend.analysis.pdf import normalization
 from mineru.backend.analysis.pdf import pipeline
 from mineru.backend.analysis.pdf import tables
-from docgale.document.pdf import visuals
+from docvortex.document.pdf import visuals
 from mineru.backend.analysis.pdf import window
 from mineru.types import RAW_ALGORITHM, RAW_CAPTION, RAW_FOOTNOTE, RAW_FORMULA_NUMBER, RAW_PHONETIC
 from mineru.types import FILE_SUFFIXES, BlockType, FileSuffix, MiddleJson, ModelJson
@@ -1669,7 +1669,7 @@ def test_doc_analyze_flash_demo1_uses_canonical_equation_type() -> None:
 
 def test_doc_analyze_flash_returns_complete_model_json_and_typed_middle_json(monkeypatch: pytest.MonkeyPatch) -> None:
     """验证 Flash 多窗口补充完整 raw pages，并返回严格 ModelJson 与 MiddleJson。"""
-    from docgale.analyzers import native as flash_model
+    from docvortex.analyzers import native as flash_model
 
     events: list[str] = []
     source_model_list = [
@@ -1811,7 +1811,7 @@ def test_doc_analyze_flash_returns_complete_model_json_and_typed_middle_json(mon
 
 
 def test_pdf_output_delegates_text_cleanup_after_span_and_metadata_processing(monkeypatch: pytest.MonkeyPatch) -> None:
-    """宿主只负责协议清理和 Span 构造，可见英数统一交给 DocGale。"""
+    """宿主只负责协议清理和 Span 构造，可见英数统一交给 DocVortex。"""
     original = normalization.normalize_pdf_model_text
     calls = []
 

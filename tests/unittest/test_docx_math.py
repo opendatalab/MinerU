@@ -3,9 +3,9 @@ from __future__ import annotations
 import pytest
 from lxml import etree
 
-from docgale.render._internal.docx.math import DocxFormulaError
-from docgale.render._internal.docx.math import latex_to_omml
-from docgale.render._internal.docx.math import split_formula_tag
+from docvortex.render._internal.docx.math import DocxFormulaError
+from docvortex.render._internal.docx.math import latex_to_omml
+from docvortex.render._internal.docx.math import split_formula_tag
 
 _OFFICE_MATH_NAMESPACE = "http://schemas.openxmlformats.org/officeDocument/2006/math"
 

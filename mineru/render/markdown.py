@@ -16,7 +16,7 @@ def render_markdown(
 ) -> str:
     """惰性加载 Markdown 实现并渲染严格 MiddleJson。"""
     from ..config import config
-    from docgale.render.markdown import render_markdown as _render_markdown
+    from docvortex.render.markdown import render_markdown as _render_markdown
 
     return _render_markdown(
         middle_json,

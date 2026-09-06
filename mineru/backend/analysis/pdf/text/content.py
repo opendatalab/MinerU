@@ -9,29 +9,29 @@ import numpy as np
 from PIL import Image
 from .....model.runtime.hybrid import HybridLocalModelContext, run_ocr_inference
 from .....types import BBox, BlockType, ContentType
-from docgale.foundation.language import detect_lang
+from docvortex.foundation.language import detect_lang
 from .....model.ocr.image import rotate_vertical_crop_if_needed
 from .....model.ocr.results import OcrConfidence
-from docgale.document.pdf.document import PDFPage
-from docgale.document.pdf.document import PDFPageTextGeometry
-from docgale.document.pdf.document import get_lines_from_chars
-from docgale.analyzers.native.pdf.text_styles import PDF_NATIVE_SCRIPT_MARKUP_KEY
-from docgale.analyzers.native.pdf.text_styles import PDFTextLinkLine
-from docgale.analyzers.native.pdf.text_styles import PDFTextScriptLine
-from docgale.analyzers.native.pdf.text_styles import PDFTextStyleLine
-from docgale.analyzers.native.pdf.text_styles import apply_pdf_text_links
-from docgale.analyzers.native.pdf.text_styles import apply_pdf_text_scripts
-from docgale.analyzers.native.pdf.text_styles import apply_pdf_text_styles
-from docgale.analyzers.native.pdf.text_styles import materialize_pdf_inline_spans
-from docgale.foundation.text import merge_text_line_contents
+from docvortex.document.pdf.document import PDFPage
+from docvortex.document.pdf.document import PDFPageTextGeometry
+from docvortex.document.pdf.document import get_lines_from_chars
+from docvortex.analyzers.native.pdf.text_styles import PDF_NATIVE_SCRIPT_MARKUP_KEY
+from docvortex.analyzers.native.pdf.text_styles import PDFTextLinkLine
+from docvortex.analyzers.native.pdf.text_styles import PDFTextScriptLine
+from docvortex.analyzers.native.pdf.text_styles import PDFTextStyleLine
+from docvortex.analyzers.native.pdf.text_styles import apply_pdf_text_links
+from docvortex.analyzers.native.pdf.text_styles import apply_pdf_text_scripts
+from docvortex.analyzers.native.pdf.text_styles import apply_pdf_text_styles
+from docvortex.analyzers.native.pdf.text_styles import materialize_pdf_inline_spans
+from docvortex.foundation.text import merge_text_line_contents
 
 from ..constants import (
     CODE_CONTENT_BLOCK_TYPES,
     LINE_METADATA_BLOCK_TYPES,
     TITLE_BLOCK_TYPES,
 )
-from docgale.document.pdf.geometry import bbox_to_pixel_bbox as _bbox_to_pixel_bbox
-from docgale.document.pdf.geometry import sidecar_bbox_to_page_bbox as _sidecar_bbox_to_page_bbox
+from docvortex.document.pdf.geometry import bbox_to_pixel_bbox as _bbox_to_pixel_bbox
+from docvortex.document.pdf.geometry import sidecar_bbox_to_page_bbox as _sidecar_bbox_to_page_bbox
 from .lines import group_spans_to_lines
 from .models import _AnalyzeLine, _AnalyzeSpan
 from .native import (

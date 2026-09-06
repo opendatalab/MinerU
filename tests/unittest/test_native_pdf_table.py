@@ -9,26 +9,26 @@ from io import BytesIO
 import pytest
 from reportlab.pdfgen.canvas import Canvas
 
-from docgale.analyzers.native.pdf.table_recovery import NativeTableCell
-from docgale.analyzers.native.pdf.table_recovery import NativeTableInput
-from docgale.analyzers.native.pdf.table_recovery import NativeTableRectangle
-from docgale.analyzers.native.pdf.table_recovery import NativeTableRule
-from docgale.analyzers.native.pdf.table_recovery import coerce_native_table_rectangles
-from docgale.analyzers.native.pdf.table_recovery import coerce_native_table_rules
-from docgale.analyzers.native.pdf.table_recovery import recover_native_pdf_table
-from docgale.analyzers.native.pdf.table_recovery.candidate import GridCellSpec
-from docgale.analyzers.native.pdf.table_recovery.candidate import build_candidate
-from docgale.analyzers.native.pdf.table_recovery.contracts import NativeTableCandidate
-from docgale.analyzers.native.pdf.table_recovery.contracts import NativeTableGlyph
-from docgale.analyzers.native.pdf.table_recovery.engine import _remove_undercounted_vector_candidates
-from docgale.analyzers.native.pdf.table_recovery.engine import _select_candidate
-from docgale.analyzers.native.pdf.table_recovery.engine import diagnose_native_pdf_table
-from docgale.analyzers.native.pdf.table_recovery.text import build_cell_text
-from docgale.analyzers.native.pdf.table_recovery.text import build_cell_text_parts
-from docgale.analyzers.native.pdf.table_recovery.text import build_native_table_text
-from docgale.analyzers.native.pdf.table_recovery.vector import MAX_PRIMITIVES_PER_TABLE
-from docgale.analyzers.native.pdf.table_recovery.vector import build_vector_candidates
-from docgale.document.pdf.document import PDFDocument
+from docvortex.analyzers.native.pdf.table_recovery import NativeTableCell
+from docvortex.analyzers.native.pdf.table_recovery import NativeTableInput
+from docvortex.analyzers.native.pdf.table_recovery import NativeTableRectangle
+from docvortex.analyzers.native.pdf.table_recovery import NativeTableRule
+from docvortex.analyzers.native.pdf.table_recovery import coerce_native_table_rectangles
+from docvortex.analyzers.native.pdf.table_recovery import coerce_native_table_rules
+from docvortex.analyzers.native.pdf.table_recovery import recover_native_pdf_table
+from docvortex.analyzers.native.pdf.table_recovery.candidate import GridCellSpec
+from docvortex.analyzers.native.pdf.table_recovery.candidate import build_candidate
+from docvortex.analyzers.native.pdf.table_recovery.contracts import NativeTableCandidate
+from docvortex.analyzers.native.pdf.table_recovery.contracts import NativeTableGlyph
+from docvortex.analyzers.native.pdf.table_recovery.engine import _remove_undercounted_vector_candidates
+from docvortex.analyzers.native.pdf.table_recovery.engine import _select_candidate
+from docvortex.analyzers.native.pdf.table_recovery.engine import diagnose_native_pdf_table
+from docvortex.analyzers.native.pdf.table_recovery.text import build_cell_text
+from docvortex.analyzers.native.pdf.table_recovery.text import build_cell_text_parts
+from docvortex.analyzers.native.pdf.table_recovery.text import build_native_table_text
+from docvortex.analyzers.native.pdf.table_recovery.vector import MAX_PRIMITIVES_PER_TABLE
+from docvortex.analyzers.native.pdf.table_recovery.vector import build_vector_candidates
+from docvortex.document.pdf.document import PDFDocument
 
 
 def _char_items(

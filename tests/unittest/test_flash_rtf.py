@@ -1,5 +1,5 @@
 from __future__ import annotations
-from docgale.export.middle import export_middle_json
+from docvortex.export.middle import export_middle_json
 
 import asyncio
 from io import BytesIO
@@ -18,14 +18,14 @@ from mineru.doclib.core.db import DatabaseManager
 from mineru.doclib.core.fts import FTSManager
 from mineru.doclib.services.parse_svc import ParseService
 from mineru.errors import InvalidRequestError
-from docgale.analyzers.native import RtfModel
-from docgale.analyzers.native.office.errors import LegacyOfficeMalformedError
-from docgale.analyzers.native.office.errors import LegacyOfficeResourceLimitError
-from docgale.analyzers.native.office.rtf import lexer as lexer_module
-from docgale.analyzers.native.office.rtf import parser as parser_module
-from docgale.analyzers.native.office.rtf.converter import extract_rtf_metadata
-from docgale.analyzers.native.office.rtf.lexer import RtfBinary
-from docgale.analyzers.native.office.rtf.lexer import RtfLexer
+from docvortex.analyzers.native import RtfModel
+from docvortex.analyzers.native.office.errors import LegacyOfficeMalformedError
+from docvortex.analyzers.native.office.errors import LegacyOfficeResourceLimitError
+from docvortex.analyzers.native.office.rtf import lexer as lexer_module
+from docvortex.analyzers.native.office.rtf import parser as parser_module
+from docvortex.analyzers.native.office.rtf.converter import extract_rtf_metadata
+from docvortex.analyzers.native.office.rtf.lexer import RtfBinary
+from docvortex.analyzers.native.office.rtf.lexer import RtfLexer
 from mineru.parser import parse
 from mineru.render import RenderMode, render_docx, render_html, render_markdown, render_structured_content
 from mineru.types import BlockType
@@ -607,8 +607,8 @@ def test_rtf_runtime_has_no_anydoc_dependency() -> None:
     script = "\n".join(
         [
             "import sys",
-            "from docgale.analyzers.native import RtfModel",
-            "assert 'docgale.analyzers.native.office.rtf.converter' not in sys.modules",
+            "from docvortex.analyzers.native import RtfModel",
+            "assert 'docvortex.analyzers.native.office.rtf.converter' not in sys.modules",
             "pages = RtfModel().predict(__import__('io').BytesIO(b'{\\\\rtf1 ok}'))",
             "assert pages == [[{'type': 'text', 'content': [{'type': 'text', 'content': 'ok'}]}]]",
             "assert 'anydoc' not in sys.modules",

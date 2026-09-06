@@ -1,11 +1,11 @@
-from docgale.schema import Producer
-from mineru.integrations.docgale import build_metadata
+from docvortex.schema import Producer
+from mineru.integrations.docvortex import build_metadata
 from copy import deepcopy
 from typing import Any
 
-from docgale.postprocess import pages as pages_module
-from docgale.postprocess.lists import fix_office_list_blocks
-from docgale.postprocess.pages import model_json_to_pages
+from docvortex.postprocess import pages as pages_module
+from docvortex.postprocess.lists import fix_office_list_blocks
+from docvortex.postprocess.pages import model_json_to_pages
 from mineru.types import (
     ChartBlock,
     DocTitleBlock,

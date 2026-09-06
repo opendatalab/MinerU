@@ -8,7 +8,7 @@ from typing import Any
 
 import numpy as np
 
-from docgale.foundation.geometry import normalize_to_int_bbox
+from docvortex.foundation.geometry import normalize_to_int_bbox
 from .geometry import calculate_is_angle
 from .image import get_rotate_crop_image_for_text_rec
 

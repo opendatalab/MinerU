@@ -10,10 +10,10 @@ from docx.opc.constants import RELATIONSHIP_TYPE
 from docx.text.paragraph import Paragraph
 
 from mineru.backend.analyze import doc_analyze
-from docgale.content.inline import inline_plain_text
-from docgale.analyzers.native import DocxModel
-from docgale.content.spans import inline_span_plain_text
-from docgale.analyzers.native.office.docx.docx_converter import DocxConverter
+from docvortex.content.inline import inline_plain_text
+from docvortex.analyzers.native import DocxModel
+from docvortex.content.spans import inline_span_plain_text
+from docvortex.analyzers.native.office.docx.docx_converter import DocxConverter
 from mineru.types import IndexBlock, ParagraphTitleBlock, TextBlock
 from _span_test_utils import inline_urls
 

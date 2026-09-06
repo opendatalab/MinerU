@@ -1,6 +1,6 @@
 from __future__ import annotations
-from docgale.schema import Producer
-from mineru.integrations.docgale import build_metadata
+from docvortex.schema import Producer
+from mineru.integrations.docvortex import build_metadata
 
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
@@ -17,12 +17,12 @@ import ziamath
 
 from _span_test_utils import inline as _inline
 from mineru.render import render_pdf
-from docgale.render._internal.pdf import assets as pdf_assets
-from docgale.render._internal.pdf import formula as formula_module
-from docgale.render._internal.pdf.formula import FormulaRenderer
-from docgale.render._internal.pdf.formula import FormulaVector
-from docgale.render._internal.pdf.formula import PdfFormulaError
-from docgale.render._internal.pdf.table import _html_cell_spans
+from docvortex.render._internal.pdf import assets as pdf_assets
+from docvortex.render._internal.pdf import formula as formula_module
+from docvortex.render._internal.pdf.formula import FormulaRenderer
+from docvortex.render._internal.pdf.formula import FormulaVector
+from docvortex.render._internal.pdf.formula import PdfFormulaError
+from docvortex.render._internal.pdf.table import _html_cell_spans
 from mineru.types import (
     AlgorithmBodyBlock,
     ChartAnnotationBlock,

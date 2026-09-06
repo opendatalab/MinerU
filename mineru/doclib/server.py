@@ -1,7 +1,7 @@
 """New doclib HTTP server implementation backed by the public interface."""
 
 from __future__ import annotations
-from docgale.content.tree import iter_child_blocks as _iter_child_blocks
+from docvortex.content.tree import iter_child_blocks as _iter_child_blocks
 
 import asyncio
 import math
@@ -32,9 +32,9 @@ from ..parser.page_range import (
     normalize_result_page_range,
 )
 from ..parser.tier import TierDependencyError, ensure_tier_runtime_dependencies
-from docgale.render.markdown import build_markdown_image
-from docgale.render.markdown import render_single_block
-from docgale.foundation.image_payload import parse_image_data_uri_strict
+from docvortex.render.markdown import build_markdown_image
+from docvortex.render.markdown import render_single_block
+from docvortex.foundation.image_payload import parse_image_data_uri_strict
 from ..types import (
     DEPLOYMENT_TIERS,
     TIERS,
@@ -49,7 +49,7 @@ from ..types import (
 )
 from ..model.download import verify_model_repo
 from ..model.registry import ModelRepo, model_repos_for_tier
-from docgale.document.pdf.document import PDFDocument
+from docvortex.document.pdf.document import PDFDocument
 from ..version import __version__
 from .background.parse_server_health import get_health, get_managed_parse_server_tier
 from .base import AsyncDoclibInterface

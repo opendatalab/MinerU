@@ -148,52 +148,52 @@ class MinerUParser(DocumentParser):
         ...
 ```
 
-## DocGale 与 MinerU 的文档架构
+## DocVortex 与 MinerU 的文档架构
 
 ### 1. 唯一实现归属
 
-`docgale` 独立拥有原生文档解析、PDF 基础访问与分类、公共文档类型、确定性后处理、素材、九种渲染格式和导出实现，不得反向依赖 MinerU。
+`docvortex` 独立拥有原生文档解析、PDF 基础访问与分类、公共文档类型、确定性后处理、素材、九种渲染格式和导出实现，不得反向依赖 MinerU。
 
-MinerU 保留 OCR/VLM/Hybrid 推理、模型生命周期、LLM 增强、tier 策略、CLI/API/Gradio/Doclib。通过 DocGale 公开接口复用能力，不导入其私有实现。
+MinerU 保留 OCR/VLM/Hybrid 推理、模型生命周期、LLM 增强、tier 策略、CLI/API/Gradio/Doclib。通过 DocVortex 公开接口复用能力，不导入其私有实现。
 
 ### 2. 路由
 
 `backend/analyze.py:doc_analyze()` 仍是 MinerU 的统一分析门面。只有 `parse_mode="auto"` 调用共享 `PDFDocument.classify()`。
 
-- Flash + txt：使用 DocGale 的原生 PDF 模型。
-- Flash + auto：txt 分类走 DocGale；ocr 分类走 MinerU 现有 Flash OCR。
+- Flash + txt：使用 DocVortex 的原生 PDF 模型。
+- Flash + auto：txt 分类走 DocVortex；ocr 分类走 MinerU 现有 Flash OCR。
 - Flash + ocr：直接走现有 Flash OCR。
-- 其他 tier：保持已有推理流程，共享 DocGale 的基础 PDF、类型、后处理和渲染能力。
+- 其他 tier：保持已有推理流程，共享 DocVortex 的基础 PDF、类型、后处理和渲染能力。
 
 原生解析不自行追加分类或 OCR 回退。非 PDF 原生格式仍只支持整本解析，PDF 页范围继续采用 `1-5`、`r1`、`all`。
 
 ### 3. 协议与类型
 
-`mineru.types` 重新导出 `docgale.schema` 的文档类型，并保留 MinerU 产品档位类型。
+`mineru.types` 重新导出 `docvortex.schema` 的文档类型，并保留 MinerU 产品档位类型。
 
-DocGale 的 ModelJson/MiddleJson 原生 JSON 使用独立 schema 标识和版本 1.0，持有 `producer` 与 `extensions`。MinerU 的 `effort`、`parse_mode`、`mineru_version` 位于 `extensions["mineru"]`，由 `mineru.integrations.docgale.build_metadata()` 校验。
+DocVortex 的 ModelJson/MiddleJson 原生 JSON 使用独立 schema 标识和版本 1.0，持有 `producer` 与 `extensions`。MinerU 的 `effort`、`parse_mode`、`mineru_version` 位于 `extensions["mineru"]`，由 `mineru.integrations.docvortex.build_metadata()` 校验。
 
-MinerU 的 ParseResult、CLI、HTTP API 和 Doclib 继续通过 `docgale.compat.mineru` 读写原有 schema 2.0 封装，并保留已有旧结果读取边界。不要为旧底层构造参数增加动态兼容别名。
+MinerU 的 ParseResult、CLI、HTTP API 和 Doclib 继续通过 `docvortex.compat.mineru` 读写原有 schema 2.0 封装，并保留已有旧结果读取边界。不要为旧底层构造参数增加动态兼容别名。
 
 ModelJson 仍保存 raw pages 与 page_index_map；MiddleJson 仍保存有序 PageInfo 数组。PageInfo 只有 page_idx 与 blocks。Block/InlineSpan 的现有语义、几何和父子约束保持不变；自然语言 InlineSpan 不携带字体或几何信息。
 
 ### 4. 后处理与渲染
 
-DocGale 的确定性后处理独立构造有效 MiddleJson。`mineru.backend.postprocess.document` 在其后显式执行 MinerU 的可选 LLM 增强。
+DocVortex 的确定性后处理独立构造有效 MiddleJson。`mineru.backend.postprocess.document` 在其后显式执行 MinerU 的可选 LLM 增强。
 
-`mineru.render` 是稳定兼容门面，底层 renderer、RenderPlan、选项类型与错误类型均来自 DocGale。公式定界符等宿主配置显式传入，不让 DocGale 读取 MinerU 配置。
+`mineru.render` 是稳定兼容门面，底层 renderer、RenderPlan、选项类型与错误类型均来自 DocVortex。公式定界符等宿主配置显式传入，不让 DocVortex 读取 MinerU 配置。
 
 九种输出为 Markdown、HTML、LaTeX、DOCX、EPUB、PDF、Structured Content、Content List V1/V2。LaTeX/EPUB/PDF/Content List 的低层能力不自动扩展所有产品入口。PDF 输出继续采用语义重排版。
 
-文件写出属于 `docgale.export`；语义类型不再提供文件导出方法。结果包保存中间协议和物化素材，渲染不依赖已关闭的 PDFium 对象或源文件，也不修改原始语义树。
+文件写出属于 `docvortex.export`；语义类型不再提供文件导出方法。结果包保存中间协议和物化素材，渲染不依赖已关闭的 PDFium 对象或源文件，也不修改原始语义树。
 
 ### 5. PDF 与依赖方向
 
-PDF 字符、片段、行和矩形类型由 DocGale 维护；项目不再依赖 pdftext，也没有其 0.6/0.7 运行时分支。pypdfium2 最低版本为 5.10.1，不设置固定上限。
+PDF 字符、片段、行和矩形类型由 DocVortex 维护；项目不再依赖 pdftext，也没有其 0.6/0.7 运行时分支。pypdfium2 最低版本为 5.10.1，DocVortex 约束为 `<6`，MinerU 安装时共同遵守该范围。
 
-访问同一 PDFium 运行时必须使用 DocGale 的共享锁及资源管理。跨进程传递字节和物化数据，不传递裸句柄。
+访问同一 PDFium 运行时必须使用 DocVortex 的共享锁及资源管理。跨进程传递字节和物化数据，不传递裸句柄。
 
-- DocGale：schema/foundation → document/content → analyzers/postprocess/render/export → api/result。
-- MinerU：共享 DocGale 能力 → model/backend → parser/kit/doclib/cli。
+- DocVortex：schema/foundation → document/content → analyzers/postprocess/render/export → api/result。
+- MinerU：共享 DocVortex 能力 → model/backend → parser/kit/doclib/cli。
 - `model/runtime` 继续负责 MinerU 设备、显存、ONNX 与本地模型生命周期；`model/registry.py`、`model/download.py` 保持产品模型管理职责。
 - 已迁移的 Flash、通用后处理、renderer 私有目录及共享 leaf utilities 不在 MinerU 中保留第二份实现。

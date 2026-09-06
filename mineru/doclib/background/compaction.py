@@ -1,8 +1,8 @@
 """Compaction — merges overlapping / adjacent done parse batches to keep the parses table lean."""
 
 from __future__ import annotations
-from docgale.schema import Producer
-from ...integrations.docgale import build_metadata
+from docvortex.schema import Producer
+from ...integrations.docvortex import build_metadata
 
 import asyncio
 import json
@@ -39,8 +39,8 @@ def _normalize_batch_pages(batch_payload: dict[str, Any]) -> list[dict[str, Any]
     if not isinstance(raw_pages, list) or any(not isinstance(page, dict) for page in raw_pages):
         raise ValueError("stale Middle JSON cache requires source reparse")
 
-    from docgale.compat.legacy_schema_adapter import legacy_page_to_model_list
-    from docgale.postprocess.pages import model_json_to_pages
+    from docvortex.compat.legacy_schema_adapter import legacy_page_to_model_list
+    from docvortex.postprocess.pages import model_json_to_pages
     from ...parser.base import (
         _legacy_effort,
         _legacy_file_suffix,

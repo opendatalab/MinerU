@@ -16,18 +16,18 @@ from loguru import logger
 from ....model.runtime.hybrid import HybridLocalModelContext, run_ocr_inference
 from ....model.runtime.contracts import AtomicModelName
 from ....types import RAW_ALGORITHM, RAW_FORMULA_NUMBER, RAW_PHONETIC, BBox, BlockType
-from docgale.foundation.geometry import calculate_overlap_area_in_bbox1_area_ratio
-from docgale.foundation.geometry import normalize_to_int_bbox
-from docgale.analyzers.native.pdf.table_recovery import NativeTableInput
-from docgale.analyzers.native.pdf.table_recovery import coerce_native_table_rectangles
-from docgale.analyzers.native.pdf.table_recovery import coerce_native_table_rules
-from docgale.analyzers.native.pdf.table_recovery import recover_native_pdf_table
-from docgale.analyzers.native.pdf.table_text_styles import render_native_table_html_with_scripts
+from docvortex.foundation.geometry import calculate_overlap_area_in_bbox1_area_ratio
+from docvortex.foundation.geometry import normalize_to_int_bbox
+from docvortex.analyzers.native.pdf.table_recovery import NativeTableInput
+from docvortex.analyzers.native.pdf.table_recovery import coerce_native_table_rectangles
+from docvortex.analyzers.native.pdf.table_recovery import coerce_native_table_rules
+from docvortex.analyzers.native.pdf.table_recovery import recover_native_pdf_table
+from docvortex.analyzers.native.pdf.table_text_styles import render_native_table_html_with_scripts
 from ....model.ocr.image import mask_formula_regions_for_ocr_det
-from docgale.document.pdf.document import PDFPage
-from docgale.document.pdf.document import PDFPageTextGeometry
-from docgale.document.pdf.document import get_lines_from_chars
-from docgale.analyzers.native.pdf.shared import project_table_text as project_ocr_table_text
+from docvortex.document.pdf.document import PDFPage
+from docvortex.document.pdf.document import PDFPageTextGeometry
+from docvortex.document.pdf.document import get_lines_from_chars
+from docvortex.analyzers.native.pdf.shared import project_table_text as project_ocr_table_text
 
 from .constants import (
     BATCH_RATIO,
@@ -37,17 +37,17 @@ from .constants import (
     TABLE_TEXT_ORIENTATION_MIN_DOMINANCE_RATIO,
     TABLE_TEXT_ORIENTATION_MIN_VALID_LINES,
 )
-from docgale.document.pdf.geometry import bbox_to_pixel_bbox as _bbox_to_pixel_bbox
-from docgale.document.pdf.geometry import encode_page_crop_as_jpeg_data_uri as _encode_page_crop_as_jpeg_data_uri
-from docgale.document.pdf.geometry import get_medium_table_virtual_image_bbox as _get_medium_table_virtual_image_bbox
-from docgale.document.pdf.geometry import medium_bbox_to_quad as _medium_bbox_to_quad
-from docgale.document.pdf.geometry import normalize_medium_content as _normalize_medium_content
-from docgale.document.pdf.geometry import normalize_page_size as _normalize_page_size
-from docgale.document.pdf.geometry import normalize_visual_block_angle as _normalize_visual_block_angle
-from docgale.document.pdf.geometry import rotate_medium_table_bbox as _rotate_medium_table_bbox
-from docgale.document.pdf.geometry import rotate_visual_block_image_to_upright as _rotate_visual_block_image_to_upright
-from docgale.document.pdf.geometry import sidecar_bbox_to_page_bbox as _sidecar_bbox_to_page_bbox
-from docgale.document.pdf.geometry import table_bbox_center as _table_bbox_center
+from docvortex.document.pdf.geometry import bbox_to_pixel_bbox as _bbox_to_pixel_bbox
+from docvortex.document.pdf.geometry import encode_page_crop_as_jpeg_data_uri as _encode_page_crop_as_jpeg_data_uri
+from docvortex.document.pdf.geometry import get_medium_table_virtual_image_bbox as _get_medium_table_virtual_image_bbox
+from docvortex.document.pdf.geometry import medium_bbox_to_quad as _medium_bbox_to_quad
+from docvortex.document.pdf.geometry import normalize_medium_content as _normalize_medium_content
+from docvortex.document.pdf.geometry import normalize_page_size as _normalize_page_size
+from docvortex.document.pdf.geometry import normalize_visual_block_angle as _normalize_visual_block_angle
+from docvortex.document.pdf.geometry import rotate_medium_table_bbox as _rotate_medium_table_bbox
+from docvortex.document.pdf.geometry import rotate_visual_block_image_to_upright as _rotate_visual_block_image_to_upright
+from docvortex.document.pdf.geometry import sidecar_bbox_to_page_bbox as _sidecar_bbox_to_page_bbox
+from docvortex.document.pdf.geometry import table_bbox_center as _table_bbox_center
 from .text.native import _is_supported_rotation
 
 

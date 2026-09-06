@@ -1,6 +1,6 @@
 from __future__ import annotations
-from docgale.schema import Producer
-from mineru.integrations.docgale import build_metadata
+from docvortex.schema import Producer
+from mineru.integrations.docvortex import build_metadata
 
 from unittest.mock import MagicMock
 
@@ -15,14 +15,14 @@ from mineru.backend.analysis.pdf import constants, layout, normalization, ocr, p
 from mineru.backend.analysis.pdf.text import content as text_content
 from mineru.backend.analysis.pdf.text.models import _AnalyzeLine, _AnalyzeSpan
 from mineru.backend.postprocess import document as postprocess_document
-from docgale.document.pdf.document import PDFPageTextGeometry
+from docvortex.document.pdf.document import PDFPageTextGeometry
 from mineru.types import RAW_ALGORITHM, RAW_CAPTION, RAW_FOOTNOTE
 from mineru.backend.analysis.pdf.text.native import (
     POST_OCR_FALLBACK_CONTENT_KEY,
     POST_OCR_FALLBACK_SCORE_KEY,
 )
-from docgale.analyzers.native.pdf.text_styles import PDF_NATIVE_SCRIPT_MARKUP_KEY
-from docgale.analyzers.native.pdf.text_styles import materialize_pdf_inline_spans
+from docvortex.analyzers.native.pdf.text_styles import PDF_NATIVE_SCRIPT_MARKUP_KEY
+from docvortex.analyzers.native.pdf.text_styles import materialize_pdf_inline_spans
 from mineru.types import BlockType, ContentType, MiddleJson, ModelJson
 
 from _span_test_utils import inline, inline_text

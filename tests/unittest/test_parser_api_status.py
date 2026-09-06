@@ -1,7 +1,7 @@
 """同步和异步 V1 parser 的状态观察回调合同。"""
 
-from docgale.schema import Producer
-from mineru.integrations.docgale import build_metadata
+from docvortex.schema import Producer
+from mineru.integrations.docvortex import build_metadata
 
 import asyncio
 from pathlib import Path

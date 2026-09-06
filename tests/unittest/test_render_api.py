@@ -1,6 +1,6 @@
 from __future__ import annotations
-from docgale.schema import Producer
-from mineru.integrations.docgale import build_metadata
+from docvortex.schema import Producer
+from mineru.integrations.docvortex import build_metadata
 from _span_test_utils import inline as _inline
 
 from copy import deepcopy
@@ -168,8 +168,8 @@ def test_unified_render_forwards_format_specific_options() -> None:
     original_list_v2 = render(middle, RenderFormat.CONTENT_LIST_V2)
 
     assert "\n\n---\n\n" in markdown
-    assert html.startswith('<article class="docgale-document docgale-document--full" ')
-    assert 'data-docgale-html-version="1" data-render-mode="full"' in html
+    assert html.startswith('<article class="docvortex-document docvortex-document--full" ')
+    assert 'data-docvortex-html-version="1" data-render-mode="full"' in html
     assert "<!doctype html>" not in html
     assert structured_content["pages"][0]["blocks"][0]["image_source"] == ("https://cdn.example/doc/images/a%20b.png")
     assert content_list[0]["img_path"] == "https://cdn.example/doc/images/a%20b.png"

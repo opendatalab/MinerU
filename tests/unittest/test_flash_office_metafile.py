@@ -32,22 +32,22 @@ from metafile_render import (
 )
 from PIL import Image
 
-from docgale.analyzers.native import DocModel
-from docgale.analyzers.native import DocxModel
-from docgale.analyzers.native import OdpModel
-from docgale.analyzers.native import OdsModel
-from docgale.analyzers.native import OdtModel
-from docgale.analyzers.native import PptModel
-from docgale.analyzers.native import PptxModel
-from docgale.analyzers.native import RtfModel
-from docgale.analyzers.native import XlsModel
-from docgale.analyzers.native import XlsxModel
-from docgale.analyzers.native.office import image as office_image
-from docgale.analyzers.native.office.legacy.officeart import OfficeArtRecord
-from docgale.analyzers.native.office.legacy.officeart import decode_blip
-from docgale.analyzers.native.office.pptx.pptx_converter import PptxConverter
-from docgale.analyzers.native.office.xlsx.xlsx_converter import XlsxConverter
-from docgale.foundation.image_payload import extract_generated_svg_fallback
+from docvortex.analyzers.native import DocModel
+from docvortex.analyzers.native import DocxModel
+from docvortex.analyzers.native import OdpModel
+from docvortex.analyzers.native import OdsModel
+from docvortex.analyzers.native import OdtModel
+from docvortex.analyzers.native import PptModel
+from docvortex.analyzers.native import PptxModel
+from docvortex.analyzers.native import RtfModel
+from docvortex.analyzers.native import XlsModel
+from docvortex.analyzers.native import XlsxModel
+from docvortex.analyzers.native.office import image as office_image
+from docvortex.analyzers.native.office.legacy.officeart import OfficeArtRecord
+from docvortex.analyzers.native.office.legacy.officeart import decode_blip
+from docvortex.analyzers.native.office.pptx.pptx_converter import PptxConverter
+from docvortex.analyzers.native.office.xlsx.xlsx_converter import XlsxConverter
+from docvortex.foundation.image_payload import extract_generated_svg_fallback
 
 
 def _open_result(payload: bytes) -> Image.Image:

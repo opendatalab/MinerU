@@ -13,16 +13,16 @@ from typing import Any, Callable, cast
 import cv2
 import numpy as np
 from loguru import logger
-from docgale.document.pdf.text.contracts import Char
+from docvortex.document.pdf.text.contracts import Char
 
 from .....types import BBox, BlockType, ContentType
-from docgale.document.pdf.document import PDFPage
-from docgale.document.pdf.document import get_lines_from_chars
-from docgale.analyzers.native.pdf.script_geometry import ScriptRole
-from docgale.analyzers.native.pdf.script_geometry import classify_char_script_roles
-from docgale.analyzers.native.pdf.text_styles import PDF_NATIVE_SCRIPT_MARKUP_KEY
-from docgale.foundation.geometry import calculate_overlap_area_in_bbox1_area_ratio
-from docgale.foundation.image import calculate_contrast
+from docvortex.document.pdf.document import PDFPage
+from docvortex.document.pdf.document import get_lines_from_chars
+from docvortex.analyzers.native.pdf.script_geometry import ScriptRole
+from docvortex.analyzers.native.pdf.script_geometry import classify_char_script_roles
+from docvortex.analyzers.native.pdf.text_styles import PDF_NATIVE_SCRIPT_MARKUP_KEY
+from docvortex.foundation.geometry import calculate_overlap_area_in_bbox1_area_ratio
+from docvortex.foundation.image import calculate_contrast
 from ..images import get_crop_img
 from .models import _AnalyzeSpan
 
@@ -778,7 +778,7 @@ def calculate_char_in_span(
 
 
 def _get_char_bbox_metrics(char: Char) -> dict[str, float]:
-    """提取字符 bbox 的宽高和中心点，统一兼容 list 与 DocGale Bbox 对象。"""
+    """提取字符 bbox 的宽高和中心点，统一兼容 list 与 DocVortex Bbox 对象。"""
     bbox = char["bbox"]
     x0, y0, x1, y1 = [float(v) for v in bbox]
     return {

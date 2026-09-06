@@ -1,6 +1,6 @@
 from __future__ import annotations
-from docgale.schema import Producer
-from mineru.integrations.docgale import build_metadata
+from docvortex.schema import Producer
+from mineru.integrations.docvortex import build_metadata
 from _span_test_utils import inline as _inline
 
 import base64
@@ -68,7 +68,7 @@ def _png_uri(*, size: tuple[int, int] = (12, 8)) -> str:
 
 
 def _generated_svg_uri(*, logical_size: tuple[int, int] = (12, 8), fallback_size: tuple[int, int] = (96, 64)) -> str:
-    """生成带高密度 PNG fallback 的 MinerU SVG data URI。"""
+    """生成带高密度 PNG fallback 的 DocVortex SVG data URI。"""
     width, height = logical_size
     fallback = base64.b64encode(_png_bytes(size=fallback_size)).decode("ascii")
     svg = (
@@ -199,7 +199,7 @@ def test_docx_uses_page_footnote_bookmark_and_style() -> None:
     assert 'w:bookmarkStart w:id="0" w:name="note_one"' in document_xml
     assert 'w:hyperlink w:anchor="note_one"' in document_xml
     assert document_xml.count("<w:hyperlink") == 1
-    assert footnote.style.name == "MinerU Footnote"
+    assert footnote.style.name == "DocVortex Footnote"
     assert "missing-note" not in relationships
     assert "#note-one" not in relationships
 
@@ -759,11 +759,11 @@ def test_spatial_table_preserves_preformatted_text_without_assets(image_payload:
 
     resolver.assert_not_called()
     assert document.paragraphs[0].text == content.replace("\x01", "\ufffd")
-    assert document.paragraphs[0].style.name == "MinerU Spatial Table"
-    assert document.styles["MinerU Spatial Table"].font.name == document.styles["MinerU Code"].font.name
-    assert document.styles["MinerU Spatial Table"].font.size == document.styles["MinerU Code"].font.size
-    assert document.styles["MinerU Spatial Table"].paragraph_format.line_spacing == 1.0
-    assert 'w:pStyle w:val="MinerUSpatialTable"' in document_xml
+    assert document.paragraphs[0].style.name == "DocVortex Spatial Table"
+    assert document.styles["DocVortex Spatial Table"].font.name == document.styles["DocVortex Code"].font.name
+    assert document.styles["DocVortex Spatial Table"].font.size == document.styles["DocVortex Code"].font.size
+    assert document.styles["DocVortex Spatial Table"].paragraph_format.line_spacing == 1.0
+    assert 'w:pStyle w:val="DocVortexSpatialTable"' in document_xml
     assert 'xml:space="preserve"' in document_xml
     assert "<w:tab/>" in document_xml
     assert document_xml.count("<w:br/>") == 3
@@ -933,9 +933,9 @@ def test_spatial_table_preserves_caption_body_footnote_order() -> None:
         "Table footnote",
     ]
     assert [paragraph.style.name for paragraph in document.paragraphs] == [
-        "MinerU Caption",
-        "MinerU Spatial Table",
-        "MinerU Footnote",
+        "DocVortex Caption",
+        "DocVortex Spatial Table",
+        "DocVortex Footnote",
     ]
 
 
@@ -1020,7 +1020,7 @@ def test_code_and_algorithm_keep_line_breaks_styles_and_inline_math() -> None:
     document = Document(BytesIO(result))
     document_xml = _part(result, "word/document.xml")
 
-    assert [paragraph.style.name for paragraph in document.paragraphs] == ["MinerU Code", "MinerU Code"]
+    assert [paragraph.style.name for paragraph in document.paragraphs] == ["DocVortex Code", "DocVortex Code"]
     assert "a = 1\nb = 2" == document.paragraphs[0].text
     assert "<m:oMath" in document_xml
     assert 'w:vertAlign w:val="subscript"' in document_xml
