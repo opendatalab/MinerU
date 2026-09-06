@@ -18,6 +18,7 @@ from mineru.backend.analysis.pdf import tables as pdf_tables
 from mineru.backend.analysis.pdf import window as pdf_window
 from docvortex.analyzers.native.pdf import models as flash_models
 from docvortex.analyzers.native.pdf import tables as flash_tables
+from docvortex.analyzers.native.pdf import table_materialization
 from docvortex.document.pdf.document import PDFDocument
 from docvortex.document.pdf.document import PDFPageTextGeometry
 from mineru.types import RAW_FORMULA_NUMBER, BlockType
@@ -71,8 +72,8 @@ def test_flash_materialization_prefers_native_html_and_keeps_claims(
     )
     html = "<table><tbody><tr><td>A</td><td>B</td></tr></tbody></table>"
     projection = MagicMock(return_value="fallback")
-    monkeypatch.setattr(flash_tables, "_recover_native_table_html", MagicMock(return_value=html))
-    monkeypatch.setattr(flash_tables, "project_pdf_table_text", projection)
+    monkeypatch.setattr(table_materialization, "_recover_native_table_html", MagicMock(return_value=html))
+    monkeypatch.setattr(table_materialization, "project_pdf_table_text", projection)
 
     blocks, annotations, claimed = flash_tables._materialize_table_blocks(
         source,
