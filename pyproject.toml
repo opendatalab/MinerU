@@ -38,7 +38,7 @@ classifiers = [
     "Programming Language :: Python :: 3.13",
 ]
 dependencies = [
-    "docgale>=0.1.0,<0.2.0",
+    "docgale>=0.1.0,<1.0.0",
     "mineru-vl-utils>=1.2.1,<2",
     "metafile-render>=0.3.0,<1.0.0",
     "mineru-llama-cpp>=0.1.0,<1",
