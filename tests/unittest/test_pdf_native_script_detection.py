@@ -1042,3 +1042,29 @@ def test_rotated_powerpoint_page_keeps_all_plain_text_on_baseline() -> None:
     assert len(rendered_lines) == 33
     assert rendered_lines[0] == "Energy Metabolism"
     assert all("<sup>" not in content and "<sub>" not in content for content in rendered_lines)
+
+
+def test_mixed_font_unit_and_citation_use_shared_local_body_reference() -> None:
+    """最小真实字符夹具通过 Hybrid 生产路径恢复正文单位和完整引用上标。"""
+    from copy import deepcopy
+
+    payload = json.loads((_PROJECT_ROOT / "tests/fixtures/pdf_mixed_font_script_line.json").read_text(encoding="utf-8"))
+    chars = []
+    tight_bboxes = {}
+    origins = {}
+    for row in payload["chars"]:
+        char = dict(row)
+        tight, origin = char.pop("tight"), char.pop("origin")
+        char["bbox"] = Bbox(char["bbox"])
+        chars.append(char)
+        if tight is not None:
+            tight_bboxes[char["char_idx"]] = tuple(tight)
+        if origin is not None:
+            origins[char["char_idx"]] = tuple(origin)
+    before = deepcopy(payload)
+    roles = native._classify_char_script_roles(chars, tight_bboxes=tight_bboxes, origins=origins)
+    assert {str(c["char_idx"]): role for c, role in zip(chars, roles) if 1353 <= c["char_idx"] <= 1360} == payload["expected"]
+    text = "".join(_render_chars(_ScriptFixture(chars, tight_bboxes, origins)).split())
+    assert "１２ｇｐｍ<sup>［８］</sup>" in text
+    assert "<sub>" not in text
+    assert payload == before
