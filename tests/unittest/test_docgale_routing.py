@@ -48,7 +48,12 @@ def test_flash_routes_classification_and_native_analysis_explicitly(
     def process(_data: bytes, _document: Document, **options: object) -> list[list[dict[str, object]]]:
         """记录实际传给处理窗口的路由决定。"""
         observed.append(options)
-        return [[]]
+        return [
+            [
+                {"type": "text", "content": "Ａ１", "lines": [{"bbox": [0.1, 0.1, 0.9, 0.2]}]},
+                {"type": "table", "content": "<table><tr><td>Ｂ２</td></tr></table>"},
+            ]
+        ]
 
     monkeypatch.setattr(pipeline, "PDFDocument", Document)
     monkeypatch.setattr(pipeline, "HybridLocalModelContextSingleton", lambda: SimpleNamespace(get_model=get_model))
@@ -61,3 +66,38 @@ def test_flash_routes_classification_and_native_analysis_explicitly(
     assert observed[0]["parse_mode"] == ("txt" if native else "ocr")
     assert result.parse_mode == ("txt" if native else "ocr")
     assert calls[-1] == "close"
+    assert result.model_list[0][0]["content"] == [{"type": "text", "content": "A1"}]
+    assert result.model_list[0][1]["content"] == "<table><tr><td>B2</td></tr></table>"
+
+
+@pytest.mark.parametrize("effort", ["medium", "high", "xhigh"])
+@pytest.mark.parametrize("parse_mode", ["txt", "ocr"])
+def test_hybrid_and_vlm_pdf_outputs_share_docgale_text_cleanup(
+    monkeypatch: pytest.MonkeyPatch,
+    effort: str,
+    parse_mode: str,
+) -> None:
+    """推理和原生回填的编排留在宿主，所有非 Flash PDF 出口都使用相同文字清洗。"""
+    # 只隔离模型推理，真实执行 PDF 管线的公共出口与协议规范化。
+    monkeypatch.setattr(pipeline, "PDFDocument", lambda _data: SimpleNamespace(close=lambda: None))
+    monkeypatch.setattr(
+        pipeline, "HybridLocalModelContextSingleton", lambda: SimpleNamespace(get_model=lambda: SimpleNamespace(device="cpu"))
+    )
+    monkeypatch.setattr(pipeline, "get_vlm_predictor", lambda _config: (object(), "test"))
+    monkeypatch.setattr(pipeline, "clean_memory", lambda _device: None)
+
+    def process(_data: bytes, _document: object, **options: object) -> list[list[dict[str, object]]]:
+        """模拟文字回填后的页，确认非原生路由不会被本次清洗切换。"""
+        assert options["flash_txt_mode"] is False
+        return [
+            [
+                {"type": "text", "content": "Ａ１", "lines": [{"bbox": [0.1, 0.1, 0.9, 0.2]}]},
+                {"type": "table", "content": "<table><tr><td>Ｂ２<eq>Ｃ３</eq></td></tr></table>"},
+            ]
+        ]
+
+    monkeypatch.setattr(pipeline, "process_pdf_windows", process)
+    result = pipeline.analyze_pdf(b"pdf", effort=effort, parse_mode=parse_mode)
+    assert result.effort == effort and result.parse_mode == parse_mode
+    assert result.model_list[0][0]["content"] == [{"type": "text", "content": "A1"}]
+    assert result.model_list[0][1]["content"] == "<table><tr><td>B2<eq>Ｃ３</eq></td></tr></table>"

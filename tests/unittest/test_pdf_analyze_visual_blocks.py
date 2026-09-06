@@ -606,139 +606,6 @@ def test_normalize_pdf_model_list_updates_in_place() -> None:
     assert all("angle" not in block and "score" not in block for page_model_list in model_list for block in page_model_list)
 
 
-@pytest.mark.parametrize(
-    "block_type",
-    [
-        BlockType.TEXT,
-        BlockType.DOC_TITLE,
-        BlockType.PARAGRAPH_TITLE,
-        BlockType.ASIDE_TEXT,
-        BlockType.HEADER,
-        BlockType.FOOTER,
-        BlockType.PAGE_NUMBER,
-        BlockType.PAGE_FOOTNOTE,
-        BlockType.REF_TEXT,
-        BlockType.LIST,
-        BlockType.INDEX,
-        RAW_CAPTION,
-        RAW_FOOTNOTE,
-        RAW_PHONETIC,
-    ],
-)
-def test_normalize_pdf_model_list_converts_full_width_alphanumeric_for_textual_blocks(
-    block_type: str,
-) -> None:
-    """验证 PDF 自然语言块统一转换全角字母和数字，同时保留全角标点。"""
-    model_list = [
-        [
-            {
-                "type": block_type,
-                "content": "Ａｚ０，。！？（）",
-                "lines": [{"bbox": [0.1, 0.1, 0.9, 0.2]}],
-            }
-        ]
-    ]
-
-    normalization._normalize_pdf_model_list(model_list)
-
-    assert inline_text(model_list[0][0]["content"]) == "Az0，。！？（）"
-    expected_type = BlockType.TEXT if block_type == RAW_PHONETIC else block_type
-    assert model_list[0][0]["type"] == expected_type
-
-
-def test_normalize_pdf_model_list_preserves_inline_formulas_and_tag_literals_during_full_width_cleanup() -> None:
-    """验证圆括号公式不参与全角转换，标签外观原文仍作为普通 TextSpan 清洗。"""
-    model_list = [
-        [
-            {
-                "type": BlockType.TEXT,
-                "content": "前Ａ１ \\(Ｆ２+x\\) 中Ｂ３ <eq>Ｃ４+y</eq> 后Ｄ５",
-                "lines": [{"bbox": [0.1, 0.1, 0.9, 0.2]}],
-            }
-        ]
-    ]
-
-    normalization._normalize_pdf_model_list(model_list)
-
-    content = model_list[0][0]["content"]
-    assert inline_text(content) == "前A1 Ｆ２+x 中B3 <eq>C4+y</eq> 后D5"
-    assert [span["content"] for span in content if span.get("type") == "equation_inline"] == ["Ｆ２+x"]
-
-
-def test_normalize_pdf_model_list_preserves_hyperlink_url_payload() -> None:
-    """验证已有 HyperlinkSpan 的可见文字正常清洗，而 URL 与公式内容保持原样。"""
-
-    model_list = [
-        [
-            {
-                "type": BlockType.TEXT,
-                "content": [
-                    *inline("前Ａ "),
-                    hyperlink("https://example.test/Ａ\\(x\\)?q=１&amp;y=2", "标Ｂ"),
-                    *inline(" 后Ｃ "),
-                    equation("Ｄ"),
-                ],
-                "lines": [{"bbox": [0.1, 0.1, 0.9, 0.2]}],
-            }
-        ]
-    ]
-
-    normalization._normalize_pdf_model_list(model_list)
-
-    content = model_list[0][0]["content"]
-    assert inline_text(content) == "前A 标B 后C Ｄ"
-    assert inline_urls(content) == ["https://example.test/Ａ\\(x\\)?q=１&amp;y=2"]
-    assert next(span for span in inline_items(content) if span.get("type") == "equation_inline")["content"] == "Ｄ"
-
-
-@pytest.mark.parametrize(
-    ("content", "expected"),
-    [
-        ("前Ａ１ \\(Ｆ２ 后Ｂ３", "前A1 \\(Ｆ２ 后Ｂ３"),
-        ("前Ａ１ <eq>Ｆ２ 后Ｂ３", "前A1 <eq>F2 后B3"),
-    ],
-)
-def test_normalize_pdf_model_list_preserves_content_after_unclosed_inline_formula(
-    content: str,
-    expected: str,
-) -> None:
-    """验证未闭合公式从起始符到文本末尾均保持原样，避免误清洗公式内容。"""
-    model_list = [
-        [
-            {
-                "type": BlockType.TEXT,
-                "content": content,
-                "lines": [{"bbox": [0.1, 0.1, 0.9, 0.2]}],
-            }
-        ]
-    ]
-
-    normalization._normalize_pdf_model_list(model_list)
-
-    assert inline_text(model_list[0][0]["content"]) == expected
-
-
-@pytest.mark.parametrize(
-    "block_type",
-    [
-        BlockType.TABLE,
-        BlockType.CODE,
-        RAW_ALGORITHM,
-        BlockType.EQUATION,
-        BlockType.IMAGE,
-        BlockType.CHART,
-        "unknown",
-    ],
-)
-def test_normalize_pdf_model_list_skips_non_natural_language_content(block_type: str) -> None:
-    """验证表格、代码、公式、视觉主体和未知类型不执行自然语言全角清洗。"""
-    model_list = [[{"type": block_type, "content": "Ａｚ０，。！？（）"}]]
-
-    normalization._normalize_pdf_model_list(model_list)
-
-    assert model_list[0][0]["content"] == "Ａｚ０，。！？（）"
-
-
 def test_normalize_pdf_model_list_converts_phonetic_and_cleans_equation() -> None:
     """验证 phonetic 转公开类型，同时 equation 保持类型并清理展示分隔符。"""
     model_list = [
@@ -1941,3 +1808,32 @@ def test_doc_analyze_flash_returns_complete_model_json_and_typed_middle_json(mon
         "document_close",
     ]
     assert not hasattr(analyze, "append_pages")
+
+
+def test_pdf_output_delegates_text_cleanup_after_span_and_metadata_processing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """宿主只负责协议清理和 Span 构造，可见英数统一交给 DocGale。"""
+    original = normalization.normalize_pdf_model_text
+    calls = []
+
+    def normalize(pages: list[list[dict[str, object]]]) -> None:
+        """在实际委托边界核对原始全角文字尚在、元数据已清理且公式已成为 Span。"""
+        calls.append(pages)
+        assert pages[0][0]["type"] == BlockType.TEXT
+        assert "angle" not in pages[0][0]
+        assert [span["type"] for span in pages[0][0]["content"]] == ["text", "equation_inline"]
+        assert pages[0][0]["content"][0]["content"] == "Ａ１ "
+        original(pages)
+
+    monkeypatch.setattr(normalization, "normalize_pdf_model_text", normalize)
+    pages = [
+        [
+            {"type": RAW_PHONETIC, "content": r"Ａ１ \(Ｂ２\)", "angle": 90, "lines": [{"bbox": [0.1, 0.1, 0.9, 0.2]}]},
+            {"type": BlockType.TABLE, "content": "<table><tr><td>Ｃ３<eq>Ｄ４</eq></td></tr></table>"},
+            {"type": RAW_ALGORITHM, "content": [{"type": "text", "content": "Ｅ５"}]},
+        ]
+    ]
+    normalization._normalize_pdf_model_list(pages)
+    assert len(calls) == 1 and calls[0] is pages
+    assert inline_text(pages[0][0]["content"]) == "A1 Ｂ２"
+    assert pages[0][1]["content"] == "<table><tr><td>C3<eq>Ｄ４</eq></td></tr></table>"
+    assert pages[0][2]["content"] == [{"type": "text", "content": "Ｅ５"}]
