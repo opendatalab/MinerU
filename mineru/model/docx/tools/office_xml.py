@@ -1,6 +1,7 @@
 # Copyright (c) Opendatalab. All rights reserved.
 import xml.dom.minidom
 
+from defusedxml.minidom import parseString as _defused_parseString
 from mammoth.docx.xmlparser import XmlText, XmlElement
 from mammoth.docx.office_xml import _collapse_alternate_content, _namespaces
 
@@ -11,7 +12,7 @@ def parse_xml_str(xml_str, namespace_mapping=None):
     else:
         namespace_prefixes = dict((uri, prefix) for prefix, uri in namespace_mapping)
 
-    document = xml.dom.minidom.parseString(xml_str)
+    document = _defused_parseString(xml_str)
 
     def convert_node(node):
         if node.nodeType == xml.dom.Node.ELEMENT_NODE:

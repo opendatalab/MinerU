@@ -4,6 +4,8 @@ from pathlib import Path
 from zipfile import BadZipFile, ZipFile
 from xml.etree import ElementTree
 
+from defusedxml.ElementTree import fromstring as _defused_fromstring
+
 from loguru import logger
 from magika import Magika
 
@@ -128,8 +130,8 @@ def _ooxml_content_type_overrides(root: ElementTree.Element) -> dict[str, str]:
 
 def _guess_ooxml_suffix_from_zip(package: ZipFile) -> str | None:
     """根据 OOXML 包内标准主文档关系和主内容类型判断 Office 子类型。"""
-    rels_root = ElementTree.fromstring(package.read(OOXML_ROOT_RELS))
-    content_types_root = ElementTree.fromstring(package.read(OOXML_CONTENT_TYPES))
+    rels_root = _defused_fromstring(package.read(OOXML_ROOT_RELS))
+    content_types_root = _defused_fromstring(package.read(OOXML_CONTENT_TYPES))
 
     overrides = _ooxml_content_type_overrides(content_types_root)
     for target in _ooxml_relationship_targets(rels_root):

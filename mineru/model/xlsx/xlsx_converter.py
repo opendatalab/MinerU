@@ -5,6 +5,7 @@ import posixpath
 import zipfile
 import re
 import xml.etree.ElementTree as ET
+from defusedxml.ElementTree import parse as _defused_parse
 from io import BytesIO
 from urllib.parse import urlparse
 from typing import BinaryIO, Annotated, cast
@@ -397,7 +398,7 @@ class XlsxConverter:
 
         try:
             with self.zf.open(path) as f:
-                tree = ET.parse(f)
+                tree = _defused_parse(f)
                 root = tree.getroot()
 
             # Namespaces
@@ -1387,7 +1388,7 @@ class XlsxConverter:
 
         try:
             with self.zf.open(cellimages_path) as f:
-                root = ET.parse(f).getroot()
+                root = _defused_parse(f).getroot()
 
             ns = {
                 "xdr": "http://schemas.openxmlformats.org/drawingml/2006/spreadsheetDrawing",
@@ -1408,7 +1409,7 @@ class XlsxConverter:
                     cell_image_embed_to_name[embed_id] = image_name
 
             with self.zf.open(rels_path) as f:
-                rel_root = ET.parse(f).getroot()
+                rel_root = _defused_parse(f).getroot()
 
             rel_ns = {
                 "pr": "http://schemas.openxmlformats.org/package/2006/relationships"
