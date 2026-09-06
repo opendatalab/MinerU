@@ -152,7 +152,7 @@ class MinerUParser(DocumentParser):
 
 ### 1. 唯一实现归属
 
-`docvortex` 独立拥有原生文档解析、PDF 基础访问与分类、公共文档类型、确定性后处理、素材、九种渲染格式和导出实现，不得反向依赖 MinerU。
+`docvortex` 独立拥有原生文档解析、PDF 基础访问与分类、公共文档类型、确定性后处理、素材、七种通用渲染格式和导出实现，不得反向依赖 MinerU。
 
 MinerU 保留 OCR/VLM/Hybrid 推理、模型生命周期、LLM 增强、tier 策略、CLI/API/Gradio/Doclib。通过 DocVortex 公开接口复用能力，不导入其私有实现。
 
@@ -181,7 +181,7 @@ ModelJson 仍保存 raw pages 与 page_index_map；MiddleJson 仍保存有序 Pa
 
 DocVortex 的确定性后处理独立构造有效 MiddleJson。`mineru.backend.postprocess.document` 在其后显式执行 MinerU 的可选 LLM 增强。
 
-`mineru.render` 是稳定兼容门面，底层 renderer、RenderPlan、选项类型与错误类型均来自 DocVortex。公式定界符等宿主配置显式传入，不让 DocVortex 读取 MinerU 配置。
+`mineru.render` 保留九种输出：Content List V1/V2 实现及专用选项归属 MinerU，其余七种 renderer 和通用选项来自 DocVortex。两边各自定义 RenderFormat，RenderMode 与共享文档类型仍复用。Content List 通过 `docvortex.render.fragments` 调用共享片段能力，不导入私有实现。公式定界符等宿主配置显式传入，不让 DocVortex 读取 MinerU 配置。
 
 九种输出为 Markdown、HTML、LaTeX、DOCX、EPUB、PDF、Structured Content、Content List V1/V2。LaTeX/EPUB/PDF/Content List 的低层能力不自动扩展所有产品入口。PDF 输出继续采用语义重排版。
 

@@ -14,8 +14,6 @@ from docvortex.schema import (
     FileSuffix,
     FILE_SUFFIXES,
     BlockType,
-    ContentType,
-    ContentTypeV2,
     BlockTypes,
     PageBlockTypes,
     BLOCK_TYPES,
@@ -180,6 +178,48 @@ def select_parsing_rule_tier(available_tiers: Iterable[object] | str | None = No
         if candidate in available:
             return candidate
     return "flash"
+
+
+class ContentType:
+    """MinerU 推理及兼容输出使用的内容标签。"""
+
+    IMAGE = "image"
+    TABLE = "table"
+    CHART = "chart"
+    TEXT = "text"
+    INTERLINE_EQUATION = "interline_equation"
+    INLINE_EQUATION = "inline_equation"
+    EQUATION = "equation"
+    HYPERLINK = "hyperlink"
+
+
+class ContentTypeV2:
+    """MinerU Content List V2 的稳定内容标签。"""
+
+    CODE = "code"
+    ALGORITHM = "algorithm"
+    EQUATION_INTERLINE = "equation_interline"
+    IMAGE = "image"
+    TABLE = "table"
+    CHART = "chart"
+    TABLE_SIMPLE = "simple_table"
+    TABLE_COMPLEX = "complex_table"
+    LIST = "list"
+    LIST_TEXT = "text_list"
+    LIST_REF = "reference_list"
+    INDEX = "index"
+    TITLE = "title"
+    PARAGRAPH = "paragraph"
+    SPAN_TEXT = "text"
+    SPAN_EQUATION_INLINE = "equation_inline"
+    SPAN_PHONETIC = "phonetic"
+    SPAN_MD = "md"
+    SPAN_CODE_INLINE = "code_inline"
+    PAGE_HEADER = "page_header"
+    PAGE_FOOTER = "page_footer"
+    PAGE_NUMBER = "page_number"
+    PAGE_ASIDE_TEXT = "page_aside_text"
+    PAGE_FOOTNOTE = "page_footnote"
 
 
 __all__ = [

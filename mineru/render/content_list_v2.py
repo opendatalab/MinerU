@@ -15,7 +15,7 @@ def render_content_list_v2(
 ) -> list[list[dict[str, Any]]]:
     """惰性加载 Content List V2 实现并渲染严格 MiddleJson。"""
     from ..config import config
-    from docvortex.render.content_list_v2 import render_content_list_v2 as _render_content_list_v2
+    from ._internal.content_list.v2 import render_content_list_v2 as _render_content_list_v2
 
     return _render_content_list_v2(middle_json, asset_base_url=asset_base_url, latex_delimiters=config.render.latex_delimiters)
 
