@@ -20,3 +20,9 @@ uv run --no-project python tests/fixtures/capture_hybrid_native_script_inputs.py
 ```
 
 省略 `--check` 会显式更新 fixture。普通测试不需要运行此命令。
+
+两边统一使用 `pydantic>=2.12.5,<3`，共享依赖约束保持一致。DocGale 支持
+Python 3.10–3.14；MinerU 当前 Python 范围维持 3.10–3.13。此次没有新增
+Pydantic 兼容实现。使用新 DocGale wheel 和 Pydantic 2.12.5 的 MinerU 单元测试
+结果为 3972 passed、4 skipped、4 个已记录基线失败单独排除；迁走的原生测试
+由 DocGale 独立执行。
