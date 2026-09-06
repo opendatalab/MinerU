@@ -223,11 +223,11 @@ def test_epub_uses_default_planner_without_source_page_boundaries() -> None:
 
     with _archive(payload) as archive:
         content = _xml(archive, "EPUB/text/content.xhtml")
-        paragraphs = content.xpath("//xhtml:p[contains(@class, 'mineru-text')]", namespaces=_NS)
+        paragraphs = content.xpath("//xhtml:p[contains(@class, 'docgale-text')]", namespaces=_NS)
         assert [_text(item) for item in paragraphs] == ["international"]
-        assert content.xpath("string(//xhtml:article/@class)", namespaces=_NS) == "mineru-document"
-        assert not content.xpath("//xhtml:section[contains(@class, 'mineru-page')]", namespaces=_NS)
-        assert not content.xpath("//xhtml:hr[contains(@class, 'mineru-page-break')]", namespaces=_NS)
+        assert content.xpath("string(//xhtml:article/@class)", namespaces=_NS) == "docgale-document"
+        assert not content.xpath("//xhtml:section[contains(@class, 'docgale-page')]", namespaces=_NS)
+        assert not content.xpath("//xhtml:hr[contains(@class, 'docgale-page-break')]", namespaces=_NS)
         assert "HEADER" not in _text(content) and "FOOTER" not in _text(content)
     with pytest.raises(TypeError, match="unexpected keyword argument 'mode'"):
         render_epub(middle, mode="default")  # type: ignore[call-arg]
@@ -469,7 +469,7 @@ def test_epub_mathml_failure_uses_visible_latex_without_false_manifest_property(
         assert package.xpath("string(opf:manifest/opf:item[@id='content']/@properties)", namespaces=_NS) == ""
         content = _xml(archive, "EPUB/text/content.xhtml")
         assert not content.xpath("//math:math", namespaces=_NS)
-        fallback = content.xpath("//xhtml:code[contains(@class, 'mineru-latex-fallback')]", namespaces=_NS)
+        fallback = content.xpath("//xhtml:code[contains(@class, 'docgale-latex-fallback')]", namespaces=_NS)
         assert len(fallback) == 1 and _text(fallback[0]) == "{"
 
 
@@ -514,10 +514,10 @@ def test_epub_static_chart_code_and_algorithm_cover_remaining_visual_bodies() ->
     with _archive(render_epub(middle, modified_at=_FIXED_TIME)) as archive:
         content = _xml(archive, "EPUB/text/content.xhtml")
         assert "| A | B |" in _text(content)
-        code = content.xpath("//xhtml:pre[contains(@class, 'mineru-code')]/xhtml:code", namespaces=_NS)
+        code = content.xpath("//xhtml:pre[contains(@class, 'docgale-code')]/xhtml:code", namespaces=_NS)
         assert len(code) == 1 and code[0].get("class") == "language-python"
-        assert content.xpath("//xhtml:div[contains(@class, 'mineru-algorithm')]//xhtml:strong", namespaces=_NS)
-        assert content.xpath("//xhtml:div[contains(@class, 'mineru-algorithm')]//math:math", namespaces=_NS)
+        assert content.xpath("//xhtml:div[contains(@class, 'docgale-algorithm')]//xhtml:strong", namespaces=_NS)
+        assert content.xpath("//xhtml:div[contains(@class, 'docgale-algorithm')]//math:math", namespaces=_NS)
         assert not content.xpath("//xhtml:script", namespaces=_NS)
 
 

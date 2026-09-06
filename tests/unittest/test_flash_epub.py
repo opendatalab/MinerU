@@ -152,8 +152,8 @@ def test_epub_notes_use_page_footnote_and_document_wide_anchors() -> None:
     full_markdown = render_markdown(middle, mode=RenderMode.FULL)
     assert "First footnote paragraph" in default_markdown
     assert f"](#{first.anchor})" in default_markdown
-    assert f'id="{first.anchor}" class="mineru-page-footnote"' in default_markdown
-    assert f'id="{first.anchor}" class="mineru-page-footnote"' in full_markdown
+    assert f'id="{first.anchor}" class="docgale-page-footnote"' in default_markdown
+    assert f'id="{first.anchor}" class="docgale-page-footnote"' in full_markdown
     assert "Page footnote:" not in default_markdown
 
     for html_output in (
@@ -162,7 +162,7 @@ def test_epub_notes_use_page_footnote_and_document_wide_anchors() -> None:
     ):
         assert f'href="#{first.anchor}"' in html_output
         assert f'id="{first.anchor}"' in html_output
-        assert 'class="mineru-page-footnote"' in html_output
+        assert 'class="docgale-page-footnote"' in html_output
 
     structured = render_structured_content(middle)
     structured_blocks = [block for page in structured["pages"] for block in page["blocks"]]

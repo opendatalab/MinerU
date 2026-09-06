@@ -31,7 +31,7 @@ from docgale.analyzers.native.html import document as html_document_module
 from docgale.analyzers.native.html import resources as html_resources_module
 from docgale.analyzers.native.html import selector as html_selector_module
 from docgale.analyzers.native.html.resources import HtmlResourceContext
-from docgale.codecs.html import decode_mineru_html_wire
+from docgale.codecs.html import decode_docgale_html_wire
 from mineru.parser import ParseResult, parse, parse_async
 from mineru.parser import api_server
 from mineru.parser.api_server import CreateJobRequest, FileStore
@@ -622,7 +622,7 @@ def test_html_referenced_external_footnote_keeps_anchor_and_content() -> None:
     assert footnote.anchor == "html-e31e5112c08d4945a7af"  # type: ignore[union-attr]
     assert "Footnote body." in inline_text(footnote.content)  # type: ignore[union-attr]
     assert f"](#{footnote.anchor})" in markdown  # type: ignore[union-attr]
-    assert f'id="{footnote.anchor}" class="mineru-page-footnote"' in markdown  # type: ignore[union-attr]
+    assert f'id="{footnote.anchor}" class="docgale-page-footnote"' in markdown  # type: ignore[union-attr]
 
 
 def test_html_structured_only_footnote_does_not_create_dangling_anchor() -> None:
@@ -882,7 +882,7 @@ def test_html_formula_sources_are_normalized_without_duplicate_katex_text() -> N
       <annotation encoding="application/x-tex">q_4</annotation></semantics></math>
       <span>mathjax duplicate</span></span>
       <span data-expr="z_3">formula fallback</span></p>
-      <div class="mineru-math mineru-math--block">\[w^4\]</div></body></html>"""
+      <div class="docgale-math docgale-math--block">\[w^4\]</div></body></html>"""
 
     middle = doc_analyze(payload, file_suffix="html")[0]
     markdown = render_markdown(middle)
@@ -939,9 +939,9 @@ def test_html_generic_formula_class_wrappers_preserve_mixed_content() -> None:
 
 
 def test_html_mineru_page_footnote_marker_roundtrips_as_page_footnote() -> None:
-    """验证 MinerU HTML renderer 的轻量脚注 marker 可恢复统一 page_footnote block。"""
+    """验证 DocGale HTML renderer 的轻量脚注 marker 可恢复统一 page_footnote block。"""
     payload = b"""<html><body><h1>Footnote</h1>
-      <div class="mineru-page-footnote" data-block-type="page_footnote">Rendered footnote.</div>
+      <div class="docgale-page-footnote" data-block-type="page_footnote">Rendered footnote.</div>
     </body></html>"""
 
     middle = doc_analyze(payload, file_suffix="html")[0]
@@ -977,9 +977,9 @@ def test_html_arbitrary_svg_data_image_degrades_to_alt_text() -> None:
 
 def test_html_mineru_figure_keeps_real_caption_without_exposing_alt_as_caption() -> None:
     """验证 MinerU renderer 图片只恢复真实 caption，不重复显示用于无障碍的长 alt。"""
-    payload = b"""<html><body><h1>Figure</h1><figure class="mineru-figure mineru-figure--image">
+    payload = b"""<html><body><h1>Figure</h1><figure class="docgale-figure docgale-figure--image">
       <img src="https://example.com/image.png" alt="Long internal image description">
-      <p class="mineru-caption">Visible figure caption</p></figure></body></html>"""
+      <p class="docgale-caption">Visible figure caption</p></figure></body></html>"""
 
     markdown = render_markdown(doc_analyze(payload, file_suffix="html")[0])
 
@@ -989,9 +989,9 @@ def test_html_mineru_figure_keeps_real_caption_without_exposing_alt_as_caption()
 
 def test_html_mineru_table_figure_rebinds_renderer_caption() -> None:
     """验证 MinerU table figure 的独立 caption 恢复为 table_caption 且只输出一次。"""
-    payload = b"""<html><body><h1>Table figure</h1><figure class="mineru-figure mineru-figure--table">
+    payload = b"""<html><body><h1>Table figure</h1><figure class="docgale-figure docgale-figure--table">
       <table><tr><th>A</th></tr><tr><td>1</td></tr></table>
-      <p class="mineru-caption">Visible table caption</p></figure></body></html>"""
+      <p class="docgale-caption">Visible table caption</p></figure></body></html>"""
 
     middle = doc_analyze(payload, file_suffix="html")[0]
     markdown = render_markdown(middle)
@@ -1172,7 +1172,7 @@ def test_html_alt_caption_fallback_policy_distinguishes_generic_and_mineru_figur
     payload = b"""<html><body>
       <figure><img src="https://example.com/a.png" alt="Generic alt"></figure>
       <figure><img src="https://example.com/b.png" alt="Hidden alt"><figcaption>Explicit caption</figcaption></figure>
-      <figure class="mineru-figure"><img src="https://example.com/c.png" alt="Accessibility alt"></figure>
+      <figure class="docgale-figure"><img src="https://example.com/c.png" alt="Accessibility alt"></figure>
       </body></html>"""
 
     middle = doc_analyze(payload, file_suffix="html")[0]
@@ -1515,21 +1515,21 @@ def test_html_versioned_wire_roundtrips_empty_code_body() -> None:
 
 
 def test_html_versioned_wire_roundtrips_all_semantic_types() -> None:
-    """验证新版 MinerU HTML 在 DEFAULT/FULL 中精确恢复公开类型和关键元数据。"""
+    """验证新版 DocGale HTML 在 DEFAULT/FULL 中精确恢复公开类型和关键元数据。"""
     source = _wire_contract_middle()
     default_html = render_html(source, standalone=False)
     full_html = render_html(source, mode=RenderMode.FULL, standalone=False)
     standalone_html = render_html(source, standalone=True)
-    default_root = BeautifulSoup(default_html, "html.parser").select_one(".mineru-document")
-    full_root = BeautifulSoup(full_html, "html.parser").select_one(".mineru-document")
+    default_root = BeautifulSoup(default_html, "html.parser").select_one(".docgale-document")
+    full_root = BeautifulSoup(full_html, "html.parser").select_one(".docgale-document")
 
-    assert default_root["data-mineru-html-version"] == "1"
+    assert default_root["data-docgale-html-version"] == "1"
     assert default_root["data-render-mode"] == "default"
     assert full_root["data-render-mode"] == "full"
     assert full_root.select_one('[data-block-type="chart_body"]') is not None
     assert full_root.select_one('[data-block-type="image_footnote"]') is not None
     assert full_root.select_one('[data-block-sub-type="algorithm"]') is not None
-    assert "y^2\\tag{1}" in [element.get("data-mineru-latex") for element in full_root.select("[data-mineru-latex]")]
+    assert "y^2\\tag{1}" in [element.get("data-docgale-latex") for element in full_root.select("[data-docgale-latex]")]
 
     default_middle = doc_analyze(default_html.encode(), file_suffix="html")[0]
     full_middle = doc_analyze(full_html.encode(), file_suffix="html")[0]
@@ -1565,15 +1565,15 @@ def test_html_wire_decode_distinguishes_absent_empty_and_noncanonical() -> None:
     ordinary = html_document_module.parse_html_document(b"<html><body><p>ordinary</p></body></html>")
     empty = html_document_module.parse_html_document(render_html(source, standalone=False).encode())
     edited_soup = BeautifulSoup(render_html(source, standalone=False), "html.parser")
-    edited_soup.select_one(".mineru-document").append("EDITED")
+    edited_soup.select_one(".docgale-document").append("EDITED")
     edited = html_document_module.parse_html_document(str(edited_soup).encode())
 
-    ordinary_result = decode_mineru_html_wire(
+    ordinary_result = decode_docgale_html_wire(
         ordinary.body,
         HtmlResourceContext(ordinary.source_context),
     )
-    empty_result = decode_mineru_html_wire(empty.body, HtmlResourceContext(empty.source_context))
-    edited_result = decode_mineru_html_wire(edited.body, HtmlResourceContext(edited.source_context))
+    empty_result = decode_docgale_html_wire(empty.body, HtmlResourceContext(empty.source_context))
+    edited_result = decode_docgale_html_wire(edited.body, HtmlResourceContext(edited.source_context))
 
     assert ordinary_result.blocks is None and ordinary_result.fallback_reason is None
     assert empty_result.blocks == [] and empty_result.fallback_reason is None
@@ -1708,7 +1708,7 @@ def test_html_versioned_wire_roundtrips_canonical_visual_body_variants() -> None
     rendered = render_html(source, standalone=False)
     document = html_document_module.parse_html_document(rendered.encode())
 
-    decode_result = decode_mineru_html_wire(document.body, HtmlResourceContext(document.source_context))
+    decode_result = decode_docgale_html_wire(document.body, HtmlResourceContext(document.source_context))
     middle, _ = doc_analyze(rendered.encode(), file_suffix="html")
     bodies = [block.content[0] for block in middle.pages[0].blocks]
 
@@ -1751,7 +1751,7 @@ def test_html_versioned_wire_distinguishes_index_carrier_from_inline_link() -> N
     rendered = render_html(source, standalone=False)
     document = html_document_module.parse_html_document(rendered.encode())
 
-    decode_result = decode_mineru_html_wire(document.body, HtmlResourceContext(document.source_context))
+    decode_result = decode_docgale_html_wire(document.body, HtmlResourceContext(document.source_context))
     middle = doc_analyze(rendered.encode(), file_suffix="html")[0]
 
     assert decode_result.blocks is not None and decode_result.fallback_reason is None
@@ -1799,7 +1799,7 @@ def test_html_noncanonical_wire_structural_edits_use_generic_fallback(edit_kind:
             }
         )
         soup = BeautifulSoup(render_html(source, standalone=False), "html.parser")
-        target = soup.select_one('.mineru-index li[data-block-type="paragraph_title"]')
+        target = soup.select_one('.docgale-index li[data-block-type="paragraph_title"]')
         assert target is not None
         target.append(" ADDED")
     else:
@@ -1809,7 +1809,7 @@ def test_html_noncanonical_wire_structural_edits_use_generic_fallback(edit_kind:
         target.append(soup.new_tag("img", src="https://example.com/added.png", alt="Added"))
     document = html_document_module.parse_html_document(str(soup).encode())
 
-    decode_result = decode_mineru_html_wire(document.body, HtmlResourceContext(document.source_context))
+    decode_result = decode_docgale_html_wire(document.body, HtmlResourceContext(document.source_context))
     middle, model = doc_analyze(str(soup).encode(), file_suffix="html")
 
     assert decode_result.blocks is None and decode_result.fallback_reason == "non_canonical_wire"
@@ -1900,11 +1900,11 @@ def test_html_invalid_versioned_markers_fallback_without_partial_results() -> No
     variants: list[str] = []
 
     unknown = BeautifulSoup(base, "html.parser")
-    unknown.select_one(".mineru-document")["data-mineru-html-version"] = "999"
+    unknown.select_one(".docgale-document")["data-docgale-html-version"] = "999"
     variants.append(str(unknown))
 
     illegal_type = BeautifulSoup(base, "html.parser")
-    illegal_type.select_one(".mineru-block")["data-block-type"] = "not_a_block"
+    illegal_type.select_one(".docgale-block")["data-block-type"] = "not_a_block"
     variants.append(str(illegal_type))
 
     missing_body = BeautifulSoup(base, "html.parser")
@@ -1936,8 +1936,8 @@ def test_html_invalid_versioned_markers_fallback_without_partial_results() -> No
 @pytest.mark.parametrize(
     ("parent_type", "body_type", "sub_type", "owned_class"),
     [
-        ("image", "image_body", "diagram", "mineru-image"),
-        ("chart", "chart_body", "bar", "mineru-chart-image"),
+        ("image", "image_body", "diagram", "docgale-image"),
+        ("chart", "chart_body", "bar", "docgale-chart-image"),
     ],
 )
 def test_html_versioned_wire_multiple_owned_images_fall_back_without_loss(
@@ -2006,19 +2006,19 @@ def test_html_versioned_wire_visible_structural_text_falls_back_without_loss() -
     variants: list[tuple[str, str]] = []
 
     root_text = BeautifulSoup(default_html, "html.parser")
-    root_text.select_one(".mineru-document").insert(0, "ROOT EDIT ")
+    root_text.select_one(".docgale-document").insert(0, "ROOT EDIT ")
     variants.append((str(root_text), "ROOT EDIT"))
 
     section_text = BeautifulSoup(full_html, "html.parser")
-    section_text.select_one(".mineru-page").insert(0, "SECTION EDIT ")
+    section_text.select_one(".docgale-page").insert(0, "SECTION EDIT ")
     variants.append((str(section_text), "SECTION EDIT"))
 
     wrapper_text = BeautifulSoup(default_html, "html.parser")
-    wrapper_text.select_one(".mineru-block").insert(0, "WRAPPER EDIT ")
+    wrapper_text.select_one(".docgale-block").insert(0, "WRAPPER EDIT ")
     variants.append((str(wrapper_text), "WRAPPER EDIT"))
 
     child_tail = BeautifulSoup(default_html, "html.parser")
-    child_tail.select_one(".mineru-block > p").insert_after(" CHILD TAIL EDIT")
+    child_tail.select_one(".docgale-block > p").insert_after(" CHILD TAIL EDIT")
     variants.append((str(child_tail), "CHILD TAIL EDIT"))
 
     for variant, edited_text in variants:
@@ -2043,7 +2043,7 @@ def test_html_versioned_wire_visible_sibling_falls_back_without_loss(position: s
     soup = BeautifulSoup(render_html(source, standalone=False), "html.parser")
     sibling = soup.new_tag("p")
     sibling.string = "VISIBLE SIBLING"
-    wire_root = soup.select_one(".mineru-document")
+    wire_root = soup.select_one(".docgale-document")
     if position == "before":
         wire_root.insert_before(sibling)
     else:
@@ -2082,7 +2082,7 @@ def test_html_versioned_wire_markerless_block_child_falls_back_without_crash() -
     soup = BeautifulSoup(render_html(source, standalone=False), "html.parser")
     paragraph = soup.new_tag("p")
     paragraph.string = "EXTRA NOTE"
-    soup.select_one(".mineru-page-footnote").append(paragraph)
+    soup.select_one(".docgale-page-footnote").append(paragraph)
 
     markdown = render_markdown(doc_analyze(str(soup).encode(), file_suffix="html")[0])
 
@@ -2321,7 +2321,7 @@ def test_html_generic_div_soup_attaches_contextual_caption_and_footnote() -> Non
 def test_html_formula_priority_delimiters_and_supported_mathml_are_normalized() -> None:
     """验证所有受支持公式来源按统一优先级输出裸 LaTeX，并保留内部 tag。"""
     payload = rb"""<html><body><h1>Formula matrix</h1><p>
-      <span class="formula"><span data-mineru-latex="\(producer\)" data-tex="data-low"><math alttext="alt-low">
+      <span class="formula"><span data-docgale-latex="\(producer\)" data-tex="data-low"><math alttext="alt-low">
       <annotation encoding="application/x-tex">annotation-low</annotation></math></span></span>
       <math data-tex="data-low"><semantics><mi>x</mi>
       <annotation encoding="application/x-tex">annotation-high</annotation></semantics></math>

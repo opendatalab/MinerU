@@ -15,10 +15,10 @@
 - HTML 规范后缀统一为 `html`，使用 `flash/txt`、整本文档、单逻辑页、无 bbox 的 ModelJson/MiddleJson 2.0 路径。
 - 只解析静态源码，不执行 JavaScript、不启动浏览器、不生成布局坐标。
 - 默认固定使用保守 `auto` 正文选择：高置信候选进入正文投影，其余情况回退完整 body；首版不公开模式参数。
-- MinerU 自身 renderer 输出版本化 `data-mineru-html-version="1"` 机器契约。只有当前 renderer 能生成的 canonical
+- 共享 DocGale renderer 输出版本化 `data-docgale-html-version="1"` 机器契约。只有当前 renderer 能生成的 canonical
   marker 树进入精确路径，parser 跳过 `auto` 裁剪并按 `data-block-type` 恢复顶层 block、visual child、列表/目录叶子及关键元数据。
-- `data-block-type` 使用原始下划线形式的 `BlockType` 值，是新版 MinerU HTML 的唯一机器类型来源；
-  `mineru-caption`、`mineru-footnote` 和 `mineru-figure--*` 等 class 只负责样式。
+- `data-block-type` 使用原始下划线形式的 `BlockType` 值，是新版 DocGale HTML 的唯一机器类型来源；
+  `docgale-caption`、`docgale-footnote` 和 `docgale-figure--*` 等 class 只负责样式。
 - 精确解码先把固定 DOM grammar 解析为无资源副作用的 typed plan，再加载图片并一次性物化 raw blocks。未知版本或
   非 canonical v1 均丢弃整条精确路径，从干净 DOM 进入通用解析；人工编辑后的机器 HTML 不承诺保留原 block 类型和元数据。
 - Image/Chart body 的 renderer-owned 图片恢复为唯一主图片载荷；rich-content carrier 内的安全 HTML（包括嵌套图片）
@@ -27,7 +27,7 @@
   不承诺按旧 class suffix 精确恢复 Chart、Index 或 annotation 类型。
 - EPUB XHTML 与 standalone HTML 共用静态 markup projector，继续输出既有标题、正文、列表、表格、图片、代码、
   公式和页面脚注 block，不增加 HTML 专属 block。
-- 新版公式 carrier 保存 `data-formula-display` 与 `data-mineru-latex`。网页公式按固定来源优先级收敛为裸 LaTeX：
+- 新版公式 carrier 保存 `data-formula-display` 与 `data-docgale-latex`。网页公式按固定来源优先级收敛为裸 LaTeX：
   行间写入 `EquationBlock.content`，行内写入 `EquationInlineSpan`，不保留 `$...$`、`\(...\)` 或 `\[...\]` 外层定界符。
   无法安全转换的 MathML 与暂不支持的 AsciiMath 保留可见文本，不冒充 LaTeX。
 - 有序列表只保留连续阿拉伯编号和单一列表级起始值。
@@ -47,7 +47,7 @@
 ## 影响
 
 - `.html/.htm` 可通过 SDK、API Server、mineru-kit 和 Doclib 本地 Flash 路径生成统一多格式输出。
-- 新版 MinerU HTML 可按类型级往返；FULL 中页面辅助类型可恢复，但 HTML 输入仍固定投影为一个逻辑页，
+- 新版 DocGale HTML 可按类型级往返；FULL 中页面辅助类型可恢复，但 HTML 输入仍固定投影为一个逻辑页，
   不依据 `data-page-idx` 重建原始多页。
 - `image_url` 是 schema 2.0 内可选且默认省略的字段。
 - 打开 Markdown 或 HTML 输出时，客户端可能访问原 HTML 中保留的远程图片地址；服务端解析阶段不会访问该地址。
@@ -57,3 +57,6 @@
 
 - 如需公开 `auto/main/document` 或支持浏览器渲染，另行设计 API、配置、安全隔离和回归语料。
 - 使用文章、文档站、论坛和本地资源页面持续校准正文选择阈值，低置信结果必须保持 body 回退。
+
+2026-09-06 标记迁移：精确路径仅识别 DocGale v1 标记；此前生成的 MinerU 标记 HTML
+统一进入普通网页解析，不保留旧标记专用兼容分支。JSON 适配协议不受影响。

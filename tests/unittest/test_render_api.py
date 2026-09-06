@@ -168,8 +168,8 @@ def test_unified_render_forwards_format_specific_options() -> None:
     original_list_v2 = render(middle, RenderFormat.CONTENT_LIST_V2)
 
     assert "\n\n---\n\n" in markdown
-    assert html.startswith('<article class="mineru-document mineru-document--full" ')
-    assert 'data-mineru-html-version="1" data-render-mode="full"' in html
+    assert html.startswith('<article class="docgale-document docgale-document--full" ')
+    assert 'data-docgale-html-version="1" data-render-mode="full"' in html
     assert "<!doctype html>" not in html
     assert structured_content["pages"][0]["blocks"][0]["image_source"] == ("https://cdn.example/doc/images/a%20b.png")
     assert content_list[0]["img_path"] == "https://cdn.example/doc/images/a%20b.png"

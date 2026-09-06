@@ -120,7 +120,7 @@ def test_text_anchor_markdown_html_and_html_wire_roundtrip() -> None:
 
     rendered_html = render_html(middle)
     soup = BeautifulSoup(rendered_html, "html.parser")
-    target_wrapper = soup.select_one('.mineru-block[data-block-type="text"][data-anchor="body target"]')
+    target_wrapper = soup.select_one('.docgale-block[data-block-type="text"][data-anchor="body target"]')
     assert target_wrapper is not None
     assert target_wrapper.find("p")["id"] == "body-target"
     assert soup.select_one('[data-block-type="index"] a')["href"] == "#body-target"
