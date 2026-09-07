@@ -118,11 +118,11 @@ def test_office_conversion_never_replaces_uploaded_preview(
         return [update async for update in handler(str(source), 0, "")]
 
     updates = asyncio.run(collect())
-    assert updates and all(update[4:8] == ({"__type__": "update"},) * 4 for update in updates)
-    assert bool(updates[-1][8]) is (outcome == "success")
-    assert all(item["interactive"] is (outcome == "success") for item in updates[-1][-6:])
+    assert updates and all(update[2:6] == ({"__type__": "update"},) * 4 for update in updates)
+    assert bool(updates[-1][6]) is (outcome == "success")
+    assert all(item["interactive"] is (outcome == "success") for item in updates[-1][-7:])
     if outcome == "success":
-        assert "hello-0" in updates[-1][2]
+        assert "hello-0" in updates[-1][1]
     else:
         assert "Failed:" in updates[-1][0]
     preview = next(fn.fn for fn in demo.fns.values() if fn.name == "update_file_preview")

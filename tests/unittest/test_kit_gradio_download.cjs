@@ -17,7 +17,7 @@ global.window = { __mineruI18n: vm.runInThisContext(fs.readFileSync(
     path.join(__dirname, "../../mineru/resources/gradio_i18n.js"), "utf8"
 ))(JSON.parse(fs.readFileSync(0, "utf8"))) };
 const reduce = vm.runInThisContext(fs.readFileSync(path.join(__dirname, "../../mineru/resources/gradio_download.js"), "utf8"));
-const formats = [["zip", "ZIP"], ["html", "HTML"], ["docx", "DOCX"], ["latex", "LaTeX bundle"], ["epub", "EPUB"], ["pdf", "PDF"]];
+const formats = [["markdown", "Markdown"], ["json", "JSON"], ["html", "HTML"], ["docx", "DOCX"], ["latex", "LaTeX"], ["epub", "EPUB"], ["pdf", "PDF"]];
 // 调用实际产品脚本，保持 DOM 替身只负责记录下载行为。
 const step = (action, format = "", ...args) => reduce(action, formats, format, formats.find(([name]) => name === format)?.[1], ...args);
 const receipt = (request, error = "") => JSON.stringify({ request, error });
@@ -33,7 +33,7 @@ for (const [format, label] of formats) {
         const [ready, notice] = step("complete", format, file, receipt(token), "run-a");
         assert.equal(downloads.length, count + 1);
         assert.deepEqual(downloads.at(-1), [file.url, file.orig_name]);
-        assert.equal(ready.value, label === "LaTeX bundle" ? "LaTeX 压缩包" : label);
+        assert.equal(ready.value, label);
         assert.equal(ready.interactive, true);
         assert.equal(notice, "");
         step("complete", format, file, receipt(token), "run-a");
@@ -49,8 +49,8 @@ const [retry] = step("begin", "pdf", "run-a");
 const count = downloads.length;
 const reset = step("reset");
 assert.equal(reset[0], "");
-assert.deepEqual(reset.slice(1, 7), Array(6).fill(null));
-assert.ok(reset.slice(-7, -1).every(update => update.interactive === false));
+assert.deepEqual(reset.slice(1, 8), Array(7).fill(null));
+assert.ok(reset.slice(-8, -1).every(update => update.interactive === false));
 step("activate", "", "run-b");
 const [current] = step("begin", "pdf", "run-b");
 assert.deepEqual(step("busy", "pdf", retry, "run-b"), [{ __type__: "update" }, { __type__: "update" }]);

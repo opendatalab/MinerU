@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-import base64
+import hashlib
+import html
 import json
 import re
 import shutil
@@ -10,8 +11,9 @@ import uuid
 import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any, Callable, Literal, cast
-from urllib.parse import quote
+from urllib.parse import quote, unquote, urlsplit
 
 from loguru import logger
 
@@ -28,7 +30,6 @@ from ...render import (
     MarkdownRenderOptions,
     PdfRenderOptions,
     RenderFormat,
-    RenderMode,
     StructuredContentRenderOptions,
     render,
 )
@@ -36,10 +37,8 @@ from ...types import BlockBase, ImagePayloadBlock, MiddleJson
 from docvortex.foundation.image_payload import parse_image_data_uri_strict
 from docvortex.foundation.image_payload import validate_image_sidecar_path
 
-DownloadFormat = Literal["zip", "html", "docx", "latex", "epub", "pdf"]
+DownloadFormat = Literal["markdown", "json", "html", "docx", "latex", "epub", "pdf"]
 
-_IMAGE_DATA_URI_RE = re.compile(r"data:image/[A-Za-z0-9.+-]+;base64,[A-Za-z0-9+/=]+")
-_MARKDOWN_IMAGE_RE = re.compile(r"!\[(?P<alt>[^\]]*)\]\((?P<src>[^)]+)\)")
 _HTML_IMAGE_RE = re.compile(
     r"(?P<prefix><img\b[^>]*?\bsrc\s*=\s*)(?P<quote>[\"'])(?P<src>[^\"']+)(?P=quote)",
     re.IGNORECASE,
@@ -57,7 +56,6 @@ class RunArtifacts:
     middle_json_path: Path
     markdown_path: Path
     structured_content_path: Path
-    bundle_zip_path: Path
     downloads_dir: Path
     file_suffix: str
     origin_pdf_path: Path | None = None
@@ -74,7 +72,6 @@ class RunArtifacts:
             "middle_json_path": str(self.middle_json_path),
             "markdown_path": str(self.markdown_path),
             "structured_content_path": str(self.structured_content_path),
-            "bundle_zip_path": str(self.bundle_zip_path),
             "downloads_dir": str(self.downloads_dir),
             "file_suffix": self.file_suffix,
             "origin_pdf_path": str(self.origin_pdf_path) if self.origin_pdf_path else "",
@@ -95,7 +92,6 @@ class RunArtifacts:
             "middle_json_path",
             "markdown_path",
             "structured_content_path",
-            "bundle_zip_path",
             "downloads_dir",
             "file_suffix",
         )
@@ -124,7 +120,6 @@ class RunArtifacts:
                 "middle_json_path",
                 "markdown_path",
                 "structured_content_path",
-                "bundle_zip_path",
                 "downloads_dir",
             )
         ]
@@ -141,7 +136,6 @@ class RunArtifacts:
             middle_json_path=Path(cast(str, state["middle_json_path"])).resolve(),
             markdown_path=Path(cast(str, state["markdown_path"])).resolve(),
             structured_content_path=Path(cast(str, state["structured_content_path"])).resolve(),
-            bundle_zip_path=Path(cast(str, state["bundle_zip_path"])).resolve(),
             downloads_dir=Path(cast(str, state["downloads_dir"])).resolve(),
             file_suffix=cast(str, state["file_suffix"]),
             origin_pdf_path=optional_paths[0],
@@ -179,11 +173,7 @@ class _ImageContext:
         except Exception as exc:
             logger.warning("Failed to crop Gradio PDF image page={} bbox={}: {}", source_page_idx, bbox, exc)
             return None
-        relative = f"images/page_{source_page_idx}_{_safe_type_name(str(block.type))}_{block.index or 0}.jpg"
-        relative = _unique_relative_image_name(relative, self.image_paths.values())
-        target = self.output_dir / relative
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(data)
+        relative = _write_materialized_asset(self.output_dir, data, "jpg")
         self.image_paths[key] = relative
         return relative, data
 
@@ -207,7 +197,6 @@ def create_run_artifacts(source_path: Path, output_root: Path) -> RunArtifacts:
         middle_json_path=root / "middle_json.json",
         markdown_path=root / "markdown.md",
         structured_content_path=root / "structured_content.json",
-        bundle_zip_path=root / f"{stem}.zip",
         downloads_dir=downloads_dir,
         file_suffix=source_suffix.removeprefix("."),
     )
@@ -220,10 +209,9 @@ def persist_parse_result(
     output_root: Path,
     page_range: str,
 ) -> RunArtifacts:
-    """保存 V1 ParseResult，并生成旧 UI 所需的 Markdown、JSON 和预览文件。"""
+    """保存图片已物化的语义副本，并生成 Markdown、Structured Content 和预览文件。"""
     artifacts = create_run_artifacts(source_path, output_root)
     shutil.copyfile(source_path, artifacts.source_path)
-    artifacts.middle_json_path.write_text(result.to_json(), encoding="utf-8")
     if result._model_output is not None:
         model_output = result._model_output.to_dict(skip_defaults=False)
         (artifacts.root / "model_output.json").write_text(
@@ -244,26 +232,24 @@ def persist_parse_result(
         origin_pdf,
         artifacts.root,
         page_indices=artifacts.page_indices,
+        asset_root=source_path.parent,
     )
     try:
+        materialized = _materialize_middle_json(result.middle_json, image_context)
+        artifacts.middle_json_path.write_text(ParseResult(middle_json=materialized).to_json(), encoding="utf-8")
         markdown = cast(
             str,
             render(
-                result.middle_json,
+                materialized,
                 RenderFormat.MARKDOWN,
-                options=MarkdownRenderOptions(
-                    mode=RenderMode.DEFAULT,
-                    image_renderer=(lambda block: _markdown_image_for_block(image_context, block, result.middle_json))
-                    if image_context.source_pdf is not None
-                    else None,
-                ),
+                options=MarkdownRenderOptions(),
             ),
         )
         artifacts.markdown_path.write_text(markdown, encoding="utf-8")
         structured = cast(
             dict[str, Any],
             render(
-                result.middle_json,
+                materialized,
                 RenderFormat.STRUCTURED_CONTENT,
                 options=StructuredContentRenderOptions(),
             ),
@@ -291,66 +277,65 @@ def persist_parse_result(
         else:
             artifacts.layout_pdf_path = layout_path
 
-    build_bundle_zip(artifacts)
     return artifacts
 
 
-def build_bundle_zip(artifacts: RunArtifacts) -> Path:
-    """把当前任务的源文件和基础产物压缩为用户可下载的 ZIP。"""
-    _ensure_path_inside(artifacts.root, artifacts.bundle_zip_path)
-    with zipfile.ZipFile(artifacts.bundle_zip_path, "w", zipfile.ZIP_DEFLATED) as archive:
-        for path in sorted(artifacts.root.rglob("*")):
-            if path.is_symlink():
-                raise ValueError(f"Artifact tree must not contain symlinks: {path}")
-            if not path.is_file() or path == artifacts.bundle_zip_path or artifacts.downloads_dir in path.parents:
-                continue
-            relative = path.relative_to(artifacts.root).as_posix()
-            validate_image_sidecar_path(relative)
-            archive.write(path, arcname=relative)
-    return artifacts.bundle_zip_path
+def render_html_preview(artifacts: RunArtifacts, *, public_base_url: str) -> str:
+    """用独立 iframe 展示公共 HTML renderer 的完整输出，保留样式及公式脚本。"""
+    value = _render_html(artifacts, public_base_url=public_base_url)
+    return (
+        '<iframe class="mineru-rendered-html-frame" title="Markdown preview" '
+        'sandbox="allow-scripts allow-popups" '
+        f'srcdoc="{html.escape(value, quote=True)}"></iframe>'
+    )
 
 
-def markdown_for_gradio(markdown: str, artifacts: RunArtifacts) -> str:
-    """把任务目录中的相对图片路径转换为 Gradio 可访问的绝对文件 URL。"""
-    if not isinstance(markdown, str):
-        return ""
-
-    def _resolve(src: str) -> str | None:
-        """解析并校验任务目录内的图片引用。"""
-        normalized = src.strip()
-        if not normalized or _is_external_source(normalized):
-            return None
-        try:
-            safe = validate_image_sidecar_path(normalized)
-        except ValueError:
-            return None
-        candidate = (artifacts.root / safe).resolve()
-        try:
-            candidate.relative_to(artifacts.root.resolve())
-        except ValueError:
-            return None
-        if not candidate.is_file() or candidate.suffix.lower() not in _IMAGE_SUFFIXES:
-            return None
-        return f"/gradio_api/file={quote(str(candidate), safe='/:')}"
-
-    def replace_markdown(match: re.Match[str]) -> str:
-        """替换 Markdown 图片链接，保留无法安全解析的原文。"""
-        public = _resolve(match.group("src"))
-        return f"![{match.group('alt')}]({public})" if public else match.group(0)
-
-    result = _MARKDOWN_IMAGE_RE.sub(replace_markdown, markdown)
-
-    def replace_html(match: re.Match[str]) -> str:
-        """替换 HTML img 的本地图片链接。"""
-        public = _resolve(match.group("src"))
-        if public is None:
-            return match.group(0)
-        return f"{match.group('prefix')}{match.group('quote')}{public}{match.group('quote')}"
-
-    return _HTML_IMAGE_RE.sub(replace_html, result)
+def _render_html(artifacts: RunArtifacts, *, public_base_url: str) -> str:
+    """把已物化语义树渲染为使用当前 Gradio 静态图片地址的独立 HTML。"""
+    if urlsplit(public_base_url).scheme not in {"http", "https"} or not urlsplit(public_base_url).netloc:
+        raise ValueError("HTML rendering requires the current Gradio HTTP base URL")
+    result = ParseResult.from_json(artifacts.middle_json_path.read_text(encoding="utf-8"))
+    asset_base_url = f"{public_base_url.rstrip('/')}/gradio_api/file={quote(str(artifacts.root), safe='/:')}"
+    return cast(
+        str,
+        render(
+            result.middle_json,
+            RenderFormat.HTML,
+            options=HtmlRenderOptions(
+                standalone=True,
+                document_title=artifacts.stem,
+                asset_base_url=asset_base_url,
+            ),
+        ),
+    )
 
 
-def render_download(artifacts_state: object, format_name: str, *, allowed_root: Path | None = None) -> str:
+def _build_text_download(artifacts: RunArtifacts, format_name: Literal["markdown", "json"]) -> Path:
+    """仅打包所选正文文件和物化图片，所有 ZIP 成员使用相对路径。"""
+    source = artifacts.markdown_path if format_name == "markdown" else artifacts.structured_content_path
+    extension = "md" if format_name == "markdown" else "json"
+    target = artifacts.downloads_dir / f"{artifacts.stem}_{format_name}.zip"
+    _ensure_path_inside(artifacts.root, target)
+    images = artifacts.root / "images"
+    _ensure_path_inside(artifacts.root, images)
+    files = [(source, f"{artifacts.stem}.{extension}")]
+    for path in sorted(images.rglob("*")):
+        _ensure_path_inside(images, path)
+        if path.is_symlink():
+            raise ValueError(f"Image assets must not contain symlinks: {path}")
+        if path.is_file():
+            files.append((path, path.relative_to(artifacts.root).as_posix()))
+    _write_archive(files, target)
+    return target
+
+
+def render_download(
+    artifacts_state: object,
+    format_name: str,
+    *,
+    allowed_root: Path | None = None,
+    public_base_url: str = "",
+) -> str:
     """从已保存 Middle JSON 按需生成指定下载文件，并返回绝对路径。"""
     artifacts = RunArtifacts.from_state(artifacts_state)
     if allowed_root is not None:
@@ -360,58 +345,35 @@ def render_download(artifacts_state: object, format_name: str, *, allowed_root: 
             artifacts.middle_json_path,
             artifacts.markdown_path,
             artifacts.structured_content_path,
-            artifacts.bundle_zip_path,
             artifacts.downloads_dir,
         ):
             _ensure_path_inside(artifacts.root, path)
-    if format_name not in {"zip", "html", "docx", "latex", "epub", "pdf"}:
+    if format_name not in {"markdown", "json", "html", "docx", "latex", "epub", "pdf"}:
         raise ValueError(f"Unsupported download format: {format_name}")
     download_format = cast(DownloadFormat, format_name)
+    # HTML 总是使用本次请求的站点地址，不能复用其他域名下生成的文件。
+    if download_format == "html":
+        target = artifacts.downloads_dir / f"{artifacts.stem}.html"
+        _ensure_path_inside(artifacts.root, target)
+        target.write_text(_render_html(artifacts, public_base_url=public_base_url), encoding="utf-8")
+        return str(target)
     cached = artifacts.generated_downloads.get(download_format)
     if cached is not None and cached.is_file():
         return str(cached)
     inferred_cache = _inferred_download_path(artifacts, download_format)
     if inferred_cache is not None and inferred_cache.is_file():
         return str(inferred_cache)
-    if download_format == "zip":
-        return str(build_bundle_zip(artifacts))
+    if download_format in {"markdown", "json"}:
+        return str(_build_text_download(artifacts, cast(Literal["markdown", "json"], download_format)))
 
     result = ParseResult.from_json(artifacts.middle_json_path.read_text(encoding="utf-8"))
     middle_json = result.middle_json
-    source_pdf = artifacts.origin_pdf_path if artifacts.origin_pdf_path and artifacts.origin_pdf_path.is_file() else None
-    page_indices = artifacts.page_indices
-    if source_pdf is None:
-        source_pdf, resolved_page_indices = _prepare_origin_pdf(
-            artifacts.source_path,
-            page_range="",
-            output_path=artifacts.downloads_dir / f".{artifacts.stem}_render_source.pdf",
-            keep_existing=True,
-        )
-        page_indices = tuple(resolved_page_indices)
-    image_context = _build_image_context(
-        middle_json,
-        source_pdf,
-        artifacts.root,
-        page_indices=page_indices,
-    )
+    image_context = _build_image_context(middle_json, None, artifacts.root)
     try:
-        if download_format == "html":
-            target = artifacts.downloads_dir / f"{artifacts.stem}.html"
-            _ensure_path_inside(artifacts.root, target)
-            html_middle = _materialize_middle_json(middle_json, image_context, mode="inline")
-            value = cast(
-                str,
-                render(
-                    html_middle,
-                    RenderFormat.HTML,
-                    options=HtmlRenderOptions(standalone=True, document_title=artifacts.stem),
-                ),
-            )
-            target.write_text(value, encoding="utf-8")
-        elif download_format == "docx":
+        if download_format == "docx":
             target = artifacts.downloads_dir / f"{artifacts.stem}.docx"
             _ensure_path_inside(artifacts.root, target)
-            docx_middle = _materialize_middle_json(middle_json, image_context, mode="path")
+            docx_middle = _materialize_middle_json(middle_json, image_context)
             value = cast(
                 bytes,
                 render(
@@ -424,7 +386,7 @@ def render_download(artifacts_state: object, format_name: str, *, allowed_root: 
         elif download_format == "epub":
             target = artifacts.downloads_dir / f"{artifacts.stem}.epub"
             _ensure_path_inside(artifacts.root, target)
-            epub_middle = _materialize_middle_json(middle_json, image_context, mode="path")
+            epub_middle = _materialize_middle_json(middle_json, image_context)
             value = cast(
                 bytes,
                 render(
@@ -437,7 +399,7 @@ def render_download(artifacts_state: object, format_name: str, *, allowed_root: 
         elif download_format == "pdf":
             target = artifacts.downloads_dir / f"{artifacts.stem}_rendered.pdf"
             _ensure_path_inside(artifacts.root, target)
-            pdf_middle = _materialize_middle_json(middle_json, image_context, mode="path")
+            pdf_middle = _materialize_middle_json(middle_json, image_context)
             value = cast(
                 bytes,
                 render(
@@ -458,13 +420,12 @@ def render_download(artifacts_state: object, format_name: str, *, allowed_root: 
             latex_root.mkdir(parents=True, exist_ok=True)
             latex_context = _build_image_context(
                 middle_json,
-                source_pdf,
+                None,
                 latex_root,
-                page_indices=page_indices,
                 asset_root=artifacts.root,
             )
             try:
-                latex_middle = _materialize_middle_json(middle_json, latex_context, mode="path")
+                latex_middle = _materialize_middle_json(middle_json, latex_context)
                 latex_text = cast(
                     str,
                     render(
@@ -479,7 +440,6 @@ def render_download(artifacts_state: object, format_name: str, *, allowed_root: 
             finally:
                 _close_image_context(latex_context)
         _ensure_path_inside(artifacts.root, target)
-        build_bundle_zip(artifacts)
         artifacts.generated_downloads[download_format] = target
         return str(target)
     finally:
@@ -571,23 +531,11 @@ def _close_image_context(context: _ImageContext) -> None:
         context.source_pdf.close()
 
 
-def _markdown_image_for_block(context: _ImageContext, block: BlockBase, middle_json: MiddleJson) -> str:
-    """为 Markdown renderer 提供当前视觉 block 的相对图片引用。"""
-    page_idx = _find_block_page_idx(middle_json, block)
-    if page_idx is None:
-        return ""
-    cropped = context.crop_for_block(block, middle_page_idx=page_idx)
-    if cropped is None:
-        return ""
-    relative, _data = cropped
-    return f"![{str(block.type)}]({relative})"
-
-
-def _materialize_middle_json(middle_json: MiddleJson, context: _ImageContext, *, mode: Literal["path", "inline"]) -> MiddleJson:
+def _materialize_middle_json(middle_json: MiddleJson, context: _ImageContext) -> MiddleJson:
     """复制 Middle JSON，并为 PDF bbox 或 inline image 准备目标 renderer 所需的图片载荷。"""
     copied = middle_json.model_copy(deep=True)
     for page in copied.pages:
-        page.blocks = [_materialize_block(block, context, middle_page_idx=page.page_idx, mode=mode) for block in page.blocks]
+        page.blocks = [_materialize_block(block, context, middle_page_idx=page.page_idx) for block in page.blocks]
     return copied
 
 
@@ -596,7 +544,6 @@ def _materialize_block(
     context: _ImageContext,
     *,
     middle_page_idx: int,
-    mode: Literal["path", "inline"],
 ) -> BlockBase:
     """递归复制 block 树，并统一处理图片 data URI、sidecar 和 PDF bbox。"""
     updates: dict[str, Any] = {}
@@ -621,87 +568,51 @@ def _materialize_block(
                 relative, data = cropped
                 extension = Path(relative).suffix.lstrip(".") or extension
         if data:
-            if mode == "inline":
-                updates["image_base64"] = _data_uri(data, extension)
-                updates["image_path"] = None
-            else:
-                relative = _write_materialized_asset(context.output_dir, data, extension, block, middle_page_idx)
-                updates["image_path"] = relative
-                updates["image_base64"] = None
+            updates["image_path"] = _write_materialized_asset(context.output_dir, data, extension)
+            updates["image_base64"] = None
+            updates["image_url"] = None
 
     content = getattr(block, "content", None)
     if isinstance(content, list):
-        updates["content"] = [
-            _materialize_block(child, context, middle_page_idx=middle_page_idx, mode=mode) for child in content
-        ]
+        updates["content"] = [_materialize_block(child, context, middle_page_idx=middle_page_idx) for child in content]
     elif isinstance(content, str) and "<img" in content.lower():
-        if mode == "path":
-            updates["content"] = _replace_inline_images_in_markup(content, context.output_dir, block, middle_page_idx)
-        else:
-            updates["content"] = _inline_relative_images_in_markup(content, context.asset_root)
+        updates["content"] = _materialize_markup_images(content, context)
+
     return block.model_copy(update=updates, deep=True) if updates else block
 
 
-def _write_materialized_asset(
-    output_dir: Path,
-    data: bytes,
-    extension: str,
-    block: BlockBase,
-    page_idx: int,
-    *,
-    ordinal: int = 0,
-) -> str:
-    """把图片写入受控目录并返回安全相对路径。"""
+def _write_materialized_asset(output_dir: Path, data: bytes, extension: str) -> str:
+    """按图片内容生成稳定文件名，避免无 index 的嵌套图片互相覆盖。"""
     safe_extension = extension.lower().lstrip(".") or "jpg"
-    suffix = f"_{ordinal}" if ordinal > 0 else ""
-    relative = f"images/page_{page_idx}_{_safe_type_name(str(block.type))}_{block.index or 0}{suffix}.{safe_extension}"
-    relative = validate_image_sidecar_path(relative)
+    if f".{safe_extension}" not in _IMAGE_SUFFIXES:
+        raise ValueError(f"Unsupported image extension: {extension}")
+    relative = f"images/{hashlib.sha256(data).hexdigest()}.{safe_extension}"
     target = output_dir / relative
+    _ensure_path_inside(output_dir, target)
     target.parent.mkdir(parents=True, exist_ok=True)
     if not target.exists():
         target.write_bytes(data)
     return relative
 
 
-def _replace_inline_images_in_markup(content: str, output_dir: Path, block: BlockBase, page_idx: int) -> str:
-    """将 HTML 字符串中的 data URI 图片外置为安全相对路径。"""
-    ordinal = 0
+def _materialize_markup_images(content: str, context: _ImageContext) -> str:
+    """将内嵌 HTML 的 data URI 和已有相对图片统一复制到目标 images 目录。"""
 
     def replace(match: re.Match[str]) -> str:
-        """写出匹配到的内嵌图片并返回相对 sidecar 路径。"""
-        nonlocal ordinal
-        ordinal += 1
-        try:
-            data, extension = parse_image_data_uri_strict(match.group(0))
-        except ValueError:
+        """解析一个 img 的图片载荷并保留原有 HTML 属性及引号。"""
+        source = html.unescape(match.group("src")).strip()
+        if source.startswith("data:"):
+            data, extension = parse_image_data_uri_strict(source)
+        elif _is_external_source(source):
             return match.group(0)
-        relative = _write_materialized_asset(output_dir, data, extension, block, page_idx, ordinal=ordinal)
-        return relative
-
-    return _IMAGE_DATA_URI_RE.sub(replace, content)
-
-
-def _inline_relative_images_in_markup(content: str, root: Path) -> str:
-    """将已有 HTML sidecar 引用读取为 data URI，保证 HTML 下载单文件可用。"""
-
-    def replace(match: re.Match[str]) -> str:
-        """读取一个安全相对图片并替换 src 属性。"""
-        source = match.group("src").strip()
-        if _is_external_source(source):
-            return match.group(0)
-        try:
-            safe_path = validate_image_sidecar_path(source)
-        except ValueError:
-            return match.group(0)
-        candidate = (root / safe_path).resolve()
-        try:
-            candidate.relative_to(root.resolve())
-        except ValueError:
-            return match.group(0)
-        if not candidate.is_file():
-            return match.group(0)
-        uri = _data_uri(candidate.read_bytes(), candidate.suffix.lstrip(".") or "png")
-        return f"{match.group('prefix')}{match.group('quote')}{uri}{match.group('quote')}"
+        else:
+            safe_path = validate_image_sidecar_path(unquote(source))
+            candidate = context.asset_root / safe_path
+            _ensure_path_inside(context.asset_root, candidate)
+            data = candidate.read_bytes()
+            extension = candidate.suffix.lstrip(".")
+        relative = _write_materialized_asset(context.output_dir, data, extension)
+        return f"{match.group('prefix')}{match.group('quote')}{relative}{match.group('quote')}"
 
     return _HTML_IMAGE_RE.sub(replace, content)
 
@@ -722,45 +633,34 @@ def _asset_resolver(root: Path) -> Callable[[str], bytes]:
     return resolve
 
 
-def _find_block_page_idx(middle_json: MiddleJson, target: BlockBase) -> int | None:
-    """按 block 类型、index 和 bbox 查找视觉 block 所属页面。"""
-    target_key = _block_lookup_key(target)
-    for page in middle_json.pages:
-        pending: list[BlockBase] = list(page.blocks)
-        while pending:
-            block = pending.pop()
-            if block is target or _block_lookup_key(block) == target_key:
-                return page.page_idx
-            content = getattr(block, "content", None)
-            if isinstance(content, list):
-                pending.extend(child for child in content if isinstance(child, BlockBase))
-    return None
-
-
-def _block_lookup_key(block: BlockBase) -> tuple[str, int | None, tuple[float, ...] | None]:
-    """生成跨 renderer 深拷贝仍稳定的 block 查找键。"""
-    block_type = getattr(block.type, "value", block.type)
-    bbox = tuple(float(item) for item in block.bbox) if block.bbox is not None else None
-    return str(block_type), block.index, bbox
-
-
 def _zip_directory(directory: Path, target: Path) -> None:
     """将目录内容压缩为稳定的相对路径 ZIP。"""
-    with zipfile.ZipFile(target, "w", zipfile.ZIP_DEFLATED) as archive:
-        for path in sorted(directory.rglob("*")):
-            if path.is_symlink():
-                raise ValueError(f"LaTeX artifact tree must not contain symlinks: {path}")
-            if path.is_file() and path != target:
-                relative = path.relative_to(directory).as_posix()
+    files: list[tuple[Path, str]] = []
+    for path in sorted(directory.rglob("*")):
+        _ensure_path_inside(directory, path)
+        if path.is_symlink():
+            raise ValueError(f"Artifact tree must not contain symlinks: {path}")
+        if path.is_file() and path != target:
+            files.append((path, path.relative_to(directory).as_posix()))
+    _write_archive(files, target)
+
+
+def _write_archive(files: list[tuple[Path, str]], target: Path) -> None:
+    """完整写出后再发布 ZIP，失败时不留下会被下次请求误用的半成品缓存。"""
+    with TemporaryDirectory(prefix=".bundle-", dir=target.parent) as directory:
+        pending = Path(directory) / target.name
+        with zipfile.ZipFile(pending, "w", zipfile.ZIP_DEFLATED) as archive:
+            for path, relative in files:
                 validate_image_sidecar_path(relative)
                 archive.write(path, arcname=relative)
+        pending.replace(target)
 
 
 def _inferred_download_path(artifacts: RunArtifacts, format_name: DownloadFormat) -> Path | None:
     """根据稳定命名规则定位已生成的下载文件，避免 State 未更新时重复渲染。"""
-    if format_name == "zip":
-        return artifacts.bundle_zip_path
     names = {
+        "markdown": f"{artifacts.stem}_markdown.zip",
+        "json": f"{artifacts.stem}_json.zip",
         "html": f"{artifacts.stem}.html",
         "docx": f"{artifacts.stem}.docx",
         "latex": f"{artifacts.stem}_latex.zip",
@@ -795,30 +695,6 @@ def _safe_stem(value: str) -> str:
     return encoded[:120].decode("utf-8", errors="ignore") or "document"
 
 
-def _safe_type_name(value: str) -> str:
-    """把 block 类型转换为稳定的文件名片段。"""
-    return re.sub(r"[^A-Za-z0-9_-]+", "_", value).strip("_") or "image"
-
-
-def _unique_relative_image_name(relative: str, existing: Any) -> str:
-    """在同一任务中为重复图片路径追加稳定序号。"""
-    existing_set = set(existing)
-    if relative not in existing_set:
-        return relative
-    path = Path(relative)
-    for index in range(2, 10000):
-        candidate = path.with_name(f"{path.stem}_{index}{path.suffix}").as_posix()
-        if candidate not in existing_set:
-            return candidate
-    raise ValueError("Too many duplicate image assets")
-
-
-def _data_uri(data: bytes, extension: str) -> str:
-    """按图片扩展名生成严格的 image data URI。"""
-    subtype = {"jpg": "jpeg", "jpeg": "jpeg", "svg": "svg+xml"}.get(extension.lower(), extension.lower())
-    return f"data:image/{subtype};base64,{base64.b64encode(data).decode('ascii')}"
-
-
 def _is_external_source(value: str) -> bool:
     """判断图片引用是否已经是 scheme URL 或 data URI。"""
     return bool(re.match(r"^[A-Za-z][A-Za-z0-9+.-]*:", value))
@@ -827,9 +703,8 @@ def _is_external_source(value: str) -> bool:
 __all__ = [
     "DownloadFormat",
     "RunArtifacts",
-    "build_bundle_zip",
     "create_run_artifacts",
-    "markdown_for_gradio",
+    "render_html_preview",
     "persist_parse_result",
     "render_download",
 ]

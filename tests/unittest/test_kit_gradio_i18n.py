@@ -118,26 +118,26 @@ def test_conversion_preserves_all_preview_components_until_success(
         try:
             await asyncio.wait_for(started.wait(), timeout=3)
             assert updates
-            assert all(update[4:8] == ({"__type__": "update"},) * 4 for update in updates)
+            assert all(update[2:6] == ({"__type__": "update"},) * 4 for update in updates)
             finish.set()
             await asyncio.wait_for(consumer, timeout=10)
         finally:
             if not consumer.done():
                 consumer.cancel()
             await asyncio.gather(consumer, return_exceptions=True)
-        assert all(update[4:8] == ({"__type__": "update"},) * 4 for update in updates[:-1])
+        assert all(update[2:6] == ({"__type__": "update"},) * 4 for update in updates[:-1])
         if outcome == "success":
-            assert updates[-1][7]["visible"] is True
-            assert "结果已生成" in updates[-1][7]["value"]
-            assert updates[-1][8] is not None
+            assert updates[-1][5]["visible"] is True
+            assert "结果已生成" in updates[-1][5]["value"]
+            assert updates[-1][6] is not None
         else:
-            assert updates[-1][4:8] == ({"__type__": "update"},) * 4
-            assert updates[-1][8] is None
+            assert updates[-1][2:6] == ({"__type__": "update"},) * 4
+            assert updates[-1][6] is None
             assert "Failed:" in updates[-1][0]
         # 真正的清除仍会重置预览，文件切换仍按新文件类型展示。
         reset = next(fn.fn for fn in demo.fns.values() if fn.name == "reset_ui")
         preview = next(fn.fn for fn in demo.fns.values() if fn.name == "update_file_preview")
-        assert reset()[4]["value"] is None and reset()[7]["visible"] is True
+        assert reset()[2]["value"] is None and reset()[5]["visible"] is True
         assert preview("new.pdf")[0]["value"] == "new.pdf"
 
     asyncio.run(scenario())
