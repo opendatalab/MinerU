@@ -1,4 +1,6 @@
 from __future__ import annotations
+from docvortex.compat.mineru import from_mineru_middle
+from docvortex.export.middle import export_middle_json
 
 import asyncio
 import base64
@@ -20,15 +22,16 @@ from PIL import Image
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
 from mineru.errors import InvalidRequestError
 from mineru.doclib.services.parse_svc import ParseService
-from mineru.model.flash import HtmlModel
-from mineru.model.flash._shared.markup import MarkupProjector
-from mineru.model.flash.html import HtmlResourceLimitError, HtmlSourceContext
-from mineru.model.flash.html import converter as html_converter_module
-from mineru.model.flash.html import document as html_document_module
-from mineru.model.flash.html import resources as html_resources_module
-from mineru.model.flash.html import selector as html_selector_module
-from mineru.model.flash.html.resources import HtmlResourceContext
-from mineru.model.flash.html.wire import decode_mineru_html_wire
+from docvortex.analyzers.native import HtmlModel
+from docvortex.analyzers.native._shared.markup import MarkupProjector
+from docvortex.analyzers.native.html import HtmlResourceLimitError
+from docvortex.analyzers.native.html import HtmlSourceContext
+from docvortex.analyzers.native.html import converter as html_converter_module
+from docvortex.analyzers.native.html import document as html_document_module
+from docvortex.analyzers.native.html import resources as html_resources_module
+from docvortex.analyzers.native.html import selector as html_selector_module
+from docvortex.analyzers.native.html.resources import HtmlResourceContext
+from docvortex.codecs.html import decode_docvortex_html_wire
 from mineru.parser import ParseResult, parse, parse_async
 from mineru.parser import api_server
 from mineru.parser.api_server import CreateJobRequest, FileStore
@@ -58,7 +61,7 @@ def _image_body(middle: MiddleJson) -> ImageBodyBlock:
 
 def _wire_contract_middle() -> MiddleJson:
     """构造覆盖全部顶层类型、visual child、列表和目录叶子的严格文档。"""
-    return MiddleJson.model_validate(
+    return from_mineru_middle(
         {
             "pages": [
                 {
@@ -242,8 +245,8 @@ def test_html_doc_analyze_projects_static_semantics_and_renderers() -> None:
     assert middle.model_dump() == async_middle.model_dump()
     assert model.pages == async_model.pages
     assert middle.file_suffix == model.file_suffix == "html"
-    assert middle.effort == model.effort == "flash"
-    assert middle.parse_mode == model.parse_mode == "txt"
+    assert middle.extensions["mineru"]["effort"] == model.extensions["mineru"]["effort"] == "flash"
+    assert middle.extensions["mineru"]["parse_mode"] == model.extensions["mineru"]["parse_mode"] == "txt"
     assert middle.is_full_document is True
     assert [page.page_idx for page in middle.pages] == [0]
     assert all(block.bbox is None for block in middle.pages[0].blocks)
@@ -347,7 +350,6 @@ def test_html_parse_server_url_preserves_http_declared_charset(tmp_path: Path, m
             record,
             request,
             file_store,
-            ocr_mode="auto",
             image_analysis=True,
         )
     )
@@ -398,7 +400,6 @@ def test_html_parse_server_url_accepts_extensionless_text_html(
             record,
             request,
             file_store,
-            ocr_mode="auto",
             image_analysis=True,
         )
     )
@@ -466,7 +467,6 @@ def test_html_parse_server_no_flash_rejects_extensionless_text_html_after_fetch(
             record,
             request,
             file_store,
-            ocr_mode="auto",
             image_analysis=True,
             flash_enabled=False,
         )
@@ -622,7 +622,7 @@ def test_html_referenced_external_footnote_keeps_anchor_and_content() -> None:
     assert footnote.anchor == "html-e31e5112c08d4945a7af"  # type: ignore[union-attr]
     assert "Footnote body." in inline_text(footnote.content)  # type: ignore[union-attr]
     assert f"](#{footnote.anchor})" in markdown  # type: ignore[union-attr]
-    assert f'id="{footnote.anchor}" class="mineru-page-footnote"' in markdown  # type: ignore[union-attr]
+    assert f'id="{footnote.anchor}" class="docvortex-page-footnote"' in markdown  # type: ignore[union-attr]
 
 
 def test_html_structured_only_footnote_does_not_create_dangling_anchor() -> None:
@@ -882,7 +882,7 @@ def test_html_formula_sources_are_normalized_without_duplicate_katex_text() -> N
       <annotation encoding="application/x-tex">q_4</annotation></semantics></math>
       <span>mathjax duplicate</span></span>
       <span data-expr="z_3">formula fallback</span></p>
-      <div class="mineru-math mineru-math--block">\[w^4\]</div></body></html>"""
+      <div class="docvortex-math docvortex-math--block">\[w^4\]</div></body></html>"""
 
     middle = doc_analyze(payload, file_suffix="html")[0]
     markdown = render_markdown(middle)
@@ -939,9 +939,9 @@ def test_html_generic_formula_class_wrappers_preserve_mixed_content() -> None:
 
 
 def test_html_mineru_page_footnote_marker_roundtrips_as_page_footnote() -> None:
-    """验证 MinerU HTML renderer 的轻量脚注 marker 可恢复统一 page_footnote block。"""
+    """验证 DocVortex HTML renderer 的轻量脚注 marker 可恢复统一 page_footnote block。"""
     payload = b"""<html><body><h1>Footnote</h1>
-      <div class="mineru-page-footnote" data-block-type="page_footnote">Rendered footnote.</div>
+      <div class="docvortex-page-footnote" data-block-type="page_footnote">Rendered footnote.</div>
     </body></html>"""
 
     middle = doc_analyze(payload, file_suffix="html")[0]
@@ -977,9 +977,9 @@ def test_html_arbitrary_svg_data_image_degrades_to_alt_text() -> None:
 
 def test_html_mineru_figure_keeps_real_caption_without_exposing_alt_as_caption() -> None:
     """验证 MinerU renderer 图片只恢复真实 caption，不重复显示用于无障碍的长 alt。"""
-    payload = b"""<html><body><h1>Figure</h1><figure class="mineru-figure mineru-figure--image">
+    payload = b"""<html><body><h1>Figure</h1><figure class="docvortex-figure docvortex-figure--image">
       <img src="https://example.com/image.png" alt="Long internal image description">
-      <p class="mineru-caption">Visible figure caption</p></figure></body></html>"""
+      <p class="docvortex-caption">Visible figure caption</p></figure></body></html>"""
 
     markdown = render_markdown(doc_analyze(payload, file_suffix="html")[0])
 
@@ -989,9 +989,9 @@ def test_html_mineru_figure_keeps_real_caption_without_exposing_alt_as_caption()
 
 def test_html_mineru_table_figure_rebinds_renderer_caption() -> None:
     """验证 MinerU table figure 的独立 caption 恢复为 table_caption 且只输出一次。"""
-    payload = b"""<html><body><h1>Table figure</h1><figure class="mineru-figure mineru-figure--table">
+    payload = b"""<html><body><h1>Table figure</h1><figure class="docvortex-figure docvortex-figure--table">
       <table><tr><th>A</th></tr><tr><td>1</td></tr></table>
-      <p class="mineru-caption">Visible table caption</p></figure></body></html>"""
+      <p class="docvortex-caption">Visible table caption</p></figure></body></html>"""
 
     middle = doc_analyze(payload, file_suffix="html")[0]
     markdown = render_markdown(middle)
@@ -1172,7 +1172,7 @@ def test_html_alt_caption_fallback_policy_distinguishes_generic_and_mineru_figur
     payload = b"""<html><body>
       <figure><img src="https://example.com/a.png" alt="Generic alt"></figure>
       <figure><img src="https://example.com/b.png" alt="Hidden alt"><figcaption>Explicit caption</figcaption></figure>
-      <figure class="mineru-figure"><img src="https://example.com/c.png" alt="Accessibility alt"></figure>
+      <figure class="docvortex-figure"><img src="https://example.com/c.png" alt="Accessibility alt"></figure>
       </body></html>"""
 
     middle = doc_analyze(payload, file_suffix="html")[0]
@@ -1263,7 +1263,7 @@ def test_html_local_base_images_styles_and_escape_are_bounded(tmp_path: Path) ->
     markdown = result.markdown()
     assert "hidden css" not in markdown
     assert "Outside" in markdown
-    exported = result.middle_json.export(tmp_path / "export")
+    exported = export_middle_json(result.middle_json, tmp_path / "export")
     assert len(exported.image_paths) == 1
     assert exported.image_paths[0].read_bytes() == image_path.read_bytes()
     assert _image_body(exported.middle_json).image_base64 is None
@@ -1354,7 +1354,6 @@ def test_html_parse_server_local_source_keeps_relative_assets(tmp_path: Path) ->
             record,
             request,
             file_store,
-            ocr_mode="auto",
             image_analysis=True,
             allow_local_source=True,
         )
@@ -1387,7 +1386,7 @@ def test_html_doclib_local_bridge_uses_flash_parser(tmp_path: Path) -> None:
     )
 
     assert result.middle_json.file_suffix == "html"
-    assert result.middle_json.effort == "flash"
+    assert result.middle_json.extensions["mineru"]["effort"] == "flash"
     assert "Doclib HTML" in result.markdown()
 
 
@@ -1480,7 +1479,7 @@ def test_html_remote_image_url_contract_rejects_unsafe_sources(image_url: str) -
 
 def test_html_versioned_wire_roundtrips_empty_code_body() -> None:
     """验证空代码主体仍携带 wire marker，并在 HTML 往返后保留代码块元数据。"""
-    source = MiddleJson.model_validate(
+    source = from_mineru_middle(
         {
             "pages": [
                 {
@@ -1516,21 +1515,21 @@ def test_html_versioned_wire_roundtrips_empty_code_body() -> None:
 
 
 def test_html_versioned_wire_roundtrips_all_semantic_types() -> None:
-    """验证新版 MinerU HTML 在 DEFAULT/FULL 中精确恢复公开类型和关键元数据。"""
+    """验证新版 DocVortex HTML 在 DEFAULT/FULL 中精确恢复公开类型和关键元数据。"""
     source = _wire_contract_middle()
     default_html = render_html(source, standalone=False)
     full_html = render_html(source, mode=RenderMode.FULL, standalone=False)
     standalone_html = render_html(source, standalone=True)
-    default_root = BeautifulSoup(default_html, "html.parser").select_one(".mineru-document")
-    full_root = BeautifulSoup(full_html, "html.parser").select_one(".mineru-document")
+    default_root = BeautifulSoup(default_html, "html.parser").select_one(".docvortex-document")
+    full_root = BeautifulSoup(full_html, "html.parser").select_one(".docvortex-document")
 
-    assert default_root["data-mineru-html-version"] == "1"
+    assert default_root["data-docvortex-html-version"] == "1"
     assert default_root["data-render-mode"] == "default"
     assert full_root["data-render-mode"] == "full"
     assert full_root.select_one('[data-block-type="chart_body"]') is not None
     assert full_root.select_one('[data-block-type="image_footnote"]') is not None
     assert full_root.select_one('[data-block-sub-type="algorithm"]') is not None
-    assert "y^2\\tag{1}" in [element.get("data-mineru-latex") for element in full_root.select("[data-mineru-latex]")]
+    assert "y^2\\tag{1}" in [element.get("data-docvortex-latex") for element in full_root.select("[data-docvortex-latex]")]
 
     default_middle = doc_analyze(default_html.encode(), file_suffix="html")[0]
     full_middle = doc_analyze(full_html.encode(), file_suffix="html")[0]
@@ -1553,7 +1552,7 @@ def test_html_versioned_wire_roundtrips_all_semantic_types() -> None:
 
 def test_html_wire_decode_distinguishes_absent_empty_and_noncanonical() -> None:
     """验证单一 decode 入口区分普通 HTML、合法空 wire 与非 canonical v1。"""
-    source = MiddleJson.model_validate(
+    source = from_mineru_middle(
         {
             "pages": [{"page_idx": 0, "blocks": []}],
             "is_full_document": True,
@@ -1566,15 +1565,15 @@ def test_html_wire_decode_distinguishes_absent_empty_and_noncanonical() -> None:
     ordinary = html_document_module.parse_html_document(b"<html><body><p>ordinary</p></body></html>")
     empty = html_document_module.parse_html_document(render_html(source, standalone=False).encode())
     edited_soup = BeautifulSoup(render_html(source, standalone=False), "html.parser")
-    edited_soup.select_one(".mineru-document").append("EDITED")
+    edited_soup.select_one(".docvortex-document").append("EDITED")
     edited = html_document_module.parse_html_document(str(edited_soup).encode())
 
-    ordinary_result = decode_mineru_html_wire(
+    ordinary_result = decode_docvortex_html_wire(
         ordinary.body,
         HtmlResourceContext(ordinary.source_context),
     )
-    empty_result = decode_mineru_html_wire(empty.body, HtmlResourceContext(empty.source_context))
-    edited_result = decode_mineru_html_wire(edited.body, HtmlResourceContext(edited.source_context))
+    empty_result = decode_docvortex_html_wire(empty.body, HtmlResourceContext(empty.source_context))
+    edited_result = decode_docvortex_html_wire(edited.body, HtmlResourceContext(edited.source_context))
 
     assert ordinary_result.blocks is None and ordinary_result.fallback_reason is None
     assert empty_result.blocks == [] and empty_result.fallback_reason is None
@@ -1599,7 +1598,7 @@ def test_html_versioned_wire_preserves_visual_rich_content(
     }
     if with_main_image:
         body["image_url"] = "https://example.com/main.png"
-    source = MiddleJson.model_validate(
+    source = from_mineru_middle(
         {
             "pages": [
                 {
@@ -1643,7 +1642,7 @@ def test_html_versioned_wire_preserves_visual_rich_content(
 
 def test_html_versioned_wire_roundtrips_canonical_visual_body_variants() -> None:
     """验证 flowchart 与 table 的固定载荷分支都通过 exact typed plan 往返。"""
-    source = MiddleJson.model_validate(
+    source = from_mineru_middle(
         {
             "pages": [
                 {
@@ -1709,7 +1708,7 @@ def test_html_versioned_wire_roundtrips_canonical_visual_body_variants() -> None
     rendered = render_html(source, standalone=False)
     document = html_document_module.parse_html_document(rendered.encode())
 
-    decode_result = decode_mineru_html_wire(document.body, HtmlResourceContext(document.source_context))
+    decode_result = decode_docvortex_html_wire(document.body, HtmlResourceContext(document.source_context))
     middle, _ = doc_analyze(rendered.encode(), file_suffix="html")
     bodies = [block.content[0] for block in middle.pages[0].blocks]
 
@@ -1723,7 +1722,7 @@ def test_html_versioned_wire_roundtrips_canonical_visual_body_variants() -> None
 
 def test_html_versioned_wire_distinguishes_index_carrier_from_inline_link() -> None:
     """验证未链接目录项中的普通 anchor 不会被误认为 renderer 目录外壳。"""
-    source = MiddleJson.model_validate(
+    source = from_mineru_middle(
         {
             "pages": [
                 {
@@ -1752,7 +1751,7 @@ def test_html_versioned_wire_distinguishes_index_carrier_from_inline_link() -> N
     rendered = render_html(source, standalone=False)
     document = html_document_module.parse_html_document(rendered.encode())
 
-    decode_result = decode_mineru_html_wire(document.body, HtmlResourceContext(document.source_context))
+    decode_result = decode_docvortex_html_wire(document.body, HtmlResourceContext(document.source_context))
     middle = doc_analyze(rendered.encode(), file_suffix="html")[0]
 
     assert decode_result.blocks is not None and decode_result.fallback_reason is None
@@ -1763,7 +1762,7 @@ def test_html_versioned_wire_distinguishes_index_carrier_from_inline_link() -> N
 def test_html_noncanonical_wire_structural_edits_use_generic_fallback(edit_kind: str) -> None:
     """验证 carrier 外结构统一触发 generic fallback，而不是增加逐 case 物化兼容。"""
     if edit_kind == "index_sibling":
-        source = MiddleJson.model_validate(
+        source = from_mineru_middle(
             {
                 "pages": [
                     {
@@ -1800,7 +1799,7 @@ def test_html_noncanonical_wire_structural_edits_use_generic_fallback(edit_kind:
             }
         )
         soup = BeautifulSoup(render_html(source, standalone=False), "html.parser")
-        target = soup.select_one('.mineru-index li[data-block-type="paragraph_title"]')
+        target = soup.select_one('.docvortex-index li[data-block-type="paragraph_title"]')
         assert target is not None
         target.append(" ADDED")
     else:
@@ -1810,7 +1809,7 @@ def test_html_noncanonical_wire_structural_edits_use_generic_fallback(edit_kind:
         target.append(soup.new_tag("img", src="https://example.com/added.png", alt="Added"))
     document = html_document_module.parse_html_document(str(soup).encode())
 
-    decode_result = decode_mineru_html_wire(document.body, HtmlResourceContext(document.source_context))
+    decode_result = decode_docvortex_html_wire(document.body, HtmlResourceContext(document.source_context))
     middle, model = doc_analyze(str(soup).encode(), file_suffix="html")
 
     assert decode_result.blocks is None and decode_result.fallback_reason == "non_canonical_wire"
@@ -1824,7 +1823,7 @@ def test_html_noncanonical_wire_structural_edits_use_generic_fallback(edit_kind:
 @pytest.mark.parametrize("outside_kind", ["text", "inline"])
 def test_html_versioned_list_content_outside_carrier_falls_back_without_loss(outside_kind: str) -> None:
     """验证列表 carrier 外的编辑内容触发通用投影并完整保留。"""
-    source = MiddleJson.model_validate(
+    source = from_mineru_middle(
         {
             "pages": [
                 {
@@ -1863,7 +1862,7 @@ def test_html_versioned_list_content_outside_carrier_falls_back_without_loss(out
 
 def test_html_invalid_versioned_markers_fallback_without_partial_results() -> None:
     """验证未知版本和多类非法 marker 都整体回退，且可见正文不会重复。"""
-    source = MiddleJson.model_validate(
+    source = from_mineru_middle(
         {
             "pages": [
                 {
@@ -1901,11 +1900,11 @@ def test_html_invalid_versioned_markers_fallback_without_partial_results() -> No
     variants: list[str] = []
 
     unknown = BeautifulSoup(base, "html.parser")
-    unknown.select_one(".mineru-document")["data-mineru-html-version"] = "999"
+    unknown.select_one(".docvortex-document")["data-docvortex-html-version"] = "999"
     variants.append(str(unknown))
 
     illegal_type = BeautifulSoup(base, "html.parser")
-    illegal_type.select_one(".mineru-block")["data-block-type"] = "not_a_block"
+    illegal_type.select_one(".docvortex-block")["data-block-type"] = "not_a_block"
     variants.append(str(illegal_type))
 
     missing_body = BeautifulSoup(base, "html.parser")
@@ -1937,8 +1936,8 @@ def test_html_invalid_versioned_markers_fallback_without_partial_results() -> No
 @pytest.mark.parametrize(
     ("parent_type", "body_type", "sub_type", "owned_class"),
     [
-        ("image", "image_body", "diagram", "mineru-image"),
-        ("chart", "chart_body", "bar", "mineru-chart-image"),
+        ("image", "image_body", "diagram", "docvortex-image"),
+        ("chart", "chart_body", "bar", "docvortex-chart-image"),
     ],
 )
 def test_html_versioned_wire_multiple_owned_images_fall_back_without_loss(
@@ -1948,7 +1947,7 @@ def test_html_versioned_wire_multiple_owned_images_fall_back_without_loss(
     owned_class: str,
 ) -> None:
     """验证普通图片和图表 body 被追加 renderer 图片时回退并保留全部载荷。"""
-    source = MiddleJson.model_validate(
+    source = from_mineru_middle(
         {
             "pages": [
                 {
@@ -1992,7 +1991,7 @@ def test_html_versioned_wire_multiple_owned_images_fall_back_without_loss(
 
 def test_html_versioned_wire_visible_structural_text_falls_back_without_loss() -> None:
     """验证机器结构容器中新增的可见文本会整体回退，并保留编辑内容。"""
-    source = MiddleJson.model_validate(
+    source = from_mineru_middle(
         {
             "pages": [{"page_idx": 0, "blocks": [{"type": "text", "index": 0, "content": inline("Original wire text")}]}],
             "is_full_document": True,
@@ -2007,19 +2006,19 @@ def test_html_versioned_wire_visible_structural_text_falls_back_without_loss() -
     variants: list[tuple[str, str]] = []
 
     root_text = BeautifulSoup(default_html, "html.parser")
-    root_text.select_one(".mineru-document").insert(0, "ROOT EDIT ")
+    root_text.select_one(".docvortex-document").insert(0, "ROOT EDIT ")
     variants.append((str(root_text), "ROOT EDIT"))
 
     section_text = BeautifulSoup(full_html, "html.parser")
-    section_text.select_one(".mineru-page").insert(0, "SECTION EDIT ")
+    section_text.select_one(".docvortex-page").insert(0, "SECTION EDIT ")
     variants.append((str(section_text), "SECTION EDIT"))
 
     wrapper_text = BeautifulSoup(default_html, "html.parser")
-    wrapper_text.select_one(".mineru-block").insert(0, "WRAPPER EDIT ")
+    wrapper_text.select_one(".docvortex-block").insert(0, "WRAPPER EDIT ")
     variants.append((str(wrapper_text), "WRAPPER EDIT"))
 
     child_tail = BeautifulSoup(default_html, "html.parser")
-    child_tail.select_one(".mineru-block > p").insert_after(" CHILD TAIL EDIT")
+    child_tail.select_one(".docvortex-block > p").insert_after(" CHILD TAIL EDIT")
     variants.append((str(child_tail), "CHILD TAIL EDIT"))
 
     for variant, edited_text in variants:
@@ -2031,7 +2030,7 @@ def test_html_versioned_wire_visible_structural_text_falls_back_without_loss() -
 @pytest.mark.parametrize("position", ["before", "after"])
 def test_html_versioned_wire_visible_sibling_falls_back_without_loss(position: str) -> None:
     """验证 wire 根前后的可见兄弟会整体回退，避免精确物化静默丢弃正文。"""
-    source = MiddleJson.model_validate(
+    source = from_mineru_middle(
         {
             "pages": [{"page_idx": 0, "blocks": [{"type": "text", "index": 0, "content": inline("Original wire text")}]}],
             "is_full_document": True,
@@ -2044,7 +2043,7 @@ def test_html_versioned_wire_visible_sibling_falls_back_without_loss(position: s
     soup = BeautifulSoup(render_html(source, standalone=False), "html.parser")
     sibling = soup.new_tag("p")
     sibling.string = "VISIBLE SIBLING"
-    wire_root = soup.select_one(".mineru-document")
+    wire_root = soup.select_one(".docvortex-document")
     if position == "before":
         wire_root.insert_before(sibling)
     else:
@@ -2058,7 +2057,7 @@ def test_html_versioned_wire_visible_sibling_falls_back_without_loss(position: s
 
 def test_html_versioned_wire_markerless_block_child_falls_back_without_crash() -> None:
     """验证行内容器内新增的无 marker 块节点会事务式回退，而不是在物化阶段抛错。"""
-    source = MiddleJson.model_validate(
+    source = from_mineru_middle(
         {
             "pages": [
                 {
@@ -2083,7 +2082,7 @@ def test_html_versioned_wire_markerless_block_child_falls_back_without_crash() -
     soup = BeautifulSoup(render_html(source, standalone=False), "html.parser")
     paragraph = soup.new_tag("p")
     paragraph.string = "EXTRA NOTE"
-    soup.select_one(".mineru-page-footnote").append(paragraph)
+    soup.select_one(".docvortex-page-footnote").append(paragraph)
 
     markdown = render_markdown(doc_analyze(str(soup).encode(), file_suffix="html")[0])
 
@@ -2093,7 +2092,7 @@ def test_html_versioned_wire_markerless_block_child_falls_back_without_crash() -
 
 def test_html_versioned_wire_edited_code_body_falls_back_without_loss() -> None:
     """验证普通代码 body 中新增可见节点会整体回退并保留代码与编辑内容。"""
-    source = MiddleJson.model_validate(
+    source = from_mineru_middle(
         {
             "pages": [
                 {
@@ -2129,7 +2128,7 @@ def test_html_versioned_wire_edited_code_body_falls_back_without_loss() -> None:
 
 def test_html_versioned_wire_edited_algorithm_body_falls_back_without_loss() -> None:
     """验证 algorithm body 中新增可见节点会整体回退并保留算法与编辑内容。"""
-    source = MiddleJson.model_validate(
+    source = from_mineru_middle(
         {
             "pages": [
                 {
@@ -2170,7 +2169,7 @@ def test_html_versioned_wire_edited_algorithm_body_falls_back_without_loss() -> 
 
 def test_html_versioned_wire_edited_table_body_falls_back_without_loss() -> None:
     """验证表格 body 中新增可见节点会整体回退并保留表格与编辑内容。"""
-    source = MiddleJson.model_validate(
+    source = from_mineru_middle(
         {
             "pages": [
                 {
@@ -2210,7 +2209,7 @@ def test_html_versioned_wire_edited_table_body_falls_back_without_loss() -> None
 
 def test_html_versioned_wire_edited_flowchart_body_falls_back_without_loss() -> None:
     """验证流程图 body 中新增可见节点会整体回退并保留源码与编辑内容。"""
-    source = MiddleJson.model_validate(
+    source = from_mineru_middle(
         {
             "pages": [
                 {
@@ -2251,7 +2250,7 @@ def test_html_versioned_wire_edited_flowchart_body_falls_back_without_loss() -> 
 
 def test_html_marker_fallback_does_not_double_resolve_images(monkeypatch: pytest.MonkeyPatch) -> None:
     """验证结构校验先于资源物化，非法 marker 回退只解析一次图片。"""
-    source = MiddleJson.model_validate(
+    source = from_mineru_middle(
         {
             "pages": [
                 {
@@ -2322,7 +2321,7 @@ def test_html_generic_div_soup_attaches_contextual_caption_and_footnote() -> Non
 def test_html_formula_priority_delimiters_and_supported_mathml_are_normalized() -> None:
     """验证所有受支持公式来源按统一优先级输出裸 LaTeX，并保留内部 tag。"""
     payload = rb"""<html><body><h1>Formula matrix</h1><p>
-      <span class="formula"><span data-mineru-latex="\(producer\)" data-tex="data-low"><math alttext="alt-low">
+      <span class="formula"><span data-docvortex-latex="\(producer\)" data-tex="data-low"><math alttext="alt-low">
       <annotation encoding="application/x-tex">annotation-low</annotation></math></span></span>
       <math data-tex="data-low"><semantics><mi>x</mi>
       <annotation encoding="application/x-tex">annotation-high</annotation></semantics></math>

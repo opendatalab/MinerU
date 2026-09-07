@@ -2,7 +2,8 @@ import markdown
 from bs4 import BeautifulSoup
 
 from mineru.config import LatexDelimitersConfig
-from mineru.render._internal.markdown.table import format_embedded_html, render_html_table
+from docvortex.render._internal.markdown.table import format_embedded_html
+from docvortex.render._internal.markdown.table import render_html_table
 
 
 DELIMITERS = LatexDelimitersConfig()

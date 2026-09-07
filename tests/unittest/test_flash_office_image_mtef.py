@@ -1,4 +1,5 @@
 from __future__ import annotations
+from docvortex.export.middle import export_middle_json
 
 import asyncio
 from collections.abc import Callable
@@ -9,26 +10,22 @@ from zipfile import ZIP_DEFLATED, ZipFile
 import pytest
 
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
-from mineru.model.flash import (
-    DocModel,
-    DocxModel,
-    PptModel,
-    PptxModel,
-    XlsModel,
-    XlsxModel,
-)
-from mineru.model.flash.office.doc.doc_converter import DocConverter
-from mineru.model.flash.office.docx.docx_converter import DocxConverter
-from mineru.model.flash.office.doc.models import (
-    DocImage,
-    DocImagePayload,
-    DocParagraph,
-    DocTable,
-    DocTableCell,
-    DocTableRow,
-)
-from mineru.model.flash.office.xlsx.xlsx_converter import XlsxConverter
-from mineru.model.flash.office.pptx.pptx_converter import PptxConverter
+from docvortex.analyzers.native import DocModel
+from docvortex.analyzers.native import DocxModel
+from docvortex.analyzers.native import PptModel
+from docvortex.analyzers.native import PptxModel
+from docvortex.analyzers.native import XlsModel
+from docvortex.analyzers.native import XlsxModel
+from docvortex.analyzers.native.office.doc.doc_converter import DocConverter
+from docvortex.analyzers.native.office.docx.docx_converter import DocxConverter
+from docvortex.analyzers.native.office.doc.models import DocImage
+from docvortex.analyzers.native.office.doc.models import DocImagePayload
+from docvortex.analyzers.native.office.doc.models import DocParagraph
+from docvortex.analyzers.native.office.doc.models import DocTable
+from docvortex.analyzers.native.office.doc.models import DocTableCell
+from docvortex.analyzers.native.office.doc.models import DocTableRow
+from docvortex.analyzers.native.office.xlsx.xlsx_converter import XlsxConverter
+from docvortex.analyzers.native.office.pptx.pptx_converter import PptxConverter
 from mineru.types import BlockType, MiddleJson, ModelJson
 
 from _docx_equationxml_test_utils import (
@@ -509,7 +506,7 @@ def test_bad_image_comment_preview_exports_to_sidecar(tmp_path: Path) -> None:
         file_suffix="docx",
     )
 
-    result = middle.export(tmp_path / "image-mtef-fallback")
+    result = export_middle_json(middle, tmp_path / "image-mtef-fallback")
 
     assert len(result.image_paths) == 1
     assert result.image_paths[0].stat().st_size > 0

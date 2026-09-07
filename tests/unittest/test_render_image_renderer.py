@@ -7,7 +7,7 @@ import pytest
 
 from mineru.config import LatexDelimitersConfig, config
 from mineru.render import ImageRenderer
-from mineru.render._internal.markdown.blocks import render_single_block
+from docvortex.render._internal.markdown.blocks import render_single_block
 from mineru.types import (
     BlockBase,
     BlockType,

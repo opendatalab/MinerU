@@ -13,22 +13,27 @@ from zipfile import ZIP_DEFLATED, ZipFile
 import pytest
 from lxml import etree
 
-import mineru.model.flash.office.odf.table as odf_table_module
-import mineru.model.flash.office.odf.text as odf_text_module
+import docvortex.analyzers.native.office.odf.table as odf_table_module
+import docvortex.analyzers.native.office.odf.text as odf_text_module
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
 from mineru.doclib.core.file_io import extract_metadata
 from mineru.doclib.core.db import DatabaseManager
 from mineru.doclib.core.fts import FTSManager
 from mineru.doclib.services.parse_svc import ParseService
 from mineru.errors import InvalidRequestError
-from mineru.model.flash import OdpModel, OdsModel, OdtModel
-from mineru.model.flash.office.odf.errors import OdfEncryptedError, OdfParseError, OdfResourceLimitError
-from mineru.model.flash.office.odf.metadata import MAX_ODT_METADATA_PAGE_COUNT, extract_odf_metadata
-from mineru.model.flash.office.odf.package import OdfPackage
+from docvortex.analyzers.native import OdpModel
+from docvortex.analyzers.native import OdsModel
+from docvortex.analyzers.native import OdtModel
+from docvortex.analyzers.native.office.odf.errors import OdfEncryptedError
+from docvortex.analyzers.native.office.odf.errors import OdfParseError
+from docvortex.analyzers.native.office.odf.errors import OdfResourceLimitError
+from docvortex.analyzers.native.office.odf.metadata import MAX_ODT_METADATA_PAGE_COUNT
+from docvortex.analyzers.native.office.odf.metadata import extract_odf_metadata
+from docvortex.analyzers.native.office.odf.package import OdfPackage
 from mineru.parser import parse, parse_async
 from mineru.parser import api_server
 from mineru.parser.api_server import CreateJobRequest, FileStore
-from mineru.parser.file_type import guess_suffix_by_bytes, guess_suffix_by_path
+from docvortex.document.detection import guess_suffix_by_bytes, guess_suffix_by_path
 from mineru.render import render_docx, render_html, render_markdown, render_structured_content
 from mineru.types import BlockType
 
@@ -63,8 +68,8 @@ def test_odf_models_and_analyze_keep_flash_contract(
     assert model.pages == async_model.pages == model_pages
     assert middle.model_dump() == async_middle.model_dump()
     assert model.file_suffix == middle.file_suffix == suffix
-    assert model.effort == middle.effort == "flash"
-    assert model.parse_mode == middle.parse_mode == "txt"
+    assert model.extensions["mineru"]["effort"] == middle.extensions["mineru"]["effort"] == "flash"
+    assert model.extensions["mineru"]["parse_mode"] == middle.extensions["mineru"]["parse_mode"] == "txt"
 
 
 def test_odt_recovers_structure_and_all_renderers() -> None:
@@ -1262,7 +1267,6 @@ def test_odf_parse_server_job_emits_flash_outputs(tmp_path: Path) -> None:
             record,
             request,
             file_store,
-            ocr_mode="auto",
             image_analysis=True,
             allow_local_source=True,
         )
@@ -1358,10 +1362,10 @@ def test_csv_and_rtf_runtime_do_not_load_odf_modules() -> None:
     script = "\n".join(
         [
             "import io, sys",
-            "from mineru.model.flash import CsvModel, RtfModel",
+            "from docvortex.analyzers.native import CsvModel, RtfModel",
             "CsvModel().predict(io.BytesIO(b'a,b\\n1,2\\n'))",
             "RtfModel().predict(io.BytesIO(b'{\\\\rtf1 ok}'))",
-            "assert not any(name.startswith('mineru.model.flash.office.odf') for name in sys.modules)",
+            "assert not any(name.startswith('docvortex.analyzers.native.office.odf') for name in sys.modules)",
         ]
     )
     result = subprocess.run([sys.executable, "-c", script], capture_output=True, text=True, check=False)
@@ -1370,6 +1374,6 @@ def test_csv_and_rtf_runtime_do_not_load_odf_modules() -> None:
 
 def test_odf_subpackage_does_not_export_models() -> None:
     """验证 ODF 模型只从 Flash 根包公开，不形成第二套公共路径。"""
-    assert importlib.util.find_spec("mineru.model.flash.office.odf.model") is None
-    package = __import__("mineru.model.flash.office.odf", fromlist=["__all__"])
+    assert importlib.util.find_spec("docvortex.analyzers.native.office.odf.model") is None
+    package = __import__("docvortex.analyzers.native.office.odf", fromlist=["__all__"])
     assert package.__all__ == []

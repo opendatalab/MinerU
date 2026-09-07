@@ -6,26 +6,25 @@ import weakref
 
 import pytest
 
-from mineru.model.flash import PdfModel
-from mineru.model.flash.pdf import (
-    auxiliary_text,
-    char_geometry,
-    formulas,
-    geometry,
-    graphics,
-    index_blocks,
-    line_layout,
-    line_merging,
-    models,
-    native_text,
-    pipeline,
-    tables,
-    text_blocks,
-    text_styles,
-    titles,
-    visual_annotations,
-)
-from mineru.model.flash.pdf.document import PDFImageInfo, PDFPageTextGeometry
+from docvortex.analyzers.native import PdfModel
+from docvortex.analyzers.native.pdf import auxiliary_text
+from docvortex.analyzers.native.pdf import char_geometry
+from docvortex.analyzers.native.pdf import formulas
+from docvortex.analyzers.native.pdf import geometry
+from docvortex.analyzers.native.pdf import graphics
+from docvortex.analyzers.native.pdf import index_blocks
+from docvortex.analyzers.native.pdf import line_layout
+from docvortex.analyzers.native.pdf import line_merging
+from docvortex.analyzers.native.pdf import models
+from docvortex.analyzers.native.pdf import native_text
+from docvortex.analyzers.native.pdf import pipeline
+from docvortex.analyzers.native.pdf import tables
+from docvortex.analyzers.native.pdf import text_blocks
+from docvortex.analyzers.native.pdf import text_styles
+from docvortex.analyzers.native.pdf import titles
+from docvortex.analyzers.native.pdf import visual_annotations
+from docvortex.document.pdf.document import PDFImageInfo
+from docvortex.document.pdf.document import PDFPageTextGeometry
 
 from _flash_pdf_test_utils import (
     _prepared_text_page,

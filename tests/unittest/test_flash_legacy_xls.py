@@ -9,19 +9,19 @@ from bs4 import BeautifulSoup
 import pytest
 
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
-from mineru.model.flash import XlsModel
-from mineru.model.flash._shared.hyperlink import OFFICE_EXTERNAL_HYPERLINK_SCHEMES, sanitize_hyperlink_target
-from mineru.model.flash.office.errors import (
-    LegacyOfficeEncryptedError,
-    LegacyOfficeMissingPartError,
-    LegacyOfficeResourceLimitError,
-)
-from mineru.model.flash.office.limits import MAX_RECORDS
-from mineru.model.flash.office.xls import xls_converter as xls_converter_module
-from mineru.model.flash.office.xls.number_format import format_number, format_text
-from mineru.model.flash.office.xls.records import RecordBudget
+from docvortex.analyzers.native import XlsModel
+from docvortex.analyzers.native._shared.hyperlink import OFFICE_EXTERNAL_HYPERLINK_SCHEMES
+from docvortex.analyzers.native._shared.hyperlink import sanitize_hyperlink_target
+from docvortex.analyzers.native.office.errors import LegacyOfficeEncryptedError
+from docvortex.analyzers.native.office.errors import LegacyOfficeMissingPartError
+from docvortex.analyzers.native.office.errors import LegacyOfficeResourceLimitError
+from docvortex.analyzers.native.office.limits import MAX_RECORDS
+from docvortex.analyzers.native.office.xls import xls_converter as xls_converter_module
+from docvortex.analyzers.native.office.xls.number_format import format_number
+from docvortex.analyzers.native.office.xls.number_format import format_text
+from docvortex.analyzers.native.office.xls.records import RecordBudget
 from mineru.parser import parse
-from mineru.types import BlockType, ImageBlock, MiddleJson, ModelJson, TableBlock
+from mineru.types import BlockType, MiddleJson, ModelJson
 
 from _legacy_xls_test_utils import (
     SheetFixture,
@@ -40,10 +40,6 @@ from _legacy_xls_test_utils import (
 )
 from _legacy_ppt_test_utils import _build_cfb
 from _span_test_utils import inline, inline_text
-
-
-_PROJECT_ROOT = Path(__file__).resolve().parents[2]
-_REAL_XLS = _PROJECT_ROOT / "demo" / "office_docs" / "xlsx_01.xls"
 
 
 def test_xls_model_preserves_visible_empty_pages_and_skips_hidden_sheet() -> None:
@@ -74,8 +70,8 @@ def test_backend_analyze_accepts_xls_and_async_contract() -> None:
     assert isinstance(model_json, ModelJson)
     assert isinstance(middle_json, MiddleJson)
     assert model_json.file_suffix == middle_json.file_suffix == "xls"
-    assert model_json.effort == middle_json.effort == "flash"
-    assert model_json.parse_mode == middle_json.parse_mode == "txt"
+    assert model_json.extensions["mineru"]["effort"] == middle_json.extensions["mineru"]["effort"] == "flash"
+    assert model_json.extensions["mineru"]["parse_mode"] == middle_json.extensions["mineru"]["parse_mode"] == "txt"
     assert model_json.is_full_document is middle_json.is_full_document is True
     assert async_model == model_json
     assert async_middle == middle_json
@@ -317,68 +313,3 @@ def test_xls_is_supported_by_public_parser(tmp_path: Path) -> None:
 
     assert result.middle_json.file_suffix == "xls"
     assert inline_text(result.pages[0].blocks[0].content) == "value"
-
-
-@pytest.mark.skipif(not _REAL_XLS.exists(), reason="real Office roundtrip fixture is local-only")
-def test_real_xls_recovers_tables_charts_image_link_and_exports(tmp_path: Path) -> None:
-    """验证真实 XLS 的三页结构、图表、图片、链接与 sidecar 闭包。"""
-
-    middle_json, model_json = doc_analyze(_REAL_XLS.read_bytes(), file_suffix="xls")
-
-    assert len(model_json.pages) == len(middle_json.pages) == 3
-    assert model_json.file_suffix == middle_json.file_suffix == "xls"
-    assert [[block.get("type") for block in page] for page in model_json.pages] == [
-        [BlockType.PARAGRAPH_TITLE, BlockType.TABLE],
-        [
-            BlockType.PARAGRAPH_TITLE,
-            BlockType.TABLE,
-            BlockType.TABLE,
-            BlockType.CHART,
-            BlockType.TABLE,
-            BlockType.CHART,
-        ],
-        [BlockType.PARAGRAPH_TITLE, BlockType.TABLE, BlockType.TABLE, BlockType.IMAGE],
-    ]
-
-    page_one_table = next(block for block in middle_json.pages[0].blocks if isinstance(block, TableBlock))
-    page_one_soup = BeautifulSoup(page_one_table.content[0].content, "html.parser")
-    page_one_rows = page_one_soup.find_all("tr")
-    assert len(page_one_rows) == 9
-    assert all(len(row.find_all(["th", "td"], recursive=False)) == 3 for row in page_one_rows)
-    assert page_one_soup.find("a")["href"] == "http://www.baidu.com/"
-    assert "21" in page_one_soup.get_text(" ", strip=True)
-    assert "#NAME?" in page_one_soup.get_text(" ", strip=True)
-    assert "(x+a)^n" in page_one_soup.get_text(" ", strip=True)
-
-    chart_tables = [block.content[0].content for block in middle_json.pages[1].blocks if block.type == BlockType.CHART]
-    assert [
-        (
-            len(BeautifulSoup(content, "html.parser").find_all("tr")),
-            max(
-                len(row.find_all(["th", "td"], recursive=False)) for row in BeautifulSoup(content, "html.parser").find_all("tr")
-            ),
-        )
-        for content in chart_tables
-    ] == [(5, 2), (9, 4)]
-
-    page_three_tables = [block for block in middle_json.pages[2].blocks if isinstance(block, TableBlock)]
-    assert len(page_three_tables) == 2
-    assert all(
-        len(
-            [
-                cell
-                for cell in BeautifulSoup(table.content[0].content, "html.parser").find_all(["th", "td"])
-                if cell.has_attr("rowspan") or cell.has_attr("colspan")
-            ]
-        )
-        == 4
-        for table in page_three_tables
-    )
-    assert sum(isinstance(block, ImageBlock) for block in middle_json.pages[2].blocks) == 1
-
-    export_result = middle_json.export(tmp_path / "export")
-    exported = export_result.middle_json.model_dump(mode="json", exclude_none=True)
-    assert export_result.json_path.exists()
-    assert len(export_result.image_paths) == 1
-    assert export_result.image_paths[0].exists()
-    assert "image_base64" not in str(exported)

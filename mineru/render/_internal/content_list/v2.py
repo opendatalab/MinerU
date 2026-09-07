@@ -5,7 +5,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from ....config import LatexDelimitersConfig, config
+from docvortex.options import LatexDelimitersConfig
 from ....types import (
     RAW_ALGORITHM,
     AlgorithmBodyBlock,
@@ -58,6 +58,7 @@ def render_content_list_v2(
     middle_json: MiddleJson,
     *,
     asset_base_url: str = "",
+    latex_delimiters: LatexDelimitersConfig | None = None,
 ) -> list[list[dict[str, Any]]]:
     """把严格 MiddleJson 无副作用地渲染为按页 Content List V2。"""
     if not isinstance(middle_json, MiddleJson):
@@ -65,7 +66,7 @@ def render_content_list_v2(
     if not isinstance(asset_base_url, str):
         raise TypeError("asset_base_url must be a string")
 
-    delimiters = config.render.latex_delimiters
+    delimiters = latex_delimiters or LatexDelimitersConfig()
     output: list[list[dict[str, Any]]] = []
     for page in middle_json.pages:
         page_items: list[dict[str, Any]] = []

@@ -1,4 +1,4 @@
 # Copyright (c) Opendatalab. All rights reserved.
-"""MinerU renderer 的非公共实现模块。"""
+"""MinerU 产品专用 renderer 的内部实现。"""
 
 __all__: list[str] = []

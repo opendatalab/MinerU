@@ -14,7 +14,7 @@ from ..backend.analyze import aio_doc_analyze, doc_analyze
 from ..config import VlmConfig, config
 from ..errors import InvalidRequestError
 from ..filetypes import IMAGE_EXTENSIONS, PAGE_RANGE_PARSE_EXTENSIONS
-from ..model.flash.html import HtmlSourceContext
+from docvortex.analyzers.native.html import HtmlSourceContext
 from ..types import FILE_SUFFIXES, FileSuffix, MiddleJson, ModelJson, PageInfo, Tier
 from .tier import effort_for_tier
 from .base import DocumentParser, ParseResult
@@ -147,7 +147,7 @@ class MinerUParser(DocumentParser):
         source_suffix = suffix
 
         if suffix in IMAGE_EXTENSIONS:
-            from ..model.flash.pdf.document import PDFDocument
+            from docvortex.document.pdf.document import PDFDocument
 
             conversion_started_at = time.perf_counter()
             input_size = len(file_bytes)
@@ -183,7 +183,7 @@ class MinerUParser(DocumentParser):
         )
         resolved_source_context = source_context
         if suffix == "html" and resolved_source_context is None:
-            from ..model.flash.html import HtmlSourceContext
+            from docvortex.analyzers.native.html import HtmlSourceContext
 
             resolved_path = path.resolve()
             resolved_source_context = HtmlSourceContext(
@@ -209,7 +209,7 @@ class MinerUParser(DocumentParser):
         if suffix != "pdf":
             return file_bytes, None, None
 
-        from ..model.flash.pdf.document import PDFDocument
+        from docvortex.document.pdf.document import PDFDocument
         from .page_range import parse_page_range
 
         with PDFDocument(file_bytes) as doc:
@@ -219,7 +219,7 @@ class MinerUParser(DocumentParser):
         if page_indices == list(range(page_count)):
             return file_bytes, None, None
 
-        from ..model.flash.pdf.pdfium import safe_rewrite_pdf_bytes_with_pdfium_result
+        from docvortex.document.pdf.pdfium import safe_rewrite_pdf_bytes_with_pdfium_result
 
         rewrite_result = safe_rewrite_pdf_bytes_with_pdfium_result(file_bytes, page_indices=page_indices)
         if rewrite_result.used_original:

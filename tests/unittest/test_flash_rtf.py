@@ -1,4 +1,5 @@
 from __future__ import annotations
+from docvortex.export.middle import export_middle_json
 
 import asyncio
 from io import BytesIO
@@ -17,24 +18,22 @@ from mineru.doclib.core.db import DatabaseManager
 from mineru.doclib.core.fts import FTSManager
 from mineru.doclib.services.parse_svc import ParseService
 from mineru.errors import InvalidRequestError
-from mineru.model.flash import RtfModel
-from mineru.model.flash.office.errors import (
-    LegacyOfficeMalformedError,
-    LegacyOfficeResourceLimitError,
-)
-from mineru.model.flash.office.rtf import lexer as lexer_module
-from mineru.model.flash.office.rtf import parser as parser_module
-from mineru.model.flash.office.rtf.converter import extract_rtf_metadata
-from mineru.model.flash.office.rtf.lexer import RtfBinary, RtfLexer
+from docvortex.analyzers.native import RtfModel
+from docvortex.analyzers.native.office.errors import LegacyOfficeMalformedError
+from docvortex.analyzers.native.office.errors import LegacyOfficeResourceLimitError
+from docvortex.analyzers.native.office.rtf import lexer as lexer_module
+from docvortex.analyzers.native.office.rtf import parser as parser_module
+from docvortex.analyzers.native.office.rtf.converter import extract_rtf_metadata
+from docvortex.analyzers.native.office.rtf.lexer import RtfBinary
+from docvortex.analyzers.native.office.rtf.lexer import RtfLexer
 from mineru.parser import parse
 from mineru.render import RenderMode, render_docx, render_html, render_markdown, render_structured_content
 from mineru.types import BlockType
 
-from _span_test_utils import inline, inline_text, visible_content
+from _span_test_utils import inline, inline_text
 
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
-_REAL_RTF = _PROJECT_ROOT / "demo" / "office_docs" / "rtf_01.rtf"
 _SEMANTIC_RTF = _PROJECT_ROOT / "tests" / "fixtures" / "rtf" / "semantic.rtf"
 _PNG_HEX = (
     b"89504e470d0a1a0a0000000d494844520000000200000002080600000072b60d24"
@@ -217,19 +216,6 @@ def test_rtf_model_recovers_unicode_styles_and_structures() -> None:
     assert "<th" in table["content"]
 
 
-def test_rtf_model_parses_real_libreoffice_fixture() -> None:
-    """验证真实 LibreOffice RTF 在纯 Python 路径中保留全部可见段落。"""
-    with _REAL_RTF.open("rb") as stream:
-        pages = RtfModel().predict(stream)
-
-    assert len(pages) == 1
-    assert len(pages[0]) == 9
-    content = "\n".join(visible_content(block.get("content")) for block in pages[0])
-    assert "KVCache-centric Scheduling Algorithm" in content
-    assert "Prefill Global Scheduling" in content
-    assert "Conductor estimates" in content
-
-
 def test_rtf_page_controls_remain_inside_one_semantic_page() -> None:
     """验证 page/column 只保留换行，sect 只结束段落。"""
     pages = RtfModel().predict(BytesIO(rb"{\rtf1\ansi A\page B\column C\sect D\par}"))
@@ -292,8 +278,8 @@ def test_rtf_doc_analyze_and_renderers_share_strict_metadata() -> None:
     )
 
     assert middle.file_suffix == model.file_suffix == "rtf"
-    assert middle.effort == model.effort == "flash"
-    assert middle.parse_mode == model.parse_mode == "txt"
+    assert middle.extensions["mineru"]["effort"] == model.extensions["mineru"]["effort"] == "flash"
+    assert middle.extensions["mineru"]["parse_mode"] == model.extensions["mineru"]["parse_mode"] == "txt"
     assert middle.is_full_document is model.is_full_document is True
     assert len(middle.pages) == len(model.pages) == 1
     assert async_middle == middle
@@ -324,7 +310,7 @@ def test_public_parser_detects_rtf_content_before_extension(tmp_path: Path) -> N
     assert result.middle_json.file_suffix == "rtf"
     assert result.middle_json.is_full_document is True
     assert len(result.pages) == 1
-    exported = result.middle_json.export(tmp_path / "export")
+    exported = export_middle_json(result.middle_json, tmp_path / "export")
     assert exported.image_paths
     assert all(path.exists() for path in exported.image_paths)
     assert "image_base64" not in exported.middle_json.to_json()
@@ -621,8 +607,8 @@ def test_rtf_runtime_has_no_anydoc_dependency() -> None:
     script = "\n".join(
         [
             "import sys",
-            "from mineru.model.flash import RtfModel",
-            "assert 'mineru.model.flash.office.rtf.converter' not in sys.modules",
+            "from docvortex.analyzers.native import RtfModel",
+            "assert 'docvortex.analyzers.native.office.rtf.converter' not in sys.modules",
             "pages = RtfModel().predict(__import__('io').BytesIO(b'{\\\\rtf1 ok}'))",
             "assert pages == [[{'type': 'text', 'content': [{'type': 'text', 'content': 'ok'}]}]]",
             "assert 'anydoc' not in sys.modules",

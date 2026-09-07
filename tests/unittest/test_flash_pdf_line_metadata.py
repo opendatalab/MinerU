@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import pytest
 
-from mineru.model.flash.pdf import line_layout, pipeline, text_blocks
+from docvortex.analyzers.native.pdf import line_layout
+from docvortex.analyzers.native.pdf import pipeline
+from docvortex.analyzers.native.pdf import text_blocks
 
 from _flash_pdf_test_utils import _text_line
 

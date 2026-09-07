@@ -1,23 +1,26 @@
 from __future__ import annotations
 
+import json
 import math
 import statistics
 from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
-from pdftext.schema import Bbox, Char
+from docvortex.document.pdf.text.contracts import Bbox
+from docvortex.document.pdf.text.contracts import Char
 
 from mineru.backend.analysis.pdf.text import native
 from mineru.backend.analysis.pdf.text.models import _AnalyzeSpan
-from mineru.model.flash.pdf.document import PDFDocument, get_lines_from_chars
-from mineru.model.flash.pdf.text_styles import PDF_NATIVE_SCRIPT_MARKUP_KEY
+from docvortex.document.pdf.document import PDFDocument
+from docvortex.document.pdf.document import get_lines_from_chars
+from docvortex.analyzers.native.pdf.text_styles import PDF_NATIVE_SCRIPT_MARKUP_KEY
 from mineru.types import BBox, ContentType
 
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _DEMO_PDF_DIR = _PROJECT_ROOT / "demo" / "pdfs"
-_ZH_2_PDF = _DEMO_PDF_DIR / "中文论文2.pdf"
+_ZH_2_SOURCE = "中文论文2.pdf"
 _FIXTURE_PDF_DIR = Path(__file__).resolve().parent / "pdfs"
 _PDF_CONTROL_CHARS = {"\r", "\n", "\x02", "\ufffe", "\uffff"}
 
@@ -153,9 +156,31 @@ def _render_chars(value: list[Char] | _ScriptFixture) -> str:
     return span.content
 
 
-def _render_pdf_line(pdf_path: Path, page_index: int, probe: str) -> str:
-    """定位真实 PDF 物理行并使用生产逻辑返回重建文本。"""
-    return _render_chars(_line_chars_containing(pdf_path, page_index, probe))
+def _demo_chars(source_name: str, page_index: int, probe: str, *, selection: str = "line") -> _ScriptFixture:
+    """读取保留 PDF 或已冻结的最小字符输入，不依赖其他仓库与网络。"""
+    if source_name in {"demo1.pdf", "demo2.pdf"}:
+        path = _DEMO_PDF_DIR / source_name
+        if selection == "contiguous":
+            return _contiguous_chars_containing(path, page_index, probe)
+        return _line_chars_containing(path, page_index, probe)
+    payload = json.loads((_PROJECT_ROOT / "tests/fixtures/hybrid_native_script_inputs.json").read_text(encoding="utf-8"))
+    case = next(
+        case
+        for case in payload["cases"]
+        if (case["source"], case["page_index"], case["probe"], case["selection"]) == (source_name, page_index, probe, selection)
+    )
+    assert len(case["fragments"]) == 1
+    fragment = case["fragments"][0]
+    return _ScriptFixture(
+        chars=[{**char, "bbox": Bbox(char["bbox"])} for char in fragment["chars"]],
+        tight_bboxes={int(key): tuple(value) for key, value in fragment["tight_bboxes"].items()},
+        origins={int(key): tuple(value) for key, value in fragment["origins"].items()},
+    )
+
+
+def _render_demo_line(source_name: str, page_index: int, probe: str) -> str:
+    """使用同一生产回填路径验证真实文档物理行的文本和上下标。"""
+    return _render_chars(_demo_chars(source_name, page_index, probe))
 
 
 def _script_char(
@@ -273,7 +298,7 @@ def test_zh2_tight_bbox_restores_words_rejected_by_loose_bbox(
     probe: str,
 ) -> None:
     """验证中文论文2真实字体框中 loose 全部失配时 tight-first 仍恢复完整英文词。"""
-    fixture = _contiguous_chars_containing(_ZH_2_PDF, page_index, probe)
+    fixture = _demo_chars(_ZH_2_SOURCE, page_index, probe, selection="contiguous")
     span_bbox = _tight_only_span_bbox(fixture)
     loose_matches = [
         native.calculate_char_in_span(
@@ -322,7 +347,7 @@ def test_span_fill_uses_loose_bbox_when_tight_punctuation_does_not_match() -> No
 def test_zh2_heading_number_bridges_low_internal_periods() -> None:
     """验证中文论文2窄标题框可恢复同行数字之间偏低的句点。"""
     probe = "1.3.6 评估结果缺乏可解释性"
-    fixture = _contiguous_chars_containing(_ZH_2_PDF, 6, probe)
+    fixture = _demo_chars(_ZH_2_SOURCE, 6, probe, selection="contiguous")
     span_bbox = (308.16, 628.56, 444.96, 637.56)
     periods = [char for char in fixture.chars if char["char"] == "."]
     assert len(periods) == 2
@@ -648,7 +673,7 @@ def test_missing_extended_geometry_keeps_all_characters_body() -> None:
 
 def test_overlapping_spacing_ogonek_composes_demo2_author_name() -> None:
     """验证 demo2 原生字符流中与 e 重叠的 spacing ogonek 合成为 ę。"""
-    content = _render_pdf_line(_DEMO_PDF_DIR / "demo2.pdf", 0, "Kowalczuk")
+    content = _render_demo_line("demo2.pdf", 0, "Kowalczuk")
 
     assert content.startswith("Jędrzej Kowalczuk")
     assert "\u02db" not in content
@@ -860,7 +885,7 @@ def test_real_pdf_scripts_keep_confirmed_markup(
     expected_fragments: tuple[str, ...],
 ) -> None:
     """验证已有输出中经页面视觉确认的真实上下标继续保留。"""
-    content = _render_pdf_line(_DEMO_PDF_DIR / pdf_name, page_index, probe)
+    content = _render_demo_line(pdf_name, page_index, probe)
 
     assert all(expected_fragment in content for expected_fragment in expected_fragments)
 
@@ -890,18 +915,14 @@ def test_chinese_mixed_font_reference_uses_local_main_font_body(
     expected_fragment: str,
 ) -> None:
     """验证含拉丁姓名的中文 OCR 行使用主字体正文带识别数字引用。"""
-    chars = _contiguous_chars_containing(_DEMO_PDF_DIR / "中文论文.pdf", 1, probe)
+    chars = _demo_chars("中文论文.pdf", 1, probe, selection="contiguous")
 
     assert expected_fragment in _render_chars(chars)
 
 
 def test_chinese_reference_line_only_marks_the_reference() -> None:
     """验证短行中数字引用占优时，正文“依据”和句号不会反向误判为下标。"""
-    chars = _contiguous_chars_containing(
-        _DEMO_PDF_DIR / "中文论文.pdf",
-        1,
-        "依据［14-17］。",
-    )
+    chars = _demo_chars("中文论文.pdf", 1, "依据［14-17］。", selection="contiguous")
 
     content = _render_chars(chars)
 
@@ -935,7 +956,7 @@ def test_real_pdf_plain_text_does_not_gain_script_markup(
     expected: str,
 ) -> None:
     """验证字体框或 glyph 形状差异不会给普通单位和复杂度记号加角标。"""
-    content = _render_pdf_line(_DEMO_PDF_DIR / pdf_name, page_index, probe)
+    content = _render_demo_line(pdf_name, page_index, probe)
 
     assert expected in content
     assert "<sup>" not in content and "<sub>" not in content
@@ -958,7 +979,7 @@ def test_zh2_normal_english_runs_do_not_gain_script_markup(
     expected: str,
 ) -> None:
     """验证中文论文2中受字体框影响的普通英文 run 不会被误判成上下标。"""
-    content = _render_pdf_line(_ZH_2_PDF, page_index, probe)
+    content = _render_demo_line(_ZH_2_SOURCE, page_index, probe)
 
     assert expected in content
     assert "<sup>" not in content and "<sub>" not in content
@@ -1021,3 +1042,29 @@ def test_rotated_powerpoint_page_keeps_all_plain_text_on_baseline() -> None:
     assert len(rendered_lines) == 33
     assert rendered_lines[0] == "Energy Metabolism"
     assert all("<sup>" not in content and "<sub>" not in content for content in rendered_lines)
+
+
+def test_mixed_font_unit_and_citation_use_shared_local_body_reference() -> None:
+    """最小真实字符夹具通过 Hybrid 生产路径恢复正文单位和完整引用上标。"""
+    from copy import deepcopy
+
+    payload = json.loads((_PROJECT_ROOT / "tests/fixtures/pdf_mixed_font_script_line.json").read_text(encoding="utf-8"))
+    chars = []
+    tight_bboxes = {}
+    origins = {}
+    for row in payload["chars"]:
+        char = dict(row)
+        tight, origin = char.pop("tight"), char.pop("origin")
+        char["bbox"] = Bbox(char["bbox"])
+        chars.append(char)
+        if tight is not None:
+            tight_bboxes[char["char_idx"]] = tuple(tight)
+        if origin is not None:
+            origins[char["char_idx"]] = tuple(origin)
+    before = deepcopy(payload)
+    roles = native._classify_char_script_roles(chars, tight_bboxes=tight_bboxes, origins=origins)
+    assert {str(c["char_idx"]): role for c, role in zip(chars, roles) if 1353 <= c["char_idx"] <= 1360} == payload["expected"]
+    text = "".join(_render_chars(_ScriptFixture(chars, tight_bboxes, origins)).split())
+    assert "１２ｇｐｍ<sup>［８］</sup>" in text
+    assert "<sub>" not in text
+    assert payload == before

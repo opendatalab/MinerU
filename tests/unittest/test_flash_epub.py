@@ -13,22 +13,29 @@ from bs4 import BeautifulSoup
 from lxml import etree
 from loguru import logger
 
-import mineru.model.flash.epub.package as epub_package_module
+import docvortex.analyzers.native.epub.package as epub_package_module
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
-from mineru.backend.postprocess.lists import fix_office_list_blocks
+from docvortex.postprocess.lists import fix_office_list_blocks
 from mineru.doclib.core.file_io import extract_metadata
 from mineru.doclib.core.db import DatabaseManager
 from mineru.doclib.core.fts import FTSManager
 from mineru.doclib.services.parse_svc import ParseService
 from mineru.errors import InvalidRequestError
-from mineru.model.flash import EpubModel
-from mineru.model.flash.epub import EpubEncryptedError, EpubPackage, EpubParseError, EpubResourceLimitError, detect_epub
-from mineru.model.flash._shared.markup import MarkupStylesheet, TextStyle
-from mineru.model.flash.epub.xhtml import EpubChapterConverter, build_anchor_registry, convert_svg_spine
+from docvortex.analyzers.native import EpubModel
+from docvortex.analyzers.native.epub import EpubEncryptedError
+from docvortex.analyzers.native.epub import EpubPackage
+from docvortex.analyzers.native.epub import EpubParseError
+from docvortex.analyzers.native.epub import EpubResourceLimitError
+from docvortex.analyzers.native.epub import detect_epub
+from docvortex.analyzers.native._shared.markup import MarkupStylesheet
+from docvortex.analyzers.native._shared.markup import TextStyle
+from docvortex.analyzers.native.epub.xhtml import EpubChapterConverter
+from docvortex.analyzers.native.epub.xhtml import build_anchor_registry
+from docvortex.analyzers.native.epub.xhtml import convert_svg_spine
 from mineru.parser import MinerUParser, parse, parse_async
 from mineru.parser import api_server
 from mineru.parser.api_server import CreateJobRequest, FileStore
-from mineru.parser.file_type import guess_suffix_by_bytes, guess_suffix_by_path
+from docvortex.document.detection import guess_suffix_by_bytes, guess_suffix_by_path
 from mineru.render import RenderMode, render_docx, render_html, render_markdown, render_structured_content
 from mineru.types import BlockType, PageFootnoteBlock
 
@@ -57,8 +64,8 @@ def test_epub_model_analyze_and_renderers_preserve_structured_content() -> None:
     assert explicit_full_middle.is_full_document is True
     assert middle.model_dump() == async_middle.model_dump()
     assert model.file_suffix == middle.file_suffix == "epub"
-    assert model.effort == middle.effort == "flash"
-    assert model.parse_mode == middle.parse_mode == "txt"
+    assert model.extensions["mineru"]["effort"] == middle.extensions["mineru"]["effort"] == "flash"
+    assert model.extensions["mineru"]["parse_mode"] == middle.extensions["mineru"]["parse_mode"] == "txt"
     assert [page.page_idx for page in middle.pages] == [0, 1, 2]
     assert middle.pages[0].blocks[0].type == BlockType.DOC_TITLE
 
@@ -145,8 +152,8 @@ def test_epub_notes_use_page_footnote_and_document_wide_anchors() -> None:
     full_markdown = render_markdown(middle, mode=RenderMode.FULL)
     assert "First footnote paragraph" in default_markdown
     assert f"](#{first.anchor})" in default_markdown
-    assert f'id="{first.anchor}" class="mineru-page-footnote"' in default_markdown
-    assert f'id="{first.anchor}" class="mineru-page-footnote"' in full_markdown
+    assert f'id="{first.anchor}" class="docvortex-page-footnote"' in default_markdown
+    assert f'id="{first.anchor}" class="docvortex-page-footnote"' in full_markdown
     assert "Page footnote:" not in default_markdown
 
     for html_output in (
@@ -155,7 +162,7 @@ def test_epub_notes_use_page_footnote_and_document_wide_anchors() -> None:
     ):
         assert f'href="#{first.anchor}"' in html_output
         assert f'id="{first.anchor}"' in html_output
-        assert 'class="mineru-page-footnote"' in html_output
+        assert 'class="docvortex-page-footnote"' in html_output
 
     structured = render_structured_content(middle)
     structured_blocks = [block for page in structured["pages"] for block in page["blocks"]]
@@ -439,7 +446,7 @@ def test_non_pdf_public_parser_rejects_page_range(
     """验证所有非 PDF 路径入口在初始化具体模型前拒绝 page_range。"""
     source = tmp_path / f"sample.{suffix}"
     source.write_bytes(b"not-read")
-    monkeypatch.setattr("mineru.parser.file_type.guess_suffix_by_path", lambda _path: suffix)
+    monkeypatch.setattr("docvortex.document.detection.guess_suffix_by_path", lambda _path: suffix)
     parser = MinerUParser(tier="flash")
     with pytest.raises(InvalidRequestError, match="full-document parsing") as exc_info:
         parser.parse(source, page_range="1")
@@ -897,7 +904,6 @@ def test_epub_local_parse_job_emits_spine_aligned_flash_outputs(tmp_path: Path) 
             record,
             request,
             file_store,
-            ocr_mode="auto",
             image_analysis=True,
             allow_local_source=True,
         )
@@ -934,7 +940,6 @@ def test_epub_local_parse_job_preserves_page_range_error_code(tmp_path: Path) ->
             record,
             request,
             file_store,
-            ocr_mode="auto",
             image_analysis=True,
             allow_local_source=True,
         )
@@ -1017,7 +1022,7 @@ def test_epub_public_import_does_not_load_heavy_models() -> None:
     code = """
 import sys
 import mineru.parser
-blocked = ('torch', 'cv2', 'mineru.model.flash.epub', 'mineru_vl_utils')
+blocked = ('torch', 'cv2', 'docvortex.analyzers.native.epub', 'mineru_vl_utils')
 assert not any(name == prefix or name.startswith(prefix + '.') for prefix in blocked for name in sys.modules)
 print('ok')
 """

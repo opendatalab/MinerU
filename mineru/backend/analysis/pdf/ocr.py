@@ -12,7 +12,7 @@ from tqdm import tqdm
 
 from ....model.runtime.hybrid import HybridLocalModelContext
 from ....types import BlockType
-from ....utils.geometry import normalize_to_int_bbox
+from docvortex.foundation.geometry import normalize_to_int_bbox
 from .images import crop_img
 from ....model.ocr.geometry import merge_det_boxes, sorted_boxes, update_det_boxes
 from ....model.ocr.image import mask_formula_regions_for_ocr_det
@@ -25,7 +25,8 @@ from .constants import (
     VLM_OCR_DET_TYPE,
     VLM_TXT_DET_TYPE,
 )
-from .geometry import _bbox_to_pixel_bbox, _normalize_medium_content
+from docvortex.document.pdf.geometry import bbox_to_pixel_bbox as _bbox_to_pixel_bbox
+from docvortex.document.pdf.geometry import normalize_medium_content as _normalize_medium_content
 
 
 @dataclass

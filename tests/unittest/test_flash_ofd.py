@@ -20,34 +20,45 @@ from mineru.doclib.core.db import DatabaseManager
 from mineru.doclib.core.fts import FTSManager
 from mineru.doclib.services.parse_svc import ParseService
 from mineru.errors import InvalidRequestError
-from mineru.model.flash import OfdModel
-from mineru.model.flash.ofd import OfdParseError, OfdResourceLimitError, detect_ofd
-from mineru.model.flash.ofd import images as ofd_images
-from mineru.model.flash.ofd import metadata as ofd_metadata
-from mineru.model.flash.ofd import scene as ofd_scene
-from mineru.model.flash.ofd import table as ofd_table
-from mineru.model.flash.ofd import text as ofd_text
-from mineru.model.flash.ofd.constants import (
-    MAX_DELTA_TOKENS,
-    MAX_DOCUMENT_COUNT,
-    MAX_DRAW_PARAM_INHERITANCE,
-    MAX_EXPANDED_GLYPHS,
-    MAX_GLYPH_TOKENS,
-    MAX_PAGE_COUNT,
-    MAX_PATH_TOKENS,
-)
-from mineru.model.flash.ofd.geometry import Affine, canonical_angle
-from mineru.model.flash.ofd.images import build_image_item
-from mineru.model.flash.ofd.models import AxisLine, MediaResource, OfdPageScene, ResourceRegistry, TextLine
-from mineru.model.flash.ofd.package import OfdPackage
-from mineru.model.flash.ofd.path import OfdPathBudget, _segments, build_axis_lines
-from mineru.model.flash.ofd.reading_order import OfdReadingOrderProjector
-from mineru.model.flash.ofd.resources import parse_resource_part, resolve_draw_param
-from mineru.model.flash.ofd.text import FontMetricResolver, OfdTextBudget, build_text_lines, parse_delta
+from docvortex.analyzers.native import OfdModel
+from docvortex.analyzers.native.ofd import OfdParseError
+from docvortex.analyzers.native.ofd import OfdResourceLimitError
+from docvortex.analyzers.native.ofd import detect_ofd
+from docvortex.analyzers.native.ofd import images as ofd_images
+from docvortex.analyzers.native.ofd import metadata as ofd_metadata
+from docvortex.analyzers.native.ofd import scene as ofd_scene
+from docvortex.analyzers.native.ofd import table as ofd_table
+from docvortex.analyzers.native.ofd import text as ofd_text
+from docvortex.analyzers.native.ofd.constants import MAX_DELTA_TOKENS
+from docvortex.analyzers.native.ofd.constants import MAX_DOCUMENT_COUNT
+from docvortex.analyzers.native.ofd.constants import MAX_DRAW_PARAM_INHERITANCE
+from docvortex.analyzers.native.ofd.constants import MAX_EXPANDED_GLYPHS
+from docvortex.analyzers.native.ofd.constants import MAX_GLYPH_TOKENS
+from docvortex.analyzers.native.ofd.constants import MAX_PAGE_COUNT
+from docvortex.analyzers.native.ofd.constants import MAX_PATH_TOKENS
+from docvortex.analyzers.native.ofd.geometry import Affine
+from docvortex.analyzers.native.ofd.geometry import canonical_angle
+from docvortex.analyzers.native.ofd.images import build_image_item
+from docvortex.analyzers.native.ofd.models import AxisLine
+from docvortex.analyzers.native.ofd.models import MediaResource
+from docvortex.analyzers.native.ofd.models import OfdPageScene
+from docvortex.analyzers.native.ofd.models import ResourceRegistry
+from docvortex.analyzers.native.ofd.models import TextLine
+from docvortex.analyzers.native.ofd.package import OfdPackage
+from docvortex.analyzers.native.ofd.path import OfdPathBudget
+from docvortex.analyzers.native.ofd.path import _segments
+from docvortex.analyzers.native.ofd.path import build_axis_lines
+from docvortex.analyzers.native.ofd.reading_order import OfdReadingOrderProjector
+from docvortex.analyzers.native.ofd.resources import parse_resource_part
+from docvortex.analyzers.native.ofd.resources import resolve_draw_param
+from docvortex.analyzers.native.ofd.text import FontMetricResolver
+from docvortex.analyzers.native.ofd.text import OfdTextBudget
+from docvortex.analyzers.native.ofd.text import build_text_lines
+from docvortex.analyzers.native.ofd.text import parse_delta
 from mineru.parser import MinerUParser
 from mineru.parser import api_server
 from mineru.parser.api_server import CreateJobRequest, FileStore
-from mineru.parser.file_type import guess_suffix_by_bytes, guess_suffix_by_path
+from docvortex.document.detection import guess_suffix_by_bytes, guess_suffix_by_path
 from mineru.render import render_docx, render_html, render_markdown, render_structured_content
 from mineru.types import BlockType
 
@@ -98,8 +109,8 @@ def test_ofd_model_analyze_detection_and_renderers(tmp_path: Path) -> None:
     assert model.pages == async_model.pages == model_pages
     assert middle.model_dump() == async_middle.model_dump()
     assert model.file_suffix == middle.file_suffix == "ofd"
-    assert model.effort == middle.effort == "flash"
-    assert model.parse_mode == middle.parse_mode == "txt"
+    assert model.extensions["mineru"]["effort"] == middle.extensions["mineru"]["effort"] == "flash"
+    assert model.extensions["mineru"]["parse_mode"] == middle.extensions["mineru"]["parse_mode"] == "txt"
     assert middle.is_full_document is True
     assert middle.pages[0].blocks[0].type == BlockType.TEXT
     assert middle.pages[0].blocks[0].bbox is not None
@@ -907,7 +918,6 @@ def test_ofd_parse_server_job_emits_flash_outputs(tmp_path: Path) -> None:
             record,
             request,
             file_store,
-            ocr_mode="auto",
             image_analysis=True,
             allow_local_source=True,
         )

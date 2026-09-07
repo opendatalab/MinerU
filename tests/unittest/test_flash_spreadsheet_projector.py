@@ -7,12 +7,15 @@ from openpyxl.cell.text import InlineFont
 from openpyxl.worksheet.worksheet import Worksheet
 import pytest
 
-from mineru.model.flash.office.spreadsheet.html import render_spreadsheet_table
-from mineru.model.flash.office.spreadsheet.models import AnchoredBlock, ExcelCell, ExcelTable, SheetImage
-from mineru.model.flash.office.spreadsheet.projector import SpreadsheetProjector
-from mineru.model.flash.office.xls.xls_converter import _XlsPageBuilder
-from mineru.model.flash.office.xlsx import xlsx_converter as xlsx_converter_module
-from mineru.model.flash.office.xlsx.xlsx_converter import XlsxConverter
+from docvortex.analyzers.native.office.spreadsheet.html import render_spreadsheet_table
+from docvortex.analyzers.native.office.spreadsheet.models import AnchoredBlock
+from docvortex.analyzers.native.office.spreadsheet.models import ExcelCell
+from docvortex.analyzers.native.office.spreadsheet.models import ExcelTable
+from docvortex.analyzers.native.office.spreadsheet.models import SheetImage
+from docvortex.analyzers.native.office.spreadsheet.projector import SpreadsheetProjector
+from docvortex.analyzers.native.office.xls.xls_converter import _XlsPageBuilder
+from docvortex.analyzers.native.office.xlsx import xlsx_converter as xlsx_converter_module
+from docvortex.analyzers.native.office.xlsx.xlsx_converter import XlsxConverter
 from mineru.types import BlockType
 
 from _span_test_utils import inline

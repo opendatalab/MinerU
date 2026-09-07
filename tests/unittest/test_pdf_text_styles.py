@@ -1,9 +1,10 @@
 from __future__ import annotations
+from docvortex.schema import Producer
+from mineru.integrations.docvortex import build_metadata
 
 import html
 import math
 from io import BytesIO
-from pathlib import Path
 from types import SimpleNamespace
 from collections.abc import Sequence
 from typing import Any
@@ -16,11 +17,13 @@ from mineru.backend.analysis.pdf.text import content as text_content
 from mineru.backend.analysis.pdf.text import styles as text_style_enrichment
 from mineru.backend.analysis.pdf.text.models import _AnalyzeLine, _AnalyzeSpan
 from mineru.backend.analysis.pdf.text.native import txt_spans_extract
-from mineru.backend.postprocess.pages import model_json_to_pages
-from mineru.model.flash import PdfModel
-from mineru.model.flash.pdf.inline import matching as inline_matching
-from mineru.model.flash.pdf import models, native_text, text_styles as flash_text_styles
-from mineru.render import render_docx, render_html, render_markdown, render_structured_content
+from docvortex.postprocess.pages import model_json_to_pages
+from docvortex.analyzers.native import PdfModel
+from docvortex.analyzers.native.pdf.inline import matching as inline_matching
+from docvortex.analyzers.native.pdf import models
+from docvortex.analyzers.native.pdf import native_text
+from docvortex.analyzers.native.pdf import text_styles as flash_text_styles
+from mineru.render import render_docx, render_html, render_markdown
 from mineru.types import (
     RAW_CAPTION,
     RAW_FOOTNOTE,
@@ -28,28 +31,27 @@ from mineru.types import (
     ContentType,
     MiddleJson,
     ModelJson,
-    PageInfo,
 )
-from mineru.model.flash.pdf.document import PDFDocument, PDFLinkAnnotation, PDFPageTextGeometry
-from mineru.model.flash.pdf.text_styles import (
-    PDF_FONT_FORCE_BOLD_FLAG,
-    PDF_FONT_ITALIC_FLAG,
-    PDF_NATIVE_SCRIPT_MARKUP_KEY,
-    PDFTextLinkLine,
-    PDFTextLinkRange,
-    PDFTextScriptLine,
-    PDFTextScriptRange,
-    PDFTextStyleLine,
-    PDFTextStyleRange,
-    apply_pdf_text_links as _apply_pdf_text_links,
-    apply_pdf_text_styles as _apply_pdf_text_styles,
-    detect_pdf_text_link_lines,
-    detect_pdf_text_style_lines,
-    materialize_pdf_inline_spans,
-    _partition_resplit_text_evidence,
-    _realign_repaired_text_evidence,
-)
-from _span_test_utils import inline_text, inline_urls
+from docvortex.document.pdf.document import PDFDocument
+from docvortex.document.pdf.document import PDFLinkAnnotation
+from docvortex.document.pdf.document import PDFPageTextGeometry
+from docvortex.analyzers.native.pdf.text_styles import PDF_FONT_FORCE_BOLD_FLAG
+from docvortex.analyzers.native.pdf.text_styles import PDF_FONT_ITALIC_FLAG
+from docvortex.analyzers.native.pdf.text_styles import PDF_NATIVE_SCRIPT_MARKUP_KEY
+from docvortex.analyzers.native.pdf.text_styles import PDFTextLinkLine
+from docvortex.analyzers.native.pdf.text_styles import PDFTextLinkRange
+from docvortex.analyzers.native.pdf.text_styles import PDFTextScriptLine
+from docvortex.analyzers.native.pdf.text_styles import PDFTextScriptRange
+from docvortex.analyzers.native.pdf.text_styles import PDFTextStyleLine
+from docvortex.analyzers.native.pdf.text_styles import PDFTextStyleRange
+from docvortex.analyzers.native.pdf.text_styles import apply_pdf_text_links as _apply_pdf_text_links
+from docvortex.analyzers.native.pdf.text_styles import apply_pdf_text_styles as _apply_pdf_text_styles
+from docvortex.analyzers.native.pdf.text_styles import detect_pdf_text_link_lines
+from docvortex.analyzers.native.pdf.text_styles import detect_pdf_text_style_lines
+from docvortex.analyzers.native.pdf.text_styles import materialize_pdf_inline_spans
+from docvortex.analyzers.native.pdf.text_styles import _partition_resplit_text_evidence
+from docvortex.analyzers.native.pdf.text_styles import _realign_repaired_text_evidence
+from _span_test_utils import inline_text
 
 
 def apply_pdf_text_links(
@@ -106,9 +108,8 @@ def _model_json(pages: list[list[dict[str, Any]]]) -> ModelJson:
         pages=pages,
         page_index_map=[],
         file_suffix="pdf",
-        effort="flash",
-        parse_mode="txt",
-        mineru_version="test",
+        producer=Producer(name="mineru", version="test"),
+        extensions=build_metadata(effort="flash", parse_mode="txt", mineru_version="test"),
     )
 
 
@@ -2200,9 +2201,8 @@ def test_flash_native_pdf_styles_reach_model_middle_and_renderers() -> None:
         pages=model_json_to_pages(_model_json(model_list)),
         is_full_document=True,
         file_suffix="pdf",
-        effort="flash",
-        parse_mode="txt",
-        mineru_version="test",
+        producer=Producer(name="mineru", version="test"),
+        extensions=build_metadata(effort="flash", parse_mode="txt", mineru_version="test"),
     )
     markdown = render_markdown(middle)
     html = render_html(middle, standalone=False)
@@ -2223,47 +2223,6 @@ def test_flash_native_pdf_styles_reach_model_middle_and_renderers() -> None:
     assert "<w:b" in document_xml
     assert "<w:i/>" not in document_xml
     assert '<w:i w:val="1"' not in document_xml
-
-
-def test_demo1_pdf_link_reaches_model_middle_and_all_renderers() -> None:
-    """验证真实 demo1 URI Link 贯穿 model、MiddleJson 和四类 renderer。"""
-
-    pdf_path = Path(__file__).parents[2] / "demo/pdfs/demo1.pdf"
-    with PDFDocument(str(pdf_path)) as document:
-        model_list = PdfModel().predict(document)
-
-    target = "http://www.elsevier.com/locate/jhydrol"
-    label = "www.elsevier.com/locate/jhydrol"
-    assert any(
-        inline_text(block.get("content")) == label and inline_urls(block.get("content")) == [target] for block in model_list[0]
-    )
-
-    middle = MiddleJson(
-        pages=model_json_to_pages(_model_json(model_list)),
-        is_full_document=True,
-        file_suffix="pdf",
-        effort="flash",
-        parse_mode="txt",
-        mineru_version="test",
-    )
-    link_block = next(
-        block
-        for block in middle.pages[0].blocks
-        if inline_text(getattr(block, "content", None)) == label and inline_urls(getattr(block, "content", None)) == [target]
-    )
-    link_middle = MiddleJson(
-        pages=[PageInfo(page_idx=0, blocks=[link_block])],
-        is_full_document=True,
-        file_suffix="pdf",
-        effort="flash",
-        parse_mode="txt",
-        mineru_version="test",
-    )
-    assert f"[{label}]({target})" in render_markdown(link_middle)
-    assert f'href="{target}"' in render_html(link_middle, standalone=False)
-    relationships = ZipFile(BytesIO(render_docx(link_middle))).read("word/_rels/document.xml.rels").decode("utf-8")
-    assert target in relationships
-    assert f"[{label}]({target})" in str(render_structured_content(link_middle))
 
 
 def test_hybrid_txt_reuses_loaded_chars_and_applies_styles(

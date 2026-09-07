@@ -1410,7 +1410,7 @@ class ParseService:
                 continue
 
             from ...config import config
-            from ...render._internal.markdown.blocks import render_single_block
+            from docvortex.render.markdown import render_single_block
 
             delimiters = config.render.latex_delimiters
             parts: list[str] = []

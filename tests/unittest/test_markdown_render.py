@@ -1,4 +1,6 @@
 from __future__ import annotations
+from docvortex.schema import Producer
+from mineru.integrations.docvortex import build_metadata
 from _span_test_utils import inline as _inline
 
 from copy import deepcopy
@@ -38,9 +40,8 @@ def _middle(*pages: PageInfo, file_suffix: str = "docx") -> MiddleJson:
         pages=list(pages),
         is_full_document=True,
         file_suffix=file_suffix,
-        effort="flash",
-        parse_mode="txt",
-        mineru_version="test",
+        producer=Producer(name="mineru", version="test"),
+        extensions=build_metadata(effort="flash", parse_mode="txt", mineru_version="test"),
     )
 
 
@@ -137,7 +138,7 @@ def test_render_modes_filter_merge_and_preserve_input() -> None:
     default = render_markdown(middle)
     full = render_markdown(middle, mode=RenderMode.FULL)
 
-    note = '<small><span class="mineru-page-footnote" data-block-type="page_footnote" style="color:#6b7280">NOTE</span></small>'
+    note = '<small><span class="docvortex-page-footnote" data-block-type="page_footnote" style="color:#6b7280">NOTE</span></small>'
     assert default == f"Hello world again\n\n![](images/a.png)\n\n{note}"
     assert full == "\n\n---\n\n".join(
         [
@@ -172,7 +173,7 @@ def test_page_footnote_is_styled_and_linkable_in_default_and_full_modes() -> Non
     )
 
     expected = (
-        'See [\\[1\\]](#note-one).\n\n<small><span id="note-one" class="mineru-page-footnote" '
+        'See [\\[1\\]](#note-one).\n\n<small><span id="note-one" class="docvortex-page-footnote" '
         'data-block-type="page_footnote" style="color:#6b7280">Footnote body.</span></small>'
     )
     assert render_markdown(middle) == expected
@@ -192,7 +193,7 @@ def test_page_footnote_does_not_interrupt_continued_text_rendering() -> None:
     )
 
     assert render_markdown(middle) == (
-        'international\n\n<small><span class="mineru-page-footnote" '
+        'international\n\n<small><span class="docvortex-page-footnote" '
         'data-block-type="page_footnote" style="color:#6b7280">NOTE</span></small>'
     )
 
@@ -243,7 +244,7 @@ def test_ref_text_continuation_skips_merge_transparent_blocks_by_mode() -> None:
     )
     original = deepcopy(middle)
 
-    note = '<small><span class="mineru-page-footnote" data-block-type="page_footnote" style="color:#6b7280">NOTE</span></small>'
+    note = '<small><span class="docvortex-page-footnote" data-block-type="page_footnote" style="color:#6b7280">NOTE</span></small>'
     assert render_markdown(middle) == f"international continuation\n\n{note}"
     assert render_markdown(middle, mode=RenderMode.FULL) == (f"inter-\n\n{note}\n\n---\n\nHEADER\n\nnational continuation")
     assert middle == original
@@ -326,7 +327,7 @@ def test_ref_list_continuation_skips_merge_transparent_blocks_without_mutating_i
     )
     original = deepcopy(middle)
 
-    note = '<small><span class="mineru-page-footnote" data-block-type="page_footnote" style="color:#6b7280">NOTE</span></small>'
+    note = '<small><span class="docvortex-page-footnote" data-block-type="page_footnote" style="color:#6b7280">NOTE</span></small>'
     assert render_markdown(middle) == f"[1] first\n[2] second\n\n{note}"
     assert render_markdown(middle, mode=RenderMode.FULL) == (f"[1] first\n\n{note}\n\n---\n\nHEADER\n\n2\n\n[2] second")
     assert middle == original
@@ -348,7 +349,7 @@ def test_ordinary_list_continuation_does_not_skip_page_footnote() -> None:
     )
 
     assert render_markdown(middle) == (
-        '- first\n\n<small><span class="mineru-page-footnote" data-block-type="page_footnote" '
+        '- first\n\n<small><span class="docvortex-page-footnote" data-block-type="page_footnote" '
         'style="color:#6b7280">NOTE</span></small>\n\n- second'
     )
 
@@ -659,7 +660,7 @@ def test_equation_uses_content_then_image_fallback(monkeypatch: pytest.MonkeyPat
             }
         }
     )
-    monkeypatch.setattr("mineru.render._internal.markdown.renderer.config", configured)
+    monkeypatch.setattr("mineru.config.config", configured)
     middle = _middle(
         _page(
             0,
@@ -810,7 +811,7 @@ def test_algorithm_preserves_whitespace_comparisons_scripts_and_formula() -> Non
 
     rendered = render_markdown(_middle(_page(0, algorithm)))
 
-    assert 'class="mineru-algorithm"' in rendered
+    assert 'class="docvortex-algorithm"' in rendered
     assert (
         "if a &lt; b and c * d:\n  <strong>bold</strong> / <em>italic</em> / <s>strike</s> / "
         '<u>under</u> / <span style="text-emphasis: dot; text-emphasis-position: under;">dot</span> '

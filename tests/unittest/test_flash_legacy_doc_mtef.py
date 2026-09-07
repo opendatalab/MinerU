@@ -6,12 +6,10 @@ from io import BytesIO
 import pytest
 
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
-from mineru.model.flash import DocModel
-from mineru.model.flash.office.equation.mtef import (
-    decode_equation_native,
-    decode_equation_object,
-    decode_mtef_v3,
-)
+from docvortex.analyzers.native import DocModel
+from docvortex.analyzers.native.office.equation.mtef import decode_equation_native
+from docvortex.analyzers.native.office.equation.mtef import decode_equation_object
+from docvortex.analyzers.native.office.equation.mtef import decode_mtef_v3
 from mineru.render.contracts import RenderMode
 from mineru.render.html import render_html
 from mineru.render.markdown import render_markdown
@@ -74,20 +72,13 @@ def test_equation_editor_object_doc_integrates_as_native_equation_blocks() -> No
     """验证 ObjectPool storage id、字段分隔符和 MTEF 形成完整 DOC 原生公式链。"""
 
     corpus = formula_corpus()
-    file_bytes = build_equation_doc(
-        [(1000 + index, mtef) for index, (_name, mtef, _expected) in enumerate(corpus)]
-    )
+    file_bytes = build_equation_doc([(1000 + index, mtef) for index, (_name, mtef, _expected) in enumerate(corpus)])
     stream = BytesIO(file_bytes)
 
     pages = DocModel().predict(stream)
 
     assert not stream.closed
-    assert pages == [
-        [
-            {"type": BlockType.EQUATION, "content": expected}
-            for _name, _mtef, expected in corpus
-        ]
-    ]
+    assert pages == [[{"type": BlockType.EQUATION, "content": expected} for _name, _mtef, expected in corpus]]
     assert all(block.get("type") != BlockType.IMAGE for block in pages[0])
 
 
@@ -95,9 +86,7 @@ def test_equation_editor_doc_sync_async_middle_json_and_renderers() -> None:
     """验证原生公式贯穿同步/异步 Analyze、严格 MiddleJson、Markdown 和 HTML。"""
 
     corpus = formula_corpus()
-    file_bytes = build_equation_doc(
-        [(2000 + index, mtef) for index, (_name, mtef, _expected) in enumerate(corpus)]
-    )
+    file_bytes = build_equation_doc([(2000 + index, mtef) for index, (_name, mtef, _expected) in enumerate(corpus)])
     middle, model = doc_analyze(file_bytes, file_suffix="doc")
     async_middle, async_model = asyncio.run(aio_doc_analyze(file_bytes, file_suffix="doc"))
 

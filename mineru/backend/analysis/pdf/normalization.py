@@ -7,10 +7,13 @@ import math
 import re
 from typing import Any
 
-from ....model.flash._shared.spans import append_equation_span, append_text_span, inline_span_plain_text, strip_span_dicts
+from docvortex.content.spans import append_equation_span
+from docvortex.content.spans import append_text_span
+from docvortex.content.spans import inline_span_plain_text
+from docvortex.content.spans import strip_span_dicts
 from ....types import BBox, BlockType, RAW_ALGORITHM, RAW_PHONETIC
-from ....utils.geometry import calculate_overlap_area_2_minbox_area_ratio
-from ....utils.text import full_to_half_exclude_marks
+from docvortex.foundation.geometry import calculate_overlap_area_2_minbox_area_ratio
+from docvortex.content import normalize_pdf_model_text
 
 from .constants import (
     LAYOUT_TITLE_SPLIT_OVERLAP_THRESHOLD,
@@ -18,7 +21,7 @@ from .constants import (
     NATURAL_LANGUAGE_CONTENT_BLOCK_TYPES,
     _VLM_UNCLASSIFIED_TITLE_TYPE,
 )
-from .geometry import _bbox_to_pixel_bbox
+from docvortex.document.pdf.geometry import bbox_to_pixel_bbox as _bbox_to_pixel_bbox
 
 
 def _collect_layout_doc_title_bboxes(layout_res: list[dict[str, Any]], page_size: tuple[int, int]) -> list[BBox]:
@@ -94,40 +97,6 @@ def _is_valid_pdf_text_block(block: dict[str, Any]) -> bool:
     return True
 
 
-def _normalize_natural_language_fragment(content: str) -> str:
-    """规范自然语言片段中的全角字符，同时原样保留行内公式片段。"""
-
-    normalized_parts: list[str] = []
-    cursor = 0
-    formula_markers = (("\\(", "\\)"),)
-
-    while cursor < len(content):
-        formula_starts = [
-            (start, opening, closing) for opening, closing in formula_markers if (start := content.find(opening, cursor)) >= 0
-        ]
-        if not formula_starts:
-            normalized_parts.append(full_to_half_exclude_marks(content[cursor:]))
-            break
-
-        formula_start, opening, closing = min(formula_starts, key=lambda item: item[0])
-        normalized_parts.append(full_to_half_exclude_marks(content[cursor:formula_start]))
-        formula_end = content.find(closing, formula_start + len(opening))
-        if formula_end < 0:
-            normalized_parts.append(content[formula_start:])
-            break
-
-        formula_end += len(closing)
-        normalized_parts.append(content[formula_start:formula_end])
-        cursor = formula_end
-
-    return "".join(normalized_parts)
-
-
-def _normalize_natural_language_content(content: str) -> str:
-    """规范尚未 Span 化的自然语言可见文本。"""
-    return _normalize_natural_language_fragment(content)
-
-
 def _natural_language_spans(content: str) -> list[dict[str, Any]]:
     """把 PDF 自然语言字符串及圆括号公式定界符直接转换为 Span。"""
     pattern = re.compile(r"\\\((?P<round>.*?)\\\)", re.DOTALL)
@@ -139,19 +108,6 @@ def _natural_language_spans(content: str) -> list[dict[str, Any]]:
         cursor = match.end()
     append_text_span(spans, content[cursor:])
     return strip_span_dicts(spans)
-
-
-def _normalize_existing_span_text(spans: list[Any]) -> None:
-    """只规范已有 Span 中的 TextSpan 文字，保留公式、代码和链接目标原文。"""
-    for span in spans:
-        if not isinstance(span, dict):
-            continue
-        span_type = span.get("type")
-        span_content = span.get("content")
-        if span_type == "text" and isinstance(span_content, str):
-            span["content"] = _normalize_natural_language_fragment(span_content)
-        elif span_type == "hyperlink" and isinstance(span_content, list):
-            _normalize_existing_span_text(span_content)
 
 
 def _normalize_pdf_model_list(model_list: list[list[dict[str, Any]]]) -> None:
@@ -176,13 +132,10 @@ def _normalize_pdf_model_list(model_list: list[list[dict[str, Any]]]) -> None:
             block.pop("merge_prev", None)
             content = block.get("content")
             if isinstance(content, list):
-                if block.get("type") in {*NATURAL_LANGUAGE_CONTENT_BLOCK_TYPES, RAW_ALGORITHM}:
-                    _normalize_existing_span_text(content)
                 continue
             if not isinstance(content, str):
                 continue
             if block.get("type") in NATURAL_LANGUAGE_CONTENT_BLOCK_TYPES:
-                content = _normalize_natural_language_content(content)
                 block["content"] = _natural_language_spans(content)
             elif block.get("type") == BlockType.CODE:
                 spans = _natural_language_spans(content)
@@ -196,3 +149,5 @@ def _normalize_pdf_model_list(model_list: list[list[dict[str, Any]]]) -> None:
             for block in page_model_list
             if block.get("type") not in LINE_METADATA_BLOCK_TYPES or _is_valid_pdf_text_block(block)
         ]
+    # 统一在回填、Span 构造及宿主元数据清理完成后调用共享实现。
+    normalize_pdf_model_text(model_list)

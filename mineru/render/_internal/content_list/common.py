@@ -8,8 +8,8 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import TypeAlias
 
-from ....backend.postprocess.inline import inline_plain_text
-from ....config import LatexDelimitersConfig
+from docvortex.content.inline import inline_plain_text
+from docvortex.options import LatexDelimitersConfig
 from ....types import (
     BBox,
     AlgorithmBodyBlock,
@@ -39,11 +39,11 @@ from ....types import (
     TextBlock,
     TextSpan,
 )
-from ..common.index import strip_index_page_tail
-from ..common.list_items import parse_list_item_marker
-from ..markdown.assets import normalize_image_source, resolve_image_source
-from ..markdown.inline import render_inline_content
-from ..markdown.table import format_embedded_html
+from docvortex.render.fragments import strip_index_page_tail
+from docvortex.render.fragments import parse_list_item_marker
+from docvortex.render.fragments import normalize_image_source, resolve_image_source
+from docvortex.render.fragments import render_inline_content
+from docvortex.render.fragments import format_embedded_html
 
 VisualBlock: TypeAlias = ImageBlock | TableBlock | ChartBlock | CodeBlock
 VisualBodyBlock: TypeAlias = ImageBodyBlock | TableBodyBlock | ChartBodyBlock | CodeBodyBlock | AlgorithmBodyBlock

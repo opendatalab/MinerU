@@ -1,4 +1,6 @@
 from __future__ import annotations
+import json
+from docvortex.codecs.json import load_middle, load_model
 
 import asyncio
 import base64
@@ -15,7 +17,13 @@ from PIL import Image, ImageDraw
 
 from mineru.backend import analyze
 from mineru.backend.analysis import office
-from mineru.backend.analysis.pdf import constants, formulas, normalization, pipeline, tables, visuals, window
+from mineru.backend.analysis.pdf import constants
+from mineru.backend.analysis.pdf import formulas
+from mineru.backend.analysis.pdf import normalization
+from mineru.backend.analysis.pdf import pipeline
+from mineru.backend.analysis.pdf import tables
+from docvortex.document.pdf import visuals
+from mineru.backend.analysis.pdf import window
 from mineru.types import RAW_ALGORITHM, RAW_CAPTION, RAW_FOOTNOTE, RAW_FORMULA_NUMBER, RAW_PHONETIC
 from mineru.types import FILE_SUFFIXES, BlockType, FileSuffix, MiddleJson, ModelJson
 from mineru.version import __version__ as mineru_version
@@ -29,7 +37,6 @@ GREEN = (0, 255, 0)
 BLUE = (0, 0, 255)
 YELLOW = (255, 255, 0)
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
-_OFFICE_SAMPLE_DIR = _PROJECT_ROOT / "demo" / "office_docs"
 
 
 def _build_quadrant_image(width: int = 80, height: int = 40) -> Image.Image:
@@ -597,139 +604,6 @@ def test_normalize_pdf_model_list_updates_in_place() -> None:
     assert inline_text(model_list[0][2]["content"]) == "未闭合 \\(formula"
     assert [inline_text(block["content"]) for block in model_list[1]] == ["跨行 a\nb"]
     assert all("angle" not in block and "score" not in block for page_model_list in model_list for block in page_model_list)
-
-
-@pytest.mark.parametrize(
-    "block_type",
-    [
-        BlockType.TEXT,
-        BlockType.DOC_TITLE,
-        BlockType.PARAGRAPH_TITLE,
-        BlockType.ASIDE_TEXT,
-        BlockType.HEADER,
-        BlockType.FOOTER,
-        BlockType.PAGE_NUMBER,
-        BlockType.PAGE_FOOTNOTE,
-        BlockType.REF_TEXT,
-        BlockType.LIST,
-        BlockType.INDEX,
-        RAW_CAPTION,
-        RAW_FOOTNOTE,
-        RAW_PHONETIC,
-    ],
-)
-def test_normalize_pdf_model_list_converts_full_width_alphanumeric_for_textual_blocks(
-    block_type: str,
-) -> None:
-    """验证 PDF 自然语言块统一转换全角字母和数字，同时保留全角标点。"""
-    model_list = [
-        [
-            {
-                "type": block_type,
-                "content": "Ａｚ０，。！？（）",
-                "lines": [{"bbox": [0.1, 0.1, 0.9, 0.2]}],
-            }
-        ]
-    ]
-
-    normalization._normalize_pdf_model_list(model_list)
-
-    assert inline_text(model_list[0][0]["content"]) == "Az0，。！？（）"
-    expected_type = BlockType.TEXT if block_type == RAW_PHONETIC else block_type
-    assert model_list[0][0]["type"] == expected_type
-
-
-def test_normalize_pdf_model_list_preserves_inline_formulas_and_tag_literals_during_full_width_cleanup() -> None:
-    """验证圆括号公式不参与全角转换，标签外观原文仍作为普通 TextSpan 清洗。"""
-    model_list = [
-        [
-            {
-                "type": BlockType.TEXT,
-                "content": "前Ａ１ \\(Ｆ２+x\\) 中Ｂ３ <eq>Ｃ４+y</eq> 后Ｄ５",
-                "lines": [{"bbox": [0.1, 0.1, 0.9, 0.2]}],
-            }
-        ]
-    ]
-
-    normalization._normalize_pdf_model_list(model_list)
-
-    content = model_list[0][0]["content"]
-    assert inline_text(content) == "前A1 Ｆ２+x 中B3 <eq>C4+y</eq> 后D5"
-    assert [span["content"] for span in content if span.get("type") == "equation_inline"] == ["Ｆ２+x"]
-
-
-def test_normalize_pdf_model_list_preserves_hyperlink_url_payload() -> None:
-    """验证已有 HyperlinkSpan 的可见文字正常清洗，而 URL 与公式内容保持原样。"""
-
-    model_list = [
-        [
-            {
-                "type": BlockType.TEXT,
-                "content": [
-                    *inline("前Ａ "),
-                    hyperlink("https://example.test/Ａ\\(x\\)?q=１&amp;y=2", "标Ｂ"),
-                    *inline(" 后Ｃ "),
-                    equation("Ｄ"),
-                ],
-                "lines": [{"bbox": [0.1, 0.1, 0.9, 0.2]}],
-            }
-        ]
-    ]
-
-    normalization._normalize_pdf_model_list(model_list)
-
-    content = model_list[0][0]["content"]
-    assert inline_text(content) == "前A 标B 后C Ｄ"
-    assert inline_urls(content) == ["https://example.test/Ａ\\(x\\)?q=１&amp;y=2"]
-    assert next(span for span in inline_items(content) if span.get("type") == "equation_inline")["content"] == "Ｄ"
-
-
-@pytest.mark.parametrize(
-    ("content", "expected"),
-    [
-        ("前Ａ１ \\(Ｆ２ 后Ｂ３", "前A1 \\(Ｆ２ 后Ｂ３"),
-        ("前Ａ１ <eq>Ｆ２ 后Ｂ３", "前A1 <eq>F2 后B3"),
-    ],
-)
-def test_normalize_pdf_model_list_preserves_content_after_unclosed_inline_formula(
-    content: str,
-    expected: str,
-) -> None:
-    """验证未闭合公式从起始符到文本末尾均保持原样，避免误清洗公式内容。"""
-    model_list = [
-        [
-            {
-                "type": BlockType.TEXT,
-                "content": content,
-                "lines": [{"bbox": [0.1, 0.1, 0.9, 0.2]}],
-            }
-        ]
-    ]
-
-    normalization._normalize_pdf_model_list(model_list)
-
-    assert inline_text(model_list[0][0]["content"]) == expected
-
-
-@pytest.mark.parametrize(
-    "block_type",
-    [
-        BlockType.TABLE,
-        BlockType.CODE,
-        RAW_ALGORITHM,
-        BlockType.EQUATION,
-        BlockType.IMAGE,
-        BlockType.CHART,
-        "unknown",
-    ],
-)
-def test_normalize_pdf_model_list_skips_non_natural_language_content(block_type: str) -> None:
-    """验证表格、代码、公式、视觉主体和未知类型不执行自然语言全角清洗。"""
-    model_list = [[{"type": block_type, "content": "Ａｚ０，。！？（）"}]]
-
-    normalization._normalize_pdf_model_list(model_list)
-
-    assert model_list[0][0]["content"] == "Ａｚ０，。！？（）"
 
 
 def test_normalize_pdf_model_list_converts_phonetic_and_cleans_equation() -> None:
@@ -1342,17 +1216,17 @@ def test_doc_analyze_office_returns_model_json_without_pdf_processing(
     assert isinstance(middle_json, MiddleJson)
     assert len(middle_json.pages) == 1
     assert middle_json.file_suffix == file_suffix
-    assert middle_json.effort == "flash"
-    assert middle_json.parse_mode == "txt"
+    assert middle_json.extensions["mineru"]["effort"] == "flash"
+    assert middle_json.extensions["mineru"]["parse_mode"] == "txt"
     assert middle_json.is_full_document is True
     assert isinstance(model_json, ModelJson)
     assert model_json.pages == source_model_list
     assert model_json.page_index_map == []
     assert model_json.is_full_document is True
     assert model_json.file_suffix == file_suffix
-    assert model_json.effort == "flash"
-    assert model_json.parse_mode == "txt"
-    assert model_json.mineru_version == mineru_version
+    assert model_json.extensions["mineru"]["effort"] == "flash"
+    assert model_json.extensions["mineru"]["parse_mode"] == "txt"
+    assert model_json.extensions["mineru"]["mineru_version"] == mineru_version
     assert inline_text(model_json.pages[0][0]["content"]) == "原始 \\(office\\) 内容"
     for suffix, model_factory in model_factories.items():
         assert model_factory.call_count == (1 if suffix == file_suffix else 0)
@@ -1687,51 +1561,61 @@ def test_pdf_window_releases_rendered_images_when_layout_fails(
         page_image.getpixel((0, 0))
 
 
-@pytest.mark.parametrize(
-    ("file_suffix", "expected_page_count"),
-    [("docx", 3), ("pptx", 6), ("xlsx", 3)],
-)
-def test_doc_analyze_office_real_samples(file_suffix: str, expected_page_count: int) -> None:
-    """验证统一入口可直接分析三类真实 Office 样例并返回完整分页结果。"""
-    sample_path = _OFFICE_SAMPLE_DIR / f"{file_suffix}_01.{file_suffix}"
-
-    middle_json, model_json = analyze.doc_analyze(
-        sample_path.read_bytes(),
-        effort="high",
-        parse_mode="ocr",
-        file_suffix=file_suffix,  # type: ignore[arg-type]
-    )
-
-    assert isinstance(middle_json, MiddleJson)
-    assert isinstance(model_json, ModelJson)
-    assert middle_json.is_full_document is True
-    assert len(middle_json.pages) == expected_page_count
-    assert all(page.page_idx == page_idx for page_idx, page in enumerate(middle_json.pages))
-    assert len(model_json.pages) == expected_page_count
-    assert all(isinstance(page, list) for page in model_json.pages)
-    assert model_json.page_index_map == []
-    assert model_json.file_suffix == file_suffix
-    assert model_json.effort == "flash"
-    assert model_json.parse_mode == "txt"
+def _minimal_office_bytes(file_suffix: str) -> bytes:
+    """生成只包含一页正文的 Office 输入，独立验证宿主路由。"""
+    output = BytesIO()
     if file_suffix == "docx":
-        model_equations = [
-            block
-            for page_model_list in model_json.pages
-            for block in page_model_list
-            if block.get("type") == BlockType.EQUATION
-        ]
-        middle_equations = [block for page in middle_json.pages for block in page.blocks if block.type == BlockType.EQUATION]
-        assert model_equations
-        assert len(middle_equations) == len(model_equations)
-        assert "interline_equation" not in middle_json.to_json()
+        from docx import Document
+
+        document = Document()
+        document.add_paragraph("Office routing sample")
+        document.save(output)
+    elif file_suffix == "pptx":
+        from pptx import Presentation
+
+        document = Presentation()
+        slide = document.slides.add_slide(document.slide_layouts[1])
+        slide.shapes.title.text = "Office routing sample"
+        document.save(output)
+    else:
+        from openpyxl import Workbook
+
+        document = Workbook()
+        document.active["A1"] = "Office routing sample"
+        document.save(output)
+        document.close()
+    return output.getvalue()
+
+
+@pytest.mark.parametrize("file_suffix", ["docx", "pptx", "xlsx"])
+def test_doc_analyze_office_normalizes_product_route(file_suffix: FileSuffix) -> None:
+    """验证非 PDF 原生文档仍将推理档位和 OCR 选项归一为 Flash/txt。"""
+    middle, model = analyze.doc_analyze(
+        _minimal_office_bytes(file_suffix), effort="high", parse_mode="ocr", file_suffix=file_suffix
+    )
+    assert isinstance(middle, MiddleJson) and isinstance(model, ModelJson)
+    assert len(model.pages) == len(middle.pages) == 1
+    assert model.is_full_document and middle.is_full_document
+    assert model.extensions["mineru"]["effort"] == "flash"
+    assert model.extensions["mineru"]["parse_mode"] == "txt"
+    assert model.file_suffix == middle.file_suffix == file_suffix
+    assert middle.pages[0].page_idx == 0
+    assert "Office routing sample" in middle.to_json()
 
 
 def test_doc_analyze_flash_real_pdf_returns_typed_middle_json() -> None:
     """验证一页真实 PDF 经 Flash Analyze 后返回严格对象且 raw 结果无废弃字段。"""
-    sample_path = _PROJECT_ROOT / "demo" / "pdfs" / "2407.00079v4_origi-10.pdf"
+    from pypdf import PdfReader, PdfWriter
 
+    source = PdfReader(_PROJECT_ROOT / "demo/pdfs/demo1.pdf")
+    writer = PdfWriter()
+    writer.add_page(source.pages[0])
+    selected = BytesIO()
+    writer.write(selected)
+    writer.close()
+    source.close()
     middle_json, model_json = analyze.doc_analyze(
-        sample_path.read_bytes(),
+        selected.getvalue(),
         effort="flash",
         parse_mode="txt",
         file_suffix="pdf",
@@ -1745,11 +1629,11 @@ def test_doc_analyze_flash_real_pdf_returns_typed_middle_json() -> None:
     assert all("merge_prev" not in block for page in model_json.pages for block in page)
     assert model_json.page_index_map == []
     assert model_json.file_suffix == "pdf"
-    assert model_json.effort == "flash"
-    assert model_json.parse_mode == "txt"
-    assert model_json.mineru_version == mineru_version
-    assert MiddleJson.model_validate_json(middle_json.to_json()) == middle_json
-    assert ModelJson.model_validate_json(model_json.to_json()) == model_json
+    assert model_json.extensions["mineru"]["effort"] == "flash"
+    assert model_json.extensions["mineru"]["parse_mode"] == "txt"
+    assert model_json.extensions["mineru"]["mineru_version"] == mineru_version
+    assert load_middle(json.loads(middle_json.to_json())) == middle_json
+    assert load_model(json.loads(model_json.to_json())) == model_json
 
 
 def test_doc_analyze_flash_demo1_uses_canonical_equation_type() -> None:
@@ -1785,7 +1669,7 @@ def test_doc_analyze_flash_demo1_uses_canonical_equation_type() -> None:
 
 def test_doc_analyze_flash_returns_complete_model_json_and_typed_middle_json(monkeypatch: pytest.MonkeyPatch) -> None:
     """验证 Flash 多窗口补充完整 raw pages，并返回严格 ModelJson 与 MiddleJson。"""
-    from mineru.model import flash as flash_model
+    from docvortex.analyzers import native as flash_model
 
     events: list[str] = []
     source_model_list = [
@@ -1924,3 +1808,32 @@ def test_doc_analyze_flash_returns_complete_model_json_and_typed_middle_json(mon
         "document_close",
     ]
     assert not hasattr(analyze, "append_pages")
+
+
+def test_pdf_output_delegates_text_cleanup_after_span_and_metadata_processing(monkeypatch: pytest.MonkeyPatch) -> None:
+    """宿主只负责协议清理和 Span 构造，可见英数统一交给 DocVortex。"""
+    original = normalization.normalize_pdf_model_text
+    calls = []
+
+    def normalize(pages: list[list[dict[str, object]]]) -> None:
+        """在实际委托边界核对原始全角文字尚在、元数据已清理且公式已成为 Span。"""
+        calls.append(pages)
+        assert pages[0][0]["type"] == BlockType.TEXT
+        assert "angle" not in pages[0][0]
+        assert [span["type"] for span in pages[0][0]["content"]] == ["text", "equation_inline"]
+        assert pages[0][0]["content"][0]["content"] == "Ａ１ "
+        original(pages)
+
+    monkeypatch.setattr(normalization, "normalize_pdf_model_text", normalize)
+    pages = [
+        [
+            {"type": RAW_PHONETIC, "content": r"Ａ１ \(Ｂ２\)", "angle": 90, "lines": [{"bbox": [0.1, 0.1, 0.9, 0.2]}]},
+            {"type": BlockType.TABLE, "content": "<table><tr><td>Ｃ３<eq>Ｄ４</eq></td></tr></table>"},
+            {"type": RAW_ALGORITHM, "content": [{"type": "text", "content": "Ｅ５"}]},
+        ]
+    ]
+    normalization._normalize_pdf_model_list(pages)
+    assert len(calls) == 1 and calls[0] is pages
+    assert inline_text(pages[0][0]["content"]) == "A1 Ｂ２"
+    assert pages[0][1]["content"] == "<table><tr><td>C3<eq>Ｄ４</eq></td></tr></table>"
+    assert pages[0][2]["content"] == [{"type": "text", "content": "Ｅ５"}]

@@ -11,19 +11,17 @@ import numpy as np
 from PIL import Image
 
 from ....model.runtime.hybrid import HybridLocalModelContext
-from ....utils.geometry import normalize_to_int_bbox
+from docvortex.foundation.geometry import normalize_to_int_bbox
 from ....model.ocr.image import get_rotate_crop_image_for_text_rec
-from ....utils.text import build_tagged_formula_content
+from docvortex.foundation.text import build_tagged_formula_content
 
 from ....types import RAW_FORMULA_NUMBER, BlockType
 
-from .geometry import (
-    _bbox_to_pixel_bbox,
-    _medium_bbox_to_quad,
-    _normalize_layout_bbox_to_unit,
-    _normalize_medium_content,
-    _normalize_page_size,
-)
+from docvortex.document.pdf.geometry import bbox_to_pixel_bbox as _bbox_to_pixel_bbox
+from docvortex.document.pdf.geometry import medium_bbox_to_quad as _medium_bbox_to_quad
+from docvortex.document.pdf.geometry import normalize_layout_bbox_to_unit as _normalize_layout_bbox_to_unit
+from docvortex.document.pdf.geometry import normalize_medium_content as _normalize_medium_content
+from docvortex.document.pdf.geometry import normalize_page_size as _normalize_page_size
 
 
 def _is_hybrid_equation_block(block: dict[str, Any]) -> bool:

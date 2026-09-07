@@ -21,7 +21,7 @@ from mineru.kit.gradio import app as gradio_app
 from mineru.kit.gradio import page_range as ranges
 from mineru.kit.gradio.client import V1ArtifactError, V1ServerCapabilities
 from mineru.kit.main import app
-from mineru.model.flash.pdf.pdfium import _pdfium_lock
+from docvortex.document.pdf.pdfium import _pdfium_lock
 
 
 def _pdf(tmp_path: Path, page_count: int = 100, *, encrypted: bool = False) -> Path:

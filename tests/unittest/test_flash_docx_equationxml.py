@@ -1,4 +1,5 @@
 from __future__ import annotations
+from docvortex.export.middle import export_middle_json
 
 import asyncio
 from io import BytesIO
@@ -10,16 +11,14 @@ from lxml import etree  # type: ignore[reportAttributeAccessIssue]
 import pytest
 
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
-from mineru.model.flash import DocxModel
-from mineru.model.flash.office.docx.docx_converter import DocxConverter
-from mineru.model.flash.office.docx.equationxml import DocxEquationXmlDecoder
-from mineru.model.flash.office.errors import (
-    LegacyOfficeResourceLimitError,
-)
-from mineru.render._internal.docx.math import latex_to_omml
+from docvortex.analyzers.native import DocxModel
+from docvortex.analyzers.native.office.docx.docx_converter import DocxConverter
+from docvortex.analyzers.native.office.docx.equationxml import DocxEquationXmlDecoder
+from docvortex.analyzers.native.office.errors import LegacyOfficeResourceLimitError
+from docvortex.render._internal.docx.math import latex_to_omml
 from mineru.types import BlockType, MiddleJson, ModelJson
 
-import mineru.model.flash.office.docx.equationxml as equationxml_module
+import docvortex.analyzers.native.office.docx.equationxml as equationxml_module
 from _docx_equationxml_test_utils import (
     M_NS,
     WORD_2003_NS,
@@ -395,7 +394,7 @@ def test_invalid_docx_equationxml_preview_exports_to_sidecar(
         file_suffix="docx",
     )
 
-    result = middle.export(tmp_path / "docx-equationxml")
+    result = export_middle_json(middle, tmp_path / "docx-equationxml")
 
     assert len(result.image_paths) == 1
     assert result.image_paths[0].stat().st_size > 0

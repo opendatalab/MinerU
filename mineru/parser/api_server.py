@@ -50,7 +50,7 @@ from ..filetypes import (
 from .writer import DataWriter
 from ..types import SERVER_TIERS, TIERS_BY_SERVER_TIER, DeploymentTier, PageInfo, ServerTier, Tier, select_default_quality_tier
 from .tier import effort_for_tier
-from ..utils.image_payload import validate_image_sidecar_path
+from docvortex.foundation.image_payload import validate_image_sidecar_path
 from .process_control import ManagedProcessControlWatcher
 from ..model.ocr.language import PUBLIC_OCR_LANGUAGES, validate_public_ocr_lang
 from ..utils.stdio import configure_standard_streams
@@ -1375,7 +1375,7 @@ async def _run_job(
 
                 source_context = None
                 if stype == "html":
-                    from ..model.flash.html import HtmlSourceContext
+                    from docvortex.analyzers.native.html import HtmlSourceContext
 
                     source_context = HtmlSourceContext(
                         source_uri=extracted.source_uri,

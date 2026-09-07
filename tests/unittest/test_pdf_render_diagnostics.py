@@ -6,7 +6,7 @@ from typing import Any, cast
 import pytest
 from loguru import logger
 
-from mineru.backend.analysis.pdf import images as pdf_image_tools
+from docvortex.document.pdf import images as pdf_image_tools
 
 
 class _FakeProcess:
@@ -52,10 +52,16 @@ def test_pdf_render_worker_without_multiprocessing_parent_does_not_exit(monkeypa
     pdf_image_tools._exit_pdf_render_worker_when_parent_exits()
 
 
-def test_pdf_render_executor_installs_parent_exit_watcher() -> None:
+def test_pdf_render_executor_installs_parent_exit_watcher(monkeypatch: pytest.MonkeyPatch) -> None:
+    """渲染 worker 同时安装父进程监控和固定字体，监控优先以覆盖初始化失败。"""
+    events: list[str] = []
+    monkeypatch.setattr(pdf_image_tools, "_install_pdf_render_parent_exit_watcher", lambda: events.append("watcher"))
+    monkeypatch.setattr(pdf_image_tools, "initialize_pdfium_runtime", lambda: events.append("fonts"))
     executor = pdf_image_tools._create_pdf_render_executor(max_workers=1)
     try:
-        assert executor._initializer is pdf_image_tools._install_pdf_render_parent_exit_watcher
+        assert executor._initializer is pdf_image_tools._initialize_pdf_render_worker
+        executor._initializer()
+        assert events == ["watcher", "fonts"]
     finally:
         executor.shutdown(wait=True, cancel_futures=True)
 
@@ -76,7 +82,7 @@ def test_pdf_render_parent_exit_watcher_is_daemon(monkeypatch: pytest.MonkeyPatc
     assert events == [
         (
             pdf_image_tools._exit_pdf_render_worker_when_parent_exits,
-            "mineru-pdf-render-parent-exit-watcher",
+            "docvortex-pdf-render-parent-exit-watcher",
             True,
         ),
         "start",

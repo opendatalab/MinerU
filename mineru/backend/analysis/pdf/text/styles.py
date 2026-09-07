@@ -5,15 +5,15 @@ from __future__ import annotations
 
 from typing import Any, Sequence
 
-from .....model.flash.pdf.document import PDFPage, PDFPageTextGeometry, get_lines_from_chars
-from .....model.flash.pdf.text_styles import (
-    PDFTextLinkLine,
-    PDFTextScriptLine,
-    PDFTextStyleLine,
-    detect_pdf_text_link_lines,
-    detect_pdf_text_script_lines,
-    detect_pdf_text_style_lines,
-)
+from docvortex.document.pdf.document import PDFPage
+from docvortex.document.pdf.document import PDFPageTextGeometry
+from docvortex.document.pdf.document import get_lines_from_chars
+from docvortex.analyzers.native.pdf.text_styles import PDFTextLinkLine
+from docvortex.analyzers.native.pdf.text_styles import PDFTextScriptLine
+from docvortex.analyzers.native.pdf.text_styles import PDFTextStyleLine
+from docvortex.analyzers.native.pdf.text_styles import detect_pdf_text_link_lines
+from docvortex.analyzers.native.pdf.text_styles import detect_pdf_text_script_lines
+from docvortex.analyzers.native.pdf.text_styles import detect_pdf_text_style_lines
 from .....types import BBox
 
 
@@ -69,11 +69,11 @@ def build_pdf_native_visual_lines_and_styles(
     """一次读取当前页字符，构造视觉 run、普通样式、链接和脚本证据。"""
 
     # 延迟导入避免 Hybrid 模块初始化时提前加载完整 Flash PDF 流水线。
-    from .....model.flash.pdf.native_text import _build_native_line_items
-    from .....model.flash.pdf.line_merging import (
-        _merge_overlapping_inline_text_clusters,
-        _merge_same_baseline_text_lines,
+    from docvortex.analyzers.native.pdf.shared import build_native_line_items as _build_native_line_items
+    from docvortex.analyzers.native.pdf.shared import (
+        merge_overlapping_inline_text_clusters as _merge_overlapping_inline_text_clusters,
     )
+    from docvortex.analyzers.native.pdf.shared import merge_same_baseline_text_lines as _merge_same_baseline_text_lines
 
     geometry = page_text_geometry if page_text_geometry is not None else pdf_page.get_chars_with_geometry()
     chars = geometry.chars

@@ -34,7 +34,7 @@ mineru parse <input_path> --pages all -o <output_path>
   >[!TIP]
   >在浏览器中访问 `http://127.0.0.1:8000/docs` 查看 OpenAPI 文档。服务只提供 `/v1/*` 接口，包括健康检查、能力发现、上传、文件、解析任务和用量查询。
   >
-  >http异步调用代码示例：[Python版本](https://github.com/opendatalab/MinerU/blob/master/demo/demo.py)
+  >原生文档解析示例：[DocVortex Python 示例](https://github.com/myhloli/docvortex/blob/main/demo/demo.py)
 
 - 启动gradio webui 可视化前端：
   ```bash

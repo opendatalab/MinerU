@@ -77,13 +77,16 @@ INVALID_RANGES = [
 
 
 @pytest.mark.parametrize(("raw", "page_numbers", "canonical"), VALID_RANGES)
-def test_page_selection_contract_across_entrypoints(raw: str, page_numbers: list[int], canonical: str) -> None:
+def test_page_selection_contract_across_entrypoints(
+    raw: str, page_numbers: list[int], canonical: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """同一矩阵覆盖共享解析、Doclib 内容读取、CLI 校验和 Gradio 输入。"""
+    monkeypatch.setattr("mineru.kit.gradio.page_range.read_pdf_page_count", lambda _path: 10)
     _validate_page_range_input(raw)
     assert parse_page_range(raw, 10) == [page - 1 for page in page_numbers]
     assert expand_page_range(raw, 10) == canonical
     assert _normalize_content_page_range(raw, None, {"page_count": 10}) == canonical
-    assert expand_page_range(_effective_page_range("demo.pdf", raw), 10) == canonical
+    assert expand_page_range(_effective_page_range("demo.pdf", raw, tier="standard"), 10) == canonical
     assert parse_page_range_set(canonical) == set(page_numbers)
     assert count_pages_in_range(canonical) == len(page_numbers)
     assert format_page_range(reversed(page_numbers)) == canonical
@@ -97,7 +100,7 @@ def test_invalid_and_retired_syntax_is_rejected_everywhere(raw: str) -> None:
         lambda: parse_page_range(raw, 10),
         lambda: expand_page_range(raw, 10),
         lambda: _normalize_content_page_range(raw, None, {"page_count": 10}),
-        lambda: _effective_page_range("demo.pdf", raw),
+        lambda: _effective_page_range("demo.pdf", raw, tier="standard"),
         lambda: _validate_page_range_input(raw),
     ):
         with pytest.raises(MineruError) as error:

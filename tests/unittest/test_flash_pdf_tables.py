@@ -4,12 +4,11 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from mineru.model.flash.pdf import (
-    geometry,
-    models,
-    tables,
-)
-from mineru.model.flash.pdf.document import PDFPathInfo
+from docvortex.analyzers.native.pdf import geometry
+from docvortex.analyzers.native.pdf import models
+from docvortex.analyzers.native.pdf import tables
+from docvortex.analyzers.native.pdf import table_materialization
+from docvortex.document.pdf.document import PDFPathInfo
 
 
 def _axis_line(
@@ -318,7 +317,7 @@ def test_filled_grid_materialization_uses_existing_spatial_projection(
         source.page_size,
     )[0]
     projection = MagicMock(return_value="inside-left   inside-right")
-    monkeypatch.setattr(tables, "project_pdf_table_text", projection)
+    monkeypatch.setattr(table_materialization, "project_pdf_table_text", projection)
 
     blocks, annotation_blocks, claimed = tables._materialize_table_blocks(
         source,
@@ -472,7 +471,7 @@ def test_table_core_reclaims_semantic_line_without_touching_outer_marginals(
         line_indices={0},
     )
     projection = MagicMock(return_value="cell\ntable tail")
-    monkeypatch.setattr(tables, "project_pdf_table_text", projection)
+    monkeypatch.setattr(table_materialization, "project_pdf_table_text", projection)
 
     blocks, annotation_blocks, claimed = tables._materialize_table_blocks(
         source,
@@ -1344,7 +1343,7 @@ def test_materialize_table_externalizes_multiline_annotations_once(
         ],
     )
     projection = MagicMock(return_value="Header Body")
-    monkeypatch.setattr(tables, "project_pdf_table_text", projection)
+    monkeypatch.setattr(table_materialization, "project_pdf_table_text", projection)
 
     table_blocks, annotation_blocks, claimed = tables._materialize_table_blocks(
         source,
@@ -1490,7 +1489,7 @@ def test_invalid_table_annotation_falls_back_to_full_table_projection(
         ],
     )
     projection = MagicMock(return_value="body")
-    monkeypatch.setattr(tables, "project_pdf_table_text", projection)
+    monkeypatch.setattr(table_materialization, "project_pdf_table_text", projection)
 
     table_blocks, annotation_blocks, claimed = tables._materialize_table_blocks(
         source,
@@ -2002,7 +2001,7 @@ def test_failed_table_projection_does_not_claim_text(
     projection = MagicMock(return_value="")
     if projection_mode == "error":
         projection.side_effect = RuntimeError("projection failed")
-    monkeypatch.setattr(tables, "project_pdf_table_text", projection)
+    monkeypatch.setattr(table_materialization, "project_pdf_table_text", projection)
 
     blocks, annotation_blocks, claimed = tables._materialize_table_blocks(
         source,

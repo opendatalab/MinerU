@@ -5,27 +5,26 @@ from io import BytesIO
 from pathlib import Path
 import struct
 
-from bs4 import BeautifulSoup
 import pytest
 
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
-from mineru.model.flash import PptModel
-from mineru.model.flash._shared.hyperlink import sanitize_hyperlink_target
-from mineru.model.flash.office.errors import LegacyOfficeEncryptedError, LegacyOfficeResourceLimitError
-from mineru.model.flash.office.ppt import parser as ppt_parser
-from mineru.model.flash.office.ppt.models import PptPresentation, PptSlide
-from mineru.model.flash.office.ppt.ppt_converter import PptConverter
-from mineru.model.flash.office.ppt.records import PptRecord, RecordBudget
-from mineru.model.flash.office.ppt.style_text import CharacterRun, StyleRuns
+from docvortex.analyzers.native import PptModel
+from docvortex.analyzers.native._shared.hyperlink import sanitize_hyperlink_target
+from docvortex.analyzers.native.office.errors import LegacyOfficeEncryptedError
+from docvortex.analyzers.native.office.errors import LegacyOfficeResourceLimitError
+from docvortex.analyzers.native.office.ppt import parser as ppt_parser
+from docvortex.analyzers.native.office.ppt.models import PptPresentation
+from docvortex.analyzers.native.office.ppt.models import PptSlide
+from docvortex.analyzers.native.office.ppt.ppt_converter import PptConverter
+from docvortex.analyzers.native.office.ppt.records import PptRecord
+from docvortex.analyzers.native.office.ppt.records import RecordBudget
+from docvortex.analyzers.native.office.ppt.style_text import CharacterRun
+from docvortex.analyzers.native.office.ppt.style_text import StyleRuns
 from mineru.parser import parse
-from mineru.types import BlockType, ChartBlock, ImageBlock, MiddleJson, ModelJson, TableBlock
+from mineru.types import BlockType, MiddleJson, ModelJson
 
 from _legacy_ppt_test_utils import build_deep_nested_ppt, build_multimaster_ppt, build_sparse_notes_ppt
-from _span_test_utils import inline, inline_text
-
-
-_PROJECT_ROOT = Path(__file__).resolve().parents[2]
-_REAL_PPT = _PROJECT_ROOT / "demo" / "office_docs" / "pptx_01.ppt"
+from _span_test_utils import inline
 
 
 def test_ppt_model_preserves_slide_pages_and_sparse_notes() -> None:
@@ -60,8 +59,8 @@ def test_backend_analyze_accepts_ppt_and_async_contract() -> None:
     assert isinstance(middle_json, MiddleJson)
     assert model_json.file_suffix == "ppt"
     assert middle_json.file_suffix == "ppt"
-    assert model_json.effort == middle_json.effort == "flash"
-    assert model_json.parse_mode == middle_json.parse_mode == "txt"
+    assert model_json.extensions["mineru"]["effort"] == middle_json.extensions["mineru"]["effort"] == "flash"
+    assert model_json.extensions["mineru"]["parse_mode"] == middle_json.extensions["mineru"]["parse_mode"] == "txt"
     assert model_json.is_full_document is middle_json.is_full_document is True
     assert [page.page_idx for page in middle_json.pages] == [0, 1]
     assert async_middle_json == middle_json
@@ -183,73 +182,3 @@ def test_ppt_hyperlink_range_splits_utf16_and_style_boundaries() -> None:
         ("B", False, True, "https://example.com"),
         ("C", False, True, None),
     ]
-
-
-@pytest.mark.skipif(not _REAL_PPT.exists(), reason="real Office roundtrip fixture is local-only")
-def test_real_ppt_recovers_table_notes_images_and_exports(tmp_path: Path) -> None:
-    """验证真实六页 PPT 的合并表格、备注、图片及 sidecar 完整闭包。"""
-
-    middle_json, model_json = doc_analyze(_REAL_PPT.read_bytes(), file_suffix="ppt")
-
-    assert len(model_json.pages) == len(middle_json.pages) == 6
-    assert model_json.file_suffix == middle_json.file_suffix == "ppt"
-    table = next(block for block in middle_json.pages[0].blocks if isinstance(block, TableBlock))
-    table_html = table.content[0].content
-    soup = BeautifulSoup(table_html, "html.parser")
-    rows = soup.find_all("tr")
-    assert len(rows) == 9
-    assert max(sum(int(cell.get("colspan", 1)) for cell in row.find_all("td")) for row in rows) == 7
-    merged = sorted(
-        (int(cell.get("rowspan", 1)), int(cell.get("colspan", 1)), cell.get_text(strip=True))
-        for cell in soup.find_all("td")
-        if cell.has_attr("rowspan") or cell.has_attr("colspan")
-    )
-    assert merged == sorted(
-        [
-            (1, 3, "Class1"),
-            (1, 3, "Class2"),
-            (1, 2, "A merged with B"),
-            (2, 1, "R3"),
-            (3, 1, "R4"),
-        ]
-    )
-    assert [inline_text(block.content) for block in middle_json.pages[1].blocks if block.type == BlockType.PAGE_FOOTNOTE] == [
-        "Some notes on the second slide."
-    ]
-    assert [inline_text(block.content) for block in middle_json.pages[2].blocks if block.type == BlockType.PAGE_FOOTNOTE] == [
-        "Final notes on the third slide.",
-        "Second line of notes.",
-    ]
-    assert [sum(isinstance(block, ImageBlock) for block in page.blocks) for page in middle_json.pages] == [
-        0,
-        0,
-        0,
-        2,
-        0,
-        0,
-    ]
-    chart = next(block for block in middle_json.pages[4].blocks if isinstance(block, ChartBlock))
-    chart_soup = BeautifulSoup(chart.content[0].content, "html.parser")
-    assert [
-        [cell.get_text(" ", strip=True) for cell in row.find_all(["th", "td"], recursive=False)]
-        for row in chart_soup.find_all("tr")
-    ] == [
-        ["", "系列 1", "系列 2", "系列 3"],
-        ["类别 1", "4.3", "2.4", "2"],
-        ["类别 2", "2.5", "4.4", "2"],
-        ["类别 3", "3.5", "1.8", "3"],
-        ["类别 4", "4.5", "2.8", "5"],
-    ]
-    assert chart.content[0].image_base64 is not None
-
-    page_six_lists = [block for block in model_json.pages[5] if block.get("type") == BlockType.LIST]
-    assert page_six_lists[0]["attribute"] == "ordered"
-    assert page_six_lists[-1]["attribute"] == "ordered"
-    assert page_six_lists[-1]["start"] == 3
-
-    export_result = middle_json.export(tmp_path / "export")
-    exported_payload = export_result.middle_json.model_dump(mode="json", exclude_none=True)
-    assert export_result.json_path.exists()
-    assert export_result.image_paths
-    assert all(path.exists() and path.stat().st_size > 0 for path in export_result.image_paths)
-    assert "image_base64" not in str(exported_payload)

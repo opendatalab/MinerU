@@ -10,7 +10,9 @@ import numpy as np
 from loguru import logger
 
 from ....model.runtime.hybrid import HybridLocalModelContext
-from ....model.flash.pdf.document import PDFDocument, PDFPage, PDFPageTextGeometry
+from docvortex.document.pdf.document import PDFDocument
+from docvortex.document.pdf.document import PDFPage
+from docvortex.document.pdf.document import PDFPageTextGeometry
 from .images import load_images_from_pdf_bytes_range
 
 from ..contracts import AnalyzeEffort
@@ -21,7 +23,7 @@ from .constants import (
     NOT_EXTRACT_TYPES,
     PIPELINE_DET_TYPE,
 )
-from .geometry import _normalize_page_size
+from docvortex.document.pdf.geometry import normalize_page_size as _normalize_page_size
 from .layout import (
     _build_vl_style_layout_blocks,
     _collect_table_items,
@@ -50,10 +52,8 @@ from .tables import (
     _restore_native_high_table_blocks,
     _split_native_high_table_blocks,
 )
-from .visuals import (
-    _attach_visual_block_images,
-    _supplement_missing_image_block_containers,
-)
+from docvortex.document.pdf.visuals import attach_visual_block_images as _attach_visual_block_images
+from docvortex.document.pdf.visuals import supplement_missing_image_block_containers as _supplement_missing_image_block_containers
 from .text.content import (
     _fill_window_block_content_and_lines,
     _validate_text_formula_window_inputs,
@@ -295,7 +295,7 @@ def process_pdf_windows(
     model_list: list[list[dict[str, Any]]] = []
     if flash_txt_mode:
         # Flash 先对整份 PDF 生成完整 model_list，不依赖页面渲染和处理窗口。
-        from ....model.flash import PdfModel
+        from docvortex.analyzers.native import PdfModel
 
         model_list = PdfModel().predict(document)
 

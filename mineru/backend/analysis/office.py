@@ -6,7 +6,16 @@ from __future__ import annotations
 import time
 from io import BytesIO
 
-from ...model.flash import DocModel, DocxModel, OdpModel, OdsModel, OdtModel, PptModel, PptxModel, RtfModel, XlsModel, XlsxModel
+from docvortex.analyzers.native import DocModel
+from docvortex.analyzers.native import DocxModel
+from docvortex.analyzers.native import OdpModel
+from docvortex.analyzers.native import OdsModel
+from docvortex.analyzers.native import OdtModel
+from docvortex.analyzers.native import PptModel
+from docvortex.analyzers.native import PptxModel
+from docvortex.analyzers.native import RtfModel
+from docvortex.analyzers.native import XlsModel
+from docvortex.analyzers.native import XlsxModel
 
 from .contracts import AnalysisResult, OfficeSuffix
 

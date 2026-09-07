@@ -1,4 +1,8 @@
 from __future__ import annotations
+import json
+from docvortex.codecs.json import load_middle
+from docvortex.schema import Producer
+from mineru.integrations.docvortex import build_metadata
 from _span_test_utils import inline as _inline
 
 from copy import deepcopy
@@ -8,8 +12,9 @@ import pytest
 from pydantic import ValidationError
 
 import mineru.types as types_module
-from mineru.backend.postprocess.pages import model_json_to_pages
-from mineru.backend.postprocess.inline import inline_plain_text, normalize_inline_spans
+from docvortex.postprocess.pages import model_json_to_pages
+from docvortex.content.inline import inline_plain_text
+from docvortex.content.inline import normalize_inline_spans
 from mineru.types import (
     BLOCK_ADAPTER,
     BLOCK_TYPES,
@@ -183,9 +188,8 @@ def test_model_json_rejects_legacy_inline_string_with_page_and_block_location() 
             pages=[[{"type": BlockType.TEXT, "content": "legacy string"}]],
             page_index_map=[],
             file_suffix="docx",
-            effort="flash",
-            parse_mode="txt",
-            mineru_version="test",
+            producer=Producer(name="mineru", version="test"),
+            extensions=build_metadata(effort="flash", parse_mode="txt", mineru_version="test"),
         )
 
 
@@ -288,9 +292,8 @@ def test_formula_number_is_rejected_by_middle_json_boundary_and_schema() -> None
                 pages=[[{"type": RAW_FORMULA_NUMBER, "bbox": [0.7, 0.3, 0.8, 0.4], "content": "(1)"}]],
                 page_index_map=[],
                 file_suffix="pdf",
-                effort="flash",
-                parse_mode="txt",
-                mineru_version="test",
+                producer=Producer(name="mineru", version="test"),
+                extensions=build_metadata(effort="flash", parse_mode="txt", mineru_version="test"),
             )
         )
 
@@ -555,9 +558,8 @@ def test_middle_json_pdf_requires_top_level_bbox_and_round_trips() -> None:
             pages=[PageInfo(page_idx=0, blocks=[TextBlock(type="text", index=0, content=_inline("x"))])],
             is_full_document=True,
             file_suffix="pdf",
-            effort="flash",
-            parse_mode="txt",
-            mineru_version="test",
+            producer=Producer(name="mineru", version="test"),
+            extensions=build_metadata(effort="flash", parse_mode="txt", mineru_version="test"),
         )
     middle_json = MiddleJson(
         pages=[
@@ -568,9 +570,8 @@ def test_middle_json_pdf_requires_top_level_bbox_and_round_trips() -> None:
         ],
         is_full_document=True,
         file_suffix="pdf",
-        effort="flash",
-        parse_mode="txt",
-        mineru_version="test",
+        producer=Producer(name="mineru", version="test"),
+        extensions=build_metadata(effort="flash", parse_mode="txt", mineru_version="test"),
     )
-    restored = MiddleJson.model_validate_json(middle_json.to_json())
+    restored = load_middle(json.loads(middle_json.to_json()))
     assert restored == middle_json

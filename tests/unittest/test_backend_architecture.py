@@ -9,6 +9,7 @@ import sys
 from mineru.backend.postprocess import table_merge
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
+_DOCVORTEX_ROOT = Path(importlib.util.find_spec("docvortex").origin).parent
 _COPYRIGHT_HEADER = "# Copyright (c) Opendatalab. All rights reserved."
 _SOURCE_ROOTS = (
     _PROJECT_ROOT / "mineru/backend",
@@ -19,7 +20,6 @@ _SOURCE_ROOTS = (
 )
 _HEADER_PATHS = (
     _PROJECT_ROOT / "mineru/backend",
-    _PROJECT_ROOT / "mineru/model/flash",
     _PROJECT_ROOT / "mineru/model/runtime",
     _PROJECT_ROOT / "mineru/model/registry.py",
     _PROJECT_ROOT / "mineru/model/download.py",
@@ -48,30 +48,29 @@ _CHINESE_DOCSTRING_PATHS = (
     _PROJECT_ROOT / "mineru/render/epub.py",
     _PROJECT_ROOT / "mineru/render/pdf.py",
     _PROJECT_ROOT / "mineru/render/structured_content.py",
-    _PROJECT_ROOT / "mineru/render/_internal/common/html_table.py",
-    _PROJECT_ROOT / "mineru/render/_internal/latex",
-    _PROJECT_ROOT / "mineru/utils/image.py",
+    _DOCVORTEX_ROOT / "render/_internal/common/html_table.py",
+    _DOCVORTEX_ROOT / "render/_internal/latex",
 )
 _REMOVED_INTERNAL_MODULES = (
     "mineru.cli_old",
     "mineru.backend.local_model_runtime",
     "mineru.model.model_types",
-    "mineru.model.flash.model",
-    "mineru.model.flash.native_pdf",
-    "mineru.model.flash.office.chart",
-    "mineru.model.flash.office.docx.tools",
-    "mineru.model.flash.office.docx.tools.math",
-    "mineru.model.flash.office.image_equation",
-    "mineru.model.flash.office.legacy.errors",
-    "mineru.model.flash.office.legacy.limits",
-    "mineru.model.flash.office.legacy.mtef",
-    "mineru.model.flash.office.legacy.mtef_v5",
-    "mineru.model.flash.office.legacy.stream",
-    "mineru.model.flash.office.math",
-    "mineru.model.flash.office.ooxml_equation",
+    "docvortex.analyzers.native.model",
+    "docvortex.analyzers.native.native_pdf",
+    "docvortex.analyzers.native.office.chart",
+    "docvortex.analyzers.native.office.docx.tools",
+    "docvortex.analyzers.native.office.docx.tools.math",
+    "docvortex.analyzers.native.office.image_equation",
+    "docvortex.analyzers.native.office.legacy.errors",
+    "docvortex.analyzers.native.office.legacy.limits",
+    "docvortex.analyzers.native.office.legacy.mtef",
+    "docvortex.analyzers.native.office.legacy.mtef_v5",
+    "docvortex.analyzers.native.office.legacy.stream",
+    "docvortex.analyzers.native.office.math",
+    "docvortex.analyzers.native.office.ooxml_equation",
     "mineru.model.utils",
     "mineru.render.writer",
-    "mineru.render._internal.common.inline",
+    "docvortex.render._internal.common.inline",
     "mineru.utils.backend_options",
     "mineru.utils.config_reader",
     "mineru.utils.model_registry",
@@ -83,7 +82,7 @@ _REMOVED_INTERNAL_MODULES = (
 
 def _module_name(path: Path) -> str:
     """把项目内 Python 路径转换为完整模块名。"""
-    relative = path.relative_to(_PROJECT_ROOT).with_suffix("")
+    relative = path.relative_to(_DOCVORTEX_ROOT.parent if path.is_relative_to(_DOCVORTEX_ROOT) else _PROJECT_ROOT).with_suffix("")
     parts = list(relative.parts)
     if parts[-1] == "__init__":
         parts.pop()
@@ -156,7 +155,7 @@ def test_new_first_party_definitions_have_chinese_docstrings() -> None:
                     continue
                 docstring = ast.get_docstring(node)
                 if not docstring or not _contains_chinese(docstring):
-                    offenders.append(f"{path.relative_to(_PROJECT_ROOT)}:{node.lineno}:{node.name}")
+                    offenders.append(f"{path}:{node.lineno}:{node.name}")
     assert not offenders
 
 
@@ -200,11 +199,11 @@ def test_layer_dependencies_are_one_way() -> None:
         if invalid:
             offenders[str(path.relative_to(_PROJECT_ROOT))] = invalid
     for path in _PROJECT_ROOT.glob("mineru/backend/analysis/**/*.py"):
-        invalid = sorted(module for module in _resolved_imports(path) if module.startswith("mineru.backend.postprocess"))
+        invalid = sorted(module for module in _resolved_imports(path) if module.startswith("docvortex.postprocess"))
         if invalid:
             offenders[str(path.relative_to(_PROJECT_ROOT))] = invalid
     allowed_render_backend = (
-        "mineru.backend.postprocess.inline",
+        "docvortex.content.inline",
         "mineru.backend.postprocess.table_merge",
     )
     for path in _PROJECT_ROOT.glob("mineru/render/**/*.py"):
@@ -223,20 +222,20 @@ def test_latex_and_render_common_keep_private_dependencies_one_way() -> None:
     """守卫 LaTeX 不跨入其它格式私有实现，common 也不反向依赖格式包。"""
     format_names = ("content_list", "docx", "epub", "html", "markdown", "pdf", "structured_content")
     latex_offenders = {
-        str(path.relative_to(_PROJECT_ROOT)): sorted(
+        str(path): sorted(
             module
             for module in _resolved_imports(path)
-            if module.startswith(tuple(f"mineru.render._internal.{name}" for name in format_names))
+            if module.startswith(tuple(f"docvortex.render._internal.{name}" for name in format_names))
         )
-        for path in (_PROJECT_ROOT / "mineru/render/_internal/latex").rglob("*.py")
+        for path in (_DOCVORTEX_ROOT / "render/_internal/latex").rglob("*.py")
     }
     common_offenders = {
-        str(path.relative_to(_PROJECT_ROOT)): sorted(
+        str(path): sorted(
             module
             for module in _resolved_imports(path)
-            if module.startswith(tuple(f"mineru.render._internal.{name}" for name in (*format_names, "latex")))
+            if module.startswith(tuple(f"docvortex.render._internal.{name}" for name in (*format_names, "latex")))
         )
-        for path in (_PROJECT_ROOT / "mineru/render/_internal/common").rglob("*.py")
+        for path in (_DOCVORTEX_ROOT / "render/_internal/common").rglob("*.py")
     }
     assert not {path: imports for path, imports in latex_offenders.items() if imports}
     assert not {path: imports for path, imports in common_offenders.items() if imports}
@@ -245,9 +244,7 @@ def test_latex_and_render_common_keep_private_dependencies_one_way() -> None:
 def test_flash_office_does_not_depend_on_pdf_implementation() -> None:
     """守卫 Office 格式只复用中立能力，不反向依赖 Flash PDF 实现。"""
     offenders = {
-        str(path.relative_to(_PROJECT_ROOT)): sorted(
-            module for module in _resolved_imports(path) if module.startswith("mineru.model.flash.pdf")
-        )
+        str(path): sorted(module for module in _resolved_imports(path) if module.startswith("docvortex.analyzers.native.pdf"))
         for path in (_PROJECT_ROOT / "mineru/model/flash/office").rglob("*.py")
     }
     assert not {path: imports for path, imports in offenders.items() if imports}
@@ -256,16 +253,16 @@ def test_flash_office_does_not_depend_on_pdf_implementation() -> None:
 def test_flash_spreadsheet_dependencies_are_one_way() -> None:
     """守卫 XLS/XLSX 只依赖中立 spreadsheet 层且共享层不反向引用格式实现。"""
     xls_offenders = {
-        str(path.relative_to(_PROJECT_ROOT)): sorted(
-            module for module in _resolved_imports(path) if module.startswith("mineru.model.flash.office.xlsx")
+        str(path): sorted(
+            module for module in _resolved_imports(path) if module.startswith("docvortex.analyzers.native.office.xlsx")
         )
         for path in (_PROJECT_ROOT / "mineru/model/flash/office/xls").rglob("*.py")
     }
     spreadsheet_offenders = {
-        str(path.relative_to(_PROJECT_ROOT)): sorted(
+        str(path): sorted(
             module
             for module in _resolved_imports(path)
-            if module.startswith(("mineru.model.flash.office.xls", "mineru.model.flash.office.xlsx"))
+            if module.startswith(("docvortex.analyzers.native.office.xls", "docvortex.analyzers.native.office.xlsx"))
         )
         for path in (_PROJECT_ROOT / "mineru/model/flash/office/spreadsheet").rglob("*.py")
     }
@@ -276,18 +273,16 @@ def test_flash_spreadsheet_dependencies_are_one_way() -> None:
 def test_flash_equation_and_legacy_dependencies_are_one_way() -> None:
     """守卫公式层不反向引用格式实现，legacy 层也不重新承载公式解析。"""
     format_prefixes = tuple(
-        f"mineru.model.flash.office.{name}"
+        f"docvortex.analyzers.native.office.{name}"
         for name in ("doc", "docx", "odf", "ppt", "pptx", "rtf", "spreadsheet", "xls", "xlsx")
     )
     equation_offenders = {
-        str(path.relative_to(_PROJECT_ROOT)): sorted(
-            module for module in _resolved_imports(path) if module.startswith(format_prefixes)
-        )
+        str(path): sorted(module for module in _resolved_imports(path) if module.startswith(format_prefixes))
         for path in (_PROJECT_ROOT / "mineru/model/flash/office/equation").rglob("*.py")
     }
     legacy_offenders = {
-        str(path.relative_to(_PROJECT_ROOT)): sorted(
-            module for module in _resolved_imports(path) if module.startswith("mineru.model.flash.office.equation")
+        str(path): sorted(
+            module for module in _resolved_imports(path) if module.startswith("docvortex.analyzers.native.office.equation")
         )
         for path in (_PROJECT_ROOT / "mineru/model/flash/office/legacy").rglob("*.py")
     }
@@ -344,7 +339,7 @@ import sys
 before_env = dict(os.environ)
 import mineru.backend.analyze
 import mineru.render
-from mineru.model.flash import PdfModel
+from docvortex.analyzers.native import PdfModel
 
 assert PdfModel.__name__ == "PdfModel"
 for prefix in (
@@ -377,7 +372,7 @@ assert before_env == dict(os.environ)
 
 def test_table_merge_package_keeps_one_way_internal_dependencies() -> None:
     """守卫 table_merge 低层模块不反向导入内容合并或文档编排模块。"""
-    package_path = _PROJECT_ROOT / "mineru/backend/postprocess/table_merge"
+    package_path = _DOCVORTEX_ROOT / "content/table"
     allowed_imports = {
         "models.py": set(),
         "html.py": {"models"},
@@ -404,3 +399,10 @@ def test_table_merge_public_contract_remains_callable() -> None:
     ]
     assert table_merge.__all__ == function_names
     assert all(callable(getattr(table_merge, name, None)) for name in function_names)
+
+
+def test_host_postprocess_remains_a_regular_package() -> None:
+    """宿主 LLM 目录必须参与 wheel 包发现，避免源码可导入但发行包遗漏。"""
+    spec = importlib.util.find_spec("mineru.backend.postprocess")
+    assert spec is not None and spec.origin is not None
+    assert spec.origin.endswith("__init__.py")

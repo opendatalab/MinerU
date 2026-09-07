@@ -4,13 +4,11 @@ import inspect
 
 import pytest
 
-from mineru.model.flash.pdf import (
-    line_layout,
-    line_merging,
-    models,
-    text_blocks,
-    titles,
-)
+from docvortex.analyzers.native.pdf import line_layout
+from docvortex.analyzers.native.pdf import line_merging
+from docvortex.analyzers.native.pdf import models
+from docvortex.analyzers.native.pdf import text_blocks
+from docvortex.analyzers.native.pdf import titles
 
 
 from _flash_pdf_test_utils import (

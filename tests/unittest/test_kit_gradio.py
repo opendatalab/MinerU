@@ -1,4 +1,6 @@
 from __future__ import annotations
+from docvortex.schema import Producer
+from mineru.integrations.docvortex import build_metadata
 
 import asyncio
 import io
@@ -104,10 +106,9 @@ def _middle_json(
     return MiddleJson(
         pages=pages,
         is_full_document=page_indices == tuple(range(len(page_indices))),
-        file_suffix=file_suffix,  # type: ignore[arg-type]
-        effort="flash",
-        parse_mode="txt",
-        mineru_version=__version__,
+        file_suffix=file_suffix,
+        producer=Producer(name="mineru", version=__version__),
+        extensions=build_metadata(effort="flash", parse_mode="txt", mineru_version=__version__),
     )
 
 
@@ -597,14 +598,15 @@ def test_gradio_ocr_reaches_analysis_through_real_v1_jobs(monkeypatch: pytest.Mo
         assert file_bytes.startswith(b"%PDF")
         received_modes.append(kwargs["parse_mode"])
         middle = _middle_json(with_image=False)
-        middle.parse_mode = "ocr" if kwargs["parse_mode"] == "ocr" else "txt"
+        middle.extensions["mineru"]["parse_mode"] = "ocr" if kwargs["parse_mode"] == "ocr" else "txt"
         model = ModelJson(
             pages=[[]],
             page_index_map=[],
             file_suffix="pdf",
-            effort="flash",
-            parse_mode=middle.parse_mode,
-            mineru_version=__version__,
+            producer=Producer(name="mineru", version=__version__),
+            extensions=build_metadata(
+                effort="flash", parse_mode=middle.extensions["mineru"]["parse_mode"], mineru_version=__version__
+            ),
         )
         return middle, model
 
@@ -630,7 +632,7 @@ def test_gradio_ocr_reaches_analysis_through_real_v1_jobs(monkeypatch: pytest.Mo
                 assert payload["parse_mode"] == ("ocr" if enabled else "txt")
             default_parser = parser_api_client.MinerUApiParser(api_url="http://testserver", tier="flash")
             result = await default_parser.parse_async(source)
-            assert result.middle_json.parse_mode == "txt"
+            assert result.middle_json.extensions["mineru"]["parse_mode"] == "txt"
 
         asyncio.run(convert_requests())
         assert not hasattr(api.state, "ocr_mode")

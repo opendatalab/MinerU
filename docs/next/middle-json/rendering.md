@@ -214,7 +214,7 @@ TIFF 及安全 MinerU SVG fallback 规范化为 PNG，PNG/JPEG/GIF 保留，最�
 renderer 不下载 `image_url`。路径缺失、resolver 抛错、图片损坏或远程图片都不会中断输出：图片
 主体省略，但已有结构内容、alt、caption、footnote 和识别文字继续可见，也不会生成虚构占位文案。
 
-EPUB 固定使用共享 planner 的 DEFAULT 连续语义，在单个 `article.mineru-document` 中展平页面，
+EPUB 固定使用共享 planner 的 DEFAULT 连续语义，在单个 `article.docvortex-document` 中展平页面，
 隐藏页面辅助块、合并跨页续段与续表，不生成源页 section、空页或分页标记；`page_footnote` 仍然
 输出。该能力仅属于严格 `mineru.render` 公共面，不新增 ParseResult 方法，也不迁移 CLI、API、
 doclib 或 parse-job `output_formats`。
@@ -272,24 +272,24 @@ html_document = render_html(
 
 `render_html()` 只接受严格 `MiddleJson`，返回字符串且不写文件、不读取图片 sidecar、
 不访问网络。`standalone=True` 输出完整 HTML5 文档；`False` 输出单根
-`article.mineru-document` fragment，不包含 CSS、脚本或
+`article.docvortex-document` fragment，不包含 CSS、脚本或
 `head`。显式标题缺失时，HTML title 使用首个非空 `doc_title` 的纯文本，再回退为
-`MinerU Document`。完整文档使用 `body.mineru-html-body` 提供居中和响应式页面布局；
+`DocVortex Document`。完整文档使用 `body.docvortex-html-body` 提供居中和响应式页面布局；
 fragment 调用方可以自行决定外围容器尺寸。
 
 HTML 与 Markdown 共用 `RenderMode` 和续段/续表 planner。DEFAULT 输出无页面 wrapper
-的连续阅读内容；FULL 为每个 `PageInfo` 输出一个 `section.mineru-page`，包括空页，并在
-相邻页面之间输出 `hr.mineru-page-break`。每个顶层 block wrapper 保留来源 page/type/index
-元数据。`article.mineru-document` 同时声明 `data-mineru-html-version="1"` 和
+的连续阅读内容；FULL 为每个 `PageInfo` 输出一个 `section.docvortex-page`，包括空页，并在
+相邻页面之间输出 `hr.docvortex-page-break`。每个顶层 block wrapper 保留来源 page/type/index
+元数据。`article.docvortex-document` 同时声明 `data-docvortex-html-version="1"` 和
 `data-render-mode="default|full"`；顶层 block、visual body/caption/footnote、列表/目录叶子使用
 原始下划线形式的 `data-block-type`，并按类型携带 `data-block-sub-type`、`data-guess-lang`、
 `data-anchor` 或 `data-level`。这些 data 属性构成 renderer 到 HTML Flash parser 的版本化机器契约，
 CSS class 不参与精确类型判定。
 
 行内内容直接消费共享 AST：普通文本始终 HTML escape，未知标签保持可见；公式只在
-`mineru-math` carrier 内使用 `\(...\)` 或 `\[...\]`，不扫描普通正文中的美元符号。每个公式
+`docvortex-math` carrier 内使用 `\(...\)` 或 `\[...\]`，不扫描普通正文中的美元符号。每个公式
 carrier 同时保存 `data-block-type="equation"`、`data-formula-display` 和裸 LaTeX
-`data-mineru-latex`，供 HTML parser 无损恢复；可见 MathJax 定界符不属于 Middle JSON 内容。
+`data-docvortex-latex`，供 HTML parser 无损恢复；可见 MathJax 定界符不属于 Middle JSON 内容。
 HTML 的普通 `InlineText` 默认 linkify `http/https`、`www.`、邮箱和常见裸域名；裸域名统一补
 `https://`，邮箱补 `mailto:`。无协议裸域名的 TLD 必须属于工程常用白名单：
 `com cn org net edu gov io ai dev app de uk nl ru br fr au in eu jp`、
@@ -297,8 +297,8 @@ HTML 的普通 `InlineText` 默认 linkify `http/https`、`www.`、邮箱和常�
 不受该小白名单限制。已有 hyperlink、代码、算法、公式、raw HTML 及 Mermaid 源码不重复
 识别，候选 href 仍通过统一 URL sanitizer。
 
-完整文档只内联压缩后的 `mineru.min.css`。其可读源码为 `mineru.css`，所有文档规则均
-限定在 `.mineru-document` 内，standalone 外围布局规则限定在 `.mineru-html-body`，
+完整文档只内联压缩后的 `docvortex.min.css`。其可读源码为 `docvortex.css`，所有文档规则均
+限定在 `.docvortex-document` 内，standalone 外围布局规则限定在 `.docvortex-html-body`，
 不会修改 fragment 宿主页的全局标签样式。样式使用系统字体，不加载外部字体。
 image、table、chart 和 code 主体均从正文内容区左边界开始；图片保持固有尺寸和宽高比，
 宽表格/流程图只在自身容器滚动。视觉 caption 与 footnote 使用 figure 可用宽度并统一左对齐，
@@ -317,7 +317,7 @@ image、table、chart 和 code 主体均从正文内容区左边界开始；图�
 `maxTextSize=50000`、`maxEdges=500` 逐图生成 SVG，成功后替换 raster。无 JS、CDN/语法失败
 继续显示 raster；无 raster 时自动展开已转义源码。图源码只在浏览器本地参与渲染。
 
-fragment 调用方需要加载随包提供的 `mineru.min.css`，并按实际内容加载同版本
+fragment 调用方需要加载随包提供的 `docvortex.min.css`，并按实际内容加载同版本
 MathJax、Prism 和 Mermaid。MathJax 必须在初始化前复用 standalone 的 delimiter、
 `ignoreHtmlClass/processHtmlClass`、`ui/safe`、禁用 `require` 及 safeOptions 配置。动态插入后调用
 `MathJax.typesetPromise([root])` 与 `Prism.highlightAllUnder(root)`；替换已有公式前先调用
@@ -337,8 +337,8 @@ window.MathJax = {
     packages: {"[-]": ["require"]},
   },
   options: {
-    ignoreHtmlClass: "mineru-document",
-    processHtmlClass: "mineru-math",
+    ignoreHtmlClass: "docvortex-document",
+    processHtmlClass: "docvortex-math",
     enableMenu: false,
     enableEnrichment: false,
     safeOptions: {
@@ -506,7 +506,7 @@ text 合并允许跨越任意其他 block，后一个 text 的内容被吸收到
 
 - `text/ref_text`: 直接渲染 InlineSpan 中的公式、样式和超链接；普通 TextSpan 转义可能误触发的 Markdown block 前缀。
 - `doc_title/paragraph_title`: 使用全局 `level`，Markdown 标题最多六级；anchor 输出为 HTML id。
-- `page_footnote`: 独立于页面辅助块，Markdown/HTML 的 DEFAULT/FULL 以及固定默认 DOCX/EPUB/PDF 都输出；Markdown 使用无可见标签的 `<small><span class="mineru-page-footnote" data-block-type="page_footnote" style="color:#6b7280">…</span></small>`，其余格式使用各自的脚注样式和 anchor。
+- `page_footnote`: 独立于页面辅助块，Markdown/HTML 的 DEFAULT/FULL 以及固定默认 DOCX/EPUB/PDF 都输出；Markdown 使用无可见标签的 `<small><span class="docvortex-page-footnote" data-block-type="page_footnote" style="color:#6b7280">…</span></small>`，其余格式使用各自的脚注样式和 anchor。
 - `list`: 递归缩进；普通列表直接使用 content 已内化的前缀。`sub_type=ref_text`
   时统计每个直属非空 item 的前五个可见字符，数字前缀未达到严格多数则给全部 item
   补 `- `，已有 `- ` 不重复；嵌套列表独立判定。

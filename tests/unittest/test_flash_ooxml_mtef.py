@@ -1,4 +1,5 @@
 from __future__ import annotations
+from docvortex.export.middle import export_middle_json
 
 import asyncio
 from collections.abc import Callable
@@ -12,16 +13,16 @@ from docx.oxml import parse_xml
 import pytest
 
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
-from mineru.model.flash import DocxModel, PptxModel, XlsxModel
-from mineru.model.flash.office.docx.docx_converter import DocxConverter
-from mineru.model.flash.office.errors import LegacyOfficeResourceLimitError
-from mineru.model.flash.office.limits import MAX_ASSET_TOTAL_BYTES
-from mineru.model.flash.office.equation.ooxml import (
-    OoxmlEquationDecoder,
-    is_mathtype_equation_prog_id,
-)
-from mineru.model.flash.office.pptx.pptx_converter import PptxConverter
-from mineru.model.flash.office.xlsx.xlsx_converter import XlsxConverter
+from docvortex.analyzers.native import DocxModel
+from docvortex.analyzers.native import PptxModel
+from docvortex.analyzers.native import XlsxModel
+from docvortex.analyzers.native.office.docx.docx_converter import DocxConverter
+from docvortex.analyzers.native.office.errors import LegacyOfficeResourceLimitError
+from docvortex.analyzers.native.office.limits import MAX_ASSET_TOTAL_BYTES
+from docvortex.analyzers.native.office.equation.ooxml import OoxmlEquationDecoder
+from docvortex.analyzers.native.office.equation.ooxml import is_mathtype_equation_prog_id
+from docvortex.analyzers.native.office.pptx.pptx_converter import PptxConverter
+from docvortex.analyzers.native.office.xlsx.xlsx_converter import XlsxConverter
 from mineru.types import BlockType, MiddleJson, ModelJson
 
 from _mtef_test_utils import build_equation_object, formula_corpus
@@ -379,7 +380,7 @@ def test_invalid_ooxml_mtef_preview_exports_to_sidecar(
         file_suffix=file_suffix,  # type: ignore[arg-type]
     )
 
-    result = middle.export(tmp_path / file_suffix)
+    result = export_middle_json(middle, tmp_path / file_suffix)
 
     assert len(result.image_paths) == 1
     assert result.image_paths[0].stat().st_size > 0

@@ -11,10 +11,11 @@ import numpy as np
 from PIL import Image
 
 from ....types import BBox, BlockType
-from ....utils.geometry import normalize_to_int_bbox
+from docvortex.foundation.geometry import normalize_to_int_bbox
 from .images import get_crop_np_img
 
-from .geometry import _normalize_layout_bbox_to_unit, _normalize_page_size
+from docvortex.document.pdf.geometry import normalize_layout_bbox_to_unit as _normalize_layout_bbox_to_unit
+from docvortex.document.pdf.geometry import normalize_page_size as _normalize_page_size
 from .constants import (
     VLM_LAYOUT_LABEL_MAP,
     VLM_MODEL_LIST_FIELDS,

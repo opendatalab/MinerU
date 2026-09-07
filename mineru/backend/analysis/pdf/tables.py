@@ -16,20 +16,18 @@ from loguru import logger
 from ....model.runtime.hybrid import HybridLocalModelContext, run_ocr_inference
 from ....model.runtime.contracts import AtomicModelName
 from ....types import RAW_ALGORITHM, RAW_FORMULA_NUMBER, RAW_PHONETIC, BBox, BlockType
-from ....utils.geometry import (
-    calculate_overlap_area_in_bbox1_area_ratio,
-    normalize_to_int_bbox,
-)
-from ....model.flash.pdf.table_recovery import (
-    NativeTableInput,
-    coerce_native_table_rectangles,
-    coerce_native_table_rules,
-    recover_native_pdf_table,
-)
-from ....model.flash.pdf.table_text_styles import render_native_table_html_with_scripts
+from docvortex.foundation.geometry import calculate_overlap_area_in_bbox1_area_ratio
+from docvortex.foundation.geometry import normalize_to_int_bbox
+from docvortex.analyzers.native.pdf.table_recovery import NativeTableInput
+from docvortex.analyzers.native.pdf.table_recovery import coerce_native_table_rectangles
+from docvortex.analyzers.native.pdf.table_recovery import coerce_native_table_rules
+from docvortex.analyzers.native.pdf.table_recovery import recover_native_pdf_table
+from docvortex.analyzers.native.pdf.table_text_styles import render_native_table_html_with_scripts
 from ....model.ocr.image import mask_formula_regions_for_ocr_det
-from ....model.flash.pdf.document import PDFPage, PDFPageTextGeometry, get_lines_from_chars
-from ....model.flash.pdf.spatial_text import project_ocr_table_text
+from docvortex.document.pdf.document import PDFPage
+from docvortex.document.pdf.document import PDFPageTextGeometry
+from docvortex.document.pdf.document import get_lines_from_chars
+from docvortex.analyzers.native.pdf.shared import project_table_text as project_ocr_table_text
 
 from .constants import (
     BATCH_RATIO,
@@ -39,19 +37,17 @@ from .constants import (
     TABLE_TEXT_ORIENTATION_MIN_DOMINANCE_RATIO,
     TABLE_TEXT_ORIENTATION_MIN_VALID_LINES,
 )
-from .geometry import (
-    _bbox_to_pixel_bbox,
-    _encode_page_crop_as_jpeg_data_uri,
-    _get_medium_table_virtual_image_bbox,
-    _medium_bbox_to_quad,
-    _normalize_medium_content,
-    _normalize_page_size,
-    _normalize_visual_block_angle,
-    _rotate_medium_table_bbox,
-    _rotate_visual_block_image_to_upright,
-    _sidecar_bbox_to_page_bbox,
-    _table_bbox_center,
-)
+from docvortex.document.pdf.geometry import bbox_to_pixel_bbox as _bbox_to_pixel_bbox
+from docvortex.document.pdf.geometry import encode_page_crop_as_jpeg_data_uri as _encode_page_crop_as_jpeg_data_uri
+from docvortex.document.pdf.geometry import get_medium_table_virtual_image_bbox as _get_medium_table_virtual_image_bbox
+from docvortex.document.pdf.geometry import medium_bbox_to_quad as _medium_bbox_to_quad
+from docvortex.document.pdf.geometry import normalize_medium_content as _normalize_medium_content
+from docvortex.document.pdf.geometry import normalize_page_size as _normalize_page_size
+from docvortex.document.pdf.geometry import normalize_visual_block_angle as _normalize_visual_block_angle
+from docvortex.document.pdf.geometry import rotate_medium_table_bbox as _rotate_medium_table_bbox
+from docvortex.document.pdf.geometry import rotate_visual_block_image_to_upright as _rotate_visual_block_image_to_upright
+from docvortex.document.pdf.geometry import sidecar_bbox_to_page_bbox as _sidecar_bbox_to_page_bbox
+from docvortex.document.pdf.geometry import table_bbox_center as _table_bbox_center
 from .text.native import _is_supported_rotation
 
 
@@ -320,8 +316,7 @@ def _apply_native_txt_table_priority(
             if result is None or not result.html.strip():
                 rejected += 1
                 logger.debug(
-                    "Hybrid native table rejected and kept model fallback: "
-                    f"page_idx={page_idx}, bbox={table_block.get('bbox')}"
+                    f"Hybrid native table rejected and kept model fallback: page_idx={page_idx}, bbox={table_block.get('bbox')}"
                 )
                 continue
             table_block["content"] = render_native_table_html_with_scripts(
@@ -338,13 +333,11 @@ def _apply_native_txt_table_priority(
                 f"source={result.source}, confidence={result.confidence:.3f}"
             )
 
-        page_removed_formula_blocks, page_removed_formula_layout_items = (
-            _remove_native_table_formula_items(
-                page_blocks,
-                layout_res,
-                accepted_entries,
-                page_size,
-            )
+        page_removed_formula_blocks, page_removed_formula_layout_items = _remove_native_table_formula_items(
+            page_blocks,
+            layout_res,
+            accepted_entries,
+            page_size,
         )
         removed_formula_blocks += page_removed_formula_blocks
         removed_formula_layout_items += page_removed_formula_layout_items
@@ -376,9 +369,7 @@ def _split_native_high_table_blocks(
     accepted_tables_list: list[list[dict[str, Any]]] = []
     for page_blocks in model_list:
         accepted_tables = [
-            block
-            for block in page_blocks
-            if block.get("type") == BlockType.TABLE and _has_non_empty_table_content(block)
+            block for block in page_blocks if block.get("type") == BlockType.TABLE and _has_non_empty_table_content(block)
         ]
         if not accepted_tables:
             vlm_blocks_list.append(page_blocks)
@@ -990,9 +981,7 @@ def _fill_flash_ocr_table_contents(
             )
             if not table_block["content"]:
                 logger.warning(
-                    "Flash OCR table text is empty: "
-                    f"page_idx={page_idx}, "
-                    f"table_idx={table_idx}, bbox={table_block.get('bbox')}"
+                    f"Flash OCR table text is empty: page_idx={page_idx}, table_idx={table_idx}, bbox={table_block.get('bbox')}"
                 )
         except Exception as exc:
             logger.warning(

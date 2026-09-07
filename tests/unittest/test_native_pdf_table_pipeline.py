@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Literal
@@ -17,9 +16,11 @@ from mineru.backend.analysis.pdf import formulas as pdf_formulas
 from mineru.backend.analysis.pdf import layout as pdf_layout
 from mineru.backend.analysis.pdf import tables as pdf_tables
 from mineru.backend.analysis.pdf import window as pdf_window
-from mineru.model.flash.pdf import models as flash_models
-from mineru.model.flash.pdf import tables as flash_tables
-from mineru.model.flash.pdf.document import PDFDocument, PDFPageTextGeometry
+from docvortex.analyzers.native.pdf import models as flash_models
+from docvortex.analyzers.native.pdf import tables as flash_tables
+from docvortex.analyzers.native.pdf import table_materialization
+from docvortex.document.pdf.document import PDFDocument
+from docvortex.document.pdf.document import PDFPageTextGeometry
 from mineru.types import RAW_FORMULA_NUMBER, BlockType
 
 
@@ -71,8 +72,8 @@ def test_flash_materialization_prefers_native_html_and_keeps_claims(
     )
     html = "<table><tbody><tr><td>A</td><td>B</td></tr></tbody></table>"
     projection = MagicMock(return_value="fallback")
-    monkeypatch.setattr(flash_tables, "_recover_native_table_html", MagicMock(return_value=html))
-    monkeypatch.setattr(flash_tables, "project_pdf_table_text", projection)
+    monkeypatch.setattr(table_materialization, "_recover_native_table_html", MagicMock(return_value=html))
+    monkeypatch.setattr(table_materialization, "project_pdf_table_text", projection)
 
     blocks, annotations, claimed = flash_tables._materialize_table_blocks(
         source,
@@ -322,13 +323,9 @@ def test_hybrid_native_table_priority_accepts_real_rotated_table(
 ) -> None:
     """验证真实 270 度表格在 Medium/High 中都能直接生成原生 HTML。"""
 
-    manifest = json.loads((_PROJECT_ROOT / "tests" / "fixtures" / "native_pdf_table_demo_manifest.json").read_text())
-    target = next(
-        item
-        for item in manifest["tables"]
-        if item["file"] == "demo1.pdf" and item["page_index"] == 4 and item["table_index"] == 0
-    )
-    pdf_path = _PROJECT_ROOT / manifest["source_root"] / target["file"]
+    # 仅保留此宿主集成用例需要的真值，完整表格清单归 DocVortex 维护。
+    target = {"page_index": 4, "bbox": [0.117, 0.125, 0.431, 0.891], "angle": 270, "rows": 11}
+    pdf_path = _PROJECT_ROOT / "demo/pdfs/demo1.pdf"
     with PDFDocument(pdf_path.read_bytes()) as document:
         page = document[target["page_index"]]
         image = Image.new("RGB", (round(page.size[0]), round(page.size[1])), "white")

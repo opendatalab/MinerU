@@ -2,12 +2,10 @@ from __future__ import annotations
 
 import pytest
 
-from mineru.model.flash.office.errors import LegacyOfficeResourceLimitError
-from mineru.model.flash.office.equation import image as image_equation_module
-from mineru.model.flash.office.equation.image import (
-    OfficeImageEquationDecoder,
-    decode_image_embedded_equation,
-)
+from docvortex.analyzers.native.office.errors import LegacyOfficeResourceLimitError
+from docvortex.analyzers.native.office.equation import image as image_equation_module
+from docvortex.analyzers.native.office.equation.image import OfficeImageEquationDecoder
+from docvortex.analyzers.native.office.equation.image import decode_image_embedded_equation
 
 from _image_mtef_test_utils import (
     apps_mfcc_comment,
@@ -40,14 +38,20 @@ def test_pre6_wmf_comment_decodes_mtef_versions(
 
     comment = pre6_wmf_comment(mtef)
 
-    assert decode_image_embedded_equation(
-        build_wmf([comment]),
-        part_name="image.wmf",
-    ) == expected
-    assert decode_image_embedded_equation(
-        build_wmf([comment], placeable=True),
-        content_type="image/x-wmf",
-    ) == expected
+    assert (
+        decode_image_embedded_equation(
+            build_wmf([comment]),
+            part_name="image.wmf",
+        )
+        == expected
+    )
+    assert (
+        decode_image_embedded_equation(
+            build_wmf([comment], placeable=True),
+            content_type="image/x-wmf",
+        )
+        == expected
+    )
 
 
 @pytest.mark.parametrize(
@@ -126,27 +130,17 @@ def test_wmf_gif_decode_full_v3_v5_formula_corpora() -> None:
     """验证两种图片载体复用全部既有 v3/v5 公式语料。"""
 
     for _name, mtef, expected in formula_corpus():
-        assert decode_image_embedded_equation(
-            build_wmf([pre6_wmf_comment(mtef)])
-        ) == expected
-        assert decode_image_embedded_equation(
-            build_gif_with_mtef(mtef, chunk_size=5)
-        ) == expected
+        assert decode_image_embedded_equation(build_wmf([pre6_wmf_comment(mtef)])) == expected
+        assert decode_image_embedded_equation(build_gif_with_mtef(mtef, chunk_size=5)) == expected
     for _name, mtef, expected in v5_formula_corpus():
-        assert decode_image_embedded_equation(
-            build_wmf(apps_mfcc_comments(mtef, chunk_size=7))
-        ) == expected
-        assert decode_image_embedded_equation(
-            build_gif_with_mtef(mtef, chunk_size=5)
-        ) == expected
+        assert decode_image_embedded_equation(build_wmf(apps_mfcc_comments(mtef, chunk_size=7))) == expected
+        assert decode_image_embedded_equation(build_gif_with_mtef(mtef, chunk_size=5)) == expected
 
 
 def test_baseline_comments_and_ordinary_images_are_ignored() -> None:
     """验证 WMF baseline、GIF/002 和普通图片不被误判为公式。"""
 
-    assert decode_image_embedded_equation(
-        build_wmf([baseline_wmf_comment(12)])
-    ) is None
+    assert decode_image_embedded_equation(build_wmf([baseline_wmf_comment(12)])) is None
     assert decode_image_embedded_equation(build_baseline_only_gif()) is None
     assert decode_image_embedded_equation(b"\x89PNG\r\n\x1a\n") is None
 
@@ -207,14 +201,8 @@ def test_reordered_apps_chunks_and_strict_image_prefixes_fail_closed() -> None:
     valid_gif = build_gif_with_mtef(mtef, chunk_size=5)
 
     assert decode_image_embedded_equation(reordered) is None
-    assert all(
-        decode_image_embedded_equation(valid_wmf[:end]) is None
-        for end in range(len(valid_wmf))
-    )
-    assert all(
-        decode_image_embedded_equation(valid_gif[:end]) is None
-        for end in range(len(valid_gif))
-    )
+    assert all(decode_image_embedded_equation(valid_wmf[:end]) is None for end in range(len(valid_wmf)))
+    assert all(decode_image_embedded_equation(valid_gif[:end]) is None for end in range(len(valid_gif)))
 
 
 def test_image_equation_decoder_cache_and_total_budget(

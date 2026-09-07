@@ -4,11 +4,9 @@ from copy import deepcopy
 
 import pytest
 
-from mineru.backend.postprocess.paragraphs import (
-    can_auto_merge_ref_text_blocks,
-    can_auto_merge_text_blocks,
-    merge_para_text_blocks,
-)
+from docvortex.postprocess.paragraphs import can_auto_merge_ref_text_blocks
+from docvortex.postprocess.paragraphs import can_auto_merge_text_blocks
+from docvortex.postprocess.paragraphs import merge_para_text_blocks
 from mineru.types import BlockType
 
 from _span_test_utils import inline as _inline, inline_text
@@ -663,9 +661,7 @@ def test_can_auto_merge_horizontal_text_blocks_rejects_paragraph_boundaries() ->
     assert not can_auto_merge_text_blocks(current_block, previous_block)
 
     previous_block, current_block = _horizontal_pair()
-    previous_block["content"] = (
-        "<hyperlink>finished.<url>https://example.test/no-period</url></hyperlink>"
-    )
+    previous_block["content"] = "<hyperlink>finished.<url>https://example.test/no-period</url></hyperlink>"
     assert not can_auto_merge_text_blocks(current_block, previous_block)
 
     for current_content in ("1 numbered", "Uppercase"):
@@ -674,9 +670,7 @@ def test_can_auto_merge_horizontal_text_blocks_rejects_paragraph_boundaries() ->
         assert not can_auto_merge_text_blocks(current_block, previous_block)
 
     previous_block, current_block = _horizontal_pair()
-    current_block["content"] = (
-        "<hyperlink>Uppercase<url>https://example.test/lowercase</url></hyperlink>"
-    )
+    current_block["content"] = "<hyperlink>Uppercase<url>https://example.test/lowercase</url></hyperlink>"
     assert not can_auto_merge_text_blocks(current_block, previous_block)
 
     previous_block, current_block = _horizontal_pair()

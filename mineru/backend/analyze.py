@@ -2,6 +2,8 @@
 """统一 PDF、EPUB、HTML、OFD、CSV 与 Office/RTF 文档分析的稳定公共门面。"""
 
 from __future__ import annotations
+from docvortex.schema import Producer
+from ..integrations.docvortex import build_metadata
 
 import asyncio
 from typing import cast
@@ -10,7 +12,7 @@ from loguru import logger
 
 from .analysis.contracts import AnalyzeEffort, OfficeSuffix, ParseMode
 from ..config import VlmConfig, config
-from ..model.flash.html import HtmlSourceContext
+from docvortex.analyzers.native.html import HtmlSourceContext
 from ..types import FILE_SUFFIXES, FileSuffix, MiddleJson, ModelJson
 from ..version import __version__ as mineru_version
 
@@ -80,9 +82,8 @@ def doc_analyze(
         pages=result.model_list,
         page_index_map=page_index_map or [],
         file_suffix=file_suffix,
-        effort=result.effort,
-        parse_mode=result.parse_mode,
-        mineru_version=mineru_version,
+        producer=Producer(name="mineru", version=mineru_version),
+        extensions=build_metadata(effort=result.effort, parse_mode=result.parse_mode, mineru_version=mineru_version),
     )
     from .postprocess.document import model_json_to_middle_json
 

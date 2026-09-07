@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Literal
 
 from ..config import VlmConfig
-from ..model.flash.html import HtmlSourceContext
+from docvortex.analyzers.native.html import HtmlSourceContext
 from ..types import Tier
 from .api_client import ApiJobStatus, MinerUApiParser
 from .base import MIDDLE_JSON_SCHEMA_VERSION, DocumentParser, ParseResult

@@ -1,3 +1,5 @@
+from docvortex.schema import Producer
+from mineru.integrations.docvortex import build_metadata
 import asyncio
 import base64
 import importlib
@@ -83,9 +85,8 @@ def _full_middle_json(*pages: PageInfo) -> MiddleJson:
         pages=list(pages),
         is_full_document=True,
         file_suffix="pdf",
-        effort="medium",
-        parse_mode="txt",
-        mineru_version=__version__,
+        producer=Producer(name="mineru", version=__version__),
+        extensions=build_metadata(effort="medium", parse_mode="txt", mineru_version=__version__),
     )
 
 
@@ -1045,7 +1046,7 @@ def test_api_client_accepts_remote_pdf_info_middle_json(monkeypatch: pytest.Monk
 
     assert len(result.pages) == 1
     assert result.pages[0].page_idx == 0
-    assert result.middle_json.mineru_version == "remote"
+    assert result.middle_json.extensions["mineru"]["mineru_version"] == "remote"
 
 
 def test_async_api_client_accepts_remote_pdf_info_middle_json(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -1,4 +1,6 @@
 from __future__ import annotations
+from docvortex.schema import Producer
+from mineru.integrations.docvortex import build_metadata
 from _span_test_utils import inline as _inline, inline_text
 
 import asyncio
@@ -2167,9 +2169,8 @@ def test_remap_api_result_pages_to_non_contiguous_page_range() -> None:
             pages=[PageInfo(page_idx=0), PageInfo(page_idx=1), PageInfo(page_idx=2)],
             is_full_document=False,
             file_suffix="pdf",
-            effort="medium",
-            parse_mode="txt",
-            mineru_version=__version__,
+            producer=Producer(name="mineru", version=__version__),
+            extensions=build_metadata(effort="medium", parse_mode="txt", mineru_version=__version__),
         )
     )
 
@@ -2206,9 +2207,8 @@ def test_remap_api_result_pages_rejects_count_mismatch() -> None:
             pages=[PageInfo(page_idx=0), PageInfo(page_idx=1)],
             is_full_document=False,
             file_suffix="pdf",
-            effort="medium",
-            parse_mode="txt",
-            mineru_version=__version__,
+            producer=Producer(name="mineru", version=__version__),
+            extensions=build_metadata(effort="medium", parse_mode="txt", mineru_version=__version__),
         )
     )
 
@@ -4422,9 +4422,8 @@ def test_process_doc_marks_empty_page_result_failed(tmp_path: Path) -> None:
                 pages=[],
                 is_full_document=False,
                 file_suffix="pdf",
-                effort="medium",
-                parse_mode="txt",
-                mineru_version=__version__,
+                producer=Producer(name="mineru", version=__version__),
+                extensions=build_metadata(effort="medium", parse_mode="txt", mineru_version=__version__),
             )
         )
 
@@ -4587,9 +4586,8 @@ def test_parse_via_api_requests_image_cache_only_for_office(
                     pages=[],
                     is_full_document=True,
                     file_suffix="pdf",
-                    effort="medium",
-                    parse_mode="txt",
-                    mineru_version=__version__,
+                    producer=Producer(name="mineru", version=__version__),
+                    extensions=build_metadata(effort="medium", parse_mode="txt", mineru_version=__version__),
                 )
             )
 
@@ -4656,9 +4654,8 @@ def test_process_doc_fails_when_batch_json_cannot_be_written(tmp_path: Path) -> 
                 pages=[PageInfo(page_idx=0)],
                 is_full_document=False,
                 file_suffix="pdf",
-                effort="medium",
-                parse_mode="txt",
-                mineru_version=__version__,
+                producer=Producer(name="mineru", version=__version__),
+                extensions=build_metadata(effort="medium", parse_mode="txt", mineru_version=__version__),
             )
         )
 
@@ -4720,9 +4717,8 @@ def test_process_doc_normalizes_full_document_range_from_actual_pages(tmp_path: 
                 pages=[PageInfo(page_idx=page_idx) for page_idx in range(12)],
                 is_full_document=True,
                 file_suffix="epub",
-                effort="flash",
-                parse_mode="txt",
-                mineru_version=__version__,
+                producer=Producer(name="mineru", version=__version__),
+                extensions=build_metadata(effort="flash", parse_mode="txt", mineru_version=__version__),
             )
         )
 

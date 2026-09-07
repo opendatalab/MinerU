@@ -1,4 +1,4 @@
 # Copyright (c) Opendatalab. All rights reserved.
-"""将严格 ModelJson 转换并增强为 MiddleJson 的后处理层。"""
+"""宿主后处理编排与可选 LLM 增强，确定性实现由 DocVortex 提供。"""
 
-__all__: list[str] = []
+__all__ = []

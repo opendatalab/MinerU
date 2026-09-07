@@ -1,4 +1,6 @@
 from __future__ import annotations
+from docvortex.schema import Producer
+from mineru.integrations.docvortex import build_metadata
 from _span_test_utils import inline as _inline, inline_text
 
 import asyncio
@@ -15,7 +17,7 @@ from mineru.backend.postprocess.llm_aided import apply_llm_aided_postprocess
 from mineru.backend.postprocess.table_merge.llm_cell_merge import apply_llm_cross_page_cell_merge
 from mineru.backend.postprocess.title_leveling import apply_llm_title_leveling
 from mineru.config import LLMAidedConfig, LLMAidedFeaturesConfig
-from mineru.render._internal.common.planner import build_render_plan
+from docvortex.render._internal.common.planner import build_render_plan
 from mineru.render.contracts import RenderMode
 from mineru.types import (
     BlockType,
@@ -212,9 +214,8 @@ def _middle_json(pages: list[PageInfo], *, is_full_document: bool = True) -> Mid
         pages=pages,
         is_full_document=is_full_document,
         file_suffix="docx",
-        effort="flash",
-        parse_mode="txt",
-        mineru_version="test",
+        producer=Producer(name="mineru", version="test"),
+        extensions=build_metadata(effort="flash", parse_mode="txt", mineru_version="test"),
     )
 
 
@@ -528,9 +529,8 @@ def test_mixed_cell_merge_flows_through_strict_middle_json_and_renderer() -> Non
         pages=pages,
         is_full_document=True,
         file_suffix="pdf",
-        effort="high",
-        parse_mode="txt",
-        mineru_version="test",
+        producer=Producer(name="mineru", version="test"),
+        extensions=build_metadata(effort="high", parse_mode="txt", mineru_version="test"),
     )
 
     assert _merged_row_texts(middle_json) == [["H1", "H2"], ["AB", "X"], ["", "Y"]]
@@ -731,7 +731,7 @@ def test_doc_analyze_runs_llm_after_deterministic_table_detection(
         current_table.cell_merge = [1, 0]
         calls.append("llm")
 
-    monkeypatch.setattr(analyze, "analyze_pdf", lambda *_args, **_kwargs: result)
+    monkeypatch.setattr("mineru.backend.analysis.pdf.pipeline.analyze_pdf", lambda *_args, **_kwargs: result)
     monkeypatch.setattr(document, "apply_llm_aided_postprocess", fake_llm_postprocess)
 
     middle_json, model_json = analyze.doc_analyze(b"pdf", page_index_map=page_index_map)
@@ -751,13 +751,13 @@ def test_doc_analyze_does_not_run_llm_for_office(monkeypatch: pytest.MonkeyPatch
     from mineru.backend.postprocess import document
 
     result = AnalysisResult(
-        model_list=[[{"type": BlockType.PARAGRAPH_TITLE, "content": "Slide", "level": 2}]],
+        model_list=[[{"type": BlockType.PARAGRAPH_TITLE, "content": _inline("Slide"), "level": 2}]],
         effort="flash",
         parse_mode="txt",
         elapsed=0.1,
     )
     calls: list[str] = []
-    monkeypatch.setattr(analyze, "analyze_office", lambda *_args, **_kwargs: result)
+    monkeypatch.setattr("mineru.backend.analysis.office.analyze_office", lambda *_args, **_kwargs: result)
     monkeypatch.setattr(document, "apply_llm_aided_postprocess", lambda *_args, **_kwargs: calls.append("llm"))
 
     middle_json, _ = analyze.doc_analyze(b"office", file_suffix="pptx")

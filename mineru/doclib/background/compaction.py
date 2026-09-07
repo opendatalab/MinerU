@@ -1,6 +1,8 @@
 """Compaction — merges overlapping / adjacent done parse batches to keep the parses table lean."""
 
 from __future__ import annotations
+from docvortex.schema import Producer
+from ...integrations.docvortex import build_metadata
 
 import asyncio
 import json
@@ -37,8 +39,8 @@ def _normalize_batch_pages(batch_payload: dict[str, Any]) -> list[dict[str, Any]
     if not isinstance(raw_pages, list) or any(not isinstance(page, dict) for page in raw_pages):
         raise ValueError("stale Middle JSON cache requires source reparse")
 
-    from ...backend.postprocess.legacy_schema_adapter import legacy_page_to_model_list
-    from ...backend.postprocess.pages import model_json_to_pages
+    from docvortex.compat.legacy_schema_adapter import legacy_page_to_model_list
+    from docvortex.postprocess.pages import model_json_to_pages
     from ...parser.base import (
         _legacy_effort,
         _legacy_file_suffix,
@@ -56,9 +58,10 @@ def _normalize_batch_pages(batch_payload: dict[str, Any]) -> list[dict[str, Any]
         pages=[legacy_page_to_model_list(page) for page in raw_pages],
         page_index_map=_legacy_page_index_map(raw_pages),
         file_suffix=_legacy_file_suffix(batch_payload),
-        effort=_legacy_effort(batch_payload),
-        parse_mode=_legacy_parse_mode(batch_payload),
-        mineru_version=mineru_version,
+        producer=Producer(name="mineru", version=mineru_version),
+        extensions=build_metadata(
+            effort=_legacy_effort(batch_payload), parse_mode=_legacy_parse_mode(batch_payload), mineru_version=mineru_version
+        ),
     )
     return [page.to_dict() for page in model_json_to_pages(model_json)]
 

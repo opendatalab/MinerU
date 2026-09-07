@@ -16,7 +16,7 @@ def render_html(
     document_title: str | None = None,
 ) -> str:
     """惰性加载 HTML 实现并渲染严格 MiddleJson。"""
-    from ._internal.html.renderer import render_html as _render_html
+    from docvortex.render.html import render_html as _render_html
 
     return _render_html(
         middle_json,

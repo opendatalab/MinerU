@@ -4,15 +4,13 @@ from dataclasses import replace
 
 import pytest
 
-from mineru.model.flash.pdf import (
-    geometry,
-    line_layout,
-    line_merging,
-    models,
-    native_text,
-    pipeline,
-    text_blocks,
-)
+from docvortex.analyzers.native.pdf import geometry
+from docvortex.analyzers.native.pdf import line_layout
+from docvortex.analyzers.native.pdf import line_merging
+from docvortex.analyzers.native.pdf import models
+from docvortex.analyzers.native.pdf import native_text
+from docvortex.analyzers.native.pdf import pipeline
+from docvortex.analyzers.native.pdf import text_blocks
 
 
 from _flash_pdf_test_utils import (
@@ -961,11 +959,7 @@ def test_title_resolved_visual_row_rejects_weak_sparse_prefix(
 ) -> None:
     """验证字体、行身份、保护边界或前缀宽度不符时保留拆分。"""
 
-    prefix_bbox = (
-        (0.0, 0.0, 40.0, 10.0)
-        if failure_mode == "two-wide-runs"
-        else (0.0, 0.0, 15.0, 10.0)
-    )
+    prefix_bbox = (0.0, 0.0, 40.0, 10.0) if failure_mode == "two-wide-runs" else (0.0, 0.0, 15.0, 10.0)
     lines = [
         _text_line(
             "prefix",
@@ -974,28 +968,18 @@ def test_title_resolved_visual_row_rejects_weak_sparse_prefix(
             visual_row_id=7,
             run_index=0,
             split_from_row=True,
-            preserve_split_boundary=(
-                failure_mode == "protected-boundary"
-            ),
+            preserve_split_boundary=(failure_mode == "protected-boundary"),
             font_signature=("SimSun", 0),
             font_coverage=1.0,
         ),
         _text_line(
             "wide body",
-            (85.0, 0.0, 165.0, 10.0)
-            if failure_mode == "two-wide-runs"
-            else (60.0, 0.0, 140.0, 10.0),
+            (85.0, 0.0, 165.0, 10.0) if failure_mode == "two-wide-runs" else (60.0, 0.0, 140.0, 10.0),
             1,
-            visual_row_id=(
-                8 if failure_mode == "different-row" else 7
-            ),
+            visual_row_id=(8 if failure_mode == "different-row" else 7),
             run_index=1,
             split_from_row=True,
-            font_signature=(
-                ("OtherFont", 0)
-                if failure_mode == "font-conflict"
-                else ("ABCDEF+SimSun", 0)
-            ),
+            font_signature=(("OtherFont", 0) if failure_mode == "font-conflict" else ("ABCDEF+SimSun", 0)),
             font_coverage=1.0,
         ),
     ]

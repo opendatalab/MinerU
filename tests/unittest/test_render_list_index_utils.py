@@ -3,13 +3,12 @@ from _span_test_utils import inline as _inline
 
 import pytest
 
-from mineru.backend.postprocess.inline import inline_plain_text
-from mineru.render._internal.common.index import looks_like_index_page_token, strip_index_page_tail
-from mineru.render._internal.common.list_items import (
-    has_markdown_unordered_marker,
-    parse_list_item_marker,
-    reference_list_needs_bullets,
-)
+from docvortex.content.inline import inline_plain_text
+from docvortex.render._internal.common.index import looks_like_index_page_token
+from docvortex.render._internal.common.index import strip_index_page_tail
+from docvortex.render._internal.common.list_items import has_markdown_unordered_marker
+from docvortex.render._internal.common.list_items import parse_list_item_marker
+from docvortex.render._internal.common.list_items import reference_list_needs_bullets
 from mineru.types import ListBlock, RefTextBlock, TextBlock
 
 

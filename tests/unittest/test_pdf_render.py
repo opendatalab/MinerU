@@ -1,4 +1,6 @@
 from __future__ import annotations
+from docvortex.schema import Producer
+from mineru.integrations.docvortex import build_metadata
 
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
@@ -15,10 +17,12 @@ import ziamath
 
 from _span_test_utils import inline as _inline
 from mineru.render import render_pdf
-from mineru.render._internal.pdf import assets as pdf_assets
-from mineru.render._internal.pdf import formula as formula_module
-from mineru.render._internal.pdf.formula import FormulaRenderer, FormulaVector, PdfFormulaError
-from mineru.render._internal.pdf.table import _html_cell_spans
+from docvortex.render._internal.pdf import assets as pdf_assets
+from docvortex.render._internal.pdf import formula as formula_module
+from docvortex.render._internal.pdf.formula import FormulaRenderer
+from docvortex.render._internal.pdf.formula import FormulaVector
+from docvortex.render._internal.pdf.formula import PdfFormulaError
+from docvortex.render._internal.pdf.table import _html_cell_spans
 from mineru.types import (
     AlgorithmBodyBlock,
     ChartAnnotationBlock,
@@ -49,9 +53,8 @@ def _middle(*pages: PageInfo) -> MiddleJson:
         pages=list(pages),
         is_full_document=True,
         file_suffix="docx",
-        effort="flash",
-        parse_mode="txt",
-        mineru_version="test",
+        producer=Producer(name="mineru", version="test"),
+        extensions=build_metadata(effort="flash", parse_mode="txt", mineru_version="test"),
     )
 
 

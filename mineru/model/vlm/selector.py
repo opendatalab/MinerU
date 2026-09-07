@@ -3,7 +3,10 @@ from typing import Literal, TypeAlias
 
 from loguru import logger
 
-from ...utils.platform import is_linux_environment, is_mac_environment, is_mac_os_version_supported, is_windows_environment
+from docvortex.foundation.platform import is_linux_environment
+from docvortex.foundation.platform import is_mac_environment
+from docvortex.foundation.platform import is_mac_os_version_supported
+from docvortex.foundation.platform import is_windows_environment
 
 VlmEngine: TypeAlias = Literal[
     "llama-cpp-engine",

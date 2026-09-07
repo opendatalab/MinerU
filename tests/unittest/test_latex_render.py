@@ -1,4 +1,6 @@
 from __future__ import annotations
+from docvortex.schema import Producer
+from mineru.integrations.docvortex import build_metadata
 
 from _span_test_utils import inline as _inline
 
@@ -70,9 +72,8 @@ def _middle(*pages: PageInfo) -> MiddleJson:
         pages=list(pages),
         is_full_document=True,
         file_suffix="docx",
-        effort="flash",
-        parse_mode="txt",
-        mineru_version="test",
+        producer=Producer(name="mineru", version="test"),
+        extensions=build_metadata(effort="flash", parse_mode="txt", mineru_version="test"),
     )
 
 
@@ -104,9 +105,9 @@ def test_latex_document_uses_tex_live_preamble_default_planner_and_escaping() ->
     assert r"\documentclass[UTF8,fontset=fandol,11pt]{ctexart}" in rendered
     assert "unicode-math" not in rendered and r"\setCJKmainfont" not in rendered
     assert r"\hypersetup{pdftitle={Title \& Metadata}}" in rendered
-    assert r"first\MinerULineBreak{}international 50\% \& x\_y \{\#\} \textbackslash{}path\par" in rendered
+    assert r"first\DocVortexLineBreak{}international 50\% \& x\_y \{\#\} \textbackslash{}path\par" in rendered
     assert "HEADER" not in rendered
-    assert "页面脚注" in rendered and r"\footnotesize\color{MinerUGray}" in rendered
+    assert "页面脚注" in rendered and r"\footnotesize\color{DocVortexGray}" in rendered
     assert r"\write18" not in rendered and "minted" not in rendered and "shellesc" not in rendered.casefold()
     assert rendered.endswith("\\end{document}\n")
     assert rendered == render_latex(middle, document_title="Title & Metadata")
@@ -147,7 +148,7 @@ def test_latex_renders_inline_styles_formulas_links_and_safe_anchors() -> None:
     assert r"\sout{ strike}" in rendered
     assert r"\textsuperscript{2}" in rendered and r"\textsubscript{i}" in rendered
     assert r"\texttt{a\_b\%\ \ c}" in rendered and r"\(x_1^2\)" in rendered
-    assert r"\hypertarget{mineru-" in rendered and r"\hyperlink{mineru-" in rendered
+    assert r"\hypertarget{docvortex-" in rendered and r"\hyperlink{docvortex-" in rendered
     assert r"\href{https://example.com/a\_b?q=1\&x=2}{external}" in rendered
     assert "\\begin{equation*}\n\\frac{1}{1-x^2}\\tag{7}\n\\end{equation*}" in rendered
     assert rendered.count(r"\begin{align}") == 1 and r"\begin{equation*}\begin{align}" not in rendered
@@ -189,7 +190,7 @@ def test_latex_renders_native_lists_and_linked_index() -> None:
     assert r"\begin{description}[style=nextline,leftmargin=3em,nosep]" in rendered
     assert r"\item[{[A]}] Alpha" in rendered and r"\item[{}] plain" in rendered
     assert "Target 12" not in rendered
-    assert r"\hyperlink{mineru-" in rendered and "{Target}" in rendered
+    assert r"\hyperlink{docvortex-" in rendered and "{Target}" in rendered
 
 
 def test_latex_renders_visual_blocks_complex_tables_and_code_in_source_order() -> None:
@@ -234,7 +235,7 @@ def test_latex_renders_visual_blocks_complex_tables_and_code_in_source_order() -
         sub_type="code",
         guess_lang="python",
         content=[
-            CodeBodyBlock(type="code_body", index=3, content="print('x_y%')\n\\end{MinerUVerbatim1}"),
+            CodeBodyBlock(type="code_body", index=3, content="print('x_y%')\n\\end{DocVortexVerbatim1}"),
             CodeAnnotationBlock(type="code_caption", content=_inline("Code caption")),
         ],
     )
@@ -263,7 +264,7 @@ def test_latex_renders_visual_blocks_complex_tables_and_code_in_source_order() -
     assert r"\begin{tabular}" in rendered and "Nested" in rendered and r"\(x^2\)" in rendered
     assert r"\detokenize{document assets/images/chart.png}" in rendered and "Data" in rendered
     assert "Table caption" in rendered and "Chart note" in rendered
-    assert r"\DefineVerbatimEnvironment{MinerUVerbatim2}" in rendered
+    assert r"\DefineVerbatimEnvironment{DocVortexVerbatim2}" in rendered
     assert "print('x_y%')" in rendered and "Code caption" in rendered
     assert r"{\small\ttfamily Step \(x^2\)\par}" in rendered
 

@@ -16,8 +16,8 @@ from urllib.parse import quote
 from loguru import logger
 
 from ...filetypes import IMAGE_EXTENSIONS, PDF_EXTENSIONS
-from ...model.flash.pdf.document import PDFDocument
-from ...model.flash.pdf.pdfium import safe_rewrite_pdf_bytes_with_pdfium_result
+from docvortex.document.pdf.document import PDFDocument
+from docvortex.document.pdf.pdfium import safe_rewrite_pdf_bytes_with_pdfium_result
 from ...parser.base import ParseResult
 from ...parser.page_range import parse_page_range
 from ...render import (
@@ -33,7 +33,8 @@ from ...render import (
     render,
 )
 from ...types import BlockBase, ImagePayloadBlock, MiddleJson
-from ...utils.image_payload import parse_image_data_uri_strict, validate_image_sidecar_path
+from docvortex.foundation.image_payload import parse_image_data_uri_strict
+from docvortex.foundation.image_payload import validate_image_sidecar_path
 
 DownloadFormat = Literal["zip", "html", "docx", "latex", "epub", "pdf"]
 

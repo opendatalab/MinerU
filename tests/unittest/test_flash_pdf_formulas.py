@@ -5,13 +5,11 @@ from dataclasses import replace
 
 import pytest
 
-from mineru.model.flash.pdf import (
-    formulas,
-    geometry,
-    line_merging,
-    models,
-)
-from mineru.model.flash.pdf.document import PDFPathInfo
+from docvortex.analyzers.native.pdf import formulas
+from docvortex.analyzers.native.pdf import geometry
+from docvortex.analyzers.native.pdf import line_merging
+from docvortex.analyzers.native.pdf import models
+from docvortex.document.pdf.document import PDFPathInfo
 
 
 from _flash_pdf_test_utils import (

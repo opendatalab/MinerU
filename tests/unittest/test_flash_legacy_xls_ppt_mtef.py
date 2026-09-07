@@ -7,9 +7,10 @@ from io import BytesIO
 import pytest
 
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
-from mineru.model.flash import PptModel, XlsModel
-from mineru.model.flash.office.errors import LegacyOfficeResourceLimitError
-from mineru.model.flash.office.limits import MAX_ENTRY_BYTES
+from docvortex.analyzers.native import PptModel
+from docvortex.analyzers.native import XlsModel
+from docvortex.analyzers.native.office.errors import LegacyOfficeResourceLimitError
+from docvortex.analyzers.native.office.limits import MAX_ENTRY_BYTES
 from mineru.types import BlockType, MiddleJson, ModelJson
 
 from _legacy_ppt_test_utils import build_equation_ppt
@@ -22,21 +23,13 @@ def test_xls_equation_editor_corpus_decodes_to_exact_equation_blocks() -> None:
 
     corpus = formula_corpus()
     file_bytes = build_equation_xls(
-        [
-            (100 + index, mtef)
-            for index, (_name, mtef, _expected) in enumerate(corpus)
-        ],
+        [(100 + index, mtef) for index, (_name, mtef, _expected) in enumerate(corpus)],
         preview=False,
     )
 
     pages = XlsModel().predict(BytesIO(file_bytes))
 
-    assert pages == [
-        [
-            {"type": BlockType.EQUATION, "content": expected}
-            for _name, _mtef, expected in corpus
-        ]
-    ]
+    assert pages == [[{"type": BlockType.EQUATION, "content": expected} for _name, _mtef, expected in corpus]]
 
 
 def test_ppt_equation_editor_corpus_stays_bound_to_its_slides() -> None:
@@ -50,10 +43,7 @@ def test_ppt_equation_editor_corpus_stays_bound_to_its_slides() -> None:
 
     pages = PptModel().predict(BytesIO(file_bytes))
 
-    assert pages == [
-        [{"type": BlockType.EQUATION, "content": expected}]
-        for _name, _mtef, expected in corpus
-    ]
+    assert pages == [[{"type": BlockType.EQUATION, "content": expected}] for _name, _mtef, expected in corpus]
 
 
 def test_xls_equation_inside_table_is_not_duplicated_as_top_level_block() -> None:
@@ -111,9 +101,7 @@ def test_ppt_uncompressed_equation_storage_is_supported() -> None:
 
     _name, mtef, expected = formula_corpus()[2]
 
-    pages = PptModel().predict(
-        BytesIO(build_equation_ppt([mtef], compressed=False, preview=False))
-    )
+    pages = PptModel().predict(BytesIO(build_equation_ppt([mtef], compressed=False, preview=False)))
 
     assert pages == [[{"type": BlockType.EQUATION, "content": expected}]]
 
@@ -126,9 +114,7 @@ def test_backend_analyze_preserves_native_equations_sync_and_async(
 
     _name, mtef, expected = formula_corpus()[3]
     file_bytes = (
-        build_equation_xls([(42, mtef)], preview=False)
-        if file_suffix == "xls"
-        else build_equation_ppt([mtef], preview=False)
+        build_equation_xls([(42, mtef)], preview=False) if file_suffix == "xls" else build_equation_ppt([mtef], preview=False)
     )
     middle, model = doc_analyze(file_bytes, file_suffix=file_suffix)  # type: ignore[arg-type]
     async_middle, async_model = asyncio.run(

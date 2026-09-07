@@ -1,9 +1,11 @@
+from docvortex.schema import Producer
+from mineru.integrations.docvortex import build_metadata
 from copy import deepcopy
 from typing import Any
 
-from mineru.backend.postprocess import pages as pages_module
-from mineru.backend.postprocess.lists import fix_office_list_blocks
-from mineru.backend.postprocess.pages import model_json_to_pages
+from docvortex.postprocess import pages as pages_module
+from docvortex.postprocess.lists import fix_office_list_blocks
+from docvortex.postprocess.pages import model_json_to_pages
 from mineru.types import (
     ChartBlock,
     DocTitleBlock,
@@ -67,9 +69,8 @@ def _model_json(
         pages=[_spanize_blocks(deepcopy(page)) for page in pages],
         page_index_map=page_index_map or [],
         file_suffix="pdf",
-        effort="flash",
-        parse_mode="txt",
-        mineru_version="test",
+        producer=Producer(name="mineru", version="test"),
+        extensions=build_metadata(effort="flash", parse_mode="txt", mineru_version="test"),
     )
 
 
@@ -269,9 +270,7 @@ def test_fix_office_list_blocks_uses_local_ordered_markers_at_each_depth() -> No
         current = pending_lists.pop()
         assert {"attribute", "ilevel", "start"}.isdisjoint(current)
         pending_lists.extend(
-            child
-            for child in current.get("content", [])
-            if isinstance(child, dict) and child.get("type") == "list"
+            child for child in current.get("content", []) if isinstance(child, dict) and child.get("type") == "list"
         )
 
 

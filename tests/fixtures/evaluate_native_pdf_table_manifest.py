@@ -12,14 +12,12 @@ from collections import defaultdict
 from pathlib import Path, PureWindowsPath
 from typing import Any
 
-from mineru.model.flash.pdf.table_recovery import (
-    NativeTableInput,
-    coerce_native_table_rectangles,
-    coerce_native_table_rules,
-    recover_native_pdf_table,
-)
-from mineru.model.flash.pdf.table_recovery.engine import diagnose_native_pdf_table
-from mineru.model.flash.pdf.document import PDFDocument
+from docvortex.analyzers.native.pdf.table_recovery import NativeTableInput
+from docvortex.analyzers.native.pdf.table_recovery import coerce_native_table_rectangles
+from docvortex.analyzers.native.pdf.table_recovery import coerce_native_table_rules
+from docvortex.analyzers.native.pdf.table_recovery import recover_native_pdf_table
+from docvortex.analyzers.native.pdf.table_recovery.engine import diagnose_native_pdf_table
+from docvortex.document.pdf.document import PDFDocument
 
 _DEFAULT_SOURCE_ROOT = Path(__file__).resolve().parents[1] / "unittest" / "pdfs" / "native_pdf_tables"
 

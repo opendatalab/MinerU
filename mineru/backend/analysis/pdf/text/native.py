@@ -13,14 +13,16 @@ from typing import Any, Callable, cast
 import cv2
 import numpy as np
 from loguru import logger
-from pdftext.schema import Char
+from docvortex.document.pdf.text.contracts import Char
 
 from .....types import BBox, BlockType, ContentType
-from .....model.flash.pdf.document import PDFPage, get_lines_from_chars
-from .....model.flash.pdf.script_geometry import ScriptRole, classify_char_script_roles
-from .....model.flash.pdf.text_styles import PDF_NATIVE_SCRIPT_MARKUP_KEY
-from .....utils.geometry import calculate_overlap_area_in_bbox1_area_ratio
-from .....utils.image import calculate_contrast
+from docvortex.document.pdf.document import PDFPage
+from docvortex.document.pdf.document import get_lines_from_chars
+from docvortex.analyzers.native.pdf.script_geometry import ScriptRole
+from docvortex.analyzers.native.pdf.script_geometry import classify_char_script_roles
+from docvortex.analyzers.native.pdf.text_styles import PDF_NATIVE_SCRIPT_MARKUP_KEY
+from docvortex.foundation.geometry import calculate_overlap_area_in_bbox1_area_ratio
+from docvortex.foundation.image import calculate_contrast
 from ..images import get_crop_img
 from .models import _AnalyzeSpan
 
@@ -172,7 +174,7 @@ def txt_spans_extract(
 
 
 def _is_supported_rotation(rotation: float) -> bool:
-    """判断 pdftext 旋转角是否属于当前可回填的四个标准方向。"""
+    """判断 原生字符旋转角是否属于当前可回填的四个标准方向。"""
     rotation_degrees = math.degrees(rotation)
     return any(abs(rotation_degrees - angle) < 0.1 for angle in [0, 90, 180, 270])
 
@@ -185,7 +187,7 @@ def _rotation_distance_degrees(first: float, second: float) -> float:
 
 
 def _get_char_fill_key(char: Char) -> tuple[str, Any]:
-    """生成字符回填判定 key，优先使用 pdftext 提供的页内 char_idx。"""
+    """生成字符回填判定 key，优先使用 原生抽取保留的页内 char_idx。"""
     char_idx = char.get("char_idx")
     if char_idx is not None:
         return ("char_idx", char_idx)
@@ -193,7 +195,7 @@ def _get_char_fill_key(char: Char) -> tuple[str, Any]:
 
 
 def _iter_line_chars(line: dict[str, Any]) -> list[Char]:
-    """按 pdftext line/span 结构展开字符，兼容缺少 chars 字段的异常 span。"""
+    """按 共享原生文本行/span 结构展开字符，兼容缺少 chars 字段的异常 span。"""
     return [char for span in line.get("spans", []) for char in span.get("chars", [])]
 
 
@@ -776,7 +778,7 @@ def calculate_char_in_span(
 
 
 def _get_char_bbox_metrics(char: Char) -> dict[str, float]:
-    """提取字符 bbox 的宽高和中心点，统一兼容 list 与 pdftext Bbox 对象。"""
+    """提取字符 bbox 的宽高和中心点，统一兼容 list 与 DocVortex Bbox 对象。"""
     bbox = char["bbox"]
     x0, y0, x1, y1 = [float(v) for v in bbox]
     return {

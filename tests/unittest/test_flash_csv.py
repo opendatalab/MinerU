@@ -10,12 +10,12 @@ import pytest
 from bs4 import BeautifulSoup
 
 from mineru.backend.analyze import aio_doc_analyze, doc_analyze
-from mineru.model.flash import CsvModel
-from mineru.model.flash import csv as csv_module
+from docvortex.analyzers.native import CsvModel
+from docvortex.analyzers.native import csv as csv_module
 from mineru.parser import parse, parse_async
 from mineru.parser import api_server
 from mineru.parser.api_server import CreateJobRequest, FileStore
-from mineru.parser.file_type import guess_suffix_by_bytes, guess_suffix_by_path
+from docvortex.document.detection import guess_suffix_by_bytes, guess_suffix_by_path
 from mineru.render.html import render_html
 from mineru.render.markdown import render_markdown
 from mineru.types import BlockType, TableBlock, TableBodyBlock
@@ -185,8 +185,8 @@ def test_csv_doc_analyze_sync_async_and_render_contracts_match() -> None:
     async_middle, async_model = asyncio.run(aio_doc_analyze(payload, file_suffix="csv"))
 
     assert model.file_suffix == async_model.file_suffix == "csv"
-    assert model.effort == async_model.effort == "flash"
-    assert model.parse_mode == async_model.parse_mode == "txt"
+    assert model.extensions["mineru"]["effort"] == async_model.extensions["mineru"]["effort"] == "flash"
+    assert model.extensions["mineru"]["parse_mode"] == async_model.extensions["mineru"]["parse_mode"] == "txt"
     assert middle.model_dump() == async_middle.model_dump()
     assert len(middle.pages) == 1
     table = middle.pages[0].blocks[0]
@@ -238,7 +238,6 @@ def test_csv_parse_server_job_emits_structured_outputs_with_flash_metadata(tmp_p
             record,
             request,
             file_store,
-            ocr_mode="auto",
             image_analysis=True,
             allow_local_source=True,
         )

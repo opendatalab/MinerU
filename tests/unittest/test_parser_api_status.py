@@ -1,5 +1,8 @@
 """同步和异步 V1 parser 的状态观察回调合同。"""
 
+from docvortex.schema import Producer
+from mineru.integrations.docvortex import build_metadata
+
 import asyncio
 from pathlib import Path
 from typing import Any
@@ -27,12 +30,13 @@ from mineru.types import MiddleJson
 def test_parse_notifies_submission_and_polls_before_result_building(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
-    caplog: pytest.LogCaptureFixture,
     use_async: bool,
     callback_raises: bool,
     statuses: tuple[ApiJobStatus, ...],
 ) -> None:
     """验证六种真实状态、固定轮询、直接完成和回调异常隔离，通知不延迟到结果下载之后。"""
+    callback_errors: list[str] = []
+    monkeypatch.setattr(api_client.logger, "exception", callback_errors.append)
     source = tmp_path / "source.pdf"
     source.write_bytes(b"%PDF-1.7\n")
     parser = MinerUApiParser(api_url="http://localhost:8000", tier="flash")
@@ -43,7 +47,11 @@ def test_parse_notifies_submission_and_polls_before_result_building(
     methods: list[str] = []
     result = ParseResult(
         middle_json=MiddleJson(
-            pages=[], is_full_document=True, file_suffix="pdf", effort="flash", parse_mode="txt", mineru_version="4.0.0"
+            pages=[],
+            is_full_document=True,
+            file_suffix="pdf",
+            producer=Producer(name="mineru", version="4.0.0"),
+            extensions=build_metadata(effort="flash", parse_mode="txt", mineru_version="4.0.0"),
         )
     )
 
@@ -105,4 +113,4 @@ def test_parse_notifies_submission_and_polls_before_result_building(
     assert notifications == list(statuses)
     assert methods == ["POST", *(["GET"] * (len(statuses) - 1))]
     assert delays == [1] * (len(statuses) - 1)
-    assert ("Parse job status callback failed" in caplog.text) is callback_raises
+    assert callback_errors == (["Parse job status callback failed"] * len(statuses) if callback_raises else [])

@@ -6,6 +6,25 @@
 非目标: API 字段级定义；CLI 参数完整手册
 来源: 由根目录旧技术设计底稿迁移整理而来，当前 `mineru/doclib` 代码已核对
 
+## DocVortex 引擎边界
+
+通用文档引擎已抽为独立依赖 `docvortex`。MinerU 保留应用、推理和任务管理，原生解析、PDF 分类与基础访问、文档类型、确定性后处理、素材和 renderer 由 DocVortex 唯一维护。
+
+```text
+MinerU Flash TXT ──→ DocVortex 原生分析 ──→ ModelJson
+MinerU OCR/VLM/Hybrid ─────────────────→ ModelJson
+                                            ↓
+                                  DocVortex 确定性后处理
+                                            ↓
+                                  MinerU 可选 LLM 增强
+                                            ↓
+                                      DocVortex Render
+```
+
+PDF 只有 `auto` 模式调用共享 classify；显式 `txt` 不分类，显式 `ocr` 保留已有推理路线。原生分析只由 Flash 分支调用。DocVortex 不反向依赖 MinerU。
+
+DocVortex 内存对象和 JSON 使用中性 producer/extensions；MinerU 对外继续输出 schema 2.0，由兼容 codec 恢复产品元数据。所有持久化边界应使用 ParseResult 或明确的 MinerU codec，而不是直接写出 DocVortex 对象的原生封装。
+
 ## 1. 系统上下文
 
 Next MinerU 的本地能力中心由 `mineru doclib` 和可选的 `local parse-server` 组成。
