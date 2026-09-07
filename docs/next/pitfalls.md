@@ -16,15 +16,12 @@
 - 新代码只走 `tier`；`backend_for_tier`（`parser/tier.py:183`）已保证 basic/standard/advanced 共用同一个 hybrid-engine，仅 effort 不同（`HYBRID_EFFORT_BY_TIER` `parser/tier.py:25`）。
 - 不要新增依赖 `backend` 入参的分支；`pipeline`/`vlm-*` 仅作为 legacy 别名存在。
 
-### 1.2 Middle JSON legacy 读取三件套
+### 1.2 共享文档协议与缓存必须同步
 
-改 Middle JSON 结构时必须同步检查三处，否则旧缓存文档读取会断：
-
-1. legacy 读取：`mineru/parser/base.py:20-47` —— 识别 3.4.5 `pdf_info` 与 schema 1.0 `pages` 包装（`_legacy_raw_pages`），`MIDDLE_JSON_SCHEMA_VERSION = "2.0"`；
-2. legacy 适配：`mineru/backend/postprocess/legacy_schema_adapter.py` —— 旧 payload 单向回推为 raw model-list；
-3. 批次合并：`mineru/doclib/background/compaction.py:23` `_normalize_batch_pages` 会把 schema 2.0、1.0、3.4.5 批次归一化后**跨 schema 合并**（legacy 批次经 `legacy_schema_adapter` 转换参与），并非只合并 2.0 批次；schema 无法识别时抛 stale-cache 错误并放弃本轮压缩（`compaction.py:37`）。
-
-新增或调整 Middle JSON 字段时，先确认 ADR-0020（schema stability boundary）是否覆盖该字段，再同步上述三处与 `docs/next/middle-json.md`。
+改外层结构时同步 DocVortex schema/readers、MinerU ParseResult 和 Doclib 缓存。
+当前使用 schema 身份 + 版本 2.0 + metadata，旧协议全部拒绝；不能仅按版本号识别。
+缓存命中、覆盖与默认读取档位均需检查新版协议；压缩只合并元数据一致的新批次。
+详见 [envelope.md](middle-json/envelope.md)。
 
 ## 2. Alpha 高频迭代，公开 API 未稳定
 

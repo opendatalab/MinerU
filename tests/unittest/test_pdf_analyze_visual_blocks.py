@@ -28,7 +28,7 @@ from mineru.types import RAW_ALGORITHM, RAW_CAPTION, RAW_FOOTNOTE, RAW_FORMULA_N
 from mineru.types import FILE_SUFFIXES, BlockType, FileSuffix, MiddleJson, ModelJson
 from mineru.version import __version__ as mineru_version
 
-from _span_test_utils import equation, hyperlink, inline, inline_items, inline_text, inline_urls
+from _span_test_utils import inline, inline_text
 
 
 JPEG_DATA_URI_PREFIX = "data:image/jpeg;base64,"
@@ -1215,18 +1215,18 @@ def test_doc_analyze_office_returns_model_json_without_pdf_processing(
 
     assert isinstance(middle_json, MiddleJson)
     assert len(middle_json.pages) == 1
-    assert middle_json.file_suffix == file_suffix
-    assert middle_json.extensions["mineru"]["effort"] == "flash"
+    assert middle_json.metadata.file_suffix == file_suffix
+    assert middle_json.extensions["mineru"]["tier"] == "flash"
     assert middle_json.extensions["mineru"]["parse_mode"] == "txt"
     assert middle_json.is_full_document is True
     assert isinstance(model_json, ModelJson)
     assert model_json.pages == source_model_list
     assert model_json.page_index_map == []
     assert model_json.is_full_document is True
-    assert model_json.file_suffix == file_suffix
-    assert model_json.extensions["mineru"]["effort"] == "flash"
+    assert model_json.metadata.file_suffix == file_suffix
+    assert model_json.extensions["mineru"]["tier"] == "flash"
     assert model_json.extensions["mineru"]["parse_mode"] == "txt"
-    assert model_json.extensions["mineru"]["mineru_version"] == mineru_version
+    assert model_json.metadata.producer.version == mineru_version
     assert inline_text(model_json.pages[0][0]["content"]) == "原始 \\(office\\) 内容"
     for suffix, model_factory in model_factories.items():
         assert model_factory.call_count == (1 if suffix == file_suffix else 0)
@@ -1596,9 +1596,9 @@ def test_doc_analyze_office_normalizes_product_route(file_suffix: FileSuffix) ->
     assert isinstance(middle, MiddleJson) and isinstance(model, ModelJson)
     assert len(model.pages) == len(middle.pages) == 1
     assert model.is_full_document and middle.is_full_document
-    assert model.extensions["mineru"]["effort"] == "flash"
+    assert model.extensions["mineru"]["tier"] == "flash"
     assert model.extensions["mineru"]["parse_mode"] == "txt"
-    assert model.file_suffix == middle.file_suffix == file_suffix
+    assert model.metadata.file_suffix == middle.metadata.file_suffix == file_suffix
     assert middle.pages[0].page_idx == 0
     assert "Office routing sample" in middle.to_json()
 
@@ -1628,10 +1628,10 @@ def test_doc_analyze_flash_real_pdf_returns_typed_middle_json() -> None:
     assert all(block.bbox is not None for block in middle_json.pages[0].blocks)
     assert all("merge_prev" not in block for page in model_json.pages for block in page)
     assert model_json.page_index_map == []
-    assert model_json.file_suffix == "pdf"
-    assert model_json.extensions["mineru"]["effort"] == "flash"
+    assert model_json.metadata.file_suffix == "pdf"
+    assert model_json.extensions["mineru"]["tier"] == "flash"
     assert model_json.extensions["mineru"]["parse_mode"] == "txt"
-    assert model_json.extensions["mineru"]["mineru_version"] == mineru_version
+    assert model_json.metadata.producer.version == mineru_version
     assert load_middle(json.loads(middle_json.to_json())) == middle_json
     assert load_model(json.loads(model_json.to_json())) == model_json
 

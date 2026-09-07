@@ -43,9 +43,11 @@ def test_parse_result_from_dict_restores_pages() -> None:
                 )
             ],
             is_full_document=True,
-            file_suffix="pdf",
-            producer=Producer(name="mineru", version=__version__),
-            extensions=build_metadata(effort="medium", parse_mode="txt", mineru_version=__version__),
+            metadata={"file_suffix": "pdf", "producer": Producer(name="mineru", version=__version__)},
+            extensions=build_metadata(
+                effort="medium",
+                parse_mode="txt",
+            ),
         )
     )
 
@@ -62,9 +64,11 @@ def test_parse_result_to_dict_includes_schema_version_without_meta() -> None:
         middle_json=MiddleJson(
             pages=[PageInfo(page_idx=0)],
             is_full_document=True,
-            file_suffix="pdf",
-            producer=Producer(name="mineru", version=__version__),
-            extensions=build_metadata(effort="medium", parse_mode="txt", mineru_version=__version__),
+            metadata={"file_suffix": "pdf", "producer": Producer(name="mineru", version=__version__)},
+            extensions=build_metadata(
+                effort="medium",
+                parse_mode="txt",
+            ),
         )
     )
 
@@ -93,9 +97,11 @@ def test_parse_result_roundtrip_preserves_page_footnote_anchor() -> None:
                 )
             ],
             is_full_document=True,
-            file_suffix="epub",
-            producer=Producer(name="mineru", version=__version__),
-            extensions=build_metadata(effort="flash", parse_mode="txt", mineru_version=__version__),
+            metadata={"file_suffix": "epub", "producer": Producer(name="mineru", version=__version__)},
+            extensions=build_metadata(
+                effort="flash",
+                parse_mode="txt",
+            ),
         )
     )
 
@@ -114,21 +120,20 @@ def test_parse_result_rejects_low_effort() -> None:
                 "schema_version": MIDDLE_JSON_SCHEMA_VERSION,
                 "pages": [],
                 "is_full_document": True,
-                "file_suffix": "pdf",
-                "effort": "low",
-                "parse_mode": "ocr",
-                "mineru_version": __version__,
+                "metadata": {"file_suffix": "pdf", "producer": {"name": "mineru", "version": __version__}},
+                "schema": "docvortex.middle",
+                "extensions": {"mineru": {"tier": "low", "parse_mode": "ocr"}},
             }
         )
 
 
 def test_parse_result_from_dict_rejects_missing_pages() -> None:
     with pytest.raises(ValueError, match="pages"):
-        ParseResult.from_dict({"schema_version": MIDDLE_JSON_SCHEMA_VERSION})
+        ParseResult.from_dict({"schema": "docvortex.middle", "schema_version": MIDDLE_JSON_SCHEMA_VERSION})
 
 
-def test_parse_result_from_json_converts_mineru_3_4_5_middle_json() -> None:
-    """验证 ParseResult 恢复 3.4.5 pdf_info 调用链并生成严格 2.0。"""
+def test_parse_result_from_json_rejects_mineru_3_4_5_middle_json() -> None:
+    """验证 ParseResult 的真实 JSON 入口拒绝历史 pdf_info 文档。"""
     data = {
         "_backend": "hybrid",
         "_effort": "high",
@@ -156,22 +161,14 @@ def test_parse_result_from_json_converts_mineru_3_4_5_middle_json() -> None:
         ],
     }
 
-    restored = ParseResult.from_json(json.dumps(data))
-
-    assert restored.pages[0].page_idx == 2
-    assert restored.pages[0].blocks[0].content[0].content == "round trip"
-    assert restored.middle_json.is_full_document is False
-    assert restored.middle_json.extensions["mineru"]["effort"] == "high"
-    assert restored.middle_json.extensions["mineru"]["parse_mode"] == "ocr"
-    assert restored.middle_json.extensions["mineru"]["mineru_version"] == "3.4.4"
+    with pytest.raises(ValueError, match="reparse"):
+        ParseResult.from_json(json.dumps(data))
 
 
-def test_parse_result_accepts_schema_v1_page_wrapper() -> None:
-    """验证旧调用方的 1.0 pages envelope 继续委托同一适配器。"""
-    restored = ParseResult.from_dict({"schema_version": "1.0", "pages": []})
-
-    assert restored.pages == []
-    assert restored.middle_json.is_full_document is True
+def test_parse_result_rejects_schema_v1_page_wrapper() -> None:
+    """验证旧 1.0 pages 封装明确拒绝，不生成虚假的空文档。"""
+    with pytest.raises(ValueError, match="reparse"):
+        ParseResult.from_dict({"schema_version": "1.0", "pages": []})
 
 
 @pytest.mark.parametrize("schema_version", [None, "3.0"])
@@ -181,7 +178,7 @@ def test_parse_result_rejects_legacy_schema_versions(schema_version: str | None)
     if schema_version is not None:
         payload["schema_version"] = schema_version
 
-    with pytest.raises(ValueError, match="Reparse the source document"):
+    with pytest.raises(ValueError, match="reparse the source document"):
         ParseResult.from_dict(payload)
 
 
@@ -210,9 +207,11 @@ def test_parse_result_export_pages_returns_defensive_copy() -> None:
         middle_json=MiddleJson(
             pages=[page],
             is_full_document=True,
-            file_suffix="pdf",
-            producer=Producer(name="mineru", version=__version__),
-            extensions=build_metadata(effort="medium", parse_mode="txt", mineru_version=__version__),
+            metadata={"file_suffix": "pdf", "producer": Producer(name="mineru", version=__version__)},
+            extensions=build_metadata(
+                effort="medium",
+                parse_mode="txt",
+            ),
         ),
     )
     first_export = result.export_pages()

@@ -32,7 +32,7 @@ Middle JSON 的对外 schema 固定为 `2.0`（`mineru/parser/base.py:20` `MIDDL
 
 红线：
 
-- 不输出 `_backend` / `_version_name` / `pdf_info` / `_ocr_enable` / `_vlm_ocr_enable` 等旧字段；旧字段只能作为受支持旧 payload 的迁移输入出现（legacy 读取路径见 `parser/base.py:20-47` 与 `backend/postprocess/legacy_schema_adapter.py`）。
+- 不接受旧 `_backend` / `_version_name` / `pdf_info` 等历史文档字段；加载统一验证 schema 身份、版本和 metadata，不执行旧协议迁移。
 - 改动输出结构即破坏性变更：必须走 ADR 流程，并同步 `docs/next/api/changes.md`、`docs/next/middle-json.md` 与 compaction（`doclib/background/compaction.py:27`）。
 
 ## 4. 依赖方向：基础层不得反向引用上层

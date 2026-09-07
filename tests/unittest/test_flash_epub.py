@@ -41,8 +41,8 @@ def test_epub_model_analyze_and_renderers_preserve_structured_content() -> None:
     assert explicit_full_model.pages == model_pages
     assert explicit_full_middle.is_full_document is True
     assert middle.model_dump() == async_middle.model_dump()
-    assert model.file_suffix == middle.file_suffix == "epub"
-    assert model.extensions["mineru"]["effort"] == middle.extensions["mineru"]["effort"] == "flash"
+    assert model.metadata.file_suffix == middle.metadata.file_suffix == "epub"
+    assert model.extensions["mineru"]["tier"] == middle.extensions["mineru"]["tier"] == "flash"
     assert model.extensions["mineru"]["parse_mode"] == middle.extensions["mineru"]["parse_mode"] == "txt"
     assert [page.page_idx for page in middle.pages] == [0, 1, 2]
     assert middle.pages[0].blocks[0].type == BlockType.DOC_TITLE
@@ -75,7 +75,7 @@ def test_epub_model_analyze_and_renderers_preserve_structured_content() -> None:
     assert "hidden secret" not in markdown
     assert "Data table" in markdown
     assert "<table" in html_output
-    assert structured["file_suffix"] == "epub"
+    assert structured["metadata"]["file_suffix"] == "epub"
     assert docx.startswith(b"PK")
 
 
@@ -180,9 +180,9 @@ def test_epub_local_parse_job_emits_spine_aligned_flash_outputs(tmp_path: Path) 
     middle_record = file_store.get_file(parsed_file.output_files.middle_json.file_id)  # type: ignore[union-attr]
     assert middle_record.sha256sum is not None
     payload = json.loads(file_store.read_blob(middle_record.sha256sum))
-    assert payload["file_suffix"] == "epub"
-    assert payload["effort"] == "flash"
-    assert payload["parse_mode"] == "txt"
+    assert payload["metadata"]["file_suffix"] == "epub"
+    assert payload["extensions"]["mineru"]["tier"] == "flash"
+    assert payload["extensions"]["mineru"]["parse_mode"] == "txt"
     assert [page["page_idx"] for page in payload["pages"]] == [0, 1, 2]
     assert payload["pages"][0]["blocks"][0]["type"] == "doc_title"
 
@@ -306,5 +306,5 @@ def test_epub_middle_json_roundtrip_remains_schema_2() -> None:
     """验证 EPUB 只扩展 file_suffix，不引入新的 schema 或 Block 字段。"""
     middle, _ = doc_analyze(build_epub_fixture(), file_suffix="epub")
     payload = middle.to_dict(skip_defaults=False)
-    assert payload["file_suffix"] == "epub"
-    assert json.loads(middle.to_json(skip_defaults=False))["file_suffix"] == "epub"
+    assert payload["metadata"]["file_suffix"] == "epub"
+    assert json.loads(middle.to_json(skip_defaults=False))["metadata"]["file_suffix"] == "epub"

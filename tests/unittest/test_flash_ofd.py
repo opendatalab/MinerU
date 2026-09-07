@@ -48,15 +48,15 @@ def test_ofd_model_analyze_detection_and_renderers(tmp_path: Path) -> None:
 
     assert model.pages == async_model.pages == model_pages
     assert middle.model_dump() == async_middle.model_dump()
-    assert model.file_suffix == middle.file_suffix == "ofd"
-    assert model.extensions["mineru"]["effort"] == middle.extensions["mineru"]["effort"] == "flash"
+    assert model.metadata.file_suffix == middle.metadata.file_suffix == "ofd"
+    assert model.extensions["mineru"]["tier"] == middle.extensions["mineru"]["tier"] == "flash"
     assert model.extensions["mineru"]["parse_mode"] == middle.extensions["mineru"]["parse_mode"] == "txt"
     assert middle.is_full_document is True
     assert middle.pages[0].blocks[0].type == BlockType.TEXT
     assert middle.pages[0].blocks[0].bbox is not None
     assert "你好，OFD" in render_markdown(middle)
     assert "你好，OFD" in render_html(middle)
-    assert render_structured_content(middle)["file_suffix"] == "ofd"
+    assert render_structured_content(middle)["metadata"]["file_suffix"] == "ofd"
     assert render_docx(middle).startswith(b"PK")
 
 
@@ -104,9 +104,9 @@ def test_ofd_parse_server_job_emits_flash_outputs(tmp_path: Path) -> None:
     middle_record = file_store.get_file(parsed_file.output_files.middle_json.file_id)  # type: ignore[union-attr]
     assert middle_record.sha256sum is not None
     payload = json.loads(file_store.read_blob(middle_record.sha256sum))
-    assert payload["file_suffix"] == "ofd"
-    assert payload["effort"] == "flash"
-    assert payload["parse_mode"] == "txt"
+    assert payload["metadata"]["file_suffix"] == "ofd"
+    assert payload["extensions"]["mineru"]["tier"] == "flash"
+    assert payload["extensions"]["mineru"]["parse_mode"] == "txt"
     assert payload["pages"][0]["blocks"][0]["bbox"]
 
 

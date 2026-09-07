@@ -42,6 +42,7 @@ from mineru.parser.api_server import (
 )
 from mineru.parser.base import ParseResult
 from mineru.types import (
+    ModelJson,
     DEFAULT_QUALITY_TIER_SELECTION_ORDER,
     DEPLOYMENT_TIERS,
     DeploymentTier,
@@ -84,10 +85,23 @@ def _full_middle_json(*pages: PageInfo) -> MiddleJson:
     return MiddleJson(
         pages=list(pages),
         is_full_document=True,
-        file_suffix="pdf",
-        producer=Producer(name="mineru", version=__version__),
-        extensions=build_metadata(effort="medium", parse_mode="txt", mineru_version=__version__),
+        metadata={"file_suffix": "pdf", "producer": Producer(name="mineru", version=__version__)},
+        extensions=build_metadata(
+            effort="medium",
+            parse_mode="txt",
+        ),
     )
+
+
+def _model_payload() -> dict[str, Any]:
+    """构造 ZIP 内的完整分析协议，保留原始模型块用于传输回归。"""
+    from mineru.types import ModelJson
+
+    return ModelJson(
+        pages=[[{"raw": "model"}]],
+        page_index_map=[],
+        metadata={"file_suffix": "pdf", "producer": {"name": "mineru", "version": __version__}},
+    ).to_dict()
 
 
 def _current_payload(pages: list[dict[str, Any]], **extra: Any) -> dict[str, Any]:
@@ -96,10 +110,9 @@ def _current_payload(pages: list[dict[str, Any]], **extra: Any) -> dict[str, Any
         "schema_version": MIDDLE_JSON_SCHEMA_VERSION,
         "pages": pages,
         "is_full_document": True,
-        "file_suffix": "pdf",
-        "effort": "medium",
-        "parse_mode": "txt",
-        "mineru_version": __version__,
+        "metadata": {"file_suffix": "pdf", "producer": {"name": "mineru", "version": __version__}},
+        "schema": "docvortex.middle",
+        "extensions": {"mineru": {"tier": "basic", "parse_mode": "txt"}},
     }
     payload.update(extra)
     return payload
@@ -756,7 +769,7 @@ def test_api_client_downloads_model_output_from_zip(monkeypatch: pytest.MonkeyPa
         archive.writestr("middle_json.json", json.dumps(middle_json, ensure_ascii=False))
         archive.writestr(
             "model_output.json",
-            json.dumps([[{"raw": "model"}]], ensure_ascii=False, indent=4),
+            json.dumps(_model_payload(), ensure_ascii=False, indent=4),
         )
 
     monkeypatch.setattr(
@@ -775,11 +788,11 @@ def test_api_client_downloads_model_output_from_zip(monkeypatch: pytest.MonkeyPa
         parser,
     )
 
-    assert result._model_output == [[{"raw": "model"}]]
+    assert result._model_output.pages == [[{"raw": "model"}]]
 
 
-def test_api_client_accepts_legacy_official_layout_json(monkeypatch: pytest.MonkeyPatch) -> None:
-    """官方 API zip 中的 legacy pdf_info layout.json 应经 legacy_schema_adapter 迁移为 3.0。"""
+def test_api_client_rejects_legacy_official_layout_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    """官方 API ZIP 内的历史 pdf_info 文档必须明确拒绝，不再迁移正文。"""
     parser = MinerUApiParser(
         api_url="https://mineru.net/api",
         tier="standard",
@@ -813,24 +826,20 @@ def test_api_client_accepts_legacy_official_layout_json(monkeypatch: pytest.Monk
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("layout.json", json.dumps(middle_json, ensure_ascii=False))
         archive.writestr("images/chart.png", b"chart-bytes")
-        archive.writestr("ab3a55b0-2017-4e35-8507-ab8e2c012160_model.json", json.dumps([[{"raw": "model"}]]))
+        archive.writestr("ab3a55b0-2017-4e35-8507-ab8e2c012160_model.json", json.dumps(_model_payload()))
 
     monkeypatch.setattr(api_client, "_download_bytes", lambda _parser, ref: zip_buffer.getvalue() if ref is zip_ref else b"")
 
-    result = _parse_result_from_job(
-        {
-            "job_id": "job_1",
-            "status": "completed",
-            "files": [{"output_files": {"zip": zip_ref}}],
-        },
-        "demo.pdf",
-        parser,
-    )
-
-    assert len(result.pages) == 1
-    assert result.pages[0].blocks[0].type.value == "image"
-    image_body = result.pages[0].blocks[0].content[0]
-    assert image_body.image_base64 == "data:image/png;base64," + base64.b64encode(b"chart-bytes").decode("ascii")  # type: ignore[union-attr]
+    with pytest.raises(api_client._V1APIError, match="reparse"):
+        _parse_result_from_job(
+            {
+                "job_id": "job_1",
+                "status": "completed",
+                "files": [{"output_files": {"zip": zip_ref}}],
+            },
+            "demo.pdf",
+            parser,
+        )
 
 
 def test_api_client_async_downloads_model_output_from_zip(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -842,7 +851,7 @@ def test_api_client_async_downloads_model_output_from_zip(monkeypatch: pytest.Mo
         archive.writestr("middle_json.json", json.dumps(middle_json, ensure_ascii=False))
         archive.writestr(
             "model_output.json",
-            json.dumps([[{"raw": "model"}]], ensure_ascii=False, indent=4),
+            json.dumps(_model_payload(), ensure_ascii=False, indent=4),
         )
 
     async def fake_download_bytes(_parser: object, ref: dict[str, object]) -> bytes:
@@ -862,7 +871,7 @@ def test_api_client_async_downloads_model_output_from_zip(monkeypatch: pytest.Mo
         )
     )
 
-    assert result._model_output == [[{"raw": "model"}]]
+    assert result._model_output.pages == [[{"raw": "model"}]]
 
 
 def test_api_client_include_images_downloads_single_zip(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -898,7 +907,7 @@ def test_api_client_include_images_downloads_single_zip(monkeypatch: pytest.Monk
             ),
         )
         archive.writestr("images/chart.png", b"chart-bytes")
-        archive.writestr("model_output.json", json.dumps([[{"raw": "model"}]], ensure_ascii=False, indent=4))
+        archive.writestr("model_output.json", json.dumps(_model_payload(), ensure_ascii=False, indent=4))
     download_calls: list[dict[str, object]] = []
 
     def fake_download_bytes(_parser: object, ref: dict[str, object]) -> bytes:
@@ -926,7 +935,7 @@ def test_api_client_include_images_downloads_single_zip(monkeypatch: pytest.Monk
     assert result.pages[0].page_idx == 0
     image_body = result.pages[0].blocks[0].content[0]
     assert image_body.image_base64 == "data:image/png;base64," + base64.b64encode(b"chart-bytes").decode("ascii")  # type: ignore[union-attr]
-    assert result._model_output == [[{"raw": "model"}]]
+    assert result._model_output.pages == [[{"raw": "model"}]]
 
 
 def test_api_client_does_not_read_image_cache_from_zip_unless_requested(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -937,7 +946,7 @@ def test_api_client_does_not_read_image_cache_from_zip_unless_requested(monkeypa
     with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as archive:
         archive.writestr("middle_json.json", json.dumps(middle_json, ensure_ascii=False))
         archive.writestr("images/chart.png", b"chart-bytes")
-        archive.writestr("model_output.json", json.dumps([[{"raw": "model"}]], ensure_ascii=False, indent=4))
+        archive.writestr("model_output.json", json.dumps(_model_payload(), ensure_ascii=False, indent=4))
 
     monkeypatch.setattr(api_client, "_download_bytes", lambda _parser, ref: zip_buffer.getvalue() if ref is zip_ref else b"")
 
@@ -954,7 +963,7 @@ def test_api_client_does_not_read_image_cache_from_zip_unless_requested(monkeypa
     image_body = result.pages[0].blocks[0].content[0]
     assert image_body.image_base64 is None  # type: ignore[union-attr]
     assert image_body.image_path == "images/chart.png"  # type: ignore[union-attr]
-    assert result._model_output == [[{"raw": "model"}]]
+    assert result._model_output.pages == [[{"raw": "model"}]]
 
 
 def test_api_client_async_include_images_downloads_single_zip(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -971,7 +980,7 @@ def test_api_client_async_include_images_downloads_single_zip(monkeypatch: pytes
             "middle_json.json",
             json.dumps(_current_payload([{"page_idx": 0, "blocks": []}])),
         )
-        archive.writestr("model_output.json", json.dumps([[{"raw": "model"}]], ensure_ascii=False, indent=4))
+        archive.writestr("model_output.json", json.dumps(_model_payload(), ensure_ascii=False, indent=4))
     download_calls: list[dict[str, object]] = []
 
     async def fake_download_bytes(_parser: object, ref: dict[str, object]) -> bytes:
@@ -998,7 +1007,7 @@ def test_api_client_async_include_images_downloads_single_zip(monkeypatch: pytes
 
     assert download_calls == [zip_ref]
     assert result.pages[0].page_idx == 0
-    assert result._model_output == [[{"raw": "model"}]]
+    assert result._model_output.pages == [[{"raw": "model"}]]
 
 
 def test_api_client_include_images_rejects_unsafe_image_entries(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1023,8 +1032,8 @@ def test_api_client_include_images_rejects_unsafe_image_entries(monkeypatch: pyt
         )
 
 
-def test_api_client_accepts_remote_pdf_info_middle_json(monkeypatch: pytest.MonkeyPatch) -> None:
-    """remote 官方 API 返回 3.4.5 pdf_info payload 时应经 legacy 分支迁移而不是拒绝。"""
+def test_api_client_rejects_remote_pdf_info_middle_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    """远程返回历史 pdf_info 协议时必须提示重新解析，不猜测其版本。"""
     parser = MinerUApiParser(api_url="https://mineru.net/api", tier="standard")
     middle_json = {
         "_backend": "hybrid",
@@ -1034,22 +1043,20 @@ def test_api_client_accepts_remote_pdf_info_middle_json(monkeypatch: pytest.Monk
 
     monkeypatch.setattr(api_client, "_download_json", lambda _parser, _outputs: middle_json)
 
-    result = _parse_result_from_job(
-        {
-            "job_id": "job_1",
-            "status": "completed",
-            "files": [{"output_files": {"middle_json": {"file_id": "file-middle-json", "bytes": 10}}}],
-        },
-        "demo.pdf",
-        parser,
-    )
-
-    assert len(result.pages) == 1
-    assert result.pages[0].page_idx == 0
-    assert result.middle_json.extensions["mineru"]["mineru_version"] == "remote"
+    with pytest.raises(api_client._V1APIError, match="reparse"):
+        _parse_result_from_job(
+            {
+                "job_id": "job_1",
+                "status": "completed",
+                "files": [{"output_files": {"middle_json": {"file_id": "file-middle-json", "bytes": 10}}}],
+            },
+            "demo.pdf",
+            parser,
+        )
 
 
-def test_async_api_client_accepts_remote_pdf_info_middle_json(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_async_api_client_rejects_remote_pdf_info_middle_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    """异步客户端同样拒绝历史 pdf_info 协议，不把空页当成有效结果。"""
     parser = MinerUApiParser(api_url="https://mineru.net/api", tier="standard")
     middle_json = {
         "_backend": "hybrid",
@@ -1061,20 +1068,18 @@ def test_async_api_client_accepts_remote_pdf_info_middle_json(monkeypatch: pytes
 
     monkeypatch.setattr(api_client, "_async_download_json", _download_json)
 
-    result = asyncio.run(
-        api_client._async_parse_result_from_job(
-            {
-                "job_id": "job_1",
-                "status": "completed",
-                "files": [{"output_files": {"middle_json": {"file_id": "file-middle-json", "bytes": 10}}}],
-            },
-            "demo.pdf",
-            parser,
+    with pytest.raises(api_client._V1APIError, match="reparse"):
+        asyncio.run(
+            api_client._async_parse_result_from_job(
+                {
+                    "job_id": "job_1",
+                    "status": "completed",
+                    "files": [{"output_files": {"middle_json": {"file_id": "file-middle-json", "bytes": 10}}}],
+                },
+                "demo.pdf",
+                parser,
+            )
         )
-    )
-
-    assert len(result.pages) == 1
-    assert result.pages[0].page_idx == 0
 
 
 def test_api_client_rejects_legacy_json_output_file_key() -> None:
@@ -1549,7 +1554,7 @@ def test_api_client_accepts_middle_json_current_pages() -> None:
 )
 def test_api_client_rejects_unknown_schema_version(payload: dict[str, object]) -> None:
     """验证缺失版本与未知版本 payload 仍要求重新解析；pdf_info 走 legacy 迁移单独覆盖。"""
-    with pytest.raises((ValueError, api_client._V1APIError), match="Reparse the source document"):
+    with pytest.raises((ValueError, api_client._V1APIError), match="reparse the source document"):
         _pages_from_middle_json(payload)
 
 
@@ -2050,7 +2055,7 @@ def test_api_server_zip_includes_model_output_when_parse_result_has_it(
 ) -> None:
     parse_result = ParseResult(
         middle_json=_full_middle_json(PageInfo(page_idx=0)),
-        _model_output=model_output,
+        _model_output=ModelJson.from_dict({**_model_payload(), "pages": [model_output]}),
     )
 
     async def fake_parse_async(*args: object, **kwargs: object) -> ParseResult:
@@ -2086,7 +2091,7 @@ def test_api_server_zip_includes_model_output_when_parse_result_has_it(
         assert "model_output.json" in archive.namelist()
         model_output_text = archive.read("model_output.json").decode("utf-8")
         payload = json.loads(model_output_text)
-    assert payload == model_output
+    assert payload == ModelJson.from_dict({**_model_payload(), "pages": [model_output]}).to_dict(skip_defaults=False)
     if model_output:
         assert "\n    " in model_output_text
 

@@ -106,10 +106,17 @@ def _middle_json(
     return MiddleJson(
         pages=pages,
         is_full_document=page_indices == tuple(range(len(page_indices))),
-        file_suffix=file_suffix,
-        producer=Producer(name="mineru", version=__version__),
-        extensions=build_metadata(effort="flash", parse_mode="txt", mineru_version=__version__),
+        metadata={"file_suffix": file_suffix, "producer": Producer(name="mineru", version=__version__)},
+        extensions=build_metadata(
+            effort="flash",
+            parse_mode="txt",
+        ),
     )
+
+
+def _model_json() -> ModelJson:
+    """为真实 API/ZIP 测试提供完整分析协议而不是旧任意字典。"""
+    return ModelJson(pages=[[{"raw": "model"}]], page_index_map=[], metadata=_middle_json().metadata.model_copy(deep=True))
 
 
 def _httpx_proxy_for_test_client(
@@ -433,7 +440,7 @@ def test_v1_client_full_asgi_upload_job_poll_and_zip(
     async def fake_parse_async(path: str, **kwargs: Any) -> ParseResult:
         """替代模型推理，同时保留 server 的真实 job 和打包流程。"""
         parse_calls.append({"path": path, **kwargs})
-        return ParseResult(middle_json=_middle_json(with_image=False), _model_output={"raw": "model"})
+        return ParseResult(middle_json=_middle_json(with_image=False), _model_output=_model_json())
 
     monkeypatch.setattr(parser_api_server, "parse_async", fake_parse_async)
     api = parser_api_server.create_app(
@@ -458,7 +465,7 @@ def test_v1_client_full_asgi_upload_job_poll_and_zip(
     assert any(path.startswith("/v1/files/file-") and path.endswith("/content") for path in paths)
     protected_requests = [item for item in request_log if item[1] not in {"/v1/health", "/v1/tiers"}]
     assert protected_requests and all(authorization == "Bearer secret" for _method, _path, authorization in protected_requests)
-    assert result._model_output == {"raw": "model"}
+    assert result._model_output.pages == [[{"raw": "model"}]]
     assert parse_calls[0]["page_range"] == "1"
 
 
@@ -471,7 +478,7 @@ def test_gradio_routes_real_v1_jobs_and_isolates_remote_auth(monkeypatch: pytest
 
     async def fake_parse_async(path: str, **kwargs: Any) -> ParseResult:
         """只替换模型推理，保留两套服务各自的上传、任务和 ZIP 打包流程。"""
-        return ParseResult(middle_json=_middle_json(with_image=False), _model_output={"raw": "model"})
+        return ParseResult(middle_json=_middle_json(with_image=False), _model_output=_model_json())
 
     monkeypatch.setattr(parser_api_server, "parse_async", fake_parse_async)
     remote_api = parser_api_server.create_app(
@@ -493,7 +500,11 @@ def test_gradio_routes_real_v1_jobs_and_isolates_remote_auth(monkeypatch: pytest
                     headers=dict(request.headers),
                     content=request.content,
                 )
-                return httpx.Response(response.status_code, headers=response.headers, content=response.content)
+                # TestClient 已解压响应，转交 MockTransport 时同步移除原压缩头。
+                headers = {
+                    key: value for key, value in response.headers.items() if key not in {"content-encoding", "content-length"}
+                }
+                return httpx.Response(response.status_code, headers=headers, content=response.content)
 
             def async_client(**kwargs: Any) -> httpx.AsyncClient:
                 """为能力发现和 API parser 注入同一双服务传输层。"""
@@ -515,13 +526,13 @@ def test_gradio_routes_real_v1_jobs_and_isolates_remote_auth(monkeypatch: pytest
             requests.clear()
 
             flash_result = asyncio.run(routed.parse_file(source, tier="flash", page_range=""))
-            assert flash_result._model_output == {"raw": "model"}
+            assert flash_result._model_output.pages == [[{"raw": "model"}]]
             assert requests and all(host == "local.test" and auth is None for host, _method, _path, auth in requests)
             assert any(method == "POST" and path == "/v1/parse/jobs" for _host, method, path, _auth in requests)
             requests.clear()
 
             remote_result = asyncio.run(routed.parse_file(source, tier="standard", page_range="1"))
-            assert remote_result._model_output == {"raw": "model"}
+            assert remote_result._model_output.pages == [[{"raw": "model"}]]
             assert requests and all(
                 host == "remote.test" and auth == "Bearer remote-secret" for host, _method, _path, auth in requests
             )
@@ -602,10 +613,10 @@ def test_gradio_ocr_reaches_analysis_through_real_v1_jobs(monkeypatch: pytest.Mo
         model = ModelJson(
             pages=[[]],
             page_index_map=[],
-            file_suffix="pdf",
-            producer=Producer(name="mineru", version=__version__),
+            metadata={"file_suffix": "pdf", "producer": Producer(name="mineru", version=__version__)},
             extensions=build_metadata(
-                effort="flash", parse_mode=middle.extensions["mineru"]["parse_mode"], mineru_version=__version__
+                effort="flash",
+                parse_mode=middle.extensions["mineru"]["parse_mode"],
             ),
         )
         return middle, model
@@ -629,7 +640,7 @@ def test_gradio_ocr_reaches_analysis_through_real_v1_jobs(monkeypatch: pytest.Mo
                 state = updates[-1][8]
                 assert state is not None, updates[-1][0]
                 payload = json.loads(Path(state["middle_json_path"]).read_text())
-                assert payload["parse_mode"] == ("ocr" if enabled else "txt")
+                assert payload["extensions"]["mineru"]["parse_mode"] == ("ocr" if enabled else "txt")
             default_parser = parser_api_client.MinerUApiParser(api_url="http://testserver", tier="flash")
             result = await default_parser.parse_async(source)
             assert result.middle_json.extensions["mineru"]["parse_mode"] == "txt"
@@ -834,7 +845,7 @@ def test_persist_and_render_all_gradio_download_formats(tmp_path: Path) -> None:
     """验证严格 Middle JSON、布局 PDF 和六种下载产物。"""
     source = tmp_path / "报告.pdf"
     source.write_bytes(_pdf_bytes())
-    result = ParseResult(middle_json=_middle_json(), _model_output={"raw": "model"})
+    result = ParseResult(middle_json=_middle_json(), _model_output=_model_json())
     artifacts = persist_parse_result(result, source, output_root=tmp_path / "output", page_range="")
 
     assert artifacts.middle_json_path.read_text(encoding="utf-8").find('"schema_version": "2.0"') >= 0

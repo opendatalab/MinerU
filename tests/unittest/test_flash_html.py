@@ -63,8 +63,8 @@ def test_html_doc_analyze_projects_static_semantics_and_renderers() -> None:
 
     assert middle.model_dump() == async_middle.model_dump()
     assert model.pages == async_model.pages
-    assert middle.file_suffix == model.file_suffix == "html"
-    assert middle.extensions["mineru"]["effort"] == model.extensions["mineru"]["effort"] == "flash"
+    assert middle.metadata.file_suffix == model.metadata.file_suffix == "html"
+    assert middle.extensions["mineru"]["tier"] == model.extensions["mineru"]["tier"] == "flash"
     assert middle.extensions["mineru"]["parse_mode"] == model.extensions["mineru"]["parse_mode"] == "txt"
     assert middle.is_full_document is True
     assert [page.page_idx for page in middle.pages] == [0]
@@ -97,7 +97,7 @@ def test_html_doc_analyze_projects_static_semantics_and_renderers() -> None:
     assert "```python" in markdown and "x^2" in markdown
     assert "https://cdn.example.com/a.png" in markdown
     assert "<table" in render_html(middle)
-    assert render_structured_content(middle)["file_suffix"] == "html"
+    assert render_structured_content(middle)["metadata"]["file_suffix"] == "html"
     docx = render_docx(middle)
     assert docx.startswith(b"PK")
     with ZipFile(BytesIO(docx)) as archive:
@@ -285,7 +285,7 @@ def test_html_local_base_images_styles_and_escape_are_bounded(tmp_path: Path) ->
     async_result = asyncio.run(parse_async(source))
 
     assert result.middle_json.model_dump() == async_result.middle_json.model_dump()
-    assert result.middle_json.file_suffix == "html"
+    assert result.middle_json.metadata.file_suffix == "html"
     assert _image_body(result.middle_json).image_base64.startswith("data:image/png;base64,")
     markdown = result.markdown()
     assert "hidden css" not in markdown
@@ -329,8 +329,8 @@ def test_html_parse_server_local_source_keeps_relative_assets(tmp_path: Path) ->
     middle_record = file_store.get_file(parsed_file.output_files.middle_json.file_id)
     assert middle_record.sha256sum is not None
     middle_payload = json.loads(file_store.read_blob(middle_record.sha256sum))
-    assert middle_payload["file_suffix"] == "html"
-    assert middle_payload["effort"] == "flash"
+    assert middle_payload["metadata"]["file_suffix"] == "html"
+    assert middle_payload["extensions"]["mineru"]["tier"] == "flash"
     image_body = middle_payload["pages"][0]["blocks"][1]["content"][0]
     assert image_body["image_base64"].startswith("data:image/png;base64,")
 
@@ -349,8 +349,8 @@ def test_html_doclib_local_bridge_uses_flash_parser(tmp_path: Path) -> None:
         )
     )
 
-    assert result.middle_json.file_suffix == "html"
-    assert result.middle_json.extensions["mineru"]["effort"] == "flash"
+    assert result.middle_json.metadata.file_suffix == "html"
+    assert result.middle_json.extensions["mineru"]["tier"] == "flash"
     assert "Doclib HTML" in result.markdown()
 
 

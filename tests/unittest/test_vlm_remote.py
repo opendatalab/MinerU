@@ -280,8 +280,8 @@ def test_python_parse_uses_global_remote_vlm(
         source = tmp_path / "input.png"
         Image.new("RGB", (300, 200), "white").save(source)
     result = asyncio.run(parse_async(source, ocr_mode="ocr")) if async_mode else parse(source, ocr_mode="ocr")
-    assert result.middle_json.file_suffix == "pdf"
-    assert result.middle_json.extensions["mineru"]["effort"] == "high"
+    assert result.middle_json.metadata.file_suffix == "pdf"
+    assert result.middle_json.extensions["mineru"]["tier"] == "standard"
     assert result.middle_json.pages[0].page_idx == 0
     assert "Remote VLM text" in result.markdown()
     assert any(request[2] is not None for request in openai_server.requests)
@@ -346,7 +346,7 @@ def test_api_job_through_http_vlm_to_middle_json(
         file_id = job["files"][0]["output_files"]["middle_json"]["file_id"]
         output = client.get(f"/v1/files/{file_id}/content")
         assert output.status_code == 200
-        assert output.json()["effort"] == ("high" if tier == "standard" else "xhigh")
+        assert output.json()["extensions"]["mineru"]["tier"] == tier
         assert "Remote VLM text" in output.text
         assert all(request[1] == "Bearer test-key" for request in openai_server.requests)
 

@@ -8,7 +8,7 @@
 
 ## 当前定位
 
-Middle JSON 已经收敛为 schema 2.0 的严格 Pydantic 模型：`mineru/types.py` 中的 `MiddleJson`、`PageInfo`、Block 联合与 InlineSpan 联合。自然语言使用结构化 Span，不再使用字符串标签协议。
+Middle JSON 已经收敛为 schema 2.0 的严格 Pydantic 模型：`docvortex.schema` 定义、`mineru/types.py` 重导出的 `MiddleJson`、`PageInfo`、Block 联合与 InlineSpan 联合。自然语言使用结构化 Span，不再使用字符串标签协议。
 
 ## 目录
 
@@ -27,8 +27,7 @@ Middle JSON 已经收敛为 schema 2.0 的严格 Pydantic 模型：`mineru/types
 - 以当前代码中的 Pydantic 严格模型为起点（schema 2.0）。
 - 区分“已经解决”、“部分解决”、“仍需工作”。
 - Agent 引用与稳定 page/block locator 是 P0 目标。
-- MinerU 3.4.5 页面及对应 1.0 pages 包装经 `legacy_schema_adapter` 转换；其它旧 payload
-  和无法识别的缓存视为 stale，必须从源文件重新解析。
+- 统一使用带 `schema` 身份的 2.0 协议及 `metadata`；所有历史文档协议均明确拒绝，旧缓存须重新解析。
 - render 统一不能只看入口 facade，还要收敛格式-specific 分支。
 
 ## 与其他文档的关系

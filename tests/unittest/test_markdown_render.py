@@ -20,9 +20,11 @@ def _middle(*pages: PageInfo, file_suffix: str = "docx") -> MiddleJson:
     return MiddleJson(
         pages=list(pages),
         is_full_document=True,
-        file_suffix=file_suffix,
-        producer=Producer(name="mineru", version="test"),
-        extensions=build_metadata(effort="flash", parse_mode="txt", mineru_version="test"),
+        metadata={"file_suffix": file_suffix, "producer": Producer(name="mineru", version="test")},
+        extensions=build_metadata(
+            effort="flash",
+            parse_mode="txt",
+        ),
     )
 
 

@@ -19,9 +19,9 @@ def test_backend_analyze_accepts_ppt_and_async_contract() -> None:
 
     assert isinstance(model_json, ModelJson)
     assert isinstance(middle_json, MiddleJson)
-    assert model_json.file_suffix == "ppt"
-    assert middle_json.file_suffix == "ppt"
-    assert model_json.extensions["mineru"]["effort"] == middle_json.extensions["mineru"]["effort"] == "flash"
+    assert model_json.metadata.file_suffix == "ppt"
+    assert middle_json.metadata.file_suffix == "ppt"
+    assert model_json.extensions["mineru"]["tier"] == middle_json.extensions["mineru"]["tier"] == "flash"
     assert model_json.extensions["mineru"]["parse_mode"] == middle_json.extensions["mineru"]["parse_mode"] == "txt"
     assert model_json.is_full_document is middle_json.is_full_document is True
     assert [page.page_idx for page in middle_json.pages] == [0, 1]
@@ -37,5 +37,5 @@ def test_ppt_is_supported_by_public_parser(tmp_path: Path) -> None:
 
     result = parse(path, tier="flash")
 
-    assert result.middle_json.file_suffix == "ppt"
+    assert result.middle_json.metadata.file_suffix == "ppt"
     assert len(result.pages) == 2

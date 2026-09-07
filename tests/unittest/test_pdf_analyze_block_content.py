@@ -213,9 +213,11 @@ def test_doc_analyze_converts_vlm_results_before_downstream_processing(
     expected_middle_json = MiddleJson(
         pages=[],
         is_full_document=True,
-        file_suffix="pdf",
-        producer=Producer(name="mineru", version="test"),
-        extensions=build_metadata(effort=effort, parse_mode=parse_mode, mineru_version="test"),
+        metadata={"file_suffix": "pdf", "producer": Producer(name="mineru", version="test")},
+        extensions=build_metadata(
+            effort=effort,
+            parse_mode=parse_mode,
+        ),
     )
     monkeypatch.setattr(postprocess_document, "model_json_to_middle_json", MagicMock(return_value=expected_middle_json))
     monkeypatch.setattr(pipeline, "clean_memory", MagicMock())
@@ -232,14 +234,20 @@ def test_doc_analyze_converts_vlm_results_before_downstream_processing(
     assert type(model_json.pages[0][0]) is dict
     assert model_json.pages == [[{"type": BlockType.PAGE_NUMBER, "bbox": [0.45, 0.9, 0.55, 0.95], "content": inline("1")}]]
     assert model_json.page_index_map == []
-    assert model_json.file_suffix == "pdf"
-    assert model_json.extensions["mineru"]["effort"] == effort
+    assert model_json.metadata.file_suffix == "pdf"
+    assert (
+        model_json.extensions["mineru"]["tier"]
+        == {"flash": "flash", "medium": "basic", "high": "standard", "xhigh": "advanced"}[effort]
+    )
     assert model_json.extensions["mineru"]["parse_mode"] == parse_mode
     assert isinstance(middle_json, MiddleJson)
     assert middle_json is expected_middle_json
     assert middle_json.pages == []
     assert middle_json.is_full_document is True
-    assert middle_json.extensions["mineru"]["effort"] == effort
+    assert (
+        middle_json.extensions["mineru"]["tier"]
+        == {"flash": "flash", "medium": "basic", "high": "standard", "xhigh": "advanced"}[effort]
+    )
     assert middle_json.extensions["mineru"]["parse_mode"] == parse_mode
     assert type(source_page) is ExtractResult
     assert type(source_block) is VlmContentBlock

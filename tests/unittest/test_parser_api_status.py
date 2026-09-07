@@ -49,9 +49,11 @@ def test_parse_notifies_submission_and_polls_before_result_building(
         middle_json=MiddleJson(
             pages=[],
             is_full_document=True,
-            file_suffix="pdf",
-            producer=Producer(name="mineru", version="4.0.0"),
-            extensions=build_metadata(effort="flash", parse_mode="txt", mineru_version="4.0.0"),
+            metadata={"file_suffix": "pdf", "producer": Producer(name="mineru", version="4.0.0")},
+            extensions=build_metadata(
+                effort="flash",
+                parse_mode="txt",
+            ),
         )
     )
 

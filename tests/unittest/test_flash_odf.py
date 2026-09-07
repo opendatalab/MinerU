@@ -49,8 +49,8 @@ def test_odf_models_and_analyze_keep_flash_contract(
     )
     assert model.pages == async_model.pages == model_pages
     assert middle.model_dump() == async_middle.model_dump()
-    assert model.file_suffix == middle.file_suffix == suffix
-    assert model.extensions["mineru"]["effort"] == middle.extensions["mineru"]["effort"] == "flash"
+    assert model.metadata.file_suffix == middle.metadata.file_suffix == suffix
+    assert model.extensions["mineru"]["tier"] == middle.extensions["mineru"]["tier"] == "flash"
     assert model.extensions["mineru"]["parse_mode"] == middle.extensions["mineru"]["parse_mode"] == "txt"
 
 
@@ -119,7 +119,7 @@ def test_public_parser_handles_odf_sync_and_async(
     source.write_bytes(payload)
     result = parse(source)
     async_result = asyncio.run(parse_async(source))
-    assert result.middle_json.file_suffix == async_result.middle_json.file_suffix == suffix
+    assert result.middle_json.metadata.file_suffix == async_result.middle_json.metadata.file_suffix == suffix
     assert result.middle_json.model_dump() == async_result.middle_json.model_dump()
 
 
@@ -151,9 +151,9 @@ def test_odf_parse_server_job_emits_flash_outputs(tmp_path: Path) -> None:
     middle_record = file_store.get_file(parsed_file.output_files.middle_json.file_id)  # type: ignore[union-attr]
     assert middle_record.sha256sum is not None
     payload = json.loads(file_store.read_blob(middle_record.sha256sum))
-    assert payload["file_suffix"] == "odt"
-    assert payload["effort"] == "flash"
-    assert payload["parse_mode"] == "txt"
+    assert payload["metadata"]["file_suffix"] == "odt"
+    assert payload["extensions"]["mineru"]["tier"] == "flash"
+    assert payload["extensions"]["mineru"]["parse_mode"] == "txt"
 
 
 @pytest.mark.parametrize(

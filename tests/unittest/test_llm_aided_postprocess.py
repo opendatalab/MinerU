@@ -213,9 +213,11 @@ def _middle_json(pages: list[PageInfo], *, is_full_document: bool = True) -> Mid
     return MiddleJson(
         pages=pages,
         is_full_document=is_full_document,
-        file_suffix="docx",
-        producer=Producer(name="mineru", version="test"),
-        extensions=build_metadata(effort="flash", parse_mode="txt", mineru_version="test"),
+        metadata={"file_suffix": "docx", "producer": Producer(name="mineru", version="test")},
+        extensions=build_metadata(
+            effort="flash",
+            parse_mode="txt",
+        ),
     )
 
 
@@ -528,9 +530,11 @@ def test_mixed_cell_merge_flows_through_strict_middle_json_and_renderer() -> Non
     middle_json = MiddleJson(
         pages=pages,
         is_full_document=True,
-        file_suffix="pdf",
-        producer=Producer(name="mineru", version="test"),
-        extensions=build_metadata(effort="high", parse_mode="txt", mineru_version="test"),
+        metadata={"file_suffix": "pdf", "producer": Producer(name="mineru", version="test")},
+        extensions=build_metadata(
+            effort="high",
+            parse_mode="txt",
+        ),
     )
 
     assert _merged_row_texts(middle_json) == [["H1", "H2"], ["AB", "X"], ["", "Y"]]
@@ -762,6 +766,6 @@ def test_doc_analyze_does_not_run_llm_for_office(monkeypatch: pytest.MonkeyPatch
 
     middle_json, _ = analyze.doc_analyze(b"office", file_suffix="pptx")
 
-    assert middle_json.file_suffix == "pptx"
+    assert middle_json.metadata.file_suffix == "pptx"
     assert middle_json.is_full_document is True
     assert calls == []

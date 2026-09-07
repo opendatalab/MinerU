@@ -28,7 +28,7 @@ def test_backend_analyze_preserves_native_equations_sync_and_async(
 
     assert isinstance(model, ModelJson)
     assert isinstance(middle, MiddleJson)
-    assert model.file_suffix == middle.file_suffix == file_suffix
+    assert model.metadata.file_suffix == middle.metadata.file_suffix == file_suffix
     assert middle.pages[0].blocks[0].type == BlockType.EQUATION
     assert middle.pages[0].blocks[0].content == expected
     assert async_model == model

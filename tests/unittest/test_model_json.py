@@ -12,13 +12,8 @@ from mineru import ModelJson as PublicModelJson
 from mineru.backend.postprocess import document
 from mineru.backend.postprocess.document import model_json_to_middle_json
 from mineru.config import LLMAidedConfig
-from mineru.integrations.docvortex import (
-    build_metadata,
-    from_mineru_middle,
-    from_mineru_model,
-    to_mineru_middle,
-    to_mineru_model,
-)
+from mineru.integrations.docvortex import build_metadata
+
 from mineru.types import MiddleJson, ModelJson
 
 
@@ -31,9 +26,11 @@ def _model_json(
     return ModelJson(
         pages=pages if pages is not None else [[{"type": "text", "content": inline("正文")}]],
         page_index_map=page_index_map if page_index_map is not None else [],
-        file_suffix="docx",
-        producer=Producer(name="mineru", version="3.4.0"),
-        extensions=build_metadata(effort="flash", parse_mode="txt", mineru_version="3.4.0"),
+        metadata={"file_suffix": "docx", "producer": Producer(name="mineru", version="3.4.0")},
+        extensions=build_metadata(
+            effort="flash",
+            parse_mode="txt",
+        ),
     )
 
 
@@ -41,24 +38,17 @@ def test_model_json_is_public_and_serializes_exact_envelope() -> None:
     """验证公开 ModelJson 固定输出六个顶层字段且空映射不会被省略。"""
     model_json = _model_json()
 
-    payload = to_mineru_model(model_json)
+    payload = model_json.to_dict()
 
     assert PublicModelJson is ModelJson
-    assert list(payload) == [
-        "pages",
-        "page_index_map",
-        "file_suffix",
-        "effort",
-        "parse_mode",
-        "mineru_version",
-    ]
+    assert set(payload) == {"schema", "schema_version", "metadata", "extensions", "pages", "page_index_map"}
     assert payload == {
         "pages": [[{"type": "text", "content": inline("正文")}]],
         "page_index_map": [],
-        "file_suffix": "docx",
-        "effort": "flash",
-        "parse_mode": "txt",
-        "mineru_version": "3.4.0",
+        "metadata": {"file_suffix": "docx", "producer": {"name": "mineru", "version": "3.4.0"}},
+        "schema": "docvortex.model",
+        "schema_version": "2.0",
+        "extensions": {"mineru": {"tier": "flash", "parse_mode": "txt"}},
     }
     assert model_json.is_full_document is True
     assert model_json.resolved_page_indices == [0]
@@ -71,43 +61,16 @@ def test_model_json_requires_page_index_map_and_forbids_extra_fields() -> None:
     """验证页映射不可省略且 ModelJson 顶层不接受未声明字段。"""
     payload = {
         "pages": [],
-        "file_suffix": "pdf",
-        "effort": "flash",
-        "parse_mode": "txt",
-        "mineru_version": "3.4.0",
+        "metadata": {"file_suffix": "pdf", "producer": {"name": "mineru", "version": "3.4.0"}},
+        "schema": "docvortex.model",
+        "schema_version": "2.0",
+        "extensions": {"mineru": {"tier": "flash", "parse_mode": "txt"}},
     }
     with pytest.raises(ValidationError, match="page_index_map"):
-        from_mineru_model(payload)
+        ModelJson.from_dict(payload)
 
     with pytest.raises(ValidationError, match="extra_forbidden"):
-        from_mineru_model({**payload, "page_index_map": [], "unexpected": True})
-
-
-def test_strict_document_models_reject_removed_low_effort() -> None:
-    """验证 ModelJson 与 MiddleJson 的 schema 2.0 均不再接受 Low effort。"""
-    with pytest.raises(ValidationError, match="literal_error"):
-        from_mineru_model(
-            {
-                "pages": [],
-                "page_index_map": [],
-                "file_suffix": "pdf",
-                "effort": "low",
-                "parse_mode": "ocr",
-                "mineru_version": "3.4.0",
-            }
-        )
-
-    with pytest.raises(ValidationError, match="literal_error"):
-        from_mineru_middle(
-            {
-                "pages": [],
-                "is_full_document": True,
-                "file_suffix": "pdf",
-                "effort": "low",
-                "parse_mode": "ocr",
-                "mineru_version": "3.4.0",
-            }
-        )
+        ModelJson.from_dict({**payload, "page_index_map": [], "unexpected": True})
 
 
 def test_middle_json_requires_and_serializes_full_document_flag() -> None:
@@ -115,21 +78,16 @@ def test_middle_json_requires_and_serializes_full_document_flag() -> None:
     middle_json = MiddleJson(
         pages=[],
         is_full_document=False,
-        file_suffix="pdf",
-        producer=Producer(name="mineru", version="3.4.0"),
-        extensions=build_metadata(effort="flash", parse_mode="txt", mineru_version="3.4.0"),
+        metadata={"file_suffix": "pdf", "producer": Producer(name="mineru", version="3.4.0")},
+        extensions=build_metadata(
+            effort="flash",
+            parse_mode="txt",
+        ),
     )
 
-    payload = to_mineru_middle(middle_json, include_schema_version=False)
+    payload = middle_json.to_dict()
 
-    assert list(payload) == [
-        "pages",
-        "is_full_document",
-        "file_suffix",
-        "effort",
-        "parse_mode",
-        "mineru_version",
-    ]
+    assert set(payload) == {"schema", "schema_version", "metadata", "extensions", "pages", "is_full_document"}
     assert payload["is_full_document"] is False
     assert load_middle(json.loads(middle_json.to_json())) == middle_json
 
@@ -141,9 +99,11 @@ def test_model_json_to_middle_json_builds_strict_document_before_pdf_llm(
     model_json = ModelJson(
         pages=[[]],
         page_index_map=[3],
-        file_suffix="pdf",
-        producer=Producer(name="mineru", version="3.4.0"),
-        extensions=build_metadata(effort="xhigh", parse_mode="ocr", mineru_version="3.4.0"),
+        metadata={"file_suffix": "pdf", "producer": Producer(name="mineru", version="3.4.0")},
+        extensions=build_metadata(
+            effort="xhigh",
+            parse_mode="ocr",
+        ),
     )
     observed: list[MiddleJson] = []
 
@@ -158,10 +118,10 @@ def test_model_json_to_middle_json_builds_strict_document_before_pdf_llm(
     middle_json = model_json_to_middle_json(model_json, llm_aided_config=LLMAidedConfig())
 
     assert observed == [middle_json]
-    assert middle_json.file_suffix == "pdf"
-    assert middle_json.extensions["mineru"]["effort"] == "xhigh"
+    assert middle_json.metadata.file_suffix == "pdf"
+    assert middle_json.extensions["mineru"]["tier"] == "advanced"
     assert middle_json.extensions["mineru"]["parse_mode"] == "ocr"
-    assert middle_json.extensions["mineru"]["mineru_version"] == "3.4.0"
+    assert middle_json.metadata.producer.version == "3.4.0"
 
 
 @pytest.mark.parametrize("invalid_value", [None, 0, 1, "true"])
@@ -169,13 +129,13 @@ def test_middle_json_rejects_missing_or_non_boolean_full_document_flag(invalid_v
     """验证 MiddleJson 不为整本语义提供缺省值或宽松布尔转换。"""
     payload = {
         "pages": [],
-        "file_suffix": "pdf",
-        "effort": "flash",
-        "parse_mode": "txt",
-        "mineru_version": "3.4.0",
+        "metadata": {"file_suffix": "pdf", "producer": {"name": "mineru", "version": "3.4.0"}},
+        "schema": "docvortex.middle",
+        "schema_version": "2.0",
+        "extensions": {"mineru": {"tier": "flash", "parse_mode": "txt"}},
     }
     if invalid_value is not None:
         payload["is_full_document"] = invalid_value
 
     with pytest.raises(ValidationError, match="is_full_document"):
-        from_mineru_middle(payload)
+        MiddleJson.from_dict(payload)

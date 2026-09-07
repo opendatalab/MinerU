@@ -21,8 +21,8 @@ def test_csv_doc_analyze_sync_async_and_render_contracts_match() -> None:
     middle, model = doc_analyze(payload, file_suffix="csv")
     async_middle, async_model = asyncio.run(aio_doc_analyze(payload, file_suffix="csv"))
 
-    assert model.file_suffix == async_model.file_suffix == "csv"
-    assert model.extensions["mineru"]["effort"] == async_model.extensions["mineru"]["effort"] == "flash"
+    assert model.metadata.file_suffix == async_model.metadata.file_suffix == "csv"
+    assert model.extensions["mineru"]["tier"] == async_model.extensions["mineru"]["tier"] == "flash"
     assert model.extensions["mineru"]["parse_mode"] == async_model.extensions["mineru"]["parse_mode"] == "txt"
     assert middle.model_dump() == async_middle.model_dump()
     assert len(middle.pages) == 1
@@ -50,7 +50,7 @@ def test_csv_path_parsing_and_signatureless_detection(tmp_path: Path) -> None:
 
     result = parse(csv_path)
     async_result = asyncio.run(parse_async(csv_path))
-    assert result.middle_json.file_suffix == async_result.middle_json.file_suffix == "csv"
+    assert result.middle_json.metadata.file_suffix == async_result.middle_json.metadata.file_suffix == "csv"
     assert result.markdown() == async_result.markdown()
     with pytest.raises(ValueError, match="Unsupported file type: txt"):
         parse(text_path)
@@ -95,12 +95,12 @@ def test_csv_parse_server_job_emits_structured_outputs_with_flash_metadata(tmp_p
     middle_record = file_store.get_file(parsed_file.output_files.middle_json.file_id)
     assert middle_record.sha256sum is not None
     middle_payload = json.loads(file_store.read_blob(middle_record.sha256sum))
-    assert middle_payload["file_suffix"] == "csv"
-    assert middle_payload["effort"] == "flash"
-    assert middle_payload["parse_mode"] == "txt"
+    assert middle_payload["metadata"]["file_suffix"] == "csv"
+    assert middle_payload["extensions"]["mineru"]["tier"] == "flash"
+    assert middle_payload["extensions"]["mineru"]["parse_mode"] == "txt"
 
     structured_record = file_store.get_file(parsed_file.output_files.structured_content.file_id)
     assert structured_record.sha256sum is not None
     structured_payload = json.loads(file_store.read_blob(structured_record.sha256sum))
-    assert structured_payload["file_suffix"] == "csv"
+    assert structured_payload["metadata"]["file_suffix"] == "csv"
     assert structured_payload["pages"][0]["blocks"][0]["type"] == "table"

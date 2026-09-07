@@ -20,8 +20,8 @@ def test_doc_analyze_sync_and_async_return_strict_doc_contract() -> None:
 
     assert isinstance(model, ModelJson)
     assert isinstance(middle, MiddleJson)
-    assert model.file_suffix == middle.file_suffix == "doc"
-    assert model.extensions["mineru"]["effort"] == middle.extensions["mineru"]["effort"] == "flash"
+    assert model.metadata.file_suffix == middle.metadata.file_suffix == "doc"
+    assert model.extensions["mineru"]["tier"] == middle.extensions["mineru"]["tier"] == "flash"
     assert model.extensions["mineru"]["parse_mode"] == middle.extensions["mineru"]["parse_mode"] == "txt"
     assert async_model == model
     assert async_middle == middle
@@ -35,5 +35,5 @@ def test_doc_is_supported_by_public_parser(tmp_path: Path) -> None:
 
     result = parse(path, tier="flash")
 
-    assert result.middle_json.file_suffix == "doc"
+    assert result.middle_json.metadata.file_suffix == "doc"
     assert inline_text(result.pages[0].blocks[0].content) == "Hello"

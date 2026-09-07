@@ -32,7 +32,7 @@ def test_docx_equationxml_analyze_lifecycle_and_strict_contracts() -> None:
     assert _equation_contents(pages) == [r"\frac{a}{b}"]
     assert isinstance(model, ModelJson)
     assert isinstance(middle, MiddleJson)
-    assert model.file_suffix == middle.file_suffix == "docx"
+    assert model.metadata.file_suffix == middle.metadata.file_suffix == "docx"
     assert middle.pages[0].blocks[0].type == BlockType.EQUATION
     assert middle.pages[0].blocks[0].content == r"\frac{a}{b}"
     assert async_model == model

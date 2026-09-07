@@ -1,83 +1,20 @@
 # Copyright (c) Opendatalab. All rights reserved.
 from __future__ import annotations
-from ..integrations.docvortex import from_mineru_middle, to_mineru_middle, to_mineru_model
-from docvortex.schema import Producer
-from ..integrations.docvortex import build_metadata
+from ..integrations.docvortex import validate_mineru_metadata
 
 import json
 from abc import ABC, abstractmethod
 from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Literal, cast
+from typing import Any
 
 from ..render import render_markdown, render_structured_content
 from ..render.contracts import ImageRenderer, RenderMode
-from ..types import FILE_SUFFIXES, FileSuffix, MiddleJson, ModelJson, PageInfo
+from ..types import MiddleJson, ModelJson, PageInfo
 from .writer import DataWriter
 
-MIDDLE_JSON_SCHEMA_VERSION: str = "2.0"
-_LEGACY_SCHEMA_VERSION: str = "1.0"
-_LEGACY_DEFAULT_FILE_SUFFIX: FileSuffix = "pdf"
-_LEGACY_DEFAULT_EFFORT: Literal["flash", "medium", "high", "xhigh"] = "medium"
-_LEGACY_DEFAULT_PARSE_MODE: Literal["txt", "ocr"] = "txt"
-_TO_DICT_EXCLUDED_KEYS: frozenset[str] = frozenset({"schema_version"})
-
-
-def _legacy_raw_pages(payload: dict[str, Any]) -> list[dict[str, Any]] | None:
-    """按 envelope 识别 3.4.5 原始 pdf_info 或后续 1.0 pages 包装。
-
-    3.4.5 release tag 内部仍报告 3.4.4，因此不能把 ``_version_name`` 作为
-    唯一判据。
-    """
-    schema_version = payload.get("schema_version")
-    raw_pages = payload.get("pdf_info") if schema_version is None else None
-    if raw_pages is None and schema_version == _LEGACY_SCHEMA_VERSION:
-        raw_pages = payload.get("pages")
-    if not isinstance(raw_pages, list) or any(not isinstance(page, dict) for page in raw_pages):
-        return None
-    return raw_pages
-
-
-def _legacy_page_index_map(raw_pages: list[dict[str, Any]]) -> list[int]:
-    """从旧 page_idx 恢复抽页映射；连续零起始页面仍表示整本文档。"""
-    page_indices: list[int] = []
-    for fallback_index, page in enumerate(raw_pages):
-        page_idx = page.get("page_idx", fallback_index)
-        if isinstance(page_idx, bool) or not isinstance(page_idx, int) or page_idx < 0:
-            raise ValueError("legacy Middle JSON page_idx values must be non-negative integers")
-        page_indices.append(page_idx)
-    if len(page_indices) != len(set(page_indices)) or any(
-        current <= previous for previous, current in zip(page_indices, page_indices[1:])
-    ):
-        raise ValueError("legacy Middle JSON page_idx values must be unique and strictly increasing")
-    return [] if page_indices == list(range(len(raw_pages))) else page_indices
-
-
-def _legacy_file_suffix(payload: dict[str, Any]) -> FileSuffix:
-    """读取旧 payload 可选后缀；缺失时沿用历史 PDF 默认值。"""
-    value = payload.get("file_suffix")
-    if isinstance(value, str) and value in FILE_SUFFIXES:
-        return cast(FileSuffix, value)
-    return _LEGACY_DEFAULT_FILE_SUFFIX
-
-
-def _legacy_effort(payload: dict[str, Any]) -> Literal["flash", "medium", "high", "xhigh"]:
-    """把 3.4.5 的分析强度映射到当前严格枚举。"""
-    value = payload.get("_effort", payload.get("effort"))
-    if value in {"flash", "medium", "high", "xhigh"}:
-        return cast(Literal["flash", "medium", "high", "xhigh"], value)
-    return _LEGACY_DEFAULT_EFFORT
-
-
-def _legacy_parse_mode(payload: dict[str, Any]) -> Literal["txt", "ocr"]:
-    """优先读取显式 parse_mode，否则按 3.4.5 的 _ocr_enable 推断。"""
-    value = payload.get("parse_mode")
-    if value in {"txt", "ocr"}:
-        return cast(Literal["txt", "ocr"], value)
-    if payload.get("_ocr_enable") is True:
-        return "ocr"
-    return _LEGACY_DEFAULT_PARSE_MODE
+MIDDLE_JSON_SCHEMA_VERSION: str = MiddleJson.model_fields["schema_version"].default
 
 
 @dataclass
@@ -89,7 +26,14 @@ class ParseResult:
     """
 
     middle_json: MiddleJson
-    _model_output: Any = None
+    _model_output: ModelJson | None = None
+
+    def __post_init__(self) -> None:
+        """要求可选分析结果为共享类型，禁止把任意旧列表重新导出为 Model JSON。"""
+        if self._model_output is not None:
+            if not isinstance(self._model_output, ModelJson):
+                raise TypeError("model output must be a ModelJson document")
+            validate_mineru_metadata(self._model_output)
 
     @property
     def pages(self) -> list[PageInfo]:
@@ -98,58 +42,17 @@ class ParseResult:
 
     @staticmethod
     def from_dict(d: dict[str, Any]) -> ParseResult:
-        if not isinstance(d, dict):
-            raise ValueError("ParseResult.from_dict expects a dict.")
-
-        schema_version = d.get("schema_version")
-
-        if schema_version == MIDDLE_JSON_SCHEMA_VERSION:
-            middle_json = ParseResult._build_middle_json_from_current(d)
-        elif (raw_pages := _legacy_raw_pages(d)) is not None:
-            middle_json = ParseResult._build_middle_json_from_legacy(d, raw_pages)
-        else:
-            raise ValueError(
-                f"Unsupported Middle JSON schema_version={schema_version!r}; "
-                f"expected {MIDDLE_JSON_SCHEMA_VERSION!r}. Reparse the source document."
-            )
-
+        """只读取统一新版协议，保留真实生产者并校验可选产品扩展。"""
+        middle_json = MiddleJson.from_dict(d)
+        validate_mineru_metadata(middle_json)
         return ParseResult(middle_json=middle_json)
 
-    @staticmethod
-    def _build_middle_json_from_current(d: dict[str, Any]) -> MiddleJson:
-        """从当前版本 schema 直接构造 Span 化 MiddleJson。"""
-        payload = {k: v for k, v in d.items() if k not in _TO_DICT_EXCLUDED_KEYS}
-        return from_mineru_middle(payload)
-
-    @staticmethod
-    def _build_middle_json_from_legacy(d: dict[str, Any], raw_pages: list[dict[str, Any]]) -> MiddleJson:
-        """把 3.4.5 页面回推为 raw ModelJson，再走当前统一后处理生成 2.0。"""
-        from ..backend.postprocess.legacy_schema_adapter import legacy_page_to_model_list
-        from ..version import __version__ as current_mineru_version
-
-        source_version = d.get("_version_name", d.get("mineru_version"))
-        mineru_version = (
-            source_version.strip() if isinstance(source_version, str) and source_version.strip() else current_mineru_version
-        )
-        model_json = ModelJson(
-            pages=[legacy_page_to_model_list(page) for page in raw_pages],
-            page_index_map=_legacy_page_index_map(raw_pages),
-            file_suffix=_legacy_file_suffix(d),
-            producer=Producer(name="mineru", version=mineru_version),
-            extensions=build_metadata(
-                effort=_legacy_effort(d), parse_mode=_legacy_parse_mode(d), mineru_version=mineru_version
-            ),
-        )
-        from docvortex.postprocess.document import model_json_to_middle_json
-
-        return model_json_to_middle_json(model_json)
-
     def to_dict(self, *, skip_defaults: bool = True) -> dict[str, Any]:
-        """保留 schema 2.0 输出及 PDF 图片省略约定，由独立 codec 还原封装。"""
-        return to_mineru_middle(
-            self.middle_json,
+        """输出共享协议，并保留 PDF 图片省略约定且不修改源对象。"""
+        validate_mineru_metadata(self.middle_json)
+        return self.middle_json.to_dict(
             skip_defaults=skip_defaults,
-            exclude_block_fields={"image_base64"} if self.middle_json.file_suffix == "pdf" else None,
+            exclude_block_fields={"image_base64"} if self.middle_json.metadata.file_suffix == "pdf" else None,
         )
 
     @staticmethod
@@ -192,11 +95,8 @@ class ParseResult:
         )
 
         if self._model_output is not None:
-            model_output = (
-                to_mineru_model(self._model_output, skip_defaults=False)
-                if isinstance(self._model_output, ModelJson)
-                else self._model_output
-            )
+            validate_mineru_metadata(self._model_output)
+            model_output = self._model_output.to_dict(skip_defaults=False)
             writer.write_string(
                 "model_output.json",
                 json.dumps(model_output, ensure_ascii=False, indent=2),

@@ -23,8 +23,82 @@ from mineru.doclib.services.parse_svc import (
 )
 from mineru.parser.base import MIDDLE_JSON_SCHEMA_VERSION
 from mineru.version import __version__
+from mineru.errors import MineruError
 
 _SHA256 = "a" * 64
+
+
+@pytest.mark.parametrize("old_version", [None, "1.0"])
+def test_old_protocol_cache_is_not_available_or_compacted(tmp_path: Path, old_version: str | None) -> None:
+    """旧协议不命中、不参与覆盖和压缩，读取旧页明确要求重新解析。"""
+
+    async def verify() -> None:
+        """在真实数据库中混存新旧批次，验证读写和缓存调度边界。"""
+        async with _legacy_store(tmp_path) as (db, service, server):
+            old_path = _cache_path(tmp_path, "1~5", 1000)
+            payload = json.loads(old_path.read_text())
+            if old_version is None:
+                payload.pop("schema")
+            else:
+                payload["schema_version"] = old_version
+            old_path.write_text(json.dumps(payload))
+            await _add_result(db, tmp_path, "4-7", 2000, range(4, 8), "new")
+            rows = await db.fetchall("SELECT * FROM parses ORDER BY done_at DESC")
+            before_files = {path.name: path.read_bytes() for path in old_path.parent.iterdir()}
+            compaction = Compaction(db=db, interval_sec=600, data_dir=str(tmp_path))
+            assert await compaction._compact_doc_tier(_SHA256, "flash") == 0
+            assert {path.name: path.read_bytes() for path in old_path.parent.iterdir()} == before_files
+            with pytest.raises(MineruError, match="reparse"):
+                load_pages_from_done_batches(str(tmp_path), _SHA256, "flash", rows)
+            current = await server._render_doc_content(
+                _SHA256, tier="flash", page_range="4-7", format="markdown", no_marker=True
+            )
+            assert "new page 4" in current and "old page" not in current
+            with pytest.raises(MineruError, match="reparse"):
+                await server._render_doc_content(_SHA256, tier="flash", page_range="1-3", format="markdown", no_marker=True)
+            listing = await server.list_parses(doc_ref="aaaaaaa", tier="flash", page_range="1-7")
+            assert listing.coverage.done_page_range == "4-7"
+            assert listing.coverage.missing_page_range == "1-3"
+            result = await service.request_parse(str(tmp_path / "document.pdf"), tier="flash", page_range="1-7")
+            assert not result.cache_hit and len(result.created_parse_ids) == 1
+            queued = await db.fetchone("SELECT page_range FROM parses WHERE id=?", (result.created_parse_ids[0],))
+            assert queued["page_range"] == "1-3"
+            assert old_path.read_bytes() == before_files[old_path.name]
+
+    asyncio.run(verify())
+
+
+@pytest.mark.parametrize("field", ["metadata", "extensions", "is_full_document", "extension_value_type"])
+def test_compaction_preserves_batches_with_conflicting_envelopes(tmp_path: Path, field: str) -> None:
+    """不同来源、扩展或整本语义的批次不得被合并为虚假来源的文档。"""
+
+    async def verify() -> None:
+        """逐项注入头部冲突并确认源文件和数据库完全保留。"""
+        async with _legacy_store(tmp_path) as (db, _service, _server):
+            await _add_result(db, tmp_path, "4-7", 2000, range(4, 8), "new")
+            path = _cache_path(tmp_path, "4-7", 2000)
+            payload = json.loads(path.read_text())
+            if field == "metadata":
+                payload[field]["producer"]["version"] = "different"
+            elif field == "extensions":
+                payload[field]["application"] = {"source": "different"}
+            elif field == "extension_value_type":
+                old_path = _cache_path(tmp_path, "1~5", 1000)
+                old_payload = json.loads(old_path.read_text())
+                old_payload["extensions"]["application"] = {"value": True}
+                old_path.write_text(json.dumps(old_payload))
+                payload["extensions"]["application"] = {"value": 1}
+            else:
+                payload[field] = True
+            path.write_text(json.dumps(payload))
+            rows = await db.fetchall("SELECT * FROM parses ORDER BY id")
+            files = {item.name: item.read_bytes() for item in path.parent.iterdir()}
+            compaction = Compaction(db=db, interval_sec=600, data_dir=str(tmp_path))
+            assert await compaction._compact_doc_tier(_SHA256, "flash") == 0
+            assert await db.fetchall("SELECT * FROM parses ORDER BY id") == rows
+            assert {item.name: item.read_bytes() for item in path.parent.iterdir()} == files
+
+    asyncio.run(verify())
 
 
 def _cache_path(root: Path, page_range: str, done_at: int) -> Path:
@@ -41,10 +115,9 @@ async def _add_result(
     payload = {
         "schema_version": MIDDLE_JSON_SCHEMA_VERSION,
         "is_full_document": False,
-        "file_suffix": "pdf",
-        "effort": "flash",
-        "parse_mode": "txt",
-        "mineru_version": __version__,
+        "metadata": {"file_suffix": "pdf", "producer": {"name": "mineru", "version": __version__}},
+        "schema": "docvortex.middle",
+        "extensions": {"mineru": {"tier": "flash", "parse_mode": "txt"}},
         "pages": [
             {
                 "page_idx": page_no - 1,

@@ -32,7 +32,7 @@ def test_ooxml_mtef_backend_analyze_sync_async_contract(file_suffix: str) -> Non
 
     assert isinstance(model, ModelJson)
     assert isinstance(middle, MiddleJson)
-    assert model.file_suffix == middle.file_suffix == file_suffix
+    assert model.metadata.file_suffix == middle.metadata.file_suffix == file_suffix
     assert middle.pages[0].blocks[0].type == BlockType.EQUATION
     assert middle.pages[0].blocks[0].content == expected
     assert async_model == model

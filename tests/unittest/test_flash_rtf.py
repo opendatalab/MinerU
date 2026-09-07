@@ -35,8 +35,8 @@ def test_rtf_doc_analyze_and_renderers_share_strict_metadata() -> None:
         aio_doc_analyze(_complex_rtf(), effort="medium", parse_mode="auto", file_suffix="rtf")
     )
 
-    assert middle.file_suffix == model.file_suffix == "rtf"
-    assert middle.extensions["mineru"]["effort"] == model.extensions["mineru"]["effort"] == "flash"
+    assert middle.metadata.file_suffix == model.metadata.file_suffix == "rtf"
+    assert middle.extensions["mineru"]["tier"] == model.extensions["mineru"]["tier"] == "flash"
     assert middle.extensions["mineru"]["parse_mode"] == model.extensions["mineru"]["parse_mode"] == "txt"
     assert middle.is_full_document is model.is_full_document is True
     assert len(middle.pages) == len(model.pages) == 1
@@ -51,7 +51,7 @@ def test_rtf_doc_analyze_and_renderers_share_strict_metadata() -> None:
     assert "Foot body" in markdown
     assert "<table" in html
     assert docx.startswith(b"PK\x03\x04")
-    assert structured["file_suffix"] == "rtf"
+    assert structured["metadata"]["file_suffix"] == "rtf"
 
 
 def test_public_parser_detects_rtf_content_before_extension(tmp_path: Path) -> None:
@@ -65,7 +65,7 @@ def test_public_parser_detects_rtf_content_before_extension(tmp_path: Path) -> N
         parse(source, tier="flash", page_range="99")
     assert exc_info.value.code == "page_range_invalid"
 
-    assert result.middle_json.file_suffix == "rtf"
+    assert result.middle_json.metadata.file_suffix == "rtf"
     assert result.middle_json.is_full_document is True
     assert len(result.pages) == 1
     exported = export_middle_json(result.middle_json, tmp_path / "export")

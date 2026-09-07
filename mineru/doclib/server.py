@@ -75,6 +75,7 @@ from .rows import (
     WatchTargetRow,
 )
 from .services.parse_svc import (
+    _json_batch_is_current,
     accessible_file_for_sha256,
     filter_pages_by_user_range,
     load_pages_from_done_batches,
@@ -418,7 +419,13 @@ class DoclibServer(AsyncDoclibInterface):
             if doc is None:
                 raise NotFoundError("doc_not_found", f"Document {resolved_sha256} not found.", "doc_ref")
             page_range = _expand_page_range(page_range, doc["page_count"] or 1)
-        coverage = _parse_coverage(page_range, rows) if resolved_sha256 and tier and page_range else None
+        coverage_rows = [
+            row
+            for row in rows
+            if row["status"] != PARSE_STATUS_DONE
+            or _json_batch_is_current(_effective_data_dir(self.state), row["sha256"], row["tier"], row)
+        ]
+        coverage = _parse_coverage(page_range, coverage_rows) if resolved_sha256 and tier and page_range else None
         return ListParsesResponse(
             parses=[_parse_info(row, coverage=coverage) for row in rows],
             coverage=coverage,
@@ -717,7 +724,11 @@ class DoclibServer(AsyncDoclibInterface):
 
         tier = cursor.tier or await self._default_read_tier(doc["sha256"])
         if tier is None:
-            raise NotFoundError("tier_not_cached", f"No parsed tier is cached for document {cursor.short_id}.", "locator")
+            raise NotFoundError(
+                "tier_not_cached",
+                f"No current parsed tier is cached for document {cursor.short_id}; reparse the source document.",
+                "locator",
+            )
         if format == "image" and context:
             raise InvalidRequestError("context_not_applicable", "context is not supported for image reads.", "context")
         if cursor.page_no is None and context:
@@ -867,7 +878,12 @@ class DoclibServer(AsyncDoclibInterface):
             if sha256
             else []
         )
-        parsed_tiers = [_tier_parse_info(row) for row in parse_rows if row["status"] == PARSE_STATUS_DONE]
+        parsed_tiers = [
+            _tier_parse_info(row)
+            for row in parse_rows
+            if row["status"] == PARSE_STATUS_DONE
+            and _json_batch_is_current(_effective_data_dir(self.state), row["sha256"], row["tier"], row)
+        ]
         active_parses = [
             _parse_info(row) for row in parse_rows if row["status"] in {PARSE_STATUS_PENDING, PARSE_STATUS_PARSING}
         ]
@@ -1221,16 +1237,22 @@ class DoclibServer(AsyncDoclibInterface):
             "SELECT page_range, done_at FROM parses WHERE sha256=? AND tier=? AND status=? ORDER BY done_at DESC",
             (sha256, tier, PARSE_STATUS_DONE),
         )
-        loaded_pages = load_pages_from_done_batches(data_dir, sha256, tier, cast(list[ParseBatchRow], rows))
         doc = cast(DocRow | None, await self.state.db.fetchone("SELECT * FROM docs WHERE sha256=?", (sha256,)))
         if doc is None:
             raise NotFoundError("doc_not_found", f"Document {sha256} not found.", "doc_ref")
         page_range = normalize_page_range_input(page_range)
         if page_range and doc["page_count"] is not None:
-            loaded_pages = filter_pages_by_user_range(loaded_pages, _expand_page_range(page_range, doc["page_count"]))
-        elif page_range and page_range != "all":
-            # 总页数未知时只允许绝对页码，不能用已缓存页数推断文档末页。
-            loaded_pages = filter_pages_by_user_range(loaded_pages, page_range)
+            page_range = _expand_page_range(page_range, doc["page_count"])
+        requested = parse_page_range_set(page_range) if page_range and page_range != "all" else None
+        loaded_pages = load_pages_from_done_batches(
+            data_dir,
+            sha256,
+            tier,
+            cast(list[ParseBatchRow], rows),
+            requested_page_numbers=requested,
+        )
+        if requested is not None:
+            loaded_pages = [page for page in loaded_pages if page.page_idx + 1 in requested]
         if not loaded_pages:
             raise NotFoundError("not_cached", "Requested parsed content is not cached.", "page_range")
         output: list[str] = []
@@ -1254,7 +1276,13 @@ class DoclibServer(AsyncDoclibInterface):
             "SELECT page_range, done_at FROM parses WHERE sha256=? AND tier=? AND status=? ORDER BY done_at DESC",
             (plan.sha256, plan.tier, PARSE_STATUS_DONE),
         )
-        loaded_pages = load_pages_from_done_batches(data_dir, plan.sha256, plan.tier, cast(list[ParseBatchRow], rows))
+        loaded_pages = load_pages_from_done_batches(
+            data_dir,
+            plan.sha256,
+            plan.tier,
+            cast(list[ParseBatchRow], rows),
+            requested_page_numbers=parse_page_range_set(plan.page_range) if plan.page_range else None,
+        )
         if plan.page_range:
             loaded_pages = filter_pages_by_user_range(loaded_pages, plan.page_range)
         if not loaded_pages:
@@ -1411,11 +1439,17 @@ class DoclibServer(AsyncDoclibInterface):
         rows = cast(
             list[ParseRow],
             await self.state.db.fetchall(
-                "SELECT tier FROM parses WHERE sha256=? AND status=? GROUP BY tier",
+                "SELECT * FROM parses WHERE sha256=? AND status=? ORDER BY done_at DESC",
                 (sha256, PARSE_STATUS_DONE),
             ),
         )
-        tiers: set[Tier] = {row["tier"] for row in rows if row["tier"] in TIERS and row["tier"] != "flash"}
+        tiers: set[Tier] = {
+            row["tier"]
+            for row in rows
+            if row["tier"] in TIERS
+            and row["tier"] != "flash"
+            and _json_batch_is_current(_effective_data_dir(self.state), sha256, row["tier"], row)
+        }
         if not tiers:
             return None
         return select_highest_cached_tier(tiers)

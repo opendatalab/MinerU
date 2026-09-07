@@ -8,7 +8,7 @@
 
 ## 标准来源
 
-事实标准由 `mineru/types.py` 中的严格 Pydantic v2 模型定义：
+事实标准由 `docvortex.schema` 中的严格 Pydantic v2 模型定义，`mineru/types.py` 重导出：
 
 - `ModelJson`、`MiddleJson`、`PageInfo`；
 - `Block` / `PageBlock` discriminated union；
@@ -19,9 +19,8 @@
 `tuple[MiddleJson, ModelJson]`，`ParseResult.to_dict()` 输出
 `schema_version="2.0"`。
 
-Schema 2.0 是严格的运行时与公开输出契约（3.0 从未发布）。`ParseResult.from_dict()` 直接读取 2.0，
-并仅将可识别的 MinerU 3.4.5 `pdf_info` 或对应 schema 1.0 `pages` 包装经运行时 legacy 分支单向迁移为 2.0；
-其它缺失版本号的 envelope 与未知旧 payload 必须从源文件重新解析。
+读取必须匹配 `schema` 与 `schema_version`，详见[统一外层协议](envelope.md)。
+所有历史文档协议和缺少身份的 JSON 均拒绝，不提供自动迁移。
 
 ## ModelJson
 
@@ -29,10 +28,9 @@ Schema 2.0 是严格的运行时与公开输出契约（3.0 从未发布）。`P
 |------|------|------|
 | `pages` | `list[list[dict]]` | Analyze 产生的 raw blocks |
 | `page_index_map` | `list[int]` | 空列表表示整本；非空时与 pages 等长、唯一且严格递增 |
-| `file_suffix` | `pdf/doc/docx/ppt/pptx/xls/xlsx/rtf/csv/epub/html/ofd/odt/ods/odp` | 必填 |
-| `effort` | `flash/medium/high/xhigh` | 必填 |
-| `parse_mode` | `txt/ocr` | 必填 |
-| `mineru_version` | 非空字符串 | 必填 |
+| `schema` / `schema_version` | 协议标识及版本 | Model/Middle 各自身份，版本 2.0 |
+| `metadata` | DocumentMetadata | 必填 file_suffix 与 producer |
+| `extensions` | JSON 字典 | 可选产品记录，默认输出空对象 |
 
 文本型 raw block 必须直接携带 InlineSpan 列表。校验失败会报告
 `pages[页号][块号]`。PDF 的扁平 `list/index` layout block 在对象化前也可以携带
@@ -44,10 +42,9 @@ Span；形成递归容器后，其 `content` 改为子 block 列表。
 |------|------|------|
 | `pages` | `list[PageInfo]` | `page_idx` 唯一且严格递增 |
 | `is_full_document` | `bool` | 必填，不提供默认值 |
-| `file_suffix` | 与 ModelJson 相同 | 必填 |
-| `effort` | `flash/medium/high/xhigh` | 必填 |
-| `parse_mode` | `txt/ocr` | 必填 |
-| `mineru_version` | 非空字符串 | 必填 |
+| `schema` / `schema_version` | 协议标识及版本 | Model/Middle 各自身份，版本 2.0 |
+| `metadata` | DocumentMetadata | 必填 file_suffix 与 producer |
+| `extensions` | JSON 字典 | 可选产品记录，默认输出空对象 |
 
 `PageInfo` 只包含 `page_idx` 与 `blocks`。顶层 block 必须具有唯一且严格递增的
 `index`。PDF 与 OFD 属于固定版式输入，其顶层 block 还必须具有有效的 `[0, 1]`
@@ -151,10 +148,7 @@ Markdown、HTML、DOCX 与 Structured Content renderer 按 Span discriminator �
 分派。HTML versioned wire 使用明确 DOM metadata 往返恢复类型、样式、公式和
 链接，不从渲染后的标签字符串猜测语义。
 
-## 缓存与兼容
+## 缓存与协议
 
-- `ParseResult.from_dict()` 直接接受 `schema_version="2.0"`；
-- MinerU 3.4.5 `pdf_info` 与对应 1.0 pages 包装经 `legacy_schema_adapter` 在运行时（`from_dict()` 与 doclib compaction）回推；
-- Doclib compaction 使用同一适配器迁移可识别旧 batch，无法识别时仍按 stale 处理；
-- 无版本号的裸 `{"pages": []}` 与其它未知旧版本返回“重新解析源文件”的明确错误；
-- 不提供 `str | list[InlineSpan]` 联合，也不恢复旧版带 bbox/图片职责的 Line/Span。
+只接受当前完整文档协议；旧结果不命中缓存、不参与压缩，并提示从源文件重建。
+压缩不得合并不同来源、扩展或整本标识的数据。Block/Span 类型和内部语义保持不变。
