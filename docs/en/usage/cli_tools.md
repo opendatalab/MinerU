@@ -70,6 +70,7 @@ mineru-kit vlm-server --engine auto --port 30000
 - `MINERU_API_ENABLE_FASTAPI_DOCS`: enable `/docs`, `/openapi.json`, and `/redoc` on the V1 API server; default `true`.
 - `MINERU_PDF_RENDER_TIMEOUT` / `MINERU_PDF_RENDER_THREADS`: PDF rendering timeout and worker count.
 - `MINERU_PROCESSING_WINDOW_SIZE`: processing window size used for large documents. Flash native text parsing renders only pages with visual blocks, preserving this window boundary, rendering timeout, and worker settings. A 32 MiB pixel budget can split batches further. OCR and other tiers still render entire windows.
+- `MINERU_MALLOC_TRIM`: disabled by default; only `1/true/yes/on` enable it, ignoring case and surrounding whitespace. On Linux, when available, it attempts to return the current process's free glibc heap pages after inference windows and PDF document cleanup. Flash native parsing only attempts trimming at document completion. Unsupported platforms or missing symbols are a no-op. It does not release live objects, GPU memory, or render-worker memory. See [memory benchmarking](./pdf_memory.md).
 - `MINERU_INTRA_OP_NUM_THREADS` / `MINERU_INTER_OP_NUM_THREADS`: ONNX operator thread settings.
 
 Prefer each command's `--help` output and [model source documentation](./model_source.md) for current defaults.

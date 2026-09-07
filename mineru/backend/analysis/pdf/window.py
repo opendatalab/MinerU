@@ -10,6 +10,7 @@ import numpy as np
 from loguru import logger
 
 from ....model.runtime.hybrid import HybridLocalModelContext
+from ....model.runtime.memory import trim_process_heap
 from docvortex.document.pdf.document import PDFDocument
 from docvortex.document.pdf.document import PDFPage
 from docvortex.document.pdf.document import PDFPageTextGeometry
@@ -282,6 +283,194 @@ def _process_text_and_formulas(
     )
 
 
+def _process_pdf_window(
+    file_bytes: bytes,
+    document: PDFDocument,
+    window: _ProcessingWindow,
+    *,
+    page_count: int,
+    effort: AnalyzeEffort,
+    parse_mode: Literal["txt", "ocr"],
+    image_analysis: bool,
+    hybrid_model: HybridLocalModelContext | None,
+    vlm_predictor: Any,
+) -> list[list[dict[str, Any]]]:
+    """在独立作用域完成单窗口分析与裁图，关闭页图并解除本层临时数组引用。"""
+    images_list: list[dict[str, Any]] = []
+    images_pil_list = []
+    np_images = []
+    table_items = []
+    try:
+        window_pages = _get_window_pdf_pages(document, window)
+        images_list = load_images_from_pdf_bytes_range(
+            pdf_bytes=file_bytes,
+            start_page_id=window.start,
+            end_page_id=window.end,
+            image_type="pil_img",
+        )
+        if len(window_pages) != len(images_list):
+            raise ValueError("Hybrid processing window PDF page count does not match image count")
+        images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
+        _log_processing_window(window, page_count, len(images_pil_list))
+        page_text_geometries: list[PDFPageTextGeometry | None] | None = (
+            [None] * len(window_pages) if parse_mode == "txt" and effort in {"medium", "high", "xhigh"} else None
+        )
+
+        local_model_context = hybrid_model
+        if local_model_context is None:
+            raise ValueError("Hybrid local model context is required outside Flash TXT mode")
+        np_images = [np.asarray(pil_image).copy() for pil_image in images_pil_list]
+        images_layout_res = local_model_context.layout_model.batch_predict(
+            images_pil_list, batch_size=min(8, BATCH_RATIO * LAYOUT_BASE_BATCH_SIZE)
+        )
+
+        # 使用小模型layout时对layout的表格做旋转检测
+        if effort in ["flash", "medium", "high"]:
+            table_items = _collect_table_items(images_layout_res, np_images)
+            if table_items:
+                _apply_table_orientations(
+                    table_items,
+                    parse_mode,
+                    window_pages,
+                    images_list,
+                    local_model_context,
+                )
+
+        vl_style_layout_blocks = _build_vl_style_layout_blocks(images_layout_res, images_pil_list)
+
+        if parse_mode == "txt" and effort in {"medium", "high"}:
+            native_table_summary = _apply_native_txt_table_priority(
+                vl_style_layout_blocks,
+                images_layout_res,
+                window_pages,
+                images_list,
+                effort=effort,
+                page_text_geometries=page_text_geometries,
+            )
+            if native_table_summary.total:
+                native_table_stats = {
+                    "effort": effort,
+                    "total": native_table_summary.total,
+                    "accepted": native_table_summary.accepted,
+                    "complex_fallbacks": native_table_summary.complex_fallbacks,
+                    "rejected": native_table_summary.rejected,
+                    "errors": native_table_summary.errors,
+                    "removed_internal_text": native_table_summary.removed_internal_text,
+                    "removed_formula_blocks": native_table_summary.removed_formula_blocks,
+                    "removed_formula_layout_items": native_table_summary.removed_formula_layout_items,
+                }
+                logger.bind(native_table_priority=native_table_stats).info(
+                    "Hybrid native table priority. "
+                    f"effort={native_table_stats['effort']}, total={native_table_stats['total']}, "
+                    f"accepted={native_table_stats['accepted']}, "
+                    f"complex_fallbacks={native_table_stats['complex_fallbacks']}, "
+                    f"rejected={native_table_stats['rejected']}, "
+                    f"errors={native_table_stats['errors']}, "
+                    f"removed_internal_text={native_table_stats['removed_internal_text']}, "
+                    f"removed_formula_blocks={native_table_stats['removed_formula_blocks']}, "
+                    f"removed_formula_layout_items={native_table_stats['removed_formula_layout_items']}"
+                )
+
+        if parse_mode == "txt":
+            if effort == "medium":
+                window_model_list = vl_style_layout_blocks
+            elif effort == "high":
+                high_vlm_blocks, accepted_native_tables = _split_native_high_table_blocks(vl_style_layout_blocks)
+                high_vlm_results = vlm_predictor.batch_extract_with_layout(
+                    images=images_pil_list,
+                    blocks_list=high_vlm_blocks,
+                    not_extract_list=NOT_EXTRACT_TYPES,
+                    image_analysis=False,
+                )
+                window_model_list = _restore_native_high_table_blocks(
+                    high_vlm_results,
+                    accepted_native_tables,
+                )
+            elif effort == "xhigh":
+                window_model_list = vlm_predictor.batch_two_step_extract(
+                    images=images_pil_list,
+                    not_extract_list=NOT_EXTRACT_TYPES,
+                    image_analysis=image_analysis,
+                )
+            else:
+                raise ValueError(f"Unsupported analyze effort: {effort}")
+        elif parse_mode == "ocr":
+            if effort in ["flash", "medium"]:
+                window_model_list = vl_style_layout_blocks
+            elif effort == "high":
+                window_model_list = vlm_predictor.batch_extract_with_layout(
+                    images=images_pil_list,
+                    blocks_list=vl_style_layout_blocks,
+                    image_analysis=False,
+                )
+            elif effort == "xhigh":
+                window_model_list = vlm_predictor.batch_two_step_extract(
+                    images=images_pil_list,
+                    image_analysis=image_analysis,
+                )
+            else:
+                raise ValueError(f"Unsupported analyze effort: {effort}")
+        else:
+            raise ValueError(f"Unsupported parse mode: {parse_mode}")
+
+        if effort in {"high", "xhigh"}:
+            window_model_list = _convert_vlm_results_to_model_list(window_model_list)
+        if effort == "xhigh":
+            _normalize_xhigh_vlm_blocks(window_model_list)
+            _apply_layout_title_split(
+                window_model_list,
+                images_layout_res,
+                [_normalize_page_size(image) for image in images_pil_list],
+            )
+
+        if effort == "flash":
+            window_model_list = _process_flash_ocr(
+                images_list,
+                window_pages,
+                window_model_list,
+                local_model_context,
+                images_layout_res,
+            )
+            # Flash OCR 在表内对象清理后复用统一公式编号合并，确保视觉裁图包含编号区域。
+            for page_model_list in window_model_list:
+                page_model_list[:] = optimize_hybrid_formula_number_blocks(page_model_list)
+        else:
+            window_model_list = _process_text_and_formulas(
+                images_list,
+                window_pages,
+                window_model_list,
+                parse_mode,
+                effort,
+                local_model_context,
+                images_layout_res,
+                page_text_geometries,
+            )
+
+        if effort in {"medium", "high"}:
+            _apply_seal_ocr(local_model_context, window_model_list, np_images)
+        elif effort == "xhigh":
+            _supplement_missing_image_block_containers(
+                window_model_list,
+                vl_style_layout_blocks,
+            )
+
+        _attach_visual_block_images(
+            window_model_list,
+            images_list,
+            page_start_index=window.start,
+        )
+        return window_model_list
+    finally:
+        try:
+            _close_images(images_list)
+        finally:
+            # 仅清空临时图像容器；结果中的 block、布局字典和物化素材可能共享，不能清空。
+            table_items.clear()
+            np_images.clear()
+            images_pil_list.clear()
+            images_list.clear()
+
+
 def process_pdf_windows(
     file_bytes: bytes,
     document: PDFDocument,
@@ -315,169 +504,22 @@ def process_pdf_windows(
     _log_processing_window_plan(page_count, configured_window_size, len(windows))
 
     for window in windows:
-        window_pages = _get_window_pdf_pages(document, window)
-        images_list = load_images_from_pdf_bytes_range(
-            pdf_bytes=file_bytes,
-            start_page_id=window.start,
-            end_page_id=window.end,
-            image_type="pil_img",
-        )
         try:
-            if len(window_pages) != len(images_list):
-                raise ValueError("Hybrid processing window PDF page count does not match image count")
-            images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
-            _log_processing_window(window, page_count, len(images_pil_list))
-            page_text_geometries: list[PDFPageTextGeometry | None] | None = (
-                [None] * len(window_pages)
-                if parse_mode == "txt" and effort in {"medium", "high", "xhigh"}
-                else None
-            )
-
-            local_model_context = hybrid_model
-            if local_model_context is None:
-                raise ValueError("Hybrid local model context is required outside Flash TXT mode")
-            np_images = [np.asarray(pil_image).copy() for pil_image in images_pil_list]
-            images_layout_res = local_model_context.layout_model.batch_predict(
-                images_pil_list, batch_size=min(8, BATCH_RATIO * LAYOUT_BASE_BATCH_SIZE)
-            )
-
-            # 使用小模型layout时对layout的表格做旋转检测
-            if effort in ["flash", "medium", "high"]:
-                table_items = _collect_table_items(images_layout_res, np_images)
-                if table_items:
-                    _apply_table_orientations(
-                        table_items,
-                        parse_mode,
-                        window_pages,
-                        images_list,
-                        local_model_context,
-                    )
-
-            vl_style_layout_blocks = _build_vl_style_layout_blocks(images_layout_res, images_pil_list)
-
-            if parse_mode == "txt" and effort in {"medium", "high"}:
-                native_table_summary = _apply_native_txt_table_priority(
-                    vl_style_layout_blocks,
-                    images_layout_res,
-                    window_pages,
-                    images_list,
+            model_list.extend(
+                _process_pdf_window(
+                    file_bytes,
+                    document,
+                    window,
+                    page_count=page_count,
                     effort=effort,
-                    page_text_geometries=page_text_geometries,
+                    parse_mode=parse_mode,
+                    image_analysis=image_analysis,
+                    hybrid_model=hybrid_model,
+                    vlm_predictor=vlm_predictor,
                 )
-                if native_table_summary.total:
-                    native_table_stats = {
-                        "effort": effort,
-                        "total": native_table_summary.total,
-                        "accepted": native_table_summary.accepted,
-                        "complex_fallbacks": native_table_summary.complex_fallbacks,
-                        "rejected": native_table_summary.rejected,
-                        "errors": native_table_summary.errors,
-                        "removed_internal_text": native_table_summary.removed_internal_text,
-                        "removed_formula_blocks": native_table_summary.removed_formula_blocks,
-                        "removed_formula_layout_items": native_table_summary.removed_formula_layout_items,
-                    }
-                    logger.bind(native_table_priority=native_table_stats).info(
-                        "Hybrid native table priority. "
-                        f"effort={native_table_stats['effort']}, total={native_table_stats['total']}, "
-                        f"accepted={native_table_stats['accepted']}, "
-                        f"complex_fallbacks={native_table_stats['complex_fallbacks']}, "
-                        f"rejected={native_table_stats['rejected']}, "
-                        f"errors={native_table_stats['errors']}, "
-                        f"removed_internal_text={native_table_stats['removed_internal_text']}, "
-                        f"removed_formula_blocks={native_table_stats['removed_formula_blocks']}, "
-                        f"removed_formula_layout_items={native_table_stats['removed_formula_layout_items']}"
-                    )
-
-            if parse_mode == "txt":
-                if effort == "medium":
-                    window_model_list = vl_style_layout_blocks
-                elif effort == "high":
-                    high_vlm_blocks, accepted_native_tables = _split_native_high_table_blocks(vl_style_layout_blocks)
-                    high_vlm_results = vlm_predictor.batch_extract_with_layout(
-                        images=images_pil_list,
-                        blocks_list=high_vlm_blocks,
-                        not_extract_list=NOT_EXTRACT_TYPES,
-                        image_analysis=False,
-                    )
-                    window_model_list = _restore_native_high_table_blocks(
-                        high_vlm_results,
-                        accepted_native_tables,
-                    )
-                elif effort == "xhigh":
-                    window_model_list = vlm_predictor.batch_two_step_extract(
-                        images=images_pil_list,
-                        not_extract_list=NOT_EXTRACT_TYPES,
-                        image_analysis=image_analysis,
-                    )
-                else:
-                    raise ValueError(f"Unsupported analyze effort: {effort}")
-            elif parse_mode == "ocr":
-                if effort in ["flash", "medium"]:
-                    window_model_list = vl_style_layout_blocks
-                elif effort == "high":
-                    window_model_list = vlm_predictor.batch_extract_with_layout(
-                        images=images_pil_list,
-                        blocks_list=vl_style_layout_blocks,
-                        image_analysis=False,
-                    )
-                elif effort == "xhigh":
-                    window_model_list = vlm_predictor.batch_two_step_extract(
-                        images=images_pil_list,
-                        image_analysis=image_analysis,
-                    )
-                else:
-                    raise ValueError(f"Unsupported analyze effort: {effort}")
-            else:
-                raise ValueError(f"Unsupported parse mode: {parse_mode}")
-
-            if effort in {"high", "xhigh"}:
-                window_model_list = _convert_vlm_results_to_model_list(window_model_list)
-            if effort == "xhigh":
-                _normalize_xhigh_vlm_blocks(window_model_list)
-                _apply_layout_title_split(
-                    window_model_list,
-                    images_layout_res,
-                    [_normalize_page_size(image) for image in images_pil_list],
-                )
-
-            if effort == "flash":
-                window_model_list = _process_flash_ocr(
-                    images_list,
-                    window_pages,
-                    window_model_list,
-                    local_model_context,
-                    images_layout_res,
-                )
-                # Flash OCR 在表内对象清理后复用统一公式编号合并，确保视觉裁图包含编号区域。
-                for page_model_list in window_model_list:
-                    page_model_list[:] = optimize_hybrid_formula_number_blocks(page_model_list)
-            else:
-                window_model_list = _process_text_and_formulas(
-                    images_list,
-                    window_pages,
-                    window_model_list,
-                    parse_mode,
-                    effort,
-                    local_model_context,
-                    images_layout_res,
-                    page_text_geometries,
-                )
-
-            if effort in {"medium", "high"}:
-                _apply_seal_ocr(local_model_context, window_model_list, np_images)
-            elif effort == "xhigh":
-                _supplement_missing_image_block_containers(
-                    window_model_list,
-                    vl_style_layout_blocks,
-                )
-
-            _attach_visual_block_images(
-                window_model_list,
-                images_list,
-                page_start_index=window.start,
             )
-            model_list.extend(window_model_list)
         finally:
-            _close_images(images_list)
+            # 单窗口作用域退出后再回收，避免上一窗口临时数组与下一窗口渲染重叠。
+            trim_process_heap()
 
     return model_list

@@ -5,9 +5,40 @@ from __future__ import annotations
 
 import gc
 import os
+import sys
+from collections.abc import Callable
+from functools import lru_cache
 from typing import Any
 
 from loguru import logger
+
+
+@lru_cache(maxsize=1)
+def _get_malloc_trim() -> Callable[[int], int] | None:
+    """首次启用时解析并缓存 libc 回收函数，缺失能力时缓存空结果。"""
+    try:
+        import ctypes
+
+        malloc_trim = ctypes.CDLL(None).malloc_trim
+        malloc_trim.argtypes = [ctypes.c_size_t]
+        malloc_trim.restype = ctypes.c_int
+        return malloc_trim
+    except Exception:
+        return None
+
+
+def trim_process_heap() -> bool:
+    """按显式开关尽力归还当前 Linux 进程的空闲堆页，不加载模型或执行垃圾回收。"""
+    if os.getenv("MINERU_MALLOC_TRIM", "").strip().lower() not in {"1", "true", "yes", "on"}:
+        return False
+    if not sys.platform.startswith("linux"):
+        return False
+    try:
+        malloc_trim = _get_malloc_trim()
+        return bool(malloc_trim(0)) if malloc_trim is not None else False
+    except Exception:
+        # 可选回收失败不得覆盖解析或资源关闭阶段的原始异常。
+        return False
 
 
 def _optional_torch() -> tuple[Any | None, Any | None]:
@@ -82,4 +113,4 @@ def get_vram(device: str) -> int:
     return 1
 
 
-__all__ = ["clean_memory", "get_vram"]
+__all__ = ["clean_memory", "get_vram", "trim_process_heap"]

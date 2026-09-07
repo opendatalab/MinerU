@@ -9,7 +9,7 @@ from typing import Any, cast
 from ..contracts import AnalysisResult, AnalyzeEffort, ParseMode, ResolvedParseMode
 from ....config import VlmConfig
 from ....model.runtime.hybrid import HybridLocalModelContextSingleton
-from ....model.runtime.memory import clean_memory
+from ....model.runtime.memory import clean_memory, trim_process_heap
 from ....model.vlm.client import get_vlm_predictor
 from docvortex.document.pdf.document import PDFDocument
 
@@ -74,9 +74,13 @@ def analyze_pdf(
         try:
             document.close()
         finally:
-            # 无论窗口处理是否异常，都释放已初始化的 Hybrid 模型资源。
-            if hybrid_model is not None:
-                clean_memory(hybrid_model.device)
+            try:
+                # 无论窗口处理是否异常，都释放已初始化的 Hybrid 模型资源。
+                if hybrid_model is not None:
+                    clean_memory(hybrid_model.device)
+            finally:
+                # Flash TXT 同样覆盖 CPU 堆回收，但不因此加载 Torch 或模型。
+                trim_process_heap()
 
     return AnalysisResult(
         model_list=model_list,
