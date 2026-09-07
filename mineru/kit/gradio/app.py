@@ -24,6 +24,7 @@ from .client import (
     V1ArtifactClient,
     V1ServerCapabilities,
 )
+from .i18n import MESSAGES, localized_text, preview_placeholder, translations
 from .page_range import effective_page_range as _effective_page_range
 from .page_range import pdf_page_metadata, validate_max_pages
 from .status import (
@@ -55,7 +56,8 @@ _LATEX_DELIMITERS_B = [
     {"left": "\\[", "right": "\\]", "display": True},
 ]
 _DOWNLOAD_ICON_HTML = """
-<button type="button" class="mineru-kit-download-icon" title="下载结果" aria-label="下载结果"
+<button type="button" class="mineru-kit-download-icon" title="Download results" aria-label="Download results"
+        data-mineru-i18n-key="download_results" data-mineru-i18n-attr="title aria-label"
         aria-controls="mineru-kit-download-options">
     <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
          stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
@@ -131,22 +133,27 @@ def _render_header(*, gradio_major_version: int = 5) -> str:
     """渲染复用旧版视觉风格的静态 Header。"""
     template = _resource_text("gradio_header.html")
     values = {
-        "{{HEADER_TITLE}}": "MinerU 4：文档提取",
-        "{{HEADER_SUBTITLE}}": "开源文档提取工具，支持 PDF、Office、EPUB、OFD、HTML、CSV 与图片。",
         "{{HEADER_SUPPORT_TEXT}}": "",
-        "{{HEADER_STARS_ALT}}": "GitHub 星标",
-        "{{HEADER_CODE_LINK}}": "代码",
-        "{{HEADER_MODEL_LINK}}": "模型",
         "{{HEADER_MODEL_HUGGINGFACE_LINK}}": "Hugging Face",
         "{{HEADER_MODEL_MODELSCOPE_LINK}}": "ModelScope",
-        "{{HEADER_PAPER_LINK}}": "论文",
         "{{HEADER_PAPER_MINERU_REPORT}}": "MinerU · arXiv",
         "{{HEADER_PAPER_MINERU25_REPORT}}": "MinerU 2.5 · arXiv",
         "{{HEADER_PAPER_MINERU25PRO_REPORT}}": "MinerU 2.5 Pro · arXiv",
-        "{{HEADER_HOMEPAGE_LINK}}": "主页",
-        "{{HEADER_DOWNLOAD_LINK}}": "下载",
         "{{HEADER_GRADIO_VERSION_CLASS}}": " mineru-gradio6-header" if gradio_major_version >= 6 else "",
     }
+    for placeholder, key in {
+        "HEADER_TITLE": "header_title",
+        "HEADER_SUBTITLE": "header_subtitle",
+        "HEADER_CODE_LINK": "code",
+        "HEADER_MODEL_LINK": "model",
+        "HEADER_PAPER_LINK": "paper",
+        "HEADER_HOMEPAGE_LINK": "homepage",
+        "HEADER_DOWNLOAD_LINK": "download",
+    }.items():
+        template = template.replace("{{" + placeholder + "}}", localized_text(key))
+    template = template.replace(
+        'alt="{{HEADER_STARS_ALT}}"', 'alt="GitHub stars" data-mineru-i18n-attr="alt" data-mineru-i18n-key="stars"'
+    )
     rendered = template
     for placeholder, value in values.items():
         rendered = rendered.replace(placeholder, html.escape(value, quote=True))
@@ -242,7 +249,11 @@ def build_gradio_app(
     file_types = _supported_file_types()
     markdown_copy_kwargs = {"buttons": ["copy"]} if _gradio_major_version(gr) >= 6 else {"show_copy_button": True}
     app_css = _resource_text("gradio_app.css") + _KIT_MENU_CSS
-    app_js = _resource_text("gradio_app.js")
+    i18n = gr.I18n(**translations())
+    app_js = _resource_text("gradio_app.js").replace(
+        "__MINERU_I18N__",
+        f"({_resource_text('gradio_i18n.js')})({json.dumps(MESSAGES, ensure_ascii=False)})",
+    )
     # Gradio 5 在 Blocks 构造时接收静态资源，6 则在 launch 时接收。
     blocks_kwargs = {"css": app_css, "js": app_js} if _gradio_major_version(gr) < 6 else {}
     # 等待限制放在生成器内部，使其他会话也能立即显示本地排队状态。
@@ -257,7 +268,7 @@ def build_gradio_app(
         with gr.Row(elem_classes=["mineru-kit-workspace"]):
             with gr.Column(scale=2, min_width=280, elem_classes=["mineru-kit-control", "mineru-control-column"]):
                 input_file = gr.File(
-                    label="请选择要解析的文件",
+                    label=i18n("mineru.upload"),
                     file_types=file_types,
                     file_count="single",
                     type="filepath",
@@ -277,7 +288,7 @@ def build_gradio_app(
                         step=1,
                         precision=0,
                         interactive=len(tier_choices) > 1,
-                        label="解析 tier",
+                        label=i18n("mineru.tier"),
                         show_label=False,
                         elem_classes=["mineru-tier-slider"],
                     )
@@ -285,15 +296,15 @@ def build_gradio_app(
                     tier_selection = gr.Textbox(value=json.dumps({"tier": preferred_tier, "locked": False}), visible=False)
                 force_ocr = gr.Checkbox(
                     value=False,
-                    label="强制 OCR",
-                    info="忽略 PDF 文本层并进行 OCR；关闭时自动判断。",
+                    label=i18n("mineru.force_ocr"),
+                    info=i18n("mineru.force_ocr_info"),
                     visible=False,
                     interactive=True,
                     elem_classes=["mineru-force-ocr"],
                 )
                 page_range = gr.Textbox(
                     value="",
-                    label="页码范围",
+                    label=i18n("mineru.page_range"),
                     visible=False,
                 )
                 # 用 JSON 文本承载内部状态，避开 Gradio 5/6 JSON 组件的序列化差异。
@@ -309,7 +320,7 @@ def build_gradio_app(
                             value=1,
                             step=1,
                             precision=0,
-                            label="起始页",
+                            label=i18n("mineru.start_page"),
                             interactive=False,
                             container=False,
                             elem_classes=["mineru-page-handle-a"],
@@ -320,20 +331,22 @@ def build_gradio_app(
                             value=1,
                             step=1,
                             precision=0,
-                            label="结束页",
+                            label=i18n("mineru.end_page"),
                             interactive=False,
                             container=False,
                             elem_classes=["mineru-page-handle-b"],
                         )
                 page_notice = gr.HTML(value="", visible=False, elem_classes=["mineru-page-notice"])
                 with gr.Row(elem_classes=["mineru-actions"]):
-                    convert_button = gr.Button("转换", variant="primary", scale=1, min_width=0, interactive=False)
-                    clear_button = gr.ClearButton(value="清除", scale=1, min_width=1)
+                    convert_button = gr.Button(
+                        i18n("mineru.convert"), variant="primary", scale=1, min_width=0, interactive=False
+                    )
+                    clear_button = gr.ClearButton(value=i18n("mineru.clear"), scale=1, min_width=1)
                 status_panel = gr.HTML(_status_html(), elem_classes=["mineru-status-panel"])
 
             with gr.Column(scale=4, min_width=340, elem_classes=["mineru-kit-preview", "mineru-preview-pane"]):
                 pdf_preview = PDF(
-                    label="文档预览",
+                    label=MESSAGES["preview"][0],
                     interactive=False,
                     # 预先挂载空组件，避免 gradio-pdf 首次带值挂载时漏掉文件加载。
                     visible="hidden",
@@ -341,7 +354,7 @@ def build_gradio_app(
                     elem_classes=["mineru-kit-pdf-preview", "mineru-kit-pdf-empty"],
                 )
                 image_preview = gr.Image(
-                    label="文档预览",
+                    label=i18n("mineru.preview"),
                     type="filepath",
                     interactive=False,
                     visible=False,
@@ -355,14 +368,14 @@ def build_gradio_app(
                     elem_classes=["mineru-kit-office-preview", "mineru-office-preview-html"],
                 )
                 generic_preview = gr.HTML(
-                    value='<div class="mineru-kit-empty-preview">暂无源文档预览</div>',
+                    value=preview_placeholder("empty_preview"),
                     visible=True,
                     elem_classes=["mineru-kit-generic-preview"],
                 )
 
             with gr.Column(scale=4, min_width=340, elem_classes=["mineru-kit-results", "mineru-markdown-pane"]):
                 with gr.Tabs(elem_classes=["mineru-markdown-tabs"]):
-                    with gr.Tab("Markdown 渲染"):
+                    with gr.Tab(i18n("mineru.markdown_rendered")):
                         markdown_output = gr.Markdown(
                             value="",
                             height=775,
@@ -371,17 +384,19 @@ def build_gradio_app(
                             **markdown_copy_kwargs,
                             elem_classes=["mineru-markdown-output"],
                         )
-                    with gr.Tab("Markdown 源码"):
+                    with gr.Tab(i18n("mineru.markdown_source")):
                         markdown_source = gr.Code(
                             value="",
+                            label=i18n("mineru.markdown_source"),
                             language="markdown",
                             lines=28,
                             interactive=False,
                             elem_classes=["mineru-markdown-text"],
                         )
-                    with gr.Tab("Structured Content 源码"):
+                    with gr.Tab(i18n("mineru.structured_source")):
                         structured_source = gr.Code(
                             value="",
+                            label=i18n("mineru.structured_source"),
                             language="json",
                             lines=28,
                             interactive=False,
@@ -408,7 +423,7 @@ def build_gradio_app(
         if enable_example:
             examples = _example_files(file_types)
             if examples:
-                gr.Examples(examples=examples, inputs=input_file, label="示例", elem_id="mineru-kit-examples")
+                gr.Examples(examples=examples, inputs=input_file, label=i18n("mineru.examples"), elem_id="mineru-kit-examples")
 
         artifact_state = gr.State(value=None)
         active_run_id = gr.Textbox(value="", visible=False)
@@ -439,7 +454,7 @@ def build_gradio_app(
                     _pdf_preview_update(gr, None),
                     _preview_update(gr, None, visible=False),
                     _preview_update(gr, "", visible=False),
-                    _preview_update(gr, '<div class="mineru-kit-empty-preview">暂无源文档预览</div>', visible=True),
+                    _preview_update(gr, preview_placeholder("empty_preview"), visible=True),
                     *reset_result,
                 )
             suffix = _file_suffix(file_path)
@@ -448,7 +463,7 @@ def build_gradio_app(
                     _pdf_preview_update(gr, file_path),
                     _preview_update(gr, None, visible=False),
                     _preview_update(gr, "", visible=False),
-                    _preview_update(gr, '<div class="mineru-kit-empty-preview">源文档预览</div>', visible=False),
+                    _preview_update(gr, preview_placeholder("source_preview"), visible=False),
                     *reset_result,
                 )
             if suffix in IMAGE_EXTENSIONS:
@@ -456,7 +471,7 @@ def build_gradio_app(
                     _pdf_preview_update(gr, None),
                     _preview_update(gr, file_path, visible=True),
                     _preview_update(gr, "", visible=False),
-                    _preview_update(gr, '<div class="mineru-kit-empty-preview">源文档预览</div>', visible=False),
+                    _preview_update(gr, preview_placeholder("source_preview"), visible=False),
                     *reset_result,
                 )
             if _is_office(file_path):
@@ -465,7 +480,7 @@ def build_gradio_app(
                     _preview_update(gr, None, visible=False),
                     _preview_update(
                         gr,
-                        '<div class="mineru-kit-empty-preview">Office 文件将在转换后提供结果</div>',
+                        preview_placeholder("office_pending"),
                         visible=True,
                     ),
                     _preview_update(gr, "", visible=False),
@@ -475,7 +490,7 @@ def build_gradio_app(
                 _pdf_preview_update(gr, None),
                 _preview_update(gr, None, visible=False),
                 _preview_update(gr, "", visible=False),
-                _preview_update(gr, '<div class="mineru-kit-empty-preview">该格式暂无源文档预览</div>', visible=True),
+                _preview_update(gr, preview_placeholder("unsupported_preview"), visible=True),
                 *reset_result,
             )
 
@@ -601,39 +616,37 @@ def build_gradio_app(
             request: object | None = None,
         ) -> Any:
             """执行单文件 V1 解析并流式更新状态与三个结果标签。"""
-            empty_result = (
+            # 开始或失败只重置结果与下载；预览内容、显隐和浏览位置保持不变。
+            reset_result = (
                 _status_html(_DEFAULT_STATUS),
                 "",
                 "",
                 "",
-                _pdf_preview_update(gr, None),
-                gr.update(value=None, visible=False),
-                gr.update(value="", visible=False),
-                gr.update(value='<div class="mineru-kit-empty-preview">暂无源文档预览</div>', visible=True),
+                *(gr.skip() for _ in range(4)),
                 None,
                 *_download_updates(gr, interactive=False),
             )
             if not file_path:
-                yield empty_result
+                yield reset_result
                 return
             source_path = Path(file_path).resolve()
             if not source_path.is_file():
-                yield (_status_html("Failed: input file does not exist"), "", "", "", *empty_result[4:])
+                yield (_status_html("Failed: input file does not exist"), "", "", "", *reset_result[4:])
                 return
             suffix = _file_suffix(source_path)
             if suffix not in PARSEABLE_EXTENSIONS:
-                yield (_status_html(f"Failed: unsupported file type '.{suffix}'"), "", "", "", *empty_result[4:])
+                yield (_status_html(f"Failed: unsupported file type '.{suffix}'"), "", "", "", *reset_result[4:])
                 return
             try:
                 selected_tier = _tier_for_position(tier_position, tier_choices)
             except ValueError as exc:
-                yield (_status_html(f"Failed: {exc}"), "", "", "", *empty_result[4:])
+                yield (_status_html(f"Failed: {exc}"), "", "", "", *reset_result[4:])
                 return
             if suffix in FLASH_ONLY_PARSE_EXTENSIONS:
                 # 提交端独立约束有效档位，避免事件 API 或前端残留值绕过 Flash 锁定。
                 if "flash" not in tier_choices:
                     message = "Failed: tier_unavailable: 该格式仅支持 Flash，当前服务不可用"
-                    yield (_status_html(message), "", "", "", *empty_result[4:])
+                    yield (_status_html(message), "", "", "", *reset_result[4:])
                     return
                 selected_tier = "flash"
             try:
@@ -641,11 +654,11 @@ def build_gradio_app(
                     _effective_page_range, source_path, raw_page_range, tier=selected_tier, max_pages=max_pages
                 )
             except MineruError as exc:
-                yield (_status_html(f"Failed: {exc.code}: {exc}"), "", "", "", *empty_result[4:])
+                yield (_status_html(f"Failed: {exc.code}: {exc}"), "", "", "", *reset_result[4:])
                 return
             state = StatusPanelState()
             state.append(STATUS_PREPARING_REQUEST)
-            yield (state.render(), *empty_result[1:])
+            yield (state.render(), *reset_result[1:])
             status_queue: asyncio.Queue[tuple[str, float]] = asyncio.Queue()
             loop = asyncio.get_running_loop()
 
@@ -678,9 +691,7 @@ def build_gradio_app(
                     structured_text = artifacts.structured_content_path.read_text(encoding="utf-8")
                     preview_path = artifacts.layout_pdf_path or artifacts.origin_pdf_path
                     office_html = _build_office_result_html(artifacts, request) if _is_office(source_path) else ""
-                    generic_html = (
-                        "" if preview_path or office_html else '<div class="mineru-kit-empty-preview">结果已生成</div>'
-                    )
+                    generic_html = "" if preview_path or office_html else preview_placeholder("result_ready")
                     show_image_preview = suffix in IMAGE_EXTENSIONS and preview_path is None
                     return (
                         markdown_for_gradio(markdown_text, artifacts),
@@ -712,7 +723,7 @@ def build_gradio_app(
                 async with aclosing(stream_status_updates(task, status_queue, state)) as updates:
                     async for status in updates:
                         # 动画只更新状态卡片，避免反复重建预览和清空结果组件。
-                        yield (status, *(gr.skip() for _ in empty_result[1:]))
+                        yield (status, *(gr.skip() for _ in reset_result[1:]))
                 result_outputs = await task
                 state.append(STATUS_COMPLETED)
                 yield (state.render(), *result_outputs)
@@ -721,7 +732,7 @@ def build_gradio_app(
                 return
             except Exception as exc:
                 state.append(f"Failed: {exc}")
-                yield (state.render(), *empty_result[1:])
+                yield (state.render(), *reset_result[1:])
             finally:
                 # 清除、换文件或断开流时仅取消本地等待，不发送远端取消请求。
                 if not task.done():
@@ -795,7 +806,7 @@ def build_gradio_app(
                 _pdf_preview_update(gr, None),
                 gr.update(value=None, visible=False),
                 gr.update(value="", visible=False),
-                gr.update(value='<div class="mineru-kit-empty-preview">暂无源文档预览</div>', visible=True),
+                gr.update(value=preview_placeholder("empty_preview"), visible=True),
                 None,
                 *_download_updates(gr, interactive=False),
             )
@@ -837,7 +848,9 @@ def build_gradio_app(
 
     demo._mineru_kit_css = app_css
     demo._mineru_kit_js = app_js
-    demo._mineru_kit_launch_kwargs = {"css": app_css, "js": app_js} if _gradio_major_version(gr) >= 6 else {}
+    demo._mineru_kit_launch_kwargs = {"i18n": i18n}
+    if _gradio_major_version(gr) >= 6:
+        demo._mineru_kit_launch_kwargs.update(css=app_css, js=app_js)
     demo.queue(default_concurrency_limit=1)
     return demo
 
@@ -924,7 +937,7 @@ def _example_files(file_types: list[str]) -> list[str]:
 
 def _build_office_result_html(artifacts: RunArtifacts, request: Any = None) -> str:
     """为 Office 结果生成带可选在线预览的安全提示，转换不依赖该 iframe。"""
-    source_name = html.escape(artifacts.source_path.name, quote=True)
+    source_name = artifacts.source_path.name
     headers = getattr(request, "headers", None) or {}
     host = headers.get("x-forwarded-host") or headers.get("host") or "localhost:7860"
     protocol = headers.get("x-forwarded-proto") or "http"
@@ -934,13 +947,13 @@ def _build_office_result_html(artifacts: RunArtifacts, request: Any = None) -> s
         '<div class="office-preview-shell">'
         '<div class="office-preview-notice">'
         '<div class="office-preview-copy">'
-        f"<strong>{source_name} 已完成解析</strong>"
-        "<span>Office 在线预览依赖外部服务，转换结果不依赖该预览。</span>"
+        f"<strong>{localized_text('office_completed', name=source_name)}</strong>"
+        f"{localized_text('office_notice')}"
         f'<div class="office-preview-source-link">{html.escape(public_url, quote=True)}</div>'
         "</div>"
         '<div class="office-preview-actions">'
-        '<button type="button" class="office-preview-ignore-once">忽略</button>'
-        '<button type="button" class="office-preview-ignore-forever">不再提示</button>'
+        f'<button type="button" class="office-preview-ignore-once">{localized_text("ignore_once")}</button>'
+        f'<button type="button" class="office-preview-ignore-forever">{localized_text("ignore_forever")}</button>'
         "</div>"
         "</div>"
         f'<iframe class="office-preview-frame" src="{html.escape(viewer_url, quote=True)}" frameborder="0"></iframe>'

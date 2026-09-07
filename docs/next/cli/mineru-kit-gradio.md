@@ -106,7 +106,15 @@ Gradio 首先发现 `/v1/health` 和 `/v1/tiers`，然后通过 `MinerUApiParser
 
 每次解析的文件保存在独立的 `output-dir/gradio/<run-id>/` 目录，包含源文件、Middle JSON、基础文本产物以及可选的 `origin.pdf`、`layout.pdf` 和图片资源。路径只向 Gradio 暴露在配置的 output root 内。
 
+## 界面语言
+
+MinerU 自定义文案跟随浏览器首选语言：中文（包括 `zh-CN`、`zh-TW` 等）统一显示简体中文，其他语言或无法识别时显示英文。Header、控件说明、页码提示、任务状态及下载提示使用同一规则；文件名、文档正文和服务端原始错误详情保持原文。Gradio 原生控件保留框架自带的国际化能力，上传提示、复制工具栏、页脚等可以按浏览器语言显示日语、法语等其他受支持语言。
+
+强制 OCR 的说明为“忽略 PDF 文本层并进行 OCR”；英文为“Ignore the PDF text layer and perform OCR”。
+
 ## 预览与兼容边界
+
+转换开始、排队、解析和整理输出期间保留当前预览及浏览位置，成功生成结果后再刷新。转换失败也保留当前预览；点击清除会恢复空预览，更换文件会显示新文件的源预览或对应格式提示。
 
 PDF 和图片会生成与解析范围一致的 `origin.pdf`；布局预览使用 schema 2.0 顶层 block/bbox 生成语义 overlay。无法生成 overlay 时仍保留 origin PDF 预览。
 

@@ -1006,7 +1006,7 @@ def test_gradio_ocr_control_visibility_reset_and_event_binding(tmp_path: Path) -
     capabilities = V1ServerCapabilities("http://127.0.0.1:1", ("flash", "standard"), ("zip",), ("file_id",))
     demo = build_gradio_app(Mock(), capabilities, output_root=tmp_path, enable_example=False)
     checkbox = next(block for block in demo.blocks.values() if block.__class__.__name__ == "Checkbox")
-    assert checkbox.label == "强制 OCR" and checkbox.value is False and checkbox.visible is False
+    assert checkbox.label.key == "mineru.force_ocr" and checkbox.value is False and checkbox.visible is False
     update = next(fn for fn in demo.fns.values() if fn.name == "update_ocr_control")
     assert len(update.inputs) == 1 and update.inputs[0].__class__.__name__ == "File"
     for path, visible in (("first.pdf", True), ("second.PDF", True), ("photo.png", False), ("book.docx", False), (None, False)):
@@ -1058,7 +1058,11 @@ def test_build_gradio_app_exposes_three_tabs_and_download_menu(tmp_path: Path) -
         enable_example=False,
     )
     tab_labels = [component.label for component in app.blocks.values() if component.__class__.__name__ == "Tab"]
-    assert tab_labels == ["Markdown 渲染", "Markdown 源码", "Structured Content 源码"]
+    assert [label.key for label in tab_labels] == [
+        "mineru.markdown_rendered",
+        "mineru.markdown_source",
+        "mineru.structured_source",
+    ]
     download_buttons = [
         component
         for component in app.blocks.values()
@@ -1423,3 +1427,83 @@ def test_gradio_output_failure_stops_timer_and_allows_next_conversion(tmp_path: 
             assert all(item["interactive"] is False for item in updates[-1][-6:])
 
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("page_indices", [(), (2, 0, 1)])
+def test_layout_preview_matches_shared_renderer_and_pdf_document(tmp_path: Path, page_indices: tuple[int, ...]) -> None:
+    """三个公开入口使用相同页映射、边框和页面属性，缺失页不回退到其他结果。"""
+    from docvortex.document.pdf.document import PDFDocument
+    from docvortex.visualization import render_layout_pdf
+    from mineru.kit.gradio.preview import draw_layout_overlay
+
+    source = tmp_path / "source.pdf"
+    source.write_bytes(_pdf_bytes(page_count=3))
+    middle = _middle_json(page_indices=(1, 2))
+    before = middle.model_dump(mode="json")
+    expected = render_layout_pdf(source.read_bytes(), middle.pages, page_indices=page_indices or None)
+    preview = tmp_path / "preview" / "layout.pdf"
+    draw_layout_overlay(middle, source, preview, page_indices=page_indices)
+    document_output = tmp_path / "document.pdf"
+    with PDFDocument(source.read_bytes()) as document:
+        document.draw_layout_bbox(middle.pages, str(document_output), page_indices=page_indices or None)
+    expected_pages = PdfReader(io.BytesIO(expected)).pages
+    for output in (preview, document_output):
+        actual_pages = PdfReader(output).pages
+        assert len(actual_pages) == 3
+        for actual, wanted in zip(actual_pages, expected_pages):
+            assert actual.mediabox == wanted.mediabox
+            assert actual.cropbox == wanted.cropbox
+            assert actual.rotation == wanted.rotation
+            wanted_content = wanted.get_contents()
+            if wanted_content is None:
+                assert actual.get_contents() is None
+            else:
+                assert actual.get_contents().get_data() == wanted_content.get_data()
+    assert middle.model_dump(mode="json") == before
+    missing_page = 1 if page_indices else 0
+    assert expected_pages[missing_page].get_contents() is None
+
+
+def test_layout_preview_rejects_invalid_input_without_writing(tmp_path: Path) -> None:
+    """薄封装保留输入校验，并在映射非法时不写入布局产物。"""
+    from mineru.kit.gradio.preview import draw_layout_overlay
+
+    source = tmp_path / "source.pdf"
+    output = tmp_path / "layout.pdf"
+    with pytest.raises(TypeError, match="MiddleJson"):
+        draw_layout_overlay({}, source, output)
+    with pytest.raises(FileNotFoundError):
+        draw_layout_overlay(_middle_json(), source, output)
+    source.write_bytes(_pdf_bytes())
+    with pytest.raises(ValueError, match="page_indices length"):
+        draw_layout_overlay(_middle_json(), source, output, page_indices=(0, 1))
+    assert not output.exists()
+
+
+def test_shared_layout_failure_keeps_other_gradio_artifacts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """共享绘制失败仍由 Gradio 记录告警，其他解析文件和下载包继续生成。"""
+    from mineru.kit.gradio import artifacts as artifact_module
+    from mineru.kit.gradio import preview
+
+    def fail_layout(*_args: Any, **_kwargs: Any) -> bytes:
+        """模拟共享绘制引擎失败以验证产品层降级路径。"""
+        raise ValueError("layout fixture failure")
+
+    warnings = Mock()
+    monkeypatch.setattr(preview, "render_layout_pdf", fail_layout)
+    monkeypatch.setattr(artifact_module.logger, "warning", warnings)
+    source = tmp_path / "source.pdf"
+    source.write_bytes(_pdf_bytes())
+    artifacts = persist_parse_result(
+        ParseResult(middle_json=_middle_json()), source, output_root=tmp_path / "output", page_range=""
+    )
+    assert artifacts.layout_pdf_path is None
+    assert artifacts.origin_pdf_path.is_file()
+    assert artifacts.middle_json_path.is_file()
+    assert artifacts.markdown_path.is_file()
+    assert not (artifacts.root / "layout.pdf").exists()
+    assert any("Skipping Gradio layout overlay" in call.args[0] for call in warnings.call_args_list)
+    with zipfile.ZipFile(artifacts.bundle_zip_path) as archive:
+        assert "origin.pdf" in archive.namelist()
+        assert "middle_json.json" in archive.namelist()
+        assert "layout.pdf" not in archive.namelist()

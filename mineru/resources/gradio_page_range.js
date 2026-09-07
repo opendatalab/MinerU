@@ -1,6 +1,7 @@
 (tiers, flashOnlyExtensions, maxPages, file, position, metadata, previous, handleAValue, handleBValue, tierSelection) => {
     // 纯前端状态转换：经原生组件事件读写值，不逐次向 Python 发送拖动请求。
     // 内部元数据使用 JSON 文本，避免不同 Gradio 版本的 JSON 组件封装差异。
+    const { text, message } = window.__mineruI18n;
     metadata = JSON.parse(metadata || "{}");
     previous = JSON.parse(previous || "{}");
     tierSelection = JSON.parse(tierSelection);
@@ -65,26 +66,26 @@
     const start = Math.min(state.handle_a, state.handle_b);
     const end = Math.max(state.handle_a, state.handle_b);
     const selected = end - start + 1;
-    const limitText = maxPages === null ? "不限页数" : `最多 ${maxPages} 页`;
+    const limitText = maxPages === null ? text("page_unlimited") : text("page_limit", { count: maxPages });
     const summary = `<div class="mineru-page-values" data-range-visible="${visible}" data-start-handle="${state.start_handle}">`
-        + `<span>起始页 <strong>${start}</strong></span>`
-        + `<span class="mineru-page-selection">[${start}-${end}] · ${selected} 页</span>`
-        + `<span>结束页 <strong>${end}</strong></span></div>`
+        + `<span>${text("start_page")} <strong>${start}</strong></span>`
+        + `<span class="mineru-page-selection">[${start}-${end}] · ${text("page_count", { count: selected })}</span>`
+        + `<span>${text("end_page")} <strong>${end}</strong></span></div>`
         + `<div class="mineru-page-axis"><span>1</span><span>${limitText}</span><span>${count}</span></div>`;
-    const notice = flashUnavailable ? "该格式仅支持 Flash，当前服务不可用"
-        : needsRange && !count ? (state.error || "正在读取 PDF 页数…") : "";
+    const notice = flashUnavailable ? text("flash_unavailable")
+        : needsRange && !count ? (message(state.error) || text("reading_pages")) : "";
     const range = visible ? (start === end ? String(start) : `${start}-${end}`) : "";
     // 两个端点始终保留完整文档跨度，不能把轨道范围截短为页数上限。
     const slider = (value, label) => update({ minimum: 1, maximum: Math.max(1, count), value, interactive, label });
     return [
-        slider(state.handle_a, state.start_handle === "a" ? "起始页" : "结束页"),
-        slider(state.handle_b, state.start_handle === "b" ? "起始页" : "结束页"),
+        slider(state.handle_a, state.start_handle === "a" ? text("start_page") : text("end_page")),
+        slider(state.handle_b, state.start_handle === "b" ? text("start_page") : text("end_page")),
         summary, range, JSON.stringify(state),
         update({ interactive: Boolean(path) && !flashUnavailable && (!needsRange || count > 0) }),
         update({ value: escapeHtml(notice), visible: Boolean(notice) }),
         // 同一事件同时更新值、标签和页码，程序赋值无需再触发 tier.input。
         update({ value: effectivePosition, interactive: !flashOnly && tiers.length > 1 }),
-        `解析 tier：${selectedTier}${flashUnavailable ? "（当前服务不可用）" : ""}`,
+        text("tier_value", { tier: selectedTier, notice: flashUnavailable ? text("tier_unavailable_suffix") : "" }),
         JSON.stringify(tierSelection),
     ];
 }

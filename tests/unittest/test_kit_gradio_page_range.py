@@ -18,6 +18,7 @@ from typer.testing import CliRunner
 from mineru.errors import InvalidRequestError
 from mineru.filetypes import FLASH_ONLY_PARSE_EXTENSIONS, TIERED_PARSE_EXTENSIONS
 from mineru.kit.gradio import app as gradio_app
+from mineru.kit.gradio.i18n import MESSAGES
 from mineru.kit.gradio import page_range as ranges
 from mineru.kit.gradio.client import V1ArtifactError, V1ServerCapabilities
 from mineru.kit.main import app
@@ -377,9 +378,9 @@ def test_native_range_components_and_frontend_only_events(tmp_path: Path) -> Non
     import gradio as gr
 
     if gradio_app._gradio_major_version(gr) >= 6:
-        assert set(demo._mineru_kit_launch_kwargs) == {"css", "js"}
+        assert set(demo._mineru_kit_launch_kwargs) == {"css", "js", "i18n"}
     else:
-        assert demo._mineru_kit_launch_kwargs == {}
+        assert set(demo._mineru_kit_launch_kwargs) == {"i18n"}
         assert demo.css and demo.js
 
 
@@ -395,6 +396,7 @@ def test_frontend_page_range_state_machine() -> None:
             json.dumps(sorted(FLASH_ONLY_PARSE_EXTENSIONS)),
             json.dumps(sorted(TIERED_PARSE_EXTENSIONS)),
         ],
+        input=json.dumps(MESSAGES),
         capture_output=True,
         text=True,
         check=False,
