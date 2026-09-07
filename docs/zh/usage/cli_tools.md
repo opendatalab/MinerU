@@ -69,7 +69,7 @@ mineru-kit vlm-server --engine auto --port 30000
 - `MINERU_LOCAL_API_STARTUP_TIMEOUT_SECONDS`：Gradio 托管本地 V1 服务的启动超时，默认 `300` 秒。
 - `MINERU_API_ENABLE_FASTAPI_DOCS`：是否为 V1 API Server 启用 `/docs`、`/openapi.json` 和 `/redoc`，默认 `true`。
 - `MINERU_PDF_RENDER_TIMEOUT` / `MINERU_PDF_RENDER_THREADS`：PDF 渲染超时和 worker 数量。
-- `MINERU_PROCESSING_WINDOW_SIZE`：大文档处理窗口大小。
+- `MINERU_PROCESSING_WINDOW_SIZE`：大文档处理窗口大小。Flash 原生文本路径仅渲染有视觉块的页面，仍遵守该窗口边界、渲染超时和 worker 配置，并按 32 MiB 像素预算进一步分批。OCR 和其他档位保持整窗口渲染。
 - `MINERU_INTRA_OP_NUM_THREADS` / `MINERU_INTER_OP_NUM_THREADS`：ONNX 算子线程配置。
 
 当前默认值以各命令的 `--help` 和[模型源说明](./model_source.md)为准。

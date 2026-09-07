@@ -5,9 +5,7 @@ from __future__ import annotations
 import base64
 import struct
 
-_TINY_GIF = base64.b64decode(
-    "R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
-)
+_TINY_GIF = base64.b64decode("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7")
 
 
 def _wmf_record(function: int, payload: bytes = b"") -> bytes:
@@ -63,14 +61,6 @@ def build_wmf(
     return placeable_header + metafile
 
 
-def pre6_wmf_comment(mtef: bytes) -> bytes:
-    """构造 MathType 6.0b 前的单 comment MTEF 头。"""
-
-    if len(mtef) > 0xFFFF:
-        raise ValueError("pre-6 WMF fixture MTEF is too large")
-    return b"MathType" + struct.pack("<HH", 0x5555, len(mtef)) + mtef
-
-
 def baseline_wmf_comment(delta: int = 0) -> bytes:
     """构造必须被忽略的 MathType baseline comment。"""
 
@@ -85,13 +75,7 @@ def apps_mfcc_comment(
 ) -> bytes:
     """构造一个 AppsMFCC v1 chunk。"""
 
-    return (
-        b"AppsMFCC"
-        + struct.pack("<HII", 1, total_length, len(chunk))
-        + signature.encode("ascii")
-        + b"\x00"
-        + chunk
-    )
+    return b"AppsMFCC" + struct.pack("<HII", 1, total_length, len(chunk)) + signature.encode("ascii") + b"\x00" + chunk
 
 
 def apps_mfcc_comments(
@@ -125,8 +109,7 @@ def _gif_application_extension(
     if len(authentication) != 3 or not 0 < chunk_size <= 255:
         raise ValueError("GIF application fixture parameters are invalid")
     subblocks = b"".join(
-        bytes([len(payload[start : start + chunk_size])])
-        + payload[start : start + chunk_size]
+        bytes([len(payload[start : start + chunk_size])]) + payload[start : start + chunk_size]
         for start in range(0, len(payload), chunk_size)
     )
     return b"\x21\xff\x0bMathType" + authentication + subblocks + b"\x00"
@@ -138,11 +121,7 @@ def build_gif_with_extensions(extensions: list[bytes]) -> bytes:
     image_separator = _TINY_GIF.find(b"\x2c")
     if image_separator < 0:
         raise ValueError("tiny GIF fixture has no image descriptor")
-    return (
-        _TINY_GIF[:image_separator]
-        + b"".join(extensions)
-        + _TINY_GIF[image_separator:]
-    )
+    return _TINY_GIF[:image_separator] + b"".join(extensions) + _TINY_GIF[image_separator:]
 
 
 def gif_mtef_extension(
@@ -167,9 +146,7 @@ def build_gif_with_mtef(
 ) -> bytes:
     """构造带 MathType/001 MTEF 及可选 002 baseline 的有效 GIF。"""
 
-    extensions = [
-        gif_mtef_extension(mtef, chunk_size=chunk_size)
-    ]
+    extensions = [gif_mtef_extension(mtef, chunk_size=chunk_size)]
     if include_baseline:
         extensions.insert(
             0,

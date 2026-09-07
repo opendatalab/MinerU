@@ -4,12 +4,10 @@ from __future__ import annotations
 
 import base64
 import struct
-from typing import cast
 import uuid
+from typing import cast
 
-_TINY_PNG = base64.b64decode(
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC"
-)
+_TINY_PNG = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAIAAACQd1PeAAAADUlEQVR4nGP4z8AAAAMBAQDJ/pLvAAAAAElFTkSuQmCC")
 
 
 def mtef_char(value: str, *, embellishments: tuple[int, ...] = ()) -> bytes:
@@ -71,23 +69,26 @@ def mtef_equation(*records: bytes) -> bytes:
     """构造完整 MTEF v3 头、FULL size 和根 LINE。"""
 
     header = bytes([3, 1, 1, 3, 0])
-    return header + b"\x0A" + mtef_line(*records) + b"\x00"
+    return header + b"\x0a" + mtef_line(*records) + b"\x00"
 
 
 def equation_native(mtef: bytes) -> bytes:
     """为 MTEF 添加 28 字节 EQNOLEFILEHDR。"""
 
-    return struct.pack(
-        "<HIHI4I",
-        28,
-        0x0002_0000,
-        0xC1C2,
-        len(mtef),
-        0,
-        0,
-        0,
-        0,
-    ) + mtef
+    return (
+        struct.pack(
+            "<HIHI4I",
+            28,
+            0x0002_0000,
+            0xC1C2,
+            len(mtef),
+            0,
+            0,
+            0,
+            0,
+        )
+        + mtef
+    )
 
 
 def formula_corpus() -> list[tuple[str, bytes, str]]:
@@ -396,11 +397,7 @@ def build_equation_doc(
         if storage_id in previews:
             preview_offset = len(data_stream)
             preview_payload = custom_previews.get(storage_id)
-            data_stream.extend(
-                _raw_picf(preview_payload)
-                if preview_payload is not None
-                else _png_picf(_TINY_PNG)
-            )
+            data_stream.extend(_raw_picf(preview_payload) if preview_payload is not None else _png_picf(_TINY_PNG))
             anchors.append((separator_cp + 1, preview_offset, False))
         text_parts.append(field)
         cp_cursor += len(field)

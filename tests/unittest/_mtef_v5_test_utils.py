@@ -59,11 +59,7 @@ def v5_char(
     if not omit_mtcode:
         payload += struct.pack("<H", ord(value))
     if font_position is not None:
-        payload += (
-            bytes([font_position])
-            if font_position <= 0xFF
-            else struct.pack("<H", font_position)
-        )
+        payload += bytes([font_position]) if font_position <= 0xFF else struct.pack("<H", font_position)
     if embellishments:
         payload += b"".join(bytes([6, 0, item]) for item in embellishments)
         payload += b"\x00"
@@ -94,13 +90,7 @@ def v5_template(
 ) -> bytes:
     """构造一个含完整 subobject list 的 MTEF v5 TMPL。"""
 
-    return (
-        bytes([3, 0, selector])
-        + v5_variation(variation)
-        + bytes([options])
-        + b"".join(slots)
-        + b"\x00"
-    )
+    return bytes([3, 0, selector]) + v5_variation(variation) + bytes([options]) + b"".join(slots) + b"\x00"
 
 
 def v5_pile(*lines: bytes) -> bytes:
@@ -119,47 +109,7 @@ def v5_matrix(rows: list[list[bytes]]) -> bytes:
     row_parts = b"\x00" * ((2 * (row_count + 1) + 7) // 8)
     col_parts = b"\x00" * ((2 * (col_count + 1) + 7) // 8)
     cells = b"".join(v5_line(cell) for row in rows for cell in row)
-    return (
-        bytes([5, 0, 0, 2, 0, row_count, col_count])
-        + row_parts
-        + col_parts
-        + cells
-        + b"\x00"
-    )
-
-
-def v5_encoding_definition(name: str) -> bytes:
-    """构造一个 ENCODING_DEF。"""
-
-    return b"\x13" + name.encode("ascii") + b"\x00"
-
-
-def v5_font_definition(encoding_index: int, name: str) -> bytes:
-    """构造一个 FONT_DEF。"""
-
-    return b"\x11" + v5_unsigned(encoding_index) + name.encode("ascii") + b"\x00"
-
-
-def v5_font_style_definition(font_index: int, style_bits: int) -> bytes:
-    """构造一个 FONT_STYLE_DEF。"""
-
-    return b"\x08" + v5_unsigned(font_index) + bytes([style_bits])
-
-
-def v5_equation_preferences(
-    styles: list[tuple[int, int] | None],
-) -> bytes:
-    """构造尺寸和间距为空、仅含 style definitions 的 EQN_PREFS。"""
-
-    payload = bytearray([18, 0, 0, 0, len(styles)])
-    for style in styles:
-        if style is None:
-            payload.extend(v5_unsigned(0))
-        else:
-            font_index, style_bits = style
-            payload.extend(v5_unsigned(font_index))
-            payload.append(style_bits)
-    return bytes(payload)
+    return bytes([5, 0, 0, 2, 0, row_count, col_count]) + row_parts + col_parts + cells + b"\x00"
 
 
 def v5_future_record(payload: bytes) -> bytes:
@@ -269,67 +219,4 @@ def v5_formula_corpus() -> list[tuple[str, bytes, str]]:
         ),
         ("box", v5_equation(v5_template(37, v5_line(v5_char("x")))), r"\boxed{x}"),
         ("future", v5_equation(v5_future_record(b"future"), v5_char("x")), "x"),
-    ]
-
-
-def v5_template_corpus() -> list[tuple[str, bytes, str]]:
-    """返回覆盖 v5 各类标准 template selector 的精确语料。"""
-
-    line_x = v5_line(v5_char("x"))
-    line_a = v5_line(v5_char("a"))
-    line_b = v5_line(v5_char("b"))
-    line_i = v5_line(v5_char("i"))
-    line_n = v5_line(v5_char("n"))
-    null_line = v5_line(null=True)
-    cases = [
-        ("angle", v5_template(0, line_x, variation=3), r"\left\langle x\right\rangle"),
-        ("parenthesis", v5_template(1, line_x, variation=3), r"\left(x\right)"),
-        ("brace", v5_template(2, line_x, variation=3), r"\left\{x\right\}"),
-        ("bracket", v5_template(3, line_x, variation=3), r"\left[x\right]"),
-        ("bar", v5_template(4, line_x, variation=3), r"\left|x\right|"),
-        ("double_bar", v5_template(5, line_x, variation=3), r"\left\|x\right\|"),
-        ("floor", v5_template(6, line_x, variation=3), r"\left\lfloor x\right\rfloor"),
-        ("ceiling", v5_template(7, line_x, variation=3), r"\left\lceil x\right\rceil"),
-        ("white_bracket", v5_template(8, line_x, variation=3), r"\left\llbracket x\right\rrbracket"),
-        ("slash_fraction", v5_template(11, line_a, line_b, variation=2), r"{a}/{b}"),
-        ("double_underbar", v5_template(12, line_x, variation=1), r"\underline{\underline{x}}"),
-        ("overbar", v5_template(13, line_x), r"\overline{x}"),
-        ("arrow", v5_template(14, line_a, variation=0x20), r"\overset{a}{\rightarrow}"),
-        ("product", v5_template(17, line_x, line_n, line_i, v5_char("∏"), variation=3), r"\prod_{i}^{n}{x}"),
-        ("coproduct", v5_template(18, line_x, line_n, line_i, v5_char("∐"), variation=3), r"\coprod_{i}^{n}{x}"),
-        ("union", v5_template(19, line_x, line_n, line_i, v5_char("∪"), variation=3), r"\bigcup_{i}^{n}{x}"),
-        ("intersection", v5_template(20, line_x, line_n, line_i, v5_char("∩"), variation=3), r"\bigcap_{i}^{n}{x}"),
-        ("custom_bigop", v5_template(21, line_x, line_n, line_i, v5_char("∫"), variation=3), r"\int_{i}^{n}{x}"),
-        ("sum_style_bigop", v5_template(22, line_x, line_n, line_i, v5_char("∑"), variation=0x43), r"\sum_{i}^{n}{x}"),
-        (
-            "two_byte_variation",
-            v5_template(
-                15,
-                line_x,
-                null_line,
-                null_line,
-                v5_char("∫"),
-                variation=0x100,
-            ),
-            r"\int{x}",
-        ),
-        ("limit", v5_template(23, line_x, v5_line(v5_char("0")), v5_line(v5_char("1"))), r"\lim_{0}^{1}{x}"),
-        ("overbrace", v5_template(24, line_x, line_n, variation=1), r"\overbrace{x}^{n}"),
-        ("underbracket", v5_template(25, line_x, line_n), r"\underbracket{x}_{n}"),
-        ("long_division", v5_template(26, line_x, v5_line(v5_char("q")), variation=1), r"\overline{q}\smash{\big) x}"),
-        ("subscript", v5_template(27, line_i, null_line), r"_{i}"),
-        ("superscript", v5_template(28, null_line, v5_line(v5_char("2"))), r"^{2}"),
-        ("prescripts", v5_template(29, line_i, v5_line(v5_char("2")), variation=1), r"{}_{i}^{2}"),
-        ("under_vector", v5_template(31, line_x, variation=0x05), r"\underleftarrow{x}"),
-        ("tilde", v5_template(32, line_x), r"\widetilde{x}"),
-        ("hat", v5_template(33, line_x), r"\widehat{x}"),
-        ("arc", v5_template(34, line_x), r"\overparen{x}"),
-        ("cancel", v5_template(36, line_x, variation=2), r"\cancel{x}"),
-        ("back_cancel", v5_template(36, line_x, variation=4), r"\bcancel{x}"),
-        ("cross_cancel", v5_template(36, line_x, variation=6), r"\xcancel{x}"),
-        ("box", v5_template(37, line_x, variation=0x1E), r"\boxed{x}"),
-    ]
-    return [
-        (name, v5_equation(template), expected)
-        for name, template, expected in cases
     ]

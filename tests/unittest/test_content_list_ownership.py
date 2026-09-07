@@ -51,7 +51,7 @@ def test_migrated_inline_delimiter_cases(version: int, monkeypatch: pytest.Monke
                 ],
             )
         ],
-        file_suffix="html",
+        metadata={"file_suffix": "html", "producer": {"name": "docvortex", "version": "0.2.0"}},
         is_full_document=True,
     )
     before = middle.to_dict(skip_defaults=False)

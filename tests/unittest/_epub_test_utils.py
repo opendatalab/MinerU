@@ -5,7 +5,6 @@ import html
 from io import BytesIO
 from zipfile import ZIP_DEFLATED, ZIP_STORED, ZipFile
 
-
 _PNG_BYTES = base64.b64decode("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=")
 
 
@@ -297,6 +296,3 @@ def build_epub_table_toc_fixture() -> bytes:
         package.writestr("EPUB/contents.xhtml", contents, compress_type=ZIP_DEFLATED)
         package.writestr("EPUB/chapter.xhtml", chapter, compress_type=ZIP_DEFLATED)
     return output.getvalue()
-
-
-__all__ = ["build_epub2_fixture", "build_epub_fixture", "build_epub_notes_fixture", "build_epub_table_toc_fixture"]

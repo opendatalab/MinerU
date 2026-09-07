@@ -7,21 +7,17 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
-from docvortex.document.pdf.text.contracts import Bbox
-from docvortex.document.pdf.text.contracts import Char
+from docvortex.analyzers.native.pdf.text_styles import PDF_NATIVE_SCRIPT_MARKUP_KEY
+from docvortex.document.pdf.document import PDFDocument, get_lines_from_chars
+from docvortex.document.pdf.text.contracts import Bbox, Char
 
 from mineru.backend.analysis.pdf.text import native
 from mineru.backend.analysis.pdf.text.models import _AnalyzeSpan
-from docvortex.document.pdf.document import PDFDocument
-from docvortex.document.pdf.document import get_lines_from_chars
-from docvortex.analyzers.native.pdf.text_styles import PDF_NATIVE_SCRIPT_MARKUP_KEY
 from mineru.types import BBox, ContentType
-
 
 _PROJECT_ROOT = Path(__file__).resolve().parents[2]
 _DEMO_PDF_DIR = _PROJECT_ROOT / "demo" / "pdfs"
 _ZH_2_SOURCE = "中文论文2.pdf"
-_FIXTURE_PDF_DIR = Path(__file__).resolve().parent / "pdfs"
 _PDF_CONTROL_CHARS = {"\r", "\n", "\x02", "\ufffe", "\uffff"}
 
 
@@ -181,6 +177,21 @@ def _demo_chars(source_name: str, page_index: int, probe: str, *, selection: str
 def _render_demo_line(source_name: str, page_index: int, probe: str) -> str:
     """使用同一生产回填路径验证真实文档物理行的文本和上下标。"""
     return _render_chars(_demo_chars(source_name, page_index, probe))
+
+
+def _residual_script_case(source_name: str, probe: str = "") -> tuple[dict, list[_ScriptFixture]]:
+    """读取残留 PDF 的原始字符快照，保持 Hybrid 输入与几何证据不变。"""
+    payload = json.loads((_PROJECT_ROOT / "tests/fixtures/hybrid_pdf_script_inputs.json").read_text(encoding="utf-8"))
+    case = next(case for case in payload["cases"] if Path(case["source"]).name == source_name and case["probe"] == probe)
+    fragments = [
+        _ScriptFixture(
+            chars=[{**char, "bbox": Bbox(char["bbox"])} for char in fragment["chars"]],
+            tight_bboxes={int(key): tuple(value) for key, value in fragment["tight_bboxes"].items()},
+            origins={int(key): tuple(value) for key, value in fragment["origins"].items()},
+        )
+        for fragment in case["fragments"]
+    ]
+    return case, fragments
 
 
 def _script_char(
@@ -1004,11 +1015,7 @@ def test_synthetic_cjk_plain_text_does_not_gain_script_tags(
 ) -> None:
     """验证合成项目符号、混合字体和文件名降部字符不会触发上下标误判。"""
 
-    matching_lines = _lines_chars_containing(
-        _FIXTURE_PDF_DIR / "native_cjk_layout_synthetic.pdf",
-        2,
-        probe,
-    )
+    _, matching_lines = _residual_script_case("native_cjk_layout_synthetic.pdf", probe)
     contents = [_render_chars(chars) for chars in matching_lines]
     font_names = {str((char.get("font") or {}).get("name", "")) for fixture in matching_lines for char in fixture.chars}
 
@@ -1019,26 +1026,11 @@ def test_synthetic_cjk_plain_text_does_not_gain_script_tags(
 
 def test_rotated_powerpoint_page_keeps_all_plain_text_on_baseline() -> None:
     """验证 PowerPoint 旋转页的紧字形框不会把普通升部和降部误判为上下标。"""
-    pdf_path = _FIXTURE_PDF_DIR / "metabolic_pathway_page_3.pdf"
-    with PDFDocument(str(pdf_path)) as document:
-        page = document[0]
-        page_rotation = page.rotation
-        geometry = page.get_chars_with_geometry()
-        lines = get_lines_from_chars(geometry.chars)
+    case, fragments = _residual_script_case("metabolic_pathway_page_3.pdf")
+    rendered_lines = [_render_chars(fragment) for fragment in fragments]
 
-    rendered_lines = [
-        _render_chars(
-            _ScriptFixture(
-                chars=[char for span in line["spans"] for char in span.get("chars", [])],
-                tight_bboxes=geometry.tight_bboxes,
-                origins=geometry.origins,
-            )
-        )
-        for line in lines
-    ]
-
-    assert page_rotation == 90
-    assert any((char.get("font") or {}).get("name") == "CalifornianFB-Reg" for char in geometry.chars)
+    assert case["page_rotation"] == 90
+    assert any((char.get("font") or {}).get("name") == "CalifornianFB-Reg" for fragment in fragments for char in fragment.chars)
     assert len(rendered_lines) == 33
     assert rendered_lines[0] == "Energy Metabolism"
     assert all("<sup>" not in content and "<sub>" not in content for content in rendered_lines)

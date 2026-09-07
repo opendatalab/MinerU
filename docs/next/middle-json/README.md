@@ -34,7 +34,7 @@ InlineContentBlock
 
 Middle JSON 下一版要达到以下目标:
 
-1. 统一顶层 envelope，运行时只接受 schema 2.0 `pages` 结构；旧 payload（3.4.5 `pdf_info`、schema 1.0 `pages` 包装）仅通过 `from_dict()` 的 legacy 分支单向迁移，无版本号的裸 `{"pages": []}` 直接拒绝并要求重新解析。
+1. 统一使用带协议身份和 metadata 的 JSON 2.0；通用接口严格读取，Doclib 历史数据经独立缓存边界转换，见 [envelope.md](envelope.md)。
 2. 明确 `PageInfo` / `Block` / `InlineSpan` 字段契约。
 3. 为每个 backend 提供 normalization 任务清单。
 4. 定义 Agent 可引用的稳定 locator 规则。

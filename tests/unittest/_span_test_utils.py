@@ -16,11 +16,6 @@ def equation(latex: str) -> dict[str, str]:
     return {"type": "equation_inline", "content": latex}
 
 
-def code(content: str) -> dict[str, str]:
-    """构造测试用行内代码 Span。"""
-    return {"type": "code_inline", "content": content}
-
-
 def hyperlink(url: str, content: str) -> dict[str, Any]:
     """构造测试用超链接 Span。"""
     return {"type": "hyperlink", "url": url, "content": inline(content)}
@@ -73,15 +68,3 @@ def inline_urls(spans: Any) -> list[str]:
 def visible_content(content: Any) -> str:
     """统一提取专用字符串内容或 InlineSpan 内容的可见文字。"""
     return content if isinstance(content, str) else inline_text(content)
-
-
-__all__ = [
-    "code",
-    "equation",
-    "hyperlink",
-    "inline",
-    "inline_items",
-    "inline_text",
-    "inline_urls",
-    "visible_content",
-]

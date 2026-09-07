@@ -1,8 +1,7 @@
 """Compaction — merges overlapping / adjacent done parse batches to keep the parses table lean."""
 
 from __future__ import annotations
-from docvortex.schema import Producer
-from ...integrations.docvortex import build_metadata
+from ...parser.base import ParseResult
 
 import asyncio
 import json
@@ -12,10 +11,10 @@ import time
 from collections.abc import Sequence
 from typing import Any, cast
 
-from ...parser.base import MIDDLE_JSON_SCHEMA_VERSION
 from ...parser.page_range import format_page_range
 from ...types import Tier
 from ..core.db import DatabaseManager
+from ..core.middle_json import read_cached_middle_json
 from ..rows import ParseBatchRow, ParseGroupRow, ParseRow
 from ..services.parse_svc import parse_batch_json_path, parse_page_range_set
 from ..types import PARSE_STATUS_DONE, PARSE_STATUS_SUPERSEDED
@@ -24,46 +23,8 @@ logger = logging.getLogger("mineru.compaction")
 
 
 def _normalize_batch_pages(batch_payload: dict[str, Any]) -> list[dict[str, Any]]:
-    """统一读取 2.0 batch，或把 3.4.5/1.0 页面转换为当前 page 字典。"""
-    schema_version = batch_payload.get("schema_version")
-    raw_pages = batch_payload.get("pages")
-    if schema_version == MIDDLE_JSON_SCHEMA_VERSION:
-        return raw_pages if isinstance(raw_pages, list) else []
-
-    if schema_version == "1.0":
-        pass
-    elif schema_version is None:
-        raw_pages = batch_payload.get("pdf_info")
-    else:
-        raw_pages = None
-    if not isinstance(raw_pages, list) or any(not isinstance(page, dict) for page in raw_pages):
-        raise ValueError("stale Middle JSON cache requires source reparse")
-
-    from docvortex.compat.legacy_schema_adapter import legacy_page_to_model_list
-    from docvortex.postprocess.pages import model_json_to_pages
-    from ...parser.base import (
-        _legacy_effort,
-        _legacy_file_suffix,
-        _legacy_page_index_map,
-        _legacy_parse_mode,
-    )
-    from ...types import ModelJson
-    from ...version import __version__ as current_mineru_version
-
-    source_version = batch_payload.get("_version_name", batch_payload.get("mineru_version"))
-    mineru_version = (
-        source_version.strip() if isinstance(source_version, str) and source_version.strip() else current_mineru_version
-    )
-    model_json = ModelJson(
-        pages=[legacy_page_to_model_list(page) for page in raw_pages],
-        page_index_map=_legacy_page_index_map(raw_pages),
-        file_suffix=_legacy_file_suffix(batch_payload),
-        producer=Producer(name="mineru", version=mineru_version),
-        extensions=build_metadata(
-            effort=_legacy_effort(batch_payload), parse_mode=_legacy_parse_mode(batch_payload), mineru_version=mineru_version
-        ),
-    )
-    return [page.to_dict() for page in model_json_to_pages(model_json)]
+    """读取当前和受支持的历史批次，仅在内存中统一页面结构。"""
+    return [page.to_dict() for page in read_cached_middle_json(batch_payload).pages]
 
 
 class Compaction:
@@ -189,7 +150,8 @@ class Compaction:
             try:
                 with open(fpath, encoding="utf-8") as f:
                     batch_payload = json.load(f)
-                batch_pages = _normalize_batch_pages(batch_payload)
+                middle_json = read_cached_middle_json(batch_payload)
+                batch_pages = [page.to_dict() for page in middle_json.pages]
             except Exception:
                 return None
             if not batch_pages:
@@ -199,12 +161,11 @@ class Compaction:
                 if type(page_idx) is not int or page_idx < 0:
                     return None
                 pages_by_page_idx[page_idx] = page
+            current_envelope = {key: value for key, value in middle_json.to_dict().items() if key != "pages"}
             if not envelope:
-                envelope = {
-                    key: batch_payload[key]
-                    for key in ("is_full_document", "file_suffix", "effort", "parse_mode", "mineru_version")
-                    if key in batch_payload
-                }
+                envelope = current_envelope
+            elif json.dumps(envelope, sort_keys=True) != json.dumps(current_envelope, sort_keys=True):
+                return None
         return (pages_by_page_idx, envelope) if pages_by_page_idx else None
 
     def _write_compacted_json_files(
@@ -228,8 +189,7 @@ class Compaction:
                     raise ValueError(f"Compacted page range has no source pages: {page_range}")
                 final_path = parse_batch_json_path(self.data_dir, sha256, tier, page_range, max_done_at)
                 temp_path = f"{final_path}.tmp-{time.time_ns()}"
-                payload: dict[str, Any] = {"schema_version": MIDDLE_JSON_SCHEMA_VERSION, "pages": json_pages}
-                payload.update(envelope)
+                payload = ParseResult.from_dict({**envelope, "pages": json_pages}).to_dict()
                 with open(temp_path, "w", encoding="utf-8") as f:
                     json.dump(payload, f, ensure_ascii=False, indent=2)
                 prepared.append((temp_path, final_path))

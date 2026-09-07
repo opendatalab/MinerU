@@ -108,16 +108,11 @@ def build_equation_ppt(
         )
 
     slide_persist_ids = list(range(2, 2 + len(formulas)))
-    storage_persist_ids = list(
-        range(2 + len(formulas), 2 + len(formulas) * 2)
-    )
+    storage_persist_ids = list(range(2 + len(formulas), 2 + len(formulas) * 2))
     slide_list = _ppt_container(
         0,
         0x0FF0,
-        b"".join(
-            persist_atom(persist_id, 256 + index)
-            for index, persist_id in enumerate(slide_persist_ids)
-        ),
+        b"".join(persist_atom(persist_id, 256 + index) for index, persist_id in enumerate(slide_persist_ids)),
     )
     external_objects = []
     for index, storage_id in enumerate(storage_persist_ids, start=1):
@@ -216,9 +211,7 @@ def build_equation_ppt(
         0x0FF6,
         struct.pack("<III", 20, 0xE391C05F, edit_offset),
     )
-    return _build_cfb(
-        [("Current User", current_user), ("PowerPoint Document", stream)]
-    )
+    return _build_cfb([("Current User", current_user), ("PowerPoint Document", stream)])
 
 
 def _build_cfb(streams: list[tuple[str, bytes]]) -> bytes:
@@ -418,9 +411,7 @@ def build_multimaster_ppt() -> bytes:
     for persist_id, record in records:
         offsets[persist_id] = len(stream)
         stream += record
-    directory = struct.pack("<I", 1 | (5 << 20)) + struct.pack(
-        "<5I", *(offsets[index] for index in range(1, 6))
-    )
+    directory = struct.pack("<I", 1 | (5 << 20)) + struct.pack("<5I", *(offsets[index] for index in range(1, 6)))
     directory_offset = len(stream)
     stream += _ppt_record(0, 0x1772, directory)
     edit_offset = len(stream)

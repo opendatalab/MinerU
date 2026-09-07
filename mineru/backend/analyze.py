@@ -2,7 +2,7 @@
 """统一 PDF、EPUB、HTML、OFD、CSV 与 Office/RTF 文档分析的稳定公共门面。"""
 
 from __future__ import annotations
-from docvortex.schema import Producer
+from docvortex.schema import DocumentMetadata, Producer
 from ..integrations.docvortex import build_metadata
 
 import asyncio
@@ -81,9 +81,8 @@ def doc_analyze(
     model_json = ModelJson(
         pages=result.model_list,
         page_index_map=page_index_map or [],
-        file_suffix=file_suffix,
-        producer=Producer(name="mineru", version=mineru_version),
-        extensions=build_metadata(effort=result.effort, parse_mode=result.parse_mode, mineru_version=mineru_version),
+        metadata=DocumentMetadata(file_suffix=file_suffix, producer=Producer(name="mineru", version=mineru_version)),
+        extensions=build_metadata(effort=result.effort, parse_mode=result.parse_mode),
     )
     from .postprocess.document import model_json_to_middle_json
 

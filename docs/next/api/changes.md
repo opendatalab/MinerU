@@ -1,3 +1,9 @@
+# 共享文档 JSON 2.0
+
+Model/Middle 输出切换为统一 schema 身份及 metadata 分组，产品信息为实际 tier/parse_mode。
+历史 JSON 不再读取，自建 HTTP 服务与客户端需同步升级；请求参数和输出文件名不变。
+详见 [协议](../middle-json/envelope.md) 和 [迁移](../middle-json/migration.md)。
+
 # API 变更记录
 
 状态: Implemented

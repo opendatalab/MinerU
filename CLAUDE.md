@@ -173,7 +173,7 @@ MinerU 保留 OCR/VLM/Hybrid 推理、模型生命周期、LLM 增强、tier 策
 
 DocVortex 的 ModelJson/MiddleJson 原生 JSON 使用独立 schema 标识和版本 1.0，持有 `producer` 与 `extensions`。MinerU 的 `effort`、`parse_mode`、`mineru_version` 位于 `extensions["mineru"]`，由 `mineru.integrations.docvortex.build_metadata()` 校验。
 
-MinerU 的 ParseResult、CLI、HTTP API 和 Doclib 继续通过 `docvortex.compat.mineru` 读写原有 schema 2.0 封装，并保留已有旧结果读取边界。不要为旧底层构造参数增加动态兼容别名。
+MinerU 的 ParseResult、CLI、HTTP API 和 Doclib 通过 `mineru.integrations.docvortex` 读写原有 schema 2.0 封装；3.4.5 旧页面转换由 `mineru.backend.postprocess.legacy_schema_adapter` 维护。产品字段校验、当前封装和旧结果兼容均归 MinerU，DocVortex 不提供兼容模块或旧路径别名。不要为旧底层构造参数增加动态兼容别名。
 
 ModelJson 仍保存 raw pages 与 page_index_map；MiddleJson 仍保存有序 PageInfo 数组。PageInfo 只有 page_idx 与 blocks。Block/InlineSpan 的现有语义、几何和父子约束保持不变；自然语言 InlineSpan 不携带字体或几何信息。
 

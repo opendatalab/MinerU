@@ -5,8 +5,6 @@ from __future__ import annotations
 from io import BytesIO
 from zipfile import ZipFile
 
-from lxml import etree  # type: ignore[reportAttributeAccessIssue]
-
 from _mtef_test_utils import _TINY_PNG
 from _ooxml_mtef_test_utils import (
     M_NS,
@@ -16,6 +14,7 @@ from _ooxml_mtef_test_utils import (
     _rewrite_zip,
     build_equation_docx,
 )
+from lxml import etree  # type: ignore[reportAttributeAccessIssue]
 
 WORD_2003_NS = "http://schemas.microsoft.com/office/word/2003/wordml"
 
@@ -96,11 +95,7 @@ def _patch_equationxml_part(
     """向一个 Word XML part 的公式 shape 写入属性并可移除 OLE 语义对象。"""
 
     root = etree.fromstring(payload)
-    shapes = [
-        shape
-        for shape in root.findall(f".//{{{V_NS}}}shape")
-        if shape.find(f"{{{V_NS}}}imagedata") is not None
-    ]
+    shapes = [shape for shape in root.findall(f".//{{{V_NS}}}shape") if shape.find(f"{{{V_NS}}}imagedata") is not None]
     for shape, equation_xml in zip(shapes, equation_xml_values, strict=False):
         shape.set("equationxml", equation_xml)
         if paragraph_style:
@@ -116,9 +111,7 @@ def _patch_equationxml_part(
     if share_preview and len(shapes) > 1:
         first_image = shapes[0].find(f"{{{V_NS}}}imagedata")
         first_rel_id = (
-            first_image.get(
-                "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
-            )
+            first_image.get("{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id")
             if first_image is not None
             else None
         )
@@ -178,11 +171,7 @@ def build_equationxml_docx(
     consumed = 0
     with ZipFile(BytesIO(package)) as source:
         part_names = [
-            name
-            for name in source.namelist()
-            if name.startswith("word/")
-            and name.endswith(".xml")
-            and "/_rels/" not in name
+            name for name in source.namelist() if name.startswith("word/") and name.endswith(".xml") and "/_rels/" not in name
         ]
         if header_footer:
             part_names.sort(

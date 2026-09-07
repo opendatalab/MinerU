@@ -1,18 +1,18 @@
 from __future__ import annotations
-from docvortex.schema import Producer
-from mineru.integrations.docvortex import build_metadata
-from _span_test_utils import inline as _inline
 
 from copy import deepcopy
 from datetime import datetime, timezone
-from io import BytesIO
 from inspect import signature
+from io import BytesIO
 
+import pytest
+from _span_test_utils import inline as _inline
+from docvortex.schema import Producer
 from docx import Document
 from PIL import Image
-import pytest
 
 import mineru.render as render_module
+from mineru.integrations.docvortex import build_metadata
 from mineru.render import (
     ContentListRenderOptions,
     ContentListV2RenderOptions,
@@ -36,9 +36,11 @@ def _middle(*pages: PageInfo) -> MiddleJson:
     return MiddleJson(
         pages=list(pages),
         is_full_document=True,
-        file_suffix="docx",
-        producer=Producer(name="mineru", version="test"),
-        extensions=build_metadata(effort="flash", parse_mode="txt", mineru_version="test"),
+        metadata={"file_suffix": "docx", "producer": Producer(name="mineru", version="test")},
+        extensions=build_metadata(
+            effort="flash",
+            parse_mode="txt",
+        ),
     )
 
 

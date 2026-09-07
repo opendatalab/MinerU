@@ -28,6 +28,7 @@ from ...filetypes import (
 )
 from ...parser.api_client import _APITransportError, _V1APIError
 from ...parser.base import ParseResult
+from ..core.middle_json import read_cached_middle_json
 from ...parser.page_range import (
     expand_page_range,
     format_page_range as _page_numbers_to_range_str,
@@ -745,7 +746,7 @@ class ParseService:
                 ),
             )
             valid_done_batches = [
-                batch for batch in done_batches if _json_file_exists_by_batch(self.data_dir, sha256, requested_tier, batch)
+                batch for batch in done_batches if _json_batch_is_readable(self.data_dir, sha256, requested_tier, batch)
             ]
             if supports_page_range:
                 for batch in valid_done_batches:
@@ -1404,7 +1405,9 @@ class ParseService:
         tier_set: set[Tier] = {row["tier"] for row in rows}
         tiers = sorted(tier_set, key=lambda item: TIER_ORDER.get(item, -1), reverse=True)
         for tier in tiers:
-            tier_rows = [row for row in rows if row["tier"] == tier]
+            tier_rows = [
+                row for row in rows if row["tier"] == tier and _json_batch_is_readable(self.data_dir, sha256, tier, row)
+            ]
             pages = load_pages_from_done_batches(self.data_dir, sha256, tier, tier_rows)
             if not pages:
                 continue
@@ -1495,10 +1498,16 @@ def _probe_error_message(prefix: str, error_msg: str | None) -> str:
     return prefix
 
 
-def _json_file_exists_by_batch(data_dir: str, sha256: str, tier: Tier, batch: ParseRow) -> bool:
-    """Check that the JSON result file for a parses batch row actually exists on disk."""
+def _json_batch_is_readable(data_dir: str, sha256: str, tier: Tier, batch: ParseRow) -> bool:
+    """将可转换为当前协议且覆盖记录页范围的持久化批次视为有效缓存。"""
     json_path = parse_batch_json_path(data_dir, sha256, tier, batch["page_range"], batch["done_at"])
-    return os.path.isfile(json_path)
+    try:
+        with open(json_path, encoding="utf-8") as stream:
+            result = read_cached_middle_json(json.load(stream))
+        available = {page.page_idx + 1 for page in result.pages}
+        return bool(available) and parse_page_range_set(batch["page_range"]) <= available
+    except (OSError, ValueError, TypeError):
+        return False
 
 
 def parse_batch_json_path(data_dir: str, sha256: str, tier: Tier, page_range: str, done_at: int | None = 0) -> str:
@@ -1507,9 +1516,17 @@ def parse_batch_json_path(data_dir: str, sha256: str, tier: Tier, page_range: st
     return os.path.join(os.path.expanduser(data_dir), "parsed", sha256[:2], sha256, tier, filename)
 
 
-def load_pages_from_done_batches(data_dir: str, sha256: str, tier: Tier, done_rows: Sequence[ParseBatchRow]) -> list[PageInfo]:
-    """Load valid done JSON batches and keep the newest page for duplicate page_idx values."""
+def load_pages_from_done_batches(
+    data_dir: str,
+    sha256: str,
+    tier: Tier,
+    done_rows: Sequence[ParseBatchRow],
+    *,
+    requested_page_numbers: set[int] | None = None,
+) -> list[PageInfo]:
+    """读取当前或受支持的历史批次，保留最新重复页；损坏或未知缓存须重新解析。"""
     pages_by_page_idx: dict[int, PageInfo] = {}
+    stale_page_numbers: set[int] = set()
     for row in reversed(done_rows):
         fpath = parse_batch_json_path(data_dir, sha256, tier, row["page_range"], row["done_at"])
         if not os.path.isfile(fpath):
@@ -1517,11 +1534,18 @@ def load_pages_from_done_batches(data_dir: str, sha256: str, tier: Tier, done_ro
         try:
             with open(fpath, encoding="utf-8") as f:
                 data = json.load(f)
-            parse_result = ParseResult.from_dict(data)
+            parse_result = read_cached_middle_json(data)
             for page in parse_result.pages:
                 pages_by_page_idx[page.page_idx] = page
-        except Exception:
-            pass
+        except (OSError, ValueError, TypeError):
+            stale_page_numbers.update(parse_page_range_set(row["page_range"]))
+    uncovered_stale = stale_page_numbers - {index + 1 for index in pages_by_page_idx}
+    if requested_page_numbers is not None:
+        uncovered_stale &= requested_page_numbers
+    if uncovered_stale:
+        raise MineruError(
+            "stale_cache", "Cached document protocol is outdated or invalid; reparse the source document.", "page_range"
+        )
     return [pages_by_page_idx[page_idx] for page_idx in sorted(pages_by_page_idx)]
 
 

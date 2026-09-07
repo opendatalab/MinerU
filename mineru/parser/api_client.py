@@ -818,11 +818,17 @@ def _extract_model_output_from_archive(archive: zipfile.ZipFile) -> Any | None:
             raise _V1APIError("invalid_model_output", f"ZIP output contained multiple model outputs: {available}")
         model_output_name = legacy_names[0]
 
+    from ..types import ModelJson
+
     raw = archive.read(model_output_name)
     try:
-        return json.loads(raw)
-    except json.JSONDecodeError as exc:
-        raise _V1APIError("invalid_model_output", f"model output JSON is not valid JSON: {exc}") from exc
+        model = ModelJson.from_json(raw)
+        from ..integrations.docvortex import validate_mineru_metadata
+
+        validate_mineru_metadata(model)
+        return model
+    except (ValueError, TypeError) as exc:
+        raise _V1APIError("invalid_model_output", f"Invalid Model JSON document: {exc}") from exc
 
 
 def _download_zip_output(parser: MinerUApiParser, outputs: dict[str, Any]) -> bytes:
@@ -1113,14 +1119,9 @@ def _pages_from_middle_json(mid_json: dict[str, Any] | None) -> list[PageInfo]:
 
 
 def _parse_result_from_middle_json(mid_json: dict[str, Any]) -> ParseResult:
-    """把远端 middle_json 恢复为 ParseResult；legacy pdf_info 交给 ParseResult.from_dict 迁移。"""
+    """把远端 middle_json 恢复为 ParseResult；只接受当前共享文档协议。"""
     if not isinstance(mid_json, dict):
         raise _V1APIError("invalid_middle_json_output", "middle_json output must be a JSON object")
-    if mid_json.get("pages") is None and mid_json.get("pdf_info") is None:
-        raise _V1APIError(
-            "invalid_middle_json_output",
-            "middle_json output must contain a list field named pages or pdf_info",
-        )
     try:
         return ParseResult.from_dict(mid_json)
     except ValueError as exc:

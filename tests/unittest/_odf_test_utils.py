@@ -1,17 +1,16 @@
 from __future__ import annotations
 
-# ruff: noqa: E501 -- 测试夹具保留紧凑 XML，便于直接核对 ODF 结构。
-
 import base64
 from io import BytesIO
 from zipfile import ZIP_DEFLATED, ZIP_STORED, ZipFile
-
 
 _MIME_BY_SUFFIX = {
     "odt": "application/vnd.oasis.opendocument.text",
     "ods": "application/vnd.oasis.opendocument.spreadsheet",
     "odp": "application/vnd.oasis.opendocument.presentation",
 }
+
+
 _PIXEL_PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEElEQVR4nGP8zwACTGCSAQANHQEDgslx/wAAAABJRU5ErkJggg=="
 )
@@ -38,11 +37,9 @@ def build_odf_package(
             "<manifest:encryption-data/>"
             "</manifest:file-entry>"
         )
-    for name in (extra_parts or {}):
+    for name in extra_parts or {}:
         media_type = "image/png" if name.endswith(".png") else "text/xml"
-        manifest_entries.append(
-            f'<manifest:file-entry manifest:full-path="{name}" manifest:media-type="{media_type}"/>'
-        )
+        manifest_entries.append(f'<manifest:file-entry manifest:full-path="{name}" manifest:media-type="{media_type}"/>')
     manifest = (
         '<manifest:manifest xmlns:manifest="urn:oasis:names:tc:opendocument:xmlns:manifest:1.0">'
         + "".join(manifest_entries)
@@ -166,6 +163,3 @@ def build_ods_fixture() -> bytes:
         content,
         extra_parts={"Object 1/content.xml": _chart_object_xml(), "Pictures/pixel.png": _PIXEL_PNG},
     )
-
-
-__all__ = ["build_odf_package", "build_odp_fixture", "build_ods_fixture", "build_odt_fixture"]

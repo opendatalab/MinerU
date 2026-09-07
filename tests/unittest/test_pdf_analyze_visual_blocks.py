@@ -28,7 +28,7 @@ from mineru.types import RAW_ALGORITHM, RAW_CAPTION, RAW_FOOTNOTE, RAW_FORMULA_N
 from mineru.types import FILE_SUFFIXES, BlockType, FileSuffix, MiddleJson, ModelJson
 from mineru.version import __version__ as mineru_version
 
-from _span_test_utils import equation, hyperlink, inline, inline_items, inline_text, inline_urls
+from _span_test_utils import inline, inline_text
 
 
 JPEG_DATA_URI_PREFIX = "data:image/jpeg;base64,"
@@ -1215,18 +1215,18 @@ def test_doc_analyze_office_returns_model_json_without_pdf_processing(
 
     assert isinstance(middle_json, MiddleJson)
     assert len(middle_json.pages) == 1
-    assert middle_json.file_suffix == file_suffix
-    assert middle_json.extensions["mineru"]["effort"] == "flash"
+    assert middle_json.metadata.file_suffix == file_suffix
+    assert middle_json.extensions["mineru"]["tier"] == "flash"
     assert middle_json.extensions["mineru"]["parse_mode"] == "txt"
     assert middle_json.is_full_document is True
     assert isinstance(model_json, ModelJson)
     assert model_json.pages == source_model_list
     assert model_json.page_index_map == []
     assert model_json.is_full_document is True
-    assert model_json.file_suffix == file_suffix
-    assert model_json.extensions["mineru"]["effort"] == "flash"
+    assert model_json.metadata.file_suffix == file_suffix
+    assert model_json.extensions["mineru"]["tier"] == "flash"
     assert model_json.extensions["mineru"]["parse_mode"] == "txt"
-    assert model_json.extensions["mineru"]["mineru_version"] == mineru_version
+    assert model_json.metadata.producer.version == mineru_version
     assert inline_text(model_json.pages[0][0]["content"]) == "原始 \\(office\\) 内容"
     for suffix, model_factory in model_factories.items():
         assert model_factory.call_count == (1 if suffix == file_suffix else 0)
@@ -1596,9 +1596,9 @@ def test_doc_analyze_office_normalizes_product_route(file_suffix: FileSuffix) ->
     assert isinstance(middle, MiddleJson) and isinstance(model, ModelJson)
     assert len(model.pages) == len(middle.pages) == 1
     assert model.is_full_document and middle.is_full_document
-    assert model.extensions["mineru"]["effort"] == "flash"
+    assert model.extensions["mineru"]["tier"] == "flash"
     assert model.extensions["mineru"]["parse_mode"] == "txt"
-    assert model.file_suffix == middle.file_suffix == file_suffix
+    assert model.metadata.file_suffix == middle.metadata.file_suffix == file_suffix
     assert middle.pages[0].page_idx == 0
     assert "Office routing sample" in middle.to_json()
 
@@ -1628,10 +1628,10 @@ def test_doc_analyze_flash_real_pdf_returns_typed_middle_json() -> None:
     assert all(block.bbox is not None for block in middle_json.pages[0].blocks)
     assert all("merge_prev" not in block for page in model_json.pages for block in page)
     assert model_json.page_index_map == []
-    assert model_json.file_suffix == "pdf"
-    assert model_json.extensions["mineru"]["effort"] == "flash"
+    assert model_json.metadata.file_suffix == "pdf"
+    assert model_json.extensions["mineru"]["tier"] == "flash"
     assert model_json.extensions["mineru"]["parse_mode"] == "txt"
-    assert model_json.extensions["mineru"]["mineru_version"] == mineru_version
+    assert model_json.metadata.producer.version == mineru_version
     assert load_middle(json.loads(middle_json.to_json())) == middle_json
     assert load_model(json.loads(model_json.to_json())) == model_json
 
@@ -1668,7 +1668,7 @@ def test_doc_analyze_flash_demo1_uses_canonical_equation_type() -> None:
 
 
 def test_doc_analyze_flash_returns_complete_model_json_and_typed_middle_json(monkeypatch: pytest.MonkeyPatch) -> None:
-    """验证 Flash 多窗口补充完整 raw pages，并返回严格 ModelJson 与 MiddleJson。"""
+    """验证 Flash 按需窗口补充完整 raw pages，并返回严格 ModelJson 与 MiddleJson。"""
     from docvortex.analyzers import native as flash_model
 
     events: list[str] = []
@@ -1699,6 +1699,8 @@ def test_doc_analyze_flash_returns_complete_model_json_and_typed_middle_json(mon
     ]
     fake_pdf_doc = MagicMock()
     fake_pdf_doc.page_count = len(source_model_list)
+    fake_pdf_doc.bytes = b"fake-pdf"
+    fake_pdf_doc.page_size.return_value = (40, 20)
     fake_pdf_doc.__getitem__.side_effect = lambda page_idx: MagicMock(page_idx=page_idx)
 
     def fake_document_close() -> None:
@@ -1718,11 +1720,13 @@ def test_doc_analyze_flash_returns_complete_model_json_and_typed_middle_json(mon
     requested_ranges: list[tuple[int, int]] = []
 
     def fake_load_images_for_window(
-        *,
         pdf_bytes: bytes,
+        *,
         start_page_id: int,
         end_page_id: int,
         image_type: str,
+        timeout: int | None = None,
+        threads: int | None = None,
     ) -> list[dict[str, Image.Image]]:
         """按请求范围生成测试页图，并记录窗口以验证分段与释放行为。"""
         assert pdf_bytes == b"fake-pdf"
@@ -1735,7 +1739,7 @@ def test_doc_analyze_flash_returns_complete_model_json_and_typed_middle_json(mon
         rendered_images.extend(window_images)
         return [{"img_pil": image} for image in window_images]
 
-    original_attach_visual_block_images = visuals._attach_visual_block_images
+    original_attach_visual_block_images = visuals._attach_prepared_visual_block_images
 
     def tracked_attach_visual_block_images(*args: object, **kwargs: object) -> None:
         """记录视觉块补图顺序并调用真实实现。"""
@@ -1759,8 +1763,8 @@ def test_doc_analyze_flash_returns_complete_model_json_and_typed_middle_json(mon
 
     monkeypatch.setattr(pipeline, "PDFDocument", lambda _: fake_pdf_doc)
     monkeypatch.setattr(window, "_configured_window_size", lambda default: 2)
-    monkeypatch.setattr(window, "load_images_from_pdf_bytes_range", fake_load_images_for_window)
-    monkeypatch.setattr(window, "_attach_visual_block_images", tracked_attach_visual_block_images)
+    monkeypatch.setattr("docvortex.document.pdf.images.load_images_from_pdf_bytes_range", fake_load_images_for_window)
+    monkeypatch.setattr(visuals, "_attach_prepared_visual_block_images", tracked_attach_visual_block_images)
     monkeypatch.setattr(pipeline, "_normalize_pdf_model_list", tracked_normalize_model_list)
     monkeypatch.setattr(pipeline.time, "perf_counter", fake_perf_counter)
     monkeypatch.setattr(flash_model, "PdfModel", MagicMock(return_value=fake_pdf_model))
@@ -1779,7 +1783,7 @@ def test_doc_analyze_flash_returns_complete_model_json_and_typed_middle_json(mon
     assert model_json.pages == source_model_list
     assert model_json.page_index_map == [7, 8, 9]
     assert model_json.is_full_document is False
-    assert requested_ranges == [(0, 1), (2, 2)]
+    assert requested_ranges == [(1, 1), (2, 2)]
     assert inline_text(model_json.pages[0][0]["content"]) == "第一页 x+y"
     assert [span["content"] for span in model_json.pages[0][0]["content"] if span.get("type") == "equation_inline"] == ["x+y"]
     assert model_json.pages[2][0]["content"] == "z"

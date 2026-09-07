@@ -225,11 +225,7 @@ def persist_parse_result(
     shutil.copyfile(source_path, artifacts.source_path)
     artifacts.middle_json_path.write_text(result.to_json(), encoding="utf-8")
     if result._model_output is not None:
-        model_output = (
-            result._model_output.to_dict(skip_defaults=False)
-            if hasattr(result._model_output, "to_dict")
-            else result._model_output
-        )
+        model_output = result._model_output.to_dict(skip_defaults=False)
         (artifacts.root / "model_output.json").write_text(
             json.dumps(model_output, ensure_ascii=False, indent=2),
             encoding="utf-8",

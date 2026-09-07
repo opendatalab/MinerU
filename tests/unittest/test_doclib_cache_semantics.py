@@ -289,10 +289,9 @@ def _write_batch(
         "schema_version": MIDDLE_JSON_SCHEMA_VERSION,
         "pages": json_pages,
         "is_full_document": is_full_document,
-        "file_suffix": file_suffix,
-        "effort": "medium",
-        "parse_mode": "txt",
-        "mineru_version": __version__,
+        "metadata": {"file_suffix": file_suffix, "producer": {"name": "mineru", "version": __version__}},
+        "schema": "docvortex.middle",
+        "extensions": {"mineru": {"tier": "basic", "parse_mode": "txt"}},
     }
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=4), encoding="utf-8")
 
@@ -476,16 +475,18 @@ def test_parsing_rule_default_tier_allows_flash_fallback(monkeypatch: pytest.Mon
     assert _resolve_parsing_rule_default_tier() == "flash"
 
 
-def test_read_without_tier_uses_highest_cached_tier() -> None:
-    class _DB:
-        async def fetchall(self, sql: str, params: tuple[Any, ...]) -> list[dict[str, str]]:
-            assert sql == "SELECT tier FROM parses WHERE sha256=? AND status=? GROUP BY tier"
-            assert params == ("a" * 64, "done")
-            return [{"tier": "flash"}, {"tier": "basic"}, {"tier": "standard"}, {"tier": "advanced"}]
-
-    server = DoclibServer(SimpleNamespace(db=_DB()))
-
-    assert asyncio.run(server._default_read_tier("a" * 64)) == "advanced"
+def test_read_without_tier_uses_highest_cached_tier(tmp_path: Path) -> None:
+    """默认档位仅从有效协议缓存选择，忽略更高档位的历史结果。"""
+    sha256 = "a" * 64
+    rows = []
+    for tier in ["flash", "basic", "standard", "advanced"]:
+        _write_batch(tmp_path, sha256, tier, "1", 1000, [_text_page(tier).to_dict()])
+        rows.append({"sha256": sha256, "tier": tier, "page_range": "1", "done_at": 1000, "status": "done"})
+    server = DoclibServer(SimpleNamespace(db=_FakeDB(parses=rows, file_row=None), data_dir=str(tmp_path)))
+    assert asyncio.run(server._default_read_tier(sha256)) == "advanced"
+    stale = Path(parse_batch_json_path(str(tmp_path), sha256, "advanced", "1", 1000))
+    stale.write_text('{"schema_version":"1.0","pages":[]}')
+    assert asyncio.run(server._default_read_tier(sha256)) == "standard"
 
 
 def test_managed_local_parse_server_url_uses_health_managed_url() -> None:
@@ -1223,9 +1224,15 @@ def test_remote_parse_server_default_url_is_declared_once() -> None:
 def test_compaction_uses_configured_data_dir(tmp_path: Path) -> None:
     sha256 = "b" * 64
     tier = "standard"
-    older_page = {"page_idx": 0, "content": "old"}
-    older_duplicate = {"page_idx": 1, "content": "old"}
-    newer_duplicate = {"page_idx": 1, "content": "new"}
+    older_page = {
+        "page_idx": 0,
+        "blocks": [{"type": "text", "index": 0, "bbox": [0.0, 0.0, 0.1, 0.1], "content": _inline("old")}],
+    }
+    older_duplicate = {"page_idx": 1, "blocks": older_page["blocks"]}
+    newer_duplicate = {
+        "page_idx": 1,
+        "blocks": [{"type": "text", "index": 0, "bbox": [0.0, 0.0, 0.1, 0.1], "content": _inline("new")}],
+    }
 
     _write_batch(tmp_path, sha256, tier, "1-2", 1000, [older_page, older_duplicate])
     _write_batch(tmp_path, sha256, tier, "2", 2000, [newer_duplicate])
@@ -1352,8 +1359,8 @@ def test_invalidate_deletes_fts_when_no_done_batches_remain(tmp_path: Path) -> N
 
 def test_invalidate_rebuilds_fts_from_highest_remaining_done_tier(tmp_path: Path) -> None:
     sha256 = "d" * 64
-    _write_batch(tmp_path, sha256, "flash", "1", 1000, [{"page_idx": 1, "blocks": []}])
-    _write_batch(tmp_path, sha256, "standard", "1", 2000, [{"page_idx": 1, "blocks": []}])
+    _write_batch(tmp_path, sha256, "flash", "1", 1000, [{"page_idx": 0, "blocks": []}])
+    _write_batch(tmp_path, sha256, "standard", "1", 2000, [{"page_idx": 0, "blocks": []}])
     parses = [
         {"sha256": sha256, "tier": "flash", "page_range": "1", "status": "done", "done_at": 1000},
         {"sha256": sha256, "tier": "standard", "page_range": "1", "status": "done", "done_at": 2000},
@@ -1803,8 +1810,8 @@ def test_csv_doclib_parse_creates_flash_cache_and_rendered_fts(
             cached_files = list((tmp_path / "data" / "parsed").rglob("*.json"))
             assert len(cached_files) == 1
             cached_payload = json.loads(cached_files[0].read_text(encoding="utf-8"))
-            assert cached_payload["file_suffix"] == "csv"
-            assert cached_payload["effort"] == "flash"
+            assert cached_payload["metadata"]["file_suffix"] == "csv"
+            assert cached_payload["extensions"]["mineru"]["tier"] == "flash"
         finally:
             await db.close()
 
@@ -2168,9 +2175,11 @@ def test_remap_api_result_pages_to_non_contiguous_page_range() -> None:
         middle_json=MiddleJson(
             pages=[PageInfo(page_idx=0), PageInfo(page_idx=1), PageInfo(page_idx=2)],
             is_full_document=False,
-            file_suffix="pdf",
-            producer=Producer(name="mineru", version=__version__),
-            extensions=build_metadata(effort="medium", parse_mode="txt", mineru_version=__version__),
+            metadata={"file_suffix": "pdf", "producer": Producer(name="mineru", version=__version__)},
+            extensions=build_metadata(
+                effort="medium",
+                parse_mode="txt",
+            ),
         )
     )
 
@@ -2187,10 +2196,9 @@ def test_remap_api_result_pages_remaps_page_indices() -> None:
             "schema_version": MIDDLE_JSON_SCHEMA_VERSION,
             "pages": [{"page_idx": 0, "blocks": []}],
             "is_full_document": False,
-            "file_suffix": "pdf",
-            "effort": "medium",
-            "parse_mode": "txt",
-            "mineru_version": __version__,
+            "metadata": {"file_suffix": "pdf", "producer": {"name": "mineru", "version": __version__}},
+            "schema": "docvortex.middle",
+            "extensions": {"mineru": {"tier": "basic", "parse_mode": "txt"}},
         }
     )
 
@@ -2206,9 +2214,11 @@ def test_remap_api_result_pages_rejects_count_mismatch() -> None:
         middle_json=MiddleJson(
             pages=[PageInfo(page_idx=0), PageInfo(page_idx=1)],
             is_full_document=False,
-            file_suffix="pdf",
-            producer=Producer(name="mineru", version=__version__),
-            extensions=build_metadata(effort="medium", parse_mode="txt", mineru_version=__version__),
+            metadata={"file_suffix": "pdf", "producer": Producer(name="mineru", version=__version__)},
+            extensions=build_metadata(
+                effort="medium",
+                parse_mode="txt",
+            ),
         )
     )
 
@@ -4421,9 +4431,11 @@ def test_process_doc_marks_empty_page_result_failed(tmp_path: Path) -> None:
             middle_json=MiddleJson(
                 pages=[],
                 is_full_document=False,
-                file_suffix="pdf",
-                producer=Producer(name="mineru", version=__version__),
-                extensions=build_metadata(effort="medium", parse_mode="txt", mineru_version=__version__),
+                metadata={"file_suffix": "pdf", "producer": Producer(name="mineru", version=__version__)},
+                extensions=build_metadata(
+                    effort="medium",
+                    parse_mode="txt",
+                ),
             )
         )
 
@@ -4585,9 +4597,11 @@ def test_parse_via_api_requests_image_cache_only_for_office(
                 middle_json=MiddleJson(
                     pages=[],
                     is_full_document=True,
-                    file_suffix="pdf",
-                    producer=Producer(name="mineru", version=__version__),
-                    extensions=build_metadata(effort="medium", parse_mode="txt", mineru_version=__version__),
+                    metadata={"file_suffix": "pdf", "producer": Producer(name="mineru", version=__version__)},
+                    extensions=build_metadata(
+                        effort="medium",
+                        parse_mode="txt",
+                    ),
                 )
             )
 
@@ -4653,9 +4667,11 @@ def test_process_doc_fails_when_batch_json_cannot_be_written(tmp_path: Path) -> 
             middle_json=MiddleJson(
                 pages=[PageInfo(page_idx=0)],
                 is_full_document=False,
-                file_suffix="pdf",
-                producer=Producer(name="mineru", version=__version__),
-                extensions=build_metadata(effort="medium", parse_mode="txt", mineru_version=__version__),
+                metadata={"file_suffix": "pdf", "producer": Producer(name="mineru", version=__version__)},
+                extensions=build_metadata(
+                    effort="medium",
+                    parse_mode="txt",
+                ),
             )
         )
 
@@ -4716,9 +4732,11 @@ def test_process_doc_normalizes_full_document_range_from_actual_pages(tmp_path: 
             middle_json=MiddleJson(
                 pages=[PageInfo(page_idx=page_idx) for page_idx in range(12)],
                 is_full_document=True,
-                file_suffix="epub",
-                producer=Producer(name="mineru", version=__version__),
-                extensions=build_metadata(effort="flash", parse_mode="txt", mineru_version=__version__),
+                metadata={"file_suffix": "epub", "producer": Producer(name="mineru", version=__version__)},
+                extensions=build_metadata(
+                    effort="flash",
+                    parse_mode="txt",
+                ),
             )
         )
 
