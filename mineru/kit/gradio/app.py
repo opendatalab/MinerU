@@ -17,7 +17,7 @@ from ...errors import MineruError
 from ...filetypes import FLASH_ONLY_PARSE_EXTENSIONS, IMAGE_EXTENSIONS, OFFICE_EXTENSIONS, PARSEABLE_EXTENSIONS, PDF_EXTENSIONS
 from ...types import TIERS, Tier
 from ...utils.stdio import configure_standard_streams
-from .artifacts import RunArtifacts, markdown_for_gradio, persist_parse_result, render_download
+from .artifacts import RunArtifacts, persist_parse_result, render_download, render_html_preview
 from .client import (
     GradioArtifactClient,
     ManagedLocalApiServer,
@@ -39,10 +39,11 @@ from .status import (
 )
 
 _DOWNLOAD_FORMATS: tuple[tuple[str, str], ...] = (
-    ("zip", "ZIP"),
+    ("markdown", "Markdown"),
+    ("json", "JSON"),
     ("html", "HTML"),
     ("docx", "DOCX"),
-    ("latex", "LaTeX bundle"),
+    ("latex", "LaTeX"),
     ("epub", "EPUB"),
     ("pdf", "PDF"),
 )
@@ -247,7 +248,6 @@ def build_gradio_app(
         raise ValueError("V1 API server did not advertise any parsing tier")
     preferred_tier = _default_tier(capabilities)
     file_types = _supported_file_types()
-    markdown_copy_kwargs = {"buttons": ["copy"]} if _gradio_major_version(gr) >= 6 else {"show_copy_button": True}
     app_css = _resource_text("gradio_app.css") + _KIT_MENU_CSS
     i18n = gr.I18n(**translations())
     app_js = _resource_text("gradio_app.js").replace(
@@ -376,31 +376,9 @@ def build_gradio_app(
             with gr.Column(scale=4, min_width=340, elem_classes=["mineru-kit-results", "mineru-markdown-pane"]):
                 with gr.Tabs(elem_classes=["mineru-markdown-tabs"]):
                     with gr.Tab(i18n("mineru.markdown_rendered")):
-                        markdown_output = gr.Markdown(
+                        html_output = gr.HTML(
                             value="",
-                            height=775,
-                            line_breaks=True,
-                            latex_delimiters=_latex_delimiters(latex_delimiters_type),
-                            **markdown_copy_kwargs,
                             elem_classes=["mineru-markdown-output"],
-                        )
-                    with gr.Tab(i18n("mineru.markdown_source")):
-                        markdown_source = gr.Code(
-                            value="",
-                            label=i18n("mineru.markdown_source"),
-                            language="markdown",
-                            lines=28,
-                            interactive=False,
-                            elem_classes=["mineru-markdown-text"],
-                        )
-                    with gr.Tab(i18n("mineru.structured_source")):
-                        structured_source = gr.Code(
-                            value="",
-                            label=i18n("mineru.structured_source"),
-                            language="json",
-                            lines=28,
-                            interactive=False,
-                            elem_classes=["mineru-structured-content"],
                         )
                 with gr.Column(scale=0, min_width=0, elem_classes=["mineru-kit-download-menu"]):
                     gr.HTML(_DOWNLOAD_ICON_HTML, elem_classes=["mineru-kit-download-trigger"])
@@ -435,9 +413,7 @@ def build_gradio_app(
                 input_file,
                 page_range,
                 force_ocr,
-                markdown_output,
-                markdown_source,
-                structured_source,
+                html_output,
                 pdf_preview,
                 image_preview,
                 office_preview,
@@ -448,7 +424,7 @@ def build_gradio_app(
 
         def update_file_preview(file_path: str | None, request: object | None = None) -> tuple[Any, ...]:
             """切换源文件预览，并清除上一份文档的结果与下载状态。"""
-            reset_result = (_status_html(_DEFAULT_STATUS), "", "", "", None, *_download_updates(gr, interactive=False))
+            reset_result = (_status_html(_DEFAULT_STATUS), "", None, *_download_updates(gr, interactive=False))
             if not file_path:
                 return (
                     _pdf_preview_update(gr, None),
@@ -560,9 +536,7 @@ def build_gradio_app(
             office_preview,
             generic_preview,
             status_panel,
-            markdown_output,
-            markdown_source,
-            structured_source,
+            html_output,
             artifact_state,
             active_run_id,
             *download_buttons.values(),
@@ -617,12 +591,10 @@ def build_gradio_app(
             force_ocr: bool = False,
             request: object | None = None,
         ) -> Any:
-            """执行单文件 V1 解析并流式更新状态与三个结果标签。"""
+            """执行单文件 V1 解析并流式更新状态与 HTML 结果。"""
             # 开始或失败只重置结果与下载；预览内容、显隐和浏览位置保持不变。
             reset_result = (
                 _status_html(_DEFAULT_STATUS),
-                "",
-                "",
                 "",
                 *(gr.skip() for _ in range(4)),
                 None,
@@ -633,22 +605,22 @@ def build_gradio_app(
                 return
             source_path = Path(file_path).resolve()
             if not source_path.is_file():
-                yield (_status_html("Failed: input file does not exist"), "", "", "", *reset_result[4:])
+                yield (_status_html("Failed: input file does not exist"), *reset_result[1:])
                 return
             suffix = _file_suffix(source_path)
             if suffix not in PARSEABLE_EXTENSIONS:
-                yield (_status_html(f"Failed: unsupported file type '.{suffix}'"), "", "", "", *reset_result[4:])
+                yield (_status_html(f"Failed: unsupported file type '.{suffix}'"), *reset_result[1:])
                 return
             try:
                 selected_tier = _tier_for_position(tier_position, tier_choices)
             except ValueError as exc:
-                yield (_status_html(f"Failed: {exc}"), "", "", "", *reset_result[4:])
+                yield (_status_html(f"Failed: {exc}"), *reset_result[1:])
                 return
             if suffix in FLASH_ONLY_PARSE_EXTENSIONS:
                 # 提交端独立约束有效档位，避免事件 API 或前端残留值绕过 Flash 锁定。
                 if "flash" not in tier_choices:
                     message = "Failed: tier_unavailable: 该格式仅支持 Flash，当前服务不可用"
-                    yield (_status_html(message), "", "", "", *reset_result[4:])
+                    yield (_status_html(message), *reset_result[1:])
                     return
                 selected_tier = "flash"
             try:
@@ -656,7 +628,7 @@ def build_gradio_app(
                     _effective_page_range, source_path, raw_page_range, tier=selected_tier, max_pages=max_pages
                 )
             except MineruError as exc:
-                yield (_status_html(f"Failed: {exc.code}: {exc}"), "", "", "", *reset_result[4:])
+                yield (_status_html(f"Failed: {exc.code}: {exc}"), *reset_result[1:])
                 return
             state = StatusPanelState()
             state.append(STATUS_PREPARING_REQUEST)
@@ -689,8 +661,11 @@ def build_gradio_app(
                         output_root=output_root,
                         page_range=page_text,
                     )
-                    markdown_text = artifacts.markdown_path.read_text(encoding="utf-8")
-                    structured_text = artifacts.structured_content_path.read_text(encoding="utf-8")
+                    rendered_html = await asyncio.to_thread(
+                        render_html_preview,
+                        artifacts,
+                        public_base_url=_gradio_public_base_url(request),
+                    )
                     preview_path = artifacts.layout_pdf_path or artifacts.origin_pdf_path
                     generic_html = "" if preview_path else preview_placeholder("result_ready")
                     show_image_preview = suffix in IMAGE_EXTENSIONS and preview_path is None
@@ -704,9 +679,7 @@ def build_gradio_app(
                         # Office 源预览已在上传时挂载，成功后不重载 iframe，也不恢复已忽略的提示。
                         result_preview_updates = tuple(gr.skip() for _ in range(4))
                     return (
-                        markdown_for_gradio(markdown_text, artifacts),
-                        markdown_text,
-                        structured_text,
+                        rendered_html,
                         *result_preview_updates,
                         artifacts.as_state(),
                         *_download_updates(gr, interactive=True, run_id=artifacts.root.name),
@@ -748,9 +721,7 @@ def build_gradio_app(
 
         convert_outputs = [
             status_panel,
-            markdown_output,
-            markdown_source,
-            structured_source,
+            html_output,
             pdf_preview,
             image_preview,
             office_preview,
@@ -791,9 +762,7 @@ def build_gradio_app(
 
         reset_outputs = [
             status_panel,
-            markdown_output,
-            markdown_source,
-            structured_source,
+            html_output,
             pdf_preview,
             image_preview,
             office_preview,
@@ -807,8 +776,6 @@ def build_gradio_app(
             """清除当前任务结果并恢复空预览状态。"""
             return (
                 _status_html(_DEFAULT_STATUS),
-                "",
-                "",
                 "",
                 _pdf_preview_update(gr, None),
                 gr.update(value=None, visible=False),
@@ -837,8 +804,10 @@ def build_gradio_app(
                 js=download_js("busy", format_name, label),
                 **private_event_kwargs,
             )
+            download_handler = _download_handler(format_name, output_root)
+            download_handler.__annotations__["request"] = gr.Request
             prepare_download = begin_download.then(
-                fn=_download_handler(format_name, output_root),
+                fn=download_handler,
                 inputs=[artifact_state, download_requests[format_name]],
                 outputs=[download_files[format_name], download_receipts[format_name]],
                 queue=True,
@@ -942,6 +911,23 @@ def _example_files(file_types: list[str]) -> list[str]:
     return [str(path) for path in sorted(example_root.iterdir()) if path.is_file() and path.suffix.lower() in suffixes]
 
 
+def _gradio_public_base_url(request: object | None = None) -> str:
+    """从 Gradio 请求获取当前外部站点根地址，保留反向代理协议、域名和挂载路径。"""
+    headers = getattr(request, "headers", None) or {}
+    raw_request = getattr(request, "request", None)
+    request_url = getattr(raw_request, "url", None)
+    host = headers.get("x-forwarded-host") or headers.get("host") or getattr(request_url, "netloc", "localhost:7860")
+    protocol = headers.get("x-forwarded-proto") or getattr(request_url, "scheme", "http")
+    host = host.split(",", 1)[0].strip()
+    protocol = protocol.split(",", 1)[0].strip()
+    scope = getattr(raw_request, "scope", None) or {}
+    root_path = scope.get("root_path", "")
+    if root_path.startswith(("http://", "https://")):
+        return root_path.rstrip("/")
+    root_path = "/" + root_path.strip("/") if root_path else ""
+    return f"{protocol}://{host}{root_path}"
+
+
 def _build_office_preview_html(file_path: str | Path, request: object | None = None) -> str:
     """复用 3.4.5 的上传即预览结构；短地址只供展示，iframe 始终使用完整地址。"""
     source_path = Path(file_path)
@@ -992,18 +978,23 @@ def _download_request_handler(request_token: str) -> str:
     return request_token if isinstance(request_token, str) else ""
 
 
-def _download_handler(format_name: str, output_root: Path) -> Callable[[object, str], tuple[str | None, str]]:
+def _download_handler(format_name: str, output_root: Path) -> Callable[..., tuple[str | None, str]]:
     """创建一个绑定格式和 output root 的 Gradio 下载回调。"""
 
-    def handler(state: object, request_token: str) -> tuple[str | None, str]:
+    def handler(state: object, request_token: str, request: object | None = None) -> tuple[str | None, str]:
         """校验请求所属结果，返回文件与回执；生成失败也交给前端按请求标识恢复按钮。"""
         receipt = {"request": request_token, "error": ""}
         try:
-            request = json.loads(request_token)
+            token = json.loads(request_token)
             artifacts = RunArtifacts.from_state(state)
-            if request["run_id"] != artifacts.root.name:
+            if token["run_id"] != artifacts.root.name:
                 raise ValueError("解析结果已变更，请重新下载。")
-            path = render_download(state, format_name, allowed_root=output_root)
+            path = render_download(
+                state,
+                format_name,
+                allowed_root=output_root,
+                public_base_url=_gradio_public_base_url(request),
+            )
             return path, json.dumps(receipt, ensure_ascii=False)
         except Exception as exc:
             receipt["error"] = str(exc)

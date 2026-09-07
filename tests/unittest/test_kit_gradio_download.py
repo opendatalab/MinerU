@@ -53,8 +53,8 @@ def test_download_event_chain_and_pdf_mount(tmp_path: Path) -> None:
         assert preview(source)[0]["visible"] == "hidden"
         assert "mineru-kit-pdf-empty" in preview(source)[0]["elem_classes"]
     reset = next(fn.fn for fn in app.fns.values() if fn.name == "reset_ui")
-    assert reset()[4]["visible"] == "hidden"
-    assert reset()[9] == ""
+    assert reset()[2]["visible"] == "hidden"
+    assert reset()[7] == ""
     conversion = next(fn for fn in app.fns.values() if fn.name == "convert_handler")
     dependency = next(dep for dep in app.config["dependencies"] if dep["id"] == conversion._id)
     # 转换必须等待真正的重置完成事件，纯 JS 事件的 then 在支持版本中不会可靠触发。
@@ -62,7 +62,7 @@ def test_download_event_chain_and_pdf_mount(tmp_path: Path) -> None:
     assert reset_event.name == "reset_download_ui"
     assert len(reset_event.fn()) == len(reset_event.outputs)
     handlers = [fn for fn in app.fns.values() if fn.name == "handler"]
-    assert len(handlers) == 6
+    assert len(handlers) == 7
     files = []
     for handler in handlers:
         file, receipt = handler.outputs
@@ -72,7 +72,7 @@ def test_download_event_chain_and_pdf_mount(tmp_path: Path) -> None:
         assert success["trigger_only_on_success"] is True
         assert success["backend_fn"] is False and success["queue"] is False
         assert success["inputs"][:2] == [file._id, receipt._id]
-    assert len(set(files)) == 6
+    assert len(set(files)) == 7
 
 
 def test_frontend_download_lifecycle() -> None:

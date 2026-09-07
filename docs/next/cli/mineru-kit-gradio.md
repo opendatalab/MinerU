@@ -96,13 +96,13 @@ Gradio 首先发现 `/v1/health` 和 `/v1/tiers`，然后通过 `MinerUApiParser
 
 页面只展示：
 
-- Markdown 渲染；
-- Markdown 源码；
-- Structured Content 源码。
+- Markdown 渲染：实际展示 HTML renderer 的完整输出，保留表格、公式和代码高亮。
 
-下载图标位于右侧结果栏的标签行最右端，鼠标悬停或键盘聚焦即可展开菜单。菜单包含 ZIP、HTML、DOCX、LaTeX bundle、EPUB 和 PDF。HTML、DOCX、EPUB、PDF 和 LaTeX 不作为 API job 输出请求，而是在用户点击菜单后从本次保存的 Middle JSON 按需渲染。LaTeX 下载包包含 `.tex` 与 `images/`，可交给 XeLaTeX 使用；Gradio 不自动执行 TeX 编译。
+下载图标位于右侧结果栏的标签行最右端，鼠标悬停或键盘聚焦即可展开菜单。菜单包含 Markdown、JSON、HTML、DOCX、LaTeX、EPUB 和 PDF。下载文件由 Gradio 从本次保存的结果按需生成，不新增 API job 输出格式。Markdown 和 JSON 分别下载独立 ZIP，根目录放置同名 `.md` 或 `.json`，图片放在 `images/`，正文及 JSON 图片字段使用相对路径。JSON 内容使用 Structured Content，不包含 Middle JSON。LaTeX 下载包包含 `.tex` 与 `images/`，可交给 XeLaTeX 使用；Gradio 不自动执行 TeX 编译。预览和下载的单个 HTML 均使用当前 Gradio 服务的图片 HTTP 链接，不嵌入 base64；链接可用性取决于当前服务和任务文件。
 
-每次选择格式后，按钮会显示“准备中”，文件就绪后自动开始下载，无需再次点击。再次下载同一格式复用已有文件；生成失败时显示错误并允许重试。清除、更换文件或重新解析会使旧下载请求失效。
+图片名称使用原始零基页索引和所属父块的 `type/index`，例如 `images/page_1_image_3.jpg` 表示原第 2 页、索引为 3 的图片块。整表截图使用 `page_1_table_3.jpg`，表内图片按出现顺序使用 `page_1_table_image_3_1.png`、`page_1_table_image_3_2.png`。裁页不会重新编号，下载打包保持相同图片名称；代码和算法不生成截图。历史任务不迁移，重新转换后使用该命名。
+
+每次选择格式后，按钮会显示“准备中”，文件就绪后自动开始下载，无需再次点击。再次下载时，HTML 根据当前访问地址重新生成，其他格式复用已有文件；生成失败时显示错误并允许重试。清除、更换文件或重新解析会使旧下载请求失效。
 
 每次解析的文件保存在独立的 `output-dir/gradio/<run-id>/` 目录，包含源文件、Middle JSON、基础文本产物以及可选的 `origin.pdf`、`layout.pdf` 和图片资源。路径只向 Gradio 暴露在配置的 output root 内。
 

@@ -209,30 +209,17 @@ body.dark .gradio-container {
 .mineru-markdown-tabs .tab-nav {
     border-bottom-color: var(--mineru-panel-border);
 }
-.mineru-markdown-tabs textarea {
-    height: var(--mineru-markdown-text-content-height) !important;
-    min-height: var(--mineru-markdown-text-content-height) !important;
+.mineru-markdown-output .html-container,
+.mineru-markdown-output .prose {
+    padding: 0 !important;
+    max-width: none !important;
 }
-.mineru-markdown-text,
-.mineru-content-list-json,
-.mineru-markdown-text .wrap,
-.mineru-content-list-json .wrap,
-.mineru-markdown-text .codemirror-wrapper,
-.mineru-content-list-json .codemirror-wrapper {
-    height: var(--mineru-markdown-text-content-height) !important;
-    min-height: var(--mineru-markdown-text-content-height) !important;
-}
-.mineru-markdown-text .cm-editor,
-.mineru-content-list-json .cm-editor,
-.mineru-markdown-text .cm-scroller,
-.mineru-content-list-json .cm-scroller {
-    height: 100% !important;
-    max-height: 100% !important;
-    min-height: 0 !important;
-}
-.mineru-markdown-text .cm-scroller,
-.mineru-content-list-json .cm-scroller {
-    overflow: auto !important;
+.mineru-rendered-html-frame {
+    display: block;
+    width: 100%;
+    height: var(--mineru-preview-content-height);
+    border: 0;
+    background: white;
 }
 .status-steps-panel {
     border: 1px solid var(--mineru-panel-border);

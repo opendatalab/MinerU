@@ -278,7 +278,7 @@ def test_invalid_or_oversized_range_is_rejected_before_submission(tmp_path: Path
 
     updates = asyncio.run(collect())
     assert "page_range_invalid" in str(updates[-1][0])
-    assert updates[-1][8] is None
+    assert updates[-1][6] is None
     client.parse_file.assert_not_called()
 
 

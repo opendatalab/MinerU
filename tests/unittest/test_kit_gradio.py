@@ -637,7 +637,7 @@ def test_gradio_ocr_reaches_analysis_through_real_v1_jobs(monkeypatch: pytest.Mo
             handler = next(fn.fn for fn in demo.fns.values() if fn.name == "convert_handler")
             for enabled in (True, False, True):
                 updates = [update async for update in handler(str(source), 0, "", enabled)]
-                state = updates[-1][8]
+                state = updates[-1][6]
                 assert state is not None, updates[-1][0]
                 payload = json.loads(Path(state["middle_json_path"]).read_text())
                 assert payload["extensions"]["mineru"]["parse_mode"] == ("ocr" if enabled else "txt")
@@ -842,7 +842,7 @@ def test_managed_local_api_server_cleans_process_control_and_temp_dir(
 
 
 def test_persist_and_render_all_gradio_download_formats(tmp_path: Path) -> None:
-    """验证严格 Middle JSON、布局 PDF 和六种下载产物。"""
+    """验证严格 Middle JSON、布局 PDF 和七种下载产物。"""
     source = tmp_path / "报告.pdf"
     source.write_bytes(_pdf_bytes())
     result = ParseResult(middle_json=_middle_json(), _model_output=_model_json())
@@ -853,26 +853,24 @@ def test_persist_and_render_all_gradio_download_formats(tmp_path: Path) -> None:
     assert artifacts.layout_pdf_path == artifacts.root / "layout.pdf"
     assert artifacts.origin_pdf_path is not None and artifacts.origin_pdf_path.is_file()
     assert artifacts.layout_pdf_path is not None and artifacts.layout_pdf_path.is_file()
-    assert artifacts.bundle_zip_path.is_file()
+    assert not list(artifacts.root.glob("*.zip"))
     assert list((artifacts.root / "images").glob("*.jpg"))
-    with zipfile.ZipFile(artifacts.bundle_zip_path) as archive:
-        assert {
-            "source.pdf",
-            "middle_json.json",
-            "markdown.md",
-            "structured_content.json",
-            "model_output.json",
-            "origin.pdf",
-            "layout.pdf",
-        }.issubset(archive.namelist())
+    for format_name, extension in (("markdown", "md"), ("json", "json")):
+        path = render_download(artifacts.as_state(), format_name, allowed_root=tmp_path / "output")
+        with zipfile.ZipFile(path) as archive:
+            assert f"{artifacts.stem}.{extension}" in archive.namelist()
+            assert all(name.startswith("images/") or name == f"{artifacts.stem}.{extension}" for name in archive.namelist())
 
-    html_path = Path(render_download(artifacts.as_state(), "html", allowed_root=tmp_path / "output"))
+    html_path = Path(
+        render_download(artifacts.as_state(), "html", allowed_root=tmp_path / "output", public_base_url="http://localhost:7860")
+    )
     docx_path = Path(render_download(artifacts.as_state(), "docx", allowed_root=tmp_path / "output"))
     latex_path = Path(render_download(artifacts.as_state(), "latex", allowed_root=tmp_path / "output"))
     epub_path = Path(render_download(artifacts.as_state(), "epub", allowed_root=tmp_path / "output"))
     pdf_path = Path(render_download(artifacts.as_state(), "pdf", allowed_root=tmp_path / "output"))
     assert "<!doctype html>" in html_path.read_text(encoding="utf-8").lower()
-    assert "data:image/jpeg;base64," in html_path.read_text(encoding="utf-8")
+    assert "data:image/" not in html_path.read_text(encoding="utf-8")
+    assert "http://localhost:7860/gradio_api/file=" in html_path.read_text(encoding="utf-8")
     assert docx_path.read_bytes().startswith(b"PK")
     assert epub_path.read_bytes().startswith(b"PK")
     assert pdf_path.read_bytes().startswith(b"%PDF")
@@ -915,7 +913,8 @@ def test_page_range_image_crops_follow_original_page_indices(tmp_path: Path) -> 
         output_root=tmp_path / "output",
         page_range="2-3",
     )
-    images = sorted((artifacts.root / "images").glob("*.jpg"))
+    saved = ParseResult.from_json(artifacts.middle_json_path.read_text())
+    images = [artifacts.root / page.blocks[1].content[0].image_path for page in saved.pages]
     assert len(images) == 2
     with Image.open(images[0]) as first_image, Image.open(images[1]) as second_image:
         first_mean = ImageStat.Stat(first_image.convert("RGB")).mean
@@ -957,7 +956,6 @@ def test_run_artifact_paths_are_absolute_and_inside_output_root(tmp_path: Path) 
         first.middle_json_path,
         first.markdown_path,
         first.structured_content_path,
-        first.bundle_zip_path,
         first.downloads_dir,
     ):
         assert path.is_absolute()
@@ -1043,8 +1041,8 @@ def test_gradio_non_pdf_ignores_hidden_force_ocr(tmp_path: Path, suffix: str) ->
     assert client.parse_file.call_args.kwargs["page_range"] == ""
 
 
-def test_build_gradio_app_exposes_three_tabs_and_download_menu(tmp_path: Path) -> None:
-    """验证新 UI 不引入旧 backend 控件，并注册三个标签和下载事件。"""
+def test_build_gradio_app_exposes_html_tab_and_download_menu(tmp_path: Path) -> None:
+    """验证新 UI 不引入旧 backend 控件，并注册 HTML 标签和下载事件。"""
     capabilities = V1ServerCapabilities(
         "http://127.0.0.1:1",
         ("flash", "basic", "standard", "advanced"),
@@ -1060,8 +1058,6 @@ def test_build_gradio_app_exposes_three_tabs_and_download_menu(tmp_path: Path) -
     tab_labels = [component.label for component in app.blocks.values() if component.__class__.__name__ == "Tab"]
     assert [label.key for label in tab_labels] == [
         "mineru.markdown_rendered",
-        "mineru.markdown_source",
-        "mineru.structured_source",
     ]
     download_buttons = [
         component
@@ -1069,7 +1065,7 @@ def test_build_gradio_app_exposes_three_tabs_and_download_menu(tmp_path: Path) -
         if component.__class__.__name__ == "Button"
         and any(name.startswith("mineru-kit-download-") for name in (component.elem_classes or []))
     ]
-    assert [component.value for component in download_buttons] == ["ZIP", "HTML", "DOCX", "LaTeX bundle", "EPUB", "PDF"]
+    assert [component.value for component in download_buttons] == ["Markdown", "JSON", "HTML", "DOCX", "LaTeX", "EPUB", "PDF"]
     assert not any(component.__class__.__name__ == "DownloadButton" for component in app.blocks.values())
     assert all(component.interactive is False for component in download_buttons)
     file_inputs = [
@@ -1179,8 +1175,8 @@ def test_gradio_flash_only_input_requires_available_flash(tmp_path: Path, tiers:
     updates = asyncio.run(convert())
     assert "tier_unavailable" in updates[-1][0]
     assert "该格式仅支持 Flash，当前服务不可用" in updates[-1][0]
-    assert updates[-1][8] is None
-    assert all(item["interactive"] is False for item in updates[-1][-6:])
+    assert updates[-1][6] is None
+    assert all(item["interactive"] is False for item in updates[-1][-7:])
     client.parse_file.assert_not_called()
 
 
@@ -1243,11 +1239,11 @@ def test_gradio_conversion_forwards_page_range_and_enables_fresh_downloads(
     updates = asyncio.run(collect_updates(convert_handler))
 
     assert client.calls == [(source.resolve(), expected_tier, "" if expected_tier == "flash" else "1")]
-    assert len(updates[-1]) == 16
-    assert updates[-1][9] == Path(updates[-1][8]["root"]).name
-    assert updates[-1][8] is not None
-    assert all(update["interactive"] is True for update in updates[-1][-6:])
-    assert all(update["interactive"] is False for update in updates[0][-6:])
+    assert len(updates[-1]) == 15
+    assert updates[-1][7] == Path(updates[-1][6]["root"]).name
+    assert updates[-1][6] is not None
+    assert all(update["interactive"] is True for update in updates[-1][-7:])
+    assert all(update["interactive"] is False for update in updates[0][-7:])
 
 
 @pytest.mark.parametrize(
@@ -1276,8 +1272,8 @@ def test_gradio_conversion_rejects_invalid_tier_position(tmp_path: Path, tiers: 
 
     updates = asyncio.run(collect_updates())
     assert "Failed: Invalid tier slider position" in updates[-1][0]
-    assert updates[-1][8] is None
-    assert all(item["interactive"] is False for item in updates[-1][-6:])
+    assert updates[-1][6] is None
+    assert all(item["interactive"] is False for item in updates[-1][-7:])
     client.parse_file.assert_not_called()
 
 
@@ -1309,8 +1305,8 @@ def test_gradio_conversion_failure_clears_previous_downloads(tmp_path: Path) -> 
     update = asyncio.run(final_update(convert_handler))
 
     assert "Failed: boom" in update[0]
-    assert update[8] is None
-    assert all(item["interactive"] is False for item in update[-6:])
+    assert update[6] is None
+    assert all(item["interactive"] is False for item in update[-7:])
 
 
 @pytest.mark.parametrize("explicit_session_cancel", [False, True])
@@ -1388,8 +1384,8 @@ def test_gradio_local_queue_cancellation_releases_slot_and_keeps_sessions_isolat
         updates = [update async for update in third]
         final = updates[-1]
         assert "Completed (" in final[0]
-        assert final[8]["stem"] == sources[2].stem
-        assert all(item["interactive"] is True for item in final[-6:])
+        assert final[6]["stem"] == sources[2].stem
+        assert all(item["interactive"] is True for item in final[-7:])
 
     asyncio.run(scenario())
 
@@ -1423,8 +1419,8 @@ def test_gradio_output_failure_stops_timer_and_allows_next_conversion(tmp_path: 
             updates = [update async for update in handler(str(source), 0, "")]
             assert "Failed: output disk unavailable" in updates[-1][0]
             assert "is-error" in updates[-1][0]
-            assert updates[-1][8] is None
-            assert all(item["interactive"] is False for item in updates[-1][-6:])
+            assert updates[-1][6] is None
+            assert all(item["interactive"] is False for item in updates[-1][-7:])
 
     asyncio.run(scenario())
 
@@ -1503,7 +1499,6 @@ def test_shared_layout_failure_keeps_other_gradio_artifacts(tmp_path: Path, monk
     assert artifacts.markdown_path.is_file()
     assert not (artifacts.root / "layout.pdf").exists()
     assert any("Skipping Gradio layout overlay" in call.args[0] for call in warnings.call_args_list)
-    with zipfile.ZipFile(artifacts.bundle_zip_path) as archive:
-        assert "origin.pdf" in archive.namelist()
-        assert "middle_json.json" in archive.namelist()
+    with zipfile.ZipFile(render_download(artifacts.as_state(), "markdown")) as archive:
+        assert f"{artifacts.stem}.md" in archive.namelist()
         assert "layout.pdf" not in archive.namelist()

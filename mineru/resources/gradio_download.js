@@ -1,7 +1,6 @@
 // 按结果标识协调下载请求、按钮状态和浏览器下载，丢弃旧文档的回执。
 (action, formats, format, label, ...args) => {
     const { text, message } = window.__mineruI18n;
-    label = label === "LaTeX bundle" ? text("latex_bundle") : label;
     const state = window.__mineruGradioDownloads ??= { runId: "", sequence: 0, pending: new Map() };
     // 用标准组件更新对象兼容 Gradio 5/6；空更新不会覆盖新文档的按钮状态。
     const skip = () => ({ __type__: "update" });
@@ -16,7 +15,7 @@
         state.pending.clear();
         return [
             "", ...formats.map(() => null), ...formats.map(() => ""), ...formats.map(() => ""),
-            ...formats.map(([, name]) => button(name === "LaTeX bundle" ? text("latex_bundle") : name, false)), "",
+            ...formats.map(([, name]) => button(name, false)), "",
         ];
     }
     if (action === "activate") {
