@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from docvortex.compat.mineru import to_mineru_structured_content
+from ..integrations.docvortex import to_mineru_structured_content
 from typing import Any
 
 from ..types import MiddleJson

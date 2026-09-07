@@ -52,6 +52,7 @@ _CHINESE_DOCSTRING_PATHS = (
     _DOCVORTEX_ROOT / "render/_internal/latex",
 )
 _REMOVED_INTERNAL_MODULES = (
+    "docvortex.compat",
     "mineru.cli_old",
     "mineru.backend.local_model_runtime",
     "mineru.model.model_types",
@@ -82,7 +83,9 @@ _REMOVED_INTERNAL_MODULES = (
 
 def _module_name(path: Path) -> str:
     """把项目内 Python 路径转换为完整模块名。"""
-    relative = path.relative_to(_DOCVORTEX_ROOT.parent if path.is_relative_to(_DOCVORTEX_ROOT) else _PROJECT_ROOT).with_suffix("")
+    relative = path.relative_to(
+        _DOCVORTEX_ROOT.parent if path.is_relative_to(_DOCVORTEX_ROOT) else _PROJECT_ROOT
+    ).with_suffix("")
     parts = list(relative.parts)
     if parts[-1] == "__init__":
         parts.pop()

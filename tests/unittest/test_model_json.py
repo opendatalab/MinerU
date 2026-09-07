@@ -2,7 +2,7 @@ from __future__ import annotations
 import json
 from docvortex.codecs.json import load_middle, load_model
 from docvortex.schema import Producer
-from docvortex.compat.mineru import from_mineru_model, from_mineru_middle, to_mineru_model, to_mineru_middle
+from mineru.integrations.docvortex import from_mineru_model, from_mineru_middle, to_mineru_model, to_mineru_middle
 from mineru.integrations.docvortex import build_metadata
 
 import pytest

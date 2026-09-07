@@ -4,7 +4,7 @@ from copy import deepcopy
 
 import pytest
 
-from docvortex.compat.legacy_schema_adapter import legacy_page_to_model_list
+from mineru.backend.postprocess.legacy_schema_adapter import legacy_page_to_model_list
 from docvortex.postprocess.pages import model_json_to_pages
 from mineru.doclib.background.compaction import _normalize_batch_pages
 from mineru.types import BlockType, ModelJson
@@ -343,7 +343,7 @@ def test_legacy_adapter_separates_office_blocks_with_synthetic_bbox_groups() -> 
 
 
 def test_doclib_compaction_converts_schema_v1_pages_with_current_adapter() -> None:
-    """验证 Doclib 历史调用点重新通过适配器生成 3.0 page 字典。"""
+    """验证 Doclib 历史调用点重新通过宿主适配器生成 2.0 page 字典。"""
     payload = {
         "schema_version": "1.0",
         "pages": [
@@ -369,6 +369,19 @@ def test_doclib_compaction_converts_schema_v1_pages_with_current_adapter() -> No
 
 
 def test_doclib_compaction_rejects_unknown_legacy_schema() -> None:
-    """验证 2.0 等未支持旧 schema 不会被误当成 3.4.5 页面吞掉。"""
+    """验证未知 schema 不会被误当成 3.4.5 页面吞掉。"""
     with pytest.raises(ValueError, match="source reparse"):
-        _normalize_batch_pages({"schema_version": "2.0", "pages": [{"page_idx": 0, "blocks": []}]})
+        _normalize_batch_pages({"schema_version": "99.0", "pages": [{"page_idx": 0, "blocks": []}]})
+
+
+def test_doclib_compaction_accepts_current_schema_without_legacy_conversion(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证当前 2.0 缓存直接读取页面，不进入旧版转换。"""
+    from mineru.backend.postprocess import legacy_schema_adapter
+
+    def unexpected_conversion(_page: dict) -> list[dict]:
+        """当前缓存触发旧版转换时立即报告路由错误。"""
+        raise AssertionError("current schema must not use legacy conversion")
+
+    monkeypatch.setattr(legacy_schema_adapter, "legacy_page_to_model_list", unexpected_conversion)
+    pages = [{"page_idx": 0, "blocks": []}]
+    assert _normalize_batch_pages({"schema_version": "2.0", "pages": pages}) is pages

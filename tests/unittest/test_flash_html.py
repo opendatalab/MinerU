@@ -1,5 +1,5 @@
 from __future__ import annotations
-from docvortex.compat.mineru import from_mineru_middle
+from mineru.integrations.docvortex import from_mineru_middle
 from docvortex.export.middle import export_middle_json
 
 import asyncio

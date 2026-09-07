@@ -39,7 +39,7 @@ def _normalize_batch_pages(batch_payload: dict[str, Any]) -> list[dict[str, Any]
     if not isinstance(raw_pages, list) or any(not isinstance(page, dict) for page in raw_pages):
         raise ValueError("stale Middle JSON cache requires source reparse")
 
-    from docvortex.compat.legacy_schema_adapter import legacy_page_to_model_list
+    from ...backend.postprocess.legacy_schema_adapter import legacy_page_to_model_list
     from docvortex.postprocess.pages import model_json_to_pages
     from ...parser.base import (
         _legacy_effort,

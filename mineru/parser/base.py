@@ -1,6 +1,6 @@
 # Copyright (c) Opendatalab. All rights reserved.
 from __future__ import annotations
-from docvortex.compat.mineru import from_mineru_middle, to_mineru_middle, to_mineru_model
+from ..integrations.docvortex import from_mineru_middle, to_mineru_middle, to_mineru_model
 from docvortex.schema import Producer
 from ..integrations.docvortex import build_metadata
 
@@ -124,7 +124,7 @@ class ParseResult:
     @staticmethod
     def _build_middle_json_from_legacy(d: dict[str, Any], raw_pages: list[dict[str, Any]]) -> MiddleJson:
         """把 3.4.5 页面回推为 raw ModelJson，再走当前统一后处理生成 2.0。"""
-        from docvortex.compat.legacy_schema_adapter import legacy_page_to_model_list
+        from ..backend.postprocess.legacy_schema_adapter import legacy_page_to_model_list
         from ..version import __version__ as current_mineru_version
 
         source_version = d.get("_version_name", d.get("mineru_version"))
