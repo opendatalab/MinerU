@@ -130,6 +130,3 @@ def build_multi_document_ofd() -> bytes:
                 page_xml(text_object(2, label, boundary="10 10 40 10")),
             )
     return output.getvalue()
-
-
-__all__ = ["build_multi_document_ofd", "build_ofd_package", "page_xml", "path_object", "text_object"]

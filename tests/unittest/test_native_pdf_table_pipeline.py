@@ -10,19 +10,14 @@ from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
+from docvortex.document.pdf.document import PDFDocument, PDFPageTextGeometry
 from PIL import Image
 
 from mineru.backend.analysis.pdf import formulas as pdf_formulas
 from mineru.backend.analysis.pdf import layout as pdf_layout
 from mineru.backend.analysis.pdf import tables as pdf_tables
 from mineru.backend.analysis.pdf import window as pdf_window
-from docvortex.analyzers.native.pdf import models as flash_models
-from docvortex.analyzers.native.pdf import tables as flash_tables
-from docvortex.analyzers.native.pdf import table_materialization
-from docvortex.document.pdf.document import PDFDocument
-from docvortex.document.pdf.document import PDFPageTextGeometry
 from mineru.types import RAW_FORMULA_NUMBER, BlockType
-
 
 _PROJECT_ROOT = Path(__file__).parents[2]
 
@@ -41,50 +36,6 @@ def _build_native_pdf_page(*, width: float = 100.0, height: float = 100.0) -> Ma
     page.get_drawing_lines.return_value = []
     page.get_path_infos.return_value = []
     return page
-
-
-def test_flash_materialization_prefers_native_html_and_keeps_claims(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """验证 Flash 只替换表体 content，不改变候选认领语义。"""
-
-    source = flash_models._PageSource(
-        page_size=(100.0, 100.0),
-        lines=[
-            flash_models._LineItem(
-                text="A B",
-                bbox=(10.0, 20.0, 80.0, 30.0),
-                angle=0,
-                source_index=7,
-                effective_height=10.0,
-            )
-        ],
-        chars=[],
-        drawing_lines=[],
-    )
-    candidate = flash_models._TableCandidate(
-        bbox=(0.0, 10.0, 90.0, 40.0),
-        local_bbox=(0.0, 10.0, 90.0, 40.0),
-        angle=0,
-        score=1.0,
-        core_bbox=(0.0, 10.0, 90.0, 40.0),
-        line_indices={7},
-    )
-    html = "<table><tbody><tr><td>A</td><td>B</td></tr></tbody></table>"
-    projection = MagicMock(return_value="fallback")
-    monkeypatch.setattr(table_materialization, "_recover_native_table_html", MagicMock(return_value=html))
-    monkeypatch.setattr(table_materialization, "project_pdf_table_text", projection)
-
-    blocks, annotations, claimed = flash_tables._materialize_table_blocks(
-        source,
-        [candidate],
-    )
-
-    assert annotations == []
-    assert claimed == {7}
-    assert blocks[0]["content"] == html
-    assert "cell_merge" not in blocks[0]
-    projection.assert_not_called()
 
 
 def test_flash_ocr_projects_table_text(

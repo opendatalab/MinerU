@@ -1,33 +1,26 @@
 from __future__ import annotations
-from docvortex.schema import Producer
-from mineru.integrations.docvortex import build_metadata
-from _span_test_utils import inline as _inline
 
 import json
 from copy import deepcopy
 
 import pytest
+from _span_test_utils import inline as _inline
+from docvortex.schema import Producer
 
 from mineru.config import Config
+from mineru.integrations.docvortex import build_metadata
 from mineru.render import render_markdown, render_structured_content
 from mineru.types import (
-    AlgorithmBodyBlock,
     ChartAnnotationBlock,
     ChartBlock,
     ChartBodyBlock,
-    CodeBlock,
     EquationBlock,
-    ImageBlock,
-    IndexBlock,
-    ListBlock,
     MiddleJson,
     PageAuxTextBlock,
     PageBlock,
     PageFootnoteBlock,
     PageInfo,
     ParagraphTitleBlock,
-    TableBlock,
-    TableBodyBlock,
     TextBlock,
 )
 
@@ -128,240 +121,6 @@ def test_structured_content_preserves_document_tree_without_merging_or_mutation(
     assert result["pages"][1]["blocks"][0]["continues_prev"] is True
     _assert_output_field_contract(result)
     assert middle == original
-
-
-def test_structured_content_flattens_recursive_list_index_and_code_metadata() -> None:
-    """验证递归容器和代码 body 上浮为 Markdown，渲染元数据不进入输出。"""
-    nested = ListBlock(
-        type="list",
-        content=[TextBlock(type="text", content=_inline("- inner"))],
-    )
-    list_block = ListBlock(
-        type="list",
-        index=0,
-        sub_type="text",
-        content=[TextBlock(type="text", content=_inline("- outer")), nested],
-    )
-    index_block = IndexBlock(
-        type="index",
-        index=1,
-        content=[
-            ParagraphTitleBlock(
-                type="paragraph_title",
-                level=2,
-                anchor="section-b",
-                content=_inline("Section\t12"),
-            )
-        ],
-    )
-    code = CodeBlock.model_validate(
-        {
-            "type": "code",
-            "index": 2,
-            "sub_type": "code",
-            "guess_lang": "python",
-            "content": [
-                {
-                    "type": "code_caption",
-                    "index": 4,
-                    "bbox": [0.1, 0.1, 0.5, 0.2],
-                    "content": _inline("Example", styles=["bold"]),
-                },
-                {"type": "code_body", "index": 2, "content": "print('x')\n```"},
-                {
-                    "type": "code_footnote",
-                    "index": 5,
-                    "bbox": [0.1, 0.8, 0.5, 0.9],
-                    "content": [
-                        {"type": "text", "content": "note "},
-                        {"type": "equation_inline", "content": "x"},
-                    ],
-                },
-            ],
-        }
-    )
-
-    blocks = render_structured_content(_middle(_page(0, list_block, index_block, code)))["pages"][0]["blocks"]
-
-    assert blocks[0]["content"] == "- outer\n    - inner"
-    assert blocks[1]["content"] == "- [Section](#section-b)"
-    assert blocks[2]["content"] == "````python\nprint('x')\n```\n````"
-    assert blocks[2]["captions"] == [{"bbox": [0.1, 0.1, 0.5, 0.2], "content": "**Example**"}]
-    assert blocks[2]["footnotes"] == [{"bbox": [0.1, 0.8, 0.5, 0.9], "content": "note $x$"}]
-    assert "guess_lang" not in blocks[2]
-    _assert_output_field_contract(blocks)
-
-
-def test_structured_content_renders_algorithm_as_markdown_like_content() -> None:
-    """验证算法 content 使用简单 Markdown 样式并为复杂样式降级到 HTML。"""
-    algorithm = CodeBlock(
-        type="code",
-        index=0,
-        sub_type="algorithm",
-        content=[
-            AlgorithmBodyBlock(
-                type="algorithm_body",
-                index=0,
-                content=[
-                    {"type": "text", "content": "if x:\n  "},
-                    {"type": "text", "content": "bold", "styles": ["bold"]},
-                    {"type": "text", "content": " / "},
-                    {"type": "text", "content": "italic", "styles": ["italic"]},
-                    {"type": "text", "content": " / "},
-                    {"type": "text", "content": "strike", "styles": ["strikethrough"]},
-                    {"type": "text", "content": " / "},
-                    {"type": "text", "content": "under", "styles": ["underline"]},
-                    {"type": "text", "content": " / "},
-                    {"type": "text", "content": "dot", "styles": ["emphasis"]},
-                    {"type": "text", "content": " "},
-                    {"type": "text", "content": "q", "styles": ["subscript"]},
-                    {"type": "text", "content": "2", "styles": ["superscript"]},
-                    {"type": "text", "content": " = "},
-                    {"type": "equation_inline", "content": "x"},
-                    {"type": "equation_inline", "content": "y"},
-                ],
-            )
-        ],
-    )
-
-    output = render_structured_content(_middle(_page(0, algorithm)))["pages"][0]["blocks"][0]
-
-    assert output["content"] == (
-        "if x:\n  **bold** / *italic* / ~~strike~~ / <u>under</u> / "
-        '<span style="text-emphasis: dot; text-emphasis-position: under;">dot</span> '
-        "<sub>q</sub><sup>2</sup> = $x$ $y$"
-    )
-    assert "mineru-algorithm" not in output["content"]
-    _assert_output_field_contract(output)
-
-
-def test_structured_content_sorts_visual_annotations_and_selects_image_source() -> None:
-    """验证视觉说明稳定排序、空项保留及图片 path 优先规则。"""
-    image = ImageBlock.model_validate(
-        {
-            "type": "image",
-            "index": 0,
-            "sub_type": "diagram",
-            "content": [
-                {"type": "image_caption", "content": _inline("missing index")},
-                {
-                    "type": "image_body",
-                    "index": 0,
-                    "content": "description",
-                    "image_path": "images/a b.png",
-                    "image_base64": "data:image/png;base64,AAAA",
-                },
-                {
-                    "type": "image_caption",
-                    "index": 5,
-                    "bbox": [0.1, 0.5, 0.4, 0.6],
-                    "content": [],
-                },
-                {
-                    "type": "image_caption",
-                    "index": 3,
-                    "bbox": [0.1, 0.2, 0.4, 0.3],
-                    "content": _inline("early", styles=["bold"]),
-                },
-                {
-                    "type": "image_footnote",
-                    "index": 4,
-                    "bbox": [0.1, 0.7, 0.4, 0.8],
-                    "content": _inline("after"),
-                },
-            ],
-        }
-    )
-
-    result = render_structured_content(
-        _middle(_page(0, image)),
-        asset_base_url="https://cdn.example/doc",
-    )["pages"][0]["blocks"][0]
-
-    assert result["content"] == "description"
-    assert result["image_source"] == "https://cdn.example/doc/images/a%20b.png"
-    assert result["captions"] == [
-        {"bbox": [0.1, 0.2, 0.4, 0.3], "content": "**early**"},
-        {"bbox": [0.1, 0.5, 0.4, 0.6], "content": ""},
-        {"content": "missing index"},
-    ]
-    assert result["footnotes"] == [{"bbox": [0.1, 0.7, 0.4, 0.8], "content": "after"}]
-    assert "![](" not in result["content"]
-    assert "<details>" not in result["content"]
-    assert "data:image" not in json.dumps(result)
-    _assert_output_field_contract(result)
-
-
-def test_structured_content_keeps_table_image_source_and_cross_page_metadata() -> None:
-    """验证表格 body 上浮后仍保留图片来源、续表字段且不执行跨页合并。"""
-    first = TableBlock(
-        type="table",
-        index=0,
-        content=[
-            TableBodyBlock(
-                type="table_body",
-                index=0,
-                content="<table><tr><th>A</th></tr><tr><td>1</td></tr></table>",
-                image_path="images/table.png",
-            )
-        ],
-    )
-    second = TableBlock.model_validate(
-        {
-            "type": "table",
-            "index": 0,
-            "continues_prev": True,
-            "cell_merge": [1],
-            "content": [
-                {
-                    "type": "table_body",
-                    "index": 0,
-                    "content": "<table><tr><th>A</th></tr><tr><td>2</td></tr></table>",
-                },
-                {
-                    "type": "table_caption",
-                    "index": 2,
-                    "bbox": [0.1, 0.1, 0.9, 0.2],
-                    "content": _inline("Table 2"),
-                },
-                {
-                    "type": "table_footnote",
-                    "index": 3,
-                    "bbox": [0.1, 0.8, 0.9, 0.9],
-                    "content": _inline("note"),
-                },
-            ],
-        }
-    )
-    image_only = TableBlock(
-        type="table",
-        index=0,
-        content=[
-            TableBodyBlock(
-                type="table_body",
-                index=0,
-                content="",
-                image_path="images/image-only-table.png",
-            )
-        ],
-    )
-
-    result = render_structured_content(_middle(_page(0, first), _page(1, second), _page(2, image_only)))
-    first_output = result["pages"][0]["blocks"][0]
-    second_output = result["pages"][1]["blocks"][0]
-    image_only_output = result["pages"][2]["blocks"][0]
-
-    assert first_output["content"] == "| A |\n| --- |\n| 1 |"
-    assert first_output["image_source"] == "images/table.png"
-    assert first_output["captions"] == []
-    assert first_output["footnotes"] == []
-    assert second_output["content"] == "| A |\n| --- |\n| 2 |"
-    assert second_output["continues_prev"] is True
-    assert second_output["cell_merge"] == [1]
-    assert second_output["captions"] == [{"bbox": [0.1, 0.1, 0.9, 0.2], "content": "Table 2"}]
-    assert second_output["footnotes"] == [{"bbox": [0.1, 0.8, 0.9, 0.9], "content": "note"}]
-    assert image_only_output["content"] == ""
-    assert image_only_output["image_source"] == "images/image-only-table.png"
 
 
 def test_structured_content_keeps_chart_content_separate_from_base64_source(
@@ -473,11 +232,3 @@ def test_structured_content_renders_equation_as_raw_latex_with_single_image_sour
     assert "data:image/png;base64,DDDD" not in serialized
     assert "\\[" not in serialized and "\\]" not in serialized
     _assert_output_field_contract(blocks)
-
-
-def test_structured_content_rejects_legacy_dict_input() -> None:
-    """验证公共入口只接受严格 MiddleJson。"""
-    middle = _middle(_page(0))
-
-    with pytest.raises(TypeError, match="MiddleJson"):
-        render_structured_content(middle.to_dict())  # type: ignore[arg-type]

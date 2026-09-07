@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import struct
 import uuid
 import zlib
+from dataclasses import dataclass
 
-from _mtef_test_utils import _TINY_PNG, _build_nested_cfb, equation_native
 from _legacy_ppt_test_utils import _build_cfb
+from _mtef_test_utils import _TINY_PNG, _build_nested_cfb, equation_native
 
 
 @dataclass(frozen=True, slots=True)
@@ -35,12 +35,15 @@ def _officeart_record(
 ) -> bytes:
     """构造一条 OfficeArt record。"""
 
-    return struct.pack(
-        "<HHI",
-        (instance << 4) | version,
-        record_type,
-        len(payload),
-    ) + payload
+    return (
+        struct.pack(
+            "<HHI",
+            (instance << 4) | version,
+            record_type,
+            len(payload),
+        )
+        + payload
+    )
 
 
 def _equation_shape(row: int, col: int, object_id: int, *, preview: bool) -> bytes:
@@ -92,11 +95,7 @@ def _equation_obj(location: int, object_id: int) -> bytes:
     parsed_formula = struct.pack("<H", 5) + b"\x00" * 4 + b"\x02" + b"\x00" * 4
     embed_info = b"\x03\x00\x00"
     obj_formula = parsed_formula + embed_info
-    pict_formula = (
-        struct.pack("<H", len(obj_formula))
-        + obj_formula
-        + struct.pack("<I", location)
-    )
+    pict_formula = struct.pack("<H", len(obj_formula)) + obj_formula + struct.pack("<I", location)
     payload = b"".join(
         (
             struct.pack("<HH", 0x0015, len(cmo)) + cmo,
@@ -205,12 +204,6 @@ def label_cell(row: int, col: int, text: str, *, xf_index: int = 0) -> bytes:
     return biff_record(0x0204, struct.pack("<HHH", row, col, xf_index) + string)
 
 
-def number_cell(row: int, col: int, value: float, *, xf_index: int = 0) -> bytes:
-    """构造 NUMBER 单元格。"""
-
-    return biff_record(0x0203, struct.pack("<HHHd", row, col, xf_index, value))
-
-
 def formula_number_cell(row: int, col: int, value: float, *, xf_index: int = 0) -> bytes:
     """构造仅依赖缓存数值的 FORMULA 单元格。"""
 
@@ -302,10 +295,7 @@ def continued_rich_sst(text: str, starts: list[tuple[int, int]]) -> bytes:
     base = struct.pack("<IIHBH", 1, 1, unit_count, 0x09, len(starts))
     base += first_character
     continuation = bytes([0x01]) + remaining_characters
-    continuation += b"".join(
-        struct.pack("<HH", character_index, font_index)
-        for character_index, font_index in starts
-    )
+    continuation += b"".join(struct.pack("<HH", character_index, font_index) for character_index, font_index in starts)
     return biff_record(0x00FC, base) + biff_record(0x003C, continuation)
 
 
@@ -352,10 +342,7 @@ def build_xls(
         cursor += len(stream)
     if corrupt_first_offset and offsets:
         offsets[0] = 0x7FFF_FFF0
-    directory = b"".join(
-        boundsheet(offset, sheet)
-        for offset, sheet in zip(offsets, sheets, strict=True)
-    )
+    directory = b"".join(boundsheet(offset, sheet) for offset, sheet in zip(offsets, sheets, strict=True))
     workbook = prefix + directory + biff_record(0x000A) + b"".join(sheet_streams)
     if equations:
         return _build_xls_with_embeddings(
@@ -383,11 +370,7 @@ def build_equation_xls(
             _equation_shape(index - 1, 0, index, preview=preview),
         )
         drawing_records += _equation_obj(location, index)
-    globals_records = (
-        biff_record(0x00EB, _preview_bstore(preview_payload))
-        if preview
-        else b""
-    )
+    globals_records = biff_record(0x00EB, _preview_bstore(preview_payload)) if preview else b""
     return build_xls(
         [SheetFixture("Equations", cell_records + drawing_records)],
         globals_records=globals_records,
