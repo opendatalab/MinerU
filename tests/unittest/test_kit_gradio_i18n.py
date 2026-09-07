@@ -41,7 +41,7 @@ def test_i18n_launch_and_component_contract(tmp_path: Path) -> None:
 
 def test_bilingual_errors_and_html_keep_untrusted_details_as_text() -> None:
     """本地错误附带英文翻译，未知服务端消息和恶意文件名仍是转义后的原文。"""
-    value = localized_text("office_completed", name='<img src=x onerror="alert(1)"> $& 中文.pdf')
+    value = localized_text("failed", error='<img src=x onerror="alert(1)"> $& 中文.pdf')
     assert "<img" not in value and "&lt;img" in value and "$&amp; 中文.pdf" in value
     for message, expected in [
         ("Failed: input file does not exist", "输入文件不存在"),

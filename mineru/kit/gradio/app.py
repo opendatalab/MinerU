@@ -446,7 +446,7 @@ def build_gradio_app(
             ]
         )
 
-        def update_file_preview(file_path: str | None) -> tuple[Any, ...]:
+        def update_file_preview(file_path: str | None, request: object | None = None) -> tuple[Any, ...]:
             """切换源文件预览，并清除上一份文档的结果与下载状态。"""
             reset_result = (_status_html(_DEFAULT_STATUS), "", "", "", None, *_download_updates(gr, interactive=False))
             if not file_path:
@@ -480,7 +480,7 @@ def build_gradio_app(
                     _preview_update(gr, None, visible=False),
                     _preview_update(
                         gr,
-                        preview_placeholder("office_pending"),
+                        _build_office_preview_html(file_path, request),
                         visible=True,
                     ),
                     _preview_update(gr, "", visible=False),
@@ -494,6 +494,8 @@ def build_gradio_app(
                 *reset_result,
             )
 
+        # 保持公开输入只有文件，访问地址由 Gradio 的请求上下文注入。
+        update_file_preview.__annotations__["request"] = gr.Request
         private_event_kwargs = _private_event_kwargs(gr)
 
         download_script = _resource_text("gradio_download.js")
@@ -690,17 +692,22 @@ def build_gradio_app(
                     markdown_text = artifacts.markdown_path.read_text(encoding="utf-8")
                     structured_text = artifacts.structured_content_path.read_text(encoding="utf-8")
                     preview_path = artifacts.layout_pdf_path or artifacts.origin_pdf_path
-                    office_html = _build_office_result_html(artifacts, request) if _is_office(source_path) else ""
-                    generic_html = "" if preview_path or office_html else preview_placeholder("result_ready")
+                    generic_html = "" if preview_path else preview_placeholder("result_ready")
                     show_image_preview = suffix in IMAGE_EXTENSIONS and preview_path is None
+                    result_preview_updates = (
+                        _pdf_preview_update(gr, str(preview_path) if preview_path else None),
+                        gr.update(value=str(source_path) if show_image_preview else None, visible=show_image_preview),
+                        gr.update(value="", visible=False),
+                        gr.update(value=generic_html, visible=bool(generic_html)),
+                    )
+                    if _is_office(source_path):
+                        # Office 源预览已在上传时挂载，成功后不重载 iframe，也不恢复已忽略的提示。
+                        result_preview_updates = tuple(gr.skip() for _ in range(4))
                     return (
                         markdown_for_gradio(markdown_text, artifacts),
                         markdown_text,
                         structured_text,
-                        _pdf_preview_update(gr, str(preview_path) if preview_path else None),
-                        gr.update(value=str(source_path) if show_image_preview else None, visible=show_image_preview),
-                        gr.update(value=office_html, visible=bool(office_html)),
-                        gr.update(value=generic_html, visible=bool(generic_html)),
+                        *result_preview_updates,
                         artifacts.as_state(),
                         *_download_updates(gr, interactive=True, run_id=artifacts.root.name),
                     )
@@ -935,21 +942,24 @@ def _example_files(file_types: list[str]) -> list[str]:
     return [str(path) for path in sorted(example_root.iterdir()) if path.is_file() and path.suffix.lower() in suffixes]
 
 
-def _build_office_result_html(artifacts: RunArtifacts, request: Any = None) -> str:
-    """为 Office 结果生成带可选在线预览的安全提示，转换不依赖该 iframe。"""
-    source_name = artifacts.source_path.name
+def _build_office_preview_html(file_path: str | Path, request: object | None = None) -> str:
+    """复用 3.4.5 的上传即预览结构；短地址只供展示，iframe 始终使用完整地址。"""
+    source_path = Path(file_path)
     headers = getattr(request, "headers", None) or {}
     host = headers.get("x-forwarded-host") or headers.get("host") or "localhost:7860"
     protocol = headers.get("x-forwarded-proto") or "http"
-    public_url = f"{protocol}://{host}/gradio_api/file={quote(str(artifacts.source_path), safe='/:')}"
+    public_url = f"{protocol}://{host}/gradio_api/file={quote(str(source_path), safe='/:')}"
+    short_name = f"{source_path.stem[-12:]}{source_path.suffix}" if source_path.stem else source_path.name
+    short_public_url = f"{protocol}://{host}/....{short_name}"
     viewer_url = "https://view.officeapps.live.com/op/embed.aspx?src=" + quote(public_url, safe="")
     return (
         '<div class="office-preview-shell">'
         '<div class="office-preview-notice">'
         '<div class="office-preview-copy">'
-        f"<strong>{localized_text('office_completed', name=source_name)}</strong>"
-        f"{localized_text('office_notice')}"
-        f'<div class="office-preview-source-link">{html.escape(public_url, quote=True)}</div>'
+        f"<strong>{localized_text('office_preview_title')}</strong>"
+        f"<span>{localized_text('office_notice')}</span>"
+        '<div class="office-preview-source-link">'
+        f"{localized_text('office_preview_source_link')}: {html.escape(short_public_url, quote=True)}</div>"
         "</div>"
         '<div class="office-preview-actions">'
         f'<button type="button" class="office-preview-ignore-once">{localized_text("ignore_once")}</button>'

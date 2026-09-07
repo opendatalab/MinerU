@@ -14,7 +14,7 @@ for (const [languages, language, expected] of [
     context.window.__mineruI18n = i18n;
     assert.equal(i18n.resolveLocale(), expected);
     assert.equal(i18n.text("force_ocr_info"), messages.force_ocr_info[expected === "zh" ? 1 : 0]);
-    assert.ok(i18n.text("office_completed", { name: "$& 文件.pdf" }).includes("$& 文件.pdf"));
+    assert.ok(i18n.text("failed", { error: "$& 文件.pdf" }).includes("$& 文件.pdf"));
     const range = vm.runInContext(resource("gradio_page_range.js"), context);
     const out = range(["flash", "standard"], ["csv"], 20, "/test.pdf", 1,
         JSON.stringify({ path: "/test.pdf", page_count: 10 }), "{}", 1, 1,
