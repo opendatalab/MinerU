@@ -14,7 +14,6 @@ from typing import Any, AsyncIterator, Generator, Iterator, Literal
 
 from loguru import logger
 from mineru_vl_utils import MinerUClient
-from packaging import version
 
 from docvortex.foundation.platform import is_mac_os_version_supported
 from ..runtime.device import get_device
@@ -125,34 +124,21 @@ class ModelSingleton:
 
                 elif backend == "transformers":
                     try:
-                        from transformers import (
-                            AutoProcessor,
-                            Qwen2VLForConditionalGeneration,
+                        from mineru_vl_utils.transformers_loading import (
+                            load_transformers_model,
+                            load_transformers_processor,
                         )
-                        from transformers import __version__ as transformers_version
-                    except ImportError:
-                        raise ImportError("Please install transformers to use the transformers backend.")
 
-                    if version.parse(transformers_version) >= version.parse("4.56.0"):
-                        dtype_key = "dtype"
-                    else:
-                        dtype_key = "torch_dtype"
-                    device = get_device()
-                    model = Qwen2VLForConditionalGeneration.from_pretrained(
-                        model_path,
-                        device_map={"": device},
-                        **{dtype_key: "auto"},  # type: ignore
-                    )
-                    processor = AutoProcessor.from_pretrained(
-                        model_path,
-                        use_fast=True,
-                    )
+                        model = load_transformers_model(model_path, device_map={"": get_device()})
+                        processor = load_transformers_processor(model_path)
+                    except ImportError as exc:
+                        raise ImportError("Please install transformers to use the transformers backend.") from exc
                     if batch_size == 0:
                         batch_size = set_default_batch_size()
                 elif backend == "mlx-engine":
-                    mlx_supported = is_mac_os_version_supported()
+                    mlx_supported = is_mac_os_version_supported("14.0")
                     if not mlx_supported:
-                        raise EnvironmentError("mlx-engine backend is only supported on macOS 13.5+ with Apple Silicon.")
+                        raise EnvironmentError("mlx-engine backend is only supported on macOS 14.0+ with Apple Silicon.")
                     from mineru_vl_utils.mlx_compat import load_mlx_model
 
                     model, processor = load_mlx_model(model_path)
@@ -223,8 +209,7 @@ class ModelSingleton:
                         vllm_async_llm = AsyncLLM.from_engine_args(AsyncEngineArgs(**kwargs))
                     elif backend == "lmdeploy-engine":
                         try:
-                            from lmdeploy import PytorchEngineConfig, TurbomindEngineConfig
-                            from lmdeploy.serve.vl_async_engine import VLAsyncEngine
+                            from lmdeploy import PytorchEngineConfig, TurbomindEngineConfig, pipeline
                         except ImportError:
                             raise ImportError("Please install lmdeploy to use the lmdeploy-engine backend.")
                         if "cache_max_entry_count" not in kwargs:
@@ -264,10 +249,10 @@ class ModelSingleton:
                         if os.getenv("TM_LOG_LEVEL") is None:
                             os.environ["TM_LOG_LEVEL"] = log_level
 
-                        lmdeploy_engine = VLAsyncEngine(
+                        lmdeploy_engine = pipeline(
                             model_path,
-                            backend=lm_backend,
                             backend_config=backend_config,
+                            log_level=log_level,
                         )
                 predictor = MinerUClient(
                     backend=backend,

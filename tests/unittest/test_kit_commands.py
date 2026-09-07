@@ -747,7 +747,7 @@ def test_vlm_server_auto_treats_missing_mlx_as_unavailable(monkeypatch: Any) -> 
     def _missing_spec(_module_name: str) -> None:
         raise ModuleNotFoundError("No module named 'mlx_vlm'")
 
-    monkeypatch.setattr(vlm_server, "is_mac_os_version_supported", lambda: True)
+    monkeypatch.setattr(vlm_server, "is_mac_os_version_supported", lambda min_version: min_version == "14.0")
     monkeypatch.setattr(vlm_server.importlib.util, "find_spec", _missing_spec)
 
     assert vlm_server._mlx_server_available() is False

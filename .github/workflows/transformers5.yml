@@ -1,0 +1,105 @@
+name: Transformers 5 compatibility
+
+on:
+  pull_request:
+    branches: [next]
+  push:
+    branches: [next]
+  workflow_dispatch:
+    inputs:
+      utils-wheel-url:
+        description: Optional mineru-vl-utils 2.x wheel URL for joint pre-release validation
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  compatibility:
+    name: ${{ matrix.os }} / Python ${{ matrix.python }} / Transformers ${{ matrix.transformers }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        python: ['3.10', '3.11', '3.12', '3.13']
+        transformers: ['5.10.1', '5.16.1']
+        include:
+          - {os: ubuntu-latest, python: '3.10', transformers: '5.10.1', torch: '2.6.0', torchvision: '0.21.0'}
+          - {os: windows-latest, python: '3.12', transformers: '5.10.1'}
+          - {os: windows-latest, python: '3.12', transformers: '5.16.1'}
+          - {os: macos-latest, python: '3.12', transformers: '5.10.1'}
+          - {os: macos-latest, python: '3.12', transformers: '5.16.1'}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: astral-sh/setup-uv@v7
+      - name: Install dependencies and optional joint-validation wheel
+        env:
+          UTILS_WHEEL_URL: ${{ inputs.utils-wheel-url }}
+          TRANSFORMERS_VERSION: ${{ matrix.transformers }}
+          TORCH_VERSION: ${{ matrix.torch }}
+          TORCHVISION_VERSION: ${{ matrix.torchvision }}
+        run: |
+          uv venv
+          if [[ -n "$UTILS_WHEEL_URL" ]]; then
+            uv pip install "$UTILS_WHEEL_URL"
+          fi
+          if [[ -n "$TORCH_VERSION" ]]; then
+            uv pip install "torch==$TORCH_VERSION" "torchvision==$TORCHVISION_VERSION"
+          fi
+          uv pip install '.[torch,test]' "transformers==$TRANSFORMERS_VERSION"
+          uv pip check
+      - name: Check real model graphs, cache and public import boundaries
+        run: |
+          if [[ -f .venv/Scripts/activate ]]; then source .venv/Scripts/activate; else source .venv/bin/activate; fi
+          python -m pytest -q -o addopts='' \
+            tests/unittest/test_transformers5_models.py \
+            tests/unittest/test_transformers5_runtime.py \
+            tests/unittest/test_pp_doclayoutv2_postprocess.py \
+            tests/unittest/test_mfr_latex_utils.py \
+            tests/unittest/test_vlm_config.py \
+            tests/unittest/test_vlm_remote.py \
+            tests/unittest/test_parser_model_preload.py \
+            tests/unittest/test_models_download_utils.py \
+            tests/unittest/test_pdf_memory_lifecycle.py
+
+  dependency-resolution:
+    name: Installation matrix / ${{ matrix.platform }} / Transformers ${{ matrix.transformers }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [linux, windows, macos]
+        transformers: ['5.10.1', '5.16.1']
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - uses: astral-sh/setup-uv@v7
+      - name: Build wheels for metadata validation
+        env:
+          UTILS_WHEEL_URL: ${{ inputs.utils-wheel-url }}
+        run: |
+          python -m pip install build
+          python -m build --wheel
+          mkdir -p dependency-wheels
+          python -m pip download --no-deps --dest dependency-wheels "${UTILS_WHEEL_URL:-mineru-vl-utils>=2,<3}"
+      - name: Resolve base, torch, full and all on Python 3.10 through 3.13
+        run: |
+          python scripts/check_transformers5_dependencies.py \
+            --mineru-wheel dist/*.whl --utils-wheel dependency-wheels/*.whl \
+            --platform '${{ matrix.platform }}' --transformers '${{ matrix.transformers }}' \
+            --output dependency-matrix.json
+      - uses: actions/upload-artifact@v6
+        if: always()
+        with:
+          name: dependencies-${{ matrix.platform }}-${{ matrix.transformers }}
+          path: dependency-matrix.json

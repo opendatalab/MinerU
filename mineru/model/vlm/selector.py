@@ -82,7 +82,7 @@ def _select_linux_engine(is_async: bool) -> VlmEngine:
 def _select_mac_engine() -> VlmEngine:
     """macOS 平台引擎选择"""
     try:
-        if is_mac_os_version_supported():
+        if is_mac_os_version_supported("14.0"):
             import mlx_vlm as _mlx_vlm  # type: ignore
 
             del _mlx_vlm
