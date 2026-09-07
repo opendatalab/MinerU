@@ -3,7 +3,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
 const downloads = [];
-global.window = {};
+
 global.document = {
     body: { appendChild() { /* 模拟临时下载链接挂载。 */ } },
     createElement() {
@@ -11,6 +11,11 @@ global.document = {
         return { click() { downloads.push([this.href, this.download]); }, remove() {} };
     },
 };
+// 使用产品词典和真实语言解析器；默认中文以保留既有行为断言。
+Object.defineProperty(globalThis, "navigator", { value: { languages: ["zh-CN"] }, configurable: true });
+global.window = { __mineruI18n: vm.runInThisContext(fs.readFileSync(
+    path.join(__dirname, "../../mineru/resources/gradio_i18n.js"), "utf8"
+))(JSON.parse(fs.readFileSync(0, "utf8"))) };
 const reduce = vm.runInThisContext(fs.readFileSync(path.join(__dirname, "../../mineru/resources/gradio_download.js"), "utf8"));
 const formats = [["zip", "ZIP"], ["html", "HTML"], ["docx", "DOCX"], ["latex", "LaTeX bundle"], ["epub", "EPUB"], ["pdf", "PDF"]];
 // 调用实际产品脚本，保持 DOM 替身只负责记录下载行为。
@@ -28,7 +33,7 @@ for (const [format, label] of formats) {
         const [ready, notice] = step("complete", format, file, receipt(token), "run-a");
         assert.equal(downloads.length, count + 1);
         assert.deepEqual(downloads.at(-1), [file.url, file.orig_name]);
-        assert.equal(ready.value, label);
+        assert.equal(ready.value, label === "LaTeX bundle" ? "LaTeX 压缩包" : label);
         assert.equal(ready.interactive, true);
         assert.equal(notice, "");
         step("complete", format, file, receipt(token), "run-a");

@@ -52,7 +52,7 @@ def test_queue_animation_cycles_without_restarting_on_repeated_status(message: s
     for seconds, dots in [(0, 1), (3, 4), (9, 10), (10, 1)]:
         now[0] = 5.0 + seconds
         assert not state.append(message)
-        assert f'<div class="status-latest">{message}{"." * dots}</div>' in state.render()
+        assert f'data-mineru-i18n-en="{message}{"." * dots}"' in state.render()
 
 
 def test_fast_completion_has_no_invented_elapsed_time_and_reset_has_eight_pending_steps() -> None:
@@ -61,7 +61,7 @@ def test_fast_completion_has_no_invented_elapsed_time_and_reset_has_eight_pendin
     state.append(STATUS_QUEUED_ON_SERVER)
     state.append(STATUS_DOWNLOADING_RESULT)
     state.append(STATUS_COMPLETED)
-    assert '<div class="status-latest">Completed</div>' in state.render()
+    assert 'data-mineru-i18n-en="Completed"' in state.render()
     idle = status_html()
     assert idle.count("status-step is-pending") == 8
     assert 'data-mineru-i18n-en="Waiting"' in idle

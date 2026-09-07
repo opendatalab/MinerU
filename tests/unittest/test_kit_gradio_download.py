@@ -11,6 +11,7 @@ from unittest.mock import Mock
 import pytest
 
 from mineru.kit.gradio import app as gradio_app
+from mineru.kit.gradio.i18n import MESSAGES
 from mineru.kit.gradio.artifacts import create_run_artifacts
 from mineru.kit.gradio.client import V1ServerCapabilities
 
@@ -79,5 +80,7 @@ def test_frontend_download_lifecycle() -> None:
     node = shutil.which("node")
     if node is None:
         pytest.skip("Node.js is required for frontend state tests")
-    result = subprocess.run([node, str(Path(__file__).with_suffix(".cjs"))], capture_output=True, text=True, check=False)
+    result = subprocess.run(
+        [node, str(Path(__file__).with_suffix(".cjs"))], input=json.dumps(MESSAGES), capture_output=True, text=True, check=False
+    )
     assert result.returncode == 0, result.stdout + result.stderr

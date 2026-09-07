@@ -2,6 +2,11 @@ const assert = require("node:assert/strict");
 const fs = require("node:fs");
 const path = require("node:path");
 const vm = require("node:vm");
+// 使用产品词典和真实语言解析器；默认中文以保留既有行为断言。
+Object.defineProperty(globalThis, "navigator", { value: { languages: ["zh-CN"] }, configurable: true });
+global.window = { __mineruI18n: vm.runInThisContext(fs.readFileSync(
+    path.join(__dirname, "../../mineru/resources/gradio_i18n.js"), "utf8"
+))(JSON.parse(fs.readFileSync(0, "utf8"))) };
 const reduce = vm.runInThisContext(fs.readFileSync(path.join(__dirname, "../../mineru/resources/gradio_page_range.js"), "utf8"));
 const tiers = ["flash", "basic", "standard", "advanced"];
 // 使用 Python 测试传入的统一格式集合，测试和产品代码均不维护另一份后缀清单。

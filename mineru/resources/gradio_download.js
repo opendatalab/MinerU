@@ -1,5 +1,7 @@
 // 按结果标识协调下载请求、按钮状态和浏览器下载，丢弃旧文档的回执。
 (action, formats, format, label, ...args) => {
+    const { text, message } = window.__mineruI18n;
+    label = label === "LaTeX bundle" ? text("latex_bundle") : label;
     const state = window.__mineruGradioDownloads ??= { runId: "", sequence: 0, pending: new Map() };
     // 用标准组件更新对象兼容 Gradio 5/6；空更新不会覆盖新文档的按钮状态。
     const skip = () => ({ __type__: "update" });
@@ -14,7 +16,7 @@
         state.pending.clear();
         return [
             "", ...formats.map(() => null), ...formats.map(() => ""), ...formats.map(() => ""),
-            ...formats.map(([, name]) => button(name, false)), "",
+            ...formats.map(([, name]) => button(name === "LaTeX bundle" ? text("latex_bundle") : name, false)), "",
         ];
     }
     if (action === "activate") {
@@ -27,13 +29,13 @@
         if (!runId || state.runId !== runId || state.pending.has(format)) return [skip(), skip(), skip()];
         const token = JSON.stringify({ run_id: runId, sequence: ++state.sequence });
         state.pending.set(format, token);
-        return [token, button(`${label} · 准备中…`, false), ""];
+        return [token, button(`${label} · ${text("preparing_download")}`, false), ""];
     }
     if (action === "busy") {
         const [token, runId] = args;
         // 即使开始回执晚于换文件或清除，也只能修改当前仍在等待的同一个请求。
         if (!token || state.pending.get(format) !== token || !runId || state.runId !== runId) return [skip(), skip()];
-        return [button(`${label} · 准备中…`, false), ""];
+        return [button(`${label} · ${text("preparing_download")}`, false), ""];
     }
     if (action === "complete") {
         const [file, receiptText, runId] = args;
@@ -45,8 +47,8 @@
         if (request.run_id !== runId) return [skip(), skip()];
         state.pending.delete(format);
         if (receipt.error || !file?.url) {
-            const message = receipt.error || "未获得下载文件，请重试。";
-            return [button(label, true), `<div role="alert">${escapeHtml(label)} 下载失败：${escapeHtml(message)}</div>`];
+            const error = message(receipt.error) || text("missing_download");
+            return [button(label, true), `<div role="alert">${escapeHtml(text("download_failed", { format: label, error }))}</div>`];
         }
         const anchor = document.createElement("a");
         anchor.href = file.url;

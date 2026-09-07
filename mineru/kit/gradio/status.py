@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import asyncio
-import html
 import time
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from typing import Any
+
+from .i18n import localized_message, localized_text as _localized_text
 
 DEFAULT_STATUS = "Upload a file and start conversion."
 STATUS_PREPARING_REQUEST = "Preparing request..."
@@ -20,16 +21,7 @@ STATUS_DOWNLOADING_RESULT = "Task completed, downloading result..."
 STATUS_PROCESSING_OUTPUT = "Preparing outputs..."
 STATUS_COMPLETED = "Completed"
 
-_STEPS = (
-    ("prepare", "Prepare", "准备请求"),
-    ("check", "Check service", "检查服务"),
-    ("submit", "Submit", "提交任务"),
-    ("queue", "Queue", "排队"),
-    ("process", "Parse", "解析中"),
-    ("download", "Download", "下载结果"),
-    ("outputs", "Build outputs", "整理输出"),
-    ("done", "Done", "完成"),
-)
+_STEPS = ("prepare", "check", "submit", "queue", "process", "download", "outputs", "done")
 _MESSAGE_STEPS = {
     STATUS_PREPARING_REQUEST: 0,
     STATUS_CHECKING_SERVER: 1,
@@ -41,15 +33,6 @@ _MESSAGE_STEPS = {
     STATUS_PROCESSING_OUTPUT: 6,
     STATUS_COMPLETED: 7,
 }
-
-
-def _localized_text(key: str, english: str, chinese: str) -> str:
-    """输出中英文属性，复用页面现有的浏览器语言本地化逻辑。"""
-    return (
-        f'<span data-mineru-i18n-key="{html.escape(key, quote=True)}"'
-        f' data-mineru-i18n-en="{html.escape(english, quote=True)}"'
-        f' data-mineru-i18n-zh="{html.escape(chinese, quote=True)}">{html.escape(chinese)}</span>'
-    )
 
 
 @dataclass
@@ -101,10 +84,10 @@ class StatusPanelState:
         failed = self.message.startswith("Failed:")
         completed = self.message == STATUS_COMPLETED
         items: list[str] = []
-        for index, (key, english, chinese) in enumerate(_STEPS):
+        for index, key in enumerate(_STEPS):
             if failed and index == self.step_index:
                 state = "is-active is-error"
-                key, english, chinese = "failed", "Failed", "失败"
+                key = "failed"
             elif completed or index < self.step_index:
                 state = "is-done"
             elif index == self.step_index:
@@ -113,7 +96,7 @@ class StatusPanelState:
                 state = "is-pending"
             items.append(
                 f'<div class="status-step {state}"><span class="status-dot"></span>'
-                f'<span class="status-label">{_localized_text("status_step_" + key, english, chinese)}</span></div>'
+                f'<span class="status-label">{_localized_text("status_step_" + key)}</span></div>'
             )
         latest = self.message
         if self._processing_started is not None:
@@ -124,11 +107,11 @@ class StatusPanelState:
         elif completed and self.processing_elapsed is not None:
             latest = f"{STATUS_COMPLETED} ({self.processing_elapsed:.1f}s)"
         if self.message == DEFAULT_STATUS:
-            title = _localized_text("status_idle_title", "Waiting", "等待任务")
-            latest_html = _localized_text("status_idle_hint", DEFAULT_STATUS, "上传文件后开始转换。")
+            title = _localized_text("status_idle_title")
+            latest_html = _localized_text("status_idle_hint")
         else:
-            title = _localized_text("status_latest", "Latest status", "最新状态")
-            latest_html = html.escape(latest)
+            title = _localized_text("status_latest")
+            latest_html = localized_message(latest)
         return (
             '<div class="status-steps-panel">'
             f'<div class="status-panel-title">{title}</div>'

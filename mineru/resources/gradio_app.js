@@ -1,5 +1,5 @@
 () => {
-    const APP_SCRIPT_VERSION = "v1-pdf-page-range-crossing";
+    const APP_SCRIPT_VERSION = "v1-project-bilingual-preview";
     if (window.__mineruGradioAppInstalled === APP_SCRIPT_VERSION) {
         return;
     }
@@ -18,38 +18,9 @@
         "application/vnd.openxmlformats-officedocument.presentationml.presentation": "pptx",
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
     };
-    // 只把中文浏览器语言映射为中文；其他所有语言统一降级到英文。
-    const normalizeMineruLocale = (locale) => {
-        const normalized = String(locale || "").toLowerCase();
-        if (normalized.startsWith("zh")) {
-            return "zh";
-        }
-        return "en";
-    };
-
-    // 以浏览器首选语言为准；非中文语言包括 en/ja/ko/fr 等都统一使用英文文案。
-    const resolveMineruLocale = () => {
-        if (typeof navigator !== "undefined") {
-            const languages = Array.from(navigator.languages || []);
-            const primaryLocale = languages[0] || navigator.language;
-            if (primaryLocale) {
-                return normalizeMineruLocale(primaryLocale);
-            }
-        }
-        return normalizeMineruLocale(document.documentElement.getAttribute("lang"));
-    };
-
-    // Gradio 只会自动翻译组件属性；header/status 这类自定义 HTML 需要前端按浏览器语言补一次。
-    const localizeMineruCustomText = () => {
-        const locale = resolveMineruLocale();
-        document.querySelectorAll("[data-mineru-i18n-key]").forEach((item) => {
-            const localizedText = item.getAttribute(`data-mineru-i18n-${locale}`)
-                || item.getAttribute("data-mineru-i18n-en");
-            if (localizedText !== null && item.textContent !== localizedText) {
-                item.textContent = localizedText;
-            }
-        });
-    };
+    const i18n = window.__mineruI18n = __MINERU_I18N__;
+    // HTML 回调和前端事件使用同一份词典与首选语言规则。
+    const localizeMineruCustomText = () => i18n.localize();
 
     // 读取浏览器本地偏好时做容错，避免隐私模式禁用 localStorage 影响页面初始化。
     const getOfficePreviewNoticeIgnored = () => {
@@ -242,7 +213,10 @@
         const uiObserver = new MutationObserver(() => {
             refreshMineruCustomHtml();
         });
-        uiObserver.observe(document.body, { childList: true, subtree: true });
+        uiObserver.observe(document.body, {
+            childList: true, subtree: true, characterData: true, attributes: true,
+            attributeFilter: ["title", "aria-label", "data-mineru-i18n-en", "data-mineru-i18n-zh"],
+        });
     }
 
     document.addEventListener("click", (event) => {
