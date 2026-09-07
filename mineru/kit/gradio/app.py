@@ -134,7 +134,6 @@ def _render_header(*, gradio_major_version: int = 5) -> str:
     """渲染复用旧版视觉风格的静态 Header。"""
     template = _resource_text("gradio_header.html")
     values = {
-        "{{HEADER_SUPPORT_TEXT}}": "",
         "{{HEADER_MODEL_HUGGINGFACE_LINK}}": "Hugging Face",
         "{{HEADER_MODEL_MODELSCOPE_LINK}}": "ModelScope",
         "{{HEADER_PAPER_MINERU_REPORT}}": "MinerU · arXiv",
@@ -145,6 +144,7 @@ def _render_header(*, gradio_major_version: int = 5) -> str:
     for placeholder, key in {
         "HEADER_TITLE": "header_title",
         "HEADER_SUBTITLE": "header_subtitle",
+        "HEADER_SUPPORT_TEXT": "header_support_text",
         "HEADER_CODE_LINK": "code",
         "HEADER_MODEL_LINK": "model",
         "HEADER_PAPER_LINK": "paper",
