@@ -34,7 +34,7 @@ InlineContentBlock
 
 Middle JSON 下一版要达到以下目标:
 
-1. 统一使用带协议身份和 metadata 的 JSON 2.0；所有历史 JSON 必须重新解析，见 [envelope.md](envelope.md)。
+1. 统一使用带协议身份和 metadata 的 JSON 2.0；通用接口严格读取，Doclib 历史数据经独立缓存边界转换，见 [envelope.md](envelope.md)。
 2. 明确 `PageInfo` / `Block` / `InlineSpan` 字段契约。
 3. 为每个 backend 提供 normalization 任务清单。
 4. 定义 Agent 可引用的稳定 locator 规则。

@@ -1,6 +1,6 @@
 # DocVortex 接入与标点规则验证
 
-独立引擎已更名为 DocVortex，MinerU 依赖为 `docvortex>=0.1.0,<1.0.0`。
+独立引擎已更名为 DocVortex，MinerU 依赖为 `docvortex>=0.2.1,<0.3.0`。
 导入及集成模块同步迁移，公开文档类型继续由引擎唯一维护。MinerU 的 schema 2.0、
 产品元数据、已有旧结果适配、OCR/VLM/Hybrid 路由与 UI 名称保持不变。
 

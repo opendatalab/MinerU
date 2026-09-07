@@ -19,8 +19,8 @@
 ### 1.2 共享文档协议与缓存必须同步
 
 改外层结构时同步 DocVortex schema/readers、MinerU ParseResult 和 Doclib 缓存。
-当前使用 schema 身份 + 版本 2.0 + metadata，旧协议全部拒绝；不能仅按版本号识别。
-缓存命中、覆盖与默认读取档位均需检查新版协议；压缩只合并元数据一致的新批次。
+当前使用 schema 身份 + 版本 2.0 + metadata，通用接口拒绝旧协议；不能仅按版本号识别。
+Doclib 缓存命中、覆盖、默认档位与压缩均使用专属 read_cached_middle_json，兼容转换旧 3.4.5 和 MinerU 2.0；压缩只合并转换后元数据一致的批次。
 详见 [envelope.md](middle-json/envelope.md)。
 
 ## 2. Alpha 高频迭代，公开 API 未稳定

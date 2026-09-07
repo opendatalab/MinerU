@@ -27,7 +27,7 @@ Middle JSON 已经收敛为 schema 2.0 的严格 Pydantic 模型：`docvortex.sc
 - 以当前代码中的 Pydantic 严格模型为起点（schema 2.0）。
 - 区分“已经解决”、“部分解决”、“仍需工作”。
 - Agent 引用与稳定 page/block locator 是 P0 目标。
-- 统一使用带 `schema` 身份的 2.0 协议及 `metadata`；所有历史文档协议均明确拒绝，旧缓存须重新解析。
+- 统一使用带 `schema` 身份的 2.0 协议及 `metadata`；通用接口拒绝历史协议；仅 Doclib 持久化读取兼容旧 MinerU Middle JSON，见 [缓存兼容说明](middle-json/doclib-compatibility.md)。
 - render 统一不能只看入口 facade，还要收敛格式-specific 分支。
 
 ## 与其他文档的关系

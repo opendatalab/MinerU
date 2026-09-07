@@ -46,13 +46,12 @@ Structured Content 迁移 metadata/extensions，但不带 Model/Middle 协议标
 Content List V1/V2 内容契约不变。
 HTTP 请求、输出文件名和 ZIP 布局保持不变；ZIP 内文档必须使用完整新版协议。
 
-## 直接迁移与缓存
+## 严格协议与 Doclib 历史缓存
 
-读取联合检查 schema 和 schema_version；不接受旧 DocVortex 1.0、缺少 schema 的
-MinerU 2.0、旧 1.0 pages 或 pdf_info。不猜测、不自动转换，也不提供旧格式写出。
-需要从源文件重新解析。Bundle 使用 docvortex.bundle 2.0 和原有素材摘要清单。
+通用 ParseResult、DocVortex codec、HTTP/ZIP 和 Gradio 仍联合校验 schema 与版本，
+不接受历史协议，不提供旧格式写出。Bundle 继续使用 docvortex.bundle 2.0。
 
-Doclib 仅将协议有效且覆盖记录页范围的批次视为可用缓存。旧缓存不计入缓存命中、
-可用页范围和默认读取档位。请求解析时重新生成缺失结果；直接读取旧页返回重新解析提示。
-压缩仅合并 metadata、extensions、is_full_document 一致的新批次，重复页仍取最新值；
-遇到旧格式、损坏数据或冲突时跳过压缩并保留源数据。
+Doclib 的持久化读取边界单独兼容 3.4.5（含旧 1.0 pages 包装）和旧 MinerU Schema 2.0，
+在内存中转换为当前 MiddleJson。兼容成功的批次可用于读取、缓存命中、覆盖范围和 FTS。
+压缩先转换并比较来源、扩展及整本标识，一致才合并并写出新协议；损坏或冲突时保留源数据。
+详见 [Doclib 历史兼容](doclib-compatibility.md)。普通读取不修改历史文件和数据库记录。

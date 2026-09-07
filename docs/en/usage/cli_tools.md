@@ -69,7 +69,7 @@ mineru-kit vlm-server --engine auto --port 30000
 - `MINERU_LOCAL_API_STARTUP_TIMEOUT_SECONDS`: startup timeout for the Gradio-managed local V1 server; default `300` seconds.
 - `MINERU_API_ENABLE_FASTAPI_DOCS`: enable `/docs`, `/openapi.json`, and `/redoc` on the V1 API server; default `true`.
 - `MINERU_PDF_RENDER_TIMEOUT` / `MINERU_PDF_RENDER_THREADS`: PDF rendering timeout and worker count.
-- `MINERU_PROCESSING_WINDOW_SIZE`: processing window size used for large documents.
+- `MINERU_PROCESSING_WINDOW_SIZE`: processing window size used for large documents. Flash native text parsing renders only pages with visual blocks, preserving this window boundary, rendering timeout, and worker settings. A 32 MiB pixel budget can split batches further. OCR and other tiers still render entire windows.
 - `MINERU_INTRA_OP_NUM_THREADS` / `MINERU_INTER_OP_NUM_THREADS`: ONNX operator thread settings.
 
 Prefer each command's `--help` output and [model source documentation](./model_source.md) for current defaults.

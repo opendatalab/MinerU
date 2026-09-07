@@ -20,7 +20,7 @@
 `schema_version="2.0"`。
 
 读取必须匹配 `schema` 与 `schema_version`，详见[统一外层协议](envelope.md)。
-所有历史文档协议和缺少身份的 JSON 均拒绝，不提供自动迁移。
+通用接口拒绝历史文档协议和缺少身份的 JSON；Doclib 通过独立缓存读取器兼容旧 MinerU 数据。
 
 ## ModelJson
 
@@ -150,5 +150,5 @@ Markdown、HTML、DOCX 与 Structured Content renderer 按 Span discriminator �
 
 ## 缓存与协议
 
-只接受当前完整文档协议；旧结果不命中缓存、不参与压缩，并提示从源文件重建。
+通用接口只接受当前完整文档协议。Doclib 兼容转换 3.4.5 和旧 MinerU 2.0 缓存，转换成功可命中和参与压缩；未知或损坏结果仍要求重新解析。
 压缩不得合并不同来源、扩展或整本标识的数据。Block/Span 类型和内部语义保持不变。

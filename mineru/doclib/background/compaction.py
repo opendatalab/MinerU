@@ -14,6 +14,7 @@ from typing import Any, cast
 from ...parser.page_range import format_page_range
 from ...types import Tier
 from ..core.db import DatabaseManager
+from ..core.middle_json import read_cached_middle_json
 from ..rows import ParseBatchRow, ParseGroupRow, ParseRow
 from ..services.parse_svc import parse_batch_json_path, parse_page_range_set
 from ..types import PARSE_STATUS_DONE, PARSE_STATUS_SUPERSEDED
@@ -22,8 +23,8 @@ logger = logging.getLogger("mineru.compaction")
 
 
 def _normalize_batch_pages(batch_payload: dict[str, Any]) -> list[dict[str, Any]]:
-    """仅校验并读取新版批次，拒绝猜测或改写旧协议数据。"""
-    return [page.to_dict() for page in ParseResult.from_dict(batch_payload).pages]
+    """读取当前和受支持的历史批次，仅在内存中统一页面结构。"""
+    return [page.to_dict() for page in read_cached_middle_json(batch_payload).pages]
 
 
 class Compaction:
@@ -149,7 +150,8 @@ class Compaction:
             try:
                 with open(fpath, encoding="utf-8") as f:
                     batch_payload = json.load(f)
-                batch_pages = _normalize_batch_pages(batch_payload)
+                middle_json = read_cached_middle_json(batch_payload)
+                batch_pages = [page.to_dict() for page in middle_json.pages]
             except Exception:
                 return None
             if not batch_pages:
@@ -159,9 +161,7 @@ class Compaction:
                 if type(page_idx) is not int or page_idx < 0:
                     return None
                 pages_by_page_idx[page_idx] = page
-            current_envelope = {
-                key: value for key, value in ParseResult.from_dict(batch_payload).to_dict().items() if key != "pages"
-            }
+            current_envelope = {key: value for key, value in middle_json.to_dict().items() if key != "pages"}
             if not envelope:
                 envelope = current_envelope
             elif json.dumps(envelope, sort_keys=True) != json.dumps(current_envelope, sort_keys=True):

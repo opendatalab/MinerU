@@ -28,6 +28,108 @@ from mineru.errors import MineruError
 _SHA256 = "a" * 64
 
 
+def _convert_fixture_family(path: Path, family: str) -> None:
+    """仅在测试建库阶段生成不同历史格式，正文及来源记录保持可对照。"""
+    if family == "current":
+        return
+    source = json.loads(path.read_text())
+    metadata = source["metadata"]
+    product = source["extensions"]["mineru"]
+    effort = {"flash": "flash", "basic": "medium", "standard": "high", "advanced": "xhigh"}[product["tier"]]
+    if family == "v2":
+        output = {
+            "schema_version": "2.0",
+            "pages": source["pages"],
+            "is_full_document": source["is_full_document"],
+            "file_suffix": metadata["file_suffix"],
+            "mineru_version": metadata["producer"]["version"],
+            "effort": effort,
+            "parse_mode": product["parse_mode"],
+        }
+    else:
+        pages = []
+        for page in source["pages"]:
+            blocks = []
+            for block in page["blocks"]:
+                assert block["type"] == "text"
+                bbox = [coordinate * 100 for coordinate in block["bbox"]]
+                text = "".join(span["content"] for span in block["content"])
+                blocks.append(
+                    {"type": "text", "bbox": bbox, "lines": [{"bbox": bbox, "spans": [{"type": "text", "content": text}]}]}
+                )
+            pages.append(
+                {"page_idx": page["page_idx"], "page_size": [100, 100], "preproc_blocks": blocks, "discarded_blocks": []}
+            )
+        output = {
+            "_version_name": metadata["producer"]["version"],
+            "_effort": effort,
+            "_ocr_enable": product["parse_mode"] == "ocr",
+        }
+        if family == "345":
+            output["pdf_info"] = pages
+        else:
+            assert family == "v1"
+            output.update(schema_version="1.0", pages=pages)
+    path.write_text(json.dumps(output))
+
+
+@pytest.mark.parametrize("family", ["345", "v1", "v2"])
+def test_historical_cache_rebuilds_fts_and_default_tier(tmp_path: Path, family: str) -> None:
+    """历史缓存参与全文索引重建和默认档位选择，读取不修改源批次。"""
+
+    async def verify() -> None:
+        """用真实 FTS5 和数据库查询核对所有历史格式的消费链。"""
+        async with _legacy_store(tmp_path, family=family) as (db, service, server):
+            path = _cache_path(tmp_path, "1~5", 1000)
+            standard_path = Path(parse_batch_json_path(str(tmp_path), _SHA256, "standard", "1~5", 1000))
+            standard_path.parent.mkdir(parents=True, exist_ok=True)
+            standard_path.write_bytes(path.read_bytes())
+            await db.execute("UPDATE parses SET tier='standard'")
+            before = standard_path.read_bytes()
+            assert await server._default_read_tier(_SHA256) == "standard"
+            await service._rebuild_fts_after_invalidate(_SHA256)
+            assert await service.fts.search("old")
+            assert await service.fts.get_tier(_SHA256) == "standard"
+            assert standard_path.read_bytes() == before
+
+    asyncio.run(verify())
+
+
+@pytest.mark.parametrize("legacy_family", ["345", "v1"])
+def test_all_supported_formats_compact_to_current_protocol(tmp_path: Path, legacy_family: str) -> None:
+    """混合三种协议的兼容批次合并后只输出新协议，重复页保留最新正文。"""
+
+    async def verify() -> None:
+        """使用非零起始页模拟旧抽页结果，统一后保持同一份来源及整本语义。"""
+        async with _legacy_store(tmp_path) as (db, _service, server):
+            await db.execute("DELETE FROM parses")
+            _cache_path(tmp_path, "1~5", 1000).unlink()
+            for family, page_range, done_at, numbers, label in [
+                (legacy_family, "3-4", 1000, [3, 4], "old"),
+                ("v2", "4-5", 2000, [4, 5], "intermediate"),
+                ("current", "5-6", 3000, [5, 6], "latest"),
+            ]:
+                await _add_result(db, tmp_path, page_range, done_at, numbers, label)
+                _convert_fixture_family(_cache_path(tmp_path, page_range, done_at), family)
+            compaction = Compaction(db=db, interval_sec=600, data_dir=str(tmp_path))
+            assert await compaction._compact_doc_tier(_SHA256, "flash") == 2
+            path = _cache_path(tmp_path, "3-6", 3000)
+            payload = json.loads(path.read_text())
+            assert payload["schema"] == "docvortex.middle"
+            assert payload["schema_version"] == "2.0"
+            assert "file_suffix" not in payload and "effort" not in payload
+            assert payload["metadata"]["producer"]["version"] == __version__
+            assert [page["page_idx"] for page in payload["pages"]] == [2, 3, 4, 5]
+            content = await server._render_doc_content(
+                _SHA256, tier="flash", page_range="3-6", format="markdown", no_marker=True
+            )
+            assert "old page 3" in content and "intermediate page 4" in content and "latest page 5" in content
+            assert "old page 4" not in content and "intermediate page 5" not in content
+            assert [item.name for item in path.parent.glob("*.json")] == [path.name]
+
+    asyncio.run(verify())
+
+
 @pytest.mark.parametrize("old_version", [None, "1.0"])
 def test_old_protocol_cache_is_not_available_or_compacted(tmp_path: Path, old_version: str | None) -> None:
     """旧协议不命中、不参与覆盖和压缩，读取旧页明确要求重新解析。"""
@@ -142,7 +244,9 @@ async def _add_result(
 
 
 @asynccontextmanager
-async def _legacy_store(root: Path) -> AsyncIterator[tuple[DatabaseManager, ParseService, DoclibServer]]:
+async def _legacy_store(
+    root: Path, *, family: str = "current"
+) -> AsyncIterator[tuple[DatabaseManager, ParseService, DoclibServer]]:
     """建立已入库的源文件元数据、旧名称缓存及真实 SQLite 服务，退出时关闭连接。"""
     source = root / "document.pdf"
     source.write_bytes(b"%PDF-1.7\n")
@@ -161,6 +265,7 @@ async def _legacy_store(root: Path) -> AsyncIterator[tuple[DatabaseManager, Pars
             (str(source), source.name, "pdf", stat.st_size, int(stat.st_mtime * 1000), _SHA256, "active", 1000, 1000),
         )
         await _add_result(db, root, "1~5", 1000, range(1, 6), "old")
+        _convert_fixture_family(_cache_path(root, "1~5", 1000), family)
         service = ParseService(
             db=db, fts=FTSManager(db), config_svc=ConfigService(db), data_dir=str(root), parse_lock_timeout_sec=1800
         )
@@ -170,12 +275,13 @@ async def _legacy_store(root: Path) -> AsyncIterator[tuple[DatabaseManager, Pars
         await db.close()
 
 
-def test_old_cache_hits_exports_and_serializes_without_mutating_storage(tmp_path: Path) -> None:
+@pytest.mark.parametrize("family", ["current", "345", "v1", "v2"])
+def test_old_cache_hits_exports_and_serializes_without_mutating_storage(tmp_path: Path, family: str) -> None:
     """旧结果正常命中、导出和查询，返回新格式而文件与数据库始终保留旧名称。"""
 
     async def verify() -> None:
         """读取各个结果出口，确认规范化不破坏原始缓存定位。"""
-        async with _legacy_store(tmp_path) as (db, service, server):
+        async with _legacy_store(tmp_path, family=family) as (db, service, server):
             old_path = _cache_path(tmp_path, "1~5", 1000)
             original_bytes = old_path.read_bytes()
             row = await db.fetchone("SELECT * FROM parses WHERE sha256=?", (_SHA256,))
@@ -211,12 +317,13 @@ def test_old_cache_hits_exports_and_serializes_without_mutating_storage(tmp_path
     asyncio.run(verify())
 
 
-def test_old_cache_only_schedules_uncovered_pages(tmp_path: Path) -> None:
+@pytest.mark.parametrize("family", ["current", "345", "v1", "v2"])
+def test_old_cache_only_schedules_uncovered_pages(tmp_path: Path, family: str) -> None:
     """旧 1~5 批次覆盖前五页，新请求只创建 6-10，重复请求复用新任务。"""
 
     async def verify() -> None:
         """检查真实任务入队和原记录内容。"""
-        async with _legacy_store(tmp_path) as (db, service, _server):
+        async with _legacy_store(tmp_path, family=family) as (db, service, _server):
             result = await service.request_parse(str(tmp_path / "document.pdf"), tier="flash", page_range="1-10")
             assert not result.cache_hit and len(result.created_parse_ids) == 1
             rows = await db.fetchall("SELECT page_range, status FROM parses ORDER BY id")
@@ -229,12 +336,13 @@ def test_old_cache_only_schedules_uncovered_pages(tmp_path: Path) -> None:
     asyncio.run(verify())
 
 
-def test_mixed_cache_compaction_keeps_latest_pages_and_writes_new_ranges(tmp_path: Path) -> None:
+@pytest.mark.parametrize("family", ["current", "v2"])
+def test_mixed_cache_compaction_keeps_latest_pages_and_writes_new_ranges(tmp_path: Path, family: str) -> None:
     """新旧缓存合并时重复页取最新正文，并生成连字符记录与文件名。"""
 
     async def verify() -> None:
         """压缩前后均核对页序与重复页正文。"""
-        async with _legacy_store(tmp_path) as (db, _service, server):
+        async with _legacy_store(tmp_path, family=family) as (db, _service, server):
             await _add_result(db, tmp_path, "4-7", 2000, range(4, 8), "new")
             rows = await db.fetchall("SELECT * FROM parses ORDER BY done_at DESC")
             pages = load_pages_from_done_batches(str(tmp_path), _SHA256, "flash", rows)

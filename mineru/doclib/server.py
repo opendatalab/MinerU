@@ -75,7 +75,7 @@ from .rows import (
     WatchTargetRow,
 )
 from .services.parse_svc import (
-    _json_batch_is_current,
+    _json_batch_is_readable,
     accessible_file_for_sha256,
     filter_pages_by_user_range,
     load_pages_from_done_batches,
@@ -423,7 +423,7 @@ class DoclibServer(AsyncDoclibInterface):
             row
             for row in rows
             if row["status"] != PARSE_STATUS_DONE
-            or _json_batch_is_current(_effective_data_dir(self.state), row["sha256"], row["tier"], row)
+            or _json_batch_is_readable(_effective_data_dir(self.state), row["sha256"], row["tier"], row)
         ]
         coverage = _parse_coverage(page_range, coverage_rows) if resolved_sha256 and tier and page_range else None
         return ListParsesResponse(
@@ -882,7 +882,7 @@ class DoclibServer(AsyncDoclibInterface):
             _tier_parse_info(row)
             for row in parse_rows
             if row["status"] == PARSE_STATUS_DONE
-            and _json_batch_is_current(_effective_data_dir(self.state), row["sha256"], row["tier"], row)
+            and _json_batch_is_readable(_effective_data_dir(self.state), row["sha256"], row["tier"], row)
         ]
         active_parses = [
             _parse_info(row) for row in parse_rows if row["status"] in {PARSE_STATUS_PENDING, PARSE_STATUS_PARSING}
@@ -1448,7 +1448,7 @@ class DoclibServer(AsyncDoclibInterface):
             for row in rows
             if row["tier"] in TIERS
             and row["tier"] != "flash"
-            and _json_batch_is_current(_effective_data_dir(self.state), sha256, row["tier"], row)
+            and _json_batch_is_readable(_effective_data_dir(self.state), sha256, row["tier"], row)
         }
         if not tiers:
             return None

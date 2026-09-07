@@ -28,6 +28,7 @@ from ...filetypes import (
 )
 from ...parser.api_client import _APITransportError, _V1APIError
 from ...parser.base import ParseResult
+from ..core.middle_json import read_cached_middle_json
 from ...parser.page_range import (
     expand_page_range,
     format_page_range as _page_numbers_to_range_str,
@@ -745,7 +746,7 @@ class ParseService:
                 ),
             )
             valid_done_batches = [
-                batch for batch in done_batches if _json_batch_is_current(self.data_dir, sha256, requested_tier, batch)
+                batch for batch in done_batches if _json_batch_is_readable(self.data_dir, sha256, requested_tier, batch)
             ]
             if supports_page_range:
                 for batch in valid_done_batches:
@@ -1405,7 +1406,7 @@ class ParseService:
         tiers = sorted(tier_set, key=lambda item: TIER_ORDER.get(item, -1), reverse=True)
         for tier in tiers:
             tier_rows = [
-                row for row in rows if row["tier"] == tier and _json_batch_is_current(self.data_dir, sha256, tier, row)
+                row for row in rows if row["tier"] == tier and _json_batch_is_readable(self.data_dir, sha256, tier, row)
             ]
             pages = load_pages_from_done_batches(self.data_dir, sha256, tier, tier_rows)
             if not pages:
@@ -1497,12 +1498,12 @@ def _probe_error_message(prefix: str, error_msg: str | None) -> str:
     return prefix
 
 
-def _json_batch_is_current(data_dir: str, sha256: str, tier: Tier, batch: ParseRow) -> bool:
-    """仅把协议有效且覆盖记录页范围的新批次视为可命中的缓存。"""
+def _json_batch_is_readable(data_dir: str, sha256: str, tier: Tier, batch: ParseRow) -> bool:
+    """将可转换为当前协议且覆盖记录页范围的持久化批次视为有效缓存。"""
     json_path = parse_batch_json_path(data_dir, sha256, tier, batch["page_range"], batch["done_at"])
     try:
         with open(json_path, encoding="utf-8") as stream:
-            result = ParseResult.from_dict(json.load(stream))
+            result = read_cached_middle_json(json.load(stream))
         available = {page.page_idx + 1 for page in result.pages}
         return bool(available) and parse_page_range_set(batch["page_range"]) <= available
     except (OSError, ValueError, TypeError):
@@ -1523,7 +1524,7 @@ def load_pages_from_done_batches(
     *,
     requested_page_numbers: set[int] | None = None,
 ) -> list[PageInfo]:
-    """读取新协议批次并保留最新重复页，所请求的旧缓存需明确重新解析。"""
+    """读取当前或受支持的历史批次，保留最新重复页；损坏或未知缓存须重新解析。"""
     pages_by_page_idx: dict[int, PageInfo] = {}
     stale_page_numbers: set[int] = set()
     for row in reversed(done_rows):
@@ -1533,7 +1534,7 @@ def load_pages_from_done_batches(
         try:
             with open(fpath, encoding="utf-8") as f:
                 data = json.load(f)
-            parse_result = ParseResult.from_dict(data)
+            parse_result = read_cached_middle_json(data)
             for page in parse_result.pages:
                 pages_by_page_idx[page.page_idx] = page
         except (OSError, ValueError, TypeError):
