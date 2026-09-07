@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
 import html
 import json
 import re
@@ -33,7 +32,20 @@ from ...render import (
     StructuredContentRenderOptions,
     render,
 )
-from ...types import BlockBase, ImagePayloadBlock, MiddleJson
+from ...types import (
+    AlgorithmBodyBlock,
+    BlockBase,
+    ChartBlock,
+    ChartBodyBlock,
+    CodeBlock,
+    CodeBodyBlock,
+    ImageBlock,
+    ImageBodyBlock,
+    ImagePayloadBlock,
+    MiddleJson,
+    TableBlock,
+    TableBodyBlock,
+)
 from docvortex.foundation.image_payload import parse_image_data_uri_strict
 from docvortex.foundation.image_payload import validate_image_sidecar_path
 
@@ -153,29 +165,27 @@ class _ImageContext:
     source_page_by_middle_page: dict[int, int]
     output_dir: Path
     asset_root: Path
-    image_paths: dict[tuple[int, str, int | None, tuple[float, ...]], str] = field(default_factory=dict)
+    crop_cache: dict[tuple[int, tuple[float, ...]], bytes] = field(default_factory=dict)
 
-    def crop_for_block(self, block: BlockBase, *, middle_page_idx: int) -> tuple[str, bytes] | None:
-        """按严格 block bbox 从源 PDF 裁剪图片并写入任务目录。"""
+    def crop_for_block(self, block: BlockBase, *, middle_page_idx: int) -> bytes | None:
+        """按 bbox 读取裁后 PDF 页面，仅缓存图片字节，不写出临时图片文件。"""
         if self.source_pdf is None or block.bbox is None:
             return None
         source_page_idx = self.source_page_by_middle_page.get(middle_page_idx, middle_page_idx)
         if source_page_idx < 0 or source_page_idx >= self.source_pdf.page_count:
             return None
         bbox = tuple(float(item) for item in block.bbox)
-        key = (source_page_idx, str(block.type), block.index, bbox)
-        existing = self.image_paths.get(key)
+        key = (middle_page_idx, bbox)
+        existing = self.crop_cache.get(key)
         if existing is not None:
-            path = self.output_dir / existing
-            return existing, path.read_bytes() if path.is_file() else b""
+            return existing
         try:
             data = self.source_pdf.crop_image(block.bbox, source_page_idx)
         except Exception as exc:
             logger.warning("Failed to crop Gradio PDF image page={} bbox={}: {}", source_page_idx, bbox, exc)
             return None
-        relative = _write_materialized_asset(self.output_dir, data, "jpg")
-        self.image_paths[key] = relative
-        return relative, data
+        self.crop_cache[key] = data
+        return data
 
 
 def create_run_artifacts(source_path: Path, output_root: Path) -> RunArtifacts:
@@ -368,82 +378,62 @@ def render_download(
 
     result = ParseResult.from_json(artifacts.middle_json_path.read_text(encoding="utf-8"))
     middle_json = result.middle_json
-    image_context = _build_image_context(middle_json, None, artifacts.root)
-    try:
-        if download_format == "docx":
-            target = artifacts.downloads_dir / f"{artifacts.stem}.docx"
-            _ensure_path_inside(artifacts.root, target)
-            docx_middle = _materialize_middle_json(middle_json, image_context)
-            value = cast(
-                bytes,
-                render(
-                    docx_middle,
-                    RenderFormat.DOCX,
-                    options=DocxRenderOptions(asset_resolver=_asset_resolver(artifacts.root)),
-                ),
-            )
-            target.write_bytes(value)
-        elif download_format == "epub":
-            target = artifacts.downloads_dir / f"{artifacts.stem}.epub"
-            _ensure_path_inside(artifacts.root, target)
-            epub_middle = _materialize_middle_json(middle_json, image_context)
-            value = cast(
-                bytes,
-                render(
-                    epub_middle,
-                    RenderFormat.EPUB,
-                    options=EpubRenderOptions(title=artifacts.stem, asset_resolver=_asset_resolver(artifacts.root)),
-                ),
-            )
-            target.write_bytes(value)
-        elif download_format == "pdf":
-            target = artifacts.downloads_dir / f"{artifacts.stem}_rendered.pdf"
-            _ensure_path_inside(artifacts.root, target)
-            pdf_middle = _materialize_middle_json(middle_json, image_context)
-            value = cast(
-                bytes,
-                render(
-                    pdf_middle,
-                    RenderFormat.PDF,
-                    options=PdfRenderOptions(
-                        document_title=artifacts.stem,
-                        asset_resolver=_asset_resolver(artifacts.root),
-                    ),
-                ),
-            )
-            target.write_bytes(value)
-        else:
-            target = artifacts.downloads_dir / f"{artifacts.stem}_latex.zip"
-            latex_root = artifacts.downloads_dir / "latex"
-            _ensure_path_inside(artifacts.root, target)
-            _ensure_path_inside(artifacts.root, latex_root)
-            latex_root.mkdir(parents=True, exist_ok=True)
-            latex_context = _build_image_context(
-                middle_json,
-                None,
-                latex_root,
-                asset_root=artifacts.root,
-            )
-            try:
-                latex_middle = _materialize_middle_json(middle_json, latex_context)
-                latex_text = cast(
-                    str,
-                    render(
-                        latex_middle,
-                        RenderFormat.LATEX,
-                        options=LatexRenderOptions(document_title=artifacts.stem),
-                    ),
-                )
-                tex_path = latex_root / f"{artifacts.stem}.tex"
-                tex_path.write_text(latex_text, encoding="utf-8")
-                _zip_directory(latex_root, target)
-            finally:
-                _close_image_context(latex_context)
+    if download_format == "docx":
+        target = artifacts.downloads_dir / f"{artifacts.stem}.docx"
         _ensure_path_inside(artifacts.root, target)
-        artifacts.generated_downloads[download_format] = target
-        return str(target)
-    finally:
-        _close_image_context(image_context)
+        value = cast(
+            bytes,
+            render(
+                middle_json,
+                RenderFormat.DOCX,
+                options=DocxRenderOptions(asset_resolver=_asset_resolver(artifacts.root)),
+            ),
+        )
+        target.write_bytes(value)
+    elif download_format == "epub":
+        target = artifacts.downloads_dir / f"{artifacts.stem}.epub"
+        _ensure_path_inside(artifacts.root, target)
+        value = cast(
+            bytes,
+            render(
+                middle_json,
+                RenderFormat.EPUB,
+                options=EpubRenderOptions(title=artifacts.stem, asset_resolver=_asset_resolver(artifacts.root)),
+            ),
+        )
+        target.write_bytes(value)
+    elif download_format == "pdf":
+        target = artifacts.downloads_dir / f"{artifacts.stem}_rendered.pdf"
+        _ensure_path_inside(artifacts.root, target)
+        value = cast(
+            bytes,
+            render(
+                middle_json,
+                RenderFormat.PDF,
+                options=PdfRenderOptions(
+                    document_title=artifacts.stem,
+                    asset_resolver=_asset_resolver(artifacts.root),
+                ),
+            ),
+        )
+        target.write_bytes(value)
+    else:
+        target = artifacts.downloads_dir / f"{artifacts.stem}_latex.zip"
+        latex_root = artifacts.downloads_dir / "latex"
+        _ensure_path_inside(artifacts.root, target)
+        _ensure_path_inside(artifacts.root, latex_root)
+        latex_root.mkdir(parents=True, exist_ok=True)
+        _copy_materialized_images(artifacts.root, latex_root)
+        latex_text = cast(
+            str,
+            render(middle_json, RenderFormat.LATEX, options=LatexRenderOptions(document_title=artifacts.stem)),
+        )
+        tex_path = latex_root / f"{artifacts.stem}.tex"
+        tex_path.write_text(latex_text, encoding="utf-8")
+        _zip_directory(latex_root, target)
+    _ensure_path_inside(artifacts.root, target)
+    artifacts.generated_downloads[download_format] = target
+    return str(target)
 
 
 def _prepare_origin_pdf(
@@ -535,7 +525,7 @@ def _materialize_middle_json(middle_json: MiddleJson, context: _ImageContext) ->
     """复制 Middle JSON，并为 PDF bbox 或 inline image 准备目标 renderer 所需的图片载荷。"""
     copied = middle_json.model_copy(deep=True)
     for page in copied.pages:
-        page.blocks = [_materialize_block(block, context, middle_page_idx=page.page_idx) for block in page.blocks]
+        page.blocks = [_materialize_block(block, context, middle_page_idx=page.page_idx, owner=block) for block in page.blocks]
     return copied
 
 
@@ -544,8 +534,13 @@ def _materialize_block(
     context: _ImageContext,
     *,
     middle_page_idx: int,
+    owner: BlockBase,
 ) -> BlockBase:
-    """递归复制 block 树，并统一处理图片 data URI、sidecar 和 PDF bbox。"""
+    """沿语义树传递所属视觉父块，仅为图片载荷和富 HTML 正文物化素材。"""
+    if isinstance(block, (CodeBlock, CodeBodyBlock, AlgorithmBodyBlock)):
+        return block
+    if isinstance(block, (ImageBlock, TableBlock, ChartBlock)):
+        owner = block
     updates: dict[str, Any] = {}
     if isinstance(block, ImagePayloadBlock):
         data: bytes | None = None
@@ -563,43 +558,81 @@ def _materialize_block(
                 data = candidate.read_bytes()
                 extension = candidate.suffix.lstrip(".") or extension
         elif block.bbox is not None:
-            cropped = context.crop_for_block(block, middle_page_idx=middle_page_idx)
-            if cropped is not None:
-                relative, data = cropped
-                extension = Path(relative).suffix.lstrip(".") or extension
+            data = context.crop_for_block(block, middle_page_idx=middle_page_idx)
         if data:
-            updates["image_path"] = _write_materialized_asset(context.output_dir, data, extension)
+            updates["image_path"] = _write_materialized_asset(
+                context.output_dir,
+                data,
+                extension,
+                page_idx=middle_page_idx,
+                owner=owner,
+            )
             updates["image_base64"] = None
             updates["image_url"] = None
 
     content = getattr(block, "content", None)
     if isinstance(content, list):
-        updates["content"] = [_materialize_block(child, context, middle_page_idx=middle_page_idx) for child in content]
-    elif isinstance(content, str) and "<img" in content.lower():
-        updates["content"] = _materialize_markup_images(content, context)
+        updates["content"] = [
+            _materialize_block(child, context, middle_page_idx=middle_page_idx, owner=owner)
+            if isinstance(child, BlockBase)
+            else child
+            for child in content
+        ]
+    elif isinstance(block, (ImageBodyBlock, TableBodyBlock, ChartBodyBlock)) and "<img" in content.lower():
+        updates["content"] = _materialize_markup_images(content, context, page_idx=middle_page_idx, owner=owner)
 
     return block.model_copy(update=updates, deep=True) if updates else block
 
 
-def _write_materialized_asset(output_dir: Path, data: bytes, extension: str) -> str:
-    """按图片内容生成稳定文件名，避免无 index 的嵌套图片互相覆盖。"""
+def _write_materialized_asset(
+    output_dir: Path,
+    data: bytes,
+    extension: str,
+    *,
+    page_idx: int,
+    owner: BlockBase,
+    ordinal: int | None = None,
+) -> str:
+    """使用原始页索引和所属块命名，表内多图区分序号，冲突文件禁止覆盖。"""
     safe_extension = extension.lower().lstrip(".") or "jpg"
     if f".{safe_extension}" not in _IMAGE_SUFFIXES:
         raise ValueError(f"Unsupported image extension: {extension}")
-    relative = f"images/{hashlib.sha256(data).hexdigest()}.{safe_extension}"
-    target = output_dir / relative
-    _ensure_path_inside(output_dir, target)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    if not target.exists():
-        target.write_bytes(data)
-    return relative
+    if owner.index is None:
+        raise ValueError("Image owner must have a block index")
+    kind = str(owner.type)
+    if ordinal is not None and kind != "image":
+        kind += "_image"
+    suffix = f"_{ordinal}" if ordinal is not None else ""
+    stem = f"page_{page_idx}_{kind}_{owner.index}{suffix}"
+    # 冲突后缀独立于表内图片序号，避免占用另一张内嵌图片的正式名称。
+    for attempt in range(10000):
+        duplicate = f"_duplicate_{attempt}" if attempt else ""
+        relative = validate_image_sidecar_path(f"images/{stem}{duplicate}.{safe_extension}")
+        target = output_dir / relative
+        _ensure_path_inside(output_dir, target)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        if not target.exists():
+            target.write_bytes(data)
+            return relative
+        if target.is_file() and target.read_bytes() == data:
+            return relative
+    raise ValueError("Too many conflicting image assets")
 
 
-def _materialize_markup_images(content: str, context: _ImageContext) -> str:
-    """将内嵌 HTML 的 data URI 和已有相对图片统一复制到目标 images 目录。"""
+def _materialize_markup_images(
+    content: str,
+    context: _ImageContext,
+    *,
+    page_idx: int,
+    owner: BlockBase,
+) -> str:
+    """按富 HTML 中的出现顺序，为所属视觉块的内嵌图片分配语义名称。"""
+    ordinal = 0
 
     def replace(match: re.Match[str]) -> str:
         """解析一个 img 的图片载荷并保留原有 HTML 属性及引号。"""
+        nonlocal ordinal
+        ordinal += 1
         source = html.unescape(match.group("src")).strip()
         if source.startswith("data:"):
             data, extension = parse_image_data_uri_strict(source)
@@ -611,10 +644,32 @@ def _materialize_markup_images(content: str, context: _ImageContext) -> str:
             _ensure_path_inside(context.asset_root, candidate)
             data = candidate.read_bytes()
             extension = candidate.suffix.lstrip(".")
-        relative = _write_materialized_asset(context.output_dir, data, extension)
+        relative = _write_materialized_asset(
+            context.output_dir,
+            data,
+            extension,
+            page_idx=page_idx,
+            owner=owner,
+            ordinal=ordinal,
+        )
         return f"{match.group('prefix')}{match.group('quote')}{relative}{match.group('quote')}"
 
     return _HTML_IMAGE_RE.sub(replace, content)
+
+
+def _copy_materialized_images(asset_root: Path, output_dir: Path) -> None:
+    """把已有素材按原始相对路径复制到下载包，不重新物化或改变图片名称。"""
+    images = asset_root / "images"
+    _ensure_path_inside(asset_root, images)
+    for source in sorted(images.rglob("*")):
+        _ensure_path_inside(images, source)
+        if source.is_symlink():
+            raise ValueError(f"Image assets must not contain symlinks: {source}")
+        if source.is_file():
+            target = output_dir / source.relative_to(asset_root)
+            _ensure_path_inside(output_dir, target)
+            target.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, target)
 
 
 def _asset_resolver(root: Path) -> Callable[[str], bytes]:

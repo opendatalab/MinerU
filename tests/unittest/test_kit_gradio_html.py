@@ -70,7 +70,7 @@ def test_materialized_html_and_independent_archives(tmp_path: Path, image_source
     original = middle.model_dump_json()
     artifacts = persist_parse_result(ParseResult(middle_json=middle), source, output_root=tmp_path / "输出 空格", page_range="")
     assert middle.model_dump_json() == original
-    assert len(list((artifacts.root / "images").iterdir())) == 2
+    assert {path.name for path in (artifacts.root / "images").iterdir()} == {"page_0_image_1.png", "page_0_table_image_2_1.png"}
     assert "base64," not in artifacts.middle_json_path.read_text()
     # 后续导出只能读取物化素材，不再需要源文件或源目录中的图片。
     source.unlink()
@@ -102,8 +102,9 @@ def test_materialized_html_and_independent_archives(tmp_path: Path, image_source
             document = archive.read(f"{artifacts.stem}.{extension}").decode()
             assert "base64," not in document and "gradio_api/file=" not in document
             assert all(name.startswith("images/") or name == f"{artifacts.stem}.{extension}" for name in names)
-            references = set(re.findall(r"images/[a-f0-9]+\.png", document))
-            assert references and references.issubset(names)
+            references = set(re.findall(r"images/page_\d+_[a-z_]+_\d+(?:_\d+)?\.png", document))
+            assert references == {"images/page_0_image_1.png", "images/page_0_table_image_2_1.png"}
+            assert references.issubset(names)
             assert {archive.read(name) for name in references} == {red, blue}
             if format_name == "json":
                 structured = json.loads(document)
