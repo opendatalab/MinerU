@@ -28,7 +28,7 @@ def _module_available(module_name: str) -> bool:
 
 
 def _mlx_server_available() -> bool:
-    if not is_mac_os_version_supported():
+    if not is_mac_os_version_supported("14.0"):
         return False
     try:
         return importlib.util.find_spec("mlx_vlm.server") is not None

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import pytest
 import torch
+import numpy as np
+from types import SimpleNamespace
 
 from mineru.model.mfr import utils as mfr_utils
 from mineru.model.mfr.pp_formulanet_plus_m.processors import UniMERNetDecode
@@ -31,9 +33,7 @@ def test_fix_mathring_font_arguments_repairs_multiple_occurrences() -> None:
     """验证同一公式中的多个未分组 mathring 参数均会修复。"""
     source = r"\mathring \mathrm{A} + \mathring\mathrm { B }"
 
-    assert mfr_utils.fix_mathring_font_arguments(source) == (
-        r"\mathring{\mathrm{A}} + \mathring{\mathrm { B }}"
-    )
+    assert mfr_utils.fix_mathring_font_arguments(source) == (r"\mathring{\mathrm{A}} + \mathring{\mathrm { B }}")
 
 
 @pytest.mark.parametrize(
@@ -59,7 +59,9 @@ def test_pp_formulanet_fix_latex_uses_shared_mathring_repair() -> None:
     """验证 PP-FormulaNet 的真实 processor 入口应用共享修复。"""
     source = r"R , { \mathring \mathrm { A } }"
 
-    assert UniMERNetDecode.fix_latex(None, source) == r"R , { \mathring{\mathrm { A }} }"
+    tokenizer = SimpleNamespace(decode=lambda token_ids, skip_special_tokens: source)
+    processor = SimpleNamespace(tokenizer=tokenizer)
+    assert UniMERNetDecode.token2str(processor, [np.array([0, 7, 2, 1])]) == [r"R , { \mathring{\mathrm { A }} }"]
 
 
 def test_unimernet_decode_entry_uses_renamed_latex_repair() -> None:
