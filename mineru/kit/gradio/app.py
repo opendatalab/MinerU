@@ -154,25 +154,27 @@ _KIT_MENU_CSS = """
 }
 .mineru-kit-download-options :is(button, a):hover { background: var(--background-fill-secondary, #f3f4f6); }
 .mineru-kit-empty-preview { min-height: 160px; display: grid; place-items: center; opacity: .65; }
-/* PDF 直接贴合面板边框，独立预览不再沿用旧组件的标签留白与额外高度。 */
-.mineru-kit-preview:has(.mineru-pdf-frame) { padding: 0; gap: 0; overflow: hidden; }
-.mineru-kit-preview > .block.mineru-kit-pdf-preview {
+/* Gradio 6.8 会按逗号拆分并重写选择器，PDF/OFD 使用独立选择器避免破坏 :has。 */
+/* PDF/OFD 直接贴合面板边框，独立预览不再沿用旧组件的标签留白与额外高度。 */
+.mineru-kit-preview:has(.mineru-pdf-frame), .mineru-kit-preview:has(.mineru-ofd-frame) { padding: 0; gap: 0; overflow: hidden; }
+.mineru-kit-preview > .block.mineru-kit-pdf-preview,
+.mineru-kit-preview > .block.mineru-kit-ofd-preview {
     height: var(--mineru-preview-content-height, 775px) !important;
     min-height: 0 !important; max-height: none !important;
 }
-.mineru-kit-pdf-preview { height: 100%; padding: 0 !important; }
-.mineru-kit-pdf-preview .html-container,
-.mineru-kit-pdf-preview .prose { height: 100%; padding: 0 !important; }
+.mineru-kit-pdf-preview, .mineru-kit-ofd-preview { height: 100%; padding: 0 !important; }
+.mineru-kit-pdf-preview .html-container, .mineru-kit-pdf-preview .prose,
+.mineru-kit-ofd-preview .html-container, .mineru-kit-ofd-preview .prose { height: 100%; padding: 0 !important; }
 .mineru-kit-pdf-preview:not(:has(.mineru-pdf-frame, [role="alert"])) { display: none !important; }
-.mineru-pdf-frame { display: block; width: 100%; height: 100%; border: 0; }
+.mineru-pdf-frame, .mineru-ofd-frame { display: block; width: 100%; height: 100%; border: 0; }
 .mineru-kit-ofd-preview:not(:has(iframe)):not(:has([data-mineru-i18n-key])) { display: none !important; }
-.mineru-kit-ofd-preview, .mineru-kit-ofd-preview .html-container { padding: 0 !important; }
-.mineru-ofd-frame { width: 100%; height: var(--mineru-preview-content-height, 775px); border: 0; display: block; }
 .mineru-kit-image-preview img { max-height: var(--mineru-pdf-page-height, 720px); object-fit: contain; }
-/* 桌面两栏共用行高，PDF 填满伸展后的面板；窄屏仍采用独立预览高度。 */
+/* 桌面两栏共用行高，PDF/OFD 填满伸展后的面板；窄屏仍采用独立预览高度。 */
 @media (min-width: 901px) {
-  .mineru-kit-results, .mineru-kit-preview:has(.mineru-pdf-frame) { align-self: stretch !important; height: auto; }
-  .mineru-kit-preview > .block.mineru-kit-pdf-preview { flex: 1 1 0; height: auto !important; }
+  .mineru-kit-results, .mineru-kit-preview:has(.mineru-pdf-frame),
+  .mineru-kit-preview:has(.mineru-ofd-frame) { align-self: stretch !important; height: auto; }
+  .mineru-kit-preview > .block.mineru-kit-pdf-preview,
+  .mineru-kit-preview > .block.mineru-kit-ofd-preview { flex: 1 1 0; height: auto !important; }
 }
 @media (max-width: 900px) {
   .mineru-kit-workspace { flex-direction: column !important; }
