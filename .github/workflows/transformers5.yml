@@ -72,6 +72,7 @@ jobs:
           python -m pytest -q -o addopts='' \
             tests/unittest/test_transformers5_models.py \
             tests/unittest/test_transformers5_runtime.py \
+            tests/unittest/test_dependency_compatibility_check.py \
             tests/unittest/test_pp_doclayoutv2_postprocess.py \
             tests/unittest/test_mfr_latex_utils.py \
             tests/unittest/test_vlm_config.py \
@@ -111,8 +112,19 @@ jobs:
             --docvortex-wheel dependency-wheels/docvortex-*.whl --utils-matrix --check-wheels \
             --platform '${{ matrix.platform }}' --transformers '${{ matrix.transformers }}' \
             --output dependency-matrix.json
+      - name: Reject unsupported vLLM 0.19.1 on Python 3.14
+        if: matrix.platform == 'linux' && matrix.transformers == '5.16.1'
+        run: |
+          python scripts/check_transformers5_dependencies.py \
+            --mineru-wheel dist/*.whl --utils-wheel dependency-wheels/mineru_vl_utils-*.whl \
+            --docvortex-wheel dependency-wheels/docvortex-*.whl \
+            --platform linux --python 3.14 --extras full \
+            --requirement 'vllm==0.19.1' --expect-failure --check-wheels \
+            --output vllm-python314-rejection.json
       - uses: actions/upload-artifact@v6
         if: always()
         with:
           name: dependencies-${{ matrix.platform }}-${{ matrix.transformers }}
-          path: dependency-matrix.json
+          path: |
+            dependency-matrix.json
+            vllm-python314-rejection.json

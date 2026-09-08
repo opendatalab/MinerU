@@ -45,8 +45,8 @@ def target_tags(platform: str, python: str) -> set:
     )
 
 
-def verify_wheels(resolution: str, platform: str, python: str, cache: Path) -> list[str]:
-    """检查每个已解析发布包的 Python 范围及 wheel；只允许已知纯 Python jieba 从源码安装。"""
+def verify_wheels(resolution: str, platform: str, python: str, cache: Path, *, check_wheels: bool) -> list[str]:
+    """始终检查发布包的 Python 范围，按开关检查 wheel；只允许纯 Python jieba 从源码安装。"""
     tags = target_tags(platform, python)
     failures = []
     cache.mkdir(parents=True, exist_ok=True)
@@ -66,7 +66,7 @@ def verify_wheels(resolution: str, platform: str, python: str, cache: Path) -> l
         requires_python = data["info"].get("requires_python")
         if requires_python and python not in SpecifierSet(requires_python):
             failures.append(f"{name}=={version}: Python {python} excluded by {requires_python}")
-        available = any(
+        available = not check_wheels or any(
             item["filename"].endswith(".whl") and bool(parse_wheel_filename(item["filename"])[3] & tags)
             for item in data["urls"]
         )
@@ -150,10 +150,15 @@ def main() -> None:
                 checks += [f"forbidden dependency: {name}" for name in selected & FORBIDDEN]
                 if extra == "base" and not args.requirement:
                     checks += [f"heavy base dependency: {name}" for name in selected & {"torch", "transformers"}]
-                if args.check_wheels:
-                    checks += verify_wheels(process.stdout, args.platform, python, args.output.parent / "pypi-metadata")
-            rejection_confirmed = bool(invalid_roots) or "No solution found" in process.stderr
-            success = (not resolved and rejection_confirmed if expected_failure else resolved) and not checks
+                compatibility_errors = verify_wheels(
+                    process.stdout, args.platform, python, args.output.parent / "pypi-metadata", check_wheels=args.check_wheels
+                )
+                checks += compatibility_errors
+                resolved = resolved and not compatibility_errors
+            else:
+                compatibility_errors = []
+            rejection_confirmed = bool(invalid_roots or compatibility_errors) or "No solution found" in process.stderr
+            success = not resolved and rejection_confirmed if expected_failure else resolved and not checks
             records.append(
                 {
                     "package": package,
@@ -162,6 +167,7 @@ def main() -> None:
                     "success": success,
                     "expected_failure": expected_failure,
                     "resolved": resolved,
+                    "resolver_succeeded": process.returncode == 0,
                     "invalid_roots": invalid_roots,
                     "wheel_or_dependency_errors": checks,
                     "resolution": process.stdout,
