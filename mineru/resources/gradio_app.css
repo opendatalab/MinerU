@@ -57,7 +57,7 @@ body.dark .gradio-container {
     display: none !important; position: relative; padding: 12px 12px 32px !important; overflow: visible !important;
     border: 1px solid var(--mineru-panel-border); border-radius: 8px;
 }
-/* 不依赖 Gradio 布局容器的 JS visible 更新，明确状态同时适用于 5/6。 */
+/* 用明确的选页状态控制可见性，保留原生滑块的交互状态。 */
 .mineru-kit-page-range:has([data-range-visible="true"]) { display: flex !important; }
 .mineru-page-summary, .mineru-page-summary .html-container { padding: 0 !important; }
 .mineru-page-values, .mineru-page-axis { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
@@ -168,21 +168,7 @@ body.dark .gradio-container {
     height: 100% !important;
     max-width: none !important;
 }
-.mineru-preview-pane .pdf-canvas {
-    height: var(--mineru-pdf-page-height) !important;
-    max-height: var(--mineru-pdf-page-height) !important;
-    min-height: 0 !important;
-    width: 100% !important;
-    overflow: auto !important;
-}
-.mineru-preview-pane .pdf-canvas canvas {
-    max-width: 100% !important;
-    max-height: var(--mineru-pdf-page-height) !important;
-    object-fit: contain;
-}
-.mineru-preview-pane .button-row {
-    flex: none !important;
-}
+
 .mineru-result-file {
     height: auto !important;
     min-height: 44px !important;

@@ -11,6 +11,8 @@ from pathlib import Path
 from typing import Any, Literal, cast
 
 from ..backend.analyze import aio_doc_analyze, doc_analyze
+from ..integrations.docvortex import read_source_properties
+from docvortex.schema import DocumentProperties
 from ..config import VlmConfig, config
 from ..errors import InvalidRequestError
 from ..filetypes import IMAGE_EXTENSIONS, PAGE_RANGE_PARSE_EXTENSIONS
@@ -35,6 +37,7 @@ class _PreparedInput:
     source_context: HtmlSourceContext | None = None
     retained_page_indices: list[int] | None = None
     broken_page_indices: list[int] | None = None
+    source_properties: DocumentProperties | None = None
 
 
 class MinerUParser(DocumentParser):
@@ -114,6 +117,7 @@ class MinerUParser(DocumentParser):
             file_suffix=prepared.file_suffix,
             source_context=prepared.source_context,
             vlm_config=self.vlm_config,
+            source_properties=prepared.source_properties,
         )
 
     async def _arun_analysis(self, prepared: _PreparedInput) -> tuple[MiddleJson, ModelJson]:
@@ -127,6 +131,7 @@ class MinerUParser(DocumentParser):
             file_suffix=prepared.file_suffix,
             source_context=prepared.source_context,
             vlm_config=self.vlm_config,
+            source_properties=prepared.source_properties,
         )
 
     def _prepare_input(
@@ -176,11 +181,6 @@ class MinerUParser(DocumentParser):
                 f"Page range is only supported for PDF files; '{source_suffix}' uses full-document parsing.",
                 "page_range",
             )
-        file_bytes, retained_page_indices, broken_page_indices = self._maybe_adjust_pdf_bytes(
-            file_bytes,
-            suffix,
-            page_range,
-        )
         resolved_source_context = source_context
         if suffix == "html" and resolved_source_context is None:
             from docvortex.analyzers.native.html import HtmlSourceContext
@@ -190,6 +190,16 @@ class MinerUParser(DocumentParser):
                 source_uri=resolved_path.as_uri(),
                 local_resource_root=resolved_path.parent,
             )
+        source_properties = (
+            DocumentProperties()
+            if source_suffix in IMAGE_EXTENSIONS
+            else read_source_properties(file_bytes, cast(FileSuffix, suffix), resolved_source_context)
+        )
+        file_bytes, retained_page_indices, broken_page_indices = self._maybe_adjust_pdf_bytes(
+            file_bytes,
+            suffix,
+            page_range,
+        )
         return _PreparedInput(
             file_name=file_name,
             file_bytes=file_bytes,
@@ -197,6 +207,7 @@ class MinerUParser(DocumentParser):
             source_context=resolved_source_context,
             retained_page_indices=retained_page_indices,
             broken_page_indices=broken_page_indices,
+            source_properties=source_properties,
         )
 
     def _maybe_adjust_pdf_bytes(

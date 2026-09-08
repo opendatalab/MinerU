@@ -2,8 +2,8 @@
 """统一 PDF、EPUB、HTML、OFD、CSV 与 Office/RTF 文档分析的稳定公共门面。"""
 
 from __future__ import annotations
-from docvortex.schema import DocumentMetadata, Producer
-from ..integrations.docvortex import build_metadata
+from docvortex.schema import DocumentMetadata, DocumentProperties, Producer
+from ..integrations.docvortex import build_metadata, read_source_properties
 
 import asyncio
 from typing import cast
@@ -37,6 +37,7 @@ def doc_analyze(
     file_suffix: FileSuffix = "pdf",
     source_context: HtmlSourceContext | None = None,
     vlm_config: VlmConfig | None = None,
+    source_properties: DocumentProperties | None = None,
 ) -> tuple[MiddleJson, ModelJson]:
     """生产严格 ModelJson，并在统一边界构造严格 MiddleJson。"""
     if file_suffix not in FILE_SUFFIXES:
@@ -45,6 +46,9 @@ def doc_analyze(
         raise ValueError(f"page_index_map is only supported for PDF files, got {file_suffix!r}")
     if effort not in _SUPPORTED_ANALYZE_EFFORTS:
         raise ValueError(f"Unsupported analyze effort: {effort}")
+
+    if source_properties is None:
+        source_properties = read_source_properties(file_bytes, file_suffix, source_context)
 
     if file_suffix == "pdf":
         from .analysis.pdf.pipeline import analyze_pdf
@@ -81,7 +85,11 @@ def doc_analyze(
     model_json = ModelJson(
         pages=result.model_list,
         page_index_map=page_index_map or [],
-        metadata=DocumentMetadata(file_suffix=file_suffix, producer=Producer(name="mineru", version=mineru_version)),
+        metadata=DocumentMetadata(
+            file_suffix=file_suffix,
+            producer=Producer(name="mineru", version=mineru_version),
+            document=source_properties.model_copy(deep=True),
+        ),
         extensions=build_metadata(effort=result.effort, parse_mode=result.parse_mode),
     )
     from .postprocess.document import model_json_to_middle_json
@@ -102,6 +110,7 @@ async def aio_doc_analyze(
     file_suffix: FileSuffix = "pdf",
     source_context: HtmlSourceContext | None = None,
     vlm_config: VlmConfig | None = None,
+    source_properties: DocumentProperties | None = None,
 ) -> tuple[MiddleJson, ModelJson]:
     """在线程中执行统一文档分析，避免阻塞调用方事件循环。"""
     return await asyncio.to_thread(
@@ -114,4 +123,5 @@ async def aio_doc_analyze(
         file_suffix=file_suffix,
         source_context=source_context,
         vlm_config=vlm_config,
+        source_properties=source_properties,
     )

@@ -5163,3 +5163,55 @@ def test_doclib_office_image_asset_missing_payload_reports_asset_not_available(t
 
     assert exc_info.value.code == "asset_not_available"
     assert exc_info.value.param == "locator"
+
+
+@pytest.mark.parametrize("image_format", ["jpeg", "png", "webp"])
+@pytest.mark.parametrize("source_available", [False, True])
+def test_doclib_bbox_precedes_embedded_image(
+    tmp_path: Path,
+    image_format: str,
+    source_available: bool,
+) -> None:
+    """同时有 bbox 和内嵌图片时仍截图源文件，源文件缺失不回退。"""
+    from io import BytesIO
+    from docvortex.foundation.image_encoding import image_to_b64str
+
+    source_path = tmp_path / "source.pdf"
+    with Image.new("RGB", (100, 100), "white") as source:
+        source.save(source_path, "PDF")
+    with Image.new("RGB", (1, 1), "red") as embedded:
+        data_uri = image_to_b64str(embedded, "PNG")
+    page = _image_page("internal/not-persisted.png")
+    page.blocks[0].content[0].image_base64 = data_uri
+    db = _FakeDB(
+        parses=[],
+        file_row={"path": str(source_path), "ext": "pdf", "sha256": "a" * 64, "status": "active"} if source_available else None,
+    )
+    server = DoclibServer(SimpleNamespace(data_dir=str(tmp_path), db=db))
+    plan = _ReadPlan(
+        sha256="a" * 64,
+        short_id="aaaaaaa",
+        tier="standard",
+        page_range="1",
+        after=None,
+        locator="doc:aaaaaaa/tier:standard/page:1/block:1",
+        context=0,
+        limit=30000,
+        format="image",
+        no_marker=False,
+        image_format=image_format,
+        target=ContentCursor(short_id="aaaaaaa", tier="standard", page_no=1, block_no=1),
+    )
+    if not source_available:
+        with pytest.raises(NotFoundError) as error:
+            asyncio.run(server._render_image_response(plan, [page]))
+        assert error.value.code == "no_accessible_file"
+        return
+    asset = asyncio.run(server._render_image_response(plan, [page])).asset
+    assert asset is not None
+    assert asset.mime_type == f"image/{image_format}"
+    with Image.open(BytesIO(Path(asset.path).read_bytes())) as actual:
+        assert actual.format == image_format.upper()
+        assert actual.size == (asset.width, asset.height)
+        assert actual.width > 1
+        assert min(actual.convert("RGB").getpixel((0, 0))) > 240

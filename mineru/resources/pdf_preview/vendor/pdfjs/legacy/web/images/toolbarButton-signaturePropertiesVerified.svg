@@ -1,0 +1,7 @@
+<svg width="16" height="16" viewBox="0 0 16 16" xmlns="http://www.w3.org/2000/svg">
+  <mask id="m">
+    <rect width="16" height="16" fill="white"/>
+    <path d="M4.5 8.4l2.4 2.4L11.6 6" stroke="black" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  </mask>
+  <circle cx="8" cy="8" r="7" fill="black" mask="url(#m)"/>
+</svg>

@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import Literal
 from pydantic import BaseModel, ConfigDict, JsonValue
-from docvortex.schema import MiddleJson, ModelJson
+from docvortex.schema import DocumentProperties, FileSuffix, MiddleJson, ModelJson
+from docvortex.document.contracts import HtmlSourceContext
 
 
 class MinerUMetadata(BaseModel):
@@ -20,8 +21,28 @@ def build_metadata(*, effort: str, parse_mode: str) -> dict[str, JsonValue]:
     tiers = {"flash": "flash", "medium": "basic", "high": "standard", "xhigh": "advanced"}
     if effort not in tiers:
         raise ValueError(f"Unsupported actual analyze effort: {effort}")
-    metadata = MinerUMetadata(tier=tiers[effort], parse_mode=parse_mode)
+    metadata = MinerUMetadata.model_validate({"tier": tiers[effort], "parse_mode": parse_mode})
     return {"mineru": metadata.model_dump(mode="json")}
+
+
+def read_source_properties(
+    data: bytes,
+    suffix: FileSuffix,
+    source_context: HtmlSourceContext | None = None,
+) -> DocumentProperties:
+    """提取原始输入属性；正文引擎决定输入有效性，属性失败仅记录诊断。"""
+    from docvortex import extract_metadata
+    from docvortex.errors import DocumentError
+    from loguru import logger
+
+    try:
+        result = extract_metadata(data, file_suffix=suffix, source_context=source_context)
+    except DocumentError as exc:
+        logger.warning("Source metadata unavailable: {}", exc)
+        return DocumentProperties()
+    for diagnostic in result.diagnostics:
+        logger.warning("Source metadata: {}", diagnostic.message)
+    return result.metadata.document or DocumentProperties()
 
 
 def with_mineru_metadata(document: ModelJson | MiddleJson, metadata: MinerUMetadata) -> None:
@@ -35,4 +56,4 @@ def validate_mineru_metadata(document: ModelJson | MiddleJson) -> None:
         MinerUMetadata.model_validate(document.extensions["mineru"])
 
 
-__all__ = ["MinerUMetadata", "build_metadata", "with_mineru_metadata", "validate_mineru_metadata"]
+__all__ = ["read_source_properties", "MinerUMetadata", "build_metadata", "with_mineru_metadata", "validate_mineru_metadata"]

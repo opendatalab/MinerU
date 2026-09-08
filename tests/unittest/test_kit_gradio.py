@@ -992,8 +992,8 @@ def test_gradio_file_types_page_range_and_header_follow_new_contract(tmp_path: P
     assert gradio_app._effective_page_range(source, " 1-3,r1 ", tier="standard") == "1-3,r1"
     assert gradio_app._effective_page_range(source, " 1-3,r1 ", tier="flash") == ""
     assert gradio_app._effective_page_range("report.docx", "1-3", tier="standard") == ""
-    header = gradio_app._render_header(gradio_major_version=6)
-    assert "mineru-gradio6-header" in header
+    header = gradio_app._render_header()
+    assert "mineru-demo-header" in header
     assert "mineru-header-popover mineru-model-popover" in header
     assert "mineru-header-popover mineru-paper-popover" in header
     assert "{{HEADER_" not in header
@@ -1057,7 +1057,8 @@ def test_build_gradio_app_exposes_html_tab_and_download_menu(tmp_path: Path) -> 
     )
     tab_labels = [component.label for component in app.blocks.values() if component.__class__.__name__ == "Tab"]
     assert [label.key for label in tab_labels] == [
-        "mineru.markdown_rendered",
+        "mineru.markdown",
+        "mineru.json_view",
     ]
     download_buttons = [
         component
@@ -1078,10 +1079,9 @@ def test_build_gradio_app_exposes_html_tab_and_download_menu(tmp_path: Path) -> 
     assert preview_handler("report.pdf")[0] == {
         "__type__": "update",
         "value": "report.pdf",
-        "visible": True,
-        "elem_classes": ["mineru-kit-pdf-preview"],
+        "visible": False,
     }
-    assert preview_handler("report.docx")[0]["visible"] == "hidden"
+    assert preview_handler("report.docx")[0]["visible"] is False
     range_group = next(block for block in app.blocks.values() if "mineru-kit-page-range" in (block.elem_classes or []))
     assert range_group.visible is True
     assert '[data-range-visible="true"]' in app._mineru_kit_css
@@ -1176,7 +1176,7 @@ def test_gradio_flash_only_input_requires_available_flash(tmp_path: Path, tiers:
     assert "tier_unavailable" in updates[-1][0]
     assert "该格式仅支持 Flash，当前服务不可用" in updates[-1][0]
     assert updates[-1][6] is None
-    assert all(item["interactive"] is False for item in updates[-1][-7:])
+    assert all(item["interactive"] is False for item in updates[-1][8:15])
     client.parse_file.assert_not_called()
 
 
@@ -1239,11 +1239,11 @@ def test_gradio_conversion_forwards_page_range_and_enables_fresh_downloads(
     updates = asyncio.run(collect_updates(convert_handler))
 
     assert client.calls == [(source.resolve(), expected_tier, "" if expected_tier == "flash" else "1")]
-    assert len(updates[-1]) == 15
+    assert len(updates[-1]) == 16
     assert updates[-1][7] == Path(updates[-1][6]["root"]).name
     assert updates[-1][6] is not None
-    assert all(update["interactive"] is True for update in updates[-1][-7:])
-    assert all(update["interactive"] is False for update in updates[0][-7:])
+    assert all(update["interactive"] is True for update in updates[-1][8:15])
+    assert all(update["interactive"] is False for update in updates[0][8:15])
 
 
 @pytest.mark.parametrize(
@@ -1273,7 +1273,7 @@ def test_gradio_conversion_rejects_invalid_tier_position(tmp_path: Path, tiers: 
     updates = asyncio.run(collect_updates())
     assert "Failed: Invalid tier slider position" in updates[-1][0]
     assert updates[-1][6] is None
-    assert all(item["interactive"] is False for item in updates[-1][-7:])
+    assert all(item["interactive"] is False for item in updates[-1][8:15])
     client.parse_file.assert_not_called()
 
 
@@ -1306,7 +1306,7 @@ def test_gradio_conversion_failure_clears_previous_downloads(tmp_path: Path) -> 
 
     assert "Failed: boom" in update[0]
     assert update[6] is None
-    assert all(item["interactive"] is False for item in update[-7:])
+    assert all(item["interactive"] is False for item in update[8:15])
 
 
 @pytest.mark.parametrize("explicit_session_cancel", [False, True])
@@ -1385,7 +1385,7 @@ def test_gradio_local_queue_cancellation_releases_slot_and_keeps_sessions_isolat
         final = updates[-1]
         assert "Completed (" in final[0]
         assert final[6]["stem"] == sources[2].stem
-        assert all(item["interactive"] is True for item in final[-7:])
+        assert all(item["interactive"] is True for item in final[8:15])
 
     asyncio.run(scenario())
 
@@ -1420,7 +1420,7 @@ def test_gradio_output_failure_stops_timer_and_allows_next_conversion(tmp_path: 
             assert "Failed: output disk unavailable" in updates[-1][0]
             assert "is-error" in updates[-1][0]
             assert updates[-1][6] is None
-            assert all(item["interactive"] is False for item in updates[-1][-7:])
+            assert all(item["interactive"] is False for item in updates[-1][8:15])
 
     asyncio.run(scenario())
 
