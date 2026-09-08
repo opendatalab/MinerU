@@ -226,3 +226,27 @@ def test_layout_position_embedding_preserves_native_math_on_mps() -> None:
     assert actual.device.type == "mps"
     torch.testing.assert_close(actual.cpu(), expected, rtol=0, atol=0)
     assert not adapter.state_dict()
+
+
+@pytest.mark.parametrize("device", ["cpu", "mps", "cuda"])
+def test_unimernet_stages_only_mps_weights_on_cpu(monkeypatch: pytest.MonkeyPatch, device: str) -> None:
+    """MPS 在目标精度下经 CPU 物化后串行搬运，CPU/CUDA 保持直接加载。"""
+    from types import SimpleNamespace
+
+    from mineru.model.mfr.unimernet.Unimernet import UnimernetModel as Wrapper
+    from mineru.model.mfr.unimernet.unimernet_hf import UnimernetModel as Model
+
+    calls = []
+    moves = []
+    model = SimpleNamespace(to=lambda target: moves.append(str(target)), eval=lambda: None)
+
+    def load(*args: object, **kwargs: object) -> object:
+        """只记录公开加载协议，测试不分配真实设备或模型权重。"""
+        calls.append(kwargs)
+        return model
+
+    monkeypatch.setattr(Model, "from_pretrained", load)
+    Wrapper("local-checkpoint", device)
+    assert str(calls[0]["device_map"][""]) == ("cpu" if device == "mps" else device)
+    assert calls[0]["dtype"] == (torch.float32 if device == "cpu" else torch.float16)
+    assert moves == (["mps"] if device == "mps" else [])

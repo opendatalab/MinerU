@@ -25,16 +25,19 @@ class MathDataset(Dataset):
 
 class UnimernetModel(object):
     def __init__(self, weight_dir: str, _device_: str = "cpu") -> None:
-        """直接按目标设备和精度加载权重，避免保留一次完整的 CPU FP32 中转分配。"""
+        """按目标精度加载权重；MPS 先在 CPU 物化 FP16，再串行转移，避开并行加载的原生崩溃。"""
         from .unimernet_hf import UnimernetModel
 
         self.device = torch.device(_device_)
+        load_device = torch.device("cpu") if self.device.type == "mps" else self.device
         self.model = UnimernetModel.from_pretrained(
             weight_dir,
-            device_map={"": self.device},
+            device_map={"": load_device},
             dtype=torch.float32 if self.device.type == "cpu" else torch.float16,
             attn_implementation="eager" if self.device.type in {"mps", "npu", "musa"} else None,
         )
+        if self.device.type == "mps":
+            self.model.to(self.device)
         self.model.eval()
 
     @staticmethod

@@ -90,3 +90,8 @@ macOS 同时记录系统 `proc_pid_rusage` 的 `physical_footprint_bytes`，用�
 - 检查脚本显式验证 wheel 的 Requires-Python 和每个目标 ABI 的发行文件；jieba 为唯一允许的纯 Python sdist。
 - macOS full/all + Transformers 5.10.1 应拒绝；Python 3.14 + vLLM 0.19.1 应拒绝，其余范围由解析器选择兼容版本。
 - 发布顺序为 DocVortex、utils、MinerU。本次只做本地合入、构建与验证，未发布依赖必须显式提供三个 wheel。
+
+
+### UniMERNet MPS 冷启动
+
+本轮 Python 3.14 / Torch 2.14 / Transformers 5.16.1 独立模型验收复现了并行 MPS 权重物化的原生崩溃。UniMERNet 的 MPS 路径改为在 CPU 物化目标 FP16 权重，再通过公开 `model.to(mps)` 串行搬运；CPU/CUDA 继续直接按目标设备加载。不会设置或修改进程级 HF_DEACTIVATE_ASYNC_LOAD。真实公式 token 与迁移基线一致。
