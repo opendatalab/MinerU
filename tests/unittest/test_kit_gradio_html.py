@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+import html
 import io
 import json
 import re
@@ -13,13 +14,15 @@ from urllib.parse import quote, unquote
 
 import gradio as gr
 import pytest
+from _epub_test_utils import build_epub_fixture
 from bs4 import BeautifulSoup
 from fastapi.testclient import TestClient
 from PIL import Image
 from starlette.requests import Request
 
+from mineru.backend.analyze import doc_analyze
 from mineru.kit.gradio.app import _download_handler, _gradio_public_base_url, build_gradio_app
-from mineru.kit.gradio.artifacts import persist_parse_result, render_download, render_html_preview
+from mineru.kit.gradio.artifacts import _prepare_preview_links, persist_parse_result, render_download, render_html_preview
 from mineru.kit.gradio.client import V1ServerCapabilities
 from mineru.parser.base import ParseResult
 from mineru.types import BlockType, EquationBlock, TableBlock, TableBodyBlock
@@ -126,6 +129,95 @@ def test_materialized_html_and_independent_archives(tmp_path: Path, image_source
         )
     with pytest.raises(ValueError, match="Unsupported download format"):
         render_download(artifacts.as_state(), "zip")
+
+
+@pytest.mark.parametrize("public_base", ["http://localhost:17866", "https://demo.example.test/mineru"])
+def test_epub_preview_anchors_stay_in_srcdoc_without_changing_download(tmp_path: Path, public_base: str) -> None:
+    """EPUB 跨章和返回链接使用预览自身的基准地址，独立 HTML 下载保留普通锚点语义。"""
+    source = tmp_path / "book.epub"
+    source.write_bytes(build_epub_fixture())
+    middle, _ = doc_analyze(source.read_bytes(), effort="flash", file_suffix="epub")
+    artifacts = persist_parse_result(ParseResult(middle_json=middle), source, output_root=tmp_path, page_range="")
+
+    frame = BeautifulSoup(render_html_preview(artifacts, public_base_url=public_base), "html.parser").iframe
+    preview = BeautifulSoup(frame["srcdoc"], "html.parser")
+    assert [base["href"] for base in preview.find_all("base")] == ["about:srcdoc"]
+    assert preview.base.parent is preview.head
+    assert set(frame["sandbox"]) == {"allow-scripts", "allow-popups", "allow-popups-to-escape-sandbox"}
+    for label, heading in (("chapter two", "Section Two"), ("Back", "Chapter One")):
+        link = preview.find("a", string=label)
+        assert link["href"].startswith("#")
+        target = preview.find(id=unquote(link["href"][1:]))
+        assert target is not None and target.get_text(strip=True) == heading
+
+    download_path = Path(render_download(artifacts.as_state(), "html", public_base_url=public_base))
+    download = BeautifulSoup(download_path.read_text(encoding="utf-8"), "html.parser")
+    assert download.find("base") is None
+    assert "about:srcdoc" not in str(download)
+    assert [link["href"] for link in preview.find_all("a", href=True)] == [
+        link["href"] for link in download.find_all("a", href=True)
+    ]
+    assert preview.body == download.body
+    assert preview.find("script", id="MathJax-script")["src"].startswith("https://")
+    assert preview.find_all("img")
+    assert all(image["src"].startswith(f"{public_base}/gradio_api/file=") for image in preview.find_all("img"))
+
+
+@pytest.mark.parametrize(
+    "href,external",
+    [
+        ("https://doi.org/10.1000/example", True),
+        ("http://example.test/paper#references", True),
+        ("HTTPS://example.test/?a=1&b=2#section", True),
+        ("#chapter-one", False),
+        ("#", False),
+        ("", False),
+        ("mailto:author@example.test", False),
+        ("tel:+12345678", False),
+        ("chapter.html#section", False),
+        ("/papers/one", False),
+        ("https://[invalid", False),
+    ],
+)
+def test_preview_link_targets_preserve_document_links(href: str, external: bool) -> None:
+    """按链接协议区分网页与文内跳转，覆盖表格链接并保留已有 rel 和其他标签内容。"""
+    document = (
+        '<html><head><style>a { color: blue; }</style></head><body>'
+        f'<table><tr><td><a href="{html.escape(href, quote=True)}" target="_self" rel="nofollow noopener">'
+        '<em>Reference</em></a></td></tr></table><a id="chapter-one">Chapter One</a>'
+        '<script>const example = "<a href=\'https://example.test\'>";</script></body></html>'
+    )
+    original = BeautifulSoup(document, "html.parser")
+    prepared = BeautifulSoup(_prepare_preview_links(document), "html.parser")
+    link = prepared.find("a", href=True)
+    assert link["href"] == href
+    assert link["target"] == ("_blank" if external else "_self")
+    assert link["rel"] == (["nofollow", "noopener", "noreferrer"] if external else ["nofollow", "noopener"])
+    assert link.em.get_text() == "Reference"
+    assert prepared.find("a", id="chapter-one").attrs == {"id": "chapter-one"}
+    assert prepared.script == original.script and prepared.style == original.style
+    assert _prepare_preview_links(str(prepared)) == str(prepared)
+
+
+def test_external_preview_links_do_not_change_html_download(tmp_path: Path) -> None:
+    """真实 renderer 产生的自动链接仅在预览中新增 target，下载继续使用独立 HTML 的默认行为。"""
+    source = tmp_path / "references.docx"
+    source.write_bytes(b"source")
+    middle = _middle_json(with_image=False, file_suffix="docx")
+    middle.pages[0].blocks[0].content[0].content = "See https://example.test/paper#references"
+    artifacts = persist_parse_result(ParseResult(middle_json=middle), source, output_root=tmp_path, page_range="")
+    base = "https://demo.example.test/mineru"
+    frame = BeautifulSoup(render_html_preview(artifacts, public_base_url=base), "html.parser").iframe
+    preview = BeautifulSoup(frame["srcdoc"], "html.parser")
+    download_path = Path(render_download(artifacts.as_state(), "html", public_base_url=base))
+    download = BeautifulSoup(download_path.read_text(encoding="utf-8"), "html.parser")
+    assert preview.a["target"] == "_blank"
+    assert set(preview.a["rel"]) == {"noopener", "noreferrer"}
+    assert preview.a["href"] == download.a["href"] == "https://example.test/paper#references"
+    assert "target" not in download.a.attrs
+    assert download.find("base") is None
+    assert "allow-popups-to-escape-sandbox" in frame["sandbox"]
+    assert "allow-same-origin" not in frame["sandbox"]
 
 
 @pytest.mark.parametrize("format_name,extension", [("markdown", "md"), ("json", "json")])

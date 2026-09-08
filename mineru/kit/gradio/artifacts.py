@@ -14,6 +14,7 @@ from tempfile import TemporaryDirectory
 from typing import Any, Callable, Literal, cast
 from urllib.parse import quote, unquote, urlsplit
 
+from bs4 import BeautifulSoup
 from loguru import logger
 
 from ...filetypes import IMAGE_EXTENSIONS, PDF_EXTENSIONS
@@ -293,11 +294,29 @@ def persist_parse_result(
 def render_html_preview(artifacts: RunArtifacts, *, public_base_url: str) -> str:
     """用独立 iframe 展示公共 HTML renderer 的完整输出，保留样式及公式脚本。"""
     value = _render_html(artifacts, public_base_url=public_base_url)
+    # srcdoc 默认继承外层页面的基准地址，显式指定自身才能让章节锚点在预览内跳转。
+    value = value.replace("<head>", '<head>\n<base href="about:srcdoc">', 1)
+    value = _prepare_preview_links(value)
     return (
         '<iframe class="mineru-rendered-html-frame" title="Markdown preview" '
-        'sandbox="allow-scripts allow-popups" '
+        'sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" '
         f'srcdoc="{html.escape(value, quote=True)}"></iframe>'
     )
+
+
+def _prepare_preview_links(document: str) -> str:
+    """仅为预览中的网页外链指定新标签页，保留内部锚点及邮件、电话等链接行为。"""
+    soup = BeautifulSoup(document, "html.parser")
+    for link in soup.find_all("a", href=True):
+        try:
+            scheme = urlsplit(str(link["href"])).scheme.lower()
+        except ValueError:
+            continue
+        if scheme not in {"http", "https"}:
+            continue
+        link["target"] = "_blank"
+        link["rel"] = list(dict.fromkeys([*link.get("rel", []), "noopener", "noreferrer"]))
+    return str(soup)
 
 
 def _render_html(artifacts: RunArtifacts, *, public_base_url: str) -> str:
