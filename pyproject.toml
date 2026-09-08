@@ -40,7 +40,7 @@ classifiers = [
 dependencies = [
     "docvortex>=0.2.6,<1.0.0",
     "mineru-vl-utils>=2.0.0,<3",
-    "mineru-llama-cpp>=0.1.0,<1",
+    "mineru-llama-cpp>=0.1.1,<1",
     "click>=8.1.7",
     "loguru>=0.7.2",
     "numpy>=1.21.6",
@@ -48,7 +48,7 @@ dependencies = [
     "requests",
     "httpx",
     "pillow>=11.0.0",
-    "pypdfium2>=5.10.1",
+    "pypdfium2>=5.10.1,<6",
     "PyYAML>=6.0.1,<7",
     "packaging",
     "modelscope>=1.26.0",
