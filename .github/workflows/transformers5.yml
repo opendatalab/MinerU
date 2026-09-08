@@ -30,7 +30,7 @@ jobs:
         python: ['3.10', '3.11', '3.12', '3.13', '3.14']
         transformers: ['5.10.1', '5.14.0', '5.16.1']
         include:
-          - {os: ubuntu-latest, python: '3.10', transformers: '5.10.1', torch: '2.6.0', torchvision: '0.21.0'}
+          - {os: ubuntu-latest, python: '3.10', transformers: '5.10.1', torch: '2.7.0', torchvision: '0.22.0'}
           - {os: windows-latest, python: '3.12', transformers: '5.10.1'}
           - {os: windows-latest, python: '3.12', transformers: '5.16.1'}
           - {os: macos-latest, python: '3.12', transformers: '5.10.1'}

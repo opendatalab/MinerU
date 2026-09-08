@@ -7,7 +7,7 @@ import json
 import os
 import platform
 import sys
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from importlib import metadata
 from pathlib import Path
 from typing import Any
@@ -26,7 +26,8 @@ def dimensions_hash(dimensions: dict[str, str]) -> str:
 
 
 def utc_iso_from_ms(value_ms: int) -> str:
-    return datetime.fromtimestamp(value_ms / 1000, tz=UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    """使用 Python 3.10 支持的 UTC 时区，保留毫秒精度和 Z 后缀。"""
+    return datetime.fromtimestamp(value_ms / 1000, tz=timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
 
 
 def compact_json_bytes(payload: dict[str, Any]) -> bytes:

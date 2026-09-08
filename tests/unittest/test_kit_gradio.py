@@ -553,12 +553,17 @@ def test_gradio_router_preserves_remote_flash_results_errors_and_cancellation(fa
     routed = GradioArtifactClient(primary, local_flash=local)
     callback = Mock()
     request = routed.parse_file(Path("report.pdf"), tier="flash", page_range="1-2", ocr_mode="ocr", status_callback=callback)
-    if failure is None:
-        assert asyncio.run(request) is result
-    else:
-        with pytest.raises(type(failure)) as error:
-            asyncio.run(request)
-        assert error.value is failure
+
+    async def check_request() -> None:
+        """在协程内检查透传，避免 Python 3.10 的 Task 边界重建取消异常。"""
+        if failure is None:
+            assert await request is result
+        else:
+            with pytest.raises(type(failure)) as error:
+                await request
+            assert error.value is failure
+
+    asyncio.run(check_request())
     primary.parse_file.assert_awaited_once_with(
         Path("report.pdf"), tier="flash", page_range="1-2", ocr_mode="ocr", status_callback=callback
     )

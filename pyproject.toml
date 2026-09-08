@@ -91,7 +91,8 @@ test = [
 ]
 torch = [
     "six>=1.17.0,<2",
-    "torch>=2.6.0,<3",
+    # Transformers 5.10.1 导入模型时需要 Torch 2.7 新增的 float8_e8m0fnu。
+    "torch>=2.7.0,<3",
     "torchvision",
     "transformers>=5.10.1,<6",
     "accelerate>=1.5.1",
