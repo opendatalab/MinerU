@@ -41,19 +41,19 @@ def test_download_receipt_keeps_request_on_success_and_failure(tmp_path: Path, m
     render.assert_not_called()
 
 
-def test_download_event_chain_and_pdf_mount(tmp_path: Path) -> None:
-    """每种格式使用独立文件与成功事件，所有空 PDF 预览状态保持挂载。"""
+def test_download_event_chain_and_pdf_transport(tmp_path: Path) -> None:
+    """下载事件独立，PDF 仍以隐藏的原生文件组件输出并由 HTML 显示。"""
     cap = V1ServerCapabilities("http://127.0.0.1:1", ("flash",), ("zip",), ("file_id",))
     app = gradio_app.build_gradio_app(Mock(), cap, output_root=tmp_path, enable_example=False)
-    pdf = next(component for component in app.blocks.values() if component.__class__.__name__ == "PDF")
-    assert pdf.visible == "hidden"
+    conversion = next(fn for fn in app.fns.values() if fn.name == "convert_handler")
+    pdf = conversion.outputs[2]
+    assert pdf.__class__.__name__ == "File" and pdf.visible is False
     preview = next(fn.fn for fn in app.fns.values() if fn.name == "update_file_preview")
     for source in (None, "photo.png", "book.docx", "book.epub"):
         assert preview(source)[0]["value"] is None
-        assert preview(source)[0]["visible"] == "hidden"
-        assert "mineru-kit-pdf-empty" in preview(source)[0]["elem_classes"]
+        assert preview(source)[0]["visible"] is False
     reset = next(fn.fn for fn in app.fns.values() if fn.name == "reset_ui")
-    assert reset()[2]["visible"] == "hidden"
+    assert reset()[2]["visible"] is False
     assert reset()[7] == ""
     conversion = next(fn for fn in app.fns.values() if fn.name == "convert_handler")
     dependency = next(dep for dep in app.config["dependencies"] if dep["id"] == conversion._id)

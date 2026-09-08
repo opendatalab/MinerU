@@ -2,7 +2,7 @@
 (action, formats, format, label, ...args) => {
     const { text, message } = window.__mineruI18n;
     const state = window.__mineruGradioDownloads ??= { runId: "", sequence: 0, pending: new Map() };
-    // 用标准组件更新对象兼容 Gradio 5/6；空更新不会覆盖新文档的按钮状态。
+    // 使用原生组件更新对象；空更新不会覆盖新文档的按钮状态。
     const skip = () => ({ __type__: "update" });
     const button = (value, interactive) => ({ __type__: "update", value, interactive });
     // 下载失败文案仅作为文本展示，不能把服务端错误插入为活动 HTML。

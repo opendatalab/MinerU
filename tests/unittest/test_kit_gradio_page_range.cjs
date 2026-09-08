@@ -235,6 +235,7 @@ for (const count of [1, 12, 20, 100]) {
         out = ui.upload(count);
         assert.equal(ui.state.b, Math.min(count, limit ?? count));
         assert.equal(out[1].interactive, count > 1);
+        assert.equal(out[1].maximum, Math.max(2, count));
         let seed = 7;
         for (let step = 0; step < 1000; step++) {
             seed = (seed * 16807) % 2147483647;

@@ -375,13 +375,7 @@ def test_native_range_components_and_frontend_only_events(tmp_path: Path) -> Non
     assert metadata["page_count"] == 12 and metadata["error"] == ""
     load_events = [event for event in demo.config["dependencies"] if any(target[1] == "load" for target in event["targets"])]
     assert any(event["js"] == demo._mineru_kit_js and not event["backend_fn"] for event in load_events)
-    import gradio as gr
-
-    if gradio_app._gradio_major_version(gr) >= 6:
-        assert set(demo._mineru_kit_launch_kwargs) == {"css", "js", "i18n"}
-    else:
-        assert set(demo._mineru_kit_launch_kwargs) == {"i18n"}
-        assert demo.css and demo.js
+    assert set(demo._mineru_kit_launch_kwargs) == {"css", "js", "i18n"}
 
 
 def test_frontend_page_range_state_machine() -> None:

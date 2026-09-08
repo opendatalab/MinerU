@@ -1,0 +1,46 @@
+:root { color-scheme: light dark; font-family: system-ui, sans-serif; font-size: 13px; --toolbar-height: 44px; }
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; overflow: hidden; }
+body { background: #e5e7eb; color: #1f2937; }
+#toolbar { height: var(--toolbar-height); display: flex; align-items: center; justify-content: center; gap: 6px; padding: 5px 8px; background: #f9fafb; border-bottom: 1px solid #d1d5db; }
+button, input { height: 30px; border: 1px solid #d1d5db; border-radius: 5px; background: #fff; color: inherit; font: inherit; }
+button { min-width: 30px; padding: 0 8px; cursor: pointer; }
+button:hover:enabled { background: #f3f4f6; }
+button:disabled, input:disabled { opacity: .45; cursor: default; }
+button:focus-visible, input:focus-visible, #viewer-container:focus-visible { outline: 2px solid #f97316; outline-offset: -2px; }
+#page { width: 52px; text-align: center; padding: 0 2px; appearance: textfield; }
+#page::-webkit-inner-spin-button, #page::-webkit-outer-spin-button { appearance: none; }
+#scale { min-width: 38px; text-align: center; }
+#pages { min-width: 16px; }
+.separator { width: 1px; height: 20px; background: #d1d5db; margin: 0 2px; }
+#viewer-container { position: absolute; top: var(--toolbar-height); bottom: 0; left: 0; right: 0; overflow: auto; }
+/* 页面使用完整可用宽度，只保留连续页之间的细小分隔，不裁切 PDF 自身的白边。 */
+#viewer.pdfViewer { padding: 0; }
+#viewer.pdfViewer.removePageBorders .page { margin: 0 auto 2px; }
+#viewer.pdfViewer.removePageBorders .page:last-child { margin-bottom: 0; }
+#status { position: absolute; z-index: 5; top: calc(var(--toolbar-height) + 10px); left: 10px; right: 10px; padding: 10px; border-radius: 6px; background: #f9fafb; text-align: center; }
+#status:empty { display: none; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+/* 窄屏分成翻页和缩放两行，防止工具栏在嵌入后的实际宽度下被裁切。 */
+@media (max-width: 360px) {
+    :root { --toolbar-height: 76px; }
+    #toolbar { display: grid; grid-template-columns: 30px minmax(44px, 1fr) 30px minmax(35px, 1fr) 30px; gap: 3px 5px; }
+    #previous { grid-area: 1 / 1; }
+    #toolbar > label { grid-area: 1 / 2; }
+    #toolbar > span[aria-hidden] { grid-area: 1 / 3; text-align: center; }
+    #pages { grid-area: 1 / 4; text-align: center; }
+    #next { grid-area: 1 / 5; }
+    .separator { display: none; }
+    #zoom-out { grid-area: 2 / 1; }
+    #scale { grid-area: 2 / 2; }
+    #zoom-in { grid-area: 2 / 3; }
+    #fit { grid-area: 2 / 4 / 3 / 6; }
+    #page { width: 100%; }
+}
+@media (prefers-color-scheme: dark) {
+    body { background: #111827; color: #e5e7eb; }
+    #toolbar, #status { background: #1f2937; }
+    button, input { background: #111827; border-color: #4b5563; }
+    button:hover:enabled { background: #374151; }
+    #toolbar { border-color: #4b5563; }
+}

@@ -34,7 +34,7 @@ def test_office_upload_builds_preview_without_parsing(tmp_path: Path, suffix: st
     assert len(callback.inputs) == 1
     request = SimpleNamespace(headers={"host": "example.test:7860"})
     updates = callback.fn(str(tmp_path / f"document.{suffix}"), request)
-    assert updates[0]["visible"] == "hidden" and updates[1]["visible"] is False
+    assert updates[0]["visible"] is False and updates[1]["visible"] is False
     assert updates[2]["visible"] is True and updates[3]["visible"] is False
     assert 'class="office-preview-notice"' in updates[2]["value"]
     assert 'class="office-preview-frame"' in updates[2]["value"]
@@ -120,7 +120,7 @@ def test_office_conversion_never_replaces_uploaded_preview(
     updates = asyncio.run(collect())
     assert updates and all(update[2:6] == ({"__type__": "update"},) * 4 for update in updates)
     assert bool(updates[-1][6]) is (outcome == "success")
-    assert all(item["interactive"] is (outcome == "success") for item in updates[-1][-7:])
+    assert all(item["interactive"] is (outcome == "success") for item in updates[-1][8:15])
     if outcome == "success":
         assert "hello-0" in updates[-1][1]
     else:

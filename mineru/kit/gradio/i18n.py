@@ -11,8 +11,7 @@ MESSAGES: dict[str, tuple[str, str]] = {
     "header_subtitle": (
         "Open-source document extraction for PDF/JPG/PNG, DOC/DOCX, PPT/PPTX, XLS/XLSX, "
         "RTF, ODT/ODS/ODP, EPUB, HTML, OFD and CSV.",
-        "开源文档提取工具，支持 PDF/JPG/PNG、DOC/DOCX、PPT/PPTX、XLS/XLSX、"
-        "RTF、ODT/ODS/ODP、EPUB、HTML、OFD 和 CSV。",
+        "开源文档提取工具，支持 PDF/JPG/PNG、DOC/DOCX、PPT/PPTX、XLS/XLSX、RTF、ODT/ODS/ODP、EPUB、HTML、OFD 和 CSV。",
     ),
     "header_support_text": (
         "If you found our project helpful, please give us a ⭐️ to support us!",
@@ -52,11 +51,22 @@ MESSAGES: dict[str, tuple[str, str]] = {
     "convert": ("Convert", "转换"),
     "clear": ("Clear", "清除"),
     "preview": ("Document preview", "文档预览"),
+    "pdf_loading": ("Loading PDF…", "正在加载 PDF…"),
+    "pdf_previous": ("Previous page", "上一页"),
+    "pdf_next": ("Next page", "下一页"),
+    "pdf_page": ("Page", "页码"),
+    "pdf_zoom_out": ("Zoom out", "缩小"),
+    "pdf_zoom_in": ("Zoom in", "放大"),
+    "pdf_fit_width": ("Fit width", "适应宽度"),
+    "pdf_invalid": ("This PDF is damaged or invalid.", "PDF 已损坏或格式无效。"),
+    "pdf_password": ("This PDF requires a password and cannot be previewed.", "此 PDF 需要密码，暂时无法预览。"),
+    "pdf_load_failed": ("Could not load the PDF preview. Please upload the file again.", "PDF 预览加载失败，请重新上传文件。"),
     "empty_preview": ("No source document preview", "暂无源文档预览"),
     "source_preview": ("Source document preview", "源文档预览"),
     "unsupported_preview": ("No source preview for this format", "该格式暂无源文档预览"),
     "result_ready": ("Results are ready", "结果已生成"),
-    "markdown_rendered": ("Markdown preview", "Markdown 渲染"),
+    "markdown": ("Markdown", "Markdown"),
+    "json_view": ("JSON", "JSON"),
     "download_results": ("Download results", "下载结果"),
     "examples": ("Examples", "示例"),
     "preparing_download": ("Preparing…", "准备中…"),

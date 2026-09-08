@@ -4,6 +4,25 @@
 
 状态: Implemented
 
+## PDF 预览与版本要求
+
+Gradio 界面要求 `gradio>=6.8,<7`，不再支持 Gradio 5，也不再需要安装 `gradio-pdf`。
+PDF 预览使用独立 iframe 和随 MinerU 分发的 PDF.js 6.3.289，支持连续阅读、翻页、页码跳转、缩放和适应宽度。
+核心模块、worker、CMap、标准字体及解码资源均从当前 Gradio 站点加载，预览无需外部 CDN 或 npm。
+
+上传时显示原始 PDF；解析完成后显示布局 PDF，布局文件不可用时显示裁页后的原始 PDF。
+每次切换文档回到第一页并适应宽度；浏览页码不改变解析页范围，翻页和缩放不调用 Python 解析接口。
+需要密码或损坏的 PDF 会显示预览错误。文字搜索、编辑、打印和缩略图不在当前预览功能范围内。
+静态资源和文件沿用 Gradio 的认证与文件路由，支持反向代理子路径；自定义挂载仍需传入自己的结果目录 `allowed_paths`。
+
+Gradio 6.26 的 `huggingface-hub>=1.16` 与当前 Transformers 4 的依赖范围不兼容。
+使用最新 Gradio 时，将 UI 安装在独立环境，通过 `--api-url` 连接推理服务；与本地模型同环境安装时，
+让依赖解析器选择兼容的 Gradio 6.x，当前相关约束可解析到 6.17.3，无需升级 Transformers。
+
+维护预览资源时执行 `python scripts/vendor_pdfjs.py`，脚本会校验固定上游压缩包并生成逐文件 SHA-256 清单。
+构建后使用 `python scripts/verify_pdfjs_distribution.py dist/*.whl dist/*.tar.gz` 检查资源和许可证是否完整。
+浏览器样本可用 `python tests/browser/gradio_pdf_fixtures.py output/playwright/pdfjs-fixtures` 生成。
+
 `mineru-kit gradio` 提供一个基于 MinerU V1 API 的文档解析界面。它不直接调用旧 `/file_parse` 或 `/tasks` 接口，也不使用 `doclib` 缓存。
 
 ## 启动
@@ -94,11 +113,15 @@ Gradio 首先发现 `/v1/health` 和 `/v1/tiers`，然后通过 `MinerUApiParser
 
 ## 结果与下载
 
-页面只展示：
+结果栏提供两个标签：
 
-- Markdown 渲染：实际展示 HTML renderer 的完整输出，保留表格、公式和代码高亮。
+- Markdown：实际展示 HTML renderer 的完整输出，保留表格、公式和代码高亮。
+- JSON：以只读、可复制的语法高亮视图展示本次保存的 `structured_content.json`，与 JSON 下载包中的内容一致。
+  新转换开始、失败、更换文件和清除时同步清空；切换标签不会重新解析或渲染。
 
-下载图标位于右侧结果栏的标签行最右端，鼠标悬停或键盘聚焦即可展开菜单。菜单包含 Markdown、JSON、HTML、DOCX、LaTeX、EPUB 和 PDF。下载文件由 Gradio 从本次保存的结果按需生成，不新增 API job 输出格式。Markdown 和 JSON 分别下载独立 ZIP，根目录放置同名 `.md` 或 `.json`，图片放在 `images/`，正文及 JSON 图片字段使用相对路径。JSON 内容使用 Structured Content，不包含 Middle JSON。LaTeX 下载包包含 `.tex` 与 `images/`，可交给 XeLaTeX 使用；Gradio 不自动执行 TeX 编译。预览和下载的单个 HTML 均使用当前 Gradio 服务的图片 HTTP 链接，不嵌入 base64；链接可用性取决于当前服务和任务文件。
+Gradio 转换事件在原有输出末尾追加 Structured Content JSON 文本，既有输出的位置保持不变。
+
+下载按钮位于右侧结果栏的标签行最右端，图标右侧按界面语言显示“下载”或“Download”，鼠标悬停或键盘聚焦即可展开菜单。菜单包含 Markdown、JSON、HTML、DOCX、LaTeX、EPUB 和 PDF。下载文件由 Gradio 从本次保存的结果按需生成，不新增 API job 输出格式。Markdown 和 JSON 分别下载独立 ZIP，根目录放置同名 `.md` 或 `.json`，图片放在 `images/`，正文及 JSON 图片字段使用相对路径。JSON 内容使用 Structured Content，不包含 Middle JSON。LaTeX 下载包包含 `.tex` 与 `images/`，可交给 XeLaTeX 使用；Gradio 不自动执行 TeX 编译。预览和下载的单个 HTML 均使用当前 Gradio 服务的图片 HTTP 链接，不嵌入 base64；链接可用性取决于当前服务和任务文件。
 
 图片名称使用原始零基页索引和所属父块的 `type/index`，例如 `images/page_1_image_3.jpg` 表示原第 2 页、索引为 3 的图片块。整表截图使用 `page_1_table_3.jpg`，表内图片按出现顺序使用 `page_1_table_image_3_1.png`、`page_1_table_image_3_2.png`。裁页不会重新编号，下载打包保持相同图片名称；代码和算法不生成截图。历史任务不迁移，重新转换后使用该命名。
 

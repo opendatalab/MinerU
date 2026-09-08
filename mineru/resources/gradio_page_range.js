@@ -75,8 +75,8 @@
     const notice = flashUnavailable ? text("flash_unavailable")
         : needsRange && !count ? (message(state.error) || text("reading_pages")) : "";
     const range = visible ? (start === end ? String(start) : `${start}-${end}`) : "";
-    // 两个端点始终保留完整文档跨度，不能把轨道范围截短为页数上限。
-    const slider = (value, label) => update({ minimum: 1, maximum: Math.max(1, count), value, interactive, label });
+    // 新版 Gradio 要求非零跨度；单页时禁用滑块，实际页数和提交范围仍为 1。
+    const slider = (value, label) => update({ minimum: 1, maximum: Math.max(2, count), value, interactive, label });
     return [
         slider(state.handle_a, state.start_handle === "a" ? text("start_page") : text("end_page")),
         slider(state.handle_b, state.start_handle === "b" ? text("start_page") : text("end_page")),

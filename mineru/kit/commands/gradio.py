@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import importlib.util
 import os
+from importlib.metadata import version
 from typing import Literal
 
 import typer
+from packaging.specifiers import SpecifierSet
 
 from ...model.ocr.language import validate_public_ocr_lang
 from ...types import SERVER_TIERS, ServerTier
@@ -16,11 +18,15 @@ from ..errors import exit_with_message
 
 def _require_gradio_dependencies() -> None:
     """检查 Gradio 可选依赖，并在缺失时给出安装提示。"""
-    missing = [name for name in ("gradio", "gradio_pdf") if importlib.util.find_spec(name) is None]
-    if missing:
+    if importlib.util.find_spec("gradio") is None:
         exit_with_message(
             "dependency_missing",
             "Gradio support requires the optional dependencies; install with `pip install 'mineru[gradio]'`.",
+        )
+    if version("gradio") not in SpecifierSet(">=6.8,<7"):
+        exit_with_message(
+            "dependency_incompatible",
+            "Gradio >=6.8,<7 is required; upgrade with `pip install --upgrade 'mineru[gradio]'`.",
         )
 
 

@@ -1,0 +1,47 @@
+name: Gradio 6 preview
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "mineru/kit/gradio/**"
+      - "mineru/kit/commands/gradio.py"
+      - "mineru/resources/gradio*"
+      - "mineru/resources/pdf_preview/**"
+      - "tests/unittest/test_kit_gradio*"
+      - "scripts/*pdfjs*"
+      - "pyproject.toml"
+      - ".github/workflows/gradio.yml"
+
+jobs:
+  compatibility:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {python: "3.13", gradio: "6.8.0"}
+          - {python: "3.13", gradio: "6.9.0"}
+          - {python: "3.13", gradio: "6.17.3"}
+          - {python: "3.13", gradio: "6.26.0"}
+          - {python: "3.10", gradio: "6.26.0"}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+      - name: Install UI dependencies without the inference stack
+        run: python -m pip install -e '.[gradio,test]' 'gradio==${{ matrix.gradio }}'
+      - name: Check dependency removal and preview regressions
+        run: |
+          python -c "import importlib.util; assert importlib.util.find_spec('gradio_pdf') is None"
+          python -m pytest tests/unittest/test_kit_gradio*.py -o addopts='' -q
+      - name: Verify distribution resources
+        if: matrix.gradio == '6.26.0' && matrix.python == '3.13'
+        run: |
+          python -m pip install build
+          python -m build
+          python scripts/verify_pdfjs_distribution.py dist/*.whl dist/*.tar.gz
