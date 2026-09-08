@@ -1,7 +1,11 @@
 import asyncio
 import logging
 import subprocess
-import tomllib
+
+try:
+    import tomllib
+except ModuleNotFoundError:
+    import tomli as tomllib
 import uuid
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -66,11 +70,12 @@ def test_huggingface_hub_base_dependency_enables_xet() -> None:
     assert huggingface_hub.extras == {"hf_xet"}
 
 
-def test_basic_extra_includes_preflight_runtime_dependencies() -> None:
+def test_torch_extra_includes_preflight_runtime_dependencies(monkeypatch: pytest.MonkeyPatch) -> None:
+    """完整模型栈的预检依赖由 torch extra 提供，不依赖已删除的 basic extra。"""
     pyproject_path = Path(__file__).resolve().parents[2] / "pyproject.toml"
     pyproject = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
-    basic_dependencies = pyproject["project"]["optional-dependencies"]["basic"]
-    dependency_names = {dependency.split(">", 1)[0].split("=", 1)[0].lower() for dependency in basic_dependencies}
+    torch_dependencies = pyproject["project"]["optional-dependencies"]["torch"]
+    dependency_names = {Requirement(dependency).name for dependency in torch_dependencies}
     module_to_distribution = {
         "six": "six",
         "torch": "torch",
@@ -78,31 +83,27 @@ def test_basic_extra_includes_preflight_runtime_dependencies() -> None:
         "transformers": "transformers",
     }
 
-    # light backend 跳过所有模块检查，只验证 full backend 的依赖完整性
-    import os
-    os.environ["MINERU_MODEL_STACK"] = "full"
-    import mineru.config as cfg
-    import importlib
-    importlib.reload(cfg)
-    cfg._loaded_config = cfg._load_effective_config()
-    cfg.config = cfg._loaded_config.config
+    monkeypatch.setattr(mineru_config.model, "stack", "full")
 
     missing = [
         module_name
         for module_name in parser_tier.required_modules_for_tier("basic")
-        if module_to_distribution[module_name] not in dependency_names
+        if module_to_distribution.get(module_name, module_name) not in dependency_names
     ]
 
     assert missing == []
 
 
-def test_standard_is_the_highest_model_runtime_extra() -> None:
+def test_full_extra_composes_torch_and_platform_engines() -> None:
+    """full extra 组合 Torch 和平台引擎，普通 test extra 保持独立。"""
     pyproject_path = Path(__file__).resolve().parents[2] / "pyproject.toml"
     pyproject = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
     extras = pyproject["project"]["optional-dependencies"]
 
     assert "advanced" not in extras
-    assert "mineru[standard]" in extras["test"]
+    assert "mineru[torch]" in extras["full"]
+    assert {"vllm", "lmdeploy", "mlx-vlm"} <= {Requirement(item).name for item in extras["full"]}
+    assert not any(Requirement(item).name == "mineru" for item in extras["test"])
 
 
 @pytest.mark.parametrize(

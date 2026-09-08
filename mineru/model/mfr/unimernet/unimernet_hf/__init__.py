@@ -2,6 +2,7 @@
 from .unimer_swin import UnimerSwinConfig, UnimerSwinModel, UnimerSwinImageProcessor
 from .unimer_mbart import UnimerMBartConfig, UnimerMBartModel, UnimerMBartForCausalLM
 from .modeling_unimernet import UnimernetModel
+from .configuration_unimernet import UnimernetConfig
 
 __all__ = [
     "UnimerSwinConfig",
@@ -11,4 +12,5 @@ __all__ = [
     "UnimerMBartModel",
     "UnimerMBartForCausalLM",
     "UnimernetModel",
+    "UnimernetConfig",
 ]

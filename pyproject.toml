@@ -9,7 +9,7 @@ license = "LicenseRef-MinerU-Open-Source-License"
 license-files = ["LICENSE.md"]
 description = "A practical document parsing tool for converting PDF, OFD, EPUB, HTML, images, CSV, RTF, OOXML, and OpenDocument files into Markdown and JSON"
 readme = "README.md"
-requires-python = ">=3.10,<3.14"
+requires-python = ">=3.10,<3.15"
 keywords = [
     "mineru",
     "magic-pdf",
@@ -36,11 +36,12 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
-    "docvortex>=0.2.6,<1.0.0",
+    "docvortex>=0.3.0,<1",
     "mineru-vl-utils>=2.0.0,<3",
-    "mineru-llama-cpp>=0.1.0,<1",
+    "mineru-llama-cpp>=0.1.1,<1",
     "click>=8.1.7",
     "loguru>=0.7.2",
     "numpy>=1.21.6",
@@ -48,7 +49,7 @@ dependencies = [
     "requests",
     "httpx",
     "pillow>=11.0.0",
-    "pypdfium2>=5.10.1",
+    "pypdfium2>=5.10.1,<6",
     "PyYAML>=6.0.1,<7",
     "packaging",
     "modelscope>=1.26.0",

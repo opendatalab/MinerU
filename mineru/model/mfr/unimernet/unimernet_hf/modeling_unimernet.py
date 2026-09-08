@@ -5,20 +5,13 @@ from typing import Optional
 
 import torch
 from ftfy import fix_text
-from loguru import logger
 
-from transformers import AutoConfig, AutoModel, AutoModelForCausalLM, AutoTokenizer, PretrainedConfig, PreTrainedModel
-from transformers import VisionEncoderDecoderConfig, VisionEncoderDecoderModel
-from transformers.models.vision_encoder_decoder.modeling_vision_encoder_decoder import logger as base_model_logger
+from transformers import AutoTokenizer, PretrainedConfig, PreTrainedModel, VisionEncoderDecoderModel
 
-from .unimer_swin import UnimerSwinConfig, UnimerSwinModel, UnimerSwinImageProcessor
-from .unimer_mbart import UnimerMBartConfig, UnimerMBartForCausalLM
+from .unimer_swin import UnimerSwinModel, UnimerSwinImageProcessor
+from .unimer_mbart import UnimerMBartForCausalLM
+from .configuration_unimernet import UnimernetConfig
 from ...utils import fix_unimernet_latex
-
-AutoConfig.register(UnimerSwinConfig.model_type, UnimerSwinConfig)
-AutoConfig.register(UnimerMBartConfig.model_type, UnimerMBartConfig)
-AutoModel.register(UnimerSwinConfig, UnimerSwinModel)
-AutoModelForCausalLM.register(UnimerMBartConfig, UnimerMBartForCausalLM)
 
 
 # TODO: rewrite tokenizer
@@ -52,42 +45,44 @@ class TokenizerWrapper:
         for b in range(len(toks)):
             for i in reversed(range(len(toks[b]))):
                 if toks[b][i] is None:
-                    toks[b][i] = ''
-                toks[b][i] = toks[b][i].replace('Ġ', ' ').strip()
+                    toks[b][i] = ""
+                toks[b][i] = toks[b][i].replace("Ġ", " ").strip()
                 if toks[b][i] in ([self.tokenizer.bos_token, self.tokenizer.eos_token, self.tokenizer.pad_token]):
                     del toks[b][i]
         return toks
 
+
 class UnimernetModel(VisionEncoderDecoderModel):
+    config_class = UnimernetConfig
+
     def __init__(
         self,
         config: Optional[PretrainedConfig] = None,
         encoder: Optional[PreTrainedModel] = None,
         decoder: Optional[PreTrainedModel] = None,
     ):
-        # VisionEncoderDecoderModel's checking log has bug, disable for temp.
-        base_model_logger.disabled = True
-        try:
-            super().__init__(config, encoder, decoder)
-        finally:
-            base_model_logger.disabled = False
-
         if not config or not hasattr(config, "_name_or_path"):
             raise RuntimeError("config._name_or_path is required by UnimernetModel.")
 
+        # 显式构造子模型；加载本地权重不依赖进程级 Auto 注册副作用。
+        encoder = encoder if encoder is not None else UnimerSwinModel(config.encoder)
+        decoder = decoder if decoder is not None else UnimerMBartForCausalLM(config.decoder)
+        super().__init__(config, encoder, decoder)
+
         model_path = config._name_or_path
         self.transform = UnimerSwinImageProcessor()
-        self.tokenizer = TokenizerWrapper(AutoTokenizer.from_pretrained(model_path))
+        self.tokenizer = TokenizerWrapper(AutoTokenizer.from_pretrained(model_path, config=config.decoder))
         self._post_check()
-    
+
     def _post_check(self):
         tokenizer = self.tokenizer
 
         if tokenizer.tokenizer.model_max_length != self.config.decoder.max_position_embeddings:
             warnings.warn(
-                f"decoder.max_position_embeddings={self.config.decoder.max_position_embeddings}," +
-                f" but tokenizer.model_max_length={tokenizer.tokenizer.model_max_length}, will set" +
-                f" tokenizer.model_max_length to {self.config.decoder.max_position_embeddings}.")
+                f"decoder.max_position_embeddings={self.config.decoder.max_position_embeddings},"
+                + f" but tokenizer.model_max_length={tokenizer.tokenizer.model_max_length}, will set"
+                + f" tokenizer.model_max_length to {self.config.decoder.max_position_embeddings}."
+            )
             tokenizer.tokenizer.model_max_length = self.config.decoder.max_position_embeddings
 
         assert self.config.decoder.vocab_size == len(tokenizer)
@@ -95,11 +90,11 @@ class UnimernetModel(VisionEncoderDecoderModel):
         assert self.config.pad_token_id == tokenizer.pad_token_id
 
     @classmethod
-    def from_checkpoint(cls, model_path: str, model_filename: str = "pytorch_model.pth", state_dict_strip_prefix="model.model."):
-        config = VisionEncoderDecoderConfig.from_pretrained(model_path)
+    def from_checkpoint(
+        cls, model_path: str, model_filename: str = "pytorch_model.pth", state_dict_strip_prefix="model.model."
+    ):
+        config = UnimernetConfig.from_pretrained(model_path)
         config._name_or_path = model_path
-        config.encoder = UnimerSwinConfig(**vars(config.encoder))
-        config.decoder = UnimerMBartConfig(**vars(config.decoder))
 
         encoder = UnimerSwinModel(config.encoder)
         decoder = UnimerMBartForCausalLM(config.decoder)
@@ -113,7 +108,7 @@ class UnimernetModel(VisionEncoderDecoderModel):
             raise RuntimeError("state_dict is empty.")
         if state_dict_strip_prefix:
             state_dict = {
-                k[len(state_dict_strip_prefix):] if k.startswith(state_dict_strip_prefix) else k: v
+                k[len(state_dict_strip_prefix) :] if k.startswith(state_dict_strip_prefix) else k: v
                 for k, v in state_dict.items()
             }
         missing_keys, unexpected_keys = model.load_state_dict(state_dict, strict=False)
@@ -174,7 +169,7 @@ class UnimernetModel(VisionEncoderDecoderModel):
         num_channels = pixel_values.shape[1]
         if num_channels == 1:
             pixel_values = pixel_values.repeat(1, 3, 1, 1)
-        
+
         kwargs = {}
         if do_sample:
             kwargs["temperature"] = temperature
@@ -188,7 +183,7 @@ class UnimernetModel(VisionEncoderDecoderModel):
 
         outputs = super().generate(
             pixel_values=pixel_values,
-            max_new_tokens=self.tokenizer.tokenizer.model_max_length, # required
+            max_new_tokens=self.tokenizer.tokenizer.model_max_length,  # required
             decoder_start_token_id=self.tokenizer.tokenizer.bos_token_id,
             do_sample=do_sample,
             **kwargs,
