@@ -77,7 +77,7 @@ class ModelSingleton:
                 lmdeploy_engine = None
                 vllm_async_llm = None
                 llama_cpp_engine = None
-                batch_size = kwargs.get("batch_size", 0)  # for transformers backend only
+                batch_size = kwargs.get("batch_size", 0)  # 本地引擎批次大小；MLX 的 0 由客户端解析为保守默认值。
                 max_concurrency = kwargs.get("max_concurrency", 100)  # for http-client backend only
                 http_timeout = kwargs.get("http_timeout", 600)  # for http-client backend only
                 server_headers = kwargs.get("server_headers", None)  # for http-client backend only
