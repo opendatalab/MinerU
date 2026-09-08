@@ -1,7 +1,6 @@
 """New doclib HTTP server implementation backed by the public interface."""
 
 from __future__ import annotations
-from docvortex.content.tree import iter_child_blocks as _iter_child_blocks
 
 import asyncio
 import math
@@ -12,14 +11,12 @@ import sys
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from io import BytesIO
 from pathlib import Path
-from typing import Any, Iterator, cast
+from typing import Any, cast
 from urllib.parse import urlparse
 
 from fastapi import APIRouter, FastAPI, Request
 from fastapi.responses import JSONResponse
-from PIL import Image
 from pydantic import ValidationError
 
 from ..config import config
@@ -34,14 +31,14 @@ from ..parser.page_range import (
 from ..parser.tier import TierDependencyError, ensure_tier_runtime_dependencies
 from docvortex.render.markdown import build_markdown_image
 from docvortex.render.markdown import render_single_block
-from docvortex.foundation.image_payload import parse_image_data_uri_strict
+from docvortex.assets import parse_image_data_uri_strict, transcode_image
+from docvortex.content.tree import iter_image_payloads
 from ..types import (
     DEPLOYMENT_TIERS,
     TIERS,
     BlockBase,
     BlockType,
     DeploymentTier,
-    ImagePayloadBlock,
     PageBlock,
     PageInfo,
     Tier,
@@ -49,7 +46,7 @@ from ..types import (
 )
 from ..model.download import verify_model_repo
 from ..model.registry import ModelRepo, model_repos_for_tier
-from docvortex.document.pdf.document import PDFDocument
+from docvortex.document.pdf import PDFDocument
 from ..version import __version__
 from .background.parse_server_health import get_health, get_managed_parse_server_tier
 from .base import AsyncDoclibInterface
@@ -1455,6 +1452,7 @@ class DoclibServer(AsyncDoclibInterface):
         return select_highest_cached_tier(tiers)
 
     async def _render_source_image_asset(self, plan: _ReadPlan, page: PageInfo) -> ContentAsset:
+        """查找源文件并调用公共图像输出，保留 Doclib 定位与错误协议。"""
         if plan.target is None:
             raise InvalidRequestError("format_not_supported", "image format requires a page or block locator.", "format")
         file_row = await accessible_file_for_sha256(self.state.db, plan.sha256)
@@ -1474,46 +1472,37 @@ class DoclibServer(AsyncDoclibInterface):
                 "format",
             )
         with doc:
-            if plan.target.block_no is None:
-                image = doc.render_page(plan.target.page_no - 1).pil_image
-                try:
-                    image_bytes = _pil_image_to_bytes(image, plan.image_format)
-                    width, height = image.size
-                finally:
-                    image.close()
-            else:
+            bbox = None
+            if plan.target.block_no is not None:
                 block = _find_block_by_no(page, plan.target.block_no)
                 if block is None:
                     raise NotFoundError("block_not_found", f"Block {plan.target.block_no} not found.", "locator")
                 if block.bbox is None or _is_empty_bbox(block.bbox):
                     raise InvalidRequestError("bbox_not_available", "Block bbox is not available for image output.", "locator")
-                image_bytes = _transcode_image_bytes(
-                    doc.crop_image(block.bbox, plan.target.page_no - 1),
-                    plan.image_format,
-                )
-                width, height = _image_size_from_bytes(image_bytes)
+                bbox = block.bbox
+            artifact = doc.render_image(plan.target.page_no - 1, bbox=bbox, image_format=plan.image_format)
         return _write_temp_asset(
             self.state.data_dir,
             plan.short_id,
-            _image_format_ext(plan.image_format),
-            image_bytes,
-            mime_type=_mime_type_for_image_format(plan.image_format),
-            width=width,
-            height=height,
+            artifact.extension,
+            artifact.data,
+            mime_type=artifact.mime_type,
+            width=artifact.width,
+            height=artifact.height,
         )
 
     def _render_base64_image_asset(self, plan: _ReadPlan, data_uri: str) -> ContentAsset:
+        """通过公共素材接口解码并转码，Doclib 只负责临时资产写出。"""
         image_bytes, _extension = parse_image_data_uri_strict(data_uri)
-        image_bytes = _transcode_image_bytes(image_bytes, plan.image_format)
-        width, height = _image_size_from_bytes(image_bytes)
+        artifact = transcode_image(image_bytes, image_format=plan.image_format)
         return _write_temp_asset(
             self.state.data_dir,
             plan.short_id,
-            _image_format_ext(plan.image_format),
-            image_bytes,
-            mime_type=_mime_type_for_image_format(plan.image_format),
-            width=width,
-            height=height,
+            artifact.extension,
+            artifact.data,
+            mime_type=artifact.mime_type,
+            width=artifact.width,
+            height=artifact.height,
         )
 
 
@@ -1800,7 +1789,7 @@ def _is_empty_bbox(bbox: object) -> bool:
 def _resolve_block_image_source(block: BlockBase) -> _BlockImageSource | None:
     if not _is_empty_bbox(block.bbox):
         return _BlockImageSource(kind="source_bbox")
-    for payload in _iter_block_image_payloads(block):
+    for payload in iter_image_payloads(block):
         if payload.image_base64:
             return _BlockImageSource(kind="base64", data_uri=payload.image_base64)
     return None
@@ -1818,66 +1807,10 @@ def _make_doclib_image_renderer(
         if source is not None:
             block_no = block.index + 1 if block.index is not None else 0  # TODO: change after block.index's type changed.
             return build_markdown_image(block_ref(short_id, tier, page_no, block_no), label)
-        remote_url = next((payload.image_url for payload in _iter_block_image_payloads(block) if payload.image_url), None)
+        remote_url = next((payload.image_url for payload in iter_image_payloads(block) if payload.image_url), None)
         return build_markdown_image(remote_url, label) if remote_url is not None else f"![{label}]()"
 
     return _render
-
-
-def _iter_block_image_payloads(block: BlockBase) -> Iterator[ImagePayloadBlock]:
-    if isinstance(block, ImagePayloadBlock):
-        yield block
-    for child in _iter_child_blocks(block):
-        yield from _iter_block_image_payloads(child)
-
-
-_PIL_IMAGE_FORMATS: dict[ImageFormat, str] = {
-    "jpeg": "JPEG",
-    "png": "PNG",
-    "webp": "WEBP",
-}
-
-_IMAGE_FORMAT_EXTENSIONS: dict[ImageFormat, str] = {
-    "jpeg": "jpg",
-    "png": "png",
-    "webp": "webp",
-}
-
-_IMAGE_FORMAT_MIME_TYPES: dict[ImageFormat, str] = {
-    "jpeg": "image/jpeg",
-    "png": "image/png",
-    "webp": "image/webp",
-}
-
-
-def _pil_image_to_bytes(image: Image.Image, image_format: ImageFormat) -> bytes:
-    output_image = image
-    if image_format == "jpeg" and image.mode != "RGB":
-        output_image = image.convert("RGB")
-    with BytesIO() as buffer:
-        output_image.save(buffer, format=_PIL_IMAGE_FORMATS[image_format])
-        return buffer.getvalue()
-
-
-def _transcode_image_bytes(image_bytes: bytes, image_format: ImageFormat) -> bytes:
-    with Image.open(BytesIO(image_bytes)) as image:
-        return _pil_image_to_bytes(image, image_format)
-
-
-def _image_format_ext(image_format: ImageFormat) -> str:
-    return _IMAGE_FORMAT_EXTENSIONS[image_format]
-
-
-def _mime_type_for_image_format(image_format: ImageFormat) -> str:
-    return _IMAGE_FORMAT_MIME_TYPES[image_format]
-
-
-def _image_size_from_bytes(image_bytes: bytes) -> tuple[int | None, int | None]:
-    try:
-        with Image.open(BytesIO(image_bytes)) as image:
-            return image.size
-    except Exception:
-        return None, None
 
 
 def _write_temp_asset(
