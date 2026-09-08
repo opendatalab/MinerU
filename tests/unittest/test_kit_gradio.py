@@ -15,6 +15,7 @@ from unittest.mock import AsyncMock, Mock
 
 import httpx
 import pytest
+from click import unstyle
 from fastapi.testclient import TestClient
 from PIL import Image, ImageStat
 from pypdf import PdfReader, PdfWriter
@@ -177,10 +178,12 @@ def test_gradio_command_is_registered_and_help_is_available() -> None:
     assert result.exit_code == 0
     assert gradio_result.exit_code == 0
     assert "gradio" in result.output
-    assert "--api-url" in gradio_result.output
-    assert "--api-server-tier" in gradio_result.output
-    assert "Disable Advanced on" not in gradio_result.output
-    assert "Disable Flash on" not in gradio_result.output
+    # CI 强制彩色输出时，Rich 会在参数名内部插入 ANSI 样式码。
+    help_text = unstyle(gradio_result.output)
+    assert "--api-url" in help_text
+    assert "--api-server-tier" in help_text
+    assert "Disable Advanced on" not in help_text
+    assert "Disable Flash on" not in help_text
 
 
 def test_gradio_managed_tier_disable_option_names_are_removed() -> None:
@@ -550,12 +553,17 @@ def test_gradio_router_preserves_remote_flash_results_errors_and_cancellation(fa
     routed = GradioArtifactClient(primary, local_flash=local)
     callback = Mock()
     request = routed.parse_file(Path("report.pdf"), tier="flash", page_range="1-2", ocr_mode="ocr", status_callback=callback)
-    if failure is None:
-        assert asyncio.run(request) is result
-    else:
-        with pytest.raises(type(failure)) as error:
-            asyncio.run(request)
-        assert error.value is failure
+
+    async def check_request() -> None:
+        """在协程内检查透传，避免 Python 3.10 的 Task 边界重建取消异常。"""
+        if failure is None:
+            assert await request is result
+        else:
+            with pytest.raises(type(failure)) as error:
+                await request
+            assert error.value is failure
+
+    asyncio.run(check_request())
     primary.parse_file.assert_awaited_once_with(
         Path("report.pdf"), tier="flash", page_range="1-2", ocr_mode="ocr", status_callback=callback
     )

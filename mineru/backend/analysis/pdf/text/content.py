@@ -9,7 +9,6 @@ import numpy as np
 from PIL import Image
 from .....model.runtime.hybrid import HybridLocalModelContext, run_ocr_inference
 from .....types import BBox, BlockType, ContentType
-from docvortex.foundation.language import detect_lang
 from .....model.ocr.image import rotate_vertical_crop_if_needed
 from .....model.ocr.results import OcrConfidence
 from docvortex.document.pdf.document import PDFPage
@@ -309,14 +308,7 @@ def _lines_to_block_content(lines: list[_AnalyzeLine], block_type: str) -> str:
     if block_type == BlockType.INDEX or block_type in CODE_CONTENT_BLOCK_TYPES:
         return "\n".join(rendered_lines).strip()
 
-    text_for_language = "".join(
-        content for parts in content_lines for span_type, content in parts if span_type == ContentType.TEXT
-    )
-    block_language = detect_lang(text_for_language)
-    return merge_text_line_contents(
-        rendered_lines,
-        block_language=block_language,
-    )
+    return merge_text_line_contents(rendered_lines)
 
 
 def _lines_have_native_script_markup(lines: list[_AnalyzeLine]) -> bool:

@@ -19,6 +19,11 @@ debug/
 # Python build artifacts
 *.egg-info/
 build/
+# PDF.js 的浏览器发行资源必须随源码提交。
+!mineru/resources/pdf_preview/vendor/pdfjs/legacy/build/
+mineru/resources/pdf_preview/vendor/pdfjs/legacy/build/*
+!mineru/resources/pdf_preview/vendor/pdfjs/legacy/build/pdf.min.mjs
+!mineru/resources/pdf_preview/vendor/pdfjs/legacy/build/pdf.worker.min.mjs
 dist/
 *.egg
 

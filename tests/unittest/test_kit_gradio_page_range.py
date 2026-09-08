@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, Mock
 
 import pypdfium2 as pdfium
 import pytest
+from click import unstyle
 from pypdf import PdfWriter
 from typer.testing import CliRunner
 
@@ -45,7 +46,8 @@ def test_command_forwards_max_pages(monkeypatch: pytest.MonkeyPatch, args: list[
     result = CliRunner().invoke(app, ["gradio", *args])
     assert result.exit_code == 0, result.output
     assert launch.call_args.kwargs["max_pages"] == expected
-    assert "--max-pages" in CliRunner().invoke(app, ["gradio", "--help"]).output
+    # 比较可见文本，避免终端颜色设置影响参数名断言。
+    assert "--max-pages" in unstyle(CliRunner().invoke(app, ["gradio", "--help"]).output)
 
 
 @pytest.mark.parametrize("value", ["0", "-1", "1.5", "invalid"])

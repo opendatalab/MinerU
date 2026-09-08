@@ -141,7 +141,7 @@ def _get_device_config(device_type: str) -> dict[str, Any] | None:
         "corex": {
             "compilation_config_dict": {
                 "cudagraph_mode": "FULL_DECODE_ONLY",
-                "level": 0,
+                "mode": 0,
             },
         },
         "kxpu": {
