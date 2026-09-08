@@ -8,22 +8,10 @@ import os
 from dataclasses import dataclass
 from pathlib import Path
 
-from ...filetypes import CSV_EXTENSIONS, EPUB_EXTENSIONS, ODF_EXTENSIONS, OFD_EXTENSIONS, OFFICE_EXTENSIONS
-from docvortex.document.pdf.document import PDFDocument
+from typing import TypedDict
 
-# Optional office doc support
-try:
-    from docx import Document
-except ImportError:
-    Document = None  # type: ignore[assignment]
-try:
-    from pptx import Presentation  # type: ignore[reportMissingImports]
-except ImportError:
-    Presentation = None  # type: ignore[assignment]
-try:
-    from openpyxl import load_workbook
-except ImportError:
-    load_workbook = None  # type: ignore[assignment]
+from docvortex.schema import DocumentMetadata
+from ...filetypes import TEXT_EXTENSIONS, IMAGE_EXTENSIONS
 
 # Metadata truncation limits
 TRUNC_TITLE = 500
@@ -34,6 +22,7 @@ TRUNC_KEYWORDS = 1000
 
 class MetadataExtractionError(Exception):
     def __init__(self, code: str, message: str) -> None:
+        """保留 Doclib 的公开错误码和消息。"""
         super().__init__(message)
         self.code = code
 
@@ -73,227 +62,85 @@ async def get_file_stat(filepath: str) -> FileStat:
 # ── metadata extraction ────────────────────────────────────────────
 
 
-async def extract_metadata(filepath: str) -> dict:
-    """Extract metadata from file.  Returns dict with keys matching docs table columns.
-    All string fields are protectively truncated."""
-    ext = Path(filepath).suffix.lower().lstrip(".")
+class DoclibMetadata(TypedDict):
+    """映射现有数据库列及入库阶段的属性诊断。"""
 
-    result = {
+    page_count: int | None
+    title: str | None
+    author: str | None
+    subject: str | None
+    keywords: str | None
+    language: str | None
+    is_image_based: int
+    error_code: str | None
+    error_msg: str | None
+
+
+def metadata_to_doclib(metadata: DocumentMetadata | None) -> DoclibMetadata:
+    """将共享源属性投影为产品字段，截断仅发生在数据库边界。"""
+    result: DoclibMetadata = {
         "page_count": None,
         "title": None,
         "author": None,
         "subject": None,
         "keywords": None,
+        "language": None,
         "is_image_based": 0,
+        "error_code": None,
+        "error_msg": None,
     }
-
-    if ext == "pdf":
-        await _extract_pdf_meta(filepath, result)
-
-    elif ext in OFD_EXTENSIONS:
-        await _extract_ofd_meta(filepath, result)
-
-    elif ext in OFFICE_EXTENSIONS:
-        await _extract_office_meta(filepath, ext, result)
-
-    elif ext in CSV_EXTENSIONS:
+    if metadata is None or metadata.document is None:
+        return result
+    properties = metadata.document
+    result.update(
+        title=properties.title,
+        author="; ".join(properties.authors) or None,
+        subject=properties.subject,
+        keywords=", ".join(properties.keywords) or None,
+        language=properties.languages[0] if properties.languages else None,
+        page_count=properties.page_count,
+    )
+    if metadata.file_suffix in {"doc", "docx", "rtf"}:
+        # 源文件声明的布局页数不改变重排版文档的既有调度口径。
         result["page_count"] = 1
-
-    elif ext in EPUB_EXTENSIONS:
-        await _extract_epub_meta(filepath, result)
-
-    # truncate all string fields
-    for field, limit in [
+    elif metadata.file_suffix in {"odt", "ods", "odp"}:
+        result["page_count"] = result["page_count"] or 1
+    for field, limit in (
         ("title", TRUNC_TITLE),
         ("author", TRUNC_AUTHOR),
         ("subject", TRUNC_SUBJECT),
         ("keywords", TRUNC_KEYWORDS),
-    ]:
-        val = result.get(field)
-        if val and len(val) > limit:
-            result[field] = val[:limit]
-
+    ):
+        value = result[field]
+        if isinstance(value, str):
+            result[field] = value[:limit]
     return result
 
 
-# ── PDF metadata ───────────────────────────────────────────────────
+async def extract_metadata(filepath: str) -> DoclibMetadata:
+    """在线程中调用 DocVortex 公共接口；纯文本与图片维持原有入库行为。"""
+    from docvortex import extract_metadata as extract
+    from docvortex.errors import DocumentError
 
-
-async def _extract_pdf_meta(filepath: str, result: dict) -> None:
-    def _extract() -> None:
-        pdf_doc = None
-        try:
-            try:
-                pdf_doc = PDFDocument(filepath)
-                result["page_count"] = pdf_doc.page_count
-            except Exception as exc:
-                raise MetadataExtractionError("open_failed", str(exc) or "Failed to open document") from exc
-
-            try:
-                meta = pdf_doc.metadata
-            except Exception as exc:
-                raise MetadataExtractionError("read_metadata_failed", str(exc) or "Failed to read document metadata") from exc
-
-            try:
-                result["title"] = meta.get("Title") or None
-                result["author"] = meta.get("Author") or None
-                result["subject"] = meta.get("Subject") or None
-                result["keywords"] = meta.get("Keywords") or None
-            except Exception as exc:
-                raise MetadataExtractionError("read_metadata_failed", str(exc) or "Failed to read document metadata") from exc
-        finally:
-            if pdf_doc is not None:
-                pdf_doc.close()
-
-    await asyncio.to_thread(_extract)
-
-
-# ── Office metadata ────────────────────────────────────────────────
-
-
-async def _extract_office_meta(filepath: str, ext: str, result: dict) -> None:
-    def _extract() -> None:
-        if ext == "docx":
-            if Document is None:
-                return
-            try:
-                doc = Document(filepath)
-            except Exception as exc:
-                raise MetadataExtractionError("open_failed", str(exc) or "Failed to open document") from exc
-
-            try:
-                cp = doc.core_properties
-                result["title"] = cp.title or None
-                result["author"] = cp.author or None
-                result["subject"] = cp.subject or None
-                result["keywords"] = cp.keywords or None
-            except Exception as exc:
-                raise MetadataExtractionError("read_metadata_failed", str(exc) or "Failed to read document metadata") from exc
-
-        elif ext == "pptx":
-            if Presentation is None:
-                return
-            try:
-                prs = Presentation(filepath)
-                result["page_count"] = len(prs.slides)
-            except Exception as exc:
-                raise MetadataExtractionError("open_failed", str(exc) or "Failed to open document") from exc
-
-            try:
-                cp = prs.core_properties
-                result["title"] = cp.title or None
-                result["author"] = cp.author or None
-                result["subject"] = cp.subject or None
-                result["keywords"] = cp.keywords or None
-            except Exception as exc:
-                raise MetadataExtractionError("read_metadata_failed", str(exc) or "Failed to read document metadata") from exc
-
-        elif ext == "xlsx":
-            if load_workbook is None:
-                return
-            wb = None
-            try:
-                wb = load_workbook(filepath, read_only=True)
-                result["page_count"] = len(wb.sheetnames)
-            except Exception as exc:
-                raise MetadataExtractionError("open_failed", str(exc) or "Failed to open document") from exc
-            try:
-                cp = wb.properties
-                result["title"] = cp.title or None
-                result["author"] = cp.creator or None
-                result["subject"] = cp.subject or None
-                result["keywords"] = cp.keywords or None
-            except Exception as exc:
-                raise MetadataExtractionError("read_metadata_failed", str(exc) or "Failed to read document metadata") from exc
-            finally:
-                if wb is not None:
-                    wb.close()
-
-        elif ext in ODF_EXTENSIONS:
-            from docvortex.analyzers.native.office.odf.metadata import extract_odf_metadata
-
-            try:
-                with open(filepath, "rb") as odf_file:
-                    metadata = extract_odf_metadata(odf_file, ext)  # type: ignore[arg-type]
-            except Exception as exc:
-                raise MetadataExtractionError("open_failed", str(exc) or "Failed to open ODF document") from exc
-            result.update(metadata)
-
-        elif ext == "rtf":
-            from docvortex.analyzers.native.office.rtf.converter import extract_rtf_metadata
-
-            try:
-                with open(filepath, "rb") as rtf_file:
-                    metadata = extract_rtf_metadata(rtf_file)
-            except Exception as exc:
-                raise MetadataExtractionError("open_failed", str(exc) or "Failed to open RTF document") from exc
-            result.update(metadata)
-            result["page_count"] = 1
-
-        elif ext in ("doc", "ppt", "xls"):
-            _extract_legacy_office_meta(filepath, result)
-
-    await asyncio.to_thread(_extract)
-
-
-async def _extract_epub_meta(filepath: str, result: dict) -> None:
-    """在线程中读取 EPUB OPF 元数据和 spine 逻辑页数。"""
-
-    def _extract() -> None:
-        """打开 EPUB 文件流并把原生 metadata 合并到 doclib 结果。"""
-        from docvortex.analyzers.native.epub import extract_epub_metadata
-
-        try:
-            with open(filepath, "rb") as epub_file:
-                metadata = extract_epub_metadata(epub_file)
-        except Exception as exc:
-            raise MetadataExtractionError("open_failed", str(exc) or "Failed to open EPUB document") from exc
-        result.update(metadata)
-
-    await asyncio.to_thread(_extract)
-
-
-async def _extract_ofd_meta(filepath: str, result: dict) -> None:
-    """在线程中读取 OFD DocInfo 和声明页数。"""
-
-    def _extract() -> None:
-        """打开 OFD 文件流并合并原生元数据。"""
-        from docvortex.analyzers.native.ofd import extract_ofd_metadata
-
-        try:
-            with open(filepath, "rb") as ofd_file:
-                metadata = extract_ofd_metadata(ofd_file)
-        except Exception as exc:
-            raise MetadataExtractionError("open_failed", str(exc) or "Failed to open OFD document") from exc
-        result.update(metadata)
-
-    await asyncio.to_thread(_extract)
-
-
-def _extract_legacy_office_meta(filepath: str, result: dict) -> None:
-    """用 olefile 提取 OLE2 SummaryInformation 属性。
-
-    旧 Office 二进制格式（doc/xls/ppt）无 python-docx/pptx/openpyxl 支持。
-    page_count 无法从 OLE 属性获取：doc 是 reflow 文档，xls workbook 无页数概念，
-    ppt 幻灯片数需深度解析 PowerPoint Document stream，由 parse_svc 默认值 1 兜底。
-    """
+    if Path(filepath).suffix.lower().lstrip(".") in TEXT_EXTENSIONS | IMAGE_EXTENSIONS:
+        return metadata_to_doclib(None)
     try:
-        import olefile  # type: ignore[import-untyped]
-    except ImportError:
-        return
-    ole = None
-    try:
-        ole = olefile.OleFileIO(filepath)
-    except Exception as exc:
-        raise MetadataExtractionError("open_failed", str(exc) or "Failed to open OLE2 document") from exc
-    try:
-        meta = ole.get_metadata()
-        result["title"] = meta.title or None
-        result["author"] = meta.author or None
-        result["subject"] = meta.subject or None
-        result["keywords"] = meta.keywords or None
-    except Exception as exc:
-        raise MetadataExtractionError("read_metadata_failed", str(exc) or "Failed to read OLE2 metadata") from exc
-    finally:
-        if ole is not None:
-            ole.close()
+        extracted = await asyncio.to_thread(extract, filepath)
+    except DocumentError as exc:
+        raise MetadataExtractionError(exc.code, str(exc)) from exc
+    result = metadata_to_doclib(extracted.metadata)
+    if extracted.diagnostics:
+        result["error_code"] = "read_metadata_failed"
+        result["error_msg"] = "; ".join(item.message for item in extracted.diagnostics)[:500]
+    return result
+
+
+__all__ = [
+    "DoclibMetadata",
+    "MetadataExtractionError",
+    "FileStat",
+    "compute_sha256",
+    "get_file_stat",
+    "extract_metadata",
+    "metadata_to_doclib",
+]

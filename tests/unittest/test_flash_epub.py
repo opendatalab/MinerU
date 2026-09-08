@@ -148,6 +148,9 @@ def test_doclib_extracts_epub_metadata(tmp_path: Path) -> None:
         "subject": "Testing",
         "keywords": "Testing, epub, mineru",
         "is_image_based": 0,
+        "language": None,
+        "error_code": None,
+        "error_msg": None,
     }
 
 

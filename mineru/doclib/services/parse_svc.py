@@ -38,7 +38,14 @@ from ...parser.page_range import (
 )
 from ...types import QUALITY_TIERS, TIER_ORDER, PageInfo, Tier, select_default_quality_tier, select_parsing_rule_tier
 from ..core.db import DatabaseManager
-from ..core.file_io import FileStat, MetadataExtractionError, compute_sha256, extract_metadata, get_file_stat
+from ..core.file_io import (
+    FileStat,
+    MetadataExtractionError,
+    compute_sha256,
+    extract_metadata,
+    get_file_stat,
+    metadata_to_doclib,
+)
 from ..core.fts import FTSManager
 from ..remote_api import resolve_remote_api_key
 from ..rows import DocRow, FileRow, ParseBatchRow, ParseRow, Sha256Row, ShortIdRow, WatchTargetRow
@@ -178,6 +185,7 @@ async def ensure_doc_record(
     subject: str | None,
     keywords: str | None,
     is_image_based: int = 0,
+    language: str | None = None,
     error_code: str | None,
     error_msg: str | None,
     first_seen_at: int,
@@ -191,8 +199,8 @@ async def ensure_doc_record(
         short_id = sha256[:length]
         await db.execute(
             "INSERT OR IGNORE INTO docs (sha256, short_id, size_bytes, file_type, page_count, "
-            "title, author, subject, keywords, is_image_based, error_code, error_msg, first_seen_at, updated_at) "
-            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            "title, author, subject, keywords, is_image_based, error_code, error_msg, first_seen_at, updated_at, language) "
+            "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
             (
                 sha256,
                 short_id,
@@ -208,6 +216,7 @@ async def ensure_doc_record(
                 error_msg,
                 first_seen_at,
                 updated_at,
+                language,
             ),
         )
         inserted = cast(ShortIdRow | None, await db.fetchone("SELECT short_id FROM docs WHERE sha256=?", (sha256,)))
@@ -524,6 +533,8 @@ class ParseService:
         metadata_error_msg = None
         try:
             metadata = await extract_metadata(path)
+            metadata_error_code = metadata.get("error_code")
+            metadata_error_msg = metadata.get("error_msg")
         except MetadataExtractionError as exc:
             metadata_error_code = exc.code
             metadata_error_msg = str(exc)[:500] or "Failed to extract document metadata"
@@ -585,6 +596,7 @@ class ParseService:
             subject=metadata["subject"],
             keywords=metadata["keywords"],
             is_image_based=int(metadata.get("is_image_based") or 0),
+            language=metadata.get("language"),
             error_code=metadata_error_code,
             error_msg=metadata_error_msg,
             first_seen_at=now,
@@ -1023,6 +1035,12 @@ class ParseService:
             md = result.markdown(add_markers=False) if hasattr(result, "markdown") else ""
             md_text += md + "\n"
 
+            # 原文件属性不受推理档位限制，先更新数据库和已有索引，再处理正文索引。
+            await self._update_source_metadata(sha256, result)
+            refreshed_doc = await self.db.fetchone("SELECT title, author FROM docs WHERE sha256=?", (sha256,))
+            if refreshed_doc:
+                file_row = cast(FileRow, {**file_row, **refreshed_doc})
+
             # update fts_contents (tier-gated)
             await self._maybe_update_fts(sha256, tier, md_text, file_row)
 
@@ -1359,6 +1377,23 @@ class ParseService:
             title=file_row.get("title") or "",
             author=file_row.get("author") or "",
         )
+
+    async def _update_source_metadata(self, sha256: str, result: ParseResult) -> None:
+        """原文档属性填补现有列并同步索引，空值不清空已有信息。"""
+        values = metadata_to_doclib(result.middle_json.metadata)
+        await self.db.execute(
+            "UPDATE docs SET title=COALESCE(?,title), author=COALESCE(?,author), "
+            "subject=COALESCE(?,subject), keywords=COALESCE(?,keywords), language=COALESCE(?,language), "
+            "updated_at=? WHERE sha256=?",
+            (values["title"], values["author"], values["subject"], values["keywords"], values["language"], _now_ms(), sha256),
+        )
+        await self.db.execute(
+            "UPDATE fts_contents SET title=COALESCE((SELECT title FROM docs WHERE sha256=?),''), "
+            "author=COALESCE((SELECT author FROM docs WHERE sha256=?),'') WHERE sha256=?",
+            (sha256, sha256, sha256),
+        )
+        if result.middle_json.metadata.file_suffix == "pdf" and values["page_count"] is not None:
+            await self.db.execute("UPDATE docs SET page_count=? WHERE sha256=?", (values["page_count"], sha256))
 
     async def _maybe_update_docs_meta(self, sha256: str, tier: Tier) -> None:
         doc = await self.db.fetchone("SELECT meta_tier FROM docs WHERE sha256=?", (sha256,))
