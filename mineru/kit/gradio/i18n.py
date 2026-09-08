@@ -63,6 +63,10 @@ MESSAGES: dict[str, tuple[str, str]] = {
     "pdf_load_failed": ("Could not load the PDF preview. Please upload the file again.", "PDF 预览加载失败，请重新上传文件。"),
     "empty_preview": ("No source document preview", "暂无源文档预览"),
     "source_preview": ("Source document preview", "源文档预览"),
+    "ofd_preview_failed": (
+        "Could not preview this OFD file. You can still try converting it.",
+        "OFD 预览生成失败，仍可尝试解析该文件。",
+    ),
     "unsupported_preview": ("No source preview for this format", "该格式暂无源文档预览"),
     "result_ready": ("Results are ready", "结果已生成"),
     "markdown": ("Markdown", "Markdown"),

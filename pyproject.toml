@@ -120,6 +120,7 @@ full = [
 ]
 gradio = [
     "gradio>=6.8,<7",
+    "lxml>=5,<7",
 ]
 all = [
     "mineru[full]",
@@ -151,6 +152,7 @@ namespaces = false
 
 [tool.setuptools.package-data]
 "mineru" = ["resources/**"]
+"mineru.kit.gradio._vendor.ofd2html" = ["LICENSE", "UPSTREAM.md"]
 "mineru.doclib.migrations" = ["*.sql"]
 "mineru.model._internal.pytorchocr.utils" = ["resources/**"]
 

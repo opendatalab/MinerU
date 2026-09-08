@@ -25,6 +25,7 @@ from .client import (
     V1ServerCapabilities,
 )
 from .i18n import MESSAGES, localized_text, preview_placeholder, translations
+from .ofd_preview import prepare_ofd_preview
 from .page_range import effective_page_range as _effective_page_range
 from .page_range import pdf_page_metadata, validate_max_pages
 from .pdf_preview import pdf_preview_js, register_pdf_preview_resources
@@ -164,6 +165,9 @@ _KIT_MENU_CSS = """
 .mineru-kit-pdf-preview .prose { height: 100%; padding: 0 !important; }
 .mineru-kit-pdf-preview:not(:has(.mineru-pdf-frame, [role="alert"])) { display: none !important; }
 .mineru-pdf-frame { display: block; width: 100%; height: 100%; border: 0; }
+.mineru-kit-ofd-preview:not(:has(iframe)):not(:has([data-mineru-i18n-key])) { display: none !important; }
+.mineru-kit-ofd-preview, .mineru-kit-ofd-preview .html-container { padding: 0 !important; }
+.mineru-ofd-frame { width: 100%; height: var(--mineru-preview-content-height, 775px); border: 0; display: block; }
 .mineru-kit-image-preview img { max-height: var(--mineru-pdf-page-height, 720px); object-fit: contain; }
 /* 桌面两栏共用行高，PDF 填满伸展后的面板；窄屏仍采用独立预览高度。 */
 @media (min-width: 901px) {
@@ -429,6 +433,12 @@ def build_gradio_app(
                     min_height=320,
                     elem_classes=["mineru-kit-office-preview", "mineru-office-preview-html"],
                 )
+                ofd_preview = gr.HTML(
+                    value="", apply_default_css=False,
+                    elem_classes=["mineru-kit-ofd-preview"],
+                )
+                ofd_ticket = gr.Textbox(value="", visible=False)
+                ofd_receipt = gr.Textbox(value="", visible=False)
                 generic_preview = gr.HTML(
                     value=preview_placeholder("empty_preview"),
                     visible=True,
@@ -526,6 +536,14 @@ def build_gradio_app(
                     _preview_update(gr, preview_placeholder("source_preview"), visible=False),
                     *reset_result,
                 )
+            if suffix == "ofd":
+                return (
+                    _pdf_preview_update(gr, None),
+                    _preview_update(gr, None, visible=False),
+                    _preview_update(gr, "", visible=False),
+                    _preview_update(gr, "", visible=False),
+                    *reset_result,
+                )
             if _is_office(file_path):
                 return (
                     _pdf_preview_update(gr, None),
@@ -553,6 +571,26 @@ def build_gradio_app(
         # 换文件和清除先在浏览器中撤销旧预览，文件输出仍由原有 Python 事件管理。
         input_file.change(fn=None, inputs=input_file, outputs=pdf_viewer, js=pdf_preview_js("reset"), **private_event_kwargs)
         clear_button.click(fn=None, inputs=[], outputs=pdf_viewer, js=pdf_preview_js("clear"), **private_event_kwargs)
+
+        ofd_script = _resource_text("gradio_ofd_preview.js")
+        input_file.change(
+            fn=None, inputs=input_file, outputs=[ofd_ticket, ofd_preview],
+            js=f"(...args) => ({ofd_script})('begin', ...args)",
+            **private_event_kwargs,
+        )
+        # Gradio 6.8 的纯前端事件不可靠地触发 then；通过请求值变化启动后台转换。
+        render_ofd = ofd_ticket.change(
+            fn=prepare_ofd_preview, inputs=[input_file, ofd_ticket], outputs=ofd_receipt,
+            concurrency_limit=None, trigger_mode="multiple", **private_event_kwargs,
+        )
+        render_ofd.then(
+            fn=None, inputs=ofd_receipt, outputs=ofd_preview,
+            js=f"(...args) => ({ofd_script})('apply', ...args)", **private_event_kwargs,
+        )
+        clear_button.click(
+            fn=None, inputs=[], outputs=[ofd_ticket, ofd_preview],
+            js=f"(...args) => ({ofd_script})('clear', ...args)", **private_event_kwargs,
+        )
 
         download_script = _resource_text("gradio_download.js")
 
@@ -759,8 +797,8 @@ def build_gradio_app(
                         gr.update(value="", visible=False),
                         gr.update(value=generic_html, visible=bool(generic_html)),
                     )
-                    if _is_office(source_path):
-                        # Office 源预览已在上传时挂载，成功后不重载 iframe，也不恢复已忽略的提示。
+                    if _is_office(source_path) or suffix == "ofd":
+                        # Office/OFD 源预览已在上传时挂载，成功后保留原内容和浏览位置。
                         result_preview_updates = tuple(gr.skip() for _ in range(4))
                     return (
                         rendered_html,
