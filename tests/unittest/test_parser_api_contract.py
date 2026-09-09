@@ -2632,7 +2632,6 @@ def test_api_server_preflights_basic_tier_dependencies(monkeypatch: pytest.Monke
     create_app(upload_dir=str(tmp_path), tier="basic")
 
     assert imported_modules == [
-        "six",
         "torch",
         "torchvision",
         "transformers",
@@ -2655,7 +2654,6 @@ def test_api_server_preflights_standard_tier_dependencies_for_platform(monkeypat
     create_app(upload_dir=str(tmp_path), tier="standard")
 
     assert imported_modules == [
-        "six",
         "torch",
         "torchvision",
         "transformers",
@@ -2682,7 +2680,6 @@ def test_api_server_preflights_standard_tier_dependencies_skip_mlx_on_intel_maco
     create_app(upload_dir=str(tmp_path), tier="standard")
 
     assert imported_modules == [
-        "six",
         "torch",
         "torchvision",
         "transformers",

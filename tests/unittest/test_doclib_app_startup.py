@@ -77,7 +77,6 @@ def test_torch_extra_includes_preflight_runtime_dependencies(monkeypatch: pytest
     torch_dependencies = pyproject["project"]["optional-dependencies"]["torch"]
     dependency_names = {Requirement(dependency).name for dependency in torch_dependencies}
     module_to_distribution = {
-        "six": "six",
         "torch": "torch",
         "torchvision": "torchvision",
         "transformers": "transformers",

@@ -134,7 +134,6 @@ __all__ = [
 PARSER_BACKENDS = SUPPORTED_BACKENDS
 
 _BASIC_REQUIRED_MODULES = [
-    "six",
     "torch",
     "torchvision",
     "transformers",
