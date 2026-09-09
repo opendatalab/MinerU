@@ -6,7 +6,8 @@ from unittest.mock import MagicMock
 
 import pytest
 from _span_test_utils import inline_text
-from docvortex.analyzers.native.pdf.text_styles import (
+from docvortex.analyzers.pdf import (
+    PDFTextEvidence,
     PDFTextLinkLine,
     PDFTextLinkRange,
     PDFTextScriptLine,
@@ -14,10 +15,9 @@ from docvortex.analyzers.native.pdf.text_styles import (
     PDFTextStyleLine,
     PDFTextStyleRange,
 )
-from docvortex.document.pdf.document import PDFPageTextGeometry
+from docvortex.document.pdf import PDFPageTextGeometry
 
 from mineru.backend.analysis.pdf.text import content as text_content
-from mineru.backend.analysis.pdf.text import styles as text_style_enrichment
 from mineru.backend.analysis.pdf.text.models import _AnalyzeLine, _AnalyzeSpan
 from mineru.backend.analysis.pdf.text.native import txt_spans_extract
 from mineru.types import (
@@ -88,7 +88,9 @@ def test_hybrid_txt_reuses_loaded_chars_and_applies_styles(
             0,
         )
     ]
-    build_styles = MagicMock(return_value=(page_text_geometry, [], style_lines, link_lines, []))
+    build_styles = MagicMock(
+        return_value=PDFTextEvidence((100.0, 100.0), page_text_geometry, tuple(style_lines), tuple(link_lines))
+    )
     observed_geometry: list[object] = []
 
     def fake_fill_native(
@@ -116,7 +118,7 @@ def test_hybrid_txt_reuses_loaded_chars_and_applies_styles(
 
     monkeypatch.setattr(
         text_content,
-        "build_pdf_native_visual_lines_and_styles",
+        "prepare_text_evidence",
         build_styles,
     )
     monkeypatch.setattr(text_content, "_fill_native_pdf_text_spans", fake_fill_native)
@@ -190,8 +192,10 @@ def test_hybrid_txt_efforts_apply_dehyphenated_links(
     ]
     monkeypatch.setattr(
         text_content,
-        "build_pdf_native_visual_lines_and_styles",
-        lambda *_args, **_kwargs: (PDFPageTextGeometry([], {}, {}), [], [], link_lines, []),
+        "prepare_text_evidence",
+        lambda *_args, **_kwargs: PDFTextEvidence(
+            (100.0, 100.0), PDFPageTextGeometry([], {}, {}), tuple([]), tuple(link_lines), tuple([])
+        ),
     )
     monkeypatch.setattr(
         text_content,
@@ -276,8 +280,8 @@ def test_hybrid_txt_efforts_apply_shared_script_sidecar(
         source_index=0,
         angle=0,
     )
-    build_evidence = MagicMock(return_value=(page_geometry, [], [], [], [script_line]))
-    monkeypatch.setattr(text_content, "build_pdf_native_visual_lines_and_styles", build_evidence)
+    build_evidence = MagicMock(return_value=PDFTextEvidence((100.0, 100.0), page_geometry, scripts=(script_line,)))
+    monkeypatch.setattr(text_content, "prepare_text_evidence", build_evidence)
     monkeypatch.setattr(text_content, "_build_page_text_formula_spans", lambda *_args: [])
 
     def fake_fill_native(*_args: object, detect_scripts: bool, **_kwargs: object) -> list[_AnalyzeSpan]:
@@ -322,28 +326,6 @@ def test_hybrid_txt_efforts_apply_shared_script_sidecar(
     ]
 
 
-def test_hybrid_layout_formula_regions_hard_exclude_script_ranges() -> None:
-    """验证 Hybrid TXT 只保留 layout 行内公式 bbox 外的脚本证据。"""
-
-    line = PDFTextScriptLine(
-        bbox=(0.0, 0.0, 40.0, 20.0),
-        text="x2y3",
-        script_ranges=(
-            PDFTextScriptRange(1, 2, "superscript", (10.0, 2.0, 15.0, 8.0), 2, True),
-            PDFTextScriptRange(3, 4, "subscript", (30.0, 12.0, 35.0, 18.0), 2, False),
-        ),
-        source_index=0,
-        angle=0,
-    )
-
-    filtered = text_style_enrichment._exclude_layout_formula_script_ranges(
-        [line],
-        [(8.0, 0.0, 18.0, 10.0)],
-    )
-
-    assert [(item.start, item.end, item.style) for item in filtered[0].script_ranges] == [(3, 4, "subscript")]
-
-
 def test_ocr_path_does_not_collect_or_apply_pdf_styles(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -352,7 +334,7 @@ def test_ocr_path_does_not_collect_or_apply_pdf_styles(
     build_styles = MagicMock()
     monkeypatch.setattr(
         text_content,
-        "build_pdf_native_visual_lines_and_styles",
+        "prepare_text_evidence",
         build_styles,
     )
     monkeypatch.setattr(
@@ -412,7 +394,7 @@ def test_high_char_count_txt_path_skips_pdf_text_enrichment(
     build_enrichment = MagicMock()
     monkeypatch.setattr(
         text_content,
-        "build_pdf_native_visual_lines_and_styles",
+        "prepare_text_evidence",
         build_enrichment,
     )
     plain_span = _AnalyzeSpan(

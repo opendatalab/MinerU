@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import importlib
-import importlib.util
 import importlib.metadata
+import importlib.util
 import platform
 import sys
 from collections.abc import Callable
@@ -11,7 +11,7 @@ from typing import Literal
 import typer
 from loguru import logger
 
-from docvortex.foundation.platform import is_mac_os_version_supported
+from ...model.runtime.platform import is_mac_os_version_supported
 from ...utils.stdio import configure_standard_streams
 from ..errors import exit_with_message
 

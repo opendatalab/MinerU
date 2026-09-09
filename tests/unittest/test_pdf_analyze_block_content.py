@@ -1,31 +1,28 @@
 from __future__ import annotations
-from docvortex.schema import Producer
-from mineru.integrations.docvortex import build_metadata
 
 from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
-from PIL import Image
+from _span_test_utils import inline, inline_text
+from docvortex.analyzers.pdf import PDF_NATIVE_SCRIPT_MARKUP_KEY, PDFTextEvidence, apply_text_evidence
+from docvortex.document.pdf import PDFPageTextGeometry
+from docvortex.schema import Producer
 from mineru_vl_utils.structs import ContentBlock as VlmContentBlock
 from mineru_vl_utils.structs import ExtractResult
+from PIL import Image
 
 from mineru.backend import analyze
 from mineru.backend.analysis.pdf import constants, layout, normalization, ocr, pipeline, window
 from mineru.backend.analysis.pdf.text import content as text_content
 from mineru.backend.analysis.pdf.text.models import _AnalyzeLine, _AnalyzeSpan
-from mineru.backend.postprocess import document as postprocess_document
-from docvortex.document.pdf.document import PDFPageTextGeometry
-from mineru.types import RAW_ALGORITHM, RAW_CAPTION, RAW_FOOTNOTE
 from mineru.backend.analysis.pdf.text.native import (
     POST_OCR_FALLBACK_CONTENT_KEY,
     POST_OCR_FALLBACK_SCORE_KEY,
 )
-from docvortex.analyzers.native.pdf.text_styles import PDF_NATIVE_SCRIPT_MARKUP_KEY
-from docvortex.analyzers.native.pdf.text_styles import materialize_pdf_inline_spans
-from mineru.types import BlockType, ContentType, MiddleJson, ModelJson
-
-from _span_test_utils import inline, inline_text
+from mineru.backend.postprocess import document as postprocess_document
+from mineru.integrations.docvortex import build_metadata
+from mineru.types import RAW_ALGORITHM, RAW_CAPTION, RAW_FOOTNOTE, BlockType, ContentType, MiddleJson, ModelJson
 
 
 def _build_text_lines(*contents: str) -> list[_AnalyzeLine]:
@@ -448,8 +445,8 @@ def test_fill_window_batches_txt_post_ocr_before_page_content(monkeypatch: pytes
     monkeypatch.setattr(text_content, "_build_page_text_formula_spans", lambda *_args: [])
     monkeypatch.setattr(
         text_content,
-        "build_pdf_native_visual_lines_and_styles",
-        lambda *_args, **_kwargs: (PDFPageTextGeometry([], {}, {}), [], [], [], []),
+        "prepare_text_evidence",
+        lambda *_args, **_kwargs: PDFTextEvidence((100.0, 100.0), PDFPageTextGeometry([], {}, {})),
     )
     monkeypatch.setattr(
         text_content,
@@ -683,7 +680,7 @@ def test_native_script_ownership_propagates_only_when_content_is_filled() -> Non
     assert filled_block[PDF_NATIVE_SCRIPT_MARKUP_KEY] is True
     assert PDF_NATIVE_SCRIPT_MARKUP_KEY not in existing_block
 
-    materialize_pdf_inline_spans([filled_block, existing_block])
+    apply_text_evidence([filled_block, existing_block], PDFTextEvidence((100.0, 100.0)))
 
     assert inline_text(filled_block["content"]) == "A2"
     assert filled_block["content"][1]["styles"] == ["superscript"]

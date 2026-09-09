@@ -7,15 +7,14 @@ from dataclasses import dataclass
 from typing import Any, Literal
 
 import numpy as np
+from docvortex.assets import image_size as _normalize_page_size
+from docvortex.document.pdf import PDFDocument, PDFPage, PDFPageTextGeometry
+from docvortex.document.pdf.visuals import attach_visual_block_images as _attach_visual_block_images
+from docvortex.document.pdf.visuals import attach_visual_block_images_from_pdf
 from loguru import logger
 
 from ....model.runtime.hybrid import HybridLocalModelContext
 from ....model.runtime.memory import trim_process_heap
-from docvortex.document.pdf.document import PDFDocument
-from docvortex.document.pdf.document import PDFPage
-from docvortex.document.pdf.document import PDFPageTextGeometry
-from .images import get_load_images_threads, get_load_images_timeout, load_images_from_pdf_bytes_range
-
 from ..contracts import AnalyzeEffort
 from .constants import (
     BATCH_RATIO,
@@ -24,14 +23,6 @@ from .constants import (
     NOT_EXTRACT_TYPES,
     PIPELINE_DET_TYPE,
 )
-from docvortex.document.pdf.geometry import normalize_page_size as _normalize_page_size
-from .layout import (
-    _build_vl_style_layout_blocks,
-    _collect_table_items,
-    _convert_vlm_results_to_model_list,
-    _normalize_xhigh_vlm_blocks,
-)
-from .normalization import _apply_layout_title_split
 from .formulas import (
     _apply_medium_display_formula_results,
     _apply_medium_formula_number_ocr,
@@ -39,11 +30,19 @@ from .formulas import (
     _split_formula_results,
     optimize_hybrid_formula_number_blocks,
 )
+from .images import get_load_images_threads, get_load_images_timeout, load_images_from_pdf_bytes_range
+from .layout import (
+    _build_vl_style_layout_blocks,
+    _collect_table_items,
+    _convert_vlm_results_to_model_list,
+    _normalize_xhigh_vlm_blocks,
+)
+from .normalization import _apply_layout_title_split
 from .ocr import (
     _apply_ocr_rec_results,
+    _apply_seal_ocr,
     _build_ocr_det_type_and_mfr_enable,
     _ocr_det,
-    _apply_seal_ocr,
 )
 from .tables import (
     _apply_medium_table_recognition,
@@ -53,15 +52,11 @@ from .tables import (
     _restore_native_high_table_blocks,
     _split_native_high_table_blocks,
 )
-from docvortex.document.pdf.visuals import attach_visual_block_images as _attach_visual_block_images
-from docvortex.document.pdf.visuals import attach_visual_block_images_from_pdf
-from docvortex.document.pdf.visuals import (
-    supplement_missing_image_block_containers as _supplement_missing_image_block_containers,
-)
 from .text.content import (
     _fill_window_block_content_and_lines,
     _validate_text_formula_window_inputs,
 )
+from .visual_containers import supplement_missing_image_block_containers as _supplement_missing_image_block_containers
 
 
 def _configured_window_size(default: int = 64) -> int:

@@ -32,6 +32,7 @@ from urllib.parse import urlparse
 import click
 import httpx
 import uvicorn
+from docvortex.assets import validate_image_sidecar_path
 from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Path, Query, Request, Response, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.gzip import GZipMiddleware
@@ -39,7 +40,8 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.datastructures import State
 
-from ..config import VlmConfig, config as mineru_config
+from ..config import VlmConfig
+from ..config import config as mineru_config
 from ..errors import MineruError
 from ..filetypes import (
     PARSEABLE_EXTENSIONS,
@@ -47,28 +49,31 @@ from ..filetypes import (
     file_type_for_extension,
     is_flash_only_parse_extension,
 )
-from .writer import DataWriter
-from ..types import SERVER_TIERS, TIERS_BY_SERVER_TIER, DeploymentTier, PageInfo, ServerTier, Tier, select_default_quality_tier
-from .tier import effort_for_tier
-from docvortex.foundation.image_payload import validate_image_sidecar_path
-from .process_control import ManagedProcessControlWatcher
 from ..model.ocr.language import PUBLIC_OCR_LANGUAGES, validate_public_ocr_lang
+from ..types import SERVER_TIERS, TIERS_BY_SERVER_TIER, DeploymentTier, PageInfo, ServerTier, Tier, select_default_quality_tier
 from ..utils.stdio import configure_standard_streams
 from ..version import __version__
 from . import parse_async
 from .base import ParseResult
 from .page_range import (
     PAGE_RANGE_DESCRIPTION,
-    count_pages_in_range as _count_pages_in_range,
-    format_page_range as _compact_page_numbers,
     normalize_page_range_input,
 )
+from .page_range import (
+    count_pages_in_range as _count_pages_in_range,
+)
+from .page_range import (
+    format_page_range as _compact_page_numbers,
+)
+from .process_control import ManagedProcessControlWatcher
 from .tier import (
     ParserRuntimeOptions,
     TierDependencyError,
+    effort_for_tier,
     ensure_tier_runtime_dependencies,
     runtime_options_for_tier,
 )
+from .writer import DataWriter
 
 _DEFAULT_API_SERVER_TIER: ServerTier = "standard"
 _API_SERVER_LANGUAGES = PUBLIC_OCR_LANGUAGES
@@ -1375,7 +1380,7 @@ async def _run_job(
 
                 source_context = None
                 if stype == "html":
-                    from docvortex.analyzers.native.html import HtmlSourceContext
+                    from docvortex.document.contracts import HtmlSourceContext
 
                     source_context = HtmlSourceContext(
                         source_uri=extracted.source_uri,

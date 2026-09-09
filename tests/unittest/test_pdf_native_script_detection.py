@@ -7,9 +7,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
-from docvortex.analyzers.native.pdf.text_styles import PDF_NATIVE_SCRIPT_MARKUP_KEY
-from docvortex.document.pdf.document import PDFDocument, get_lines_from_chars
-from docvortex.document.pdf.text.contracts import Bbox, Char
+from docvortex.analyzers.pdf import PDF_NATIVE_SCRIPT_MARKUP_KEY
+from docvortex.document.pdf import Bbox, Char, PDFDocument, get_lines_from_chars
 
 from mineru.backend.analysis.pdf.text import native
 from mineru.backend.analysis.pdf.text.models import _AnalyzeSpan

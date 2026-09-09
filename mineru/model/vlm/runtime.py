@@ -15,9 +15,9 @@ from typing import Any, AsyncIterator, Generator, Iterator, Literal
 from loguru import logger
 from mineru_vl_utils import MinerUClient
 
-from docvortex.foundation.platform import is_mac_os_version_supported
-from ..runtime.device import get_device
 from ..registry import MINERU_2_5_PRO_2605_1_2B, MINERU_2_5_PRO_2605_1_2B_GGUF
+from ..runtime.device import get_device
+from ..runtime.platform import is_mac_os_version_supported
 from .engine_utils import (
     enable_custom_logits_processors,
     mod_kwargs_by_device_type,

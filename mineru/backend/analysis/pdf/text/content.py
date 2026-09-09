@@ -6,31 +6,21 @@ from __future__ import annotations
 from typing import Any, Literal
 
 import numpy as np
+from docvortex.analyzers.pdf import PDF_NATIVE_SCRIPT_MARKUP_KEY, PDFTextEvidence, apply_text_evidence, prepare_text_evidence
+from docvortex.content.text import merge_text_line_contents
+from docvortex.document.pdf import PDFPage, PDFPageTextGeometry, get_lines_from_chars
 from PIL import Image
-from .....model.runtime.hybrid import HybridLocalModelContext, run_ocr_inference
-from .....types import BBox, BlockType, ContentType
+
 from .....model.ocr.image import rotate_vertical_crop_if_needed
 from .....model.ocr.results import OcrConfidence
-from docvortex.document.pdf.document import PDFPage
-from docvortex.document.pdf.document import PDFPageTextGeometry
-from docvortex.document.pdf.document import get_lines_from_chars
-from docvortex.analyzers.native.pdf.text_styles import PDF_NATIVE_SCRIPT_MARKUP_KEY
-from docvortex.analyzers.native.pdf.text_styles import PDFTextLinkLine
-from docvortex.analyzers.native.pdf.text_styles import PDFTextScriptLine
-from docvortex.analyzers.native.pdf.text_styles import PDFTextStyleLine
-from docvortex.analyzers.native.pdf.text_styles import apply_pdf_text_links
-from docvortex.analyzers.native.pdf.text_styles import apply_pdf_text_scripts
-from docvortex.analyzers.native.pdf.text_styles import apply_pdf_text_styles
-from docvortex.analyzers.native.pdf.text_styles import materialize_pdf_inline_spans
-from docvortex.foundation.text import merge_text_line_contents
-
+from .....model.runtime.hybrid import HybridLocalModelContext, run_ocr_inference
+from .....types import BBox, BlockType, ContentType
 from ..constants import (
     CODE_CONTENT_BLOCK_TYPES,
     LINE_METADATA_BLOCK_TYPES,
     TITLE_BLOCK_TYPES,
 )
-from docvortex.document.pdf.geometry import bbox_to_pixel_bbox as _bbox_to_pixel_bbox
-from docvortex.document.pdf.geometry import sidecar_bbox_to_page_bbox as _sidecar_bbox_to_page_bbox
+from ..model_inputs import _bbox_to_pixel_bbox, _sidecar_bbox_to_page_bbox
 from .lines import group_spans_to_lines
 from .models import _AnalyzeLine, _AnalyzeSpan
 from .native import (
@@ -43,7 +33,6 @@ from .native import (
     _restore_post_ocr_fallback,
     txt_spans_extract,
 )
-from .styles import build_pdf_native_visual_lines_and_styles
 
 
 def _validate_text_formula_window_inputs(
@@ -389,9 +378,7 @@ def _fill_window_block_content_and_lines(
             list[dict[str, Any]],
             dict[int, list[_AnalyzeLine]],
             tuple[float, float],
-            list[PDFTextStyleLine],
-            list[PDFTextLinkLine],
-            list[PDFTextScriptLine],
+            PDFTextEvidence,
         ]
     ] = []
     for page_idx, (image_dict, pdf_page, page_model_list, page_inline_formula_list, page_ocr_res_list) in enumerate(
@@ -422,9 +409,7 @@ def _fill_window_block_content_and_lines(
             page_model_list,
             page_size,
         )
-        style_lines: list[PDFTextStyleLine] = []
-        link_lines: list[PDFTextLinkLine] = []
-        script_lines: list[PDFTextScriptLine] = []
+        evidence = PDFTextEvidence(page_size)
         if parse_mode == "txt":
             page_text_geometry = page_text_geometries[page_idx] if page_text_geometries is not None else None
             try:
@@ -436,18 +421,13 @@ def _fill_window_block_content_and_lines(
                 or isinstance(page_char_count, bool)
                 or page_char_count <= MAX_NATIVE_TEXT_CHARS_PER_PAGE
             ):
-                (
-                    page_text_geometry,
-                    _line_items,
-                    style_lines,
-                    link_lines,
-                    script_lines,
-                ) = build_pdf_native_visual_lines_and_styles(
+                evidence = prepare_text_evidence(
                     pdf_page,
-                    page_text_geometry=page_text_geometry,
-                    inline_math_regions=inline_math_regions,
+                    geometry=page_text_geometry,
+                    excluded_script_regions=inline_math_regions,
                     table_regions=table_regions,
                 )
+                page_text_geometry = evidence.geometry
                 if page_text_geometries is not None:
                     page_text_geometries[page_idx] = page_text_geometry
             page_spans = _fill_native_pdf_text_spans(
@@ -471,47 +451,28 @@ def _fill_window_block_content_and_lines(
                 page_model_list,
                 block_lines,
                 page_size,
-                style_lines,
-                link_lines,
-                script_lines,
+                evidence,
             )
         )
 
     if parse_mode == "txt":
         _apply_window_post_ocr(
             local_model_context,
-            [block_lines for _, block_lines, _, _style_lines, _link_lines, _script_lines in page_block_line_results],
+            [block_lines for _, block_lines, _, _evidence in page_block_line_results],
         )
 
     for (
         page_model_list,
         block_lines,
         page_size,
-        style_lines,
-        link_lines,
-        script_lines,
+        evidence,
     ) in page_block_line_results:
         _apply_block_content_and_line_metadata(
             page_model_list,
             block_lines,
             page_size,
         )
-        apply_pdf_text_links(
-            page_model_list,
-            link_lines,
-            page_size,
-        )
-        apply_pdf_text_styles(
-            page_model_list,
-            style_lines,
-            page_size,
-        )
-        apply_pdf_text_scripts(
-            page_model_list,
-            script_lines,
-            page_size,
-        )
-        materialize_pdf_inline_spans(page_model_list)
+        apply_text_evidence(page_model_list, evidence)
     return model_list
 
 

@@ -9,8 +9,7 @@ from importlib.metadata import version
 from pathlib import Path
 from typing import Any
 
-from docvortex.document.pdf import PDFDocument
-from docvortex.document.pdf.document import get_lines_from_chars
+from docvortex.document.pdf import PDFDocument, get_lines_from_chars
 
 _CONTROL_CHARS = {"\r", "\n", "\x02", "\ufffe", "\uffff"}
 

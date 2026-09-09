@@ -7,7 +7,8 @@ import time
 from io import BytesIO
 
 from docvortex.analyzers.native import HtmlModel
-from docvortex.analyzers.native.html import HtmlSourceContext
+from docvortex.document.contracts import HtmlSourceContext
+
 from .contracts import AnalysisResult
 
 

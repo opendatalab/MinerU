@@ -1,6 +1,4 @@
 from __future__ import annotations
-from docvortex.schema import Producer
-from mineru.integrations.docvortex import build_metadata
 
 import asyncio
 import io
@@ -16,21 +14,25 @@ from unittest.mock import AsyncMock, Mock
 import httpx
 import pytest
 from click import unstyle
+from docvortex.schema import Producer
 from fastapi.testclient import TestClient
 from PIL import Image, ImageStat
 from pypdf import PdfReader, PdfWriter
 from reportlab.pdfgen import canvas
+from typer.main import get_command
+from typer.testing import CliRunner
 
 from mineru.filetypes import FLASH_ONLY_PARSE_EXTENSIONS, IMAGE_EXTENSIONS, PARSEABLE_EXTENSIONS
+from mineru.integrations.docvortex import build_metadata
 from mineru.kit.commands import gradio as gradio_command
 from mineru.kit.gradio import app as gradio_app
 from mineru.kit.gradio import client as gradio_client
 from mineru.kit.gradio.app import build_gradio_app
 from mineru.kit.gradio.artifacts import create_run_artifacts, persist_parse_result, render_download
 from mineru.kit.gradio.client import (
+    STATUS_DOWNLOADING_RESULT,
     GradioArtifactClient,
     ManagedLocalApiServer,
-    STATUS_DOWNLOADING_RESULT,
     V1ArtifactClient,
     V1ArtifactError,
     V1ServerCapabilities,
@@ -42,8 +44,6 @@ from mineru.parser import api_server as parser_api_server
 from mineru.parser.base import ParseResult
 from mineru.types import BlockType, ImageBlock, ImageBodyBlock, MiddleJson, ModelJson, PageInfo, TextBlock, TextSpan
 from mineru.version import __version__
-from typer.main import get_command
-from typer.testing import CliRunner
 
 runner = CliRunner()
 
@@ -1436,8 +1436,9 @@ def test_gradio_output_failure_stops_timer_and_allows_next_conversion(tmp_path: 
 @pytest.mark.parametrize("page_indices", [(), (2, 0, 1)])
 def test_layout_preview_matches_shared_renderer_and_pdf_document(tmp_path: Path, page_indices: tuple[int, ...]) -> None:
     """三个公开入口使用相同页映射、边框和页面属性，缺失页不回退到其他结果。"""
-    from docvortex.document.pdf.document import PDFDocument
+    from docvortex.document.pdf import PDFDocument
     from docvortex.visualization import render_layout_pdf
+
     from mineru.kit.gradio.preview import draw_layout_overlay
 
     source = tmp_path / "source.pdf"

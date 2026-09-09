@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
     inputs:
       docvortex-wheel-url:
-        description: Optional DocVortex 0.3.x wheel URL for joint pre-release validation
+        description: Optional DocVortex 0.4.x wheel URL for joint pre-release validation
         required: false
         type: string
       utils-wheel-url:
@@ -104,7 +104,7 @@ jobs:
           python -m build --wheel
           mkdir -p dependency-wheels
           python -m pip download --no-deps --dest dependency-wheels "${UTILS_WHEEL_URL:-mineru-vl-utils>=2,<3}"
-          python -m pip download --no-deps --dest dependency-wheels "${DOCVORTEX_WHEEL_URL:-docvortex>=0.3.0,<1}"
+          python -m pip download --no-deps --dest dependency-wheels "${DOCVORTEX_WHEEL_URL:-docvortex>=0.4.0,<0.5.0}"
       - name: Resolve base, torch, full and all on Python 3.10 through 3.14
         run: |
           python scripts/check_transformers5_dependencies.py \

@@ -1,10 +1,9 @@
 from __future__ import annotations
-import json
-from docvortex.codecs.json import load_middle, load_model
 
 import asyncio
 import base64
 import inspect
+import json
 import threading
 from io import BytesIO
 from pathlib import Path
@@ -13,23 +12,27 @@ from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
+from _span_test_utils import inline, inline_text
+from docvortex.codecs.json import load_middle, load_model
+from docvortex.document.pdf import visuals
 from PIL import Image, ImageDraw
 
 from mineru.backend import analyze
 from mineru.backend.analysis import office
-from mineru.backend.analysis.pdf import constants
-from mineru.backend.analysis.pdf import formulas
-from mineru.backend.analysis.pdf import normalization
-from mineru.backend.analysis.pdf import pipeline
-from mineru.backend.analysis.pdf import tables
-from docvortex.document.pdf import visuals
-from mineru.backend.analysis.pdf import window
-from mineru.types import RAW_ALGORITHM, RAW_CAPTION, RAW_FOOTNOTE, RAW_FORMULA_NUMBER, RAW_PHONETIC
-from mineru.types import FILE_SUFFIXES, BlockType, FileSuffix, MiddleJson, ModelJson
+from mineru.backend.analysis.pdf import constants, formulas, normalization, pipeline, tables, visual_containers, window
+from mineru.types import (
+    FILE_SUFFIXES,
+    RAW_ALGORITHM,
+    RAW_CAPTION,
+    RAW_FOOTNOTE,
+    RAW_FORMULA_NUMBER,
+    RAW_PHONETIC,
+    BlockType,
+    FileSuffix,
+    MiddleJson,
+    ModelJson,
+)
 from mineru.version import __version__ as mineru_version
-
-from _span_test_utils import inline, inline_text
-
 
 JPEG_DATA_URI_PREFIX = "data:image/jpeg;base64,"
 RED = (255, 0, 0)
@@ -371,7 +374,7 @@ def test_xhigh_layout_image_supplements_missing_container_before_crop() -> None:
         ]
     ]
 
-    visuals._supplement_missing_image_block_containers(
+    visual_containers.supplement_missing_image_block_containers(
         [page_model_list],
         layout_blocks_list,
     )
@@ -448,7 +451,7 @@ def test_xhigh_layout_image_fallback_requires_visual_count_and_coverage(
     page_model_list = [{"type": block_type, "bbox": bbox} for block_type, bbox in zip(block_types, block_bboxes)]
     layout_blocks_list = [[{"type": layout_type, "bbox": [0.0, 0.0, 1.0, 1.0], "angle": 0}]]
 
-    visuals._supplement_missing_image_block_containers(
+    visual_containers.supplement_missing_image_block_containers(
         [page_model_list],
         layout_blocks_list,
     )
@@ -474,7 +477,7 @@ def test_xhigh_layout_image_fallback_uses_whitelist_for_area_but_absorbs_all_typ
         {"type": BlockType.CHART_CAPTION, "bbox": [0.9, 0.0, 1.0, 1.0]},
     ]
 
-    visuals._supplement_missing_image_block_containers(
+    visual_containers.supplement_missing_image_block_containers(
         [insufficient_page],
         layout_blocks_list,
     )
@@ -492,7 +495,7 @@ def test_xhigh_layout_image_fallback_uses_whitelist_for_area_but_absorbs_all_typ
         external_text,
     ]
 
-    visuals._supplement_missing_image_block_containers(
+    visual_containers.supplement_missing_image_block_containers(
         [qualifying_page],
         layout_blocks_list,
     )
@@ -525,7 +528,7 @@ def test_xhigh_layout_image_fallback_does_not_duplicate_existing_or_overlapping_
         ]
     ]
 
-    visuals._supplement_missing_image_block_containers(
+    visual_containers.supplement_missing_image_block_containers(
         [page_model_list],
         layout_blocks_list,
     )
@@ -1141,6 +1144,7 @@ def test_aio_doc_analyze_runs_sync_entrypoint_in_thread_and_forwards_arguments(
         "file_suffix": "pptx",
         "source_context": None,
         "vlm_config": None,
+        "source_properties": None,
     }
     assert observed["thread_id"] != caller_thread_id
 

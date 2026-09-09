@@ -39,7 +39,7 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
-    "docvortex>=0.3.0,<1",
+    "docvortex>=0.4.0,<1",
     "mineru-vl-utils>=2.0.1,<3",
     "mineru-llama-cpp>=0.1.1,<1",
     "click>=8.1.7",
@@ -148,6 +148,7 @@ include-package-data = true
 zip-safe = false
 
 [tool.pytest.ini_options]
+testpaths = ["tests"]
 addopts = "-s --cov=mineru --cov-report html"
 markers = [
   "e2e: MinerU CLI 端到端用例（脚本化 docs/next/cli/mineru-e2e-test-cases.md）",

@@ -8,12 +8,10 @@ import json
 from dataclasses import dataclass
 from typing import Literal, cast
 
-from ....types import PageInfo, TableBlock, TableBodyBlock
-
-from docvortex.content.table.html import build_row_rendered_cell_segments
-from docvortex.content.table.html import build_table_state_from_html
+from docvortex.content.table import build_row_rendered_cell_segments, build_table_state_from_html, detect_table_headers
 from docvortex.content.table import expand_header_count_by_rowspan as _expand_header_count_by_rowspan
-from docvortex.content.table.structure import detect_table_headers
+
+from ....types import PageInfo, TableBlock, TableBodyBlock
 from ..llm_client import LLMAidedClient
 
 CellMergeFlag = Literal[0, 1]

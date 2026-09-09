@@ -1,5 +1,7 @@
 # JSON 2.0 直接迁移
 
+> 当前配套版本为 DocVortex 0.4；升级边界与旧入口迁移见 [0.4 迁移说明](../../docvortex-0.4-migration.md)。以下保留历史协议验收记录。
+
 采用[统一外层协议](envelope.md)，通用解析接口保持严格；仅 Doclib 持久化读取提供[历史转换](doclib-compatibility.md)。
 
 1. 升级 DocVortex 至 0.2.x，MinerU 要求 `docvortex>=0.2.1,<0.3.0`。

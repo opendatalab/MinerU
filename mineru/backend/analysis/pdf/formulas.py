@@ -8,20 +8,16 @@ from typing import Any
 
 import cv2
 import numpy as np
+from docvortex.assets import image_size as _normalize_page_size
+from docvortex.content.text import build_tagged_formula_content
+from docvortex.geometry import bbox_to_quad as _medium_bbox_to_quad
+from docvortex.geometry import normalize_to_int_bbox
 from PIL import Image
 
-from ....model.runtime.hybrid import HybridLocalModelContext
-from docvortex.foundation.geometry import normalize_to_int_bbox
 from ....model.ocr.image import get_rotate_crop_image_for_text_rec
-from docvortex.foundation.text import build_tagged_formula_content
-
+from ....model.runtime.hybrid import HybridLocalModelContext
 from ....types import RAW_FORMULA_NUMBER, BlockType
-
-from docvortex.document.pdf.geometry import bbox_to_pixel_bbox as _bbox_to_pixel_bbox
-from docvortex.document.pdf.geometry import medium_bbox_to_quad as _medium_bbox_to_quad
-from docvortex.document.pdf.geometry import normalize_layout_bbox_to_unit as _normalize_layout_bbox_to_unit
-from docvortex.document.pdf.geometry import normalize_medium_content as _normalize_medium_content
-from docvortex.document.pdf.geometry import normalize_page_size as _normalize_page_size
+from .model_inputs import _bbox_to_pixel_bbox, _normalize_layout_bbox_to_unit, _normalize_medium_content
 
 
 def _is_hybrid_equation_block(block: dict[str, Any]) -> bool:

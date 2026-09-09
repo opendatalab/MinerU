@@ -4,8 +4,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
+from docvortex.document.contracts import HtmlSourceContext
+
 from ..config import VlmConfig
-from docvortex.analyzers.native.html import HtmlSourceContext
 from ..types import Tier
 from .api_client import ApiJobStatus, MinerUApiParser
 from .base import MIDDLE_JSON_SCHEMA_VERSION, DocumentParser, ParseResult

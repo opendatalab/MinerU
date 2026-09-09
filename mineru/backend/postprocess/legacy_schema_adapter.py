@@ -14,9 +14,9 @@ import math
 import re
 from typing import Any
 
-from docvortex.schema import INLINE_STYLE_ORDER, InlineSpan, parse_inline_spans
-from docvortex.foundation.hyperlink import OFFICE_EXTERNAL_HYPERLINK_SCHEMES, sanitize_hyperlink_target
 from docvortex.content.inline import join_inline_spans
+from docvortex.content.links import OFFICE_EXTERNAL_HYPERLINK_SCHEMES, sanitize_hyperlink_target
+from docvortex.schema import INLINE_STYLE_ORDER, InlineSpan, parse_inline_spans
 
 # 这些父块在 3.4.5 中通过 ``blocks`` 保存 body/caption/footnote；当前 raw
 # ModelJson 则要求先展平成同级 block，再由统一后处理重新分组。
