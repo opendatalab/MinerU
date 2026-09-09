@@ -176,6 +176,12 @@ Here are the environment variables and their descriptions:
     * Used to set the cleanup polling interval for expired tasks, in seconds.
     * Default is `300` seconds (5 minutes).
 
+- `MINERU_CPU_NUM_THREADS`:
+    * Used to set the maximum number of CPU threads a single torch CPU operator may use in `mineru-api`.
+    * Default is `8`, clamped to the CPU core count of the machine.
+    * `mineru-api` dispatches CPU work with `asyncio.to_thread()`, and OpenMP (libgomp) keeps one persistent worker team per thread that enters a parallel region. Without an upper bound, the process thread count grows towards `thread_pool_size * cpu_count` on many-core hosts.
+    * If any of `OMP_NUM_THREADS`, `MKL_NUM_THREADS` or `OPENBLAS_NUM_THREADS` is already set, that configuration is respected and no default is applied. If this variable is unset, `MINERU_INTRA_OP_NUM_THREADS` is used as a fallback.
+
 - `MINERU_INTRA_OP_NUM_THREADS`:
     * Used to set the intra_op thread count for ONNX models, affects the computation speed of individual operators
     * Default is `-1` (auto-select), can be set to other values via environment variable to adjust the thread count.

@@ -67,6 +67,7 @@ from mineru.utils.config_reader import (
     get_processing_window_size,
 )
 from mineru.utils.guess_suffix_or_lang import guess_suffix_by_path
+from mineru.utils.os_env_config import apply_cpu_thread_limit
 from mineru.utils.pdf_image_tools import shutdown_pdf_render_executor
 from mineru.version import __version__
 
@@ -234,6 +235,17 @@ def create_app():
     _request_semaphore = asyncio.Semaphore(max_concurrent_requests)
     if is_main_multiprocessing_process():
         logger.info(f"Request concurrency limited to {max_concurrent_requests}")
+
+    # CPU work is dispatched with asyncio.to_thread(), i.e. onto the event loop's
+    # default ThreadPoolExecutor. libgomp gives every one of those long-lived pool
+    # workers its own OpenMP team, so an uncapped team size makes the process
+    # thread count grow towards pool_size * os.cpu_count(). See issue #5472.
+    applied_cpu_thread_limit = apply_cpu_thread_limit()
+    if applied_cpu_thread_limit is not None and is_main_multiprocessing_process():
+        logger.info(
+            f"Torch CPU threads limited to {applied_cpu_thread_limit}; "
+            "set MINERU_CPU_NUM_THREADS or OMP_NUM_THREADS to override"
+        )
 
     app.add_middleware(GZipMiddleware, minimum_size=1000)
     app.state.public_bind_exposed = env_flag_enabled(
