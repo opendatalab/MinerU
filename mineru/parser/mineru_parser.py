@@ -10,16 +10,17 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, cast
 
-from ..backend.analyze import aio_doc_analyze, doc_analyze
-from ..integrations.docvortex import read_source_properties
+from docvortex.document.contracts import HtmlSourceContext
 from docvortex.schema import DocumentProperties
+
+from ..backend.analyze import aio_doc_analyze, doc_analyze
 from ..config import VlmConfig, config
 from ..errors import InvalidRequestError
 from ..filetypes import IMAGE_EXTENSIONS, PAGE_RANGE_PARSE_EXTENSIONS
-from docvortex.analyzers.native.html import HtmlSourceContext
+from ..integrations.docvortex import read_source_properties
 from ..types import FILE_SUFFIXES, FileSuffix, MiddleJson, ModelJson, PageInfo, Tier
-from .tier import effort_for_tier
 from .base import DocumentParser, ParseResult
+from .tier import effort_for_tier
 
 logger = logging.getLogger(__name__)
 
@@ -152,7 +153,7 @@ class MinerUParser(DocumentParser):
         source_suffix = suffix
 
         if suffix in IMAGE_EXTENSIONS:
-            from docvortex.document.pdf.document import PDFDocument
+            from docvortex.document.pdf import PDFDocument
 
             conversion_started_at = time.perf_counter()
             input_size = len(file_bytes)
@@ -183,7 +184,7 @@ class MinerUParser(DocumentParser):
             )
         resolved_source_context = source_context
         if suffix == "html" and resolved_source_context is None:
-            from docvortex.analyzers.native.html import HtmlSourceContext
+            from docvortex.document.contracts import HtmlSourceContext
 
             resolved_path = path.resolve()
             resolved_source_context = HtmlSourceContext(
@@ -220,7 +221,8 @@ class MinerUParser(DocumentParser):
         if suffix != "pdf":
             return file_bytes, None, None
 
-        from docvortex.document.pdf.document import PDFDocument
+        from docvortex.document.pdf import PDFDocument
+
         from .page_range import parse_page_range
 
         with PDFDocument(file_bytes) as doc:

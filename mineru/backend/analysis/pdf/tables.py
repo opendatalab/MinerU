@@ -11,24 +11,23 @@ from typing import Any, Literal
 
 import cv2
 import numpy as np
+from docvortex.analyzers.pdf import PDFTableRecoveryError, prepare_table_page, recover_table_region
+from docvortex.analyzers.pdf import project_table_text as project_ocr_table_text
+from docvortex.assets import encode_crop_as_jpeg_data_uri as _encode_page_crop_as_jpeg_data_uri
+from docvortex.assets import image_size as _normalize_page_size
+from docvortex.assets import rotate_image_to_upright as _rotate_visual_block_image_to_upright
+from docvortex.document.pdf import PDFPage, PDFPageTextGeometry, get_lines_from_chars
+from docvortex.geometry import bbox_center as _table_bbox_center
+from docvortex.geometry import bbox_to_quad as _medium_bbox_to_quad
+from docvortex.geometry import calculate_overlap_area_in_bbox1_area_ratio, normalize_to_int_bbox
+from docvortex.geometry import normalize_quarter_turn_angle as _normalize_visual_block_angle
+from docvortex.geometry import rotate_bbox as _rotate_medium_table_bbox
 from loguru import logger
 
-from ....model.runtime.hybrid import HybridLocalModelContext, run_ocr_inference
-from ....model.runtime.contracts import AtomicModelName
-from ....types import RAW_ALGORITHM, RAW_FORMULA_NUMBER, RAW_PHONETIC, BBox, BlockType
-from docvortex.foundation.geometry import calculate_overlap_area_in_bbox1_area_ratio
-from docvortex.foundation.geometry import normalize_to_int_bbox
-from docvortex.analyzers.native.pdf.table_recovery import NativeTableInput
-from docvortex.analyzers.native.pdf.table_recovery import coerce_native_table_rectangles
-from docvortex.analyzers.native.pdf.table_recovery import coerce_native_table_rules
-from docvortex.analyzers.native.pdf.table_recovery import recover_native_pdf_table
-from docvortex.analyzers.native.pdf.table_text_styles import render_native_table_html_with_scripts
 from ....model.ocr.image import mask_formula_regions_for_ocr_det
-from docvortex.document.pdf.document import PDFPage
-from docvortex.document.pdf.document import PDFPageTextGeometry
-from docvortex.document.pdf.document import get_lines_from_chars
-from docvortex.analyzers.native.pdf.shared import project_table_text as project_ocr_table_text
-
+from ....model.runtime.contracts import AtomicModelName
+from ....model.runtime.hybrid import HybridLocalModelContext, run_ocr_inference
+from ....types import RAW_ALGORITHM, RAW_FORMULA_NUMBER, RAW_PHONETIC, BBox, BlockType
 from .constants import (
     BATCH_RATIO,
     OCR_DET_BASE_BATCH_SIZE,
@@ -37,19 +36,13 @@ from .constants import (
     TABLE_TEXT_ORIENTATION_MIN_DOMINANCE_RATIO,
     TABLE_TEXT_ORIENTATION_MIN_VALID_LINES,
 )
-from docvortex.document.pdf.geometry import bbox_to_pixel_bbox as _bbox_to_pixel_bbox
-from docvortex.document.pdf.geometry import encode_page_crop_as_jpeg_data_uri as _encode_page_crop_as_jpeg_data_uri
-from docvortex.document.pdf.geometry import get_medium_table_virtual_image_bbox as _get_medium_table_virtual_image_bbox
-from docvortex.document.pdf.geometry import medium_bbox_to_quad as _medium_bbox_to_quad
-from docvortex.document.pdf.geometry import normalize_medium_content as _normalize_medium_content
-from docvortex.document.pdf.geometry import normalize_page_size as _normalize_page_size
-from docvortex.document.pdf.geometry import normalize_visual_block_angle as _normalize_visual_block_angle
-from docvortex.document.pdf.geometry import rotate_medium_table_bbox as _rotate_medium_table_bbox
-from docvortex.document.pdf.geometry import rotate_visual_block_image_to_upright as _rotate_visual_block_image_to_upright
-from docvortex.document.pdf.geometry import sidecar_bbox_to_page_bbox as _sidecar_bbox_to_page_bbox
-from docvortex.document.pdf.geometry import table_bbox_center as _table_bbox_center
+from .model_inputs import (
+    _bbox_to_pixel_bbox,
+    _get_medium_table_virtual_image_bbox,
+    _normalize_medium_content,
+    _sidecar_bbox_to_page_bbox,
+)
 from .text.native import _is_supported_rotation
-
 
 _NATIVE_TABLE_ALWAYS_COMPLEX_BLOCK_TYPES = {
     BlockType.IMAGE,
@@ -268,14 +261,11 @@ def _apply_native_txt_table_priority(
 
         try:
             page_text_geometry = page_text_geometries[page_idx] if page_text_geometries is not None else None
-            if page_text_geometry is None:
-                page_text_geometry = pdf_page.get_chars_with_geometry()
-                if page_text_geometries is not None:
-                    page_text_geometries[page_idx] = page_text_geometry
-            native_chars = tuple(page_text_geometry.chars)
-            native_rules = coerce_native_table_rules(pdf_page.get_drawing_lines())
-            native_rectangles = coerce_native_table_rectangles(pdf_page.get_path_infos())
-            native_page_size = tuple(float(value) for value in pdf_page.size)
+            table_page = prepare_table_page(pdf_page, geometry=page_text_geometry)
+            page_text_geometry = table_page.geometry
+            if page_text_geometries is not None:
+                page_text_geometries[page_idx] = page_text_geometry
+            native_page_size = table_page.page_size
             render_scale = float(image_dict.get("scale", 1.0) or 1.0)
         except Exception as exc:
             errors += len(eligible_entries)
@@ -297,16 +287,10 @@ def _apply_native_txt_table_priority(
                 rejected += 1
                 continue
             try:
-                table_input = NativeTableInput(
-                    table_bbox=table_bbox,
-                    page_size=native_page_size,
-                    angle=_normalize_visual_block_angle(table_block.get("angle", 0)),
-                    chars=native_chars,
-                    drawing_lines=native_rules,
-                    rectangles=native_rectangles,
+                result = recover_table_region(
+                    table_page, table_bbox, angle=_normalize_visual_block_angle(table_block.get("angle", 0))
                 )
-                result = recover_native_pdf_table(table_input)
-            except Exception as exc:
+            except PDFTableRecoveryError as exc:
                 errors += 1
                 logger.warning(
                     "Hybrid native table recovery failed and kept model fallback: "
@@ -319,12 +303,7 @@ def _apply_native_txt_table_priority(
                     f"Hybrid native table rejected and kept model fallback: page_idx={page_idx}, bbox={table_block.get('bbox')}"
                 )
                 continue
-            table_block["content"] = render_native_table_html_with_scripts(
-                result,
-                table_input,
-                page_text_geometry.tight_bboxes,
-                page_text_geometry.origins,
-            )
+            table_block["content"] = result.html
             accepted_entries.append(table_entry)
             accepted += 1
             logger.debug(

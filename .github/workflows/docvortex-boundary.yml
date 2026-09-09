@@ -1,0 +1,58 @@
+name: DocVortex boundary integration
+
+on:
+  workflow_dispatch:
+    inputs:
+      docvortex-wheel-url:
+        description: DocVortex 0.4.x wheel URL for joint validation before publication
+        required: true
+        type: string
+      utils-wheel-url:
+        description: Optional mineru-vl-utils 2.0.1+ wheel URL for unpublished dependency validation
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  integration:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python: ['3.10', '3.13', '3.14']
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: astral-sh/setup-uv@v7
+      - name: Install matching engine wheel and host
+        env:
+          DOCVORTEX_WHEEL_URL: ${{ inputs.docvortex-wheel-url }}
+          UTILS_WHEEL_URL: ${{ inputs.utils-wheel-url }}
+        run: |
+          uv venv
+          uv pip install "$DOCVORTEX_WHEEL_URL"
+          if [[ -n "$UTILS_WHEEL_URL" ]]; then uv pip install "$UTILS_WHEEL_URL"; fi
+          uv pip install '.[test]'
+          uv pip check
+      - name: Verify public contracts and deterministic inference replay
+        run: |
+          if [[ -f .venv/Scripts/activate ]]; then source .venv/Scripts/activate; else source .venv/bin/activate; fi
+          python -I -c "import docvortex; print(docvortex.__file__); from docvortex.version import __version__; assert __version__.startswith('0.4.')"
+          python -m pytest -q -o addopts='' \
+            tests/unittest/test_docvortex_import_boundary.py \
+            tests/unittest/test_backend_architecture.py \
+            tests/unittest/test_docvortex_protocol.py \
+            tests/unittest/test_docvortex_routing.py \
+            tests/unittest/test_pdf_text_styles.py \
+            tests/unittest/test_pdf_analyze_block_content.py \
+            tests/unittest/test_native_pdf_table_pipeline.py \
+            tests/unittest/test_pdf_analyze_visual_blocks.py \
+            tests/unittest/test_pdf_model_inputs.py

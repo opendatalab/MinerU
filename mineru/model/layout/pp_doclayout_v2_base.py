@@ -16,9 +16,8 @@ import os
 from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
+from docvortex.geometry import normalize_to_int_bbox
 from PIL import Image, ImageDraw, ImageFont
-
-from docvortex.foundation.geometry import normalize_to_int_bbox
 
 DEFAULT_IMAGE_SIZE = (800, 800)
 DEFAULT_RESCALE_FACTOR = 1.0 / 255.0

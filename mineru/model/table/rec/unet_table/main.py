@@ -9,12 +9,11 @@ from typing import Any, Dict, List, Optional, Union
 import cv2
 import numpy as np
 from bs4 import BeautifulSoup
+from docvortex.assets import calculate_contrast
 from loguru import logger
 from PIL import Image
 
-from docvortex.foundation.image import calculate_contrast
 from ....registry import PDF_EXTRACT_KIT
-
 from .table_recover import TableRecover
 from .table_structure_unet import TSRUnet
 from .utils import InputType, LoadImage

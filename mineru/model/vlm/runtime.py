@@ -15,9 +15,9 @@ from typing import Any, AsyncIterator, Generator, Iterator, Literal
 from loguru import logger
 from mineru_vl_utils import MinerUClient
 
-from docvortex.foundation.platform import is_mac_os_version_supported
-from ..runtime.device import get_device
 from ..registry import MINERU_2_5_PRO_2605_1_2B, MINERU_2_5_PRO_2605_1_2B_GGUF
+from ..runtime.device import get_device
+from ..runtime.platform import is_mac_os_version_supported
 from .engine_utils import (
     enable_custom_logits_processors,
     mod_kwargs_by_device_type,
@@ -77,7 +77,7 @@ class ModelSingleton:
                 lmdeploy_engine = None
                 vllm_async_llm = None
                 llama_cpp_engine = None
-                batch_size = kwargs.get("batch_size", 0)  # for transformers backend only
+                batch_size = kwargs.get("batch_size", 0)  # 本地引擎批次大小；MLX 的 0 由客户端解析为保守默认值。
                 max_concurrency = kwargs.get("max_concurrency", 100)  # for http-client backend only
                 http_timeout = kwargs.get("http_timeout", 600)  # for http-client backend only
                 server_headers = kwargs.get("server_headers", None)  # for http-client backend only

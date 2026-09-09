@@ -8,19 +8,18 @@ from copy import deepcopy
 from typing import Any
 
 import numpy as np
+from docvortex.assets import image_size as _normalize_page_size
+from docvortex.geometry import normalize_to_int_bbox
 from PIL import Image
 
 from ....types import BBox, BlockType
-from docvortex.foundation.geometry import normalize_to_int_bbox
-from .images import get_crop_np_img
-
-from docvortex.document.pdf.geometry import normalize_layout_bbox_to_unit as _normalize_layout_bbox_to_unit
-from docvortex.document.pdf.geometry import normalize_page_size as _normalize_page_size
 from .constants import (
     VLM_LAYOUT_LABEL_MAP,
     VLM_MODEL_LIST_FIELDS,
     VLM_VISUAL_ANNOTATION_TYPE_MAP,
 )
+from .images import get_crop_np_img
+from .model_inputs import _normalize_layout_bbox_to_unit
 
 
 def _layout_item_to_content_block(layout_item: dict[str, Any], page_size: tuple[int, int]) -> dict | None:

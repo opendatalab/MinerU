@@ -6,13 +6,13 @@ from __future__ import annotations
 import time
 from typing import Any, cast
 
-from ..contracts import AnalysisResult, AnalyzeEffort, ParseMode, ResolvedParseMode
+from docvortex.document.pdf import PDFDocument
+
 from ....config import VlmConfig
 from ....model.runtime.hybrid import HybridLocalModelContextSingleton
 from ....model.runtime.memory import clean_memory, trim_process_heap
 from ....model.vlm.client import get_vlm_predictor
-from docvortex.document.pdf.document import PDFDocument
-
+from ..contracts import AnalysisResult, AnalyzeEffort, ParseMode, ResolvedParseMode
 from .normalization import _normalize_pdf_model_list
 from .window import process_pdf_windows
 

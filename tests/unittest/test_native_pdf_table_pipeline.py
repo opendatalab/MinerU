@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
-from docvortex.document.pdf.document import PDFDocument, PDFPageTextGeometry
+from docvortex.document.pdf import PDFDocument, PDFPageTextGeometry
 from PIL import Image
 
 from mineru.backend.analysis.pdf import formulas as pdf_formulas
@@ -68,7 +68,7 @@ def test_medium_native_table_priority_accepts_html_and_removes_internal_text_and
 
     html = "<table><tbody><tr><td>A</td></tr></tbody></table>"
     recover = MagicMock(return_value=SimpleNamespace(html=html, source="vector_grid", confidence=1.0))
-    monkeypatch.setattr(pdf_tables, "recover_native_pdf_table", recover)
+    monkeypatch.setattr(pdf_tables, "recover_table_region", recover)
     table_block = {
         "type": BlockType.TABLE,
         "bbox": [0.1, 0.2, 0.9, 0.8],
@@ -141,10 +141,10 @@ def test_medium_native_table_priority_accepts_html_and_removes_internal_text_and
         removed_formula_blocks=2,
         removed_formula_layout_items=3,
     )
-    table_input = recover.call_args.args[0]
-    assert table_input.table_bbox == pytest.approx((10.0, 40.0, 90.0, 160.0))
-    assert table_input.page_size == (100.0, 200.0)
-    assert table_input.angle == 0
+    table_page = recover.call_args.args[0]
+    assert recover.call_args.args[1] == pytest.approx((10.0, 40.0, 90.0, 160.0))
+    assert table_page.page_size == (100.0, 200.0)
+    assert recover.call_args.kwargs["angle"] == 0
     page.get_chars_with_geometry.assert_called_once_with()
     page.get_drawing_lines.assert_called_once_with()
     page.get_path_infos.assert_called_once_with()
@@ -165,7 +165,7 @@ def test_hybrid_native_table_priority_falls_back_for_complex_content(
     """验证 Medium 图片和代码复杂内容继续保留现有模型回落。"""
 
     recover = MagicMock()
-    monkeypatch.setattr(pdf_tables, "recover_native_pdf_table", recover)
+    monkeypatch.setattr(pdf_tables, "recover_table_region", recover)
     table_block = {
         "type": BlockType.TABLE,
         "bbox": [0.1, 0.1, 0.9, 0.9],
@@ -198,7 +198,7 @@ def test_high_native_table_priority_ignores_layout_formula_and_removes_duplicate
 
     html = "<table><tbody><tr><td>T</td></tr></tbody></table>"
     recover = MagicMock(return_value=SimpleNamespace(html=html, source="vector_grid", confidence=1.0))
-    monkeypatch.setattr(pdf_tables, "recover_native_pdf_table", recover)
+    monkeypatch.setattr(pdf_tables, "recover_table_region", recover)
     table_block = {"type": BlockType.TABLE, "bbox": [0.1, 0.1, 0.9, 0.9], "angle": 0}
     equation_block = {"type": BlockType.EQUATION, "bbox": [0.2, 0.2, 0.4, 0.4]}
     layout_res = [{"label": "inline_formula", "bbox": [20, 20, 40, 40]}]
@@ -241,7 +241,7 @@ def test_hybrid_native_table_priority_attempts_rotated_table(
 
     html = "<table><tbody><tr><td>rotated</td></tr></tbody></table>"
     recover = MagicMock(return_value=SimpleNamespace(html=html, source="vector_grid", confidence=1.0))
-    monkeypatch.setattr(pdf_tables, "recover_native_pdf_table", recover)
+    monkeypatch.setattr(pdf_tables, "recover_table_region", recover)
     table_block = {
         "type": BlockType.TABLE,
         "bbox": [0.1, 0.1, 0.9, 0.9],
@@ -265,7 +265,7 @@ def test_hybrid_native_table_priority_attempts_rotated_table(
         accepted=1,
     )
     recover.assert_called_once()
-    assert recover.call_args.args[0].angle == angle
+    assert recover.call_args.kwargs["angle"] == angle
 
 
 @pytest.mark.parametrize("effort", ["medium", "high"])
@@ -306,8 +306,8 @@ def test_hybrid_native_table_priority_keeps_none_and_exception_fallbacks(
 ) -> None:
     """验证规则拒绝或异常时逐表保留现有模型路径。"""
 
-    recover = MagicMock(side_effect=[None, RuntimeError("broken")])
-    monkeypatch.setattr(pdf_tables, "recover_native_pdf_table", recover)
+    recover = MagicMock(side_effect=[None, pdf_tables.PDFTableRecoveryError("broken")])
+    monkeypatch.setattr(pdf_tables, "recover_table_region", recover)
     tables = [
         {"type": BlockType.TABLE, "bbox": [0.05, 0.1, 0.45, 0.9], "angle": 270},
         {"type": BlockType.TABLE, "bbox": [0.55, 0.1, 0.95, 0.9], "angle": 90},
@@ -337,7 +337,7 @@ def test_hybrid_native_table_priority_keeps_none_and_exception_fallbacks(
         errors=1,
     )
     assert recover.call_count == 2
-    assert [call.args[0].angle for call in recover.call_args_list] == [270, 90]
+    assert [call.kwargs["angle"] for call in recover.call_args_list] == [270, 90]
     page.get_chars_with_geometry.assert_called_once_with()
 
 
@@ -537,3 +537,17 @@ def test_high_txt_window_excludes_native_table_from_vlm(
     vlm_predictor.batch_extract_with_layout.assert_called_once()
     with pytest.raises(ValueError, match="closed image"):
         page_image.getpixel((0, 0))
+
+
+def test_table_materialization_failure_is_not_silently_downgraded(monkeypatch: pytest.MonkeyPatch) -> None:
+    """保留原有边界：结构恢复失败可回退，HTML 物化异常仍向调用方传播。"""
+    monkeypatch.setattr(pdf_tables, "recover_table_region", MagicMock(side_effect=ValueError("materialization")))
+    with Image.new("RGB", (100, 100), "white") as image:
+        with pytest.raises(ValueError, match="materialization"):
+            pdf_tables._apply_native_txt_table_priority(
+                [[{"type": BlockType.TABLE, "bbox": [0.1, 0.1, 0.9, 0.9]}]],
+                [[]],
+                [_build_native_pdf_page()],
+                [{"img_pil": image, "scale": 1.0}],
+                effort="medium",
+            )

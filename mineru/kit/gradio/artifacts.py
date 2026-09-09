@@ -15,11 +15,12 @@ from typing import Any, Callable, Literal, cast
 from urllib.parse import quote, unquote, urlsplit
 
 from bs4 import BeautifulSoup
+from docvortex.assets import parse_image_data_uri_strict, validate_image_sidecar_path
+from docvortex.document.pdf import PDFDocument
+from docvortex.document.pdf.pdfium import safe_rewrite_pdf_bytes_with_pdfium_result
 from loguru import logger
 
 from ...filetypes import IMAGE_EXTENSIONS, PDF_EXTENSIONS
-from docvortex.document.pdf.document import PDFDocument
-from docvortex.document.pdf.pdfium import safe_rewrite_pdf_bytes_with_pdfium_result
 from ...parser.base import ParseResult
 from ...parser.page_range import parse_page_range
 from ...render import (
@@ -47,8 +48,6 @@ from ...types import (
     TableBlock,
     TableBodyBlock,
 )
-from docvortex.foundation.image_payload import parse_image_data_uri_strict
-from docvortex.foundation.image_payload import validate_image_sidecar_path
 
 DownloadFormat = Literal["markdown", "json", "html", "docx", "latex", "epub", "pdf"]
 

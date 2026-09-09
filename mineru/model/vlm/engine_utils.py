@@ -6,10 +6,9 @@ from typing import Any, Literal
 from loguru import logger
 from packaging import version
 
-from docvortex.foundation.platform import is_linux_environment
-from docvortex.foundation.platform import is_windows_environment
 from ..runtime.device import get_device
 from ..runtime.memory import get_vram
+from ..runtime.platform import is_linux_environment, is_windows_environment
 
 
 def enable_custom_logits_processors() -> bool:
