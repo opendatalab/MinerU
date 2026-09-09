@@ -168,6 +168,12 @@ MinerU命令行工具的某些参数存在相同功能的环境变量配置，�
     * 用于设置任务清理轮询间隔（秒）
     * 默认为 `300` 秒（5 分钟）。
 
+- `MINERU_CPU_NUM_THREADS`：
+    * 用于设置 `mineru-api` 中单个 torch CPU 算子可使用的最大线程数。
+    * 默认为 `8`，并会被限制在机器实际 CPU 核心数以内。
+    * `mineru-api` 通过 `asyncio.to_thread()` 调度 CPU 计算，而 OpenMP（libgomp）会为每个进入过并行区的线程保留一组常驻 worker。若不设置上限，多核机器上进程线程数会朝着 `线程池大小 * CPU 核心数` 增长。
+    * 若已设置 `OMP_NUM_THREADS`、`MKL_NUM_THREADS` 或 `OPENBLAS_NUM_THREADS` 中任意一个，则尊重既有配置、不再应用默认值。若未设置本变量，则回退使用 `MINERU_INTRA_OP_NUM_THREADS`。
+
 - `MINERU_INTRA_OP_NUM_THREADS`：
     * 用于设置onnx模型的intra_op线程数，影响单个算子的计算速度
     * 默认为`-1`（自动选择），可通过环境变量设置为其他值以调整线程数。
