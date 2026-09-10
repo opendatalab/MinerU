@@ -82,6 +82,7 @@ class PytorchPaddleOCR(TextSystem):
             self.enable_merge_det_boxes = False
 
         kwargs['device'] = device
+        kwargs['lang'] = self.lang
 
         default_args = vars(args)
         default_args.update(kwargs)
