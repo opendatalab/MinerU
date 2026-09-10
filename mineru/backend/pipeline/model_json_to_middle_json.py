@@ -5,7 +5,7 @@ from tqdm import tqdm
 
 from mineru.backend.utils.html_image_utils import replace_inline_table_images
 from mineru.backend.utils.formula_number import optimize_formula_number_blocks
-from mineru.backend.utils.runtime_utils import cross_page_table_merge
+from mineru.backend.utils.runtime_utils import attach_table_structure, cross_page_table_merge
 from mineru.backend.pipeline.model_init import (
     AtomModelSingleton,
     run_ocr_inference,
@@ -218,6 +218,7 @@ def finalize_middle_json_from_preproc(pdf_info_list):
     optimize_formula_number_blocks(pdf_info_list)
     para_split(pdf_info_list)
     cross_page_table_merge(pdf_info_list)
+    attach_table_structure(pdf_info_list)
     apply_title_leveling_to_pdf_info(pdf_info_list)
     _post_block_process(pdf_info_list)
 

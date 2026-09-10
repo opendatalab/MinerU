@@ -1,13 +1,24 @@
+name: mineru-forge
+
 services:
   mineru-openai-server:
-    image: mineru:latest
-    container_name: mineru-openai-server
+    build:
+      context: ..
+      dockerfile: docker/global/Dockerfile
+    image: mineru-forge:latest
+    container_name: mineru-forge-openai-server
     restart: always
     profiles: ["openai-server"]
     ports:
-      - 30000:30000
+      - 8001:30000
     environment:
       MINERU_MODEL_SOURCE: local
+      MINERU_PDF_RENDER_THREADS: "4"
+      MINERU_API_MAX_CONCURRENT_REQUESTS: "3"
+      MINERU_PROCESSING_WINDOW_SIZE: "64"
+      MINERU_API_OUTPUT_ROOT: "/data/output-dev"
+      MINERU_API_TASK_RETENTION_SECONDS: "86400"
+      MINERU_API_TASK_CLEANUP_INTERVAL_SECONDS: "60"
     entrypoint: mineru-openai-server
     command:
       --host 0.0.0.0
@@ -28,14 +39,23 @@ services:
               capabilities: [gpu]
 
   mineru-api:
-    image: mineru:latest
-    container_name: mineru-api
+    build:
+      context: ..
+      dockerfile: docker/global/Dockerfile
+    image: mineru-forge:latest
+    container_name: mineru-forge-api
     restart: always
     profiles: ["api"]
     ports:
-      - 8000:8000
+      - 8001:8000
     environment:
       MINERU_MODEL_SOURCE: local
+      MINERU_PDF_RENDER_THREADS: "4"
+      MINERU_API_MAX_CONCURRENT_REQUESTS: "3"
+      MINERU_PROCESSING_WINDOW_SIZE: "64"
+      MINERU_API_OUTPUT_ROOT: "/data/output-dev"
+      MINERU_API_TASK_RETENTION_SECONDS: "86400"
+      MINERU_API_TASK_CLEANUP_INTERVAL_SECONDS: "60"
     entrypoint: mineru-api
     command:
       --host 0.0.0.0
@@ -58,14 +78,23 @@ services:
               capabilities: [gpu]
 
   mineru-router:
-    image: mineru:latest
-    container_name: mineru-router
+    build:
+      context: ..
+      dockerfile: docker/global/Dockerfile
+    image: mineru-forge:latest
+    container_name: mineru-forge-router
     restart: always
     profiles: ["router"]
     ports:
-      - 8002:8002
+      - 8001:8002
     environment:
       MINERU_MODEL_SOURCE: local
+      MINERU_PDF_RENDER_THREADS: "4"
+      MINERU_API_MAX_CONCURRENT_REQUESTS: "3"
+      MINERU_PROCESSING_WINDOW_SIZE: "64"
+      MINERU_API_OUTPUT_ROOT: "/data/output-dev"
+      MINERU_API_TASK_RETENTION_SECONDS: "86400"
+      MINERU_API_TASK_CLEANUP_INTERVAL_SECONDS: "60"
     entrypoint: mineru-router
     command:
       --host 0.0.0.0
@@ -93,14 +122,23 @@ services:
               capabilities: [gpu]
 
   mineru-gradio:
-    image: mineru:latest
-    container_name: mineru-gradio
+    build:
+      context: ..
+      dockerfile: docker/global/Dockerfile
+    image: mineru-forge:latest
+    container_name: mineru-forge-gradio
     restart: always
     profiles: ["gradio"]
     ports:
-      - 7860:7860
+      - 8001:7860
     environment:
       MINERU_MODEL_SOURCE: local
+      MINERU_PDF_RENDER_THREADS: "4"
+      MINERU_API_MAX_CONCURRENT_REQUESTS: "3"
+      MINERU_PROCESSING_WINDOW_SIZE: "64"
+      MINERU_API_OUTPUT_ROOT: "/data/output-dev"
+      MINERU_API_TASK_RETENTION_SECONDS: "86400"
+      MINERU_API_TASK_CLEANUP_INTERVAL_SECONDS: "60"
     entrypoint: mineru-gradio
     command:
       --server-name 0.0.0.0

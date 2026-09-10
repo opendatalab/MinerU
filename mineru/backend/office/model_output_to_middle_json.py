@@ -3,6 +3,7 @@ import re
 from collections import defaultdict
 
 from mineru.backend.utils.html_image_utils import replace_inline_table_images, save_span_image_if_needed
+from mineru.backend.utils.runtime_utils import attach_table_structure
 from mineru.backend.office.office_magic_model import MagicModel
 from mineru.utils.enum_class import BlockType
 from mineru.version import __version__
@@ -168,4 +169,5 @@ def result_to_middle_json(model_output_blocks_list, image_writer):
                             section_counters[deeper] = 0
 
     _link_index_entries_by_anchor(middle_json)
+    attach_table_structure(middle_json["pdf_info"])
     return middle_json

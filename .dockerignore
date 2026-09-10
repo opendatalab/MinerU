@@ -1,0 +1,13 @@
+.git
+.github
+.venv
+venv
+.vs
+.vscode
+**/__pycache__
+**/*.pyc
+*.egg-info
+.pytest_cache
+uv.lock
+demo
+docs

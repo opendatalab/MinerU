@@ -9,7 +9,7 @@ from mineru.backend.utils.para_block_utils import (
     cleanup_internal_para_block_metadata,
     merge_para_text_blocks,
 )
-from mineru.backend.utils.runtime_utils import cross_page_table_merge
+from mineru.backend.utils.runtime_utils import attach_table_structure, cross_page_table_merge
 from mineru.backend.vlm.vlm_magic_model import MagicModel
 from mineru.utils.config_reader import get_table_enable
 from mineru.utils.cut_image import cut_image_and_table
@@ -111,6 +111,7 @@ def finalize_middle_json(pdf_info_list):
     table_enable = get_table_enable(os.getenv('MINERU_VLM_TABLE_ENABLE', 'True').lower() == 'true')
     if table_enable:
         cross_page_table_merge(pdf_info_list)
+        attach_table_structure(pdf_info_list)
 
     apply_title_leveling_to_pdf_info(pdf_info_list)
 
