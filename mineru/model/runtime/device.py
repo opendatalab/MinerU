@@ -9,6 +9,10 @@ from typing import Literal, cast
 
 def get_device() -> str:
     """返回显式配置或当前环境中可用的首选模型设备。"""
+    from ...config import config
+
+    if config.model.stack == "light":
+        return "cpu"
     configured_device = os.getenv("MINERU_DEVICE_MODE")
     if configured_device is not None:
         return configured_device

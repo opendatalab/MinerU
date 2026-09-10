@@ -1,3 +1,4 @@
+from typing import Any
 # Copyright (c) Opendatalab. All rights reserved.
 import copy
 import time
@@ -11,7 +12,7 @@ import numpy as np
 from loguru import logger
 from tqdm import tqdm
 
-from ....registry import PDF_EXTRACT_KIT
+from ....registry import mineru_4_models_for_stack
 from .matcher import TableMatch
 from .table_structure import TableStructurer
 
@@ -149,8 +150,9 @@ def escape_html(input_string):
 
 
 class PaddleTableModel(object):
-    def __init__(self, ocr_engine):
-        slanet_plus_model_path = str(PDF_EXTRACT_KIT.slanet_plus.ensure())
+    def __init__(self, ocr_engine: Any, *, model_path: str | None = None) -> None:
+        """加载所选模型栈的无线表格资源并共享其 OCR 引擎。"""
+        slanet_plus_model_path = model_path or str(mineru_4_models_for_stack().slanet_plus.ensure())
         input_args = PaddleTableInput(model_type="slanet_plus", model_path=slanet_plus_model_path)
         self.table_model = PaddleTable(input_args)
         self.ocr_engine = ocr_engine

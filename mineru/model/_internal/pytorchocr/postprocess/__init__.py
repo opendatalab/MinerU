@@ -11,7 +11,7 @@ __all__ = ['build_post_process']
 
 
 def build_post_process(config, global_config=None):
-    from .db_postprocess import DBPostProcess
+    from ....ocr.db_postprocess import DBPostProcess
     from .rec_postprocess import CTCLabelDecode, AttnLabelDecode, SRNLabelDecode, TableLabelDecode, \
         NRTRLabelDecode, SARLabelDecode, ViTSTRLabelDecode, RFLLabelDecode
     from .cls_postprocess import ClsPostProcess

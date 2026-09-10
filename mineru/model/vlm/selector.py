@@ -4,6 +4,7 @@ from typing import Literal, TypeAlias
 from loguru import logger
 
 from ..runtime.platform import is_linux_environment, is_mac_environment, is_mac_os_version_supported, is_windows_environment
+from ..runtime.device import get_model_stack
 
 VlmEngine: TypeAlias = Literal[
     "llama-cpp-engine",
@@ -27,7 +28,10 @@ def get_vlm_engine(inference_engine: Literal["auto"], is_async: bool = False) ->
     Returns:
         最终选择的引擎名称
     """
-    # 根据操作系统自动选择引擎
+    if get_model_stack() == "light":
+        logger.info("Using llama-cpp-engine for the light model stack.")
+        return "llama-cpp-engine"
+    # Full 根据操作系统自动选择引擎。
     if is_windows_environment():
         engine = _select_windows_engine()
     elif is_linux_environment():

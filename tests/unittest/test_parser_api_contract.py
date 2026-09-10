@@ -285,6 +285,7 @@ def test_hybrid_context_does_not_resolve_full_weights_before_stack_selection() -
     context = object.__new__(HybridLocalModelContext)
     manager = _RecordingAtomManager()
     context.device = "cpu"
+    context.stack = "light"
     context.atom_model_manager = manager  # type: ignore[assignment]
 
     with patch.object(ModelPath, "ensure", side_effect=AssertionError("full weight path resolved too early")):
@@ -292,8 +293,8 @@ def test_hybrid_context_does_not_resolve_full_weights_before_stack_selection() -
         context.get_mfr_model()
 
     assert manager.calls == [
-        {"atom_model_name": AtomicModelName.Layout, "device": "cpu"},
-        {"atom_model_name": AtomicModelName.MFR, "device": "cpu"},
+        {"atom_model_name": AtomicModelName.Layout, "device": "cpu", "stack": "light"},
+        {"atom_model_name": AtomicModelName.MFR, "device": "cpu", "stack": "light"},
     ]
 
 

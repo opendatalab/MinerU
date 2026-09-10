@@ -202,7 +202,7 @@ def test_standalone_api_matches_kit_arguments_and_exit_code(
 @pytest.mark.parametrize(
     "args",
     [
-        ["PDF-Extract-Kit-1.0", "--source", "modelscope", "--verbose"],
+        ["MinerU-4_models_torch", "--source", "modelscope", "--verbose"],
         ["--tier", "standard", "--stack", "full", "--source", "huggingface"],
     ],
 )
@@ -471,7 +471,7 @@ def test_models_download_tier_basic(monkeypatch: Any) -> None:
     result = runner.invoke(app, ["models", "download", "--tier", "basic"])
 
     assert result.exit_code == 0
-    assert captured == ["PDF-Extract-Kit-1.0"]
+    assert captured == ["MinerU-4_models_torch"]
     assert "Downloaded models for tier basic" in result.output
 
 
@@ -488,7 +488,7 @@ def test_models_download_tier_standard(monkeypatch: Any) -> None:
     result = runner.invoke(app, ["models", "download", "--tier", "standard"])
 
     assert result.exit_code == 0
-    assert captured == ["PDF-Extract-Kit-1.0", "MinerU2.5-Pro-2605-1.2B"]
+    assert captured == ["MinerU-4_models_torch", "MinerU2.5-Pro-2605-1.2B"]
     assert "Downloaded models for tier standard" in result.output
 
 
@@ -518,15 +518,15 @@ def test_models_download_repo_uses_explicit_source(monkeypatch: Any) -> None:
 
     monkeypatch.setattr(models, "download_model_repo", fake_download_model_repo)
 
-    result = runner.invoke(app, ["models", "download", "PDF-Extract-Kit-1.0", "--source", "auto"])
+    result = runner.invoke(app, ["models", "download", "MinerU-4_models_torch", "--source", "auto"])
 
     assert result.exit_code == 0
     assert captured == {
-        "repo": "PDF-Extract-Kit-1.0",
+        "repo": "MinerU-4_models_torch",
         "source": "auto",
         "local_as_auto": True,
     }
-    assert "Downloaded models for PDF-Extract-Kit-1.0" in result.output
+    assert "Downloaded models for MinerU-4_models_torch" in result.output
 
 
 def test_models_show_and_verify(tmp_path: Path, monkeypatch: Any) -> None:
@@ -552,7 +552,7 @@ def test_models_show_and_verify(tmp_path: Path, monkeypatch: Any) -> None:
 
     assert show_result.exit_code == 0
     assert "Config exists:" in show_result.output
-    assert "PDF-Extract-Kit-1.0: ready" in show_result.output
+    assert "MinerU-4_models_torch: ready" in show_result.output
     assert "MinerU2.5-Pro-2605-1.2B: ready" in show_result.output
     assert "Model tiers:" in show_result.output
     assert "  basic:" in show_result.output
@@ -560,7 +560,7 @@ def test_models_show_and_verify(tmp_path: Path, monkeypatch: Any) -> None:
     assert "  flash:" not in show_result.output
     assert "  advanced:" not in show_result.output
     assert verify_result.exit_code == 0
-    assert "PDF-Extract-Kit-1.0: ok" in verify_result.output
+    assert "MinerU-4_models_torch: ok" in verify_result.output
     assert "MinerU2.5-Pro-2605-1.2B: ok" in verify_result.output
 
 
@@ -1137,10 +1137,7 @@ def test_models_download_tier_basic_light(monkeypatch: Any) -> None:
 
     assert result.exit_code == 0
     assert captured == [
-        "PP-DocLayoutV2_onnx",
-        "PP-OCRv6_small_det_onnx",
-        "PP-OCRv6_small_rec_onnx",
-        "PP-FormulaNet_plus-M_onnx",
+        "MinerU-4_models_onnx",
     ]
     assert "Downloaded models for tier basic" in result.output
 
@@ -1158,10 +1155,7 @@ def test_models_download_tier_standard_light(monkeypatch: Any) -> None:
 
     assert result.exit_code == 0
     assert captured == [
-        "PP-DocLayoutV2_onnx",
-        "PP-OCRv6_small_det_onnx",
-        "PP-OCRv6_small_rec_onnx",
-        "PP-FormulaNet_plus-M_onnx",
+        "MinerU-4_models_onnx",
         "MinerU2.5-Pro-2605-1.2B-GGUF",
     ]
 
@@ -1184,12 +1178,12 @@ def test_models_download_repo_ignores_stack(monkeypatch: Any) -> None:
 
     monkeypatch.setattr(models, "download_model_repo", fake_download_model_repo)
 
-    result = runner.invoke(app, ["models", "download", "PP-DocLayoutV2_onnx", "--stack", "full"])
+    result = runner.invoke(app, ["models", "download", "MinerU-4_models_onnx", "--stack", "full"])
 
     assert result.exit_code == 0
-    assert captured["repo"] == "PP-DocLayoutV2_onnx"
+    assert captured["repo"] == "MinerU-4_models_onnx"
     assert captured["stack"] == "light"
-    assert "Downloaded models for PP-DocLayoutV2_onnx" in result.output
+    assert "Downloaded models for MinerU-4_models_onnx" in result.output
 
 
 def test_models_show_displays_stack_fields(tmp_path: Path, monkeypatch: Any) -> None:
@@ -1216,8 +1210,8 @@ def test_models_show_with_light_stack_filter(tmp_path: Path, monkeypatch: Any) -
 
     assert result.exit_code == 0
     assert "Effective stack: light" in result.output
-    assert "PP-DocLayoutV2_onnx: " in result.output
-    assert "PDF-Extract-Kit-1.0: " in result.output
+    assert "MinerU-4_models_onnx: " in result.output
+    assert "MinerU-4_models_torch: " in result.output
 
 
 def test_models_show_rejects_invalid_stack() -> None:
@@ -1252,9 +1246,9 @@ def test_models_verify_filters_by_effective_stack_full(tmp_path: Path, monkeypat
     result = runner.invoke(app, ["models", "verify"])
 
     assert result.exit_code == 0
-    assert "PDF-Extract-Kit-1.0: ok" in result.output
+    assert "MinerU-4_models_torch: ok" in result.output
     assert "MinerU2.5-Pro-2605-1.2B: ok" in result.output
-    assert "PP-DocLayoutV2_onnx" not in result.output
+    assert "MinerU-4_models_onnx" not in result.output
 
 
 def test_models_verify_with_light_stack(tmp_path: Path, monkeypatch: Any) -> None:
@@ -1265,8 +1259,8 @@ def test_models_verify_with_light_stack(tmp_path: Path, monkeypatch: Any) -> Non
     result = runner.invoke(app, ["models", "verify", "--stack", "light"])
 
     assert result.exit_code == 1  # light repos 未准备，应失败
-    assert "PP-DocLayoutV2_onnx: missing key paths" in " ".join(result.output.split())
-    assert "PDF-Extract-Kit-1.0" not in result.output
+    assert "MinerU-4_models_onnx: missing key paths" in " ".join(result.output.split())
+    assert "MinerU-4_models_torch" not in result.output
 
 
 def test_models_verify_repo_ignores_stack(tmp_path: Path, monkeypatch: Any) -> None:
@@ -1274,15 +1268,17 @@ def test_models_verify_repo_ignores_stack(tmp_path: Path, monkeypatch: Any) -> N
     base_dir = tmp_path / "models"
     monkeypatch.setattr(models.config.model, "base_dir", str(base_dir))
 
-    # PP-DocLayoutV2_onnx 是 download_mode=full，只需创建 marker 文件
-    repo = next(r for r in models.MODEL_REPOS if r.name == "PP-DocLayoutV2_onnx")
-    repo.local_dir().mkdir(parents=True, exist_ok=True)
-    (repo.local_dir() / MODEL_COMPLETE_MARKER).touch()
+    # 聚合 ONNX 仓库必须具有每个必需文件，根目录标记不能替代文件检查。
+    repo = next(r for r in models.MODEL_REPOS if r.name == "MinerU-4_models_onnx")
+    for path in repo.required_paths():
+        target = path.local_path()
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"model")
 
-    result = runner.invoke(app, ["models", "verify", "PP-DocLayoutV2_onnx", "--stack", "full"])
+    result = runner.invoke(app, ["models", "verify", "MinerU-4_models_onnx", "--stack", "full"])
 
     assert result.exit_code == 0
-    assert "PP-DocLayoutV2_onnx: ok" in result.output
+    assert "MinerU-4_models_onnx: ok" in result.output
 
 
 def test_models_verify_rejects_invalid_stack() -> None:

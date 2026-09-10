@@ -335,7 +335,7 @@ To better support different hardwares, MinerU provide two model stacks: `light` 
 
 | Stack | Model engines | Install |
 |---|---|---|
-| `light` | ONNX + llama.cpp | Already in `mineru` base module |
+| `light` | ONNX Runtime CPU + llama.cpp | Already in `mineru` base module |
 | `full` | PyTorch + vLLM/lmdeploy/mlx | Requires `mineru[full]` extra |
 
 Stack controls resource use and download size:
@@ -343,7 +343,7 @@ Stack controls resource use and download size:
 | Tier | Stack | Model download | RAM (min) | Accelerator |
 |---|---|---|---|---|
 | `basic` | `light` | ~0.8 GB | 4 GB | None (CPU works) |
-| `basic` | `full` | ~2 GB | 16 GB | GPU/MPS recommended |
+| `basic` | `full` | ~0.9 GB | 16 GB | GPU/MPS recommended |
 | `standard` / `advanced` | `light` | ~2 GB | 8 GB | CPU works, Vulkan recommended |
 | `standard` / `advanced` | `full` | ~4 GB | 16 GB | GPU/MPS required, 8 GB+ VRAM |
 
@@ -366,9 +366,20 @@ Stop and restart the MinerU server after changing the stack because running proc
 Download and verify models for a specific stack:
 
 ```bash
-mineru-kit models download --tier <tier> --stack <stack>
+mineru-kit models download --tier <tier> --stack <stack> --source huggingface
 mineru-kit models verify --tier <tier> --stack <stack>
 ```
+
+Local models are bundled in [`MinerU-4_models_torch`](https://huggingface.co/opendatalab/MinerU-4_models_torch)
+for `full` and [`MinerU-4_models_onnx`](https://huggingface.co/opendatalab/MinerU-4_models_onnx) for `light`.
+Both use PP-DocLayoutV2, PP-OCRv6 Tiny Det + Small Rec, PP-FormulaNet plus-M, and the same table models.
+Seal OCR is available in both stacks. All ONNX models run on CPU with `onnxruntime>=1.20.1`;
+the llama.cpp VLM follows its own device configuration. Light standard always selects the GGUF VLM.
+
+The new bundles currently support the Hugging Face source. Set `MINERU_MODEL_SOURCE=huggingface` for
+automatic downloads during parsing, or use `local` after downloading. Old model cache directories are
+not migrated or reused. See [model assets and validation](docs/next/model-assets.md) for repository
+structure, reproducible preparation, and offline verification.
 
 ## Server Rules
 

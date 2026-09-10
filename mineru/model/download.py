@@ -14,7 +14,6 @@ from huggingface_hub import HfApi
 from huggingface_hub import snapshot_download as hf_snapshot_download
 from huggingface_hub.utils import filter_repo_objects
 from loguru import logger
-from modelscope import snapshot_download as ms_snapshot_download
 
 from ..config import config, get_config_source, update_config_file
 
@@ -124,6 +123,13 @@ _PROVIDER_METADATA_DIR_NAMES = {".cache", "._____temp"}
 _PROVIDER_METADATA_FILE_NAMES = {MODEL_COMPLETE_MARKER, ".msc", ".mdl", ".mv"}
 
 
+def ms_snapshot_download(repo_id: str, *, local_dir: str, allow_patterns: list[str] | None = None) -> str:
+    """仅在实际使用 ModelScope 时导入 SDK，避免 HF/本地路径触发其 Torch 探测。"""
+    from modelscope import snapshot_download
+
+    return snapshot_download(repo_id, local_dir=local_dir, allow_patterns=allow_patterns)
+
+
 @dataclass(frozen=True)
 class ModelReadyResult:
     ready: bool
@@ -208,8 +214,17 @@ def resolve_model_source(
     return resolved_model_source
 
 
+def _source_repo_id(repo: ModelRepo, model_source: str) -> str:
+    """校验仓库是否已发布到所选来源，避免错误回退到旧仓库。"""
+    if model_source not in repo.repos:
+        available = ", ".join(repo.repos)
+        raise ValueError(f"Model repo {repo.name} is not available from {model_source}. Available sources: {available}.")
+    return repo.repos[model_source]
+
+
 def _snapshot_download(model_source: ResolvedRemoteModelSource, repo: ModelRepo, patterns: list[str] | None) -> str:
-    repo_id = repo.repos[model_source]
+    """下载已配置来源的快照，并验证远程清单中的文件均已落盘。"""
+    repo_id = _source_repo_id(repo, model_source)
     local_dir = repo.local_dir()
     local_dir.parent.mkdir(parents=True, exist_ok=True)
     kwargs = {"local_dir": str(local_dir)}
@@ -345,6 +360,7 @@ def download_model_repo(
                 _raise_not_ready(repo, result)
             return result.root
 
+        _source_repo_id(repo, resolved_source)
         removed_markers = _remove_directory_markers(completion_paths)
         _snapshot_download(resolved_source, repo, None if relative_paths is None else _path_patterns(relative_paths))
         downloaded_result = _verify_downloaded_paths(repo, completion_paths)
@@ -383,6 +399,7 @@ def download_model_files(
                 _raise_not_ready(repo, result)
             return result.root
 
+        _source_repo_id(repo, resolved_source)
         removed_markers = _remove_directory_markers(model_paths)
         _snapshot_download(resolved_source, repo, _path_patterns(relative_paths))
         downloaded_result = _verify_downloaded_paths(repo, model_paths)

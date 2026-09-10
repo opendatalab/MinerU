@@ -112,6 +112,26 @@ def rotate_vertical_crop_if_needed(
     return crop_img
 
 
+def resize_text_recognition_image(
+    img: np.ndarray,
+    max_wh_ratio: float,
+    image_shape: tuple[int, int, int],
+    min_width: int = 16,
+    max_width: int = 2560,
+) -> np.ndarray:
+    """共用 OCR 识别缩放、宽度边界和归一化，保持现有 Torch 浮点计算顺序。"""
+    channels, height, width = image_shape
+    if img.ndim != 3 or img.shape[2] != channels or min(img.shape[:2]) <= 0:
+        raise ValueError("OCR recognition expects a non-empty HWC image")
+    ratio = max(max_wh_ratio, width / height)
+    width = max(min(int(height * ratio), max_width), min_width)
+    resized_width = min(width, max(int(np.ceil(height * img.shape[1] / img.shape[0])), min_width))
+    resized = cv2.resize(img, (resized_width, height)) / 127.5 - 1
+    padded = np.zeros((channels, height, width), dtype=np.float32)
+    padded[:, :, :resized_width] = resized.transpose(2, 0, 1)
+    return padded
+
+
 def get_rotate_crop_image_for_text_rec(img: np.ndarray, points: np.ndarray) -> np.ndarray | None:
     """裁剪四边形文本区域并应用文字识别方向规则。"""
     return rotate_vertical_crop_if_needed(get_rotate_crop_image(img, points))
@@ -126,5 +146,6 @@ __all__ = [
     "img_decode",
     "mask_formula_regions_for_ocr_det",
     "preprocess_image",
+    "resize_text_recognition_image",
     "rotate_vertical_crop_if_needed",
 ]

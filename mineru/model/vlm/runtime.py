@@ -10,6 +10,7 @@ import os
 import threading
 import time
 from contextlib import asynccontextmanager, contextmanager
+from pathlib import Path
 from typing import Any, AsyncIterator, Generator, Iterator, Literal
 
 from loguru import logger
@@ -94,7 +95,7 @@ class ModelSingleton:
                 ]:
                     if param in kwargs:
                         del kwargs[param]
-                if backend not in ["http-client"] and not model_path:
+                if backend not in ["http-client", "llama-cpp-engine"] and not model_path:
                     model_path = str(MINERU_2_5_PRO_2605_1_2B.ensure())
 
                 if backend == "llama-cpp-engine":
@@ -108,7 +109,7 @@ class ModelSingleton:
                     # {"main": "...", "mmproj": "..."} — resolve each to its
                     # absolute path under model_dir and hand both to Engine.
                     repo = MINERU_2_5_PRO_2605_1_2B_GGUF
-                    model_dir = repo.ensure()
+                    model_dir = Path(model_path).expanduser() if model_path else repo.ensure()
                     model_gguf = model_dir / repo.paths["main"]
                     mmproj_gguf = model_dir / repo.paths["mmproj"]
 

@@ -90,7 +90,12 @@ def test_local_preload_and_parse_reuse_llama_predictor(monkeypatch: pytest.Monke
     monkeypatch.setitem(sys.modules, "mineru_llama_cpp", engine_module)
     monkeypatch.setattr(runtime.ModelSingleton, "_models", {})
     monkeypatch.setattr(runtime, "MinerUClient", predictor_factory)
-    monkeypatch.setattr(type(runtime.MINERU_2_5_PRO_2605_1_2B), "ensure", lambda self: tmp_path)
+    def ensure_gguf(self: object) -> Path:
+        """llama.cpp 初始化只能下载 GGUF，不能先下载完整 VLM。"""
+        assert self is runtime.MINERU_2_5_PRO_2605_1_2B_GGUF
+        return tmp_path
+
+    monkeypatch.setattr(type(runtime.MINERU_2_5_PRO_2605_1_2B), "ensure", ensure_gguf)
     engine_selector = MagicMock(return_value="llama-cpp-engine")
     monkeypatch.setattr(selector, "get_vlm_engine", engine_selector)
     monkeypatch.setattr(api_server, "_preload_local_models", lambda language: None)

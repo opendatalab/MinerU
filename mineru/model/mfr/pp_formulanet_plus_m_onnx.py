@@ -2,7 +2,7 @@
 """ONNX 后端的 PP-FormulaNet-Plus-M 推理封装。
 
 与 ``UnimernetModel``（torch/transformers 后端）公开接口完全一致，
-内部用 onnxruntime 推理 RapidDoc 转出的 PP-FormulaNet_plus-M ONNX 模型。
+内部用 onnxruntime CPU 推理从 MinerU Torch 权重导出的 PP-FormulaNet_plus-M ONNX 模型。
 
 ONNX 模型输出 token IDs（int64），不是 logits——自回归循环已 bake 进计算图，
 一次前向推理即可得到完整 LaTeX token 序列。
@@ -12,31 +12,22 @@ ONNX 模型输出 token IDs（int64），不是 logits——自回归循环已 b
 
 from __future__ import annotations
 
-import json
 import math
 from pathlib import Path
 from typing import Any, List, Optional, Tuple
 
-import cv2
 import numpy as np
 import yaml
 from loguru import logger
-from PIL import Image, ImageOps
 from tqdm import tqdm
 
 from ..runtime.onnx import ort_session
-from .post_process import post_process_formula
+from .pp_formulanet.processors import LatexImageFormat, UniMERNetDecode, UniMERNetImgDecode, UniMERNetTestTransform
 
-__all__ = ["PPFormulaNetPlusMONNX"]
+__all__ = ["PPFormulaNetPlusMONNX", "CPU_BATCH_SIZE"]
 
-# 预处理常量（与 inference.yml 一致）
-_INPUT_SIZE = (384, 384)
-_MEAN = np.array([0.7931, 0.7931, 0.7931], dtype=np.float32).reshape(1, 1, 3)
-_STD = np.array([0.1738, 0.1738, 0.1738], dtype=np.float32).reshape(1, 1, 3)
+CPU_BATCH_SIZE = 8
 
-# tokenizer 特殊 token IDs
-_BOS_TOKEN_ID = 0
-_PAD_TOKEN_ID = 1
 _EOS_TOKEN_ID = 2
 
 
@@ -58,7 +49,8 @@ class PPFormulaNetPlusMONNX:
         device: Optional[str] = None,
         intra_op_num_threads: int = 0,
     ) -> None:
-        self.device = device
+        """初始化 CPU 公式模型，并复用 Torch Plus-M 的纯 Python 处理器。"""
+        self.device = "cpu"
         self.session = ort_session(model_path, device, intra_op_num_threads)
         self.input_name = self.session.get_inputs()[0].name
 
@@ -67,10 +59,11 @@ class PPFormulaNetPlusMONNX:
             yml = yaml.safe_load(f)
         char_dict = yml["PostProcess"]["character_dict"]
 
-        from tokenizers import Tokenizer as TokenizerFast
-
-        fast_str = json.dumps(char_dict["fast_tokenizer_file"])
-        self.tokenizer = TokenizerFast.from_buffer(fast_str.encode("utf-8"))
+        self.decoder = UniMERNetDecode(character_list=char_dict)
+        self.tokenizer = self.decoder.tokenizer
+        self.image_decoder = UniMERNetImgDecode(input_size=(384, 384))
+        self.image_transform = UniMERNetTestTransform()
+        self.image_formatter = LatexImageFormat()
 
         logger.debug(
             "PPFormulaNetPlusMONNX loaded: {} (config={})",
@@ -83,6 +76,7 @@ class PPFormulaNetPlusMONNX:
     # ------------------------------------------------------------------
     @staticmethod
     def _normalize_bbox(bbox: Any, image: np.ndarray) -> Optional[Tuple[int, int, int, int]]:
+        """裁剪公式坐标到有效图像范围。"""
         if bbox is None:
             return None
         xmin, ymin, xmax, ymax = [float(v) for v in bbox]
@@ -101,11 +95,13 @@ class PPFormulaNetPlusMONNX:
 
     @staticmethod
     def _item_to_bbox(item: dict, image: np.ndarray) -> Optional[Tuple[int, int, int, int]]:
+        """读取并规范化公式条目的坐标。"""
         return PPFormulaNetPlusMONNX._normalize_bbox(item.get("bbox"), image)
 
     def _build_formula_items(
         self, mfd_res: list, image: np.ndarray, interline_enable: bool = True
     ) -> Tuple[List[dict], List[Tuple[dict, Tuple[int, int, int, int]]]]:
+        """复制有效类别的公式，只有可裁剪条目进入推理任务。"""
         formula_list = []
         crop_targets = []
 
@@ -128,73 +124,20 @@ class PPFormulaNetPlusMONNX:
 
         return formula_list, crop_targets
 
-    # ------------------------------------------------------------------
-    # 预处理（与 RapidDoc PPPreProcess 一致）
-    # ------------------------------------------------------------------
-    @staticmethod
-    def _crop_margin(pil_img: Image.Image) -> Image.Image:
-        data = np.array(pil_img.convert("L"))
-        max_val, min_val = data.max(), data.min()
-        if max_val == min_val:
-            return pil_img
-        data = (data - min_val) / (max_val - min_val) * 255
-        gray = 255 * (data < 200).astype(np.uint8)
-        coords = cv2.findNonZero(gray)
-        if coords is None:
-            return pil_img
-        a, b, w, h = cv2.boundingRect(coords)
-        return pil_img.crop((a, b, w + a, h + b))
-
-    @staticmethod
-    def _img_decode(img: np.ndarray) -> Optional[np.ndarray]:
-        pil = Image.fromarray(img).convert("RGB")
-        pil = PPFormulaNetPlusMONNX._crop_margin(pil)
-        if pil.height == 0 or pil.width == 0:
+    def _preprocess(self, img: np.ndarray) -> Optional[np.ndarray]:
+        """复用现有 Plus-M 去边、缩放、灰度归一化和张量格式化。"""
+        if img.size == 0:
             return None
-
-        # resize: shortest edge to min(input_size), thumbnail to max
-        size = min(_INPUT_SIZE)
-        if pil.height <= pil.width:
-            new_w = int(size * pil.width / pil.height)
-            pil = pil.resize((new_w, size), resample=Image.BILINEAR)
-        else:
-            new_h = int(size * pil.height / pil.width)
-            pil = pil.resize((size, new_h), resample=Image.BILINEAR)
-        pil.thumbnail((_INPUT_SIZE[1], _INPUT_SIZE[0]))
-
-        delta_w = _INPUT_SIZE[1] - pil.width
-        delta_h = _INPUT_SIZE[0] - pil.height
-        padding = (delta_w // 2, delta_h // 2, delta_w - delta_w // 2, delta_h - delta_h // 2)
-        return np.array(ImageOps.expand(pil, padding))
-
-    @staticmethod
-    def _transform(img: np.ndarray) -> np.ndarray:
-        img = (img.astype(np.float32) / 255.0 - _MEAN) / _STD
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        squeezed = np.squeeze(gray)
-        return cv2.merge([squeezed, squeezed, squeezed])
-
-    @staticmethod
-    def _format_image(img: np.ndarray) -> np.ndarray:
-        im_h, im_w = img.shape[:2]
-        divide_h = math.ceil(im_h / 16) * 16
-        divide_w = math.ceil(im_w / 16) * 16
-        img = img[:, :, 0]
-        img = np.pad(img, ((0, divide_h - im_h), (0, divide_w - im_w)), constant_values=(1, 1))
-        img = img[:, :, np.newaxis].transpose(2, 0, 1)
-        return img[np.newaxis, :]
-
-    @classmethod
-    def _preprocess(cls, img: np.ndarray) -> Optional[np.ndarray]:
-        decoded = cls._img_decode(img)
+        decoded = self.image_decoder.img_decode(img)
         if decoded is None:
             return None
-        return cls._format_image(cls._transform(decoded))
+        return self.image_formatter.format(self.image_transform.transform(decoded))
 
     # ------------------------------------------------------------------
     # 后处理（tokenizer decode）
     # ------------------------------------------------------------------
     def _decode_tokens(self, token_ids: np.ndarray) -> str:
+        """在首个 EOS 截断并调用共享 Plus-M tokenizer 与公式修复。"""
         if token_ids.ndim == 2:
             ids = [int(x) for x in token_ids[0].tolist()]
         else:
@@ -206,14 +149,13 @@ class PPFormulaNetPlusMONNX:
                 ids = ids[: i + 1]
                 break
 
-        raw_text = self.tokenizer.decode(ids, skip_special_tokens=True)
-        return post_process_formula(raw_text)
+        return self.decoder(np.asarray([ids], dtype=np.int64))[0]
 
     # ------------------------------------------------------------------
     # 推理
     # ------------------------------------------------------------------
-    def _infer_batch(self, crops: List[np.ndarray]) -> List[str]:
-        """对一批裁剪图做推理，返回 LaTeX 字符串列表。"""
+    def _infer_batch(self, crops: List[np.ndarray], batch_size: int = CPU_BATCH_SIZE) -> List[str]:
+        """按原图面积排序，以最多 8 张的 CPU 批次推理，再恢复原顺序。"""
         if not crops:
             return []
 
@@ -221,8 +163,9 @@ class PPFormulaNetPlusMONNX:
         valid_indices: List[int] = []
         valid_inputs: List[np.ndarray] = []
 
-        for i, crop in enumerate(crops):
-            inp = self._preprocess(crop)
+        ordered_indices = sorted(range(len(crops)), key=lambda i: (crops[i].shape[0] * crops[i].shape[1], i))
+        for i in ordered_indices:
+            inp = self._preprocess(crops[i])
             if inp is not None:
                 valid_indices.append(i)
                 valid_inputs.append(inp)
@@ -231,11 +174,15 @@ class PPFormulaNetPlusMONNX:
             return results
 
         with tqdm(total=len(valid_inputs), desc="MFR Predict") as pbar:
-            for i, inp in enumerate(valid_inputs):
-                preds = self.session.run(None, {self.input_name: inp.astype(np.float32)})[0]
-                latex = self._decode_tokens(preds)
-                results[valid_indices[i]] = latex
-                pbar.update(1)
+            step = min(CPU_BATCH_SIZE, max(1, batch_size))
+            for start in range(0, len(valid_inputs), step):
+                inputs = np.concatenate(valid_inputs[start : start + step], axis=0).astype(np.float32)
+                preds = self.session.run(None, {self.input_name: inputs})[0]
+                if preds.ndim != 2 or preds.shape[0] != inputs.shape[0]:
+                    raise ValueError("Formula ONNX output batch does not match input batch")
+                for offset, tokens in enumerate(preds):
+                    results[valid_indices[start + offset]] = self._decode_tokens(tokens)
+                pbar.update(inputs.shape[0])
 
         return results
 
@@ -246,9 +193,10 @@ class PPFormulaNetPlusMONNX:
         self,
         mfd_res: list,
         image: np.ndarray,
-        batch_size: int = 64,
+        batch_size: int = CPU_BATCH_SIZE,
         interline_enable: bool = True,
     ) -> list:
+        """识别单页公式并保留输入公式的顺序。"""
         return self.batch_predict(
             [mfd_res],
             [image],
@@ -260,9 +208,10 @@ class PPFormulaNetPlusMONNX:
         self,
         images_mfd_res: list,
         images: list,
-        batch_size: int = 64,
+        batch_size: int = CPU_BATCH_SIZE,
         interline_enable: bool = True,
     ) -> list:
+        """按 CPU batch=8 上限跨页识别公式，并按原目标回填，避免无效框导致错位。"""
         if not images_mfd_res:
             return []
 
@@ -270,8 +219,10 @@ class PPFormulaNetPlusMONNX:
             raise ValueError("images_mfd_res and images must have the same length.")
 
         images_formula_list: List[List[dict]] = []
+        if batch_size < 1:
+            raise ValueError("batch_size must be positive")
         all_crops: List[np.ndarray] = []
-        crop_to_formula: List[Tuple[int, int]] = []  # (page_idx, formula_idx_in_page)
+        crop_to_formula: list[dict] = []
 
         for page_idx, (mfd_res, image) in enumerate(zip(images_mfd_res, images)):
             formula_list, crop_targets = self._build_formula_items(
@@ -280,10 +231,10 @@ class PPFormulaNetPlusMONNX:
                 interline_enable=interline_enable,
             )
 
-            for formula_idx, (formula_item, (xmin, ymin, xmax, ymax)) in enumerate(crop_targets):
+            for formula_item, (xmin, ymin, xmax, ymax) in crop_targets:
                 bbox_img = image[ymin:ymax, xmin:xmax]
                 all_crops.append(bbox_img)
-                crop_to_formula.append((page_idx, len(images_formula_list), formula_idx))
+                crop_to_formula.append(formula_item)
 
             images_formula_list.append(formula_list)
 
@@ -291,10 +242,10 @@ class PPFormulaNetPlusMONNX:
             return images_formula_list
 
         # 批量推理
-        latex_results = self._infer_batch(all_crops)
+        latex_results = self._infer_batch(all_crops, batch_size=batch_size)
 
         # 回填 latex
-        for (page_idx, _, formula_idx), latex in zip(crop_to_formula, latex_results):
-            images_formula_list[page_idx][formula_idx]["latex"] = latex
+        for formula_item, latex in zip(crop_to_formula, latex_results):
+            formula_item["latex"] = latex
 
         return images_formula_list

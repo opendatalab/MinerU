@@ -149,7 +149,7 @@ def test_config_set_managed_tier_rejects_missing_models(monkeypatch: pytest.Monk
     payload = response.json()
     assert payload["error"]["code"] == "parse_server_model_not_ready"
     assert payload["error"]["param"] == "parse_server.local.managed_tier"
-    assert "PDF-Extract-Kit-1.0" in payload["error"]["message"]
+    assert "MinerU-4_models_torch" in payload["error"]["message"]
     assert "mineru-kit models download --tier basic" in payload["error"]["message"]
     assert config_response.json()["value"] == "standard"
     assert config_response.json()["source"] == "default"

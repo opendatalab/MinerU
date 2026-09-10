@@ -73,7 +73,7 @@ def _format_repo_status(repo: ModelRepo) -> str:
 
 @app.command("download")
 def download_cmd(
-    repo: str | None = typer.Argument(None, help="Model repo: PDF-Extract-Kit-1.0 or MinerU2.5-Pro-2605-1.2B"),
+    repo: str | None = typer.Argument(None, help="Model repo: MinerU-4_models_torch, MinerU-4_models_onnx, or a VLM repo"),
     tier: str | None = typer.Option(None, "--tier", help="Model tier to prepare: basic or standard"),
     stack: str | None = typer.Option(
         None,

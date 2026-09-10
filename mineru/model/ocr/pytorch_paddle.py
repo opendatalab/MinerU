@@ -10,7 +10,7 @@ import numpy as np
 import yaml
 from loguru import logger
 
-from ..registry import PDF_EXTRACT_KIT
+from ..registry import MINERU_4_MODELS_TORCH
 from ..runtime.device import get_device
 from .._internal.pytorchocr.infer import pytorchocr_utility as utility
 from .._internal.pytorchocr.infer.predict_system import TextSystem
@@ -18,7 +18,9 @@ from .geometry import merge_det_boxes, sorted_boxes, update_det_boxes
 from .image import check_img, get_rotate_crop_image_for_text_rec, preprocess_image
 from .language import normalize_ocr_model_lang
 from .seal_crop import CropByPolys, SortPolyBoxes
+from .resources import PPOCRV6_DICT_PATH
 import argparse
+from typing import Any
 
 
 def get_model_params(lang, config):
@@ -41,7 +43,8 @@ DEFAULT_SEAL_DEBUG_DIR = os.path.join(
 
 
 class PytorchPaddleOCR(TextSystem):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        """初始化所选设备的 Torch OCR，并使用跨后端共享字符表。"""
         parser = utility.init_args()
         args = parser.parse_args(args)
 
@@ -50,7 +53,7 @@ class PytorchPaddleOCR(TextSystem):
         self.is_seal = requested_lang in ['seal', 'seal_lite']
         self.enable_merge_det_boxes = kwargs.get("enable_merge_det_boxes", True)
 
-        device = get_device()
+        device = kwargs.get("device") or get_device()
         models_config_path = PYTORCHOCR_RESOURCE_DIR / "models_config.yml"
         with open(models_config_path, encoding='utf-8') as file:
             config = yaml.safe_load(file)
@@ -59,12 +62,12 @@ class PytorchPaddleOCR(TextSystem):
                 device=device,
                 supported_langs=config['lang'],
             )
-            det, rec, dict_file = get_model_params(self.lang, config)
-        det_model_path = str(PDF_EXTRACT_KIT.pytorch_paddle.path(det).ensure())
-        rec_model_path = str(PDF_EXTRACT_KIT.pytorch_paddle.path(rec).ensure())
+            det, rec, _dict_file = get_model_params(self.lang, config)
+        det_model_path = str(MINERU_4_MODELS_TORCH.pytorch_paddle.path(det).ensure())
+        rec_model_path = str(MINERU_4_MODELS_TORCH.pytorch_paddle.path(rec).ensure())
         kwargs['det_model_path'] = det_model_path
         kwargs['rec_model_path'] = rec_model_path
-        kwargs['rec_char_dict_path'] = str(PYTORCHOCR_RESOURCE_DIR / "dict" / dict_file)
+        kwargs['rec_char_dict_path'] = str(PPOCRV6_DICT_PATH)
         kwargs['rec_batch_num'] = 6
         if self.is_seal:
             # Seal detector 的 BatchNorm 统计量会在 fp16 下溢出，初始化时固定使用 fp32。
