@@ -20,8 +20,7 @@ from .contracts import AtomicModelName
 
 if TYPE_CHECKING:
     from ..layout.pp_doclayoutv2 import PPDocLayoutV2LayoutModel
-    from ..mfr.pp_formulanet_plus_m.predict_formula import FormulaRecognizer
-    from ..mfr.unimernet.Unimernet import UnimernetModel
+    from ..mfr.pp_formulanet.predict_formula import FormulaRecognizer
     from ..ocr.pytorch_paddle import PytorchPaddleOCR
 
 from .device import get_device, get_model_stack
@@ -124,10 +123,11 @@ def wireless_table_model_init(lang: str | None = None) -> PaddleTableModel:
     return table_model
 
 
-def mfr_model_init(weight_dir: str, device: str = "cpu") -> "UnimernetModel":
-    from ..mfr.unimernet.Unimernet import UnimernetModel
+def mfr_model_init(weight_dir: str, device: str = "cpu") -> "FormulaRecognizer":
+    """初始化默认 Torch 公式模型 plus-M，精度由设备策略决定。"""
+    from ..mfr.pp_formulanet.predict_formula import FormulaRecognizer
 
-    return UnimernetModel(weight_dir, device)
+    return FormulaRecognizer(weight_dir, device, model_name="PP-FormulaNet_plus-M")
 
 
 def pp_doclayout_v2_model_init(weight: str, device: str = "cpu") -> "PPDocLayoutV2LayoutModel":
@@ -238,8 +238,11 @@ def atom_model_init(model_name: str, **kwargs: Any) -> Any:
         else:
             from ..registry import PDF_EXTRACT_KIT
 
+            # 按文件检查手工放置的资源，不要求模型目录存在下载完成标记。
+            weights_path = PDF_EXTRACT_KIT.pp_formulanet_plus_m_weights.ensure()
+            PDF_EXTRACT_KIT.pp_formulanet_plus_m_config.ensure()
             atom_model = mfr_model_init(
-                str(PDF_EXTRACT_KIT.unimernet_small.ensure()),
+                str(weights_path.parent),
                 kwargs.get("device"),
             )
     elif model_name == AtomicModelName.OCR:
@@ -366,7 +369,7 @@ class HybridLocalModelContext:
         self.layout_model = self.get_layout_model()
 
     @cached_property
-    def mfr_model(self) -> UnimernetModel | FormulaRecognizer:
+    def mfr_model(self) -> FormulaRecognizer:
         """首次访问时加载公式识别模型，并在当前 Context 内复用。"""
         return self.get_mfr_model()
 
@@ -417,7 +420,7 @@ class HybridLocalModelContext:
             device=self.device,
         )
 
-    def get_mfr_model(self) -> "UnimernetModel":
+    def get_mfr_model(self) -> "FormulaRecognizer":
         """获取公式识别原子模型，统一复用当前公式模型配置和设备。"""
         return self.atom_model_manager.get_atom_model(
             atom_model_name=AtomicModelName.MFR,

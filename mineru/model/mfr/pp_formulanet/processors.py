@@ -162,12 +162,13 @@ class UniMERNetTestTransform:
     A class for transforming images according to UniMERNet test specifications.
     """
 
-    def __init__(self, **kwargs) -> None:
+    def __init__(self, paddle_compatible: bool = False, **kwargs) -> None:
         """
         Initializes the UniMERNetTestTransform class.
         """
         super().__init__()
         self.num_output_channels = 3
+        self.paddle_compatible = paddle_compatible
 
     def transform(self, img: np.ndarray) -> np.ndarray:
         """
@@ -185,6 +186,11 @@ class UniMERNetTestTransform:
         shape = (1, 1, 3)
         mean = np.array(mean).reshape(shape).astype("float32")
         std = np.array(std).reshape(shape).astype("float32")
+        if self.paddle_compatible:
+            # plus-S 对齐 Paddle：先对 RGB uint8 图像灰度化，再归一化；保留 plus-M 原行为。
+            gray = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+            img = cv2.merge([gray] * self.num_output_channels).astype("float32")
+            return (img - mean * 255.0) * (1.0 / (std * 255.0))
         img = (img.astype("float32") * scale - mean) / std
         grayscale_image = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
         squeezed = np.squeeze(grayscale_image)
@@ -248,7 +254,7 @@ class ToBatch(object):
         super(ToBatch, self).__init__()
 
     def __call__(self, imgs: List[np.ndarray]) -> List[np.ndarray]:
-        """Concatenates a list of images into a single batch.
+        """拼接为独立连续批次；concatenate 已分配新数组，无需再次复制。
 
         Args:
             imgs (list): A list of image arrays to be concatenated.
@@ -257,7 +263,6 @@ class ToBatch(object):
             list: A list containing the concatenated batch of images wrapped in another list (to comply with common batch processing formats).
         """
         batch_imgs = np.concatenate(imgs)
-        batch_imgs = batch_imgs.copy()
         x = [batch_imgs]
         return x
 

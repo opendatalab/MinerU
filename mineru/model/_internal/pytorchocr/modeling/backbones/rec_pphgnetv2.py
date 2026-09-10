@@ -1550,7 +1550,7 @@ class PPHGNetV2_B4_Formula(nn.Module):
             pixel_values = torch.repeat_interleave(pixel_values, repeats=3, dim=1)
         pphgnet_b4_output = self.pphgnet_b4(pixel_values)
         b, c, h, w = pphgnet_b4_output.shape
-        pphgnet_b4_output = pphgnet_b4_output.reshape([b, c, h * w]).transpose(
+        pphgnet_b4_output = pphgnet_b4_output.reshape([b, c, h * w]).permute(
             [0, 2, 1]
         )
         pphgnet_b4_output = DonutSwinModelOutput(

@@ -18,7 +18,10 @@ PDF_EXTRACT_KIT = ModelRepo(
     },
     paths={
         "pp_doclayout_v2": "models/Layout/PP-DocLayoutV2",
-        "unimernet_small": "models/MFR/unimernet_hf_small_2503",
+        "pp_formulanet_plus_m_weights": "models/MFR/pp_formulanet_plus_m/PP-FormulaNet_plus-M.pth",
+        "pp_formulanet_plus_m_config": "models/MFR/pp_formulanet_plus_m/PP-FormulaNet_plus-M_inference.yml",
+        "pp_formulanet_plus_s_weights": "models/MFR/pp_formulanet_plus_s/PP-FormulaNet_plus-S.pth",
+        "pp_formulanet_plus_s_config": "models/MFR/pp_formulanet_plus_s/PP-FormulaNet_plus-S_inference.yml",
         "pytorch_paddle": "models/OCR/paddleocr_torch",
         "slanet_plus": "models/TabRec/SlanetPlus/slanet-plus.onnx",
         "unet_structure": "models/TabRec/UnetStructure/unet.onnx",
