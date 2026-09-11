@@ -201,7 +201,7 @@ def test_standard_dependency_errors_survive_startup_wrappers(
 
 def _resolved_direct_dependencies(platform: str, machine: str, extra: str) -> set[str]:
     """按目标平台展开本项目的递归 extra，不使用宿主环境的标记值。"""
-    project = tomllib.loads((Path(__file__).resolve().parents[2] / "pyproject.toml").read_text())["project"]
+    project = tomllib.loads((Path(__file__).resolve().parents[2] / "pyproject.toml").read_text(encoding="utf-8"))["project"]
     environment = {**default_environment(), "sys_platform": platform, "platform_machine": machine}
     pending, visited, names = [extra], set(), set()
     while pending:
@@ -237,7 +237,7 @@ def test_package_markers(platform: str, machine: str, extra: str) -> None:
     assert ("vllm" in names) == (platform == "linux" and extra in {"full", "all"})
     assert ("lmdeploy" in names) == (platform == "win32" and extra in {"full", "all"})
     assert "mlx-vlm" not in names
-    project = tomllib.loads((Path(__file__).resolve().parents[2] / "pyproject.toml").read_text())["project"]
+    project = tomllib.loads((Path(__file__).resolve().parents[2] / "pyproject.toml").read_text(encoding="utf-8"))["project"]
     assert "gradio" not in project["optional-dependencies"]
 
 

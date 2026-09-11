@@ -67,6 +67,7 @@ dependencies = [
     "python-multipart",
     "uvicorn",
     "pydantic>=2.12.5,<3",
+    "typing_extensions>=4.0.0",
     "typer>=0.9.0",
     "rich>=13.0.0",
     "jieba>=0.42.1",
