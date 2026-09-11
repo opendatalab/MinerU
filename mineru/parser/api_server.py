@@ -2042,7 +2042,7 @@ def _preflight_tier_dependencies(tier: ServerTier, vlm_config: VlmConfig | None 
     if tier == "standard":
         settings.validate_environment()
     try:
-        ensure_tier_runtime_dependencies("basic" if settings.server_url else tier)
+        ensure_tier_runtime_dependencies(tier, vlm_config=settings)
     except TierDependencyError as exc:
         raise ParseServerStartupError(str(exc)) from exc
 

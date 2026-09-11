@@ -70,7 +70,6 @@ class ModelRepo:
     local_name: str = ""
     paths: dict[str, str] = field(default_factory=dict)
     download_mode: DownloadMode = "full"
-    stack: str = "full"
 
     def __post_init__(self) -> None:
         """缺少本地名称时使用稳定仓库名。"""

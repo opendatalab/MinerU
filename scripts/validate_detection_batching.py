@@ -231,9 +231,9 @@ def main() -> None:
     parser.add_argument("--pages", default="")
     parser.add_argument("--ocr-mode", default="auto", choices=["auto", "ocr", "txt"])
     args = parser.parse_args()
-    args.stack, args.tier, args.rounds = "light", "basic", 1
+    args.small_backend, args.tier, args.rounds = "light", "basic", 1
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    config.model.base_dir, config.model.source, config.model.stack = str(args.models_dir.resolve()), "local", "light"
+    config.model.base_dir, config.model.source, config.model.small_backend = str(args.models_dir.resolve()), "local", "onnx"
     config.llm_aided.features.title_leveling = False
     config.llm_aided.features.cross_page_table_cell_merge = False
     report = components(args) if args.kind == "components" else integration(args)

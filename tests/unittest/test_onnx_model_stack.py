@@ -16,18 +16,20 @@ from mineru.model.ocr.resources import PPOCRV6_DICT_PATH
 
 
 @pytest.mark.parametrize(
-    ("stack", "tier", "names"),
+    ("small_backend", "vlm_engine", "tier", "names"),
     [
-        ("full", "basic", ["MinerU-4_models_torch"]),
-        ("full", "standard", ["MinerU-4_models_torch", "MinerU2.5-Pro-2605-1.2B"]),
-        ("light", "basic", ["MinerU-4_models_onnx"]),
-        ("light", "standard", ["MinerU-4_models_onnx", "MinerU2.5-Pro-2605-1.2B-GGUF"]),
+        ("torch", "vllm", "basic", ["MinerU-4_models_torch"]),
+        ("torch", "vllm", "standard", ["MinerU-4_models_torch", "MinerU2.5-Pro-2605-1.2B"]),
+        ("onnx", "llama-cpp", "basic", ["MinerU-4_models_onnx"]),
+        ("onnx", "llama-cpp", "standard", ["MinerU-4_models_onnx", "MinerU2.5-Pro-2605-1.2B-GGUF"]),
     ],
 )
-def test_tier_resource_ownership(stack: str, tier: str, names: list[str]) -> None:
+def test_tier_resource_ownership(small_backend: str, vlm_engine: str, tier: str, names: list[str]) -> None:
     """档位资源与实际模型栈对应，旧仓库不再出现在下载集合。"""
-    assert [repo.name for repo in registry.model_repos_for_tier(tier, stack=stack)] == names
-    assert registry.mineru_4_models_for_stack(stack).name == names[0]
+    assert [
+        repo.name for repo in registry.model_repos_for_tier(tier, small_backend=small_backend, vlm_engine=vlm_engine)
+    ] == names
+    assert registry.small_model_repo(small_backend).name == names[0]
     assert "PDF-Extract-Kit-1.0" not in registry.model_repo_names()
 
 
@@ -213,31 +215,31 @@ def test_atom_and_context_caches_are_isolated_by_stack(monkeypatch: pytest.Monke
     factory = Mock(side_effect=lambda **kwargs: object())
     monkeypatch.setattr(hybrid, "atom_model_init", factory)
     manager = hybrid.AtomModelSingleton()
-    full = manager.get_atom_model("ocr", stack="full", device="cpu")
-    light = manager.get_atom_model("ocr", stack="light", device="mps")
+    full = manager.get_atom_model("ocr", small_backend="torch", device="cpu")
+    light = manager.get_atom_model("ocr", small_backend="onnx", device="mps")
     assert full is not light
-    assert manager.get_atom_model("ocr", stack="light", device="cpu") is light
+    assert manager.get_atom_model("ocr", small_backend="onnx", device="cpu") is light
     monkeypatch.setattr(hybrid, "HybridLocalModelContext", factory)
     monkeypatch.setattr(hybrid, "get_device", lambda: "cpu")
     context_manager = hybrid.HybridLocalModelContextSingleton()
-    monkeypatch.setattr(hybrid, "get_model_stack", lambda: "full")
+    monkeypatch.setattr(hybrid, "resolve_small_model_backend", lambda: "torch")
     full_context = context_manager.get_model()
-    monkeypatch.setattr(hybrid, "get_model_stack", lambda: "light")
+    monkeypatch.setattr(hybrid, "resolve_small_model_backend", lambda: "onnx")
     assert context_manager.get_model() is not full_context
-    assert factory.call_args.kwargs == {"stack": "light", "device": "cpu"}
+    assert factory.call_args.kwargs == {"small_backend": "onnx", "device": "cpu"}
 
 
 def test_light_standard_does_not_probe_platform_engines(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Light standard 必须使用 GGUF，不依赖宿主是否安装 MLX/vLLM。"""
+    """CPU 自动选择 GGUF，不加载平台 VLM 引擎。"""
     from mineru.model.vlm import selector
 
-    monkeypatch.setattr(selector, "get_model_stack", lambda: "light")
-    monkeypatch.setattr(selector, "is_windows_environment", Mock(side_effect=AssertionError("platform probe")))
+    monkeypatch.setattr(selector, "get_device", lambda: "cpu")
+    monkeypatch.setattr(selector, "module_available", Mock(side_effect=AssertionError("engine probe")))
     assert selector.get_vlm_engine("auto") == "llama-cpp-engine"
 
 
 def test_light_table_models_use_only_the_onnx_bundle(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """三种表格模型从 Light 仓库取文件，并把相同 stack 传给共享 OCR。"""
+    """三种表格模型从 Light 仓库取文件，并把相同 small_backend 传给共享 OCR。"""
     from mineru.model.runtime import hybrid
 
     resources = []
@@ -254,11 +256,11 @@ def test_light_table_models_use_only_the_onnx_bundle(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(hybrid, "PaddleTableModel", Mock())
     monkeypatch.setattr(hybrid, "UnetTableModel", Mock())
     monkeypatch.setattr(hybrid, "PaddleTableClsModel", Mock())
-    hybrid.wireless_table_model_init(stack="light", device="cpu")
-    hybrid.wired_table_model_init(stack="light", device="cpu")
-    hybrid.table_cls_model_init(stack="light")
+    hybrid.wireless_table_model_init(small_backend="onnx", device="cpu")
+    hybrid.wired_table_model_init(small_backend="onnx", device="cpu")
+    hybrid.table_cls_model_init(small_backend="onnx")
     assert resources == ["slanet_plus", "unet_structure", "paddle_table_cls"]
-    assert all(call.kwargs["stack"] == "light" for call in ocr_factory.call_args_list)
+    assert all(call.kwargs["small_backend"] == "onnx" for call in ocr_factory.call_args_list)
 
 
 def test_light_seal_uses_dedicated_model_and_packaged_dictionary(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -277,7 +279,7 @@ def test_light_seal_uses_dedicated_model_and_packaged_dictionary(monkeypatch: py
     monkeypatch.setattr(download.ModelPath, "ensure", ensure)
     factory = Mock()
     monkeypatch.setattr(pp_ocr_v6_onnx, "PPOCRv6ONNX", factory)
-    atom_model_init("ocr", stack="light", lang="seal")
+    atom_model_init("ocr", small_backend="onnx", lang="seal")
     assert resources == ["seal_det", "ocr_rec"]
     assert factory.call_args.kwargs["lang"] == "seal"
     assert factory.call_args.kwargs["dict_path"] == str(PPOCRV6_DICT_PATH)
@@ -289,7 +291,7 @@ def test_light_model_modules_import_without_torch() -> None:
 import importlib.abc
 import os
 import sys
-os.environ["MINERU_MODEL_STACK"] = "light"
+os.environ["MINERU_MODEL_SMALL_BACKEND"] = "onnx"
 class BlockTorch(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname, path=None, target=None):
         # 阻断推理重依赖，验证共享资源边界。

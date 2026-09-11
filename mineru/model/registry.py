@@ -3,10 +3,13 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import TYPE_CHECKING
 
 from ..types import DEPLOYMENT_TIERS, DeploymentTier
 from .download import MODEL_COMPLETE_MARKER, DownloadMode, ModelPath, ModelRepo, model_path_exists
+
+if TYPE_CHECKING:
+    from ..config import VlmConfig
 
 
 MINERU_4_MODELS_TORCH = ModelRepo(
@@ -34,10 +37,9 @@ MINERU_2_5_PRO_2605_1_2B = ModelRepo(
     },
 )
 
-# Light 的全部本地模型归属同一个 ONNX 仓库，表格文件与 Torch 仓库逐字节一致。
+# ONNX 小模型归属同一个仓库，表格文件与 Torch 仓库逐字节一致。
 MINERU_4_MODELS_ONNX = ModelRepo(
     name="MinerU-4_models_onnx",
-    stack="light",
     download_mode="required_paths",
     repos={"huggingface": "opendatalab/MinerU-4_models_onnx"},
     paths={
@@ -57,10 +59,9 @@ MINERU_4_MODELS_ONNX = ModelRepo(
     },
 )
 
-# Light standard 使用现有 GGUF 主模型与多模态投影文件。
+# llama.cpp 使用 GGUF 主模型与多模态投影文件。
 MINERU_2_5_PRO_2605_1_2B_GGUF = ModelRepo(
     name="MinerU2.5-Pro-2605-1.2B-GGUF",
-    stack="light",
     repos={
         "huggingface": "jinzhenj/MinerU2.5-Pro-2605-1.2B-GGUF",
         "modelscope": "jinzhenj/MinerU2.5-Pro-2605-1.2B-GGUF",
@@ -81,34 +82,30 @@ MODEL_REPOS: tuple[ModelRepo, ...] = (
 MODEL_REPOS_BY_NAME: dict[str, ModelRepo] = {repo.name: repo for repo in MODEL_REPOS}
 
 
-def resolve_model_stack(stack: str | None) -> Literal["light", "full"]:
-    """把 ``--stack`` 参数或 config 值解析为 ``"light"`` / ``"full"``。
-
-    ``None`` 或 ``"auto"`` 走 ``get_model_stack()``（依据 ``config.model.stack`` 与设备自动选择）。
-    """
-    from .runtime.device import get_model_stack
-
-    if stack in ("light", "full"):
-        return stack  # type: ignore[return-value]
-    if stack is None or stack == "auto":
-        return get_model_stack()  # type: ignore[return-value]
-    raise ValueError(f"Unsupported stack '{stack}'. Expected one of: auto, light, full.")
-
-
-_REPOS_FOR_TIER_FULL: dict[DeploymentTier, tuple[ModelRepo, ...]] = {
-    "basic": (MINERU_4_MODELS_TORCH,),
-    "standard": (MINERU_4_MODELS_TORCH, MINERU_2_5_PRO_2605_1_2B),
+_SMALL_MODEL_REPOS: dict[str, ModelRepo] = {
+    "onnx": MINERU_4_MODELS_ONNX,
+    "torch": MINERU_4_MODELS_TORCH,
 }
-
-_REPOS_FOR_TIER_LIGHT: dict[DeploymentTier, tuple[ModelRepo, ...]] = {
-    "basic": (MINERU_4_MODELS_ONNX,),
-    "standard": (MINERU_4_MODELS_ONNX, MINERU_2_5_PRO_2605_1_2B_GGUF),
+_VLM_MODEL_REPOS: dict[str, ModelRepo] = {
+    "llama-cpp": MINERU_2_5_PRO_2605_1_2B_GGUF,
+    "vllm": MINERU_2_5_PRO_2605_1_2B,
+    "lmdeploy": MINERU_2_5_PRO_2605_1_2B,
+    "mlx": MINERU_2_5_PRO_2605_1_2B,
 }
 
 
-def mineru_4_models_for_stack(stack: str | None = None) -> ModelRepo:
-    """按显式或当前模型栈选择本地模型仓库，避免 Light 下载 Torch 资源。"""
-    return MINERU_4_MODELS_ONNX if resolve_model_stack(stack) == "light" else MINERU_4_MODELS_TORCH
+def small_model_repo(backend: str | None = None) -> ModelRepo:
+    """独立选择小模型仓库，不读取 VLM 引擎或其权重格式。"""
+    from .runtime.device import resolve_small_model_backend
+
+    return _SMALL_MODEL_REPOS[resolve_small_model_backend(backend)]
+
+
+def vlm_model_repo(engine: str | None = None) -> ModelRepo:
+    """根据实际 VLM 引擎选择 GGUF 或原始权重仓库。"""
+    from .vlm.selector import resolve_vlm_engine
+
+    return _VLM_MODEL_REPOS[resolve_vlm_engine(engine)]
 
 
 def get_model_repo(name: str) -> ModelRepo:
@@ -132,13 +129,24 @@ def validate_model_tier(tier: str) -> DeploymentTier:
 def model_repos_for_tier(
     tier: str,
     *,
-    stack: str | None = None,
+    small_backend: str | None = None,
+    vlm_engine: str | None = None,
+    vlm_config: VlmConfig | None = None,
 ) -> tuple[ModelRepo, ...]:
-    """返回指定档位与模型栈的完整资源集合。"""
+    """组合档位需要的资源；远程 VLM 不要求本地权重，显式引擎可覆盖远程配置。"""
+    from ..config import config
+
     resolved_tier = validate_model_tier(tier)
-    resolved_stack = resolve_model_stack(stack)
-    mapping = _REPOS_FOR_TIER_LIGHT if resolved_stack == "light" else _REPOS_FOR_TIER_FULL
-    return mapping[resolved_tier]
+    if vlm_engine is not None:
+        from .vlm.selector import resolve_vlm_engine
+
+        # basic 不加载 VLM，但仍拒绝模型管理命令中的非法显式引擎名称。
+        vlm_engine = resolve_vlm_engine(vlm_engine)
+    repos = (small_model_repo(small_backend),)
+    settings = vlm_config if vlm_config is not None else config.model.vlm
+    if resolved_tier == "standard" and (vlm_engine is not None or not settings.server_url):
+        repos += (vlm_model_repo(vlm_engine if vlm_engine is not None else settings.engine),)
+    return repos
 
 
 def model_repo_names() -> tuple[str, ...]:
@@ -157,8 +165,8 @@ __all__ = [
     "ModelRepo",
     "MINERU_4_MODELS_TORCH",
     "MINERU_4_MODELS_ONNX",
-    "mineru_4_models_for_stack",
-    "resolve_model_stack",
+    "small_model_repo",
+    "vlm_model_repo",
     "get_model_repo",
     "model_path_exists",
     "model_repo_names",

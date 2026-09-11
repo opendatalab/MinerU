@@ -183,7 +183,7 @@ import importlib.abc
 import os
 import sys
 
-os.environ["MINERU_MODEL_STACK"] = "light"
+os.environ["MINERU_MODEL_SMALL_BACKEND"] = "onnx"
 
 
 class BlockTorchFinder(importlib.abc.MetaPathFinder):
@@ -197,7 +197,7 @@ class BlockTorchFinder(importlib.abc.MetaPathFinder):
 sys.meta_path.insert(0, BlockTorchFinder())
 from mineru.parser.tier import required_modules_for_tier
 
-assert required_modules_for_tier("basic") == []
+assert required_modules_for_tier("basic") == ["onnxruntime"]
 assert "mineru.model.runtime.hybrid" not in sys.modules
 print("ok")
 """
@@ -223,7 +223,7 @@ import importlib.util
 import os
 import sys
 
-os.environ["MINERU_MODEL_STACK"] = "light"
+os.environ["MINERU_MODEL_SMALL_BACKEND"] = "onnx"
 real_import = builtins.__import__
 real_find_spec = importlib.util.find_spec
 
@@ -285,7 +285,7 @@ def test_hybrid_context_does_not_resolve_full_weights_before_stack_selection() -
     context = object.__new__(HybridLocalModelContext)
     manager = _RecordingAtomManager()
     context.device = "cpu"
-    context.stack = "light"
+    context.small_backend = "onnx"
     context.atom_model_manager = manager  # type: ignore[assignment]
 
     with patch.object(ModelPath, "ensure", side_effect=AssertionError("full weight path resolved too early")):
@@ -293,8 +293,8 @@ def test_hybrid_context_does_not_resolve_full_weights_before_stack_selection() -
         context.get_mfr_model()
 
     assert manager.calls == [
-        {"atom_model_name": AtomicModelName.Layout, "device": "cpu", "stack": "light"},
-        {"atom_model_name": AtomicModelName.MFR, "device": "cpu", "stack": "light"},
+        {"atom_model_name": AtomicModelName.Layout, "device": "cpu", "small_backend": "onnx"},
+        {"atom_model_name": AtomicModelName.MFR, "device": "cpu", "small_backend": "onnx"},
     ]
 
 
@@ -415,12 +415,12 @@ def test_tier_runtime_options_map_hybrid_effort() -> None:
     }
 
 
-def test_standard_dependency_error_recommends_standard_extra(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_standard_dependency_error_recommends_backend_extra(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(parser_tier, "installed_distribution_name", lambda: "mineru")
 
     error = parser_tier.TierDependencyError("standard", ["vllm"])
 
-    assert "pip install 'mineru[standard]'" in str(error)
+    assert "mineru[full]" in str(error)
 
 
 def test_advanced_is_not_a_deployment_dependency_tier() -> None:
@@ -2628,15 +2628,18 @@ def test_api_server_preflights_basic_tier_dependencies(monkeypatch: pytest.Monke
         return object()
 
     monkeypatch.setattr(importlib, "import_module", fake_import_module)
-    monkeypatch.setenv("MINERU_MODEL_STACK", "full")
+    monkeypatch.setattr(api_server.mineru_config.model, "small_backend", "torch")
+    monkeypatch.setattr(api_server.mineru_config.model.vlm, "engine", "llama-cpp")
 
     create_app(upload_dir=str(tmp_path), tier="basic")
 
     assert imported_modules == [
+        "onnxruntime",
         "torch",
         "torchvision",
         "transformers",
         "accelerate",
+        "safetensors",
     ]
 
 
@@ -2648,19 +2651,19 @@ def test_api_server_preflights_standard_tier_dependencies_for_platform(monkeypat
         return object()
 
     monkeypatch.setattr(importlib, "import_module", fake_import_module)
-    monkeypatch.setattr(parser_tier.sys, "platform", "darwin")
-    monkeypatch.setattr(parser_tier.platform, "machine", lambda: "arm64")
-    monkeypatch.setenv("MINERU_MODEL_STACK", "full")
+    monkeypatch.setattr(api_server.mineru_config.model, "small_backend", "torch")
+    monkeypatch.setattr(api_server.mineru_config.model.vlm, "engine", "llama-cpp")
 
     create_app(upload_dir=str(tmp_path), tier="standard")
 
     assert imported_modules == [
+        "onnxruntime",
         "torch",
         "torchvision",
         "transformers",
         "accelerate",
-        "mlx",
-        "mlx_vlm",
+        "safetensors",
+        "mineru_llama_cpp",
     ]
 
 
@@ -2674,17 +2677,19 @@ def test_api_server_preflights_standard_tier_dependencies_skip_mlx_on_intel_maco
         return object()
 
     monkeypatch.setattr(importlib, "import_module", fake_import_module)
-    monkeypatch.setattr(parser_tier.sys, "platform", "darwin")
-    monkeypatch.setattr(parser_tier.platform, "machine", lambda: "x86_64")
-    monkeypatch.setenv("MINERU_MODEL_STACK", "full")
+    monkeypatch.setattr(api_server.mineru_config.model, "small_backend", "torch")
+    monkeypatch.setattr(api_server.mineru_config.model.vlm, "engine", "llama-cpp")
 
     create_app(upload_dir=str(tmp_path), tier="standard")
 
     assert imported_modules == [
+        "onnxruntime",
         "torch",
         "torchvision",
         "transformers",
         "accelerate",
+        "safetensors",
+        "mineru_llama_cpp",
     ]
 
 
@@ -2697,7 +2702,7 @@ def test_api_server_preflight_rejects_missing_tier_dependency(monkeypatch: pytes
     monkeypatch.setattr(importlib, "import_module", fake_import_module)
     monkeypatch.setattr(parser_tier.importlib_metadata, "packages_distributions", lambda: {"mineru": ["mineru"]})
 
-    with pytest.raises(api_server.ParseServerStartupError, match="tier 'basic'.*torch.*mineru\\[basic\\]"):
+    with pytest.raises(api_server.ParseServerStartupError, match="tier 'basic'.*torch.*mineru\\[torch\\]"):
         create_app(upload_dir=str(tmp_path), tier="basic")
 
 

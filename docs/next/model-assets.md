@@ -2,12 +2,16 @@
 
 `mineru/model/registry.py` 定义仓库、必需文件和档位映射；`download.py` 负责显式下载、目录锁和完整性检查。
 两个资源包常量为 `MINERU_4_MODELS_TORCH` 和 `MINERU_4_MODELS_ONNX`；
-`mineru_4_models_for_stack()` 按 stack 选择资源包。
+`small_model_repo()` 按小模型后端选择资源包，`vlm_model_repo()` 独立选择 VLM 权重。
 
-| Stack | basic | standard |
+| 小模型后端 | basic | standard |
 |---|---|---|
-| full | MinerU-4_models_torch | Torch 资源包 + MinerU2.5-Pro-2605-1.2B |
-| light | MinerU-4_models_onnx | ONNX 资源包 + 现有 Q8_0 GGUF 和 mmproj |
+| torch | MinerU-4_models_torch | Torch 资源包 + 所选 VLM 引擎的权重 |
+| onnx | MinerU-4_models_onnx | ONNX 资源包 + 所选 VLM 引擎的权重 |
+
+llama.cpp 选择 Q8_0 GGUF 和 mmproj；vLLM/lmdeploy/显式 MLX 选择原始 VLM 权重。
+ARM Mac 默认 Torch MPS + llama；Linux/Windows 基础包默认 ONNX + llama，安装 full 且有加速器时默认 Torch + 平台引擎。
+远程 VLM 不要求本地 VLM 权重。`full` 仅为安装 extra，不再是运行时后端名称。
 
 新资源包使用各自的新缓存目录，不复用 PDF-Extract-Kit-1.0 或原来分散的 ONNX 仓库缓存。
 当前只配置 Hugging Face 来源，ModelScope 镜像发布并核对文件后再添加来源地址。
@@ -15,18 +19,19 @@
 ## 下载与离线运行
 
 ```bash
-export MINERU_MODEL_STACK=light
+export MINERU_MODEL_SMALL_BACKEND=onnx
+export MINERU_MODEL_VLM_ENGINE=llama-cpp
 export MINERU_MODEL_SOURCE=huggingface
-mineru-kit models download --tier standard --stack light --source huggingface
-mineru-kit models verify --tier standard --stack light
+mineru-kit models download --tier standard --small-backend onnx --vlm-engine llama-cpp --source huggingface
+mineru-kit models verify --tier standard --small-backend onnx --vlm-engine llama-cpp
 
 export MINERU_MODEL_SOURCE=local
 mineru-kit parse input.pdf --tier basic -o output.md
 ```
 
-`MINERU_MODEL_BASE_DIR` 可指定独立模型根目录。`--stack` 只覆盖当前模型管理命令；解析和服务运行时读取环境变量或配置文件。
+`MINERU_MODEL_BASE_DIR` 可指定独立模型根目录。`--small-backend`、`--vlm-engine` 只覆盖当前模型管理命令；解析和服务运行时读取环境变量或配置文件。
 所有 ONNX 会话固定使用 CPU，最低版本为 ONNX Runtime 1.20.1，支持资源包所需的 ONNX IR 10。
-llama.cpp 的设备参数独立于 ONNX provider；full 的 Torch 和 VLM 仍沿用各自设备策略。
+llama.cpp 的设备参数独立于 ONNX provider；Torch 和 VLM 仍沿用各自设备策略。
 
 ## 资源结构
 
@@ -71,7 +76,7 @@ uv pip install --python .venv1/bin/python 'onnx>=1.17,<2'
 uv venv output/model-migration/core-venv
 uv pip install --python output/model-migration/core-venv/bin/python -e .
 MINERU_INTRA_OP_NUM_THREADS=2 output/model-migration/core-venv/bin/python \
-  -m scripts.validate_onnx_models parse input.pdf --stack light --tier basic \
+  -m scripts.validate_onnx_models parse input.pdf --small-backend onnx --tier basic \
   --rounds 2 --output-dir output/model-migration/validation/light-basic
 ```
 

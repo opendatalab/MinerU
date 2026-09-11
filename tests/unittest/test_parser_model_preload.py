@@ -80,6 +80,7 @@ def test_local_preload_and_parse_reuse_llama_predictor(monkeypatch: pytest.Monke
     """本地预加载与解析共用同步引擎缓存，llama 参数循环不能覆盖模型缓存键。"""
     from unittest.mock import MagicMock
 
+    from mineru.model import registry
     from mineru.model.vlm import runtime, selector
     from mineru.model.vlm.client import get_vlm_predictor
 
@@ -92,7 +93,7 @@ def test_local_preload_and_parse_reuse_llama_predictor(monkeypatch: pytest.Monke
     monkeypatch.setattr(runtime, "MinerUClient", predictor_factory)
     def ensure_gguf(self: object) -> Path:
         """llama.cpp 初始化只能下载 GGUF，不能先下载完整 VLM。"""
-        assert self is runtime.MINERU_2_5_PRO_2605_1_2B_GGUF
+        assert self is registry.MINERU_2_5_PRO_2605_1_2B_GGUF
         return tmp_path
 
     monkeypatch.setattr(type(runtime.MINERU_2_5_PRO_2605_1_2B), "ensure", ensure_gguf)

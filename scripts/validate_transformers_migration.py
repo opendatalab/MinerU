@@ -175,7 +175,7 @@ def _operation(args: argparse.Namespace, manifest: dict[str, Any]) -> Callable[[
     from mineru.config import VlmConfig, config
     from mineru.parser.mineru_parser import MinerUParser
 
-    config.model.stack = "full"
+    config.model.small_backend = "torch"
     config.llm_aided.features.title_leveling = False
     config.llm_aided.features.cross_page_table_cell_merge = False
     parser = MinerUParser(tier=args.tier, parse_mode="ocr", vlm_config=VlmConfig())

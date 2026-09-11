@@ -227,7 +227,7 @@ def parse_documents(args: argparse.Namespace) -> dict[str, Any]:
     from mineru.parser import parse
     from mineru.parser.api_server import _preload_server_models
 
-    report: dict[str, Any] = {"stack": args.stack, "tier": args.tier, "ocr_mode": args.ocr_mode, "documents": []}
+    report: dict[str, Any] = {"stack": args.small_backend, "tier": args.tier, "ocr_mode": args.ocr_mode, "documents": []}
     started = time.perf_counter()
     preload = _preload_server_models(args.tier, language="ch")
     report["preload_seconds"] = time.perf_counter() - started
@@ -256,7 +256,7 @@ def parse_documents(args: argparse.Namespace) -> dict[str, Any]:
         )
         write_json(args.output_dir / "report.json", report)
     report["heavy_modules_imported"] = [name for name in ("torch", "transformers") if name in sys.modules]
-    if args.stack == "light" and report["heavy_modules_imported"]:
+    if args.small_backend == "light" and report["heavy_modules_imported"]:
         raise AssertionError(f"Light imported heavy modules: {report['heavy_modules_imported']}")
     return report
 
@@ -270,7 +270,7 @@ def main() -> None:
     parser.add_argument("inputs", type=Path, nargs="+")
     parser.add_argument("--models-dir", type=Path, default=Path("output/model-migration/models"))
     parser.add_argument("--output-dir", type=Path, required=True)
-    parser.add_argument("--stack", choices=["light", "full"], default="light")
+    parser.add_argument("--small-backend", choices=["onnx", "torch"], default="onnx")
     parser.add_argument("--tier", choices=["basic", "standard"], default="basic")
     parser.add_argument("--ocr-mode", choices=["auto", "txt", "ocr"], default="auto")
     parser.add_argument("--pages", default="")
@@ -280,7 +280,7 @@ def main() -> None:
     config.model.base_dir = str(args.models_dir.resolve())
     config.model.source = "local"
     # 组件对照需要同时加载 Torch；完整 Light 解析则严格使用 Light 配置。
-    config.model.stack = args.stack if args.kind == "parse" else "full"
+    config.model.small_backend = args.small_backend if args.kind == "parse" else "torch"
     config.llm_aided.features.title_leveling = False
     config.llm_aided.features.cross_page_table_cell_merge = False
     operations = {

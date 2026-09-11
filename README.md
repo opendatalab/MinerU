@@ -328,58 +328,61 @@ mineru parse "paper.pdf" --tier advanced
 mineru parse "paper.pdf" --tier flash
 ```
 
-## Model Stacks
+## Model Backends
 
-MinerU use neural network models for local `basic`, `standard`, and `advanced` parsing.
-To better support different hardwares, MinerU provide two model stacks: `light` and `full`.
+Small models and the VLM engine are configured independently. Gradio is included in the base package.
+The `torch` extra installs the small-model Torch dependencies; `full` also installs vLLM on Linux or
+LMDeploy on Windows. ARM macOS installs the Torch dependencies by default. No MinerU extra installs MLX-VLM.
 
-| Stack | Model engines | Install |
+| Environment (automatic selection) | Small models | VLM |
 |---|---|---|
-| `light` | ONNX Runtime CPU + llama.cpp | Already in `mineru` base module |
-| `full` | PyTorch + vLLM/lmdeploy/mlx | Requires `mineru[full]` extra |
+| ARM macOS with MPS, base or full | Torch / MPS | llama.cpp |
+| Linux / Windows, base | ONNX / CPU | llama.cpp |
+| Linux with accelerator and full | Torch | vLLM, then LMDeploy if available |
+| Windows with accelerator and full | Torch | LMDeploy |
+| Linux / Windows with accelerator and torch extra only | Torch | llama.cpp |
+| No available accelerator, including Intel Mac CPU | ONNX / CPU | llama.cpp |
 
-Stack controls resource use and download size:
-
-| Tier | Stack | Model download | RAM (min) | Accelerator |
-|---|---|---|---|---|
-| `basic` | `light` | ~0.8 GB | 4 GB | None (CPU works) |
-| `basic` | `full` | ~0.9 GB | 16 GB | GPU/MPS recommended |
-| `standard` / `advanced` | `light` | ~2 GB | 8 GB | CPU works, Vulkan recommended |
-| `standard` / `advanced` | `full` | ~4 GB | 16 GB | GPU/MPS required, 8 GB+ VRAM |
-
-The default setting is `auto`: CPU uses `light`, while GPU, MPS, and other accelerators with `mineru[full]` installed use `full`.
-To select a stack explicitly for the current environment, set:
+Automatic selection uses installed dependencies and available devices, not installation history.
+Explicit backend choices are independent and do not silently fall back when dependencies are missing.
 
 ```bash
-export MINERU_MODEL_STACK=light     # or full, or auto
+export MINERU_MODEL_SMALL_BACKEND=auto  # auto, onnx, torch
+export MINERU_MODEL_VLM_ENGINE=auto     # auto, llama-cpp, vllm, lmdeploy, mlx
 ```
 
-To persist the selection, set it in `config.yaml`:
+Equivalent `config.yaml`:
 
 ```yaml
 model:
-  stack: light
+  small_backend: auto
+  vlm:
+    engine: auto
 ```
 
-Stop and restart the MinerU server after changing the stack because running processes do not reload startup configuration.
-
-Download and verify models for a specific stack:
+`model.stack`, `MINERU_MODEL_STACK`, and `--stack` have been removed and report migration errors.
+Replace the old light configuration with `onnx` + `llama-cpp`; replace full with `torch` and the desired
+VLM engine, or use `auto` for platform defaults. Restart running services after changing configuration.
+An explicit `model.vlm.server_url` takes priority and removes local VLM dependency and weight requirements.
+MLX remains available through explicit configuration after manually installing `mlx-vlm>=0.7.0,<0.8.0`.
 
 ```bash
-mineru-kit models download --tier <tier> --stack <stack> --source huggingface
-mineru-kit models verify --tier <tier> --stack <stack>
+mineru-kit models download --tier standard --small-backend torch --vlm-engine llama-cpp --source huggingface
+mineru-kit models verify --tier standard --small-backend torch --vlm-engine llama-cpp
 ```
 
-Local models are bundled in [`MinerU-4_models_torch`](https://huggingface.co/opendatalab/MinerU-4_models_torch)
-for `full` and [`MinerU-4_models_onnx`](https://huggingface.co/opendatalab/MinerU-4_models_onnx) for `light`.
-Both use PP-DocLayoutV2, PP-OCRv6 Tiny Det + Small Rec, PP-FormulaNet plus-M, and the same table models.
-Seal OCR is available in both stacks. All ONNX models run on CPU with `onnxruntime>=1.20.1`;
-the llama.cpp VLM follows its own device configuration. Light standard always selects the GGUF VLM.
+Model command options only override the current command. Explicit downloads do not require the target
+engine to be installed. A basic deployment needs the selected small-model bundle; standard also needs
+GGUF + mmproj for llama.cpp or the original VLM weights for other local engines, and supports advanced requests.
 
-The new bundles currently support the Hugging Face source. Set `MINERU_MODEL_SOURCE=huggingface` for
-automatic downloads during parsing, or use `local` after downloading. Old model cache directories are
-not migrated or reused. See [model assets and validation](docs/next/model-assets.md) for repository
-structure, reproducible preparation, and offline verification.
+Small models use `MinerU-4_models_torch` or `MinerU-4_models_onnx`, with PP-DocLayoutV2, PP-OCRv6 Tiny Det +
+Small Rec, PP-FormulaNet plus-M, seal OCR and shared table models. ONNX Runtime remains a base dependency
+because some table models also use ONNX in the Torch backend. All ONNX sessions run on CPU; VLM devices
+are selected independently.
+
+The small-model bundles currently support the Hugging Face source. Set `MINERU_MODEL_SOURCE=huggingface`
+for automatic downloads during parsing, or `local` after downloading. Existing bundle and VLM cache
+paths remain unchanged. See [model assets and validation](docs/next/model-assets.md).
 
 ## Server Rules
 
@@ -473,8 +476,8 @@ First, download the models for the target startup tier (`basic`, or `standard`).
 Replace `<tier>` with `basic` or `standard`.
 
 ```bash
-mineru-kit models download --tier <tier> --stack <stack>
-mineru-kit models verify --tier <tier> --stack <stack>
+mineru-kit models download --tier <tier> --small-backend <onnx|torch> --vlm-engine <llama-cpp|vllm|lmdeploy|mlx>
+mineru-kit models verify --tier <tier> --small-backend <onnx|torch> --vlm-engine <llama-cpp|vllm|lmdeploy|mlx>
 ```
 
 Then, enable managed local parse server for the startup tier.

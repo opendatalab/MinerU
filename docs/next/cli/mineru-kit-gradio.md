@@ -27,10 +27,10 @@ Gradio 6.26 的 `huggingface-hub>=1.16` 与当前 Transformers 4 的依赖范围
 
 ## 启动
 
-安装 Gradio 可选依赖：
+安装 Gradio 基础依赖：
 
 ```bash
-pip install 'mineru[gradio]'
+pip install mineru
 ```
 
 自动启动本地 V1 API server：

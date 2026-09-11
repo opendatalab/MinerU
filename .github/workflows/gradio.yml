@@ -34,7 +34,7 @@ jobs:
         with:
           node-version: "22"
       - name: Install UI dependencies without the inference stack
-        run: python -m pip install -e '.[gradio,test]' 'gradio==${{ matrix.gradio }}'
+        run: python -m pip install -e '.[test]' 'gradio==${{ matrix.gradio }}'
       - name: Check dependency removal and preview regressions
         run: |
           python -c "import importlib.util; assert importlib.util.find_spec('gradio_pdf') is None"

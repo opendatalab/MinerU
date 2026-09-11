@@ -80,7 +80,7 @@ mineru-api --host 127.0.0.1 --port 8000 --tier standard
 - 第一阶段只提供 `download`、`show`、`verify` 三个子命令。
 - 使用 `config.yaml` 配置文件体系（默认 `${MINERU_HOME:-~/.mineru}/config.yaml`，可由 `MINERU_CONFIG` 指定其它路径）。
 - `download` 用位置参数选择模型 repo，或用 `--tier` 下载某个 tier 所需的 repo 集合。
-- `download`、`show`、`verify` 均支持 `--stack auto|light|full` 选择模型栈。
+- `download`、`show`、`verify` 均支持 `--small-backend auto|onnx|torch` 与 `--vlm-engine auto|llama-cpp|vllm|lmdeploy|mlx` 独立选择后端。
 - 下载过程中自动解析出的 `model.source` 可能写回配置文件，不提供 `--no-config` 或自定义配置文件路径参数。
 
 详细命令契约见 [ADR-0019](../decisions/0019-mineru-kit-models-command.md)。

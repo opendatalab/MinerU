@@ -191,13 +191,15 @@ def test_remote_preflight_and_preload(openai_server: _OpenAIServer, monkeypatch:
     """远程预检仅需本地 Hybrid 依赖，预加载和推理复用同一个客户端。"""
     checks: list[str] = []
     local_loads: list[str] = []
-    monkeypatch.setattr(api_server, "ensure_tier_runtime_dependencies", checks.append)
+    monkeypatch.setattr(
+        api_server, "ensure_tier_runtime_dependencies", lambda tier, **kwargs: checks.append((tier, kwargs["vlm_config"]))
+    )
     monkeypatch.setattr(api_server, "_preload_local_models", local_loads.append)
     settings = _settings(openai_server)
     api_server._preflight_tier_dependencies("standard", settings)
     result = api_server._preload_server_models("standard", language="en", vlm_config=settings)
     assert result.engine == "http-client"
-    assert checks == ["basic"]
+    assert checks == [("standard", settings)]
     assert local_loads == ["en"]
     request_count = len(openai_server.requests)
     get_vlm_predictor(settings)
@@ -210,7 +212,7 @@ def test_remote_preload_failure_is_reported(
     openai_server: _OpenAIServer, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     """预加载认证失败通过现有健康和能力错误暴露，未预加载时保持懒连接。"""
-    monkeypatch.setattr(api_server, "ensure_tier_runtime_dependencies", lambda tier: None)
+    monkeypatch.setattr(api_server, "ensure_tier_runtime_dependencies", lambda tier, **kwargs: None)
     settings = _settings(openai_server, api_key="wrong-key")
     lazy = api_server.create_app(upload_dir=str(tmp_path / "lazy"), vlm_config=settings)
     with TestClient(lazy) as client:
@@ -251,7 +253,7 @@ def hybrid_stub(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(window, "_process_text_and_formulas", retain_vlm_text)
     monkeypatch.setattr(window, "_apply_seal_ocr", lambda *args: None)
-    monkeypatch.setattr(api_server, "ensure_tier_runtime_dependencies", lambda tier: None)
+    monkeypatch.setattr(api_server, "ensure_tier_runtime_dependencies", lambda tier, **kwargs: None)
 
 
 def _pdf_input(tmp_path: Path) -> Path:

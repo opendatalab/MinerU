@@ -76,13 +76,14 @@ def test_torch_extra_includes_preflight_runtime_dependencies(monkeypatch: pytest
     pyproject = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
     torch_dependencies = pyproject["project"]["optional-dependencies"]["torch"]
     dependency_names = {Requirement(dependency).name for dependency in torch_dependencies}
+    dependency_names.update(Requirement(dependency).name for dependency in pyproject["project"]["dependencies"])
     module_to_distribution = {
         "torch": "torch",
         "torchvision": "torchvision",
         "transformers": "transformers",
     }
 
-    monkeypatch.setattr(mineru_config.model, "stack", "full")
+    monkeypatch.setattr(mineru_config.model, "small_backend", "torch")
 
     missing = [
         module_name
@@ -101,7 +102,8 @@ def test_full_extra_composes_torch_and_platform_engines() -> None:
 
     assert "advanced" not in extras
     assert "mineru[torch]" in extras["full"]
-    assert {"vllm", "lmdeploy", "mlx-vlm"} <= {Requirement(item).name for item in extras["full"]}
+    assert {"vllm", "lmdeploy"} <= {Requirement(item).name for item in extras["full"]}
+    assert "mlx-vlm" not in {Requirement(item).name for item in extras["full"]}
     assert not any(Requirement(item).name == "mineru" for item in extras["test"])
 
 

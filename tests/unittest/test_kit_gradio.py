@@ -281,7 +281,8 @@ def test_gradio_command_reports_optional_dependency_error(monkeypatch: pytest.Mo
     monkeypatch.setattr(gradio_command.importlib.util, "find_spec", fake_find_spec)
     result = runner.invoke(app, ["gradio"])
     assert result.exit_code == 1
-    assert "mineru[gradio]" in result.output
+    assert "pip install" in result.output
+    assert "mineru[gradio]" not in result.output
 
 
 def test_gradio_url_normalization_and_capability_dataclass() -> None:
