@@ -5,7 +5,8 @@ from __future__ import annotations
 from docvortex.postprocess.document import model_json_to_middle_json as build_middle_json
 from ...config import LLMAidedConfig
 from ...types import MiddleJson, ModelJson
-from .llm_aided import apply_llm_aided_postprocess
+from ...utils.async_utils import run_sync
+from .llm_aided import aio_apply_llm_aided_postprocess, apply_llm_aided_postprocess
 
 
 def model_json_to_middle_json(model_json: ModelJson, *, llm_aided_config: LLMAidedConfig) -> MiddleJson:
@@ -16,4 +17,12 @@ def model_json_to_middle_json(model_json: ModelJson, *, llm_aided_config: LLMAid
     return middle_json
 
 
-__all__ = ["model_json_to_middle_json"]
+async def aio_model_json_to_middle_json(model_json: ModelJson, *, llm_aided_config: LLMAidedConfig) -> MiddleJson:
+    """确定性处理在线程执行，可选 LLM 增强直接异步等待。"""
+    middle_json = await run_sync(build_middle_json, model_json)
+    if model_json.metadata.file_suffix == "pdf":
+        await aio_apply_llm_aided_postprocess(middle_json, llm_aided_config)
+    return middle_json
+
+
+__all__ = ["model_json_to_middle_json", "aio_model_json_to_middle_json"]

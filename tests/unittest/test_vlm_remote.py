@@ -104,8 +104,7 @@ def openai_server(monkeypatch: pytest.MonkeyPatch) -> Iterator[_OpenAIServer]:
     try:
         yield state
     finally:
-        for predictor in ModelSingleton._models.values():
-            predictor.client._client.close()
+        ModelSingleton().shutdown()
         server.shutdown()
         server.server_close()
         thread.join(timeout=2)
@@ -127,10 +126,13 @@ def test_remote_client_protocol_and_cache(openai_server: _OpenAIServer, monkeypa
     settings = _settings(openai_server, http_timeout=9, max_concurrency=3)
     predictor, backend = get_vlm_predictor(settings)
     assert backend == "http-client"
-    assert predictor.client.model_name == "test-model"
-    assert predictor.client.max_concurrency == 3
-    assert predictor.client._client.timeout.read == 9
-    assert predictor.client.predict(Image.new("RGB", (32, 32)), "Text Recognition:") == "Remote VLM text"
+    assert predictor._predictor.client.model_name == "test-model"
+    assert predictor._predictor.client.max_concurrency == 3
+    assert predictor._predictor.client._client.timeout.read == 9
+    assert (
+        predictor._call(lambda: predictor._predictor.client.aio_predict(Image.new("RGB", (32, 32)), "Text Recognition:"))
+        == "Remote VLM text"
+    )
     assert get_vlm_predictor(settings)[0] is predictor
     for patch in ({"model": "test-model"}, {"http_timeout": 10}, {"max_concurrency": 4}):
         assert get_vlm_predictor(VlmConfig.model_validate({**settings.model_dump(), **patch}))[0] is not predictor
@@ -157,20 +159,20 @@ def test_remote_models_and_auth_failures(openai_server: _OpenAIServer) -> None:
     with pytest.raises(Exception, match="not found"):
         get_vlm_predictor(_settings(openai_server, model="missing"))
     predictor, _ = get_vlm_predictor(_settings(openai_server, model="second"))
-    assert predictor.client.model_name == "second"
+    assert predictor._predictor.client.model_name == "second"
 
 
 def test_remote_optional_auth_and_concurrent_credentials(openai_server: _OpenAIServer) -> None:
     """允许无鉴权服务，并验证同一服务的不同客户端并发请求不会串用凭据。"""
     openai_server.api_key = ""
     predictor, _ = get_vlm_predictor(_settings(openai_server))
-    assert predictor.client.predict(None, "test") == "Remote VLM text"
+    assert predictor._call(lambda: predictor._predictor.client.aio_predict(None, "test")) == "Remote VLM text"
     assert all(request[1] == "" for request in openai_server.requests)
 
     def infer(key: str) -> str:
         """使用独立 Key 请求同一上游，返回真实客户端收到的文本。"""
         client, _ = get_vlm_predictor(_settings(openai_server, api_key=key))
-        return client.client.predict(None, key)
+        return client._call(lambda: client._predictor.client.aio_predict(None, key))
 
     with ThreadPoolExecutor(max_workers=2) as executor:
         assert list(executor.map(infer, ["first-key", "second-key"])) == ["Remote VLM text", "Remote VLM text"]
@@ -182,9 +184,12 @@ def test_remote_optional_auth_and_concurrent_credentials(openai_server: _OpenAIS
 def test_remote_timeout_propagates(openai_server: _OpenAIServer, monkeypatch: pytest.MonkeyPatch) -> None:
     """请求超时保留原始异常，不选择本地引擎重试。"""
     predictor, _ = get_vlm_predictor(_settings(openai_server, http_timeout=1))
-    monkeypatch.setattr(predictor.client._client, "post", MagicMock(side_effect=httpx.ReadTimeout("timed out")))
+    from unittest.mock import AsyncMock
+
+    http_client = predictor._call(predictor._predictor.client._aio_client)
+    monkeypatch.setattr(http_client, "post", AsyncMock(side_effect=httpx.ReadTimeout("timed out")))
     with pytest.raises(httpx.ReadTimeout, match="timed out"):
-        predictor.client.predict(None, "test")
+        predictor._call(lambda: predictor._predictor.client.aio_predict(None, "test"))
 
 
 def test_remote_preflight_and_preload(openai_server: _OpenAIServer, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -401,10 +406,38 @@ def test_remote_parse_inference_progress(
     )
     assert "Remote VLM text" in result.markdown()
     stderr = capsys.readouterr().err
-    description = "VLM Predict" if tier == "standard" else "Two Step Extraction"
+    description = "Extraction" if tier == "standard" else "Two Step Extraction"
     assert (description in stderr) is enabled
     if enabled:
         assert "100%" in stderr
     if tier == "advanced":
         assert "VLM Predict" not in stderr
     assert any(body is not None for _, _, body in openai_server.requests)
+
+
+@pytest.mark.parametrize("tier", ["standard", "advanced"])
+def test_native_http_parse_never_calls_sync_analysis_or_inference(
+    openai_server: _OpenAIServer,
+    hybrid_stub: None,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    tier: str,
+) -> None:
+    """真实 HTTP 与 PDF 链路中禁用同步入口，证明使用原生异步推理。"""
+    from mineru.backend import analyze
+    from mineru_vl_utils import MinerUClient
+
+    forbidden = MagicMock(side_effect=AssertionError("Sync inference must not execute"))
+    monkeypatch.setattr(analyze, "doc_analyze", forbidden)
+    monkeypatch.setattr(MinerUClient, "batch_extract_with_layout", forbidden)
+    monkeypatch.setattr(MinerUClient, "batch_two_step_extract", forbidden)
+    result = asyncio.run(
+        parse_async(
+            _pdf_input(tmp_path),
+            tier=tier,
+            ocr_mode="ocr",
+            vlm_config=_settings(openai_server),
+        )
+    )
+    assert "Remote VLM text" in result.markdown()
+    forbidden.assert_not_called()

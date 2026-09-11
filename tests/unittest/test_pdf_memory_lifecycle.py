@@ -141,9 +141,12 @@ def test_window_failure_closes_images_and_clears_owned_containers(monkeypatch: p
         with pytest.raises(ValueError, match="closed image"):
             image.getpixel((0, 0))
     for entry in caught.traceback:
-        if entry.name == "_process_pdf_window":
+        if entry.name == "_prepare_pdf_window":
             for name in ("images_list", "images_pil_list", "np_images", "table_items"):
                 assert entry.frame.f_locals[name] == []
+        if entry.name == "_process_pdf_window" and "state" in entry.frame.f_locals:
+            state = entry.frame.f_locals["state"]
+            assert state.images_list == state.images_pil_list == state.np_images == []
 
 
 @pytest.mark.parametrize("native", [False, True])
@@ -224,3 +227,129 @@ def test_allocator_failure_preserves_window_exception(monkeypatch: pytest.Monkey
     monkeypatch.setattr(memory, "_get_malloc_trim", lambda: Mock(side_effect=RuntimeError("allocator")))
     with pytest.raises(RuntimeError, match="^ocr$"):
         _run_windows(probe)
+
+
+@pytest.mark.parametrize("failure", ["", "render", "layout", "orientation", "ocr", "vlm", "crop"])
+def test_async_window_lifecycle_matches_sync(monkeypatch: pytest.MonkeyPatch, failure: str) -> None:
+    """异步窗口覆盖同样的阶段异常，推理完成后才关闭页图与数组容器。"""
+    import asyncio
+
+    probe = _window_probe(monkeypatch, failure)
+    synchronous = probe.predictor.batch_extract_with_layout
+
+    async def infer(**kwargs: Any) -> list[list[dict[str, Any]]]:
+        """验证异步推理等待期间页图仍有效。"""
+        await asyncio.sleep(0)
+        kwargs["images"][0].getpixel((0, 0))
+        return synchronous(**kwargs)
+
+    probe.predictor.aio_batch_extract_with_layout = infer
+    operation = window.aio_process_pdf_windows(
+        b"pdf",
+        SimpleNamespace(page_count=2),
+        effort="high",
+        parse_mode="ocr",
+        image_analysis=True,
+        hybrid_model=probe.model,
+        vlm_predictor=probe.predictor,
+    )
+    if failure:
+        with pytest.raises(RuntimeError, match=failure):
+            asyncio.run(operation)
+    else:
+        assert len(asyncio.run(operation)) == 2
+        assert probe.events == ["render", "trim", "render", "trim"]
+    for image in probe.images:
+        with pytest.raises(ValueError, match="closed image"):
+            image.getpixel((0, 0))
+
+
+def test_cancelled_window_preparation_still_closes_returned_images(monkeypatch: pytest.MonkeyPatch) -> None:
+    """取消准备线程时仍接收并清理它稍后交出的图片，不能丢失资源所有权。"""
+    import asyncio
+    import threading
+
+    probe = _window_probe(monkeypatch)
+    render = window.load_images_from_pdf_bytes_range
+    entered, release = threading.Event(), threading.Event()
+
+    def delayed_render(**kwargs: Any) -> list[dict[str, Any]]:
+        """模拟已开始而无法被取消的 PDF 渲染。"""
+        entered.set()
+        assert release.wait(3)
+        return render(**kwargs)
+
+    monkeypatch.setattr(window, "load_images_from_pdf_bytes_range", delayed_render)
+
+    async def run() -> None:
+        """等准备线程结束之后才能退出取消路径。"""
+        task = asyncio.create_task(
+            window.aio_process_pdf_windows(
+                b"pdf",
+                SimpleNamespace(page_count=1),
+                effort="high",
+                parse_mode="ocr",
+                image_analysis=True,
+                hybrid_model=probe.model,
+                vlm_predictor=probe.predictor,
+            )
+        )
+        assert await asyncio.to_thread(entered.wait, 2)
+        task.cancel()
+        await asyncio.sleep(0)
+        assert not task.done()
+        release.set()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    try:
+        asyncio.run(run())
+    finally:
+        release.set()
+    for image in probe.images:
+        with pytest.raises(ValueError, match="closed image"):
+            image.getpixel((0, 0))
+
+
+@pytest.mark.parametrize("pages, sizes", [(64, [64]), (65, [64, 1])])
+def test_async_window_keeps_64_page_boundary_and_order(
+    monkeypatch: pytest.MonkeyPatch,
+    pages: int,
+    sizes: list[int],
+) -> None:
+    """异步路径保持既有 64 页窗口边界，下一窗口只能在前一窗口清理后开始。"""
+    import asyncio
+
+    images = []
+    observed = []
+
+    def prepare(_bytes: bytes, _doc: Any, current: Any, **kwargs: Any) -> Any:
+        """生成有序小图，并检查前一窗口的图片已经关闭。"""
+        for previous in images:
+            with pytest.raises(ValueError, match="closed image"):
+                previous.getpixel((0, 0))
+        pictures = [Image.new("RGB", (1, 1), (index, 0, 0)) for index in range(current.start, current.end + 1)]
+        images.extend(pictures)
+        return window._WindowInputs(current, [{"img_pil": im} for im in pictures], [], pictures, [], [], [], [], [], None)
+
+    async def infer(**kwargs: Any) -> list[list[dict[str, Any]]]:
+        """从像素恢复页序，避免仅比较窗口个数。"""
+        observed.append(len(kwargs["images"]))
+        return [[{"page": image.getpixel((0, 0))[0]}] for image in kwargs["images"]]
+
+    monkeypatch.setenv("MINERU_PROCESSING_WINDOW_SIZE", "64")
+    monkeypatch.setattr(window, "_prepare_locked_window", prepare)
+    monkeypatch.setattr(window, "_finish_locked_window", lambda state, result, **kwargs: result)
+    result = asyncio.run(
+        window.aio_process_pdf_windows(
+            b"pdf",
+            SimpleNamespace(page_count=pages),
+            effort="high",
+            parse_mode="ocr",
+            image_analysis=True,
+            hybrid_model=SimpleNamespace(device="cpu"),
+            vlm_predictor=SimpleNamespace(aio_batch_extract_with_layout=infer),
+        )
+    )
+    assert observed == sizes
+    assert [page[0]["page"] for page in result] == list(range(pages))

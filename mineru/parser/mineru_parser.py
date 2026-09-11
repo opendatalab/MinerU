@@ -3,7 +3,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import time
 from dataclasses import dataclass
@@ -18,6 +17,7 @@ from ..config import VlmConfig, config
 from ..errors import InvalidRequestError
 from ..filetypes import IMAGE_EXTENSIONS, PAGE_RANGE_PARSE_EXTENSIONS
 from ..integrations.docvortex import read_source_properties
+from ..utils.async_utils import run_sync
 from ..types import FILE_SUFFIXES, FileSuffix, MiddleJson, ModelJson, PageInfo, Tier
 from .base import DocumentParser, ParseResult
 from .tier import effort_for_tier
@@ -97,7 +97,7 @@ class MinerUParser(DocumentParser):
         if not path.exists():
             raise FileNotFoundError(path)
 
-        prepared = await asyncio.to_thread(self._prepare_input, path, page_range, source_context)
+        prepared = await run_sync(self._prepare_input, path, page_range, source_context)
         middle_json, model_output = await self._arun_analysis(prepared)
         if prepared.file_suffix == "pdf":
             self._insert_broken_pages(

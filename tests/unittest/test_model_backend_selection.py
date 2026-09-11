@@ -117,7 +117,7 @@ def test_preflight_uses_supplied_vlm_config(monkeypatch: pytest.MonkeyPatch, eng
     monkeypatch.setattr(runtime.ModelSingleton, "get_model", factory)
     actual_predictor, backend = client.get_vlm_predictor(settings)
     assert actual_predictor is predictor
-    assert backend == selector.get_vlm_engine(engine)
+    assert backend == selector.get_vlm_engine(engine, is_async=True)
     assert factory.call_args.kwargs["backend"] == backend
     assert selector.get_vlm_engine(engine) == ("llama-cpp-engine" if engine == "llama-cpp" else f"{engine}-engine")
 
