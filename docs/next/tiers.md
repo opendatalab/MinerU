@@ -133,7 +133,16 @@ P0 不做基于启发式的自动提示或自动排队升级。watch 使用 `fla
 
 `advanced` 是当前公开 tier 中最高的本地/自部署档位。
 
-它适合极高质量要求、专家批处理或自部署服务。`advanced` 与 `standard` 的本地硬件要求相同，复用 `mineru[standard]` extra 和 Standard 模型集；区别是 `advanced` 会消耗更多推理算力，通常需要更长解析时间，并可能带来更高运行成本。准备本地 Advanced 环境时安装 Standard extra、使用 `mineru-kit models download --tier standard`，并以 Standard 启动 parse-server；解析请求再显式选择 `--tier advanced`。Advanced 不需要也不支持独立的服务启动配置。
+它适合极高质量要求、专家批处理或自部署服务。`advanced` 与 `standard` 复用同一套后端运行时依赖和 Standard 模型集；区别是 `advanced` 会消耗更多推理算力，通常需要更长解析时间，并可能带来更高运行成本。
+
+解析 tier 与安装 extra 是不同概念，不存在 `standard` 或 `advanced` extra。准备本地环境时，按实际后端组合安装依赖：
+
+- ONNX 小模型和 llama.cpp VLM 使用基础包 `mineru`；Apple Silicon 上基础包会自动包含 Torch 依赖。
+- Torch 小模型使用 `mineru[torch]`。
+- vLLM / LMDeploy 使用 `mineru[full]`，其中 Linux 安装 vLLM，Windows 安装 LMDeploy。
+- 显式选择 MLX 时，单独安装 `mlx-vlm>=0.7.0,<0.8.0`。
+
+使用 `mineru-kit models download --tier standard` 准备模型，并以 Standard 启动 parse-server；解析请求再显式选择 `--tier advanced`。Advanced 不需要也不支持独立的服务启动配置。
 
 ## 8. 隐私优先与质量优先
 

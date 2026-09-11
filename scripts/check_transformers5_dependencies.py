@@ -84,7 +84,8 @@ def check_backend_dependencies(selected: set[str], package: str, extra: str, pla
     """核验真实求解结果的平台后端组合，独立 MLX extra 不受 MinerU 默认策略影响。"""
     checks = []
     if package == "mineru":
-        required = {"gradio", "lxml", "onnxruntime", "mineru-llama-cpp"}
+        # lxml 由 DocVortex 管理，不属于 MinerU 平台后端依赖。
+        required = {"gradio", "onnxruntime", "mineru-llama-cpp"}
         if platform == "macos" or extra in {"torch", "full", "all"}:
             required.update({"torch", "torchvision", "transformers", "accelerate", "safetensors"})
         if extra in {"full", "all"} and platform in {"linux", "windows"}:

@@ -147,6 +147,58 @@ def test_explicit_missing_engine_reports_dependency(monkeypatch: pytest.MonkeyPa
         parser_tier.ensure_tier_runtime_dependencies("standard", vlm_config=VlmConfig(engine="vllm"))
 
 
+@pytest.mark.parametrize(
+    ("small_backend", "engine", "missing_module"),
+    [
+        ("torch", "llama-cpp", "torch"),
+        ("onnx", "vllm", "vllm"),
+        ("onnx", "lmdeploy", "lmdeploy"),
+        ("onnx", "mlx", "mlx"),
+        ("onnx", "mlx", "mlx_vlm"),
+        ("onnx", "llama-cpp", "onnxruntime"),
+        ("onnx", "llama-cpp", "mineru_llama_cpp"),
+    ],
+)
+def test_standard_dependency_errors_survive_startup_wrappers(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, small_backend: str, engine: str, missing_module: str
+) -> None:
+    """模拟实际后端缺失，验证 API Server 和 Doclib 原样保留安装提示与错误分类。"""
+    from mineru.doclib import server as doclib_server
+    from mineru.errors import InvalidRequestError
+    from mineru.parser import api_server
+
+    settings = VlmConfig(engine=engine)
+    monkeypatch.setattr(config.model, "small_backend", small_backend)
+    monkeypatch.setattr(config.model, "vlm", settings)
+    monkeypatch.setattr(parser_tier, "installed_distribution_name", lambda: "mineru")
+
+    def import_without_dependency(name: str) -> object:
+        """只令目标依赖缺失，避免加载模型和真实设备运行时。"""
+        if name == missing_module:
+            raise ModuleNotFoundError(f"No module named '{name}'", name=name)
+        return object()
+
+    monkeypatch.setattr(parser_tier.importlib, "import_module", import_without_dependency)
+    with pytest.raises(parser_tier.TierDependencyError) as dependency_error:
+        parser_tier.ensure_tier_runtime_dependencies("standard", vlm_config=settings)
+    message = str(dependency_error.value)
+    assert dependency_error.value.missing_modules == [missing_module]
+    assert "tier 'standard'" in message
+    assert "mineru[standard]" not in message
+    assert "mineru[torch]" in message
+    assert "mineru[full]" in message
+
+    with pytest.raises(api_server.ParseServerStartupError) as startup_error:
+        api_server.create_app(upload_dir=str(tmp_path), tier="standard", vlm_config=settings)
+    assert str(startup_error.value) == message
+
+    with pytest.raises(InvalidRequestError) as doclib_error:
+        doclib_server._ensure_managed_parse_server_tier_available("standard", "value")
+    assert doclib_error.value.code == "parse_server_dependency_missing"
+    assert doclib_error.value.message == message
+    assert doclib_error.value.param == "value"
+
+
 def _resolved_direct_dependencies(platform: str, machine: str, extra: str) -> set[str]:
     """按目标平台展开本项目的递归 extra，不使用宿主环境的标记值。"""
     project = tomllib.loads((Path(__file__).resolve().parents[2] / "pyproject.toml").read_text())["project"]
@@ -176,7 +228,9 @@ def _resolved_direct_dependencies(platform: str, machine: str, extra: str) -> se
 def test_package_markers(platform: str, machine: str, extra: str) -> None:
     """ARM 基础包引入完整 Torch 依赖，其他平台基础包保持 ONNX 与 llama。"""
     names = _resolved_direct_dependencies(platform, machine, extra)
-    assert {"gradio", "lxml", "onnxruntime", "mineru-llama-cpp"} <= names
+    assert {"docvortex", "gradio", "onnxruntime", "mineru-llama-cpp"} <= names
+    # lxml 由 DocVortex 声明，不在 MinerU 运行时 extras 中重复维护。
+    assert "lxml" not in names
     expected_torch = (platform, machine) == ("darwin", "arm64") or extra in {"torch", "full", "all"}
     assert ("torch" in names) == expected_torch
     assert ("transformers" in names) == expected_torch
@@ -191,6 +245,8 @@ def test_real_resolution_policy_keeps_explicit_utils_mlx_separate() -> None:
     """真实 wheel 检查允许 ARM 基础 Torch，但不把 utils 的显式 MLX 当成 MinerU 默认安装。"""
     names = _resolved_direct_dependencies("darwin", "arm64", "")
     assert check_backend_dependencies(names, "mineru", "base", "macos") == []
+    # 完整求解结果允许包含 DocVortex 带入的传递依赖。
+    assert check_backend_dependencies(names | {"lxml"}, "mineru", "base", "macos") == []
     assert check_backend_dependencies(names - {"torch"}, "mineru", "base", "macos")
     assert check_backend_dependencies(names | {"mlx-vlm"}, "mineru", "full", "macos")
     assert check_backend_dependencies({"torch", "mlx-vlm"}, "mineru-vl-utils", "mlx", "macos") == []
