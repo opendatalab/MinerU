@@ -576,6 +576,46 @@ def _select_table_owner(
     return max(candidates, key=lambda item: item[0])[1]
 
 
+def _build_table_external_mfr_inputs(
+    images_formula_list: list[list[dict[str, Any]]],
+    model_list: list[list[dict[str, Any]]],
+    page_sizes: list[tuple[int, int]],
+) -> list[list[dict[str, Any]]]:
+    """按最终版面筛选 High/Xhigh 表外行内公式，保留原始公式供 OCR 遮罩使用。"""
+    mfr_inputs: list[list[dict[str, Any]]] = []
+    for formulas, blocks, page_size in zip(images_formula_list, model_list, page_sizes, strict=True):
+        table_entries = []
+        for block in blocks:
+            if block.get("type") != BlockType.TABLE:
+                continue
+            bbox = block.get("bbox")
+            if not isinstance(bbox, (list, tuple)) or len(bbox) != 4:
+                continue
+            try:
+                coordinates = tuple(float(value) for value in bbox)
+            except (TypeError, ValueError):
+                continue
+            if not all(math.isfinite(value) for value in coordinates):
+                continue
+            if coordinates[2] <= coordinates[0] or coordinates[3] <= coordinates[1]:
+                continue
+            table_bbox = _bbox_to_pixel_bbox(coordinates, page_size)
+            if table_bbox is not None:
+                table_entries.append({"table_bbox": table_bbox})
+
+        page_inputs = []
+        for formula in formulas:
+            if formula.get("label") != "inline_formula":
+                continue
+            # MFD 框已经处于页面像素空间；表格 angle 不改变其页面上的归属范围。
+            formula_bbox = formula.get("bbox")
+            if formula_bbox is not None and _select_table_owner(formula_bbox, table_entries) is not None:
+                continue
+            page_inputs.append({**formula, "bbox": list(formula_bbox) if formula_bbox is not None else None})
+        mfr_inputs.append(page_inputs)
+    return mfr_inputs
+
+
 def _collect_medium_table_tasks(
     model_list: list[list[dict[str, Any]]],
     inline_formula_list: list[list[dict[str, Any]]],

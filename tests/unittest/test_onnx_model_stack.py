@@ -39,12 +39,22 @@ def test_unpublished_source_does_not_invalidate_existing_payload(
     tmp_path: Path,
     whole_repo: bool,
 ) -> None:
-    """未发布来源明确报错，不能删除现有完整标记或误下载旧仓库。"""
+    """用固定的单来源仓库验证拒绝不可用来源时，已有模型和完整标记均不受影响。"""
     monkeypatch.setattr(download.config.model, "base_dir", str(tmp_path))
-    repo = registry.MINERU_4_MODELS_ONNX
+    # 不依赖生产仓库是否已发布到 ModelScope，避免新增来源使负向测试失效。
+    repo = download.ModelRepo(
+        name="test-huggingface-only",
+        repos={"huggingface": "test/huggingface-only"},
+        paths={"ocr_det": "OCR/det"},
+    )
     repo.local_dir().mkdir()
     marker = repo.local_dir() / download.MODEL_COMPLETE_MARKER
     marker.touch()
+    repo.ocr_det.local_path().mkdir(parents=True)
+    resource_marker = repo.ocr_det.local_path() / download.MODEL_COMPLETE_MARKER
+    resource_marker.touch()
+    payload = repo.ocr_det.local_path() / "model.onnx"
+    payload.write_bytes(b"existing model payload")
     remote = Mock(side_effect=AssertionError("Unexpected network request"))
     monkeypatch.setattr(download, "hf_snapshot_download", remote)
     monkeypatch.setattr(download, "ms_snapshot_download", remote)
@@ -54,6 +64,8 @@ def test_unpublished_source_does_not_invalidate_existing_payload(
         else:
             download.download_model_files(repo, [repo.ocr_det], source="modelscope")
     assert marker.is_file()
+    assert resource_marker.is_file()
+    assert payload.read_bytes() == b"existing model payload"
     remote.assert_not_called()
 
 

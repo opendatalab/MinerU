@@ -48,6 +48,7 @@ from .tables import (
     _apply_medium_table_recognition,
     _apply_native_txt_table_priority,
     _apply_table_orientations,
+    _build_table_external_mfr_inputs,
     _fill_flash_ocr_table_contents,
     _restore_native_high_table_blocks,
     _split_native_high_table_blocks,
@@ -214,14 +215,22 @@ def _process_text_and_formulas(
     images_formula_list = mfd_res
     interline_enable = effort == "medium"
 
-    # medium 识别行内和行间公式；high/xhigh 的 txt 路径只识别行内公式。
-    if mfr_enable and any(mfd_res):
-        images_formula_list = local_model_context.mfr_model.batch_predict(
-            mfd_res,
-            np_images,
-            batch_size=BATCH_RATIO * MFR_BASE_BATCH_SIZE,
-            interline_enable=interline_enable,
+    # medium 保留未被原生表格消费的公式；high/xhigh 只识别最终表格外的行内公式。
+    if mfr_enable:
+        mfr_inputs = (
+            mfd_res
+            if effort == "medium"
+            else _build_table_external_mfr_inputs(mfd_res, model_list, [image.size for image in images_pil_list])
         )
+        # 全部被过滤时保持逐页空结果，不能让原始表内公式重新进入正文 sidecar。
+        images_formula_list = [[] for _ in mfd_res]
+        if any(mfr_inputs):
+            images_formula_list = local_model_context.mfr_model.batch_predict(
+                mfr_inputs,
+                np_images,
+                batch_size=BATCH_RATIO * MFR_BASE_BATCH_SIZE,
+                interline_enable=interline_enable,
+            )
 
     inline_formula_list, display_formula_list = _split_formula_results(images_formula_list)
     if effort == "medium":
