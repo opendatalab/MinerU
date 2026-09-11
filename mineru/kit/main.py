@@ -8,11 +8,11 @@ from typer.core import TyperGroup
 
 from ..cli.version_command import show_version, version_cmd
 from ..utils.stdio import configure_standard_streams
-from .commands import api_server, gradio, models, parse, router, vlm_server
+from .commands import api_server, models, parse, router, vlm_server, webui
 
 TOP_LEVEL_COMMAND_ORDER = [
     "parse",
-    "gradio",
+    "webui",
     "api-server",
     "vlm-server",
     "router",
@@ -51,7 +51,7 @@ def root(
 
 app.add_typer(models.app, name="models")
 app.command("parse")(parse.parse_cmd)
-app.command("gradio")(gradio.gradio_cmd)
+app.command("webui")(webui.webui_cmd)
 app.command("api-server")(api_server.api_server_cmd)
 app.command("vlm-server", context_settings=vlm_server.FORWARD_CONTEXT_SETTINGS)(vlm_server.vlm_server_cmd)
 app.command("router")(router.router_cmd)

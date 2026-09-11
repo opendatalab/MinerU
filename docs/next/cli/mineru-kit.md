@@ -23,7 +23,7 @@
 |--------|------|------|
 | `mineru-kit models` | 下载、查看和校验本地模型配置 | [mineru-kit models](mineru-kit-models.md) |
 | `mineru-kit parse` | 无状态文件/目录批处理解析 | [mineru-kit parse](mineru-kit-parse.md) |
-| `mineru-kit gradio` | 基于 V1 API 的本地文档解析 Web UI | [mineru-kit gradio](mineru-kit-gradio.md) |
+| `mineru-kit webui` | 基于 V1 API 的本地文档解析 Web UI | [mineru-kit webui](mineru-kit-webui.md) |
 | `mineru-kit api-server` | 启动兼容统一 API 的本地解析服务 | [mineru-kit api-server](mineru-kit-api-server.md) |
 | `mineru-kit vlm-server` | 本地 VLM 服务，兼容 OpenAI Chat Completions 协议 | [mineru-kit vlm-server](mineru-kit-vlm-server.md) |
 | `mineru-kit router` | 启动 V1 路由服务，转发到已有 upstream 或管理本地 worker | 仅暴露 `/v1/*` |
@@ -64,7 +64,7 @@ mineru-api --host 127.0.0.1 --port 8000 --tier standard
 
 `mineru-kit` 参数暂不划分 `stable` / `experimental` 等稳定性等级。第一阶段保持参数体系简单，后续只有在兼容性压力明确出现时再引入分级。
 
-`mineru-kit gradio` 是无状态的 V1 API 客户端界面。未指定 `--api-url` 时，它会自动托管一个 loopback `mineru-kit api-server`；指定 URL 时只连接已有的 V1 服务，不会静默改连官方远程服务。`mineru-gradio` 保留为同一新版命令的兼容别名，不再提供旧 HTTP 协议或旧参数。
+`mineru-kit webui` 是无状态的 V1 API 客户端界面。未指定 `--api-url` 时，它会自动托管一个 loopback `mineru-kit api-server`；指定 URL 时只连接已有的 V1 服务，不会静默改连官方远程服务。`mineru-webui` 提供为同一新版命令的独立入口，不再提供旧 HTTP 协议或旧参数。
 
 当前 `mineru-kit parse` 已确定：
 

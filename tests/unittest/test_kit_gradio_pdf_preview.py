@@ -17,7 +17,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from gradio.data_classes import FileData
 
-from mineru.kit.commands import gradio as gradio_command
+from mineru.kit.commands import webui as webui_command
 from mineru.kit.gradio.app import build_gradio_app
 from mineru.kit.gradio.client import V1ServerCapabilities
 from mineru.kit.gradio.pdf_preview import register_pdf_preview_resources
@@ -109,11 +109,11 @@ def test_pdfjs_manifest_matches_bundled_files() -> None:
 
 
 @pytest.mark.parametrize("version", ["5.49.1", "5.50.0", "6.7.0", "7.0.0"])
-def test_gradio_command_rejects_unsupported_version(monkeypatch: pytest.MonkeyPatch, version: str) -> None:
+def test_webui_command_rejects_unsupported_version(monkeypatch: pytest.MonkeyPatch, version: str) -> None:
     """即使用户跳过安装器检查，启动时仍明确拒绝旧版或未支持的主版本。"""
-    monkeypatch.setattr(gradio_command, "version", Mock(return_value=version))
+    monkeypatch.setattr(webui_command, "version", Mock(return_value=version))
     with pytest.raises(typer.Exit) as error:
-        gradio_command._require_gradio_dependencies()
+        webui_command._require_gradio_dependencies()
     assert getattr(error.value, "exit_code", None) == 1
 
 

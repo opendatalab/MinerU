@@ -18,7 +18,7 @@ from typer.testing import CliRunner
 import mineru.kit.main as kit_main
 from mineru.cli.main import app as mineru_app
 from mineru.cli.version_command import version_cmd
-from mineru.kit.commands import api_server, gradio, models, parse, router, vlm_server
+from mineru.kit.commands import api_server, models, parse, router, vlm_server, webui
 from mineru.kit.main import app
 from mineru.kit.vlm_server import mlx_vlm_server
 from mineru.parser.base import ParseResult
@@ -41,22 +41,23 @@ def test_kit_main_configures_standard_streams_before_running_app(monkeypatch: py
     assert calls == ["configure", "app"]
 
 
-def test_gradio_compatibility_main_runs_modern_command(monkeypatch: pytest.MonkeyPatch) -> None:
-    """校验独立兼容入口复用新版 Gradio 命令且先配置标准流。"""
+def test_webui_main_runs_modern_command(monkeypatch: pytest.MonkeyPatch) -> None:
+    """校验独立入口复用 Web UI 命令且先配置标准流。"""
     calls: list[object] = []
-    monkeypatch.setattr(gradio, "configure_standard_streams", lambda: calls.append("configure"))
-    monkeypatch.setattr(gradio.typer, "run", lambda command: calls.append(command))
+    monkeypatch.setattr(webui, "configure_standard_streams", lambda: calls.append("configure"))
+    monkeypatch.setattr(webui.typer, "run", lambda command: calls.append(command))
 
-    gradio.main()
+    webui.main()
 
-    assert calls == ["configure", gradio.gradio_cmd]
+    assert calls == ["configure", webui.webui_cmd]
 
 
-def test_gradio_console_script_targets_modern_command() -> None:
-    """校验兼容命令不再通过已删除的旧 CLI 包启动。"""
+def test_webui_console_script_targets_modern_command() -> None:
+    """校验独立 Web UI 入口及旧命令移除。"""
     project = tomllib.loads((Path(__file__).resolve().parents[2] / "pyproject.toml").read_text(encoding="utf-8"))
 
-    assert project["project"]["scripts"]["mineru-gradio"] == "mineru.kit.commands.gradio:main"
+    assert "mineru-gradio" not in project["project"]["scripts"]
+    assert project["project"]["scripts"]["mineru-webui"] == "mineru.kit.commands.webui:main"
 
 
 def _invoke_standalone_command(
@@ -130,7 +131,7 @@ def test_standalone_vlm_main_configures_streams_and_forwards_extra_args(monkeypa
 @pytest.mark.parametrize(
     ("script", "entrypoint", "expected_options"),
     [
-        ("mineru-gradio", gradio.main, ("--api-url", "--api-server-tier")),
+        ("mineru-webui", webui.main, ("--api-url", "--api-server-tier")),
         ("mineru-openai-server", vlm_server.main, ("--engine",)),
         (
             "mineru-models-download",
@@ -325,7 +326,7 @@ def test_top_level_commands_register_implementation_callbacks_directly() -> None
     callbacks = {command.name: command.callback for command in app.registered_commands}
 
     assert callbacks["parse"] is parse.parse_cmd
-    assert callbacks["gradio"] is gradio.gradio_cmd
+    assert callbacks["webui"] is webui.webui_cmd
     assert callbacks["api-server"] is api_server.api_server_cmd
     assert callbacks["vlm-server"] is vlm_server.vlm_server_cmd
     assert callbacks["router"] is router.router_cmd
@@ -336,7 +337,7 @@ def test_top_level_commands_register_implementation_callbacks_directly() -> None
     ("command", "expected_options"),
     [
         ("parse", ("--output", "--format", "--tier")),
-        ("gradio", ("--api-url", "--server-name", "--api-server-tier")),
+        ("webui", ("--api-url", "--server-name", "--api-server-tier")),
         ("api-server", ("--host", "--port", "--tier", "--no-flash", "--no-advanced", "--preload-models")),
         ("vlm-server", ("--engine",)),
         ("router", ("--host", "--upstream-url", "--local-gpus")),
@@ -365,7 +366,7 @@ def test_kit_root_commands_keep_product_order() -> None:
 
     assert command.list_commands(None) == [
         "parse",
-        "gradio",
+        "webui",
         "api-server",
         "vlm-server",
         "router",
@@ -583,7 +584,7 @@ def test_api_server_rejects_backend_and_effort_options() -> None:
 
 @pytest.mark.parametrize(
     ("command", "option"),
-    [("api-server", "--ocr-mode"), ("gradio", "--ocr-mode"), ("gradio", "--api-server-ocr-mode")],
+    [("api-server", "--ocr-mode"), ("webui", "--ocr-mode"), ("webui", "--api-server-ocr-mode")],
 )
 def test_server_commands_reject_startup_ocr_configuration(command: str, option: str) -> None:
     """服务启动命令不再接受或展示 OCR 配置，单次解析命令继续提供该参数。"""

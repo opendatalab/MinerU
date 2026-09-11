@@ -907,7 +907,7 @@ def test_compose_router_healthcheck_uses_v1_path() -> None:
     """验证 Router Compose profile 只探测正式 `/v1/health`。"""
     repo_root = Path(__file__).resolve().parents[2]
     compose_text = (repo_root / "docker/compose.yaml").read_text(encoding="utf-8")
-    router_section = compose_text.split("  mineru-router:", 1)[1].split("  mineru-gradio:", 1)[0]
+    router_section = compose_text.split("  mineru-router:", 1)[1].split("  mineru-webui:", 1)[0]
 
     assert "http://localhost:8002/v1/health" in router_section
     assert "http://localhost:8002/health" not in router_section

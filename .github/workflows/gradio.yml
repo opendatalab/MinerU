@@ -5,7 +5,7 @@ on:
   pull_request:
     paths:
       - "mineru/kit/gradio/**"
-      - "mineru/kit/commands/gradio.py"
+      - "mineru/kit/commands/webui.py"
       - "mineru/resources/gradio*"
       - "mineru/resources/pdf_preview/**"
       - "tests/unittest/test_kit_gradio*"

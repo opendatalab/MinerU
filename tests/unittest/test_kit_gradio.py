@@ -24,7 +24,7 @@ from typer.testing import CliRunner
 
 from mineru.filetypes import FLASH_ONLY_PARSE_EXTENSIONS, IMAGE_EXTENSIONS, PARSEABLE_EXTENSIONS
 from mineru.integrations.docvortex import build_metadata
-from mineru.kit.commands import gradio as gradio_command
+from mineru.kit.commands import webui as webui_command
 from mineru.kit.gradio import app as gradio_app
 from mineru.kit.gradio import client as gradio_client
 from mineru.kit.gradio.app import build_gradio_app
@@ -171,13 +171,17 @@ def _httpx_proxy_for_test_client(
     )
 
 
-def test_gradio_command_is_registered_and_help_is_available() -> None:
-    """验证 mineru-kit 根命令注册 Gradio 且帮助不启动服务。"""
+def test_webui_command_is_registered_and_help_is_available() -> None:
+    """验证 mineru-kit 根命令注册 Web UI 且帮助不启动服务。"""
     result = runner.invoke(app, ["--help"])
-    gradio_result = runner.invoke(app, ["gradio", "--help"])
+    gradio_result = runner.invoke(app, ["webui", "--help"])
     assert result.exit_code == 0
     assert gradio_result.exit_code == 0
-    assert "gradio" in result.output
+    assert "webui" in result.output
+    assert "gradio" not in result.output
+    removed_result = runner.invoke(app, ["gradio"])
+    assert removed_result.exit_code == 2
+    assert "No such command" in removed_result.output
     # CI 强制彩色输出时，Rich 会在参数名内部插入 ANSI 样式码。
     help_text = unstyle(gradio_result.output)
     assert "--api-url" in help_text
@@ -189,7 +193,7 @@ def test_gradio_command_is_registered_and_help_is_available() -> None:
 def test_gradio_managed_tier_disable_option_names_are_removed() -> None:
     """验证禁用档位的参数完整删除，不仅从帮助中隐藏。"""
     root_command = get_command(app)
-    command = root_command.get_command(None, "gradio")
+    command = root_command.get_command(None, "webui")
     assert command is not None
     options = {parameter.name: tuple(parameter.opts) for parameter in command.params}
 
@@ -217,37 +221,37 @@ def test_gradio_rejects_removed_tier_disable_options(
     monkeypatch.setattr(gradio_app, "launch_gradio", launch)
 
     if standalone:
-        monkeypatch.setattr(sys, "argv", ["mineru-gradio", flag])
+        monkeypatch.setattr(sys, "argv", ["mineru-webui", flag])
         with pytest.raises(SystemExit) as error:
-            gradio_command.main()
+            webui_command.main()
         assert error.value.code == 2
     else:
-        result = runner.invoke(app, ["gradio", flag])
+        result = runner.invoke(app, ["webui", flag])
         assert result.exit_code == 2, result.output
         assert "No such option" in result.output
     launch.assert_not_called()
 
 
 @pytest.mark.parametrize(("port_args", "expected_port"), [([], None), (["--server-port", "7861"], 7861)])
-def test_gradio_command_preserves_automatic_or_explicit_port(
+def test_webui_command_preserves_automatic_or_explicit_port(
     monkeypatch: pytest.MonkeyPatch, port_args: list[str], expected_port: int | None
 ) -> None:
     """验证省略端口时保留 Gradio 原生自动选择，显式端口则优先于环境变量。"""
     launch = Mock()
     monkeypatch.setenv("GRADIO_SERVER_PORT", "17860")
     monkeypatch.setattr(gradio_app, "launch_gradio", launch)
-    result = runner.invoke(app, ["gradio", *port_args])
+    result = runner.invoke(app, ["webui", *port_args])
     assert result.exit_code == 0, result.output
     launch.assert_called_once()
     assert launch.call_args.kwargs["server_port"] == expected_port
 
 
 @pytest.mark.parametrize("port", [0, -1, 65536])
-def test_gradio_command_rejects_invalid_explicit_port(monkeypatch: pytest.MonkeyPatch, port: int) -> None:
+def test_webui_command_rejects_invalid_explicit_port(monkeypatch: pytest.MonkeyPatch, port: int) -> None:
     """验证显式端口仍遵循 TCP 范围约束，并在启动服务前报错。"""
     launch = Mock()
     monkeypatch.setattr(gradio_app, "launch_gradio", launch)
-    result = runner.invoke(app, ["gradio", "--server-port", str(port)])
+    result = runner.invoke(app, ["webui", "--server-port", str(port)])
     assert result.exit_code == 1
     assert "server_port must be between 1 and 65535" in result.output
     launch.assert_not_called()
@@ -268,9 +272,9 @@ def test_importing_kit_cli_does_not_import_optional_gradio_runtime() -> None:
     assert completed.returncode == 0, completed.stderr
 
 
-def test_gradio_command_reports_optional_dependency_error(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_webui_command_reports_optional_dependency_error(monkeypatch: pytest.MonkeyPatch) -> None:
     """验证未安装 Gradio 时命令给出可执行安装建议。"""
-    original_find_spec = gradio_command.importlib.util.find_spec
+    original_find_spec = webui_command.importlib.util.find_spec
 
     def fake_find_spec(name: str) -> Any:
         """只模拟 Gradio 相关模块缺失，保留其他模块探测。"""
@@ -278,8 +282,8 @@ def test_gradio_command_reports_optional_dependency_error(monkeypatch: pytest.Mo
             return None
         return original_find_spec(name)
 
-    monkeypatch.setattr(gradio_command.importlib.util, "find_spec", fake_find_spec)
-    result = runner.invoke(app, ["gradio"])
+    monkeypatch.setattr(webui_command.importlib.util, "find_spec", fake_find_spec)
+    result = runner.invoke(app, ["webui"])
     assert result.exit_code == 1
     assert "pip install" in result.output
     assert "mineru[gradio]" not in result.output

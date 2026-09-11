@@ -43,11 +43,11 @@ def test_command_forwards_max_pages(monkeypatch: pytest.MonkeyPatch, args: list[
     """验证省略或显式配置上限时的启动参数透传。"""
     launch = Mock()
     monkeypatch.setattr(gradio_app, "launch_gradio", launch)
-    result = CliRunner().invoke(app, ["gradio", *args])
+    result = CliRunner().invoke(app, ["webui", *args])
     assert result.exit_code == 0, result.output
     assert launch.call_args.kwargs["max_pages"] == expected
     # 比较可见文本，避免终端颜色设置影响参数名断言。
-    assert "--max-pages" in unstyle(CliRunner().invoke(app, ["gradio", "--help"]).output)
+    assert "--max-pages" in unstyle(CliRunner().invoke(app, ["webui", "--help"]).output)
 
 
 @pytest.mark.parametrize("value", ["0", "-1", "1.5", "invalid"])
@@ -55,7 +55,7 @@ def test_command_rejects_invalid_max_pages(monkeypatch: pytest.MonkeyPatch, valu
     """验证非正整数配置在启动任何服务前报错。"""
     launch = Mock()
     monkeypatch.setattr(gradio_app, "launch_gradio", launch)
-    result = CliRunner().invoke(app, ["gradio", "--max-pages", value])
+    result = CliRunner().invoke(app, ["webui", "--max-pages", value])
     assert result.exit_code != 0
     launch.assert_not_called()
 
