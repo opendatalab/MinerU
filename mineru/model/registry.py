@@ -17,6 +17,7 @@ MINERU_4_MODELS_TORCH = ModelRepo(
     download_mode="required_paths",
     repos={
         "huggingface": "opendatalab/MinerU-4_models_torch",
+        "modelscope": "OpenDataLab/MinerU-4_models_torch",
     },
     paths={
         "pp_doclayout_v2": "Layout/PP-DocLayoutV2",
@@ -41,7 +42,10 @@ MINERU_2_5_PRO_2605_1_2B = ModelRepo(
 MINERU_4_MODELS_ONNX = ModelRepo(
     name="MinerU-4_models_onnx",
     download_mode="required_paths",
-    repos={"huggingface": "opendatalab/MinerU-4_models_onnx"},
+    repos={
+        "huggingface": "opendatalab/MinerU-4_models_onnx",
+        "modelscope": "OpenDataLab/MinerU-4_models_onnx",
+    },
     paths={
         "pp_doclayout_v2": "Layout/PP-DocLayoutV2/inference.onnx",
         "pp_doclayout_v2_config": "Layout/PP-DocLayoutV2/inference.yml",
