@@ -43,10 +43,30 @@ async def _apply_llm_aided_postprocess(
             tasks.append(apply_llm_title_leveling(middle_json.pages, resolved_client))
         if table_enabled:
             tasks.append(apply_llm_cross_page_cell_merge(middle_json.pages, resolved_client))
-        await asyncio.gather(*tasks)
+        running = [asyncio.create_task(task) for task in tasks]
+        combined = asyncio.gather(*running)
+        try:
+            await asyncio.shield(combined)
+        except BaseException:
+            for task in running:
+                if not task.done():
+                    task.cancel()
+            from ...utils.async_utils import drain_future
+
+            await drain_future(asyncio.gather(*running, return_exceptions=True))
+            if not combined.cancelled():
+                combined.exception()
+            raise
     finally:
         if client is None:
-            await resolved_client.close()
+            from ...utils.async_utils import drain_future
+
+            closing = asyncio.create_task(resolved_client.close())
+            try:
+                await asyncio.shield(closing)
+            except asyncio.CancelledError:
+                await drain_future(closing)
+                raise
 
 
 def apply_llm_aided_postprocess(
@@ -71,4 +91,22 @@ def apply_llm_aided_postprocess(
     )
 
 
-__all__ = ["apply_llm_aided_postprocess"]
+async def aio_apply_llm_aided_postprocess(
+    middle_json: MiddleJson,
+    config: LLMAidedConfig,
+    *,
+    client: LLMAidedClient | None = None,
+) -> None:
+    """异步入口复用功能选择与增强协程，不再创建临时事件循环。"""
+    title_enabled, table_enabled = _resolve_enabled_features(config, middle_json)
+    if title_enabled or table_enabled:
+        await _apply_llm_aided_postprocess(
+            middle_json,
+            config,
+            title_enabled=title_enabled,
+            table_enabled=table_enabled,
+            client=client,
+        )
+
+
+__all__ = ["apply_llm_aided_postprocess", "aio_apply_llm_aided_postprocess"]

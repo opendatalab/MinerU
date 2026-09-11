@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from typing import NotRequired, TypedDict
+# Python 3.10 的 typing 尚未提供 NotRequired，统一使用兼容实现。
+from typing_extensions import NotRequired, TypedDict
 
 from ..types import Tier
 from .types import ParseStatus, RuleType, ScanKind, ScanSource, FileStatus, ScanStatus, WatchStatus

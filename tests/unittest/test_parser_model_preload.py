@@ -63,7 +63,7 @@ def test_preload_standard_models_initializes_platform_engine_and_local_models(mo
     fake_runtime = types.ModuleType("mineru.model.vlm.runtime")
 
     class _ModelSingleton:
-        def get_model(self, backend: str, model_path: str | None, server_url: str | None) -> object:
+        def get_model(self, backend: str, model_path: str | None, server_url: str | None, **kwargs: object) -> object:
             calls.append(("vlm", backend, model_path, server_url))
             return object()
 
@@ -91,6 +91,7 @@ def test_local_preload_and_parse_reuse_llama_predictor(monkeypatch: pytest.Monke
     monkeypatch.setitem(sys.modules, "mineru_llama_cpp", engine_module)
     monkeypatch.setattr(runtime.ModelSingleton, "_models", {})
     monkeypatch.setattr(runtime, "MinerUClient", predictor_factory)
+
     def ensure_gguf(self: object) -> Path:
         """llama.cpp 初始化只能下载 GGUF，不能先下载完整 VLM。"""
         assert self is registry.MINERU_2_5_PRO_2605_1_2B_GGUF
@@ -107,7 +108,7 @@ def test_local_preload_and_parse_reuse_llama_predictor(monkeypatch: pytest.Monke
     assert engine == "llama-cpp-engine"
     predictor_factory.assert_called_once()
     engine_factory.assert_called_once()
-    assert all(call.kwargs == {"is_async": False} for call in engine_selector.call_args_list)
+    assert all(call.kwargs == {"is_async": True} for call in engine_selector.call_args_list)
 
 
 @pytest.mark.parametrize(

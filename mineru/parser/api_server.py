@@ -52,6 +52,8 @@ from ..filetypes import (
 )
 from ..model.ocr.language import PUBLIC_OCR_LANGUAGES, validate_public_ocr_lang
 from ..types import SERVER_TIERS, TIERS_BY_SERVER_TIER, DeploymentTier, PageInfo, ServerTier, Tier, select_default_quality_tier
+from ..utils.async_utils import drain_future, run_sync
+from ..model.vlm.async_runtime import RuntimeOwner, runtime_owner
 from ..utils.stdio import configure_standard_streams
 from ..version import __version__
 from . import parse_async
@@ -1091,6 +1093,59 @@ class JobStore:
         self._jobs: dict[str, _JobRecord] = {}
         self._semaphore = asyncio.Semaphore(max(1, concurrency))
         self._started_at = JobStore._now()
+        self._tasks: dict[str, asyncio.Task[None]] = {}
+        self._closing = False
+        self.runtime_owner = RuntimeOwner()
+
+    def start_task(self, rec: _JobRecord, operation: Callable[[], Awaitable[None]]) -> None:
+        """保存真实后台任务及所属应用租约，排队取消也不会开始解析。"""
+        if self._closing:
+            _raise_api_error(503, error_type="engine_error", code="server_shutting_down", message="Server is shutting down")
+
+        async def run_owned() -> None:
+            """在整个任务期间传播应用租约，并直到清理完成才释放 job 名额。"""
+            token = runtime_owner.set(self.runtime_owner)
+            try:
+                async with self._semaphore:
+                    if rec.status != "canceled":
+                        await operation()
+            except asyncio.CancelledError:
+                rec.status = "canceled"
+                raise
+            finally:
+                runtime_owner.reset(token)
+
+        def finished(task: asyncio.Task[None]) -> None:
+            """回收句柄并读取异常，覆盖任务首次执行前就被取消的路径。"""
+            self._tasks.pop(rec.id, None)
+            rec.finished_at = self._now()
+            if not task.cancelled():
+                error = task.exception()
+                if error is not None:
+                    logger.error("Parse job task failed: %s", rec.id, exc_info=(type(error), error, error.__traceback__))
+                    if rec.status != "canceled":
+                        rec.status = "failed"
+
+        task = asyncio.create_task(run_owned(), name=f"mineru-job-{rec.id}")
+        self._tasks[rec.id] = task
+        task.add_done_callback(finished)
+
+    async def shutdown(self) -> None:
+        """停止接单并等待所有任务清理，再释放应用持有的推理运行时。"""
+        self._closing = True
+        tasks = list(self._tasks.items())
+        for job_id, task in tasks:
+            if not task.done():
+                rec = self._jobs[job_id]
+                if rec.status != "canceled":
+                    rec.status = "canceled"
+                    task.cancel()
+        try:
+            await drain_future(asyncio.gather(*(task for _, task in tasks), return_exceptions=True))
+        finally:
+            from ..model.vlm.runtime import ModelSingleton
+
+            await run_sync(ModelSingleton().release_owner, self.runtime_owner)
 
     @staticmethod
     def _new_job_id() -> str:
@@ -1151,6 +1206,9 @@ class JobStore:
                 message=f"Job is {rec.status}",
             )
         rec.status = "canceled"
+        task = self._tasks.get(job_id)
+        if task is not None and not task.done():
+            task.cancel()
         return rec
 
     def list_jobs(
@@ -1342,6 +1400,8 @@ async def _run_job(
     vlm_config: VlmConfig | None = None,
 ) -> None:
     """执行解析任务，使用所属服务的 VLM 配置并记录每个文件的成功或失败。"""
+    if rec.status == "canceled":
+        return
     rec.status = "running"
     rec.started_at = JobStore._now()
 
@@ -1398,6 +1458,8 @@ async def _run_job(
                     vlm_config=vlm_config,
                 )
 
+                if rec.status == "canceled":
+                    break
                 # collect outputs
                 out_formats = set(rec.output_formats)
                 output_files = OutputFiles()
@@ -1410,7 +1472,7 @@ async def _run_job(
                     if fmt not in out_formats:
                         continue
                     if fmt == "markdown":
-                        md = result.markdown()
+                        md = await run_sync(result.markdown)
                         content_bytes = _text_utf8_bytes(md or "")
                         sha = hashlib.sha256(content_bytes).hexdigest()
                         file_store.store_blob(content_bytes, sha256hex=sha)
@@ -1423,7 +1485,7 @@ async def _run_job(
                         fid = file_store.create_file_for_output(f"{fr.name}.middle.json", mj, sha256hex=sha)
                         output_files.middle_json = OutputFileRef(file_id=fid, bytes=len(mj))
                     elif fmt == "structured_content":
-                        cl2 = _json_utf8_bytes(result.structured_content())
+                        cl2 = _json_utf8_bytes(await run_sync(result.structured_content))
                         sha = hashlib.sha256(cl2).hexdigest()
                         file_store.store_blob(cl2, sha256hex=sha)
                         fid = file_store.create_file_for_output(f"{fr.name}.structured_content.json", cl2, sha256hex=sha)
@@ -1431,7 +1493,7 @@ async def _run_job(
 
                 # zip
                 if "zip" in out_formats:
-                    zip_bytes = _build_self_contained_zip_output(result)
+                    zip_bytes = await run_sync(_build_self_contained_zip_output, result)
                     zip_sha = hashlib.sha256(zip_bytes).hexdigest()
                     file_store.store_blob(zip_bytes, sha256hex=zip_sha)
                     zip_fid = file_store.create_file_for_output(f"{fr.name}.zip", zip_bytes, sha256hex=zip_sha)
@@ -1450,6 +1512,8 @@ async def _run_job(
                 rec.progress.completed += 1
 
             except Exception as exc:
+                if rec.status == "canceled":
+                    break
                 logger.exception(
                     "Parse-server job file failed: job_id=%s file=%r tier=%s page_range=%r",
                     rec.id,
@@ -1847,6 +1911,8 @@ async def create_job(
         allow_http_source=request.app.state.allow_http_source,
     )
 
+    if job_store._closing:
+        _raise_api_error(503, error_type="engine_error", code="server_shutting_down", message="Server is shutting down")
     rec = job_store.create(body, file_store)
     url_timeout_val: int = request.app.state.url_timeout
     allow_local_source_val: bool = request.app.state.allow_local_source
@@ -1856,23 +1922,22 @@ async def create_job(
     image_analysis_val: bool = request.app.state.image_analysis
     vlm_config_val: VlmConfig = request.app.state.vlm_config
 
-    # async — fire and forget
     async def _bg_run() -> None:
-        async with job_store._semaphore:
-            await _run_job(
-                rec,
-                body,
-                file_store,
-                image_analysis=image_analysis_val,
-                url_timeout=url_timeout_val,
-                allow_local_source=allow_local_source_val,
-                max_inline_bytes=max_inline_bytes_val,
-                allow_http_source=allow_http_source_val,
-                flash_enabled=flash_enabled_val,
-                vlm_config=vlm_config_val,
-            )
+        """运行任务内容，排队和租约由 JobStore 统一管理。"""
+        await _run_job(
+            rec,
+            body,
+            file_store,
+            image_analysis=image_analysis_val,
+            url_timeout=url_timeout_val,
+            allow_local_source=allow_local_source_val,
+            max_inline_bytes=max_inline_bytes_val,
+            allow_http_source=allow_http_source_val,
+            flash_enabled=flash_enabled_val,
+            vlm_config=vlm_config_val,
+        )
 
-    asyncio.create_task(_bg_run())
+    job_store.start_task(rec, _bg_run)
     return JSONResponse(content=job_store.build_response(rec).model_dump(by_alias=True), status_code=202)
 
 
@@ -2226,31 +2291,39 @@ def create_app(
         application.state.preload_models = preload_models
         application.state.vlm_config = vlm_config
         application.state.model_preload_error = None
-        if _preload_tier is not None:
-            logger.info("Initializing VLM client and local models for startup tier %s", _preload_tier)
+        job_store: JobStore = application.state.job_store
+        token = runtime_owner.set(job_store.runtime_owner)
+        try:
+            if _preload_tier is not None:
+                logger.info("Initializing VLM client and local models for startup tier %s", _preload_tier)
+                try:
+                    preload_result = await run_sync(
+                        _preload_server_models,
+                        _preload_tier,
+                        language=language,
+                        vlm_config=vlm_config,
+                    )
+                except Exception as exc:
+                    error_code, error_msg = _classify_model_preload_error(exc)
+                    application.state.model_preload_error = _ModelPreloadError(
+                        code=error_code,
+                        message=error_msg,
+                    )
+                    logger.exception("Model initialization failed for startup tier %s", _preload_tier)
+                else:
+                    logger.info(
+                        "Model initialization completed for startup tier %s (engine=%s)",
+                        _preload_tier,
+                        preload_result.engine,
+                    )
+            yield
+        finally:
+            runtime_owner.reset(token)
             try:
-                preload_result = await asyncio.to_thread(
-                    _preload_server_models,
-                    _preload_tier,
-                    language=language,
-                    vlm_config=vlm_config,
-                )
-            except Exception as exc:
-                error_code, error_msg = _classify_model_preload_error(exc)
-                application.state.model_preload_error = _ModelPreloadError(
-                    code=error_code,
-                    message=error_msg,
-                )
-                logger.exception("Model initialization failed for startup tier %s", _preload_tier)
-            else:
-                logger.info(
-                    "Model initialization completed for startup tier %s (engine=%s)",
-                    _preload_tier,
-                    preload_result.engine,
-                )
-        yield
-        if not upload_dir and _upload_dir.exists():
-            shutil.rmtree(_upload_dir, ignore_errors=True)
+                await job_store.shutdown()
+            finally:
+                if not upload_dir and _upload_dir.exists():
+                    shutil.rmtree(_upload_dir, ignore_errors=True)
 
     enable_docs = _env_flag("MINERU_API_ENABLE_FASTAPI_DOCS", default=True)
 

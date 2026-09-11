@@ -1129,7 +1129,7 @@ def test_aio_doc_analyze_runs_sync_entrypoint_in_thread_and_forwards_arguments(
             effort="xhigh",
             parse_mode="ocr",
             image_analysis=False,
-            page_index_map=[3, 5],
+            page_index_map=None,
             file_suffix="pptx",
         )
     )
@@ -1140,7 +1140,7 @@ def test_aio_doc_analyze_runs_sync_entrypoint_in_thread_and_forwards_arguments(
         "effort": "xhigh",
         "parse_mode": "ocr",
         "image_analysis": False,
-        "page_index_map": [3, 5],
+        "page_index_map": None,
         "file_suffix": "pptx",
         "source_context": None,
         "vlm_config": None,

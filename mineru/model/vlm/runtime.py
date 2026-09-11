@@ -11,6 +11,7 @@ import threading
 import time
 from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
+from functools import partial
 from typing import Any, AsyncIterator, Generator, Iterator, Literal
 
 from loguru import logger
@@ -19,6 +20,7 @@ from mineru_vl_utils import MinerUClient
 from ..registry import MINERU_2_5_PRO_2605_1_2B, vlm_model_repo
 from ..runtime.device import get_device
 from ..runtime.platform import is_mac_os_version_supported
+from .async_runtime import AsyncVlmPredictor, RuntimeOwner, runtime_owner
 from .engine_utils import (
     enable_custom_logits_processors,
     mod_kwargs_by_device_type,
@@ -32,6 +34,7 @@ class ModelSingleton:
     _instance = None
     _models = {}
     _lock = threading.RLock()
+    _shutdown_registered = False
 
     def __new__(cls, *args: object, **kwargs: object) -> ModelSingleton:
         with cls._lock:
@@ -55,250 +58,319 @@ class ModelSingleton:
         *,
         model_name: str | None = None,
         **kwargs: Any,
-    ) -> MinerUClient:
+    ) -> MinerUClient | AsyncVlmPredictor:
         """缓存模型实例，远程客户端按模型、凭据与连接选项隔离。"""
-        cache_key = (backend, model_path, server_url)
-        if backend == "http-client":
-            connection_options = {
-                "model_name": model_name,
-                "server_headers": kwargs.get("server_headers") or {},
-                "http_timeout": kwargs.get("http_timeout", 600),
-                "max_concurrency": kwargs.get("max_concurrency", 100),
-                "max_retries": kwargs.get("max_retries", 3),
-                "retry_backoff_factor": kwargs.get("retry_backoff_factor", 0.5),
-            }
-            fingerprint = hashlib.sha256(json.dumps(connection_options, sort_keys=True).encode()).hexdigest()
-            cache_key = (*cache_key, fingerprint)
+        # 文档同步与异步入口统一使用一个原生异步 vLLM 实例。
+        if backend == "vllm-engine":
+            backend = "vllm-async-engine"
+        native_async = backend in {"http-client", "vllm-async-engine"}
+        options = {"model_name": model_name, **kwargs}
+        if backend == "vllm-async-engine":
+            options["device"] = get_device()
+            model_path = str(Path(model_path).expanduser().resolve()) if model_path else str(MINERU_2_5_PRO_2605_1_2B.ensure())
+        fingerprint = hashlib.sha256(json.dumps(options, sort_keys=True, default=str).encode()).hexdigest()
+        cache_key = (backend, model_path, server_url, fingerprint)
+        owner = runtime_owner.get()
         with self._lock:
+            if owner is not None and owner.closed:
+                raise RuntimeError("VLM runtime owner is closed")
+            if not self._shutdown_registered:
+                atexit.register(shutdown_cached_models)
+                type(self)._shutdown_registered = True
+            cached = self._models.get(cache_key)
+            if isinstance(cached, AsyncVlmPredictor) and cached.is_closed:
+                cached.shutdown()
+                del self._models[cache_key]
             if cache_key not in self._models:
-                start_time = time.time()
-                model = None
-                processor = None
-                vllm_llm = None
-                lmdeploy_engine = None
-                vllm_async_llm = None
-                llama_cpp_engine = None
-                batch_size = kwargs.get("batch_size", 0)  # 本地引擎批次大小；MLX 的 0 由客户端解析为保守默认值。
-                max_concurrency = kwargs.get("max_concurrency", 100)  # for http-client backend only
-                http_timeout = kwargs.get("http_timeout", 600)  # for http-client backend only
-                server_headers = kwargs.get("server_headers", None)  # for http-client backend only
-                max_retries = kwargs.get("max_retries", 3)  # for http-client backend only
-                retry_backoff_factor = kwargs.get("retry_backoff_factor", 0.5)  # for http-client backend only
-                # 从kwargs中移除这些参数，避免传递给不相关的初始化函数
-                for param in [
-                    "batch_size",
-                    "max_concurrency",
-                    "http_timeout",
-                    "server_headers",
-                    "max_retries",
-                    "retry_backoff_factor",
-                ]:
-                    if param in kwargs:
-                        del kwargs[param]
-                if backend not in ["http-client", "llama-cpp-engine"] and not model_path:
-                    model_path = str(MINERU_2_5_PRO_2605_1_2B.ensure())
-
-                if backend == "llama-cpp-engine":
-                    try:
-                        from mineru_llama_cpp import Engine
-                    except ImportError:
-                        raise ImportError("Please install mineru-llama-cpp to use the llama-cpp-engine backend.")
-
-                    # The GGUF repo carries two files: the main model and its
-                    # multi-modal projector (mmproj). ModelRepo.paths is
-                    # {"main": "...", "mmproj": "..."} — resolve each to its
-                    # absolute path under model_dir and hand both to Engine.
-                    repo = vlm_model_repo("llama-cpp")
-                    model_dir = Path(model_path).expanduser() if model_path else repo.ensure()
-                    model_gguf = model_dir / repo.paths["main"]
-                    mmproj_gguf = model_dir / repo.paths["mmproj"]
-
-                    # Engine-specific kwargs are pulled out of **kwargs so they
-                    # are not forwarded to MinerUClient (which doesn't accept
-                    # them). Defaults mirror Engine's own constructor defaults.
-                    engine_kwargs = {}
-                    for key in ("n_ctx_seq", "n_gpu_layers", "n_parallel", "verbosity", "n_threads"):
-                        if key in kwargs:
-                            engine_kwargs[key] = kwargs.pop(key)
-
-                    llama_cpp_engine = Engine(model_gguf, mmproj_gguf, **engine_kwargs)
-
-                elif backend == "transformers":
-                    try:
-                        from mineru_vl_utils.transformers_loading import (
-                            load_transformers_model,
-                            load_transformers_processor,
-                        )
-
-                        model = load_transformers_model(model_path, device_map={"": get_device()})
-                        processor = load_transformers_processor(model_path)
-                    except ImportError as exc:
-                        raise ImportError("Please install transformers to use the transformers backend.") from exc
-                    if batch_size == 0:
-                        batch_size = set_default_batch_size()
-                elif backend == "mlx-engine":
-                    mlx_supported = is_mac_os_version_supported("14.0")
-                    if not mlx_supported:
-                        raise EnvironmentError("mlx-engine backend is only supported on macOS 14.0+ with Apple Silicon.")
-                    from mineru_vl_utils.mlx_compat import load_mlx_model
-
-                    model, processor = load_mlx_model(model_path)
-                elif backend != "http-client":
-                    if os.getenv("OMP_NUM_THREADS") is None:
-                        os.environ["OMP_NUM_THREADS"] = "1"
-
-                    if backend == "vllm-engine":
-                        try:
-                            import vllm
-                        except ImportError:
-                            raise ImportError("Please install vllm to use the vllm-engine backend.")
-
-                        kwargs = mod_kwargs_by_device_type(kwargs, vllm_mode="sync_engine")
-
-                        if "compilation_config" in kwargs:
-                            if isinstance(kwargs["compilation_config"], str):
-                                try:
-                                    kwargs["compilation_config"] = json.loads(kwargs["compilation_config"])
-                                except json.JSONDecodeError:
-                                    logger.warning(
-                                        f"Failed to parse compilation_config as JSON: {kwargs['compilation_config']}"
-                                    )
-                                    del kwargs["compilation_config"]
-                        if "gpu_memory_utilization" not in kwargs:
-                            kwargs["gpu_memory_utilization"] = set_default_gpu_memory_utilization()
-                        if "model" not in kwargs:
-                            kwargs["model"] = model_path
-                        if enable_custom_logits_processors() and ("logits_processors" not in kwargs):
-                            from mineru_vl_utils import MinerULogitsProcessor
-
-                            kwargs["logits_processors"] = [MinerULogitsProcessor]
-                        # 使用kwargs为 vllm初始化参数
-                        vllm_llm = vllm.LLM(**kwargs)
-                    elif backend == "vllm-async-engine":
-                        try:
-                            from vllm.config import CompilationConfig
-                            from vllm.engine.arg_utils import AsyncEngineArgs
-                            from vllm.v1.engine.async_llm import AsyncLLM
-                        except ImportError:
-                            raise ImportError("Please install vllm to use the vllm-async-engine backend.")
-
-                        kwargs = mod_kwargs_by_device_type(kwargs, vllm_mode="async_engine")
-
-                        if "compilation_config" in kwargs:
-                            if isinstance(kwargs["compilation_config"], dict):
-                                # 如果是字典，转换为 CompilationConfig 对象
-                                kwargs["compilation_config"] = CompilationConfig(**kwargs["compilation_config"])
-                            elif isinstance(kwargs["compilation_config"], str):
-                                # 如果是 JSON 字符串，先解析再转换
-                                try:
-                                    config_dict = json.loads(kwargs["compilation_config"])
-                                    kwargs["compilation_config"] = CompilationConfig(**config_dict)
-                                except (json.JSONDecodeError, TypeError) as e:
-                                    logger.warning(
-                                        f"Failed to parse compilation_config: {kwargs['compilation_config']}, error: {e}"
-                                    )
-                                    del kwargs["compilation_config"]
-                        if "gpu_memory_utilization" not in kwargs:
-                            kwargs["gpu_memory_utilization"] = set_default_gpu_memory_utilization()
-                        if "model" not in kwargs:
-                            kwargs["model"] = model_path
-                        if enable_custom_logits_processors() and ("logits_processors" not in kwargs):
-                            from mineru_vl_utils import MinerULogitsProcessor
-
-                            kwargs["logits_processors"] = [MinerULogitsProcessor]
-                        # 使用kwargs为 vllm初始化参数
-                        vllm_async_llm = AsyncLLM.from_engine_args(AsyncEngineArgs(**kwargs))
-                    elif backend == "lmdeploy-engine":
-                        try:
-                            from lmdeploy import PytorchEngineConfig, TurbomindEngineConfig, pipeline
-                        except ImportError:
-                            raise ImportError("Please install lmdeploy to use the lmdeploy-engine backend.")
-                        if "cache_max_entry_count" not in kwargs:
-                            kwargs["cache_max_entry_count"] = set_default_gpu_memory_utilization(backend="lmdeploy")
-
-                        device_type = os.getenv("MINERU_LMDEPLOY_DEVICE", "")
-                        if device_type == "":
-                            if "lmdeploy_device" in kwargs:
-                                device_type = kwargs.pop("lmdeploy_device")
-                                if device_type not in ["cuda", "ascend", "maca", "camb"]:
-                                    raise ValueError(f"Unsupported lmdeploy device type: {device_type}")
-                            else:
-                                device_type = "cuda"
-                        lm_backend = os.getenv("MINERU_LMDEPLOY_BACKEND", "")
-                        if lm_backend == "":
-                            if "lmdeploy_backend" in kwargs:
-                                lm_backend = kwargs.pop("lmdeploy_backend")
-                                if lm_backend not in ["pytorch", "turbomind"]:
-                                    raise ValueError(f"Unsupported lmdeploy backend: {lm_backend}")
-                            else:
-                                lm_backend = set_lmdeploy_backend(device_type)
-                        logger.info(f"lmdeploy device is: {device_type}, lmdeploy backend is: {lm_backend}")
-
-                        if lm_backend == "pytorch":
-                            kwargs["device_type"] = device_type
-                            backend_config = PytorchEngineConfig(**kwargs)
-                        elif lm_backend == "turbomind":
-                            backend_config = TurbomindEngineConfig(**kwargs)
-                        else:
-                            raise ValueError(f"Unsupported lmdeploy backend: {lm_backend}")
-
-                        log_level = "ERROR"
-                        from lmdeploy.utils import get_logger
-
-                        lm_logger = get_logger("lmdeploy")
-                        lm_logger.setLevel(log_level)
-                        if os.getenv("TM_LOG_LEVEL") is None:
-                            os.environ["TM_LOG_LEVEL"] = log_level
-
-                        lmdeploy_engine = pipeline(
-                            model_path,
-                            backend_config=backend_config,
-                            log_level=log_level,
-                        )
-                predictor = MinerUClient(
-                    backend=backend,
+                factory = partial(
+                    self._create_model,
+                    backend,
+                    model_path,
+                    server_url,
                     model_name=model_name,
-                    model=model,
-                    processor=processor,
-                    lmdeploy_engine=lmdeploy_engine,
-                    vllm_llm=vllm_llm,
-                    vllm_async_llm=vllm_async_llm,
-                    llama_cpp_engine=llama_cpp_engine,
-                    server_url=server_url,
-                    batch_size=batch_size,
-                    max_concurrency=max_concurrency,
-                    http_timeout=http_timeout,
-                    server_headers=server_headers,
-                    max_retries=max_retries,
-                    retry_backoff_factor=retry_backoff_factor,
-                    enable_table_formula_eq_wrap=True,
-                    image_analysis=True,
-                    enable_cross_page_table_merge=False,
+                    **kwargs,
                 )
-                predictor._mineru_runtime_handles = {
-                    "backend": backend,
-                    "model": model,
-                    "processor": processor,
-                    "vllm_llm": vllm_llm,
-                    "vllm_async_llm": vllm_async_llm,
-                    "lmdeploy_engine": lmdeploy_engine,
-                    "llama_cpp_engine": llama_cpp_engine,
-                }
-                _maybe_enable_serial_execution(predictor, backend)
-                self._models[cache_key] = predictor
-                elapsed = round(time.time() - start_time, 2)
-                logger.info(f"get {backend} predictor cost: {elapsed}s")
-        return self._models[cache_key]
+                self._models[cache_key] = (
+                    AsyncVlmPredictor(
+                        factory,
+                        _shutdown_predictor_runtime,
+                        backend=backend,
+                        max_concurrency=kwargs.get("max_concurrency", 100),
+                    )
+                    if native_async
+                    else factory()
+                )
+            predictor = self._models[cache_key]
+            if isinstance(predictor, AsyncVlmPredictor):
+                if owner is None:
+                    predictor.pinned = True
+                else:
+                    predictor.owners.add(owner)
+        if isinstance(predictor, AsyncVlmPredictor):
+            try:
+                predictor.wait_ready()
+            except BaseException:
+                with self._lock:
+                    if self._models.get(cache_key) is predictor:
+                        del self._models[cache_key]
+                    predictor.shutdown()
+                raise
+        return predictor
+
+    def _create_model(
+        self,
+        backend: str,
+        model_path: str | None,
+        server_url: str | None,
+        *,
+        model_name: str | None = None,
+        **kwargs: Any,
+    ) -> MinerUClient:
+        """只构造一个底层客户端，不操作缓存；原生异步引擎由所属运行时调用。"""
+        start_time = time.time()
+        model = None
+        processor = None
+        vllm_llm = None
+        lmdeploy_engine = None
+        vllm_async_llm = None
+        llama_cpp_engine = None
+        batch_size = kwargs.get("batch_size", 0)  # 本地引擎批次大小；MLX 的 0 由客户端解析为保守默认值。
+        max_concurrency = kwargs.get("max_concurrency", 100)  # 原生异步运行时在所有文档间共用该额度。
+        http_timeout = kwargs.get("http_timeout", 600)  # for http-client backend only
+        server_headers = kwargs.get("server_headers", None)  # for http-client backend only
+        max_retries = kwargs.get("max_retries", 3)  # for http-client backend only
+        retry_backoff_factor = kwargs.get("retry_backoff_factor", 0.5)  # for http-client backend only
+        # 从kwargs中移除这些参数，避免传递给不相关的初始化函数
+        for param in [
+            "batch_size",
+            "max_concurrency",
+            "http_timeout",
+            "server_headers",
+            "max_retries",
+            "retry_backoff_factor",
+        ]:
+            if param in kwargs:
+                del kwargs[param]
+        if backend not in ["http-client", "llama-cpp-engine"] and not model_path:
+            model_path = str(MINERU_2_5_PRO_2605_1_2B.ensure())
+
+        if backend == "llama-cpp-engine":
+            try:
+                from mineru_llama_cpp import Engine
+            except ImportError:
+                raise ImportError("Please install mineru-llama-cpp to use the llama-cpp-engine backend.")
+
+            # The GGUF repo carries two files: the main model and its
+            # multi-modal projector (mmproj). ModelRepo.paths is
+            # {"main": "...", "mmproj": "..."} — resolve each to its
+            # absolute path under model_dir and hand both to Engine.
+            repo = vlm_model_repo("llama-cpp")
+            model_dir = Path(model_path).expanduser() if model_path else repo.ensure()
+            model_gguf = model_dir / repo.paths["main"]
+            mmproj_gguf = model_dir / repo.paths["mmproj"]
+
+            # Engine-specific kwargs are pulled out of **kwargs so they
+            # are not forwarded to MinerUClient (which doesn't accept
+            # them). Defaults mirror Engine's own constructor defaults.
+            engine_kwargs = {}
+            for key in ("n_ctx_seq", "n_gpu_layers", "n_parallel", "verbosity", "n_threads"):
+                if key in kwargs:
+                    engine_kwargs[key] = kwargs.pop(key)
+
+            llama_cpp_engine = Engine(model_gguf, mmproj_gguf, **engine_kwargs)
+
+        elif backend == "transformers":
+            try:
+                from mineru_vl_utils.transformers_loading import (
+                    load_transformers_model,
+                    load_transformers_processor,
+                )
+
+                model = load_transformers_model(model_path, device_map={"": get_device()})
+                processor = load_transformers_processor(model_path)
+            except ImportError as exc:
+                raise ImportError("Please install transformers to use the transformers backend.") from exc
+            if batch_size == 0:
+                batch_size = set_default_batch_size()
+        elif backend == "mlx-engine":
+            mlx_supported = is_mac_os_version_supported("14.0")
+            if not mlx_supported:
+                raise EnvironmentError("mlx-engine backend is only supported on macOS 14.0+ with Apple Silicon.")
+            from mineru_vl_utils.mlx_compat import load_mlx_model
+
+            model, processor = load_mlx_model(model_path)
+        elif backend != "http-client":
+            if os.getenv("OMP_NUM_THREADS") is None:
+                os.environ["OMP_NUM_THREADS"] = "1"
+
+            if backend == "vllm-engine":
+                try:
+                    import vllm
+                except ImportError:
+                    raise ImportError("Please install vllm to use the vllm-engine backend.")
+
+                kwargs = mod_kwargs_by_device_type(kwargs, vllm_mode="sync_engine")
+
+                if "compilation_config" in kwargs:
+                    if isinstance(kwargs["compilation_config"], str):
+                        try:
+                            kwargs["compilation_config"] = json.loads(kwargs["compilation_config"])
+                        except json.JSONDecodeError:
+                            logger.warning(f"Failed to parse compilation_config as JSON: {kwargs['compilation_config']}")
+                            del kwargs["compilation_config"]
+                if "gpu_memory_utilization" not in kwargs:
+                    kwargs["gpu_memory_utilization"] = set_default_gpu_memory_utilization()
+                if "model" not in kwargs:
+                    kwargs["model"] = model_path
+                if enable_custom_logits_processors() and ("logits_processors" not in kwargs):
+                    from mineru_vl_utils import MinerULogitsProcessor
+
+                    kwargs["logits_processors"] = [MinerULogitsProcessor]
+                # 使用kwargs为 vllm初始化参数
+                vllm_llm = vllm.LLM(**kwargs)
+            elif backend == "vllm-async-engine":
+                try:
+                    from vllm.config import CompilationConfig
+                    from vllm.engine.arg_utils import AsyncEngineArgs
+                    from vllm.v1.engine.async_llm import AsyncLLM
+                except ImportError:
+                    raise ImportError("Please install vllm to use the vllm-async-engine backend.")
+
+                kwargs = mod_kwargs_by_device_type(kwargs, vllm_mode="async_engine")
+
+                if "compilation_config" in kwargs:
+                    if isinstance(kwargs["compilation_config"], dict):
+                        # 如果是字典，转换为 CompilationConfig 对象
+                        kwargs["compilation_config"] = CompilationConfig(**kwargs["compilation_config"])
+                    elif isinstance(kwargs["compilation_config"], str):
+                        # 如果是 JSON 字符串，先解析再转换
+                        try:
+                            config_dict = json.loads(kwargs["compilation_config"])
+                            kwargs["compilation_config"] = CompilationConfig(**config_dict)
+                        except (json.JSONDecodeError, TypeError) as e:
+                            logger.warning(f"Failed to parse compilation_config: {kwargs['compilation_config']}, error: {e}")
+                            del kwargs["compilation_config"]
+                if "gpu_memory_utilization" not in kwargs:
+                    kwargs["gpu_memory_utilization"] = set_default_gpu_memory_utilization()
+                if "model" not in kwargs:
+                    kwargs["model"] = model_path
+                if enable_custom_logits_processors() and ("logits_processors" not in kwargs):
+                    from mineru_vl_utils import MinerULogitsProcessor
+
+                    kwargs["logits_processors"] = [MinerULogitsProcessor]
+                # 使用kwargs为 vllm初始化参数
+                vllm_async_llm = AsyncLLM.from_engine_args(AsyncEngineArgs(**kwargs))
+            elif backend == "lmdeploy-engine":
+                try:
+                    from lmdeploy import PytorchEngineConfig, TurbomindEngineConfig, pipeline
+                except ImportError:
+                    raise ImportError("Please install lmdeploy to use the lmdeploy-engine backend.")
+                if "cache_max_entry_count" not in kwargs:
+                    kwargs["cache_max_entry_count"] = set_default_gpu_memory_utilization(backend="lmdeploy")
+
+                device_type = os.getenv("MINERU_LMDEPLOY_DEVICE", "")
+                if device_type == "":
+                    if "lmdeploy_device" in kwargs:
+                        device_type = kwargs.pop("lmdeploy_device")
+                        if device_type not in ["cuda", "ascend", "maca", "camb"]:
+                            raise ValueError(f"Unsupported lmdeploy device type: {device_type}")
+                    else:
+                        device_type = "cuda"
+                lm_backend = os.getenv("MINERU_LMDEPLOY_BACKEND", "")
+                if lm_backend == "":
+                    if "lmdeploy_backend" in kwargs:
+                        lm_backend = kwargs.pop("lmdeploy_backend")
+                        if lm_backend not in ["pytorch", "turbomind"]:
+                            raise ValueError(f"Unsupported lmdeploy backend: {lm_backend}")
+                    else:
+                        lm_backend = set_lmdeploy_backend(device_type)
+                logger.info(f"lmdeploy device is: {device_type}, lmdeploy backend is: {lm_backend}")
+
+                if lm_backend == "pytorch":
+                    kwargs["device_type"] = device_type
+                    backend_config = PytorchEngineConfig(**kwargs)
+                elif lm_backend == "turbomind":
+                    backend_config = TurbomindEngineConfig(**kwargs)
+                else:
+                    raise ValueError(f"Unsupported lmdeploy backend: {lm_backend}")
+
+                log_level = "ERROR"
+                from lmdeploy.utils import get_logger
+
+                lm_logger = get_logger("lmdeploy")
+                lm_logger.setLevel(log_level)
+                if os.getenv("TM_LOG_LEVEL") is None:
+                    os.environ["TM_LOG_LEVEL"] = log_level
+
+                lmdeploy_engine = pipeline(
+                    model_path,
+                    backend_config=backend_config,
+                    log_level=log_level,
+                )
+        try:
+            predictor = MinerUClient(
+                backend=backend,
+                model_name=model_name,
+                model=model,
+                processor=processor,
+                lmdeploy_engine=lmdeploy_engine,
+                vllm_llm=vllm_llm,
+                vllm_async_llm=vllm_async_llm,
+                llama_cpp_engine=llama_cpp_engine,
+                server_url=server_url,
+                batch_size=batch_size,
+                max_concurrency=max_concurrency,
+                http_timeout=http_timeout,
+                server_headers=server_headers,
+                max_retries=max_retries,
+                retry_backoff_factor=retry_backoff_factor,
+                enable_table_formula_eq_wrap=True,
+                image_analysis=True,
+                enable_cross_page_table_merge=False,
+            )
+        except BaseException:
+            # 客户端或分词器构造失败时，已经成功创建的引擎仍由 MinerU 负责关闭。
+            for handle in (vllm_async_llm, vllm_llm, lmdeploy_engine, llama_cpp_engine):
+                if handle is not None:
+                    _shutdown_runtime_handle(handle)
+            raise
+        predictor._mineru_runtime_handles = {
+            "backend": backend,
+            "model": model,
+            "processor": processor,
+            "vllm_llm": vllm_llm,
+            "vllm_async_llm": vllm_async_llm,
+            "lmdeploy_engine": lmdeploy_engine,
+            "llama_cpp_engine": llama_cpp_engine,
+        }
+        _maybe_enable_serial_execution(predictor, backend)
+        elapsed = round(time.time() - start_time, 2)
+        logger.info(f"get {backend} predictor cost: {elapsed}s")
+        return predictor
+
+    def release_owner(self, owner: RuntimeOwner) -> None:
+        """释放应用租约，只关闭未被其他应用或独立解析持有的原生运行时。"""
+        with self._lock:
+            owner.closed = True
+            closing = []
+            for key, predictor in list(self._models.items()):
+                if not isinstance(predictor, AsyncVlmPredictor):
+                    continue
+                predictor.owners.discard(owner)
+                if not predictor.owners and not predictor.pinned:
+                    del self._models[key]
+                    closing.append(predictor)
+            _shutdown_predictors(closing)
 
     def shutdown(self) -> None:
+        """阻止关闭期间创建第二份权重，逐个等待缓存运行时完整退出。"""
         with self._lock:
             predictors = list(self._models.values())
             self._models.clear()
-
-        for predictor in predictors:
-            _shutdown_predictor_runtime(predictor)
-
-        gc.collect()
+            try:
+                _shutdown_predictors(predictors)
+            finally:
+                gc.collect()
 
 
 async def _get_model_async(
@@ -406,17 +478,31 @@ def _clear_predictor_references(predictor: MinerUClient) -> None:
                 setattr(client, attr, None)
 
 
-def _shutdown_predictor_runtime(predictor: MinerUClient) -> None:
+def _shutdown_predictor_runtime(predictor: MinerUClient | AsyncVlmPredictor) -> None:
+    """关闭托管运行时或其拥有的底层模型句柄。"""
+    if isinstance(predictor, AsyncVlmPredictor):
+        predictor.shutdown()
+        return
     for handle in _iter_shutdown_candidates(predictor):
         _shutdown_runtime_handle(handle)
     _clear_predictor_references(predictor)
 
 
+def _shutdown_predictors(predictors: list[MinerUClient | AsyncVlmPredictor]) -> None:
+    """某个客户端关闭失败时仍关闭其余实例，最后再传播最初的异常。"""
+    first_error: BaseException | None = None
+    for predictor in predictors:
+        try:
+            _shutdown_predictor_runtime(predictor)
+        except BaseException as exc:
+            if first_error is None:
+                first_error = exc
+    if first_error is not None:
+        raise first_error
+
+
 def shutdown_cached_models() -> None:
     ModelSingleton().shutdown()
-
-
-atexit.register(shutdown_cached_models)
 
 
 def _predictor_uses_mlx(predictor: MinerUClient, backend: str | None = None) -> bool:
@@ -455,3 +541,6 @@ async def aio_predictor_execution_guard(predictor: MinerUClient) -> AsyncIterato
         yield
     finally:
         lock.release()
+
+
+__all__ = ["ModelSingleton", "shutdown_cached_models", "predictor_execution_guard", "aio_predictor_execution_guard"]
