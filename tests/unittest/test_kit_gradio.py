@@ -744,6 +744,7 @@ def test_managed_local_api_command_uses_kit_entrypoint() -> None:
         api_key="secret",
     )
     command = server._command(8123, Path("/tmp/mineru-upload"))
+    assert command[command.index("--log-level") + 1] == "warning"
     assert command[:4] == [server._command(8123, Path("/tmp/mineru-upload"))[0], "-m", "mineru.kit.main", "api-server"]
     assert "--tier" in command and command[command.index("--tier") + 1] == "standard"
     assert "--no-flash" not in command

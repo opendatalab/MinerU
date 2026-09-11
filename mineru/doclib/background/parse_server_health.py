@@ -111,6 +111,8 @@ def api_server_args_for_tier(tier: DeploymentTier, *, host: str, port: int) -> l
         "--allow-local-source",
         "--no-flash",
         "--preload-models",
+        "--log-level",
+        "warning",
     ]
 
 

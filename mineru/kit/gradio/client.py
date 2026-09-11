@@ -424,6 +424,8 @@ class ManagedLocalApiServer:
             str(self.concurrency),
             "--language",
             self.language,
+            "--log-level",
+            "warning",
             *(["--disable-image-analysis"] if self.disable_image_analysis else []),
             *(["--preload-models"] if self.preload_models else []),
             *(["--api-key", self.api_key] if self.api_key else []),

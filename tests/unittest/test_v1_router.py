@@ -856,6 +856,7 @@ def test_managed_router_worker_builds_new_api_server_command(tmp_path: Path) -> 
     worker = ManagedLocalWorker("local-0", "127.0.0.1", "0", settings)
 
     command = worker.command(18000, tmp_path)
+    assert command[command.index("--log-level") + 1] == "warning"
 
     assert command[:5] == [command[0], "-m", "mineru.kit.main", "api-server", "--host"]
     assert command[0].endswith("python")

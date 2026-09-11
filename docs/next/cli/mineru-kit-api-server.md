@@ -91,6 +91,23 @@ OCR 模式通过每次 `POST /v1/parse/jobs` 请求的 `ocr_mode` 设置，可�
 
 模型默认在首次解析时懒加载。`--preload-models` 会在 Basic 或 Standard 服务启动时提前初始化所需模型或 VLM 客户端，并在失败时让能力接口返回明确错误；Flash 没有本地模型，该参数对 Flash 无操作。Doclib managed parse-server 会自动启用模型预加载。
 
+### 服务日志级别
+
+`mineru-kit api-server`、`mineru-api` 和 `python -m mineru.parser.api_server` 均支持 `--log-level`，
+可选 `critical`、`error`、`warning`、`info`、`debug`、`trace`，大小写不敏感，直接启动时默认 `info`。
+该参数控制 Uvicorn 的启停、HTTP 访问、ASGI 日志及 API 服务自身日志。模型加载、解析阶段的模型日志、
+模型原生日志和 tqdm 进度条保留各自原有设置。
+
+```bash
+mineru-kit api-server --log-level warning
+mineru-api --log-level error
+python -m mineru.parser.api_server --log-level debug
+```
+
+Doclib（包括命令行解析时使用的本地服务及自动重启）、Gradio 和 Router 自动拉起的 api-server
+均显式使用 `--log-level warning`，保留警告与错误并隐藏服务 info 日志。连接外部服务时，其日志级别由服务部署者控制。
+`mineru-kit parse` 的本地模式直接调用 parser，不启动 api-server。
+
 ### 使用远程 MinerU VLM 服务
 
 ```bash

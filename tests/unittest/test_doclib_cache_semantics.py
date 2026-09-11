@@ -354,6 +354,8 @@ def test_managed_api_server_args_use_tier_and_selected_port_for_process_start() 
         "--allow-local-source",
         "--no-flash",
         "--preload-models",
+        "--log-level",
+        "warning",
     ]
     assert api_server_args_for_tier("basic", host="127.0.0.2", port=16581) == [
         "--tier",
@@ -365,6 +367,8 @@ def test_managed_api_server_args_use_tier_and_selected_port_for_process_start() 
         "--allow-local-source",
         "--no-flash",
         "--preload-models",
+        "--log-level",
+        "warning",
     ]
 
 
@@ -632,6 +636,7 @@ def test_start_managed_parse_server_selects_port_and_writes_logs(monkeypatch: py
         assert cmd[cmd.index("--host") + 1] == "127.0.0.2"
         assert "--port" in cmd
         assert cmd[cmd.index("--port") + 1] == "16582"
+        assert cmd[cmd.index("--log-level") + 1] == "warning"
         assert kwargs["stdout"] is not subprocess.DEVNULL
         assert kwargs["stderr"] is not subprocess.DEVNULL
         assert kwargs["stdout"] is not kwargs["stderr"]

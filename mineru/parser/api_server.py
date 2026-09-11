@@ -24,9 +24,10 @@ import threading
 import time
 import zipfile
 from contextlib import asynccontextmanager
+from copy import deepcopy
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Annotated, AsyncIterator, Awaitable, Callable, Literal, NoReturn, TypedDict
+from typing import Annotated, Any, AsyncIterator, Awaitable, Callable, Literal, NoReturn, TypedDict
 from urllib.parse import urlparse
 
 import click
@@ -2347,9 +2348,29 @@ def create_app(
 # ── CLI ──────────────────────────────────────────────────────────────
 
 
+def _build_server_log_config(log_level: str) -> dict[str, Any]:
+    """为服务日志构造独立配置，保留 root、模型日志和进度条的既有设置。"""
+    log_config = deepcopy(uvicorn.config.LOGGING_CONFIG)
+    for name in ("uvicorn", "uvicorn.error", "uvicorn.access", "uvicorn.asgi"):
+        log_config["loggers"].setdefault(name, {})["level"] = uvicorn.config.LOG_LEVELS[log_level]
+    log_config["loggers"][logger.name] = {
+        "handlers": ["default"],
+        "level": uvicorn.config.LOG_LEVELS[log_level],
+        "propagate": False,
+    }
+    return log_config
+
+
 @click.command()
 @click.option("--host", default="127.0.0.1", help="Server host")
 @click.option("--port", default=8000, type=int, help="Server port")
+@click.option(
+    "--log-level",
+    default="info",
+    type=click.Choice(["critical", "error", "warning", "info", "debug", "trace"], case_sensitive=False),
+    show_default=True,
+    help="API service log level; model logs and progress bars keep their existing settings.",
+)
 @click.option(
     "--upload-dir",
     default="",
@@ -2456,6 +2477,7 @@ def main(
     vlm_model: str | None,
     vlm_http_timeout: int | None,
     vlm_max_concurrency: int | None,
+    log_level: str,
 ) -> None:
     """合并显式 VLM 参数后启动 MinerU v1 REST API 服务，不修改全局配置。"""
     configure_standard_streams()
@@ -2520,6 +2542,8 @@ def main(
         application,
         host=host,
         port=port,
+        log_level=log_level,
+        log_config=_build_server_log_config(log_level),
     )
     server = uvicorn.Server(config)
     server_ref[0] = server
