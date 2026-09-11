@@ -5,6 +5,21 @@ from torch import nn
 
 
 NET_CONFIG_DET = {
+    "tiny": {
+        "stem_channels": [3, 16, 32],
+        "block_configs": [
+            [[3, 32, 32, 1, True], [3, 32, 32, 1, False]],
+            [[3, 32, 48, 2, False], [3, 48, 48, 1, True], [3, 48, 48, 1, False]],
+            [
+                [3, 48, 64, 2, False],
+                [3, 64, 64, 1, True],
+                [3, 64, 64, 1, False],
+                [3, 64, 64, 1, True],
+                [3, 64, 64, 1, False],
+            ],
+            [[3, 64, 160, 2, False], [3, 160, 160, 1, True], [3, 160, 160, 1, False]],
+        ],
+    },
     "small": {
         "stem_channels": [3, 24, 48],
         "block_configs": [
@@ -281,7 +296,7 @@ class PPLCNetV4Encoder(nn.Module):
 
 
 class PPLCNetV4(nn.Module):
-    """PP-OCRv6 使用的 PPLCNetV4 backbone，支持 det small 和 rec small/medium。"""
+    """PP-OCRv6 使用的 PPLCNetV4 backbone，支持 det tiny/small 和 rec small/medium。"""
 
     def __init__(self, det=False, model_size="small", in_channels=3, **kwargs):
         """按 det/rec 模式选择 v6 的固定网络配置。"""

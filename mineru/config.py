@@ -226,6 +226,8 @@ class LoadedConfig:
 
 
 def _load_effective_config() -> LoadedConfig:
+    if "MINERU_MODEL_STACK" in os.environ:
+        raise ValueError("MINERU_MODEL_STACK was removed; use MINERU_MODEL_SMALL_BACKEND and MINERU_MODEL_VLM_ENGINE")
     config_file, config_file_exists = _resolve_config_file()
     raw_config = _load_config(config_file) if config_file_exists else {}
     sources: dict[tuple[str, ...], ConfigSource] = dict.fromkeys(_default_source_paths(Config), "default")
@@ -401,10 +403,11 @@ class LLMAidedConfig(BaseModel):
 
 
 class VlmConfig(BaseModel):
-    """所有本地解析入口共享的远程 VLM 连接配置；空地址表示使用本地引擎。"""
+    """所有解析入口共享的 VLM 引擎与连接配置；远程地址优先于本地引擎。"""
 
     model_config = {"hide_input_in_errors": True}
 
+    engine: Literal["auto", "llama-cpp", "vllm", "lmdeploy", "mlx"] = "auto"
     server_url: str = ""
     api_key: str = Field(default="", repr=False)
     model: str = ""
@@ -472,8 +475,16 @@ class VlmConfig(BaseModel):
 class ModelConfig(BaseModel):
     base_dir: str = _default_path("models")
     source: str = "auto"
-    stack: str = "auto"  # "auto" | "light" | "full"
+    small_backend: Literal["auto", "onnx", "torch"] = "auto"
     vlm: VlmConfig = Field(default_factory=VlmConfig)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_legacy_stack(cls, value: Any) -> Any:
+        """拒绝旧模型栈字段，避免配置被忽略后意外切换推理后端。"""
+        if isinstance(value, dict) and "stack" in value:
+            raise ValueError("model.stack was removed; use model.small_backend and model.vlm.engine")
+        return value
 
 
 class DoclibConfig(BaseModel):

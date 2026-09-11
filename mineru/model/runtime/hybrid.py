@@ -12,6 +12,8 @@ from typing import TYPE_CHECKING, Any
 from loguru import logger
 
 from ..ocr.language import normalize_ocr_model_lang
+from ..ocr.resources import PPOCRV6_DICT_PATH
+from ..registry import MINERU_4_MODELS_ONNX, small_model_repo
 from ..table.cls.mineru_table_ori_cls import MineruTableOrientationClsModel
 from ..table.cls.paddle_table_cls import PaddleTableClsModel
 from ..table.rec.slanet_plus.main import PaddleTableModel
@@ -20,11 +22,10 @@ from .contracts import AtomicModelName
 
 if TYPE_CHECKING:
     from ..layout.pp_doclayoutv2 import PPDocLayoutV2LayoutModel
-    from ..mfr.pp_formulanet_plus_m.predict_formula import FormulaRecognizer
-    from ..mfr.unimernet.Unimernet import UnimernetModel
+    from ..mfr.pp_formulanet.predict_formula import FormulaRecognizer
     from ..ocr.pytorch_paddle import PytorchPaddleOCR
 
-from .device import get_device, get_model_stack
+from .device import get_device, resolve_small_model_backend
 
 LOCAL_MODEL_INIT_LOCK = threading.RLock()
 # 这些锁保护 Hybrid medium/high/xhigh 共享的 atom model/native 模型推理调用，避免多线程同时进入同一个模型对象。
@@ -77,11 +78,15 @@ def run_ocr_inference(inference_callable: Callable[..., Any], *args: Any, **kwar
     return _run_with_inference_lock(LOCAL_MODEL_OCR_INFERENCE_LOCK, inference_callable, *args, **kwargs)
 
 
-def table_orientation_cls_model_init() -> MineruTableOrientationClsModel:
+def table_orientation_cls_model_init(
+    small_backend: str | None = None, device: str | None = None
+) -> MineruTableOrientationClsModel:
     """初始化表格方向分类包装器，并注入适配方向检测的 OCR 引擎。"""
     atom_model_manager = AtomModelSingleton()
     ocr_engine = atom_model_manager.get_atom_model(
         atom_model_name=AtomicModelName.OCR,
+        small_backend=small_backend,
+        device=device,
         det_db_box_thresh=0.5,
         det_db_unclip_ratio=1.6,
         lang="ch",
@@ -91,43 +96,52 @@ def table_orientation_cls_model_init() -> MineruTableOrientationClsModel:
     return cls_model
 
 
-def table_cls_model_init() -> PaddleTableClsModel:
+def table_cls_model_init(small_backend: str | None = None) -> PaddleTableClsModel:
     """初始化有线与无线表格类型分类模型。"""
-    return PaddleTableClsModel()
+    return PaddleTableClsModel(model_path=str(small_model_repo(small_backend).paddle_table_cls.ensure()))
 
 
-def wired_table_model_init(lang: str | None = None) -> UnetTableModel:
+def wired_table_model_init(
+    lang: str | None = None, *, small_backend: str | None = None, device: str | None = None
+) -> UnetTableModel:
     """初始化有线表格识别模型，并注入指定语言的 OCR 引擎。"""
     atom_model_manager = AtomModelSingleton()
     ocr_engine = atom_model_manager.get_atom_model(
         atom_model_name=AtomicModelName.OCR,
+        small_backend=small_backend,
+        device=device,
         det_db_box_thresh=0.5,
         det_db_unclip_ratio=1.6,
         lang=lang,
         enable_merge_det_boxes=False,
     )
-    table_model = UnetTableModel(ocr_engine)
+    table_model = UnetTableModel(ocr_engine, model_path=str(small_model_repo(small_backend).unet_structure.ensure()))
     return table_model
 
 
-def wireless_table_model_init(lang: str | None = None) -> PaddleTableModel:
+def wireless_table_model_init(
+    lang: str | None = None, *, small_backend: str | None = None, device: str | None = None
+) -> PaddleTableModel:
     """初始化无线表格识别模型，并注入指定语言的 OCR 引擎。"""
     atom_model_manager = AtomModelSingleton()
     ocr_engine = atom_model_manager.get_atom_model(
         atom_model_name=AtomicModelName.OCR,
+        small_backend=small_backend,
+        device=device,
         det_db_box_thresh=0.5,
         det_db_unclip_ratio=1.6,
         lang=lang,
         enable_merge_det_boxes=False,
     )
-    table_model = PaddleTableModel(ocr_engine)
+    table_model = PaddleTableModel(ocr_engine, model_path=str(small_model_repo(small_backend).slanet_plus.ensure()))
     return table_model
 
 
-def mfr_model_init(weight_dir: str, device: str = "cpu") -> "UnimernetModel":
-    from ..mfr.unimernet.Unimernet import UnimernetModel
+def mfr_model_init(weight_dir: str, device: str = "cpu") -> "FormulaRecognizer":
+    """初始化默认 Torch 公式模型 plus-M，精度由设备策略决定。"""
+    from ..mfr.pp_formulanet.predict_formula import FormulaRecognizer
 
-    return UnimernetModel(weight_dir, device)
+    return FormulaRecognizer(weight_dir, device, model_name="PP-FormulaNet_plus-M")
 
 
 def pp_doclayout_v2_model_init(weight: str, device: str = "cpu") -> "PPDocLayoutV2LayoutModel":
@@ -148,12 +162,14 @@ def ocr_model_init(
     lang: str | None = None,
     det_db_unclip_ratio: float = 1.5,
     enable_merge_det_boxes: bool = True,
+    device: str | None = None,
 ) -> "PytorchPaddleOCR":
     """按语言和检测阈值初始化本地 Paddle OCR 模型。"""
 
     from ..ocr.pytorch_paddle import PytorchPaddleOCR
 
     ocr_kwargs = {
+        "device": device,
         "lang": normalize_ocr_model_lang(lang),
         "det_db_box_thresh": det_db_box_thresh,
         "det_db_unclip_ratio": det_db_unclip_ratio,
@@ -178,6 +194,9 @@ class AtomModelSingleton:
 
     def get_atom_model(self, atom_model_name: str, **kwargs: Any) -> Any:
         """根据模型名称和关键配置生成缓存键，并获取对应原子模型。"""
+        small_backend = resolve_small_model_backend(kwargs.get("small_backend"))
+        device = "cpu" if small_backend == "onnx" else (kwargs.get("device") or get_device())
+        kwargs = {**kwargs, "small_backend": small_backend, "device": device}
         lang = kwargs.get("lang", None)
         ocr_singleton_lang = normalize_ocr_model_lang(lang)
 
@@ -199,6 +218,7 @@ class AtomModelSingleton:
         else:
             key = atom_model_name
 
+        key = (small_backend, device, key)
         with self._lock:
             if key not in self._models:
                 self._models[key] = atom_model_init(model_name=atom_model_name, **kwargs)
@@ -207,50 +227,55 @@ class AtomModelSingleton:
 
 def atom_model_init(model_name: str, **kwargs: Any) -> Any:
     """将原子模型名称分派到具体初始化函数，并校验初始化结果。"""
-    stack = get_model_stack()
+    small_backend = resolve_small_model_backend(kwargs.get("small_backend"))
     atom_model = None
     if model_name == AtomicModelName.Layout:
-        if stack == "light":
+        if small_backend == "onnx":
             from ..layout.pp_doclayout_v2_onnx import PPDocLayoutV2LayoutModelONNX
-            from ..registry import PP_DOCLAYOUT_V2_ONNX
 
             atom_model = PPDocLayoutV2LayoutModelONNX(
-                weight=str(PP_DOCLAYOUT_V2_ONNX.onnx.ensure()),
+                weight=str(MINERU_4_MODELS_ONNX.pp_doclayout_v2.ensure()),
+                config_path=str(MINERU_4_MODELS_ONNX.pp_doclayout_v2_config.ensure()),
                 device=kwargs.get("device"),
             )
         else:
-            from ..registry import PDF_EXTRACT_KIT
+            from ..registry import MINERU_4_MODELS_TORCH
 
             atom_model = pp_doclayout_v2_model_init(
-                str(PDF_EXTRACT_KIT.pp_doclayout_v2.ensure()),
+                str(MINERU_4_MODELS_TORCH.pp_doclayout_v2.ensure()),
                 kwargs.get("device"),
             )
     elif model_name == AtomicModelName.MFR:
-        if stack == "light":
+        if small_backend == "onnx":
             from ..mfr.pp_formulanet_plus_m_onnx import PPFormulaNetPlusMONNX
-            from ..registry import PP_FORMULANET_PLUS_M_ONNX
 
             atom_model = PPFormulaNetPlusMONNX(
-                model_path=str(PP_FORMULANET_PLUS_M_ONNX.onnx.ensure()),
-                config_path=str(PP_FORMULANET_PLUS_M_ONNX.config.ensure()),
+                model_path=str(MINERU_4_MODELS_ONNX.pp_formulanet_plus_m_weights.ensure()),
+                config_path=str(MINERU_4_MODELS_ONNX.pp_formulanet_plus_m_config.ensure()),
                 device=kwargs.get("device"),
             )
         else:
-            from ..registry import PDF_EXTRACT_KIT
+            from ..registry import MINERU_4_MODELS_TORCH
 
+            # 按文件检查手工放置的资源，不要求模型目录存在下载完成标记。
+            weights_path = MINERU_4_MODELS_TORCH.pp_formulanet_plus_m_weights.ensure()
+            MINERU_4_MODELS_TORCH.pp_formulanet_plus_m_config.ensure()
             atom_model = mfr_model_init(
-                str(PDF_EXTRACT_KIT.unimernet_small.ensure()),
+                str(weights_path.parent),
                 kwargs.get("device"),
             )
     elif model_name == AtomicModelName.OCR:
-        if stack == "light":
+        if small_backend == "onnx":
             from ..ocr.pp_ocr_v6_onnx import PPOCRv6ONNX
-            from ..registry import PP_OCR_V6_SMALL_DET_ONNX, PP_OCR_V6_SMALL_REC_ONNX
+
+            lang = normalize_ocr_model_lang(kwargs.get("lang"))
+            detector = MINERU_4_MODELS_ONNX.seal_det if lang == "seal" else MINERU_4_MODELS_ONNX.ocr_det
 
             atom_model = PPOCRv6ONNX(
-                det_model_path=str(PP_OCR_V6_SMALL_DET_ONNX.onnx.ensure()),
-                rec_model_path=str(PP_OCR_V6_SMALL_REC_ONNX.onnx.ensure()),
-                dict_path=str(PP_OCR_V6_SMALL_REC_ONNX.config.ensure()),
+                det_model_path=str(detector.ensure()),
+                rec_model_path=str(MINERU_4_MODELS_ONNX.ocr_rec.ensure()),
+                dict_path=str(PPOCRV6_DICT_PATH),
+                lang=lang,
                 device=kwargs.get("device"),
                 det_db_box_thresh=kwargs.get("det_db_box_thresh", 0.5),
                 det_db_unclip_ratio=kwargs.get("det_db_unclip_ratio", 1.5),
@@ -262,19 +287,24 @@ def atom_model_init(model_name: str, **kwargs: Any) -> Any:
                 kwargs.get("lang"),
                 kwargs.get("det_db_unclip_ratio", 1.5),
                 kwargs.get("enable_merge_det_boxes", True),
+                device=kwargs.get("device"),
             )
     elif model_name == AtomicModelName.WirelessTable:
         atom_model = wireless_table_model_init(
             kwargs.get("lang"),
+            small_backend=small_backend,
+            device=kwargs.get("device"),
         )
     elif model_name == AtomicModelName.WiredTable:
         atom_model = wired_table_model_init(
             kwargs.get("lang"),
+            small_backend=small_backend,
+            device=kwargs.get("device"),
         )
     elif model_name == AtomicModelName.TableCls:
-        atom_model = table_cls_model_init()
+        atom_model = table_cls_model_init(small_backend=small_backend)
     elif model_name == AtomicModelName.TableOrientationCls:
-        atom_model = table_orientation_cls_model_init()
+        atom_model = table_orientation_cls_model_init(small_backend=small_backend, device=kwargs.get("device"))
     else:
         logger.error("model name not allow")
         exit(1)
@@ -290,7 +320,7 @@ class HybridLocalModelContextSingleton:
     """全局缓存并复用 Hybrid 本地模型上下文。"""
 
     _instance: HybridLocalModelContextSingleton | None = None
-    _model: HybridLocalModelContext | None = None
+    _models: dict[tuple[str, str], HybridLocalModelContext] = {}
     _lock: threading.RLock = LOCAL_MODEL_INIT_LOCK
 
     def __new__(cls, *args: Any, **kwargs: Any) -> HybridLocalModelContextSingleton:
@@ -303,15 +333,20 @@ class HybridLocalModelContextSingleton:
     def get_model(
         self,
     ) -> HybridLocalModelContext:
-        """获取并复用唯一的 Hybrid 本地模型上下文。"""
+        """按小模型后端与实际设备缓存上下文，避免切换配置后混用模型。"""
+        small_backend = resolve_small_model_backend()
+        device = "cpu" if small_backend == "onnx" else get_device()
+        key = (small_backend, device)
         with self._lock:
-            if self._model is None:
-                self._model = HybridLocalModelContext()
-        return self._model
+            if key not in self._models:
+                self._models[key] = HybridLocalModelContext(device=device, small_backend=small_backend)
+            return self._models[key]
 
 
 def ocr_det_batch_setting() -> bool:
     """根据运行设备和 PyTorch 版本确定是否启用 OCR 检测批处理。"""
+    if resolve_small_model_backend() == "onnx":
+        return True
 
     try:
         import torch as _torch
@@ -336,14 +371,13 @@ class HybridLocalModelContext:
     def __init__(
         self,
         device: str | None = None,
+        *,
+        small_backend: str | None = None,
     ) -> None:
         """初始化 Hybrid 基础运行时，其他模型在首次访问对应属性时加载。"""
-        if device is not None:
-            self.device: str = device
-        else:
-            self.device: str = get_device()
-
-        self.enable_ocr_det_batch: bool = ocr_det_batch_setting()
+        self.small_backend = resolve_small_model_backend(small_backend)
+        self.device = "cpu" if self.small_backend == "onnx" else (device or get_device())
+        self.enable_ocr_det_batch = True if self.small_backend == "onnx" else ocr_det_batch_setting()
 
         if str(self.device).startswith("npu"):
             try:
@@ -366,7 +400,7 @@ class HybridLocalModelContext:
         self.layout_model = self.get_layout_model()
 
     @cached_property
-    def mfr_model(self) -> UnimernetModel | FormulaRecognizer:
+    def mfr_model(self) -> FormulaRecognizer:
         """首次访问时加载公式识别模型，并在当前 Context 内复用。"""
         return self.get_mfr_model()
 
@@ -403,6 +437,8 @@ class HybridLocalModelContext:
     ) -> "PytorchPaddleOCR":
         """获取 OCR 原子模型，默认使用当前 Hybrid 本地上下文语言并复用 singleton 缓存。"""
         return self.atom_model_manager.get_atom_model(
+            small_backend=self.small_backend,
+            device=self.device,
             atom_model_name=AtomicModelName.OCR,
             det_db_box_thresh=det_db_box_thresh,
             lang="ch",
@@ -413,20 +449,24 @@ class HybridLocalModelContext:
     def get_layout_model(self) -> "PPDocLayoutV2LayoutModel":
         """获取 Layout 原子模型，供 Hybrid 本地 layout、标题拆分和公式框检测复用。"""
         return self.atom_model_manager.get_atom_model(
-            atom_model_name=AtomicModelName.Layout,
+            small_backend=self.small_backend,
             device=self.device,
+            atom_model_name=AtomicModelName.Layout,
         )
 
-    def get_mfr_model(self) -> "UnimernetModel":
+    def get_mfr_model(self) -> "FormulaRecognizer":
         """获取公式识别原子模型，统一复用当前公式模型配置和设备。"""
         return self.atom_model_manager.get_atom_model(
-            atom_model_name=AtomicModelName.MFR,
+            small_backend=self.small_backend,
             device=self.device,
+            atom_model_name=AtomicModelName.MFR,
         )
 
     def get_wireless_table_model(self) -> PaddleTableModel:
         """获取无线表格识别原子模型。"""
         return self.atom_model_manager.get_atom_model(
+            small_backend=self.small_backend,
+            device=self.device,
             atom_model_name=AtomicModelName.WirelessTable,
             lang="ch",
         )
@@ -434,6 +474,8 @@ class HybridLocalModelContext:
     def get_wired_table_model(self) -> UnetTableModel:
         """获取有线表格识别原子模型。"""
         return self.atom_model_manager.get_atom_model(
+            small_backend=self.small_backend,
+            device=self.device,
             atom_model_name=AtomicModelName.WiredTable,
             lang="ch",
         )
@@ -441,18 +483,24 @@ class HybridLocalModelContext:
     def get_table_cls_model(self) -> PaddleTableClsModel:
         """获取表格分类原子模型。"""
         return self.atom_model_manager.get_atom_model(
+            small_backend=self.small_backend,
+            device=self.device,
             atom_model_name=AtomicModelName.TableCls,
         )
 
     def get_table_orientation_cls_model(self) -> MineruTableOrientationClsModel:
         """获取表格方向分类原子模型。"""
         return self.atom_model_manager.get_atom_model(
+            small_backend=self.small_backend,
+            device=self.device,
             atom_model_name=AtomicModelName.TableOrientationCls,
         )
 
     def get_seal_ocr_model(self) -> PytorchPaddleOCR:
         """获取印章识别 OCR 原子模型"""
         return self.atom_model_manager.get_atom_model(
+            small_backend=self.small_backend,
+            device=self.device,
             atom_model_name=AtomicModelName.OCR,
             lang="seal",
         )

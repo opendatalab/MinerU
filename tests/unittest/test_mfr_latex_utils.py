@@ -6,7 +6,7 @@ import numpy as np
 from types import SimpleNamespace
 
 from mineru.model.mfr import utils as mfr_utils
-from mineru.model.mfr.pp_formulanet_plus_m.processors import UniMERNetDecode
+from mineru.model.mfr.pp_formulanet.processors import UniMERNetDecode
 from mineru.model.mfr.unimernet.unimernet_hf.modeling_unimernet import UnimernetModel
 
 

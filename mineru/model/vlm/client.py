@@ -30,7 +30,7 @@ def get_vlm_predictor(vlm_config: VlmConfig | None = None) -> tuple[MinerUClient
 
     from .selector import get_vlm_engine
 
-    engine = get_vlm_engine("auto", is_async=False)
+    engine = get_vlm_engine(settings.engine, is_async=False)
     return ModelSingleton().get_model(backend=engine, model_path=None, server_url=None), engine
 
 

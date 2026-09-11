@@ -18,7 +18,7 @@ from typer.testing import CliRunner
 import mineru.kit.main as kit_main
 from mineru.cli.main import app as mineru_app
 from mineru.cli.version_command import version_cmd
-from mineru.kit.commands import api_server, gradio, models, parse, router, vlm_server
+from mineru.kit.commands import api_server, models, parse, router, vlm_server, webui
 from mineru.kit.main import app
 from mineru.kit.vlm_server import mlx_vlm_server
 from mineru.parser.base import ParseResult
@@ -41,22 +41,23 @@ def test_kit_main_configures_standard_streams_before_running_app(monkeypatch: py
     assert calls == ["configure", "app"]
 
 
-def test_gradio_compatibility_main_runs_modern_command(monkeypatch: pytest.MonkeyPatch) -> None:
-    """校验独立兼容入口复用新版 Gradio 命令且先配置标准流。"""
+def test_webui_main_runs_modern_command(monkeypatch: pytest.MonkeyPatch) -> None:
+    """校验独立入口复用 Web UI 命令且先配置标准流。"""
     calls: list[object] = []
-    monkeypatch.setattr(gradio, "configure_standard_streams", lambda: calls.append("configure"))
-    monkeypatch.setattr(gradio.typer, "run", lambda command: calls.append(command))
+    monkeypatch.setattr(webui, "configure_standard_streams", lambda: calls.append("configure"))
+    monkeypatch.setattr(webui.typer, "run", lambda command: calls.append(command))
 
-    gradio.main()
+    webui.main()
 
-    assert calls == ["configure", gradio.gradio_cmd]
+    assert calls == ["configure", webui.webui_cmd]
 
 
-def test_gradio_console_script_targets_modern_command() -> None:
-    """校验兼容命令不再通过已删除的旧 CLI 包启动。"""
+def test_webui_console_script_targets_modern_command() -> None:
+    """校验独立 Web UI 入口及旧命令移除。"""
     project = tomllib.loads((Path(__file__).resolve().parents[2] / "pyproject.toml").read_text(encoding="utf-8"))
 
-    assert project["project"]["scripts"]["mineru-gradio"] == "mineru.kit.commands.gradio:main"
+    assert "mineru-gradio" not in project["project"]["scripts"]
+    assert project["project"]["scripts"]["mineru-webui"] == "mineru.kit.commands.webui:main"
 
 
 def _invoke_standalone_command(
@@ -130,9 +131,13 @@ def test_standalone_vlm_main_configures_streams_and_forwards_extra_args(monkeypa
 @pytest.mark.parametrize(
     ("script", "entrypoint", "expected_options"),
     [
-        ("mineru-gradio", gradio.main, ("--api-url", "--api-server-tier")),
+        ("mineru-webui", webui.main, ("--api-url", "--api-server-tier")),
         ("mineru-openai-server", vlm_server.main, ("--engine",)),
-        ("mineru-models-download", models.download_main, ("--tier", "--stack", "--source", "--verbose")),
+        (
+            "mineru-models-download",
+            models.download_main,
+            ("--tier", "--small-backend", "--vlm-engine", "--source", "--verbose"),
+        ),
         (
             "mineru-api",
             api_server.main,
@@ -202,8 +207,8 @@ def test_standalone_api_matches_kit_arguments_and_exit_code(
 @pytest.mark.parametrize(
     "args",
     [
-        ["PDF-Extract-Kit-1.0", "--source", "modelscope", "--verbose"],
-        ["--tier", "standard", "--stack", "full", "--source", "huggingface"],
+        ["MinerU-4_models_torch", "--source", "modelscope", "--verbose"],
+        ["--tier", "standard", "--small-backend", "torch", "--vlm-engine", "vllm", "--source", "huggingface"],
     ],
 )
 def test_standalone_models_download_matches_kit(monkeypatch: pytest.MonkeyPatch, args: list[str], fails: bool) -> None:
@@ -321,7 +326,7 @@ def test_top_level_commands_register_implementation_callbacks_directly() -> None
     callbacks = {command.name: command.callback for command in app.registered_commands}
 
     assert callbacks["parse"] is parse.parse_cmd
-    assert callbacks["gradio"] is gradio.gradio_cmd
+    assert callbacks["webui"] is webui.webui_cmd
     assert callbacks["api-server"] is api_server.api_server_cmd
     assert callbacks["vlm-server"] is vlm_server.vlm_server_cmd
     assert callbacks["router"] is router.router_cmd
@@ -332,7 +337,7 @@ def test_top_level_commands_register_implementation_callbacks_directly() -> None
     ("command", "expected_options"),
     [
         ("parse", ("--output", "--format", "--tier")),
-        ("gradio", ("--api-url", "--server-name", "--api-server-tier")),
+        ("webui", ("--api-url", "--server-name", "--api-server-tier")),
         ("api-server", ("--host", "--port", "--tier", "--no-flash", "--no-advanced", "--preload-models")),
         ("vlm-server", ("--engine",)),
         ("router", ("--host", "--upstream-url", "--local-gpus")),
@@ -361,7 +366,7 @@ def test_kit_root_commands_keep_product_order() -> None:
 
     assert command.list_commands(None) == [
         "parse",
-        "gradio",
+        "webui",
         "api-server",
         "vlm-server",
         "router",
@@ -459,7 +464,8 @@ def test_router_startup_with_no_servers_fails_health_check() -> None:
 
 
 def test_models_download_tier_basic(monkeypatch: Any) -> None:
-    monkeypatch.setattr(models.config.model, "stack", "full")
+    monkeypatch.setattr(models.config.model, "small_backend", "torch")
+    monkeypatch.setattr(models.config.model.vlm, "engine", "vllm")
     captured: list[str] = []
 
     def fake_download_model_repo(repo: Any, *, source: str | None = None, local_as_auto: bool = False) -> Path:
@@ -471,12 +477,13 @@ def test_models_download_tier_basic(monkeypatch: Any) -> None:
     result = runner.invoke(app, ["models", "download", "--tier", "basic"])
 
     assert result.exit_code == 0
-    assert captured == ["PDF-Extract-Kit-1.0"]
+    assert captured == ["MinerU-4_models_torch"]
     assert "Downloaded models for tier basic" in result.output
 
 
 def test_models_download_tier_standard(monkeypatch: Any) -> None:
-    monkeypatch.setattr(models.config.model, "stack", "full")
+    monkeypatch.setattr(models.config.model, "small_backend", "torch")
+    monkeypatch.setattr(models.config.model.vlm, "engine", "vllm")
     captured: list[str] = []
 
     def fake_download_model_repo(repo: Any, *, source: str | None = None, local_as_auto: bool = False) -> Path:
@@ -488,14 +495,14 @@ def test_models_download_tier_standard(monkeypatch: Any) -> None:
     result = runner.invoke(app, ["models", "download", "--tier", "standard"])
 
     assert result.exit_code == 0
-    assert captured == ["PDF-Extract-Kit-1.0", "MinerU2.5-Pro-2605-1.2B"]
+    assert captured == ["MinerU-4_models_torch", "MinerU2.5-Pro-2605-1.2B"]
     assert "Downloaded models for tier standard" in result.output
 
 
 @pytest.mark.parametrize("tier", ["flash", "advanced"])
 def test_model_registry_rejects_non_model_tiers(tier: str) -> None:
     with pytest.raises(ValueError, match="Supported model tiers: basic, standard"):
-        models.model_repos_for_tier(tier, stack="full")
+        models.model_repos_for_tier(tier, small_backend="torch", vlm_engine="vllm")
 
 
 @pytest.mark.parametrize("command", ["download", "verify"])
@@ -518,21 +525,22 @@ def test_models_download_repo_uses_explicit_source(monkeypatch: Any) -> None:
 
     monkeypatch.setattr(models, "download_model_repo", fake_download_model_repo)
 
-    result = runner.invoke(app, ["models", "download", "PDF-Extract-Kit-1.0", "--source", "auto"])
+    result = runner.invoke(app, ["models", "download", "MinerU-4_models_torch", "--source", "auto"])
 
     assert result.exit_code == 0
     assert captured == {
-        "repo": "PDF-Extract-Kit-1.0",
+        "repo": "MinerU-4_models_torch",
         "source": "auto",
         "local_as_auto": True,
     }
-    assert "Downloaded models for PDF-Extract-Kit-1.0" in result.output
+    assert "Downloaded models for MinerU-4_models_torch" in result.output
 
 
 def test_models_show_and_verify(tmp_path: Path, monkeypatch: Any) -> None:
     base_dir = tmp_path / "models"
     monkeypatch.setattr(models.config.model, "base_dir", str(base_dir))
-    monkeypatch.setattr(models.config.model, "stack", "full")
+    monkeypatch.setattr(models.config.model, "small_backend", "torch")
+    monkeypatch.setattr(models.config.model.vlm, "engine", "vllm")
     for repo in models.MODEL_REPOS:
         if repo.download_mode == "full":
             repo.local_dir().mkdir(parents=True, exist_ok=True)
@@ -552,7 +560,7 @@ def test_models_show_and_verify(tmp_path: Path, monkeypatch: Any) -> None:
 
     assert show_result.exit_code == 0
     assert "Config exists:" in show_result.output
-    assert "PDF-Extract-Kit-1.0: ready" in show_result.output
+    assert "MinerU-4_models_torch: ready" in show_result.output
     assert "MinerU2.5-Pro-2605-1.2B: ready" in show_result.output
     assert "Model tiers:" in show_result.output
     assert "  basic:" in show_result.output
@@ -560,7 +568,7 @@ def test_models_show_and_verify(tmp_path: Path, monkeypatch: Any) -> None:
     assert "  flash:" not in show_result.output
     assert "  advanced:" not in show_result.output
     assert verify_result.exit_code == 0
-    assert "PDF-Extract-Kit-1.0: ok" in verify_result.output
+    assert "MinerU-4_models_torch: ok" in verify_result.output
     assert "MinerU2.5-Pro-2605-1.2B: ok" in verify_result.output
 
 
@@ -576,7 +584,7 @@ def test_api_server_rejects_backend_and_effort_options() -> None:
 
 @pytest.mark.parametrize(
     ("command", "option"),
-    [("api-server", "--ocr-mode"), ("gradio", "--ocr-mode"), ("gradio", "--api-server-ocr-mode")],
+    [("api-server", "--ocr-mode"), ("webui", "--ocr-mode"), ("webui", "--api-server-ocr-mode")],
 )
 def test_server_commands_reject_startup_ocr_configuration(command: str, option: str) -> None:
     """服务启动命令不再接受或展示 OCR 配置，单次解析命令继续提供该参数。"""
@@ -717,26 +725,12 @@ def test_vlm_server_forwards_mlx_to_mlx_server(monkeypatch: Any) -> None:
     }
 
 
-def test_vlm_server_auto_falls_back_to_mlx_when_non_mlx_engines_are_unavailable(monkeypatch: Any) -> None:
-    seen: dict[str, Any] = {}
-
-    def _fake_main(*, args: list[str], prog_name: str, standalone_mode: bool) -> None:
-        seen["args"] = args
-        seen["prog_name"] = prog_name
-        seen["standalone_mode"] = standalone_mode
-
+def test_vlm_server_auto_does_not_select_installed_mlx(monkeypatch: Any) -> None:
+    """即使 MLX 已安装，自动服务入口也要求用户显式选择 MLX。"""
     monkeypatch.setattr(vlm_server, "_mlx_server_available", lambda: True)
-    monkeypatch.setattr(vlm_server, "_module_available", lambda _module_name: False)
-    monkeypatch.setattr(mlx_vlm_server, "main", _fake_main)
-
-    result = runner.invoke(app, ["vlm-server", "--host", "127.0.0.1", "--port", "18080"])
-
-    assert result.exit_code == 0
-    assert seen == {
-        "args": ["--host", "127.0.0.1", "--port", "18080"],
-        "prog_name": "mineru-kit vlm-server",
-        "standalone_mode": False,
-    }
+    monkeypatch.setattr(vlm_server, "_module_available", lambda name: False)
+    result = runner.invoke(app, ["vlm-server"])
+    assert result.exit_code == 1
 
 
 def test_vlm_server_auto_treats_missing_mlx_as_unavailable(monkeypatch: Any) -> None:
@@ -1124,7 +1118,7 @@ def test_parse_output_replaces_surrogate_chars(monkeypatch: Any, tmp_path: Path)
     assert output.read_text(encoding="utf-8") == "before ? after\n"
 
 
-def test_models_download_tier_basic_light(monkeypatch: Any) -> None:
+def test_models_download_tier_basic_onnx(monkeypatch: Any) -> None:
     captured: list[str] = []
 
     def fake_download_model_repo(repo: Any, *, source: str | None = None, local_as_auto: bool = False) -> Path:
@@ -1133,19 +1127,18 @@ def test_models_download_tier_basic_light(monkeypatch: Any) -> None:
 
     monkeypatch.setattr(models, "download_model_repo", fake_download_model_repo)
 
-    result = runner.invoke(app, ["models", "download", "--tier", "basic", "--stack", "light"])
+    result = runner.invoke(
+        app, ["models", "download", "--tier", "basic", "--small-backend", "onnx", "--vlm-engine", "llama-cpp"]
+    )
 
     assert result.exit_code == 0
     assert captured == [
-        "PP-DocLayoutV2_onnx",
-        "PP-OCRv6_small_det_onnx",
-        "PP-OCRv6_small_rec_onnx",
-        "PP-FormulaNet_plus-M_onnx",
+        "MinerU-4_models_onnx",
     ]
     assert "Downloaded models for tier basic" in result.output
 
 
-def test_models_download_tier_standard_light(monkeypatch: Any) -> None:
+def test_models_download_tier_standard_onnx(monkeypatch: Any) -> None:
     captured: list[str] = []
 
     def fake_download_model_repo(repo: Any, *, source: str | None = None, local_as_auto: bool = False) -> Path:
@@ -1154,88 +1147,90 @@ def test_models_download_tier_standard_light(monkeypatch: Any) -> None:
 
     monkeypatch.setattr(models, "download_model_repo", fake_download_model_repo)
 
-    result = runner.invoke(app, ["models", "download", "--tier", "standard", "--stack", "light"])
+    result = runner.invoke(
+        app, ["models", "download", "--tier", "standard", "--small-backend", "onnx", "--vlm-engine", "llama-cpp"]
+    )
 
     assert result.exit_code == 0
     assert captured == [
-        "PP-DocLayoutV2_onnx",
-        "PP-OCRv6_small_det_onnx",
-        "PP-OCRv6_small_rec_onnx",
-        "PP-FormulaNet_plus-M_onnx",
+        "MinerU-4_models_onnx",
         "MinerU2.5-Pro-2605-1.2B-GGUF",
     ]
 
 
-def test_models_download_rejects_invalid_stack() -> None:
-    result = runner.invoke(app, ["models", "download", "--tier", "basic", "--stack", "torch"])
+def test_models_download_rejects_invalid_small_backend() -> None:
+    result = runner.invoke(app, ["models", "download", "--tier", "basic", "--small-backend", "invalid"])
 
     assert result.exit_code == 1
-    assert "Unsupported stack 'torch'" in " ".join(result.output.split())
+    assert "Unsupported small backend 'invalid'" in " ".join(result.output.split())
 
 
-def test_models_download_repo_ignores_stack(monkeypatch: Any) -> None:
-    """传具体 repo 名时 --stack 应被忽略，repo 自身的 stack 字段决定行为。"""
+def test_models_download_repo_ignores_backend_options(monkeypatch: Any) -> None:
+    """传具体 repo 名时忽略后端选项，始终下载所指定仓库。"""
     captured: dict[str, Any] = {}
 
     def fake_download_model_repo(repo: Any, *, source: str | None = None, local_as_auto: bool = False) -> Path:
         captured["repo"] = repo.name
-        captured["stack"] = repo.stack
         return Path("/tmp/models") / repo.local_name
 
     monkeypatch.setattr(models, "download_model_repo", fake_download_model_repo)
 
-    result = runner.invoke(app, ["models", "download", "PP-DocLayoutV2_onnx", "--stack", "full"])
+    result = runner.invoke(
+        app, ["models", "download", "MinerU-4_models_onnx", "--small-backend", "torch", "--vlm-engine", "vllm"]
+    )
 
     assert result.exit_code == 0
-    assert captured["repo"] == "PP-DocLayoutV2_onnx"
-    assert captured["stack"] == "light"
-    assert "Downloaded models for PP-DocLayoutV2_onnx" in result.output
+    assert captured["repo"] == "MinerU-4_models_onnx"
+    assert "Downloaded models for MinerU-4_models_onnx" in result.output
 
 
-def test_models_show_displays_stack_fields(tmp_path: Path, monkeypatch: Any) -> None:
+def test_models_show_displays_backend_fields(tmp_path: Path, monkeypatch: Any) -> None:
     base_dir = tmp_path / "models"
     monkeypatch.setattr(models.config.model, "base_dir", str(base_dir))
-    monkeypatch.setattr(models.config.model, "stack", "full")
+    monkeypatch.setattr(models.config.model, "small_backend", "torch")
+    monkeypatch.setattr(models.config.model.vlm, "engine", "vllm")
 
     result = runner.invoke(app, ["models", "show"])
 
     assert result.exit_code == 0
-    assert "model.stack: full" in result.output
-    assert "Effective stack: full" in result.output
-    assert "[stack=full]" in result.output
-    assert "[stack=light]" in result.output
+    assert "model.small_backend: torch" in result.output
+    assert "Effective small backend: torch" in result.output
+    assert "model.vlm.engine: vllm" in result.output
+    assert "Effective VLM engine: vllm" in result.output
 
 
-def test_models_show_with_light_stack_filter(tmp_path: Path, monkeypatch: Any) -> None:
-    """--stack light 时 effective stack 解析为 light，tiers 部分按 light 显示。"""
+def test_models_show_with_onnx_backend_filter(tmp_path: Path, monkeypatch: Any) -> None:
+    """显式 ONNX 覆盖当前命令的小模型选择，不修改全局配置。"""
     base_dir = tmp_path / "models"
     monkeypatch.setattr(models.config.model, "base_dir", str(base_dir))
-    monkeypatch.setattr(models.config.model, "stack", "full")
+    monkeypatch.setattr(models.config.model, "small_backend", "torch")
+    monkeypatch.setattr(models.config.model.vlm, "engine", "vllm")
 
-    result = runner.invoke(app, ["models", "show", "--stack", "light"])
+    result = runner.invoke(app, ["models", "show", "--small-backend", "onnx", "--vlm-engine", "llama-cpp"])
 
     assert result.exit_code == 0
-    assert "Effective stack: light" in result.output
-    assert "PP-DocLayoutV2_onnx: " in result.output
-    assert "PDF-Extract-Kit-1.0: " in result.output
+    assert "Effective small backend: onnx" in result.output
+    assert "MinerU-4_models_onnx: " in result.output
+    assert "MinerU-4_models_torch: " in result.output
 
 
-def test_models_show_rejects_invalid_stack() -> None:
-    result = runner.invoke(app, ["models", "show", "--stack", "torch"])
+def test_models_show_rejects_invalid_small_backend() -> None:
+    result = runner.invoke(app, ["models", "show", "--small-backend", "invalid"])
 
     assert result.exit_code == 1
-    assert "Unsupported stack 'torch'" in " ".join(result.output.split())
+    assert "Unsupported small backend 'invalid'" in " ".join(result.output.split())
 
 
-def test_models_verify_filters_by_effective_stack_full(tmp_path: Path, monkeypatch: Any) -> None:
-    """config.model.stack=full 时，verify 默认只验证 full repos。"""
+def test_models_verify_filters_by_effective_backends(tmp_path: Path, monkeypatch: Any) -> None:
+    """默认校验只检查当前 Torch 与 VLM 引擎实际需要的仓库。"""
     base_dir = tmp_path / "models"
     monkeypatch.setattr(models.config.model, "base_dir", str(base_dir))
-    monkeypatch.setattr(models.config.model, "stack", "full")
+    monkeypatch.setattr(models.config.model, "small_backend", "torch")
+    monkeypatch.setattr(models.config.model.vlm, "engine", "vllm")
 
-    # 仅把 full repos 设为 ready，light repos 不创建
+    # 仅准备当前后端所需仓库，其余仓库保持缺失。
     for repo in models.MODEL_REPOS:
-        if repo.stack == "full":
+        if repo in models.model_repos_for_tier("standard"):
             if repo.download_mode == "full":
                 repo.local_dir().mkdir(parents=True, exist_ok=True)
                 (repo.local_dir() / MODEL_COMPLETE_MARKER).touch()
@@ -1252,41 +1247,45 @@ def test_models_verify_filters_by_effective_stack_full(tmp_path: Path, monkeypat
     result = runner.invoke(app, ["models", "verify"])
 
     assert result.exit_code == 0
-    assert "PDF-Extract-Kit-1.0: ok" in result.output
+    assert "MinerU-4_models_torch: ok" in result.output
     assert "MinerU2.5-Pro-2605-1.2B: ok" in result.output
-    assert "PP-DocLayoutV2_onnx" not in result.output
+    assert "MinerU-4_models_onnx" not in result.output
 
 
-def test_models_verify_with_light_stack(tmp_path: Path, monkeypatch: Any) -> None:
-    """--stack light 时，verify 只验证 light repos。"""
+def test_models_verify_with_onnx_backend(tmp_path: Path, monkeypatch: Any) -> None:
+    """显式 ONNX 只校验 ONNX 与所选 VLM 权重。"""
     base_dir = tmp_path / "models"
     monkeypatch.setattr(models.config.model, "base_dir", str(base_dir))
 
-    result = runner.invoke(app, ["models", "verify", "--stack", "light"])
+    result = runner.invoke(app, ["models", "verify", "--small-backend", "onnx", "--vlm-engine", "llama-cpp"])
 
     assert result.exit_code == 1  # light repos 未准备，应失败
-    assert "PP-DocLayoutV2_onnx: missing key paths" in " ".join(result.output.split())
-    assert "PDF-Extract-Kit-1.0" not in result.output
+    assert "MinerU-4_models_onnx: missing key paths" in " ".join(result.output.split())
+    assert "MinerU-4_models_torch" not in result.output
 
 
-def test_models_verify_repo_ignores_stack(tmp_path: Path, monkeypatch: Any) -> None:
-    """传具体 repo 名时 --stack 被忽略。"""
+def test_models_verify_repo_ignores_backend_options(tmp_path: Path, monkeypatch: Any) -> None:
+    """传具体 repo 名时后端选项被忽略。"""
     base_dir = tmp_path / "models"
     monkeypatch.setattr(models.config.model, "base_dir", str(base_dir))
 
-    # PP-DocLayoutV2_onnx 是 download_mode=full，只需创建 marker 文件
-    repo = next(r for r in models.MODEL_REPOS if r.name == "PP-DocLayoutV2_onnx")
-    repo.local_dir().mkdir(parents=True, exist_ok=True)
-    (repo.local_dir() / MODEL_COMPLETE_MARKER).touch()
+    # 聚合 ONNX 仓库必须具有每个必需文件，根目录标记不能替代文件检查。
+    repo = next(r for r in models.MODEL_REPOS if r.name == "MinerU-4_models_onnx")
+    for path in repo.required_paths():
+        target = path.local_path()
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes(b"model")
 
-    result = runner.invoke(app, ["models", "verify", "PP-DocLayoutV2_onnx", "--stack", "full"])
+    result = runner.invoke(
+        app, ["models", "verify", "MinerU-4_models_onnx", "--small-backend", "torch", "--vlm-engine", "vllm"]
+    )
 
     assert result.exit_code == 0
-    assert "PP-DocLayoutV2_onnx: ok" in result.output
+    assert "MinerU-4_models_onnx: ok" in result.output
 
 
-def test_models_verify_rejects_invalid_stack() -> None:
-    result = runner.invoke(app, ["models", "verify", "--stack", "torch"])
+def test_models_verify_rejects_invalid_small_backend() -> None:
+    result = runner.invoke(app, ["models", "verify", "--small-backend", "invalid"])
 
     assert result.exit_code == 1
-    assert "Unsupported stack 'torch'" in " ".join(result.output.split())
+    assert "Unsupported small backend 'invalid'" in " ".join(result.output.split())

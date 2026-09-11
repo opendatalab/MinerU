@@ -167,7 +167,8 @@ MinerU VLM 的跨页单元格检测保持关闭。任一功能启用时，`api_k
 | doclib | `doclib.parse_server_stop_timeout_sec` | `10` | managed parse-server 停止超时 |
 | model | `model.base_dir` | `~/.mineru/models` | 模型文件根目录，默认取 `$MINERU_HOME/models` |
 | model | `model.source` | `auto` | 模型下载来源：`auto` / `huggingface` / `modelscope` / `local` |
-| model | `model.stack` | `auto` | 模型栈选择：`auto` / `light` / `full`；`auto` 依据设备能力自动选择 |
+| model | `model.small_backend` | `auto` | 小模型后端：`auto` / `onnx` / `torch`；依据依赖与设备自动选择 |
+| model | `model.vlm.engine` | `auto` | 本地 VLM：`auto` / `llama-cpp` / `vllm` / `lmdeploy` / `mlx`；远程地址优先，MLX 仅显式使用 |
 | sqlite | `doclib.sqlite.path` | `~/.mineru/doclib.db` | SQLite DB 路径 |
 | sqlite | `doclib.sqlite.busy_timeout_ms` | `5000` | SQLite 锁等待时间（毫秒） |
 | sqlite | `doclib.sqlite.lock_retry_attempts` | `3` | `SQLITE_BUSY` / `SQLITE_LOCKED` 的额外重试次数 |

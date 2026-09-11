@@ -17,7 +17,12 @@ from packaging.specifiers import SpecifierSet
 from packaging.tags import compatible_tags, cpython_tags, mac_platforms
 from packaging.utils import canonicalize_name, parse_wheel_filename
 
-PLATFORMS = {"linux": "x86_64-manylinux_2_34", "windows": "x86_64-pc-windows-msvc", "macos": "aarch64-apple-darwin"}
+PLATFORMS = {
+    "linux": "x86_64-manylinux_2_34",
+    "windows": "x86_64-pc-windows-msvc",
+    "macos": "aarch64-apple-darwin",
+    "macos-intel": "x86_64-apple-darwin",
+}
 FORBIDDEN = {"fast-langdetect", "fasttext-predict", "robust-downloader"}
 
 
@@ -38,7 +43,7 @@ def target_tags(platform: str, python: str) -> set:
     elif platform == "windows":
         platforms = ["win_amd64"]
     else:
-        platforms = list(mac_platforms((14, 0), "arm64"))
+        platforms = list(mac_platforms((14, 0), "arm64" if platform == "macos" else "x86_64"))
     interpreter = "cp" + python.replace(".", "")
     return set(cpython_tags(version, abis=[interpreter], platforms=platforms)) | set(
         compatible_tags(version, interpreter=interpreter, platforms=platforms)
@@ -75,6 +80,23 @@ def verify_wheels(resolution: str, platform: str, python: str, cache: Path, *, c
     return failures
 
 
+def check_backend_dependencies(selected: set[str], package: str, extra: str, platform: str) -> list[str]:
+    """核验真实求解结果的平台后端组合，独立 MLX extra 不受 MinerU 默认策略影响。"""
+    checks = []
+    if package == "mineru":
+        # lxml 由 DocVortex 管理，不属于 MinerU 平台后端依赖。
+        required = {"gradio", "onnxruntime", "mineru-llama-cpp"}
+        if platform == "macos" or extra in {"torch", "full", "all"}:
+            required.update({"torch", "torchvision", "transformers", "accelerate", "safetensors"})
+        if extra in {"full", "all"} and platform in {"linux", "windows"}:
+            required.add("vllm" if platform == "linux" else "lmdeploy")
+        checks.extend(f"missing platform dependency: {name}" for name in sorted(required - selected))
+        checks.extend(f"unexpected automatic MLX dependency: {name}" for name in sorted(selected & {"mlx", "mlx-vlm"}))
+    if extra == "base" and not (package == "mineru" and platform == "macos"):
+        checks.extend(f"heavy base dependency: {name}" for name in sorted(selected & {"torch", "transformers"}))
+    return checks
+
+
 def main() -> None:
     """运行有效组合并明确记录预期冲突，结果包含完整求解输出和发行包证据。"""
     parser = argparse.ArgumentParser(description=__doc__)
@@ -95,7 +117,7 @@ def main() -> None:
     by_name = {name: (requires, uri) for name, requires, uri in roots}
     cases = [("mineru", extra) for extra in args.extras]
     if args.utils_matrix:
-        backend = {"linux": "vllm", "windows": "lmdeploy", "macos": "mlx"}[args.platform]
+        backend = {"linux": "vllm", "windows": "lmdeploy", "macos": "mlx", "macos-intel": "llama-cpp"}[args.platform]
         cases += [("mineru-vl-utils", extra) for extra in ("base", "transformers", "llama-cpp", backend)]
     records = []
     args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -106,7 +128,7 @@ def main() -> None:
                 f"{name}{('[' + extra + ']') if name == package and extra != 'base' else ''} @ {by_name[name][1]}"
                 for name in root_names
             ]
-            if args.transformers and extra != "base":
+            if args.transformers and (extra != "base" or (package == "mineru" and args.platform == "macos")):
                 requirements.append(f"transformers=={args.transformers}")
             requirements.extend(args.requirement)
             invalid_roots = [name for name in root_names if python not in SpecifierSet(by_name[name][0])]
@@ -134,9 +156,7 @@ def main() -> None:
                 timeout=180,
             )
             mlx_conflict = (
-                args.transformers == "5.10.1"
-                and args.platform == "macos"
-                and ((package == "mineru" and extra in {"full", "all"}) or extra == "mlx")
+                args.transformers == "5.10.1" and args.platform == "macos" and package == "mineru-vl-utils" and extra == "mlx"
             )
             expected_failure = args.expect_failure or mlx_conflict
             resolved = process.returncode == 0 and not invalid_roots
@@ -148,8 +168,8 @@ def main() -> None:
                     if line and not line.startswith((" ", "#"))
                 }
                 checks += [f"forbidden dependency: {name}" for name in selected & FORBIDDEN]
-                if extra == "base" and not args.requirement:
-                    checks += [f"heavy base dependency: {name}" for name in selected & {"torch", "transformers"}]
+                if not args.requirement:
+                    checks.extend(check_backend_dependencies(selected, package, extra, args.platform))
                 compatibility_errors = verify_wheels(
                     process.stdout, args.platform, python, args.output.parent / "pypi-metadata", check_wheels=args.check_wheels
                 )

@@ -31,22 +31,25 @@
 model:
   base_dir: ${MINERU_HOME:-~/.mineru}/models
   source: auto
-  stack: auto
+  small_backend: auto
+  vlm:
+    engine: auto
 ```
 
-`model.stack` 支持 `auto`、`light`、`full`；`auto` 跟随设备与配置自动选择。
+`model.small_backend` 支持 `auto`、`onnx`、`torch`；`model.vlm.engine` 支持
+`auto`、`llama-cpp`、`vllm`、`lmdeploy`、`mlx`。两者分别使用
+`MINERU_MODEL_SMALL_BACKEND` 和 `MINERU_MODEL_VLM_ENGINE` 覆盖。
+ARM Mac 自动选择 Torch MPS + llama；Linux/Windows 自动选择可用加速器与已安装引擎，否则回退 ONNX + llama。
 
-`model.base_dir` 是所有 MinerU 模型仓库的根目录。当前模型仓库会落在:
+`model.base_dir` 下使用以下稳定目录，不按安装 extra 划分：
 
-- `{model.base_dir}/PDF-Extract-Kit-1.0`（full stack）
-- `{model.base_dir}/MinerU2.5-Pro-2605-1.2B`（full stack）
-- `{model.base_dir}/PP-DocLayoutV2_onnx`（light stack）
-- `{model.base_dir}/PP-OCRv6_small_det_onnx`（light stack）
-- `{model.base_dir}/PP-OCRv6_small_rec_onnx`（light stack）
-- `{model.base_dir}/PP-OCRv6_medium_det_onnx`（light stack）
-- `{model.base_dir}/PP-OCRv6_medium_rec_onnx`（light stack）
-- `{model.base_dir}/PP-FormulaNet_plus-M_onnx`（light stack）
-- `{model.base_dir}/MinerU2.5-Pro-2605-1.2B-GGUF`（light stack）
+- `MinerU-4_models_torch`
+- `MinerU-4_models_onnx`
+- `MinerU2.5-Pro-2605-1.2B`
+- `MinerU2.5-Pro-2605-1.2B-GGUF`
+
+basic 需要所选小模型资源；standard 另需所选 VLM 权重，llama 使用 GGUF，其余引擎使用原始权重。
+远程 VLM 不要求本地 VLM 权重。显式 `--vlm-engine` 可在远程配置环境中准备本地模型。
 
 `model.source` 支持:
 
@@ -73,7 +76,8 @@ mineru-kit models download --tier <basic|standard> [flags]
 | Flag | 简写 | 类型 | 默认 | 说明 |
 |------|------|------|------|------|
 | `--tier` | - | `basic \| standard` | - | 按模型 tier 下载所需模型 |
-| `--stack` | - | `auto \| light \| full` | `auto` | 选择模型栈；`auto` 跟随 `config.model.stack`，传入 repo 位置参数时忽略 |
+| `--small-backend` | - | `auto \| onnx \| torch` | 配置值 | 独立选择小模型后端，传入 repo 时忽略 |
+| `--vlm-engine` | - | `auto \| llama-cpp \| vllm \| lmdeploy \| mlx` | 配置值 | 独立选择本地 VLM 引擎，传入 repo 时忽略 |
 | `--source` | `-s` | `auto \| huggingface \| modelscope` | 配置值 | 本次下载源 |
 | `--verbose` | `-v` | bool | false | 输出详细路径 |
 
@@ -88,22 +92,13 @@ mineru-kit models download --tier <basic|standard> [flags]
 
 支持的 repo 名:
 
-- `PDF-Extract-Kit-1.0`（full stack）
-- `MinerU2.5-Pro-2605-1.2B`（full stack）
-- `PP-DocLayoutV2_onnx`（light stack）
-- `PP-OCRv6_small_det_onnx`（light stack）
-- `PP-OCRv6_small_rec_onnx`（light stack）
-- `PP-OCRv6_medium_det_onnx`（light stack）
-- `PP-OCRv6_medium_rec_onnx`（light stack）
-- `PP-FormulaNet_plus-M_onnx`（light stack）
-- `MinerU2.5-Pro-2605-1.2B-GGUF`（light stack）
+- `MinerU-4_models_torch`
+- `MinerU-4_models_onnx`
+- `MinerU2.5-Pro-2605-1.2B`
+- `MinerU2.5-Pro-2605-1.2B-GGUF`
 
-模型 tier 到 repo 的映射随模型栈变化:
-
-- full stack `basic`: `PDF-Extract-Kit-1.0`
-- full stack `standard`: `PDF-Extract-Kit-1.0` + `MinerU2.5-Pro-2605-1.2B`
-- light stack `basic`: `PP-DocLayoutV2_onnx` + `PP-OCRv6_small_det_onnx` + `PP-OCRv6_small_rec_onnx` + `PP-FormulaNet_plus-M_onnx`
-- light stack `standard`: 在 light `basic` 基础上追加 `MinerU2.5-Pro-2605-1.2B-GGUF`
+模型 tier 到 repo 的映射按两个后端组合：basic 使用小模型资源包；standard 追加实际引擎的 VLM 权重。
+例如 Torch + llama 需要 `MinerU-4_models_torch` 和 `MinerU2.5-Pro-2605-1.2B-GGUF`。
 
 解析 Tier 中的 Flash 不进入模型管理流程；Advanced 使用 Standard 模型集。
 
@@ -111,8 +106,8 @@ mineru-kit models download --tier <basic|standard> [flags]
 
 ```bash
 mineru-kit models download --tier basic
-mineru-kit models download --tier standard --source modelscope
-mineru-kit models download PDF-Extract-Kit-1.0
+mineru-kit models download --tier standard --source huggingface
+mineru-kit models download MinerU-4_models_torch
 mineru-kit models download MinerU2.5-Pro-2605-1.2B --source huggingface
 ```
 
@@ -122,19 +117,19 @@ mineru-kit models download MinerU2.5-Pro-2605-1.2B --source huggingface
 
 ```bash
 mineru-kit models show
-mineru-kit models show --stack <auto|light|full>
+mineru-kit models show --small-backend <auto|onnx|torch> --vlm-engine <auto|llama-cpp|vllm|lmdeploy|mlx>
 ```
 
-`--stack` 支持 `auto|light|full`，默认 `auto`（跟随 `config.model.stack` 与设备自动选择）。
+两个后端选项仅覆盖当前命令，不修改配置；自动模式按平台、依赖和设备分别选择。
 
 输出内容:
 
 - 当前实际使用的 `config.yaml` 路径及是否存在
 - `MINERU_MODEL_SOURCE`
-- `model.base_dir`、`model.source`、`model.stack` 及各自来源
-- 实际生效的模型栈（Effective stack）
-- 每个 repo 的 local dir、readiness 和所属 stack
-- Basic 和 Standard 模型 tier 在当前模型栈下需要的 repo 集合
+- `model.base_dir`、`model.source`、`model.small_backend`、`model.vlm.engine` 及各自来源
+- 实际生效的小模型后端与 VLM 引擎
+- 每个 repo 的 local dir 和 readiness
+- Basic 和 Standard 模型 tier 在当前后端组合下需要的 repo 集合
 
 第一阶段不支持 `--json`。
 
@@ -146,7 +141,7 @@ mineru-kit models show --stack <auto|light|full>
 mineru-kit models verify
 mineru-kit models verify <repo>
 mineru-kit models verify --tier <basic|standard>
-mineru-kit models verify --stack <auto|light|full>
+mineru-kit models verify --small-backend <auto|onnx|torch> --vlm-engine <auto|llama-cpp|vllm|lmdeploy|mlx>
 ```
 
 参数:
@@ -154,13 +149,14 @@ mineru-kit models verify --stack <auto|light|full>
 | Flag | 简写 | 类型 | 默认 | 说明 |
 |------|------|------|------|------|
 | `--tier` | - | `basic \| standard` | - | 按模型 tier 校验所需模型 |
-| `--stack` | - | `auto \| light \| full` | `auto` | 选择模型栈；`auto` 跟随 `config.model.stack`，传入 repo 位置参数时忽略 |
+| `--small-backend` | - | `auto \| onnx \| torch` | 配置值 | 独立选择小模型后端，传入 repo 时忽略 |
+| `--vlm-engine` | - | `auto \| llama-cpp \| vllm \| lmdeploy \| mlx` | 配置值 | 独立选择本地 VLM 引擎，传入 repo 时忽略 |
 
 规则:
 
-- 默认校验当前模型栈下的全部 repo
+- 默认校验当前后端组合下的全部 repo
 - repo 位置参数与 `--tier` 互斥
-- `--tier` 只接受 `basic` 和 `standard`；按 `--tier` 校验时使用 `--stack` 解析出的模型栈
+- `--tier` 只接受 `basic` 和 `standard`；按 `--tier` 校验时使用独立后端选项解析出的资源组合
 - 不是单纯目录存在性检查，还会检查 registry 中声明的关键路径
 - 第一阶段不做 hash 级完整性校验
 

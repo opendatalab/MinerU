@@ -1,4 +1,4 @@
-# mineru-kit gradio
+# mineru-kit webui
 
 页码规范与历史结果兼容说明见 [PDF 页码范围规范](../page-ranges.md)。
 
@@ -23,26 +23,26 @@ Gradio 6.26 的 `huggingface-hub>=1.16` 与当前 Transformers 4 的依赖范围
 构建后使用 `python scripts/verify_pdfjs_distribution.py dist/*.whl dist/*.tar.gz` 检查资源和许可证是否完整。
 浏览器样本可用 `python tests/browser/gradio_pdf_fixtures.py output/playwright/pdfjs-fixtures` 生成。
 
-`mineru-kit gradio` 提供一个基于 MinerU V1 API 的文档解析界面。它不直接调用旧 `/file_parse` 或 `/tasks` 接口，也不使用 `doclib` 缓存。
+`mineru-kit webui` 提供一个基于 MinerU V1 API 的文档解析界面。它不直接调用旧 `/file_parse` 或 `/tasks` 接口，也不使用 `doclib` 缓存。
 
 ## 启动
 
-安装 Gradio 可选依赖：
+安装 Gradio 基础依赖：
 
 ```bash
-pip install 'mineru[gradio]'
+pip install mineru
 ```
 
 自动启动本地 V1 API server：
 
 ```bash
-mineru-kit gradio
+mineru-kit webui
 ```
 
 连接已有 self-hosted 或 remote V1 API server：
 
 ```bash
-mineru-kit gradio \
+mineru-kit webui \
   --api-url http://127.0.0.1:16580 \
   --api-key "$MINERU_API_KEY"
 ```
@@ -95,7 +95,7 @@ OCR 模式由每次 V1 解析任务决定；API Server 不再提供启动时的 
 
 仅在已上传原始 PDF 且 tier 不是 `flash` 时显示页码双滑块。轨道范围由 `pypdfium2` 读取的实际页数确定，为 `1～n`，两端对应包含首尾页的连续选区。Flash 和其他文件格式隐藏控件，并始终全部解析。
 
-默认选择全部页；配置 `mineru-kit gradio --max-pages 20` 后，100 页 PDF 的初始选区为 `[1-20]`，轨道仍为 `1～100`。选区最多 20 页，允许缩小；只有超限时才联动另一端。例如将右端拖到 40 得到 `[21-40]`，再把左端拖到 15 得到 `[15-34]`，随后把左端拖到 20 得到 `[20-34]`。
+默认选择全部页；配置 `mineru-kit webui --max-pages 20` 后，100 页 PDF 的初始选区为 `[1-20]`，轨道仍为 `1～100`。选区最多 20 页，允许缩小；只有超限时才联动另一端。例如将右端拖到 40 得到 `[21-40]`，再把左端拖到 15 得到 `[15-34]`，随后把左端拖到 20 得到 `[20-34]`。
 
 两个滑块可以互相越过并实时交换起止角色，拖动过程中始终抓住同一个滑块，不需要松手。显示和提交的范围始终从小到大排列。例如从 `[20-35]` 把原左滑块拖到 40，得到 `[35-40]`；同一滑块继续到 60，按上限联动为 `[41-60]`；不松手退到 30，则得到 `[30-41]`。两端重合表示单页，此时保留原来的角色，直到严格越过才交换；键盘操作遵循相同规则。
 
@@ -145,4 +145,4 @@ Office 转换开始、失败及成功后都保留已挂载的源预览。“忽�
 
 PDF 和图片会生成与解析范围一致的 `origin.pdf`；布局预览使用 schema 2.0 顶层 block/bbox 生成语义 overlay。无法生成 overlay 时仍保留 origin PDF 预览。
 
-`mineru-gradio` 保留为 `mineru-kit gradio` 的兼容命令名，参数与行为完全相同；旧 HTTP 协议和旧 Gradio 专属参数不再提供。
+`mineru-webui` 提供为 `mineru-kit webui` 的独立命令名，参数与行为完全相同；旧 HTTP 协议和旧 Gradio 专属参数不再提供。

@@ -76,14 +76,14 @@ def test_torch_extra_includes_preflight_runtime_dependencies(monkeypatch: pytest
     pyproject = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
     torch_dependencies = pyproject["project"]["optional-dependencies"]["torch"]
     dependency_names = {Requirement(dependency).name for dependency in torch_dependencies}
+    dependency_names.update(Requirement(dependency).name for dependency in pyproject["project"]["dependencies"])
     module_to_distribution = {
-        "six": "six",
         "torch": "torch",
         "torchvision": "torchvision",
         "transformers": "transformers",
     }
 
-    monkeypatch.setattr(mineru_config.model, "stack", "full")
+    monkeypatch.setattr(mineru_config.model, "small_backend", "torch")
 
     missing = [
         module_name
@@ -102,7 +102,8 @@ def test_full_extra_composes_torch_and_platform_engines() -> None:
 
     assert "advanced" not in extras
     assert "mineru[torch]" in extras["full"]
-    assert {"vllm", "lmdeploy", "mlx-vlm"} <= {Requirement(item).name for item in extras["full"]}
+    assert {"vllm", "lmdeploy"} <= {Requirement(item).name for item in extras["full"]}
+    assert "mlx-vlm" not in {Requirement(item).name for item in extras["full"]}
     assert not any(Requirement(item).name == "mineru" for item in extras["test"])
 
 
@@ -150,7 +151,7 @@ def test_config_set_managed_tier_rejects_missing_models(monkeypatch: pytest.Monk
     payload = response.json()
     assert payload["error"]["code"] == "parse_server_model_not_ready"
     assert payload["error"]["param"] == "parse_server.local.managed_tier"
-    assert "PDF-Extract-Kit-1.0" in payload["error"]["message"]
+    assert "MinerU-4_models_torch" in payload["error"]["message"]
     assert "mineru-kit models download --tier basic" in payload["error"]["message"]
     assert config_response.json()["value"] == "standard"
     assert config_response.json()["source"] == "default"

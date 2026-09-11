@@ -62,6 +62,11 @@ def api_server_cmd(
     vlm_max_concurrency: int | None = typer.Option(
         None, "--vlm-max-concurrency", min=1, help="VLM inference concurrency (default: 100)"
     ),
+    log_level: str = typer.Option(
+        "info",
+        "--log-level",
+        help="API service log level: critical, error, warning, info, debug, trace; preserves model logs and progress bars",
+    ),
 ) -> None:
     """转发显式启动参数，启动 self-hosted MinerU 解析 API 服务。"""
     try:
@@ -87,6 +92,8 @@ def api_server_cmd(
                 host,
                 "--port",
                 str(port),
+                "--log-level",
+                log_level,
                 "--concurrency",
                 str(concurrency),
                 "--url-timeout",

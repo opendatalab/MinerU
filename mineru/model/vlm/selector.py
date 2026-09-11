@@ -1,90 +1,63 @@
 # Copyright (c) Opendatalab. All rights reserved.
+"""独立于小模型后端的 VLM 引擎选择。"""
+
 from typing import Literal, TypeAlias
 
 from loguru import logger
 
-from ..runtime.platform import is_linux_environment, is_mac_environment, is_mac_os_version_supported, is_windows_environment
+from ..runtime.device import get_device, module_available
+from ..runtime.platform import is_linux_environment, is_windows_environment
 
-VlmEngine: TypeAlias = Literal[
-    "llama-cpp-engine",
-    "mlx-engine",
-    "lmdeploy-engine",
-    "vllm-engine",
-    "vllm-async-engine",
-]
-
+VlmEngineName: TypeAlias = Literal["llama-cpp", "mlx", "lmdeploy", "vllm"]
+VlmEngine: TypeAlias = Literal["llama-cpp-engine", "mlx-engine", "lmdeploy-engine", "vllm-engine", "vllm-async-engine"]
 DEFAULT_VLM_ENGINE = "llama-cpp-engine"
+_ENGINE_BACKENDS: dict[VlmEngineName, VlmEngine] = {
+    "llama-cpp": "llama-cpp-engine",
+    "mlx": "mlx-engine",
+    "lmdeploy": "lmdeploy-engine",
+    "vllm": "vllm-engine",
+}
+VLM_REQUIRED_MODULES: dict[VlmEngineName, tuple[str, ...]] = {
+    "llama-cpp": ("mineru_llama_cpp",),
+    "vllm": ("vllm",),
+    "lmdeploy": ("lmdeploy", "qwen_vl_utils"),
+    "mlx": ("mlx", "mlx_vlm"),
+}
 
 
-def get_vlm_engine(inference_engine: Literal["auto"], is_async: bool = False) -> VlmEngine:
-    """
-    自动选择或验证 VLM 推理引擎
+def resolve_vlm_engine(engine: str | None = None) -> VlmEngineName:
+    """按显式配置或平台能力选择引擎；显式名称不要求下载端安装引擎。"""
+    from ...config import config
 
-    Args:
-        inference_engine: 指定的引擎名称或 'auto' 进行自动选择
-        is_async: 是否使用异步引擎(仅对 vllm 有效)
-
-    Returns:
-        最终选择的引擎名称
-    """
-    # 根据操作系统自动选择引擎
-    if is_windows_environment():
-        engine = _select_windows_engine()
-    elif is_linux_environment():
-        engine = _select_linux_engine(is_async)
-    elif is_mac_environment():
-        engine = _select_mac_engine()
-    else:
-        logger.warning("Unknown operating system, falling back to transformers")
-        engine = DEFAULT_VLM_ENGINE
-
-    logger.info(f"Using {engine} as the inference engine for VLM.")
-    return engine
-
-
-def _select_windows_engine() -> VlmEngine:
-    """Windows 平台引擎选择"""
-    try:
-        import lmdeploy as _lmdeploy  # type: ignore
-
-        del _lmdeploy
-
-        return "lmdeploy-engine"
-    except ImportError:
-        return DEFAULT_VLM_ENGINE
+    selected = config.model.vlm.engine if engine is None else engine
+    if selected == "llama-cpp":
+        return "llama-cpp"
+    if selected == "vllm":
+        return "vllm"
+    if selected == "lmdeploy":
+        return "lmdeploy"
+    if selected == "mlx":
+        return "mlx"
+    if selected != "auto":
+        raise ValueError(f"Unsupported VLM engine '{selected}'. Expected one of: auto, llama-cpp, vllm, lmdeploy, mlx.")
+    # macOS 和未知平台固定优先 llama；不探测或自动导入 MLX。
+    if not (is_linux_environment() or is_windows_environment()):
+        return "llama-cpp"
+    if get_device().split(":")[0] == "cpu":
+        return "llama-cpp"
+    if is_linux_environment() and module_available("vllm"):
+        return "vllm"
+    if module_available("lmdeploy"):
+        return "lmdeploy"
+    return "llama-cpp"
 
 
-def _select_linux_engine(is_async: bool) -> VlmEngine:
-    """Linux 平台引擎选择"""
-    try:
-        import vllm as _vllm  # type: ignore
-
-        del _vllm
-
-        if is_async:
-            return "vllm-async-engine"
-        else:
-            return "vllm-engine"
-    except ImportError:
-        try:
-            import lmdeploy as _lmdeploy  # type: ignore
-
-            del _lmdeploy
-
-            return "lmdeploy-engine"
-        except ImportError:
-            return DEFAULT_VLM_ENGINE
+def get_vlm_engine(inference_engine: str | None = None, is_async: bool = False) -> VlmEngine:
+    """将统一引擎选择转换为客户端后端名，异步选项仅影响 vLLM。"""
+    selected = resolve_vlm_engine(inference_engine)
+    backend = "vllm-async-engine" if selected == "vllm" and is_async else _ENGINE_BACKENDS[selected]
+    logger.info(f"Using {backend} as the inference engine for VLM.")
+    return backend
 
 
-def _select_mac_engine() -> VlmEngine:
-    """macOS 平台引擎选择"""
-    try:
-        if is_mac_os_version_supported("14.0"):
-            import mlx_vlm as _mlx_vlm  # type: ignore
-
-            del _mlx_vlm
-
-            return "mlx-engine"
-    except ImportError:
-        pass
-    return DEFAULT_VLM_ENGINE
+__all__ = ["DEFAULT_VLM_ENGINE", "VLM_REQUIRED_MODULES", "VlmEngine", "VlmEngineName", "get_vlm_engine", "resolve_vlm_engine"]

@@ -38,16 +38,16 @@ def _mlx_server_error() -> str | None:
 
         version = Version(importlib.metadata.version("mlx-vlm"))
         if not Version("0.7.0") <= version < Version("0.8.0"):
-            return f"MLX server requires mlx-vlm>=0.7.0,<0.8.0; installed: {version}. Install 'mineru[full]'."
+            return f"MLX server requires mlx-vlm>=0.7.0,<0.8.0; installed: {version}. Install 'mlx-vlm>=0.7.0,<0.8.0'."
         if importlib.util.find_spec("mlx_vlm.server") is None:
-            return "mlx_vlm.server is unavailable. Install 'mineru[full]'."
+            return "mlx_vlm.server is unavailable. Install 'mlx-vlm>=0.7.0,<0.8.0'."
     except (importlib.metadata.PackageNotFoundError, ModuleNotFoundError):
-        return "MLX-VLM is not installed. Install 'mineru[full]'."
+        return "MLX-VLM is not installed. Install 'mlx-vlm>=0.7.0,<0.8.0'."
     return None
 
 
 def _mlx_server_available() -> bool:
-    """供自动引擎选择复用平台与依赖检查。"""
+    """供显式 MLX 服务入口复用平台与依赖检查。"""
     return _mlx_server_error() is None
 
 
@@ -63,17 +63,15 @@ def _run_with_forwarded_argv(main_fn: Callable[[], None], args: list[str]) -> No
         sys.argv = original_argv
 
 
-def _resolve_auto_engine() -> Literal["vllm", "lmdeploy", "mlx"]:
+def _resolve_auto_engine() -> Literal["vllm", "lmdeploy"]:
+    """自动服务仅选择 vLLM 或 LMDeploy，MLX 必须显式指定。"""
     if _module_available("vllm"):
         logger.info("Using vLLM as the inference engine for VLM server.")
         return "vllm"
     if _module_available("lmdeploy"):
         logger.info("Using LMDeploy as the inference engine for VLM server.")
         return "lmdeploy"
-    if _mlx_server_available():
-        logger.info("Using MLX-VLM as the inference engine for VLM server.")
-        return "mlx"
-    logger.info("vLLM/LMDeploy/MLX-VLM is not installed. Please install at least one of them.")
+    logger.info("No automatic VLM server engine is installed. Install vLLM/LMDeploy or explicitly choose --engine mlx.")
     raise typer.Exit(1) from None
 
 

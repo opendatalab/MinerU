@@ -5,11 +5,12 @@ from pathlib import Path
 import numpy as np
 import cv2
 import argparse
+from ....ocr.resources import PPOCRV6_DICT_PATH
 
 
 resource_dir = Path(__file__).resolve().parent.parent / "utils" / "resources"
 DEFAULT_CFG_PATH = resource_dir / "arch_config.yaml"
-DEFAULT_REC_CHAR_DICT_PATH = resource_dir / "dict" / "ppocrv6_dict.txt"
+DEFAULT_REC_CHAR_DICT_PATH = PPOCRV6_DICT_PATH
 
 
 def init_args():

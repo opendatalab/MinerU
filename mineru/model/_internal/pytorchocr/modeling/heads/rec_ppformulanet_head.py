@@ -23,8 +23,8 @@ from typing import Optional, Tuple, Union, List, Dict, Any
 from dataclasses import dataclass, fields, is_dataclass
 
 from sympy import totient
+from .generation_cache import GrowingLayerCache
 
-from .....runtime.device import get_device
 from .rec_unimernet_head import (
     MBartForCausalLM,
     MBartDecoder,
@@ -81,14 +81,14 @@ class AttentionMaskConverter:
         bsz, tgt_len = input_ids_shape
         if is_export:
             mask = torch.full(
-                (tgt_len, tgt_len), torch.finfo(dtype).min, dtype=torch.float64
+                (tgt_len, tgt_len), torch.finfo(dtype).min, dtype=dtype
             )
             mask_cond = torch.arange(mask.shape[-1])
             mask.masked_fill_(
                 mask_cond < (mask_cond + 1).reshape([mask.shape[-1], 1]), 0
             )
         else:
-            mask = torch.full((tgt_len, tgt_len), torch.finfo(dtype).min)
+            mask = torch.full((tgt_len, tgt_len), torch.finfo(dtype).min, dtype=dtype)
             mask_cond = torch.arange(mask.shape[-1])
             mask.masked_fill_(
                 mask_cond < (mask_cond + 1).reshape([mask.shape[-1], 1]), 0
@@ -127,7 +127,7 @@ class AttentionMaskConverter:
         Make causal mask used for bi-directional self-attention.
         """
         bsz, tgt_len = input_ids_shape
-        mask = torch.full((tgt_len, tgt_len), torch.finfo(dtype).min)
+        mask = torch.full((tgt_len, tgt_len), torch.finfo(dtype).min, dtype=dtype)
         mask_cond = torch.arange(mask.shape[-1])
         mask_cond_parallel = torch.arange(mask.shape[-1])
 
@@ -220,7 +220,7 @@ class AttentionMaskConverter:
         )
 
         if causal_4d_mask is not None:
-            expanded_attn_mask = causal_4d_mask.masked_fill_(
+            expanded_attn_mask = causal_4d_mask.to(expanded_attn_mask.device).masked_fill_(
                 expanded_attn_mask.to(torch.bool), torch.finfo(dtype).min
             )
 
@@ -469,7 +469,11 @@ class CustomMBartDecoder(MBartDecoder):
             )
         else:
             # 4d mask is passed through the layers
-            if self.is_export:
+            # 增量推理每次只处理一个并行组；历史与本组均可见，无需构造全零 mask。
+            group_size = self.config_decoder.parallel_step if self.config_decoder.use_parallel else 1
+            if self.is_export and attention_mask is None and input_shape[-1] <= group_size:
+                attention_mask = None
+            elif self.is_export:
                 attention_mask = _prepare_4d_causal_attention_mask_export(
                     attention_mask,
                     input_shape,
@@ -799,7 +803,19 @@ class PPFormulaNet_Head(UniMERNetHead):
                 generation_config["forced_eos_token_id"],
             )
         )
-        self.device = torch.device(get_device())
+
+
+    def set_fast_attention(self, enabled=True):
+        """为本模型实例启用增量缓存和 SDPA，保留关闭开关用于数值回归。"""
+        self.use_growing_cache = enabled
+        for layer in self.decoder.model.decoder.layers:
+            layer.self_attn.use_sdpa = enabled
+            layer.encoder_attn.use_sdpa = enabled
+
+    @property
+    def device(self):
+        """跟随参数的实际设备，支持显式 CPU 与模型迁移。"""
+        return self.decoder.model.decoder.embed_tokens.weight.device
 
     def prepare_inputs_for_generation(
             self,
@@ -893,27 +909,12 @@ class PPFormulaNet_Head(UniMERNetHead):
         return model_kwargs
 
     def stopping_criteria(self, input_ids):
-        if self.is_export:
-            return input_ids[:, -1].cpu() == torch.Tensor([self.eos_token_id])
-        is_done = torch.isin(input_ids[:, -1].cpu(), torch.Tensor([self.eos_token_id]))
-        return is_done
+        """在输入设备上判断单 token 生成是否遇到 EOS。"""
+        return input_ids[:, -1].eq(self.eos_token_id)
 
     def stopping_criteria_parallel(self, input_ids):
-        parallel_step = self.config_decoder.parallel_step
-
-        if self.is_export:
-            is_done_list = []
-            for i in range(parallel_step, 0, -1):
-                cur_is_done = input_ids[:, -i] == torch.Tensor([self.eos_token_id])
-                is_done_list.append(cur_is_done)
-            is_done_list = torch.Tensor(is_done_list).permute([1, 0])
-            return is_done_list
-        else:
-            is_done = torch.isin(
-                input_ids[:, -parallel_step:],
-                torch.Tensor([self.eos_token_id]).reshape([1, 1]),
-            )
-            return torch.Tensor(is_done)
+        """分别判断并行组各位置的 EOS，保持批维度及布尔类型。"""
+        return input_ids[:, -self.config_decoder.parallel_step:].eq(self.eos_token_id)
 
     def generate_single_iter(
             self,
@@ -927,12 +928,16 @@ class PPFormulaNet_Head(UniMERNetHead):
             output_attentions=None,
             output_hidden_states=None,
             return_dict=None,
+            projected_encoder_hidden_states=None,
             **kwargs,
     ):
 
-        encoder_hidden_states = encoder_outputs[0]
-        if self.config_decoder.hidden_size != self.encoder_hidden_size:
-            encoder_hidden_states = self.enc_to_dec_proj(encoder_hidden_states)
+        # 加速路径传入本批次缓存的投影，其他调用保持原来的逐次计算行为。
+        encoder_hidden_states = projected_encoder_hidden_states
+        if encoder_hidden_states is None:
+            encoder_hidden_states = encoder_outputs[0]
+            if self.config_decoder.hidden_size != self.encoder_hidden_size:
+                encoder_hidden_states = self.enc_to_dec_proj(encoder_hidden_states)
         kwargs_decoder = {}
         decoder_outputs = self.decoder(
             input_ids=decoder_input_ids,
@@ -989,7 +994,7 @@ class PPFormulaNet_Head(UniMERNetHead):
                 )
             decoder_input_ids_start = torch.Tensor(
                 decoder_start_token_id
-            ).to(torch.int64)
+            ).to(device=self.device, dtype=torch.int64)
             decoder_input_ids_start = decoder_input_ids_start.view(-1, 1)
         else:
             use_parallel = self.config_decoder.use_parallel
@@ -1050,11 +1055,84 @@ class PPFormulaNet_Head(UniMERNetHead):
         return decoder_input_ids, model_kwargs
 
     @torch.no_grad()
-    def generate_export(
+    def generate_export(self, encoder_outputs, model_kwargs):
+        """标准生成复用增量缓存，CPU 逐轮检查结束；自定义提示保留参考路径。"""
+        # 自定义提示词仍走参考实现，加速路径仅处理模型标准起始组。
+        custom_prompt = any(key in model_kwargs for key in ("decoder_input_ids", "input_ids", "inputs_embeds"))
+        if custom_prompt or (self.device.type == "cpu" and not getattr(self, "use_growing_cache", False)):
+            return self._generate_export_eager(encoder_outputs, model_kwargs)
+        return self._generate_export_accelerated(encoder_outputs, model_kwargs)
+
+    @torch.no_grad()
+    def _generate_export_accelerated(self, encoder_outputs, model_kwargs):
+        """预分配输出并增量维护完成状态，CPU 每轮检查，设备端按段检查。"""
+        parallel = self.config_decoder.use_parallel
+        step = self.config_decoder.parallel_step if parallel else 1
+        rounds = self.max_seq_len // step
+        encoder_states = encoder_outputs["last_hidden_state"]
+        batch_size = encoder_states.shape[0]
+        input_ids, model_kwargs = self._prepare_decoder_input_ids_for_generation(
+            batch_size=batch_size,
+            model_kwargs=model_kwargs,
+            decoder_start_token_id=0,
+            bos_token_id=0,
+        )
+        initial_length = input_ids.shape[1]
+        # 输出只增长到配置允许的整组边界，位置嵌入上限不因延后检查而扩大。
+        tokens = input_ids.new_full((batch_size, initial_length + rounds * step), self.pad_token_id)
+        tokens[:, :initial_length] = input_ids
+        decoder_ids = input_ids
+        projected = encoder_states
+        if self.config_decoder.hidden_size != self.encoder_hidden_size:
+            projected = self.enc_to_dec_proj(projected)
+        heads = self.config_decoder.decoder_attention_heads
+        empty = encoder_states.new_empty((batch_size, heads, 0, self.config_decoder.d_model // heads))
+        cache = [(empty, empty, empty, empty) for _ in range(self.config_decoder.decoder_layers)]
+        if getattr(self, "use_growing_cache", False):
+            cache = [GrowingLayerCache(states) for states in cache]
+        unfinished = torch.ones((batch_size, step), dtype=torch.bool, device=encoder_states.device)
+        # 每行只记录首次 EOS 所在轮次；单次 max().item() 同时判断完成和确定裁剪长度。
+        first_eos_round = input_ids.new_full((batch_size,), rounds + 1)
+        written = initial_length
+        for index in range(rounds):
+            outputs = self.generate_single_iter(
+                decoder_input_ids=decoder_ids,
+                decoder_attention_mask=None,
+                encoder_outputs=encoder_outputs,
+                projected_encoder_hidden_states=projected,
+                past_key_values=cache,
+                return_dict=True,
+                output_attentions=False,
+                output_hidden_states=False,
+            )
+            logits = outputs.logits[:, -step:, :] if parallel else outputs.logits[:, -1, :]
+            scores = self.logits_processor(tokens[:, :written], logits)
+            next_ids = torch.argmax(scores, dim=-1).reshape(batch_size, step)
+            next_ids = torch.where(unfinished, next_ids, self.pad_token_id)
+            tokens[:, written:written + step] = next_ids
+            written += step
+            decoder_ids = next_ids
+            cache = outputs.past_key_values
+            eos = next_ids.eq(self.eos_token_id)
+            unfinished = unfinished & ~eos
+            first_eos_round = torch.where(
+                (first_eos_round == rounds + 1) & eos.any(dim=-1), index + 1, first_eos_round
+            )
+            completed_rounds = index + 1
+            # CPU 每轮检查；设备端最多多算七轮，返回时裁回首次完整结束组。
+            if self.device.type == "cpu" or completed_rounds in (1, 2, 4) or completed_rounds % 8 == 0 or completed_rounds == rounds:
+                last_eos_round = int(first_eos_round.max().item())
+                if last_eos_round <= completed_rounds:
+                    return tokens[:, :initial_length + last_eos_round * step].contiguous()
+        return tokens[:, :written].contiguous()
+
+    @torch.no_grad()
+    def _generate_export_eager(
             self,
             encoder_outputs,
             model_kwargs,
     ):
+        """保留逐轮检查的参考实现，供 CPU 推理及加速路径回归对照。"""
         use_parallel = self.config_decoder.use_parallel
         parallel_step = self.config_decoder.parallel_step
         batch_size = encoder_outputs["last_hidden_state"].shape[0]
@@ -1077,17 +1155,17 @@ class PPFormulaNet_Head(UniMERNetHead):
         if "inputs_embeds" in model_kwargs:
             cur_len = model_kwargs["inputs_embeds"].shape[1]
 
-        cache_position = torch.arange(cur_len)
+        cache_position = torch.arange(cur_len, device=self.device)
         pad_token_id = self.pad_token_id
         eos_token_id = [self.eos_token_id]
         eos_token = self.eos_token_id
         if use_parallel:
             unfinished_sequences = torch.ones(
-                [batch_size, parallel_step], dtype=torch.int64, device=self.device
+                [batch_size, parallel_step], dtype=torch.bool, device=self.device
             )
             parallel_length = math.ceil(self.max_seq_len // parallel_step)
         else:
-            unfinished_sequences = torch.ones(batch_size, dtype=torch.int64, device=self.device)
+            unfinished_sequences = torch.ones(batch_size, dtype=torch.bool, device=self.device)
             parallel_length = self.max_seq_len
 
         i_idx = 0
@@ -1098,22 +1176,30 @@ class PPFormulaNet_Head(UniMERNetHead):
         )
         for i in range(self.config_decoder.decoder_layers):
             init_arr = torch.zeros(
-                [batch_size, decoder_attention_heads, 0, decoder_attention_heads_dim]
+                [batch_size, decoder_attention_heads, 0, decoder_attention_heads_dim],
+                device=encoder_outputs["last_hidden_state"].device,
+                dtype=encoder_outputs["last_hidden_state"].dtype,
             )
             cache = (init_arr, init_arr, init_arr, init_arr)
             past_key_values.append(cache)
+
+        # CPU 参考循环也只投影视觉特征一次；线性层输入整批保持不变，无需逐 token 重算。
+        projected = encoder_outputs["last_hidden_state"]
+        if self.config_decoder.hidden_size != self.encoder_hidden_size:
+            projected = self.enc_to_dec_proj(projected)
 
         while i_idx < parallel_length:
 
             model_inputs = self.prepare_inputs_for_generation_export(
                 past_key_values=past_key_values, **model_kwargs
             )
-            decoder_attention_mask = torch.ones(input_ids.shape, device=self.device)
+            decoder_attention_mask = torch.ones_like(input_ids, dtype=torch.bool)
 
             outputs = self.generate_single_iter(
                 decoder_input_ids=decoder_input_ids,
                 decoder_attention_mask=decoder_attention_mask,
                 encoder_outputs=encoder_outputs,
+                projected_encoder_hidden_states=projected,
                 past_key_values=past_key_values,
                 return_dict=True,
                 output_attentions=False,
@@ -1133,9 +1219,8 @@ class PPFormulaNet_Head(UniMERNetHead):
                     raise ValueError(
                         "If `eos_token_id` is defined, make sure that `pad_token_id` is defined."
                     )
-                next_tokens = next_tokens * unfinished_sequences + pad_token_id * (
-                        1 - unfinished_sequences
-                )
+                # 完成状态保持 bool，生成 token 和 PAD 保持 int64。
+                next_tokens = torch.where(unfinished_sequences, next_tokens, pad_token_id)
             if use_parallel:
                 input_ids = torch.concat([input_ids, next_tokens], dim=-1)
                 decoder_input_ids = next_tokens
@@ -1152,12 +1237,12 @@ class PPFormulaNet_Head(UniMERNetHead):
             if use_parallel:
                 unfinished_sequences = (
                         unfinished_sequences
-                        & ~self.stopping_criteria_parallel(input_ids).to(torch.int64).to(self.device)
+                        & ~self.stopping_criteria_parallel(input_ids)
                 )
             else:
                 unfinished_sequences = unfinished_sequences & ~self.stopping_criteria(
                     input_ids
-                ).to(torch.int64).to(self.device)
+                )
 
             if (
                     eos_token is not None
@@ -1219,11 +1304,11 @@ class PPFormulaNet_Head(UniMERNetHead):
         eos_token = self.eos_token_id
         if use_parallel:
             unfinished_sequences = torch.ones(
-                [batch_size, parallel_step], dtype=torch.int64
+                [batch_size, parallel_step], dtype=torch.bool, device=self.device
             )
             parallel_length = math.ceil(self.max_seq_len // parallel_step)
         else:
-            unfinished_sequences = torch.ones(batch_size, dtype=torch.int64)
+            unfinished_sequences = torch.ones(batch_size, dtype=torch.bool, device=self.device)
             parallel_length = self.max_seq_len
         past_key_values = []
 
@@ -1251,9 +1336,8 @@ class PPFormulaNet_Head(UniMERNetHead):
                     raise ValueError(
                         "If `eos_token_id` is defined, make sure that `pad_token_id` is defined."
                     )
-                next_tokens = next_tokens * unfinished_sequences + pad_token_id * (
-                        1 - unfinished_sequences
-                )
+                # 完成状态保持 bool，生成 token 和 PAD 保持 int64。
+                next_tokens = torch.where(unfinished_sequences, next_tokens, pad_token_id)
             if use_parallel:
                 input_ids = torch.concat([input_ids, next_tokens], dim=-1)
             else:
@@ -1267,12 +1351,12 @@ class PPFormulaNet_Head(UniMERNetHead):
             if use_parallel:
                 unfinished_sequences = (
                         unfinished_sequences
-                        & ~self.stopping_criteria_parallel(input_ids).to(torch.int64)
+                        & ~self.stopping_criteria_parallel(input_ids)
                 )
             else:
                 unfinished_sequences = unfinished_sequences & ~self.stopping_criteria(
                     input_ids
-                ).to(torch.int64)
+                )
 
             if (
                     eos_token is not None

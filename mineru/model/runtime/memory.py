@@ -56,6 +56,9 @@ def _optional_torch() -> tuple[Any | None, Any | None]:
 
 def clean_memory(device: str = "cuda") -> None:
     """释放指定模型设备的框架缓存并执行 Python 垃圾回收。"""
+    if str(device).startswith("cpu"):
+        gc.collect()
+        return
     torch, torch_npu = _optional_torch()
     if torch is None:
         gc.collect()
@@ -95,6 +98,8 @@ def get_vram(device: str) -> int:
                 f"MINERU_VIRTUAL_VRAM_SIZE value '{configured_vram}' is not a valid integer, falling back to auto-detection"
             )
 
+    if str(device).startswith("cpu"):
+        return 1
     torch, torch_npu = _optional_torch()
     if torch is None:
         return 1

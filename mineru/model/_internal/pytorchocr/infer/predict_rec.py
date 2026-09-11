@@ -1,6 +1,7 @@
 # Copyright (c) Opendatalab. All rights reserved.
 from PIL import Image
 import cv2
+from ....ocr.image import resize_text_recognition_image
 import numpy as np
 import math
 import time
@@ -102,7 +103,8 @@ class TextRecognizer(BaseOCRV20):
                     torch.quantization.fuse_modules(module, ['conv', 'bn'], inplace=True)
         self._apply_inference_precision(self.device)
 
-    def resize_norm_img(self, img, max_wh_ratio):
+    def resize_norm_img(self, img: np.ndarray, max_wh_ratio: float) -> np.ndarray:
+        """特殊识别器保持各自变换，标准 CTC 路径复用跨后端处理。"""
         imgC, imgH, imgW = self.rec_image_shape
         if self.rec_algorithm == 'NRTR' or self.rec_algorithm == 'ViTSTR':
             img = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
@@ -131,18 +133,9 @@ class TextRecognizer(BaseOCRV20):
             resized_image /= 0.5
             return resized_image
 
-        assert imgC == img.shape[2]
-        max_wh_ratio = max(max_wh_ratio, imgW / imgH)
-        imgW = int(imgH * max_wh_ratio)
-        imgW = max(min(imgW, self.limited_max_width), self.limited_min_width)
-        h, w = img.shape[:2]
-        ratio = w / float(h)
-        ratio_imgH = max(math.ceil(imgH * ratio), self.limited_min_width)
-        resized_w = min(imgW, int(ratio_imgH))
-        resized_image = cv2.resize(img, (resized_w, imgH)) /127.5 - 1
-        padding_im = np.zeros((imgC, imgH, imgW), dtype=np.float32)
-        padding_im[:, :, 0:resized_w] = resized_image.transpose((2, 0, 1))
-        return padding_im
+        return resize_text_recognition_image(
+            img, max_wh_ratio, tuple(self.rec_image_shape), self.limited_min_width, self.limited_max_width,
+        )
 
     def resize_norm_img_svtr(self, img, image_shape):
 

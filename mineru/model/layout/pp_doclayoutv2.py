@@ -850,9 +850,9 @@ if __name__ == "__main__":
         args.device = get_device()
 
     if args.model is None:
-        from ..registry import PDF_EXTRACT_KIT
+        from ..registry import MINERU_4_MODELS_TORCH
 
-        args.model = str(PDF_EXTRACT_KIT.pp_doclayout_v2.ensure())
+        args.model = str(MINERU_4_MODELS_TORCH.pp_doclayout_v2.ensure())
 
     args.image = "/Users/myhloli/pdf/png/index.png"
 

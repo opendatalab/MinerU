@@ -14,8 +14,8 @@ import torch.nn as nn
 from torch import Tensor
 import torch.nn.functional as F
 from torch.nn import CrossEntropyLoss
+from .generation_cache import GrowingLayerCache
 
-from .....runtime.device import get_device
 
 
 class ModelOutput(OrderedDict):
@@ -271,10 +271,10 @@ class AttentionMaskConverter:
         bsz, tgt_len = input_ids_shape
         if is_export:
             mask = torch.full(
-                [tgt_len, tgt_len], fill_value=torch.finfo(dtype).min, dtype=torch.float64
+                [tgt_len, tgt_len], fill_value=torch.finfo(dtype).min, dtype=dtype
             )
         else:
-            mask = torch.full((tgt_len, tgt_len), torch.finfo(dtype).min)
+            mask = torch.full((tgt_len, tgt_len), torch.finfo(dtype).min, dtype=dtype)
         mask_cond = torch.arange(mask.shape[-1])
         mask = mask.masked_fill_(
             mask_cond < (mask_cond + 1).reshape([mask.shape[-1], 1]), 0
@@ -444,14 +444,13 @@ class MBartLearnedPositionalEmbedding(nn.Embedding):
     def __init__(self, num_embeddings, embedding_dim):
         self.offset = 2
         super().__init__(num_embeddings + self.offset, embedding_dim)
-        self.device = torch.device(get_device())
 
     def forward(self, input_ids, past_key_values_length=0):
         """`input_ids' shape is expected to be [bsz x seqlen]."""
         bsz, seq_len = input_ids.shape[:2]
         positions = torch.arange(
-            past_key_values_length, past_key_values_length + seq_len, dtype=torch.int64
-        ).expand([bsz, -1]).to(self.device)
+            past_key_values_length, past_key_values_length + seq_len, dtype=torch.int64, device=self.weight.device
+        ).expand([bsz, -1])
         return nn.Embedding.forward(self, positions + self.offset)
 
 
@@ -564,14 +563,32 @@ class MBartAttention(nn.Module):
         elif past_key_value is not None:
             key_states = self._shape(self.k_proj(hidden_states), -1, bsz)
             value_states = self._shape(self.v_proj(hidden_states), -1, bsz)
-            key_states = torch.concat([past_key_value[0], key_states], dim=2)
-            value_states = torch.concat([past_key_value[1], value_states], dim=2)
+            if isinstance(past_key_value, GrowingLayerCache):
+                past_key_value = past_key_value.append(key_states, value_states)
+                key_states, value_states = past_key_value
+            else:
+                key_states = torch.concat([past_key_value[0], key_states], dim=2)
+                value_states = torch.concat([past_key_value[1], value_states], dim=2)
         else:
             key_states = self._shape(self.k_proj(hidden_states), -1, bsz)
             value_states = self._shape(self.v_proj(hidden_states), -1, bsz)
 
-        if self.is_decoder:
+        if self.is_decoder and not isinstance(past_key_value, GrowingLayerCache):
             past_key_value = (key_states, value_states)
+
+        if getattr(self, "use_sdpa", False) and not output_attentions and layer_head_mask is None:
+            # Q 已按原路径缩放；scale=1 避免重复缩放。增量缓存全部可见，不能额外加因果掩码。
+            attn_output = F.scaled_dot_product_attention(
+                self._shape(query_states, tgt_len, bsz),
+                key_states,
+                value_states,
+                attn_mask=attention_mask,
+                dropout_p=self.dropout if self.training else 0.0,
+                is_causal=False,
+                scale=1.0,
+            )
+            attn_output = attn_output.transpose(1, 2).reshape(bsz, tgt_len, self.embed_dim)
+            return self.out_proj(attn_output), None, past_key_value
 
         proj_shape = (bsz * self.num_heads, -1, self.head_dim)
         query_states = self._shape(query_states, tgt_len, bsz).reshape(proj_shape)
@@ -590,7 +607,8 @@ class MBartAttention(nn.Module):
                 [bsz * self.num_heads, tgt_len, src_len]
             )
 
-        attn_weights = nn.functional.softmax(attn_weights, dim=-1)
+        # FP16 下用 FP32 计算 softmax，再还原 dtype 以匹配后续 value 矩阵。
+        attn_weights = nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32).to(value_states.dtype)
         if layer_head_mask is not None:
             if tuple(layer_head_mask.shape) != (self.num_heads,):
                 raise ValueError(
@@ -660,7 +678,6 @@ class MBartDecoderLayer(nn.Module):
         self.fc1 = nn.Linear(self.embed_dim, config.decoder_ffn_dim)
         self.fc2 = nn.Linear(config.decoder_ffn_dim, self.embed_dim)
         self.final_layer_norm = nn.LayerNorm(self.embed_dim)
-        self.device = torch.device(get_device())
 
     def forward(
             self,
@@ -679,9 +696,11 @@ class MBartDecoderLayer(nn.Module):
         hidden_states = self.self_attn_layer_norm(hidden_states)
 
         self_attn_past_key_value = None
-        if past_key_value is not None:
+        if isinstance(past_key_value, GrowingLayerCache):
+            self_attn_past_key_value = past_key_value
+        elif past_key_value is not None:
             self_attn_past_key_value = tuple(
-                t.to(self.device) if isinstance(t, torch.Tensor) else t for t in past_key_value[:2]
+                t.to(device=hidden_states.device, dtype=hidden_states.dtype) if isinstance(t, torch.Tensor) else t for t in past_key_value[:2]
             )
 
         hidden_states, self_attn_weights, present_key_value = self.self_attn(

@@ -856,6 +856,7 @@ def test_managed_router_worker_builds_new_api_server_command(tmp_path: Path) -> 
     worker = ManagedLocalWorker("local-0", "127.0.0.1", "0", settings)
 
     command = worker.command(18000, tmp_path)
+    assert command[command.index("--log-level") + 1] == "warning"
 
     assert command[:5] == [command[0], "-m", "mineru.kit.main", "api-server", "--host"]
     assert command[0].endswith("python")
@@ -906,7 +907,7 @@ def test_compose_router_healthcheck_uses_v1_path() -> None:
     """验证 Router Compose profile 只探测正式 `/v1/health`。"""
     repo_root = Path(__file__).resolve().parents[2]
     compose_text = (repo_root / "docker/compose.yaml").read_text(encoding="utf-8")
-    router_section = compose_text.split("  mineru-router:", 1)[1].split("  mineru-gradio:", 1)[0]
+    router_section = compose_text.split("  mineru-router:", 1)[1].split("  mineru-webui:", 1)[0]
 
     assert "http://localhost:8002/v1/health" in router_section
     assert "http://localhost:8002/health" not in router_section

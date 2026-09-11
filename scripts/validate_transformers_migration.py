@@ -139,7 +139,7 @@ def _measure(operation: Callable[[], Any], device: str, rounds: int, warmup: int
 def _operation(args: argparse.Namespace, manifest: dict[str, Any]) -> Callable[[], Any]:
     """通过实际产品模型和解析器构造测量操作，保留默认生成与分批策略。"""
     from PIL import Image
-    import torch
+    import numpy as np
 
     model_root = args.model_root.expanduser()
     if args.kind in {"vlm-transformers", "vlm-mlx"}:
@@ -159,29 +159,23 @@ def _operation(args: argparse.Namespace, manifest: dict[str, Any]) -> Callable[[
     if args.kind == "layout":
         from mineru.model.layout.pp_doclayoutv2 import PPDocLayoutV2LayoutModel
 
-        model = PPDocLayoutV2LayoutModel(str(model_root / "PDF-Extract-Kit-1.0/models/Layout/PP-DocLayoutV2"), args.device)
+        model = PPDocLayoutV2LayoutModel(str(model_root / "MinerU-4_models_torch/Layout/PP-DocLayoutV2"), args.device)
         images = [Image.open(item["image"]).convert("RGB") for item in manifest["pages"]]
         return lambda: model.batch_predict(images, batch_size=2)
     if args.kind == "mfr":
-        from mineru.model.mfr.unimernet.Unimernet import UnimernetModel
+        from mineru.model.mfr.pp_formulanet.predict_formula import FormulaRecognizer
 
-        model = UnimernetModel(str(model_root / "PDF-Extract-Kit-1.0/models/MFR/unimernet_hf_small_2503"), args.device)
-        images = [Image.open(path).convert("RGB") for path in manifest["formulas"]]
+        model = FormulaRecognizer(str(model_root / "MinerU-4_models_torch/MFR/pp_formulanet_plus_m"), args.device)
+        images = [np.asarray(Image.open(path).convert("RGB")) for path in manifest["formulas"]]
         if not images:
             raise ValueError("The manifest must contain at least one formula crop")
-        pixels = torch.stack([model.model.transform(image) for image in images]).to(device=args.device, dtype=model.model.dtype)
-
-        def recognize() -> Any:
-            """使用模型原有 generate 包装，输出 token、原文和修复后的公式文本。"""
-            with torch.inference_mode():
-                return model.model.generate({"image": pixels}, batch_size=len(images))
-
-        return recognize
+        detections = [[{"label": "display_formula", "bbox": [0, 0, image.shape[1], image.shape[0]]}] for image in images]
+        return lambda: model.batch_predict(detections, images, batch_size=2)
 
     from mineru.config import VlmConfig, config
     from mineru.parser.mineru_parser import MinerUParser
 
-    config.model.stack = "full"
+    config.model.small_backend = "torch"
     config.llm_aided.features.title_leveling = False
     config.llm_aided.features.cross_page_table_cell_merge = False
     parser = MinerUParser(tier=args.tier, parse_mode="ocr", vlm_config=VlmConfig())

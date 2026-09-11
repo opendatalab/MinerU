@@ -135,6 +135,8 @@ doc:{short_id}/tier:{tier}/page:{page_no}/block:{block_no}/char:{offset}
 
 ## Packaging
 
+> 历史说明：本节按 tier 划分 extras 的方案已被当前按后端安装的方案替代，下文保留设计历史，不作为安装指引。当前基础包提供 ONNX/llama.cpp，Torch 使用 `mineru[torch]`，Linux vLLM / Windows LMDeploy 使用 `mineru[full]`，显式 MLX 单独安装 `mlx-vlm>=0.7.0,<0.8.0`。`basic`、`standard` 和 `advanced` 均不是当前安装 extra；测试依赖使用独立的 `test` extra。详见 [当前档位说明](../next/tiers.md#7-advanced)。
+
 Optional dependency groups become:
 
 - `mineru[basic]` for the Basic runtime dependency set

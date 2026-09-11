@@ -16,7 +16,12 @@ class TextDetector(BaseOCRV20):
     def __init__(self, args, **kwargs):
         self.args = args
         self.det_algorithm = args.det_algorithm
-        self.device = args.device
+        # MPS 下普通文字 det 使用 CPU 降低冷启动开销，印章 det 保留原设备；不修改 rec/cls 的共享参数。
+        use_cpu_det = (
+            str(args.device).lower().split(":", 1)[0] == "mps"
+            and getattr(args, "lang", "ch") not in {"seal", "seal_lite"}
+        )
+        self.device = "cpu" if use_cpu_det else args.device
         pre_process_list = [{
             'DetResizeForTest': {
                 'limit_side_len': args.det_limit_side_len,

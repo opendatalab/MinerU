@@ -1,4 +1,4 @@
-"""`mineru-kit gradio` 的轻量命令门面。"""
+"""`mineru-kit webui` 的轻量命令门面。"""
 
 from __future__ import annotations
 
@@ -17,16 +17,16 @@ from ..errors import exit_with_message
 
 
 def _require_gradio_dependencies() -> None:
-    """检查 Gradio 可选依赖，并在缺失时给出安装提示。"""
+    """检查 Gradio 基础依赖，并在缺失时给出安装提示。"""
     if importlib.util.find_spec("gradio") is None:
         exit_with_message(
             "dependency_missing",
-            "Gradio support requires the optional dependencies; install with `pip install 'mineru[gradio]'`.",
+            "Gradio is a base dependency; repair the installation with `pip install 'mineru'`.",
         )
     if version("gradio") not in SpecifierSet(">=6.8,<7"):
         exit_with_message(
             "dependency_incompatible",
-            "Gradio >=6.8,<7 is required; upgrade with `pip install --upgrade 'mineru[gradio]'`.",
+            "Gradio >=6.8,<7 is required; upgrade with `pip install --upgrade 'mineru'`.",
         )
 
 
@@ -55,14 +55,14 @@ def _validate_server_port(value: int) -> int:
     return value
 
 
-def gradio_cmd(
+def webui_cmd(
     api_url: str | None = typer.Option(None, "--api-url", help="External MinerU V1 API base URL"),
     api_key: str | None = typer.Option(None, "--api-key", help="Bearer API key; falls back to MINERU_API_KEY"),
-    server_name: str = typer.Option("127.0.0.1", "--server-name", help="Gradio bind host"),
+    server_name: str = typer.Option("127.0.0.1", "--server-name", help="Web UI bind host"),
     server_port: int | None = typer.Option(
-        None, "--server-port", help="Gradio bind port; omitted: auto-select from 7860 or GRADIO_SERVER_PORT"
+        None, "--server-port", help="Web UI bind port; omitted: auto-select from 7860 or GRADIO_SERVER_PORT"
     ),
-    output_dir: str = typer.Option("./output", "--output-dir", help="Directory for Gradio artifacts"),
+    output_dir: str = typer.Option("./output", "--output-dir", help="Directory for Web UI artifacts"),
     max_pages: int | None = typer.Option(
         None, "--max-pages", help="Maximum pages per non-Flash PDF conversion; omitted: unlimited"
     ),
@@ -123,9 +123,9 @@ def gradio_cmd(
 
 
 def main() -> None:
-    """以独立 console script 运行新版 Gradio 命令。"""
+    """以独立 console script 运行Web UI 命令。"""
     configure_standard_streams()
-    typer.run(gradio_cmd)
+    typer.run(webui_cmd)
 
 
-__all__ = ["gradio_cmd", "main"]
+__all__ = ["webui_cmd", "main"]

@@ -1,11 +1,9 @@
 # Copyright (c) Opendatalab. All rights reserved.
-"""ONNX Runtime provider、会话与线程配置。"""
+"""ONNX Runtime CPU 会话与线程配置。"""
 
 import os
 
 import onnxruntime as ort
-
-AVAILABLE_PROVIDERS: list[str] = ort.get_available_providers()
 
 
 def get_op_num_threads(env_name: str) -> int:
@@ -21,27 +19,21 @@ def get_op_num_threads(env_name: str) -> int:
 
 
 def ort_providers(device: str | None = None) -> list[tuple[str, dict[str, object]]]:
-    """根据 device 选择 onnxruntime providers。"""
-    norm = (device or "").lower().split(":", 1)[0]
-    if norm != "cpu" and "CUDAExecutionProvider" in AVAILABLE_PROVIDERS:
-        return [
-            ("CUDAExecutionProvider", {"cudnn_conv_algo_search": "HEURISTIC"}),
-            ("CPUExecutionProvider", {"arena_extend_strategy": "kSameAsRequested"}),
-        ]
-    # if "CoreMLExecutionProvider" in AVAILABLE_PROVIDERS:
-    #     return [
-    #         ("CoreMLExecutionProvider", {}),
-    #         ("CPUExecutionProvider", {"arena_extend_strategy": "kSameAsRequested"}),
-    #     ]
+    """所有 ONNX 模型固定使用 CPU，宿主 Torch 设备不参与 provider 选择。"""
     return [("CPUExecutionProvider", {"arena_extend_strategy": "kSameAsRequested"})]
 
 
 def ort_session(model_path: str, device: str | None = None, intra_op_num_threads: int = 0) -> ort.InferenceSession:
+    """创建 CPU 会话；显式线程数优先，否则使用统一环境配置。"""
     opts = ort.SessionOptions()
     opts.log_severity_level = 3
     opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-    if intra_op_num_threads > 0:
-        opts.intra_op_num_threads = intra_op_num_threads
+    intra_threads = intra_op_num_threads or get_op_num_threads("MINERU_INTRA_OP_NUM_THREADS")
+    inter_threads = get_op_num_threads("MINERU_INTER_OP_NUM_THREADS")
+    if intra_threads > 0:
+        opts.intra_op_num_threads = intra_threads
+    if inter_threads > 0:
+        opts.inter_op_num_threads = inter_threads
     return ort.InferenceSession(model_path, sess_options=opts, providers=ort_providers(device))
 
 

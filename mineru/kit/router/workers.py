@@ -203,6 +203,8 @@ class ManagedLocalWorker:
             self.settings.worker_tier,
             "--concurrency",
             str(self.settings.worker_concurrency),
+            "--log-level",
+            "warning",
             *(["--preload-models"] if self.settings.preload_models else []),
         ]
 

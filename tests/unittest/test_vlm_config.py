@@ -157,7 +157,7 @@ def test_api_cli_merges_vlm_without_mutating_global(monkeypatch: pytest.MonkeyPa
 
 def test_vlm_app_and_parser_snapshot_configuration(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """应用及解析器捕获独立副本，显式空配置完整覆盖全局远程设置。"""
-    monkeypatch.setattr(api_server, "ensure_tier_runtime_dependencies", lambda tier: None)
+    monkeypatch.setattr(api_server, "ensure_tier_runtime_dependencies", lambda tier, **kwargs: None)
     settings = VlmConfig(server_url="http://remote.test", model="alias")
     monkeypatch.setattr(api_server.mineru_config.model, "vlm", settings)
     app = api_server.create_app(upload_dir=str(tmp_path))

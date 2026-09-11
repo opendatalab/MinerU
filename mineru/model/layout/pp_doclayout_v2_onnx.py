@@ -15,6 +15,7 @@ from typing import Dict, List, Optional, Sequence, Tuple, Union
 
 import cv2
 import numpy as np
+import yaml
 from loguru import logger
 from PIL import Image
 from tqdm import tqdm
@@ -49,12 +50,22 @@ class PPDocLayoutV2LayoutModelONNX(PPDocLayoutV2PostProcessor):
         conf: float = 0.45,
         use_paddlex_filter_boxes: bool = True,
         intra_op_num_threads: int = 0,
+        config_path: str | None = None,
     ) -> None:
-        self.device = device
+        """加载 CPU 检测图及官方预处理配置。"""
+        self.device = "cpu"
         self.conf = conf
         self.use_paddlex_filter_boxes = use_paddlex_filter_boxes
         self.model_path = str(weight)
         self.imgsz = imgsz
+        self.interpolation = cv2.INTER_CUBIC
+        configuration_path = Path(config_path) if config_path else Path(weight).with_suffix(".yml")
+        if config_path or configuration_path.is_file():
+            with configuration_path.open(encoding="utf-8") as handle:
+                configuration = yaml.safe_load(handle)
+            resize = next(item for item in configuration["Preprocess"] if item["type"] == "Resize")
+            self.imgsz = tuple(resize["target_size"])
+            self.interpolation = int(resize["interp"])
         self.rescale_factor = 1.0 / 255.0
         self.session = ort_session(self.model_path, device, intra_op_num_threads)
         self._input_names = [i.name for i in self.session.get_inputs()]
@@ -80,7 +91,7 @@ class PPDocLayoutV2LayoutModelONNX(PPDocLayoutV2PostProcessor):
         else:
             raise TypeError(f"Unsupported image type for PP-DocLayoutV2 ONNX: {type(image)}")
 
-        resized = cv2.resize(arr, (self.imgsz[1], self.imgsz[0]), interpolation=cv2.INTER_LINEAR)
+        resized = cv2.resize(arr, (self.imgsz[1], self.imgsz[0]), interpolation=self.interpolation)
         norm = resized.astype(np.float32) * self.rescale_factor
         chw = norm.transpose(2, 0, 1)
         return chw, target_size
@@ -91,8 +102,11 @@ class PPDocLayoutV2LayoutModelONNX(PPDocLayoutV2PostProcessor):
         PaddlePaddle 官方 PP-DocLayoutV2_onnx 输出 [N, 8]：
         [class_id, score, x1, y1, x2, y2, order_key_a, order_key_b]
         其中 order_key_a/b 是阅读顺序 key，用 lexsort((-col7, col6)) 排序。
+        第二个输出为 [B] 的逐页框数量，用于拆分第一个输出。
         坐标已由模型内部按 scale_factor 还原到原图尺度。
         """
+        if not target_sizes or pixel_values.shape[0] != len(target_sizes):
+            raise ValueError("Layout input batch does not match target sizes")
         feed: Dict[str, np.ndarray] = {}
         if "image" in self._input_names:
             feed["image"] = pixel_values
@@ -106,13 +120,23 @@ class PPDocLayoutV2LayoutModelONNX(PPDocLayoutV2PostProcessor):
         else:
             feed[self._input_names[0]] = pixel_values
 
-        preds = self.session.run(None, feed)[0]
-        if preds.ndim == 3:
-            preds = preds[0]
+        outputs = self.session.run(None, feed)
+        if len(outputs) != 2:
+            raise ValueError("Layout ONNX must return boxes and per-page box counts")
+        preds, counts = outputs
+        if preds.ndim != 2 or preds.shape[1] != 8:
+            raise ValueError("Layout boxes must have shape [N, 8]")
+        if counts.ndim != 1 or counts.shape[0] != len(target_sizes) or counts.dtype.kind not in "iu":
+            raise ValueError("Layout box counts must be an integer vector matching input batch")
+        if np.any(counts < 0) or sum(int(count) for count in counts) != preds.shape[0]:
+            raise ValueError("Layout box counts must be nonnegative and sum to the box row count")
 
         batch_predictions: List[Dict[str, np.ndarray]] = []
-        for sample_idx, target_size in enumerate(target_sizes):
-            sample = preds if preds.ndim == 2 else preds[sample_idx]
+        offset = 0
+        for count in counts:
+            end = offset + int(count)
+            sample = preds[offset:end]
+            offset = end
             scores = sample[:, 1]
             keep = scores >= self.conf
             sample = sample[keep]
@@ -157,6 +181,7 @@ class PPDocLayoutV2LayoutModelONNX(PPDocLayoutV2PostProcessor):
         image: Union[np.ndarray, Image.Image],
         use_paddlex_filter_boxes: Optional[bool] = None,
     ) -> List[Dict]:
+        """预测单页版面并返回原图坐标。"""
         return self.batch_predict(
             [image],
             batch_size=1,
@@ -169,6 +194,9 @@ class PPDocLayoutV2LayoutModelONNX(PPDocLayoutV2PostProcessor):
         batch_size: int = 1,
         use_paddlex_filter_boxes: Optional[bool] = None,
     ) -> List[List[Dict]]:
+        """按调用方批次合并固定尺寸张量，再逐页后处理并保留输入顺序。"""
+        if batch_size < 1:
+            raise ValueError("batch_size must be positive")
         if not images:
             return []
 
@@ -176,23 +204,16 @@ class PPDocLayoutV2LayoutModelONNX(PPDocLayoutV2PostProcessor):
         results: List[List[Dict]] = []
         with tqdm(total=len(images), desc="Layout Predict") as pbar:
             for start in range(0, len(images), batch_size):
-                batch_images = images[start : start + batch_size]
-                pixel_values_list: List[np.ndarray] = []
-                target_sizes: List[Tuple[int, int]] = []
-                for image in batch_images:
-                    chw, target_size = self._preprocess_single_image(image)
-                    pixel_values_list.append(chw)
-                    target_sizes.append(target_size)
-
-                batch_tensor = np.stack(pixel_values_list, axis=0).astype(np.float32)
-                predictions = self._run_session(batch_tensor, target_sizes)
-                for prediction, image_size in zip(predictions, target_sizes):
+                prepared = [self._preprocess_single_image(image) for image in images[start : start + batch_size]]
+                pixels = np.stack([item[0] for item in prepared], axis=0)
+                sizes = [item[1] for item in prepared]
+                predictions = self._run_session(pixels, sizes)
+                for prediction, image_size in zip(predictions, sizes):
                     layout_res = self._parse_prediction(prediction, image_size)
                     if use_filter:
                         layout_res = self._apply_paddlex_filter_boxes(layout_res, drop_inline_formula=False)
-                    layout_res = self._apply_layout_post_process(layout_res, image_size=image_size)
-                    results.append(layout_res)
-                pbar.update(len(batch_images))
+                    results.append(self._apply_layout_post_process(layout_res, image_size=image_size))
+                pbar.update(len(prepared))
         return results
 
 
@@ -202,14 +223,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="PP-DocLayoutV2 ONNX local inference smoke test")
     parser.add_argument("image", nargs="?", help="Path to an input image.")
     parser.add_argument("--model", default=None, help="Path to inference.onnx.")
-    parser.add_argument("--device", default=None, help="cpu / cuda / mps.")
+    parser.add_argument("--device", default=None, choices=["cpu"], help="ONNX Runtime CPU.")
     parser.add_argument("--output", default=None, help="Save visualization to this path.")
     args = parser.parse_args()
 
     if args.model is None:
-        from ..registry import PP_DOCLAYOUT_V2_ONNX
+        from ..registry import MINERU_4_MODELS_ONNX
 
-        args.model = str(PP_DOCLAYOUT_V2_ONNX.onnx.ensure())
+        args.model = str(MINERU_4_MODELS_ONNX.pp_doclayout_v2.ensure())
 
     if args.device is None:
         from ..runtime.device import get_device

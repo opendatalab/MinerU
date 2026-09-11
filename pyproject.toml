@@ -40,6 +40,8 @@ classifiers = [
 ]
 dependencies = [
     "docvortex>=0.4.0,<1",
+    "gradio>=6.8,<7",
+    "mineru[torch] ; sys_platform == 'darwin' and platform_machine == 'arm64'",
     "mineru-vl-utils>=2.0.1,<3",
     "mineru-llama-cpp>=0.1.1,<1",
     "click>=8.1.7",
@@ -68,7 +70,7 @@ dependencies = [
     "typer>=0.9.0",
     "rich>=13.0.0",
     "jieba>=0.42.1",
-    "onnxruntime>=1.17.0",
+    "onnxruntime>=1.20.1",
     "ftfy>=6.3.1,<7",
     "shapely>=2.0.7,<3",
     "pyclipper>=1.3.0,<2",
@@ -90,8 +92,6 @@ test = [
     "tomli; python_version < '3.11'",
 ]
 torch = [
-    "six>=1.17.0,<2",
-    # Transformers 5.10.1 导入模型时需要 Torch 2.7 新增的 float8_e8m0fnu。
     "torch>=2.7.0,<3",
     "torchvision",
     "transformers>=5.10.1,<6",
@@ -103,15 +103,9 @@ full = [
     "vllm>=0.19.1,<0.29.0 ; sys_platform == 'linux'",
     "lmdeploy>=0.17.0,<0.18 ; sys_platform == 'win32'",
     "qwen-vl-utils>=0.0.14,<1 ; sys_platform == 'win32'",
-    "mlx-vlm>=0.7.0,<0.8.0 ; sys_platform == 'darwin' and platform_machine == 'arm64'",
-]
-gradio = [
-    "gradio>=6.8,<7",
-    "lxml>=5,<7",
 ]
 all = [
     "mineru[full]",
-    "mineru[gradio]",
 ]
 
 [project.urls]
@@ -125,7 +119,7 @@ License = "https://github.com/opendatalab/MinerU/blob/master/LICENSE.md"
 mineru = "mineru.cli.main:main"
 mineru-kit = "mineru.kit.main:main"
 mineru-router = "mineru.kit.router.cli:main"
-mineru-gradio = "mineru.kit.commands.gradio:main"
+mineru-webui = "mineru.kit.commands.webui:main"
 mineru-openai-server = "mineru.kit.commands.vlm_server:main"
 mineru-models-download = "mineru.kit.commands.models:download_main"
 mineru-api = "mineru.kit.commands.api_server:main"
@@ -142,6 +136,7 @@ namespaces = false
 "mineru.kit.gradio._vendor.ofd2html" = ["LICENSE", "UPSTREAM.md"]
 "mineru.doclib.migrations" = ["*.sql"]
 "mineru.model._internal.pytorchocr.utils" = ["resources/**"]
+"mineru.model.ocr" = ["data/*.txt"]
 
 [tool.setuptools]
 include-package-data = true
@@ -155,7 +150,7 @@ markers = [
   "smoke: 快速回归子集（无需本地 quality tier）",
   "slow: 单用例预计超过 60s",
   "remote: 依赖 mineru.net 云端 parse-server（默认套件包含）",
-  "full_stack: 需要 MINERU_MODEL_STACK=full 与 full 模型集",
+  "full_stack: 需要 Torch 小模型与本地 VLM 模型集",
   "isolated_home: 使用独立 MINERU_HOME",
   "lifecycle: 会 stop/start/restart doclib server",
 ]

@@ -80,10 +80,11 @@
 ```bash
 cd ~/mineru-e2e-test
 export MINERU_HOME=`pwd`
-export MINERU_MODEL_STACK=light
+export MINERU_MODEL_SMALL_BACKEND=onnx
+export MINERU_MODEL_VLM_ENGINE=llama-cpp
 ```
 
-`MINERU_HOME` 使默认配置文件（`$MINERU_HOME/config.yaml`）、DB、日志、endpoint discovery 文件、UDS socket（启用 UDS 时）和数据目录都落在测试目录中。`MINERU_MODEL_STACK=light` 必须由 doclib server 及其 managed parse-server 继承。
+`MINERU_HOME` 使默认配置文件（`$MINERU_HOME/config.yaml`）、DB、日志、endpoint discovery 文件、UDS socket（启用 UDS 时）和数据目录都落在测试目录中。`MINERU_MODEL_SMALL_BACKEND=onnx` 与 `MINERU_MODEL_VLM_ENGINE=llama-cpp` 必须由 doclib server 及其 managed parse-server 继承。
 
 ### 2.2 安装方法
 
@@ -115,21 +116,24 @@ mineru --help
 ```bash
 cd ~/mineru-e2e-test
 source .venv/bin/activate
-mineru-kit models download --tier standard --stack light
-mineru-kit models verify --tier standard --stack light
-mineru-kit models download --tier standard --stack full
-mineru-kit models verify --tier standard --stack full
+mineru-kit models download --tier standard --small-backend onnx --vlm-engine llama-cpp
+mineru-kit models verify --tier standard --small-backend onnx --vlm-engine llama-cpp
+mineru-kit models download --tier standard --small-backend torch --vlm-engine llama-cpp
+mineru-kit models verify --tier standard --small-backend torch --vlm-engine llama-cpp
 ```
 
 说明:
 
 - 每个 stack 的 Standard 模型集覆盖该 stack 的 Advanced 请求，并包含 Basic 所需模型。
-- 模型下载和验证必须显式传 `--stack`；不得依赖 `model.stack=auto` 的硬件探测结果。
+- 模型下载和验证必须显式传 `--small-backend` 与 `--vlm-engine`；不得依赖自动模式 的硬件探测结果。
 - 如果需要验证模型未准备好的 config 拦截分支，应使用新的隔离 `MINERU_HOME`，或在测试开始前清空该隔离 HOME 下的 `models/` 目录。
-- 模型未准备分支固定继承 `MINERU_MODEL_STACK=light`，确保断言针对 light 模型集。
+- 模型未准备分支固定继承 `MINERU_MODEL_SMALL_BACKEND=onnx` 与 `MINERU_MODEL_VLM_ENGINE=llama-cpp`，确保断言针对 light 模型集。
 - 正式 case 执行阶段仍只调用 `mineru ...` 命令。
 
-### 2.2.2 Model stack profile 切换
+### 2.2.2 后端测试 profile 切换
+
+本文 light/full 仅保留为测试 profile 标签，分别表示 ONNX + llama 与 Torch + llama，不是配置值。
+Linux/Windows 的 vLLM/lmdeploy 验收另行显式选择对应引擎并准备原始权重。
 
 全量主流程默认在 `light` profile 下执行。切换 profile 前必须停止 doclib server，使新的 server 和 managed parse-server 继承目标环境变量。
 
@@ -138,7 +142,8 @@ mineru-kit models verify --tier standard --stack full
 ```bash
 mineru config set parse_server.local.mode disabled
 mineru server stop
-export MINERU_MODEL_STACK=full
+export MINERU_MODEL_SMALL_BACKEND=torch
+export MINERU_MODEL_VLM_ENGINE=llama-cpp
 mineru server start
 ```
 
@@ -147,7 +152,8 @@ mineru server start
 ```bash
 mineru config set parse_server.local.mode disabled
 mineru server stop
-export MINERU_MODEL_STACK=light
+export MINERU_MODEL_SMALL_BACKEND=onnx
+export MINERU_MODEL_VLM_ENGINE=llama-cpp
 mineru server start
 mineru config set parse_server.local.managed_tier standard
 mineru config set parse_server.local.mode managed
@@ -953,7 +959,7 @@ mineru config get parse_server.local.mode --json
 
 前置条件:
 
-- 使用已完成 `mineru-kit models download --tier basic --stack light` 和 `mineru-kit models verify --tier basic --stack light` 的 `MINERU_HOME`。
+- 使用已完成 `mineru-kit models download --tier basic --small-backend onnx --vlm-engine llama-cpp` 和 `mineru-kit models verify --tier basic --small-backend onnx --vlm-engine llama-cpp` 的 `MINERU_HOME`。
 
 命令:
 
@@ -1567,7 +1573,7 @@ mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.pdf" --tier flash --pages 1-1 --for
 
 ### PARSE-007 默认 tier 行为
 
-Profile 前置条件: `MINERU_MODEL_STACK=light`，doclib server 及 managed parse-server 均在该环境下启动。PARSE-007、PARSE-007A、PARSE-007B、PARSE-007C 构成 `light` profile 的本地 PDF tier 覆盖。
+Profile 前置条件: `MINERU_MODEL_SMALL_BACKEND=onnx` 与 `MINERU_MODEL_VLM_ENGINE=llama-cpp`，doclib server 及 managed parse-server 均在该环境下启动。PARSE-007、PARSE-007A、PARSE-007B、PARSE-007C 构成 `light` profile 的本地 PDF tier 覆盖。
 
 命令:
 
@@ -1678,8 +1684,8 @@ mineru show parse <created_parse_id> --json
 
 前置条件:
 
-- 已按 2.2.2 停止 server、设置 `MINERU_MODEL_STACK=full` 并重新启动 server。
-- 已完成 `mineru-kit models download --tier standard --stack full` 和对应 verify。
+- 已按 2.2.2 停止 server、设置 `MINERU_MODEL_SMALL_BACKEND=torch` 与 `MINERU_MODEL_VLM_ENGINE=llama-cpp` 并重新启动 server。
+- 已完成 `mineru-kit models download --tier standard --small-backend torch --vlm-engine llama-cpp` 和对应 verify。
 
 命令:
 
@@ -1706,7 +1712,7 @@ mineru show parse <created_parse_id> --json
 
 ### PARSE-007B1 PDF local standard tier（full stack）
 
-前置条件: PARSE-007A1 已完成，当前 profile 仍为 `MINERU_MODEL_STACK=full`。
+前置条件: PARSE-007A1 已完成，当前 profile 仍为 `MINERU_MODEL_SMALL_BACKEND=torch` 与 `MINERU_MODEL_VLM_ENGINE=llama-cpp`。
 
 命令:
 
@@ -1733,7 +1739,7 @@ mineru show parse <created_parse_id> --json
 
 ### PARSE-007C1 PDF local advanced tier（full stack）
 
-前置条件: PARSE-007B1 已完成，当前 profile 仍为 `MINERU_MODEL_STACK=full`；Standard managed server healthy 且 `supported_tiers` 包含 `advanced`。
+前置条件: PARSE-007B1 已完成，当前 profile 仍为 `MINERU_MODEL_SMALL_BACKEND=torch` 与 `MINERU_MODEL_VLM_ENGINE=llama-cpp`；Standard managed server healthy 且 `supported_tiers` 包含 `advanced`。
 
 命令:
 
@@ -1746,7 +1752,7 @@ mineru show parse <created_parse_id> --json
 执行说明:
 
 - `<created_parse_id>` 从 parse JSON 的 `parse.created_parse_ids[0]` 提取。
-- 本用例完成后必须按 2.2.2 停止 server、恢复 `MINERU_MODEL_STACK=light` 并重新启动 server；等待 light local parse-server healthy 后再继续后续 case。
+- 本用例完成后必须按 2.2.2 停止 server、恢复 `MINERU_MODEL_SMALL_BACKEND=onnx` 与 `MINERU_MODEL_VLM_ENGINE=llama-cpp` 并重新启动 server；等待 light local parse-server healthy 后再继续后续 case。
 
 预期:
 
@@ -3959,7 +3965,7 @@ mineru server start
 - remote/local fallback 不得改变 tier，也不得降级到 `flash`。
 - PARSE-013A1 是 remote standard 硬性测试；remote 不可用或不支持 standard 均记录为失败，不能静默 fallback 到 local 或其它 tier。
 - PARSE-007A1、PARSE-007B1、PARSE-007C1 是 `full` stack 硬性测试；任何一项不得因 full runtime、模型或硬件不可用标记为 BLOCKED。
-- full profile 完成后必须恢复 `MINERU_MODEL_STACK=light` 并重启 server，避免影响后续 case。
+- full profile 完成后必须恢复 `MINERU_MODEL_SMALL_BACKEND=onnx` 与 `MINERU_MODEL_VLM_ENGINE=llama-cpp` 并重启 server，避免影响后续 case。
 - force/cache/no-wait 用例必须记录 parse id/status 是否符合预期。
 
 ### COVERAGE-007 read 边界、续读、image 与 context 补充

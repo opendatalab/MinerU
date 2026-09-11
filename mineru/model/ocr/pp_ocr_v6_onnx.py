@@ -6,7 +6,7 @@
 
 限制：
 - 仅支持 ch 语系（中英日 + 拉丁系 50 语言），不支持多语种切换
-- 不支持 seal 模式
+- seal 使用专用检测图、多边形裁剪和共享 Small Rec
 - 不支持角度分类（use_angle_cls）
 
 预处理/后处理参数与 PaddlePaddle 官方 ``inference.yml`` 一似。
@@ -15,24 +15,27 @@
 from __future__ import annotations
 
 import copy
-import math
 import time
 import warnings
 from pathlib import Path
-from typing import Any, List, Optional, Tuple, Union
+from typing import Any, List, Literal, Optional, Tuple, Union
 
 import cv2
 import numpy as np
-import pyclipper
 from loguru import logger
-from shapely.geometry import Polygon
 from tqdm import tqdm
 
 from ..runtime.onnx import ort_session
+from .._internal.pytorchocr.data.imaug.operators import DetResizeForTest, NormalizeImage
+from .db_postprocess import DBPostProcess
+from .resources import PPOCRV6_DICT_PATH
+from .seal_crop import CropByPolys, SortPolyBoxes
 from .geometry import merge_det_boxes, sorted_boxes, update_det_boxes
-from .image import check_img, get_rotate_crop_image_for_text_rec, preprocess_image
+from .image import check_img, get_rotate_crop_image_for_text_rec, preprocess_image, resize_text_recognition_image
 
-__all__ = ["PPOCRv6ONNX"]
+DetectionBoxes = np.ndarray | list[np.ndarray]
+
+__all__ = ["DetectionBoxes", "PPOCRv6ONNX", "TextDetectorONNX", "TextRecognizerONNX"]
 
 
 # ------------------------------------------------------------------
@@ -76,9 +79,11 @@ class TextDetectorONNX:
         box_thresh: float = 0.5,
         unclip_ratio: float = 1.5,
         max_candidates: int = 1000,
-        use_dilation: bool = True,
+        use_dilation: bool = False,
+        box_type: Literal["quad", "poly"] = "quad",
         intra_op_num_threads: int = 0,
     ) -> None:
+        """加载 CPU ONNX 会话并设置推理参数。"""
         self.session = ort_session(model_path, device, intra_op_num_threads)
         self.input_name = self.session.get_inputs()[0].name
 
@@ -92,44 +97,30 @@ class TextDetectorONNX:
         self.min_size = 3
         self.score_mode = "fast"
         self.use_dilation = use_dilation
-        self.dilation_kernel = np.array([[1, 1], [1, 1]]) if use_dilation else None
+        self.box_type = box_type
+        self.resize_op = DetResizeForTest(limit_side_len=limit_side_len, limit_type=limit_type, max_side_limit=max_side_limit)
+        self.normalize_op = NormalizeImage(
+            scale=1.0 / 255.0,
+            mean=[0.485, 0.456, 0.406],
+            std=[0.229, 0.224, 0.225],
+            order="hwc",
+        )
+        self.postprocess_op = DBPostProcess(
+            thresh=thresh,
+            box_thresh=box_thresh,
+            max_candidates=max_candidates,
+            unclip_ratio=unclip_ratio,
+            use_dilation=use_dilation,
+            box_type=box_type,
+        )
 
     # ---- 预处理 ----
     def _resize_image(self, img: np.ndarray) -> Tuple[Optional[np.ndarray], Optional[Tuple[float, float]]]:
-        """与 DetResizeForTest.resize_image_type0 一致。"""
-        h, w = img.shape[:2]
-
-        if self.limit_type == "max":
-            if max(h, w) > self.limit_side_len:
-                ratio = float(self.limit_side_len) / max(h, w)
-            else:
-                ratio = 1.0
-        elif self.limit_type == "min":
-            if min(h, w) < self.limit_side_len:
-                ratio = float(self.limit_side_len) / min(h, w)
-            else:
-                ratio = 1.0
-        else:
-            ratio = 1.0
-
-        resize_h = int(h * ratio)
-        resize_w = int(w * ratio)
-
-        if max(resize_h, resize_w) > self.max_side_limit:
-            ratio = float(self.max_side_limit) / max(resize_h, resize_w)
-            resize_h = int(resize_h * ratio)
-            resize_w = int(resize_w * ratio)
-
-        resize_h = max(int(round(resize_h / 32) * 32), 32)
-        resize_w = max(int(round(resize_w / 32) * 32), 32)
-
-        if resize_w <= 0 or resize_h <= 0:
+        """复用 Torch 路径的纯 NumPy/OpenCV 缩放逻辑。"""
+        if img.size == 0 or min(img.shape[:2]) == 0:
             return None, None
-
-        resized = cv2.resize(img, (resize_w, resize_h))
-        ratio_h = resize_h / float(h)
-        ratio_w = resize_w / float(w)
-        return resized, (ratio_h, ratio_w)
+        resized, ratios = self.resize_op.resize_image_type0(img)
+        return resized, tuple(ratios)
 
     def _preprocess(self, img: np.ndarray) -> Optional[Tuple[np.ndarray, np.ndarray]]:
         """返回 (chw_float32, shape_list) 或 None。"""
@@ -137,90 +128,20 @@ class TextDetectorONNX:
         if resized is None:
             return None
 
-        mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
-        std = np.array([0.229, 0.224, 0.225], dtype=np.float32)
-        norm = (resized.astype(np.float32) / 255.0 - mean) / std
-        chw = norm.transpose(2, 0, 1)[np.newaxis, ...].astype(np.float32)
+        norm = self.normalize_op({"image": resized})["image"]
+        chw = np.ascontiguousarray(norm.transpose(2, 0, 1)[np.newaxis, ...], dtype=np.float32)
 
         src_h, src_w = img.shape[:2]
         ratio_h, ratio_w = ratios
         shape_list = np.array([[src_h, src_w, ratio_h, ratio_w]], dtype=np.float32)
         return chw, shape_list
 
-    # ---- 后处理（DBPostProcess）----
-    @staticmethod
-    def _get_mini_boxes(contour: np.ndarray) -> Tuple[np.ndarray, float]:
-        rect = cv2.minAreaRect(contour)
-        points = sorted(cv2.boxPoints(rect), key=lambda x: x[0])
-        idx_1, idx_4 = (0, 1) if points[1][1] > points[0][1] else (1, 0)
-        idx_2, idx_3 = (2, 3) if points[3][1] > points[2][1] else (3, 2)
-        box = np.array([points[idx_1], points[idx_2], points[idx_3], points[idx_4]])
-        return box, min(rect[1])
-
-    @staticmethod
-    def _box_score_fast(bitmap: np.ndarray, box: np.ndarray) -> float:
-        h, w = bitmap.shape[:2]
-        xmin = int(np.clip(np.floor(box[:, 0].min()), 0, w - 1))
-        xmax = int(np.clip(np.ceil(box[:, 0].max()), 0, w - 1))
-        ymin = int(np.clip(np.floor(box[:, 1].min()), 0, h - 1))
-        ymax = int(np.clip(np.ceil(box[:, 1].max()), 0, h - 1))
-        mask = np.zeros((ymax - ymin + 1, xmax - xmin + 1), dtype=np.uint8)
-        b = box.copy()
-        b[:, 0] -= xmin
-        b[:, 1] -= ymin
-        cv2.fillPoly(mask, b.reshape(1, -1, 2).astype(np.int32), 1)
-        return float(cv2.mean(bitmap[ymin : ymax + 1, xmin : xmax + 1], mask)[0])
-
-    def _unclip(self, box: np.ndarray) -> np.ndarray:
-        poly = Polygon(box)
-        if not poly.is_valid or poly.area == 0:
-            return box
-        distance = poly.area * self.unclip_ratio / poly.length
-        offset = pyclipper.PyclipperOffset()
-        offset.AddPath(box.tolist(), pyclipper.JT_ROUND, pyclipper.ET_CLOSEDPOLYGON)
-        expanded = np.array(offset.Execute(distance))
-        return expanded
-
-    def _boxes_from_bitmap(
-        self, pred: np.ndarray, bitmap: np.ndarray, dest_width: int, dest_height: int
-    ) -> Tuple[np.ndarray, List[float]]:
-        height, width = bitmap.shape
-        outs = cv2.findContours((bitmap * 255).astype(np.uint8), cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
-        contours = outs[0] if len(outs) == 2 else outs[1]
-        contours = contours[: self.max_candidates]
-
-        boxes: List[np.ndarray] = []
-        scores: List[float] = []
-        for c in contours:
-            points, sside = self._get_mini_boxes(c)
-            if sside < self.min_size:
-                continue
-            score = self._box_score_fast(pred, points)
-            if self.box_thresh > score:
-                continue
-            box = self._unclip(points)
-            if len(box) == 0:
-                continue
-            box, sside = self._get_mini_boxes(box.reshape(-1, 1, 2))
-            if sside < self.min_size + 2:
-                continue
-            box[:, 0] = np.clip(np.round(box[:, 0] / width * dest_width), 0, dest_width)
-            box[:, 1] = np.clip(np.round(box[:, 1] / height * dest_height), 0, dest_height)
-            boxes.append(box.astype(np.int16))
-            scores.append(score)
-        if not boxes:
-            return np.zeros((0, 4, 2), dtype=np.int16), []
-        return np.array(boxes), scores
-
-    def _postprocess(self, pred: np.ndarray, shape_list: np.ndarray) -> np.ndarray:
-        """DB 后处理 + 过滤，返回 [N, 4, 2] int16。"""
-        seg = pred[0, 0, :, :]  # [H, W]
-        bitmap = seg > self.thresh
-        if self.dilation_kernel is not None:
-            bitmap = cv2.dilate(np.array(bitmap).astype(np.uint8), self.dilation_kernel)
-
+    def _postprocess(self, pred: np.ndarray, shape_list: np.ndarray) -> np.ndarray | list[np.ndarray]:
+        """复用 DB 后处理，印章多边形只裁剪坐标，不转成四边形。"""
+        boxes = self.postprocess_op({"maps": pred}, shape_list[np.newaxis, :])[0]["points"]
         src_h, src_w = int(shape_list[0]), int(shape_list[1])
-        boxes, _ = self._boxes_from_bitmap(seg, bitmap, src_w, src_h)
+        if self.box_type == "poly":
+            return [np.clip(np.asarray(box), 0, [src_w - 1, src_h - 1]).astype(np.int32) for box in boxes]
         return self._filter_det_res(boxes, (src_h, src_w))
 
     @staticmethod
@@ -246,19 +167,29 @@ class TextDetectorONNX:
                 continue
             dt_boxes_new.append(box)
         if not dt_boxes_new:
-            return np.zeros((0, 4, 2), dtype=np.int16)
-        return np.array(dt_boxes_new)
+            return np.zeros((0, 4, 2), dtype=np.float32)
+        # OpenCV 透视裁剪要求 float32 点集；与 Torch 检测器的输出契约一致。
+        return np.asarray(dt_boxes_new, dtype=np.float32)
 
     # ---- 推理 ----
-    def __call__(self, img: np.ndarray) -> Tuple[Optional[np.ndarray], float]:
-        t0 = time.perf_counter()
-        preprocessed = self._preprocess(img)
-        if preprocessed is None:
-            return None, 0.0
-        chw, shape_list = preprocessed
-        pred = self.session.run(None, {self.input_name: chw})[0]
-        dt_boxes = self._postprocess(pred, shape_list[0])
-        return dt_boxes, time.perf_counter() - t0
+    def __call__(self, img: np.ndarray) -> tuple[DetectionBoxes | None, float]:
+        """单图复用同尺寸合批路径，保持四边形及印章多边形的返回类型。"""
+        return self.batch_predict([img], max_batch_size=1)[0]
+
+    def _run_det_batch(self, items: list[tuple[int, np.ndarray, np.ndarray, float]]) -> list[tuple[int, DetectionBoxes, float]]:
+        """执行同尺寸检测批次；共享推理耗时均摊到各图，后处理使用各自原图信息。"""
+        pixels = np.concatenate([item[1] for item in items], axis=0)
+        started = time.perf_counter()
+        predictions = self.session.run(None, {self.input_name: pixels})[0]
+        elapsed = (time.perf_counter() - started) / len(items)
+        if predictions.ndim != 4 or predictions.shape[0] != len(items):
+            raise ValueError("OCR detector output batch does not match input batch")
+        results = []
+        for position, (index, _, shape_list, preprocess_seconds) in enumerate(items):
+            started = time.perf_counter()
+            boxes = self._postprocess(predictions[position : position + 1], shape_list[0])
+            results.append((index, boxes, preprocess_seconds + elapsed + time.perf_counter() - started))
+        return results
 
     def batch_predict(
         self,
@@ -267,7 +198,10 @@ class TextDetectorONNX:
         tqdm_enable: bool = False,
         tqdm_desc: str = "OCR-det Predict",
         tqdm_progress_bar: Optional[Any] = None,
-    ) -> List[Tuple[Optional[np.ndarray], float]]:
+    ) -> list[tuple[DetectionBoxes | None, float]]:
+        """按预处理后尺寸分桶，桶满即真批处理，最后恢复输入顺序。"""
+        if max_batch_size < 1:
+            raise ValueError("max_batch_size must be positive")
         if not img_list:
             return []
 
@@ -277,12 +211,31 @@ class TextDetectorONNX:
             pbar = tqdm(total=len(img_list), desc=tqdm_desc, disable=not tqdm_enable)
             should_close = True
 
-        results: List[Tuple[Optional[np.ndarray], float]] = [(None, 0.0)] * len(img_list)
+        results: list[tuple[DetectionBoxes | None, float]] = [(None, 0.0)] * len(img_list)
+        buckets: dict[tuple[int, ...], list[tuple[int, np.ndarray, np.ndarray, float]]] = {}
+
+        def flush(items: list[tuple[int, np.ndarray, np.ndarray, float]]) -> None:
+            """回填已完成批次并更新进度，释放桶内的预处理张量。"""
+            for index, boxes, elapsed in self._run_det_batch(items):
+                results[index] = (boxes, elapsed)
+            pbar.update(len(items))
+            items.clear()
+
         try:
             for i, img in enumerate(img_list):
-                dt_boxes, elapse = self(img)
-                results[i] = (dt_boxes, elapse)
-                pbar.update(1)
+                started = time.perf_counter()
+                prepared = self._preprocess(img)
+                if prepared is None:
+                    pbar.update(1)
+                    continue
+                pixels, shape_list = prepared
+                key = tuple(pixels.shape[1:])
+                items = buckets.setdefault(key, [])
+                items.append((i, pixels, shape_list, time.perf_counter() - started))
+                if len(items) == max_batch_size:
+                    flush(buckets.pop(key))
+            for items in buckets.values():
+                flush(items)
         finally:
             if should_close:
                 pbar.close()
@@ -309,6 +262,7 @@ class TextRecognizerONNX:
         drop_score: float = 0.5,
         intra_op_num_threads: int = 0,
     ) -> None:
+        """加载 CPU ONNX 会话并设置推理参数。"""
         self.session = ort_session(model_path, device, intra_op_num_threads)
         self.input_name = self.session.get_inputs()[0].name
 
@@ -320,24 +274,19 @@ class TextRecognizerONNX:
         # dict_path 可以是 txt 文件（每行一个字符）或 inference.yml（含 character_dict 列表）
         chars = _load_character_dict(dict_path)
         self.character = ["blank"] + chars + [" "]
+        outputs = self.session.get_outputs()
+        classes = outputs[0].shape[-1]
+        if isinstance(classes, int) and classes != len(self.character):
+            raise ValueError(f"OCR CTC output has {classes} classes but dictionary requires {len(self.character)}")
 
     def _resize_norm_img(self, img: np.ndarray, max_wh_ratio: float) -> np.ndarray:
-        img_c, img_h, img_w = self.img_c, self.img_h, self.img_w
-        max_wh_ratio = max(max_wh_ratio, img_w / img_h)
-        img_w = int(img_h * max_wh_ratio)
-
-        h, w = img.shape[:2]
-        ratio = w / float(h)
-        resized_w = min(img_w, int(max(math.ceil(img_h * ratio), 1)))
-
-        resized = cv2.resize(img, (resized_w, img_h))
-        norm = resized.astype(np.float32).transpose(2, 0, 1) / 127.5 - 1.0
-        padded = np.zeros((img_c, img_h, img_w), dtype=np.float32)
-        padded[:, :, :resized_w] = norm
-        return padded
+        """复用标准识别输入处理，包含最小宽度与超长文字宽度上限。"""
+        return resize_text_recognition_image(img, max_wh_ratio, (self.img_c, self.img_h, self.img_w))
 
     def _decode(self, pred: np.ndarray) -> Tuple[str, float]:
         """CTC 解码单个 prediction。"""
+        if pred.ndim != 2 or pred.shape[1] != len(self.character):
+            raise ValueError(f"Unexpected OCR CTC output shape: {pred.shape}; expected (*, {len(self.character)})")
         idx = pred.argmax(axis=1)
         prob = pred.max(axis=1)
         # collapse consecutive duplicates
@@ -347,7 +296,7 @@ class TextRecognizerONNX:
         selection &= idx != 0
         chars = [self.character[i] for i in idx[selection]]
         text = "".join(chars)
-        conf = float(prob[selection].mean()) if selection.any() else 0.0
+        conf = float(prob[selection].mean()) if selection.any() else 1.0
         return text, conf
 
     def __call__(
@@ -409,14 +358,14 @@ class PPOCRv6ONNX:
     """PP-OCRv6 的 ONNX 推理封装。
 
     与 ``PytorchPaddleOCR`` 的 ``ocr()`` 接口兼容。
-    不支持 seal 模式和多语种切换。
+    普通文字和印章分别使用显式检测配置，识别器与字符表共用。
     """
 
     def __init__(
         self,
         det_model_path: str,
         rec_model_path: str,
-        dict_path: str,
+        dict_path: str = str(PPOCRV6_DICT_PATH),
         device: Optional[str] = None,
         det_db_box_thresh: float = 0.5,
         det_db_unclip_ratio: float = 1.5,
@@ -424,12 +373,24 @@ class PPOCRv6ONNX:
         drop_score: float = 0.5,
         rec_batch_num: int = 6,
         intra_op_num_threads: int = 0,
+        lang: Literal["ch", "seal"] = "ch",
     ) -> None:
+        """按普通文字或印章模式初始化 CPU 检测与识别模型。"""
+        if lang not in {"ch", "seal"}:
+            raise ValueError(f"Unsupported ONNX OCR mode: {lang}")
+        self.lang = lang
+        self.is_seal = lang == "seal"
+        self.device = "cpu"
         self.text_detector = TextDetectorONNX(
             model_path=det_model_path,
             device=device,
-            box_thresh=det_db_box_thresh,
-            unclip_ratio=det_db_unclip_ratio,
+            limit_side_len=736 if self.is_seal else 960,
+            limit_type="min" if self.is_seal else "max",
+            thresh=0.2 if self.is_seal else 0.3,
+            box_thresh=0.6 if self.is_seal else det_db_box_thresh,
+            unclip_ratio=0.5 if self.is_seal else det_db_unclip_ratio,
+            box_type="poly" if self.is_seal else "quad",
+            use_dilation=False,
             intra_op_num_threads=intra_op_num_threads,
         )
         self.text_recognizer = TextRecognizerONNX(
@@ -440,10 +401,10 @@ class PPOCRv6ONNX:
             drop_score=drop_score,
             intra_op_num_threads=intra_op_num_threads,
         )
-        self.drop_score = drop_score
-        self.is_seal = False
-        self.enable_merge_det_boxes = enable_merge_det_boxes
-        self.lang = "ch"
+        self.drop_score = 0.0 if self.is_seal else drop_score
+        self.enable_merge_det_boxes = enable_merge_det_boxes and not self.is_seal
+        self._seal_sort_boxes = SortPolyBoxes()
+        self._seal_crop_by_polys = CropByPolys(det_box_type="poly")
 
         logger.debug(
             "PPOCRv6ONNX loaded: det={}, rec={}",
@@ -461,6 +422,7 @@ class PPOCRv6ONNX:
         tqdm_desc: str = "OCR-rec Predict",
         tqdm_progress_bar: Optional[Any] = None,
     ) -> List[Optional[List]]:
+        """保持统一 OCR 调用协议，并按模式执行检测、裁剪和识别。"""
         assert isinstance(img, (np.ndarray, list, str, bytes))
         if isinstance(img, list) and det:
             logger.error("When input a list of images, det must be false")
@@ -494,10 +456,10 @@ class PPOCRv6ONNX:
                     if dt_boxes is None:
                         ocr_res.append(None)
                         continue
-                    dt_boxes = sorted_boxes(dt_boxes)
+                    dt_boxes = self._seal_sort_boxes(dt_boxes) if self.is_seal else sorted_boxes(dt_boxes)
                     if self.enable_merge_det_boxes:
                         dt_boxes = merge_det_boxes(dt_boxes)
-                    if mfd_res:
+                    if mfd_res and not self.is_seal:
                         dt_boxes = update_det_boxes(dt_boxes, mfd_res)
                     tmp_res = [box.tolist() for box in dt_boxes]
                     ocr_res.append(tmp_res)
@@ -521,25 +483,34 @@ class PPOCRv6ONNX:
 
             return [None]
 
-    def _det_rec(self, img: np.ndarray, mfd_res: Optional[List[dict]] = None) -> Tuple[np.ndarray, List[Tuple[str, float]]]:
+    def _det_rec(
+        self,
+        img: np.ndarray,
+        mfd_res: Optional[List[dict]] = None,
+    ) -> tuple[DetectionBoxes, list[tuple[str, float]]]:
         """det + crop + rec 的完整流程。"""
         ori_im = img
         dt_boxes, _elapse = self.text_detector(img)
         if dt_boxes is None or len(dt_boxes) == 0:
             return np.array([]), []
 
-        dt_boxes = sorted_boxes(dt_boxes)
-        if self.enable_merge_det_boxes:
-            dt_boxes = merge_det_boxes(dt_boxes)
-        if mfd_res:
-            dt_boxes = update_det_boxes(dt_boxes, mfd_res)
-
-        img_crop_list: List[np.ndarray] = []
-        for bno in range(len(dt_boxes)):
-            tmp_box = copy.deepcopy(dt_boxes[bno])
-            img_crop = get_rotate_crop_image_for_text_rec(ori_im, tmp_box)
-            if img_crop is not None:
-                img_crop_list.append(img_crop)
+        if self.is_seal:
+            dt_boxes = self._seal_sort_boxes(dt_boxes)
+            img_crop_list = self._seal_crop_by_polys(ori_im, dt_boxes)
+        else:
+            dt_boxes = sorted_boxes(dt_boxes)
+            if self.enable_merge_det_boxes:
+                dt_boxes = merge_det_boxes(dt_boxes)
+            if mfd_res:
+                dt_boxes = update_det_boxes(dt_boxes, mfd_res)
+            img_crop_list = []
+            crop_boxes = []
+            for box in dt_boxes:
+                crop = get_rotate_crop_image_for_text_rec(ori_im, copy.deepcopy(box))
+                if crop is not None:
+                    img_crop_list.append(crop)
+                    crop_boxes.append(box)
+            dt_boxes = crop_boxes
 
         if not img_crop_list:
             return np.array([]), []
@@ -555,9 +526,13 @@ class PPOCRv6ONNX:
 
         if not filter_boxes:
             return np.array([]), []
-        return np.array(filter_boxes), filter_rec_res
+        return filter_boxes, filter_rec_res
 
-    def __call__(self, img: np.ndarray, mfd_res: Optional[List[dict]] = None):
+    def __call__(
+        self,
+        img: np.ndarray,
+        mfd_res: Optional[List[dict]] = None,
+    ) -> tuple[DetectionBoxes | None, list[tuple[str, float]] | None]:
         """便捷调用，等价于 ocr(img, det=True, rec=True)。"""
         if img is None:
             return None, None
@@ -570,55 +545,21 @@ class PPOCRv6ONNX:
 if __name__ == "__main__":
     import argparse
     import json
-    import os
 
     parser = argparse.ArgumentParser(description="PP-OCRv6 ONNX local inference smoke test")
     parser.add_argument("image", help="Path to an input image.")
     parser.add_argument("--det", default=None, help="Path to det inference.onnx.")
     parser.add_argument("--rec", default=None, help="Path to rec inference.onnx.")
     parser.add_argument("--dict", default=None, help="Path to character dict file.")
-    parser.add_argument("--device", default="cpu", help="cpu / cuda.")
+    parser.add_argument("--device", default="cpu", choices=["cpu"], help="ONNX Runtime CPU.")
     parser.add_argument("--output", default=None, help="Save result JSON to this path.")
     args = parser.parse_args()
 
-    # 默认从 model_registry 获取路径
-    if args.det is None or args.rec is None:
-        from ..registry import PP_OCR_V6_SMALL_DET_ONNX, PP_OCR_V6_SMALL_REC_ONNX
+    from ..registry import MINERU_4_MODELS_ONNX
 
-        if args.det is None:
-            args.det = str(PP_OCR_V6_SMALL_DET_ONNX.onnx.ensure())
-        if args.rec is None:
-            args.rec = str(PP_OCR_V6_SMALL_REC_ONNX.onnx.ensure())
-    if args.dict is None:
-        # rec 的 dict 内嵌在 inference.yml 里，但我们直接用 ModelScope 下载的 dict
-        # 从 rec 的 model_registry config path 读取
-        from ..registry import PP_OCR_V6_SMALL_REC_ONNX
-
-        rec_dir = PP_OCR_V6_SMALL_REC_ONNX.onnx.local_path().parent
-        # 尝试从 inference.yml 提取 dict，或使用内置的
-        args.dict = str(rec_dir / "inference.yml")
-
-    print(f"det: {args.det}")
-    print(f"rec: {args.rec}")
-    print(f"dict: {args.dict}")
-
-    # 对于 dict，我们需要从 inference.yml 提取 character_dict
-    # 但更简单的方式是直接用 RapidOCR 下载的 dict 文件
-    # 这里先用一个 fallback
-    if not os.path.exists(args.dict) or args.dict.endswith(".yml"):
-        # 尝试使用 rec onnx 内嵌的 dict（从 inference.yml 解析）
-        import yaml
-
-        with open(args.dict, encoding="utf-8") as f:
-            yml = yaml.safe_load(f)
-        chars = yml.get("PostProcess", {}).get("character_dict", [])
-        # 写入临时 dict 文件
-        tmp_dict = "/tmp/ppocrv6_dict.txt"
-        with open(tmp_dict, "w", encoding="utf-8") as f:
-            for c in chars:
-                f.write(c + "\n")
-        args.dict = tmp_dict
-        print(f"extracted dict to: {args.dict} ({len(chars)} chars)")
+    args.det = args.det or str(MINERU_4_MODELS_ONNX.ocr_det.ensure())
+    args.rec = args.rec or str(MINERU_4_MODELS_ONNX.ocr_rec.ensure())
+    args.dict = args.dict or str(PPOCRV6_DICT_PATH)
 
     model = PPOCRv6ONNX(
         det_model_path=args.det,

@@ -13,7 +13,7 @@ from docvortex.assets import calculate_contrast
 from loguru import logger
 from PIL import Image
 
-from ....registry import PDF_EXTRACT_KIT
+from ....registry import small_model_repo
 from .table_recover import TableRecover
 from .table_structure_unet import TSRUnet
 from .utils import InputType, LoadImage
@@ -261,8 +261,9 @@ def count_table_cells_physical(html_code):
 
 
 class UnetTableModel:
-    def __init__(self, ocr_engine):
-        model_path = str(PDF_EXTRACT_KIT.unet_structure.ensure())
+    def __init__(self, ocr_engine: Any, *, model_path: str | None = None) -> None:
+        """加载所选模型栈的有线表格资源并共享其 OCR 引擎。"""
+        model_path = model_path or str(small_model_repo().unet_structure.ensure())
         wired_input_args = WiredTableInput(model_path=model_path)
         self.wired_table_model = WiredTableRecognition(wired_input_args, ocr_engine)
         self.ocr_engine = ocr_engine

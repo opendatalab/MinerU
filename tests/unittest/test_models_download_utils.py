@@ -442,28 +442,32 @@ def test_huggingface_snapshot_rejects_missing_expected_files(
         )
 
 
-def test_resolve_model_stack_explicit_light() -> None:
-    from mineru.model.registry import resolve_model_stack
+def test_resolve_small_model_backend_explicit() -> None:
+    """显式后端用于下载时不要求对应运行时已经安装。"""
+    from mineru.model.runtime.device import resolve_small_model_backend
 
-    assert resolve_model_stack("light") == "light"
-    assert resolve_model_stack("full") == "full"
-
-
-def test_resolve_model_stack_auto_falls_back_to_get_model_stack(monkeypatch: pytest.MonkeyPatch) -> None:
-    import mineru.model.runtime.device as device_runtime
-    from mineru.model.registry import resolve_model_stack
-
-    monkeypatch.setattr(device_runtime, "get_model_stack", lambda: "light")
-    assert resolve_model_stack(None) == "light"
-    assert resolve_model_stack("auto") == "light"
-
-    monkeypatch.setattr(device_runtime, "get_model_stack", lambda: "full")
-    assert resolve_model_stack(None) == "full"
-    assert resolve_model_stack("auto") == "full"
+    assert resolve_small_model_backend("onnx") == "onnx"
+    assert resolve_small_model_backend("torch") == "torch"
 
 
-def test_resolve_model_stack_rejects_invalid_value() -> None:
-    from mineru.model.registry import resolve_model_stack
+def test_resolve_small_model_backend_auto(monkeypatch: pytest.MonkeyPatch) -> None:
+    """自动模式同时检查小模型依赖和可用设备。"""
+    from mineru.model.runtime import device
+    from mineru.config import config
 
-    with pytest.raises(ValueError, match="Unsupported stack 'torch'"):
-        resolve_model_stack("torch")
+    monkeypatch.setattr(config.model, "small_backend", "auto")
+    monkeypatch.setattr(device, "module_available", lambda name: True)
+    monkeypatch.setattr(device, "get_device", lambda: "cpu")
+    assert device.resolve_small_model_backend() == "onnx"
+    monkeypatch.setattr(device, "get_device", lambda: "mps")
+    assert device.resolve_small_model_backend() == "torch"
+    monkeypatch.setattr(device, "module_available", lambda name: name != "transformers")
+    assert device.resolve_small_model_backend() == "onnx"
+
+
+def test_resolve_small_model_backend_rejects_invalid_value() -> None:
+    """旧栈名称不再作为小模型后端的别名。"""
+    from mineru.model.runtime.device import resolve_small_model_backend
+
+    with pytest.raises(ValueError, match="Unsupported small backend 'full'"):
+        resolve_small_model_backend("full")

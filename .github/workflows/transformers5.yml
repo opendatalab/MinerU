@@ -73,6 +73,7 @@ jobs:
             tests/unittest/test_transformers5_models.py \
             tests/unittest/test_transformers5_runtime.py \
             tests/unittest/test_dependency_compatibility_check.py \
+            tests/unittest/test_model_backend_selection.py \
             tests/unittest/test_pp_doclayoutv2_postprocess.py \
             tests/unittest/test_mfr_latex_utils.py \
             tests/unittest/test_vlm_config.py \

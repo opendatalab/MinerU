@@ -1,10 +1,11 @@
 # Copyright (c) Opendatalab. All rights reserved.
-"""模型运行设备与轻量/完整模型栈选择。"""
+"""模型运行设备与独立的小模型后端选择。"""
 
 from __future__ import annotations
 
+import importlib.util
 import os
-from typing import Literal, cast
+from typing import Literal
 
 
 def get_device() -> str:
@@ -45,14 +46,31 @@ def get_device() -> str:
     return "cpu"
 
 
-def get_model_stack() -> Literal["light", "full"]:
-    """按配置和实际设备解析轻量或完整模型推理栈。"""
+TORCH_REQUIRED_MODULES: tuple[str, ...] = ("torch", "torchvision", "transformers", "accelerate", "safetensors")
+
+
+def module_available(name: str) -> bool:
+    """只检查模块是否安装，避免自动选择时初始化无关的重依赖。"""
+    try:
+        return importlib.util.find_spec(name) is not None
+    except (ImportError, ValueError):
+        return False
+
+
+def resolve_small_model_backend(backend: str | None = None) -> Literal["onnx", "torch"]:
+    """独立解析小模型后端；显式选择可用于离线下载，依赖由运行入口预检。"""
     from ...config import config
 
-    configured_stack = config.model.stack
-    if configured_stack in ("light", "full"):
-        return cast(Literal["light", "full"], configured_stack)
-    return "light" if get_device() == "cpu" else "full"
+    selected = config.model.small_backend if backend is None else backend
+    if selected == "onnx":
+        return "onnx"
+    if selected == "torch":
+        return "torch"
+    if selected != "auto":
+        raise ValueError(f"Unsupported small backend '{selected}'. Expected one of: auto, onnx, torch.")
+    if all(module_available(name) for name in TORCH_REQUIRED_MODULES) and get_device().split(":")[0] != "cpu":
+        return "torch"
+    return "onnx"
 
 
-__all__ = ["get_device", "get_model_stack"]
+__all__ = ["TORCH_REQUIRED_MODULES", "get_device", "module_available", "resolve_small_model_backend"]
