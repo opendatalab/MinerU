@@ -20,7 +20,7 @@ CLI 文档已拆分到 [cli/README.md](cli/README.md)。
 8. [mineru-kit](cli/mineru-kit.md)
 9. [mineru-kit models](cli/mineru-kit-models.md)
 10. [mineru-kit parse](cli/mineru-kit-parse.md)
-11. [mineru-kit gradio](cli/mineru-kit-gradio.md)
+11. [mineru-kit webui](cli/mineru-kit-webui.md)
 12. [mineru-kit api-server](cli/mineru-kit-api-server.md)
 13. [mineru-kit vlm-server](cli/mineru-kit-vlm-server.md)
 14. `mineru-kit router`: 当前见 [mineru-kit](cli/mineru-kit.md)
