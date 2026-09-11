@@ -129,6 +129,7 @@ def test_convert_vlm_results_deep_copies_projected_mutable_fields() -> None:
     assert source_cell_merge == [1, 0]
 
 
+@pytest.mark.parametrize("auto_mode", [False, True])
 @pytest.mark.parametrize(
     ("effort", "parse_mode", "vlm_method_name"),
     [
@@ -143,6 +144,7 @@ def test_doc_analyze_converts_vlm_results_before_downstream_processing(
     effort: str,
     parse_mode: str,
     vlm_method_name: str,
+    auto_mode: bool,
 ) -> None:
     """验证 high/xhigh 的 TXT/OCR 路径都只向后续阶段传递原生 list/dict。"""
     source_block = VlmContentBlock(
@@ -154,6 +156,7 @@ def test_doc_analyze_converts_vlm_results_before_downstream_processing(
     source_page = ExtractResult([source_block], layout_scored=object())
     fake_document = MagicMock()
     fake_document.page_count = 1
+    fake_document.classify.return_value = parse_mode
     fake_document.__getitem__.return_value = MagicMock(size=(612.0, 792.0))
 
     hybrid_model = MagicMock()
@@ -222,9 +225,11 @@ def test_doc_analyze_converts_vlm_results_before_downstream_processing(
     middle_json, model_json = analyze.doc_analyze(
         b"fake-pdf",
         effort=effort,  # type: ignore[arg-type]
-        parse_mode=parse_mode,  # type: ignore[arg-type]
+        parse_mode="auto" if auto_mode else parse_mode,  # type: ignore[arg-type]
     )
 
+    assert fake_document.classify.call_count == int(auto_mode)
+    getattr(vlm_predictor, vlm_method_name).assert_called_once()
     assert isinstance(model_json, ModelJson)
     assert type(model_json.pages) is list
     assert type(model_json.pages[0]) is list

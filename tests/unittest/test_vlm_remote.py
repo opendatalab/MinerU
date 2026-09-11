@@ -373,3 +373,38 @@ def test_low_efforts_never_create_remote_client(
     assert result.effort == effort
     assert openai_server.requests == []
     remote_factory.assert_not_called()
+
+
+@pytest.mark.parametrize("tier", ["standard", "advanced"])
+@pytest.mark.parametrize("async_mode", [False, True])
+@pytest.mark.parametrize("enabled", [False, True])
+def test_remote_parse_inference_progress(
+    openai_server: _OpenAIServer,
+    hybrid_stub: None,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tier: str,
+    async_mode: bool,
+    enabled: bool,
+) -> None:
+    """真实 PDF 经同步/异步解析和 loopback HTTP 推理后，终端仅出现所属阶段的进度条。"""
+    from functools import partial
+    from mineru_vl_utils import MinerUClient
+    from mineru.model.vlm import runtime
+
+    monkeypatch.setattr(runtime, "MinerUClient", partial(MinerUClient, use_tqdm=enabled))
+    monkeypatch.setattr(config.model, "vlm", _settings(openai_server))
+    source = _pdf_input(tmp_path)
+    result = (
+        asyncio.run(parse_async(source, tier=tier, ocr_mode="ocr")) if async_mode else parse(source, tier=tier, ocr_mode="ocr")
+    )
+    assert "Remote VLM text" in result.markdown()
+    stderr = capsys.readouterr().err
+    description = "VLM Predict" if tier == "standard" else "Two Step Extraction"
+    assert (description in stderr) is enabled
+    if enabled:
+        assert "100%" in stderr
+    if tier == "advanced":
+        assert "VLM Predict" not in stderr
+    assert any(body is not None for _, _, body in openai_server.requests)
