@@ -406,8 +406,11 @@ def test_remote_parse_inference_progress(
     )
     assert "Remote VLM text" in result.markdown()
     stderr = capsys.readouterr().err
-    description = "Extraction" if tier == "standard" else "Two Step Extraction"
+    description = "VLM Predict" if tier == "standard" else "Two Step Extraction"
     assert (description in stderr) is enabled
+    if tier == "standard":
+        assert "External Layout Extraction" not in stderr
+        assert "Processed prompts" not in stderr
     if enabled:
         assert "100%" in stderr
     if tier == "advanced":
@@ -441,3 +444,37 @@ def test_native_http_parse_never_calls_sync_analysis_or_inference(
     )
     assert "Remote VLM text" in result.markdown()
     forbidden.assert_not_called()
+
+
+@pytest.mark.parametrize(("ocr_mode", "resolved_mode"), [("txt", "txt"), ("ocr", "ocr"), ("auto", "txt"), ("auto", "ocr")])
+@pytest.mark.parametrize("async_mode", [False, True])
+def test_standard_progress_label_survives_pdf_mode_routing(
+    openai_server: _OpenAIServer,
+    hybrid_stub: None,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    ocr_mode: str,
+    resolved_mode: str,
+    async_mode: bool,
+) -> None:
+    """TXT/OCR 及 auto 的两个分类分支均保留同名推理进度，并走真实 PDF 和 HTTP 流程。"""
+    from mineru.backend.analysis.pdf import pipeline
+
+    monkeypatch.setattr(config.model, "vlm", _settings(openai_server))
+    monkeypatch.setattr(pipeline.PDFDocument, "classify", lambda self: resolved_mode)
+    context = pipeline.HybridLocalModelContextSingleton().get_model()
+    # 公式块在 TXT 下仍需 VLM 抽取，避免测试被原生正文跳过逻辑短路。
+    context.layout_model.batch_predict.return_value = [[{"bbox": [20, 20, 250, 80], "label": "display_formula"}]]
+    source = _pdf_input(tmp_path)
+    result = (
+        asyncio.run(parse_async(source, tier="standard", ocr_mode=ocr_mode))
+        if async_mode
+        else parse(source, tier="standard", ocr_mode=ocr_mode)
+    )
+    assert result.middle_json.extensions["mineru"]["parse_mode"] == resolved_mode
+    assert any(body is not None for _, _, body in openai_server.requests)
+    stderr = capsys.readouterr().err
+    assert "VLM Predict" in stderr
+    assert "100%" in stderr
+    assert "External Layout Extraction" not in stderr
