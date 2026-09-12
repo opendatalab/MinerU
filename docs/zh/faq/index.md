@@ -4,29 +4,17 @@
 
 如果您仍然无法解决问题，您可通过[Discord](https://discord.gg/Tdedn9GTXq)或[WeChat](https://mineru.net/community-portal/?aliasId=3c430f94)加入社区，与其他用户和开发者交流。
 
-??? question "Windows 直接安装后推理速度很慢怎么办？"
+??? question "Windows 推理很慢或引擎安装失败怎么办？"
 
-    ### Windows 直接安装后推理速度很慢怎么办？ {#windows-cuda-acceleration}
+    ### Windows CUDA 加速 {#windows-cuda-acceleration}
 
-    Windows 直接安装后如果推理速度很慢，通常是 CUDA 加速相关依赖未正确安装。请根据显卡架构选择对应方案：
+    基础包默认可使用 ONNX / CPU 与 llama.cpp。需要 Torch 小模型和 LMDeploy 时，在原虚拟环境中安装 `"mineru[full]>=4.0,<5"`，并核对 Torch 的 CUDA 支持、显卡驱动及引擎 wheel 的 Python 范围。
 
-    - Volta / Turing / Ampere / Ada Lovelace 架构显卡，例如 V100、20 系、T4、30 系、40 系：直接安装支持 CUDA 的 `torch` 和 `torchvision` 即可。请前往 [PyTorch 官网](https://pytorch.org/get-started/locally/) 选择适合您 CUDA 版本的 Windows 安装命令。
-    - Blackwell 架构显卡，例如 RTX 50xx 系列：安装 `lmdeploy 0.11.1 + cu128` 的 Windows wheel。请将 `PYTHON_VERSION` 设置为当前 Python 版本，例如 Python 3.10 / 3.11 / 3.12 / 3.13 分别填写 `310` / `311` / `312` / `313`。
+    4.0 使用 `lmdeploy>=0.17.0,<0.18` 和 Transformers 5；不要套用旧版 LMDeploy 0.11.x 的 wheel 或跳过依赖检查。详见[扩展模块](../quick_start/extension_modules.md)和[档位说明](../usage/tiers.md)。
 
-    ```powershell
-    $env:LMDEPLOY_VERSION = "0.11.1"
-    $env:PYTHON_VERSION = "312"
+??? question "升级后旧命令、API 或配置不再工作怎么办？"
 
-    $wheel = "https://github.com/InternLM/lmdeploy/releases/download/v$($env:LMDEPLOY_VERSION)/lmdeploy-$($env:LMDEPLOY_VERSION)+cu128-cp$($env:PYTHON_VERSION)-cp$($env:PYTHON_VERSION)-win_amd64.whl"
-    pip install $wheel --extra-index-url https://download.pytorch.org/whl/cu128
-    ```
-
-    如果 Blackwell 架构显卡环境中已经安装过 cu128 版本的 `torch`，则在定义好 `$wheel` 后只需执行以下命令，避免重新下载低版本 `torch`：
-
-    ```powershell
-    pip install $wheel --no-dependencies
-    ```
-
+    4.0 WebUI 使用 `mineru-kit webui` / `mineru-webui`，解析 API 使用 `/v1/*`，配置使用 `config.yaml`。旧 `/file_parse`、`/tasks` 和 `model.stack` 不能直接沿用。见[迁移指南](../reference/migration_4.md)。
 
 ??? question "在WSL2的Ubuntu22.04中遇到报错`ImportError: libGL.so.1: cannot open shared object file: No such file or directory`"
 

@@ -7,7 +7,7 @@ import torch
 from .modeling.architectures.base_model import BaseModel
 
 
-# OCR 推理精度开关：auto 表示 CPU 使用 fp32，非 CPU 自动使用 fp16。
+# OCR rec/cls 推理精度开关：auto 表示 CPU 使用 fp32，非 CPU 自动使用 fp16；det 固定使用 fp32。
 OCR_INFERENCE_PRECISION = "auto"
 
 

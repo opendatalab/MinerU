@@ -1,97 +1,56 @@
-# Deploying MinerU with Docker
+# Docker Deployment (MinerU 4.0 / NVIDIA)
 
-MinerU provides a convenient Docker deployment method, which helps quickly set up the environment and solve some tricky environment compatibility issues.
+The general Docker setup targets Linux with NVIDIA GPUs (WSL2 on Windows). Install directly on macOS for Apple Silicon; this Docker workflow does not provide MPS/MLX acceleration. AMD and vendor accelerators use the [legacy guides](../usage/compatibility.md), whose dedicated Dockerfiles stay on `mineru<4`.
 
-> [!WARNING]
-> - Docker deployment is only supported on Linux and Windows environments with WSL2.
-> - Do not use Docker to deploy MinerU on macOS. Docker on macOS cannot access MPS or MLX acceleration, so Apple Silicon devices will not get the expected acceleration from this workflow.
+## Build the image
 
-## Build Docker Image using Dockerfile
+Run from a repository root containing the 4.0 Dockerfile:
 
 ```bash
-wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/global/Dockerfile
-docker build -t mineru:latest -f Dockerfile .
+docker build -t mineru:4 -f docker/global/Dockerfile .
 ```
 
-## Docker Description
+The base image keeps vLLM 0.21.0. The Dockerfile installs `mineru[torch]>=4.0,<5` and reuses the bundled vLLM. The default image uses CUDA 13.0; enable the commented `v0.21.0-cu129` base image for CUDA 12.9 and ensure the host driver supports the selected runtime.
 
-MinerU's Docker uses `vllm/vllm-openai` as the base image, so it includes the `vllm` inference acceleration framework and necessary dependencies by default. The current Dockerfile uses `vllm/vllm-openai:v0.21.0` by default for CUDA 13.0-compatible environments. If your environment requires a CUDA 12.9-compatible image, comment out the default `FROM` line at the top of the Dockerfile and enable the commented `vllm/vllm-openai:v0.21.0-cu129` base image instead. Therefore, on compatible devices, you can directly use `vllm` to accelerate VLM model inference.
+Build-time downloads explicitly select Torch small models and original vLLM weights. Runtime selection is also fixed with `MINERU_MODEL_SMALL_BACKEND=torch` and `MINERU_MODEL_VLM_ENGINE=vllm`. A build machine without a GPU can therefore prepare the correct weights, while inference still requires matching GPU hardware. The China Dockerfile uses ModelScope; the global version uses Hugging Face.
 
-> [!NOTE]
-> Requirements for using `vllm` to accelerate VLM model inference:
-> 
-> - Device must have Volta architecture or later graphics cards with 8GB+ available VRAM.
-> - The host machine's graphics driver must support the CUDA runtime used by the selected base image: the default `v0.21.0` image requires a CUDA 13.0-compatible driver, and `v0.21.0-cu129` requires a CUDA 12.9-compatible driver. You can check the driver version using the `nvidia-smi` command.
-> - Docker container must have access to the host machine's graphics devices.
-
-## Start Docker Container
+## Interactive container
 
 ```bash
-docker run --gpus all \
-  --shm-size 32g \
-  -p 30000:30000 -p 7860:7860 -p 8000:8000 -p 8002:8002 \
-  --ipc=host \
-  -it mineru:latest \
-  /bin/bash
+docker run --gpus all --shm-size 32g --ipc=host \
+  -p 7860:7860 -p 8000:8000 -p 8002:8002 -p 30000:30000 \
+  -it mineru:4 /bin/bash
 ```
 
-After executing this command, you will enter the Docker container's interactive terminal with some ports mapped for potential services. You can directly run MinerU-related commands within the container to use MinerU's features.
-You can also directly start MinerU services by replacing `/bin/bash` with service startup commands. For detailed instructions, please refer to the [Start the service via command](https://opendatalab.github.io/MinerU/usage/quick_usage/#advanced-usage-via-api-webui-http-clientserver).
-
-## Start Services Directly with Docker Compose
-
-We provide a [compose.yaml](https://github.com/opendatalab/MinerU/blob/master/docker/compose.yaml) file that you can use to quickly start MinerU services.
+Start the WebUI inside the container:
 
 ```bash
-# Download compose.yaml file
-wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/compose.yaml
+mineru-kit webui --server-name 0.0.0.0 --server-port 7860
 ```
 
->[!NOTE]
->
->- The `compose.yaml` file contains configurations for multiple services of MinerU, you can choose to start specific services as needed.
->- Different services might have additional parameter configurations, which you can view and edit in the `compose.yaml` file.
->- Due to the pre-allocation of GPU memory by the `vllm` inference acceleration framework, you may not be able to run multiple `vllm` services simultaneously on the same machine. Therefore, ensure that other services that might use GPU memory have been stopped before starting the `vlm-openai-server` service or using the `vlm-vllm-engine` backend.
+## Docker Compose
 
----
+These commands use the Compose configuration in the same checkout and the locally built `mineru:4` image. Choose a service profile as needed; running multiple model services together requires planning GPU and memory allocation.
 
-### Start OpenAI-compatible server service
-connect to `openai-server` via `vlm-http-client` backend
-  ```bash
-  docker compose -f compose.yaml --profile openai-server up -d
-  ```
-  >[!TIP]
-  >In another terminal, connect to openai server via http client (only requires CPU and network, no vllm environment needed)
-  > ```bash
-  > mineru -p <input_path> -o <output_path> -b vlm-http-client -u http://<server_ip>:30000
-  > ```
+```bash
+docker compose -f docker/compose.yaml --profile webui up -d
+docker compose -f docker/compose.yaml --profile api up -d
+docker compose -f docker/compose.yaml --profile router up -d
+docker compose -f docker/compose.yaml --profile openai-server up -d
+```
 
----
+| Profile | Address / health check | Purpose |
+| --- | --- | --- |
+| `webui` | `http://127.0.0.1:7860` | Document UI; service name `mineru-webui` |
+| `api` | `http://127.0.0.1:8000/v1/health` | V1 document parsing API |
+| `router` | `http://127.0.0.1:8002/v1/health` | Multi-service / multi-GPU V1 entrypoint |
+| `openai-server` | `http://127.0.0.1:30000/health` | OpenAI-compatible VLM inference, not the parsing API |
 
-### Start Web API service
-  ```bash
-  docker compose -f compose.yaml --profile api up -d
-  ```
-  >[!TIP]
-  >Access `http://<server_ip>:8000/docs` in your browser to view the API documentation.
+Inspect configuration and logs:
 
----
+```bash
+docker compose -f docker/compose.yaml --profile webui config
+docker compose -f docker/compose.yaml logs mineru-webui
+```
 
-### Start MinerU Router service
-  ```bash
-  docker compose -f compose.yaml --profile router up -d
-  ```
-  >[!TIP]
-  >
-  >- The default configuration runs in `--local-gpus auto` mode, automatically starting local workers in the container and exposing the unified entry at `http://<server_ip>:8002/docs`.
-  >- If you want to aggregate existing `mineru-api` services instead of starting local workers, refer to the commented example under the `mineru-router` service in `compose.yaml` and switch to `--upstream-url`.
-
----
-
-### Start Gradio WebUI service
-  ```bash
-  docker compose -f compose.yaml --profile gradio up -d
-  ```
-  >[!TIP]
-  >
-  >- Access `http://<server_ip>:7860` in your browser to use the Gradio WebUI.
+When upgrading from the old Compose file, change the `gradio` profile to `webui` and the service name to `mineru-webui`. Adjust mounts, GPU `device_ids`, and ports for your deployment. See [SDK and API](../usage/sdk_api.md).

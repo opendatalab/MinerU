@@ -13,9 +13,15 @@ MinerU is not a RAG framework, vector database, or chat-with-doc application.
 
 This skill mainly uses the `mineru` command.
 
-## Pre-release Status
+## MinerU 4.0
 
-The current MinerU release line is in Beta pre-release. Package installers normally prefer stable releases, so explicitly enable pre-release resolution whenever installing or upgrading MinerU from a package index. The installation commands in this skill already include the required installer-specific options.
+This guide targets MinerU 4.0 stable. Four parsing tiers, native document formats, a searchable local library,
+and page/block continuation support agent reading. Small-model backends (ONNX/Torch) and VLM engines
+(llama.cpp/vLLM/LMDeploy, or explicitly configured MLX) are independent. Python SDK, V1 API, stateless batch
+conversion, Router, and WebUI share structured document results.
+
+See [English](README_en.md), [简体中文](README_zh.md), and the [4.0 migration guide](https://opendatalab.github.io/MinerU/reference/migration_4/).
+Existing AMD and vendor accelerator adaptations remain on [MinerU <4](https://opendatalab.github.io/MinerU/usage/compatibility/).
 
 ## Skill Installation
 
@@ -57,8 +63,8 @@ Use MinerU for local document files such as:
 | OpenDocument | `.odt`, `.ods`, `.odp` |
 | EPUB | `.epub`, parsed as a full document in OPF spine order with source internal links preserved |
 | OFD | `.ofd` |
-| HTML | `.html`, `.htm` |
-| CSV | `.csv` |
+| HTML | `.html`, `.htm`, `.shtml` |
+| CSV / TSV | `.csv`, `.tsv` |
 
 PDF and images support every quality tier (`flash`, `basic`, `standard`, `advanced`). Office, HTML, CSV, EPUB, and OFD files are parsed locally at the `flash` tier. Plain-text files (`.txt`, `.md`, `.markdown`, `.rst`, `.tex`) are not parsed; read them directly.
 
@@ -129,7 +135,7 @@ mineru read "doc:ab12cd3/tier:standard/page:18" --json
 
 ## Installation And Setup
 
-This skill requires MinerU `>=4.0.0b1`. Before using any workflow, check whether the CLI is installed:
+This skill requires MinerU `>=4.0,<5`. Before using any workflow, check whether the CLI is installed:
 
 ```bash
 command -v mineru
@@ -143,7 +149,7 @@ mineru version --json
 
 If `mineru version --json` fails, try `mineru --version` for older CLIs. If the detected version does not meet this requirement, tell the user which version was found and ask before upgrading it. If approved, upgrade with the same installer and environment, then check the version again. If declined, stop and do not run this skill's commands. Never assume compatibility when the version cannot be determined.
 
-MinerU requires Python `>=3.10,<3.14`.
+MinerU requires Python `>=3.10,<3.15`. Optional engines also need compatible wheels, drivers, and devices; the package range alone does not guarantee engine availability.
 
 ### Upgrade An Existing Installation
 
@@ -156,12 +162,12 @@ mineru server stop
 mineru server status --json
 ```
 
-Use the matching upgrade command only after the user approves the upgrade:
+Use the matching upgrade command only after the user approves the upgrade. Preserve any extras and tool options already used by that installation (for example, keep `[full]` when reinstalling with pipx):
 
 ```bash
-uv tool upgrade --prerelease allow mineru
-pipx upgrade mineru --pip-args="--pre"
-"<environment-python>" -m pip install --upgrade --pre mineru
+uv tool upgrade "mineru>=4.0,<5"
+pipx install --force "mineru>=4.0,<5"
+"<environment-python>" -m pip install --upgrade "mineru>=4.0,<5"
 ```
 
 If the owner cannot be determined, multiple installations exist, or MinerU is installed from source or in editable mode, ask the user instead of upgrading. After upgrading, check the resolved executable and its version again.
@@ -177,6 +183,7 @@ If no supported interpreter is available, install Python 3.12 with `uv` as a con
 command -v uv
 uv python find 3.12
 uv python find 3.13
+uv python find 3.14
 uv python find 3.11
 uv python find 3.10
 ```
@@ -190,7 +197,7 @@ uv python install 3.12
 Then install MinerU with the supported interpreter that was found, or with Python 3.12 if it was installed as the fallback:
 
 ```bash
-uv tool install --python 3.12 --prerelease allow mineru
+uv tool install --python 3.12 "mineru>=4.0,<5"
 ```
 
 ### Install with `pipx`
@@ -204,24 +211,24 @@ PIPX_DEFAULT_PYTHON="$(pipx environment --value PIPX_DEFAULT_PYTHON)"
 "$PIPX_DEFAULT_PYTHON" --version
 ```
 
-Check the `PIPX_DEFAULT_PYTHON` path reported by `pipx`. If that interpreter satisfies `>=3.10,<3.14`, install with `pipx`:
+Check the `PIPX_DEFAULT_PYTHON` path reported by `pipx`. If that interpreter satisfies `>=3.10,<3.15`, install with `pipx`:
 
 ```bash
-pipx install --pip-args="--pre" mineru
+pipx install "mineru>=4.0,<5"
 ```
 
-If `PIPX_DEFAULT_PYTHON` is unsupported, but a supported Python interpreter can be found on the current system, pass it explicitly. `python3.12` is an example; use any interpreter that satisfies `>=3.10,<3.14`.
+If `PIPX_DEFAULT_PYTHON` is unsupported, but a supported Python interpreter can be found on the current system, pass it explicitly. `python3.12` is an example; use any interpreter that satisfies `>=3.10,<3.15`.
 
 ```bash
 command -v python3.12
 python3.12 --version
-pipx install --python python3.12 --pip-args="--pre" mineru
+pipx install --python python3.12 "mineru>=4.0,<5"
 ```
 
 If no supported system interpreter is available and `pipx` supports Python fetching, ask for approval before downloading a standalone Python:
 
 ```bash
-pipx install --python 3.12 --fetch-python=missing --pip-args="--pre" mineru
+pipx install --python 3.12 --fetch-python=missing "mineru>=4.0,<5"
 ```
 
 ### Install with global `pip`
@@ -229,19 +236,19 @@ pipx install --python 3.12 --fetch-python=missing --pip-args="--pre" mineru
 If neither `uv` nor `pipx` is available, but `pip` or `pip3` is available, check the Python version of the `pip` command, and ask the user before installing into the global python environment:
 
 ```bash
-which -a pip pip3 pip3.10 pip3.11 pip3.12 pip3.13  # find all available pips
+which -a pip pip3 pip3.10 pip3.11 pip3.12 pip3.13 pip3.14  # find all available pips
 pip --version
 ```
 
-If a `pip` command reports Python `>=3.10,<3.14`, and the user confirms, install with the exact supported `pip` command that was verified. Replace `pip` below with the verified pip command if needed:
+If a `pip` command reports Python `>=3.10,<3.15`, and the user confirms, install with the exact supported `pip` command that was verified. Replace `pip` below with the verified pip command if needed:
 
 ```bash
-pip install --pre mineru
+pip install "mineru>=4.0,<5"
 ```
 
 ### If No Supported Installer Is Available
 
-If `uv`, `pipx`, `pip`, and `pip3` are all unavailable, or none of them can install with Python `>=3.10,<3.14`, recommend that the user install `uv` first.
+If `uv`, `pipx`, `pip`, and `pip3` are all unavailable, or none of them can install with Python `>=3.10,<3.15`, recommend that the user install `uv` first.
 
 ### After Installation
 
@@ -275,9 +282,7 @@ MinerU may collect anonymous, locally aggregated usage and diagnostic telemetry 
 
 Telemetry does not collect document contents, extracted text or images, file names, file paths, search queries, prompts, snippets, API keys, usernames, hostnames, raw tracebacks, or exact hardware identifiers.
 
-Telemetry starts in an unset consent state. In this state MinerU may keep local aggregate data but will not upload it. Users can enable or disable telemetry explicitly; disabling telemetry stops new telemetry aggregation and removes unsent local telemetry data.
-
-During the current beta prerelease, the unset state may also upload locally aggregated metrics. The existing interactive prompt and explicit enable/disable commands remain unchanged. This temporary behavior will be reverted for the stable release.
+Users can inspect telemetry status and explicitly enable or disable it. To prevent telemetry uploads, disable it explicitly; disabling also stops new aggregation and removes unsent local telemetry data. Check the running version and status rather than inferring consent from installation.
 
 Do not prompt for telemetry consent in agent or non-interactive contexts. If the user asks about telemetry, use:
 
@@ -380,9 +385,9 @@ Small Rec, PP-FormulaNet plus-M, seal OCR and shared table models. ONNX Runtime 
 because some table models also use ONNX in the Torch backend. All ONNX sessions run on CPU; VLM devices
 are selected independently.
 
-The small-model bundles currently support the Hugging Face source. Set `MINERU_MODEL_SOURCE=huggingface`
-for automatic downloads during parsing, or `local` after downloading. Existing bundle and VLM cache
-paths remain unchanged. See [model assets and validation](docs/next/model-assets.md).
+The small-model bundles support both Hugging Face and ModelScope. Use `model.source: auto`, select either
+provider explicitly, or select `local` after downloading and verifying the matching models. See
+[model downloads and configuration](https://opendatalab.github.io/MinerU/usage/model_source/).
 
 ## Server Rules
 
@@ -430,41 +435,34 @@ Use available read-only system commands to inspect the OS, architecture, total m
 - Windows PowerShell: `(Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory`, `Get-CimInstance Win32_Processor`, and `nvidia-smi` when available.
 - Other accelerators: use an already-installed vendor tool if available; do not install software merely to inspect hardware.
 
-### Choose Local Stack
+### Choose Local Backends
 
-The `light` stack is suitable for most hardwares, including CPU-only machines, Apple Silicon, and low-end iGPU/GPU machines.
+The base package supplies ONNX small models and llama.cpp; Apple Silicon also installs Torch.
+For Torch small models, use `mineru[torch]>=4.0,<5`. For higher-throughput serving, `mineru[full]>=4.0,<5`
+adds vLLM on Linux or LMDeploy on Windows. Configure small models and the VLM independently as described above.
+Do not use `model.stack` or `--stack`. Existing vendor accelerator guides stay on MinerU <4.
 
-Install and use `full` stack only when you have enough RAM and powerful GPU/accelerator, accept extra installation disk space, and want a higher throughput. Hardware requirements:
-- At least 16 GB total memory.
-- A Volta-or-newer NVIDIA GPU with at least 8 GB available VRAM, or an `npu`, `gcu`, `musa`, `mlu`, or `sdaa` accelerator.
-- Consumes ~5GB more disk space.
-
-To use the `full` stack, install the `mineru[full]` extra.
-
-The following examples assume the current install tool is `uv tool`. If `mineru` was installed with another tool or environment, use the equivalent command for that actual tool/environment.
-
-Installing extras with `uv tool install --force --prerelease allow` can replace the active `mineru` environment. Stop the MinerU server first, confirm `running=false`, and start it again after installing dependencies.
+The following example assumes the actual installation is managed by `uv tool`; otherwise use the owning installer.
+Preserve the current tool options and chosen extras. Stop services before replacing the environment:
 
 ```bash
 mineru server stop
 mineru server status --json
-uv tool install --force --prerelease allow "mineru[full]"
+uv tool install --force "mineru[full]>=4.0,<5"
 mineru server start
 mineru server status --json
 ```
 
 ### Choose Local Tier
 
-Managed local parsing has two startup tiers: `basic` and `standard`. A Standard server provides `basic`, `standard`, and `advanced` request tiers. Advanced uses the same Standard dependencies, model set, and hardware setup; it differs only by spending more inference compute when the request selects `--tier advanced`.
-
-- `basic` tier with `light` stack, requires at least 4GB total memory.
-- `standard` tier with `light` stack, requires at least 8GB total memory, recommended for GPU/Metal.
-- `basic` tier with `full` stack, recommended for `npu`, `gcu`, `musa`, `mlu`, or `sdaa`.
-- `standard` tier with `full` stack, recommended for high-end nvidia GPU.
+Managed local parsing has two startup tiers: `basic` and `standard`. Standard capacity also serves Advanced requests.
+Advanced shares Standard models and runtime but spends more inference compute. Basic can run with CPU small models.
+For higher-throughput local quality parsing, plan for at least 16 GB system or unified memory and an engine-supported
+accelerator with sufficient free memory. Exact requirements depend on documents, engine, and concurrency.
 
 ### Recommend and Ask
 
-After hardware was inspected, you already know the suitable stack and tier for current machine. Before asking the user to choose a tier/stack, summarize the detected hardware and identify each tier's hardware status.
+After hardware was inspected, you already know the suitable backends and tier for current machine. Before asking the user to choose a tier/backends, summarize the detected hardware and identify each tier's hardware status.
 
 You should recommend a tier for user when the machine meets such requirements, otherwise offer remote `standard` when privacy rules allow, or use explicit `flash`.
 

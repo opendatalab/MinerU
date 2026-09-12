@@ -363,3 +363,52 @@ def test_owner_cleanup_failure_still_closes_other_runtimes(monkeypatch: pytest.M
     assert not first._thread.is_alive()
     assert not second._thread.is_alive()
     assert clients[1].closed
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+@pytest.mark.parametrize("async_mode", [False, True])
+def test_vllm_runtime_uses_standard_progress_label(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    enabled: bool,
+    async_mode: bool,
+) -> None:
+    """同步桥接和原生异步入口都通过真实高层抽取显示同一文案，不创建嵌套进度。"""
+    from PIL import Image
+    from mineru_vl_utils import MinerUClient
+    from mineru_vl_utils.structs import ContentBlock
+    from mineru_vl_utils.vlm_client.vllm_async_engine_client import VllmAsyncEngineVlmClient
+
+    backend = object.__new__(VllmAsyncEngineVlmClient)
+    backend.max_concurrency = 2
+
+    async def predict(image: Any, prompt: str = "", **kwargs: Any) -> str:
+        """仅替换 GPU 单请求，保持真实异步批处理和布局回填。"""
+        return "recognized"
+
+    def create() -> MinerUClient:
+        """在运行时线程创建高层客户端，复用已注入的无 GPU 后端。"""
+        return MinerUClient(backend="vllm-async-engine", vllm_async_llm=object(), use_tqdm=enabled)
+
+    monkeypatch.setattr(backend, "aio_predict", predict)
+    monkeypatch.setattr("mineru_vl_utils.mineru_client.new_vlm_client", lambda **kwargs: backend)
+    runtime = AsyncVlmPredictor(create, lambda _: None, backend="vllm-async-engine", max_concurrency=2)
+    image = Image.new("RGB", (32, 32))
+    blocks = [[ContentBlock("text", [0, 0, 1, 1])]]
+    try:
+        runtime.wait_ready()
+        results = (
+            asyncio.run(runtime.aio_batch_extract_with_layout([image], blocks))
+            if async_mode
+            else runtime.batch_extract_with_layout([image], blocks)
+        )
+        assert results[0][0].content == "recognized"
+        stderr = capsys.readouterr().err
+        assert ("VLM Predict" in stderr) is enabled
+        assert "External Layout Extraction" not in stderr
+        assert "Processed prompts" not in stderr
+        if enabled:
+            assert "1/1" in stderr
+    finally:
+        runtime.shutdown()
+        image.close()

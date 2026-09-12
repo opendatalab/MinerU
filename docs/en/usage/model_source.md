@@ -1,57 +1,76 @@
-# Model Source Documentation
+# Model Downloads and Configuration
 
-MinerU uses `HuggingFace` and `ModelScope` as model repositories. Users can switch model sources or use local models as needed.
+MinerU 4.0 configures small-model backends independently from VLM engines. Configuration defaults to `$MINERU_HOME/config.yaml` (`MINERU_HOME` defaults to `~/.mineru`); `MINERU_CONFIG` selects another file.
 
-- `auto` is the default model source policy. It first checks whether Hugging Face is accessible. If accessible, MinerU uses `HuggingFace`, otherwise it automatically falls back to `ModelScope`.
-- `HuggingFace` provides excellent loading speed and high stability globally.
-- `ModelScope` is the best choice for users in mainland China, providing seamlessly compatible `hf` SDK modules, suitable for users who cannot access HuggingFace.
-
-## Methods to Switch Model Sources
-
-### Configure via Environment Variables
-MinerU configures model sources through the `MINERU_MODEL_SOURCE` environment variable. This applies to all command line tools and API calls. Supported values are `auto`, `huggingface`, `modelscope`, and `local`. The environment variable has higher priority than `model.source` in `config.yaml`.
-```bash
-export MINERU_MODEL_SOURCE=modelscope
-mineru -p <input_path> -o <output_path>
-```
-or set it programmatically:
-```python
-import os
-os.environ["MINERU_MODEL_SOURCE"] = "modelscope"
-```
->[!TIP]
-> MinerU no longer provides a CLI flag for model source selection. Model sources set through environment variables take effect in the current terminal session until the terminal is closed or the environment variable is modified.
-
-### Configure via Configuration File
-If `MINERU_MODEL_SOURCE` is not set, MinerU reads `model.source` from `config.yaml`. `model.source` supports `auto`, `huggingface`, `modelscope`, and `local`. When the value is `auto` or the field is missing, MinerU probes the actual source first. If the value came from the config file or built-in default, MinerU writes the resolved source back as `huggingface` or `modelscope` to avoid switching sources on later startups due to network fluctuations.
 ```yaml
 model:
   source: auto
   base_dir: ~/.mineru/models
+  small_backend: auto
+  vlm:
+    engine: auto
 ```
 
-## Using Local Models
+## Model sources
 
-### 1. Download Models to Local Storage
+`model.source` accepts `auto`, `huggingface`, `modelscope`, and `local`. `auto` probes Hugging Face first and selects ModelScope when it is unavailable. Automatic selection from a default or config value may be written back to configuration. Environment variables override file settings:
+
 ```bash
-mineru-kit models download --help
+export MINERU_MODEL_SOURCE=modelscope
+mineru-kit parse document.pdf -o document.md --tier standard
 ```
-or download all built-in model bundles:
-```bash
-mineru-kit models download --tier standard
+
+Windows PowerShell:
+
+```powershell
+$env:MINERU_MODEL_SOURCE = "modelscope"
 ```
-> [!NOTE]
->- Models are downloaded under `config.model.base_dir`. By default, this is `~/.mineru/models`.
->- `mineru-kit models download` does not write model paths to `mineru.json`.
->- If you need a custom model directory, set `model.base_dir` in `config.yaml` before downloading.
->- If you need to update model files, run `mineru-kit models download --tier standard` again. Existing files in the same `model.base_dir` are incrementally reused by the provider SDK.
->- `mineru-kit models download` must use a remote model source to perform a real download. If your current config sets `model.source: local`, this command temporarily treats it as `auto` for this invocation.
->- MinerU marks a fully downloaded repository with an empty `.mineru_complete` file at its root. Repositories downloaded by required paths instead mark each completed model directory. A directory left by an older release or an interrupted download without its marker is checked through an incremental provider download before use. With `model.source: local`, such a directory is reported as not ready instead of accessing the network.
 
-### 2. Use Local Models for Parsing
+The small-model bundles `MinerU-4_models_torch` and `MinerU-4_models_onnx` are registered for both Hugging Face and ModelScope. Original VLM weights and llama.cpp GGUF/mmproj use different repositories selected by the engine. Basic needs the selected small-model bundle; Standard also needs VLM models and serves Advanced requests.
 
-Enable local models through environment variables:
+## Download, verify, and run offline
+
+Download and verify a Standard deployment using the current configuration:
+
 ```bash
+mineru-kit models download --tier standard --source huggingface
+mineru-kit models verify --tier standard
+mineru-kit models show
+```
+
+An explicit CPU small-model and llama.cpp combination:
+
+```bash
+mineru-kit models download --tier standard --small-backend onnx --vlm-engine llama-cpp --source huggingface
+mineru-kit models verify --tier standard --small-backend onnx --vlm-engine llama-cpp
+```
+
+A NVIDIA / vLLM deployment can download its models on a build machine without a GPU. Specify the target backends instead of relying on that machine's automatic selection:
+
+```bash
+mineru-kit models download --tier standard --small-backend torch --vlm-engine vllm --source huggingface
+mineru-kit models verify --tier standard --small-backend torch --vlm-engine vllm
+```
+
+These command options apply only to the current operation and do not change persistent configuration. Use the same combination for inference, for example:
+
+```bash
+export MINERU_MODEL_SMALL_BACKEND=torch
+export MINERU_MODEL_VLM_ENGINE=vllm
 export MINERU_MODEL_SOURCE=local
-mineru -p <input_path> -o <output_path>
+mineru-kit parse document.pdf -o document.md --tier standard
 ```
+
+Use `basic` as the download tier when no VLM is needed. Advanced has no separate deployment download tier. Set `model.base_dir` before downloading to change the model root. Completion markers and required files determine readiness. Repeated downloads reuse provider caches; do not create completion markers manually.
+
+`local` uses ready local models and fails on missing assets without downloading. An explicit `models download` is a download operation: even with `local` configured, it temporarily resolves a remote source automatically.
+
+## VLM servers and manual MLX
+
+An existing `model.vlm.server_url` takes priority and removes the local VLM weight requirement. This is a model inference endpoint, not the MinerU V1 document parsing API. Small-model requirements still depend on the tier.
+
+MLX requires manual installation of `mlx-vlm>=0.7.0,<0.8.0` and explicit `model.vlm.engine: mlx`. `model.stack`, `MINERU_MODEL_STACK`, and `--stack` have been removed. Restart relevant services after configuration changes.
+
+## Download troubleshooting
+
+Hugging Face uses `hf_xet` by default. If your network cannot reach Xet CAS, set `HF_HUB_DISABLE_XET=1` before downloading to use regular HTTP, or switch to ModelScope. For offline deployment, download and verify before selecting `local`. See [extension modules](../quick_start/extension_modules.md) for installation combinations.

@@ -1,96 +1,56 @@
-# 使用docker部署Mineru
+# Docker 部署（MinerU 4.0 / NVIDIA）
 
-MinerU提供了便捷的docker部署方式，这有助于快速搭建环境并解决一些棘手的环境兼容问题。
+通用 Docker 面向 Linux NVIDIA 环境（Windows 使用 WSL2）。Apple Silicon 使用 macOS 原生安装；此 Docker 流程不提供 MPS/MLX 加速。AMD 和国产卡使用[旧平台指南](../usage/compatibility.md)，对应专用 Docker 保持 `mineru<4`。
 
-> [!WARNING]
-> - Docker 部署仅适用于 Linux，以及支持 WSL2 的 Windows 环境。
-> - 请不要在 macOS 上使用 Docker 部署 MinerU。由于 Docker 环境下无法调用 macOS 上的 MPS 和 MLX 加速能力，Apple Silicon 设备无法通过该方案获得预期加速效果。
+## 构建镜像
 
-## 使用 Dockerfile 构建镜像
+在包含本次 4.0 Dockerfile 的仓库根目录执行：
 
 ```bash
-wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/china/Dockerfile
-docker build -t mineru:latest -f Dockerfile .
+docker build -t mineru:4 -f docker/china/Dockerfile .
 ```
 
-## Docker说明
+基础镜像保留 vLLM 0.21.0，Dockerfile 安装 `mineru[torch]>=4.0,<5`，复用基础镜像中的 vLLM。默认镜像使用 CUDA 13.0；需要 CUDA 12.9 时启用文件中注释的 `v0.21.0-cu129` 基础镜像，并确保主机驱动支持所选运行时。
 
-Mineru的docker使用了`vllm/vllm-openai`作为基础镜像，因此在docker中默认集成了`vllm`推理加速框架和必需的依赖环境。当前国内 Dockerfile 默认使用`docker.m.daocloud.io/vllm/vllm-openai:v0.21.0`，适用于 CUDA 13.0 兼容环境；如果您的环境需要 CUDA 12.9 兼容镜像，请将 Dockerfile 顶部的默认`FROM`注释掉，并启用注释中的`docker.m.daocloud.io/vllm/vllm-openai:v0.21.0-cu129`基础镜像。因此在满足条件的设备上，您可以直接使用`vllm`加速VLM模型推理。
-> [!NOTE]
-> 使用`vllm`加速VLM模型推理需要满足的条件是：
-> 
-> - 设备包含Volta及以后架构的显卡，且可用显存大于等于8G。
-> - 物理机的显卡驱动应支持所选基础镜像对应的 CUDA 运行时版本：默认`v0.21.0`需要 CUDA 13.0 兼容驱动，`v0.21.0-cu129`需要 CUDA 12.9 兼容驱动。可通过`nvidia-smi`命令检查驱动版本。
-> - docker中能够访问物理机的显卡设备。
+构建时明确下载 Torch 小模型和 vLLM 原始权重，运行时也固定 `MINERU_MODEL_SMALL_BACKEND=torch`、`MINERU_MODEL_VLM_ENGINE=vllm`。这允许无 GPU 构建机准备正确的权重，实际推理仍需要匹配的 GPU。国内 Dockerfile 使用 ModelScope，国际版本使用 Hugging Face。
 
-
-## 启动 Docker 容器
+## 交互式容器
 
 ```bash
-docker run --gpus all \
-  --shm-size 32g \
-  -p 30000:30000 -p 7860:7860 -p 8000:8000 -p 8002:8002 \
-  --ipc=host \
-  -it mineru:latest \
-  /bin/bash
+docker run --gpus all --shm-size 32g --ipc=host \
+  -p 7860:7860 -p 8000:8000 -p 8002:8002 -p 30000:30000 \
+  -it mineru:4 /bin/bash
 ```
 
-执行该命令后，您将进入到Docker容器的交互式终端，并映射了一些端口用于可能会使用的服务，您可以直接在容器内运行MinerU相关命令来使用MinerU的功能。
-您也可以直接通过替换`/bin/bash`为服务启动命令来启动MinerU服务，详细说明请参考[通过命令启动服务](https://opendatalab.github.io/MinerU/zh/usage/quick_usage/#apiwebuihttp-clientserver)。
-
-## 通过 Docker Compose 直接启动服务
-
-我们提供了[compose.yml](https://github.com/opendatalab/MinerU/blob/master/docker/compose.yaml)文件，您可以通过它来快速启动MinerU服务。
+容器内启动 WebUI：
 
 ```bash
-# 下载 compose.yaml 文件
-wget https://gcore.jsdelivr.net/gh/opendatalab/MinerU@master/docker/compose.yaml
+mineru-kit webui --server-name 0.0.0.0 --server-port 7860
 ```
->[!NOTE]
->  
->- `compose.yaml`文件中包含了MinerU的多个服务配置，您可以根据需要选择启动特定的服务。
->- 不同的服务可能会有额外的参数配置，您可以在`compose.yaml`文件中查看并编辑。
->- 由于`vllm`推理加速框架预分配显存的特性，您可能无法在同一台机器上同时运行多个`vllm`服务，因此请确保在启动`vlm-openai-server`服务或使用`vlm-vllm-engine`后端时，其他可能使用显存的服务已停止。
 
----
+## Docker Compose
 
-### 启动 openai兼容接口 服务
-并通过`vlm-http-client`后端连接`openai-server`
-  ```bash
-  docker compose -f compose.yaml --profile openai-server up -d
-  ```
-  >[!TIP]
-  >在另一个终端中通过http client连接openai server（只需cpu与网络，不需要vllm环境）
-  > ```bash
-  > mineru -p <input_path> -o <output_path> -b vlm-http-client -u http://<server_ip>:30000
-  > ```
+以下命令使用同一仓库中的 Compose 配置和本地构建的 `mineru:4`。按需要选择一个服务 profile；同时启动多个模型服务时需规划显存和 GPU 分配。
 
----
+```bash
+docker compose -f docker/compose.yaml --profile webui up -d
+docker compose -f docker/compose.yaml --profile api up -d
+docker compose -f docker/compose.yaml --profile router up -d
+docker compose -f docker/compose.yaml --profile openai-server up -d
+```
 
-### 启动 Web API 服务
-  ```bash
-  docker compose -f compose.yaml --profile api up -d
-  ```
-  >[!TIP]
-  >在浏览器中访问 `http://<server_ip>:8000/docs` 查看API文档。
+| Profile | 地址 / 健康检查 | 用途 |
+| --- | --- | --- |
+| `webui` | `http://127.0.0.1:7860` | 文档解析界面，服务名 `mineru-webui` |
+| `api` | `http://127.0.0.1:8000/v1/health` | V1 文档解析 API |
+| `router` | `http://127.0.0.1:8002/v1/health` | 多服务 / 多 GPU V1 入口 |
+| `openai-server` | `http://127.0.0.1:30000/health` | OpenAI 兼容 VLM 推理，不是文档解析 API |
 
----
+检查配置与日志：
 
-### 启动 MinerU Router 服务
-  ```bash
-  docker compose -f compose.yaml --profile router up -d
-  ```
-  >[!TIP]
-  >
-  >- 默认配置会以 `--local-gpus auto` 模式在容器内自动拉起本地 worker，并通过 `http://<server_ip>:8002/docs` 暴露统一入口。
-  >- 如果您希望聚合已有的 `mineru-api` 服务而不是启动本地 worker，可直接参考 `compose.yaml` 中 `mineru-router` 服务下的注释示例，改为使用 `--upstream-url`。
+```bash
+docker compose -f docker/compose.yaml --profile webui config
+docker compose -f docker/compose.yaml logs mineru-webui
+```
 
----
-
-### 启动 Gradio WebUI 服务
-  ```bash
-  docker compose -f compose.yaml --profile gradio up -d
-  ```
-  >[!TIP]
-  > 
-  >- 在浏览器中访问 `http://<server_ip>:7860` 使用 Gradio WebUI。
+从旧 Compose 升级时，将 `gradio` profile 改为 `webui`，服务名改为 `mineru-webui`。容器挂载目录、GPU `device_ids` 和端口按部署环境调整。更多接口用法见[SDK 与 API](../usage/sdk_api.md)。

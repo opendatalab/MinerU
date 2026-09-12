@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import html
 import re
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 from urllib.parse import parse_qs, quote, urlsplit
@@ -61,7 +61,7 @@ def test_office_short_address_keeps_full_encoded_iframe_url(headers: dict[str, s
     markup = app_module._build_office_preview_html(source, SimpleNamespace(headers=headers))
     iframe_url = html.unescape(re.search(r'<iframe[^>]+src="([^"]+)"', markup)[1])
     public_url = parse_qs(urlsplit(iframe_url).query)["src"][0]
-    assert public_url == f"{base}/gradio_api/file={quote(str(source), safe='/:')}"
+    assert public_url == f"{base}/gradio_api/file={quote(source.as_posix(), safe='/:')}"
     displayed = html.unescape(re.search(r'<div class="office-preview-source-link">(.*?)</div>', markup)[1])
     assert f"{base}/....{source.stem[-12:]}{source.suffix}" in displayed
     assert "/uploaded/private" not in displayed
@@ -70,6 +70,17 @@ def test_office_short_address_keeps_full_encoded_iframe_url(headers: dict[str, s
     assert markup.count("<iframe") == 1
     if not headers:
         assert markup == app_module._build_office_preview_html(source)
+
+
+def test_office_windows_file_url_uses_forward_slashes(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Windows 上传预览使用正斜杠 URL，保留盘符、中文及空格的正确编码。"""
+    source = PureWindowsPath("C:/Users/测试用户/上传 文件/报告.docx")
+    monkeypatch.setattr(app_module, "Path", PureWindowsPath)
+    markup = app_module._build_office_preview_html(str(source))
+    iframe_url = html.unescape(re.search(r'<iframe[^>]+src="([^"]+)"', markup)[1])
+    public_url = parse_qs(urlsplit(iframe_url).query)["src"][0]
+    assert public_url == "http://localhost:7860/gradio_api/file=" + quote(source.as_posix(), safe="/:")
+    assert "%5c" not in public_url.lower()
 
 
 def test_office_copy_matches_345_release() -> None:

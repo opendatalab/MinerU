@@ -16,13 +16,13 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Install mineru latest
+# Keep this vendor adaptation on MinerU <4; preserve its runtime dependencies.
 RUN /bin/bash -c '\
     if [ "$BACKEND" = "vllm" ]; then \
         source /torch/venv3/pytorch_infer/bin/activate; \
     fi && \
     python3 -m pip install -U pip -i https://mirrors.aliyun.com/pypi/simple && \
-    python3 -m pip install "mineru[core]>=3.4.0" \
+    python3 -m pip install "mineru[core]>=3.4.0,<4" \
                             numpy==1.26.4 \
                             opencv-python==4.11.0.86 \
                             -i https://mirrors.aliyun.com/pypi/simple && \
@@ -36,7 +36,7 @@ RUN /bin/bash -c '\
     if [ "$BACKEND" = "vllm" ]; then \
         source /torch/venv3/pytorch_infer/bin/activate; \
     fi && \
-    mineru-kit models download --tier standard -s modelscope'
+    mineru-models-download -s modelscope -m all'
 
 WORKDIR /workspace
 

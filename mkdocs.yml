@@ -84,11 +84,15 @@ nav:
     - Usage:
       - Usage: usage/index.md
       - Quick Usage: usage/quick_usage.md
+      - Tiers and Runtimes: usage/tiers.md
+      - Python SDK and V1 API: usage/sdk_api.md
+      - Legacy Platforms (MinerU <4): usage/compatibility.md
       - Model Source: usage/model_source.md
       - CLI Tools: usage/cli_tools.md
       - Advanced CLI Parameters: usage/advanced_cli_parameters.md
     - Reference:
       - Reference: reference/index.md
+      - Migration to 4.0: reference/migration_4.md
       - Output File Format: reference/output_files.md
       - Changelog: reference/changelog.md
     - FAQ:
@@ -102,11 +106,15 @@ nav:
   - Usage:
     - Usage: usage/index.md
     - Quick Usage: usage/quick_usage.md
+    - Tiers and Runtimes: usage/tiers.md
+    - Python SDK and V1 API: usage/sdk_api.md
+    - Legacy Platforms (MinerU <4): usage/compatibility.md
     - Model Source: usage/model_source.md
     - CLI Tools: usage/cli_tools.md
     - Advanced CLI Parameters: usage/advanced_cli_parameters.md
   - Reference:
     - Reference: reference/index.md
+    - Migration to 4.0: reference/migration_4.md
     - Output File Format: reference/output_files.md
     - Changelog: reference/changelog.md
   - FAQ:
@@ -138,6 +146,10 @@ plugins:
             Usage: 使用指南
             Quick Usage: 基础使用
             CLI Tools: 命令行工具
+            Tiers and Runtimes: 档位与运行环境
+            Python SDK and V1 API: Python SDK 与 V1 API
+            Legacy Platforms (MinerU <4): 旧平台适配（MinerU <4）
+            Migration to 4.0: 迁移到 4.0
             Model Source: 模型源配置
             Advanced CLI Parameters: 命令行进阶参数
             FAQ: 常见问题解答

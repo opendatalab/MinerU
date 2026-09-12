@@ -1,153 +1,100 @@
 # Quick Start
 
-Document parsing is a difficult and complex task. In scenarios such as complex layouts, scanned pages, and handwritten content, the parsing results may fall short of expectations. We recommend trying the online demo first to evaluate MinerU's parsing quality and suitability before choosing an appropriate deployment method based on your actual needs.
-If you have **document** samples with unsatisfactory parsing results, feel free to share them in an [issue](https://github.com/opendatalab/MinerU/issues). We will continue improving the parsing capabilities.
-If you encounter any installation issues, please check the [FAQ](../faq/index.md) first.
+This guide targets the **MinerU 4.0 stable release**. Existing AMD and vendor accelerator adaptations remain on `<4`; use the [legacy platform guides](../usage/compatibility.md).
 
-## Online Experience
+## Install MinerU
 
-### Official online web application
-The official online version has the same functionality as the client, with a beautiful interface and rich features, requires login to use  
- 
-- [![OpenDataLab](https://img.shields.io/badge/webapp_on_mineru.net-blue?logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTM0IiBoZWlnaHQ9IjEzNCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cGF0aCBkPSJtMTIyLDljMCw1LTQsOS05LDlzLTktNC05LTksNC05LDktOSw5LDQsOSw5eiIgZmlsbD0idXJsKCNhKSIvPjxwYXRoIGQ9Im0xMjIsOWMwLDUtNCw5LTksOXMtOS00LTktOSw0LTksOS05LDksNCw5LDl6IiBmaWxsPSIjMDEwMTAxIi8+PHBhdGggZD0ibTkxLDE4YzAsNS00LDktOSw5cy05LTQtOS05LDQtOSw5LTksOSw0LDksOXoiIGZpbGw9InVybCgjYikiLz48cGF0aCBkPSJtOTEsMThjMCw1LTQsOS05LDlzLTktNC05LTksNC05LDktOSw5LDQsOSw5eiIgZmlsbD0iIzAxMDEwMSIvPjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJtMzksNjJjMCwxNiw4LDMwLDIwLDM4LDctNiwxMi0xNiwxMi0yNlY0OWMwLTQsMy03LDYtOGw0Ni0xMmM1LTEsMTEsMywxMSw4djMxYzAsMzctMzAsNjYtNjYsNjYtMzcsMC02Ni0zMC02Ni02NlY0NmMwLTQsMy03LDYtOGwyMC02YzUtMSwxMSwzLDExLDh2MjF6bS0yOSw2YzAsMTYsNiwzMCwxNyw0MCwzLDEsNSwxLDgsMSw1LDAsMTAtMSwxNS0zQzM3LDk1LDI5LDc5LDI5LDYyVjQybC0xOSw1djIweiIgZmlsbD0idXJsKCNjKSIvPjxwYXRoIGZpbGwtcnVsZT0iZXZlbm9kZCIgY2xpcC1ydWxlPSJldmVub2RkIiBkPSJtMzksNjJjMCwxNiw4LDMwLDIwLDM4LDctNiwxMi0xNiwxMi0yNlY0OWMwLTQsMy03LDYtOGw0Ni0xMmM1LTEsMTEsMywxMSw4djMxYzAsMzctMzAsNjYtNjYsNjYtMzcsMC02Ni0zMC02Ni02NlY0NmMwLTQsMy03LDYtOGwyMC02YzUtMSwxMSwzLDExLDh2MjF6bS0yOSw2YzAsMTYsNiwzMCwxNyw0MCwzLDEsNSwxLDgsMSw1LDAsMTAtMSwxNS0zQzM3LDk1LDI5LDc5LDI5LDYyVjQybC0xOSw1djIweiIgZmlsbD0iIzAxMDEwMSIvPjxkZWZzPjxsaW5lYXJHcmFkaWVudCBpZD0iYSIgeDE9Ijg0IiB5MT0iNDEiIHgyPSI3NSIgeTI9IjEyMCIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIHN0b3AtY29sb3I9IiNmZmYiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiMyZTJlMmUiLz48L2xpbmVhckdyYWRpZW50PjxsaW5lYXJHcmFkaWVudCBpZD0iYiIgeDE9Ijg0IiB5MT0iNDEiIHgyPSI3NSIgeTI9IjEyMCIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIHN0b3AtY29sb3I9IiNmZmYiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiMyZTJlMmUiLz48L2xpbmVhckdyYWRpZW50PjxsaW5lYXJHcmFkaWVudCBpZD0iYyIgeDE9Ijg0IiB5MT0iNDEiIHgyPSI3NSIgeTI9IjEyMCIgZ3JhZGllbnRVbml0cz0idXNlclNwYWNlT25Vc2UiPjxzdG9wIHN0b3AtY29sb3I9IiNmZmYiLz48c3RvcCBvZmZzZXQ9IjEiIHN0b3AtY29sb3I9IiMyZTJlMmUiLz48L2xpbmVhckdyYWRpZW50PjwvZGVmcz48L3N2Zz4=&labelColor=white)](https://mineru.net/OpenSourceTools/Extractor?source=github)
+The MinerU package supports Python `>=3.10,<3.15`. Python 3.12 is a practical starting point for a new environment. Optional engines such as vLLM, LMDeploy, and Torch have additional wheel, OS, and driver constraints; the package's Python range does not guarantee every engine supports that entire range.
 
-### Gradio-based online demo
-A WebUI developed based on Gradio, with a simple interface and only core parsing functionality, no login required  
-
-- [![ModelScope](https://img.shields.io/badge/Demo_on_ModelScope-purple?logo=data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMjIzIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KCiA8Zz4KICA8dGl0bGU+TGF5ZXIgMTwvdGl0bGU+CiAgPHBhdGggaWQ9InN2Z18xNCIgZmlsbD0iIzYyNGFmZiIgZD0ibTAsODkuODRsMjUuNjUsMGwwLDI1LjY0OTk5bC0yNS42NSwwbDAsLTI1LjY0OTk5eiIvPgogIDxwYXRoIGlkPSJzdmdfMTUiIGZpbGw9IiM2MjRhZmYiIGQ9Im05OS4xNCwxMTUuNDlsMjUuNjUsMGwwLDI1LjY1bC0yNS42NSwwbDAsLTI1LjY1eiIvPgogIDxwYXRoIGlkPSJzdmdfMTYiIGZpbGw9IiM2MjRhZmYiIGQ9Im0xNzYuMDksMTQxLjE0bC0yNS42NDk5OSwwbDAsMjIuMTlsNDcuODQsMGwwLC00Ny44NGwtMjIuMTksMGwwLDI1LjY1eiIvPgogIDxwYXRoIGlkPSJzdmdfMTciIGZpbGw9IiMzNmNmZDEiIGQ9Im0xMjQuNzksODkuODRsMjUuNjUsMGwwLDI1LjY0OTk5bC0yNS42NSwwbDAsLTI1LjY0OTk5eiIvPgogIDxwYXRoIGlkPSJzdmdfMTgiIGZpbGw9IiMzNmNmZDEiIGQ9Im0wLDY0LjE5bDI1LjY1LDBsMCwyNS42NWwtMjUuNjUsMGwwLC0yNS42NXoiLz4KICA8cGF0aCBpZD0ic3ZnXzE5IiBmaWxsPSIjNjI0YWZmIiBkPSJtMTk4LjI4LDg5Ljg0bDI1LjY0OTk5LDBsMCwyNS42NDk5OWwtMjUuNjQ5OTksMGwwLC0yNS42NDk5OXoiLz4KICA8cGF0aCBpZD0ic3ZnXzIwIiBmaWxsPSIjMzZjZmQxIiBkPSJtMTk4LjI4LDY0LjE5bDI1LjY0OTk5LDBsMCwyNS42NWwtMjUuNjQ5OTksMGwwLC0yNS42NXoiLz4KICA8cGF0aCBpZD0ic3ZnXzIxIiBmaWxsPSIjNjI0YWZmIiBkPSJtMTUwLjQ0LDQybDAsMjIuMTlsMjUuNjQ5OTksMGwwLDI1LjY1bDIyLjE5LDBsMCwtNDcuODRsLTQ3Ljg0LDB6Ii8+CiAgPHBhdGggaWQ9InN2Z18yMiIgZmlsbD0iIzM2Y2ZkMSIgZD0ibTczLjQ5LDg5Ljg0bDI1LjY1LDBsMCwyNS42NDk5OWwtMjUuNjUsMGwwLC0yNS42NDk5OXoiLz4KICA8cGF0aCBpZD0ic3ZnXzIzIiBmaWxsPSIjNjI0YWZmIiBkPSJtNDcuODQsNjQuMTlsMjUuNjUsMGwwLC0yMi4xOWwtNDcuODQsMGwwLDQ3Ljg0bDIyLjE5LDBsMCwtMjUuNjV6Ii8+CiAgPHBhdGggaWQ9InN2Z18yNCIgZmlsbD0iIzYyNGFmZiIgZD0ibTQ3Ljg0LDExNS40OWwtMjIuMTksMGwwLDQ3Ljg0bDQ3Ljg0LDBsMCwtMjIuMTlsLTI1LjY1LDBsMCwtMjUuNjV6Ii8+CiA8L2c+Cjwvc3ZnPg==&labelColor=white)](https://www.modelscope.cn/studios/OpenDataLab/MinerU)
-- [![HuggingFace](https://img.shields.io/badge/Demo_on_HuggingFace-yellow.svg?logo=data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAF8AAABYCAMAAACkl9t/AAAAk1BMVEVHcEz/nQv/nQv/nQr/nQv/nQr/nQv/nQv/nQr/wRf/txT/pg7/yRr/rBD/zRz/ngv/oAz/zhz/nwv/txT/ngv/0B3+zBz/nQv/0h7/wxn/vRb/thXkuiT/rxH/pxD/ogzcqyf/nQvTlSz/czCxky7/SjifdjT/Mj3+Mj3wMj15aTnDNz+DSD9RTUBsP0FRO0Q6O0WyIxEIAAAAGHRSTlMADB8zSWF3krDDw8TJ1NbX5efv8ff9/fxKDJ9uAAAGKklEQVR42u2Z63qjOAyGC4RwCOfB2JAGqrSb2WnTw/1f3UaWcSGYNKTdf/P+mOkTrE+yJBulvfvLT2A5ruenaVHyIks33npl/6C4s/ZLAM45SOi/1FtZPyFur1OYofBX3w7d54Bxm+E8db+nDr12ttmESZ4zludJEG5S7TO72YPlKZFyE+YCYUJTBZsMiNS5Sd7NlDmKM2Eg2JQg8awbglfqgbhArjxkS7dgp2RH6hc9AMLdZYUtZN5DJr4molC8BfKrEkPKEnEVjLbgW1fLy77ZVOJagoIcLIl+IxaQZGjiX597HopF5CkaXVMDO9Pyix3AFV3kw4lQLCbHuMovz8FallbcQIJ5Ta0vks9RnolbCK84BtjKRS5uA43hYoZcOBGIG2Epbv6CvFVQ8m8loh66WNySsnN7htL58LNp+NXT8/PhXiBXPMjLSxtwp8W9f/1AngRierBkA+kk/IpUSOeKByzn8y3kAAAfh//0oXgV4roHm/kz4E2z//zRc3/lgwBzbM2mJxQEa5pqgX7d1L0htrhx7LKxOZlKbwcAWyEOWqYSI8YPtgDQVjpB5nvaHaSnBaQSD6hweDi8PosxD6/PT09YY3xQA7LTCTKfYX+QHpA0GCcqmEHvr/cyfKQTEuwgbs2kPxJEB0iNjfJcCTPyocx+A0griHSmADiC91oNGVwJ69RudYe65vJmoqfpul0lrqXadW0jFKH5BKwAeCq+Den7s+3zfRJzA61/Uj/9H/VzLKTx9jFPPdXeeP+L7WEvDLAKAIoF8bPTKT0+TM7W8ePj3Rz/Yn3kOAp2f1Kf0Weony7pn/cPydvhQYV+eFOfmOu7VB/ViPe34/EN3RFHY/yRuT8ddCtMPH/McBAT5s+vRde/gf2c/sPsjLK+m5IBQF5tO+h2tTlBGnP6693JdsvofjOPnnEHkh2TnV/X1fBl9S5zrwuwF8NFrAVJVwCAPTe8gaJlomqlp0pv4Pjn98tJ/t/fL++6unpR1YGC2n/KCoa0tTLoKiEeUPDl94nj+5/Tv3/eT5vBQ60X1S0oZr+IWRR8Ldhu7AlLjPISlJcO9vrFotky9SpzDequlwEir5beYAc0R7D9KS1DXva0jhYRDXoExPdc6yw5GShkZXe9QdO/uOvHofxjrV/TNS6iMJS+4TcSTgk9n5agJdBQbB//IfF/HpvPt3Tbi7b6I6K0R72p6ajryEJrENW2bbeVUGjfgoals4L443c7BEE4mJO2SpbRngxQrAKRudRzGQ8jVOL2qDVjjI8K1gc3TIJ5KiFZ1q+gdsARPB4NQS4AjwVSt72DSoXNyOWUrU5mQ9nRYyjp89Xo7oRI6Bga9QNT1mQ/ptaJq5T/7WcgAZywR/XlPGAUDdet3LE+qS0TI+g+aJU8MIqjo0Kx8Ly+maxLjJmjQ18rA0YCkxLQbUZP1WqdmyQGJLUm7VnQFqodmXSqmRrdVpqdzk5LvmvgtEcW8PMGdaS23EOWyDVbACZzUJPaqMbjDxpA3Qrgl0AikimGDbqmyT8P8NOYiqrldF8rX+YN7TopX4UoHuSCYY7cgX4gHwclQKl1zhx0THf+tCAUValzjI7Wg9EhptrkIcfIJjA94evOn8B2eHaVzvBrnl2ig0So6hvPaz0IGcOvTHvUIlE2+prqAxLSQxZlU2stql1NqCCLdIiIN/i1DBEHUoElM9dBravbiAnKqgpi4IBkw+utSPIoBijDXJipSVV7MpOEJUAc5Qmm3BnUN+w3hteEieYKfRZSIUcXKMVf0u5wD4EwsUNVvZOtUT7A2GkffHjByWpHqvRBYrTV72a6j8zZ6W0DTE86Hn04bmyWX3Ri9WH7ZU6Q7h+ZHo0nHUAcsQvVhXRDZHChwiyi/hnPuOsSEF6Exk3o6Y9DT1eZ+6cASXk2Y9k+6EOQMDGm6WBK10wOQJCBwren86cPPWUcRAnTVjGcU1LBgs9FURiX/e6479yZcLwCBmTxiawEwrOcleuu12t3tbLv/N4RLYIBhYexm7Fcn4OJcn0+zc+s8/VfPeddZHAGN6TT8eGczHdR/Gts1/MzDkThr23zqrVfAMFT33Nx1RJsx1k5zuWILLnG/vsH+Fv5D4NTVcp1Gzo8AAAAAElFTkSuQmCC&labelColor=white)](https://huggingface.co/spaces/opendatalab/MinerU)
-
-## Local Deployment
-
-> [!WARNING]
-> **Prerequisites - Hardware and Software Environment Support**
-> 
-> To ensure the stability and reliability of the project, we have optimized and tested only specific hardware and software environments during development. This ensures that users can achieve optimal performance and encounter the fewest compatibility issues when deploying and running the project on recommended system configurations.
->
-> By concentrating our resources and efforts on mainstream environments, our team can more efficiently resolve potential bugs and timely develop new features.
->
-> In non-mainstream environments, due to the diversity of hardware and software configurations, as well as compatibility issues with third-party dependencies, we cannot guarantee 100% usability of the project. Therefore, for users who wish to use this project in non-recommended environments, we suggest carefully reading the documentation and FAQ first, as most issues have corresponding solutions in the FAQ. Additionally, we encourage community feedback on issues so that we can gradually expand our support range.
-
-<table border="1">
-  <thead>
-    <tr>
-      <th rowspan="2" style="text-align:center; vertical-align:middle;">Parsing Backend</th>
-      <th rowspan="2" style="text-align:center; vertical-align:middle;">hybrid low</th>
-      <th colspan="2" style="text-align:center;">*-engine</th>
-      <th colspan="2" style="text-align:center;">*-http-client</th>
-    </tr>
-    <tr>
-      <th>hybrid</th>
-      <th>vlm</th>
-      <th>hybrid</th>
-      <th>vlm</th>
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <th>Backend Features</th>
-      <td >Good Compatibility</td>
-      <td colspan="2">High Hardware Requirements</td>
-      <td colspan="2">For OpenAI Compatible Servers<sup>2</sup></td>
-    </tr> 
-    <tr>
-      <th>Accuracy<sup>1</sup></th>
-      <td style="text-align:center;">86.47</td>
-      <td style="text-align:center;">95.39 (effort=high)<br>95.26 (effort=medium)</td>
-      <td style="text-align:center;">95.30</td>
-      <td style="text-align:center;">95.39 (effort=high)<br>95.26 (effort=medium)</td>
-      <td style="text-align:center;">95.30</td>
-    </tr>
-    <tr>
-      <th>Operating System</th>
-      <td colspan="5" style="text-align:center;">Linux<sup>3</sup> / Windows<sup>4</sup> / macOS<sup>5</sup></td>
-    </tr>
-    <tr>
-      <th>Pure CPU Support</th>
-      <td style="text-align:center;">✅</td>
-      <td colspan="2" style="text-align:center;">❌</td>
-      <td colspan="2" style="text-align:center;">✅</td>
-    </tr>
-        <tr>
-      <th>GPU Acceleration</th>
-      <td colspan="4" style="text-align:center;">Volta and later architecture GPUs or Apple Silicon</td>
-      <td rowspan="2" style="text-align:center; vertical-align:middle;">Not Required</td>
-    </tr>
-    <tr>
-      <th>Min VRAM</th>
-      <td style="text-align:center;">4GB</td>
-      <td colspan="2" style="text-align:center;">8GB</td>
-      <td style="text-align:center;">2GB</td>
-    </tr>
-    <tr>
-      <th>RAM</th>
-      <td colspan="3" style="text-align:center;">Min 16GB+, Recommended 32GB+</td>
-      <td colspan="2" style="text-align:center;">16GB</td>
-    </tr>
-    <tr>
-      <th>Disk Space</th>
-      <td colspan="3" style="text-align:center;">20GB+, SSD Recommended</td>
-      <td colspan="2" style="text-align:center;">2GB</td>
-    </tr>
-    <tr>
-      <th>Python Version</th>
-      <td colspan="5" style="text-align:center;">3.10-3.13</td>
-    </tr>
-  </tbody>
-</table>
-
-<sup>1</sup> Accuracy metrics are the End-to-End Evaluation Overall scores from OmniDocBench (v1.6), based on the latest version of `MinerU`.  
-<sup>2</sup> Servers compatible with OpenAI API, such as local model servers or remote model services deployed via inference frameworks like `vLLM`/`SGLang`/`LMDeploy`.  
-<sup>3</sup> Linux only supports distributions from 2019 and later.  
-<sup>4</sup> Since the key dependency `ray` does not support Python 3.13 on Windows, only versions 3.10~3.12 are supported.  
-<sup>5</sup> macOS requires version 14.0 or later.
-
-
-### Install MinerU
-
-#### Install MinerU using pip or uv
 ```bash
-pip install --upgrade pip
-pip install uv
-uv pip install -U "mineru[all]"
+uv venv --python 3.12 .venv
 ```
 
-#### Install MinerU from source code
+Activate on Linux / macOS:
+
 ```bash
-git clone https://github.com/opendatalab/MinerU.git
-cd MinerU
-uv pip install -e .[all]
+source .venv/bin/activate
 ```
 
-> [!TIP]
-> - `mineru[all]` includes all core features, compatible with Windows / Linux / macOS systems, suitable for most users.
-> - If CUDA acceleration is unavailable after installing on Windows, see the [Windows CUDA acceleration FAQ](../faq/index.md#windows-cuda-acceleration).
-> - If you need to specify the inference framework for the VLM model, or only intend to install a lightweight client on an edge device, please refer to the documentation [Extension Modules Installation Guide](https://opendatalab.github.io/MinerU/quick_start/extension_modules/).
+Activate in Windows PowerShell:
 
----
- 
-#### Deploy MinerU using Docker
-MinerU provides a convenient Docker deployment method, which helps quickly set up the environment and solve some tricky environment compatibility issues.
-
-> [!TIP]
-> - Docker deployment is only supported on Linux and Windows environments with WSL2 support;
-> - macOS users should refer to the two installation methods above for installation instead of using Docker deployment.
-
-You can get the [Docker Deployment Instructions](./docker_deployment.md) in the documentation.
-
----
-
-### Using MinerU
-
-If your device meets the GPU acceleration requirements in the table above, you can use a simple command line for document parsing:
-```bash
-mineru -p <input_path> -o <output_path>
-```
-If your device does not meet the GPU acceleration requirements, you can explicitly use the Flash tier to run without VLM calls:
-```bash
-mineru parse "<input_path>" --tier flash -o <output_path>
+```powershell
+.venv\Scripts\Activate.ps1
 ```
 
-`mineru` currently supports local `PDF`, `EPUB`, image, `CSV`, `RTF`, `DOCX`, `PPTX`, `XLSX`, `ODT`, `ODS`, and `ODP` file or directory inputs through modern CLI and API entry points. EPUB, RTF, and OpenDocument are parsed locally with Flash semantics and do not require an external office suite. Only PDF accepts page ranges; every non-PDF input is parsed and cached as one complete file, while format-native boundaries remain logical pages in structured output. EPUB pages follow OPF spine order and preserve resolvable internal links from authored contents.
+Install the base package:
 
-The legacy Gradio WebUI keeps its existing upload formats and does not yet accept CSV. For detailed instructions, please refer to the [Usage Guide](../usage/index.md).
+```bash
+uv pip install -U "mineru>=4.0,<5"
+```
+
+Alternatively, run `python -m pip install -U "mineru>=4.0,<5"` in the activated environment. A package mirror can be selected with the installer's `-i` option.
+
+The base package includes the WebUI, ONNX small-model runtime, and llama.cpp VLM. Apple Silicon automatically includes Torch dependencies. For Torch small models or higher-throughput VLM serving, see [extension modules](extension_modules.md) for the `torch` and `full` extras. Do not use 3.x extras.
+
+## First conversion
+
+Parse a single file without a document library and write Markdown to a file:
+
+```bash
+mineru-kit parse document.pdf -o document.md --tier standard
+```
+
+The first model-backed parse may download weights. For native PDF text extraction without inference models, explicitly select:
+
+```bash
+mineru-kit parse document.pdf -o document.md --tier flash --ocr-mode txt
+```
+
+This reads the PDF text layer and does not add an OCR fallback for scanned pages. Use `--ocr-mode ocr` and prepare the relevant models for scanned PDFs.
+
+Native documents and batch conversion:
+
+```bash
+mineru-kit parse report.docx -o report.md --tier flash
+mineru-kit parse ./documents -o ./output --format zip
+```
+
+For directories or multiple inputs, `-o` must be a directory. For single-file Markdown output, use a file path. `mineru-kit parse` defaults to all PDF pages.
+
+## Document library and agents
+
+```bash
+mineru parse document.pdf --json
+mineru parse document.pdf --pages all -o document.md
+mineru search "keyword" --json
+```
+
+`mineru` uses the document library and cache. `mineru parse` defaults to the first 10 PDF pages and may return a continuation request when the output reaches its length budget. Follow the returned locator and `next_request`. This differs from `mineru-kit parse`, which directly writes complete conversion outputs; see [Quick Usage](../usage/quick_usage.md).
+
+## WebUI and API
+
+```bash
+mineru-kit webui --server-name 127.0.0.1 --server-port 7860
+```
+
+Open the [local WebUI](http://127.0.0.1:7860). `mineru-webui` is the standalone command for the same entrypoint. Without `--api-url`, the WebUI manages a local V1 API server. See [SDK and API](../usage/sdk_api.md) to connect an existing service.
+
+```bash
+mineru-kit api-server --host 127.0.0.1 --port 8000 --tier standard
+```
+
+Inspect the running service through its [OpenAPI documentation](http://127.0.0.1:8000/docs).
+
+## Install from source
+
+Run from a repository checkout containing the 4.0 source:
+
+```bash
+uv pip install -e .
+mineru version --json
+```
+
+Confirm a 4.x version; a development checkout may report a prerelease. For NVIDIA containers, see [Docker deployment](docker_deployment.md).
+
+## Next steps
+
+- [Tiers and runtimes](../usage/tiers.md)
+- [Model downloads and configuration](../usage/model_source.md)
+- [3.x → 4.0 migration](../reference/migration_4.md)
+- [Official application](https://mineru.net/) and [online demos](../demo/index.md)

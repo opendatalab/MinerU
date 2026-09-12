@@ -323,7 +323,7 @@ def _render_html(artifacts: RunArtifacts, *, public_base_url: str) -> str:
     if urlsplit(public_base_url).scheme not in {"http", "https"} or not urlsplit(public_base_url).netloc:
         raise ValueError("HTML rendering requires the current Gradio HTTP base URL")
     result = ParseResult.from_json(artifacts.middle_json_path.read_text(encoding="utf-8"))
-    asset_base_url = f"{public_base_url.rstrip('/')}/gradio_api/file={quote(str(artifacts.root), safe='/:')}"
+    asset_base_url = f"{public_base_url.rstrip('/')}/gradio_api/file={quote(artifacts.root.as_posix(), safe='/:')}"
     return cast(
         str,
         render(
