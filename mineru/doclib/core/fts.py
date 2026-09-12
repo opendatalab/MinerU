@@ -112,6 +112,8 @@ class FTSManager:
         tokens = _sanitize_query_tokens(tokenize_for_query(query))
         if not tokens:
             return []
+        if not query.rstrip().endswith("*"):
+            tokens[-1] += "*"
         fts_query = " ".join(tokens)
         try:
             return cast(
