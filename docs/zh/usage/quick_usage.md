@@ -1,7 +1,7 @@
 # 使用 MinerU
 
 ## 快速配置模型源
-MinerU默认使用`huggingface`作为模型源，若用户网络无法访问`huggingface`，可以通过环境变量便捷地切换模型源为`modelscope`：
+MinerU 默认使用 `auto` 模型源策略，优先探测 Hugging Face，不可访问时选择 ModelScope，若用户网络无法访问`huggingface`，可以通过环境变量便捷地切换模型源为`modelscope`：
 ```bash
 export MINERU_MODEL_SOURCE=modelscope
 ```
@@ -25,6 +25,18 @@ mineru parse <input_path> --pages all -o <output_path>
 
 如果需要通过自定义参数调整解析选项，您也可以在文档中查看更详细的[命令行工具使用说明](./cli_tools.md)。
 
+## 文档库、搜索与继续阅读
+
+`mineru` 使用本地文档库保存文件身份、解析缓存和索引。解析后的响应带有 locator；按真实返回值替换下例中的文档 ID：
+
+```bash
+mineru parse document.pdf --json
+mineru search "关键词" --json
+mineru read "doc:ab12cd3/tier:standard/page:11" --json
+```
+
+超过输出预算时按 `next_request` 或返回的继续阅读命令操作。`read` 读取已有结果，不会自动发起新的高质量解析。无状态批处理和完整导出使用 `mineru-kit parse`；原生 Office、HTML、CSV/TSV、EPUB、OFD 自动归一到本地 Flash。
+
 ## 通过 API、WebUI 和服务进阶使用
 
 - 启动自部署 V1 API：
@@ -34,18 +46,18 @@ mineru parse <input_path> --pages all -o <output_path>
   >[!TIP]
   >在浏览器中访问 `http://127.0.0.1:8000/docs` 查看 OpenAPI 文档。服务只提供 `/v1/*` 接口，包括健康检查、能力发现、上传、文件、解析任务和用量查询。
   >
-  >原生文档解析示例：[DocVortex Python 示例](https://github.com/myhloli/docvortex/blob/main/demo/demo.py)
+  >原生文档解析示例：[Python SDK 与 V1 API](sdk_api.md)
 
 - 启动gradio webui 可视化前端：
   ```bash
-  mineru-kit gradio --server-name 0.0.0.0 --server-port 7860
+  mineru-kit webui --server-name 0.0.0.0 --server-port 7860
   ```
   >[!TIP]
   > 
   >- 在浏览器中访问 `http://127.0.0.1:7860` 使用 Gradio WebUI。
   >- 未传 `--api-url` 时，Gradio 会托管 loopback `mineru-kit api-server`；传入后只连接指定的 V1 服务。
   >- 使用 `--api-server-preload-models` 为托管的本地服务预加载模型。
-  >- `mineru-gradio` 仍作为命令名兼容别名，使用相同的新版参数。
+  >- `mineru-webui` 仍作为命令名兼容别名，使用相同的新版参数。
 
 - 通过 `mineru-router` 进行多服务 / 多 GPU 编排：
   ```bash
@@ -102,7 +114,9 @@ MinerU 可开箱即用，并从 `$MINERU_HOME/config.yaml` 读取当前配置；
 model:
   base_dir: ~/.mineru/models
   source: auto
-  stack: auto
+  small_backend: auto
+  vlm:
+    engine: auto
 ```
 
 模型下载和本地模型源的详细说明见[模型源说明](./model_source.md)。
@@ -114,4 +128,4 @@ model:
 省略页码时 `mineru parse` 默认前 10 页，`mineru-kit parse`、Python 和 Gradio 默认全部。
 新请求使用新规范；历史正整数半角 `~` 结果可直接读取，无需重建 Doclib 缓存。
 结果返回值和新缓存使用 `-`，全角 `～` 及负号倒数页码不受支持。
-完整说明见 [页码规范与历史结果兼容](../../next/page-ranges.md)。
+档位与默认选择见[档位与运行环境](tiers.md)，升级注意事项见[迁移指南](../reference/migration_4.md)。

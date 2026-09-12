@@ -1,7 +1,7 @@
 # Using MinerU
 
 ## Quick Model Source Configuration
-MinerU uses `huggingface` as the default model source. If users cannot access `huggingface` due to network restrictions, they can conveniently switch the model source to `modelscope` through environment variables:
+MinerU defaults to `auto`: probe Hugging Face first and choose ModelScope when it is unavailable. If users cannot access `huggingface` due to network restrictions, they can conveniently switch the model source to `modelscope` through environment variables:
 ```bash
 export MINERU_MODEL_SOURCE=modelscope
 ```
@@ -25,6 +25,18 @@ mineru parse <input_path> --pages all -o <output_path>
 
 If you need to adjust parsing options through custom parameters, you can also check the more detailed [Command Line Tools Usage Instructions](./cli_tools.md) in the documentation.
 
+## Library, search, and continuation
+
+`mineru` keeps file identity, parsing caches, and indexes in a local document library. Responses include locators; replace the example document ID below with an actual returned ID:
+
+```bash
+mineru parse document.pdf --json
+mineru search "keyword" --json
+mineru read "doc:ab12cd3/tier:standard/page:11" --json
+```
+
+When an output reaches its budget, follow `next_request` or the returned continuation command. `read` consumes existing results without automatically starting higher-quality parsing. Use `mineru-kit parse` for stateless batches and complete exports. Native Office, HTML, CSV/TSV, EPUB, and OFD normalize to local Flash.
+
 ## Advanced Usage via API, WebUI, and Services
 
 - Start the self-hosted V1 API:
@@ -34,18 +46,18 @@ If you need to adjust parsing options through custom parameters, you can also ch
   >[!TIP]
   >Access `http://127.0.0.1:8000/docs` for the OpenAPI documentation. The supported service surface is `/v1/*`, including health, capability discovery, uploads, files, parse jobs, and usage.
   >
-  >Native document parsing example: [DocVortex Python example](https://github.com/myhloli/docvortex/blob/main/demo/demo.py)
+  >Native document parsing example: [Python SDK and V1 API](sdk_api.md)
 
 - Start Gradio WebUI visual frontend:
   ```bash
-  mineru-kit gradio --server-name 0.0.0.0 --server-port 7860
+  mineru-kit webui --server-name 0.0.0.0 --server-port 7860
   ```
   >[!TIP]
   >
   >- Access `http://127.0.0.1:7860` in your browser to use the Gradio WebUI.
   >- Without `--api-url`, Gradio manages a loopback `mineru-kit api-server`; with `--api-url`, it connects only to that existing V1 service.
   >- Use `--api-server-preload-models` to preload models for the managed local server.
-  >- `mineru-gradio` remains available as a command-name alias with the same modern options.
+  >- `mineru-webui` remains available as a command-name alias with the same modern options.
 
 - Use `mineru-router` for multi-service / multi-GPU orchestration:
   ```bash
@@ -102,7 +114,9 @@ Model storage and source settings use the `model` section:
 model:
   base_dir: ~/.mineru/models
   source: auto
-  stack: auto
+  small_backend: auto
+  vlm:
+    engine: auto
 ```
 
 See [Model Source Documentation](./model_source.md) for model download and local-source details.
@@ -116,4 +130,4 @@ fail with `page_range_invalid`. Without `--pages`, `mineru parse` starts with th
 `mineru-kit parse`, Python and Gradio select all pages. New requests use the current syntax. Historical positive result ranges using ASCII `~`
 remain readable without rebuilding Doclib caches; result responses and new cache entries use `-`.
 Fullwidth `～` and negative page-number notation are not supported.
-See [page-range syntax and historical result compatibility](../../next/page-ranges.md).
+See [page-range syntax and historical result compatibility](tiers.md).

@@ -1,3 +1,14 @@
+> [!NOTE]
+> **旧版适配，仅适用于 MinerU <4。** 本页保留原平台依赖、模型和命令；4.0 不沿用此适配保证。
+> 安装或升级时必须保留 `mineru<4`；已有固定版本、提交或厂商镜像继续按原方案使用，不要替换为 4.0 的安装命令。
+> 通用说明见[旧平台版本约束](../compatibility.md)。
+
+使用厂商预制镜像时，先在容器内检查版本；本仓库的版本上限不会改变已构建镜像的内容：
+
+```bash
+python -c "from importlib.metadata import version; from packaging.specifiers import SpecifierSet; v = version('mineru'); print(v); assert v in SpecifierSet('<4'), 'Use the vendor image for MinerU <4'"
+```
+
 ## 1. 测试平台
 以下为本指南测试使用的平台信息，供参考：
 ```
@@ -65,7 +76,7 @@ docker run -it --name mineru_docker \
       <td>🟢</td>
     </tr>
     <tr>
-      <td rowspan="3">FastAPI 服务(mineru-kit api-server)</td>
+      <td rowspan="3">FastAPI 服务(mineru-api)</td>
       <td>pipeline</td>
       <td>🟢</td>
     </tr>
@@ -78,7 +89,7 @@ docker run -it --name mineru_docker \
       <td>🟢</td>
     </tr>
     <tr>
-      <td rowspan="3">gradio界面(mineru-kit gradio)</td>
+      <td rowspan="3">gradio界面(mineru-gradio)</td>
       <td>pipeline</td>
       <td>🟢</td>
     </tr>

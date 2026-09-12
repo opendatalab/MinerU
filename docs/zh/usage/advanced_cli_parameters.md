@@ -15,7 +15,7 @@
 > [!TIP]
 > - 任何情况下，您都可以通过在命令行的开头添加`CUDA_VISIBLE_DEVICES` 环境变量来指定可见的 GPU 设备：
 >   ```bash
->   CUDA_VISIBLE_DEVICES=1 mineru -p <input_path> -o <output_path>
+>   CUDA_VISIBLE_DEVICES=1 mineru-kit parse <input_path> -o <output_path>
 >   ```
 > - 这种指定方式适用于下文明确说明的模型服务与解析命令，不适用于 `mineru-router`。
 
@@ -53,5 +53,5 @@
 >   
 > - 如果您有多张显卡，需要通过`router`在其中4张卡上启动`fastapi`服务并统一管理，可以使用以下命令： 
 >   ```bash
->   CUDA_VISIBLE_DEVICES=0,1,2,3 mineru-kit router --host 127.0.0.1 --port 8002
+>   mineru-kit router --host 127.0.0.1 --port 8002 --local-gpus 0,1,2,3
 >   ```

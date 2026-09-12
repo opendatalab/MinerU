@@ -46,10 +46,10 @@ mineru-kit api-server --host 127.0.0.1 --port 8000 --tier standard
 ### Gradio WebUI
 
 ```bash
-mineru-kit gradio --server-name 127.0.0.1 --server-port 7860
+mineru-kit webui --server-name 127.0.0.1 --server-port 7860
 ```
 
-未传 `--api-url` 时，Gradio 会托管 loopback `mineru-kit api-server`；传入后只连接指定的 V1 服务。`mineru-gradio` 保留为命令名兼容别名，接受相同的新版参数，不恢复旧 Gradio 参数或 HTTP 路由。
+未传 `--api-url` 时，Gradio 会托管 loopback `mineru-kit api-server`；传入后只连接指定的 V1 服务。`mineru-webui` 保留为命令名兼容别名，接受相同的新版参数，不恢复旧 Gradio 参数或 HTTP 路由。
 
 ### Router 与 VLM Server
 
@@ -82,4 +82,4 @@ mineru-kit vlm-server --engine auto --port 30000
 省略页码时 `mineru parse` 默认前 10 页，`mineru-kit parse`、Python 和 Gradio 默认全部。
 新请求使用新规范；历史正整数半角 `~` 结果可直接读取，无需重建 Doclib 缓存。
 结果返回值和新缓存使用 `-`，全角 `～` 及负号倒数页码不受支持。
-完整说明见 [页码规范与历史结果兼容](../../next/page-ranges.md)。
+档位与默认选择见[档位与运行环境](tiers.md)，升级注意事项见[迁移指南](../reference/migration_4.md)。

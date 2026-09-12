@@ -1,470 +1,138 @@
-# MinerU 输出文件说明
+# 输出格式与结果协议
 
-## 概览
+4.0 使用统一文档模型。区分“渲染器能生成什么”与“当前 CLI/API 暴露什么”，不要将渲染层的能力直接当作某个产品入口的参数。
 
-`mineru` 命令执行后，除了输出主要的 markdown 文件外，还会生成多个辅助文件用于调试、质检和进一步处理。这些文件包括：
+## 入口支持范围
 
-具体会生成哪些文件，取决于后端类型和输入文档类型。
+| 入口 | 输出 |
+| --- | --- |
+| `mineru parse` | Markdown；`--json` 为含状态、内容、定位和继续阅读信息的命令响应 |
+| `mineru read` | Markdown 或 `--format image`；只读取已缓存内容 |
+| `mineru-kit parse` | `markdown`、`middle_json`、`zip` |
+| 自部署 V1 API | `markdown`、`middle_json`、`structured_content`、`zip`；以服务能力为准 |
+| `ParseResult` | `markdown()`、`structured_content()`、`to_dict()`、`to_json()`、`save(writer)` |
+| `mineru.render.render()` | 下列九种目标格式 |
 
-- **可视化调试文件**：帮助用户直观了解文档解析过程和结果
-- **结构化数据文件**：包含详细的解析数据，可用于二次开发
-- 多模态 markdown 输出中，`image` / `chart` 默认以截图为主；若块内存在 `content`，会在图片后追加一个默认折叠的 HTML `<details>` 内容块，其中折叠标题优先使用块的 `sub_type`，否则回退为 `image content` 或 `chart content`
+`mineru parse --json` 的响应不是 MiddleJson，不能直接传给 `ParseResult.from_dict()`。远端服务的产物范围由该服务声明。
 
-下面将详细介绍每个文件的作用和格式。
+## 九种渲染目标
 
-## 可视化调试文件
+| `RenderFormat` | 格式 | Python 返回类型 |
+| --- | --- | --- |
+| `MARKDOWN` | Markdown | `str` |
+| `HTML` | HTML | `str` |
+| `LATEX` | LaTeX | `str` |
+| `DOCX` | Word | `bytes` |
+| `EPUB` | EPUB | `bytes` |
+| `PDF` | 语义重排版 PDF | `bytes` |
+| `STRUCTURED_CONTENT` | 通用结构化内容 | `dict` |
+| `CONTENT_LIST` | Content List V1 | `list[dict]` |
+| `CONTENT_LIST_V2` | 按页组织的 Content List V2 | `list[list[dict]]` |
 
-### 布局分析文件 (layout.pdf)
+PDF 渲染是语义重排版，不是原 PDF 版式的逐像素复刻，也不是布局调试 PDF。
 
-**文件命名格式**：`{原文件名}_layout.pdf`
+```python
+from pathlib import Path
+from mineru.parser import parse
+from mineru.render import render, RenderFormat
 
-**功能说明**：
-
-- 可视化展示每一页的布局分析结果
-- 每个检测框右上角的数字表示阅读顺序
-- 使用不同背景色块区分不同类型的内容块
-
-**使用场景**：
-
-- 检查布局分析是否正确
-- 确认阅读顺序是否合理
-- 调试布局相关问题
-
-![layout 页面示例](../images/layout_example.png)
-
-## 结构化数据文件
-
-> [!IMPORTANT]
-> 当前结构化输出合约使用统一的 `MinerUParser`，通过 `tier`（flash/basic/standard/advanced）和 `parse_mode`（txt/ocr）参数控制。旧 middle-json 中标记 `_backend: "pipeline"`/`_backend: "hybrid"`/`_backend: "office"` 的产物不再被当前读取逻辑兼容，请使用 schema 2.0 的 `MiddleJson`。
-
-### 统一模型输出结果
-
-#### 模型推理结果 (model.json)
-
-**文件命名格式**：`{原文件名}_model.json`
-
-##### 示例数据
-
-```json
-[
-    {
-        “cls_id”: 12,
-        “label”: “header”,
-        “score”: 0.93,
-        “bbox”: [
-            1217,
-            104,
-            1516,
-            134
-        ],
-        “index”: 2
-    },
-    {
-        “cls_id”: 6,
-        “label”: “doc_title”,
-        “score”: 0.9751,
-        “bbox”: [
-            275,
-            181,
-            1512,
-            292
-        ],
-        “index”: 3
-    },
-    {
-        “cls_id”: 22,
-        “label”: “text”,
-        “score”: 0.9217,
-        “bbox”: [
-            275,
-            330,
-            524,
-            370
-        ],
-        “index”: 4
-    }
-]
+result = parse("report.docx", tier="flash")
+html = render(result.middle_json, RenderFormat.HTML)
+Path("report.html").write_text(html, encoding="utf-8")
 ```
 
-#### 中间处理结果 (middle.json)
+## 中间 JSON
 
-**文件命名格式**：`{原文件名}_middle.json`
+`ModelJson` 保存分析结果 `pages` 和 `page_index_map`；`MiddleJson` 保存后处理后的有序页面和语义块。`schema_id` 区分 `docvortex.model` 与 `docvortex.middle`，`schema_version` 标识协议版本。不要只根据版本数字判断文档种类。
 
-##### 顶层结构（schema 2.0）
+`metadata` 包含文件类型、生产者和文档属性；`extensions["mineru"]` 记录实际执行的 `tier` 与最终 `parse_mode`。版本来自 `metadata.producer.version`，不重复放在产品扩展中。页面包含 `page_idx` 与 `blocks`，`page_idx` 从 0 开始，区别于 CLI 中从 1 开始的 PDF 页码。
 
-| 字段名 | 类型 | 说明 |
-|--------|------|------|
-| `pages` | `list[PageInfo]` | 每一页的解析结果数组，按 `page_idx` 严格升序 |
-| `is_full_document` | `bool` | 是否整本文档解析（`page_index_map` 为空时为 `True`） |
-| `file_suffix` | `string` | 输入文件类型：`pdf`、`doc`、`docx`、`ppt`、`pptx`、`xls`、`xlsx`、`rtf`、`csv`、`epub`、`html`、`odt`、`ods` 或 `odp` |
-| `effort` | `string` | 分析强度：`flash`、`medium`、`high` 或 `xhigh` |
-| `parse_mode` | `string` | 解析模式：`txt` 或 `ocr` |
-| `mineru_version` | `string` | MinerU 版本号 |
-
-schema 2.0 已移除旧字段 `pdf_info`/`_backend`/`_version_name`/`_ocr_enable`/`_vlm_ocr_enable`。
-
-##### 页面信息结构 (pages)
-
-| 字段名 | 说明 |
-|--------|------|
-| `page_idx` | 页码，从 0 开始 |
-| `blocks` | 顶层页面块列表（唯一内容字段） |
-
-schema 2.0 已移除旧字段 `preproc_blocks`/`para_blocks`/`page_size`/`images`/`tables`/`interline_equations`/`discarded_blocks`/`_layout_tree`/`layout_bboxes`——所有内容统一在 `blocks` 树里表达。
-
-##### 块结构层次
-
-```
-顶层页面块 (text | title | equation | image | table | chart | code | list | index | ...)
-└── 视觉父块 (image | table | chart | code) 包含子块
-    └── body 块 + 可选 caption/footnote 块
-```
-
-叶子块（text、title、equation 等）直接持有 `content: str`。视觉父块（image、table、chart、code）持有 `content: list[子块]`，子块包含唯一 body 加可选 caption/footnote。schema 2.0 不再有独立的 `Line`/`Span` 类型。
-
-##### 通用块字段
-
-| 字段名 | 说明 |
-|--------|------|
-| `type` | 块类型（详见下表） |
-| `bbox` | 块的矩形框坐标 `[x0, y0, x1, y1]`，归一化到 `[0, 1]` |
-| `index` | 块的阅读序号（顶层块必填） |
-| `content` | 叶子块为字符串；视觉父块为子块列表 |
-
-##### 块类型
-
-| 类型 | 说明 |
-|------|------|
-| `text` | 文本块（叶子块，`content: str`） |
-| `doc_title` | 文档标题（level=1） |
-| `paragraph_title` | 段落标题（level 2-6） |
-| `equation` | 行间公式块（由 `interline_equation` 重命名） |
-| `image` | 图片容器；`content` 包含 `image_body` + 可选 `image_caption`/`image_footnote` |
-| `table` | 表格容器；`content` 包含 `table_body` + 可选 `table_caption`/`table_footnote` |
-| `chart` | 图表容器；`content` 包含 `chart_body` + 可选 `chart_caption`/`chart_footnote` |
-| `code` | 代码容器；`content` 包含 `code_body` + 可选 `code_caption`/`code_footnote`；`sub_type` 为 `code` 或 `algorithm` |
-| `list` | 列表容器；`content` 为 `text`/`ref_text`/嵌套 `list` 块列表；`sub_type` 为 `text` 或 `ref_text` |
-| `index` | 目录容器；`content` 为 `text`/`doc_title`/`paragraph_title`/嵌套 `index` 块列表 |
-| `ref_text` | 参考文献文本块；EPUB 脚注不使用该类型 |
-| `header` / `footer` / `page_number` / `aside_text` | 页面辅助块（叶子块，`content: str`）；不接受 `anchor` |
-| `page_footnote` | 独立页面脚注块（叶子块，`content: str`）；可带 document-wide `anchor`，DEFAULT 渲染也保留 |
-
-##### 示例数据（schema 2.0）
+以下示例由当前公开类型序列化生成，`4.0.0` 是正式版文档的示意生产者版本；可选字段可被省略，实际输出为准：
 
 ```json
 {
-    “pages”: [
+  "metadata": {
+    "file_suffix": "html",
+    "producer": {
+      "name": "mineru",
+      "version": "4.0.0"
+    }
+  },
+  "extensions": {
+    "mineru": {
+      "tier": "flash",
+      "parse_mode": "txt"
+    }
+  },
+  "pages": [
+    {
+      "page_idx": 0,
+      "blocks": [
         {
-            “page_idx”: 0,
-            “blocks”: [
-                {
-                    “type”: “doc_title”,
-                    “index”: 0,
-                    “bbox”: [0.45, 0.23, 0.55, 0.28],
-                    “content”: “1 Introduction”,
-                    “level”: 1
-                },
-                {
-                    “type”: “text”,
-                    “index”: 1,
-                    “bbox”: [0.08, 0.30, 0.46, 0.40],
-                    “content”: “dependent on the service headway and the reliability of the departure”
-                },
-                {
-                    “type”: “image”,
-                    “index”: 2,
-                    “bbox”: [0.52, 0.30, 0.95, 0.55],
-                    “content”: [
-                        {
-                            “type”: “image_body”,
-                            “index”: 2,
-                            “bbox”: [0.52, 0.30, 0.95, 0.55],
-                            “content”: “”,
-                            “image_path”: “images/page_0_image_body_2.png”
-                        },
-                        {
-                            “type”: “image_caption”,
-                            “index”: 3,
-                            “bbox”: [0.52, 0.56, 0.95, 0.58],
-                            “content”: “Figure 1: Example figure”
-                        }
-                    ],
-                    “sub_type”: null
-                }
-            ]
+          "type": "text",
+          "index": 0,
+          "content": [
+            {
+              "type": "text",
+              "content": "Hello MinerU"
+            }
+          ]
         }
-    ],
-    “file_suffix”: “pdf”,
-    “effort”: “high”,
-    “parse_mode”: “ocr”,
-    “mineru_version”: “1.x.x”
+      ]
+    }
+  ],
+  "is_full_document": true,
+  "schema": "docvortex.middle",
+  "schema_version": "2.0"
 }
 ```
 
-#### 内容列表 (content_list.json)
+可以通过 `ParseResult.from_json(result.to_json())` 往返读取当前结果。旧版 `_backend`、`pdf_info`、`_version_name` 不属于此协议；历史数据兼容见[迁移指南](migration_4.md)，不要手工改一个版本号就当作格式已迁移。
 
-> [!NOTE]
-> `content_list.json` 已废弃，不再生成。结构化内容输出请使用 `structured_content.json`，详见下文”通用结构化内容”章节。
+## Structured Content
 
-### 通用结构化内容 (structured_content.json)(开发中，格式可能调整)
-
-**文件命名格式**：`{原文件名}_structured_content.json`
-
-##### 功能说明
-
-`structured_content.json` 是 3.0 起新增的结构化输出文件，所有后端都会输出该文件：
-
-- 顶层是按页分组的列表，便于按页消费结果
-- 每个内容块使用统一的 `type + content` 结构，适合程序化处理
-- 不同后端和输入类型支持的 `type` 会有所不同
-
-##### 通用字段
-
-| 字段名 | 类型 | 说明 |
-|--------|------|------|
-| `type` | `string` | 内容类型 |
-| `content` | `dict` | 与 `type` 对应的结构化内容 |
-| `bbox` | `list[int]` | 可选，0-1000 范围的边界框 |
-| `anchor` | `string` | 可选，标题与 `page_footnote` 的 document-wide 目标；目录叶子和行内链接可以引用 |
-
-其中 `image` / `chart` 类型还可能包含可选顶层字段 `sub_type`，用于表示视觉子类型。
-
-##### 常见类型
-
-| 类型 | 说明 |
-|------|------|
-| `title` | 标题块，包含 `title_content` 与 `level` |
-| `paragraph` | 段落块，包含 `paragraph_content` |
-| `equation_interline` | 行间公式，包含 `math_content`、`math_type` |
-| `image` / `table` / `chart` | 视觉类块，包含图片路径、说明文字等结构化字段；印章使用 `sub_type: "seal"` 的 `image` 表示 |
-| `code` | 代码块，包含 `code_content`、`code_caption`、`code_footnote`、`code_language` |
-| `algorithm` | 算法块，包含 `algorithm_content`、`algorithm_caption`、`algorithm_footnote` |
-| `list` / `index` | 列表与索引，包含 `list_items` |
-| `page_header` / `page_footer` / `page_number` / `page_aside_text` | 页面辅助块 |
-| `page_footnote` | 独立页面脚注内容 |
-
-`title_content`、`paragraph_content`、说明文字等行内内容通常由 span 列表组成。
-`hyperlink` span 包含 `content`、`url`，当同一个链接内存在多段不同样式文本时，
-还会包含 `children`；此时 `content` 是 children 文本的拼接，精确样式以
-`children` 中的 `text` span 为准。
-
-##### 示例数据
-
-```json
-[
-    [
-        {
-            "type": "title",
-            "content": {
-                "title_content": [
-                    {
-                        "type": "text",
-                        "content": "1 Introduction"
-                    }
-                ],
-                "level": 1
-            },
-            "bbox": [
-                83,
-                121,
-                917,
-                156
-            ]
-        },
-        {
-            "type": "page_footnote",
-            "content": {
-                "page_footnote_content": [
-                    {
-                        "type": "text",
-                        "content": "* Corresponding author"
-                    }
-                ]
-            },
-            "bbox": [
-                71,
-                815,
-                915,
-                841
-            ]
-        }
-    ]
-]
-```
-
-### 多模态模型输出结果
-
-#### 模型推理结果 (model.json)
-
-**文件命名格式**：`{原文件名}_model.json`
-
-##### 文件格式说明
-
-- 该文件为多模态模型的原始输出结果，包含两层嵌套list，外层表示页面，内层表示该页的内容块
-- 每个内容块都是一个dict，包含 `type`、`bbox`、`angle`、`content` 字段
-
-
-##### 支持的内容类型
+`structured_content()` 返回面向消费端的内容结构，而非中间协议的另一个名称。它保留 `metadata` 和 `extensions`，将自然语言 span 转为更易消费的文本；不要为它补造 `schema_id` 或 `schema_version`。
 
 ```json
 {
-    “text”: “文本”,
-    “title”: “标题”,
-    “equation”: “行间公式”,
-    “image”: “图片”,
-    “image_caption”: “图片描述”,
-    “image_footnote”: “图片脚注”,
-    “table”: “表格”,
-    “table_caption”: “表格描述”,
-    “table_footnote”: “表格脚注”,
-    “phonetic”: “拼音”,
-    “code”: “代码块”,
-    “code_caption”: “代码描述”,
-    “ref_text”: “参考文献”,
-    “algorithm”: “算法块”,
-    “list”: “列表”,
-    “header”: “页眉”,
-    “footer”: “页脚”,
-    “page_number”: “页码”,
-    “aside_text”: “装订线旁注”,
-    “page_footnote”: “页面脚注”
+  "pages": [
+    {
+      "page_idx": 0,
+      "blocks": [
+        {
+          "type": "text",
+          "content": "Hello MinerU"
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "file_suffix": "html",
+    "producer": {
+      "name": "mineru",
+      "version": "4.0.0"
+    }
+  },
+  "extensions": {
+    "mineru": {
+      "tier": "flash",
+      "parse_mode": "txt"
+    }
+  },
+  "is_full_document": true
 }
 ```
 
-##### 坐标系统说明
+## 文件保存、ZIP 与素材
 
-`bbox` 坐标格式：`[x0, y0, x1, y1]`
+`ParseResult.save(writer)` 写出 `markdown.md`、`middle_json.json`、`structured_content.json`；有原始模型结果时还写出 `model_output.json`。`mineru-kit parse --format zip` 打包这一组结果。
 
-- 分别表示左上、右下两点的坐标
-- 坐标原点在页面左上角
-- 坐标为相对于原始页面尺寸的百分比，范围在0-1之间
+```python
+from mineru.parser.writer import FileBasedDataWriter
 
-##### 示例数据
-
-```json
-[
-    [
-        {
-            “type”: “header”,
-            “bbox”: [
-                0.077,
-                0.095,
-                0.18,
-                0.181
-            ],
-            “angle”: 0,
-            “score”: null,
-            “block_tags”: null,
-            “content”: “ELSEVIER”,
-            “format”: null,
-            “content_tags”: null
-        },
-        {
-            “type”: “title”,
-            “bbox”: [
-                0.157,
-                0.228,
-                0.833,
-                0.253
-            ],
-            “angle”: 0,
-            “score”: null,
-            “block_tags”: null,
-            “content”: “The response of flow duration curves to afforestation”,
-            “format”: null,
-            “content_tags”: null
-        }
-    ]
-]
+result.save(FileBasedDataWriter("output"))
 ```
 
-#### 中间处理结果 (middle.json)
+素材可能以内嵌数据或图片路径表示，取决于来源与输出入口。PDF 的 `ParseResult.to_dict()` 会省略块中的 `image_base64`；只保存中间 JSON 不等于保存了所有外部素材。消费 API 结果时按产物引用下载并保留对应素材，不能依赖已关闭的 PDF 对象或原文件继续渲染。
 
-**文件命名格式**：`{原文件名}_middle.json`
-
-##### 文件格式说明
-
-在 schema 2.0 中，多模态 tier 与其他 tier 产出相同的统一 `MiddleJson` 结构。以下块类型是标准 `blocks` 树的一部分（不再是扩展）：
-
-- list 是容器块，`content` 持有子 `text`/`ref_text`/嵌套 `list` 块，`sub_type` 区分 list 类型:
-    * `text`（文本类型）
-    * `ref_text`（引用类型）
-
-- code 是容器块，`content` 持有 `code_body` 加可选 `code_caption`/`code_footnote`，`sub_type` 为:
-    * `code`
-    * `algorithm`
-
-- 页面辅助块（`header`、`footer`、`page_number`、`aside_text`）和独立的 `page_footnote` 块都作为顶层叶子出现在 `blocks` 中，`content: str`——schema 2.0 不再有独立的 `discarded_blocks` 字段；只有 `page_footnote` 可以额外携带 document-wide `anchor`，且 DEFAULT 渲染也会保留。
-- 所有 block 可能包含 `angle` 字段，用来表示旋转角度，0，90，180，270
-
-
-##### 示例数据
-- list block 示例
-    ```json
-    {
-        “type”: “list”,
-        “bbox”: [0.068, 0.121, 0.319, 0.260],
-        “index”: 11,
-        “content”: [
-            {
-                “type”: “text”,
-                “bbox”: [0.068, 0.123, 0.122, 0.137],
-                “index”: 3,
-                “content”: “H.1 Introduction”
-            },
-            {
-                “type”: “text”,
-                “bbox”: [0.068, 0.142, 0.181, 0.179],
-                “index”: 4,
-                “content”: “H.2 Example: Divide by Zero without Exception Handling”
-            }
-        ],
-        “sub_type”: “text”
-    }
-    ```
-- code block 示例
-    ```json
-    {
-        “type”: “code”,
-        “bbox”: [0.045, 0.610, 0.346, 0.964],
-        “index”: 17,
-        “content”: [
-            {
-                “type”: “code_body”,
-                “bbox”: [0.045, 0.610, 0.346, 0.964],
-                “index”: 17,
-                “content”: “1 // Fig. H.1: DivideByZeroNoExceptionHandling.java  \n2 // Integer division without exception handling.  \n3 import java.util.Scanner;  \n4  \n5 public class DivideByZeroNoExceptionHandling  \n6 {  \n7 // demonstrates throwing an exception when a divide-by-zero occurs  \n8 public static int quotient( int numerator, int denominator )  \n9 {  \n10 return numerator / denominator; // possible division by zero  \n11 } // end method quotient  \n12  \n13 public static void main(String[] args)  \n14 {  \n15 Scanner scanner = new Scanner(System.in); // scanner for input  \n16  \n17 System.out.print(\”Please enter an integer numerator: \”);  \n18 int numerator = scanner.nextInt();  \n19 System.out.print(\”Please enter an integer denominator: \”);  \n20 int denominator = scanner.nextInt();  \n21”
-            },
-            {
-                “type”: “code_caption”,
-                “bbox”: [0.339, 0.125, 0.500, 0.148],
-                “index”: 19,
-                “content”: “Algorithm 1 Modules for MCTSteg”
-            }
-        ],
-        “sub_type”: “code”,
-        “guess_lang”: “java”
-    }
-    ```
-
-#### 内容列表 (content_list.json)
-
-> [!NOTE]
-> `content_list.json` 已废弃，不再生成。结构化内容输出请使用 `structured_content.json`，其通用结构见上文”通用结构化内容”章节。
-
-## 总结
-
-以上文件为 MinerU 的完整输出结果，用户可根据需要选择合适的文件进行后续处理：
-
-- **模型输出**(使用原始输出):
-    * model.json
-
-- **调试和验证**(使用可视化文件):
-    * layout.pdf
-  
-- **内容提取**(使用简化文件):
-    * *.md
-    * structured_content.json
-  
-- **二次开发**(使用结构化文件):
-    * middle.json
+WebUI 显示的布局 PDF 是调试产物，可用时用于预览检测结果；不可用时使用原始/裁页 PDF 预览。它与上述 `RenderFormat.PDF` 是不同用途。

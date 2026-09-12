@@ -1,3 +1,14 @@
+> [!NOTE]
+> **旧版适配，仅适用于 MinerU <4。** 本页保留原平台依赖、模型和命令；4.0 不沿用此适配保证。
+> 安装或升级时必须保留 `mineru<4`；已有固定版本、提交或厂商镜像继续按原方案使用，不要替换为 4.0 的安装命令。
+> 通用说明见[旧平台版本约束](../compatibility.md)。
+
+使用厂商预制镜像时，先在容器内检查版本；本仓库的版本上限不会改变已构建镜像的内容：
+
+```bash
+python -c "from importlib.metadata import version; from packaging.specifiers import SpecifierSet; v = version('mineru'); print(v); assert v in SpecifierSet('<4'), 'Use the vendor image for MinerU <4'"
+```
+
 ## 1. 瀚博半导体
 
 ![vastaitech](https://github.com/Vastai/VastModelZOO/blob/main/images/index/logo.png?raw=true)
@@ -41,7 +52,7 @@
 
 - 安装MinerU
 
-   - 参考官方文档安装：[README_zh.md#安装-mineru](https://github.com/opendatalab/MinerU/blob/master/README_zh.md#安装-mineru)
+   - 参考官方文档安装：[README_zh.md#安装-mineru](https://github.com/opendatalab/MinerU/blob/mineru-2.7.0-released/README_zh-CN.md#安装-mineru)
 
         ```bash
         # 启动容器
@@ -56,8 +67,9 @@
 
         # 通过源码安装MinerU
         git clone https://github.com/opendatalab/MinerU.git
+        cd MinerU
         git checkout 8c4b3ef3a20b11ddac9903f25124d24ea82639b5
-        pip install -e .[core] -i https://mirrors.aliyun.com/pypi/simple
+        pip install -e ".[core]" "mineru<4" -i https://mirrors.aliyun.com/pypi/simple
 
         # 或使用pip安装MinerU
         pip install -U "mineru[core]==2.7.0" -i https://mirrors.aliyun.com/pypi/simple
@@ -81,7 +93,7 @@
 
 - 使用MinerU
 
-    - 模型准备，参考官方介绍：[model_source.md](https://github.com/opendatalab/MinerU/blob/master/docs/zh/usage/model_source.md)
+    - 模型准备，参考官方介绍：[model_source.md](https://github.com/opendatalab/MinerU/blob/mineru-2.7.0-released/docs/zh/usage/model_source.md)
 
     - 方式一：`vlm-engine`
 
@@ -159,7 +171,7 @@
       <td>🟢</td>
     </tr>
     <tr>
-      <td rowspan="5">FastAPI 服务(mineru-kit api-server)</td>
+      <td rowspan="5">FastAPI 服务(mineru-api)</td>
       <td>pipeline</td>
       <td>🔴</td>
     </tr>
@@ -180,7 +192,7 @@
       <td>🟢</td>
     </tr>
     <tr>
-      <td rowspan="5">gradio界面(mineru-kit gradio)</td>
+      <td rowspan="5">gradio界面(mineru-gradio)</td>
       <td>pipeline</td>
       <td>🔴</td>
     </tr>

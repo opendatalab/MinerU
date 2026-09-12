@@ -1,58 +1,38 @@
-# MinerU Extension Modules Installation Guide
-MinerU supports installing extension modules on demand based on different needs to enhance functionality or support specific model backends.
+# Extension Modules
 
-## Common Scenarios
+All examples target MinerU 4.x and run inside an activated virtual environment.
 
-### Core Functionality Installation
-The `core` module is the core dependency of MinerU, containing common parsing features but not optional modules such as `vllm`/`lmdeploy`. Installing this module ensures the basic functionality of MinerU works properly.
-```bash
-uv pip install "mineru[core]"
-```
-
----
-
-### Using `vllm` to Accelerate VLM Model Inference
-> [!NOTE]
-> `vllm` and `lmdeploy` have nearly identical VLM inference acceleration effects and usage methods. You can choose one of them to install and use based on your actual needs, but it is not recommended to install both modules simultaneously to avoid potential dependency conflicts.
-
-The `vllm` module provides acceleration support for VLM model inference, suitable for graphics cards with Volta architecture and later (8GB+ VRAM). Installing this module can significantly improve model inference speed.
+| Installation | Includes | Use case |
+| --- | --- | --- |
+| `mineru>=4.0,<5` | ONNX, llama.cpp, WebUI, SDK/API; Torch is automatic on Apple Silicon | Native documents, CPU small models, llama.cpp, or an existing service |
+| `mineru[torch]>=4.0,<5` | Base package + Torch, Torchvision, Transformers, Accelerate | Torch small models with an independently selected VLM engine |
+| `mineru[full]>=4.0,<5` | Torch extra + vLLM on Linux / LMDeploy on Windows | Higher-throughput serving on supported devices |
 
 ```bash
-uv pip install "mineru[core,vllm]"
+uv pip install -U "mineru[torch]>=4.0,<5"
 ```
-> [!TIP]
-> - Because the `vllm` extra now allows the 0.21 series, the default installation usually resolves to the newer `vllm` version allowed by the current range. Make sure the host GPU driver supports the CUDA runtime required by the installed `vllm` package; the default path requires a CUDA 13.0-compatible driver.
-> - If you need a CUDA 12.9-compatible environment, follow the [vllm official documentation](https://docs.vllm.ai/en/latest/getting_started/installation/index.html) to select the matching CUDA installation path, or use the `vllm/vllm-openai:v0.21.0-cu129` base image from the [Docker](./docker_deployment.md) deployment workflow.
-> - If exceptions occur during installation of the extra package including vllm, you can also refer to the [vllm official documentation](https://docs.vllm.ai/en/latest/getting_started/installation/index.html) to troubleshoot them.
 
----
-
-### Using `lmdeploy` to Accelerate VLM Model Inference
-> [!NOTE]
-> `vllm` and `lmdeploy` have nearly identical VLM inference acceleration effects and usage methods. You can choose one of them to install and use based on your actual needs, but it is not recommended to install both modules simultaneously to avoid potential dependency conflicts.
-
-The `lmdeploy` module provides acceleration support for VLM model inference, suitable for graphics cards with Volta architecture and later (8GB+ VRAM). Installing this module can significantly improve model inference speed.
+Or install the platform-specific inference engine:
 
 ```bash
-uv pip install "mineru[core,lmdeploy]"
+uv pip install -U "mineru[full]>=4.0,<5"
 ```
-> [!TIP]
-> If exceptions occur during installation of the extra package including lmdeploy, please refer to the [lmdeploy official documentation](https://lmdeploy.readthedocs.io/en/latest/get_started/installation.html) to try to resolve the issue.
 
----
+`all` composes `full`. `core`, `pipeline`, `vlm`, `vllm`, `lmdeploy`, `gradio`, and `mlx` are no longer MinerU 4.0 extras. Tier names are not extras either.
 
-### Installing Lightweight Client to Connect to OpenAI-compatible servers (for vlm-http-client mode)
-If you need to install a lightweight client on edge devices to connect to an OpenAI-compatible server for using VLM mode, you can install the basic mineru package, which is very lightweight and suitable for devices with only CPU and network connectivity.
+## Optional engine constraints
+
+The current 4.0 dependency declarations are `torch>=2.7.0,<3`, `transformers>=5.10.1,<6`, Linux `vllm>=0.19.1,<0.29.0`, and Windows `lmdeploy>=0.17.0,<0.18`. Intersect the package's Python range with the wheels actually available for these dependencies. Check the [legacy platform policy](../usage/compatibility.md) before upgrading a vendor environment.
+
+Apple Silicon defaults to llama.cpp for the VLM; `full` does not install MLX. Install and select MLX explicitly when needed:
+
 ```bash
-uv pip install mineru
-mineru -p <input_path> -o <output_path> -b vlm-http-client -u http://127.0.0.1:30000
+uv pip install "mineru>=4.0,<5" "mlx-vlm>=0.7.0,<0.8.0"
+mineru config set model.vlm.engine mlx
 ```
 
----
+The WebUI uses Gradio 6 and bundled PDF.js preview assets; it does not require `gradio-pdf`. A separate UI environment can use the base package and connect with `mineru-kit webui --api-url http://127.0.0.1:8000`.
 
-### Installing Lightweight Client to Connect to OpenAI-compatible servers (for hybrid-http-client mode)
-If you need to install a lightweight client on edge devices to connect to an OpenAI-compatible server for using hybrid mode, you can install the mineru pipeline extension package, which is relatively lightweight and can be used on devices with only CPU and network connectivity, while running faster on devices that support GPU acceleration.
-```bash
-uv pip install "mineru[pipeline]"
-mineru -p <input_path> -o <output_path> -b hybrid-http-client -u http://127.0.0.1:30000
-```
+## Upgrade an existing environment
+
+Stop that environment's MinerU services before upgrading with the original installer. Preserve the required extras, then check the version, dependencies, and model configuration. Downloads and inference must use the same `model.small_backend` and `model.vlm.engine`; see [Model Source](../usage/model_source.md).

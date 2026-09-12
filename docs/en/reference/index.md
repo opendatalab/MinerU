@@ -4,6 +4,9 @@ This section provides detailed reference materials for MinerU project. Here you 
 
 ## Table of Contents
 
+- [3.x → 4.0 migration](migration_4.md)
+- [Python SDK and V1 API](../usage/sdk_api.md)
+
 - [Output Files Documentation](./output_files.md) - Detailed explanation of all output files and their formats
 - [Changelog](./changelog.md) - Version update history and release notes
 

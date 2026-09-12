@@ -16,15 +16,15 @@ deb http://mirrors.aliyun.com/ubuntu/ noble-security main restricted universe mu
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/aliyun-sources.list
 
-# Install mineru latest
-RUN python3 -m pip install "mineru[core]>=3.4.0" \
+# Keep this vendor adaptation on MinerU <4; preserve its runtime dependencies.
+RUN python3 -m pip install "mineru[core]>=3.4.0,<4" \
                             numpy==1.26.4 \
                             opencv-python==4.11.0.86 \
                             -i https://mirrors.aliyun.com/pypi/simple && \
     python3 -m pip cache purge
 
 # Download models and update the configuration file
-RUN /bin/bash -c "mineru-kit models download --tier standard -s modelscope"
+RUN /bin/bash -c "mineru-models-download -s modelscope -m all"
 
 # Set the entry point to activate the virtual environment and run the command line tool
 ENTRYPOINT ["/bin/bash", "-c", "export MINERU_MODEL_SOURCE=local && exec \"$@\"", "--"]

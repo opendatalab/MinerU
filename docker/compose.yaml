@@ -1,6 +1,6 @@
 services:
   mineru-openai-server:
-    image: mineru:latest
+    image: mineru:4
     container_name: mineru-openai-server
     restart: always
     profiles: ["openai-server"]
@@ -31,7 +31,7 @@ services:
               capabilities: [gpu]
 
   mineru-api:
-    image: mineru:latest
+    image: mineru:4
     container_name: mineru-api
     restart: always
     profiles: ["api"]
@@ -61,7 +61,7 @@ services:
               capabilities: [gpu]
 
   mineru-router:
-    image: mineru:latest
+    image: mineru:4
     container_name: mineru-router
     restart: always
     profiles: ["router"]
@@ -101,18 +101,18 @@ services:
               device_ids: ["0"]  # Modify for multiple GPUs: ["0", "1"]
               capabilities: [gpu]
 
-  mineru-gradio:
-    image: mineru:latest
-    container_name: mineru-gradio
+  mineru-webui:
+    image: mineru:4
+    container_name: mineru-webui
     restart: always
-    profiles: ["gradio"]
+    profiles: ["webui"]
     ports:
       - 7860:7860
     environment:
       MINERU_MODEL_SOURCE: local
     entrypoint: ["mineru-kit"]
     command:
-      - gradio
+      - webui
       - --server-name
       - 0.0.0.0
       - --server-port

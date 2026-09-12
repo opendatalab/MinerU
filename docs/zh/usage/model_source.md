@@ -1,66 +1,76 @@
-# 模型源说明
+# 模型下载与配置
 
-MinerU使用 `HuggingFace` 和 `ModelScope` 作为模型仓库，用户可以根据需要切换模型源或使用本地模型。
+MinerU 4.0 独立配置小模型后端和 VLM 引擎。配置文件默认位于 `$MINERU_HOME/config.yaml`（`MINERU_HOME` 默认 `~/.mineru`），可通过 `MINERU_CONFIG` 指定其他文件。
 
-- `auto` 是默认的模型源策略，会优先探测 HuggingFace 是否可访问；可访问时使用 `HuggingFace`，不可访问时自动回退到 `ModelScope`。
-- `HuggingFace` 在全球范围内提供了优异的加载速度和极高稳定性。
-- `ModelScope` 是中国大陆地区用户的最佳选择，提供了无缝兼容的SDK模块，适用于无法访问`HuggingFace`的用户。
-
-使用 `HuggingFace` 下载模型时，MinerU 默认通过 `hf_xet` 加速传输。如果当前网络或代理无法访问 Xet CAS，设置
-`HF_HUB_DISABLE_XET=1` 可回退到普通 HTTP 下载。
-
-```powershell
-$env:HF_HUB_DISABLE_XET = "1"
-mineru-kit models download --tier standard --source huggingface
-```
-
-## 模型源的切换方法
-
-### 通过环境变量切换
-MinerU 通过 `MINERU_MODEL_SOURCE` 环境变量配置模型源，这适用于所有命令行工具和 API 调用。支持的取值为 `auto`、`huggingface`、`modelscope` 和 `local`，环境变量优先级高于 `config.yaml` 中的 `model.source`。
-```bash
-export MINERU_MODEL_SOURCE=modelscope
-mineru -p <input_path> -o <output_path>
-```
-或在代码中设置：
-```python
-import os
-os.environ["MINERU_MODEL_SOURCE"] = "modelscope"
-```
->[!TIP]
-> MinerU 已不再提供用于切换模型源的命令行参数。通过环境变量设置的模型源会在当前终端会话中生效，直到终端关闭或环境变量被修改。
-
-### 通过配置文件切换
-如果未设置 `MINERU_MODEL_SOURCE`，MinerU 会读取 `config.yaml` 中的 `model.source` 字段。`model.source` 支持 `auto`、`huggingface`、`modelscope` 和 `local`。当值为 `auto` 或字段缺失时，会先自动探测实际来源；如果该值来自配置文件或内置默认值，首次自动探测完成后会将 `model.source` 写回为 `huggingface` 或 `modelscope`，避免后续启动时因网络波动反复切换来源。
 ```yaml
 model:
   source: auto
   base_dir: ~/.mineru/models
+  small_backend: auto
+  vlm:
+    engine: auto
 ```
 
+## 模型源
 
-## 使用本地模型
+`model.source` 支持 `auto`、`huggingface`、`modelscope`、`local`。`auto` 优先探测 Hugging Face，不可访问时选择 ModelScope；来自默认值或配置文件的自动选择可写回配置。环境变量优先于文件配置：
 
-### 1. 下载模型到本地
 ```bash
-mineru-kit models download --help
+export MINERU_MODEL_SOURCE=modelscope
+mineru-kit parse document.pdf -o document.md --tier standard
 ```
-或下载全部内置模型包：
-```bash
-mineru-kit models download --tier standard
+
+Windows PowerShell：
+
+```powershell
+$env:MINERU_MODEL_SOURCE = "modelscope"
 ```
-> [!NOTE]
->- 模型会下载到 `config.model.base_dir` 下，默认路径为 `~/.mineru/models`。
->- `mineru-kit models download` 不会把模型路径写入 `mineru.json`。
->- 如需自定义模型目录，请先在 `config.yaml` 中设置 `model.base_dir`，再执行下载。
->- 如需更新模型文件，可以再次运行 `mineru-kit models download --tier standard`；在同一个 `model.base_dir` 下，provider SDK 会尽量复用已有文件做增量更新。
->- `mineru-kit models download` 必须使用远端模型源执行真实下载；如果当前配置为 `model.source: local`，该命令会仅在本次执行中临时按 `auto` 处理。
->- MinerU 会在整仓下载完成后于仓库根目录写入空白 `.mineru_complete`；按指定路径下载时，则分别标记已完成的模型目录。旧版本或中断下载留下但没有相应 marker 的目录，会在使用前通过 provider 增量下载确认；当 `model.source: local` 时，这类目录会报告为未 ready，而不会访问网络。
 
-### 2. 使用本地模型进行解析
+小模型包 `MinerU-4_models_torch` 和 `MinerU-4_models_onnx` 在 Hugging Face 与 ModelScope 均已登记；VLM 原始权重与 llama.cpp 的 GGUF/mmproj 使用不同模型仓库，由所选引擎决定。Basic 需要对应小模型包，Standard 还需要 VLM 模型，并同时支持 Advanced 请求。
 
-通过环境变量启用本地模型：
+## 下载、检查和离线使用
+
+按当前配置下载并验证 Standard 部署模型：
+
 ```bash
+mineru-kit models download --tier standard --source modelscope
+mineru-kit models verify --tier standard
+mineru-kit models show
+```
+
+CPU 小模型和 llama.cpp 的显式组合：
+
+```bash
+mineru-kit models download --tier standard --small-backend onnx --vlm-engine llama-cpp --source huggingface
+mineru-kit models verify --tier standard --small-backend onnx --vlm-engine llama-cpp
+```
+
+NVIDIA / vLLM 部署可以在无 GPU 的构建机下载目标模型；下载时必须显式指定目标后端，不能依赖构建机自动选择：
+
+```bash
+mineru-kit models download --tier standard --small-backend torch --vlm-engine vllm --source modelscope
+mineru-kit models verify --tier standard --small-backend torch --vlm-engine vllm
+```
+
+这些命令选项只覆盖本次操作，不修改持久配置。运行解析前使用相同组合，例如：
+
+```bash
+export MINERU_MODEL_SMALL_BACKEND=torch
+export MINERU_MODEL_VLM_ENGINE=vllm
 export MINERU_MODEL_SOURCE=local
-mineru -p <input_path> -o <output_path>
+mineru-kit parse document.pdf -o document.md --tier standard
 ```
+
+只需 Basic 时将下载档位改为 `basic`；Advanced 不使用独立下载档位。`model.base_dir` 控制模型根目录，下载前设置；完成标记和必需文件共同决定模型是否就绪。重复下载会利用 provider 缓存；不应手动创建完成标记。
+
+`local` 模式只使用就绪的本地模型，缺失时报错，不自动下载。显式执行 `models download` 是下载操作，即使配置为 `local`，该命令也会临时采用自动远端模型源。
+
+## VLM 服务与手动 MLX
+
+`model.vlm.server_url` 配置已有 VLM 服务时，优先使用该服务，不要求本地 VLM 权重；它是模型推理接口，不是 MinerU V1 文档解析 API。小模型依赖仍由所选档位决定。
+
+MLX 需手动安装 `mlx-vlm>=0.7.0,<0.8.0` 并显式设置 `model.vlm.engine: mlx`。`model.stack`、`MINERU_MODEL_STACK` 和 `--stack` 已移除。修改配置后重启相关服务。
+
+## 下载问题
+
+Hugging Face 默认使用 `hf_xet`。如果网络无法访问 Xet CAS，可在下载前设置 `HF_HUB_DISABLE_XET=1` 使用普通 HTTP；也可切换 ModelScope。离线部署先完成下载和验证，再设置 `local`。更多安装组合见[扩展模块](../quick_start/extension_modules.md)。

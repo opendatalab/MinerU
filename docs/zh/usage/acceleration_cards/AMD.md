@@ -1,3 +1,8 @@
+> [!NOTE]
+> **旧版适配，仅适用于 MinerU <4。** 本页保留原平台依赖、模型和命令；4.0 不沿用此适配保证。
+> 安装或升级时必须保留 `mineru<4`；已有固定版本、提交或厂商镜像继续按原方案使用，不要替换为 4.0 的安装命令。
+> 通用说明见[旧平台版本约束](../compatibility.md)。
+
 ## 基于Triton的ROCm 不同后端实现优化，基本实现vllm后端正常推理，以及pipeline后端中第一步layout用的DocLayout-YOLO
 
 **已有完整python vllm和mineru环境直接跳转第五步！！！**
@@ -9,7 +14,7 @@
 Two Step Extraction: 100%|████████████████████████████████████████| 200/200 [01:40<00:00,  1.99it/s]
 
 **下面为之前14学术论文测试结果：**
-7900xtx 使用 `mineru-kit gradio --server-name 0.0.0.0 --server-port 7860 --api-server-tier standard` 时速度大概为**1.6-1.8s/it**，没有仔细测试，简单试了两个文档。第二种矩阵乘法代替原来的dots点乘可以进一步提速到1.3s/it，优化后的主要算子耗时在hipblast(这个没法提升了)和vllm triton后端，各占25%耗时吧，vllm tirion后端这个这个只能等官方优化了。。。。
+7900xtx 使用 `mineru-gradio --server-name 0.0.0.0 --server-port 7860 --enable-vllm-engine true` 时速度大概为**1.6-1.8s/it**，没有仔细测试，简单试了两个文档。第二种矩阵乘法代替原来的dots点乘可以进一步提速到1.3s/it，优化后的主要算子耗时在hipblast(这个没法提升了)和vllm triton后端，各占25%耗时吧，vllm tirion后端这个这个只能等官方优化了。。。。
 doclayout-yolo的layout速度从原来的1.6it/s提高到15it/s，注意需要缓存一下输入的pdf尺寸后，triton必须要缓存尺寸没办法。主要是为了保留模型输入输出接口，最小代码改动。
 采用-b vlm-vllm-engine模式举个例子
 
@@ -21,8 +26,8 @@ Processed prompts: 100%|██████████████████�
 Adding requests: 100%|█████████████████████████████████████████████████████████████████████████████| 278/278 [00:00<00:00, 323.03it/s]
 Processed prompts: 100%|██████████████████| 278/278 [00:07<00:00, 37.63it/s, est. speed input: 5264.66 toks/s, output: 2733.31 toks/s]
 
-`mineru-kit gradio --server-name 0.0.0.0 --server-port 7860 --api-server-tier standard` 测试：
-2025-10-05 15:46:55.953 | WARNING  | mineru.cli_old.common:convert_pdf_bytes_to_bytes_by_pypdfium2:54 - end_page_id is out of range, use pdf_docs length
+`mineru-gradio --server-name 0.0.0.0 --server-port 7860 --enable-vllm-engine true` 测试：
+2025-10-05 15:46:55.953 | WARNING  | mineru.cli.common:convert_pdf_bytes_to_bytes_by_pypdfium2:54 - end_page_id is out of range, use pdf_docs length
 Two Step Extraction: 100%|████████████████████████████████████████████████████████████████████████████| 14/14 [00:18<00:00,  1.30s/it]
 
 ---
@@ -53,7 +58,7 @@ source .venv/bin/activate
 uv pip install --pre torch torchvision   -i https://pypi.tuna.tsinghua.edu.cn/simple/   --extra-index-url https://download.pytorch.org/whl/nightly/rocm7.0
 uv pip install pip
 # 避免覆盖我们本地的pytorch，改用pip而没有继续使用uv pip
-pip install -U "mineru[core]" -i https://pypi.mirrors.ustc.edu.cn/simple/
+pip install -U "mineru[core]<4" -i https://pypi.mirrors.ustc.edu.cn/simple/
 ```
 vllm 安装参考官方手册[Vllm](https://docs.vllm.com.cn/en/latest/getting_started/installation/gpu.html#amd-rocm)
 ```
@@ -335,7 +340,7 @@ def triton_conv3d_patchify(x_5d: torch.Tensor, weight_5d: torch.Tensor) -> torch
     return C
 ```
 ---
-**4.关闭终端后再次使用 `mineru-kit gradio` 会报一个 Lora 错误，修改代码跳过它**
+**4.关闭终端后再次使用 `mineru-gradio` 会报一个 Lora 错误，修改代码跳过它**
 ```
 pip show mineru_vl_utils
 ```

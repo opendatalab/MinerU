@@ -46,10 +46,10 @@ Open `http://127.0.0.1:8000/docs` for the generated OpenAPI documentation. The s
 ### Gradio WebUI
 
 ```bash
-mineru-kit gradio --server-name 127.0.0.1 --server-port 7860
+mineru-kit webui --server-name 127.0.0.1 --server-port 7860
 ```
 
-Without `--api-url`, Gradio manages a loopback `mineru-kit api-server`. With `--api-url`, it connects only to that V1 service. `mineru-gradio` is retained as a command-name alias and accepts the same modern options; it does not restore legacy Gradio options or HTTP routes.
+Without `--api-url`, Gradio manages a loopback `mineru-kit api-server`. With `--api-url`, it connects only to that V1 service. `mineru-webui` is retained as a command-name alias and accepts the same modern options; it does not restore legacy Gradio options or HTTP routes.
 
 ### Router and VLM server
 
@@ -84,4 +84,4 @@ fail with `page_range_invalid`. Without `--pages`, `mineru parse` starts with th
 `mineru-kit parse`, Python and Gradio select all pages. New requests use the current syntax. Historical positive result ranges using ASCII `~`
 remain readable without rebuilding Doclib caches; result responses and new cache entries use `-`.
 Fullwidth `～` and negative page-number notation are not supported.
-See [page-range syntax and historical result compatibility](../../next/page-ranges.md).
+See [page-range syntax and historical result compatibility](tiers.md).

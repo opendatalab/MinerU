@@ -3,26 +3,17 @@
 本章节提供了项目的完整使用说明。我们将通过以下几个部分，帮助您从基础到进阶逐步掌握项目的使用方法：
 
 ## 目录
+
+- [档位与运行环境](tiers.md)
+- [Python SDK 与 V1 API](sdk_api.md)
+- [3.x → 4.0 迁移](../reference/migration_4.md)
 - 本地部署
     * [基础使用](./quick_usage.md) - 快速上手和基本使用
     * [模型源配置](./model_source.md) - 模型源的详细配置说明  
     * [命令行工具](./cli_tools.md) - 命令行工具的详细参数说明
     * [命令行进阶参数](./advanced_cli_parameters.md) - 一些适配命令行工具的进阶参数说明
-- 其他加速卡适配（🚀官方支持/❤️社区贡献）
-    * [昇腾 Ascend](acceleration_cards/Ascend.md) 🚀
-    * [平头哥 T-Head](acceleration_cards/THead.md) 🚀
-    * [沐曦 METAX](acceleration_cards/METAX.md) 🚀
-    * [海光 Hygon](acceleration_cards/Hygon.md) 🚀
-    * [燧原 Enflame](acceleration_cards/Enflame.md) 🚀
-    * [摩尔线程 MooreThreads](acceleration_cards/MooreThreads.md) 🚀
-    * [天数智芯 IluvatarCorex](acceleration_cards/IluvatarCorex.md) 🚀
-    * [寒武纪 Cambricon](acceleration_cards/Cambricon.md) 🚀
-    * [昆仑芯 Kunlunxin](acceleration_cards/Kunlunxin.md) 🚀
-    * [太初元碁 Tecorigin](acceleration_cards/Tecorigin.md) ❤️
-    * [壁仞 Biren](acceleration_cards/Biren.md) ❤️
-    * [AMD #3662](https://github.com/opendatalab/MinerU/discussions/3662) ❤️
-    * [瀚博 VastAI #4237](https://github.com/opendatalab/MinerU/discussions/4237) ❤️
-- 插件与生态
+- [旧平台适配（MinerU <4）](compatibility.md) - AMD 与国产卡保留原适配
+- 插件与生态（保留原集成说明，不代表已支持 4.0 V1 API）
     * [Cherry Studio](plugin/Cherry_Studio.md)
     * [Sider](plugin/Sider.md)
     * [Dify](plugin/Dify.md)

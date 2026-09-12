@@ -4,6 +4,9 @@
 
 ## 目录
 
+- [3.x → 4.0 迁移](migration_4.md)
+- [Python SDK 与 V1 API](../usage/sdk_api.md)
+
 - [输出文件说明](./output_files.md) - 详细介绍所有输出文件及其格式
 - [更新日志](./changelog.md) - 版本更新历史和发布说明
 

@@ -4,6 +4,11 @@ This section provides comprehensive usage instructions for the project. We will 
 
 ## Table of Contents
 
+- [Tiers and runtimes](tiers.md)
+- [Python SDK and V1 API](sdk_api.md)
+- [3.x → 4.0 migration](../reference/migration_4.md)
+- [Legacy platforms (MinerU <4)](compatibility.md)
+
 - [Quick Usage](./quick_usage.md) - Quick setup and basic usage
 - [Model Source Configuration](./model_source.md) - Detailed configuration instructions for model sources
 - [Command Line Tools](./cli_tools.md) - Detailed parameter descriptions for command line tools
