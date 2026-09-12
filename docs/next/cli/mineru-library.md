@@ -55,6 +55,7 @@ JSON 输出中的每条结果至少包含:
 ```bash
 mineru find "report"
 mineru find "report" --ext pdf
+mineru find "report" --limit 20 --offset 20
 ```
 
 行为：
@@ -63,7 +64,8 @@ mineru find "report" --ext pdf
 - 支持按 `ext` 过滤。
 - 可返回同一 SHA256 的多个路径。
 - 可用于解析前确认目标文件。
-- 当前 `find` 只暴露 `--ext`、`--limit/-n` 和 `--json`。
+- 支持通过 `--limit/-n` 和 `--offset` 对过滤后的结果稳定分页。
+- 当前 `find` 暴露 `--ext`、`--limit/-n`、`--offset` 和 `--json`。
 
 `find` JSON 输出中的每条结果至少包含:
 

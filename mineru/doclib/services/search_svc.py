@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from .parse_svc import FileRefreshResult
 
 FilenamePathProbe = Callable[[str], Awaitable["FileRefreshResult"]]
+FILENAME_SEARCH_CANDIDATE_LIMIT = 200
 
 
 class SearchService:
@@ -113,10 +114,16 @@ class SearchService:
     # ── filename search ─────────────────────────────────────────
 
     async def search_filenames(
-        self, query: str, ext: str | None = None, limit: int = 50, *, refresh_file: FilenamePathProbe | None = None
+        self,
+        query: str,
+        ext: str | None = None,
+        limit: int = 50,
+        offset: int = 0,
+        *,
+        refresh_file: FilenamePathProbe | None = None,
     ) -> tuple[list[FilenameSearchResultRow], int]:
         """Search filenames only. Returns (results, total_count)."""
-        rows = await self.fts.search_filenames(query, limit=limit)
+        rows = await self.fts.search_filenames(query, limit=FILENAME_SEARCH_CANDIDATE_LIMIT)
         if not rows:
             return [], 0
 
@@ -160,7 +167,7 @@ class SearchService:
             )
 
         total = len(results)
-        return results, total
+        return results[offset : offset + limit], total
 
     async def _filter_probe_stale_filename_rows(
         self,

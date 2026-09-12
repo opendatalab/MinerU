@@ -334,11 +334,11 @@ class DoclibInterface(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    def find(self, query: str, *, ext: str | None = None, limit: int = 50) -> FindResponse:
+    def find(self, query: str, *, ext: str | None = None, limit: int = 50, offset: int = 0) -> FindResponse:
         """Search filenames.
 
         Raises:
-            InvalidRequestError: when query, ext, or limit is invalid.
+            InvalidRequestError: when query, ext, limit, or offset is invalid.
             MineruError: for search backend failures.
         """
         raise NotImplementedError()
@@ -705,7 +705,7 @@ class AsyncDoclibInterface(ABC):
         raise NotImplementedError()
 
     @abstractmethod
-    async def find(self, query: str, *, ext: str | None = None, limit: int = 50) -> FindResponse:
+    async def find(self, query: str, *, ext: str | None = None, limit: int = 50, offset: int = 0) -> FindResponse:
         """Async version of ``DoclibInterface.find``."""
         raise NotImplementedError()
 
