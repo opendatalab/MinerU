@@ -1076,7 +1076,7 @@ def _build_office_preview_html(file_path: str | Path, request: object | None = N
     headers = getattr(request, "headers", None) or {}
     host = headers.get("x-forwarded-host") or headers.get("host") or "localhost:7860"
     protocol = headers.get("x-forwarded-proto") or "http"
-    public_url = f"{protocol}://{host}/gradio_api/file={quote(str(source_path), safe='/:')}"
+    public_url = f"{protocol}://{host}/gradio_api/file={quote(source_path.as_posix(), safe='/:')}"
     short_name = f"{source_path.stem[-12:]}{source_path.suffix}" if source_path.stem else source_path.name
     short_public_url = f"{protocol}://{host}/....{short_name}"
     viewer_url = "https://view.officeapps.live.com/op/embed.aspx?src=" + quote(public_url, safe="")

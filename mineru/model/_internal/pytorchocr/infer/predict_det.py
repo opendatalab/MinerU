@@ -126,9 +126,10 @@ class TextDetector(BaseOCRV20):
         super(TextDetector, self).__init__(network_config, **kwargs)
         self.load_pytorch_weights(self.weights_path)
         self.net.eval()
+        # Tiny/seal det 的 BatchNorm 统计值超出 fp16 范围，所有设备均固定 fp32；rec/cls 仍使用各自精度策略。
         self._apply_inference_precision(
             self.device,
-            precision_override=getattr(args, "det_inference_precision", None),
+            precision_override="fp32",
         )
         for module in self.net.modules():
             if hasattr(module, 'rep'):

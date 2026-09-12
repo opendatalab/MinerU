@@ -70,8 +70,6 @@ class PytorchPaddleOCR(TextSystem):
         kwargs['rec_char_dict_path'] = str(PPOCRV6_DICT_PATH)
         kwargs['rec_batch_num'] = 6
         if self.is_seal:
-            # Seal detector 的 BatchNorm 统计量会在 fp16 下溢出，初始化时固定使用 fp32。
-            kwargs['det_inference_precision'] = 'fp32'
             kwargs['det_limit_side_len'] = 736
             kwargs['det_limit_type'] = 'min'
             kwargs['det_max_side_limit'] = 4000

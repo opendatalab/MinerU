@@ -8,7 +8,8 @@ import io
 import json
 import re
 import zipfile
-from pathlib import Path
+from dataclasses import replace
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from types import SimpleNamespace
 from urllib.parse import quote, unquote
 
@@ -21,11 +22,12 @@ from PIL import Image
 from starlette.requests import Request
 
 from mineru.backend.analyze import doc_analyze
+from mineru.kit.gradio import artifacts as artifacts_module
 from mineru.kit.gradio.app import _download_handler, _gradio_public_base_url, build_gradio_app
 from mineru.kit.gradio.artifacts import _prepare_preview_links, persist_parse_result, render_download, render_html_preview
 from mineru.kit.gradio.client import V1ServerCapabilities
 from mineru.parser.base import ParseResult
-from mineru.types import BlockType, EquationBlock, TableBlock, TableBodyBlock
+from mineru.types import BlockType, ChartBlock, ChartBodyBlock, EquationBlock, TableBlock, TableBodyBlock
 from test_kit_gradio import _middle_json
 
 
@@ -34,6 +36,77 @@ def _image_bytes(color: str) -> bytes:
     output = io.BytesIO()
     Image.new("RGB", (24, 16), color).save(output, "PNG")
     return output.getvalue()
+
+
+@pytest.mark.parametrize("entrypoint", ["preview", "download"])
+@pytest.mark.parametrize(
+    "platform_root",
+    [
+        PurePosixPath("/tmp/输出 文件/gradio/授权书"),
+        PureWindowsPath("C:/Users/测试用户/输出 文件/gradio/授权书"),
+        PureWindowsPath("//fileserver/共享目录/输出 文件/gradio/授权书"),
+    ],
+    ids=["posix", "windows-drive", "windows-unc"],
+)
+def test_platform_asset_urls_preserve_seal_images_and_details(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    platform_root: PurePosixPath | PureWindowsPath,
+    entrypoint: str,
+) -> None:
+    """跨平台资源根保留印章、普通图片、图表和表内图片，预览及下载均不会被路径校验过滤。"""
+    middle = _middle_json(file_suffix="docx")
+    seal = middle.pages[0].blocks[1]
+    seal.sub_type = "seal"
+    seal.content[0].content = "上海人工智能创新中心"
+    seal.content[0].image_path = "images/印章 1.png"
+    photo = seal.model_copy(deep=True, update={"index": 2, "sub_type": None})
+    photo.content[0].index = 2
+    middle.pages[0].blocks.extend(
+        [
+            photo,
+            ChartBlock(
+                type="chart",
+                index=3,
+                content=[ChartBodyBlock(type="chart_body", index=3, content="", image_path="images/chart.png")],
+            ),
+            TableBlock(
+                type="table",
+                index=4,
+                content=[
+                    TableBodyBlock(
+                        type="table_body", index=4, content='<table><tr><td><img src="images/cell.png"></td></tr></table>'
+                    )
+                ],
+            ),
+        ]
+    )
+    artifacts = artifacts_module.create_run_artifacts(tmp_path / "授权书.docx", tmp_path)
+    artifacts.middle_json_path.write_text(ParseResult(middle_json=middle).to_json(), encoding="utf-8")
+    original_render_html = artifacts_module._render_html
+
+    def render_with_platform_root(artifacts: artifacts_module.RunArtifacts, *, public_base_url: str) -> str:
+        """文件读写与边界校验仍在本机执行，仅在实际 URL 构造处注入目标平台路径。"""
+        return original_render_html(replace(artifacts, root=platform_root), public_base_url=public_base_url)
+
+    monkeypatch.setattr(artifacts_module, "_render_html", render_with_platform_root)
+    public_base = "https://demo.example.test/mineru"
+    if entrypoint == "preview":
+        frame = BeautifulSoup(render_html_preview(artifacts, public_base_url=public_base), "html.parser").iframe
+        document = frame["srcdoc"]
+    else:
+        path = render_download(artifacts.as_state(), "html", allowed_root=tmp_path, public_base_url=public_base)
+        document = Path(path).read_text(encoding="utf-8")
+    soup = BeautifulSoup(document, "html.parser")
+    images = soup.find_all("img")
+    assert len(images) == 4
+    expected_base = f"{public_base}/gradio_api/file={quote(platform_root.as_posix(), safe='/:')}/images/"
+    assert all(image["src"].startswith(expected_base) for image in images)
+    assert all("%5c" not in image["src"].lower() and " " not in image["src"] for image in images)
+    details = soup.find("summary", string="seal").parent
+    assert details.name == "details" and "open" not in details.attrs
+    assert "上海人工智能创新中心" in details.get_text()
+    assert details.find_previous_sibling("img") is not None
 
 
 @pytest.mark.parametrize("image_source", ["inline", "sidecar"])
