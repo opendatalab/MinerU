@@ -20,6 +20,10 @@ NEAR_IDENTICAL_CHAR_BBOX_TOLERANCE = 1.0
 OFFSET_DUPLICATE_CHAR_BBOX_TOLERANCE = 2.5
 OFFSET_DUPLICATE_TRANSLATION_TOLERANCE = 0.1
 OFFSET_DUPLICATE_MIN_BBOX_OVERLAP_RATIO = 0.45
+# ToUnicode 会把连字字形展开成多个共享同一字符框的字符；只有含重复字母的连字
+# （ff，及以 ff 开头的 ffi/ffl）才会触发同字符近重合去重，其余连字（fi/fl/ft/st
+# 等）不含重复字母，本就不会命中该去重。
+KNOWN_LIGATURE_TEXTS = ("ff", "ffi", "ffl")
 
 
 def get_page(
@@ -354,6 +358,46 @@ def _legacy_chars_to_page_chars(chars):
     )
 
 
+def _is_known_ligature_expansion_char(
+    kept_chars: list[dict[str, Any]],
+    char: dict[str, Any],
+    bbox_coords: tuple[float, ...],
+    visible_char_key: tuple[str, tuple[Any, Any, Any, Any], float],
+) -> bool:
+    """判断字符是否为连字字形经 ToUnicode 展开产生的同框重复字符。
+
+    部分字体（LaTeX Computer Modern、Taylor & Francis 正文等）把 ff/ffi 等
+    连字编码为一个字形，ToUnicode 将其映射为多个字符；PDFium 对这些字符
+    返回同一字符框，且字符索引连续。真实阴影重复字来自另一个文本对象，
+    与前一保留字符的索引不连续，据此区分。只有含重复字母的连字（ff/ffi/ffl）
+    才会产生同字符同框的重复，因此豁免范围仅限拼出这类连字的字符 run。
+    """
+    current_char_index = _get_char_index(char, -1)
+    if current_char_index < 0:
+        return False
+
+    run_texts = [char.get("char", "")]
+    probe_position = len(kept_chars) - 1
+    while probe_position >= 0:
+        previous_char = kept_chars[probe_position]
+        if (
+            _get_visible_char_signature(previous_char) != visible_char_key
+            or _get_char_index(previous_char, -1) != current_char_index - 1
+            or not _is_near_identical_bbox(
+                bbox_coords, _get_char_bbox_coords(previous_char)
+            )
+        ):
+            break
+        run_texts.append(previous_char.get("char", ""))
+        current_char_index -= 1
+        probe_position -= 1
+
+    run_text = "".join(reversed(run_texts))
+    if len(run_text) < 2:
+        return False
+    return any(ligature.startswith(run_text) for ligature in KNOWN_LIGATURE_TEXTS)
+
+
 def _deduplicate_near_identical_chars(
     chars: list[dict[str, Any]],
 ) -> list[dict[str, Any]]:
@@ -379,12 +423,22 @@ def _deduplicate_near_identical_chars(
             visible_char_key,
             {},
         )
-        if any(
-            _is_near_identical_bbox(bbox_coords, seen_bbox)
-            for neighbor_bucket_key in _iter_neighbor_bbox_bucket_keys(
-                bbox_bucket_key
+        if (
+            any(
+                _is_near_identical_bbox(bbox_coords, seen_bbox)
+                for neighbor_bucket_key in _iter_neighbor_bbox_bucket_keys(
+                    bbox_bucket_key
+                )
+                for seen_bbox in visible_char_bbox_buckets.get(
+                    neighbor_bucket_key, []
+                )
             )
-            for seen_bbox in visible_char_bbox_buckets.get(neighbor_bucket_key, [])
+            and not _is_known_ligature_expansion_char(
+                deduplicated_chars,
+                char,
+                bbox_coords,
+                visible_char_key,
+            )
         ):
             continue
         visible_char_bbox_buckets.setdefault(bbox_bucket_key, []).append(bbox_coords)
