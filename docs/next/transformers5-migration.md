@@ -71,10 +71,10 @@ VLM 组件 smoke 将图像最长边限制为 448 像素，不代替 `parse` 场�
 Transformers 5.16 使用 safetensors 的 MPS `pread` 路径，框架 allocator 计数不包含所有权重存储；RSS 与 GPU allocator 数值不能直接跨加载方式比较。
 macOS 同时记录系统 `proc_pid_rusage` 的 `physical_footprint_bytes`，用于统一内存的真实占用比较。保留 RSS 和框架计数供诊断，不把它们误报为 MLX 或外部 MPS 存储的 GPU 峰值。
 
-## CI 与发布门槛
+## 本地验证与发布门槛
 
-`transformers5.yml` 对 next/PR 运行模型图、增量缓存、重载、惰性导入、HTTP VLM 与生命周期回归，并解析安装矩阵。
-手动触发时可传入 `utils-wheel-url` 与 `docvortex-wheel-url` 验证未发布的联合构建。utils 仓库也提供客户端双版本回归。
+MinerU 与 utils 的 Transformers 兼容性 CI 已移除，相关测试与依赖检查脚本保留供本地按需执行。
+验证未发布的联合构建时，在本地环境安装对应的 utils 与 DocVortex wheel 后运行相关测试。
 
 发布前需要：固定权重和输入的内容回归通过；同一设备预热后三轮耗时、内存/显存无超过 10% 的回退；Linux CUDA、Windows GPU、macOS 实机推理有对应证据。
 单元测试替身和安装解析不替代实机结果。旧国产硬件镜像继续使用旧发布系列，单独迁移。
