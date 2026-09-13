@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from typing import cast
 
 from docvortex.document.pdf import PDFDocument
+from loguru import logger
 
 from ....config import VlmConfig
 from ....model.runtime.execution import acquire_document, release_document
@@ -96,11 +97,10 @@ def analyze_pdf(
             hybrid_model=state.hybrid_model,
             vlm_predictor=state.predictor,
         )
-        _normalize_pdf_model_list(model_list)
-        infer_elapsed = time.perf_counter() - infer_started_at
+        result = _build_pdf_analysis_result(state, model_list, effort, infer_started_at)
     finally:
         _close_analysis(state)
-    return AnalysisResult(model_list=model_list, effort=effort, parse_mode=state.parse_mode, elapsed=infer_elapsed)
+    return result
 
 
 async def aio_analyze_pdf(
@@ -126,11 +126,29 @@ async def aio_analyze_pdf(
             hybrid_model=state.hybrid_model,
             vlm_predictor=state.predictor,
         )
-        await run_sync(_normalize_pdf_model_list, model_list)
-        infer_elapsed = time.perf_counter() - infer_started_at
+        result = await run_sync(_build_pdf_analysis_result, state, model_list, effort, infer_started_at)
     finally:
         await run_sync(_close_analysis, state)
-    return AnalysisResult(model_list=model_list, effort=effort, parse_mode=state.parse_mode, elapsed=infer_elapsed)
+    return result
+
+
+def _build_pdf_analysis_result(
+    state: _PDFAnalysis, model_list: list, effort: AnalyzeEffort, started_at: float
+) -> AnalysisResult:
+    """规范化模型结果，并在关闭现有 PDF 之前汇集各档位页面几何与裁图方向。"""
+    from docvortex.document.pdf.layout import extract_layout_geometry, attach_layout_image_rotations
+
+    assert state.document is not None
+    # 规范化会删除 angle 并过滤无效块，先按对象保存裁图方向，再按最终索引登记。
+    angles = {id(block): block.get("angle", 0) for page in model_list for block in page}
+    _normalize_pdf_model_list(model_list)
+    elapsed = time.perf_counter() - started_at
+    geometry, diagnostics = extract_layout_geometry(state.document, None)
+    rotation_pages = [[{**block, "angle": angles.get(id(block), 0)} for block in page] for page in model_list]
+    attach_layout_image_rotations(geometry, rotation_pages, None)
+    for diagnostic in diagnostics:
+        logger.warning("{}: {}", diagnostic.code, diagnostic.message)
+    return AnalysisResult(model_list, effort, state.parse_mode, elapsed, geometry)
 
 
 __all__ = ["analyze_pdf", "aio_analyze_pdf"]

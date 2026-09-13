@@ -1641,7 +1641,7 @@ def test_doc_analyze_flash_real_pdf_returns_typed_middle_json() -> None:
 
 
 def test_doc_analyze_flash_demo1_uses_canonical_equation_type() -> None:
-    """验证真实 demo1.pdf 的两层 Flash 输出统一使用 equation 与 LaTeX tag。"""
+    """验证真实 demo1.pdf 的两层 Flash 输出保留公式块和图片，但不伪造 LaTeX。"""
     sample_path = _PROJECT_ROOT / "demo" / "pdfs" / "demo1.pdf"
 
     middle_json, model_json = analyze.doc_analyze(
@@ -1660,14 +1660,7 @@ def test_doc_analyze_flash_demo1_uses_canonical_equation_type() -> None:
     assert model_equations
     assert len(middle_equations) == len(model_equations)
     assert [block.content for block in middle_equations] == [block["content"] for block in model_equations]
-    for formula_number in range(1, 8):
-        marker = rf"\tag{{{formula_number}}}"
-        assert sum(marker in block["content"] for block in model_equations) == 1
-    assert not [
-        block
-        for block in model_equations
-        if any(block["content"].rstrip().endswith(f"({formula_number})") for formula_number in range(1, 8))
-    ]
+    assert all(block["content"] == "" and block.get("image_base64") for block in model_equations)
     assert "interline_equation" not in middle_json.to_json()
 
 
@@ -1790,7 +1783,9 @@ def test_doc_analyze_flash_returns_complete_model_json_and_typed_middle_json(mon
     assert requested_ranges == [(1, 1), (2, 2)]
     assert inline_text(model_json.pages[0][0]["content"]) == "第一页 x+y"
     assert [span["content"] for span in model_json.pages[0][0]["content"] if span.get("type") == "equation_inline"] == ["x+y"]
+    # 模拟上游返回非空公式，验证 MinerU 不按 Flash 档位重复清空模型内容。
     assert model_json.pages[2][0]["content"] == "z"
+    assert middle_json.pages[2].blocks[0].content == "z"
     assert model_json.pages[2][0]["type"] == BlockType.EQUATION
     assert middle_json.pages[2].blocks[0].type == BlockType.EQUATION
     assert "interline_equation" not in middle_json.to_json()

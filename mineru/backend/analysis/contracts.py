@@ -21,3 +21,4 @@ class AnalysisResult:
     effort: AnalyzeEffort
     parse_mode: ResolvedParseMode
     elapsed: float
+    layout_geometry: dict[str, Any] | None = None

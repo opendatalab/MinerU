@@ -207,6 +207,7 @@ def render(
             middle_json,
             asset_resolver=resolved_options.asset_resolver,
             document_title=resolved_options.document_title,
+            layout=resolved_options.layout,
         )
 
     if output_format is RenderFormat.STRUCTURED_CONTENT:

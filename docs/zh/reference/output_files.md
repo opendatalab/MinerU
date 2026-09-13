@@ -24,12 +24,30 @@
 | `LATEX` | LaTeX | `str` |
 | `DOCX` | Word | `bytes` |
 | `EPUB` | EPUB | `bytes` |
-| `PDF` | 语义重排版 PDF | `bytes` |
+| `PDF` | 原始块布局或语义重排 PDF | `bytes` |
 | `STRUCTURED_CONTENT` | 通用结构化内容 | `dict` |
 | `CONTENT_LIST` | Content List V1 | `list[dict]` |
 | `CONTENT_LIST_V2` | 按页组织的 Content List V2 | `list[list[dict]]` |
 
-PDF 渲染是语义重排版，不是原 PDF 版式的逐像素复刻，也不是布局调试 PDF。
+PDF 默认采用 `PdfLayout.AUTO`：PDF 来源且几何完整时按原始块布局导出；旧结果缺少几何时整份回退重排并记录诊断。`ORIGINAL` 严格要求 PDF 来源、页面尺寸和必要 bbox；`REFLOW` 显式使用语义重排。OFD、Office 等来源默认仍重排。块内文字可选择和复制，表格、图表允许使用区域图；不承诺逐像素复刻。
+
+```python
+from mineru.render import PdfLayout, PdfRenderOptions, RenderFormat, render, render_pdf
+
+pdf_bytes = render_pdf(result.middle_json, layout=PdfLayout.ORIGINAL)
+pdf_bytes = render(result.middle_json, RenderFormat.PDF,
+                   options=PdfRenderOptions(layout=PdfLayout.REFLOW))
+```
+
+固定布局中的正文、图注、代码、表格和图片继续独立适配各自原框；`continues_prev` 不移动原框之间的文字。原页数与空白页保留。原布局与重排 PDF 中，含中日韩文字的自然语言段落、图注及表格单元格使用 CJK 字符断行，避免将空格间的长串中文整体移到下一行；纯英文和代码、算法字面块保留既有规则，不向内容插入排版字符或连字符。
+
+标题参考实际适配后的正文字号：优先同页同栏后续正文，其次同栏最近正文，再回退到导出正文的字号中位数；没有正文时采用 10.5 pt。章节标题按 `type + level` 取参考字号中位数 +2 pt，向上取整至 0.1 pt；附近正文较大时只上调该标题。主标题比最大章节标题目标再大 2 pt，没有章节标题时采用正文 +4 pt，并保留局部层次。取消按 90% 容纳率压低整组字号和旧样式字号上限。
+
+原框放得下则保持位置，否则标题可利用上下及同栏右侧空白，保持左边缘；优先原顶边，必要时向上移动。栏宽由对应正文确定，不可靠时保持原宽，原有跨栏标题保留跨度。其他原框视为占用，与相邻内容保留 2 pt 间距且不越页；相邻标题按间隙中线分配空间。仍放不下时只缩小该标题，低于 6 pt 沿用完整块缩放。上下标和公式的真实外伸范围计入标题测量，目录引用及缺子坐标的近似组合不参与。
+
+`pdf_title_layout_expanded` 记录扩展；`pdf_layout_font_exception` 记录局部正文较大或空间不足的调整原因、参考/目标/最终字号、原框和绘制框。原始几何重叠时不扩大占用并报告 `pdf_title_geometry_conflict`；原始间距过紧、没有安全扩展区域时报告 `pdf_title_clearance_unavailable`。字号和绘制区域仅存在于渲染上下文，不修改 MiddleJson 或素材，不新增接口参数。
+
+使用 `docvortex>=0.4.2,<1`。DocVortex 在生产原生 TXT PDF 模型输出时将行间公式的 `content` 清空一次，MinerU Flash TXT 直接使用该输出；Flash OCR 原本不填充行间公式内容，MinerU 不再重复清空。两条 Flash 路径保留 bbox、方向、图片及检测到的编号区域，PDF、Markdown、HTML、DOCX、EPUB、LaTeX 沿用图片回退。行内公式、非 Flash tier 的公式文本不变。旧缓存不会自动改写，重新解析才获得新几何和空内容公式。
 
 ```python
 from pathlib import Path
@@ -46,6 +64,8 @@ Path("report.html").write_text(html, encoding="utf-8")
 `ModelJson` 保存分析结果 `pages` 和 `page_index_map`；`MiddleJson` 保存后处理后的有序页面和语义块。`schema_id` 区分 `docvortex.model` 与 `docvortex.middle`，`schema_version` 标识协议版本。不要只根据版本数字判断文档种类。
 
 `metadata` 包含文件类型、生产者和文档属性；`extensions["mineru"]` 记录实际执行的 `tier` 与最终 `parse_mode`。版本来自 `metadata.producer.version`，不重复放在产品扩展中。页面包含 `page_idx` 与 `blocks`，`page_idx` 从 0 开始，区别于 CLI 中从 1 开始的 PDF 页码。
+
+所有 PDF tier 的同步/异步分析同时写入 `extensions.docvortex_layout`：`version=1`，`pages` 包含源 `page_idx`、`width_pt`、`height_pt` 及需要时的 `image_rotations`。尺寸方向与 bbox 一致；选页、空白页、多窗口和分页缓存汇总按源页号保留几何。ModelJson → MiddleJson → 序列化结果不丢失扩展，主协议仍为 2.0。导出只需要 MiddleJson 和图片素材，无需重新打开源 PDF。
 
 以下示例由当前公开类型序列化生成，`4.0.0` 是正式版文档的示意生产者版本；可选字段可被省略，实际输出为准：
 
