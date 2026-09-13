@@ -177,7 +177,7 @@ def test_document_cleanup_order_and_global_switch(
     monkeypatch.setenv("MINERU_MALLOC_TRIM", "1" if enabled else "0")
     monkeypatch.setattr(memory, "sys", SimpleNamespace(platform="linux"))
     monkeypatch.setattr(memory, "_get_malloc_trim", lambda: trim)
-    monkeypatch.setattr(pipeline, "PDFDocument", lambda _data: SimpleNamespace(close=lambda: stage("close")))
+    monkeypatch.setattr(pipeline, "PDFDocument", lambda _data: SimpleNamespace(page_count=0, close=lambda: stage("close")))
     monkeypatch.setattr(pipeline, "process_pdf_windows", process)
     monkeypatch.setattr(pipeline, "clean_memory", lambda _device: stage("device"))
     monkeypatch.setattr(

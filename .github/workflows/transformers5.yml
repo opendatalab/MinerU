@@ -80,7 +80,9 @@ jobs:
             tests/unittest/test_vlm_remote.py \
             tests/unittest/test_parser_model_preload.py \
             tests/unittest/test_models_download_utils.py \
-            tests/unittest/test_pdf_memory_lifecycle.py
+            tests/unittest/test_pdf_memory_lifecycle.py \
+            tests/unittest/test_pdf_layout_integration.py \
+            tests/unittest/test_doclib_api_page_remap.py
 
   dependency-resolution:
     name: Installation matrix / ${{ matrix.platform }} / Transformers ${{ matrix.transformers }}
