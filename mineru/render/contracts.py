@@ -15,6 +15,7 @@ from docvortex.render.contracts import (
     LatexRenderOptions,
     MarkdownRenderOptions,
     PdfRenderOptions,
+    PdfLayout,
     RenderMode,
     StructuredContentRenderOptions,
 )
@@ -91,6 +92,7 @@ __all__ = [
     "LatexRenderOptions",
     "MarkdownRenderOptions",
     "PdfRenderOptions",
+    "PdfLayout",
     "RenderFormat",
     "RenderMode",
     "RenderOptions",

@@ -164,8 +164,20 @@ class Compaction:
             current_envelope = {key: value for key, value in middle_json.to_dict().items() if key != "pages"}
             if not envelope:
                 envelope = current_envelope
-            elif json.dumps(envelope, sort_keys=True) != json.dumps(current_envelope, sort_keys=True):
-                return None
+            else:
+                from docvortex.document.pdf.layout import merge_layout_extensions
+
+                # 页面几何随批次变化；其他外层协议和产品信息仍须严格相同。
+                previous_fields = {key: value for key, value in envelope.items() if key != "extensions"}
+                current_fields = {key: value for key, value in current_envelope.items() if key != "extensions"}
+                if json.dumps(previous_fields, sort_keys=True) != json.dumps(current_fields, sort_keys=True):
+                    return None
+                try:
+                    envelope["extensions"] = merge_layout_extensions(
+                        envelope["extensions"], current_envelope["extensions"], [page["page_idx"] for page in batch_pages]
+                    )
+                except (KeyError, TypeError, ValueError):
+                    return None
         return (pages_by_page_idx, envelope) if pages_by_page_idx else None
 
     def _write_compacted_json_files(

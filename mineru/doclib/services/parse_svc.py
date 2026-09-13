@@ -1617,7 +1617,7 @@ def _parse_record_response(row: ParseRow) -> dict:
 
 
 def _remap_api_result_pages_to_page_range(result: ParseResult, page_range: str) -> None:
-    """Restore API-backed partial parse pages to original document page indices."""
+    """将 API 分页结果的正文与布局几何一起映射回源文档页号。"""
     if not result.pages:
         return
     requested_page_numbers = sorted(parse_page_range_set(page_range))
@@ -1632,8 +1632,25 @@ def _remap_api_result_pages_to_page_range(result: ParseResult, page_range: str) 
                 f"requested={page_range}, returned={actual_page_numbers}"
             ),
         )
-    for page, page_no in zip(result.pages, requested_page_numbers, strict=True):
-        page.page_idx = page_no - 1
+    from docvortex.document.pdf.layout import LAYOUT_EXTENSION, remap_layout_geometry
+
+    page_index_map = [page_no - 1 for page_no in requested_page_numbers]
+    extensions = result.middle_json.extensions
+    geometry = None
+    if LAYOUT_EXTENSION in extensions:
+        try:
+            geometry = remap_layout_geometry(extensions[LAYOUT_EXTENSION], page_index_map)
+        except (ValueError, TypeError, KeyError) as exc:
+            raise ParseFailure(
+                "parse_page_remap_failed",
+                f"Cannot remap PDF layout geometry for page_range={page_range}: {exc}",
+            ) from exc
+
+    # 所有可能失败的映射先完成，避免异常时正文与几何只更新一部分。
+    for page, page_idx in zip(result.pages, page_index_map, strict=True):
+        page.page_idx = page_idx
+    if geometry is not None:
+        extensions[LAYOUT_EXTENSION] = geometry
 
 
 def _parse_coverage(request_page_range: str, rows: list[ParseRow]) -> dict:

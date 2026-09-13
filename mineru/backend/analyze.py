@@ -152,6 +152,11 @@ def _build_model_json(
 ) -> ModelJson:
     """共享模型协议构造，保持生产者、页映射和 MinerU 扩展完全一致。"""
     _log_infer_performance(file_suffix, len(result.model_list), result.elapsed)
+    extensions = build_metadata(effort=result.effort, parse_mode=result.parse_mode)
+    if file_suffix == "pdf" and result.layout_geometry is not None:
+        from docvortex.document.pdf.layout import LAYOUT_EXTENSION, remap_layout_geometry
+
+        extensions[LAYOUT_EXTENSION] = remap_layout_geometry(result.layout_geometry, page_index_map)
     return ModelJson(
         pages=result.model_list,
         page_index_map=page_index_map or [],
@@ -160,7 +165,7 @@ def _build_model_json(
             producer=Producer(name="mineru", version=mineru_version),
             document=source_properties.model_copy(deep=True),
         ),
-        extensions=build_metadata(effort=result.effort, parse_mode=result.parse_mode),
+        extensions=extensions,
     )
 
 
