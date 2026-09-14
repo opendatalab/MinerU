@@ -1127,7 +1127,13 @@ def test_gradio_tier_slider_uses_available_tiers_and_preserves_selection(
     assert (slider.minimum, slider.maximum, slider.step, slider.precision) == (0, maximum, 1, 0)
     assert slider.value == default_position
     assert slider.interactive is (len(tiers) > 1)
-    assert label.value == f"解析 tier：{default_tier}"
+    assert (
+        label.value
+        == "解析等级："
+        + {"flash": "flash（极速）", "basic": "basic（中）", "standard": "standard（高）", "advanced": "advanced（极高）"}[
+            default_tier
+        ]
+    )
     assert not any(block.__class__.__name__ == "Dropdown" for block in demo.blocks.values())
     label_events = [event for event in demo.config["dependencies"] if (slider._id, "input") in event["targets"]]
     assert len(label_events) == 1

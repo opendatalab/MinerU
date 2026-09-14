@@ -342,7 +342,7 @@ def build_gradio_app(
                 )
                 with gr.Group():
                     tier_label = gr.Markdown(
-                        value=f"解析 tier：{preferred_tier}",
+                        value=MESSAGES["tier_value"][1].format(tier=MESSAGES[f"tier_{preferred_tier}"][1], notice=""),
                         padding=True,
                         elem_classes=["mineru-tier-label"],
                     )

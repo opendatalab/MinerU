@@ -68,9 +68,8 @@
     const selected = end - start + 1;
     const limitText = maxPages === null ? text("page_unlimited") : text("page_limit", { count: maxPages });
     const summary = `<div class="mineru-page-values" data-range-visible="${visible}" data-start-handle="${state.start_handle}">`
-        + `<span>${text("start_page")} <strong>${start}</strong></span>`
         + `<span class="mineru-page-selection">[${start}-${end}] · ${text("page_count", { count: selected })}</span>`
-        + `<span>${text("end_page")} <strong>${end}</strong></span></div>`
+        + `</div>`
         + `<div class="mineru-page-axis"><span>1</span><span>${limitText}</span><span>${count}</span></div>`;
     const notice = flashUnavailable ? text("flash_unavailable")
         : needsRange && !count ? (message(state.error) || text("reading_pages")) : "";
@@ -85,7 +84,7 @@
         update({ value: escapeHtml(notice), visible: Boolean(notice) }),
         // 同一事件同时更新值、标签和页码，程序赋值无需再触发 tier.input。
         update({ value: effectivePosition, interactive: !flashOnly && tiers.length > 1 }),
-        text("tier_value", { tier: selectedTier, notice: flashUnavailable ? text("tier_unavailable_suffix") : "" }),
+        text("tier_value", { tier: text(`tier_${selectedTier}`), notice: flashUnavailable ? text("tier_unavailable_suffix") : "" }),
         JSON.stringify(tierSelection),
     ];
 }

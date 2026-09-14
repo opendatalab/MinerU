@@ -61,7 +61,7 @@ body.dark .gradio-container {
 .mineru-kit-page-range:has([data-range-visible="true"]) { display: flex !important; }
 .mineru-page-summary, .mineru-page-summary .html-container { padding: 0 !important; }
 .mineru-page-values, .mineru-page-axis { display: flex; justify-content: space-between; align-items: center; gap: 6px; }
-.mineru-page-values { font-size: 12px; }
+.mineru-page-values { font-size: 12px; justify-content: center; }
 .mineru-page-selection { font-weight: 600; color: var(--mineru-accent); }
 .mineru-page-axis { position: absolute; bottom: 0; left: 0; right: 0; font-size: 12px; opacity: .7; }
 .mineru-page-summary { position: static !important; }
