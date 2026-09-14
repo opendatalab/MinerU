@@ -54,6 +54,7 @@ from ..model.ocr.language import PUBLIC_OCR_LANGUAGES, validate_public_ocr_lang
 from ..types import SERVER_TIERS, TIERS_BY_SERVER_TIER, DeploymentTier, PageInfo, ServerTier, Tier, select_default_quality_tier
 from ..utils.async_utils import drain_future, run_sync
 from ..model.vlm.async_runtime import RuntimeOwner, runtime_owner
+from ..utils.logger import configure_global_log_level
 from ..utils.stdio import configure_standard_streams
 from ..version import __version__
 from . import parse_async
@@ -2439,10 +2440,12 @@ def _build_server_log_config(log_level: str) -> dict[str, Any]:
 @click.option("--port", default=8000, type=int, help="Server port")
 @click.option(
     "--log-level",
-    default="info",
+    default=None,
     type=click.Choice(["critical", "error", "warning", "info", "debug", "trace"], case_sensitive=False),
-    show_default=True,
-    help="API service log level; model logs and progress bars keep their existing settings.",
+    help=(
+        "API service log level: critical, error, warning, info, debug, trace; "
+        "default: global log.level. Also filters the Loguru default model-log sink."
+    ),
 )
 @click.option(
     "--upload-dir",
@@ -2550,10 +2553,11 @@ def main(
     vlm_model: str | None,
     vlm_http_timeout: int | None,
     vlm_max_concurrency: int | None,
-    log_level: str,
+    log_level: str | None,
 ) -> None:
     """合并显式 VLM 参数后启动 MinerU v1 REST API 服务，不修改全局配置。"""
     configure_standard_streams()
+    effective_log_level = configure_global_log_level(log_level)
     shutdown_requested = threading.Event()
     server_ref: list[uvicorn.Server | None] = [None]
 
@@ -2615,8 +2619,8 @@ def main(
         application,
         host=host,
         port=port,
-        log_level=log_level,
-        log_config=_build_server_log_config(log_level),
+        log_level=effective_log_level,
+        log_config=_build_server_log_config(effective_log_level),
     )
     server = uvicorn.Server(config)
     server_ref[0] = server

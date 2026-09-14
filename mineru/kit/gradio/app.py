@@ -16,6 +16,7 @@ from urllib.parse import quote
 from ...errors import MineruError
 from ...filetypes import FLASH_ONLY_PARSE_EXTENSIONS, IMAGE_EXTENSIONS, OFFICE_EXTENSIONS, PARSEABLE_EXTENSIONS, PDF_EXTENSIONS
 from ...types import TIERS, Tier
+from ...utils.logger import configure_global_log_level
 from ...utils.stdio import configure_standard_streams
 from .artifacts import RunArtifacts, persist_parse_result, render_download, render_html_preview
 from .client import (
@@ -992,6 +993,7 @@ def launch_gradio(
 ) -> None:
     """启动 Gradio，并在外部服务缺少 Flash 时托管本地 Flash V1 服务。"""
     configure_standard_streams()
+    configure_global_log_level()
     validate_max_pages(max_pages)
     resolved_api_key = api_key if api_key is not None else os.environ.get("MINERU_API_KEY")
     output_root = Path(output_dir).expanduser().resolve()

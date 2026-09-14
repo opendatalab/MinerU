@@ -7,6 +7,7 @@ from typing import Literal
 from docvortex.document.contracts import HtmlSourceContext
 
 from ..config import VlmConfig
+from ..utils.logger import configure_global_log_level
 from ..types import Tier
 from .api_client import ApiJobStatus, MinerUApiParser
 from .base import MIDDLE_JSON_SCHEMA_VERSION, DocumentParser, ParseResult
@@ -38,6 +39,7 @@ def parse(
     vlm_config: VlmConfig | None = None,
 ) -> ParseResult:
     """同步解析文档；source_context 仅供保留 HTML 原始来源的内部调用方使用。"""
+    configure_global_log_level()
     parser = MinerUParser(tier=tier, parse_mode=ocr_mode, image_analysis=image_analysis, vlm_config=vlm_config)
     return parser.parse(path, page_range=page_range, source_context=source_context)
 
@@ -53,5 +55,6 @@ async def parse_async(
     vlm_config: VlmConfig | None = None,
 ) -> ParseResult:
     """异步解析文档；source_context 仅供保留 HTML 原始来源的内部调用方使用。"""
+    configure_global_log_level()
     parser = MinerUParser(tier=tier, parse_mode=ocr_mode, image_analysis=image_analysis, vlm_config=vlm_config)
     return await parser.parse_async(path, page_range=page_range, source_context=source_context)

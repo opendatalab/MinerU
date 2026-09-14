@@ -12,6 +12,7 @@ import typer
 from loguru import logger
 
 from ...model.runtime.platform import is_mac_os_version_supported
+from ...utils.logger import configure_global_log_level
 from ...utils.stdio import configure_standard_streams
 from ..errors import exit_with_message
 
@@ -119,6 +120,7 @@ def vlm_server_cmd(
 def main() -> None:
     """以独立命令启动 VLM 服务，复用 kit 的未知引擎参数透传规则。"""
     configure_standard_streams()
+    configure_global_log_level()
     app = typer.Typer(add_completion=False)
     app.command(context_settings=FORWARD_CONTEXT_SETTINGS)(vlm_server_cmd)
     app()

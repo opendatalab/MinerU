@@ -9,6 +9,7 @@ import typer
 import uvicorn
 
 from ...types import SERVER_TIERS, ServerTier
+from ...utils.logger import configure_global_log_level
 from ...utils.stdio import configure_standard_streams
 from ..errors import exit_with_message
 from .app import create_app
@@ -64,6 +65,7 @@ def router_cmd(
 def main() -> None:
     """配置标准流后运行过渡 `mineru-router` 单命令入口。"""
     configure_standard_streams()
+    configure_global_log_level()
     typer.run(router_cmd)
 
 

@@ -13,6 +13,7 @@ from ..config import VlmConfig, config
 from ..integrations.docvortex import build_metadata, read_source_properties
 from ..types import FILE_SUFFIXES, FileSuffix, MiddleJson, ModelJson
 from ..utils.async_utils import run_sync
+from ..utils.logger import configure_global_log_level
 from ..version import __version__ as mineru_version
 from .analysis.contracts import AnalysisResult, AnalyzeEffort, OfficeSuffix, ParseMode
 
@@ -40,6 +41,7 @@ def doc_analyze(
     source_properties: DocumentProperties | None = None,
 ) -> tuple[MiddleJson, ModelJson]:
     """生产严格 ModelJson，并在统一边界构造严格 MiddleJson。"""
+    configure_global_log_level()
     _validate_analyze(effort, file_suffix, page_index_map)
 
     if source_properties is None:
@@ -98,6 +100,7 @@ async def aio_doc_analyze(
     source_properties: DocumentProperties | None = None,
 ) -> tuple[MiddleJson, ModelJson]:
     """vLLM/HTTP 的 PDF 分析使用原生异步编排，其余路径保持受控线程回退。"""
+    configure_global_log_level()
     _validate_analyze(effort, file_suffix, page_index_map)
     native_async = False
     if file_suffix == "pdf" and effort in {"high", "xhigh"}:
