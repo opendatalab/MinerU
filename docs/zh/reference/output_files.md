@@ -47,7 +47,7 @@ pdf_bytes = render(result.middle_json, RenderFormat.PDF,
 
 `pdf_title_layout_expanded` 记录扩展；`pdf_layout_font_exception` 记录局部正文较大或空间不足的调整原因、参考/目标/最终字号、原框和绘制框。原始几何重叠时不扩大占用并报告 `pdf_title_geometry_conflict`；原始间距过紧、没有安全扩展区域时报告 `pdf_title_clearance_unavailable`。字号和绘制区域仅存在于渲染上下文，不修改 MiddleJson 或素材，不新增接口参数。
 
-使用 `docvortex>=0.4.2,<1`。DocVortex 在生产原生 TXT PDF 模型输出时将行间公式的 `content` 清空一次，MinerU Flash TXT 直接使用该输出；Flash OCR 原本不填充行间公式内容，MinerU 不再重复清空。两条 Flash 路径保留 bbox、方向、图片及检测到的编号区域，PDF、Markdown、HTML、DOCX、EPUB、LaTeX 沿用图片回退。行内公式、非 Flash tier 的公式文本不变。旧缓存不会自动改写，重新解析才获得新几何和空内容公式。
+使用 `docvortex>=0.4.3,<1`。DocVortex 在生产原生 TXT PDF 模型输出时将行间公式的 `content` 清空一次，MinerU Flash TXT 直接使用该输出；Flash OCR 原本不填充行间公式内容，MinerU 不再重复清空。两条 Flash 路径保留 bbox、方向、图片及检测到的编号区域，PDF、Markdown、HTML、DOCX、EPUB、LaTeX 沿用图片回退。行内公式、非 Flash tier 的公式文本不变。旧缓存不会自动改写，重新解析才获得新几何和空内容公式。
 
 ```python
 from pathlib import Path
@@ -145,7 +145,7 @@ Path("report.html").write_text(html, encoding="utf-8")
 
 ## 文件保存、ZIP 与素材
 
-`ParseResult.save(writer)` 写出 `markdown.md`、`middle_json.json`、`structured_content.json`；有原始模型结果时还写出 `model_output.json`。`mineru-kit parse --format zip` 打包这一组结果。
+`ParseResult.save(writer)` 先在文档副本上物化图片，再写出 `markdown.md`、`middle_json.json`、`structured_content.json` 和 `images/` 素材；有原始模型结果时还写出 `model_output.json`。自部署 V1 API ZIP 与 `mineru-kit parse --format zip` 共用这一保存入口。包内三种消费格式引用同一组素材，图片字节、源页号、块索引及旋转元数据保持不变。
 
 ```python
 from mineru.parser.writer import FileBasedDataWriter
@@ -153,6 +153,6 @@ from mineru.parser.writer import FileBasedDataWriter
 result.save(FileBasedDataWriter("output"))
 ```
 
-素材可能以内嵌数据或图片路径表示，取决于来源与输出入口。PDF 的 `ParseResult.to_dict()` 会省略块中的 `image_base64`；只保存中间 JSON 不等于保存了所有外部素材。消费 API 结果时按产物引用下载并保留对应素材，不能依赖已关闭的 PDF 对象或原文件继续渲染。
+PDF 的 `ParseResult.to_dict()` / `to_json()` 仍省略块中的 `image_base64`，因此独立结构 JSON 不等于携带素材的结果包。`save(writer)` 不重新裁图或旋转图片；已有路径却缺少字节时在写出前失败，不隐式读取当前目录或网络。API 客户端设置 `include_images=True` 后，从 ZIP 恢复直接图片和视觉 HTML 内嵌图片；Gradio 复用这些素材，PDF 导出只需 MiddleJson 与图片文件，无需源 PDF 或 ModelJson。`include_images=False` 保持结构读取行为。历史错误结果包需要重新生成。
 
 WebUI 显示的布局 PDF 是调试产物，可用时用于预览检测结果；不可用时使用原始/裁页 PDF 预览。它与上述 `RenderFormat.PDF` 是不同用途。

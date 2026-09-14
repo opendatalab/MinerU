@@ -39,7 +39,7 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
-    "docvortex>=0.4.2,<1",
+    "docvortex>=0.4.3,<1",
     "gradio>=6.8,<7",
     "mineru[torch] ; sys_platform == 'darwin' and platform_machine == 'arm64'",
     "mineru-vl-utils>=2.0.4,<3",

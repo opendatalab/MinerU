@@ -11,18 +11,20 @@ from __future__ import annotations
 import asyncio
 import base64
 import hashlib
+import html
 import io
 import ipaddress
 import json
 import logging
 import os
 import random
+import re
 import time
 import zipfile
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Literal, cast
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 import httpx
 from docvortex.assets import validate_image_sidecar_path
@@ -38,6 +40,13 @@ _TERMINAL_JOB_STATUSES = {"completed", "partial", "failed", "canceled"}
 _TRANSPORT_MAX_ATTEMPTS = 3
 _TRANSPORT_RETRY_BASE_DELAY_SECONDS = 0.25
 _TRANSPORT_RETRY_MAX_DELAY_SECONDS = 2.0
+
+_VISUAL_HTML_BLOCK_TYPES = frozenset({"image_body", "table_body", "chart_body"})
+_HTML_IMAGE_SOURCE_RE = re.compile(
+    r"(?P<prefix><img\b(?:[^>\"']|\"[^\"]*\"|'[^']*')*?\s+src\s*=\s*)"
+    r"(?:(?P<quote>[\"'])(?P<quoted>.*?)(?P=quote)|(?P<unquoted>[^\s>]+))",
+    re.IGNORECASE | re.DOTALL,
+)
 
 logger = logging.getLogger("mineru.api_client")
 
@@ -914,9 +923,14 @@ def _read_middle_json_from_zip(archive: zipfile.ZipFile) -> dict[str, Any]:
 
 
 def _collect_image_paths_from_middle_json(value: Any) -> set[str]:
-    """递归收集 middle_json 中引用的图片 sidecar 路径。"""
+    """收集直接图片与视觉 HTML 图片引用，保留代码正文中的图片字面量。"""
     paths: set[str] = set()
     if isinstance(value, dict):
+        content = value.get("content")
+        if value.get("type") in _VISUAL_HTML_BLOCK_TYPES and isinstance(content, str):
+            for match in _HTML_IMAGE_SOURCE_RE.finditer(content):
+                if (path := _markup_image_path(match)) is not None:
+                    paths.add(path)
         for key, item in value.items():
             if key in {"image_path", "img_path"} and isinstance(item, str) and item:
                 paths.add(item)
@@ -926,6 +940,14 @@ def _collect_image_paths_from_middle_json(value: Any) -> set[str]:
         for item in value:
             paths.update(_collect_image_paths_from_middle_json(item))
     return paths
+
+
+def _markup_image_path(match: re.Match[str]) -> str | None:
+    """解释 HTML 图片的相对素材路径，已有 data URI 和网络图片不读取。"""
+    source = html.unescape(match.group("quoted") if match.group("quote") else match.group("unquoted")).strip()
+    if not source or source.startswith("#") or urlparse(source).scheme.lower() in {"data", "http", "https"}:
+        return None
+    return validate_image_sidecar_path(unquote(source))
 
 
 def _read_image_sidecars_from_zip(archive: zipfile.ZipFile, mid_json: dict[str, Any]) -> dict[str, bytes]:
@@ -941,6 +963,8 @@ def _read_image_sidecars_from_zip(archive: zipfile.ZipFile, mid_json: dict[str, 
             if candidate in archive_names:
                 images[safe_image_path] = archive.read(candidate)
                 break
+        else:
+            raise _V1APIError("invalid_image_sidecar", f"Missing image sidecar in ZIP: {safe_image_path}")
     return images
 
 
@@ -970,13 +994,29 @@ def _inline_image_sidecars(mid_json: Any, images: dict[str, bytes]) -> None:
     if isinstance(mid_json, dict):
         image_path = mid_json.get("image_path") or mid_json.get("img_path")
         if isinstance(image_path, str) and image_path:
-            image_bytes = images.get(image_path)
-            if image_bytes is None and not image_path.startswith("images/"):
-                image_bytes = images.get(f"images/{image_path}")
+            safe_path = validate_image_sidecar_path(image_path)
+            image_bytes = images.get(safe_path)
+            if image_bytes is None and not safe_path.startswith("images/"):
+                image_bytes = images.get(f"images/{safe_path}")
             if image_bytes is not None:
-                mid_json["image_base64"] = _encode_image_data_uri(image_bytes, image_path)
+                mid_json["image_base64"] = _encode_image_data_uri(image_bytes, safe_path)
                 mid_json.pop("image_path", None)
                 mid_json.pop("img_path", None)
+        content = mid_json.get("content")
+        if mid_json.get("type") in _VISUAL_HTML_BLOCK_TYPES and isinstance(content, str):
+
+            def replace_source(match: re.Match[str]) -> str:
+                """只替换 src 的值，保留 HTML 属性、空白与引号。"""
+                path = _markup_image_path(match)
+                if path is None:
+                    return match.group(0)
+                data_uri = _encode_image_data_uri(images[path], path)
+                group = "quoted" if match.group("quote") else "unquoted"
+                start, end = match.span(group)
+                original = match.group(0)
+                return original[: start - match.start()] + data_uri + original[end - match.start() :]
+
+            mid_json["content"] = _HTML_IMAGE_SOURCE_RE.sub(replace_source, content)
         for value in mid_json.values():
             _inline_image_sidecars(value, images)
     elif isinstance(mid_json, list):

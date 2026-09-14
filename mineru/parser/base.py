@@ -86,21 +86,28 @@ class ParseResult:
         return render_structured_content(self.middle_json, asset_base_url=asset_base_url)
 
     def save(self, writer: DataWriter) -> None:
-        writer.write_string("markdown.md", self.markdown())
-        writer.write_string("middle_json.json", self.to_json())
+        """在副本上外置并校验素材，再保存可离线重渲染的协议及原始图片字节。"""
+        from docvortex.export import materialize_middle, validate_materialized_assets
 
-        writer.write_string(
-            "structured_content.json",
-            json.dumps(self.structured_content(), ensure_ascii=False, indent=2),
-        )
+        middle_json, assets = materialize_middle(self.middle_json)
+        validate_materialized_assets(middle_json, assets)
+        exported = ParseResult(middle_json=middle_json)
+        text_files = {
+            "markdown.md": exported.markdown(),
+            "middle_json.json": exported.to_json(),
+            "structured_content.json": json.dumps(exported.structured_content(), ensure_ascii=False, indent=2),
+        }
 
         if self._model_output is not None:
             validate_mineru_metadata(self._model_output)
             model_output = self._model_output.to_dict(skip_defaults=False)
-            writer.write_string(
-                "model_output.json",
-                json.dumps(model_output, ensure_ascii=False, indent=2),
-            )
+            text_files["model_output.json"] = json.dumps(model_output, ensure_ascii=False, indent=2)
+
+        # 所有引用和序列化均先完成，避免缺失素材时写出貌似完整的结果包。
+        for path, content in text_files.items():
+            writer.write_string(path, content)
+        for path, payload in sorted(assets.items()):
+            writer.write(path, payload)
 
     def export_pages(self) -> list[PageInfo]:
         """返回页面树副本，避免调用方修改污染 ParseResult.pages。"""
