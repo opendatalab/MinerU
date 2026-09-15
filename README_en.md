@@ -56,12 +56,22 @@ PDF and images support all four tiers. Office, OpenDocument, EPUB, OFD, HTML, an
 Python `>=3.10,<3.15`. Install MinerU 4.0 stable in a virtual environment:
 
 ```bash
-uv pip install -U "mineru>=4.0,<5"
+pip install uv
+uv venv .mineru --python 3.12
+
+# Linux/macOS
+source .mineru/bin/activate
+# Windows (PowerShell)
+.\.mineru\Scripts\Activate.ps1
+```
+
+```bash
+uv pip install -U "mineru>=4.0"
 mineru-kit parse document.pdf -o document.md --tier standard
 mineru-kit webui
 ```
 
-Use `mineru[torch]>=4.0,<5` for Torch small models or `mineru[full]>=4.0,<5` for higher-throughput deployment (Linux: vLLM; Windows: LMDeploy). Optional engines have additional Python, device, and driver constraints.
+The default install works out of the box: small models run ONNX CPU inference and the VLM runs llama.cpp in Vulkan mode, which offers good compatibility on the vast majority of devices. If the device has an NVIDIA GPU, install `mineru[full]>=4.0` for the best throughput. Note that on Windows the GPU build of torch must be installed separately, while on macOS the default install is already the best-throughput package and `[full]` is not needed.
 
 For the document library and agent reading, use `mineru parse document.pdf --json`. It defaults to the first 10 PDF pages; continue with returned locators. Stateless `mineru-kit parse` defaults to all pages.
 

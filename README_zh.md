@@ -56,12 +56,22 @@ PDF 和图片支持四档解析；Office、OpenDocument、EPUB、OFD、HTML、CS
 Python `>=3.10,<3.15`，在虚拟环境中安装 4.0 正式版：
 
 ```bash
-uv pip install -U "mineru>=4.0,<5"
+pip install uv
+uv venv .mineru --python 3.12
+
+# Linux/macOS
+source .mineru/bin/activate
+# Windows (PowerShell)
+.\.mineru\Scripts\Activate.ps1
+```
+
+```bash
+uv pip install -U "mineru>=4.0"
 mineru-kit parse document.pdf -o document.md --tier standard
 mineru-kit webui
 ```
 
-Torch 小模型使用 `mineru[torch]>=4.0,<5`；高吞吐部署使用 `mineru[full]>=4.0,<5`（Linux：vLLM，Windows：LMDeploy）。可选引擎还受各自 Python、设备及驱动支持范围约束。
+默认安装即可开箱即用：小模型使用 ONNX CPU 推理，VLM 以 llama.cpp Vulkan 模式运行，在绝大多数设备上都有良好的兼容性。如果设备配备 NVIDIA GPU，可安装 `mineru[full]>=4.0` 获得最佳吞吐；注意 Windows 的 GPU 版本 torch 需要单独安装，而 macOS 默认安装已是最佳吞吐包，无需额外安装 `[full]`。
 
 文档库与 Agent 阅读使用 `mineru parse document.pdf --json`；PDF 默认前 10 页，后续按返回的 locator 继续。无状态转换使用 `mineru-kit parse`，默认全部页。
 
