@@ -7,6 +7,7 @@ import shutil
 import sys
 import tempfile
 import threading
+import time
 import uuid
 import zipfile
 from contextlib import asynccontextmanager, suppress
@@ -951,6 +952,7 @@ class AsyncTaskManager:
             self.task_retention_seconds > 0
             and (self.cleanup_task is None or self.cleanup_task.done())
         ):
+            self.cleanup_orphan_output_dirs()
             self.cleanup_task = asyncio.create_task(
                 self._cleanup_loop(), name="mineru-fastapi-task-cleanup"
             )
@@ -1117,6 +1119,7 @@ class AsyncTaskManager:
             while True:
                 await asyncio.sleep(self.task_cleanup_interval_seconds)
                 self.cleanup_expired_tasks()
+                self.cleanup_orphan_output_dirs()
         except asyncio.CancelledError:
             raise
         except Exception as exc:
@@ -1216,6 +1219,37 @@ class AsyncTaskManager:
         if completed_at.tzinfo is None:
             completed_at = completed_at.replace(tzinfo=timezone.utc)
         return (now - completed_at).total_seconds() >= self.task_retention_seconds
+
+    def cleanup_orphan_output_dirs(self) -> int:
+        """Clean up output directories that are not active in memory and have expired on disk."""
+        if self.task_retention_seconds <= 0:
+            return 0
+
+        output_root = get_output_root()
+        if not output_root.is_dir():
+            return 0
+
+        now = time.time()
+        cleaned = 0
+        try:
+            for task_dir in output_root.iterdir():
+                if not task_dir.is_dir():
+                    continue
+                task_id = task_dir.name
+                # Skip if task is currently active in memory
+                if task_id in self.tasks and self.tasks[task_id].status not in (TASK_COMPLETED, TASK_FAILED):
+                    continue
+                try:
+                    mtime = task_dir.stat().st_mtime
+                    if now - mtime >= self.task_retention_seconds:
+                        cleanup_file(str(task_dir))
+                        cleaned += 1
+                        logger.info(f"Cleaned orphan output directory: {task_dir}")
+                except (OSError, FileNotFoundError):
+                    continue
+        except Exception as exc:
+            logger.warning(f"Error scanning orphan output directories: {exc}")
+        return cleaned
 
 
 def get_task_manager() -> AsyncTaskManager:
