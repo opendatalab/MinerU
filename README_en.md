@@ -30,12 +30,6 @@
 
 [Agent Guide](README.md) | [English](README_en.md) | [简体中文](README_zh.md)
 
-<!-- hot link -->
-
-<p align="center">
-🚀<a href="https://mineru.net/?source=github">Access MinerU Now→✅ Zero-Install Web Version ✅ Full-Featured Desktop Client ✅ Instant API Access; Skip deployment headaches – get all product formats in one click. Developers, dive in!</a>
-</p>
-
 <!-- join us -->
 
 <p align="center">

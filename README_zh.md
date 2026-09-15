@@ -30,12 +30,6 @@
 
 [Agent Guide](README.md) | [English](README_en.md) | [简体中文](README_zh.md)
 
-<!-- hot link -->
-
-<p align="center">
-🚀<a href="https://mineru.net/?source=github">MinerU 官网入口→✅ 免装在线版 ✅ 全功能客户端 ✅ 开发者API在线调用，省去部署麻烦，多种产品形态一键get，速冲！</a>
-</p>
-
 <!-- join us -->
 
 <p align="center">
