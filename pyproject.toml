@@ -43,7 +43,7 @@ dependencies = [
     "gradio>=6.8,<7",
     "mineru[torch] ; sys_platform == 'darwin' and platform_machine == 'arm64'",
     "mineru-vl-utils>=2.0.4,<3",
-    "mineru-llama-cpp>=0.1.1,<1",
+    "mineru-llama-cpp>=0.1.2,<1",
     "click>=8.1.7",
     "loguru>=0.7.2",
     "numpy>=1.21.6",
