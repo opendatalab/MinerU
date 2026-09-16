@@ -9,6 +9,7 @@ import json
 import logging
 import subprocess
 import sys
+import time
 import types
 import zipfile
 from pathlib import Path
@@ -2011,6 +2012,47 @@ def test_complete_upload_rejects_size_mismatch(tmp_path: Path) -> None:
     assert exc_info.value.error.code == "upload_size_mismatch"
 
 
+def test_get_upload_expires_pending_records_and_discards_staged_data(tmp_path: Path) -> None:
+    """expires_at 过后 pending 上传惰性转为 expired 终态并丢弃暂存数据，后续 PUT/complete 收到 409。"""
+    file_store = FileStore(tmp_path / "api-files")
+    upload = file_store.create_upload(
+        CreateUploadRequest.model_validate({"filename": "demo.pdf", "bytes": 4, "mime_type": "application/pdf"})
+    )
+    file_store.store_upload_data(upload.id, b"demo")
+    staged = tmp_path / "api-files" / "blobs" / "_uploads" / upload.id
+    assert staged.is_file()
+
+    file_store._uploads[upload.id].expires_at = int(time.time()) - 1
+
+    rec = file_store.get_upload(upload.id)
+
+    assert rec.status == "expired"
+    assert not staged.is_file()
+    with pytest.raises(api_server.ApiServerError) as exc_info:
+        file_store.store_upload_data(upload.id, b"demo")
+    assert exc_info.value.status_code == 409
+    with pytest.raises(api_server.ApiServerError) as exc_info:
+        file_store.complete_upload(upload.id, None)
+    assert exc_info.value.status_code == 409
+
+
+def test_get_upload_keeps_completed_records_after_expiry(tmp_path: Path) -> None:
+    """completed 是终态，expires_at 过后不再翻转，文件保留交给独立的 retention 机制。"""
+    file_store = FileStore(tmp_path / "api-files")
+    sha = "00" * 32
+    file_store.store_blob(b"demo", sha256hex=sha)
+    upload = file_store.create_upload(
+        CreateUploadRequest.model_validate(
+            {"filename": "demo.pdf", "bytes": 4, "mime_type": "application/pdf", "sha256sum": sha}
+        )
+    )
+    assert upload.status == "completed"
+
+    file_store._uploads[upload.id].expires_at = int(time.time()) - 1
+
+    assert file_store.get_upload(upload.id).status == "completed"
+
+
 def test_run_job_preserves_input_file_id_and_keeps_source_undownloadable(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -2057,6 +2099,87 @@ def test_run_job_preserves_input_file_id_and_keeps_source_undownloadable(
     with pytest.raises(api_server.ApiServerError) as exc_info:
         file_store.read_file_data(input_file_id)
     assert exc_info.value.status_code == 403
+
+
+def test_create_job_request_rejects_more_than_max_files_per_job(tmp_path: Path) -> None:
+    """超过广告的 max_files_per_job 时拒绝创建请求。"""
+    source = str(tmp_path / "demo.pdf")
+    entries = [{"source": {"type": "local", "path": source}}] * (api_server._MAX_FILES_PER_JOB_DEFAULT + 1)
+
+    with pytest.raises(ValidationError):
+        CreateJobRequest.model_validate({"files": entries, "tier": "flash"})
+
+
+def test_job_responses_report_resolved_access_level(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """job 创建与查询响应携带按 api_key 解析的 access_level，而不是固定 registered。"""
+
+    async def fake_parse_async(*args: object, **kwargs: object) -> ParseResult:
+        return ParseResult(middle_json=_full_middle_json(PageInfo(page_idx=0)))
+
+    monkeypatch.setattr("mineru.parser.api_server.parse_async", fake_parse_async)
+    source = tmp_path / "demo.html"
+    source.write_text("<p>content</p>", encoding="utf-8")
+    payload = {
+        "files": [{"source": {"type": "local", "path": str(source)}}],
+        "tier": "flash",
+        "output_formats": ["middle_json"],
+    }
+
+    anonymous_app = create_app(upload_dir=str(tmp_path / "api-anonymous"), tier="flash", allow_local_source=True)
+    with TestClient(anonymous_app) as client:
+        created = client.post("/v1/parse/jobs", json=payload)
+        assert created.status_code == 202
+        assert created.json()["access_level"] == "anonymous"
+        fetched = client.get(f"/v1/parse/jobs/{created.json()['job_id']}")
+        assert fetched.status_code == 200
+        assert fetched.json()["access_level"] == "anonymous"
+
+    registered_app = create_app(
+        upload_dir=str(tmp_path / "api-registered"), tier="flash", allow_local_source=True, api_key="secret-key"
+    )
+    with TestClient(registered_app) as client:
+        created = client.post("/v1/parse/jobs", json=payload, headers={"Authorization": "Bearer secret-key"})
+        assert created.status_code == 202
+        assert created.json()["access_level"] == "registered"
+        fetched = client.get(f"/v1/parse/jobs/{created.json()['job_id']}", headers={"Authorization": "Bearer secret-key"})
+        assert fetched.status_code == 200
+        assert fetched.json()["access_level"] == "registered"
+
+
+def test_usage_counts_completed_files_and_reports_configured_concurrency(tmp_path: Path) -> None:
+    """files_processed 按完成的文件计数，max_concurrent_jobs 报告配置上限而非剩余信号量。"""
+    file_store = FileStore(tmp_path / "api-files")
+    store = api_server.JobStore(concurrency=2)
+
+    def _request(*names: str) -> CreateJobRequest:
+        return CreateJobRequest.model_validate(
+            {
+                "files": [{"source": {"type": "local", "path": str(tmp_path / name)}} for name in names],
+                "tier": "flash",
+                "output_formats": ["middle_json"],
+            }
+        )
+
+    rec_a = store.create(_request("a1.html", "a2.html"), file_store)
+    rec_a.files[0].status = "completed"
+    rec_a.files[1].status = "failed"
+    rec_a.status = "partial"
+    rec_b = store.create(_request("b1.html"), file_store)
+    rec_b.files[0].status = "completed"
+    rec_b.status = "completed"
+
+    async def _report_while_busy() -> "api_server.UsageResponse":
+        await store._semaphore.acquire()
+        return store.usage("anonymous")
+
+    usage = asyncio.run(_report_while_busy())
+
+    assert usage.current.jobs_created == 2
+    assert usage.current.files_processed == 2
+    assert usage.limits.max_concurrent_jobs == 2
 
 
 @pytest.mark.parametrize(("request_tier", "response_tier"), [("standard", "standard"), (None, "flash")])
@@ -2595,7 +2718,7 @@ def test_api_server_standard_jobs_use_requested_tier(tmp_path: Path, monkeypatch
             max_inline_bytes=app.state.max_inline_bytes,
             allow_http_source=app.state.allow_http_source,
         )
-        return job_store.build_response(rec).model_dump(by_alias=True)
+        return job_store.build_response(rec, access_level="anonymous").model_dump(by_alias=True)
 
     default_response = asyncio.run(
         run_request(

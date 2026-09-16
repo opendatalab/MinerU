@@ -21,6 +21,7 @@ from mineru.doclib.background.compaction import Compaction
 from mineru.doclib.background.device_monitor import DeviceMonitor
 from mineru.doclib.background.ingest import IngestWorkerPool
 from mineru.doclib.background.parse_server_health import (
+    MAX_RESTART_ATTEMPTS,
     ParseServerHealth,
     ParseServerHealthCheck,
     ProbeResult,
@@ -997,6 +998,53 @@ def test_managed_parse_server_tier_change_restart_uses_desired_tier(monkeypatch:
     assert health.restart_count == 2
 
 
+def test_healthy_probe_resets_managed_restart_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    """健康探测清零托管重启预算，使 MAX_RESTART_ATTEMPTS 只约束连续恢复失败。"""
+    health = ParseServerHealth(
+        local=ProbeState(url="http://127.0.0.1:16582"),
+        local_mode="managed",
+        managed_url="http://127.0.0.1:16582",
+        running_managed_tier="standard",
+        restart_count=MAX_RESTART_ATTEMPTS - 1,
+    )
+
+    class _ConfigSvc:
+        async def get(self, key: str) -> str:
+            values = {
+                "parse_server.local.mode": "managed",
+                "parse_server.local.managed_tier": "standard",
+                "parse_server.remote.url": "https://mineru.net/api",
+            }
+            return values.get(key, "")
+
+    class _RemoteApiKey:
+        value = "remote-key"
+
+    async def _resolve_remote_key(_svc: object) -> _RemoteApiKey:
+        return _RemoteApiKey()
+
+    checker = ParseServerHealthCheck(
+        _ConfigSvc(),
+        interval_sec=0,
+        probe_timeout_sec=2,
+        startup_grace_sec=3,
+        stop_timeout_sec=4,
+        startup_timeout_sec=30,
+    )
+
+    async def _probe(_url: str, *, api_key: str | None = None) -> ProbeResult:
+        checker.running = False
+        return ProbeResult(healthy=True, tiers=["standard"])
+
+    monkeypatch.setattr(checker, "_probe", _probe)
+    monkeypatch.setattr("mineru.doclib.background.parse_server_health.get_health", lambda: health)
+    monkeypatch.setattr("mineru.doclib.background.parse_server_health.resolve_remote_api_key", _resolve_remote_key)
+
+    asyncio.run(checker.run())
+
+    assert health.restart_count == 0
+
+
 def test_get_file_stat_returns_typed_file_stat(tmp_path: Path) -> None:
     source = tmp_path / "note.txt"
     source.write_text("content", encoding="utf-8")
@@ -1112,6 +1160,91 @@ def test_remote_api_target_prefers_config_api_key_over_env(monkeypatch: pytest.M
     monkeypatch.setattr(
         "mineru.doclib.background.parse_server_health.get_health",
         lambda: ParseServerHealth(remote=ProbeState(probe=ProbeResult(healthy=True))),
+    )
+
+    asyncio.run(_run())
+
+
+def test_remote_api_target_fallback_uses_local_self_hosted_api_key(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """远程不可用时回退本地 self-hosted，凭证应取本地 key 而非远程 key。"""
+
+    class _ConfigService:
+        async def get(self, key: str) -> str:
+            values = {
+                "parse_server.remote.url": "https://mineru.net/api",
+                "parse_server.remote.api_key": "remote-key",
+                "parse_server.local.mode": "self_hosted",
+                "parse_server.local.self_hosted_api_key": "local-key",
+            }
+            return values[key]
+
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        service = ParseService(
+            db=db,
+            fts=FTSManager(db),
+            config_svc=_ConfigService(),
+            data_dir=str(tmp_path / "data"),
+            parse_lock_timeout_sec=1800,
+        )
+
+        base_url, api_key, via = await service._resolve_api_target("remote", "standard")
+
+        assert base_url == "http://127.0.0.1:16580"
+        assert api_key == "local-key"
+        assert via == "local"
+
+    monkeypatch.setattr(
+        "mineru.doclib.background.parse_server_health.get_health",
+        lambda: ParseServerHealth(
+            remote=ProbeState(probe=ProbeResult(error_code="parse_server_unavailable")),
+            local=ProbeState(url="http://127.0.0.1:16580", probe=ProbeResult(healthy=True)),
+            local_mode="self_hosted",
+            self_hosted_url="http://127.0.0.1:16580",
+        ),
+    )
+
+    asyncio.run(_run())
+
+
+def test_remote_api_target_fallback_managed_mode_sends_no_api_key(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """managed 本地回退不带凭证（managed server 未配置 key，不校验 Bearer）。"""
+
+    class _ConfigService:
+        async def get(self, key: str) -> str:
+            values = {
+                "parse_server.remote.url": "https://mineru.net/api",
+                "parse_server.remote.api_key": "remote-key",
+                "parse_server.local.mode": "managed",
+            }
+            return values.get(key, "")
+
+    async def _run() -> None:
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        service = ParseService(
+            db=db,
+            fts=FTSManager(db),
+            config_svc=_ConfigService(),
+            data_dir=str(tmp_path / "data"),
+            parse_lock_timeout_sec=1800,
+        )
+
+        base_url, api_key, via = await service._resolve_api_target("remote", "standard")
+
+        assert base_url == "http://127.0.0.1:16582"
+        assert api_key is None
+        assert via == "local"
+
+    monkeypatch.setattr(
+        "mineru.doclib.background.parse_server_health.get_health",
+        lambda: ParseServerHealth(
+            remote=ProbeState(probe=ProbeResult(error_code="parse_server_unavailable")),
+            local=ProbeState(url="http://127.0.0.1:16582", probe=ProbeResult(healthy=True)),
+            local_mode="managed",
+            managed_url="http://127.0.0.1:16582",
+        ),
     )
 
     asyncio.run(_run())

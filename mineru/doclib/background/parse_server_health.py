@@ -351,6 +351,8 @@ class ParseServerHealthCheck:
                     if probe.healthy:
                         health.local.last_success_at = now_ms
                         health.local_starting = False
+                        # MAX_RESTART_ATTEMPTS bounds consecutive failed recoveries; a healthy probe restores the budget.
+                        health.restart_count = 0
                     else:
                         health.local.last_failure_at = now_ms
                         if probe.error_code != "parse_server_unavailable":
