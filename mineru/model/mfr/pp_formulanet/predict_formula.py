@@ -77,7 +77,7 @@ class FormulaRecognizer(BaseOCRV20):
         if model_name == "PP-FormulaNet_plus-M" and self.device.type == "cpu":
             # CPU 仅使用增量缓存，attention 仍保持原有 eager 算子。
             self.net.head.use_growing_cache = True
-        if model_name == "PP-FormulaNet_plus-M" and self.device.type in {"mps", "cuda"}:
+        if model_name == "PP-FormulaNet_plus-M" and self.device.type in {"mps", "cuda", "xpu"}:
             # 仅为经过适配的公式解码器启用快速 attention；CPU 和其他模型保持原路径。
             self.net.head.set_fast_attention()
         logger.info(

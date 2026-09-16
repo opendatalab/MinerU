@@ -43,11 +43,13 @@ def resolve_vlm_engine(engine: str | None = None) -> VlmEngineName:
     # macOS 和未知平台固定优先 llama；不探测或自动导入 MLX。
     if not (is_linux_environment() or is_windows_environment()):
         return "llama-cpp"
-    if get_device().split(":")[0] == "cpu":
+    device_type = get_device().split(":", 1)[0]
+    if device_type == "cpu":
         return "llama-cpp"
     if is_linux_environment() and module_available("vllm"):
         return "vllm"
-    if module_available("lmdeploy"):
+    # 当前 LMDeploy 接入不支持 Intel XPU；保留 Linux 的 vLLM 优先级，其余 XPU 回退 llama。
+    if device_type != "xpu" and module_available("lmdeploy"):
         return "lmdeploy"
     return "llama-cpp"
 

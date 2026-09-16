@@ -30,6 +30,8 @@ PDF 和图片可选四档。Office、OpenDocument、RTF、EPUB、OFD、HTML、CS
 
 自动选择依据已安装依赖和可用设备；显式指定的后端缺依赖时会报错，不会静默改用另一种。ONNX 小模型在 CPU 上执行，VLM 的设备选择独立。
 
+Intel XPU 不会自动选择 LMDeploy。Linux 上安装了支持 XPU 的 vLLM 时优先使用 vLLM，否则回退 llama.cpp；Windows 上使用 llama.cpp。
+
 ```yaml
 model:
   small_backend: auto

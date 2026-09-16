@@ -903,6 +903,66 @@ def test_auto_local_gpus_expands_visible_accelerator_count(monkeypatch: pytest.M
     assert parse_local_gpus("auto") == ["0", "1", "2"]
 
 
+def test_xpu_local_gpus_use_level_zero_affinity_mask(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证 XPU worker 通过 ZE_AFFINITY_MASK 继承与隔离可见设备。"""
+    import mineru.kit.router.workers as workers
+
+    monkeypatch.delenv("CUDA_VISIBLE_DEVICES", raising=False)
+    monkeypatch.delenv("ASCEND_RT_VISIBLE_DEVICES", raising=False)
+    monkeypatch.delenv("ZE_AFFINITY_MASK", raising=False)
+    monkeypatch.setattr(workers, "get_device", lambda: "xpu")
+    assert workers.visible_device_env_name() == "ZE_AFFINITY_MASK"
+
+    monkeypatch.setattr(workers, "accelerator_device_count", lambda _device: 2)
+    assert parse_local_gpus("auto") == ["0", "1"]
+
+    monkeypatch.setenv("ZE_AFFINITY_MASK", "1")
+    assert parse_local_gpus("auto") == ["1"]
+
+
+@pytest.mark.parametrize(
+    ("device", "expected", "env_name"),
+    [
+        ("cuda", ["3"], "CUDA_VISIBLE_DEVICES"),
+        ("npu", ["2"], "ASCEND_RT_VISIBLE_DEVICES"),
+        ("xpu", ["0", "1"], "ZE_AFFINITY_MASK"),
+        ("xpu:1", ["0", "1"], "ZE_AFFINITY_MASK"),
+        ("cpu", [None], "CUDA_VISIBLE_DEVICES"),
+        ("mps", [None], "CUDA_VISIBLE_DEVICES"),
+    ],
+)
+def test_auto_local_gpus_ignores_other_device_family_masks(
+    monkeypatch: pytest.MonkeyPatch, device: str, expected: list[str | None], env_name: str
+) -> None:
+    """多个设备族掩码共存时只继承当前设备族，CPU/MPS 不据此创建 GPU worker。"""
+    import mineru.kit.router.workers as workers
+
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "3")
+    monkeypatch.setenv("ASCEND_RT_VISIBLE_DEVICES", "2")
+    monkeypatch.setenv("ZE_AFFINITY_MASK", "0,1")
+    monkeypatch.setattr(workers, "get_device", lambda: device)
+    assert parse_local_gpus("auto") == expected
+    assert workers.visible_device_env_name() == env_name
+
+
+@pytest.mark.parametrize("mask", [None, "all", "-1", "none", "void", "0.1, 1.0"])
+def test_xpu_local_gpus_mask_fallbacks(monkeypatch: pytest.MonkeyPatch, mask: str | None) -> None:
+    """XPU 无掩码时枚举自身设备，禁用标记与子设备编号不受其他设备族影响。"""
+    import mineru.kit.router.workers as workers
+
+    monkeypatch.setenv("CUDA_VISIBLE_DEVICES", "3")
+    monkeypatch.setenv("ASCEND_RT_VISIBLE_DEVICES", "2")
+    monkeypatch.delenv("ZE_AFFINITY_MASK", raising=False)
+    if mask is not None:
+        monkeypatch.setenv("ZE_AFFINITY_MASK", mask)
+    monkeypatch.setattr(workers, "get_device", lambda: "xpu:1")
+    monkeypatch.setattr(workers, "accelerator_device_count", lambda _device: 2)
+    expected = ["0", "1"] if mask in {None, "all"} else (["0.1", "1.0"] if mask == "0.1, 1.0" else [None])
+    assert parse_local_gpus("auto") == expected
+    assert parse_local_gpus("4,5") == ["4", "5"]
+    assert parse_local_gpus("none") == []
+
+
 def test_compose_router_healthcheck_uses_v1_path() -> None:
     """验证 Router Compose profile 只探测正式 `/v1/health`。"""
     repo_root = Path(__file__).resolve().parents[2]

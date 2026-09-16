@@ -12,6 +12,8 @@ from typing import Any
 
 from loguru import logger
 
+from .device import PROBE_TORCH_DEVICE_APIS
+
 
 @lru_cache(maxsize=1)
 def _get_malloc_trim() -> Callable[[int], int] | None:
@@ -72,7 +74,7 @@ def clean_memory(device: str = "cuda") -> None:
     elif device_name.startswith("mps"):
         torch.mps.empty_cache()
     else:
-        for accelerator_name in ("gcu", "musa", "mlu", "sdaa"):
+        for accelerator_name in PROBE_TORCH_DEVICE_APIS:
             if not device_name.startswith(accelerator_name):
                 continue
             accelerator = getattr(torch, accelerator_name, None)
@@ -109,7 +111,7 @@ def get_vram(device: str) -> int:
         return round(torch.cuda.get_device_properties(device).total_memory / (1024**3))
     if device_name.startswith("npu") and torch_npu is not None and torch_npu.npu.is_available():
         return round(torch_npu.npu.get_device_properties(device).total_memory / (1024**3))
-    for accelerator_name in ("gcu", "musa", "mlu", "sdaa"):
+    for accelerator_name in PROBE_TORCH_DEVICE_APIS:
         if not device_name.startswith(accelerator_name):
             continue
         accelerator = getattr(torch, accelerator_name, None)

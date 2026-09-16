@@ -40,6 +40,12 @@ except ModuleNotFoundError:
         ("linux", "cpu", {"torch", "vllm"}, "onnx", "llama-cpp"),
         ("win32", "cpu", {"torch", "lmdeploy"}, "onnx", "llama-cpp"),
         ("other", "npu", {"torch"}, "torch", "llama-cpp"),
+        ("linux", "xpu", {"torch"}, "torch", "llama-cpp"),
+        ("linux", "xpu", {"torch", "vllm"}, "torch", "vllm"),
+        ("linux", "xpu", {"torch", "lmdeploy"}, "torch", "llama-cpp"),
+        ("linux", "xpu:1", {"torch", "vllm", "lmdeploy"}, "torch", "vllm"),
+        ("win32", "xpu", {"torch", "lmdeploy"}, "torch", "llama-cpp"),
+        ("win32", "xpu:1", {"torch", "vllm", "lmdeploy"}, "torch", "llama-cpp"),
     ],
 )
 def test_automatic_platform_combinations(

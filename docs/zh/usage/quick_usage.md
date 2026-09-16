@@ -22,8 +22,9 @@ mineru parse <input_path> --pages all -o <output_path>
 > [!NOTE]
 > 运行时加速按两个模型组件分别选择，依据是已安装的依赖和检测到的设备：
 >
-> - 小模型仅在 `torch`、`torchvision`、`transformers`、`accelerate`、`safetensors` **全部安装**且检测到非 CPU 设备（CUDA/MPS 等）时使用 Torch 后端，否则使用 ONNX（CPU）。只安装 Torch 并不足以启用。
+> - 小模型仅在 `torch`、`torchvision`、`transformers`、`accelerate`、`safetensors` **全部安装**且检测到非 CPU 设备（CUDA/XPU/MPS 等）时使用 Torch 后端，否则使用 ONNX（CPU）。只安装 Torch 并不足以启用。
 > - 本地 VLM 引擎独立选择：macOS 固定使用 llama.cpp；加速卡设备上 Linux 优先 vLLM、其次已安装的 LMDeploy，Windows 使用 LMDeploy；否则使用 llama.cpp。
+> - XPU 不会自动选择 LMDeploy：Linux 上安装了支持 XPU 的 vLLM 时使用 vLLM，否则使用 llama.cpp；Windows 上使用 llama.cpp。
 > - Windows 用户如需 CUDA 加速，请先前往 [PyTorch 官网](https://pytorch.org/get-started/locally/) 选择与 CUDA 版本匹配的命令安装支持加速的 `torch` 和 `torchvision`，再安装 `mineru[full]`。
 
 安装完成后，确认当前环境实际生效的运行时：
