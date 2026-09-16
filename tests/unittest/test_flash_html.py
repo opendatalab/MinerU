@@ -30,6 +30,26 @@ from mineru.render.structured_content import render_structured_content
 from mineru.types import BlockType, ImageBlock, ImageBodyBlock, MiddleJson
 
 
+class _StreamContext:
+    """把已构造的 httpx.Response 包装成 cli.stream 返回的异步上下文。"""
+
+    def __init__(self, response: httpx.Response) -> None:
+        self._response = response
+
+    async def __aenter__(self) -> httpx.Response:
+        return self._response
+
+    async def __aexit__(self, *args: object) -> None:
+        return None
+
+
+def _url_stream_client(response: httpx.Response) -> AsyncMock:
+    client = AsyncMock()
+    client.__aenter__.return_value = client
+    client.stream = lambda *_args, **_kwargs: _StreamContext(response)
+    return client
+
+
 def _all_raw_blocks(model_pages: list[list[dict[str, object]]]) -> list[dict[str, object]]:
     """按页展开 raw model-list，方便断言 HTML 映射结果。"""
     return [block for page in model_pages for block in page]
@@ -115,9 +135,7 @@ def test_html_parse_server_url_preserves_http_declared_charset(tmp_path: Path, m
         headers={"Content-Type": "text/html; charset=shift_jis"},
         request=httpx.Request("GET", url),
     )
-    client = AsyncMock()
-    client.__aenter__.return_value = client
-    client.get.return_value = response
+    client = _url_stream_client(response)
     monkeypatch.setattr(api_server, "httpx", SimpleNamespace(AsyncClient=lambda **_: client))
     file_store = FileStore(tmp_path / "api-files")
     request = CreateJobRequest.model_validate(
@@ -165,9 +183,7 @@ def test_html_parse_server_url_accepts_extensionless_text_html(
         headers={"Content-Type": "text/html; charset=utf-8"},
         request=httpx.Request("GET", url),
     )
-    client = AsyncMock()
-    client.__aenter__.return_value = client
-    client.get.return_value = response
+    client = _url_stream_client(response)
     monkeypatch.setattr(api_server, "httpx", SimpleNamespace(AsyncClient=lambda **_: client))
     file_store = FileStore(tmp_path / "api-files")
     request = CreateJobRequest.model_validate(
@@ -231,9 +247,7 @@ def test_html_parse_server_no_flash_rejects_extensionless_text_html_after_fetch(
         headers={"Content-Type": "text/html; charset=utf-8"},
         request=httpx.Request("GET", url),
     )
-    client = AsyncMock()
-    client.__aenter__.return_value = client
-    client.get.return_value = response
+    client = _url_stream_client(response)
     parse_async_mock = AsyncMock()
     monkeypatch.setattr(api_server, "httpx", SimpleNamespace(AsyncClient=lambda **_: client))
     monkeypatch.setattr(api_server, "parse_async", parse_async_mock)
@@ -262,6 +276,43 @@ def test_html_parse_server_no_flash_rejects_extensionless_text_html_after_fetch(
         "Flash parsing is disabled in this server, but this input requires the Flash backend"
     )
     parse_async_mock.assert_not_awaited()
+
+
+def test_url_source_aborts_when_exceeding_max_url_bytes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证 URL 源超过 max_url_bytes 时流式下载中止并使该文件失败。"""
+    url = "https://example.com/big.html"
+    response = httpx.Response(
+        200,
+        content=b"x" * 1024,
+        headers={"Content-Type": "text/html; charset=utf-8"},
+        request=httpx.Request("GET", url),
+    )
+    client = _url_stream_client(response)
+    monkeypatch.setattr(api_server, "httpx", SimpleNamespace(AsyncClient=lambda **_: client))
+    file_store = FileStore(tmp_path / "api-files")
+    request = CreateJobRequest.model_validate(
+        {
+            "files": [{"source": {"type": "url", "url": url}}],
+            "tier": "standard",
+            "output_formats": ["middle_json"],
+        }
+    )
+    record = api_server.JobStore().create(request, file_store)
+
+    asyncio.run(
+        api_server._run_job(
+            record,
+            request,
+            file_store,
+            image_analysis=True,
+            max_url_bytes=64,
+        )
+    )
+
+    assert record.status == "failed"
+    assert record.files[0].status == "failed"
+    assert record.files[0].error is not None
+    assert record.files[0].error.message == "url source exceeds max_url_bytes (64)"
 
 
 def test_html_local_base_images_styles_and_escape_are_bounded(tmp_path: Path) -> None:

@@ -82,6 +82,8 @@ from .writer import DataWriter
 _DEFAULT_API_SERVER_TIER: ServerTier = "standard"
 _API_SERVER_LANGUAGES = PUBLIC_OCR_LANGUAGES
 _MAX_INLINE_BYTES_DEFAULT = 1024 * 1024
+_MAX_FILES_PER_JOB_DEFAULT = 100
+_MAX_FILE_SIZE_BYTES_DEFAULT = 209715200
 _LOCAL_PARSE_OUTPUT_FORMATS: tuple[OutputFormat, ...] = (
     "markdown",
     "middle_json",
@@ -472,7 +474,7 @@ class CallbackConfig(BaseModel):
 
 class CreateJobRequest(BaseModel):
     model_config = _PYDANTIC_CONFIG
-    files: list[JobFileEntry] = Field(min_length=1)
+    files: list[JobFileEntry] = Field(min_length=1, max_length=_MAX_FILES_PER_JOB_DEFAULT)
     tier: Tier | None = None
     ocr_mode: Literal["auto", "txt", "ocr"] = Field(
         default="auto", description="OCR mode for this parse job: auto-detect, native text, or forced OCR."
@@ -592,8 +594,8 @@ class UsageCurrent(BaseModel):
 class UsageLimits(BaseModel):
     model_config = _PYDANTIC_CONFIG
     max_pages_per_file: int = 1000
-    max_file_size_bytes: int = 209715200
-    max_files_per_job: int = 100
+    max_file_size_bytes: int = _MAX_FILE_SIZE_BYTES_DEFAULT
+    max_files_per_job: int = _MAX_FILES_PER_JOB_DEFAULT
     max_concurrent_jobs: int = 1
     max_file_retention_days: int | None = None
 
@@ -1106,7 +1108,8 @@ class _JobRecord:
 class JobStore:
     def __init__(self, concurrency: int = 1) -> None:
         self._jobs: dict[str, _JobRecord] = {}
-        self._semaphore = asyncio.Semaphore(max(1, concurrency))
+        self._concurrency = max(1, concurrency)
+        self._semaphore = asyncio.Semaphore(self._concurrency)
         self._started_at = JobStore._now()
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._closing = False
@@ -1265,7 +1268,7 @@ class JobStore:
             has_more=(start + limit) < len(recs),
         )
 
-    def build_response(self, rec: _JobRecord, access_level: AccessLevel = "registered") -> JobAsyncResponse:
+    def build_response(self, rec: _JobRecord, *, access_level: AccessLevel) -> JobAsyncResponse:
         return JobAsyncResponse(
             job_id=rec.id,
             status=rec.status,
@@ -1281,7 +1284,7 @@ class JobStore:
         )
 
     def usage(self, access_level: AccessLevel) -> UsageResponse:
-        completed = sum(1 for j in self._jobs.values() if j.status in ("completed", "partial"))
+        files_processed = sum(1 for j in self._jobs.values() for fr in j.files if fr.status == "completed")
         processed_page_count = sum(
             sum(_count_pages_in_range(fr.page_range) for fr in j.files if fr.status == "completed") for j in self._jobs.values()
         )
@@ -1290,11 +1293,11 @@ class JobStore:
             billing_period=UsageBillingPeriod(start=self._started_at),
             current=UsageCurrent(
                 pages_processed=processed_page_count,
-                files_processed=completed,
+                files_processed=files_processed,
                 jobs_created=len(self._jobs),
             ),
             limits=UsageLimits(
-                max_concurrent_jobs=self._semaphore._value,
+                max_concurrent_jobs=self._concurrency,
             ),
         )
 
@@ -1362,6 +1365,7 @@ async def _extract_bytes(
     allow_local_source: bool = False,
     max_inline_bytes: int = _MAX_INLINE_BYTES_DEFAULT,
     allow_http_source: bool = False,
+    max_url_bytes: int = _MAX_FILE_SIZE_BYTES_DEFAULT,
 ) -> _ExtractedSource:
     """按既有来源策略读取字节，并保留不会由临时文件替代的来源上下文。"""
     _validate_source_policy(
@@ -1377,14 +1381,22 @@ async def _extract_bytes(
         return _ExtractedSource(file_store.read_blob(rec.sha256sum))
     if isinstance(source, UrlSource):
         async with httpx.AsyncClient(timeout=url_timeout) as cli:
-            r = await cli.get(source.url)
-            r.raise_for_status()
-            return _ExtractedSource(
-                r.content,
-                source_uri=str(r.url),
-                transport_encoding=r.charset_encoding,
-                media_type=(r.headers.get("content-type") or "").partition(";")[0].strip().casefold() or None,
-            )
+            # 流式读取并在超过 max_url_bytes 时中止，避免无上限响应被整包缓冲进内存。
+            async with cli.stream("GET", source.url) as r:
+                r.raise_for_status()
+                chunks: list[bytes] = []
+                received = 0
+                async for chunk in r.aiter_bytes():
+                    received += len(chunk)
+                    if received > max_url_bytes:
+                        raise ValueError(f"url source exceeds max_url_bytes ({max_url_bytes})")
+                    chunks.append(chunk)
+                return _ExtractedSource(
+                    b"".join(chunks),
+                    source_uri=str(r.url),
+                    transport_encoding=r.charset_encoding,
+                    media_type=(r.headers.get("content-type") or "").partition(";")[0].strip().casefold() or None,
+                )
     if isinstance(source, InlineSource):
         return _ExtractedSource(_decode_inline_data(source.data))
     if isinstance(source, LocalSource):
@@ -1411,6 +1423,7 @@ async def _run_job(
     allow_local_source: bool = False,
     max_inline_bytes: int = _MAX_INLINE_BYTES_DEFAULT,
     allow_http_source: bool = False,
+    max_url_bytes: int = _MAX_FILE_SIZE_BYTES_DEFAULT,
     flash_enabled: bool = True,
     vlm_config: VlmConfig | None = None,
 ) -> None:
@@ -1434,6 +1447,7 @@ async def _run_job(
                     allow_local_source=allow_local_source,
                     max_inline_bytes=max_inline_bytes,
                     allow_http_source=allow_http_source,
+                    max_url_bytes=max_url_bytes,
                 )
                 data = extracted.data
                 suffix = pathlib.Path(fr.name).suffix
@@ -1932,6 +1946,7 @@ async def create_job(
     allow_local_source_val: bool = request.app.state.allow_local_source
     max_inline_bytes_val: int = request.app.state.max_inline_bytes
     allow_http_source_val: bool = request.app.state.allow_http_source
+    max_url_bytes_val: int = request.app.state.max_url_bytes
     flash_enabled_val: bool = request.app.state.flash_enabled
     image_analysis_val: bool = request.app.state.image_analysis
     vlm_config_val: VlmConfig = request.app.state.vlm_config
@@ -1947,12 +1962,15 @@ async def create_job(
             allow_local_source=allow_local_source_val,
             max_inline_bytes=max_inline_bytes_val,
             allow_http_source=allow_http_source_val,
+            max_url_bytes=max_url_bytes_val,
             flash_enabled=flash_enabled_val,
             vlm_config=vlm_config_val,
         )
 
     job_store.start_task(rec, _bg_run)
-    return JSONResponse(content=job_store.build_response(rec).model_dump(by_alias=True), status_code=202)
+    return JSONResponse(
+        content=job_store.build_response(rec, access_level=access_level).model_dump(by_alias=True), status_code=202
+    )
 
 
 @_router.get(
@@ -1965,9 +1983,10 @@ async def create_job(
 async def get_job(
     job_id: str = Path(description="Job ID (job_...)"),
     job_store: JobStore = Depends(_get_job_store),
+    access_level: AccessLevel = Depends(_resolve_access_level),
 ) -> JobAsyncResponse:
     """Retrieve a job's current status and results."""
-    return job_store.build_response(job_store.get(job_id))
+    return job_store.build_response(job_store.get(job_id), access_level=access_level)
 
 
 @_router.get(
@@ -2219,6 +2238,7 @@ def create_app(
     url_timeout: int = 60,
     allow_local_source: bool = False,
     max_inline_bytes: int = _MAX_INLINE_BYTES_DEFAULT,
+    max_url_bytes: int = _MAX_FILE_SIZE_BYTES_DEFAULT,
     allow_http_source: bool = False,
     api_key: str | None = None,
     language: str = "ch",
@@ -2247,6 +2267,9 @@ def create_app(
         Whether ``local`` sources may read paths visible to the server process.
     max_inline_bytes:
         Maximum decoded bytes accepted for ``inline`` sources.
+    max_url_bytes:
+        Maximum bytes downloaded for ``url`` sources; larger responses are
+        aborted mid-download instead of being buffered into memory.
     allow_http_source:
         Whether ``url`` sources may use plain HTTP. HTTPS is always allowed.
     api_key:
@@ -2276,6 +2299,8 @@ def create_app(
     _upload_dir.mkdir(parents=True, exist_ok=True)
     if max_inline_bytes < 0:
         raise ValueError("max_inline_bytes must be non-negative")
+    if max_url_bytes < 0:
+        raise ValueError("max_url_bytes must be non-negative")
     language = validate_public_ocr_lang(language)
 
     _model_ids, _tiers = _model_ids_and_tiers_for_server_tiers(server_tiers)
@@ -2297,6 +2322,7 @@ def create_app(
         application.state.url_timeout = url_timeout
         application.state.allow_local_source = allow_local_source
         application.state.max_inline_bytes = max_inline_bytes
+        application.state.max_url_bytes = max_url_bytes
         application.state.allow_http_source = allow_http_source
         application.state.api_key = _api_key
         application.state.language = language
@@ -2361,6 +2387,7 @@ def create_app(
     application.state.url_timeout = url_timeout
     application.state.allow_local_source = allow_local_source
     application.state.max_inline_bytes = max_inline_bytes
+    application.state.max_url_bytes = max_url_bytes
     application.state.allow_http_source = allow_http_source
     application.state.api_key = _api_key
     application.state.language = language
@@ -2509,6 +2536,12 @@ def _build_server_log_config(log_level: str) -> dict[str, Any]:
     help=f"Maximum decoded bytes for inline sources (default: {_MAX_INLINE_BYTES_DEFAULT})",
 )
 @click.option(
+    "--max-url-bytes",
+    default=_MAX_FILE_SIZE_BYTES_DEFAULT,
+    type=int,
+    help=f"Maximum bytes downloaded for url sources (default: {_MAX_FILE_SIZE_BYTES_DEFAULT})",
+)
+@click.option(
     "--allow-http-source",
     is_flag=True,
     help="Allow url sources to use plain HTTP. HTTPS is always allowed.",
@@ -2556,6 +2589,7 @@ def main(
     url_timeout: int,
     allow_local_source: bool,
     max_inline_bytes: int,
+    max_url_bytes: int,
     allow_http_source: bool,
     language: str,
     disable_image_analysis: bool,
@@ -2612,6 +2646,7 @@ def main(
             url_timeout=url_timeout,
             allow_local_source=allow_local_source,
             max_inline_bytes=max_inline_bytes,
+            max_url_bytes=max_url_bytes,
             allow_http_source=allow_http_source,
             api_key=api_key,
             language=language,
