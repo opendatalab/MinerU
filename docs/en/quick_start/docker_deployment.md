@@ -14,6 +14,32 @@ The base image keeps vLLM 0.21.0. The Dockerfile installs `mineru[torch]>=4.0,<5
 
 Build-time downloads explicitly select Torch small models and original vLLM weights. Runtime selection is also fixed with `MINERU_MODEL_SMALL_BACKEND=torch` and `MINERU_MODEL_VLM_ENGINE=vllm`. A build machine without a GPU can therefore prepare the correct weights, while inference still requires matching GPU hardware. The China Dockerfile uses ModelScope; the global version uses Hugging Face.
 
+### Image provenance and version checks
+
+The image installs `mineru[torch]>=4.0,<5` from the package index; it does **not** install the repository checkout used as the build context. Building from a `next` or patched checkout still produces a PyPI-version image. Two paths cover the different needs:
+
+| Path | Version source | Use it for |
+| --- | --- | --- |
+| Release image (`docker/global/Dockerfile`, `docker/china/Dockerfile`) | Pinned `mineru[torch]>=4.0,<5` from the package index | Production deployments |
+| Source image (release image + local install) | Your checkout / commit | Verifying `next`, debugging, reproducing a patch |
+
+Tag images with the actual version instead of only `mineru:4`, and confirm what a built image contains:
+
+```bash
+docker build -t mineru:4.0.0 -f docker/global/Dockerfile .
+docker run --rm mineru:4.0.0 python3 -c "from mineru.version import __version__; print(__version__)"
+```
+
+To test a specific source revision, build the release image once, then install your checkout inside the container:
+
+```bash
+docker run --gpus all --shm-size 32g --ipc=host -it \
+  -v "$PWD":/src mineru:4.0.0 /bin/bash -c \
+  "python3 -m pip install -e '/src[torch]' && mineru-kit parse /src/document.pdf -o /src/document.md"
+```
+
+The editable install replaces the container's MinerU with your checkout without rebuilding the model layers; record the commit SHA in the image tag when sharing such an image.
+
 ## Interactive container
 
 ```bash

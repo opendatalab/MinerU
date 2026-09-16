@@ -20,8 +20,19 @@ mineru parse <input_path> --pages all -o <output_path>
 > For more information about output files, please refer to [Output File Documentation](../reference/output_files.md).
 
 > [!NOTE]
-> The command line tool will automatically attempt cuda/mps acceleration on Linux and macOS systems. 
-> Windows users who need cuda acceleration should visit the [PyTorch official website](https://pytorch.org/get-started/locally/) to select the appropriate command for their cuda version to install acceleration-enabled `torch` and `torchvision`.
+> Runtime acceleration is selected separately for the two model components, based on installed dependencies and detected devices:
+>
+> - Small models use the Torch backend only when `torch`, `torchvision`, `transformers`, `accelerate`, and `safetensors` are **all** installed and a non-CPU device (CUDA/MPS/...) is detected; otherwise they run ONNX on CPU. Installing Torch alone is not enough.
+> - The local VLM engine is chosen independently: macOS always uses llama.cpp; on an accelerator device Linux prefers vLLM, then an installed LMDeploy, and Windows uses LMDeploy; otherwise llama.cpp. MLX is never selected automatically on macOS and requires explicit configuration.
+> - Windows users who need CUDA acceleration should first visit the [PyTorch website](https://pytorch.org/get-started/locally/) and install accelerator-enabled `torch` and `torchvision` matching their CUDA version, then install the `mineru[full]` extras.
+
+After installation, confirm the runtimes actually in effect in your environment:
+
+```bash
+mineru-kit models show
+```
+
+The output reports `Effective small backend` and `Effective VLM engine` together with the config source of each value. See [Tiers and Runtimes](./tiers.md) for the full selection table.
 
 If you need to adjust parsing options through custom parameters, you can also check the more detailed [Command Line Tools Usage Instructions](./cli_tools.md) in the documentation.
 
@@ -46,7 +57,7 @@ When an output reaches its budget, follow `next_request` or the returned continu
   >[!TIP]
   >Access `http://127.0.0.1:8000/docs` for the OpenAPI documentation. The supported service surface is `/v1/*`, including health, capability discovery, uploads, files, parse jobs, and usage.
   >
-  >Native document parsing example: [Python SDK and V1 API](sdk_api.md)
+  >Native document parsing example: [Python SDK](sdk_api.md); plain HTTP: [V1 HTTP API](http_api.md)
 
 - Start Gradio WebUI visual frontend:
   ```bash

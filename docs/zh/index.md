@@ -17,7 +17,8 @@ PDF 和图片支持四档解析；Office、OpenDocument、EPUB、OFD、HTML、CS
 
 - [安装与快速入门](quick_start/index.md)
 - [档位与运行环境](usage/tiers.md)
-- [Python SDK 与 V1 API](usage/sdk_api.md)
+- [Python SDK](usage/sdk_api.md)
+- [V1 HTTP API](usage/http_api.md)
 - [3.x → 4.0 迁移](reference/migration_4.md)
 - [旧平台适配（MinerU <4）](usage/compatibility.md)
 - [更新历史](reference/changelog.md)

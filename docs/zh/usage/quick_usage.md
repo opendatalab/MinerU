@@ -20,8 +20,19 @@ mineru parse <input_path> --pages all -o <output_path>
 > 更多关于输出文件的信息，请参考[输出文件说明](../reference/output_files.md)。
 
 > [!NOTE]
-> 命令行工具会在Linux和macOS系统自动尝试cuda/mps加速。Windows用户如需使用cuda加速，
-> 请前往 [Pytorch官网](https://pytorch.org/get-started/locally/) 选择适合自己cuda版本的命令安装支持加速的`torch`和`torchvision`。
+> 运行时加速按两个模型组件分别选择，依据是已安装的依赖和检测到的设备：
+>
+> - 小模型仅在 `torch`、`torchvision`、`transformers`、`accelerate`、`safetensors` **全部安装**且检测到非 CPU 设备（CUDA/MPS 等）时使用 Torch 后端，否则使用 ONNX（CPU）。只安装 Torch 并不足以启用。
+> - 本地 VLM 引擎独立选择：macOS 固定使用 llama.cpp；加速卡设备上 Linux 优先 vLLM、其次已安装的 LMDeploy，Windows 使用 LMDeploy；否则使用 llama.cpp。macOS 不会自动选择 MLX，需要显式配置。
+> - Windows 用户如需 CUDA 加速，请先前往 [PyTorch 官网](https://pytorch.org/get-started/locally/) 选择与 CUDA 版本匹配的命令安装支持加速的 `torch` 和 `torchvision`，再安装 `mineru[full]`。
+
+安装完成后，确认当前环境实际生效的运行时：
+
+```bash
+mineru-kit models show
+```
+
+输出会报告 `Effective small backend` 与 `Effective VLM engine`，以及每个取值的配置来源。完整选择规则见[档位与运行环境](./tiers.md)。
 
 如果需要通过自定义参数调整解析选项，您也可以在文档中查看更详细的[命令行工具使用说明](./cli_tools.md)。
 
@@ -46,7 +57,7 @@ mineru read "doc:ab12cd3/tier:standard/page:11" --json
   >[!TIP]
   >在浏览器中访问 `http://127.0.0.1:8000/docs` 查看 OpenAPI 文档。服务只提供 `/v1/*` 接口，包括健康检查、能力发现、上传、文件、解析任务和用量查询。
   >
-  >原生文档解析示例：[Python SDK 与 V1 API](sdk_api.md)
+  >原生文档解析示例：[Python SDK](sdk_api.md)；纯 HTTP 调用见 [V1 HTTP API](http_api.md)
 
 - 启动gradio webui 可视化前端：
   ```bash

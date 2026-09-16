@@ -23,6 +23,17 @@
 - `-o` 的文件/目录含义依入口而异。`mineru-kit parse` 单文件默认 Markdown；目录或多文件输入输出到目录。
 - 旧结果中的 `_backend`、`pdf_info` 等字段不能作为 4.0 文档结构模板。按[当前输出协议](output_files.md)读取实际 JSON；历史产物只在明确支持的兼容读取路径中使用，不承诺所有旧 JSON 可直接传给 `ParseResult.from_dict()`。
 
+历史结果的兼容范围如下：
+
+| 数据情况 | 4.0 的处理方式 |
+| --- | --- |
+| 带 `schema` 身份的当前共享协议（`2.0`） | 由 `ParseResult`、HTTP/ZIP 与 Gradio 严格读取；携带当前身份但校验失败的数据不会回退尝试旧协议 |
+| 可识别的 Doclib 历史缓存（3.4.5 `pdf_info` 页面、`schema_version` 为 `1.0`、或无 `schema` 键的 `2.0`） | 仅由 Doclib 专用缓存读取器在内存中转换；不代表其他入口兼容，也不改写历史文件 |
+| Doclib 之外保存的旧结果 JSON | 不承诺 `ParseResult.from_dict()` 可以读取；请重新解析源文档 |
+| 缺少素材或新版几何信息的旧产物 | 重新解析生成；仅修改版本号不等于完成迁移 |
+
+「能读取」（Doclib 缓存）、「自动迁移」（不会改写任何文件）和「能重新导出全部格式」（需要当前素材与几何）是三个不同的承诺，请按上表区分，不要互相推断。
+
 ## 配置与模型
 
 配置使用 `$MINERU_HOME/config.yaml`，可由 `MINERU_CONFIG` 指定；旧 `mineru.json` 配置不再读取。`model.stack`、`MINERU_MODEL_STACK` 和 `--stack` 已移除，改为独立配置：
@@ -35,6 +46,13 @@ model:
   vlm:
     engine: auto
 ```
+
+3.x 的两个旧环境变量仍会被识别并在冲突时报错：当配置了远程 VLM（`model.vlm.server_url` 非空）时，`MINERU_VL_API_KEY` 或 `MINERU_VL_MODEL_NAME` 非空且与新配置不一致会直接报错，要求清除旧变量。请将取值迁移到新位置：
+
+| 旧变量 | 4.0 配置字段 | 4.0 环境变量 |
+| --- | --- | --- |
+| `MINERU_VL_API_KEY` | `model.vlm.api_key` | `MINERU_MODEL_VLM_API_KEY` |
+| `MINERU_VL_MODEL_NAME` | `model.vlm.model` | `MINERU_MODEL_VLM_MODEL` |
 
 默认按平台选择后端。显式 `onnx + llama-cpp` 可用于较轻的运行环境；Torch 与 VLM 引擎也可自由组合，但必须满足对应依赖。Apple Silicon 默认 VLM 是 llama.cpp；MLX 需要手动安装和选择。
 

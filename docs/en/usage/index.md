@@ -5,7 +5,8 @@ This section provides comprehensive usage instructions for the project. We will 
 ## Table of Contents
 
 - [Tiers and runtimes](tiers.md)
-- [Python SDK and V1 API](sdk_api.md)
+- [Python SDK](sdk_api.md)
+- [V1 HTTP API](http_api.md)
 - [3.x → 4.0 migration](../reference/migration_4.md)
 - [Legacy platforms (MinerU <4)](compatibility.md)
 

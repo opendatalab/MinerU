@@ -17,7 +17,8 @@ PDF and images support all four tiers. Office, OpenDocument, EPUB, OFD, HTML, an
 
 - [Install and get started](quick_start/index.md)
 - [Tiers and runtimes](usage/tiers.md)
-- [Python SDK and V1 API](usage/sdk_api.md)
+- [Python SDK](usage/sdk_api.md)
+- [V1 HTTP API](usage/http_api.md)
 - [3.x → 4.0 migration](reference/migration_4.md)
 - [Legacy platforms (MinerU <4)](usage/compatibility.md)
 - [Release history](reference/changelog.md)

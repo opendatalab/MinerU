@@ -66,7 +66,7 @@ source .mineru/bin/activate
 ```
 
 ```bash
-uv pip install -U "mineru>=4.0"
+uv pip install -U "mineru>=4.0,<5"
 mineru-kit parse document.pdf -o document.md --tier standard
 mineru-kit webui
 ```

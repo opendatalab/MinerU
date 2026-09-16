@@ -171,9 +171,9 @@ MinerU 保留 OCR/VLM/Hybrid 推理、模型生命周期、LLM 增强、tier 策
 
 `mineru.types` 重新导出 `docvortex.schema` 的文档类型，并保留 MinerU 产品档位类型。
 
-DocVortex 的 ModelJson/MiddleJson 原生 JSON 使用独立 schema 标识和版本 1.0，持有 `producer` 与 `extensions`。MinerU 的 `effort`、`parse_mode`、`mineru_version` 位于 `extensions["mineru"]`，由 `mineru.integrations.docvortex.build_metadata()` 校验。
+共享文档协议是带 `schema` 身份的版本 2.0（Python 属性名为 `schema_id`，JSON 序列化键为 `schema`）。MinerU 直接消费共享类型：`ParseResult` 持有 `MiddleJson` 读写，不维护独立的协议封装层。MinerU 通过 `extensions["mineru"]` 记录实际执行的 `tier` 与 `parse_mode`，由 `mineru.integrations.docvortex.MinerUMetadata` 严格校验（`extra="forbid"`，不接受其他字段，没有 `effort`、`mineru_version` 字段）；生产者版本位于 `metadata.producer.version`。
 
-MinerU 的 ParseResult、CLI、HTTP API 和 Doclib 通过 `mineru.integrations.docvortex` 读写原有 schema 2.0 封装；3.4.5 旧页面转换由 `mineru.backend.postprocess.legacy_schema_adapter` 维护。产品字段校验、当前封装和旧结果兼容均归 MinerU，DocVortex 不提供兼容模块或旧路径别名。不要为旧底层构造参数增加动态兼容别名。
+历史协议兼容限定在 Doclib 持久化缓存的读取边界（`mineru.doclib.core.middle_json.read_cached_middle_json`），不扩展为通用 SDK/API 的兼容承诺；3.4.5 旧页面转换由 `mineru.backend.postprocess.legacy_schema_adapter` 在该边界内维护。协议细节以 `docs/next/middle-json/` 为唯一参考，兼容行为对应测试为 `tests/unittest/test_doclib_legacy_schema_adapter.py`。产品字段校验和旧结果兼容均归 MinerU，DocVortex 不提供兼容模块或旧路径别名。不要为旧底层构造参数增加动态兼容别名。
 
 ModelJson 仍保存 raw pages 与 page_index_map；MiddleJson 仍保存有序 PageInfo 数组。PageInfo 只有 page_idx 与 blocks。Block/InlineSpan 的现有语义、几何和父子约束保持不变；自然语言 InlineSpan 不携带字体或几何信息。
 
@@ -183,7 +183,7 @@ DocVortex 的确定性后处理独立构造有效 MiddleJson。`mineru.backend.p
 
 `mineru.render` 保留九种输出：Content List V1/V2 实现及专用选项归属 MinerU，其余七种 renderer 和通用选项来自 DocVortex。两边各自定义 RenderFormat，RenderMode 与共享文档类型仍复用。Content List 通过 `docvortex.render.fragments` 调用共享片段能力，不导入私有实现。公式定界符等宿主配置显式传入，不让 DocVortex 读取 MinerU 配置。
 
-九种输出为 Markdown、HTML、LaTeX、DOCX、EPUB、PDF、Structured Content、Content List V1/V2。LaTeX/EPUB/PDF/Content List 的低层能力不自动扩展所有产品入口。PDF 输出继续采用语义重排版。
+九种输出为 Markdown、HTML、LaTeX、DOCX、EPUB、PDF、Structured Content、Content List V1/V2。LaTeX/EPUB/PDF/Content List 的低层能力不自动扩展所有产品入口。PDF 输出布局由 `PdfLayout` 控制：`AUTO`（默认，有几何信息时保留原始布局，缺失时回退语义重排）、`ORIGINAL`（仅原始布局）、`REFLOW`（仅语义重排）。
 
 文件写出属于 `docvortex.export`；语义类型不再提供文件导出方法。结果包保存中间协议和物化素材，渲染不依赖已关闭的 PDFium 对象或源文件，也不修改原始语义树。
 

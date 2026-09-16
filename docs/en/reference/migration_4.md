@@ -23,6 +23,17 @@ Install stable with `"mineru>=4.0,<5"`, inserting extras after the package name 
 - `-o` file/directory semantics depend on the entrypoint. `mineru-kit parse` defaults to Markdown for one file; directory or multi-file inputs write to a directory.
 - Fields such as `_backend` and `pdf_info` in legacy results are not templates for 4.0. Read actual JSON using the [current output contract](output_files.md). Legacy artifacts are accepted only by explicitly supported compatibility readers; not every old JSON document can be passed to `ParseResult.from_dict()`.
 
+Legacy-result handling is scoped as follows:
+
+| Data | How 4.0 handles it |
+| --- | --- |
+| Current shared protocol with a `schema` identity (`2.0`) | Read strictly by `ParseResult`, HTTP/ZIP, and Gradio; a payload that carries the current identity but fails validation is not retried as a legacy format |
+| Recognizable Doclib-cached history (3.4.5 `pdf_info` pages, `schema_version` `1.0`, or `2.0` without a `schema` key) | Converted in memory by the dedicated Doclib cache reader only; this does not extend to other entrypoints, and history files are not rewritten |
+| Old result JSON saved outside Doclib | Not guaranteed to load via `ParseResult.from_dict()`; re-parse the source document |
+| Old artifacts missing assets or new geometry data | Regenerate by re-parsing; changing a version number alone does not migrate a payload |
+
+"Can be read" (Doclib cache), "migrated automatically" (nothing rewrites files), and "can re-export every format" (requires current assets and geometry) are separate claims; treat them independently instead of inferring one from another.
+
 ## Configuration and models
 
 Configuration lives in `$MINERU_HOME/config.yaml`, optionally overridden by `MINERU_CONFIG`. Old `mineru.json` configuration is not read. `model.stack`, `MINERU_MODEL_STACK`, and `--stack` have been removed; configure the two components independently:
@@ -35,6 +46,13 @@ model:
   vlm:
     engine: auto
 ```
+
+Two 3.x environment variables are still recognized and rejected on conflict: when a remote VLM is configured (`model.vlm.server_url` set), a non-empty `MINERU_VL_API_KEY` or `MINERU_VL_MODEL_NAME` that disagrees with the new configuration raises an error asking you to unset the legacy variable. Move these values to the new locations:
+
+| Legacy variable | 4.0 configuration field | 4.0 environment variable |
+| --- | --- | --- |
+| `MINERU_VL_API_KEY` | `model.vlm.api_key` | `MINERU_MODEL_VLM_API_KEY` |
+| `MINERU_VL_MODEL_NAME` | `model.vlm.model` | `MINERU_MODEL_VLM_MODEL` |
 
 Automatic selection follows the platform. Explicit `onnx + llama-cpp` can serve lighter environments. Torch and VLM engines can also be combined when their dependencies are available. Apple Silicon defaults to llama.cpp for the VLM; MLX requires manual installation and selection.
 

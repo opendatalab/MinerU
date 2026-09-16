@@ -1,4 +1,4 @@
-# Python SDK and V1 API
+# Python SDK
 
 ## Local Python SDK
 
@@ -58,29 +58,24 @@ print(result.markdown())
 mineru-kit webui --api-url http://127.0.0.1:8000
 ```
 
-## HTTP workflow
+### Batching and instance reuse
 
-Discover actual service capabilities first:
+Reuse one `MinerUApiParser` instance for batch work instead of constructing a parser per file; each call opens and closes its own HTTP session, so there is nothing to release explicitly:
 
-```bash
-curl http://127.0.0.1:8000/v1/health
-curl http://127.0.0.1:8000/v1/tiers
+```python
+from pathlib import Path
+from mineru.parser import MinerUApiParser
+
+parser = MinerUApiParser(api_url="http://127.0.0.1:8000", tier="standard", include_images=True)
+for pdf in Path("./documents").glob("*.pdf"):
+    result = parser.parse(str(pdf))
+    (Path("out") / f"{pdf.stem}.md").write_text(result.markdown(), encoding="utf-8")
 ```
 
-1. Create an upload with `POST /v1/uploads`. Follow its returned URL, HTTP method, and headers, then call `/v1/uploads/{id}/complete` when required to obtain `file.id`. A completed deduplicated upload can return the file reference directly.
-2. Submit a job with `POST /v1/parse/jobs`, using a body such as the following.
-3. Poll `GET /v1/parse/jobs/{job_id}`. `completed`, `partial`, `failed`, and `canceled` are all terminal. Inspect per-file errors; partial success is not full completion.
-4. Download outputs through `GET /v1/files/{file_id}/content` using the artifact references in the job response.
+Failures on the service side surface as per-file job errors rather than client exceptions; check the service logs and `GET /v1/usage` when throughput matters. See [Tiers and Runtimes](tiers.md) for choosing `tier`.
 
-```json
-{
-  "files": [{"source": {"type": "file_id", "file_id": "file-id-from-upload"}, "page_range": "1-3"}],
-  "tier": "standard",
-  "ocr_mode": "auto",
-  "output_formats": ["markdown", "middle_json", "structured_content", "zip"]
-}
-```
+## HTTP API without the SDK
 
-Omit `page_range` for non-PDF files. The current self-hosted server provides the four output types above. Consult the server capabilities and OpenAPI at `/docs`; renderer formats do not imply API support.
+The same upload → job → poll → download cycle can be driven with plain HTTP calls. The [V1 HTTP API walkthrough](http_api.md) provides a complete curl example covering upload completion, terminal states (including `partial`), resuming after a client timeout, and artifact downloads.
 
 The 4.0 V1 service does not provide legacy `/file_parse` or `/tasks` routes. See [migration](../reference/migration_4.md) for older clients and [output formats](../reference/output_files.md) for rendering and saving Python results.

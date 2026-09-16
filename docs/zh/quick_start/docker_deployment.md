@@ -14,6 +14,32 @@ docker build -t mineru:4 -f docker/china/Dockerfile .
 
 构建时明确下载 Torch 小模型和 vLLM 原始权重，运行时也固定 `MINERU_MODEL_SMALL_BACKEND=torch`、`MINERU_MODEL_VLM_ENGINE=vllm`。这允许无 GPU 构建机准备正确的权重，实际推理仍需要匹配的 GPU。国内 Dockerfile 使用 ModelScope，国际版本使用 Hugging Face。
 
+### 镜像版本来源与确认
+
+镜像从包索引安装 `mineru[torch]>=4.0,<5`，**不会**安装作为构建上下文的仓库源码；即使从 `next` 或打过补丁的 checkout 构建，得到的仍是 PyPI 版本镜像。两条路径对应不同需求：
+
+| 路径 | 版本来源 | 适用场景 |
+| --- | --- | --- |
+| 正式版镜像（`docker/global/Dockerfile`、`docker/china/Dockerfile`） | 包索引固定的 `mineru[torch]>=4.0,<5` | 生产部署 |
+| 源码镜像（正式版镜像 + 本地安装） | 你的 checkout / 提交 | 验证 `next`、调试、复现补丁 |
+
+建议给镜像打上实际版本号的 tag，而不是只用 `mineru:4`，并在构建后确认镜像内容：
+
+```bash
+docker build -t mineru:4.0.0 -f docker/china/Dockerfile .
+docker run --rm mineru:4.0.0 python3 -c "from mineru.version import __version__; print(__version__)"
+```
+
+要测试特定源码版本，先构建正式版镜像，再在容器内安装 checkout：
+
+```bash
+docker run --gpus all --shm-size 32g --ipc=host -it \
+  -v "$PWD":/src mineru:4.0.0 /bin/bash -c \
+  "python3 -m pip install -e '/src[torch]' && mineru-kit parse /src/document.pdf -o /src/document.md"
+```
+
+可编辑安装会把容器内的 MinerU 换成你的 checkout，且不重建模型层；分发此类镜像时把提交 SHA 一并记录到 tag 中。
+
 ## 交互式容器
 
 ```bash
