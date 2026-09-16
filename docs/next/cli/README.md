@@ -60,7 +60,7 @@ MinerU 仓库提供两款命令行工具：
 
 `mineru` 与 `mineru-kit` 的用户可见文案（帮助、运行时消息、表格、错误提示）提供中英双语，启动时自动选择：
 
-- 检测顺序为 `MINERU_LANG` > `LC_ALL` > `LC_MESSAGES` > `LANG`（POSIX 语义，`C`/`POSIX` 视为该层决定英文）；语言部分以 `zh` 开头（覆盖 `zh_CN`/`zh_TW`/`zh_HK`/`zh-Hans`）即使用简体中文，否则英文；全部未设置时 Windows 回退系统 UI 语言，其余平台英文。
+- 检测顺序为 `MINERU_LANG` > `LC_ALL` > `LC_MESSAGES` > `LANG`（POSIX 语义）；语言部分以 `zh` 开头（覆盖 `zh_CN`/`zh_TW`/`zh_HK`/`zh-Hans`）即使用简体中文，否则英文；裸 `C`/`POSIX` 视为该层明确选择英文，而 `C.UTF-8` 这类带编码后缀的值通常由 IDE 内置终端/容器注入以保证 UTF-8 输出、不代表语言偏好，会跳过继续探测；全部无偏好/未设置时 Windows/macOS 回退系统 UI 语言（覆盖 PyCharm 等 IDE 内置终端的情况），其余平台英文。
 - 设置 `MINERU_LANG=en|zh` 可强制指定语言。
 - click/typer 框架脚手架词（`Usage:`、`Options:`、`Show this message and exit.` 等）保持英文。
 - 不翻译项：JSON 输出的键与枚举值、`<!-- Next: ... -->` 续读标记等协议串、错误码注册表、Gradio WebUI（自带 i18n）。

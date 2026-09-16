@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 
 from mineru.cli.telemetry import TELEMETRY_CONSENT_MESSAGE
+from mineru.utils import i18n
 from mineru.utils.i18n import detect_language, reset_language_cache, t
 from mineru.utils.translations import ZH_MESSAGES
 
@@ -45,6 +46,20 @@ class TestDetectLanguage:
         assert detect_language({"LC_ALL": "C", "LANG": "zh_CN.UTF-8"}) == "en"
         assert detect_language({"LC_ALL": "POSIX", "LANG": "zh_CN.UTF-8"}) == "en"
 
+    def test_c_utf8_is_not_a_language_choice(self) -> None:
+        """C.UTF-8 由 IDE/容器注入以保证编码,不代表语言偏好,应跳过继续探测。"""
+        assert detect_language({"LC_ALL": "C.UTF-8", "LANG": "zh_CN.UTF-8"}) == "zh"
+        assert detect_language({"LANG": "C.UTF-8"}) == "en"
+
+    def test_c_utf8_falls_through_to_macos_system_locale(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(i18n.sys, "platform", "darwin")
+        monkeypatch.setattr(i18n, "_macos_default_language", lambda: "zh_CN")
+        for name in i18n.LANGUAGE_ENV_VARS:
+            monkeypatch.delenv(name, raising=False)
+        monkeypatch.setenv("LANG", "C.UTF-8")
+        reset_language_cache()
+        assert detect_language() == "zh"
+
     def test_chinese_variants(self) -> None:
         for value in ("zh", "zh_CN.UTF-8", "zh_TW", "zh-HK", "zh_Hans@pinyin", "ZH_CN.UTF-8"):
             assert detect_language({"LANG": value}) == "zh", value
@@ -52,6 +67,19 @@ class TestDetectLanguage:
     def test_unset_falls_back_to_english(self) -> None:
         assert detect_language({}) == "en"
         assert detect_language({"LANG": ""}) == "en"
+
+    def test_macos_system_locale_fallback(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """环境变量全未设置时,macOS 回退系统 UI 语言(IDE 内置终端不设 LANG)。"""
+        for name in i18n.LANGUAGE_ENV_VARS:
+            monkeypatch.delenv(name, raising=False)
+        monkeypatch.setattr(i18n.sys, "platform", "darwin")
+        monkeypatch.setattr(i18n, "_macos_default_language", lambda: "zh_Hans_CN")
+        reset_language_cache()
+        assert detect_language() == "zh"
+
+        monkeypatch.setattr(i18n, "_macos_default_language", lambda: "en_US")
+        reset_language_cache()
+        assert detect_language() == "en"
 
     def test_reads_process_env_by_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setenv("MINERU_LANG", "zh")
