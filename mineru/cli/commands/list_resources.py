@@ -17,19 +17,20 @@ from ...doclib.types import (
     ScanStatus,
 )
 from ...types import Tier
+from ...utils.i18n import t
 from ..contracts import CliContext
 from ..runtime import run_cli
 
-app = typer.Typer(help="List doclib resources", no_args_is_help=True)
+app = typer.Typer(help=t("List doclib resources"), no_args_is_help=True)
 
 
-@app.command("parses")
+@app.command("parses", help=t("List parse tasks."))
 def list_parses(
-    status: ParseStatus | None = typer.Option(None, "--status", help="Parse status filter"),
-    tier: Tier | None = typer.Option(None, "--tier", help="Parse tier filter"),
-    limit: int = typer.Option(50, "--limit", "-n", help="Max rows"),
-    offset: int = typer.Option(0, "--offset", help="Result offset"),
-    json_mode: bool = typer.Option(False, "--json", help="JSON output"),
+    status: ParseStatus | None = typer.Option(None, "--status", help=t("Parse status filter")),
+    tier: Tier | None = typer.Option(None, "--tier", help=t("Parse tier filter")),
+    limit: int = typer.Option(50, "--limit", "-n", help=t("Max rows")),
+    offset: int = typer.Option(0, "--offset", help=t("Result offset")),
+    json_mode: bool = typer.Option(False, "--json", help=t("JSON output")),
 ) -> None:
     """List parse tasks."""
     run_cli(
@@ -39,14 +40,14 @@ def list_parses(
     )
 
 
-@app.command("scans")
+@app.command("scans", help=t("List scan tasks."))
 def list_scans(
-    status: ScanStatus | None = typer.Option(None, "--status", help="Scan status filter"),
-    kind: ScanKind | None = typer.Option(None, "--kind", help="Scan kind filter"),
-    watch_id: int | None = typer.Option(None, "--watch-id", help="Watch id filter"),
-    limit: int = typer.Option(50, "--limit", "-n", help="Max rows"),
-    offset: int = typer.Option(0, "--offset", help="Result offset"),
-    json_mode: bool = typer.Option(False, "--json", help="JSON output"),
+    status: ScanStatus | None = typer.Option(None, "--status", help=t("Scan status filter")),
+    kind: ScanKind | None = typer.Option(None, "--kind", help=t("Scan kind filter")),
+    watch_id: int | None = typer.Option(None, "--watch-id", help=t("Watch id filter")),
+    limit: int = typer.Option(50, "--limit", "-n", help=t("Max rows")),
+    offset: int = typer.Option(0, "--offset", help=t("Result offset")),
+    json_mode: bool = typer.Option(False, "--json", help=t("JSON output")),
 ) -> None:
     """List scan tasks."""
     run_cli(
@@ -56,14 +57,14 @@ def list_scans(
     )
 
 
-@app.command("files")
+@app.command("files", help=t("List file path records."))
 def list_files(
-    status: FileStatus | None = typer.Option(None, "--status", help="File status filter"),
-    ext: str | None = typer.Option(None, "--ext", help="File extension filter, e.g. pdf"),
-    watch_id: int | None = typer.Option(None, "--watch-id", help="Watch id filter"),
-    limit: int = typer.Option(200, "--limit", "-n", help="Max rows"),
-    offset: int = typer.Option(0, "--offset", help="Result offset"),
-    json_mode: bool = typer.Option(False, "--json", help="JSON output"),
+    status: FileStatus | None = typer.Option(None, "--status", help=t("File status filter")),
+    ext: str | None = typer.Option(None, "--ext", help=t("File extension filter, e.g. pdf")),
+    watch_id: int | None = typer.Option(None, "--watch-id", help=t("Watch id filter")),
+    limit: int = typer.Option(200, "--limit", "-n", help=t("Max rows")),
+    offset: int = typer.Option(0, "--offset", help=t("Result offset")),
+    json_mode: bool = typer.Option(False, "--json", help=t("JSON output")),
 ) -> None:
     """List file path records."""
     run_cli(
@@ -73,12 +74,12 @@ def list_files(
     )
 
 
-@app.command("docs")
+@app.command("docs", help=t("List active docs."))
 def list_docs(
-    file_type: str | None = typer.Option(None, "--file-type", help="Document file type filter, e.g. pdf"),
-    limit: int = typer.Option(200, "--limit", "-n", help="Max rows"),
-    offset: int = typer.Option(0, "--offset", help="Result offset"),
-    json_mode: bool = typer.Option(False, "--json", help="JSON output"),
+    file_type: str | None = typer.Option(None, "--file-type", help=t("Document file type filter, e.g. pdf")),
+    limit: int = typer.Option(200, "--limit", "-n", help=t("Max rows")),
+    offset: int = typer.Option(0, "--offset", help=t("Result offset")),
+    json_mode: bool = typer.Option(False, "--json", help=t("JSON output")),
 ) -> None:
     """List active docs."""
     run_cli(
@@ -94,13 +95,13 @@ def _client() -> DoclibClient:
 
 def _render_list_parses(data: ListParsesResponse) -> Table | str:
     if not data.parses:
-        return "No parses found."
-    table = Table(title=f"Parses ({data.total} total)")
-    table.add_column("ID", justify="right")
-    table.add_column("Status", style="green")
-    table.add_column("Tier", style="cyan")
-    table.add_column("Pages")
-    table.add_column("Doc ID")
+        return t("No parses found.")
+    table = Table(title=t("Parses ({total} total)", total=data.total))
+    table.add_column(t("ID"), justify="right")
+    table.add_column(t("Status"), style="green")
+    table.add_column(t("Tier"), style="cyan")
+    table.add_column(t("Pages"))
+    table.add_column(t("Doc ID"))
     for item in data.parses:
         table.add_row(str(item.id), item.status, item.tier, item.page_range, item.short_id)
     return table
@@ -108,15 +109,15 @@ def _render_list_parses(data: ListParsesResponse) -> Table | str:
 
 def _render_list_scans(data: ScanListResponse) -> Table | str:
     if not data.scans:
-        return "No scans found."
-    table = Table(title=f"Scans ({data.total} total)")
-    table.add_column("ID", justify="right")
-    table.add_column("Status", style="green")
-    table.add_column("Kind", style="cyan")
-    table.add_column("Path")
-    table.add_column("Seen", justify="right")
-    table.add_column("Refreshed", justify="right")
-    table.add_column("Errors", justify="right")
+        return t("No scans found.")
+    table = Table(title=t("Scans ({total} total)", total=data.total))
+    table.add_column(t("ID"), justify="right")
+    table.add_column(t("Status"), style="green")
+    table.add_column(t("Kind"), style="cyan")
+    table.add_column(t("Path"))
+    table.add_column(t("Seen"), justify="right")
+    table.add_column(t("Refreshed"), justify="right")
+    table.add_column(t("Errors"), justify="right")
     for item in data.scans:
         table.add_row(
             str(item.id),
@@ -132,12 +133,12 @@ def _render_list_scans(data: ScanListResponse) -> Table | str:
 
 def _render_list_files(data: ListFilesResponse) -> Table | str:
     if not data.files:
-        return "No files found."
-    table = Table(title=f"Files ({data.total} total)")
-    table.add_column("Status", style="green")
-    table.add_column("Path")
-    table.add_column("Ext", style="cyan")
-    table.add_column("Doc ID")
+        return t("No files found.")
+    table = Table(title=t("Files ({total} total)", total=data.total))
+    table.add_column(t("Status"), style="green")
+    table.add_column(t("Path"))
+    table.add_column(t("Ext"), style="cyan")
+    table.add_column(t("Doc ID"))
     for item in data.files:
         table.add_row(item.status, item.path, item.ext, item.short_id or "-")
     return table
@@ -145,12 +146,12 @@ def _render_list_files(data: ListFilesResponse) -> Table | str:
 
 def _render_list_docs(data: ListDocsResponse) -> Table | str:
     if not data.docs:
-        return "No docs found."
-    table = Table(title=f"Docs ({data.total} total)")
-    table.add_column("Doc ID")
-    table.add_column("Type", style="cyan")
-    table.add_column("Pages", justify="right")
-    table.add_column("Title")
+        return t("No docs found.")
+    table = Table(title=t("Docs ({total} total)", total=data.total))
+    table.add_column(t("Doc ID"))
+    table.add_column(t("Type"), style="cyan")
+    table.add_column(t("Pages"), justify="right")
+    table.add_column(t("Title"))
     for item in data.docs:
         title = item.title or "-"
         table.add_row(item.short_id, item.file_type or "-", str(item.page_count or "-"), title)

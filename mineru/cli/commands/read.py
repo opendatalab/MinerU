@@ -12,6 +12,7 @@ import typer
 from ...doclib.client import DoclibClient
 from ...doclib.types import ContentNextRequest, DocContentResponse, ImageFormat
 from ...errors import MineruError
+from ...utils.i18n import t
 from ..contracts import CliContext, CliResult
 from ..runtime import cli_ok, run_cli
 from .parse import _append_next_marker, _ensure_output_parent, _output_info
@@ -23,13 +24,13 @@ class ReadTextOutput:
 
 
 def read_cmd(
-    locator: str = typer.Argument(..., help="Doclib locator, e.g. doc:ab12cd3/tier:basic/page:4"),
-    context: int = typer.Option(0, "--context", help="Read N pages/blocks before and after the locator"),
-    limit: int = typer.Option(30000, "--limit", help="Soft character limit for STDOUT content"),
-    format: Literal["markdown", "image"] = typer.Option("markdown", "-f", "--format", help="Output format: markdown, image"),
-    output: str = typer.Option(None, "-o", "--output", help="Output path; creates parent directories"),
-    no_marker: bool = typer.Option(False, "--no-marker", help="Omit continuation marker from output"),
-    json_mode: bool = typer.Option(False, "--json", help="JSON output"),
+    locator: str = typer.Argument(..., help=t("Doclib locator, e.g. doc:ab12cd3/tier:basic/page:4")),
+    context: int = typer.Option(0, "--context", help=t("Read N pages/blocks before and after the locator")),
+    limit: int = typer.Option(30000, "--limit", help=t("Soft character limit for STDOUT content")),
+    format: Literal["markdown", "image"] = typer.Option("markdown", "-f", "--format", help=t("Output format: markdown, image")),
+    output: str = typer.Option(None, "-o", "--output", help=t("Output path; creates parent directories")),
+    no_marker: bool = typer.Option(False, "--no-marker", help=t("Omit continuation marker from output")),
+    json_mode: bool = typer.Option(False, "--json", help=t("JSON output")),
 ) -> None:
     """Read parsed doclib content by locator."""
     ctx = CliContext(json_mode=json_mode)
@@ -91,7 +92,7 @@ def _prepare_read_output(
         payload: dict[str, object] = content.model_dump(mode="json")
         if content.format == "image":
             if content.asset is None:
-                raise MineruError("asset_not_available", "No image asset returned.", "format")
+                raise MineruError("asset_not_available", t("No image asset returned."), "format")
             shutil.copyfile(content.asset.path, output_path)
         else:
             Path(output_path).write_text(content.content, encoding="utf-8")
@@ -104,19 +105,19 @@ def _prepare_read_output(
 
     if content.format == "image":
         if content.asset is None:
-            raise MineruError("asset_not_available", "No image asset returned.", "format")
+            raise MineruError("asset_not_available", t("No image asset returned."), "format")
         asset_path = content.asset.path
         if output_path and output_path != "-":
             shutil.copyfile(asset_path, output_path)
-            return cli_ok(ReadTextOutput(f"Written to {output_path}"), render=_render_read_text)
+            return cli_ok(ReadTextOutput(t("Written to {path}", path=output_path)), render=_render_read_text)
         return cli_ok(ReadTextOutput(asset_path), render=_render_read_text)
 
     if output_path and output_path != "-":
         Path(output_path).write_text(content.content, encoding="utf-8")
-        return cli_ok(ReadTextOutput(f"Written to {output_path}"), render=_render_read_text)
+        return cli_ok(ReadTextOutput(t("Written to {path}", path=output_path)), render=_render_read_text)
 
     if not content.content and content.content_ranges:
-        message = "No renderable content in requested pages."
+        message = t("No renderable content in requested pages.")
         if content.next_request and not no_marker:
             marker = _read_next_marker(content.next_request)
             if marker:
@@ -141,7 +142,7 @@ def _image_format_for_output(*, format: Literal["markdown", "image"], output: st
     if output == "-":
         raise MineruError(
             "image_output_extension_unsupported",
-            "Image output requires a file path ending with .png, .jpg, .jpeg, or .webp; stdout is not supported.",
+            t("Image output requires a file path ending with .png, .jpg, .jpeg, or .webp; stdout is not supported."),
             "output",
         )
     suffix = Path(output).suffix.lower()
@@ -153,7 +154,7 @@ def _image_format_for_output(*, format: Literal["markdown", "image"], output: st
         return "webp"
     raise MineruError(
         "image_output_extension_unsupported",
-        "Image output path must end with .png, .jpg, .jpeg, or .webp.",
+        t("Image output path must end with .png, .jpg, .jpeg, or .webp."),
         "output",
     )
 

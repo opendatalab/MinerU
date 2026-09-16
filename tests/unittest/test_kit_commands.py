@@ -45,11 +45,12 @@ def test_webui_main_runs_modern_command(monkeypatch: pytest.MonkeyPatch) -> None
     """校验独立入口复用 Web UI 命令且先配置标准流。"""
     calls: list[object] = []
     monkeypatch.setattr(webui, "configure_standard_streams", lambda: calls.append("configure"))
-    monkeypatch.setattr(webui.typer, "run", lambda command: calls.append(command))
+    monkeypatch.setattr(webui, "webui_cmd", lambda: calls.append("command"))
 
-    webui.main()
+    code = _invoke_standalone_command(monkeypatch, webui.main, "mineru-webui", [])
 
-    assert calls == ["configure", webui.webui_cmd]
+    assert code == 0
+    assert calls == ["configure", "command"]
 
 
 def test_webui_console_script_targets_modern_command() -> None:
@@ -103,11 +104,12 @@ def test_standalone_main_configures_streams_before_typer_run(
     """校验 API 和下载入口先配置标准流，再直接复用现有回调。"""
     calls: list[object] = []
     monkeypatch.setattr(module, "configure_standard_streams", lambda: calls.append("configure"))
-    monkeypatch.setattr(typer, "run", lambda command: calls.append(command))
+    monkeypatch.setattr(module, callback.__name__, lambda: calls.append("command"))
 
-    entrypoint()
+    code = _invoke_standalone_command(monkeypatch, entrypoint, "standalone-entry", [])
 
-    assert calls == ["configure", callback]
+    assert code == 0
+    assert calls == ["configure", "command"]
 
 
 def test_standalone_vlm_main_configures_streams_and_forwards_extra_args(monkeypatch: pytest.MonkeyPatch) -> None:

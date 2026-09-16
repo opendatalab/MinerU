@@ -6,15 +6,16 @@ import typer
 
 from ...doclib.client import DoclibClient
 from ...doclib.types import ForgetPathRequest, ForgetPathResponse
+from ...utils.i18n import t
 from ..contracts import CliContext
 from ..path_utils import normalize_cli_path
 from ..runtime import run_cli
 
 
 def forget_cmd(
-    path: str = typer.Argument(..., help="File or directory path to forget from doclib"),
-    dry_run: bool = typer.Option(True, "--dry-run/--no-dry-run", help="Preview only"),
-    json_mode: bool = typer.Option(False, "--json", help="JSON output"),
+    path: str = typer.Argument(..., help=t("File or directory path to forget from doclib")),
+    dry_run: bool = typer.Option(True, "--dry-run/--no-dry-run", help=t("Preview only")),
+    json_mode: bool = typer.Option(False, "--json", help=t("JSON output")),
 ) -> None:
     run_cli(
         CliContext(json_mode=json_mode),
@@ -28,7 +29,13 @@ def forget_cmd(
 
 def _render_forget_result(data: ForgetPathResponse) -> str:
     if data.dry_run:
-        return (
-            f"Would forget {data.forgotten_files} file record(s) (matched_as={data.matched_as}). Use --no-dry-run to proceed."
+        return t(
+            "Would forget {count} file record(s) (matched_as={matched_as}). Use --no-dry-run to proceed.",
+            count=data.forgotten_files,
+            matched_as=data.matched_as,
         )
-    return f"Forgot {data.forgotten_files} file record(s) (matched_as={data.matched_as})."
+    return t(
+        "Forgot {count} file record(s) (matched_as={matched_as}).",
+        count=data.forgotten_files,
+        matched_as=data.matched_as,
+    )

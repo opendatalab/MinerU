@@ -6,6 +6,7 @@ import typer
 from click.core import Context
 from typer.core import TyperGroup
 
+from ..utils.i18n import t
 from ..utils.logger import configure_global_log_level
 from ..utils.stdio import configure_standard_streams
 from .commands import cleanup, config, list_resources, server, show, telemetry, usage, watch
@@ -54,7 +55,7 @@ class OrderedRootGroup(TyperGroup):
 app = typer.Typer(
     name="mineru",
     cls=OrderedRootGroup,
-    help="MinerU — your personal document center, built for agents",
+    help=t("MinerU — your personal document center, built for agents"),
     no_args_is_help=True,
     add_completion=False,
 )
@@ -68,28 +69,28 @@ def root(
         "--version",
         callback=show_version,
         is_eager=True,
-        help="Show the version and exit.",
+        help=t("Show the version and exit."),
     ),
 ) -> None:
     prepare_cli_telemetry(ctx)
 
 
-app.command("parse")(parse_cmd)
-app.command("read")(read_cmd)
+app.command("parse", help=t("Parse a document file."))(parse_cmd)
+app.command("read", help=t("Read parsed doclib content by locator."))(read_cmd)
 app.command("scan")(scan_cmd)
 app.add_typer(watch.app, name="watch")
-app.command("search")(search_cmd)
-app.command("find")(find_cmd)
-app.command("usage")(usage.usage_cmd)
+app.command("search", help=t("Search parsed document content."))(search_cmd)
+app.command("find", help=t("Search filenames only (not document content)."))(find_cmd)
+app.command("usage", help=t("Show Remote API usage and limits."))(usage.usage_cmd)
 app.add_typer(list_resources.app, name="list")
 app.add_typer(show.app, name="show")
 app.add_typer(telemetry.app, name="telemetry")
 app.add_typer(server.app, name="server")
 app.add_typer(config.app, name="config")
-app.command("invalidate")(invalidate_cmd)
+app.command("invalidate", help=t("Mark done parse results as superseded."))(invalidate_cmd)
 app.command("forget")(forget_cmd)
 app.add_typer(cleanup.app, name="cleanup")
-app.command("version")(version_cmd)
+app.command("version", help=t("Print MinerU and Python versions."))(version_cmd)
 
 
 def main() -> None:

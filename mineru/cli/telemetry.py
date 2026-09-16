@@ -9,6 +9,7 @@ import typer
 
 from ..doclib.client import DoclibClient
 from ..doclib.telemetry import TelemetryContext, infer_default_client_context, reset_telemetry_context, set_telemetry_context
+from ..utils.i18n import t
 
 PROMPT_COMMANDS = {
     "parse",
@@ -64,8 +65,8 @@ def maybe_prompt_telemetry_consent() -> None:
     if status.state != "unset":
         return
 
-    typer.echo(TELEMETRY_CONSENT_MESSAGE)
-    enabled = typer.confirm("Enable telemetry?", default=True)
+    typer.echo(t(TELEMETRY_CONSENT_MESSAGE))
+    enabled = typer.confirm(t("Enable telemetry?"), default=True)
     try:
         client.telemetry_action("enable" if enabled else "disable")
     except Exception:

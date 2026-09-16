@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 import typer
 
+from ..utils.i18n import t
 from .contracts import CliContext
 from .runtime import run_cli
 
@@ -28,8 +29,8 @@ def version_info() -> VersionInfo:
 def render_version(data: VersionInfo) -> str:
     return "\n".join(
         [
-            f"MinerU version: {data.mineru_version}",
-            f"Python version: {data.python_version}",
+            t("MinerU version: {version}", version=data.mineru_version),
+            t("Python version: {version}", version=data.python_version),
         ]
     )
 
@@ -41,7 +42,7 @@ def show_version(ctx: typer.Context, value: bool) -> None:
     ctx.exit()
 
 
-def version_cmd(json_mode: bool = typer.Option(False, "--json", help="JSON output")) -> None:
+def version_cmd(json_mode: bool = typer.Option(False, "--json", help=t("JSON output"))) -> None:
     """Print MinerU and Python versions."""
     ctx = CliContext(json_mode=json_mode)
     run_cli(ctx, version_info, render=render_version)

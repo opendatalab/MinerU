@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from ...doclib.client import DoclibClient
 from ...doclib.types import RemoteUsageResponse
+from ...utils.i18n import t
 from ..contracts import CliContext, RenderableOutput
 from ..guidance import (
     REMOTE_API_URL_CONFIG,
@@ -25,7 +26,7 @@ class RemoteUsageOutput(BaseModel):
     guidance_text: str | None = Field(default=None, exclude=True, repr=False)
 
 
-def usage_cmd(json_mode: bool = typer.Option(False, "--json", help="JSON output")) -> None:
+def usage_cmd(json_mode: bool = typer.Option(False, "--json", help=t("JSON output"))) -> None:
     """Show Remote API usage and limits."""
     run_cli(
         CliContext(json_mode=json_mode),
@@ -51,23 +52,23 @@ def _get_remote_usage() -> RemoteUsageOutput:
 def _render_remote_usage(view: RemoteUsageOutput) -> RenderableOutput:
     usage = view.usage
     lines = [
-        "Remote API Usage",
+        t("Remote API Usage"),
         "",
-        f"Remote URL: {view.remote_url}",
-        f"Access level: {usage.access_level}",
-        f"Billing period: {_format_billing_period(usage.billing_period.start, usage.billing_period.end)}",
+        t("Remote URL: {url}", url=view.remote_url),
+        t("Access level: {level}", level=usage.access_level),
+        t("Billing period: {period}", period=_format_billing_period(usage.billing_period.start, usage.billing_period.end)),
         "",
-        "Current",
-        f"  Pages processed: {usage.current.pages_processed}",
-        f"  Files processed: {usage.current.files_processed}",
-        f"  Jobs created: {usage.current.jobs_created}",
+        t("Current"),
+        "  " + t("Pages processed: {count}", count=usage.current.pages_processed),
+        "  " + t("Files processed: {count}", count=usage.current.files_processed),
+        "  " + t("Jobs created: {count}", count=usage.current.jobs_created),
         "",
-        "Limits",
-        f"  Max pages per file: {usage.limits.max_pages_per_file}",
-        f"  Max file size: {_format_bytes(usage.limits.max_file_size_bytes)}",
-        f"  Max files per job: {usage.limits.max_files_per_job}",
-        f"  Max concurrent jobs: {usage.limits.max_concurrent_jobs}",
-        f"  File retention: {_format_retention(usage.limits.max_file_retention_days)}",
+        t("Limits"),
+        "  " + t("Max pages per file: {count}", count=usage.limits.max_pages_per_file),
+        "  " + t("Max file size: {size}", size=_format_bytes(usage.limits.max_file_size_bytes)),
+        "  " + t("Max files per job: {count}", count=usage.limits.max_files_per_job),
+        "  " + t("Max concurrent jobs: {count}", count=usage.limits.max_concurrent_jobs),
+        "  " + t("File retention: {retention}", retention=_format_retention(usage.limits.max_file_retention_days)),
     ]
     output: list[str] = ["\n".join(lines)]
     if view.guidance_text is not None:
@@ -78,7 +79,7 @@ def _render_remote_usage(view: RemoteUsageOutput) -> RenderableOutput:
 def _format_billing_period(start: str, end: str | None) -> str:
     formatted_start = _format_utc_timestamp(start)
     if end is None:
-        return f"{formatted_start} - ongoing"
+        return t("{start} - ongoing", start=formatted_start)
     return f"{formatted_start} - {_format_utc_timestamp(end)}"
 
 
@@ -97,8 +98,8 @@ def _format_bytes(value: int) -> str:
 
 def _format_retention(days: int | None) -> str:
     if days is None:
-        return "not specified"
-    return f"{days} day" if days == 1 else f"{days} days"
+        return t("not specified")
+    return t("{days} day", days=days) if days == 1 else t("{days} days", days=days)
 
 
 __all__ = ["usage_cmd"]

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Literal
 
+from .utils.i18n import t
+
 ErrorType = Literal[
     "invalid_request_error",
     "authentication_error",
@@ -194,12 +196,12 @@ class EngineError(MineruError):
 
 class ServerNotRunningError(MineruError):
     def __init__(self) -> None:
-        super().__init__("server_not_running", "Local mineru server is not running. Run 'mineru server start'.")
+        super().__init__("server_not_running", t("Local mineru server is not running. Run 'mineru server start'."))
 
 
 class ServerBusyError(MineruError):
-    def __init__(self, message: str = "MinerU server is busy. Retry the request.") -> None:
-        super().__init__("server_busy", message)
+    def __init__(self, message: str = "") -> None:
+        super().__init__("server_busy", message or t("MinerU server is busy. Retry the request."))
 
 
 # ── FastAPI error response builder ─────────────────────────────────
