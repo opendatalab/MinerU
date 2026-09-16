@@ -1,6 +1,6 @@
 # Docker Deployment (MinerU 4.0 / NVIDIA)
 
-The general Docker setup targets Linux with NVIDIA GPUs (WSL2 on Windows). Install directly on macOS for Apple Silicon; this Docker workflow does not provide MPS acceleration. AMD and vendor accelerators use the [legacy guides](../usage/compatibility.md), whose dedicated Dockerfiles stay on `mineru<4`.
+The general Docker setup targets Linux with NVIDIA GPUs (WSL2 on Windows). Install directly on macOS for Apple Silicon; this Docker workflow does not provide MPS acceleration. Docker deployment for non-NVIDIA devices is pending an update; see the [legacy guides](../usage/compatibility.md) in the meantime — their dedicated Dockerfiles stay on `mineru<4`.
 
 ## Build the image
 
