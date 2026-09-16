@@ -71,7 +71,7 @@ mineru-kit parse document.pdf -o document.md --tier standard
 mineru-kit webui
 ```
 
-默认安装即可开箱即用：小模型使用 ONNX CPU 推理，VLM 以 llama.cpp Vulkan 模式运行，在绝大多数设备上都有良好的兼容性。如果设备配备 NVIDIA GPU，可安装 `mineru[full]>=4.0` 获得最佳吞吐；注意 Windows 的 GPU 版本 torch 需要单独安装，而 macOS 默认安装已是最佳吞吐包，无需额外安装 `[full]`。
+默认安装即可开箱即用：小模型使用 ONNX CPU 推理，VLM 以 llama.cpp Vulkan 模式运行，在绝大多数设备上都有良好的兼容性。如果设备配备 NVIDIA GPU，可安装 `mineru[full]>=4.0` 获得最佳吞吐；注意 Windows 的 GPU 版本 torch 需要单独安装，而 macOS 默认安装已是最佳吞吐包，无需额外安装 `[full]`。其他非 NVIDIA 设备需自行安装与硬件匹配的加速版 torch 及 vllm/lmdeploy，才能获得最佳推理速度/吞吐。
 
 文档库与 Agent 阅读使用 `mineru parse document.pdf --json`；PDF 默认前 10 页，后续按返回的 locator 继续。无状态转换使用 `mineru-kit parse`，默认全部页。
 
