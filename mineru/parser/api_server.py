@@ -769,6 +769,13 @@ class FileStore:
 
         # compute sha256 from uploaded data if not provided
         data = self._read_upload_data(upload_id)
+        if len(data) != rec.bytes:
+            _raise_api_error(
+                413,
+                error_type="invalid_request_error",
+                code="upload_size_mismatch",
+                message=f"Upload expects {rec.bytes} bytes, received {len(data)}",
+            )
         actual_sha = hashlib.sha256(data).hexdigest()
 
         if sha256hex and sha256hex != actual_sha:
@@ -831,6 +838,13 @@ class FileStore:
                 error_type="invalid_request_error",
                 code="upload_already_terminal",
                 message=f"Upload is {rec.status}",
+            )
+        if len(data) != rec.bytes:
+            _raise_api_error(
+                413,
+                error_type="invalid_request_error",
+                code="upload_size_mismatch",
+                message=f"Upload expects {rec.bytes} bytes, received {len(data)}",
             )
         # store temporarily under upload_id in blobs dir
         p = self._blobs / "_uploads" / upload_id
@@ -1509,7 +1523,6 @@ async def _run_job(
                     duration_ms=int((time.monotonic() - file_started) * 1000),
                     parser_version=__version__,
                 )
-                fr.file_id = file_store.create_file_for_output(fr.name, data)
                 rec.progress.completed += 1
 
             except Exception as exc:
@@ -1694,7 +1707,7 @@ async def get_upload(
     "/uploads/{upload_id}/content",
     response_model=None,
     status_code=status.HTTP_200_OK,
-    responses={**_ERR_404, **_ERR_409},
+    responses={**_ERR_404, **_ERR_409, **_ERR_413},
     tags=["Uploads"],
 )
 async def upload_content(
@@ -1711,7 +1724,7 @@ async def upload_content(
     "/uploads/{upload_id}/complete",
     response_model=UploadResponse,
     status_code=status.HTTP_200_OK,
-    responses={**_ERR_400, **_ERR_404, **_ERR_409},
+    responses={**_ERR_400, **_ERR_404, **_ERR_409, **_ERR_413},
     tags=["Uploads"],
 )
 async def complete_upload(
