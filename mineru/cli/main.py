@@ -1,0 +1,103 @@
+"""mineru CLI — personal document center, built for agents."""
+
+from __future__ import annotations
+
+import typer
+from click.core import Context
+from typer.core import TyperGroup
+
+from ..utils.i18n import t
+from ..utils.logger import configure_global_log_level
+from ..utils.stdio import configure_standard_streams
+from .commands import cleanup, config, list_resources, server, show, telemetry, usage, watch
+from .commands.forget import forget_cmd
+from .commands.invalidate import invalidate_cmd
+from .commands.parse import parse_cmd
+from .commands.read import read_cmd
+from .commands.scan import scan_cmd
+from .commands.search import find_cmd, search_cmd
+from .telemetry import prepare_cli_telemetry
+from .version_command import show_version, version_cmd
+
+# Typer stores commands and command groups separately before building the Click
+# command tree, so source registration order alone does not preserve the mixed
+# top-level help order.
+TOP_LEVEL_COMMAND_ORDER = [
+    "parse",
+    "read",
+    "scan",
+    "watch",
+    "search",
+    "find",
+    "usage",
+    "list",
+    "show",
+    "telemetry",
+    "server",
+    "config",
+    "invalidate",
+    "forget",
+    "cleanup",
+    "version",
+]
+
+
+class OrderedRootGroup(TyperGroup):
+    def list_commands(self, ctx: Context) -> list[str]:
+        ordered = [name for name in TOP_LEVEL_COMMAND_ORDER if name in self.commands]
+        return ordered + [name for name in self.commands if name not in TOP_LEVEL_COMMAND_ORDER]
+
+    def parse_args(self, ctx: Context, args: list[str]) -> list[str]:
+        ctx.meta["mineru_raw_args"] = list(args)
+        return super().parse_args(ctx, args)
+
+
+app = typer.Typer(
+    name="mineru",
+    cls=OrderedRootGroup,
+    help=t("MinerU — your personal document center, built for agents"),
+    no_args_is_help=True,
+    add_completion=False,
+)
+
+
+@app.callback()
+def root(
+    ctx: typer.Context,
+    _version_requested: bool = typer.Option(
+        False,
+        "--version",
+        callback=show_version,
+        is_eager=True,
+        help=t("Show the version and exit."),
+    ),
+) -> None:
+    prepare_cli_telemetry(ctx)
+
+
+app.command("parse", help=t("Parse a document file."))(parse_cmd)
+app.command("read", help=t("Read parsed doclib content by locator."))(read_cmd)
+app.command("scan")(scan_cmd)
+app.add_typer(watch.app, name="watch")
+app.command("search", help=t("Search parsed document content."))(search_cmd)
+app.command("find", help=t("Search filenames only (not document content)."))(find_cmd)
+app.command("usage", help=t("Show Remote API usage and limits."))(usage.usage_cmd)
+app.add_typer(list_resources.app, name="list")
+app.add_typer(show.app, name="show")
+app.add_typer(telemetry.app, name="telemetry")
+app.add_typer(server.app, name="server")
+app.add_typer(config.app, name="config")
+app.command("invalidate", help=t("Mark done parse results as superseded."))(invalidate_cmd)
+app.command("forget")(forget_cmd)
+app.add_typer(cleanup.app, name="cleanup")
+app.command("version", help=t("Print MinerU and Python versions."))(version_cmd)
+
+
+def main() -> None:
+    configure_standard_streams()
+    configure_global_log_level()
+    app()
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,60 @@
+seal_PP-OCRv4_det_infer:
+  model_type: det
+  algorithm: DB
+  Transform: null
+  Backbone:
+    name: PPLCNetV3
+    scale: 0.75
+    det: True
+  Neck:
+    name: RSEFPN
+    out_channels: 96
+    shortcut: True
+  Head:
+    name: DBHead
+    k: 50
+
+ch_PP-OCRv6_tiny_det_infer:
+  model_type: det
+  algorithm: DB
+  Transform: null
+  Backbone:
+    name: PPLCNetV4
+    det: True
+    model_size: tiny
+  Neck:
+    name: RepLKFPN
+    out_channels: 64
+    dilated_kernel_size: 5
+    shortcut: True
+  Head:
+    name: DBHead
+    k: 50
+    mode: ppocrv6
+    fix_nan: True
+    kernel_list: [3, 2, 2]
+
+ch_PP-OCRv6_small_rec_infer:
+  model_type: rec
+  algorithm: SVTR_LCNet
+  Transform:
+  Backbone:
+    name: PPLCNetV4
+    model_size: small
+  Head:
+    name: MultiHead
+    out_channels_list:
+      CTCLabelDecode: 18710
+    head_list:
+      - CTCHead:
+          Neck:
+            name: lightsvtr
+            dims: 120
+            depth: 2
+            mlp_ratio: 2.0
+            local_kernel: 7
+          Head:
+            fc_decay: 0.00001
+      - NRTRHead:
+          nrtr_dim: 384
+          max_text_length: 25

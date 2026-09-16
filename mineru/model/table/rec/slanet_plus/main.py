@@ -1,5 +1,5 @@
+from typing import Any
 # Copyright (c) Opendatalab. All rights reserved.
-import os
 import copy
 import time
 import html
@@ -12,10 +12,9 @@ import numpy as np
 from loguru import logger
 from tqdm import tqdm
 
+from ....registry import small_model_repo
 from .matcher import TableMatch
 from .table_structure import TableStructurer
-from mineru.utils.enum_class import ModelPath
-from mineru.utils.models_download_utils import auto_download_and_get_model_root_path
 
 
 @dataclass
@@ -151,14 +150,10 @@ def escape_html(input_string):
 
 
 class PaddleTableModel(object):
-    def __init__(self, ocr_engine):
-        slanet_plus_model_path = os.path.join(
-            auto_download_and_get_model_root_path(ModelPath.slanet_plus),
-            ModelPath.slanet_plus,
-        )
-        input_args = PaddleTableInput(
-            model_type="slanet_plus", model_path=slanet_plus_model_path
-        )
+    def __init__(self, ocr_engine: Any, *, model_path: str | None = None) -> None:
+        """加载所选模型栈的无线表格资源并共享其 OCR 引擎。"""
+        slanet_plus_model_path = model_path or str(small_model_repo().slanet_plus.ensure())
+        input_args = PaddleTableInput(model_type="slanet_plus", model_path=slanet_plus_model_path)
         self.table_model = PaddleTable(input_args)
         self.ocr_engine = ocr_engine
 

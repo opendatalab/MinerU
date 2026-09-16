@@ -117,6 +117,7 @@ class UnimerMBartConfig(PretrainedConfig):
         decoder_layerdrop=0.0,
         use_cache=True,
         is_encoder_decoder=True,
+        is_decoder=False,
         activation_function="gelu",
         d_model=1024,
         qk_squeeze=2,
@@ -158,6 +159,9 @@ class UnimerMBartConfig(PretrainedConfig):
             bos_token_id=bos_token_id,
             eos_token_id=eos_token_id,
             is_encoder_decoder=is_encoder_decoder,
+            is_decoder=is_decoder,
             forced_eos_token_id=forced_eos_token_id,
             **kwargs,
         )
+        # 动态缓存根据实际文本解码层数分配层槽位。
+        self.num_hidden_layers = decoder_layers if is_decoder else encoder_layers

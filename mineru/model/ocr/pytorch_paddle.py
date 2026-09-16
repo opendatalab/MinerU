@@ -10,22 +10,17 @@ import numpy as np
 import yaml
 from loguru import logger
 
-from mineru.model.ocr.seal_crop import CropByPolys, SortPolyBoxes
-from mineru.utils.config_reader import get_device
-from mineru.utils.enum_class import ModelPath
-from mineru.utils.models_download_utils import auto_download_and_get_model_root_path
-from mineru.utils.ocr_language import normalize_ocr_model_lang
-from mineru.utils.ocr_utils import (
-    check_img,
-    preprocess_image,
-    sorted_boxes,
-    merge_det_boxes,
-    update_det_boxes,
-    get_rotate_crop_image_for_text_rec,
-)
-from mineru.model.utils.tools.infer.predict_system import TextSystem
-from mineru.model.utils.tools.infer import pytorchocr_utility as utility
+from ..registry import MINERU_4_MODELS_TORCH
+from ..runtime.device import get_device
+from .._internal.pytorchocr.infer import pytorchocr_utility as utility
+from .._internal.pytorchocr.infer.predict_system import TextSystem
+from .geometry import merge_det_boxes, sorted_boxes, update_det_boxes
+from .image import check_img, get_rotate_crop_image_for_text_rec, preprocess_image
+from .language import normalize_ocr_model_lang
+from .seal_crop import CropByPolys, SortPolyBoxes
+from .resources import PPOCRV6_DICT_PATH
 import argparse
+from typing import Any
 
 
 def get_model_params(lang, config):
@@ -39,7 +34,7 @@ def get_model_params(lang, config):
         raise Exception (f'Language {lang} not supported')
 
 
-root_dir = os.path.join(Path(__file__).resolve().parent.parent, 'utils')
+PYTORCHOCR_RESOURCE_DIR = Path(__file__).resolve().parents[1] / "_internal" / "pytorchocr" / "utils" / "resources"
 DEFAULT_SEAL_DEBUG_DIR = os.path.join(
     Path(__file__).resolve().parents[3],
     'output_images',
@@ -48,7 +43,8 @@ DEFAULT_SEAL_DEBUG_DIR = os.path.join(
 
 
 class PytorchPaddleOCR(TextSystem):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        """初始化所选设备的 Torch OCR，并使用跨后端共享字符表。"""
         parser = utility.init_args()
         args = parser.parse_args(args)
 
@@ -57,10 +53,8 @@ class PytorchPaddleOCR(TextSystem):
         self.is_seal = requested_lang in ['seal', 'seal_lite']
         self.enable_merge_det_boxes = kwargs.get("enable_merge_det_boxes", True)
 
-        device = get_device()
-        models_config_path = os.path.join(
-            root_dir, 'pytorchocr', 'utils', 'resources', 'models_config.yml'
-        )
+        device = kwargs.get("device") or get_device()
+        models_config_path = PYTORCHOCR_RESOURCE_DIR / "models_config.yml"
         with open(models_config_path, encoding='utf-8') as file:
             config = yaml.safe_load(file)
             self.lang = normalize_ocr_model_lang(
@@ -68,22 +62,12 @@ class PytorchPaddleOCR(TextSystem):
                 device=device,
                 supported_langs=config['lang'],
             )
-            det, rec, dict_file = get_model_params(self.lang, config)
-        ocr_models_dir = ModelPath.pytorch_paddle
-
-        det_model_path = f"{ocr_models_dir}/{det}"
-        det_model_path = os.path.join(
-            auto_download_and_get_model_root_path(det_model_path), det_model_path
-        )
-        rec_model_path = f"{ocr_models_dir}/{rec}"
-        rec_model_path = os.path.join(
-            auto_download_and_get_model_root_path(rec_model_path), rec_model_path
-        )
+            det, rec, _dict_file = get_model_params(self.lang, config)
+        det_model_path = str(MINERU_4_MODELS_TORCH.pytorch_paddle.path(det).ensure())
+        rec_model_path = str(MINERU_4_MODELS_TORCH.pytorch_paddle.path(rec).ensure())
         kwargs['det_model_path'] = det_model_path
         kwargs['rec_model_path'] = rec_model_path
-        kwargs['rec_char_dict_path'] = os.path.join(
-            root_dir, 'pytorchocr', 'utils', 'resources', 'dict', dict_file
-        )
+        kwargs['rec_char_dict_path'] = str(PPOCRV6_DICT_PATH)
         kwargs['rec_batch_num'] = 6
         if self.is_seal:
             kwargs['det_limit_side_len'] = 736
@@ -99,6 +83,7 @@ class PytorchPaddleOCR(TextSystem):
             self.enable_merge_det_boxes = False
 
         kwargs['device'] = device
+        kwargs['lang'] = self.lang
 
         default_args = vars(args)
         default_args.update(kwargs)

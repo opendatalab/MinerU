@@ -16,8 +16,8 @@ deb http://mirrors.aliyun.com/ubuntu/ noble-security main restricted universe mu
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/aliyun-sources.list
 
-# Install mineru latest
-RUN python3 -m pip install "mineru[core]>=3.4.0" \
+# Keep this vendor adaptation on MinerU <4; preserve its runtime dependencies.
+RUN python3 -m pip install "mineru[core]>=3.4.0,<4" \
                             numpy==1.26.4 \
                             opencv-python==4.11.0.86 \
                             -i https://mirrors.aliyun.com/pypi/simple && \

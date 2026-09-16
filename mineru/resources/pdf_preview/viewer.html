@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>PDF preview</title>
+    <link rel="stylesheet" href="./vendor/pdfjs/legacy/web/pdf_viewer.css">
+    <link rel="stylesheet" href="./viewer.css">
+    <script type="module" src="./viewer.mjs"></script>
+</head>
+<body>
+    <nav id="toolbar" aria-label="PDF" aria-busy="true">
+        <button id="previous" type="button" disabled>‹</button>
+        <label><span id="page-label" class="sr-only"></span><input id="page" type="number" min="1" value="1" disabled></label>
+        <span aria-hidden="true">/</span><output id="pages">—</output>
+        <button id="next" type="button" disabled>›</button>
+        <span class="separator"></span>
+        <button id="zoom-out" type="button" disabled>−</button>
+        <output id="scale">—</output>
+        <button id="zoom-in" type="button" disabled>+</button>
+        <button id="fit" type="button" disabled></button>
+    </nav>
+    <div id="status" role="status" aria-live="polite"></div>
+    <div id="viewer-container" tabindex="0"><div id="viewer" class="pdfViewer"></div></div>
+</body>
+</html>

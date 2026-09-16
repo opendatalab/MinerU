@@ -1,8 +1,4 @@
 {
-    "bucket_info":{
-        "bucket-name-1":["ak", "sk", "endpoint"],
-        "bucket-name-2":["ak", "sk", "endpoint"]
-    },
     "latex-delimiter-config": {
         "display": {
             "left": "$$",
@@ -11,15 +7,6 @@
         "inline": {
             "left": "$",
             "right": "$"
-        }
-    },
-    "llm-aided-config": {
-        "title_aided": {
-            "api_key": "your_api_key",
-            "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-            "model": "qwen3.5-plus",
-            "enable_thinking": false,
-            "enable": false
         }
     },
     "models-dir": {

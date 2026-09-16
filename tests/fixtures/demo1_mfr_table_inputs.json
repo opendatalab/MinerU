@@ -1,0 +1,1765 @@
+{
+  "source": "demo/pdfs/demo1.pdf",
+  "sha256": "f3b3be345bf2df8979f2491ca9466e078e4fd1d6a216611faa8566e4c44d474b",
+  "small_backend": "onnx",
+  "tiers": {
+    "standard": {
+      "page_sizes": [
+        [
+          1512,
+          2064
+        ],
+        [
+          1512,
+          2064
+        ],
+        [
+          1512,
+          2064
+        ],
+        [
+          1512,
+          2064
+        ],
+        [
+          1512,
+          2064
+        ],
+        [
+          1512,
+          2064
+        ],
+        [
+          1512,
+          2064
+        ],
+        [
+          1512,
+          2064
+        ],
+        [
+          1512,
+          2064
+        ],
+        [
+          1512,
+          2064
+        ],
+        [
+          1512,
+          2064
+        ],
+        [
+          1512,
+          2064
+        ],
+        [
+          1512,
+          2064
+        ]
+      ],
+      "formulas": [
+        [
+          {
+            "label": "inline_formula",
+            "bbox": [
+              570,
+              1350,
+              637,
+              1381
+            ],
+            "score": 0.5242,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              715,
+              1382,
+              771,
+              1412
+            ],
+            "score": 0.7102,
+            "latex": ""
+          }
+        ],
+        [],
+        [
+          {
+            "label": "display_formula",
+            "bbox": [
+              775,
+              434,
+              997,
+              471
+            ],
+            "score": 0.9328,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              856,
+              520,
+              897,
+              551
+            ],
+            "score": 0.884,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              929,
+              552,
+              983,
+              584
+            ],
+            "score": 0.7126,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              1150,
+              520,
+              1201,
+              551
+            ],
+            "score": 0.6521,
+            "latex": ""
+          },
+          {
+            "label": "display_formula",
+            "bbox": [
+              775,
+              1156,
+              1199,
+              1237
+            ],
+            "score": 0.9619,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              857,
+              1286,
+              898,
+              1316
+            ],
+            "score": 0.8812,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              1208,
+              1286,
+              1252,
+              1315
+            ],
+            "score": 0.8376,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              963,
+              1349,
+              1004,
+              1380
+            ],
+            "score": 0.8024,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              1208,
+              1384,
+              1261,
+              1415
+            ],
+            "score": 0.8902,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              1260,
+              1418,
+              1300,
+              1448
+            ],
+            "score": 0.8632,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              895,
+              1482,
+              977,
+              1511
+            ],
+            "score": 0.8593,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              1269,
+              1483,
+              1311,
+              1515
+            ],
+            "score": 0.8872,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              780,
+              1683,
+              821,
+              1715
+            ],
+            "score": 0.8717,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              1195,
+              1647,
+              1278,
+              1677
+            ],
+            "score": 0.7465,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              1313,
+              1648,
+              1376,
+              1678
+            ],
+            "score": 0.7079,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              1075,
+              1683,
+              1139,
+              1713
+            ],
+            "score": 0.6192,
+            "latex": ""
+          }
+        ],
+        [
+          {
+            "label": "inline_formula",
+            "bbox": [
+              511,
+              1487,
+              586,
+              1519
+            ],
+            "score": 0.9026,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              597,
+              1522,
+              660,
+              1552
+            ],
+            "score": 0.8898,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              528,
+              1555,
+              587,
+              1585
+            ],
+            "score": 0.8968,
+            "latex": ""
+          },
+          {
+            "label": "display_formula",
+            "bbox": [
+              123,
+              1677,
+              564,
+              1756
+            ],
+            "score": 0.963,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              647,
+              1782,
+              730,
+              1810
+            ],
+            "score": 0.8024,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              182,
+              1814,
+              323,
+              1848
+            ],
+            "score": 0.6554,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              792,
+              353,
+              857,
+              382
+            ],
+            "score": 0.4992,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              1306,
+              319,
+              1390,
+              348
+            ],
+            "score": 0.7514,
+            "latex": ""
+          },
+          {
+            "label": "display_formula",
+            "bbox": [
+              788,
+              779,
+              1109,
+              862
+            ],
+            "score": 0.9616,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              841,
+              910,
+              871,
+              940
+            ],
+            "score": 0.4733,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              958,
+              1074,
+              1001,
+              1108
+            ],
+            "score": 0.8281,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              1333,
+              1072,
+              1365,
+              1105
+            ],
+            "score": 0.8473,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              879,
+              1173,
+              931,
+              1205
+            ],
+            "score": 0.8784,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              1282,
+              1176,
+              1365,
+              1206
+            ],
+            "score": 0.7242,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              872,
+              1408,
+              934,
+              1438
+            ],
+            "score": 0.5798,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              1199,
+              1408,
+              1259,
+              1438
+            ],
+            "score": 0.4896,
+            "latex": ""
+          },
+          {
+            "label": "display_formula",
+            "bbox": [
+              787,
+              1523,
+              1109,
+              1602
+            ],
+            "score": 0.9624,
+            "latex": ""
+          },
+          {
+            "label": "display_formula",
+            "bbox": [
+              789,
+              1664,
+              978,
+              1699
+            ],
+            "score": 0.9253,
+            "latex": ""
+          }
+        ],
+        [
+          {
+            "label": "inline_formula",
+            "bbox": [
+              1086,
+              413,
+              1136,
+              448
+            ],
+            "score": 0.7654,
+            "latex": ""
+          },
+          {
+            "label": "display_formula",
+            "bbox": [
+              774,
+              546,
+              1165,
+              621
+            ],
+            "score": 0.9604,
+            "latex": ""
+          }
+        ],
+        [],
+        [
+          {
+            "label": "inline_formula",
+            "bbox": [
+              296,
+              319,
+              381,
+              349
+            ],
+            "score": 0.6818,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              323,
+              1383,
+              366,
+              1414
+            ],
+            "score": 0.5215,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              157,
+              1682,
+              231,
+              1712
+            ],
+            "score": 0.5854,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              601,
+              1814,
+              716,
+              1848
+            ],
+            "score": 0.914,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              779,
+              880,
+              832,
+              911
+            ],
+            "score": 0.8615,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              877,
+              1078,
+              975,
+              1110
+            ],
+            "score": 0.4867,
+            "latex": ""
+          }
+        ],
+        [
+          {
+            "label": "inline_formula",
+            "bbox": [
+              1173,
+              940,
+              1222,
+              973
+            ],
+            "score": 0.8503,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              814,
+              1078,
+              867,
+              1109
+            ],
+            "score": 0.8406,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              1088,
+              1179,
+              1140,
+              1212
+            ],
+            "score": 0.8816,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              128,
+              1402,
+              173,
+              1429
+            ],
+            "score": 0.6116,
+            "latex": ""
+          }
+        ],
+        [
+          {
+            "label": "inline_formula",
+            "bbox": [
+              463,
+              750,
+              608,
+              777
+            ],
+            "score": 0.7096,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              456,
+              778,
+              600,
+              806
+            ],
+            "score": 0.787,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              167,
+              1025,
+              220,
+              1058
+            ],
+            "score": 0.8794,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              1200,
+              1191,
+              1278,
+              1223
+            ],
+            "score": 0.8824,
+            "latex": ""
+          }
+        ],
+        [],
+        [],
+        [],
+        []
+      ],
+      "tables": [
+        [],
+        [],
+        [],
+        [],
+        [
+          {
+            "type": "table",
+            "bbox": [
+              0.115,
+              0.122,
+              0.455,
+              0.896
+            ],
+            "angle": 270
+          }
+        ],
+        [
+          {
+            "type": "table",
+            "bbox": [
+              0.081,
+              0.153,
+              0.923,
+              0.331
+            ],
+            "angle": 0
+          },
+          {
+            "type": "table",
+            "bbox": [
+              0.081,
+              0.696,
+              0.923,
+              0.875
+            ],
+            "angle": 0
+          }
+        ],
+        [],
+        [
+          {
+            "type": "table",
+            "bbox": [
+              0.082,
+              0.696,
+              0.922,
+              0.875
+            ],
+            "angle": 0
+          }
+        ],
+        [
+          {
+            "type": "table",
+            "bbox": [
+              0.073,
+              0.164,
+              0.914,
+              0.331
+            ],
+            "angle": 0
+          }
+        ],
+        [],
+        [],
+        [],
+        []
+      ]
+    },
+    "advanced": {
+      "page_sizes": [
+        [
+          1512,
+          2064
+        ],
+        [
+          1512,
+          2064
+        ],
+        [
+          1512,
+          2064
+        ],
+        [
+          1512,
+          2064
+        ],
+        [
+          1512,
+          2064
+        ],
+        [
+          1512,
+          2064
+        ],
+        [
+          1512,
+          2064
+        ],
+        [
+          1512,
+          2064
+        ],
+        [
+          1512,
+          2064
+        ],
+        [
+          1512,
+          2064
+        ],
+        [
+          1512,
+          2064
+        ],
+        [
+          1512,
+          2064
+        ],
+        [
+          1512,
+          2064
+        ]
+      ],
+      "formulas": [
+        [
+          {
+            "label": "inline_formula",
+            "bbox": [
+              570,
+              1350,
+              637,
+              1381
+            ],
+            "score": 0.5242,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              715,
+              1382,
+              771,
+              1412
+            ],
+            "score": 0.7102,
+            "latex": ""
+          }
+        ],
+        [],
+        [
+          {
+            "label": "display_formula",
+            "bbox": [
+              775,
+              434,
+              997,
+              471
+            ],
+            "score": 0.9328,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              856,
+              520,
+              897,
+              551
+            ],
+            "score": 0.884,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              929,
+              552,
+              983,
+              584
+            ],
+            "score": 0.7126,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              1150,
+              520,
+              1201,
+              551
+            ],
+            "score": 0.6521,
+            "latex": ""
+          },
+          {
+            "label": "display_formula",
+            "bbox": [
+              775,
+              1156,
+              1199,
+              1237
+            ],
+            "score": 0.9619,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              857,
+              1286,
+              898,
+              1316
+            ],
+            "score": 0.8812,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              1208,
+              1286,
+              1252,
+              1315
+            ],
+            "score": 0.8376,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              963,
+              1349,
+              1004,
+              1380
+            ],
+            "score": 0.8024,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              1208,
+              1384,
+              1261,
+              1415
+            ],
+            "score": 0.8902,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              1260,
+              1418,
+              1300,
+              1448
+            ],
+            "score": 0.8632,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              895,
+              1482,
+              977,
+              1511
+            ],
+            "score": 0.8593,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              1269,
+              1483,
+              1311,
+              1515
+            ],
+            "score": 0.8872,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              780,
+              1683,
+              821,
+              1715
+            ],
+            "score": 0.8717,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              1195,
+              1647,
+              1278,
+              1677
+            ],
+            "score": 0.7465,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              1313,
+              1648,
+              1376,
+              1678
+            ],
+            "score": 0.7079,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              1075,
+              1683,
+              1139,
+              1713
+            ],
+            "score": 0.6192,
+            "latex": ""
+          }
+        ],
+        [
+          {
+            "label": "inline_formula",
+            "bbox": [
+              511,
+              1487,
+              586,
+              1519
+            ],
+            "score": 0.9026,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              597,
+              1522,
+              660,
+              1552
+            ],
+            "score": 0.8898,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              528,
+              1555,
+              587,
+              1585
+            ],
+            "score": 0.8968,
+            "latex": ""
+          },
+          {
+            "label": "display_formula",
+            "bbox": [
+              123,
+              1677,
+              564,
+              1756
+            ],
+            "score": 0.963,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              647,
+              1782,
+              730,
+              1810
+            ],
+            "score": 0.8024,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              182,
+              1814,
+              323,
+              1848
+            ],
+            "score": 0.6554,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              792,
+              353,
+              857,
+              382
+            ],
+            "score": 0.4992,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              1306,
+              319,
+              1390,
+              348
+            ],
+            "score": 0.7514,
+            "latex": ""
+          },
+          {
+            "label": "display_formula",
+            "bbox": [
+              788,
+              779,
+              1109,
+              862
+            ],
+            "score": 0.9616,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              841,
+              910,
+              871,
+              940
+            ],
+            "score": 0.4733,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              958,
+              1074,
+              1001,
+              1108
+            ],
+            "score": 0.8281,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              1333,
+              1072,
+              1365,
+              1105
+            ],
+            "score": 0.8473,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              879,
+              1173,
+              931,
+              1205
+            ],
+            "score": 0.8784,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              1282,
+              1176,
+              1365,
+              1206
+            ],
+            "score": 0.7242,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              872,
+              1408,
+              934,
+              1438
+            ],
+            "score": 0.5798,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              1199,
+              1408,
+              1259,
+              1438
+            ],
+            "score": 0.4896,
+            "latex": ""
+          },
+          {
+            "label": "display_formula",
+            "bbox": [
+              787,
+              1523,
+              1109,
+              1602
+            ],
+            "score": 0.9624,
+            "latex": ""
+          },
+          {
+            "label": "display_formula",
+            "bbox": [
+              789,
+              1664,
+              978,
+              1699
+            ],
+            "score": 0.9253,
+            "latex": ""
+          }
+        ],
+        [
+          {
+            "label": "inline_formula",
+            "bbox": [
+              1086,
+              413,
+              1136,
+              448
+            ],
+            "score": 0.7654,
+            "latex": ""
+          },
+          {
+            "label": "display_formula",
+            "bbox": [
+              774,
+              546,
+              1165,
+              621
+            ],
+            "score": 0.9604,
+            "latex": ""
+          }
+        ],
+        [
+          {
+            "label": "inline_formula",
+            "bbox": [
+              321,
+              427,
+              363,
+              455
+            ],
+            "score": 0.4578,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              649,
+              427,
+              687,
+              453
+            ],
+            "score": 0.4767,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              321,
+              539,
+              363,
+              565
+            ],
+            "score": 0.463,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              867,
+              400,
+              896,
+              426
+            ],
+            "score": 0.5957,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              867,
+              428,
+              906,
+              455
+            ],
+            "score": 0.7134,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              867,
+              456,
+              894,
+              481
+            ],
+            "score": 0.5089,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              867,
+              483,
+              911,
+              509
+            ],
+            "score": 0.6156,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              977,
+              400,
+              1005,
+              425
+            ],
+            "score": 0.5844,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              1087,
+              428,
+              1124,
+              454
+            ],
+            "score": 0.6899,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              977,
+              427,
+              1015,
+              454
+            ],
+            "score": 0.6495,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              321,
+              622,
+              363,
+              648
+            ],
+            "score": 0.4592,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              1086,
+              400,
+              1114,
+              426
+            ],
+            "score": 0.5544,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              977,
+              456,
+              1003,
+              481
+            ],
+            "score": 0.5128,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              1087,
+              511,
+              1129,
+              538
+            ],
+            "score": 0.5345,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              758,
+              592,
+              799,
+              621
+            ],
+            "score": 0.4574,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              1086,
+              456,
+              1112,
+              482
+            ],
+            "score": 0.5264,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              867,
+              511,
+              915,
+              537
+            ],
+            "score": 0.5702,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              1304,
+              510,
+              1348,
+              538
+            ],
+            "score": 0.4898,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              867,
+              539,
+              908,
+              565
+            ],
+            "score": 0.5808,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              977,
+              566,
+              1019,
+              593
+            ],
+            "score": 0.4771,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              867,
+              593,
+              908,
+              620
+            ],
+            "score": 0.5617,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              976,
+              593,
+              1019,
+              620
+            ],
+            "score": 0.5695,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              867,
+              622,
+              910,
+              648
+            ],
+            "score": 0.5378,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              1086,
+              593,
+              1128,
+              620
+            ],
+            "score": 0.5631,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              1196,
+              593,
+              1236,
+              621
+            ],
+            "score": 0.5457,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              868,
+              649,
+              908,
+              676
+            ],
+            "score": 0.5141,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              977,
+              622,
+              1020,
+              649
+            ],
+            "score": 0.5616,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              1086,
+              622,
+              1129,
+              648
+            ],
+            "score": 0.5002,
+            "latex": ""
+          }
+        ],
+        [
+          {
+            "label": "inline_formula",
+            "bbox": [
+              296,
+              319,
+              381,
+              349
+            ],
+            "score": 0.6818,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              323,
+              1383,
+              366,
+              1414
+            ],
+            "score": 0.5215,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              157,
+              1682,
+              231,
+              1712
+            ],
+            "score": 0.5854,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              601,
+              1814,
+              716,
+              1848
+            ],
+            "score": 0.914,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              779,
+              880,
+              832,
+              911
+            ],
+            "score": 0.8615,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              877,
+              1078,
+              975,
+              1110
+            ],
+            "score": 0.4867,
+            "latex": ""
+          }
+        ],
+        [
+          {
+            "label": "inline_formula",
+            "bbox": [
+              1173,
+              940,
+              1222,
+              973
+            ],
+            "score": 0.8503,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              814,
+              1078,
+              867,
+              1109
+            ],
+            "score": 0.8406,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              1088,
+              1179,
+              1140,
+              1212
+            ],
+            "score": 0.8816,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              128,
+              1402,
+              173,
+              1429
+            ],
+            "score": 0.6116,
+            "latex": ""
+          }
+        ],
+        [
+          {
+            "label": "inline_formula",
+            "bbox": [
+              1142,
+              413,
+              1190,
+              443
+            ],
+            "score": 0.6318,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              463,
+              750,
+              608,
+              777
+            ],
+            "score": 0.7096,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              456,
+              778,
+              600,
+              806
+            ],
+            "score": 0.787,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              167,
+              1025,
+              220,
+              1058
+            ],
+            "score": 0.8794,
+            "latex": ""
+          },
+          {
+            "label": "inline_formula",
+            "bbox": [
+              1200,
+              1191,
+              1278,
+              1223
+            ],
+            "score": 0.8824,
+            "latex": ""
+          }
+        ],
+        [],
+        [],
+        [],
+        []
+      ],
+      "tables": [
+        [],
+        [],
+        [],
+        [],
+        [
+          {
+            "type": "table",
+            "bbox": [
+              0.115,
+              0.124,
+              0.43,
+              0.891
+            ],
+            "angle": 270
+          }
+        ],
+        [
+          {
+            "type": "table",
+            "bbox": [
+              0.082,
+              0.152,
+              0.924,
+              0.334
+            ],
+            "angle": 0
+          },
+          {
+            "type": "table",
+            "bbox": [
+              0.082,
+              0.695,
+              0.924,
+              0.878
+            ],
+            "angle": 0
+          }
+        ],
+        [],
+        [
+          {
+            "type": "table",
+            "bbox": [
+              0.082,
+              0.694,
+              0.925,
+              0.878
+            ],
+            "angle": 0
+          }
+        ],
+        [
+          {
+            "type": "table",
+            "bbox": [
+              0.073,
+              0.165,
+              0.917,
+              0.334
+            ],
+            "angle": 0
+          }
+        ],
+        [],
+        [],
+        [],
+        []
+      ]
+    }
+  }
+}

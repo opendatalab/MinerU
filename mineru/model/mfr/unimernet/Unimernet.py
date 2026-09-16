@@ -24,20 +24,20 @@ class MathDataset(Dataset):
 
 
 class UnimernetModel(object):
-    def __init__(self, weight_dir, _device_="cpu"):
+    def __init__(self, weight_dir: str, _device_: str = "cpu") -> None:
+        """按目标精度加载权重；MPS 先在 CPU 物化 FP16，再串行转移，避开并行加载的原生崩溃。"""
         from .unimernet_hf import UnimernetModel
 
-        if _device_.startswith("mps") or _device_.startswith("npu") or _device_.startswith("musa"):
-            self.model = UnimernetModel.from_pretrained(
-                weight_dir,
-                attn_implementation="eager",
-            )
-        else:
-            self.model = UnimernetModel.from_pretrained(weight_dir)
         self.device = torch.device(_device_)
-        self.model.to(self.device)
-        if not _device_.startswith("cpu"):
-            self.model = self.model.to(dtype=torch.float16)
+        load_device = torch.device("cpu") if self.device.type == "mps" else self.device
+        self.model = UnimernetModel.from_pretrained(
+            weight_dir,
+            device_map={"": load_device},
+            dtype=torch.float32 if self.device.type == "cpu" else torch.float16,
+            attn_implementation="eager" if self.device.type in {"mps", "npu", "musa"} else None,
+        )
+        if self.device.type == "mps":
+            self.model.to(self.device)
         self.model.eval()
 
     @staticmethod
@@ -153,9 +153,7 @@ class UnimernetModel(object):
         sorted_areas = [x[0] for x in image_info]
         sorted_indices = [x[1] for x in image_info]
         sorted_images = [x[2] for x in image_info]
-        index_mapping = {
-            new_idx: old_idx for new_idx, old_idx in enumerate(sorted_indices)
-        }
+        index_mapping = {new_idx: old_idx for new_idx, old_idx in enumerate(sorted_indices)}
 
         batch_groups = build_mfr_batch_groups(sorted_areas, batch_size)
         dataset = MathDataset(sorted_images, transform=self.model.transform)

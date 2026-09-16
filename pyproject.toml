@@ -7,9 +7,9 @@ name = "mineru"
 dynamic = ["version"]
 license = "LicenseRef-MinerU-Open-Source-License"
 license-files = ["LICENSE.md"]
-description = "A practical document parsing tool for converting PDF, images, DOCX, PPTX, and XLSX into Markdown and JSON"
+description = "A practical document parsing tool for converting PDF, OFD, EPUB, HTML, images, CSV, RTF, OOXML, and OpenDocument files into Markdown and JSON"
 readme = "README.md"
-requires-python = ">=3.10,<3.14"
+requires-python = ">=3.10,<3.15"
 keywords = [
     "mineru",
     "magic-pdf",
@@ -22,6 +22,13 @@ keywords = [
     "docx",
     "pptx",
     "xlsx",
+    "epub",
+    "ofd",
+    "csv",
+    "rtf",
+    "odt",
+    "ods",
+    "odp",
     "multimodal",
 ]
 classifiers = [
@@ -29,8 +36,14 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
+    "docvortex>=0.4.9,<1",
+    "gradio>=6.8,<7",
+    "mineru[torch] ; sys_platform == 'darwin' and platform_machine == 'arm64'",
+    "mineru-vl-utils>=2.0.4,<3",
+    "mineru-llama-cpp>=0.1.2,<1",
     "click>=8.1.7",
     "loguru>=0.7.2",
     "numpy>=1.21.6",
@@ -38,84 +51,62 @@ dependencies = [
     "requests",
     "httpx",
     "pillow>=11.0.0",
-    "pypdfium2>=4.30.0,<6.0.0",
-    "pypdf>=5.6.0",
-    "reportlab",
-    "pdftext>=0.6.3,<0.8.0",
+    "pypdfium2>=5.10.1,<6",
+    "PyYAML>=6.0.1,<7",
+    "packaging",
     "modelscope>=1.26.0",
-    "huggingface-hub>=0.32.4",
+    "huggingface-hub[hf_xet]>=0.32.4",
+    "filelock>=3.0.0",
     "json-repair>=0.46.2",
     "opencv-python>=4.11.0.86",
-    "fast-langdetect>=0.2.3,<0.3.0",
     "openai>=1.70.0,<3",
     "beautifulsoup4>=4.13.5,<5",
-    "magika>=0.6.2,<1.1.0",
-    "mineru-vl-utils>=1.0.5,<2",
-    "python-docx>=1.2.0,<2",
-    'pypptx-with-oxml>=1.0.3,<2',
-    "mammoth>=1.11.0,<2",
-    "pylatexenc>=2.10,<3",
-    "lxml>=4.0.0,<7.0.0",
-    "openpyxl>=3.1.5,<4",
+    "aiosqlite>=0.20.0,<1",
+    "watchfiles>=1.0.0,<2",
     "fastapi",
     "python-multipart",
     "uvicorn",
+    "pydantic>=2.12.5,<3",
+    "typing_extensions>=4.0.0",
+    "typer>=0.9.0",
+    "rich>=13.0.0",
+    "jieba>=0.42.1",
+    "onnxruntime>=1.20.1",
+    "ftfy>=6.3.1,<7",
+    "shapely>=2.0.7,<3",
+    "pyclipper>=1.3.0,<2",
+    "tokenizers>=0.22.0,<0.24",
 ]
 
 [project.optional-dependencies]
+dev = [
+    "lxml-stubs",
+]
 test = [
-    "mineru[core]",
+    "pypdf>=5.6.0",
+    "reportlab",
+    "lxml>=4.0.0,<7.0.0",
     "pytest",
     "pytest-cov",
     "coverage",
     "fuzzywuzzy",
     "tomli; python_version < '3.11'",
 ]
-vlm = [
-    "torch>=2.6.0,<3",
-    "transformers>=4.57.3,<5.0.0",
-    "accelerate>=1.5.1",
-]
-vllm = [
-    "vllm>=0.10.1.1,<0.22.0",
-]
-lmdeploy = [
-    "lmdeploy>=0.10.2,<0.12",
-    "qwen-vl-utils>=0.0.14,<1",
-]
-mlx = [
-    "mlx-vlm>=0.3.3,<0.4",
-    "mlx<=0.31.1",
-]
-s3 = [
-    "boto3>=1.28.43",
-]
-pipeline = [
-    "PyYAML>=6.0.1,<7",
-    "ftfy>=6.3.1,<7",
-    "shapely>=2.0.7,<3",
-    "pyclipper>=1.3.0,<2",
-    "torch>=2.6.0,<3",
+torch = [
+    "torch>=2.7.0,<3",
     "torchvision",
-    "transformers>=4.57.3,<5.0.0",
+    "transformers>=5.10.1,<6",
+    "accelerate>=1.5.1",
     "safetensors>=0.4.0,<1",
-    "onnxruntime>1.17.0",
 ]
-gradio = [
-    "gradio>=5.49.1,!=6.0.0,!=6.0.1,!=6.0.2,!=6.1.0,!=6.2.0,!=6.3.0,!=6.4.0,!=6.5.0,!=6.5.1,!=6.6.0,!=6.7.0,<6.9.0",
-    "gradio-pdf>=0.0.22",
-]
-core = [
-    "mineru[vlm]",
-    "mineru[pipeline]",
-    "mineru[gradio]",
+full = [
+    "mineru[torch]",
+    "vllm>=0.19.1,<0.29.0 ; sys_platform == 'linux'",
+    "lmdeploy>=0.17.0,<0.18 ; sys_platform == 'win32'",
+    "qwen-vl-utils>=0.0.14,<1 ; sys_platform == 'win32'",
 ]
 all = [
-    "mineru[core]",
-    "mineru[s3]",
-    "mineru[mlx] ; sys_platform == 'darwin'",
-    "mineru[vllm] ; sys_platform == 'linux'",
-    "mineru[lmdeploy] ; sys_platform == 'win32'",
+    "mineru[full]",
 ]
 
 [project.urls]
@@ -126,14 +117,13 @@ issues = "https://github.com/opendatalab/MinerU/issues"
 License = "https://github.com/opendatalab/MinerU/blob/master/LICENSE.md"
 
 [project.scripts]
-mineru = "mineru.cli.client:main"
-mineru-vllm-server = "mineru.cli.vlm_server:vllm_server"
-mineru-lmdeploy-server = "mineru.cli.vlm_server:lmdeploy_server"
-mineru-openai-server = "mineru.cli.vlm_server:openai_server"
-mineru-models-download = "mineru.cli.models_download:download_models"
-mineru-api = "mineru.cli.fast_api:main"
-mineru-router = "mineru.cli.router:main"
-mineru-gradio = "mineru.cli.gradio_app:main"
+mineru = "mineru.cli.main:main"
+mineru-kit = "mineru.kit.main:main"
+mineru-router = "mineru.kit.router.cli:main"
+mineru-webui = "mineru.kit.commands.webui:main"
+mineru-openai-server = "mineru.kit.commands.vlm_server:main"
+mineru-models-download = "mineru.kit.commands.models:download_main"
+mineru-api = "mineru.kit.commands.api_server:main"
 
 [tool.setuptools.dynamic]
 version = { attr = "mineru.version.__version__" }
@@ -144,21 +134,33 @@ namespaces = false
 
 [tool.setuptools.package-data]
 "mineru" = ["resources/**"]
-"mineru.model.utils.pytorchocr.utils" = ["resources/**"]
+"mineru.kit.gradio._vendor.ofd2html" = ["LICENSE", "UPSTREAM.md"]
+"mineru.doclib.migrations" = ["*.sql"]
+"mineru.model._internal.pytorchocr.utils" = ["resources/**"]
+"mineru.model.ocr" = ["data/*.txt"]
 
 [tool.setuptools]
 include-package-data = true
 zip-safe = false
 
 [tool.pytest.ini_options]
+testpaths = ["tests"]
 addopts = "-s --cov=mineru --cov-report html"
+markers = [
+  "e2e: MinerU CLI 端到端用例（脚本化 docs/next/cli/mineru-e2e-test-cases.md）",
+  "smoke: 快速回归子集（无需本地 quality tier）",
+  "slow: 单用例预计超过 60s",
+  "remote: 依赖 mineru.net 云端 parse-server（默认套件包含）",
+  "full_stack: 需要 Torch 小模型与本地 VLM 模型集",
+  "isolated_home: 使用独立 MINERU_HOME",
+  "lifecycle: 会 stop/start/restart doclib server",
+]
 
 [tool.coverage.run]
-command_line = "-m pytest tests/unittest/test_e2e.py"
+command_line = "-m pytest tests/unittest"
 source = ["mineru/"]
 omit = [
     "*/gradio_app.py",
-    "*/models_download.py",
     "*/fast_api.py",
     "*/cli/client.py",
     "*/vlm_vllm_server.py",

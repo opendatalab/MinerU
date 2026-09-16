@@ -1,22 +1,69 @@
-name: Publish docs via GitHub Pages
+name: Docs
+
 on:
   push:
     branches:
       - "master"
       - "dev"
+      - "next"
+  pull_request:
 
 jobs:
-  build:
-    name: Deploy docs
+  docs-build-check:
+    name: Docs build check (no deploy)
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout master
+      - name: Checkout
         uses: actions/checkout@v6
+      - name: Install script test tools
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends jq
+      - name: Set up Python
+        uses: actions/setup-python@v6
         with:
-          ref: dev
-      - name: Deploy docs
-        uses: mhausenblas/mkdocs-deploy-gh-pages@master
-        # Or use mhausenblas/mkdocs-deploy-gh-pages@nomaterial to build without the mkdocs-material theme
+          python-version: "3.12"
+      - name: Install project and docs dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+          python -m pip install -r docs/requirements.txt pytest
+      - name: Run HTTP example script tests
+        run: python -m pytest -q -o addopts= tests/unittest/test_http_api_example_script.py
+      - name: Build docs (strict)
+        run: python -m mkdocs build --strict
+
+  docs-publish:
+    name: Publish docs to GitHub Pages
+    needs: docs-build-check
+    if: >-
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/master' &&
+      github.repository == 'opendatalab/MinerU'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: docs-gh-pages
+      cancel-in-progress: false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install docs dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r docs/requirements.txt
+      - name: Require release token
+        env:
+          RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          if [ -z "$RELEASE_TOKEN" ]; then
+            echo "RELEASE_TOKEN is empty; refusing to degrade publishing into a build-only step." >&2
+            exit 1
+          fi
+      - name: Publish to GitHub Pages
         env:
           GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
-          REQUIREMENTS: /docs/requirements.txt
+        run: python -m mkdocs gh-deploy --force

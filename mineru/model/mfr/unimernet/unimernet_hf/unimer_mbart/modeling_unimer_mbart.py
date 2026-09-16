@@ -26,12 +26,9 @@ from torch import nn
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 
 from transformers.activations import ACT2FN
-from transformers.modeling_attn_mask_utils import (
-    _prepare_4d_attention_mask,
-    _prepare_4d_attention_mask_for_sdpa,
-    _prepare_4d_causal_attention_mask,
-    _prepare_4d_causal_attention_mask_for_sdpa,
-)
+from transformers import initialization as init
+from transformers.cache_utils import Cache, DynamicCache, EncoderDecoderCache
+from transformers.masking_utils import create_bidirectional_mask, create_causal_mask
 from transformers.modeling_outputs import (
     BaseModelOutput,
     BaseModelOutputWithPastAndCrossAttentions,
@@ -101,6 +98,7 @@ def shift_tokens_right(input_ids: torch.Tensor, pad_token_id: int):
 
     return prev_output_tokens
 
+
 @dataclass
 class CausalLMOutputWithCrossAttentionsAndCounting(CausalLMOutputWithCrossAttentions):
     """
@@ -138,7 +136,9 @@ class CausalLMOutputWithCrossAttentionsAndCounting(CausalLMOutputWithCrossAttent
         counting:
             Counting
     """
+
     counting: Optional[torch.FloatTensor] = None
+
 
 # Copied from transformers.models.bart.modeling_bart.BartLearnedPositionalEmbedding with Bart->MBart
 class UnimerMBartLearnedPositionalEmbedding(nn.Embedding):
@@ -189,6 +189,7 @@ class UnimerMBartAttention(nn.Module):
         is_decoder: bool = False,
         bias: bool = True,
         is_causal: bool = False,
+        layer_idx: Optional[int] = None,
         *,
         config: UnimerMBartConfig,
     ):
@@ -201,15 +202,15 @@ class UnimerMBartAttention(nn.Module):
 
         if (self.head_dim * num_heads) != self.embed_dim:
             raise ValueError(
-                f"embed_dim must be divisible by num_heads (got `embed_dim`: {self.embed_dim}"
-                f" and `num_heads`: {num_heads})."
+                f"embed_dim must be divisible by num_heads (got `embed_dim`: {self.embed_dim} and `num_heads`: {num_heads})."
             )
-        
+
         self.squeeze_dim = embed_dim // config.qk_squeeze
         self.squeeze_head_dim = self.squeeze_dim // num_heads
         self.scaling = self.squeeze_head_dim**-0.5
         self.is_decoder = is_decoder
         self.is_causal = is_causal
+        self.layer_idx = layer_idx
 
         self.q_proj = nn.Linear(embed_dim, self.squeeze_dim, bias=bias)
         self.k_proj = nn.Linear(embed_dim, self.squeeze_dim, bias=bias)
@@ -222,61 +223,56 @@ class UnimerMBartAttention(nn.Module):
     def _shape_v(self, tensor: torch.Tensor, seq_len: int, bsz: int):
         return tensor.view(bsz, seq_len, self.num_heads, self.head_dim).transpose(1, 2).contiguous()
 
+    def _project_key_value_states(
+        self,
+        hidden_states: torch.Tensor,
+        key_value_states: Optional[torch.Tensor],
+        past_key_value: Optional[Cache],
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """保留压缩后的 Q/K 维度，并以 Transformers Cache 管理逐层 KV 与交叉注意力复用。"""
+        is_cross_attention = key_value_states is not None
+        cache = past_key_value
+        if isinstance(past_key_value, EncoderDecoderCache):
+            cache = past_key_value.cross_attention_cache if is_cross_attention else past_key_value.self_attention_cache
+            if is_cross_attention and past_key_value.is_updated.get(self.layer_idx, False):
+                layer = cache.layers[self.layer_idx]
+                return layer.keys, layer.values
+        elif is_cross_attention and cache is not None:
+            raise TypeError("Cross attention requires EncoderDecoderCache")
+
+        current_states = key_value_states if is_cross_attention else hidden_states
+        batch_size = current_states.shape[0]
+        keys = self.k_proj(current_states).view(batch_size, -1, self.num_heads, self.squeeze_head_dim)
+        values = self.v_proj(current_states).view(batch_size, -1, self.num_heads, self.head_dim)
+        keys = keys.transpose(1, 2).contiguous()
+        values = values.transpose(1, 2).contiguous()
+        if cache is not None:
+            if self.layer_idx is None:
+                raise ValueError("Cached attention requires a layer index")
+            keys, values = cache.update(keys, values, self.layer_idx)
+            if is_cross_attention:
+                past_key_value.is_updated[self.layer_idx] = True
+        return keys, values
+
     def forward(
         self,
         hidden_states: torch.Tensor,
         key_value_states: Optional[torch.Tensor] = None,
-        past_key_value: Optional[Tuple[torch.Tensor]] = None,
+        past_key_value: Optional[Cache] = None,
         attention_mask: Optional[torch.Tensor] = None,
         layer_head_mask: Optional[torch.Tensor] = None,
         output_attentions: bool = False,
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Cache]]:
         """Input shape: Batch x Time x Channel"""
 
         # if key_value_states are provided this layer is used as a cross-attention layer
         # for the decoder
-        is_cross_attention = key_value_states is not None
 
         bsz, tgt_len, _ = hidden_states.size()
 
         # get query proj
         query_states = self.q_proj(hidden_states) * self.scaling
-        # get key, value proj
-        # `past_key_value[0].shape[2] == key_value_states.shape[1]`
-        # is checking that the `sequence_length` of the `past_key_value` is the same as
-        # the provided `key_value_states` to support prefix tuning
-        if (
-            is_cross_attention
-            and past_key_value is not None
-            and past_key_value[0].shape[2] == key_value_states.shape[1]
-        ):
-            # reuse k,v, cross_attentions
-            key_states = past_key_value[0]
-            value_states = past_key_value[1]
-        elif is_cross_attention:
-            # cross_attentions
-            key_states = self._shape_qk(self.k_proj(key_value_states), -1, bsz)
-            value_states = self._shape_v(self.v_proj(key_value_states), -1, bsz)
-        elif past_key_value is not None:
-            # reuse k, v, self_attention
-            key_states = self._shape_qk(self.k_proj(hidden_states), -1, bsz)
-            value_states = self._shape_v(self.v_proj(hidden_states), -1, bsz)
-            key_states = torch.cat([past_key_value[0], key_states], dim=2)
-            value_states = torch.cat([past_key_value[1], value_states], dim=2)
-        else:
-            # self_attention
-            key_states = self._shape_qk(self.k_proj(hidden_states), -1, bsz)
-            value_states = self._shape_v(self.v_proj(hidden_states), -1, bsz)
-
-        if self.is_decoder:
-            # if cross_attention save Tuple(torch.Tensor, torch.Tensor) of all cross attention key/value_states.
-            # Further calls to cross_attention layer can then reuse all cross-attention
-            # key/value_states (first "if" case)
-            # if uni-directional self-attention (decoder) save Tuple(torch.Tensor, torch.Tensor) of
-            # all previous decoder key/value_states. Further calls to uni-directional self-attention
-            # can concat previous decoder key/value_states to current projected key/value_states (third "elif" case)
-            # if encoder bi-directional self-attention `past_key_value` is always `None`
-            past_key_value = (key_states, value_states)
+        key_states, value_states = self._project_key_value_states(hidden_states, key_value_states, past_key_value)
 
         proj_shape = (bsz * self.num_heads, -1, self.squeeze_head_dim)
         value_shape = (bsz * self.num_heads, -1, self.head_dim)
@@ -289,8 +285,7 @@ class UnimerMBartAttention(nn.Module):
 
         if attn_weights.size() != (bsz * self.num_heads, tgt_len, src_len):
             raise ValueError(
-                f"Attention weights should be of size {(bsz * self.num_heads, tgt_len, src_len)}, but is"
-                f" {attn_weights.size()}"
+                f"Attention weights should be of size {(bsz * self.num_heads, tgt_len, src_len)}, but is {attn_weights.size()}"
             )
 
         if attention_mask is not None:
@@ -306,8 +301,7 @@ class UnimerMBartAttention(nn.Module):
         if layer_head_mask is not None:
             if layer_head_mask.size() != (self.num_heads,):
                 raise ValueError(
-                    f"Head mask for a single layer should be of size {(self.num_heads,)}, but is"
-                    f" {layer_head_mask.size()}"
+                    f"Head mask for a single layer should be of size {(self.num_heads,)}, but is {layer_head_mask.size()}"
                 )
             attn_weights = layer_head_mask.view(1, -1, 1, 1) * attn_weights.view(bsz, self.num_heads, tgt_len, src_len)
             attn_weights = attn_weights.view(bsz * self.num_heads, tgt_len, src_len)
@@ -327,8 +321,7 @@ class UnimerMBartAttention(nn.Module):
 
         if attn_output.size() != (bsz * self.num_heads, tgt_len, self.head_dim):
             raise ValueError(
-                f"`attn_output` should be of size {(bsz * self.num_heads, tgt_len, self.head_dim)}, but is"
-                f" {attn_output.size()}"
+                f"`attn_output` should be of size {(bsz * self.num_heads, tgt_len, self.head_dim)}, but is {attn_output.size()}"
             )
 
         attn_output = attn_output.view(bsz, self.num_heads, tgt_len, self.head_dim)
@@ -373,64 +366,26 @@ class UnimerMBartFlashAttention2(UnimerMBartAttention):
         self,
         hidden_states: torch.Tensor,
         key_value_states: Optional[torch.Tensor] = None,
-        past_key_value: Optional[Tuple[torch.Tensor]] = None,
+        past_key_value: Optional[Cache] = None,
         attention_mask: Optional[torch.Tensor] = None,
         layer_head_mask: Optional[torch.Tensor] = None,
         output_attentions: bool = False,
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Cache]]:
         # MBartFlashAttention2 attention does not support output_attentions
         if output_attentions:
             raise ValueError("MBartFlashAttention2 attention does not support output_attentions")
 
         # if key_value_states are provided this layer is used as a cross-attention layer
         # for the decoder
-        is_cross_attention = key_value_states is not None
 
         bsz, q_len, _ = hidden_states.size()
 
         # get query proj
         query_states = self._shape_qk(self.q_proj(hidden_states), -1, bsz)
 
-        # get key, value proj
-        # `past_key_value[0].shape[2] == key_value_states.shape[1]`
-        # is checking that the `sequence_length` of the `past_key_value` is the same as
-        # the provided `key_value_states` to support prefix tuning
-        if (
-            is_cross_attention
-            and past_key_value is not None
-            and past_key_value[0].shape[2] == key_value_states.shape[1]
-        ):
-            # reuse k,v, cross_attentions
-            key_states = past_key_value[0].transpose(1, 2)
-            value_states = past_key_value[1].transpose(1, 2)
-        elif is_cross_attention:
-            # cross_attentions
-            key_states = self._shape_qk(self.k_proj(key_value_states), -1, bsz)
-            value_states = self._shape_v(self.v_proj(key_value_states), -1, bsz)
-        elif past_key_value is not None:
-            # reuse k, v, self_attention
-            key_states = self._shape_qk(self.k_proj(hidden_states), -1, bsz)
-            value_states = self._shape_v(self.v_proj(hidden_states), -1, bsz)
-            key_states = torch.cat([past_key_value[0].transpose(1, 2), key_states], dim=1)
-            value_states = torch.cat([past_key_value[1].transpose(1, 2), value_states], dim=1)
-        else:
-            # self_attention
-            key_states = self._shape_qk(self.k_proj(hidden_states), -1, bsz)
-            value_states = self._shape_v(self.v_proj(hidden_states), -1, bsz)
-
-        if self.is_decoder:
-            # if cross_attention save Tuple(torch.Tensor, torch.Tensor) of all cross attention key/value_states.
-            # Further calls to cross_attention layer can then reuse all cross-attention
-            # key/value_states (first "if" case)
-            # if uni-directional self-attention (decoder) save Tuple(torch.Tensor, torch.Tensor) of
-            # all previous decoder key/value_states. Further calls to uni-directional self-attention
-            # can concat previous decoder key/value_states to current projected key/value_states (third "elif" case)
-            # if encoder bi-directional self-attention `past_key_value` is always `None`
-            past_key_value = (key_states.transpose(1, 2), value_states.transpose(1, 2))
-
-        kv_seq_len = key_states.shape[-2]
-        if past_key_value is not None:
-            kv_seq_len += past_key_value[0].shape[-2]
+        key_states, value_states = self._project_key_value_states(hidden_states, key_value_states, past_key_value)
+        key_states = key_states.transpose(1, 2)
+        value_states = value_states.transpose(1, 2)
 
         # In PEFT, usually we cast the layer norms in float32 for training stability reasons
         # therefore the input hidden states gets silently casted in float32. Hence, we need
@@ -536,16 +491,10 @@ class UnimerMBartFlashAttention2(UnimerMBartAttention):
         indices_k, cu_seqlens_k, max_seqlen_in_batch_k = _get_unpad_data(attention_mask)
         batch_size, kv_seq_len, num_key_value_heads, head_dim = key_layer.shape
 
-        key_layer = index_first_axis(
-            key_layer.reshape(batch_size * kv_seq_len, num_key_value_heads, head_dim), indices_k
-        )
-        value_layer = index_first_axis(
-            value_layer.reshape(batch_size * kv_seq_len, num_key_value_heads, head_dim), indices_k
-        )
+        key_layer = index_first_axis(key_layer.reshape(batch_size * kv_seq_len, num_key_value_heads, head_dim), indices_k)
+        value_layer = index_first_axis(value_layer.reshape(batch_size * kv_seq_len, num_key_value_heads, head_dim), indices_k)
         if query_length == kv_seq_len:
-            query_layer = index_first_axis(
-                query_layer.reshape(batch_size * kv_seq_len, self.num_heads, head_dim), indices_k
-            )
+            query_layer = index_first_axis(query_layer.reshape(batch_size * kv_seq_len, self.num_heads, head_dim), indices_k)
             cu_seqlens_q = cu_seqlens_k
             max_seqlen_in_batch_q = max_seqlen_in_batch_k
             indices_q = indices_k
@@ -570,16 +519,17 @@ class UnimerMBartFlashAttention2(UnimerMBartAttention):
             (max_seqlen_in_batch_q, max_seqlen_in_batch_k),
         )
 
+
 class UnimerMBartSdpaAttention(UnimerMBartAttention):
     def forward(
         self,
         hidden_states: torch.Tensor,
         key_value_states: Optional[torch.Tensor] = None,
-        past_key_value: Optional[Tuple[torch.Tensor]] = None,
+        past_key_value: Optional[Cache] = None,
         attention_mask: Optional[torch.Tensor] = None,
         layer_head_mask: Optional[torch.Tensor] = None,
         output_attentions: bool = False,
-    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Tuple[torch.Tensor]]]:
+    ) -> Tuple[torch.Tensor, Optional[torch.Tensor], Optional[Cache]]:
         """Input shape: Batch x Time x Channel"""
         if output_attentions or layer_head_mask is not None:
             # TODO: Improve this warning with e.g. `model.config._attn_implementation = "manual"` once this is implemented.
@@ -598,48 +548,12 @@ class UnimerMBartSdpaAttention(UnimerMBartAttention):
 
         # if key_value_states are provided this layer is used as a cross-attention layer
         # for the decoder
-        is_cross_attention = key_value_states is not None
 
         bsz, tgt_len, _ = hidden_states.size()
 
         # get query proj
         query_states = self.q_proj(hidden_states)
-        # get key, value proj
-        # `past_key_value[0].shape[2] == key_value_states.shape[1]`
-        # is checking that the `sequence_length` of the `past_key_value` is the same as
-        # the provided `key_value_states` to support prefix tuning
-        if (
-            is_cross_attention
-            and past_key_value is not None
-            and past_key_value[0].shape[2] == key_value_states.shape[1]
-        ):
-            # reuse k,v, cross_attentions
-            key_states = past_key_value[0]
-            value_states = past_key_value[1]
-        elif is_cross_attention:
-            # cross_attentions
-            key_states = self._shape_qk(self.k_proj(key_value_states), -1, bsz)
-            value_states = self._shape_v(self.v_proj(key_value_states), -1, bsz)
-        elif past_key_value is not None:
-            # reuse k, v, self_attention
-            key_states = self._shape_qk(self.k_proj(hidden_states), -1, bsz)
-            value_states = self._shape_v(self.v_proj(hidden_states), -1, bsz)
-            key_states = torch.cat([past_key_value[0], key_states], dim=2)
-            value_states = torch.cat([past_key_value[1], value_states], dim=2)
-        else:
-            # self_attention
-            key_states = self._shape_qk(self.k_proj(hidden_states), -1, bsz)
-            value_states = self._shape_v(self.v_proj(hidden_states), -1, bsz)
-
-        if self.is_decoder:
-            # if cross_attention save Tuple(torch.Tensor, torch.Tensor) of all cross attention key/value_states.
-            # Further calls to cross_attention layer can then reuse all cross-attention
-            # key/value_states (first "if" case)
-            # if uni-directional self-attention (decoder) save Tuple(torch.Tensor, torch.Tensor) of
-            # all previous decoder key/value_states. Further calls to uni-directional self-attention
-            # can concat previous decoder key/value_states to current projected key/value_states (third "elif" case)
-            # if encoder bi-directional self-attention `past_key_value` is always `None`
-            past_key_value = (key_states, value_states)
+        key_states, value_states = self._project_key_value_states(hidden_states, key_value_states, past_key_value)
 
         query_states = self._shape_qk(query_states, tgt_len, bsz)
 
@@ -661,8 +575,7 @@ class UnimerMBartSdpaAttention(UnimerMBartAttention):
 
         if attn_output.size() != (bsz, self.num_heads, tgt_len, self.head_dim):
             raise ValueError(
-                f"`attn_output` should be of size {(bsz, self.num_heads, tgt_len, self.head_dim)}, but is"
-                f" {attn_output.size()}"
+                f"`attn_output` should be of size {(bsz, self.num_heads, tgt_len, self.head_dim)}, but is {attn_output.size()}"
             )
 
         attn_output = attn_output.transpose(1, 2)
@@ -674,6 +587,7 @@ class UnimerMBartSdpaAttention(UnimerMBartAttention):
         attn_output = self.out_proj(attn_output)
 
         return attn_output, None, past_key_value
+
 
 UNIMER_MBART_ATTENTION_CLASSES = {
     "eager": UnimerMBartAttention,
@@ -738,9 +652,7 @@ class UnimerMBartEncoderLayer(nn.Module):
         hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
         hidden_states = residual + hidden_states
 
-        if hidden_states.dtype == torch.float16 and (
-            torch.isinf(hidden_states).any() or torch.isnan(hidden_states).any()
-        ):
+        if hidden_states.dtype == torch.float16 and (torch.isinf(hidden_states).any() or torch.isnan(hidden_states).any()):
             clamp_value = torch.finfo(hidden_states.dtype).max - 1000
             hidden_states = torch.clamp(hidden_states, min=-clamp_value, max=clamp_value)
 
@@ -753,7 +665,7 @@ class UnimerMBartEncoderLayer(nn.Module):
 
 
 class UnimerMBartDecoderLayer(nn.Module):
-    def __init__(self, config: UnimerMBartConfig):
+    def __init__(self, config: UnimerMBartConfig, layer_idx: int):
         super().__init__()
         self.embed_dim = config.d_model
 
@@ -764,6 +676,7 @@ class UnimerMBartDecoderLayer(nn.Module):
             is_decoder=True,
             is_causal=True,
             config=config,
+            layer_idx=layer_idx,
         )
         self.dropout = config.dropout
         self.activation_fn = ACT2FN[config.activation_function]
@@ -776,6 +689,7 @@ class UnimerMBartDecoderLayer(nn.Module):
             dropout=config.attention_dropout,
             is_decoder=True,
             config=config,
+            layer_idx=layer_idx,
         )
         self.encoder_attn_layer_norm = nn.LayerNorm(self.embed_dim)
         self.fc1 = nn.Linear(self.embed_dim, config.decoder_ffn_dim)
@@ -790,7 +704,7 @@ class UnimerMBartDecoderLayer(nn.Module):
         encoder_attention_mask: Optional[torch.Tensor] = None,
         layer_head_mask: Optional[torch.Tensor] = None,
         cross_attn_layer_head_mask: Optional[torch.Tensor] = None,
-        past_key_value: Optional[Tuple[torch.Tensor]] = None,
+        past_key_value: Optional[Cache] = None,
         output_attentions: Optional[bool] = False,
         use_cache: Optional[bool] = True,
     ) -> torch.Tensor:
@@ -816,9 +730,9 @@ class UnimerMBartDecoderLayer(nn.Module):
         hidden_states = self.self_attn_layer_norm(hidden_states)
 
         # Self Attention
-        # decoder uni-directional self-attention cached key/values tuple is at positions 1,2
-        self_attn_past_key_value = past_key_value[:2] if past_key_value is not None else None
-        # add present self-attn cache to positions 1,2 of present_key_value tuple
+        # 自注意力和交叉注意力共享同一个 EncoderDecoderCache，按 layer_idx 分开存储。
+        self_attn_past_key_value = past_key_value
+
         hidden_states, self_attn_weights, present_key_value = self.self_attn(
             hidden_states=hidden_states,
             past_key_value=self_attn_past_key_value,
@@ -836,8 +750,7 @@ class UnimerMBartDecoderLayer(nn.Module):
             residual = hidden_states
             hidden_states = self.encoder_attn_layer_norm(hidden_states)
 
-            # cross_attn cached key/values tuple is at positions 3,4 of present_key_value tuple
-            cross_attn_past_key_value = past_key_value[-2:] if past_key_value is not None else None
+            cross_attn_past_key_value = past_key_value
             hidden_states, cross_attn_weights, cross_attn_present_key_value = self.encoder_attn(
                 hidden_states=hidden_states,
                 key_value_states=encoder_hidden_states,
@@ -849,8 +762,8 @@ class UnimerMBartDecoderLayer(nn.Module):
             hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
             hidden_states = residual + hidden_states
 
-            # add cross-attn to positions 3,4 of present_key_value tuple
-            present_key_value = present_key_value + cross_attn_present_key_value
+            # Cache 已由注意力层原地更新。
+            present_key_value = past_key_value
 
         # Fully Connected
         residual = hidden_states
@@ -901,20 +814,23 @@ class UnimerMBartPreTrainedModel(PreTrainedModel):
     config_class = UnimerMBartConfig
     base_model_prefix = "model"
     supports_gradient_checkpointing = True
-    _no_split_modules = ["MBartDecoderLayer", "MBartSqueezeAttention"]
-    _supports_flash_attn_2 = True
+    _no_split_modules = ["UnimerMBartDecoderLayer", "UnimerMBartEncoderLayer"]
+    _supports_flash_attn = True
     _supports_sdpa = True
 
-    def _init_weights(self, module):
+    @torch.no_grad()
+    def _init_weights(self, module: nn.Module) -> None:
+        """只初始化尚未加载的参数，避免 Transformers 5 的加载后初始化覆盖真实权重。"""
         std = self.config.init_std
         if isinstance(module, nn.Linear):
-            module.weight.data.normal_(mean=0.0, std=std)
+            init.normal_(module.weight, mean=0.0, std=std)
             if module.bias is not None:
-                module.bias.data.zero_()
+                init.zeros_(module.bias)
         elif isinstance(module, nn.Embedding):
-            module.weight.data.normal_(mean=0.0, std=std)
-            if module.padding_idx is not None:
-                module.weight.data[module.padding_idx].zero_()
+            init.normal_(module.weight, mean=0.0, std=std)
+            # 切片不携带已加载标记，因此在清零 padding 行之前检查原始参数。
+            if module.padding_idx is not None and not getattr(module.weight, "_is_hf_initialized", False):
+                init.zeros_(module.weight[module.padding_idx])
 
     @property
     def dummy_inputs(self):
@@ -1174,9 +1090,7 @@ class UnimerMBartEncoder(UnimerMBartPreTrainedModel):
                 Whether or not to return a [`~utils.ModelOutput`] instead of a plain tuple.
         """
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
-        )
+        output_hidden_states = output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         # retrieve input_ids and inputs_embeds
@@ -1200,19 +1114,12 @@ class UnimerMBartEncoder(UnimerMBartPreTrainedModel):
         hidden_states = self.layernorm_embedding(hidden_states)
         hidden_states = nn.functional.dropout(hidden_states, p=self.dropout, training=self.training)
 
-        # expand attention_mask
-        if attention_mask is not None:
-            # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
-            if self._use_flash_attention_2:
-                attention_mask = attention_mask if 0 in attention_mask else None
-            elif self._use_sdpa and head_mask is None and not output_attentions:
-                # output_attentions=True & head_mask can not be supported when using SDPA, fall back to
-                # the manual implementation that requires a 4D causal mask in all cases.
-                # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
-                attention_mask = _prepare_4d_attention_mask_for_sdpa(attention_mask, inputs_embeds.dtype)
-            else:
-                # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
-                attention_mask = _prepare_4d_attention_mask(attention_mask, inputs_embeds.dtype)
+        # 新版 mask API 在 SDPA 回退时保持加性 mask 的语义。
+        mask_config = self.config
+        if self._use_sdpa and (head_mask is not None or output_attentions):
+            mask_config = copy.copy(self.config)
+            mask_config._attn_implementation = "eager"
+        attention_mask = create_bidirectional_mask(mask_config, inputs_embeds, attention_mask)
 
         encoder_states = () if output_hidden_states else None
         all_attentions = () if output_attentions else None
@@ -1221,8 +1128,7 @@ class UnimerMBartEncoder(UnimerMBartPreTrainedModel):
         if head_mask is not None:
             if head_mask.size()[0] != len(self.layers):
                 raise ValueError(
-                    f"The head_mask should be specified for {len(self.layers)} layers, but it is for"
-                    f" {head_mask.size()[0]}."
+                    f"The head_mask should be specified for {len(self.layers)} layers, but it is for {head_mask.size()[0]}."
                 )
         for idx, encoder_layer in enumerate(self.layers):
             if output_hidden_states:
@@ -1265,9 +1171,7 @@ class UnimerMBartEncoder(UnimerMBartPreTrainedModel):
 
         if not return_dict:
             return tuple(v for v in [hidden_states, encoder_states, all_attentions] if v is not None)
-        return BaseModelOutput(
-            last_hidden_state=hidden_states, hidden_states=encoder_states, attentions=all_attentions
-        )
+        return BaseModelOutput(last_hidden_state=hidden_states, hidden_states=encoder_states, attentions=all_attentions)
 
 
 class UnimerMBartDecoder(UnimerMBartPreTrainedModel):
@@ -1298,7 +1202,7 @@ class UnimerMBartDecoder(UnimerMBartPreTrainedModel):
             config.max_position_embeddings,
             config.d_model,
         )
-        self.layers = nn.ModuleList([UnimerMBartDecoderLayer(config) for _ in range(config.decoder_layers)])
+        self.layers = nn.ModuleList([UnimerMBartDecoderLayer(config, layer_idx) for layer_idx in range(config.decoder_layers)])
         self._use_flash_attention_2 = config._attn_implementation == "flash_attention_2"
         self._use_sdpa = config._attn_implementation == "sdpa"
         self.layernorm_embedding = nn.LayerNorm(config.d_model)
@@ -1323,7 +1227,7 @@ class UnimerMBartDecoder(UnimerMBartPreTrainedModel):
         encoder_attention_mask: Optional[torch.LongTensor] = None,
         head_mask: Optional[torch.Tensor] = None,
         cross_attn_head_mask: Optional[torch.Tensor] = None,
-        past_key_values: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
+        past_key_values: Optional[Cache] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
         use_cache: Optional[bool] = None,
         output_attentions: Optional[bool] = None,
@@ -1396,9 +1300,7 @@ class UnimerMBartDecoder(UnimerMBartPreTrainedModel):
                 Whether or not to return a [`~utils.ModelOutput`] instead of a plain tuple.
         """
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
-        )
+        output_hidden_states = output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         use_cache = use_cache if use_cache is not None else self.config.use_cache
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
@@ -1415,52 +1317,25 @@ class UnimerMBartDecoder(UnimerMBartPreTrainedModel):
         else:
             raise ValueError("You have to specify either decoder_input_ids or decoder_inputs_embeds")
 
-        # past_key_values_length
-        # past_key_values_length = past_key_values[0][0].shape[2] if past_key_values is not None else 0
-        past_key_values_length = 0
-        if past_key_values is not None:
-            if isinstance(past_key_values, (list, tuple)) and past_key_values:
-                past_key_values_length = past_key_values[0][0].shape[2]
+        if past_key_values is not None and not isinstance(past_key_values, Cache):
+            raise TypeError("past_key_values must be a Transformers Cache instance")
+        past_key_values_length = past_key_values.get_seq_length() if past_key_values is not None else 0
 
         if inputs_embeds is None:
             inputs_embeds = self.embed_tokens(input_ids)
 
-        if self._use_flash_attention_2:
-            # 2d mask is passed through the layers
-            attention_mask = attention_mask if (attention_mask is not None and 0 in attention_mask) else None
-        elif self._use_sdpa and not output_attentions and cross_attn_head_mask is None:
-            # output_attentions=True & cross_attn_head_mask can not be supported when using SDPA, and we fall back on
-            # the manual implementation that requires a 4D causal mask in all cases.
-            attention_mask = _prepare_4d_causal_attention_mask_for_sdpa(
-                attention_mask,
-                input_shape,
-                inputs_embeds,
-                past_key_values_length,
-            )
-        else:
-            # 4d mask is passed through the layers
-            attention_mask = _prepare_4d_causal_attention_mask(
-                attention_mask, input_shape, inputs_embeds, past_key_values_length
-            )
-
-        # expand encoder attention mask
+        # SDPA 回退到 eager 时也显式生成加性 mask，保持因果关系和 padding 语义。
+        mask_config = self.config
+        if self._use_sdpa and (output_attentions or head_mask is not None or cross_attn_head_mask is not None):
+            mask_config = copy.copy(self.config)
+            mask_config._attn_implementation = "eager"
+        # 单 token 解码没有未来位置；无 padding 时沿用原有的无 mask 快速路径。
+        if input_shape[-1] > 1 or attention_mask is not None:
+            attention_mask = create_causal_mask(mask_config, inputs_embeds, attention_mask, past_key_values)
         if encoder_hidden_states is not None and encoder_attention_mask is not None:
-            if self._use_flash_attention_2:
-                encoder_attention_mask = encoder_attention_mask if 0 in encoder_attention_mask else None
-            elif self._use_sdpa and cross_attn_head_mask is None and not output_attentions:
-                # output_attentions=True & cross_attn_head_mask can not be supported when using SDPA, and we fall back on
-                # the manual implementation that requires a 4D causal mask in all cases.
-                # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
-                encoder_attention_mask = _prepare_4d_attention_mask_for_sdpa(
-                    encoder_attention_mask,
-                    inputs_embeds.dtype,
-                    tgt_len=input_shape[-1],
-                )
-            else:
-                # [bsz, seq_len] -> [bsz, 1, tgt_seq_len, src_seq_len]
-                encoder_attention_mask = _prepare_4d_attention_mask(
-                    encoder_attention_mask, inputs_embeds.dtype, tgt_len=input_shape[-1]
-                )
+            encoder_attention_mask = create_bidirectional_mask(
+                mask_config, inputs_embeds, encoder_attention_mask, encoder_hidden_states=encoder_hidden_states
+            )
 
         # embed positions
         positions = self.embed_positions(input, past_key_values_length)
@@ -1486,7 +1361,12 @@ class UnimerMBartDecoder(UnimerMBartPreTrainedModel):
         all_hidden_states = () if output_hidden_states else None
         all_self_attns = () if output_attentions else None
         all_cross_attentions = () if (output_attentions and encoder_hidden_states is not None) else None
-        next_decoder_cache = () if use_cache else None
+        # 不传配置创建动态缓存，以保留 UniMERNet 不相等的 key/value head 维度。
+        if use_cache and past_key_values is None:
+            past_key_values = DynamicCache()
+        if past_key_values is not None and encoder_hidden_states is not None:
+            if not isinstance(past_key_values, EncoderDecoderCache):
+                past_key_values = EncoderDecoderCache(past_key_values, DynamicCache())
 
         # check if head_mask/cross_attn_head_mask has a correct number of layers specified if desired
         for attn_mask, mask_name in zip([head_mask, cross_attn_head_mask], ["head_mask", "cross_attn_head_mask"]):
@@ -1504,13 +1384,6 @@ class UnimerMBartDecoder(UnimerMBartPreTrainedModel):
                 dropout_probability = torch.rand([])
                 if dropout_probability < self.layerdrop:
                     continue
-
-            # past_key_value = past_key_values[idx] if past_key_values is not None else None
-            past_key_value = past_key_values[idx] if (
-                    past_key_values is not None and
-                    isinstance(past_key_values, (list, tuple)) and
-                    idx < len(past_key_values)
-            ) else None
 
             if self.gradient_checkpointing and self.training:
                 layer_outputs = self._gradient_checkpointing_func(
@@ -1532,17 +1405,12 @@ class UnimerMBartDecoder(UnimerMBartPreTrainedModel):
                     encoder_hidden_states=encoder_hidden_states,
                     encoder_attention_mask=encoder_attention_mask,
                     layer_head_mask=(head_mask[idx] if head_mask is not None else None),
-                    cross_attn_layer_head_mask=(
-                        cross_attn_head_mask[idx] if cross_attn_head_mask is not None else None
-                    ),
-                    past_key_value=past_key_value,
+                    cross_attn_layer_head_mask=(cross_attn_head_mask[idx] if cross_attn_head_mask is not None else None),
+                    past_key_value=past_key_values,
                     output_attentions=output_attentions,
                     use_cache=use_cache,
                 )
             hidden_states = layer_outputs[0]
-
-            if use_cache:
-                next_decoder_cache += (layer_outputs[3 if output_attentions else 1],)
 
             if output_attentions:
                 all_self_attns += (layer_outputs[1],)
@@ -1556,12 +1424,10 @@ class UnimerMBartDecoder(UnimerMBartPreTrainedModel):
         if output_hidden_states:
             all_hidden_states += (hidden_states,)
 
-        next_cache = next_decoder_cache if use_cache else None
+        next_cache = past_key_values if use_cache else None
         if not return_dict:
             return tuple(
-                v
-                for v in [hidden_states, next_cache, all_hidden_states, all_self_attns, all_cross_attentions]
-                if v is not None
+                v for v in [hidden_states, next_cache, all_hidden_states, all_self_attns, all_cross_attentions] if v is not None
             )
         return BaseModelOutputWithPastAndCrossAttentions(
             last_hidden_state=hidden_states,
@@ -1577,7 +1443,7 @@ class UnimerMBartDecoder(UnimerMBartPreTrainedModel):
     MBART_START_DOCSTRING,
 )
 class UnimerMBartModel(UnimerMBartPreTrainedModel):
-    _tied_weights_keys = ["encoder.embed_tokens.weight", "decoder.embed_tokens.weight"]
+    _tied_weights_keys = {"encoder.embed_tokens.weight": "shared.weight", "decoder.embed_tokens.weight": "shared.weight"}
 
     def __init__(self, config: UnimerMBartConfig):
         super().__init__(config)
@@ -1605,11 +1471,6 @@ class UnimerMBartModel(UnimerMBartPreTrainedModel):
     def get_decoder(self):
         return self.decoder
 
-    def _tie_weights(self):
-        if self.config.tie_word_embeddings:
-            self._tie_or_clone_weights(self.encoder.embed_tokens, self.get_input_embeddings())
-            self._tie_or_clone_weights(self.decoder.embed_tokens, self.get_input_embeddings())
-
     @add_start_docstrings_to_model_forward(MBART_INPUTS_DOCSTRING)
     @add_code_sample_docstrings(
         checkpoint=_CHECKPOINT_FOR_DOC,
@@ -1627,7 +1488,7 @@ class UnimerMBartModel(UnimerMBartPreTrainedModel):
         decoder_head_mask: Optional[torch.Tensor] = None,
         cross_attn_head_mask: Optional[torch.Tensor] = None,
         encoder_outputs: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
-        past_key_values: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
+        past_key_values: Optional[Cache] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
         decoder_inputs_embeds: Optional[torch.FloatTensor] = None,
         use_cache: Optional[bool] = None,
@@ -1636,9 +1497,7 @@ class UnimerMBartModel(UnimerMBartPreTrainedModel):
         return_dict: Optional[bool] = None,
     ) -> Union[Seq2SeqModelOutput, Tuple[torch.FloatTensor]]:
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
-        )
+        output_hidden_states = output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         use_cache = use_cache if use_cache is not None else self.config.use_cache
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
@@ -1703,7 +1562,11 @@ class UnimerMBartModel(UnimerMBartPreTrainedModel):
 class UnimerMBartForConditionalGeneration(UnimerMBartPreTrainedModel, GenerationMixin):
     base_model_prefix = "model"
     _keys_to_ignore_on_load_missing = ["final_logits_bias"]
-    _tied_weights_keys = ["model.encoder.embed_tokens.weight", "model.decoder.embed_tokens.weight", "lm_head.weight"]
+    _tied_weights_keys = {
+        "model.encoder.embed_tokens.weight": "model.shared.weight",
+        "model.decoder.embed_tokens.weight": "model.shared.weight",
+        "lm_head.weight": "model.shared.weight",
+    }
 
     def __init__(self, config: UnimerMBartConfig):
         super().__init__(config)
@@ -1753,7 +1616,7 @@ class UnimerMBartForConditionalGeneration(UnimerMBartPreTrainedModel, Generation
         decoder_head_mask: Optional[torch.Tensor] = None,
         cross_attn_head_mask: Optional[torch.Tensor] = None,
         encoder_outputs: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
-        past_key_values: Optional[Tuple[Tuple[torch.FloatTensor]]] = None,
+        past_key_values: Optional[Cache] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
         decoder_inputs_embeds: Optional[torch.FloatTensor] = None,
         labels: Optional[torch.LongTensor] = None,
@@ -1820,56 +1683,8 @@ class UnimerMBartForConditionalGeneration(UnimerMBartPreTrainedModel, Generation
             encoder_attentions=outputs.encoder_attentions,
         )
 
-    def prepare_inputs_for_generation(
-        self,
-        decoder_input_ids,
-        past_key_values=None,
-        attention_mask=None,
-        head_mask=None,
-        decoder_head_mask=None,
-        cross_attn_head_mask=None,
-        use_cache=None,
-        encoder_outputs=None,
-        **kwargs,
-    ):
-        # cut decoder_input_ids if past is used
-        if past_key_values is not None:
-            past_length = past_key_values[0][0].shape[2]
-
-            # Some generation methods already pass only the last input ID
-            if decoder_input_ids.shape[1] > past_length:
-                remove_prefix_length = past_length
-            else:
-                # Default to old behavior: keep only final ID
-                remove_prefix_length = decoder_input_ids.shape[1] - 1
-
-            decoder_input_ids = decoder_input_ids[:, remove_prefix_length:]
-
-        return {
-            "input_ids": None,  # encoder_outputs is defined. input_ids not needed
-            "encoder_outputs": encoder_outputs,
-            "past_key_values": past_key_values,
-            "decoder_input_ids": decoder_input_ids,
-            "attention_mask": attention_mask,
-            "head_mask": head_mask,
-            "decoder_head_mask": decoder_head_mask,
-            "cross_attn_head_mask": cross_attn_head_mask,
-            "use_cache": use_cache,  # change this to avoid caching (presumably for debugging)
-        }
-
     def prepare_decoder_input_ids_from_labels(self, labels: torch.Tensor):
         return shift_tokens_right(labels, self.config.pad_token_id)
-
-    @staticmethod
-    def _reorder_cache(past_key_values, beam_idx):
-        reordered_past = ()
-        for layer_past in past_key_values:
-            # cached cross_attention states don't have to be reordered -> they are always the same
-            reordered_past += (
-                tuple(past_state.index_select(0, beam_idx.to(past_state.device)) for past_state in layer_past[:2])
-                + layer_past[2:],
-            )
-        return reordered_past
 
 
 @add_start_docstrings(
@@ -1880,7 +1695,10 @@ class UnimerMBartForConditionalGeneration(UnimerMBartPreTrainedModel, Generation
     MBART_START_DOCSTRING,
 )
 class UnimerMBartForSequenceClassification(UnimerMBartPreTrainedModel):
-    _tied_weights_keys = ["model.encoder.embed_tokens.weight", "model.decoder.embed_tokens.weight"]
+    _tied_weights_keys = {
+        "model.encoder.embed_tokens.weight": "model.shared.weight",
+        "model.decoder.embed_tokens.weight": "model.shared.weight",
+    }
 
     def __init__(self, config: UnimerMBartConfig, **kwargs):
         super().__init__(config, **kwargs)
@@ -1930,9 +1748,7 @@ class UnimerMBartForSequenceClassification(UnimerMBartPreTrainedModel):
             use_cache = False
 
         if input_ids is None and inputs_embeds is not None:
-            raise NotImplementedError(
-                f"Passing input embeddings is currently not supported for {self.__class__.__name__}"
-            )
+            raise NotImplementedError(f"Passing input embeddings is currently not supported for {self.__class__.__name__}")
 
         outputs = self.model(
             input_ids,
@@ -1956,9 +1772,7 @@ class UnimerMBartForSequenceClassification(UnimerMBartPreTrainedModel):
 
         if len(torch.unique_consecutive(eos_mask.sum(1))) > 1:
             raise ValueError("All examples must have the same number of <eos> tokens.")
-        sentence_representation = hidden_states[eos_mask, :].view(hidden_states.size(0), -1, hidden_states.size(-1))[
-            :, -1, :
-        ]
+        sentence_representation = hidden_states[eos_mask, :].view(hidden_states.size(0), -1, hidden_states.size(-1))[:, -1, :]
         logits = self.classification_head(sentence_representation)
 
         loss = None
@@ -2009,7 +1823,10 @@ class UnimerMBartForSequenceClassification(UnimerMBartPreTrainedModel):
     MBART_START_DOCSTRING,
 )
 class UnimerMBartForQuestionAnswering(UnimerMBartPreTrainedModel):
-    _tied_weights_keys = ["model.encoder.embed_tokens.weight", "model.decoder.embed_tokens.weight"]
+    _tied_weights_keys = {
+        "model.encoder.embed_tokens.weight": "model.shared.weight",
+        "model.decoder.embed_tokens.weight": "model.shared.weight",
+    }
 
     def __init__(self, config):
         super().__init__(config)
@@ -2142,11 +1959,12 @@ class UnimerMBartDecoderWrapper(UnimerMBartPreTrainedModel):
 
 # Copied from transformers.models.bart.modeling_bart.BartForCausalLM with Bart->MBart, facebook/bart-base->facebook/mbart-large-cc25
 class UnimerMBartForCausalLM(UnimerMBartPreTrainedModel, GenerationMixin):
-    _tied_weights_keys = ["lm_head.weight"]
+    _tied_weights_keys = {"lm_head.weight": "model.decoder.embed_tokens.weight"}
 
     def __init__(self, config):
         config = copy.deepcopy(config)
         config.is_decoder = True
+        config.num_hidden_layers = config.decoder_layers
         config.is_encoder_decoder = False
         super().__init__(config)
         self.model = UnimerMBartDecoderWrapper(config)
@@ -2183,7 +2001,7 @@ class UnimerMBartForCausalLM(UnimerMBartPreTrainedModel, GenerationMixin):
         encoder_attention_mask: Optional[torch.FloatTensor] = None,
         head_mask: Optional[torch.Tensor] = None,
         cross_attn_head_mask: Optional[torch.Tensor] = None,
-        past_key_values: Optional[List[torch.FloatTensor]] = None,
+        past_key_values: Optional[Cache] = None,
         inputs_embeds: Optional[torch.FloatTensor] = None,
         labels: Optional[torch.LongTensor] = None,
         use_cache: Optional[bool] = None,
@@ -2279,9 +2097,7 @@ class UnimerMBartForCausalLM(UnimerMBartPreTrainedModel, GenerationMixin):
         ```"""
 
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
-        )
+        output_hidden_states = output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         count_pred = None
@@ -2324,38 +2140,3 @@ class UnimerMBartForCausalLM(UnimerMBartPreTrainedModel, GenerationMixin):
             cross_attentions=outputs.cross_attentions,
             counting=count_pred,
         )
-
-    def prepare_inputs_for_generation(
-        self, input_ids, past_key_values=None, attention_mask=None, use_cache=None, **kwargs
-    ):
-        # if model is used as a decoder in encoder-decoder model, the decoder attention mask is created on the fly
-        if attention_mask is None:
-            attention_mask = input_ids.new_ones(input_ids.shape)
-
-        if past_key_values:
-            past_length = past_key_values[0][0].shape[2]
-
-            # Some generation methods already pass only the last input ID
-            if input_ids.shape[1] > past_length:
-                remove_prefix_length = past_length
-            else:
-                # Default to old behavior: keep only final ID
-                remove_prefix_length = input_ids.shape[1] - 1
-
-            input_ids = input_ids[:, remove_prefix_length:]
-        # first step, decoder_cached_states are empty
-        return {
-            "input_ids": input_ids,  # encoder_outputs is defined. input_ids not needed
-            "attention_mask": attention_mask,
-            "past_key_values": past_key_values,
-            "use_cache": use_cache,
-        }
-
-    @staticmethod
-    def _reorder_cache(past_key_values, beam_idx):
-        reordered_past = ()
-        for layer_past in past_key_values:
-            reordered_past += (
-                tuple(past_state.index_select(0, beam_idx.to(past_state.device)) for past_state in layer_past),
-            )
-        return reordered_past

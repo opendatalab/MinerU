@@ -1,0 +1,96 @@
+# mineru-kit
+
+状态: Draft
+读者: 批处理开发者、解析内核开发者、服务部署者
+范围: `mineru-kit` 的定位、子命令和与 `mineru` 的边界
+非目标: 本地文档库、搜索、watch、Agent 默认体验
+来源: 由根目录旧 CLI 底稿迁移整理而来
+
+## 1. 定位
+
+`mineru-kit` 是无状态解析工具和服务工具。它不维护 `doclib.db`，不做本地文档库搜索，不负责 Agent 渐进式阅读体验。
+
+`mineru-kit` 适合：
+
+- 大规模批处理。
+- 解析内核调试。
+- 自部署 parse-server。
+- 暴露完整解析参数、并发控制和输出策略。
+
+## 2. 子命令
+
+| 子命令 | 作用 | 文档 |
+|--------|------|------|
+| `mineru-kit models` | 下载、查看和校验本地模型配置 | [mineru-kit models](mineru-kit-models.md) |
+| `mineru-kit parse` | 无状态文件/目录批处理解析 | [mineru-kit parse](mineru-kit-parse.md) |
+| `mineru-kit webui` | 基于 V1 API 的本地文档解析 Web UI | [mineru-kit webui](mineru-kit-webui.md) |
+| `mineru-kit api-server` | 启动兼容统一 API 的本地解析服务 | [mineru-kit api-server](mineru-kit-api-server.md) |
+| `mineru-kit vlm-server` | 本地 VLM 服务，兼容 OpenAI Chat Completions 协议 | [mineru-kit vlm-server](mineru-kit-vlm-server.md) |
+| `mineru-kit router` | 启动 V1 路由服务，转发到已有 upstream 或管理本地 worker | 仅暴露 `/v1/*` |
+
+### 独立命令别名
+
+以下独立命令直接复用新版 kit 的参数、默认值、校验和行为，仅保留命令名，不恢复旧 CLI 参数或协议：
+
+| 独立命令 | 等价命令 |
+|----------|----------|
+| `mineru-openai-server` | `mineru-kit vlm-server` |
+| `mineru-models-download` | `mineru-kit models download` |
+| `mineru-api` | `mineru-kit api-server` |
+
+```bash
+mineru-openai-server --engine vllm --host 127.0.0.1 --port 30000
+mineru-models-download --tier standard --source modelscope
+mineru-api --host 127.0.0.1 --port 8000 --tier standard
+```
+
+`mineru-openai-server` 保留向底层引擎透传额外参数的能力。`mineru-models-download` 后直接填写模型仓库名或 `--tier` 等下载参数，不需要再输入 `download`。
+
+## 3. 与 mineru 的边界
+
+| 能力 | `mineru` | `mineru-kit` |
+|------|----------|--------------|
+| 本地数据库 | 有 | 无 |
+| SHA256 缓存 | 有 | 无 |
+| STDOUT 默认阅读 | 有 | 不是默认重点 |
+| 目录批处理 | 非首要 | 核心能力 |
+| 输出冲突策略 | 简化 | 完整 |
+| 并发控制 | 简化 | 完整 |
+| backend 专家参数 | 隐藏 | 可暴露 |
+
+`mineru-kit` 可以作为 `mineru` 的底层能力来源，但不是普通用户和 Agent 的默认入口。Agent skill 长期只暴露 `mineru`，不直接暴露 `mineru-kit`。
+
+`mineru-kit parse` 完全不复用 `mineru` 的本地 doclib 缓存。它是纯工具，不感知 doclib、watch、search 或长期数据库状态。
+
+`mineru-kit` 参数暂不划分 `stable` / `experimental` 等稳定性等级。第一阶段保持参数体系简单，后续只有在兼容性压力明确出现时再引入分级。
+
+`mineru-kit webui` 是无状态的 V1 API 客户端界面。未指定 `--api-url` 时，它会自动托管一个 loopback `mineru-kit api-server`；指定 URL 时只连接已有的 V1 服务，不会静默改连官方远程服务。`mineru-webui` 提供为同一新版命令的独立入口，不再提供旧 HTTP 协议或旧参数。
+
+当前 `mineru-kit parse` 已确定：
+
+- 只支持文件和目录输入，不支持 stdin、路径列表、URL 输入和递归目录。
+- `--output` 必填。
+- local 模式支持 `tier` 与 `backend`；PDF/image 二者都不传时当前默认使用 `standard` 对应 backend，仅支持 flash tier 的输入按 ADR-0024 归一。
+- remote 模式支持 `--remote` / `--remote-url` / `--api-key`，允许传 `--tier`，但禁止传 `--backend`；`mineru-kit parse` 允许 remote 处理非 PDF/image 输入。
+
+详细命令契约见 [ADR-0016](../decisions/0016-mineru-kit-parse-command.md)。
+
+当前 `mineru-kit models` 已确定：
+
+- 第一阶段只提供 `download`、`show`、`verify` 三个子命令。
+- 使用 `config.yaml` 配置文件体系（默认 `${MINERU_HOME:-~/.mineru}/config.yaml`，可由 `MINERU_CONFIG` 指定其它路径）。
+- `download` 用位置参数选择模型 repo，或用 `--tier` 下载某个 tier 所需的 repo 集合。
+- `download`、`show`、`verify` 均支持 `--small-backend auto|onnx|torch` 与 `--vlm-engine auto|llama-cpp|vllm|lmdeploy|mlx` 独立选择后端。
+- 下载过程中自动解析出的 `model.source` 可能写回配置文件，不提供 `--no-config` 或自定义配置文件路径参数。
+
+详细命令契约见 [ADR-0019](../decisions/0019-mineru-kit-models-command.md)。
+
+当前 `mineru-kit router` 已确定：
+
+- 入口参数包括 `--host`、`--port`、`--reload`、`--upstream-url`、`--local-gpus`、`--worker-host`、`--worker-tier`、`--worker-concurrency`、`--preload-models`。
+- `--upstream-url` 可重复，用于接入已有 MinerU V1 API base URL。
+- `--local-gpus` 支持 `auto`、`none` 或 GPU CSV，例如 `0,1,2`。
+- 本地 worker 统一启动 `mineru-kit api-server`；`--worker-tier` 默认 `standard`，`--worker-concurrency` 默认 `1`。
+- Router 完整代理 V1 health、models、tiers、uploads、files、parse jobs 与 usage；不再提供旧 `/tasks`、`/file_parse` 接口。
+- Router 只接受显式声明的参数，不再透传未知模型引擎参数；需要额外调优时应部署独立 upstream。
+- uploads、files 与 jobs 的公共路由状态保存在当前进程内，Router 重启后不保证旧公共 ID 继续可用。
