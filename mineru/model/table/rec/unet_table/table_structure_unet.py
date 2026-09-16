@@ -6,7 +6,7 @@ from typing import Optional, Dict, Any, Tuple
 import cv2
 import numpy as np
 
-from mineru.utils.os_env_config import get_op_num_threads
+from ....runtime.onnx import get_op_num_threads
 from .utils import OrtInferSession, resize_img
 from .utils_table_line_rec import (
     get_table_line,

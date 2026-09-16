@@ -5,23 +5,23 @@
 FROM vllm/vllm-openai:v0.21.0
 # FROM vllm/vllm-openai:v0.21.0-cu129
 
-# Install libgl for opencv support & Noto fonts for Chinese characters
+# Install libgl for opencv support
 RUN apt-get update && \
     apt-get install -y \
-        fonts-noto-core \
-        fonts-noto-cjk \
-        fontconfig \
         libgl1 && \
-    fc-cache -fv && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-# Install mineru latest
-RUN python3 -m pip install -U 'mineru[core]>=3.4.0' --break-system-packages && \
+# Install MinerU 4 with Torch; reuse vLLM from the base image.
+RUN python3 -m pip install -U 'mineru[torch]>=4.0,<5' --break-system-packages && \
     python3 -m pip cache purge
 
-# Download models and update the configuration file
-RUN /bin/bash -c "mineru-models-download -s huggingface -m all"
+# Keep build-time model downloads and runtime selection aligned, including builds without a GPU.
+ENV MINERU_MODEL_SMALL_BACKEND=torch \
+    MINERU_MODEL_VLM_ENGINE=vllm
+
+# Download the Torch bundle and original VLM weights.
+RUN /bin/bash -c "mineru-kit models download --tier standard --small-backend torch --vlm-engine vllm -s huggingface"
 
 # Set the entry point to activate the virtual environment and run the command line tool
 ENTRYPOINT ["/bin/bash", "-c", "export MINERU_MODEL_SOURCE=local && exec \"$@\"", "--"]

@@ -1,0 +1,9 @@
+lang:
+  ch:
+    det: ch_PP-OCRv6_tiny_det_infer.safetensors
+    rec: ch_PP-OCRv6_small_rec_infer.safetensors
+    dict: ppocrv6_dict.txt
+  seal:
+    det: seal_PP-OCRv4_det_infer.pth
+    rec: ch_PP-OCRv6_small_rec_infer.safetensors
+    dict: ppocrv6_dict.txt

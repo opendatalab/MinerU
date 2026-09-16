@@ -1,13 +1,13 @@
 # Copyright (c) Opendatalab. All rights reserved.
 
-from PIL import Image
 from collections import defaultdict
 import inspect
 from typing import List, Dict
+
 import cv2
 import numpy as np
 from loguru import logger
-from tqdm import tqdm
+from PIL import Image
 
 
 # 旋转候选门控回到旧规则，先尽量召回疑似旋转表，再由 OCR rec 评分决定最终角度。
@@ -136,9 +136,8 @@ class MineruTableOrientationClsModel:
         img_bgr: np.ndarray,
         det_boxes,
     ) -> Dict:
-        """根据已有 OCR det 框构造评分任务，复用 0 度门控结果并统一裁图逻辑。"""
+        """根据已有 OCR det 框构造评分任务，复用门控检测结果并统一裁图逻辑。"""
         sampled_boxes = self._sample_det_boxes(det_boxes)
-
         img_crop_list = []
         for box in sampled_boxes:
             crop_img = self._crop_image_without_text_rotation(img_bgr, box)
@@ -157,11 +156,7 @@ class MineruTableOrientationClsModel:
         """为单个角度构造评分任务，只做 det、抽样和切图，不执行 rec。"""
         det_ocr_res = self.ocr_engine.ocr(img_bgr, rec=False)
         det_res = det_ocr_res[0] if det_ocr_res else None
-        return self._build_orientation_score_task_from_det_boxes(
-            label,
-            img_bgr,
-            det_res,
-        )
+        return self._build_orientation_score_task_from_det_boxes(label, img_bgr, det_res)
 
     def _build_orientation_score_tasks(self, img_bgr: np.ndarray) -> List[Dict]:
         """为一张表构造 0/90/270 三个角度的评分任务。"""
@@ -265,50 +260,19 @@ class MineruTableOrientationClsModel:
         self._debug_log_orientation_rec_scores(-1, score_by_label)
         return self._select_rotation_label_by_scores(score_by_label)
 
-    @staticmethod
-    def _set_progress_description(progress_bar, desc: str):
-        """切换复用进度条的阶段描述，并兼容测试替身和 tqdm 对象。"""
-        if progress_bar is None:
-            return
-        if hasattr(progress_bar, "set_description"):
-            progress_bar.set_description(desc)
-        else:
-            progress_bar.desc = desc
-
-    @staticmethod
-    def _extend_progress_total(progress_bar, count: int):
-        """按新增工作量动态扩展总进度，保证最终 total 覆盖 det/score/rec。"""
-        if progress_bar is None or count <= 0:
-            return
-        current_total = progress_bar.total if progress_bar.total is not None else progress_bar.n
-        progress_bar.total = current_total + count
-        if hasattr(progress_bar, "refresh"):
-            progress_bar.refresh()
-
     @classmethod
     def _collect_portrait_image_groups(
         cls,
         imgs: List[Dict],
         resolution_group_stride: int,
     ) -> Dict[tuple[int, int], list[Dict]]:
-        """兼容旧私有入口，实际收集逻辑已不再按表格宽高比过滤。"""
-        return cls._collect_orientation_image_groups(
-            imgs,
-            resolution_group_stride,
-        )
-
-    @classmethod
-    def _collect_orientation_image_groups(
-        cls,
-        imgs: List[Dict],
-        resolution_group_stride: int,
-    ) -> Dict[tuple[int, int], list[Dict]]:
-        """按归一化分辨率收集所有有效表格图，旋转判断交给 OCR det/rec 评分。"""
+        """按归一化分辨率收集竖版表格，横版表格默认保持 0 度跳过后续 OCR。"""
         resolution_groups = defaultdict(list)
         for index, img in enumerate(imgs):
             bgr_img = cls._to_bgr_table_image(img)
             img_height, img_width = bgr_img.shape[:2]
-            if img_height <= 0 or img_width <= 0:
+            img_aspect_ratio = img_height / img_width if img_width > 0 else 1.0
+            if img_aspect_ratio <= 1.2:
                 continue
 
             group_key = (
@@ -324,22 +288,26 @@ class MineruTableOrientationClsModel:
         return resolution_groups
 
     @classmethod
-    def _collect_orientation_images(cls, imgs: List[Dict]) -> list[Dict]:
-        """扁平收集有效表格图，首轮 det 的分桶和 batch 交给 OCR detector 内部处理。"""
-        orientation_imgs = []
+    def _collect_portrait_images(cls, imgs: List[Dict]) -> list[Dict]:
+        """扁平收集当前需要方向评分的竖版表格图，保持本地既有候选边界。"""
+        portrait_imgs = []
         for index, img in enumerate(imgs):
             bgr_img = cls._to_bgr_table_image(img)
             img_height, img_width = bgr_img.shape[:2]
             if img_height <= 0 or img_width <= 0:
                 continue
 
-            orientation_imgs.append(
+            img_aspect_ratio = img_height / img_width
+            if img_aspect_ratio <= 1.2:
+                continue
+
+            portrait_imgs.append(
                 {
                     "index": index,
                     "table_img_bgr": bgr_img,
                 }
             )
-        return orientation_imgs
+        return portrait_imgs
 
     @classmethod
     def _pad_group_images(
@@ -383,12 +351,16 @@ class MineruTableOrientationClsModel:
             params = signature.parameters
         except (TypeError, ValueError):
             params = {}
+        accepts_var_kwargs = any(
+            param.kind == inspect.Parameter.VAR_KEYWORD
+            for param in params.values()
+        )
 
-        if "tqdm_enable" in params:
+        if "tqdm_enable" in params or accepts_var_kwargs:
             progress_kwargs["tqdm_enable"] = tqdm_enable
-        if "tqdm_desc" in params:
+        if "tqdm_desc" in params or accepts_var_kwargs:
             progress_kwargs["tqdm_desc"] = tqdm_desc
-        if "tqdm_progress_bar" in params:
+        if "tqdm_progress_bar" in params or accepts_var_kwargs:
             progress_kwargs["tqdm_progress_bar"] = progress_bar
 
         batch_results = batch_predict(img_list, max_batch_size, **progress_kwargs)
@@ -400,24 +372,24 @@ class MineruTableOrientationClsModel:
 
     def _detect_rotation_candidates(
         self,
-        orientation_imgs: list[Dict],
+        portrait_imgs: list[Dict],
         det_batch_size: int,
         tqdm_enable: bool = False,
         tqdm_desc: str = "Table orientation",
-        progress_bar=None,
+        tqdm_progress_bar=None,
     ) -> list[Dict]:
-        """对表格批量做 OCR det，并筛选需要进入多角度评分的候选。"""
+        """对竖版表格批量做 OCR det，并筛选需要进入多角度评分的候选。"""
         rotated_imgs = []
-        batch_images = [img_info["table_img_bgr"] for img_info in orientation_imgs]
+        batch_images = [img_info["table_img_bgr"] for img_info in portrait_imgs]
         batch_results = self._batch_detect_text_boxes(
             batch_images,
             det_batch_size,
-            tqdm_enable=tqdm_enable and progress_bar is None,
+            tqdm_enable=tqdm_enable,
             tqdm_desc=f"{tqdm_desc} det",
-            progress_bar=progress_bar,
+            progress_bar=tqdm_progress_bar,
         )
 
-        for img_info, (dt_boxes, _elapse) in zip(orientation_imgs, batch_results):
+        for img_info, (dt_boxes, _elapse) in zip(portrait_imgs, batch_results):
             if not self._is_rotation_candidate_by_det_boxes(dt_boxes):
                 continue
             candidate_info = dict(img_info)
@@ -444,7 +416,6 @@ class MineruTableOrientationClsModel:
         self,
         rotated_imgs: list[Dict],
         det_batch_size: int,
-        progress_bar=None,
     ) -> tuple[list[tuple[Dict, list[Dict]]], list[np.ndarray]]:
         """为所有旋转候选构造三角度评分任务，并汇总成一次 OCR rec 输入。"""
         img_score_tasks = []
@@ -492,8 +463,6 @@ class MineruTableOrientationClsModel:
         for _img_info, tasks in img_score_tasks:
             for task in tasks:
                 self._add_score_task_crops(task, all_crop_imgs)
-            if progress_bar is not None:
-                progress_bar.update(1)
         return img_score_tasks, all_crop_imgs
 
     def _recognize_orientation_crops(
@@ -523,7 +492,7 @@ class MineruTableOrientationClsModel:
         det_batch_size: int,
         tqdm_enable: bool = False,
         tqdm_desc: str = "Table orientation",
-        progress_bar=None,
+        tqdm_progress_bar=None,
     ) -> Dict[int, str]:
         """批量评分旋转候选，并返回原始表格下标到最终角度标签的映射。"""
         if not rotated_imgs:
@@ -533,17 +502,12 @@ class MineruTableOrientationClsModel:
         img_score_tasks, all_crop_imgs = self._build_score_tasks_for_candidates(
             rotated_imgs,
             det_batch_size,
-            progress_bar=progress_bar,
         )
-        self._extend_progress_total(progress_bar, len(all_crop_imgs))
-        self._set_progress_description(progress_bar, f"{tqdm_desc} rec")
-        if progress_bar is not None and hasattr(progress_bar, "refresh"):
-            progress_bar.refresh()
         rec_res = self._recognize_orientation_crops(
             all_crop_imgs,
             tqdm_enable=tqdm_enable,
             tqdm_desc=tqdm_desc,
-            tqdm_progress_bar=progress_bar,
+            tqdm_progress_bar=tqdm_progress_bar,
         )
 
         for img_info, tasks in img_score_tasks:
@@ -560,46 +524,28 @@ class MineruTableOrientationClsModel:
         det_batch_size: int,
         tqdm_enable: bool = False,
         tqdm_desc: str = "Table orientation",
+        tqdm_progress_bar=None,
     ) -> List[str]:
         """
         批量预测传入表格图片的旋转角度，只返回角度，不修改输入图片。
         """
         rotate_labels = ["0"] * len(imgs)
-        orientation_imgs = self._collect_orientation_images(imgs)
-        total_images = len(orientation_imgs)
-        progress_bar = None
-        if tqdm_enable:
-            progress_bar = tqdm(
-                total=total_images,
-                desc=f"{tqdm_desc} det",
-                leave=True,
-            )
-        try:
-            rotated_imgs = self._detect_rotation_candidates(
-                orientation_imgs,
-                det_batch_size,
-                tqdm_enable=tqdm_enable,
-                tqdm_desc=tqdm_desc,
-                progress_bar=progress_bar,
-            )
-            self._extend_progress_total(progress_bar, len(rotated_imgs))
-            self._set_progress_description(progress_bar, f"{tqdm_desc} score")
-            if progress_bar is not None and hasattr(progress_bar, "refresh"):
-                progress_bar.refresh()
-            label_by_index = self._score_rotation_candidates(
-                rotated_imgs,
-                det_batch_size,
-                tqdm_enable=tqdm_enable,
-                tqdm_desc=tqdm_desc,
-                progress_bar=progress_bar,
-            )
-            for index, label in label_by_index.items():
-                rotate_labels[index] = label
-        finally:
-            self._set_progress_description(progress_bar, tqdm_desc)
-            if progress_bar is not None and hasattr(progress_bar, "refresh"):
-                progress_bar.refresh()
-            if progress_bar is not None:
-                progress_bar.close()
+        portrait_imgs = self._collect_portrait_images(imgs)
+        rotated_imgs = self._detect_rotation_candidates(
+            portrait_imgs,
+            det_batch_size,
+            tqdm_enable=tqdm_enable,
+            tqdm_desc=tqdm_desc,
+            tqdm_progress_bar=tqdm_progress_bar,
+        )
+        label_by_index = self._score_rotation_candidates(
+            rotated_imgs,
+            det_batch_size,
+            tqdm_enable=tqdm_enable,
+            tqdm_desc=tqdm_desc,
+            tqdm_progress_bar=tqdm_progress_bar,
+        )
+        for index, label in label_by_index.items():
+            rotate_labels[index] = label
 
         return rotate_labels

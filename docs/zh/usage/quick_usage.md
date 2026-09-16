@@ -1,7 +1,7 @@
 # 使用 MinerU
 
 ## 快速配置模型源
-MinerU默认使用`huggingface`作为模型源，若用户网络无法访问`huggingface`，可以通过环境变量便捷地切换模型源为`modelscope`：
+MinerU 默认使用 `auto` 模型源策略，优先探测 Hugging Face，不可访问时选择 ModelScope，若用户网络无法访问`huggingface`，可以通过环境变量便捷地切换模型源为`modelscope`：
 ```bash
 export MINERU_MODEL_SOURCE=modelscope
 ```
@@ -10,148 +10,134 @@ export MINERU_MODEL_SOURCE=modelscope
 ## 通过命令行快速使用
 MinerU内置了命令行工具，用户可以通过命令行快速使用MinerU进行文档解析：
 ```bash
-mineru -p <input_path> -o <output_path>
+mineru parse <input_path> --pages all -o <output_path>
 ```
 > [!TIP]
-> - `<input_path>`：本地 `PDF` / 图片 / `DOCX` / `PPTX` / `XLSX` 文件或目录
-> - `<output_path>`：输出目录
-> - 未传 `--api-url` 时，CLI 会自动拉起本地临时 `mineru-api`
-> - 传入 `--api-url` 时，CLI 会直连远端或已有本地 FastAPI 服务
+> - `<input_path>`：单个本地 `PDF` / `OFD` / `EPUB` / 静态 `HTML` / 图片 / `CSV` / `RTF` / `DOC`/`DOCX` / `PPT`/`PPTX` / `XLS`/`XLSX` / `ODT`/`ODS`/`ODP` 文件
+> - `<output_path>`：可选输出文件；未指定时 Markdown 写入标准输出
+> - PDF 默认解析前 10 页；使用 `--pages all` 解析整份文档
 > 
 > 更多关于输出文件的信息，请参考[输出文件说明](../reference/output_files.md)。
 
 > [!NOTE]
-> 命令行工具会在Linux和macOS系统自动尝试cuda/mps加速。Windows用户如需使用cuda加速，
-> 请前往 [Pytorch官网](https://pytorch.org/get-started/locally/) 选择适合自己cuda版本的命令安装支持加速的`torch`和`torchvision`。
+> 运行时加速按两个模型组件分别选择，依据是已安装的依赖和检测到的设备：
+>
+> - 小模型仅在 `torch`、`torchvision`、`transformers`、`accelerate`、`safetensors` **全部安装**且检测到非 CPU 设备（CUDA/MPS 等）时使用 Torch 后端，否则使用 ONNX（CPU）。只安装 Torch 并不足以启用。
+> - 本地 VLM 引擎独立选择：macOS 固定使用 llama.cpp；加速卡设备上 Linux 优先 vLLM、其次已安装的 LMDeploy，Windows 使用 LMDeploy；否则使用 llama.cpp。
+> - XPU 不会自动选择 LMDeploy：Linux 上安装了支持 XPU 的 vLLM 时使用 vLLM，否则使用 llama.cpp；Windows 上使用 llama.cpp。
+> - Windows 用户如需 CUDA 加速，请先前往 [PyTorch 官网](https://pytorch.org/get-started/locally/) 选择与 CUDA 版本匹配的命令安装支持加速的 `torch` 和 `torchvision`，再安装 `mineru[full]`。
+
+安装完成后，确认当前环境实际生效的运行时：
+
+```bash
+mineru-kit models show
+```
+
+输出会报告 `Effective small backend` 与 `Effective VLM engine`，以及每个取值的配置来源。`models show` **显示**有效后端、引擎和模型就绪状态——模型文件缺失会被报告但命令不会失败；需要以非零退出码标识模型文件不完整时使用 `mineru-kit models verify`。两者都不执行推理。完整验证按顺序推进：依赖安装成功 → 选择符合预期 → `models verify` 通过 → 一份小样本文档实际解析成功。完整选择规则见[档位与运行环境](./tiers.md)。
 
 如果需要通过自定义参数调整解析选项，您也可以在文档中查看更详细的[命令行工具使用说明](./cli_tools.md)。
 
-## 通过api、webui、http-client/server进阶使用
+## 文档库、搜索与继续阅读
 
-- 通过fast api方式调用：
+`mineru` 使用本地文档库保存文件身份、解析缓存和索引。解析后的响应带有 locator；按真实返回值替换下例中的文档 ID：
+
+```bash
+mineru parse document.pdf --json
+mineru search "关键词" --json
+mineru read "doc:ab12cd3/tier:standard/page:11" --json
+```
+
+超过输出预算时按 `next_request` 或返回的继续阅读命令操作。`read` 读取已有结果，不会自动发起新的高质量解析。无状态批处理和完整导出使用 `mineru-kit parse`；原生 Office、HTML、CSV/TSV、EPUB、OFD 自动归一到本地 Flash。
+
+## 通过 API、WebUI 和服务进阶使用
+
+- 启动自部署 V1 API：
   ```bash
-  mineru-api --host 0.0.0.0 --port 8000
+  mineru-kit api-server --host 0.0.0.0 --port 8000 --tier standard
   ```
   >[!TIP]
-  >在浏览器中访问 `http://127.0.0.1:8000/docs` 查看API文档。
+  >在浏览器中访问 `http://127.0.0.1:8000/docs` 查看 OpenAPI 文档。服务只提供 `/v1/*` 接口，包括健康检查、能力发现、上传、文件、解析任务和用量查询。
   >
-  >- 健康检查接口：`GET /health`
-  >  返回 `protocol_version`、`processing_window_size`、`max_concurrent_requests` 等服务信息
-  >- 异步任务提交接口：`POST /tasks`
-  >- 同步解析接口：`POST /file_parse`
-  >- 任务查询接口：`GET /tasks/{task_id}`、`GET /tasks/{task_id}/result`
-  >- API 输出目录由服务端固定控制，默认写入 `./output`
-  >- 上传文件当前支持 `PDF`、图片与 `DOCX`、`PPTX`、`XLSX`
-  >
-  >- `POST /tasks` 会立即返回 `task_id`；`POST /file_parse` 会在内部提交到同一个任务管理器，等待任务完成后同步返回最终结果。
-  >- 当任务处于排队状态时，任务提交结果和状态查询结果中可能会返回 `queued_ahead` 字段，用于表示前方排队任务数。
-  >- 任务为单进程、进程内状态实现，服务重启、`--reload` 热重载或多进程部署后不保证仍可查询历史任务状态。
-  >- 默认任务完成或失败后保留 24 小时，随后自动清理任务状态和输出目录；清理后访问任务状态或结果会返回 `404`。
-  >- 可通过环境变量 `MINERU_API_TASK_RETENTION_SECONDS` 和 `MINERU_API_TASK_CLEANUP_INTERVAL_SECONDS` 调整保留时长与清理轮询间隔。
-  >- 可通过 `--enable-vlm-preload true` 在服务启动阶段预热本地 VLM 模型，避免首次 VLM 或 hybrid 请求时再初始化。
-  >
-  >异步任务提交示例：
-  >```bash
-  >curl -X POST http://127.0.0.1:8000/tasks \
-  >  -F "files=@demo/pdfs/demo1.pdf" \
-  >  -F "return_md=true"
-  >```
-  >
-  >同步解析示例：
-  >```bash
-  >curl -X POST http://127.0.0.1:8000/file_parse \
-  >  -F "files=@demo/pdfs/demo1.pdf" \
-  >  -F "return_md=true" \
-  >  -F "response_format_zip=true" \
-  >  -F "return_original_file=true"
-  >```
-  >
-  >轮询任务状态与结果：
-  >```bash
-  >curl http://127.0.0.1:8000/tasks/<task_id>
-  >curl http://127.0.0.1:8000/tasks/<task_id>/result
-  >curl http://127.0.0.1:8000/health
-  >```
-  >
-  >http异步调用代码示例：[Python版本](https://github.com/opendatalab/MinerU/blob/master/demo/demo.py)
+  >原生文档解析示例：[Python SDK](sdk_api.md)；纯 HTTP 调用见 [V1 HTTP API](http_api.md)
 
 - 启动gradio webui 可视化前端：
   ```bash
-  mineru-gradio --server-name 0.0.0.0 --server-port 7860
+  mineru-kit webui --server-name 0.0.0.0 --server-port 7860
   ```
   >[!TIP]
   > 
   >- 在浏览器中访问 `http://127.0.0.1:7860` 使用 Gradio WebUI。
-  >- 未传 `--api-url` 时，Gradio 会自动拉起可复用的本地 `mineru-api`；传入 `--api-url` 时则会复用已有本地或远端服务。
-  >- `--enable-vlm-preload true` 会让 Gradio 在 WebUI 启动阶段主动拉起本地 `mineru-api` 并等待 VLM 预加载完成；传入 `--api-url` 时会被忽略。
-  >- WebUI 当前支持上传 `PDF`、图片与 `DOCX`、`PPTX`、`XLSX` 文件。
+  >- 未传 `--api-url` 时，Gradio 会托管 loopback `mineru-kit api-server`；传入后只连接指定的 V1 服务。
+  >- 使用 `--api-server-preload-models` 为托管的本地服务预加载模型。
+  >- `mineru-webui` 仍作为命令名兼容别名，使用相同的新版参数。
 
 - 通过 `mineru-router` 进行多服务 / 多 GPU 编排：
   ```bash
-  mineru-router --host 0.0.0.0 --port 8002 --local-gpus auto
+  mineru-router --host 0.0.0.0 --port 8002 --local-gpus auto --worker-tier standard
   ```
   >[!TIP]
   >
-  >- `mineru-router` 对外暴露与 `mineru-api` 一致的 `/health`、`/tasks`、`/file_parse`、`/tasks/{task_id}`、`/tasks/{task_id}/result` 接口。
-  >- 可重复使用 `--upstream-url` 聚合多个已有 `mineru-api` 服务，也可通过 `--local-gpus` 自动拉起本地 worker。
-  >- `--enable-vlm-preload true` 仅作用于 router 托管的本地 worker，不会影响通过 `--upstream-url` 接入的远端服务。
+  >- `mineru-router` 与 `mineru-kit router` 都只暴露完整 `/v1/*` API。
+  >- 可重复使用 `--upstream-url` 聚合多个 V1 api-server，也可通过 `--local-gpus` 自动拉起 `mineru-kit api-server` worker。
+  >- `--preload-models` 只作用于 Router 托管的本地 worker，远端 upstream 保持自己的启动配置。
+  >- Router 不再透传未知模型引擎参数。
   >- 适用于多服务、多 GPU 和统一入口部署场景。
 
-- 使用`http-client/server`方式调用：
+- 启动 OpenAI 兼容 VLM 服务：
   ```bash
-  # 启动openai兼容服务器(需要安装vllm或lmdeploy环境)
-  mineru-openai-server --port 30000
-  ``` 
-  >[!TIP]
-  >在另一个终端中通过http client连接openai server
-  > ```bash
-  > mineru -p <input_path> -o <output_path> -b hybrid-http-client -u http://127.0.0.1:30000
-  > ```
-  >`vlm-http-client` 是轻量远程 client，用法上不要求本地安装 `torch`。
-  >`hybrid-http-client` 需要本地具备 `mineru[pipeline]` 及 `torch` 等 pipeline 依赖。
+  mineru-kit vlm-server --engine auto --port 30000
+  ```
 
 > [!NOTE]
-> 所有`vllm/lmdeploy`官方支持的参数都可用通过命令行参数传递给 MinerU，包括以下命令:`mineru`、`mineru-openai-server`、`mineru-gradio`、`mineru-api`、`mineru-router`，
+> 模型引擎参数只适用于显式声明它们的命令；`mineru-router` 仅接受文档列出的 Router/worker 参数，不透传未知参数。
 > 我们整理了一些`vllm/lmdeploy`使用中的常用参数和使用方法，可以在文档[命令行进阶参数](./advanced_cli_parameters.md)中获取。
+
+## 使用 config.yaml 配置 LLM 辅助后处理
+
+LLM 辅助标题分级和跨页表格单元格续接读取 `$MINERU_HOME/config.yaml`，兼容 OpenAI 协议的模型服务：
+
+```yaml
+llm_aided:
+  api_key: ${MINERU_LLM_API_KEY:-}
+  base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+  model: qwen3.5-plus
+  enable_thinking: false
+  max_concurrency: 16
+  features:
+    title_leveling: false
+    cross_page_table_cell_merge: false
+```
+
+- `title_leveling`：仅在 `MiddleJson.is_full_document=true` 的整本 PDF 输入中，以文档标题为边界分组优化 2～6 级段落标题；抽页结果持久化为 `false` 并跳过该功能。
+- `cross_page_table_cell_merge`：在现有规则确认跨页续表后，通过 LLM 判断边界行中各组相邻单元格是否续接。
+- table cell merge 不要求整本输入；两个功能默认关闭，并通过同一个异步客户端共享连接参数和 `max_concurrency` 请求上限，默认值为 16。
+- `max_concurrency` 必须是不小于 1 的整数，可通过 `MINERU_LLM_AIDED_MAX_CONCURRENCY` 覆盖。
+- 启用任一功能前必须配置非空的 `api_key`、`base_url` 和 `model`。
+- `enable_thinking` 可省略；省略后不会向模型服务发送该扩展参数。
+- 旧 `mineru.json` 中的 `llm-aided-config` 不再读取。
 
 ## 基于配置文件扩展 MinerU 功能
 
-MinerU 现已实现开箱即用，但也支持通过配置文件扩展功能。您可通过编辑用户目录下的 `mineru.json` 文件，添加自定义配置。
+MinerU 可开箱即用，并从 `$MINERU_HOME/config.yaml` 读取当前配置；可通过 `MINERU_CONFIG` 指定其他配置文件。旧 `mineru.json` CLI 配置不再支持，Gradio 的 LaTeX 分隔符通过 `--latex-delimiters-type` 选择。
 
->[!IMPORTANT]
->`mineru.json` 文件会在您使用内置模型下载命令 `mineru-models-download` 时自动生成，也可以通过将[配置模板文件](https://github.com/opendatalab/MinerU/blob/master/mineru.template.json)复制到用户目录下并重命名为 `mineru.json` 来创建。  
+模型目录和模型源使用 `model` 配置段：
 
-以下是一些可用的配置选项： 
+```yaml
+model:
+  base_dir: ~/.mineru/models
+  source: auto
+  small_backend: auto
+  vlm:
+    engine: auto
+```
 
-- `latex-delimiter-config`：
-    * 用于配置 LaTeX 公式的分隔符
-    * 默认为`$`符号，可根据需要修改为其他符号或字符串。
-  
-- `llm-aided-config`：
-    * 用于配置 LLM 辅助标题分级的相关参数，兼容所有支持`openai协议`的 LLM 模型
-    * 默认使用`阿里云百炼`的`qwen3-next-80b-a3b-instruct`模型
-    * 您需要自行配置 API 密钥并将`enable`设置为`true`来启用此功能
-    * 如果您的api供应商不支持`enable_thinking`参数，请手动将该参数删除
-        * 例如，在您的配置文件中，`llm-aided-config` 部分可能如下所示：
-          ```json
-          "llm-aided-config": {
-             "api_key": "your_api_key",
-             "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-             "model": "qwen3-next-80b-a3b-instruct",
-             "enable_thinking": false,
-             "enable": false
-          }
-          ```
-        * 要移除`enable_thinking`参数，只需删除包含`"enable_thinking": false`的那一行，结果如下:
-          ```json
-          "llm-aided-config": {
-             "api_key": "your_api_key",
-             "base_url": "https://dashscope.aliyuncs.com/compatible-mode/v1",
-             "model": "qwen3-next-80b-a3b-instruct",
-             "enable": false
-          }
-          ```
-  
-- `models-dir`：
-    * 用于指定本地模型存储目录，请为`pipeline`和`vlm`后端分别指定模型目录，
-    * 指定目录后您可通过配置环境变量`export MINERU_MODEL_SOURCE=local`来使用本地模型。
+模型下载和本地模型源的详细说明见[模型源说明](./model_source.md)。
+
+## PDF 页码选择
+
+使用 `--pages "1-5,8,r3-r1"`：页码从 1 开始，包含区间两端，`r1` 表示最后一页，`all` 表示全部。
+结果去重并按原页序排列；部分越界取有效交集，倒序或选不到页面时返回 `page_range_invalid`。
+省略页码时 `mineru parse` 默认前 10 页，`mineru-kit parse`、Python 和 Gradio 默认全部。
+新请求使用新规范；历史正整数半角 `~` 结果可直接读取，无需重建 Doclib 缓存。
+结果返回值和新缓存使用 `-`，全角 `～` 及负号倒数页码不受支持。
+档位与默认选择见[档位与运行环境](tiers.md)，升级注意事项见[迁移指南](../reference/migration_4.md)。

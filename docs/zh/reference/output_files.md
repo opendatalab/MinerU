@@ -1,867 +1,158 @@
-# MinerU 输出文件说明
+# 输出格式与结果协议
 
-## 概览
+4.0 使用统一文档模型。区分“渲染器能生成什么”与“当前 CLI/API 暴露什么”，不要将渲染层的能力直接当作某个产品入口的参数。
 
-`mineru` 命令执行后，除了输出主要的 markdown 文件外，还会生成多个辅助文件用于调试、质检和进一步处理。这些文件包括：
+## 入口支持范围
 
-具体会生成哪些文件，取决于后端类型和输入文档类型。
+| 入口 | 输出 |
+| --- | --- |
+| `mineru parse` | Markdown；`--json` 为含状态、内容、定位和继续阅读信息的命令响应 |
+| `mineru read` | Markdown 或 `--format image`；只读取已缓存内容 |
+| `mineru-kit parse` | `markdown`、`middle_json`、`zip` |
+| 自部署 V1 API | `markdown`、`middle_json`、`structured_content`、`zip`；以服务能力为准 |
+| `ParseResult` | `markdown()`、`structured_content()`、`to_dict()`、`to_json()`、`save(writer)` |
+| `mineru.render.render()` | 下列九种目标格式 |
 
-- **可视化调试文件**：帮助用户直观了解文档解析过程和结果
-- **结构化数据文件**：包含详细的解析数据，可用于二次开发
-- 多模态 markdown 输出中，`image` / `chart` 默认以截图为主；若块内存在 `content`，会在图片后追加一个默认折叠的 HTML `<details>` 内容块，其中折叠标题优先使用块的 `sub_type`，否则回退为 `image content` 或 `chart content`
+`mineru parse --json` 的响应不是 MiddleJson，不能直接传给 `ParseResult.from_dict()`。远端服务的产物范围由该服务声明。
 
-下面将详细介绍每个文件的作用和格式。
+## 九种渲染目标
 
-## 可视化调试文件
+| `RenderFormat` | 格式 | Python 返回类型 |
+| --- | --- | --- |
+| `MARKDOWN` | Markdown | `str` |
+| `HTML` | HTML | `str` |
+| `LATEX` | LaTeX | `str` |
+| `DOCX` | Word | `bytes` |
+| `EPUB` | EPUB | `bytes` |
+| `PDF` | 原始块布局或语义重排 PDF | `bytes` |
+| `STRUCTURED_CONTENT` | 通用结构化内容 | `dict` |
+| `CONTENT_LIST` | Content List V1 | `list[dict]` |
+| `CONTENT_LIST_V2` | 按页组织的 Content List V2 | `list[list[dict]]` |
 
-### 布局分析文件 (layout.pdf)
+PDF 默认采用 `PdfLayout.AUTO`：PDF 来源且几何完整时按原始块布局导出；旧结果缺少几何时整份回退重排并记录诊断。`ORIGINAL` 严格要求 PDF 来源、页面尺寸和必要 bbox；`REFLOW` 显式使用语义重排。OFD、Office 等来源默认仍重排。块内文字可选择和复制，表格、图表允许使用区域图；不承诺逐像素复刻。
 
-**文件命名格式**：`{原文件名}_layout.pdf`
+```python
+from mineru.render import PdfLayout, PdfRenderOptions, RenderFormat, render, render_pdf
 
-**功能说明**：
-
-- 可视化展示每一页的布局分析结果
-- 每个检测框右上角的数字表示阅读顺序
-- 使用不同背景色块区分不同类型的内容块
-
-**使用场景**：
-
-- 检查布局分析是否正确
-- 确认阅读顺序是否合理
-- 调试布局相关问题
-
-![layout 页面示例](../images/layout_example.png)
-
-### 文本片段文件 (span.pdf)
-
-> [!NOTE]
-> 仅适用于 pipeline 后端
-
-**文件命名格式**：`{原文件名}_span.pdf`
-
-**功能说明**：
-
-- 根据 span 类型使用不同颜色线框标注页面内容
-- 用于质量检查和问题排查
-
-**使用场景**：
-
-- 快速排查文本丢失问题
-- 检查行内公式识别情况
-- 验证文本分割准确性
-
-![span 页面示例](../images/spans_example.png)
-
-## 结构化数据文件
-
-> [!IMPORTANT]
-> 2.5版本vlm后端的输出存在较大变化，与pipeline版本存在不兼容情况，如需基于结构化输出进行二次开发，请仔细阅读本文档内容。
-
-### pipeline 后端 输出结果
-
-#### 模型推理结果 (model.json)
-
-**文件命名格式**：`{原文件名}_model.json`
-
-##### 示例数据
-
-```json
-[
-    {
-        "cls_id": 12,
-        "label": "header",
-        "score": 0.93,
-        "bbox": [
-            1217,
-            104,
-            1516,
-            134
-        ],
-        "index": 2
-    },
-    {
-        "cls_id": 6,
-        "label": "doc_title",
-        "score": 0.9751,
-        "bbox": [
-            275,
-            181,
-            1512,
-            292
-        ],
-        "index": 3
-    },
-    {
-        "cls_id": 22,
-        "label": "text",
-        "score": 0.9217,
-        "bbox": [
-            275,
-            330,
-            524,
-            370
-        ],
-        "index": 4
-    }
-]
+pdf_bytes = render_pdf(result.middle_json, layout=PdfLayout.ORIGINAL)
+pdf_bytes = render(result.middle_json, RenderFormat.PDF,
+                   options=PdfRenderOptions(layout=PdfLayout.REFLOW))
 ```
 
-#### 中间处理结果 (middle.json)
+固定布局中的正文、图注、代码、表格和图片继续独立适配各自原框；`continues_prev` 不移动原框之间的文字。原页数与空白页保留。原布局与重排 PDF 中，含中日韩文字的自然语言段落、图注及表格单元格使用 CJK 字符断行，避免将空格间的长串中文整体移到下一行；纯英文和代码、算法字面块保留既有规则，不向内容插入排版字符或连字符。
 
-**文件命名格式**：`{原文件名}_middle.json`
+标题参考实际适配后的正文字号：优先同页同栏后续正文，其次同栏最近正文，再回退到导出正文的字号中位数；没有正文时采用 10.5 pt。章节标题按 `type + level` 取参考字号中位数 +2 pt，向上取整至 0.1 pt；附近正文较大时只上调该标题。主标题比最大章节标题目标再大 2 pt，没有章节标题时采用正文 +4 pt，并保留局部层次。取消按 90% 容纳率压低整组字号和旧样式字号上限。
 
-##### 顶层结构
+原框放得下则保持位置，否则标题可利用上下及同栏右侧空白，保持左边缘；优先原顶边，必要时向上移动。栏宽由对应正文确定，不可靠时保持原宽，原有跨栏标题保留跨度。其他原框视为占用，与相邻内容保留 2 pt 间距且不越页；相邻标题按间隙中线分配空间。仍放不下时只缩小该标题，低于 6 pt 沿用完整块缩放。上下标和公式的真实外伸范围计入标题测量，目录引用及缺子坐标的近似组合不参与。
 
-| 字段名 | 类型 | 说明 |
-|--------|------|------|
-| `pdf_info` | `list[dict]` | 每一页的解析结果数组 |
-| `_backend` | `string` | 解析模式：`pipeline`、`vlm` 或 `office` |
-| `_version_name` | `string` | MinerU 版本号 |
+`pdf_title_layout_expanded` 记录扩展；`pdf_layout_font_exception` 记录局部正文较大或空间不足的调整原因、参考/目标/最终字号、原框和绘制框。原始几何重叠时不扩大占用并报告 `pdf_title_geometry_conflict`；原始间距过紧、没有安全扩展区域时报告 `pdf_title_clearance_unavailable`。字号和绘制区域仅存在于渲染上下文，不修改 MiddleJson 或素材，不新增接口参数。
 
-##### 页面信息结构 (pdf_info)
+使用 `docvortex>=0.4.7,<1`（MinerU 4.0 当前声明的最低依赖）。DocVortex 在生产原生 TXT PDF 模型输出时将行间公式的 `content` 清空一次，MinerU Flash TXT 直接使用该输出；Flash OCR 原本不填充行间公式内容，MinerU 不再重复清空。两条 Flash 路径保留 bbox、方向、图片及检测到的编号区域，PDF、Markdown、HTML、DOCX、EPUB、LaTeX 沿用图片回退。行内公式、非 Flash tier 的公式文本不变。旧缓存不会自动改写，重新解析才获得新几何和空内容公式。
 
-| 字段名 | 说明 |
-|--------|------|
-| `preproc_blocks` | PDF 预处理后的未分段中间结果 |
-| `page_idx` | 页码，从 0 开始 |
-| `page_size` | 页面的宽度和高度 `[width, height]` |
-| `images` | 图片块信息列表 |
-| `tables` | 表格块信息列表 |
-| `interline_equations` | 行间公式块信息列表 |
-| `discarded_blocks` | 需要丢弃的块信息 |
-| `para_blocks` | 分段后的内容块结果 |
+```python
+from pathlib import Path
+from mineru.parser import parse
+from mineru.render import render, RenderFormat
 
-##### 块结构层次
-
-```
-一级块 (table | image | chart)
-└── 二级块
-    └── 行 (line)
-        └── 片段 (span)
+result = parse("report.docx", tier="flash")
+html = render(result.middle_json, RenderFormat.HTML)
+Path("report.html").write_text(html, encoding="utf-8")
 ```
 
-##### 一级块字段
+## 中间 JSON
 
-| 字段名 | 说明 |
-|--------|------|
-| `type` | 块类型：`table`、`image` 或 `chart` |
-| `bbox` | 块的矩形框坐标 `[x0, y0, x1, y1]` |
-| `blocks` | 包含的二级块列表 |
+`ModelJson` 保存分析结果 `pages` 和 `page_index_map`；`MiddleJson` 保存后处理后的有序页面和语义块。JSON 消费端通过序列化后的 `schema` 与 `schema_version` 两个键识别数据（`docvortex.model` 或 `docvortex.middle`，协议版本 `2.0`）。协议身份在 Python 类型中的属性名为 `schema_id`，但序列化键名是 `schema`；读写 JSON 时一律使用序列化键。不要只根据版本数字判断文档种类。
 
-##### 二级块字段
+`metadata` 包含文件类型、生产者和文档属性；`extensions["mineru"]` 记录实际执行的 `tier` 与最终 `parse_mode`。版本来自 `metadata.producer.version`，不重复放在产品扩展中。页面包含 `page_idx` 与 `blocks`，`page_idx` 从 0 开始，区别于 CLI 中从 1 开始的 PDF 页码。
 
-| 字段名 | 说明 |
-|--------|------|
-| `type` | 块类型（详见下表） |
-| `bbox` | 块的矩形框坐标 |
-| `lines` | 包含的行信息列表 |
+所有 PDF tier 的同步/异步分析同时写入 `extensions.docvortex_layout`：`version=1`，`pages` 包含源 `page_idx`、`width_pt`、`height_pt` 及需要时的 `image_rotations`。尺寸方向与 bbox 一致；选页、空白页、多窗口和分页缓存汇总按源页号保留几何。ModelJson → MiddleJson → 序列化结果不丢失扩展，主协议仍为 2.0。导出只需要 MiddleJson 和图片素材，无需重新打开源 PDF。
 
-##### 二级块类型
-
-| 类型 | 说明 |
-|------|------|
-| `image_body` | 图像本体 |
-| `image_caption` | 图像描述文本 |
-| `image_footnote` | 图像脚注 |
-| `table_body` | 表格本体 |
-| `table_caption` | 表格描述文本 |
-| `table_footnote` | 表格脚注 |
-| `chart_body` | 图表本体 |
-| `chart_caption` | 图表描述文本 |
-| `chart_footnote` | 图表脚注 |
-| `text` | 文本块 |
-| `title` | 标题块 |
-| `index` | 目录块 |
-| `list` | 列表块 |
-| `interline_equation` | 行间公式块 |
-
-##### 行和片段结构
-
-**行 (line) 字段**：
-- `bbox`：行的矩形框坐标
-- `spans`：包含的片段列表
-
-**片段 (span) 字段**：
-- `bbox`：片段的矩形框坐标
-- `type`：片段类型（`image`、`table`、`chart`、`text`、`inline_equation`、`interline_equation`）
-- `content` | `image_path`：文本内容或图片路径
-
-##### 示例数据
+以下示例由当前公开类型序列化生成，`4.0.0` 是正式版文档的示意生产者版本；可选字段可被省略，实际输出为准：
 
 ```json
 {
-    "pdf_info": [
-        {
-            "preproc_blocks": [
-                {
-                    "type": "text",
-                    "bbox": [
-                        52,
-                        61.956024169921875,
-                        294,
-                        82.99800872802734
-                    ],
-                    "lines": [
-                        {
-                            "bbox": [
-                                52,
-                                61.956024169921875,
-                                294,
-                                72.0000228881836
-                            ],
-                            "spans": [
-                                {
-                                    "bbox": [
-                                        54.0,
-                                        61.956024169921875,
-                                        296.2261657714844,
-                                        72.0000228881836
-                                    ],
-                                    "content": "dependent on the service headway and the reliability of the departure ",
-                                    "type": "text",
-                                    "score": 1.0
-                                }
-                            ]
-                        }
-                    ]
-                }
-            ],
-            "layout_bboxes": [
-                {
-                    "layout_bbox": [
-                        52,
-                        61,
-                        294,
-                        731
-                    ],
-                    "layout_label": "V",
-                    "sub_layout": []
-                }
-            ],
-            "page_idx": 0,
-            "page_size": [
-                612.0,
-                792.0
-            ],
-            "_layout_tree": [],
-            "images": [],
-            "tables": [],
-            "interline_equations": [],
-            "discarded_blocks": [],
-            "para_blocks": [
-                {
-                    "type": "text",
-                    "bbox": [
-                        52,
-                        61.956024169921875,
-                        294,
-                        82.99800872802734
-                    ],
-                    "lines": [
-                        {
-                            "bbox": [
-                                52,
-                                61.956024169921875,
-                                294,
-                                72.0000228881836
-                            ],
-                            "spans": [
-                                {
-                                    "bbox": [
-                                        54.0,
-                                        61.956024169921875,
-                                        296.2261657714844,
-                                        72.0000228881836
-                                    ],
-                                    "content": "dependent on the service headway and the reliability of the departure ",
-                                    "type": "text",
-                                    "score": 1.0
-                                }
-                            ]
-                        }
-                    ]
-                }
-            ]
-        }
-    ],
-    "_backend": "pipeline",
-    "_version_name": "0.6.1"
-}
-```
-
-#### 内容列表 (content_list.json)
-
-**文件命名格式**：`{原文件名}_content_list.json`
-
-##### 功能说明
-
-这是一个简化版的 `middle.json`，按阅读顺序平铺存储所有可读内容块，去除了复杂的布局信息，便于后续处理。
-
-##### 内容类型
-
-| 类型 | 说明 |
-|------|------|
-| `image` | 图片 |
-| `table` | 表格 |
-| `chart` | 图表 |
-| `text` | 文本/标题 |
-| `equation` | 行间公式 |
-| `code` | 代码块 / 算法块 |
-| `list` | 列表 / 参考文献列表 |
-| `header` / `footer` / `page_number` / `aside_text` / `page_footnote` | 页面辅助块 |
-
-##### 文本层级标识
-
-通过 `text_level` 字段区分文本层级：
-
-- 无 `text_level` 或 `text_level: 0`：正文文本
-- `text_level: 1`：一级标题
-- `text_level: 2`：二级标题
-- 以此类推...
-
-##### 通用字段
-
-- 所有内容块都包含 `page_idx` 字段，表示所在页码（从 0 开始）。
-- 所有内容块都包含 `bbox` 字段，表示内容块的边界框坐标 `[x0, y0, x1, y1]` 映射在0-1000范围内的结果。
-- `code` 类型会通过 `sub_type` 区分 `code` 和 `algorithm`，并可包含 `code_body`、`code_caption`、`code_footnote` 等字段。
-- `list` 类型可通过 `sub_type` 区分普通列表和参考文献列表。
-- `image` / `chart` 类型可包含可选 `sub_type` 字段，用于透传视觉子类型。
-- 印章内容通过 `sub_type: "seal"` 的 `image` 类型表示。
-
-##### 示例数据
-
-```json
-[
-        {
-        "type": "text",
-        "text": "The response of flow duration curves to afforestation ",
-        "text_level": 1, 
-        "bbox": [
-            62,
-            480,
-            946,
-            904
-        ],
-        "page_idx": 0
-    },
-    {
-        "type": "image",
-        "img_path": "images/a8ecda1c69b27e4f79fce1589175a9d721cbdc1cf78b4cc06a015f3746f6b9d8.jpg",
-        "image_caption": [
-            "Fig. 1. Annual flow duration curves of daily flows from Pine Creek, Australia, 1989–2000. "
-        ],
-        "image_footnote": [],
-        "bbox": [
-            62,
-            480,
-            946,
-            904
-        ],
-        "page_idx": 1
-    },
-    {
-        "type": "equation",
-        "img_path": "images/181ea56ef185060d04bf4e274685f3e072e922e7b839f093d482c29bf89b71e8.jpg",
-        "text": "$$\nQ _ { \\% } = f ( P ) + g ( T )\n$$",
-        "text_format": "latex",
-        "bbox": [
-            62,
-            480,
-            946,
-            904
-        ],
-        "page_idx": 2
-    },
-    {
-        "type": "table",
-        "img_path": "images/e3cb413394a475e555807ffdad913435940ec637873d673ee1b039e3bc3496d0.jpg",
-        "table_caption": [
-            "Table 2 Significance of the rainfall and time terms "
-        ],
-        "table_footnote": [
-            "indicates that the rainfall term was significant at the $5 \\%$ level, $T$ indicates that the time term was significant at the $5 \\%$ level, \\* represents significance at the $10 \\%$ level, and na denotes too few data points for meaningful analysis. "
-        ],
-        "table_body": "<html><body><table><tr><td rowspan=\"2\">Site</td><td colspan=\"10\">Percentile</td></tr><tr><td>10</td><td>20</td><td>30</td><td>40</td><td>50</td><td>60</td><td>70</td><td>80</td><td>90</td><td>100</td></tr><tr><td>Traralgon Ck</td><td>P</td><td>P,*</td><td>P</td><td>P</td><td>P,</td><td>P,</td><td>P,</td><td>P,</td><td>P</td><td>P</td></tr><tr><td>Redhill</td><td>P,T</td><td>P,T</td><td>，*</td><td>**</td><td>P.T</td><td>P,*</td><td>P*</td><td>P*</td><td>*</td><td>，*</td></tr><tr><td>Pine Ck</td><td></td><td>P,T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>T</td><td>T</td><td>T</td><td>na</td><td>na</td></tr><tr><td>Stewarts Ck 5</td><td>P,T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>P.T</td><td>P.T</td><td>P,T</td><td>na</td><td>na</td><td>na</td></tr><tr><td>Glendhu 2</td><td>P</td><td>P,T</td><td>P,*</td><td>P,T</td><td>P.T</td><td>P,ns</td><td>P,T</td><td>P,T</td><td>P,T</td><td>P,T</td></tr><tr><td>Cathedral Peak 2</td><td>P,T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>*,T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>T</td></tr><tr><td>Cathedral Peak 3</td><td>P.T</td><td>P.T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>T</td></tr><tr><td>Lambrechtsbos A</td><td>P,T</td><td>P</td><td>P</td><td>P,T</td><td>*,T</td><td>*,T</td><td>*,T</td><td>*,T</td><td>*,T</td><td>T</td></tr><tr><td>Lambrechtsbos B</td><td>P,T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>P,T</td><td>T</td><td>T</td></tr><tr><td>Biesievlei</td><td>P,T</td><td>P.T</td><td>P,T</td><td>P,T</td><td>*,T</td><td>*,T</td><td>T</td><td>T</td><td>P,T</td><td>P,T</td></tr></table></body></html>",
-        "bbox": [
-            62,
-            480,
-            946,
-            904
-        ],  
-        "page_idx": 5
+  "metadata": {
+    "file_suffix": "html",
+    "producer": {
+      "name": "mineru",
+      "version": "4.0.0"
     }
-]
-```
-
-### 通用内容列表 V2 (content_list_v2.json)(开发中，格式可能调整)
-
-**文件命名格式**：`{原文件名}_content_list_v2.json`
-
-##### 功能说明
-
-`content_list_v2.json` 是 3.0 起新增的结构化输出文件，所有后端都会在保留 `content_list.json` 的同时额外输出该文件：
-
-- 顶层是按页分组的列表，便于按页消费结果
-- 每个内容块使用统一的 `type + content` 结构，适合程序化处理
-- 不同后端和输入类型支持的 `type` 会有所不同
-
-##### 通用字段
-
-| 字段名 | 类型 | 说明 |
-|--------|------|------|
-| `type` | `string` | 内容类型 |
-| `content` | `dict` | 与 `type` 对应的结构化内容 |
-| `bbox` | `list[int]` | 可选，0-1000 范围的边界框 |
-| `anchor` | `string` | 可选，部分 `DOCX` 标题或索引项会携带锚点 |
-
-其中 `image` / `chart` 类型还可能包含可选顶层字段 `sub_type`，用于表示视觉子类型。
-
-##### 常见类型
-
-| 类型 | 说明 |
-|------|------|
-| `title` | 标题块，包含 `title_content` 与 `level` |
-| `paragraph` | 段落块，包含 `paragraph_content` |
-| `equation_interline` | 行间公式，包含 `math_content`、`math_type` |
-| `image` / `table` / `chart` | 视觉类块，包含图片路径、说明文字等结构化字段；印章使用 `sub_type: "seal"` 的 `image` 表示 |
-| `code` | 代码块，包含 `code_content`、`code_caption`、`code_footnote`、`code_language` |
-| `algorithm` | 算法块，包含 `algorithm_content`、`algorithm_caption`、`algorithm_footnote` |
-| `list` / `index` | 列表与索引，包含 `list_items` |
-| `page_header` / `page_footer` / `page_number` / `page_aside_text` / `page_footnote` | 页面辅助块 |
-
-`title_content`、`paragraph_content`、说明文字等行内内容通常由 span 列表组成。
-`hyperlink` span 包含 `content`、`url`，当同一个链接内存在多段不同样式文本时，
-还会包含 `children`；此时 `content` 是 children 文本的拼接，精确样式以
-`children` 中的 `text` span 为准。
-
-##### 示例数据
-
-```json
-[
-    [
-        {
-            "type": "title",
-            "content": {
-                "title_content": [
-                    {
-                        "type": "text",
-                        "content": "1 Introduction"
-                    }
-                ],
-                "level": 1
-            },
-            "bbox": [
-                83,
-                121,
-                917,
-                156
-            ]
-        },
-        {
-            "type": "page_footnote",
-            "content": {
-                "page_footnote_content": [
-                    {
-                        "type": "text",
-                        "content": "* Corresponding author"
-                    }
-                ]
-            },
-            "bbox": [
-                71,
-                815,
-                915,
-                841
-            ]
-        }
-    ]
-]
-```
-
-### VLM 后端 输出结果
-
-#### 模型推理结果 (model.json)
-
-**文件命名格式**：`{原文件名}_model.json`
-
-##### 文件格式说明
-
-- 该文件为 VLM 模型的原始输出结果，包含两层嵌套list，外层表示页面，内层表示该页的内容块
-- 每个内容块都是一个dict，包含 `type`、`bbox`、`angle`、`content` 字段
-
-
-##### 支持的内容类型
-
-```json
-{
-    "text": "文本",
-    "title": "标题", 
-    "equation": "行间公式",
-    "image": "图片",
-    "image_caption": "图片描述",
-    "image_footnote": "图片脚注",
-    "table": "表格",
-    "table_caption": "表格描述",
-    "table_footnote": "表格脚注",
-    "phonetic": "拼音",
-    "code": "代码块",
-    "code_caption": "代码描述",
-    "ref_text": "参考文献",
-    "algorithm": "算法块",
-    "list": "列表",
-    "header": "页眉",
-    "footer": "页脚",
-    "page_number": "页码",
-    "aside_text": "装订线旁注", 
-    "page_footnote": "页面脚注"
-}
-```
-
-##### 坐标系统说明
-
-`bbox` 坐标格式：`[x0, y0, x1, y1]`
-
-- 分别表示左上、右下两点的坐标
-- 坐标原点在页面左上角
-- 坐标为相对于原始页面尺寸的百分比，范围在0-1之间
-
-##### 示例数据
-
-```json
-[
-    [
-        {
-            "type": "header",
-            "bbox": [
-                0.077,
-                0.095,
-                0.18,
-                0.181
-            ],
-            "angle": 0,
-            "score": null,
-            "block_tags": null,
-            "content": "ELSEVIER",
-            "format": null,
-            "content_tags": null
-        },
-        {
-            "type": "title",
-            "bbox": [
-                0.157,
-                0.228,
-                0.833,
-                0.253
-            ],
-            "angle": 0,
-            "score": null,
-            "block_tags": null,
-            "content": "The response of flow duration curves to afforestation",
-            "format": null,
-            "content_tags": null
-        }
-    ]
-]
-```
-
-#### 中间处理结果 (middle.json)
-
-**文件命名格式**：`{原文件名}_middle.json`
-
-##### 文件格式说明
-vlm 后端的 middle.json 文件结构与 pipeline 后端类似，但存在以下差异： 
-
-- list变成二级block，增加`sub_type`字段区分list类型:
-    * `text`（文本类型）
-    * `ref_text`（引用类型）
-
-- 增加code类型block，code类型包含两种"sub_type":
-    * 分别是`code`和`algorithm`
-    * 至少有`code_body`, 可选`code_caption`
-
-- `discarded_blocks`内元素type增加以下类型:
-    * `header`（页眉）
-    * `footer`（页脚）
-    * `page_number`（页码）
-    * `aside_text`（装订线文本）
-    * `page_footnote`（脚注）
-- 所有block增加`angle`字段，用来表示旋转角度，0，90，180，270
-
-
-##### 示例数据
-- list block 示例
-    ```json
-    {
-        "bbox": [
-            174,
-            155,
-            818,
-            333
-        ],
-        "type": "list",
-        "angle": 0,
-        "index": 11,
-        "blocks": [
-            {
-                "bbox": [
-                    174,
-                    157,
-                    311,
-                    175
-                ],
-                "type": "text",
-                "angle": 0,
-                "lines": [
-                    {
-                        "bbox": [
-                            174,
-                            157,
-                            311,
-                            175
-                        ],
-                        "spans": [
-                            {
-                                "bbox": [
-                                    174,
-                                    157,
-                                    311,
-                                    175
-                                ],
-                                "type": "text",
-                                "content": "H.1 Introduction"
-                            }
-                        ]
-                    }
-                ],
-                "index": 3
-            },
-            {
-                "bbox": [
-                    175,
-                    182,
-                    464,
-                    229
-                ],
-                "type": "text",
-                "angle": 0,
-                "lines": [
-                    {
-                        "bbox": [
-                            175,
-                            182,
-                            464,
-                            229
-                        ],
-                        "spans": [
-                            {
-                                "bbox": [
-                                    175,
-                                    182,
-                                    464,
-                                    229
-                                ],
-                                "type": "text",
-                                "content": "H.2 Example: Divide by Zero without Exception Handling"
-                            }
-                        ]
-                    }
-                ],
-                "index": 4
-            }
-        ],
-        "sub_type": "text"
-    }
-    ```
-- code block 示例
-    ```json
-    {
-        "type": "code",
-        "bbox": [
-            114,
-            780,
-            885,
-            1231
-        ],
-        "blocks": [
-            {
-                "bbox": [
-                    114,
-                    780,
-                    885,
-                    1231
-                ],
-                "lines": [
-                    {
-                        "bbox": [
-                            114,
-                            780,
-                            885,
-                            1231
-                        ],
-                        "spans": [
-                            {
-                                "bbox": [
-                                    114,
-                                    780,
-                                    885,
-                                    1231
-                                ],
-                                "type": "text",
-                                "content": "1 // Fig. H.1: DivideByZeroNoExceptionHandling.java  \n2 // Integer division without exception handling.  \n3 import java.util.Scanner;  \n4  \n5 public class DivideByZeroNoExceptionHandling  \n6 {  \n7 // demonstrates throwing an exception when a divide-by-zero occurs  \n8 public static int quotient( int numerator, int denominator )  \n9 {  \n10 return numerator / denominator; // possible division by zero  \n11 } // end method quotient  \n12  \n13 public static void main(String[] args)  \n14 {  \n15 Scanner scanner = new Scanner(System.in); // scanner for input  \n16  \n17 System.out.print(\"Please enter an integer numerator: \");  \n18 int numerator = scanner.nextInt();  \n19 System.out.print(\"Please enter an integer denominator: \");  \n20 int denominator = scanner.nextInt();  \n21"
-                            }
-                        ]
-                    }
-                ],
-                "index": 17,
-                "angle": 0,
-                "type": "code_body"
-            },
-            {
-                "bbox": [
-                    867,
-                    160,
-                    1280,
-                    189
-                ],
-                "lines": [
-                    {
-                        "bbox": [
-                            867,
-                            160,
-                            1280,
-                            189
-                        ],
-                        "spans": [
-                            {
-                                "bbox": [
-                                    867,
-                                    160,
-                                    1280,
-                                    189
-                                ],
-                                "type": "text",
-                                "content": "Algorithm 1 Modules for MCTSteg"
-                            }
-                        ]
-                    }
-                ],
-                "index": 19,
-                "angle": 0,
-                "type": "code_caption"
-            }
-        ],
-        "index": 17,
-        "sub_type": "code"
-    }
-    ```
-
-#### 内容列表 (content_list.json)
-
-**文件命名格式**：`{原文件名}_content_list.json`
-
-##### 文件格式说明
-vlm 后端的 content_list.json 文件结构与 pipeline 后端类似，伴随本次middle.json的变化，做了以下调整： 
-
-- 新增`code`类型，code类型包含两种"sub_type":
-    * 分别是`code`和`algorithm`
-    * 至少有`code_body`, 可选`code_caption`
-  
-- 新增`list`类型，list类型包含两种"sub_type":
-    * `text`
-    * `ref_text` 
-
-- `image` / `chart` 类型可能带有可选 `sub_type` 字段，用于透传视觉子类型
-- `chart` 类型除 `img_path` 外，还可包含 `content`、`chart_caption`、`chart_footnote`，其中 `content` 保持原始 Markdown 表格文本
-
-- 增加所有所有`discarded_blocks`的输出内容
-    * `header`
-    * `footer`
-    * `page_number`
-    * `aside_text`
-    * `page_footnote`
-- 3.0 起，vlm 后端也会同时输出 `*_content_list_v2.json`，其通用结构见上文“通用内容列表 V2”。
-
-##### 示例数据
-- code 类型 content
-    ```json
-    {
-        "type": "code",
-        "sub_type": "algorithm",
-        "code_caption": [
-            "Algorithm 1 Modules for MCTSteg"
-        ],
-        "code_body": "1: function GETCOORDINATE(d)  \n2:  $x \\gets d / l$ ,  $y \\gets d$  mod  $l$   \n3: return  $(x, y)$   \n4: end function  \n5: function BESTCHILD(v)  \n6:  $C \\gets$  child set of  $v$   \n7:  $v' \\gets \\arg \\max_{c \\in C} \\mathrm{UCTScore}(c)$   \n8:  $v'.n \\gets v'.n + 1$   \n9: return  $v'$   \n10: end function  \n11: function BACK PROPAGATE(v)  \n12: Calculate  $R$  using Equation 11  \n13: while  $v$  is not a root node do  \n14:  $v.r \\gets v.r + R$ ,  $v \\gets v.p$   \n15: end while  \n16: end function  \n17: function RANDOMSEARCH(v)  \n18: while  $v$  is not a leaf node do  \n19: Randomly select an untried action  $a \\in A(v)$   \n20: Create a new node  $v'$   \n21:  $(x, y) \\gets \\mathrm{GETCOORDINATE}(v'.d)$   \n22:  $v'.p \\gets v$ ,  $v'.d \\gets v.d + 1$ ,  $v'.\\Gamma \\gets v.\\Gamma$   \n23:  $v'.\\gamma_{x,y} \\gets a$   \n24: if  $a = -1$  then  \n25:  $v.lc \\gets v'$   \n26: else if  $a = 0$  then  \n27:  $v.mc \\gets v'$   \n28: else  \n29:  $v.rc \\gets v'$   \n30: end if  \n31:  $v \\gets v'$   \n32: end while  \n33: return  $v$   \n34: end function  \n35: function SEARCH(v)  \n36: while  $v$  is fully expanded do  \n37:  $v \\gets$  BESTCHILD(v)  \n38: end while  \n39: if  $v$  is not a leaf node then  \n40:  $v \\gets$  RANDOMSEARCH(v)  \n41: end if  \n42: return  $v$   \n43: end function",
-        "bbox": [
-            510,
-            87,
-            881,
-            740
-        ],
-        "page_idx": 0
-    }
-    ```
-- list 类型 content
-    ```json
-    {
-        "type": "list",
-        "sub_type": "text",
-        "list_items": [
-            "H.1 Introduction",
-            "H.2 Example: Divide by Zero without Exception Handling",
-            "H.3 Example: Divide by Zero with Exception Handling",
-            "H.4 Summary"
-        ],
-        "bbox": [
-            174,
-            155,
-            818,
-            333
-        ],
-        "page_idx": 0
-    }
-    ```
-- discarded 类型 content
-  ```json
-  [{
-      "type": "header",
-      "text": "Journal of Hydrology 310 (2005) 253-265",
-      "bbox": [
-          363,
-          164,
-          623,
-          177
-      ],
-      "page_idx": 0
   },
-  {
-      "type": "page_footnote",
-      "text": "* Corresponding author. Address: Forest Science Centre, Department of Sustainability and Environment, P.O. Box 137, Heidelberg, Vic. 3084, Australia. Tel.: +61 3 9450 8719; fax: +61 3 9450 8644.",
-      "bbox": [
-          71,
-          815,
-          915,
-          841
-      ],
-      "page_idx": 0
-  }]
-  ```
+  "extensions": {
+    "mineru": {
+      "tier": "flash",
+      "parse_mode": "txt"
+    }
+  },
+  "pages": [
+    {
+      "page_idx": 0,
+      "blocks": [
+        {
+          "type": "text",
+          "index": 0,
+          "content": [
+            {
+              "type": "text",
+              "content": "Hello MinerU"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "is_full_document": true,
+  "schema": "docvortex.middle",
+  "schema_version": "2.0"
+}
+```
 
+可以通过 `ParseResult.from_json(result.to_json())` 往返读取当前结果。旧版 `_backend`、`pdf_info`、`_version_name` 不属于此协议；历史数据兼容见[迁移指南](migration_4.md)，不要手工改一个版本号就当作格式已迁移。
 
-## 总结
+## Structured Content
 
-以上文件为 MinerU 的完整输出结果，用户可根据需要选择合适的文件进行后续处理：
+`structured_content()` 返回面向消费端的内容结构，而非中间协议的另一个名称。它保留 `metadata` 和 `extensions`，将自然语言 span 转为更易消费的文本；它不携带协议身份，不要为它补造 `schema` 或 `schema_version` 字段。
 
-- **模型输出**(使用原始输出):
-    * model.json
-  
-- **调试和验证**(使用可视化文件):
-    * layout.pdf
-    * span.pdf 
-  
-- **内容提取**(使用简化文件):
-    * *.md
-    * content_list.json
-    * content_list_v2.json
-  
-- **二次开发**(使用结构化文件):
-    * middle.json
+```json
+{
+  "pages": [
+    {
+      "page_idx": 0,
+      "blocks": [
+        {
+          "type": "text",
+          "content": "Hello MinerU"
+        }
+      ]
+    }
+  ],
+  "metadata": {
+    "file_suffix": "html",
+    "producer": {
+      "name": "mineru",
+      "version": "4.0.0"
+    }
+  },
+  "extensions": {
+    "mineru": {
+      "tier": "flash",
+      "parse_mode": "txt"
+    }
+  },
+  "is_full_document": true
+}
+```
+
+## 文件保存、ZIP 与素材
+
+`ParseResult.save(writer)` 先在文档副本上物化图片，再写出 `markdown.md`、`middle_json.json`、`structured_content.json` 和 `images/` 素材；有原始模型结果时还写出 `model_output.json`。自部署 V1 API ZIP 与 `mineru-kit parse --format zip` 共用这一保存入口。包内三种消费格式引用同一组素材，图片字节、源页号、块索引及旋转元数据保持不变。
+
+```python
+from mineru.parser.writer import FileBasedDataWriter
+
+result.save(FileBasedDataWriter("output"))
+```
+
+PDF 的 `ParseResult.to_dict()` / `to_json()` 仍省略块中的 `image_base64`，因此独立结构 JSON 不等于携带素材的结果包。`save(writer)` 不重新裁图或旋转图片；已有路径却缺少字节时在写出前失败，不隐式读取当前目录或网络。API 客户端设置 `include_images=True` 后，从 ZIP 恢复直接图片和视觉 HTML 内嵌图片；Gradio 复用这些素材，PDF 导出只需 MiddleJson 与图片文件，无需源 PDF 或 ModelJson。`include_images=False` 保持结构读取行为。历史错误结果包需要重新生成。
+
+WebUI 显示的布局 PDF 是调试产物，可用时用于预览检测结果；不可用时使用原始/裁页 PDF 预览。它与上述 `RenderFormat.PDF` 是不同用途。

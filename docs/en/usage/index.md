@@ -4,6 +4,12 @@ This section provides comprehensive usage instructions for the project. We will 
 
 ## Table of Contents
 
+- [Tiers and runtimes](tiers.md)
+- [Python SDK](sdk_api.md)
+- [V1 HTTP API](http_api.md)
+- [3.x → 4.0 migration](../reference/migration_4.md)
+- [Legacy platforms (MinerU <4)](compatibility.md)
+
 - [Quick Usage](./quick_usage.md) - Quick setup and basic usage
 - [Model Source Configuration](./model_source.md) - Detailed configuration instructions for model sources
 - [Command Line Tools](./cli_tools.md) - Detailed parameter descriptions for command line tools
@@ -11,7 +17,7 @@ This section provides comprehensive usage instructions for the project. We will 
 
 ## Getting Started
 
-Starting with 3.0, `mineru` runs as an orchestration client on top of `mineru-api`; advanced `mineru-router` usage for multi-service and multi-GPU deployments is also covered in this section.
+`mineru` is the document-library CLI for interactive and agent workflows. Use `mineru-kit` for stateless batch parsing, the V1 API server, Gradio, model management, and multi-service routing.
 
 We recommend reading the documentation in the order listed above, which will help you better understand and use the project features.
 

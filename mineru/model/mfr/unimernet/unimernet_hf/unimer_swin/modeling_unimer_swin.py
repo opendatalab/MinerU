@@ -27,8 +27,8 @@ import torch.utils.checkpoint
 from torch import nn
 
 from transformers.activations import ACT2FN
+from transformers import initialization as init
 from transformers.modeling_utils import PreTrainedModel
-from transformers.pytorch_utils import find_pruneable_heads_and_indices, meshgrid, prune_linear_layer
 from transformers.utils import (
     ModelOutput,
     add_code_sample_docstrings,
@@ -230,13 +230,13 @@ class UnimerSwinEmbeddings(nn.Module):
             #     embeddings = embeddings + self.interpolate_pos_encoding(embeddings, height, width)
             # else:
             #     embeddings = embeddings + self.position_embeddings
-            embeddings = embeddings + self.position_embeddings[:, :seq_len, :] # code edited.
+            embeddings = embeddings + self.position_embeddings[:, :seq_len, :]  # code edited.
 
         ### code added. ###
         if self.row_embeddings is not None and self.column_embeddings is not None:
             # Repeat the x position embeddings across the y axis like 0, 1, 2, 3, 0, 1, 2, 3, ...
-            row_embeddings = self.row_embeddings[:, :output_dimensions[0], :].repeat_interleave(output_dimensions[1], dim=1)
-            column_embeddings = self.column_embeddings[:, :output_dimensions[1], :].repeat(1, output_dimensions[0], 1)
+            row_embeddings = self.row_embeddings[:, : output_dimensions[0], :].repeat_interleave(output_dimensions[1], dim=1)
+            column_embeddings = self.column_embeddings[:, : output_dimensions[1], :].repeat(1, output_dimensions[0], 1)
             embeddings = embeddings + row_embeddings + column_embeddings
         ######
 
@@ -244,8 +244,9 @@ class UnimerSwinEmbeddings(nn.Module):
 
         return embeddings, output_dimensions
 
+
 class StemLayer(nn.Module):
-    r""" Stem layer of InternImage
+    r"""Stem layer of InternImage
     Args:
         in_chans (int): number of input channels
         out_chans (int): number of output channels
@@ -253,7 +254,7 @@ class StemLayer(nn.Module):
         norm_layer (str): normalization layer
     """
 
-    def __init__(self, in_chans=3, out_chans=96, act_layer=nn.GELU, norm_layer='BN'):
+    def __init__(self, in_chans=3, out_chans=96, act_layer=nn.GELU, norm_layer="BN"):
         super().__init__()
         self.conv1 = nn.Conv2d(in_chans, out_chans // 2, kernel_size=3, stride=2, padding=1)
         self.norm1 = self.build_norm_layer(out_chans // 2, norm_layer)
@@ -262,10 +263,10 @@ class StemLayer(nn.Module):
 
     def build_norm_layer(self, dim, norm_layer):
         layers = []
-        if norm_layer == 'BN':
+        if norm_layer == "BN":
             layers.append(nn.BatchNorm2d(dim))
         else:
-            raise NotImplementedError(f'build_norm_layer does not support {norm_layer}')
+            raise NotImplementedError(f"build_norm_layer does not support {norm_layer}")
         return nn.Sequential(*layers)
 
     def forward(self, x):
@@ -274,6 +275,7 @@ class StemLayer(nn.Module):
         x = self.act(x)
         x = self.conv2(x)
         return x
+
 
 # Copied from transformers.models.swin.modeling_swin.SwinPatchEmbeddings with Swin->UnimerSwin
 class UnimerSwinPatchEmbeddings(nn.Module):
@@ -418,16 +420,12 @@ class UnimerSwinSelfAttention(nn.Module):
     def __init__(self, config, dim, num_heads, window_size):
         super().__init__()
         if dim % num_heads != 0:
-            raise ValueError(
-                f"The hidden size ({dim}) is not a multiple of the number of attention heads ({num_heads})"
-            )
+            raise ValueError(f"The hidden size ({dim}) is not a multiple of the number of attention heads ({num_heads})")
 
         self.num_attention_heads = num_heads
         self.attention_head_size = int(dim / num_heads)
         self.all_head_size = self.num_attention_heads * self.attention_head_size
-        self.window_size = (
-            window_size if isinstance(window_size, collections.abc.Iterable) else (window_size, window_size)
-        )
+        self.window_size = window_size if isinstance(window_size, collections.abc.Iterable) else (window_size, window_size)
 
         self.relative_position_bias_table = nn.Parameter(
             torch.zeros((2 * self.window_size[0] - 1) * (2 * self.window_size[1] - 1), num_heads)
@@ -436,7 +434,7 @@ class UnimerSwinSelfAttention(nn.Module):
         # get pair-wise relative position index for each token inside the window
         coords_h = torch.arange(self.window_size[0])
         coords_w = torch.arange(self.window_size[1])
-        coords = torch.stack(meshgrid([coords_h, coords_w], indexing="ij"))
+        coords = torch.stack(torch.meshgrid([coords_h, coords_w], indexing="ij"))
         coords_flatten = torch.flatten(coords, 1)
         relative_coords = coords_flatten[:, :, None] - coords_flatten[:, None, :]
         relative_coords = relative_coords.permute(1, 2, 0).contiguous()
@@ -487,9 +485,7 @@ class UnimerSwinSelfAttention(nn.Module):
         if attention_mask is not None:
             # Apply the attention mask is (precomputed for all layers in UnimerSwinModel forward() function)
             mask_shape = attention_mask.shape[0]
-            attention_scores = attention_scores.view(
-                batch_size // mask_shape, mask_shape, self.num_attention_heads, dim, dim
-            )
+            attention_scores = attention_scores.view(batch_size // mask_shape, mask_shape, self.num_attention_heads, dim, dim)
             attention_scores = attention_scores + attention_mask.unsqueeze(1).unsqueeze(0)
             attention_scores = attention_scores.view(-1, self.num_attention_heads, dim, dim)
 
@@ -536,24 +532,6 @@ class UnimerSwinAttention(nn.Module):
         self.output = UnimerSwinSelfOutput(config, dim)
         self.pruned_heads = set()
 
-    def prune_heads(self, heads):
-        if len(heads) == 0:
-            return
-        heads, index = find_pruneable_heads_and_indices(
-            heads, self.self.num_attention_heads, self.self.attention_head_size, self.pruned_heads
-        )
-
-        # Prune linear layers
-        self.self.query = prune_linear_layer(self.self.query, index)
-        self.self.key = prune_linear_layer(self.self.key, index)
-        self.self.value = prune_linear_layer(self.self.value, index)
-        self.output.dense = prune_linear_layer(self.output.dense, index, dim=1)
-
-        # Update hyper params and store pruned heads
-        self.self.num_attention_heads = self.self.num_attention_heads - len(heads)
-        self.self.all_head_size = self.self.attention_head_size * self.self.num_attention_heads
-        self.pruned_heads = self.pruned_heads.union(heads)
-
     def forward(
         self,
         hidden_states: torch.Tensor,
@@ -597,16 +575,11 @@ class UnimerSwinOutput(nn.Module):
 
 
 class ConvEnhance(nn.Module):
-    """Depth-wise convolution to get the positional information.
-    """
+    """Depth-wise convolution to get the positional information."""
+
     def __init__(self, config, dim, k=3):
         super(ConvEnhance, self).__init__()
-        self.proj = nn.Conv2d(dim,
-                              dim,
-                              (k,k),
-                              (1,1),
-                              (k // 2,k // 2),
-                              groups=dim)
+        self.proj = nn.Conv2d(dim, dim, (k, k), (1, 1), (k // 2, k // 2), groups=dim)
         self.act_fn = ACT2FN[config.hidden_act]
 
     def forward(self, x, size: Tuple[int, int]):
@@ -633,8 +606,7 @@ class UnimerSwinLayer(nn.Module):
         self.input_resolution = input_resolution
         self.layernorm_before = nn.LayerNorm(dim, eps=config.layer_norm_eps)
 
-        self.ce = nn.ModuleList([ConvEnhance(config, dim=dim, k=3),
-                                  ConvEnhance(config, dim=dim, k=3)])
+        self.ce = nn.ModuleList([ConvEnhance(config, dim=dim, k=3), ConvEnhance(config, dim=dim, k=3)])
 
         self.attention = UnimerSwinAttention(config, dim, num_heads, window_size=self.window_size)
         self.drop_path = UnimerSwinDropPath(config.drop_path_rate) if config.drop_path_rate > 0.0 else nn.Identity()
@@ -646,9 +618,7 @@ class UnimerSwinLayer(nn.Module):
         if min(input_resolution) <= self.window_size:
             # if window size is larger than input resolution, we don't partition windows
             self.shift_size = torch_int(0)
-            self.window_size = (
-                torch.min(torch.tensor(input_resolution)) if torch.jit.is_tracing() else min(input_resolution)
-            )
+            self.window_size = torch.min(torch.tensor(input_resolution)) if torch.jit.is_tracing() else min(input_resolution)
 
     def get_attn_mask(self, height, width, dtype, device):
         if self.shift_size > 0:
@@ -699,12 +669,9 @@ class UnimerSwinLayer(nn.Module):
             pass
         height, width = input_dimensions
         batch_size, _, channels = hidden_states.size()
-        
-
 
         hidden_states = self.ce[0](hidden_states, input_dimensions)
         shortcut = hidden_states
-
 
         hidden_states = self.layernorm_before(hidden_states)
         hidden_states = hidden_states.view(batch_size, height, width, channels)
@@ -722,13 +689,9 @@ class UnimerSwinLayer(nn.Module):
         # partition windows
         hidden_states_windows = window_partition(shifted_hidden_states, self.window_size)
         hidden_states_windows = hidden_states_windows.view(-1, self.window_size * self.window_size, channels)
-        attn_mask = self.get_attn_mask(
-            height_pad, width_pad, dtype=hidden_states.dtype, device=hidden_states_windows.device
-        )
+        attn_mask = self.get_attn_mask(height_pad, width_pad, dtype=hidden_states.dtype, device=hidden_states_windows.device)
 
-        attention_outputs = self.attention(
-            hidden_states_windows, attn_mask, head_mask, output_attentions=output_attentions
-        )
+        attention_outputs = self.attention(hidden_states_windows, attn_mask, head_mask, output_attentions=output_attentions)
 
         attention_output = attention_outputs[0]
 
@@ -748,8 +711,6 @@ class UnimerSwinLayer(nn.Module):
         attention_windows = attention_windows.view(batch_size, height * width, channels)
 
         hidden_states = shortcut + self.drop_path(attention_windows)
-
-
 
         hidden_states = self.ce[1](hidden_states, input_dimensions)
         layer_output = self.layernorm_after(hidden_states)
@@ -799,9 +760,7 @@ class UnimerSwinStage(nn.Module):
         for i, layer_module in enumerate(self.blocks):
             layer_head_mask = head_mask[i] if head_mask is not None else None
 
-            layer_outputs = layer_module(
-                hidden_states, input_dimensions, layer_head_mask, output_attentions, always_partition
-            )
+            layer_outputs = layer_module(hidden_states, input_dimensions, layer_head_mask, output_attentions, always_partition)
 
             hidden_states = layer_outputs[0]
 
@@ -935,17 +894,18 @@ class UnimerSwinPreTrainedModel(PreTrainedModel):
     supports_gradient_checkpointing = True
     _no_split_modules = ["UnimerSwinStage"]
 
-    def _init_weights(self, module):
-        """Initialize the weights"""
+    @torch.no_grad()
+    def _init_weights(self, module: nn.Module) -> None:
+        """仅初始化未加载的 Swin 参数，保留 safetensors 中的预训练值。"""
         if isinstance(module, (nn.Linear, nn.Conv2d)):
             # Slightly different from the TF version which uses truncated_normal for initialization
             # cf https://github.com/pytorch/pytorch/pull/5617
-            module.weight.data.normal_(mean=0.0, std=self.config.initializer_range)
+            init.normal_(module.weight, mean=0.0, std=self.config.initializer_range)
             if module.bias is not None:
-                module.bias.data.zero_()
+                init.zeros_(module.bias)
         elif isinstance(module, nn.LayerNorm):
-            module.bias.data.zero_()
-            module.weight.data.fill_(1.0)
+            init.zeros_(module.bias)
+            init.ones_(module.weight)
 
 
 SWIN_START_DOCSTRING = r"""
@@ -1004,14 +964,6 @@ class UnimerSwinModel(UnimerSwinPreTrainedModel):
     def get_input_embeddings(self):
         return self.embeddings.patch_embeddings
 
-    def _prune_heads(self, heads_to_prune):
-        """
-        Prunes heads of the model. heads_to_prune: dict of {layer_num: list of heads to prune in this layer} See base
-        class PreTrainedModel
-        """
-        for layer, heads in heads_to_prune.items():
-            self.encoder.layer[layer].attention.prune_heads(heads)
-
     @add_start_docstrings_to_model_forward(SWIN_INPUTS_DOCSTRING)
     @add_code_sample_docstrings(
         checkpoint=_CHECKPOINT_FOR_DOC,
@@ -1035,9 +987,7 @@ class UnimerSwinModel(UnimerSwinPreTrainedModel):
             Boolean masked positions. Indicates which patches are masked (1) and which aren't (0).
         """
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
-        output_hidden_states = (
-            output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
-        )
+        output_hidden_states = output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         if pixel_values is None:
@@ -1048,7 +998,17 @@ class UnimerSwinModel(UnimerSwinPreTrainedModel):
         # attention_probs has shape bsz x n_heads x N x N
         # input head_mask has shape [num_heads] or [num_hidden_layers x num_heads]
         # and head_mask is converted to shape [num_hidden_layers x batch x num_heads x seq_length x seq_length]
-        head_mask = self.get_head_mask(head_mask, len(self.config.depths))
+        # Transformers 5 已移除通用 get_head_mask，按原有广播规则显式处理。
+        if head_mask is None:
+            head_mask = [None] * len(self.config.depths)
+        else:
+            if head_mask.ndim == 1:
+                head_mask = head_mask[None, None, :, None, None].expand(len(self.config.depths), -1, -1, -1, -1)
+            elif head_mask.ndim == 2:
+                head_mask = head_mask[:, None, :, None, None]
+            elif head_mask.ndim != 5:
+                raise ValueError("head_mask must have 1, 2 or 5 dimensions")
+            head_mask = head_mask.to(dtype=self.dtype)
 
         embedding_output, input_dimensions = self.embeddings(
             pixel_values, bool_masked_pos=bool_masked_pos, interpolate_pos_encoding=interpolate_pos_encoding

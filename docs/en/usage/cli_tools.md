@@ -1,201 +1,110 @@
-# Command Line Tools Usage Instructions
+# Command Line Tools
 
-## View Help Information
-To view help information for MinerU command line tools, you can use the `--help` parameter. Here are help information examples for various command line tools:
-```bash
-mineru --help
-Usage: mineru [OPTIONS]
+MinerU exposes two primary command trees. `mineru` is the document-library client for interactive and agent workflows; `mineru-kit` contains stateless parsing, service, model, router, and WebUI tools.
 
-Options:
-  -v, --version                   Show version and exit
-  -p, --path PATH                 Input file path or directory (required)
-  -o, --output PATH               Output directory (required)
-  --api-url TEXT                  MinerU FastAPI base URL; if omitted, `mineru` starts a temporary local `mineru-api`
-  -m, --method [auto|txt|ocr]     Parsing method: auto (default), txt, ocr (pipeline and hybrid* backend only)
-  -b, --backend [pipeline|vlm-engine|hybrid-engine|vlm-http-client|hybrid-http-client]
-                                  Parsing backend (default: hybrid-engine)
-  --effort [medium|high]          Hybrid parsing effort (default: medium)
-  -l, --lang [ch|ch_server|korean|ta|te|ka|th|el|arabic|east_slavic|cyrillic|devanagari]
-                                  Specify document language (improves OCR accuracy, pipeline backend only)
-  -u, --url TEXT                  OpenAI-compatible backend URL passed through to the server when using http-client
-  -s, --start INTEGER             Starting page number for parsing (0-based)
-  -e, --end INTEGER               Ending page number for parsing (0-based)
-  -f, --formula BOOLEAN           Enable formula parsing (default: enabled)
-  -t, --table BOOLEAN             Enable table parsing (default: enabled)
-  --image-analysis BOOLEAN        Enable image/chart analysis for VLM and hybrid
-                                  backends. Hybrid medium effort automatically
-                                  disables image/chart analysis (default: enabled)
-  --client-side-output-generation BOOLEAN
-                                  Generate Markdown and content lists locally
-                                  from server-returned middle JSON, images, and
-                                  original files (default: disabled)
-  --help                          Show help information
-```
-> [!TIP]
-> `mineru` currently supports local `PDF`, image, `DOCX`, `PPTX`, and `XLSX` file or directory inputs.
+## Document-library CLI
+
+Use `mineru --help` to list all document-library commands. The most common parsing flow is:
 
 ```bash
-mineru-api --help
-Usage: mineru-api [OPTIONS]
-
-Options:
-  --host TEXT     Server host (default: 127.0.0.1)
-  --port INTEGER  Server port (default: 8000)
-  --reload        Enable auto-reload (development mode)
-  --enable-vlm-preload BOOLEAN
-                  Preload the local VLM model during mineru-api startup.
-  --help          Show this message and exit.
+mineru parse report.pdf --pages all -o report.md
 ```
+
+When `-o/--output` is omitted, rendered content is written to stdout. PDF input defaults to the first 10 pages; pass `--pages all` for the complete document. The document library manages ingestion, caching, background parsing, reading, search, and cleanup.
+
+Manage the local document-library service with:
+
 ```bash
-mineru-gradio --help
-Usage: mineru-gradio [OPTIONS]
-
-Options:
-  --enable-example BOOLEAN        Enable example files for input. The example
-                                  files to be input need to be placed in the
-                                  `examples` folder within the directory where
-                                  the command is currently executed.
-  --enable-http-client BOOLEAN    Enable http-client backend to link openai-
-                                  compatible servers.
-  --enable-api BOOLEAN            Enable gradio API for serving the
-                                  application.
-  --max-convert-pages INTEGER     Set the maximum number of pages to convert
-                                  from PDF to Markdown.
-  --server-name TEXT              Set the server name for the Gradio app.
-  --server-port INTEGER           Set the server port for the Gradio app.
-  --api-url TEXT                  MinerU FastAPI base URL. If omitted, gradio
-                                  starts a reusable local mineru-api service.
-  --enable-vlm-preload BOOLEAN    Preload the local VLM model when gradio
-                                  starts a local mineru-api service.
-  --client-side-output-generation BOOLEAN
-                                  Generate Markdown and content lists locally
-                                  from server-returned middle JSON.
-  --latex-delimiters-type [a|b|all]
-                                  Set the type of LaTeX delimiters to use in
-                                  Markdown rendering: 'a' for type '$', 'b' for
-                                  type '()[]', 'all' for both types.
-  --help                          Show this message and exit.
+mineru server start
+mineru server status
+mineru server stop
 ```
+
+Run `mineru <command> --help` for the authoritative options of each command.
+
+## Parsing, reading, exporting, and waiting
+
+`mineru parse` combines four behaviors that are easy to conflate; keep them separate when scripting:
+
+| Dimension | Default | What to know |
+| --- | --- | --- |
+| Pages requested | First 10 PDF pages; `--pages all` requests every page | Requesting all pages is not the same as receiving all text on stdout in one response |
+| Stdout reading window | 30,000-character soft limit; `--limit` changes it, `--after` continues from a content cursor | When more content exists, a `<!-- Next: mineru parse ... -->` marker with the next command is appended |
+| File export | `-o <path>` writes the complete rendered content of the **requested pages** | The export path ignores `--limit`/`--after`; it is not stdout redirected to a file. Exporting the whole document still needs `--pages all` |
+| Client wait | `--wait` waits up to 60 seconds; `--no-wait` returns immediately | A wait timeout exits with code 1 but does not fail or cancel the parse |
+
+A wait timeout is a client-side deadline, not a task failure: the parse keeps running in the document library. With `--json`, the response carries error code `parse_wait_timeout` and the tip to re-run the same command to continue waiting; in text mode the summary points to `mineru show parse <id>` for status. On slower devices or a first run (including model download), pass a larger window explicitly:
+
 ```bash
-mineru-router --help
-Usage: mineru-router [OPTIONS]
+# Stateless conversion of the whole document
+mineru-kit parse document.pdf -o document.md --tier standard
 
-Options:
-  --host TEXT             Server host (default: 127.0.0.1)
-  --port INTEGER          Server port (default: 8002)
-  --reload                Enable auto-reload (development mode)
-  --upstream-url TEXT     Existing MinerU FastAPI base URL; repeat to add more
-  --local-gpus TEXT       Local GPU workers to launch: auto, none, or CSV such
-                          as 0,1,2
-  --worker-host TEXT      Host for router-managed workers (default: 127.0.0.1)
-  --enable-vlm-preload BOOLEAN
-                          Preload the local VLM model in router-managed
-                          mineru-api workers.
-  --help                  Show this message and exit.
+# Library parse with a complete export and an explicit 10-minute client wait
+mineru parse document.pdf --pages all -o document.md --wait 600
 ```
 
-## Environment Variables Description
+When automating, keep three usage patterns apart: agent reading cares about bounded stdout, locators, and continuation; file conversion cares about complete artifacts; async tasks care about job status and the client wait window. Do not merge them into a single "command succeeded/failed" check.
 
-> [!NOTE]
-> Starting from this version, `mineru` is an orchestration client built on top of `mineru-api`:
-> 
->- Without `--api-url`, the CLI launches a temporary local `mineru-api`
->- With `--api-url`, the CLI connects to that FastAPI service directly
->- `--url` is no longer the MinerU API address; it is the OpenAI-compatible backend URL used by server-side `vlm/hybrid-http-client`
+## Stateless and service tools
 
-Some parameters of MinerU command line tools have equivalent environment variable configurations. Generally, environment variable configurations have higher priority than command line parameters and take effect across all command line tools.
-Here are the environment variables and their descriptions:
-  
-- `MINERU_TOOLS_CONFIG_JSON`: 
-    * Used to specify configuration file path
-    * defaults to `mineru.json` in user directory, can specify other configuration file paths through environment variables.
-  
-- `MINERU_FORMULA_ENABLE`:
-    * Used to enable formula parsing
-    * defaults to `true`, can be set to `false` through environment variables to disable formula parsing.
-  
-- `MINERU_FORMULA_CH_SUPPORT`:
-    * Used to enable Chinese formula parsing optimization (experimental feature)
-    * Default is `false`, can be set to `true` via environment variable to enable Chinese formula parsing optimization.
-    * Only effective for `pipeline` backend.
-  
-- `MINERU_TABLE_ENABLE`:
-    * Used to enable table parsing
-    * Default is `true`, can be set to `false` via environment variable to disable table parsing.
+Use `mineru-kit --help` to list the available tools.
 
-- `MINERU_TABLE_MERGE_ENABLE`:
-    * Used to enable table merging functionality
-    * Default is `true`, can be set to `false` via environment variable to disable table merging functionality.
+### Batch parsing
 
-- `MINERU_PDF_RENDER_TIMEOUT`:
-    * Used to set the timeout (in seconds) for rendering PDFs to images.
-    * Default is `300` seconds; you can set a different value via an environment variable to adjust the rendering timeout.
-    * Effective on Linux, macOS, and Windows.
+```bash
+mineru-kit parse report.pdf -o report.md --tier standard
+mineru-kit parse ./documents -o ./output --format zip
+```
 
-- `MINERU_PDF_RENDER_THREADS`:
-    * Used to set the render worker concurrency used when rendering PDFs to images.
-    * Default is `4`; you can set a different value via an environment variable to adjust render worker concurrency.
-    * Effective on Linux, macOS, and Windows.
+`mineru-kit parse` does not use the document-library database or cache. It supports local parsing and explicit V1 remote parsing; see `mineru-kit parse --help` for tier, backend, page-range, and output options.
 
-- `MINERU_PROCESSING_WINDOW_SIZE`:
-    * Used to control the processing window size, which affects memory use and throughput on large-document workloads.
-    * Default is `64`; set it to another positive integer when needed.
+### V1 API server
 
-- `MINERU_API_MAX_CONCURRENT_REQUESTS`:
-    * Used to control the maximum concurrent requests handled by `mineru-api` or router-managed workers.
-    * Default is `3`, and it must be a positive integer.
+```bash
+mineru-kit api-server --host 127.0.0.1 --port 8000 --tier standard
+```
 
-- `MINERU_API_ENABLE_FASTAPI_DOCS`:
-    * Used to control whether FastAPI documentation endpoints such as `/docs`, `/openapi.json`, and `/redoc` are enabled.
-    * Default is `true`.
+Open `http://127.0.0.1:8000/docs` for the generated OpenAPI documentation. The supported API is `/v1/*`; the removed legacy `/file_parse` and `/tasks` routes are not available.
 
-- `MINERU_API_OUTPUT_ROOT`:
-    * Used to configure the root output directory for `mineru-api`.
-    * Default is `./output` under the current working directory.
+### Gradio WebUI
 
-- `MINERU_LOCAL_API_STARTUP_TIMEOUT_SECONDS`:
-    * Used to control how long CLI tools wait for a locally started `mineru-api` to become healthy.
-    * Default is `300` seconds.
-    * Applies to temporary local API startup in `mineru`, preload startup in `mineru-gradio`, and router-managed local workers.
+```bash
+mineru-kit webui --server-name 127.0.0.1 --server-port 7860
+```
 
-- `MINERU_TASK_RESULT_TIMEOUT_SECONDS`:
-    * Used to control how long clients wait for a task to complete and reach a terminal state.
-    * Default is `3600` seconds, and the value must be greater than or equal to `1`.
-    * Applies to task-status polling in `mineru`, `mineru-gradio`, `mineru-router`, and other API-client scenarios.
+Without `--api-url`, Gradio manages a loopback `mineru-kit api-server`. With `--api-url`, it connects only to that V1 service. `mineru-webui` is retained as a command-name alias and accepts the same modern options; it does not restore legacy Gradio options or HTTP routes.
 
-- `MINERU_TASK_RESULT_DOWNLOAD_TIMEOUT_SECONDS`:
-    * Used to control the read timeout when retrieving completed task results, including waiting for server-side ZIP generation and downloading the result ZIP.
-    * Default is `600` seconds, and the value must be greater than or equal to `1`.
-    * This is not a hard limit for total download duration; if the server keeps returning data, the total download time may exceed this value.
+### Router and VLM server
 
-- `MINERU_API_TASK_RETENTION_SECONDS`:
-    * Used to set how long completed or failed tasks are retained, in seconds.
-    * Default is `86400` seconds (24 hours).
+```bash
+mineru-kit router --host 127.0.0.1 --port 8002 --local-gpus auto
+mineru-kit vlm-server --engine auto --port 30000
+```
 
-- `MINERU_API_TASK_CLEANUP_INTERVAL_SECONDS`:
-    * Used to set the cleanup polling interval for expired tasks, in seconds.
-    * Default is `300` seconds (5 minutes).
+`mineru-router` remains a command-name alias for `mineru-kit router`. Router exposes only the V1 API and accepts only its documented worker options.
 
-- `MINERU_INTRA_OP_NUM_THREADS`:
-    * Used to set the intra_op thread count for ONNX models, affects the computation speed of individual operators
-    * Default is `-1` (auto-select), can be set to other values via environment variable to adjust the thread count.
+## Environment variables
 
-- `MINERU_INTER_OP_NUM_THREADS`:
-    * Used to set the inter_op thread count for ONNX models, affects the parallel execution of multiple operators
-    * Default is `-1` (auto-select), can be set to other values via environment variable to adjust the thread count.
+- `MINERU_HOME`: root for MinerU configuration, cache, and document-library state.
+- `MINERU_CONFIG`: explicit `config.yaml` path.
+- `MINERU_MODEL_SOURCE`: model source, such as `huggingface`, `modelscope`, or `local`.
+- `MINERU_API_URL` / `MINERU_API_KEY`: default V1 API URL and bearer key for API clients.
+- `MINERU_LOCAL_API_STARTUP_TIMEOUT_SECONDS`: startup timeout for the Gradio-managed local V1 server; default `300` seconds.
+- `MINERU_API_ENABLE_FASTAPI_DOCS`: enable `/docs`, `/openapi.json`, and `/redoc` on the V1 API server; default `true`.
+- `MINERU_PDF_RENDER_TIMEOUT` / `MINERU_PDF_RENDER_THREADS`: PDF rendering timeout and worker count.
+- `MINERU_PROCESSING_WINDOW_SIZE`: processing window size used for large documents. Flash native text parsing renders only pages with visual blocks, preserving this window boundary, rendering timeout, and worker settings. A 32 MiB pixel budget can split batches further. OCR and other tiers still render entire windows.
+- `MINERU_MALLOC_TRIM`: disabled by default; only `1/true/yes/on` enable it, ignoring case and surrounding whitespace. On Linux, when available, it attempts to return the current process's free glibc heap pages after inference windows and PDF document cleanup. Flash native parsing only attempts trimming at document completion. Unsupported platforms or missing symbols are a no-op. It does not release live objects, GPU memory, or render-worker memory. See [memory benchmarking](./pdf_memory.md).
+- `MINERU_INTRA_OP_NUM_THREADS` / `MINERU_INTER_OP_NUM_THREADS`: ONNX operator thread settings.
 
-- `MINERU_HYBRID_BATCH_RATIO`:
-    * Used to set the batch ratio for small model processing in `hybrid-*` backends.
-    * Commonly used in `hybrid-http-client`, it allows adjusting the VRAM usage of a single client by controlling the batch ratio of small models.
-    * Single Client VRAM Size | MINERU_HYBRID_BATCH_RATIO
-      ------------------------|--------------------------
-      <= 6   GB               | 8
-      <= 4   GB               | 4
-      <= 3   GB               | 2
-      <= 2   GB               | 1
+Prefer each command's `--help` output and [model source documentation](./model_source.md) for current defaults.
 
-- `MINERU_VL_MODEL_NAME`:
-    * Used to specify the model name for the vlm/hybrid backend, allowing you to designate the model required for MinerU to run when multiple models exist on a remote openai-server.
+## PDF page selection
 
-- `MINERU_VL_API_KEY`:
-    * Used to specify the API Key for the vlm/hybrid backend, enabling authentication on the remote openai-server.
+Use `--pages "1-5,8,r3-r1"`: page numbers start at 1, ranges include both endpoints,
+and `r1` means the last page. Use `all` for every page. Results are sorted and deduplicated;
+partially out-of-bounds ranges select their valid intersection. Reversed or empty selections
+fail with `page_range_invalid`. Without `--pages`, `mineru parse` starts with the first 10 pages;
+`mineru-kit parse`, Python and Gradio select all pages. New requests use the current syntax. Historical positive result ranges using ASCII `~`
+remain readable without rebuilding Doclib caches; result responses and new cache entries use `-`.
+Fullwidth `～` and negative page-number notation are not supported.
+See [page-range syntax and historical result compatibility](tiers.md).
