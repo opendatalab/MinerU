@@ -9,6 +9,7 @@ import json
 import logging
 import subprocess
 import sys
+import time
 import types
 import zipfile
 from pathlib import Path
@@ -2009,6 +2010,47 @@ def test_complete_upload_rejects_size_mismatch(tmp_path: Path) -> None:
 
     assert exc_info.value.status_code == 413
     assert exc_info.value.error.code == "upload_size_mismatch"
+
+
+def test_get_upload_expires_pending_records_and_discards_staged_data(tmp_path: Path) -> None:
+    """expires_at 过后 pending 上传惰性转为 expired 终态并丢弃暂存数据，后续 PUT/complete 收到 409。"""
+    file_store = FileStore(tmp_path / "api-files")
+    upload = file_store.create_upload(
+        CreateUploadRequest.model_validate({"filename": "demo.pdf", "bytes": 4, "mime_type": "application/pdf"})
+    )
+    file_store.store_upload_data(upload.id, b"demo")
+    staged = tmp_path / "api-files" / "blobs" / "_uploads" / upload.id
+    assert staged.is_file()
+
+    file_store._uploads[upload.id].expires_at = int(time.time()) - 1
+
+    rec = file_store.get_upload(upload.id)
+
+    assert rec.status == "expired"
+    assert not staged.is_file()
+    with pytest.raises(api_server.ApiServerError) as exc_info:
+        file_store.store_upload_data(upload.id, b"demo")
+    assert exc_info.value.status_code == 409
+    with pytest.raises(api_server.ApiServerError) as exc_info:
+        file_store.complete_upload(upload.id, None)
+    assert exc_info.value.status_code == 409
+
+
+def test_get_upload_keeps_completed_records_after_expiry(tmp_path: Path) -> None:
+    """completed 是终态，expires_at 过后不再翻转，文件保留交给独立的 retention 机制。"""
+    file_store = FileStore(tmp_path / "api-files")
+    sha = "00" * 32
+    file_store.store_blob(b"demo", sha256hex=sha)
+    upload = file_store.create_upload(
+        CreateUploadRequest.model_validate(
+            {"filename": "demo.pdf", "bytes": 4, "mime_type": "application/pdf", "sha256sum": sha}
+        )
+    )
+    assert upload.status == "completed"
+
+    file_store._uploads[upload.id].expires_at = int(time.time()) - 1
+
+    assert file_store.get_upload(upload.id).status == "completed"
 
 
 def test_run_job_preserves_input_file_id_and_keeps_source_undownloadable(

@@ -739,6 +739,10 @@ class FileStore:
                 code="upload_not_found",
                 message=f"Upload {upload_id} not found",
             )
+        if rec.status == "pending" and int(time.time()) >= rec.expires_at:
+            # 惰性过期：过期后 pending 记录转为终态并丢弃暂存数据，PUT/complete/cancel 均收到 409。
+            rec.status = "expired"
+            (self._blobs / "_uploads" / upload_id).unlink(missing_ok=True)
         return rec
 
     def _read_upload_data(self, upload_id: str) -> bytes:

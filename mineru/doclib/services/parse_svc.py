@@ -1186,7 +1186,7 @@ class ParseService:
                 if local_mode != "disabled" and health.local.probe.healthy:
                     local_url = _local_parse_server_url(local_mode, health)
                     if local_url:
-                        return local_url, api_key, "local"
+                        return local_url, await _local_parse_server_api_key(self.config_svc), "local"
                 raise ParseFailure("parse_server_unavailable", "Remote parse-server unavailable and no local fallback")
             return url, api_key, "remote"
 
@@ -1208,7 +1208,7 @@ class ParseService:
                 )
             raise ParseFailure("engine_unavailable", "Local parse-server is not ready. Please wait or check server status.")
 
-        api_key = (await self.config_svc.get("parse_server.local.self_hosted_api_key")) or None
+        api_key = await _local_parse_server_api_key(self.config_svc)
         return local_url, api_key, "local"
 
     async def _fail_task(self, task_id: int, code: str, message: str) -> None:
@@ -1679,6 +1679,11 @@ def _local_parse_server_url(mode: str, health: object) -> str | None:
     if mode == "self_hosted":
         return getattr(health, "self_hosted_url", None)
     return None
+
+
+async def _local_parse_server_api_key(config_svc: ConfigService) -> str | None:
+    """Resolve local parse-server API key (self-hosted only; managed servers take no key)."""
+    return (await config_svc.get("parse_server.local.self_hosted_api_key")) or None
 
 
 def _is_official_remote_url(url: str) -> bool:
