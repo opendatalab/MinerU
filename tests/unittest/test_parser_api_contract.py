@@ -30,6 +30,7 @@ from mineru.parser.api_client import MinerUApiParser, _pages_from_middle_json, _
 from mineru.parser.api_server import (
     _API_SERVER_LANGUAGES,
     CreateJobRequest,
+    CreateUploadRequest,
     FileParseInfo,
     FileStore,
     HealthResponse,
@@ -1976,6 +1977,86 @@ def test_api_server_run_job_normalizes_lightweight_file_tier_to_flash(
     assert calls[0]["source_context"].local_resource_root == source.resolve().parent  # type: ignore[union-attr]
     assert rec.tier == "standard"
     assert rec.files[0].status == "completed"
+
+
+def test_store_upload_data_rejects_declared_size_mismatch(tmp_path: Path) -> None:
+    """声明 bytes 与 PUT 实际大小不一致时在落盘前拒绝。"""
+    file_store = FileStore(tmp_path / "api-files")
+    upload = file_store.create_upload(
+        CreateUploadRequest.model_validate({"filename": "demo.pdf", "bytes": 4, "mime_type": "application/pdf"})
+    )
+
+    with pytest.raises(api_server.ApiServerError) as exc_info:
+        file_store.store_upload_data(upload.id, b"too-many-bytes")
+
+    assert exc_info.value.status_code == 413
+    assert exc_info.value.error.code == "upload_size_mismatch"
+    assert not (tmp_path / "api-files" / "blobs" / "_uploads" / upload.id).is_file()
+
+
+def test_complete_upload_rejects_size_mismatch(tmp_path: Path) -> None:
+    """complete 阶段复核实际大小，防止绕过 store_upload_data 的写入路径。"""
+    file_store = FileStore(tmp_path / "api-files")
+    upload = file_store.create_upload(
+        CreateUploadRequest.model_validate({"filename": "demo.pdf", "bytes": 4, "mime_type": "application/pdf"})
+    )
+    blob = file_store._blobs / "_uploads" / upload.id
+    blob.parent.mkdir(parents=True, exist_ok=True)
+    blob.write_bytes(b"0123456789")
+
+    with pytest.raises(api_server.ApiServerError) as exc_info:
+        file_store.complete_upload(upload.id, None)
+
+    assert exc_info.value.status_code == 413
+    assert exc_info.value.error.code == "upload_size_mismatch"
+
+
+def test_run_job_preserves_input_file_id_and_keeps_source_undownloadable(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """完成的 job 保留输入 file_id，不为源文件创建可下载的 parse_output 副本。"""
+
+    async def fake_parse_async(*args: object, **kwargs: object) -> ParseResult:
+        return ParseResult(middle_json=_full_middle_json(PageInfo(page_idx=0)))
+
+    monkeypatch.setattr("mineru.parser.api_server.parse_async", fake_parse_async)
+    file_store = FileStore(tmp_path / "api-files")
+    payload = b"%PDF-1.7 demo"
+    upload = file_store.create_upload(
+        CreateUploadRequest.model_validate({"filename": "demo.pdf", "bytes": len(payload), "mime_type": "application/pdf"})
+    )
+    file_store.store_upload_data(upload.id, payload)
+    completed = file_store.complete_upload(upload.id, None)
+    assert completed.file is not None
+    input_file_id = completed.file.id
+
+    request = CreateJobRequest.model_validate(
+        {
+            "files": [{"source": {"type": "file_id", "file_id": input_file_id}}],
+            "tier": "standard",
+            "output_formats": ["middle_json"],
+        }
+    )
+    rec = api_server.JobStore().create(request, file_store)
+
+    asyncio.run(
+        api_server._run_job(
+            rec,
+            request,
+            file_store,
+            image_analysis=True,
+        )
+    )
+
+    assert rec.files[0].status == "completed"
+    assert rec.files[0].file_id == input_file_id
+    output_files = file_store.list_files(after=None, limit=1000, order="asc", purpose="parse_output").data
+    assert input_file_id not in [item.id for item in output_files]
+    assert [item.filename for item in output_files] == ["demo.pdf.middle.json"]
+    with pytest.raises(api_server.ApiServerError) as exc_info:
+        file_store.read_file_data(input_file_id)
+    assert exc_info.value.status_code == 403
 
 
 @pytest.mark.parametrize(("request_tier", "response_tier"), [("standard", "standard"), (None, "flash")])
