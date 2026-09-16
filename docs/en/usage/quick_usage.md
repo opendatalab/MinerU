@@ -23,7 +23,7 @@ mineru parse <input_path> --pages all -o <output_path>
 > Runtime acceleration is selected separately for the two model components, based on installed dependencies and detected devices:
 >
 > - Small models use the Torch backend only when `torch`, `torchvision`, `transformers`, `accelerate`, and `safetensors` are **all** installed and a non-CPU device (CUDA/MPS/...) is detected; otherwise they run ONNX on CPU. Installing Torch alone is not enough.
-> - The local VLM engine is chosen independently: macOS always uses llama.cpp; on an accelerator device Linux prefers vLLM, then an installed LMDeploy, and Windows uses LMDeploy; otherwise llama.cpp. MLX is never selected automatically on macOS and requires explicit configuration.
+> - The local VLM engine is chosen independently: macOS always uses llama.cpp; on an accelerator device Linux prefers vLLM, then an installed LMDeploy, and Windows uses LMDeploy; otherwise llama.cpp.
 > - Windows users who need CUDA acceleration should first visit the [PyTorch website](https://pytorch.org/get-started/locally/) and install accelerator-enabled `torch` and `torchvision` matching their CUDA version, then install the `mineru[full]` extras.
 
 After installation, confirm the runtimes actually in effect in your environment:

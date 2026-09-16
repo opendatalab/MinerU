@@ -1,6 +1,6 @@
 # Docker 部署（MinerU 4.0 / NVIDIA）
 
-通用 Docker 面向 Linux NVIDIA 环境（Windows 使用 WSL2）。Apple Silicon 使用 macOS 原生安装；此 Docker 流程不提供 MPS/MLX 加速。AMD 和国产卡使用[旧平台指南](../usage/compatibility.md)，对应专用 Docker 保持 `mineru<4`。
+通用 Docker 面向 Linux NVIDIA 环境（Windows 使用 WSL2）。Apple Silicon 使用 macOS 原生安装；此 Docker 流程不提供 MPS 加速。AMD 和国产卡使用[旧平台指南](../usage/compatibility.md)，对应专用 Docker 保持 `mineru<4`。
 
 ## 构建镜像
 

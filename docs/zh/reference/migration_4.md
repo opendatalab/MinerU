@@ -8,7 +8,7 @@
 | --- | --- |
 | `mineru -p input.pdf -o output` | 文档库：`mineru parse input.pdf --pages all -o output.md`；一次性转换：`mineru-kit parse input.pdf -o output.md` |
 | 目录批处理 | `mineru-kit parse ./documents -o ./output --format zip` |
-| `mineru-gradio` / 开发期 `mineru-kit gradio` | `mineru-webui` / `mineru-kit webui` |
+| `mineru-gradio` | `mineru-webui` / `mineru-kit webui` |
 | 旧模型下载参数 `-m all` | `mineru-kit models download --tier standard` |
 | 旧 API 调用 | V1 上传 → 解析任务 → 文件产物 |
 | `mineru[core]`、`mineru[pipeline]` 等 extras | 基础包、`mineru[torch]` 或 `mineru[full]` |
@@ -54,7 +54,7 @@ model:
 | `MINERU_VL_API_KEY` | `model.vlm.api_key` | `MINERU_MODEL_VLM_API_KEY` |
 | `MINERU_VL_MODEL_NAME` | `model.vlm.model` | `MINERU_MODEL_VLM_MODEL` |
 
-默认按平台选择后端。显式 `onnx + llama-cpp` 可用于较轻的运行环境；Torch 与 VLM 引擎也可自由组合，但必须满足对应依赖。Apple Silicon 默认 VLM 是 llama.cpp；MLX 需要手动安装和选择。
+默认按平台选择后端。显式 `onnx + llama-cpp` 可用于较轻的运行环境；Torch 与 VLM 引擎也可自由组合，但必须满足对应依赖。Apple Silicon 默认 VLM 是 llama.cpp。
 
 变更配置后重启相关服务，并使用相同后端执行模型下载和验证。4.0 使用独立的小模型包，不能仅凭旧模型目录存在就认定已准备完成，详见[模型源说明](../usage/model_source.md)。
 

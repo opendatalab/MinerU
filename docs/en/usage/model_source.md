@@ -65,13 +65,13 @@ Use `basic` as the download tier when no VLM is needed. Advanced has no separate
 
 `local` uses ready local models and fails on missing assets without downloading. An explicit `models download` is a download operation: even with `local` configured, it temporarily resolves a remote source automatically.
 
-## Remote VLM service and manual MLX
+## Remote VLM service
 
 An existing `model.vlm.server_url` takes priority and removes the local VLM weight requirement. This is a model inference endpoint, not the MinerU V1 document parsing API. Small-model requirements still depend on the tier. The full field set:
 
 | Field | Default | Purpose |
 | --- | --- | --- |
-| `model.vlm.engine` | `auto` | Local engine selection: `auto/llama-cpp/vllm/lmdeploy/mlx`; not used while a remote `server_url` is set |
+| `model.vlm.engine` | `auto` | Local engine selection: `auto/llama-cpp/vllm/lmdeploy`; not used while a remote `server_url` is set |
 | `model.vlm.server_url` | (unset) | Remote VLM inference endpoint. Must be HTTP(S) without credentials, query, or fragment; a trailing `/v1` is stripped and the URL is kept ending with `/` (reverse-proxy path prefixes are preserved) |
 | `model.vlm.api_key` | (unset) | Bearer key for the remote VLM service; environment variable `MINERU_MODEL_VLM_API_KEY` |
 | `model.vlm.model` | (unset) | Model name requested from the remote service; environment variable `MINERU_MODEL_VLM_MODEL` |
@@ -80,7 +80,7 @@ An existing `model.vlm.server_url` takes priority and removes the local VLM weig
 
 Legacy `MINERU_VL_API_KEY` / `MINERU_VL_MODEL_NAME` are rejected when they conflict with these fields; see the [migration guide](../reference/migration_4.md).
 
-MLX requires manual installation of `mlx-vlm>=0.7.0,<0.8.0` and explicit `model.vlm.engine: mlx`. `model.stack`, `MINERU_MODEL_STACK`, and `--stack` have been removed. Restart relevant services after configuration changes.
+`model.stack`, `MINERU_MODEL_STACK`, and `--stack` have been removed. Restart relevant services after configuration changes.
 
 ## Three remote connections at a glance
 

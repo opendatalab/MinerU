@@ -8,7 +8,7 @@
 | --- | --- |
 | `mineru -p input.pdf -o output` | Library: `mineru parse input.pdf --pages all -o output.md`; one-off conversion: `mineru-kit parse input.pdf -o output.md` |
 | Directory batch conversion | `mineru-kit parse ./documents -o ./output --format zip` |
-| `mineru-gradio` / development-era `mineru-kit gradio` | `mineru-webui` / `mineru-kit webui` |
+| `mineru-gradio` | `mineru-webui` / `mineru-kit webui` |
 | Model download option `-m all` | `mineru-kit models download --tier standard` |
 | Old HTTP parsing calls | V1 uploads → parse jobs → output files |
 | Extras such as `mineru[core]` and `mineru[pipeline]` | Base package, `mineru[torch]`, or `mineru[full]` |
@@ -54,7 +54,7 @@ Two 3.x environment variables are still recognized and rejected on conflict: whe
 | `MINERU_VL_API_KEY` | `model.vlm.api_key` | `MINERU_MODEL_VLM_API_KEY` |
 | `MINERU_VL_MODEL_NAME` | `model.vlm.model` | `MINERU_MODEL_VLM_MODEL` |
 
-Automatic selection follows the platform. Explicit `onnx + llama-cpp` can serve lighter environments. Torch and VLM engines can also be combined when their dependencies are available. Apple Silicon defaults to llama.cpp for the VLM; MLX requires manual installation and selection.
+Automatic selection follows the platform. Explicit `onnx + llama-cpp` can serve lighter environments. Torch and VLM engines can also be combined when their dependencies are available. Apple Silicon defaults to llama.cpp for the VLM.
 
 Restart relevant services after configuration changes, and download and verify models with matching backend choices. 4.0 has separate small-model bundles: the presence of an old model directory does not prove readiness. See [Model Source](../usage/model_source.md).
 

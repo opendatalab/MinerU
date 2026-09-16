@@ -5,9 +5,9 @@
 MinerU 4.0 brings document parsing, a local document library, and service tools into one workflow for document conversion, application integration, and agent reading.
 
 - **Four parsing tiers**: Flash for fast previews and indexing, Basic for OCR and model-based parsing, and Standard / Advanced for more demanding layouts and quality requirements.
-- **Multiple input formats**: PDF, images, DOC/DOCX, PPT/PPTX, XLS/XLSX, RTF, ODT/ODS/ODP, EPUB, OFD, HTML, and CSV/TSV. DocVortex provides native document parsing.
+- **Multiple input formats**: PDF, images, DOC/DOCX, PPT/PPTX, XLS/XLSX, RTF, ODT/ODS/ODP, EPUB, OFD, HTML, and CSV/TSV. [DocVortex](https://github.com/myhloli/docvortex) provides native document parsing.
 - **Document library and agent reading**: discover files, cache results, search content, continue by page or block, and preserve stable citation locators.
-- **Independent model configuration**: ONNX or Torch for small models; llama.cpp, vLLM, LMDeploy, or manually installed and explicitly configured MLX for the VLM.
+- **Independent model configuration**: ONNX or Torch for small models; llama.cpp, vLLM, or LMDeploy for the VLM.
 - **Unified tools**: Python SDK, V1 API, stateless batch conversion, multi-service Router, and a Gradio-based WebUI.
 - **Structured results and rendering**: one document model supports nine rendering targets: Markdown, HTML, LaTeX, DOCX, EPUB, PDF, Structured Content, and Content List V1/V2. Each CLI/API exposes its own subset of exports.
 

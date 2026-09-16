@@ -65,13 +65,13 @@ mineru-kit parse document.pdf -o document.md --tier standard
 
 `local` 模式只使用就绪的本地模型，缺失时报错，不自动下载。显式执行 `models download` 是下载操作，即使配置为 `local`，该命令也会临时采用自动远端模型源。
 
-## 远程 VLM 服务与手动 MLX
+## 远程 VLM 服务
 
 `model.vlm.server_url` 配置已有 VLM 服务时，优先使用该服务，不要求本地 VLM 权重；它是模型推理接口，不是 MinerU V1 文档解析 API。小模型依赖仍由所选档位决定。完整字段如下：
 
 | 字段 | 默认值 | 用途 |
 | --- | --- | --- |
-| `model.vlm.engine` | `auto` | 本地引擎选择：`auto/llama-cpp/vllm/lmdeploy/mlx`；设置远程 `server_url` 时不使用 |
+| `model.vlm.engine` | `auto` | 本地引擎选择：`auto/llama-cpp/vllm/lmdeploy`；设置远程 `server_url` 时不使用 |
 | `model.vlm.server_url` | （未设置） | 远程 VLM 推理地址。必须是 HTTP(S)，不允许携带凭据、query 或 fragment；结尾的 `/v1` 会被去掉并保证以 `/` 结尾（保留反向代理路径前缀） |
 | `model.vlm.api_key` | （未设置） | 远程 VLM 服务的 Bearer Key；环境变量 `MINERU_MODEL_VLM_API_KEY` |
 | `model.vlm.model` | （未设置） | 请求远程服务使用的模型名；环境变量 `MINERU_MODEL_VLM_MODEL` |
@@ -80,7 +80,7 @@ mineru-kit parse document.pdf -o document.md --tier standard
 
 旧变量 `MINERU_VL_API_KEY` / `MINERU_VL_MODEL_NAME` 与这些字段冲突时会被拒绝，见[迁移指南](../reference/migration_4.md)。
 
-MLX 需手动安装 `mlx-vlm>=0.7.0,<0.8.0` 并显式设置 `model.vlm.engine: mlx`。`model.stack`、`MINERU_MODEL_STACK` 和 `--stack` 已移除。修改配置后重启相关服务。
+`model.stack`、`MINERU_MODEL_STACK` 和 `--stack` 已移除。修改配置后重启相关服务。
 
 ## 三种远程连接对照
 
