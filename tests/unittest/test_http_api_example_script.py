@@ -82,6 +82,9 @@ def _script_env(tmp_path: Path, **extra: str) -> dict[str, str]:
         "HOME": os.environ.get("HOME", str(tmp_path)),
         "TMPDIR": str(tmp_path),
         "MINERU_HOME": str(tmp_path / "mineru-home"),
+        # Default to a tmp dir so downloads never leak into the pytest cwd (repo root);
+        # an explicit OUTPUT_DIR in extra overrides this.
+        "OUTPUT_DIR": str(tmp_path / "out"),
     }
     for key in ("LANG", "LC_ALL"):
         if key in os.environ:
