@@ -42,15 +42,16 @@ body.dark .gradio-container {
     padding: 12px;
 }
 .mineru-control-column {
-    position: sticky;
+    position: sticky !important;
     top: 12px;
     align-self: flex-start;
 }
-/* 档位名称由上方 Markdown 显示，仅隐藏原生滑块的数字区，不修改轨道和滑块样式。 */
+/* HF Space 不执行 Gradio 的自定义 CSS 前缀改写，以下规则必须独立压过
+   Gradio 自带 scoped 样式（div.svelte-*、.head.svelte-*、.prose 等）。 */
 .mineru-tier-slider .head,
 .mineru-tier-slider .min_value,
 .mineru-tier-slider .max_value {
-    display: none;
+    display: none !important;
 }
 /* 两个原生 range 共用同一条轨道；仅滑块接收指针，保留原生键盘交互。 */
 .mineru-kit-page-range {
@@ -228,7 +229,7 @@ body.dark .gradio-container {
     align-items: center;
     gap: 7px;
     min-width: 0;
-    color: var(--body-text-color-subdued);
+    color: var(--body-text-color-subdued) !important;
     font-size: 12px;
 }
 .status-dot {
@@ -257,10 +258,10 @@ body.dark .gradio-container {
     margin-top: 10px;
     padding-top: 10px;
     border-top: 1px solid var(--mineru-status-latest-border);
-    color: var(--mineru-status-latest-text);
-    font-family: var(--font-mono);
+    color: var(--mineru-status-latest-text) !important;
+    font-family: var(--font-mono) !important;
     font-size: 12px;
-    line-height: 1.45;
+    line-height: 1.45 !important;
     word-break: break-word;
 }
 .office-preview-shell {
