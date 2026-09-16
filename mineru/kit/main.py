@@ -7,6 +7,7 @@ from click.core import Context
 from typer.core import TyperGroup
 
 from ..cli.version_command import show_version, version_cmd
+from ..utils.logger import configure_global_log_level
 from ..utils.stdio import configure_standard_streams
 from .commands import api_server, models, parse, router, vlm_server, webui
 
@@ -60,6 +61,7 @@ app.command("version")(version_cmd)
 
 def main() -> None:
     configure_standard_streams()
+    configure_global_log_level()
     app()
 
 

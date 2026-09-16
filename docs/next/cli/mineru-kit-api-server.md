@@ -94,9 +94,10 @@ OCR 模式通过每次 `POST /v1/parse/jobs` 请求的 `ocr_mode` 设置，可�
 ### 服务日志级别
 
 `mineru-kit api-server`、`mineru-api` 和 `python -m mineru.parser.api_server` 均支持 `--log-level`，
-可选 `critical`、`error`、`warning`、`info`、`debug`、`trace`，大小写不敏感，直接启动时默认 `info`。
-该参数控制 Uvicorn 的启停、HTTP 访问、ASGI 日志及 API 服务自身日志。模型加载、解析阶段的模型日志、
-模型原生日志和 tqdm 进度条保留各自原有设置。
+可选 `critical`、`error`、`warning`、`info`、`debug`、`trace`，大小写不敏感。未显式传入时使用全局
+`log.level`（默认 `info`，可被 `MINERU_LOG_LEVEL` 覆盖）。该参数控制 Uvicorn 的启停、HTTP 访问、
+ASGI 日志、API 服务自身日志，以及模型加载/解析阶段 Loguru 默认 stderr sink。宿主程序显式添加的
+Loguru sink 和 tqdm 进度条保留各自原有设置。
 
 ```bash
 mineru-kit api-server --log-level warning

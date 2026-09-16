@@ -12,6 +12,7 @@ from packaging.specifiers import SpecifierSet
 
 from ...model.ocr.language import validate_public_ocr_lang
 from ...types import SERVER_TIERS, ServerTier
+from ...utils.logger import configure_global_log_level
 from ...utils.stdio import configure_standard_streams
 from ..errors import exit_with_message
 
@@ -125,6 +126,7 @@ def webui_cmd(
 def main() -> None:
     """以独立 console script 运行Web UI 命令。"""
     configure_standard_streams()
+    configure_global_log_level()
     typer.run(webui_cmd)
 
 

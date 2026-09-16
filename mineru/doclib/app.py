@@ -21,6 +21,7 @@ from loguru import logger as loguru_logger
 
 from ..config import Config, LogConfig, _mineru_home, config, get_config_source
 from ..errors import MineruError, error_response, http_status_for
+from ..utils.logger import configure_global_log_level
 from ..utils.stdio import configure_standard_streams
 from .endpoint import EndpointTransport, read_endpoint_file, remove_endpoint_file, uds_available, write_endpoint_file
 from .instance_lock import DoclibLockUnavailable, build_doclib_home_owned_message, doclib_home_lock
@@ -442,6 +443,7 @@ def _bind_tcp_socket(host: str, port: int, *, strict_port: bool, port_probe_coun
 def main() -> None:
     """Entry point: python -m mineru.doclib.app"""
     configure_standard_streams()
+    configure_global_log_level()
     try:
         with doclib_home_lock():
             _run_server(config)
@@ -466,7 +468,13 @@ def _run_server(cfg: Config) -> None:
 
     app = create_app(cfg)
     server_id = app.state.doclib_state.server_id
-    log_source = get_config_source("doclib.log.level") if cfg is config else "provided"
+    log_source = (
+        get_config_source("doclib.log.level")
+        if cfg is config and cfg.doclib.log.level is not None
+        else get_config_source("log.level")
+        if cfg is config
+        else "provided"
+    )
     logger.info(
         "Doclib logging configured level=%s source=%s path=%s",
         logging.getLevelName(_resolve_log_level(cfg.doclib.log)),
@@ -630,7 +638,8 @@ def _remove_owned_uds_path(uds_path: str, expected_identity: tuple[int, int]) ->
 
 
 def _resolve_log_level(log_cfg: LogConfig) -> int:
-    return getattr(logging, log_cfg.level.upper(), logging.INFO)
+    level = log_cfg.level or config.log.level
+    return getattr(logging, level.upper(), logging.INFO)
 
 
 def _setup_logging(log_cfg: LogConfig) -> None:

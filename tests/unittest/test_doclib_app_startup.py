@@ -296,6 +296,14 @@ def test_bind_tcp_socket_strict_port_does_not_probe(monkeypatch: pytest.MonkeyPa
     assert bind_calls == [("127.0.0.1", 15980)]
 
 
+def test_doclib_log_level_inherits_global_and_accepts_local_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证 Doclib 未设置级别时继承全局配置，显式设置时局部覆盖。"""
+    monkeypatch.setattr(doclib_app.config.log, "level", "debug")
+
+    assert doclib_app._resolve_log_level(LogConfig()) == logging.DEBUG
+    assert doclib_app._resolve_log_level(LogConfig(level="warning")) == logging.WARNING
+
+
 def test_setup_logging_routes_application_logs_to_rotating_file_without_stderr_duplication(tmp_path: Path) -> None:
     _clear_test_loggers()
     log_path = tmp_path / "doclib.log"

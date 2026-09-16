@@ -6,6 +6,7 @@ import typer
 from click.core import Context
 from typer.core import TyperGroup
 
+from ..utils.logger import configure_global_log_level
 from ..utils.stdio import configure_standard_streams
 from .commands import cleanup, config, list_resources, server, show, telemetry, usage, watch
 from .commands.forget import forget_cmd
@@ -93,6 +94,7 @@ app.command("version")(version_cmd)
 
 def main() -> None:
     configure_standard_streams()
+    configure_global_log_level()
     app()
 
 

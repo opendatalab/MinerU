@@ -53,7 +53,7 @@ for (const extension of flashOnlyExtensions.flatMap((extension) => [extension, e
     const out = ui.step("file", { file: { path: `/source.${extension}` } });
     assert.equal(out[7].value, 0);
     assert.equal(out[7].interactive, false);
-    assert.equal(out[8], "解析 tier：flash");
+    assert.equal(out[8], "解析等级：flash（极速）");
     assert.equal(out[5].interactive, true);
     assert.equal(out[3], "");
     assert.match(out[2], /data-range-visible="false"/);
@@ -65,7 +65,7 @@ for (const extension of flashOnlyExtensions.flatMap((extension) => [extension, e
     const cleared = ui.step("clear");
     assert.equal(cleared[7].value, 3);
     assert.equal(cleared[7].interactive, true);
-    assert.equal(cleared[8], "解析 tier：advanced");
+    assert.equal(cleared[8], "解析等级：advanced（极高）");
     assert.equal(cleared[5].interactive, false);
 }
 
@@ -76,7 +76,7 @@ for (const extension of tieredExtensions.flatMap((extension) => [extension, exte
     const out = ui.step("file", { file: { path: `/source.${extension}` } });
     assert.equal(out[7].value, 2);
     assert.equal(out[7].interactive, true);
-    assert.equal(out[8], "解析 tier：standard");
+    assert.equal(out[8], "解析等级：standard（高）");
     assert.equal(out[5].interactive, extension.toLowerCase() !== "pdf");
     assert.deepEqual(ui.state.tierSelection, { tier: "standard", locked: false });
 }

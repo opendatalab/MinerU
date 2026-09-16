@@ -76,7 +76,7 @@ and report `pdf_title_geometry_conflict`; unavailable expansion clearance report
 `pdf_title_clearance_unavailable`. Only rendering context changes, with no input,
 asset, protocol or public-option changes.
 
-Requires `docvortex>=0.4.2,<1`. DocVortex clears native TXT PDF display equation
+Requires `docvortex>=0.4.3,<1`. DocVortex clears native TXT PDF display equation
 `content` once when producing model output; MinerU Flash TXT uses that output.
 Flash OCR already leaves display equation content empty. MinerU does not clear
 equation content again. Both Flash paths retain the bbox, orientation, image and
@@ -186,7 +186,7 @@ Round-trip current results with `ParseResult.from_json(result.to_json())`. Legac
 
 ## Saved files, ZIP, and assets
 
-`ParseResult.save(writer)` writes `markdown.md`, `middle_json.json`, and `structured_content.json`, plus `model_output.json` when raw model output exists. `mineru-kit parse --format zip` packages these results.
+`ParseResult.save(writer)` materializes images on a document copy and writes `markdown.md`, `middle_json.json`, `structured_content.json`, and `images/`, plus `model_output.json` when raw model output exists. Self-hosted V1 API ZIP output and `mineru-kit parse --format zip` share this save path. All three consumer formats reference the same assets; image bytes, source page indices, block indices, and rotation metadata are preserved.
 
 ```python
 from mineru.parser.writer import FileBasedDataWriter
@@ -194,6 +194,6 @@ from mineru.parser.writer import FileBasedDataWriter
 result.save(FileBasedDataWriter("output"))
 ```
 
-Assets may be embedded or referenced by image paths, depending on the source and output entrypoint. PDF `ParseResult.to_dict()` omits block `image_base64`; saving intermediate JSON alone does not preserve every external asset. Download and retain matching assets when consuming API output references. Do not rely on a closed PDF object or the original file for later rendering.
+PDF `ParseResult.to_dict()` / `to_json()` still omit block `image_base64`, so standalone structural JSON is not a complete result package. `save(writer)` neither recrops nor rotates images and rejects unresolved asset references before writing, without reading the working directory or fetching network resources. With `include_images=True`, the API client restores direct images and images embedded in visual HTML from the ZIP. Gradio reuses those assets; PDF export needs only MiddleJson and the images, without the source PDF or ModelJson. `include_images=False` retains structural-only reading. Regenerate historical incomplete or incorrectly materialized results.
 
 The WebUI layout PDF is a debugging artifact used to preview detections when available; otherwise the UI previews the original/cropped PDF. It serves a different purpose from `RenderFormat.PDF` above.

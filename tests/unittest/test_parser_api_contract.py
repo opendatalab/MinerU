@@ -77,7 +77,8 @@ _REMOVED_FORMULA_ENABLE_ENV = "MINERU_" + "FORMULA" + "_ENABLE"
 
 
 def _stub_api_server_dependency_preflight(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(importlib, "import_module", lambda _module_name: object())
+    """只跳过服务依赖预检，避免覆盖全局导入而破坏运行时的惰性加载。"""
+    monkeypatch.setattr(api_server, "ensure_tier_runtime_dependencies", lambda *_args, **_kwargs: None)
 
 
 def _full_middle_json(*pages: PageInfo) -> MiddleJson:

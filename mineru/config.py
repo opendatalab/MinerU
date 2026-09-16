@@ -28,6 +28,7 @@ MINERU_ENV_PREFIX = "MINERU_"
 AutoBool = Literal["auto"] | bool
 ConfigSource = Literal["default", "file", "env"]
 ModelSource = Literal["auto", "huggingface", "modelscope", "local"]
+LogLevel = Literal["trace", "debug", "info", "warning", "error", "critical"]
 
 _INTERPOLATION_RE = re.compile(r"\$\{(\w+)(?::-([^${}]*))?\}")
 
@@ -41,6 +42,13 @@ def _mineru_home() -> str:
 
 def _default_path(path1: str, /, *paths: str) -> str:
     return os.path.join(_mineru_home(), path1, *paths)
+
+
+def _normalize_log_level(value: LogLevel | str | None) -> LogLevel | str | None:
+    """归一化日志级别输入；None 表示未设置局部覆盖。"""
+    if value is None or not isinstance(value, str):
+        return value
+    return value.strip().lower()
 
 
 def _uds_available() -> bool:
@@ -302,6 +310,18 @@ class TCPConfig(BaseModel):
     timeout: int = 600
 
 
+class GlobalLogConfig(BaseModel):
+    """MinerU 全局日志配置，控制当前进程的 Loguru 默认输出。"""
+
+    level: LogLevel = "info"
+
+    @field_validator("level", mode="before")
+    @classmethod
+    def _normalize_level(cls, value: LogLevel | str | None) -> LogLevel | str | None:
+        """允许配置文件和环境变量使用大小写混写，并忽略首尾空白。"""
+        return _normalize_log_level(value)
+
+
 class LogConfig(BaseModel):
     dir: str = _default_path("logs")
     app_path: str | None = None
@@ -310,7 +330,13 @@ class LogConfig(BaseModel):
     stderr_path: str | None = None
     parse_server_stdout_path: str | None = None
     parse_server_stderr_path: str | None = None
-    level: str = "info"
+    level: LogLevel | None = None
+
+    @field_validator("level", mode="before")
+    @classmethod
+    def _normalize_level(cls, value: LogLevel | str | None) -> LogLevel | str | None:
+        """归一化 Doclib 的局部日志级别覆盖。"""
+        return _normalize_log_level(value)
 
     @property
     def resolved_app_path(self) -> str:
@@ -532,6 +558,7 @@ class DoclibConfig(BaseModel):
 class Config(BaseModel):
     """Top-level MinerU startup configuration."""
 
+    log: GlobalLogConfig = Field(default_factory=GlobalLogConfig)
     doclib: DoclibConfig = Field(default_factory=DoclibConfig)
     render: RenderConfig = Field(default_factory=RenderConfig)
     llm_aided: LLMAidedConfig = Field(default_factory=LLMAidedConfig)
@@ -551,6 +578,8 @@ __all__ = [
     "AutoBool",
     "ConfigSource",
     "LoadedConfig",
+    "LogLevel",
+    "GlobalLogConfig",
     "ModelConfig",
     "VlmConfig",
     "ModelSource",

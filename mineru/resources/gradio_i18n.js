@@ -29,8 +29,13 @@
             while ((node = walker.nextNode())) {
                 const original = node.textContent.trim();
                 let translated = message(original);
-                const tier = /^(?:解析 tier：|Parsing tier: )(\w+)$/.exec(original);
-                if (tier) translated = text("tier_value", { tier: tier[1], notice: "" });
+                const tier = /^(?:解析等级：|Parsing tier: )(flash|basic|standard|advanced)(?:（[^）]*）| \([^)]*\))*$/.exec(original);
+                if (tier) {
+                    const unavailable = messages.tier_unavailable_suffix.some((suffix) => original.endsWith(suffix));
+                    translated = text("tier_value", {
+                        tier: text(`tier_${tier[1]}`), notice: unavailable ? text("tier_unavailable_suffix") : "",
+                    });
+                }
                 if (translated !== original) node.textContent = node.textContent.replace(original, () => translated);
             }
         });

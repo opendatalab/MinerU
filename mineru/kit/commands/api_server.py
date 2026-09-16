@@ -8,6 +8,7 @@ import typer
 from ...parser import api_server as parser_api_server
 from ...types import SERVER_TIERS, ServerTier
 from ...model.ocr.language import PUBLIC_OCR_LANGUAGES, validate_public_ocr_lang
+from ...utils.logger import configure_global_log_level
 from ...utils.stdio import configure_standard_streams
 from ..errors import exit_with_message
 
@@ -62,10 +63,13 @@ def api_server_cmd(
     vlm_max_concurrency: int | None = typer.Option(
         None, "--vlm-max-concurrency", min=1, help="VLM inference concurrency (default: 100)"
     ),
-    log_level: str = typer.Option(
-        "info",
+    log_level: str | None = typer.Option(
+        None,
         "--log-level",
-        help="API service log level: critical, error, warning, info, debug, trace; preserves model logs and progress bars",
+        help=(
+            "API service log level: critical, error, warning, info, debug, trace; "
+            "default: global log.level. Also filters the Loguru default model-log sink"
+        ),
     ),
 ) -> None:
     """转发显式启动参数，启动 self-hosted MinerU 解析 API 服务。"""
@@ -92,8 +96,7 @@ def api_server_cmd(
                 host,
                 "--port",
                 str(port),
-                "--log-level",
-                log_level,
+                *(["--log-level", log_level] if log_level is not None else []),
                 "--concurrency",
                 str(concurrency),
                 "--url-timeout",
@@ -126,6 +129,7 @@ def api_server_cmd(
 def main() -> None:
     """配置标准流后，以独立命令运行新版 API 服务入口。"""
     configure_standard_streams()
+    configure_global_log_level()
     typer.run(api_server_cmd)
 
 

@@ -22,6 +22,7 @@ from ...model.registry import (
 from ...model.runtime.device import resolve_small_model_backend
 from ...model.vlm.selector import resolve_vlm_engine
 from ...types import DEPLOYMENT_TIERS
+from ...utils.logger import configure_global_log_level
 from ...utils.stdio import configure_standard_streams
 from ..errors import exit_with_message
 from ..output import print_info, print_success
@@ -202,6 +203,7 @@ def verify_cmd(
 def download_main() -> None:
     """配置标准流后直接运行模型下载命令，无需再输入 download 子命令。"""
     configure_standard_streams()
+    configure_global_log_level()
     typer.run(download_cmd)
 
 

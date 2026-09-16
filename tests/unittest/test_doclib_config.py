@@ -278,6 +278,52 @@ def test_legacy_llm_aided_root_key_is_ignored() -> None:
     assert cfg.llm_aided.features.title_leveling is False
 
 
+def test_default_global_and_doclib_log_levels() -> None:
+    """验证全局日志默认 info，且 Doclib 默认不设置局部覆盖。"""
+    cfg = Config()
+
+    assert cfg.log.level == "info"
+    assert cfg.doclib.log.level is None
+
+
+def test_global_log_level_reads_yaml_and_tracks_source(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证 YAML 可配置全局日志级别并正确记录配置来源。"""
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text(
+        """
+log:
+  level: " DEBUG "
+""",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("MINERU_CONFIG", str(config_file))
+
+    loaded = _load_effective_config()
+
+    assert loaded.config.log.level == "debug"
+    assert loaded.sources[("log", "level")] == "file"
+
+
+def test_global_log_level_env_overrides_yaml_and_normalizes_value(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证环境变量覆盖 YAML，并归一化大小写与空白。"""
+    config_file = tmp_path / "config.yaml"
+    config_file.write_text("log:\n  level: debug\n", encoding="utf-8")
+    monkeypatch.setenv("MINERU_CONFIG", str(config_file))
+    monkeypatch.setenv("MINERU_LOG_LEVEL", " WARNING ")
+
+    loaded = _load_effective_config()
+
+    assert loaded.config.log.level == "warning"
+    assert loaded.sources[("log", "level")] == "env"
+
+
+@pytest.mark.parametrize("level", ["", "silent", "success"])
+def test_global_log_level_rejects_invalid_values(level: str) -> None:
+    """验证非法全局日志级别在配置模型边界被拒绝。"""
+    with pytest.raises(ValueError):
+        Config(log={"level": level})
+
+
 def test_default_doclib_data_dir_uses_doclib_directory() -> None:
     cfg = Config()
 

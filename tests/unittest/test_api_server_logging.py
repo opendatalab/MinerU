@@ -37,14 +37,19 @@ def test_log_level_reaches_server(monkeypatch: pytest.MonkeyPatch, entrypoint: s
     application = object()
     create_app = MagicMock(return_value=application)
     config = MagicMock(return_value=object())
+    expected = (level or "debug").lower()
+    configure_global = MagicMock(return_value=expected)
     server = SimpleNamespace(run=MagicMock(), should_exit=False)
+    monkeypatch.setattr(api_server.mineru_config.log, "level", "debug")
     monkeypatch.setattr(api_server, "create_app", create_app)
+    monkeypatch.setattr(api_server, "configure_global_log_level", configure_global)
+    monkeypatch.setattr(kit_api, "configure_global_log_level", MagicMock(return_value="debug"))
     monkeypatch.setattr(api_server.uvicorn, "Config", config)
     monkeypatch.setattr(api_server.uvicorn, "Server", MagicMock(return_value=server))
     monkeypatch.setattr(api_server.ManagedProcessControlWatcher, "from_environment", lambda callback: None)
 
     assert _invoke_entrypoint(monkeypatch, entrypoint, [] if level is None else ["--log-level", level]) == 0
-    expected = (level or "info").lower()
+    configure_global.assert_called_once_with(None if level is None else expected)
     config.assert_called_once()
     assert config.call_args.args == (application,)
     assert config.call_args.kwargs["log_level"] == expected
@@ -69,8 +74,8 @@ def test_invalid_log_level_fails_before_initialization(monkeypatch: pytest.Monke
 
 
 @pytest.mark.parametrize("level", ["info", "warning", "error"])
-def test_service_log_output_is_filtered_without_changing_model_logs(level: str) -> None:
-    """在独立进程验证真实日志输出、重复配置以及 root、模型日志和 tqdm 的隔离。"""
+def test_service_log_output_is_filtered_while_preserving_explicit_model_sink(level: str) -> None:
+    """在独立进程验证真实日志输出、重复配置以及 root、显式模型日志和 tqdm 的隔离。"""
     script = r"""
 import io
 import json

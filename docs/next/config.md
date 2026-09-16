@@ -118,6 +118,11 @@ MinerU VLM 的跨页单元格检测保持关闭。任一功能启用时，`api_k
 - 隐私优先：任何配置都不能导致静默上传文档。
 - 质量优先：PDF/image 主动阅读未指定 tier 时使用默认选择策略，不能静默降级到 `flash`；OFD/EPUB/Office/HTML/CSV 按实际能力归一为 `flash`；其它 text 直接读取。
 
+全局日志级别由 `log.level` 控制，默认 `info`，可选 `trace`、`debug`、`info`、
+`warning`、`error`、`critical`。环境变量 `MINERU_LOG_LEVEL` 可覆盖 YAML；
+该配置作用于当前进程的 Loguru 默认 stderr sink，不会移除宿主程序显式添加的
+自定义 sink。`doclib.log.level` 与 api-server 启动参数 `--log-level` 是局部覆盖。
+
 ## 2. 两阶段配置模型
 
 ### 2.1 启动前配置
@@ -128,6 +133,7 @@ MinerU VLM 的跨页单元格检测保持关闭。任一功能启用时，`api_k
 
 | 分组 | 字段 | 默认值 | 说明 |
 |------|------|--------|------|
+| 全局日志 | `log.level` | `info` | Loguru 默认 stderr sink 级别；可用 `MINERU_LOG_LEVEL` 覆盖 |
 | UDS | `doclib.uds.enabled` | `auto` | `auto` / `true` / `false`；`auto` 时当前 Python runtime 支持 UDS 则启用，否则关闭 |
 | UDS | `doclib.uds.path` | `~/.mineru/doclib.sock` | CLI / doclib 通信 socket，默认取 `$MINERU_HOME/doclib.sock` |
 | UDS | `doclib.uds.permission` | `0o600` | socket 权限 |
@@ -145,7 +151,7 @@ MinerU VLM 的跨页单元格检测保持关闭。任一功能启用时，`api_k
 | log | `doclib.log.stderr_path` | unset → `<dir>/doclib.stderr.log` | server 子进程 stderr fallback 日志路径 |
 | log | `doclib.log.parse_server_stdout_path` | unset → `<dir>/doclib.parse-server.stdout.log` | managed parse-server stdout 日志路径 |
 | log | `doclib.log.parse_server_stderr_path` | unset → `<dir>/doclib.parse-server.stderr.log` | managed parse-server stderr 日志路径 |
-| log | `doclib.log.level` | `info` | 日志级别 |
+| log | `doclib.log.level` | unset → `log.level` | Doclib 进程日志级别局部覆盖 |
 | doclib | `doclib.endpoint_path` | `~/.mineru/doclib.endpoint.json` | 当前 server 实际可用 endpoint discovery 文件 |
 | doclib | `doclib.data_dir` | `~/.mineru/doclib` | 数据目录，默认取 `$MINERU_HOME/doclib`，但仍可通过配置文件或环境变量覆盖 |
 | doclib | `doclib.managed_parse_server.host` | `127.0.0.1` | managed parse-server 监听地址 |
