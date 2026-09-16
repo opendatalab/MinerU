@@ -128,7 +128,13 @@ _KIT_MENU_CSS = """
 .mineru-kit-download-menu:hover .mineru-kit-download-icon,
 .mineru-kit-download-icon:focus-visible { background: var(--background-fill-secondary, #f3f4f6); }
 .mineru-kit-download-icon:focus-visible { outline: 2px solid var(--mineru-accent, #f97316); outline-offset: 2px; }
-.mineru-kit-download-options {
+/* Gradio 会在页面端给自定义 CSS 加 .gradio-container-<ver> .contain 前缀抬升
+   优先级，但该改写在部分环境（如 HF Space 实测）不会执行，此时类选择器
+   (0,1,0) 会输给 Column 自带的 div.svelte-siXXXX { position: relative }
+   scoped 规则 (0,1,1)，浮窗被顶开 38px 并使 hover 桥失效。
+   组件已带 elem_id，用 ID 选择器不依赖该改写，在所有环境稳赢；
+   hover/focus 显示规则须同步用 ID，否则压不过基础规则 (1,0,0)。 */
+#mineru-kit-download-options {
     position: absolute; right: 0; top: calc(100% + 6px); z-index: 40;
     width: max-content !important; min-width: 0 !important;
     display: flex !important; flex-direction: column; gap: 4px; padding: 6px;
@@ -137,8 +143,8 @@ _KIT_MENU_CSS = """
     opacity: 0; pointer-events: none; transform: translateY(-4px); visibility: hidden;
     transition: opacity 120ms ease, transform 120ms ease, visibility 120ms ease;
 }
-.mineru-kit-download-menu:hover .mineru-kit-download-options,
-.mineru-kit-download-menu:focus-within .mineru-kit-download-options {
+.mineru-kit-download-menu:hover #mineru-kit-download-options,
+.mineru-kit-download-menu:focus-within #mineru-kit-download-options {
     opacity: 1; pointer-events: auto; transform: translateY(0); visibility: visible;
 }
 /* 填满图标与浮层之间的间隙，避免鼠标移向下载项时菜单提前关闭。 */
