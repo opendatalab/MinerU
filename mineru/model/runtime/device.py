@@ -8,6 +8,10 @@ import os
 from typing import Literal
 
 
+# 通过 getattr(torch, name) 探测可用性的附加加速后端，按优先级排列；xpu 为 Intel GPU 原生后端。
+PROBE_TORCH_DEVICE_APIS: tuple[str, ...] = ("xpu", "gcu", "musa", "mlu", "sdaa")
+
+
 def get_device() -> str:
     """返回显式配置或当前环境中可用的首选模型设备。"""
     configured_device = os.getenv("MINERU_DEVICE_MODE")
@@ -36,7 +40,7 @@ def get_device() -> str:
             return "npu"
     except Exception:
         pass
-    for device_name in ("gcu", "musa", "mlu", "sdaa"):
+    for device_name in PROBE_TORCH_DEVICE_APIS:
         try:
             device_api = getattr(torch, device_name)
             if device_api.is_available():
@@ -73,4 +77,4 @@ def resolve_small_model_backend(backend: str | None = None) -> Literal["onnx", "
     return "onnx"
 
 
-__all__ = ["TORCH_REQUIRED_MODULES", "get_device", "module_available", "resolve_small_model_backend"]
+__all__ = ["PROBE_TORCH_DEVICE_APIS", "TORCH_REQUIRED_MODULES", "get_device", "module_available", "resolve_small_model_backend"]

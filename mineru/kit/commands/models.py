@@ -22,12 +22,13 @@ from ...model.registry import (
 from ...model.runtime.device import resolve_small_model_backend
 from ...model.vlm.selector import resolve_vlm_engine
 from ...types import DEPLOYMENT_TIERS
+from ...utils.i18n import t
 from ...utils.logger import configure_global_log_level
 from ...utils.stdio import configure_standard_streams
 from ..errors import exit_with_message
 from ..output import print_info, print_success
 
-app = typer.Typer(help="Download, inspect, and verify local MinerU models.", no_args_is_help=True)
+app = typer.Typer(help=t("Download, inspect, and verify local MinerU models."), no_args_is_help=True)
 
 
 def _validate_download_source(source: str | None) -> str | None:
@@ -37,7 +38,11 @@ def _validate_download_source(source: str | None) -> str | None:
     normalized = source.strip().lower()
     if normalized not in DOWNLOAD_MODEL_SOURCES:
         expected = ", ".join(DOWNLOAD_MODEL_SOURCES)
-        exit_with_message("invalid_request", f"Unsupported source '{source}'. Expected one of: {expected}.", "source")
+        exit_with_message(
+            "invalid_request",
+            t("Unsupported source '{source}'. Expected one of: {expected}.", source=source, expected=expected),
+            "source",
+        )
     return normalized
 
 
@@ -50,9 +55,9 @@ def _select_target_repos(
 ) -> tuple[ModelRepo, ...]:
     """选择显式仓库或按独立后端组合档位资源。"""
     if repo_name and tier:
-        exit_with_message("invalid_request", "Pass either a model repo name or --tier, not both.")
+        exit_with_message("invalid_request", t("Pass either a model repo name or --tier, not both."))
     if not repo_name and tier is None:
-        exit_with_message("invalid_request", "Pass a model repo name or --tier.")
+        exit_with_message("invalid_request", t("Pass a model repo name or --tier."))
 
     if tier is not None:
         try:
@@ -73,26 +78,26 @@ def _select_target_repos(
 def _format_repo_status(repo: ModelRepo) -> str:
     """格式化仓库的本地就绪状态。"""
     result = verify_model_repo(repo)
-    status = "ready" if result.ready else "missing"
+    status = t("ready") if result.ready else t("missing")
     return f"{repo.name}: {status} ({repo.local_dir()})"
 
 
-@app.command("download")
+@app.command("download", help=t("Download an explicit repo or the tier resources required by the current backend combination."))
 def download_cmd(
-    repo: str | None = typer.Argument(None, help="Model repo: MinerU-4_models_torch, MinerU-4_models_onnx, or a VLM repo"),
-    tier: str | None = typer.Option(None, "--tier", help="Model tier to prepare: basic or standard"),
+    repo: str | None = typer.Argument(None, help=t("Model repo: MinerU-4_models_torch, MinerU-4_models_onnx, or a VLM repo")),
+    tier: str | None = typer.Option(None, "--tier", help=t("Model tier to prepare: basic or standard")),
     small_backend: str | None = typer.Option(
         None,
         "--small-backend",
-        help="Small model backend: auto, onnx, torch. Ignored when REPO is given.",
+        help=t("Small model backend: auto, onnx, torch. Ignored when REPO is given."),
     ),
     vlm_engine: str | None = typer.Option(
         None,
         "--vlm-engine",
-        help="Local VLM engine: auto, llama-cpp, vllm, lmdeploy, mlx. Ignored when REPO is given.",
+        help=t("Local VLM engine: auto, llama-cpp, vllm, lmdeploy, mlx. Ignored when REPO is given."),
     ),
-    source: str | None = typer.Option(None, "--source", "-s", help="Model source: auto, huggingface, or modelscope"),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Verbose output"),
+    source: str | None = typer.Option(None, "--source", "-s", help=t("Model source: auto, huggingface, or modelscope")),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help=t("Verbose output")),
 ) -> None:
     """下载显式仓库或当前后端组合所需的档位资源。"""
     normalized_source = _validate_download_source(source)
@@ -102,25 +107,25 @@ def download_cmd(
         try:
             root = download_model_repo(target_repo, source=normalized_source, local_as_auto=True)
         except Exception as exc:
-            exit_with_message("api_error", f"Failed to download {target_repo.name}: {exc}")
+            exit_with_message("api_error", t("Failed to download {repo}: {error}", repo=target_repo.name, error=exc))
         if verbose:
             print_info(f"{target_repo.name}: {root}")
 
-    label = f"tier {tier}" if tier is not None else repos[0].name
-    print_success(f"Downloaded models for {label}.")
+    label = t("tier {tier}", tier=tier) if tier is not None else repos[0].name
+    print_success(t("Downloaded models for {label}.", label=label))
 
 
-@app.command("show")
+@app.command("show", help=t("Show configuration sources, effective backends, and tier resources."))
 def show_cmd(
     small_backend: str | None = typer.Option(
         None,
         "--small-backend",
-        help="Small model backend: auto, onnx, torch. Ignored when REPO is given.",
+        help=t("Small model backend: auto, onnx, torch. Ignored when REPO is given."),
     ),
     vlm_engine: str | None = typer.Option(
         None,
         "--vlm-engine",
-        help="Local VLM engine: auto, llama-cpp, vllm, lmdeploy, mlx. Ignored when REPO is given.",
+        help=t("Local VLM engine: auto, llama-cpp, vllm, lmdeploy, mlx. Ignored when REPO is given."),
     ),
 ) -> None:
     """显示配置来源、有效后端与档位资源。"""
@@ -134,8 +139,8 @@ def show_cmd(
 
     config_file = get_config_file_path()
     lines = [
-        f"Config: {config_file}",
-        f"Config exists: {str(get_config_file_exists()).lower()}",
+        t("Config: {path}", path=config_file),
+        t("Config exists: {value}", value=str(get_config_file_exists()).lower()),
         f"MINERU_MODEL_SOURCE={os.getenv(MODEL_SOURCE_ENV_VAR, '') or '(unset)'}",
         f"model.base_dir: {config.model.base_dir}",
         f"model.base_dir.source: {get_config_source('model.base_dir')}",
@@ -145,9 +150,9 @@ def show_cmd(
         f"model.small_backend.source: {get_config_source('model.small_backend')}",
         f"model.vlm.engine: {config.model.vlm.engine}",
         f"model.vlm.engine.source: {get_config_source('model.vlm.engine')}",
-        f"Effective small backend: {effective_small_backend}",
-        f"Effective VLM engine: {effective_vlm_engine}",
-        "Repos:",
+        t("Effective small backend: {backend}", backend=effective_small_backend),
+        t("Effective VLM engine: {engine}", engine=effective_vlm_engine),
+        t("Repos:"),
     ]
     for line in lines:
         print_info(line)
@@ -155,26 +160,26 @@ def show_cmd(
     for repo in MODEL_REPOS:
         print_info(f"  {_format_repo_status(repo)}")
 
-    print_info("Model tiers:")
+    print_info(t("Model tiers:"))
     for tier in DEPLOYMENT_TIERS:
         repos = model_repos_for_tier(tier, small_backend=effective_small_backend, vlm_engine=vlm_engine)
-        names = ", ".join(repo.name for repo in repos) or "(none)"
+        names = ", ".join(repo.name for repo in repos) or t("(none)")
         print_info(f"  {tier}: {names}")
 
 
-@app.command("verify")
+@app.command("verify", help=t("Verify local resources for an explicit repo or the current backend combination."))
 def verify_cmd(
-    repo: str | None = typer.Argument(None, help="Optional model repo name"),
-    tier: str | None = typer.Option(None, "--tier", help="Optional model tier: basic or standard"),
+    repo: str | None = typer.Argument(None, help=t("Optional model repo name")),
+    tier: str | None = typer.Option(None, "--tier", help=t("Optional model tier: basic or standard")),
     small_backend: str | None = typer.Option(
         None,
         "--small-backend",
-        help="Small model backend: auto, onnx, torch. Ignored when REPO is given.",
+        help=t("Small model backend: auto, onnx, torch. Ignored when REPO is given."),
     ),
     vlm_engine: str | None = typer.Option(
         None,
         "--vlm-engine",
-        help="Local VLM engine: auto, llama-cpp, vllm, lmdeploy, mlx. Ignored when REPO is given.",
+        help=t("Local VLM engine: auto, llama-cpp, vllm, lmdeploy, mlx. Ignored when REPO is given."),
     ),
 ) -> None:
     """校验显式仓库或当前后端组合所需的本地资源。"""
@@ -190,11 +195,11 @@ def verify_cmd(
     for target_repo in repos:
         result = verify_model_repo(target_repo)
         if result.ready:
-            print_success(f"{target_repo.name}: ok")
+            print_success(t("{repo}: ok", repo=target_repo.name))
             continue
         failures += 1
         missing = ", ".join(result.missing_paths)
-        print_info(f"{target_repo.name}: missing key paths: {missing}")
+        print_info(t("{repo}: missing key paths: {missing}", repo=target_repo.name, missing=missing))
 
     if failures:
         raise typer.Exit(1)
@@ -204,7 +209,11 @@ def download_main() -> None:
     """配置标准流后直接运行模型下载命令，无需再输入 download 子命令。"""
     configure_standard_streams()
     configure_global_log_level()
-    typer.run(download_cmd)
+    app = typer.Typer(add_completion=False)
+    app.command(help=t("Download an explicit repo or the tier resources required by the current backend combination."))(
+        download_cmd
+    )
+    app()
 
 
 __all__ = ["app", "download_cmd", "download_main", "show_cmd", "verify_cmd", "model_repo_names"]

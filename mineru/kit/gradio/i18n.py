@@ -10,8 +10,8 @@ MESSAGES: dict[str, tuple[str, str]] = {
     "header_title": ("MinerU 4: Document Extraction", "MinerU 4：文档提取"),
     "header_subtitle": (
         "Open-source document extraction for PDF/JPG/PNG, DOC/DOCX, PPT/PPTX, XLS/XLSX, "
-        "RTF, ODT/ODS/ODP, EPUB, HTML, OFD and CSV.",
-        "开源文档提取工具，支持 PDF/JPG/PNG、DOC/DOCX、PPT/PPTX、XLS/XLSX、RTF、ODT/ODS/ODP、EPUB、HTML、OFD 和 CSV。",
+        "RTF, ODT/ODS/ODP, EPUB, HTML, OFD, CSV and TSV.",
+        "开源文档提取工具，支持 PDF/JPG/PNG、DOC/DOCX、PPT/PPTX、XLS/XLSX、RTF、ODT/ODS/ODP、EPUB、HTML、OFD、CSV 和 TSV。",
     ),
     "header_support_text": (
         "If you found our project helpful, please give us a ⭐️ to support us!",

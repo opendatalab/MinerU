@@ -8,6 +8,7 @@ import typer
 from ...parser import api_server as parser_api_server
 from ...types import SERVER_TIERS, ServerTier
 from ...model.ocr.language import PUBLIC_OCR_LANGUAGES, validate_public_ocr_lang
+from ...utils.i18n import t
 from ...utils.logger import configure_global_log_level
 from ...utils.stdio import configure_standard_streams
 from ..errors import exit_with_message
@@ -22,53 +23,59 @@ def _normalize_tier_option(tier: str | None) -> ServerTier | None:
     if tier not in SERVER_TIERS:
         exit_with_message(
             "invalid_request",
-            f"Unsupported server tier '{tier}'. Supported server tiers: {', '.join(SERVER_TIERS)}",
+            t(
+                "Unsupported server tier '{tier}'. Supported server tiers: {tiers}",
+                tier=tier,
+                tiers=", ".join(SERVER_TIERS),
+            ),
             "tier",
         )
     return cast(ServerTier, tier)
 
 
 def api_server_cmd(
-    host: str = typer.Option("127.0.0.1", "--host", help="Server host"),
-    port: int = typer.Option(8000, "--port", help="Server port"),
-    upload_dir: str = typer.Option("", "--upload-dir", help="Upload directory"),
+    host: str = typer.Option("127.0.0.1", "--host", help=t("Server host")),
+    port: int = typer.Option(8000, "--port", help=t("Server port")),
+    upload_dir: str = typer.Option("", "--upload-dir", help=t("Upload directory")),
     tier: str | None = typer.Option(
         None,
         "--tier",
-        help="Server capability tier: flash, basic, or standard",
+        help=t("Server capability tier: flash, basic, or standard"),
     ),
-    no_flash: bool = typer.Option(False, "--no-flash", help="Disable Flash tier advertisement and execution"),
-    no_advanced: bool = typer.Option(False, "--no-advanced", help="Disable Advanced tier advertisement and execution"),
-    concurrency: int = typer.Option(1, "--concurrency", help="Maximum concurrent parse jobs"),
-    url_timeout: int = typer.Option(60, "--url-timeout", help="Timeout for URL source downloads"),
-    allow_local_source: bool = typer.Option(False, "--allow-local-source", help="Allow local source paths"),
-    max_inline_bytes: int = typer.Option(1024 * 1024, "--max-inline-bytes", help="Maximum decoded bytes for inline sources"),
-    allow_http_source: bool = typer.Option(False, "--allow-http-source", help="Allow URL sources to use plain HTTP"),
+    no_flash: bool = typer.Option(False, "--no-flash", help=t("Disable Flash tier advertisement and execution")),
+    no_advanced: bool = typer.Option(False, "--no-advanced", help=t("Disable Advanced tier advertisement and execution")),
+    concurrency: int = typer.Option(1, "--concurrency", help=t("Maximum concurrent parse jobs")),
+    url_timeout: int = typer.Option(60, "--url-timeout", help=t("Timeout for URL source downloads")),
+    allow_local_source: bool = typer.Option(False, "--allow-local-source", help=t("Allow local source paths")),
+    max_inline_bytes: int = typer.Option(1024 * 1024, "--max-inline-bytes", help=t("Maximum decoded bytes for inline sources")),
+    allow_http_source: bool = typer.Option(False, "--allow-http-source", help=t("Allow URL sources to use plain HTTP")),
     language: str = typer.Option(
         "ch",
         "--language",
-        help="Hybrid medium OCR language hint; accepted by other efforts for compatibility",
+        help=t("Hybrid medium OCR language hint; accepted by other efforts for compatibility"),
     ),
-    disable_image_analysis: bool = typer.Option(False, "--disable-image-analysis", help="Disable image analysis"),
+    disable_image_analysis: bool = typer.Option(False, "--disable-image-analysis", help=t("Disable image analysis")),
     preload_models: bool = typer.Option(
-        False, "--preload-models", help="Initialize VLM client and local Hybrid models at startup"
+        False, "--preload-models", help=t("Initialize VLM client and local Hybrid models at startup")
     ),
-    api_key: str | None = typer.Option(None, "--api-key", help="Optional fixed API key"),
-    vlm_server_url: str | None = typer.Option(None, "--vlm-server-url", help="Remote VLM URL; empty value selects local VLM"),
-    vlm_api_key: str | None = typer.Option(None, "--vlm-api-key", help="Bearer key for the remote VLM server"),
-    vlm_model: str | None = typer.Option(None, "--vlm-model", help="Remote VLM model name; empty value enables discovery"),
+    api_key: str | None = typer.Option(None, "--api-key", help=t("Optional fixed API key")),
+    vlm_server_url: str | None = typer.Option(
+        None, "--vlm-server-url", help=t("Remote VLM URL; empty value selects local VLM")
+    ),
+    vlm_api_key: str | None = typer.Option(None, "--vlm-api-key", help=t("Bearer key for the remote VLM server")),
+    vlm_model: str | None = typer.Option(None, "--vlm-model", help=t("Remote VLM model name; empty value enables discovery")),
     vlm_http_timeout: int | None = typer.Option(
-        None, "--vlm-http-timeout", min=1, help="VLM HTTP timeout in seconds (default: 600)"
+        None, "--vlm-http-timeout", min=1, help=t("VLM HTTP timeout in seconds (default: 600)")
     ),
     vlm_max_concurrency: int | None = typer.Option(
-        None, "--vlm-max-concurrency", min=1, help="VLM inference concurrency (default: 100)"
+        None, "--vlm-max-concurrency", min=1, help=t("VLM inference concurrency (default: 100)")
     ),
     log_level: str | None = typer.Option(
         None,
         "--log-level",
-        help=(
-            "API service log level: critical, error, warning, info, debug, trace; "
-            "default: global log.level. Also filters the Loguru default model-log sink"
+        help=t(
+            "API service log level: critical, error, warning, info, debug, trace; default: global log.level. "
+            "Also filters the Loguru default model-log sink"
         ),
     ),
 ) -> None:
@@ -130,7 +137,11 @@ def main() -> None:
     """配置标准流后，以独立命令运行新版 API 服务入口。"""
     configure_standard_streams()
     configure_global_log_level()
-    typer.run(api_server_cmd)
+    app = typer.Typer(add_completion=False)
+    app.command(help=t("Forward explicit startup options and launch the self-hosted MinerU parsing API service."))(
+        api_server_cmd
+    )
+    app()
 
 
 __all__ = ["API_SERVER_LANGUAGES", "api_server_cmd", "main"]

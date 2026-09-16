@@ -104,7 +104,7 @@ def test_csv_is_a_flash_only_parseable_type_instead_of_plain_text() -> None:
         assert ext in PARSEABLE_EXTENSIONS
         assert ext in INGESTIBLE_EXTENSIONS
         assert ext not in TEXT_EXTENSIONS
-        assert FILE_TYPE_BY_EXTENSION[ext] == "csv"
+        assert FILE_TYPE_BY_EXTENSION[ext] == ext
         assert is_flash_only_parse_extension(ext)
     assert MIME_TYPE_BY_EXTENSION["csv"] == "text/csv"
     assert MIME_TYPE_BY_EXTENSION["tsv"] == "text/tab-separated-values"

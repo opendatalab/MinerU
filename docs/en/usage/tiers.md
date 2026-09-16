@@ -30,6 +30,8 @@ PDF and images support all four tiers. Office, OpenDocument, RTF, EPUB, OFD, HTM
 
 Automatic selection uses installed dependencies and available devices. An explicit choice with missing dependencies fails instead of silently selecting another backend. ONNX small models run on CPU; VLM device selection is independent.
 
+Intel XPU is excluded from automatic LMDeploy selection. Linux prefers an installed XPU-compatible vLLM and otherwise falls back to llama.cpp; Windows uses llama.cpp.
+
 ```yaml
 model:
   small_backend: auto
@@ -37,7 +39,7 @@ model:
     engine: auto
 ```
 
-`small_backend` accepts `auto/onnx/torch`; `engine` accepts `auto/llama-cpp/vllm/lmdeploy/mlx`. macOS does not select MLX automatically: install and configure it explicitly.
+`small_backend` accepts `auto/onnx/torch`; `engine` accepts `auto/llama-cpp/vllm/lmdeploy`. macOS defaults to llama.cpp.
 
 ## Resources and platform boundaries
 

@@ -7,17 +7,18 @@ from rich.table import Table
 
 from ...doclib.client import DoclibClient
 from ...doclib.types import DocInfo, FileInfoResponse, ParseInfo, ScanInfo
+from ...utils.i18n import t
 from ..contracts import CliContext
 from ..path_utils import normalize_cli_path
 from ..runtime import run_cli
 
-app = typer.Typer(help="Show doclib resource details", no_args_is_help=True)
+app = typer.Typer(help=t("Show doclib resource details"), no_args_is_help=True)
 
 
-@app.command("parse")
+@app.command("parse", help=t("Show one parse task."))
 def show_parse(
-    parse_id: int = typer.Argument(..., help="Parse task id"),
-    json_mode: bool = typer.Option(False, "--json", help="JSON output"),
+    parse_id: int = typer.Argument(..., help=t("Parse task id")),
+    json_mode: bool = typer.Option(False, "--json", help=t("JSON output")),
 ) -> None:
     """Show one parse task."""
     run_cli(
@@ -27,10 +28,10 @@ def show_parse(
     )
 
 
-@app.command("scan")
+@app.command("scan", help=t("Show one scan task."))
 def show_scan(
-    scan_id: int = typer.Argument(..., help="Scan task id"),
-    json_mode: bool = typer.Option(False, "--json", help="JSON output"),
+    scan_id: int = typer.Argument(..., help=t("Scan task id")),
+    json_mode: bool = typer.Option(False, "--json", help=t("JSON output")),
 ) -> None:
     """Show one scan task."""
     run_cli(
@@ -40,10 +41,10 @@ def show_scan(
     )
 
 
-@app.command("file")
+@app.command("file", help=t("Show file, doc, and parse state for a local path."))
 def show_file(
-    path: str = typer.Argument(..., help="File path"),
-    json_mode: bool = typer.Option(False, "--json", help="JSON output"),
+    path: str = typer.Argument(..., help=t("File path")),
+    json_mode: bool = typer.Option(False, "--json", help=t("JSON output")),
 ) -> None:
     """Show file, doc, and parse state for a local path."""
     run_cli(
@@ -53,10 +54,10 @@ def show_file(
     )
 
 
-@app.command("doc")
+@app.command("doc", help=t("Show one doc by Doc ID or content hash."))
 def show_doc(
-    doc_ref: str = typer.Argument(..., help="Document Doc ID or SHA-256"),
-    json_mode: bool = typer.Option(False, "--json", help="JSON output"),
+    doc_ref: str = typer.Argument(..., help=t("Document Doc ID or SHA-256")),
+    json_mode: bool = typer.Option(False, "--json", help=t("JSON output")),
 ) -> None:
     """Show one doc by Doc ID or content hash."""
     run_cli(
@@ -71,53 +72,53 @@ def _client() -> DoclibClient:
 
 
 def _render_parse_info(data: ParseInfo) -> Table:
-    table = Table(title=f"Parse {data.id}: {data.status}")
-    table.add_column("Field", style="cyan")
-    table.add_column("Value", style="green")
-    table.add_row("SHA-256", data.sha256)
-    table.add_row("Tier", data.tier)
-    table.add_row("Pages", data.page_range)
-    table.add_row("Privacy", data.privacy)
+    table = Table(title=t("Parse {id}: {status}", id=data.id, status=data.status))
+    table.add_column(t("Field"), style="cyan")
+    table.add_column(t("Value"), style="green")
+    table.add_row(t("SHA-256"), data.sha256)
+    table.add_row(t("Tier"), data.tier)
+    table.add_row(t("Pages"), data.page_range)
+    table.add_row(t("Privacy"), data.privacy)
     if data.error_code or data.error_msg:
-        table.add_row("Error", f"{data.error_code or ''} {data.error_msg or ''}".rstrip())
+        table.add_row(t("Error"), f"{data.error_code or ''} {data.error_msg or ''}".rstrip())
     return table
 
 
 def _render_scan(data: ScanInfo) -> Table | str:
     if data.status == "failed":
-        return f"Scan failed: {data.error_code or ''} {data.error_msg or ''}"
-    table = Table(title=f"Scan {data.id}: {data.status}")
-    table.add_column("Metric", style="cyan")
-    table.add_column("Value", style="green", justify="right")
-    table.add_row("Seen", str(data.files_seen))
-    table.add_row("Refreshed", str(data.files_refreshed))
-    table.add_row("New", str(data.files_new))
-    table.add_row("Changed", str(data.files_changed))
-    table.add_row("Deleted", str(data.files_deleted))
-    table.add_row("Unreachable", str(data.files_unreachable))
-    table.add_row("Excluded", str(data.files_excluded))
-    table.add_row("Unsupported", str(data.files_unsupported))
+        return t("Scan failed: {code} {msg}", code=data.error_code or "", msg=data.error_msg or "")
+    table = Table(title=t("Scan {id}: {status}", id=data.id, status=data.status))
+    table.add_column(t("Metric"), style="cyan")
+    table.add_column(t("Value"), style="green", justify="right")
+    table.add_row(t("Seen"), str(data.files_seen))
+    table.add_row(t("Refreshed"), str(data.files_refreshed))
+    table.add_row(t("New"), str(data.files_new))
+    table.add_row(t("Changed"), str(data.files_changed))
+    table.add_row(t("Deleted"), str(data.files_deleted))
+    table.add_row(t("Unreachable"), str(data.files_unreachable))
+    table.add_row(t("Excluded"), str(data.files_excluded))
+    table.add_row(t("Unsupported"), str(data.files_unsupported))
     return table
 
 
 def _render_file_info(data: FileInfoResponse) -> Table | str:
     if not data.file:
-        return "File not found in database."
+        return t("File not found in database.")
 
-    table = Table(title=f"File Info: {data.file.filename or '?'}")
-    table.add_column("Field", style="cyan")
-    table.add_column("Value", style="green")
-    table.add_row("Path", data.file.path or "?")
-    table.add_row("Type", data.file.ext or "?")
-    table.add_row("Size", _format_info_bytes(data.file.size_bytes))
-    table.add_row("Doc ID", data.file.short_id or "-")
-    table.add_row("Page count", str(data.doc.page_count if data.doc else "?"))
-    table.add_row("Title", (data.doc.title if data.doc else None) or "—")
-    table.add_row("Author", (data.doc.author if data.doc else None) or "—")
+    table = Table(title=t("File Info: {name}", name=data.file.filename or "?"))
+    table.add_column(t("Field"), style="cyan")
+    table.add_column(t("Value"), style="green")
+    table.add_row(t("Path"), data.file.path or "?")
+    table.add_row(t("Type"), data.file.ext or "?")
+    table.add_row(t("Size"), _format_info_bytes(data.file.size_bytes))
+    table.add_row(t("Doc ID"), data.file.short_id or "-")
+    table.add_row(t("Page count"), str(data.doc.page_count if data.doc else "?"))
+    table.add_row(t("Title"), (data.doc.title if data.doc else None) or "—")
+    table.add_row(t("Author"), (data.doc.author if data.doc else None) or "—")
 
     if data.parsed_tiers:
         tier_str = ", ".join(f"{tier.tier}={tier.status}" for tier in data.parsed_tiers)
-        table.add_row("Tiers", tier_str)
+        table.add_row(t("Tiers"), tier_str)
 
     return table
 
@@ -133,15 +134,15 @@ def _format_info_bytes(n: int | None) -> str:
 
 
 def _render_doc_info(data: DocInfo) -> Table:
-    table = Table(title=f"Doc {data.short_id}")
-    table.add_column("Field", style="cyan")
-    table.add_column("Value", style="green")
-    table.add_row("SHA-256", data.sha256)
-    table.add_row("Type", data.file_type or "-")
-    table.add_row("Title", data.title or "-")
-    table.add_row("Pages", str(data.page_count if data.page_count is not None else "-"))
-    table.add_row("Image based", str(data.is_image_based))
+    table = Table(title=t("Doc {short_id}", short_id=data.short_id))
+    table.add_column(t("Field"), style="cyan")
+    table.add_column(t("Value"), style="green")
+    table.add_row(t("SHA-256"), data.sha256)
+    table.add_row(t("Type"), data.file_type or "-")
+    table.add_row(t("Title"), data.title or "-")
+    table.add_row(t("Pages"), str(data.page_count if data.page_count is not None else "-"))
+    table.add_row(t("Image based"), str(data.is_image_based))
     if data.files:
         files = "\n".join(f"[{file_info.status}] {file_info.path}" for file_info in data.files)
-        table.add_row("Files", files)
+        table.add_row(t("Files"), files)
     return table

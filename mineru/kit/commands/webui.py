@@ -12,6 +12,7 @@ from packaging.specifiers import SpecifierSet
 
 from ...model.ocr.language import validate_public_ocr_lang
 from ...types import SERVER_TIERS, ServerTier
+from ...utils.i18n import t
 from ...utils.logger import configure_global_log_level
 from ...utils.stdio import configure_standard_streams
 from ..errors import exit_with_message
@@ -22,12 +23,12 @@ def _require_gradio_dependencies() -> None:
     if importlib.util.find_spec("gradio") is None:
         exit_with_message(
             "dependency_missing",
-            "Gradio is a base dependency; repair the installation with `pip install 'mineru'`.",
+            t("Gradio is a base dependency; repair the installation with `pip install 'mineru'`."),
         )
     if version("gradio") not in SpecifierSet(">=6.8,<7"):
         exit_with_message(
             "dependency_incompatible",
-            "Gradio >=6.8,<7 is required; upgrade with `pip install --upgrade 'mineru'`.",
+            t("Gradio >=6.8,<7 is required; upgrade with `pip install --upgrade 'mineru'`."),
         )
 
 
@@ -36,7 +37,11 @@ def _validate_server_tier(value: str) -> ServerTier:
     if value not in SERVER_TIERS:
         exit_with_message(
             "invalid_request",
-            f"Unsupported API server tier '{value}'. Supported tiers: {', '.join(SERVER_TIERS)}",
+            t(
+                "Unsupported API server tier '{tier}'. Supported tiers: {tiers}",
+                tier=value,
+                tiers=", ".join(SERVER_TIERS),
+            ),
             "api_server_tier",
         )
     return value  # type: ignore[return-value]
@@ -45,45 +50,47 @@ def _validate_server_tier(value: str) -> ServerTier:
 def _validate_positive_option(value: int, *, name: str) -> int:
     """校验本地托管服务使用的正整数参数。"""
     if value <= 0:
-        exit_with_message("invalid_request", f"{name} must be greater than zero", name)
+        exit_with_message("invalid_request", t("{name} must be greater than zero", name=name), name)
     return value
 
 
 def _validate_server_port(value: int) -> int:
     """校验 Gradio 监听端口处于 TCP 有效范围。"""
     if value < 1 or value > 65535:
-        exit_with_message("invalid_request", "server_port must be between 1 and 65535", "server_port")
+        exit_with_message("invalid_request", t("server_port must be between 1 and 65535"), "server_port")
     return value
 
 
 def webui_cmd(
-    api_url: str | None = typer.Option(None, "--api-url", help="External MinerU V1 API base URL"),
-    api_key: str | None = typer.Option(None, "--api-key", help="Bearer API key; falls back to MINERU_API_KEY"),
-    server_name: str = typer.Option("127.0.0.1", "--server-name", help="Web UI bind host"),
+    api_url: str | None = typer.Option(None, "--api-url", help=t("External MinerU V1 API base URL")),
+    api_key: str | None = typer.Option(None, "--api-key", help=t("Bearer API key; falls back to MINERU_API_KEY")),
+    server_name: str = typer.Option("127.0.0.1", "--server-name", help=t("Web UI bind host")),
     server_port: int | None = typer.Option(
-        None, "--server-port", help="Web UI bind port; omitted: auto-select from 7860 or GRADIO_SERVER_PORT"
+        None, "--server-port", help=t("Web UI bind port; omitted: auto-select from 7860 or GRADIO_SERVER_PORT")
     ),
-    output_dir: str = typer.Option("./output", "--output-dir", help="Directory for Web UI artifacts"),
+    output_dir: str = typer.Option("./output", "--output-dir", help=t("Directory for Web UI artifacts")),
     max_pages: int | None = typer.Option(
-        None, "--max-pages", help="Maximum pages per non-Flash PDF conversion; omitted: unlimited"
+        None, "--max-pages", help=t("Maximum pages per non-Flash PDF conversion; omitted: unlimited")
     ),
-    enable_example: bool = typer.Option(True, "--enable-example/--no-enable-example", help="Show local examples"),
-    enable_api: bool = typer.Option(True, "--enable-api/--no-enable-api", help="Expose the Gradio event API"),
+    enable_example: bool = typer.Option(True, "--enable-example/--no-enable-example", help=t("Show local examples")),
+    enable_api: bool = typer.Option(True, "--enable-api/--no-enable-api", help=t("Expose the Gradio event API")),
     latex_delimiters_type: Literal["a", "b", "all"] = typer.Option(
-        "all", "--latex-delimiters-type", help="LaTeX delimiters used by the Markdown preview"
+        "all", "--latex-delimiters-type", help=t("LaTeX delimiters used by the Markdown preview")
     ),
-    api_server_tier: str = typer.Option("standard", "--api-server-tier", "--tier", help="Managed API server capability tier"),
+    api_server_tier: str = typer.Option(
+        "standard", "--api-server-tier", "--tier", help=t("Managed API server capability tier")
+    ),
     api_server_concurrency: int = typer.Option(
-        1, "--api-server-concurrency", "--concurrency", help="Managed server job concurrency"
+        1, "--api-server-concurrency", "--concurrency", help=t("Managed server job concurrency")
     ),
-    api_server_language: str = typer.Option("ch", "--api-server-language", "--language", help="Managed server OCR language"),
+    api_server_language: str = typer.Option("ch", "--api-server-language", "--language", help=t("Managed server OCR language")),
     api_server_disable_image_analysis: bool = typer.Option(
         False,
         "--api-server-disable-image-analysis/--disable-image-analysis",
-        help="Disable managed server image analysis",
+        help=t("Disable managed server image analysis"),
     ),
     api_server_preload_models: bool = typer.Option(
-        False, "--api-server-preload-models/--preload-models", help="Preload managed server models"
+        False, "--api-server-preload-models/--preload-models", help=t("Preload managed server models")
     ),
 ) -> None:
     """启动基于 MinerU V1 API 的 Gradio 文档解析界面。"""
@@ -127,7 +134,9 @@ def main() -> None:
     """以独立 console script 运行Web UI 命令。"""
     configure_standard_streams()
     configure_global_log_level()
-    typer.run(webui_cmd)
+    app = typer.Typer(add_completion=False)
+    app.command(help=t("Start the Gradio document parsing web UI backed by the MinerU V1 API."))(webui_cmd)
+    app()
 
 
 __all__ = ["webui_cmd", "main"]

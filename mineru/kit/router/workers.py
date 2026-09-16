@@ -95,31 +95,33 @@ def parse_local_gpus(value: str) -> list[str | None]:
             raise ValueError("--local-gpus must be auto, none, or a non-empty CSV")
         return devices
 
-    for env_name in ("CUDA_VISIBLE_DEVICES", "ASCEND_RT_VISIBLE_DEVICES"):
-        configured = os.getenv(env_name)
-        if configured:
-            normalized_config = configured.strip().lower()
-            if normalized_config == "all":
-                break
-            devices = [
-                item.strip()
-                for item in configured.split(",")
-                if item.strip() and item.strip().lower() not in {"-1", "none", "void"}
-            ]
-            if devices:
-                return devices
-            return [None]
-
     device = get_device().split(":", 1)[0]
     if device in {"cpu", "mps"}:
         return [None]
+    # 只继承当前设备族的掩码，避免把 CUDA/NPU 的编号写成 XPU 的可见设备限制。
+    configured = os.getenv(visible_device_env_name(device))
+    if configured and configured.strip().lower() != "all":
+        devices = [
+            item.strip()
+            for item in configured.split(",")
+            if item.strip() and item.strip().lower() not in {"-1", "none", "void"}
+        ]
+        return devices or [None]
     device_count = accelerator_device_count(device)
     return [str(index) for index in range(device_count)] if device_count > 0 else ["0"]
 
 
-def visible_device_env_name() -> str:
+# 非默认 CUDA 语义的设备族对应的可见设备环境变量；XPU 用 Level Zero 的 ZE_AFFINITY_MASK（索引 CSV 同构）。
+_VISIBLE_DEVICE_ENV_NAMES: dict[str, str] = {
+    "npu": "ASCEND_RT_VISIBLE_DEVICES",
+    "xpu": "ZE_AFFINITY_MASK",
+}
+
+
+def visible_device_env_name(device: str | None = None) -> str:
     """根据当前设备族返回本地 worker 的可见设备环境变量名。"""
-    return "ASCEND_RT_VISIBLE_DEVICES" if get_device().split(":", 1)[0] == "npu" else "CUDA_VISIBLE_DEVICES"
+    device_type = (get_device() if device is None else device).split(":", 1)[0]
+    return _VISIBLE_DEVICE_ENV_NAMES.get(device_type, "CUDA_VISIBLE_DEVICES")
 
 
 @dataclass(frozen=True)

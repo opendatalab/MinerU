@@ -8,6 +8,7 @@ from ...doclib.client import DoclibClient
 from ...doclib.types import FindResponse, SearchResponse
 from ...filetypes import FILE_TYPE_BY_EXTENSION
 from ...types import Tier
+from ...utils.i18n import t
 from ..contracts import CliContext
 from ..runtime import run_cli
 
@@ -16,17 +17,17 @@ FILE_EXTS = ", ".join(FILE_TYPE_BY_EXTENSION)
 
 
 def search_cmd(
-    query: str = typer.Argument(..., help="Search query"),
-    file_type: str | None = typer.Option(None, "--type", help=f"File type filter: {FILE_TYPES}"),
-    tier: Tier | None = typer.Option(None, "--tier", help="Exact search index tier: flash, basic, standard, advanced"),
+    query: str = typer.Argument(..., help=t("Search query")),
+    file_type: str | None = typer.Option(None, "--type", help=t("File type filter: {types}", types=FILE_TYPES)),
+    tier: Tier | None = typer.Option(None, "--tier", help=t("Exact search index tier: flash, basic, standard, advanced")),
     min_tier: Tier | None = typer.Option(
         None,
         "--min-tier",
-        help="Minimum search index tier: flash, basic, standard, advanced",
+        help=t("Minimum search index tier: flash, basic, standard, advanced"),
     ),
-    limit: int = typer.Option(20, "--limit", "-n", help="Max results"),
-    offset: int = typer.Option(0, "--offset", help="Result offset"),
-    json_mode: bool = typer.Option(False, "--json", help="JSON output"),
+    limit: int = typer.Option(20, "--limit", "-n", help=t("Max results")),
+    offset: int = typer.Option(0, "--offset", help=t("Result offset")),
+    json_mode: bool = typer.Option(False, "--json", help=t("JSON output")),
 ) -> None:
     """Search parsed document content."""
     run_cli(
@@ -44,10 +45,10 @@ def search_cmd(
 
 
 def find_cmd(
-    query: str = typer.Argument(..., help="Filename search query"),
-    ext: str | None = typer.Option(None, "--ext", help=f"File extension filter: {FILE_EXTS}"),
-    limit: int = typer.Option(50, "--limit", "-n", help="Max results"),
-    json_mode: bool = typer.Option(False, "--json", help="JSON output"),
+    query: str = typer.Argument(..., help=t("Filename search query")),
+    ext: str | None = typer.Option(None, "--ext", help=t("File extension filter: {exts}", exts=FILE_EXTS)),
+    limit: int = typer.Option(50, "--limit", "-n", help=t("Max results")),
+    json_mode: bool = typer.Option(False, "--json", help=t("JSON output")),
 ) -> None:
     """Search filenames only (not document content)."""
     run_cli(
@@ -59,24 +60,24 @@ def find_cmd(
 
 def _render_search_results(data: SearchResponse) -> str:
     if not data.results:
-        return "No results found."
+        return t("No results found.")
 
-    lines = [f"Search results ({data.total} total)"]
+    lines = [t("Search results ({total} total)", total=data.total)]
     for index, result in enumerate(data.results, start=1):
-        label = result.title or f"Document {result.short_id}"
+        label = result.title or t("Document {short_id}", short_id=result.short_id)
         item_line = f"{index}. {label}"
         if result.tier:
-            item_line += f" Tier: {result.tier}"
+            item_line += " " + t("Tier: {tier}", tier=result.tier)
         lines.append(item_line)
         active_files = [file for file in result.files if file.status == "active"]
         display_files = active_files or result.files
         if display_files:
-            lines.append("   Files:")
+            lines.append(f"   {t('Files:')}")
             for file in display_files:
                 suffix = f" ({file.status})" if file.status != "active" else ""
                 lines.append(f"   {file.path}{suffix}")
         else:
-            lines.append("   File no longer exists.")
+            lines.append(f"   {t('File no longer exists.')}")
         snippet = _format_snippet(result.snippet)
         if snippet:
             lines.append(f"   {snippet}")
@@ -87,9 +88,9 @@ def _render_search_results(data: SearchResponse) -> str:
 
 def _render_find_results(data: FindResponse) -> str:
     if not data.results:
-        return "No results found."
+        return t("No results found.")
 
-    lines = [f"Search results ({data.total} total)"]
+    lines = [t("Search results ({total} total)", total=data.total)]
     for index, result in enumerate(data.results, start=1):
         path = _format_result_path(result.paths)
         lines.append(f"{index}. {result.filename}{path}")

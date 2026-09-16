@@ -18,18 +18,13 @@ Or install the platform-specific inference engine:
 uv pip install -U "mineru[full]>=4.0,<5"
 ```
 
-`all` composes `full`. `core`, `pipeline`, `vlm`, `vllm`, `lmdeploy`, `gradio`, and `mlx` are no longer MinerU 4.0 extras. Tier names are not extras either.
+`all` composes `full`. `core`, `pipeline`, `vlm`, `vllm`, `lmdeploy`, and `gradio` are no longer MinerU 4.0 extras. Tier names are not extras either.
 
 ## Optional engine constraints
 
 The current 4.0 dependency declarations are `torch>=2.7.0,<3`, `transformers>=5.10.1,<6`, Linux `vllm>=0.19.1,<0.29.0`, and Windows `lmdeploy>=0.17.0,<0.18`. Intersect the package's Python range with the wheels actually available for these dependencies. Check the [legacy platform policy](../usage/compatibility.md) before upgrading a vendor environment.
 
-Apple Silicon defaults to llama.cpp for the VLM; `full` does not install MLX. Install and select MLX explicitly when needed:
-
-```bash
-uv pip install "mineru>=4.0,<5" "mlx-vlm>=0.7.0,<0.8.0"
-mineru config set model.vlm.engine mlx
-```
+Apple Silicon defaults to llama.cpp for the VLM.
 
 The WebUI uses Gradio 6 and bundled PDF.js preview assets; it does not require `gradio-pdf`. A separate UI environment can use the base package and connect with `mineru-kit webui --api-url http://127.0.0.1:8000`.
 

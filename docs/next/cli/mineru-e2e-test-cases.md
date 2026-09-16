@@ -54,7 +54,7 @@
   - `$MINERU_E2E_FIXTURE_DIR/sample.rtf`、`sample.doc`/`sample.docx`、`sample.ppt`/`sample.pptx`、`sample.xls`/`sample.xlsx`，Office/RTF 样例文件；当前全量 E2E 必须覆盖。
   - `$MINERU_E2E_FIXTURE_DIR/sample.ofd`、`sample.epub`、`sample.html`，OFD/EPUB/HTML 样例文件；当前全量 E2E 必须覆盖。
   - `$MINERU_E2E_FIXTURE_DIR/sample.odt`、`sample.ods`、`sample.odp`，OpenDocument 样例文件；当前全量 E2E 必须覆盖。
-  - `$MINERU_E2E_FIXTURE_DIR/sample.md`、`sample.txt`、`sample.csv`，文本类样例文件；当前全量 E2E 必须覆盖。
+  - `$MINERU_E2E_FIXTURE_DIR/sample.md`、`sample.txt`、`sample.csv`、`sample.tsv`，文本类样例文件；当前全量 E2E 必须覆盖。
   - `$MINERU_E2E_FIXTURE_DIR/sample.jpeg`，图片样例文件；若当前安装不支持图片输入，可按预期失败分支判定。
   - `$MINERU_E2E_FIXTURE_DIR/symlink-sample.pdf`，指向 `sample.pdf` 的符号链接；若平台不支持 symlink，可标记相关用例 BLOCKED。
   - `$MINERU_E2E_FIXTURE_DIR/no-read.pdf`，权限不可读文件；若平台无法稳定制造权限场景，可标记相关用例 BLOCKED。
@@ -63,7 +63,7 @@
 - 测试环境必须安装 `full` extra，并满足 README 中 `full` stack 的硬件要求，以同时覆盖 `light` 和 `full` model stack 下的本地 `basic`、`standard`、`advanced` quality parse-server；默认 tier 相关用例应验证本地 quality tier 可用，不再按缺少本地 quality tier 的预期失败分支判定。
 - 全量主流程固定使用 `light` stack；`full` stack 作为硬性 profile，必须额外覆盖本地 PDF Basic、Standard、Advanced。不得使用 `auto` 执行这些用例，以免硬件探测导致测试环境不确定。
 - MinerU 的公开 tier 只有 `flash`、`basic`、`standard`、`advanced`；默认 quality tier 选择顺序为 `standard`、`basic`，`advanced` 只在显式请求时使用；已缓存结果的读取顺序为 `advanced`、`standard`、`basic`、`flash`。
-- 非 PDF/图片格式（Office/RTF/ODF/OFD/EPUB/HTML/CSV）固定使用 `flash` tier，传入其它 tier 返回 `tier_unsupported_for_file_type`；这些格式不接受 page_range，传入 page_range 返回 `page_range_invalid`。
+- 非 PDF/图片格式（Office/RTF/ODF/OFD/EPUB/HTML/CSV/TSV）固定使用 `flash` tier，传入其它 tier 返回 `tier_unsupported_for_file_type`；这些格式不接受 page_range，传入 page_range 返回 `page_range_invalid`。
 - 显式指定 quality tier 的 remote 请求应按 remote 成功、remote 失败后同 tier local fallback、remote 与 local 均不可用三个分支判定；不得 fallback 到 `flash`。未指定 tier 时需要先从 remote 能力中按 `standard`、`basic` 选择默认值，无法选择时返回 `quality_tier_unavailable`；仅暴露 `advanced` 不构成可用的默认 quality tier。
 - PARSE-013A1 是 remote Standard 硬性测试，remote parse-server 不可用或不支持 Standard 均记录为失败。
 
@@ -229,6 +229,7 @@ HTML
 printf '# MinerU E2E Markdown\n\nThis file verifies markdown input.\n' > "$MINERU_E2E_FIXTURE_DIR/sample.md"
 printf 'MinerU E2E text fixture\nsecond line\n' > "$MINERU_E2E_FIXTURE_DIR/sample.txt"
 printf 'name,value\nalpha,1\nbeta,2\n' > "$MINERU_E2E_FIXTURE_DIR/sample.csv"
+printf 'name\tvalue\nalpha\t1\nbeta\t2\n' > "$MINERU_E2E_FIXTURE_DIR/sample.tsv"
 
 printf 'not a supported document' > "$MINERU_E2E_FIXTURE_DIR/unsupported.bin"
 printf 'not a real pdf' > "$MINERU_E2E_FIXTURE_DIR/corrupted.pdf"
@@ -3400,6 +3401,7 @@ mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.odt" --tier flash --wait 60 --json
 mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.ods" --tier flash --wait 60 --json
 mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.odp" --tier flash --wait 60 --json
 mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.csv" --tier flash --wait 60 --json
+mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.tsv" --tier flash --wait 60 --json
 mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.md" --tier flash --wait 60 --json
 mineru parse "$MINERU_E2E_FIXTURE_DIR/sample.txt" --tier flash --wait 60 --json
 ```
@@ -4080,7 +4082,7 @@ mineru server start
 
 执行要求:
 
-- docx/pptx/xlsx/doc/ppt/xls/rtf/ofd/epub/html/odt/ods/odp/csv 输入为全量 E2E 必测项，不支持时记录为失败。
+- docx/pptx/xlsx/doc/ppt/xls/rtf/ofd/epub/html/odt/ods/odp/csv/tsv 输入为全量 E2E 必测项，不支持时记录为失败。
 - md/txt 输入必须返回 `parse_not_required`，不视为可解析格式。
 - image 输入如果当前安装不支持，按预期失败分支判定。
 - symlink 或 no-read 权限场景无法稳定制造时，相关子项可 BLOCKED，但必须说明平台限制。

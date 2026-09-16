@@ -18,18 +18,13 @@ uv pip install -U "mineru[torch]>=4.0,<5"
 uv pip install -U "mineru[full]>=4.0,<5"
 ```
 
-`all` 是 `full` 的组合别名。`core`、`pipeline`、`vlm`、`vllm`、`lmdeploy`、`gradio`、`mlx` 不再是 MinerU 4.0 的 extras。档位名称也不是 extra。
+`all` 是 `full` 的组合别名。`core`、`pipeline`、`vlm`、`vllm`、`lmdeploy`、`gradio` 不再是 MinerU 4.0 的 extras。档位名称也不是 extra。
 
 ## 可选引擎约束
 
 4.0 当前声明 `torch>=2.7.0,<3`、`transformers>=5.10.1,<6`、Linux `vllm>=0.19.1,<0.29.0`、Windows `lmdeploy>=0.17.0,<0.18`。Python 支持范围还应与这些依赖实际提供的 wheel 取交集。升级已有厂商环境前，先确认它是否属于[旧平台适配](../usage/compatibility.md)。
 
-Apple Silicon 的默认 VLM 是 llama.cpp；`full` 不自动安装 MLX。需要 MLX 时手动安装并显式选择：
-
-```bash
-uv pip install "mineru>=4.0,<5" "mlx-vlm>=0.7.0,<0.8.0"
-mineru config set model.vlm.engine mlx
-```
+Apple Silicon 的默认 VLM 是 llama.cpp。
 
 WebUI 使用 Gradio 6，包含本地 PDF.js 预览资源，无需额外安装 `gradio-pdf`。独立 UI 环境可用基础包，通过 `mineru-kit webui --api-url http://127.0.0.1:8000` 连接推理服务。
 

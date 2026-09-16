@@ -13,20 +13,21 @@ from ...doclib.types import (
     CleanupTempRequest,
     CleanupTempResponse,
 )
+from ...utils.i18n import t
 from ..contracts import CliContext
 from ..runtime import run_cli
 
 app = typer.Typer(
     name="cleanup",
-    help="Clean up local doclib records and temp files.",
+    help=t("Clean up local doclib records and temp files."),
     no_args_is_help=True,
 )
 
 
-@app.command("deleted-files")
+@app.command("deleted-files", help=t("Remove all file rows already marked as deleted."))
 def cleanup_deleted_files(
-    dry_run: bool = typer.Option(True, "--dry-run/--no-dry-run", help="Preview only"),
-    json_mode: bool = typer.Option(False, "--json", help="JSON output"),
+    dry_run: bool = typer.Option(True, "--dry-run/--no-dry-run", help=t("Preview only")),
+    json_mode: bool = typer.Option(False, "--json", help=t("JSON output")),
 ) -> None:
     """Remove all file rows already marked as deleted."""
     run_cli(
@@ -36,10 +37,10 @@ def cleanup_deleted_files(
     )
 
 
-@app.command("orphan-docs")
+@app.command("orphan-docs", help=t("Remove docs that are no longer referenced by any file row."))
 def cleanup_orphan_docs(
-    dry_run: bool = typer.Option(True, "--dry-run/--no-dry-run", help="Preview only"),
-    json_mode: bool = typer.Option(False, "--json", help="JSON output"),
+    dry_run: bool = typer.Option(True, "--dry-run/--no-dry-run", help=t("Preview only")),
+    json_mode: bool = typer.Option(False, "--json", help=t("JSON output")),
 ) -> None:
     """Remove docs that are no longer referenced by any file row."""
     run_cli(
@@ -49,10 +50,10 @@ def cleanup_orphan_docs(
     )
 
 
-@app.command("temp")
+@app.command("temp", help=t("Remove old process temp files."))
 def cleanup_temp_files(
-    older_than: int = typer.Option(7, "--older-than", help="Days threshold for temp cleanup"),
-    json_mode: bool = typer.Option(False, "--json", help="JSON output"),
+    older_than: int = typer.Option(7, "--older-than", help=t("Days threshold for temp cleanup")),
+    json_mode: bool = typer.Option(False, "--json", help=t("JSON output")),
 ) -> None:
     """Remove old process temp files."""
     run_cli(
@@ -68,15 +69,15 @@ def _client() -> DoclibClient:
 
 def _render_cleanup_deleted(data: CleanupDeletedResponse) -> str:
     if data.dry_run:
-        return f"Would remove {data.deleted_files} deleted file record(s). Use --no-dry-run to proceed."
-    return f"Removed {data.deleted_files} deleted file record(s)."
+        return t("Would remove {count} deleted file record(s). Use --no-dry-run to proceed.", count=data.deleted_files)
+    return t("Removed {count} deleted file record(s).", count=data.deleted_files)
 
 
 def _render_cleanup_orphans(data: CleanupOrphansResponse) -> str:
     if data.dry_run:
-        return f"Would remove {data.orphan_docs} orphan doc(s). Use --no-dry-run to proceed."
-    return f"Removed {data.orphan_docs} orphan doc(s)."
+        return t("Would remove {count} orphan doc(s). Use --no-dry-run to proceed.", count=data.orphan_docs)
+    return t("Removed {count} orphan doc(s).", count=data.orphan_docs)
 
 
 def _render_cleanup_temp(data: CleanupTempResponse) -> str:
-    return f"Removed {data.temp_files_removed} temp file(s)."
+    return t("Removed {count} temp file(s).", count=data.temp_files_removed)

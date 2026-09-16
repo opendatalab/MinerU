@@ -22,6 +22,29 @@ mineru server stop
 
 Run `mineru <command> --help` for the authoritative options of each command.
 
+## Parsing, reading, exporting, and waiting
+
+`mineru parse` combines four behaviors that are easy to conflate; keep them separate when scripting:
+
+| Dimension | Default | What to know |
+| --- | --- | --- |
+| Pages requested | First 10 PDF pages; `--pages all` requests every page | Requesting all pages is not the same as receiving all text on stdout in one response |
+| Stdout reading window | 30,000-character soft limit; `--limit` changes it, `--after` continues from a content cursor | When more content exists, a `<!-- Next: mineru parse ... -->` marker with the next command is appended |
+| File export | `-o <path>` writes the complete rendered content of the **requested pages** | The export path ignores `--limit`/`--after`; it is not stdout redirected to a file. Exporting the whole document still needs `--pages all` |
+| Client wait | `--wait` waits up to 60 seconds; `--no-wait` returns immediately | A wait timeout exits with code 1 but does not fail or cancel the parse |
+
+A wait timeout is a client-side deadline, not a task failure: the parse keeps running in the document library. With `--json`, the response carries error code `parse_wait_timeout` and the tip to re-run the same command to continue waiting; in text mode the summary points to `mineru show parse <id>` for status. On slower devices or a first run (including model download), pass a larger window explicitly:
+
+```bash
+# Stateless conversion of the whole document
+mineru-kit parse document.pdf -o document.md --tier standard
+
+# Library parse with a complete export and an explicit 10-minute client wait
+mineru parse document.pdf --pages all -o document.md --wait 600
+```
+
+When automating, keep three usage patterns apart: agent reading cares about bounded stdout, locators, and continuation; file conversion cares about complete artifacts; async tasks care about job status and the client wait window. Do not merge them into a single "command succeeded/failed" check.
+
 ## Stateless and service tools
 
 Use `mineru-kit --help` to list the available tools.

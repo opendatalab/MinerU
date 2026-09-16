@@ -48,7 +48,7 @@ class _CpuSinePositionEmbedding(nn.Module):
         device: torch.device | None = None,
         dtype: torch.dtype = torch.float32,
     ) -> torch.Tensor:
-        """避开 MPS 不支持的 float64 运算，复用官方 CPU 位置编码缓存。"""
+        """避开 MPS 和部分 XPU 不支持的 float64 运算，复用官方 CPU 位置编码缓存。"""
         return self.embedding(width=width, height=height, device=torch.device("cpu"), dtype=dtype).to(device=device)
 
 
@@ -81,8 +81,8 @@ class PPDocLayoutV2LayoutModel(PPDocLayoutV2PostProcessor):
             dtype=torch.float32,
             attn_implementation="eager" if torch.device(self.device).type == "mps" else None,
         )
-        if torch.device(self.device).type == "mps":
-            # 官方正弦编码内部使用 float64；只适配这个无参数模块，不切换整个模型的设备。
+        if torch.device(self.device).type in {"mps", "xpu"}:
+            # 官方正弦编码内部使用 float64，Arc 等 XPU 不支持；统一在 CPU 缓存这个无参数模块的结果。
             for layer in self.model.model.encoder.aifi:
                 layer.position_embedding = _CpuSinePositionEmbedding(layer.position_embedding)
         # 同步加载器生成的非持久化 buffer；已经位于目标设备的参数不会再次复制。

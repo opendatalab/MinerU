@@ -3,8 +3,21 @@
 from __future__ import annotations
 
 import importlib
+import os
 
 import pytest
+
+# Typer 的 help 文案在 import 期求值,必须在任何 mineru 模块导入前固定 CLI 语言,
+# 否则中文 locale 机器上既有的英文输出断言会失败。i18n 专项测试自行 monkeypatch 覆盖。
+os.environ["MINERU_LANG"] = "en"
+
+
+@pytest.fixture(autouse=True)
+def pin_cli_language() -> None:
+    """每个测试前重置语言缓存,保证运行期 t() 调用也固定为英文。"""
+    from mineru.utils import i18n
+
+    i18n.reset_language_cache()
 
 
 @pytest.fixture(autouse=True)

@@ -7,6 +7,7 @@ from urllib.parse import urlsplit
 
 from ..doclib.client import DoclibClient
 from ..errors import MineruError
+from ..utils.i18n import t
 from .contracts import CliGuidance
 
 OFFICIAL_REMOTE_API_URL = "https://mineru.net/api"
@@ -60,19 +61,19 @@ def api_key_guidance_for_error(error: MineruError) -> CliGuidance | None:
         return None
 
     if error.code == "invalid_api_key":
-        return _api_key_guidance(required=True, message="Configure a valid Official API Key to continue.")
+        return _api_key_guidance(required=True, message=t("Configure a valid Official API Key to continue."))
     if error.code == "feature_requires_api_key":
-        return _api_key_guidance(required=True, message="This Remote API feature requires an Official API Key.")
+        return _api_key_guidance(required=True, message=t("This Remote API feature requires an Official API Key."))
     if context.api_key_configured:
         return None
     if error.code == "rate_limit_exceeded":
         return _api_key_guidance(
             required=False,
-            message="An Official API Key is optional and may provide registered rate limits.",
+            message=t("An Official API Key is optional and may provide registered rate limits."),
         )
     return _api_key_guidance(
         required=False,
-        message="An Official API Key is optional and enables registered access.",
+        message=t("An Official API Key is optional and enables registered access."),
     )
 
 
@@ -81,7 +82,7 @@ def api_key_guidance_for_anonymous_usage(remote_url: str) -> CliGuidance | None:
         return None
     return _api_key_guidance(
         required=False,
-        message="An Official API Key is optional and enables registered access.",
+        message=t("An Official API Key is optional and enables registered access."),
     )
 
 
@@ -94,7 +95,10 @@ def _api_key_guidance(*, required: bool, message: str) -> CliGuidance:
             "url": OFFICIAL_API_KEY_URL,
             "command": SET_API_KEY_COMMAND,
         },
-        text=(f"{message}\n\nManage or create an API Key:\n{OFFICIAL_API_KEY_URL}\n\nSet the API Key:\n{SET_API_KEY_COMMAND}"),
+        text=(
+            f"{message}\n\n{t('Manage or create an API Key:')}\n{OFFICIAL_API_KEY_URL}\n\n"
+            f"{t('Set the API Key:')}\n{SET_API_KEY_COMMAND}"
+        ),
     )
 
 

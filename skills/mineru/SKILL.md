@@ -321,7 +321,7 @@ mineru parse "paper.pdf" --tier flash
 
 Small models and the VLM engine are configured independently. Gradio is included in the base package.
 The `torch` extra installs the small-model Torch dependencies; `full` also installs vLLM on Linux or
-LMDeploy on Windows. ARM macOS installs the Torch dependencies by default. No MinerU extra installs MLX-VLM.
+LMDeploy on Windows. ARM macOS installs the Torch dependencies by default.
 
 | Environment (automatic selection) | Small models | VLM |
 |---|---|---|
@@ -337,7 +337,7 @@ Explicit backend choices are independent and do not silently fall back when depe
 
 ```bash
 export MINERU_MODEL_SMALL_BACKEND=auto  # auto, onnx, torch
-export MINERU_MODEL_VLM_ENGINE=auto     # auto, llama-cpp, vllm, lmdeploy, mlx
+export MINERU_MODEL_VLM_ENGINE=auto     # auto, llama-cpp, vllm, lmdeploy
 ```
 
 Equivalent `config.yaml`:
@@ -353,7 +353,6 @@ model:
 Replace the old light configuration with `onnx` + `llama-cpp`; replace full with `torch` and the desired
 VLM engine, or use `auto` for platform defaults. Restart running services after changing configuration.
 An explicit `model.vlm.server_url` takes priority and removes local VLM dependency and weight requirements.
-MLX remains available through explicit configuration after manually installing `mlx-vlm>=0.7.0,<0.8.0`.
 
 ```bash
 mineru-kit models download --tier standard --small-backend torch --vlm-engine llama-cpp --source huggingface
@@ -458,8 +457,8 @@ First, download the models for the target startup tier (`basic`, or `standard`).
 Replace `<tier>` with `basic` or `standard`.
 
 ```bash
-mineru-kit models download --tier <tier> --small-backend <onnx|torch> --vlm-engine <llama-cpp|vllm|lmdeploy|mlx>
-mineru-kit models verify --tier <tier> --small-backend <onnx|torch> --vlm-engine <llama-cpp|vllm|lmdeploy|mlx>
+mineru-kit models download --tier <tier> --small-backend <onnx|torch> --vlm-engine <llama-cpp|vllm|lmdeploy>
+mineru-kit models verify --tier <tier> --small-backend <onnx|torch> --vlm-engine <llama-cpp|vllm|lmdeploy>
 ```
 
 Then, enable managed local parse server for the startup tier.

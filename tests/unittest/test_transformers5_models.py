@@ -213,19 +213,63 @@ def test_layout_configuration_constructs_the_inference_graph() -> None:
     assert any(True for _ in model.parameters())
 
 
-@pytest.mark.skipif(not torch.backends.mps.is_available(), reason="requires Apple Silicon MPS")
-def test_layout_position_embedding_preserves_native_math_on_mps() -> None:
-    """MPS 路径仍使用官方位置编码数值，并且没有新增或改名的模型权重。"""
+@pytest.mark.parametrize("device", ["cpu", "mps", "xpu"])
+def test_layout_position_embedding_preserves_native_math(device: str) -> None:
+    """CPU/MPS/XPU 包装保持官方位置编码数值，且没有新增或改名的模型权重。"""
     from transformers.models.pp_doclayout_v2.modeling_pp_doclayout_v2 import PPDocLayoutV2SinePositionEmbedding
     from mineru.model.layout.pp_doclayoutv2 import _CpuSinePositionEmbedding
 
+    if device == "mps" and not torch.backends.mps.is_available():
+        pytest.skip("requires Apple Silicon MPS")
+    if device == "xpu" and not torch.xpu.is_available():
+        pytest.skip("requires Intel XPU")
     native = PPDocLayoutV2SinePositionEmbedding(embed_dim=16)
     adapter = _CpuSinePositionEmbedding(native)
-    actual = adapter(width=3, height=2, device=torch.device("mps"))
+    actual = adapter(width=3, height=2, device=torch.device(device))
     expected = native(width=3, height=2, device=torch.device("cpu"), dtype=torch.float32)
-    assert actual.device.type == "mps"
+    assert actual.device.type == device
     torch.testing.assert_close(actual.cpu(), expected, rtol=0, atol=0)
     assert not adapter.state_dict()
+
+
+@pytest.mark.parametrize("device", ["cpu", "cuda", "cuda:1", "mps", "xpu", "xpu:1"])
+def test_layout_loader_adapts_position_embeddings_for_mps_and_xpu(
+    monkeypatch: pytest.MonkeyPatch, device: str
+) -> None:
+    """覆盖真实加载入口的设备分支，验证 XPU 编号设备也采用 CPU 正弦编码。"""
+    from types import SimpleNamespace
+    from unittest.mock import Mock
+
+    from transformers.models.pp_doclayout_v2.modeling_pp_doclayout_v2 import PPDocLayoutV2SinePositionEmbedding
+    from mineru.model.layout import pp_doclayoutv2 as layout
+
+    native = PPDocLayoutV2SinePositionEmbedding(embed_dim=16)
+    layer = SimpleNamespace(position_embedding=native)
+    model = Mock()
+    model.model.encoder.aifi = [layer]
+    config = Mock()
+    load = Mock(return_value=model)
+    monkeypatch.setattr(layout, "load_preprocess_config", lambda _path: {})
+    monkeypatch.setattr(layout.PPDocLayoutV2Config, "from_pretrained", Mock(return_value=config))
+    monkeypatch.setattr(layout.PPDocLayoutV2ForObjectDetection, "from_pretrained", load)
+
+    layout.PPDocLayoutV2LayoutModel("local-checkpoint", device=device)
+
+    assert load.call_args.kwargs["device_map"] == {"": device}
+    model.to.assert_called_once_with(device)
+    model.eval.assert_called_once_with()
+    if torch.device(device).type in {"mps", "xpu"}:
+        assert isinstance(layer.position_embedding, layout._CpuSinePositionEmbedding)
+        # 使用 meta 作为无硬件目标，真实 CPU 算子计算后只将结果送到目标设备。
+        embedding_forward = Mock(wraps=native.forward)
+        monkeypatch.setattr(native, "forward", embedding_forward)
+        result = layer.position_embedding(width=7, height=5, device=torch.device("meta"), dtype=torch.float16)
+        assert result.device.type == "meta"
+        assert result.dtype == torch.float16
+        assert result.shape == (1, 35, 16)
+        embedding_forward.assert_called_once_with(width=7, height=5, device=torch.device("cpu"), dtype=torch.float16)
+    else:
+        assert layer.position_embedding is native
 
 
 @pytest.mark.parametrize("device", ["cpu", "mps", "cuda"])

@@ -10,6 +10,7 @@ from ..filetypes import PARSEABLE_EXTENSIONS
 from ..parser.base import ParseResult
 from ..parser.writer import FileBasedDataWriter
 from ..types import Tier
+from ..utils.i18n import t
 
 KitFormat = Literal["markdown", "middle_json", "zip"]
 LocalTier: TypeAlias = Tier
@@ -38,14 +39,14 @@ def expand_input_paths(inputs: list[str]) -> list[Path]:
 
 def ensure_supported_inputs(paths: list[Path]) -> None:
     if not paths:
-        raise ValueError("No input files found.")
+        raise ValueError(t("No input files found."))
     for path in paths:
         if not path.exists():
             raise FileNotFoundError(path)
         if path.is_dir():
-            raise ValueError(f"Directory input must be expanded before validation: {path}")
+            raise ValueError(t("Directory input must be expanded before validation: {path}", path=path))
         if path.suffix.lower() not in PARSEABLE_SUFFIXES:
-            raise ValueError(f"Unsupported file type: {path}")
+            raise ValueError(t("Unsupported file type: {path}", path=path))
 
 
 def is_output_path_file_like(path: Path) -> bool:
@@ -64,16 +65,16 @@ def resolve_single_output_path(source: Path, output: Path, format: KitFormat) ->
 
 def resolve_batch_output_paths(paths: list[Path], output: Path, format: KitFormat) -> dict[Path, Path]:
     if any(path.parent == path for path in paths):
-        raise ValueError("Invalid input path.")
+        raise ValueError(t("Invalid input path."))
     multi_input = len(paths) > 1
     has_directory_input = False
     if multi_input or has_directory_input:
         if is_output_path_file_like(output):
-            raise ValueError("When input is multiple files or directories, --output must be a directory path.")
+            raise ValueError(t("When input is multiple files or directories, --output must be a directory path."))
 
     output_dir = output
     if output.exists() and output.is_file():
-        raise ValueError("When input is multiple files or directories, --output must be a directory path.")
+        raise ValueError(t("When input is multiple files or directories, --output must be a directory path."))
 
     destinations: dict[Path, Path] = {}
     seen: dict[Path, Path] = {}
@@ -85,7 +86,14 @@ def resolve_batch_output_paths(paths: list[Path], output: Path, format: KitForma
         )
         existing = seen.get(dest)
         if existing is not None:
-            raise ValueError(f"Output name collision: {existing.name} and {source.name} both map to {dest}")
+            raise ValueError(
+                t(
+                    "Output name collision: {existing} and {source} both map to {dest}",
+                    existing=existing.name,
+                    source=source.name,
+                    dest=dest,
+                )
+            )
         seen[dest] = source
         destinations[source] = dest
     return destinations
@@ -104,7 +112,7 @@ def effective_local_tier_and_backend(tier: Tier | None, backend: str | None) -> 
 
 def build_remote_api_url(remote: bool, remote_url: str | None) -> str | None:
     if remote and remote_url:
-        raise ValueError("--remote and --remote-url are mutually exclusive.")
+        raise ValueError(t("--remote and --remote-url are mutually exclusive."))
     if remote_url:
         return remote_url
     if remote:
@@ -136,7 +144,7 @@ def save_parse_result(result: ParseResult, dest: Path, format: KitFormat) -> Non
         if tmp_dir.exists():
             tmp_dir.rmdir()
         return
-    raise ValueError(f"Unsupported format: {format}")
+    raise ValueError(t("Unsupported format: {format}", format=format))
 
 
 def _write_utf8_text(path: Path, content: str) -> None:

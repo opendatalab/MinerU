@@ -1,4 +1,4 @@
-# Python SDK 与 V1 API
+# Python SDK
 
 ## 本地 Python SDK
 
@@ -58,29 +58,40 @@ print(result.markdown())
 mineru-kit webui --api-url http://127.0.0.1:8000
 ```
 
-## HTTP 工作流
+### 批量处理与实例复用
 
-先通过健康检查和档位发现获取实际能力：
+批量处理时复用同一个 `MinerUApiParser` 实例，不要每个文件新建一个；每次调用各自开合 HTTP 会话，无需显式释放资源。HTTP 层以任务状态和逐文件 `error` 表达失败；Python SDK 会将 `failed`/`canceled` 终态（以及网络/HTTP 错误）转换为异常，因此批处理应逐文件捕获、记录汇总，并按明确的策略退出：
 
-```bash
-curl http://127.0.0.1:8000/v1/health
-curl http://127.0.0.1:8000/v1/tiers
+```python
+import sys
+from pathlib import Path
+from mineru.parser import MinerUApiParser
+
+pdfs = sorted(Path("./documents").glob("*.pdf"))
+if not pdfs:
+    sys.exit("./documents 下没有输入文件")
+
+output_dir = Path("out")
+output_dir.mkdir(parents=True, exist_ok=True)
+
+parser = MinerUApiParser(api_url="http://127.0.0.1:8000", tier="standard", include_images=True)
+failures: list[tuple[str, str]] = []
+for pdf in pdfs:
+    try:
+        result = parser.parse(str(pdf))
+        (output_dir / f"{pdf.stem}.md").write_text(result.markdown(), encoding="utf-8")
+    except Exception as exc:  # 终态任务失败与传输错误都会抛出异常
+        failures.append((pdf.name, str(exc)))
+        print(f"failed: {pdf.name}: {exc}")
+
+if failures:
+    sys.exit(f"{len(failures)}/{len(pdfs)} 个文件失败")
 ```
 
-1. `POST /v1/uploads` 创建上传，根据响应的 URL、HTTP 方法和请求头上传文件；需要时调用 `/v1/uploads/{id}/complete`，取得 `file.id`。已完成的去重上传可直接取得文件引用。
-2. `POST /v1/parse/jobs` 提交任务，例如下方 JSON。
-3. `GET /v1/parse/jobs/{job_id}` 轮询。`completed`、`partial`、`failed`、`canceled` 都是终态；逐文件检查错误，不能将部分成功当作全部完成。
-4. 按任务响应中的产物引用调用 `GET /v1/files/{file_id}/content` 下载结果。
+关注吞吐时检查服务日志和 `GET /v1/usage`。档位选择见[档位与运行环境](tiers.md)，底层请求周期见 [V1 HTTP API 完整示例](http_api.md)。
 
-```json
-{
-  "files": [{"source": {"type": "file_id", "file_id": "file-id-from-upload"}, "page_range": "1-3"}],
-  "tier": "standard",
-  "ocr_mode": "auto",
-  "output_formats": ["markdown", "middle_json", "structured_content", "zip"]
-}
-```
+## 不使用 SDK 的 HTTP 调用
 
-非 PDF 文件省略 `page_range`。当前自部署服务提供上例四种产物；以服务能力和 `/docs` 的 OpenAPI 为准，不能由渲染层的格式列表推断 API 支持范围。
+上传 → 任务 → 轮询 → 下载的闭环也可以直接用 HTTP 调用完成。[V1 HTTP API 完整示例](http_api.md) 提供了完整的 curl 示例，覆盖完成上传、终态处理（含 `partial`）、客户端超时后继续轮询和产物下载。
 
 4.0 V1 服务不提供旧 `/file_parse` 和 `/tasks` 路由。既有客户端迁移见[迁移指南](../reference/migration_4.md)，Python 渲染与结果保存见[输出格式](../reference/output_files.md)。

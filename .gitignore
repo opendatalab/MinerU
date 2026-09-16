@@ -68,3 +68,4 @@ output/
 .e2e/
 
 htmlcov/
+.zcode/

@@ -76,7 +76,7 @@ and report `pdf_title_geometry_conflict`; unavailable expansion clearance report
 `pdf_title_clearance_unavailable`. Only rendering context changes, with no input,
 asset, protocol or public-option changes.
 
-Requires `docvortex>=0.4.3,<1`. DocVortex clears native TXT PDF display equation
+Requires `docvortex>=0.4.7,<1` (the current minimum dependency declared by MinerU 4.0). DocVortex clears native TXT PDF display equation
 `content` once when producing model output; MinerU Flash TXT uses that output.
 Flash OCR already leaves display equation content empty. MinerU does not clear
 equation content again. Both Flash paths retain the bbox, orientation, image and
@@ -97,7 +97,7 @@ Path("report.html").write_text(html, encoding="utf-8")
 
 ## Intermediate JSON
 
-`ModelJson` holds analysis `pages` and `page_index_map`; `MiddleJson` holds ordered postprocessed pages and semantic blocks. `schema_id` distinguishes `docvortex.model` from `docvortex.middle`, while `schema_version` identifies the protocol version. Do not identify a document type from its version number alone.
+`ModelJson` holds analysis `pages` and `page_index_map`; `MiddleJson` holds ordered postprocessed pages and semantic blocks. JSON consumers identify the payload through the serialized `schema` and `schema_version` keys (`docvortex.model` or `docvortex.middle`, protocol `2.0`). The schema identity is named `schema_id` as a Python attribute, but it serializes as `schema`; when reading or writing JSON, always use the serialized keys. Do not identify a document type from its version number alone.
 
 `metadata` carries the file type, producer, and document properties. `extensions["mineru"]` records the actual `tier` and final `parse_mode`. The producing version is `metadata.producer.version`, not a duplicate product extension field. Pages contain `page_idx` and `blocks`; `page_idx` is zero-based, unlike one-based CLI PDF ranges.
 
@@ -152,7 +152,7 @@ Round-trip current results with `ParseResult.from_json(result.to_json())`. Legac
 
 ## Structured Content
 
-`structured_content()` returns a consumer-facing representation, not another name for the intermediate protocol. It retains `metadata` and `extensions` and turns natural-language spans into easier-to-consume text. Do not invent `schema_id` or `schema_version` fields for it.
+`structured_content()` returns a consumer-facing representation, not another name for the intermediate protocol. It retains `metadata` and `extensions` and turns natural-language spans into easier-to-consume text. It carries no schema identity: do not add `schema` or `schema_version` keys to it.
 
 ```json
 {

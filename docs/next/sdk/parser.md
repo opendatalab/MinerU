@@ -34,7 +34,7 @@
 | `parse` | function | 根据文件后缀和参数构造 `MinerUParser` 并执行解析。 |
 | `parse_async` | function | `parse` 的异步版本。 |
 | `DocumentParser` | class | 统一 parser 抽象基类（sync/async/batch/context manager 接口）。 |
-| `MinerUParser` | class | 统一解析器，支持 PDF、OFD、EPUB、HTML、图片、CSV、RTF、OOXML 与 OpenDocument。 |
+| `MinerUParser` | class | 统一解析器，支持 PDF、OFD、EPUB、HTML、图片、CSV/TSV、RTF、OOXML 与 OpenDocument。 |
 | `ParseResult` | dataclass | 解析结果对象。 |
 | `MinerUApiParser` | class | API-backed parser，详见 [API-backed Parser](api-parser.md)。 |
 | `backend_for_tier` | function | 返回指定 tier 使用的 parser backend，tier 自身决定质量档位。 |
@@ -66,7 +66,7 @@ from mineru.parser import MinerUParser
 - PDF
 - EPUB（严格按 OPF spine 输出逻辑页并保留可解析的作者内部链接）
 - 图片（PNG/JPEG 等）
-- CSV、RTF、DOC/DOCX、PPT/PPTX、XLS/XLSX
+- CSV/TSV、RTF、DOC/DOCX、PPT/PPTX、XLS/XLSX
 - ODT、ODS、ODP
 - HTML、HTM（静态源码、固定 `auto` 正文选择）
 - OFD（原生固定版式文字、图片、全线表格和 bbox）

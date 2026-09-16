@@ -14,6 +14,7 @@ from ...parser.api_client import _V1APIError
 from ...parser.page_range import normalize_page_range_input
 from ...parser.tier import normalize_backend
 from ...types import Tier
+from ...utils.i18n import t
 from ..common import (
     build_remote_api_url,
     effective_local_tier_and_backend,
@@ -28,23 +29,23 @@ from ..output import print_info, print_success
 
 
 def parse_cmd(
-    inputs: list[str] = typer.Argument(..., help="Input files or directories"),
-    output: str = typer.Option(..., "-o", "--output", help="Output path; required"),
-    pages: str | None = typer.Option(None, "-p", "--pages", help="PDF pages: '1-5,8,r3-r1' or 'all'; default: all pages"),
+    inputs: list[str] = typer.Argument(..., help=t("Input files or directories")),
+    output: str = typer.Option(..., "-o", "--output", help=t("Output path; required")),
+    pages: str | None = typer.Option(None, "-p", "--pages", help=t("PDF pages: '1-5,8,r3-r1' or 'all'; default: all pages")),
     format: str = typer.Option(
         "markdown",
         "-f",
         "--format",
-        help="Output format: markdown, middle_json, zip",
+        help=t("Output format: markdown, middle_json, zip"),
     ),
-    verbose: bool = typer.Option(False, "-v", "--verbose", help="Verbose output"),
-    tier: str | None = typer.Option(None, "--tier", help="Parse tier: flash, basic, standard, advanced"),
-    backend: str | None = typer.Option(None, "--backend", help="Expert backend override"),
-    remote: bool = typer.Option(False, "--remote", help="Use mineru.net official remote parse service"),
-    remote_url: str | None = typer.Option(None, "--remote-url", help="Use a custom remote parse service URL"),
-    api_key: str | None = typer.Option(None, "--api-key", help="API key for remote parse service"),
-    ocr_mode: str = typer.Option("auto", "--ocr-mode", help="OCR mode: auto, txt, ocr"),
-    disable_image_analysis: bool = typer.Option(False, "--disable-image-analysis", help="Disable image analysis"),
+    verbose: bool = typer.Option(False, "-v", "--verbose", help=t("Verbose output")),
+    tier: str | None = typer.Option(None, "--tier", help=t("Parse tier: flash, basic, standard, advanced")),
+    backend: str | None = typer.Option(None, "--backend", help=t("Expert backend override")),
+    remote: bool = typer.Option(False, "--remote", help=t("Use mineru.net official remote parse service")),
+    remote_url: str | None = typer.Option(None, "--remote-url", help=t("Use a custom remote parse service URL")),
+    api_key: str | None = typer.Option(None, "--api-key", help=t("API key for remote parse service")),
+    ocr_mode: str = typer.Option("auto", "--ocr-mode", help=t("OCR mode: auto, txt, ocr")),
+    disable_image_analysis: bool = typer.Option(False, "--disable-image-analysis", help=t("Disable image analysis")),
 ) -> None:
     """Parse files or directories into markdown, middle JSON, or zip outputs."""
     try:
@@ -55,22 +56,22 @@ def parse_cmd(
     parse_tier = cast(Tier | None, tier)
     parse_ocr_mode = cast(Literal["auto", "txt", "ocr"], ocr_mode)
     if not inputs:
-        exit_with_message("invalid_request", "At least one input path is required.", "inputs")
+        exit_with_message("invalid_request", t("At least one input path is required."), "inputs")
     if remote and backend is not None:
-        exit_with_message("invalid_request", "--backend is not allowed in remote mode.", "backend")
+        exit_with_message("invalid_request", t("--backend is not allowed in remote mode."), "backend")
     api_url = build_remote_api_url(remote, remote_url)
     raw_paths = [Path(raw).expanduser() for raw in inputs]
     if any(path.is_dir() for path in raw_paths) and Path(output).expanduser().suffix:
         exit_with_message(
             "invalid_request",
-            "When input is multiple files or directories, --output must be a directory path.",
+            t("When input is multiple files or directories, --output must be a directory path."),
             "output",
         )
     has_directory_input = any(path.is_dir() for path in raw_paths)
     if len(raw_paths) > 1 and Path(output).expanduser().suffix:
         exit_with_message(
             "invalid_request",
-            "When input is multiple files or directories, --output must be a directory path.",
+            t("When input is multiple files or directories, --output must be a directory path."),
             "output",
         )
     paths = expand_input_paths(inputs)
@@ -117,5 +118,5 @@ def parse_cmd(
         except (MineruError, _V1APIError) as exc:
             exit_with_message(exc.code, str(exc), exc.param)
         except Exception as exc:
-            exit_with_message("parse_failed", f"Failed to parse {path}: {exc}")
-    print_success(f"Parsed {len(paths)} input(s).")
+            exit_with_message("parse_failed", t("Failed to parse {path}: {error}", path=path, error=exc))
+    print_success(t("Parsed {count} input(s).", count=len(paths)))

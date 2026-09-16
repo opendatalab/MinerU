@@ -12,6 +12,7 @@ import typer
 from loguru import logger
 
 from ...model.runtime.platform import is_mac_os_version_supported
+from ...utils.i18n import t
 from ...utils.logger import configure_global_log_level
 from ...utils.stdio import configure_standard_streams
 from ..errors import exit_with_message
@@ -33,17 +34,20 @@ def _module_available(module_name: str) -> bool:
 def _mlx_server_error() -> str | None:
     """检查平台与发布版本，不导入 MLX 重依赖。"""
     if platform.system() != "Darwin" or platform.machine() != "arm64" or not is_mac_os_version_supported("14.0"):
-        return "MLX server requires Apple Silicon and macOS 14 or newer."
+        return t("MLX server requires Apple Silicon and macOS 14 or newer.")
     try:
         from packaging.version import Version
 
         version = Version(importlib.metadata.version("mlx-vlm"))
         if not Version("0.7.0") <= version < Version("0.8.0"):
-            return f"MLX server requires mlx-vlm>=0.7.0,<0.8.0; installed: {version}. Install 'mlx-vlm>=0.7.0,<0.8.0'."
+            return t(
+                "MLX server requires mlx-vlm>=0.7.0,<0.8.0; installed: {version}. Install 'mlx-vlm>=0.7.0,<0.8.0'.",
+                version=version,
+            )
         if importlib.util.find_spec("mlx_vlm.server") is None:
-            return "mlx_vlm.server is unavailable. Install 'mlx-vlm>=0.7.0,<0.8.0'."
+            return t("mlx_vlm.server is unavailable. Install 'mlx-vlm>=0.7.0,<0.8.0'.")
     except (importlib.metadata.PackageNotFoundError, ModuleNotFoundError):
-        return "MLX-VLM is not installed. Install 'mlx-vlm>=0.7.0,<0.8.0'."
+        return t("MLX-VLM is not installed. Install 'mlx-vlm>=0.7.0,<0.8.0'.")
     return None
 
 
@@ -67,22 +71,22 @@ def _run_with_forwarded_argv(main_fn: Callable[[], None], args: list[str]) -> No
 def _resolve_auto_engine() -> Literal["vllm", "lmdeploy"]:
     """自动服务仅选择 vLLM 或 LMDeploy，MLX 必须显式指定。"""
     if _module_available("vllm"):
-        logger.info("Using vLLM as the inference engine for VLM server.")
+        logger.info(t("Using vLLM as the inference engine for VLM server."))
         return "vllm"
     if _module_available("lmdeploy"):
-        logger.info("Using LMDeploy as the inference engine for VLM server.")
+        logger.info(t("Using LMDeploy as the inference engine for VLM server."))
         return "lmdeploy"
-    logger.info("No automatic VLM server engine is installed. Install vLLM/LMDeploy or explicitly choose --engine mlx.")
+    logger.info(t("No automatic VLM server engine is installed. Install vLLM/LMDeploy or explicitly choose --engine mlx."))
     raise typer.Exit(1) from None
 
 
 def vlm_server_cmd(
     ctx: typer.Context,
-    engine: str = typer.Option("auto", "--engine", help="VLM serving engine: auto, vllm, lmdeploy, mlx"),
+    engine: str = typer.Option("auto", "--engine", help=t("VLM serving engine: auto, vllm, lmdeploy, mlx")),
 ) -> None:
     """Start the local VLM server with OpenAI-compatible chat completions."""
     if engine not in {"auto", "vllm", "lmdeploy", "mlx"}:
-        exit_with_message("invalid_request", f"Unsupported engine '{engine}'.", "engine")
+        exit_with_message("invalid_request", t("Unsupported engine '{engine}'.", engine=engine), "engine")
     extra_args = list(ctx.args)
 
     if engine == "auto":
@@ -90,7 +94,7 @@ def vlm_server_cmd(
 
     if engine == "vllm":
         if not _module_available("vllm"):
-            logger.error("vLLM is not installed. Please install vLLM or choose lmdeploy/mlx as the engine.")
+            logger.error(t("vLLM is not installed. Please install vLLM or choose lmdeploy/mlx as the engine."))
             raise typer.Exit(1) from None
         from ..vlm_server import vllm_server
 
@@ -98,7 +102,7 @@ def vlm_server_cmd(
 
     elif engine == "lmdeploy":
         if not _module_available("lmdeploy"):
-            logger.error("LMDeploy is not installed. Please install LMDeploy or choose vllm/mlx as the engine.")
+            logger.error(t("LMDeploy is not installed. Please install LMDeploy or choose vllm/mlx as the engine."))
             raise typer.Exit(1) from None
         from ..vlm_server import lmdeploy_server
 
@@ -106,7 +110,7 @@ def vlm_server_cmd(
 
     elif engine == "mlx":
         if not _mlx_server_available():
-            logger.error(_mlx_server_error() or "MLX server is unavailable.")
+            logger.error(_mlx_server_error() or t("MLX server is unavailable."))
             raise typer.Exit(1) from None
         from ..vlm_server import mlx_vlm_server
 
@@ -122,7 +126,10 @@ def main() -> None:
     configure_standard_streams()
     configure_global_log_level()
     app = typer.Typer(add_completion=False)
-    app.command(context_settings=FORWARD_CONTEXT_SETTINGS)(vlm_server_cmd)
+    app.command(
+        context_settings=FORWARD_CONTEXT_SETTINGS,
+        help=t("Start the local VLM server with OpenAI-compatible chat completions."),
+    )(vlm_server_cmd)
     app()
 
 

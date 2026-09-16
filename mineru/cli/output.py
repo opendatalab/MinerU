@@ -12,6 +12,7 @@ from pydantic_core import to_json
 from rich.console import Console
 from rich.text import Text
 
+from ..utils.i18n import t
 from .contracts import RenderableObject
 
 console = Console(markup=False)
@@ -45,7 +46,7 @@ def print_notice(msg: str) -> None:
 
 
 def print_error(msg: str) -> None:
-    text = Text("Error:", style="red")
+    text = Text(t("Error:"), style="red")
     text.append(f" {msg}")
     stderr_console.print(text)
 

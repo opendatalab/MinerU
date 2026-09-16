@@ -5,7 +5,8 @@
 ## 目录
 
 - [档位与运行环境](tiers.md)
-- [Python SDK 与 V1 API](sdk_api.md)
+- [Python SDK](sdk_api.md)
+- [V1 HTTP API](http_api.md)
 - [3.x → 4.0 迁移](../reference/migration_4.md)
 - 本地部署
     * [基础使用](./quick_usage.md) - 快速上手和基本使用

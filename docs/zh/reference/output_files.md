@@ -47,7 +47,7 @@ pdf_bytes = render(result.middle_json, RenderFormat.PDF,
 
 `pdf_title_layout_expanded` 记录扩展；`pdf_layout_font_exception` 记录局部正文较大或空间不足的调整原因、参考/目标/最终字号、原框和绘制框。原始几何重叠时不扩大占用并报告 `pdf_title_geometry_conflict`；原始间距过紧、没有安全扩展区域时报告 `pdf_title_clearance_unavailable`。字号和绘制区域仅存在于渲染上下文，不修改 MiddleJson 或素材，不新增接口参数。
 
-使用 `docvortex>=0.4.3,<1`。DocVortex 在生产原生 TXT PDF 模型输出时将行间公式的 `content` 清空一次，MinerU Flash TXT 直接使用该输出；Flash OCR 原本不填充行间公式内容，MinerU 不再重复清空。两条 Flash 路径保留 bbox、方向、图片及检测到的编号区域，PDF、Markdown、HTML、DOCX、EPUB、LaTeX 沿用图片回退。行内公式、非 Flash tier 的公式文本不变。旧缓存不会自动改写，重新解析才获得新几何和空内容公式。
+使用 `docvortex>=0.4.7,<1`（MinerU 4.0 当前声明的最低依赖）。DocVortex 在生产原生 TXT PDF 模型输出时将行间公式的 `content` 清空一次，MinerU Flash TXT 直接使用该输出；Flash OCR 原本不填充行间公式内容，MinerU 不再重复清空。两条 Flash 路径保留 bbox、方向、图片及检测到的编号区域，PDF、Markdown、HTML、DOCX、EPUB、LaTeX 沿用图片回退。行内公式、非 Flash tier 的公式文本不变。旧缓存不会自动改写，重新解析才获得新几何和空内容公式。
 
 ```python
 from pathlib import Path
@@ -61,7 +61,7 @@ Path("report.html").write_text(html, encoding="utf-8")
 
 ## 中间 JSON
 
-`ModelJson` 保存分析结果 `pages` 和 `page_index_map`；`MiddleJson` 保存后处理后的有序页面和语义块。`schema_id` 区分 `docvortex.model` 与 `docvortex.middle`，`schema_version` 标识协议版本。不要只根据版本数字判断文档种类。
+`ModelJson` 保存分析结果 `pages` 和 `page_index_map`；`MiddleJson` 保存后处理后的有序页面和语义块。JSON 消费端通过序列化后的 `schema` 与 `schema_version` 两个键识别数据（`docvortex.model` 或 `docvortex.middle`，协议版本 `2.0`）。协议身份在 Python 类型中的属性名为 `schema_id`，但序列化键名是 `schema`；读写 JSON 时一律使用序列化键。不要只根据版本数字判断文档种类。
 
 `metadata` 包含文件类型、生产者和文档属性；`extensions["mineru"]` 记录实际执行的 `tier` 与最终 `parse_mode`。版本来自 `metadata.producer.version`，不重复放在产品扩展中。页面包含 `page_idx` 与 `blocks`，`page_idx` 从 0 开始，区别于 CLI 中从 1 开始的 PDF 页码。
 
@@ -111,7 +111,7 @@ Path("report.html").write_text(html, encoding="utf-8")
 
 ## Structured Content
 
-`structured_content()` 返回面向消费端的内容结构，而非中间协议的另一个名称。它保留 `metadata` 和 `extensions`，将自然语言 span 转为更易消费的文本；不要为它补造 `schema_id` 或 `schema_version`。
+`structured_content()` 返回面向消费端的内容结构，而非中间协议的另一个名称。它保留 `metadata` 和 `extensions`，将自然语言 span 转为更易消费的文本；它不携带协议身份，不要为它补造 `schema` 或 `schema_version` 字段。
 
 ```json
 {

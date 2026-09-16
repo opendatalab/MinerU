@@ -27,19 +27,3 @@
     ```
     
     参考：[#388](https://github.com/opendatalab/MinerU/issues/388)
-
-??? question "在 Linux 系统安装并使用时，解析结果缺失部份文字信息。"
-
-    ### 在 Linux 系统安装并使用时，解析结果缺失部份文字信息。 {#linux-missing-text-cjk-fonts}
-
-    MinerU在>=2.0的版本中使用`pypdfium2`代替`pymupdf`作为PDF页面的渲染引擎，以解决AGPLv3的许可证问题，在某些Linux发行版，由于缺少CJK字体，可能会在将PDF渲染成图片的过程中丢失部份文字。
-    为了解决这个问题，您可以通过以下命令安装noto字体包，这在Ubuntu/debian系统中有效：
-    ```bash
-    sudo apt update
-    sudo apt install fonts-noto-core
-    sudo apt install fonts-noto-cjk
-    fc-cache -fv
-    ```
-    也可以直接使用我们的[Docker部署](../quick_start/docker_deployment.md)方式构建镜像，镜像中默认包含以上字体包。
-    
-    参考：[#2915](https://github.com/opendatalab/MinerU/issues/2915)

@@ -23,57 +23,58 @@ from ...doclib.types import (
 )
 from ...parser.page_range import normalize_page_range_input
 from ...types import Tier
+from ...utils.i18n import t
 from ..contracts import CliContext
 from ..runtime import run_cli
 
-app = typer.Typer(help="Configuration management", no_args_is_help=True)
+app = typer.Typer(help=t("Configuration management"), no_args_is_help=True)
 
-exclude_rules_app = typer.Typer(help="Exclude rule management", no_args_is_help=True)
-parsing_rules_app = typer.Typer(help="Parsing rule management", no_args_is_help=True)
+exclude_rules_app = typer.Typer(help=t("Exclude rule management"), no_args_is_help=True)
+parsing_rules_app = typer.Typer(help=t("Parsing rule management"), no_args_is_help=True)
 
 app.add_typer(exclude_rules_app, name="exclude-rules")
 app.add_typer(parsing_rules_app, name="parsing-rules")
 
 
-@app.command("show")
-def config_show(json_mode: bool = typer.Option(False, "--json", help="JSON output")) -> None:
+@app.command("show", help=t("Show effective configuration values."))
+def config_show(json_mode: bool = typer.Option(False, "--json", help=t("JSON output"))) -> None:
     """Show effective configuration values."""
     ctx = CliContext(json_mode=json_mode)
     run_cli(ctx, lambda: _client().get_config(), render=_render_config)
 
 
-@app.command("get")
+@app.command("get", help=t("Show one effective configuration value."))
 def config_get(
-    key: str = typer.Argument(..., help="Configuration key"),
-    json_mode: bool = typer.Option(False, "--json", help="JSON output"),
+    key: str = typer.Argument(..., help=t("Configuration key")),
+    json_mode: bool = typer.Option(False, "--json", help=t("JSON output")),
 ) -> None:
     """Show one effective configuration value."""
     ctx = CliContext(json_mode=json_mode)
     run_cli(ctx, lambda: _client().get_config_key(key), render=_render_config_value)
 
 
-@app.command("set")
+@app.command("set", help=t("Set a configuration override."))
 def config_set(
-    key: str = typer.Argument(..., help="Configuration key"),
-    value: str = typer.Argument(..., help="Configuration value"),
+    key: str = typer.Argument(..., help=t("Configuration key")),
+    value: str = typer.Argument(..., help=t("Configuration value")),
 ) -> None:
     """Set a configuration override."""
     ctx = CliContext(json_mode=False)
     run_cli(ctx, lambda: _client().set_config(key, ConfigSetRequest(value=value)), render=_render_config_set)
 
 
-@app.command("unset")
-def config_unset(key: str = typer.Argument(..., help="Configuration key")) -> None:
+@app.command("unset", help=t("Remove a configuration override and fall back to the default."))
+def config_unset(key: str = typer.Argument(..., help=t("Configuration key"))) -> None:
     """Remove a configuration override and fall back to the default."""
     ctx = CliContext(json_mode=False)
     run_cli(ctx, lambda: _client().unset_config(key), render=_render_config_unset)
 
 
-@exclude_rules_app.command("add")
+@exclude_rules_app.command("add", help=t("Add an exclusion rule."))
 def exclude_rules_add(
-    pattern: str = typer.Argument(..., help="Glob pattern to exclude"),
-    priority: int = typer.Option(0, "--priority", help="Rule priority"),
-    json_mode: bool = typer.Option(False, "--json", help="JSON output"),
+    pattern: str = typer.Argument(..., help=t("Glob pattern to exclude")),
+    priority: int = typer.Option(0, "--priority", help=t("Rule priority")),
+    json_mode: bool = typer.Option(False, "--json", help=t("JSON output")),
 ) -> None:
     """Add an exclusion rule."""
     ctx = CliContext(json_mode=json_mode)
@@ -84,28 +85,28 @@ def exclude_rules_add(
     )
 
 
-@exclude_rules_app.command("list")
-def exclude_rules_list(json_mode: bool = typer.Option(False, "--json", help="JSON output")) -> None:
+@exclude_rules_app.command("list", help=t("List exclusion rules."))
+def exclude_rules_list(json_mode: bool = typer.Option(False, "--json", help=t("JSON output"))) -> None:
     """List exclusion rules."""
     ctx = CliContext(json_mode=json_mode)
     run_cli(ctx, lambda: _client().list_exclude_rules(), render=_render_exclude_rules)
 
 
-@exclude_rules_app.command("remove")
-def exclude_rules_remove(rule_id: int = typer.Argument(..., help="Rule id to remove")) -> None:
+@exclude_rules_app.command("remove", help=t("Remove an exclusion rule."))
+def exclude_rules_remove(rule_id: int = typer.Argument(..., help=t("Rule id to remove"))) -> None:
     """Remove an exclusion rule."""
     ctx = CliContext(json_mode=False)
     run_cli(ctx, lambda: _client().remove_exclude_rule(rule_id), render=_render_exclude_rule_removed)
 
 
-@parsing_rules_app.command("add")
+@parsing_rules_app.command("add", help=t("Add a parsing rule."))
 def parsing_rules_add(
-    pattern: str = typer.Argument(..., help="Glob pattern to match"),
-    tier: Tier | None = typer.Option(None, "--tier", help="Parse tier: flash, basic, standard, advanced"),
-    pages: str | None = typer.Option(None, "--pages", help="PDF pages, e.g. all, 1-10 or r3-r1"),
-    remote: bool = typer.Option(False, "--remote", help="Allow remote parsing"),
-    name: str | None = typer.Option(None, "--name", help="Rule name"),
-    json_mode: bool = typer.Option(False, "--json", help="JSON output"),
+    pattern: str = typer.Argument(..., help=t("Glob pattern to match")),
+    tier: Tier | None = typer.Option(None, "--tier", help=t("Parse tier: flash, basic, standard, advanced")),
+    pages: str | None = typer.Option(None, "--pages", help=t("PDF pages, e.g. all, 1-10 or r3-r1")),
+    remote: bool = typer.Option(False, "--remote", help=t("Allow remote parsing")),
+    name: str | None = typer.Option(None, "--name", help=t("Rule name")),
+    json_mode: bool = typer.Option(False, "--json", help=t("JSON output")),
 ) -> None:
     """Add a parsing rule."""
     ctx = CliContext(json_mode=json_mode)
@@ -126,15 +127,15 @@ def _add_parsing_rule(
     )
 
 
-@parsing_rules_app.command("list")
-def parsing_rules_list(json_mode: bool = typer.Option(False, "--json", help="JSON output")) -> None:
+@parsing_rules_app.command("list", help=t("List parsing rules."))
+def parsing_rules_list(json_mode: bool = typer.Option(False, "--json", help=t("JSON output"))) -> None:
     """List parsing rules."""
     ctx = CliContext(json_mode=json_mode)
     run_cli(ctx, lambda: _client().list_parsing_rules(), render=_render_parsing_rules)
 
 
-@parsing_rules_app.command("remove")
-def parsing_rules_remove(rule_id: int = typer.Argument(..., help="Rule id to remove")) -> None:
+@parsing_rules_app.command("remove", help=t("Remove a parsing rule."))
+def parsing_rules_remove(rule_id: int = typer.Argument(..., help=t("Rule id to remove"))) -> None:
     """Remove a parsing rule."""
     ctx = CliContext(json_mode=False)
     run_cli(ctx, lambda: _client().remove_parsing_rule(rule_id), render=_render_parsing_rule_removed)
@@ -145,77 +146,79 @@ def _client() -> DoclibClient:
 
 
 def _render_config(data: ConfigResponse) -> Table:
-    table = Table(title="Config")
-    table.add_column("Key", style="cyan")
-    table.add_column("Value", style="green")
-    table.add_column("Source")
+    table = Table(title=t("Config"))
+    table.add_column(t("Key"), style="cyan")
+    table.add_column(t("Value"), style="green")
+    table.add_column(t("Source"))
     for key in sorted(data.config):
         value = data.config[key]
-        source = data.sources.get(key, "default")
+        source = data.sources.get(key, t("default"))
         table.add_row(key, value, source)
     return table
 
 
 def _render_config_value(data: ConfigValueResponse) -> str:
-    return f"{data.key} = {data.value}  [{data.source}]"
+    return t("{key} = {value}  [{source}]", key=data.key, value=data.value, source=data.source)
 
 
 def _render_config_set(data: ConfigSetResponse) -> str:
-    return f"{data.key} = {data.value}  [{data.source}]"
+    return t("{key} = {value}  [{source}]", key=data.key, value=data.value, source=data.source)
 
 
 def _render_config_unset(data: ConfigUnsetResponse) -> str:
-    action = "removed" if data.removed else "unchanged"
-    return f"{data.key} = {data.value}  [{data.source}] ({action})"
+    action = t("removed") if data.removed else t("unchanged")
+    return t("{key} = {value}  [{source}] ({action})", key=data.key, value=data.value, source=data.source, action=action)
 
 
 def _render_exclude_rule_added(data: ExcludeRuleInfo) -> str:
-    return f"Exclude rule added: id={data.id}"
+    return t("Exclude rule added: id={id}", id=data.id)
 
 
 def _render_exclude_rules(data: ExcludeRuleListResponse) -> Table | str:
     if not data.rules:
-        return "No exclude rules configured."
-    table = Table(title="Exclude Rules")
-    table.add_column("ID", justify="right")
-    table.add_column("Pattern", style="cyan")
-    table.add_column("Priority", justify="right")
+        return t("No exclude rules configured.")
+    table = Table(title=t("Exclude Rules"))
+    table.add_column(t("ID"), justify="right")
+    table.add_column(t("Pattern"), style="cyan")
+    table.add_column(t("Priority"), justify="right")
     for rule in data.rules:
         table.add_row(str(rule.id), rule.pattern, str(rule.priority))
     return table
 
 
 def _render_exclude_rule_removed(data: RemoveExcludeRuleResponse) -> str:
-    action = "removed" if data.removed else "unchanged"
-    return f"Exclude rule {data.rule_id} {action}."
+    if data.removed:
+        return t("Exclude rule {rule_id} removed.", rule_id=data.rule_id)
+    return t("Exclude rule {rule_id} unchanged.", rule_id=data.rule_id)
 
 
 def _render_parsing_rule_added(data: ParsingRuleInfo) -> str:
-    return f"Parsing rule added: id={data.id}"
+    return t("Parsing rule added: id={id}", id=data.id)
 
 
 def _render_parsing_rules(data: ParsingRuleListResponse) -> Table | str:
     if not data.rules:
-        return "No parsing rules configured."
-    table = Table(title="Parsing Rules")
-    table.add_column("ID", justify="right")
-    table.add_column("Pattern", style="cyan")
-    table.add_column("Tier")
-    table.add_column("Pages")
-    table.add_column("Remote")
-    table.add_column("Name")
+        return t("No parsing rules configured.")
+    table = Table(title=t("Parsing Rules"))
+    table.add_column(t("ID"), justify="right")
+    table.add_column(t("Pattern"), style="cyan")
+    table.add_column(t("Tier"))
+    table.add_column(t("Pages"))
+    table.add_column(t("Remote"))
+    table.add_column(t("Name"))
     for rule in data.rules:
         table.add_row(
             str(rule.id),
             rule.pattern,
             rule.tier or "-",
             rule.page_range or "-",
-            "yes" if rule.remote else "no",
+            t("yes") if rule.remote else t("no"),
             rule.name or "-",
         )
     return table
 
 
 def _render_parsing_rule_removed(data: RemoveParsingRuleResponse) -> str:
-    action = "removed" if data.removed else "unchanged"
-    return f"Parsing rule {data.rule_id} {action}."
+    if data.removed:
+        return t("Parsing rule {rule_id} removed.", rule_id=data.rule_id)
+    return t("Parsing rule {rule_id} unchanged.", rule_id=data.rule_id)
