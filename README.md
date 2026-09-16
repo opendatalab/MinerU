@@ -82,7 +82,7 @@ For the document library and agent reading, use `mineru parse document.pdf --jso
 
 [Installation](https://opendatalab.github.io/MinerU/quick_start/) · [Tiers and runtimes](https://opendatalab.github.io/MinerU/usage/tiers/) · [SDK and API](https://opendatalab.github.io/MinerU/usage/sdk_api/) · [Docker deployment](https://opendatalab.github.io/MinerU/quick_start/docker_deployment/) · [3.x → 4.0 migration](https://opendatalab.github.io/MinerU/reference/migration_4/) · [Release history](https://opendatalab.github.io/MinerU/reference/changelog/)
 
-> Existing AMD and vendor accelerator Docker adaptations and guides remain on **MinerU <4**. See the [legacy platform guides](https://opendatalab.github.io/MinerU/usage/compatibility/).
+> Docker deployment for non-NVIDIA devices is pending an update; see the [legacy platform guides](https://opendatalab.github.io/MinerU/usage/compatibility/) in the meantime.
 
 # Agent Guide
 

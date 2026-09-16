@@ -77,7 +77,7 @@ mineru-kit webui
 
 [安装指南](https://opendatalab.github.io/MinerU/zh/quick_start/) · [档位与运行环境](https://opendatalab.github.io/MinerU/zh/usage/tiers/) · [SDK 与 API](https://opendatalab.github.io/MinerU/zh/usage/sdk_api/) · [Docker 部署](https://opendatalab.github.io/MinerU/zh/quick_start/docker_deployment/) · [3.x → 4.0 迁移](https://opendatalab.github.io/MinerU/zh/reference/migration_4/) · [完整更新历史](https://opendatalab.github.io/MinerU/zh/reference/changelog/)
 
-> AMD 与国产加速卡的既有 Docker 和适配指南继续使用 **MinerU <4**，不会随主线自动升级。请查看[旧平台指南](https://opendatalab.github.io/MinerU/zh/usage/compatibility/)。
+> 非 NVIDIA 设备的 Docker 部署方案待更新，期间可参考[旧平台指南](https://opendatalab.github.io/MinerU/zh/usage/compatibility/)。
 
 # Agent Guide
 
