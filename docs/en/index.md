@@ -9,7 +9,7 @@ MinerU 4.0 brings document parsing, a local document library, and service tools 
 - **Document library and agent reading**: discover files, cache results, search content, continue by page or block, and preserve stable citation locators.
 - **Independent model configuration**: ONNX or Torch for small models; llama.cpp, vLLM, or LMDeploy for the VLM.
 - **Unified tools**: Python SDK, V1 API, stateless batch conversion, multi-service Router, and a Gradio-based WebUI.
-- **Structured results and rendering**: one document model supports nine rendering targets: Markdown, HTML, LaTeX, DOCX, EPUB, PDF, Structured Content, and Content List V1/V2. Each CLI/API exposes its own subset of exports.
+- **Structured results and rendering**: one document model supports nine rendering targets: Markdown, HTML, LaTeX, DOCX, EPUB, PDF, Structured Content, and Content List V1/V2. Each CLI/API exposes its own subset of exports; see [Output Formats and Result Contract](reference/output_files.md).
 
 PDF and images support all four tiers. Office, OpenDocument, EPUB, OFD, HTML, and CSV/TSV use local Flash native parsing. Plain text is read directly rather than parsed. Documents are not automatically uploaded to the official service; remote parsing requires explicit configuration.
 
