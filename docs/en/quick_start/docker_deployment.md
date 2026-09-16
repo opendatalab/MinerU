@@ -16,21 +16,25 @@ Build-time downloads explicitly select Torch small models and original vLLM weig
 
 ### Image provenance and version checks
 
-The image installs `mineru[torch]>=4.0,<5` from the package index; it does **not** install the repository checkout used as the build context. Building from a `next` or patched checkout still produces a PyPI-version image. Two paths cover the different needs:
+The image installs the package-index range `mineru[torch]>=4.0,<5`; it does **not** install the repository checkout used as the build context, and a version-range install is not locked by the image tag. Building from a `next` or patched checkout still produces a package-index image, and rebuilding the same tag later may install a different 4.x. Two paths cover the different needs:
 
 | Path | Version source | Use it for |
 | --- | --- | --- |
-| Release image (`docker/global/Dockerfile`, `docker/china/Dockerfile`) | Pinned `mineru[torch]>=4.0,<5` from the package index | Production deployments |
-| Source image (release image + local install) | Your checkout / commit | Verifying `next`, debugging, reproducing a patch |
+| Release image (`docker/global/Dockerfile`, `docker/china/Dockerfile`) | Package-index range `mineru[torch]>=4.0,<5` | Production deployments |
+| Source-debug container (release image + mounted checkout) | Your working copy / commit | Verifying `next`, debugging, reproducing a patch |
 
-Tag images with the actual version instead of only `mineru:4`, and confirm what a built image contains:
+Tag images with the actual version instead of only `mineru:4`, and assert the installed version after building — this detects a tag/version mismatch; it does not make a range build reproducible:
 
 ```bash
 docker build -t mineru:4.0.0 -f docker/global/Dockerfile .
-docker run --rm mineru:4.0.0 python3 -c "from mineru.version import __version__; print(__version__)"
+docker run --rm mineru:4.0.0 python3 -c '
+from mineru.version import __version__
+expected = "4.0.0"
+print(f"actual={__version__}, expected={expected}")
+raise SystemExit(0 if __version__ == expected else 1)'
 ```
 
-To test a specific source revision, build the release image once, then install your checkout inside the container:
+To test a specific source revision, build the release image once, then install your checkout inside a **source-debug container**. It depends on the host mount and is not distributable:
 
 ```bash
 docker run --gpus all --shm-size 32g --ipc=host -it \
@@ -38,7 +42,15 @@ docker run --gpus all --shm-size 32g --ipc=host -it \
   "python3 -m pip install -e '/src[torch]' && mineru-kit parse /src/document.pdf -o /src/document.md"
 ```
 
-The editable install replaces the container's MinerU with your checkout without rebuilding the model layers; record the commit SHA in the image tag when sharing such an image.
+A distributable source image instead copies the source at build time; keep the commit SHA in the tag:
+
+```dockerfile
+FROM mineru:4.0.0
+COPY . /src
+RUN python3 -m pip install "/src[torch]"
+```
+
+After replacing the installed package with a different source revision, re-check that the image's pre-downloaded models still satisfy it: `mineru-kit models verify --tier standard --small-backend torch --vlm-engine vllm` exits non-zero when model files are incomplete. `verify` is a file check, not an inference acceptance test.
 
 ## Interactive container
 

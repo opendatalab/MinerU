@@ -60,19 +60,35 @@ mineru-kit webui --api-url http://127.0.0.1:8000
 
 ### 批量处理与实例复用
 
-批量处理时复用同一个 `MinerUApiParser` 实例，不要每个文件新建一个；每次调用各自开合 HTTP 会话，无需显式释放资源：
+批量处理时复用同一个 `MinerUApiParser` 实例，不要每个文件新建一个；每次调用各自开合 HTTP 会话，无需显式释放资源。HTTP 层以任务状态和逐文件 `error` 表达失败；Python SDK 会将 `failed`/`canceled` 终态（以及网络/HTTP 错误）转换为异常，因此批处理应逐文件捕获、记录汇总，并按明确的策略退出：
 
 ```python
+import sys
 from pathlib import Path
 from mineru.parser import MinerUApiParser
 
+pdfs = sorted(Path("./documents").glob("*.pdf"))
+if not pdfs:
+    sys.exit("./documents 下没有输入文件")
+
+output_dir = Path("out")
+output_dir.mkdir(parents=True, exist_ok=True)
+
 parser = MinerUApiParser(api_url="http://127.0.0.1:8000", tier="standard", include_images=True)
-for pdf in Path("./documents").glob("*.pdf"):
-    result = parser.parse(str(pdf))
-    (Path("out") / f"{pdf.stem}.md").write_text(result.markdown(), encoding="utf-8")
+failures: list[tuple[str, str]] = []
+for pdf in pdfs:
+    try:
+        result = parser.parse(str(pdf))
+        (output_dir / f"{pdf.stem}.md").write_text(result.markdown(), encoding="utf-8")
+    except Exception as exc:  # 终态任务失败与传输错误都会抛出异常
+        failures.append((pdf.name, str(exc)))
+        print(f"failed: {pdf.name}: {exc}")
+
+if failures:
+    sys.exit(f"{len(failures)}/{len(pdfs)} 个文件失败")
 ```
 
-服务端失败以逐文件的任务错误呈现，而不是客户端异常；关注吞吐时检查服务日志和 `GET /v1/usage`。档位选择见[档位与运行环境](tiers.md)。
+关注吞吐时检查服务日志和 `GET /v1/usage`。档位选择见[档位与运行环境](tiers.md)，底层请求周期见 [V1 HTTP API 完整示例](http_api.md)。
 
 ## 不使用 SDK 的 HTTP 调用
 

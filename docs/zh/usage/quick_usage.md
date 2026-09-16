@@ -32,7 +32,7 @@ mineru parse <input_path> --pages all -o <output_path>
 mineru-kit models show
 ```
 
-输出会报告 `Effective small backend` 与 `Effective VLM engine`，以及每个取值的配置来源。完整选择规则见[档位与运行环境](./tiers.md)。
+输出会报告 `Effective small backend` 与 `Effective VLM engine`，以及每个取值的配置来源。`models show` **显示**有效后端、引擎和模型就绪状态——模型文件缺失会被报告但命令不会失败；需要以非零退出码标识模型文件不完整时使用 `mineru-kit models verify`。两者都不执行推理。完整验证按顺序推进：依赖安装成功 → 选择符合预期 → `models verify` 通过 → 一份小样本文档实际解析成功。完整选择规则见[档位与运行环境](./tiers.md)。
 
 如果需要通过自定义参数调整解析选项，您也可以在文档中查看更详细的[命令行工具使用说明](./cli_tools.md)。
 

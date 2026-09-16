@@ -32,7 +32,7 @@ After installation, confirm the runtimes actually in effect in your environment:
 mineru-kit models show
 ```
 
-The output reports `Effective small backend` and `Effective VLM engine` together with the config source of each value. See [Tiers and Runtimes](./tiers.md) for the full selection table.
+The output reports `Effective small backend` and `Effective VLM engine` together with the config source of each value. `models show` *displays* effective backends, engines, and model readiness — missing model files are reported but do not fail the command; use `mineru-kit models verify` when a non-zero exit code should signal incomplete model files. Neither command runs inference. A full validation progresses in order: dependencies installed → selection as expected → `models verify` passes → a small sample document actually parses successfully. See [Tiers and Runtimes](./tiers.md) for the full selection table.
 
 If you need to adjust parsing options through custom parameters, you can also check the more detailed [Command Line Tools Usage Instructions](./cli_tools.md) in the documentation.
 

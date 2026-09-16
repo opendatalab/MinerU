@@ -60,19 +60,35 @@ mineru-kit webui --api-url http://127.0.0.1:8000
 
 ### Batching and instance reuse
 
-Reuse one `MinerUApiParser` instance for batch work instead of constructing a parser per file; each call opens and closes its own HTTP session, so there is nothing to release explicitly:
+Reuse one `MinerUApiParser` instance for batch work instead of constructing a parser per file; each call opens and closes its own HTTP session, so there is nothing to release explicitly. HTTP failures are expressed as job statuses and per-file `error` entries; the Python SDK converts `failed`/`canceled` terminal jobs (and network/HTTP errors) into exceptions, so batch code should catch per file, record a summary, and exit with an explicit policy:
 
 ```python
+import sys
 from pathlib import Path
 from mineru.parser import MinerUApiParser
 
+pdfs = sorted(Path("./documents").glob("*.pdf"))
+if not pdfs:
+    sys.exit("no input files under ./documents")
+
+output_dir = Path("out")
+output_dir.mkdir(parents=True, exist_ok=True)
+
 parser = MinerUApiParser(api_url="http://127.0.0.1:8000", tier="standard", include_images=True)
-for pdf in Path("./documents").glob("*.pdf"):
-    result = parser.parse(str(pdf))
-    (Path("out") / f"{pdf.stem}.md").write_text(result.markdown(), encoding="utf-8")
+failures: list[tuple[str, str]] = []
+for pdf in pdfs:
+    try:
+        result = parser.parse(str(pdf))
+        (output_dir / f"{pdf.stem}.md").write_text(result.markdown(), encoding="utf-8")
+    except Exception as exc:  # terminal job failures and transport errors both raise
+        failures.append((pdf.name, str(exc)))
+        print(f"failed: {pdf.name}: {exc}")
+
+if failures:
+    sys.exit(f"{len(failures)} of {len(pdfs)} files failed")
 ```
 
-Failures on the service side surface as per-file job errors rather than client exceptions; check the service logs and `GET /v1/usage` when throughput matters. See [Tiers and Runtimes](tiers.md) for choosing `tier`.
+When throughput matters, check the service logs and `GET /v1/usage`. See [Tiers and Runtimes](tiers.md) for choosing `tier` and the [V1 HTTP API walkthrough](http_api.md) for the underlying request cycle.
 
 ## HTTP API without the SDK
 
