@@ -1,5 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
-"""CSV 文档 model-list 生产入口。"""
+"""CSV/TSV 分隔文本文档 model-list 生产入口。"""
 
 from __future__ import annotations
 
@@ -11,7 +11,7 @@ from .contracts import AnalysisResult
 
 
 def analyze_csv(file_bytes: bytes) -> AnalysisResult:
-    """调用轻量 CSV 模型并精确统计 predict 阶段耗时。"""
+    """调用轻量 CSV/TSV 分隔文本模型并精确统计 predict 阶段耗时。"""
     csv_model = CsvModel()
     infer_started_at = time.perf_counter()
     model_list = csv_model.predict(BytesIO(file_bytes))

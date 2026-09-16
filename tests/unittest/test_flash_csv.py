@@ -56,6 +56,77 @@ def test_csv_path_parsing_and_signatureless_detection(tmp_path: Path) -> None:
         parse(text_path)
 
 
+def test_tsv_doc_analyze_records_independent_suffix_and_reuses_csv_engine() -> None:
+    """验证 tsv 复用 CSV 引擎、自动嗅探 Tab 分隔符，并同步异步一致记录独立后缀。"""
+    payload = "姓名\t年龄\n张三\t30\n".encode()
+    middle, model = doc_analyze(payload, file_suffix="tsv")
+    async_middle, async_model = asyncio.run(aio_doc_analyze(payload, file_suffix="tsv"))
+
+    assert model.metadata.file_suffix == async_model.metadata.file_suffix == "tsv"
+    assert model.extensions["mineru"]["tier"] == async_model.extensions["mineru"]["tier"] == "flash"
+    assert model.extensions["mineru"]["parse_mode"] == async_model.extensions["mineru"]["parse_mode"] == "txt"
+    assert middle.model_dump() == async_middle.model_dump()
+    assert len(middle.pages) == 1
+    table = middle.pages[0].blocks[0]
+    assert isinstance(table, TableBlock)
+    assert isinstance(table.content[0], TableBodyBlock)
+    assert render_markdown(middle) == "| 姓名 | 年龄 |\n| --- | --- |\n| 张三 | 30 |"
+    assert "<table>" in render_html(middle)
+
+
+def test_tsv_path_parsing_records_independent_suffix(tmp_path: Path) -> None:
+    """验证 .tsv 扩展名兜底返回独立后缀，解析产物如实记录 tsv。"""
+    tsv_path = tmp_path / "sample.tsv"
+    tsv_path.write_text("name\tage\nAlice\t30\n", encoding="utf-8")
+
+    assert guess_suffix_by_path(tsv_path) == "tsv"
+    result = parse(tsv_path)
+    async_result = asyncio.run(parse_async(tsv_path))
+    assert result.middle_json.metadata.file_suffix == async_result.middle_json.metadata.file_suffix == "tsv"
+    assert "| name | age |" in result.markdown()
+
+
+def test_tsv_parse_server_job_emits_structured_outputs_with_independent_suffix(tmp_path: Path) -> None:
+    """验证 parse-server 实际解析 .tsv，输出结构化表格并记录独立 file_suffix。"""
+    source = tmp_path / "sample.tsv"
+    source.write_text("name\tage\nAlice\t30\n", encoding="utf-8")
+    file_store = FileStore(tmp_path / "api-files")
+    request = CreateJobRequest.model_validate(
+        {
+            "files": [{"source": {"type": "local", "path": str(source)}}],
+            "tier": "standard",
+            "output_formats": ["markdown", "middle_json"],
+        }
+    )
+    record = api_server.JobStore().create(request, file_store)
+
+    asyncio.run(
+        api_server._run_job(
+            record,
+            request,
+            file_store,
+            image_analysis=True,
+            allow_local_source=True,
+        )
+    )
+
+    parsed_file = record.files[0]
+    assert parsed_file.status == "completed"
+    assert parsed_file.output_files is not None
+    assert parsed_file.output_files.markdown is not None
+    assert parsed_file.output_files.middle_json is not None
+
+    markdown_record = file_store.get_file(parsed_file.output_files.markdown.file_id)
+    markdown = file_store.read_blob(markdown_record.sha256sum).decode()
+    assert "| name | age |" in markdown
+
+    middle_record = file_store.get_file(parsed_file.output_files.middle_json.file_id)
+    middle_payload = json.loads(file_store.read_blob(middle_record.sha256sum))
+    assert middle_payload["metadata"]["file_suffix"] == "tsv"
+    assert middle_payload["extensions"]["mineru"]["tier"] == "flash"
+    assert middle_payload["extensions"]["mineru"]["parse_mode"] == "txt"
+
+
 def test_csv_parse_server_job_emits_structured_outputs_with_flash_metadata(tmp_path: Path) -> None:
     """验证 parse-server 实际解析 CSV，并输出 Markdown、Middle JSON 与结构化内容。"""
     source = tmp_path / "sample.csv"

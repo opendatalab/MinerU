@@ -1563,7 +1563,7 @@ def test_request_parse_explicit_image_ingests_and_queues_parse(tmp_path: Path, m
     asyncio.run(_run())
 
 
-@pytest.mark.parametrize("ext", ["html", "csv", "docx", "pptx", "xlsx"])
+@pytest.mark.parametrize("ext", ["html", "csv", "tsv", "docx", "pptx", "xlsx"])
 @pytest.mark.parametrize("tier", ["standard", "advanced"])
 def test_request_parse_rejects_quality_tiers_for_non_pdf_image_inputs(
     tmp_path: Path,
@@ -1617,6 +1617,7 @@ def test_request_parse_rejects_quality_tiers_for_non_pdf_image_inputs(
         ("pdf", "standard", "remote"),
         ("html", "flash", "local"),
         ("csv", "flash", "local"),
+        ("tsv", "flash", "local"),
     ],
 )
 def test_refresh_file_applies_parsing_rule_effective_tier_and_privacy(
@@ -1664,7 +1665,7 @@ def test_refresh_file_applies_parsing_rule_effective_tier_and_privacy(
     asyncio.run(_run())
 
 
-@pytest.mark.parametrize("ext", ["html", "csv", "docx", "pptx", "xlsx"])
+@pytest.mark.parametrize("ext", ["html", "csv", "tsv", "docx", "pptx", "xlsx"])
 def test_request_parse_rejects_remote_for_non_pdf_image_inputs(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1816,6 +1817,61 @@ def test_csv_doclib_parse_creates_flash_cache_and_rendered_fts(
             assert len(cached_files) == 1
             cached_payload = json.loads(cached_files[0].read_text(encoding="utf-8"))
             assert cached_payload["metadata"]["file_suffix"] == "csv"
+            assert cached_payload["extensions"]["mineru"]["tier"] == "flash"
+        finally:
+            await db.close()
+
+    asyncio.run(_run())
+
+
+def test_tsv_doclib_parse_creates_flash_cache_with_independent_file_type(
+    tmp_path: Path,
+) -> None:
+    """验证 TSV 入库记录独立 file_type，并生成 file_suffix=tsv 的 flash 缓存与 FTS。"""
+
+    class _NoRulesConfig:
+        """为 TSV Doclib 集成测试关闭解析规则。"""
+
+        async def match_rules(self, path: str, rule_type: str) -> list[dict[str, Any]]:
+            """返回空规则集合，使测试只覆盖默认本地 flash 路径。"""
+            return []
+
+    async def _run() -> None:
+        """完成 TSV 入库、排队、执行、缓存和 FTS 的完整生命周期。"""
+        db = DatabaseManager(str(tmp_path / "doclib.db"))
+        await db.initialize()
+        fts = FTSManager(db)
+        service = ParseService(
+            db=db,
+            fts=fts,
+            config_svc=_NoRulesConfig(),
+            data_dir=str(tmp_path / "data"),
+            parse_lock_timeout_sec=1800,
+        )
+        source = tmp_path / "sample.tsv"
+        source.write_text("name\tscore\nAlice\t001\nBob\t002\n", encoding="utf-8")
+        try:
+            response = await service.request_parse(str(source))
+            assert response.status == "pending"
+            assert response.tier == "flash"
+            assert response.page_range == "1"
+            assert not await fts.search("Alice")
+
+            doc_row = await db.fetchone("SELECT file_type FROM docs")
+            assert doc_row == {"file_type": "tsv"}
+
+            task = await service.acquire_task()
+            assert task is not None
+            assert task["tier"] == "flash"
+            assert await service.process_doc(task)
+
+            parse_row = await db.fetchone("SELECT status, tier, page_range FROM parses WHERE id=?", (task["id"],))
+            assert parse_row == {"status": "done", "tier": "flash", "page_range": "1"}
+            assert await fts.search("Alice")
+            cached_files = list((tmp_path / "data" / "parsed").rglob("*.json"))
+            assert len(cached_files) == 1
+            cached_payload = json.loads(cached_files[0].read_text(encoding="utf-8"))
+            assert cached_payload["metadata"]["file_suffix"] == "tsv"
             assert cached_payload["extensions"]["mineru"]["tier"] == "flash"
         finally:
             await db.close()

@@ -56,7 +56,7 @@ api-server 必须提供能力发现接口，让 doclib 或客户端知道当前�
 
 因此，如果只以 `--tier flash` 启动裸 api-server，请求未指定 tier 时不应静默使用 `flash`。需要 `flash` 时调用方必须显式传 `tier=flash`；非 PDF/image 文件的批量归一规则见 [ADR-0024](../decisions/0024-file-type-tier-normalization.md)。
 
-`--no-flash` 会同时关闭 Flash 能力发现和执行。显式 Flash 请求以及 OFD/EPUB/Office/HTML/CSV 等必须归一到 Flash 的输入都会被拒绝。`--tier flash --no-flash` 因为没有可用能力而启动失败。
+`--no-flash` 会同时关闭 Flash 能力发现和执行。显式 Flash 请求以及 OFD/EPUB/Office/HTML/CSV/TSV 等必须归一到 Flash 的输入都会被拒绝。`--tier flash --no-flash` 因为没有可用能力而启动失败。
 
 `--no-advanced` 会同时关闭 Advanced 能力发现和执行：`GET /v1/tiers` 不再发布 `advanced`，显式 Advanced 请求返回该 tier 不可用。Advanced 不是启动 tier，因此它与 `--tier flash` 或 `--tier basic` 组合时不会改变原有能力；Standard 仍保留自身所需的共享模型。
 

@@ -94,7 +94,7 @@ def test_public_parser_rejects_epub_page_range(tmp_path: Path) -> None:
 
 @pytest.mark.parametrize(
     "suffix",
-    ["doc", "docx", "ppt", "pptx", "xls", "xlsx", "rtf", "csv", "epub", "html", "ofd", "odt", "ods", "odp"],
+    ["doc", "docx", "ppt", "pptx", "xls", "xlsx", "rtf", "csv", "tsv", "epub", "html", "ofd", "odt", "ods", "odp"],
 )
 def test_non_pdf_analyze_rejects_non_empty_page_index_map(suffix: str) -> None:
     """验证所有非 PDF Analyze 分支拒绝伪造 partial page mapping。"""
@@ -104,7 +104,7 @@ def test_non_pdf_analyze_rejects_non_empty_page_index_map(suffix: str) -> None:
 
 @pytest.mark.parametrize(
     "suffix",
-    ["doc", "docx", "ppt", "pptx", "xls", "xlsx", "rtf", "csv", "epub", "html", "ofd", "odt", "ods", "odp"],
+    ["doc", "docx", "ppt", "pptx", "xls", "xlsx", "rtf", "csv", "tsv", "epub", "html", "ofd", "odt", "ods", "odp"],
 )
 def test_non_pdf_public_parser_rejects_page_range(
     monkeypatch: pytest.MonkeyPatch,

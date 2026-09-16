@@ -281,7 +281,7 @@ Dimension 只允许低基数字段:
 | `caller` | `agent` / `user` / `http_client` / `sdk` / `web` / `app` / `system` / `unknown` |
 | `tier` | `default` / `flash` / `basic` / `standard` / `advanced` / `basic(default)` / `standard(default)` / `advanced(default)` / `unknown` |
 | `status` | `succeeded` / `failed` / `partial` / `canceled` |
-| `input_type` | `pdf` / `csv` / `rtf` / `docx` / `pptx` / `xlsx` / `odt` / `ods` / `odp` / `html` / `other` / `unknown` |
+| `input_type` | `pdf` / `csv` / `tsv` / `rtf` / `docx` / `pptx` / `xlsx` / `odt` / `ods` / `odp` / `html` / `other` / `unknown` |
 | `output_format` | `middle_json` / `markdown` / `structured_content` / `other` |
 | `stage` | `enqueue` / `cache_lookup` / `parse_server_call` / `parsing` / `merge_pages` / `persist` / `index` / `unknown` |
 | `error_code` | 稳定错误码枚举，不允许 exception message |

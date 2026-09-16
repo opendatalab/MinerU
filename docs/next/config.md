@@ -116,7 +116,7 @@ MinerU VLM 的跨页单元格检测保持关闭。任一功能启用时，`api_k
 配置必须服务两个产品原则：
 
 - 隐私优先：任何配置都不能导致静默上传文档。
-- 质量优先：PDF/image 主动阅读未指定 tier 时使用默认选择策略，不能静默降级到 `flash`；OFD/EPUB/Office/HTML/CSV 按实际能力归一为 `flash`；其它 text 直接读取。
+- 质量优先：PDF/image 主动阅读未指定 tier 时使用默认选择策略，不能静默降级到 `flash`；OFD/EPUB/Office/HTML/CSV/TSV 按实际能力归一为 `flash`；其它 text 直接读取。
 
 全局日志级别由 `log.level` 控制，默认 `info`，可选 `trace`、`debug`、`info`、
 `warning`、`error`、`critical`。环境变量 `MINERU_LOG_LEVEL` 可覆盖 YAML；
@@ -346,7 +346,7 @@ mineru config parsing-rules add "*/合同/*" --tier standard --remote
 - 对 PDF/image，规则必须显式指定 remote，才允许上传远端。
 - 对 PDF/image，规则命中的 tier 必须经过能力检查。
 - 对 PDF/image，规则未指定 tier 时按 `standard` -> `basic` -> `flash` 选择，并只记录实际使用的实体 tier。
-- 对 OFD/EPUB/Office/HTML/CSV，parsing-rule 的 tier、page_range 和 remote 不生效，实际按 `flash` 整本解析并记录；其它 text 只入库和索引，不创建 parse row。
+- 对 OFD/EPUB/Office/HTML/CSV/TSV，parsing-rule 的 tier、page_range 和 remote 不生效，实际按 `flash` 整本解析并记录；其它 text 只入库和索引，不创建 parse row。
 - 完整归一规则见 [ADR-0024](decisions/0024-file-type-tier-normalization.md)。
 
 ### 8.3 Exclude

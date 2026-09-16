@@ -77,7 +77,7 @@
 | `hybrid-http-client` | 通过 HTTP 调用 Hybrid 解析服务的客户端 backend |
 | `flash` | 快速 CPU 解析实现，同时是 `flash` tier 的默认实现；仅作兼容保留，不在公开 backend 选择项中 |
 
-历史名称 `pipeline`、`vlm-engine`、`vlm-auto-engine`、`vlm-http-client`、`hybrid-auto-engine` 作为兼容别名保留，会被归一化映射到上述 canonical backend。Office / HTML / OFD / CSV 等是按 `file_suffix` 路由的文件类型，不是 backend。
+历史名称 `pipeline`、`vlm-engine`、`vlm-auto-engine`、`vlm-http-client`、`hybrid-auto-engine` 作为兼容别名保留，会被归一化映射到上述 canonical backend。Office / HTML / OFD / CSV / TSV 等是按 `file_suffix` 路由的文件类型，不是 backend。
 
 规范:
 
@@ -110,7 +110,7 @@
 |--------|------|
 | `parse()` | Tool SDK 的便捷函数 |
 | `DocumentParser` | Parser 抽象接口 |
-| `MinerUParser` | 统一解析器，支持 PDF、OFD、EPUB、HTML、图片、CSV、RTF、OOXML 与 OpenDocument |
+| `MinerUParser` | 统一解析器，支持 PDF、OFD、EPUB、HTML、图片、CSV/TSV、RTF、OOXML 与 OpenDocument |
 | `MinerUApiParser` | 通过 v1 API 委托解析的 parser |
 
 规范:

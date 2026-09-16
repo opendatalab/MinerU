@@ -1,5 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
-"""统一 PDF、EPUB、HTML、OFD、CSV 与 Office/RTF 文档分析的稳定公共门面。"""
+"""统一 PDF、EPUB、HTML、OFD、CSV/TSV 与 Office/RTF 文档分析的稳定公共门面。"""
 
 from __future__ import annotations
 
@@ -57,7 +57,7 @@ def doc_analyze(
             image_analysis=image_analysis,
             vlm_config=vlm_config,
         )
-    elif file_suffix == "csv":
+    elif file_suffix in ("csv", "tsv"):
         from .analysis.csv import analyze_csv
 
         result = analyze_csv(file_bytes)

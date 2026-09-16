@@ -1092,6 +1092,7 @@ def test_doc_analyze_effort_annotation_exposes_only_supported_values() -> None:
         "xlsx",
         "rtf",
         "csv",
+        "tsv",
         "epub",
         "html",
         "ofd",
