@@ -410,6 +410,84 @@ def test_span_fill_bridges_consecutive_internal_punctuation() -> None:
     assert span.content == "1..3"
 
 
+@pytest.mark.parametrize(
+    "probe",
+    [
+        pytest.param("至０．７３个", id="fullwidth"),
+        pytest.param("至0.73个", id="ascii"),
+    ],
+)
+def test_span_fill_bridges_unassigned_decimal_digits(probe: str) -> None:
+    """验证 CJK 邻居已归属时，几何未命中的小数数字仍被桥接回同一 Span。"""
+    span_bbox = (10.0, 10.0, 50.0, 20.0)
+    span = _fillable_span(span_bbox)
+    chars = [
+        _script_char(0, probe[0], height=6.0, center_y=15.0),
+        _script_char(1, probe[1], height=2.4, center_y=18.4),
+        _script_char(2, probe[2], height=2.4, center_y=18.4),
+        _script_char(3, probe[3], height=2.4, center_y=18.4),
+        _script_char(4, probe[4], height=2.4, center_y=18.4),
+        _script_char(5, probe[5], height=6.0, center_y=15.0),
+    ]
+    loose_bboxes = [
+        Bbox([12.0, 12.0, 15.0, 18.0]),
+        Bbox([15.0, 17.2, 16.0, 19.6]),
+        Bbox([16.0, 17.2, 17.0, 19.6]),
+        Bbox([17.0, 17.2, 18.0, 19.6]),
+        Bbox([18.0, 17.2, 19.0, 19.6]),
+        Bbox([19.0, 12.0, 22.0, 18.0]),
+    ]
+    for char, bbox in zip(chars, loose_bboxes, strict=True):
+        char["bbox"] = bbox
+    tight_bboxes = {index: tuple(float(value) for value in bbox) for index, bbox in enumerate(loose_bboxes)}
+
+    for char, bbox in zip(chars[1:5], loose_bboxes[1:5], strict=True):
+        assert not native.calculate_char_in_span(tuple(float(value) for value in bbox), span_bbox, str(char["char"]))
+    assert native.calculate_char_in_span(tuple(float(value) for value in loose_bboxes[0]), span_bbox, probe[0])
+    assert native.calculate_char_in_span(tuple(float(value) for value in loose_bboxes[5]), span_bbox, probe[5])
+
+    native.fill_char_in_spans(
+        [span],
+        chars,
+        10.0,
+        tight_bboxes=tight_bboxes,
+        origins={index: (float(index), 18.0) for index in range(len(chars))},
+        detect_scripts=False,
+    )
+
+    assert span.content == probe
+
+
+def test_span_fill_does_not_bridge_digit_between_different_spans() -> None:
+    """验证前后字符归属不同 Span 时不会吸收中间未命中的数字。"""
+    first = _fillable_span((10.0, 10.0, 20.0, 20.0))
+    second = _fillable_span((20.0, 10.0, 30.0, 20.0))
+    chars = [
+        _script_char(0, "A", height=6.0, center_y=15.0),
+        _script_char(1, "0", height=2.4, center_y=18.4),
+        _script_char(2, "B", height=6.0, center_y=15.0),
+    ]
+    loose_bboxes = [
+        Bbox([12.0, 12.0, 15.0, 18.0]),
+        Bbox([19.5, 17.2, 20.5, 19.6]),
+        Bbox([22.0, 12.0, 25.0, 18.0]),
+    ]
+    for char, bbox in zip(chars, loose_bboxes, strict=True):
+        char["bbox"] = bbox
+
+    native.fill_char_in_spans(
+        [first, second],
+        chars,
+        10.0,
+        tight_bboxes={index: tuple(float(value) for value in bbox) for index, bbox in enumerate(loose_bboxes)},
+        origins={index: (float(index), 18.0) for index in range(len(chars))},
+        detect_scripts=False,
+    )
+
+    assert first.content == "A"
+    assert second.content == "B"
+
+
 def test_span_fill_does_not_bridge_punctuation_between_different_spans() -> None:
     """验证前后字符归属不同 Span 时不会吸收中间标点。"""
     first = _fillable_span((10.0, 10.0, 20.0, 20.0))

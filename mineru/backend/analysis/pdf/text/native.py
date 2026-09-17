@@ -451,7 +451,15 @@ def _bbox_center_inside_span(char_bbox: BBox, span_bbox: BBox) -> bool:
     return span_bbox[0] <= char_center_x <= span_bbox[2] and span_bbox[1] <= char_center_y <= span_bbox[3]
 
 
-def _bridge_unassigned_punctuation(
+def _is_bridgeable_unassigned_char(char_text: str) -> bool:
+    """判断未分配单码点是否可作为同行数字或标点被桥接。"""
+    if len(char_text) != 1:
+        return False
+    category = unicodedata.category(char_text)
+    return category.startswith("P") or category == "Nd"
+
+
+def _bridge_unassigned_inline_glyphs(
     assigned_span_indices: list[int | None],
     all_chars: list[Char],
     previous_visible_owners: list[int | None],
@@ -459,14 +467,10 @@ def _bridge_unassigned_punctuation(
     span_bboxes: list[BBox],
     tight_bboxes: dict[int, BBox],
 ) -> None:
-    """用同行两侧一致的 Span 归属恢复中心仍在框内的未分配标点。"""
+    """用同行两侧一致的 Span 归属恢复中心仍在框内的未分配数字和标点。"""
     for char_position, char in enumerate(all_chars):
         char_text = str(char.get("char", ""))
-        if (
-            assigned_span_indices[char_position] is not None
-            or len(char_text) != 1
-            or not unicodedata.category(char_text).startswith("P")
-        ):
+        if assigned_span_indices[char_position] is not None or not _is_bridgeable_unassigned_char(char_text):
             continue
 
         previous_owner = previous_visible_owners[char_position]
@@ -553,7 +557,7 @@ def fill_char_in_spans(
         if not char_text.isspace() and assigned_span_indices[char_position] is not None:
             next_owner = assigned_span_indices[char_position]
 
-    _bridge_unassigned_punctuation(
+    _bridge_unassigned_inline_glyphs(
         assigned_span_indices,
         all_chars,
         previous_visible_owners,
