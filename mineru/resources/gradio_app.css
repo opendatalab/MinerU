@@ -46,6 +46,10 @@ body.dark .gradio-container {
     top: 12px;
     align-self: flex-start;
 }
+/* 有示例时控制列拉伸到与预览面板等高，由示例块吸收底部空白。 */
+.mineru-control-column:has(#mineru-kit-examples) {
+    align-self: stretch !important;
+}
 /* HF Space 不执行 Gradio 的自定义 CSS 前缀改写，以下规则必须独立压过
    Gradio 自带 scoped 样式（div.svelte-*、.head.svelte-*、.prose 等）。 */
 .mineru-tier-slider .head,
@@ -105,21 +109,41 @@ body.dark .gradio-container {
 .mineru-upload-file label[data-testid="block-label"] > span {
     margin-top: 2px;
 }
-#mineru-example-files label[data-testid="block-label"],
-#mineru-example-files [data-testid="block-label"],
-#mineru-example-files .label {
-    display: none !important;
-}
-.mineru-examples-panel,
-.block.mineru-examples-panel {
+/* 示例块：吸收控制列剩余高度，与状态卡一致的卡片外观；文件多时内部滚动。 */
+#mineru-kit-examples {
     width: 100% !important;
     max-width: none !important;
     margin-left: 0 !important;
     margin-right: 0 !important;
+    flex: 1 1 auto !important;
+    min-height: 0 !important;
+    display: flex !important;
+    flex-direction: column !important;
+    overflow: hidden !important;
+    border: 1px solid var(--mineru-panel-border) !important;
+    border-radius: 8px !important;
+    background: var(--mineru-status-panel-bg) !important;
+    padding: 12px !important;
 }
-#mineru-example-files {
-    width: 100% !important;
-    max-width: none !important;
+#mineru-kit-examples > .label {
+    flex: none;
+    margin: 0 0 8px !important;
+    font-size: 13px;
+    font-weight: 700;
+}
+#mineru-kit-examples .gallery {
+    flex: 1 1 auto;
+    min-height: 0;
+    align-content: flex-start;
+    overflow-y: auto;
+}
+#mineru-kit-examples .gallery-item {
+    font-size: 13px;
+    transition: border-color .15s ease, color .15s ease;
+}
+#mineru-kit-examples .gallery-item:hover {
+    border-color: var(--mineru-accent) !important;
+    color: var(--mineru-accent) !important;
 }
 .mineru-actions {
     flex-wrap: nowrap !important;
@@ -143,8 +167,9 @@ body.dark .gradio-container {
     min-width: 340px;
 }
 .mineru-preview-pane > .block {
-    height: calc(var(--mineru-preview-content-height) + 48px) !important;
-    max-height: calc(var(--mineru-preview-content-height) + 48px) !important;
+    /* +110px 与结果栏 min-height 对齐，扣除本栏 padding+border 共 26px。 */
+    height: calc(var(--mineru-preview-content-height) + 110px - 26px) !important;
+    max-height: calc(var(--mineru-preview-content-height) + 110px - 26px) !important;
     overflow: hidden !important;
     resize: none !important;
 }
@@ -153,8 +178,8 @@ body.dark .gradio-container {
     min-height: var(--mineru-preview-content-height);
 }
 .mineru-preview-pane > .block.mineru-office-preview-html {
-    height: calc(var(--mineru-preview-content-height) + 48px) !important;
-    max-height: calc(var(--mineru-preview-content-height) + 48px) !important;
+    height: calc(var(--mineru-preview-content-height) + 110px - 26px) !important;
+    max-height: calc(var(--mineru-preview-content-height) + 110px - 26px) !important;
     min-height: var(--mineru-preview-content-height) !important;
     overflow: hidden !important;
     resize: none !important;
@@ -366,5 +391,12 @@ body.dark .gradio-container {
     }
     .status-steps-list {
         grid-template-columns: 1fr;
+    }
+    /* 纵向堆叠时保持自然高度，避免示例块拉伸整页。 */
+    #mineru-kit-examples {
+        flex: 0 0 auto !important;
+    }
+    #mineru-kit-examples .gallery {
+        max-height: 240px;
     }
 }
