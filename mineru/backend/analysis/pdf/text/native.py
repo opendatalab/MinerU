@@ -851,17 +851,39 @@ def _axis_overlap_ratio(first_bbox: Any, second_bbox: Any, start_index: int, end
     return overlap / denominator
 
 
+def _are_vertically_stacked_or_adjacent(first_bbox: Any, second_bbox: Any) -> bool:
+    """判断两个字符框是否竖直堆叠，或仅隔着不超过较短高度一半的间隙。"""
+    try:
+        first_y0 = float(first_bbox[1])
+        first_y1 = float(first_bbox[3])
+        second_y0 = float(second_bbox[1])
+        second_y1 = float(second_bbox[3])
+    except (IndexError, TypeError, ValueError):
+        return False
+    first_height = first_y1 - first_y0
+    second_height = second_y1 - second_y0
+    if first_height <= 0 or second_height <= 0:
+        return False
+    gap = max(0.0, max(first_y0, second_y0) - min(first_y1, second_y1))
+    return gap <= SPACING_DIACRITIC_MIN_OVERLAP_RATIO * min(first_height, second_height)
+
+
 def _compose_overlapping_spacing_diacritic(base: Char, modifier: Char) -> Char | None:
     """把与字母 bbox 重叠的 spacing diacritic 规范化为单一 NFC 字符。"""
     base_text = str(base.get("char", ""))
     modifier_text = str(modifier.get("char", ""))
     combining = _SPACING_DIACRITIC_TO_COMBINING.get(modifier_text)
+    base_bbox = base.get("bbox")
+    modifier_bbox = modifier.get("bbox")
     if (
         len(base_text) != 1
         or combining is None
         or not unicodedata.category(base_text).startswith("L")
-        or _axis_overlap_ratio(base.get("bbox"), modifier.get("bbox"), 0, 2) < SPACING_DIACRITIC_MIN_OVERLAP_RATIO
-        or _axis_overlap_ratio(base.get("bbox"), modifier.get("bbox"), 1, 3) < SPACING_DIACRITIC_MIN_OVERLAP_RATIO
+        or _axis_overlap_ratio(base_bbox, modifier_bbox, 0, 2) < SPACING_DIACRITIC_MIN_OVERLAP_RATIO
+        or (
+            _axis_overlap_ratio(base_bbox, modifier_bbox, 1, 3) < SPACING_DIACRITIC_MIN_OVERLAP_RATIO
+            and not _are_vertically_stacked_or_adjacent(base_bbox, modifier_bbox)
+        )
     ):
         return None
     composed = unicodedata.normalize("NFC", f"{base_text}{combining}")

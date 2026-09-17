@@ -218,6 +218,13 @@ def _script_char(
     }
 
 
+def _script_char_with_bbox(index: int, text: str, bbox: list[float]) -> Char:
+    """构造指定 bbox 的最小字符，用于 spacing diacritic 几何合成测试。"""
+    char = _script_char(index, text, height=10.0, center_y=10.0)
+    char["bbox"] = Bbox([float(value) for value in bbox])
+    return char
+
+
 def _rotated_char(index: int, text: str, rotation_degrees: float) -> Char:
     """构造带指定字符方向的最小字符，用于 span 回填角度测试。"""
     char = _script_char(index, text, height=10.0, center_y=10.0)
@@ -699,6 +706,48 @@ def test_non_overlapping_spacing_ogonek_remains_literal() -> None:
     merged = native._merge_overlapping_spacing_diacritics(chars)
 
     assert [char["char"] for char in merged] == ["˛", "e"]
+
+
+def test_stacked_spacing_acute_composes_to_precomposed_e() -> None:
+    """验证水平高重叠、竖直仅轻重叠的 stacking acute 合成为 é。"""
+    base = _script_char_with_bbox(0, "e", [10.0, 10.0, 18.0, 20.0])
+    acute = _script_char_with_bbox(1, "´", [11.0, 6.0, 17.0, 11.0])
+
+    composed = native._compose_overlapping_spacing_diacritic(base, acute)
+    merged = native._merge_overlapping_spacing_diacritics([base, acute])
+
+    assert composed is not None
+    assert composed["char"] == "é"
+    assert [char["char"] for char in merged] == ["é"]
+    assert _render_chars([base, acute]) == "é"
+
+
+@pytest.mark.parametrize(
+    ("modifier", "expected"),
+    [
+        pytest.param("`", "è", id="grave"),
+        pytest.param("ˆ", "ê", id="circumflex"),
+    ],
+)
+def test_stacked_spacing_grave_and_circumflex_compose(modifier: str, expected: str) -> None:
+    """验证 stacked grave / circumflex 在 Y 重叠不足 0.5 时仍能 NFC 合成。"""
+    base = _script_char_with_bbox(0, "e", [10.0, 10.0, 18.0, 20.0])
+    mark = _script_char_with_bbox(1, modifier, [11.0, 6.0, 17.0, 11.0])
+
+    composed = native._compose_overlapping_spacing_diacritic(base, mark)
+
+    assert composed is not None
+    assert composed["char"] == expected
+
+
+def test_far_above_spacing_acute_does_not_compose() -> None:
+    """验证水平重叠但竖直间隙过大的 spacing acute 保持字面量。"""
+    base = _script_char_with_bbox(0, "e", [10.0, 10.0, 18.0, 20.0])
+    acute = _script_char_with_bbox(1, "´", [11.0, 0.0, 17.0, 4.0])
+
+    assert native._compose_overlapping_spacing_diacritic(base, acute) is None
+    merged = native._merge_overlapping_spacing_diacritics([base, acute])
+    assert [char["char"] for char in merged] == ["e", "´"]
 
 
 def test_tight_geometry_keeps_same_size_loose_base_character_body() -> None:
