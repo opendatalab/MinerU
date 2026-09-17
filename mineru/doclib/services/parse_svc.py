@@ -28,7 +28,7 @@ from ...filetypes import (
 )
 from ...parser.api_client import _APITransportError, _V1APIError
 from ...parser.base import ParseResult
-from ..core.middle_json import read_cached_middle_json
+from ...backend.postprocess.legacy_middle_json import read_legacy_middle_json
 from ...parser.page_range import (
     expand_page_range,
     format_page_range as _page_numbers_to_range_str,
@@ -1538,7 +1538,7 @@ def _json_batch_is_readable(data_dir: str, sha256: str, tier: Tier, batch: Parse
     json_path = parse_batch_json_path(data_dir, sha256, tier, batch["page_range"], batch["done_at"])
     try:
         with open(json_path, encoding="utf-8") as stream:
-            result = read_cached_middle_json(json.load(stream))
+            result = read_legacy_middle_json(json.load(stream))
         available = {page.page_idx + 1 for page in result.pages}
         return bool(available) and parse_page_range_set(batch["page_range"]) <= available
     except (OSError, ValueError, TypeError):
@@ -1569,7 +1569,7 @@ def load_pages_from_done_batches(
         try:
             with open(fpath, encoding="utf-8") as f:
                 data = json.load(f)
-            parse_result = read_cached_middle_json(data)
+            parse_result = read_legacy_middle_json(data)
             for page in parse_result.pages:
                 pages_by_page_idx[page.page_idx] = page
         except (OSError, ValueError, TypeError):

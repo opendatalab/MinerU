@@ -14,7 +14,7 @@ from typing import Any, cast
 from ...parser.page_range import format_page_range
 from ...types import Tier
 from ..core.db import DatabaseManager
-from ..core.middle_json import read_cached_middle_json
+from ...backend.postprocess.legacy_middle_json import read_legacy_middle_json
 from ..rows import ParseBatchRow, ParseGroupRow, ParseRow
 from ..services.parse_svc import parse_batch_json_path, parse_page_range_set
 from ..types import PARSE_STATUS_DONE, PARSE_STATUS_SUPERSEDED
@@ -24,7 +24,7 @@ logger = logging.getLogger("mineru.compaction")
 
 def _normalize_batch_pages(batch_payload: dict[str, Any]) -> list[dict[str, Any]]:
     """读取当前和受支持的历史批次，仅在内存中统一页面结构。"""
-    return [page.to_dict() for page in read_cached_middle_json(batch_payload).pages]
+    return [page.to_dict() for page in read_legacy_middle_json(batch_payload).pages]
 
 
 class Compaction:
@@ -150,7 +150,7 @@ class Compaction:
             try:
                 with open(fpath, encoding="utf-8") as f:
                     batch_payload = json.load(f)
-                middle_json = read_cached_middle_json(batch_payload)
+                middle_json = read_legacy_middle_json(batch_payload)
                 batch_pages = [page.to_dict() for page in middle_json.pages]
             except Exception:
                 return None

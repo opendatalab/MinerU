@@ -7,7 +7,7 @@ import json
 import pytest
 from docvortex.schema import MiddleJson
 
-from mineru.doclib.core.middle_json import read_cached_middle_json
+from mineru.backend.postprocess.legacy_middle_json import read_legacy_middle_json
 from mineru.parser import ParseResult
 
 
@@ -98,7 +98,7 @@ def test_legacy_345_roundtrip_preserves_origin_and_pages(wrapped: bool) -> None:
     """两个旧页面封装均可在缓存边界转换，输入和来源不受污染。"""
     payload = _legacy_345(wrapped=wrapped)
     before = deepcopy(payload)
-    result = read_cached_middle_json(payload)
+    result = read_legacy_middle_json(payload)
     assert payload == before
     assert [page.page_idx for page in result.pages] == [3, 5]
     assert result.is_full_document is False
@@ -106,7 +106,7 @@ def test_legacy_345_roundtrip_preserves_origin_and_pages(wrapped: bool) -> None:
     assert result.extensions["mineru"] == {"tier": "standard", "parse_mode": "ocr"}
     assert result.pages[0].blocks[0].content[0].content == "正文 "
     assert result.pages[0].blocks[0].content[1].content == "x^2"
-    assert read_cached_middle_json(result.to_dict()) == result
+    assert read_legacy_middle_json(result.to_dict()) == result
     assert MiddleJson.from_json(result.to_json()) == result
 
 
@@ -124,14 +124,14 @@ def test_v2_changes_only_envelope_without_postprocess(monkeypatch: pytest.Monkey
     monkeypatch.setattr(host_document, "build_middle_json", unexpected)
     payload = _legacy_v2()
     before = deepcopy(payload)
-    result = read_cached_middle_json(payload)
+    result = read_legacy_middle_json(payload)
     assert payload == before
     assert result.to_dict()["pages"] == payload["pages"]
     assert result.metadata.file_suffix == "pdf"
     assert result.metadata.producer.version == "3.4.4"
     assert result.extensions["application"] == payload["extensions"]["application"]
     assert result.extensions["mineru"] == {"tier": "standard", "parse_mode": "ocr"}
-    assert read_cached_middle_json(result.to_dict()).to_dict() == result.to_dict()
+    assert read_legacy_middle_json(result.to_dict()).to_dict() == result.to_dict()
     result.extensions["application"]["items"].append("changed")
     assert payload == before
 
@@ -150,7 +150,7 @@ def test_v2_changes_only_envelope_without_postprocess(monkeypatch: pytest.Monkey
 def test_missing_metadata_stays_unknown(updates: dict, expected: dict | None) -> None:
     """缺失或不可识别的记录保持未知，不制造当前版本或默认解析档位。"""
     payload = {"pdf_info": [], **updates}
-    result = read_cached_middle_json(payload)
+    result = read_legacy_middle_json(payload)
     assert result.metadata.producer.model_dump() == {"name": "mineru", "version": "unknown"}
     assert result.metadata.file_suffix == "pdf"
     assert result.extensions.get("mineru") == expected
@@ -161,7 +161,7 @@ def test_v2_missing_product_records_preserve_application_extensions() -> None:
     payload = _legacy_v2()
     for key in ("mineru_version", "effort", "parse_mode"):
         del payload[key]
-    document = read_cached_middle_json(payload)
+    document = read_legacy_middle_json(payload)
     assert document.metadata.producer.version == "unknown"
     assert document.extensions == payload["extensions"]
 
@@ -170,7 +170,7 @@ def test_consistent_existing_product_extension_is_preserved() -> None:
     """已有可靠产品扩展与旧字段一致时直接保留，不产生重复记录。"""
     payload = _legacy_v2()
     payload["extensions"]["mineru"] = {"tier": "standard", "parse_mode": "ocr"}
-    assert read_cached_middle_json(payload).extensions == payload["extensions"]
+    assert read_legacy_middle_json(payload).extensions == payload["extensions"]
 
 
 def test_345_conflicting_full_document_flag_fails() -> None:
@@ -178,7 +178,7 @@ def test_345_conflicting_full_document_flag_fails() -> None:
     payload = _legacy_345()
     payload["is_full_document"] = True
     with pytest.raises(ValueError, match="Conflicting legacy is_full_document"):
-        read_cached_middle_json(payload)
+        read_legacy_middle_json(payload)
 
 
 @pytest.mark.parametrize(
@@ -194,7 +194,7 @@ def test_conflicting_legacy_metadata_aliases_fail(updates: dict) -> None:
     payload = _legacy_345()
     payload.update(updates)
     with pytest.raises(ValueError, match="Conflicting legacy"):
-        read_cached_middle_json(payload)
+        read_legacy_middle_json(payload)
 
 
 @pytest.mark.parametrize(
@@ -215,7 +215,7 @@ def test_ambiguous_or_conflicting_v2_is_rejected(mutate: Callable[[dict], object
     payload = _legacy_v2()
     mutate(payload)
     with pytest.raises(ValueError):
-        read_cached_middle_json(payload)
+        read_legacy_middle_json(payload)
 
 
 @pytest.mark.parametrize(
@@ -231,7 +231,7 @@ def test_ambiguous_or_conflicting_v2_is_rejected(mutate: Callable[[dict], object
 def test_mixed_pages_are_not_silently_emptied(payload: dict) -> None:
     """拒绝把当前 blocks 误当作旧页面后悄悄丢弃正文。"""
     with pytest.raises(ValueError):
-        read_cached_middle_json(payload)
+        read_legacy_middle_json(payload)
 
 
 @pytest.mark.parametrize("indices", [[3, 3], [5, 3], [-1, 3], [True, 3]])
@@ -241,14 +241,14 @@ def test_invalid_legacy_page_indices_fail(indices: list) -> None:
     for page, index in zip(payload["pdf_info"], indices):
         page["page_idx"] = index
     with pytest.raises(ValueError):
-        read_cached_middle_json(payload)
+        read_legacy_middle_json(payload)
 
 
 @pytest.mark.parametrize("family", ["345", "v1", "v2"])
 def test_compatibility_is_not_exposed_by_generic_readers(family: str) -> None:
     """Doclib 兼容成功不改变通用 ParseResult 或 DocVortex 的严格边界。"""
     payload = _legacy_v2() if family == "v2" else _legacy_345(wrapped=family == "v1")
-    assert read_cached_middle_json(payload).pages
+    assert read_legacy_middle_json(payload).pages
     for reader in [ParseResult.from_dict, MiddleJson.from_dict]:
         with pytest.raises(ValueError):
             reader(payload)
