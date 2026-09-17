@@ -115,18 +115,21 @@ _KIT_MENU_CSS = """
 .mineru-kit-download-trigger,
 .mineru-kit-download-trigger .html-container,
 .mineru-kit-download-trigger .prose {
-    min-width: 0 !important; padding: 0 !important; margin: 0; line-height: 0; overflow: visible;
+    min-width: 0 !important; padding: 0 !important; margin: 0; line-height: 0 !important; overflow: visible;
 }
 .mineru-kit-download-trigger { min-height: 32px; border: 0; background: transparent; }
+/* Gradio 主题对 .gradio-style button 的原生按钮样式优先级更高（HF Space 上
+   无前缀改写时），此处声明须带 !important 才能稳定生效；hover 变色同理。 */
 .mineru-kit-download-trigger .mineru-kit-download-icon {
     display: flex; align-items: center; justify-content: center; gap: 6px;
-    width: 100%; height: 32px; margin: 0; padding: 6px 8px; border: 0; border-radius: 6px;
-    font-size: 14px; line-height: 20px; white-space: nowrap;
-    color: var(--body-text-color, #1f2937); background: transparent; cursor: pointer;
+    width: 100% !important; height: 32px !important; margin: 0; padding: 6px 8px !important;
+    border: 0; border-radius: 6px;
+    font-size: 14px !important; line-height: 20px; white-space: nowrap;
+    color: var(--body-text-color, #1f2937) !important; background: transparent !important; cursor: pointer;
 }
 .mineru-kit-download-icon svg { width: 20px; height: 20px; margin: 0; flex: 0 0 20px; }
 .mineru-kit-download-menu:hover .mineru-kit-download-icon,
-.mineru-kit-download-icon:focus-visible { background: var(--background-fill-secondary, #f3f4f6); }
+.mineru-kit-download-icon:focus-visible { background: var(--background-fill-secondary, #f3f4f6) !important; }
 .mineru-kit-download-icon:focus-visible { outline: 2px solid var(--mineru-accent, #f97316); outline-offset: 2px; }
 /* Gradio 会在页面端给自定义 CSS 加 .gradio-container-<ver> .contain 前缀抬升
    优先级，但该改写在部分环境（如 HF Space 实测）不会执行，此时类选择器
@@ -149,7 +152,7 @@ _KIT_MENU_CSS = """
 }
 /* 填满图标与浮层之间的间隙，避免鼠标移向下载项时菜单提前关闭。 */
 .mineru-kit-download-options::before { content: ""; position: absolute; left: 0; right: 0; top: -7px; height: 7px; }
-.mineru-kit-download-options :is(button, a) {
+#mineru-kit-download-options :is(button, a) {
     justify-content: flex-start; width: 100%; min-height: 34px; padding: 6px 10px; white-space: nowrap;
     border: 0; border-radius: 6px; background: transparent; box-shadow: none; text-align: left; gap: 8px;
 }
@@ -159,7 +162,7 @@ _KIT_MENU_CSS = """
     -webkit-mask: var(--mineru-download-format-icon) center / contain no-repeat;
     mask: var(--mineru-download-format-icon) center / contain no-repeat;
 }
-.mineru-kit-download-options :is(button, a):hover { background: var(--background-fill-secondary, #f3f4f6); }
+#mineru-kit-download-options :is(button, a):hover { background: var(--background-fill-secondary, #f3f4f6); }
 .mineru-kit-empty-preview { min-height: 160px; display: grid; place-items: center; opacity: .65; }
 /* Gradio 6.8 会按逗号拆分并重写选择器，PDF/OFD 使用独立选择器避免破坏 :has。 */
 /* PDF/OFD 直接贴合面板边框，独立预览不再沿用旧组件的标签留白与额外高度。 */

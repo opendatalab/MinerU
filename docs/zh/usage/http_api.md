@@ -12,7 +12,7 @@ mineru-kit api-server --host 127.0.0.1 --port 8000 --tier standard
 
 包含超时、响应校验、有界轮询、退出码和凭据隔离的完整闭环，以仓库中单一经过测试的脚本维护：
 
-> [`scripts/http_api_example.sh`](https://github.com/opendatalab/MinerU/blob/next/scripts/http_api_example.sh)
+> [`scripts/http_api_example.sh`](https://github.com/opendatalab/MinerU/blob/master/scripts/http_api_example.sh)
 
 ```bash
 export MINERU_API_URL=http://127.0.0.1:8000
