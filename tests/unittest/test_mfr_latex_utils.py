@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+# 可选依赖检测必须先于模型模块导入。
+# ruff: noqa: E402
+
 import pytest
-import torch
 import numpy as np
 from types import SimpleNamespace
+
+torch = pytest.importorskip("torch")
+pytest.importorskip("transformers", minversion="5.10.1")
 
 from mineru.model.mfr import utils as mfr_utils
 from mineru.model.mfr.pp_formulanet.processors import UniMERNetDecode

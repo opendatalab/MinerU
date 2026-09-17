@@ -1,12 +1,16 @@
 """验证 det 的 FP32 约束独立于共享 OCR 精度和设备路由。"""
 
+# 可选依赖检测必须先于模型模块导入。
+# ruff: noqa: E402
+
 from argparse import Namespace
 from typing import Any, Self
 from unittest.mock import Mock
 
 import numpy as np
 import pytest
-import torch
+
+torch = pytest.importorskip("torch")
 
 from mineru.model._internal.pytorchocr import base_ocr_v20
 from mineru.model._internal.pytorchocr.infer import pytorchocr_utility
