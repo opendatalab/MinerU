@@ -11,6 +11,11 @@ import pytest
 # 否则中文 locale 机器上既有的英文输出断言会失败。i18n 专项测试自行 monkeypatch 覆盖。
 os.environ["MINERU_LANG"] = "en"
 
+# GitHub Actions 设置 GITHUB_ACTIONS=true 会使 typer/rich 强制彩色输出,
+# OptionHighlighter 会把 "--option" 拆成多段 ANSI 样式,破坏测试的子串断言;
+# 在导入 typer 前统一关闭终端强制模式,保证跨环境输出确定。
+os.environ.setdefault("_TYPER_FORCE_DISABLE_TERMINAL", "1")
+
 
 @pytest.fixture(autouse=True)
 def pin_cli_language() -> None:

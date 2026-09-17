@@ -2924,6 +2924,7 @@ def test_api_server_preflight_rejects_missing_tier_dependency(monkeypatch: pytes
         return object()
 
     monkeypatch.setattr(importlib, "import_module", fake_import_module)
+    monkeypatch.setattr(api_server.mineru_config.model, "small_backend", "torch")
     monkeypatch.setattr(parser_tier.importlib_metadata, "packages_distributions", lambda: {"mineru": ["mineru"]})
 
     with pytest.raises(api_server.ParseServerStartupError, match="tier 'basic'.*torch.*mineru\\[torch\\]"):

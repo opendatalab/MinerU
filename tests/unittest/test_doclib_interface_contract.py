@@ -180,16 +180,26 @@ def test_list_methods_expose_consistent_pagination_contract() -> None:
         assert "offset" in signature.parameters, method_name
 
 
+def _iter_effective_routes(app: Any) -> Any:
+    """FastAPI >=0.141 以惰性 _IncludedRouter 挂载 include_router，展开后再做契约断言。"""
+    for route in app.routes:
+        included = getattr(route, "original_router", None)
+        if included is not None:
+            yield from included.routes
+        else:
+            yield route
+
+
 def test_interface_app_uses_doclib_server_routes(tmp_path) -> None:
     cfg = PatchedConfig(doclib={"log": {"dir": str(tmp_path / "logs")}})
 
     app = create_app(cfg)
-    route_names = {getattr(route, "name", "") for route in app.routes}
+    route_names = {getattr(route, "name", "") for route in _iter_effective_routes(app)}
 
     for method_name in AsyncDoclibInterface.__abstractmethods__:
         assert method_name in route_names
 
-    route_paths = {getattr(route, "path", "") for route in app.routes}
+    route_paths = {getattr(route, "path", "") for route in _iter_effective_routes(app)}
     assert "/api/v1/server/status" in route_paths
     assert "/api/v1/server/shutdown" in route_paths
     assert "/api/v1/telemetry/status" in route_paths
