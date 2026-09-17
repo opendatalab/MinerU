@@ -71,6 +71,10 @@ MESSAGES: dict[str, tuple[str, str]] = {
         "Could not preview this OFD file. You can still try converting it.",
         "OFD 预览生成失败，仍可尝试解析该文件。",
     ),
+    "html_preview_failed": (
+        "Could not preview this HTML file. You can still try converting it.",
+        "HTML 预览生成失败，仍可尝试解析该文件。",
+    ),
     "unsupported_preview": ("No source preview for this format", "该格式暂无源文档预览"),
     "result_ready": ("Results are ready", "结果已生成"),
     "markdown": ("Markdown", "Markdown"),

@@ -125,3 +125,51 @@ def test_helper_module_has_no_runtime_side_effect() -> None:
     )
 
     assert json.loads(completed.stdout) == [0]
+
+
+def test_parser_entry_configures_before_docvortex(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    """验证直接实例化 MinerUParser 时，日志配置先于 prepare 阶段的 docvortex 调用。"""
+    import mineru.parser.mineru_parser as mineru_parser_module
+
+    calls: list[str] = []
+    monkeypatch.setattr(
+        mineru_parser_module,
+        "configure_global_log_level",
+        lambda: calls.append("configure"),
+    )
+
+    def fake_read_source_properties(*args: object, **kwargs: object) -> None:
+        calls.append("docvortex")
+
+    monkeypatch.setattr(mineru_parser_module, "read_source_properties", fake_read_source_properties)
+
+    def stop_after_prepare(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("stop-after-prepare")
+
+    monkeypatch.setattr(mineru_parser_module, "doc_analyze", stop_after_prepare)
+
+    source = tmp_path / "sample.csv"
+    source.write_text("a,b\n1,2\n", encoding="utf-8")
+    parser = mineru_parser_module.MinerUParser()
+
+    with pytest.raises(RuntimeError, match="stop-after-prepare"):
+        parser.parse(source)
+
+    assert calls == ["configure", "docvortex"]
+
+
+def test_render_entry_configures_global_log_level(monkeypatch: pytest.MonkeyPatch) -> None:
+    """验证 render 统一入口在任何渲染分发前完成日志配置。"""
+    import mineru.render.api as render_api_module
+
+    calls: list[str] = []
+    monkeypatch.setattr(
+        render_api_module,
+        "configure_global_log_level",
+        lambda: calls.append("configure"),
+    )
+
+    with pytest.raises(TypeError):
+        render_api_module.render(object(), render_api_module.RenderFormat.MARKDOWN)
+
+    assert calls == ["configure"]

@@ -6,6 +6,7 @@ from __future__ import annotations
 from typing import Any, Literal, overload
 
 from ..types import MiddleJson
+from ..utils.logger import configure_global_log_level
 
 from .contracts import (
     ContentListRenderOptions,
@@ -138,6 +139,7 @@ def render(
     options: RenderOptions | None = None,
 ) -> RenderOutput:
     """按严格目标格式和对应选项把 MiddleJson 渲染为原生结果。"""
+    configure_global_log_level()
     if not isinstance(middle_json, MiddleJson):
         raise TypeError("render expects a MiddleJson instance")
     if not isinstance(output_format, RenderFormat):

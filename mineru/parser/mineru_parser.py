@@ -18,6 +18,7 @@ from ..errors import InvalidRequestError
 from ..filetypes import IMAGE_EXTENSIONS, PAGE_RANGE_PARSE_EXTENSIONS
 from ..integrations.docvortex import read_source_properties
 from ..utils.async_utils import run_sync
+from ..utils.logger import configure_global_log_level
 from ..types import FILE_SUFFIXES, FileSuffix, MiddleJson, ModelJson, PageInfo, Tier
 from .base import DocumentParser, ParseResult
 from .tier import effort_for_tier
@@ -71,6 +72,7 @@ class MinerUParser(DocumentParser):
         source_context: HtmlSourceContext | None = None,
     ) -> ParseResult:
         """解析本地路径，并允许内部调用方覆盖 HTML 原始来源上下文。"""
+        configure_global_log_level()
         path = Path(path)
         if not path.exists():
             raise FileNotFoundError(path)
@@ -93,6 +95,7 @@ class MinerUParser(DocumentParser):
         source_context: HtmlSourceContext | None = None,
     ) -> ParseResult:
         """异步解析本地路径，并保留 HTML 下载来源或本地资源根。"""
+        configure_global_log_level()
         path = Path(path)
         if not path.exists():
             raise FileNotFoundError(path)

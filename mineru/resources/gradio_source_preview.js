@@ -1,6 +1,6 @@
 (action, ...args) => {
     // 浏览器会话保存最新请求标识，清除和重复上传同一文件也会使旧请求失效。
-    const key = "__mineruOfdPreview";
+    const key = "__mineruSourcePreview";
     if (action === "begin" || action === "clear") {
         const file = action === "clear" ? null : args[0];
         const ticket = {id: (window[key] || 0) + 1, path: file?.path || ""};
