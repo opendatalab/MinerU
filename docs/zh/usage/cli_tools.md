@@ -56,7 +56,7 @@ mineru-kit parse report.pdf -o report.md --tier standard
 mineru-kit parse ./documents -o ./output --format zip
 ```
 
-`mineru-kit parse` 不使用文档库数据库或缓存，支持本地解析和显式 V1 远程解析。tier、backend、页范围和输出参数以 `mineru-kit parse --help` 为准。
+`mineru-kit parse` 不使用文档库数据库或缓存，支持本地解析和显式 V1 远程解析。tier、页范围和输出参数以 `mineru-kit parse --help` 为准。
 
 ### V1 API Server
 

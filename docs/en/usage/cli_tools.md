@@ -56,7 +56,7 @@ mineru-kit parse report.pdf -o report.md --tier standard
 mineru-kit parse ./documents -o ./output --format zip
 ```
 
-`mineru-kit parse` does not use the document-library database or cache. It supports local parsing and explicit V1 remote parsing; see `mineru-kit parse --help` for tier, backend, page-range, and output options.
+`mineru-kit parse` does not use the document-library database or cache. It supports local parsing and explicit V1 remote parsing; see `mineru-kit parse --help` for tier, page-range, and output options.
 
 ### V1 API server
 

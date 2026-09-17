@@ -64,7 +64,7 @@ ID:
 | `mineru/doclib/core/fts.py`、`services/search_svc.py` | FTS 已存 tier；搜索结果已返回来源 tier，并支持 `tier`、`min_tier`、`file_type` 过滤。 |
 | `mineru/doclib/locators.py` | 已有 `short_id` 相关 block/page/char cursor helper；P0 引用模型收敛为稳定 page/block locator。 |
 | `mineru/parser/base.py` | `ParseResult.from_dict()` / `from_json()` 已实现；`from_dict()` 支持 schema 2.0 与 `pdf_info` / schema 1.0 legacy 兼容分支。 |
-| `mineru/parser/__init__.py` | Tool SDK `parse()` / `parse_async()` 已有 `tier` 参数；无 `backend` 参数，backend 覆盖仅在 kit 层。 |
+| `mineru/parser/__init__.py` | Tool SDK `parse()` / `parse_async()` 已有 `tier` 参数；任何入口都不接受 `backend` 入参。 |
 | `mineru/types.py` | `Tier`、`TIER_ORDER` 与 Middle JSON typed dataclass 在此定义；尚无 Middle JSON normalize / validator。 |
 | `mineru/errors.py` | 已有 `MineruError`、`engine_error` 映射和错误 envelope helper，但部分新 code 仍未补齐。 |
 | `mineru/cli/main.py` | `mineru parse/scan/watch/search/find/list/show/server/config/invalidate/forget/cleanup/usage/telemetry` 已按 NEXT 入口组织。 |
@@ -124,7 +124,7 @@ M1 和 M2 的部分测试任务可以并行，但 `ParseResult.from_dict()`、JS
 | M3-003 | 已实现需锁定 | remote 失败 fallback local 已有实现；补 `via=local` 和 tier 能力测试。 |
 | M3-004 | 已实现需锁定 | tier mismatch 不降级已有实现；补错误 code / message 边界测试。 |
 | M4-001 | 部分实现 | CLI 已调用 doclib read-time render；JSON/HTML/Content List 输出边界仍需对齐。 |
-| M4-002 | 已实现需锁定 | Tool SDK `parse()` / `parse_async()` 已有 `tier` 参数（无 `backend` 参数；backend 覆盖仅在 kit 层）；补 tier 边界测试。 |
+| M4-002 | 已实现需锁定 | Tool SDK `parse()` / `parse_async()` 已有 `tier` 参数（任何入口都不接受 `backend` 入参，kit 层 `--backend` 专家参数已于 2026-09 移除）；补 tier 边界测试。 |
 | M4-003 | 部分实现 | Doclib client 已有映射；API-backed parser 等仍需统一。 |
 | M4-004 | 部分实现 | api_server/client 已有基础，需按文档补差异测试。 |
 | M5-001a | 已实现需锁定 | doclib locator helper 已实现；补 Structured Content / marker 复用边界。 |
@@ -1066,7 +1066,7 @@ M1 和 M2 的部分测试任务可以并行，但 `ParseResult.from_dict()`、JS
 
 目标:
 
-让 Tool SDK 支持 `tier` 参数；`backend` 不进入 Tool SDK 签名，backend 覆盖仅在 kit 层（`mineru-kit parse --backend`）提供。
+让 Tool SDK 支持 `tier` 参数；`backend` 不进入 Tool SDK 签名。backend 由 tier 派生，仅作为内部实现细节（2026-09 修订：kit 层的 `--backend` 专家参数已移除，下文涉及 `backend` 入参的步骤与完成边界作废）。
 
 依赖:
 

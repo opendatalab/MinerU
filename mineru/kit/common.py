@@ -99,17 +99,6 @@ def resolve_batch_output_paths(paths: list[Path], output: Path, format: KitForma
     return destinations
 
 
-def effective_local_tier_and_backend(tier: Tier | None, backend: str | None) -> tuple[Tier, str]:
-    from ..parser.tier import backend_for_tier, resolve_tier_and_backend
-
-    if tier is None and backend is None:
-        return "standard", backend_for_tier("standard")
-    resolved_tier, resolved_backend = resolve_tier_and_backend(tier=tier, backend=backend)
-    if tier is None and backend is None:
-        resolved_backend = backend_for_tier("standard")
-    return resolved_tier, resolved_backend
-
-
 def build_remote_api_url(remote: bool, remote_url: str | None) -> str | None:
     if remote and remote_url:
         raise ValueError(t("--remote and --remote-url are mutually exclusive."))

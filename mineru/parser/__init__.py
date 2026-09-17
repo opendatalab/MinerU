@@ -12,12 +12,11 @@ from ..types import Tier
 from .api_client import ApiJobStatus, MinerUApiParser
 from .base import MIDDLE_JSON_SCHEMA_VERSION, DocumentParser, ParseResult
 from .mineru_parser import MinerUParser
-from .tier import PARSER_BACKENDS, backend_for_tier
+from .tier import backend_for_tier
 
 __all__ = [
     "ApiJobStatus",
     "backend_for_tier",
-    "PARSER_BACKENDS",
     "DocumentParser",
     "MinerUApiParser",
     "MinerUParser",
