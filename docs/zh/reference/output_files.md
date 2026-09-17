@@ -47,7 +47,7 @@ pdf_bytes = render(result.middle_json, RenderFormat.PDF,
 
 `pdf_title_layout_expanded` 记录扩展；`pdf_layout_font_exception` 记录局部正文较大或空间不足的调整原因、参考/目标/最终字号、原框和绘制框。原始几何重叠时不扩大占用并报告 `pdf_title_geometry_conflict`；原始间距过紧、没有安全扩展区域时报告 `pdf_title_clearance_unavailable`。字号和绘制区域仅存在于渲染上下文，不修改 MiddleJson 或素材，不新增接口参数。
 
-使用 `docvortex>=0.4.7,<1`（MinerU 4.0 当前声明的最低依赖）。DocVortex 在生产原生 TXT PDF 模型输出时将行间公式的 `content` 清空一次，MinerU Flash TXT 直接使用该输出；Flash OCR 原本不填充行间公式内容，MinerU 不再重复清空。两条 Flash 路径保留 bbox、方向、图片及检测到的编号区域，PDF、Markdown、HTML、DOCX、EPUB、LaTeX 沿用图片回退。行内公式、非 Flash tier 的公式文本不变。旧缓存不会自动改写，重新解析才获得新几何和空内容公式。
+使用 `docvortex>=0.4.12,<1`（MinerU 4.0 当前声明的最低依赖）。DocVortex 在生产原生 TXT PDF 模型输出时将行间公式的 `content` 清空一次，MinerU Flash TXT 直接使用该输出；Flash OCR 原本不填充行间公式内容，MinerU 不再重复清空。两条 Flash 路径保留 bbox、方向、图片及检测到的编号区域，PDF、Markdown、HTML、DOCX、EPUB、LaTeX 沿用图片回退。行内公式、非 Flash tier 的公式文本不变。旧缓存不会自动改写，重新解析才获得新几何和空内容公式。
 
 ```python
 from pathlib import Path
