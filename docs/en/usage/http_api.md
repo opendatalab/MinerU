@@ -12,7 +12,7 @@ mineru-kit api-server --host 127.0.0.1 --port 8000 --tier standard
 
 The complete cycle — including timeouts, response validation, bounded polling, exit codes, and credential isolation — is maintained as a single tested script in the repository:
 
-> [`scripts/http_api_example.sh`](https://github.com/opendatalab/MinerU/blob/next/scripts/http_api_example.sh)
+> [`scripts/http_api_example.sh`](https://github.com/opendatalab/MinerU/blob/master/scripts/http_api_example.sh)
 
 ```bash
 export MINERU_API_URL=http://127.0.0.1:8000
