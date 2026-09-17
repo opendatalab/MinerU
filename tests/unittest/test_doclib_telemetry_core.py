@@ -345,6 +345,12 @@ def test_parse_service_process_doc_records_task_metrics(tmp_path) -> None:
             return None
 
     class _Result:
+        # 写盘后的源数据回填会读取 middle_json 的 metadata 与 extensions，提供最小合法替身。
+        middle_json = SimpleNamespace(
+            metadata=SimpleNamespace(document=None, file_suffix="pdf"),
+            extensions={},
+        )
+
         def to_dict(self, *, skip_defaults: bool = True) -> dict:
             return {"pages": [{"page_idx": 0, "blocks": []}]}
 

@@ -30,7 +30,7 @@ MinerU 仓库提供两款命令行工具：
 | 参数暴露 | 精简、稳定、隐藏专家选项 | 完整、显式、可批量控制 |
 | Skill 暴露 | 是 | 默认不暴露 |
 
-`mineru-kit parse` 中的专家参数，例如 `--backend`、`--tier`、`--remote-url`、`--api-key`，不应直接暴露到 `mineru parse`。
+`mineru-kit parse` 中的专家参数，例如 `--tier`、`--remote-url`、`--api-key`，不应直接暴露到 `mineru parse`。
 
 ## 3. 推荐阅读顺序
 

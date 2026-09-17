@@ -3,6 +3,9 @@
 
 from __future__ import annotations
 
+# 可选依赖检测必须先于模型模块导入。
+# ruff: noqa: E402
+
 from typing import Any
 
 import pytest
@@ -10,6 +13,10 @@ from PIL import Image
 
 from mineru.backend.analysis.pdf.formulas import _build_formula_inputs
 from mineru.backend.analysis.pdf.layout import _build_vl_style_layout_blocks
+
+pytest.importorskip("torch")
+pytest.importorskip("transformers", minversion="5.10.1")
+
 from mineru.model.layout.pp_doclayoutv2 import (
     PP_DOCLAYOUT_V2_LABEL_TO_ID,
     PPDocLayoutV2LayoutModel,

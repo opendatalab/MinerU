@@ -1,6 +1,6 @@
 # ADR-0016: MinerU Kit Parse Command
 
-状态: Accepted
+状态: Accepted（2026-09 修订：移除 `--backend` 专家参数，local 模式只接受 `--tier`）
 日期: 2026-06-17
 相关文档:
 - ../cli/mineru-kit.md
@@ -76,19 +76,15 @@ mineru-kit parse <input...> -o <output> [flags]
 支持：
 
 - `--tier`
-- `--backend`
 
 规则：
 
 1. 可以只传 `--tier`
-2. 可以只传 `--backend`
-3. 可以同时传 `--tier` 和 `--backend`
-4. 同时传且二者不兼容时，直接报错
-5. 默认 tier 选择策略与 `mineru-kit api-server` 一致
-6. 默认不会落到 `flash`
-7. `flash` 只能显式指定：
-   - `--tier flash`
-   - `--backend flash`
+2. 默认 tier 选择策略与 `mineru-kit api-server` 一致
+3. 默认不会落到 `flash`
+4. `flash` 只能通过 `--tier flash` 显式指定
+
+历史补充（2026-09）: 本命令曾提供 `--backend` 专家参数（含 `pipeline`、`vlm-*` 等别名），但它仅用于推断 tier，推断后即被丢弃，没有独立作用，已整体移除；对应能力一律用 `--tier` 表达（`pipeline`→`basic`，`vlm-*`→`advanced`，`hybrid-*`→`standard`，`flash`→`flash`）。
 
 ### 5. remote 模式
 
@@ -104,9 +100,8 @@ mineru-kit parse <input...> -o <output> [flags]
 2. `--remote-url` 连接指定解析服务
 3. `--remote` 与 `--remote-url` 互斥
 4. remote 模式下允许传 `--tier`
-5. remote 模式下禁止传 `--backend`
-6. remote 模式未传 `--tier` 时，PDF/image 使用目标服务的默认选择策略，按 `standard` -> `basic` 选择
-7. remote 模式传了 `--tier` 时：
+5. remote 模式未传 `--tier` 时，PDF/image 使用目标服务的默认选择策略，按 `standard` -> `basic` 选择
+6. remote 模式传了 `--tier` 时：
    - 服务提供该 tier，则按该 tier 解析
    - 服务不提供该 tier，则报错
 

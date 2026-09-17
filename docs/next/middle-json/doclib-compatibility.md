@@ -2,7 +2,8 @@
 
 兼容仅用于 Doclib 已持久化的 Middle JSON。新写出的文档仍采用
 `docvortex.middle` 及当前共享协议，不恢复旧字段或旧格式导出。
-通用 ParseResult、DocVortex codec、HTTP/ZIP 与 Gradio 继续严格读取新协议。
+通用 ParseResult 与 DocVortex codec 继续严格读取新协议；HTTP/ZIP 临时兼容
+3.x remote server 的历史 middle_json，待 remote server 升级到 4.0 后移除该兼容。
 
 ## 唯一读取边界
 

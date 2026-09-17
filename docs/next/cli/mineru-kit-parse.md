@@ -109,20 +109,14 @@ remote 模式必须由用户显式选择，不得静默上传文档。
 local 模式支持：
 
 - `--tier`
-- `--backend`
 
 规则：
 
 1. 可以只传 `--tier`
-2. 可以只传 `--backend`
-3. 可以同时传 `--tier` 和 `--backend`
-4. 如果二者不兼容，直接报错
-5. `--tier` 与 `--backend` 都不传时，PDF/image 当前默认为 `standard`
-6. 单文件 OFD/EPUB/Office/HTML/CSV/TSV 未指定 tier 时归一为 `flash`；显式指定质量 tier 时报错
-7. 多文件或目录输入按批量规则处理，OFD/EPUB/Office/HTML/CSV/TSV 即使遇到质量 tier 也归一为 `flash`
-8. PDF/image 的 `flash` 只能显式指定：
-   - `--tier flash`
-   - `--backend flash`
+2. 不传 `--tier` 时，PDF/image 当前默认为 `standard`
+3. 单文件 OFD/EPUB/Office/HTML/CSV/TSV 未指定 tier 时归一为 `flash`；显式指定质量 tier 时报错
+4. 多文件或目录输入按批量规则处理，OFD/EPUB/Office/HTML/CSV/TSV 即使遇到质量 tier 也归一为 `flash`
+5. PDF/image 的 `flash` 只能通过 `--tier flash` 显式指定
 
 ### remote 模式
 
@@ -136,19 +130,18 @@ remote 模式通过以下参数进入：
 
 1. `--remote` 与 `--remote-url` 互斥
 2. remote 模式允许传 `--tier`
-3. remote 模式禁止传 `--backend`
-4. remote 模式未传 `--tier` 时，PDF/image 使用目标服务的默认选择策略，按 `standard` -> `basic` 选择
-5. remote 模式传了 `--tier` 时：
+3. remote 模式未传 `--tier` 时，PDF/image 使用目标服务的默认选择策略，按 `standard` -> `basic` 选择
+4. remote 模式传了 `--tier` 时：
    - 服务提供该 tier，则按该 tier 解析
    - 服务不提供该 tier，则报错
-6. `mineru-kit parse` 是低层工具特例，允许 remote 模式处理 OFD/EPUB/Office/HTML/CSV/TSV 等非 PDF/image 输入；这类输入按批量归一规则使用 `flash` 语义。
+5. `mineru-kit parse` 是低层工具特例，允许 remote 模式处理 OFD/EPUB/Office/HTML/CSV/TSV 等非 PDF/image 输入；这类输入按批量归一规则使用 `flash` 语义。
 
 ## 6. 参数分组
 
 | 分组 | 示例 |
 |------|------|
 | 文档参数 | pages、ocr-mode |
-| local 模式 | tier、backend、disable-image-analysis |
+| local 模式 | tier、disable-image-analysis |
 | remote 模式 | remote、remote-url、api-key |
 | 输出控制 | format、output |
 

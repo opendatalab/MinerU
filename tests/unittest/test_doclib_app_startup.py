@@ -141,6 +141,8 @@ def test_config_set_managed_tier_rejects_missing_models(monkeypatch: pytest.Monk
     monkeypatch.setattr(doclib_app, "_create_background_task", _skip_background_task)
     monkeypatch.setattr("mineru.doclib.server.ensure_tier_runtime_dependencies", lambda tier: None)
     monkeypatch.setattr(model_download.config.model, "base_dir", str(tmp_path / "models"))
+    # 无 torch 环境会把小模型后端解析为 onnx，显式固定以保持仓库名断言确定。
+    monkeypatch.setattr(model_download.config.model, "small_backend", "torch")
 
     cfg = PatchedConfig(doclib={"data_dir": str(tmp_path), "sqlite": {"path": str(tmp_path / "doclib.db")}})
     with TestClient(doclib_app.create_app(cfg)) as client:
@@ -379,20 +381,18 @@ def test_shutdown_removes_only_endpoint_owned_by_current_server(tmp_path: Path) 
     assert not endpoint_path.exists()
 
 
-def test_shutdown_removes_only_uds_path_with_bound_identity(tmp_path: Path) -> None:
+def test_shutdown_removes_only_uds_path_with_bound_identity(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     uds_path = tmp_path / "doclib.sock"
     uds_path.write_text("original", encoding="utf-8")
-    original_identity = doclib_app._path_identity(str(uds_path))
-    assert original_identity is not None
 
-    uds_path.unlink()
-    uds_path.write_text("replacement", encoding="utf-8")
-    doclib_app._remove_owned_uds_path(str(uds_path), original_identity)
-    assert uds_path.read_text(encoding="utf-8") == "replacement"
+    # Linux 会复用刚释放的 inode，真实 stat 无法稳定构造"同路径不同身份"；用固定身份值验证清理契约。
+    identities = iter([(0, 2), (0, 2)])
+    monkeypatch.setattr(doclib_app, "_path_identity", lambda _path: next(identities))
 
-    replacement_identity = doclib_app._path_identity(str(uds_path))
-    assert replacement_identity is not None
-    doclib_app._remove_owned_uds_path(str(uds_path), replacement_identity)
+    doclib_app._remove_owned_uds_path(str(uds_path), (0, 1))
+    assert uds_path.read_text(encoding="utf-8") == "original"
+
+    doclib_app._remove_owned_uds_path(str(uds_path), (0, 2))
     assert not uds_path.exists()
 
 

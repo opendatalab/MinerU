@@ -10,6 +10,7 @@ from unittest.mock import AsyncMock, Mock
 
 import httpx
 import pytest
+import click
 from click.testing import CliRunner
 from fastapi.testclient import TestClient
 
@@ -105,4 +106,7 @@ def test_api_server_ocr_defaults_to_request_auto_without_startup_configuration(t
         api_server.create_app(ocr_mode="ocr")  # type: ignore[call-arg]
     result = CliRunner().invoke(api_server.main, ["--ocr-mode", "ocr"])
     assert result.exit_code != 0
-    assert "No such option: --ocr-mode" in result.output
+    # click 8.5 起报错措辞变为 "No such option '--ocr-mode'. (...)"，按两段内容断言。
+    plain_output = click.unstyle(result.output)
+    assert "No such option" in plain_output
+    assert "--ocr-mode" in plain_output

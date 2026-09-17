@@ -56,7 +56,6 @@ mineru-api --host 127.0.0.1 --port 8000 --tier standard
 | 目录批处理 | 非首要 | 核心能力 |
 | 输出冲突策略 | 简化 | 完整 |
 | 并发控制 | 简化 | 完整 |
-| backend 专家参数 | 隐藏 | 可暴露 |
 
 `mineru-kit` 可以作为 `mineru` 的底层能力来源，但不是普通用户和 Agent 的默认入口。Agent skill 长期只暴露 `mineru`，不直接暴露 `mineru-kit`。
 
@@ -70,8 +69,8 @@ mineru-api --host 127.0.0.1 --port 8000 --tier standard
 
 - 只支持文件和目录输入，不支持 stdin、路径列表、URL 输入和递归目录。
 - `--output` 必填。
-- local 模式支持 `tier` 与 `backend`；PDF/image 二者都不传时当前默认使用 `standard` 对应 backend，仅支持 flash tier 的输入按 ADR-0024 归一。
-- remote 模式支持 `--remote` / `--remote-url` / `--api-key`，允许传 `--tier`，但禁止传 `--backend`；`mineru-kit parse` 允许 remote 处理非 PDF/image 输入。
+- local 模式支持 `tier`；未传时 PDF/image 当前默认使用 `standard`，仅支持 flash tier 的输入按 ADR-0024 归一。
+- remote 模式支持 `--remote` / `--remote-url` / `--api-key`，允许传 `--tier`；`mineru-kit parse` 允许 remote 处理非 PDF/image 输入。
 
 详细命令契约见 [ADR-0016](../decisions/0016-mineru-kit-parse-command.md)。
 

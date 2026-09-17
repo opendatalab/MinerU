@@ -1,7 +1,7 @@
-"""仅供 Doclib 持久化结果使用的 Middle JSON 读取与历史转换边界。
+# Copyright (c) Opendatalab. All rights reserved.
+"""历史/旧协议 Middle JSON 读取与转换边界。
 
-两个历史分支集中在此，未来可一并移除；通用 ParseResult 与 DocVortex codec
-不调用本模块。读取只构造内存对象，不重写文件、不重新推理。
+两个历史分支集中在此，未来可一并移除。读取只构造内存对象，不重写文件、不重新推理。
 """
 
 from __future__ import annotations
@@ -64,7 +64,7 @@ def _legacy_extensions(payload: dict[str, Any]) -> dict[str, Any]:
 
 def _read_legacy_345(payload: dict[str, Any], *, page_field: str) -> MiddleJson:
     """把可识别的 3.4.5 页面转为当前 raw ModelJson，再做确定性后处理。"""
-    from ...backend.postprocess.legacy_schema_adapter import legacy_page_to_model_list
+    from .legacy_schema_adapter import legacy_page_to_model_list
     from docvortex.postprocess.document import model_json_to_middle_json
 
     pages = payload[page_field]
@@ -102,15 +102,15 @@ def _read_legacy_v2(payload: dict[str, Any]) -> MiddleJson:
     )
 
 
-def read_cached_middle_json(payload: dict[str, Any]) -> MiddleJson:
-    """先识别显式协议，再转换两个历史缓存族；失败时绝不跨协议兜底。"""
+def read_legacy_middle_json(payload: dict[str, Any]) -> MiddleJson:
+    """先识别显式协议，再转换两个历史分支；失败时绝不跨协议兜底。"""
     if not isinstance(payload, dict):
-        raise ValueError("Cached Middle JSON must be an object; source reparse required")
+        raise ValueError("Middle JSON must be an object; source reparse required")
     if "schema" in payload:
         document = MiddleJson.from_dict(payload)
     else:
         if {"metadata", "producer", "page_index_map"}.intersection(payload):
-            raise ValueError("Mixed cached document envelope; source reparse required")
+            raise ValueError("Mixed document envelope; source reparse required")
         version = payload.get("schema_version")
         source = deepcopy(payload)
         if "pdf_info" in source:
@@ -122,9 +122,9 @@ def read_cached_middle_json(payload: dict[str, Any]) -> MiddleJson:
         elif version == "2.0" and "pages" in source:
             document = _read_legacy_v2(source)
         else:
-            raise ValueError("Unsupported cached Middle JSON format; source reparse required")
+            raise ValueError("Unsupported Middle JSON format; source reparse required")
     validate_mineru_metadata(document)
     return document
 
 
-__all__ = ["read_cached_middle_json"]
+__all__ = ["read_legacy_middle_json"]
