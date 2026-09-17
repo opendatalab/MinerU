@@ -386,6 +386,44 @@ def test_html_parse_server_local_source_keeps_relative_assets(tmp_path: Path) ->
     assert image_body["image_base64"].startswith("data:image/png;base64,")
 
 
+def test_html_remote_image_never_downloaded_and_zip_keeps_external_link(tmp_path: Path) -> None:
+    """远程图片永不下载：SDK 与 parse-server 均保留外链，自包含 zip 正常生成且 markdown 保留链接。"""
+    # .invalid 顶级域保证不可解析；若回归为服务端下载，本测试会因取图失败或超时显式暴露。
+    url = "https://example.invalid/chart.png"
+    source = tmp_path / "remote-image.html"
+    source.write_text(f'<html><body><h1>Remote</h1><img src="{url}" alt="chart"></body></html>', encoding="utf-8")
+
+    result = parse(str(source))
+    body = _image_body(result.middle_json)
+    assert body.image_url == url and not body.image_path and not body.image_base64
+
+    archive_bytes = api_server._build_self_contained_zip_output(result)
+    with ZipFile(BytesIO(archive_bytes)) as archive:
+        names = archive.namelist()
+        assert "markdown.md" in names and url in archive.read("markdown.md").decode()
+        assert not [name for name in names if name.startswith("images/")]
+
+    file_store = FileStore(tmp_path / "api-files")
+    request = CreateJobRequest.model_validate(
+        {
+            "files": [{"source": {"type": "local", "path": str(source)}}],
+            "tier": "standard",
+            "output_formats": ["markdown", "zip"],
+        }
+    )
+    record = api_server.JobStore().create(request, file_store)
+
+    asyncio.run(api_server._run_job(record, request, file_store, image_analysis=True, allow_local_source=True))
+
+    parsed_file = record.files[0]
+    assert parsed_file.status == "completed"
+    assert parsed_file.output_files is not None and parsed_file.output_files.zip is not None
+    zip_record = file_store.get_file(parsed_file.output_files.zip.file_id)
+    assert zip_record.sha256sum is not None
+    with ZipFile(BytesIO(file_store.read_blob(zip_record.sha256sum))) as archive:
+        assert url in archive.read("markdown.md").decode()
+
+
 def test_html_doclib_local_bridge_uses_flash_parser(tmp_path: Path) -> None:
     """验证 Doclib 本地 Flash 桥接把 HTML 文件交给统一 MinerUParser。"""
     source = tmp_path / "doclib.html"

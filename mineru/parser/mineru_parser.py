@@ -193,7 +193,6 @@ class MinerUParser(DocumentParser):
             resolved_source_context = HtmlSourceContext(
                 source_uri=resolved_path.as_uri(),
                 local_resource_root=resolved_path.parent,
-                fetch_remote_images=True,
             )
         source_properties = (
             DocumentProperties()
