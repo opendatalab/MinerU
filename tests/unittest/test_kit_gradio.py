@@ -1034,6 +1034,32 @@ def test_gradio_ocr_control_visibility_reset_and_event_binding(tmp_path: Path) -
     assert change["queue"] is False and change["trigger_mode"] == "always_last"
 
 
+def test_gradio_examples_render_only_with_local_files(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """验证示例块仅在启动目录存在受支持文件时渲染，并把点击绑定到上传组件。"""
+    capabilities = V1ServerCapabilities("http://127.0.0.1:1", ("flash", "standard"), ("zip",), ("file_id",))
+
+    def find_examples(demo: Any) -> list[Any]:
+        return [block for block in demo.blocks.values() if getattr(block, "elem_id", None) == "mineru-kit-examples"]
+
+    example_cwd = tmp_path / "cwd"
+    (example_cwd / "examples").mkdir(parents=True)
+    (example_cwd / "examples" / "demo.pdf").write_bytes(_pdf_bytes())
+    (example_cwd / "note.txt").write_text("unsupported")
+    monkeypatch.chdir(example_cwd)
+    demo = build_gradio_app(Mock(), capabilities, output_root=tmp_path / "out", enable_example=True)
+    (dataset,) = find_examples(demo)
+    assert [sample[0] for sample in dataset.samples] == ["demo.pdf"]
+    assert dataset.samples_per_page == gradio_app._EXAMPLES_PER_PAGE
+    upload = next(block for block in demo.blocks.values() if "mineru-upload-file" in (block.elem_classes or []))
+    click = next(event for event in demo.config["dependencies"] if (dataset._id, "click") in event["targets"])
+    assert upload._id in click["outputs"]
+
+    empty_cwd = tmp_path / "empty"
+    empty_cwd.mkdir()
+    monkeypatch.chdir(empty_cwd)
+    assert not find_examples(build_gradio_app(Mock(), capabilities, output_root=tmp_path / "out2", enable_example=True))
+
+
 @pytest.mark.parametrize("suffix", [".png", ".docx", ".csv"])
 def test_gradio_non_pdf_ignores_hidden_force_ocr(tmp_path: Path, suffix: str) -> None:
     """直接调用事件并传入残留 True，非 PDF 请求仍使用 auto。"""

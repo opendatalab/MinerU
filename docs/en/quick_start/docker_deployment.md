@@ -16,12 +16,12 @@ Build-time downloads explicitly select Torch small models and original vLLM weig
 
 ### Image provenance and version checks
 
-The image installs the package-index range `mineru[torch]>=4.0,<5`; it does **not** install the repository checkout used as the build context, and a version-range install is not locked by the image tag. Building from a `next` or patched checkout still produces a package-index image, and rebuilding the same tag later may install a different 4.x. Two paths cover the different needs:
+The image installs the package-index range `mineru[torch]>=4.0,<5`; it does **not** install the repository checkout used as the build context, and a version-range install is not locked by the image tag. Building from a development branch or patched checkout still produces a package-index image, and rebuilding the same tag later may install a different 4.x. Two paths cover the different needs:
 
 | Path | Version source | Use it for |
 | --- | --- | --- |
 | Release image (`docker/global/Dockerfile`, `docker/china/Dockerfile`) | Package-index range `mineru[torch]>=4.0,<5` | Production deployments |
-| Source-debug container (release image + mounted checkout) | Your working copy / commit | Verifying `next`, debugging, reproducing a patch |
+| Source-debug container (release image + mounted checkout) | Your working copy / commit | Verifying a development branch, debugging, reproducing a patch |
 
 Tag images with the actual version instead of only `mineru:4`, and assert the installed version after building — this detects a tag/version mismatch; it does not make a range build reproducible:
 
