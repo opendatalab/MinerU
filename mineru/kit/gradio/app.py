@@ -326,6 +326,7 @@ def build_gradio_app(
         raise ValueError("V1 API server did not advertise any parsing tier")
     preferred_tier = _default_tier(capabilities)
     file_types = _supported_file_types()
+    examples = _example_files(file_types) if enable_example else []
     app_css = _resource_text("gradio_app.css") + _KIT_MENU_CSS + _download_icon_css()
     i18n = gr.I18n(**translations())
     app_js = _resource_text("gradio_app.js").replace(
@@ -420,6 +421,13 @@ def build_gradio_app(
                     )
                     clear_button = gr.ClearButton(value=i18n("mineru.clear"), scale=1, min_width=1)
                 status_panel = gr.HTML(_status_html(), elem_classes=["mineru-status-panel"])
+                if examples:
+                    gr.Examples(
+                        examples=examples,
+                        inputs=input_file,
+                        label=i18n("mineru.examples"),
+                        elem_id="mineru-kit-examples",
+                    )
 
             with gr.Column(scale=4, min_width=340, elem_classes=["mineru-kit-preview", "mineru-preview-pane"]):
                 pdf_preview = gr.File(visible=False, interactive=False, label="PDF", type="filepath")
@@ -446,7 +454,8 @@ def build_gradio_app(
                     elem_classes=["mineru-kit-office-preview", "mineru-office-preview-html"],
                 )
                 ofd_preview = gr.HTML(
-                    value="", apply_default_css=False,
+                    value="",
+                    apply_default_css=False,
                     elem_classes=["mineru-kit-ofd-preview"],
                 )
                 ofd_ticket = gr.Textbox(value="", visible=False)
@@ -494,11 +503,6 @@ def build_gradio_app(
                                 elem_classes=[f"mineru-kit-download-{format_name}"],
                             )
                 download_notice = gr.HTML(value="", elem_classes=["mineru-kit-download-notice"])
-
-        if enable_example:
-            examples = _example_files(file_types)
-            if examples:
-                gr.Examples(examples=examples, inputs=input_file, label=i18n("mineru.examples"), elem_id="mineru-kit-examples")
 
         artifact_state = gr.State(value=None)
         active_run_id = gr.Textbox(value="", visible=False)
@@ -586,22 +590,34 @@ def build_gradio_app(
 
         ofd_script = _resource_text("gradio_ofd_preview.js")
         input_file.change(
-            fn=None, inputs=input_file, outputs=[ofd_ticket, ofd_preview],
+            fn=None,
+            inputs=input_file,
+            outputs=[ofd_ticket, ofd_preview],
             js=f"(...args) => ({ofd_script})('begin', ...args)",
             **private_event_kwargs,
         )
         # Gradio 6.8 的纯前端事件不可靠地触发 then；通过请求值变化启动后台转换。
         render_ofd = ofd_ticket.change(
-            fn=prepare_ofd_preview, inputs=[input_file, ofd_ticket], outputs=ofd_receipt,
-            concurrency_limit=None, trigger_mode="multiple", **private_event_kwargs,
+            fn=prepare_ofd_preview,
+            inputs=[input_file, ofd_ticket],
+            outputs=ofd_receipt,
+            concurrency_limit=None,
+            trigger_mode="multiple",
+            **private_event_kwargs,
         )
         render_ofd.then(
-            fn=None, inputs=ofd_receipt, outputs=ofd_preview,
-            js=f"(...args) => ({ofd_script})('apply', ...args)", **private_event_kwargs,
+            fn=None,
+            inputs=ofd_receipt,
+            outputs=ofd_preview,
+            js=f"(...args) => ({ofd_script})('apply', ...args)",
+            **private_event_kwargs,
         )
         clear_button.click(
-            fn=None, inputs=[], outputs=[ofd_ticket, ofd_preview],
-            js=f"(...args) => ({ofd_script})('clear', ...args)", **private_event_kwargs,
+            fn=None,
+            inputs=[],
+            outputs=[ofd_ticket, ofd_preview],
+            js=f"(...args) => ({ofd_script})('clear', ...args)",
+            **private_event_kwargs,
         )
 
         download_script = _resource_text("gradio_download.js")
