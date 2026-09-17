@@ -1159,13 +1159,20 @@ def _pages_from_middle_json(mid_json: dict[str, Any] | None) -> list[PageInfo]:
 
 
 def _parse_result_from_middle_json(mid_json: dict[str, Any]) -> ParseResult:
-    """把远端 middle_json 恢复为 ParseResult；只接受当前共享文档协议。"""
+    """把远端 middle_json 恢复为 ParseResult；优先当前协议，临时兼容 3.x 历史协议。"""
     if not isinstance(mid_json, dict):
         raise _V1APIError("invalid_middle_json_output", "middle_json output must be a JSON object")
     try:
         return ParseResult.from_dict(mid_json)
     except ValueError as exc:
-        raise _V1APIError("invalid_middle_json_output", str(exc)) from exc
+        strict_error = exc
+    # 临时：兼容 3.x remote server 的历史 middle_json（pdf_info / 旧 1.0 / 旧 2.0），待其升级到 4.0 后移除。
+    from ..backend.postprocess.legacy_middle_json import read_legacy_middle_json
+
+    try:
+        return ParseResult(middle_json=read_legacy_middle_json(mid_json))
+    except ValueError:
+        raise _V1APIError("invalid_middle_json_output", str(strict_error)) from strict_error
 
 
 def _raise_for_terminal_job_error(job: dict[str, Any]) -> None:

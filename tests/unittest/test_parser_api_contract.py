@@ -811,8 +811,8 @@ def test_api_client_downloads_model_output_from_zip(monkeypatch: pytest.MonkeyPa
     assert result._model_output.pages == [[{"raw": "model"}]]
 
 
-def test_api_client_rejects_legacy_official_layout_json(monkeypatch: pytest.MonkeyPatch) -> None:
-    """官方 API ZIP 内的历史 pdf_info 文档必须明确拒绝，不再迁移正文。"""
+def test_api_client_accepts_legacy_official_layout_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    """官方 API ZIP 内的历史 pdf_info 文档迁移为当前 MiddleJson，不再拒绝。"""
     parser = MinerUApiParser(
         api_url="https://mineru.net/api",
         tier="standard",
@@ -850,16 +850,18 @@ def test_api_client_rejects_legacy_official_layout_json(monkeypatch: pytest.Monk
 
     monkeypatch.setattr(api_client, "_download_bytes", lambda _parser, ref: zip_buffer.getvalue() if ref is zip_ref else b"")
 
-    with pytest.raises(api_client._V1APIError, match="reparse"):
-        _parse_result_from_job(
-            {
-                "job_id": "job_1",
-                "status": "completed",
-                "files": [{"output_files": {"zip": zip_ref}}],
-            },
-            "demo.pdf",
-            parser,
-        )
+    result = _parse_result_from_job(
+        {
+            "job_id": "job_1",
+            "status": "completed",
+            "files": [{"output_files": {"zip": zip_ref}}],
+        },
+        "demo.pdf",
+        parser,
+    )
+
+    assert isinstance(result, ParseResult)
+    assert isinstance(result.pages, list)
 
 
 def test_api_client_async_downloads_model_output_from_zip(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1052,8 +1054,8 @@ def test_api_client_include_images_rejects_unsafe_image_entries(monkeypatch: pyt
         )
 
 
-def test_api_client_rejects_remote_pdf_info_middle_json(monkeypatch: pytest.MonkeyPatch) -> None:
-    """远程返回历史 pdf_info 协议时必须提示重新解析，不猜测其版本。"""
+def test_api_client_accepts_remote_pdf_info_middle_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    """远程返回历史 pdf_info 协议时迁移为当前 MiddleJson，不猜测但也不拒绝。"""
     parser = MinerUApiParser(api_url="https://mineru.net/api", tier="standard")
     middle_json = {
         "_backend": "hybrid",
@@ -1063,20 +1065,22 @@ def test_api_client_rejects_remote_pdf_info_middle_json(monkeypatch: pytest.Monk
 
     monkeypatch.setattr(api_client, "_download_json", lambda _parser, _outputs: middle_json)
 
-    with pytest.raises(api_client._V1APIError, match="reparse"):
-        _parse_result_from_job(
-            {
-                "job_id": "job_1",
-                "status": "completed",
-                "files": [{"output_files": {"middle_json": {"file_id": "file-middle-json", "bytes": 10}}}],
-            },
-            "demo.pdf",
-            parser,
-        )
+    result = _parse_result_from_job(
+        {
+            "job_id": "job_1",
+            "status": "completed",
+            "files": [{"output_files": {"middle_json": {"file_id": "file-middle-json", "bytes": 10}}}],
+        },
+        "demo.pdf",
+        parser,
+    )
+
+    assert isinstance(result, ParseResult)
+    assert isinstance(result.pages, list)
 
 
-def test_async_api_client_rejects_remote_pdf_info_middle_json(monkeypatch: pytest.MonkeyPatch) -> None:
-    """异步客户端同样拒绝历史 pdf_info 协议，不把空页当成有效结果。"""
+def test_async_api_client_accepts_remote_pdf_info_middle_json(monkeypatch: pytest.MonkeyPatch) -> None:
+    """异步客户端同样迁移历史 pdf_info 协议。"""
     parser = MinerUApiParser(api_url="https://mineru.net/api", tier="standard")
     middle_json = {
         "_backend": "hybrid",
@@ -1088,18 +1092,20 @@ def test_async_api_client_rejects_remote_pdf_info_middle_json(monkeypatch: pytes
 
     monkeypatch.setattr(api_client, "_async_download_json", _download_json)
 
-    with pytest.raises(api_client._V1APIError, match="reparse"):
-        asyncio.run(
-            api_client._async_parse_result_from_job(
-                {
-                    "job_id": "job_1",
-                    "status": "completed",
-                    "files": [{"output_files": {"middle_json": {"file_id": "file-middle-json", "bytes": 10}}}],
-                },
-                "demo.pdf",
-                parser,
-            )
+    result = asyncio.run(
+        api_client._async_parse_result_from_job(
+            {
+                "job_id": "job_1",
+                "status": "completed",
+                "files": [{"output_files": {"middle_json": {"file_id": "file-middle-json", "bytes": 10}}}],
+            },
+            "demo.pdf",
+            parser,
         )
+    )
+
+    assert isinstance(result, ParseResult)
+    assert isinstance(result.pages, list)
 
 
 def test_api_client_rejects_legacy_json_output_file_key() -> None:
