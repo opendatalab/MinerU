@@ -225,6 +225,28 @@ def _rotated_char(index: int, text: str, rotation_degrees: float) -> Char:
     return char
 
 
+@pytest.mark.parametrize(
+    ("rotation", "expected"),
+    [
+        (0.0, True),
+        (math.pi / 2, True),
+        (math.pi, True),
+        (3 * math.pi / 2, True),
+        (-1e-6, True),
+        (-math.pi / 2, True),
+        (-math.pi, True),
+        (-3 * math.pi / 2, True),
+        (2 * math.pi, True),
+        (2 * math.pi - 0.001, True),
+        (math.radians(315), False),
+        (math.radians(45), False),
+    ],
+)
+def test_is_supported_rotation_uses_circular_distance(rotation: float, expected: bool) -> None:
+    """验证标准方向判定按最短夹角处理负角与 2π 等价，并排除斜向水印。"""
+    assert native._is_supported_rotation(rotation) is expected
+
+
 def test_span_fill_does_not_restore_315_degree_watermark(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -235,6 +257,18 @@ def test_span_fill_does_not_restore_315_degree_watermark(
     monkeypatch.setattr(native, "get_lines_from_chars", lambda _chars: [line])
 
     assert native._get_chars_for_span_fill([body, watermark]) == [body]
+
+
+def test_span_fill_keeps_negative_90_degree_rotation_chars(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """验证 -90 度编码的标准方向字符不会被当成斜向水印丢弃。"""
+    rotated = _rotated_char(0, "A", -90.0)
+    assert native._get_chars_for_span_fill([rotated]) == [rotated]
+
+    line = {"rotation": math.radians(-90.0), "spans": [{"chars": [rotated]}]}
+    monkeypatch.setattr(native, "get_lines_from_chars", lambda _chars: [line])
+    assert native._get_chars_for_span_fill([rotated]) == [rotated]
 
 
 def test_span_fill_restores_19_degree_sheared_text(
