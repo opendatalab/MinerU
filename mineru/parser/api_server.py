@@ -1480,6 +1480,7 @@ async def _run_job(
                         source_uri=extracted.source_uri,
                         local_resource_root=extracted.local_resource_root,
                         transport_encoding=extracted.transport_encoding,
+                        fetch_remote_images=True,
                     )
                 result = await parse_async(
                     str(tmp_path),

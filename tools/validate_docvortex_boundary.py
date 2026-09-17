@@ -23,7 +23,9 @@ def capture(args: argparse.Namespace) -> None:
     from mineru.backend.analyze import doc_analyze
     from mineru.config import config
     from mineru.render import RenderFormat, render
+    from mineru.utils.logger import configure_global_log_level
 
+    configure_global_log_level()
     config.llm_aided.features.title_leveling = False
     config.llm_aided.features.cross_page_table_cell_merge = False
     args.output.mkdir(parents=True, exist_ok=True)
