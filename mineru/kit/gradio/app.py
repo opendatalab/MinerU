@@ -14,7 +14,14 @@ from typing import Any, Literal
 from urllib.parse import quote
 
 from ...errors import MineruError
-from ...filetypes import FLASH_ONLY_PARSE_EXTENSIONS, IMAGE_EXTENSIONS, OFFICE_EXTENSIONS, PARSEABLE_EXTENSIONS, PDF_EXTENSIONS
+from ...filetypes import (
+    FLASH_ONLY_PARSE_EXTENSIONS,
+    HTML_EXTENSIONS,
+    IMAGE_EXTENSIONS,
+    OFFICE_EXTENSIONS,
+    PARSEABLE_EXTENSIONS,
+    PDF_EXTENSIONS,
+)
 from ...types import TIERS, Tier
 from ...utils.logger import configure_global_log_level
 from ...utils.stdio import configure_standard_streams
@@ -26,10 +33,10 @@ from .client import (
     V1ServerCapabilities,
 )
 from .i18n import MESSAGES, localized_text, preview_placeholder, translations
-from .ofd_preview import prepare_ofd_preview
 from .page_range import effective_page_range as _effective_page_range
 from .page_range import pdf_page_metadata, validate_max_pages
 from .pdf_preview import pdf_preview_js, register_pdf_preview_resources
+from .source_preview import prepare_source_preview
 from .status import (
     DEFAULT_STATUS as _DEFAULT_STATUS,
     STATUS_COMPLETED,
@@ -164,27 +171,28 @@ _KIT_MENU_CSS = """
 }
 #mineru-kit-download-options :is(button, a):hover { background: var(--background-fill-secondary, #f3f4f6); }
 .mineru-kit-empty-preview { min-height: 160px; display: grid; place-items: center; opacity: .65; }
-/* Gradio 6.8 会按逗号拆分并重写选择器，PDF/OFD 使用独立选择器避免破坏 :has。 */
-/* PDF/OFD 直接贴合面板边框，独立预览不再沿用旧组件的标签留白与额外高度。 */
-.mineru-kit-preview:has(.mineru-pdf-frame), .mineru-kit-preview:has(.mineru-ofd-frame) { padding: 0; gap: 0; overflow: hidden; }
+/* Gradio 6.8 会按逗号拆分并重写选择器，PDF/源文档预览使用独立选择器避免破坏 :has。 */
+/* PDF/源文档预览直接贴合面板边框，独立预览不再沿用旧组件的标签留白与额外高度。 */
+.mineru-kit-preview:has(.mineru-pdf-frame),
+.mineru-kit-preview:has(.mineru-source-frame) { padding: 0; gap: 0; overflow: hidden; }
 .mineru-kit-preview > .block.mineru-kit-pdf-preview,
-.mineru-kit-preview > .block.mineru-kit-ofd-preview {
+.mineru-kit-preview > .block.mineru-kit-source-preview {
     height: var(--mineru-preview-content-height, 775px) !important;
     min-height: 0 !important; max-height: none !important;
 }
-.mineru-kit-pdf-preview, .mineru-kit-ofd-preview { height: 100%; padding: 0 !important; }
+.mineru-kit-pdf-preview, .mineru-kit-source-preview { height: 100%; padding: 0 !important; }
 .mineru-kit-pdf-preview .html-container, .mineru-kit-pdf-preview .prose,
-.mineru-kit-ofd-preview .html-container, .mineru-kit-ofd-preview .prose { height: 100%; padding: 0 !important; }
+.mineru-kit-source-preview .html-container, .mineru-kit-source-preview .prose { height: 100%; padding: 0 !important; }
 .mineru-kit-pdf-preview:not(:has(.mineru-pdf-frame, [role="alert"])) { display: none !important; }
-.mineru-pdf-frame, .mineru-ofd-frame { display: block; width: 100%; height: 100%; border: 0; }
-.mineru-kit-ofd-preview:not(:has(iframe)):not(:has([data-mineru-i18n-key])) { display: none !important; }
+.mineru-pdf-frame, .mineru-source-frame { display: block; width: 100%; height: 100%; border: 0; }
+.mineru-kit-source-preview:not(:has(iframe)):not(:has([data-mineru-i18n-key])) { display: none !important; }
 .mineru-kit-image-preview img { max-height: var(--mineru-pdf-page-height, 720px); object-fit: contain; }
-/* 桌面两栏共用行高，PDF/OFD 填满伸展后的面板；窄屏仍采用独立预览高度。 */
+/* 桌面两栏共用行高，PDF/源文档预览填满伸展后的面板；窄屏仍采用独立预览高度。 */
 @media (min-width: 901px) {
   .mineru-kit-results, .mineru-kit-preview:has(.mineru-pdf-frame),
-  .mineru-kit-preview:has(.mineru-ofd-frame) { align-self: stretch !important; height: auto; }
+  .mineru-kit-preview:has(.mineru-source-frame) { align-self: stretch !important; height: auto; }
   .mineru-kit-preview > .block.mineru-kit-pdf-preview,
-  .mineru-kit-preview > .block.mineru-kit-ofd-preview { flex: 1 1 0; height: auto !important; }
+  .mineru-kit-preview > .block.mineru-kit-source-preview { flex: 1 1 0; height: auto !important; }
 }
 @media (max-width: 900px) {
   .mineru-kit-workspace { flex-direction: column !important; }
@@ -455,13 +463,13 @@ def build_gradio_app(
                     min_height=320,
                     elem_classes=["mineru-kit-office-preview", "mineru-office-preview-html"],
                 )
-                ofd_preview = gr.HTML(
+                source_preview = gr.HTML(
                     value="",
                     apply_default_css=False,
-                    elem_classes=["mineru-kit-ofd-preview"],
+                    elem_classes=["mineru-kit-source-preview"],
                 )
-                ofd_ticket = gr.Textbox(value="", visible=False)
-                ofd_receipt = gr.Textbox(value="", visible=False)
+                source_ticket = gr.Textbox(value="", visible=False)
+                source_receipt = gr.Textbox(value="", visible=False)
                 generic_preview = gr.HTML(
                     value=preview_placeholder("empty_preview"),
                     visible=True,
@@ -554,7 +562,8 @@ def build_gradio_app(
                     _preview_update(gr, preview_placeholder("source_preview"), visible=False),
                     *reset_result,
                 )
-            if suffix == "ofd":
+            if suffix == "ofd" or suffix in HTML_EXTENSIONS:
+                # OFD/HTML 源预览由独立异步事件挂载，此处只隐藏占位组件。
                 return (
                     _pdf_preview_update(gr, None),
                     _preview_update(gr, None, visible=False),
@@ -590,35 +599,35 @@ def build_gradio_app(
         input_file.change(fn=None, inputs=input_file, outputs=pdf_viewer, js=pdf_preview_js("reset"), **private_event_kwargs)
         clear_button.click(fn=None, inputs=[], outputs=pdf_viewer, js=pdf_preview_js("clear"), **private_event_kwargs)
 
-        ofd_script = _resource_text("gradio_ofd_preview.js")
+        source_script = _resource_text("gradio_source_preview.js")
         input_file.change(
             fn=None,
             inputs=input_file,
-            outputs=[ofd_ticket, ofd_preview],
-            js=f"(...args) => ({ofd_script})('begin', ...args)",
+            outputs=[source_ticket, source_preview],
+            js=f"(...args) => ({source_script})('begin', ...args)",
             **private_event_kwargs,
         )
         # Gradio 6.8 的纯前端事件不可靠地触发 then；通过请求值变化启动后台转换。
-        render_ofd = ofd_ticket.change(
-            fn=prepare_ofd_preview,
-            inputs=[input_file, ofd_ticket],
-            outputs=ofd_receipt,
+        render_source_preview = source_ticket.change(
+            fn=prepare_source_preview,
+            inputs=[input_file, source_ticket],
+            outputs=source_receipt,
             concurrency_limit=None,
             trigger_mode="multiple",
             **private_event_kwargs,
         )
-        render_ofd.then(
+        render_source_preview.then(
             fn=None,
-            inputs=ofd_receipt,
-            outputs=ofd_preview,
-            js=f"(...args) => ({ofd_script})('apply', ...args)",
+            inputs=source_receipt,
+            outputs=source_preview,
+            js=f"(...args) => ({source_script})('apply', ...args)",
             **private_event_kwargs,
         )
         clear_button.click(
             fn=None,
             inputs=[],
-            outputs=[ofd_ticket, ofd_preview],
-            js=f"(...args) => ({ofd_script})('clear', ...args)",
+            outputs=[source_ticket, source_preview],
+            js=f"(...args) => ({source_script})('clear', ...args)",
             **private_event_kwargs,
         )
 
@@ -827,8 +836,8 @@ def build_gradio_app(
                         gr.update(value="", visible=False),
                         gr.update(value=generic_html, visible=bool(generic_html)),
                     )
-                    if _is_office(source_path) or suffix == "ofd":
-                        # Office/OFD 源预览已在上传时挂载，成功后保留原内容和浏览位置。
+                    if _is_office(source_path) or suffix == "ofd" or suffix in HTML_EXTENSIONS:
+                        # Office/OFD/HTML 源预览已在上传时挂载，成功后保留原内容和浏览位置。
                         result_preview_updates = tuple(gr.skip() for _ in range(4))
                     return (
                         rendered_html,
