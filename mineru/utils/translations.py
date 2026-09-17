@@ -440,14 +440,12 @@ ZH_MESSAGES: dict[str, str] = {
     "Output path; required": "输出路径;必填",
     "PDF pages: '1-5,8,r3-r1' or 'all'; default: all pages": "PDF 页码: '1-5,8,r3-r1' 或 'all';默认全部页面",
     "Output format: markdown, middle_json, zip": "输出格式: markdown、middle_json、zip",
-    "Expert backend override": "专家后端覆盖",
     "Use mineru.net official remote parse service": "使用 mineru.net 官方远程解析服务",
     "Use a custom remote parse service URL": "使用自定义远程解析服务 URL",
     "API key for remote parse service": "远程解析服务的 API key",
     "OCR mode: auto, txt, ocr": "OCR 模式: auto、txt、ocr",
     "Disable image analysis": "禁用图像分析",
     "At least one input path is required.": "至少需要一个输入路径。",
-    "--backend is not allowed in remote mode.": "远程模式下不允许使用 --backend。",
     "When input is multiple files or directories, --output must be a directory path.": (
         "当输入为多个文件或目录时,--output 必须是目录路径。"
     ),

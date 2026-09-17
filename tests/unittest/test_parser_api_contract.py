@@ -371,12 +371,11 @@ print("ok")
     assert result.stdout.strip() == "ok"
 
 
-def test_validate_effort_rejects_low_and_maps_legacy_backends() -> None:
+def test_validate_effort_rejects_low() -> None:
     """校验 Hybrid effort 只接受 medium/high/xhigh 三档。"""
     from mineru.parser.tier import (
         HYBRID_EFFORT_CHOICES,
         effort_for_tier,
-        resolve_backend_and_effort,
         validate_effort,
     )
 
@@ -388,8 +387,6 @@ def test_validate_effort_rejects_low_and_maps_legacy_backends() -> None:
         validate_effort("low")
     with pytest.raises(ValueError, match="Unsupported tier 'ultra'"):
         effort_for_tier("ultra")
-    assert resolve_backend_and_effort("vlm-engine", "medium") == ("hybrid-engine", "xhigh")
-    assert resolve_backend_and_effort("pipeline", "xhigh") == ("hybrid-engine", "medium")
 
 
 def test_tier_runtime_options_map_hybrid_effort() -> None:

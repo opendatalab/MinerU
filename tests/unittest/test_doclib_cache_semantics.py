@@ -67,7 +67,6 @@ from mineru.doclib.types import DocContentExportRequest, FileInfo, InvalidateReq
 from mineru.errors import InvalidRequestError, MineruError, NotFoundError
 from mineru.filetypes import file_type_for_extension
 from mineru.parser import backend_for_tier
-from mineru.parser.tier import resolve_tier_and_backend
 from mineru.parser.api_client import _APITransportError, _V1APIError
 from mineru.parser.base import ParseResult
 from mineru.parser import MIDDLE_JSON_SCHEMA_VERSION
@@ -340,8 +339,6 @@ def test_parser_tier_backend_mapping_is_parser_layer_only() -> None:
     assert backend_for_tier("basic") == "hybrid-engine"
     assert backend_for_tier("standard") == "hybrid-engine"
     assert backend_for_tier("advanced") == "hybrid-engine"
-    assert resolve_tier_and_backend(tier=None) == ("standard", "hybrid-engine")
-    assert resolve_tier_and_backend(tier="advanced", backend="vlm-auto-engine") == ("advanced", "hybrid-engine")
 
 
 def test_managed_api_server_args_use_tier_and_selected_port_for_process_start() -> None:

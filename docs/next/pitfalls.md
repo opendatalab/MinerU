@@ -9,12 +9,12 @@
 
 ## 1. 双轨兼容面的联动要求
 
-### 1.1 tier / backend 双入参过渡层
+### 1.1 backend 不再是入参
 
-`parser/tier.py:230` 的 `resolve_tier_and_backend(tier, backend)` 是为旧专家用户保留的过渡层：同时接受公开 `tier` 和本地专家 `backend` 入参，并做兼容性校验（`_backend_supports_tier`）。
+历史过渡层 `resolve_tier_and_backend(tier, backend)` 与 `mineru-kit parse --backend` 专家参数（含 `pipeline`/`vlm-*` 等别名）已移除：backend 只用于推断 tier，推断后即被丢弃，没有独立作用。
 
-- 新代码只走 `tier`；`backend_for_tier`（`parser/tier.py:183`）已保证 basic/standard/advanced 共用同一个 hybrid-engine，仅 effort 不同（`HYBRID_EFFORT_BY_TIER` `parser/tier.py:25`）。
-- 不要新增依赖 `backend` 入参的分支；`pipeline`/`vlm-*` 仅作为 legacy 别名存在。
+- 新代码只走 `tier`；`backend_for_tier`（`parser/tier.py`）保证 basic/standard/advanced 共用同一个 hybrid-engine，仅 effort 不同（`HYBRID_EFFORT_BY_TIER`）。
+- 不要在任何 CLI / SDK / API 入口重新引入 `backend` 入参；backend 仅作为 `ParserRuntimeOptions.backend` 内部派生值存在。
 
 ### 1.2 共享文档协议与缓存必须同步
 
