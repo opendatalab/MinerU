@@ -11,7 +11,7 @@
 - 历史生产版本缺失时记为 unknown，运行参数不可靠时不补造产品记录。
 - 缓存命中、覆盖、默认读取档位、FTS 重建和压缩使用同一读取入口。
 - 普通读取不改写历史 JSON 或数据库记录；兼容且元数据一致的批次可在正常压缩时写成新格式。
-- 通用 ParseResult、DocVortex codec、HTTP/ZIP 和 Gradio 没有增加旧格式读取能力。
+- 通用 ParseResult 与 DocVortex codec 未增加旧格式读取能力；HTTP/ZIP 已临时兼容 3.x remote server，待其升级到 4.0 后移除。
 - 本次没有调整包版本、协议版本、解析算法或兼容有效期，也未新增兼容开关。
 
 ## 验证结果
