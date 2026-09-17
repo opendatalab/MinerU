@@ -1,6 +1,7 @@
 """源文档预览（OFD/HTML）的真实转换、隔离和失败回执回归。"""
 
 import asyncio
+import codecs
 import io
 import json
 import zipfile
@@ -138,6 +139,24 @@ def test_html_preview_decodes_declared_charset() -> None:
     assert "中文内容" in _frame_document(build_html_preview(payload))
     broken = b"<html><head><meta charset='utf-8'></head><body>\xff\xfe</body></html>"
     assert "\ufffd" in _frame_document(build_html_preview(broken))
+
+
+@pytest.mark.parametrize(
+    ("prefix", "encoding"),
+    [
+        (codecs.BOM_UTF16_LE, "utf-16-le"),
+        (codecs.BOM_UTF16_BE, "utf-16-be"),
+        (codecs.BOM_UTF32_LE, "utf-32-le"),
+        (codecs.BOM_UTF32_BE, "utf-32-be"),
+        (codecs.BOM_UTF8, "utf-8"),
+    ],
+)
+def test_html_preview_decodes_bom_prefixed_documents(prefix: bytes, encoding: str) -> None:
+    """带 BOM 的 UTF-16/32 及 UTF-8 文档按 BOM 解码，正文不出现替换字符。"""
+    payload = prefix + "<html><body><p>中文标题</p></body></html>".encode(encoding)
+    document = _frame_document(build_html_preview(payload))
+    assert "中文标题" in document
+    assert "\ufffd" not in document
 
 
 @pytest.mark.parametrize(

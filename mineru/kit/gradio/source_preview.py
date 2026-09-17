@@ -34,6 +34,11 @@ _CHARSET_PATTERN = re.compile(rb"""charset\s*=\s*["']?\s*([A-Za-z0-9_.:+-]+)""",
 
 def _decode_html(payload: bytes) -> str:
     """按 BOM 与头部 charset 声明解码，未知或损坏编码一律回退 UTF-8 替换字符。"""
+    # BOM_UTF32_LE 以 FF FE 00 00 开头，包含 BOM_UTF16_LE 前缀，必须先判定 UTF-32。
+    if payload.startswith((codecs.BOM_UTF32_LE, codecs.BOM_UTF32_BE)):
+        return payload.decode("utf-32", errors="replace")
+    if payload.startswith((codecs.BOM_UTF16_LE, codecs.BOM_UTF16_BE)):
+        return payload.decode("utf-16", errors="replace")
     if payload.startswith(codecs.BOM_UTF8):
         return payload.decode("utf-8-sig", errors="replace")
     encoding = "utf-8"
