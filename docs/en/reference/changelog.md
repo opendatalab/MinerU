@@ -5,6 +5,7 @@ This document records the release history of MinerU, including major capability 
 ## Unreleased
 
 - Breaking change: removed the `--backend` option from `mineru-kit parse` (introduced during the 4.0 alphas). The option only inferred a tier and had no independent effect, so use `--tier` instead: `pipeline` → `--tier basic`; `vlm-engine`, `vlm-auto-engine`, and `vlm-http-client` → `--tier advanced`; `hybrid-engine` and `hybrid-auto-engine` → `--tier standard` (or omit the option); `flash` → `--tier flash`. Parsing with a remote VLM service is configured through the VLM server settings and is unrelated to this option.
+- Breaking change: removed the `PARSER_BACKENDS` constant from the `mineru.parser` exports (present in the 4.0 release). Backends are derived from tiers and are no longer a public choice; call `mineru.parser.backend_for_tier(tier)` if you need a tier's implementation name.
 
 ## 4.0
 

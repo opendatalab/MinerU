@@ -5,6 +5,7 @@
 ## 未发布
 
 - 破坏性变更：移除 `mineru-kit parse` 的 `--backend` 参数（该参数在 4.0 alpha 阶段引入）。它仅用于推断 tier，没有独立作用，请改用 `--tier`：`pipeline` → `--tier basic`；`vlm-engine`、`vlm-auto-engine`、`vlm-http-client` → `--tier advanced`；`hybrid-engine`、`hybrid-auto-engine` → `--tier standard`（或省略该参数）；`flash` → `--tier flash`。使用远程 VLM 服务由 VLM 服务配置表达，与该参数无关。
+- 破坏性变更：移除 `mineru.parser` 公开导出中的 `PARSER_BACKENDS` 常量（4.0 正式版包含该导出）。backend 由 tier 派生，不再作为公开选择；如需某 tier 的实现名称，请调用 `mineru.parser.backend_for_tier(tier)`。
 
 ## 4.0
 
