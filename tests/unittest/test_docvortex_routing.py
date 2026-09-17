@@ -27,6 +27,8 @@ def test_flash_routes_classification_and_native_analysis_explicitly(
     class Document:
         """记录公开文档访问与分类，不依赖真实推理模型。"""
 
+        page_count = 1
+
         def __init__(self, data: bytes) -> None:
             """接收由宿主传入的输入字节。"""
             assert data == b"pdf"
@@ -35,6 +37,10 @@ def test_flash_routes_classification_and_native_analysis_explicitly(
             """只有 auto 路由才允许调用分类。"""
             calls.append("classify")
             return classification
+
+        def page_size(self, index: int) -> tuple[float, float]:
+            """为 DocVortex 几何提取提供合法页面尺寸。"""
+            return 612.0, 792.0
 
         def close(self) -> None:
             """记录文档在所有正常路径都及时关闭。"""
@@ -79,7 +85,11 @@ def test_hybrid_and_vlm_pdf_outputs_share_docvortex_text_cleanup(
 ) -> None:
     """推理和原生回填的编排留在宿主，所有非 Flash PDF 出口都使用相同文字清洗。"""
     # 只隔离模型推理，真实执行 PDF 管线的公共出口与协议规范化。
-    monkeypatch.setattr(pipeline, "PDFDocument", lambda _data: SimpleNamespace(close=lambda: None))
+    monkeypatch.setattr(
+        pipeline,
+        "PDFDocument",
+        lambda _data: SimpleNamespace(close=lambda: None, page_count=1, page_size=lambda _index: (612.0, 792.0)),
+    )
     monkeypatch.setattr(
         pipeline, "HybridLocalModelContextSingleton", lambda: SimpleNamespace(get_model=lambda: SimpleNamespace(device="cpu"))
     )
