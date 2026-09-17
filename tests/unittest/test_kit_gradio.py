@@ -1049,6 +1049,7 @@ def test_gradio_examples_render_only_with_local_files(monkeypatch: pytest.Monkey
     demo = build_gradio_app(Mock(), capabilities, output_root=tmp_path / "out", enable_example=True)
     (dataset,) = find_examples(demo)
     assert [sample[0] for sample in dataset.samples] == ["demo.pdf"]
+    assert dataset.samples_per_page == gradio_app._EXAMPLES_PER_PAGE
     upload = next(block for block in demo.blocks.values() if "mineru-upload-file" in (block.elem_classes or []))
     click = next(event for event in demo.config["dependencies"] if (dataset._id, "click") in event["targets"])
     assert upload._id in click["outputs"]

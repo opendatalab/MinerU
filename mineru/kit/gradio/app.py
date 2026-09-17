@@ -427,6 +427,8 @@ def build_gradio_app(
                         inputs=input_file,
                         label=i18n("mineru.examples"),
                         elem_id="mineru-kit-examples",
+                        # 示例全部落在第一页，超出由卡片内部滚动；避免出现翻页控件。
+                        examples_per_page=_EXAMPLES_PER_PAGE,
                     )
 
             with gr.Column(scale=4, min_width=340, elem_classes=["mineru-kit-preview", "mineru-preview-pane"]):
@@ -1078,6 +1080,10 @@ def _example_files(file_types: list[str]) -> list[str]:
         return []
     suffixes = set(file_types)
     return [str(path) for path in sorted(example_root.iterdir()) if path.is_file() and path.suffix.lower() in suffixes]
+
+
+# 示例数量预期很小；单页放全部文件，翻页交给卡片内部滚动。
+_EXAMPLES_PER_PAGE = 1000
 
 
 def _gradio_public_base_url(request: object | None = None) -> str:
