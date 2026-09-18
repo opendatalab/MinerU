@@ -199,17 +199,17 @@ def test_remote_preflight_and_preload(openai_server: _OpenAIServer, monkeypatch:
     monkeypatch.setattr(
         api_server, "ensure_tier_runtime_dependencies", lambda tier, **kwargs: checks.append((tier, kwargs["vlm_config"]))
     )
-    monkeypatch.setattr(api_server, "_preload_local_models", local_loads.append)
+    monkeypatch.setattr(api_server, "_preload_local_models", lambda: local_loads.append("local"))
     settings = _settings(openai_server)
     api_server._preflight_tier_dependencies("standard", settings)
-    result = api_server._preload_server_models("standard", language="en", vlm_config=settings)
+    result = api_server._preload_server_models("standard", vlm_config=settings)
     assert result.engine == "http-client"
     assert checks == [("standard", settings)]
-    assert local_loads == ["en"]
+    assert local_loads == ["local"]
     request_count = len(openai_server.requests)
     get_vlm_predictor(settings)
     assert len(openai_server.requests) == request_count
-    api_server._preload_server_models("basic", language="ch", vlm_config=settings)
+    api_server._preload_server_models("basic", vlm_config=settings)
     assert len(openai_server.requests) == request_count
 
 

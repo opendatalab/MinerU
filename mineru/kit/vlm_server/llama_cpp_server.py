@@ -40,7 +40,9 @@ def llama_server_binary() -> Path:
     """定位 mineru-llama-cpp 包内分发的 llama-server 可执行文件。"""
     import mineru_llama_cpp
 
-    return Path(mineru_llama_cpp.__file__).resolve().parent / "bin" / "llama-server"
+    # Windows wheel 分发的是 llama-server.exe，其余平台无后缀。
+    binary_name = "llama-server.exe" if sys.platform == "win32" else "llama-server"
+    return Path(mineru_llama_cpp.__file__).resolve().parent / "bin" / binary_name
 
 
 def _has_arg(args: list[str], *flags: str) -> bool:
