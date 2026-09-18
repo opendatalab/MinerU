@@ -10,7 +10,6 @@ from typing import Literal
 import typer
 from packaging.specifiers import SpecifierSet
 
-from ...model.ocr.language import validate_public_ocr_lang
 from ...types import SERVER_TIERS, ServerTier
 from ...utils.i18n import t
 from ...utils.logger import configure_global_log_level
@@ -83,7 +82,6 @@ def webui_cmd(
     api_server_concurrency: int = typer.Option(
         1, "--api-server-concurrency", "--concurrency", help=t("Managed server job concurrency")
     ),
-    api_server_language: str = typer.Option("ch", "--api-server-language", "--language", help=t("Managed server OCR language")),
     api_server_disable_image_analysis: bool = typer.Option(
         False,
         "--api-server-disable-image-analysis/--disable-image-analysis",
@@ -101,10 +99,6 @@ def webui_cmd(
         _validate_positive_option(max_pages, name="max_pages")
     _validate_positive_option(api_server_concurrency, name="api_server_concurrency")
     normalized_tier = _validate_server_tier(api_server_tier)
-    try:
-        normalized_language = validate_public_ocr_lang(api_server_language)
-    except ValueError as exc:
-        exit_with_message("invalid_request", str(exc), "api_server_language")
 
     from ..gradio.app import launch_gradio
 
@@ -122,7 +116,6 @@ def webui_cmd(
             latex_delimiters_type=latex_delimiters_type,
             api_server_tier=normalized_tier,
             api_server_concurrency=api_server_concurrency,
-            api_server_language=normalized_language,
             api_server_disable_image_analysis=api_server_disable_image_analysis,
             api_server_preload_models=api_server_preload_models,
         )

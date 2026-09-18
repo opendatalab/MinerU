@@ -88,7 +88,6 @@ def test_launch_forwards_limit_and_versioned_assets(monkeypatch: pytest.MonkeyPa
         latex_delimiters_type="all",
         api_server_tier="standard",
         api_server_concurrency=1,
-        api_server_language="ch",
         api_server_disable_image_analysis=False,
         api_server_preload_models=False,
         max_pages=20,
@@ -137,7 +136,6 @@ def test_launch_forwards_managed_options_and_stops_server(monkeypatch: pytest.Mo
         latex_delimiters_type="all",
         api_server_tier="standard",
         api_server_concurrency=2,
-        api_server_language="ch",
         api_server_disable_image_analysis=False,
         api_server_preload_models=False,
     )
@@ -145,7 +143,6 @@ def test_launch_forwards_managed_options_and_stops_server(monkeypatch: pytest.Mo
     assert captured["options"] == {
         "tier": "standard",
         "concurrency": 2,
-        "language": "ch",
         "disable_image_analysis": False,
         "preload_models": False,
         "api_key": None,
@@ -216,7 +213,6 @@ def test_launch_remote_flash_fallback_and_cleanup(
         "latex_delimiters_type": "all",
         "api_server_tier": "standard",
         "api_server_concurrency": 2,
-        "api_server_language": "en",
         "api_server_disable_image_analysis": True,
         "api_server_preload_models": True,
     }
@@ -231,7 +227,7 @@ def test_launch_remote_flash_fallback_and_cleanup(
     assert factory.call_args_list[0].kwargs == {"api_url": remote_cap.base_url, "api_key": "remote-secret"}
     if needs_local and failure_stage != "remote":
         server_factory.assert_called_once_with(
-            tier="flash", concurrency=2, language="en", disable_image_analysis=True, preload_models=True, api_key=""
+            tier="flash", concurrency=2, disable_image_analysis=True, preload_models=True, api_key=""
         )
         server.stop.assert_called_once()
         assert events[:2] == ["remote", "start"]

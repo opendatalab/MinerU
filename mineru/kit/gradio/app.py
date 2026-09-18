@@ -1036,7 +1036,6 @@ def launch_gradio(
     latex_delimiters_type: Literal["a", "b", "all"],
     api_server_tier: str,
     api_server_concurrency: int,
-    api_server_language: str,
     api_server_disable_image_analysis: bool,
     api_server_preload_models: bool,
     max_pages: int | None = None,
@@ -1055,7 +1054,6 @@ def launch_gradio(
             managed_server = ManagedLocalApiServer(
                 tier=api_server_tier,  # type: ignore[arg-type]
                 concurrency=api_server_concurrency,
-                language=api_server_language,
                 disable_image_analysis=api_server_disable_image_analysis,
                 preload_models=api_server_preload_models,
                 api_key=resolved_api_key,
@@ -1068,7 +1066,6 @@ def launch_gradio(
             managed_server = ManagedLocalApiServer(
                 tier="flash",
                 concurrency=api_server_concurrency,
-                language=api_server_language,
                 disable_image_analysis=api_server_disable_image_analysis,
                 preload_models=api_server_preload_models,
                 api_key="",

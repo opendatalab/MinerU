@@ -474,7 +474,6 @@ ZH_MESSAGES: dict[str, str] = {
     "LaTeX delimiters used by the Markdown preview": "Markdown 预览使用的 LaTeX 定界符",
     "Managed API server capability tier": "托管 API server 的能力档位",
     "Managed server job concurrency": "托管服务的任务并发数",
-    "Managed server OCR language": "托管服务的 OCR 语言",
     "Disable managed server image analysis": "禁用托管服务的图像分析",
     "Preload managed server models": "预加载托管服务的模型",
     # ------------------------------------------------------- kit api-server
@@ -490,9 +489,6 @@ ZH_MESSAGES: dict[str, str] = {
     "Allow local source paths": "允许本地来源路径",
     "Maximum decoded bytes for inline sources": "内联来源的最大解码字节数",
     "Allow URL sources to use plain HTTP": "允许 URL 来源使用明文 HTTP",
-    "Hybrid medium OCR language hint; accepted by other efforts for compatibility": (
-        "Hybrid 中档 OCR 语言提示;为兼容性也接受其他档位传入"
-    ),
     "Initialize VLM client and local Hybrid models at startup": "启动时初始化 VLM 客户端与本地 Hybrid 模型",
     "Optional fixed API key": "可选的固定 API key",
     "Remote VLM URL; empty value selects local VLM": "远程 VLM URL;留空选择本地 VLM",

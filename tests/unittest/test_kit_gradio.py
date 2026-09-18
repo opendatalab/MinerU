@@ -743,7 +743,6 @@ def test_managed_local_api_command_uses_kit_entrypoint() -> None:
     server = ManagedLocalApiServer(
         tier="standard",
         concurrency=3,
-        language="en",
         disable_image_analysis=True,
         preload_models=True,
         api_key="secret",
@@ -756,11 +755,16 @@ def test_managed_local_api_command_uses_kit_entrypoint() -> None:
     assert "--no-advanced" not in command
     assert "--preload-models" in command
     assert "--ocr-mode" not in command
+    assert "--language" not in command
     assert command[command.index("--api-key") + 1] == "secret"
     with pytest.raises(TypeError, match="ocr_mode"):
         ManagedLocalApiServer(ocr_mode="ocr")  # type: ignore[call-arg]
     with pytest.raises(TypeError, match="api_server_ocr_mode"):
         gradio_app.launch_gradio(api_server_ocr_mode="ocr")  # type: ignore[call-arg]
+    with pytest.raises(TypeError, match="language"):
+        ManagedLocalApiServer(language="ch")  # type: ignore[call-arg]
+    with pytest.raises(TypeError, match="api_server_language"):
+        gradio_app.launch_gradio(api_server_language="ch")  # type: ignore[call-arg]
     for option in ("no_flash", "no_advanced"):
         with pytest.raises(TypeError, match=option):
             ManagedLocalApiServer(**{option: True})  # type: ignore[arg-type]

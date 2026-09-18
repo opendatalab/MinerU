@@ -301,7 +301,6 @@ class ManagedLocalApiServer:
         *,
         tier: ServerTier = "standard",
         concurrency: int = 1,
-        language: str = "ch",
         disable_image_analysis: bool = False,
         preload_models: bool = False,
         api_key: str | None = None,
@@ -313,7 +312,6 @@ class ManagedLocalApiServer:
             raise ValueError("API server concurrency must be positive")
         self.tier = tier
         self.concurrency = concurrency
-        self.language = language
         self.disable_image_analysis = disable_image_analysis
         self.preload_models = preload_models
         self.api_key = api_key
@@ -422,8 +420,6 @@ class ManagedLocalApiServer:
             self.tier,
             "--concurrency",
             str(self.concurrency),
-            "--language",
-            self.language,
             "--log-level",
             "warning",
             *(["--disable-image-analysis"] if self.disable_image_analysis else []),

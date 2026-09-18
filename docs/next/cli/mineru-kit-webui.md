@@ -62,7 +62,6 @@ mineru-kit webui \
 | `--max-pages` | 单次非 Flash PDF 解析的最多页数，必须为正整数；省略则不限制。不限制 Flash 或非 PDF。 |
 | `--api-server-tier` | 自动启动 server 的能力档位：`flash`、`basic`、`standard`。 |
 | `--api-server-concurrency` | 自动启动 server 的最大并发任务数。 |
-| `--api-server-language` | 自动启动 server 的 OCR 语言提示。 |
 | `--api-server-preload-models` | 在自动启动阶段预加载模型。 |
 | `--api-server-disable-image-analysis` | 自动启动 server 时关闭图片分析。 |
 | `--enable-example` | 显示当前工作目录 `examples/` 中的示例文件。 |
