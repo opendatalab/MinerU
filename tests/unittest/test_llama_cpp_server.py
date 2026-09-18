@@ -224,6 +224,75 @@ def test_main_skips_default_model_pair_when_native_selector_supplied(
 
 
 @pytest.mark.parametrize(
+    ("modifier_args", "expect_mmproj"),
+    [(["--no-mmproj"], False), (["--mmproj-auto"], True), (["--no-mmproj-auto"], True)],
+    ids=["no-mmproj", "mmproj-auto", "no-mmproj-auto"],
+)
+def test_main_projector_modifier_keeps_default_main_model(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    modifier_args: list[str],
+    expect_mmproj: bool,
+) -> None:
+    """投影开关只作用于投影：官方主模型仍补齐，--no-mmproj 时不追加官方 mmproj。"""
+    argv, _, model_dir = _run_main(monkeypatch, tmp_path, capsys, modifier_args)
+
+    assert str(model_dir / "main.gguf") in argv
+    assert (str(model_dir / "mmproj.gguf") in argv) is expect_mmproj
+
+
+@pytest.mark.parametrize(
+    "vocoder_args",
+    [["-hfv", "org/vocoder"], ["-hfrv", "org/vocoder"], ["--hf-repo-v", "org/vocoder"]],
+    ids=["short", "short2", "long"],
+)
+def test_main_vocoder_selector_keeps_default_model_pair(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str], vocoder_args: list[str]
+) -> None:
+    """vocoder 仓库独立于主模型：官方 -m + --mmproj 组合照常补齐。"""
+    argv, _, model_dir = _run_main(monkeypatch, tmp_path, capsys, vocoder_args)
+
+    assert str(model_dir / "main.gguf") in argv
+    assert str(model_dir / "mmproj.gguf") in argv
+
+
+@pytest.mark.parametrize(
+    "env_name",
+    [
+        "LLAMA_ARG_MODEL",
+        "LLAMA_ARG_HF_REPO",
+        "LLAMA_ARG_HF_FILE",
+        "LLAMA_ARG_MODEL_URL",
+        "LLAMA_ARG_DOCKER_REPO",
+        "LLAMA_ARG_MODELS_DIR",
+        "LLAMA_ARG_MODELS_PRESET",
+    ],
+)
+def test_main_env_model_source_suppresses_default_pair(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str], env_name: str
+) -> None:
+    """llama-server 按环境变量选模型时，追加的 -m 会以 CLI 优先级压掉配置。"""
+    monkeypatch.setenv(env_name, "/env/model.gguf")
+    argv, _, model_dir = _run_main(monkeypatch, tmp_path, capsys, [])
+
+    assert str(model_dir / "main.gguf") not in argv
+    assert str(model_dir / "mmproj.gguf") not in argv
+
+
+@pytest.mark.parametrize("env_name", ["LLAMA_ARG_MMPROJ", "LLAMA_ARG_MMPROJ_URL"])
+def test_main_env_projector_source_suppresses_default_pair(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str], env_name: str
+) -> None:
+    """环境变量指定投影与 -mm/--mmproj 同义：视为自带整套模型，不再补默认对。"""
+    monkeypatch.setenv(env_name, "/env/p.gguf")
+    argv, _, model_dir = _run_main(monkeypatch, tmp_path, capsys, [])
+
+    assert str(model_dir / "main.gguf") not in argv
+    assert str(model_dir / "mmproj.gguf") not in argv
+
+
+@pytest.mark.parametrize(
     "alias_args",
     [["-a", "my-model"], ["--alias", "my-model"], ["--alias=my-model"]],
     ids=["short", "long", "inline"],
