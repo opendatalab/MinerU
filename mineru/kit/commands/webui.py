@@ -80,11 +80,12 @@ def webui_cmd(
     ),
     api_server_disable_image_analysis: bool = typer.Option(
         False,
-        "--api-server-disable-image-analysis/--disable-image-analysis",
+        "--api-server-disable-image-analysis",
+        "--disable-image-analysis",
         help=t("Disable managed server image analysis"),
     ),
     api_server_preload_models: bool = typer.Option(
-        False, "--api-server-preload-models/--preload-models", help=t("Preload managed server models")
+        False, "--api-server-preload-models", "--preload-models", help=t("Preload managed server models")
     ),
 ) -> None:
     """启动基于 MinerU V1 API 的 Gradio 文档解析界面。"""
