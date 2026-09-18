@@ -35,6 +35,29 @@ _GGUF_STRING = 8
 _GGUF_ARRAY = 9
 _GGUF_UINT32 = 4
 
+# llama-server 同一选项的短别名与等价选择器（清单来自 llama-server --help）。
+# 追加默认参数前必须把整组别名视为「用户已显式提供」：llama.cpp 参数解析中
+# 后出现的同名项生效，漏认别名会让追加的默认值覆盖用户先传入的值。
+GRAMMAR_SELECTOR_FLAGS = ("--grammar", "--grammar-file", "-j", "--json-schema", "-jf", "--json-schema-file")
+MODEL_SELECTOR_FLAGS = ("-m", "--model", "-hf", "-hfr", "--hf-repo", "-mu", "--model-url")
+PROJECTOR_SELECTOR_FLAGS = (
+    "-mm",
+    "--mmproj",
+    "-mmu",
+    "--mmproj-url",
+    "-hfv",
+    "-hfrv",
+    "--hf-repo-v",
+    "--mmproj-auto",
+    "--no-mmproj",
+    "--no-mmproj-auto",
+)
+PARALLEL_FLAGS = ("-np", "--parallel")
+KV_UNIFIED_FLAGS = ("-kvu", "--kv-unified", "-no-kvu", "--no-kv-unified")
+SPECIAL_FLAGS = ("-sp", "--special")
+# 值为凭据的旗标，启动横幅打印前脱敏；--api-key-file 等是路径不是凭据，不脱敏。
+SECRET_VALUE_FLAGS = ("--api-key", "-hft", "--hf-token")
+
 
 def llama_server_binary() -> Path:
     """定位 mineru-llama-cpp 包内分发的 llama-server 可执行文件。"""
@@ -57,6 +80,26 @@ def _flag_value(args: list[str], *flags: str) -> str | None:
             if arg.startswith(f"{flag}="):
                 return arg.split("=", 1)[1]
     return None
+
+
+def _redact_secrets(args: list[str]) -> list[str]:
+    """启动横幅脱敏：SECRET_VALUE_FLAGS 的值替换为 ***，覆盖 flag value 与 flag=value 两种形式。"""
+    redacted: list[str] = []
+    redact_next = False
+    for arg in args:
+        if redact_next:
+            redacted.append("***")
+            redact_next = False
+            continue
+        flag = next((name for name in SECRET_VALUE_FLAGS if arg == name or arg.startswith(f"{name}=")), None)
+        if flag is None:
+            redacted.append(arg)
+        elif arg == flag:
+            redacted.append(arg)
+            redact_next = True
+        else:
+            redacted.append(f"{flag}=***")
+    return redacted
 
 
 def _skip_gguf_value(f: typing.BinaryIO, value_type: int) -> None:
@@ -83,7 +126,12 @@ def _read_gguf_context_length(model_path: Path) -> int:
     对齐 EngineCore 的 read_n_ctx_train_from_gguf：server 的 --ctx-size
     只接受总量，而进程内引擎按单 slot 训练上下文 × n_parallel 配 KV，
     所以这里必须自己从模型元数据取训练上下文。
+
+    GGUF 不保证 metadata key 顺序，`<arch>.context_length` 可能出现在
+    general.architecture 之前：先按前缀收齐全部候选，读完后按 arch 查表。
     """
+    context_by_architecture: dict[str, int] = {}
+    architecture = ""
     try:
         with model_path.open("rb") as f:
             header = f.read(24)
@@ -92,7 +140,6 @@ def _read_gguf_context_length(model_path: Path) -> int:
             version, _tensor_count, kv_count = struct.unpack_from("<IQQ", header, 4)
             if version < 2:
                 return 0
-            architecture = ""
             for _ in range(kv_count):
                 (key_length,) = struct.unpack("<Q", f.read(8))
                 key = f.read(key_length).decode("utf-8", errors="replace")
@@ -100,14 +147,14 @@ def _read_gguf_context_length(model_path: Path) -> int:
                 if key == "general.architecture" and value_type == _GGUF_STRING:
                     (value_length,) = struct.unpack("<Q", f.read(8))
                     architecture = f.read(value_length).decode("utf-8", errors="replace")
-                    continue
-                if architecture and key == f"{architecture}.context_length" and value_type == _GGUF_UINT32:
+                elif key.endswith(".context_length") and value_type == _GGUF_UINT32:
                     (value,) = struct.unpack("<I", f.read(4))
-                    return int(value)
-                _skip_gguf_value(f, value_type)
+                    context_by_architecture[key.removesuffix(".context_length")] = int(value)
+                else:
+                    _skip_gguf_value(f, value_type)
     except (OSError, struct.error):
         return 0
-    return 0
+    return context_by_architecture.get(architecture, 0)
 
 
 def main() -> None:
@@ -115,21 +162,22 @@ def main() -> None:
 
     if not _has_arg(args, "--port"):
         args.extend(["--port", DEFAULT_PORT])
-    if not _has_arg(args, "--grammar"):
+    if not _has_arg(args, *GRAMMAR_SELECTOR_FLAGS):
         args.extend(["--grammar", VALID_UNICODE_GRAMMAR])
     # params_.special=true：MinerU 输出里的 <|box_start|> 等格式标记注册为
     # special tokens，server 默认（false）会在输出 detokenize 时吞掉它们，
     # 解析格式依赖这些标记，必须显式开启。
-    if not _has_arg(args, "--special"):
+    if not _has_arg(args, *SPECIAL_FLAGS):
         args.append("--special")
 
-    # 模型与 mmproj 必须成对来自同一模型；用户自定义任一参数时不再补默认，
+    # 模型与 mmproj 必须成对来自同一模型；用户通过任一原生选择器（-m/-hf/
+    # --model-url，或 -mm/--mmproj 等投影选择器）自定义时不再补默认，
     # 避免拼出「自定义主模型 + 官方 mmproj」的不匹配组合。
     model_path: Path | None = None
     if _has_arg(args, "-m", "--model"):
         value = _flag_value(args, "-m", "--model")
         model_path = Path(value) if value else None
-    elif not _has_arg(args, "--mmproj"):
+    elif not _has_arg(args, *MODEL_SELECTOR_FLAGS, *PROJECTOR_SELECTOR_FLAGS):
         repo = vlm_model_repo("llama-cpp")
         model_dir = repo.ensure()
         model_path = model_dir / repo.paths["main"]
@@ -140,7 +188,7 @@ def main() -> None:
             args.extend(["--alias", repo.name])
 
     # ---- 对齐 EngineCore::EngineCore 写死的 common_params（用户显式传入时逐项让位）----
-    user_defined_parallel = _has_arg(args, "--parallel")
+    user_defined_parallel = _has_arg(args, *PARALLEL_FLAGS)
     user_defined_ctx = _has_arg(args, "-c", "--ctx-size")
     if not user_defined_parallel:
         args.extend(["--parallel", str(DEFAULT_N_PARALLEL)])
@@ -158,7 +206,7 @@ def main() -> None:
     # EngineCore 用 kv_unified=false 的硬分区 KV（每 slot 私有 n_ctx_seq，互不侵占，
     # 见 engine_core.cpp 的注释）；llama-server 默认 unified=enabled，需显式关闭，
     # 并同步关闭 idle-slot RAM 缓存（EngineCore 的 cache_idle_slots=false / cache_ram_mib=0）。
-    if not _has_arg(args, "--kv-unified", "--no-kv-unified"):
+    if not _has_arg(args, *KV_UNIFIED_FLAGS):
         args.append("--no-kv-unified")
     if not _has_arg(args, "--cache-ram", "-cram"):
         args.extend(["--cache-ram", "0"])
@@ -176,7 +224,7 @@ def main() -> None:
     if not binary.is_file():
         raise FileNotFoundError(f"llama-server binary not found: {binary}")
 
-    print(f"start llama.cpp server: {binary} {' '.join(args)}")
+    print(f"start llama.cpp server: {binary} {' '.join(_redact_secrets(args))}")
     os.execv(str(binary), [str(binary), *args])
 
 
