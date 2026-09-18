@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
 import numpy as np
 from docvortex.assets import image_size as _normalize_page_size
-from docvortex.document.pdf import PDFDocument, PDFPage, PDFPageTextGeometry
+from docvortex.document.pdf import PDFDocument, PDFPage, PDFPageTextGeometry, PDFPageVectorGeometry
 from docvortex.document.pdf.visuals import attach_visual_block_images as _attach_visual_block_images
 from docvortex.document.pdf.visuals import attach_visual_block_images_from_pdf
 from loguru import logger
@@ -147,6 +147,8 @@ def _process_flash_ocr(
     model_list: list[list[dict[str, Any]]],
     local_model_context: HybridLocalModelContext,
     images_layout_res: list[list[dict[str, Any]]],
+    *,
+    np_images: list[np.ndarray] | None = None,
 ) -> list[list[dict[str, Any]]]:
     """使用本地 OCR 为 Flash layout block 填充正文和表格内容。"""
     _validate_text_formula_window_inputs(
@@ -156,8 +158,8 @@ def _process_flash_ocr(
         images_layout_res,
     )
 
-    images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
-    np_images = [np.asarray(pil_image).copy() for pil_image in images_pil_list]
+    if np_images is None:
+        np_images = [np.asarray(image_dict["img_pil"]).copy() for image_dict in images_list]
     empty_formula_list: list[list[dict[str, Any]]] = [[] for _ in model_list]
     ocr_res_list = _ocr_det(
         local_model_context,
@@ -196,6 +198,9 @@ def _process_text_and_formulas(
     local_model_context: HybridLocalModelContext,
     images_layout_res: list[list[dict[str, Any]]],
     page_text_geometries: list[PDFPageTextGeometry | None] | None = None,
+    *,
+    page_vector_geometries: list[PDFPageVectorGeometry | None] | None = None,
+    np_images: list[np.ndarray] | None = None,
 ) -> list[list[dict[str, Any]]]:
     """在当前窗口内完成 OCR、公式、原生文本及 block 行信息回填。"""
 
@@ -214,8 +219,9 @@ def _process_text_and_formulas(
         effort=effort,
     )
 
-    # 将PIL图片转换为numpy数组
-    np_images = [np.asarray(pil_image).copy() for pil_image in images_pil_list]
+    # 窗口持有独立页图数组；只有直接调用本阶段且未提供数组时才构建。
+    if np_images is None:
+        np_images = [np.asarray(pil_image).copy() for pil_image in images_pil_list]
 
     mfd_res = _build_formula_inputs(images_layout_res)
     images_formula_list = mfd_res
@@ -290,6 +296,7 @@ def _process_text_and_formulas(
         ocr_det_type,
         local_model_context,
         page_text_geometries,
+        page_vector_geometries=page_vector_geometries,
     )
 
 
@@ -307,6 +314,7 @@ class _WindowInputs:
     high_vlm_blocks: list[list[dict[str, Any]]]
     accepted_native_tables: list[list[dict[str, Any]]]
     page_text_geometries: list[PDFPageTextGeometry | None] | None
+    page_vector_geometries: list[PDFPageVectorGeometry | None] | None = None
 
     def close(self) -> None:
         """推理及回填真正退出后关闭图片，仅清除本层拥有的容器。"""
@@ -317,6 +325,10 @@ class _WindowInputs:
             self.images_pil_list.clear()
             self.np_images.clear()
             self.window_pages.clear()
+            if self.page_text_geometries is not None:
+                self.page_text_geometries.clear()
+            if self.page_vector_geometries is not None:
+                self.page_vector_geometries.clear()
 
 
 def _prepare_pdf_window(
@@ -334,6 +346,8 @@ def _prepare_pdf_window(
     images_pil_list = []
     np_images = []
     table_items = []
+    page_text_geometries: list[PDFPageTextGeometry | None] | None = None
+    page_vector_geometries: list[PDFPageVectorGeometry | None] | None = None
     try:
         window_pages = _get_window_pdf_pages(document, window)
         images_list = load_images_from_pdf_bytes_range(
@@ -346,9 +360,10 @@ def _prepare_pdf_window(
             raise ValueError("Hybrid processing window PDF page count does not match image count")
         images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
         _log_processing_window(window, page_count, len(images_pil_list))
-        page_text_geometries: list[PDFPageTextGeometry | None] | None = (
+        page_text_geometries = (
             [None] * len(window_pages) if parse_mode == "txt" and effort in {"medium", "high", "xhigh"} else None
         )
+        page_vector_geometries = [None] * len(window_pages) if page_text_geometries is not None else None
 
         local_model_context = hybrid_model
         if local_model_context is None:
@@ -368,6 +383,7 @@ def _prepare_pdf_window(
                     window_pages,
                     images_list,
                     local_model_context,
+                    page_text_geometries,
                 )
 
         vl_style_layout_blocks = _build_vl_style_layout_blocks(images_layout_res, images_pil_list)
@@ -380,6 +396,7 @@ def _prepare_pdf_window(
                 images_list,
                 effort=effort,
                 page_text_geometries=page_text_geometries,
+                page_vector_geometries=page_vector_geometries,
             )
             if native_table_summary.total:
                 native_table_stats = {
@@ -420,6 +437,7 @@ def _prepare_pdf_window(
             high_vlm_blocks,
             accepted_native_tables,
             page_text_geometries,
+            page_vector_geometries,
         )
     except BaseException:
         try:
@@ -428,6 +446,10 @@ def _prepare_pdf_window(
             images_list.clear()
             images_pil_list.clear()
             np_images.clear()
+            if page_text_geometries is not None:
+                page_text_geometries.clear()
+            if page_vector_geometries is not None:
+                page_vector_geometries.clear()
         raise
     finally:
         table_items.clear()
@@ -470,6 +492,7 @@ def _finish_pdf_window(
             window_model_list,
             local_model_context,
             images_layout_res,
+            np_images=np_images,
         )
         # Flash OCR 在表内对象清理后复用统一公式编号合并，确保视觉裁图包含编号区域。
         for page_model_list in window_model_list:
@@ -484,6 +507,8 @@ def _finish_pdf_window(
             local_model_context,
             images_layout_res,
             page_text_geometries,
+            page_vector_geometries=state.page_vector_geometries,
+            np_images=np_images,
         )
 
     if effort in {"medium", "high"}:

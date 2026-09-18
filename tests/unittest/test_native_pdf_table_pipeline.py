@@ -10,7 +10,7 @@ from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
-from docvortex.document.pdf import PDFDocument, PDFPageTextGeometry
+from docvortex.document.pdf import PDFDocument, PDFPageTextGeometry, PDFPageVectorGeometry
 from PIL import Image
 
 from mineru.backend.analysis.pdf import formulas as pdf_formulas
@@ -35,6 +35,7 @@ def _build_native_pdf_page(*, width: float = 100.0, height: float = 100.0) -> Ma
     )
     page.get_drawing_lines.return_value = []
     page.get_path_infos.return_value = []
+    page.get_vector_geometry.return_value = PDFPageVectorGeometry()
     return page
 
 
@@ -146,8 +147,9 @@ def test_medium_native_table_priority_accepts_html_and_removes_internal_text_and
     assert table_page.page_size == (100.0, 200.0)
     assert recover.call_args.kwargs["angle"] == 0
     page.get_chars_with_geometry.assert_called_once_with()
-    page.get_drawing_lines.assert_called_once_with()
-    page.get_path_infos.assert_called_once_with()
+    page.get_vector_geometry.assert_called_once_with()
+    page.get_drawing_lines.assert_not_called()
+    page.get_path_infos.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -475,6 +477,7 @@ def test_high_txt_window_excludes_native_table_from_vlm(
         *,
         effort: object,
         page_text_geometries: object,
+        page_vector_geometries: object,
     ) -> object:
         """只命中首个表格，构造同页混合短路场景。"""
 
@@ -501,6 +504,9 @@ def test_high_txt_window_excludes_native_table_from_vlm(
         _local_model_context: object,
         _images_layout_res: object,
         _page_text_geometries: object,
+        *,
+        page_vector_geometries: object,
+        np_images: object,
     ) -> list[list[dict[str, object]]]:
         """跳过与本测试无关的正文和公式回填。"""
 
