@@ -68,31 +68,44 @@ def _run_with_forwarded_argv(main_fn: Callable[[], None], args: list[str]) -> No
         sys.argv = original_argv
 
 
-def _resolve_auto_engine() -> Literal["vllm", "lmdeploy"]:
-    """自动服务仅选择 vLLM 或 LMDeploy，MLX 必须显式指定。"""
+def _resolve_auto_engine() -> Literal["llama-cpp", "lmdeploy", "vllm"]:
+    """auto 优先 vLLM/LMDeploy（GPU 高吞吐），均不可用时回退 llama-cpp（base 依赖）；MLX 必须显式指定。"""
     if _module_available("vllm"):
         logger.info(t("Using vLLM as the inference engine for VLM server."))
         return "vllm"
     if _module_available("lmdeploy"):
         logger.info(t("Using LMDeploy as the inference engine for VLM server."))
         return "lmdeploy"
-    logger.info(t("No automatic VLM server engine is installed. Install vLLM/LMDeploy or explicitly choose --engine mlx."))
+    if _module_available("mineru_llama_cpp"):
+        logger.info(t("Using llama.cpp as the inference engine for VLM server."))
+        return "llama-cpp"
+    logger.info(
+        t("No VLM server engine is available. Install vLLM/LMDeploy/mineru-llama-cpp, or pass --engine explicitly.")
+    )
     raise typer.Exit(1) from None
 
 
 def vlm_server_cmd(
     ctx: typer.Context,
-    engine: str = typer.Option("auto", "--engine", help=t("VLM serving engine: auto, vllm, lmdeploy, mlx")),
+    engine: str = typer.Option("auto", "--engine", help=t("VLM serving engine: auto, llama-cpp, vllm, lmdeploy, mlx")),
 ) -> None:
     """Start the local VLM server with OpenAI-compatible chat completions."""
-    if engine not in {"auto", "vllm", "lmdeploy", "mlx"}:
+    if engine not in {"auto", "llama-cpp", "vllm", "lmdeploy", "mlx"}:
         exit_with_message("invalid_request", t("Unsupported engine '{engine}'.", engine=engine), "engine")
     extra_args = list(ctx.args)
 
     if engine == "auto":
         engine = _resolve_auto_engine()
 
-    if engine == "vllm":
+    if engine == "llama-cpp":
+        if not _module_available("mineru_llama_cpp"):
+            logger.error(t("mineru-llama-cpp is not installed. Install 'mineru-llama-cpp' to use the llama-cpp engine."))
+            raise typer.Exit(1) from None
+        from ..vlm_server import llama_cpp_server
+
+        _run_with_forwarded_argv(llama_cpp_server.main, extra_args)
+
+    elif engine == "vllm":
         if not _module_available("vllm"):
             logger.error(t("vLLM is not installed. Please install vLLM or choose lmdeploy/mlx as the engine."))
             raise typer.Exit(1) from None

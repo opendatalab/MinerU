@@ -29,7 +29,12 @@ from ..output import print_info, print_success
 def parse_cmd(
     inputs: list[str] = typer.Argument(..., help=t("Input files or directories")),
     output: str = typer.Option(..., "-o", "--output", help=t("Output path; required")),
-    pages: str | None = typer.Option(None, "-p", "--pages", help=t("PDF pages: '1-5,8,r3-r1' or 'all'; default: all pages")),
+    pages: str | None = typer.Option(
+        None,
+        "-p",
+        "--pages",
+        help=t("PDF pages: '1-5,8', 'r3-r1' (counted from the end), or 'all'; default: all pages"),
+    ),
     format: str = typer.Option(
         "markdown",
         "-f",

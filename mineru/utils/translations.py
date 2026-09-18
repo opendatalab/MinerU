@@ -18,10 +18,12 @@ ZH_MESSAGES: dict[str, str] = {
     "no": "否",
     "Error:": "错误:",
     "Output path; creates parent directories": "输出路径;自动创建父目录",
-    "Soft character limit for STDOUT content": "STDOUT 内容的软字符上限",
+    "Soft character limit for printed content": "输出内容的软字符上限",
     "File not found: {path}": "文件不存在: {path}",
     "File or directory not found: {path}": "文件或目录不存在: {path}",
     "Show the version and exit.": "显示版本并退出。",
+    "Scan a file or directory into the document library.": "把文件或目录扫描进文档库。",
+    "Remove file records and cached results from the document library.": "从文档库移除文件记录与缓存结果。",
     "Print MinerU and Python versions.": "显示 MinerU 与 Python 版本。",
     "MinerU version: {version}": "MinerU 版本: {version}",
     "Python version: {version}": "Python 版本: {version}",
@@ -32,21 +34,23 @@ ZH_MESSAGES: dict[str, str] = {
     # ------------------------------------------------------------- mineru 根
     "MinerU — your personal document center, built for agents": "MinerU — 你的个人文档中心,为 agent 而建",
     "Parse a document file.": "解析一个文档文件。",
-    "Read parsed doclib content by locator.": "按定位符读取已解析的 doclib 内容。",
+    "Read parsed document content by locator.": "按定位符读取已解析的文档内容。",
     "Search parsed document content.": "搜索已解析的文档内容。",
     "Search filenames only (not document content).": "仅搜索文件名(不搜索文档内容)。",
-    "Show Remote API usage and limits.": "显示 Remote API 用量与限额。",
-    "Mark done parse results as superseded.": "将已完成的解析结果标记为已作废。",
+    "Show remote parse service usage and limits.": "显示远程解析服务的用量与限额。",
+    "Invalidate cached parse results so the next run parses again.": "使缓存的解析结果失效,下次运行时重新解析。",
     # ----------------------------------------------------------------- parse
     "Path to the document file": "文档文件路径",
     "Parse tier: flash, basic, standard, advanced (default: server decides)": (
         "解析档位: flash、basic、standard、advanced(默认由服务端决定)"
     ),
-    "PDF pages: '1-5,8,r3-r1' or 'all'; default: first 10 pages": "PDF 页码: '1-5,8,r3-r1' 或 'all';默认前 10 页",
-    "Continue reading after a content cursor": "从内容游标之后继续读取",
+    "PDF pages: '1-5,8', 'r3-r1' (counted from the end), or 'all'; default: first 10 pages": (
+        "PDF 页码: '1-5,8'、'r3-r1'(倒数页码)或 'all';默认前 10 页"
+    ),
+    "Continue reading after a content cursor from earlier output": "从早前输出中的内容游标之后继续读取",
     "Output format: markdown": "输出格式: markdown",
     "Force re-parse, ignore cache": "强制重新解析,忽略缓存",
-    "Use remote parse-server": "使用远程 parse-server",
+    "Use the mineru.net official remote parse service": "使用 mineru.net 官方远程解析服务",
     "Max seconds to wait for parse to complete": "等待解析完成的最长秒数",
     "Don't wait — return immediately": "不等待,立即返回",
     "Omit document structure markers from output": "输出中省略文档结构标记",
@@ -64,7 +68,7 @@ ZH_MESSAGES: dict[str, str] = {
     "Parse IDs": "解析任务 ID",
     "{label}: {ids}": "{label}: {ids}",
     # ------------------------------------------------------------------ read
-    "Doclib locator, e.g. doc:ab12cd3/tier:basic/page:4": "doclib 定位符,如 doc:ab12cd3/tier:basic/page:4",
+    "Document library locator, e.g. doc:ab12cd3/tier:basic/page:4": "文档库定位符,如 doc:ab12cd3/tier:basic/page:4",
     "Read N pages/blocks before and after the locator": "在定位符前后各读取 N 页/块",
     "Output format: markdown, image": "输出格式: markdown、image",
     "Omit continuation marker from output": "输出中省略续读标记",
@@ -83,7 +87,7 @@ ZH_MESSAGES: dict[str, str] = {
         "unreachable={unreachable}, excluded={excluded}, unsupported={unsupported}"
     ),
     # ----------------------------------------------------------------- watch
-    "Watch target management": "监视目标管理",
+    "Manage directories watched for automatic scanning.": "管理自动扫描的监视目录。",
     "Add a directory to watch.": "添加要监视的目录。",
     "List watched directories.": "列出被监视的目录。",
     "Remove a watched directory.": "移除一个被监视的目录。",
@@ -120,7 +124,7 @@ ZH_MESSAGES: dict[str, str] = {
     "Files:": "文件:",
     "File no longer exists.": "文件已不存在。",
     # ----------------------------------------------------------------- usage
-    "Remote API Usage": "Remote API 用量",
+    "Remote Parse Service Usage": "远程解析服务用量",
     "Remote URL: {url}": "Remote URL: {url}",
     "Access level: {level}": "访问级别: {level}",
     "Billing period: {period}": "计费周期: {period}",
@@ -139,7 +143,7 @@ ZH_MESSAGES: dict[str, str] = {
     "{days} day": "{days} 天",
     "{days} days": "{days} 天",
     # ------------------------------------------------------------------ list
-    "List doclib resources": "列出 doclib 资源",
+    "List document library resources.": "列出文档库资源。",
     "List parse tasks.": "列出解析任务。",
     "List scan tasks.": "列出扫描任务。",
     "List file path records.": "列出文件路径记录。",
@@ -171,7 +175,7 @@ ZH_MESSAGES: dict[str, str] = {
     "Type": "类型",
     "Title": "标题",
     # ------------------------------------------------------------------ show
-    "Show doclib resource details": "显示 doclib 资源详情",
+    "Show document library resource details.": "显示文档库资源详情。",
     "Show one parse task.": "显示单个解析任务。",
     "Show one scan task.": "显示单个扫描任务。",
     "Show file, doc, and parse state for a local path.": "显示某个本地路径的文件、文档与解析状态。",
@@ -204,7 +208,7 @@ ZH_MESSAGES: dict[str, str] = {
     "Image based": "是否图片型",
     "Files": "文件",
     # -------------------------------------------------------- telemetry 命令
-    "Telemetry management": "遥测管理",
+    "Manage anonymous usage telemetry.": "管理匿名使用遥测。",
     "Show telemetry status.": "显示遥测状态。",
     "Print the next telemetry request body without sending it.": "打印下一次遥测请求体,但不发送。",
     "Enable telemetry.": "启用遥测。",
@@ -221,7 +225,7 @@ ZH_MESSAGES: dict[str, str] = {
     "telemetry flush: {reason}": "遥测已上报: {reason}",
     "telemetry {state}": "遥测 {state}",
     # ---------------------------------------------------------------- server
-    "Server lifecycle management": "服务生命周期管理",
+    "Start, stop, and inspect the local MinerU server.": "启动、停止和查看本地 MinerU 服务。",
     "Start the mineru server in the background.": "在后台启动 mineru 服务。",
     "Stop the mineru server gracefully.": "优雅停止 mineru 服务。",
     "Restart the mineru server.": "重启 mineru 服务。",
@@ -309,9 +313,9 @@ ZH_MESSAGES: dict[str, str] = {
     "{age}h ago": "{age} 小时前",
     "{age}d ago": "{age} 天前",
     # ---------------------------------------------------------------- config
-    "Configuration management": "配置管理",
-    "Exclude rule management": "排除规则管理",
-    "Parsing rule management": "解析规则管理",
+    "Show or override MinerU configuration values.": "查看或覆盖 MinerU 配置值。",
+    "Manage rules that exclude files from the document library.": "管理将文件排除在文档库之外的规则。",
+    "Manage parsing defaults applied to matching paths.": "管理应用到匹配路径的解析默认值。",
     "Show effective configuration values.": "显示生效的配置值。",
     "Show one effective configuration value.": "显示单个生效配置值。",
     "Set a configuration override.": "设置一个配置覆盖。",
@@ -339,7 +343,7 @@ ZH_MESSAGES: dict[str, str] = {
     "Exclude rule {rule_id} removed.": "排除规则 {rule_id} 已移除。",
     "Exclude rule {rule_id} unchanged.": "排除规则 {rule_id} 无变化。",
     "Glob pattern to match": "要匹配的 glob 模式",
-    "PDF pages, e.g. all, 1-10 or r3-r1": "PDF 页码,如 all、1-10 或 r3-r1",
+    "PDF pages, e.g. all, 1-10, or r3-r1 (counted from the end)": "PDF 页码,如 all、1-10 或 r3-r1(倒数页码)",
     "Allow remote parsing": "允许远程解析",
     "Rule name": "规则名称",
     "Add a parsing rule.": "添加一条解析规则。",
@@ -352,7 +356,7 @@ ZH_MESSAGES: dict[str, str] = {
     "Parsing rule {rule_id} removed.": "解析规则 {rule_id} 已移除。",
     "Parsing rule {rule_id} unchanged.": "解析规则 {rule_id} 无变化。",
     # --------------------------------------------------------------- cleanup
-    "Clean up local doclib records and temp files.": "清理本地 doclib 记录与临时文件。",
+    "Clean up local document library records and temp files.": "清理本地文档库记录与临时文件。",
     "Preview only": "仅预览",
     "Days threshold for temp cleanup": "临时文件清理的天数阈值",
     "Remove all file rows already marked as deleted.": "移除所有已标记为删除的文件记录。",
@@ -366,7 +370,7 @@ ZH_MESSAGES: dict[str, str] = {
     "Removed {count} orphan doc(s).": "已移除 {count} 个孤儿文档。",
     "Removed {count} temp file(s).": "已移除 {count} 个临时文件。",
     # ---------------------------------------------------------------- forget
-    "File or directory path to forget from doclib": "要从 doclib 移除记录的文件或目录路径",
+    "File or directory path to forget from the document library": "要从文档库移除记录的文件或目录路径",
     "Would forget {count} file record(s) (matched_as={matched_as}). Use --no-dry-run to proceed.": (
         "将移除 {count} 条文件记录(matched_as={matched_as})。加 --no-dry-run 执行。"
     ),
@@ -384,7 +388,7 @@ ZH_MESSAGES: dict[str, str] = {
     "MinerU server is busy. Retry the request.": "MinerU 服务繁忙。请重试请求。",
     # -------------------------------------------------------------- guidance
     "Configure a valid Official API Key to continue.": "请配置有效的官方 API Key 后继续。",
-    "This Remote API feature requires an Official API Key.": "此 Remote API 功能需要官方 API Key。",
+    "This remote parse service feature requires an official API Key.": "此远程解析服务功能需要官方 API Key。",
     "An Official API Key is optional and may provide registered rate limits.": (
         "官方 API Key 为可选项,配置后可获得注册用户的速率限制。"
     ),
@@ -423,13 +427,13 @@ ZH_MESSAGES: dict[str, str] = {
     ),
     "Enable telemetry?": "启用遥测?",
     # ------------------------------------------------------------- kit 根
-    "MinerU Kit — parsing and service tools": "MinerU Kit — 解析与服务工具",
+    "MinerU Kit — batch parsing and service tools": "MinerU Kit — 批量解析与服务工具",
     "Parse files or directories into markdown, middle JSON, or zip outputs.": (
         "将文件或目录解析为 markdown、middle JSON 或 zip 输出。"
     ),
     "Start the Gradio document parsing web UI backed by the MinerU V1 API.": "启动基于 MinerU V1 API 的 Gradio 文档解析界面。",
-    "Forward explicit startup options and launch the self-hosted MinerU parsing API service.": (
-        "转发显式启动参数,启动 self-hosted MinerU 解析 API 服务。"
+    "Start the self-hosted MinerU parsing API service.": (
+        "启动自托管的 MinerU 解析 API 服务。"
     ),
     "Start the local VLM server with OpenAI-compatible chat completions.": (
         "启动本地 VLM 服务,提供 OpenAI 兼容的 chat completions。"
@@ -438,7 +442,9 @@ ZH_MESSAGES: dict[str, str] = {
     # ------------------------------------------------------------ kit parse
     "Input files or directories": "输入文件或目录",
     "Output path; required": "输出路径;必填",
-    "PDF pages: '1-5,8,r3-r1' or 'all'; default: all pages": "PDF 页码: '1-5,8,r3-r1' 或 'all';默认全部页面",
+    "PDF pages: '1-5,8', 'r3-r1' (counted from the end), or 'all'; default: all pages": (
+        "PDF 页码: '1-5,8'、'r3-r1'(倒数页码)或 'all';默认全部页面"
+    ),
     "Output format: markdown, middle_json, zip": "输出格式: markdown、middle_json、zip",
     "Use mineru.net official remote parse service": "使用 mineru.net 官方远程解析服务",
     "Use a custom remote parse service URL": "使用自定义远程解析服务 URL",
@@ -505,12 +511,16 @@ ZH_MESSAGES: dict[str, str] = {
         "API 服务日志级别: critical、error、warning、info、debug、trace;默认取全局 log.level。同时过滤 Loguru 默认模型日志 sink"
     ),
     # ------------------------------------------------------- kit vlm-server
-    "VLM serving engine: auto, vllm, lmdeploy, mlx": "VLM 推理服务引擎: auto、vllm、lmdeploy、mlx",
+    "VLM serving engine: auto, llama-cpp, vllm, lmdeploy, mlx": "VLM 推理服务引擎: auto、llama-cpp、vllm、lmdeploy、mlx",
     "Unsupported engine '{engine}'.": "不支持的引擎 '{engine}'。",
+    "mineru-llama-cpp is not installed. Install 'mineru-llama-cpp' to use the llama-cpp engine.": (
+        "未安装 mineru-llama-cpp,请安装 'mineru-llama-cpp' 以使用 llama-cpp 引擎。"
+    ),
     "Using vLLM as the inference engine for VLM server.": "使用 vLLM 作为 VLM 服务的推理引擎。",
     "Using LMDeploy as the inference engine for VLM server.": "使用 LMDeploy 作为 VLM 服务的推理引擎。",
-    "No automatic VLM server engine is installed. Install vLLM/LMDeploy or explicitly choose --engine mlx.": (
-        "未安装可自动选择的 VLM 服务引擎。请安装 vLLM/LMDeploy,或显式指定 --engine mlx。"
+    "Using llama.cpp as the inference engine for VLM server.": "使用 llama.cpp 作为 VLM 服务的推理引擎。",
+    "No VLM server engine is available. Install vLLM/LMDeploy/mineru-llama-cpp, or pass --engine explicitly.": (
+        "没有可用的 VLM 服务引擎。请安装 vLLM/LMDeploy/mineru-llama-cpp,或显式指定 --engine。"
     ),
     "vLLM is not installed. Please install vLLM or choose lmdeploy/mlx as the engine.": (
         "未安装 vLLM。请安装 vLLM,或选择 lmdeploy/mlx 作为引擎。"

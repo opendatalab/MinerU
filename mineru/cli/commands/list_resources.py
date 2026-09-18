@@ -21,7 +21,7 @@ from ...utils.i18n import t
 from ..contracts import CliContext
 from ..runtime import run_cli
 
-app = typer.Typer(help=t("List doclib resources"), no_args_is_help=True)
+app = typer.Typer(help=t("List document library resources."), no_args_is_help=True)
 
 
 @app.command("parses", help=t("List parse tasks."))

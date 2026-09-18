@@ -13,7 +13,7 @@ from ...utils.i18n import t
 from ..contracts import CliContext
 from ..runtime import run_cli
 
-app = typer.Typer(help=t("Telemetry management"), no_args_is_help=True)
+app = typer.Typer(help=t("Manage anonymous usage telemetry."), no_args_is_help=True)
 
 
 @app.command("status", help=t("Show telemetry status."))

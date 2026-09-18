@@ -63,7 +63,7 @@ def api_key_guidance_for_error(error: MineruError) -> CliGuidance | None:
     if error.code == "invalid_api_key":
         return _api_key_guidance(required=True, message=t("Configure a valid Official API Key to continue."))
     if error.code == "feature_requires_api_key":
-        return _api_key_guidance(required=True, message=t("This Remote API feature requires an Official API Key."))
+        return _api_key_guidance(required=True, message=t("This remote parse service feature requires an official API Key."))
     if context.api_key_configured:
         return None
     if error.code == "rate_limit_exceeded":
