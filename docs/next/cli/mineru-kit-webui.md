@@ -66,7 +66,6 @@ mineru-kit webui \
 | `--api-server-disable-image-analysis` | 自动启动 server 时关闭图片分析。 |
 | `--enable-example` | 显示当前工作目录 `examples/` 中的示例文件。 |
 | `--enable-api` | 暴露 Gradio 转换事件 API。 |
-| `--latex-delimiters-type` | Markdown 预览公式分隔符：`a`、`b` 或 `all`。 |
 
 Gradio 不接受 `--api-server-no-flash`、`--no-flash`、`--api-server-no-advanced`、`--no-advanced`；传入会报错。独立 API 启动命令仍保留 `--no-flash` 和 `--no-advanced`。
 

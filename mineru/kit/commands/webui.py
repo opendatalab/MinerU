@@ -5,7 +5,6 @@ from __future__ import annotations
 import importlib.util
 import os
 from importlib.metadata import version
-from typing import Literal
 
 import typer
 from packaging.specifiers import SpecifierSet
@@ -73,9 +72,6 @@ def webui_cmd(
     ),
     enable_example: bool = typer.Option(True, "--enable-example/--no-enable-example", help=t("Show local examples")),
     enable_api: bool = typer.Option(True, "--enable-api/--no-enable-api", help=t("Expose the Gradio event API")),
-    latex_delimiters_type: Literal["a", "b", "all"] = typer.Option(
-        "all", "--latex-delimiters-type", help=t("LaTeX delimiters used by the Markdown preview")
-    ),
     api_server_tier: str = typer.Option(
         "standard", "--api-server-tier", "--tier", help=t("Managed API server capability tier")
     ),
@@ -113,7 +109,6 @@ def webui_cmd(
             max_pages=max_pages,
             enable_example=enable_example,
             enable_api=enable_api,
-            latex_delimiters_type=latex_delimiters_type,
             api_server_tier=normalized_tier,
             api_server_concurrency=api_server_concurrency,
             api_server_disable_image_analysis=api_server_disable_image_analysis,

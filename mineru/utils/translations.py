@@ -471,7 +471,6 @@ ZH_MESSAGES: dict[str, str] = {
     "Maximum pages per non-Flash PDF conversion; omitted: unlimited": "非 Flash PDF 单次转换的最大页数;省略时不限制",
     "Show local examples": "显示本地示例",
     "Expose the Gradio event API": "开放 Gradio 事件 API",
-    "LaTeX delimiters used by the Markdown preview": "Markdown 预览使用的 LaTeX 定界符",
     "Managed API server capability tier": "托管 API server 的能力档位",
     "Managed server job concurrency": "托管服务的任务并发数",
     "Disable managed server image analysis": "禁用托管服务的图像分析",

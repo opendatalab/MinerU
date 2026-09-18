@@ -118,7 +118,7 @@ llm_aided:
 
 ## 基于配置文件扩展 MinerU 功能
 
-MinerU 可开箱即用，并从 `$MINERU_HOME/config.yaml` 读取当前配置；可通过 `MINERU_CONFIG` 指定其他配置文件。旧 `mineru.json` CLI 配置不再支持，Gradio 的 LaTeX 分隔符通过 `--latex-delimiters-type` 选择。
+MinerU 可开箱即用，并从 `$MINERU_HOME/config.yaml` 读取当前配置；可通过 `MINERU_CONFIG` 指定其他配置文件。旧 `mineru.json` CLI 配置不再支持。
 
 模型目录和模型源使用 `model` 配置段：
 

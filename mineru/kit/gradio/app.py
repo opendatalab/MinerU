@@ -10,7 +10,7 @@ import time
 from contextlib import aclosing
 from pathlib import Path
 from collections.abc import Callable
-from typing import Any, Literal
+from typing import Any
 from urllib.parse import quote
 
 from ...errors import MineruError
@@ -69,14 +69,6 @@ _DOWNLOAD_ICON_PATHS: dict[str, str] = {
     "pdf": "M14 3H5v18h14V8l-5-5v5h5M8 17c3-4 5-8 4-8-2 0-1 7 4 7 3 0-5-3-8 1-1 2 1 1 2 0",
 }
 _DEFAULT_TIER = "standard"
-_LATEX_DELIMITERS_A = [
-    {"left": "$$", "right": "$$", "display": True},
-    {"left": "$", "right": "$", "display": False},
-]
-_LATEX_DELIMITERS_B = [
-    {"left": "\\(", "right": "\\)", "display": False},
-    {"left": "\\[", "right": "\\]", "display": True},
-]
 _DOWNLOAD_ICON_HTML = f"""
 <button type="button" class="mineru-kit-download-icon" title="Download results" aria-label="Download results"
         data-mineru-i18n-key="download_results" data-mineru-i18n-attr="title aria-label"
@@ -319,15 +311,6 @@ def _download_updates(gr: Any, *, interactive: bool, run_id: str = "") -> tuple[
     return (run_id, *(gr.update(value=label, interactive=interactive) for _format_name, label in _DOWNLOAD_FORMATS))
 
 
-def _latex_delimiters(delimiters_type: Literal["a", "b", "all"]) -> list[dict[str, Any]]:
-    """按 CLI 选择返回 Gradio Markdown 组件使用的公式分隔符。"""
-    if delimiters_type == "a":
-        return list(_LATEX_DELIMITERS_A)
-    if delimiters_type == "b":
-        return list(_LATEX_DELIMITERS_B)
-    return [*(_LATEX_DELIMITERS_A), *(_LATEX_DELIMITERS_B)]
-
-
 def build_gradio_app(
     client: V1ArtifactClient | GradioArtifactClient,
     capabilities: V1ServerCapabilities,
@@ -335,7 +318,6 @@ def build_gradio_app(
     output_root: Path,
     enable_example: bool = True,
     enable_api: bool = True,
-    latex_delimiters_type: Literal["a", "b", "all"] = "all",
     max_pages: int | None = None,
 ) -> Any:
     """构建不启动监听端口的 Gradio Blocks 应用，便于单元测试和外部托管。"""
@@ -1033,7 +1015,6 @@ def launch_gradio(
     output_dir: str,
     enable_example: bool,
     enable_api: bool,
-    latex_delimiters_type: Literal["a", "b", "all"],
     api_server_tier: str,
     api_server_concurrency: int,
     api_server_disable_image_analysis: bool,
@@ -1079,7 +1060,6 @@ def launch_gradio(
             output_root=output_root,
             enable_example=enable_example,
             enable_api=enable_api,
-            latex_delimiters_type=latex_delimiters_type,
             max_pages=max_pages,
         )
         demo.launch(
