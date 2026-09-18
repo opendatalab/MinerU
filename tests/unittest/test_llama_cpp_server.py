@@ -194,6 +194,8 @@ def test_main_skips_default_grammar_when_alternate_selector_supplied(
         ["--mmproj", "p.gguf"],
         ["-mmu", "https://example.com/p.gguf"],
         ["--mmproj-url", "https://example.com/p.gguf"],
+        ["--models-dir", "models"],
+        ["--models-preset", "presets.ini"],
     ],
     ids=[
         "hf",
@@ -207,12 +209,14 @@ def test_main_skips_default_grammar_when_alternate_selector_supplied(
         "mmproj",
         "mmproj-url-short",
         "mmproj-url",
+        "router-models-dir",
+        "router-models-preset",
     ],
 )
 def test_main_skips_default_model_pair_when_native_selector_supplied(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str], model_args: list[str]
 ) -> None:
-    """原生模型/投影选择器视为用户已提供模型，不再注入官方 -m + --mmproj 组合。"""
+    """原生模型/投影选择器与 router 来源视为用户已提供模型，不再注入官方 -m + --mmproj 组合。"""
     argv, _, model_dir = _run_main(monkeypatch, tmp_path, capsys, model_args)
 
     assert str(model_dir / "main.gguf") not in argv
