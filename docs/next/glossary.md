@@ -65,13 +65,13 @@
 
 ### 3.2 Backend
 
-`backend` 中文统一为“解析后端”。它是内部实现术语，表示具体解析实现族或模型管线，不是用户可见的选项。
+`backend` 中文统一为“解析后端”。它是历史内部术语，表示具体解析实现族或模型管线；该概念已整体移除：`backend_for_tier` 派生链与 `ParserRuntimeOptions.backend` 内部字段均已删除，现行代码只保留 `tier` 及其派生的 `effort`（`mineru/parser/tier.py` 的 `ParserRuntimeOptions(tier, effort)`）。
 
-`engine` 和 `backend` 在含义上非常接近，都是某种解析能力的实现后端。新文档应优先使用 `backend`；只有在已有错误码、历史命名或兼容接口中才保留 `engine`。
+`engine` 一词仅在已有错误码、历史命名或兼容接口中保留；不要在新文档中复活 `backend` 概念。
 
-内部 backend（由 `backend_for_tier`（`mineru/parser/tier.py`）按 tier 派生，不提供对外选择）:
+实现族（不对外选择，tier 已完全决定实现路径）:
 
-| Backend | 含义 |
+| 实现族 | 含义 |
 |---------|------|
 | `hybrid-engine` | 本地 Hybrid 解析实现，basic/standard/advanced 三档共用，仅 effort 不同 |
 | `flash` | 快速 CPU 解析实现，`flash` tier 的实现 |
@@ -80,9 +80,9 @@
 
 规范:
 
-- 对普通用户显示 `tier`，不要把 `backend` 作为主选择项。
-- 任何 CLI / SDK / API 入口都不接受 `backend` 入参；backend 仅作为内部派生值（`ParserRuntimeOptions.backend`）存在，不要重新引入 `--backend` 类参数。
-- API-backed parser、Doclib SDK、doclib server API 和 v1 API 不应要求用户理解或选择 `backend`。
+- 对普通用户只显示 `tier`，不要把 `backend` 作为主选择项。
+- 任何 CLI / SDK / API 入口都不接受 `backend` 入参；运行差异由 tier 派生的 effort 表达，不要重新引入 `--backend` 类参数或 backend 派生函数。
+- API-backed parser、Doclib SDK、doclib server API 和 v1 API 只面向 `tier`，不应要求用户理解或选择 `backend`。
 - `mineru-kit api-server` 使用单值 `--tier flash|basic|standard` 表示能力上限；启动后的 HTTP API 通过 `/v1/tiers` 发布展开后的请求 tier。
 - Middle JSON schema 2.0 不记录 `_meta.backend`；产物 metadata 不包含 backend 字段，用户可见语义只记录 `tier`。
 - `backend` 不应承担隐私语义；隐私由 `privacy` / `remote` / `via` 描述。

@@ -64,6 +64,9 @@ KV_UNIFIED_FLAGS = ("-kvu", "--kv-unified", "-no-kvu", "--no-kv-unified")
 SPECIAL_FLAGS = ("-sp", "--special")
 # 值为凭据的旗标，启动横幅打印前脱敏；--api-key-file 等是路径不是凭据，不脱敏。
 SECRET_VALUE_FLAGS = ("--api-key", "-hft", "--hf-token")
+# 打印信息即退出的选项（llama-server --help）：无需模型与默认参数，原样转发；
+# 先解析默认模型会让 --version 这类命令在全新/离线环境先触发下载或失败。
+INFO_EXIT_FLAGS = ("-h", "--help", "--usage", "--version", "-cl", "--cache-list", "--completion-bash", "--list-devices")
 
 
 def llama_server_binary() -> Path:
@@ -80,7 +83,9 @@ def _has_arg(args: list[str], *flags: str) -> bool:
 
 
 def _has_env(*names: str) -> bool:
-    return any(name in os.environ for name in names)
+    # 只认非空值：部署清单里 optional 的空环境变量（LLAMA_ARG_MODEL=""）
+    # 视为未设置，否则默认模型对被跳过、server 落到零模型 router 模式。
+    return any(os.environ.get(name) for name in names)
 
 
 def _flag_value(args: list[str], *flags: str) -> str | None:
@@ -168,8 +173,23 @@ def _read_gguf_context_length(model_path: Path) -> int:
     return context_by_architecture.get(architecture, 0)
 
 
+def _exec_server(args: list[str]) -> typing.NoReturn:
+    """定位二进制并以进程替换方式转发参数。"""
+    binary = llama_server_binary()
+    if not binary.is_file():
+        raise FileNotFoundError(f"llama-server binary not found: {binary}")
+
+    print(f"start llama.cpp server: {binary} {' '.join(_redact_secrets(args))}")
+    os.execv(str(binary), [str(binary), *args])
+
+
 def main() -> None:
     args = sys.argv[1:]
+
+    # --version 等信息命令直接转发，不解析模型也不补默认参数。
+    if _has_arg(args, *INFO_EXIT_FLAGS):
+        _exec_server(args)
+        return
 
     # 注入的每个默认值都让位两项：用户 CLI 旗标与对应环境变量（--help 的
     # env: 名单）；llama.cpp 里 CLI 优先级高于环境变量，漏认 env 会让追加的
@@ -244,12 +264,7 @@ def main() -> None:
         if n_ctx_train > 0:
             args.extend(["--ctx-size", str(n_ctx_train * DEFAULT_N_PARALLEL)])
 
-    binary = llama_server_binary()
-    if not binary.is_file():
-        raise FileNotFoundError(f"llama-server binary not found: {binary}")
-
-    print(f"start llama.cpp server: {binary} {' '.join(_redact_secrets(args))}")
-    os.execv(str(binary), [str(binary), *args])
+    _exec_server(args)
 
 
 if __name__ == "__main__":

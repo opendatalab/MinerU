@@ -50,10 +50,10 @@
 2. **质量优先**: 用户或 Agent 主动读取 PDF/image 文档时，默认使用默认选择策略，且不会解析为 `flash`。
 3. **发现与阅读分离**: watch 可以自动使用 `flash`；PDF/image 主动阅读不能静默使用 `flash`。
 4. **结果记录实际 tier**: 默认选择是请求时选择逻辑，任务、缓存、产物和 metadata 记录实际使用的实体 tier。
-5. **backend 不是入参**: 所有入口只接受 `tier`；Tool SDK 的 `parse()` 只接受 `tier`。backend 由 tier 经 `backend_for_tier` 派生，仅作为 `ParserRuntimeOptions.backend` 内部值存在。API-backed parser、Doclib SDK、doclib server API 和 v1 API 只面向 `tier`，不暴露 `backend`。
+5. **tier 是唯一入参**: 所有入口只接受 `tier`；Tool SDK 的 `parse()` 只接受 `tier`。运行差异由 tier 派生的 effort 表达（`HYBRID_EFFORT_BY_TIER`），没有 backend 派生层。API-backed parser、Doclib SDK、doclib server API 和 v1 API 只面向 `tier`，不暴露 `backend`。
 6. **缓存按内容和 tier 隔离**: 同一 `sha256 + tier` 的解析结果可以复用；不同 tier 的结果不能互相覆盖。
 7. **fallback 不扩大隐私边界**: local 失败不能自动改成 remote；remote 失败可以 fallback 到 local。
-8. **Flash 可长期作为 backend 名称**: `flash` 同时是解析档位，也是快速 CPU PDF 解析 backend。
+8. **Flash 既是档位也是实现名**: `flash` 同时是解析档位，也是快速 CPU PDF 解析实现的名称。
 9. **doclib 只持久化基础产物**: doclib 的 `parsed/` 目录保存按页组织的 Middle JSON 批次文件和必要图片 sidecar；Markdown、Content List、HTML 等格式读取时从 JSON 快速转换。
 
 ## 4. 总览流程

@@ -354,11 +354,11 @@ M1 和 M2 的部分测试任务可以并行，但 `ParseResult.from_dict()`、JS
 
 具体步骤:
 
-1. 在 parser 层复用 `mineru.parser.MIDDLE_JSON_SCHEMA_VERSION`，并定义 `normalize_middle_json(payload, *, backend=None, tier=None, sha256=None)`。
+1. 在 parser 层复用 `mineru.parser.MIDDLE_JSON_SCHEMA_VERSION`，并定义 `normalize_middle_json(payload, *, tier=None, sha256=None)`。
 2. 如果 payload 已有 `schema_version` 和 `pages`，直接接受；`_meta` 在当前 P0 写出结构中可缺省。
 3. 如果 payload 是 `{"pages": [...]}`，包装成 canonical envelope。
 4. 如果 payload 是 `{"pdf_info": [...]}`，迁移为 `pages`。
-5. 将旧 `_backend` 放入 `_meta.backend`。
+5. 旧 `_backend` 不迁移：schema 2.0 不记录 backend，未知字段按第 7 条向后兼容保留原值。
 6. `tier` 只记录实际使用的 tier，不记录 `requested_tier`。
 7. 保持未知字段向后兼容，不主动丢弃 `_meta` 扩展。
 
@@ -367,7 +367,6 @@ M1 和 M2 的部分测试任务可以并行，但 `ParseResult.from_dict()`、JS
 - 三种输入结构都可 normalize。
 - 输出包含 `schema_version`、`pages`、`_meta`。
 - 不产生 `requested_tier` / `resolved_tier` 字段。
-- 旧 `_backend` 能迁移到 `_meta.backend`。
 
 验证方式:
 

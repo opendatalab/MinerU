@@ -364,6 +364,54 @@ def test_main_env_alias_suppresses_registry_alias(
     assert str(model_dir / "main.gguf") in argv
 
 
+def test_main_empty_env_values_do_not_suppress_defaults(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """部署清单里 optional 的空环境变量视为未设置：默认模型对与默认参数照常注入。"""
+    for name in ("LLAMA_ARG_MODEL", "LLAMA_ARG_N_PARALLEL"):
+        monkeypatch.setenv(name, "")
+    argv, _, model_dir = _run_main(monkeypatch, tmp_path, capsys, [])
+
+    assert str(model_dir / "main.gguf") in argv
+    assert str(model_dir / "mmproj.gguf") in argv
+    assert "--parallel" in argv
+
+
+@pytest.mark.parametrize(
+    "info_args",
+    [
+        ["--version"],
+        ["-h"],
+        ["--help"],
+        ["--usage"],
+        ["--cache-list"],
+        ["-cl"],
+        ["--completion-bash"],
+        ["--list-devices"],
+    ],
+    ids=["version", "help-short", "help", "usage", "cache-list", "cache-list-short", "completion", "list-devices"],
+)
+def test_main_info_options_exec_without_model_resolution(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str], info_args: list[str]
+) -> None:
+    """--version 等信息命令原样转发：不解析默认模型（全新/离线环境不下模型），不追加任何默认参数。"""
+    binary = tmp_path / "llama-server"
+    binary.write_bytes(b"")
+    executed: list[list[str]] = []
+    monkeypatch.setattr(llama_cpp_server, "llama_server_binary", lambda: binary)
+
+    def _no_repo(name: str) -> None:
+        raise AssertionError("info command must not resolve the model repository")
+
+    monkeypatch.setattr(llama_cpp_server, "vlm_model_repo", _no_repo)
+    monkeypatch.setattr("os.execv", lambda path, argv: executed.append(argv))
+    monkeypatch.setattr(sys, "argv", ["llama_cpp_server", *info_args])
+
+    llama_cpp_server.main()
+
+    assert executed[0] == [str(binary), *info_args]
+
+
 @pytest.mark.parametrize(
     "alias_args",
     [["-a", "my-model"], ["--alias", "my-model"], ["--alias=my-model"]],
