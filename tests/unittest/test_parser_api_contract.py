@@ -29,7 +29,6 @@ from mineru.config import VlmConfig
 from mineru.parser import MIDDLE_JSON_SCHEMA_VERSION
 from mineru.parser.api_client import MinerUApiParser, _pages_from_middle_json, _parse_result_from_job, should_trust_env_for_url
 from mineru.parser.api_server import (
-    _API_SERVER_LANGUAGES,
     CreateJobRequest,
     CreateUploadRequest,
     FileParseInfo,
@@ -371,48 +370,25 @@ print("ok")
     assert result.stdout.strip() == "ok"
 
 
-def test_validate_effort_rejects_low() -> None:
-    """校验 Hybrid effort 只接受 medium/high/xhigh 三档。"""
-    from mineru.parser.tier import (
-        HYBRID_EFFORT_CHOICES,
-        effort_for_tier,
-        validate_effort,
-    )
+def test_effort_for_tier_rejects_unknown_tier() -> None:
+    """校验 effort 由 tier 派生，非法 tier 被拒绝。"""
+    from mineru.parser.tier import effort_for_tier
 
-    assert HYBRID_EFFORT_CHOICES == ("medium", "high", "xhigh")
     assert effort_for_tier("basic") == "medium"
     assert effort_for_tier("standard") == "high"
     assert effort_for_tier("advanced") == "xhigh"
-    with pytest.raises(ValueError, match="Unsupported effort 'low'"):
-        validate_effort("low")
     with pytest.raises(ValueError, match="Unsupported tier 'ultra'"):
         effort_for_tier("ultra")
 
 
 def test_tier_runtime_options_map_hybrid_effort() -> None:
-    """校验 tier 到 Hybrid runtime 参数的共享映射，避免 API/Gradio 分叉维护。"""
+    """校验 tier 到 effort 的共享映射，避免 API/Gradio 分叉维护。"""
     from mineru.parser.tier import runtime_options_for_tier
 
-    assert runtime_options_for_tier("flash").as_kwargs() == {
-        "tier": "flash",
-        "backend": "flash",
-        "effort": "flash",
-    }
-    assert runtime_options_for_tier("basic").as_kwargs() == {
-        "tier": "basic",
-        "backend": "hybrid-engine",
-        "effort": "medium",
-    }
-    assert runtime_options_for_tier("standard").as_kwargs() == {
-        "tier": "standard",
-        "backend": "hybrid-engine",
-        "effort": "high",
-    }
-    assert runtime_options_for_tier("advanced").as_kwargs() == {
-        "tier": "advanced",
-        "backend": "hybrid-engine",
-        "effort": "xhigh",
-    }
+    assert runtime_options_for_tier("flash").effort == "flash"
+    assert runtime_options_for_tier("basic").effort == "medium"
+    assert runtime_options_for_tier("standard").effort == "high"
+    assert runtime_options_for_tier("advanced").effort == "xhigh"
 
 
 @pytest.mark.parametrize("module_name", ["torch", "vllm", "lmdeploy", "mlx_vlm", "onnxruntime", "mineru_llama_cpp"])
@@ -1812,7 +1788,6 @@ def test_create_app_does_not_read_runtime_settings_from_env(tmp_path: Path, monk
     monkeypatch.setenv("MINERU_BACKEND", "hybrid-auto-engine")
     monkeypatch.setenv("MINERU_CONCURRENCY", "9")
     monkeypatch.setenv("MINERU_URL_TIMEOUT", "99")
-    monkeypatch.setenv("MINERU_LANGUAGE", "en")
     monkeypatch.setenv("MINERU_OCR_MODE", "ocr")
     monkeypatch.setenv("MINERU_EFFORT", "high")
     monkeypatch.setenv(_REMOVED_TABLE_ENABLE_ENV, "false")
@@ -1822,14 +1797,13 @@ def test_create_app_does_not_read_runtime_settings_from_env(tmp_path: Path, monk
     app = create_app(upload_dir=str(tmp_path))
 
     assert app.state.tier == "standard"
-    assert app.state.backend == "hybrid-engine"
     assert app.state.concurrency == 1
     assert app.state.url_timeout == 60
     assert app.state.allow_local_source is False
     assert app.state.max_inline_bytes == 1024 * 1024
     assert app.state.allow_http_source is False
-    assert app.state.language == "ch"
     assert not hasattr(app.state, "ocr_mode")
+    assert not hasattr(app.state, "language")
     assert app.state.effort == "high"
     assert app.state.image_analysis is True
     assert not hasattr(app.state, _REMOVED_TABLE_ENABLE_PARAM)
@@ -2488,14 +2462,11 @@ def test_api_server_tier_selects_compatible_backend(tmp_path: Path, monkeypatch:
     standard_app = create_app(upload_dir=str(tmp_path / "standard"), tier="standard")
 
     assert flash_app.state.tier == "flash"
-    assert flash_app.state.backend == "flash"
     assert [tier["id"] for tier in flash_app.state.tiers] == ["flash"]
     assert basic_app.state.tier == "basic"
-    assert basic_app.state.backend == "hybrid-engine"
     assert basic_app.state.effort == "medium"
     assert [tier["id"] for tier in basic_app.state.tiers] == ["flash", "basic"]
     assert standard_app.state.tier == "standard"
-    assert standard_app.state.backend == "hybrid-engine"
     assert standard_app.state.effort == "high"
     assert [tier["id"] for tier in standard_app.state.tiers] == ["flash", "basic", "standard", "advanced"]
 
@@ -2506,29 +2477,12 @@ def test_api_server_defaults_to_all_quality_tiers(tmp_path: Path, monkeypatch: p
 
     assert app.state.tier == "standard"
     assert app.state.default_tier == "standard"
-    assert app.state.backend == "hybrid-engine"
     assert app.state.effort == "high"
     assert [tier["id"] for tier in app.state.tiers] == ["flash", "basic", "standard", "advanced"]
-    assert app.state.tier_runtime_options["flash"].as_kwargs() == {
-        "tier": "flash",
-        "backend": "flash",
-        "effort": "flash",
-    }
-    assert app.state.tier_runtime_options["basic"].as_kwargs() == {
-        "tier": "basic",
-        "backend": "hybrid-engine",
-        "effort": "medium",
-    }
-    assert app.state.tier_runtime_options["standard"].as_kwargs() == {
-        "tier": "standard",
-        "backend": "hybrid-engine",
-        "effort": "high",
-    }
-    assert app.state.tier_runtime_options["advanced"].as_kwargs() == {
-        "tier": "advanced",
-        "backend": "hybrid-engine",
-        "effort": "xhigh",
-    }
+    assert app.state.tier_runtime_options["flash"].effort == "flash"
+    assert app.state.tier_runtime_options["basic"].effort == "medium"
+    assert app.state.tier_runtime_options["standard"].effort == "high"
+    assert app.state.tier_runtime_options["advanced"].effort == "xhigh"
 
 
 def test_api_server_standard_no_flash_state_and_metadata(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2538,26 +2492,13 @@ def test_api_server_standard_no_flash_state_and_metadata(tmp_path: Path, monkeyp
 
     assert app.state.tier == "standard"
     assert app.state.default_tier == "standard"
-    assert app.state.backend == "hybrid-engine"
     assert app.state.effort == "high"
     assert app.state.flash_enabled is False
     assert [tier["id"] for tier in app.state.tiers] == ["basic", "standard", "advanced"]
     assert app.state.model_ids == ["Hybrid-Basic", "MinerU-HTML", "MinerU2.5-Pro-2605-1.2B"]
-    assert app.state.tier_runtime_options["basic"].as_kwargs() == {
-        "tier": "basic",
-        "backend": "hybrid-engine",
-        "effort": "medium",
-    }
-    assert app.state.tier_runtime_options["standard"].as_kwargs() == {
-        "tier": "standard",
-        "backend": "hybrid-engine",
-        "effort": "high",
-    }
-    assert app.state.tier_runtime_options["advanced"].as_kwargs() == {
-        "tier": "advanced",
-        "backend": "hybrid-engine",
-        "effort": "xhigh",
-    }
+    assert app.state.tier_runtime_options["basic"].effort == "medium"
+    assert app.state.tier_runtime_options["standard"].effort == "high"
+    assert app.state.tier_runtime_options["advanced"].effort == "xhigh"
 
 
 @pytest.mark.parametrize(
@@ -2646,7 +2587,7 @@ def test_api_server_model_preload_failure_keeps_health_diagnostics_and_rejects_c
     _stub_api_server_dependency_preflight(monkeypatch)
 
     def _fail_preload(
-        startup_tier: DeploymentTier, *, language: str, vlm_config: VlmConfig | None = None
+        startup_tier: DeploymentTier, *, vlm_config: VlmConfig | None = None
     ) -> api_server._ModelPreloadResult:
         """模拟包含 VLM 初始化在内的服务预加载失败。"""
         raise ValueError("CUDA is not available.")
@@ -2670,13 +2611,13 @@ def test_api_server_model_preload_failure_keeps_health_diagnostics_and_rejects_c
 
 def test_api_server_model_preload_is_opt_in_and_ignored_for_flash(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _stub_api_server_dependency_preflight(monkeypatch)
-    calls: list[tuple[str, str]] = []
+    calls: list[str] = []
 
     def _preload(
-        startup_tier: DeploymentTier, *, language: str, vlm_config: VlmConfig | None = None
+        startup_tier: DeploymentTier, *, vlm_config: VlmConfig | None = None
     ) -> api_server._ModelPreloadResult:
         """记录预加载调用，兼容显式 VLM 配置传入。"""
-        calls.append((startup_tier, language))
+        calls.append(startup_tier)
         return api_server._ModelPreloadResult(tier=startup_tier, engine="test")
 
     monkeypatch.setattr(api_server, "_preload_server_models", _preload)
@@ -2688,7 +2629,7 @@ def test_api_server_model_preload_is_opt_in_and_ignored_for_flash(tmp_path: Path
     with TestClient(create_app(upload_dir=str(tmp_path / "flash"), tier="flash", preload_models=True)) as flash_client:
         assert flash_client.get("/v1/health").status_code == 200
 
-    assert calls == [("basic", "ch")]
+    assert calls == ["basic"]
 
 
 def test_api_server_standard_jobs_use_requested_tier(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2938,27 +2879,24 @@ def test_api_server_create_app_rejects_backend_and_effort_parameters(tmp_path: P
     with pytest.raises(TypeError, match="effort"):
         create_app(upload_dir=str(tmp_path / "effort"), effort="high")  # type: ignore[call-arg]
 
+    with pytest.raises(TypeError, match="language"):
+        create_app(upload_dir=str(tmp_path / "language"), language="ch")  # type: ignore[call-arg]
+
 
 def test_api_server_stores_parser_runtime_options(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _stub_api_server_dependency_preflight(monkeypatch)
     app = create_app(
         upload_dir=str(tmp_path),
         tier="basic",
-        language="en",
         image_analysis=False,
     )
 
-    assert app.state.language == "ch"
     assert not hasattr(app.state, "ocr_mode")
+    assert not hasattr(app.state, "language")
     assert app.state.effort == "medium"
     assert app.state.image_analysis is False
     assert not hasattr(app.state, _REMOVED_TABLE_ENABLE_PARAM)
     assert not hasattr(app.state, _REMOVED_FORMULA_ENABLE_PARAM)
-
-
-def test_api_server_rejects_removed_ch_lite_language(tmp_path: Path) -> None:
-    with pytest.raises(ValueError, match="Language ch_lite not supported"):
-        create_app(upload_dir=str(tmp_path), language="ch_lite")
 
 
 def test_api_server_cli_exposes_parser_runtime_options() -> None:
@@ -2966,7 +2904,7 @@ def test_api_server_cli_exposes_parser_runtime_options() -> None:
 
     assert "--tier" in option_names
     assert "--backend" not in option_names
-    assert "--language" in option_names
+    assert "--language" not in option_names
     assert "--ocr-mode" not in option_names
     assert "--allow-local-source" in option_names
     assert "--max-inline-bytes" in option_names
@@ -2976,20 +2914,6 @@ def test_api_server_cli_exposes_parser_runtime_options() -> None:
     assert "--preload-models" in option_names
     assert _REMOVED_DISABLE_TABLE_OPTION not in option_names
     assert _REMOVED_DISABLE_FORMULA_OPTION not in option_names
-    assert _API_SERVER_LANGUAGES == (
-        "ch",
-        "ch_server",
-        "korean",
-        "ta",
-        "te",
-        "ka",
-        "th",
-        "el",
-        "arabic",
-        "east_slavic",
-        "cyrillic",
-        "devanagari",
-    )
 
 
 def test_api_server_cli_rejects_backend_and_effort_options() -> None:
@@ -3102,26 +3026,12 @@ def test_api_server_cli_rejects_flash_no_flash_conflict() -> None:
     assert "--tier flash cannot be combined with --no-flash" in result.output
 
 
-def test_api_server_cli_normalizes_hidden_language_alias(monkeypatch: pytest.MonkeyPatch) -> None:
-    seen: dict[str, str] = {}
-
-    def _fake_run(server: Any) -> None:
-        """记录 Click CLI 创建出的应用语言配置，避免测试启动真实服务。"""
-        seen["language"] = server.config.app.state.language
-
-    monkeypatch.setattr("uvicorn.Server.run", _fake_run)
-
-    result = runner.invoke(main, ["--language", "latin", "--host", "0.0.0.0", "--port", "15982"])
-
-    assert result.exit_code == 0
-    assert seen == {"language": "ch"}
-
-
-def test_api_server_cli_rejects_removed_ch_lite_language() -> None:
-    result = runner.invoke(main, ["--language", "ch_lite"])
+def test_api_server_cli_rejects_removed_language_option() -> None:
+    result = runner.invoke(main, ["--language", "en"])
 
     assert result.exit_code != 0
-    assert "Language ch_lite not supported" in result.output
+    assert "No such option" in result.output
+    assert "--language" in result.output
 
 
 def test_api_server_cli_help_exposes_tier_only_runtime_selection() -> None:

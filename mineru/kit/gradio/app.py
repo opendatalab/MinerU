@@ -10,7 +10,7 @@ import time
 from contextlib import aclosing
 from pathlib import Path
 from collections.abc import Callable
-from typing import Any, Literal
+from typing import Any
 from urllib.parse import quote
 
 from ...errors import MineruError
@@ -69,14 +69,6 @@ _DOWNLOAD_ICON_PATHS: dict[str, str] = {
     "pdf": "M14 3H5v18h14V8l-5-5v5h5M8 17c3-4 5-8 4-8-2 0-1 7 4 7 3 0-5-3-8 1-1 2 1 1 2 0",
 }
 _DEFAULT_TIER = "standard"
-_LATEX_DELIMITERS_A = [
-    {"left": "$$", "right": "$$", "display": True},
-    {"left": "$", "right": "$", "display": False},
-]
-_LATEX_DELIMITERS_B = [
-    {"left": "\\(", "right": "\\)", "display": False},
-    {"left": "\\[", "right": "\\]", "display": True},
-]
 _DOWNLOAD_ICON_HTML = f"""
 <button type="button" class="mineru-kit-download-icon" title="Download results" aria-label="Download results"
         data-mineru-i18n-key="download_results" data-mineru-i18n-attr="title aria-label"
@@ -197,6 +189,20 @@ _KIT_MENU_CSS = """
 @media (max-width: 900px) {
   .mineru-kit-workspace { flex-direction: column !important; }
   .mineru-kit-control, .mineru-kit-preview, .mineru-kit-results { min-width: 0 !important; width: 100% !important; }
+  /* 窄屏改用固定高度、整栏按内容收口：不依赖上面的 flex 拉伸链（移动端引擎
+     可能不把拉伸所得高度视为定值，height:100% 断链时 iframe 会塌到默认
+     ~150px），也避免拉伸模式下 885px min-height 与 775px 正文之间在卡片
+     底部留下死区。与 PDF/源文档预览的窄屏策略一致。 */
+  .mineru-kit-results { min-height: 0; flex: 0 0 auto !important; }
+  .mineru-kit-results > .mineru-markdown-tabs,
+  .mineru-kit-results [role="tabpanel"],
+  .mineru-kit-results [role="tabpanel"] > .column { flex: 0 0 auto; }
+  .mineru-kit-results .mineru-markdown-output,
+  .mineru-kit-results .mineru-structured-json {
+    flex: 0 0 auto !important;
+    height: var(--mineru-preview-content-height, 775px) !important;
+    min-height: var(--mineru-preview-content-height, 775px) !important;
+  }
 }
 """
 
@@ -305,15 +311,6 @@ def _download_updates(gr: Any, *, interactive: bool, run_id: str = "") -> tuple[
     return (run_id, *(gr.update(value=label, interactive=interactive) for _format_name, label in _DOWNLOAD_FORMATS))
 
 
-def _latex_delimiters(delimiters_type: Literal["a", "b", "all"]) -> list[dict[str, Any]]:
-    """按 CLI 选择返回 Gradio Markdown 组件使用的公式分隔符。"""
-    if delimiters_type == "a":
-        return list(_LATEX_DELIMITERS_A)
-    if delimiters_type == "b":
-        return list(_LATEX_DELIMITERS_B)
-    return [*(_LATEX_DELIMITERS_A), *(_LATEX_DELIMITERS_B)]
-
-
 def build_gradio_app(
     client: V1ArtifactClient | GradioArtifactClient,
     capabilities: V1ServerCapabilities,
@@ -321,7 +318,6 @@ def build_gradio_app(
     output_root: Path,
     enable_example: bool = True,
     enable_api: bool = True,
-    latex_delimiters_type: Literal["a", "b", "all"] = "all",
     max_pages: int | None = None,
 ) -> Any:
     """构建不启动监听端口的 Gradio Blocks 应用，便于单元测试和外部托管。"""
@@ -1019,10 +1015,8 @@ def launch_gradio(
     output_dir: str,
     enable_example: bool,
     enable_api: bool,
-    latex_delimiters_type: Literal["a", "b", "all"],
     api_server_tier: str,
     api_server_concurrency: int,
-    api_server_language: str,
     api_server_disable_image_analysis: bool,
     api_server_preload_models: bool,
     max_pages: int | None = None,
@@ -1041,7 +1035,6 @@ def launch_gradio(
             managed_server = ManagedLocalApiServer(
                 tier=api_server_tier,  # type: ignore[arg-type]
                 concurrency=api_server_concurrency,
-                language=api_server_language,
                 disable_image_analysis=api_server_disable_image_analysis,
                 preload_models=api_server_preload_models,
                 api_key=resolved_api_key,
@@ -1054,7 +1047,6 @@ def launch_gradio(
             managed_server = ManagedLocalApiServer(
                 tier="flash",
                 concurrency=api_server_concurrency,
-                language=api_server_language,
                 disable_image_analysis=api_server_disable_image_analysis,
                 preload_models=api_server_preload_models,
                 api_key="",
@@ -1068,7 +1060,6 @@ def launch_gradio(
             output_root=output_root,
             enable_example=enable_example,
             enable_api=enable_api,
-            latex_delimiters_type=latex_delimiters_type,
             max_pages=max_pages,
         )
         demo.launch(

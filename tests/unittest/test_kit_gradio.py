@@ -743,7 +743,6 @@ def test_managed_local_api_command_uses_kit_entrypoint() -> None:
     server = ManagedLocalApiServer(
         tier="standard",
         concurrency=3,
-        language="en",
         disable_image_analysis=True,
         preload_models=True,
         api_key="secret",
@@ -756,11 +755,16 @@ def test_managed_local_api_command_uses_kit_entrypoint() -> None:
     assert "--no-advanced" not in command
     assert "--preload-models" in command
     assert "--ocr-mode" not in command
+    assert "--language" not in command
     assert command[command.index("--api-key") + 1] == "secret"
     with pytest.raises(TypeError, match="ocr_mode"):
         ManagedLocalApiServer(ocr_mode="ocr")  # type: ignore[call-arg]
     with pytest.raises(TypeError, match="api_server_ocr_mode"):
         gradio_app.launch_gradio(api_server_ocr_mode="ocr")  # type: ignore[call-arg]
+    with pytest.raises(TypeError, match="language"):
+        ManagedLocalApiServer(language="ch")  # type: ignore[call-arg]
+    with pytest.raises(TypeError, match="api_server_language"):
+        gradio_app.launch_gradio(api_server_language="ch")  # type: ignore[call-arg]
     for option in ("no_flash", "no_advanced"):
         with pytest.raises(TypeError, match=option):
             ManagedLocalApiServer(**{option: True})  # type: ignore[arg-type]
@@ -1125,6 +1129,11 @@ def test_build_gradio_app_exposes_html_tab_and_download_menu(tmp_path: Path) -> 
     range_group = next(block for block in app.blocks.values() if "mineru-kit-page-range" in (block.elem_classes or []))
     assert range_group.visible is True
     assert '[data-range-visible="true"]' in app._mineru_kit_css
+    # 窄屏媒体查询必须给结果区固定高度并按内容收口：既避免移动端 flex 链断裂时
+    # iframe 塌陷，也避免拉伸高度与固定高度不一致在卡片底部留下死区。
+    assert ".mineru-kit-results .mineru-markdown-output,\n  .mineru-kit-results .mineru-structured-json" in app._mineru_kit_css
+    assert ".mineru-kit-results { min-height: 0; flex: 0 0 auto !important; }" in app._mineru_kit_css
+    assert "flex: 0 0 auto !important;" in app._mineru_kit_css
     assert sum(1 for dependency in app.config["dependencies"] if dependency.get("queue") is True) >= 7
 
 

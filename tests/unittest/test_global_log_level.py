@@ -173,3 +173,31 @@ def test_render_entry_configures_global_log_level(monkeypatch: pytest.MonkeyPatc
         render_api_module.render(object(), render_api_module.RenderFormat.MARKDOWN)
 
     assert calls == ["configure"]
+
+
+@pytest.mark.parametrize(("level", "expected_debug"), [("info", False), ("debug", True)])
+def test_configured_level_propagates_to_spawned_children(level: str, expected_debug: bool) -> None:
+    """验证配置级别经 LOGURU_LEVEL 传播到之后 spawn 的子进程出厂 sink。"""
+    script = (
+        "import json, subprocess, sys; "
+        "from mineru.utils.logger import configure_global_log_level; "
+        f"configure_global_log_level({level!r}); "
+        "import os; "
+        "child = subprocess.run("
+        "[sys.executable, '-c', "
+        "\"from loguru import logger; logger.debug('CHILD_DEBUG'); logger.info('CHILD_INFO')\"], "
+        "capture_output=True, text=True, check=True); "
+        "print(json.dumps({'env': os.environ.get('LOGURU_LEVEL'), 'child_stderr': child.stderr}))"
+    )
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        capture_output=True,
+        text=True,
+        check=True,
+        timeout=30,
+    )
+    output = json.loads(completed.stdout)
+
+    assert output["env"] == level.upper()
+    assert ("CHILD_DEBUG" in output["child_stderr"]) is expected_debug
+    assert "CHILD_INFO" in output["child_stderr"]

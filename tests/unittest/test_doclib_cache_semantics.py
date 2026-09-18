@@ -66,7 +66,6 @@ from mineru.doclib.services.search_svc import SearchService
 from mineru.doclib.types import DocContentExportRequest, FileInfo, InvalidateRequest, ParseResponse, WatchRequest
 from mineru.errors import InvalidRequestError, MineruError, NotFoundError
 from mineru.filetypes import file_type_for_extension
-from mineru.parser import backend_for_tier
 from mineru.parser.api_client import _APITransportError, _V1APIError
 from mineru.parser.base import ParseResult
 from mineru.parser import MIDDLE_JSON_SCHEMA_VERSION
@@ -334,11 +333,6 @@ def test_load_pages_from_done_batches_keeps_newest_page_idx(tmp_path: Path) -> N
     assert inline_text(pages[1].blocks[0].content) == "newer"  # type: ignore[union-attr]
 
 
-def test_parser_tier_backend_mapping_is_parser_layer_only() -> None:
-    assert backend_for_tier("flash") == "flash"
-    assert backend_for_tier("basic") == "hybrid-engine"
-    assert backend_for_tier("standard") == "hybrid-engine"
-    assert backend_for_tier("advanced") == "hybrid-engine"
 
 
 def test_managed_api_server_args_use_tier_and_selected_port_for_process_start() -> None:

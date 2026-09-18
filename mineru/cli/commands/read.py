@@ -24,9 +24,9 @@ class ReadTextOutput:
 
 
 def read_cmd(
-    locator: str = typer.Argument(..., help=t("Doclib locator, e.g. doc:ab12cd3/tier:basic/page:4")),
+    locator: str = typer.Argument(..., help=t("Document library locator, e.g. doc:ab12cd3/tier:basic/page:4")),
     context: int = typer.Option(0, "--context", help=t("Read N pages/blocks before and after the locator")),
-    limit: int = typer.Option(30000, "--limit", help=t("Soft character limit for STDOUT content")),
+    limit: int = typer.Option(30000, "--limit", help=t("Soft character limit for printed content")),
     format: Literal["markdown", "image"] = typer.Option("markdown", "-f", "--format", help=t("Output format: markdown, image")),
     output: str = typer.Option(None, "-o", "--output", help=t("Output path; creates parent directories")),
     no_marker: bool = typer.Option(False, "--no-marker", help=t("Omit continuation marker from output")),

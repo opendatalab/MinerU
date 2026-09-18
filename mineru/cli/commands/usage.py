@@ -52,7 +52,7 @@ def _get_remote_usage() -> RemoteUsageOutput:
 def _render_remote_usage(view: RemoteUsageOutput) -> RenderableOutput:
     usage = view.usage
     lines = [
-        t("Remote API Usage"),
+        t("Remote Parse Service Usage"),
         "",
         t("Remote URL: {url}", url=view.remote_url),
         t("Access level: {level}", level=usage.access_level),

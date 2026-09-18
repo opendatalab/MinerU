@@ -30,7 +30,7 @@ def test_preload_local_models_initializes_conditional_model_families(monkeypatch
     fake_runtime.HybridLocalModelContextSingleton = _ContextSingleton
     monkeypatch.setitem(sys.modules, "mineru.model.runtime.hybrid", fake_runtime)
 
-    api_server._preload_local_models("ch")
+    api_server._preload_local_models()
 
     assert calls == [
         ("context", None),
@@ -44,17 +44,17 @@ def test_preload_local_models_initializes_conditional_model_families(monkeypatch
 
 def test_preload_basic_models_initializes_only_local_models(monkeypatch: pytest.MonkeyPatch) -> None:
     local_calls: list[str] = []
-    monkeypatch.setattr(api_server, "_preload_local_models", local_calls.append)
+    monkeypatch.setattr(api_server, "_preload_local_models", lambda: local_calls.append("local"))
 
-    result = api_server._preload_server_models("basic", language="ch")
+    result = api_server._preload_server_models("basic")
 
     assert result == api_server._ModelPreloadResult(tier="basic", engine="hybrid-local")
-    assert local_calls == ["ch"]
+    assert local_calls == ["local"]
 
 
 def test_preload_standard_models_initializes_platform_engine_and_local_models(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[object] = []
-    monkeypatch.setattr(api_server, "_preload_local_models", lambda language: calls.append(("local", language)))
+    monkeypatch.setattr(api_server, "_preload_local_models", lambda: calls.append("local"))
 
     from mineru.model.vlm import selector as engine_utils
 
@@ -70,10 +70,10 @@ def test_preload_standard_models_initializes_platform_engine_and_local_models(mo
     fake_runtime.ModelSingleton = _ModelSingleton
     monkeypatch.setitem(sys.modules, "mineru.model.vlm.runtime", fake_runtime)
 
-    result = api_server._preload_server_models("standard", language="en")
+    result = api_server._preload_server_models("standard")
 
     assert result == api_server._ModelPreloadResult(tier="standard", engine="lmdeploy-engine")
-    assert calls == [("vlm", "lmdeploy-engine", None, None), ("local", "en")]
+    assert calls == [("vlm", "lmdeploy-engine", None, None), "local"]
 
 
 def test_local_preload_and_parse_reuse_llama_predictor(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -100,9 +100,9 @@ def test_local_preload_and_parse_reuse_llama_predictor(monkeypatch: pytest.Monke
     monkeypatch.setattr(type(runtime.MINERU_2_5_PRO_2605_1_2B), "ensure", ensure_gguf)
     engine_selector = MagicMock(return_value="llama-cpp-engine")
     monkeypatch.setattr(selector, "get_vlm_engine", engine_selector)
-    monkeypatch.setattr(api_server, "_preload_local_models", lambda language: None)
+    monkeypatch.setattr(api_server, "_preload_local_models", lambda: None)
 
-    api_server._preload_server_models("standard", language="ch", vlm_config=VlmConfig())
+    api_server._preload_server_models("standard", vlm_config=VlmConfig())
     predictor, engine = get_vlm_predictor(VlmConfig())
     assert predictor is predictor_factory.return_value
     assert engine == "llama-cpp-engine"

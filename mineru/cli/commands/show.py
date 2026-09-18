@@ -12,7 +12,7 @@ from ..contracts import CliContext
 from ..path_utils import normalize_cli_path
 from ..runtime import run_cli
 
-app = typer.Typer(help=t("Show doclib resource details"), no_args_is_help=True)
+app = typer.Typer(help=t("Show document library resource details."), no_args_is_help=True)
 
 
 @app.command("parse", help=t("Show one parse task."))

@@ -50,7 +50,6 @@ from ..filetypes import (
     file_type_for_extension,
     is_flash_only_parse_extension,
 )
-from ..model.ocr.language import PUBLIC_OCR_LANGUAGES, validate_public_ocr_lang
 from ..types import SERVER_TIERS, TIERS_BY_SERVER_TIER, DeploymentTier, PageInfo, ServerTier, Tier, select_default_quality_tier
 from ..utils.async_utils import drain_future, run_sync
 from ..model.vlm.async_runtime import RuntimeOwner, runtime_owner
@@ -80,7 +79,6 @@ from .tier import (
 from .writer import DataWriter
 
 _DEFAULT_API_SERVER_TIER: ServerTier = "standard"
-_API_SERVER_LANGUAGES = PUBLIC_OCR_LANGUAGES
 _MAX_INLINE_BYTES_DEFAULT = 1024 * 1024
 _MAX_FILES_PER_JOB_DEFAULT = 100
 _MAX_FILE_SIZE_BYTES_DEFAULT = 209715200
@@ -1576,6 +1574,27 @@ async def _run_job(
 
 _router = APIRouter(prefix="/v1")
 
+# OpenAPI tag metadata: drives the group order and descriptions on /docs.
+_OPENAPI_TAGS: list[dict[str, str]] = [
+    {"name": "Health", "description": "Liveness and server readiness."},
+    {"name": "Tiers", "description": "Parsing tiers and runtime capability advertised by this server."},
+    {"name": "Models", "description": "VLM models available for parsing."},
+    {"name": "Uploads", "description": "Create and manage upload sessions for source documents."},
+    {"name": "Files", "description": "Inspect uploaded files and fetch parsed content."},
+    {"name": "Jobs", "description": "Submit parse jobs and poll for results."},
+    {"name": "Usage", "description": "Remote service quota and usage reporting."},
+]
+
+_FASTAPI_DESCRIPTION = """\
+Parse documents into structured Middle JSON via self-hosted or remote capacity.
+
+The workflow is: create an upload, complete it, submit a parse job for the
+resulting file, then poll the job and fetch its outputs. Health and usage
+endpoints report server readiness and quota state. Tiers (`flash`, `basic`,
+`standard`, `advanced`) select the quality/speed trade-off; the set advertised
+by `/v1/tiers` is what this server can actually serve.
+"""
+
 # Reusable error response maps
 _ErrorResponseMap = dict[int | str, dict[str, type[BaseModel]]]
 _ERR_400: _ErrorResponseMap = {400: {"model": ErrorResponse}}
@@ -2185,7 +2204,7 @@ def _classify_model_preload_error(exc: Exception) -> tuple[str, str]:
     return "model_preload_failed", message
 
 
-def _preload_local_models(language: str) -> None:
+def _preload_local_models() -> None:
     # TODO: fix import
     from ..model.runtime.contracts import AtomicModelName
     from ..model.runtime.hybrid import HybridLocalModelContextSingleton
@@ -2194,21 +2213,22 @@ def _preload_local_models(language: str) -> None:
     manager = context.atom_model_manager
     manager.get_atom_model(atom_model_name=AtomicModelName.TableOrientationCls)
     manager.get_atom_model(atom_model_name=AtomicModelName.TableCls)
-    manager.get_atom_model(atom_model_name=AtomicModelName.WirelessTable, lang=language)
-    manager.get_atom_model(atom_model_name=AtomicModelName.WiredTable, lang=language)
+    # 表格模型语言与 HybridLocalModelContext 运行时的缓存键保持一致，确保预热的模型可被复用。
+    manager.get_atom_model(atom_model_name=AtomicModelName.WirelessTable, lang="ch")
+    manager.get_atom_model(atom_model_name=AtomicModelName.WiredTable, lang="ch")
     manager.get_atom_model(atom_model_name=AtomicModelName.OCR, lang="seal")
 
 
-def _preload_server_models(tier: DeploymentTier, *, language: str, vlm_config: VlmConfig | None = None) -> _ModelPreloadResult:
+def _preload_server_models(tier: DeploymentTier, *, vlm_config: VlmConfig | None = None) -> _ModelPreloadResult:
     """使用与实际解析相同的 VLM 客户端，并预加载本地 Hybrid 模型。"""
     if tier == "basic":
-        _preload_local_models(language)
+        _preload_local_models()
         return _ModelPreloadResult(tier=tier, engine="hybrid-local")
 
     from ..model.vlm.client import get_vlm_predictor
 
     _predictor, engine = get_vlm_predictor(vlm_config)
-    _preload_local_models(language)
+    _preload_local_models()
     return _ModelPreloadResult(tier=tier, engine=engine)
 
 
@@ -2245,7 +2265,6 @@ def create_app(
     max_url_bytes: int = _MAX_FILE_SIZE_BYTES_DEFAULT,
     allow_http_source: bool = False,
     api_key: str | None = None,
-    language: str = "ch",
     image_analysis: bool = True,
     preload_models: bool = False,
     vlm_config: VlmConfig | None = None,
@@ -2279,8 +2298,6 @@ def create_app(
     api_key:
         Optional API key.  When set, clients must pass ``Authorization: Bearer <key>``
         to access list endpoints and advanced output formats.
-    language:
-        Hybrid medium OCR language hint; accepted by other efforts for compatibility.
     image_analysis:
         Whether image analysis is enabled for Hybrid backends.
     preload_models:
@@ -2293,8 +2310,6 @@ def create_app(
     server_tiers = _request_tiers_for_server_tier(tier, no_flash=no_flash, no_advanced=no_advanced)
     tier_runtime_options = _runtime_options_for_server_tiers(server_tiers)
     default_tier = select_default_quality_tier(tier_runtime_options)
-    startup_runtime = runtime_options_for_tier(tier)
-    backend = startup_runtime.backend
     effort = effort_for_tier(tier)
     vlm_config = (vlm_config if vlm_config is not None else mineru_config.model.vlm).model_copy(deep=True)
     _preflight_tier_dependencies(tier, vlm_config)
@@ -2305,7 +2320,6 @@ def create_app(
         raise ValueError("max_inline_bytes must be non-negative")
     if max_url_bytes < 0:
         raise ValueError("max_url_bytes must be non-negative")
-    language = validate_public_ocr_lang(language)
 
     _model_ids, _tiers = _model_ids_and_tiers_for_server_tiers(server_tiers)
     _preload_tier: DeploymentTier | None = None
@@ -2318,7 +2332,6 @@ def create_app(
         application.state.tier = tier
         application.state.default_tier = default_tier
         application.state.flash_enabled = not no_flash
-        application.state.backend = backend
         application.state.tier_runtime_options = tier_runtime_options
         application.state.model_ids = _model_ids
         application.state.tiers = _tiers
@@ -2329,7 +2342,6 @@ def create_app(
         application.state.max_url_bytes = max_url_bytes
         application.state.allow_http_source = allow_http_source
         application.state.api_key = _api_key
-        application.state.language = language
         application.state.effort = effort
         application.state.image_analysis = image_analysis
         application.state.preload_models = preload_models
@@ -2344,7 +2356,6 @@ def create_app(
                     preload_result = await run_sync(
                         _preload_server_models,
                         _preload_tier,
-                        language=language,
                         vlm_config=vlm_config,
                     )
                 except Exception as exc:
@@ -2373,7 +2384,9 @@ def create_app(
 
     application = FastAPI(
         title="MinerU API",
+        description=_FASTAPI_DESCRIPTION,
         version="1.0.0",
+        openapi_tags=_OPENAPI_TAGS,
         openapi_url="/openapi.json" if enable_docs else None,
         docs_url="/docs" if enable_docs else None,
         redoc_url="/redoc" if enable_docs else None,
@@ -2383,7 +2396,6 @@ def create_app(
     application.state.tier = tier
     application.state.default_tier = default_tier
     application.state.flash_enabled = not no_flash
-    application.state.backend = backend
     application.state.tier_runtime_options = tier_runtime_options
     application.state.model_ids = _model_ids
     application.state.tiers = _tiers
@@ -2394,7 +2406,6 @@ def create_app(
     application.state.max_url_bytes = max_url_bytes
     application.state.allow_http_source = allow_http_source
     application.state.api_key = _api_key
-    application.state.language = language
     application.state.effort = effort
     application.state.image_analysis = image_analysis
     application.state.preload_models = preload_models
@@ -2551,13 +2562,6 @@ def _build_server_log_config(log_level: str) -> dict[str, Any]:
     help="Allow url sources to use plain HTTP. HTTPS is always allowed.",
 )
 @click.option(
-    "--language",
-    default="ch",
-    type=str,
-    metavar="[" + "|".join(_API_SERVER_LANGUAGES) + "]",
-    help="Hybrid medium OCR language hint; accepted by other efforts for compatibility.",
-)
-@click.option(
     "--disable-image-analysis",
     is_flag=True,
     help="Disable image analysis for Hybrid backends.",
@@ -2595,7 +2599,6 @@ def main(
     max_inline_bytes: int,
     max_url_bytes: int,
     allow_http_source: bool,
-    language: str,
     disable_image_analysis: bool,
     preload_models: bool,
     api_key: str | None,
@@ -2653,7 +2656,6 @@ def main(
             max_url_bytes=max_url_bytes,
             allow_http_source=allow_http_source,
             api_key=api_key,
-            language=language,
             image_analysis=not disable_image_analysis,
             preload_models=preload_models,
             vlm_config=vlm_settings,

@@ -5,12 +5,10 @@ from __future__ import annotations
 import importlib.util
 import os
 from importlib.metadata import version
-from typing import Literal
 
 import typer
 from packaging.specifiers import SpecifierSet
 
-from ...model.ocr.language import validate_public_ocr_lang
 from ...types import SERVER_TIERS, ServerTier
 from ...utils.i18n import t
 from ...utils.logger import configure_global_log_level
@@ -74,23 +72,20 @@ def webui_cmd(
     ),
     enable_example: bool = typer.Option(True, "--enable-example/--no-enable-example", help=t("Show local examples")),
     enable_api: bool = typer.Option(True, "--enable-api/--no-enable-api", help=t("Expose the Gradio event API")),
-    latex_delimiters_type: Literal["a", "b", "all"] = typer.Option(
-        "all", "--latex-delimiters-type", help=t("LaTeX delimiters used by the Markdown preview")
-    ),
     api_server_tier: str = typer.Option(
         "standard", "--api-server-tier", "--tier", help=t("Managed API server capability tier")
     ),
     api_server_concurrency: int = typer.Option(
         1, "--api-server-concurrency", "--concurrency", help=t("Managed server job concurrency")
     ),
-    api_server_language: str = typer.Option("ch", "--api-server-language", "--language", help=t("Managed server OCR language")),
     api_server_disable_image_analysis: bool = typer.Option(
         False,
-        "--api-server-disable-image-analysis/--disable-image-analysis",
+        "--api-server-disable-image-analysis",
+        "--disable-image-analysis",
         help=t("Disable managed server image analysis"),
     ),
     api_server_preload_models: bool = typer.Option(
-        False, "--api-server-preload-models/--preload-models", help=t("Preload managed server models")
+        False, "--api-server-preload-models", "--preload-models", help=t("Preload managed server models")
     ),
 ) -> None:
     """启动基于 MinerU V1 API 的 Gradio 文档解析界面。"""
@@ -101,10 +96,6 @@ def webui_cmd(
         _validate_positive_option(max_pages, name="max_pages")
     _validate_positive_option(api_server_concurrency, name="api_server_concurrency")
     normalized_tier = _validate_server_tier(api_server_tier)
-    try:
-        normalized_language = validate_public_ocr_lang(api_server_language)
-    except ValueError as exc:
-        exit_with_message("invalid_request", str(exc), "api_server_language")
 
     from ..gradio.app import launch_gradio
 
@@ -119,10 +110,8 @@ def webui_cmd(
             max_pages=max_pages,
             enable_example=enable_example,
             enable_api=enable_api,
-            latex_delimiters_type=latex_delimiters_type,
             api_server_tier=normalized_tier,
             api_server_concurrency=api_server_concurrency,
-            api_server_language=normalized_language,
             api_server_disable_image_analysis=api_server_disable_image_analysis,
             api_server_preload_models=api_server_preload_models,
         )

@@ -11,10 +11,10 @@
 
 ### 1.1 backend 不再是入参
 
-历史过渡层 `resolve_tier_and_backend(tier, backend)` 与 `mineru-kit parse --backend` 专家参数（含 `pipeline`/`vlm-*` 等别名）已移除：backend 只用于推断 tier，推断后即被丢弃，没有独立作用。
+历史过渡层 `resolve_tier_and_backend(tier, backend)` 与 `mineru-kit parse --backend` 专家参数（含 `pipeline`/`vlm-*` 等别名）已移除：backend 只用于推断 tier，推断后即被丢弃，没有独立作用。`backend_for_tier` 派生链与 `ParserRuntimeOptions.backend` 内部字段也已删除。
 
-- 新代码只走 `tier`；`backend_for_tier`（`parser/tier.py`）保证 basic/standard/advanced 共用同一个 hybrid-engine，仅 effort 不同（`HYBRID_EFFORT_BY_TIER`）。
-- 不要在任何 CLI / SDK / API 入口重新引入 `backend` 入参；backend 仅作为 `ParserRuntimeOptions.backend` 内部派生值存在。
+- 新代码只走 `tier`；basic/standard/advanced 共用同一个 hybrid-engine，仅 effort 不同（`effort_for_tier()`，`parser/tier.py` 的 `ParserRuntimeOptions(tier, effort)`）。
+- 不要在任何 CLI / SDK / API 入口重新引入 `backend` 入参，也不要恢复 backend 派生函数或内部字段。
 
 ### 1.2 共享文档协议与缓存必须同步
 

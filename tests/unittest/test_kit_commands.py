@@ -6,7 +6,7 @@ import sys
 import tomllib
 from collections.abc import Callable
 from pathlib import Path
-from types import ModuleType, SimpleNamespace
+from types import ModuleType
 from typing import Any
 
 import pytest
@@ -59,6 +59,36 @@ def test_webui_console_script_targets_modern_command() -> None:
 
     assert "mineru-gradio" not in project["project"]["scripts"]
     assert project["project"]["scripts"]["mineru-webui"] == "mineru.kit.commands.webui:main"
+
+
+@pytest.mark.parametrize(
+    ("args", "expected"),
+    [
+        ([], {"api_server_preload_models": False, "api_server_disable_image_analysis": False}),
+        (["--preload-models"], {"api_server_preload_models": True}),
+        (["--api-server-preload-models"], {"api_server_preload_models": True}),
+        (["--disable-image-analysis"], {"api_server_disable_image_analysis": True}),
+        (["--api-server-disable-image-analysis"], {"api_server_disable_image_analysis": True}),
+    ],
+)
+def test_webui_managed_server_bool_flags_parse_short_spellings_on(
+    monkeypatch: pytest.MonkeyPatch, args: list[str], expected: dict[str, bool]
+) -> None:
+    """校验短拼写是正向别名而非斜杠反拼写，避免静默关闭托管 server 选项。"""
+    calls: list[dict[str, Any]] = []
+
+    def _fake_launch(**kwargs: Any) -> None:
+        """记录解析后的启动参数，不启动真实 Gradio。"""
+        calls.append(kwargs)
+
+    monkeypatch.setattr("mineru.kit.gradio.app.launch_gradio", _fake_launch)
+
+    result = runner.invoke(app, ["webui", *args])
+
+    assert result.exit_code == 0
+    assert len(calls) == 1
+    for key, value in expected.items():
+        assert calls[0][key] is value
 
 
 def _invoke_standalone_command(
@@ -586,10 +616,17 @@ def test_api_server_rejects_backend_and_effort_options() -> None:
 
 @pytest.mark.parametrize(
     ("command", "option"),
-    [("api-server", "--ocr-mode"), ("webui", "--ocr-mode"), ("webui", "--api-server-ocr-mode")],
+    [
+        ("api-server", "--ocr-mode"),
+        ("api-server", "--language"),
+        ("webui", "--ocr-mode"),
+        ("webui", "--api-server-ocr-mode"),
+        ("webui", "--language"),
+        ("webui", "--api-server-language"),
+    ],
 )
 def test_server_commands_reject_startup_ocr_configuration(command: str, option: str) -> None:
-    """服务启动命令不再接受或展示 OCR 配置，单次解析命令继续提供该参数。"""
+    """服务启动命令不再接受或展示 OCR 与语言配置，单次解析命令继续提供 OCR 参数。"""
     result = runner.invoke(app, [command, option, "ocr"])
     assert result.exit_code != 0
     assert "No such option" in result.output
@@ -673,27 +710,11 @@ def test_api_server_rejects_flash_no_flash_conflict() -> None:
     assert "--tier flash cannot be combined with --no-flash" in result.output
 
 
-def test_api_server_normalizes_hidden_language_alias(monkeypatch: Any) -> None:
-    seen: dict[str, Any] = {}
-
-    def _fake_main(*, args: list[str], prog_name: str, standalone_mode: bool) -> None:
-        """记录 api-server 转发参数，确认隐藏语言别名不会继续下传。"""
-        seen["args"] = args
-
-    monkeypatch.setattr(api_server.parser_api_server.main, "main", _fake_main)
-
+def test_api_server_rejects_removed_language_option() -> None:
     result = runner.invoke(app, ["api-server", "--language", "en"])
 
-    assert result.exit_code == 0
-    language_index = seen["args"].index("--language")
-    assert seen["args"][language_index + 1] == "ch"
-
-
-def test_api_server_rejects_removed_ch_lite_language() -> None:
-    result = runner.invoke(app, ["api-server", "--language", "ch_lite"])
-
-    assert result.exit_code == 1
-    assert "Language ch_lite not supported" in result.output
+    assert result.exit_code == 2
+    assert "No such option: --language" in " ".join(result.output.split())
 
 
 def test_vlm_server_rejects_removed_sglang_engine() -> None:
