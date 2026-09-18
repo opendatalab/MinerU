@@ -866,6 +866,8 @@ def test_flash_ocr_formula_number_merge_runs_before_visual_crop(
         model_list: list[list[dict[str, object]]],
         _hybrid_model: object,
         _images_layout_res: object,
+        *,
+        np_images: object,
     ) -> list[list[dict[str, object]]]:
         """记录 Flash OCR 正文与表格处理完成，并原样返回 layout block。"""
         events.append("process_flash_ocr")

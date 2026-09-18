@@ -48,7 +48,7 @@ def get_ocr_result_list(
     """过滤 OCR 输出并将坐标回投到原始页面。"""
     paste_x, paste_y, xmin, ymin, _xmax, _ymax, _new_width, _new_height = useful_list
     ocr_result_list = []
-    ori_im = bgr_image.copy()
+    ori_im = None
     for box_ocr_res in ocr_res:
         img_crop = None
         need_ocr_rec = False
@@ -61,6 +61,8 @@ def get_ocr_result_list(
             p1, p2, p3, p4 = box_ocr_res
             text, score = "", 1
             if ocr_enable:
+                if ori_im is None:
+                    ori_im = bgr_image.copy()
                 tmp_box = copy.deepcopy(np.array([p1, p2, p3, p4]).astype("float32"))
                 img_crop = get_rotate_crop_image_for_text_rec(ori_im, tmp_box)
                 need_ocr_rec = True
