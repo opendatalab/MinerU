@@ -197,6 +197,20 @@ _KIT_MENU_CSS = """
 @media (max-width: 900px) {
   .mineru-kit-workspace { flex-direction: column !important; }
   .mineru-kit-control, .mineru-kit-preview, .mineru-kit-results { min-width: 0 !important; width: 100% !important; }
+  /* 窄屏改用固定高度、整栏按内容收口：不依赖上面的 flex 拉伸链（移动端引擎
+     可能不把拉伸所得高度视为定值，height:100% 断链时 iframe 会塌到默认
+     ~150px），也避免拉伸模式下 885px min-height 与 775px 正文之间在卡片
+     底部留下死区。与 PDF/源文档预览的窄屏策略一致。 */
+  .mineru-kit-results { min-height: 0; flex: 0 0 auto !important; }
+  .mineru-kit-results > .mineru-markdown-tabs,
+  .mineru-kit-results [role="tabpanel"],
+  .mineru-kit-results [role="tabpanel"] > .column { flex: 0 0 auto; }
+  .mineru-kit-results .mineru-markdown-output,
+  .mineru-kit-results .mineru-structured-json {
+    flex: 0 0 auto !important;
+    height: var(--mineru-preview-content-height, 775px) !important;
+    min-height: var(--mineru-preview-content-height, 775px) !important;
+  }
 }
 """
 
