@@ -134,6 +134,10 @@ def main() -> None:
         model_dir = repo.ensure()
         model_path = model_dir / repo.paths["main"]
         args.extend(["-m", str(model_path), "--mmproj", str(model_dir / repo.paths["mmproj"])])
+        # /v1/models 与请求体里的 model 字段用 registry 的模型名，而不是 GGUF
+        # 文件路径；用户自定义模型时不代设。
+        if not _has_arg(args, "-a", "--alias"):
+            args.extend(["--alias", repo.name])
 
     # ---- 对齐 EngineCore::EngineCore 写死的 common_params（用户显式传入时逐项让位）----
     user_defined_parallel = _has_arg(args, "--parallel")
