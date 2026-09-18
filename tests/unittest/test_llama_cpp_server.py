@@ -190,10 +190,10 @@ def test_main_skips_default_grammar_when_alternate_selector_supplied(
         ["--model-url", "https://example.com/m.gguf"],
         ["-dr", "ai/model:Q8_0"],
         ["--docker-repo", "ai/model"],
-        ["-mm", "p.gguf"],
-        ["--mmproj", "p.gguf"],
-        ["-mmu", "https://example.com/p.gguf"],
-        ["--mmproj-url", "https://example.com/p.gguf"],
+        ["-hf", "org/model:Q8_0", "-mm", "p.gguf"],
+        ["-hf", "org/model:Q8_0", "--mmproj", "p.gguf"],
+        ["-hf", "org/model:Q8_0", "-mmu", "https://example.com/p.gguf"],
+        ["-hf", "org/model:Q8_0", "--mmproj-url", "https://example.com/p.gguf"],
         ["--models-dir", "models"],
         ["--models-preset", "presets.ini"],
     ],
@@ -205,10 +205,10 @@ def test_main_skips_default_grammar_when_alternate_selector_supplied(
         "model-url",
         "docker-repo-short",
         "docker-repo",
-        "mmproj-short",
-        "mmproj",
-        "mmproj-url-short",
-        "mmproj-url",
+        "mmproj-with-hf",
+        "mmproj-long-with-hf",
+        "mmproj-url-short-with-hf",
+        "mmproj-url-with-hf",
         "router-models-dir",
         "router-models-preset",
     ],
@@ -216,7 +216,7 @@ def test_main_skips_default_grammar_when_alternate_selector_supplied(
 def test_main_skips_default_model_pair_when_native_selector_supplied(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str], model_args: list[str]
 ) -> None:
-    """原生模型/投影选择器与 router 来源视为用户已提供模型，不再注入官方 -m + --mmproj 组合。"""
+    """主模型选择器（含搭配投影指定符）与 router 来源视为用户已提供模型，不再注入官方 -m + --mmproj 组合。"""
     argv, _, model_dir = _run_main(monkeypatch, tmp_path, capsys, model_args)
 
     assert str(model_dir / "main.gguf") not in argv
@@ -262,7 +262,6 @@ def test_main_vocoder_selector_keeps_default_model_pair(
     [
         "LLAMA_ARG_MODEL",
         "LLAMA_ARG_HF_REPO",
-        "LLAMA_ARG_HF_FILE",
         "LLAMA_ARG_MODEL_URL",
         "LLAMA_ARG_DOCKER_REPO",
         "LLAMA_ARG_MODELS_DIR",
@@ -280,16 +279,87 @@ def test_main_env_model_source_suppresses_default_pair(
     assert str(model_dir / "mmproj.gguf") not in argv
 
 
+def test_main_env_hf_file_alone_keeps_default_model_pair(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """--hf-file 只覆盖 --hf-repo 内的量化文件：单独出现不构成主模型来源，官方模型对照常注入。"""
+    monkeypatch.setenv("LLAMA_ARG_HF_FILE", "model-Q8_0.gguf")
+    argv, _, model_dir = _run_main(monkeypatch, tmp_path, capsys, [])
+
+    assert str(model_dir / "main.gguf") in argv
+    assert str(model_dir / "mmproj.gguf") in argv
+
+
+@pytest.mark.parametrize(
+    "projector_args",
+    [
+        ["-mm", "p.gguf"],
+        ["--mmproj", "p.gguf"],
+        ["-mmu", "https://example.com/p.gguf"],
+        ["--mmproj-url", "https://example.com/p.gguf"],
+    ],
+    ids=["short", "long", "url-short", "url"],
+)
+def test_main_projector_without_main_model_source_fails_fast(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str], projector_args: list[str]
+) -> None:
+    """只给投影而无主模型来源直接报错：静默跳过默认会让 server 进零模型 router 模式。"""
+    with pytest.raises(SystemExit, match="主模型"):
+        _run_main(monkeypatch, tmp_path, capsys, projector_args)
+
+
+@pytest.mark.parametrize("env_name", ["LLAMA_ARG_MMPROJ", "LLAMA_ARG_MMPROJ_URL"])
+def test_main_env_projector_without_main_model_source_fails_fast(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str], env_name: str
+) -> None:
+    """环境变量只指定投影同样直接报错，不进零模型 router 模式。"""
+    monkeypatch.setenv(env_name, "/env/p.gguf")
+
+    with pytest.raises(SystemExit, match="主模型"):
+        _run_main(monkeypatch, tmp_path, capsys, [])
+
+
 @pytest.mark.parametrize("env_name", ["LLAMA_ARG_MMPROJ", "LLAMA_ARG_MMPROJ_URL"])
 def test_main_env_projector_source_suppresses_default_pair(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str], env_name: str
 ) -> None:
-    """环境变量指定投影与 -mm/--mmproj 同义：视为自带整套模型，不再补默认对。"""
+    """环境变量指定投影与 -mm/--mmproj 同义：搭配主模型来源时视为自带整套模型，不再补默认对。"""
     monkeypatch.setenv(env_name, "/env/p.gguf")
-    argv, _, model_dir = _run_main(monkeypatch, tmp_path, capsys, [])
+    argv, _, model_dir = _run_main(monkeypatch, tmp_path, capsys, ["-hf", "org/model:Q8_0"])
 
     assert str(model_dir / "main.gguf") not in argv
     assert str(model_dir / "mmproj.gguf") not in argv
+
+
+@pytest.mark.parametrize(
+    "model_args",
+    [
+        ["-hf", "org/model:Q8_0"],
+        ["--model-url", "https://example.com/m.gguf"],
+        ["-dr", "ai/model"],
+        ["--models-dir", "models"],
+    ],
+    ids=["hf", "model-url", "docker-repo", "router"],
+)
+def test_main_non_file_model_source_skips_partitioned_parallel(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str], model_args: list[str]
+) -> None:
+    """读不到 GGUF 的模型来源不注入硬分区并发：--ctx-size 0 只装一份训练上下文，×4 分区每 slot 只剩 1/4。"""
+    argv, _, _ = _run_main(monkeypatch, tmp_path, capsys, model_args)
+
+    assert "--parallel" not in argv
+    assert "--ctx-size" not in argv
+
+
+def test_main_env_model_source_skips_partitioned_parallel(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """环境变量选模型同样读不到 GGUF：不注入默认并发，保持单 slot 全量上下文。"""
+    monkeypatch.setenv("LLAMA_ARG_MODEL", "/env/m.gguf")
+    argv, _, _ = _run_main(monkeypatch, tmp_path, capsys, [])
+
+    assert "--parallel" not in argv
+    assert "--ctx-size" not in argv
 
 
 def test_main_env_parallel_suppresses_default_and_ctx_conversion(

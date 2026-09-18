@@ -42,10 +42,11 @@ GRAMMAR_SELECTOR_FLAGS = ("--grammar", "--grammar-file", "-j", "--json-schema", 
 MODEL_SELECTOR_FLAGS = ("-m", "--model", "-hf", "-hfr", "--hf-repo", "-mu", "--model-url", "-dr", "--docker-repo")
 # 主模型来源对应的环境变量（llama-server --help 的 env: 名单）：CLI 缺省时
 # llama-server 按环境变量选模型，而追加的 -m 会以 CLI 优先级压掉环境配置。
+# LLAMA_ARG_HF_FILE 不在列：--hf-file 只覆盖 --hf-repo 内的量化文件，
+# 单独出现不构成主模型来源。
 MODEL_SOURCE_ENV = (
     "LLAMA_ARG_MODEL",
     "LLAMA_ARG_HF_REPO",
-    "LLAMA_ARG_HF_FILE",
     "LLAMA_ARG_MODEL_URL",
     "LLAMA_ARG_DOCKER_REPO",
 )
@@ -218,7 +219,17 @@ def main() -> None:
     if _has_arg(args, "-m", "--model"):
         value = _flag_value(args, "-m", "--model")
         model_path = Path(value) if value else None
-    elif not user_model_specified and not user_projector_specified:
+    elif user_projector_specified and not user_model_specified:
+        # 投影是主模型的从属选项（--help：用了 -hf 时 --mmproj 可省略）：
+        # 只给投影而无主模型来源时，静默跳过默认会让 server 进零模型 router
+        # 模式，注入官方主模型又会拼出「官方主模型 + 自定义投影」的错配组合，
+        # 直接报错并给出两种修法。
+        raise SystemExit(
+            "只指定了投影选择器（-mm/--mmproj/-mmu/--mmproj-url 或 LLAMA_ARG_MMPROJ/LLAMA_ARG_MMPROJ_URL）"
+            "而未指定主模型：请同时提供主模型来源（-m/--model、-hf、-mu/--model-url、-dr、"
+            "--models-dir/--models-preset 或对应环境变量），或去掉投影参数以使用官方模型对。"
+        )
+    elif not user_model_specified:
         repo = vlm_model_repo("llama-cpp")
         model_dir = repo.ensure()
         model_path = model_dir / repo.paths["main"]
@@ -234,7 +245,12 @@ def main() -> None:
     user_defined_parallel = _has_arg(args, *PARALLEL_FLAGS) or _has_env("LLAMA_ARG_N_PARALLEL")
     user_defined_ctx = _has_arg(args, "-c", "--ctx-size") or _has_env("LLAMA_ARG_CTX_SIZE")
     if not user_defined_parallel:
-        args.extend(["--parallel", str(DEFAULT_N_PARALLEL)])
+        # 硬分区并发默认只在能保证每 slot 容量时注入：官方模型对与用户 -m 文件
+        # 都会做训练上下文 ×N 换算；非文件来源（-hf/--model-url/-dr/router/env）
+        # 读不到 GGUF，--ctx-size 0（默认）只装一份训练上下文，硬分区会把每
+        # slot 砍成 1/N——此时不注入，保持 server 默认单 slot 全量上下文。
+        if model_path is not None:
+            args.extend(["--parallel", str(DEFAULT_N_PARALLEL)])
     if not _has_arg(args, "-ngl", "--gpu-layers", "--n-gpu-layers") and not _has_env("LLAMA_ARG_N_GPU_LAYERS"):
         args.extend(["--n-gpu-layers", str(DEFAULT_N_GPU_LAYERS)])
     # mmproj_use_gpu = (n_gpu_layers > 0)：纯 CPU（ngl=0）时 mmproj 也不上 GPU；
