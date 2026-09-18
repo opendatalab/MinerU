@@ -40,22 +40,26 @@ _GGUF_UINT32 = 4
 # 后出现的同名项生效，漏认别名会让追加的默认值覆盖用户先传入的值。
 GRAMMAR_SELECTOR_FLAGS = ("--grammar", "--grammar-file", "-j", "--json-schema", "-jf", "--json-schema-file")
 MODEL_SELECTOR_FLAGS = ("-m", "--model", "-hf", "-hfr", "--hf-repo", "-mu", "--model-url", "-dr", "--docker-repo")
-PROJECTOR_SELECTOR_FLAGS = (
-    "-mm",
-    "--mmproj",
-    "-mmu",
-    "--mmproj-url",
-    "-hfv",
-    "-hfrv",
-    "--hf-repo-v",
-    "--mmproj-auto",
-    "--no-mmproj",
-    "--no-mmproj-auto",
+# 主模型来源对应的环境变量（llama-server --help 的 env: 名单）：CLI 缺省时
+# llama-server 按环境变量选模型，而追加的 -m 会以 CLI 优先级压掉环境配置。
+MODEL_SOURCE_ENV = (
+    "LLAMA_ARG_MODEL",
+    "LLAMA_ARG_HF_REPO",
+    "LLAMA_ARG_HF_FILE",
+    "LLAMA_ARG_MODEL_URL",
+    "LLAMA_ARG_DOCKER_REPO",
 )
+# 投影「指定符」：给出投影文件/URL 即视为自带整套模型，不再补默认主模型，
+# 避免拼出「官方主模型 + 自定义 mmproj」的不匹配组合（环境变量同理）。
+# 投影开关 --mmproj-auto/--no-mmproj/--no-mmproj-auto 与 vocoder 仓库
+# -hfv/-hfrv/--hf-repo-v 只作用于投影/vocoder，不构成模型选择、不参与判断。
+PROJECTOR_SELECTOR_FLAGS = ("-mm", "--mmproj", "-mmu", "--mmproj-url")
+PROJECTOR_SOURCE_ENV = ("LLAMA_ARG_MMPROJ", "LLAMA_ARG_MMPROJ_URL")
 PARALLEL_FLAGS = ("-np", "--parallel")
 # router 模式的模型来源（llama-server 未指定模型时按目录/预设自组路由）：
 # 视为用户已提供模型，注入默认 -m 会关掉 router 模式并强制下载官方模型。
 ROUTER_SOURCE_FLAGS = ("--models-dir", "--models-preset")
+ROUTER_SOURCE_ENV = ("LLAMA_ARG_MODELS_DIR", "LLAMA_ARG_MODELS_PRESET")
 KV_UNIFIED_FLAGS = ("-kvu", "--kv-unified", "-no-kvu", "--no-kv-unified")
 SPECIAL_FLAGS = ("-sp", "--special")
 # 值为凭据的旗标，启动横幅打印前脱敏；--api-key-file 等是路径不是凭据，不脱敏。
@@ -73,6 +77,10 @@ def llama_server_binary() -> Path:
 
 def _has_arg(args: list[str], *flags: str) -> bool:
     return any(arg in flags or arg.startswith(f"{flag}=") for arg in args for flag in flags)
+
+
+def _has_env(*names: str) -> bool:
+    return any(name in os.environ for name in names)
 
 
 def _flag_value(args: list[str], *flags: str) -> str | None:
@@ -174,18 +182,26 @@ def main() -> None:
         args.append("--special")
 
     # 模型与 mmproj 必须成对来自同一模型；用户通过任一原生选择器（-m/-hf/
-    # --model-url，-mm/--mmproj 等投影选择器）或 router 来源（--models-dir/
-    # --models-preset）自定义时不再补默认，避免拼出「自定义主模型 + 官方
-    # mmproj」的不匹配组合，或用 -m 关掉 router 模式。
+    # --model-url）、router 来源（--models-dir/--models-preset）或对应环境变量
+    # 指定模型时不再补默认：追加的 -m 会以 CLI 优先级压掉环境配置、关掉
+    # router 模式，或拼出「官方主模型 + 自定义 mmproj」的不匹配组合。
+    # 投影开关（--mmproj-auto/--no-mmproj 等）与 vocoder 开关不影响主模型，
+    # 官方 -m 照常补齐；--no-mmproj 显式关投影时才不追加官方 mmproj。
+    user_model_specified = _has_arg(args, *MODEL_SELECTOR_FLAGS, *ROUTER_SOURCE_FLAGS) or _has_env(
+        *MODEL_SOURCE_ENV, *ROUTER_SOURCE_ENV
+    )
+    user_projector_specified = _has_arg(args, *PROJECTOR_SELECTOR_FLAGS) or _has_env(*PROJECTOR_SOURCE_ENV)
     model_path: Path | None = None
     if _has_arg(args, "-m", "--model"):
         value = _flag_value(args, "-m", "--model")
         model_path = Path(value) if value else None
-    elif not _has_arg(args, *MODEL_SELECTOR_FLAGS, *PROJECTOR_SELECTOR_FLAGS, *ROUTER_SOURCE_FLAGS):
+    elif not user_model_specified and not user_projector_specified:
         repo = vlm_model_repo("llama-cpp")
         model_dir = repo.ensure()
         model_path = model_dir / repo.paths["main"]
-        args.extend(["-m", str(model_path), "--mmproj", str(model_dir / repo.paths["mmproj"])])
+        args.extend(["-m", str(model_path)])
+        if not _has_arg(args, "--no-mmproj"):
+            args.extend(["--mmproj", str(model_dir / repo.paths["mmproj"])])
         # /v1/models 与请求体里的 model 字段用 registry 的模型名，而不是 GGUF
         # 文件路径；用户自定义模型时不代设。
         if not _has_arg(args, "-a", "--alias"):
