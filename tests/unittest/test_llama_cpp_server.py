@@ -97,7 +97,9 @@ def _run_main(
     monkeypatch.setattr(
         llama_cpp_server,
         "vlm_model_repo",
-        lambda name: SimpleNamespace(ensure=lambda: model_dir, paths={"main": gguf.name, "mmproj": "mmproj.gguf"}),
+        lambda name: SimpleNamespace(
+            name="mineru-test-model", ensure=lambda: model_dir, paths={"main": gguf.name, "mmproj": "mmproj.gguf"}
+        ),
     )
     monkeypatch.setattr("os.execv", lambda path, argv: executed.append(argv))
     monkeypatch.setattr(sys, "argv", ["llama_cpp_server", *user_args])
@@ -118,6 +120,7 @@ def test_main_appends_engine_aligned_defaults(
     assert "--special" in argv
     assert argv[argv.index("-m") + 1] == str(model_dir / "main.gguf")
     assert argv[argv.index("--mmproj") + 1] == str(model_dir / "mmproj.gguf")
+    assert argv[argv.index("--alias") + 1] == "mineru-test-model"
     assert argv[argv.index("--parallel") + 1] == str(llama_cpp_server.DEFAULT_N_PARALLEL)
     assert argv[argv.index("--n-gpu-layers") + 1] == str(llama_cpp_server.DEFAULT_N_GPU_LAYERS)
     assert "--no-kv-unified" in argv
@@ -185,6 +188,8 @@ def test_main_skips_default_grammar_when_alternate_selector_supplied(
         ["--hf-repo", "org/model"],
         ["-mu", "https://example.com/m.gguf"],
         ["--model-url", "https://example.com/m.gguf"],
+        ["-dr", "ai/model:Q8_0"],
+        ["--docker-repo", "ai/model"],
         ["-mm", "p.gguf"],
         ["--mmproj", "p.gguf"],
         ["-mmu", "https://example.com/p.gguf"],
@@ -196,6 +201,8 @@ def test_main_skips_default_grammar_when_alternate_selector_supplied(
         "hf-repo",
         "model-url-short",
         "model-url",
+        "docker-repo-short",
+        "docker-repo",
         "mmproj-short",
         "mmproj",
         "mmproj-url-short",
@@ -210,6 +217,22 @@ def test_main_skips_default_model_pair_when_native_selector_supplied(
 
     assert str(model_dir / "main.gguf") not in argv
     assert str(model_dir / "mmproj.gguf") not in argv
+
+
+@pytest.mark.parametrize(
+    "alias_args",
+    [["-a", "my-model"], ["--alias", "my-model"], ["--alias=my-model"]],
+    ids=["short", "long", "inline"],
+)
+def test_main_respects_user_alias_and_keeps_default_model_pair(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str], alias_args: list[str]
+) -> None:
+    """用户显式给 -a/--alias 时不注入 registry 模型名，默认模型对仍正常补齐。"""
+    argv, _, model_dir = _run_main(monkeypatch, tmp_path, capsys, alias_args)
+
+    assert "mineru-test-model" not in argv
+    assert argv.count("--alias") == (1 if alias_args[0] == "--alias" else 0)
+    assert str(model_dir / "main.gguf") in argv
 
 
 @pytest.mark.parametrize(
