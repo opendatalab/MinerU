@@ -229,7 +229,7 @@ def parse_documents(args: argparse.Namespace) -> dict[str, Any]:
 
     report: dict[str, Any] = {"stack": args.small_backend, "tier": args.tier, "ocr_mode": args.ocr_mode, "documents": []}
     started = time.perf_counter()
-    preload = _preload_server_models(args.tier, language="ch")
+    preload = _preload_server_models(args.tier)
     report["preload_seconds"] = time.perf_counter() - started
     report["engine"] = preload.engine
     for path in args.inputs:

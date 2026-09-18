@@ -39,7 +39,7 @@ _GGUF_UINT32 = 4
 # 追加默认参数前必须把整组别名视为「用户已显式提供」：llama.cpp 参数解析中
 # 后出现的同名项生效，漏认别名会让追加的默认值覆盖用户先传入的值。
 GRAMMAR_SELECTOR_FLAGS = ("--grammar", "--grammar-file", "-j", "--json-schema", "-jf", "--json-schema-file")
-MODEL_SELECTOR_FLAGS = ("-m", "--model", "-hf", "-hfr", "--hf-repo", "-mu", "--model-url")
+MODEL_SELECTOR_FLAGS = ("-m", "--model", "-hf", "-hfr", "--hf-repo", "-mu", "--model-url", "-dr", "--docker-repo")
 PROJECTOR_SELECTOR_FLAGS = (
     "-mm",
     "--mmproj",
