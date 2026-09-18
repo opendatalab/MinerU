@@ -2289,8 +2289,6 @@ def create_app(
     server_tiers = _request_tiers_for_server_tier(tier, no_flash=no_flash, no_advanced=no_advanced)
     tier_runtime_options = _runtime_options_for_server_tiers(server_tiers)
     default_tier = select_default_quality_tier(tier_runtime_options)
-    startup_runtime = runtime_options_for_tier(tier)
-    backend = startup_runtime.backend
     effort = effort_for_tier(tier)
     vlm_config = (vlm_config if vlm_config is not None else mineru_config.model.vlm).model_copy(deep=True)
     _preflight_tier_dependencies(tier, vlm_config)
@@ -2313,8 +2311,7 @@ def create_app(
         application.state.tier = tier
         application.state.default_tier = default_tier
         application.state.flash_enabled = not no_flash
-        application.state.backend = backend
-        application.state.tier_runtime_options = tier_runtime_options
+            application.state.tier_runtime_options = tier_runtime_options
         application.state.model_ids = _model_ids
         application.state.tiers = _tiers
         application.state.concurrency = concurrency
@@ -2376,7 +2373,6 @@ def create_app(
     application.state.tier = tier
     application.state.default_tier = default_tier
     application.state.flash_enabled = not no_flash
-    application.state.backend = backend
     application.state.tier_runtime_options = tier_runtime_options
     application.state.model_ids = _model_ids
     application.state.tiers = _tiers
