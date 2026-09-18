@@ -12,7 +12,7 @@ import sys
 import time
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from typing import IO, TYPE_CHECKING, Iterator, cast
+from typing import IO, TYPE_CHECKING, Final, Iterator, cast
 
 import httpx
 
@@ -31,6 +31,11 @@ if TYPE_CHECKING:
 
 MAX_RESTART_ATTEMPTS = 3
 DEFAULT_MANAGED_URL = "http://127.0.0.1:16580"
+# Local-probe failure backoff: each consecutive failure waits 5s more
+# (5/10/15/20/25/30s...), capped at the normal interval, so a server that
+# becomes ready during startup is detected quickly.
+_FAILURE_BACKOFF_STEP_SEC: Final[int] = 5
+
 _NON_RETRYABLE_MODEL_PRELOAD_ERRORS = frozenset(
     {
         "model_preload_dependency_missing",
@@ -326,6 +331,7 @@ class ParseServerHealthCheck:
     async def run(self) -> None:
         self.running = True
         health = get_health()
+        consecutive_local_failures = 0
 
         while self.running:
             # refresh config on each cycle (hot-reload)
@@ -337,9 +343,11 @@ class ParseServerHealthCheck:
             health.self_hosted_url = self_hosted_url if self_hosted_url else None
 
             # probe local
+            probed_local = False
             if health.local_mode != "disabled":
                 url = self._local_url(health)
                 if url:
+                    probed_local = True
                     api_key = None
                     if health.local_mode == "self_hosted":
                         api_key = (await self.config_svc.get("parse_server.local.self_hosted_api_key")) or None
@@ -413,7 +421,20 @@ class ParseServerHealthCheck:
                         logger.warning("Managed parse-server is unhealthy, attempting restart")
                     await self._try_restart_managed(health)
 
-            await asyncio.sleep(self.interval_sec)
+            # A failed local probe shortens the wait (5/10/20s, capped at the
+            # normal interval) so a server that becomes ready during startup is
+            # detected quickly; any success or non-probed cycle restores it.
+            if probed_local and not health.local.probe.healthy:
+                consecutive_local_failures += 1
+            else:
+                consecutive_local_failures = 0
+            await asyncio.sleep(self._next_interval_sec(consecutive_local_failures))
+
+    def _next_interval_sec(self, consecutive_local_failures: int) -> int:
+        """下一次探测的等待秒数；每多失败一次多等 5 秒，封顶正常间隔。"""
+        if consecutive_local_failures <= 0:
+            return self.interval_sec
+        return min(consecutive_local_failures * _FAILURE_BACKOFF_STEP_SEC, self.interval_sec)
 
     async def _try_restart_managed_for_tier_change(
         self,
