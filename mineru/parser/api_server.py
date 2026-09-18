@@ -1574,6 +1574,27 @@ async def _run_job(
 
 _router = APIRouter(prefix="/v1")
 
+# OpenAPI tag metadata: drives the group order and descriptions on /docs.
+_OPENAPI_TAGS: list[dict[str, str]] = [
+    {"name": "Health", "description": "Liveness and server readiness."},
+    {"name": "Tiers", "description": "Parsing tiers and runtime capability advertised by this server."},
+    {"name": "Models", "description": "VLM models available for parsing."},
+    {"name": "Uploads", "description": "Create and manage upload sessions for source documents."},
+    {"name": "Files", "description": "Inspect uploaded files and fetch parsed content."},
+    {"name": "Jobs", "description": "Submit parse jobs and poll for results."},
+    {"name": "Usage", "description": "Remote service quota and usage reporting."},
+]
+
+_FASTAPI_DESCRIPTION = """\
+Parse documents into structured Middle JSON via self-hosted or remote capacity.
+
+The workflow is: create an upload, complete it, submit a parse job for the
+resulting file, then poll the job and fetch its outputs. Health and usage
+endpoints report server readiness and quota state. Tiers (`flash`, `basic`,
+`standard`, `advanced`) select the quality/speed trade-off; the set advertised
+by `/v1/tiers` is what this server can actually serve.
+"""
+
 # Reusable error response maps
 _ErrorResponseMap = dict[int | str, dict[str, type[BaseModel]]]
 _ERR_400: _ErrorResponseMap = {400: {"model": ErrorResponse}}
@@ -2311,7 +2332,7 @@ def create_app(
         application.state.tier = tier
         application.state.default_tier = default_tier
         application.state.flash_enabled = not no_flash
-            application.state.tier_runtime_options = tier_runtime_options
+        application.state.tier_runtime_options = tier_runtime_options
         application.state.model_ids = _model_ids
         application.state.tiers = _tiers
         application.state.concurrency = concurrency
@@ -2363,7 +2384,9 @@ def create_app(
 
     application = FastAPI(
         title="MinerU API",
+        description=_FASTAPI_DESCRIPTION,
         version="1.0.0",
+        openapi_tags=_OPENAPI_TAGS,
         openapi_url="/openapi.json" if enable_docs else None,
         docs_url="/docs" if enable_docs else None,
         redoc_url="/redoc" if enable_docs else None,
