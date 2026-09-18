@@ -393,7 +393,7 @@ def _fill_window_block_content_and_lines(
     ):
         page_pil_image = image_dict["img_pil"]
         render_scale = float(image_dict["scale"])
-        page_size = tuple(float(value) for value in pdf_page.size)
+        page_size = (float(pdf_page.size[0]), float(pdf_page.size[1]))
         page_spans = _build_page_text_formula_spans(
             page_inline_formula_list,
             page_ocr_res_list,
