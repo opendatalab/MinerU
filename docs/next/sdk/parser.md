@@ -37,7 +37,6 @@
 | `MinerUParser` | class | 统一解析器，支持 PDF、OFD、EPUB、HTML、图片、CSV/TSV、RTF、OOXML 与 OpenDocument。 |
 | `ParseResult` | dataclass | 解析结果对象。 |
 | `MinerUApiParser` | class | API-backed parser，详见 [API-backed Parser](api-parser.md)。 |
-| `backend_for_tier` | function | 返回指定 tier 使用的 parser backend，tier 自身决定质量档位。 |
 | `MIDDLE_JSON_SCHEMA_VERSION` | 常量 | 当前 Middle JSON schema 版本（`"2.0"`）。 |
 
 ## `MinerUParser`

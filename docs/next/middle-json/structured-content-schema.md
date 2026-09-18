@@ -606,7 +606,6 @@ P0 validator 应检查:
 1. locator 是否第一版必填。
 2. `id` 是否需要跨同一文件、同一 tier、同一版本解析稳定。
 3. `source.filename` 是否默认写入。
-4. `parse.backend` 是否进入公开 Structured Content，还是只放在 API response metadata。
-5. `bbox.normalized` 是否采用 object 包装，还是直接用 `bbox:[...]`。
-6. `caption` / `footnote` 是否统一为 span list，还是 item list。
-7. `description` 是否使用 span list，还是普通 string。
+4. `bbox.normalized` 是否采用 object 包装，还是直接用 `bbox:[...]`。
+5. `caption` / `footnote` 是否统一为 span list，还是 item list。
+6. `description` 是否使用 span list，还是普通 string。
