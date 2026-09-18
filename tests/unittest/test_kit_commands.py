@@ -61,6 +61,36 @@ def test_webui_console_script_targets_modern_command() -> None:
     assert project["project"]["scripts"]["mineru-webui"] == "mineru.kit.commands.webui:main"
 
 
+@pytest.mark.parametrize(
+    ("args", "expected"),
+    [
+        ([], {"api_server_preload_models": False, "api_server_disable_image_analysis": False}),
+        (["--preload-models"], {"api_server_preload_models": True}),
+        (["--api-server-preload-models"], {"api_server_preload_models": True}),
+        (["--disable-image-analysis"], {"api_server_disable_image_analysis": True}),
+        (["--api-server-disable-image-analysis"], {"api_server_disable_image_analysis": True}),
+    ],
+)
+def test_webui_managed_server_bool_flags_parse_short_spellings_on(
+    monkeypatch: pytest.MonkeyPatch, args: list[str], expected: dict[str, bool]
+) -> None:
+    """校验短拼写是正向别名而非斜杠反拼写，避免静默关闭托管 server 选项。"""
+    calls: list[dict[str, Any]] = []
+
+    def _fake_launch(**kwargs: Any) -> None:
+        """记录解析后的启动参数，不启动真实 Gradio。"""
+        calls.append(kwargs)
+
+    monkeypatch.setattr("mineru.kit.gradio.app.launch_gradio", _fake_launch)
+
+    result = runner.invoke(app, ["webui", *args])
+
+    assert result.exit_code == 0
+    assert len(calls) == 1
+    for key, value in expected.items():
+        assert calls[0][key] is value
+
+
 def _invoke_standalone_command(
     monkeypatch: pytest.MonkeyPatch,
     entrypoint: Callable[[], None],
