@@ -474,7 +474,7 @@ ZH_MESSAGES: dict[str, str] = {
         "Web UI 绑定端口;省略时从 7860 或 GRADIO_SERVER_PORT 自动选择"
     ),
     "Directory for Web UI artifacts": "Web UI 产物目录",
-    "Maximum pages per non-Flash PDF conversion; omitted: unlimited": "非 Flash PDF 单次转换的最大页数;省略时不限制",
+    "Maximum pages per PDF conversion; omitted: unlimited": "PDF 单次转换的最大页数;省略时不限制",
     "Show local examples": "显示本地示例",
     "Expose the Gradio event API": "开放 Gradio 事件 API",
     "Managed API server capability tier": "托管 API server 的能力档位",

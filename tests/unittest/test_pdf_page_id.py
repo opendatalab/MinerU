@@ -86,7 +86,7 @@ def test_page_selection_contract_across_entrypoints(
     assert parse_page_range(raw, 10) == [page - 1 for page in page_numbers]
     assert expand_page_range(raw, 10) == canonical
     assert _normalize_content_page_range(raw, None, {"page_count": 10}) == canonical
-    assert expand_page_range(_effective_page_range("demo.pdf", raw, tier="standard"), 10) == canonical
+    assert expand_page_range(_effective_page_range("demo.pdf", raw), 10) == canonical
     assert parse_page_range_set(canonical) == set(page_numbers)
     assert count_pages_in_range(canonical) == len(page_numbers)
     assert format_page_range(reversed(page_numbers)) == canonical
@@ -100,7 +100,7 @@ def test_invalid_and_retired_syntax_is_rejected_everywhere(raw: str) -> None:
         lambda: parse_page_range(raw, 10),
         lambda: expand_page_range(raw, 10),
         lambda: _normalize_content_page_range(raw, None, {"page_count": 10}),
-        lambda: _effective_page_range("demo.pdf", raw, tier="standard"),
+        lambda: _effective_page_range("demo.pdf", raw),
         lambda: _validate_page_range_input(raw),
     ):
         with pytest.raises(MineruError) as error:

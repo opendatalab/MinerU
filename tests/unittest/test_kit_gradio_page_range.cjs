@@ -163,8 +163,9 @@ for (const [action, value, expected] of [
 assertSelection(ui.step("a", { a: 40 }), 40, 35, "b");
 assertSelection(ui.step("a", { a: 60 }), 60, 41, "b");
 const crossedState = { ...ui.state.previous };
-assert.equal(ui.step("tier", { position: 0 })[3], "");
-assert.match(ui.step("tier", { position: 0 })[2], /data-range-visible="false"/);
+// Flash 同样显示滑块，选区与角色原样保留，切回高档位不重置。
+assertSelection(ui.step("tier", { position: 0 }), 60, 41, "b");
+assert.match(ui.step("tier", { position: 0 })[2], /data-range-visible="true"/);
 assert.deepEqual(ui.state.previous, crossedState);
 assertSelection(ui.step("tier", { position: 3 }), 60, 41, "b");
 assertSelection(ui.step("a", { a: 30 }), 30, 41, "a");
@@ -218,15 +219,16 @@ assertSelection(ui.upload(100), 1, 1, "a");
 assertSelection(ui.step("a", { a: 50 }), 50, 50, "a");
 assertSelection(ui.step("b", { b: 10 }), 10, 10, "a");
 
-// 文件错误只阻止非 Flash；错误消息须转义，不能成为 HTML 注入入口。
+// 文件错误阻止所有档位提交；错误消息须转义，不能成为 HTML 注入入口。
 ui = createUi();
 ui.step("file", { file: { path: "/bad.pdf" } });
 out = ui.step("metadata", { metadata: { path: "/bad.pdf", page_count: 0, error: "<bad>" } });
 assert.equal(out[5].interactive, false);
 assert.equal(out[6].value, "&lt;bad&gt;");
 out = ui.step("tier", { position: 0 });
-assert.equal(out[5].interactive, true);
-assert.equal(out[6].visible, false);
+assert.equal(out[5].interactive, false);
+assert.equal(out[6].visible, true);
+assert.equal(out[6].value, "&lt;bad&gt;");
 
 // 确定性遍历总页数和上限：物理值允许倒序，排序后的范围、角色与上限必须一致。
 for (const count of [1, 12, 20, 100]) {

@@ -67,9 +67,7 @@ def webui_cmd(
         None, "--server-port", help=t("Web UI bind port; omitted: auto-select from 7860 or GRADIO_SERVER_PORT")
     ),
     output_dir: str = typer.Option("./output", "--output-dir", help=t("Directory for Web UI artifacts")),
-    max_pages: int | None = typer.Option(
-        None, "--max-pages", help=t("Maximum pages per non-Flash PDF conversion; omitted: unlimited")
-    ),
+    max_pages: int | None = typer.Option(None, "--max-pages", help=t("Maximum pages per PDF conversion; omitted: unlimited")),
     enable_example: bool = typer.Option(True, "--enable-example/--no-enable-example", help=t("Show local examples")),
     enable_api: bool = typer.Option(True, "--enable-api/--no-enable-api", help=t("Expose the Gradio event API")),
     api_server_tier: str = typer.Option(

@@ -7,7 +7,6 @@ from typing import TypedDict
 
 from ...errors import InvalidRequestError
 from ...parser.page_range import count_pages_in_range, expand_page_range, normalize_page_range_input
-from ...types import Tier
 
 
 class PdfPageMetadata(TypedDict):
@@ -63,12 +62,11 @@ def effective_page_range(
     path: str | Path | None,
     raw_page_range: str | None,
     *,
-    tier: Tier,
     max_pages: int | None = None,
 ) -> str:
-    """按真实 PDF 页数校验 Gradio 请求，防止绕过前端提交超限范围。"""
+    """按真实 PDF 页数校验 Gradio 请求，防止绕过前端提交超限范围；所有档位（含 Flash）一致。"""
     validate_max_pages(max_pages)
-    if tier == "flash" or not path or Path(path).suffix.lower() != ".pdf":
+    if not path or Path(path).suffix.lower() != ".pdf":
         return ""
     normalized = normalize_page_range_input(raw_page_range)
     page_count = read_pdf_page_count(path)

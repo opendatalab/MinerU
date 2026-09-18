@@ -244,9 +244,9 @@ def test_pdf_metadata_and_default_range(tmp_path: Path, count: int) -> None:
     source = _pdf(tmp_path, count)
     assert ranges.pdf_page_metadata(str(source)) == {"path": str(source), "page_count": count, "error": ""}
     expected = "1" if count == 1 else f"1-{min(count, 20)}"
-    assert ranges.effective_page_range(source, "", tier="standard", max_pages=20) == expected
-    assert ranges.effective_page_range(source, "", tier="standard") == ""
-    assert ranges.effective_page_range(source, "all", tier="standard") == "all"
+    assert ranges.effective_page_range(source, "", max_pages=20) == expected
+    assert ranges.effective_page_range(source, "") == ""
+    assert ranges.effective_page_range(source, "all") == "all"
 
 
 @pytest.mark.parametrize(
@@ -255,7 +255,7 @@ def test_pdf_metadata_and_default_range(tmp_path: Path, count: int) -> None:
 def test_existing_range_syntax_and_unique_page_count(tmp_path: Path, raw: str, expected: str) -> None:
     """保留既有语法，按求值后的去重页数限制，不按字符串跨度计数。"""
     source = _pdf(tmp_path)
-    assert ranges.effective_page_range(source, raw, tier="standard", max_pages=20) == expected
+    assert ranges.effective_page_range(source, raw, max_pages=20) == expected
 
 
 @pytest.mark.parametrize("raw", ["all", "1-21", "r30-r1", "1-10,90-100", "999", "20-1", "~", "0"])
@@ -277,14 +277,12 @@ def test_invalid_or_oversized_range_is_rejected_before_submission(tmp_path: Path
     client.parse_file.assert_not_called()
 
 
-@pytest.mark.parametrize(
-    ("path", "tier"), [("missing.pdf", "flash"), ("report.docx", "standard"), ("image.png", "advanced"), (None, "basic")]
-)
-def test_whole_document_modes_never_read_pdf_metadata(monkeypatch: pytest.MonkeyPatch, path: str | None, tier: str) -> None:
-    """Flash、非 PDF 和空输入直接清空范围，不因残留的坏页码而失败。"""
+@pytest.mark.parametrize("path", ["report.docx", "image.png", None])
+def test_whole_document_modes_never_read_pdf_metadata(monkeypatch: pytest.MonkeyPatch, path: str | None) -> None:
+    """非 PDF 和空输入直接清空范围，不因残留的坏页码而失败。"""
     read_count = Mock(side_effect=AssertionError("unexpected PDF access"))
     monkeypatch.setattr(ranges, "read_pdf_page_count", read_count)
-    assert ranges.effective_page_range(path, "bad range", tier=tier, max_pages=1) == ""  # type: ignore[arg-type]
+    assert ranges.effective_page_range(path, "bad range", max_pages=1) == ""
     read_count.assert_not_called()
 
 
@@ -301,7 +299,7 @@ def test_unreadable_pdf_is_not_treated_as_all_pages(tmp_path: Path, kind: str) -
     assert metadata["page_count"] == 0
     assert "无法读取 PDF 页数" in metadata["error"]
     with pytest.raises(InvalidRequestError, match="无法读取 PDF 页数"):
-        ranges.effective_page_range(source, "", tier="standard", max_pages=20)
+        ranges.effective_page_range(source, "", max_pages=20)
 
 
 @pytest.mark.parametrize("fail", [False, True])
