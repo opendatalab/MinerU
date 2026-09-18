@@ -292,6 +292,78 @@ def test_main_env_projector_source_suppresses_default_pair(
     assert str(model_dir / "mmproj.gguf") not in argv
 
 
+def test_main_env_parallel_suppresses_default_and_ctx_conversion(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """env 设定并发视为用户已定义：不追加默认并发，也不做训练上下文 ×N 换算。"""
+    monkeypatch.setenv("LLAMA_ARG_N_PARALLEL", "8")
+    argv, _, _ = _run_main(monkeypatch, tmp_path, capsys, [])
+
+    assert "--parallel" not in argv
+    assert "--ctx-size" not in argv
+
+
+def test_main_env_ctx_suppresses_ctx_conversion_only(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """env 只设定上下文：换算跳过，默认并发照常补齐。"""
+    monkeypatch.setenv("LLAMA_ARG_CTX_SIZE", "32768")
+    argv, _, _ = _run_main(monkeypatch, tmp_path, capsys, [])
+
+    assert "--ctx-size" not in argv
+    assert "--parallel" in argv
+
+
+@pytest.mark.parametrize(
+    ("ngl_env", "expect_no_mmproj_offload"),
+    [("0", True), ("2", False)],
+    ids=["cpu-only", "gpu"],
+)
+def test_main_env_ngl_suppresses_default_and_drives_mmproj_offload(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    ngl_env: str,
+    expect_no_mmproj_offload: bool,
+) -> None:
+    """env 设定 GPU 层数时不追加默认 99；ngl=0 的纯 CPU 场景 mmproj 同步离卡。"""
+    monkeypatch.setenv("LLAMA_ARG_N_GPU_LAYERS", ngl_env)
+    argv, _, _ = _run_main(monkeypatch, tmp_path, capsys, [])
+
+    assert "--n-gpu-layers" not in argv
+    assert ("--no-mmproj-offload" in argv) is expect_no_mmproj_offload
+
+
+@pytest.mark.parametrize(
+    ("env_name", "suppressed_flag"),
+    [
+        ("LLAMA_ARG_PORT", "--port"),
+        ("LLAMA_ARG_KV_UNIFIED", "--no-kv-unified"),
+        ("LLAMA_ARG_CACHE_RAM", "--cache-ram"),
+    ],
+    ids=["port", "kv-unified", "cache-ram"],
+)
+def test_main_env_setting_suppresses_matching_default(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str], env_name: str, suppressed_flag: str
+) -> None:
+    """env 已配置的项不再追加默认值（CLI 追加会以更高优先级压掉环境配置）。"""
+    monkeypatch.setenv(env_name, "1")
+    argv, _, _ = _run_main(monkeypatch, tmp_path, capsys, [])
+
+    assert suppressed_flag not in argv
+
+
+def test_main_env_alias_suppresses_registry_alias(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """env 设定 alias 时不代设 registry 模型名，默认模型对仍正常补齐。"""
+    monkeypatch.setenv("LLAMA_ARG_ALIAS", "env-alias")
+    argv, _, model_dir = _run_main(monkeypatch, tmp_path, capsys, [])
+
+    assert "mineru-test-model" not in argv
+    assert str(model_dir / "main.gguf") in argv
+
+
 @pytest.mark.parametrize(
     "alias_args",
     [["-a", "my-model"], ["--alias", "my-model"], ["--alias=my-model"]],
