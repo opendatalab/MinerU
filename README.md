@@ -101,8 +101,12 @@ submit = client.ensure_parse(ParseRequest(path="paper.pdf", tier="standard"))
 
 # ensure_parse returns immediately; poll the parse tasks it created.
 for parse_id in submit.wait_parse_ids:
-    while client.get_parse(parse_id).status != "done":
+    parse = client.get_parse(parse_id)
+    while parse.status in ("pending", "parsing"):
         time.sleep(1)
+        parse = client.get_parse(parse_id)
+    if parse.status != "done":
+        raise RuntimeError(f"parse {parse_id} ended as {parse.status}: {parse.error_code} {parse.error_msg}")
 
 content = client.read_content(f"doc:{submit.short_id}/tier:standard/page:1")
 print(content.content)
