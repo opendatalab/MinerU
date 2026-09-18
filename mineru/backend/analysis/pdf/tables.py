@@ -16,7 +16,7 @@ from docvortex.analyzers.pdf import project_table_text as project_ocr_table_text
 from docvortex.assets import encode_crop_as_jpeg_data_uri as _encode_page_crop_as_jpeg_data_uri
 from docvortex.assets import image_size as _normalize_page_size
 from docvortex.assets import rotate_image_to_upright as _rotate_visual_block_image_to_upright
-from docvortex.document.pdf import PDFPage, PDFPageTextGeometry, get_lines_from_chars
+from docvortex.document.pdf import PDFPage, PDFPageTextGeometry, PDFPageVectorGeometry, get_lines_from_chars
 from docvortex.geometry import bbox_center as _table_bbox_center
 from docvortex.geometry import bbox_to_quad as _medium_bbox_to_quad
 from docvortex.geometry import calculate_overlap_area_in_bbox1_area_ratio, normalize_to_int_bbox
@@ -206,6 +206,7 @@ def _apply_native_txt_table_priority(
     *,
     effort: Literal["medium", "high"],
     page_text_geometries: list[PDFPageTextGeometry | None] | None = None,
+    page_vector_geometries: list[PDFPageVectorGeometry | None] | None = None,
 ) -> _NativeTablePrioritySummary:
     """在 Medium/High TXT 模型表格识别前回填高置信原生 HTML。"""
 
@@ -261,10 +262,15 @@ def _apply_native_txt_table_priority(
 
         try:
             page_text_geometry = page_text_geometries[page_idx] if page_text_geometries is not None else None
-            table_page = prepare_table_page(pdf_page, geometry=page_text_geometry)
+            vector_geometry = page_vector_geometries[page_idx] if page_vector_geometries is not None else None
+            if vector_geometry is None:
+                vector_geometry = pdf_page.get_vector_geometry()
+            table_page = prepare_table_page(pdf_page, geometry=page_text_geometry, vector_geometry=vector_geometry)
             page_text_geometry = table_page.geometry
             if page_text_geometries is not None:
                 page_text_geometries[page_idx] = page_text_geometry
+            if page_vector_geometries is not None:
+                page_vector_geometries[page_idx] = vector_geometry
             native_page_size = table_page.page_size
             render_scale = float(image_dict.get("scale", 1.0) or 1.0)
         except Exception as exc:
@@ -461,6 +467,7 @@ def _resolve_txt_table_orientations(
     table_items: list[dict[str, Any]],
     pdf_pages: list[PDFPage],
     images_list: list[dict[str, Any]],
+    page_text_geometries: list[PDFPageTextGeometry | None] | None = None,
 ) -> list[dict[str, Any]]:
     """优先用原生 PDF 文本行写回表格角度，并返回需要视觉兜底的表格。"""
     fallback_table_items: list[dict[str, Any]] = []
@@ -491,7 +498,17 @@ def _resolve_txt_table_orientations(
 
         if page_idx not in page_lines_cache:
             try:
-                page_lines_cache[page_idx] = get_lines_from_chars(pdf_page.get_chars())
+                geometry = page_text_geometries[page_idx] if page_text_geometries is not None else None
+                if geometry is None and page_text_geometries is not None:
+                    try:
+                        geometry = pdf_page.get_chars_with_geometry()
+                    except Exception as exc:
+                        # 扩展几何失败不应让本来可成功的普通字符投票改走视觉模型。
+                        logger.debug(f"Hybrid table orientation uses plain chars after geometry failure: {exc}")
+                    else:
+                        page_text_geometries[page_idx] = geometry
+                chars = geometry.chars if geometry is not None else pdf_page.get_chars()
+                page_lines_cache[page_idx] = get_lines_from_chars(chars)
             except Exception as exc:
                 logger.warning(f"Hybrid txt table orientation falls back to visual model: page_idx={page_idx}, error={exc}")
                 page_lines_cache[page_idx] = None
@@ -516,6 +533,7 @@ def _apply_table_orientations(
     pdf_pages: list[PDFPage],
     images_list: list[dict[str, Any]],
     hybrid_model: HybridLocalModelContext,
+    page_text_geometries: list[PDFPageTextGeometry | None] | None = None,
 ) -> None:
     """按解析模式写回表格角度，文本证据不足时批量调用视觉方向模型。"""
     if parse_mode == "txt":
@@ -523,6 +541,7 @@ def _apply_table_orientations(
             table_items,
             pdf_pages,
             images_list,
+            page_text_geometries,
         )
     elif parse_mode == "ocr":
         fallback_table_items = table_items

@@ -60,8 +60,10 @@ def _window_probe(monkeypatch: pytest.MonkeyPatch, failure: str = "") -> SimpleN
         """模拟表格方向推理的异常边界。"""
         fail_at("orientation")
 
-    def text(*args: Any) -> list[list[dict[str, Any]]]:
+    def text(*args: Any, **kwargs: Any) -> list[list[dict[str, Any]]]:
         """保持已有块与素材归属，模拟 OCR 异常。"""
+        assert len(kwargs["np_images"]) == 1
+        assert any(ref() is kwargs["np_images"][0] for ref in probe.arrays)
         fail_at("ocr")
         return args[2]
 

@@ -8,7 +8,7 @@ from typing import Any, Literal
 import numpy as np
 from docvortex.analyzers.pdf import PDF_NATIVE_SCRIPT_MARKUP_KEY, PDFTextEvidence, apply_text_evidence, prepare_text_evidence
 from docvortex.content.text import merge_text_line_contents
-from docvortex.document.pdf import PDFPage, PDFPageTextGeometry, get_lines_from_chars
+from docvortex.document.pdf import PDFPage, PDFPageTextGeometry, PDFPageVectorGeometry, get_lines_from_chars
 from PIL import Image
 
 from .....model.ocr.image import rotate_vertical_crop_if_needed
@@ -357,6 +357,8 @@ def _fill_window_block_content_and_lines(
     ocr_det_type: set[str],
     local_model_context: HybridLocalModelContext,
     page_text_geometries: list[PDFPageTextGeometry | None] | None = None,
+    *,
+    page_vector_geometries: list[PDFPageVectorGeometry | None] | None = None,
 ) -> list[list[dict[str, Any]]]:
     """按页完成 span 回填与行级元数据构造，返回不含页面级 sidecar 的 model list。"""
     page_counts = {
@@ -368,6 +370,8 @@ def _fill_window_block_content_and_lines(
     }
     if page_text_geometries is not None:
         page_counts["text_geometries"] = len(page_text_geometries)
+    if page_vector_geometries is not None:
+        page_counts["vector_geometries"] = len(page_vector_geometries)
     if len(set(page_counts.values())) != 1:
         raise ValueError(f"Hybrid block content page count mismatch: {page_counts}")
 
@@ -424,6 +428,7 @@ def _fill_window_block_content_and_lines(
                 evidence = prepare_text_evidence(
                     pdf_page,
                     geometry=page_text_geometry,
+                    vector_geometry=page_vector_geometries[page_idx] if page_vector_geometries is not None else None,
                     excluded_script_regions=inline_math_regions,
                     table_regions=table_regions,
                 )
