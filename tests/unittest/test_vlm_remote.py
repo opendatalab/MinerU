@@ -247,7 +247,12 @@ def hybrid_stub(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(pipeline, "clean_memory", lambda device: None)
 
     def retain_vlm_text(
-        images: object, pages: object, blocks: list[list[dict[str, Any]]], *args: object
+        images: object,
+        pages: object,
+        blocks: list[list[dict[str, Any]]],
+        *args: object,
+        page_vector_geometries: object,
+        np_images: object,
     ) -> list[list[dict[str, Any]]]:
         """保留远程正文并模拟 Hybrid 提供的行框，满足 PDF 文本块校验合同。"""
         for page in blocks:
