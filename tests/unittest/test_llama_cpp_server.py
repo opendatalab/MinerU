@@ -80,7 +80,12 @@ def test_gguf_context_length_returns_zero_without_matching_architecture(tmp_path
 
 
 def _run_main(
-    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str], user_args: list[str]
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    user_args: list[str],
+    *,
+    repo: SimpleNamespace | None = None,
 ) -> tuple[list[str], str, Path]:
     """执行 main() 并捕获转交 llama-server 的 argv 与横幅输出，不真正启动进程。"""
     model_dir = tmp_path / "repo"
@@ -94,13 +99,16 @@ def _run_main(
     binary.write_bytes(b"")
     executed: list[list[str]] = []
     monkeypatch.setattr(llama_cpp_server, "llama_server_binary", lambda: binary)
-    monkeypatch.setattr(
-        llama_cpp_server,
-        "vlm_model_repo",
-        lambda name: SimpleNamespace(
-            name="mineru-test-model", ensure=lambda: model_dir, paths={"main": gguf.name, "mmproj": "mmproj.gguf"}
-        ),
+    fake_repo = (
+        repo
+        if repo is not None
+        else SimpleNamespace(
+            name="mineru-test-model",
+            ensure=lambda source=None: model_dir,
+            paths={"main": gguf.name, "mmproj": "mmproj.gguf"},
+        )
     )
+    monkeypatch.setattr(llama_cpp_server, "vlm_model_repo", lambda name: fake_repo)
     monkeypatch.setattr("os.execv", lambda path, argv: executed.append(argv))
     monkeypatch.setattr(sys, "argv", ["llama_cpp_server", *user_args])
 
@@ -360,6 +368,51 @@ def test_main_env_model_source_skips_partitioned_parallel(
 
     assert "--parallel" not in argv
     assert "--ctx-size" not in argv
+
+
+@pytest.mark.parametrize(
+    ("offline_args", "offline_env"),
+    [(["--offline"], ""), ([], "1")],
+    ids=["flag", "env"],
+)
+def test_main_offline_uses_local_verification_only(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    offline_args: list[str],
+    offline_env: str,
+) -> None:
+    """--offline 禁止网络访问：默认模型只做本地校验（ensure(source="local")），不走远端下载。"""
+    ensure_calls: list[dict[str, object]] = []
+
+    def _ensure(**kwargs: object) -> Path:
+        ensure_calls.append(kwargs)
+        return tmp_path / "repo"
+
+    repo = SimpleNamespace(name="mineru-test-model", ensure=_ensure, paths={"main": "main.gguf", "mmproj": "mmproj.gguf"})
+    if offline_env:
+        monkeypatch.setenv("LLAMA_ARG_OFFLINE", offline_env)
+
+    argv, _, _ = _run_main(monkeypatch, tmp_path, capsys, offline_args, repo=repo)
+
+    assert ensure_calls == [{"source": "local"}]
+    assert argv[argv.index("-m") + 1] == str(tmp_path / "repo" / "main.gguf")
+
+
+def test_main_offline_without_cached_model_fails_fast(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    """--offline 且默认模型未缓存：直接报错并给出修法，不碰网络。"""
+
+    def _ensure(**kwargs: object) -> Path:
+        if kwargs.get("source") == "local":
+            raise FileNotFoundError("Model repo mineru-test-model is not ready; missing: main.gguf")
+        return tmp_path / "repo"
+
+    repo = SimpleNamespace(name="mineru-test-model", ensure=_ensure, paths={"main": "main.gguf", "mmproj": "mmproj.gguf"})
+
+    with pytest.raises(SystemExit, match="--offline"):
+        _run_main(monkeypatch, tmp_path, capsys, ["--offline"], repo=repo)
 
 
 def test_main_env_parallel_suppresses_default_and_ctx_conversion(

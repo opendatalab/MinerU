@@ -231,7 +231,16 @@ def main() -> None:
         )
     elif not user_model_specified:
         repo = vlm_model_repo("llama-cpp")
-        model_dir = repo.ensure()
+        # --offline（或 LLAMA_ARG_OFFLINE）明确禁止网络访问：默认模型只做本地
+        # 校验——已缓存则复用，未缓存则报错退出，不在 wrapper 里先碰远端。
+        offline = _has_arg(args, "--offline") or _has_env("LLAMA_ARG_OFFLINE")
+        try:
+            model_dir = repo.ensure(source="local") if offline else repo.ensure()
+        except FileNotFoundError as exc:
+            raise SystemExit(
+                f"--offline 模式禁止网络访问，且默认模型未完整缓存：{exc}\n"
+                "请先联网完成一次默认模型下载，或显式指定本地模型（-m <路径>）。"
+            ) from exc
         model_path = model_dir / repo.paths["main"]
         args.extend(["-m", str(model_path)])
         if not _has_arg(args, "--no-mmproj"):
