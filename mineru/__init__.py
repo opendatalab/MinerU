@@ -62,9 +62,9 @@ def __getattr__(name: str) -> _Any:
         raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
     import importlib
 
-    value = getattr(importlib.import_module(f".{module}", package=__name__), name)
-    globals()[name] = value
-    return value
+    # 不写回 globals()：运行时改模块命名空间违反确定性优先约定，
+    # 重复访问经 sys.modules 命中的 import_module 解析，开销可忽略。
+    return getattr(importlib.import_module(f".{module}", package=__name__), name)
 
 
 def __dir__() -> list[str]:
