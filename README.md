@@ -86,6 +86,32 @@ mineru-kit parse document.pdf -o document.md --tier standard
 mineru-kit webui
 ```
 
+### Python SDK
+
+`DoclibClient` drives the local document library from Python. Start the server first (`mineru server start`), then:
+
+```python
+import time
+
+from mineru import DoclibClient
+from mineru.doclib import ParseRequest
+
+client = DoclibClient()
+submit = client.ensure_parse(ParseRequest(path="paper.pdf", tier="standard"))
+
+# ensure_parse returns immediately; poll the parse tasks it created.
+for parse_id in submit.wait_parse_ids:
+    while client.get_parse(parse_id).status != "done":
+        time.sleep(1)
+
+content = client.read_content(f"doc:{submit.short_id}/tier:standard/page:1")
+print(content.content)
+```
+
+`DoclibClient` also covers search, watched directories, locators for
+page/block continuation, and result invalidation — see
+`help(DoclibClient)` or the [SDK and API guide](https://opendatalab.github.io/MinerU/usage/sdk_api/).
+
 The default install works out of the box: small models run ONNX CPU inference and the VLM runs llama.cpp in Vulkan mode, which offers good compatibility on the vast majority of devices. If the device has an NVIDIA GPU, install `mineru[full]>=4.0` for the best throughput. Note that on Windows the GPU build of torch must be installed separately, while on macOS the default install is already the best-throughput package and `[full]` is not needed. On other non-NVIDIA devices, you need to install an accelerated build of torch plus vllm/lmdeploy yourself to get the best inference speed and throughput.
 
 For the document library and agent reading, use `mineru parse document.pdf --json`. It defaults to the first 10 PDF pages; continue with returned locators. Stateless `mineru-kit parse` defaults to all pages.
