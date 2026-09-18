@@ -23,6 +23,9 @@ jobs:
         with:
           ref: master
           fetch-depth: 0
+          # Push to master must authenticate as the PAT; the default GITHUB_TOKEN
+          # only has contents:read and is rejected with 403.
+          token: ${{ secrets.RELEASE_TOKEN }}
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -55,8 +58,6 @@ jobs:
 
       - name: Push changes
         if: steps.commit_changes.outputs.committed == 'true'
-        env:
-          GITHUB_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
           git push origin HEAD:master
 
