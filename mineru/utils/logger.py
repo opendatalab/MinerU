@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 import threading
 
@@ -28,6 +29,9 @@ def configure_global_log_level(level: LogLevel | str | None = None) -> LogLevel:
     ``level`` 为 ``None`` 时使用 ``config.log.level``；显式传入后作为进程级
     局部覆盖，后续默认调用不会把它改回全局配置。函数只移除 Loguru 初始
     sink 和 MinerU 自己创建的 sink，不会影响宿主程序显式添加的自定义 sink。
+    级别同时写入 ``LOGURU_LEVEL`` 环境变量（覆盖外部预设），使之后 spawn 的
+    子进程（如 DocVortex 渲染 worker）在初始化 Loguru 出厂 sink 时继承同一
+    级别，与当前进程保持一致。
     """
     from loguru import logger
 
@@ -41,6 +45,7 @@ def configure_global_log_level(level: LogLevel | str | None = None) -> LogLevel:
         else:
             normalized = GlobalLogConfig(level=level).level
             _explicit_level = normalized
+        os.environ["LOGURU_LEVEL"] = normalized.upper()
         active_ids = _active_managed_sink_ids()
         has_initial_sink = 0 in logger._core.handlers
         if _configured_level == normalized and (active_ids or not has_initial_sink):

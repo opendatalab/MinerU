@@ -7,13 +7,10 @@ import typer
 
 from ...parser import api_server as parser_api_server
 from ...types import SERVER_TIERS, ServerTier
-from ...model.ocr.language import PUBLIC_OCR_LANGUAGES, validate_public_ocr_lang
 from ...utils.i18n import t
 from ...utils.logger import configure_global_log_level
 from ...utils.stdio import configure_standard_streams
 from ..errors import exit_with_message
-
-API_SERVER_LANGUAGES = PUBLIC_OCR_LANGUAGES
 
 
 def _normalize_tier_option(tier: str | None) -> ServerTier | None:
@@ -49,11 +46,6 @@ def api_server_cmd(
     allow_local_source: bool = typer.Option(False, "--allow-local-source", help=t("Allow local source paths")),
     max_inline_bytes: int = typer.Option(1024 * 1024, "--max-inline-bytes", help=t("Maximum decoded bytes for inline sources")),
     allow_http_source: bool = typer.Option(False, "--allow-http-source", help=t("Allow URL sources to use plain HTTP")),
-    language: str = typer.Option(
-        "ch",
-        "--language",
-        help=t("Hybrid medium OCR language hint; accepted by other efforts for compatibility"),
-    ),
     disable_image_analysis: bool = typer.Option(False, "--disable-image-analysis", help=t("Disable image analysis")),
     preload_models: bool = typer.Option(
         False, "--preload-models", help=t("Initialize VLM client and local Hybrid models at startup")
@@ -80,10 +72,6 @@ def api_server_cmd(
     ),
 ) -> None:
     """转发显式启动参数，启动 self-hosted MinerU 解析 API 服务。"""
-    try:
-        normalized_language = validate_public_ocr_lang(language)
-    except ValueError as exc:
-        exit_with_message("invalid_request", str(exc), "language")
     tier_value = _normalize_tier_option(tier)
     tier_args = ["--tier", tier_value] if tier_value is not None else []
     vlm_args: list[str] = []
@@ -110,8 +98,6 @@ def api_server_cmd(
                 str(url_timeout),
                 "--max-inline-bytes",
                 str(max_inline_bytes),
-                "--language",
-                normalized_language,
                 *tier_args,
                 *vlm_args,
                 *(["--no-flash"] if no_flash else []),
@@ -144,4 +130,4 @@ def main() -> None:
     app()
 
 
-__all__ = ["API_SERVER_LANGUAGES", "api_server_cmd", "main"]
+__all__ = ["api_server_cmd", "main"]

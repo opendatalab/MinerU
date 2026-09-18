@@ -82,7 +82,7 @@ mineru-kit api-server --tier standard --no-flash --port 8000
 mineru-kit api-server --tier standard --no-advanced --port 8000
 mineru-kit api-server --tier standard --no-flash --no-advanced --port 8000
 mineru-kit api-server --tier standard --preload-models
-mineru-kit api-server --tier standard --language en --disable-image-analysis
+mineru-kit api-server --tier standard --disable-image-analysis
 ```
 
 未传 `--tier` 时暴露 `flash`、`basic`、`standard`、`advanced`；PDF/image 请求未指定 tier 时默认 `standard`。
@@ -167,7 +167,6 @@ Python 可使用 `create_app(vlm_config=VlmConfig(...))` 完整覆盖全局配�
 
 ### 稳定解析参数
 
-- language
 - disable-image-analysis
 - concurrency
 - upload-dir

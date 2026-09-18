@@ -118,7 +118,7 @@ llm_aided:
 
 ## Extending MinerU Functionality with Configuration Files
 
-MinerU works out of the box and reads current settings from `$MINERU_HOME/config.yaml`; set `MINERU_CONFIG` to use another file. Legacy `mineru.json` CLI settings are no longer supported. Gradio's LaTeX delimiters are selected with `--latex-delimiters-type`.
+MinerU works out of the box and reads current settings from `$MINERU_HOME/config.yaml`; set `MINERU_CONFIG` to use another file. Legacy `mineru.json` CLI settings are no longer supported.
 
 Model storage and source settings use the `model` section:
 
