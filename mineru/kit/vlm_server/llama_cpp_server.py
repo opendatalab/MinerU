@@ -6,7 +6,7 @@ llama-server 的全部服务能力由 llama.cpp 提供，本模块只补默认�
 
 默认参数对齐 EngineCore::EngineCore（进程内 llama-cpp-engine）在 C++ 侧
 写死的 common_params 值，使 server 模式与解析模式的上下文容量、KV 分区、
-并发与日志行为保持一致；用户显式传入的参数逐项让位。
+并发与日志行为保持一致；用户以 CLI 旗标或 llama-server 环境变量设定时逐项让位。
 """
 
 from __future__ import annotations
@@ -171,7 +171,10 @@ def _read_gguf_context_length(model_path: Path) -> int:
 def main() -> None:
     args = sys.argv[1:]
 
-    if not _has_arg(args, "--port"):
+    # 注入的每个默认值都让位两项：用户 CLI 旗标与对应环境变量（--help 的
+    # env: 名单）；llama.cpp 里 CLI 优先级高于环境变量，漏认 env 会让追加的
+    # 默认值静默压掉操作员的环境配置。
+    if not _has_arg(args, "--port") and not _has_env("LLAMA_ARG_PORT"):
         args.extend(["--port", DEFAULT_PORT])
     if not _has_arg(args, *GRAMMAR_SELECTOR_FLAGS):
         args.extend(["--grammar", VALID_UNICODE_GRAMMAR])
@@ -204,21 +207,22 @@ def main() -> None:
             args.extend(["--mmproj", str(model_dir / repo.paths["mmproj"])])
         # /v1/models 与请求体里的 model 字段用 registry 的模型名，而不是 GGUF
         # 文件路径；用户自定义模型时不代设。
-        if not _has_arg(args, "-a", "--alias"):
+        if not _has_arg(args, "-a", "--alias") and not _has_env("LLAMA_ARG_ALIAS"):
             args.extend(["--alias", repo.name])
 
-    # ---- 对齐 EngineCore::EngineCore 写死的 common_params（用户显式传入时逐项让位）----
-    user_defined_parallel = _has_arg(args, *PARALLEL_FLAGS)
-    user_defined_ctx = _has_arg(args, "-c", "--ctx-size")
+    # ---- 对齐 EngineCore::EngineCore 写死的 common_params（用户 CLI 或环境变量设定时逐项让位）----
+    user_defined_parallel = _has_arg(args, *PARALLEL_FLAGS) or _has_env("LLAMA_ARG_N_PARALLEL")
+    user_defined_ctx = _has_arg(args, "-c", "--ctx-size") or _has_env("LLAMA_ARG_CTX_SIZE")
     if not user_defined_parallel:
         args.extend(["--parallel", str(DEFAULT_N_PARALLEL)])
-    if not _has_arg(args, "-ngl", "--gpu-layers", "--n-gpu-layers"):
+    if not _has_arg(args, "-ngl", "--gpu-layers", "--n-gpu-layers") and not _has_env("LLAMA_ARG_N_GPU_LAYERS"):
         args.extend(["--n-gpu-layers", str(DEFAULT_N_GPU_LAYERS)])
     # mmproj_use_gpu = (n_gpu_layers > 0)：纯 CPU（ngl=0）时 mmproj 也不上 GPU；
     # server 的 --mmproj-offload 默认无条件 enabled、不联动 ngl，需要显式对齐。
-    if not _has_arg(args, "--mmproj-offload", "--no-mmproj-offload"):
+    if not _has_arg(args, "--mmproj-offload", "--no-mmproj-offload") and not _has_env("LLAMA_ARG_MMPROJ_OFFLOAD"):
         try:
-            mmproj_use_gpu = int(_flag_value(args, "-ngl", "--gpu-layers", "--n-gpu-layers") or DEFAULT_N_GPU_LAYERS) > 0
+            ngl_value = _flag_value(args, "-ngl", "--gpu-layers", "--n-gpu-layers") or os.environ.get("LLAMA_ARG_N_GPU_LAYERS")
+            mmproj_use_gpu = int(ngl_value or DEFAULT_N_GPU_LAYERS) > 0
         except ValueError:
             mmproj_use_gpu = True
         if not mmproj_use_gpu:
@@ -226,9 +230,9 @@ def main() -> None:
     # EngineCore 用 kv_unified=false 的硬分区 KV（每 slot 私有 n_ctx_seq，互不侵占，
     # 见 engine_core.cpp 的注释）；llama-server 默认 unified=enabled，需显式关闭，
     # 并同步关闭 idle-slot RAM 缓存（EngineCore 的 cache_idle_slots=false / cache_ram_mib=0）。
-    if not _has_arg(args, *KV_UNIFIED_FLAGS):
+    if not _has_arg(args, *KV_UNIFIED_FLAGS) and not _has_env("LLAMA_ARG_KV_UNIFIED"):
         args.append("--no-kv-unified")
-    if not _has_arg(args, "--cache-ram", "-cram"):
+    if not _has_arg(args, "--cache-ram", "-cram") and not _has_env("LLAMA_ARG_CACHE_RAM"):
         args.extend(["--cache-ram", "0"])
 
     # 总上下文 = n_ctx_seq(默认 0 → 训练上下文，读 GGUF) × n_parallel，复刻

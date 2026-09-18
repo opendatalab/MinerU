@@ -25,8 +25,15 @@ def test_top_level_doclib_client_is_lazy_and_correct() -> None:
     from mineru.doclib.client import DoclibClient
 
     assert mineru.DoclibClient is DoclibClient
-    # 首次访问后缓存进 globals，二次访问是同一个对象。
+    # 每次访问都经 _LAZY_EXPORTS 解析，重复访问仍是同一个对象。
     assert mineru.DoclibClient is mineru.DoclibClient
+
+
+def test_lazy_exports_do_not_mutate_module_namespace() -> None:
+    """解析符号不得写回 globals（AGENTS.md 确定性优先：禁止运行时改命名空间）。"""
+    mineru.DoclibClient  # noqa: B018
+
+    assert "DoclibClient" not in vars(mineru)
 
 
 def test_dir_includes_lazy_exports() -> None:
