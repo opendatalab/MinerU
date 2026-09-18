@@ -271,7 +271,7 @@ def test_usage_human_output_shows_complete_remote_usage(monkeypatch: pytest.Monk
     result = runner.invoke(app, ["usage"])
 
     assert result.exit_code == 0
-    assert "Remote API Usage" in result.stdout
+    assert "Remote Parse Service Usage" in result.stdout
     assert "Remote URL: https://mineru.net/api" in result.stdout
     assert "Billing period: 2026-07-14 00:00 UTC - 2026-07-15 00:00 UTC" in result.stdout
     assert "Max file size: 200 MiB" in result.stdout
