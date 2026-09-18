@@ -13,7 +13,7 @@ from ..runtime import run_cli
 
 
 def forget_cmd(
-    path: str = typer.Argument(..., help=t("File or directory path to forget from doclib")),
+    path: str = typer.Argument(..., help=t("File or directory path to forget from the document library")),
     dry_run: bool = typer.Option(True, "--dry-run/--no-dry-run", help=t("Preview only")),
     json_mode: bool = typer.Option(False, "--json", help=t("JSON output")),
 ) -> None:

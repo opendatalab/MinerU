@@ -14,7 +14,7 @@ from ..path_utils import normalize_cli_path
 from ..runtime import cli_task, run_cli
 from .scan import _render_scan, _wait_for_scan
 
-app = typer.Typer(help=t("Watch target management"), no_args_is_help=True)
+app = typer.Typer(help=t("Manage directories watched for automatic scanning."), no_args_is_help=True)
 
 
 @app.command("add", help=t("Add a directory to watch."))

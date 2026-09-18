@@ -124,7 +124,7 @@ def main() -> None:
     configure_standard_streams()
     configure_global_log_level()
     app = typer.Typer(add_completion=False)
-    app.command(help=t("Forward explicit startup options and launch the self-hosted MinerU parsing API service."))(
+    app.command(help=t("Start the self-hosted MinerU parsing API service."))(
         api_server_cmd
     )
     app()

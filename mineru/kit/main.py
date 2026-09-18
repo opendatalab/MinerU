@@ -32,7 +32,7 @@ class OrderedRootGroup(TyperGroup):
 app = typer.Typer(
     name="mineru-kit",
     cls=OrderedRootGroup,
-    help=t("MinerU Kit — parsing and service tools"),
+    help=t("MinerU Kit — batch parsing and service tools"),
     no_args_is_help=True,
     add_completion=False,
 )
@@ -54,7 +54,7 @@ def root(
 app.add_typer(models.app, name="models")
 app.command("parse", help=t("Parse files or directories into markdown, middle JSON, or zip outputs."))(parse.parse_cmd)
 app.command("webui", help=t("Start the Gradio document parsing web UI backed by the MinerU V1 API."))(webui.webui_cmd)
-app.command("api-server", help=t("Forward explicit startup options and launch the self-hosted MinerU parsing API service."))(
+app.command("api-server", help=t("Start the self-hosted MinerU parsing API service."))(
     api_server.api_server_cmd
 )
 app.command(

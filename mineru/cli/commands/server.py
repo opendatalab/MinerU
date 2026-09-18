@@ -27,7 +27,7 @@ from ...version import __version__
 from ..contracts import CliContext, RenderableObject
 from ..runtime import run_cli
 
-app = typer.Typer(help=t("Server lifecycle management"), no_args_is_help=True)
+app = typer.Typer(help=t("Start, stop, and inspect the local MinerU server."), no_args_is_help=True)
 
 SERVER_START_TIMEOUT_SEC = 30.0
 

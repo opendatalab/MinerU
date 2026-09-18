@@ -27,10 +27,10 @@ from ...utils.i18n import t
 from ..contracts import CliContext
 from ..runtime import run_cli
 
-app = typer.Typer(help=t("Configuration management"), no_args_is_help=True)
+app = typer.Typer(help=t("Show or override MinerU configuration values."), no_args_is_help=True)
 
-exclude_rules_app = typer.Typer(help=t("Exclude rule management"), no_args_is_help=True)
-parsing_rules_app = typer.Typer(help=t("Parsing rule management"), no_args_is_help=True)
+exclude_rules_app = typer.Typer(help=t("Manage rules that exclude files from the document library."), no_args_is_help=True)
+parsing_rules_app = typer.Typer(help=t("Manage parsing defaults applied to matching paths."), no_args_is_help=True)
 
 app.add_typer(exclude_rules_app, name="exclude-rules")
 app.add_typer(parsing_rules_app, name="parsing-rules")
@@ -103,7 +103,7 @@ def exclude_rules_remove(rule_id: int = typer.Argument(..., help=t("Rule id to r
 def parsing_rules_add(
     pattern: str = typer.Argument(..., help=t("Glob pattern to match")),
     tier: Tier | None = typer.Option(None, "--tier", help=t("Parse tier: flash, basic, standard, advanced")),
-    pages: str | None = typer.Option(None, "--pages", help=t("PDF pages, e.g. all, 1-10 or r3-r1")),
+    pages: str | None = typer.Option(None, "--pages", help=t("PDF pages, e.g. all, 1-10, or r3-r1 (counted from the end)")),
     remote: bool = typer.Option(False, "--remote", help=t("Allow remote parsing")),
     name: str | None = typer.Option(None, "--name", help=t("Rule name")),
     json_mode: bool = typer.Option(False, "--json", help=t("JSON output")),

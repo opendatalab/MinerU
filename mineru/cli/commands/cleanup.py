@@ -19,7 +19,7 @@ from ..runtime import run_cli
 
 app = typer.Typer(
     name="cleanup",
-    help=t("Clean up local doclib records and temp files."),
+    help=t("Clean up local document library records and temp files."),
     no_args_is_help=True,
 )
 
