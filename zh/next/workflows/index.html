@@ -1,0 +1,3946 @@
+
+<!doctype html>
+<html lang="zh" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://opendatalab.github.io/MinerU/zh/next/workflows/">
+      
+      
+      
+      
+        
+          <link rel="alternate" href="../../../next/workflows/" hreflang="en">
+        
+          <link rel="alternate" href="./" hreflang="zh">
+        
+      
+      
+      <link rel="icon" href="../../../images/logo.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>端到端工作流 - MinerU</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+  
+
+
+  
+  
+
+<script id="__analytics">function __md_analytics(){function e(){dataLayer.push(arguments)}window.dataLayer=window.dataLayer||[],e("js",new Date),e("config","G-44K480CC48"),document.addEventListener("DOMContentLoaded",(function(){document.forms.search&&document.forms.search.query.addEventListener("blur",(function(){this.value&&e("event","search",{search_term:this.value})}));document$.subscribe((function(){var t=document.forms.feedback;if(void 0!==t)for(var a of t.querySelectorAll("[type=submit]"))a.addEventListener("click",(function(a){a.preventDefault();var n=document.location.pathname,d=this.getAttribute("data-md-value");e("event","feedback",{page:n,data:d}),t.firstElementChild.disabled=!0;var r=t.querySelector(".md-feedback__note [data-md-value='"+d+"']");r&&(r.hidden=!1)})),t.hidden=!1})),location$.subscribe((function(t){e("config","G-44K480CC48",{page_path:t.pathname})}))}));var t=document.createElement("script");t.async=!0,t.src="https://www.googletagmanager.com/gtag/js?id=G-44K480CC48",document.getElementById("__analytics").insertAdjacentElement("afterEnd",t)}</script>
+  
+    <script>"undefined"!=typeof __md_analytics&&__md_analytics()</script>
+  
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="black" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#_1" class="md-skip">
+          跳转至
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="页眉">
+    <a href="../../" title="MinerU" class="md-header__button md-logo" aria-label="MinerU" data-md-component="logo">
+      
+  <img src="../../../images/logo.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            MinerU
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              端到端工作流
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme)" data-md-color-scheme="default" data-md-color-primary="black" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m14.3 16-.7-2h-3.2l-.7 2H7.8L11 7h2l3.2 9zM20 8.69V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12zm-9.15 3.96h2.3L12 9z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="black" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_2" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="black" data-md-color-accent="indigo"  aria-label="Switch to system preference"  type="radio" name="__palette" id="__palette_2">
+    
+      <label class="md-header__button md-icon" title="Switch to system preference" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+      <div class="md-header__option">
+  <div class="md-select">
+    
+    <button class="md-header__button md-icon" aria-label="选择当前语言">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.87 15.07-2.54-2.51.03-.03A17.5 17.5 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2zm-2.62 7 1.62-4.33L19.12 17z"/></svg>
+    </button>
+    <div class="md-select__inner">
+      <ul class="md-select__list">
+        
+          <li class="md-select__item">
+            <a href="../../../next/workflows/" hreflang="en" class="md-select__link">
+              English
+            </a>
+          </li>
+        
+          <li class="md-select__item">
+            <a href="./" hreflang="zh" class="md-select__link">
+              中文
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="搜索" placeholder="搜索" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="查找">
+        
+        <button type="reset" class="md-search__icon md-icon" title="清空当前内容" aria-label="清空当前内容" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            正在初始化搜索引擎
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/opendatalab/MinerU" title="前往仓库" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    opendatalab/MinerU
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="标签" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../" class="md-tabs__link">
+          
+  
+  
+    
+  
+  主页
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../quick_start/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  快速入门
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../usage/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  使用指南
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../reference/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  参考资料
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../faq/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  常见问题解答
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../demo/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  在线演示
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="导航栏" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../" title="MinerU" class="md-nav__button md-logo" aria-label="MinerU" data-md-component="logo">
+      
+  <img src="../../../images/logo.png" alt="logo">
+
+    </a>
+    MinerU
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/opendatalab/MinerU" title="前往仓库" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    opendatalab/MinerU
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    主页
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_1" id="__nav_1_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    主页
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1_2" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../quick_start/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    快速入门
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_1_2" id="__nav_1_2_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    快速入门
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quick_start/extension_modules/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    扩展模块安装
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quick_start/docker_deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker部署
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../usage/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    使用指南
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_1_3" id="__nav_1_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    使用指南
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/quick_usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    基础使用
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/tiers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    档位与运行环境
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/sdk_api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python SDK
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/http_api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    V1 HTTP API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/compatibility/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    旧平台适配（MinerU <4）
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/model_source/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    模型源配置
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/cli_tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    命令行工具
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/advanced_cli_parameters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    命令行进阶参数
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1_4" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../reference/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    参考资料
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_1_4" id="__nav_1_4_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    参考资料
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/migration_4/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    迁移到 4.0
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/output_files/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    输出文件格式
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    更新日志
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1_5" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../faq/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    常见问题解答
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    常见问题解答
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1_6" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../demo/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    在线演示
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    在线演示
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../quick_start/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    快速入门
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_2" id="__nav_2_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    快速入门
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quick_start/extension_modules/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    扩展模块安装
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quick_start/docker_deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker部署
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../usage/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    使用指南
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    使用指南
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/quick_usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    基础使用
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/tiers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    档位与运行环境
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/sdk_api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python SDK
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/http_api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    V1 HTTP API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/compatibility/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    旧平台适配（MinerU <4）
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/model_source/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    模型源配置
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/cli_tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    命令行工具
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/advanced_cli_parameters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    命令行进阶参数
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../reference/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    参考资料
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4" id="__nav_4_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    参考资料
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/migration_4/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    迁移到 4.0
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/output_files/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    输出文件格式
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    更新日志
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../faq/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    常见问题解答
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    常见问题解答
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../demo/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    在线演示
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    在线演示
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="目录">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目录
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. 定位
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. 参与组件
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. 全局不变量
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. 总览流程
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-a-watch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. 流程 A: Watch 自动发现与索引
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. 流程 A: Watch 自动发现与索引">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#51" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.1 触发条件
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#52" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.2 默认目标
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#53" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.3 步骤
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#54" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.4 状态变化
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#55" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.5 文件可达性规则
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#56" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.6 输出
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#57" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.7 约束
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#58-cleanup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.8 Cleanup 边界
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#59-forget-path" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.9 Forget Path
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#510-scan-task" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.10 Scan Task
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-b-agent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. 流程 B: 用户或 Agent 主动读取本地文件
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. 流程 B: 用户或 Agent 主动读取本地文件">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#61" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.1 触发条件
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#62" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.2 默认目标
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#63" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.3 步骤
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#64-tier" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.4 Tier 决策
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#65" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.5 隐私决策
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#66" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.6 输出策略
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#67" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6.7 约束
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-c-agent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. 流程 C: Agent 从搜索结果继续阅读
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. 流程 C: Agent 从搜索结果继续阅读">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#71" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.1 触发条件
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#72" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.2 步骤
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#73" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.3 关键区别
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#74-agent-marker" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7.4 Agent marker
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-d-parse-server-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. 流程 D: parse-server API 解析
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="8. 流程 D: parse-server API 解析">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#81" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.1 触发条件
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#82-official-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.2 Official API 主线
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#83-local-parse-server" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.3 Local Parse Server 差异
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#84-doclib" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.4 与 doclib 的关系
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-e-tool-sdk" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. 流程 E: Tool SDK 直接解析
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="9. 流程 E: Tool SDK 直接解析">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#91" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.1 触发条件
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#92" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.2 行为边界
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#93" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9.3 适用场景
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-json" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. JSON 产物、页合并与缓存
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="10. JSON 产物、页合并与缓存">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#101" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10.1 产物目录
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#102" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10.2 缓存键与覆盖判断
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#103-compaction" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10.3 页合并与 compaction
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#104" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10.4 读取时转换
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#105-metadata" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10.5 Metadata 更新
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#106" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10.6 搜索索引
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. 错误与恢复
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#12" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12. 实现切分
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="12. 实现切分">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#p0" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        P0: 打通主链路
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#p0-agent-native" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        P0: Agent-native 阅读
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#p2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        P2: 体验与优化
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#13" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        13. 端到端验收
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="13. 端到端验收">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#131-watch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        13.1 Watch 到搜索
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#132-parse" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        13.2 主动 parse 本地成功
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#133-parse" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        13.3 主动 parse 默认选择成功
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#134-parse" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        13.4 主动 parse 默认选择失败
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#135-flash" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        13.5 显式 flash
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#136" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        13.6 增量页码解析与合并
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#137-force" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        13.7 Force 重新解析
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#138-invalidate" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        13.8 Invalidate 缓存
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#139-remote" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        13.9 Remote 隐私边界
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#14" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        14. 未决问题
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<div><h1 id="_1">端到端工作流</h1>
+<p>状态: Draft
+读者: 核心开发者、SDK/API/CLI 设计参与者、Agent 能力开发者
+范围: 从文件发现、入库、解析、缓存、搜索到 Agent/用户读取的端到端行为
+非目标: 重复 API 字段级定义；替代数据库 schema；替代 CLI 参数手册</p>
+<h2 id="1">1. 定位</h2>
+<p>本文回答“一个文件从出现到被用户或 Agent 读取，中间经过哪些系统组件、状态和产物”的问题。</p>
+<p>它串联以下专题:</p>
+<ul>
+<li>术语以 <a href="../glossary/">术语表</a> 为准。</li>
+<li>默认选择 / <code>flash</code> / <code>basic</code> / <code>standard</code> / <code>advanced</code> 的语义以 <a href="../tiers/">解析 Tier</a> 为准。</li>
+<li>doclib、worker、SQLite 和 parse-server 的内部结构以 <a href="../architecture/">系统架构</a> 为准。</li>
+<li>CLI 行为以 <a href="../cli/">CLI 规格</a> 为准。</li>
+<li>v1 API 行为以 <a href="../api/">Unified API</a> 为准。</li>
+<li>SDK 层次以 <a href="../sdk/">SDK 设计</a> 为准。</li>
+<li>Middle JSON 产物以 <a href="../middle-json/">Middle JSON</a> 为准。</li>
+</ul>
+<p>核心目标:</p>
+<ol>
+<li>明确 watch 和主动 parse 的差异。</li>
+<li>明确 <code>flash</code> 何时可以自动使用，何时不可以作为最终阅读质量。</li>
+<li>明确 doclib server、parse-server、Tool SDK、Doclib SDK 的调用边界。</li>
+<li>明确缓存、搜索索引和解析产物如何落到实际使用的 <code>tier</code>。</li>
+<li>给后续实现提供可拆任务和验收检查点。</li>
+</ol>
+<h2 id="2">2. 参与组件</h2>
+<table>
+<thead>
+<tr>
+<th>组件</th>
+<th>中文名</th>
+<th>职责</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mineru</code> CLI</td>
+<td>用户工具</td>
+<td>面向普通用户和 Agent 的本地入口。</td>
+</tr>
+<tr>
+<td><code>mineru-kit</code> CLI</td>
+<td>专家工具</td>
+<td>暴露批处理、api-server 等高级能力。</td>
+</tr>
+<tr>
+<td>Doclib SDK</td>
+<td>本地文档库 SDK</td>
+<td>连接 doclib server，使用 parse/search/watch/config 能力。</td>
+</tr>
+<tr>
+<td>Tool SDK</td>
+<td>工具 SDK</td>
+<td>进程内直接解析文件，返回 <code>ParseResult</code>。</td>
+</tr>
+<tr>
+<td>doclib server</td>
+<td>本地文档库服务</td>
+<td>入库、缓存、搜索、watch、配置、任务调度。</td>
+</tr>
+<tr>
+<td>parse-server</td>
+<td>解析服务</td>
+<td>无状态解析服务，提供 v1 Unified API，执行 <code>basic</code> / <code>standard</code> / <code>advanced</code> 等质量 tier。</td>
+</tr>
+<tr>
+<td>Local Parse Server</td>
+<td>本地解析服务</td>
+<td>用户可信环境内的 parse-server。</td>
+</tr>
+<tr>
+<td>Remote Parse Server</td>
+<td>远端解析服务</td>
+<td><code>mineru.net/api</code> 或显式配置的远端兼容服务。</td>
+</tr>
+<tr>
+<td>Backend</td>
+<td>解析后端</td>
+<td>实际解析实现，例如 <code>hybrid-engine</code>、<code>flash</code>；由 tier 派生，不对外选择。</td>
+</tr>
+<tr>
+<td>Render</td>
+<td>输出渲染</td>
+<td>将 Middle JSON 转为 Markdown / Content List / HTML 等。</td>
+</tr>
+</tbody>
+</table>
+<h2 id="3">3. 全局不变量</h2>
+<p>这些规则在所有流程中都成立:</p>
+<ol>
+<li><strong>隐私优先</strong>: 未显式允许 remote 时，不上传用户文档。</li>
+<li><strong>质量优先</strong>: 用户或 Agent 主动读取 PDF/image 文档时，默认使用默认选择策略，且不会解析为 <code>flash</code>。</li>
+<li><strong>发现与阅读分离</strong>: watch 可以自动使用 <code>flash</code>；PDF/image 主动阅读不能静默使用 <code>flash</code>。</li>
+<li><strong>结果记录实际 tier</strong>: 默认选择是请求时选择逻辑，任务、缓存、产物和 metadata 记录实际使用的实体 tier。</li>
+<li><strong>tier 是唯一入参</strong>: 所有入口只接受 <code>tier</code>；Tool SDK 的 <code>parse()</code> 只接受 <code>tier</code>。运行差异由 tier 派生的 effort 表达（<code>effort_for_tier()</code>），没有 backend 派生层。API-backed parser、Doclib SDK、doclib server API 和 v1 API 只面向 <code>tier</code>，不暴露 <code>backend</code>。</li>
+<li><strong>缓存按内容和 tier 隔离</strong>: 同一 <code>sha256 + tier</code> 的解析结果可以复用；不同 tier 的结果不能互相覆盖。</li>
+<li><strong>fallback 不扩大隐私边界</strong>: local 失败不能自动改成 remote；remote 失败可以 fallback 到 local。</li>
+<li><strong>Flash 既是档位也是实现名</strong>: <code>flash</code> 同时是解析档位，也是快速 CPU PDF 解析实现的名称。</li>
+<li><strong>doclib 只持久化基础产物</strong>: doclib 的 <code>parsed/</code> 目录保存按页组织的 Middle JSON 批次文件和必要图片 sidecar；Markdown、Content List、HTML 等格式读取时从 JSON 快速转换。</li>
+</ol>
+<h2 id="4">4. 总览流程</h2>
+<div class="highlight"><pre><span></span><code>文件来源
+  ├─ watch 自动发现
+  │   -&gt; doclib files/docs
+  │   -&gt; flash parse
+  │   -&gt; 搜索索引 / 基础预览
+  │
+  ├─ mineru parse / Agent 主动读取
+  │   -&gt; doclib ParseService
+  │   -&gt; 查缓存
+  │   -&gt; 默认选择/flash/basic/standard/advanced 路由
+  │   -&gt; ParseWorker
+  │   -&gt; Tool SDK 或 parse-server
+  │   -&gt; Middle JSON batch JSON
+  │   -&gt; read-time render: Markdown / Content List / HTML
+  │   -&gt; 返回用户或 Agent
+  │
+  ├─ SDK 调用
+  │   ├─ Tool SDK: 直接 parser -&gt; backend
+  │   ├─ API-backed Parser: v1 API -&gt; parse-server
+  │   └─ Doclib SDK: doclib server -&gt; 缓存/任务/搜索
+  │
+  └─ v1 API 调用
+      -&gt; Official API 或 Local Parse Server
+      -&gt; upload/file/job
+      -&gt; parse-server
+      -&gt; job result / requested formats
+</code></pre></div>
+<h2 id="5-a-watch">5. 流程 A: Watch 自动发现与索引</h2>
+<h3 id="51">5.1 触发条件</h3>
+<p>文件位于 watch 目录下，或全量扫描发现新文件、修改文件、删除文件、可插拔设备恢复可达。</p>
+<h3 id="52">5.2 默认目标</h3>
+<p>watch 的目标是发现文件、建立基础索引和支持后续搜索，不是提供最终阅读质量。</p>
+<p>默认 tier:</p>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>默认 tier</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>watch 自动发现</td>
+<td><code>flash</code></td>
+</tr>
+<tr>
+<td>parsing-rule 明确指定</td>
+<td>PDF/image 使用 rule 中的 tier；OFD/EPUB/Office/HTML/CSV/TSV 归一为 <code>flash</code>；其它 text 只入库和索引</td>
+</tr>
+<tr>
+<td>parsing-rule 未指定 tier</td>
+<td>PDF/image 按 <code>standard</code> -&gt; <code>basic</code> -&gt; <code>flash</code>；OFD/EPUB/Office/HTML/CSV/TSV 归一为 <code>flash</code>；其它 text 只入库和索引</td>
+</tr>
+</tbody>
+</table>
+<h3 id="53">5.3 步骤</h3>
+<ol>
+<li><code>WatchLoop</code> 接收文件系统事件。</li>
+<li>使用扩展名白名单和 exclude rule 过滤。</li>
+<li>执行统一文件发现/刷新: 新路径写入 <code>files</code> 并设置 <code>sha256=NULL</code>；已知路径先比较 <code>mtime_ms</code> 和 <code>size_bytes</code>。</li>
+<li>如果已知路径未变化，跳过重新入库。</li>
+<li>如果已知路径变化，更新文件 stat，清空 <code>files.sha256</code>，让 ingest worker 重新处理。</li>
+<li><code>IngestWorker</code> 抢占 <code>status=active AND sha256 IS NULL</code> 的文件。</li>
+<li>计算 SHA256，提取基础 metadata。</li>
+<li>写入或更新 <code>docs</code>。</li>
+<li>写入文件名索引。</li>
+<li>根据 watch 默认策略或 parsing-rule 创建 parse 任务。</li>
+<li>如果使用默认策略，则创建 <code>flash</code> 任务。</li>
+<li><code>ParseWorker</code> 调用本地 <code>flash</code> backend。</li>
+<li>将本批次的 Middle JSON pages 写入 <code>parsed/&lt;sha-prefix&gt;/&lt;sha&gt;/&lt;tier&gt;/&lt;page_range&gt;_&lt;done_at&gt;.json</code>。</li>
+<li>读取本批次结果并在内存中生成 Markdown 文本，用于更新内容索引。</li>
+</ol>
+<p>同一文件变化检查规则也适用于用户显式输入 source file path 的操作:</p>
+<table>
+<thead>
+<tr>
+<th>操作</th>
+<th>入口</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>主动解析</td>
+<td><code>POST /parses</code> / SDK <code>ensure_parse()</code> / <code>mineru parse &lt;path&gt;</code></td>
+</tr>
+<tr>
+<td>文件信息</td>
+<td><code>GET /files/by-path?path=...</code> / SDK <code>get_file_by_path()</code> / <code>mineru show file &lt;path&gt;</code></td>
+</tr>
+<tr>
+<td>按路径取文档</td>
+<td><code>GET /docs/by-path?path=...</code> / SDK <code>get_doc_by_path(path)</code></td>
+</tr>
+<tr>
+<td>按路径失效解析</td>
+<td><code>POST /invalidate { path }</code> / SDK <code>invalidate(path=...)</code> / <code>mineru invalidate &lt;path&gt;</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="54">5.4 状态变化</h3>
+<table>
+<thead>
+<tr>
+<th>阶段</th>
+<th>主要状态</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>发现路径</td>
+<td><code>files.status=active</code></td>
+</tr>
+<tr>
+<td>检测到变化</td>
+<td>更新 <code>files.size_bytes/mtime_ms</code>，并设置 <code>files.sha256=NULL</code></td>
+</tr>
+<tr>
+<td>文件缺失且设备可达</td>
+<td><code>files.status=deleted</code>，保留 <code>sha256</code>，写入 <code>deleted_at</code></td>
+</tr>
+<tr>
+<td>removable 设备不可达</td>
+<td>后台 <code>DeviceMonitor</code> 可将 <code>watches.status=unreachable</code>，并批量把相关 active files 变为 <code>unreachable</code>；同步 path 调用只允许更新当前文件和 watch 状态</td>
+</tr>
+<tr>
+<td>removable 设备恢复</td>
+<td>watch 和 files 恢复为 <code>active</code>，并立即对该 watch 执行 scan</td>
+</tr>
+<tr>
+<td>入库完成</td>
+<td><code>files.sha256</code> 指向 <code>docs.sha256</code></td>
+</tr>
+<tr>
+<td>创建任务</td>
+<td><code>parses.status=pending</code>，<code>tier=flash</code> 或 rule tier</td>
+</tr>
+<tr>
+<td>执行解析</td>
+<td><code>parses.status=parsing</code></td>
+</tr>
+<tr>
+<td>解析成功</td>
+<td><code>parses.status=done</code>，JSON 批次写入 <code>data_dir/parsed/{sha256}/{tier}</code> 下的批次文件</td>
+</tr>
+<tr>
+<td>解析失败</td>
+<td><code>parses.status=failed</code>，写入 <code>error_code</code> / <code>error_msg</code></td>
+</tr>
+</tbody>
+</table>
+<h3 id="55">5.5 文件可达性规则</h3>
+<p>watch event、所有 scan 操作和所有同步 source file path 操作都必须检查 path 当前可达性。同步 path 操作包括:</p>
+<ul>
+<li>主动解析: <code>POST /parses</code> / SDK <code>ensure_parse()</code> / <code>mineru parse &lt;path&gt;</code>。</li>
+<li>文件信息: <code>GET /files/by-path?path=...</code> / SDK <code>get_file_by_path()</code> / <code>mineru show file &lt;path&gt;</code>。</li>
+<li>按路径取文档: <code>GET /docs/by-path?path=...</code> / SDK <code>get_doc_by_path(path)</code>。</li>
+<li>按路径失效解析: <code>POST /invalidate { path }</code> / SDK <code>invalidate(path=...)</code> / <code>mineru invalidate &lt;path&gt;</code>。</li>
+</ul>
+<p>如果 path 不存在:</p>
+<ol>
+<li>如果它属于 removable watch，且 watch root 当前不可达，则标记为 <code>unreachable</code>；同步 path 调用只处理当前文件。</li>
+<li>否则标记为 <code>deleted</code>，保留 <code>sha256</code>，写入 <code>deleted_at</code>。</li>
+<li>已经是 <code>deleted</code> 的 file 不因 watch root 不可达改回 <code>unreachable</code>。</li>
+<li><code>PermissionError</code> / stat <code>OSError</code> 不表示文件删除，应写入 <code>files.error_code</code> / <code>files.error_msg</code>。</li>
+<li>标记 <code>deleted</code> 或 <code>unreachable</code> 时不清理 FTS。</li>
+</ol>
+<p><code>active</code>、<code>unreachable</code> 和 <code>deleted</code> file row 都保护对应 doc。只有完全没有任何 file row 关联的 doc 才算 orphan。
+<code>GET /docs</code> / <code>mineru list docs</code> 默认只展示 active docs，即至少被一个 <code>status=active</code> file row 引用的 doc；被 <code>deleted</code> / <code>unreachable</code> file row 保护的 doc 由 cleanup / maintenance 视图处理。</p>
+<p>watch scan 的 P0 删除检测采用“两阶段刷新”:</p>
+<ol>
+<li>scan 开始时先检查 watch root 是否可达；不可达时只更新 <code>watches.status=unreachable</code> 并返回。</li>
+<li>root 可达时，先读取该 watch 下 <code>status=active</code> 的已知 file paths，并逐个调用统一文件刷新逻辑。</li>
+<li>再执行 <code>os.walk()</code> 扫描文件系统，发现当前存在的新文件或变化文件。</li>
+<li>因此同一个已知且仍存在的文件可能在一轮 scan 中被 refresh 两次；P0 接受这部分后台 IO 成本，换取不增加 <code>files.last_seen_at</code> 字段和不引入独立删除判断逻辑。</li>
+</ol>
+<h3 id="56">5.6 输出</h3>
+<p>watch 默认输出面向系统内部:</p>
+<ul>
+<li><code>files</code> / <code>docs</code> 记录。</li>
+<li>文件名索引。</li>
+<li><code>flash</code> tier 的每批次 Middle JSON 文件。</li>
+<li>内容全文索引。</li>
+<li>可搜索 snippet。</li>
+</ul>
+<h3 id="57">5.7 约束</h3>
+<ul>
+<li>watch 自动产出的 <code>flash</code> 结果可以用于搜索和预览；P0 不基于启发式自动提示或自动排队升级。</li>
+<li>watch 自动产出的 <code>flash</code> 结果不能在用户主动阅读时被静默当作最终解析内容返回。</li>
+<li>后台自动升级只由用户显式配置的 parsing-rules 触发；如果 parsing-rule 指定质量 tier，必须经过能力检查和隐私检查。</li>
+<li>parsing-rule 只有显式允许 remote，才可以上传远端。</li>
+</ul>
+<h3 id="58-cleanup">5.8 Cleanup 边界</h3>
+<p>deleted file cleanup 与 orphan doc cleanup 分开执行。</p>
+<p>deleted file cleanup:</p>
+<ul>
+<li>手动命令立即删除所有 <code>status=deleted</code> 的 file row。</li>
+<li>后台任务固定保留 7 天后删除 deleted file row。</li>
+<li>删除 file row 时删除对应 <code>fts_filenames</code>。</li>
+<li>不自动删除 docs、parses、parsed JSON 或 <code>fts_contents</code>。</li>
+</ul>
+<p>orphan doc cleanup:</p>
+<ul>
+<li>只处理没有任何 file row 关联的 docs。</li>
+<li>执行时删除 docs、parses、<code>fts_contents</code> 和 parsed JSON。</li>
+</ul>
+<h3 id="59-forget-path">5.9 Forget Path</h3>
+<p><code>forget</code> 用于让 doclib 忘记一个 path 的记录。</p>
+<p>流程:</p>
+<ol>
+<li>判断 path 是否是已配置 watch root；如果是，拒绝并提示先执行 watch remove。</li>
+<li>匹配 DB 中的 file rows:</li>
+<li>精确匹配 <code>files.path = path</code> 时，按文件处理。</li>
+<li>存在 <code>files.path</code> 以 <code>path/</code> 为前缀时，按目录处理。</li>
+<li>两者都没有时，返回 0。</li>
+<li>如果 path 位于 active watch root 下，返回 warning，说明后续 scan 可能重新发现。</li>
+<li>dry-run 时只返回匹配数量、匹配类型和 warnings。</li>
+<li>执行时删除匹配 file rows 对应的 <code>fts_filenames</code>。</li>
+<li>删除匹配的 <code>files</code> rows。</li>
+<li>不删除 <code>docs</code>、<code>parses</code>、parsed JSON 或 <code>fts_contents</code>。</li>
+</ol>
+<p>目录 path 在 P0 永远递归匹配；不提供 <code>recursive</code> 参数。<code>forget</code> 不是 ignore rule，也不是 invalidate。</p>
+<h3 id="510-scan-task">5.10 Scan Task</h3>
+<p><code>scan</code> 是统一后台任务，用于扫描文件或目录并更新 doclib 的文件状态。</p>
+<p>所有完整 scan 都必须走 <code>ScanService + ScanWorker</code>:</p>
+<ul>
+<li>手动 <code>mineru scan &lt;path&gt;</code>。</li>
+<li>SDK / HTTP API scan。</li>
+<li>watch initial scan。</li>
+<li>watch rescan。</li>
+<li>设备恢复后的 watch scan。</li>
+</ul>
+<p>scan 与 ingest 的边界:</p>
+<ul>
+<li>scan 负责 stat、发现、变化检测、deleted / unreachable / error 状态刷新。</li>
+<li>ingest 负责 SHA256、metadata、docs、FTS 内容和初始 parse batch。</li>
+<li>scan done 不表示 ingest 或 parse 完成。</li>
+</ul>
+<p>scan kind:</p>
+<ul>
+<li><code>manual</code>: 显式 scan 请求，可以针对文件、目录或历史 path。</li>
+<li><code>watch</code>: watch 产生的完整 scan，必须绑定 <code>watch_id</code>。</li>
+</ul>
+<p>scan source 是 best-effort 记录字段，P0 不强求 <code>cli</code> / <code>sdk</code> / <code>api</code> 准确区分。</p>
+<p>exclude 规则:</p>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>是否应用 exclude</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>manual scan 文件</td>
+<td>否</td>
+</tr>
+<tr>
+<td>manual scan 目录</td>
+<td>是</td>
+</tr>
+<tr>
+<td>watch scan</td>
+<td>是</td>
+</tr>
+<tr>
+<td>watch event 单文件</td>
+<td>是</td>
+</tr>
+<tr>
+<td>parse 单文件</td>
+<td>否</td>
+</tr>
+</tbody>
+</table>
+<p>完整规则见 <a href="../decisions/0009-doclib-scan-task/">ADR-0009</a>。</p>
+<h2 id="6-b-agent">6. 流程 B: 用户或 Agent 主动读取本地文件</h2>
+<h3 id="61">6.1 触发条件</h3>
+<p>用户或 Agent 执行:</p>
+<div class="highlight"><pre><span></span><code>mineru<span class="w"> </span>parse<span class="w"> </span>report.pdf
+</code></pre></div>
+<p>或通过 Doclib SDK 调用:</p>
+<div class="highlight"><pre><span></span><code><span class="n">client</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="s2">"report.pdf"</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="62">6.2 默认目标</h3>
+<p>主动读取 PDF/image 的目标是尽可能准确地理解文档。未指定 tier 时，使用默认选择策略，并解析到可用的非 <code>flash</code> 质量 tier。OFD/EPUB/Office/HTML/CSV/TSV 没有质量 tier，未指定 tier 时归一为 <code>flash</code>。其它 text 应直接读取，不进入解析流程。</p>
+<h3 id="63">6.3 步骤</h3>
+<ol>
+<li>CLI 或 SDK 将请求发送给 doclib server。</li>
+<li><code>ParseService</code> 查找文件路径。</li>
+<li>如果文件尚未入库，先同步执行 ingest，得到 <code>sha256</code>。</li>
+<li>确定页码范围、输出格式、等待策略和隐私偏好。</li>
+<li>如果用户未指定 tier，使用默认选择策略。</li>
+<li>PDF/image 默认选择策略通过当前可用 parse-server 能力发现，按 <code>standard</code> -&gt; <code>basic</code> 选择；OFD/EPUB/Office/HTML/CSV/TSV 归一为 <code>flash</code>；其它 text 直接读取。</li>
+<li>将任务和缓存键落到实际使用的实体 tier。</li>
+<li>查询 <code>(sha256, tier, page_range)</code> 是否已有可复用结果。</li>
+<li>缓存命中则直接 render 并返回。</li>
+<li>缓存未命中则创建 <code>parses</code> 任务。</li>
+<li><code>ParseWorker</code> 抢占任务。</li>
+<li>按 tier 和 privacy 路由到本地 backend、Local Parse Server 或 Remote Parse Server。</li>
+<li>生成本批次 Middle JSON pages。</li>
+<li>将本批次 pages 写入 JSON 文件。</li>
+<li>根据请求输出格式，从已保存的 JSON 转换得到 Markdown / Content List / HTML 等输出。</li>
+<li>读取本批次结果并在内存中生成 Markdown 文本，用于更新内容索引。</li>
+<li>返回结果或任务状态。</li>
+</ol>
+<h3 id="64-tier">6.4 Tier 决策</h3>
+<table>
+<thead>
+<tr>
+<th>请求</th>
+<th>实际行为</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>未指定 tier</td>
+<td>PDF/image 按 <code>standard</code> -&gt; <code>basic</code> 选择可用的非 <code>flash</code> tier；OFD/EPUB/Office/HTML/CSV/TSV 归一为 <code>flash</code>；其它 text 直接读取</td>
+</tr>
+<tr>
+<td><code>tier=flash</code></td>
+<td>显式使用本地 <code>flash</code> backend</td>
+</tr>
+<tr>
+<td><code>tier=basic</code></td>
+<td>使用本地或自部署 parse-server 的 <code>basic</code> 能力</td>
+</tr>
+<tr>
+<td><code>tier=standard</code></td>
+<td>使用本地 <code>standard</code> 或 <code>mineru.net/api</code> 的 <code>standard</code> 能力</td>
+</tr>
+<tr>
+<td><code>tier=advanced</code></td>
+<td>使用本地或自部署 parse-server 的 <code>advanced</code> 能力</td>
+</tr>
+</tbody>
+</table>
+<p>结果只需要记录实际使用的 <code>tier</code>。如果默认选择最终选择 <code>standard</code>，产物、缓存和 metadata 使用 <code>standard</code>。</p>
+<h3 id="65">6.5 隐私决策</h3>
+<table>
+<thead>
+<tr>
+<th>请求条件</th>
+<th>允许行为</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>未传 <code>--remote</code> / <code>remote=False</code></td>
+<td>只能使用本地 backend 或 Local Parse Server</td>
+</tr>
+<tr>
+<td>显式 <code>--remote</code> / <code>remote=True</code></td>
+<td>可以上传到 Remote Parse Server</td>
+</tr>
+<tr>
+<td>远端失败</td>
+<td>可以 fallback 到 local</td>
+</tr>
+<tr>
+<td>本地失败</td>
+<td>不能自动 fallback 到 remote，除非用户已经显式允许 remote</td>
+</tr>
+</tbody>
+</table>
+<h3 id="66">6.6 输出策略</h3>
+<table>
+<thead>
+<tr>
+<th>输出目标</th>
+<th>行为</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>STDOUT</td>
+<td>默认适合 Agent 消费，长文档可返回部分页和继续 marker</td>
+</tr>
+<tr>
+<td>文件输出</td>
+<td>写入指定路径</td>
+</tr>
+<tr>
+<td>JSON</td>
+<td>输出已持久化的 Middle JSON pages 或更高层 response envelope，具体格式由 CLI/API 文档定</td>
+</tr>
+<tr>
+<td>Markdown</td>
+<td>默认阅读输出；读取时从 Middle JSON 转换</td>
+</tr>
+<tr>
+<td>Content List / HTML</td>
+<td>读取时从 Middle JSON 转换</td>
+</tr>
+</tbody>
+</table>
+<p>doclib 不持久化 Markdown、Content List 或 HTML。它们都是 CPU-only 的派生格式，转换成本低，按需生成即可。Markdown 中的图片使用 visual block locator；<code>image_path</code> 是 doclib 内部 sidecar 定位信息，不向读取者暴露。</p>
+<h3 id="67">6.7 约束</h3>
+<ul>
+<li>对 PDF/image，如果只有 <code>flash</code> 可用，默认选择应失败，不静默返回 <code>flash</code>。</li>
+<li>如果本地没有可用质量 tier 且未允许 remote，应返回可操作错误。</li>
+<li>如果缓存中只有 <code>flash</code>，主动读取未指定 tier 不能直接命中该缓存。</li>
+<li>如果用户显式 <code>tier=flash</code>，可以返回 <code>flash</code> 缓存或重新解析。</li>
+</ul>
+<h2 id="7-c-agent">7. 流程 C: Agent 从搜索结果继续阅读</h2>
+<h3 id="71">7.1 触发条件</h3>
+<p>Agent 先通过搜索找到候选文档，然后决定读取其中一个文档。</p>
+<p>典型路径:</p>
+<div class="highlight"><pre><span></span><code>watch -&gt; flash index -&gt; search result -&gt; Agent chooses document -&gt; mineru parse
+</code></pre></div>
+<h3 id="72">7.2 步骤</h3>
+<ol>
+<li>Agent 调用 search。</li>
+<li>doclib 查询内容索引；文件名查询由 find 负责。</li>
+<li>search result 返回完整 file aliases、sha256、snippet 和可空的索引来源 tier；text 源内容的 tier 为 <code>null</code>。</li>
+<li>Agent 选择具体文档。</li>
+<li>Agent 发起主动 parse 请求。</li>
+<li>PDF/image 请求未指定 tier 时使用默认选择策略；OFD/EPUB/Office/HTML/CSV/TSV 按 <code>flash</code> 语义处理；其它 text 不发起 parse 请求。</li>
+<li>doclib 检查是否已有可用质量 tier 缓存。</li>
+<li>如果没有，则创建高优先级 parse 任务。</li>
+<li>解析完成后返回可阅读输出，并写入更高质量索引。</li>
+</ol>
+<h3 id="73">7.3 关键区别</h3>
+<p>搜索结果可以来自 <code>flash</code>，但读取动作不能默认停留在 <code>flash</code>。</p>
+<table>
+<thead>
+<tr>
+<th>阶段</th>
+<th>可接受最低 tier</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>自动发现</td>
+<td><code>flash</code></td>
+</tr>
+<tr>
+<td>搜索召回</td>
+<td><code>flash</code></td>
+</tr>
+<tr>
+<td>搜索 snippet</td>
+<td><code>flash</code>，但应可标记来源 tier</td>
+</tr>
+<tr>
+<td>Agent 主动阅读</td>
+<td><code>basic</code>，除非显式选择 <code>flash</code></td>
+</tr>
+<tr>
+<td>Agent 引用/citation</td>
+<td>应优先来自质量 tier</td>
+</tr>
+</tbody>
+</table>
+<h3 id="74-agent-marker">7.4 Agent marker</h3>
+<p>当输出被截断或只解析部分页时，应输出可机器理解的 marker:</p>
+<div class="highlight"><pre><span></span><code>&lt;!-- mineru:next page_range=6-10 tier=standard --&gt;
+</code></pre></div>
+<p>marker 不应依赖自然语言提示。具体 marker 格式可在 CLI 或 Agent 文档中继续细化。</p>
+<h2 id="8-d-parse-server-api">8. 流程 D: parse-server API 解析</h2>
+<h3 id="81">8.1 触发条件</h3>
+<p>调用方直接使用 Official API、Local Parse Server，或通过 <code>MinerUApiParser</code> 使用 v1 API。</p>
+<h3 id="82-official-api">8.2 Official API 主线</h3>
+<ol>
+<li>客户端创建 upload 或提供已有 <code>file_id</code>。</li>
+<li>客户端创建 parse job。</li>
+<li>请求可以携带 <code>tier</code>；省略或传 JSON <code>null</code> 时，PDF/image 使用默认选择策略，OFD/EPUB/Office/HTML/CSV/TSV 按批量规则归一为 <code>flash</code>；其它 text 不作为解析输入。</li>
+<li>API service 做鉴权、配额和输入校验。</li>
+<li>调度到可用解析能力。</li>
+<li>解析服务生成 Middle JSON 和请求的输出格式。</li>
+<li>job 进入终态。</li>
+<li>客户端通过轮询或 webhook 获取结果。</li>
+</ol>
+<h3 id="83-local-parse-server">8.3 Local Parse Server 差异</h3>
+<p>Local Parse Server 复用同一套客户端协议，但可以简化:</p>
+<ul>
+<li>鉴权默认可关闭。</li>
+<li>Webhook 可以不实现。</li>
+<li>上传可以使用本地临时存储。</li>
+<li><code>local</code> source 只有在 <code>features.sources</code> 包含 <code>local</code> 时可用；开启后可以引用 server 进程权限范围内的本地路径。</li>
+<li>文件下载可以直接返回 body。</li>
+</ul>
+<h3 id="84-doclib">8.4 与 doclib 的关系</h3>
+<p>doclib 可以调用 parse-server，但 parse-server 不依赖 doclib。</p>
+<table>
+<thead>
+<tr>
+<th>方向</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>doclib -&gt; Local Parse Server</td>
+<td>本机高质量解析，隐私仍在本地可信环境内</td>
+</tr>
+<tr>
+<td>doclib -&gt; Remote Parse Server</td>
+<td>用户显式允许 remote 后才可上传</td>
+</tr>
+<tr>
+<td>API client -&gt; parse-server</td>
+<td>无状态解析请求，不使用 doclib 搜索和缓存</td>
+</tr>
+<tr>
+<td>MinerUApiParser -&gt; parse-server</td>
+<td>用 Python parser 接口封装 v1 API</td>
+</tr>
+</tbody>
+</table>
+<h2 id="9-e-tool-sdk">9. 流程 E: Tool SDK 直接解析</h2>
+<h3 id="91">9.1 触发条件</h3>
+<p>开发者在进程内直接调用:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">mineru.parser</span><span class="w"> </span><span class="kn">import</span> <span class="n">parse</span>
+
+<span class="n">result</span> <span class="o">=</span> <span class="n">parse</span><span class="p">(</span><span class="s2">"report.pdf"</span><span class="p">,</span> <span class="n">tier</span><span class="o">=</span><span class="s2">"basic"</span><span class="p">)</span>
+</code></pre></div>
+<p>或使用统一 parser 类:</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">mineru.parser</span><span class="w"> </span><span class="kn">import</span> <span class="n">MinerUParser</span>
+
+<span class="k">with</span> <span class="n">MinerUParser</span><span class="p">(</span><span class="n">tier</span><span class="o">=</span><span class="s2">"basic"</span><span class="p">)</span> <span class="k">as</span> <span class="n">parser</span><span class="p">:</span>
+    <span class="n">result</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse</span><span class="p">(</span><span class="s2">"report.pdf"</span><span class="p">)</span>
+</code></pre></div>
+<h3 id="92">9.2 行为边界</h3>
+<p>Tool SDK 是无状态解析工具层:</p>
+<ul>
+<li>不启动 doclib server。</li>
+<li>不管理 watch。</li>
+<li>不写 doclib 搜索索引。</li>
+<li>不自动上传远端。</li>
+<li>不应在 import 阶段加载重依赖。</li>
+</ul>
+<h3 id="93">9.3 适用场景</h3>
+<table>
+<thead>
+<tr>
+<th>场景</th>
+<th>是否适合 Tool SDK</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mineru-kit parse</code></td>
+<td>是</td>
+</tr>
+<tr>
+<td>parse-server worker 内部执行</td>
+<td>是</td>
+</tr>
+<tr>
+<td>单文件嵌入式解析</td>
+<td>是</td>
+</tr>
+<tr>
+<td>本地文档库搜索</td>
+<td>否，使用 doclib</td>
+</tr>
+<tr>
+<td>watch 自动发现</td>
+<td>否，由 doclib 管理</td>
+</tr>
+<tr>
+<td>长期缓存和增量页码任务</td>
+<td>否，由 doclib 管理</td>
+</tr>
+</tbody>
+</table>
+<h2 id="10-json">10. JSON 产物、页合并与缓存</h2>
+<h3 id="101">10.1 产物目录</h3>
+<p>doclib 解析产物按内容和实际使用的 tier 隔离。<code>parsed/</code> 目录下保存 JSON 批次文件和必要图片 sidecar:</p>
+<div class="highlight"><pre><span></span><code>~/.mineru/
+  doclib/
+    parsed/
+      ab/
+        ab3f...7e2d/
+          flash/
+            1-5_1710000000000.json
+            98-102_1710000123000.json
+          basic/
+            1-10_1710001234000.json
+            11-20_1710002234000.json
+            images/              # 可选，仅保存解析产生的必要 sidecar
+          standard/
+            1-20_1710003234000.json
+          advanced/
+            1-20_1710004234000.json
+</code></pre></div>
+<p>单个 JSON 文件表示一次解析批次，基本形态:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"pages"</span><span class="p">:</span><span class="w"> </span><span class="p">[]</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>其中 <code>pages</code> 按页组织。文件名由本批次页码范围和完成时间组成，便于同一文档、同一 tier 下存在多个不同页码范围的解析批次。</p>
+<p>doclib 不在 <code>parsed/</code> 中保存:</p>
+<ul>
+<li><code>output.md</code></li>
+<li><code>structured_content.json</code></li>
+</ul>
+<p>PDF 和 image block 图片通常在读取时从源页面按 bbox 裁剪，不写入 <code>images/</code>。无 bbox 的 visual block 只有在对应 sidecar 文件存在时才输出非空图片 locator。
+- <code>output.html</code></p>
+<p>这些格式都由 Middle JSON 读取时转换得到。</p>
+<h3 id="102">10.2 缓存键与覆盖判断</h3>
+<p>基础缓存键:</p>
+<div class="highlight"><pre><span></span><code>(sha256, tier)
+</code></pre></div>
+<p>页码范围由 <code>parses.page_range</code> 和对应 JSON 文件共同表达。只有 PDF 使用增量页范围缓存；图片及其他非 PDF 输入仍用实际逻辑页范围命名产物，但整个文件始终对应一个原子 batch。请求 PDF 页码范围时，doclib 会:</p>
+<ol>
+<li>查询同一 <code>sha256 + tier</code> 下已完成批次。</li>
+<li>忽略已经 invalidate 的批次。</li>
+<li>忽略 JSON 文件已经丢失的批次。</li>
+<li>用有效已完成批次的 <code>page_range</code> 覆盖集合判断请求页码是否已经满足。</li>
+<li>对未覆盖的页创建新的 parse 任务。</li>
+<li>如果页码已经被 pending / parsing 批次覆盖，则提升优先级，而不是重复创建任务。</li>
+</ol>
+<p>这意味着同一个 PDF 可以多轮解析不同页，最终由多个 JSON 批次共同覆盖用户需要的页码集合。非 PDF 的历史 partial batch 不参与缺页差集计算；缓存不完整时重新排一个整文件任务。</p>
+<p><code>--force</code> 会跳过第 4 步的 done 缓存命中判断，但仍可复用已经覆盖请求页码的 active parse。它不会删除或作废旧 done 批次。若 force 关联的 wait parse 失败，旧批次仍可继续用于读取和搜索，但本次 force 请求应显示为失败。</p>
+<h3 id="103-compaction">10.3 页合并与 compaction</h3>
+<p>Middle JSON 按页组织，因此不同解析批次可以按 <code>page_idx</code> 合并。</p>
+<p>compaction 负责:</p>
+<ol>
+<li>扫描同一 <code>sha256 + tier</code> 下多个有效 done 批次。</li>
+<li>合并相邻或重叠的页码范围。</li>
+<li>读取旧批次 JSON。</li>
+<li>用 JSON 中的实际 <code>page_idx</code> 扩充历史记录不足的范围，完整写入新缓存后再删除旧文件。</li>
+<li>按 <code>page_idx</code> 收集页面内容；如果同一页出现多次，<code>done_at</code> 较新的有效批次覆盖较旧批次。</li>
+<li>为合并后的页码范围预写并原子提升新的 JSON 文件。</li>
+<li>用较少的 done parse row 替代旧 row。</li>
+<li>删除未被新 row 引用的旧 JSON 文件。</li>
+</ol>
+<p>已 invalidate 的批次不参与 compaction 的页面选择；其 JSON 文件可以由 cleanup 或 compaction 的清理阶段删除。</p>
+<p>compaction 不生成 Markdown 或 Content List。</p>
+<h3 id="104">10.4 读取时转换</h3>
+<p>所有非 JSON 格式都是读取时转换:</p>
+<table>
+<thead>
+<tr>
+<th>请求格式</th>
+<th>来源</th>
+<th style="text-align: center;">是否持久化</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>JSON</td>
+<td>已保存的 Middle JSON 批次</td>
+<td style="text-align: center;">是</td>
+</tr>
+<tr>
+<td>Markdown</td>
+<td>Middle JSON -&gt; render</td>
+<td style="text-align: center;">否</td>
+</tr>
+<tr>
+<td>Content List</td>
+<td>Middle JSON -&gt; render</td>
+<td style="text-align: center;">否</td>
+</tr>
+<tr>
+<td>Content List v2</td>
+<td>Middle JSON -&gt; render</td>
+<td style="text-align: center;">否</td>
+</tr>
+<tr>
+<td>HTML</td>
+<td>Middle JSON 或 Markdown -&gt; render</td>
+<td style="text-align: center;">否</td>
+</tr>
+</tbody>
+</table>
+<p>这个设计有两个好处:</p>
+<ol>
+<li>派生格式转换只需要 CPU，通常足够快，不值得持久化多份。</li>
+<li>JSON 按页组织，方便增量解析、批次合并和局部重算。</li>
+</ol>
+<h3 id="105-metadata">10.5 Metadata 更新</h3>
+<p>文档 metadata 可由更高质量 tier 覆盖低质量 tier，优先级以 <a href="../tiers/">解析 Tier</a> 为准。</p>
+<p>约束:</p>
+<ul>
+<li><code>flash</code> 不应覆盖来自质量 tier 的 metadata。</li>
+<li>质量 tier 可以覆盖低质量 tier 的 metadata。</li>
+</ul>
+<h3 id="106">10.6 搜索索引</h3>
+<p>搜索索引应尽量保留最高可用 tier 的文本。</p>
+<p>如果文档先由 <code>flash</code> 建索引，后续质量 tier 完成后，应刷新内容索引。</p>
+<p>FTS 更新可以在解析完成后临时从 ParseResult 或 Middle JSON 渲染 Markdown 文本；这份 Markdown 只进入搜索索引，不作为 doclib 产物文件保存。</p>
+<h2 id="11">11. 错误与恢复</h2>
+<table>
+<thead>
+<tr>
+<th>错误</th>
+<th>典型原因</th>
+<th>恢复建议</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>quality_tier_unavailable</code></td>
+<td>PDF/image 主动阅读需要非 <code>flash</code> 质量 tier，但只有 <code>flash</code></td>
+<td>启动本地解析服务或允许远端解析</td>
+</tr>
+<tr>
+<td><code>no_engine</code></td>
+<td>请求 tier 没有可用解析服务或解析后端</td>
+<td>配置 local parse-server、调整 tier</td>
+</tr>
+<tr>
+<td><code>engine_unavailable</code></td>
+<td>解析服务或解析后端暂不可用</td>
+<td>稍后重试或重启 parse-server</td>
+</tr>
+<tr>
+<td><code>parse_server_unavailable</code></td>
+<td>Local/Remote Parse Server 不可达</td>
+<td>检查 URL、进程、网络和 API Key</td>
+</tr>
+<tr>
+<td><code>tier_mismatch</code></td>
+<td>parse-server 不支持请求 tier</td>
+<td>改用可发现 tier</td>
+</tr>
+<tr>
+<td><code>parse_failed</code></td>
+<td>文档损坏、加密或 backend 处理失败</td>
+<td>检查文件或换 tier</td>
+</tr>
+<tr>
+<td><code>parse_timeout</code></td>
+<td>解析超过等待时间</td>
+<td>轮询任务状态或缩小页码范围</td>
+</tr>
+<tr>
+<td><code>parse_oom</code></td>
+<td>本地内存或显存不足</td>
+<td>使用较低 tier、减少页数、或使用 remote</td>
+</tr>
+</tbody>
+</table>
+<p>恢复约束:</p>
+<ul>
+<li>重试不得改变 <code>privacy</code>。</li>
+<li>自动恢复不得把主动阅读降级到 <code>flash</code>。</li>
+<li>崩溃恢复时，doclib 启动应释放 stale lock 并处理 parsing 状态任务。</li>
+<li>managed Local Parse Server 连续失败后，可以降级 disabled 并要求用户修复。</li>
+</ul>
+<h2 id="12">12. 实现切分</h2>
+<h3 id="p0">P0: 打通主链路</h3>
+<ol>
+<li>doclib server 能启动、停止、恢复 stale lock。</li>
+<li>watch 能发现文件并创建 <code>flash</code> 任务。</li>
+<li>ingest 能写入 <code>files</code> / <code>docs</code> / 文件名索引。</li>
+<li><code>flash</code> backend 能产生基础 Middle JSON pages。</li>
+<li><code>mineru parse</code> 能同步入库文件并查缓存。</li>
+<li>默认选择能通过 parse-server 能力发现选择可用质量 tier。</li>
+<li>ParseWorker 能按 tier 和 privacy 路由。</li>
+<li>解析产物按 <code>sha256 + tier + page_range + done_at</code> 写入 JSON。</li>
+<li>主动阅读不会静默命中 <code>flash</code>。</li>
+<li>错误返回可操作 code 和 suggestion。</li>
+</ol>
+<h3 id="p0-agent-native">P0: Agent-native 阅读</h3>
+<ol>
+<li>搜索结果返回来源 tier。</li>
+<li>Agent 主动读取时提升到可用质量 tier。</li>
+<li>输出支持截断 marker 和下一步 page hint。</li>
+<li>Middle JSON 支持稳定 page/block locator。</li>
+<li>Markdown 输出可携带可选 locator marker。</li>
+<li>高质量解析完成后刷新搜索索引。</li>
+</ol>
+<h3 id="p2">P2: 体验与优化</h3>
+<ol>
+<li>parse-server managed 模式自动拉起和退避。</li>
+<li>增量页码解析与 compaction。</li>
+<li>多文件批处理。</li>
+<li>解析队列优先级和取消。</li>
+<li>Web UI 状态展示。</li>
+<li>跨平台 watch 稳定性。</li>
+</ol>
+<h2 id="13">13. 端到端验收</h2>
+<h3 id="131-watch">13.1 Watch 到搜索</h3>
+<p>输入:</p>
+<ul>
+<li>watch 目录中新增 <code>report.pdf</code>。</li>
+</ul>
+<p>期望:</p>
+<ol>
+<li><code>files</code> 有路径记录。</li>
+<li><code>docs</code> 有 SHA256 记录。</li>
+<li><code>parses</code> 有 <code>tier=flash</code> 的任务。</li>
+<li>任务完成后写入 <code>parsed/&lt;sha-prefix&gt;/&lt;sha&gt;/flash/&lt;page_range&gt;_&lt;done_at&gt;.json</code>。</li>
+<li>搜索可以命中文档。</li>
+<li>搜索结果以机器可读字段标记来源 tier，例如 <code>tier=flash</code>。</li>
+</ol>
+<h3 id="132-parse">13.2 主动 parse 本地成功</h3>
+<p>输入:</p>
+<div class="highlight"><pre><span></span><code>mineru<span class="w"> </span>parse<span class="w"> </span>report.pdf<span class="w"> </span>--tier<span class="w"> </span>basic<span class="w"> </span>--wait<span class="w"> </span><span class="m">60</span>
+</code></pre></div>
+<p>期望:</p>
+<ol>
+<li>不上传远端。</li>
+<li>使用 Local Parse Server 或本地可用 Basic 能力。</li>
+<li>JSON 产物写入 <code>parsed/&lt;sha-prefix&gt;/&lt;sha&gt;/basic/&lt;page_range&gt;_&lt;done_at&gt;.json</code>。</li>
+<li>返回 Markdown 或指定格式；非 JSON 格式从 JSON 转换得到。</li>
+<li><code>tier</code> 记录为 <code>basic</code>。</li>
+</ol>
+<h3 id="133-parse">13.3 主动 parse 默认选择成功</h3>
+<p>输入:</p>
+<div class="highlight"><pre><span></span><code>mineru<span class="w"> </span>parse<span class="w"> </span>report.pdf<span class="w"> </span>--wait<span class="w"> </span><span class="m">60</span>
+</code></pre></div>
+<p>前提:</p>
+<ul>
+<li>可发现 Local Parse Server 支持 <code>standard</code>。</li>
+</ul>
+<p>期望:</p>
+<ol>
+<li>请求未指定 tier，进入默认选择策略。</li>
+<li>实际选择 <code>standard</code>。</li>
+<li>任务和 JSON 产物记录 <code>tier=standard</code>。</li>
+<li>不记录 <code>requested_tier</code> 字段。</li>
+<li>不创建默认选择专用缓存目录。</li>
+</ol>
+<h3 id="134-parse">13.4 主动 parse 默认选择失败</h3>
+<p>输入:</p>
+<div class="highlight"><pre><span></span><code>mineru<span class="w"> </span>parse<span class="w"> </span>report.pdf
+</code></pre></div>
+<p>前提:</p>
+<ul>
+<li>只有 <code>flash</code> 可用。</li>
+<li>未显式 <code>--remote</code>。</li>
+</ul>
+<p>期望:</p>
+<ol>
+<li>返回 <code>quality_tier_unavailable</code>。</li>
+<li>不返回 <code>flash</code> 作为最终阅读结果。</li>
+<li>suggestion 包含启动本地解析服务、允许 remote、或显式 <code>--tier flash</code>。</li>
+</ol>
+<h3 id="135-flash">13.5 显式 flash</h3>
+<p>输入:</p>
+<div class="highlight"><pre><span></span><code>mineru<span class="w"> </span>parse<span class="w"> </span>report.pdf<span class="w"> </span>--tier<span class="w"> </span>flash
+</code></pre></div>
+<p>期望:</p>
+<ol>
+<li>使用本地 <code>flash</code> backend。</li>
+<li>可命中 watch 产生的 <code>flash</code> 缓存。</li>
+<li>返回结果 metadata 中 <code>tier=flash</code>。</li>
+<li>不调用 Remote Parse Server。</li>
+</ol>
+<h3 id="136">13.6 增量页码解析与合并</h3>
+<p>输入:</p>
+<div class="highlight"><pre><span></span><code>mineru<span class="w"> </span>parse<span class="w"> </span>report.pdf<span class="w"> </span>--tier<span class="w"> </span>basic<span class="w"> </span>--pages<span class="w"> </span><span class="m">1</span>-5
+mineru<span class="w"> </span>parse<span class="w"> </span>report.pdf<span class="w"> </span>--tier<span class="w"> </span>basic<span class="w"> </span>--pages<span class="w"> </span><span class="m">6</span>-10
+</code></pre></div>
+<p>期望:</p>
+<ol>
+<li>两次请求可以生成两个 done parse batch。</li>
+<li><code>parsed/&lt;sha-prefix&gt;/&lt;sha&gt;/basic/</code> 下保存两个 JSON 文件。</li>
+<li>每个 JSON 文件只包含对应页码范围的 <code>pages</code>。</li>
+<li>后续请求 <code>--pages 1-10</code> 可以由已完成批次覆盖，不需要重新解析。</li>
+<li>compaction 可以将两个批次合并成更少的 parse row 和 JSON 文件。</li>
+<li>合并时按 <code>page_idx</code> 组织页面；同一页如果被重复解析，较新批次覆盖较旧批次。</li>
+</ol>
+<h3 id="137-force">13.7 Force 重新解析</h3>
+<p>输入:</p>
+<div class="highlight"><pre><span></span><code>mineru<span class="w"> </span>parse<span class="w"> </span>report.pdf<span class="w"> </span>--tier<span class="w"> </span>basic<span class="w"> </span>--pages<span class="w"> </span><span class="m">1</span>-5
+mineru<span class="w"> </span>parse<span class="w"> </span>report.pdf<span class="w"> </span>--tier<span class="w"> </span>basic<span class="w"> </span>--pages<span class="w"> </span><span class="m">1</span>-5<span class="w"> </span>--force
+</code></pre></div>
+<p>期望:</p>
+<ol>
+<li>第二次请求调用 <code>POST /parses</code>，返回 <code>wait_parse_ids</code>。</li>
+<li>旧 done batch 不被删除，也不被标记失效。</li>
+<li>如果已有 active parse 覆盖 <code>1-5</code>，第二次请求可以复用该 parse，并把 id 放入 <code>reused_parse_ids</code>。</li>
+<li>如果没有 active parse 覆盖，第二次请求创建新 parse，并把 id 放入 <code>created_parse_ids</code>。</li>
+<li>CLI wait 查询 <code>GET /parses?ids=...</code>，等待所有 <code>wait_parse_ids</code> 完成。</li>
+<li>如果第二次解析成功，读取 <code>1-5</code> 时使用 <code>done_at</code> 更新的有效 batch。</li>
+<li>如果第二次解析失败，第一次解析结果仍然可读、可搜索，但本次 force 请求显示为失败。</li>
+</ol>
+<h3 id="138-invalidate">13.8 Invalidate 缓存</h3>
+<p>输入:</p>
+<div class="highlight"><pre><span></span><code>mineru<span class="w"> </span>library<span class="w"> </span>invalidate<span class="w"> </span>report.pdf<span class="w"> </span>--tier<span class="w"> </span>basic
+</code></pre></div>
+<p>期望:</p>
+<ol>
+<li>CLI 调用 <code>POST /invalidate</code>，请求体包含 <code>target="parses"</code>。</li>
+<li>命中的已有 parse 被标记为失效。</li>
+<li>失效 parse 不参与后续缓存命中。</li>
+<li>失效 parse 不参与读取时页合并。</li>
+<li>失效 parse 不参与搜索索引刷新和 compaction 最新页选择。</li>
+<li>invalidate 不自动创建新的 parse。</li>
+</ol>
+<h3 id="139-remote">13.9 Remote 隐私边界</h3>
+<p>输入:</p>
+<div class="highlight"><pre><span></span><code>mineru<span class="w"> </span>parse<span class="w"> </span>report.pdf<span class="w"> </span>--tier<span class="w"> </span>standard
+</code></pre></div>
+<p>前提:</p>
+<ul>
+<li>本地没有 <code>standard</code>。</li>
+<li>未显式 <code>--remote</code>。</li>
+</ul>
+<p>期望:</p>
+<ol>
+<li>不上传。</li>
+<li>返回本地能力不足错误。</li>
+<li>suggestion 提示 <code>--remote</code>，但不替用户执行。</li>
+</ol>
+<p>输入:</p>
+<div class="highlight"><pre><span></span><code>mineru<span class="w"> </span>parse<span class="w"> </span>report.pdf<span class="w"> </span>--tier<span class="w"> </span>standard<span class="w"> </span>--remote
+</code></pre></div>
+<p>期望:</p>
+<ol>
+<li>允许上传到 Remote Parse Server。</li>
+<li>远端失败时可以 fallback 到 local，如果 local 有对应能力。</li>
+<li>结果 <code>via</code> 记录实际执行路径。</li>
+</ol>
+<h2 id="14">14. 未决问题</h2>
+<p>未决问题集中维护在 <a href="../open-questions/">开放问题清单</a>。本文只保留已经确定的端到端流程和验收口径。</p></div>
+
+
+
+
+
+
+
+
+
+  
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  回到页面顶部
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      © 2024 - 2025 MinerU. All Rights Reserved.
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+    <a href="https://github.com/opendatalab/MinerU" target="_blank" rel="noopener" title="GitHub" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://x.com/OpenDataLab_AI" target="_blank" rel="noopener" title="X-Twitter" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M357.2 48h70.6L273.6 224.2 455 464H313L201.7 318.6 74.5 464H3.8l164.9-188.5L-5.2 48h145.6l100.5 132.9zm-24.8 373.8h39.1L119.1 88h-42z"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://discord.gg/Tdedn9GTXq" target="_blank" rel="noopener" title="Discord" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M492.5 69.8c-.2-.3-.4-.6-.8-.7-38.1-17.5-78.4-30-119.7-37.1-.4-.1-.8 0-1.1.1s-.6.4-.8.8c-5.5 9.9-10.5 20.2-14.9 30.6-44.6-6.8-89.9-6.8-134.4 0-4.5-10.5-9.5-20.7-15.1-30.6-.2-.3-.5-.6-.8-.8s-.7-.2-1.1-.2C162.5 39 122.2 51.5 84.1 69c-.3.1-.6.4-.8.7C7.1 183.5-13.8 294.6-3.6 404.2c0 .3.1.5.2.8s.3.4.5.6c44.4 32.9 94 58 146.8 74.2.4.1.8.1 1.1 0s.7-.4.9-.7c11.3-15.4 21.4-31.8 30-48.8.1-.2.2-.5.2-.8s0-.5-.1-.8-.2-.5-.4-.6-.4-.3-.7-.4c-15.8-6.1-31.2-13.4-45.9-21.9-.3-.2-.5-.4-.7-.6s-.3-.6-.3-.9 0-.6.2-.9.3-.5.6-.7c3.1-2.3 6.2-4.7 9.1-7.1.3-.2.6-.4.9-.4s.7 0 1 .1c96.2 43.9 200.4 43.9 295.5 0 .3-.1.7-.2 1-.2s.7.2.9.4c2.9 2.4 6 4.9 9.1 7.2.2.2.4.4.6.7s.2.6.2.9-.1.6-.3.9-.4.5-.6.6c-14.7 8.6-30 15.9-45.9 21.8-.2.1-.5.2-.7.4s-.3.4-.4.7-.1.5-.1.8.1.5.2.8c8.8 17 18.8 33.3 30 48.8.2.3.6.6.9.7s.8.1 1.1 0c52.9-16.2 102.6-41.3 147.1-74.2.2-.2.4-.4.5-.6s.2-.5.2-.8c12.3-126.8-20.5-236.9-86.9-334.5zm-302 267.7c-29 0-52.8-26.6-52.8-59.2s23.4-59.2 52.8-59.2c29.7 0 53.3 26.8 52.8 59.2 0 32.7-23.4 59.2-52.8 59.2m195.4 0c-29 0-52.8-26.6-52.8-59.2s23.4-59.2 52.8-59.2c29.7 0 53.3 26.8 52.8 59.2 0 32.7-23.2 59.2-52.8 59.2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://mineru.net/community-portal/?aliasId=3c430f94" target="_blank" rel="noopener" title="WeChat" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M385.2 167.6c6.4 0 12.6.3 18.8 1.1C387.4 90.3 303.3 32 207.7 32 100.5 32 13 104.8 13 197.4c0 53.4 29.3 97.5 77.9 131.6l-19.3 58.6 68-34.1c24.4 4.8 43.8 9.7 68.2 9.7 6.2 0 12.1-.3 18.3-.8-4-12.9-6.2-26.6-6.2-40.8-.1-84.9 72.9-154 165.3-154m-104.5-52.9c14.5 0 24.2 9.7 24.2 24.4 0 14.5-9.7 24.2-24.2 24.2-14.8 0-29.3-9.7-29.3-24.2.1-14.7 14.6-24.4 29.3-24.4m-136.4 48.6c-14.5 0-29.3-9.7-29.3-24.2 0-14.8 14.8-24.4 29.3-24.4 14.8 0 24.4 9.7 24.4 24.4 0 14.6-9.6 24.2-24.4 24.2M563 319.4c0-77.9-77.9-141.3-165.4-141.3-92.7 0-165.4 63.4-165.4 141.3S305 460.7 397.6 460.7c19.3 0 38.9-5.1 58.6-9.9l53.4 29.3-14.8-48.6C534 402.1 563 363.2 563 319.4m-219.1-24.5c-9.7 0-19.3-9.7-19.3-19.6 0-9.7 9.7-19.3 19.3-19.3 14.8 0 24.4 9.7 24.4 19.3 0 10-9.7 19.6-24.4 19.6m107.1 0c-9.7 0-19.3-9.7-19.3-19.6 0-9.7 9.7-19.3 19.3-19.3 14.5 0 24.4 9.7 24.4 19.3.1 10-9.9 19.6-24.4 19.6"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="mailto:OpenDataLab@pjlab.org.cn" target="_blank" rel="noopener" title="E-mail" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m20 8-8 5-8-5V6l8 5 8-5m0-2H4c-1.11 0-2 .89-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["content.tabs.link", "content.code.annotate", "content.code.copy", "navigation.expand", "navigation.footer", "navigation.tabs", "navigation.sections", "navigation.path", "navigation.indexes", "navigation.top", "navigation.tracking", "search.suggest", "toc.follow"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u5df2\u590d\u5236", "clipboard.copy": "\u590d\u5236", "search.result.more.one": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.more.other": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 # \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.none": "\u6ca1\u6709\u627e\u5230\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.one": "\u627e\u5230 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.other": "# \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.placeholder": "\u952e\u5165\u4ee5\u5f00\u59cb\u641c\u7d22", "search.result.term.missing": "\u7f3a\u5c11", "select.version": "\u9009\u62e9\u5f53\u524d\u7248\u672c"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
