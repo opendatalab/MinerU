@@ -23,7 +23,7 @@ _SUPPORTED_ANALYZE_EFFORTS = {"flash", "medium", "high", "xhigh"}
 def _log_infer_performance(file_suffix: str, page_count: int, elapsed: float) -> None:
     """使用未舍入耗时统一记录 model-list 生产速度。"""
     speed = page_count / elapsed if elapsed > 0 else 0.0
-    logger.debug(
+    logger.info(
         f"model_list infer finished, file_suffix={file_suffix}, pages={page_count}, "
         f"cost={elapsed:.6f}s, speed={speed:.3f} page/s"
     )
