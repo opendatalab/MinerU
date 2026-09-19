@@ -33,12 +33,12 @@ def _invoke_entrypoint(monkeypatch: pytest.MonkeyPatch, entrypoint: str, args: l
 @pytest.mark.parametrize("entrypoint", ["module", "kit", "alias"])
 @pytest.mark.parametrize("level", [None, "critical", "ERROR", "Warning", "info", "debug", "TRACE"])
 def test_log_level_reaches_server(monkeypatch: pytest.MonkeyPatch, entrypoint: str, level: str | None) -> None:
-    """默认级别与大小写混合参数均传递到服务配置，且不进入应用业务参数。"""
+    """显式 --log-level 只作用于服务配置，loguru 全局级别始终取全局配置，且不进入应用业务参数。"""
     application = object()
     create_app = MagicMock(return_value=application)
     config = MagicMock(return_value=object())
-    expected = (level or "debug").lower()
-    configure_global = MagicMock(return_value=expected)
+    expected_server_level = (level or "debug").lower()
+    configure_global = MagicMock(return_value="debug")
     server = SimpleNamespace(run=MagicMock(), should_exit=False)
     monkeypatch.setattr(api_server.mineru_config.log, "level", "debug")
     monkeypatch.setattr(api_server, "create_app", create_app)
@@ -49,13 +49,13 @@ def test_log_level_reaches_server(monkeypatch: pytest.MonkeyPatch, entrypoint: s
     monkeypatch.setattr(api_server.ManagedProcessControlWatcher, "from_environment", lambda callback: None)
 
     assert _invoke_entrypoint(monkeypatch, entrypoint, [] if level is None else ["--log-level", level]) == 0
-    configure_global.assert_called_once_with(None if level is None else expected)
+    configure_global.assert_called_once_with()
     config.assert_called_once()
     assert config.call_args.args == (application,)
-    assert config.call_args.kwargs["log_level"] == expected
+    assert config.call_args.kwargs["log_level"] == expected_server_level
     assert (
         config.call_args.kwargs["log_config"]["loggers"][api_server.logger.name]["level"]
-        == (api_server.uvicorn.config.LOG_LEVELS[expected])
+        == (api_server.uvicorn.config.LOG_LEVELS[expected_server_level])
     )
     assert "log_level" not in create_app.call_args.kwargs
     server.run.assert_called_once()

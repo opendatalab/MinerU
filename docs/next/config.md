@@ -121,7 +121,9 @@ MinerU VLM 的跨页单元格检测保持关闭。任一功能启用时，`api_k
 全局日志级别由 `log.level` 控制，默认 `info`，可选 `trace`、`debug`、`info`、
 `warning`、`error`、`critical`。环境变量 `MINERU_LOG_LEVEL` 可覆盖 YAML；
 该配置作用于当前进程的 Loguru 默认 stderr sink，不会移除宿主程序显式添加的
-自定义 sink。`doclib.log.level` 与 api-server 启动参数 `--log-level` 是局部覆盖。
+自定义 sink。`doclib.log.level` 是 Doclib 进程日志级别的局部覆盖；api-server
+启动参数 `--log-level` 是服务侧（Uvicorn/HTTP 访问/服务自身 stdlib 日志）的局部
+覆盖，不影响 Loguru 默认 sink。
 
 ## 2. 两阶段配置模型
 

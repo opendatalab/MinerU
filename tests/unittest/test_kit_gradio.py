@@ -1002,14 +1002,32 @@ def test_render_download_rejects_state_outside_allowed_root(tmp_path: Path) -> N
     assert not (tmp_path / "escaped.html").exists()
 
 
+def test_render_download_accepts_stem_truncated_on_trailing_separator(tmp_path: Path) -> None:
+    """验证归一化后超 120 字节、截断边界落在尾部 "_" 的文件名下载不被 stem 校验误拒。Refs #5547。"""
+    source = tmp_path / (
+        "吾辈如神_重构AI时代的生存力与胜任力_We_Are_as_Gods_A_Survival_Guide_for_the_Age_of_Abundance_美_彼得 x.pdf"
+    )
+    source.write_bytes(_pdf_bytes())
+    artifacts = persist_parse_result(
+        ParseResult(middle_json=_middle_json(with_image=False)),
+        source,
+        output_root=tmp_path / "output",
+        page_range="",
+    )
+
+    assert len(artifacts.stem.encode("utf-8")) <= 120
+    path = Path(render_download(artifacts.as_state(), "markdown", allowed_root=tmp_path / "output"))
+    with zipfile.ZipFile(path) as archive:
+        assert f"{artifacts.stem}.md" in archive.namelist()
+
+
 def test_gradio_file_types_page_range_and_header_follow_new_contract(tmp_path: Path) -> None:
     """验证完整扩展名、PDF-only 页码规则和复用后的 Header。"""
     assert set(gradio_app._supported_file_types()) == {f".{extension}" for extension in PARSEABLE_EXTENSIONS}
     source = tmp_path / "report.PDF"
     source.write_bytes(_pdf_bytes(5))
-    assert gradio_app._effective_page_range(source, " 1-3,r1 ", tier="standard") == "1-3,r1"
-    assert gradio_app._effective_page_range(source, " 1-3,r1 ", tier="flash") == ""
-    assert gradio_app._effective_page_range("report.docx", "1-3", tier="standard") == ""
+    assert gradio_app._effective_page_range(source, " 1-3,r1 ") == "1-3,r1"
+    assert gradio_app._effective_page_range("report.docx", "1-3") == ""
     header = gradio_app._render_header()
     assert "mineru-demo-header" in header
     assert "mineru-header-popover mineru-model-popover" in header
@@ -1293,7 +1311,7 @@ def test_gradio_conversion_forwards_page_range_and_enables_fresh_downloads(
     convert_handler = next(fn.fn for fn in demo.fns.values() if fn.name == "convert_handler")
     updates = asyncio.run(collect_updates(convert_handler))
 
-    assert client.calls == [(source.resolve(), expected_tier, "" if expected_tier == "flash" else "1")]
+    assert client.calls == [(source.resolve(), expected_tier, "1")]
     assert len(updates[-1]) == 16
     assert updates[-1][7] == Path(updates[-1][6]["root"]).name
     assert updates[-1][6] is not None

@@ -44,12 +44,11 @@ CLI 的 `--pages`、Python/Doclib/API 的 `page_range` 和 Gradio 转换事件�
 | Python `parse` / `parse_async` | 全部 |
 | V1 Parse Jobs / `MinerUApiParser` | 全部 |
 | `mineru-kit parse` | 全部 |
-| Gradio 非 Flash PDF | 默认全部；配置 `--max-pages M` 后选择前 M 页，不足则全部 |
-| Gradio Flash | 始终全部，忽略页码参数 |
+| Gradio PDF | 默认全部；配置 `--max-pages M` 后选择前 M 页，不足则全部 |
 
 显式 `all` 选择全部 PDF 页面；内容读取/导出仍受实际缓存可用性约束。
 非 PDF 的解析限制不变：不能显式设置页码（包括 `all`）；Gradio 对非 PDF 自动清空并隐藏此控件。
-Gradio 仅对已上传的非 Flash PDF 显示选页控件；配置的页数上限也适用于直接调用 Gradio 转换事件，显式超限选区报 `page_range_invalid`。
+Gradio 仅对已上传的 PDF 显示选页控件，所有档位（包括 Flash）一致；配置的页数上限也适用于直接调用 Gradio 转换事件，显式超限选区报 `page_range_invalid`。
 
 ## 输入与输出
 

@@ -21,7 +21,7 @@
     const selectedTier = flashOnly ? "flash" : tiers[effectivePosition];
     tierSelection.locked = flashOnly;
     const isPdf = path.toLowerCase().endsWith(".pdf");
-    const needsRange = isPdf && selectedTier !== "flash";
+    const needsRange = isPdf;
     const fileChanged = previous?.path !== path;
     const state = !fileChanged ? { ...previous } : {
         path, page_count: 0, handle_a: 1, handle_b: 1, start_handle: "a", error: "",

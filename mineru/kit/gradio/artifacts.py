@@ -764,8 +764,10 @@ def _safe_stem(value: str) -> str:
     normalized = re.sub(r"[^\w.-]+", "_", str(value), flags=re.UNICODE).strip("._")
     if not normalized:
         normalized = "document"
-    encoded = normalized.encode("utf-8")
-    return encoded[:120].decode("utf-8", errors="ignore") or "document"
+    # strip 必须放在截断之后：截断可能暴露出尾部 "_"，若先 strip 则二次调用结果不同，
+    # from_state() 的 stem 严格相等校验会拒绝解析时生成的 stem。
+    truncated = normalized.encode("utf-8")[:120].decode("utf-8", errors="ignore")
+    return truncated.strip("._") or "document"
 
 
 def _is_external_source(value: str) -> bool:

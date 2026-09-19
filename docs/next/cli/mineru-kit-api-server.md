@@ -95,9 +95,10 @@ OCR 模式通过每次 `POST /v1/parse/jobs` 请求的 `ocr_mode` 设置，可�
 
 `mineru-kit api-server`、`mineru-api` 和 `python -m mineru.parser.api_server` 均支持 `--log-level`，
 可选 `critical`、`error`、`warning`、`info`、`debug`、`trace`，大小写不敏感。未显式传入时使用全局
-`log.level`（默认 `info`，可被 `MINERU_LOG_LEVEL` 覆盖）。该参数控制 Uvicorn 的启停、HTTP 访问、
-ASGI 日志、API 服务自身日志，以及模型加载/解析阶段 Loguru 默认 stderr sink。宿主程序显式添加的
-Loguru sink 和 tqdm 进度条保留各自原有设置。
+`log.level`（默认 `info`，可被 `MINERU_LOG_LEVEL` 覆盖）。该参数仅控制服务侧日志：Uvicorn 的启停、
+HTTP 访问、ASGI 日志和 API 服务自身日志。模型加载/解析阶段的 Loguru 默认 stderr sink 不受该参数
+影响，始终跟随全局 `log.level`（即 `MINERU_LOG_LEVEL` > YAML `log.level` > 默认 `info`）；宿主程序
+显式添加的 Loguru sink 和 tqdm 进度条同样保留各自原有设置。
 
 ```bash
 mineru-kit api-server --log-level warning
@@ -106,7 +107,10 @@ python -m mineru.parser.api_server --log-level debug
 ```
 
 Doclib（包括命令行解析时使用的本地服务及自动重启）、Gradio 和 Router 自动拉起的 api-server
-均显式使用 `--log-level warning`，保留警告与错误并隐藏服务 info 日志。连接外部服务时，其日志级别由服务部署者控制。
+均显式使用 `--log-level warning`，保留警告与错误并隐藏服务 info 日志（含每条 HTTP 请求的访问日志）；
+这些托管子进程的模型/解析日志仍由 `MINERU_LOG_LEVEL` 控制，例如排障时设
+`MINERU_LOG_LEVEL=debug` 后启动 `mineru-kit webui`，可在控制台看到模型 DEBUG 日志而不会被
+HTTP 访问日志刷屏。连接外部服务时，其日志级别由服务部署者控制。
 `mineru-kit parse` 的本地模式直接调用 parser，不启动 api-server。
 
 ### 使用远程 MinerU VLM 服务
