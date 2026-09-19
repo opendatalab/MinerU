@@ -432,9 +432,7 @@ ZH_MESSAGES: dict[str, str] = {
         "将文件或目录解析为 markdown、middle JSON 或 zip 输出。"
     ),
     "Start the Gradio document parsing web UI backed by the MinerU V1 API.": "启动基于 MinerU V1 API 的 Gradio 文档解析界面。",
-    "Start the self-hosted MinerU parsing API service.": (
-        "启动自托管的 MinerU 解析 API 服务。"
-    ),
+    "Start the self-hosted MinerU parsing API service.": ("启动自托管的 MinerU 解析 API 服务。"),
     "Start the local VLM server with OpenAI-compatible chat completions.": (
         "启动本地 VLM 服务,提供 OpenAI 兼容的 chat completions。"
     ),
@@ -502,8 +500,11 @@ ZH_MESSAGES: dict[str, str] = {
     "VLM HTTP timeout in seconds (default: 600)": "VLM HTTP 超时秒数(默认 600)",
     "VLM inference concurrency (default: 100)": "VLM 推理并发数(默认 100)",
     "API service log level: critical, error, warning, info, debug, trace; default: global log.level. "
-    "Also filters the Loguru default model-log sink": (
-        "API 服务日志级别: critical、error、warning、info、debug、trace;默认取全局 log.level。同时过滤 Loguru 默认模型日志 sink"
+    "Server-scope only (Uvicorn startup, HTTP access, ASGI, and service logs); "
+    "the Loguru default sink always follows global log.level": (
+        "API 服务日志级别: critical、error、warning、info、debug、trace;默认取全局 log.level。"
+        "仅作用于服务侧日志(Uvicorn 启停、HTTP 访问、ASGI 及服务自身);"
+        "Loguru 默认 sink 始终跟随全局 log.level"
     ),
     # ------------------------------------------------------- kit vlm-server
     "VLM serving engine: auto, llama-cpp, vllm, lmdeploy, mlx": "VLM 推理服务引擎: auto、llama-cpp、vllm、lmdeploy、mlx",

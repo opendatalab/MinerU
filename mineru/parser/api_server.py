@@ -2498,8 +2498,9 @@ def _build_server_log_config(log_level: str) -> dict[str, Any]:
     default=None,
     type=click.Choice(["critical", "error", "warning", "info", "debug", "trace"], case_sensitive=False),
     help=(
-        "API service log level: critical, error, warning, info, debug, trace; "
-        "default: global log.level. Also filters the Loguru default model-log sink."
+        "API service log level: critical, error, warning, info, debug, trace; default: global log.level. "
+        "Server-scope only (Uvicorn startup, HTTP access, ASGI, and service logs); "
+        "the Loguru default sink always follows global log.level."
     ),
 )
 @click.option(
@@ -2611,7 +2612,8 @@ def main(
 ) -> None:
     """合并显式 VLM 参数后启动 MinerU v1 REST API 服务，不修改全局配置。"""
     configure_standard_streams()
-    effective_log_level = configure_global_log_level(log_level)
+    global_log_level = configure_global_log_level()
+    server_log_level = (log_level if log_level is not None else global_log_level).lower()
     shutdown_requested = threading.Event()
     server_ref: list[uvicorn.Server | None] = [None]
 
@@ -2673,8 +2675,8 @@ def main(
         application,
         host=host,
         port=port,
-        log_level=effective_log_level,
-        log_config=_build_server_log_config(effective_log_level),
+        log_level=server_log_level,
+        log_config=_build_server_log_config(server_log_level),
     )
     server = uvicorn.Server(config)
     server_ref[0] = server
