@@ -1002,6 +1002,25 @@ def test_render_download_rejects_state_outside_allowed_root(tmp_path: Path) -> N
     assert not (tmp_path / "escaped.html").exists()
 
 
+def test_render_download_accepts_stem_truncated_on_trailing_separator(tmp_path: Path) -> None:
+    """验证归一化后超 120 字节、截断边界落在尾部 "_" 的文件名下载不被 stem 校验误拒。Refs #5547。"""
+    source = tmp_path / (
+        "吾辈如神_重构AI时代的生存力与胜任力_We_Are_as_Gods_A_Survival_Guide_for_the_Age_of_Abundance_美_彼得 x.pdf"
+    )
+    source.write_bytes(_pdf_bytes())
+    artifacts = persist_parse_result(
+        ParseResult(middle_json=_middle_json(with_image=False)),
+        source,
+        output_root=tmp_path / "output",
+        page_range="",
+    )
+
+    assert len(artifacts.stem.encode("utf-8")) <= 120
+    path = Path(render_download(artifacts.as_state(), "markdown", allowed_root=tmp_path / "output"))
+    with zipfile.ZipFile(path) as archive:
+        assert f"{artifacts.stem}.md" in archive.namelist()
+
+
 def test_gradio_file_types_page_range_and_header_follow_new_contract(tmp_path: Path) -> None:
     """验证完整扩展名、PDF-only 页码规则和复用后的 Header。"""
     assert set(gradio_app._supported_file_types()) == {f".{extension}" for extension in PARSEABLE_EXTENSIONS}
