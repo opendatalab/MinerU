@@ -779,9 +779,7 @@ def build_gradio_app(
                     return
                 selected_tier = "flash"
             try:
-                page_text = await asyncio.to_thread(
-                    _effective_page_range, source_path, raw_page_range, tier=selected_tier, max_pages=max_pages
-                )
+                page_text = await asyncio.to_thread(_effective_page_range, source_path, raw_page_range, max_pages=max_pages)
             except MineruError as exc:
                 yield (_status_html(f"Failed: {exc.code}: {exc}"), *reset_result[1:])
                 return

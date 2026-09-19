@@ -94,13 +94,18 @@ def set_lmdeploy_backend(device_type: str) -> str:
 def set_default_gpu_memory_utilization(backend: Literal["vllm", "lmdeploy"] = "vllm") -> float:
     device = get_device()
     gpu_memory = get_vram(device)
-    min_memory = 4
-    if backend == "vllm":
-        from vllm import __version__ as vllm_version  # type: ignore
+    if gpu_memory > 8:
+        # >8GB 显存统一按 6GB 预算分配，并对大卡设 0.1 下限，避免 KV cache 预算过小
+        min_memory = 6
+        default_gpu_memory_utilization = max(round(min_memory / gpu_memory, 2), 0.1)
+    else:
+        min_memory = 4
+        if backend == "vllm":
+            from vllm import __version__ as vllm_version  # type: ignore
 
-        if version.parse(vllm_version) >= version.parse("0.11.0"):
-            min_memory = 6
-    default_gpu_memory_utilization = round(min_memory / gpu_memory, 2)
+            if version.parse(vllm_version) >= version.parse("0.11.0"):
+                min_memory = 6
+        default_gpu_memory_utilization = round(min_memory / gpu_memory, 2)
 
     logger.debug(f"gpu_memory: {gpu_memory} GB, default_gpu_memory_utilization: {default_gpu_memory_utilization}")
     return default_gpu_memory_utilization

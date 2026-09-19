@@ -67,7 +67,8 @@ def api_server_cmd(
         "--log-level",
         help=t(
             "API service log level: critical, error, warning, info, debug, trace; default: global log.level. "
-            "Also filters the Loguru default model-log sink"
+            "Server-scope only (Uvicorn startup, HTTP access, ASGI, and service logs); "
+            "the Loguru default sink always follows global log.level"
         ),
     ),
 ) -> None:
@@ -124,9 +125,7 @@ def main() -> None:
     configure_standard_streams()
     configure_global_log_level()
     app = typer.Typer(add_completion=False)
-    app.command(help=t("Start the self-hosted MinerU parsing API service."))(
-        api_server_cmd
-    )
+    app.command(help=t("Start the self-hosted MinerU parsing API service."))(api_server_cmd)
     app()
 
 
