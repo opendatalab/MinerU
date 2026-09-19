@@ -410,7 +410,7 @@ def _prepare_pdf_window(
                     "removed_formula_blocks": native_table_summary.removed_formula_blocks,
                     "removed_formula_layout_items": native_table_summary.removed_formula_layout_items,
                 }
-                logger.bind(native_table_priority=native_table_stats).info(
+                logger.bind(native_table_priority=native_table_stats).debug(
                     "Hybrid native table priority. "
                     f"effort={native_table_stats['effort']}, total={native_table_stats['total']}, "
                     f"accepted={native_table_stats['accepted']}, "

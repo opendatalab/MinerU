@@ -80,7 +80,7 @@ class FormulaRecognizer(BaseOCRV20):
         if model_name == "PP-FormulaNet_plus-M" and self.device.type in {"mps", "cuda", "xpu"}:
             # 仅为经过适配的公式解码器启用快速 attention；CPU 和其他模型保持原路径。
             self.net.head.set_fast_attention()
-        logger.info(
+        logger.debug(
             "MFR loaded: model={}, device={}, dtype={}, attention={}, cache={}",
             model_name, self.device, self.ocr_inference_dtype,
             "sdpa" if getattr(self.net.head.decoder.model.decoder.layers[0].self_attn, "use_sdpa", False) else "eager",
