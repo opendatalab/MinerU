@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 """按需记录阶段墙钟耗时，不同步 CUDA，也不改变推理结果。"""
 
 from __future__ import annotations
