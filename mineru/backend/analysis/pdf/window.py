@@ -17,6 +17,8 @@ from docvortex.document.pdf.visuals import attach_visual_block_images as _attach
 from docvortex.document.pdf.visuals import attach_visual_block_images_from_pdf
 from loguru import logger
 
+from ....utils.timing import stage_timer
+
 from ....model.runtime.execution import local_model_stage
 from ....utils.async_utils import run_sync
 from ....model.runtime.hybrid import HybridLocalModelContext
@@ -161,26 +163,29 @@ def _process_flash_ocr(
     if np_images is None:
         np_images = [np.asarray(image_dict["img_pil"]).copy() for image_dict in images_list]
     empty_formula_list: list[list[dict[str, Any]]] = [[] for _ in model_list]
-    ocr_res_list = _ocr_det(
-        local_model_context,
-        np_images,
-        model_list,
-        empty_formula_list,
-        True,
-        PIPELINE_DET_TYPE,
-    )
-    _apply_ocr_rec_results(local_model_context, ocr_res_list)
-    model_list = _fill_window_block_content_and_lines(
-        images_list,
-        pdf_pages,
-        model_list,
-        empty_formula_list,
-        ocr_res_list,
-        "ocr",
-        "flash",
-        PIPELINE_DET_TYPE,
-        local_model_context,
-    )
+    with stage_timer("pdf.ocr_detection"):
+        ocr_res_list = _ocr_det(
+            local_model_context,
+            np_images,
+            model_list,
+            empty_formula_list,
+            True,
+            PIPELINE_DET_TYPE,
+        )
+    with stage_timer("pdf.ocr_recognition"):
+        _apply_ocr_rec_results(local_model_context, ocr_res_list)
+    with stage_timer("pdf.text_fill"):
+        model_list = _fill_window_block_content_and_lines(
+            images_list,
+            pdf_pages,
+            model_list,
+            empty_formula_list,
+            ocr_res_list,
+            "ocr",
+            "flash",
+            PIPELINE_DET_TYPE,
+            local_model_context,
+        )
     _fill_flash_ocr_table_contents(
         images_list,
         model_list,
@@ -237,22 +242,24 @@ def _process_text_and_formulas(
         # 全部被过滤时保持逐页空结果，不能让原始表内公式重新进入正文 sidecar。
         images_formula_list = [[] for _ in mfd_res]
         if any(mfr_inputs):
-            images_formula_list = local_model_context.mfr_model.batch_predict(
-                mfr_inputs,
-                np_images,
-                batch_size=BATCH_RATIO * MFR_BASE_BATCH_SIZE,
-                interline_enable=interline_enable,
-            )
+            with stage_timer("pdf.formulas"):
+                images_formula_list = local_model_context.mfr_model.batch_predict(
+                    mfr_inputs,
+                    np_images,
+                    batch_size=BATCH_RATIO * MFR_BASE_BATCH_SIZE,
+                    interline_enable=interline_enable,
+                )
 
     inline_formula_list, display_formula_list = _split_formula_results(images_formula_list)
     if effort == "medium":
         # 表格解析必须早于正文行填充，确保表内图片和行内公式只由表格模型消费一次。
-        _apply_medium_table_recognition(
-            local_model_context,
-            model_list,
-            inline_formula_list,
-            np_images,
-        )
+        with stage_timer("pdf.table_recognition"):
+            _apply_medium_table_recognition(
+                local_model_context,
+                model_list,
+                inline_formula_list,
+                np_images,
+            )
         # 将行间公式span回填入block
         _apply_medium_display_formula_results(
             model_list,
@@ -260,11 +267,12 @@ def _process_text_and_formulas(
             images_pil_list,
         )
         # 使用ocr识别行间公式标号
-        _apply_medium_formula_number_ocr(
-            local_model_context,
-            model_list,
-            np_images,
-        )
+        with stage_timer("pdf.formula_numbers"):
+            _apply_medium_formula_number_ocr(
+                local_model_context,
+                model_list,
+                np_images,
+            )
 
     # 行间公式标号回填到block
     for page_model_list in model_list:
@@ -272,32 +280,35 @@ def _process_text_and_formulas(
 
     need_rec_img = parse_mode == "ocr" and effort == "medium"
     # vlm没有执行ocr，需要ocr_det
-    ocr_res_list = _ocr_det(
-        local_model_context,
-        np_images,
-        model_list,
-        mfd_res,
-        need_rec_img,
-        ocr_det_type,
-    )
+    with stage_timer("pdf.ocr_detection"):
+        ocr_res_list = _ocr_det(
+            local_model_context,
+            np_images,
+            model_list,
+            mfd_res,
+            need_rec_img,
+            ocr_det_type,
+        )
 
     # 如果有rec_img则做ocr_rec
     if need_rec_img:
-        _apply_ocr_rec_results(local_model_context, ocr_res_list)
+        with stage_timer("pdf.ocr_recognition"):
+            _apply_ocr_rec_results(local_model_context, ocr_res_list)
 
-    return _fill_window_block_content_and_lines(
-        images_list,
-        pdf_pages,
-        model_list,
-        inline_formula_list,
-        ocr_res_list,
-        parse_mode,
-        effort,
-        ocr_det_type,
-        local_model_context,
-        page_text_geometries,
-        page_vector_geometries=page_vector_geometries,
-    )
+    with stage_timer("pdf.text_fill"):
+        return _fill_window_block_content_and_lines(
+            images_list,
+            pdf_pages,
+            model_list,
+            inline_formula_list,
+            ocr_res_list,
+            parse_mode,
+            effort,
+            ocr_det_type,
+            local_model_context,
+            page_text_geometries,
+            page_vector_geometries=page_vector_geometries,
+        )
 
 
 @dataclass
@@ -350,12 +361,13 @@ def _prepare_pdf_window(
     page_vector_geometries: list[PDFPageVectorGeometry | None] | None = None
     try:
         window_pages = _get_window_pdf_pages(document, window)
-        images_list = load_images_from_pdf_bytes_range(
-            pdf_bytes=file_bytes,
-            start_page_id=window.start,
-            end_page_id=window.end,
-            image_type="pil_img",
-        )
+        with stage_timer("pdf.render"):
+            images_list = load_images_from_pdf_bytes_range(
+                pdf_bytes=file_bytes,
+                start_page_id=window.start,
+                end_page_id=window.end,
+                image_type="pil_img",
+            )
         if len(window_pages) != len(images_list):
             raise ValueError("Hybrid processing window PDF page count does not match image count")
         images_pil_list = [image_dict["img_pil"] for image_dict in images_list]
@@ -369,35 +381,38 @@ def _prepare_pdf_window(
         if local_model_context is None:
             raise ValueError("Hybrid local model context is required outside Flash TXT mode")
         np_images = [np.asarray(pil_image).copy() for pil_image in images_pil_list]
-        images_layout_res = local_model_context.layout_model.batch_predict(
-            images_pil_list, batch_size=min(8, BATCH_RATIO * LAYOUT_BASE_BATCH_SIZE)
-        )
+        with stage_timer("pdf.layout"):
+            images_layout_res = local_model_context.layout_model.batch_predict(
+                images_pil_list, batch_size=min(8, BATCH_RATIO * LAYOUT_BASE_BATCH_SIZE)
+            )
 
         # 使用小模型layout时对layout的表格做旋转检测
         if effort in ["flash", "medium", "high"]:
             table_items = _collect_table_items(images_layout_res, np_images)
             if table_items:
-                _apply_table_orientations(
-                    table_items,
-                    parse_mode,
-                    window_pages,
-                    images_list,
-                    local_model_context,
-                    page_text_geometries,
-                )
+                with stage_timer("pdf.table_orientation"):
+                    _apply_table_orientations(
+                        table_items,
+                        parse_mode,
+                        window_pages,
+                        images_list,
+                        local_model_context,
+                        page_text_geometries,
+                    )
 
         vl_style_layout_blocks = _build_vl_style_layout_blocks(images_layout_res, images_pil_list)
 
         if parse_mode == "txt" and effort in {"medium", "high"}:
-            native_table_summary = _apply_native_txt_table_priority(
-                vl_style_layout_blocks,
-                images_layout_res,
-                window_pages,
-                images_list,
-                effort=effort,
-                page_text_geometries=page_text_geometries,
-                page_vector_geometries=page_vector_geometries,
-            )
+            with stage_timer("pdf.native_tables"):
+                native_table_summary = _apply_native_txt_table_priority(
+                    vl_style_layout_blocks,
+                    images_layout_res,
+                    window_pages,
+                    images_list,
+                    effort=effort,
+                    page_text_geometries=page_text_geometries,
+                    page_vector_geometries=page_vector_geometries,
+                )
             if native_table_summary.total:
                 native_table_stats = {
                     "effort": effort,
@@ -512,18 +527,20 @@ def _finish_pdf_window(
         )
 
     if effort in {"medium", "high"}:
-        _apply_seal_ocr(local_model_context, window_model_list, np_images)
+        with stage_timer("pdf.seals"):
+            _apply_seal_ocr(local_model_context, window_model_list, np_images)
     elif effort == "xhigh":
         _supplement_missing_image_block_containers(
             window_model_list,
             vl_style_layout_blocks,
         )
 
-    _attach_visual_block_images(
-        window_model_list,
-        images_list,
-        page_start_index=window.start,
-    )
+    with stage_timer("pdf.image_assets"):
+        _attach_visual_block_images(
+            window_model_list,
+            images_list,
+            page_start_index=window.start,
+        )
     return window_model_list
 
 

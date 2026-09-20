@@ -19,22 +19,22 @@ from typing import Any, Dict, List, Tuple, Union
 import cv2
 import numpy as np
 from loguru import logger
-from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions
+from onnxruntime import GraphOptimizationLevel, SessionOptions
 
-from ....runtime.onnx import ort_providers
+from ....runtime.onnx import table_ort_session
 
 
 class OrtInferSession:
     def __init__(self, config: Dict[str, Any]):
+        """保留原有会话选项，并使用统一的表格设备与回退策略。"""
         self.logger = logger
 
         model_path = config.get("model_path", None)
         self._verify_model(model_path)
 
-        self.session = InferenceSession(
+        self.session = table_ort_session(
             model_path,
             sess_options=self._init_sess_opts(config),
-            providers=ort_providers(),
         )
 
     @staticmethod

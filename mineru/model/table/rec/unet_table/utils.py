@@ -8,8 +8,10 @@ from typing import Any, Dict, List, Optional, Union
 import cv2
 import loguru
 import numpy as np
-from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions
+from onnxruntime import GraphOptimizationLevel, SessionOptions
 from PIL import Image, UnidentifiedImageError
+
+from ....runtime.onnx import table_ort_session
 
 root_dir = Path(__file__).resolve().parent
 InputType = Union[str, np.ndarray, bytes, Path]
@@ -17,13 +19,13 @@ InputType = Union[str, np.ndarray, bytes, Path]
 
 class OrtInferSession:
     def __init__(self, config: Dict[str, Any]):
+        """保留原有会话选项，并使用统一的表格设备与回退策略。"""
         self.logger = loguru.logger
         model_path = config.get("model_path", None)
 
-        self.session = InferenceSession(
+        self.session = table_ort_session(
             model_path,
             sess_options=self._init_sess_opts(config),
-            providers=[("CPUExecutionProvider", {"arena_extend_strategy": "kSameAsRequested"})],
         )
 
     @staticmethod
