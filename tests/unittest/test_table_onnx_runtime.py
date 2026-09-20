@@ -1,4 +1,4 @@
-"""表格 CUDA provider 的显式选择、回退与 CPU 模型边界。"""
+"""表格 CUDA provider 的自动选择、显式覆盖、回退与 CPU 模型边界。"""
 
 from types import SimpleNamespace
 from unittest.mock import Mock
@@ -9,10 +9,11 @@ import pytest
 from mineru.model.runtime import onnx
 
 
-def test_table_default_is_cpu(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Torch 使用 CUDA 不应隐式改变表格模型设备。"""
+def test_table_default_uses_cpu_without_cuda_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+    """CPU ORT 包保持 CPU 执行，Torch 设备不参与表格 provider 决策。"""
     monkeypatch.delenv("MINERU_TABLE_DEVICE", raising=False)
     monkeypatch.setenv("MINERU_DEVICE_MODE", "cuda")
+    monkeypatch.setattr(onnx.ort, "get_available_providers", lambda: ["CPUExecutionProvider"])
     session = SimpleNamespace(get_providers=lambda: ["CPUExecutionProvider"])
     factory = Mock(return_value=session)
     monkeypatch.setattr(onnx.ort, "InferenceSession", factory)
@@ -20,9 +21,13 @@ def test_table_default_is_cpu(monkeypatch: pytest.MonkeyPatch) -> None:
     assert factory.call_args.kwargs["providers"] == onnx.ort_providers()
 
 
-def test_cuda_is_explicit_and_other_onnx_models_stay_cpu(monkeypatch: pytest.MonkeyPatch) -> None:
-    """表格 CUDA 使用低冷启动开销选项，OCR/Layout ONNX 仍保留 CPU 策略。"""
-    monkeypatch.setenv("MINERU_TABLE_DEVICE", "cuda")
+@pytest.mark.parametrize("device", [None, "auto", "cuda"])
+def test_cuda_selection_and_other_onnx_models_stay_cpu(monkeypatch: pytest.MonkeyPatch, device: str | None) -> None:
+    """默认自动和显式 CUDA 都选择 GPU，但 OCR/Layout ONNX 仍保留 CPU 策略。"""
+    if device is None:
+        monkeypatch.delenv("MINERU_TABLE_DEVICE", raising=False)
+    else:
+        monkeypatch.setenv("MINERU_TABLE_DEVICE", device)
     monkeypatch.setenv("MINERU_INTRA_OP_NUM_THREADS", "4")
     monkeypatch.setenv("MINERU_INTER_OP_NUM_THREADS", "1")
     monkeypatch.setattr(onnx.ort, "get_available_providers", lambda: ["CUDAExecutionProvider", "CPUExecutionProvider"])
@@ -38,10 +43,21 @@ def test_cuda_is_explicit_and_other_onnx_models_stay_cpu(monkeypatch: pytest.Mon
     assert factory.call_args.kwargs["providers"] == onnx.ort_providers()
 
 
+def test_explicit_cpu_overrides_available_cuda_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Space 的显式 CPU 配置不能因安装 GPU ORT 包而申请 CUDA 会话。"""
+    monkeypatch.setenv("MINERU_TABLE_DEVICE", "cpu")
+    monkeypatch.setattr(onnx.ort, "get_available_providers", lambda: ["CUDAExecutionProvider", "CPUExecutionProvider"])
+    factory = Mock(return_value=SimpleNamespace(get_providers=lambda: ["CPUExecutionProvider"]))
+    monkeypatch.setattr(onnx.ort, "InferenceSession", factory)
+    onnx.table_ort_session("table.onnx")
+    assert factory.call_args.kwargs["providers"] == onnx.ort_providers()
+
+
+@pytest.mark.parametrize("device", ["auto", "cuda"])
 @pytest.mark.parametrize("mode", ["unavailable", "exception", "silent"])
-def test_cuda_failure_is_reported_and_cpu_remains_available(monkeypatch: pytest.MonkeyPatch, mode: str) -> None:
+def test_cuda_failure_is_reported_and_cpu_remains_available(monkeypatch: pytest.MonkeyPatch, mode: str, device: str) -> None:
     """覆盖未安装 CUDA、动态库失败以及 ORT 自动降级，不能把回退误报为 GPU。"""
-    monkeypatch.setenv("MINERU_TABLE_DEVICE", "cuda")
+    monkeypatch.setenv("MINERU_TABLE_DEVICE", device)
     monkeypatch.setattr(
         onnx.ort,
         "get_available_providers",
@@ -53,7 +69,7 @@ def test_cuda_failure_is_reported_and_cpu_remains_available(monkeypatch: pytest.
     monkeypatch.setattr(onnx.ort, "InferenceSession", factory)
     monkeypatch.setattr(onnx.logger, "warning", warning)
     assert onnx.table_ort_session("table.onnx") is cpu
-    assert warning.called
+    assert warning.called == (mode != "unavailable" or device == "cuda")
     if mode in {"unavailable", "exception"}:
         assert factory.call_args.kwargs["providers"] == onnx.ort_providers()
 
