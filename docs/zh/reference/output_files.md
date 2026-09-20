@@ -15,6 +15,26 @@
 
 `mineru parse --json` 的响应不是 MiddleJson，不能直接传给 `ParseResult.from_dict()`。远端服务的产物范围由该服务声明。
 
+## ZIP 图片命名
+
+`mineru-kit parse --format zip`、V1 API ZIP 和 Gradio 的 Markdown/JSON/LaTeX 下载共用
+DocVortex 图片物化与命名规则（需要 `docvortex>=0.4.19,<1`）。ZIP 文件名和正文成员组织仍由各入口决定。
+
+| 图片位置 | 路径示例 |
+| --- | --- |
+| 图片、表格、图表的直接载荷 | `images/page_0_image_1.png`、`images/page_0_table_2.png`、`images/page_0_chart_3.png` |
+| 图片正文的内嵌图 | `images/page_0_image_1_1.png` |
+| 表格、图表正文的内嵌图 | `images/page_0_table_image_2_1.png`、`images/page_0_chart_image_3_1.png` |
+| 独立公式图片 | `images/page_0_equation_4.png` |
+
+页号是从 0 开始的原始 `page_idx`，块号取所属视觉父块 index；正文内序号从 1 开始，
+按所有 `<img src=...>` 的顺序计数，外链图片保留原地址但也占序号。
+同名同字节复用，同名不同字节追加 `_duplicate_n`；不同语义位置不按内容合并名称。
+扩展名转小写，图片字节不重新编码。命名与 Markdown、JSON、HTML/LaTeX 引用同步更新。
+
+历史 ZIP 按已有引用读取，不自动改名或生成旧名称别名。下游应读取实际图片引用，避免拼接旧的
+`image_body` / `table_body` 文件名。此次统一不扩展 CLI 的素材获取能力：仅 Gradio 保留本地读图和 PDF 补裁图。
+
 ## 九种渲染目标
 
 | `RenderFormat` | 格式 | Python 返回类型 |
@@ -47,7 +67,7 @@ pdf_bytes = render(result.middle_json, RenderFormat.PDF,
 
 `pdf_title_layout_expanded` 记录扩展；`pdf_layout_font_exception` 记录局部正文较大或空间不足的调整原因、参考/目标/最终字号、原框和绘制框。原始几何重叠时不扩大占用并报告 `pdf_title_geometry_conflict`；原始间距过紧、没有安全扩展区域时报告 `pdf_title_clearance_unavailable`。字号和绘制区域仅存在于渲染上下文，不修改 MiddleJson 或素材，不新增接口参数。
 
-使用 `docvortex>=0.4.12,<1`（MinerU 4.0 当前声明的最低依赖）。DocVortex 在生产原生 TXT PDF 模型输出时将行间公式的 `content` 清空一次，MinerU Flash TXT 直接使用该输出；Flash OCR 原本不填充行间公式内容，MinerU 不再重复清空。两条 Flash 路径保留 bbox、方向、图片及检测到的编号区域，PDF、Markdown、HTML、DOCX、EPUB、LaTeX 沿用图片回退。行内公式、非 Flash tier 的公式文本不变。旧缓存不会自动改写，重新解析才获得新几何和空内容公式。
+使用 `docvortex>=0.4.19,<1`（MinerU 4.0 当前声明的最低依赖）。DocVortex 在生产原生 TXT PDF 模型输出时将行间公式的 `content` 清空一次，MinerU Flash TXT 直接使用该输出；Flash OCR 原本不填充行间公式内容，MinerU 不再重复清空。两条 Flash 路径保留 bbox、方向、图片及检测到的编号区域，PDF、Markdown、HTML、DOCX、EPUB、LaTeX 沿用图片回退。行内公式、非 Flash tier 的公式文本不变。旧缓存不会自动改写，重新解析才获得新几何和空内容公式。
 
 ```python
 from pathlib import Path

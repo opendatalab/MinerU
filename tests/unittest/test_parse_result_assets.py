@@ -4,16 +4,16 @@ from __future__ import annotations
 
 import asyncio
 import base64
-from io import BytesIO
 import json
+import zipfile
+from io import BytesIO
 from pathlib import Path
 from unittest.mock import AsyncMock
-import zipfile
 
+import pytest
 from bs4 import BeautifulSoup
 from docvortex.document.pdf import PDFDocument
 from PIL import Image
-import pytest
 from reportlab.pdfgen.canvas import Canvas
 
 from mineru.kit.common import save_parse_result
@@ -91,8 +91,8 @@ def test_save_externalizes_assets_without_changing_json_only_contract(tmp_path: 
         "middle_json.json",
         "markdown.md",
         "structured_content.json",
-        "images/page_4_table_body_2.png",
-        "images/page_4_table_body_2_1.png",
+        "images/page_4_table_2.png",
+        "images/page_4_table_image_2_1.png",
     }
     for name, payload in entries.items():
         if name.startswith("images/"):
@@ -101,7 +101,7 @@ def test_save_externalizes_assets_without_changing_json_only_contract(tmp_path: 
     assert saved["extensions"] == result.middle_json.extensions
     for name in ("middle_json.json", "markdown.md", "structured_content.json"):
         assert b"data:image/" not in entries[name]
-        assert b"images/page_4_table_body_2_1.png" in entries[name]
+        assert b"images/page_4_table_image_2_1.png" in entries[name]
     assert result.middle_json.to_json() == before
     assert "image_base64" not in result.to_json()
     dest = tmp_path / "result.zip"
@@ -142,8 +142,8 @@ def test_server_zip_roundtrip_restores_direct_and_markup_images(
         assert body.content == markup
         assert _entries(api_server._build_self_contained_zip_output(restored)) == _entries(payload)
     else:
-        assert body.image_base64 is None and body.image_path == "images/page_4_table_body_2.png"
-        assert "images/page_4_table_body_2_1.png" in body.content
+        assert body.image_base64 is None and body.image_path == "images/page_4_table_2.png"
+        assert "images/page_4_table_image_2_1.png" in body.content
 
 
 @pytest.mark.parametrize("angle", [0, 90, 180, 270])
