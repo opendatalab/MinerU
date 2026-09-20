@@ -11,6 +11,8 @@ from typing import TYPE_CHECKING, Any
 
 from loguru import logger
 
+from ...utils.timing import stage_timer
+
 from ..ocr.language import normalize_ocr_model_lang
 from ..ocr.resources import PPOCRV6_DICT_PATH
 from ..registry import MINERU_4_MODELS_ONNX, small_model_repo
@@ -225,6 +227,7 @@ class AtomModelSingleton:
         return self._models[key]
 
 
+@stage_timer("model.initialize")
 def atom_model_init(model_name: str, **kwargs: Any) -> Any:
     """将原子模型名称分派到具体初始化函数，并校验初始化结果。"""
     small_backend = resolve_small_model_backend(kwargs.get("small_backend"))

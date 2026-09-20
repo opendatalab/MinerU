@@ -4,6 +4,8 @@
 
 ## 未发布
 
+- 图片命名变更：CLI/API ZIP 的新物化图片统一采用 Gradio 的视觉父块命名，表内图按所有 img src 顺序编号，冲突追加 `_duplicate_n`。引用同步更新，图片字节及 MiddleJson 2.0 不变；历史 ZIP 仍按已有引用读取。需要 `docvortex>=0.4.19,<1`。
+
 - 破坏性变更：移除 `mineru-kit parse` 的 `--backend` 参数（该参数在 4.0 alpha 阶段引入）。它仅用于推断 tier，没有独立作用，请改用 `--tier`：`pipeline` → `--tier basic`；`vlm-engine`、`vlm-auto-engine`、`vlm-http-client` → `--tier advanced`；`hybrid-engine`、`hybrid-auto-engine` → `--tier standard`（或省略该参数）；`flash` → `--tier flash`。使用远程 VLM 服务由 VLM 服务配置表达，与该参数无关。
 - 破坏性变更：移除 `mineru.parser` 公开导出中的 `PARSER_BACKENDS` 常量（4.0 正式版包含该导出）。backend 由 tier 派生，不再是公开选择或公开符号；请通过 `model.small_backend` 与 `model.vlm.engine` 配置引擎。
 

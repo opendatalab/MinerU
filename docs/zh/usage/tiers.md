@@ -28,7 +28,9 @@ PDF 和图片可选四档。Office、OpenDocument、RTF、EPUB、OFD、HTML、CS
 | Windows，有加速器并安装 `full` | Torch | LMDeploy |
 | CPU 环境 | ONNX / CPU | llama.cpp |
 
-自动选择依据已安装依赖和可用设备；显式指定的后端缺依赖时会报错，不会静默改用另一种。ONNX 小模型在 CPU 上执行，VLM 的设备选择独立。
+自动选择依据已安装依赖和可用设备；显式指定的后端缺依赖时会报错，不会静默改用另一种。Layout、OCR 和公式的 ONNX 模型在 CPU 上执行，VLM 的设备选择独立。
+
+表格分类、SLANet 和 UNet 默认使用 `MINERU_TABLE_DEVICE=auto`：CPU 版 `onnxruntime` 使用 CPU；替换为兼容的 `onnxruntime-gpu` 后，有可用 CUDA provider 时优先使用 CUDA，初始化失败则记录原因并回退 CPU。两个 ORT 发行包不要同时安装。设置 `MINERU_TABLE_DEVICE=cpu` 可固定 CPU，设置 `cuda` 可显式尝试 CUDA；该选项仅影响表格模型。日志会记录实际使用的 providers。
 
 Intel XPU 不会自动选择 LMDeploy。Linux 上安装了支持 XPU 的 vLLM 时优先使用 vLLM，否则回退 llama.cpp；Windows 上使用 llama.cpp。
 

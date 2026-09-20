@@ -8,8 +8,10 @@ from typing import Any, Dict, List, Optional, Union
 import cv2
 import loguru
 import numpy as np
-from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions
+from onnxruntime import GraphOptimizationLevel, SessionOptions
 from PIL import Image, UnidentifiedImageError
+
+from ....runtime.onnx import configure_ort_threads, table_ort_session
 
 root_dir = Path(__file__).resolve().parent
 InputType = Union[str, np.ndarray, bytes, Path]
@@ -17,30 +19,28 @@ InputType = Union[str, np.ndarray, bytes, Path]
 
 class OrtInferSession:
     def __init__(self, config: Dict[str, Any]):
+        """保留原有会话选项，并使用统一的表格设备与回退策略。"""
         self.logger = loguru.logger
         model_path = config.get("model_path", None)
 
-        self.session = InferenceSession(
+        self.session = table_ort_session(
             model_path,
             sess_options=self._init_sess_opts(config),
-            providers=[("CPUExecutionProvider", {"arena_extend_strategy": "kSameAsRequested"})],
         )
 
     @staticmethod
     def _init_sess_opts(config: Dict[str, Any]) -> SessionOptions:
+        """保留表格内存选项，线程数交给共享策略处理。"""
         sess_opt = SessionOptions()
         sess_opt.log_severity_level = 4
         sess_opt.enable_cpu_mem_arena = False
         sess_opt.graph_optimization_level = GraphOptimizationLevel.ORT_ENABLE_ALL
 
-        cpu_nums = os.cpu_count()
-        intra_op_num_threads = config.get("intra_op_num_threads", -1)
-        if intra_op_num_threads != -1 and 1 <= intra_op_num_threads <= cpu_nums:
-            sess_opt.intra_op_num_threads = intra_op_num_threads
-
-        inter_op_num_threads = config.get("inter_op_num_threads", -1)
-        if inter_op_num_threads != -1 and 1 <= inter_op_num_threads <= cpu_nums:
-            sess_opt.inter_op_num_threads = inter_op_num_threads
+        configure_ort_threads(
+            sess_opt,
+            intra_op_num_threads=config.get("intra_op_num_threads", 0),
+            inter_op_num_threads=config.get("inter_op_num_threads", 0),
+        )
 
         return sess_opt
 

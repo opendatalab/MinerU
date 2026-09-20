@@ -1060,12 +1060,12 @@ def test_log_infer_performance_uses_unrounded_elapsed(
     expected_speed: str,
 ) -> None:
     """验证性能日志使用原始耗时计算吞吐，并安全处理零耗时。"""
-    debug_log = MagicMock()
-    monkeypatch.setattr(analyze.logger, "debug", debug_log)
+    info_log = MagicMock()
+    monkeypatch.setattr(analyze.logger, "info", info_log)
 
     analyze._log_infer_performance("docx", page_count, elapsed)
 
-    message = debug_log.call_args.args[0]
+    message = info_log.call_args.args[0]
     assert "file_suffix=docx" in message
     assert f"pages={page_count}" in message
     assert expected_cost in message

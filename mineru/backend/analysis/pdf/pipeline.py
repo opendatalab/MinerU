@@ -10,6 +10,8 @@ from typing import cast
 from docvortex.document.pdf import PDFDocument
 from loguru import logger
 
+from ....utils.timing import stage_timer
+
 from ....config import VlmConfig
 from ....model.runtime.execution import acquire_document, release_document
 from ....utils.async_utils import run_sync
@@ -85,7 +87,8 @@ def analyze_pdf(
     """使用共享资源生命周期与同步窗口编排生产 PDF 模型结果。"""
     state = _PDFAnalysis()
     try:
-        _prepare_analysis(state, file_bytes, effort, parse_mode, vlm_config)
+        with stage_timer("pdf.prepare"):
+            _prepare_analysis(state, file_bytes, effort, parse_mode, vlm_config)
         infer_started_at = time.perf_counter()
         model_list = process_pdf_windows(
             file_bytes,
@@ -99,7 +102,8 @@ def analyze_pdf(
         )
         result = _build_pdf_analysis_result(state, model_list, effort, infer_started_at)
     finally:
-        _close_analysis(state)
+        with stage_timer("pdf.cleanup"):
+            _close_analysis(state)
     return result
 
 
@@ -143,7 +147,8 @@ def _build_pdf_analysis_result(
     angles = {id(block): block.get("angle", 0) for page in model_list for block in page}
     _normalize_pdf_model_list(model_list)
     elapsed = time.perf_counter() - started_at
-    geometry, diagnostics = extract_layout_geometry(state.document, None)
+    with stage_timer("pdf.geometry"):
+        geometry, diagnostics = extract_layout_geometry(state.document, None)
     rotation_pages = [[{**block, "angle": angles.get(id(block), 0)} for block in page] for page in model_list]
     attach_layout_image_rotations(geometry, rotation_pages, None)
     for diagnostic in diagnostics:

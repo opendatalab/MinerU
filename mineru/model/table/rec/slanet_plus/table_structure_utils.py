@@ -11,7 +11,6 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import os
 import traceback
 from pathlib import Path
 from typing import Any, Dict, List, Tuple, Union
@@ -19,39 +18,37 @@ from typing import Any, Dict, List, Tuple, Union
 import cv2
 import numpy as np
 from loguru import logger
-from onnxruntime import GraphOptimizationLevel, InferenceSession, SessionOptions
+from onnxruntime import GraphOptimizationLevel, SessionOptions
 
-from ....runtime.onnx import ort_providers
+from ....runtime.onnx import configure_ort_threads, table_ort_session
 
 
 class OrtInferSession:
     def __init__(self, config: Dict[str, Any]):
+        """保留原有会话选项，并使用统一的表格设备与回退策略。"""
         self.logger = logger
 
         model_path = config.get("model_path", None)
         self._verify_model(model_path)
 
-        self.session = InferenceSession(
+        self.session = table_ort_session(
             model_path,
             sess_options=self._init_sess_opts(config),
-            providers=ort_providers(),
         )
 
     @staticmethod
     def _init_sess_opts(config: Dict[str, Any]) -> SessionOptions:
+        """保留表格内存选项，线程数交给共享策略处理。"""
         sess_opt = SessionOptions()
         sess_opt.log_severity_level = 4
         sess_opt.enable_cpu_mem_arena = False
         sess_opt.graph_optimization_level = GraphOptimizationLevel.ORT_ENABLE_ALL
 
-        cpu_nums = os.cpu_count()
-        intra_op_num_threads = config.get("intra_op_num_threads", -1)
-        if intra_op_num_threads != -1 and 1 <= intra_op_num_threads <= cpu_nums:
-            sess_opt.intra_op_num_threads = intra_op_num_threads
-
-        inter_op_num_threads = config.get("inter_op_num_threads", -1)
-        if inter_op_num_threads != -1 and 1 <= inter_op_num_threads <= cpu_nums:
-            sess_opt.inter_op_num_threads = inter_op_num_threads
+        configure_ort_threads(
+            sess_opt,
+            intra_op_num_threads=config.get("intra_op_num_threads", 0),
+            inter_op_num_threads=config.get("inter_op_num_threads", 0),
+        )
 
         return sess_opt
 
