@@ -16,6 +16,55 @@ from mineru.kit.gradio.artifacts import create_run_artifacts
 from mineru.kit.gradio.client import V1ServerCapabilities
 
 
+def test_pdf_download_renders_cjk_inline_formula_without_error(tmp_path: Path) -> None:
+    """真实 PDF 下载回调读取持久化协议，长行内公式成功导出且再次点击可复用文件。"""
+    from pypdf import PdfReader
+
+    from mineru.types import MiddleJson, PageInfo
+
+    source = tmp_path / "中文公式.pdf"
+    source.write_bytes(b"test")
+    artifacts = create_run_artifacts(source, tmp_path / "output")
+    middle = MiddleJson(
+        is_full_document=False,
+        pages=[
+            PageInfo.model_validate(
+                {
+                    "page_idx": 0,
+                    "blocks": [
+                        {
+                            "type": "text",
+                            "index": 0,
+                            "bbox": [0.1, 0.1, 0.9, 0.8],
+                            "content": [
+                                {"type": "text", "content": "中文前文"},
+                                {"type": "equation_inline", "content": "+".join(["x_i"] * 80)},
+                                {"type": "text", "content": "中文后文"},
+                            ],
+                        }
+                    ],
+                }
+            )
+        ],
+        metadata={"file_suffix": "pdf", "producer": {"name": "test", "version": "1"}},
+    )
+    artifacts.middle_json_path.write_text(json.dumps(middle.to_dict(), ensure_ascii=False), encoding="utf-8")
+    handler = gradio_app._download_handler("pdf", tmp_path / "output")
+    previous = None
+    for sequence in (1, 2):
+        token = json.dumps({"run_id": artifacts.root.name, "sequence": sequence})
+        path, receipt = handler(artifacts.as_state(), token)
+        assert json.loads(receipt) == {"request": token, "error": ""}
+        assert path is not None
+        content = Path(path).read_bytes()
+        assert content.startswith(b"%PDF-")
+        text = PdfReader(path).pages[0].extract_text()
+        assert "中文前文" in text and "中文后文" in text
+        if previous is not None:
+            assert content == previous
+        previous = content
+
+
 def test_download_receipt_keeps_request_on_success_and_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """真实结果标识校验覆盖正常生成、缓存复用及渲染异常，并在错误回执中保留请求标识。"""
     source = tmp_path / "source.pdf"
