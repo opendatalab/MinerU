@@ -15,6 +15,26 @@
 
 A `mineru parse --json` response is not MiddleJson and cannot be passed directly to `ParseResult.from_dict()`. Remote output availability is defined by the remote service.
 
+## ZIP image names
+
+`mineru-kit parse --format zip`, V1 API ZIP, and Gradio Markdown/JSON/LaTeX downloads
+share DocVortex image materialization and naming (`docvortex>=0.4.19,<1`). Each entrypoint
+keeps its existing archive name and document members.
+
+Direct image/table/chart payloads use `images/page_{page_idx}_{parent_type}_{parent_index}.{ext}`;
+standalone equations use `equation`. Images inside visual HTML use `image_{index}_{ordinal}`,
+`table_image_{index}_{ordinal}`, or `chart_image_{index}_{ordinal}` after the page prefix.
+Page indices refer to the original document and start at zero. Inline ordinals start at one
+within each body, counting every `<img src=...>`, including external images whose URLs remain unchanged.
+
+Identical bytes at the same path are reused; different bytes receive `_duplicate_n` suffixes.
+Different semantic names remain separate even when their bytes match. Extensions are lowercase;
+image bytes are not re-encoded. All document references are updated together with image paths.
+
+Historical ZIPs retain their stored references, with no automatic migration or old-name aliases.
+Consumers should follow actual document references instead of constructing `*_body_*` filenames.
+CLI image acquisition is unchanged; local file loading and PDF crop fallback remain Gradio features.
+
 ## Nine rendering targets
 
 | `RenderFormat` | Format | Python return type |
@@ -76,7 +96,7 @@ and report `pdf_title_geometry_conflict`; unavailable expansion clearance report
 `pdf_title_clearance_unavailable`. Only rendering context changes, with no input,
 asset, protocol or public-option changes.
 
-Requires `docvortex>=0.4.12,<1` (the current minimum dependency declared by MinerU 4.0). DocVortex clears native TXT PDF display equation
+Requires `docvortex>=0.4.19,<1` (the current minimum dependency declared by MinerU 4.0). DocVortex clears native TXT PDF display equation
 `content` once when producing model output; MinerU Flash TXT uses that output.
 Flash OCR already leaves display equation content empty. MinerU does not clear
 equation content again. Both Flash paths retain the bbox, orientation, image and

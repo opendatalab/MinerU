@@ -5,20 +5,24 @@ from __future__ import annotations
 import base64
 import json
 import zipfile
+from io import BytesIO
 from pathlib import Path
 
 import pytest
 from bs4 import BeautifulSoup
 from PIL import Image, ImageStat
+from test_kit_gradio import _colored_pdf_bytes, _middle_json
+from test_kit_gradio_html import _image_bytes
 
+from mineru.kit.common import save_parse_result
 from mineru.kit.gradio.artifacts import (
     _build_image_context,
     _close_image_context,
     _materialize_middle_json,
-    _write_materialized_asset,
     persist_parse_result,
     render_download,
 )
+from mineru.parser.api_server import _build_self_contained_zip_output
 from mineru.parser.base import ParseResult
 from mineru.types import (
     AlgorithmBodyBlock,
@@ -32,8 +36,6 @@ from mineru.types import (
     TableBodyBlock,
     TextSpan,
 )
-from test_kit_gradio import _colored_pdf_bytes, _middle_json
-from test_kit_gradio_html import _image_bytes
 
 
 def _image_uri(color: str) -> str:
@@ -142,6 +144,15 @@ def test_parent_names_table_images_and_repeated_materialization(tmp_path: Path) 
             assert images == before
     structured = json.loads(artifacts.structured_content_path.read_text())
     assert structured["pages"][0]["blocks"][2]["image_source"] == "images/page_0_table_2.png"
+    # 同一份解析结果经 CLI/API 保存，图片名称、字节和对应正文必须与 Gradio 一致。
+    cli_zip = tmp_path / "cli.zip"
+    save_parse_result(ParseResult(middle), cli_zip, "zip")
+    for archive_source in (cli_zip, BytesIO(_build_self_contained_zip_output(ParseResult(middle)))):
+        with zipfile.ZipFile(archive_source) as archive:
+            assert {Path(name).name: archive.read(name) for name in archive.namelist() if name.startswith("images/")} == before
+            assert archive.read("markdown.md").decode() == artifacts.markdown_path.read_text(encoding="utf-8")
+            assert json.loads(archive.read("structured_content.json")) == structured
+            assert json.loads(archive.read("middle_json.json")) == json.loads(artifacts.middle_json_path.read_text())
 
 
 def test_identical_images_on_different_pages_keep_their_names(tmp_path: Path) -> None:
@@ -160,15 +171,22 @@ def test_identical_images_on_different_pages_keep_their_names(tmp_path: Path) ->
 
 def test_conflicting_contents_never_overwrite_or_take_inline_ordinals(tmp_path: Path) -> None:
     """同名不同内容分配独立冲突后缀，并避免占用正文内嵌图片的正式序号。"""
-    owner = _middle_json(file_suffix="docx").pages[0].blocks[1]
-    first = _write_materialized_asset(tmp_path, _image_bytes("red"), "png", page_idx=1, owner=owner)
-    second = _write_materialized_asset(tmp_path, _image_bytes("blue"), "png", page_idx=1, owner=owner)
+    middle = _middle_json(file_suffix="docx")
+    middle.pages[0].page_idx = 1
+    body = middle.pages[0].blocks[1].content[0]
+    body.image_base64 = _image_uri("red")
+    context = _build_image_context(middle, None, tmp_path)
+    first = _materialize_middle_json(middle, context).pages[0].blocks[1].content[0].image_path
+    body.image_base64 = _image_uri("blue")
+    body.content = f'<img src="{_image_uri("blue")}">'
+    saved = _materialize_middle_json(middle, context)
+    second = saved.pages[0].blocks[1].content[0].image_path
     assert first == "images/page_1_image_1.png"
     assert second == "images/page_1_image_1_duplicate_1.png"
-    assert _write_materialized_asset(tmp_path, _image_bytes("blue"), "png", page_idx=1, owner=owner) == second
-    inline = _write_materialized_asset(tmp_path, _image_bytes("blue"), "png", page_idx=1, owner=owner, ordinal=1)
-    assert inline == "images/page_1_image_1_1.png"
+    assert _materialize_middle_json(saved, context) == saved
+    assert saved.pages[0].blocks[1].content[0].content == '<img src="images/page_1_image_1_1.png">'
     assert (tmp_path / first).read_bytes() == _image_bytes("red")
+    assert (tmp_path / second).read_bytes() == _image_bytes("blue")
     assert len(list((tmp_path / "images").iterdir())) == 3
 
 

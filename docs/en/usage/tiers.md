@@ -28,7 +28,9 @@ PDF and images support all four tiers. Office, OpenDocument, RTF, EPUB, OFD, HTM
 | Windows, accelerator and `full` | Torch | LMDeploy |
 | CPU environment | ONNX / CPU | llama.cpp |
 
-Automatic selection uses installed dependencies and available devices. An explicit choice with missing dependencies fails instead of silently selecting another backend. ONNX small models run on CPU; VLM device selection is independent.
+Automatic selection uses installed dependencies and available devices. An explicit choice with missing dependencies fails instead of silently selecting another backend. ONNX Layout, OCR, and formula models run on CPU; VLM device selection is independent.
+
+Table classification, SLANet, and UNet use `MINERU_TABLE_DEVICE=auto` by default: the CPU `onnxruntime` package uses CPU; replacing it with a compatible `onnxruntime-gpu` package enables CUDA when its provider is available. CUDA initialization failures are logged and fall back to CPU. Do not install both ORT distributions together. Set `MINERU_TABLE_DEVICE=cpu` to force CPU or `cuda` to explicitly attempt CUDA. This option affects only table models, and logs report the actual providers.
 
 Intel XPU is excluded from automatic LMDeploy selection. Linux prefers an installed XPU-compatible vLLM and otherwise falls back to llama.cpp; Windows uses llama.cpp.
 

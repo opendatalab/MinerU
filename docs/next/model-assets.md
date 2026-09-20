@@ -30,7 +30,11 @@ mineru-kit parse input.pdf --tier basic -o output.md
 ```
 
 `MINERU_MODEL_BASE_DIR` 可指定独立模型根目录。`--small-backend`、`--vlm-engine` 只覆盖当前模型管理命令；解析和服务运行时读取环境变量或配置文件。
-所有 ONNX 会话固定使用 CPU，最低版本为 ONNX Runtime 1.20.1，支持资源包所需的 ONNX IR 10。
+Layout、OCR 和公式的 ONNX 会话固定使用 CPU，最低版本为 ONNX Runtime 1.20.1，支持资源包所需的 ONNX IR 10。
+
+表格分类、SLANet 和 UNet 共用独立的设备策略：`MINERU_TABLE_DEVICE=auto`（默认）根据 ONNX Runtime 的可用 provider 选择设备。安装 CPU 版 `onnxruntime` 时使用 CPU；替换为与 CUDA/cuDNN 环境兼容的 `onnxruntime-gpu` 后优先使用 CUDA，CUDA 会话初始化失败则记录原因并回退 CPU。不要同时安装两个发行包，它们共享同一个 Python 模块。日志中的实际 providers 表示最终加载结果。
+
+设置 `MINERU_TABLE_DEVICE=cpu` 可固定表格在 CPU 执行（ZeroGPU Space 默认采用此配置）；设置 `cuda` 可显式尝试 CUDA，仍保留故障回退。该选项不影响 Layout、OCR 和公式的 ONNX 后端，也不影响 Torch 设备选择。所有表格会话均读取 `MINERU_INTRA_OP_NUM_THREADS` 和 `MINERU_INTER_OP_NUM_THREADS`，限制 CPU 算子及回退路径的线程数。
 llama.cpp 的设备参数独立于 ONNX provider；Torch 和 VLM 仍沿用各自设备策略。
 
 ## 资源结构

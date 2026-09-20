@@ -1,9 +1,12 @@
 # Copyright (c) Opendatalab. All rights reserved.
-"""ONNX Runtime CPU 会话与线程配置。"""
+"""ONNX Runtime CPU 会话与自动选择设备的表格会话。"""
 
 import os
+import time
+from pathlib import Path
 
 import onnxruntime as ort
+from loguru import logger
 
 
 def get_op_num_threads(env_name: str) -> int:
@@ -19,7 +22,7 @@ def get_op_num_threads(env_name: str) -> int:
 
 
 def ort_providers(device: str | None = None) -> list[tuple[str, dict[str, object]]]:
-    """所有 ONNX 模型固定使用 CPU，宿主 Torch 设备不参与 provider 选择。"""
+    """通用 ONNX 模型固定使用 CPU；表格工厂独立选择 CUDA provider。"""
     return [("CPUExecutionProvider", {"arena_extend_strategy": "kSameAsRequested"})]
 
 
@@ -37,4 +40,65 @@ def ort_session(model_path: str, device: str | None = None, intra_op_num_threads
     return ort.InferenceSession(model_path, sess_options=opts, providers=ort_providers(device))
 
 
-__all__ = ["get_op_num_threads", "ort_providers", "ort_session"]
+def table_ort_session(model_path: str, *, sess_options: ort.SessionOptions | None = None) -> ort.InferenceSession:
+    """表格默认按可用 provider 选择设备；支持固定 CPU/CUDA，并明确记录 CUDA 失败回退。"""
+    device = os.getenv("MINERU_TABLE_DEVICE", "auto").strip().lower()
+    if device not in {"auto", "cpu", "cuda"}:
+        raise ValueError("MINERU_TABLE_DEVICE must be 'auto', 'cpu' or 'cuda'")
+    opts = sess_options if sess_options is not None else ort.SessionOptions()
+    opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+    opts.log_severity_level = 3
+    for attr, env_name in (
+        ("intra_op_num_threads", "MINERU_INTRA_OP_NUM_THREADS"),
+        ("inter_op_num_threads", "MINERU_INTER_OP_NUM_THREADS"),
+    ):
+        threads = get_op_num_threads(env_name)
+        if threads > 0:
+            setattr(opts, attr, threads)
+    profile_dir = os.getenv("MINERU_ONNX_PROFILE_DIR")
+    if profile_dir:
+        Path(profile_dir).mkdir(parents=True, exist_ok=True)
+        opts.enable_profiling = True
+        opts.profile_file_prefix = str(Path(profile_dir) / f"{Path(model_path).stem}-{os.getpid()}")
+    providers = ort_providers()
+    use_cuda = False
+    if device != "cpu":
+        use_cuda = "CUDAExecutionProvider" in ort.get_available_providers()
+        if use_cuda:
+            providers = [
+                (
+                    "CUDAExecutionProvider",
+                    {
+                        "device_id": 0,
+                        "cudnn_conv_algo_search": "HEURISTIC",
+                        "do_copy_in_default_stream": True,
+                        "arena_extend_strategy": "kSameAsRequested",
+                    },
+                ),
+                *providers,
+            ]
+        elif device == "cuda":
+            logger.warning("Table CUDA unavailable; falling back to CPU: {}", model_path)
+    started = time.perf_counter()
+    try:
+        session = ort.InferenceSession(model_path, sess_options=opts, providers=providers)
+    except Exception as exc:
+        if not use_cuda:
+            raise
+        logger.warning("Table CUDA initialization failed; falling back to CPU: {}: {}", model_path, exc)
+        session = ort.InferenceSession(model_path, sess_options=opts, providers=ort_providers())
+    actual = session.get_providers()
+    if use_cuda and "CUDAExecutionProvider" not in actual:
+        logger.warning("Table requested CUDA but actual providers are {}: {}", actual, model_path)
+    logger.info(
+        "Table ONNX ready: model={}, requested={}, providers={}, init_s={:.3f}, pid={}",
+        Path(model_path).name,
+        device,
+        actual,
+        time.perf_counter() - started,
+        os.getpid(),
+    )
+    return session
+
+
+__all__ = ["get_op_num_threads", "ort_providers", "ort_session", "table_ort_session"]

@@ -4,6 +4,8 @@ This document records the release history of MinerU, including major capability 
 
 ## Unreleased
 
+- Image naming change: newly materialized CLI/API ZIP images now use Gradio visual-parent names, inline ordinals count all img src attributes, and collisions receive `_duplicate_n`. References update together; image bytes and MiddleJson 2.0 are unchanged. Historical ZIPs retain their stored references. Requires `docvortex>=0.4.19,<1`.
+
 - Breaking change: removed the `--backend` option from `mineru-kit parse` (introduced during the 4.0 alphas). The option only inferred a tier and had no independent effect, so use `--tier` instead: `pipeline` → `--tier basic`; `vlm-engine`, `vlm-auto-engine`, and `vlm-http-client` → `--tier advanced`; `hybrid-engine` and `hybrid-auto-engine` → `--tier standard` (or omit the option); `flash` → `--tier flash`. Parsing with a remote VLM service is configured through the VLM server settings and is unrelated to this option.
 - Breaking change: removed the `PARSER_BACKENDS` constant from the `mineru.parser` exports (present in the 4.0 release). Backends are derived from tiers and are no longer a public choice or a public symbol; configure engines through `model.small_backend` and `model.vlm.engine` instead.
 
