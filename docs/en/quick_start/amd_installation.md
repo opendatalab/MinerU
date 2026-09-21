@@ -1,6 +1,6 @@
 # AMD GPU installation
 
-This guide covers installing and using MinerU **4.x (`>=4.0,<5`)** in an AMD GPU container. The example environment uses AMD **gfx1201 (approximately 32 GB VRAM)**, Ubuntu 24.04, Python 3.12 and ROCm 7.2.3.
+This guide covers installing and using MinerU **4.x (`>=4.0,<5`)** in an AMD GPU container. The example environment uses an AMD **Radeon GPU**, Ubuntu 24.04, Python 3.12 and ROCm 7.2.3.
 
 ## 1. Prepare the image and container
 
@@ -28,7 +28,7 @@ docker run -d --name mineru-amd \
 docker exec -it mineru-amd bash
 ```
 
-Run the remaining installation and server commands inside the container. Use `amd-smi` to inspect GPU usage and select an idle device before starting inference.
+Run the remaining installation and server commands inside the container.
 
 ## 2. Install MinerU
 
@@ -85,7 +85,7 @@ Configure a headless environment and check the devices:
 export XDG_RUNTIME_DIR="$PWD/.xdg-runtime"
 mkdir -p "$XDG_RUNTIME_DIR"
 chmod 700 "$XDG_RUNTIME_DIR"
-unset DISPLAY WAYLAND_DISPLAY
+unset DISPLAY WAYLAND_DISPLAY GGML_VK_VISIBLE_DEVICES
 vulkaninfo --summary
 mineru-kit vlm-server --engine llama-cpp --list-devices
 export MINERU_MODEL_VLM_ENGINE=llama-cpp
@@ -95,22 +95,44 @@ The output must include a physical AMD GPU, not only software devices such as `l
 
 ## 4. Download models
 
-In the same terminal where you selected the engine, download the ONNX small models and the VLM weights required by that engine:
+In the same terminal where you selected the engine, download the ONNX small models and the VLM weights required by that engine. Choose either of the following model sources:
 
 ```bash
 unset HF_HUB_OFFLINE
 mineru-kit models download --tier standard --small-backend onnx \
   --vlm-engine "$MINERU_MODEL_VLM_ENGINE" --source huggingface
+```
+
+If Hugging Face is unreachable, use ModelScope instead:
+
+```bash
+unset HF_HUB_OFFLINE
+mineru-kit models download --tier standard --small-backend onnx \
+  --vlm-engine "$MINERU_MODEL_VLM_ENGINE" --source modelscope
+```
+
+After downloading successfully from the selected source, verify the local models and enable offline mode only if verification succeeds:
+
+```bash
 mineru-kit models verify --tier standard --small-backend onnx \
-  --vlm-engine "$MINERU_MODEL_VLM_ENGINE"
-export MINERU_MODEL_SOURCE=local HF_HUB_OFFLINE=1
+  --vlm-engine "$MINERU_MODEL_VLM_ENGINE" && \
+  export MINERU_MODEL_SOURCE=local HF_HUB_OFFLINE=1
 ```
 
 vLLM uses the original model weights; llama.cpp uses GGUF and a vision projector. The download command fetches the model repositories' current default revisions. See [Model Source](../usage/model_source.md) for source selection and offline deployment.
 
 ## 5. Start the VLM server
 
-Keep the current terminal and virtual environment, and start only the selected engine. Both examples listen on `127.0.0.1:30000`, so do not run them simultaneously. Device index `0` is an example; select an idle GPU on your machine. HIP, Vulkan and AMD-SMI indices do not necessarily match.
+Keep the current terminal and virtual environment, and start only the selected engine. Both examples listen on `127.0.0.1:30000`, so do not run them simultaneously.
+
+> **Additional information: GPU selection and device numbering**
+>
+> The commands below use device index `0` as an example. On multi-GPU systems, use `amd-smi` to inspect usage and select an idle GPU as needed. HIP, Vulkan and AMD-SMI indices do not necessarily match.
+>
+> - **vLLM**: Select the target GPU through `HIP_VISIBLE_DEVICES`. ROCm PyTorch uses `cuda` as its device/API name; this is expected.
+> - **llama.cpp**: Set `GGML_VK_VISIBLE_DEVICES` to the target physical device index from Vulkan enumeration. When selecting a single GPU, llama.cpp renumbers it to `Vulkan0` within its own process. For example, `GGML_VK_VISIBLE_DEVICES=7` still requires `--device Vulkan0`, not `Vulkan7`. This does not change HIP or AMD-SMI indices.
+>
+> After changing Vulkan device selection, run `mineru-kit vlm-server --engine llama-cpp --list-devices` under the same environment before starting the server to confirm the target AMD GPU. `MINERU_DEVICE_MODE=cpu` does not disable the explicitly requested Vulkan acceleration.
 
 ### Start with vLLM
 
@@ -129,7 +151,7 @@ mineru-kit vlm-server --engine vllm \
   --enforce-eager
 ```
 
-Wait for `Application startup complete` in the logs. ROCm PyTorch uses `cuda` as its device/API name; this is expected.
+Wait for `Application startup complete` in the logs.
 
 ### Start with llama.cpp
 
@@ -143,8 +165,6 @@ mineru-kit vlm-server --engine llama-cpp \
   --n-gpu-layers 99 --mmproj-offload --device Vulkan0 --split-mode none \
   --parallel 1 --ctx-size 8192 --threads 8 --threads-batch 8
 ```
-
-Adjust `GGML_VK_VISIBLE_DEVICES` and `--device` using the device list. Logs should show model layers offloaded to the GPU and `CLIP using Vulkan0 backend`. Here, `MINERU_DEVICE_MODE=cpu` does not disable the explicitly requested Vulkan acceleration.
 
 ## 6. Use MinerU
 
@@ -196,9 +216,3 @@ Open [http://127.0.0.1:7860](http://127.0.0.1:7860) in a browser on the host, up
 The WebUI manages a document parsing API and reuses the existing vLLM or llama.cpp service through `MINERU_MODEL_VLM_SERVER_URL`. Do not set `--api-url` here: that option connects to a separate MinerU document parsing API, not the VLM endpoint on port `30000`.
 
 To stop, press Ctrl+C in the WebUI and VLM server terminals separately. See [Quick Usage](../usage/quick_usage.md) and [Python SDK](../usage/sdk_api.md) for additional API and parsing options.
-
-## Notes
-
-- Validation used MinerU **4.0.4**; `>=4.0,<5` is the installation version range, not a claim that every 4.x release or AMD GPU has been tested. Testing used an existing container rather than a pristine-image replay.
-- Keep `MINERU_MODEL_SMALL_BACKEND=onnx`; the tested stack has a recognition issue with Torch's default FP16 OCR, so switching directly is not recommended.
-- If RADV reports `not a conformant Vulkan implementation, testing use only`, successful inference does not establish driver conformance or production suitability.

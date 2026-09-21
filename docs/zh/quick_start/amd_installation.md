@@ -1,6 +1,6 @@
 # AMD GPU 安装
 
-本页介绍在 AMD GPU 容器中安装和使用 MinerU **4.x（`>=4.0,<5`）**。示例环境为 AMD **gfx1201（约 32 GB 显存）**、Ubuntu 24.04、Python 3.12 和 ROCm 7.2.3。
+本页介绍在 AMD GPU 容器中安装和使用 MinerU **4.x（`>=4.0,<5`）**。示例环境为 AMD **Radeon GPU**、Ubuntu 24.04、Python 3.12 和 ROCm 7.2.3。
 
 ## 1. 准备镜像和容器
 
@@ -28,7 +28,7 @@ docker run -d --name mineru-amd \
 docker exec -it mineru-amd bash
 ```
 
-后续安装和启动命令均在容器中执行。可先运行 `amd-smi` 查看 GPU 状态，并选择空闲设备。
+后续安装和启动命令均在容器中执行。
 
 ## 2. 安装 MinerU
 
@@ -85,7 +85,7 @@ apt-get install -y --no-install-recommends libvulkan1 mesa-vulkan-drivers vulkan
 export XDG_RUNTIME_DIR="$PWD/.xdg-runtime"
 mkdir -p "$XDG_RUNTIME_DIR"
 chmod 700 "$XDG_RUNTIME_DIR"
-unset DISPLAY WAYLAND_DISPLAY
+unset DISPLAY WAYLAND_DISPLAY GGML_VK_VISIBLE_DEVICES
 vulkaninfo --summary
 mineru-kit vlm-server --engine llama-cpp --list-devices
 export MINERU_MODEL_VLM_ENGINE=llama-cpp
@@ -95,22 +95,44 @@ export MINERU_MODEL_VLM_ENGINE=llama-cpp
 
 ## 4. 下载模型
 
-在刚才选择引擎的同一终端中，下载 ONNX 小模型和该引擎所需的 VLM 权重：
+在刚才选择引擎的同一终端中，下载 ONNX 小模型和该引擎所需的 VLM 权重。以下两个模型源任选其一：
 
 ```bash
 unset HF_HUB_OFFLINE
 mineru-kit models download --tier standard --small-backend onnx \
   --vlm-engine "$MINERU_MODEL_VLM_ENGINE" --source huggingface
+```
+
+若无法访问 Hugging Face，改用 ModelScope：
+
+```bash
+unset HF_HUB_OFFLINE
+mineru-kit models download --tier standard --small-backend onnx \
+  --vlm-engine "$MINERU_MODEL_VLM_ENGINE" --source modelscope
+```
+
+所选来源下载成功后，检查本地模型；验证通过后启用离线模式：
+
+```bash
 mineru-kit models verify --tier standard --small-backend onnx \
-  --vlm-engine "$MINERU_MODEL_VLM_ENGINE"
-export MINERU_MODEL_SOURCE=local HF_HUB_OFFLINE=1
+  --vlm-engine "$MINERU_MODEL_VLM_ENGINE" && \
+  export MINERU_MODEL_SOURCE=local HF_HUB_OFFLINE=1
 ```
 
 vLLM 使用原始模型权重，llama.cpp 使用 GGUF 和视觉投影器。下载命令获取模型仓库的当前默认版本；模型源及离线部署配置见[模型源配置](../usage/model_source.md)。
 
 ## 5. 启动 VLM 服务
 
-保持当前终端和虚拟环境，只启动已选择的引擎。两个示例均使用 `127.0.0.1:30000`，不要同时启动。设备编号 `0` 仅作示例，请按实际空闲 GPU 调整；HIP、Vulkan 和 AMD-SMI 的编号不一定相同。
+保持当前终端和虚拟环境，只启动已选择的引擎。两个示例均使用 `127.0.0.1:30000`，不要同时启动。
+
+> **额外补充：GPU 选卡与设备编号**
+>
+> 以下命令以设备编号 `0` 为例；多卡环境可先用 `amd-smi` 查看占用情况，按需选择空闲 GPU。HIP、Vulkan 和 AMD-SMI 的编号不一定相同。
+>
+> - **vLLM**：通过 `HIP_VISIBLE_DEVICES` 选择目标 GPU。ROCm PyTorch 使用 `cuda` 作为设备/API 名称，这是正常行为。
+> - **llama.cpp**：将 `GGML_VK_VISIBLE_DEVICES` 设为 Vulkan 枚举中的目标物理设备索引。只筛选一张卡时，该卡在 llama.cpp 进程内重新编号为 `Vulkan0`；例如设置 `GGML_VK_VISIBLE_DEVICES=7` 后，仍使用 `--device Vulkan0`，而不是 `Vulkan7`。这不会改变 HIP 或 AMD-SMI 的编号。
+>
+> 修改 Vulkan 选卡设置后，可在启动前、相同环境下运行 `mineru-kit vlm-server --engine llama-cpp --list-devices` 确认目标 AMD GPU。`MINERU_DEVICE_MODE=cpu` 不会关闭显式指定的 Vulkan 加速。
 
 ### 使用 vLLM 启动
 
@@ -129,7 +151,7 @@ mineru-kit vlm-server --engine vllm \
   --enforce-eager
 ```
 
-等待日志出现 `Application startup complete`。ROCm PyTorch 使用 `cuda` 作为设备/API 名称，这是正常行为。
+等待日志出现 `Application startup complete`。
 
 ### 使用 llama.cpp 启动
 
@@ -143,8 +165,6 @@ mineru-kit vlm-server --engine llama-cpp \
   --n-gpu-layers 99 --mmproj-offload --device Vulkan0 --split-mode none \
   --parallel 1 --ctx-size 8192 --threads 8 --threads-batch 8
 ```
-
-根据设备列表调整 `GGML_VK_VISIBLE_DEVICES` 和 `--device`。日志应显示模型层卸载到 GPU，以及 `CLIP using Vulkan0 backend`；这里的 `MINERU_DEVICE_MODE=cpu` 不会关闭显式指定的 Vulkan 加速。
 
 ## 6. 使用 MinerU
 
@@ -196,9 +216,3 @@ mineru-kit webui --server-name 127.0.0.1 --server-port 7860 \
 WebUI 会自动托管文档解析 API，并通过 `MINERU_MODEL_VLM_SERVER_URL` 复用前面启动的 vLLM 或 llama.cpp 服务。这里不需要 `--api-url`；该参数用于连接独立的 MinerU 文档解析 API，不能填写 VLM 的 `30000` 端口。
 
 停止使用时，在 WebUI 和 VLM 服务各自的终端按 Ctrl+C。更多 API 和解析选项见[基础使用](../usage/quick_usage.md)和[Python SDK](../usage/sdk_api.md)。
-
-## 使用说明
-
-- 实际验证版本为 MinerU **4.0.4**；`>=4.0,<5` 是安装版本范围，不代表所有 4.x 版本或 AMD GPU 均已验证。测试基于已有容器，未进行全新镜像重放。
-- 保持 `MINERU_MODEL_SMALL_BACKEND=onnx`；当前测试环境的 Torch 默认 FP16 OCR 存在识别异常，不建议直接切换。
-- 如果 RADV 提示 `not a conformant Vulkan implementation, testing use only`，推理可运行并不代表驱动通过规范认证或适合生产部署。
