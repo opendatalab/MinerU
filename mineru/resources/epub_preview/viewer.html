@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta http-equiv="Content-Security-Policy"
+          content="default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline' blob: data:; img-src blob: data:; font-src blob: data:; connect-src 'self'; frame-src 'self' blob:; object-src 'none'; form-action 'none'">
+    <title>EPUB preview</title>
+    <style>
+        :root { color-scheme: light dark; }
+        html, body { height: 100%; margin: 0; overflow: hidden; }
+        body { display: flex; flex-direction: column; font: 13px system-ui, sans-serif; background: #fff; color: #1f2937; }
+        #toolbar { display: flex; align-items: center; gap: 6px; min-height: 42px; padding: 4px 8px; box-sizing: border-box; border-bottom: 1px solid rgba(127,127,127,.25); }
+        #toolbar button, #page, #toc { border: 1px solid rgba(127,127,127,.35); border-radius: 5px; background: transparent; color: inherit; padding: 5px 8px; font: inherit; }
+        #toolbar button { min-width: 30px; cursor: pointer; }
+        #toolbar button:disabled, #page:disabled { opacity: .45; cursor: default; }
+        #toolbar button:hover:enabled { background: rgba(127,127,127,.12); }
+        #page { width: 52px; text-align: center; padding: 5px 2px; appearance: textfield; }
+        #page::-webkit-inner-spin-button, #page::-webkit-outer-spin-button { appearance: none; }
+        #pages { min-width: 18px; text-align: center; }
+        #toolbar > .separator { width: 1px; height: 20px; background: rgba(127,127,127,.35); margin: 0 2px; }
+        #toc { min-width: 0; max-width: min(48vw, 360px); }
+        #status { flex: 1; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; opacity: .72; }
+        #viewer { flex: 1; min-height: 0; overflow: hidden; background: #fff; }
+        #viewer .epub-container {
+            min-height: 100%;
+            background: #fff;
+            margin: 0 !important;
+        }
+        #viewer .epub-view, #viewer iframe {
+            background: #fff;
+            margin: 0 !important;
+        }
+        #viewer iframe { border: 0; }
+        [hidden] { display: none !important; }
+        @media (prefers-color-scheme: dark) { body { background: #1f2937; color: #f3f4f6; } }
+    </style>
+</head>
+<body>
+    <div id="toolbar">
+        <button id="previous" type="button" aria-label="Previous page" disabled>‹</button>
+        <label><span id="page-label" hidden></span><input id="page" type="number" min="1" value="1" disabled></label>
+        <span aria-hidden="true">/</span>
+        <output id="pages">—</output>
+        <button id="next" type="button" aria-label="Next page" disabled>›</button>
+        <span class="separator" aria-hidden="true"></span>
+        <select id="toc" aria-label="Table of contents" hidden></select>
+        <span id="status" role="status"></span>
+    </div>
+    <main id="viewer" aria-label="EPUB content"></main>
+    <script src="jszip.min.js"></script>
+    <script src="epub.min.js"></script>
+    <script src="viewer.js?mode=spine-navigation"></script>
+</body>
+</html>

@@ -208,6 +208,15 @@ def test_html_preview_receipts(tmp_path: Path, name: str) -> None:
     assert json.loads(asyncio.run(prepare_source_preview(str(other), json.dumps({"id": 1, "path": str(other)}))))["html"] == ""
 
 
+def test_epub_preview_receipt_delegates_to_browser_without_reading_payload(tmp_path: Path) -> None:
+    """EPUB 源预览只返回浏览器 viewer 标识，不在 Gradio 后端重复解析 EPUB。"""
+    source = tmp_path / "source.epub"
+    source.write_bytes(b"not an epub package")
+    ticket = json.dumps({"id": "request-epub", "path": str(source)})
+    receipt = json.loads(asyncio.run(prepare_source_preview(str(source), ticket)))
+    assert receipt == {"id": "request-epub", "html": "", "kind": "epub"}
+
+
 @pytest.mark.parametrize("name", ["source.ofd", "source.html"])
 @pytest.mark.parametrize("fail", [False, True])
 def test_parse_preserves_source_preview(tmp_path: Path, name: str, fail: bool) -> None:
