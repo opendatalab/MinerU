@@ -41,7 +41,7 @@
         const book = fileUrl(window[fileKey], viewerUrl);
         const params = new URLSearchParams({
             book,
-            messages: JSON.stringify(Object.fromEntries(["epub_preview_failed", "epub_loading", "epub_previous", "epub_next", "epub_page", "epub_spine", "epub_contents"]
+            messages: JSON.stringify(Object.fromEntries(["epub_preview_failed", "epub_loading", "epub_previous", "epub_next", "epub_spine", "epub_contents"]
                 .map((name) => [name, text(name, "")]))),
         });
         const url = new URL(viewerUrl);

@@ -76,10 +76,9 @@ MESSAGES: dict[str, tuple[str, str]] = {
         "HTML 预览生成失败，仍可尝试解析该文件。",
     ),
     "epub_loading": ("Loading EPUB…", "正在加载 EPUB…"),
-    "epub_previous": ("Previous page", "上一页"),
-    "epub_next": ("Next page", "下一页"),
-    "epub_page": ("Page", "页码"),
-    "epub_spine": ("Spine", "章节"),
+    "epub_previous": ("Previous section", "上一节"),
+    "epub_next": ("Next section", "下一节"),
+    "epub_spine": ("Section", "章节"),
     "epub_contents": ("Contents", "目录"),
     "epub_preview_failed": (
         "Could not preview this EPUB file. You can still try converting it.",

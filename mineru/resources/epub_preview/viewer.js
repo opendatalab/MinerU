@@ -5,8 +5,8 @@
     const status = document.getElementById("status");
     const viewer = document.getElementById("viewer");
     const toc = document.getElementById("toc");
-    const pageInput = document.getElementById("page");
-    const pagesOutput = document.getElementById("pages");
+    const sectionInput = document.getElementById("section");
+    const sectionsOutput = document.getElementById("sections");
     const previous = document.getElementById("previous");
     const next = document.getElementById("next");
     let book;
@@ -18,23 +18,32 @@
     let resizeObserver;
     let observedScrollContainer;
     let activeSpineIndex = null;
-    let navigationSpineIndex = null;
+    let pendingSpineIndex = null;
+    let navigationSequence = 0;
+    let navigationQueue = Promise.resolve();
     const SPINE_SWITCH_RATIO = 0.5;
+    const MAX_EPUB_BYTES = 128 * 1024 * 1024;
+    const SANITIZED_MARKER = "data-mineru-sanitized";
+    const SANITIZED_TOKEN = Array.from(crypto.getRandomValues(new Uint32Array(4)), (value) => value.toString(16)).join("-");
+    const FONT_OBFUSCATION_ALGORITHMS = new Set([
+        "http://www.idpf.org/2008/embedding",
+        "http://ns.adobe.com/pdf/enc#RC",
+    ]);
 
     const fail = (error) => {
         failed = true;
         status.textContent = messages.epub_preview_failed || "Could not load EPUB preview.";
         status.setAttribute("role", "alert");
-        pageInput.disabled = previous.disabled = next.disabled = toc.disabled = true;
+        sectionInput.disabled = previous.disabled = next.disabled = toc.disabled = true;
         console.warn("EPUB preview failed", error);
     };
 
-    previous.title = previous.ariaLabel = messages.epub_previous || "Previous page";
-    next.title = next.ariaLabel = messages.epub_next || "Next page";
-    pageInput.setAttribute("aria-label", messages.epub_spine || messages.epub_page || "Spine");
+    previous.title = previous.ariaLabel = messages.epub_previous || "Previous section";
+    next.title = next.ariaLabel = messages.epub_next || "Next section";
+    sectionInput.setAttribute("aria-label", messages.epub_spine || "Section");
     toc.ariaLabel = messages.epub_contents || "Contents";
     status.textContent = messages.epub_loading || "Loading EPUB…";
-    pageInput.disabled = previous.disabled = next.disabled = true;
+    sectionInput.disabled = previous.disabled = next.disabled = true;
 
     const isExternalLink = (href) => /^(?:[a-z][a-z\d+.-]*:|\/\/)/i.test(href);
 
@@ -47,7 +56,7 @@
         return `${resolved.pathname.replace(/^\/+/, "")}${resolved.search}${resolved.hash}`;
     };
 
-    // 根据当前视口内各个 spine 的可见比例更新顶部编号，避免长章节滚动时误切页。
+    // 根据当前视口内各个 spine 的可见比例更新顶部编号，避免长章节滚动时误切章节。
     const updateActiveSpine = () => {
         if (!book || !rendition || !viewer) return;
         const bounds = viewer.getBoundingClientRect();
@@ -80,26 +89,62 @@
         manager.settings.offset = Math.max(400, Math.round(viewer.clientHeight || 400));
     };
 
-    // 等待连续管理器完成相邻 spine 的挂载后，把目标 spine 直接对齐到阅读窗口顶部。
-    const focusDisplayedSection = async (section, target = "") => {
-        if (!section || !scrollContainer) return;
+    // 等待连续管理器完成目标 spine 挂载；最终只滚动一次，锚点暂不可定位时回退到章节顶部。
+    const focusDisplayedSection = async (section, target = "", navigationId = null) => {
+        if (!section || !scrollContainer) return false;
+        let fallbackTop = null;
+        let resolvedTop = null;
         for (let attempt = 0; attempt < 12; attempt += 1) {
             await new Promise((resolve) => requestAnimationFrame(resolve));
+            if (navigationId !== null && navigationId !== navigationSequence) return false;
             let targetView;
             const views = rendition?.views?.();
             views?.forEach?.((view) => {
                 if (view?.section?.index === section.index || view?.index === section.index) targetView = view;
             });
             if (!targetView?.element) continue;
-            let top = targetView.element.offsetTop;
+            fallbackTop = targetView.element.offsetTop;
+            let top = fallbackTop;
             if (target.includes("#") && typeof targetView.locationOf === "function") {
                 const location = targetView.locationOf(target);
-                if (Number.isFinite(location?.top)) top += Math.max(0, location.top);
+                if (!Number.isFinite(location?.top)) continue;
+                top += Math.max(0, location.top);
             }
-            scrollContainer.scrollTo({top: Math.max(0, top), behavior: "auto"});
+            resolvedTop = top;
+            break;
         }
+        const top = resolvedTop ?? fallbackTop;
+        if (!Number.isFinite(top)) return false;
+        scrollContainer.scrollTo({top: Math.max(0, top), behavior: "auto"});
+        return true;
     };
 
+    // 串行执行章节导航，并用递增序号淘汰旧请求，避免快速点击时旧 display 结果覆盖最后一次操作。
+    const enqueueNavigation = (section, target) => {
+        if (!section || failed || disposed || !rendition) return Promise.resolve();
+        const navigationId = ++navigationSequence;
+        pendingSpineIndex = Number.isInteger(section.index) ? section.index : null;
+        scheduleSectionUpdate();
+        navigationQueue = navigationQueue.catch(() => undefined).then(async () => {
+            if (navigationId !== navigationSequence || failed || disposed) return;
+            try {
+                await rendition.display(target);
+                if (navigationId !== navigationSequence || failed || disposed) return;
+                await focusDisplayedSection(section, target, navigationId);
+                if (navigationId !== navigationSequence || failed || disposed) return;
+                activeSpineIndex = Number.isInteger(section.index) ? section.index : activeSpineIndex;
+                pendingSpineIndex = null;
+                scheduleSectionUpdate();
+            } catch (error) {
+                if (navigationId !== navigationSequence || disposed) return;
+                pendingSpineIndex = null;
+                fail(error);
+            }
+        });
+        return navigationQueue;
+    };
+
+    // 将目录、脚注等包内链接统一映射为 spine，再交给串行导航入口处理。
     const displayTarget = async (href, sourceHref = "") => {
         const rawTarget = resolveInternalTarget(href, sourceHref);
         if (!rawTarget || failed || disposed || !rendition) return;
@@ -108,66 +153,48 @@
         // 无法映射到 OPF spine 的内部链接只在当前视图中降级，不能让整个阅读器进入失败状态。
         if (!section) {
             console.warn("EPUB internal target not found", {href, sourceHref, target: rawTarget});
-            navigationSpineIndex = null;
             return;
         }
         const target = `${section.href}${targetHash ? `#${targetHash}` : ""}`;
-        navigationSpineIndex = Number.isInteger(section?.index) ? section.index : null;
-        try {
-            await rendition.display(target);
-            await focusDisplayedSection(section, target);
-            if (navigationSpineIndex !== null) activeSpineIndex = navigationSpineIndex;
-            navigationSpineIndex = null;
-            schedulePageUpdate();
-        } catch (error) {
-            navigationSpineIndex = null;
-            fail(error);
-        }
+        await enqueueNavigation(section, target);
     };
 
-    // 直接显示相邻 spine 的起点，上一页/下一页不再模拟窗口分页。
+    // 直接显示相邻 spine 的起点，上一节/下一节不再模拟窗口分页。
     const goToSpine = async (value) => {
         if (disposed || failed || !book || !rendition) return;
         const index = Number(value) - 1;
         const count = Number(book.spine?.length || 0);
         if (!Number.isInteger(index) || index < 0 || index >= count) {
-            schedulePageUpdate();
+            scheduleSectionUpdate();
             return;
         }
         const section = book.spine.get(index);
         if (!section) return;
-        navigationSpineIndex = index;
-        try {
-            await rendition.display(section.href);
-            await focusDisplayedSection(section, section.href);
-            activeSpineIndex = index;
-            navigationSpineIndex = null;
-            schedulePageUpdate();
-        } catch (error) {
-            navigationSpineIndex = null;
-            fail(error);
-        }
+        await enqueueNavigation(section, section.href);
     };
-    const updatePageControls = () => {
+
+    // 根据当前可见或待导航 spine 刷新章节编号和按钮状态。
+    const updateSectionControls = () => {
         updateFrame = undefined;
         if (disposed || failed) return;
-        updateActiveSpine();
+        if (pendingSpineIndex === null) updateActiveSpine();
         const spineCount = Math.max(1, Number(book?.spine?.length || 1));
-        const currentSpine = Math.min(spineCount, Math.max(1, (activeSpineIndex ?? 0) + 1));
-        pageInput.disabled = previous.disabled = next.disabled = false;
-        pageInput.max = String(spineCount);
-        pageInput.value = String(currentSpine);
-        pagesOutput.textContent = String(spineCount);
+        const currentIndex = pendingSpineIndex ?? activeSpineIndex ?? 0;
+        const currentSpine = Math.min(spineCount, Math.max(1, currentIndex + 1));
+        sectionInput.disabled = previous.disabled = next.disabled = false;
+        sectionInput.max = String(spineCount);
+        sectionInput.value = String(currentSpine);
+        sectionsOutput.textContent = String(spineCount);
         previous.disabled = currentSpine <= 1;
         next.disabled = currentSpine >= spineCount;
-        status.textContent = `${currentSpine} / ${spineCount}`;
+        status.textContent = `${messages.epub_spine || "Section"} ${currentSpine} / ${spineCount}`;
     };
 
-    const schedulePageUpdate = () => {
-        if (updateFrame === undefined) updateFrame = requestAnimationFrame(updatePageControls);
+    const scheduleSectionUpdate = () => {
+        if (updateFrame === undefined) updateFrame = requestAnimationFrame(updateSectionControls);
     };
 
-    // 在未挂载的章节 DOM 中注入 CSP，并绑定统一的 EPUB 内部链接导航。
+    // 在章节序列化进 iframe 前移除主动内容和远程资源，并注入严格 CSP。
     const sanitizeDocument = (contents) => {
         const candidates = [contents?.document, contents?.ownerDocument, contents];
         const doc = candidates.find((candidate) => candidate && typeof candidate.querySelectorAll === "function");
@@ -188,19 +215,115 @@
                     const stylesheetResource = localName === "link" && name === "href"
                         && /(?:^|\s)stylesheet(?:\s|$)/i.test(node.getAttribute("rel") || "");
                     const embeddedResource = /^(?:blob:|data:)/i.test(value) && (imageResource || stylesheetResource);
-                    if (!embeddedResource) {
-                        node.removeAttribute(attribute.name);
-                    }
+                    if (!embeddedResource) node.removeAttribute(attribute.name);
                 }
             });
         });
         const head = doc.querySelector("head");
         if (!head) throw new Error("Invalid EPUB chapter: missing head");
-        const policy = doc.createElementNS("http://www.w3.org/1999/xhtml", "meta");
+        const namespace = doc.documentElement?.namespaceURI || "http://www.w3.org/1999/xhtml";
+        const policy = doc.createElementNS(namespace, "meta");
         policy.setAttribute("http-equiv", "Content-Security-Policy");
         policy.setAttribute("content", "default-src 'none'; script-src 'none'; style-src 'unsafe-inline' blob: data:; " +
             "img-src blob: data:; font-src blob: data:; frame-src 'none'; object-src 'none'; form-action 'none'");
         head.prepend(policy);
+        doc.documentElement?.setAttribute(SANITIZED_MARKER, SANITIZED_TOKEN);
+        return doc;
+    };
+
+    // 用 namespace-safe 的实现恢复 EPUB.js 默认 base/canonical/identifier 元数据，避免 XMLDocument.createElement 的兼容问题。
+    const restoreSpineMetadata = (doc, section) => {
+        const head = doc.querySelector("head");
+        if (!head) throw new Error("Invalid EPUB chapter: missing head");
+        const namespace = doc.documentElement?.namespaceURI || "http://www.w3.org/1999/xhtml";
+        const createElement = (name) => doc.createElementNS(namespace, name);
+
+        let base = head.querySelector("base");
+        if (!base) {
+            base = createElement("base");
+            head.appendChild(base);
+        }
+        let sectionUrl = String(section?.url || "");
+        if (sectionUrl && !sectionUrl.includes("://")) sectionUrl = new URL(sectionUrl, location.origin).href;
+        if (sectionUrl) base.setAttribute("href", sectionUrl);
+
+        let canonical = head.querySelector('link[rel="canonical"]');
+        if (!canonical) {
+            canonical = createElement("link");
+            canonical.setAttribute("rel", "canonical");
+            head.appendChild(canonical);
+        }
+        if (section?.canonical) canonical.setAttribute("href", String(section.canonical));
+
+        let identifier = head.querySelector('meta[name="dc.identifier"], meta[property="dc.identifier"], link[property="dc.identifier"]');
+        if (!identifier) {
+            identifier = createElement("meta");
+            identifier.setAttribute("name", "dc.identifier");
+            head.appendChild(identifier);
+        }
+        if (section?.idref) identifier.setAttribute("content", String(section.idref));
+    };
+
+    // 替换 EPUB.js 依赖 XMLDocument.createElement 的默认 spine hooks，同时保留其元数据语义并确保安全清理发生在 iframe 创建前。
+    const installSafeSpineContentHook = (currentBook) => {
+        currentBook.spine.hooks.content.clear();
+        currentBook.spine.hooks.content.register((document, section) => {
+            const doc = sanitizeDocument(document);
+            restoreSpineMetadata(doc, section);
+        });
+    };
+
+    // 读取响应时实时限制字节数，避免超大 EPUB 在完整 arrayBuffer 分配后才被拒绝。
+    const readResponseWithLimit = async (response, maxBytes) => {
+        const lengthHeader = response.headers.get("content-length");
+        const declaredSize = lengthHeader ? Number(lengthHeader) : Number.NaN;
+        if (Number.isFinite(declaredSize) && declaredSize > maxBytes) {
+            await response.body?.cancel?.();
+            throw new Error("EPUB exceeds preview size limit");
+        }
+        const reader = response.body?.getReader?.();
+        if (!reader) {
+            const payload = await response.arrayBuffer();
+            if (payload.byteLength > maxBytes) throw new Error("EPUB exceeds preview size limit");
+            return payload;
+        }
+        const chunks = [];
+        let total = 0;
+        while (true) {
+            const {done, value} = await reader.read();
+            if (done) break;
+            total += value.byteLength;
+            if (total > maxBytes) {
+                await reader.cancel();
+                throw new Error("EPUB exceeds preview size limit");
+            }
+            chunks.push(value);
+        }
+        const bytes = new Uint8Array(total);
+        let offset = 0;
+        for (const chunk of chunks) {
+            bytes.set(chunk, offset);
+            offset += chunk.byteLength;
+        }
+        return bytes.buffer;
+    };
+
+    // encryption.xml 也用于 EPUB 标准字体混淆；仅拒绝其中出现的未知/真实加密算法。
+    const ensureSupportedEncryption = async (currentBook) => {
+        const encryption = await currentBook.archive?.getText?.("/META-INF/encryption.xml");
+        if (!encryption) return;
+        const document = new DOMParser().parseFromString(encryption, "application/xml");
+        const elements = Array.from(document.getElementsByTagName("*"));
+        if (elements.some((element) => element.localName === "parsererror")) {
+            throw new Error("Invalid EPUB encryption metadata");
+        }
+        const encryptedItems = elements.filter((element) => element.localName === "EncryptedData");
+        const unsupported = encryptedItems.map((item) => {
+            const method = Array.from(item.getElementsByTagName("*"))
+                .find((element) => element.localName === "EncryptionMethod");
+            return method?.getAttribute("Algorithm")?.trim() || "";
+        }).filter((algorithm) => !FONT_OBFUSCATION_ALGORITHMS.has(algorithm));
+        if (unsupported.length) throw new Error("Encrypted EPUB preview is unsupported");
     };
 
     try {
@@ -210,11 +333,10 @@
         }
         const response = await fetch(url, {credentials: "same-origin", signal: AbortSignal.timeout(30000)});
         if (!response.ok) throw new Error(`EPUB fetch failed: ${response.status}`);
-        const payload = await response.arrayBuffer();
-        if (payload.byteLength > 128 * 1024 * 1024) throw new Error("EPUB exceeds preview size limit");
-        const archive = await JSZip.loadAsync(payload);
-        if (archive.file("META-INF/encryption.xml")) throw new Error("Encrypted EPUB preview is unsupported");
+        const payload = await readResponseWithLimit(response, MAX_EPUB_BYTES);
         book = ePub();
+        await book.open(payload, "binary");
+        await ensureSupportedEncryption(book);
         rendition = book.renderTo(viewer, {
             manager: "continuous",
             flow: "scrolled-continuous",
@@ -226,13 +348,12 @@
             // 初始只加载当前 spine 附近内容，具体范围会在 viewport 建立后动态更新。
             offset: 800,
         });
-        // 只保留 iframe 内的安全清理；EPUB.js 的原始 spine hook 依赖 XMLDocument.createElement，
-        // 在浏览器沙箱的 XMLDocument 实现中会阻断后续章节加载。
-        book.spine.hooks.content.clear();
-        // Safari 会阻止父页面向只有 allow-same-origin 的 srcdoc iframe 派发点击事件；
-        // 这里仅为事件兼容补上 allow-scripts，章节脚本仍由清理逻辑和 CSP 的 script-src 'none' 禁止。
+        installSafeSpineContentHook(book);
+        // Safari 的章节点击兼容仅对已经在序列化前清理且带严格 CSP 的 srcdoc 开放脚本 sandbox 能力。
         const enableChapterIframeEvents = () => {
             viewer.querySelectorAll(".epub-view > iframe").forEach((frame) => {
+                const srcdoc = frame.getAttribute("srcdoc") || "";
+                if (!srcdoc.includes(`${SANITIZED_MARKER}="${SANITIZED_TOKEN}"`) || !srcdoc.includes("script-src 'none'")) return;
                 const sandbox = frame.getAttribute("sandbox") || "";
                 if (!/\ballow-scripts\b/.test(sandbox)) {
                     frame.setAttribute("sandbox", `${sandbox} allow-scripts`.trim());
@@ -247,16 +368,18 @@
         const bindScrollContainer = () => {
             const nextScrollContainer = viewer.querySelector(".epub-container") || viewer;
             if (nextScrollContainer === observedScrollContainer) return;
-            observedScrollContainer?.removeEventListener("scroll", schedulePageUpdate);
+            observedScrollContainer?.removeEventListener("scroll", scheduleSectionUpdate);
             observedScrollContainer = nextScrollContainer;
             scrollContainer = nextScrollContainer;
-            scrollContainer.addEventListener("scroll", schedulePageUpdate, {passive: true});
+            scrollContainer.addEventListener("scroll", scheduleSectionUpdate, {passive: true});
             resizeObserver?.observe(scrollContainer);
             updateLoadWindow();
-            schedulePageUpdate();
+            scheduleSectionUpdate();
         };
         rendition.hooks.content.register((contents) => {
-            sanitizeDocument(contents.document);
+            if (contents.document?.documentElement?.getAttribute(SANITIZED_MARKER) !== SANITIZED_TOKEN) {
+                throw new Error("EPUB chapter reached iframe without sanitization");
+            }
             // EPUB.js Contents 使用 sectionIndex 标识所属 spine；不能使用不存在的 contents.index。
             const section = Number.isInteger(contents?.sectionIndex) ? book.spine.get(contents.sectionIndex) : null;
             const sectionHref = section?.href || contents.section?.href || contents.href || "";
@@ -276,7 +399,7 @@
             }
             bindScrollContainer();
             updateLoadWindow();
-            schedulePageUpdate();
+            scheduleSectionUpdate();
         });
         window.addEventListener("pagehide", () => {
             disposed = true;
@@ -287,16 +410,16 @@
         resizeObserver = new ResizeObserver(() => {
             bindScrollContainer();
             updateLoadWindow();
-            schedulePageUpdate();
+            scheduleSectionUpdate();
         });
         resizeObserver.observe(viewer);
         bindScrollContainer();
-        previous.addEventListener("click", () => goToSpine(Number(pageInput.value) - 1));
-        next.addEventListener("click", () => goToSpine(Number(pageInput.value) + 1));
-        pageInput.addEventListener("change", () => goToSpine(pageInput.value));
-        pageInput.addEventListener("keydown", (event) => { if (event.key === "Enter") goToSpine(pageInput.value); });
+        previous.addEventListener("click", () => goToSpine(Number(sectionInput.value) - 1));
+        next.addEventListener("click", () => goToSpine(Number(sectionInput.value) + 1));
+        sectionInput.addEventListener("change", () => goToSpine(sectionInput.value));
+        sectionInput.addEventListener("keydown", (event) => { if (event.key === "Enter") goToSpine(sectionInput.value); });
         rendition.on("displayerror", fail);
-        rendition.on("relocated", schedulePageUpdate);
+        rendition.on("relocated", scheduleSectionUpdate);
         const appendContents = (items, depth = 0) => {
             for (const item of items) {
                 const href = item.href || "";
@@ -310,7 +433,6 @@
             }
         };
         toc.addEventListener("change", () => displayTarget(toc.value));
-        await book.open(payload, "binary");
         // 导航目录在 book.open() 后才由 EPUB 包的 navigation 文档填充，不能提前读取。
         await book.loaded.navigation;
         appendContents(book.navigation?.toc || []);
@@ -319,7 +441,7 @@
         await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
         updateLoadWindow();
         updateActiveSpine();
-        schedulePageUpdate();
+        scheduleSectionUpdate();
     } catch (error) {
         fail(error);
     }
