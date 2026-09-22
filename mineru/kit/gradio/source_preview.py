@@ -80,12 +80,18 @@ _PREVIEW_KINDS: dict[str, tuple[Callable[[bytes], str], str]] = {
     ".shtml": (build_html_preview, "html_preview_failed"),
 }
 
+_EPUB_SUFFIX = ".epub"
+
 
 async def prepare_source_preview(file_path: str | None, ticket: str) -> str:
     """后台生成带请求标识的预览回执，交由浏览器丢弃过期结果。"""
     request = json.loads(ticket)
     result = {"id": request["id"], "html": ""}
     suffix = Path(file_path).suffix.lower() if file_path else ""
+    if suffix == _EPUB_SUFFIX and request.get("path") == file_path:
+        # EPUB 由浏览器端 viewer 直接读取 Gradio 文件 URL；此处不重复实现 EPUB 解析。
+        result["kind"] = "epub"
+        return json.dumps(result)
     kind = _PREVIEW_KINDS.get(suffix) if request.get("path") == file_path else None
     if kind is None:
         return json.dumps(result)

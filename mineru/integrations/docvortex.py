@@ -38,10 +38,10 @@ def read_source_properties(
     try:
         result = extract_metadata(data, file_suffix=suffix, source_context=source_context)
     except DocumentError as exc:
-        logger.warning("Source metadata unavailable: {}", exc)
+        logger.warning("metadata_unavailable: source metadata skipped: {}", exc)
         return DocumentProperties()
     for diagnostic in result.diagnostics:
-        logger.warning("Source metadata: {}", diagnostic.message)
+        logger.warning("metadata_diagnostic: {}", diagnostic.message)
     return result.metadata.document or DocumentProperties()
 
 
