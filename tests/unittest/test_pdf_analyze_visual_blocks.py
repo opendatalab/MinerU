@@ -972,11 +972,11 @@ def test_normalize_pdf_model_list_rejects_unclassified_vlm_title() -> None:
         ],
     ],
 )
-def test_normalize_pdf_model_list_removes_six_text_types_with_invalid_lines(
+def test_normalize_pdf_model_list_removes_six_text_types_without_usable_geometry(
     block_type: str,
     invalid_lines: object,
 ) -> None:
-    """验证包括 ref_text 在内的六类文本块遇到非法行框时按 fail-closed 规则删除。"""
+    """验证包括 ref_text 在内的六类文本块既无合法行框、也无块框时仍然删除。"""
 
     model_list = [[{"type": block_type, "content": "valid", "lines": invalid_lines}]]
 

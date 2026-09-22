@@ -1151,6 +1151,7 @@ def test_build_gradio_app_exposes_html_tab_and_download_menu(tmp_path: Path) -> 
     # iframe 塌陷，也避免拉伸高度与固定高度不一致在卡片底部留下死区。
     assert ".mineru-kit-results .mineru-markdown-output,\n  .mineru-kit-results .mineru-structured-json" in app._mineru_kit_css
     assert ".mineru-kit-results { min-height: 0; flex: 0 0 auto !important; }" in app._mineru_kit_css
+    assert ".mineru-kit-source-preview:has(.mineru-epub-frame)" in app._mineru_kit_css
     assert "flex: 0 0 auto !important;" in app._mineru_kit_css
     assert sum(1 for dependency in app.config["dependencies"] if dependency.get("queue") is True) >= 7
 
@@ -1317,6 +1318,33 @@ def test_gradio_conversion_forwards_page_range_and_enables_fresh_downloads(
     assert updates[-1][6] is not None
     assert all(update["interactive"] is True for update in updates[-1][8:15])
     assert all(update["interactive"] is False for update in updates[0][8:15])
+
+
+def test_gradio_epub_conversion_preserves_source_preview(tmp_path: Path) -> None:
+    """EPUB 解析完成后保留源 viewer，不显示 generic 结果占位。"""
+    source = tmp_path / "book.epub"
+    source.write_bytes(b"epub-placeholder")
+
+    class EpubClient:
+        """返回最小 EPUB 语义结果，验证转换完成的预览更新。"""
+
+        async def parse_file(self, *_args: Any, status_callback: Any = None, **_kwargs: Any) -> ParseResult:
+            """返回不含 PDF 布局产物的 EPUB 结果。"""
+            if status_callback is not None:
+                status_callback("Processing on server...")
+            return ParseResult(middle_json=_middle_json(with_image=False, file_suffix="epub"))
+
+    capabilities = V1ServerCapabilities("http://127.0.0.1:1", ("flash",), ("zip",), ("file_id",))
+    demo = build_gradio_app(EpubClient(), capabilities, output_root=tmp_path / "output", enable_example=False)
+    handler = next(fn.fn for fn in demo.fns.values() if fn.name == "convert_handler")
+
+    async def collect() -> list[tuple[Any, ...]]:
+        """收集 EPUB 转换的状态和最终结果更新。"""
+        return [update async for update in handler(str(source), 0, "")]
+
+    updates = asyncio.run(collect())
+    final = updates[-1]
+    assert final[5] == {"__type__": "update"}
 
 
 @pytest.mark.parametrize(

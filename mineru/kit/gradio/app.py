@@ -32,6 +32,7 @@ from .client import (
     V1ArtifactClient,
     V1ServerCapabilities,
 )
+from .epub_preview import register_epub_preview_resources
 from .i18n import MESSAGES, localized_text, preview_placeholder, translations
 from .page_range import effective_page_range as _effective_page_range
 from .page_range import pdf_page_metadata, validate_max_pages
@@ -166,25 +167,60 @@ _KIT_MENU_CSS = """
 /* Gradio 6.8 会按逗号拆分并重写选择器，PDF/源文档预览使用独立选择器避免破坏 :has。 */
 /* PDF/源文档预览直接贴合面板边框，独立预览不再沿用旧组件的标签留白与额外高度。 */
 .mineru-kit-preview:has(.mineru-pdf-frame),
-.mineru-kit-preview:has(.mineru-source-frame) { padding: 0; gap: 0; overflow: hidden; }
+.mineru-kit-preview:has(.mineru-source-frame),
+.mineru-kit-preview:has(.mineru-epub-frame) {
+    padding: 0; gap: 0; overflow: hidden;
+    min-height: var(--mineru-preview-content-height, 775px) !important;
+}
 .mineru-kit-preview > .block.mineru-kit-pdf-preview,
 .mineru-kit-preview > .block.mineru-kit-source-preview {
     height: var(--mineru-preview-content-height, 775px) !important;
     min-height: 0 !important; max-height: none !important;
 }
 .mineru-kit-pdf-preview, .mineru-kit-source-preview { height: 100%; padding: 0 !important; }
+.mineru-kit-source-preview:has(.mineru-epub-frame) {
+    height: var(--mineru-preview-content-height, 775px) !important;
+    min-height: var(--mineru-preview-content-height, 775px) !important;
+}
 .mineru-kit-pdf-preview .html-container, .mineru-kit-pdf-preview .prose,
 .mineru-kit-source-preview .html-container, .mineru-kit-source-preview .prose { height: 100%; padding: 0 !important; }
 .mineru-kit-pdf-preview:not(:has(.mineru-pdf-frame, [role="alert"])) { display: none !important; }
-.mineru-pdf-frame, .mineru-source-frame { display: block; width: 100%; height: 100%; border: 0; }
+.mineru-pdf-frame, .mineru-source-frame, .mineru-epub-frame {
+    display: block; width: 100%; height: 100%; min-height: 0; border: 0;
+}
 .mineru-kit-source-preview:not(:has(iframe)):not(:has([data-mineru-i18n-key])) { display: none !important; }
 .mineru-kit-image-preview img { max-height: var(--mineru-pdf-page-height, 720px); object-fit: contain; }
 /* 桌面两栏共用行高，PDF/源文档预览填满伸展后的面板；窄屏仍采用独立预览高度。 */
 @media (min-width: 901px) {
   .mineru-kit-results, .mineru-kit-preview:has(.mineru-pdf-frame),
-  .mineru-kit-preview:has(.mineru-source-frame) { align-self: stretch !important; height: auto; }
+  .mineru-kit-preview:has(.mineru-source-frame),
+  .mineru-kit-preview:has(.mineru-epub-frame) {
+    align-self: stretch !important;
+    height: auto;
+  }
   .mineru-kit-preview > .block.mineru-kit-pdf-preview,
-  .mineru-kit-preview > .block.mineru-kit-source-preview { flex: 1 1 0; height: auto !important; }
+  .mineru-kit-preview > .block.mineru-kit-source-preview {
+    flex: 1 1 0;
+    height: auto !important;
+  }
+  /* 结果栏变高时，EPUB iframe 也必须沿着完整的 Gradio 高度链拉伸，
+     否则固定的默认预览高度下方会露出父容器背景。 */
+  .mineru-kit-workspace:has(.mineru-epub-frame) {
+    align-items: stretch !important;
+  }
+  .mineru-kit-preview:has(.mineru-epub-frame) {
+    height: auto !important;
+    min-height: var(--mineru-preview-content-height, 775px) !important;
+    background: #fff !important;
+  }
+  .mineru-kit-preview:has(.mineru-epub-frame) > .block.mineru-kit-source-preview,
+  .mineru-kit-preview:has(.mineru-epub-frame) .mineru-kit-source-preview,
+  .mineru-kit-preview:has(.mineru-epub-frame) .html-container,
+  .mineru-kit-preview:has(.mineru-epub-frame) .prose,
+  .mineru-kit-preview:has(.mineru-epub-frame) .mineru-epub-frame {
+    height: 100% !important;
+    min-height: 0 !important;
+  }
 }
 @media (max-width: 900px) {
   .mineru-kit-workspace { flex-direction: column !important; }
@@ -324,6 +360,7 @@ def build_gradio_app(
     import gradio as gr
 
     viewer_entry = register_pdf_preview_resources()
+    epub_viewer_entry = register_epub_preview_resources()
     validate_max_pages(max_pages)
     tier_choices = [tier for tier in TIERS if tier in capabilities.tiers]
     if not tier_choices:
@@ -438,6 +475,7 @@ def build_gradio_app(
             with gr.Column(scale=4, min_width=340, elem_classes=["mineru-kit-preview", "mineru-preview-pane"]):
                 pdf_preview = gr.File(visible=False, interactive=False, label="PDF", type="filepath")
                 pdf_viewer_entry = gr.File(value=str(viewer_entry), visible=False, interactive=False)
+                epub_viewer_entry_component = gr.File(value=str(epub_viewer_entry), visible=False, interactive=False)
                 pdf_viewer = gr.HTML(
                     value="",
                     apply_default_css=False,
@@ -558,8 +596,8 @@ def build_gradio_app(
                     _preview_update(gr, preview_placeholder("source_preview"), visible=False),
                     *reset_result,
                 )
-            if suffix == "ofd" or suffix in HTML_EXTENSIONS:
-                # OFD/HTML 源预览由独立异步事件挂载，此处只隐藏占位组件。
+            if suffix in {"ofd", "epub"} or suffix in HTML_EXTENSIONS:
+                # OFD/EPUB/HTML 源预览由独立异步事件挂载，此处只隐藏占位组件。
                 return (
                     _pdf_preview_update(gr, None),
                     _preview_update(gr, None, visible=False),
@@ -614,7 +652,7 @@ def build_gradio_app(
         )
         render_source_preview.then(
             fn=None,
-            inputs=source_receipt,
+            inputs=[source_receipt, epub_viewer_entry_component],
             outputs=source_preview,
             js=f"(...args) => ({source_script})('apply', ...args)",
             **private_event_kwargs,
@@ -830,8 +868,8 @@ def build_gradio_app(
                         gr.update(value="", visible=False),
                         gr.update(value=generic_html, visible=bool(generic_html)),
                     )
-                    if _is_office(source_path) or suffix == "ofd" or suffix in HTML_EXTENSIONS:
-                        # Office/OFD/HTML 源预览已在上传时挂载，成功后保留原内容和浏览位置。
+                    if _is_office(source_path) or suffix in {"ofd", "epub"} or suffix in HTML_EXTENSIONS:
+                        # Office/OFD/EPUB/HTML 源预览已在上传时挂载，成功后保留原内容和浏览位置。
                         result_preview_updates = tuple(gr.skip() for _ in range(4))
                     return (
                         rendered_html,
