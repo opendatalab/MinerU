@@ -41,13 +41,13 @@ def _source() -> bytes:
     return rotated.getvalue()
 
 
-def _model_pages(effort: str) -> list[list[dict]]:
-    """按上游契约提供 Flash 空公式及其他档位公式文本，几何采集与导出仍走真实实现。"""
+def _model_pages(effort: str, leading_text_content: str) -> list[list[dict]]:
+    """提供空正文或缺行框文本及各档位公式，几何采集与导出仍走真实实现。"""
     image = BytesIO()
     Image.new("RGB", (80, 20), "black").save(image, "PNG")
     return [
         [
-            {"type": "text", "content": "invalid without line geometry", "bbox": (0.1, 0.1, 0.2, 0.2), "angle": 270},
+            {"type": "text", "content": leading_text_content, "bbox": (0.1, 0.1, 0.2, 0.2), "angle": 270},
             {
                 "type": "equation",
                 "bbox": (0.1, 0.1, 0.9, 0.2),
@@ -64,14 +64,16 @@ def _model_pages(effort: str) -> list[list[dict]]:
 @pytest.mark.parametrize("effort,tier", [("flash", "flash"), ("medium", "basic"), ("high", "standard"), ("xhigh", "advanced")])
 @pytest.mark.parametrize("parse_mode", ["txt", "ocr"])
 @pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("leading_text_content", ["", "retained without line geometry"])
 def test_all_tiers_preserve_geometry_to_pdf(
     monkeypatch: pytest.MonkeyPatch,
     effort: str,
     tier: str,
     parse_mode: str,
     asynchronous: bool,
+    leading_text_content: str,
 ) -> None:
-    """同一结果经过完整同步/异步门面后保留源页映射，并可显式按原布局导出。"""
+    """验证文本被删除或兜底保留后，同步/异步各档位的旋转索引、页映射及导出仍正确。"""
     events = []
 
     def prepare(state: object, data: bytes, requested_effort: str, mode: str, vlm_config: object) -> None:
@@ -84,7 +86,7 @@ def test_all_tiers_preserve_geometry_to_pdf(
 
     def windows(*args: object, **kwargs: object) -> list[list[dict]]:
         """返回独立 raw pages，模拟三个窗口最终汇总的结果。"""
-        return deepcopy(_model_pages(effort))
+        return deepcopy(_model_pages(effort, leading_text_content))
 
     async def async_windows(*args: object, **kwargs: object) -> list[list[dict]]:
         """覆盖原生异步分支，不把异步 API 误测为纯同步代理。"""
@@ -116,9 +118,15 @@ def test_all_tiers_preserve_geometry_to_pdf(
         {"page_idx": idx, "width_pt": width, "height_pt": height}
         for idx, (width, height) in zip([1, 4, 5], [(400, 600), (480, 320), (600, 400)], strict=True)
     ]
-    expected[0]["image_rotations"] = {"0": 90}
+    equation_index = 1 if leading_text_content else 0
+    expected[0]["image_rotations"] = {str(equation_index): 90}
     assert middle.extensions["docvortex_layout"]["pages"] == model.extensions["docvortex_layout"]["pages"] == expected
-    assert model.pages[0][0]["content"] == ("" if effort == "flash" else "x^2")
+    assert len(model.pages[0]) == equation_index + 1
+    if leading_text_content:
+        assert model.pages[0][0]["content"] == [{"type": "text", "content": leading_text_content}]
+        assert model.pages[0][0]["lines"] == [{"bbox": [0.1, 0.1, 0.2, 0.2]}]
+    assert model.pages[0][equation_index]["content"] == ("" if effort == "flash" else "x^2")
+    assert model.pages[2][0]["content"] == [{"type": "text", "content": "last page"}]
     assert ModelJson.from_json(model.to_json()).to_json() == model.to_json()
     assert MiddleJson.from_json(middle.to_json()).to_json() == middle.to_json()
     payload = render(middle, RenderFormat.PDF, options=PdfRenderOptions(layout=PdfLayout.ORIGINAL))
@@ -127,6 +135,7 @@ def test_all_tiers_preserve_geometry_to_pdf(
         page.extract_text() for page in PdfReader(BytesIO(direct)).pages
     ]
     assert [tuple(page.mediabox)[2:] for page in PdfReader(BytesIO(payload)).pages] == [(400, 600), (480, 320), (600, 400)]
+    assert "last page" in PdfReader(BytesIO(payload)).pages[2].extract_text()
     if asynchronous and effort in {"high", "xhigh"}:
         assert events == ["native_async"]
 
