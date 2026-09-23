@@ -1075,6 +1075,13 @@ def test_gradio_examples_render_only_with_local_files(monkeypatch: pytest.Monkey
     upload = next(block for block in demo.blocks.values() if "mineru-upload-file" in (block.elem_classes or []))
     click = next(event for event in demo.config["dependencies"] if (dataset._id, "click") in event["targets"])
     assert upload._id in click["outputs"]
+    status = next(block for block in demo.blocks.values() if "mineru-status-panel" in (block.elem_classes or []))
+    preview_change = next(
+        event
+        for event in demo.config["dependencies"]
+        if (upload._id, "change") in event["targets"] and status._id in event["outputs"]
+    )
+    assert preview_change["show_progress"] == "hidden"
 
     empty_cwd = tmp_path / "empty"
     empty_cwd.mkdir()

@@ -706,7 +706,6 @@ def build_gradio_app(
             )
 
         download_reset_outputs = [
-            status_panel,
             active_run_id,
             *download_files.values(),
             *download_requests.values(),
@@ -714,6 +713,8 @@ def build_gradio_app(
             *download_buttons.values(),
             download_notice,
         ]
+        # 文件切换只重置下载控件；转换点击另加状态卡片，避免重置结果错位清空卡片。
+        begin_conversion_outputs = [status_panel, *download_reset_outputs]
 
         # 先在前端失效旧请求，再等待上传/清除/转换的 Python 回调，防止迟到的下载被触发。
         gr.on(
@@ -966,7 +967,7 @@ def build_gradio_app(
         begin_conversion = convert_button.click(
             fn=reset_download_ui,
             inputs=[],
-            outputs=download_reset_outputs,
+            outputs=begin_conversion_outputs,
             js=(
                 f"() => {{ ({pdf_preview_js('begin')})(); "
                 f"return [{json.dumps(_status_html(STATUS_PREPARING_REQUEST))}, ...({download_js('reset')})()]; }}"
@@ -984,6 +985,8 @@ def build_gradio_app(
             inputs=input_file,
             outputs=preview_outputs,
             cancels=[convert_event],
+            # 示例切换也会触发文件变更，预览准备期间保持状态卡片可见。
+            show_progress="hidden",
             **private_event_kwargs,
         )
         # 成功事件接收已经序列化的原生 FileData，避免首次挂载时丢失 URL。

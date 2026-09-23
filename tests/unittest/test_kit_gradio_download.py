@@ -120,6 +120,14 @@ def test_download_event_chain_and_pdf_transport(tmp_path: Path) -> None:
     assert "Preparing request..." in reset_event.fn()[0]
     reset_dependency = next(dep for dep in app.config["dependencies"] if dep["id"] == reset_event._id)
     assert "Preparing request..." in reset_dependency["js"]
+    upload = next(block for block in app.blocks.values() if "mineru-upload-file" in (block.elem_classes or []))
+    reset_on_upload = next(
+        dep
+        for dep in app.config["dependencies"]
+        if (upload._id, "change") in dep["targets"] and dep["outputs"] == [output._id for output in reset_event.outputs[1:]]
+    )
+    assert reset_event.outputs[0]._id not in reset_on_upload["outputs"]
+    assert reset_on_upload["js"] and reset_on_upload["backend_fn"] is False
     handlers = [fn for fn in app.fns.values() if fn.name == "handler"]
     assert len(handlers) == 7
     files = []

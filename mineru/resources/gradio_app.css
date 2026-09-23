@@ -50,6 +50,11 @@ body.dark .gradio-container {
 .mineru-control-column:has(#mineru-kit-examples) {
     align-self: stretch !important;
 }
+/* PDF 切换时 iframe 会短暂卸载；保持预览列内边距，避免 flex 重新分配左栏宽度。 */
+.mineru-kit-workspace:has(.mineru-page-values[data-range-visible="true"]) .mineru-kit-preview {
+    padding: 0 !important;
+    gap: 0 !important;
+}
 /* HF Space 不执行 Gradio 的自定义 CSS 前缀改写，以下规则必须独立压过
    Gradio 自带 scoped 样式（div.svelte-*、.head.svelte-*、.prose 等）。 */
 .mineru-tier-slider .head,
@@ -59,8 +64,9 @@ body.dark .gradio-container {
 }
 /* 两个原生 range 共用同一条轨道；仅滑块接收指针，保留原生键盘交互。 */
 .mineru-kit-page-range {
-    display: none !important; position: relative; padding: 12px 12px 32px !important; overflow: visible !important;
+    display: none !important; position: relative; padding: 8px 12px 22px !important; overflow: visible !important;
     border: 1px solid var(--mineru-panel-border); border-radius: 8px;
+    gap: 8px !important; flex: 0 0 auto !important;
 }
 /* 用明确的选页状态控制可见性，保留原生滑块的交互状态。 */
 .mineru-kit-page-range:has([data-range-visible="true"]) { display: flex !important; }
@@ -70,7 +76,7 @@ body.dark .gradio-container {
 .mineru-page-selection { font-weight: 600; color: var(--mineru-accent); }
 .mineru-page-axis { position: absolute; bottom: 0; left: 0; right: 0; font-size: 12px; opacity: .7; }
 .mineru-page-summary { position: static !important; }
-.mineru-kit-page-range .mineru-page-axis { bottom: 8px; left: 12px; right: 12px; }
+.mineru-kit-page-range .mineru-page-axis { bottom: 5px; left: 12px; right: 12px; }
 .mineru-page-sliders { position: relative !important; height: 32px; min-height: 32px !important; gap: 0 !important; }
 .mineru-page-sliders::before {
     content: ""; position: absolute; left: 8px; right: 8px; top: 14px; height: 4px; border-radius: 4px;
