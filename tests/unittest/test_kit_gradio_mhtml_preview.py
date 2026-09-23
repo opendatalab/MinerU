@@ -29,14 +29,17 @@ def _part(payload: str | bytes, media_type: str, location: str) -> EmailMessage:
     return part
 
 
-def _archive(*, cycle: bool = False) -> bytes:
+def _archive(*, cycle: bool = False, root_html: str | None = None) -> bytes:
     """生成含 CSS 导入、相对资源、CID 和缺失资源的网页归档。"""
     root = _part(
-        '<html><head><title>中文预览</title><link rel="stylesheet" href="style.css" media="screen">'
-        '<style>.inline{background:url("pic.png")}</style></head>'
-        '<body><iframe src="cid:ad-page"></iframe><img src="pic.png" srcset="pic.png 1x, missing.png 2x">'
-        '<picture><source srcset="data:image/png;base64,eA== 1x, pic.png 2x"></picture>'
-        '<p style="background:url(pic.png)">正文</p></body></html>',
+        root_html
+        or (
+            '<html><head><title>中文预览</title><link rel="stylesheet" href="style.css" media="screen">'
+            '<style>.inline{background:url("pic.png")}</style></head>'
+            '<body><iframe src="cid:ad-page"></iframe><img src="pic.png" srcset="pic.png 1x, missing.png 2x">'
+            '<picture><source srcset="data:image/png;base64,eA== 1x, pic.png 2x"></picture>'
+            '<p style="background:url(pic.png)">正文</p></body></html>'
+        ),
         "text/html",
         "https://site.test/article",
     )
@@ -77,6 +80,18 @@ def test_mhtml_preview_reuses_archived_assets_and_preserves_media(cycle: bool) -
     assert "data:font/woff2;base64," in nested
     if cycle:
         assert "@import" not in nested
+
+
+def test_mhtml_preview_preserves_declared_absolute_base() -> None:
+    """归档源地址不能插到已有绝对 base 前，以免未重写的相对脚本指向错误目录。"""
+    document = _document(
+        _archive(
+            root_html='<html><head><base href="https://cdn.site.test/assets/">'
+            '<script src="runtime.js"></script></head><body><p>正文</p></body></html>'
+        )
+    )
+    assert [base["href"] for base in document.find_all("base")] == ["https://cdn.site.test/assets/"]
+    assert document.find("script", src=True)["src"] == "runtime.js"
 
 
 @pytest.mark.parametrize("name", ["page.mhtml", "page.MHT"])

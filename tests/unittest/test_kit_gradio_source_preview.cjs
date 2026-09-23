@@ -47,6 +47,7 @@ assert.match(guardedMarkup, new RegExp(`data-mineru-source-preview-id="${htmlTic
 assert.equal(typeof listeners.load, 'function');
 
 let restores = 0;
+let sandbox = 'allow-scripts';
 const sourceViewport = {
     classList: {contains: (name) => name === 'mineru-source-viewport'},
     clientWidth: 600,
@@ -65,8 +66,13 @@ const sourceFrame = {
     style: {},
     contentWindow: {},
     getAttribute: (name) => name === 'srcdoc' ? '<p>source</p>' : null,
+    setAttribute(name, value) {
+        assert.equal(name, 'sandbox');
+        sandbox = value;
+    },
     set srcdoc(value) {
         restores += 1;
+        assert.equal(sandbox, '');
         assert.equal(value, '<p>source</p>');
     },
 };
@@ -97,7 +103,7 @@ assert.equal(restores, 1);
 listeners.load({target: sourceFrame});
 assert.equal(restores, 1);
 listeners.load({target: sourceFrame});
-assert.equal(restores, 2);
+assert.equal(restores, 1);
 
 const epub = {path: '/tmp/中文 book.epub', url: '/gradio_api/file=/tmp/中文 book.epub'};
 const viewer = {path: '/tmp/reader.html', url: '/gradio_api/file=/tmp/reader.html'};

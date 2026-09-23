@@ -23,7 +23,7 @@
         "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
     })[character]);
 
-    // 源 HTML 可以执行自身脚本，但初始化完成后若 iframe 又发生整页导航，则恢复原始 srcdoc。
+    // 源 HTML 可以执行自身脚本；导航事件可取消时直接阻止整页跳转，旧浏览器回退到静态预览。
     // HTML 的桌面视口缩放只作用于 iframe 外层舞台：WebKit 直接 transform iframe 时会出现
     // 内部页面布局正确、但绘制层只更新局部区域的现象，典型表现就是大块空白和正文被截断。
     const navigationGuardKey = `${key}NavigationGuard`;
@@ -79,16 +79,15 @@
             fitSourceFrame(frame);
             const state = states.get(frame);
             if (!state) {
-                states.set(frame, {restoring: false});
+                states.set(frame, {restored: false});
                 return;
             }
-            if (state.restoring) {
-                state.restoring = false;
-                return;
-            }
+            if (state.restored) return;
             const source = frame.getAttribute?.("srcdoc");
             if (!source) return;
-            state.restoring = true;
+            // 更改 sandbox 只作用于下一次加载：恢复原文时禁用源脚本，避免定时导航再次运行。
+            state.restored = true;
+            frame.setAttribute("sandbox", "");
             frame.srcdoc = source;
         }, true);
         window[navigationGuardKey] = true;

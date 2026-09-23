@@ -46,6 +46,13 @@ _NAVIGATION_HANDLER_PATTERN = re.compile(
 # 离屏 slide 计入文档宽度，导致虚拟视口被错误放大到数千像素。
 _SOURCE_PREVIEW_BRIDGE = """<script id="mineru-source-preview-bridge">
 (function () {
+    if (window.navigation && typeof window.navigation.addEventListener === "function") {
+        window.navigation.addEventListener("navigate", function (event) {
+            // 保留页内锚点和 History API；可取消的整页导航不离开原文预览。
+            if (event.cancelable && !event.destination.sameDocument) event.preventDefault();
+        });
+    }
+
     function explicitViewportWidth() {
         var injected = document.querySelector('meta[name="mineru-source-preview-width"]');
         var injectedWidth = injected ? Number(injected.getAttribute("content")) : 0;
@@ -196,13 +203,13 @@ def _source_viewport_width_hint(soup: BeautifulSoup) -> int:
     return 0
 
 
-def _source_base_url(soup: BeautifulSoup) -> str | None:
-    """从已有 base、canonical 或 og:url 中恢复网页资源的原始解析基址。"""
+def _source_base_url(soup: BeautifulSoup) -> tuple[str | None, bool]:
+    """从已有 base、canonical 或 og:url 恢复基址，并标记应保留的绝对 base。"""
     existing = soup.find("base", href=True)
     if existing is not None:
         try:
             if urlsplit(str(existing["href"])).scheme.lower() in {"http", "https"}:
-                return None
+                return None, True
         except ValueError:
             pass
         existing.decompose()
@@ -222,10 +229,10 @@ def _source_base_url(soup: BeautifulSoup) -> str | None:
             continue
         try:
             if urlsplit(str(candidate)).scheme.lower() in {"http", "https"}:
-                return str(candidate)
+                return str(candidate), False
         except ValueError:
             continue
-    return None
+    return None, False
 
 
 def _prepare_source_html_preview(
@@ -256,8 +263,8 @@ def _prepare_source_html_preview(
 
     width_hint = _source_viewport_width_hint(soup)
     hint = f'<meta name="mineru-source-preview-width" content="{width_hint}">' if width_hint else ""
-    base_url = _source_base_url(soup)
-    if base_url is None and source_base_url:
+    base_url, has_absolute_base = _source_base_url(soup)
+    if base_url is None and not has_absolute_base and source_base_url:
         try:
             if urlsplit(source_base_url).scheme.lower() in {"http", "https"}:
                 base_url = source_base_url
