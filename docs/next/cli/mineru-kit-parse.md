@@ -32,10 +32,16 @@ mineru-kit parse <input...> -o <output> [flags]
 | 多文件 | 一次提交多个文件 |
 | 目录 | 展开目录中的可解析文件 |
 
-当前支持的扩展名包括 PDF、OFD、EPUB、常见图片、CSV/TSV、RTF、DOC/DOCX、PPT/PPTX、XLS/XLSX、ODT/ODS/ODP、HTML/HTM。目录输入只展开一层，不递归；只有 PDF 支持 `--pages`，图片及其他非 PDF 输入均整文件解析，显式 `--pages` 返回 `page_range_invalid`。EPUB 页面严格遵循 OPF spine 顺序，并保留作者目录中可解析的内部跳转。
+当前支持的扩展名包括 PDF、OFD、EPUB、常见图片、CSV/TSV、RTF、DOC/DOCX、PPT/PPTX、XLS/XLSX、ODT/ODS/ODP、HTML/HTM/SHTML、MHTML/MHT。目录输入只展开一层，不递归；只有 PDF 支持 `--pages`，图片及其他非 PDF 输入均整文件解析，显式 `--pages` 返回 `page_range_invalid`。EPUB 页面严格遵循 OPF spine 顺序，并保留作者目录中可解析的内部跳转。
 
-HTML/HTM 使用静态源码 Flash 解析：固定 `auto` 正文选择、单逻辑页、无 JavaScript/浏览器布局。远程图片只保留
+HTML/HTM/SHTML 使用静态源码 Flash 解析：固定 `auto` 正文选择、单逻辑页、无 JavaScript/浏览器布局。远程图片只保留
 HTTP(S) URL，解析器不会下载；本地相对图片只能从 HTML 文件所在安全根目录读取。
+
+MHTML/MHT 是包含网页及其资源的归档，使用 DocVortex 原生 Flash 路径按整份文档解析。两个后缀都归一为 `mhtml`，不执行 JavaScript 或浏览器布局。例如：
+
+```bash
+mineru-kit parse saved-page.mhtml -o saved-page.md --tier flash
+```
 
 当前不支持：
 
@@ -114,8 +120,8 @@ local 模式支持：
 
 1. 可以只传 `--tier`
 2. 不传 `--tier` 时，PDF/image 当前默认为 `standard`
-3. 单文件 OFD/EPUB/Office/HTML/CSV/TSV 未指定 tier 时归一为 `flash`；显式指定质量 tier 时报错
-4. 多文件或目录输入按批量规则处理，OFD/EPUB/Office/HTML/CSV/TSV 即使遇到质量 tier 也归一为 `flash`
+3. 单文件 OFD/EPUB/Office/HTML/MHTML/CSV/TSV 未指定 tier 时归一为 `flash`；显式指定质量 tier 时报错
+4. 多文件或目录输入按批量规则处理，OFD/EPUB/Office/HTML/MHTML/CSV/TSV 即使遇到质量 tier 也归一为 `flash`
 5. PDF/image 的 `flash` 只能通过 `--tier flash` 显式指定
 
 ### remote 模式
@@ -134,7 +140,7 @@ remote 模式通过以下参数进入：
 4. remote 模式传了 `--tier` 时：
    - 服务提供该 tier，则按该 tier 解析
    - 服务不提供该 tier，则报错
-5. `mineru-kit parse` 是低层工具特例，允许 remote 模式处理 OFD/EPUB/Office/HTML/CSV/TSV 等非 PDF/image 输入；这类输入按批量归一规则使用 `flash` 语义。
+5. `mineru-kit parse` 是低层工具特例，允许 remote 模式处理 OFD/EPUB/Office/HTML/MHTML/CSV/TSV 等非 PDF/image 输入；这类输入按批量归一规则使用 `flash` 语义。
 
 ## 6. 参数分组
 

@@ -10,12 +10,12 @@ For more information about model source configuration and custom local model pat
 ## Quick Usage via Command Line
 MinerU has built-in command line tools that allow users to quickly use MinerU for document parsing through the command line:
 ```bash
-mineru parse <input_path> --pages all -o <output_path>
+mineru parse <input_path> -o <output_path>
 ```
 > [!TIP]
->- `<input_path>`: One local `PDF` / `OFD` / `EPUB` / static `HTML` / image / `CSV` / `RTF` / `DOC`/`DOCX` / `PPT`/`PPTX` / `XLS`/`XLSX` / `ODT`/`ODS`/`ODP` file
+>- `<input_path>`: One local `PDF` / `OFD` / `EPUB` / static `HTML` / `MHTML` (`.mhtml` or `.mht`) / image / `CSV` / `RTF` / `DOC`/`DOCX` / `PPT`/`PPTX` / `XLS`/`XLSX` / `ODT`/`ODS`/`ODP` file
 >- `<output_path>`: Optional output file; without it, Markdown is written to stdout
->- PDF parsing defaults to the first 10 pages; use `--pages all` for the full document
+>- PDF parsing defaults to the first 10 pages; use `--pages all` for the full PDF. Non-PDF inputs, including MHTML, are parsed as whole documents and do not accept `--pages`.
 >
 > For more information about output files, please refer to [Output File Documentation](../reference/output_files.md).
 
@@ -47,7 +47,7 @@ mineru search "keyword" --json
 mineru read "doc:ab12cd3/tier:standard/page:11" --json
 ```
 
-When an output reaches its budget, follow `next_request` or the returned continuation command. `read` consumes existing results without automatically starting higher-quality parsing. Use `mineru-kit parse` for stateless batches and complete exports. Native Office, HTML, CSV/TSV, EPUB, and OFD normalize to local Flash.
+When an output reaches its budget, follow `next_request` or the returned continuation command. `read` consumes existing results without automatically starting higher-quality parsing. Use `mineru-kit parse` for stateless batches and complete exports. Native Office, HTML/MHTML, CSV/TSV, EPUB, and OFD normalize to local Flash.
 
 ## Advanced Usage via API, WebUI, and Services
 

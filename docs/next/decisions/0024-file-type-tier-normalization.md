@@ -170,3 +170,5 @@ doclib 单文件主动解析中，`remote=true` 表示用户显式要求把该�
 2. 更新 parsing-rule 的 PDF/image 默认 tier 选择顺序为 `standard -> basic -> flash`。
 3. 检查 SDK、mineru-kit 和 API Server，对单对象和批量操作分别应用本 ADR 的归一化规则。
 4. 同步更新 CLI、SDK 和 API 文档，避免继续表述为“所有入口统一报错”或“所有入口统一静默降级”。
+
+2026-09-24 格式扩展：MHTML/MHT 网页归档沿用 HTML 的 Flash-only tier 归一规则，两个后缀均归一为 `mhtml`，只支持整本解析。

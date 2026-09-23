@@ -75,11 +75,11 @@ Gradio 不接受 `--api-server-no-flash`、`--no-flash`、`--api-server-no-advan
 
 ## 解析流程
 
-界面一次提交一个文件，支持 `filetypes.PARSEABLE_EXTENSIONS` 中的 PDF、图片、Office/ODF、RTF、HTML、CSV/TSV、EPUB 和 OFD。
+界面一次提交一个文件，支持 `filetypes.PARSEABLE_EXTENSIONS` 中的 PDF、图片、Office/ODF、RTF、HTML、MHTML/MHT、CSV/TSV、EPUB 和 OFD。
 
 解析 tier 使用原生离散滑块选择，上方即时显示当前档位。滑块按 `flash → basic → standard → advanced` 排列，包含远程档位与补充的本地 Flash；未指定远程时使用托管服务的档位。默认优先选择 `standard`，否则选择最高可用档位；仅有一个档位时禁用滑块。
 
-上传 Office/ODF、RTF、HTML、CSV/TSV、EPUB、OFD 时，tier 自动切到 `flash` 并锁定滑块。界面记住本会话最后一次未锁定的档位，连续更换这类文件不会覆盖记忆；切回 PDF/图片或清除文件时恢复此前选择。PDF/图片之间切换继续保留当前档位。锁定与恢复同时更新档位标签、页码控件和转换按钮，无需向 Python 发送滑块拖动请求。
+上传 Office/ODF、RTF、HTML、MHTML/MHT、CSV/TSV、EPUB、OFD 时，tier 自动切到 `flash` 并锁定滑块。界面记住本会话最后一次未锁定的档位，连续更换这类文件不会覆盖记忆；切回 PDF/图片或清除文件时恢复此前选择。PDF/图片之间切换继续保留当前档位。锁定与恢复同时更新档位标签、页码控件和转换按钮，无需向 Python 发送滑块拖动请求。
 
 远程未提供 Flash 时，上述格式自动使用本地 Flash，可以正常转换。转换事件仍校验 `tier_position` 的合法性，并对这些格式强制使用 `flash`。直接调用 Python 构建界面而未接入补充服务时，仍会拒绝不可用档位。
 
