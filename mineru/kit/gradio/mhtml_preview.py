@@ -160,7 +160,11 @@ class _PreviewResources:
         for token in tokens:
             reference = self._css_reference(token)
             if reference is not None and getattr(token, "type", "") != "string":
-                pieces.append(self._css_url(self.resource_url(reference, base_uri, charge=False)))
+                # 片段地址引用当前 srcdoc 的 SVG 定义，不能按归档来源地址重写。
+                if reference.startswith("#"):
+                    pieces.append(token.serialize())
+                else:
+                    pieces.append(self._css_url(self.resource_url(reference, base_uri, charge=False)))
             elif getattr(token, "type", "") == "function":
                 pieces.append(f"{token.name}({self._tokens(token.arguments, base_uri, active)})")
             elif getattr(token, "type", "") in {"() block", "[] block", "{} block"}:

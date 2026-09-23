@@ -83,6 +83,24 @@ def test_mhtml_preview_reuses_archived_assets_and_preserves_media(cycle: bool) -
         assert "@import" not in nested
 
 
+def test_mhtml_preview_preserves_fragment_only_css_urls() -> None:
+    """归档、内联和属性 CSS 的 SVG 局部引用仍指向预览文档中的定义。"""
+    document = _document(
+        _archive(
+            root_html='<html><head><link rel="stylesheet" href="effects.css">'
+            "<style>.inline{filter:url(#blur)}</style></head>"
+            '<body><svg><defs><filter id="blur"></filter><clipPath id="mask"></clipPath></defs></svg>'
+            '<p class="inline external" style=\'clip-path:url("#mask")\'>正文</p></body></html>',
+            extra_parts=(_part(".external{filter:url(#blur)}", "text/css", "https://site.test/effects.css"),),
+        )
+    )
+    stylesheet = document.find("link", rel="stylesheet")
+    css = base64.b64decode(stylesheet["href"].split(",", 1)[1]).decode("utf-8")
+    assert "filter:url(#blur)" in css
+    assert "filter:url(#blur)" in document.style.get_text()
+    assert 'clip-path:url("#mask")' in document.p["style"]
+
+
 def test_mhtml_preview_preserves_inactive_stylesheet_state() -> None:
     """归档样式内嵌后仍保留备用和禁用标记，不让它们覆盖当前页面样式。"""
     document = _document(
