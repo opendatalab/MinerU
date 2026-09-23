@@ -17,6 +17,7 @@ from ...errors import MineruError
 from ...filetypes import (
     FLASH_ONLY_PARSE_EXTENSIONS,
     HTML_EXTENSIONS,
+    MHTML_EXTENSIONS,
     IMAGE_EXTENSIONS,
     OFFICE_EXTENSIONS,
     PARSEABLE_EXTENSIONS,
@@ -604,7 +605,7 @@ def build_gradio_app(
                     _preview_update(gr, preview_placeholder("source_preview"), visible=False),
                     *reset_result,
                 )
-            if suffix in {"ofd", "epub"} or suffix in HTML_EXTENSIONS:
+            if suffix in {"ofd", "epub"} or suffix in HTML_EXTENSIONS | MHTML_EXTENSIONS:
                 # OFD/EPUB/HTML 源预览由独立异步事件挂载，此处只隐藏占位组件。
                 return (
                     _pdf_preview_update(gr, None),
@@ -876,7 +877,7 @@ def build_gradio_app(
                         gr.update(value="", visible=False),
                         gr.update(value=generic_html, visible=bool(generic_html)),
                     )
-                    if _is_office(source_path) or suffix in {"ofd", "epub"} or suffix in HTML_EXTENSIONS:
+                    if _is_office(source_path) or suffix in {"ofd", "epub"} or suffix in HTML_EXTENSIONS | MHTML_EXTENSIONS:
                         # Office/OFD/EPUB/HTML 源预览已在上传时挂载，成功后保留原内容和浏览位置。
                         result_preview_updates = tuple(gr.skip() for _ in range(4))
                     return (

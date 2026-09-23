@@ -17,7 +17,7 @@ from loguru import logger
 from .i18n import preview_placeholder
 from .ofd_preview import build_ofd_preview
 
-__all__ = ["build_html_preview", "prepare_source_preview"]
+__all__ = ["build_html_preview", "build_mhtml_preview", "prepare_source_preview"]
 
 # 源 HTML 预览以视觉兼容性优先：允许原页面脚本和联网资源，但继续依赖 sandbox 的
 # opaque origin 隔离 MinerU 父页面，同时显式禁用表单、子框架、对象和 Worker。
@@ -228,7 +228,9 @@ def _source_base_url(soup: BeautifulSoup) -> str | None:
     return None
 
 
-def _prepare_source_html_preview(document: str) -> tuple[str, int]:
+def _prepare_source_html_preview(
+    document: str, *, source_base_url: str | None = None, csp_meta: str = _CSP_META
+) -> tuple[str, int]:
     """清理自动导航、恢复原网页资源基址，并返回预览文档与稳定视口宽度提示。"""
     soup = BeautifulSoup(document, "html.parser")
     for meta in soup.find_all("meta"):
@@ -255,8 +257,14 @@ def _prepare_source_html_preview(document: str) -> tuple[str, int]:
     width_hint = _source_viewport_width_hint(soup)
     hint = f'<meta name="mineru-source-preview-width" content="{width_hint}">' if width_hint else ""
     base_url = _source_base_url(soup)
+    if base_url is None and source_base_url:
+        try:
+            if urlsplit(source_base_url).scheme.lower() in {"http", "https"}:
+                base_url = source_base_url
+        except ValueError:
+            pass
     base = f'<base href="{html.escape(base_url, quote=True)}">' if base_url is not None else ""
-    prepared = _inject_head(str(soup), f"{_REFERRER_META}{hint}{base}{_CSP_META}{_SOURCE_PREVIEW_BRIDGE}")
+    prepared = _inject_head(str(soup), f"{_REFERRER_META}{hint}{base}{csp_meta}{_SOURCE_PREVIEW_BRIDGE}")
     return prepared, width_hint
 
 
@@ -273,12 +281,21 @@ def build_html_preview(payload: bytes) -> str:
     return f'<div class="mineru-source-viewport"><div class="mineru-source-stage">{frame}</div></div>'
 
 
+def build_mhtml_preview(payload: bytes) -> str:
+    """惰性调用网页归档预览，避免普通 HTML 预览引入 CSS 解析依赖。"""
+    from .mhtml_preview import build_mhtml_preview as build
+
+    return build(payload)
+
+
 # 后缀到预览构造器和失败占位键的显式映射，避免运行时注册。
 _PREVIEW_KINDS: dict[str, tuple[Callable[[bytes], str], str]] = {
     ".ofd": (build_ofd_preview, "ofd_preview_failed"),
     ".html": (build_html_preview, "html_preview_failed"),
     ".htm": (build_html_preview, "html_preview_failed"),
     ".shtml": (build_html_preview, "html_preview_failed"),
+    ".mhtml": (build_mhtml_preview, "mhtml_preview_failed"),
+    ".mht": (build_mhtml_preview, "mhtml_preview_failed"),
 }
 
 _EPUB_SUFFIX = ".epub"

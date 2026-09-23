@@ -38,6 +38,7 @@ OFD_EXTENSIONS: frozenset[str] = frozenset({"ofd"})
 OFFICE_EXTENSIONS: frozenset[str] = frozenset({"doc", "docx", "ppt", "pptx", "xls", "xlsx", "rtf"}) | ODF_EXTENSIONS
 
 HTML_EXTENSIONS: frozenset[str] = frozenset({"html", "htm", "shtml"})
+MHTML_EXTENSIONS: frozenset[str] = frozenset({"mhtml", "mht"})
 
 CSV_EXTENSIONS: frozenset[str] = frozenset({"csv", "tsv"})
 
@@ -50,7 +51,7 @@ TIERED_PARSE_EXTENSIONS: frozenset[str] = PDF_EXTENSIONS | IMAGE_EXTENSIONS
 PAGE_RANGE_PARSE_EXTENSIONS: frozenset[str] = PDF_EXTENSIONS
 
 FLASH_ONLY_PARSE_EXTENSIONS: frozenset[str] = (
-    OFFICE_EXTENSIONS | HTML_EXTENSIONS | CSV_EXTENSIONS | EPUB_EXTENSIONS | OFD_EXTENSIONS
+    OFFICE_EXTENSIONS | HTML_EXTENSIONS | MHTML_EXTENSIONS | CSV_EXTENSIONS | EPUB_EXTENSIONS | OFD_EXTENSIONS
 )
 
 PARSEABLE_EXTENSIONS: frozenset[str] = TIERED_PARSE_EXTENSIONS | FLASH_ONLY_PARSE_EXTENSIONS
@@ -66,6 +67,7 @@ FILE_TYPE_BY_EXTENSION: dict[str, str] = {
     **dict.fromkeys(IMAGE_EXTENSIONS, "image"),
     **{ext: ext for ext in OFFICE_EXTENSIONS},
     **dict.fromkeys(HTML_EXTENSIONS, "html"),
+    **dict.fromkeys(MHTML_EXTENSIONS, "mhtml"),
     "csv": "csv",
     "tsv": "tsv",
     **dict.fromkeys(EPUB_EXTENSIONS, "epub"),
@@ -105,6 +107,8 @@ MIME_TYPE_BY_EXTENSION: dict[str, str] = {
     "html": "text/html",
     "htm": "text/html",
     "shtml": "text/html",
+    "mhtml": "multipart/related",
+    "mht": "multipart/related",
     "png": "image/png",
     "jpg": "image/jpeg",
     "jpeg": "image/jpeg",

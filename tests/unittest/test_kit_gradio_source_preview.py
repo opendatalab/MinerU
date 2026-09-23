@@ -443,10 +443,10 @@ def test_epub_preview_receipt_delegates_to_browser_without_reading_payload(tmp_p
     assert receipt == {"id": "request-epub", "html": "", "kind": "epub"}
 
 
-@pytest.mark.parametrize("name", ["source.ofd", "source.html"])
+@pytest.mark.parametrize("name", ["source.ofd", "source.html", "source.mhtml", "source.mht"])
 @pytest.mark.parametrize("fail", [False, True])
 def test_parse_preserves_source_preview(tmp_path: Path, name: str, fail: bool) -> None:
-    """解析成功或失败只更新结果，OFD/HTML 源预览始终由独立事件维护。"""
+    """解析成功或失败只更新结果，OFD/HTML/MHTML 源预览始终由独立事件维护。"""
     from types import SimpleNamespace
     from unittest.mock import AsyncMock
 
