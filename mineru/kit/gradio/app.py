@@ -382,6 +382,9 @@ def build_gradio_app(
     app_js = _resource_text("gradio_app.js").replace(
         "__MINERU_I18N__",
         f"({_resource_text('gradio_i18n.js')})({json.dumps(MESSAGES, ensure_ascii=False)})",
+    ).replace(
+        "__MINERU_STATUS_TIMER__",
+        _resource_text("gradio_status_timer.js"),
     )
     # 等待限制放在生成器内部，使其他会话也能立即显示本地排队状态。
     conversion_slot = asyncio.Semaphore(1)

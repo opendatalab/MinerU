@@ -6,6 +6,7 @@ import asyncio
 import time
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
 
 from .i18n import localized_message, localized_text as _localized_text
@@ -71,9 +72,7 @@ class StatusPanelState:
 
     @property
     def refresh_interval(self) -> float | None:
-        """只在解析或排队期间启用旧版刷新频率。"""
-        if self._processing_started is not None:
-            return 0.1
+        """只在排队期间刷新服务端动画；解析计时交由浏览器更新。"""
         if self._queue_started is not None:
             return 1.0
         return None
@@ -99,13 +98,19 @@ class StatusPanelState:
                 f'<span class="status-label">{_localized_text("status_step_" + key)}</span></div>'
             )
         latest = self.message
+        timer_attributes = ""
         if self._processing_started is not None:
             elapsed = max(0.0, now - self._processing_started)
-            latest = f"Processing on server ({elapsed:.1f}s)"
+            latest = f"Processing on server ({elapsed:.2f}s)"
+            timer_attributes = (
+                f' data-mineru-processing-start="{self._processing_started:.9f}"'
+                f' data-mineru-processing-elapsed="{elapsed:.6f}"'
+            )
         elif self._queue_started is not None:
             latest += "." * (int(max(0.0, now - self._queue_started)) % 10 + 1)
-        elif completed and self.processing_elapsed is not None:
-            latest = f"{STATUS_COMPLETED} ({self.processing_elapsed:.1f}s)"
+        elif completed:
+            display_elapsed = Decimal(str(self.processing_elapsed or 0.0)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+            latest = f"{STATUS_COMPLETED} ({display_elapsed:.2f}s)"
         if self.message == DEFAULT_STATUS:
             title = _localized_text("status_idle_title")
             latest_html = _localized_text("status_idle_hint")
@@ -116,7 +121,7 @@ class StatusPanelState:
             '<div class="status-steps-panel">'
             f'<div class="status-panel-title">{title}</div>'
             f'<div class="status-steps-list">{"".join(items)}</div>'
-            f'<div class="status-latest">{latest_html}</div></div>'
+            f'<div class="status-latest"{timer_attributes}>{latest_html}</div></div>'
         )
 
 

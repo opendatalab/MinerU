@@ -25,9 +25,11 @@ def test_processing_clock_excludes_queue_and_download_and_keeps_completed_durati
     state.append(STATUS_QUEUED_ON_SERVER)
     now[0] = 100.0
     state.append(STATUS_PROCESSING_ON_SERVER)
-    assert state.refresh_interval == 0.1
+    assert state.refresh_interval is None
     now[0] = 101.2
-    assert "Processing on server (1.2s)" in state.render()
+    assert "Processing on server (1.20s)" in state.render()
+    assert 'data-mineru-processing-start="100.000000000"' in state.render()
+    assert 'data-mineru-processing-elapsed="1.200000"' in state.render()
     assert not state.append(STATUS_PROCESSING_ON_SERVER)
     now[0] = 104.6
     state.append(STATUS_DOWNLOADING_RESULT, at=104.5)
@@ -38,7 +40,8 @@ def test_processing_clock_excludes_queue_and_download_and_keeps_completed_durati
     now[0] = 200.0
     state.append(STATUS_PROCESSING_OUTPUT)
     state.append(STATUS_COMPLETED)
-    assert "Completed (4.5s)" in state.render()
+    assert "Completed (4.50s)" in state.render()
+    assert "data-mineru-processing-start" not in state.render()
     assert state.render().count("status-step is-done") == 8
 
 
@@ -55,18 +58,33 @@ def test_queue_animation_cycles_without_restarting_on_repeated_status(message: s
         assert f'data-mineru-i18n-en="{message}{"." * dots}"' in state.render()
 
 
-def test_fast_completion_has_no_invented_elapsed_time_and_reset_has_eight_pending_steps() -> None:
-    """验证没有观察到运行的任务不显示零秒耗时，重置后保留完整双语步骤。"""
+def test_fast_completion_shows_zero_elapsed_time_and_reset_has_eight_pending_steps() -> None:
+    """验证未观察到解析阶段时完成状态显示 0.00 秒，重置后仍保留完整双语步骤。"""
     state = StatusPanelState()
     state.append(STATUS_QUEUED_ON_SERVER)
     state.append(STATUS_DOWNLOADING_RESULT)
     state.append(STATUS_COMPLETED)
-    assert 'data-mineru-i18n-en="Completed"' in state.render()
+    assert 'data-mineru-i18n-en="Completed (0.00s)"' in state.render()
+    assert 'data-mineru-i18n-zh="已完成（0.00 秒）"' in state.render()
     idle = status_html()
     assert idle.count("status-step is-pending") == 8
     assert 'data-mineru-i18n-en="Waiting"' in idle
     assert 'data-mineru-i18n-zh="排队"' in idle
     assert "status-steps-panel" in idle
+
+
+@pytest.mark.parametrize(
+    ("elapsed", "expected"),
+    [(0.0, "0.00"), (0.004, "0.00"), (0.005, "0.01"), (0.04, "0.04"), (0.05, "0.05"), (0.125, "0.13")],
+)
+def test_completed_duration_uses_decimal_half_up_rounding(elapsed: float, expected: str) -> None:
+    """验证完成耗时保留两位小数，并在 0.005 秒等边界按四舍五入显示。"""
+    state = StatusPanelState(clock=lambda: 0.0)
+    state.append(STATUS_PROCESSING_ON_SERVER, at=0.0)
+    state.append(STATUS_DOWNLOADING_RESULT, at=elapsed)
+    state.append(STATUS_COMPLETED)
+    assert state.processing_elapsed == pytest.approx(elapsed)
+    assert f'data-mineru-i18n-en="Completed ({expected}s)"' in state.render()
 
 
 @pytest.mark.parametrize("error", ["server task failed", "server task canceled", '<script>alert("x")</script>'])
@@ -83,8 +101,8 @@ def test_failure_stops_timer_and_renders_escaped_error(error: str) -> None:
     assert "<script>" not in rendered
 
 
-def test_status_stream_ticks_while_job_waits_and_cleans_up_waiter() -> None:
-    """验证无网络通知时仍刷新本地时钟，关闭流后不残留队列等待任务。"""
+def test_status_stream_waits_for_stage_changes_and_cleans_up_waiter() -> None:
+    """验证解析期间不再发送服务端计时帧，阶段通知仍及时更新且不残留等待任务。"""
 
     async def scenario() -> None:
         """运行可手动推进时钟的解析等待场景。"""
@@ -95,9 +113,13 @@ def test_status_stream_ticks_while_job_waits_and_cleans_up_waiter() -> None:
         task = asyncio.create_task(asyncio.Event().wait())
         baseline = set(asyncio.all_tasks())
         async with aclosing(stream_status_updates(task, events, state)) as stream:
-            assert "(0.0s)" in await anext(stream)
+            assert "(0.00s)" in await anext(stream)
             now[0] = 2.3
-            assert "(1.3s)" in await asyncio.wait_for(anext(stream), timeout=1)
+            next_update = asyncio.create_task(anext(stream))
+            await asyncio.sleep(0.03)
+            assert not next_update.done()
+            events.put_nowait((STATUS_DOWNLOADING_RESULT, 2.3))
+            assert "Task completed, downloading result" in await asyncio.wait_for(next_update, timeout=1)
             assert set(asyncio.all_tasks()) == baseline
         assert set(asyncio.all_tasks()) == baseline
         task.cancel()
