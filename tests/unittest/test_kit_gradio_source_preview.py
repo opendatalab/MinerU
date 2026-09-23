@@ -359,6 +359,44 @@ def test_html_preview_restores_source_base_from_canonical_or_existing_base() -> 
     assert [base.get("href") for base in existing.xpath("//head/base")] == ["https://cdn.example.test/root/"]
 
 
+@pytest.mark.parametrize(
+    ("head", "expected_root", "expected_next"),
+    [
+        (
+            '<link rel="canonical" href="https://example.test/articles/one">',
+            "https://example.test/docs",
+            "https://example.test/articles/next.html",
+        ),
+        (
+            '<base href="https://cdn.example.test/root/">',
+            "https://cdn.example.test/docs",
+            "https://cdn.example.test/root/next.html",
+        ),
+    ],
+)
+def test_html_preview_opens_relative_links_with_resolved_base(head: str, expected_root: str, expected_next: str) -> None:
+    """有远端基址时，相对及协议相对链接在新窗口打开，页内锚点仍留在原文。"""
+    payload = (
+        f"<html><head>{head}</head><body>"
+        '<a id="root" href="/docs">root</a><a id="next" href="next.html">next</a>'
+        '<a id="protocol" href="//other.test/page">protocol</a>'
+        '<a id="fragment" href="#section">fragment</a>'
+        '<a id="mail" href="mailto:help@example.test">mail</a>'
+        '<p id="section">section</p></body></html>'
+    ).encode()
+    document = html.fromstring(_frame_document(build_html_preview(payload)))
+    assert document.get_element_by_id("root").get("href") == expected_root
+    assert document.get_element_by_id("next").get("href") == expected_next
+    assert document.get_element_by_id("protocol").get("href") == "https://other.test/page"
+    for anchor_id in ("root", "next", "protocol"):
+        link = document.get_element_by_id(anchor_id)
+        assert link.get("target") == "_blank"
+        assert {"noopener", "noreferrer"} <= set(link.get("rel").split())
+    assert document.get_element_by_id("fragment").get("href") == "#section"
+    assert document.get_element_by_id("fragment").get("target") is None
+    assert document.get_element_by_id("mail").get("target") is None
+
+
 def test_html_preview_decodes_declared_charset() -> None:
     """按头部 charset 声明解码 GBK 等存量文档，未知编码回退 UTF-8 替换。"""
     payload = '<html><head><meta charset="gbk"></head><body><p>中文内容</p></body></html>'.encode("gbk")

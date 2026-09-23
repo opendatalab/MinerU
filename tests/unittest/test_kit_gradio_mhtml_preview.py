@@ -117,6 +117,42 @@ def test_mhtml_preview_preserves_declared_absolute_base() -> None:
     assert document.find("script", src=True)["src"] == "runtime.js"
 
 
+def test_mhtml_preview_resolves_declared_relative_base() -> None:
+    """相对 base 与归档资源使用同一目录，未归档脚本和链接也能按该目录加载。"""
+    document = _document(
+        _archive(
+            root_html='<html><head><base href="assets/">'
+            '<link rel="canonical" href="https://site.test/other/page">'
+            '<script src="runtime.js"></script>'
+            '<link rel="stylesheet" href="missing.css"></head>'
+            '<body><a href="next.html">next</a></body></html>'
+        )
+    )
+    assert [base["href"] for base in document.find_all("base")] == ["https://site.test/assets/"]
+    assert document.find("script", src=True)["src"] == "runtime.js"
+    assert document.find("link", rel="stylesheet")["href"] == "https://site.test/assets/missing.css"
+    assert document.a["href"] == "https://site.test/assets/next.html"
+    assert document.a["target"] == "_blank"
+
+
+@pytest.mark.parametrize("nested", [False, True])
+def test_mhtml_preview_counts_emitted_stylesheet_once(monkeypatch: pytest.MonkeyPatch, nested: bool) -> None:
+    """较大的归档 CSS 及嵌套导入只按最终数据地址计入预览预算。"""
+    from mineru.kit.gradio import mhtml_preview
+
+    stylesheet = "parent.css" if nested else "large.css"
+    extra_parts = (_part("a{color:red}" * 2000, "text/css", "https://site.test/large.css"),)
+    if nested:
+        extra_parts += (_part('@import "large.css";', "text/css", "https://site.test/parent.css"),)
+    payload = _archive(
+        root_html=f'<html><head><link rel="stylesheet" href="{stylesheet}"></head><body>ok</body></html>',
+        extra_parts=extra_parts,
+    )
+    preview = build_mhtml_preview(payload)
+    monkeypatch.setattr(mhtml_preview, "MAX_PREVIEW_BYTES", len(preview.encode("utf-8")))
+    assert build_mhtml_preview(payload) == preview
+
+
 @pytest.mark.parametrize("name", ["page.mhtml", "page.MHT"])
 def test_mhtml_preview_receipt_and_flash_parse(tmp_path: Path, name: str) -> None:
     """两个后缀共用预览和 Flash 解析，回执仍带请求标识。"""

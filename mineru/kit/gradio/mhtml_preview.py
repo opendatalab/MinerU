@@ -62,14 +62,14 @@ class _PreviewResources:
         """使用 DocVortex 公开索引解析 CID、绝对或相对资源地址。"""
         return self.archive.find(reference, base_href=base_uri)
 
-    def _data_uri(self, part: ArchivePart) -> str:
-        """按 MIME 类型缓存资源字节；每次插入仍独立计入输出预算。"""
+    def _data_uri(self, part: ArchivePart, *, charge: bool) -> str:
+        """按 MIME 类型缓存资源字节；只对直接写入预览文档的地址计费。"""
         if part not in self.embedded:
             payload = self.archive.decode(part)
             self.embedded[part] = f"data:{part.media_type};base64,{base64.b64encode(payload).decode('ascii')}"
-        return self._charge(self.embedded[part])
+        return self._charge(self.embedded[part]) if charge else self.embedded[part]
 
-    def resource_url(self, reference: str, base_uri: str) -> str:
+    def resource_url(self, reference: str, base_uri: str, *, charge: bool = True) -> str:
         """有归档资源时嵌入，缺失时交由浏览器请求正确的远端地址。"""
         part = self._part(reference, base_uri)
         if part is not None:
@@ -80,7 +80,7 @@ class _PreviewResources:
                     "application/vnd.ms-fontobject",
                     "application/octet-stream",
                 }:
-                    return self._data_uri(part)
+                    return self._data_uri(part, charge=charge)
             except MhtmlParseError:
                 pass
         return self._fallback(reference, base_uri)
@@ -122,7 +122,7 @@ class _PreviewResources:
         if part in active or len(active) >= MAX_CSS_IMPORT_DEPTH:
             return ""
         if part in self.stylesheets:
-            return self._charge(self.stylesheets[part])
+            return self.stylesheets[part]
         if part.media_type != "text/css":
             return ""
         try:
@@ -136,7 +136,8 @@ class _PreviewResources:
             css = payload.decode("utf-8-sig", errors="replace")
         rewritten = self.rewrite_css(css, part.source_uri, active | {part})
         self.stylesheets[part] = rewritten
-        return self._charge(rewritten)
+        # CSS 原文不会直接输出，调用方只对最终写入文档的数据地址计费。
+        return rewritten
 
     def _css_reference(self, token: object) -> str | None:
         """从 CSS 词法 token 中读取 URL 或引号字符串。"""
@@ -159,7 +160,7 @@ class _PreviewResources:
         for token in tokens:
             reference = self._css_reference(token)
             if reference is not None and getattr(token, "type", "") != "string":
-                pieces.append(self._css_url(self.resource_url(reference, base_uri)))
+                pieces.append(self._css_url(self.resource_url(reference, base_uri, charge=False)))
             elif getattr(token, "type", "") == "function":
                 pieces.append(f"{token.name}({self._tokens(token.arguments, base_uri, active)})")
             elif getattr(token, "type", "") in {"() block", "[] block", "{} block"}:
@@ -188,7 +189,7 @@ class _PreviewResources:
                         if not nested:
                             continue
                         encoded = base64.b64encode(nested.encode()).decode("ascii")
-                        target = self._charge(f"data:text/css;charset=utf-8;base64,{encoded}")
+                        target = f"data:text/css;charset=utf-8;base64,{encoded}"
                     else:
                         target = self._fallback(reference, base_uri)
                     if not target:
@@ -240,16 +241,18 @@ def build_mhtml_preview(payload: bytes) -> str:
 
     for style in document.find_all("style"):
         if style.string:
-            style.string = resources.rewrite_css(str(style.string), base_uri).replace("</style", "<\\/style")
+            rewritten = resources.rewrite_css(str(style.string), base_uri).replace("</style", "<\\/style")
+            style.string = resources._charge(rewritten)
     for tag in document.find_all(style=True):
-        tag["style"] = resources._tokens(tinycss2.parse_component_value_list(str(tag["style"])), base_uri, frozenset())
+        rewritten = resources._tokens(tinycss2.parse_component_value_list(str(tag["style"])), base_uri, frozenset())
+        tag["style"] = resources._charge(rewritten)
     for tag in document.find_all(["img", "source"]):
         if tag.get("src"):
             tag["src"] = resources.resource_url(str(tag["src"]), base_uri)
         if tag.get("srcset"):
             tag["srcset"] = resources.rewrite_srcset(str(tag["srcset"]), base_uri)
 
-    prepared, width_hint = _prepare_source_html_preview(str(document), source_base_url=source_uri, csp_meta=_MHTML_CSP_META)
+    prepared, width_hint = _prepare_source_html_preview(str(document), source_base_url=base_uri, csp_meta=_MHTML_CSP_META)
     if len(prepared.encode("utf-8")) > MAX_PREVIEW_BYTES:
         raise ValueError("MHTML preview exceeds 64 MiB")
     width_attribute = f' data-mineru-source-content-width="{width_hint}"' if width_hint else ""

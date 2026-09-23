@@ -9,7 +9,7 @@ import json
 import re
 from collections.abc import Callable
 from pathlib import Path
-from urllib.parse import urlsplit
+from urllib.parse import urljoin, urlsplit
 
 from bs4 import BeautifulSoup
 from loguru import logger
@@ -216,7 +216,7 @@ def _source_base_url(soup: BeautifulSoup) -> tuple[str | None, bool]:
     if existing is not None:
         try:
             if urlsplit(str(existing["href"])).scheme.lower() in {"http", "https"}:
-                return None, True
+                return str(existing["href"]), True
         except ValueError:
             pass
         existing.decompose()
@@ -258,26 +258,39 @@ def _prepare_source_html_preview(
     for tag in soup.find_all(attrs={"referrerpolicy": True}):
         tag["referrerpolicy"] = "no-referrer"
 
-    for link in soup.find_all("a", href=True):
-        try:
-            scheme = urlsplit(str(link["href"])).scheme.lower()
-        except ValueError:
-            continue
-        if scheme not in {"http", "https"}:
-            continue
-        link["target"] = "_blank"
-        link["rel"] = list(dict.fromkeys([*link.get("rel", []), "noopener", "noreferrer"]))
-
     width_hint = _source_viewport_width_hint(soup)
     hint = f'<meta name="mineru-source-preview-width" content="{width_hint}">' if width_hint else ""
+    original_base = soup.find("base", href=True)
+    try:
+        had_relative_base = original_base is not None and urlsplit(str(original_base["href"])).scheme.lower() not in {
+            "http",
+            "https",
+        }
+    except ValueError:
+        had_relative_base = original_base is not None
     base_url, has_absolute_base = _source_base_url(soup)
-    if base_url is None and not has_absolute_base and source_base_url:
+    if (base_url is None or had_relative_base) and not has_absolute_base and source_base_url:
         try:
             if urlsplit(source_base_url).scheme.lower() in {"http", "https"}:
                 base_url = source_base_url
         except ValueError:
             pass
-    base = f'<base href="{html.escape(base_url, quote=True)}">' if base_url is not None else ""
+    for link in soup.find_all("a", href=True):
+        href = str(link["href"])
+        if not href or href.startswith("#"):
+            continue
+        try:
+            scheme = urlsplit(href).scheme.lower()
+            resolved = urljoin(base_url, href) if not scheme and base_url else href
+            if urlsplit(resolved).scheme.lower() not in {"http", "https"}:
+                continue
+        except ValueError:
+            continue
+        link["href"] = resolved
+        link["target"] = "_blank"
+        link["rel"] = list(dict.fromkeys([*link.get("rel", []), "noopener", "noreferrer"]))
+
+    base = f'<base href="{html.escape(base_url, quote=True)}">' if base_url is not None and not has_absolute_base else ""
     prepared = _inject_head(str(soup), f"{_REFERRER_META}{hint}{base}{csp_meta}{_SOURCE_PREVIEW_BRIDGE}")
     return prepared, width_hint
 
