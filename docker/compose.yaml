@@ -1,3 +1,5 @@
+name: mineru
+
 services:
   mineru-openai-server:
     image: mineru:4
