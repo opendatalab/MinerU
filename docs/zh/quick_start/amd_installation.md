@@ -1,0 +1,272 @@
+# AMD GPU 安装
+
+本页介绍在 AMD GPU 上安装和使用 MinerU **4.x（`>=4.0,<5`）**。[On Linux](#on-linux) 示例使用 AMD **Radeon GPU**、Ubuntu 24.04、Python 3.12 和 ROCm 7.2.3（容器方式）；[On Windows](#on-windows) 通过基础包 + llama.cpp Vulkan 运行。
+
+## On Linux
+
+### 1. 准备镜像和容器
+
+使用以下 ROCm/PyTorch 基础镜像，MinerU 在进入容器后安装：
+
+```text
+rocm/pytorch:rocm7.2.3_ubuntu24.04_py3.12_pytorch_release_2.10.0
+```
+
+宿主机需要已安装可用的 AMD GPU 驱动和 Docker。以下命令保留测试容器的权限参数，并将当前目录下的工作目录挂载到容器；其中 `--privileged` 等高权限选项不是已验证的必要条件，共享或生产环境应按需收紧。
+
+```bash
+mkdir -p mineru-workspace
+docker run -d --name mineru-amd \
+  --network host --ipc host \
+  --privileged --cap-add CAP_SYS_ADMIN --group-add video \
+  --security-opt seccomp=unconfined --security-opt label=disable \
+  --shm-size 10g --device /dev/kfd --device /dev/dri \
+  -v "$PWD/mineru-workspace:/workspace" -w /workspace \
+  -e MINERU_HOME=/workspace/.mineru \
+  -e MINERU_MODEL_BASE_DIR=/workspace/models \
+  -e MINERU_MODEL_SMALL_BACKEND=onnx \
+  rocm/pytorch:rocm7.2.3_ubuntu24.04_py3.12_pytorch_release_2.10.0 \
+  sleep infinity
+docker exec -it mineru-amd bash
+```
+
+后续安装和启动命令均在容器中执行。
+
+### 2. 安装 MinerU
+
+在独立虚拟环境中安装，不修改镜像自带的 PyTorch：
+
+```bash
+cd /workspace
+python3 -m venv .uv-tools
+.uv-tools/bin/python -m pip install -U uv
+export PATH="$PWD/.uv-tools/bin:$PATH"
+uv venv --python python3 .venv
+source .venv/bin/activate
+uv pip install -U --default-index https://pypi.org/simple "mineru>=4.0,<5"
+uv pip check
+```
+
+基础包已包含 ONNX Runtime 和 llama.cpp，依赖版本由 MinerU 的包约束自动解析。本文将版面分析/OCR 小模型固定为 **ONNX CPU**，VLM 使用下方选择的 GPU 推理引擎。
+
+### 3. 配置推理引擎
+
+根据需要选择 **vLLM** 或 **llama.cpp**，只执行所选引擎的安装和配置步骤即可。
+
+#### vLLM
+
+在已激活的虚拟环境中安装 ROCm 7.2.3 对应的 vLLM wheel 及配套依赖：
+
+```bash
+uv pip install -U \
+  --index https://wheels.vllm.ai/rocm/0.28.0/rocm723 \
+  --default-index https://pypi.org/simple \
+  "mineru[full]>=4.0,<5" 'vllm==0.28.0+rocm723' \
+  'torch==2.12.0+git6bbd260' 'torchvision==0.27.1+df56172' \
+  'torchaudio==2.11.0+34c52a6' 'triton==3.7.1+gitf0b55c07'
+uv pip check
+export MINERU_MODEL_VLM_ENGINE=vllm
+```
+
+MinerU 使用 4.x 版本范围；vLLM 和配套 Torch/Triton wheel 保留已验证的版本组合。该 vLLM wheel 使用虚拟环境内的 Torch 2.12，不复用镜像中的 Torch 2.10。请保留版本专用 ROCm 索引，不要改用普通 CUDA wheel 或浮动的 latest 索引；升级引擎时需同时核对 MinerU 的依赖范围及 ROCm wheel 的配套要求。
+
+#### llama.cpp
+
+无需额外安装 Python 推理包；GPU 加速使用 **Vulkan**。容器内需要 Vulkan 加载器和可识别 AMD GPU 的 ICD。若尚未安装，可在这个专用 Ubuntu 24.04 容器中执行：
+
+```bash
+apt-get update
+apt-get install -y --no-install-recommends libvulkan1 mesa-vulkan-drivers vulkan-tools
+```
+
+已有可用 Vulkan 驱动时跳过安装。上面的命令会安装容器内系统包，不是对宿主机内核驱动的安装；验证过的 Mesa RADV 版本为 25.2.8，软件源当前版本可能不同。
+
+配置无显示服务环境并检查设备：
+
+```bash
+export XDG_RUNTIME_DIR="$PWD/.xdg-runtime"
+mkdir -p "$XDG_RUNTIME_DIR"
+chmod 700 "$XDG_RUNTIME_DIR"
+unset DISPLAY WAYLAND_DISPLAY GGML_VK_VISIBLE_DEVICES
+vulkaninfo --summary
+mineru-kit vlm-server --engine llama-cpp --list-devices
+export MINERU_MODEL_VLM_ENGINE=llama-cpp
+```
+
+输出应包含实际 AMD GPU，而不只是 `llvmpipe` 等软件设备。若当前 Mesa 无法识别显卡，请先配置与该 GPU 匹配的 Vulkan 驱动。
+
+### 4. 下载模型
+
+在刚才选择引擎的同一终端中，下载 ONNX 小模型和该引擎所需的 VLM 权重。以下两个模型源任选其一：
+
+```bash
+unset HF_HUB_OFFLINE
+mineru-kit models download --tier standard --small-backend onnx \
+  --vlm-engine "$MINERU_MODEL_VLM_ENGINE" --source huggingface
+```
+
+若无法访问 Hugging Face，改用 ModelScope：
+
+```bash
+unset HF_HUB_OFFLINE
+mineru-kit models download --tier standard --small-backend onnx \
+  --vlm-engine "$MINERU_MODEL_VLM_ENGINE" --source modelscope
+```
+
+所选来源下载成功后，检查本地模型；验证通过后启用离线模式：
+
+```bash
+mineru-kit models verify --tier standard --small-backend onnx \
+  --vlm-engine "$MINERU_MODEL_VLM_ENGINE" && \
+  export MINERU_MODEL_SOURCE=local HF_HUB_OFFLINE=1
+```
+
+vLLM 使用原始模型权重，llama.cpp 使用 GGUF 和视觉投影器。下载命令获取模型仓库的当前默认版本；模型源及离线部署配置见[模型源配置](../usage/model_source.md)。
+
+### 5. 启动 VLM 服务
+
+保持当前终端和虚拟环境，只启动已选择的引擎。两个示例均使用 `127.0.0.1:30000`，不要同时启动。
+
+> **额外补充：GPU 选卡与设备编号**
+>
+> 以下命令以设备编号 `0` 为例；多卡环境可先用 `amd-smi` 查看占用情况，按需选择空闲 GPU。HIP、Vulkan 和 AMD-SMI 的编号不一定相同。
+>
+> - **vLLM**：通过 `HIP_VISIBLE_DEVICES` 选择目标 GPU。ROCm PyTorch 使用 `cuda` 作为设备/API 名称，这是正常行为。
+> - **llama.cpp**：将 `GGML_VK_VISIBLE_DEVICES` 设为 Vulkan 枚举中的目标物理设备索引。只筛选一张卡时，该卡在 llama.cpp 进程内重新编号为 `Vulkan0`；例如设置 `GGML_VK_VISIBLE_DEVICES=7` 后，仍使用 `--device Vulkan0`，而不是 `Vulkan7`。这不会改变 HIP 或 AMD-SMI 的编号。
+>
+> 修改 Vulkan 选卡设置后，可在启动前、相同环境下运行 `mineru-kit vlm-server --engine llama-cpp --list-devices` 确认目标 AMD GPU。`MINERU_DEVICE_MODE=cpu` 不会关闭显式指定的 Vulkan 加速。
+
+#### 使用 vLLM 启动
+
+```bash
+export HIP_VISIBLE_DEVICES=0
+export MINERU_DEVICE_MODE=cuda
+export VLLM_ROCM_USE_AITER=0 VLLM_NO_USAGE_STATS=1
+export OMP_NUM_THREADS=1
+mineru-kit vlm-server --engine vllm \
+  --host 127.0.0.1 --port 30000 \
+  --served-model-name mineru-vlm --allowed-origins '[]' \
+  --dtype bfloat16 --max-model-len 8192 --max-num-seqs 4 \
+  --max-num-batched-tokens 8192 --gpu-memory-utilization 0.35 \
+  --limit-mm-per-prompt '{"image":1,"video":0}' \
+  --attention-backend TRITON_ATTN --mm-encoder-attn-backend TORCH_SDPA \
+  --enforce-eager
+```
+
+等待日志出现 `Application startup complete`。
+
+#### 使用 llama.cpp 启动
+
+在完成 Vulkan 配置的同一终端执行：
+
+```bash
+export GGML_VK_VISIBLE_DEVICES=0
+export MINERU_DEVICE_MODE=cpu
+mineru-kit vlm-server --engine llama-cpp \
+  --host 127.0.0.1 --port 30000 \
+  --n-gpu-layers 99 --mmproj-offload --device Vulkan0 --split-mode none \
+  --parallel 1 --ctx-size 8192 --threads 8 --threads-batch 8
+```
+
+### 6. 使用 MinerU
+
+服务启动后，在宿主机的另一个终端进入同一容器：
+
+```bash
+docker exec -it mineru-amd bash
+```
+
+在新开的容器终端中激活环境，并连接已启动的 VLM 服务。以下配置供命令行和 WebUI 共用，完成后选择一种使用方式即可：
+
+```bash
+cd /workspace
+source .venv/bin/activate
+export MINERU_DEVICE_MODE=cpu MINERU_MODEL_SMALL_BACKEND=onnx
+export MINERU_MODEL_VLM_SERVER_URL=http://127.0.0.1:30000
+export MINERU_MODEL_VLM_MAX_CONCURRENCY=1
+export MINERU_MODEL_SOURCE=local HF_HUB_OFFLINE=1
+curl --fail --silent --show-error "$MINERU_MODEL_VLM_SERVER_URL/v1/models"
+```
+
+#### 命令行解析
+
+将待解析 PDF 放到宿主机的 `mineru-workspace` 目录，在上述终端中执行：
+
+```bash
+mineru-kit parse document.pdf -o document.md --tier standard
+```
+
+将 `document.pdf` 替换为实际文件名。结果写入同一目录下的 `document.md`，宿主机可直接读取；扫描 PDF 也使用相同命令。接口返回模型列表仅表示服务可连接，解析后还应检查正文、表格和公式内容。
+
+批量转换并保存完整结果包：
+
+```bash
+mineru-kit parse ./documents -o ./output --format zip --tier standard
+```
+
+#### WebUI
+
+MinerU 基础包已包含 WebUI，无需额外安装。在完成上述环境配置的同一终端中启动，无需先执行命令行解析：
+
+```bash
+mineru-kit webui --server-name 127.0.0.1 --server-port 7860 \
+  --api-server-tier standard
+```
+
+在宿主机浏览器打开 [http://127.0.0.1:7860](http://127.0.0.1:7860)，上传 PDF，选择 `standard` 档位并开始解析，即可预览和下载结果。若运行在远程服务器上，通过 VS Code 端口转发或 SSH 隧道将 **7860** 转发到本机后访问；上述容器使用 host 网络，无需额外添加 `-p` 映射。
+
+WebUI 会自动托管文档解析 API，并通过 `MINERU_MODEL_VLM_SERVER_URL` 复用前面启动的 vLLM 或 llama.cpp 服务。这里不需要 `--api-url`；该参数用于连接独立的 MinerU 文档解析 API，不能填写 VLM 的 `30000` 端口。
+
+停止使用时，在 WebUI 和 VLM 服务各自的终端按 Ctrl+C。更多 API 和解析选项见[基础使用](../usage/quick_usage.md)和[Python SDK](../usage/sdk_api.md)。
+
+## On Windows
+
+Windows 上不可用 ROCm vLLM 路线（ROCm vLLM 仅提供 Linux wheel）。MinerU 4.x 仍可通过基础包在 AMD GPU 上运行：小模型使用 ONNX 在 CPU 上推理，VLM 使用 llama.cpp 以 Vulkan 模式运行在 Radeon GPU 上。无需容器或 ROCm 驱动。
+
+### 1. 安装 uv 和 Python 3.12
+
+```powershell
+powershell -ExecutionPolicy Bypass -Command "irm https://astral.sh/uv/install.ps1 | iex"
+uv python install 3.12
+```
+
+### 2. 创建环境并安装基础包
+
+```powershell
+uv venv .venv --python 3.12
+.venv\Scripts\Activate.ps1
+uv pip install -U "mineru>=4.0,<5"
+```
+
+基础包已包含 ONNX Runtime 和 llama.cpp。Windows 上不要安装 `[full]` 扩展：它会引入 CUDA/LMDeploy 引擎，对 AMD 无帮助。
+
+### 3. 确认 AMD GPU 对 llama.cpp Vulkan 后端可见
+
+```powershell
+mineru-kit vlm-server --engine llama-cpp --list-devices
+```
+
+输出应包含实际 AMD 设备，例如 `Vulkan0: AMD Radeon(TM) 8060S Graphics`。若仅显示 `llvmpipe` 等软件设备，说明缺少 Vulkan 驱动。
+
+### 4. 下载标准档模型
+
+```powershell
+mineru-kit models download --tier standard --small-backend onnx --vlm-engine llama-cpp --source modelscope
+```
+
+若 ModelScope 不可达，改用 `--source huggingface`。
+
+### 5. 解析文档
+
+```powershell
+$env:MINERU_DEVICE_MODE = 'cpu'   # 小模型留在 CPU；VLM 仍使用 Vulkan
+mineru-kit parse document.pdf -o document.md --tier standard
+```
+
+基础包已包含 WebUI：
+
+```powershell
+mineru-kit webui --server-name 127.0.0.1 --server-port 7860
+```
+
+在浏览器打开 <http://127.0.0.1:7860>，上传 PDF 并选择 `standard` 档位即可。
