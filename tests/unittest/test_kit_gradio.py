@@ -1465,7 +1465,7 @@ def test_gradio_local_queue_cancellation_releases_slot_and_keeps_sessions_isolat
         ]
         cancel_session = next(fn.fn for fn in demo.fns.values() if fn.name == "cancel_session_conversion")
         await advance_until(first, "Processing on server")
-        queued = await advance_until(second, "Queued locally.")
+        queued = await advance_until(second, "Queued locally")
         assert all(value == {"__type__": "update"} for value in queued[1:])
         assert calls == [sources[0]]
         if explicit_session_cancel:
@@ -1474,7 +1474,7 @@ def test_gradio_local_queue_cancellation_releases_slot_and_keeps_sessions_isolat
                 await anext(second)
         else:
             await second.aclose()
-        await advance_until(third, "Queued locally.")
+        await advance_until(third, "Queued locally")
         if explicit_session_cancel:
             await cancel_session(requests[0])
             with pytest.raises(StopAsyncIteration):

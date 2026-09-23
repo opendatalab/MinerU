@@ -379,12 +379,16 @@ def build_gradio_app(
     examples = _example_files(file_types) if enable_example else []
     app_css = _resource_text("gradio_app.css") + _KIT_MENU_CSS + _download_icon_css()
     i18n = gr.I18n(**translations())
-    app_js = _resource_text("gradio_app.js").replace(
-        "__MINERU_I18N__",
-        f"({_resource_text('gradio_i18n.js')})({json.dumps(MESSAGES, ensure_ascii=False)})",
-    ).replace(
-        "__MINERU_STATUS_TIMER__",
-        _resource_text("gradio_status_timer.js"),
+    app_js = (
+        _resource_text("gradio_app.js")
+        .replace(
+            "__MINERU_I18N__",
+            f"({_resource_text('gradio_i18n.js')})({json.dumps(MESSAGES, ensure_ascii=False)})",
+        )
+        .replace(
+            "__MINERU_STATUS_TIMER__",
+            _resource_text("gradio_status_timer.js"),
+        )
     )
     # 等待限制放在生成器内部，使其他会话也能立即显示本地排队状态。
     conversion_slot = asyncio.Semaphore(1)
@@ -470,7 +474,12 @@ def build_gradio_app(
                 page_notice = gr.HTML(value="", visible=False, elem_classes=["mineru-page-notice"])
                 with gr.Row(elem_classes=["mineru-actions"]):
                     convert_button = gr.Button(
-                        i18n("mineru.convert"), variant="primary", scale=1, min_width=0, interactive=False
+                        i18n("mineru.convert"),
+                        variant="primary",
+                        scale=1,
+                        min_width=0,
+                        interactive=False,
+                        elem_classes=["mineru-convert-button"],
                     )
                     clear_button = gr.ClearButton(value=i18n("mineru.clear"), scale=1, min_width=1)
                 status_panel = gr.HTML(_status_html(), elem_classes=["mineru-status-panel"])
@@ -685,11 +694,19 @@ def build_gradio_app(
             return f"(...args) => ({download_script})({arguments}, ...args)"
 
         def reset_download_ui() -> tuple[Any, ...]:
-            """返回下载组件的初始状态，为转换提供可可靠串联的完成事件。"""
+            """立即显示准备阶段并重置下载组件，为转换提供可靠串联的完成事件。"""
             count = len(_DOWNLOAD_FORMATS)
-            return ("", *((None,) * count), *(("",) * count * 2), *_download_updates(gr, interactive=False)[1:], "")
+            return (
+                _status_html(STATUS_PREPARING_REQUEST),
+                "",
+                *((None,) * count),
+                *(("",) * count * 2),
+                *_download_updates(gr, interactive=False)[1:],
+                "",
+            )
 
         download_reset_outputs = [
+            status_panel,
             active_run_id,
             *download_files.values(),
             *download_requests.values(),
@@ -808,6 +825,9 @@ def build_gradio_app(
             if not file_path:
                 yield reset_result
                 return
+            state = StatusPanelState()
+            state.append(STATUS_PREPARING_REQUEST)
+            yield (state.render(), *reset_result[1:])
             source_path = Path(file_path).resolve()
             if not source_path.is_file():
                 yield (_status_html("Failed: input file does not exist"), *reset_result[1:])
@@ -833,9 +853,6 @@ def build_gradio_app(
             except MineruError as exc:
                 yield (_status_html(f"Failed: {exc.code}: {exc}"), *reset_result[1:])
                 return
-            state = StatusPanelState()
-            state.append(STATUS_PREPARING_REQUEST)
-            yield (state.render(), *reset_result[1:])
             status_queue: asyncio.Queue[tuple[str, float]] = asyncio.Queue()
             loop = asyncio.get_running_loop()
 
@@ -950,7 +967,10 @@ def build_gradio_app(
             fn=reset_download_ui,
             inputs=[],
             outputs=download_reset_outputs,
-            js=f"() => {{ ({pdf_preview_js('begin')})(); ({download_js('reset')})(); return []; }}",
+            js=(
+                f"() => {{ ({pdf_preview_js('begin')})(); "
+                f"return [{json.dumps(_status_html(STATUS_PREPARING_REQUEST))}, ...({download_js('reset')})()]; }}"
+            ),
             **private_event_kwargs,
         )
         convert_event = begin_conversion.then(

@@ -45,10 +45,9 @@ class StatusPanelState:
     step_index: int = -1
     processing_elapsed: float | None = None
     _processing_started: float | None = None
-    _queue_started: float | None = None
 
     def append(self, message: str, *, at: float | None = None) -> bool:
-        """接收真实阶段变化；重复通知不会重置解析计时或排队动画。"""
+        """接收真实阶段变化；重复通知不会重置解析计时。"""
         if not message or message == self.message:
             return False
         now = self.clock() if at is None else at
@@ -58,24 +57,12 @@ class StatusPanelState:
         if message == STATUS_PROCESSING_ON_SERVER:
             self._processing_started = now
             self.processing_elapsed = 0.0
-        if message in (STATUS_QUEUED_LOCALLY, STATUS_QUEUED_ON_SERVER):
-            if self._queue_started is None:
-                self._queue_started = now
-        else:
-            self._queue_started = None
         self.message = message
         # 本地等待可能发生在上传之前；已展示的步骤不因后续准备通知倒退。
         self.step_index = max(self.step_index, _MESSAGE_STEPS.get(message, -1))
         if message.startswith("Failed:"):
             self.step_index = len(_STEPS) - 1
         return True
-
-    @property
-    def refresh_interval(self) -> float | None:
-        """只在排队期间刷新服务端动画；解析计时交由浏览器更新。"""
-        if self._queue_started is not None:
-            return 1.0
-        return None
 
     def render(self) -> str:
         """按 3.4.5 的两列卡片结构渲染当前状态，并转义外部错误文本。"""
@@ -103,11 +90,11 @@ class StatusPanelState:
             elapsed = max(0.0, now - self._processing_started)
             latest = f"Processing on server ({elapsed:.2f}s)"
             timer_attributes = (
-                f' data-mineru-processing-start="{self._processing_started:.9f}"'
-                f' data-mineru-processing-elapsed="{elapsed:.6f}"'
+                f' data-mineru-processing-start="{self._processing_started:.9f}" data-mineru-processing-elapsed="{elapsed:.6f}"'
             )
-        elif self._queue_started is not None:
-            latest += "." * (int(max(0.0, now - self._queue_started)) % 10 + 1)
+        elif self.message in (STATUS_QUEUED_LOCALLY, STATUS_QUEUED_ON_SERVER):
+            queue_key = "queued_locally" if self.message == STATUS_QUEUED_LOCALLY else "queued_on_server"
+            timer_attributes = f' data-mineru-queue-key="{queue_key}"'
         elif completed:
             display_elapsed = Decimal(str(self.processing_elapsed or 0.0)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
             latest = f"{STATUS_COMPLETED} ({display_elapsed:.2f}s)"
@@ -137,7 +124,7 @@ async def stream_status_updates(
     events: asyncio.Queue[tuple[str, float]],
     state: StatusPanelState,
 ) -> AsyncIterator[str]:
-    """同时等待任务、状态通知和本地动画时钟，并及时回收临时等待任务。"""
+    """只等待真实阶段通知或任务结束，并及时回收临时等待任务。"""
     while True:
         while not events.empty():
             message, at = events.get_nowait()
@@ -148,13 +135,11 @@ async def stream_status_updates(
         waiter = asyncio.create_task(events.get())
         updated_html: str | None = None
         try:
-            done, _ = await asyncio.wait({task, waiter}, timeout=state.refresh_interval, return_when=asyncio.FIRST_COMPLETED)
+            done, _ = await asyncio.wait({task, waiter}, return_when=asyncio.FIRST_COMPLETED)
             if waiter in done:
                 message, at = waiter.result()
                 if state.append(message, at=at):
                     updated_html = state.render()
-            elif not done:
-                updated_html = state.render()
         finally:
             if not waiter.done():
                 waiter.cancel()

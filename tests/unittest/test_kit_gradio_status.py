@@ -25,7 +25,6 @@ def test_processing_clock_excludes_queue_and_download_and_keeps_completed_durati
     state.append(STATUS_QUEUED_ON_SERVER)
     now[0] = 100.0
     state.append(STATUS_PROCESSING_ON_SERVER)
-    assert state.refresh_interval is None
     now[0] = 101.2
     assert "Processing on server (1.20s)" in state.render()
     assert 'data-mineru-processing-start="100.000000000"' in state.render()
@@ -33,7 +32,6 @@ def test_processing_clock_excludes_queue_and_download_and_keeps_completed_durati
     assert not state.append(STATUS_PROCESSING_ON_SERVER)
     now[0] = 104.6
     state.append(STATUS_DOWNLOADING_RESULT, at=104.5)
-    assert state.refresh_interval is None
     assert state.processing_elapsed == pytest.approx(4.5)
     assert "status-step is-active" in state.render()
     assert state.render().count("status-step is-done") == 5
@@ -46,16 +44,19 @@ def test_processing_clock_excludes_queue_and_download_and_keeps_completed_durati
 
 
 @pytest.mark.parametrize("message", [STATUS_QUEUED_LOCALLY, STATUS_QUEUED_ON_SERVER])
-def test_queue_animation_cycles_without_restarting_on_repeated_status(message: str) -> None:
-    """验证本地和远端队列都按每秒一个圆点循环，重复轮询不重置动画。"""
+def test_queued_status_stays_stable_without_timer_updates(message: str) -> None:
+    """验证服务端排队 HTML 保持静态，并携带供浏览器绘制动画的状态标记。"""
     now = [5.0]
     state = StatusPanelState(clock=lambda: now[0])
     state.append(message)
-    assert state.refresh_interval == 1.0
-    for seconds, dots in [(0, 1), (3, 4), (9, 10), (10, 1)]:
+    initial = state.render()
+    queue_key = "queued_locally" if message == STATUS_QUEUED_LOCALLY else "queued_on_server"
+    assert f'data-mineru-queue-key="{queue_key}"' in initial
+    for seconds in (0, 3, 9, 10):
         now[0] = 5.0 + seconds
         assert not state.append(message)
-        assert f'data-mineru-i18n-en="{message}{"." * dots}"' in state.render()
+        assert state.render() == initial
+        assert f'data-mineru-i18n-en="{message}"' in state.render()
 
 
 def test_fast_completion_shows_zero_elapsed_time_and_reset_has_eight_pending_steps() -> None:
@@ -95,30 +96,34 @@ def test_failure_stops_timer_and_renders_escaped_error(error: str) -> None:
     state.append(f"Failed: {error}", at=3.0)
     rendered = state.render()
     assert state.processing_elapsed == 2.0
-    assert state.refresh_interval is None
     assert "status-step is-active is-error" in rendered
     assert 'data-mineru-i18n-en="Failed"' in rendered
     assert "<script>" not in rendered
 
 
 def test_status_stream_waits_for_stage_changes_and_cleans_up_waiter() -> None:
-    """验证解析期间不再发送服务端计时帧，阶段通知仍及时更新且不残留等待任务。"""
+    """验证排队和解析期间均无服务端计时帧，真实阶段仍及时更新。"""
 
     async def scenario() -> None:
         """运行可手动推进时钟的解析等待场景。"""
         now = [1.0]
         state = StatusPanelState(clock=lambda: now[0])
         events: asyncio.Queue[tuple[str, float]] = asyncio.Queue()
-        events.put_nowait((STATUS_PROCESSING_ON_SERVER, 1.0))
+        events.put_nowait((STATUS_QUEUED_ON_SERVER, 1.0))
         task = asyncio.create_task(asyncio.Event().wait())
         baseline = set(asyncio.all_tasks())
         async with aclosing(stream_status_updates(task, events, state)) as stream:
-            assert "(0.00s)" in await anext(stream)
+            assert "Queued on server" in await anext(stream)
             now[0] = 2.3
             next_update = asyncio.create_task(anext(stream))
             await asyncio.sleep(0.03)
             assert not next_update.done()
-            events.put_nowait((STATUS_DOWNLOADING_RESULT, 2.3))
+            events.put_nowait((STATUS_PROCESSING_ON_SERVER, 2.3))
+            assert "(0.00s)" in await asyncio.wait_for(next_update, timeout=1)
+            next_update = asyncio.create_task(anext(stream))
+            await asyncio.sleep(0.03)
+            assert not next_update.done()
+            events.put_nowait((STATUS_DOWNLOADING_RESULT, 2.6))
             assert "Task completed, downloading result" in await asyncio.wait_for(next_update, timeout=1)
             assert set(asyncio.all_tasks()) == baseline
         assert set(asyncio.all_tasks()) == baseline

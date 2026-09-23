@@ -95,6 +95,12 @@ def test_download_event_chain_and_pdf_transport(tmp_path: Path) -> None:
     cap = V1ServerCapabilities("http://127.0.0.1:1", ("flash",), ("zip",), ("file_id",))
     app = gradio_app.build_gradio_app(Mock(), cap, output_root=tmp_path, enable_example=False)
     conversion = next(fn for fn in app.fns.values() if fn.name == "convert_handler")
+    assert (
+        "mineru-convert-button"
+        in next(
+            block for block in app.blocks.values() if block.__class__.__name__ == "Button" and "mineru.convert" in block.value
+        ).elem_classes
+    )
     pdf = conversion.outputs[2]
     assert pdf.__class__.__name__ == "File" and pdf.visible is False
     preview = next(fn.fn for fn in app.fns.values() if fn.name == "update_file_preview")
@@ -110,6 +116,10 @@ def test_download_event_chain_and_pdf_transport(tmp_path: Path) -> None:
     reset_event = app.fns[dependency["trigger_after"]]
     assert reset_event.name == "reset_download_ui"
     assert len(reset_event.fn()) == len(reset_event.outputs)
+    assert reset_event.outputs[0].__class__.__name__ == "HTML"
+    assert "Preparing request..." in reset_event.fn()[0]
+    reset_dependency = next(dep for dep in app.config["dependencies"] if dep["id"] == reset_event._id)
+    assert "Preparing request..." in reset_dependency["js"]
     handlers = [fn for fn in app.fns.values() if fn.name == "handler"]
     assert len(handlers) == 7
     files = []

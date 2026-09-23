@@ -44,7 +44,7 @@
     const localize = (root = document) => {
         const locale = resolveLocale();
         root.querySelectorAll("[data-mineru-i18n-key]").forEach((item) => {
-            if (item.hasAttribute("data-mineru-local-timer")) return;
+            if (item.hasAttribute("data-mineru-local-timer") || item.hasAttribute("data-mineru-local-animation")) return;
             const key = item.getAttribute("data-mineru-i18n-key");
             const value = item.getAttribute(`data-mineru-i18n-${locale}`) ?? text(key);
             const attributes = item.getAttribute("data-mineru-i18n-attr");

@@ -1,5 +1,5 @@
 () => {
-    const APP_SCRIPT_VERSION = "v2-browser-status-timer";
+    const APP_SCRIPT_VERSION = "v4-local-queue-animation";
     if (window.__mineruGradioAppInstalled === APP_SCRIPT_VERSION) {
         return;
     }
@@ -20,6 +20,7 @@
     };
     const i18n = window.__mineruI18n = __MINERU_I18N__;
     const statusTimer = (__MINERU_STATUS_TIMER__)(i18n);
+    window.__mineruStatusPanel = statusTimer;
     // HTML 回调和前端事件使用同一份词典与首选语言规则。
     const localizeMineruCustomText = () => i18n.localize();
 
@@ -213,10 +214,10 @@
     });
     if (typeof MutationObserver !== "undefined") {
         const uiObserver = new MutationObserver((mutations) => {
-            // 本地计时的文字变化无需重新扫描整页，避免 10 毫秒刷新触发递归本地化。
+            // 本地计时与排队动画的文字变化无需重新扫描整页，避免递归本地化。
             if (mutations.every(({ target }) => {
                 const element = target.nodeType === 1 ? target : target.parentElement;
-                return element?.closest?.("[data-mineru-local-timer]");
+                return element?.closest?.("[data-mineru-local-timer], [data-mineru-local-animation]");
             })) {
                 return;
             }
@@ -231,6 +232,12 @@
     document.addEventListener("click", (event) => {
         const target = event.target;
         if (!(target instanceof Element)) {
+            return;
+        }
+        const convertRoot = target.closest(".mineru-convert-button");
+        const convert = convertRoot?.matches("button") ? convertRoot : convertRoot?.querySelector("button");
+        if (convert && !convert.disabled && convert.getAttribute("aria-disabled") !== "true") {
+            statusTimer.showPreparing();
             return;
         }
         if (target.closest(".office-preview-ignore-forever")) {
