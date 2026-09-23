@@ -185,6 +185,14 @@ _KIT_MENU_CSS = """
 .mineru-kit-pdf-preview .html-container, .mineru-kit-pdf-preview .prose,
 .mineru-kit-source-preview .html-container, .mineru-kit-source-preview .prose { height: 100%; padding: 0 !important; }
 .mineru-kit-pdf-preview:not(:has(.mineru-pdf-frame, [role="alert"])) { display: none !important; }
+/* HTML 源预览用固定 viewport 裁剪逻辑舞台。缩放舞台而不是 iframe 本体，
+   避免 Safari/WebKit 在 transform iframe 时把子文档绘制层裁成局部区域。 */
+.mineru-source-viewport {
+    position: relative; display: block; width: 100%; height: 100%; min-height: 0; overflow: hidden;
+}
+.mineru-source-stage {
+    display: block; width: 100%; height: 100%; min-height: 0; transform-origin: 0 0;
+}
 .mineru-pdf-frame, .mineru-source-frame, .mineru-epub-frame {
     display: block; width: 100%; height: 100%; min-height: 0; border: 0;
 }

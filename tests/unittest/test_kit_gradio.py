@@ -1152,6 +1152,9 @@ def test_build_gradio_app_exposes_html_tab_and_download_menu(tmp_path: Path) -> 
     assert ".mineru-kit-results .mineru-markdown-output,\n  .mineru-kit-results .mineru-structured-json" in app._mineru_kit_css
     assert ".mineru-kit-results { min-height: 0; flex: 0 0 auto !important; }" in app._mineru_kit_css
     assert ".mineru-kit-source-preview:has(.mineru-epub-frame)" in app._mineru_kit_css
+    # Safari 不能直接缩放源 iframe；固定 viewport 与可缩放舞台必须随应用 CSS 一起注入。
+    assert ".mineru-source-viewport" in app._mineru_kit_css
+    assert ".mineru-source-stage" in app._mineru_kit_css
     assert "flex: 0 0 auto !important;" in app._mineru_kit_css
     assert sum(1 for dependency in app.config["dependencies"] if dependency.get("queue") is True) >= 7
 

@@ -9,7 +9,9 @@ import json
 import re
 from collections.abc import Callable
 from pathlib import Path
+from urllib.parse import urlsplit
 
+from bs4 import BeautifulSoup
 from loguru import logger
 
 from .i18n import preview_placeholder
@@ -17,15 +19,116 @@ from .ofd_preview import build_ofd_preview
 
 __all__ = ["build_html_preview", "prepare_source_preview"]
 
-# 与结果预览一致允许脚本执行：MathJax/KaTeX 等公式排版依赖内联配置、eval 加载
-# 与 XHR 拉取字体；沙箱保持 opaque origin（无 allow-same-origin），隔离父页面、
-# 存储与顶级导航，媒体、内嵌框架和表单仍由 default-src 'none' 封禁。
+# 源 HTML 预览以视觉兼容性优先：允许原页面脚本和联网资源，但继续依赖 sandbox 的
+# opaque origin 隔离 MinerU 父页面，同时显式禁用表单、子框架、对象和 Worker。
+_REFERRER_META = '<meta name="referrer" content="no-referrer">'
+
 _CSP_META = (
     '<meta http-equiv="Content-Security-Policy" content="default-src \'none\'; '
     "script-src 'unsafe-inline' 'unsafe-eval' https: http:; "
     "style-src 'unsafe-inline' https: http:; img-src data: blob: https: http:; "
-    'font-src data: blob: https:; connect-src https: http:">'
+    "font-src data: blob: https: http:; connect-src https: http:; media-src data: blob: https: http:; "
+    "object-src 'none'; frame-src 'none'; worker-src 'none'; form-action 'none'\">"
 )
+
+_NAVIGATION_HANDLER_PATTERN = re.compile(
+    r"""(?ix)
+    (?:
+        (?:window|document|top|parent|self|globalThis)\s*\.\s*location\b
+        |(?<![\w$.])location\s*(?:\.|\[|=)
+        |window\s*\.\s*open\s*\(
+    )
+    """
+)
+
+# sandbox 的 opaque origin 让父页面无法读取 iframe 的实际排版宽度，因此由源文档主动
+# 上报首轮稳定布局宽度。不能直接使用整页 scrollWidth：Safari/WebKit 会把横向轮播的
+# 离屏 slide 计入文档宽度，导致虚拟视口被错误放大到数千像素。
+_SOURCE_PREVIEW_BRIDGE = """<script id="mineru-source-preview-bridge">
+(function () {
+    function explicitViewportWidth() {
+        var injected = document.querySelector('meta[name="mineru-source-preview-width"]');
+        var injectedWidth = injected ? Number(injected.getAttribute("content")) : 0;
+        if (injectedWidth >= 320 && injectedWidth <= 2400) return injectedWidth;
+
+        var viewport = document.querySelector('meta[name="viewport"]');
+        var content = viewport ? String(viewport.getAttribute("content") || "") : "";
+        var match = content.match(/(?:^|[,;\\s])width\\s*=\\s*(\\d{3,4})(?:$|[,;\\s])/i);
+        if (match) {
+            var numeric = Number(match[1]);
+            if (numeric >= 320 && numeric <= 2400) return numeric;
+        }
+        var device = document.querySelector('meta[name="applicable-device"]');
+        var deviceContent = device ? String(device.getAttribute("content") || "").toLowerCase() : "";
+        if (/(^|[,;\\s])pc($|[,;\\s])/.test(deviceContent)) return 1200;
+        return 0;
+    }
+
+    function structuralWidth() {
+        var root = document.documentElement;
+        var body = document.body;
+        var viewportWidth = root ? root.clientWidth : innerWidth;
+        var width = viewportWidth || innerWidth || 0;
+        if (!body) return width;
+        for (var i = 0; i < body.children.length; i++) {
+            var element = body.children[i];
+            var style = getComputedStyle(element);
+            if (style.display === "none" || style.visibility === "hidden") continue;
+            var rect = element.getBoundingClientRect();
+            if (!Number.isFinite(rect.width) || rect.width <= 0) continue;
+            // 只看 body 顶层布局盒，忽略 swiper/横向滚动容器内部的离屏子项。
+            width = Math.max(width, rect.right - Math.min(0, rect.left));
+        }
+        return Math.min(Math.max(width, viewportWidth), 2400);
+    }
+
+    var preferredWidth = 0;
+    function measurePreferredWidth() {
+        var explicit = explicitViewportWidth();
+        if (explicit) {
+            preferredWidth = explicit;
+            return preferredWidth;
+        }
+        var measured = structuralWidth();
+        if (!preferredWidth || measured > preferredWidth) preferredWidth = measured;
+        return preferredWidth;
+    }
+
+    function publishSize() {
+        var root = document.documentElement;
+        var body = document.body;
+        var height = Math.max(
+            root ? root.scrollHeight : 0,
+            body ? body.scrollHeight : 0,
+            root ? root.clientHeight : 0
+        );
+        parent.postMessage({
+            type: "mineru-source-preview-size",
+            width: measurePreferredWidth(),
+            height: height
+        }, "*");
+    }
+
+    var initialWidth = explicitViewportWidth();
+    if (initialWidth) {
+        preferredWidth = initialWidth;
+        parent.postMessage({
+            type: "mineru-source-preview-size",
+            width: initialWidth,
+            height: 0
+        }, "*");
+    }
+
+    addEventListener("load", function () {
+        // 无显式宽度时等外部 CSS 与页面初始化脚本完成首轮布局，避免 Safari 过早锁定单列宽度。
+        requestAnimationFrame(function () {
+            requestAnimationFrame(publishSize);
+        });
+        setTimeout(publishSize, 250);
+        setTimeout(publishSize, 1000);
+    }, {once: true});
+})();
+</script>"""
 
 # 只嗅探文档头部即可覆盖 meta 声明，避免扫描超大文件。
 _CHARSET_SNIFF_SIZE = 4096
@@ -63,13 +166,111 @@ def _inject_head(document: str, snippet: str) -> str:
     return f"<head>{snippet}</head>" + document
 
 
+def _remove_auto_navigation_handlers(soup: BeautifulSoup) -> None:
+    """移除内联事件中明确会发起页面导航的处理器，普通交互事件保持原样。"""
+    for tag in soup.find_all(True):
+        for attribute, value in list(tag.attrs.items()):
+            if not attribute.lower().startswith("on"):
+                continue
+            source = " ".join(value) if isinstance(value, list) else str(value)
+            if _NAVIGATION_HANDLER_PATTERN.search(source):
+                del tag.attrs[attribute]
+
+
+def _source_viewport_width_hint(soup: BeautifulSoup) -> int:
+    """从源文档声明推断稳定的桌面预览宽度，供 Safari 在资源加载前立即完成缩放。"""
+    viewport = soup.find("meta", attrs={"name": re.compile(r"^viewport$", re.IGNORECASE)})
+    if viewport is not None:
+        content = str(viewport.get("content", ""))
+        match = re.search(r"(?:^|[,;\s])width\s*=\s*(\d{3,4})(?:$|[,;\s])", content, re.IGNORECASE)
+        if match:
+            width = int(match.group(1))
+            if 320 <= width <= 2400:
+                return width
+
+    device = soup.find("meta", attrs={"name": re.compile(r"^applicable-device$", re.IGNORECASE)})
+    if device is not None:
+        content = str(device.get("content", "")).lower()
+        if re.search(r"(^|[,;\s])pc($|[,;\s])", content):
+            return 1200
+    return 0
+
+
+def _source_base_url(soup: BeautifulSoup) -> str | None:
+    """从已有 base、canonical 或 og:url 中恢复网页资源的原始解析基址。"""
+    existing = soup.find("base", href=True)
+    if existing is not None:
+        try:
+            if urlsplit(str(existing["href"])).scheme.lower() in {"http", "https"}:
+                return None
+        except ValueError:
+            pass
+        existing.decompose()
+
+    canonical = None
+    for link in soup.find_all("link", href=True):
+        rel = link.get("rel", [])
+        values = rel if isinstance(rel, list) else [rel]
+        if "canonical" in {str(item).lower() for item in values}:
+            canonical = link
+            break
+    candidates = [canonical.get("href") if canonical is not None else None]
+    og_url = soup.find("meta", attrs={"property": "og:url"})
+    candidates.append(og_url.get("content") if og_url is not None else None)
+    for candidate in candidates:
+        if not candidate:
+            continue
+        try:
+            if urlsplit(str(candidate)).scheme.lower() in {"http", "https"}:
+                return str(candidate)
+        except ValueError:
+            continue
+    return None
+
+
+def _prepare_source_html_preview(document: str) -> tuple[str, int]:
+    """清理自动导航、恢复原网页资源基址，并返回预览文档与稳定视口宽度提示。"""
+    soup = BeautifulSoup(document, "html.parser")
+    for meta in soup.find_all("meta"):
+        directive = str(meta.get("http-equiv", "")).strip().lower()
+        name = str(meta.get("name", "")).strip().lower()
+        if directive in {"refresh", "content-security-policy"} or name == "referrer":
+            meta.decompose()
+
+    _remove_auto_navigation_handlers(soup)
+    # 文档策略无法覆盖标签显式声明的策略，统一已有覆盖值以免重新发送本地 Referer。
+    for tag in soup.find_all(attrs={"referrerpolicy": True}):
+        tag["referrerpolicy"] = "no-referrer"
+
+    for link in soup.find_all("a", href=True):
+        try:
+            scheme = urlsplit(str(link["href"])).scheme.lower()
+        except ValueError:
+            continue
+        if scheme not in {"http", "https"}:
+            continue
+        link["target"] = "_blank"
+        link["rel"] = list(dict.fromkeys([*link.get("rel", []), "noopener", "noreferrer"]))
+
+    width_hint = _source_viewport_width_hint(soup)
+    hint = f'<meta name="mineru-source-preview-width" content="{width_hint}">' if width_hint else ""
+    base_url = _source_base_url(soup)
+    base = f'<base href="{html.escape(base_url, quote=True)}">' if base_url is not None else ""
+    prepared = _inject_head(str(soup), f"{_REFERRER_META}{hint}{base}{_CSP_META}{_SOURCE_PREVIEW_BRIDGE}")
+    return prepared, width_hint
+
+
 def build_html_preview(payload: bytes) -> str:
-    """按声明编码解码源 HTML，并在仅开放脚本的隔离框架中显示自包含页面。"""
-    document = _inject_head(_decode_html(payload), _CSP_META)
-    return (
-        '<iframe class="mineru-source-frame" title="HTML preview" sandbox="allow-scripts" '
+    """按声明编码解码源 HTML，并在允许脚本但保持 opaque origin 的隔离框架中显示页面。"""
+    document, width_hint = _prepare_source_html_preview(_decode_html(payload))
+    width_attribute = f' data-mineru-source-content-width="{width_hint}"' if width_hint else ""
+    frame = (
+        f'<iframe class="mineru-source-frame"{width_attribute} title="HTML preview" '
+        'sandbox="allow-scripts" referrerpolicy="no-referrer" '
         f'srcdoc="{html.escape(document, quote=True)}"></iframe>'
     )
+    # 外层舞台负责缩放，iframe 保留桌面布局视口，避免窄预览面板改变源页面排版。
+    return f'<div class="mineru-source-viewport"><div class="mineru-source-stage">{frame}</div></div>'
 
 
 # 后缀到预览构造器和失败占位键的显式映射，避免运行时注册。
