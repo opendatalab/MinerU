@@ -28,13 +28,19 @@ let ready = false;
 
 // 清除或换文件时释放渲染队列、worker 和观察器，旧页面不会向新预览写入结果。
 const dispose = () => {
+    if (disposed) return;
     disposed = true;
     cancelAnimationFrame(resizeFrame);
     resizeObserver?.disconnect();
-    viewer?.setDocument(null);
-    links?.setDocument(null);
-    loadingTask?.destroy().catch(() => {});
+    try {
+        viewer?.setDocument(null);
+        links?.setDocument(null);
+    } finally {
+        loadingTask?.destroy().catch(() => {});
+    }
 };
+// 宿主在替换 iframe 前主动取消旧任务；页面自行卸载时仍用 pagehide 兜底。
+window.__mineruPdfDisposePreview = dispose;
 window.addEventListener("pagehide", dispose, { once: true });
 
 // 控件始终反映当前实际阅读页，缩放与翻页都只操作浏览器内的 PDF.js。

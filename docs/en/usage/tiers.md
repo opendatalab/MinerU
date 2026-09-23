@@ -9,7 +9,13 @@ Tiers express parsing quality and cost. Small-model backends and VLM engines are
 | `standard` | Complex layouts and high-quality parsing | Small models + VLM |
 | `advanced` | More demanding quality requirements | Standard models and runtime, with more inference computation |
 
-PDF and images support all four tiers. Office, OpenDocument, RTF, EPUB, OFD, HTML, and CSV/TSV use local Flash and whole-document parsing. Pass `tier="flash"` explicitly for these formats in the local Python SDK. Plain text is not parsed, but can be indexed and read by the document library.
+PDF and images support all four tiers. Office, OpenDocument, RTF, EPUB, OFD, HTML/MHTML, and CSV/TSV use local Flash and whole-document parsing. Pass `tier="flash"` explicitly for these formats in the local Python SDK. MHTML web archives (`.mhtml`, `.mht`) are parsed as whole documents. Plain text is not parsed, but can be indexed and read by the document library.
+
+For a saved web page archive:
+
+```bash
+mineru-kit parse saved-page.mhtml -o saved-page.md --tier flash
+```
 
 ## Default selection
 

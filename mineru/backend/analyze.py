@@ -69,6 +69,10 @@ def doc_analyze(
         from .analysis.html import analyze_html
 
         result = analyze_html(file_bytes, source_context=source_context)
+    elif file_suffix == "mhtml":
+        from .analysis.mhtml import analyze_mhtml
+
+        result = analyze_mhtml(file_bytes, source_context=source_context)
     elif file_suffix == "ofd":
         from .analysis.ofd import analyze_ofd
 

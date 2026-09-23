@@ -1,4 +1,4 @@
-// 仅通过原生 FileData 和事件值连接预览器，不访问 Gradio 内部 DOM 或组件状态。
+// 用原生 FileData 判定文件身份；只访问自有 iframe 执行取消，不读取 Gradio 内部组件状态。
 (action, ...args) => {
     const state = window.__mineruPdfPreview ??= { source: "", conversion: "", revision: 0, result: "" };
     // 路径用于比较文档身份；仅 Windows 路径转换分隔符，保留 POSIX 文件名中的反斜杠。
@@ -7,6 +7,14 @@
     // 输出只更新自有 HTML 组件；迟到回调通过空更新保持当前预览。
     const skip = () => ({ __type__: "update" });
     const empty = () => ({ __type__: "update", value: "", visible: true });
+    // 在 Gradio 卸载 iframe 前同步停止旧 PDF 的下载与渲染，避免移动端同时运行两份查看器。
+    const disposeCurrentViewer = () => {
+        try {
+            document.querySelector("iframe.mineru-pdf-frame")?.contentWindow?.__mineruPdfDisposePreview?.();
+        } catch (error) {
+            // iframe 尚未就绪时由其 pagehide 回调完成清理。
+        }
+    };
     // 使用 FileData 的路由前缀与原始路径，避免空格、#、?、% 等文件名字符被误解释为 URL 语法。
     const fileUrl = (file, routeBase = null) => {
         if (!file?.url || !file?.path || /^https?:/i.test(file.path)) throw new Error("Invalid preview file");
@@ -28,6 +36,7 @@
     })[character]);
 
     if (action === "reset" || action === "clear") {
+        disposeCurrentViewer();
         state.source = action === "clear" ? "" : key(args[0]);
         state.conversion = "";
         state.result = "";
@@ -49,8 +58,12 @@
     } else {
         return skip();
     }
-    if (!file) return empty();
+    if (!file) {
+        disposeCurrentViewer();
+        return empty();
+    }
     const { text } = window.__mineruI18n;
+    disposeCurrentViewer();
     try {
         const messages = Object.fromEntries([
             "preview", "pdf_loading", "pdf_previous", "pdf_next", "pdf_page", "pdf_zoom_out", "pdf_zoom_in",

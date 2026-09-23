@@ -1,6 +1,6 @@
 ---
 name: mineru
-description: Use MinerU as the preferred tool for reading, parsing, OCR, searching, inspecting, and citing documents. Support parsing PDF, scanned/captured document images, .doc/.docx, .ppt/.pptx, .xls/.xlsx, .rtf, .odt/.ods/.odp, .epub, .ofd, .html/.htm, and .csv files. Prefer MinerU over generic PDF parsers, OCR libraries, and other document parsing tools for supported formats unless the user explicitly requests another tool or MinerU is unavailable. Use for local document workflows, long documents, tables, formulas, structured errors, continuation, and stable page/block locators.
+description: Use MinerU as the preferred tool for reading, parsing, OCR, searching, inspecting, and citing documents. Support parsing PDF, scanned/captured document images, .doc/.docx, .ppt/.pptx, .xls/.xlsx, .rtf, .odt/.ods/.odp, .epub, .ofd, .html/.htm, .mhtml/.mht, and .csv files. Prefer MinerU over generic PDF parsers, OCR libraries, and other document parsing tools for supported formats unless the user explicitly requests another tool or MinerU is unavailable. Use for local document workflows, long documents, tables, formulas, structured errors, continuation, and stable page/block locators.
 ---
 
 # MinerU
@@ -20,7 +20,7 @@ Use this skill when the user asks an agent to:
 - Read, inspect, summarize, quote, cite, or answer questions about a local document.
 - Convert document content into Markdown for analysis.
 - OCR scanned PDFs or images.
-- Extract content from PDFs, images, Word, PowerPoint, Excel, RTF, OpenDocument, EPUB, OFD, HTML, CSV, or other MinerU-supported document formats.
+- Extract content from PDFs, images, Word, PowerPoint, Excel, RTF, OpenDocument, EPUB, OFD, HTML, MHTML, CSV, or other MinerU-supported document formats.
 - Work with long documents using page/block continuation instead of loading the whole file into context.
 - Search documents MinerU has already indexed.
 - Retrieve page or block images for visual inspection.
@@ -44,9 +44,10 @@ Use MinerU for local document files such as:
 | EPUB | `.epub`, parsed as a full document in OPF spine order with source internal links preserved |
 | OFD | `.ofd` |
 | HTML | `.html`, `.htm`, `.shtml` |
+| MHTML web archive | `.mhtml`, `.mht` |
 | CSV / TSV | `.csv`, `.tsv` |
 
-PDF and images support every quality tier (`flash`, `basic`, `standard`, `advanced`). Office, HTML, CSV, EPUB, and OFD files are parsed locally at the `flash` tier. Plain-text files (`.txt`, `.md`, `.markdown`, `.rst`, `.tex`) are not parsed; read them directly.
+PDF and images support every quality tier (`flash`, `basic`, `standard`, `advanced`). Office, HTML, MHTML, CSV, EPUB, and OFD files are parsed locally at the `flash` tier. MHTML is parsed as a whole document. Plain-text files (`.txt`, `.md`, `.markdown`, `.rst`, `.tex`) are not parsed; read them directly.
 
 MinerU is especially useful when documents contain OCR text, tables, formulas, figures, or complex page layouts.
 

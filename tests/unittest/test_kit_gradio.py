@@ -1075,6 +1075,13 @@ def test_gradio_examples_render_only_with_local_files(monkeypatch: pytest.Monkey
     upload = next(block for block in demo.blocks.values() if "mineru-upload-file" in (block.elem_classes or []))
     click = next(event for event in demo.config["dependencies"] if (dataset._id, "click") in event["targets"])
     assert upload._id in click["outputs"]
+    status = next(block for block in demo.blocks.values() if "mineru-status-panel" in (block.elem_classes or []))
+    preview_change = next(
+        event
+        for event in demo.config["dependencies"]
+        if (upload._id, "change") in event["targets"] and status._id in event["outputs"]
+    )
+    assert preview_change["show_progress"] == "hidden"
 
     empty_cwd = tmp_path / "empty"
     empty_cwd.mkdir()
@@ -1152,6 +1159,9 @@ def test_build_gradio_app_exposes_html_tab_and_download_menu(tmp_path: Path) -> 
     assert ".mineru-kit-results .mineru-markdown-output,\n  .mineru-kit-results .mineru-structured-json" in app._mineru_kit_css
     assert ".mineru-kit-results { min-height: 0; flex: 0 0 auto !important; }" in app._mineru_kit_css
     assert ".mineru-kit-source-preview:has(.mineru-epub-frame)" in app._mineru_kit_css
+    # Safari 不能直接缩放源 iframe；固定 viewport 与可缩放舞台必须随应用 CSS 一起注入。
+    assert ".mineru-source-viewport" in app._mineru_kit_css
+    assert ".mineru-source-stage" in app._mineru_kit_css
     assert "flex: 0 0 auto !important;" in app._mineru_kit_css
     assert sum(1 for dependency in app.config["dependencies"] if dependency.get("queue") is True) >= 7
 
@@ -1462,7 +1472,7 @@ def test_gradio_local_queue_cancellation_releases_slot_and_keeps_sessions_isolat
         ]
         cancel_session = next(fn.fn for fn in demo.fns.values() if fn.name == "cancel_session_conversion")
         await advance_until(first, "Processing on server")
-        queued = await advance_until(second, "Queued locally.")
+        queued = await advance_until(second, "Queued locally")
         assert all(value == {"__type__": "update"} for value in queued[1:])
         assert calls == [sources[0]]
         if explicit_session_cancel:
@@ -1471,7 +1481,7 @@ def test_gradio_local_queue_cancellation_releases_slot_and_keeps_sessions_isolat
                 await anext(second)
         else:
             await second.aclose()
-        await advance_until(third, "Queued locally.")
+        await advance_until(third, "Queued locally")
         if explicit_session_cancel:
             await cancel_session(requests[0])
             with pytest.raises(StopAsyncIteration):
@@ -1604,3 +1614,51 @@ def test_shared_layout_failure_keeps_other_gradio_artifacts(tmp_path: Path, monk
     with zipfile.ZipFile(render_download(artifacts.as_state(), "markdown")) as archive:
         assert f"{artifacts.stem}.md" in archive.namelist()
         assert "layout.pdf" not in archive.namelist()
+
+
+def test_gradio_slow_precheck_streams_heartbeats_and_queues_other_sessions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """页码预检阻塞时仍同步状态，其他会话先显示排队而不是堵在预检前。"""
+    import threading
+
+    source = tmp_path / "source.pdf"
+    source.write_bytes(_pdf_bytes())
+    release = threading.Event()
+    started = threading.Event()
+
+    def precheck(*_args: Any, **_kwargs: Any) -> str:
+        """用事件阻塞预检，避免测试依赖真实 PDF 耗时。"""
+        started.set()
+        assert release.wait(10)
+        return "1"
+
+    monkeypatch.setattr(gradio_app, "_effective_page_range", precheck)
+    client = SimpleNamespace(parse_file=AsyncMock(side_effect=V1ArtifactError("test finished")))
+    capabilities = V1ServerCapabilities("http://127.0.0.1:1", ("flash",), ("zip",), ("file_id",))
+    demo = build_gradio_app(client, capabilities, output_root=tmp_path / "output", enable_example=False)
+    handler = next(fn.fn for fn in demo.fns.values() if fn.name == "convert_handler")
+
+    async def scenario() -> None:
+        """同时推进两个会话，验证预检时的心跳和执行槽等待。"""
+        first = handler(str(source), 0, "")
+        second = handler(str(source), 0, "")
+        try:
+            await anext(first)
+            heartbeat = await asyncio.wait_for(anext(first), 2)
+            assert started.is_set()
+            assert "Preparing request" in heartbeat[0]
+            assert 'data-mineru-status-seq="1"' in heartbeat[0]
+            assert all(value == {"__type__": "update"} for value in heartbeat[1:])
+            await anext(second)
+            queued = await asyncio.wait_for(anext(second), 0.5)
+            assert "Queued locally" in queued[0]
+            release.set()
+            assert "test finished" in [item async for item in first][-1][0]
+            assert "test finished" in [item async for item in second][-1][0]
+        finally:
+            release.set()
+            await first.aclose()
+            await second.aclose()
+
+    asyncio.run(scenario())

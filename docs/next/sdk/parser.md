@@ -34,7 +34,7 @@
 | `parse` | function | 根据文件后缀和参数构造 `MinerUParser` 并执行解析。 |
 | `parse_async` | function | `parse` 的异步版本。 |
 | `DocumentParser` | class | 统一 parser 抽象基类（sync/async/batch/context manager 接口）。 |
-| `MinerUParser` | class | 统一解析器，支持 PDF、OFD、EPUB、HTML、图片、CSV/TSV、RTF、OOXML 与 OpenDocument。 |
+| `MinerUParser` | class | 统一解析器，支持 PDF、OFD、EPUB、HTML/MHTML、图片、CSV/TSV、RTF、OOXML 与 OpenDocument。 |
 | `ParseResult` | dataclass | 解析结果对象。 |
 | `MinerUApiParser` | class | API-backed parser，详见 [API-backed Parser](api-parser.md)。 |
 | `MIDDLE_JSON_SCHEMA_VERSION` | 常量 | 当前 Middle JSON schema 版本（`"2.0"`）。 |
@@ -66,7 +66,8 @@ from mineru.parser import MinerUParser
 - 图片（PNG/JPEG 等）
 - CSV/TSV、RTF、DOC/DOCX、PPT/PPTX、XLS/XLSX
 - ODT、ODS、ODP
-- HTML、HTM（静态源码、固定 `auto` 正文选择）
+- HTML、HTM、SHTML（静态源码、固定 `auto` 正文选择）
+- MHTML、MHT（网页归档，使用原生 Flash 解析）
 - OFD（原生固定版式文字、图片、全线表格和 bbox）
 
 EPUB 始终使用 `flash/txt` 并只支持整本解析。每个 `page_idx` 与 OPF spine 项一一对应；位于 spine 中的 navigation XHTML 按普通内容页解析，spine 外的 nav/NCX 不生成合成目录页。正文、列表和表格中的安全内部链接统一映射到实际标题 anchor；严格匹配单一标题的目录表格行会让相邻标题单元格继承同一跳转。单条 Footnote/Endnote 输出为带可选 canonical anchor 的 `page_footnote`，正文 `noteref` 可跨 spine 正向链接到该 anchor；脚注集合容器不会整体改型。spine XHTML 先按严格 XML 解析；局部标签闭合错误会记录 warning，再经过禁用网络的受限 XML 安全审计与 HTML DOM 恢复。恢复后仍要求 `html` 根节点并重新执行节点数、深度预算；DTD 实体、加密、资源超限以及 OPF/container/SVG 等控制或固定版式 XML 不进入宽松回退。恢复仍失败时保留空 spine 占位。fixed-layout/SVG 仅尽力保留 DOM 文本与包内静态图片，不执行 OCR、脚本、外部资源下载或 DRM 解密。所有非 PDF Flash 格式显式传入 `page_range` 都会返回 `page_range_invalid`。
@@ -74,6 +75,8 @@ EPUB 始终使用 `flash/txt` 并只支持整本解析。每个 `page_idx` 与 O
 HTML 始终使用 `flash/txt` 并输出一个无 bbox 的逻辑页。解析器不执行 JavaScript 或远程资源下载；固定 `auto`
 模式只在正文候选置信度和保留率均达标时裁剪导航噪声，否则保留完整 body。本地相对图片限制在源文件目录内，
 远程图片仅作为安全 HTTP(S) `image_url` 保留。完整约束见 [ADR-0031](../decisions/0031-html-native-semantic-parsing.md)。
+
+MHTML（`.mhtml`、`.mht`）由 DocVortex 解包网页归档，再沿用 HTML 静态语义解析路径；两种后缀在结果中统一记为 `mhtml`。它始终使用 `flash/txt`，按整份文档解析并输出一个无 bbox 的逻辑页，不执行 JavaScript 或浏览器布局。显式传入 `page_range` 返回 `page_range_invalid`。
 
 OFD 始终使用 `flash/txt` 并按 `OFD.xml` 的 DocBody 顺序和 `Document.xml` 的 Pages 声明顺序输出物理页。
 文字 bbox 由 TextCode、Delta、CGTransform、CTM 和字体指标恢复，不把 TextObject Boundary 直接当作 tight bbox。

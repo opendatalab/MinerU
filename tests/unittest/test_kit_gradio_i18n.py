@@ -37,6 +37,7 @@ def test_i18n_launch_and_component_contract(tmp_path: Path) -> None:
     assert dictionary["zh-CN"][checkbox.info.key] == "忽略 PDF 文本层并进行 OCR"
     assert dictionary["en"][checkbox.info.key] == "Ignore the PDF text layer and perform OCR"
     assert "__MINERU_I18N__" not in demo._mineru_kit_js
+    assert "__MINERU_STATUS_TIMER__" not in demo._mineru_kit_js
 
 
 def test_bilingual_errors_and_html_keep_untrusted_details_as_text() -> None:
@@ -60,6 +61,21 @@ def test_frontend_language_policy_and_dynamic_events() -> None:
         pytest.skip("Node.js is required for frontend state tests")
     result = subprocess.run(
         [node, str(Path(__file__).with_suffix(".cjs"))],
+        input=json.dumps(MESSAGES),
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_browser_local_status_timer_lifecycle() -> None:
+    """在真实前端脚本中验证百分之一秒更新、重绘续时、双语与完成后停止。"""
+    node = shutil.which("node")
+    if node is None:
+        pytest.skip("Node.js is required for frontend state tests")
+    result = subprocess.run(
+        [node, str(Path(__file__).with_name("test_kit_gradio_status_timer.cjs"))],
         input=json.dumps(MESSAGES),
         capture_output=True,
         text=True,

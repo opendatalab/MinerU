@@ -63,7 +63,7 @@
 - 测试环境必须安装 `full` extra，并满足 README 中 `full` stack 的硬件要求，以同时覆盖 `light` 和 `full` model stack 下的本地 `basic`、`standard`、`advanced` quality parse-server；默认 tier 相关用例应验证本地 quality tier 可用，不再按缺少本地 quality tier 的预期失败分支判定。
 - 全量主流程固定使用 `light` stack；`full` stack 作为硬性 profile，必须额外覆盖本地 PDF Basic、Standard、Advanced。不得使用 `auto` 执行这些用例，以免硬件探测导致测试环境不确定。
 - MinerU 的公开 tier 只有 `flash`、`basic`、`standard`、`advanced`；默认 quality tier 选择顺序为 `standard`、`basic`，`advanced` 只在显式请求时使用；已缓存结果的读取顺序为 `advanced`、`standard`、`basic`、`flash`。
-- 非 PDF/图片格式（Office/RTF/ODF/OFD/EPUB/HTML/CSV/TSV）固定使用 `flash` tier，传入其它 tier 返回 `tier_unsupported_for_file_type`；这些格式不接受 page_range，传入 page_range 返回 `page_range_invalid`。
+- 非 PDF/图片格式（Office/RTF/ODF/OFD/EPUB/HTML/MHTML/CSV/TSV）固定使用 `flash` tier，传入其它 tier 返回 `tier_unsupported_for_file_type`；这些格式不接受 page_range，传入 page_range 返回 `page_range_invalid`。
 - 显式指定 quality tier 的 remote 请求应按 remote 成功、remote 失败后同 tier local fallback、remote 与 local 均不可用三个分支判定；不得 fallback 到 `flash`。未指定 tier 时需要先从 remote 能力中按 `standard`、`basic` 选择默认值，无法选择时返回 `quality_tier_unavailable`；仅暴露 `advanced` 不构成可用的默认 quality tier。
 - PARSE-013A1 是 remote Standard 硬性测试，remote parse-server 不可用或不支持 Standard 均记录为失败。
 

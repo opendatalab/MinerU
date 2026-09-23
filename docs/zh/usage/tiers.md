@@ -9,7 +9,13 @@
 | `standard` | 复杂版面与高质量解析 | 小模型 + VLM |
 | `advanced` | 更高质量需求 | 与 Standard 共用模型与运行环境，投入更多推理计算 |
 
-PDF 和图片可选四档。Office、OpenDocument、RTF、EPUB、OFD、HTML、CSV/TSV 固定走本地 Flash，整本解析；Python 本地 SDK 调用这些格式时显式传 `tier="flash"`。纯文本不进入解析，但可由文档库索引和读取。
+PDF 和图片可选四档。Office、OpenDocument、RTF、EPUB、OFD、HTML/MHTML、CSV/TSV 固定走本地 Flash，整本解析；Python 本地 SDK 调用这些格式时显式传 `tier="flash"`。MHTML 网页归档支持 `.mhtml`、`.mht`，按整份文档解析。纯文本不进入解析，但可由文档库索引和读取。
+
+解析保存的网页归档：
+
+```bash
+mineru-kit parse saved-page.mhtml -o saved-page.md --tier flash
+```
 
 ## 默认选择
 
