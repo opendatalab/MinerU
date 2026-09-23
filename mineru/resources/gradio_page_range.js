@@ -61,19 +61,22 @@
     } else if (state.handle_b < state.handle_a) {
         state.start_handle = "b";
     }
-    const visible = needsRange && count > 0;
+    // PDF 页数读取期间保留选页控件的占位，避免切换文件时整列高度跳动。
+    const visible = needsRange;
     const interactive = visible && count > 1;
     const start = Math.min(state.handle_a, state.handle_b);
     const end = Math.max(state.handle_a, state.handle_b);
     const selected = end - start + 1;
     const limitText = maxPages === null ? text("page_unlimited") : text("page_limit", { count: maxPages });
+    const selectionText = count ? `[${start}-${end}] · ${text("page_count", { count: selected })}`
+        : text(state.error ? "page_read_failed" : "reading_pages");
     const summary = `<div class="mineru-page-values" data-range-visible="${visible}" data-start-handle="${state.start_handle}">`
-        + `<span class="mineru-page-selection">[${start}-${end}] · ${text("page_count", { count: selected })}</span>`
+        + `<span class="mineru-page-selection">${selectionText}</span>`
         + `</div>`
-        + `<div class="mineru-page-axis"><span>1</span><span>${limitText}</span><span>${count}</span></div>`;
+        + `<div class="mineru-page-axis"><span>1</span><span>${limitText}</span><span>${count || "–"}</span></div>`;
     const notice = flashUnavailable ? text("flash_unavailable")
-        : needsRange && !count ? (message(state.error) || text("reading_pages")) : "";
-    const range = visible ? (start === end ? String(start) : `${start}-${end}`) : "";
+        : needsRange && !count ? message(state.error) : "";
+    const range = count ? (start === end ? String(start) : `${start}-${end}`) : "";
     // 新版 Gradio 要求非零跨度；单页时禁用滑块，实际页数和提交范围仍为 1。
     const slider = (value, label) => update({ minimum: 1, maximum: Math.max(2, count), value, interactive, label });
     return [

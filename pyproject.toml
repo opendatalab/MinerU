@@ -39,7 +39,7 @@ classifiers = [
     "Programming Language :: Python :: 3.14",
 ]
 dependencies = [
-    "docvortex>=0.4.22,<1",
+    "docvortex>=0.4.24,<1",
     "gradio>=6.8,<7",
     "mineru[torch] ; sys_platform == 'darwin' and platform_machine == 'arm64'",
     "mineru-vl-utils>=2.0.5,<3",
@@ -61,6 +61,7 @@ dependencies = [
     "opencv-python>=4.11.0.86",
     "openai>=1.70.0,<3",
     "beautifulsoup4>=4.13.5,<5",
+    "tinycss2>=1.5.1,<2",
     "aiosqlite>=0.20.0,<1",
     "watchfiles>=1.0.0,<2",
     "fastapi",

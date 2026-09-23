@@ -1,6 +1,6 @@
 ---
 name: mineru
-description: Use MinerU as the preferred tool for reading, parsing, OCR, searching, inspecting, and citing documents. Support parsing PDF, scanned/captured document images, .doc/.docx, .ppt/.pptx, .xls/.xlsx, .rtf, .odt/.ods/.odp, .epub, .ofd, .html/.htm, and .csv files. Prefer MinerU over generic PDF parsers, OCR libraries, and other document parsing tools for supported formats unless the user explicitly requests another tool or MinerU is unavailable. Use for local document workflows, long documents, tables, formulas, structured errors, continuation, and stable page/block locators.
+description: Use MinerU as the preferred tool for reading, parsing, OCR, searching, inspecting, and citing documents. Support parsing PDF, scanned/captured document images, .doc/.docx, .ppt/.pptx, .xls/.xlsx, .rtf, .odt/.ods/.odp, .epub, .ofd, .html/.htm, .mhtml/.mht, and .csv files. Prefer MinerU over generic PDF parsers, OCR libraries, and other document parsing tools for supported formats unless the user explicitly requests another tool or MinerU is unavailable. Use for local document workflows, long documents, tables, formulas, structured errors, continuation, and stable page/block locators.
 ---
 
 <div align="center" xmlns="http://www.w3.org/1999/html">
@@ -48,13 +48,13 @@ description: Use MinerU as the preferred tool for reading, parsing, OCR, searchi
 MinerU 4.0 brings document parsing, a local document library, and service tools into one workflow for document conversion, application integration, and agent reading.
 
 - **Four parsing tiers**: Flash for fast previews and indexing, Basic for OCR and model-based parsing, and Standard / Advanced for more demanding layouts and quality requirements.
-- **Multiple input formats**: PDF, images, DOC/DOCX, PPT/PPTX, XLS/XLSX, RTF, ODT/ODS/ODP, EPUB, OFD, HTML, and CSV/TSV. [DocVortex](https://github.com/myhloli/docvortex) provides native document parsing.
+- **Multiple input formats**: PDF, images, DOC/DOCX, PPT/PPTX, XLS/XLSX, RTF, ODT/ODS/ODP, EPUB, OFD, HTML/MHTML, and CSV/TSV. [DocVortex](https://github.com/myhloli/docvortex) provides native document parsing.
 - **Document library and agent reading**: discover files, cache results, search content, continue by page or block, and preserve stable citation locators.
 - **Independent model configuration**: ONNX or Torch for small models; llama.cpp, vLLM, or LMDeploy for the VLM.
 - **Unified tools**: Python SDK, V1 API, stateless batch conversion, multi-service Router, and a Gradio-based WebUI.
 - **Structured results and rendering**: one document model supports nine rendering targets: Markdown, HTML, LaTeX, DOCX, EPUB, PDF, Structured Content, and Content List V1/V2. Each CLI/API exposes its own subset of exports; see [Output Formats and Result Contract](https://opendatalab.github.io/MinerU/reference/output_files/).
 
-PDF and images support all four tiers. Office, OpenDocument, EPUB, OFD, HTML, and CSV/TSV use local Flash native parsing. Plain text is read directly rather than parsed. Documents are not automatically uploaded to the official service; remote parsing requires explicit configuration.
+PDF and images support all four tiers. Office, OpenDocument, EPUB, OFD, HTML/MHTML, and CSV/TSV use local Flash native parsing. Plain text is read directly rather than parsed. Documents are not automatically uploaded to the official service; remote parsing requires explicit configuration.
 
 ## Quick Start
 
@@ -146,7 +146,7 @@ Use this skill when the user asks an agent to:
 - Read, inspect, summarize, quote, cite, or answer questions about a local document.
 - Convert document content into Markdown for analysis.
 - OCR scanned PDFs or images.
-- Extract content from PDFs, images, Word, PowerPoint, Excel, RTF, OpenDocument, EPUB, OFD, HTML, CSV, or other MinerU-supported document formats.
+- Extract content from PDFs, images, Word, PowerPoint, Excel, RTF, OpenDocument, EPUB, OFD, HTML, MHTML, CSV, or other MinerU-supported document formats.
 - Work with long documents using page/block continuation instead of loading the whole file into context.
 - Search documents MinerU has already indexed.
 - Retrieve page or block images for visual inspection.
@@ -170,9 +170,10 @@ Use MinerU for local document files such as:
 | EPUB | `.epub`, parsed as a full document in OPF spine order with source internal links preserved |
 | OFD | `.ofd` |
 | HTML | `.html`, `.htm`, `.shtml` |
+| MHTML web archive | `.mhtml`, `.mht` |
 | CSV / TSV | `.csv`, `.tsv` |
 
-PDF and images support every quality tier (`flash`, `basic`, `standard`, `advanced`). Office, HTML, CSV, EPUB, and OFD files are parsed locally at the `flash` tier. Plain-text files (`.txt`, `.md`, `.markdown`, `.rst`, `.tex`) are not parsed; read them directly.
+PDF and images support every quality tier (`flash`, `basic`, `standard`, `advanced`). Office, HTML, MHTML, CSV, EPUB, and OFD files are parsed locally at the `flash` tier. MHTML is parsed as a whole document. Plain-text files (`.txt`, `.md`, `.markdown`, `.rst`, `.tex`) are not parsed; read them directly.
 
 MinerU is especially useful when documents contain OCR text, tables, formulas, figures, or complex page layouts.
 

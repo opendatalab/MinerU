@@ -10,12 +10,12 @@ export MINERU_MODEL_SOURCE=modelscope
 ## 通过命令行快速使用
 MinerU内置了命令行工具，用户可以通过命令行快速使用MinerU进行文档解析：
 ```bash
-mineru parse <input_path> --pages all -o <output_path>
+mineru parse <input_path> -o <output_path>
 ```
 > [!TIP]
-> - `<input_path>`：单个本地 `PDF` / `OFD` / `EPUB` / 静态 `HTML` / 图片 / `CSV` / `RTF` / `DOC`/`DOCX` / `PPT`/`PPTX` / `XLS`/`XLSX` / `ODT`/`ODS`/`ODP` 文件
+> - `<input_path>`：单个本地 `PDF` / `OFD` / `EPUB` / 静态 `HTML` / `MHTML`（`.mhtml` 或 `.mht`）/ 图片 / `CSV` / `RTF` / `DOC`/`DOCX` / `PPT`/`PPTX` / `XLS`/`XLSX` / `ODT`/`ODS`/`ODP` 文件
 > - `<output_path>`：可选输出文件；未指定时 Markdown 写入标准输出
-> - PDF 默认解析前 10 页；使用 `--pages all` 解析整份文档
+> - PDF 默认解析前 10 页；使用 `--pages all` 解析整份 PDF。MHTML 等非 PDF 输入按整份文档解析，不接受 `--pages`。
 > 
 > 更多关于输出文件的信息，请参考[输出文件说明](../reference/output_files.md)。
 
@@ -47,7 +47,7 @@ mineru search "关键词" --json
 mineru read "doc:ab12cd3/tier:standard/page:11" --json
 ```
 
-超过输出预算时按 `next_request` 或返回的继续阅读命令操作。`read` 读取已有结果，不会自动发起新的高质量解析。无状态批处理和完整导出使用 `mineru-kit parse`；原生 Office、HTML、CSV/TSV、EPUB、OFD 自动归一到本地 Flash。
+超过输出预算时按 `next_request` 或返回的继续阅读命令操作。`read` 读取已有结果，不会自动发起新的高质量解析。无状态批处理和完整导出使用 `mineru-kit parse`；原生 Office、HTML/MHTML、CSV/TSV、EPUB、OFD 自动归一到本地 Flash。
 
 ## 通过 API、WebUI 和服务进阶使用
 

@@ -10,8 +10,9 @@ MESSAGES: dict[str, tuple[str, str]] = {
     "header_title": ("MinerU 4: Document Extraction", "MinerU 4：文档提取"),
     "header_subtitle": (
         "Open-source document extraction for PDF/JPG/PNG, DOC/DOCX, PPT/PPTX, XLS/XLSX, "
-        "RTF, ODT/ODS/ODP, EPUB, HTML, OFD, CSV and TSV.",
-        "开源文档提取工具，支持 PDF/JPG/PNG、DOC/DOCX、PPT/PPTX、XLS/XLSX、RTF、ODT/ODS/ODP、EPUB、HTML、OFD、CSV 和 TSV。",
+        "RTF, ODT/ODS/ODP, EPUB, HTML/MHTML, OFD, CSV and TSV.",
+        "开源文档提取工具，支持 PDF/JPG/PNG、DOC/DOCX、PPT/PPTX、XLS/XLSX、RTF、ODT/ODS/ODP、"
+        "EPUB、HTML/MHTML、OFD、CSV 和 TSV。",
     ),
     "header_support_text": (
         "If you found our project helpful, please give us a ⭐️ to support us!",
@@ -74,6 +75,10 @@ MESSAGES: dict[str, tuple[str, str]] = {
     "html_preview_failed": (
         "Could not preview this HTML file. You can still try converting it.",
         "HTML 预览生成失败，仍可尝试解析该文件。",
+    ),
+    "mhtml_preview_failed": (
+        "Could not preview this MHTML file. You can still try converting it.",
+        "MHTML 预览生成失败，仍可尝试解析该文件。",
     ),
     "epub_loading": ("Loading EPUB…", "正在加载 EPUB…"),
     "epub_previous": ("Previous section", "上一节"),

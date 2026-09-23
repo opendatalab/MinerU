@@ -17,6 +17,7 @@ from ...errors import MineruError
 from ...filetypes import (
     FLASH_ONLY_PARSE_EXTENSIONS,
     HTML_EXTENSIONS,
+    MHTML_EXTENSIONS,
     IMAGE_EXTENSIONS,
     OFFICE_EXTENSIONS,
     PARSEABLE_EXTENSIONS,
@@ -185,6 +186,14 @@ _KIT_MENU_CSS = """
 .mineru-kit-pdf-preview .html-container, .mineru-kit-pdf-preview .prose,
 .mineru-kit-source-preview .html-container, .mineru-kit-source-preview .prose { height: 100%; padding: 0 !important; }
 .mineru-kit-pdf-preview:not(:has(.mineru-pdf-frame, [role="alert"])) { display: none !important; }
+/* HTML 源预览用固定 viewport 裁剪逻辑舞台。缩放舞台而不是 iframe 本体，
+   避免 Safari/WebKit 在 transform iframe 时把子文档绘制层裁成局部区域。 */
+.mineru-source-viewport {
+    position: relative; display: block; width: 100%; height: 100%; min-height: 0; overflow: hidden;
+}
+.mineru-source-stage {
+    display: block; width: 100%; height: 100%; min-height: 0; transform-origin: 0 0;
+}
 .mineru-pdf-frame, .mineru-source-frame, .mineru-epub-frame {
     display: block; width: 100%; height: 100%; min-height: 0; border: 0;
 }
@@ -370,9 +379,16 @@ def build_gradio_app(
     examples = _example_files(file_types) if enable_example else []
     app_css = _resource_text("gradio_app.css") + _KIT_MENU_CSS + _download_icon_css()
     i18n = gr.I18n(**translations())
-    app_js = _resource_text("gradio_app.js").replace(
-        "__MINERU_I18N__",
-        f"({_resource_text('gradio_i18n.js')})({json.dumps(MESSAGES, ensure_ascii=False)})",
+    app_js = (
+        _resource_text("gradio_app.js")
+        .replace(
+            "__MINERU_I18N__",
+            f"({_resource_text('gradio_i18n.js')})({json.dumps(MESSAGES, ensure_ascii=False)})",
+        )
+        .replace(
+            "__MINERU_STATUS_TIMER__",
+            _resource_text("gradio_status_timer.js"),
+        )
     )
     # 等待限制放在生成器内部，使其他会话也能立即显示本地排队状态。
     conversion_slot = asyncio.Semaphore(1)
@@ -458,7 +474,12 @@ def build_gradio_app(
                 page_notice = gr.HTML(value="", visible=False, elem_classes=["mineru-page-notice"])
                 with gr.Row(elem_classes=["mineru-actions"]):
                     convert_button = gr.Button(
-                        i18n("mineru.convert"), variant="primary", scale=1, min_width=0, interactive=False
+                        i18n("mineru.convert"),
+                        variant="primary",
+                        scale=1,
+                        min_width=0,
+                        interactive=False,
+                        elem_classes=["mineru-convert-button"],
                     )
                     clear_button = gr.ClearButton(value=i18n("mineru.clear"), scale=1, min_width=1)
                 status_panel = gr.HTML(_status_html(), elem_classes=["mineru-status-panel"])
@@ -596,7 +617,7 @@ def build_gradio_app(
                     _preview_update(gr, preview_placeholder("source_preview"), visible=False),
                     *reset_result,
                 )
-            if suffix in {"ofd", "epub"} or suffix in HTML_EXTENSIONS:
+            if suffix in {"ofd", "epub"} or suffix in HTML_EXTENSIONS | MHTML_EXTENSIONS:
                 # OFD/EPUB/HTML 源预览由独立异步事件挂载，此处只隐藏占位组件。
                 return (
                     _pdf_preview_update(gr, None),
@@ -673,9 +694,16 @@ def build_gradio_app(
             return f"(...args) => ({download_script})({arguments}, ...args)"
 
         def reset_download_ui() -> tuple[Any, ...]:
-            """返回下载组件的初始状态，为转换提供可可靠串联的完成事件。"""
+            """立即显示准备阶段并重置下载组件，为转换提供可靠串联的完成事件。"""
             count = len(_DOWNLOAD_FORMATS)
-            return ("", *((None,) * count), *(("",) * count * 2), *_download_updates(gr, interactive=False)[1:], "")
+            return (
+                _status_html(STATUS_PREPARING_REQUEST),
+                "",
+                *((None,) * count),
+                *(("",) * count * 2),
+                *_download_updates(gr, interactive=False)[1:],
+                "",
+            )
 
         download_reset_outputs = [
             active_run_id,
@@ -685,6 +713,8 @@ def build_gradio_app(
             *download_buttons.values(),
             download_notice,
         ]
+        # 文件切换只重置下载控件；转换点击另加状态卡片，避免重置结果错位清空卡片。
+        begin_conversion_outputs = [status_panel, *download_reset_outputs]
 
         # 先在前端失效旧请求，再等待上传/清除/转换的 Python 回调，防止迟到的下载被触发。
         gr.on(
@@ -796,6 +826,9 @@ def build_gradio_app(
             if not file_path:
                 yield reset_result
                 return
+            state = StatusPanelState()
+            state.append(STATUS_PREPARING_REQUEST)
+            yield (state.render(), *reset_result[1:])
             source_path = Path(file_path).resolve()
             if not source_path.is_file():
                 yield (_status_html("Failed: input file does not exist"), *reset_result[1:])
@@ -816,14 +849,6 @@ def build_gradio_app(
                     yield (_status_html(message), *reset_result[1:])
                     return
                 selected_tier = "flash"
-            try:
-                page_text = await asyncio.to_thread(_effective_page_range, source_path, raw_page_range, max_pages=max_pages)
-            except MineruError as exc:
-                yield (_status_html(f"Failed: {exc.code}: {exc}"), *reset_result[1:])
-                return
-            state = StatusPanelState()
-            state.append(STATUS_PREPARING_REQUEST)
-            yield (state.render(), *reset_result[1:])
             status_queue: asyncio.Queue[tuple[str, float]] = asyncio.Queue()
             loop = asyncio.get_running_loop()
 
@@ -836,6 +861,8 @@ def build_gradio_app(
                 if conversion_slot.locked():
                     emit(STATUS_QUEUED_LOCALLY)
                 async with conversion_slot:
+                    emit(STATUS_PREPARING_REQUEST)
+                    page_text = await asyncio.to_thread(_effective_page_range, source_path, raw_page_range, max_pages=max_pages)
                     result = await client.parse_file(
                         source_path,
                         tier=selected_tier,
@@ -868,7 +895,7 @@ def build_gradio_app(
                         gr.update(value="", visible=False),
                         gr.update(value=generic_html, visible=bool(generic_html)),
                     )
-                    if _is_office(source_path) or suffix in {"ofd", "epub"} or suffix in HTML_EXTENSIONS:
+                    if _is_office(source_path) or suffix in {"ofd", "epub"} or suffix in HTML_EXTENSIONS | MHTML_EXTENSIONS:
                         # Office/OFD/EPUB/HTML 源预览已在上传时挂载，成功后保留原内容和浏览位置。
                         result_preview_updates = tuple(gr.skip() for _ in range(4))
                     return (
@@ -905,7 +932,8 @@ def build_gradio_app(
                 # 会话重置后静默结束旧流，避免把取消异常或旧状态写回新界面。
                 return
             except Exception as exc:
-                state.append(f"Failed: {exc}")
+                message = f"{exc.code}: {exc}" if isinstance(exc, MineruError) else str(exc)
+                state.append(f"Failed: {message}")
                 yield (state.render(), *reset_result[1:])
             finally:
                 # 清除、换文件或断开流时仅取消本地等待，不发送远端取消请求。
@@ -937,8 +965,11 @@ def build_gradio_app(
         begin_conversion = convert_button.click(
             fn=reset_download_ui,
             inputs=[],
-            outputs=download_reset_outputs,
-            js=f"() => {{ ({pdf_preview_js('begin')})(); ({download_js('reset')})(); return []; }}",
+            outputs=begin_conversion_outputs,
+            js=(
+                f"() => {{ ({pdf_preview_js('begin')})(); "
+                f"return [{json.dumps(_status_html(STATUS_PREPARING_REQUEST))}, ...({download_js('reset')})()]; }}"
+            ),
             **private_event_kwargs,
         )
         convert_event = begin_conversion.then(
@@ -952,6 +983,8 @@ def build_gradio_app(
             inputs=input_file,
             outputs=preview_outputs,
             cancels=[convert_event],
+            # 示例切换也会触发文件变更，预览准备期间保持状态卡片可见。
+            show_progress="hidden",
             **private_event_kwargs,
         )
         # 成功事件接收已经序列化的原生 FileData，避免首次挂载时丢失 URL。
