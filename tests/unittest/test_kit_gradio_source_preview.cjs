@@ -6,6 +6,7 @@ let sequence = 0;
 const listeners = {};
 const windowListeners = {};
 const sourceFrames = [];
+const timers = [];
 const browserWindow = {
     location: {href: 'https://demo.example.test/mineru/', origin: 'https://demo.example.test'},
     addEventListener(type, listener) {
@@ -28,6 +29,7 @@ const preview = vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../../m
     URL,
     URLSearchParams,
     crypto: {randomUUID: () => String(++sequence)},
+    setTimeout: (callback) => timers.push(callback),
 });
 const first = JSON.parse(preview('begin', {path: '/first.html'})[0]);
 const second = JSON.parse(preview('begin', {path: '/second.ofd'})[0]);
@@ -48,6 +50,7 @@ assert.equal(typeof listeners.load, 'function');
 
 let restores = 0;
 let sandbox = 'allow-scripts allow-popups';
+let probe = null;
 const sourceViewport = {
     classList: {contains: (name) => name === 'mineru-source-viewport'},
     clientWidth: 600,
@@ -64,8 +67,14 @@ const sourceFrame = {
     dataset: {mineruSourcePreviewId: String(htmlTicket.id), mineruSourceContentWidth: "1200"},
     parentElement: sourceStage,
     style: {},
-    contentWindow: {},
-    getAttribute: (name) => name === 'srcdoc' ? '<p>source</p>' : null,
+    contentWindow: {
+        postMessage(message, target) {
+            assert.equal(target, '*');
+            assert.equal(message.type, 'mineru-source-preview-probe');
+            probe = message.probe;
+        },
+    },
+    getAttribute: (name) => name === 'srcdoc' ? '<p>source</p>' : name === 'sandbox' ? sandbox : null,
     setAttribute(name, value) {
         assert.equal(name, 'sandbox');
         sandbox = value;
@@ -78,6 +87,13 @@ const sourceFrame = {
 };
 sourceFrames.push(sourceFrame);
 listeners.load({target: sourceFrame});
+assert.equal(restores, 0);
+assert.ok(probe);
+windowListeners.message({
+    source: sourceFrame.contentWindow,
+    data: {type: 'mineru-source-preview-probe-ack', probe},
+});
+timers.shift()();
 assert.equal(restores, 0);
 assert.equal(sourceFrame.style.width, '100%');
 assert.equal(sourceFrame.style.height, '100%');
@@ -100,10 +116,58 @@ assert.equal(sourceStage.style.transformOrigin, '0 0');
 assert.equal(sourceStage.style.transform, 'scale(0.5)');
 listeners.load({target: sourceFrame});
 assert.equal(restores, 1);
+
+// 首次 load 已经来自重定向目标时，探测超时后恢复一次静态原文。
+const immediateTicket = JSON.parse(preview('begin', {path: '/immediate.html'})[0]);
+let immediateRestores = 0;
+let immediateSandbox = 'allow-scripts allow-popups';
+const immediateFrame = {
+    tagName: 'IFRAME',
+    classList: {contains: (name) => name === 'mineru-source-frame'},
+    dataset: {mineruSourcePreviewId: String(immediateTicket.id)},
+    parentElement: sourceStage,
+    style: {},
+    contentWindow: {postMessage: (message) => assert.equal(message.type, 'mineru-source-preview-probe')},
+    getAttribute: (name) => name === 'srcdoc' ? '<p>immediate</p>' : name === 'sandbox' ? immediateSandbox : null,
+    setAttribute(name, value) {
+        assert.equal(name, 'sandbox');
+        immediateSandbox = value;
+    },
+    set srcdoc(value) {
+        immediateRestores += 1;
+        assert.equal(value, '<p>immediate</p>');
+        assert.equal(immediateSandbox, 'allow-popups');
+    },
+};
+sourceFrames.push(immediateFrame);
+listeners.load({target: immediateFrame});
+assert.equal(immediateRestores, 0);
+timers.shift()();
+assert.equal(immediateRestores, 1);
+listeners.load({target: immediateFrame});
+assert.equal(immediateRestores, 1);
 listeners.load({target: sourceFrame});
 assert.equal(restores, 1);
 listeners.load({target: sourceFrame});
 assert.equal(restores, 1);
+
+// 无源脚本的 OFD 首次加载无需探测，也不能额外重载。
+const ofdTicket = JSON.parse(preview('begin', {path: '/static.ofd'})[0]);
+const ofdFrame = {
+    tagName: 'IFRAME',
+    classList: {contains: (name) => name === 'mineru-source-frame'},
+    dataset: {mineruSourcePreviewId: String(ofdTicket.id)},
+    parentElement: sourceStage,
+    style: {},
+    contentWindow: {postMessage: () => assert.fail('OFD must not be probed')},
+    getAttribute: (name) => name === 'sandbox' ? '' : name === 'srcdoc' ? '<p>ofd</p>' : null,
+    set srcdoc(_value) {
+        assert.fail('OFD must not reload on its first load');
+    },
+};
+sourceFrames.push(ofdFrame);
+listeners.load({target: ofdFrame});
+assert.equal(timers.length, 0);
 
 const epub = {path: '/tmp/中文 book.epub', url: '/gradio_api/file=/tmp/中文 book.epub'};
 const viewer = {path: '/tmp/reader.html', url: '/gradio_api/file=/tmp/reader.html'};

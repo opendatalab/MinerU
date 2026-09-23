@@ -23,11 +23,13 @@
         "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
     })[character]);
 
-    // 源 HTML 可以执行自身脚本；导航事件可取消时直接阻止整页跳转，旧浏览器回退到静态预览。
+    // 源 HTML 可以执行自身脚本；可取消的整页导航直接阻止，其余导航探测后静态恢复。
     // HTML 的桌面视口缩放只作用于 iframe 外层舞台：WebKit 直接 transform iframe 时会出现
     // 内部页面布局正确、但绘制层只更新局部区域的现象，典型表现就是大块空白和正文被截断。
     const navigationGuardKey = `${key}NavigationGuard`;
     const sizeGuardKey = `${key}SizeGuard`;
+    const navigationStates = new WeakMap();
+    let probeSequence = 0;
     const fitSourceFrame = (frame, reportedWidth = null) => {
         if (!frame?.classList?.contains("mineru-source-frame")) return;
         const stage = frame.parentElement?.classList?.contains("mineru-source-stage") ? frame.parentElement : null;
@@ -67,9 +69,18 @@
             new ResizeObserver(() => fitSourceFrame(frame)).observe(viewport);
         }
     };
+    // 跳转后只恢复一次原文，并禁用源脚本，避免恢复本身再次触发跳转。
+    const restoreSourceFrame = (frame, state) => {
+        if (state.restored) return;
+        const source = frame.getAttribute?.("srcdoc");
+        if (!source) return;
+        state.restored = true;
+        state.probe = null;
+        frame.setAttribute("sandbox", "allow-popups");
+        frame.srcdoc = source;
+    };
     const installNavigationGuard = () => {
         if (window[navigationGuardKey] || typeof document === "undefined") return;
-        const states = new WeakMap();
         document.addEventListener("load", (event) => {
             const frame = event.target;
             if (!frame || frame.tagName !== "IFRAME" || !frame.classList?.contains("mineru-source-frame")) return;
@@ -77,29 +88,46 @@
             if (!frameId || frameId !== String(window[key])) return;
             observeSourceFrame(frame);
             fitSourceFrame(frame);
-            const state = states.get(frame);
+            let state = navigationStates.get(frame);
             if (!state) {
-                states.set(frame, {restored: false});
+                state = {restored: false, verified: false, probe: null};
+                navigationStates.set(frame, state);
+                // OFD 等无脚本预览不需要探测；HTML/MHTML 首次 load 可能已是重定向目标。
+                if (!frame.getAttribute?.("sandbox")?.split(/\s+/).includes("allow-scripts")) {
+                    state.verified = true;
+                    return;
+                }
+                const probe = String(++probeSequence);
+                state.probe = probe;
+                frame.contentWindow?.postMessage({type: "mineru-source-preview-probe", probe}, "*");
+                setTimeout(() => {
+                    if (!state.verified && state.probe === probe && frame.dataset?.mineruSourcePreviewId === String(window[key])) {
+                        restoreSourceFrame(frame, state);
+                    }
+                }, 250);
                 return;
             }
-            if (state.restored) return;
-            const source = frame.getAttribute?.("srcdoc");
-            if (!source) return;
-            // 更改 sandbox 只作用于下一次加载：恢复原文时禁用源脚本，避免定时导航再次运行。
-            state.restored = true;
-            frame.setAttribute("sandbox", "allow-popups");
-            frame.srcdoc = source;
+            restoreSourceFrame(frame, state);
         }, true);
         window[navigationGuardKey] = true;
     };
     const installSizeGuard = () => {
         if (window[sizeGuardKey] || typeof window.addEventListener !== "function") return;
         window.addEventListener("message", (event) => {
-            if (event.data?.type !== "mineru-source-preview-size") return;
+            const type = event.data?.type;
+            if (type !== "mineru-source-preview-size" && type !== "mineru-source-preview-probe-ack") return;
             for (const frame of document.querySelectorAll?.("iframe.mineru-source-frame") || []) {
                 if (frame.contentWindow !== event.source) continue;
                 const frameId = frame.dataset?.mineruSourcePreviewId;
                 if (!frameId || frameId !== String(window[key])) return;
+                if (type === "mineru-source-preview-probe-ack") {
+                    const state = navigationStates.get(frame);
+                    if (state && !state.restored && state.probe === event.data.probe) {
+                        state.verified = true;
+                        state.probe = null;
+                    }
+                    return;
+                }
                 observeSourceFrame(frame);
                 fitSourceFrame(frame, event.data.width);
                 return;

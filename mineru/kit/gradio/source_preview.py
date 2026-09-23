@@ -46,6 +46,13 @@ _NAVIGATION_HANDLER_PATTERN = re.compile(
 # 离屏 slide 计入文档宽度，导致虚拟视口被错误放大到数千像素。
 _SOURCE_PREVIEW_BRIDGE = """<script id="mineru-source-preview-bridge">
 (function () {
+    // 父页面只能通过消息确认 opaque-origin iframe 仍停留在原文，不能直接读取其 location。
+    addEventListener("message", function (event) {
+        var data = event.data;
+        if (event.source !== parent || !data || data.type !== "mineru-source-preview-probe") return;
+        parent.postMessage({type: "mineru-source-preview-probe-ack", probe: data.probe}, "*");
+    });
+
     if (window.navigation && typeof window.navigation.addEventListener === "function") {
         window.navigation.addEventListener("navigate", function (event) {
             // 保留页内锚点和 History API；可取消的整页导航不离开原文预览。
