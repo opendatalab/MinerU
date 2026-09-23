@@ -281,7 +281,7 @@ def build_html_preview(payload: bytes) -> str:
     width_attribute = f' data-mineru-source-content-width="{width_hint}"' if width_hint else ""
     frame = (
         f'<iframe class="mineru-source-frame"{width_attribute} title="HTML preview" '
-        'sandbox="allow-scripts" referrerpolicy="no-referrer" '
+        'sandbox="allow-scripts allow-popups" referrerpolicy="no-referrer" '
         f'srcdoc="{html.escape(document, quote=True)}"></iframe>'
     )
     # 外层舞台负责缩放，iframe 保留桌面布局视口，避免窄预览面板改变源页面排版。

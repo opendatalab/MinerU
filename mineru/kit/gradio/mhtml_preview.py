@@ -220,8 +220,6 @@ def build_mhtml_preview(payload: bytes) -> str:
     source_uri = archive.source_context.source_uri or ""
     base = document.find("base", href=True)
     base_uri = urljoin(source_uri, str(base["href"])) if base is not None else source_uri
-    rewritten_styles: set[int] = set()
-
     # 归档中的子页面常指向 CID 广告资源；预览只展示主文档，避免浏览器尝试装载子框架。
     for tag in document.find_all(["iframe", "frame", "frameset"]):
         if tag.parent is not None:
@@ -236,15 +234,12 @@ def build_mhtml_preview(payload: bytes) -> str:
             link["href"] = resources._fallback(str(link["href"]), base_uri)
             continue
         stylesheet = resources.stylesheet(part, active=frozenset())
-        replacement = document.new_tag("style")
-        if link.get("media"):
-            replacement["media"] = link["media"]
-        replacement.string = stylesheet.replace("</style", "<\\/style")
-        link.replace_with(replacement)
-        rewritten_styles.add(id(replacement))
+        # 保留 link 的 title、alternate、disabled 与 media 语义，只替换归档样式的地址。
+        encoded = base64.b64encode(stylesheet.encode("utf-8")).decode("ascii")
+        link["href"] = resources._charge(f"data:text/css;charset=utf-8;base64,{encoded}")
 
     for style in document.find_all("style"):
-        if style.string and id(style) not in rewritten_styles:
+        if style.string:
             style.string = resources.rewrite_css(str(style.string), base_uri).replace("</style", "<\\/style")
     for tag in document.find_all(style=True):
         tag["style"] = resources._tokens(tinycss2.parse_component_value_list(str(tag["style"])), base_uri, frozenset())
@@ -260,7 +255,7 @@ def build_mhtml_preview(payload: bytes) -> str:
     width_attribute = f' data-mineru-source-content-width="{width_hint}"' if width_hint else ""
     frame = (
         f'<iframe class="mineru-source-frame"{width_attribute} title="MHTML preview" '
-        'sandbox="allow-scripts" referrerpolicy="no-referrer" '
+        'sandbox="allow-scripts allow-popups" referrerpolicy="no-referrer" '
         f'srcdoc="{html.escape(prepared, quote=True)}"></iframe>'
     )
     if len(frame.encode("utf-8")) > MAX_PREVIEW_BYTES:

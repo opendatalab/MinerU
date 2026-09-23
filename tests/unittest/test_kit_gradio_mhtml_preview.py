@@ -29,7 +29,7 @@ def _part(payload: str | bytes, media_type: str, location: str) -> EmailMessage:
     return part
 
 
-def _archive(*, cycle: bool = False, root_html: str | None = None) -> bytes:
+def _archive(*, cycle: bool = False, root_html: str | None = None, extra_parts: tuple[EmailMessage, ...] = ()) -> bytes:
     """生成含 CSS 导入、相对资源、CID 和缺失资源的网页归档。"""
     root = _part(
         root_html
@@ -50,7 +50,7 @@ def _archive(*, cycle: bool = False, root_html: str | None = None) -> bytes:
     font = _part(b"saved-font", "font/woff2", "https://site.test/font.woff2")
     message = EmailMessage(policy=policy.SMTP)
     message.make_related()
-    for part in (root, css, nested, picture, font):
+    for part in (root, css, nested, picture, font, *extra_parts):
         message.attach(part)
     return message.as_bytes()
 
@@ -58,7 +58,7 @@ def _archive(*, cycle: bool = False, root_html: str | None = None) -> bytes:
 def _document(payload: bytes) -> BeautifulSoup:
     """读取 iframe 的 srcdoc，确认归档资源实际交给浏览器的内容。"""
     frame = BeautifulSoup(build_mhtml_preview(payload), "html.parser").iframe
-    assert frame is not None and frame.get("sandbox") == ["allow-scripts"]
+    assert frame is not None and set(frame.get("sandbox")) == {"allow-scripts", "allow-popups"}
     return BeautifulSoup(frame["srcdoc"], "html.parser")
 
 
@@ -72,14 +72,37 @@ def test_mhtml_preview_reuses_archived_assets_and_preserves_media(cycle: bool) -
     assert "https://site.test/missing.png 2x" in document.img["srcset"]
     assert document.source["srcset"].startswith("data:image/png;base64,eA== 1x, data:image/png;base64,")
     assert document.p["style"].count("data:image/png;base64,") == 1
-    assert document.find("style", media="screen") is not None
-    css = document.find("style", media="screen").get_text()
+    stylesheet = document.find("link", media="screen")
+    assert stylesheet is not None and stylesheet["href"].startswith("data:text/css;charset=utf-8;base64,")
+    css = base64.b64decode(stylesheet["href"].split(",", 1)[1]).decode("utf-8")
     encoded = re.search(r"data:text/css;charset=utf-8;base64,([A-Za-z0-9+/=]+)", css)
     assert encoded is not None
     nested = base64.b64decode(encoded.group(1)).decode("utf-8")
     assert "data:font/woff2;base64," in nested
     if cycle:
         assert "@import" not in nested
+
+
+def test_mhtml_preview_preserves_inactive_stylesheet_state() -> None:
+    """归档样式内嵌后仍保留备用和禁用标记，不让它们覆盖当前页面样式。"""
+    document = _document(
+        _archive(
+            root_html="<html><head><style>p{color:red}</style>"
+            '<link rel="alternate stylesheet" title="Blue" href="alt.css">'
+            '<link rel="stylesheet" disabled href="disabled.css"></head>'
+            "<body><p>正文</p></body></html>",
+            extra_parts=(
+                _part("p{color:blue}", "text/css", "https://site.test/alt.css"),
+                _part("p{color:green}", "text/css", "https://site.test/disabled.css"),
+            ),
+        )
+    )
+    links = document.find_all("link", rel=lambda rel: rel and "stylesheet" in rel)
+    assert len(links) == 2
+    assert links[0]["rel"] == ["alternate", "stylesheet"] and links[0]["title"] == "Blue"
+    assert "disabled" in links[1].attrs
+    assert all(link["href"].startswith("data:text/css;charset=utf-8;base64,") for link in links)
+    assert document.style.get_text() == "p{color:red}"
 
 
 def test_mhtml_preview_preserves_declared_absolute_base() -> None:

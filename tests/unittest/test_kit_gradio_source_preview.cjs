@@ -47,7 +47,7 @@ assert.match(guardedMarkup, new RegExp(`data-mineru-source-preview-id="${htmlTic
 assert.equal(typeof listeners.load, 'function');
 
 let restores = 0;
-let sandbox = 'allow-scripts';
+let sandbox = 'allow-scripts allow-popups';
 const sourceViewport = {
     classList: {contains: (name) => name === 'mineru-source-viewport'},
     clientWidth: 600,
@@ -72,7 +72,7 @@ const sourceFrame = {
     },
     set srcdoc(value) {
         restores += 1;
-        assert.equal(sandbox, '');
+        assert.equal(sandbox, 'allow-popups');
         assert.equal(value, '<p>source</p>');
     },
 };

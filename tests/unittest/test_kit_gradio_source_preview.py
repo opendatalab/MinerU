@@ -117,7 +117,7 @@ def test_html_preview_injects_csp_into_head_and_keeps_content() -> None:
     assert root.get("class") == "mineru-source-viewport"
     assert root.xpath("./div[@class='mineru-source-stage']/iframe[@class='mineru-source-frame']")
     frame = _frame_element(markup)
-    assert frame.get("sandbox") == "allow-scripts"
+    assert frame.get("sandbox") == "allow-scripts allow-popups"
     assert frame.get("referrerpolicy") == "no-referrer"
     assert frame.get("class") == "mineru-source-frame"
     document = html.fromstring(frame.get("srcdoc"))
@@ -278,7 +278,7 @@ def test_html_preview_keeps_formula_scripts_for_typesetting() -> None:
         "</head><body><p>质能方程 \\(E=mc^2\\)</p></body></html>"
     ).encode("utf-8")
     frame = _frame_element(build_html_preview(payload))
-    assert frame.get("sandbox") == "allow-scripts"
+    assert frame.get("sandbox") == "allow-scripts allow-popups"
     document = html.fromstring(frame.get("srcdoc"))
     scripts = [script for script in document.xpath("//script") if script.get("id") != "mineru-source-preview-bridge"]
     assert len(scripts) == 2
@@ -307,7 +307,7 @@ def test_html_preview_removes_auto_navigation_but_keeps_normal_scripts_and_event
         '<p id="section">正文仍需展示</p></body></html>'
     ).encode("utf-8")
     frame = _frame_element(build_html_preview(payload))
-    assert frame.get("sandbox") == "allow-scripts"
+    assert frame.get("sandbox") == "allow-scripts allow-popups"
     document = html.fromstring(frame.get("srcdoc"))
     assert not document.xpath("//meta[translate(@http-equiv, 'REFSH', 'refsh')='refresh']")
     assert document.xpath("//img")[0].get("onerror") is None

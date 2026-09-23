@@ -87,7 +87,7 @@
             if (!source) return;
             // 更改 sandbox 只作用于下一次加载：恢复原文时禁用源脚本，避免定时导航再次运行。
             state.restored = true;
-            frame.setAttribute("sandbox", "");
+            frame.setAttribute("sandbox", "allow-popups");
             frame.srcdoc = source;
         }, true);
         window[navigationGuardKey] = true;
