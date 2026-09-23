@@ -1,8 +1,10 @@
 # AMD GPU installation
 
-This guide covers installing and using MinerU **4.x (`>=4.0,<5`)** in an AMD GPU container. The example environment uses an AMD **Radeon GPU**, Ubuntu 24.04, Python 3.12 and ROCm 7.2.3.
+This guide covers installing and using MinerU **4.x (`>=4.0,<5`)** on AMD GPUs. The [On Linux](#on-linux) example uses an AMD **Radeon GPU**, Ubuntu 24.04, Python 3.12 and ROCm 7.2.3 in a container; [On Windows](#on-windows) runs through the base package with llama.cpp Vulkan.
 
-## 1. Prepare the image and container
+## On Linux
+
+### 1. Prepare the image and container
 
 Use the following ROCm/PyTorch base image; MinerU is installed after entering the container:
 
@@ -30,7 +32,7 @@ docker exec -it mineru-amd bash
 
 Run the remaining installation and server commands inside the container.
 
-## 2. Install MinerU
+### 2. Install MinerU
 
 Install into an isolated virtual environment without changing the image's existing PyTorch installation:
 
@@ -47,11 +49,11 @@ uv pip check
 
 The base package includes ONNX Runtime and llama.cpp, with versions resolved from MinerU's dependency constraints. This guide keeps layout/OCR small models on **ONNX CPU**, while the VLM uses the GPU inference engine selected below.
 
-## 3. Configure the inference engine
+### 3. Configure the inference engine
 
 Choose **vLLM** or **llama.cpp** and follow only the installation and configuration steps for that engine.
 
-### vLLM
+#### vLLM
 
 In the activated virtual environment, install the vLLM wheel for ROCm 7.2.3 together with its matching dependencies:
 
@@ -68,7 +70,7 @@ export MINERU_MODEL_VLM_ENGINE=vllm
 
 MinerU uses a 4.x version range; vLLM and its matching Torch/Triton wheels retain the validated version combination. This vLLM wheel uses Torch 2.12 inside the virtual environment rather than the image's Torch 2.10. Keep the version-specific ROCm index, not ordinary CUDA wheels or a floating latest index. When upgrading the engine, check both MinerU's dependency constraints and the matching ROCm wheel requirements.
 
-### llama.cpp
+#### llama.cpp
 
 No additional Python inference package is needed; GPU acceleration uses **Vulkan**. The container needs a Vulkan loader and an ICD that recognizes the AMD GPU. If these are missing, install them inside this dedicated Ubuntu 24.04 container:
 
@@ -93,7 +95,7 @@ export MINERU_MODEL_VLM_ENGINE=llama-cpp
 
 The output must include a physical AMD GPU, not only software devices such as `llvmpipe`. If the installed Mesa version does not recognize the card, configure a compatible Vulkan driver before proceeding.
 
-## 4. Download models
+### 4. Download models
 
 In the same terminal where you selected the engine, download the ONNX small models and the VLM weights required by that engine. Choose either of the following model sources:
 
@@ -121,7 +123,7 @@ mineru-kit models verify --tier standard --small-backend onnx \
 
 vLLM uses the original model weights; llama.cpp uses GGUF and a vision projector. The download command fetches the model repositories' current default revisions. See [Model Source](../usage/model_source.md) for source selection and offline deployment.
 
-## 5. Start the VLM server
+### 5. Start the VLM server
 
 Keep the current terminal and virtual environment, and start only the selected engine. Both examples listen on `127.0.0.1:30000`, so do not run them simultaneously.
 
@@ -134,7 +136,7 @@ Keep the current terminal and virtual environment, and start only the selected e
 >
 > After changing Vulkan device selection, run `mineru-kit vlm-server --engine llama-cpp --list-devices` under the same environment before starting the server to confirm the target AMD GPU. `MINERU_DEVICE_MODE=cpu` does not disable the explicitly requested Vulkan acceleration.
 
-### Start with vLLM
+#### Start with vLLM
 
 ```bash
 export HIP_VISIBLE_DEVICES=0
@@ -153,7 +155,7 @@ mineru-kit vlm-server --engine vllm \
 
 Wait for `Application startup complete` in the logs.
 
-### Start with llama.cpp
+#### Start with llama.cpp
 
 Run this in the same terminal where you configured Vulkan:
 
@@ -166,7 +168,7 @@ mineru-kit vlm-server --engine llama-cpp \
   --parallel 1 --ctx-size 8192 --threads 8 --threads-batch 8
 ```
 
-## 6. Use MinerU
+### 6. Use MinerU
 
 Once the server is ready, open another terminal on the host and enter the same container:
 
@@ -186,7 +188,7 @@ export MINERU_MODEL_SOURCE=local HF_HUB_OFFLINE=1
 curl --fail --silent --show-error "$MINERU_MODEL_VLM_SERVER_URL/v1/models"
 ```
 
-### Command-line parsing
+#### Command-line parsing
 
 Place a PDF in the host's `mineru-workspace` directory and run this in the configured terminal:
 
@@ -202,7 +204,7 @@ For batch conversion with complete result bundles:
 mineru-kit parse ./documents -o ./output --format zip --tier standard
 ```
 
-### WebUI
+#### WebUI
 
 The MinerU base package includes the WebUI; no additional installation is needed. Start it in the same terminal after applying the environment settings above. Running a CLI conversion first is not required:
 
@@ -216,3 +218,55 @@ Open [http://127.0.0.1:7860](http://127.0.0.1:7860) in a browser on the host, up
 The WebUI manages a document parsing API and reuses the existing vLLM or llama.cpp service through `MINERU_MODEL_VLM_SERVER_URL`. Do not set `--api-url` here: that option connects to a separate MinerU document parsing API, not the VLM endpoint on port `30000`.
 
 To stop, press Ctrl+C in the WebUI and VLM server terminals separately. See [Quick Usage](../usage/quick_usage.md) and [Python SDK](../usage/sdk_api.md) for additional API and parsing options.
+
+## On Windows
+
+On Windows, the ROCm vLLM path is not available because ROCm vLLM only ships Linux wheels. MinerU 4.x still runs on AMD GPUs through the base package: the small models use ONNX on CPU, and the VLM runs llama.cpp in Vulkan mode on the Radeon GPU. No container or ROCm driver is required.
+
+### 1. Install uv and Python 3.12
+
+```powershell
+powershell -ExecutionPolicy Bypass -Command "irm https://astral.sh/uv/install.ps1 | iex"
+uv python install 3.12
+```
+
+### 2. Create the environment and install the base package
+
+```powershell
+uv venv .venv --python 3.12
+.venv\Scripts\Activate.ps1
+uv pip install -U "mineru>=4.0,<5"
+```
+
+The base package already includes ONNX Runtime and llama.cpp. Do not install the `[full]` extra on Windows: it pulls CUDA/LMDeploy engines and does not help on AMD.
+
+### 3. Confirm the AMD GPU is visible to the llama.cpp Vulkan backend
+
+```powershell
+mineru-kit vlm-server --engine llama-cpp --list-devices
+```
+
+The output must list a physical AMD device, for example `Vulkan0: AMD Radeon(TM) 8060S Graphics`. If it only shows software devices such as `llvmpipe`, the Vulkan driver is missing.
+
+### 4. Download the standard-tier models
+
+```powershell
+mineru-kit models download --tier standard --small-backend onnx --vlm-engine llama-cpp --source modelscope
+```
+
+Use `--source huggingface` if ModelScope is unreachable.
+
+### 5. Parse a document
+
+```powershell
+$env:MINERU_DEVICE_MODE = 'cpu'   # small models stay on CPU; the VLM still uses Vulkan
+mineru-kit parse document.pdf -o document.md --tier standard
+```
+
+The WebUI is included in the base package:
+
+```powershell
+mineru-kit webui --server-name 127.0.0.1 --server-port 7860
+```
+
+Open <http://127.0.0.1:7860> in a browser, upload a PDF and select the `standard` tier.
