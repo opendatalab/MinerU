@@ -1,0 +1,3814 @@
+
+<!doctype html>
+<html lang="zh" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://opendatalab.github.io/MinerU/zh/next/telemetry/">
+      
+      
+      
+      
+        
+          <link rel="alternate" href="../../../next/telemetry/" hreflang="en">
+        
+          <link rel="alternate" href="./" hreflang="zh">
+        
+      
+      
+      <link rel="icon" href="../../../images/logo.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Telemetry 设计 - MinerU</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+  
+
+
+  
+  
+
+<script id="__analytics">function __md_analytics(){function e(){dataLayer.push(arguments)}window.dataLayer=window.dataLayer||[],e("js",new Date),e("config","G-44K480CC48"),document.addEventListener("DOMContentLoaded",(function(){document.forms.search&&document.forms.search.query.addEventListener("blur",(function(){this.value&&e("event","search",{search_term:this.value})}));document$.subscribe((function(){var t=document.forms.feedback;if(void 0!==t)for(var a of t.querySelectorAll("[type=submit]"))a.addEventListener("click",(function(a){a.preventDefault();var n=document.location.pathname,d=this.getAttribute("data-md-value");e("event","feedback",{page:n,data:d}),t.firstElementChild.disabled=!0;var r=t.querySelector(".md-feedback__note [data-md-value='"+d+"']");r&&(r.hidden=!1)})),t.hidden=!1})),location$.subscribe((function(t){e("config","G-44K480CC48",{page_path:t.pathname})}))}));var t=document.createElement("script");t.async=!0,t.src="https://www.googletagmanager.com/gtag/js?id=G-44K480CC48",document.getElementById("__analytics").insertAdjacentElement("afterEnd",t)}</script>
+  
+    <script>"undefined"!=typeof __md_analytics&&__md_analytics()</script>
+  
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="black" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#telemetry" class="md-skip">
+          跳转至
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="页眉">
+    <a href="../../" title="MinerU" class="md-header__button md-logo" aria-label="MinerU" data-md-component="logo">
+      
+  <img src="../../../images/logo.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            MinerU
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Telemetry 设计
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme)" data-md-color-scheme="default" data-md-color-primary="black" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m14.3 16-.7-2h-3.2l-.7 2H7.8L11 7h2l3.2 9zM20 8.69V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12zm-9.15 3.96h2.3L12 9z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="black" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_2" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="black" data-md-color-accent="indigo"  aria-label="Switch to system preference"  type="radio" name="__palette" id="__palette_2">
+    
+      <label class="md-header__button md-icon" title="Switch to system preference" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+      <div class="md-header__option">
+  <div class="md-select">
+    
+    <button class="md-header__button md-icon" aria-label="选择当前语言">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.87 15.07-2.54-2.51.03-.03A17.5 17.5 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2zm-2.62 7 1.62-4.33L19.12 17z"/></svg>
+    </button>
+    <div class="md-select__inner">
+      <ul class="md-select__list">
+        
+          <li class="md-select__item">
+            <a href="../../../next/telemetry/" hreflang="en" class="md-select__link">
+              English
+            </a>
+          </li>
+        
+          <li class="md-select__item">
+            <a href="./" hreflang="zh" class="md-select__link">
+              中文
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="搜索" placeholder="搜索" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="查找">
+        
+        <button type="reset" class="md-search__icon md-icon" title="清空当前内容" aria-label="清空当前内容" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            正在初始化搜索引擎
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/opendatalab/MinerU" title="前往仓库" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    opendatalab/MinerU
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="标签" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../" class="md-tabs__link">
+          
+  
+  
+    
+  
+  主页
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../quick_start/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  快速入门
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../usage/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  使用指南
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../reference/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  参考资料
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../faq/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  常见问题解答
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../demo/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  在线演示
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="导航栏" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../" title="MinerU" class="md-nav__button md-logo" aria-label="MinerU" data-md-component="logo">
+      
+  <img src="../../../images/logo.png" alt="logo">
+
+    </a>
+    MinerU
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/opendatalab/MinerU" title="前往仓库" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    opendatalab/MinerU
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    主页
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_1" id="__nav_1_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    主页
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1_2" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../quick_start/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    快速入门
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_1_2" id="__nav_1_2_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    快速入门
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quick_start/extension_modules/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    扩展模块安装
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quick_start/docker_deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker部署
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../usage/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    使用指南
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_1_3" id="__nav_1_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    使用指南
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/quick_usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    基础使用
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/tiers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    档位与运行环境
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/sdk_api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python SDK
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/http_api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    V1 HTTP API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/compatibility/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    旧平台适配（MinerU <4）
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/model_source/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    模型源配置
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/cli_tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    命令行工具
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/advanced_cli_parameters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    命令行进阶参数
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1_4" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../reference/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    参考资料
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_1_4" id="__nav_1_4_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    参考资料
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/migration_4/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    迁移到 4.0
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/output_files/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    输出文件格式
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    更新日志
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1_5" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../faq/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    常见问题解答
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    常见问题解答
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1_6" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../demo/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    在线演示
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    在线演示
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../quick_start/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    快速入门
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_2" id="__nav_2_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    快速入门
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quick_start/extension_modules/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    扩展模块安装
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quick_start/docker_deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker部署
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../usage/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    使用指南
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    使用指南
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/quick_usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    基础使用
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/tiers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    档位与运行环境
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/sdk_api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python SDK
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/http_api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    V1 HTTP API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/compatibility/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    旧平台适配（MinerU <4）
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/model_source/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    模型源配置
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/cli_tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    命令行工具
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/advanced_cli_parameters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    命令行进阶参数
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../reference/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    参考资料
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4" id="__nav_4_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    参考资料
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/migration_4/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    迁移到 4.0
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/output_files/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    输出文件格式
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    更新日志
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../faq/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    常见问题解答
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    常见问题解答
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../demo/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    在线演示
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    在线演示
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="目录">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目录
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. 目标
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. 采集边界
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. 默认策略
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. 隐私边界
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. 统计口径
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. 上报模型
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-endpoint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. Endpoint
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-payload" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Payload 结构
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. Context 字段
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-metric-dimension" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Metric 与 Dimension 规则
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11-metric" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. Metric 候选全集
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#12-p0" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12. P0 裁剪原则
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#13-bucket" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        13. Bucket 定义
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#14-metric" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        14. 候选 Metric 口径
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="14. 候选 Metric 口径">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#141-ingest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        14.1 Ingest
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#142-search-index" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        14.2 Search Index
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#143-render-content" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        14.3 Render / Content
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#144-queue-batch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        14.4 Queue / Batch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#145-remote-boundary" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        14.5 Remote Boundary
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#146-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        14.6 Rules
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#147-server-lifecycle" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        14.7 Server Lifecycle
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#148-compaction-cleanup" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        14.8 Compaction / Cleanup
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#149-cli" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        14.9 CLI 行为
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#15-doclib-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        15. Doclib API 感知范围
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#16" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        16. 本地存储
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#17" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        17. 服务端防污染
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#18-p0" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        18. P0 实现边界
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<div><h1 id="telemetry">Telemetry 设计</h1>
+<p>状态: Superseded
+取代说明: 本文已被 <code>telemetry-minimum.md</code> 全面取代，仅保留历史设计参考；现状以 <code>telemetry-minimum.md</code> 与代码为准。
+读者: 产品负责人、核心开发者、doclib server 开发者、数据分析与合规参与者
+范围: 下一代 MinerU 的匿名使用统计、稳定性指标和粗粒度环境画像
+非目标: 计费、审计、安全风控、精确故障追踪、上传文档内容或用户输入</p>
+<h2 id="1">1. 目标</h2>
+<p>Telemetry 的首要目标是产品使用统计，用于评估 MinerU 的使用规模和产品影响力。</p>
+<p>P0 同时兼顾三类问题:</p>
+<ol>
+<li>产品使用统计: 有多少安装实例在使用、每天使用多少次、处理了多少文件和页面。</li>
+<li>质量与稳定性: 哪些主链路失败、失败发生在哪个阶段、错误码分布如何。</li>
+<li>性能与环境画像: 不采集细粒度设备指纹，只用粗粒度字段理解运行环境和处理规模。</li>
+</ol>
+<p>Telemetry 数据只用于趋势分析和产品改进，不用于计费、安全判断或强一致审计。</p>
+<h2 id="2">2. 采集边界</h2>
+<p>只有 doclib server 上报 telemetry。</p>
+<p><code>mineru</code> CLI 依赖 doclib server，因此可以被间接统计。以下纯工具无 telemetry 能力:</p>
+<ul>
+<li>parser SDK，包括 <code>mineru.parser.parse()</code> 和 <code>parse_async()</code></li>
+<li><code>mineru-kit parse</code></li>
+<li><code>mineru-kit api-server</code></li>
+<li>其他不依赖 doclib server 的专家工具</li>
+</ul>
+<p>这个边界避免 parser/tool 层在作为库或底层工具使用时包含 telemetry 相关配置、存储或网络行为。</p>
+<h2 id="3">3. 默认策略</h2>
+<p>首次启动 doclib server 时，必须要求用户完成 telemetry 选择。</p>
+<p>默认行为:</p>
+<ul>
+<li>首次选择界面不预选开启或关闭。</li>
+<li>用户可以关闭。</li>
+<li>用户选择结果记录为 <code>consent_state</code>。</li>
+<li>用户关闭 telemetry 后，不再记录新的 telemetry metrics，也不再上报。</li>
+<li>关闭时，DB 中未上报 telemetry 数据应删除，避免后续误发。</li>
+</ul>
+<p>用户必须可以通过命令查看和修改状态:</p>
+<div class="highlight"><pre><span></span><code>mineru<span class="w"> </span>telemetry<span class="w"> </span>status
+mineru<span class="w"> </span>telemetry<span class="w"> </span><span class="nb">enable</span>
+mineru<span class="w"> </span>telemetry<span class="w"> </span>disable
+mineru<span class="w"> </span>telemetry<span class="w"> </span>preview
+mineru<span class="w"> </span>telemetry<span class="w"> </span>flush
+</code></pre></div>
+<p><code>preview</code> 应展示将要上报的 JSON，但不得展示任何 token 或服务端内部凭据。</p>
+<h2 id="4">4. 隐私边界</h2>
+<p>Telemetry 禁止采集:</p>
+<ul>
+<li>文档内容</li>
+<li>文件名</li>
+<li>文件路径</li>
+<li>原始 URL</li>
+<li>search query</li>
+<li>prompt</li>
+<li>sha256</li>
+<li>job_id</li>
+<li>parse_id</li>
+<li>traceback</li>
+<li>exception message</li>
+<li>hostname</li>
+<li>用户名</li>
+<li>邮箱</li>
+<li>账号 ID</li>
+<li>CPU/GPU 具体型号</li>
+<li>GPU 显存、驱动版本、CUDA 版本</li>
+</ul>
+<p>允许采集的数据必须来自白名单字段。不得把请求体、异常对象、配置对象、<code>kwargs</code> 或任意字典直接透传到 telemetry。</p>
+<h2 id="5">5. 统计口径</h2>
+<p>P0 使用匿名 <code>installation_id</code> 作为主统计口径。</p>
+<ul>
+<li><code>installation_id</code> 在 doclib server 首次启用 telemetry 时生成。</li>
+<li><code>installation_id</code> 存储在 doclib DB 的 telemetry 内部状态中。</li>
+<li>不依赖账号体系。</li>
+<li>用户删除配置或重装后，会被视为新的安装实例。</li>
+</ul>
+<p>服务端基于 <code>installation_id</code> 计算:</p>
+<ul>
+<li>安装量: 出现过的唯一 <code>installation_id</code></li>
+<li>DAU: 当日有 telemetry 上报的唯一 <code>installation_id</code></li>
+<li>WAU / MAU: 对应周期内有 telemetry 上报的唯一 <code>installation_id</code></li>
+</ul>
+<p>如果未来引入账号，账号只能作为可选维度，不替代 <code>installation_id</code>。</p>
+<h2 id="6">6. 上报模型</h2>
+<p>P0 采用本地聚合 metrics 上报，不采用每个事件即时上报。</p>
+<p>运行时行为:</p>
+<div class="highlight"><pre><span></span><code>doclib server runtime
+  -&gt; record metric delta
+  -&gt; update telemetry aggregate in doclib DB
+  -&gt; periodic flush
+  -&gt; POST telemetry endpoint
+  -&gt; delete flushed rows from doclib DB after success
+</code></pre></div>
+<p>建议聚合窗口:</p>
+<ul>
+<li>本地 telemetry 配置和 telemetry 聚合数据都存储在 doclib DB 中。</li>
+<li>本地按 1 小时 period 聚合。</li>
+<li>上报时可以一次提交多个未 flush 的小时级 period。</li>
+<li>启动后尝试 flush 一次。</li>
+<li>运行中每 24 小时尝试 flush 一次。</li>
+<li>网络失败或服务端 5xx 时保留本地聚合结果，后续重试。</li>
+<li>服务端 4xx 表示 payload 不合法，对应 batch 应丢弃或进入本地失败记录，不应无限重试。</li>
+<li>flush 成功后，已被服务端确认接收的 telemetry 聚合数据应从 doclib DB 中删除。</li>
+<li>同一个 period 内 context 变化可以接受；P0 flush 时使用当前 context 上报该 period 的聚合 metrics。</li>
+</ul>
+<p>主流程不得等待 telemetry 上报。telemetry 失败不得影响 parse、watch、search 或 doclib API。</p>
+<h2 id="7-endpoint">7. Endpoint</h2>
+<p>建议使用独立 telemetry endpoint:</p>
+<div class="highlight"><pre><span></span><code><span class="err">POST https://telemetry.mineru.net/v1/metrics</span>
+<span class="err">Content-Type: application/json</span>
+</code></pre></div>
+<p>不建议与 <code>mineru.net/api</code> 的 parse API 混在一起，因为 telemetry 的认证、限流、存储和合规策略不同。</p>
+<p>响应示例:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"object"</span><span class="p">:</span><span class="w"> </span><span class="s2">"telemetry_metrics_result"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"accepted"</span><span class="p">:</span><span class="w"> </span><span class="mi">42</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"rejected"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"server_time"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2026-06-10T12:00:00Z"</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>如果服务端支持部分拒绝，可以返回:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"object"</span><span class="p">:</span><span class="w"> </span><span class="s2">"telemetry_metrics_result"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"accepted"</span><span class="p">:</span><span class="w"> </span><span class="mi">40</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"rejected"</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"errors"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"index"</span><span class="p">:</span><span class="w"> </span><span class="mi">5</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"code"</span><span class="p">:</span><span class="w"> </span><span class="s2">"invalid_dimension"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"message"</span><span class="p">:</span><span class="w"> </span><span class="s2">"dimension value is not allowed"</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">],</span>
+<span class="w">  </span><span class="nt">"server_time"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2026-06-10T12:00:00Z"</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>错误信息只用于解释 schema 问题，不应包含用户上报原文中的敏感字段。</p>
+<h2 id="8-payload">8. Payload 结构</h2>
+<p>一次上报包含一个 batch。环境信息放在 batch-level <code>context</code> 中，不重复放入每个 metric。</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"batch_id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"tb_01HX..."</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"schema_version"</span><span class="p">:</span><span class="w"> </span><span class="s2">"1"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"installation_id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"inst_01HX..."</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"period_start"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2026-06-10T14:00:00Z"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"period_end"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2026-06-10T15:00:00Z"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"context"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"app"</span><span class="p">:</span><span class="w"> </span><span class="s2">"mineru"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"app_version"</span><span class="p">:</span><span class="w"> </span><span class="s2">"3.0.0"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"os"</span><span class="p">:</span><span class="w"> </span><span class="s2">"macos"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"arch"</span><span class="p">:</span><span class="w"> </span><span class="s2">"arm64"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"python_version"</span><span class="p">:</span><span class="w"> </span><span class="s2">"3.11"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"install_channel"</span><span class="p">:</span><span class="w"> </span><span class="s2">"pip"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"cpu_count_bucket"</span><span class="p">:</span><span class="w"> </span><span class="s2">"9_16"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"gpu_vendor"</span><span class="p">:</span><span class="w"> </span><span class="s2">"apple"</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">"metrics"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"parse.completed.count"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="mi">12</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"dimensions"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">"source"</span><span class="p">:</span><span class="w"> </span><span class="s2">"cli"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"caller"</span><span class="p">:</span><span class="w"> </span><span class="s2">"agent"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"tier"</span><span class="p">:</span><span class="w"> </span><span class="s2">"basic(default)"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"status"</span><span class="p">:</span><span class="w"> </span><span class="s2">"succeeded"</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"parse.processed_page_count"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="mi">1240</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"dimensions"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">"source"</span><span class="p">:</span><span class="w"> </span><span class="s2">"cli"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"caller"</span><span class="p">:</span><span class="w"> </span><span class="s2">"agent"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"tier"</span><span class="p">:</span><span class="w"> </span><span class="s2">"basic(default)"</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">]</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>规则:</p>
+<ul>
+<li><code>batch_id</code> 由本地 flush 任务生成，用于服务端短窗口幂等。</li>
+<li><code>value</code> 必须是非负数。</li>
+<li>字符串数据只能出现在 <code>context</code> 或 <code>dimensions</code>。</li>
+<li><code>context</code> 描述安装实例、运行环境和版本。</li>
+<li><code>metrics[].dimensions</code> 描述当前 metric 的业务分类。</li>
+<li><code>metrics[].dimensions</code> 必须来自白名单，不能包含任意字符串。</li>
+<li><code>context</code> 表示 flush 时 doclib server 的当前运行环境。同一 period 内 context 变化可以接受，不要求拆分 batch。</li>
+</ul>
+<h2 id="9-context">9. Context 字段</h2>
+<p>P0 context 字段:</p>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>类型</th>
+<th>枚举 / 格式</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>app</code></td>
+<td>string</td>
+<td><code>mineru</code></td>
+<td>固定应用名</td>
+</tr>
+<tr>
+<td><code>app_version</code></td>
+<td>string</td>
+<td>semver 或发布版本</td>
+<td>MinerU 版本</td>
+</tr>
+<tr>
+<td><code>os</code></td>
+<td>string</td>
+<td><code>macos</code> / <code>windows</code> / <code>linux</code> / <code>other</code> / <code>unknown</code></td>
+<td>操作系统</td>
+</tr>
+<tr>
+<td><code>arch</code></td>
+<td>string</td>
+<td><code>x86_64</code> / <code>arm64</code> / <code>other</code> / <code>unknown</code></td>
+<td>CPU 架构</td>
+</tr>
+<tr>
+<td><code>python_version</code></td>
+<td>string</td>
+<td><code>3.10</code> / <code>3.11</code> / <code>3.12</code> / <code>3.13</code> / <code>other</code> / <code>unknown</code></td>
+<td>Python 主次版本</td>
+</tr>
+<tr>
+<td><code>install_channel</code></td>
+<td>string</td>
+<td><code>pip</code> / <code>uv</code> / <code>docker</code> / <code>source</code> / <code>unknown</code></td>
+<td>安装来源</td>
+</tr>
+<tr>
+<td><code>cpu_count_bucket</code></td>
+<td>string</td>
+<td><code>1_4</code> / <code>5_8</code> / <code>9_16</code> / <code>gt_16</code> / <code>unknown</code></td>
+<td>CPU 核心数分桶</td>
+</tr>
+<tr>
+<td><code>gpu_vendor</code></td>
+<td>string</td>
+<td><code>nvidia</code> / <code>apple</code> / <code>amd</code> / <code>none</code> / <code>unknown</code></td>
+<td>GPU 或常见加速器厂商</td>
+</tr>
+</tbody>
+</table>
+<p><code>gpu_vendor</code> 规则:</p>
+<ul>
+<li><code>nvidia</code>: 识别到 NVIDIA GPU。</li>
+<li><code>apple</code>: 识别到 Apple GPU。</li>
+<li><code>amd</code>: 识别到 AMD GPU。</li>
+<li><code>none</code>: 明确没有发现 GPU。</li>
+<li><code>unknown</code>: 无法检测、检测失败，或发现了 P0 未分类的其他加速器。</li>
+</ul>
+<p>P0 不采集 CPU/GPU family、具体型号、显存、驱动和 CUDA 版本。</p>
+<h2 id="10-metric-dimension">10. Metric 与 Dimension 规则</h2>
+<p>Metric 的 <code>name</code> 表示数值指标，<code>value</code> 表示计数或数值累加。</p>
+<p>字符串型信息必须作为 dimension:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"parse.completed.count"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="mi">1</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"dimensions"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"tier"</span><span class="p">:</span><span class="w"> </span><span class="s2">"basic"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"status"</span><span class="p">:</span><span class="w"> </span><span class="s2">"succeeded"</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>不允许:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"parse.tier"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="s2">"basic"</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>Dimension 只允许低基数字段:</p>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>枚举 / 说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>source</code></td>
+<td><code>http_api</code> / <code>sdk</code> / <code>cli</code> / <code>mcp</code> / <code>web</code> / <code>app</code> / <code>watch</code> / <code>background</code> / <code>unknown</code></td>
+</tr>
+<tr>
+<td><code>caller</code></td>
+<td><code>agent</code> / <code>user</code> / <code>http_client</code> / <code>sdk</code> / <code>web</code> / <code>app</code> / <code>system</code> / <code>unknown</code></td>
+</tr>
+<tr>
+<td><code>tier</code></td>
+<td><code>default</code> / <code>flash</code> / <code>basic</code> / <code>standard</code> / <code>advanced</code> / <code>basic(default)</code> / <code>standard(default)</code> / <code>advanced(default)</code> / <code>unknown</code></td>
+</tr>
+<tr>
+<td><code>status</code></td>
+<td><code>succeeded</code> / <code>failed</code> / <code>partial</code> / <code>canceled</code></td>
+</tr>
+<tr>
+<td><code>input_type</code></td>
+<td><code>pdf</code> / <code>csv</code> / <code>tsv</code> / <code>rtf</code> / <code>docx</code> / <code>pptx</code> / <code>xlsx</code> / <code>odt</code> / <code>ods</code> / <code>odp</code> / <code>html</code> / <code>other</code> / <code>unknown</code></td>
+</tr>
+<tr>
+<td><code>output_format</code></td>
+<td><code>middle_json</code> / <code>markdown</code> / <code>structured_content</code> / <code>other</code></td>
+</tr>
+<tr>
+<td><code>stage</code></td>
+<td><code>enqueue</code> / <code>cache_lookup</code> / <code>parse_server_call</code> / <code>parsing</code> / <code>merge_pages</code> / <code>persist</code> / <code>index</code> / <code>unknown</code></td>
+</tr>
+<tr>
+<td><code>error_code</code></td>
+<td>稳定错误码枚举，不允许 exception message</td>
+</tr>
+<tr>
+<td><code>retryable</code></td>
+<td><code>true</code> / <code>false</code> / <code>unknown</code></td>
+</tr>
+<tr>
+<td><code>bucket</code></td>
+<td>当前 metric 定义的分桶值</td>
+</tr>
+<tr>
+<td><code>server</code></td>
+<td><code>local(flash)</code> / <code>local(managed)</code> / <code>local(self-hosted)</code> / <code>remote(official)</code> / <code>remote(custom)</code> / <code>none</code> / <code>unknown</code></td>
+</tr>
+<tr>
+<td><code>rule_type</code></td>
+<td><code>exclude</code> / <code>parsing</code> / <code>unknown</code></td>
+</tr>
+<tr>
+<td><code>remote</code></td>
+<td><code>true</code> / <code>false</code> / <code>unknown</code></td>
+</tr>
+<tr>
+<td><code>command</code></td>
+<td>当前 metric 定义的命令枚举</td>
+</tr>
+<tr>
+<td><code>wait_mode</code></td>
+<td><code>sync</code> / <code>async</code> / <code>unknown</code></td>
+</tr>
+<tr>
+<td><code>wait_bucket</code></td>
+<td><code>0</code> / <code>1_10s</code> / <code>11_60s</code> / <code>gt_60s</code> / <code>unknown</code></td>
+</tr>
+<tr>
+<td><code>page_range_mode</code></td>
+<td><code>all</code> / <code>partial</code> / <code>default</code> / <code>unknown</code></td>
+</tr>
+<tr>
+<td><code>config_area</code></td>
+<td><code>watch</code> / <code>exclude</code> / <code>parsing_rules</code> / <code>parse_server</code> / <code>telemetry</code> / <code>unknown</code></td>
+</tr>
+<tr>
+<td><code>cleanup_target</code></td>
+<td><code>orphan_docs</code> / <code>deleted_files</code> / <code>temp</code> / <code>mixed</code> / <code>unknown</code></td>
+</tr>
+<tr>
+<td><code>dry_run</code></td>
+<td><code>true</code> / <code>false</code> / <code>unknown</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>caller</code> 与 <code>source</code> 语义不同:</p>
+<ul>
+<li><code>source</code> 表示请求从哪个调用通道进入 doclib，例如 HTTP API、SDK、CLI、MCP、Web、App、watch 或后台任务。</li>
+<li><code>caller</code> 表示发起行为的主体，例如 Agent、用户、HTTP client、SDK、Web、App 或系统后台任务。</li>
+</ul>
+<p>Agent 时代的核心产品目标要求 telemetry 能区分 <code>agent</code> 与 <code>user</code>。因此，CLI 通道必须尽量识别真实调用主体。</p>
+<p>调用通道与主体规则:</p>
+<table>
+<thead>
+<tr>
+<th>使用方式</th>
+<th><code>source</code></th>
+<th><code>caller</code></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>直接调用 HTTP API，且未传 caller 信息</td>
+<td><code>http_api</code></td>
+<td><code>http_client</code></td>
+</tr>
+<tr>
+<td>Doclib SDK</td>
+<td><code>sdk</code></td>
+<td><code>sdk</code></td>
+</tr>
+<tr>
+<td><code>mineru</code> CLI，由 Agent 进程调用</td>
+<td><code>cli</code></td>
+<td><code>agent</code></td>
+</tr>
+<tr>
+<td><code>mineru</code> CLI，由用户 shell 调用</td>
+<td><code>cli</code></td>
+<td><code>user</code></td>
+</tr>
+<tr>
+<td><code>mineru</code> CLI，无法可靠判断父进程</td>
+<td><code>cli</code></td>
+<td><code>unknown</code></td>
+</tr>
+<tr>
+<td>MCP Server</td>
+<td><code>mcp</code></td>
+<td><code>agent</code></td>
+</tr>
+<tr>
+<td>Web</td>
+<td><code>web</code></td>
+<td><code>web</code></td>
+</tr>
+<tr>
+<td>桌面 App</td>
+<td><code>app</code></td>
+<td><code>app</code></td>
+</tr>
+<tr>
+<td>watch 自动发现</td>
+<td><code>watch</code></td>
+<td><code>system</code></td>
+</tr>
+<tr>
+<td>compaction / cleanup / health check 等后台任务</td>
+<td><code>background</code></td>
+<td><code>system</code></td>
+</tr>
+</tbody>
+</table>
+<p>CLI 的 <code>caller</code> 可以通过父进程识别。若父进程是 Claude Code、Codex 等已知编程 Agent，则记为 <code>agent</code>；若父进程是普通 shell 或终端，则记为 <code>user</code>；无法可靠判断时记为 <code>unknown</code>。不得通过文件路径、命令文本、query、prompt、文档内容或具体会话内容推断。</p>
+<p><code>tier</code> 同时表达请求档位和实际解析档位:</p>
+<ul>
+<li>用户未指定 tier，且尚未解析到实体 tier 时，使用 <code>default</code>。</li>
+<li>用户显式指定实体 tier，或任务已经完成且没有必要保留默认来源时，使用 <code>flash</code>、<code>basic</code>、<code>standard</code> 或 <code>advanced</code>。</li>
+<li>用户未指定 tier，且已经解析到实体 tier，同时仍需要保留来源信息时，使用 <code>basic(default)</code>、<code>standard(default)</code> 或 <code>advanced(default)</code>。</li>
+<li>默认选择不会解析为 <code>flash</code>，因此不定义 <code>flash(default)</code>。</li>
+<li>parse-server 相关 metric 也使用同一个 <code>tier</code> 维度，不再单独使用 <code>parse_server_tier</code>。</li>
+</ul>
+<p><code>server</code> 表达解析执行位置和服务形态:</p>
+<ul>
+<li><code>local(flash)</code>: 本地 flash 解析，不经过 parse-server。</li>
+<li><code>local(managed)</code>: doclib 管理的本地 parse-server。</li>
+<li><code>local(self-hosted)</code>: 用户自行启动的本地或自部署 parse-server。</li>
+<li><code>remote(official)</code>: 官方 <code>mineru.net/api</code>。</li>
+<li><code>remote(custom)</code>: 用户显式配置的其他远端兼容 parse-server。</li>
+<li><code>none</code>: 当前行为没有解析服务，例如 cache hit、查询类操作或本地 parse-server disabled 配置状态。</li>
+<li><code>unknown</code>: 无法可靠判断。</li>
+</ul>
+<p><code>parse_server.*</code> metric 不使用 <code>server=local(flash)</code>，因为 flash 不经过 parse-server。<code>parse.*</code> metric 可以使用 <code>server=local(flash)</code> 表示显式 flash 本地解析。</p>
+<h2 id="11-metric">11. Metric 候选全集</h2>
+<p>Telemetry 记录业务行为，不记录所有 HTTP 请求。状态查询、健康检查、列表读取和普通配置读取默认不计入 telemetry。</p>
+<p>本节列出第一版候选全集。后续实现前可以按 P0 范围裁剪，但裁剪后的实现必须仍能回答产品使用规模、核心链路稳定性和主要性能瓶颈。</p>
+<p><code>parse.*</code> 与 <code>parse_server.*</code> 的语义边界:</p>
+<ul>
+<li><code>parse.*</code> 统计 doclib 解析业务生命周期，回答用户是否发起解析、缓存是否命中、任务是否完成、处理了多少文件和页面、最终状态如何。</li>
+<li><code>parse_server.*</code> 统计 doclib 解析业务生命周期中调用 parse-server 的执行片段，回答是否实际使用 parse-server、使用 local 还是 remote、使用什么模式和 tier、该执行片段的请求数、处理量、失败率和耗时。</li>
+<li>一次 parse 请求可以产生 <code>parse.*</code>，但不一定产生 <code>parse_server.*</code>。例如 cache hit、显式 <code>flash</code> 本地解析、复用已有完成批次时，通常不产生 parse-server 执行指标。</li>
+<li>一次 parse 请求如果实际调用了 local 或 remote parse-server，则同时产生 <code>parse.*</code> 和 <code>parse_server.*</code>。两者不能互相替代。</li>
+<li><code>parse.duration.bucket.count</code> 统计 doclib parse 业务生命周期耗时；<code>parse_server.duration.bucket.count</code> 只统计 doclib 调用 parse-server 的执行片段耗时。</li>
+</ul>
+<p>产品使用统计:</p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>server.started.count</code></td>
+<td>doclib server 启动次数</td>
+</tr>
+<tr>
+<td><code>server.shutdown.count</code></td>
+<td>doclib server 正常关闭次数</td>
+</tr>
+<tr>
+<td><code>server.recovered_stale_lock.count</code></td>
+<td>doclib server 启动恢复 stale lock 的次数</td>
+</tr>
+<tr>
+<td><code>cli.command.count</code></td>
+<td><code>mineru</code> CLI 子命令调用次数</td>
+</tr>
+<tr>
+<td><code>server.command.count</code></td>
+<td><code>mineru server</code> 生命周期命令调用次数</td>
+</tr>
+<tr>
+<td><code>ingest.requested.count</code></td>
+<td>入库请求次数</td>
+</tr>
+<tr>
+<td><code>ingest.completed.count</code></td>
+<td>入库成功次数</td>
+</tr>
+<tr>
+<td><code>ingest.duplicate.count</code></td>
+<td>入库时发现内容已存在的次数</td>
+</tr>
+<tr>
+<td><code>parse.requested.count</code></td>
+<td>parse 请求次数</td>
+</tr>
+<tr>
+<td><code>parse.completed.count</code></td>
+<td>parse 完成次数，按 <code>status</code> 区分成功、失败、部分成功和取消</td>
+</tr>
+<tr>
+<td><code>parse.files.count</code></td>
+<td>parse 处理文件数</td>
+</tr>
+<tr>
+<td><code>parse.processed_page_count</code></td>
+<td>parse 处理页数；数值统计，不是页面列表</td>
+</tr>
+<tr>
+<td><code>parse.output.requested.count</code></td>
+<td>parse 请求输出格式次数</td>
+</tr>
+<tr>
+<td><code>parse.output.to_stdout.count</code></td>
+<td>parse 输出到 STDOUT 的次数</td>
+</tr>
+<tr>
+<td><code>parse.output.to_file.count</code></td>
+<td>parse 输出到文件的次数</td>
+</tr>
+<tr>
+<td><code>parse.marker.disabled.count</code></td>
+<td>用户通过 <code>--no-marker</code> 禁用 marker 的次数</td>
+</tr>
+<tr>
+<td><code>parse.wait_mode.count</code></td>
+<td>parse 同步或异步等待模式使用次数</td>
+</tr>
+<tr>
+<td><code>parse.page_range.requested.count</code></td>
+<td>parse 请求页码范围模式使用次数</td>
+</tr>
+<tr>
+<td><code>parse.force.count</code></td>
+<td>用户通过 <code>--force</code> 请求重新解析的次数</td>
+</tr>
+<tr>
+<td><code>parse.created_batch.count</code></td>
+<td>本次请求创建的新 parse batch 数</td>
+</tr>
+<tr>
+<td><code>parse.active_reused.count</code></td>
+<td>本次请求复用 pending/parsing batch 的次数</td>
+</tr>
+<tr>
+<td><code>parse.waited_batch.count</code></td>
+<td>本次请求等待的 parse batch 数</td>
+</tr>
+<tr>
+<td><code>watch.files.discovered.count</code></td>
+<td>watch 发现文件数</td>
+</tr>
+<tr>
+<td><code>watch.files.parsed.count</code></td>
+<td>watch 自动解析文件数</td>
+</tr>
+<tr>
+<td><code>rules.matched.count</code></td>
+<td>rule 命中次数</td>
+</tr>
+<tr>
+<td><code>rules.excluded.count</code></td>
+<td>exclude rule 排除文件次数</td>
+</tr>
+<tr>
+<td><code>rules.parse_rule_applied.count</code></td>
+<td>parsing-rule 被应用次数</td>
+</tr>
+<tr>
+<td><code>search.performed.count</code></td>
+<td>search 次数，不采集 query</td>
+</tr>
+<tr>
+<td><code>find.performed.count</code></td>
+<td>find 文件名搜索次数，不采集 query</td>
+</tr>
+<tr>
+<td><code>doclib.content.requested.count</code></td>
+<td>请求读取或渲染文档内容的次数</td>
+</tr>
+<tr>
+<td><code>doclib.content.rendered.count</code></td>
+<td>内容读取时成功渲染输出格式的次数</td>
+</tr>
+<tr>
+<td><code>doclib.content.truncated.count</code></td>
+<td>内容输出因 token/page budget 被截断的次数</td>
+</tr>
+<tr>
+<td><code>doclib.content.continuation_requested.count</code></td>
+<td>用户或 Agent 请求 continuation 的次数</td>
+</tr>
+<tr>
+<td><code>doclib.docs.added.count</code></td>
+<td>doclib 新增文档数</td>
+</tr>
+<tr>
+<td><code>search.index.updated.count</code></td>
+<td>搜索索引更新次数</td>
+</tr>
+<tr>
+<td><code>search.index.source_tier.count</code></td>
+<td>搜索索引来源 tier 计数</td>
+</tr>
+<tr>
+<td><code>parse.cache.hit.count</code></td>
+<td>parse cache 命中次数</td>
+</tr>
+<tr>
+<td><code>parse.cache.miss.count</code></td>
+<td>parse cache 未命中次数</td>
+</tr>
+<tr>
+<td><code>remote.requested.count</code></td>
+<td>用户显式请求 remote 的次数</td>
+</tr>
+<tr>
+<td><code>remote.allowed.count</code></td>
+<td>remote 请求被隐私策略允许的次数</td>
+</tr>
+<tr>
+<td><code>config.watch.added.count</code></td>
+<td>watch 目录添加次数</td>
+</tr>
+<tr>
+<td><code>config.watch.removed.count</code></td>
+<td>watch 目录移除次数</td>
+</tr>
+<tr>
+<td><code>config.rule.added.count</code></td>
+<td>exclude 或 parsing rule 添加次数</td>
+</tr>
+<tr>
+<td><code>config.rule.removed.count</code></td>
+<td>exclude 或 parsing rule 移除次数</td>
+</tr>
+<tr>
+<td><code>config.parse_server.changed.count</code></td>
+<td>parse-server 配置变更次数</td>
+</tr>
+<tr>
+<td><code>parse_server.configured.count</code></td>
+<td>doclib server 启动或配置变化时记录当前 parse-server 配置</td>
+</tr>
+<tr>
+<td><code>parse_server.local.started.count</code></td>
+<td>managed 本地 parse-server 被 doclib 拉起的次数</td>
+</tr>
+<tr>
+<td><code>parse_server.local.restarted.count</code></td>
+<td>managed 本地 parse-server 被重启的次数</td>
+</tr>
+<tr>
+<td><code>parse_server.requested.count</code></td>
+<td>doclib 调用 parse-server 的请求次数</td>
+</tr>
+<tr>
+<td><code>parse_server.completed.count</code></td>
+<td>doclib 调用 parse-server 成功完成次数</td>
+</tr>
+<tr>
+<td><code>parse_server.files.count</code></td>
+<td>parse-server 处理文件数</td>
+</tr>
+<tr>
+<td><code>parse_server.processed_page_count</code></td>
+<td>parse-server 处理页数；数值统计，不是页面列表</td>
+</tr>
+<tr>
+<td><code>parse.compaction.completed.count</code></td>
+<td>parse 批次 compaction 成功次数</td>
+</tr>
+<tr>
+<td><code>cleanup.deleted_files.count</code></td>
+<td>cleanup 删除文件数</td>
+</tr>
+<tr>
+<td><code>cleanup.orphan_records.count</code></td>
+<td>cleanup 清理孤儿记录数</td>
+</tr>
+</tbody>
+</table>
+<p>质量与稳定性:</p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ingest.failed.count</code></td>
+<td>入库失败次数</td>
+</tr>
+<tr>
+<td><code>parse.failed.count</code></td>
+<td>parse 失败次数</td>
+</tr>
+<tr>
+<td><code>parse.partial.count</code></td>
+<td>parse 部分成功次数</td>
+</tr>
+<tr>
+<td><code>parse.retry.count</code></td>
+<td>parse 重试次数</td>
+</tr>
+<tr>
+<td><code>parse.timeout.count</code></td>
+<td>parse 超时次数</td>
+</tr>
+<tr>
+<td><code>remote.not_allowed.count</code></td>
+<td>remote 因隐私策略未显式允许而被拒绝的次数</td>
+</tr>
+<tr>
+<td><code>remote.fallback_to_local.count</code></td>
+<td>remote 失败后 fallback 到 local 的次数</td>
+</tr>
+<tr>
+<td><code>parse_server.unavailable.count</code></td>
+<td>doclib 调用 parse-server 不可用次数</td>
+</tr>
+<tr>
+<td><code>parse_server.failed.count</code></td>
+<td>doclib 调用 parse-server 失败次数</td>
+</tr>
+<tr>
+<td><code>parse_server.local.start_failed.count</code></td>
+<td>managed 本地 parse-server 启动失败次数</td>
+</tr>
+<tr>
+<td><code>parse.fallback.count</code></td>
+<td>发生 fallback 的次数</td>
+</tr>
+<tr>
+<td><code>parse.invalidate.count</code></td>
+<td>用户或系统触发 invalidate 的次数</td>
+</tr>
+<tr>
+<td><code>watch.error.count</code></td>
+<td>watch 主链路错误次数</td>
+</tr>
+<tr>
+<td><code>parse.wait.timeout.count</code></td>
+<td>parse 同步等待超时次数</td>
+</tr>
+<tr>
+<td><code>search.index.failed.count</code></td>
+<td>搜索索引更新失败次数</td>
+</tr>
+<tr>
+<td><code>doclib.content.render.failed.count</code></td>
+<td>内容读取时渲染输出格式失败次数</td>
+</tr>
+<tr>
+<td><code>parse.compaction.failed.count</code></td>
+<td>parse 批次 compaction 失败次数</td>
+</tr>
+<tr>
+<td><code>cleanup.failed.count</code></td>
+<td>cleanup 失败次数</td>
+</tr>
+</tbody>
+</table>
+<p>性能与规模分布:</p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ingest.file_size.bucket.count</code></td>
+<td>入库文件大小分布</td>
+</tr>
+<tr>
+<td><code>parse.duration.bucket.count</code></td>
+<td>parse 耗时分布</td>
+</tr>
+<tr>
+<td><code>parse.queue.wait.duration.bucket.count</code></td>
+<td>parse 请求排队等待耗时分布</td>
+</tr>
+<tr>
+<td><code>parse.page_count.bucket.count</code></td>
+<td>单文件页数分布</td>
+</tr>
+<tr>
+<td><code>parse.file_size.bucket.count</code></td>
+<td>文件大小分布</td>
+</tr>
+<tr>
+<td><code>parse_server.duration.bucket.count</code></td>
+<td>doclib 调用 parse-server 的耗时分布</td>
+</tr>
+<tr>
+<td><code>doclib.content.render.duration.bucket.count</code></td>
+<td>内容读取时渲染输出格式耗时分布</td>
+</tr>
+<tr>
+<td><code>search.result_count.bucket.count</code></td>
+<td>search 返回结果数量分布，不采集 query 或结果内容</td>
+</tr>
+<tr>
+<td><code>find.result_count.bucket.count</code></td>
+<td>find 返回结果数量分布，不采集 query 或结果内容</td>
+</tr>
+<tr>
+<td><code>cleanup.requested.count</code></td>
+<td>cleanup 用户请求次数</td>
+</tr>
+</tbody>
+</table>
+<p>Parse-server 相关 metric 必须带以下维度，便于区分用户是否使用 parse-server、使用哪类解析服务、以及对应 tier:</p>
+<div class="highlight"><pre><span></span><code>server: local(managed) | local(self-hosted) | remote(official) | remote(custom) | unknown
+tier: basic | standard | advanced | basic(default) | standard(default) | advanced(default) | unknown
+status: succeeded | failed | partial | canceled
+</code></pre></div>
+<p>Parse-server 配置口径:</p>
+<ul>
+<li><code>parse_server.configured.count</code>: 记录 doclib server 启动或 parse-server 配置变化时的配置状态。</li>
+<li>本地 disabled 时，使用 <code>server=none</code>、<code>tier=unknown</code>。</li>
+<li>本地 managed 时，使用 <code>server=local(managed)</code>、<code>tier=&lt;managed tier&gt;</code>。</li>
+<li>本地 self-hosted 时，使用 <code>server=local(self-hosted)</code>、<code>tier</code> 来自能力发现结果；发现失败时为 <code>unknown</code>。</li>
+<li>官方远端使用 <code>server=remote(official)</code>。</li>
+<li>用户显式配置的其他远端兼容 parse-server 使用 <code>server=remote(custom)</code>。</li>
+<li>不记录 remote URL。</li>
+</ul>
+<p>本地 parse-server 的解析数量和性能通过以下查询口径获得:</p>
+<ul>
+<li>数量: <code>parse_server.requested.count</code>、<code>parse_server.completed.count</code>、<code>parse_server.files.count</code>、<code>parse_server.processed_page_count</code>，且 <code>server=local(managed)</code> 或 <code>local(self-hosted)</code>。</li>
+<li>性能: <code>parse_server.duration.bucket.count</code>，且 <code>server=local(managed)</code> 或 <code>local(self-hosted)</code>。</li>
+<li>模式: 由 <code>server=local(managed)</code> 或 <code>local(self-hosted)</code> 区分。</li>
+<li>tier: <code>tier=basic</code>、<code>standard</code>、<code>advanced</code>、<code>basic(default)</code>、<code>standard(default)</code> 或 <code>advanced(default)</code>。</li>
+</ul>
+<p>Telemetry 自身:</p>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>telemetry.enabled.count</code></td>
+<td>用户开启 telemetry 次数</td>
+</tr>
+<tr>
+<td><code>telemetry.disabled.count</code></td>
+<td>用户关闭 telemetry 次数</td>
+</tr>
+<tr>
+<td><code>telemetry.flush.succeeded.count</code></td>
+<td>telemetry 上报成功次数</td>
+</tr>
+<tr>
+<td><code>telemetry.flush.failed.count</code></td>
+<td>telemetry 上报失败次数</td>
+</tr>
+</tbody>
+</table>
+<h2 id="12-p0">12. P0 裁剪原则</h2>
+<p>P0 不一定实现所有候选 metric。裁剪时必须保留能回答以下问题的指标:</p>
+<ol>
+<li>使用规模: WAI、DAU、parse 次数、文件数、页数。</li>
+<li>Agent 入口: <code>caller=agent</code> 与 <code>caller=user</code> 的使用差异。</li>
+<li>调用通道: HTTP API、SDK、CLI、MCP、Web、App、watch 和后台任务的来源分布。</li>
+<li>解析服务: 是否使用 parse-server，使用 <code>local(managed)</code>、<code>local(self-hosted)</code>、<code>remote(official)</code> 还是 <code>remote(custom)</code>，以及具体解析 tier。</li>
+<li>主链路质量: parse、ingest、render、search index 的成功和失败。</li>
+<li>关键性能: parse 耗时、parse-server 耗时、queue wait、render 耗时的 bucket。</li>
+<li>隐私边界: remote 是否被请求、允许、拒绝，以及 remote 失败后是否 fallback 到 local。</li>
+</ol>
+<p>可优先裁剪或延后实现的指标:</p>
+<ul>
+<li>cleanup 和 compaction 维护类指标。</li>
+<li>server shutdown 等生命周期补充指标。</li>
+<li>continuation / truncation 等尚未进入第一版输出能力的指标。</li>
+<li>过细且暂时没有 dashboard 消费场景的 bucket 指标。</li>
+</ul>
+<h2 id="13-bucket">13. Bucket 定义</h2>
+<p>耗时分桶:</p>
+<div class="highlight"><pre><span></span><code>lt_1s | 1_5s | 5_30s | 30_120s | 2_10m | gt_10m
+</code></pre></div>
+<p>页数分桶:</p>
+<div class="highlight"><pre><span></span><code>1 | 2_5 | 6_20 | 21_100 | 101_500 | gt_500
+</code></pre></div>
+<p>文件大小分桶:</p>
+<div class="highlight"><pre><span></span><code>lt_1mb | 1_10mb | 10_50mb | 50_200mb | gt_200mb
+</code></pre></div>
+<p>search 结果数分桶:</p>
+<div class="highlight"><pre><span></span><code>0 | 1_5 | 6_20 | 21_100 | gt_100
+</code></pre></div>
+<p>find 结果数分桶:</p>
+<div class="highlight"><pre><span></span><code>0 | 1_5 | 6_20 | 21_100 | gt_100
+</code></pre></div>
+<h2 id="14-metric">14. 候选 Metric 口径</h2>
+<h3 id="141-ingest">14.1 Ingest</h3>
+<p>Ingest 指文件进入 doclib 后计算 SHA256、提取基础 metadata、写入 <code>files</code> / <code>docs</code> / 文件名索引的阶段。</p>
+<p>推荐维度:</p>
+<div class="highlight"><pre><span></span><code>source: http_api | sdk | cli | mcp | web | app | watch | background | unknown
+caller: agent | user | http_client | sdk | web | app | system | unknown
+input_type
+status
+error_code
+</code></pre></div>
+<p><code>ingest.duplicate.count</code> 表示同一 <code>sha256</code> 已存在，只新增或更新文件路径实例，不代表失败。</p>
+<h3 id="142-search-index">14.2 Search Index</h3>
+<p>Search index 指文件名索引和内容全文索引更新，不记录索引文本、snippet 或命中文档。</p>
+<p>推荐维度:</p>
+<div class="highlight"><pre><span></span><code>source: http_api | sdk | cli | mcp | web | app | watch | background | unknown
+caller: agent | user | http_client | sdk | web | app | system | unknown
+tier
+status
+error_code
+</code></pre></div>
+<p><code>search.index.source_tier.count</code> 用于统计当前索引文本来自哪个 tier。搜索结果可以来自 <code>flash</code>，但用户主动阅读时不能默认停留在 <code>flash</code>。</p>
+<h3 id="143-render-content">14.3 Render / Content</h3>
+<p>Render 指 <code>GET /docs/{sha256}/content</code> 或等价 SDK/CLI 读取动作中，从 Middle JSON 转换为 Markdown、structured_content、HTML 等派生格式。</p>
+<p>推荐维度:</p>
+<div class="highlight"><pre><span></span><code>source
+caller
+output_format
+tier
+status
+error_code
+bucket
+</code></pre></div>
+<p><code>doclib.content.requested.count</code> 记录内容读取请求。<code>doclib.content.rendered.count</code> 记录实际完成渲染。请求 <code>middle_json</code> 时可以只记录 requested，不一定记录 rendered。</p>
+<h3 id="144-queue-batch">14.4 Queue / Batch</h3>
+<p>Queue 和 batch 指 doclib parse 请求在 DB 任务队列中的创建、复用和等待行为。</p>
+<p>推荐维度:</p>
+<div class="highlight"><pre><span></span><code>source
+caller
+tier
+status
+</code></pre></div>
+<p><code>parse.created_batch.count</code> 表示请求创建了新的 parse batch。<code>parse.active_reused.count</code> 表示请求复用了已经存在的 pending/parsing batch。<code>parse.waited_batch.count</code> 表示当前请求需要等待的 batch 数；一次请求可以等待多个 batch。</p>
+<p><code>parse.queue.wait.duration.bucket.count</code> 只统计从请求进入等待到相关 batch 完成或失败的等待耗时，不包含实际 parse-server 执行耗时。</p>
+<h3 id="145-remote-boundary">14.5 Remote Boundary</h3>
+<p>Remote metrics 只记录用户是否显式允许远端和是否发生 local fallback，不记录 remote URL、API Key 或账号信息。</p>
+<p>推荐维度:</p>
+<div class="highlight"><pre><span></span><code>source
+caller
+tier
+status
+error_code
+</code></pre></div>
+<p><code>remote.requested.count</code> 表示当前请求显式带有 remote 语义。<code>remote.allowed.count</code> 表示隐私策略允许该请求使用 remote。<code>remote.not_allowed.count</code> 表示系统知道 remote 可能解决问题，但用户没有显式允许。<code>remote.fallback_to_local.count</code> 表示 remote 失败后按隐私边界 fallback 到 local。</p>
+<h3 id="146-rules">14.6 Rules</h3>
+<p>Rules metrics 只记录规则是否命中，不记录 rule name、pattern、路径或文件名。</p>
+<p>推荐维度:</p>
+<div class="highlight"><pre><span></span><code>rule_type: exclude | parsing | unknown
+tier
+remote: true | false | unknown
+</code></pre></div>
+<p><code>rules.excluded.count</code> 表示 exclude rule 阻止文件进入后续链路。<code>rules.parse_rule_applied.count</code> 表示 parsing-rule 决定了 tier、page_range 或 remote 语义。</p>
+<h3 id="147-server-lifecycle">14.7 Server Lifecycle</h3>
+<p>Server lifecycle metrics 记录 doclib server 和 managed local parse-server 的生命周期。</p>
+<p>推荐维度:</p>
+<div class="highlight"><pre><span></span><code>status
+error_code
+server
+tier
+</code></pre></div>
+<p><code>server.recovered_stale_lock.count</code> 用于统计启动恢复能力。<code>parse_server.local.start_failed.count</code> 和 <code>parse_server.local.restarted.count</code> 用于观察 managed local parse-server 稳定性。</p>
+<h3 id="148-compaction-cleanup">14.8 Compaction / Cleanup</h3>
+<p>Compaction 和 cleanup 属于维护链路，用于观察 JSON 批次增长、孤儿记录和文件清理效果。</p>
+<p>推荐维度:</p>
+<div class="highlight"><pre><span></span><code>tier
+status
+error_code
+</code></pre></div>
+<p>这些指标不记录 sha256、路径或文件名。</p>
+<h3 id="149-cli">14.9 CLI 行为</h3>
+<p>CLI 行为 metrics 只记录用户或 Agent 使用了哪些 <code>mineru</code> 子命令和关键模式，不记录命令参数中的路径、query、pattern、URL、API Key 或输出内容。</p>
+<p>推荐维度:</p>
+<div class="highlight"><pre><span></span><code>source: cli
+caller
+command
+status
+</code></pre></div>
+<p><code>cli.command.count</code> 的 <code>command</code> 取值:</p>
+<div class="highlight"><pre><span></span><code>parse | invalidate | search | find | show | cleanup | server | config | telemetry | unknown
+</code></pre></div>
+<p><code>server.command.count</code> 的 <code>command</code> 取值:</p>
+<div class="highlight"><pre><span></span><code>start | stop | restart | status | unknown
+</code></pre></div>
+<p><code>GET /server/status</code> 不计入 <code>server.command.count</code>，避免健康检查和轮询污染。只有用户或 Agent 通过 CLI 主动执行 <code>mineru server status</code> 时才记录。</p>
+<p>Parse CLI 行为推荐维度:</p>
+<div class="highlight"><pre><span></span><code>source: cli
+caller
+tier
+server
+output_format
+wait_mode
+wait_bucket
+page_range_mode
+status
+</code></pre></div>
+<p>口径:</p>
+<ul>
+<li><code>parse.output.requested.count</code>: 记录 <code>--format</code> 请求的输出格式。</li>
+<li><code>parse.output.to_stdout.count</code>: 输出到 STDOUT。</li>
+<li><code>parse.output.to_file.count</code>: 指定 <code>--output</code> 写入文件；不记录输出路径。</li>
+<li><code>parse.marker.disabled.count</code>: 用户传入 <code>--no-marker</code>。</li>
+<li><code>parse.wait_mode.count</code>: <code>--no-wait</code> 记为 <code>wait_mode=async</code>，否则记为 <code>sync</code>。</li>
+<li><code>parse.wait.timeout.count</code>: 同步等待超时。</li>
+<li><code>parse.page_range.requested.count</code>: 未传页码为 <code>default</code>，显式 <code>all</code> 为 <code>all</code>，其他页码范围为 <code>partial</code>；不记录具体页码字符串。</li>
+<li><code>parse.force.count</code>: 用户传入 <code>--force</code>。</li>
+</ul>
+<p>配置类 CLI 行为推荐维度:</p>
+<div class="highlight"><pre><span></span><code>source: cli
+caller
+config_area
+server
+tier
+remote
+status
+</code></pre></div>
+<p>口径:</p>
+<ul>
+<li><code>config.watch.added.count</code> / <code>config.watch.removed.count</code>: 不记录 watch path、label 或 removable 设备标识。</li>
+<li><code>config.rule.added.count</code> / <code>config.rule.removed.count</code>: 不记录 rule name、pattern 或 page_range。</li>
+<li><code>config.parse_server.changed.count</code>: 不记录 URL 或 API Key，只通过 <code>server</code> 区分 <code>local(managed)</code>、<code>local(self-hosted)</code>、<code>remote(official)</code>、<code>remote(custom)</code>、<code>none</code>、<code>unknown</code>。</li>
+</ul>
+<p>Cleanup CLI 行为推荐维度:</p>
+<div class="highlight"><pre><span></span><code>source: cli
+caller
+cleanup_target
+dry_run
+status
+</code></pre></div>
+<p><code>cleanup_target</code> 取值:</p>
+<div class="highlight"><pre><span></span><code>orphan_docs | deleted_files | temp | mixed | unknown
+</code></pre></div>
+<h2 id="15-doclib-api">15. Doclib API 感知范围</h2>
+<p>Telemetry 不记录所有 doclib HTTP API 调用，只记录能够代表产品使用规模或核心行为的 API。</p>
+<p>对用户行为类 API，调用方应尽量向 doclib 传递 <code>caller</code>。这使 telemetry 可以区分 Agent 调用 <code>mineru</code> 命令和用户直接调用 <code>mineru</code> 命令。不能可靠识别时使用 <code>unknown</code>，不得通过敏感内容推断。
+直接调用 HTTP API 且未传 caller 信息时，<code>source=http_api</code>、<code>caller=http_client</code>。SDK、CLI、MCP、Web 和桌面 App 应由对应入口向 doclib 传递 <code>source</code> 与 <code>caller</code>。</p>
+<p>应记录的 API:</p>
+<table>
+<thead>
+<tr>
+<th>API</th>
+<th>Metric</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>POST /parses</code></td>
+<td><code>parse.requested.count</code> 等 parse 指标；使用 parse-server 时记录 <code>parse_server.*</code> 指标</td>
+<td>记录请求、cache hit/miss、完成/失败、文件数、页数、tier、耗时、大小分布和 parse-server 使用情况</td>
+</tr>
+<tr>
+<td><code>POST /invalidate</code></td>
+<td><code>parse.invalidate.count</code></td>
+<td>记录 invalidate 行为，不记录路径或 sha256</td>
+</tr>
+<tr>
+<td><code>GET /search</code></td>
+<td><code>search.performed.count</code>、<code>search.result_count.bucket.count</code></td>
+<td>不记录 query、命中文档或返回内容</td>
+</tr>
+<tr>
+<td><code>GET /find</code></td>
+<td><code>find.performed.count</code>、<code>find.result_count.bucket.count</code></td>
+<td>与 search 分开统计，不记录 query、命中文档或返回内容</td>
+</tr>
+<tr>
+<td><code>GET /docs/{sha256}/content</code></td>
+<td><code>doclib.content.requested.count</code></td>
+<td>记录内容读取或渲染次数，不记录 sha256 或内容</td>
+</tr>
+</tbody>
+</table>
+<p>不应记录为 telemetry 的 API:</p>
+<table>
+<thead>
+<tr>
+<th>API</th>
+<th>原因</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>GET /parses</code></td>
+<td>状态查询和轮询噪音较大</td>
+</tr>
+<tr>
+<td><code>GET /parses/{id}</code></td>
+<td>状态查询，不代表核心产品使用量</td>
+</tr>
+<tr>
+<td><code>GET /docs</code></td>
+<td>列表浏览噪音较大</td>
+</tr>
+<tr>
+<td><code>GET /docs/{sha256}</code></td>
+<td>元数据读取，P0 不作为核心指标</td>
+</tr>
+<tr>
+<td><code>GET /files/by-path</code></td>
+<td>工具性查询</td>
+</tr>
+<tr>
+<td><code>GET /config</code> / <code>POST /config</code></td>
+<td>普通配置读取和修改不计入，telemetry 开关变化除外</td>
+</tr>
+<tr>
+<td>watch / rules 配置 API</td>
+<td>只记录后台 watch 实际发现和解析行为</td>
+</tr>
+<tr>
+<td>cleanup API</td>
+<td>管理维护行为</td>
+</tr>
+<tr>
+<td><code>GET /server/status</code></td>
+<td>健康检查和轮询会污染活跃度</td>
+</tr>
+<tr>
+<td><code>POST /shutdown</code></td>
+<td>管理行为</td>
+</tr>
+</tbody>
+</table>
+<h2 id="16">16. 本地存储</h2>
+<p>Telemetry 用户状态、内部状态和聚合数据都存储在 doclib DB 中，不使用启动前文件配置。</p>
+<p>Telemetry endpoint 不支持用户配置，应由代码内置。开发和测试环境如需覆盖 endpoint，应使用测试构建或专门的开发开关，不进入用户配置体系。</p>
+<p>建议状态结构可以继续用 KV 表表达:</p>
+<div class="highlight"><pre><span></span><code><span class="k">[telemetry]</span>
+<span class="n">consent_state</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"enabled"</span>
+<span class="n">installation_id</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"inst_01HX..."</span>
+<span class="n">last_flush_at</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"2026-06-10T12:00:00Z"</span>
+</code></pre></div>
+<p>状态语义:</p>
+<ul>
+<li><code>consent_state</code>: 用户 telemetry 状态，取值为 <code>unset</code> / <code>enabled</code> / <code>disabled</code>。</li>
+<li><code>installation_id</code>: 内部匿名安装实例 ID，用户不可配置，也不需要默认展示完整值。</li>
+<li><code>last_flush_at</code>: 内部运行状态，表示最近一次成功 flush 时间，不是用户配置。</li>
+</ul>
+<p><code>consent_state</code> 语义:</p>
+<table>
+<thead>
+<tr>
+<th>值</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>unset</code></td>
+<td>用户尚未完成首次选择，doclib server 应展示或触发首次选择流程</td>
+</tr>
+<tr>
+<td><code>enabled</code></td>
+<td>用户允许记录并上报 telemetry</td>
+</tr>
+<tr>
+<td><code>disabled</code></td>
+<td>用户明确关闭 telemetry</td>
+</tr>
+</tbody>
+</table>
+<p>如果 <code>consent_state=disabled</code>，doclib server 不应写入新的 telemetry 聚合数据。</p>
+<p>Telemetry 聚合数据应使用独立表保存，至少包含:</p>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>id</code></td>
+<td>本地聚合记录 ID</td>
+</tr>
+<tr>
+<td><code>period_start</code></td>
+<td>聚合窗口开始时间</td>
+</tr>
+<tr>
+<td><code>period_end</code></td>
+<td>聚合窗口结束时间</td>
+</tr>
+<tr>
+<td><code>metric_name</code></td>
+<td>metric 名称</td>
+</tr>
+<tr>
+<td><code>metric_value</code></td>
+<td>非负数值</td>
+</tr>
+<tr>
+<td><code>dimensions</code></td>
+<td>metric-level dimensions JSON</td>
+</tr>
+<tr>
+<td><code>dimensions_hash</code></td>
+<td>dimensions JSON 的稳定 hash，用于聚合 upsert</td>
+</tr>
+<tr>
+<td><code>created_at</code></td>
+<td>创建时间</td>
+</tr>
+<tr>
+<td><code>updated_at</code></td>
+<td>最近更新时间</td>
+</tr>
+</tbody>
+</table>
+<p>聚合唯一键:</p>
+<div class="highlight"><pre><span></span><code>period_start + period_end + metric_name + dimensions_hash
+</code></pre></div>
+<p>同一唯一键重复写入时，累加 <code>metric_value</code>。聚合 key 不包含 context；flush 时读取当前 context 并组装 telemetry batch。服务端确认成功接收后，删除对应聚合记录。网络失败或 5xx 时保留记录以便后续重试。</p>
+<p>Flush 并发与幂等采用 P0 简单方案:</p>
+<ol>
+<li>doclib 同一时间只允许一个 flush 任务执行。</li>
+<li>flush 开始时获取本地 flush lock；已有 lock 且未过期时，本次 flush 直接跳过。</li>
+<li>flush 从 DB 读取一批未上报聚合记录，生成 <code>batch_id</code> 并 POST 到 telemetry endpoint。</li>
+<li>服务端确认成功接收后，本地删除这些聚合记录。</li>
+<li>如果 POST 成功但本地删除前 doclib 崩溃，后续可能重复上报同一批 metrics。</li>
+<li>P0 接受少量重复。服务端应基于 <code>batch_id</code> 在短窗口内做幂等去重；超过窗口的重复数据由 cleaned metrics 层处理。</li>
+</ol>
+<p>Flush lock 可以放在 telemetry 内部状态中，例如:</p>
+<div class="highlight"><pre><span></span><code><span class="k">[telemetry]</span>
+<span class="n">flush_locked_at</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="s2">"2026-06-10T12:00:00Z"</span>
+</code></pre></div>
+<h2 id="17">17. 服务端防污染</h2>
+<p>匿名 telemetry endpoint 无法完全避免伪造数据。服务端必须把本地 telemetry 视为半可信数据，只用于趋势分析。</p>
+<p>服务端必须实现:</p>
+<ul>
+<li>schema version 校验</li>
+<li>metric name 白名单</li>
+<li>context key/value 白名单</li>
+<li>dimension key/value 白名单</li>
+<li><code>value</code> 非负数校验</li>
+<li>batch 大小限制</li>
+<li>period 时间范围限制</li>
+<li><code>installation_id</code> 限流</li>
+<li>IP 限流</li>
+<li>异常数据 quarantine</li>
+<li>raw metrics 与 cleaned metrics 分层</li>
+</ul>
+<p>Dashboard 默认展示 cleaned metrics。mineru.net API 服务端日志属于 trusted usage，本地 anonymous telemetry 属于 anonymous product analytics，两类数据必须分开标记和分析。</p>
+<h2 id="18-p0">18. P0 实现边界</h2>
+<p>P0 需要完成:</p>
+<ul>
+<li>doclib server telemetry DB 配置读取与首次选择状态管理。</li>
+<li>匿名 <code>installation_id</code> 生成并持久化到 doclib DB。</li>
+<li>telemetry metrics 聚合存储到 doclib DB。</li>
+<li>小时级 period 聚合与 metric upsert。</li>
+<li>flush 成功后删除 DB 中已确认上报的 telemetry 聚合数据。</li>
+<li><code>mineru</code> CLI、Doclib SDK、MCP、Web、桌面 App 和直接 HTTP API 到 doclib server 的 <code>source</code> / <code>caller</code> 透传。</li>
+<li>P0 metric 白名单与 dimension 白名单。</li>
+<li>周期 flush 与失败重试。</li>
+<li><code>mineru telemetry status|enable|disable|preview|flush</code>。</li>
+<li>服务端 endpoint schema。</li>
+</ul>
+<p>P0 不需要完成:</p>
+<ul>
+<li>每事件实时上报。</li>
+<li>详细硬件画像。</li>
+<li>账号级归因。</li>
+<li>GPU 型号、显存、驱动和 CUDA 版本采集。</li>
+<li>exception message / traceback 上报。</li>
+<li>telemetry 结果查询 API。</li>
+</ul></div>
+
+
+
+
+
+
+
+
+
+  
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  回到页面顶部
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      © 2024 - 2025 MinerU. All Rights Reserved.
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+    <a href="https://github.com/opendatalab/MinerU" target="_blank" rel="noopener" title="GitHub" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://x.com/OpenDataLab_AI" target="_blank" rel="noopener" title="X-Twitter" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M357.2 48h70.6L273.6 224.2 455 464H313L201.7 318.6 74.5 464H3.8l164.9-188.5L-5.2 48h145.6l100.5 132.9zm-24.8 373.8h39.1L119.1 88h-42z"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://discord.gg/Tdedn9GTXq" target="_blank" rel="noopener" title="Discord" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M492.5 69.8c-.2-.3-.4-.6-.8-.7-38.1-17.5-78.4-30-119.7-37.1-.4-.1-.8 0-1.1.1s-.6.4-.8.8c-5.5 9.9-10.5 20.2-14.9 30.6-44.6-6.8-89.9-6.8-134.4 0-4.5-10.5-9.5-20.7-15.1-30.6-.2-.3-.5-.6-.8-.8s-.7-.2-1.1-.2C162.5 39 122.2 51.5 84.1 69c-.3.1-.6.4-.8.7C7.1 183.5-13.8 294.6-3.6 404.2c0 .3.1.5.2.8s.3.4.5.6c44.4 32.9 94 58 146.8 74.2.4.1.8.1 1.1 0s.7-.4.9-.7c11.3-15.4 21.4-31.8 30-48.8.1-.2.2-.5.2-.8s0-.5-.1-.8-.2-.5-.4-.6-.4-.3-.7-.4c-15.8-6.1-31.2-13.4-45.9-21.9-.3-.2-.5-.4-.7-.6s-.3-.6-.3-.9 0-.6.2-.9.3-.5.6-.7c3.1-2.3 6.2-4.7 9.1-7.1.3-.2.6-.4.9-.4s.7 0 1 .1c96.2 43.9 200.4 43.9 295.5 0 .3-.1.7-.2 1-.2s.7.2.9.4c2.9 2.4 6 4.9 9.1 7.2.2.2.4.4.6.7s.2.6.2.9-.1.6-.3.9-.4.5-.6.6c-14.7 8.6-30 15.9-45.9 21.8-.2.1-.5.2-.7.4s-.3.4-.4.7-.1.5-.1.8.1.5.2.8c8.8 17 18.8 33.3 30 48.8.2.3.6.6.9.7s.8.1 1.1 0c52.9-16.2 102.6-41.3 147.1-74.2.2-.2.4-.4.5-.6s.2-.5.2-.8c12.3-126.8-20.5-236.9-86.9-334.5zm-302 267.7c-29 0-52.8-26.6-52.8-59.2s23.4-59.2 52.8-59.2c29.7 0 53.3 26.8 52.8 59.2 0 32.7-23.4 59.2-52.8 59.2m195.4 0c-29 0-52.8-26.6-52.8-59.2s23.4-59.2 52.8-59.2c29.7 0 53.3 26.8 52.8 59.2 0 32.7-23.2 59.2-52.8 59.2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://mineru.net/community-portal/?aliasId=3c430f94" target="_blank" rel="noopener" title="WeChat" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M385.2 167.6c6.4 0 12.6.3 18.8 1.1C387.4 90.3 303.3 32 207.7 32 100.5 32 13 104.8 13 197.4c0 53.4 29.3 97.5 77.9 131.6l-19.3 58.6 68-34.1c24.4 4.8 43.8 9.7 68.2 9.7 6.2 0 12.1-.3 18.3-.8-4-12.9-6.2-26.6-6.2-40.8-.1-84.9 72.9-154 165.3-154m-104.5-52.9c14.5 0 24.2 9.7 24.2 24.4 0 14.5-9.7 24.2-24.2 24.2-14.8 0-29.3-9.7-29.3-24.2.1-14.7 14.6-24.4 29.3-24.4m-136.4 48.6c-14.5 0-29.3-9.7-29.3-24.2 0-14.8 14.8-24.4 29.3-24.4 14.8 0 24.4 9.7 24.4 24.4 0 14.6-9.6 24.2-24.4 24.2M563 319.4c0-77.9-77.9-141.3-165.4-141.3-92.7 0-165.4 63.4-165.4 141.3S305 460.7 397.6 460.7c19.3 0 38.9-5.1 58.6-9.9l53.4 29.3-14.8-48.6C534 402.1 563 363.2 563 319.4m-219.1-24.5c-9.7 0-19.3-9.7-19.3-19.6 0-9.7 9.7-19.3 19.3-19.3 14.8 0 24.4 9.7 24.4 19.3 0 10-9.7 19.6-24.4 19.6m107.1 0c-9.7 0-19.3-9.7-19.3-19.6 0-9.7 9.7-19.3 19.3-19.3 14.5 0 24.4 9.7 24.4 19.3.1 10-9.9 19.6-24.4 19.6"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="mailto:OpenDataLab@pjlab.org.cn" target="_blank" rel="noopener" title="E-mail" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m20 8-8 5-8-5V6l8 5 8-5m0-2H4c-1.11 0-2 .89-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["content.tabs.link", "content.code.annotate", "content.code.copy", "navigation.expand", "navigation.footer", "navigation.tabs", "navigation.sections", "navigation.path", "navigation.indexes", "navigation.top", "navigation.tracking", "search.suggest", "toc.follow"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u5df2\u590d\u5236", "clipboard.copy": "\u590d\u5236", "search.result.more.one": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.more.other": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 # \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.none": "\u6ca1\u6709\u627e\u5230\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.one": "\u627e\u5230 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.other": "# \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.placeholder": "\u952e\u5165\u4ee5\u5f00\u59cb\u641c\u7d22", "search.result.term.missing": "\u7f3a\u5c11", "select.version": "\u9009\u62e9\u5f53\u524d\u7248\u672c"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
