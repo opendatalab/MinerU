@@ -1097,6 +1097,7 @@ def test_doc_analyze_effort_annotation_exposes_only_supported_values() -> None:
         "tsv",
         "epub",
         "html",
+        "mhtml",
         "ofd",
         "odt",
         "ods",

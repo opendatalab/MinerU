@@ -6,7 +6,12 @@ import ast
 from pathlib import Path
 
 import pytest
+from docvortex.document.mhtml import __all__ as MHTML_EXPORTS
 from docvortex.public_api import PUBLIC_API
+
+# DocVortex 0.4.24 已通过模块 __all__ 导出归档接口，公开清单将在后续版本同步。
+_DECLARED_API = dict(PUBLIC_API)
+_DECLARED_API.setdefault("docvortex.document.mhtml", tuple(MHTML_EXPORTS))
 
 
 def _dotted_name(node: ast.AST) -> str:
@@ -28,7 +33,7 @@ def _check_source(source: str, *, model_layer: bool = False) -> list[str]:
 
     def check_module(module: str, line: int) -> None:
         """按公开清单和宿主层级校验模块依赖。"""
-        if module not in PUBLIC_API:
+        if module not in _DECLARED_API:
             errors.append(f"{line}: undeclared module {module}")
         if model_layer and module not in model_modules:
             errors.append(f"{line}: model layer cannot import {module}")
@@ -38,10 +43,10 @@ def _check_source(source: str, *, model_layer: bool = False) -> list[str]:
             module = node.module or ""
             check_module(module, node.lineno)
             for alias in node.names:
-                if alias.name not in PUBLIC_API.get(module, ()):
+                if alias.name not in _DECLARED_API.get(module, ()):
                     errors.append(f"{node.lineno}: undeclared symbol {module}.{alias.name}")
                 target = f"{module}.{alias.name}"
-                if target in PUBLIC_API:
+                if target in _DECLARED_API:
                     aliases[alias.asname or alias.name] = target
         elif isinstance(node, ast.Import):
             for alias in node.names:
@@ -62,10 +67,10 @@ def _check_source(source: str, *, model_layer: bool = False) -> list[str]:
         if root not in aliases:
             continue
         qualified = f"{aliases[root]}.{suffix}"
-        if qualified in PUBLIC_API:
+        if qualified in _DECLARED_API:
             continue
         module, _, symbol = qualified.rpartition(".")
-        if module in PUBLIC_API and symbol not in PUBLIC_API[module]:
+        if module in _DECLARED_API and symbol not in _DECLARED_API[module]:
             errors.append(f"{node.lineno}: undeclared member {qualified}")
     return errors
 
@@ -92,6 +97,7 @@ def test_mineru_uses_declared_docvortex_api() -> None:
         "from docvortex.document import page_range as ranges\nranges.unknown()",
         "import docvortex\ndocvortex.foundation._geometry.normalize_to_int_bbox([])",
         "import importlib\nimportlib.import_module('docvortex.foundation._geometry')",
+        "from docvortex.document.mhtml import unknown",
     ],
 )
 def test_guard_rejects_unpublished_imports(source: str) -> None:

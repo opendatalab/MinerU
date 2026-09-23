@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 """MHTML 文档的 DocVortex 原生分析适配。"""
 
 from __future__ import annotations
