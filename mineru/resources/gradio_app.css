@@ -395,9 +395,6 @@ body.dark .gradio-container {
     .mineru-markdown-pane {
         min-width: 100%;
     }
-    .status-steps-list {
-        grid-template-columns: 1fr;
-    }
     /* 纵向堆叠时保持自然高度，避免示例块拉伸整页。 */
     #mineru-kit-examples {
         flex: 0 0 auto !important;
