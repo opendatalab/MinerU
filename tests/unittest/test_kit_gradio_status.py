@@ -131,3 +131,57 @@ def test_status_stream_waits_for_stage_changes_and_cleans_up_waiter() -> None:
         await asyncio.gather(task, return_exceptions=True)
 
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("message", ["Preparing request...", STATUS_QUEUED_ON_SERVER, STATUS_PROCESSING_ON_SERVER])
+def test_status_heartbeat_survives_duplicate_notifications(message: str) -> None:
+    """重复阶段通知不能饿死每秒快照，心跳也不能改变任务或阶段身份。"""
+
+    async def scenario() -> None:
+        """持续发送同阶段通知并检查周期快照及即时阶段切换。"""
+        state = StatusPanelState()
+        state.append(message)
+        identity = (state.run_id, state.phase_id, state._processing_started)
+        events: asyncio.Queue[tuple[str, float]] = asyncio.Queue()
+        finish = asyncio.Event()
+        task = asyncio.create_task(finish.wait())
+
+        async def repeat() -> None:
+            """模拟每次查询都返回相同阶段。"""
+            while not finish.is_set():
+                events.put_nowait((message, state.clock()))
+                await asyncio.sleep(0.05)
+
+        sender = asyncio.create_task(repeat())
+        try:
+            async with aclosing(stream_status_updates(task, events, state)) as stream:
+                started = asyncio.get_running_loop().time()
+                first = await asyncio.wait_for(anext(stream), 2)
+                assert 0.9 <= asyncio.get_running_loop().time() - started < 2
+                assert 'data-mineru-status-seq="1"' in first
+                assert identity == (state.run_id, state.phase_id, state._processing_started)
+                sender.cancel()
+                await asyncio.gather(sender, return_exceptions=True)
+                events.put_nowait((STATUS_PROCESSING_OUTPUT, state.clock()))
+                update = await asyncio.wait_for(anext(stream), 0.5)
+                assert "Preparing outputs" in update
+                assert 'data-mineru-status-seq="2"' in update
+                finish.set()
+                assert [item async for item in stream] == []
+        finally:
+            finish.set()
+            sender.cancel()
+            await asyncio.gather(task, sender, return_exceptions=True)
+
+    asyncio.run(scenario())
+
+
+def test_local_queue_can_return_to_preparation() -> None:
+    """拿到本地槽位后高亮准备步骤，避免底部阶段与高亮不一致。"""
+    state = StatusPanelState()
+    state.append(STATUS_QUEUED_LOCALLY)
+    phase = state.phase_id
+    state.append("Preparing request...")
+    assert state.step_index == 0
+    assert state.phase_id == phase + 1
+    assert "data-mineru-queue-key" not in state.render()

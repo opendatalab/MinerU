@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+import uuid
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from decimal import ROUND_HALF_UP, Decimal
@@ -45,6 +46,9 @@ class StatusPanelState:
     step_index: int = -1
     processing_elapsed: float | None = None
     _processing_started: float | None = None
+    run_id: str = field(default_factory=lambda: uuid.uuid4().hex)
+    phase_id: int = 0
+    sequence: int = 0
 
     def append(self, message: str, *, at: float | None = None) -> bool:
         """接收真实阶段变化；重复通知不会重置解析计时。"""
@@ -58,11 +62,17 @@ class StatusPanelState:
             self._processing_started = now
             self.processing_elapsed = 0.0
         self.message = message
-        # 本地等待可能发生在上传之前；已展示的步骤不因后续准备通知倒退。
-        self.step_index = max(self.step_index, _MESSAGE_STEPS.get(message, -1))
+        self.phase_id += 1
+        # 本地排队结束后可以重新准备请求，高亮必须与实际阶段一致。
+        self.step_index = _MESSAGE_STEPS.get(message, self.step_index)
         if message.startswith("Failed:"):
             self.step_index = len(_STEPS) - 1
         return True
+
+    def snapshot(self) -> str:
+        """为周期同步生成新序号，确保静态阶段也能重新应用到浏览器。"""
+        self.sequence += 1
+        return self.render()
 
     def render(self) -> str:
         """按 3.4.5 的两列卡片结构渲染当前状态，并转义外部错误文本。"""
@@ -108,7 +118,9 @@ class StatusPanelState:
             '<div class="status-steps-panel">'
             f'<div class="status-panel-title">{title}</div>'
             f'<div class="status-steps-list">{"".join(items)}</div>'
-            f'<div class="status-latest"{timer_attributes}>{latest_html}</div></div>'
+            f'<div class="status-latest" data-mineru-run-id="{self.run_id}" '
+            f'data-mineru-phase-id="{self.phase_id}" data-mineru-status-seq="{self.sequence}"'
+            f"{timer_attributes}>{latest_html}</div></div>"
         )
 
 
@@ -124,28 +136,36 @@ async def stream_status_updates(
     events: asyncio.Queue[tuple[str, float]],
     state: StatusPanelState,
 ) -> AsyncIterator[str]:
-    """只等待真实阶段通知或任务结束，并及时回收临时等待任务。"""
+    """阶段变化立即发送，长任务每秒同步快照；浏览器独立绘制动画。"""
+    loop = asyncio.get_running_loop()
+    next_refresh = loop.time() + 1.0
     while True:
         while not events.empty():
             message, at = events.get_nowait()
             if state.append(message, at=at):
-                yield state.render()
+                next_refresh = loop.time() + 1.0
+                yield state.snapshot()
         if task.done():
             return
         waiter = asyncio.create_task(events.get())
         updated_html: str | None = None
         try:
-            done, _ = await asyncio.wait({task, waiter}, return_when=asyncio.FIRST_COMPLETED)
+            done, _ = await asyncio.wait(
+                {task, waiter}, timeout=max(0.0, next_refresh - loop.time()), return_when=asyncio.FIRST_COMPLETED
+            )
             if waiter in done:
                 message, at = waiter.result()
                 if state.append(message, at=at):
-                    updated_html = state.render()
+                    updated_html = state.snapshot()
+            if updated_html is None and not task.done() and loop.time() >= next_refresh:
+                updated_html = state.snapshot()
         finally:
             if not waiter.done():
                 waiter.cancel()
             await asyncio.gather(waiter, return_exceptions=True)
         # 向 Gradio 交回控制权前已回收临时 waiter，避免暂停在 yield 时残留后台等待。
         if updated_html is not None:
+            next_refresh = loop.time() + 1.0
             yield updated_html
 
 

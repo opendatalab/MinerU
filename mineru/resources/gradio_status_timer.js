@@ -1,9 +1,9 @@
 (i18n) => {
     let interval = null;
     let activeSpan = null;
-    let activeStart = null;
     let startedAt = 0;
     let activeMode = null;
+    let activeIdentity = null;
     let activeQueueKey = null;
     let queueStartedAt = 0;
 
@@ -16,8 +16,8 @@
         activeSpan?.removeAttribute("data-mineru-local-timer");
         activeSpan?.removeAttribute("data-mineru-local-animation");
         activeSpan = null;
-        activeStart = null;
         activeMode = null;
+        activeIdentity = null;
         activeQueueKey = null;
     };
 
@@ -46,16 +46,17 @@
         const span = status?.querySelector('[data-mineru-i18n-key="status_message"]');
         const start = status?.getAttribute("data-mineru-processing-start");
         if (span && start !== null) {
-            if (activeMode === "processing" && span === activeSpan && start === activeStart) return;
-            if (activeMode !== "processing") stop();
-            else activeSpan?.removeAttribute("data-mineru-local-timer");
-            const serverElapsed = Number(status.getAttribute("data-mineru-processing-elapsed"));
-            const serverElapsedMs = Number.isFinite(serverElapsed) ? Math.max(0, serverElapsed * 1000) : 0;
-            const observedStart = performance.now() - serverElapsedMs;
-            startedAt = activeMode === "processing" && start === activeStart
-                ? Math.min(startedAt, observedStart) : observedStart;
+            const identity = `${status.getAttribute("data-mineru-run-id")}:${status.getAttribute("data-mineru-phase-id")}`;
+            // 快照可能复用节点却清除本地标记，必须重新认领节点，不能提前返回。
+            if (activeMode !== "processing" || identity !== activeIdentity) {
+                stop();
+                // 解析计时只从浏览器首次观察到该阶段开始，不读取服务端耗时或起点。
+                startedAt = performance.now();
+            } else if (span !== activeSpan) {
+                activeSpan?.removeAttribute("data-mineru-local-timer");
+            }
+            activeIdentity = identity;
             activeSpan = span;
-            activeStart = start;
             activeMode = "processing";
             activeSpan.setAttribute("data-mineru-local-timer", "");
             if (interval === null) interval = setInterval(render, 10);
@@ -66,13 +67,11 @@
         const queueSpan = queueStatus?.querySelector('[data-mineru-i18n-key="status_message"]');
         const queueKey = queueStatus?.getAttribute("data-mineru-queue-key");
         if (queueSpan && (queueKey === "queued_locally" || queueKey === "queued_on_server")) {
-            if (activeMode === "queue" && queueSpan === activeSpan && queueKey === activeQueueKey) {
-                render();
-                return;
-            }
-            if (activeMode !== "queue" || queueKey !== activeQueueKey) stop();
-            else activeSpan?.removeAttribute("data-mineru-local-animation");
+            const identity = `${queueStatus.getAttribute("data-mineru-run-id")}:${queueStatus.getAttribute("data-mineru-phase-id")}`;
+            if (activeMode !== "queue" || queueKey !== activeQueueKey || identity !== activeIdentity) stop();
+            else if (queueSpan !== activeSpan) activeSpan?.removeAttribute("data-mineru-local-animation");
             if (activeMode !== "queue") queueStartedAt = performance.now();
+            activeIdentity = identity;
             activeSpan = queueSpan;
             activeQueueKey = queueKey;
             activeMode = "queue";

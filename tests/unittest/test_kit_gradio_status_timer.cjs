@@ -91,10 +91,10 @@ assert.equal(remounted.hasAttribute("data-mineru-local-timer"), false);
 const second = makeSpan();
 currentStatus = makeStatus("200.000000000", 0.01, second);
 timer.sync();
-assert.equal(second.textContent, "服务端解析中（0.01 秒）");
+assert.equal(second.textContent, "服务端解析中（0.00 秒）");
 now = 1050;
 tick();
-assert.equal(second.textContent, "服务端解析中（0.94 秒）");
+assert.equal(second.textContent, "服务端解析中（0.93 秒）");
 currentStatus = null;
 timer.sync();
 assert.equal(stopped, 2);
@@ -116,6 +116,13 @@ now = 11100;
 tick();
 assert.equal(queued.textContent, "服务端排队中.");
 i18n.localize({ querySelectorAll(selector) { return selector === "[data-mineru-i18n-key]" ? [queued] : []; } });
+assert.equal(queued.textContent, "服务端排队中.");
+// 排队节点复用时同样需要恢复标记，否则本地化会吞掉圆点。
+queued.removeAttribute("data-mineru-local-animation");
+queued.setAttribute("data-mineru-i18n-zh", "服务端排队中");
+timer.sync();
+i18n.localize({ querySelectorAll: (selector) => selector === "[data-mineru-i18n-key]" ? [queued] : [] });
+assert.equal(queued.hasAttribute("data-mineru-local-animation"), true);
 assert.equal(queued.textContent, "服务端排队中.");
 const remountedQueue = makeSpan();
 queued.isConnected = false;
@@ -139,7 +146,7 @@ currentStatus = makeStatus("400.000000000", 0.04, afterQueue);
 now = 12400;
 timer.sync();
 assert.equal(intervalMs, 10);
-assert.equal(afterQueue.textContent, "服务端解析中（0.04 秒）");
+assert.equal(afterQueue.textContent, "服务端解析中（0.00 秒）");
 assert.equal(localQueue.hasAttribute("data-mineru-local-animation"), false);
 currentStatus = null;
 timer.sync();
@@ -187,3 +194,84 @@ assert.equal(preparingSpan.getAttribute("data-mineru-i18n-key"), "preparing_requ
 assert.equal(latestAttributes.size, 0);
 assert.ok(steps[0].values.has("is-active"));
 assert.ok(steps.slice(1).every((step) => step.values.has("is-pending")));
+
+// 每秒快照不校准正在运行的本地时钟，即使服务端耗时明显不同。
+currentStatus = null;
+timer.sync();
+now = 20000;
+const stableClock = makeSpan();
+currentStatus = makeStatus("stable", 0, stableClock);
+timer.sync();
+now = 21000;
+currentStatus = makeStatus("stable", 99, makeSpan());
+timer.sync();
+assert.equal(currentStatus.querySelector().textContent, "服务端解析中（1.00 秒）");
+
+// Gradio 复用节点并清除自定义属性后，心跳必须恢复本地所有权，防止本地化覆盖小数。
+const patchedSpan = currentStatus.querySelector();
+for (let heartbeat = 2; heartbeat <= 5; heartbeat += 1) {
+    now = 20000 + heartbeat * 1000;
+    patchedSpan.removeAttribute("data-mineru-local-timer");
+    patchedSpan.setAttribute("data-mineru-i18n-en", `Processing on server (${heartbeat}.00s)`);
+    patchedSpan.setAttribute("data-mineru-i18n-zh", `服务端解析中（${heartbeat}.00 秒）`);
+    // 服务端起点或耗时变动也不应重新校准同一任务、同一阶段的本地起点。
+    currentStatus = makeStatus(`changed-${heartbeat}`, 99, patchedSpan);
+    timer.sync();
+    assert.equal(patchedSpan.hasAttribute("data-mineru-local-timer"), true);
+    for (let fraction = 1; fraction < 100; fraction += 1) {
+        now = 20000 + heartbeat * 1000 + fraction * 10;
+        tick();
+        i18n.localize({ querySelectorAll: (selector) => selector === "[data-mineru-i18n-key]" ? [patchedSpan] : [] });
+        assert.equal(patchedSpan.textContent, `服务端解析中（${heartbeat}.${String(fraction).padStart(2, "0")} 秒）`);
+    }
+}
+
+// 新任务即使阶段与起点相同，也必须重置本地计时。
+const freshStatus = makeStatus("stable", 0, makeSpan());
+const oldGet = freshStatus.getAttribute;
+freshStatus.getAttribute = (name) => name === "data-mineru-run-id" ? "new-run" : oldGet(name);
+currentStatus = freshStatus;
+timer.sync();
+assert.equal(currentStatus.querySelector().textContent, "服务端解析中（0.00 秒）");
+
+// 页面本地化会产生 DOM 写入；同帧外部重绘只刷新一次，自身写入不得反馈成无限循环。
+let observer = null;
+let observing = false;
+let localizations = 0;
+const frames = [];
+const externalMutation = { target: { nodeType: 1, closest: () => null } };
+const appContext = vm.createContext({
+    window: {},
+    document: { body: {}, querySelector: () => null, querySelectorAll: () => [], addEventListener() {} },
+    localStorage: { getItem: () => null },
+    requestAnimationFrame: (callback) => frames.push(callback),
+    MutationObserver: class {
+        // 保存观察回调，测试中模拟浏览器的 DOM 变化通知。
+        constructor(callback) { observer = callback; }
+        // 恢复外部变化监听。
+        observe() { observing = true; }
+        // 隔离本地化自身的 DOM 写入。
+        disconnect() { observing = false; }
+    },
+    stubI18n: {
+        localize() {
+            localizations += 1;
+            if (observing) observer([externalMutation]);
+        },
+    },
+    stubTimer: () => ({ sync() {}, showPreparing() {} }),
+});
+vm.runInContext(resource("gradio_app.js")
+    .replace("__MINERU_I18N__", "stubI18n")
+    .replace("__MINERU_STATUS_TIMER__", "stubTimer"), appContext)();
+while (frames.length) frames.shift()();
+const beforeRefresh = localizations;
+observer([externalMutation]);
+observer([externalMutation]);
+assert.equal(frames.length, 1);
+frames.shift()();
+assert.equal(localizations, beforeRefresh + 1);
+assert.equal(frames.length, 0);
+assert.equal(observing, true);
+observer([{ target: { nodeType: 1, closest: () => ({}) } }]);
+assert.equal(frames.length, 0);

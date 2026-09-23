@@ -849,11 +849,6 @@ def build_gradio_app(
                     yield (_status_html(message), *reset_result[1:])
                     return
                 selected_tier = "flash"
-            try:
-                page_text = await asyncio.to_thread(_effective_page_range, source_path, raw_page_range, max_pages=max_pages)
-            except MineruError as exc:
-                yield (_status_html(f"Failed: {exc.code}: {exc}"), *reset_result[1:])
-                return
             status_queue: asyncio.Queue[tuple[str, float]] = asyncio.Queue()
             loop = asyncio.get_running_loop()
 
@@ -866,6 +861,8 @@ def build_gradio_app(
                 if conversion_slot.locked():
                     emit(STATUS_QUEUED_LOCALLY)
                 async with conversion_slot:
+                    emit(STATUS_PREPARING_REQUEST)
+                    page_text = await asyncio.to_thread(_effective_page_range, source_path, raw_page_range, max_pages=max_pages)
                     result = await client.parse_file(
                         source_path,
                         tier=selected_tier,
@@ -935,7 +932,8 @@ def build_gradio_app(
                 # 会话重置后静默结束旧流，避免把取消异常或旧状态写回新界面。
                 return
             except Exception as exc:
-                state.append(f"Failed: {exc}")
+                message = f"{exc.code}: {exc}" if isinstance(exc, MineruError) else str(exc)
+                state.append(f"Failed: {message}")
                 yield (state.render(), *reset_result[1:])
             finally:
                 # 清除、换文件或断开流时仅取消本地等待，不发送远端取消请求。

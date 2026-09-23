@@ -1,5 +1,5 @@
 () => {
-    const APP_SCRIPT_VERSION = "v4-local-queue-animation";
+    const APP_SCRIPT_VERSION = "v6-local-status-clock";
     if (window.__mineruGradioAppInstalled === APP_SCRIPT_VERSION) {
         return;
     }
@@ -213,6 +213,11 @@
         refreshMineruCustomHtml();
     });
     if (typeof MutationObserver !== "undefined") {
+        let refreshPending = false;
+        const observationOptions = {
+            childList: true, subtree: true, characterData: true, attributes: true,
+            attributeFilter: ["title", "aria-label", "data-mineru-i18n-en", "data-mineru-i18n-zh"],
+        };
         const uiObserver = new MutationObserver((mutations) => {
             // 本地计时与排队动画的文字变化无需重新扫描整页，避免递归本地化。
             if (mutations.every(({ target }) => {
@@ -221,12 +226,20 @@
             })) {
                 return;
             }
-            refreshMineruCustomHtml();
+            if (refreshPending) return;
+            refreshPending = true;
+            // 合并同帧重绘，并隔离自身写入，避免本地化与计时更新形成微任务循环。
+            requestAnimationFrame(() => {
+                refreshPending = false;
+                uiObserver.disconnect();
+                try {
+                    refreshMineruCustomHtml();
+                } finally {
+                    uiObserver.observe(document.body, observationOptions);
+                }
+            });
         });
-        uiObserver.observe(document.body, {
-            childList: true, subtree: true, characterData: true, attributes: true,
-            attributeFilter: ["title", "aria-label", "data-mineru-i18n-en", "data-mineru-i18n-zh"],
-        });
+        uiObserver.observe(document.body, observationOptions);
     }
 
     document.addEventListener("click", (event) => {

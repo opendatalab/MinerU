@@ -1614,3 +1614,51 @@ def test_shared_layout_failure_keeps_other_gradio_artifacts(tmp_path: Path, monk
     with zipfile.ZipFile(render_download(artifacts.as_state(), "markdown")) as archive:
         assert f"{artifacts.stem}.md" in archive.namelist()
         assert "layout.pdf" not in archive.namelist()
+
+
+def test_gradio_slow_precheck_streams_heartbeats_and_queues_other_sessions(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """页码预检阻塞时仍同步状态，其他会话先显示排队而不是堵在预检前。"""
+    import threading
+
+    source = tmp_path / "source.pdf"
+    source.write_bytes(_pdf_bytes())
+    release = threading.Event()
+    started = threading.Event()
+
+    def precheck(*_args: Any, **_kwargs: Any) -> str:
+        """用事件阻塞预检，避免测试依赖真实 PDF 耗时。"""
+        started.set()
+        assert release.wait(10)
+        return "1"
+
+    monkeypatch.setattr(gradio_app, "_effective_page_range", precheck)
+    client = SimpleNamespace(parse_file=AsyncMock(side_effect=V1ArtifactError("test finished")))
+    capabilities = V1ServerCapabilities("http://127.0.0.1:1", ("flash",), ("zip",), ("file_id",))
+    demo = build_gradio_app(client, capabilities, output_root=tmp_path / "output", enable_example=False)
+    handler = next(fn.fn for fn in demo.fns.values() if fn.name == "convert_handler")
+
+    async def scenario() -> None:
+        """同时推进两个会话，验证预检时的心跳和执行槽等待。"""
+        first = handler(str(source), 0, "")
+        second = handler(str(source), 0, "")
+        try:
+            await anext(first)
+            heartbeat = await asyncio.wait_for(anext(first), 2)
+            assert started.is_set()
+            assert "Preparing request" in heartbeat[0]
+            assert 'data-mineru-status-seq="1"' in heartbeat[0]
+            assert all(value == {"__type__": "update"} for value in heartbeat[1:])
+            await anext(second)
+            queued = await asyncio.wait_for(anext(second), 0.5)
+            assert "Queued locally" in queued[0]
+            release.set()
+            assert "test finished" in [item async for item in first][-1][0]
+            assert "test finished" in [item async for item in second][-1][0]
+        finally:
+            release.set()
+            await first.aclose()
+            await second.aclose()
+
+    asyncio.run(scenario())
