@@ -134,11 +134,22 @@ def test_async_cancel_reclaims_session_and_pixels(pdf_input: bytes, model_stub: 
         assert states and states[0].images_list == [] and (states[0].np_images == [])
 
 
-def test_host_timeout_closes_document_session(pdf_input: bytes, model_stub: SimpleNamespace) -> None:
+def test_host_timeout_closes_document_session(
+    pdf_input: bytes, model_stub: SimpleNamespace, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """宿主 timeout 显式传到引擎，失败清理会话而非静默回退。"""
     with PDFDocument(pdf_input) as document:
+        session = document.get_render_session()
+        session.render(image_type="base64_img")
+        receive = session._receive
+
+        def expired_response(worker, request_id, deadline, **kwargs):
+            """用确定过期的响应截止时间覆盖各平台时钟粒度，保留真实失败清理。"""
+            return receive(worker, request_id, float("-inf"), **kwargs)
+
+        monkeypatch.setattr(session, "_receive", expired_response)
         with pytest.raises(TimeoutError):
-            images.load_images_from_pdf_bytes_range(pdf_input, document=document, timeout=1e-09)
+            images.load_images_from_pdf_bytes_range(pdf_input, document=document, timeout=1.0)
         assert document.get_render_session()._closed
 
 
