@@ -3,10 +3,13 @@
 
 from __future__ import annotations
 
+import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal
 
 if TYPE_CHECKING:
+    from docvortex.document.pdf import PDFRenderSession
     from PIL.Image import Image
     from ....model.vlm.contracts import VlmPredictor
 
@@ -20,7 +23,7 @@ from loguru import logger
 from ....utils.timing import stage_timer
 
 from ....model.runtime.execution import local_model_stage
-from ....utils.async_utils import run_sync
+from ....utils.async_utils import drain_future, run_sync
 from ....model.runtime.hybrid import HybridLocalModelContext
 from ....model.runtime.memory import trim_process_heap
 from ..contracts import AnalyzeEffort
@@ -38,7 +41,12 @@ from .formulas import (
     _split_formula_results,
     optimize_hybrid_formula_number_blocks,
 )
-from .images import get_load_images_threads, get_load_images_timeout, load_images_from_pdf_bytes_range
+from .images import (
+    get_document_render_session,
+    get_load_images_threads,
+    get_load_images_timeout,
+    load_images_from_pdf_bytes_range,
+)
 from .layout import (
     _build_vl_style_layout_blocks,
     _collect_table_items,
@@ -364,6 +372,7 @@ def _prepare_pdf_window(
         with stage_timer("pdf.render"):
             images_list = load_images_from_pdf_bytes_range(
                 pdf_bytes=file_bytes,
+                document=document,
                 start_page_id=window.start,
                 end_page_id=window.end,
                 image_type="pil_img",
@@ -636,6 +645,25 @@ def _finish_locked_window(
         return _finish_pdf_window(state, result, effort=effort, parse_mode=parse_mode, hybrid_model=hybrid_model)
 
 
+async def _run_window_prepare(prepare: Callable[[], None], render_session: PDFRenderSession | None) -> None:
+    """取消时先中止会话渲染，再等待准备线程退出，避免文档提前关闭。"""
+    if render_session is None:
+        return await run_sync(prepare)
+    work = asyncio.create_task(asyncio.to_thread(prepare))
+    try:
+        return await asyncio.shield(work)
+    except asyncio.CancelledError:
+        cleanup = asyncio.create_task(asyncio.to_thread(render_session.cancel))
+        try:
+            await drain_future(cleanup)
+        finally:
+            try:
+                await drain_future(work)
+            except BaseException:
+                pass
+        raise
+
+
 async def aio_process_pdf_windows(
     file_bytes: bytes,
     document: PDFDocument,
@@ -652,6 +680,7 @@ async def aio_process_pdf_windows(
     windows = _build_processing_windows(page_count, window_size)
     _log_processing_window_plan(page_count, window_size, len(windows))
     model_list = []
+    render_session = get_document_render_session(document) if windows else None
     for window in windows:
         state = None
         try:
@@ -673,7 +702,7 @@ async def aio_process_pdf_windows(
                 )
 
             try:
-                await run_sync(prepare)
+                await _run_window_prepare(prepare, render_session)
             finally:
                 state = holder[0] if holder else None
             options = _inference_options(state, effort, parse_mode, image_analysis)
@@ -691,6 +720,11 @@ async def aio_process_pdf_windows(
                     hybrid_model=hybrid_model,
                 )
             )
+        except asyncio.CancelledError:
+            if render_session is not None:
+                cleanup = asyncio.create_task(asyncio.to_thread(render_session.cancel))
+                await drain_future(cleanup)
+            raise
         finally:
             if state is not None:
                 await run_sync(state.close)
@@ -715,14 +749,23 @@ def process_pdf_windows(
     if flash_txt_mode:
         # Flash 原生结果只按视觉块需求补图，不再进入供推理使用的全页渲染窗口。
         from docvortex.analyzers.native import PdfModel
+        from docvortex.document.pdf.constants import MODEL_JSON_VISUAL_BLOCK_TYPES
 
         model_list = PdfModel().predict(document)
+        # 纯文本不创建会话输入文件；视觉容器会在引擎补图前折叠为 image。
+        needs_images = any(
+            block.get("type") in MODEL_JSON_VISUAL_BLOCK_TYPES or block.get("type") == "image_block"
+            for page in model_list
+            for block in page
+        )
+        render_session = get_document_render_session(document) if needs_images else None
         attach_visual_block_images_from_pdf(
             document,
             model_list,
             window_size=_configured_window_size(default=64),
             timeout=get_load_images_timeout(),
             threads=get_load_images_threads(),
+            **({"session": render_session} if render_session is not None else {}),
         )
         return model_list
 
