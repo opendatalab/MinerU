@@ -4,8 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       docvortex-wheel-url:
-        description: DocVortex 0.4.x wheel URL for joint validation before publication
-        required: true
+        description: Native ABI3 DocVortex wheel URL; mutually exclusive with docvortex-ref
+        required: false
+        type: string
+      docvortex-ref:
+        description: SHA or ref of myhloli/DocVortex to build; mutually exclusive with wheel URL
+        required: false
         type: string
       utils-wheel-url:
         description: Optional mineru-vl-utils 2.0.1+ wheel URL for unpublished dependency validation
@@ -14,6 +18,11 @@ on:
 
 permissions:
   contents: read
+
+env:
+  PYTHONUTF8: '1'
+  DOCVORTEX_COMPUTE_BACKEND: rust
+  DOCVORTEX_PDF_RENDER_BACKEND: legacy
 
 jobs:
   integration:
@@ -32,21 +41,147 @@ jobs:
         with:
           python-version: ${{ matrix.python }}
       - uses: astral-sh/setup-uv@v7
-      - name: Install matching engine wheel and host
+      - name: Validate mutually exclusive engine inputs
         env:
           DOCVORTEX_WHEEL_URL: ${{ inputs.docvortex-wheel-url }}
+          DOCVORTEX_REF: ${{ inputs.docvortex-ref }}
+        run: |
+          python - <<'PY'
+          import os
+          # 必须指定一种引擎来源，不能在输入缺失时回退到索引版本。
+          wheel = os.environ["DOCVORTEX_WHEEL_URL"].strip()
+          ref = os.environ["DOCVORTEX_REF"].strip()
+          if bool(wheel) == bool(ref):
+              raise SystemExit("Provide exactly one of docvortex-wheel-url or docvortex-ref")
+          if ref and (ref != os.environ["DOCVORTEX_REF"] or any(char.isspace() for char in ref)):
+              raise SystemExit("docvortex-ref must be a SHA or Git ref without whitespace")
+          PY
+      - name: Checkout selected engine revision
+        if: ${{ inputs.docvortex-ref != '' }}
+        uses: actions/checkout@v6
+        with:
+          repository: myhloli/DocVortex
+          ref: ${{ inputs.docvortex-ref }}
+          path: .boundary/docvortex-src
+          persist-credentials: false
+      - name: Read the selected revision's Rust toolchain
+        if: ${{ inputs.docvortex-ref != '' }}
+        id: rust-version
+        run: |
+          python - <<'PY'
+          import os
+          from pathlib import Path
+          import re
+          # 使用引擎所声明的工具链；Python 3.10 无需为读取单一字段额外安装 TOML 包。
+          text = Path(".boundary/docvortex-src/rust-toolchain.toml").read_text(encoding="utf-8")
+          match = re.search(r'^\s*channel\s*=\s*["\']([A-Za-z0-9][A-Za-z0-9.+-]*)["\']', text, re.MULTILINE)
+          if match is None:
+              raise SystemExit("Selected DocVortex revision must declare a Rust toolchain channel")
+          with Path(os.environ["GITHUB_OUTPUT"]).open("a", encoding="utf-8") as output:
+              output.write(f"toolchain={match.group(1)}\n")
+          PY
+      - name: Install matching Rust toolchain
+        if: ${{ inputs.docvortex-ref != '' }}
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ steps.rust-version.outputs.toolchain }}
+      - name: Build the selected native wheel
+        if: ${{ inputs.docvortex-ref != '' }}
+        env:
+          DOCVORTEX_BUILD_NATIVE: '1'
+        run: |
+          uv build --wheel --python "$(python -c 'import sys; print(sys.executable)')" \
+            --out-dir "$GITHUB_WORKSPACE/.boundary/wheelhouse" .boundary/docvortex-src
+      - name: Download the supplied engine wheel
+        if: ${{ inputs.docvortex-wheel-url != '' }}
+        env:
+          DOCVORTEX_WHEEL_URL: ${{ inputs.docvortex-wheel-url }}
+        run: |
+          python -m pip download --no-deps --only-binary=:all: \
+            --dest .boundary/wheelhouse "$DOCVORTEX_WHEEL_URL"
+      - name: Freeze the exact native artifact
+        env:
+          DOCVORTEX_REF: ${{ inputs.docvortex-ref }}
+        run: |
+          python - <<'PY'
+          import hashlib
+          import json
+          import os
+          from pathlib import Path
+          import subprocess
+          from zipfile import ZipFile
+          # URL 与源码构建统一为一个本地 wheel，安装前拒绝纯 Python 或非 ABI3 产物。
+          wheels = list(Path(".boundary/wheelhouse").glob("*.whl"))
+          assert len(wheels) == 1, wheels
+          wheel = wheels[0].resolve()
+          with ZipFile(wheel) as archive:
+              metadata = [name for name in archive.namelist() if name.endswith(".dist-info/WHEEL")]
+              assert len(metadata) == 1, metadata
+              tags = [line for line in archive.read(metadata[0]).decode().splitlines() if line.startswith("Tag:")]
+              assert tags and all("-abi3-" in tag for tag in tags), tags
+              assert any(name.startswith("docvortex/_native") and name.endswith((".so", ".pyd")) for name in archive.namelist())
+          ref = os.environ["DOCVORTEX_REF"]
+          record = {
+              "source": "ref" if ref else "wheel-url",
+              "requested_ref": ref or None,
+              "resolved_commit": subprocess.check_output(["git", "-C", ".boundary/docvortex-src", "rev-parse", "HEAD"], text=True).strip() if ref else None,
+              "host_commit": os.environ["GITHUB_SHA"],
+              "wheel": str(wheel),
+              "wheel_sha256": hashlib.sha256(wheel.read_bytes()).hexdigest(),
+              "wheel_tags": tags,
+          }
+          Path(".boundary/engine-artifact.json").write_text(json.dumps(record, indent=2), encoding="utf-8")
+          with Path(os.environ["GITHUB_ENV"]).open("a", encoding="utf-8") as output:
+              output.write(f"DOCVORTEX_WHEEL={wheel}\n")
+          PY
+      - name: Install matching engine wheel and host
+        env:
           UTILS_WHEEL_URL: ${{ inputs.utils-wheel-url }}
         run: |
-          uv venv
-          uv pip install "$DOCVORTEX_WHEEL_URL"
-          if [[ -n "$UTILS_WHEEL_URL" ]]; then uv pip install "$UTILS_WHEEL_URL"; fi
-          uv pip install '.[test]'
+          uv venv --python "$(python -c 'import sys; print(sys.executable)')"
+          packages=("$DOCVORTEX_WHEEL" '.[test]' psutil)
+          if [[ -n "$UTILS_WHEEL_URL" ]]; then packages+=("$UTILS_WHEEL_URL"); fi
+          # 单次求解固定引擎产物，避免安装宿主时换成索引中的另一个 DocVortex。
+          uv pip install "${packages[@]}"
           uv pip check
+      - name: Verify installed native ABI3 provenance and protocol
+        run: |
+          if [[ -f .venv/Scripts/activate ]]; then source .venv/Scripts/activate; else source .venv/bin/activate; fi
+          python -I - <<'PY'
+          import hashlib
+          import importlib.metadata
+          import json
+          from pathlib import Path
+          import sysconfig
+          import docvortex
+          import docvortex._native as native
+          import mineru
+          from docvortex._compute_backend import backend_info
+          # 隔离导入必须来自已安装 wheel 的 site-packages，而非两个源码 checkout。
+          site_roots = {Path(sysconfig.get_paths()[name]).resolve() for name in ("purelib", "platlib")}
+          origins = {"docvortex": Path(docvortex.__file__).resolve(), "native": Path(native.__file__).resolve(), "mineru": Path(mineru.__file__).resolve()}
+          for name, path in origins.items():
+              assert any(path.is_relative_to(root) for root in site_roots), (name, path, site_roots)
+          info = backend_info()
+          assert info["backend"] == "rust", info
+          assert native.PROTOCOL_VERSION >= 11 and info["protocol"] == native.PROTOCOL_VERSION, info
+          assert info["extension_sha256"] == hashlib.sha256(origins["native"].read_bytes()).hexdigest(), info
+          artifact = json.loads(Path(".boundary/engine-artifact.json").read_text(encoding="utf-8"))
+          distribution = importlib.metadata.distribution("docvortex")
+          provenance = json.loads(distribution.read_text("direct_url.json") or "{}")
+          archive = provenance.get("archive_info", {})
+          installed_hash = archive.get("hashes", {}).get("sha256") or archive.get("hash", "").removeprefix("sha256=")
+          assert installed_hash == artifact["wheel_sha256"], (provenance, artifact)
+          wheel_metadata = distribution.read_text("WHEEL") or ""
+          assert any(line.startswith("Tag:") and "-abi3-" in line for line in wheel_metadata.splitlines())
+          record = {"versions": {name: importlib.metadata.version(name) for name in ("docvortex", "mineru")}, "origins": {name: str(path) for name, path in origins.items()}, "compute": info, "artifact": artifact}
+          Path(".boundary/installed-contract.json").write_text(json.dumps(record, indent=2), encoding="utf-8")
+          print(json.dumps(record, indent=2))
+          PY
       - name: Verify public contracts and deterministic inference replay
         run: |
           if [[ -f .venv/Scripts/activate ]]; then source .venv/Scripts/activate; else source .venv/bin/activate; fi
-          python -I -c "import docvortex; print(docvortex.__file__); from docvortex.version import __version__; assert __version__.startswith('0.4.')"
-          python -m pytest -q -o addopts='' \
+          python -I -m pytest -q -o addopts='' --import-mode=importlib \
             tests/unittest/test_docvortex_import_boundary.py \
             tests/unittest/test_backend_architecture.py \
             tests/unittest/test_docvortex_protocol.py \
@@ -55,4 +190,19 @@ jobs:
             tests/unittest/test_pdf_analyze_block_content.py \
             tests/unittest/test_native_pdf_table_pipeline.py \
             tests/unittest/test_pdf_analyze_visual_blocks.py \
-            tests/unittest/test_pdf_model_inputs.py
+            tests/unittest/test_pdf_model_inputs.py \
+            tests/unittest/test_pdf_cpu_reuse.py \
+            tests/unittest/test_pdf_memory_lifecycle.py \
+            tests/unittest/test_pdf_render_session_integration.py \
+            tests/unittest/test_flash_pdf_render_scheduling.py \
+            tests/unittest/test_process_heap_memory.py
+      - name: Retain exact wheel and installation evidence
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: docvortex-boundary-${{ matrix.os }}-py${{ matrix.python }}
+          path: |
+            .boundary/wheelhouse/*.whl
+            .boundary/engine-artifact.json
+            .boundary/installed-contract.json
+          if-no-files-found: warn
