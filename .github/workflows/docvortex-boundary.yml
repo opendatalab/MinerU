@@ -153,6 +153,9 @@ jobs:
           import json
           from pathlib import Path
           import sysconfig
+          from urllib.parse import urlsplit
+          from urllib.request import url2pathname
+          from zipfile import ZipFile
           import docvortex
           import docvortex._native as native
           import mineru
@@ -169,12 +172,71 @@ jobs:
           artifact = json.loads(Path(".boundary/engine-artifact.json").read_text(encoding="utf-8"))
           distribution = importlib.metadata.distribution("docvortex")
           provenance = json.loads(distribution.read_text("direct_url.json") or "{}")
-          archive = provenance.get("archive_info", {})
-          installed_hash = archive.get("hashes", {}).get("sha256") or archive.get("hash", "").removeprefix("sha256=")
-          assert installed_hash == artifact["wheel_sha256"], (provenance, artifact)
+          def stream_hash(stream, algorithm="sha256"):
+              """分块校验完整文件内容，避免原生扩展或字体资源引入大块临时分配。"""
+              fingerprint = hashlib.new(algorithm)
+              for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                  fingerprint.update(chunk)
+              return fingerprint.hexdigest()
+
+          wheel = Path(artifact["wheel"]).resolve(strict=True)
+          direct_url = urlsplit(provenance.get("url", ""))
+          assert direct_url.scheme == "file" and direct_url.netloc in ("", "localhost"), provenance
+          assert not direct_url.query and not direct_url.fragment, provenance
+          installed_from = Path(url2pathname(direct_url.path)).resolve(strict=True)
+          assert installed_from == wheel, (installed_from, wheel)
+          with wheel.open("rb") as stream:
+              assert stream_hash(stream) == artifact["wheel_sha256"], artifact
+          # uv 的本地 wheel direct_url 允许 archive_info 为空；有声明摘要仍逐一验证。
+          archive_info = provenance.get("archive_info", {})
+          declared_hashes = dict(archive_info.get("hashes", {}))
+          if archive_info.get("hash"):
+              algorithm, value = archive_info["hash"].split("=", 1)
+              assert algorithm not in declared_hashes or declared_hashes[algorithm] == value, archive_info
+              declared_hashes[algorithm] = value
+          for algorithm, expected in declared_hashes.items():
+              with wheel.open("rb") as stream:
+                  assert stream_hash(stream, algorithm) == expected.lower(), (algorithm, archive_info)
+          # 独立比较归档与实际安装的每个包文件，覆盖代码、资源和原生扩展；不依赖 RECORD。
+          package_root = origins["docvortex"].parent
+          verified_paths = set()
+          payload_fingerprint = hashlib.sha256()
+          matched_package_files = matched_metadata_files = 0
+          with ZipFile(wheel) as archive:
+              package_entries = [entry for entry in archive.infolist() if not entry.is_dir() and entry.filename.startswith("docvortex/")]
+              metadata_entries = [entry for entry in archive.infolist() if entry.filename.endswith(".dist-info/METADATA")]
+              assert package_entries and len(metadata_entries) == 1, (len(package_entries), len(metadata_entries))
+              entries = sorted(package_entries + metadata_entries, key=lambda entry: entry.filename)
+              assert len({entry.filename for entry in entries}) == len(entries), "Duplicate wheel payload paths"
+              for entry in entries:
+                  installed = Path(distribution.locate_file(entry.filename)).resolve(strict=True)
+                  assert any(installed.is_relative_to(root) for root in site_roots), installed
+                  if entry.filename.startswith("docvortex/"):
+                      assert installed.is_relative_to(package_root), installed
+                      matched_package_files += 1
+                  else:
+                      matched_metadata_files += 1
+                  with archive.open(entry) as expected_stream, installed.open("rb") as installed_stream:
+                      expected_hash = stream_hash(expected_stream)
+                      assert stream_hash(installed_stream) == expected_hash, (entry.filename, installed)
+                  verified_paths.add(installed)
+                  payload_fingerprint.update(entry.filename.encode("utf-8") + b"\0" + expected_hash.encode("ascii") + b"\n")
+          assert origins["docvortex"] in verified_paths and origins["native"] in verified_paths, origins
+          with wheel.open("rb") as stream:
+              assert stream_hash(stream) == artifact["wheel_sha256"], "Wheel changed during payload verification"
+          payload_verification = {
+              "direct_url_matches_frozen_wheel": True,
+              "frozen_wheel_sha256_verified": artifact["wheel_sha256"],
+              "declared_archive_hashes_verified": declared_hashes,
+              "matched_package_files": matched_package_files,
+              "matched_metadata_files": matched_metadata_files,
+              "loaded_native_extension_verified": True,
+              "verified_payload_sha256": payload_fingerprint.hexdigest(),
+              "scope": "All wheel docvortex/ files plus METADATA; installer-rewritten RECORD and generated pyc excluded",
+          }
           wheel_metadata = distribution.read_text("WHEEL") or ""
           assert any(line.startswith("Tag:") and "-abi3-" in line for line in wheel_metadata.splitlines())
-          record = {"versions": {name: importlib.metadata.version(name) for name in ("docvortex", "mineru")}, "origins": {name: str(path) for name, path in origins.items()}, "compute": info, "artifact": artifact}
+          record = {"versions": {name: importlib.metadata.version(name) for name in ("docvortex", "mineru")}, "origins": {name: str(path) for name, path in origins.items()}, "compute": info, "artifact": artifact, "payload_verification": payload_verification}
           Path(".boundary/installed-contract.json").write_text(json.dumps(record, indent=2), encoding="utf-8")
           print(json.dumps(record, indent=2))
           PY
