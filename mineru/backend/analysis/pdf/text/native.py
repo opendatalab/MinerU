@@ -516,9 +516,14 @@ def _bridge_unassigned_punctuation(
             assigned_span_indices[char_position] = previous_owner
 
 
-def _owned_span_assignments(owner: Any, spans: list[_AnalyzeSpan], median_height: float):
+def _owned_span_inputs(owner: Any, spans: list[_AnalyzeSpan], median_height: float) -> tuple | None:
     """内部同源快照直接匹配字符；特殊可执行值和替换后的规则保留原 Python 语义。"""
-    if owner is None or calculate_char_in_span is not _STANDARD_CHAR_IN_SPAN:
+    if (
+        owner is None
+        or calculate_char_in_span is not _STANDARD_CHAR_IN_SPAN
+        or type(CONTROL_LINE_BREAK_CHARS) not in (set, frozenset)
+        or CONTROL_LINE_BREAK_CHARS != {"\r", "\n"}
+    ):
         return None
     defaults = calculate_char_in_span.__defaults__
     if type(defaults) is not tuple or len(defaults) != 1:
@@ -539,7 +544,61 @@ def _owned_span_assignments(owner: Any, spans: list[_AnalyzeSpan], median_height
         for flags in (LINE_STOP_FLAG, LINE_START_FLAG)
     ):
         return None
-    return owner.assign_spans(boxes, median_height, LINE_STOP_FLAG, LINE_START_FLAG, ratio)
+    return boxes, median_height, LINE_STOP_FLAG, LINE_START_FLAG, ratio
+
+
+def _owned_span_assignments(owner: Any, spans: list[_AnalyzeSpan], median_height: float) -> list[int | None] | None:
+    """用同源快照匹配字符，数值或配置不满足既有语义时显式选择参考实现。"""
+    inputs = _owned_span_inputs(owner, spans, median_height)
+    return owner.assign_spans(*inputs) if inputs is not None else None
+
+
+def _owned_span_texts(owner: Any, spans: list[_AnalyzeSpan], median_height: float, detect_scripts: bool) -> list[tuple] | None:
+    """共享脚本侧车已准备时，整段回填留在 Rust；不绕过自定义规则或已有字符内容。"""
+    if detect_scripts or not callable(getattr(owner, "prepare_span_texts", None)):
+        return None
+    functions = (
+        chars_to_content,
+        __replace_unicode,
+        __replace_ligatures,
+        _get_private_use_text_signal,
+        _is_private_use_char,
+        _get_char_bbox_metrics_list,
+        _merge_overlapping_spacing_diacritics_with_protection,
+        _compose_overlapping_spacing_diacritic,
+        _axis_overlap_ratio,
+        _wrap_script_runs,
+        _append_script_wrapped_text,
+        unicodedata.category,
+        unicodedata.normalize,
+        statistics.median,
+    )
+    if any(value is not original for value, original in zip(functions, _STANDARD_CONTENT_FUNCTIONS)):
+        return None
+    if any(
+        type(span.metadata) is not dict or type(span.metadata.get("chars")) is not list or span.metadata["chars"]
+        for span in spans
+    ):
+        return None
+    if type(_SPACING_DIACRITIC_TO_COMBINING) is not dict or any(
+        type(key) is not str or type(value) is not str for key, value in _SPACING_DIACRITIC_TO_COMBINING.items()
+    ):
+        return None
+    threshold = SPACING_DIACRITIC_MIN_OVERLAP_RATIO
+    if type(threshold) not in (int, float) or not math.isfinite(threshold):
+        return None
+    if any(type(value) is not int or not 0 <= value <= 0x10FFFF for value in (PRIVATE_USE_AREA_START, PRIVATE_USE_AREA_END)):
+        return None
+    inputs = _owned_span_inputs(owner, spans, median_height)
+    if inputs is None:
+        return None
+    return owner.prepare_span_texts(
+        *inputs,
+        list(CONTROL_LINE_BREAK_CHARS),
+        _SPACING_DIACRITIC_TO_COMBINING,
+        threshold,
+        (PRIVATE_USE_AREA_START, PRIVATE_USE_AREA_END),
+    )
 
 
 def fill_char_in_spans(
@@ -557,8 +616,11 @@ def fill_char_in_spans(
     tight_bboxes = tight_bboxes or {}
     origins = origins or {}
 
-    assigned_span_indices = _owned_span_assignments(_native_text, spans, median_span_height)
-    if assigned_span_indices is not None and len(assigned_span_indices) != len(all_chars):
+    native_contents = _owned_span_texts(_native_text, spans, median_span_height, detect_scripts)
+    if native_contents is not None and len(native_contents) != len(spans):
+        raise RuntimeError("Native content count differs from span count")
+    assigned_span_indices = _owned_span_assignments(_native_text, spans, median_span_height) if native_contents is None else []
+    if native_contents is None and assigned_span_indices is not None and len(assigned_span_indices) != len(all_chars):
         raise RuntimeError("Native span assignments do not match the owned character sequence")
     if assigned_span_indices is None:
         grid_size = max(1, median_span_height)
@@ -657,15 +719,24 @@ def fill_char_in_spans(
             spans[span_index].metadata["chars"].append(char)
 
     need_ocr_spans = []
-    for span in spans:
-        private_use_signal = _get_private_use_text_signal(span.metadata["chars"])
-        should_post_ocr_private_use = _should_fallback_to_post_ocr_for_private_use_text(private_use_signal)
-        chars_to_content(
-            span,
-            tight_bboxes=tight_bboxes,
-            origins=origins,
-            detect_scripts=detect_scripts,
-        )
+    for span_index, span in enumerate(spans):
+        if native_contents is None:
+            private_use_signal = _get_private_use_text_signal(span.metadata["chars"])
+            should_post_ocr_private_use = _should_fallback_to_post_ocr_for_private_use_text(private_use_signal)
+            chars_to_content(span, tight_bboxes=tight_bboxes, origins=origins, detect_scripts=detect_scripts)
+        else:
+            text, pua_count, text_count, pua_run = native_contents[span_index]
+            private_use_signal = {
+                "pua_count": pua_count,
+                "text_char_count": text_count,
+                "max_pua_run": pua_run,
+                "pua_ratio": pua_count / text_count if text_count else 0.0,
+            }
+            should_post_ocr_private_use = _should_fallback_to_post_ocr_for_private_use_text(private_use_signal)
+            span.metadata.pop(PDF_NATIVE_SCRIPT_MARKUP_KEY, None)
+            if text is not None:
+                span.content = text
+            del span.metadata["chars"]
         # 有的span中虽然没有字但有一两个空的占位符，用宽高和content长度过滤
         if should_post_ocr_private_use and span.content:
             span.metadata[POST_OCR_FALLBACK_CONTENT_KEY] = span.content
@@ -1031,3 +1102,22 @@ def chars_to_content(
             span.metadata[PDF_NATIVE_SCRIPT_MARKUP_KEY] = True
 
     del span.metadata["chars"]
+
+
+# 仅原有内置规则启用整段原生化，替换后的函数保留参考调用及异常语义。
+_STANDARD_CONTENT_FUNCTIONS = (
+    chars_to_content,
+    __replace_unicode,
+    __replace_ligatures,
+    _get_private_use_text_signal,
+    _is_private_use_char,
+    _get_char_bbox_metrics_list,
+    _merge_overlapping_spacing_diacritics_with_protection,
+    _compose_overlapping_spacing_diacritic,
+    _axis_overlap_ratio,
+    _wrap_script_runs,
+    _append_script_wrapped_text,
+    unicodedata.category,
+    unicodedata.normalize,
+    statistics.median,
+)
