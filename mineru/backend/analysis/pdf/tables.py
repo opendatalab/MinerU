@@ -28,6 +28,7 @@ from ....model.ocr.image import mask_formula_regions_for_ocr_det
 from ....model.runtime.contracts import AtomicModelName
 from ....model.runtime.hybrid import HybridLocalModelContext, run_ocr_inference
 from ....types import RAW_ALGORITHM, RAW_FORMULA_NUMBER, RAW_PHONETIC, BBox, BlockType
+from .snapshots import PageSnapshotCache, get_page_snapshot_entry
 from .constants import (
     BATCH_RATIO,
     OCR_DET_BASE_BATCH_SIZE,
@@ -207,6 +208,7 @@ def _apply_native_txt_table_priority(
     effort: Literal["medium", "high"],
     page_text_geometries: list[PDFPageTextGeometry | None] | None = None,
     page_vector_geometries: list[PDFPageVectorGeometry | None] | None = None,
+    page_snapshots: PageSnapshotCache | None = None,
 ) -> _NativeTablePrioritySummary:
     """在 Medium/High TXT 模型表格识别前回填高置信原生 HTML。"""
 
@@ -263,14 +265,25 @@ def _apply_native_txt_table_priority(
         try:
             page_text_geometry = page_text_geometries[page_idx] if page_text_geometries is not None else None
             vector_geometry = page_vector_geometries[page_idx] if page_vector_geometries is not None else None
-            if vector_geometry is None:
-                vector_geometry = pdf_page.get_vector_geometry()
-            table_page = prepare_table_page(pdf_page, geometry=page_text_geometry, vector_geometry=vector_geometry)
-            page_text_geometry = table_page.geometry
-            if page_text_geometries is not None:
-                page_text_geometries[page_idx] = page_text_geometry
-            if page_vector_geometries is not None:
-                page_vector_geometries[page_idx] = vector_geometry
+            snapshot_entry = get_page_snapshot_entry(
+                page_snapshots,
+                page_idx,
+                pdf_page,
+                geometry=page_text_geometry,
+                vector_geometry=vector_geometry,
+            )
+            if snapshot_entry is not None:
+                # 表格恢复仍消费其真实可变 geometry，但不提前把该兼容副本放进窗口正文缓存。
+                table_page = prepare_table_page(pdf_page, snapshot=snapshot_entry.get_full_snapshot(pdf_page))
+            else:
+                if vector_geometry is None:
+                    vector_geometry = pdf_page.get_vector_geometry()
+                table_page = prepare_table_page(pdf_page, geometry=page_text_geometry, vector_geometry=vector_geometry)
+                page_text_geometry = table_page.geometry
+                if page_text_geometries is not None:
+                    page_text_geometries[page_idx] = page_text_geometry
+                if page_vector_geometries is not None:
+                    page_vector_geometries[page_idx] = vector_geometry
             native_page_size = table_page.page_size
             render_scale = float(image_dict.get("scale", 1.0) or 1.0)
         except Exception as exc:
@@ -468,6 +481,8 @@ def _resolve_txt_table_orientations(
     pdf_pages: list[PDFPage],
     images_list: list[dict[str, Any]],
     page_text_geometries: list[PDFPageTextGeometry | None] | None = None,
+    *,
+    page_snapshots: PageSnapshotCache | None = None,
 ) -> list[dict[str, Any]]:
     """优先用原生 PDF 文本行写回表格角度，并返回需要视觉兜底的表格。"""
     fallback_table_items: list[dict[str, Any]] = []
@@ -499,16 +514,27 @@ def _resolve_txt_table_orientations(
         if page_idx not in page_lines_cache:
             try:
                 geometry = page_text_geometries[page_idx] if page_text_geometries is not None else None
-                if geometry is None and page_text_geometries is not None:
-                    try:
-                        geometry = pdf_page.get_chars_with_geometry()
-                    except Exception as exc:
-                        # 扩展几何失败不应让本来可成功的普通字符投票改走视觉模型。
-                        logger.debug(f"Hybrid table orientation uses plain chars after geometry failure: {exc}")
-                    else:
-                        page_text_geometries[page_idx] = geometry
-                chars = geometry.chars if geometry is not None else pdf_page.get_chars()
-                page_lines_cache[page_idx] = get_lines_from_chars(chars)
+                snapshot_entry = None
+                geometry_failed = False
+                try:
+                    snapshot_entry = get_page_snapshot_entry(page_snapshots, page_idx, pdf_page, geometry=geometry)
+                except Exception as exc:
+                    geometry_failed = True
+                    logger.debug(f"Hybrid table orientation uses plain chars after owned geometry failure: {exc}")
+                if snapshot_entry is not None:
+                    # 方向投票只需要粗行几何和文字，不物化整页 Char/font，也不读取路径或链接。
+                    page_lines_cache[page_idx] = snapshot_entry.text_owner.get_line_summaries(0.7, 0.1)
+                else:
+                    if geometry is None and page_text_geometries is not None and not geometry_failed:
+                        try:
+                            geometry = pdf_page.get_chars_with_geometry()
+                        except Exception as exc:
+                            # 扩展几何失败不应让本来可成功的普通字符投票改走视觉模型。
+                            logger.debug(f"Hybrid table orientation uses plain chars after geometry failure: {exc}")
+                        else:
+                            page_text_geometries[page_idx] = geometry
+                    chars = geometry.chars if geometry is not None else pdf_page.get_chars()
+                    page_lines_cache[page_idx] = get_lines_from_chars(chars)
             except Exception as exc:
                 logger.warning(f"Hybrid txt table orientation falls back to visual model: page_idx={page_idx}, error={exc}")
                 page_lines_cache[page_idx] = None
@@ -534,6 +560,8 @@ def _apply_table_orientations(
     images_list: list[dict[str, Any]],
     hybrid_model: HybridLocalModelContext,
     page_text_geometries: list[PDFPageTextGeometry | None] | None = None,
+    *,
+    page_snapshots: PageSnapshotCache | None = None,
 ) -> None:
     """按解析模式写回表格角度，文本证据不足时批量调用视觉方向模型。"""
     if parse_mode == "txt":
@@ -542,6 +570,7 @@ def _apply_table_orientations(
             pdf_pages,
             images_list,
             page_text_geometries,
+            **({"page_snapshots": page_snapshots} if page_snapshots is not None else {}),
         )
     elif parse_mode == "ocr":
         fallback_table_items = table_items

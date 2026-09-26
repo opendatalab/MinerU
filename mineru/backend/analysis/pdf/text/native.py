@@ -99,7 +99,21 @@ def txt_spans_extract(
         page_chars = page_text_geometry.chars
         tight_bboxes = page_text_geometry.tight_bboxes
         origins = page_text_geometry.origins
-    page_all_chars = _get_chars_for_span_fill(page_chars)
+    base_lines: list[dict[str, Any]] | None = None
+
+    def get_page_lines() -> list[dict[str, Any]]:
+        """只在局部旋转或竖排实际需要时组行，两个消费者共享当前真实字符的结果。"""
+        nonlocal base_lines
+        if type(page_chars) is not list:
+            return get_lines_from_chars(page_chars)
+        if base_lines is None:
+            base_lines = get_lines_from_chars(page_chars)
+        return base_lines
+
+    page_all_chars = _get_chars_for_span_fill(
+        page_chars,
+        line_provider=get_page_lines if type(page_chars) is list else None,
+    )
 
     # 计算所有span的高度的中位数
     span_height_list = []
@@ -137,7 +151,7 @@ def txt_spans_extract(
 
     """垂直的span框直接用line进行填充"""
     if len(vertical_spans) > 0:
-        pdf_lines = [line for line in get_lines_from_chars(page_chars) if _is_supported_rotation(line["rotation"])]
+        pdf_lines = [line for line in get_page_lines() if _is_supported_rotation(line["rotation"])]
         for pdf_line in pdf_lines:
             for span in vertical_spans:
                 if calculate_overlap_area_in_bbox1_area_ratio(pdf_line["bbox"].bbox, span.bbox) > 0.5:
@@ -209,7 +223,11 @@ def _is_visible_standard_rotation_char(char: Char) -> bool:
     return x1 > x0 and y1 > y0 and _is_supported_rotation(float(char.get("rotation", 0)))
 
 
-def _get_chars_for_span_fill(page_chars: list[Char] | dict[str, list[Char]]) -> list[Char]:
+def _get_chars_for_span_fill(
+    page_chars: list[Char] | dict[str, list[Char]],
+    *,
+    line_provider: Callable[[], list[dict[str, Any]]] | None = None,
+) -> list[Char]:
     """选择允许参与 span 回填的字符，保留正文内仿斜体并过滤整行斜向水印。"""
     if isinstance(page_chars, dict):
         all_chars = page_chars["chars"]
@@ -222,7 +240,8 @@ def _get_chars_for_span_fill(page_chars: list[Char] | dict[str, list[Char]]) -> 
     if not rotated_chars:
         return [char for char in all_chars if _get_char_fill_key(char) in fill_char_keys]
 
-    for line in get_lines_from_chars(all_chars):
+    lines = line_provider() if line_provider is not None else get_lines_from_chars(all_chars)
+    for line in lines:
         line_rotation = float(line.get("rotation", 0))
         if not _is_supported_rotation(line_rotation):
             continue

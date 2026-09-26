@@ -60,6 +60,7 @@ from .ocr import (
     _build_ocr_det_type_and_mfr_enable,
     _ocr_det,
 )
+from .snapshots import PageSnapshotCache, clear_page_snapshot_cache, create_page_snapshot_cache
 from .tables import (
     _apply_medium_table_recognition,
     _apply_native_txt_table_priority,
@@ -213,6 +214,7 @@ def _process_text_and_formulas(
     page_text_geometries: list[PDFPageTextGeometry | None] | None = None,
     *,
     page_vector_geometries: list[PDFPageVectorGeometry | None] | None = None,
+    page_snapshots: PageSnapshotCache | None = None,
     np_images: list[np.ndarray] | None = None,
 ) -> list[list[dict[str, Any]]]:
     """在当前窗口内完成 OCR、公式、原生文本及 block 行信息回填。"""
@@ -316,6 +318,7 @@ def _process_text_and_formulas(
             local_model_context,
             page_text_geometries,
             page_vector_geometries=page_vector_geometries,
+            **({"page_snapshots": page_snapshots} if page_snapshots is not None else {}),
         )
 
 
@@ -334,6 +337,7 @@ class _WindowInputs:
     accepted_native_tables: list[list[dict[str, Any]]]
     page_text_geometries: list[PDFPageTextGeometry | None] | None
     page_vector_geometries: list[PDFPageVectorGeometry | None] | None = None
+    page_snapshots: PageSnapshotCache | None = None
 
     def close(self) -> None:
         """推理及回填真正退出后关闭图片，仅清除本层拥有的容器。"""
@@ -348,6 +352,7 @@ class _WindowInputs:
                 self.page_text_geometries.clear()
             if self.page_vector_geometries is not None:
                 self.page_vector_geometries.clear()
+            clear_page_snapshot_cache(self.page_snapshots)
 
 
 def _prepare_pdf_window(
@@ -367,6 +372,7 @@ def _prepare_pdf_window(
     table_items = []
     page_text_geometries: list[PDFPageTextGeometry | None] | None = None
     page_vector_geometries: list[PDFPageVectorGeometry | None] | None = None
+    page_snapshots: PageSnapshotCache | None = None
     try:
         window_pages = _get_window_pdf_pages(document, window)
         with stage_timer("pdf.render"):
@@ -385,6 +391,7 @@ def _prepare_pdf_window(
             [None] * len(window_pages) if parse_mode == "txt" and effort in {"medium", "high", "xhigh"} else None
         )
         page_vector_geometries = [None] * len(window_pages) if page_text_geometries is not None else None
+        page_snapshots = create_page_snapshot_cache(window_pages, enabled=page_text_geometries is not None)
 
         local_model_context = hybrid_model
         if local_model_context is None:
@@ -407,6 +414,7 @@ def _prepare_pdf_window(
                         images_list,
                         local_model_context,
                         page_text_geometries,
+                        **({"page_snapshots": page_snapshots} if page_snapshots is not None else {}),
                     )
 
         vl_style_layout_blocks = _build_vl_style_layout_blocks(images_layout_res, images_pil_list)
@@ -421,6 +429,7 @@ def _prepare_pdf_window(
                     effort=effort,
                     page_text_geometries=page_text_geometries,
                     page_vector_geometries=page_vector_geometries,
+                    **({"page_snapshots": page_snapshots} if page_snapshots is not None else {}),
                 )
             if native_table_summary.total:
                 native_table_stats = {
@@ -462,6 +471,7 @@ def _prepare_pdf_window(
             accepted_native_tables,
             page_text_geometries,
             page_vector_geometries,
+            page_snapshots=page_snapshots,
         )
     except BaseException:
         try:
@@ -474,6 +484,7 @@ def _prepare_pdf_window(
                 page_text_geometries.clear()
             if page_vector_geometries is not None:
                 page_vector_geometries.clear()
+            clear_page_snapshot_cache(page_snapshots)
         raise
     finally:
         table_items.clear()
@@ -532,6 +543,7 @@ def _finish_pdf_window(
             images_layout_res,
             page_text_geometries,
             page_vector_geometries=state.page_vector_geometries,
+            **({"page_snapshots": state.page_snapshots} if state.page_snapshots is not None else {}),
             np_images=np_images,
         )
 
