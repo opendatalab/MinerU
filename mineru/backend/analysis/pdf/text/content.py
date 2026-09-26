@@ -190,6 +190,7 @@ def _fill_native_pdf_text_spans(
     *,
     page_text_geometry: PDFPageTextGeometry | None = None,
     detect_scripts: bool = True,
+    _native_text: Any = None,
 ) -> list[_AnalyzeSpan]:
     """复用原生 PDF 字符回填逻辑，并允许共享同页删除线检测读取的字符。"""
     page_width, page_height = page_size
@@ -205,6 +206,7 @@ def _fill_native_pdf_text_spans(
         tight_bboxes=page_text_geometry.tight_bboxes if page_text_geometry is not None else None,
         origins=page_text_geometry.origins if page_text_geometry is not None else None,
         detect_scripts=detect_scripts,
+        **({"_native_text": _native_text} if _native_text is not None else {}),
     )
 
 
@@ -420,6 +422,7 @@ def _fill_window_block_content_and_lines(
         )
         evidence = PDFTextEvidence(page_size)
         if parse_mode == "txt":
+            native_text_owner = None
             page_text_geometry = page_text_geometries[page_idx] if page_text_geometries is not None else None
             try:
                 page_char_count = pdf_page.get_char_count()
@@ -439,6 +442,10 @@ def _fill_window_block_content_and_lines(
                     vector_geometry=vector_geometry,
                 )
                 if snapshot_entry is not None:
+                    if callable(getattr(snapshot_entry.text_owner, "assign_spans", None)) and callable(
+                        getattr(snapshot_entry.text_owner, "supports_span_matching", None)
+                    ):
+                        native_text_owner = snapshot_entry.text_owner
                     evidence = prepare_text_evidence(
                         pdf_page,
                         snapshot=snapshot_entry.get_full_snapshot(pdf_page),
@@ -464,6 +471,7 @@ def _fill_window_block_content_and_lines(
                 page_size,
                 page_text_geometry=page_text_geometry,
                 detect_scripts=not use_shared_script_sidecar,
+                **({"_native_text": native_text_owner} if native_text_owner is not None else {}),
             )
             # 后续只消费已物化证据；逐页释放 Rust owner，避免与窗口 Python 几何长期双份驻留。
             if page_snapshots is not None:

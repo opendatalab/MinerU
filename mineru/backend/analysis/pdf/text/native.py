@@ -81,6 +81,7 @@ def txt_spans_extract(
     tight_bboxes: dict[int, BBox] | None = None,
     origins: dict[int, tuple[float, float]] | None = None,
     detect_scripts: bool = True,
+    _native_text: Any = None,
 ) -> list[_AnalyzeSpan]:
     """从 PDF 原生字符中提取文本 Span，并允许复用调用方已读取的页面字符。"""
     page_char_count = None
@@ -110,10 +111,20 @@ def txt_spans_extract(
             base_lines = get_lines_from_chars(page_chars)
         return base_lines
 
-    page_all_chars = _get_chars_for_span_fill(
-        page_chars,
-        line_provider=get_page_lines if type(page_chars) is list else None,
-    )
+    # 仅窗口内部刚从同一快照得到的 geometry 可走该通道；显式外部几何不提供 owner。
+    if (
+        _native_text is not None
+        and type(page_chars) is list
+        and len(page_chars) == _native_text.info()[0]
+        and _native_text.supports_span_matching()
+    ):
+        page_all_chars = page_chars
+    else:
+        _native_text = None
+        page_all_chars = _get_chars_for_span_fill(
+            page_chars,
+            line_provider=get_page_lines if type(page_chars) is list else None,
+        )
 
     # 计算所有span的高度的中位数
     span_height_list = []
@@ -178,6 +189,7 @@ def txt_spans_extract(
         tight_bboxes=tight_bboxes,
         origins=origins,
         detect_scripts=detect_scripts,
+        **({"_native_text": _native_text} if _native_text is not None else {}),
     )
 
     return _prepare_post_ocr_spans(need_ocr_spans, spans, pil_img, scale)
@@ -504,6 +516,32 @@ def _bridge_unassigned_punctuation(
             assigned_span_indices[char_position] = previous_owner
 
 
+def _owned_span_assignments(owner: Any, spans: list[_AnalyzeSpan], median_height: float):
+    """内部同源快照直接匹配字符；特殊可执行值和替换后的规则保留原 Python 语义。"""
+    if owner is None or calculate_char_in_span is not _STANDARD_CHAR_IN_SPAN:
+        return None
+    defaults = calculate_char_in_span.__defaults__
+    if type(defaults) is not tuple or len(defaults) != 1:
+        return None
+    ratio = defaults[0]
+    values = [median_height, ratio]
+    boxes = []
+    for span in spans:
+        box = span.bbox
+        if type(box) not in (tuple, list) or len(box) != 4:
+            return None
+        boxes.append(box)
+        values.extend(box)
+    if any(type(value) not in (int, float) or not -(2**52) <= value <= 2**52 or not math.isfinite(value) for value in values):
+        return None
+    if any(
+        type(flags) not in (tuple, list) or any(type(flag) is not str for flag in flags)
+        for flags in (LINE_STOP_FLAG, LINE_START_FLAG)
+    ):
+        return None
+    return owner.assign_spans(boxes, median_height, LINE_STOP_FLAG, LINE_START_FLAG, ratio)
+
+
 def fill_char_in_spans(
     spans: list[_AnalyzeSpan],
     all_chars: list[Char],
@@ -512,102 +550,107 @@ def fill_char_in_spans(
     tight_bboxes: dict[int, BBox] | None = None,
     origins: dict[int, tuple[float, float]] | None = None,
     detect_scripts: bool = True,
+    _native_text: Any = None,
 ) -> list[_AnalyzeSpan]:
     """以 tight-first、loose-fallback 将字符分配到 Span，并返回待 OCR Span。"""
     spans = sorted(spans, key=lambda x: x.bbox[1])
     tight_bboxes = tight_bboxes or {}
     origins = origins or {}
 
-    grid_size = max(1, median_span_height)
-    grid = collections.defaultdict(list)
-    span_bboxes = []
-    for span_index, span in enumerate(spans):
-        span_bbox = span.bbox
-        span_bboxes.append(span_bbox)
-        start_cell = int(span_bbox[1] / grid_size)
-        end_cell = int(span_bbox[3] / grid_size)
-        for cell_idx in range(start_cell, end_cell + 1):
-            grid[cell_idx].append(span_index)
+    assigned_span_indices = _owned_span_assignments(_native_text, spans, median_span_height)
+    if assigned_span_indices is not None and len(assigned_span_indices) != len(all_chars):
+        raise RuntimeError("Native span assignments do not match the owned character sequence")
+    if assigned_span_indices is None:
+        grid_size = max(1, median_span_height)
+        grid = collections.defaultdict(list)
+        span_bboxes = []
+        for span_index, span in enumerate(spans):
+            span_bbox = span.bbox
+            span_bboxes.append(span_bbox)
+            start_cell = int(span_bbox[1] / grid_size)
+            end_cell = int(span_bbox[3] / grid_size)
+            for cell_idx in range(start_cell, end_cell + 1):
+                grid[cell_idx].append(span_index)
 
-    assigned_span_indices: list[int | None] = [None] * len(all_chars)
-    for char_position, char in enumerate(all_chars):
-        char_idx = _char_geometry_key(char)
-        tight_bbox = _coerce_finite_bbox(tight_bboxes.get(char_idx)) if char_idx is not None else None
-        loose_bbox = _coerce_finite_bbox(char.get("bbox"))
-        char_text = str(char.get("char", ""))
-        if char_text.isspace():
-            continue
-        for candidate_bbox in (tight_bbox, loose_bbox):
-            if candidate_bbox is None:
+        assigned_span_indices: list[int | None] = [None] * len(all_chars)
+        for char_position, char in enumerate(all_chars):
+            char_idx = _char_geometry_key(char)
+            tight_bbox = _coerce_finite_bbox(tight_bboxes.get(char_idx)) if char_idx is not None else None
+            loose_bbox = _coerce_finite_bbox(char.get("bbox"))
+            char_text = str(char.get("char", ""))
+            if char_text.isspace():
                 continue
-            assigned_span_indices[char_position] = _match_char_bbox_to_span(
-                candidate_bbox,
-                char_text,
-                span_bboxes,
-                grid,
-                grid_size,
-            )
-            if assigned_span_indices[char_position] is not None:
-                break
+            for candidate_bbox in (tight_bbox, loose_bbox):
+                if candidate_bbox is None:
+                    continue
+                assigned_span_indices[char_position] = _match_char_bbox_to_span(
+                    candidate_bbox,
+                    char_text,
+                    span_bboxes,
+                    grid,
+                    grid_size,
+                )
+                if assigned_span_indices[char_position] is not None:
+                    break
 
-    previous_visible_owners: list[int | None] = [None] * len(all_chars)
-    previous_owner = None
-    for char_position, char in enumerate(all_chars):
-        char_text = str(char.get("char", ""))
-        if char_text in CONTROL_LINE_BREAK_CHARS:
-            previous_owner = None
-            continue
-        previous_visible_owners[char_position] = previous_owner
-        if not char_text.isspace() and assigned_span_indices[char_position] is not None:
-            previous_owner = assigned_span_indices[char_position]
+        previous_visible_owners: list[int | None] = [None] * len(all_chars)
+        previous_owner = None
+        for char_position, char in enumerate(all_chars):
+            char_text = str(char.get("char", ""))
+            if char_text in CONTROL_LINE_BREAK_CHARS:
+                previous_owner = None
+                continue
+            previous_visible_owners[char_position] = previous_owner
+            if not char_text.isspace() and assigned_span_indices[char_position] is not None:
+                previous_owner = assigned_span_indices[char_position]
 
-    next_visible_owners: list[int | None] = [None] * len(all_chars)
-    next_owner = None
-    for char_position in range(len(all_chars) - 1, -1, -1):
-        char_text = str(all_chars[char_position].get("char", ""))
-        if char_text in CONTROL_LINE_BREAK_CHARS:
-            next_owner = None
-            continue
-        next_visible_owners[char_position] = next_owner
-        if not char_text.isspace() and assigned_span_indices[char_position] is not None:
-            next_owner = assigned_span_indices[char_position]
+        next_visible_owners: list[int | None] = [None] * len(all_chars)
+        next_owner = None
+        for char_position in range(len(all_chars) - 1, -1, -1):
+            char_text = str(all_chars[char_position].get("char", ""))
+            if char_text in CONTROL_LINE_BREAK_CHARS:
+                next_owner = None
+                continue
+            next_visible_owners[char_position] = next_owner
+            if not char_text.isspace() and assigned_span_indices[char_position] is not None:
+                next_owner = assigned_span_indices[char_position]
 
-    _bridge_unassigned_punctuation(
-        assigned_span_indices,
-        all_chars,
-        previous_visible_owners,
-        next_visible_owners,
-        span_bboxes,
-        tight_bboxes,
-    )
+        _bridge_unassigned_punctuation(
+            assigned_span_indices,
+            all_chars,
+            previous_visible_owners,
+            next_visible_owners,
+            span_bboxes,
+            tight_bboxes,
+        )
 
-    for char_position, char in enumerate(all_chars):
-        char_text = str(char.get("char", ""))
-        if not char_text.isspace():
-            continue
-        loose_bbox = _coerce_finite_whitespace_bbox(char.get("bbox"))
-        if loose_bbox is None:
-            continue
-        previous_owner = previous_visible_owners[char_position]
-        next_owner = next_visible_owners[char_position]
-        same_neighbor_owner = previous_owner is not None and previous_owner == next_owner
-        neighbor_owner = previous_owner if same_neighbor_owner else None
-        if neighbor_owner is None:
-            neighbor_owner = previous_owner if next_owner is None else next_owner if previous_owner is None else None
-        if (
-            char_text not in CONTROL_LINE_BREAK_CHARS
-            and neighbor_owner is not None
-            and (same_neighbor_owner or calculate_char_in_span(loose_bbox, span_bboxes[neighbor_owner], char_text))
-        ):
-            assigned_span_indices[char_position] = neighbor_owner
-        else:
-            assigned_span_indices[char_position] = _match_whitespace_bbox_to_first_span(
-                loose_bbox,
-                char_text,
-                span_bboxes,
-                grid,
-                grid_size,
-            )
+        for char_position, char in enumerate(all_chars):
+            char_text = str(char.get("char", ""))
+            if not char_text.isspace():
+                continue
+            loose_bbox = _coerce_finite_whitespace_bbox(char.get("bbox"))
+            if loose_bbox is None:
+                continue
+            previous_owner = previous_visible_owners[char_position]
+            next_owner = next_visible_owners[char_position]
+            same_neighbor_owner = previous_owner is not None and previous_owner == next_owner
+            neighbor_owner = previous_owner if same_neighbor_owner else None
+            if neighbor_owner is None:
+                neighbor_owner = previous_owner if next_owner is None else next_owner if previous_owner is None else None
+            if (
+                char_text not in CONTROL_LINE_BREAK_CHARS
+                and neighbor_owner is not None
+                and (same_neighbor_owner or calculate_char_in_span(loose_bbox, span_bboxes[neighbor_owner], char_text))
+            ):
+                assigned_span_indices[char_position] = neighbor_owner
+            else:
+                assigned_span_indices[char_position] = _match_whitespace_bbox_to_first_span(
+                    loose_bbox,
+                    char_text,
+                    span_bboxes,
+                    grid,
+                    grid_size,
+                )
 
     for char, span_index in zip(all_chars, assigned_span_indices):
         if span_index is not None:
@@ -790,6 +833,10 @@ def calculate_char_in_span(
         ):
             return True
     return False
+
+
+# 原规则身份用于显式选择参考路径，不把自定义计算规则静默替换为原生规则。
+_STANDARD_CHAR_IN_SPAN = calculate_char_in_span
 
 
 def _get_char_bbox_metrics(char: Char) -> dict[str, float]:

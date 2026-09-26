@@ -167,7 +167,7 @@ jobs:
               assert any(path.is_relative_to(root) for root in site_roots), (name, path, site_roots)
           info = backend_info()
           assert info["backend"] == "rust", info
-          assert native.PROTOCOL_VERSION >= 12 and info["protocol"] == native.PROTOCOL_VERSION, info
+          assert native.PROTOCOL_VERSION >= 13 and info["protocol"] == native.PROTOCOL_VERSION, info
           assert info["extension_sha256"] == hashlib.sha256(origins["native"].read_bytes()).hexdigest(), info
           artifact = json.loads(Path(".boundary/engine-artifact.json").read_text(encoding="utf-8"))
           distribution = importlib.metadata.distribution("docvortex")
@@ -257,6 +257,7 @@ jobs:
             tests/unittest/test_pdf_memory_lifecycle.py \
             tests/unittest/test_pdf_render_session_integration.py \
             tests/unittest/test_pdf_window_snapshots.py \
+            tests/unittest/test_native_span_assignment.py \
             tests/unittest/test_flash_pdf_render_scheduling.py \
             tests/unittest/test_process_heap_memory.py
       - name: Retain exact wheel and installation evidence
