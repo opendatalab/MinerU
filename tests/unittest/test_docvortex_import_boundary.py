@@ -82,7 +82,7 @@ def test_mineru_uses_declared_docvortex_api() -> None:
     for path in root.rglob("*.py"):
         errors.extend(
             f"{path.relative_to(root)}:{error}"
-            for error in _check_source(path.read_text(), model_layer=path.is_relative_to(root / "model"))
+            for error in _check_source(path.read_text(encoding="utf-8"), model_layer=path.is_relative_to(root / "model"))
         )
     assert not errors, "\n".join(errors)
 

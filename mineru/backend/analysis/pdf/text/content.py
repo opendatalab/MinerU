@@ -11,6 +11,8 @@ from docvortex.content.text import merge_text_line_contents
 from docvortex.document.pdf import PDFPage, PDFPageTextGeometry, PDFPageVectorGeometry, get_lines_from_chars
 from PIL import Image
 
+from ..snapshots import PageSnapshotCache, get_page_snapshot_entry
+
 from .....model.ocr.image import rotate_vertical_crop_if_needed
 from .....model.ocr.results import OcrConfidence
 from .....model.runtime.hybrid import HybridLocalModelContext, run_ocr_inference
@@ -188,6 +190,7 @@ def _fill_native_pdf_text_spans(
     *,
     page_text_geometry: PDFPageTextGeometry | None = None,
     detect_scripts: bool = True,
+    _native_text: Any = None,
 ) -> list[_AnalyzeSpan]:
     """复用原生 PDF 字符回填逻辑，并允许共享同页删除线检测读取的字符。"""
     page_width, page_height = page_size
@@ -203,6 +206,7 @@ def _fill_native_pdf_text_spans(
         tight_bboxes=page_text_geometry.tight_bboxes if page_text_geometry is not None else None,
         origins=page_text_geometry.origins if page_text_geometry is not None else None,
         detect_scripts=detect_scripts,
+        **({"_native_text": _native_text} if _native_text is not None else {}),
     )
 
 
@@ -359,6 +363,7 @@ def _fill_window_block_content_and_lines(
     page_text_geometries: list[PDFPageTextGeometry | None] | None = None,
     *,
     page_vector_geometries: list[PDFPageVectorGeometry | None] | None = None,
+    page_snapshots: PageSnapshotCache | None = None,
 ) -> list[list[dict[str, Any]]]:
     """按页完成 span 回填与行级元数据构造，返回不含页面级 sidecar 的 model list。"""
     page_counts = {
@@ -372,6 +377,8 @@ def _fill_window_block_content_and_lines(
         page_counts["text_geometries"] = len(page_text_geometries)
     if page_vector_geometries is not None:
         page_counts["vector_geometries"] = len(page_vector_geometries)
+    if page_snapshots is not None:
+        page_counts["snapshots"] = len(page_snapshots)
     if len(set(page_counts.values())) != 1:
         raise ValueError(f"Hybrid block content page count mismatch: {page_counts}")
 
@@ -415,6 +422,7 @@ def _fill_window_block_content_and_lines(
         )
         evidence = PDFTextEvidence(page_size)
         if parse_mode == "txt":
+            native_text_owner = None
             page_text_geometry = page_text_geometries[page_idx] if page_text_geometries is not None else None
             try:
                 page_char_count = pdf_page.get_char_count()
@@ -425,13 +433,33 @@ def _fill_window_block_content_and_lines(
                 or isinstance(page_char_count, bool)
                 or page_char_count <= MAX_NATIVE_TEXT_CHARS_PER_PAGE
             ):
-                evidence = prepare_text_evidence(
+                vector_geometry = page_vector_geometries[page_idx] if page_vector_geometries is not None else None
+                snapshot_entry = get_page_snapshot_entry(
+                    page_snapshots,
+                    page_idx,
                     pdf_page,
                     geometry=page_text_geometry,
-                    vector_geometry=page_vector_geometries[page_idx] if page_vector_geometries is not None else None,
-                    excluded_script_regions=inline_math_regions,
-                    table_regions=table_regions,
+                    vector_geometry=vector_geometry,
                 )
+                if snapshot_entry is not None:
+                    if callable(getattr(snapshot_entry.text_owner, "assign_spans", None)) and callable(
+                        getattr(snapshot_entry.text_owner, "supports_span_matching", None)
+                    ):
+                        native_text_owner = snapshot_entry.text_owner
+                    evidence = prepare_text_evidence(
+                        pdf_page,
+                        snapshot=snapshot_entry.get_full_snapshot(pdf_page),
+                        excluded_script_regions=inline_math_regions,
+                        table_regions=table_regions,
+                    )
+                else:
+                    evidence = prepare_text_evidence(
+                        pdf_page,
+                        geometry=page_text_geometry,
+                        vector_geometry=vector_geometry,
+                        excluded_script_regions=inline_math_regions,
+                        table_regions=table_regions,
+                    )
                 page_text_geometry = evidence.geometry
                 if page_text_geometries is not None:
                     page_text_geometries[page_idx] = page_text_geometry
@@ -443,7 +471,14 @@ def _fill_window_block_content_and_lines(
                 page_size,
                 page_text_geometry=page_text_geometry,
                 detect_scripts=not use_shared_script_sidecar,
+                **({"_native_text": native_text_owner} if native_text_owner is not None else {}),
             )
+            # 后续只消费已物化证据；逐页释放 Rust owner，避免与窗口 Python 几何长期双份驻留。
+            if page_snapshots is not None:
+                entry = page_snapshots[page_idx]
+                if entry is not None:
+                    entry.close()
+                page_snapshots[page_idx] = None
 
         block_lines = _group_page_spans_by_block(
             page_model_list,

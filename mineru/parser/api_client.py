@@ -16,6 +16,7 @@ import io
 import ipaddress
 import json
 import logging
+import math
 import os
 import random
 import re
@@ -64,6 +65,29 @@ def _notify_job_status(job: dict[str, Any], callback: Callable[[ApiJobStatus], N
         callback(cast(ApiJobStatus, status))
     except Exception:
         logger.exception("Parse job status callback failed")
+
+
+def _notify_job_duration(job: dict[str, Any], callback: Callable[[float], None] | None) -> None:
+    """下载前通知单文件既有 duration_ms；沿用含导出打包的语义，并隔离缺失值和回调错误。"""
+    if callback is None or job.get("status") not in {"completed", "partial"}:
+        return
+    files = job.get("files")
+    if not isinstance(files, list) or len(files) != 1 or not isinstance(files[0], dict):
+        return
+    info = files[0].get("parse")
+    value = info.get("duration_ms") if isinstance(info, dict) else None
+    if type(value) not in (int, float):
+        return
+    try:
+        duration = float(value)
+    except OverflowError:
+        return
+    if not math.isfinite(duration) or duration < 0:
+        return
+    try:
+        callback(duration)
+    except Exception:
+        logger.exception("Parse job duration callback failed")
 
 
 class _APITransportError(Exception):
@@ -134,8 +158,9 @@ class MinerUApiParser(DocumentParser):
         *,
         page_range: str = "",
         status_callback: Callable[[ApiJobStatus], None] | None = None,
+        duration_callback: Callable[[float], None] | None = None,
     ) -> ParseResult:
-        """同步解析文件；可选回调观察任务状态，服务端完成后仍需下载并构造结果。"""
+        """同步解析；可选 duration_callback 在下载前接收服务端含打包的毫秒耗时。"""
         page_range = normalize_page_range_input(page_range)
         file_path = Path(path)
         if not file_path.exists():
@@ -143,6 +168,7 @@ class MinerUApiParser(DocumentParser):
 
         payload = self._build_payload(self._build_source(file_path), page_range)
         job = self._do_parse(payload, status_callback=status_callback)
+        _notify_job_duration(job, duration_callback)
         return self._build_result(job, file_path.name)
 
     async def parse_async(
@@ -151,8 +177,9 @@ class MinerUApiParser(DocumentParser):
         *,
         page_range: str = "",
         status_callback: Callable[[ApiJobStatus], None] | None = None,
+        duration_callback: Callable[[float], None] | None = None,
     ) -> ParseResult:
-        """异步解析文件；回调属于本次调用，不在复用的 parser 实例上保存。"""
+        """异步解析；状态和耗时回调均属于本次调用，不在复用的 parser 实例上保存。"""
         page_range = normalize_page_range_input(page_range)
         file_path = Path(path)
         if not file_path.exists():
@@ -160,6 +187,7 @@ class MinerUApiParser(DocumentParser):
 
         payload = self._build_payload(await self._async_build_source(file_path), page_range)
         job = await self._async_do_parse(payload, status_callback=status_callback)
+        _notify_job_duration(job, duration_callback)
         return await self._async_build_result(job, file_path.name)
 
     def get_usage(self) -> dict[str, Any]:

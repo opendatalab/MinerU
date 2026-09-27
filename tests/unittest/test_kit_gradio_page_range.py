@@ -269,7 +269,7 @@ def test_invalid_or_oversized_range_is_rejected_before_submission(tmp_path: Path
 
     async def collect() -> list[tuple[object, ...]]:
         """收集错误事件并确认没有启动实际解析。"""
-        return [update async for update in handler(str(source), 1, raw)]
+        return [await handler(str(source), 1, raw)]
 
     updates = asyncio.run(collect())
     assert "page_range_invalid" in str(updates[-1][0])

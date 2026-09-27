@@ -1,9 +1,10 @@
 """步骤卡片的计时、状态生命周期与安全文本回归。"""
 
-import asyncio
-from contextlib import aclosing
+import json
 
 import pytest
+
+from mineru.kit.gradio.conversion import ConversionRun, SessionConversions
 
 from mineru.kit.gradio.status import (
     STATUS_COMPLETED,
@@ -12,9 +13,9 @@ from mineru.kit.gradio.status import (
     STATUS_PROCESSING_OUTPUT,
     STATUS_QUEUED_LOCALLY,
     STATUS_QUEUED_ON_SERVER,
+    ParseStatusUpdate,
     StatusPanelState,
     status_html,
-    stream_status_updates,
 )
 
 
@@ -59,14 +60,19 @@ def test_queued_status_stays_stable_without_timer_updates(message: str) -> None:
         assert f'data-mineru-i18n-en="{message}"' in state.render()
 
 
-def test_fast_completion_shows_zero_elapsed_time_and_reset_has_eight_pending_steps() -> None:
-    """验证未观察到解析阶段时完成状态显示 0.00 秒，重置后仍保留完整双语步骤。"""
+@pytest.mark.parametrize("queued", [False, True])
+def test_fast_completion_uses_server_duration_without_running(queued: bool) -> None:
+    """直接完成或轮询漏过 running 时仍显示服务端亚秒耗时，重置后保留完整双语步骤。"""
     state = StatusPanelState()
-    state.append(STATUS_QUEUED_ON_SERVER)
-    state.append(STATUS_DOWNLOADING_RESULT)
+    if queued:
+        state.append(STATUS_QUEUED_ON_SERVER)
+    state.append(ParseStatusUpdate(STATUS_DOWNLOADING_RESULT, 250))
     state.append(STATUS_COMPLETED)
-    assert 'data-mineru-i18n-en="Completed (0.00s)"' in state.render()
-    assert 'data-mineru-i18n-zh="已完成（0.00 秒）"' in state.render()
+    assert state.processing_elapsed is None
+    assert 'data-mineru-i18n-en="Completed (0.25s)"' in state.render()
+    assert 'data-mineru-i18n-zh="已完成（0.25 秒）"' in state.render()
+    assert "data-mineru-processing-start" not in state.render()
+    assert state.render().count("status-step is-done") == 8
     idle = status_html()
     assert idle.count("status-step is-pending") == 8
     assert 'data-mineru-i18n-en="Waiting"' in idle
@@ -76,16 +82,60 @@ def test_fast_completion_shows_zero_elapsed_time_and_reset_has_eight_pending_ste
 
 @pytest.mark.parametrize(
     ("elapsed", "expected"),
-    [(0.0, "0.00"), (0.004, "0.00"), (0.005, "0.01"), (0.04, "0.04"), (0.05, "0.05"), (0.125, "0.13")],
+    [
+        (0.0, "0.01"),
+        (0.004, "0.01"),
+        (0.005, "0.01"),
+        (0.04, "0.04"),
+        (0.05, "0.05"),
+        (0.125, "0.13"),
+        (0.25, "0.25"),
+        (0.999, "1.00"),
+        (1.25, "1.25"),
+    ],
 )
 def test_completed_duration_uses_decimal_half_up_rounding(elapsed: float, expected: str) -> None:
-    """验证完成耗时保留两位小数，并在 0.005 秒等边界按四舍五入显示。"""
+    """直接函数调用的阶段计时保留两位小数，极短任务按 0.01 秒显示下限处理。"""
     state = StatusPanelState(clock=lambda: 0.0)
     state.append(STATUS_PROCESSING_ON_SERVER, at=0.0)
     state.append(STATUS_DOWNLOADING_RESULT, at=elapsed)
     state.append(STATUS_COMPLETED)
     assert state.processing_elapsed == pytest.approx(elapsed)
     assert f'data-mineru-i18n-en="Completed ({expected}s)"' in state.render()
+
+
+@pytest.mark.parametrize(("duration_ms", "expected"), [(0, "0.01"), (1, "0.01"), (125, "0.13"), (1750, "1.75")])
+def test_server_duration_overrides_observed_polling_time(duration_ms: float, expected: str) -> None:
+    """最终数值来自服务端，长轮询间隔和下载等待不会覆盖它。"""
+    state = StatusPanelState(clock=lambda: 1000.0)
+    state.append(STATUS_PROCESSING_ON_SERVER, at=10.0)
+    state.append(ParseStatusUpdate(STATUS_DOWNLOADING_RESULT, duration_ms), at=20.0)
+    state.append(STATUS_PROCESSING_OUTPUT, at=900.0)
+    state.append(STATUS_COMPLETED, at=1000.0)
+    assert state.processing_elapsed == 10.0
+    assert f"Completed ({expected}s)" in state.render()
+
+
+def test_duration_only_snapshot_preserves_phase_and_rejects_late_updates() -> None:
+    """仅补齐耗时也增加快照序号；重复、终态和取消后的通知不能覆盖当前结果。"""
+    run = ConversionRun("timed")
+    run.publish(STATUS_DOWNLOADING_RESULT)
+    phase, sequence = run.state.phase_id, json.loads(run.snapshot)["sequence"]
+    run.publish(ParseStatusUpdate(STATUS_DOWNLOADING_RESULT, 250))
+    assert run.state.phase_id == phase
+    assert json.loads(run.snapshot)["sequence"] == sequence + 1
+    snapshot = run.snapshot
+    run.publish(ParseStatusUpdate(STATUS_DOWNLOADING_RESULT, 250))
+    assert run.snapshot == snapshot
+    run.publish(STATUS_COMPLETED)
+    final = run.snapshot
+    run.publish(ParseStatusUpdate(STATUS_DOWNLOADING_RESULT, 9000))
+    assert run.snapshot == final
+    assert "Completed (0.25s)" in final
+    canceled = ConversionRun("canceled")
+    canceled.cancel()
+    canceled.publish(ParseStatusUpdate(STATUS_DOWNLOADING_RESULT, 250))
+    assert canceled.state.server_elapsed is None
 
 
 @pytest.mark.parametrize("error", ["server task failed", "server task canceled", '<script>alert("x")</script>'])
@@ -101,79 +151,39 @@ def test_failure_stops_timer_and_renders_escaped_error(error: str) -> None:
     assert "<script>" not in rendered
 
 
-def test_status_stream_waits_for_stage_changes_and_cleans_up_waiter() -> None:
-    """验证排队和解析期间均无服务端计时帧，真实阶段仍及时更新。"""
-
-    async def scenario() -> None:
-        """运行可手动推进时钟的解析等待场景。"""
-        now = [1.0]
-        state = StatusPanelState(clock=lambda: now[0])
-        events: asyncio.Queue[tuple[str, float]] = asyncio.Queue()
-        events.put_nowait((STATUS_QUEUED_ON_SERVER, 1.0))
-        task = asyncio.create_task(asyncio.Event().wait())
-        baseline = set(asyncio.all_tasks())
-        async with aclosing(stream_status_updates(task, events, state)) as stream:
-            assert "Queued on server" in await anext(stream)
-            now[0] = 2.3
-            next_update = asyncio.create_task(anext(stream))
-            await asyncio.sleep(0.03)
-            assert not next_update.done()
-            events.put_nowait((STATUS_PROCESSING_ON_SERVER, 2.3))
-            assert "(0.00s)" in await asyncio.wait_for(next_update, timeout=1)
-            next_update = asyncio.create_task(anext(stream))
-            await asyncio.sleep(0.03)
-            assert not next_update.done()
-            events.put_nowait((STATUS_DOWNLOADING_RESULT, 2.6))
-            assert "Task completed, downloading result" in await asyncio.wait_for(next_update, timeout=1)
-            assert set(asyncio.all_tasks()) == baseline
-        assert set(asyncio.all_tasks()) == baseline
-        task.cancel()
-        await asyncio.gather(task, return_exceptions=True)
-
-    asyncio.run(scenario())
+def test_complete_snapshots_stay_stable_and_reject_late_notifications() -> None:
+    """重复轮询不改变内容，失败或完成后拒绝迟到阶段。"""
+    run = ConversionRun("run-1")
+    run.publish(STATUS_PROCESSING_ON_SERVER, at=1.0)
+    snapshot = run.snapshot
+    for _ in range(150):
+        run.publish(STATUS_PROCESSING_ON_SERVER, at=2.0)
+        assert run.snapshot == snapshot
+    run.publish(STATUS_DOWNLOADING_RESULT, at=3.0)
+    run.publish(STATUS_COMPLETED, at=4.0)
+    final = json.loads(run.snapshot)
+    assert final["run_id"] == "run-1" and final["terminal"] is True
+    assert "Completed (2.00s)" in final["html"]
+    assert final["sequence"] > json.loads(snapshot)["sequence"]
+    run.publish(STATUS_PROCESSING_OUTPUT, at=5.0)
+    assert json.loads(run.snapshot) == final
 
 
-@pytest.mark.parametrize("message", ["Preparing request...", STATUS_QUEUED_ON_SERVER, STATUS_PROCESSING_ON_SERVER])
-def test_status_heartbeat_survives_duplicate_notifications(message: str) -> None:
-    """重复阶段通知不能饿死每秒快照，心跳也不能改变任务或阶段身份。"""
-
-    async def scenario() -> None:
-        """持续发送同阶段通知并检查周期快照及即时阶段切换。"""
-        state = StatusPanelState()
-        state.append(message)
-        identity = (state.run_id, state.phase_id, state._processing_started)
-        events: asyncio.Queue[tuple[str, float]] = asyncio.Queue()
-        finish = asyncio.Event()
-        task = asyncio.create_task(finish.wait())
-
-        async def repeat() -> None:
-            """模拟每次查询都返回相同阶段。"""
-            while not finish.is_set():
-                events.put_nowait((message, state.clock()))
-                await asyncio.sleep(0.05)
-
-        sender = asyncio.create_task(repeat())
-        try:
-            async with aclosing(stream_status_updates(task, events, state)) as stream:
-                started = asyncio.get_running_loop().time()
-                first = await asyncio.wait_for(anext(stream), 2)
-                assert 0.9 <= asyncio.get_running_loop().time() - started < 2
-                assert 'data-mineru-status-seq="1"' in first
-                assert identity == (state.run_id, state.phase_id, state._processing_started)
-                sender.cancel()
-                await asyncio.gather(sender, return_exceptions=True)
-                events.put_nowait((STATUS_PROCESSING_OUTPUT, state.clock()))
-                update = await asyncio.wait_for(anext(stream), 0.5)
-                assert "Preparing outputs" in update
-                assert 'data-mineru-status-seq="2"' in update
-                finish.set()
-                assert [item async for item in stream] == []
-        finally:
-            finish.set()
-            sender.cancel()
-            await asyncio.gather(task, sender, return_exceptions=True)
-
-    asyncio.run(scenario())
+def test_session_run_identity_and_revision_reject_stale_submissions() -> None:
+    """同会话旧任务失效，其他会话保留自己的状态，旧修订无法重新启动。"""
+    sessions = SessionConversions()
+    old = sessions.start("a", "old", revision=1)
+    other = sessions.start("b", "other", revision=1)
+    current = sessions.start("a", "new", revision=2)
+    assert old.cancelled and sessions.current("a", "old") is None
+    assert sessions.current("a", "new") is current
+    assert sessions.current("b", "other") is other
+    assert sessions.start("a", "old", revision=1) is None
+    sessions.cancel("a", "old")
+    assert sessions.current("a", "new") is current
+    sessions.cancel("a", "new")
+    assert sessions.current("a", "new") is None
+    assert sessions.current("b", "other") is other
 
 
 def test_local_queue_can_return_to_preparation() -> None:

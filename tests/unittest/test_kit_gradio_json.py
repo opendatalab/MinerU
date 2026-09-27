@@ -38,7 +38,7 @@ def test_json_view_matches_saved_and_downloaded_structured_content(tmp_path: Pat
 
     async def collect() -> list[tuple]:
         """完整消费转换流，检查 JSON 不随状态动画重复下发。"""
-        return [update async for update in conversion.fn(str(source), 0, "")]
+        return [await conversion.fn(str(source), 0, "")]
 
     updates = asyncio.run(collect())
     state = updates[-1][6]
@@ -73,18 +73,18 @@ def test_json_view_clears_on_file_change_clear_and_failed_conversion(tmp_path: P
 
     async def scenario() -> None:
         """按成功、失败、重试顺序验证 JSON 的原子更新和清理。"""
-        first = [update async for update in conversion.fn(str(source), 0, "")]
+        first = [await conversion.fn(str(source), 0, "")]
         assert "hello-0" in first[-1][-1]
         client.parse_file.side_effect = RuntimeError("test failure")
-        failure = [update async for update in conversion.fn(str(source), 0, "")]
+        failure = [await conversion.fn(str(source), 0, "")]
         assert failure[0][-1] == failure[-1][-1] == ""
         assert "Failed:" in failure[-1][0]
         changed = _middle_json(with_image=False)
         changed.pages[0].blocks[0].content[0].content = "更新后的结果"
         client.parse_file.side_effect = None
         client.parse_file.return_value = ParseResult(middle_json=changed)
-        retry = [update async for update in conversion.fn(str(source), 0, "")]
-        assert retry[0][-1] == ""
+        retry = [await conversion.fn(str(source), 0, "")]
+        assert len(retry) == 1
         assert "更新后的结果" in retry[-1][-1] and "hello-0" not in retry[-1][-1]
 
     asyncio.run(scenario())

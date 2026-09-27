@@ -126,7 +126,7 @@ def test_office_conversion_never_replaces_uploaded_preview(
 
     async def collect() -> list[tuple[object, ...]]:
         """消费完整生成器并检查每一次前端预览更新。"""
-        return [update async for update in handler(str(source), 0, "")]
+        return [await handler(str(source), 0, "")]
 
     updates = asyncio.run(collect())
     assert updates and all(update[2:6] == ({"__type__": "update"},) * 4 for update in updates)

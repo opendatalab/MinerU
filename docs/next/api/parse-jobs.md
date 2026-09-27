@@ -254,7 +254,7 @@ OCR 策略和图片分析能力由 `tier` 与服务端实际引擎自动决定�
 | `page_range` | string | 服务端规范化后的实际解析页码范围。请求未指定时为 `1-{total}`；请求指定时，服务端先按文件总页数展开倒数页码 `rN`，再去重并合并连续页码区间。例如 `1,2,3,r1,r1` 在 10 页文件中规范化为 `1-3,10`。 |
 | `status` | string | 文件级状态。 |
 | `parse.model_used` | string | 实际模型 ID。仅当该文件 `status="completed"` 时出现。 |
-| `parse.duration_ms` | integer | 单文件从开始解析到结束的耗时，不包含排队时间。仅当该文件 `status="completed"` 时出现。 |
+| `parse.duration_ms` | integer | 单文件从开始处理到输出生成完毕的毫秒耗时，包含解析和结果导出/打包，不包含排队、客户端下载或 WebUI 渲染时间。仅当该文件 `status="completed"` 时出现。 |
 | `parse.parser_version` | string | 解析器版本。仅当该文件 `status="completed"` 时出现。 |
 | `output_files` | object | 各输出格式对应的 File 引用。仅当该文件 `status="completed"` 时出现。 |
 | `error` | object | 文件失败时出现，包含 `code` 和 `message`。仅当该文件 `status="failed"` 时出现。 |

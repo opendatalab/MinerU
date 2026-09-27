@@ -514,7 +514,7 @@ def test_parse_preserves_source_preview(tmp_path: Path, name: str, fail: bool) -
 
     async def collect() -> list:
         """收集真实解析事件的完整输出序列。"""
-        return [value async for value in convert.fn(str(source), 0, "")]
+        return [await convert.fn(str(source), 0, "")]
 
     final = asyncio.run(collect())[-1]
     assert final[2:6] == ({"__type__": "update"},) * 4

@@ -39,6 +39,7 @@ from mineru.kit.gradio.client import (
     normalize_v1_base_url,
 )
 from mineru.kit.main import app
+from mineru.kit.gradio.status import STATUS_COMPLETED, ParseStatusUpdate, StatusPanelState
 from mineru.parser import api_client as parser_api_client
 from mineru.parser import api_server as parser_api_server
 from mineru.parser.base import ParseResult
@@ -436,11 +437,17 @@ def test_v1_client_checks_requested_tier_after_first_discovery(tmp_path: Path) -
     assert error.value.code == "tier_unavailable"
 
 
+@pytest.mark.parametrize("export_seconds", [0.0, 1.5])
 def test_v1_client_full_asgi_upload_job_poll_and_zip(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
+    export_seconds: float,
 ) -> None:
-    """通过真实 V1 ASGI 路由验证上传、任务、轮询、ZIP 与 API Key 链路。"""
+    """贯通真实 V1 与显示层，验证 250ms 解析及可选 1500ms 打包都计入既有文件耗时。"""
+    clock = [10.0]
+    monkeypatch.setattr(
+        parser_api_server, "time", SimpleNamespace(time=parser_api_server.time.time, monotonic=lambda: clock[0])
+    )
     source = tmp_path / "demo.pdf"
     source.write_bytes(_pdf_bytes())
     parse_calls: list[dict[str, Any]] = []
@@ -448,9 +455,19 @@ def test_v1_client_full_asgi_upload_job_poll_and_zip(
     async def fake_parse_async(path: str, **kwargs: Any) -> ParseResult:
         """替代模型推理，同时保留 server 的真实 job 和打包流程。"""
         parse_calls.append({"path": path, **kwargs})
+        clock[0] += 0.25
         return ParseResult(middle_json=_middle_json(with_image=False), _model_output=_model_json())
 
+    original_zip = parser_api_server._build_self_contained_zip_output
+
+    def export(result: ParseResult) -> bytes:
+        """真实生成 ZIP，仅用确定性时钟模拟结果打包耗时。"""
+        payload = original_zip(result)
+        clock[0] += export_seconds
+        return payload
+
     monkeypatch.setattr(parser_api_server, "parse_async", fake_parse_async)
+    monkeypatch.setattr(parser_api_server, "_build_self_contained_zip_output", export)
     api = parser_api_server.create_app(
         upload_dir=str(tmp_path / "api"),
         tier="flash",
@@ -462,7 +479,11 @@ def test_v1_client_full_asgi_upload_job_poll_and_zip(
         monkeypatch.setattr(gradio_client, "httpx", proxy)
         monkeypatch.setattr(parser_api_client, "httpx", proxy)
         client = V1ArtifactClient(api_url="http://testserver", api_key="secret")
-        result = asyncio.run(client.parse_file(source, tier="flash", page_range="1"))
+        state = StatusPanelState()
+        result = asyncio.run(client.parse_file(source, tier="flash", page_range="1", status_callback=state.append))
+        state.append(STATUS_COMPLETED)
+        assert state.server_elapsed == pytest.approx(0.25 + export_seconds)
+        assert f"Completed ({0.25 + export_seconds:.2f}s)" in state.render()
 
     paths = [path for _method, path, _authorization in request_log]
     assert "/v1/health" in paths
@@ -649,7 +670,7 @@ def test_gradio_ocr_reaches_analysis_through_real_v1_jobs(monkeypatch: pytest.Mo
             demo = build_gradio_app(client, capabilities, output_root=tmp_path / "output", enable_example=False)
             handler = next(fn.fn for fn in demo.fns.values() if fn.name == "convert_handler")
             for enabled in (True, False, True):
-                updates = [update async for update in handler(str(source), 0, "", enabled)]
+                updates = [await handler(str(source), 0, "", enabled)]
                 state = updates[-1][6]
                 assert state is not None, updates[-1][0]
                 payload = json.loads(Path(state["middle_json_path"]).read_text())
@@ -675,7 +696,9 @@ def test_v1_client_preserves_v1_error_code(monkeypatch: pytest.MonkeyPatch, tmp_
         def __init__(self, **_kwargs: Any) -> None:
             """忽略构造参数。"""
 
-        async def parse_async(self, _path: Path, *, page_range: str, status_callback: Any = None) -> ParseResult:
+        async def parse_async(
+            self, _path: Path, *, page_range: str, status_callback: Any = None, duration_callback: Any = None
+        ) -> ParseResult:
             """抛出与正式 API client 一致的错误形态。"""
             error = RuntimeError(f"bad range: {page_range}")
             error.code = "page_range_invalid"  # type: ignore[attr-defined]
@@ -690,7 +713,10 @@ def test_v1_client_preserves_v1_error_code(monkeypatch: pytest.MonkeyPatch, tmp_
 
 
 @pytest.mark.parametrize("ocr_mode", ["auto", "txt", "ocr"])
-def test_v1_client_parse_uses_api_parser_zip_contract(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, ocr_mode: str) -> None:
+@pytest.mark.parametrize("observe_running", [False, True])
+def test_v1_client_parse_uses_api_parser_zip_contract(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, ocr_mode: str, observe_running: bool
+) -> None:
     """验证 Gradio client 固定请求带图片和模型输出的 V1 ZIP 结果。"""
     source = tmp_path / "demo.pdf"
     source.write_bytes(_pdf_bytes())
@@ -703,16 +729,21 @@ def test_v1_client_parse_uses_api_parser_zip_contract(monkeypatch: pytest.Monkey
             """保存构造参数，供断言 V1 ZIP 契约。"""
             calls.update(kwargs)
 
-        async def parse_async(self, path: Path, *, page_range: str, status_callback: Any = None) -> ParseResult:
+        async def parse_async(
+            self, path: Path, *, page_range: str, status_callback: Any = None, duration_callback: Any = None
+        ) -> ParseResult:
             """返回最小解析结果。"""
             calls["path"] = path
             calls["page_range"] = page_range
             assert statuses == ["Preparing request...", "Submitting task..."]
             assert status_callback is not None
             status_callback("queued")
-            status_callback("running")
+            if observe_running:
+                status_callback("running")
             status_callback("completed")
             assert statuses[-1] == STATUS_DOWNLOADING_RESULT
+            assert duration_callback is not None
+            duration_callback(250)
             return ParseResult(middle_json=_middle_json(with_image=False))
 
     monkeypatch.setattr("mineru.kit.gradio.client.MinerUApiParser", FakeParser)
@@ -723,7 +754,7 @@ def test_v1_client_parse_uses_api_parser_zip_contract(monkeypatch: pytest.Monkey
         ("zip",),
         ("file_id",),
     )
-    statuses: list[str] = []
+    statuses: list[str | ParseStatusUpdate] = []
     result = asyncio.run(
         client.parse_file(source, tier="standard", page_range="1-2", ocr_mode=ocr_mode, status_callback=statuses.append)
     )
@@ -734,8 +765,14 @@ def test_v1_client_parse_uses_api_parser_zip_contract(monkeypatch: pytest.Monkey
     assert calls["ocr_mode"] == ocr_mode
     assert calls["page_range"] == "1-2"
     assert statuses[0] == "Preparing request..."
-    assert statuses[-1] == STATUS_DOWNLOADING_RESULT
-    assert statuses[2:4] == ["Queued on server", "Processing on server..."]
+    assert statuses[-1] == ParseStatusUpdate(STATUS_DOWNLOADING_RESULT, 250)
+    assert statuses[2] == "Queued on server"
+    assert ("Processing on server..." in statuses) == observe_running
+    state = StatusPanelState()
+    for status in statuses:
+        state.append(status)
+    state.append(STATUS_COMPLETED)
+    assert "Completed (0.25s)" in state.render()
 
 
 def test_managed_local_api_command_uses_kit_entrypoint() -> None:
@@ -1101,7 +1138,7 @@ def test_gradio_non_pdf_ignores_hidden_force_ocr(tmp_path: Path, suffix: str) ->
 
     async def convert() -> None:
         """消费完整转换事件，以等待参数进入 client。"""
-        updates = [update async for update in handler(str(source), 0, "1-3", True)]
+        updates = [await handler(str(source), 0, "1-3", True)]
         assert "stop after request" in updates[-1][0]
 
     asyncio.run(convert())
@@ -1232,7 +1269,7 @@ def test_gradio_conversion_enforces_file_type_tier(tmp_path: Path, extension: st
 
     async def convert() -> None:
         """模拟直接调用事件，并携带不应影响非 PDF 的选页与 OCR 残留值。"""
-        updates = [update async for update in handler(str(source), 1, "bad range", True)]
+        updates = [await handler(str(source), 1, "bad range", True)]
         assert "stop after request" in updates[-1][0]
 
     asyncio.run(convert())
@@ -1254,7 +1291,7 @@ def test_gradio_flash_only_input_requires_available_flash(tmp_path: Path, tiers:
 
     async def convert() -> list[tuple[Any, ...]]:
         """收集合法位置的错误响应，验证不是滑杆越界触发的拒绝。"""
-        return [update async for update in handler(str(source), 0, "")]
+        return [await handler(str(source), 0, "")]
 
     updates = asyncio.run(convert())
     assert "tier_unavailable" in updates[-1][0]
@@ -1308,8 +1345,8 @@ def test_gradio_conversion_forwards_page_range_and_enables_fresh_downloads(
             return ParseResult(middle_json=_middle_json(with_image=False))
 
     async def collect_updates(handler: Any) -> list[tuple[Any, ...]]:
-        """收集 Gradio 异步生成器的全部增量输出。"""
-        return [update async for update in handler(str(source), position, " 1 ", force_ocr)]
+        """收集 Gradio 普通转换请求的完整输出。"""
+        return [await handler(str(source), position, " 1 ", force_ocr)]
 
     capabilities = V1ServerCapabilities("http://127.0.0.1:1", tiers, ("zip",), ("file_id",))
     client = FakeClient()
@@ -1327,7 +1364,7 @@ def test_gradio_conversion_forwards_page_range_and_enables_fresh_downloads(
     assert updates[-1][7] == Path(updates[-1][6]["root"]).name
     assert updates[-1][6] is not None
     assert all(update["interactive"] is True for update in updates[-1][8:15])
-    assert all(update["interactive"] is False for update in updates[0][8:15])
+    assert len(updates) == 1
 
 
 def test_gradio_epub_conversion_preserves_source_preview(tmp_path: Path) -> None:
@@ -1350,7 +1387,7 @@ def test_gradio_epub_conversion_preserves_source_preview(tmp_path: Path) -> None
 
     async def collect() -> list[tuple[Any, ...]]:
         """收集 EPUB 转换的状态和最终结果更新。"""
-        return [update async for update in handler(str(source), 0, "")]
+        return [await handler(str(source), 0, "")]
 
     updates = asyncio.run(collect())
     final = updates[-1]
@@ -1379,7 +1416,7 @@ def test_gradio_conversion_rejects_invalid_tier_position(tmp_path: Path, tiers: 
 
     async def collect_updates() -> list[tuple[Any, ...]]:
         """收集非法滑块位置对应的错误输出。"""
-        return [update async for update in handler(str(source), position, "")]
+        return [await handler(str(source), position, "")]
 
     updates = asyncio.run(collect_updates())
     assert "Failed: Invalid tier slider position" in updates[-1][0]
@@ -1401,8 +1438,8 @@ def test_gradio_conversion_failure_clears_previous_downloads(tmp_path: Path) -> 
             raise V1ArtifactError("boom", code="parse_failed")
 
     async def final_update(handler: Any) -> tuple[Any, ...]:
-        """返回 Gradio 异步生成器的最后一次更新。"""
-        updates = [update async for update in handler(str(source), 0, "")]
+        """返回 Gradio 普通转换请求的最终结果。"""
+        updates = [await handler(str(source), 0, "")]
         return updates[-1]
 
     capabilities = V1ServerCapabilities("http://127.0.0.1:1", ("flash",), ("zip",), ("file_id",))
@@ -1459,44 +1496,52 @@ def test_gradio_local_queue_cancellation_releases_slot_and_keeps_sessions_isolat
         assert len(cancellation_events) >= 2
         assert all(handler_fn._id in dependency["cancels"] for dependency in cancellation_events)
 
-        async def advance_until(stream: Any, marker: str) -> tuple[Any, ...]:
-            """推进生成器直到目标阶段，并给测试死锁设置明确超时。"""
-            while True:
-                update = await asyncio.wait_for(anext(stream), timeout=2)
-                if marker in update[0]:
-                    return update
-
+        ui = next(fn.fn for fn in demo.fns.values() if fn.name == "convert_ui")
+        poll = next(fn.fn for fn in demo.fns.values() if fn.name == "read_conversion_status")
+        cancel_session = next(fn.fn for fn in demo.fns.values() if fn.name == "cancel_ui_conversion")
         requests = [SimpleNamespace(session_hash=f"session-{index}") for index in range(3)]
+        tickets = [json.dumps({"run_id": f"{index + 1:032x}", "revision": 1}) for index in range(3)]
+
+        async def advance_until(index: int, marker: str) -> dict[str, Any]:
+            """轮询独立快照，不消费或阻塞转换请求。"""
+            for _ in range(600):
+                snapshot = json.loads(poll(tickets[index], requests[index]) or "{}")
+                if marker in snapshot.get("html", ""):
+                    return snapshot
+                await asyncio.sleep(0.005)
+            raise AssertionError(f"未出现阶段：{marker}")
+
         first, second, third = [
-            handler_fn.fn(str(source), 0, "", request=request) for source, request in zip(sources, requests)
+            asyncio.create_task(ui(str(source), 0, "", False, ticket, request))
+            for source, ticket, request in zip(sources, tickets, requests)
         ]
-        cancel_session = next(fn.fn for fn in demo.fns.values() if fn.name == "cancel_session_conversion")
-        await advance_until(first, "Processing on server")
-        queued = await advance_until(second, "Queued locally")
-        assert all(value == {"__type__": "update"} for value in queued[1:])
-        assert calls == [sources[0]]
-        if explicit_session_cancel:
-            await cancel_session(requests[1])
-            with pytest.raises(StopAsyncIteration):
-                await anext(second)
-        else:
-            await second.aclose()
-        await advance_until(third, "Queued locally")
-        if explicit_session_cancel:
-            await cancel_session(requests[0])
-            with pytest.raises(StopAsyncIteration):
-                await anext(first)
-        else:
-            await first.aclose()
-        await advance_until(third, "Processing on server")
-        assert canceled == [sources[0]]
-        assert calls == [sources[0], sources[2]]
-        finish.set()
-        updates = [update async for update in third]
-        final = updates[-1]
-        assert "Completed (" in final[0]
-        assert final[6]["stem"] == sources[2].stem
-        assert all(item["interactive"] is True for item in final[8:15])
+        try:
+            await advance_until(0, "Processing on server")
+            queued = await advance_until(1, "Queued locally")
+            assert queued["terminal"] is False
+            assert calls == [sources[0]]
+            if explicit_session_cancel:
+                await cancel_session(tickets[1], requests[1])
+            else:
+                second.cancel()
+            assert await second == ""
+            await advance_until(2, "Queued locally")
+            if explicit_session_cancel:
+                await cancel_session(tickets[0], requests[0])
+            else:
+                first.cancel()
+            assert await first == ""
+            await advance_until(2, "Processing on server")
+            assert canceled == [sources[0]]
+            assert calls == [sources[0], sources[2]]
+            finish.set()
+            final = json.loads(await third)["outputs"]
+            assert "Completed (" in final[0]
+            assert final[6].startswith(sources[2].stem)
+            assert all(item["interactive"] is True for item in final[7:14])
+        finally:
+            finish.set()
+            await asyncio.gather(first, second, third, return_exceptions=True)
 
     asyncio.run(scenario())
 
@@ -1527,7 +1572,7 @@ def test_gradio_output_failure_stops_timer_and_allows_next_conversion(tmp_path: 
     async def scenario() -> None:
         """连续运行两次，验证异常分支没有泄漏执行槽。"""
         for _ in range(2):
-            updates = [update async for update in handler(str(source), 0, "")]
+            updates = [await handler(str(source), 0, "")]
             assert "Failed: output disk unavailable" in updates[-1][0]
             assert "is-error" in updates[-1][0]
             assert updates[-1][6] is None
@@ -1616,7 +1661,7 @@ def test_shared_layout_failure_keeps_other_gradio_artifacts(tmp_path: Path, monk
         assert "layout.pdf" not in archive.namelist()
 
 
-def test_gradio_slow_precheck_streams_heartbeats_and_queues_other_sessions(
+def test_gradio_slow_precheck_keeps_polling_available_and_queues_other_sessions(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """页码预检阻塞时仍同步状态，其他会话先显示排队而不是堵在预检前。"""
@@ -1637,28 +1682,32 @@ def test_gradio_slow_precheck_streams_heartbeats_and_queues_other_sessions(
     client = SimpleNamespace(parse_file=AsyncMock(side_effect=V1ArtifactError("test finished")))
     capabilities = V1ServerCapabilities("http://127.0.0.1:1", ("flash",), ("zip",), ("file_id",))
     demo = build_gradio_app(client, capabilities, output_root=tmp_path / "output", enable_example=False)
-    handler = next(fn.fn for fn in demo.fns.values() if fn.name == "convert_handler")
+    handler = next(fn.fn for fn in demo.fns.values() if fn.name == "convert_ui")
+    poll = next(fn.fn for fn in demo.fns.values() if fn.name == "read_conversion_status")
 
     async def scenario() -> None:
-        """同时推进两个会话，验证预检时的心跳和执行槽等待。"""
-        first = handler(str(source), 0, "")
-        second = handler(str(source), 0, "")
+        """预检线程阻塞时仍可独立查询准备和排队状态。"""
+        requests = [SimpleNamespace(session_hash=f"s{i}") for i in range(2)]
+        tickets = [json.dumps({"run_id": f"{i + 1:032x}", "revision": 1}) for i in range(2)]
+        first, second = [
+            asyncio.create_task(handler(str(source), 0, "", False, ticket, request))
+            for ticket, request in zip(tickets, requests)
+        ]
         try:
-            await anext(first)
-            heartbeat = await asyncio.wait_for(anext(first), 2)
-            assert started.is_set()
-            assert "Preparing request" in heartbeat[0]
-            assert 'data-mineru-status-seq="1"' in heartbeat[0]
-            assert all(value == {"__type__": "update"} for value in heartbeat[1:])
-            await anext(second)
-            queued = await asyncio.wait_for(anext(second), 0.5)
-            assert "Queued locally" in queued[0]
+            for _ in range(600):
+                if started.is_set() and "Queued locally" in poll(tickets[1], requests[1]):
+                    break
+                await asyncio.sleep(0.005)
+            assert started.is_set() and "Queued locally" in poll(tickets[1], requests[1])
+            initial = poll(tickets[0], requests[0])
+            assert "Preparing request" in initial
+            await asyncio.sleep(0.03)
+            assert poll(tickets[0], requests[0]) == initial
             release.set()
-            assert "test finished" in [item async for item in first][-1][0]
-            assert "test finished" in [item async for item in second][-1][0]
+            assert "test finished" in (await first)
+            assert "test finished" in (await second)
         finally:
             release.set()
-            await first.aclose()
-            await second.aclose()
+            await asyncio.gather(first, second, return_exceptions=True)
 
     asyncio.run(scenario())

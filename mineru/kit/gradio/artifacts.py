@@ -6,8 +6,11 @@ import html
 import json
 import re
 import shutil
+import time
 import uuid
 import zipfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -38,6 +41,18 @@ from ...render import (
 from ...types import BlockBase, ImagePayloadBlock, MiddleJson
 
 DownloadFormat = Literal["markdown", "json", "html", "docx", "latex", "epub", "pdf"]
+
+
+@contextmanager
+def _output_stage(stage: str, artifacts: RunArtifacts) -> Iterator[None]:
+    """按素材目录标识记录输出子阶段耗时，便于与转换及浏览器回执关联。"""
+    started = time.monotonic()
+    try:
+        yield
+    finally:
+        logger.debug(
+            "WebUI output stage={} artifacts={} elapsed={:.3f}s", stage, artifacts.root.name, time.monotonic() - started
+        )
 
 
 @dataclass
@@ -211,11 +226,12 @@ def persist_parse_result(
             encoding="utf-8",
         )
 
-    origin_pdf, page_indices = _prepare_origin_pdf(
-        artifacts.source_path,
-        page_range=page_range,
-        output_path=artifacts.root / "origin.pdf",
-    )
+    with _output_stage("origin_pdf", artifacts):
+        origin_pdf, page_indices = _prepare_origin_pdf(
+            artifacts.source_path,
+            page_range=page_range,
+            output_path=artifacts.root / "origin.pdf",
+        )
     artifacts.origin_pdf_path = origin_pdf
     artifacts.page_indices = tuple(page_indices)
 
@@ -227,29 +243,32 @@ def persist_parse_result(
         asset_root=source_path.parent,
     )
     try:
-        materialized = _materialize_middle_json(result.middle_json, image_context)
-        artifacts.middle_json_path.write_text(ParseResult(middle_json=materialized).to_json(), encoding="utf-8")
-        markdown = cast(
-            str,
-            render(
-                materialized,
-                RenderFormat.MARKDOWN,
-                options=MarkdownRenderOptions(),
-            ),
-        )
-        artifacts.markdown_path.write_text(markdown, encoding="utf-8")
-        structured = cast(
-            dict[str, Any],
-            render(
-                materialized,
-                RenderFormat.STRUCTURED_CONTENT,
-                options=StructuredContentRenderOptions(),
-            ),
-        )
-        artifacts.structured_content_path.write_text(
-            json.dumps(structured, ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        with _output_stage("materialize", artifacts):
+            materialized = _materialize_middle_json(result.middle_json, image_context)
+            artifacts.middle_json_path.write_text(ParseResult(middle_json=materialized).to_json(), encoding="utf-8")
+        with _output_stage("markdown", artifacts):
+            markdown = cast(
+                str,
+                render(
+                    materialized,
+                    RenderFormat.MARKDOWN,
+                    options=MarkdownRenderOptions(),
+                ),
+            )
+            artifacts.markdown_path.write_text(markdown, encoding="utf-8")
+        with _output_stage("structured_json", artifacts):
+            structured = cast(
+                dict[str, Any],
+                render(
+                    materialized,
+                    RenderFormat.STRUCTURED_CONTENT,
+                    options=StructuredContentRenderOptions(),
+                ),
+            )
+            artifacts.structured_content_path.write_text(
+                json.dumps(structured, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
     finally:
         _close_image_context(image_context)
 
@@ -258,12 +277,13 @@ def persist_parse_result(
 
         layout_path = artifacts.root / "layout.pdf"
         try:
-            draw_layout_overlay(
-                result.middle_json,
-                origin_pdf,
-                layout_path,
-                page_indices=artifacts.page_indices,
-            )
+            with _output_stage("layout_pdf", artifacts):
+                draw_layout_overlay(
+                    result.middle_json,
+                    origin_pdf,
+                    layout_path,
+                    page_indices=artifacts.page_indices,
+                )
         except Exception as exc:
             logger.warning("Skipping Gradio layout overlay for {}: {}", artifacts.stem, exc)
         else:
@@ -274,15 +294,16 @@ def persist_parse_result(
 
 def render_html_preview(artifacts: RunArtifacts, *, public_base_url: str) -> str:
     """用独立 iframe 展示公共 HTML renderer 的完整输出，保留样式及公式脚本。"""
-    value = _render_html(artifacts, public_base_url=public_base_url)
-    # srcdoc 默认继承外层页面的基准地址，显式指定自身才能让章节锚点在预览内跳转。
-    value = value.replace("<head>", '<head>\n<base href="about:srcdoc">', 1)
-    value = _prepare_preview_links(value)
-    return (
-        '<iframe class="mineru-rendered-html-frame" title="Markdown preview" '
-        'sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" '
-        f'srcdoc="{html.escape(value, quote=True)}"></iframe>'
-    )
+    with _output_stage("html_preview", artifacts):
+        value = _render_html(artifacts, public_base_url=public_base_url)
+        # srcdoc 默认继承外层页面的基准地址，显式指定自身才能让章节锚点在预览内跳转。
+        value = value.replace("<head>", '<head>\n<base href="about:srcdoc">', 1)
+        value = _prepare_preview_links(value)
+        return (
+            '<iframe class="mineru-rendered-html-frame" title="Markdown preview" '
+            'sandbox="allow-scripts allow-popups allow-popups-to-escape-sandbox" '
+            f'srcdoc="{html.escape(value, quote=True)}"></iframe>'
+        )
 
 
 def _prepare_preview_links(document: str) -> str:
