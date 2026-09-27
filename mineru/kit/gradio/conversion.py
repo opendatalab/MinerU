@@ -31,9 +31,11 @@ class ConversionRun:
         self.state = StatusPanelState(run_id=self.run_id)
         self.publish(STATUS_PREPARING_REQUEST)
 
-    def publish(self, message: str | ParseStatusUpdate, *, at: float | None = None) -> None:
-        """阶段或耗时变化生成新快照，终态拒绝迟到的后台通知。"""
-        if self.cancelled or self.terminal or not self.state.append(message, at=at):
+    def publish(self, message: str | ParseStatusUpdate, *, at: float | None = None, final_failure: bool = False) -> None:
+        """最终错误可补全已有失败快照，成功、取消和迟到通知仍受终态保护。"""
+        text = message.message if isinstance(message, ParseStatusUpdate) else message
+        replace_failure = final_failure and self.state.message.startswith("Failed:") and text.startswith("Failed:")
+        if self.cancelled or (self.terminal and not replace_failure) or not self.state.append(message, at=at):
             return
         self.terminal = self.state.message == STATUS_COMPLETED or self.state.message.startswith("Failed:")
         self.snapshot = json.dumps(

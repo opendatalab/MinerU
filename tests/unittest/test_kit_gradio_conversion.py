@@ -17,7 +17,9 @@ from urllib.parse import unquote
 import pytest
 
 from mineru.kit.gradio import app as gradio_app
-from mineru.kit.gradio.client import V1ServerCapabilities
+from mineru.kit.gradio.client import V1ArtifactError, V1ServerCapabilities
+from mineru.kit.gradio.conversion import ConversionRun, SessionConversions
+from mineru.kit.gradio.status import STATUS_COMPLETED, STATUS_PROCESSING_ON_SERVER
 from mineru.parser.base import ParseResult
 from tests.unittest.test_kit_gradio import _middle_json, _pdf_bytes
 
@@ -40,6 +42,154 @@ def _callback(app: Any, name: str) -> Any:
 def _ticket(index: int) -> str:
     """生成有序浏览器提交，用于模拟响应乱序和取消先到。"""
     return json.dumps({"run_id": f"{index:032x}", "revision": index})
+
+
+def _conversions(app: Any) -> SessionConversions:
+    """读取公开回调持有的注册表，验证请求结束后的资源所有权。"""
+    return inspect.getclosurevars(_callback(app, "convert_handler")).nonlocals["conversions"]
+
+
+@pytest.mark.parametrize("with_session", [False, True])
+@pytest.mark.parametrize("outcome", ["success", "input_error", "parse_error", "cancelled"])
+def test_public_conversion_releases_runs(tmp_path: Path, with_session: bool, outcome: str) -> None:
+    """公开请求的所有退出路径都释放任务，成功响应中的素材仍能独立下载。"""
+    source = tmp_path / "source.pdf"
+    source.write_bytes(_pdf_bytes())
+    client = SimpleNamespace(parse_file=AsyncMock(return_value=ParseResult(middle_json=_middle_json(with_image=False))))
+    if outcome == "parse_error":
+        client.parse_file.side_effect = V1ArtifactError("controlled failure")
+    elif outcome == "cancelled":
+        client.parse_file.side_effect = asyncio.CancelledError()
+    app = _application(tmp_path, client)
+    convert = _callback(app, "convert_handler")
+    downloader = _callback(app, "handler")
+    conversions = _conversions(app)
+
+    async def scenario() -> None:
+        """连续使用不同 API 会话，确认注册表不会随请求数量增长。"""
+        for index in range(3):
+            request = SimpleNamespace(session_hash=f"api-{index}") if with_session else None
+            response = await convert(None if outcome == "input_error" else str(source), 0, "", False, request)
+            assert len(response) == 16
+            assert conversions.runs == {}
+            assert conversions.revisions == {}
+            if outcome == "success":
+                state = response[6]
+                assert state and Path(state["root"]).is_dir()
+                path, receipt = downloader(state, json.dumps({"run_id": response[7]}), request)
+                assert path and Path(path).is_file() and not json.loads(receipt)["error"]
+            elif outcome != "cancelled":
+                assert "Failed:" in response[0] and response[6] is None
+
+    asyncio.run(scenario())
+
+
+def test_public_cleanup_preserves_replacement_ui_run(tmp_path: Path) -> None:
+    """旧公开请求结束时只清理自身，不能删除同会话的新浏览器任务。"""
+    source = tmp_path / "source.pdf"
+    source.write_bytes(_pdf_bytes())
+    first_started, second_started, release = asyncio.Event(), asyncio.Event(), asyncio.Event()
+    calls = 0
+
+    async def parse_file(*_args: Any, **_kwargs: Any) -> ParseResult:
+        """让旧请求等待取消，新任务保持运行直到检查完旧请求的清理。"""
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            first_started.set()
+            await asyncio.Future()
+        second_started.set()
+        await release.wait()
+        return ParseResult(middle_json=_middle_json(with_image=False))
+
+    app = _application(tmp_path, SimpleNamespace(parse_file=parse_file))
+    public, ui, poll = (_callback(app, name) for name in ("convert_handler", "convert_ui", "read_conversion_status"))
+    request = SimpleNamespace(session_hash="replacement")
+
+    async def scenario() -> None:
+        """以真实回调触发替换，并验证新任务完成后的快照仍可轮询。"""
+        first = asyncio.create_task(public(str(source), 0, "", False, request))
+        second = None
+        try:
+            await asyncio.wait_for(first_started.wait(), 3)
+            second = asyncio.create_task(ui(str(source), 0, "", False, _ticket(1), request))
+            await asyncio.wait_for(second_started.wait(), 3)
+            await asyncio.wait_for(first, 3)
+            assert _conversions(app).current("replacement", f"{1:032x}") is not None
+            assert not second.done()
+            release.set()
+            receipt = json.loads(await asyncio.wait_for(second, 3))
+            snapshot = json.loads(poll(_ticket(1), request))
+            assert snapshot["terminal"] and snapshot["sequence"] == receipt["sequence"]
+            assert "Completed" in receipt["outputs"][0]
+        finally:
+            release.set()
+            first.cancel()
+            if second is not None:
+                second.cancel()
+            await asyncio.gather(first, *([second] if second is not None else []), return_exceptions=True)
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("status", ["failed", "canceled"])
+@pytest.mark.parametrize("browser", [False, True])
+def test_final_error_replaces_provisional_failure(tmp_path: Path, status: str, browser: bool) -> None:
+    """失败通知先到达时，公开响应和浏览器回执仍包含最终错误详情。"""
+    source = tmp_path / "source.pdf"
+    source.write_bytes(_pdf_bytes())
+    provisional = f"Failed: server task {status}"
+    detail = "page_range_invalid: requested page does not exist"
+
+    async def parse_file(*_args: Any, status_callback: Any, **_kwargs: Any) -> ParseResult:
+        """模拟 HTTP 客户端关闭时让出事件循环，确保通用失败先被发布。"""
+        status_callback(provisional)
+        await asyncio.sleep(0)
+        raise V1ArtifactError(detail, code="page_range_invalid")
+
+    app = _application(tmp_path, SimpleNamespace(parse_file=parse_file))
+    request = SimpleNamespace(session_hash="failure-detail")
+
+    async def scenario() -> None:
+        """最终回执可覆盖已到达的失败快照，随后普通通知不能覆盖错误。"""
+        if browser:
+            receipt = json.loads(await _callback(app, "convert_ui")(str(source), 0, "", False, _ticket(1), request))
+            response = receipt["outputs"]
+            run = _conversions(app).runs[request.session_hash]
+            assert detail in run.snapshot and run.state.message == f"Failed: {detail}"
+            snapshot = json.loads(_callback(app, "read_conversion_status")(_ticket(1), request))
+            assert snapshot["sequence"] == receipt["sequence"] and snapshot["terminal"]
+            run.publish(provisional)
+            assert run.state.message == f"Failed: {detail}"
+        else:
+            response = await _callback(app, "convert_handler")(str(source), 0, "", False, request)
+        assert detail in response[0] and "server task" not in response[0]
+        assert response[6] == ("" if browser else None)
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("terminal", ["failed", "completed", "cancelled"])
+def test_final_failure_respects_terminal_boundaries(terminal: str) -> None:
+    """明确的最终失败只能替换失败，成功和取消终态仍拒绝任何更新。"""
+    run = ConversionRun("terminal-boundary")
+    if terminal == "cancelled":
+        run.cancel()
+    else:
+        run.publish("Failed: provisional" if terminal == "failed" else STATUS_COMPLETED)
+    previous_snapshot = run.snapshot
+    previous_sequence = run.state.sequence
+    run.publish("Failed: final detail", final_failure=True)
+    if terminal == "failed":
+        assert run.state.message == "Failed: final detail"
+        assert run.state.sequence == previous_sequence + 1
+        assert json.loads(run.snapshot)["terminal"]
+    else:
+        assert run.snapshot == previous_snapshot and run.state.sequence == previous_sequence
+    final_snapshot = run.snapshot
+    run.publish(STATUS_PROCESSING_ON_SERVER, final_failure=True)
+    run.publish("Failed: late callback")
+    assert run.snapshot == final_snapshot
 
 
 def test_frontend_conversion_receipts() -> None:

@@ -53,4 +53,12 @@ for (let index = 0; index < 150; index++) {
     assert.ok(skipped(invoke('status', status(third.run_id, 3))));
     assert.ok(skipped(invoke('status', status(third.run_id, 4, true))));
 }
+// 通用失败快照已停止轮询时，更高序号的具体错误回执仍必须应用。
+const failedRun = JSON.parse(invoke('begin')[0]);
+invoke('status', status(failedRun.run_id, 2, true));
+const detailedFailure = 'Failed: page_range_invalid: requested page does not exist';
+const corrected = invoke('result', result(failedRun.run_id, 3, detailedFailure));
+assert.equal(corrected[0], detailedFailure);
+assert.equal(corrected[15].active, false);
+assert.ok(skipped(invoke('status', status(failedRun.run_id, 4, true))));
 console.log('150 lifecycle iterations passed');

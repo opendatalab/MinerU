@@ -821,7 +821,7 @@ def build_gradio_app(
 
             def failure(message: str) -> tuple[Any, ...]:
                 """把输入或输出错误收敛成可轮询的失败终态。"""
-                run.publish(f"Failed: {message}")
+                run.publish(f"Failed: {message}", final_failure=True)
                 return (run.state.render(), *reset_result[1:])
 
             if not file_path:
@@ -935,8 +935,7 @@ def build_gradio_app(
             try:
                 return await execute_conversion(run, file_path, tier_position, raw_page_range, force_ocr, request)
             finally:
-                if not getattr(request, "session_hash", None):
-                    conversions.cancel(session, run.run_id)
+                conversions.cancel(session, run.run_id)
 
         convert_outputs = [
             status_panel,
