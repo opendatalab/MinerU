@@ -86,6 +86,8 @@ def _window_probe(monkeypatch: pytest.MonkeyPatch, failure: str = "") -> SimpleN
 
     monkeypatch.setattr(window, "_configured_window_size", lambda default: 1)
     monkeypatch.setattr(window, "_get_window_pdf_pages", lambda *_args: [object()])
+    # 页图由替身生成，生命周期测试不创建真实 PDF 渲染会话。
+    monkeypatch.setattr(window, "get_document_render_session", lambda _document: None)
     monkeypatch.setattr(window, "load_images_from_pdf_bytes_range", render)
     monkeypatch.setattr(window, "_collect_table_items", collect)
     monkeypatch.setattr(window, "_apply_table_orientations", orient)
@@ -340,6 +342,8 @@ def test_async_window_keeps_64_page_boundary_and_order(
         return [[{"page": image.getpixel((0, 0))[0]}] for image in kwargs["images"]]
 
     monkeypatch.setenv("MINERU_PROCESSING_WINDOW_SIZE", "64")
+    # 此处只验证窗口顺序，图片及文档均为替身，不启动真实渲染会话。
+    monkeypatch.setattr(window, "get_document_render_session", lambda _document: None)
     monkeypatch.setattr(window, "_prepare_locked_window", prepare)
     monkeypatch.setattr(window, "_finish_locked_window", lambda state, result, **kwargs: result)
     result = asyncio.run(
