@@ -131,7 +131,7 @@ def test_target_python_files_have_copyright_header() -> None:
         if "_internal/pytorchocr" not in path.as_posix() and path.name != "cli_parser.py"
     ]
     offenders = [
-        str(path.relative_to(_PROJECT_ROOT)) for path in paths if path.read_text().splitlines()[0] != _COPYRIGHT_HEADER
+        str(path.relative_to(_PROJECT_ROOT)) for path in paths if path.read_text(encoding="utf-8").splitlines()[0] != _COPYRIGHT_HEADER
     ]
     assert not offenders
 

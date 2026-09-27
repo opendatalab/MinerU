@@ -76,12 +76,28 @@ def test_flash_sparse_render_keeps_page_mapping_and_title_gate(
             result.append({"img_pil": image})
         return result
 
+    def raster_crops(
+        data: bytes,
+        prepared_pages: list[list[tuple[int, dict[str, Any]]]],
+        **options: Any,
+    ) -> list[list[tuple[int, str | None]]]:
+        """在当前裁图服务边界替换跨进程传输，保留真实裁剪编码与图片释放。"""
+        from docvortex.document.pdf.visuals import _attach_prepared_visual_block_images
+
+        page_images = raster(data, **options)
+        try:
+            assert len(prepared_pages) == len(page_images)
+            _attach_prepared_visual_block_images(prepared_pages, page_images, options["start_page_id"])
+            return [[(index, block.get("image_base64")) for index, block in page] for page in prepared_pages]
+        finally:
+            images._close_image_dicts(page_images)
+
     monkeypatch.setenv("MINERU_PROCESSING_WINDOW_SIZE", "2")
     monkeypatch.setenv("MINERU_PDF_RENDER_TIMEOUT", "19")
     monkeypatch.setenv("MINERU_PDF_RENDER_THREADS", "2")
     monkeypatch.setenv("DOCVORTEX_PDF_RENDER_TIMEOUT", "31")
     monkeypatch.setattr(PdfModel, "predict", predict)
-    monkeypatch.setattr(images, "load_images_from_pdf_bytes_range", raster)
+    monkeypatch.setattr(images, "_load_visual_crops_from_pdf_bytes_range", raster_crops)
     forbidden = MagicMock(side_effect=AssertionError("Flash TXT must skip inference windows"))
     monkeypatch.setattr(window, "_get_window_pdf_pages", forbidden)
     title = AsyncMock()
@@ -126,6 +142,7 @@ def test_flash_text_only_does_not_render(monkeypatch: pytest.MonkeyPatch, tmp_pa
     monkeypatch.setattr(PDFDocument, "classify", classify)
     forbidden = MagicMock(side_effect=AssertionError("Text-only PDF must not rasterize"))
     monkeypatch.setattr(images, "load_images_from_pdf_bytes_range", forbidden)
+    monkeypatch.setattr(images, "_load_visual_crops_from_pdf_bytes_range", forbidden)
     result = parse(_source(tmp_path / "text.pdf"), tier="flash", ocr_mode=parse_mode, image_analysis=False)
     assert len(result.pages) == 5
     assert classify.call_count == int(parse_mode == "auto")
