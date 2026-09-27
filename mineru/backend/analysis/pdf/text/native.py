@@ -81,6 +81,7 @@ def txt_spans_extract(
     tight_bboxes: dict[int, BBox] | None = None,
     origins: dict[int, tuple[float, float]] | None = None,
     detect_scripts: bool = True,
+    _native_text: Any = None,
 ) -> list[_AnalyzeSpan]:
     """从 PDF 原生字符中提取文本 Span，并允许复用调用方已读取的页面字符。"""
     page_char_count = None
@@ -99,7 +100,31 @@ def txt_spans_extract(
         page_chars = page_text_geometry.chars
         tight_bboxes = page_text_geometry.tight_bboxes
         origins = page_text_geometry.origins
-    page_all_chars = _get_chars_for_span_fill(page_chars)
+    base_lines: list[dict[str, Any]] | None = None
+
+    def get_page_lines() -> list[dict[str, Any]]:
+        """只在局部旋转或竖排实际需要时组行，两个消费者共享当前真实字符的结果。"""
+        nonlocal base_lines
+        if type(page_chars) is not list:
+            return get_lines_from_chars(page_chars)
+        if base_lines is None:
+            base_lines = get_lines_from_chars(page_chars)
+        return base_lines
+
+    # 仅窗口内部刚从同一快照得到的 geometry 可走该通道；显式外部几何不提供 owner。
+    if (
+        _native_text is not None
+        and type(page_chars) is list
+        and len(page_chars) == _native_text.info()[0]
+        and _native_text.supports_span_matching()
+    ):
+        page_all_chars = page_chars
+    else:
+        _native_text = None
+        page_all_chars = _get_chars_for_span_fill(
+            page_chars,
+            line_provider=get_page_lines if type(page_chars) is list else None,
+        )
 
     # 计算所有span的高度的中位数
     span_height_list = []
@@ -137,7 +162,7 @@ def txt_spans_extract(
 
     """垂直的span框直接用line进行填充"""
     if len(vertical_spans) > 0:
-        pdf_lines = [line for line in get_lines_from_chars(page_chars) if _is_supported_rotation(line["rotation"])]
+        pdf_lines = [line for line in get_page_lines() if _is_supported_rotation(line["rotation"])]
         for pdf_line in pdf_lines:
             for span in vertical_spans:
                 if calculate_overlap_area_in_bbox1_area_ratio(pdf_line["bbox"].bbox, span.bbox) > 0.5:
@@ -164,6 +189,7 @@ def txt_spans_extract(
         tight_bboxes=tight_bboxes,
         origins=origins,
         detect_scripts=detect_scripts,
+        **({"_native_text": _native_text} if _native_text is not None else {}),
     )
 
     return _prepare_post_ocr_spans(need_ocr_spans, spans, pil_img, scale)
@@ -209,7 +235,11 @@ def _is_visible_standard_rotation_char(char: Char) -> bool:
     return x1 > x0 and y1 > y0 and _is_supported_rotation(float(char.get("rotation", 0)))
 
 
-def _get_chars_for_span_fill(page_chars: list[Char] | dict[str, list[Char]]) -> list[Char]:
+def _get_chars_for_span_fill(
+    page_chars: list[Char] | dict[str, list[Char]],
+    *,
+    line_provider: Callable[[], list[dict[str, Any]]] | None = None,
+) -> list[Char]:
     """选择允许参与 span 回填的字符，保留正文内仿斜体并过滤整行斜向水印。"""
     if isinstance(page_chars, dict):
         all_chars = page_chars["chars"]
@@ -222,7 +252,8 @@ def _get_chars_for_span_fill(page_chars: list[Char] | dict[str, list[Char]]) -> 
     if not rotated_chars:
         return [char for char in all_chars if _get_char_fill_key(char) in fill_char_keys]
 
-    for line in get_lines_from_chars(all_chars):
+    lines = line_provider() if line_provider is not None else get_lines_from_chars(all_chars)
+    for line in lines:
         line_rotation = float(line.get("rotation", 0))
         if not _is_supported_rotation(line_rotation):
             continue
@@ -485,6 +516,91 @@ def _bridge_unassigned_punctuation(
             assigned_span_indices[char_position] = previous_owner
 
 
+def _owned_span_inputs(owner: Any, spans: list[_AnalyzeSpan], median_height: float) -> tuple | None:
+    """内部同源快照直接匹配字符；特殊可执行值和替换后的规则保留原 Python 语义。"""
+    if (
+        owner is None
+        or calculate_char_in_span is not _STANDARD_CHAR_IN_SPAN
+        or type(CONTROL_LINE_BREAK_CHARS) not in (set, frozenset)
+        or CONTROL_LINE_BREAK_CHARS != {"\r", "\n"}
+    ):
+        return None
+    defaults = calculate_char_in_span.__defaults__
+    if type(defaults) is not tuple or len(defaults) != 1:
+        return None
+    ratio = defaults[0]
+    values = [median_height, ratio]
+    boxes = []
+    for span in spans:
+        box = span.bbox
+        if type(box) not in (tuple, list) or len(box) != 4:
+            return None
+        boxes.append(box)
+        values.extend(box)
+    if any(type(value) not in (int, float) or not -(2**52) <= value <= 2**52 or not math.isfinite(value) for value in values):
+        return None
+    if any(
+        type(flags) not in (tuple, list) or any(type(flag) is not str for flag in flags)
+        for flags in (LINE_STOP_FLAG, LINE_START_FLAG)
+    ):
+        return None
+    return boxes, median_height, LINE_STOP_FLAG, LINE_START_FLAG, ratio
+
+
+def _owned_span_assignments(owner: Any, spans: list[_AnalyzeSpan], median_height: float) -> list[int | None] | None:
+    """用同源快照匹配字符，数值或配置不满足既有语义时显式选择参考实现。"""
+    inputs = _owned_span_inputs(owner, spans, median_height)
+    return owner.assign_spans(*inputs) if inputs is not None else None
+
+
+def _owned_span_texts(owner: Any, spans: list[_AnalyzeSpan], median_height: float, detect_scripts: bool) -> list[tuple] | None:
+    """共享脚本侧车已准备时，整段回填留在 Rust；不绕过自定义规则或已有字符内容。"""
+    if detect_scripts or not callable(getattr(owner, "prepare_span_texts", None)):
+        return None
+    functions = (
+        chars_to_content,
+        __replace_unicode,
+        __replace_ligatures,
+        _get_private_use_text_signal,
+        _is_private_use_char,
+        _get_char_bbox_metrics_list,
+        _merge_overlapping_spacing_diacritics_with_protection,
+        _compose_overlapping_spacing_diacritic,
+        _axis_overlap_ratio,
+        _wrap_script_runs,
+        _append_script_wrapped_text,
+        unicodedata.category,
+        unicodedata.normalize,
+        statistics.median,
+    )
+    if any(value is not original for value, original in zip(functions, _STANDARD_CONTENT_FUNCTIONS)):
+        return None
+    if any(
+        type(span.metadata) is not dict or type(span.metadata.get("chars")) is not list or span.metadata["chars"]
+        for span in spans
+    ):
+        return None
+    if type(_SPACING_DIACRITIC_TO_COMBINING) is not dict or any(
+        type(key) is not str or type(value) is not str for key, value in _SPACING_DIACRITIC_TO_COMBINING.items()
+    ):
+        return None
+    threshold = SPACING_DIACRITIC_MIN_OVERLAP_RATIO
+    if type(threshold) not in (int, float) or not math.isfinite(threshold):
+        return None
+    if any(type(value) is not int or not 0 <= value <= 0x10FFFF for value in (PRIVATE_USE_AREA_START, PRIVATE_USE_AREA_END)):
+        return None
+    inputs = _owned_span_inputs(owner, spans, median_height)
+    if inputs is None:
+        return None
+    return owner.prepare_span_texts(
+        *inputs,
+        list(CONTROL_LINE_BREAK_CHARS),
+        _SPACING_DIACRITIC_TO_COMBINING,
+        threshold,
+        (PRIVATE_USE_AREA_START, PRIVATE_USE_AREA_END),
+    )
+
+
 def fill_char_in_spans(
     spans: list[_AnalyzeSpan],
     all_chars: list[Char],
@@ -493,117 +609,134 @@ def fill_char_in_spans(
     tight_bboxes: dict[int, BBox] | None = None,
     origins: dict[int, tuple[float, float]] | None = None,
     detect_scripts: bool = True,
+    _native_text: Any = None,
 ) -> list[_AnalyzeSpan]:
     """以 tight-first、loose-fallback 将字符分配到 Span，并返回待 OCR Span。"""
     spans = sorted(spans, key=lambda x: x.bbox[1])
     tight_bboxes = tight_bboxes or {}
     origins = origins or {}
 
-    grid_size = max(1, median_span_height)
-    grid = collections.defaultdict(list)
-    span_bboxes = []
-    for span_index, span in enumerate(spans):
-        span_bbox = span.bbox
-        span_bboxes.append(span_bbox)
-        start_cell = int(span_bbox[1] / grid_size)
-        end_cell = int(span_bbox[3] / grid_size)
-        for cell_idx in range(start_cell, end_cell + 1):
-            grid[cell_idx].append(span_index)
+    native_contents = _owned_span_texts(_native_text, spans, median_span_height, detect_scripts)
+    if native_contents is not None and len(native_contents) != len(spans):
+        raise RuntimeError("Native content count differs from span count")
+    assigned_span_indices = _owned_span_assignments(_native_text, spans, median_span_height) if native_contents is None else []
+    if native_contents is None and assigned_span_indices is not None and len(assigned_span_indices) != len(all_chars):
+        raise RuntimeError("Native span assignments do not match the owned character sequence")
+    if assigned_span_indices is None:
+        grid_size = max(1, median_span_height)
+        grid = collections.defaultdict(list)
+        span_bboxes = []
+        for span_index, span in enumerate(spans):
+            span_bbox = span.bbox
+            span_bboxes.append(span_bbox)
+            start_cell = int(span_bbox[1] / grid_size)
+            end_cell = int(span_bbox[3] / grid_size)
+            for cell_idx in range(start_cell, end_cell + 1):
+                grid[cell_idx].append(span_index)
 
-    assigned_span_indices: list[int | None] = [None] * len(all_chars)
-    for char_position, char in enumerate(all_chars):
-        char_idx = _char_geometry_key(char)
-        tight_bbox = _coerce_finite_bbox(tight_bboxes.get(char_idx)) if char_idx is not None else None
-        loose_bbox = _coerce_finite_bbox(char.get("bbox"))
-        char_text = str(char.get("char", ""))
-        if char_text.isspace():
-            continue
-        for candidate_bbox in (tight_bbox, loose_bbox):
-            if candidate_bbox is None:
+        assigned_span_indices: list[int | None] = [None] * len(all_chars)
+        for char_position, char in enumerate(all_chars):
+            char_idx = _char_geometry_key(char)
+            tight_bbox = _coerce_finite_bbox(tight_bboxes.get(char_idx)) if char_idx is not None else None
+            loose_bbox = _coerce_finite_bbox(char.get("bbox"))
+            char_text = str(char.get("char", ""))
+            if char_text.isspace():
                 continue
-            assigned_span_indices[char_position] = _match_char_bbox_to_span(
-                candidate_bbox,
-                char_text,
-                span_bboxes,
-                grid,
-                grid_size,
-            )
-            if assigned_span_indices[char_position] is not None:
-                break
+            for candidate_bbox in (tight_bbox, loose_bbox):
+                if candidate_bbox is None:
+                    continue
+                assigned_span_indices[char_position] = _match_char_bbox_to_span(
+                    candidate_bbox,
+                    char_text,
+                    span_bboxes,
+                    grid,
+                    grid_size,
+                )
+                if assigned_span_indices[char_position] is not None:
+                    break
 
-    previous_visible_owners: list[int | None] = [None] * len(all_chars)
-    previous_owner = None
-    for char_position, char in enumerate(all_chars):
-        char_text = str(char.get("char", ""))
-        if char_text in CONTROL_LINE_BREAK_CHARS:
-            previous_owner = None
-            continue
-        previous_visible_owners[char_position] = previous_owner
-        if not char_text.isspace() and assigned_span_indices[char_position] is not None:
-            previous_owner = assigned_span_indices[char_position]
+        previous_visible_owners: list[int | None] = [None] * len(all_chars)
+        previous_owner = None
+        for char_position, char in enumerate(all_chars):
+            char_text = str(char.get("char", ""))
+            if char_text in CONTROL_LINE_BREAK_CHARS:
+                previous_owner = None
+                continue
+            previous_visible_owners[char_position] = previous_owner
+            if not char_text.isspace() and assigned_span_indices[char_position] is not None:
+                previous_owner = assigned_span_indices[char_position]
 
-    next_visible_owners: list[int | None] = [None] * len(all_chars)
-    next_owner = None
-    for char_position in range(len(all_chars) - 1, -1, -1):
-        char_text = str(all_chars[char_position].get("char", ""))
-        if char_text in CONTROL_LINE_BREAK_CHARS:
-            next_owner = None
-            continue
-        next_visible_owners[char_position] = next_owner
-        if not char_text.isspace() and assigned_span_indices[char_position] is not None:
-            next_owner = assigned_span_indices[char_position]
+        next_visible_owners: list[int | None] = [None] * len(all_chars)
+        next_owner = None
+        for char_position in range(len(all_chars) - 1, -1, -1):
+            char_text = str(all_chars[char_position].get("char", ""))
+            if char_text in CONTROL_LINE_BREAK_CHARS:
+                next_owner = None
+                continue
+            next_visible_owners[char_position] = next_owner
+            if not char_text.isspace() and assigned_span_indices[char_position] is not None:
+                next_owner = assigned_span_indices[char_position]
 
-    _bridge_unassigned_punctuation(
-        assigned_span_indices,
-        all_chars,
-        previous_visible_owners,
-        next_visible_owners,
-        span_bboxes,
-        tight_bboxes,
-    )
+        _bridge_unassigned_punctuation(
+            assigned_span_indices,
+            all_chars,
+            previous_visible_owners,
+            next_visible_owners,
+            span_bboxes,
+            tight_bboxes,
+        )
 
-    for char_position, char in enumerate(all_chars):
-        char_text = str(char.get("char", ""))
-        if not char_text.isspace():
-            continue
-        loose_bbox = _coerce_finite_whitespace_bbox(char.get("bbox"))
-        if loose_bbox is None:
-            continue
-        previous_owner = previous_visible_owners[char_position]
-        next_owner = next_visible_owners[char_position]
-        same_neighbor_owner = previous_owner is not None and previous_owner == next_owner
-        neighbor_owner = previous_owner if same_neighbor_owner else None
-        if neighbor_owner is None:
-            neighbor_owner = previous_owner if next_owner is None else next_owner if previous_owner is None else None
-        if (
-            char_text not in CONTROL_LINE_BREAK_CHARS
-            and neighbor_owner is not None
-            and (same_neighbor_owner or calculate_char_in_span(loose_bbox, span_bboxes[neighbor_owner], char_text))
-        ):
-            assigned_span_indices[char_position] = neighbor_owner
-        else:
-            assigned_span_indices[char_position] = _match_whitespace_bbox_to_first_span(
-                loose_bbox,
-                char_text,
-                span_bboxes,
-                grid,
-                grid_size,
-            )
+        for char_position, char in enumerate(all_chars):
+            char_text = str(char.get("char", ""))
+            if not char_text.isspace():
+                continue
+            loose_bbox = _coerce_finite_whitespace_bbox(char.get("bbox"))
+            if loose_bbox is None:
+                continue
+            previous_owner = previous_visible_owners[char_position]
+            next_owner = next_visible_owners[char_position]
+            same_neighbor_owner = previous_owner is not None and previous_owner == next_owner
+            neighbor_owner = previous_owner if same_neighbor_owner else None
+            if neighbor_owner is None:
+                neighbor_owner = previous_owner if next_owner is None else next_owner if previous_owner is None else None
+            if (
+                char_text not in CONTROL_LINE_BREAK_CHARS
+                and neighbor_owner is not None
+                and (same_neighbor_owner or calculate_char_in_span(loose_bbox, span_bboxes[neighbor_owner], char_text))
+            ):
+                assigned_span_indices[char_position] = neighbor_owner
+            else:
+                assigned_span_indices[char_position] = _match_whitespace_bbox_to_first_span(
+                    loose_bbox,
+                    char_text,
+                    span_bboxes,
+                    grid,
+                    grid_size,
+                )
 
     for char, span_index in zip(all_chars, assigned_span_indices):
         if span_index is not None:
             spans[span_index].metadata["chars"].append(char)
 
     need_ocr_spans = []
-    for span in spans:
-        private_use_signal = _get_private_use_text_signal(span.metadata["chars"])
-        should_post_ocr_private_use = _should_fallback_to_post_ocr_for_private_use_text(private_use_signal)
-        chars_to_content(
-            span,
-            tight_bboxes=tight_bboxes,
-            origins=origins,
-            detect_scripts=detect_scripts,
-        )
+    for span_index, span in enumerate(spans):
+        if native_contents is None:
+            private_use_signal = _get_private_use_text_signal(span.metadata["chars"])
+            should_post_ocr_private_use = _should_fallback_to_post_ocr_for_private_use_text(private_use_signal)
+            chars_to_content(span, tight_bboxes=tight_bboxes, origins=origins, detect_scripts=detect_scripts)
+        else:
+            text, pua_count, text_count, pua_run = native_contents[span_index]
+            private_use_signal = {
+                "pua_count": pua_count,
+                "text_char_count": text_count,
+                "max_pua_run": pua_run,
+                "pua_ratio": pua_count / text_count if text_count else 0.0,
+            }
+            should_post_ocr_private_use = _should_fallback_to_post_ocr_for_private_use_text(private_use_signal)
+            span.metadata.pop(PDF_NATIVE_SCRIPT_MARKUP_KEY, None)
+            if text is not None:
+                span.content = text
+            del span.metadata["chars"]
         # 有的span中虽然没有字但有一两个空的占位符，用宽高和content长度过滤
         if should_post_ocr_private_use and span.content:
             span.metadata[POST_OCR_FALLBACK_CONTENT_KEY] = span.content
@@ -771,6 +904,10 @@ def calculate_char_in_span(
         ):
             return True
     return False
+
+
+# 原规则身份用于显式选择参考路径，不把自定义计算规则静默替换为原生规则。
+_STANDARD_CHAR_IN_SPAN = calculate_char_in_span
 
 
 def _get_char_bbox_metrics(char: Char) -> dict[str, float]:
@@ -965,3 +1102,22 @@ def chars_to_content(
             span.metadata[PDF_NATIVE_SCRIPT_MARKUP_KEY] = True
 
     del span.metadata["chars"]
+
+
+# 仅原有内置规则启用整段原生化，替换后的函数保留参考调用及异常语义。
+_STANDARD_CONTENT_FUNCTIONS = (
+    chars_to_content,
+    __replace_unicode,
+    __replace_ligatures,
+    _get_private_use_text_signal,
+    _is_private_use_char,
+    _get_char_bbox_metrics_list,
+    _merge_overlapping_spacing_diacritics_with_protection,
+    _compose_overlapping_spacing_diacritic,
+    _axis_overlap_ratio,
+    _wrap_script_runs,
+    _append_script_wrapped_text,
+    unicodedata.category,
+    unicodedata.normalize,
+    statistics.median,
+)

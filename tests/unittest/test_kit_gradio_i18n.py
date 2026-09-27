@@ -90,7 +90,7 @@ def test_conversion_preserves_all_preview_components_until_success(
     monkeypatch: pytest.MonkeyPatch,
     outcome: str,
 ) -> None:
-    """暂停真实生成器，确认首帧、处理状态和失败都不改变已有四种预览。"""
+    """暂停普通转换请求，确认处理期间不发送预览更新且失败保留已有四种预览。"""
     from mineru.kit.gradio import app as app_module
 
     source = tmp_path / "document.csv"
@@ -126,15 +126,14 @@ def test_conversion_preserves_all_preview_components_until_success(
         updates: list[tuple[object, ...]] = []
 
         async def collect() -> None:
-            """独立消费生成器，避免测试本身阻挡状态通知和任务启动。"""
-            async for update in handler(str(source), 0, ""):
-                updates.append(update)
+            """独立等待普通转换请求，避免阻挡后台阶段通知。"""
+            updates.append(await handler(str(source), 0, ""))
 
         consumer = asyncio.create_task(collect())
         try:
             await asyncio.wait_for(started.wait(), timeout=3)
-            assert updates
-            assert all(update[2:6] == ({"__type__": "update"},) * 4 for update in updates)
+            assert not updates
+            assert not consumer.done()
             finish.set()
             await asyncio.wait_for(consumer, timeout=10)
         finally:

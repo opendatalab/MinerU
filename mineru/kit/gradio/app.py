@@ -7,11 +7,14 @@ import html
 import json
 import os
 import time
-from contextlib import aclosing
+import uuid
+from contextlib import suppress
 from pathlib import Path
 from collections.abc import Callable
 from typing import Any
 from urllib.parse import quote
+
+from loguru import logger
 
 from ...errors import MineruError
 from ...filetypes import (
@@ -34,6 +37,7 @@ from .client import (
     V1ServerCapabilities,
 )
 from .epub_preview import register_epub_preview_resources
+from .conversion import ConversionRun, SessionConversions, await_task_completion, run_sync_output
 from .i18n import MESSAGES, localized_text, preview_placeholder, translations
 from .page_range import effective_page_range as _effective_page_range
 from .page_range import pdf_page_metadata, validate_max_pages
@@ -45,9 +49,8 @@ from .status import (
     STATUS_PREPARING_REQUEST,
     STATUS_PROCESSING_OUTPUT,
     STATUS_QUEUED_LOCALLY,
-    StatusPanelState,
+    ParseStatusUpdate,
     status_html as _status_html,
-    stream_status_updates,
 )
 
 _DOWNLOAD_FORMATS: tuple[tuple[str, str], ...] = (
@@ -391,8 +394,7 @@ def build_gradio_app(
         )
     )
     # 等待限制放在生成器内部，使其他会话也能立即显示本地排队状态。
-    conversion_slot = asyncio.Semaphore(1)
-    session_tasks: dict[str, set[asyncio.Task[tuple[Any, ...]]]] = {}
+    conversions = SessionConversions()
 
     with gr.Blocks() as demo:
         gr.HTML(
@@ -571,6 +573,12 @@ def build_gradio_app(
 
         artifact_state = gr.State(value=None)
         active_run_id = gr.Textbox(value="", visible=False)
+        conversion_ticket = gr.Textbox(value="", visible=False)
+        conversion_receipt = gr.Textbox(value="", visible=False)
+        conversion_cancel = gr.Textbox(value="", visible=False)
+        status_snapshot = gr.Textbox(value="", visible=False)
+        status_poll = gr.Timer(value=1.0, active=False)
+        api_conversion_button = gr.Button(visible=False)
         download_files = {name: gr.File(visible=False, interactive=False) for name, _label in _DOWNLOAD_FORMATS}
         download_requests = {name: gr.Textbox(value="", visible=False) for name, _label in _DOWNLOAD_FORMATS}
         download_receipts = {name: gr.Textbox(value="", visible=False) for name, _label in _DOWNLOAD_FORMATS}
@@ -693,18 +701,6 @@ def build_gradio_app(
             arguments = ", ".join(json.dumps(value) for value in (action, _DOWNLOAD_FORMATS, format_name, label))
             return f"(...args) => ({download_script})({arguments}, ...args)"
 
-        def reset_download_ui() -> tuple[Any, ...]:
-            """立即显示准备阶段并重置下载组件，为转换提供可靠串联的完成事件。"""
-            count = len(_DOWNLOAD_FORMATS)
-            return (
-                _status_html(STATUS_PREPARING_REQUEST),
-                "",
-                *((None,) * count),
-                *(("",) * count * 2),
-                *_download_updates(gr, interactive=False)[1:],
-                "",
-            )
-
         download_reset_outputs = [
             active_run_id,
             *download_files.values(),
@@ -740,15 +736,14 @@ def build_gradio_app(
         )
 
         async def cancel_session_conversion(request: object | None = None) -> None:
-            """主动回收当前会话任务，确保关闭异步生成器时也能完成资源清理。"""
-            session_hash = getattr(request, "session_hash", None)
-            tasks = session_tasks.pop(session_hash, set())
-            for task in tasks:
-                task.cancel()
-            if tasks:
-                await asyncio.gather(*tasks, return_exceptions=True)
+            """取消会话任务，并等待同步输出退出后回收后台工作。"""
+            task = conversions.cancel(getattr(request, "session_hash", "") or "")
+            if task is not None:
+                with suppress(asyncio.CancelledError, Exception):
+                    await await_task_completion(task)
 
         cancel_session_conversion.__annotations__["request"] = gr.Request
+
         # 显式注册幂等加载事件，初始化前端状态和自定义文案。
         demo.load(fn=None, js=app_js, **private_event_kwargs)
         preview_outputs = [
@@ -806,15 +801,15 @@ def build_gradio_app(
             **private_event_kwargs,
         )
 
-        async def convert_handler(
+        async def execute_conversion(
+            run: ConversionRun,
             file_path: str | None,
             tier_position: int | float,
             raw_page_range: str,
-            force_ocr: bool = False,
-            request: object | None = None,
-        ) -> Any:
-            """执行单文件 V1 解析并流式更新状态、HTML 和 Structured Content JSON。"""
-            # 开始或失败只重置结果与下载；预览内容、显隐和浏览位置保持不变。
+            force_ocr: bool,
+            request: object | None,
+        ) -> tuple[Any, ...]:
+            """执行一次转换，只返回完整终态；进度写入独立的会话快照。"""
             reset_result = (
                 _status_html(_DEFAULT_STATUS),
                 "",
@@ -823,123 +818,125 @@ def build_gradio_app(
                 *_download_updates(gr, interactive=False),
                 "",
             )
+
+            def failure(message: str) -> tuple[Any, ...]:
+                """把输入或输出错误收敛成可轮询的失败终态。"""
+                run.publish(f"Failed: {message}")
+                return (run.state.render(), *reset_result[1:])
+
             if not file_path:
-                yield reset_result
-                return
-            state = StatusPanelState()
-            state.append(STATUS_PREPARING_REQUEST)
-            yield (state.render(), *reset_result[1:])
+                return failure("No input file")
             source_path = Path(file_path).resolve()
             if not source_path.is_file():
-                yield (_status_html("Failed: input file does not exist"), *reset_result[1:])
-                return
+                return failure("input file does not exist")
             suffix = _file_suffix(source_path)
             if suffix not in PARSEABLE_EXTENSIONS:
-                yield (_status_html(f"Failed: unsupported file type '.{suffix}'"), *reset_result[1:])
-                return
+                return failure(f"unsupported file type '.{suffix}'")
             try:
                 selected_tier = _tier_for_position(tier_position, tier_choices)
             except ValueError as exc:
-                yield (_status_html(f"Failed: {exc}"), *reset_result[1:])
-                return
+                return failure(str(exc))
             if suffix in FLASH_ONLY_PARSE_EXTENSIONS:
-                # 提交端独立约束有效档位，避免事件 API 或前端残留值绕过 Flash 锁定。
                 if "flash" not in tier_choices:
-                    message = "Failed: tier_unavailable: 该格式仅支持 Flash，当前服务不可用"
-                    yield (_status_html(message), *reset_result[1:])
-                    return
+                    return failure("tier_unavailable: 该格式仅支持 Flash，当前服务不可用")
                 selected_tier = "flash"
-            status_queue: asyncio.Queue[tuple[str, float]] = asyncio.Queue()
             loop = asyncio.get_running_loop()
 
-            def emit(message: str) -> None:
-                """记录通知时刻，避免队列消费延迟被误算为服务端解析耗时。"""
-                loop.call_soon_threadsafe(status_queue.put_nowait, (message, time.monotonic()))
+            def emit(message: str | ParseStatusUpdate) -> None:
+                """在通知发生时记录时间，再由事件循环串行更新会话状态。"""
+                at = time.monotonic()
+                loop.call_soon_threadsafe(lambda: run.publish(message, at=at))
 
             async def run_conversion() -> tuple[Any, ...]:
-                """在单任务槽内解析和整理结果；取消或失败均自动释放等待位置。"""
-                if conversion_slot.locked():
-                    emit(STATUS_QUEUED_LOCALLY)
-                async with conversion_slot:
-                    emit(STATUS_PREPARING_REQUEST)
-                    page_text = await asyncio.to_thread(_effective_page_range, source_path, raw_page_range, max_pages=max_pages)
+                """实际同步工作退出前一直持有执行槽，避免取消后与新任务重叠。"""
+                if conversions.slot.locked():
+                    run.publish(STATUS_QUEUED_LOCALLY)
+                async with conversions.slot:
+                    run.publish(STATUS_PREPARING_REQUEST)
+                    page_text = await run_sync_output(_effective_page_range, source_path, raw_page_range, max_pages=max_pages)
                     result = await client.parse_file(
                         source_path,
                         tier=selected_tier,
                         page_range=page_text,
-                        # 再次检查源文件类型，避免事件 API 或隐藏控件残留值强制处理非 PDF。
                         ocr_mode="ocr" if suffix in PDF_EXTENSIONS and force_ocr else "auto",
                         status_callback=emit,
                     )
-                    emit(STATUS_PROCESSING_OUTPUT)
-                    artifacts = await asyncio.to_thread(
-                        persist_parse_result,
-                        result,
-                        source_path,
-                        output_root=output_root,
-                        page_range=page_text,
+                    # 先消费同一轮已发出的解析通知，保持阶段和解析耗时的顺序。
+                    await asyncio.sleep(0)
+                    run.publish(STATUS_PROCESSING_OUTPUT)
+                    output_started = time.monotonic()
+                    artifacts = await run_sync_output(
+                        persist_parse_result, result, source_path, output_root=output_root, page_range=page_text
                     )
-                    rendered_html = await asyncio.to_thread(
-                        render_html_preview,
-                        artifacts,
-                        public_base_url=_gradio_public_base_url(request),
+                    rendered_html = await run_sync_output(
+                        render_html_preview, artifacts, public_base_url=_gradio_public_base_url(request)
                     )
-                    # 直接复用下载所用的 Structured Content 文件，避免展示成 Middle JSON 或重复渲染。
-                    structured_json = await asyncio.to_thread(artifacts.structured_content_path.read_text, encoding="utf-8")
+                    structured_json = await run_sync_output(artifacts.structured_content_path.read_text, encoding="utf-8")
                     preview_path = artifacts.layout_pdf_path or artifacts.origin_pdf_path
                     generic_html = "" if preview_path else preview_placeholder("result_ready")
                     show_image_preview = suffix in IMAGE_EXTENSIONS and preview_path is None
                     result_preview_updates = (
                         _pdf_preview_update(gr, str(preview_path) if preview_path else None),
-                        gr.update(value=str(source_path) if show_image_preview else None, visible=show_image_preview),
+                        gr.update(value=str(artifacts.source_path) if show_image_preview else None, visible=show_image_preview),
                         gr.update(value="", visible=False),
                         gr.update(value=generic_html, visible=bool(generic_html)),
                     )
                     if _is_office(source_path) or suffix in {"ofd", "epub"} or suffix in HTML_EXTENSIONS | MHTML_EXTENSIONS:
-                        # Office/OFD/EPUB/HTML 源预览已在上传时挂载，成功后保留原内容和浏览位置。
                         result_preview_updates = tuple(gr.skip() for _ in range(4))
+                    run.artifacts = artifacts.as_state()
+                    logger.debug(
+                        "WebUI output ready run_id={} artifacts={} elapsed={:.3f}s html_bytes={} json_bytes={} ready_at={:.3f}",
+                        run.run_id,
+                        artifacts.root.name,
+                        time.monotonic() - output_started,
+                        len(rendered_html.encode("utf-8")),
+                        len(structured_json.encode("utf-8")),
+                        time.time(),
+                    )
                     return (
                         rendered_html,
                         *result_preview_updates,
-                        artifacts.as_state(),
+                        run.artifacts,
                         *_download_updates(gr, interactive=True, run_id=artifacts.root.name),
                         structured_json,
                     )
 
             task = asyncio.create_task(run_conversion())
-            session_hash = getattr(request, "session_hash", None)
-            if session_hash:
-                session_tasks.setdefault(session_hash, set()).add(task)
-
-                def forget_task(done_task: asyncio.Task[tuple[Any, ...]]) -> None:
-                    """任务结束即释放会话索引，即使前端已丢弃生成器也不保留任务引用。"""
-                    tasks = session_tasks.get(session_hash)
-                    if tasks is not None:
-                        tasks.discard(done_task)
-                        if not tasks:
-                            session_tasks.pop(session_hash, None)
-
-                task.add_done_callback(forget_task)
+            run.task = task
             try:
-                async with aclosing(stream_status_updates(task, status_queue, state)) as updates:
-                    async for status in updates:
-                        # 动画只更新状态卡片，避免反复重建预览和清空结果组件。
-                        yield (status, *(gr.skip() for _ in reset_result[1:]))
-                result_outputs = await task
-                state.append(STATUS_COMPLETED)
-                yield (state.render(), *result_outputs)
+                result_outputs = await asyncio.shield(task)
+                if run.cancelled:
+                    return tuple(gr.skip() for _ in reset_result)
+                run.publish(STATUS_COMPLETED)
+                return (run.state.render(), *result_outputs)
             except asyncio.CancelledError:
-                # 会话重置后静默结束旧流，避免把取消异常或旧状态写回新界面。
-                return
+                run.cancel()
+                with suppress(asyncio.CancelledError, Exception):
+                    await await_task_completion(task)
+                return tuple(gr.skip() for _ in reset_result)
             except Exception as exc:
+                logger.exception("WebUI conversion failed run_id={}", run.run_id)
                 message = f"{exc.code}: {exc}" if isinstance(exc, MineruError) else str(exc)
-                state.append(f"Failed: {message}")
-                yield (state.render(), *reset_result[1:])
+                return failure(message)
             finally:
-                # 清除、换文件或断开流时仅取消本地等待，不发送远端取消请求。
-                if not task.done():
-                    task.cancel()
-                await asyncio.gather(task, return_exceptions=True)
+                run.task = None
+
+        async def convert_handler(
+            file_path: str | None,
+            tier_position: int | float,
+            raw_page_range: str,
+            force_ocr: bool = False,
+            request: object | None = None,
+        ) -> tuple[Any, ...]:
+            """保留公开转换 API 的四个输入和原生组件输出，普通响应一次返回结果。"""
+            session = getattr(request, "session_hash", None) or uuid.uuid4().hex
+            run = conversions.start(session, uuid.uuid4().hex)
+            assert run is not None
+            try:
+                return await execute_conversion(run, file_path, tier_position, raw_page_range, force_ocr, request)
+            finally:
+                if not getattr(request, "session_hash", None):
+                    conversions.cancel(session, run.run_id)
 
         convert_outputs = [
             status_panel,
@@ -961,28 +958,175 @@ def build_gradio_app(
             "concurrency_limit": None,
             "api_visibility": "public" if enable_api else "private",
         }
-        # 重置与转换必须显式串联；独立 click 监听可能在转换完成后才执行重置。
-        begin_conversion = convert_button.click(
-            fn=reset_download_ui,
-            inputs=[],
-            outputs=begin_conversion_outputs,
-            js=(
-                f"() => {{ ({pdf_preview_js('begin')})(); "
-                f"return [{json.dumps(_status_html(STATUS_PREPARING_REQUEST))}, ...({download_js('reset')})()]; }}"
-            ),
-            **private_event_kwargs,
-        )
-        convert_event = begin_conversion.then(
+        # 公开 API 仍由 Gradio 原生组件序列化，浏览器通过私有回执校验后才应用结果。
+        convert_event = api_conversion_button.click(
             fn=convert_handler,
             inputs=[input_file, tier, page_range, force_ocr],
             outputs=convert_outputs,
             **event_kwargs,
         )
+        conversion_script = _resource_text("gradio_conversion.js")
+
+        def conversion_js(action: str) -> str:
+            """绑定自有任务协调脚本，不访问 Gradio 的内部状态或差分缓存。"""
+            return f"(...args) => ({conversion_script})({json.dumps(action)}, ...args)"
+
+        def read_conversion_status(ticket: str, request: object | None = None) -> str:
+            """普通请求返回完整快照；没有有效任务时不创建新的轮询状态。"""
+            try:
+                run_id = json.loads(ticket)["run_id"]
+            except (ValueError, TypeError, KeyError):
+                return ""
+            run = conversions.current(getattr(request, "session_hash", "") or "", run_id)
+            return run.snapshot if run is not None else ""
+
+        async def cancel_ui_conversion(ticket: str, request: object | None = None) -> None:
+            """只取消浏览器刚刚撤销的那次任务，避免晚到请求误伤新任务。"""
+            try:
+                identity = json.loads(ticket)
+                run_id = uuid.UUID(identity["run_id"]).hex
+                revision = identity["revision"]
+                if type(revision) is not int or revision <= 0:
+                    return
+            except (ValueError, TypeError, KeyError, AttributeError):
+                return
+            session = getattr(request, "session_hash", "") or ""
+            # 取消可能先于队列中的提交到达，记住修订号以拒绝尚未开始的旧请求。
+            conversions.revisions[session] = max(conversions.revisions.get(session, 0), revision)
+            task = conversions.cancel(session, run_id)
+            if task is not None:
+                with suppress(asyncio.CancelledError, Exception):
+                    await await_task_completion(task)
+
+        async def unload_session(request: object | None = None) -> None:
+            """标签页关闭后释放会话快照，并等待剩余同步任务退出。"""
+            await cancel_session_conversion(request)
+            conversions.revisions.pop(getattr(request, "session_hash", "") or "", None)
+
+        async def convert_ui(
+            file_path: str | None,
+            tier_position: int | float,
+            raw_page_range: str,
+            force_ocr: bool,
+            ticket: str,
+            request: object | None = None,
+        ) -> str:
+            """用完整回执传递浏览器结果，使迟到响应无法直接覆盖可见组件。"""
+            from gradio.data_classes import FileData
+
+            try:
+                identity = json.loads(ticket)
+                run_id = uuid.UUID(identity["run_id"]).hex
+                revision = identity["revision"]
+                if type(revision) is not int or revision <= 0:
+                    return ""
+            except (ValueError, TypeError, KeyError, AttributeError):
+                return ""
+            session = getattr(request, "session_hash", "") or ""
+            run = conversions.start(session, run_id, revision=revision)
+            if run is None:
+                return ""
+            result = await execute_conversion(run, file_path, tier_position, raw_page_range, force_ocr, request)
+            if conversions.current(session, run_id) is not run:
+                return ""
+            values = list(result)
+            # 文件来自输出根目录的不可变任务目录，使用现有 allowed_paths 文件路由。
+            for index in (2, 3):
+                update = values[index]
+                if isinstance(update, dict) and update.get("value"):
+                    path = Path(update["value"]).resolve()
+                    path.relative_to(output_root.resolve())
+                    file_url = f"{_gradio_public_base_url(request)}/gradio_api/file={quote(path.as_posix(), safe='/')}"
+                    values[index] = {
+                        **update,
+                        "value": FileData(path=str(path), url=file_url, orig_name=path.name).model_dump(mode="json"),
+                    }
+            return json.dumps(
+                {
+                    "run_id": run_id,
+                    "sequence": run.state.sequence,
+                    "ready_at": time.time(),
+                    "outputs": values[:6] + values[7:],
+                },
+                ensure_ascii=False,
+            )
+
+        for callback in (read_conversion_status, cancel_ui_conversion, unload_session, convert_ui):
+            callback.__annotations__["request"] = gr.Request
+        # 纯前端开始事件通过票据 change 发起转换，兼容旧版 Gradio 的 then 限制。
+        convert_button.click(
+            fn=None,
+            inputs=[],
+            outputs=[*begin_conversion_outputs, conversion_ticket, status_poll, html_output, json_output],
+            js=(
+                f"() => {{ ({pdf_preview_js('begin')})(); "
+                f"const ticket = ({conversion_js('begin')})(); "
+                f"return [{json.dumps(_status_html(STATUS_PREPARING_REQUEST))}, "
+                f"...({download_js('reset')})(), ...ticket, '', '']; }}"
+            ),
+            **private_event_kwargs,
+        )
+        ui_convert_event = conversion_ticket.change(
+            fn=convert_ui,
+            inputs=[input_file, tier, page_range, force_ocr, conversion_ticket],
+            outputs=conversion_receipt,
+            queue=True,
+            concurrency_limit=None,
+            trigger_mode="multiple",
+            show_progress="hidden",
+            api_visibility="private",
+        )
+        status_poll.tick(
+            fn=read_conversion_status,
+            inputs=conversion_ticket,
+            outputs=status_snapshot,
+            trigger_mode="always_last",
+            show_progress="hidden",
+            **private_event_kwargs,
+        )
+        status_snapshot.change(
+            fn=None,
+            inputs=status_snapshot,
+            outputs=[status_panel, status_poll],
+            js=conversion_js("status"),
+            **private_event_kwargs,
+        )
+        ui_result_outputs = [*convert_outputs[:6], *convert_outputs[7:], status_poll]
+        conversion_receipt.change(
+            fn=None,
+            inputs=[conversion_receipt, input_file, pdf_viewer_entry],
+            outputs=[*ui_result_outputs, pdf_viewer],
+            js=(
+                "(receipt, source, viewer) => { "
+                f"const values = ({conversion_js('result')})(receipt); "
+                "const pdf = values[2]; "
+                f"const preview = pdf?.__type__ === 'update' && 'value' in pdf ? ({pdf_preview_js('result')})("
+                "pdf.value, source, viewer, values[6]) : {__type__: 'update'}; "
+                "return [...values, preview]; }"
+            ),
+            **private_event_kwargs,
+        )
+        gr.on(
+            triggers=[input_file.change, clear_button.click],
+            fn=None,
+            inputs=[],
+            outputs=[conversion_ticket, conversion_cancel, status_poll],
+            js=conversion_js("cancel"),
+            **private_event_kwargs,
+        )
+        conversion_cancel.change(
+            fn=cancel_ui_conversion,
+            inputs=conversion_cancel,
+            outputs=[],
+            trigger_mode="multiple",
+            **private_event_kwargs,
+        )
+        demo.unload(unload_session)
         source_preview_event = input_file.change(
             fn=update_file_preview,
             inputs=input_file,
             outputs=preview_outputs,
-            cancels=[convert_event],
+            cancels=[convert_event, ui_convert_event],
             # 示例切换也会触发文件变更，预览准备期间保持状态卡片可见。
             show_progress="hidden",
             **private_event_kwargs,
@@ -1002,7 +1146,6 @@ def build_gradio_app(
             js=pdf_preview_js("result"),
             **private_event_kwargs,
         )
-        input_file.change(fn=cancel_session_conversion, inputs=[], outputs=[], **private_event_kwargs)
 
         reset_outputs = [
             status_panel,
@@ -1031,8 +1174,22 @@ def build_gradio_app(
                 "",
             )
 
-        clear_button.click(fn=reset_ui, inputs=[], outputs=reset_outputs, cancels=[convert_event], **private_event_kwargs)
-        clear_button.click(fn=cancel_session_conversion, inputs=[], outputs=[], **private_event_kwargs)
+        clear_button.click(
+            fn=reset_ui, inputs=[], outputs=reset_outputs, cancels=[convert_event, ui_convert_event], **private_event_kwargs
+        )
+
+        def session_download_handler(format_name: str) -> Callable[..., tuple[Any, str]]:
+            """下载时读取当前会话的素材路径，公开 API 的 State 仍可单独使用。"""
+            renderer = _download_handler(format_name, output_root)
+
+            def handler(state: dict[str, Any] | None, token: str, request: object | None = None) -> tuple[Any, str]:
+                """使用服务端当前任务核对下载标识，拒绝过期下载请求。"""
+                run = conversions.runs.get(getattr(request, "session_hash", "") or "")
+                if run is not None:
+                    state = run.artifacts if not run.cancelled else None
+                return renderer(state, token, request)
+
+            return handler
 
         for format_name, label in _DOWNLOAD_FORMATS:
             begin_download = download_buttons[format_name].click(
@@ -1050,7 +1207,7 @@ def build_gradio_app(
                 js=download_js("busy", format_name, label),
                 **private_event_kwargs,
             )
-            download_handler = _download_handler(format_name, output_root)
+            download_handler = session_download_handler(format_name)
             download_handler.__annotations__["request"] = gr.Request
             prepare_download = begin_download.then(
                 fn=download_handler,

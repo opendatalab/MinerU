@@ -111,22 +111,22 @@ def test_download_event_chain_and_pdf_transport(tmp_path: Path) -> None:
     assert reset()[2]["visible"] is False
     assert reset()[7] == ""
     conversion = next(fn for fn in app.fns.values() if fn.name == "convert_handler")
-    dependency = next(dep for dep in app.config["dependencies"] if dep["id"] == conversion._id)
-    # 转换必须等待真正的重置完成事件，纯 JS 事件的 then 在支持版本中不会可靠触发。
-    reset_event = app.fns[dependency["trigger_after"]]
-    assert reset_event.name == "reset_download_ui"
-    assert len(reset_event.fn()) == len(reset_event.outputs)
-    assert reset_event.outputs[0].__class__.__name__ == "HTML"
-    assert "Preparing request..." in reset_event.fn()[0]
-    reset_dependency = next(dep for dep in app.config["dependencies"] if dep["id"] == reset_event._id)
+    # 浏览器通过票据变化启动普通请求；公开 API 仍保留四个输入与原生文件输出。
+    assert len(conversion.inputs) == 4
+    ui_conversion = next(fn for fn in app.fns.values() if fn.name == "convert_ui")
+    ticket = ui_conversion.inputs[-1]
+    reset_dependency = next(
+        dep for dep in app.config["dependencies"] if ticket._id in dep["outputs"] and '"begin"' in (dep["js"] or "")
+    )
+    assert reset_dependency["backend_fn"] is False
     assert "Preparing request..." in reset_dependency["js"]
     upload = next(block for block in app.blocks.values() if "mineru-upload-file" in (block.elem_classes or []))
     reset_on_upload = next(
         dep
         for dep in app.config["dependencies"]
-        if (upload._id, "change") in dep["targets"] and dep["outputs"] == [output._id for output in reset_event.outputs[1:]]
+        if (upload._id, "change") in dep["targets"] and dep["outputs"] == reset_dependency["outputs"][1:-4]
     )
-    assert reset_event.outputs[0]._id not in reset_on_upload["outputs"]
+    assert reset_dependency["outputs"][0] not in reset_on_upload["outputs"]
     assert reset_on_upload["js"] and reset_on_upload["backend_fn"] is False
     handlers = [fn for fn in app.fns.values() if fn.name == "handler"]
     assert len(handlers) == 7

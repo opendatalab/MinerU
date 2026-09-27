@@ -31,6 +31,7 @@ from .status import (
     STATUS_PROCESSING_OUTPUT,
     STATUS_QUEUED_ON_SERVER,
     STATUS_SUBMITTING_TASK,
+    ParseStatusUpdate,
 )
 
 
@@ -184,7 +185,7 @@ class V1ArtifactClient:
         tier: str,
         page_range: str,
         ocr_mode: Literal["auto", "txt", "ocr"] = "auto",
-        status_callback: Callable[[str], None] | None = None,
+        status_callback: Callable[[str | ParseStatusUpdate], None] | None = None,
     ) -> ParseResult:
         """通过 V1 API 解析单个文件，并返回带图片/模型输出的 `ParseResult`。"""
         page_range = normalize_page_range_input(page_range)
@@ -223,8 +224,14 @@ class V1ArtifactClient:
             }
             emit(messages[status])
 
+        def on_job_duration(duration_ms: float) -> None:
+            """复用完成响应的文件耗时，避免快速任务因漏过 running 而丢失最终计时。"""
+            emit(ParseStatusUpdate(STATUS_DOWNLOADING_RESULT, duration_ms))
+
         try:
-            result = await parser.parse_async(path, page_range=page_range, status_callback=on_job_status)
+            result = await parser.parse_async(
+                path, page_range=page_range, status_callback=on_job_status, duration_callback=on_job_duration
+            )
         except Exception as exc:
             emit(f"Failed: {exc}")
             if isinstance(exc, (FileNotFoundError, V1ArtifactError)):
@@ -266,7 +273,7 @@ class GradioArtifactClient:
         tier: str,
         page_range: str,
         ocr_mode: Literal["auto", "txt", "ocr"] = "auto",
-        status_callback: Callable[[str], None] | None = None,
+        status_callback: Callable[[str | ParseStatusUpdate], None] | None = None,
     ) -> ParseResult:
         """仅向该档位对应的服务提交文件，复用原有状态、取消和产物流程。"""
         if tier not in TIERS:
