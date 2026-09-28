@@ -181,6 +181,23 @@ def _get_page_table_regions(
     return regions
 
 
+def _protect_code_span_spacing(spans: list[_AnalyzeSpan], blocks: list[dict[str, Any]], page_size: tuple[float, float]) -> None:
+    """在整页虚拟文本块回填之前保留实际代码区域，避免新增词界改写代码。"""
+    regions = [
+        region
+        for block in blocks
+        if block.get("type") in CODE_CONTENT_BLOCK_TYPES
+        and (region := _sidecar_bbox_to_page_bbox(block.get("bbox"), page_size, 1.0)) is not None
+    ]
+    if not regions:
+        return
+    for span in spans:
+        cx = (span.bbox[0] + span.bbox[2]) / 2
+        cy = (span.bbox[1] + span.bbox[3]) / 2
+        if any(x0 <= cx <= x1 and y0 <= cy <= y1 for x0, y0, x1, y1 in regions):
+            span.metadata["_native_tight_spacing"] = False
+
+
 def _fill_native_pdf_text_spans(
     pdf_page: PDFPage,
     page_spans: list[_AnalyzeSpan],
@@ -422,6 +439,7 @@ def _fill_window_block_content_and_lines(
         )
         evidence = PDFTextEvidence(page_size)
         if parse_mode == "txt":
+            _protect_code_span_spacing(page_spans, page_model_list, page_size)
             native_text_owner = None
             page_text_geometry = page_text_geometries[page_idx] if page_text_geometries is not None else None
             try:
