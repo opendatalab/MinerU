@@ -6,12 +6,9 @@ import ast
 from pathlib import Path
 
 import pytest
-from docvortex.document.mhtml import __all__ as MHTML_EXPORTS
 from docvortex.public_api import PUBLIC_API
 
-# DocVortex 0.4.24 已通过模块 __all__ 导出归档接口，公开清单将在后续版本同步。
 _DECLARED_API = dict(PUBLIC_API)
-_DECLARED_API.setdefault("docvortex.document.mhtml", tuple(MHTML_EXPORTS))
 
 
 def _dotted_name(node: ast.AST) -> str:

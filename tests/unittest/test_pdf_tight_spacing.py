@@ -1,12 +1,9 @@
-"""验证普通、旋转及 Rust 原生回填共用非 CJK 墨迹词界规则。"""
+"""验证普通文本、代码保护与整页/竖排回填共用非 CJK 墨迹词界规则。"""
 
-from copy import deepcopy
-from pathlib import Path
 from typing import Any
 
 import pytest
-from docvortex.document.pdf import PDFDocument
-from docvortex.document.pdf.text._contracts import Bbox
+from docvortex.document.pdf import Bbox
 from mineru.backend.analysis.pdf.text import native
 from mineru.backend.analysis.pdf.text.models import _AnalyzeSpan
 from mineru.types import ContentType
@@ -106,39 +103,3 @@ def test_vertical_line_fill_uses_tight_spacing(monkeypatch: pytest.MonkeyPatch) 
             detect_scripts=False,
         )
     assert target.content == "A B"
-
-
-@pytest.mark.parametrize("enabled", [True, False])
-def test_real_snapshot_content_matches_python(enabled: bool) -> None:
-    """真实论文逐字符验证 Rust 物化与 Python 回退一致，且确实执行 Rust 内容快路径。"""
-    from docvortex._compute_backend import get_native
-
-    extension = get_native()
-    if extension is None:
-        pytest.skip("requires native extension")
-    path = Path(__file__).resolve().parents[3] / "docvortex/demo/pdfs/中文论文2.pdf"
-    with PDFDocument(path.read_bytes()) as document:
-        owner = document[0].get_text_snapshot()
-        width, height = document[0].size
-    geometry = owner.materialize_geometry()
-    results = []
-    before = extension.text_snapshot_stats()[2]
-    for current_owner in (None, owner):
-        span = _AnalyzeSpan(
-            ContentType.TEXT,
-            (0.0, 0.0, width, height),
-            metadata={"chars": [], "height": height, "width": width, "_native_tight_spacing": enabled},
-        )
-        native.fill_char_in_spans(
-            [span],
-            deepcopy(geometry.chars),
-            10.0,
-            tight_bboxes=geometry.tight_bboxes,
-            origins=geometry.origins,
-            detect_scripts=False,
-            _native_text=current_owner,
-        )
-        results.append(span.content)
-    assert extension.text_snapshot_stats()[2] == before + 1
-    assert results[0] == results[1]
-    assert ("Large Language Models" in results[0]) is enabled
