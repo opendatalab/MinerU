@@ -1,0 +1,2881 @@
+
+<!doctype html>
+<html lang="zh" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://opendatalab.github.io/MinerU/zh/next/middle-json/rendering/">
+      
+      
+      
+      
+        
+          <link rel="alternate" href="../../../../next/middle-json/rendering/" hreflang="en">
+        
+          <link rel="alternate" href="./" hreflang="zh">
+        
+      
+      
+      <link rel="icon" href="../../../../images/logo.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Rendering Contract - MinerU</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+  
+
+
+  
+  
+
+<script id="__analytics">function __md_analytics(){function e(){dataLayer.push(arguments)}window.dataLayer=window.dataLayer||[],e("js",new Date),e("config","G-44K480CC48"),document.addEventListener("DOMContentLoaded",(function(){document.forms.search&&document.forms.search.query.addEventListener("blur",(function(){this.value&&e("event","search",{search_term:this.value})}));document$.subscribe((function(){var t=document.forms.feedback;if(void 0!==t)for(var a of t.querySelectorAll("[type=submit]"))a.addEventListener("click",(function(a){a.preventDefault();var n=document.location.pathname,d=this.getAttribute("data-md-value");e("event","feedback",{page:n,data:d}),t.firstElementChild.disabled=!0;var r=t.querySelector(".md-feedback__note [data-md-value='"+d+"']");r&&(r.hidden=!1)})),t.hidden=!1})),location$.subscribe((function(t){e("config","G-44K480CC48",{page_path:t.pathname})}))}));var t=document.createElement("script");t.async=!0,t.src="https://www.googletagmanager.com/gtag/js?id=G-44K480CC48",document.getElementById("__analytics").insertAdjacentElement("afterEnd",t)}</script>
+  
+    <script>"undefined"!=typeof __md_analytics&&__md_analytics()</script>
+  
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="black" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#rendering-contract" class="md-skip">
+          跳转至
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="页眉">
+    <a href="../../../" title="MinerU" class="md-header__button md-logo" aria-label="MinerU" data-md-component="logo">
+      
+  <img src="../../../../images/logo.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            MinerU
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Rendering Contract
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme)" data-md-color-scheme="default" data-md-color-primary="black" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m14.3 16-.7-2h-3.2l-.7 2H7.8L11 7h2l3.2 9zM20 8.69V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12zm-9.15 3.96h2.3L12 9z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="black" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_2" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="black" data-md-color-accent="indigo"  aria-label="Switch to system preference"  type="radio" name="__palette" id="__palette_2">
+    
+      <label class="md-header__button md-icon" title="Switch to system preference" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+      <div class="md-header__option">
+  <div class="md-select">
+    
+    <button class="md-header__button md-icon" aria-label="选择当前语言">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.87 15.07-2.54-2.51.03-.03A17.5 17.5 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2zm-2.62 7 1.62-4.33L19.12 17z"/></svg>
+    </button>
+    <div class="md-select__inner">
+      <ul class="md-select__list">
+        
+          <li class="md-select__item">
+            <a href="../../../../next/middle-json/rendering/" hreflang="en" class="md-select__link">
+              English
+            </a>
+          </li>
+        
+          <li class="md-select__item">
+            <a href="./" hreflang="zh" class="md-select__link">
+              中文
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="搜索" placeholder="搜索" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="查找">
+        
+        <button type="reset" class="md-search__icon md-icon" title="清空当前内容" aria-label="清空当前内容" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            正在初始化搜索引擎
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/opendatalab/MinerU" title="前往仓库" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    opendatalab/MinerU
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="标签" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../" class="md-tabs__link">
+          
+  
+  
+    
+  
+  主页
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../quick_start/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  快速入门
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../usage/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  使用指南
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../reference/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  参考资料
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../faq/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  常见问题解答
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../../demo/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  在线演示
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="导航栏" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../../" title="MinerU" class="md-nav__button md-logo" aria-label="MinerU" data-md-component="logo">
+      
+  <img src="../../../../images/logo.png" alt="logo">
+
+    </a>
+    MinerU
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/opendatalab/MinerU" title="前往仓库" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    opendatalab/MinerU
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    主页
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_1" id="__nav_1_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    主页
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1_2" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../../quick_start/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    快速入门
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_1_2" id="__nav_1_2_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    快速入门
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../quick_start/extension_modules/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    扩展模块安装
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../quick_start/docker_deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker部署
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../../usage/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    使用指南
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_1_3" id="__nav_1_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    使用指南
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../usage/quick_usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    基础使用
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../usage/tiers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    档位与运行环境
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../usage/sdk_api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python SDK
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../usage/http_api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    V1 HTTP API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../usage/compatibility/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    旧平台适配（MinerU <4）
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../usage/model_source/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    模型源配置
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../usage/cli_tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    命令行工具
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../usage/advanced_cli_parameters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    命令行进阶参数
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1_4" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../../reference/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    参考资料
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_1_4" id="__nav_1_4_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    参考资料
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/migration_4/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    迁移到 4.0
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/output_files/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    输出文件格式
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    更新日志
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1_5" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../../faq/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    常见问题解答
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    常见问题解答
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1_6" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../../demo/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    在线演示
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    在线演示
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../../quick_start/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    快速入门
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_2" id="__nav_2_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    快速入门
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../quick_start/extension_modules/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    扩展模块安装
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../quick_start/docker_deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker部署
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../../usage/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    使用指南
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    使用指南
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../usage/quick_usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    基础使用
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../usage/tiers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    档位与运行环境
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../usage/sdk_api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python SDK
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../usage/http_api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    V1 HTTP API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../usage/compatibility/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    旧平台适配（MinerU <4）
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../usage/model_source/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    模型源配置
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../usage/cli_tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    命令行工具
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../usage/advanced_cli_parameters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    命令行进阶参数
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../../reference/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    参考资料
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4" id="__nav_4_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    参考资料
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/migration_4/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    迁移到 4.0
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/output_files/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    输出文件格式
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../../reference/changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    更新日志
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../../faq/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    常见问题解答
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    常见问题解答
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../../demo/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    在线演示
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    在线演示
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="目录">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目录
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        统一入口
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="统一入口">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        内部依赖边界
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#markdown" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Markdown
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tex-live-latex" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TeX Live LaTeX
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#docx" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        可编辑 DOCX
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#epub-33" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        单正文 EPUB 3.3
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mineru-pdf" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MinerU PDF
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#mineru-html" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        MinerU 独立 HTML
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#345-content-list-v1v2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.4.5 兼容 Content List V1/V2
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#markdown-structured-content" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        树形 Markdown Structured Content
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        展示模式
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#block" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Block 规则
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        行内语义
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#index-anchor" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Index anchor
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<div><h1 id="rendering-contract">Rendering Contract</h1>
+<p>状态: Implemented
+读者: render 开发者、backend 开发者、SDK 开发者
+范围: 严格 MiddleJson 到 Markdown、LaTeX、Content List V1/V2、Structured Content、DOCX、EPUB、PDF 和 HTML 的统一消费契约</p>
+<h2 id="_1">统一入口</h2>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">mineru.render</span><span class="w"> </span><span class="kn">import</span> <span class="p">(</span>
+    <span class="n">MarkdownRenderOptions</span><span class="p">,</span>
+    <span class="n">RenderFormat</span><span class="p">,</span>
+    <span class="n">RenderMode</span><span class="p">,</span>
+    <span class="n">render</span><span class="p">,</span>
+<span class="p">)</span>
+
+<span class="n">markdown</span> <span class="o">=</span> <span class="n">render</span><span class="p">(</span>
+    <span class="n">middle_json</span><span class="p">,</span>
+    <span class="n">RenderFormat</span><span class="o">.</span><span class="n">MARKDOWN</span><span class="p">,</span>
+    <span class="n">options</span><span class="o">=</span><span class="n">MarkdownRenderOptions</span><span class="p">(</span>
+        <span class="n">mode</span><span class="o">=</span><span class="n">RenderMode</span><span class="o">.</span><span class="n">DEFAULT</span><span class="p">,</span>
+        <span class="n">asset_base_url</span><span class="o">=</span><span class="s2">""</span><span class="p">,</span>
+    <span class="p">),</span>
+<span class="p">)</span>
+</code></pre></div>
+<p><code>render()</code> 每次接收一个严格 <code>MiddleJson</code> 和一个 <code>RenderFormat</code>，返回目标格式的原生结果：</p>
+<table>
+<thead>
+<tr>
+<th><code>RenderFormat</code></th>
+<th>Options</th>
+<th>返回类型</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MARKDOWN</code></td>
+<td><code>MarkdownRenderOptions(mode, asset_base_url, image_renderer)</code></td>
+<td><code>str</code></td>
+</tr>
+<tr>
+<td><code>HTML</code></td>
+<td><code>HtmlRenderOptions(mode, asset_base_url, standalone, document_title)</code></td>
+<td><code>str</code></td>
+</tr>
+<tr>
+<td><code>LATEX</code></td>
+<td><code>LatexRenderOptions(asset_base_path, document_title)</code></td>
+<td><code>str</code></td>
+</tr>
+<tr>
+<td><code>DOCX</code></td>
+<td><code>DocxRenderOptions(asset_resolver)</code></td>
+<td><code>bytes</code></td>
+</tr>
+<tr>
+<td><code>EPUB</code></td>
+<td><code>EpubRenderOptions(title, authors, language, identifier, modified_at, asset_resolver)</code></td>
+<td><code>bytes</code></td>
+</tr>
+<tr>
+<td><code>PDF</code></td>
+<td><code>PdfRenderOptions(asset_resolver, document_title)</code></td>
+<td><code>bytes</code></td>
+</tr>
+<tr>
+<td><code>STRUCTURED_CONTENT</code></td>
+<td><code>StructuredContentRenderOptions(asset_base_url)</code></td>
+<td><code>dict[str, Any]</code></td>
+</tr>
+<tr>
+<td><code>CONTENT_LIST</code></td>
+<td><code>ContentListRenderOptions(asset_base_url)</code></td>
+<td><code>list[dict[str, Any]]</code></td>
+</tr>
+<tr>
+<td><code>CONTENT_LIST_V2</code></td>
+<td><code>ContentListV2RenderOptions(asset_base_url)</code></td>
+<td><code>list[list[dict[str, Any]]]</code></td>
+</tr>
+</tbody>
+</table>
+<p><code>options</code> 省略时使用对应格式的默认 Options。入口只接受 <code>RenderFormat</code> 枚举，格式与 Options
+类型不匹配时抛出 <code>TypeError</code>，不归一化字符串格式，也不在单次调用中批量渲染。各专用
+<code>render_*()</code> 函数继续保留；统一入口只负责严格校验和分发，不改变底层渲染语义或异常类型。
+只有 Markdown 与 HTML 的专用函数和 Options 暴露 <code>mode</code>；其它格式传入 <code>mode</code> 会按严格签名
+直接抛出 <code>TypeError</code>，不会兼容或静默忽略。</p>
+<p>所有入口均不修改传入的 <code>MiddleJson</code>。renderer 不负责把结果或图片写到文件系统；LaTeX 只在
+源码中引用现有 sidecar，DOCX、EPUB 与 PDF 需要读取相对图片 sidecar 时只能通过显式
+<code>asset_resolver</code> 获取字节。</p>
+<h3 id="_2">内部依赖边界</h3>
+<p><code>markdown.py</code>、<code>html.py</code>、<code>latex.py</code>、<code>docx.py</code>、<code>epub.py</code>、<code>pdf.py</code>、<code>content_list.py</code>、<code>content_list_v2.py</code> 和
+<code>structured_content.py</code> 是稳定公共门面；实现代码位于非公共
+<code>mineru.render._internal</code>。<code>common</code> 只保存跨格式 AST、解析、列表/目录语义和 render planner，
+不得依赖任一格式实现。各格式私有子包只能依赖 <code>common</code>、基础层与自身模块，彼此
+不交叉导入。<code>_internal</code> 路径不属于 SDK 兼容承诺。</p>
+<h2 id="markdown">Markdown</h2>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">mineru.render</span><span class="w"> </span><span class="kn">import</span> <span class="n">RenderMode</span><span class="p">,</span> <span class="n">render_markdown</span>
+
+<span class="n">markdown</span> <span class="o">=</span> <span class="n">render_markdown</span><span class="p">(</span>
+    <span class="n">middle_json</span><span class="p">,</span>
+    <span class="n">mode</span><span class="o">=</span><span class="n">RenderMode</span><span class="o">.</span><span class="n">DEFAULT</span><span class="p">,</span>
+    <span class="n">asset_base_url</span><span class="o">=</span><span class="s2">""</span><span class="p">,</span>
+<span class="p">)</span>
+</code></pre></div>
+<p><code>render_markdown()</code> 只接受 <code>MiddleJson</code>，不兼容旧 dict、<code>list[PageInfo]</code>、
+backend 参数或旧 <code>Line/Span</code> renderer。渲染过程基于深拷贝，不修改输入对象，
+也不负责把图片写到文件系统。</p>
+<p>图片按 <code>image_path</code>、<code>image_base64</code> data URI、受限 HTTP(S) <code>image_url</code> 的顺序选择。
+<code>asset_base_url</code> 只给相对 <code>image_path</code> 和 HTML 内相对 <code>img src</code> 添加前缀。</p>
+<p><code>ImageRenderer</code> 是从 <code>mineru.render</code> 导出的 Block 级图片扩展契约。传入自定义 renderer 时，
+image block 及无结构内容的 table/chart/equation 可以改用调用方提供的图片引用；结构化 table
+仍保留文本或表格内容，但会移除由自定义 renderer 接管的内嵌 <code>&lt;img&gt;</code>。清理后只剩图片的
+table 会回退到自定义 renderer。</p>
+<h2 id="tex-live-latex">TeX Live LaTeX</h2>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">mineru.render</span><span class="w"> </span><span class="kn">import</span> <span class="n">render_latex</span>
+
+<span class="n">latex_source</span> <span class="o">=</span> <span class="n">render_latex</span><span class="p">(</span>
+    <span class="n">middle_json</span><span class="p">,</span>
+    <span class="n">asset_base_path</span><span class="o">=</span><span class="s2">"."</span><span class="p">,</span>
+    <span class="n">document_title</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span>
+<span class="n">Path</span><span class="p">(</span><span class="s2">"main.tex"</span><span class="p">)</span><span class="o">.</span><span class="n">write_text</span><span class="p">(</span><span class="n">latex_source</span><span class="p">,</span> <span class="n">encoding</span><span class="o">=</span><span class="s2">"utf-8"</span><span class="p">)</span>
+</code></pre></div>
+<p><code>render_latex()</code> 返回完整 UTF-8 <code>.tex</code> 字符串，不写文件、不读取 cwd、不访问网络。标准编译命令为：</p>
+<div class="highlight"><pre><span></span><code>latexmk<span class="w"> </span>-xelatex<span class="w"> </span>main.tex
+</code></pre></div>
+<p>编译环境合同是 TeX Live 官方安装器的默认 <code>scheme-full</code>，不是 Linux 发行版可能裁剪过的同名
+系统包。文档固定使用 <code>ctexart</code> 与 TeX Live 自带 Fandol 字体，因此 Windows、macOS 和 Linux
+都不依赖系统中文字体，也不需要 <code>.latexmkrc</code>、Shell Escape 或额外下载宏包。</p>
+<p>LaTeX 固定使用共享 planner 的 DEFAULT 连续语义：隐藏页面辅助块、合并跨页续段、续列表和续表，
+不保留空源页或源页面硬分页，<code>page_footnote</code> 继续输出。标题、正文和页面脚注 anchor 使用稳定安全的
+document-wide target；Index 与 fragment 链接只跳转到真实目标。普通文字、样式、代码、metadata、
+链接和路径均执行 TeX 转义；MiddleJson 中不含外层定界符的行内/行间 LaTeX 公式按原始内容输出。</p>
+<p>图片只引用 <code>png</code>、<code>jpg/jpeg</code> 或 <code>pdf</code> 的安全 <code>image_path</code>。<code>asset_base_path</code> 相对于实际编译目录
+拼接 sidecar；renderer 不复制图片。data URI、远程 URL、缺失路径和 XeLaTeX 不支持的格式会输出
+可见替代信息，远程 URL 保留为链接。HTML table 使用 <code>longtable</code>，支持 <code>rowspan/colspan</code>、嵌套表、
+富文本、公式、链接和相对图片；结构无效时依次回退表格图片、可见文本与占位。</p>
+<p>renderer 不执行生成的源码。裸公式属于保真通道，可能包含任意 TeX 指令；来自不可信文档的 <code>.tex</code>
+必须在隔离环境中以禁用 Shell Escape 的方式编译。该能力只属于严格 <code>mineru.render</code> 公共面，不新增
+ParseResult 方法，也不迁移 CLI、API、doclib 或 parse-job <code>output_formats</code>。</p>
+<h2 id="docx">可编辑 DOCX</h2>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">pathlib</span><span class="w"> </span><span class="kn">import</span> <span class="n">Path</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">mineru.render</span><span class="w"> </span><span class="kn">import</span> <span class="n">render_docx</span>
+
+<span class="n">asset_dir</span> <span class="o">=</span> <span class="n">Path</span><span class="p">(</span><span class="s2">"output/document"</span><span class="p">)</span>
+<span class="n">docx_bytes</span> <span class="o">=</span> <span class="n">render_docx</span><span class="p">(</span>
+    <span class="n">middle_json</span><span class="p">,</span>
+    <span class="n">asset_resolver</span><span class="o">=</span><span class="k">lambda</span> <span class="n">relative_path</span><span class="p">:</span> <span class="p">(</span><span class="n">asset_dir</span> <span class="o">/</span> <span class="n">relative_path</span><span class="p">)</span><span class="o">.</span><span class="n">read_bytes</span><span class="p">(),</span>
+<span class="p">)</span>
+</code></pre></div>
+<p><code>render_docx()</code> 只接受严格 <code>MiddleJson</code>，返回完整 <code>.docx</code> bytes，不写文件、不读取 cwd，
+也不访问网络。block 同时携带多种图片来源时优先通过 <code>asset_resolver</code> 解码 <code>image_path</code>，
+其次使用 <code>image_base64</code>；仅有 <code>image_url</code> 时写入可点击链接而不下载。仅有
+<code>image_path</code> 时必须提供 <code>asset_resolver(relative_path) -&gt; bytes</code>。必需图片缺失、路径
+不安全、格式损坏或任意外部 SVG 输入会抛出带 <code>page_idx/block_index/block_type</code> 的
+<code>DocxRenderError</code>；WebP 在内存中转为 PNG。MinerU 自己生成并通过安全子集校验的
+WMF/EMF SVG 会写入 Office 2016 <code>asvg:svgBlip</code>，同时保留高密度 PNG fallback，现代
+Word/LibreOffice 可使用矢量资源，旧版 Office 仍能显示同尺寸后备图。</p>
+<p>DOCX 输出固定使用 A4 纵向与 20 mm 页边距。标题是 Word Heading 1–9，标题与
+<code>page_footnote</code> anchor 是 document-wide bookmark，Index 标题叶子和正文 <code>#anchor</code>
+写成内部链接；正文直接消费共享 inline AST，
+保留粗体、斜体、下划线、删除线、emphasis、上下标、外链及行内公式。emphasis 使用下方
+着重号；带可见装饰的边界空格会等量写为 NBSP，避免 Word 隐藏下划线或删除线。列表保留
+producer 已经内化的 marker，只用缩进表达层级，不重建 <code>numbering.xml</code>。</p>
+<p>公式通过 <code>latex2mathml -&gt; mathml2omml -&gt; OMML</code> 输出为可编辑 Office Math。末端
+<code>\tag{...}</code> 会从公式主体剥离并通过右对齐 tab 单独写编号；转换失败的块公式依次回退
+公式图片和可见 LaTeX，行内公式回退可见 LaTeX，所有回退均记录 page/block 定位。
+Office producer 生成的规范无横线 <code>\genfrac{}{}{0pt}{}{num}{den}</code> 会在 DOCX adapter 内
+转换为双行 matrix，不改写 MiddleJson 中的原始 LaTeX。</p>
+<p>HTML table 使用 occupancy grid 生成原生 Word table，支持 <code>rowspan/colspan</code>、嵌套表格、
+单元格富文本、公式、链接和图片。HTML 结构无效时只在存在表格图片时回退；空间投影
+文本表格在 content 非空时使用独立的等宽预格式样式，仅输出原始文本并保留空格、换行
+与 Tab；content 为空或纯空白时改用其图片，两者都缺失才报错。Image body 文本写入图片
+alt description；Chart
+在图片后继续输出可用的 HTML 数据表。视觉父块仍严格保持 body/caption/footnote 原顺序。</p>
+<p>DOCX 固定使用共享 planner 的 DEFAULT 连续语义：隐藏页面辅助块、合并跨页续段与续表，
+不按 <code>PageInfo</code> 写硬分页或保留空源页；<code>page_footnote</code> 仍然输出。DOCX 是语义化可编辑输出，
+不承诺复刻源 PDF/Office 的字体、分栏、断行和页数；CLI、doclib 与 v1 API 不在本契约范围。</p>
+<h2 id="epub-33">单正文 EPUB 3.3</h2>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">datetime</span><span class="w"> </span><span class="kn">import</span> <span class="n">datetime</span><span class="p">,</span> <span class="n">timezone</span>
+
+<span class="kn">from</span><span class="w"> </span><span class="nn">mineru.render</span><span class="w"> </span><span class="kn">import</span> <span class="n">EpubRenderOptions</span><span class="p">,</span> <span class="n">RenderFormat</span><span class="p">,</span> <span class="n">render</span>
+
+<span class="n">epub_bytes</span> <span class="o">=</span> <span class="n">render</span><span class="p">(</span>
+    <span class="n">middle_json</span><span class="p">,</span>
+    <span class="n">RenderFormat</span><span class="o">.</span><span class="n">EPUB</span><span class="p">,</span>
+    <span class="n">options</span><span class="o">=</span><span class="n">EpubRenderOptions</span><span class="p">(</span>
+        <span class="n">title</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+        <span class="n">authors</span><span class="o">=</span><span class="p">(</span><span class="s2">"Alice"</span><span class="p">,),</span>
+        <span class="n">language</span><span class="o">=</span><span class="s2">"zh-CN"</span><span class="p">,</span>
+        <span class="n">modified_at</span><span class="o">=</span><span class="n">datetime</span><span class="p">(</span><span class="mi">2026</span><span class="p">,</span> <span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">,</span> <span class="n">tzinfo</span><span class="o">=</span><span class="n">timezone</span><span class="o">.</span><span class="n">utc</span><span class="p">),</span>
+        <span class="n">asset_resolver</span><span class="o">=</span><span class="k">lambda</span> <span class="n">relative_path</span><span class="p">:</span> <span class="p">(</span><span class="n">asset_dir</span> <span class="o">/</span> <span class="n">relative_path</span><span class="p">)</span><span class="o">.</span><span class="n">read_bytes</span><span class="p">(),</span>
+    <span class="p">),</span>
+<span class="p">)</span>
+</code></pre></div>
+<p><code>render_epub()</code> 只接受严格 <code>MiddleJson</code>，返回完整 EPUB 3.3 容器 bytes，不落盘、不读取 cwd、
+不访问网络。容器固定包含首个且不压缩的 <code>mimetype</code>、<code>META-INF/container.xml</code>、一个 OPF、
+一个 navigation document、静态 CSS、可用图片和唯一正文 <code>content.xhtml</code>。OPF spine 始终只有
+这个正文项，不按 <code>PageInfo</code> 或标题拆章，也不生成 EPUB 2 NCX、封面或 page-list。</p>
+<p>标题默认取首个非空 <code>doc_title</code>，否则回退为 <code>MinerU Document</code>；语言默认 <code>und</code>。未显式提供
+identifier 时，由完整 MiddleJson、标题、作者和语言生成稳定 UUID URN。<code>modified_at</code> 默认使用
+本次调用的 UTC 时间；显式值必须带时区，并同时控制 OPF 修改时间和 ZIP 成员时间，因此相同输入
+与固定时间可得到相同 bytes。OPF 只输出 EPUB 要求的 title、identifier、language、modified 和
+可选 creator 元数据，不把输入 EPUB 的原 OPF 元数据或 CSS 带入新容器。</p>
+<p>navigation document 优先使用第一个至少含一个真实标题目标的 <code>IndexBlock</code>，保留有效项的顺序和
+嵌套层级并丢弃悬空项；没有有效目录时按正文标题 <code>level</code> 建树；没有标题时使用书名链接到正文
+起点。标题和 <code>page_footnote</code> 获得 document-wide 唯一 id，内部 fragment 会重写到这些真实目标，
+脚注链接增加 EPUB <code>noteref</code> 语义。无包内目标的相对链接展开为普通文字，显式
+<code>http/https/mailto/tel</code> 外链继续保留。</p>
+<p>行内和行间 LaTeX 通过现有 <code>latex2mathml</code> 生成静态 Presentation MathML，不加载 MathJax；转换
+失败时保留可见 LaTeX。只有正文实际写入 MathML 时，manifest 的正文项才声明 <code>mathml</code> property。
+代码、算法、流程图和富 HTML 都使用无脚本静态表示；富 HTML 只复制 allowlist 标签和有界的
+表格/列表属性，删除活动内容、事件、来源样式及无法重写的资源。</p>
+<p>图片按 <code>image_path</code>、<code>image_base64</code>、<code>image_url</code> 的候选顺序处理。相对 <code>image_path</code> 和富 HTML
+相对 <code>img src</code> 只能经 <code>asset_resolver</code> 读取；data URI 会校验 MIME、签名和完整图片；WebP、BMP、
+TIFF 及安全 MinerU SVG fallback 规范化为 PNG，PNG/JPEG/GIF 保留，最终按内容 SHA-256 去重。
+renderer 不下载 <code>image_url</code>。路径缺失、resolver 抛错、图片损坏或远程图片都不会中断输出：图片
+主体省略，但已有结构内容、alt、caption、footnote 和识别文字继续可见，也不会生成虚构占位文案。</p>
+<p>EPUB 固定使用共享 planner 的 DEFAULT 连续语义，在单个 <code>article.docvortex-document</code> 中展平页面，
+隐藏页面辅助块、合并跨页续段与续表，不生成源页 section、空页或分页标记；<code>page_footnote</code> 仍然
+输出。该能力仅属于严格 <code>mineru.render</code> 公共面，不新增 ParseResult 方法，也不迁移 CLI、API、
+doclib 或 parse-job <code>output_formats</code>。</p>
+<h2 id="mineru-pdf">MinerU PDF</h2>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">mineru.render</span><span class="w"> </span><span class="kn">import</span> <span class="n">render_pdf</span>
+
+<span class="n">pdf_bytes</span> <span class="o">=</span> <span class="n">render_pdf</span><span class="p">(</span>
+    <span class="n">middle_json</span><span class="p">,</span>
+    <span class="n">asset_resolver</span><span class="o">=</span><span class="k">lambda</span> <span class="n">relative_path</span><span class="p">:</span> <span class="p">(</span><span class="n">asset_dir</span> <span class="o">/</span> <span class="n">relative_path</span><span class="p">)</span><span class="o">.</span><span class="n">read_bytes</span><span class="p">(),</span>
+    <span class="n">document_title</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span>
+</code></pre></div>
+<p><code>render_pdf()</code> 只接受严格 <code>MiddleJson</code>，返回完整 PDF bytes，不写文件、不读取 cwd 且不访问网络。
+它固定使用 A4 纵向和 20 mm 页边距，是面向阅读的语义化重排输出，不承诺复刻源文件坐标、
+分栏、断行或原始物理页数。PDF 固定使用共享 planner 的 DEFAULT 连续语义：隐藏页面辅助块、
+合并跨页续段与续表，不保留空源页或在 <code>PageInfo</code> 边界硬分页；内容仍会按 A4 可用空间自然分页，
+<code>page_footnote</code> 仍然输出。</p>
+<p>PDF 使用 ReportLab 生成，标题、正文、表格、图片、代码、caption 与 footnote 采用 MinerU HTML
+主题的打印配色。标题与 <code>page_footnote</code> anchor 会建立 PDF destination，目录和 InlineSpan fragment
+链接可跳转到已注册目标；HTTP(S)、mailto 等外链保持可点击。Latin 使用 Helvetica/Courier，
+中文使用 <code>STSong-Light</code>，日文与韩文分别使用标准 CID 字体。</p>
+<p>行内与行间 LaTeX 通过 ZiaMath 的 inline/display 模式转换为自包含 SVG path，再由 FontTools 的
+SVG path parser 直接映射为 ReportLab 矢量路径。该转换器只接受 ZiaMath 固定输出的
+<code>svg/g/path/rect</code> 与 <code>M/L/Q/Z</code> 子集，不用于 MiddleJson 的任意 SVG。行内公式携带真实
+width/ascent/descent 参与段落换行和基线计算；行间公式居中并保留末端 <code>\\tag{...}</code> 编号。
+转换失败时，行内公式回退可见 <code>$...$</code>，行间公式依次回退现有公式图片和可见 LaTeX。</p>
+<p>图片仍按 <code>image_path</code>、<code>image_base64</code>、<code>image_url</code> 的优先级选择。相对 sidecar 只经
+<code>asset_resolver</code> 获取，远程 URL 不下载；缺失、损坏、任意外部 SVG 或其它不支持的图片输出带
+page/block 定位的浅色占位，远程 URL 同时保留可点击链接，图片错误不会中止 PDF。HTML table
+物化为支持 rowspan/colspan、嵌套表、重复表头和跨页拆分的原生 ReportLab table；结构无效时
+回退空间文本、整体图片或占位。</p>
+<p>该接口只属于严格 <code>mineru.render</code> 公共面，不新增 ParseResult 方法，也不迁移 CLI、API 或 doclib。</p>
+<h2 id="mineru-html">MinerU 独立 HTML</h2>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">mineru.render</span><span class="w"> </span><span class="kn">import</span> <span class="n">RenderMode</span><span class="p">,</span> <span class="n">render_html</span>
+
+<span class="n">html_document</span> <span class="o">=</span> <span class="n">render_html</span><span class="p">(</span>
+    <span class="n">middle_json</span><span class="p">,</span>
+    <span class="n">mode</span><span class="o">=</span><span class="n">RenderMode</span><span class="o">.</span><span class="n">DEFAULT</span><span class="p">,</span>
+    <span class="n">asset_base_url</span><span class="o">=</span><span class="s2">""</span><span class="p">,</span>
+    <span class="n">standalone</span><span class="o">=</span><span class="kc">True</span><span class="p">,</span>
+    <span class="n">document_title</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
+<span class="p">)</span>
+</code></pre></div>
+<p><code>render_html()</code> 只接受严格 <code>MiddleJson</code>，返回字符串且不写文件、不读取图片 sidecar、
+不访问网络。<code>standalone=True</code> 输出完整 HTML5 文档；<code>False</code> 输出单根
+<code>article.docvortex-document</code> fragment，不包含 CSS、脚本或
+<code>head</code>。显式标题缺失时，HTML title 使用首个非空 <code>doc_title</code> 的纯文本，再回退为
+<code>DocVortex Document</code>。完整文档使用 <code>body.docvortex-html-body</code> 提供居中和响应式页面布局；
+fragment 调用方可以自行决定外围容器尺寸。</p>
+<p>HTML 与 Markdown 共用 <code>RenderMode</code> 和续段/续表 planner。DEFAULT 输出无页面 wrapper
+的连续阅读内容；FULL 为每个 <code>PageInfo</code> 输出一个 <code>section.docvortex-page</code>，包括空页，并在
+相邻页面之间输出 <code>hr.docvortex-page-break</code>。每个顶层 block wrapper 保留来源 page/type/index
+元数据。<code>article.docvortex-document</code> 同时声明 <code>data-docvortex-html-version="1"</code> 和
+<code>data-render-mode="default|full"</code>；顶层 block、visual body/caption/footnote、列表/目录叶子使用
+原始下划线形式的 <code>data-block-type</code>，并按类型携带 <code>data-block-sub-type</code>、<code>data-guess-lang</code>、
+<code>data-anchor</code> 或 <code>data-level</code>。这些 data 属性构成 renderer 到 HTML Flash parser 的版本化机器契约，
+CSS class 不参与精确类型判定。</p>
+<p>行内内容直接消费共享 AST：普通文本始终 HTML escape，未知标签保持可见；公式只在
+<code>docvortex-math</code> carrier 内使用 <code>\(...\)</code> 或 <code>\[...\]</code>，不扫描普通正文中的美元符号。每个公式
+carrier 同时保存 <code>data-block-type="equation"</code>、<code>data-formula-display</code> 和裸 LaTeX
+<code>data-docvortex-latex</code>，供 HTML parser 无损恢复；可见 MathJax 定界符不属于 Middle JSON 内容。
+HTML 的普通 <code>InlineText</code> 默认 linkify <code>http/https</code>、<code>www.</code>、邮箱和常见裸域名；裸域名统一补
+<code>https://</code>，邮箱补 <code>mailto:</code>。无协议裸域名的 TLD 必须属于工程常用白名单：
+<code>com cn org net edu gov io ai dev app de uk nl ru br fr au in eu jp</code>、
+<code>ca hk tw sg kr nz info biz xyz site online tech cloud shop store</code>。显式 HTTP(S)、<code>www.</code> 和邮箱
+不受该小白名单限制。已有 hyperlink、代码、算法、公式、raw HTML 及 Mermaid 源码不重复
+识别，候选 href 仍通过统一 URL sanitizer。</p>
+<p>完整文档只内联压缩后的 <code>docvortex.min.css</code>。其可读源码为 <code>docvortex.css</code>，所有文档规则均
+限定在 <code>.docvortex-document</code> 内，standalone 外围布局规则限定在 <code>.docvortex-html-body</code>，
+不会修改 fragment 宿主页的全局标签样式。样式使用系统字体，不加载外部字体。
+image、table、chart 和 code 主体均从正文内容区左边界开始；图片保持固有尺寸和宽高比，
+宽表格/流程图只在自身容器滚动。视觉 caption 与 footnote 使用 figure 可用宽度并统一左对齐，
+多行说明的每一行均从同一左边界开始，body/caption/footnote 的原始顺序不变。
+有公式时按需加载固定 MathJax 4.1.2 <code>tex-chtml.js</code>，启用 <code>ui/safe</code>、禁用 <code>require</code>，并
+关闭菜单和 enrichment。有可高亮代码时按需加载固定 Prism 1.30.0 core 和 Autoloader，
+语言组件根固定到同版本 jsDelivr。合法 flowchart 按需加载固定 Mermaid 11.16.1 UMD；
+该约 3.57 MB bundle 只在含流程图的文档下载并可由浏览器缓存。三个入口脚本均携带 SRI；
+动态 MathJax 扩展、字体和 Prism 语言组件没有逐文件 SRI。renderer 不注入 CSP，HTTP
+宿主需要自行允许相应 jsDelivr script/font/style，并评估 CDN 供应链策略。</p>
+<p><code>ImageBlock(sub_type="flowchart")</code> 仅在 body 是完整 <code>mermaid</code> fence，且首个有效语句为
+<code>graph|flowchart + TB|TD|BT|RL|LR</code> 时生成 <code>.mineru-flowchart</code>。frontmatter、init directive、
+其他 Mermaid 图类型及超过 50,000 字符的源码沿用普通图片/details 路径，不加载 Mermaid。
+合法流程图初始显示已有 raster；Mermaid 以 <code>securityLevel: "strict"</code>、禁用 HTML label、
+<code>maxTextSize=50000</code>、<code>maxEdges=500</code> 逐图生成 SVG，成功后替换 raster。无 JS、CDN/语法失败
+继续显示 raster；无 raster 时自动展开已转义源码。图源码只在浏览器本地参与渲染。</p>
+<p>fragment 调用方需要加载随包提供的 <code>docvortex.min.css</code>，并按实际内容加载同版本
+MathJax、Prism 和 Mermaid。MathJax 必须在初始化前复用 standalone 的 delimiter、
+<code>ignoreHtmlClass/processHtmlClass</code>、<code>ui/safe</code>、禁用 <code>require</code> 及 safeOptions 配置。动态插入后调用
+<code>MathJax.typesetPromise([root])</code> 与 <code>Prism.highlightAllUnder(root)</code>；替换已有公式前先调用
+<code>MathJax.typesetClear([root])</code>。fragment 内的相对图片以宿主页 URL 为基准，不能通过
+fragment 自带 <code>base</code> 修正。</p>
+<p>fragment 宿主的 MathJax 配置至少必须包含以下安全边界，并在加载 <code>tex-chtml.js</code> 前赋值：</p>
+<div class="highlight"><pre><span></span><code><span class="nb">window</span><span class="p">.</span><span class="nx">MathJax</span><span class="w"> </span><span class="o">=</span><span class="w"> </span><span class="p">{</span>
+<span class="w">  </span><span class="nx">loader</span><span class="o">:</span><span class="w"> </span><span class="p">{</span><span class="nx">load</span><span class="o">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"ui/safe"</span><span class="p">]},</span>
+<span class="w">  </span><span class="nx">tex</span><span class="o">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">inlineMath</span><span class="o">:</span><span class="w"> </span><span class="p">[[</span><span class="s2">"\\("</span><span class="p">,</span><span class="w"> </span><span class="s2">"\\)"</span><span class="p">]],</span>
+<span class="w">    </span><span class="nx">displayMath</span><span class="o">:</span><span class="w"> </span><span class="p">[[</span><span class="s2">"\\["</span><span class="p">,</span><span class="w"> </span><span class="s2">"\\]"</span><span class="p">]],</span>
+<span class="w">    </span><span class="nx">processEnvironments</span><span class="o">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">    </span><span class="nx">processRefs</span><span class="o">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">    </span><span class="nx">packages</span><span class="o">:</span><span class="w"> </span><span class="p">{</span><span class="s2">"[-]"</span><span class="o">:</span><span class="w"> </span><span class="p">[</span><span class="s2">"require"</span><span class="p">]},</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nx">options</span><span class="o">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nx">ignoreHtmlClass</span><span class="o">:</span><span class="w"> </span><span class="s2">"docvortex-document"</span><span class="p">,</span>
+<span class="w">    </span><span class="nx">processHtmlClass</span><span class="o">:</span><span class="w"> </span><span class="s2">"docvortex-math"</span><span class="p">,</span>
+<span class="w">    </span><span class="nx">enableMenu</span><span class="o">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">    </span><span class="nx">enableEnrichment</span><span class="o">:</span><span class="w"> </span><span class="kc">false</span><span class="p">,</span>
+<span class="w">    </span><span class="nx">safeOptions</span><span class="o">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">      </span><span class="nx">allow</span><span class="o">:</span><span class="w"> </span><span class="p">{</span><span class="nx">URLs</span><span class="o">:</span><span class="w"> </span><span class="s2">"none"</span><span class="p">,</span><span class="w"> </span><span class="nx">classes</span><span class="o">:</span><span class="w"> </span><span class="s2">"none"</span><span class="p">,</span><span class="w"> </span><span class="nx">cssIDs</span><span class="o">:</span><span class="w"> </span><span class="s2">"none"</span><span class="p">,</span><span class="w"> </span><span class="nx">styles</span><span class="o">:</span><span class="w"> </span><span class="s2">"none"</span><span class="p">},</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="p">};</span>
+</code></pre></div>
+<p>standalone 还会通过 <code>startup.ready</code> 把 menu/enrichment 选项重新施加到 live MathDocument；
+fragment 宿主如需完全相同行为，也必须复用该 hook，而不能只复制上面的静态字段。
+fragment 中的 flowchart 只包含 canvas、fallback 与源码 DOM；宿主必须复用 standalone 的
+Mermaid 11.16.1、SRI、安全配置、顺序 <code>mermaid.render()</code> 和失败状态切换，且不得调用
+<code>bindFunctions</code>。Mermaid 点击指令和 HTML label 在本契约中始终禁用。</p>
+<p>HTML table/chart/image body 只在识别为 markup 时经过 <code>nh3</code> allowlist。活动标签、事件属性、
+来源 style/class/id/data 属性和危险 URL 会被删除；链接只允许相对地址、fragment、
+<code>http/https/mailto/tel</code>，图片只允许安全 sidecar、根相对路径、HTTP(S) 与签名匹配的 raster
+data URI。安全 <code>&lt;eq&gt;</code> 在清洗后转换为公式 carrier。清洗后不可用的 table 优先回退整体
+图片，否则以转义后的 <code>pre</code> 可见保留；普通 <code>&lt;local_dir&gt;</code> 等尖括号文本不会进入 sanitizer。
+Chart 的 pipe table 只实现 GFM 列结构与反斜杠/pipe 解码，cell 内容继续消费 MiddleJson
+行内标签；<code>**bold**</code>、反引号和 Markdown link 等任意 GFM inline 语法不会二次解析。</p>
+<p>v1 只增加严格 <code>mineru.render</code> 公共面，不迁移旧 parser、CLI、API 或 doclib，也不提供
+Markdown 字符串转 HTML、离线单文件、主题切换、侧边 TOC 或用户自定义 head/CSS/script。</p>
+<h2 id="345-content-list-v1v2">3.4.5 兼容 Content List V1/V2</h2>
+<p>严格 render 层同时提供两个由当前 MiddleJson 派生的兼容结构：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">mineru.render</span><span class="w"> </span><span class="kn">import</span> <span class="n">render_content_list</span><span class="p">,</span> <span class="n">render_content_list_v2</span>
+
+<span class="n">content_list</span> <span class="o">=</span> <span class="n">render_content_list</span><span class="p">(</span><span class="n">middle_json</span><span class="p">,</span> <span class="n">asset_base_url</span><span class="o">=</span><span class="s2">""</span><span class="p">)</span>
+<span class="n">content_list_v2</span> <span class="o">=</span> <span class="n">render_content_list_v2</span><span class="p">(</span><span class="n">middle_json</span><span class="p">,</span> <span class="n">asset_base_url</span><span class="o">=</span><span class="s2">""</span><span class="p">)</span>
+</code></pre></div>
+<p><code>render_content_list()</code> 返回按页序扁平化的 <code>list[dict]</code>。每个 item 保留真实 <code>page_idx</code>，可用 bbox
+转换为 0-1000 整数坐标；标题继续使用 <code>type: "text"</code> 和 <code>text_level</code>，视觉内容使用
+<code>img_path</code>、caption、footnote 与 body 等 3.4.5 字段。</p>
+<p><code>render_content_list_v2()</code> 返回 <code>list[list[dict]]</code>，外层与输入页面一一对应，空页保留 <code>[]</code>；每个
+item 使用 3.4.5 风格的 <code>type + content</code>，行内内容收敛为 <code>text</code>、<code>equation_inline</code>、
+<code>code_inline</code> 和 <code>hyperlink</code> span。V2 不增加 envelope 或显式页号，因此抽页结果只能通过外层顺序消费。</p>
+<p>两个 renderer 都只接受严格 <code>MiddleJson</code>，没有 <code>mode</code> 参数，保持页面和 block 阅读顺序，不使用展示型
+planner，也不合并 <code>continues_prev</code> 文本或跨页表格。同页连续 <code>ref_text</code> 会合并为 reference list；列表、
+目录按源顺序递归展平，目录删除可信的末尾页码并保留 anchor。图片按 <code>image_path</code>、<code>image_base64</code>、
+<code>image_url</code> 的顺序选择唯一来源，相对 sidecar 与 HTML 内相对图片使用 <code>asset_base_url</code>。</p>
+<p>这是 render 层兼容 API；本阶段不新增 ParseResult 方法，不迁移 CLI/API 格式名，也不新增自动落盘产物。
+现有 <code>render_structured_content()</code> 仍是独立的树形文档级 dict，不是 V2 的别名。</p>
+<h2 id="markdown-structured-content">树形 Markdown Structured Content</h2>
+<p>严格 render 层还提供不合并、不丢块的树形内容输出：</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">mineru.render</span><span class="w"> </span><span class="kn">import</span> <span class="n">render_structured_content</span>
+
+<span class="n">structured_content</span> <span class="o">=</span> <span class="n">render_structured_content</span><span class="p">(</span>
+    <span class="n">middle_json</span><span class="p">,</span>
+    <span class="n">asset_base_url</span><span class="o">=</span><span class="s2">""</span><span class="p">,</span>
+<span class="p">)</span>
+</code></pre></div>
+<p><code>render_structured_content()</code> 只接受 <code>MiddleJson</code>，返回可以直接交给 <code>json.dumps()</code> 的
+文档级 dict。顶层保留 <code>pages/is_full_document/file_suffix/effort/parse_mode/mineru_version</code>，每页保留
+<code>page_idx/blocks</code>，页面和顶层 block 的数量及顺序不变。它没有 <code>mode</code> 参数，也不使用
+Markdown/HTML 的展示型 planner，因此不隐藏页面辅助块，也不合并 <code>continues_prev</code> 文本、
+列表或跨页表格；<code>continues_prev</code> 和 <code>cell_merge</code> 等消费提示仍保留在对应 block。</p>
+<p><code>content</code> 保存适合结构化消费的文本表示，而不是可直接拼接成整篇文档的完整视觉
+Markdown。<code>list/index</code> 的递归子树会收敛为一个字符串；<code>image/table/chart/code</code> 的唯一
+body 会提升为父块 <code>content</code>，但图片资源只放在 <code>image_source</code>，不在 <code>content</code> 重复
+输出图片语法或 details。说明文本按源 <code>index</code> 排序后分别输出为
+<code>captions/footnotes: list[{bbox?: [x0, y0, x1, y1], content: str}]</code>。<code>bbox</code> 直接保留
+说明子块的归一化坐标，源坐标缺失时省略该键；不输出说明的 <code>type/index</code>。视觉数组始终
+存在，空说明保留为 <code>{"content": ""}</code>。这是相对于原字符串数组结构的直接契约变更，
+消费方必须通过对象的 <code>content</code> 字段读取说明文本。</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"captions"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"bbox"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="mf">0.073</span><span class="p">,</span><span class="w"> </span><span class="mf">0.235</span><span class="p">,</span><span class="w"> </span><span class="mf">0.485</span><span class="p">,</span><span class="w"> </span><span class="mf">0.245</span><span class="p">],</span>
+<span class="w">      </span><span class="nt">"content"</span><span class="p">:</span><span class="w"> </span><span class="s2">"图表1：汽车指数上周下跌 2.29%"</span>
+<span class="w">    </span><span class="p">},</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"content"</span><span class="p">:</span><span class="w"> </span><span class="s2">"没有源坐标的 Office 说明"</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">]</span>
+<span class="p">}</span>
+</code></pre></div>
+<p><code>doc_title/paragraph_title.content</code> 只包含行内 Markdown，不含 heading 标记或 HTML
+anchor；原始 <code>level</code> 和可选 <code>anchor</code> 作为独立字段保留。<code>equation.content</code> 是不带行间
+定界符的裸 LaTeX，公式图片同样只通过 <code>image_source</code> 表达。所有输出 block 都删除
+<code>index/guess_lang/image_path/image_base64/image_url</code>，<code>guess_lang</code> 仍会先参与代码 Markdown 的生成。</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"pages"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"page_idx"</span><span class="p">:</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"blocks"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">        </span><span class="p">{</span>
+<span class="w">          </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"paragraph_title"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"anchor"</span><span class="p">:</span><span class="w"> </span><span class="s2">"section-a"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"level"</span><span class="p">:</span><span class="w"> </span><span class="mi">2</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"content"</span><span class="p">:</span><span class="w"> </span><span class="s2">"**章节标题**"</span>
+<span class="w">        </span><span class="p">},</span>
+<span class="w">        </span><span class="p">{</span>
+<span class="w">          </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"equation"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"content"</span><span class="p">:</span><span class="w"> </span><span class="s2">"x^2+y^2=z^2"</span><span class="p">,</span>
+<span class="w">          </span><span class="nt">"image_source"</span><span class="p">:</span><span class="w"> </span><span class="s2">"images/equation.png"</span>
+<span class="w">        </span><span class="p">}</span>
+<span class="w">      </span><span class="p">]</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">],</span>
+<span class="w">  </span><span class="nt">"file_suffix"</span><span class="p">:</span><span class="w"> </span><span class="s2">"pdf"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"effort"</span><span class="p">:</span><span class="w"> </span><span class="s2">"flash"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"parse_mode"</span><span class="p">:</span><span class="w"> </span><span class="s2">"txt"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"mineru_version"</span><span class="p">:</span><span class="w"> </span><span class="s2">"3.4.0"</span>
+<span class="p">}</span>
+</code></pre></div>
+<p><code>image/table/chart/equation</code> 有图片载荷时，会输出最终选择的 <code>image_source</code>：<code>image_path</code>
+优先，<code>image_base64</code> 与 <code>image_url</code> 依次兜底，并应用 <code>asset_base_url</code> 和 Markdown 地址转义。即使 table
+选择 GFM/HTML、equation 已有 LaTeX，图片来源也会保留且只出现一次。</p>
+<p>如需完整可展示 Markdown，应调用 <code>render_markdown()</code>，不能简单拼接 structured_content 中的
+<code>content</code>。</p>
+<p>该接口目前只属于严格 <code>mineru.render</code> 公共面；本契约不迁移旧 parser、CLI、API、
+doclib 或历史扁平 <code>content_list.json</code> 产物。</p>
+<h2 id="_3">展示模式</h2>
+<p><code>RenderMode</code> 只适用于 Markdown 与 HTML。DOCX、EPUB、PDF 固定采用下述 DEFAULT 语义；
+Structured Content 与 Content List V1/V2 不使用展示型 planner。</p>
+<p><code>RenderMode.DEFAULT</code>:</p>
+<ul>
+<li>隐藏 <code>header/footer/page_number/aside_text</code>，保留独立 <code>page_footnote</code>。</li>
+<li>合并页内和跨页 <code>text/ref_text.continues_prev</code>；ref_text 可跨过页面脚注与辅助块查找前序 ref_text。</li>
+<li>合并页内和跨页 <code>list.continues_prev</code>；ref list 可跨过页面脚注与辅助块查找前序列表。</li>
+<li>只合并跨页 <code>table.continues_prev</code>。</li>
+<li>页面之间不输出分割线。</li>
+</ul>
+<p><code>RenderMode.FULL</code>:</p>
+<ul>
+<li>展示全部顶层 block。</li>
+<li>带 anchor 的 <code>page_footnote</code> 在 DEFAULT/FULL 中由 Markdown 输出 span id，HTML 输出元素 id。</li>
+<li>只合并页内 <code>text/ref_text/list.continues_prev</code>。</li>
+<li>不合并跨页 text/ref_text/list/table。</li>
+<li>每两个相邻 <code>PageInfo</code> 之间保留格式对应的页面边界：Markdown 输出分隔线，HTML 输出 page section 与分页线。</li>
+</ul>
+<p>text 合并允许跨越任意其他 block，后一个 text 的内容被吸收到前一个 text，
+后块不再在原位置输出。ref_text 与 ref list 都只跨过页面脚注与辅助块，其他语义块
+仍会分别阻断文本链和列表链；两种参考文献标记互不混用。普通 list 仍要求
+物理相邻。table 只接受跨页合并；失败时保留两张原表。</p>
+<h2 id="block">Block 规则</h2>
+<ul>
+<li><code>text/ref_text</code>: 直接渲染 InlineSpan 中的公式、样式和超链接；普通 TextSpan 转义可能误触发的 Markdown block 前缀。</li>
+<li><code>doc_title/paragraph_title</code>: 使用全局 <code>level</code>，Markdown 标题最多六级；anchor 输出为 HTML id。</li>
+<li><code>page_footnote</code>: 独立于页面辅助块，Markdown/HTML 的 DEFAULT/FULL 以及固定默认 DOCX/EPUB/PDF 都输出；Markdown 使用无可见标签的 <code>&lt;small&gt;&lt;span class="docvortex-page-footnote" data-block-type="page_footnote" style="color:#6b7280"&gt;…&lt;/span&gt;&lt;/small&gt;</code>，其余格式使用各自的脚注样式和 anchor。</li>
+<li><code>list</code>: 递归缩进；普通列表直接使用 content 已内化的前缀。<code>sub_type=ref_text</code>
+  时统计每个直属非空 item 的前五个可见字符，数字前缀未达到严格多数则给全部 item
+  补 <code>-</code>，已有 <code>-</code> 不重复；嵌套列表独立判定。</li>
+<li><code>index</code>: 递归输出 GFM 列表；标题叶子使用 anchor 生成内部链接，不当作 heading 输出。</li>
+<li><code>equation</code>: content 非空时输出行间 LaTeX，空 content 回退图片。</li>
+<li><code>image/chart</code>: 图片优先，识别内容放入折叠 details；chart 的简单 HTML 表格转为 GFM，复杂表格保留 HTML，无图片时直接输出转换后的内容。</li>
+<li><code>table</code>: 简单单层 HTML 转 GFM；<code>strong/em/s</code> 的简单样式组合使用 Markdown wrapper，
+  <code>u/sup/sub</code> 或其它复杂组合整体保留标准 HTML 标签；合并单元格或不可无损结构保留
+  HTML；空间投影文本使用动态 fenced block；空 content 回退图片。表格不解析旧
+  <code>&lt;text style="..."&gt;</code> 私有标签。</li>
+<li><code>code</code>: 使用 <code>guess_lang</code> 和动态 fenced block。</li>
+<li><code>algorithm</code>: <code>algorithm_body</code> 使用等宽、<code>white-space: pre-wrap</code> 的 HTML div，并按 EquationInlineSpan 渲染公式。</li>
+</ul>
+<p>视觉父块严格按 <code>content</code> 原顺序渲染，body、重复 caption 和 footnote 不重新排序。</p>
+<h2 id="_4">行内语义</h2>
+<p>renderer 直接按 Text/EquationInline/CodeInline/Hyperlink discriminator 分派，不解析
+字符串标签。TextSpan 中任意 <code>&lt;...&gt;</code> 都作为普通文本转义保留。普通字体样式使用
+Markdown；underline、emphasis、上下标和复杂组合使用安全 HTML。
+underline/strikethrough 包裹的 ASCII 空格按 dev 规则转为 <code>_</code>/<code>-</code> marker；
+整块 marker 会转义首字符，避免被识别为 Markdown 分割线。</p>
+<p>LaTeX 定界符来自 <code>$MINERU_HOME/config.yaml</code>:</p>
+<div class="highlight"><pre><span></span><code><span class="nt">render</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">latex_delimiters</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">display</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">left</span><span class="p">:</span><span class="w"> </span><span class="s">"$$"</span>
+<span class="w">      </span><span class="nt">right</span><span class="p">:</span><span class="w"> </span><span class="s">"$$"</span>
+<span class="w">    </span><span class="nt">inline</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">left</span><span class="p">:</span><span class="w"> </span><span class="s">"$"</span>
+<span class="w">      </span><span class="nt">right</span><span class="p">:</span><span class="w"> </span><span class="s">"$"</span>
+</code></pre></div>
+<h2 id="index-anchor">Index anchor</h2>
+<p>Office model-list 在对象化前按 document-wide anchor 查找真实目标标题。匹配成功的
+目录 text 叶子改成相同的 <code>doc_title/paragraph_title</code> 类型与 level，同时保留目录
+显示文本；未匹配 anchor 降级为普通 TextBlock。已有旧 MiddleJson 不补造已丢失的 anchor。</p></div>
+
+
+
+
+
+
+
+
+
+  
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  回到页面顶部
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      © 2024 - 2025 MinerU. All Rights Reserved.
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+    <a href="https://github.com/opendatalab/MinerU" target="_blank" rel="noopener" title="GitHub" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://x.com/OpenDataLab_AI" target="_blank" rel="noopener" title="X-Twitter" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M357.2 48h70.6L273.6 224.2 455 464H313L201.7 318.6 74.5 464H3.8l164.9-188.5L-5.2 48h145.6l100.5 132.9zm-24.8 373.8h39.1L119.1 88h-42z"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://discord.gg/Tdedn9GTXq" target="_blank" rel="noopener" title="Discord" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M492.5 69.8c-.2-.3-.4-.6-.8-.7-38.1-17.5-78.4-30-119.7-37.1-.4-.1-.8 0-1.1.1s-.6.4-.8.8c-5.5 9.9-10.5 20.2-14.9 30.6-44.6-6.8-89.9-6.8-134.4 0-4.5-10.5-9.5-20.7-15.1-30.6-.2-.3-.5-.6-.8-.8s-.7-.2-1.1-.2C162.5 39 122.2 51.5 84.1 69c-.3.1-.6.4-.8.7C7.1 183.5-13.8 294.6-3.6 404.2c0 .3.1.5.2.8s.3.4.5.6c44.4 32.9 94 58 146.8 74.2.4.1.8.1 1.1 0s.7-.4.9-.7c11.3-15.4 21.4-31.8 30-48.8.1-.2.2-.5.2-.8s0-.5-.1-.8-.2-.5-.4-.6-.4-.3-.7-.4c-15.8-6.1-31.2-13.4-45.9-21.9-.3-.2-.5-.4-.7-.6s-.3-.6-.3-.9 0-.6.2-.9.3-.5.6-.7c3.1-2.3 6.2-4.7 9.1-7.1.3-.2.6-.4.9-.4s.7 0 1 .1c96.2 43.9 200.4 43.9 295.5 0 .3-.1.7-.2 1-.2s.7.2.9.4c2.9 2.4 6 4.9 9.1 7.2.2.2.4.4.6.7s.2.6.2.9-.1.6-.3.9-.4.5-.6.6c-14.7 8.6-30 15.9-45.9 21.8-.2.1-.5.2-.7.4s-.3.4-.4.7-.1.5-.1.8.1.5.2.8c8.8 17 18.8 33.3 30 48.8.2.3.6.6.9.7s.8.1 1.1 0c52.9-16.2 102.6-41.3 147.1-74.2.2-.2.4-.4.5-.6s.2-.5.2-.8c12.3-126.8-20.5-236.9-86.9-334.5zm-302 267.7c-29 0-52.8-26.6-52.8-59.2s23.4-59.2 52.8-59.2c29.7 0 53.3 26.8 52.8 59.2 0 32.7-23.4 59.2-52.8 59.2m195.4 0c-29 0-52.8-26.6-52.8-59.2s23.4-59.2 52.8-59.2c29.7 0 53.3 26.8 52.8 59.2 0 32.7-23.2 59.2-52.8 59.2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://mineru.net/community-portal/?aliasId=3c430f94" target="_blank" rel="noopener" title="WeChat" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M385.2 167.6c6.4 0 12.6.3 18.8 1.1C387.4 90.3 303.3 32 207.7 32 100.5 32 13 104.8 13 197.4c0 53.4 29.3 97.5 77.9 131.6l-19.3 58.6 68-34.1c24.4 4.8 43.8 9.7 68.2 9.7 6.2 0 12.1-.3 18.3-.8-4-12.9-6.2-26.6-6.2-40.8-.1-84.9 72.9-154 165.3-154m-104.5-52.9c14.5 0 24.2 9.7 24.2 24.4 0 14.5-9.7 24.2-24.2 24.2-14.8 0-29.3-9.7-29.3-24.2.1-14.7 14.6-24.4 29.3-24.4m-136.4 48.6c-14.5 0-29.3-9.7-29.3-24.2 0-14.8 14.8-24.4 29.3-24.4 14.8 0 24.4 9.7 24.4 24.4 0 14.6-9.6 24.2-24.4 24.2M563 319.4c0-77.9-77.9-141.3-165.4-141.3-92.7 0-165.4 63.4-165.4 141.3S305 460.7 397.6 460.7c19.3 0 38.9-5.1 58.6-9.9l53.4 29.3-14.8-48.6C534 402.1 563 363.2 563 319.4m-219.1-24.5c-9.7 0-19.3-9.7-19.3-19.6 0-9.7 9.7-19.3 19.3-19.3 14.8 0 24.4 9.7 24.4 19.3 0 10-9.7 19.6-24.4 19.6m107.1 0c-9.7 0-19.3-9.7-19.3-19.6 0-9.7 9.7-19.3 19.3-19.3 14.5 0 24.4 9.7 24.4 19.3.1 10-9.9 19.6-24.4 19.6"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="mailto:OpenDataLab@pjlab.org.cn" target="_blank" rel="noopener" title="E-mail" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m20 8-8 5-8-5V6l8 5 8-5m0-2H4c-1.11 0-2 .89-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../../..", "features": ["content.tabs.link", "content.code.annotate", "content.code.copy", "navigation.expand", "navigation.footer", "navigation.tabs", "navigation.sections", "navigation.path", "navigation.indexes", "navigation.top", "navigation.tracking", "search.suggest", "toc.follow"], "search": "../../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u5df2\u590d\u5236", "clipboard.copy": "\u590d\u5236", "search.result.more.one": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.more.other": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 # \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.none": "\u6ca1\u6709\u627e\u5230\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.one": "\u627e\u5230 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.other": "# \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.placeholder": "\u952e\u5165\u4ee5\u5f00\u59cb\u641c\u7d22", "search.result.term.missing": "\u7f3a\u5c11", "select.version": "\u9009\u62e9\u5f53\u524d\u7248\u672c"}, "version": null}</script>
+    
+    
+      <script src="../../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

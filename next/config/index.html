@@ -1,0 +1,3304 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://opendatalab.github.io/MinerU/next/config/">
+      
+      
+      
+      
+        
+          <link rel="alternate" href="./" hreflang="en">
+        
+          <link rel="alternate" href="../../zh/next/config/" hreflang="zh">
+        
+      
+      
+      <link rel="icon" href="../../images/logo.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>配置体系 - MinerU</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+  
+
+
+  
+  
+
+<script id="__analytics">function __md_analytics(){function e(){dataLayer.push(arguments)}window.dataLayer=window.dataLayer||[],e("js",new Date),e("config","G-44K480CC48"),document.addEventListener("DOMContentLoaded",(function(){document.forms.search&&document.forms.search.query.addEventListener("blur",(function(){this.value&&e("event","search",{search_term:this.value})}));document$.subscribe((function(){var t=document.forms.feedback;if(void 0!==t)for(var a of t.querySelectorAll("[type=submit]"))a.addEventListener("click",(function(a){a.preventDefault();var n=document.location.pathname,d=this.getAttribute("data-md-value");e("event","feedback",{page:n,data:d}),t.firstElementChild.disabled=!0;var r=t.querySelector(".md-feedback__note [data-md-value='"+d+"']");r&&(r.hidden=!1)})),t.hidden=!1})),location$.subscribe((function(t){e("config","G-44K480CC48",{page_path:t.pathname})}))}));var t=document.createElement("script");t.async=!0,t.src="https://www.googletagmanager.com/gtag/js?id=G-44K480CC48",document.getElementById("__analytics").insertAdjacentElement("afterEnd",t)}</script>
+  
+    <script>"undefined"!=typeof __md_analytics&&__md_analytics()</script>
+  
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="black" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#_1" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="MinerU" class="md-header__button md-logo" aria-label="MinerU" data-md-component="logo">
+      
+  <img src="../../images/logo.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            MinerU
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              配置体系
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme)" data-md-color-scheme="default" data-md-color-primary="black" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m14.3 16-.7-2h-3.2l-.7 2H7.8L11 7h2l3.2 9zM20 8.69V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12zm-9.15 3.96h2.3L12 9z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="black" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_2" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="black" data-md-color-accent="indigo"  aria-label="Switch to system preference"  type="radio" name="__palette" id="__palette_2">
+    
+      <label class="md-header__button md-icon" title="Switch to system preference" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+      <div class="md-header__option">
+  <div class="md-select">
+    
+    <button class="md-header__button md-icon" aria-label="Select language">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.87 15.07-2.54-2.51.03-.03A17.5 17.5 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2zm-2.62 7 1.62-4.33L19.12 17z"/></svg>
+    </button>
+    <div class="md-select__inner">
+      <ul class="md-select__list">
+        
+          <li class="md-select__item">
+            <a href="./" hreflang="en" class="md-select__link">
+              English
+            </a>
+          </li>
+        
+          <li class="md-select__item">
+            <a href="../../zh/next/config/" hreflang="zh" class="md-select__link">
+              中文
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/opendatalab/MinerU" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    opendatalab/MinerU
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../.." class="md-tabs__link">
+          
+  
+  
+    
+  
+  Home
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../quick_start/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Quick Start
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../usage/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Usage
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../reference/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../faq/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  FAQ
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../demo/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  Demo
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="MinerU" class="md-nav__button md-logo" aria-label="MinerU" data-md-component="logo">
+      
+  <img src="../../images/logo.png" alt="logo">
+
+    </a>
+    MinerU
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/opendatalab/MinerU" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    opendatalab/MinerU
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../.." class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_1" id="__nav_1_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Home
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1_2" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../quick_start/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_1_2" id="__nav_1_2_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Quick Start
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quick_start/extension_modules/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Extension Modules
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quick_start/docker_deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../usage/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_1_3" id="__nav_1_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Usage
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/quick_usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Usage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/tiers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tiers and Runtimes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/sdk_api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python SDK
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/http_api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    V1 HTTP API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/compatibility/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Legacy Platforms (MinerU <4)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/model_source/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Model Source
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/cli_tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/advanced_cli_parameters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Advanced CLI Parameters
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1_4" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../reference/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_1_4" id="__nav_1_4_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/migration_4/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migration to 4.0
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/output_files/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Output File Format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1_5" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../faq/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FAQ
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    FAQ
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1_6" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../demo/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Demo
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Demo
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../quick_start/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Start
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_2" id="__nav_2_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Quick Start
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quick_start/extension_modules/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Extension Modules
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quick_start/docker_deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../usage/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Usage
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Usage
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/quick_usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Quick Usage
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/tiers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Tiers and Runtimes
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/sdk_api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python SDK
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/http_api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    V1 HTTP API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/compatibility/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Legacy Platforms (MinerU <4)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/model_source/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Model Source
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/cli_tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    CLI Tools
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/advanced_cli_parameters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Advanced CLI Parameters
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../reference/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4" id="__nav_4_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/migration_4/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Migration to 4.0
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/output_files/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Output File Format
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Changelog
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../faq/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    FAQ
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    FAQ
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../demo/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Demo
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Demo
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. 定位
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="1. 定位">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#vlm" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        远程 VLM
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. 两阶段配置模型
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. 两阶段配置模型">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#21" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.1 启动前配置
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#22" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2.2 运行时配置
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. 优先级
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-kv" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. 运行时 KV 配置
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-parse-server" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. Parse-server 配置
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. Parse-server 配置">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#51-local-parse-server" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.1 Local parse-server
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#52-remote-parse-server" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5.2 Remote parse-server
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-api-key" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. API Key 与环境变量
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-cli" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. CLI 参数与配置关系
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-watch-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Watch 与 Rules
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="8. Watch 与 Rules">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#81-watch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.1 Watch
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#82-parsing-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.2 Parsing-rules
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#83-exclude" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8.3 Exclude
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-sdk-client" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. SDK Client 配置
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. 隐私与遥测
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        与其他文档的关系
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        未决问题
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<div><h1 id="_1">配置体系</h1>
+<p>页码规范与历史结果兼容说明见 <a href="../page-ranges/">PDF 页码范围规范</a>。</p>
+<p>状态: Draft
+读者: 想了解 doclib / mineru 配置的用户、实现配置能力的核心开发者
+范围: 本地配置、远端配置、解析参数、环境变量和优先级规则
+非目标: 替代 CLI 参数手册；替代部署文档
+来源: 配置专题文档仍待继续核对</p>
+<h2 id="1">1. 定位</h2>
+<p>配置体系定义 MinerU 如何在不同启动阶段得到最终行为。</p>
+<p>MinerU 有两类配置：</p>
+<ul>
+<li><strong>启动前配置</strong>：doclib server 启动之前就必须知道，通常来自文件形式的配置或内置默认值。</li>
+<li><strong>运行时配置</strong>：doclib server 启动之后可从 SQLite 读取和修改，由 <code>config</code>、<code>watches</code>、<code>exclude_rules</code>、<code>parsing_rules</code> 等表承载。</li>
+</ul>
+<p>启动前还存在一个 bootstrap 根目录:</p>
+<ul>
+<li><code>MINERU_HOME</code> 决定 MinerU home，默认 <code>~/.mineru</code>。</li>
+<li>默认配置文件路径是 <code>$MINERU_HOME/config.yaml</code>。</li>
+<li>默认 DB、日志和 UDS socket 从 <code>MINERU_HOME</code> 派生；默认 <code>data_dir</code> 是 <code>$MINERU_HOME/doclib</code>，其下包含 <code>parsed/</code> 和 <code>temp/</code>。</li>
+<li><code>MINERU_CONFIG</code> 仍可显式指定配置文件路径；<code>MINERU_HOME</code> 只影响默认 home 和默认配置文件位置。</li>
+</ul>
+<h3 id="vlm">远程 VLM</h3>
+<p><code>model.vlm</code> 是所有本地解析入口的 VLM 默认配置，适用于 API server、Python
+<code>parse()</code> / <code>parse_async()</code> 和 <code>mineru-kit parse</code>。Standard/Advanced 将 VLM 推理交给
+远程 MinerU OpenAI-compatible 服务，本地继续执行 Hybrid 处理；Flash/Basic 不调用远程 VLM。
+上游须部署支持 MinerU 文档理解输出的模型，并提供 <code>/v1/models</code> 和 <code>/v1/chat/completions</code>。</p>
+<div class="highlight"><pre><span></span><code><span class="nt">model</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">vlm</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">server_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">http://127.0.0.1:30000/v1</span>
+<span class="w">    </span><span class="nt">api_key</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${VLM_API_KEY:-}</span>
+<span class="w">    </span><span class="nt">model</span><span class="p">:</span><span class="w"> </span><span class="s">""</span>
+<span class="w">    </span><span class="nt">http_timeout</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">600</span>
+<span class="w">    </span><span class="nt">max_concurrency</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">100</span>
+</code></pre></div>
+<p>未配置 <code>server_url</code> 或显式设为空字符串时使用本地 VLM。地址可使用 HTTP/HTTPS
+服务根地址或以 <code>/v1</code> 结尾的地址；反向代理前缀会保留，例如 <code>https://host/proxy/v1</code>
+对应 <code>https://host/proxy/v1/chat/completions</code>。URL 不接受内嵌用户名、密码、query 或 fragment。
+<code>api_key</code> 可为空；<code>model</code> 为空时要求上游模型列表恰好包含一个模型，多模型服务须显式指定模型名。
+显式模型名也会通过模型列表校验。<code>http_timeout</code> 单位为秒，<code>max_concurrency</code> 是 VLM
+推理请求并发，两者均为正整数；API 的 <code>--concurrency</code> 则控制解析任务并发。</p>
+<p>环境变量包括 <code>MINERU_MODEL_VLM_SERVER_URL</code>、<code>MINERU_MODEL_VLM_API_KEY</code>、
+<code>MINERU_MODEL_VLM_MODEL</code>、<code>MINERU_MODEL_VLM_HTTP_TIMEOUT</code> 和
+<code>MINERU_MODEL_VLM_MAX_CONCURRENCY</code>。API 启动时的优先级为：显式启动参数 &gt; 环境变量 &gt;
+YAML &gt; 默认值。启动参数及示例见 <a href="../cli/mineru-kit-api-server/">api-server</a>。</p>
+<p>Python 的 <code>create_app()</code>、<code>MinerUParser</code>、<code>parse()</code> / <code>parse_async()</code> 以及底层分析入口
+可传入 <code>vlm_config: VlmConfig | None</code>：<code>None</code> 使用全局设置；显式对象完整覆盖全局设置。
+应用与解析器各自保存配置副本，不修改全局配置或进程环境。</p>
+<div class="highlight"><pre><span></span><code><span class="kn">from</span><span class="w"> </span><span class="nn">mineru.config</span><span class="w"> </span><span class="kn">import</span> <span class="n">VlmConfig</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">mineru.parser</span><span class="w"> </span><span class="kn">import</span> <span class="n">parse</span>
+
+<span class="n">result</span> <span class="o">=</span> <span class="n">parse</span><span class="p">(</span><span class="s2">"document.pdf"</span><span class="p">,</span> <span class="n">tier</span><span class="o">=</span><span class="s2">"standard"</span><span class="p">)</span>  <span class="c1"># 使用全局 model.vlm</span>
+<span class="n">local_result</span> <span class="o">=</span> <span class="n">parse</span><span class="p">(</span><span class="s2">"document.pdf"</span><span class="p">,</span> <span class="n">vlm_config</span><span class="o">=</span><span class="n">VlmConfig</span><span class="p">())</span>  <span class="c1"># 本次使用本地 VLM</span>
+</code></pre></div>
+<p>远程模式不会自动回退本地 VLM。旧底层环境变量 <code>MINERU_VL_API_KEY</code>、
+<code>MINERU_VL_MODEL_NAME</code> 若与有效的新配置冲突，会明确报错；应清除旧变量并使用上述
+<code>MINERU_MODEL_VLM_*</code> 配置。未配置远程地址时，旧 <code>MINERU_VL_SERVER</code> 不会启用远程 VLM。</p>
+<p>Markdown render 同样读取启动前 <code>config.yaml</code>，当前支持以下配置：</p>
+<div class="highlight"><pre><span></span><code><span class="nt">render</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">latex_delimiters</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">display</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">left</span><span class="p">:</span><span class="w"> </span><span class="s">"$$"</span>
+<span class="w">      </span><span class="nt">right</span><span class="p">:</span><span class="w"> </span><span class="s">"$$"</span>
+<span class="w">    </span><span class="nt">inline</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">left</span><span class="p">:</span><span class="w"> </span><span class="s">"$"</span>
+<span class="w">      </span><span class="nt">right</span><span class="p">:</span><span class="w"> </span><span class="s">"$"</span>
+</code></pre></div>
+<p>四个 delimiter 必须为非空字符串。缺省值如上；环境变量可按现有字段路径规则覆盖，
+例如 <code>MINERU_RENDER_LATEX_DELIMITERS_INLINE_LEFT</code>。</p>
+<p>PDF 的 LLM 辅助后处理同样读取启动前 <code>config.yaml</code>：</p>
+<div class="highlight"><pre><span></span><code><span class="nt">llm_aided</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">api_key</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${MINERU_LLM_API_KEY:-}</span>
+<span class="w">  </span><span class="nt">base_url</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://dashscope.aliyuncs.com/compatible-mode/v1</span>
+<span class="w">  </span><span class="nt">model</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">qwen3.5-plus</span>
+<span class="w">  </span><span class="nt">enable_thinking</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
+<span class="w">  </span><span class="nt">max_concurrency</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">16</span>
+<span class="w">  </span><span class="nt">features</span><span class="p">:</span>
+<span class="w">    </span><span class="nt">title_leveling</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
+<span class="w">    </span><span class="nt">cross_page_table_cell_merge</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
+</code></pre></div>
+<p>两个功能默认关闭并共享同一套 OpenAI-compatible 连接参数。<code>title_leveling</code> 在严格
+<code>MiddleJson.pages</code> 上优化标题层级，但只在 <code>MiddleJson.is_full_document=true</code> 的整本 PDF 输入中运行；
+抽页结果会跳过标题优化。<code>cross_page_table_cell_merge</code> 不受整本输入限制，只消费确定性后处理
+已经写入的 <code>continues_prev</code>，再把逐单元格的 <code>0/1</code> 结果写入后表根块 <code>cell_merge</code>。两个功能
+通过同一个异步客户端并发请求，<code>max_concurrency</code> 是不小于 1 的共享请求上限，默认值为 16。
+标题分级结果允许 1 到 6，段落标题的 1 会归一为 2，最终严格标题层级范围为 2 到 6。前置
+MinerU VLM 的跨页单元格检测保持关闭。任一功能启用时，<code>api_key</code>、<code>base_url</code> 和 <code>model</code>
+均必须为非空字符串；省略 <code>enable_thinking</code> 时不会发送该扩展参数。</p>
+<p>环境变量可覆盖任意强类型字段，例如 <code>MINERU_LLM_AIDED_API_KEY</code>、
+<code>MINERU_LLM_AIDED_MAX_CONCURRENCY</code>、
+<code>MINERU_LLM_AIDED_FEATURES_TITLE_LEVELING</code> 和
+<code>MINERU_LLM_AIDED_FEATURES_CROSS_PAGE_TABLE_CELL_MERGE</code>。</p>
+<p>配置必须服务两个产品原则：</p>
+<ul>
+<li>隐私优先：任何配置都不能导致静默上传文档。</li>
+<li>质量优先：PDF/image 主动阅读未指定 tier 时使用默认选择策略，不能静默降级到 <code>flash</code>；OFD/EPUB/Office/HTML/MHTML/CSV/TSV 按实际能力归一为 <code>flash</code>；其它 text 直接读取。</li>
+</ul>
+<p>全局日志级别由 <code>log.level</code> 控制，默认 <code>info</code>，可选 <code>trace</code>、<code>debug</code>、<code>info</code>、
+<code>warning</code>、<code>error</code>、<code>critical</code>。环境变量 <code>MINERU_LOG_LEVEL</code> 可覆盖 YAML；
+该配置作用于当前进程的 Loguru 默认 stderr sink，不会移除宿主程序显式添加的
+自定义 sink。<code>doclib.log.level</code> 是 Doclib 进程日志级别的局部覆盖；api-server
+启动参数 <code>--log-level</code> 是服务侧（Uvicorn/HTTP 访问/服务自身 stdlib 日志）的局部
+覆盖，不影响 Loguru 默认 sink。</p>
+<h2 id="2">2. 两阶段配置模型</h2>
+<h3 id="21">2.1 启动前配置</h3>
+<p>启动前配置解决“server 还没起来，不能读数据库”的问题。</p>
+<p>这类配置包括：</p>
+<table>
+<thead>
+<tr>
+<th>分组</th>
+<th>字段</th>
+<th>默认值</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>全局日志</td>
+<td><code>log.level</code></td>
+<td><code>info</code></td>
+<td>Loguru 默认 stderr sink 级别；可用 <code>MINERU_LOG_LEVEL</code> 覆盖</td>
+</tr>
+<tr>
+<td>UDS</td>
+<td><code>doclib.uds.enabled</code></td>
+<td><code>auto</code></td>
+<td><code>auto</code> / <code>true</code> / <code>false</code>；<code>auto</code> 时当前 Python runtime 支持 UDS 则启用，否则关闭</td>
+</tr>
+<tr>
+<td>UDS</td>
+<td><code>doclib.uds.path</code></td>
+<td><code>~/.mineru/doclib.sock</code></td>
+<td>CLI / doclib 通信 socket，默认取 <code>$MINERU_HOME/doclib.sock</code></td>
+</tr>
+<tr>
+<td>UDS</td>
+<td><code>doclib.uds.permission</code></td>
+<td><code>0o600</code></td>
+<td>socket 权限</td>
+</tr>
+<tr>
+<td>TCP</td>
+<td><code>doclib.tcp.enabled</code></td>
+<td><code>auto</code></td>
+<td><code>auto</code> / <code>true</code> / <code>false</code>；<code>auto</code> 时 UDS 不可用则启用，作为 Windows fallback</td>
+</tr>
+<tr>
+<td>TCP</td>
+<td><code>doclib.tcp.host</code></td>
+<td><code>127.0.0.1</code></td>
+<td>TCP 监听地址</td>
+</tr>
+<tr>
+<td>TCP</td>
+<td><code>doclib.tcp.port</code></td>
+<td><code>15980</code></td>
+<td>TCP 监听端口</td>
+</tr>
+<tr>
+<td>TCP</td>
+<td><code>doclib.tcp.strict_port</code></td>
+<td><code>False</code></td>
+<td>端口占用时是否报错</td>
+</tr>
+<tr>
+<td>TCP</td>
+<td><code>doclib.tcp.port_probe_count</code></td>
+<td><code>100</code></td>
+<td><code>strict_port</code> 为 <code>False</code> 时从 <code>port</code> 起向后探测的端口数量上限</td>
+</tr>
+<tr>
+<td>TCP</td>
+<td><code>doclib.tcp.backlog</code></td>
+<td><code>128</code></td>
+<td>socket backlog</td>
+</tr>
+<tr>
+<td>TCP</td>
+<td><code>doclib.tcp.timeout</code></td>
+<td><code>600</code></td>
+<td>keep-alive timeout</td>
+</tr>
+<tr>
+<td>log</td>
+<td><code>doclib.log.dir</code></td>
+<td><code>~/.mineru/logs</code></td>
+<td>默认日志目录；未单独配置的日志路径会从该目录派生</td>
+</tr>
+<tr>
+<td>log</td>
+<td><code>doclib.log.app_path</code></td>
+<td>unset → <code>&lt;dir&gt;/doclib.log</code></td>
+<td>Python application 日志路径</td>
+</tr>
+<tr>
+<td>log</td>
+<td><code>doclib.log.access_path</code></td>
+<td>unset → <code>&lt;dir&gt;/doclib.access.log</code></td>
+<td>HTTP access 日志路径</td>
+</tr>
+<tr>
+<td>log</td>
+<td><code>doclib.log.stdout_path</code></td>
+<td>unset → <code>&lt;dir&gt;/doclib.stdout.log</code></td>
+<td>server 子进程 stdout fallback 日志路径</td>
+</tr>
+<tr>
+<td>log</td>
+<td><code>doclib.log.stderr_path</code></td>
+<td>unset → <code>&lt;dir&gt;/doclib.stderr.log</code></td>
+<td>server 子进程 stderr fallback 日志路径</td>
+</tr>
+<tr>
+<td>log</td>
+<td><code>doclib.log.parse_server_stdout_path</code></td>
+<td>unset → <code>&lt;dir&gt;/doclib.parse-server.stdout.log</code></td>
+<td>managed parse-server stdout 日志路径</td>
+</tr>
+<tr>
+<td>log</td>
+<td><code>doclib.log.parse_server_stderr_path</code></td>
+<td>unset → <code>&lt;dir&gt;/doclib.parse-server.stderr.log</code></td>
+<td>managed parse-server stderr 日志路径</td>
+</tr>
+<tr>
+<td>log</td>
+<td><code>doclib.log.level</code></td>
+<td>unset → <code>log.level</code></td>
+<td>Doclib 进程日志级别局部覆盖</td>
+</tr>
+<tr>
+<td>doclib</td>
+<td><code>doclib.endpoint_path</code></td>
+<td><code>~/.mineru/doclib.endpoint.json</code></td>
+<td>当前 server 实际可用 endpoint discovery 文件</td>
+</tr>
+<tr>
+<td>doclib</td>
+<td><code>doclib.data_dir</code></td>
+<td><code>~/.mineru/doclib</code></td>
+<td>数据目录，默认取 <code>$MINERU_HOME/doclib</code>，但仍可通过配置文件或环境变量覆盖</td>
+</tr>
+<tr>
+<td>doclib</td>
+<td><code>doclib.managed_parse_server.host</code></td>
+<td><code>127.0.0.1</code></td>
+<td>managed parse-server 监听地址</td>
+</tr>
+<tr>
+<td>doclib</td>
+<td><code>doclib.managed_parse_server.port</code></td>
+<td><code>16580</code></td>
+<td>managed parse-server 监听端口</td>
+</tr>
+<tr>
+<td>doclib</td>
+<td><code>doclib.managed_parse_server.strict_port</code></td>
+<td><code>False</code></td>
+<td>端口占用时是否报错</td>
+</tr>
+<tr>
+<td>doclib</td>
+<td><code>doclib.managed_parse_server.port_probe_count</code></td>
+<td><code>100</code></td>
+<td><code>strict_port</code> 为 <code>False</code> 时从 <code>port</code> 起向后探测的端口数量上限</td>
+</tr>
+<tr>
+<td>doclib</td>
+<td><code>doclib.ingest_workers</code></td>
+<td><code>2</code></td>
+<td>ingest worker 数</td>
+</tr>
+<tr>
+<td>doclib</td>
+<td><code>doclib.parse_workers</code></td>
+<td><code>2</code></td>
+<td>parse worker 数</td>
+</tr>
+<tr>
+<td>doclib</td>
+<td><code>doclib.scan_interval_sec</code></td>
+<td><code>300</code></td>
+<td>watch 扫描间隔</td>
+</tr>
+<tr>
+<td>doclib</td>
+<td><code>doclib.device_check_interval_sec</code></td>
+<td><code>5</code></td>
+<td>可插拔设备检测间隔</td>
+</tr>
+<tr>
+<td>doclib</td>
+<td><code>doclib.ingest_lock_timeout_sec</code></td>
+<td><code>60</code></td>
+<td>ingest 锁超时</td>
+</tr>
+<tr>
+<td>doclib</td>
+<td><code>doclib.parse_lock_timeout_sec</code></td>
+<td><code>1800</code></td>
+<td>parse 锁超时</td>
+</tr>
+<tr>
+<td>doclib</td>
+<td><code>doclib.scan_lock_timeout_sec</code></td>
+<td><code>1800</code></td>
+<td>scan 锁超时</td>
+</tr>
+<tr>
+<td>doclib</td>
+<td><code>doclib.compaction_interval_sec</code></td>
+<td><code>3600</code></td>
+<td>compaction 间隔</td>
+</tr>
+<tr>
+<td>doclib</td>
+<td><code>doclib.parse_server_health_check_interval_sec</code></td>
+<td><code>30</code></td>
+<td>parse-server 健康检查间隔</td>
+</tr>
+<tr>
+<td>doclib</td>
+<td><code>doclib.parse_server_probe_timeout_sec</code></td>
+<td><code>10</code></td>
+<td>parse-server 探测超时</td>
+</tr>
+<tr>
+<td>doclib</td>
+<td><code>doclib.parse_server_startup_grace_sec</code></td>
+<td><code>30</code></td>
+<td>managed parse-server 启动宽限时间</td>
+</tr>
+<tr>
+<td>doclib</td>
+<td><code>doclib.parse_server_startup_timeout_sec</code></td>
+<td><code>600</code></td>
+<td>managed parse-server 启动硬超时；超时后进入重启策略</td>
+</tr>
+<tr>
+<td>doclib</td>
+<td><code>doclib.parse_server_stop_timeout_sec</code></td>
+<td><code>10</code></td>
+<td>managed parse-server 停止超时</td>
+</tr>
+<tr>
+<td>model</td>
+<td><code>model.base_dir</code></td>
+<td><code>~/.mineru/models</code></td>
+<td>模型文件根目录，默认取 <code>$MINERU_HOME/models</code></td>
+</tr>
+<tr>
+<td>model</td>
+<td><code>model.source</code></td>
+<td><code>auto</code></td>
+<td>模型下载来源：<code>auto</code> / <code>huggingface</code> / <code>modelscope</code> / <code>local</code></td>
+</tr>
+<tr>
+<td>model</td>
+<td><code>model.small_backend</code></td>
+<td><code>auto</code></td>
+<td>小模型后端：<code>auto</code> / <code>onnx</code> / <code>torch</code>；依据依赖与设备自动选择</td>
+</tr>
+<tr>
+<td>model</td>
+<td><code>model.vlm.engine</code></td>
+<td><code>auto</code></td>
+<td>本地 VLM：<code>auto</code> / <code>llama-cpp</code> / <code>vllm</code> / <code>lmdeploy</code> / <code>mlx</code>；远程地址优先，MLX 仅显式使用</td>
+</tr>
+<tr>
+<td>sqlite</td>
+<td><code>doclib.sqlite.path</code></td>
+<td><code>~/.mineru/doclib.db</code></td>
+<td>SQLite DB 路径</td>
+</tr>
+<tr>
+<td>sqlite</td>
+<td><code>doclib.sqlite.busy_timeout_ms</code></td>
+<td><code>5000</code></td>
+<td>SQLite 锁等待时间（毫秒）</td>
+</tr>
+<tr>
+<td>sqlite</td>
+<td><code>doclib.sqlite.lock_retry_attempts</code></td>
+<td><code>3</code></td>
+<td><code>SQLITE_BUSY</code> / <code>SQLITE_LOCKED</code> 的额外重试次数</td>
+</tr>
+<tr>
+<td>sqlite</td>
+<td><code>doclib.sqlite.lock_retry_base_delay_ms</code></td>
+<td><code>50</code></td>
+<td>SQLite 锁重试的指数退避初始延迟（毫秒）</td>
+</tr>
+<tr>
+<td>sqlite</td>
+<td><code>doclib.sqlite.mmap_size</code></td>
+<td><code>268435456</code></td>
+<td>mmap size</td>
+</tr>
+<tr>
+<td>sqlite</td>
+<td><code>doclib.sqlite.cache_size</code></td>
+<td><code>-20000</code></td>
+<td>SQLite cache size</td>
+</tr>
+<tr>
+<td>sqlite</td>
+<td><code>doclib.sqlite.wal_autocheckpoint</code></td>
+<td><code>1000</code></td>
+<td>WAL checkpoint 阈值</td>
+</tr>
+<tr>
+<td>sqlite</td>
+<td><code>doclib.sqlite.journal_size_limit</code></td>
+<td><code>33554432</code></td>
+<td>WAL journal size limit</td>
+</tr>
+<tr>
+<td>sqlite</td>
+<td><code>doclib.sqlite.temp_store</code></td>
+<td><code>memory</code></td>
+<td>temp store</td>
+</tr>
+<tr>
+<td>sqlite</td>
+<td><code>doclib.sqlite.synchronous</code></td>
+<td><code>NORMAL</code></td>
+<td>synchronous pragma</td>
+</tr>
+</tbody>
+</table>
+<p><code>doclib.uds.enabled</code> 和 <code>doclib.tcp.enabled</code> 是 <code>auto | true | false</code> 配置项。默认值为 <code>auto</code>。当前第一版只在启动前解析 <code>auto</code>: UDS 可用则启用 UDS、关闭 TCP；UDS 不可用则关闭 UDS、启用 TCP loopback。用户显式配置 <code>true</code> / <code>false</code> 时，server 尊重该配置。</p>
+<p>这些配置影响 doclib 如何启动，因此不能依赖 <code>mineru config</code> 读取。</p>
+<h3 id="22">2.2 运行时配置</h3>
+<p>运行时配置在 doclib server 启动后可读写。</p>
+<table>
+<thead>
+<tr>
+<th>来源</th>
+<th>例子</th>
+<th>存储</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>SQLite <code>config</code> 表</td>
+<td><code>parse_server.local.mode</code>、<code>parse_server.remote.url</code></td>
+<td>KV</td>
+<td>doclib 运行时配置</td>
+</tr>
+<tr>
+<td><code>watches</code> 表</td>
+<td>watch 目录、可插拔设备状态</td>
+<td>表结构</td>
+<td>文件发现配置</td>
+</tr>
+<tr>
+<td><code>exclude_rules</code> 表</td>
+<td>exclude</td>
+<td>表结构</td>
+<td>路径排除规则</td>
+</tr>
+<tr>
+<td><code>parsing_rules</code> 表</td>
+<td>parsing-rules</td>
+<td>表结构</td>
+<td>路径解析规则</td>
+</tr>
+<tr>
+<td>当前命令显式参数</td>
+<td><code>--tier standard</code>、<code>--remote</code></td>
+<td>不持久化</td>
+<td>当前请求覆盖</td>
+</tr>
+<tr>
+<td>环境变量</td>
+<td><code>MINERU_API_KEY</code></td>
+<td>不持久化</td>
+<td>临时凭证或 CI 覆盖</td>
+</tr>
+<tr>
+<td>SDK client 参数</td>
+<td><code>base_url</code>、<code>api_key</code></td>
+<td>调用方决定</td>
+<td>当前 client 实例</td>
+</tr>
+</tbody>
+</table>
+<h2 id="3">3. 优先级</h2>
+<p>运行时行为的优先级从高到低。API Key 等运行时凭证的优先级见“API Key 与环境变量”。</p>
+<ol>
+<li>当前命令显式参数。</li>
+<li>当前进程环境变量。</li>
+<li>启动前文件配置或 SQLite 配置。</li>
+<li>内置默认值。</li>
+</ol>
+<p>启动前文件配置和 SQLite 配置不应定义同一配置项。需要在 doclib server 启动前确定的配置使用文件配置；doclib server 启动后可读写的配置使用 SQLite。设计上不允许同一项配置同时存在于文件和 DB，因此二者之间不应产生优先级冲突。</p>
+<p>SDK client 显式参数属于当前调用方传入的请求上下文；当它最终转化为 CLI/API 请求时，按“当前命令显式参数”处理。</p>
+<p>如果一个配置会改变隐私边界，例如启用远端上传，必须要求当前请求或规则显式允许，不能只因为全局配置存在 remote URL 或 API Key 就上传文档。</p>
+<p>启动前配置只用于必须在 doclib 初始化前确定的字段，比如 UDS/TCP transport、endpoint discovery 路径、DB 路径、SQLite pragma。它不与 SQLite 配置定义同一 key，也不在 doclib 启动后被 SQLite 覆盖。<code>MINERU_HOME</code> 属于 bootstrap 层，负责默认 home 与默认配置文件位置；<code>doclib.data_dir</code> 是独立配置项，默认取 <code>$MINERU_HOME/doclib</code>。</p>
+<h2 id="4-kv">4. 运行时 KV 配置</h2>
+<p>运行时 KV 配置的默认值由代码定义，SQLite <code>config</code> 表只保存用户 override。</p>
+<table>
+<thead>
+<tr>
+<th>key</th>
+<th>默认值</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>parse_server.local.mode</code></td>
+<td><code>disabled</code></td>
+<td>本地 parse-server 模式</td>
+</tr>
+<tr>
+<td><code>parse_server.local.managed_tier</code></td>
+<td><code>standard</code></td>
+<td>managed 模式启动能力上限，只接受 <code>basic</code> 或 <code>standard</code>；Standard 同时提供 Advanced 请求能力</td>
+</tr>
+<tr>
+<td><code>parse_server.remote.url</code></td>
+<td><code>https://mineru.net/api</code></td>
+<td>默认远端 API 地址</td>
+</tr>
+</tbody>
+</table>
+<h2 id="5-parse-server">5. Parse-server 配置</h2>
+<p>parse-server 是 <code>basic</code> / <code>standard</code> / <code>advanced</code> 等质量 tier 的解析能力来源。它可以是本地独立进程，也可以是远端 <code>mineru.net/api</code>。</p>
+<h3 id="51-local-parse-server">5.1 Local parse-server</h3>
+<table>
+<thead>
+<tr>
+<th>key</th>
+<th>默认值</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>parse_server.local.mode</code></td>
+<td><code>disabled</code></td>
+<td><code>disabled</code> / <code>managed</code> / <code>self_hosted</code></td>
+</tr>
+<tr>
+<td><code>parse_server.local.managed_tier</code></td>
+<td><code>standard</code></td>
+<td>managed 模式启动的 tier</td>
+</tr>
+<tr>
+<td><code>parse_server.local.self_hosted_url</code></td>
+<td>无</td>
+<td>self-hosted parse-server URL</td>
+</tr>
+<tr>
+<td><code>parse_server.local.self_hosted_api_key</code></td>
+<td>无</td>
+<td>self-hosted API Key，可选</td>
+</tr>
+</tbody>
+</table>
+<p>模式语义：</p>
+<table>
+<thead>
+<tr>
+<th>mode</th>
+<th>行为</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>disabled</code></td>
+<td>不使用本地 parse-server；本地质量 tier 请求返回 <code>no_engine</code> 或相关错误</td>
+</tr>
+<tr>
+<td><code>managed</code></td>
+<td>doclib 启动和停止时自动管理 parse-server</td>
+</tr>
+<tr>
+<td><code>self_hosted</code></td>
+<td>用户自行启动 parse-server，doclib 只负责连接和探活</td>
+</tr>
+</tbody>
+</table>
+<h3 id="52-remote-parse-server">5.2 Remote parse-server</h3>
+<table>
+<thead>
+<tr>
+<th>key</th>
+<th>默认值</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>parse_server.remote.url</code></td>
+<td><code>https://mineru.net/api</code></td>
+<td>默认远端 API 地址</td>
+</tr>
+<tr>
+<td><code>parse_server.remote.api_key</code></td>
+<td>无</td>
+<td>远端 API Key</td>
+</tr>
+</tbody>
+</table>
+<p>远端配置存在不等于允许上传。只有当前请求显式 <code>--remote</code>，或 parsing-rule 显式带 remote 语义时，才可以上传文档。</p>
+<h2 id="6-api-key">6. API Key 与环境变量</h2>
+<p>API Key 读取优先级：</p>
+<ol>
+<li>Remote API 使用 SQLite config 中的 <code>parse_server.remote.api_key</code>。</li>
+<li>未配置 Remote API Key 时，回退到环境变量 <code>MINERU_API_KEY</code>。</li>
+</ol>
+<p><code>parse_server.local.self_hosted_api_key</code> 只读取自身的 SQLite config，不回退到 Remote API 的环境变量。</p>
+<p>环境变量适合无 tty 场景和 CI 的默认凭证，但运行中的 doclib server 会优先使用 <code>mineru config set</code>
+写入的运行时配置。环境变量不应改变是否允许 remote 上传的判断。</p>
+<p>建议保留的环境变量：</p>
+<table>
+<thead>
+<tr>
+<th>变量</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>MINERU_API_KEY</code></td>
+<td>默认远端 API Key</td>
+</tr>
+<tr>
+<td><code>MINERU_BASE_URL</code></td>
+<td>SDK 或 CLI 的默认远端 URL，是否采用待定</td>
+</tr>
+<tr>
+<td><code>MINERU_TELEMETRY</code></td>
+<td>遥测开关，是否采用待定</td>
+</tr>
+</tbody>
+</table>
+<h2 id="7-cli">7. CLI 参数与配置关系</h2>
+<p><code>mineru parse</code> 的显式参数只影响当前请求：</p>
+<table>
+<thead>
+<tr>
+<th>CLI 参数</th>
+<th>配置关系</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>--tier</code></td>
+<td>覆盖当前请求 tier；未指定时使用默认选择策略</td>
+</tr>
+<tr>
+<td><code>--remote</code></td>
+<td>显式允许当前请求上传远端；远端 URL 来自 config，API Key 优先来自 config，未配置时使用环境变量</td>
+</tr>
+<tr>
+<td><code>--pages</code></td>
+<td>当前请求页码范围</td>
+</tr>
+<tr>
+<td><code>--force</code></td>
+<td>当前请求跳过 done 缓存；复用 active parse 或为未覆盖页创建新 parse；不删除或作废旧缓存</td>
+</tr>
+<tr>
+<td><code>--wait</code> / <code>--no-wait</code></td>
+<td>当前请求等待策略</td>
+</tr>
+</tbody>
+</table>
+<p><code>mineru config</code> 修改持久配置：</p>
+<div class="highlight"><pre><span></span><code>mineru<span class="w"> </span>config<span class="w"> </span>parse-server<span class="w"> </span>local.mode<span class="w"> </span>managed
+mineru<span class="w"> </span>config<span class="w"> </span>parse-server<span class="w"> </span>local.managed-tier<span class="w"> </span>basic
+mineru<span class="w"> </span>config<span class="w"> </span>parse-server<span class="w"> </span>remote.api-key<span class="w"> </span>sk-...
+</code></pre></div>
+<p>当前已实现的 config 命令分组：</p>
+<table>
+<thead>
+<tr>
+<th>命令</th>
+<th>作用</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mineru config show</code></td>
+<td>展示 KV 配置、watch 和 rules</td>
+</tr>
+<tr>
+<td><code>mineru watch add/list/remove/rescan</code></td>
+<td>管理 watch 目录</td>
+</tr>
+<tr>
+<td><code>mineru config exclude add/list/rm</code></td>
+<td>管理排除规则</td>
+</tr>
+<tr>
+<td><code>mineru config parsing-rules add/list/rm</code></td>
+<td>管理解析规则</td>
+</tr>
+<tr>
+<td><code>mineru config parse-server local.mode</code></td>
+<td>设置本地 parse-server 模式</td>
+</tr>
+<tr>
+<td><code>mineru config parse-server local.managed-tier</code></td>
+<td>设置 managed tier</td>
+</tr>
+<tr>
+<td><code>mineru config parse-server local.self-hosted-url</code></td>
+<td>设置 self-hosted URL</td>
+</tr>
+<tr>
+<td><code>mineru config parse-server local.self-hosted-api-key</code></td>
+<td>设置 self-hosted API Key</td>
+</tr>
+<tr>
+<td><code>mineru config parse-server remote.url</code></td>
+<td>设置远端 URL</td>
+</tr>
+<tr>
+<td><code>mineru config parse-server remote.api-key</code></td>
+<td>设置远端 API Key</td>
+</tr>
+</tbody>
+</table>
+<h2 id="8-watch-rules">8. Watch 与 Rules</h2>
+<p>Watch 目录、parsing-rules 和 exclude 规则不直接存储在 <code>config</code> KV 中，但属于配置体系。</p>
+<h3 id="81-watch">8.1 Watch</h3>
+<p>Watch 用于自动发现文件和建立搜索索引。</p>
+<p>约束：</p>
+<ul>
+<li>watch 默认 tier 是 <code>flash</code>。</li>
+<li>watch 默认 tier 暂不配置化。</li>
+<li>watch 的目标是发现、预览和索引，不是最终阅读质量。</li>
+<li>watch 目录不允许嵌套。</li>
+<li>removable watch 路径不可达时，应标记 <code>unreachable</code>，不永久删除记录。</li>
+</ul>
+<h3 id="82-parsing-rules">8.2 Parsing-rules</h3>
+<p>Parsing-rules 通过路径 glob 指定自动解析策略。</p>
+<div class="highlight"><pre><span></span><code>mineru<span class="w"> </span>config<span class="w"> </span>parsing-rules<span class="w"> </span>add<span class="w"> </span><span class="s2">"*/论文/*"</span><span class="w"> </span>--tier<span class="w"> </span>basic<span class="w"> </span>--pages<span class="w"> </span>all
+mineru<span class="w"> </span>config<span class="w"> </span>parsing-rules<span class="w"> </span>add<span class="w"> </span><span class="s2">"*/合同/*"</span><span class="w"> </span>--tier<span class="w"> </span>standard<span class="w"> </span>--remote
+</code></pre></div>
+<p>约束：</p>
+<ul>
+<li>对 PDF/image，规则必须显式指定 remote，才允许上传远端。</li>
+<li>对 PDF/image，规则命中的 tier 必须经过能力检查。</li>
+<li>对 PDF/image，规则未指定 tier 时按 <code>standard</code> -&gt; <code>basic</code> -&gt; <code>flash</code> 选择，并只记录实际使用的实体 tier。</li>
+<li>对 OFD/EPUB/Office/HTML/MHTML/CSV/TSV，parsing-rule 的 tier、page_range 和 remote 不生效，实际按 <code>flash</code> 整本解析并记录；其它 text 只入库和索引，不创建 parse row。</li>
+<li>完整归一规则见 <a href="../decisions/0024-file-type-tier-normalization/">ADR-0024</a>。</li>
+</ul>
+<h3 id="83-exclude">8.3 Exclude</h3>
+<p>Exclude 使用 glob 模式排除路径。默认 exclude 规则由 DB 初始化写入 <code>exclude_rules</code> 表，而不是写死在 config KV 中。</p>
+<p>默认规则覆盖：</p>
+<ul>
+<li><code>*/Library/*</code></li>
+<li><code>*/.git/*</code></li>
+<li><code>*/node_modules/*</code></li>
+<li><code>*/vendor/*</code></li>
+<li><code>*/go/pkg/*</code></li>
+<li><code>*/__pycache__/*</code></li>
+<li><code>*/.venv/*</code></li>
+<li><code>*/miniconda3/*</code></li>
+<li><code>*/.nvm/*</code></li>
+<li><code>*/.docker/*</code></li>
+<li><code>*/target/*</code></li>
+<li><code>*/dist/*</code></li>
+<li><code>*/build/*</code></li>
+</ul>
+<h2 id="9-sdk-client">9. SDK Client 配置</h2>
+<p>SDK 配置应显式、可类型检查，并避免 <code>**kwargs: Any</code> 式透传。</p>
+<p>建议字段：</p>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>base_url</code></td>
+<td>API 地址</td>
+</tr>
+<tr>
+<td><code>api_key</code></td>
+<td>API Key</td>
+</tr>
+<tr>
+<td><code>timeout</code></td>
+<td>请求超时</td>
+</tr>
+<tr>
+<td><code>default_tier</code></td>
+<td>SDK client 自身默认 tier；未设置时使用默认选择策略</td>
+</tr>
+<tr>
+<td><code>allow_remote</code></td>
+<td>是否允许上传远端，应显式设置</td>
+</tr>
+</tbody>
+</table>
+<p>SDK client 的配置不应在 import 时读取重依赖或启动服务。</p>
+<h2 id="10">10. 隐私与遥测</h2>
+<p>隐私配置和遥测配置必须分开。</p>
+<p>文档隐私：</p>
+<ul>
+<li>默认 local。</li>
+<li>远端上传必须由当前请求或规则显式允许。</li>
+<li>API Key 存在不代表允许上传。</li>
+</ul>
+<p>遥测：</p>
+<ul>
+<li>不包含文档内容、文件名和路径。</li>
+<li>doclib server 是 P0 唯一 telemetry 上报主体。</li>
+<li>首次启动应要求用户选择，不预选开启或关闭，用户可关闭。</li>
+<li>parser SDK、<code>mineru-kit parse</code>、<code>mineru-kit api-server</code> 等纯工具无 telemetry 能力。</li>
+<li>telemetry 配置存储在 SQLite 中，不使用启动前文件配置。</li>
+<li>telemetry 聚合数据也存储在 SQLite 中，flush 成功后删除已确认上报的数据。</li>
+</ul>
+<p>P0 必须完成 telemetry 设计，明确字段、开关、默认值、隐私边界和上报时机。具体设计见 <a href="../telemetry/">Telemetry 设计</a>。</p>
+<h2 id="_2">与其他文档的关系</h2>
+<ul>
+<li>CLI 参数见 <a href="../cli/">CLI 规格</a>。</li>
+<li>CLI 配置命令见 <a href="../cli/mineru-library/">mineru library</a>。</li>
+<li>启动前 server 配置和 SQLite <code>config</code> 表见 <a href="../architecture/">系统架构</a>。</li>
+<li>API key、base_url、timeout 等 client 配置见 <a href="../sdk/">SDK 设计</a>。</li>
+<li>隐私默认策略见 <a href="../roadmap/">产品路线图</a>。</li>
+<li>Tier 默认语义见 <a href="../tiers/">解析 Tier</a>。</li>
+<li>配置相关错误见 <a href="../errors/">错误码体系</a>。</li>
+</ul>
+<h2 id="_3">未决问题</h2>
+<p>项目级配置、用户级配置路径和正式环境变量等问题，集中维护在 <a href="../open-questions/">开放问题清单</a>。</p></div>
+
+
+
+
+
+
+
+
+
+  
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      © 2024 - 2025 MinerU. All Rights Reserved.
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+    <a href="https://github.com/opendatalab/MinerU" target="_blank" rel="noopener" title="GitHub" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://x.com/OpenDataLab_AI" target="_blank" rel="noopener" title="X-Twitter" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M357.2 48h70.6L273.6 224.2 455 464H313L201.7 318.6 74.5 464H3.8l164.9-188.5L-5.2 48h145.6l100.5 132.9zm-24.8 373.8h39.1L119.1 88h-42z"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://discord.gg/Tdedn9GTXq" target="_blank" rel="noopener" title="Discord" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M492.5 69.8c-.2-.3-.4-.6-.8-.7-38.1-17.5-78.4-30-119.7-37.1-.4-.1-.8 0-1.1.1s-.6.4-.8.8c-5.5 9.9-10.5 20.2-14.9 30.6-44.6-6.8-89.9-6.8-134.4 0-4.5-10.5-9.5-20.7-15.1-30.6-.2-.3-.5-.6-.8-.8s-.7-.2-1.1-.2C162.5 39 122.2 51.5 84.1 69c-.3.1-.6.4-.8.7C7.1 183.5-13.8 294.6-3.6 404.2c0 .3.1.5.2.8s.3.4.5.6c44.4 32.9 94 58 146.8 74.2.4.1.8.1 1.1 0s.7-.4.9-.7c11.3-15.4 21.4-31.8 30-48.8.1-.2.2-.5.2-.8s0-.5-.1-.8-.2-.5-.4-.6-.4-.3-.7-.4c-15.8-6.1-31.2-13.4-45.9-21.9-.3-.2-.5-.4-.7-.6s-.3-.6-.3-.9 0-.6.2-.9.3-.5.6-.7c3.1-2.3 6.2-4.7 9.1-7.1.3-.2.6-.4.9-.4s.7 0 1 .1c96.2 43.9 200.4 43.9 295.5 0 .3-.1.7-.2 1-.2s.7.2.9.4c2.9 2.4 6 4.9 9.1 7.2.2.2.4.4.6.7s.2.6.2.9-.1.6-.3.9-.4.5-.6.6c-14.7 8.6-30 15.9-45.9 21.8-.2.1-.5.2-.7.4s-.3.4-.4.7-.1.5-.1.8.1.5.2.8c8.8 17 18.8 33.3 30 48.8.2.3.6.6.9.7s.8.1 1.1 0c52.9-16.2 102.6-41.3 147.1-74.2.2-.2.4-.4.5-.6s.2-.5.2-.8c12.3-126.8-20.5-236.9-86.9-334.5zm-302 267.7c-29 0-52.8-26.6-52.8-59.2s23.4-59.2 52.8-59.2c29.7 0 53.3 26.8 52.8 59.2 0 32.7-23.4 59.2-52.8 59.2m195.4 0c-29 0-52.8-26.6-52.8-59.2s23.4-59.2 52.8-59.2c29.7 0 53.3 26.8 52.8 59.2 0 32.7-23.2 59.2-52.8 59.2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://mineru.net/community-portal/?aliasId=3c430f94" target="_blank" rel="noopener" title="WeChat" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M385.2 167.6c6.4 0 12.6.3 18.8 1.1C387.4 90.3 303.3 32 207.7 32 100.5 32 13 104.8 13 197.4c0 53.4 29.3 97.5 77.9 131.6l-19.3 58.6 68-34.1c24.4 4.8 43.8 9.7 68.2 9.7 6.2 0 12.1-.3 18.3-.8-4-12.9-6.2-26.6-6.2-40.8-.1-84.9 72.9-154 165.3-154m-104.5-52.9c14.5 0 24.2 9.7 24.2 24.4 0 14.5-9.7 24.2-24.2 24.2-14.8 0-29.3-9.7-29.3-24.2.1-14.7 14.6-24.4 29.3-24.4m-136.4 48.6c-14.5 0-29.3-9.7-29.3-24.2 0-14.8 14.8-24.4 29.3-24.4 14.8 0 24.4 9.7 24.4 24.4 0 14.6-9.6 24.2-24.4 24.2M563 319.4c0-77.9-77.9-141.3-165.4-141.3-92.7 0-165.4 63.4-165.4 141.3S305 460.7 397.6 460.7c19.3 0 38.9-5.1 58.6-9.9l53.4 29.3-14.8-48.6C534 402.1 563 363.2 563 319.4m-219.1-24.5c-9.7 0-19.3-9.7-19.3-19.6 0-9.7 9.7-19.3 19.3-19.3 14.8 0 24.4 9.7 24.4 19.3 0 10-9.7 19.6-24.4 19.6m107.1 0c-9.7 0-19.3-9.7-19.3-19.6 0-9.7 9.7-19.3 19.3-19.3 14.5 0 24.4 9.7 24.4 19.3.1 10-9.9 19.6-24.4 19.6"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="mailto:OpenDataLab@pjlab.org.cn" target="_blank" rel="noopener" title="E-mail" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m20 8-8 5-8-5V6l8 5 8-5m0-2H4c-1.11 0-2 .89-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": ["content.tabs.link", "content.code.annotate", "content.code.copy", "navigation.expand", "navigation.footer", "navigation.tabs", "navigation.sections", "navigation.path", "navigation.indexes", "navigation.top", "navigation.tracking", "search.suggest", "toc.follow"], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>

@@ -1,0 +1,4366 @@
+
+<!doctype html>
+<html lang="zh" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://opendatalab.github.io/MinerU/zh/next/implementation-plan/">
+      
+      
+      
+      
+        
+          <link rel="alternate" href="../../../next/implementation-plan/" hreflang="en">
+        
+          <link rel="alternate" href="./" hreflang="zh">
+        
+      
+      
+      <link rel="icon" href="../../../images/logo.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>实现计划与任务拆分 - MinerU</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+  
+
+
+  
+  
+
+<script id="__analytics">function __md_analytics(){function e(){dataLayer.push(arguments)}window.dataLayer=window.dataLayer||[],e("js",new Date),e("config","G-44K480CC48"),document.addEventListener("DOMContentLoaded",(function(){document.forms.search&&document.forms.search.query.addEventListener("blur",(function(){this.value&&e("event","search",{search_term:this.value})}));document$.subscribe((function(){var t=document.forms.feedback;if(void 0!==t)for(var a of t.querySelectorAll("[type=submit]"))a.addEventListener("click",(function(a){a.preventDefault();var n=document.location.pathname,d=this.getAttribute("data-md-value");e("event","feedback",{page:n,data:d}),t.firstElementChild.disabled=!0;var r=t.querySelector(".md-feedback__note [data-md-value='"+d+"']");r&&(r.hidden=!1)})),t.hidden=!1})),location$.subscribe((function(t){e("config","G-44K480CC48",{page_path:t.pathname})}))}));var t=document.createElement("script");t.async=!0,t.src="https://www.googletagmanager.com/gtag/js?id=G-44K480CC48",document.getElementById("__analytics").insertAdjacentElement("afterEnd",t)}</script>
+  
+    <script>"undefined"!=typeof __md_analytics&&__md_analytics()</script>
+  
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="black" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#_1" class="md-skip">
+          跳转至
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="页眉">
+    <a href="../../" title="MinerU" class="md-header__button md-logo" aria-label="MinerU" data-md-component="logo">
+      
+  <img src="../../../images/logo.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            MinerU
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              实现计划与任务拆分
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme)" data-md-color-scheme="default" data-md-color-primary="black" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m14.3 16-.7-2h-3.2l-.7 2H7.8L11 7h2l3.2 9zM20 8.69V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12zm-9.15 3.96h2.3L12 9z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="black" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_2" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="black" data-md-color-accent="indigo"  aria-label="Switch to system preference"  type="radio" name="__palette" id="__palette_2">
+    
+      <label class="md-header__button md-icon" title="Switch to system preference" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+      <div class="md-header__option">
+  <div class="md-select">
+    
+    <button class="md-header__button md-icon" aria-label="选择当前语言">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.87 15.07-2.54-2.51.03-.03A17.5 17.5 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2zm-2.62 7 1.62-4.33L19.12 17z"/></svg>
+    </button>
+    <div class="md-select__inner">
+      <ul class="md-select__list">
+        
+          <li class="md-select__item">
+            <a href="../../../next/implementation-plan/" hreflang="en" class="md-select__link">
+              English
+            </a>
+          </li>
+        
+          <li class="md-select__item">
+            <a href="./" hreflang="zh" class="md-select__link">
+              中文
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="搜索" placeholder="搜索" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="查找">
+        
+        <button type="reset" class="md-search__icon md-icon" title="清空当前内容" aria-label="清空当前内容" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            正在初始化搜索引擎
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/opendatalab/MinerU" title="前往仓库" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    opendatalab/MinerU
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="标签" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../" class="md-tabs__link">
+          
+  
+  
+    
+  
+  主页
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../quick_start/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  快速入门
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../usage/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  使用指南
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../reference/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  参考资料
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../faq/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  常见问题解答
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../demo/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  在线演示
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="导航栏" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../" title="MinerU" class="md-nav__button md-logo" aria-label="MinerU" data-md-component="logo">
+      
+  <img src="../../../images/logo.png" alt="logo">
+
+    </a>
+    MinerU
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/opendatalab/MinerU" title="前往仓库" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    opendatalab/MinerU
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    主页
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_1" id="__nav_1_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    主页
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1_2" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../quick_start/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    快速入门
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_1_2" id="__nav_1_2_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    快速入门
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quick_start/extension_modules/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    扩展模块安装
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quick_start/docker_deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker部署
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../usage/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    使用指南
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_1_3" id="__nav_1_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    使用指南
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/quick_usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    基础使用
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/tiers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    档位与运行环境
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/sdk_api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python SDK
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/http_api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    V1 HTTP API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/compatibility/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    旧平台适配（MinerU <4）
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/model_source/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    模型源配置
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/cli_tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    命令行工具
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/advanced_cli_parameters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    命令行进阶参数
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1_4" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../reference/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    参考资料
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_1_4" id="__nav_1_4_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    参考资料
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/migration_4/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    迁移到 4.0
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/output_files/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    输出文件格式
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    更新日志
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1_5" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../faq/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    常见问题解答
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    常见问题解答
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1_6" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../demo/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    在线演示
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    在线演示
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../quick_start/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    快速入门
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_2" id="__nav_2_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    快速入门
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quick_start/extension_modules/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    扩展模块安装
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quick_start/docker_deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker部署
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../usage/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    使用指南
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    使用指南
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/quick_usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    基础使用
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/tiers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    档位与运行环境
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/sdk_api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python SDK
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/http_api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    V1 HTTP API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/compatibility/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    旧平台适配（MinerU <4）
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/model_source/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    模型源配置
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/cli_tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    命令行工具
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/advanced_cli_parameters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    命令行进阶参数
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../reference/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    参考资料
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4" id="__nav_4_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    参考资料
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/migration_4/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    迁移到 4.0
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/output_files/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    输出文件格式
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    更新日志
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../faq/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    常见问题解答
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    常见问题解答
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../demo/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    在线演示
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    在线演示
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="目录">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目录
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. 使用方式
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. 任务卡片模板
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. 里程碑总览
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="3. 里程碑总览">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#31" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.1 当前代码审计范围
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#32" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.2 里程碑
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#33" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3.3 任务状态索引
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4-m0" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. M0: 测试与基线
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="4. M0: 测试与基线">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#m0-001-doclib-parse-flow" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M0-001 建立 doclib parse flow 测试入口
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m0-002-doclib-json" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M0-002 锁定 doclib 只持久化 JSON 的行为
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m0-003-middle-json-fixture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M0-003 建立 Middle JSON fixture
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5-m1-middle-json-parseresult" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. M1: Middle JSON 与 ParseResult
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="5. M1: Middle JSON 与 ParseResult">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#m1-001-parseresultfrom_dict-from_json" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M1-001 实现 ParseResult.from_dict() / from_json()
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m1-002-normalize_middle_json" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M1-002 实现 normalize_middle_json()
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m1-003-middle-json-p0-validator" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M1-003 增加 Middle JSON P0 validator
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m1-004-html-parser-typed-structure" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M1-004 修正 HTML parser 的 typed structure 输出
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m1-005-bbox_known-helper" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M1-005 定义 bbox_known() helper
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-m2-doclib-json" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. M2: doclib JSON 批次与缓存
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="6. M2: doclib JSON 批次与缓存">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#m2-001-json-helper" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M2-001 抽出 JSON 批次路径 helper
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m2-002-cache-coverage-data_dir" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M2-002 修正 cache coverage 对 data_dir 的依赖
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m2-003" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M2-003 实现或锁定增量页码入队
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m2-004-compaction-json" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M2-004 补齐 compaction JSON 合并测试
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m2-005-read-time-render-from-json-batches" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M2-005 实现 read-time render from JSON batches
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m2-006-fts-markdown" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M2-006 FTS 只消费临时 Markdown，不持久化
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7-m3-tierprivacy-parse-server" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. M3: tier、privacy 与 parse-server 路由
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="7. M3: tier、privacy 与 parse-server 路由">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#m3-001-tier-tier" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M3-001 默认 tier 在入队前解析为实际 tier
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m3-002-local-remote" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M3-002 隐私边界: local 失败不自动 remote
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m3-003-remote-fallback-local" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M3-003 remote 失败可以 fallback 到 local
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m3-004-parse-server-tier-mismatch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M3-004 parse-server tier mismatch 错误
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-m4-cli-sdk-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. M4: CLI / SDK / API 对齐
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="8. M4: CLI / SDK / API 对齐">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#m4-001-mineru-parse-doclib-read-time-render" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M4-001 mineru parse 使用 doclib read-time render
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m4-002-tool-sdk-parse-tier" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M4-002 Tool SDK parse() 增加 tier 参数
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m4-003-envelope-clisdk" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M4-003 统一错误 envelope 到 CLI/SDK 异常
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m4-004-local-parse-server-api-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M4-004 Local Parse Server API 与官方 API 差异测试
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-m5-agent-native" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. M5: Agent-native 输出
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="9. M5: Agent-native 输出">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#m5-001a-doclib-locator-helper" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M5-001a 锁定 doclib locator helper
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m5-002-markdown-locator-marker" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M5-002 Markdown locator marker
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m5-003-tier" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M5-003 搜索结果返回来源 tier
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-m6-telemetry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. M6: Telemetry
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="10. M6: Telemetry">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#m6-001-telemetry-db-flush" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M6-001 实现 telemetry DB 状态、聚合与 flush
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#m6-002-mineru-telemetry-cli" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        M6-002 实现 mineru telemetry CLI
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. 可并行性
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#12-pr" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12. PR 切分建议
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#13" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        13. 完成定义
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#14-agent" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        14. Agent 领取任务时的最终检查
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<div><h1 id="_1">实现计划与任务拆分</h1>
+<p>状态: Draft
+读者: 编程 Agent、核心开发者、代码审查者
+范围: 将 <code>docs/next/</code> 中的设计文档拆成可落地、可验证、可并行领取的工程任务
+非目标: 替代专题设计文档；一次性重写现有实现；要求所有任务在同一个 PR 完成</p>
+<h2 id="1">1. 使用方式</h2>
+<p>本文件是给编程 Agent 使用的任务手册。Agent 领取任务时，应只做一个任务卡片内的内容，并以该任务的“完成边界”和“验证方式”为准。</p>
+<p>任务状态约定:</p>
+<table>
+<thead>
+<tr>
+<th>状态</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ready</code></td>
+<td>需求清楚，可以开始实现。</td>
+</tr>
+<tr>
+<td><code>blocked</code></td>
+<td>需要先完成依赖任务。</td>
+</tr>
+<tr>
+<td><code>verify-first</code></td>
+<td>代码可能已经部分实现；先补测试或确认行为，再决定是否改代码。</td>
+</tr>
+<tr>
+<td><code>design-needed</code></td>
+<td>仍需产品或架构确认，不应直接实现。</td>
+</tr>
+<tr>
+<td><code>done</code></td>
+<td>当前代码和测试已满足完成边界；后续只在回归或重构时触碰。</td>
+</tr>
+</tbody>
+</table>
+<p>Agent 通用规则:</p>
+<ol>
+<li>先读本任务引用的专题文档和代码路径。</li>
+<li>如果现有代码已经满足任务，不重写；补测试或补文档锁定行为。</li>
+<li>任务只改“建议修改范围”内的文件；发现邻近问题时另开任务。</li>
+<li>不改变隐私边界：没有显式 remote，不得上传用户文档。</li>
+<li>不改变 tier 语义：默认选择不解析为 <code>flash</code>；结果记录实际使用的实体 tier。</li>
+<li>doclib 的 <code>parsed/</code> 目录只持久化 JSON，不落盘 Markdown / Content List / HTML。</li>
+<li>新增公开函数必须有类型注解，项目内部 import 使用 relative import。</li>
+<li>每个任务结束前必须运行该任务列出的验证命令；不能运行时要说明原因。</li>
+</ol>
+<h2 id="2">2. 任务卡片模板</h2>
+<p>每个任务都按同一结构理解:</p>
+<div class="highlight"><pre><span></span><code>ID:
+状态:
+目标:
+依赖:
+参考文档:
+建议修改范围:
+具体步骤:
+完成边界:
+验证方式:
+禁止范围:
+</code></pre></div>
+<p>完成边界是最重要的部分。Agent 只有在完成边界全部满足后，才可以声称任务完成。</p>
+<h2 id="3">3. 里程碑总览</h2>
+<h3 id="31">3.1 当前代码审计范围</h3>
+<p>本计划已经结合当前代码做过多轮快速审计，但不是完整逐行 review。最近一次对齐时间为 2026-06-16，已检查的关键路径:</p>
+<table>
+<thead>
+<tr>
+<th>代码路径</th>
+<th>结论</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>mineru/doclib/services/parse_svc.py</code></td>
+<td>已有 ingest、parse request、页码覆盖判断、JSON 批次写入、FTS 临时 Markdown、tier/remote 路由的基础实现。</td>
+</tr>
+<tr>
+<td><code>mineru/doclib/background/compaction.py</code></td>
+<td>已有 done parse batch 合并和 JSON 按 <code>page_idx</code> 合并逻辑。</td>
+</tr>
+<tr>
+<td><code>mineru/doclib/server.py</code></td>
+<td>新 doclib server 已接管 Interface 路由；<code>GET /docs/{sha256}/content</code> 已支持 read-time Markdown、<code>limit</code>、<code>after</code>、<code>content_ranges</code> 和 <code>next_request</code>。</td>
+</tr>
+<tr>
+<td><code>mineru/doclib/client.py</code></td>
+<td>同步 Doclib client 已实现 Interface；route metadata 与 server 由测试约束一致。</td>
+</tr>
+<tr>
+<td><code>mineru/doclib/core/fts.py</code>、<code>services/search_svc.py</code></td>
+<td>FTS 已存 tier；搜索结果已返回来源 tier，并支持 <code>tier</code>、<code>min_tier</code>、<code>file_type</code> 过滤。</td>
+</tr>
+<tr>
+<td><code>mineru/doclib/locators.py</code></td>
+<td>已有 <code>short_id</code> 相关 block/page/char cursor helper；P0 引用模型收敛为稳定 page/block locator。</td>
+</tr>
+<tr>
+<td><code>mineru/parser/base.py</code></td>
+<td><code>ParseResult.from_dict()</code> / <code>from_json()</code> 已实现；<code>from_dict()</code> 支持 schema 2.0 与 <code>pdf_info</code> / schema 1.0 legacy 兼容分支。</td>
+</tr>
+<tr>
+<td><code>mineru/parser/__init__.py</code></td>
+<td>Tool SDK <code>parse()</code> / <code>parse_async()</code> 已有 <code>tier</code> 参数；任何入口都不接受 <code>backend</code> 入参。</td>
+</tr>
+<tr>
+<td><code>mineru/types.py</code></td>
+<td><code>Tier</code>、<code>TIER_ORDER</code> 与 Middle JSON typed dataclass 在此定义；尚无 Middle JSON normalize / validator。</td>
+</tr>
+<tr>
+<td><code>mineru/errors.py</code></td>
+<td>已有 <code>MineruError</code>、<code>engine_error</code> 映射和错误 envelope helper，但部分新 code 仍未补齐。</td>
+</tr>
+<tr>
+<td><code>mineru/cli/main.py</code></td>
+<td><code>mineru parse/scan/watch/search/find/list/show/server/config/invalidate/forget/cleanup/usage/telemetry</code> 已按 NEXT 入口组织。</td>
+</tr>
+<tr>
+<td><code>mineru/parser/api_server.py</code>、<code>mineru/parser/api_client.py</code></td>
+<td>v1 parse API、uploads/files、tiers、usage 和 API-backed parser 已有基础；callback/webhook 本地差异和 chat/responses 仍需明确边界。</td>
+</tr>
+</tbody>
+</table>
+<p>因此，任务分成三类:</p>
+<table>
+<thead>
+<tr>
+<th>类型</th>
+<th>含义</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>需要实现</td>
+<td>当前代码缺失目标能力。</td>
+</tr>
+<tr>
+<td>部分实现</td>
+<td>当前代码已有基础，但与文档目标还有缺口。</td>
+</tr>
+<tr>
+<td>已实现需锁定</td>
+<td>当前代码看起来已满足目标，任务重点是补测试、防回退、修小边界。</td>
+</tr>
+</tbody>
+</table>
+<p>Agent 领取任务时，应先读本节。如果任务标记为“已实现需锁定”，不要重写实现，优先补测试。索引中“已实现需锁定”对应任务卡片的 <code>verify-first</code> 状态。</p>
+<h3 id="32">3.2 里程碑</h3>
+<table>
+<thead>
+<tr>
+<th>里程碑</th>
+<th>目标</th>
+<th>结果</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>M0</td>
+<td>锁定当前行为与测试骨架</td>
+<td>后续任务有稳定测试入口。</td>
+</tr>
+<tr>
+<td>M1</td>
+<td>Middle JSON 和 ParseResult 基础设施</td>
+<td>JSON 批次可恢复、校验、渲染。</td>
+</tr>
+<tr>
+<td>M2</td>
+<td>doclib 主链路</td>
+<td>watch/ingest/parse/cache/compaction/read-time render 可闭环。</td>
+</tr>
+<tr>
+<td>M3</td>
+<td>tier、privacy、parse-server 路由</td>
+<td>默认选择、local/remote、质量 tier 行为可验证。</td>
+</tr>
+<tr>
+<td>M4</td>
+<td>CLI / SDK / API 对齐</td>
+<td>用户入口使用同一语义和错误模型。</td>
+</tr>
+<tr>
+<td>M5</td>
+<td>Agent-native 输出</td>
+<td>locator、marker、citation 基础可用。</td>
+</tr>
+<tr>
+<td>M6</td>
+<td>Telemetry</td>
+<td>doclib server 聚合、flush、CLI 管理入口和隐私边界可验证。</td>
+</tr>
+</tbody>
+</table>
+<p>建议顺序:</p>
+<div class="highlight"><pre><span></span><code>M0 -&gt; M1 -&gt; M2 -&gt; M3 -&gt; M4 -&gt; M5
+M6 可独立并行推进，但不能影响 parse / watch / search 主流程。
+</code></pre></div>
+<p>M1 和 M2 的部分测试任务可以并行，但 <code>ParseResult.from_dict()</code>、JSON batch 读取和 read-time render 有依赖关系。</p>
+<h3 id="33">3.3 任务状态索引</h3>
+<table>
+<thead>
+<tr>
+<th>任务</th>
+<th>当前代码状态</th>
+<th>Agent 领取方式</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>M0-001</td>
+<td>已实现</td>
+<td>已有 doclib / parser / CLI 单元测试骨架；新增任务直接复用。</td>
+</tr>
+<tr>
+<td>M0-002</td>
+<td>已实现需锁定</td>
+<td>已有 JSON-only 行为基础；继续补高风险边界测试。</td>
+</tr>
+<tr>
+<td>M0-003</td>
+<td>需要实现</td>
+<td>新增 Middle JSON fixtures。</td>
+</tr>
+<tr>
+<td>M1-001</td>
+<td>已实现需锁定</td>
+<td><code>from_dict()</code> / <code>from_json()</code> 已实现并有契约测试；继续补 legacy 兼容分支边界测试。</td>
+</tr>
+<tr>
+<td>M1-002</td>
+<td>需要实现</td>
+<td>新增 normalize helper。</td>
+</tr>
+<tr>
+<td>M1-003</td>
+<td>需要实现</td>
+<td>新增 validator。</td>
+</tr>
+<tr>
+<td>M1-004</td>
+<td>部分实现</td>
+<td>先用 validator 跑 HTML 输出，再最小修。</td>
+</tr>
+<tr>
+<td>M1-005</td>
+<td>需要实现</td>
+<td>新增 <code>bbox_known()</code>。</td>
+</tr>
+<tr>
+<td>M2-001</td>
+<td>已实现</td>
+<td><code>parse_batch_json_path()</code> 已被 parse_svc / compaction 复用。</td>
+</tr>
+<tr>
+<td>M2-002</td>
+<td>已实现</td>
+<td>cache coverage 与 compaction 均使用配置 data_dir；已有相关测试。</td>
+</tr>
+<tr>
+<td>M2-003</td>
+<td>已实现需锁定</td>
+<td>未覆盖页入队、active parse 复用和 priority bump 已有实现与测试；继续补失败边界。</td>
+</tr>
+<tr>
+<td>M2-004</td>
+<td>已实现需锁定</td>
+<td>compaction JSON 合并已有实现与测试；继续锁定重复页/invalidated 边界。</td>
+</tr>
+<tr>
+<td>M2-005</td>
+<td>部分实现</td>
+<td><code>GET /docs/{sha256}/content</code> 已支持 Markdown / progressive reading；Content List / HTML read-time render 仍需确认。</td>
+</tr>
+<tr>
+<td>M2-006</td>
+<td>已实现需锁定</td>
+<td>FTS 临时 Markdown、JSON-only、tier-gated 更新已有实现；继续补回归测试。</td>
+</tr>
+<tr>
+<td>M3-001</td>
+<td>已实现需锁定</td>
+<td><code>tier=None</code> 已在入队前解析为实体 tier；需补默认选择错误码边界。</td>
+</tr>
+<tr>
+<td>M3-002</td>
+<td>已实现需锁定</td>
+<td>local 不自动 remote 已有实现；补调用边界测试。</td>
+</tr>
+<tr>
+<td>M3-003</td>
+<td>已实现需锁定</td>
+<td>remote 失败 fallback local 已有实现；补 <code>via=local</code> 和 tier 能力测试。</td>
+</tr>
+<tr>
+<td>M3-004</td>
+<td>已实现需锁定</td>
+<td>tier mismatch 不降级已有实现；补错误 code / message 边界测试。</td>
+</tr>
+<tr>
+<td>M4-001</td>
+<td>部分实现</td>
+<td>CLI 已调用 doclib read-time render；JSON/HTML/Content List 输出边界仍需对齐。</td>
+</tr>
+<tr>
+<td>M4-002</td>
+<td>已实现需锁定</td>
+<td>Tool SDK <code>parse()</code> / <code>parse_async()</code> 已有 <code>tier</code> 参数（任何入口都不接受 <code>backend</code> 入参，kit 层 <code>--backend</code> 专家参数已于 2026-09 移除）；补 tier 边界测试。</td>
+</tr>
+<tr>
+<td>M4-003</td>
+<td>部分实现</td>
+<td>Doclib client 已有映射；API-backed parser 等仍需统一。</td>
+</tr>
+<tr>
+<td>M4-004</td>
+<td>部分实现</td>
+<td>api_server/client 已有基础，需按文档补差异测试。</td>
+</tr>
+<tr>
+<td>M5-001a</td>
+<td>已实现需锁定</td>
+<td>doclib locator helper 已实现；补 Structured Content / marker 复用边界。</td>
+</tr>
+<tr>
+<td>M5-002</td>
+<td>ready</td>
+<td>Markdown block marker 尚未完整实现。</td>
+</tr>
+<tr>
+<td>M5-003</td>
+<td>已实现需锁定</td>
+<td>搜索结果已返回 tier，并支持过滤；补 CLI/JSON 边界。</td>
+</tr>
+<tr>
+<td>M6-001</td>
+<td>已实现需锁定</td>
+<td>telemetry DB schema、状态管理、聚合与 flush 已实现（<code>mineru/doclib/telemetry/</code> + <code>background/telemetry_flush.py</code>）；继续补隐私边界测试。</td>
+</tr>
+<tr>
+<td>M6-002</td>
+<td>已实现需锁定</td>
+<td><code>mineru telemetry status|enable|disable|preview|flush</code> 已实现（<code>mineru/cli/commands/telemetry.py</code>）；继续补 CLI 契约测试。</td>
+</tr>
+</tbody>
+</table>
+<h2 id="4-m0">4. M0: 测试与基线</h2>
+<h3 id="m0-001-doclib-parse-flow">M0-001 建立 doclib parse flow 测试入口</h3>
+<p>状态: <code>done</code></p>
+<p>目标:</p>
+<p>为 doclib 的解析主链路建立最小测试入口，后续任务可以在同一测试目录中增量添加用例。</p>
+<p>依赖:</p>
+<ul>
+<li>无。</li>
+</ul>
+<p>参考文档:</p>
+<ul>
+<li><a href="../workflows/">端到端工作流</a></li>
+<li><a href="../architecture/">系统架构</a></li>
+</ul>
+<p>建议修改范围:</p>
+<ul>
+<li><code>tests/</code> 或项目现有测试目录。</li>
+<li><code>mineru/doclib/services/parse_svc.py</code> 仅在测试需要暴露小 helper 时修改。</li>
+</ul>
+<p>具体步骤:</p>
+<ol>
+<li>查找项目现有测试布局。</li>
+<li>如果已有 doclib 测试目录，在其中新增 parse flow 测试文件。</li>
+<li>如果没有，创建最小测试目录和命名约定。</li>
+<li>提供可复用的临时 data_dir fixture。</li>
+<li>提供可复用的 fake db / sqlite test db fixture。</li>
+<li>提供可复用的 fake parser result fixture，能返回 <code>{"pages": [...]}</code>。</li>
+</ol>
+<p>完成边界:</p>
+<ul>
+<li>存在一个可运行的 doclib parse flow 测试文件。</li>
+<li>测试能创建临时 data_dir，不污染 <code>~/.mineru</code>。</li>
+<li>至少一个 smoke test 能启动必要服务对象或 helper，并通过。</li>
+</ul>
+<p>验证方式:</p>
+<div class="highlight"><pre><span></span><code>.venv/bin/python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests<span class="w"> </span>-q
+</code></pre></div>
+<p>禁止范围:</p>
+<ul>
+<li>不改解析逻辑。</li>
+<li>不改生产默认 data_dir。</li>
+</ul>
+<h3 id="m0-002-doclib-json">M0-002 锁定 doclib 只持久化 JSON 的行为</h3>
+<p>状态: <code>verify-first</code></p>
+<p>目标:</p>
+<p>用测试固定 doclib 的持久化产物模型: <code>parsed/</code> 下只保存 JSON 批次文件，其他格式读取时生成。</p>
+<p>依赖:</p>
+<ul>
+<li>M0-001。</li>
+</ul>
+<p>参考文档:</p>
+<ul>
+<li><a href="../workflows/#10-json-%E4%BA%A7%E7%89%A9%E9%A1%B5%E5%90%88%E5%B9%B6%E4%B8%8E%E7%BC%93%E5%AD%98">端到端工作流: JSON 产物、页合并与缓存</a></li>
+</ul>
+<p>建议修改范围:</p>
+<ul>
+<li><code>tests/...</code></li>
+<li><code>mineru/doclib/services/parse_svc.py</code></li>
+</ul>
+<p>具体步骤:</p>
+<ol>
+<li>构造一个 parse task，包含 <code>sha256</code>、<code>tier</code>、<code>page_range</code>。</li>
+<li>mock 本地 parser，使它返回带 <code>pages</code> 的 ParseResult-like 对象。</li>
+<li>调用 <code>ParseService.process_doc()</code>。</li>
+<li>检查 <code>parsed/&lt;sha-prefix&gt;/&lt;sha&gt;/&lt;tier&gt;/</code> 中只有 <code>.json</code> 文件。</li>
+<li>检查 JSON 内容形态为 <code>{"pages": [...]}</code>。</li>
+<li>检查没有 <code>output.md</code>、<code>content_list.json</code>、<code>structured_content.json</code>、<code>output.html</code>。</li>
+</ol>
+<p>完成边界:</p>
+<ul>
+<li>测试证明 doclib parse 完成后只落 JSON 文件。</li>
+<li>如果当前代码已经满足，只提交测试。</li>
+<li>如果当前代码不满足，只做最小修改使其满足。</li>
+</ul>
+<p>验证方式:</p>
+<div class="highlight"><pre><span></span><code>.venv/bin/python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests<span class="w"> </span>-q<span class="w"> </span>-k<span class="w"> </span><span class="s2">"json"</span>
+</code></pre></div>
+<p>禁止范围:</p>
+<ul>
+<li>不实现新 render 格式。</li>
+<li>不改 Tool SDK 的 <code>ParseResult.save()</code> 行为；该行为不等同 doclib 持久化规则。</li>
+</ul>
+<h3 id="m0-003-middle-json-fixture">M0-003 建立 Middle JSON fixture</h3>
+<p>状态: <code>ready</code></p>
+<p>目标:</p>
+<p>为 Pipeline、VLM、Office、HTML 至少建立可用于 validator / render / round-trip 的最小 fixture。</p>
+<p>依赖:</p>
+<ul>
+<li>无。</li>
+</ul>
+<p>参考文档:</p>
+<ul>
+<li><a href="../middle-json/current-medium/">Middle JSON 当前标准</a></li>
+<li><a href="../middle-json/backend-gaps/">Middle JSON 后端差异</a></li>
+</ul>
+<p>建议修改范围:</p>
+<ul>
+<li><code>tests/fixtures/middle_json/</code></li>
+<li><code>tests/...</code></li>
+</ul>
+<p>具体步骤:</p>
+<ol>
+<li>新增最小 Pipeline fixture，至少包含一个 page、一个 text block、line、span。</li>
+<li>新增最小 VLM fixture，体现一行一 span 的粒度。</li>
+<li>新增最小 Office fixture，允许 unknown bbox。</li>
+<li>新增最小 HTML fixture，覆盖 HTML parser 的目标结构。</li>
+<li>每个 fixture 包含 <code>pages</code> 顶层结构。</li>
+</ol>
+<p>完成边界:</p>
+<ul>
+<li>每个 fixture 都能被 JSON parser 读取。</li>
+<li>fixture 不包含真实用户文档内容。</li>
+<li>fixture 中的页码、block index、bbox 语义清楚。</li>
+</ul>
+<p>验证方式:</p>
+<div class="highlight"><pre><span></span><code>.venv/bin/python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests<span class="w"> </span>-q<span class="w"> </span>-k<span class="w"> </span><span class="s2">"fixture or middle"</span>
+</code></pre></div>
+<p>禁止范围:</p>
+<ul>
+<li>不引入大型 PDF 或 Office 文件。</li>
+<li>不把模型输出原始大对象放入 fixture。</li>
+</ul>
+<h2 id="5-m1-middle-json-parseresult">5. M1: Middle JSON 与 ParseResult</h2>
+<h3 id="m1-001-parseresultfrom_dict-from_json">M1-001 实现 <code>ParseResult.from_dict()</code> / <code>from_json()</code></h3>
+<p>状态: <code>verify-first</code></p>
+<p>目标:</p>
+<p>让 API JSON、doclib JSON 批次和缓存结果能恢复为 <code>ParseResult</code>。</p>
+<p>依赖:</p>
+<ul>
+<li>M0-003。</li>
+</ul>
+<p>参考文档:</p>
+<ul>
+<li><a href="../sdk/parse-result/">SDK ParseResult</a></li>
+<li><a href="../middle-json/envelope/">Middle JSON Envelope</a></li>
+</ul>
+<p>建议修改范围:</p>
+<ul>
+<li><code>mineru/parser/base.py</code></li>
+<li><code>mineru/types.py</code></li>
+<li><code>tests/...</code></li>
+</ul>
+<p>具体步骤:</p>
+<ol>
+<li>阅读 <code>ParseResult.to_dict()</code> 当前输出。</li>
+<li>支持输入 <code>{"pages": [...]}</code>。</li>
+<li>支持输入 canonical envelope 的 <code>pages</code>。</li>
+<li>支持输入旧结构 <code>{"pdf_info": [...]}</code>，如 normalize 尚未实现，可先在本任务内只做最小兼容。</li>
+<li>将 page dict 转为 <code>PageInfo.from_dict()</code>。</li>
+<li>实现 <code>from_json()</code>，只负责 JSON decode 后调用 <code>from_dict()</code>。</li>
+<li>增加 round-trip 测试。</li>
+</ol>
+<p>完成边界:</p>
+<ul>
+<li><code>ParseResult.to_json()</code> -&gt; <code>ParseResult.from_json()</code> round-trip 可用。</li>
+<li><code>{"pages": [...]}</code> 可恢复。</li>
+<li>至少 Pipeline/Office fixture 可恢复并 render Markdown。</li>
+<li>无效输入给出明确异常。</li>
+</ul>
+<p>验证方式:</p>
+<div class="highlight"><pre><span></span><code>.venv/bin/python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests<span class="w"> </span>-q<span class="w"> </span>-k<span class="w"> </span><span class="s2">"ParseResult or roundtrip"</span>
+</code></pre></div>
+<p>禁止范围:</p>
+<ul>
+<li>不重写 render。</li>
+<li>不改变 <code>ParseResult.markdown()</code> / <code>content_list()</code> 对外行为。</li>
+</ul>
+<h3 id="m1-002-normalize_middle_json">M1-002 实现 <code>normalize_middle_json()</code></h3>
+<p>状态: <code>ready</code></p>
+<p>目标:</p>
+<p>统一接收 canonical envelope、当前 <code>{"pages": [...]}</code>、旧 <code>{"pdf_info": [...]}</code> 三种结构，并输出标准 envelope。</p>
+<p>依赖:</p>
+<ul>
+<li>M1-001 可并行，但最终应互相调用。</li>
+</ul>
+<p>参考文档:</p>
+<ul>
+<li><a href="../middle-json/envelope/">Middle JSON Envelope</a></li>
+<li><a href="../middle-json/migration/">Middle JSON Migration</a></li>
+</ul>
+<p>建议修改范围:</p>
+<ul>
+<li><code>mineru/parser/base.py</code></li>
+<li><code>tests/...</code></li>
+</ul>
+<p>具体步骤:</p>
+<ol>
+<li>在 parser 层复用 <code>mineru.parser.MIDDLE_JSON_SCHEMA_VERSION</code>，并定义 <code>normalize_middle_json(payload, *, tier=None, sha256=None)</code>。</li>
+<li>如果 payload 已有 <code>schema_version</code> 和 <code>pages</code>，直接接受；<code>_meta</code> 在当前 P0 写出结构中可缺省。</li>
+<li>如果 payload 是 <code>{"pages": [...]}</code>，包装成 canonical envelope。</li>
+<li>如果 payload 是 <code>{"pdf_info": [...]}</code>，迁移为 <code>pages</code>。</li>
+<li>旧 <code>_backend</code> 不迁移：schema 2.0 不记录 backend，未知字段按第 7 条向后兼容保留原值。</li>
+<li><code>tier</code> 只记录实际使用的 tier，不记录 <code>requested_tier</code>。</li>
+<li>保持未知字段向后兼容，不主动丢弃 <code>_meta</code> 扩展。</li>
+</ol>
+<p>完成边界:</p>
+<ul>
+<li>三种输入结构都可 normalize。</li>
+<li>输出包含 <code>schema_version</code>、<code>pages</code>、<code>_meta</code>。</li>
+<li>不产生 <code>requested_tier</code> / <code>resolved_tier</code> 字段。</li>
+</ul>
+<p>验证方式:</p>
+<div class="highlight"><pre><span></span><code>.venv/bin/python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests<span class="w"> </span>-q<span class="w"> </span>-k<span class="w"> </span><span class="s2">"normalize_middle_json"</span>
+</code></pre></div>
+<p>禁止范围:</p>
+<ul>
+<li>不改 backend 输出逻辑。</li>
+<li>不强制所有调用点一次性迁移。</li>
+</ul>
+<h3 id="m1-003-middle-json-p0-validator">M1-003 增加 Middle JSON P0 validator</h3>
+<p>状态: <code>ready</code></p>
+<p>目标:</p>
+<p>提供轻量 validator，能发现 P0 结构错误，同时允许后续 schema 演进。</p>
+<p>依赖:</p>
+<ul>
+<li>M1-002。</li>
+</ul>
+<p>参考文档:</p>
+<ul>
+<li><a href="../middle-json/envelope/">Middle JSON Envelope</a></li>
+<li><a href="../middle-json/backend-gaps/">Middle JSON Backend Gaps</a></li>
+</ul>
+<p>建议修改范围:</p>
+<ul>
+<li>validator 生产入口位置待定</li>
+<li><code>tests/...</code></li>
+</ul>
+<p>具体步骤:</p>
+<ol>
+<li>定义 <code>ValidationIssue</code> 类型。</li>
+<li>实现 <code>validate_middle_json(payload) -&gt; list[ValidationIssue]</code>。</li>
+<li>validator 内部先调用 normalize 或要求输入已 normalize，二者择一并文档化。</li>
+<li>校验 <code>pages</code> 是 list。</li>
+<li>校验 page 至少有 <code>page_idx</code>。</li>
+<li>校验 block 至少有 <code>index</code>、<code>type</code>、<code>bbox</code>、<code>lines</code> 或 <code>blocks</code>。</li>
+<li>允许 Office unknown bbox，但 issue 中能提示 <code>bbox_known=false</code> 场景。</li>
+<li>对 <code>_backend</code> 旧字段给 warning，不给 fatal。</li>
+</ol>
+<p>完成边界:</p>
+<ul>
+<li>fixtures 通过 validator。</li>
+<li>人工破坏 page/block 必填字段时 validator 能报 issue。</li>
+<li>validator 不因 Office bbox unknown 直接失败。</li>
+</ul>
+<p>验证方式:</p>
+<div class="highlight"><pre><span></span><code>.venv/bin/python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests<span class="w"> </span>-q<span class="w"> </span>-k<span class="w"> </span><span class="s2">"validator"</span>
+</code></pre></div>
+<p>禁止范围:</p>
+<ul>
+<li>不引入重型 JSON schema 依赖，除非项目已有。</li>
+<li>不把所有 backend 私有字段列为公开必填。</li>
+</ul>
+<h3 id="m1-004-html-parser-typed-structure">M1-004 修正 HTML parser 的 typed structure 输出</h3>
+<p>状态: <code>verify-first</code></p>
+<p>目标:</p>
+<p>确保 HTML parser 输出满足 <code>PageInfo</code> / <code>Block</code> / <code>Line</code> / <code>Span</code> 的必填字段契约。</p>
+<p>依赖:</p>
+<ul>
+<li>M0-003。</li>
+<li>M1-003。</li>
+</ul>
+<p>参考文档:</p>
+<ul>
+<li><a href="../middle-json/backend-gaps/">Middle JSON Backend Gaps</a></li>
+</ul>
+<p>建议修改范围:</p>
+<ul>
+<li><code>mineru/parser/html.py</code></li>
+<li><code>mineru/types.py</code> 仅在确有必要时修改。</li>
+<li><code>tests/...</code></li>
+</ul>
+<p>具体步骤:</p>
+<ol>
+<li>运行 HTML parser 现有测试或新增最小 HTML 解析测试。</li>
+<li>用 validator 检查 HTML 输出。</li>
+<li>如果缺少 <code>bbox</code>、<code>index</code>、<code>page_size</code> 或 <code>_backend</code> 合法值，最小修正。</li>
+<li>对没有真实 bbox 的内容使用 unknown bbox 约定。</li>
+<li>确认 render Markdown 不回退。</li>
+</ol>
+<p>完成边界:</p>
+<ul>
+<li>HTML fixture 能生成合法 pages。</li>
+<li>validator 无 fatal issue。</li>
+<li><code>ParseResult.markdown()</code> 可输出。</li>
+</ul>
+<p>验证方式:</p>
+<div class="highlight"><pre><span></span><code>.venv/bin/python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests<span class="w"> </span>-q<span class="w"> </span>-k<span class="w"> </span><span class="s2">"html and middle"</span>
+</code></pre></div>
+<p>禁止范围:</p>
+<ul>
+<li>不重写 HTML converter。</li>
+<li>不引入浏览器运行时。</li>
+</ul>
+<h3 id="m1-005-bbox_known-helper">M1-005 定义 <code>bbox_known()</code> helper</h3>
+<p>状态: <code>ready</code></p>
+<p>目标:</p>
+<p>为 unknown bbox 提供统一判断，避免 Office/HTML 等 backend 用假 bbox 被误当真实坐标。</p>
+<p>依赖:</p>
+<ul>
+<li>M1-003。</li>
+</ul>
+<p>参考文档:</p>
+<ul>
+<li><a href="../middle-json/agent-gaps/">Agent Gaps</a></li>
+<li><a href="../middle-json/backend-gaps/">Backend Gaps</a></li>
+</ul>
+<p>建议修改范围:</p>
+<ul>
+<li><code>mineru/types.py</code> 或未来 validator 模块</li>
+<li><code>tests/...</code></li>
+</ul>
+<p>具体步骤:</p>
+<ol>
+<li>确认当前 unknown bbox 表达。</li>
+<li>定义 <code>bbox_known(bbox) -&gt; bool</code>。</li>
+<li>处理 <code>None</code>、空列表、全 0、负数或 sentinel 值。</li>
+<li>在 validator issue 中使用该 helper。</li>
+<li>添加 Office unknown bbox 测试。</li>
+</ol>
+<p>完成边界:</p>
+<ul>
+<li>helper 有明确 docstring。</li>
+<li>validator 能区分 unknown bbox 和非法 bbox。</li>
+<li>不改变已有 backend 坐标数值。</li>
+</ul>
+<p>验证方式:</p>
+<div class="highlight"><pre><span></span><code>.venv/bin/python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests<span class="w"> </span>-q<span class="w"> </span>-k<span class="w"> </span><span class="s2">"bbox"</span>
+</code></pre></div>
+<p>禁止范围:</p>
+<ul>
+<li>不要求 Office 立即补真实 bbox。</li>
+</ul>
+<h2 id="6-m2-doclib-json">6. M2: doclib JSON 批次与缓存</h2>
+<h3 id="m2-001-json-helper">M2-001 抽出 JSON 批次路径 helper</h3>
+<p>状态: <code>done</code></p>
+<p>目标:</p>
+<p>把 doclib JSON 批次文件路径生成逻辑集中，避免 <code>process_doc()</code>、cache check、compaction 各自拼路径。</p>
+<p>依赖:</p>
+<ul>
+<li>M0-002。</li>
+</ul>
+<p>参考文档:</p>
+<ul>
+<li><a href="../workflows/#10-json-%E4%BA%A7%E7%89%A9%E9%A1%B5%E5%90%88%E5%B9%B6%E4%B8%8E%E7%BC%93%E5%AD%98">端到端工作流: JSON 产物</a></li>
+</ul>
+<p>建议修改范围:</p>
+<ul>
+<li><code>mineru/doclib/services/parse_svc.py</code></li>
+<li><code>mineru/doclib/background/compaction.py</code></li>
+<li><code>tests/...</code></li>
+</ul>
+<p>具体步骤:</p>
+<ol>
+<li>找出 <code>_safe_filename()</code>、<code>_json_file_exists_by_batch()</code> 和 compaction 中的重复路径逻辑。</li>
+<li>抽出 helper，例如 <code>parse_batch_json_path(data_dir, sha256, tier, page_range, done_at)</code>。</li>
+<li>所有路径都使用传入的 <code>data_dir</code>，不能硬编码 <code>~/.mineru</code>。</li>
+<li>更新 process、cache check、compaction 调用。</li>
+<li>补测试覆盖 page range 文件名。</li>
+</ol>
+<p>完成边界:</p>
+<ul>
+<li>生产代码不再在多个地方手写 batch JSON 路径。</li>
+<li>测试 data_dir 不会误读 <code>~/.mineru</code>。</li>
+<li>现有 JSON 文件命名保持兼容。</li>
+</ul>
+<p>验证方式:</p>
+<div class="highlight"><pre><span></span><code>.venv/bin/python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests<span class="w"> </span>-q<span class="w"> </span>-k<span class="w"> </span><span class="s2">"batch_json_path or parse"</span>
+</code></pre></div>
+<p>禁止范围:</p>
+<ul>
+<li>不迁移旧文件名。</li>
+<li>不改变 JSON 内容结构。</li>
+</ul>
+<h3 id="m2-002-cache-coverage-data_dir">M2-002 修正 cache coverage 对 data_dir 的依赖</h3>
+<p>状态: <code>done</code></p>
+<p>目标:</p>
+<p>确认 cache coverage 判断使用当前 ParseService 的 data_dir，而不是固定 <code>~/.mineru</code>。</p>
+<p>依赖:</p>
+<ul>
+<li>M2-001。</li>
+</ul>
+<p>参考文档:</p>
+<ul>
+<li><a href="../workflows/#102-%E7%BC%93%E5%AD%98%E9%94%AE%E4%B8%8E%E8%A6%86%E7%9B%96%E5%88%A4%E6%96%AD">端到端工作流: 缓存键与覆盖判断</a></li>
+</ul>
+<p>建议修改范围:</p>
+<ul>
+<li><code>mineru/doclib/services/parse_svc.py</code></li>
+<li><code>tests/...</code></li>
+</ul>
+<p>具体步骤:</p>
+<ol>
+<li>编写测试: 临时 data_dir 中存在 done batch JSON。</li>
+<li>调用 <code>request_parse()</code> 请求同一页码。</li>
+<li>期望返回 cached done。</li>
+<li>删除 JSON 文件后再次请求，期望重新入队。</li>
+<li>如果测试失败，修正 data_dir 依赖。</li>
+</ol>
+<p>完成边界:</p>
+<ul>
+<li>JSON 存在时命中缓存。</li>
+<li>JSON 丢失时不命中缓存。</li>
+<li>测试不访问真实用户目录。</li>
+</ul>
+<p>验证方式:</p>
+<div class="highlight"><pre><span></span><code>.venv/bin/python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests<span class="w"> </span>-q<span class="w"> </span>-k<span class="w"> </span><span class="s2">"cache and data_dir"</span>
+</code></pre></div>
+<p>禁止范围:</p>
+<ul>
+<li>不改变 <code>parses</code> 表 schema。</li>
+</ul>
+<h3 id="m2-003">M2-003 实现或锁定增量页码入队</h3>
+<p>状态: <code>verify-first</code></p>
+<p>目标:</p>
+<p>确保请求页码只对未覆盖页面创建新 parse record，并返回本次请求需要等待的 parse ids。</p>
+<p>依赖:</p>
+<ul>
+<li>M2-002。</li>
+</ul>
+<p>参考文档:</p>
+<ul>
+<li><a href="../workflows/#136-%E5%A2%9E%E9%87%8F%E9%A1%B5%E7%A0%81%E8%A7%A3%E6%9E%90%E4%B8%8E%E5%90%88%E5%B9%B6">端到端工作流: 增量页码解析与合并</a></li>
+</ul>
+<p>建议修改范围:</p>
+<ul>
+<li><code>mineru/doclib/services/parse_svc.py</code></li>
+<li><code>tests/...</code></li>
+</ul>
+<p>具体步骤:</p>
+<ol>
+<li>准备已有 done batch: <code>page_range=1-5</code>。</li>
+<li>请求 <code>page_range=1-10</code>。</li>
+<li>期望只创建 <code>6-10</code> 的 pending batch。</li>
+<li>准备已有 pending batch: <code>page_range=6-10</code>。</li>
+<li>再请求 <code>1-10</code>，期望不重复创建，而是提升 priority。</li>
+<li>测试 <code>force=True</code> 时跳过 done cache，但复用 active batch。</li>
+<li>测试 <code>force=True</code> 只为 active 未覆盖页创建新 parse。</li>
+<li>测试返回 <code>wait_parse_ids</code>、<code>created_parse_ids</code>、<code>reused_parse_ids</code>。</li>
+<li>测试 force wait parse 失败后，本次请求失败，但旧 done batch 仍然有效。</li>
+<li>测试 invalidated batch 不参与覆盖判断。</li>
+</ol>
+<p>完成边界:</p>
+<ul>
+<li>覆盖判断按页集合工作。</li>
+<li>pending/parsing 覆盖时只提升优先级。</li>
+<li>force 跳过 done cache，但可复用 active batch，只为未覆盖页创建新任务。</li>
+<li>response 能表达 wait / created / reused parse ids。</li>
+<li>invalidated batch 不参与缓存命中。</li>
+</ul>
+<p>验证方式:</p>
+<div class="highlight"><pre><span></span><code>.venv/bin/python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests<span class="w"> </span>-q<span class="w"> </span>-k<span class="w"> </span><span class="s2">"pages_uncovered or coverage"</span>
+</code></pre></div>
+<p>禁止范围:</p>
+<ul>
+<li>不改默认页码策略。</li>
+</ul>
+<h3 id="m2-004-compaction-json">M2-004 补齐 compaction JSON 合并测试</h3>
+<p>状态: <code>verify-first</code></p>
+<p>目标:</p>
+<p>用测试锁定 compaction 按 <code>page_idx</code> 合并 JSON 的行为。</p>
+<p>依赖:</p>
+<ul>
+<li>M2-001。</li>
+</ul>
+<p>参考文档:</p>
+<ul>
+<li><a href="../workflows/#103-%E9%A1%B5%E5%90%88%E5%B9%B6%E4%B8%8E-compaction">端到端工作流: 页合并与 compaction</a></li>
+</ul>
+<p>建议修改范围:</p>
+<ul>
+<li><code>mineru/doclib/background/compaction.py</code></li>
+<li><code>tests/...</code></li>
+</ul>
+<p>具体步骤:</p>
+<ol>
+<li>创建同一 <code>sha256 + tier</code> 下两个有效 done row。</li>
+<li>创建对应 JSON 文件。</li>
+<li>调用 compaction。</li>
+<li>检查旧 JSON 被删除。</li>
+<li>检查新 JSON 覆盖合并后的页。</li>
+<li>添加重复页测试，确认 <code>done_at</code> 较新的有效批次覆盖较旧批次。</li>
+<li>添加 invalidated batch 测试，确认它不会被合入新 JSON。</li>
+</ol>
+<p>完成边界:</p>
+<ul>
+<li>compaction 合并 parse row。</li>
+<li>compaction 合并 JSON 文件。</li>
+<li>compaction 不生成 Markdown / Content List。</li>
+<li>compaction 忽略 invalidated batch。</li>
+</ul>
+<p>验证方式:</p>
+<div class="highlight"><pre><span></span><code>.venv/bin/python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests<span class="w"> </span>-q<span class="w"> </span>-k<span class="w"> </span><span class="s2">"compaction"</span>
+</code></pre></div>
+<p>禁止范围:</p>
+<ul>
+<li>不改变 compaction 定时策略。</li>
+</ul>
+<h3 id="m2-005-read-time-render-from-json-batches">M2-005 实现 read-time render from JSON batches</h3>
+<p>状态: <code>verify-first</code></p>
+<p>目标:</p>
+<p>确保 doclib 对外返回 Markdown / Content List / HTML 时，从已保存 JSON 批次读取并转换，而不是读取持久化派生文件。</p>
+<p>依赖:</p>
+<ul>
+<li>M1-001。</li>
+<li>M2-003。</li>
+</ul>
+<p>参考文档:</p>
+<ul>
+<li><a href="../workflows/#104-%E8%AF%BB%E5%8F%96%E6%97%B6%E8%BD%AC%E6%8D%A2">端到端工作流: 读取时转换</a></li>
+<li><a href="../sdk/parse-result/">SDK ParseResult</a></li>
+</ul>
+<p>建议修改范围:</p>
+<ul>
+<li><code>mineru/doclib/services/parse_svc.py</code></li>
+<li><code>mineru/doclib/server.py</code></li>
+<li><code>mineru/doclib/client.py</code></li>
+<li><code>tests/...</code></li>
+</ul>
+<p>具体步骤:</p>
+<ol>
+<li>定位当前 <code>parse_content()</code> 或等价读取入口，并迁移为 <code>GET /docs/{sha256}/content</code>。</li>
+<li>实现按 <code>sha256 + tier + page_range</code> 收集已完成 JSON 批次。</li>
+<li>使用 <code>ParseResult.from_dict()</code> 恢复 pages。</li>
+<li>按请求格式调用 <code>markdown()</code>、<code>content_list()</code>、<code>structured_content()</code> 或 HTML render。</li>
+<li>如果请求页未被覆盖，返回明确状态或错误，不生成空内容。</li>
+<li>保持输出文件写入只发生在用户指定 <code>output</code> 时。</li>
+</ol>
+<p>完成边界:</p>
+<ul>
+<li>doclib 不需要 <code>output.md</code> 也能返回 Markdown。</li>
+<li>JSON 输出返回 Middle JSON pages。</li>
+<li>Content List 输出从同一 JSON 转换。</li>
+<li>缺页时返回可操作错误或 pending 状态。</li>
+</ul>
+<p>验证方式:</p>
+<div class="highlight"><pre><span></span><code>.venv/bin/python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests<span class="w"> </span>-q<span class="w"> </span>-k<span class="w"> </span><span class="s2">"parse_content or read_time_render"</span>
+</code></pre></div>
+<p>禁止范围:</p>
+<ul>
+<li>不把 Markdown/Content List 写入 <code>parsed/</code>。</li>
+<li>不改 Tool SDK <code>save()</code>。</li>
+</ul>
+<h3 id="m2-006-fts-markdown">M2-006 FTS 只消费临时 Markdown，不持久化</h3>
+<p>状态: <code>verify-first</code></p>
+<p>目标:</p>
+<p>确认搜索索引更新可以使用临时 Markdown 文本，但不会在 doclib 产物目录落盘。</p>
+<p>依赖:</p>
+<ul>
+<li>M0-002。</li>
+</ul>
+<p>参考文档:</p>
+<ul>
+<li><a href="../workflows/#106-%E6%90%9C%E7%B4%A2%E7%B4%A2%E5%BC%95">端到端工作流: 搜索索引</a></li>
+</ul>
+<p>建议修改范围:</p>
+<ul>
+<li><code>mineru/doclib/services/parse_svc.py</code></li>
+<li><code>mineru/doclib/core/fts.py</code></li>
+<li><code>tests/...</code></li>
+</ul>
+<p>具体步骤:</p>
+<ol>
+<li>mock ParseResult.markdown() 返回可搜索文本。</li>
+<li>执行 process_doc。</li>
+<li>检查 FTS 收到文本。</li>
+<li>检查 parsed 目录无 Markdown 文件。</li>
+<li>检查低 tier 不覆盖高 tier FTS。</li>
+</ol>
+<p>完成边界:</p>
+<ul>
+<li>FTS 有内容。</li>
+<li>Markdown 不落盘。</li>
+<li>tier-gated 更新符合 <code>flash &lt; basic &lt; standard &lt; advanced</code>。</li>
+</ul>
+<p>验证方式:</p>
+<div class="highlight"><pre><span></span><code>.venv/bin/python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests<span class="w"> </span>-q<span class="w"> </span>-k<span class="w"> </span><span class="s2">"fts"</span>
+</code></pre></div>
+<p>禁止范围:</p>
+<ul>
+<li>不改搜索 query 语义。</li>
+</ul>
+<h2 id="7-m3-tierprivacy-parse-server">7. M3: tier、privacy 与 parse-server 路由</h2>
+<h3 id="m3-001-tier-tier">M3-001 默认 tier 在入队前解析为实际 tier</h3>
+<p>状态: <code>verify-first</code></p>
+<p>目标:</p>
+<p>确保默认选择不作为任务 tier、缓存目录或产物目录持久化；最终只记录实际使用的实体 tier。</p>
+<p>依赖:</p>
+<ul>
+<li>M2-003。</li>
+</ul>
+<p>参考文档:</p>
+<ul>
+<li><a href="../tiers/">解析 Tier</a></li>
+<li><a href="../workflows/#64-tier-%E5%86%B3%E7%AD%96">端到端工作流: Tier 决策</a></li>
+</ul>
+<p>建议修改范围:</p>
+<ul>
+<li><code>mineru/doclib/services/parse_svc.py</code></li>
+<li><code>mineru/doclib/background/parse_server_health.py</code></li>
+<li><code>tests/...</code></li>
+</ul>
+<p>具体步骤:</p>
+<ol>
+<li>构造 health: local supported tiers = <code>["basic", "standard"]</code>。</li>
+<li>请求 <code>tier=None</code>。</li>
+<li>期望入队 tier 为 <code>standard</code>。</li>
+<li>构造 health: local supported tiers = <code>["basic"]</code>。</li>
+<li>期望入队 tier 为 <code>basic</code>。</li>
+<li>构造 health: only <code>flash</code> 或空。</li>
+<li>期望返回 <code>quality_tier_unavailable</code> 或等价错误。</li>
+</ol>
+<p>完成边界:</p>
+<ul>
+<li>不创建默认选择专用 parse row。</li>
+<li>不创建默认选择专用缓存目录。</li>
+<li>不记录 <code>requested_tier</code> 字段。</li>
+<li>默认选择永不选择 <code>flash</code>。</li>
+</ul>
+<p>验证方式:</p>
+<div class="highlight"><pre><span></span><code>.venv/bin/python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests<span class="w"> </span>-q<span class="w"> </span>-k<span class="w"> </span><span class="s2">"default and tier"</span>
+</code></pre></div>
+<p>禁止范围:</p>
+<ul>
+<li>不改变显式 <code>tier=flash</code> 行为。</li>
+</ul>
+<h3 id="m3-002-local-remote">M3-002 隐私边界: local 失败不自动 remote</h3>
+<p>状态: <code>verify-first</code></p>
+<p>目标:</p>
+<p>用测试和最小实现保证没有显式 remote 时，不会调用 Remote Parse Server。</p>
+<p>依赖:</p>
+<ul>
+<li>M3-001。</li>
+</ul>
+<p>参考文档:</p>
+<ul>
+<li><a href="../workflows/#65-%E9%9A%90%E7%A7%81%E5%86%B3%E7%AD%96">端到端工作流: 隐私决策</a></li>
+<li><a href="../tiers/#71-%E9%9A%90%E7%A7%81%E4%BC%98%E5%85%88">解析 Tier: 隐私优先</a></li>
+</ul>
+<p>建议修改范围:</p>
+<ul>
+<li><code>mineru/doclib/services/parse_svc.py</code></li>
+<li><code>mineru/parser/api_client.py</code> 仅用于 mock 调用边界。</li>
+<li><code>tests/...</code></li>
+</ul>
+<p>具体步骤:</p>
+<ol>
+<li>mock local parse-server unavailable。</li>
+<li>mock remote parse-server healthy。</li>
+<li>请求 <code>remote=False</code>。</li>
+<li>期望返回本地能力不足错误。</li>
+<li>确认没有构造指向 remote URL 的 <code>MinerUApiParser</code>。</li>
+<li>请求 <code>remote=True</code>。</li>
+<li>期望允许 remote。</li>
+</ol>
+<p>完成边界:</p>
+<ul>
+<li>local 请求不上传。</li>
+<li>错误包含可操作 suggestion。</li>
+<li>remote 请求才允许使用 remote URL。</li>
+</ul>
+<p>验证方式:</p>
+<div class="highlight"><pre><span></span><code>.venv/bin/python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests<span class="w"> </span>-q<span class="w"> </span>-k<span class="w"> </span><span class="s2">"privacy or remote"</span>
+</code></pre></div>
+<p>禁止范围:</p>
+<ul>
+<li>不新增全局配置来默认允许 remote。</li>
+</ul>
+<h3 id="m3-003-remote-fallback-local">M3-003 remote 失败可以 fallback 到 local</h3>
+<p>状态: <code>verify-first</code></p>
+<p>目标:</p>
+<p>用户已显式允许 remote 时，如果 remote 不可达，可以 fallback 到 local，但不能改变结果审计。</p>
+<p>依赖:</p>
+<ul>
+<li>M3-002。</li>
+</ul>
+<p>参考文档:</p>
+<ul>
+<li><a href="../workflows/">端到端工作流: fallback 不扩大隐私边界</a></li>
+</ul>
+<p>建议修改范围:</p>
+<ul>
+<li><code>mineru/doclib/services/parse_svc.py</code></li>
+<li><code>tests/...</code></li>
+</ul>
+<p>具体步骤:</p>
+<ol>
+<li>设置 <code>privacy=remote</code>。</li>
+<li>mock remote unhealthy。</li>
+<li>mock local healthy 且支持请求 tier。</li>
+<li>执行解析。</li>
+<li>期望使用 local URL。</li>
+<li>完成后 <code>via=local</code>。</li>
+</ol>
+<p>完成边界:</p>
+<ul>
+<li>fallback 只发生在用户已允许 remote 时。</li>
+<li><code>via</code> 记录实际执行路径。</li>
+<li>tier 能力仍需匹配。</li>
+</ul>
+<p>验证方式:</p>
+<div class="highlight"><pre><span></span><code>.venv/bin/python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests<span class="w"> </span>-q<span class="w"> </span>-k<span class="w"> </span><span class="s2">"fallback"</span>
+</code></pre></div>
+<p>禁止范围:</p>
+<ul>
+<li>不对文件损坏、加密等非网络错误做 fallback。</li>
+</ul>
+<h3 id="m3-004-parse-server-tier-mismatch">M3-004 parse-server tier mismatch 错误</h3>
+<p>状态: <code>verify-first</code></p>
+<p>目标:</p>
+<p>当 parse-server 不支持请求 tier 时，返回稳定错误，不自动降级。</p>
+<p>依赖:</p>
+<ul>
+<li>M3-001。</li>
+</ul>
+<p>参考文档:</p>
+<ul>
+<li><a href="../errors/">错误码体系</a></li>
+<li><a href="../sdk/tiers-errors/">SDK Tier 与错误</a></li>
+</ul>
+<p>建议修改范围:</p>
+<ul>
+<li><code>mineru/doclib/services/parse_svc.py</code></li>
+<li><code>mineru/errors.py</code></li>
+<li><code>tests/...</code></li>
+</ul>
+<p>具体步骤:</p>
+<ol>
+<li>mock parse-server supported tiers = <code>["basic"]</code>。</li>
+<li>请求 <code>tier="standard"</code>。</li>
+<li>期望 <code>tier_mismatch</code>。</li>
+<li>确认不会改成 <code>basic</code>。</li>
+<li>确认不会改成 <code>flash</code>。</li>
+</ol>
+<p>完成边界:</p>
+<ul>
+<li>错误 code 稳定。</li>
+<li>错误 message 包含 available tiers。</li>
+<li>无降级 parse row。</li>
+</ul>
+<p>验证方式:</p>
+<div class="highlight"><pre><span></span><code>.venv/bin/python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests<span class="w"> </span>-q<span class="w"> </span>-k<span class="w"> </span><span class="s2">"tier_mismatch"</span>
+</code></pre></div>
+<p>禁止范围:</p>
+<ul>
+<li>不改变默认选择逻辑。</li>
+</ul>
+<h2 id="8-m4-cli-sdk-api">8. M4: CLI / SDK / API 对齐</h2>
+<h3 id="m4-001-mineru-parse-doclib-read-time-render">M4-001 <code>mineru parse</code> 使用 doclib read-time render</h3>
+<p>状态: <code>verify-first</code></p>
+<p>目标:</p>
+<p>确保 <code>mineru parse</code> 的 Markdown/Text/JSON 输出来自 doclib JSON 批次，而不是派生产物文件。</p>
+<p>依赖:</p>
+<ul>
+<li>M2-005。</li>
+</ul>
+<p>参考文档:</p>
+<ul>
+<li><a href="../cli/mineru-parse/">mineru parse</a></li>
+<li><a href="../workflows/">端到端工作流</a></li>
+</ul>
+<p>建议修改范围:</p>
+<ul>
+<li><code>mineru/cli/commands/parse.py</code></li>
+<li><code>mineru/cli/output.py</code></li>
+<li><code>mineru/doclib/client.py</code></li>
+<li><code>tests/...</code></li>
+</ul>
+<p>具体步骤:</p>
+<ol>
+<li>检查 CLI parse 当前调用链。</li>
+<li>JSON 格式输出 Middle JSON 或 response envelope，按 CLI 文档确定。</li>
+<li>Markdown/Text/HTML 格式通过 doclib client 请求 read-time render。</li>
+<li><code>--output</code> 写用户指定路径，不写 doclib <code>parsed/</code>。</li>
+<li><code>--no-wait</code> 未完成时返回任务状态。</li>
+</ol>
+<p>完成边界:</p>
+<ul>
+<li>CLI 不依赖 <code>output.md</code>。</li>
+<li>CLI 输出格式符合文档。</li>
+<li>缓存命中时可直接输出。</li>
+</ul>
+<p>验证方式:</p>
+<div class="highlight"><pre><span></span><code>.venv/bin/python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests<span class="w"> </span>-q<span class="w"> </span>-k<span class="w"> </span><span class="s2">"cli and parse"</span>
+</code></pre></div>
+<p>禁止范围:</p>
+<ul>
+<li>不在普通 <code>mineru parse</code> 暴露 backend 参数。</li>
+</ul>
+<h3 id="m4-002-tool-sdk-parse-tier">M4-002 Tool SDK <code>parse()</code> 增加 tier 参数</h3>
+<p>状态: <code>verify-first</code></p>
+<p>目标:</p>
+<p>让 Tool SDK 支持 <code>tier</code> 参数；<code>backend</code> 不进入 Tool SDK 签名。backend 由 tier 派生，仅作为内部实现细节（2026-09 修订：kit 层的 <code>--backend</code> 专家参数已移除，下文涉及 <code>backend</code> 入参的步骤与完成边界作废）。</p>
+<p>依赖:</p>
+<ul>
+<li>M1-001。</li>
+</ul>
+<p>参考文档:</p>
+<ul>
+<li><a href="../sdk/parser/">SDK Parser</a></li>
+<li><a href="../sdk/migration/">SDK Migration</a></li>
+</ul>
+<p>建议修改范围:</p>
+<ul>
+<li><code>mineru/parser/__init__.py</code></li>
+<li><code>mineru/parser/pdf.py</code></li>
+<li><code>mineru/parser/base.py</code></li>
+<li><code>tests/...</code></li>
+</ul>
+<p>具体步骤:</p>
+<ol>
+<li>查清 <code>parse()</code> 当前签名。</li>
+<li>增加 <code>tier: str | None = None</code>。</li>
+<li><code>backend</code> 显式传入时覆盖 <code>tier</code>。</li>
+<li><code>tier=flash</code> 映射到 <code>flash</code> backend。</li>
+<li><code>tier=basic</code> 映射到默认 basic backend。</li>
+<li><code>tier=standard</code> 映射到默认 standard backend。</li>
+<li><code>tier=None</code> 在 Tool SDK 的 PDF/image 场景中如果不能发现非 <code>flash</code> 质量 tier，应报错，不静默 flash；Office/HTML 这类仅支持 flash tier 的输入按实际能力归一为 <code>flash</code>。</li>
+</ol>
+<p>完成边界:</p>
+<ul>
+<li><code>parse(path, tier="flash")</code> 可用。</li>
+<li><code>parse(path, tier="basic")</code> 可用或返回明确能力错误。</li>
+<li><code>parse(path, backend="pipeline")</code> 兼容。</li>
+<li><code>backend</code> 覆盖 <code>tier</code> 有测试。</li>
+</ul>
+<p>验证方式:</p>
+<div class="highlight"><pre><span></span><code>.venv/bin/python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests<span class="w"> </span>-q<span class="w"> </span>-k<span class="w"> </span><span class="s2">"parser and tier"</span>
+</code></pre></div>
+<p>禁止范围:</p>
+<ul>
+<li>不让 Tool SDK 隐式启动 doclib server。</li>
+<li>不让 Tool SDK 隐式 remote 上传。</li>
+</ul>
+<h3 id="m4-003-envelope-clisdk">M4-003 统一错误 envelope 到 CLI/SDK 异常</h3>
+<p>状态: <code>ready</code></p>
+<p>目标:</p>
+<p>API-backed parser、Doclib SDK、本地 parser 的错误都能被统一捕获，并保留 code。</p>
+<p>依赖:</p>
+<ul>
+<li>M3-004。</li>
+</ul>
+<p>参考文档:</p>
+<ul>
+<li><a href="../errors/">错误码体系</a></li>
+<li><a href="../api/responses/">API Responses</a></li>
+<li><a href="../sdk/tiers-errors/">SDK Tier 与错误</a></li>
+</ul>
+<p>建议修改范围:</p>
+<ul>
+<li><code>mineru/errors.py</code></li>
+<li><code>mineru/parser/api_client.py</code></li>
+<li><code>mineru/doclib/client.py</code></li>
+<li><code>tests/...</code></li>
+</ul>
+<p>具体步骤:</p>
+<ol>
+<li>定义或补齐 <code>MineruError</code> 子类和 code 属性。</li>
+<li>将 <code>_V1APIError</code> 映射到 <code>MineruError</code>。</li>
+<li>Doclib client 收到 error envelope 时抛出统一异常。</li>
+<li>CLI 根据 code 输出修复建议。</li>
+<li>增加 <code>quality_tier_unavailable</code> 等错误测试。</li>
+</ol>
+<p>完成边界:</p>
+<ul>
+<li>三类入口都能捕获 <code>MineruError</code>。</li>
+<li>异常保留 <code>type</code>、<code>code</code>、<code>param</code> 或等价信息。</li>
+<li>CLI 不吞掉机器可读 code。</li>
+</ul>
+<p>验证方式:</p>
+<div class="highlight"><pre><span></span><code>.venv/bin/python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests<span class="w"> </span>-q<span class="w"> </span>-k<span class="w"> </span><span class="s2">"error"</span>
+</code></pre></div>
+<p>禁止范围:</p>
+<ul>
+<li>不改所有错误文案，只保证结构和核心 code。</li>
+</ul>
+<h3 id="m4-004-local-parse-server-api-api">M4-004 Local Parse Server API 与官方 API 差异测试</h3>
+<p>状态: <code>ready</code></p>
+<p>目标:</p>
+<p>确保 Local Parse Server 可以复用 v1 API 客户端，同时允许本地差异。</p>
+<p>依赖:</p>
+<ul>
+<li>M4-003。</li>
+</ul>
+<p>参考文档:</p>
+<ul>
+<li><a href="../api/">API 总览</a></li>
+<li><a href="../api/parse-jobs/">Parse Jobs</a></li>
+</ul>
+<p>建议修改范围:</p>
+<ul>
+<li><code>mineru/parser/api_server.py</code></li>
+<li><code>mineru/parser/api_client.py</code></li>
+<li><code>tests/...</code></li>
+</ul>
+<p>具体步骤:</p>
+<ol>
+<li>测试 <code>GET /v1/health</code>。</li>
+<li>测试 <code>GET /v1/tiers</code>。</li>
+<li>测试 <code>POST /v1/parse/jobs</code> 的最小本地路径 source。</li>
+<li>local source 默认关闭；开启 <code>--allow-local-source</code> 后允许 server 进程权限范围内的本地路径。</li>
+<li>未实现 webhook 时 health features 应标记 false。</li>
+<li>使用同一个 <code>MinerUApiParser</code> 调用本地 server。</li>
+</ol>
+<p>完成边界:</p>
+<ul>
+<li>Local Parse Server 不需要实现官方全部能力，但 endpoint 行为和差异符合文档。</li>
+<li>本地路径越权被拒绝。</li>
+<li>客户端可复用。</li>
+</ul>
+<p>验证方式:</p>
+<div class="highlight"><pre><span></span><code>.venv/bin/python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests<span class="w"> </span>-q<span class="w"> </span>-k<span class="w"> </span><span class="s2">"api_server or local_source"</span>
+</code></pre></div>
+<p>禁止范围:</p>
+<ul>
+<li>不实现公网计费、CDN、Webhook 完整能力。</li>
+</ul>
+<h2 id="9-m5-agent-native">9. M5: Agent-native 输出</h2>
+<h3 id="m5-001a-doclib-locator-helper">M5-001a 锁定 doclib locator helper</h3>
+<p>状态: <code>verify-first</code></p>
+<p>目标:</p>
+<p>锁定当前 doclib locator / cursor helper 行为，确保 public locator 使用 1-based 页号和块号，且不包含本地路径。</p>
+<p>依赖:</p>
+<ul>
+<li>ADR-0011。</li>
+<li>ADR-0012。</li>
+</ul>
+<p>参考文档:</p>
+<ul>
+<li><a href="../middle-json/agent-gaps/">Agent Gaps</a></li>
+<li><a href="../decisions/0011-doclib-doc-short-id/">ADR-0011: Doc Short ID</a></li>
+<li><a href="../decisions/0012-doclib-block-locator/">ADR-0012: Doclib Block Locator</a></li>
+</ul>
+<p>建议修改范围:</p>
+<ul>
+<li><code>mineru/doclib/locators.py</code></li>
+<li><code>tests/...</code></li>
+</ul>
+<p>具体步骤:</p>
+<ol>
+<li>确认 <code>locator_for_block(page_no, block_no)</code> 使用 1-based public number。</li>
+<li>确认 <code>page_ref()</code>、<code>block_ref()</code>、<code>block_char_ref()</code> 使用 <code>short_id</code>、实体 tier、1-based page/block 和 0-based char offset。</li>
+<li>确认 <code>parse_content_cursor()</code> 能解析 page / block / char 三种 cursor。</li>
+<li>补充或保留测试，避免 0-based page/block 泄漏到 public cursor。</li>
+<li>确认 marker / continuation 不包含本地绝对路径。</li>
+</ol>
+<p>完成边界:</p>
+<ul>
+<li>locator helper 行为由测试锁定。</li>
+<li>page/block public number 均为 1-based。</li>
+<li>char offset 为 block 渲染文本内 0-based offset。</li>
+<li>cursor 中不包含 path 或 filename。</li>
+</ul>
+<p>验证方式:</p>
+<div class="highlight"><pre><span></span><code>.venv/bin/python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests<span class="w"> </span>-q<span class="w"> </span>-k<span class="w"> </span><span class="s2">"locator"</span>
+</code></pre></div>
+<p>禁止范围:</p>
+<ul>
+<li>不实现独立 hash 型引用 ID。</li>
+<li>不实现 span/cell/list-item locator。</li>
+</ul>
+<h3 id="m5-002-markdown-locator-marker">M5-002 Markdown locator marker</h3>
+<p>状态: <code>ready</code></p>
+<p>目标:</p>
+<p>Markdown 输出可选择携带 Agent locator marker。</p>
+<p>依赖:</p>
+<ul>
+<li>M5-001a。</li>
+</ul>
+<p>参考文档:</p>
+<ul>
+<li><a href="../middle-json/rendering/">Middle JSON Rendering</a></li>
+<li><a href="../workflows/#74-agent-marker">端到端工作流: Agent marker</a></li>
+</ul>
+<p>建议修改范围:</p>
+<ul>
+<li><code>mineru/render/union_make.py</code></li>
+<li><code>mineru/render/markdown.py</code></li>
+<li><code>tests/...</code></li>
+</ul>
+<p>具体步骤:</p>
+<ol>
+<li>找到 <code>add_markers</code> 参数当前行为。</li>
+<li>为 block 输出前增加可选 marker。</li>
+<li>marker 包含稳定 page/block locator。</li>
+<li>默认不输出 marker。</li>
+<li>CLI/SDK 需要显式 opt-in。</li>
+</ol>
+<p>完成边界:</p>
+<ul>
+<li><code>markdown(add_markers=False)</code> 输出不变。</li>
+<li><code>markdown(add_markers=True)</code> 输出 marker。</li>
+<li>marker 可被正则稳定解析。</li>
+</ul>
+<p>验证方式:</p>
+<div class="highlight"><pre><span></span><code>.venv/bin/python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests<span class="w"> </span>-q<span class="w"> </span>-k<span class="w"> </span><span class="s2">"marker"</span>
+</code></pre></div>
+<p>禁止范围:</p>
+<ul>
+<li>不改变 Markdown 默认视觉格式。</li>
+</ul>
+<h3 id="m5-003-tier">M5-003 搜索结果返回来源 tier</h3>
+<p>状态: <code>verify-first</code></p>
+<p>目标:</p>
+<p>让 Agent 知道搜索 snippet 来自哪个 tier，以便决定是否升级解析。</p>
+<p>依赖:</p>
+<ul>
+<li>M2-006。</li>
+</ul>
+<p>参考文档:</p>
+<ul>
+<li><a href="../workflows/#7-%E6%B5%81%E7%A8%8B-c-agent-%E4%BB%8E%E6%90%9C%E7%B4%A2%E7%BB%93%E6%9E%9C%E7%BB%A7%E7%BB%AD%E9%98%85%E8%AF%BB">端到端工作流: Agent 从搜索结果继续阅读</a></li>
+</ul>
+<p>建议修改范围:</p>
+<ul>
+<li><code>mineru/doclib/services/search_svc.py</code></li>
+<li><code>mineru/doclib/core/fts.py</code></li>
+<li><code>mineru/doclib/client.py</code></li>
+<li><code>tests/...</code></li>
+</ul>
+<p>具体步骤:</p>
+<ol>
+<li>确认 FTS 表是否已有 tier 字段。</li>
+<li>search response 中暴露来源 tier。</li>
+<li>CLI search 可显示或 JSON 输出该字段。</li>
+<li>如果没有 tier，返回 null 或 omit，并补 TODO issue。</li>
+</ol>
+<p>完成边界:</p>
+<ul>
+<li>搜索结果机器可读地包含来源 tier。</li>
+<li><code>flash</code> snippet 能被识别。</li>
+<li>高 tier 更新 FTS 后来源 tier 更新。</li>
+</ul>
+<p>验证方式:</p>
+<div class="highlight"><pre><span></span><code>.venv/bin/python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests<span class="w"> </span>-q<span class="w"> </span>-k<span class="w"> </span><span class="s2">"search and tier"</span>
+</code></pre></div>
+<p>禁止范围:</p>
+<ul>
+<li>不实现搜索排序重构。</li>
+</ul>
+<h2 id="10-m6-telemetry">10. M6: Telemetry</h2>
+<h3 id="m6-001-telemetry-db-flush">M6-001 实现 telemetry DB 状态、聚合与 flush</h3>
+<p>状态: <code>verify-first</code></p>
+<p>目标:</p>
+<p>实现 doclib server 侧 telemetry 状态管理、本地聚合存储和周期 flush。纯工具层不得具备 telemetry 能力。</p>
+<p>依赖:</p>
+<ul>
+<li>doclib DB migration。</li>
+<li><a href="../telemetry/">Telemetry 设计</a>。</li>
+</ul>
+<p>参考文档:</p>
+<ul>
+<li><a href="../telemetry/">Telemetry 设计</a></li>
+<li><a href="../config/#telemetry">配置体系: Telemetry</a></li>
+</ul>
+<p>建议修改范围:</p>
+<ul>
+<li><code>mineru/doclib/migrations/001_init.sql</code></li>
+<li><code>mineru/doclib/services/</code></li>
+<li><code>mineru/doclib/background/</code></li>
+<li><code>mineru/doclib/app.py</code></li>
+<li><code>tests/...</code></li>
+</ul>
+<p>具体步骤:</p>
+<ol>
+<li>增加 telemetry 状态表或配置记录，保存 <code>consent_state</code>、内部 <code>installation_id</code>、flush lock 和 last flush 状态。</li>
+<li>增加 telemetry 聚合表，按 period、metric name、dimensions hash upsert 累加。</li>
+<li>实现 metric / dimension 白名单，不允许透传请求体、异常对象、配置对象或任意 dict。</li>
+<li>实现 doclib API / CLI source / caller 的 best-effort 透传入口。</li>
+<li>实现 flush 任务，成功后删除已确认上报的聚合记录。</li>
+<li>flush 失败不得影响 parse、watch、search 或任意 doclib API。</li>
+<li>用户关闭 telemetry 时停止写入新 metric，并清除未上报聚合数据。</li>
+</ol>
+<p>完成边界:</p>
+<ul>
+<li><code>consent_state=disabled</code> 时不写入新 telemetry 聚合。</li>
+<li><code>consent_state=enabled</code> 时 metrics 按小时级 period 聚合。</li>
+<li>flush 成功后本地聚合记录被清理。</li>
+<li>flush 失败保留记录等待下次重试。</li>
+<li>telemetry 不记录路径、文件名、query、snippet、文档内容、traceback 或 API Key。</li>
+</ul>
+<p>验证方式:</p>
+<div class="highlight"><pre><span></span><code>.venv/bin/python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests<span class="w"> </span>-q<span class="w"> </span>-k<span class="w"> </span><span class="s2">"telemetry"</span>
+</code></pre></div>
+<p>禁止范围:</p>
+<ul>
+<li>不在 parser SDK、<code>mineru-kit parse</code> 或 <code>mineru-kit api-server</code> 中加入 telemetry 能力。</li>
+<li>不实现每事件实时上报。</li>
+<li>不阻塞主业务链路等待 telemetry。</li>
+</ul>
+<h3 id="m6-002-mineru-telemetry-cli">M6-002 实现 <code>mineru telemetry</code> CLI</h3>
+<p>状态: <code>verify-first</code></p>
+<p>目标:</p>
+<p>提供用户可见的 telemetry 状态查看和开关命令。</p>
+<p>依赖:</p>
+<ul>
+<li>M6-001。</li>
+</ul>
+<p>参考文档:</p>
+<ul>
+<li><a href="../telemetry/">Telemetry 设计</a></li>
+<li><a href="../cli/">CLI 总览</a></li>
+</ul>
+<p>建议修改范围:</p>
+<ul>
+<li><code>mineru/cli/main.py</code></li>
+<li><code>mineru/cli/commands/</code></li>
+<li><code>mineru/doclib/base.py</code></li>
+<li><code>mineru/doclib/client.py</code></li>
+<li><code>mineru/doclib/server.py</code></li>
+<li><code>mineru/doclib/types.py</code></li>
+<li><code>tests/...</code></li>
+</ul>
+<p>具体步骤:</p>
+<ol>
+<li>增加 <code>mineru telemetry status</code>。</li>
+<li>增加 <code>mineru telemetry enable</code>。</li>
+<li>增加 <code>mineru telemetry disable</code>。</li>
+<li>增加 <code>mineru telemetry preview</code>，只展示将上报的聚合摘要，不展示敏感字段。</li>
+<li>增加 <code>mineru telemetry flush</code>，触发一次手动 flush。</li>
+<li>首次启动选择流程如暂不实现 UI，应至少让 <code>consent_state=unset</code> 可观测，并在 CLI/server status 中提示。</li>
+</ol>
+<p>完成边界:</p>
+<ul>
+<li>用户可以查看当前 consent 状态。</li>
+<li>用户可以开启和关闭 telemetry。</li>
+<li>关闭时清理未上报聚合数据。</li>
+<li>preview 不包含路径、文件名、query、snippet、文档内容、traceback 或 API Key。</li>
+<li>命令失败时返回稳定错误 code。</li>
+</ul>
+<p>验证方式:</p>
+<div class="highlight"><pre><span></span><code>.venv/bin/python<span class="w"> </span>-m<span class="w"> </span>pytest<span class="w"> </span>tests<span class="w"> </span>-q<span class="w"> </span>-k<span class="w"> </span><span class="s2">"telemetry or cli"</span>
+</code></pre></div>
+<p>禁止范围:</p>
+<ul>
+<li>不要求实现图形化首次启动选择。</li>
+<li>不向 parser/tool 层传递 telemetry 配置。</li>
+</ul>
+<h2 id="11">11. 可并行性</h2>
+<table>
+<thead>
+<tr>
+<th>可并行组</th>
+<th>任务</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Fixtures / validator</td>
+<td>M0-003、M1-003、M1-005</td>
+</tr>
+<tr>
+<td>doclib JSON behavior</td>
+<td>M0-002、M2-003、M2-004</td>
+</tr>
+<tr>
+<td>privacy / tier tests</td>
+<td>M3-001、M3-002、M3-004</td>
+</tr>
+<tr>
+<td>CLI / SDK</td>
+<td>M4-001、M4-002，需避免同文件冲突</td>
+</tr>
+<tr>
+<td>Agent locator</td>
+<td>M5-001a 可独立锁定；M5-002 依赖 locator helper</td>
+</tr>
+<tr>
+<td>Telemetry</td>
+<td>M6-001 可独立推进；M6-002 依赖 M6-001</td>
+</tr>
+</tbody>
+</table>
+<p>不建议并行:</p>
+<ul>
+<li>M3-001 与 M3-004 同时改 <code>_resolve_tier()</code>。</li>
+<li>M1-001 与 M2-005 同时改 <code>ParseResult.from_dict()</code> 调用边界。</li>
+</ul>
+<h2 id="12-pr">12. PR 切分建议</h2>
+<table>
+<thead>
+<tr>
+<th>PR</th>
+<th>包含任务</th>
+<th>目标</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>PR-1</td>
+<td>M0-003</td>
+<td>Middle JSON fixture。</td>
+</tr>
+<tr>
+<td>PR-2</td>
+<td>M1-001, M1-002, M1-003</td>
+<td>Middle JSON normalize / round-trip / validate。</td>
+</tr>
+<tr>
+<td>PR-3</td>
+<td>M2-003, M2-004</td>
+<td>doclib page coverage 和 compaction 边界锁定。</td>
+</tr>
+<tr>
+<td>PR-4</td>
+<td>M2-005, M2-006</td>
+<td>read-time render 和 FTS。</td>
+</tr>
+<tr>
+<td>PR-5</td>
+<td>M3-001, M3-002, M3-003, M3-004</td>
+<td>tier / privacy / parse-server 路由。</td>
+</tr>
+<tr>
+<td>PR-6</td>
+<td>M4-001, M4-002, M4-003</td>
+<td>CLI / SDK / 错误模型。</td>
+</tr>
+<tr>
+<td>PR-7</td>
+<td>M5-001a, M5-002, M5-003</td>
+<td>Agent-native locator / marker / search tier。</td>
+</tr>
+<tr>
+<td>PR-8</td>
+<td>M6-001, M6-002</td>
+<td>Telemetry DB、flush 和 CLI。</td>
+</tr>
+</tbody>
+</table>
+<p>每个 PR 都应能独立通过测试，并保留向后兼容。</p>
+<h2 id="13">13. 完成定义</h2>
+<p>P0 完成需要满足:</p>
+<ol>
+<li><code>mineru parse</code> 能在本地完成 ingest、cache check、parse task、JSON batch 写入、read-time Markdown 输出。</li>
+<li>watch 能创建 <code>flash</code> 任务并更新搜索索引。</li>
+<li>doclib <code>parsed/</code> 目录只保存 JSON。</li>
+<li>默认选择不产生独立缓存目录，不解析为 <code>flash</code>。</li>
+<li>未显式 remote 时不会上传。</li>
+<li>Local Parse Server 支持 tier discovery 并可被 doclib 调用。</li>
+<li><code>ParseResult.from_json()</code> 可恢复 JSON 批次。</li>
+<li>Middle JSON validator 覆盖 P0 必填字段。</li>
+<li>错误 code 对 CLI/SDK/API 可见。</li>
+<li>Telemetry consent、聚合、flush 和 CLI 管理入口可验证。</li>
+<li>Agent-native 输出具备稳定 page/block locator、<code>next_request</code>、<code>truncated</code> 和 CLI next marker。</li>
+<li>workflows 中 13.1 到 13.7 的端到端验收可以通过测试或手工脚本验证。</li>
+</ol>
+<p>P1 完成需要满足:</p>
+<ol>
+<li>Agent 主动读取默认升级到非 <code>flash</code> 质量 tier。</li>
+<li>Markdown 可选输出 locator marker。</li>
+<li>高质量解析完成后刷新搜索索引。</li>
+</ol>
+<h2 id="14-agent">14. Agent 领取任务时的最终检查</h2>
+<p>每个任务完成前，Agent 必须回答:</p>
+<ol>
+<li>我改了哪些文件？</li>
+<li>哪些完成边界已经满足？</li>
+<li>哪些验证命令已经运行，结果是什么？</li>
+<li>是否有未完成但相关的后续任务？</li>
+<li>是否触碰了任务禁止范围？</li>
+</ol>
+<p>如果第 5 项答案是“是”，该任务不应合并，除非用户或维护者明确批准。</p></div>
+
+
+
+
+
+
+
+
+
+  
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  回到页面顶部
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      © 2024 - 2025 MinerU. All Rights Reserved.
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+    <a href="https://github.com/opendatalab/MinerU" target="_blank" rel="noopener" title="GitHub" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://x.com/OpenDataLab_AI" target="_blank" rel="noopener" title="X-Twitter" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M357.2 48h70.6L273.6 224.2 455 464H313L201.7 318.6 74.5 464H3.8l164.9-188.5L-5.2 48h145.6l100.5 132.9zm-24.8 373.8h39.1L119.1 88h-42z"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://discord.gg/Tdedn9GTXq" target="_blank" rel="noopener" title="Discord" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M492.5 69.8c-.2-.3-.4-.6-.8-.7-38.1-17.5-78.4-30-119.7-37.1-.4-.1-.8 0-1.1.1s-.6.4-.8.8c-5.5 9.9-10.5 20.2-14.9 30.6-44.6-6.8-89.9-6.8-134.4 0-4.5-10.5-9.5-20.7-15.1-30.6-.2-.3-.5-.6-.8-.8s-.7-.2-1.1-.2C162.5 39 122.2 51.5 84.1 69c-.3.1-.6.4-.8.7C7.1 183.5-13.8 294.6-3.6 404.2c0 .3.1.5.2.8s.3.4.5.6c44.4 32.9 94 58 146.8 74.2.4.1.8.1 1.1 0s.7-.4.9-.7c11.3-15.4 21.4-31.8 30-48.8.1-.2.2-.5.2-.8s0-.5-.1-.8-.2-.5-.4-.6-.4-.3-.7-.4c-15.8-6.1-31.2-13.4-45.9-21.9-.3-.2-.5-.4-.7-.6s-.3-.6-.3-.9 0-.6.2-.9.3-.5.6-.7c3.1-2.3 6.2-4.7 9.1-7.1.3-.2.6-.4.9-.4s.7 0 1 .1c96.2 43.9 200.4 43.9 295.5 0 .3-.1.7-.2 1-.2s.7.2.9.4c2.9 2.4 6 4.9 9.1 7.2.2.2.4.4.6.7s.2.6.2.9-.1.6-.3.9-.4.5-.6.6c-14.7 8.6-30 15.9-45.9 21.8-.2.1-.5.2-.7.4s-.3.4-.4.7-.1.5-.1.8.1.5.2.8c8.8 17 18.8 33.3 30 48.8.2.3.6.6.9.7s.8.1 1.1 0c52.9-16.2 102.6-41.3 147.1-74.2.2-.2.4-.4.5-.6s.2-.5.2-.8c12.3-126.8-20.5-236.9-86.9-334.5zm-302 267.7c-29 0-52.8-26.6-52.8-59.2s23.4-59.2 52.8-59.2c29.7 0 53.3 26.8 52.8 59.2 0 32.7-23.4 59.2-52.8 59.2m195.4 0c-29 0-52.8-26.6-52.8-59.2s23.4-59.2 52.8-59.2c29.7 0 53.3 26.8 52.8 59.2 0 32.7-23.2 59.2-52.8 59.2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://mineru.net/community-portal/?aliasId=3c430f94" target="_blank" rel="noopener" title="WeChat" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M385.2 167.6c6.4 0 12.6.3 18.8 1.1C387.4 90.3 303.3 32 207.7 32 100.5 32 13 104.8 13 197.4c0 53.4 29.3 97.5 77.9 131.6l-19.3 58.6 68-34.1c24.4 4.8 43.8 9.7 68.2 9.7 6.2 0 12.1-.3 18.3-.8-4-12.9-6.2-26.6-6.2-40.8-.1-84.9 72.9-154 165.3-154m-104.5-52.9c14.5 0 24.2 9.7 24.2 24.4 0 14.5-9.7 24.2-24.2 24.2-14.8 0-29.3-9.7-29.3-24.2.1-14.7 14.6-24.4 29.3-24.4m-136.4 48.6c-14.5 0-29.3-9.7-29.3-24.2 0-14.8 14.8-24.4 29.3-24.4 14.8 0 24.4 9.7 24.4 24.4 0 14.6-9.6 24.2-24.4 24.2M563 319.4c0-77.9-77.9-141.3-165.4-141.3-92.7 0-165.4 63.4-165.4 141.3S305 460.7 397.6 460.7c19.3 0 38.9-5.1 58.6-9.9l53.4 29.3-14.8-48.6C534 402.1 563 363.2 563 319.4m-219.1-24.5c-9.7 0-19.3-9.7-19.3-19.6 0-9.7 9.7-19.3 19.3-19.3 14.8 0 24.4 9.7 24.4 19.3 0 10-9.7 19.6-24.4 19.6m107.1 0c-9.7 0-19.3-9.7-19.3-19.6 0-9.7 9.7-19.3 19.3-19.3 14.5 0 24.4 9.7 24.4 19.3.1 10-9.9 19.6-24.4 19.6"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="mailto:OpenDataLab@pjlab.org.cn" target="_blank" rel="noopener" title="E-mail" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m20 8-8 5-8-5V6l8 5 8-5m0-2H4c-1.11 0-2 .89-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["content.tabs.link", "content.code.annotate", "content.code.copy", "navigation.expand", "navigation.footer", "navigation.tabs", "navigation.sections", "navigation.path", "navigation.indexes", "navigation.top", "navigation.tracking", "search.suggest", "toc.follow"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u5df2\u590d\u5236", "clipboard.copy": "\u590d\u5236", "search.result.more.one": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.more.other": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 # \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.none": "\u6ca1\u6709\u627e\u5230\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.one": "\u627e\u5230 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.other": "# \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.placeholder": "\u952e\u5165\u4ee5\u5f00\u59cb\u641c\u7d22", "search.result.term.missing": "\u7f3a\u5c11", "select.version": "\u9009\u62e9\u5f53\u524d\u7248\u672c"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
