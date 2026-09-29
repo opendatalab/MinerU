@@ -73,8 +73,6 @@ def resolve_batch_output_paths(paths: list[Path], output: Path, format: KitForma
             raise ValueError(t("When input is multiple files or directories, --output must be a directory path."))
 
     output_dir = output
-    if output.exists() and output.is_file():
-        raise ValueError(t("When input is multiple files or directories, --output must be a directory path."))
 
     destinations: dict[Path, Path] = {}
     seen: dict[Path, Path] = {}
