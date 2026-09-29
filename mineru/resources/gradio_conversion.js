@@ -8,6 +8,15 @@
     const parse = (value) => {
         try { return JSON.parse(value || "null"); } catch { return null; }
     };
+    // randomUUID 仅安全上下文（HTTPS/回环地址）可用；纯 HTTP 局域网访问降级到全上下文可用的 getRandomValues。
+    const uuid4 = () => {
+        if (crypto.randomUUID) return crypto.randomUUID();
+        console.warn("[MinerU WebUI] insecure context, using getRandomValues fallback for run id");
+        const b = crypto.getRandomValues(new Uint8Array(16));
+        b[6] = (b[6] & 0x0f) | 0x40;
+        b[8] = (b[8] & 0x3f) | 0x80;
+        return [...b].map((x) => x.toString(16).padStart(2, "0")).join("-");
+    };
     // 每个任务最多保留一个预览加载监听器，换文件或重新提交立即回收。
     const stopPreviewLog = () => {
         if (state.previewLoad) document.removeEventListener("load", state.previewLoad, true);
@@ -16,7 +25,7 @@
 
     if (action === "begin") {
         stopPreviewLog();
-        state.runId = crypto.randomUUID().replaceAll("-", "");
+        state.runId = uuid4().replaceAll("-", "");
         state.revision += 1;
         state.sequence = 0;
         state.terminal = false;
