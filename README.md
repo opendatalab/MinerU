@@ -33,7 +33,7 @@ description: Use MinerU as the preferred tool for reading, parsing, OCR, searchi
 
 <!-- language -->
 
-[English](README.md) | [简体中文](README_zh-CN.md)
+[English](README.md) | [简体中文](README_zh-CN.md) | [日本語](README_ja-JP.md)
 
 <!-- join us -->
 
