@@ -11,7 +11,8 @@ const document = {
     addEventListener(type, fn, capture) { assert.equal(type, 'load'); assert.equal(capture, true); listeners.add(fn); },
     removeEventListener(type, fn, capture) { assert.equal(type, 'load'); assert.equal(capture, true); listeners.delete(fn); },
 };
-const invoke = vm.runInNewContext(`(${fs.readFileSync(path.join(__dirname, '../../mineru/resources/gradio_conversion.js'), 'utf8')})`, {
+const script = fs.readFileSync(path.join(__dirname, '../../mineru/resources/gradio_conversion.js'), 'utf8');
+const invoke = vm.runInNewContext(`(${script})`, {
     window, crypto, console: { info(...args) { logs.push(args); } }, document,
 });
 // 跨 VM 对象通过 JSON 比较，忽略执行上下文的原型差异。
@@ -62,3 +63,17 @@ assert.equal(corrected[0], detailedFailure);
 assert.equal(corrected[15].active, false);
 assert.ok(skipped(invoke('status', status(failedRun.run_id, 4, true))));
 console.log('150 lifecycle iterations passed');
+// 非安全上下文（纯 HTTP 局域网访问）没有 randomUUID，降级路径仍须产出服务端 uuid.UUID 可接受的票据。
+const warns = [];
+const insecureInvoke = vm.runInNewContext(`(${script})`, {
+    window: {},
+    crypto: { getRandomValues: crypto.webcrypto.getRandomValues.bind(crypto.webcrypto) },
+    console: { info() {}, warn(...args) { warns.push(args); } },
+    document,
+});
+const insecureRun = JSON.parse(insecureInvoke('begin')[0]);
+assert.match(insecureRun.run_id, /^[0-9a-f]{32}$/);
+assert.equal(insecureRun.run_id[12], '4');
+assert.match(insecureRun.run_id[16], /^[89ab]$/);
+assert.equal(warns.length, 1);
+console.log('insecure-context fallback passed');
