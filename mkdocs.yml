@@ -81,6 +81,7 @@ nav:
       - Quick Start: quick_start/index.md
       - Extension Modules: quick_start/extension_modules.md
       - Docker Deployment: quick_start/docker_deployment.md
+      - AMD GPU Installation: quick_start/amd_installation.md
     - Usage:
       - Usage: usage/index.md
       - Quick Usage: usage/quick_usage.md
@@ -104,6 +105,7 @@ nav:
     - Quick Start: quick_start/index.md
     - Extension Modules: quick_start/extension_modules.md
     - Docker Deployment: quick_start/docker_deployment.md
+    - AMD GPU Installation: quick_start/amd_installation.md
   - Usage:
     - Usage: usage/index.md
     - Quick Usage: usage/quick_usage.md
@@ -145,6 +147,7 @@ plugins:
             Quick Start: 快速入门
             Extension Modules: 扩展模块安装
             Docker Deployment: Docker部署
+            AMD GPU Installation: AMD GPU 安装
             Usage: 使用指南
             Quick Usage: 基础使用
             CLI Tools: 命令行工具

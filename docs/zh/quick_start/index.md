@@ -1,6 +1,8 @@
 # 快速入门
 
-本指南面向 MinerU **4.0 正式版**。AMD 和国产加速卡的既有适配保持在 `<4`，请使用[旧平台指南](../usage/compatibility.md)。
+本指南面向 MinerU **4.0 正式版**。MinerU `<4` 在 AMD 和国产加速卡上的适配，请参考[旧平台指南](../usage/compatibility.md)。
+
+AMD 上的 MinerU 4.x 安装、vLLM / llama.cpp 配置及使用步骤见[AMD GPU 安装](amd_installation.md)。
 
 ## 安装 MinerU
 
@@ -94,6 +96,7 @@ mineru version --json
 
 ## 继续阅读
 
+- [AMD GPU 安装](amd_installation.md)
 - [档位与运行环境](../usage/tiers.md)
 - [模型下载与配置](../usage/model_source.md)
 - [3.x → 4.0 迁移](../reference/migration_4.md)
