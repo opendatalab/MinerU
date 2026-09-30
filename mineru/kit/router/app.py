@@ -7,6 +7,7 @@ import asyncio
 import copy
 import hashlib
 import json
+import secrets
 import time
 from contextlib import asynccontextmanager
 from typing import Any, AsyncIterator, Literal
@@ -68,7 +69,7 @@ def _route_or_404(
 
 
 def _affinity_key(request: Request) -> str:
-    """用 Authorization 与客户端地址构造同一调用方的 upload affinity。"""
+    """用 Authorization 与客户端地址构造调用方基础 affinity；上传侧拼接内容哈希使不同文件分散到全部 worker。"""
     authorization = request.headers.get("authorization", "")
     client_host = request.client.host if request.client is not None else "unknown"
     return f"{authorization}\0{client_host}"
@@ -505,12 +506,15 @@ def create_app(
 
     @application.post("/v1/uploads")
     async def create_upload(request: Request) -> Response:
-        """按调用方 affinity 选择 worker 并创建 Router upload。"""
+        """将上传按内容哈希分散到全部 worker：同文件重传落点稳定，避免单调用方固定落同一 worker。"""
         owner_scope = _caller_scope(request)
-        worker = pool.select(tier=None, required_sources={"file_id"}, affinity_key=_affinity_key(request))
+        body = await _read_json_object(request)
+        # 内容寻址（sha256sum 由客户端提供）使不同文件均匀分散；缺失时用请求级随机数兜底，保持无状态。
+        content_key: str = body.get("sha256sum") or secrets.token_hex(16)
+        affinity = f"{_affinity_key(request)}\0{content_key}"
+        worker = pool.select(tier=None, required_sources={"file_id"}, affinity_key=affinity)
         if worker is None:
             raise RouterProxyError(503, "upstream_unavailable", "No upstream accepts file uploads")
-        body = await _read_json_object(request)
         upstream_body = dict(body)
         # Router 必须收到源字节才能跨 worker 转移，因此禁止 upstream 在 PUT 前按 sha256 提前完成。
         upstream_body.pop("sha256sum", None)
