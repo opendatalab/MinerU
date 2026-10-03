@@ -53,6 +53,7 @@ from ..filetypes import (
 from ..types import SERVER_TIERS, TIERS_BY_SERVER_TIER, DeploymentTier, PageInfo, ServerTier, Tier, select_default_quality_tier
 from ..utils.async_utils import drain_future, run_sync
 from ..model.vlm.async_runtime import RuntimeOwner, runtime_owner
+from ..utils.cpu_threads import apply_cpu_thread_limit
 from ..utils.logger import configure_global_log_level
 from ..utils.stdio import configure_standard_streams
 from ..version import __version__
@@ -2411,6 +2412,17 @@ def create_app(
     application.state.preload_models = preload_models
     application.state.vlm_config = vlm_config
     application.state.model_preload_error = None
+
+    # CPU 阶段经 run_sync -> asyncio.to_thread 派发到事件循环默认线程池。
+    # libgomp 为每个长驻池 worker 常驻一支 OpenMP team，team 不设上限时进程
+    # 线程数会向 pool_size * os.cpu_count() 增长且空闲不回收。见 issue #5472。
+    applied_cpu_thread_limit = apply_cpu_thread_limit()
+    if applied_cpu_thread_limit is not None:
+        logger.info(
+            "Torch CPU threads limited to %s; set MINERU_CPU_NUM_THREADS or OMP_NUM_THREADS to override",
+            applied_cpu_thread_limit,
+        )
+
     FileStore(_upload_dir).install(application.state)
     JobStore(concurrency=concurrency).install(application.state)
     application.add_middleware(GZipMiddleware, minimum_size=1000)
