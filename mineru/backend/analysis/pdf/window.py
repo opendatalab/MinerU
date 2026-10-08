@@ -117,6 +117,15 @@ def _log_processing_window(window: _ProcessingWindow, page_count: int, image_cou
     )
 
 
+def _log_vlm_window_fallback(window: _ProcessingWindow, error: UnicodeDecodeError) -> None:
+    """输出单窗口 VLM 解码异常的降级日志，同步与异步入口保持文案一致。"""
+    logger.warning(
+        f"VLM inference failed on window {window.index + 1}/{window.total} "
+        f"(pages {window.start + 1}-{window.end + 1}); "
+        f"falling back to local layout blocks: {error!r}"
+    )
+
+
 def _close_images(images_list: list[dict[str, Any]]) -> None:
     """尽力关闭窗口内全部 PIL 图片，确保异常路径也能释放图像资源。"""
     for image_dict in images_list or []:
@@ -604,16 +613,29 @@ def _process_pdf_window(
         )
     try:
         result = state.vl_style_layout_blocks
+        finish_effort = effort
         if effort in {"high", "xhigh"}:
             if vlm_predictor is None:
                 raise ValueError("VLM predictor is required for high/xhigh")
             options = _inference_options(state, effort, parse_mode, image_analysis)
-            if effort == "high":
-                result = vlm_predictor.batch_extract_with_layout(**options)
-            else:
-                result = vlm_predictor.batch_two_step_extract(**options)
+            try:
+                if effort == "high":
+                    result = vlm_predictor.batch_extract_with_layout(**options)
+                else:
+                    result = vlm_predictor.batch_two_step_extract(**options)
+            except UnicodeDecodeError as error:
+                # 截断输出损坏多字节序列时按窗口降级；服务与协议错误仍按原语义上抛。
+                _log_vlm_window_fallback(window, error)
+                result = state.vl_style_layout_blocks
+                finish_effort = "medium"
         with local_model_stage(hybrid_model.device):
-            return _finish_pdf_window(state, result, effort=effort, parse_mode=parse_mode, hybrid_model=hybrid_model)
+            return _finish_pdf_window(
+                state,
+                result,
+                effort=finish_effort,
+                parse_mode=parse_mode,
+                hybrid_model=hybrid_model,
+            )
     finally:
         state.close()
 
@@ -715,16 +737,23 @@ async def aio_process_pdf_windows(
             finally:
                 state = holder[0] if holder else None
             options = _inference_options(state, effort, parse_mode, image_analysis)
-            if effort == "high":
-                result = await vlm_predictor.aio_batch_extract_with_layout(**options)
-            else:
-                result = await vlm_predictor.aio_batch_two_step_extract(**options)
+            finish_effort = effort
+            try:
+                if effort == "high":
+                    result = await vlm_predictor.aio_batch_extract_with_layout(**options)
+                else:
+                    result = await vlm_predictor.aio_batch_two_step_extract(**options)
+            except UnicodeDecodeError as error:
+                # 截断输出损坏多字节序列时按窗口降级；服务与协议错误仍按原语义上抛。
+                _log_vlm_window_fallback(window, error)
+                result = state.vl_style_layout_blocks if state is not None else []
+                finish_effort = "medium"
             model_list.extend(
                 await run_sync(
                     _finish_locked_window,
                     state,
                     result,
-                    effort=effort,
+                    effort=finish_effort,
                     parse_mode=parse_mode,
                     hybrid_model=hybrid_model,
                 )
