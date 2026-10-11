@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+from pathlib import Path
 from typing import Any
 
 import httpx
+import pytest
 from fastapi.testclient import TestClient
 from test_v1_router import _FakeV1Upstream, _make_router, _upload_file
 
@@ -14,6 +16,35 @@ from mineru.kit.router import RouterSettings, create_app
 from mineru.kit.router.workers import JobReservation
 
 BODY = {"tier": "standard", "files": [{"source": {"type": "inline", "name": "source.pdf", "data": "aGVsbG8="}}]}
+
+
+@pytest.mark.parametrize("formats", [["unknown"], "markdown", None, 1, {}, [{}], [1]])
+def test_output_format_validation_precedes_worker_selection(formats: Any, tmp_path: Path) -> None:
+    """未知格式和错误 JSON 类型应与直连 API 一样报 400，且不能预占 worker。"""
+    from mineru.parser.api_server import create_app as create_api_app
+
+    upstream = _FakeV1Upstream("worker-a", ("flash",))
+    app, _ = _make_router(upstream)
+    body = {**BODY, "tier": "flash", "output_formats": formats}
+    with TestClient(create_api_app(upload_dir=str(tmp_path / "files"), tier="flash")) as direct:
+        expected = direct.post("/v1/parse/jobs", json=body)
+    with TestClient(app, raise_server_exceptions=False) as client:
+        response = client.post("/v1/parse/jobs", json=body)
+        assert response.status_code == expected.status_code == 400, response.text
+        assert response.json()["error"]["code"] == expected.json()["error"]["code"]
+        assert upstream.job_counter == 0
+        assert app.state.worker_pool.workers[0].active_jobs == 0
+
+
+def test_valid_unavailable_output_format_remains_a_capability_error() -> None:
+    """合法格式确实未被 worker 支持时，继续返回 503 能力不可用。"""
+    upstream = _FakeV1Upstream("worker-a", ("standard",))
+    app, _ = _make_router(upstream)
+    with TestClient(app) as client:
+        response = client.post("/v1/parse/jobs", json={**BODY, "output_formats": ["structured_content"]})
+        assert response.status_code == 503
+        assert response.json()["error"]["code"] == "quality_tier_unavailable"
+        assert upstream.job_counter == 0 and app.state.worker_pool.workers[0].active_jobs == 0
 
 
 def test_same_caller_uploads_round_robin_without_affinity() -> None:

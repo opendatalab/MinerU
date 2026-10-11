@@ -26,7 +26,7 @@ _PUBLIC_ID_PREFIXES: dict[ResourceKind, str] = {
 
 def utc_now_iso() -> str:
     """返回与 V1 API 一致的 UTC ISO-8601 时间。"""
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return datetime.fromtimestamp(time.time(), timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 @dataclass
@@ -243,6 +243,7 @@ class ResourceRegistry:
             "job": {},
         }
         self._by_upstream: dict[tuple[ResourceKind, str, str, str], ResourceRoute] = {}
+        self._retired_usage: dict[str, dict[str, int]] = {}
 
     def register(
         self,
@@ -294,10 +295,9 @@ class ResourceRegistry:
                 return False
             if not self.retention_seconds:
                 return False
-            origin = payload.get("finished_at") or route.metadata.get("terminal_at")
-            if origin is None:
-                route.metadata["terminal_at"] = utc_now_iso()
-                origin = route.metadata["terminal_at"]
+            if route.metadata.get("copied_inputs"):
+                return False
+            origin = route.metadata.setdefault("finalized_at", utc_now_iso())
         else:
             explicit = payload.get("expires_at")
             if isinstance(explicit, (int, float)):
@@ -381,6 +381,10 @@ class ResourceRegistry:
         """删除公共资源及其反向索引，并返回被删除的记录。"""
         route = self._by_public[kind].pop(public_id, None)
         if route is not None:
+            if kind == "job":
+                totals = self._retired_usage.setdefault(route.owner_scope, {"jobs_created": 0, "files_processed": 0})
+                for key, value in self._job_usage(route).items():
+                    totals[key] += value
             for key, value in tuple(self._by_upstream.items()):
                 if value is route:
                     self._by_upstream.pop(key)
@@ -394,12 +398,34 @@ class ResourceRegistry:
                 if route.worker_id != worker_id or route.metadata.get("upstream_lost"):
                     continue
                 removed.append(route)
-                routes.pop(public_id, None)
+                self.remove(route.kind, public_id)
         removed_route_ids = {id(route) for route in removed}
         for key, route in list(self._by_upstream.items()):
             if key[2] == worker_id or id(route) in removed_route_ids:
                 self._by_upstream.pop(key, None)
         return removed
+
+    def usage(self, owner_scope: str) -> dict[str, int]:
+        """按调用方聚合存活与已移除任务的累计用量，到期隐藏不影响统计。"""
+        totals = {"jobs_created": 0, "files_processed": 0, **self._retired_usage.get(owner_scope, {})}
+        for route in self.list("job", owner_scope=owner_scope, include_expired=True):
+            for key, value in self._job_usage(route).items():
+                totals[key] += value
+        return totals
+
+    @staticmethod
+    def _job_usage(route: ResourceRoute) -> dict[str, int]:
+        """统计一个已创建任务和成功文件，保持 Router 原有逐文件统计语义。"""
+        payload = route.metadata.get("payload") or {}
+        completed = payload.get("status") in {"completed", "partial"}
+        return {
+            "jobs_created": 1,
+            "files_processed": sum(
+                1
+                for file in payload.get("files") or []
+                if completed and isinstance(file, dict) and file.get("status") == "completed"
+            ),
+        }
 
     @staticmethod
     def _new_public_id(kind: ResourceKind) -> str:

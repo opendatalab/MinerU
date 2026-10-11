@@ -11,14 +11,14 @@ import secrets
 import time
 from contextlib import ExitStack, asynccontextmanager
 from pathlib import Path
-from typing import Any, AsyncIterator, Literal
+from typing import Any, AsyncIterator, Literal, get_args
 
 import httpx
 from fastapi import FastAPI, Query, Request
 from fastapi.responses import JSONResponse, Response
 
 from ...filetypes import is_flash_only_parse_extension
-from ...parser.api_server import CreateUploadRequest
+from ...parser.api_server import CreateUploadRequest, OutputFormat
 from ...parser.task_api import TaskUpload, build_task_router
 from ...types import TIERS, select_default_quality_tier, validate_tier
 from ...utils.async_utils import drain_future
@@ -45,6 +45,7 @@ from .resources import (
     ResourceRoute,
     SourceFileStore,
     stored_file_chunks,
+    utc_now_iso,
 )
 from ...utils.retention import RETENTION_SCAN_INTERVAL_SECONDS
 from .workers import RouterSettings, WorkerPool, WorkerState
@@ -180,23 +181,14 @@ def _list_registered_jobs(
 
 
 def _usage_payload(request: Request, registry: ResourceRegistry, pool: WorkerPool, owner_scope: str) -> dict[str, Any]:
-    """聚合当前 Router 进程观察到的 jobs/files 与 worker 并发上限。"""
-    jobs = [route.metadata.get("payload") or {} for route in registry.list("job", owner_scope=owner_scope)]
-    completed_jobs = [payload for payload in jobs if payload.get("status") in {"completed", "partial"}]
-    files_processed = sum(
-        1
-        for payload in completed_jobs
-        for file_result in payload.get("files") or []
-        if isinstance(file_result, dict) and file_result.get("status") == "completed"
-    )
+    """聚合当前 Router 进程的累计 jobs/files 与 worker 并发上限。"""
     return {
         "object": "usage",
         "access_level": "registered" if request.headers.get("authorization") else "anonymous",
         "billing_period": {"start": request.app.state.started_at, "end": None},
         "current": {
             "pages_processed": 0,
-            "files_processed": files_processed,
-            "jobs_created": len(jobs),
+            **registry.usage(owner_scope),
         },
         "limits": {
             "max_pages_per_file": 1000,
@@ -310,7 +302,6 @@ async def _finalize_terminal_job(
     """在 Job 终态补齐 outputs，并回收或保留待重试的输入副本。"""
     if payload.get("status") not in {"completed", "partial", "failed", "canceled"}:
         return
-    route.metadata.setdefault("terminal_at", time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
     try:
         await _hydrate_job_output_files(
             payload,
@@ -333,6 +324,7 @@ async def _finalize_terminal_job(
         else:
             route.metadata.pop("copied_inputs", None)
             route.metadata.pop("upstream_headers", None)
+            route.metadata.setdefault("finalized_at", utc_now_iso())
 
 
 def _mark_missing_job(route: ResourceRoute, pool: WorkerPool) -> dict[str, Any]:
@@ -806,6 +798,7 @@ def create_app(
                 job_route.metadata["copied_inputs"] = [*unrelated, *pending]
             else:
                 job_route.metadata.pop("copied_inputs", None)
+                job_route.metadata.setdefault("finalized_at", utc_now_iso())
         registry.remove("file", file_id)
         source_store.delete_file(file_id)
         result["id"] = file_id
@@ -816,6 +809,12 @@ def create_app(
         owner_scope = _caller_scope(request)
         body = copy.deepcopy(body)
         uploads = uploads or {}
+        output_formats = body.get("output_formats", ["markdown"])
+        if not isinstance(output_formats, list) or any(not isinstance(fmt, str) for fmt in output_formats):
+            raise RouterProxyError(400, "invalid_request", "output_formats must be a list of strings", "output_formats")
+        for fmt in output_formats:
+            if fmt not in get_args(OutputFormat):
+                raise RouterProxyError(400, "unsupported_output_format", f"Unknown output format: {fmt}", "output_formats")
         files = body.get("files")
         if not isinstance(files, list) or not files:
             raise RouterProxyError(400, "invalid_request", "Job request must contain at least one file", "files")
@@ -864,7 +863,7 @@ def create_app(
             tier=selection_tier,
             required_sources=required_sources,
             preferred_worker_id=preferred,
-            required_outputs=set(body.get("output_formats") or ["markdown"]),
+            required_outputs=set(output_formats),
             require_flash=any(is_flash_only_parse_extension(name) for name in names),
         )
         if reservation is None:
