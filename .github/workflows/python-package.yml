@@ -153,3 +153,59 @@ jobs:
 
       - name: Publish distribution to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+
+  sync-issue-template:
+    needs: [ publish ]
+    if: startsWith(github.ref, 'refs/tags/') && needs.publish.result == 'success'
+    runs-on: ubuntu-latest
+    env:
+      RELEASE_BRANCH: ${{ github.event.repository.default_branch }}
+      RELEASE_TAG: ${{ github.ref_name }}
+    steps:
+      - name: Checkout default branch
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_TOKEN }}
+
+      - name: Download published wheel
+        uses: actions/download-artifact@v7
+        with:
+          name: wheel-file
+          path: ${{ runner.temp }}/mineru-issue-template-dist
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v7
+
+      - name: Sync and commit latest stable version hint
+        shell: bash
+        env:
+          RELEASE_WHEEL_DIR: ${{ runner.temp }}/mineru-issue-template-dist
+        run: |
+          git config --local user.name "github-actions[bot]"
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          for attempt in 1 2 3; do
+            # 此 job 的独立 checkout 每次基于最新分支重新生成，避免覆盖并发提交。
+            git fetch origin "$RELEASE_BRANCH"
+            git reset --hard FETCH_HEAD
+            uv run --no-project --python 3.12 scripts/sync_issue_template_version.py \
+              --wheel "$RELEASE_WHEEL_DIR" --tag "$RELEASE_TAG"
+            git add -- .github/ISSUE_TEMPLATE/bug_report.yml
+            if git diff --cached --quiet -- .github/ISSUE_TEMPLATE/bug_report.yml; then
+              echo "Issue template already reflects the latest stable release."
+              exit 0
+            fi
+            git commit -m "chore: sync latest stable release in issue template"
+            if git push origin "HEAD:$RELEASE_BRANCH"; then
+              exit 0
+            fi
+            echo "Push attempt $attempt failed; regenerating from the latest default branch."
+          done
+          echo "::error::Could not synchronize the issue template after three push attempts."
+          exit 1
