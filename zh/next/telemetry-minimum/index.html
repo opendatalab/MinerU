@@ -1,0 +1,3923 @@
+
+<!doctype html>
+<html lang="zh" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+      
+      
+        <link rel="canonical" href="https://opendatalab.github.io/MinerU/zh/next/telemetry-minimum/">
+      
+      
+      
+      
+        
+          <link rel="alternate" href="../../../next/telemetry-minimum/" hreflang="en">
+        
+          <link rel="alternate" href="./" hreflang="zh">
+        
+      
+      
+      <link rel="icon" href="../../../images/logo.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Telemetry Minimum Design - MinerU</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../../../stylesheets/extra.css">
+    
+    <script>__md_scope=new URL("../../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+  
+
+
+  
+  
+
+<script id="__analytics">function __md_analytics(){function e(){dataLayer.push(arguments)}window.dataLayer=window.dataLayer||[],e("js",new Date),e("config","G-44K480CC48"),document.addEventListener("DOMContentLoaded",(function(){document.forms.search&&document.forms.search.query.addEventListener("blur",(function(){this.value&&e("event","search",{search_term:this.value})}));document$.subscribe((function(){var t=document.forms.feedback;if(void 0!==t)for(var a of t.querySelectorAll("[type=submit]"))a.addEventListener("click",(function(a){a.preventDefault();var n=document.location.pathname,d=this.getAttribute("data-md-value");e("event","feedback",{page:n,data:d}),t.firstElementChild.disabled=!0;var r=t.querySelector(".md-feedback__note [data-md-value='"+d+"']");r&&(r.hidden=!1)})),t.hidden=!1})),location$.subscribe((function(t){e("config","G-44K480CC48",{page_path:t.pathname})}))}));var t=document.createElement("script");t.async=!0,t.src="https://www.googletagmanager.com/gtag/js?id=G-44K480CC48",document.getElementById("__analytics").insertAdjacentElement("afterEnd",t)}</script>
+  
+    <script>"undefined"!=typeof __md_analytics&&__md_analytics()</script>
+  
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="black" data-md-color-accent="indigo">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#telemetry-minimum-design" class="md-skip">
+          跳转至
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="页眉">
+    <a href="../../" title="MinerU" class="md-header__button md-logo" aria-label="MinerU" data-md-component="logo">
+      
+  <img src="../../../images/logo.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            MinerU
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Telemetry Minimum Design
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme)" data-md-color-scheme="default" data-md-color-primary="black" data-md-color-accent="indigo"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m14.3 16-.7-2h-3.2l-.7 2H7.8L11 7h2l3.2 9zM20 8.69V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12zm-9.15 3.96h2.3L12 9z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="black" data-md-color-accent="indigo"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_2" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="black" data-md-color-accent="indigo"  aria-label="Switch to system preference"  type="radio" name="__palette" id="__palette_2">
+    
+      <label class="md-header__button md-icon" title="Switch to system preference" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+      <div class="md-header__option">
+  <div class="md-select">
+    
+    <button class="md-header__button md-icon" aria-label="选择当前语言">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m12.87 15.07-2.54-2.51.03-.03A17.5 17.5 0 0 0 14.07 6H17V4h-7V2H8v2H1v2h11.17C11.5 7.92 10.44 9.75 9 11.35 8.07 10.32 7.3 9.19 6.69 8h-2c.73 1.63 1.73 3.17 2.98 4.56l-5.09 5.02L4 19l5-5 3.11 3.11zM18.5 10h-2L12 22h2l1.12-3h4.75L21 22h2zm-2.62 7 1.62-4.33L19.12 17z"/></svg>
+    </button>
+    <div class="md-select__inner">
+      <ul class="md-select__list">
+        
+          <li class="md-select__item">
+            <a href="../../../next/telemetry-minimum/" hreflang="en" class="md-select__link">
+              English
+            </a>
+          </li>
+        
+          <li class="md-select__item">
+            <a href="./" hreflang="zh" class="md-select__link">
+              中文
+            </a>
+          </li>
+        
+      </ul>
+    </div>
+  </div>
+</div>
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="搜索" placeholder="搜索" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="查找">
+        
+        <button type="reset" class="md-search__icon md-icon" title="清空当前内容" aria-label="清空当前内容" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            正在初始化搜索引擎
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/opendatalab/MinerU" title="前往仓库" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    opendatalab/MinerU
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="标签" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../" class="md-tabs__link">
+          
+  
+  
+    
+  
+  主页
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../quick_start/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  快速入门
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../usage/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  使用指南
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../reference/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  参考资料
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../faq/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  常见问题解答
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../../demo/" class="md-tabs__link">
+          
+  
+  
+    
+  
+  在线演示
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="导航栏" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../../" title="MinerU" class="md-nav__button md-logo" aria-label="MinerU" data-md-component="logo">
+      
+  <img src="../../../images/logo.png" alt="logo">
+
+    </a>
+    MinerU
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/opendatalab/MinerU" title="前往仓库" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+  </div>
+  <div class="md-source__repository">
+    opendatalab/MinerU
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    主页
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_1" id="__nav_1_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_1_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    主页
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1_2" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../quick_start/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    快速入门
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_1_2" id="__nav_1_2_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    快速入门
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quick_start/extension_modules/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    扩展模块安装
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quick_start/docker_deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker部署
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../usage/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    使用指南
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_1_3" id="__nav_1_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    使用指南
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/quick_usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    基础使用
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/tiers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    档位与运行环境
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/sdk_api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python SDK
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/http_api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    V1 HTTP API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/compatibility/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    旧平台适配（MinerU <4）
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/model_source/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    模型源配置
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/cli_tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    命令行工具
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/advanced_cli_parameters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    命令行进阶参数
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1_4" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../reference/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    参考资料
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_1_4" id="__nav_1_4_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    参考资料
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/migration_4/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    迁移到 4.0
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/output_files/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    输出文件格式
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    更新日志
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1_5" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../faq/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    常见问题解答
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    常见问题解答
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_1_6" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../demo/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    在线演示
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="2" aria-labelledby="__nav_1_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_1_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    在线演示
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_2" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../quick_start/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    快速入门
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_2" id="__nav_2_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_2_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_2">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    快速入门
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quick_start/extension_modules/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    扩展模块安装
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../quick_start/docker_deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Docker部署
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_3" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../usage/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    使用指南
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_3" id="__nav_3_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    使用指南
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/quick_usage/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    基础使用
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/tiers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    档位与运行环境
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/sdk_api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Python SDK
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/http_api/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    V1 HTTP API
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/compatibility/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    旧平台适配（MinerU <4）
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/model_source/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    模型源配置
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/cli_tools/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    命令行工具
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../usage/advanced_cli_parameters/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    命令行进阶参数
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+        
+      
+        
+      
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_4" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../reference/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    参考资料
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+              
+              <label class="md-nav__link " for="__nav_4" id="__nav_4_label" tabindex="0">
+                <span class="md-nav__icon md-icon"></span>
+              </label>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    参考资料
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/migration_4/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    迁移到 4.0
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/output_files/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    输出文件格式
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../reference/changelog/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    更新日志
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../faq/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    常见问题解答
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    常见问题解答
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+      
+        
+          
+        
+      
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <div class="md-nav__link md-nav__container">
+            <a href="../../demo/" class="md-nav__link ">
+              
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    在线演示
+  
+
+    
+  </span>
+  
+  
+
+            </a>
+            
+          </div>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    在线演示
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="目录">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      目录
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        1. 第一版目标
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        2. 采集边界
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="2. 采集边界">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        实现模块边界
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        3. 用户选择与开关
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        4. 隐私边界
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        5. 本地聚合与上报
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#6-payload-context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        6. Payload 与 Context
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#7" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        7. 命名原则
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#8-context" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        8. Context 传递
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#9-dimensions" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        9. 公共 Dimensions
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="9. 公共 Dimensions">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#cli-client" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        CLI / Client 改动
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#telemetryservice-api" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        TelemetryService 采集 API
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        失败兜底规则
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#10-observations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        10. Observations
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#11" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        11. 使用方式与频率
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#12-parse" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        12. 用户满意度: Parse 请求层
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#13-parse" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        13. 用户满意度: Parse 后台任务层
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#14-ingest" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        14. Ingest
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#15-search-find-content" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        15. Search / Find / Content 体验
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#16-scan-watch" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        16. Scan / Watch 轻量体验
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#17-bucket" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        17. Bucket
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#18" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        18. 测试与验收
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#19" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        19. 第一版不做
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+                
+
+
+
+  
+
+
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<div><h1 id="telemetry-minimum-design">Telemetry Minimum Design</h1>
+<p>状态: Draft
+日期: 2026-06-18
+范围: doclib 第一版 telemetry 最小设计和指标集
+非目标: CLI 早失败漏斗、rules / cleanup / compaction、完整 watch event 统计、详细硬件画像、blocking wait API</p>
+<p>本文档是第一版 telemetry 实现的准确定义。<code>telemetry.md</code> 作为背景和候选设计参考；当两者不一致时，以本文档为准。</p>
+<h2 id="1">1. 第一版目标</h2>
+<p>第一版 telemetry 只回答两个问题:</p>
+<ol>
+<li>用户和 Agent 在以什么方式、什么频率使用 MinerU。</li>
+<li>从结果、速度、等待时间和出错情况评估用户满意度。</li>
+</ol>
+<p>第一版只统计进入 doclib 后的业务行为。暂不统计 <code>mineru</code> CLI 在进入 doclib 之前的失败，例如参数错误、文件不存在、server 未启动。这类入口漏斗后续可用 <code>cli.request.count</code> 单独补充。</p>
+<h2 id="2">2. 采集边界</h2>
+<p>只有 doclib server 记录、聚合和上报 telemetry。</p>
+<p><code>mineru</code> CLI 和 <code>DoclibClient</code> 可以向 doclib server 传递调用上下文或 observation，但不直接向外部 telemetry endpoint 上报。</p>
+<p>以下纯工具不具备 telemetry 能力:</p>
+<ul>
+<li>parser SDK，包括 <code>mineru.parser.parse()</code> 和 <code>parse_async()</code>。</li>
+<li><code>mineru-kit parse</code>。</li>
+<li><code>mineru-kit api-server</code>。</li>
+<li>其他不依赖 doclib server 的专家工具。</li>
+</ul>
+<p>这个边界避免 parser/tool 层在作为库或底层工具使用时包含 telemetry 配置、存储或网络行为。</p>
+<h3 id="_1">实现模块边界</h3>
+<p>第一版 telemetry 作为 doclib 内部独立模块实现:</p>
+<div class="highlight"><pre><span></span><code>mineru/doclib/telemetry/
+  __init__.py
+  constants.py
+  context.py
+  caller.py
+  buckets.py
+  store.py
+  payload.py
+  observation.py
+  service.py
+</code></pre></div>
+<p>职责:</p>
+<ul>
+<li><code>constants.py</code>: metric name、dimension key/value 白名单、metric allowed dimensions 内存表、consent 枚举和 telemetry endpoint 常量。</li>
+<li><code>context.py</code>: <code>contextvars</code> 上下文、HTTP header 解析、request context 设置。</li>
+<li><code>caller.py</code>: 当前进程 caller 推断，只输出 <code>agent | user | unknown</code>。</li>
+<li><code>buckets.py</code>: duration、pages、file size、results 分桶。</li>
+<li><code>store.py</code>: telemetry state 和 aggregate 的 DB 读写。</li>
+<li><code>payload.py</code>: preview 和 flush payload 组装。</li>
+<li><code>observation.py</code>: <code>/observations</code> request 校验和转换。</li>
+<li><code>service.py</code>: telemetry 对外主入口，提供 record、preview、flush、enable、disable 能力。</li>
+</ul>
+<p><code>AppState</code> 持有:</p>
+<div class="highlight"><pre><span></span><code>state.telemetry_store
+state.telemetry_svc
+state.telemetry_flush_worker
+</code></pre></div>
+<p>startup 初始化顺序:</p>
+<div class="highlight"><pre><span></span><code>DatabaseManager.initialize()
+  -&gt; TelemetryStore(db)
+  -&gt; TelemetryService(store, context collector)
+  -&gt; ParseService(..., telemetry_svc=state.telemetry_svc)
+  -&gt; ScanService(..., telemetry_svc=state.telemetry_svc)
+  -&gt; SearchService(..., telemetry_svc=state.telemetry_svc)
+  -&gt; background workers
+  -&gt; TelemetryFlushWorker(...)
+</code></pre></div>
+<p>传递规则:</p>
+<ul>
+<li><code>ParseService</code>、<code>ScanService</code>、<code>SearchService</code> 构造函数显式接收 <code>telemetry_svc</code>。</li>
+<li><code>DoclibServer</code> route 通过 <code>self.state.telemetry_svc</code> 记录 route-level metric。</li>
+<li>background worker 不创建 telemetry service，只使用已注入到 service 的 telemetry。</li>
+<li>telemetry service 所有 record 方法内部吞掉异常，最多记录 debug / warning log，不影响主流程。</li>
+<li>不使用全局单例或动态从模块级变量读取 telemetry service。</li>
+</ul>
+<p><code>TelemetryFlushWorker</code> 放在 doclib background 模块:</p>
+<div class="highlight"><pre><span></span><code>mineru/doclib/background/telemetry_flush.py
+</code></pre></div>
+<p>形态:</p>
+<div class="highlight"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">TelemetryFlushWorker</span><span class="p">:</span>
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">telemetry_svc</span><span class="p">:</span> <span class="n">TelemetryService</span><span class="p">,</span>
+        <span class="o">*</span><span class="p">,</span>
+        <span class="n">interval_sec</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">7200</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">run</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">stop</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+</code></pre></div>
+<p>worker 规则:</p>
+<ul>
+<li>启动后先尝试一次 flush，但只有 <code>consent_state=enabled</code> 才真正外发。</li>
+<li>之后每 2 小时尝试一次 flush。</li>
+<li>shutdown 时调用 <code>stop()</code>。</li>
+<li>手动 flush 和后台 flush 复用同一个 <code>TelemetryService.flush()</code>。</li>
+<li>一个 HTTP 请求只发送一个 period。</li>
+<li>一次 flush 最多发送 10 个 period，即最多 10 个 HTTP 请求。</li>
+<li><code>preview</code> 只展示最早一个将发送的 period batch。</li>
+</ul>
+<h2 id="3">3. 用户选择与开关</h2>
+<p>首次启动 doclib server 时，如果用户尚未选择，允许先进入 <code>unset</code> 状态。</p>
+<p>状态:</p>
+<div class="highlight"><pre><span></span><code>consent_state = unset | enabled | disabled
+</code></pre></div>
+<p>语义:</p>
+<ul>
+<li><code>unset</code>: 用户尚未完成首次选择。doclib server 可以本地记录 telemetry 聚合数据，但不得 flush 到外部 endpoint。</li>
+<li><code>enabled</code>: 用户允许记录并上报 telemetry。</li>
+<li><code>disabled</code>: 用户明确关闭 telemetry。</li>
+</ul>
+<p>默认策略:</p>
+<ul>
+<li>首次选择界面不预选开启或关闭。</li>
+<li>用户可以关闭。</li>
+<li>用户选择结果记录为 <code>consent_state</code>。</li>
+<li><code>consent_state=unset</code> 时，可以写入本地 telemetry 聚合数据，但不能上报。</li>
+<li>如果用户后续选择 <code>enabled</code>，此前 <code>unset</code> 状态下记录的本地聚合数据可以随之后数据一起 flush。</li>
+<li><code>consent_state=disabled</code> 时，不写入新的 telemetry 聚合数据，也不上报。</li>
+<li>用户选择或切换到 <code>disabled</code> 时，DB 中未上报 telemetry 数据应删除，避免后续误发。</li>
+</ul>
+<p>CLI 被调用时，应 best-effort 判断是否处于交互式环境。可以使用 stdin / stdout 是否为 TTY 作为基础判断，并避免在 CI、Agent 或明确非交互环境中提示。若处于交互式普通用户环境且 <code>consent_state=unset</code>，第一版 CLI 应提示用户完成选择。若开始使用后一直是非交互或 Agent 场景，则默认维持 <code>unset</code>，直到有机会让用户选择。</p>
+<p>CLI <code>unset</code> prompt 规则:</p>
+<ul>
+<li>prompt 只在 CLI 层实现，不放入 <code>DoclibClient</code>，避免 SDK 用户被提示。</li>
+<li><code>mineru telemetry status|enable|disable|preview|flush</code> 命令自身不触发 prompt。</li>
+<li><code>mineru server start</code> 第一版暂不触发 prompt；后续业务命令会提示。</li>
+<li>prompt 触发条件必须同时满足:</li>
+<li><code>consent_state == "unset"</code></li>
+<li>stdin 和 stdout 都是 TTY</li>
+<li>当前不是 <code>--help</code> 帮助模式</li>
+<li>当前不是 <code>--json</code> 输出模式</li>
+<li>不在 CI 环境</li>
+<li>caller 推断不是 <code>agent</code></li>
+<li>doclib server 已可访问</li>
+<li>不满足条件时不提示，保持 <code>unset</code>。</li>
+<li>用户输入 Enter / <code>y</code> / <code>yes</code> 时，调用 <code>POST /telemetry/actions/enable</code>。</li>
+<li>用户输入 <code>n</code> / <code>no</code> 时，调用 <code>POST /telemetry/actions/disable</code>。</li>
+<li>EOF 或其它非法输入保持 <code>unset</code>，并继续原命令。非法输入第一版不循环追问。</li>
+<li>Ctrl-C 保持 <code>unset</code>，并按 CLI 原取消逻辑退出。</li>
+<li>只要用户选择过，server 里的 <code>consent_state</code> 变成 <code>enabled</code> 或 <code>disabled</code>，后续不再提示。</li>
+</ul>
+<p>推荐提示文案:</p>
+<div class="highlight"><pre><span></span><code>Help improve MinerU by sending anonymous, locally aggregated usage and diagnostic data.
+
+Collected: command names, MinerU version, OS, architecture, Python version, install channel, coarse CPU/GPU categories, success/failure status, error categories, tiers, and performance timing buckets.
+Not collected: document contents, extracted text/images, file names, file paths, raw URLs, search queries, prompts, snippets, tracebacks, exception messages, hostnames, usernames, account IDs, API keys, or exact CPU/GPU models.
+
+Press Enter or type Y to enable, or type N to disable.
+You can change this later with `mineru telemetry enable` or `mineru telemetry disable`.
+Preview what would be sent with `mineru telemetry preview`.
+
+Enable telemetry? [Y/n]:
+</code></pre></div>
+<p>用户必须可以通过命令查看和修改状态:</p>
+<div class="highlight"><pre><span></span><code>mineru<span class="w"> </span>telemetry<span class="w"> </span>status
+mineru<span class="w"> </span>telemetry<span class="w"> </span><span class="nb">enable</span>
+mineru<span class="w"> </span>telemetry<span class="w"> </span>disable
+mineru<span class="w"> </span>telemetry<span class="w"> </span>preview
+mineru<span class="w"> </span>telemetry<span class="w"> </span>flush
+</code></pre></div>
+<p><code>preview</code> 展示本地待 flush 的 telemetry request body。它等价于一次外部 telemetry HTTP 请求的 body 预览，但不触发 flush。
+<code>installation_id</code> 不是敏感隐私字段，<code>preview</code> 可以展示完整 <code>installation_id</code>。</p>
+<p>doclib server 提供最小 telemetry 管理 API:</p>
+<div class="highlight"><pre><span></span><code>GET /telemetry/status
+GET /telemetry/preview
+POST /telemetry/actions/{action}
+</code></pre></div>
+<p><code>action</code> 取值:</p>
+<div class="highlight"><pre><span></span><code>enable | disable | flush
+</code></pre></div>
+<p><code>enable</code> 将 <code>consent_state</code> 置为 <code>enabled</code>。<code>disable</code> 将 <code>consent_state</code> 置为 <code>disabled</code>，并清除本地未上报聚合数据。<code>flush</code> 触发一次手动 flush；如果当前不是 <code>enabled</code>，应返回 accepted 但不执行外部上报。</p>
+<p>管理 API response:</p>
+<div class="highlight"><pre><span></span><code><span class="n">TelemetryConsentState</span> <span class="o">=</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">"unset"</span><span class="p">,</span> <span class="s2">"enabled"</span><span class="p">,</span> <span class="s2">"disabled"</span><span class="p">]</span>
+<span class="n">TelemetryAction</span> <span class="o">=</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">"enable"</span><span class="p">,</span> <span class="s2">"disable"</span><span class="p">,</span> <span class="s2">"flush"</span><span class="p">]</span>
+
+<span class="k">class</span><span class="w"> </span><span class="nc">TelemetryStatusResponse</span><span class="p">(</span><span class="n">DoclibModel</span><span class="p">):</span>
+    <span class="n">state</span><span class="p">:</span> <span class="n">TelemetryConsentState</span>
+    <span class="n">installation_id</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">pending_periods</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">pending_metrics</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">last_flush_at</span><span class="p">:</span> <span class="nb">int</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">TelemetryFlushResult</span><span class="p">(</span><span class="n">DoclibModel</span><span class="p">):</span>
+    <span class="n">status</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">attempted</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">succeeded</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span>
+    <span class="n">discarded</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">0</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">TelemetryActionResponse</span><span class="p">(</span><span class="n">DoclibModel</span><span class="p">):</span>
+    <span class="n">action</span><span class="p">:</span> <span class="n">TelemetryAction</span>
+    <span class="n">state</span><span class="p">:</span> <span class="n">TelemetryConsentState</span>
+    <span class="n">installation_id</span><span class="p">:</span> <span class="nb">str</span>
+    <span class="n">accepted</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="n">executed</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">True</span>
+    <span class="n">reason</span><span class="p">:</span> <span class="nb">str</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">flush_result</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span>
+</code></pre></div>
+<p>API 语义:</p>
+<ul>
+<li><code>GET /telemetry/status</code> 返回 <code>TelemetryStatusResponse</code>。</li>
+<li><code>pending_metrics</code> 表示当前 <code>telemetry_aggregates</code> 中待上报 aggregate row 的数量，不是 <code>metric_value</code> 总和。</li>
+<li><code>pending_periods</code> 表示当前待上报的 distinct period 数量，即 distinct <code>(period_start, period_end)</code> 数量。</li>
+<li><code>last_flush_at</code> 表示最近一次有 batch 被 telemetry endpoint 2xx 确认接收或被 4xx discard 后的完成时间；此前从未有过时返回 <code>null</code>。</li>
+<li><code>GET /telemetry/preview</code> 直接返回外部 telemetry request body，不额外包 metadata。</li>
+<li><code>preview</code> 不触发 flush，不修改 <code>last_flush_at</code>，可以展示完整 <code>installation_id</code>。</li>
+<li>如果本地没有待上报 metrics，<code>preview</code> 返回合法空 batch，<code>metrics=[]</code>。这只表示当前没有待上传 metrics，<code>flush</code> 不会上传空 batch。</li>
+<li>空 preview payload 只用于 CLI 展示，不是 external endpoint 会收到的 payload。</li>
+<li>如果本地有多个 period，第一版 <code>preview</code> 只返回一次实际 flush 会发送的最早一个 period 的 batch。</li>
+<li><code>preview</code> 的 <code>batch_id</code> 固定为 <code>tb_preview</code>，不写入 DB。</li>
+<li>空 batch preview 的 <code>period_start</code> / <code>period_end</code> 使用当前 UTC 小时 period。</li>
+<li><code>POST /telemetry/actions/enable</code> 设置 <code>consent_state=enabled</code>，返回 <code>accepted=true</code>、<code>executed=true</code>。</li>
+<li><code>POST /telemetry/actions/disable</code> 设置 <code>consent_state=disabled</code>，删除本地未上报聚合数据，返回 <code>accepted=true</code>、<code>executed=true</code>。</li>
+<li><code>POST /telemetry/actions/flush</code> 在 <code>enabled</code> 时同步触发一次 flush，并返回 <code>TelemetryActionResponse</code>，其中 <code>flush_result</code> 填充 flush 状态 dict（<code>status</code> / <code>attempted</code> / <code>succeeded</code> / <code>discarded</code>）。</li>
+<li><code>flush</code> 在 <code>unset</code> 或 <code>disabled</code> 时返回 HTTP 200，<code>accepted=true</code>、<code>executed=false</code>、<code>reason="telemetry_not_enabled"</code>。</li>
+<li>未知 action 返回 HTTP 4xx。</li>
+<li><code>TelemetryActionResponse.executed</code> 表示 action 已被执行，不表示 flush 成功上传；flush 结果以 <code>flush_result.reason</code> 为准。</li>
+</ul>
+<p><code>TelemetryService.flush_once()</code> 返回 <code>TelemetryFlushResult</code>，<code>status</code> 枚举与语义:</p>
+<ul>
+<li><code>disabled</code>: 当前 <code>consent_state=disabled</code>，不外发。</li>
+<li><code>locked</code>: flush lock 被占用。</li>
+<li><code>no_metrics</code>: 没有待上报 period。</li>
+<li><code>success</code>: 所有尝试的 batch 都被 endpoint 2xx 确认或 4xx discard。</li>
+<li><code>partial_success</code>: 部分 batch 成功 / discard，其余 batch 保留待下次 flush。</li>
+<li><code>failed</code>: 所有尝试的 batch 均因网络失败或 endpoint 5xx 未送达，rows 全部保留。</li>
+</ul>
+<p>字段语义:</p>
+<ul>
+<li><code>attempted</code>: 本次实际尝试外送的 batch 数。</li>
+<li><code>succeeded</code>: 被 telemetry endpoint 2xx 确认接收并删除 rows 的 batch 数。</li>
+<li><code>discarded</code>: 被 telemetry endpoint 4xx 拒绝并删除 rows 的 batch 数。</li>
+<li>任一 batch 被 2xx 确认或 4xx discard 后都会更新 <code>last_flush_at</code>。</li>
+<li>网络失败 / endpoint 5xx 保留 rows，不更新 <code>last_flush_at</code>，仅记录 debug log。</li>
+</ul>
+<p><code>POST /telemetry/actions/flush</code> 响应语义:</p>
+<ul>
+<li>当前 consent state 不是 <code>enabled</code> 时，<code>accepted=true</code>、<code>executed=false</code>、<code>reason="telemetry_not_enabled"</code>、<code>flush_result=null</code>。</li>
+<li><code>executed=false</code> 对应 flush status <code>disabled</code>、<code>locked</code>、<code>no_metrics</code>、<code>failed</code>。</li>
+<li><code>reason</code> 取 flush <code>status</code>，<code>status="success"</code> 时 <code>reason=null</code>。</li>
+<li><code>flush_result</code> 内含 <code>status</code>、<code>attempted</code>、<code>succeeded</code>、<code>discarded</code>。</li>
+</ul>
+<h2 id="4">4. 隐私边界</h2>
+<p>Telemetry 禁止采集:</p>
+<ul>
+<li>文档内容</li>
+<li>文件名</li>
+<li>文件路径</li>
+<li>原始 URL</li>
+<li>search query</li>
+<li>prompt</li>
+<li>sha256</li>
+<li>parse_id / scan_id / job_id</li>
+<li>traceback</li>
+<li>exception message</li>
+<li>hostname</li>
+<li>用户名</li>
+<li>邮箱</li>
+<li>账号 ID</li>
+<li>CPU/GPU 具体型号</li>
+<li>GPU 显存、驱动版本、CUDA 版本</li>
+</ul>
+<p>允许采集的数据必须来自白名单字段。不得把请求体、异常对象、配置对象、<code>kwargs</code> 或任意 dict 直接透传到 telemetry。</p>
+<p><code>/observations</code> 可以接收 <code>parse_ids</code> 作为本地查询引用，但这些 ID 只允许用于 doclib server 本地补齐低基数字段，不得写入 telemetry 聚合或外部上报 payload。</p>
+<h2 id="5">5. 本地聚合与上报</h2>
+<p>第一版使用匿名 <code>installation_id</code> 作为安装实例口径。</p>
+<ul>
+<li><code>installation_id</code> 在 doclib server 第一次启动时自动生成。</li>
+<li><code>installation_id</code> 存储在 doclib DB 的 telemetry 内部状态中。</li>
+<li><code>installation_id</code> 不是敏感隐私字段。</li>
+<li>不依赖账号体系。</li>
+<li>即使用户尚未选择 telemetry，或当前没有上报需求，也可以生成 <code>installation_id</code>。</li>
+<li>用户选择或切换到 <code>disabled</code> 时，不删除 <code>installation_id</code>，避免后续重新启用后安装实例 ID 改变。</li>
+<li>用户删除配置或重装后，会被视为新的安装实例。</li>
+<li>第一版 <code>installation_id</code> 格式定义为 <code>inst_&lt;32 lowercase hex&gt;</code>，例如 <code>inst_7f6e0c6a0d174dc6a3f1b6f6a36d7f73</code>。</li>
+</ul>
+<p>第一版采用本地聚合 metrics 上报，不采用每个事件即时上报。</p>
+<p>运行时行为:</p>
+<div class="highlight"><pre><span></span><code>doclib server runtime
+  -&gt; record metric delta
+  -&gt; update telemetry aggregate in doclib DB
+  -&gt; periodic flush
+  -&gt; POST telemetry endpoint
+  -&gt; delete flushed rows from doclib DB after success
+</code></pre></div>
+<p>聚合和 flush 策略:</p>
+<ul>
+<li>本地 telemetry 配置和 telemetry 聚合数据都存储在 doclib DB 中。</li>
+<li>本地按 1 小时 period 聚合，period 边界使用 UTC 整点。</li>
+<li>period 采用左闭右开区间，即 <code>[period_start, period_end)</code>。</li>
+<li>一次 flush 可以处理多个未 flush 的小时级 period，但每个 period 独立生成一个 HTTP request。</li>
+<li>flush 发送顺序按 <code>period_start ASC, period_end ASC</code>。</li>
+<li><code>consent_state=enabled</code> 时，启动后尝试 flush 一次。</li>
+<li><code>consent_state=enabled</code> 时，运行中每 2 小时尝试 flush 一次。</li>
+<li><code>consent_state=unset</code> 或 <code>disabled</code> 时，不进行外部 flush。</li>
+<li>网络失败或服务端 5xx 时保留本地聚合结果，后续重试。</li>
+<li>服务端 4xx 表示 payload 不合法，对应 batch rows 应删除，并更新 <code>last_flush_at</code>，记录 debug log，不应无限重试。</li>
+<li>flush 成功后，已被服务端确认接收的 telemetry 聚合数据应从 doclib DB 中删除。</li>
+<li>同一个 period 内 context 变化可以接受；flush 时使用当前 context 上报该 period 的聚合 metrics。</li>
+<li>一个 HTTP 请求只发送一个 period。</li>
+<li>一次 flush 最多发送 10 个 period。</li>
+</ul>
+<p>主流程不得等待 telemetry 上报。telemetry 失败不得影响 parse、watch、search 或 doclib API。</p>
+<p>Telemetry endpoint 使用代码内置值，用户不可配置:</p>
+<div class="highlight"><pre><span></span><code><span class="err">POST https://telemetry.mineru.net/v1/metrics</span>
+<span class="err">Content-Type: application/json</span>
+</code></pre></div>
+<p>开发和测试环境如需覆盖 endpoint，应使用测试构建或专门的开发开关，不进入用户配置体系。</p>
+<p>flush 使用 <code>httpx.AsyncClient</code>，请求 timeout 固定为 10 秒。测试环境可以通过内部测试 hook 或构造参数替换 endpoint；该能力不进入用户配置。</p>
+<p>现阶段不用考虑 migration，可以直接修改 <code>mineru/doclib/migrations/001_init.sql</code>。新增表应使用 <code>CREATE TABLE IF NOT EXISTS</code>，使已有 DB 在启动时也能补建 telemetry 表。</p>
+<p>Telemetry state 不使用现有 <code>config</code> 表。<code>config</code> 表语义是用户可配 runtime config override；<code>installation_id</code>、<code>last_flush_at</code>、<code>flush_locked_at</code> 不是用户配置。</p>
+<p>本地状态使用独立 KV 表表达:</p>
+<div class="highlight"><pre><span></span><code><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="k">IF</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">EXISTS</span><span class="w"> </span><span class="n">telemetry_state</span><span class="w"> </span><span class="p">(</span>
+<span class="w">    </span><span class="k">key</span><span class="w">        </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="p">,</span>
+<span class="w">    </span><span class="n">value</span><span class="w">      </span><span class="nb">TEXT</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">updated_at</span><span class="w"> </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span>
+<span class="p">);</span>
+</code></pre></div>
+<p><code>telemetry_state</code> keys:</p>
+<table>
+<thead>
+<tr>
+<th>key</th>
+<th>value</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>consent_state</code></td>
+<td><code>unset | enabled | disabled</code></td>
+</tr>
+<tr>
+<td><code>installation_id</code></td>
+<td><code>inst_...</code></td>
+</tr>
+<tr>
+<td><code>last_flush_at</code></td>
+<td>epoch ms timestamp</td>
+</tr>
+<tr>
+<td><code>flush_locked_at</code></td>
+<td>epoch ms timestamp</td>
+</tr>
+</tbody>
+</table>
+<p>初始化规则:</p>
+<ul>
+<li>server startup 时，如果没有 <code>installation_id</code>，生成并写入。</li>
+<li>server startup 时，如果没有 <code>consent_state</code>，写入 <code>unset</code>。</li>
+<li>server startup 时，如果没有 <code>last_flush_at</code> 或 <code>flush_locked_at</code>，写入字符串 <code>"0"</code>，表示当前为空值。</li>
+<li>server startup 时固定初始化所有 telemetry state keys，包括 <code>installation_id</code>、<code>consent_state</code>、<code>last_flush_at</code>、<code>flush_locked_at</code>，避免后续 flush lock 或 status 查询处理 key 缺失。</li>
+<li>即使用户选择或切换到 <code>disabled</code>，也不删除 <code>installation_id</code>。</li>
+<li>用户选择或切换到 <code>disabled</code> 时，删除 <code>telemetry_aggregates</code> 中全部未上报聚合数据。</li>
+</ul>
+<p>Telemetry 聚合数据使用独立表保存:</p>
+<div class="highlight"><pre><span></span><code><span class="k">CREATE</span><span class="w"> </span><span class="k">TABLE</span><span class="w"> </span><span class="k">IF</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">EXISTS</span><span class="w"> </span><span class="n">telemetry_aggregates</span><span class="w"> </span><span class="p">(</span>
+<span class="w">    </span><span class="n">id</span><span class="w">              </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">PRIMARY</span><span class="w"> </span><span class="k">KEY</span><span class="w"> </span><span class="n">AUTOINCREMENT</span><span class="p">,</span>
+<span class="w">    </span><span class="n">period_start</span><span class="w">    </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">period_end</span><span class="w">      </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">metric_name</span><span class="w">     </span><span class="nb">TEXT</span><span class="w">    </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">metric_value</span><span class="w">    </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="w"> </span><span class="k">DEFAULT</span><span class="w"> </span><span class="mi">0</span><span class="p">,</span>
+<span class="w">    </span><span class="n">dimensions</span><span class="w">      </span><span class="nb">TEXT</span><span class="w">    </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">dimensions_hash</span><span class="w"> </span><span class="nb">TEXT</span><span class="w">    </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">created_at</span><span class="w">      </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="n">updated_at</span><span class="w">      </span><span class="nb">INTEGER</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">NULL</span><span class="p">,</span>
+<span class="w">    </span><span class="k">UNIQUE</span><span class="p">(</span><span class="n">period_start</span><span class="p">,</span><span class="w"> </span><span class="n">period_end</span><span class="p">,</span><span class="w"> </span><span class="n">metric_name</span><span class="p">,</span><span class="w"> </span><span class="n">dimensions_hash</span><span class="p">)</span>
+<span class="p">);</span>
+
+<span class="k">CREATE</span><span class="w"> </span><span class="k">INDEX</span><span class="w"> </span><span class="k">IF</span><span class="w"> </span><span class="k">NOT</span><span class="w"> </span><span class="k">EXISTS</span><span class="w"> </span><span class="n">idx_telemetry_aggregates_period</span>
+<span class="k">ON</span><span class="w"> </span><span class="n">telemetry_aggregates</span><span class="p">(</span><span class="n">period_start</span><span class="p">,</span><span class="w"> </span><span class="n">period_end</span><span class="p">);</span>
+</code></pre></div>
+<p>字段说明:</p>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>id</code></td>
+<td>本地聚合记录 ID</td>
+</tr>
+<tr>
+<td><code>period_start</code></td>
+<td>聚合窗口开始时间</td>
+</tr>
+<tr>
+<td><code>period_end</code></td>
+<td>聚合窗口结束时间</td>
+</tr>
+<tr>
+<td><code>metric_name</code></td>
+<td>metric 名称</td>
+</tr>
+<tr>
+<td><code>metric_value</code></td>
+<td>非负数值</td>
+</tr>
+<tr>
+<td><code>dimensions</code></td>
+<td>metric-level dimensions JSON</td>
+</tr>
+<tr>
+<td><code>dimensions_hash</code></td>
+<td>dimensions JSON 的稳定 hash，用于聚合 upsert</td>
+</tr>
+<tr>
+<td><code>created_at</code></td>
+<td>创建时间</td>
+</tr>
+<tr>
+<td><code>updated_at</code></td>
+<td>最近更新时间</td>
+</tr>
+</tbody>
+</table>
+<p><code>metric_value</code> 使用 <code>INTEGER</code>。第一版所有 metric 都是 count、bucket count、files/pages 总数或其它非负整数值。以后如果需要 ratio / float metric，再单独扩展存储模型。</p>
+<p>时间格式:</p>
+<ul>
+<li>DB 中时间使用 epoch ms。</li>
+<li>外部 payload 中的 <code>period_start</code> / <code>period_end</code> 使用 UTC ISO 8601，例如 <code>2026-06-22T10:00:00Z</code>。</li>
+<li>preview payload 也使用同样的 UTC ISO 8601 时间格式。</li>
+</ul>
+<p>聚合唯一键:</p>
+<div class="highlight"><pre><span></span><code>period_start + period_end + metric_name + dimensions_hash
+</code></pre></div>
+<p>同一唯一键重复写入时，累加 <code>metric_value</code>。聚合 key 不包含 context；flush 时读取当前 context 并组装 telemetry batch。</p>
+<p><code>dimensions_hash</code> 生成规则:</p>
+<ol>
+<li>对 dimensions 先做 normalize 和 whitelist 过滤。</li>
+<li>使用 <code>json.dumps(dimensions, sort_keys=True, separators=(",", ":"))</code> 生成稳定 JSON 字符串。</li>
+<li>对该字符串计算 SHA-256 hex。</li>
+</ol>
+<p>Flush 并发与幂等采用第一版简单方案:</p>
+<ol>
+<li>doclib 同一时间只允许一个 flush 任务执行。</li>
+<li>flush 开始时获取本地 flush lock；已有 lock 且未过期时，本次 flush 直接跳过。</li>
+<li>flush 从 DB 读取最多 10 个未上报 period，每个 period 生成一个 <code>batch_id</code> 并 POST 一次 telemetry endpoint。</li>
+<li>服务端确认成功接收后，本地删除这些聚合记录。</li>
+<li>如果 POST 成功但本地删除前 doclib 崩溃，后续可能重复上报同一批 metrics。</li>
+<li>第一版接受少量重复。服务端应基于 <code>batch_id</code> 在短窗口内做幂等去重；超过窗口的重复数据由 cleaned metrics 层处理。</li>
+</ol>
+<p>flush lock TTL:</p>
+<div class="highlight"><pre><span></span><code>flush_lock_ttl_sec = 1800
+</code></pre></div>
+<p>即 30 分钟。超过该时间的 lock 视为过期。</p>
+<p>lock 存储规则:</p>
+<ul>
+<li>获取 flush lock 时，把 <code>flush_locked_at</code> 写为当前 epoch ms。</li>
+<li>flush 结束时，无论成功、失败还是提前跳过，只要当前调用持有 lock，就把 <code>flush_locked_at</code> 重置为 <code>"0"</code>。</li>
+<li><code>TelemetryStatusResponse.flush_locked_at</code> 中，<code>"0"</code> 映射为 <code>null</code>。</li>
+</ul>
+<h2 id="6-payload-context">6. Payload 与 Context</h2>
+<p>一次上报包含一个 batch。环境信息放在 batch-level <code>context</code> 中，不重复放入每个 metric。</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"batch_id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"tb_01HX..."</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"schema_version"</span><span class="p">:</span><span class="w"> </span><span class="s2">"1"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"installation_id"</span><span class="p">:</span><span class="w"> </span><span class="s2">"inst_01HX..."</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"period_start"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2026-06-10T14:00:00Z"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"period_end"</span><span class="p">:</span><span class="w"> </span><span class="s2">"2026-06-10T15:00:00Z"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"context"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"app"</span><span class="p">:</span><span class="w"> </span><span class="s2">"mineru"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"app_version"</span><span class="p">:</span><span class="w"> </span><span class="s2">"3.0.0"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"os"</span><span class="p">:</span><span class="w"> </span><span class="s2">"macos"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"arch"</span><span class="p">:</span><span class="w"> </span><span class="s2">"arm64"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"python"</span><span class="p">:</span><span class="w"> </span><span class="s2">"3.11.4"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"install_channel"</span><span class="p">:</span><span class="w"> </span><span class="s2">"pip"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"cpu_count_bucket"</span><span class="p">:</span><span class="w"> </span><span class="s2">"9_16"</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"gpu_vendor"</span><span class="p">:</span><span class="w"> </span><span class="s2">"apple"</span>
+<span class="w">  </span><span class="p">},</span>
+<span class="w">  </span><span class="nt">"metrics"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span>
+<span class="w">    </span><span class="p">{</span>
+<span class="w">      </span><span class="nt">"name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"parse.finished.count"</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"value"</span><span class="p">:</span><span class="w"> </span><span class="mi">12</span><span class="p">,</span>
+<span class="w">      </span><span class="nt">"dimensions"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">"source"</span><span class="p">:</span><span class="w"> </span><span class="s2">"cli"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"caller"</span><span class="p">:</span><span class="w"> </span><span class="s2">"agent"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"tier"</span><span class="p">:</span><span class="w"> </span><span class="s2">"basic(default)"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"status"</span><span class="p">:</span><span class="w"> </span><span class="s2">"queued"</span>
+<span class="w">      </span><span class="p">}</span>
+<span class="w">    </span><span class="p">}</span>
+<span class="w">  </span><span class="p">]</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>规则:</p>
+<ul>
+<li><code>batch_id</code> 由本地 flush 任务生成，用于服务端短窗口幂等。第一版格式定义为 <code>tb_&lt;32 lowercase hex&gt;</code>。</li>
+<li><code>schema_version</code> 使用字符串，第一版固定为 <code>"1"</code>。</li>
+<li><code>value</code> 必须是非负数。</li>
+<li>字符串数据只能出现在 <code>context</code> 或 <code>dimensions</code>。</li>
+<li><code>context</code> 描述安装实例、运行环境和版本。</li>
+<li><code>metrics[].dimensions</code> 描述当前 metric 的业务分类。</li>
+<li><code>metrics[].dimensions</code> 必须来自白名单，不能包含任意字符串。</li>
+<li><code>context</code> 表示 flush 时 doclib server 的当前运行环境。同一 period 内 context 变化可以接受，不要求拆分 batch。</li>
+<li><code>metrics</code> 列表按稳定顺序输出，第一版使用 <code>name ASC</code>，再按 normalize 后的 <code>dimensions</code> JSON 字符串升序。</li>
+</ul>
+<p>第一版 context 字段:</p>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>类型</th>
+<th>枚举 / 格式</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>app</code></td>
+<td>string</td>
+<td><code>mineru</code></td>
+<td>固定应用名</td>
+</tr>
+<tr>
+<td><code>app_version</code></td>
+<td>string</td>
+<td>semver 或发布版本</td>
+<td>MinerU 版本</td>
+</tr>
+<tr>
+<td><code>os</code></td>
+<td>string</td>
+<td><code>macos</code> / <code>windows</code> / <code>linux</code> / <code>other</code> / <code>unknown</code></td>
+<td>操作系统</td>
+</tr>
+<tr>
+<td><code>arch</code></td>
+<td>string</td>
+<td><code>platform.machine()</code> 转小写结果（如 <code>x86_64</code> / <code>arm64</code>），无法获取时 <code>unknown</code></td>
+<td>CPU 架构</td>
+</tr>
+<tr>
+<td><code>python</code></td>
+<td>string</td>
+<td><code>major.minor.micro</code>（如 <code>3.10.11</code>）</td>
+<td>Python 完整主次修订版本</td>
+</tr>
+<tr>
+<td><code>install_channel</code></td>
+<td>string</td>
+<td><code>pip</code> / <code>uv</code> / <code>docker</code> / <code>source</code> / <code>unknown</code></td>
+<td>安装来源</td>
+</tr>
+<tr>
+<td><code>cpu_count_bucket</code></td>
+<td>string</td>
+<td><code>1_2</code> / <code>3_4</code> / <code>5_8</code> / <code>9_16</code> / <code>gt_16</code> / <code>unknown</code></td>
+<td>CPU 核心数分桶</td>
+</tr>
+<tr>
+<td><code>gpu_vendor</code></td>
+<td>string</td>
+<td><code>nvidia</code> / <code>apple</code> / <code>amd</code> / <code>intel</code> / <code>none</code> / <code>unknown</code></td>
+<td>GPU 或常见加速器厂商</td>
+</tr>
+</tbody>
+</table>
+<p><code>gpu_vendor</code> 规则:</p>
+<ul>
+<li><code>nvidia</code>: 识别到 NVIDIA GPU。</li>
+<li><code>apple</code>: 识别到 Apple GPU。</li>
+<li><code>amd</code>: 识别到 AMD GPU。</li>
+<li><code>none</code>: 明确没有发现 GPU。</li>
+<li><code>unknown</code>: 无法检测、检测失败，或发现了第一版未分类的其他加速器。</li>
+</ul>
+<p>context 采集规则:</p>
+<ul>
+<li><code>os</code>: 使用 <code>platform.system()</code> 归一化为 <code>macos | windows | linux | other | unknown</code>。</li>
+<li><code>arch</code>: 使用 <code>platform.machine()</code> 转小写；为空时记为 <code>unknown</code>。第一版不做 <code>amd64</code> → <code>x86_64</code>、<code>aarch64</code> → <code>arm64</code> 等别名归一化。</li>
+<li><code>python</code>: 使用 <code>sys.version_info</code> 输出 <code>major.minor.micro</code>。</li>
+<li><code>cpu_count_bucket</code>: 使用 <code>os.cpu_count()</code>；<code>None</code> 或小于等于 0 时记为 <code>unknown</code>，否则按 <code>&lt;=2 → 1_2</code>、<code>&lt;=4 → 3_4</code>、<code>&lt;=8 → 5_8</code>、<code>&lt;=16 → 9_16</code>、其余 <code>gt_16</code> 分桶。</li>
+<li><code>install_channel</code> 使用以下优先级:</li>
+<li>若检测到当前运行在 Docker / 容器环境中，记为 <code>docker</code>。</li>
+<li>否则若当前安装为源码 checkout（<code>mineru</code> 模块向上第 3 级目录同时存在 <code>pyproject.toml</code> 与 <code>.git</code>），记为 <code>source</code>。</li>
+<li>否则尝试读取 <code>importlib.metadata.distribution("mineru")</code>（回退 <code>mineru-vl-utils</code>）的 <code>INSTALLER</code> 元数据；值为 <code>uv</code> 时记为 <code>uv</code>，值为 <code>pip</code> 时记为 <code>pip</code>。</li>
+<li>否则若 <code>direct_url.json</code> 表示 editable 本地目录安装（<code>dir_info.editable=true</code>），记为 <code>source</code>。</li>
+<li>其它情况记为 <code>unknown</code>。</li>
+<li>Docker / 容器检测为 best-effort，第一版允许使用 <code>/.dockerenv</code>、<code>/proc/1/cgroup</code>、<code>/proc/self/cgroup</code> 等本地信号；判断失败时降级，不向业务层抛错。</li>
+<li><code>gpu_vendor</code> 使用保守检测:</li>
+<li><code>platform.system()=="Darwin"</code> 且 <code>arch</code> 为 <code>arm64</code> / <code>aarch64</code> 时记为 <code>apple</code>。</li>
+<li>Linux 上读取 <code>/sys/class/drm/card*/device/vendor</code>（回退 <code>/sys/bus/pci/devices/*/vendor</code>）vendor 列表: 可识别 <code>0x10de</code> 记为 <code>nvidia</code>，<code>0x1002</code> 记为 <code>amd</code>，<code>0x8086</code> 记为 <code>intel</code>；未发现任何 GPU 信号或无法识别时记为 <code>unknown</code>。</li>
+<li>Windows 上使用 <code>winreg</code> best-effort 读取 display adapter 信息（<code>DriverDesc</code> / <code>ProviderName</code> / <code>MatchingDeviceId</code>）: 能明确识别 <code>NVIDIA</code> / <code>VEN_10DE</code> 时记为 <code>nvidia</code>，能明确识别 <code>AMD</code> / <code>Radeon</code> / <code>VEN_1002</code> 时记为 <code>amd</code>，能明确识别 <code>intel</code> / <code>VEN_8086</code> 时记为 <code>intel</code>，其它情况记为 <code>unknown</code>。第一版不在 Windows 上上报 <code>none</code>。</li>
+<li>其它平台或无法可靠判断的情况记为 <code>unknown</code>。</li>
+<li>第一版不为了 telemetry 主动 import <code>torch</code>、<code>paddle</code>、<code>transformers</code> 等重依赖做硬件探测。</li>
+</ul>
+<p>第一版不采集 CPU/GPU family、具体型号、显存、驱动和 CUDA 版本。</p>
+<p>外部 telemetry endpoint 必须实现 schema version 校验、metric name 白名单、context key/value 白名单、dimension key/value 白名单、<code>value</code> 非负数校验、batch 大小限制、period 时间范围限制，以及安装实例和 IP 级限流。</p>
+<h2 id="7">7. 命名原则</h2>
+<p>流程结构写入 metric name，分类结果写入 dimensions。</p>
+<p>示例:</p>
+<div class="highlight"><pre><span></span><code>parse.request.count
+parse.finished.count
+parse.wait_duration_bucket.count
+parse_task.execute.count
+</code></pre></div>
+<p>不用 <code>phase</code> 或 <code>stage</code> 维度区分入口和步骤。入口请求使用 <code>parse.*</code>，后台异步任务使用 <code>parse_task.*</code>。</p>
+<p>Metric value 口径:</p>
+<ul>
+<li><code>*.request.count</code>、<code>*.finished.count</code>、<code>*.started.count</code>、<code>*.created.count</code> 等事件型 metric 的 <code>value</code> 表示发生次数。</li>
+<li><code>*.duration_bucket.count</code>、<code>*.file_size_bucket.count</code>、<code>*.pages_bucket.count</code>、<code>*.results_bucket.count</code> 的 <code>value</code> 表示落入该 bucket 的样本数。</li>
+<li><code>*.files.count</code> 的 <code>value</code> 表示文件数量总和，不表示请求或任务次数。</li>
+<li><code>*.pages.count</code> 的 <code>value</code> 表示页数总和，不表示请求或任务次数。</li>
+<li><code>scan.files.count</code> 的 <code>value</code> 表示对应 <code>result</code> 下的文件数量总和。</li>
+</ul>
+<p>Duration bucket 口径:</p>
+<ul>
+<li>所有 <code>*.duration_bucket.count</code> 应尽量携带与对应结果 metric 相同的 <code>status</code>。</li>
+<li><code>parse.duration_bucket.count</code> 使用同一次 <code>parse.finished.count</code> 的 <code>status</code>，即 <code>cached | direct | reused | queued | failed</code>。</li>
+<li><code>parse.wait_duration_bucket.count</code> 使用同一次 <code>parse.wait.count</code> 的 <code>status</code>，即 <code>succeeded | failed | timeout | canceled</code>。</li>
+<li><code>parse_task.duration_bucket.count</code> 使用同一次 <code>parse_task.finished.count</code> 的 <code>status</code>。</li>
+<li><code>parse_task.execute_duration_bucket.count</code> 使用同一次 <code>parse_task.execute.count</code> 的 <code>status</code>。</li>
+<li><code>parse_task.write_duration_bucket.count</code> 使用同一次 <code>parse_task.write.count</code> 的 <code>status</code>。</li>
+<li><code>ingest.duration_bucket.count</code>、<code>search.duration_bucket.count</code>、<code>find.duration_bucket.count</code>、<code>content.duration_bucket.count</code>、<code>scan.duration_bucket.count</code> 使用对应 <code>*.finished.count</code> 的 <code>status</code>。</li>
+</ul>
+<h2 id="8-context">8. Context 传递</h2>
+<p><code>source</code> 和 <code>caller</code> 不写入每个业务 request model。</p>
+<p>CLI 到 <code>DoclibClient</code> 是同进程调用，使用 <code>contextvars</code> 传递进程内 telemetry context，不使用环境变量。</p>
+<div class="highlight"><pre><span></span><code>source=cli
+caller=agent | user | unknown
+</code></pre></div>
+<p>进程内 context API:</p>
+<div class="highlight"><pre><span></span><code><span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">TelemetryContext</span><span class="p">:</span>
+    <span class="n">source</span><span class="p">:</span> <span class="n">TelemetrySource</span>
+    <span class="n">caller</span><span class="p">:</span> <span class="n">TelemetryCaller</span>
+
+<span class="k">def</span><span class="w"> </span><span class="nf">set_telemetry_context</span><span class="p">(</span><span class="n">source</span><span class="p">:</span> <span class="n">TelemetrySource</span><span class="p">,</span> <span class="n">caller</span><span class="p">:</span> <span class="n">TelemetryCaller</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">Token</span><span class="p">:</span> <span class="o">...</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">reset_telemetry_context</span><span class="p">(</span><span class="n">token</span><span class="p">:</span> <span class="n">Token</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_telemetry_context</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">TelemetryContext</span> <span class="o">|</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">infer_default_client_context</span><span class="p">()</span> <span class="o">-&gt;</span> <span class="n">TelemetryContext</span><span class="p">:</span> <span class="o">...</span>
+</code></pre></div>
+<p>CLI 规则:</p>
+<ul>
+<li>CLI 入口设置 telemetry context。</li>
+<li><code>DoclibClient</code> 在发请求前读取 context。</li>
+<li><code>caller</code> 由 helper best-effort 检测当前进程父进程树。</li>
+<li>已知 Agent 进程记为 <code>agent</code>，交互式终端（TTY）会话记为 <code>user</code>，无法可靠判断时记为 <code>unknown</code>。</li>
+<li>helper 只输出枚举值，不记录进程名原文、命令行、路径或 prompt。</li>
+</ul>
+<p><code>DoclibClient</code> 发送 header 规则:</p>
+<ul>
+<li>如果 <code>contextvars</code> 中已有 context，使用该 context。</li>
+<li>如果没有 context，默认 <code>source=sdk</code>。</li>
+<li>如果没有 context，<code>caller</code> 仍由当前进程调用树 best-effort 推断。</li>
+<li>caller 推断失败时，<code>caller=unknown</code>。</li>
+</ul>
+<p><code>DoclibClient</code> 到 doclib server 使用 HTTP header 传递:</p>
+<div class="highlight"><pre><span></span><code>X-MinerU-Telemetry-Source: cli | sdk | http_api | watch | background | unknown
+X-MinerU-Telemetry-Caller: agent | user | sdk | http_client | system | unknown
+</code></pre></div>
+<p>server middleware 解析 header，写入 request context。route、service 和 telemetry emitter 从 request context 读取。request 结束时必须 reset contextvars token，避免上下文泄漏到后续请求。</p>
+<p>默认规则:</p>
+<ul>
+<li>CLI 设置进程内 context 后，<code>DoclibClient</code> 发送 <code>source=cli</code>。</li>
+<li>SDK 直接创建 <code>DoclibClient</code> 时，默认 <code>source=sdk</code>，<code>caller</code> 仍由进程上下文 best-effort 推断。</li>
+<li>外部 HTTP 请求缺少 header 时，server 默认 <code>source=http_api</code>、<code>caller=http_client</code>。</li>
+<li>HTTP header 值不在白名单时降级: invalid source -&gt; <code>unknown</code>，invalid caller -&gt; <code>unknown</code>。</li>
+<li>watch / background 等 server 内部任务不走 header，直接使用内部固定来源，例如 <code>source=watch</code>、<code>caller=system</code>。</li>
+</ul>
+<p>caller 推断规则:</p>
+<ul>
+<li>遍历父进程树，只读取进程名，不读取完整命令行、路径、参数或环境变量。</li>
+<li>进程名统一取 basename 后转小写，再与白名单比较。</li>
+<li>遍历最大深度固定为 8；遇到 <code>pid &lt;= 1</code>、父 pid 重复、读取失败或达到最大深度时停止。</li>
+<li>命中白名单时返回 <code>agent</code>；否则若当前进程 <code>sys.stdin</code> 是 TTY（<code>stdin.isatty()</code>），返回 <code>user</code>；否则返回 <code>unknown</code>。</li>
+<li>命中常见 Agent 进程名（子串匹配）时返回 <code>agent</code>，例如 <code>claude</code>、<code>codex</code>、<code>cursor</code>、<code>cline</code>、<code>copilot</code>、<code>gemini</code>、<code>goose</code>、<code>opencode</code>、<code>roo</code>、<code>trae</code>、<code>windsurf</code>。</li>
+<li>权限不足、平台不支持、进程树读取失败或无法判断时返回 <code>unknown</code>。</li>
+<li>进程名只用于本地枚举判断，不写入 telemetry 聚合或外部 payload。</li>
+</ul>
+<p>第一版不做后台 task 的 <code>source/caller</code> 归因。<code>parse_task.*</code>、<code>scan.finished.count</code>、<code>scan.files.count</code>、<code>ingest.*</code> 等后台执行指标不要求带 <code>source</code> / <code>caller</code>。用户或 Agent 来源通过入口请求指标和 <code>/observations</code> 观察。</p>
+<h2 id="9-dimensions">9. 公共 Dimensions</h2>
+<p>所有用户行为类 metric 应尽量带:</p>
+<div class="highlight"><pre><span></span><code>source
+caller
+status
+</code></pre></div>
+<p>取值:</p>
+<div class="highlight"><pre><span></span><code>source = cli | sdk | http_api | watch | background | unknown
+caller = agent | user | sdk | http_client | system | unknown
+status = &lt;metric-specific low-cardinality status&gt;
+</code></pre></div>
+<p>按需补充:</p>
+<div class="highlight"><pre><span></span><code>tier = default | flash | basic | standard | advanced | basic(default) | standard(default) | advanced(default) | unknown
+server = local(flash) | local(managed) | local(self-hosted) | remote(official) | remote(custom) | none | unknown
+error_code = &lt;telemetry_error_code&gt;
+bucket = &lt;metric bucket value&gt;
+result = &lt;metric-specific low-cardinality result&gt;
+content_mode = read | parse_output | export | unknown
+output_format = markdown | image | other
+trigger = parse | scan | watch | show | background | unknown
+</code></pre></div>
+<p>不得把路径、文件名、sha256、query、异常消息、traceback、URL、API Key、prompt 或文档内容放入 dimensions。</p>
+<p><code>status</code> 表示当前 metric 的业务状态。不同 metric 可以有不同枚举，但必须在 metric 定义中写清楚，且保持低基数。</p>
+<p><code>source</code> / <code>caller</code> 适用范围:</p>
+<ul>
+<li>入口请求和调用方观察类指标应带 <code>source</code> / <code>caller</code>，例如 <code>parse.request.count</code>、<code>parse.finished.count</code>、<code>search.*</code>、<code>find.*</code>、<code>content.*</code>、<code>scan.request.count</code>、<code>watch.add.count</code>、<code>watch.remove.count</code>、<code>parse.wait.*</code>。</li>
+<li>后台执行类指标不要求带 <code>source</code> / <code>caller</code>，例如 <code>parse_task.*</code>、<code>scan.finished.count</code>、<code>scan.duration_bucket.count</code>、<code>scan.files.count</code>、<code>ingest.*</code>。</li>
+</ul>
+<p><code>error_code</code> 规则:</p>
+<ul>
+<li>第一版 <code>error_code</code> 只用于失败类结果 count metric，不用于 request metric、value metric、bucket metric，也不用于任何 duration bucket。</li>
+<li>第一版会带 <code>error_code</code> 的 metric 只有:</li>
+<li><code>parse.finished.count</code></li>
+<li><code>parse_task.finished.count</code></li>
+<li><code>parse_task.execute.count</code></li>
+<li><code>parse_task.write.count</code></li>
+<li>成功状态不带 <code>error_code</code>，不上传 <code>none</code>。</li>
+<li>metric 中的 <code>error_code</code> 必须来自第一版 whitelist:</li>
+</ul>
+<div class="highlight"><pre><span></span><code>internal_error
+
+invalid_request
+file_not_found
+file_permission_denied
+not_cached
+no_accessible_file
+
+quality_tier_unavailable
+no_engine
+engine_unavailable
+parse_server_unavailable
+tier_mismatch
+parse_failed
+parse_timeout
+
+metadata_failed
+open_failed
+parse_json_write_failed
+read_metadata_failed
+ingest_failed
+scan_failed
+</code></pre></div>
+<ul>
+<li>不在 whitelist 的稳定错误码，第一版统一降级为 <code>internal_error</code>。</li>
+</ul>
+<p><code>tier</code> 归一化规则:</p>
+<ul>
+<li><code>flash</code> / <code>basic</code> / <code>standard</code> / <code>advanced</code> 表示用户显式指定，或后台任务的实体 tier。</li>
+<li><code>basic(default)</code> / <code>standard(default)</code> / <code>advanced(default)</code> 只用于入口请求层指标，表示请求未显式指定 tier，但默认选择策略最终解析到了 <code>basic</code>、<code>standard</code> 或 <code>advanced</code>。</li>
+<li><code>default</code> 只用于入口请求在默认 tier 解析完成前就失败，且调用方未显式指定 tier 的场景。</li>
+<li><code>unknown</code> 表示无法安全判断。</li>
+</ul>
+<p><code>server</code> 归一化规则:</p>
+<ul>
+<li><code>none</code>: 当前步骤不涉及 parse-server，例如 <code>flash</code> 本地解析。</li>
+<li><code>local(managed)</code>: 命中 doclib 自己拉起并管理的 local parse-server，即 <code>parse_server.local.mode=managed</code>。</li>
+<li><code>local(self-hosted)</code>: 命中用户自管的 local parse-server，即 <code>parse_server.local.mode=self_hosted</code>。</li>
+<li><code>remote(official)</code>: 目标 URL 命中官方托管的 remote parse-server，包括 production 和 staging 等官方环境。</li>
+<li><code>remote(custom)</code>: 使用 remote parse-server，但目标 URL 不属于官方托管环境。</li>
+<li><code>local(flash)</code> 作为保留枚举，第一版如果 <code>parse_task.execute.*</code> 不经过 parse-server，可统一使用 <code>server=none</code>。</li>
+<li>无法安全判断时记为 <code>unknown</code>。</li>
+</ul>
+<h3 id="cli-client">CLI / Client 改动</h3>
+<p>新增 CLI 文件:</p>
+<div class="highlight"><pre><span></span><code>mineru/cli/commands/telemetry.py
+</code></pre></div>
+<p>更新:</p>
+<div class="highlight"><pre><span></span><code>mineru/cli/commands/__init__.py
+mineru/cli/main.py
+</code></pre></div>
+<p><code>mineru</code> 顶层命令新增:</p>
+<div class="highlight"><pre><span></span><code>mineru<span class="w"> </span>telemetry<span class="w"> </span>status
+mineru<span class="w"> </span>telemetry<span class="w"> </span><span class="nb">enable</span>
+mineru<span class="w"> </span>telemetry<span class="w"> </span>disable
+mineru<span class="w"> </span>telemetry<span class="w"> </span>preview
+mineru<span class="w"> </span>telemetry<span class="w"> </span>flush
+</code></pre></div>
+<p><code>TOP_LEVEL_COMMAND_ORDER</code> 中放在 <code>server</code> 与 <code>config</code> 之前:</p>
+<div class="highlight"><pre><span></span><code>telemetry
+server
+config
+</code></pre></div>
+<p>输出规则:</p>
+<ul>
+<li><code>status</code>: human 输出 consent、installation_id、pending aggregates、last_flush_at；支持 <code>--json</code>。</li>
+<li><code>preview</code>: 默认 pretty JSON 输出 telemetry request body。</li>
+<li><code>enable</code> / <code>disable</code> / <code>flush</code>: 输出 action result；支持 <code>--json</code>。</li>
+<li>server 未启动时沿用现有 CLI error 风格。</li>
+</ul>
+<p><code>DoclibClient</code> 新增方法:</p>
+<div class="highlight"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">get_telemetry_status</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">TelemetryStatusResponse</span><span class="p">:</span> <span class="o">...</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">get_telemetry_preview</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]:</span> <span class="o">...</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">telemetry_action</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">action</span><span class="p">:</span> <span class="n">TelemetryAction</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">TelemetryActionResponse</span><span class="p">:</span> <span class="o">...</span>
+<span class="k">def</span><span class="w"> </span><span class="nf">submit_observation</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">request</span><span class="p">:</span> <span class="n">ObservationRequest</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">ObservationResponse</span><span class="p">:</span> <span class="o">...</span>
+</code></pre></div>
+<p>对应 route:</p>
+<div class="highlight"><pre><span></span><code>GET /telemetry/status
+GET /telemetry/preview
+POST /telemetry/actions/{action}
+POST /observations
+</code></pre></div>
+<p><code>DoclibInterface</code> 和 <code>AsyncDoclibInterface</code> 也需要补对应抽象方法，保持当前接口模式。</p>
+<p>CLI context:</p>
+<ul>
+<li><code>mineru/cli/main.py</code> 增加 root callback。</li>
+<li>callback 设置 <code>source=cli</code>，<code>caller=infer_caller_from_process_tree()</code>。</li>
+<li>不使用环境变量。</li>
+<li>第一版实现 CLI 交互式且 <code>consent_state=unset</code> 时提示用户选择。</li>
+<li>CLI prompt 只在 stdin / stdout 是 TTY，且不在 CI 或明确非交互环境中触发。</li>
+<li>非交互或 Agent 场景下不提示，维持 <code>consent_state=unset</code>。</li>
+<li>用户也可以随时通过显式 <code>mineru telemetry ...</code> 命令查看和修改状态。</li>
+</ul>
+<p>CLI prompt helper:</p>
+<div class="highlight"><pre><span></span><code><span class="k">def</span><span class="w"> </span><span class="nf">maybe_prompt_telemetry_consent</span><span class="p">(</span>
+    <span class="n">client</span><span class="p">:</span> <span class="n">DoclibClient</span><span class="p">,</span>
+    <span class="o">*</span><span class="p">,</span>
+    <span class="n">json_mode</span><span class="p">:</span> <span class="nb">bool</span><span class="p">,</span>
+    <span class="n">command_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+<span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+</code></pre></div>
+<p>实现位置:</p>
+<div class="highlight"><pre><span></span><code>mineru/cli/telemetry.py
+</code></pre></div>
+<p>职责:</p>
+<ul>
+<li><code>is_interactive_cli()</code> 判断 stdin / stdout 是否为 TTY。</li>
+<li><code>is_ci_environment()</code> 判断常见 CI 环境变量，例如 <code>CI</code>、<code>GITHUB_ACTIONS</code>、<code>GITLAB_CI</code>、<code>BUILDKITE</code>、<code>JENKINS_URL</code>。</li>
+<li><code>maybe_prompt_telemetry_consent()</code> 查询 telemetry status，按规则提示用户，并调用 telemetry action。</li>
+</ul>
+<p>调用时机:</p>
+<ul>
+<li>各业务 CLI 命令创建 <code>DoclibClient</code> 后、发业务请求前调用。</li>
+<li><code>mineru telemetry ...</code> 命令自身不调用。</li>
+<li>prompt 失败、status 查询失败或 action 调用失败时，不影响原业务命令继续执行。</li>
+</ul>
+<p><code>parse --wait</code> observation:</p>
+<ul>
+<li><code>parse_cmd</code> 开始等待前记录 <code>wait_start = time.monotonic()</code>。</li>
+<li>等到 done: 上报 <code>parse_wait {status=succeeded, duration_ms, parse_ids}</code>。</li>
+<li>等到 failed: 先上报 <code>status=failed</code>，再按原逻辑报错。</li>
+<li>超时: 上报 <code>status=timeout</code>。</li>
+<li>用户取消，例如 Ctrl-C: 尽量上报 <code>status=canceled</code>，然后按原 CLI 取消逻辑退出。</li>
+<li>上报失败静默忽略，不影响 CLI 输出。</li>
+</ul>
+<h3 id="telemetryservice-api">TelemetryService 采集 API</h3>
+<p>第一版使用少量通用 record API，不为每个 metric 单独定义专用方法:</p>
+<div class="highlight"><pre><span></span><code><span class="k">class</span><span class="w"> </span><span class="nc">TelemetryService</span><span class="p">:</span>
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">record_count</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="o">*</span><span class="p">,</span>
+        <span class="n">dimensions</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">value</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">record_value</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">value</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+        <span class="o">*</span><span class="p">,</span>
+        <span class="n">dimensions</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">record_duration</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">duration_ms</span><span class="p">:</span> <span class="nb">int</span><span class="p">,</span>
+        <span class="o">*</span><span class="p">,</span>
+        <span class="n">dimensions</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+
+    <span class="k">async</span> <span class="k">def</span><span class="w"> </span><span class="nf">record_bucket</span><span class="p">(</span>
+        <span class="bp">self</span><span class="p">,</span>
+        <span class="n">name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="n">bucket</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span>
+        <span class="o">*</span><span class="p">,</span>
+        <span class="n">dimensions</span><span class="p">:</span> <span class="n">Mapping</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="nb">str</span><span class="p">]</span> <span class="o">|</span> <span class="kc">None</span> <span class="o">=</span> <span class="kc">None</span><span class="p">,</span>
+        <span class="n">value</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">1</span><span class="p">,</span>
+    <span class="p">)</span> <span class="o">-&gt;</span> <span class="kc">None</span><span class="p">:</span> <span class="o">...</span>
+</code></pre></div>
+<p>语义:</p>
+<ul>
+<li><code>record_count</code>: 事件发生次数，例如 <code>parse.request.count</code>。</li>
+<li><code>record_value</code>: 数值总和，例如 <code>parse.pages.count</code>、<code>scan.files.count</code>。</li>
+<li><code>record_duration</code>: 根据 <code>duration_ms</code> 自动写入 duration bucket，调用方不传 bucket。</li>
+<li><code>record_bucket</code>: 非 duration bucket，例如 pages、file size、results bucket。</li>
+<li>第一版所有 <code>value</code> 必须是非负整数。</li>
+<li><code>dimensions</code> 在 telemetry 层统一 normalize 和 whitelist 校验。</li>
+<li>unknown / invalid dimension value 降级为 <code>unknown</code> 或 <code>none</code>，不让任意字符串进入聚合。</li>
+<li><code>consent_state=disabled</code> 时，所有 record 方法直接 no-op。</li>
+<li><code>consent_state=unset</code> 或 <code>enabled</code> 时，record 方法写本地 aggregate。</li>
+<li>本地 aggregate 写入可以 <code>await</code>，第一版不引入内存 queue。</li>
+<li>本地 aggregate 写失败不重试，不影响主流程。</li>
+</ul>
+<p>Metric allowed dimensions 映射:</p>
+<ul>
+<li>metric -&gt; allowed dimensions 映射是 telemetry schema 的一部分，使用代码内存表，不放入数据库。</li>
+<li><code>METRIC_SPECS</code> 放在 <code>mineru/doclib/telemetry/constants.py</code>。</li>
+<li>DB 只存 normalize 后的 <code>dimensions</code> JSON 和 <code>dimensions_hash</code>。</li>
+<li>本地 telemetry 和外部 telemetry endpoint 都应按 <code>schema_version</code> 维护各自白名单。</li>
+</ul>
+<p>示例:</p>
+<div class="highlight"><pre><span></span><code><span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">MetricSpec</span><span class="p">:</span>
+    <span class="n">allowed_dimensions</span><span class="p">:</span> <span class="nb">frozenset</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span>
+    <span class="n">required_dimensions</span><span class="p">:</span> <span class="nb">frozenset</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="nb">frozenset</span><span class="p">()</span>
+
+
+<span class="n">METRIC_SPECS</span><span class="p">:</span> <span class="nb">dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">MetricSpec</span><span class="p">]</span> <span class="o">=</span> <span class="p">{</span>
+    <span class="s2">"parse.request.count"</span><span class="p">:</span> <span class="n">MetricSpec</span><span class="p">(</span>
+        <span class="n">allowed_dimensions</span><span class="o">=</span><span class="nb">frozenset</span><span class="p">({</span><span class="s2">"source"</span><span class="p">,</span> <span class="s2">"caller"</span><span class="p">}),</span>
+    <span class="p">),</span>
+    <span class="s2">"parse.finished.count"</span><span class="p">:</span> <span class="n">MetricSpec</span><span class="p">(</span>
+        <span class="n">allowed_dimensions</span><span class="o">=</span><span class="nb">frozenset</span><span class="p">({</span><span class="s2">"source"</span><span class="p">,</span> <span class="s2">"caller"</span><span class="p">,</span> <span class="s2">"status"</span><span class="p">,</span> <span class="s2">"tier"</span><span class="p">,</span> <span class="s2">"error_code"</span><span class="p">}),</span>
+    <span class="p">),</span>
+    <span class="s2">"parse.duration_bucket.count"</span><span class="p">:</span> <span class="n">MetricSpec</span><span class="p">(</span>
+        <span class="n">allowed_dimensions</span><span class="o">=</span><span class="nb">frozenset</span><span class="p">({</span><span class="s2">"source"</span><span class="p">,</span> <span class="s2">"caller"</span><span class="p">,</span> <span class="s2">"status"</span><span class="p">,</span> <span class="s2">"tier"</span><span class="p">,</span> <span class="s2">"bucket"</span><span class="p">}),</span>
+    <span class="p">),</span>
+<span class="p">}</span>
+</code></pre></div>
+<p><code>required_dimensions</code> 第一版可用于测试和开发期校验；运行时缺失时按失败兜底规则降级或跳过，不向业务层抛错。</p>
+<h3 id="_2">失败兜底规则</h3>
+<ul>
+<li>telemetry 永远不能改变业务返回、异常类型或状态码。</li>
+<li>所有 <code>record_*</code> 内部 catch <code>Exception</code>，不向外抛。</li>
+<li>打点代码不得读取或传递 exception message、traceback、path、filename、query、sha256、parse_id。</li>
+<li><code>error_code</code> 只允许使用稳定业务错误码，例如 <code>MineruError.code</code> 或 parse / scan row 的 <code>error_code</code>。不在 telemetry whitelist 内时统一降级为 <code>internal_error</code>。</li>
+<li>route 层失败时，可以用 <code>try/except Exception as exc</code> 计算 telemetry status / error_code，但必须重新 <code>raise</code> 原异常。</li>
+<li>duration 使用 <code>time.monotonic()</code>；DB timestamp 仍使用 ms epoch。</li>
+<li>如果无法补齐必需维度，使用安全枚举值，例如 <code>status=failed</code> 或 <code>unknown</code>。</li>
+<li>如果无法补齐非必需规模信息，例如 pages、file size，不记录对应规模 metric，不使用 <code>unknown</code> bucket。</li>
+<li>route-level request metric 在进入业务 handler 后立即记录；如果后续业务失败，request 仍保留，finished 记录 failed。</li>
+<li>FastAPI / Pydantic 在进入业务 handler 前拒绝的请求第一版不计。</li>
+<li>background task 的 source / caller 不做归因，不为此修改 <code>parses</code> 或 <code>scans</code> 表存来源快照。</li>
+</ul>
+<h2 id="10-observations">10. Observations</h2>
+<p>有些体验信息只存在于 client / CLI / SDK 侧，server 自己无法观察，例如调用方等待了多久、是否超时、是否被取消。</p>
+<p>第一版增加一个通用 observations 接口:</p>
+<div class="highlight"><pre><span></span><code>POST /observations
+</code></pre></div>
+<p>request 必须使用白名单 type，不允许透传任意 dict。第一版支持:</p>
+<div class="highlight"><pre><span></span><code>type = parse_wait
+</code></pre></div>
+<p><code>parse_wait</code> 只记录低敏字段:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"type"</span><span class="p">:</span><span class="w"> </span><span class="s2">"parse_wait"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"duration_ms"</span><span class="p">:</span><span class="w"> </span><span class="mi">43120</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"status"</span><span class="p">:</span><span class="w"> </span><span class="s2">"succeeded"</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"refs"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">    </span><span class="nt">"parse_ids"</span><span class="p">:</span><span class="w"> </span><span class="p">[</span><span class="mi">123</span><span class="p">,</span><span class="w"> </span><span class="mi">124</span><span class="p">]</span>
+<span class="w">  </span><span class="p">}</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>请求约束:</p>
+<table>
+<thead>
+<tr>
+<th>字段</th>
+<th>类型</th>
+<th>约束</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>type</code></td>
+<td>string</td>
+<td>第一版只允许 <code>parse_wait</code></td>
+</tr>
+<tr>
+<td><code>duration_ms</code></td>
+<td>integer</td>
+<td><code>0 &lt;= duration_ms &lt;= 86400000</code></td>
+</tr>
+<tr>
+<td><code>status</code></td>
+<td>string</td>
+<td><code>succeeded</code> / <code>failed</code> / <code>timeout</code> / <code>canceled</code></td>
+</tr>
+<tr>
+<td><code>refs.parse_ids</code></td>
+<td>integer array</td>
+<td>非空，最多 200 个，元素必须为正整数</td>
+</tr>
+</tbody>
+</table>
+<p>响应:</p>
+<div class="highlight"><pre><span></span><code><span class="p">{</span>
+<span class="w">  </span><span class="nt">"accepted"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"recorded"</span><span class="p">:</span><span class="w"> </span><span class="kc">true</span><span class="p">,</span>
+<span class="w">  </span><span class="nt">"reason"</span><span class="p">:</span><span class="w"> </span><span class="kc">null</span>
+<span class="p">}</span>
+</code></pre></div>
+<p>响应语义:</p>
+<ul>
+<li><code>accepted=true</code>: server 接受了 observation 请求格式。</li>
+<li><code>recorded=true</code>: observation 已写入 telemetry 聚合。</li>
+<li><code>recorded=false</code>: 请求格式有效，但没有写入聚合，例如 telemetry disabled、<code>parse_ids</code> 全部查不到，或无法补齐必要低基数字段。</li>
+<li><code>reason</code> 只在 <code>recorded=false</code> 时使用，第一版取值为 <code>telemetry_disabled | parse_refs_not_found | missing_dimensions</code>。</li>
+<li>schema 不合法时返回 HTTP 4xx，例如未知 <code>type</code>、字段类型错误、<code>duration_ms</code> 超限、<code>refs.parse_ids</code> 为空或过长。</li>
+</ul>
+<p>server 收到 observation 后，根据 <code>parse_ids</code> 查询本地 DB 补齐 tier、页数、错误码等低基数字段，再写入 telemetry 聚合。</p>
+<p>observation 写入失败不能影响主流程。<code>consent_state=disabled</code> 时，该接口应返回 <code>accepted=true, recorded=false, reason=telemetry_disabled</code>。<code>consent_state=unset</code> 时，可以写入本地聚合，但不会触发外部 flush。</p>
+<p>第一版保持简单，不做 observation 幂等去重。client 上报失败可以丢失，重试导致的重复 observation 也可以接受。</p>
+<p>第一版不增加 blocking wait API。<code>POST /parses</code> 继续保持非阻塞，CLI / client 通过轮询显示进度，并在等待结束后上报 <code>parse_wait</code> observation。</p>
+<p>采集点位:</p>
+<ul>
+<li><code>POST /observations</code> 只支持 <code>parse_wait</code>。</li>
+<li>schema 合法后，根据 <code>parse_ids</code> 查询 task，补齐 <code>tier</code> 和 <code>pages_bucket</code>。</li>
+<li>记录 <code>parse.wait.count {source, caller, status, tier, pages_bucket}</code>。</li>
+<li>记录 <code>parse.wait_duration_bucket.count {source, caller, status, tier, pages_bucket}</code>。</li>
+<li><code>consent_state=disabled</code> 时返回 <code>accepted=true, recorded=false, reason=telemetry_disabled</code>。</li>
+<li><code>parse_ids</code> 全部查不到时返回 <code>accepted=true, recorded=false, reason=parse_refs_not_found</code>。</li>
+<li>无法补齐必要低基数字段时返回 <code>accepted=true, recorded=false, reason=missing_dimensions</code>。</li>
+</ul>
+<h2 id="11">11. 使用方式与频率</h2>
+<p>这些 metric 回答“谁在用、从哪里用、用什么能力、频率如何”。</p>
+<div class="highlight"><pre><span></span><code>parse.request.count
+scan.request.count
+watch.add.count
+watch.remove.count
+search.request.count
+find.request.count
+content.request.count
+</code></pre></div>
+<p>口径:</p>
+<ul>
+<li><code>parse.request.count</code>: doclib 收到一次 parse 业务请求。</li>
+<li><code>scan.request.count</code>: doclib 收到一次 scan 请求，包括手动 scan、watch rescan、watch initial scan。</li>
+<li><code>watch.add.count</code>: doclib 收到一次 watch add 配置请求。</li>
+<li><code>watch.remove.count</code>: doclib 收到一次 watch remove 配置请求。</li>
+<li><code>search.request.count</code>: doclib 收到一次全文搜索请求，不记录 query。</li>
+<li><code>find.request.count</code>: doclib 收到一次文件名搜索请求，不记录 query。</li>
+<li><code>content.request.count</code>: doclib 收到一次读取或导出内容请求，不记录内容。</li>
+</ul>
+<p>除 <code>scan.request.count</code> 外，<code>*.request.count</code> 的计数边界是进入对应 doclib 业务 handler 之后。FastAPI / Pydantic 在进入业务 handler 前拒绝的 schema 错误、路由不存在、认证或连接层错误，第一版不计入 request metric。进入业务 handler 后发生的业务失败仍计入 request metric，并通过对应 <code>*.finished.count {status=failed}</code> 表达结果。<code>scan.request.count</code> 额外覆盖 internal watch-triggered scan 创建。</p>
+<p>这些 metric 不带 <code>command</code> 维度。能力类型已经由 metric name 表达。</p>
+<p>采集点位总则:</p>
+<ul>
+<li>request metric 默认由 <code>DoclibServer</code> route 层记录，不在 service 层重复记录；<code>scan.request.count</code> 是唯一例外，internal watch-triggered scan 也记。</li>
+<li>route 进入业务 handler 后立即记录对应 <code>*.request.count</code>。</li>
+<li>route 层负责入口体验指标，例如 finished、duration、results bucket、content mode。</li>
+<li>service / worker 层负责后台执行指标，例如 <code>parse_task.*</code>、<code>scan.finished.count</code>、<code>scan.files.count</code>、<code>ingest.*</code>。</li>
+</ul>
+<h2 id="12-parse">12. 用户满意度: Parse 请求层</h2>
+<p><code>parse.*</code> 表示调用方感知到的 parse 请求体验。一次请求可能 cache hit、复用已有任务、创建新任务、等待任务完成，或直接返回 queued。</p>
+<div class="highlight"><pre><span></span><code>parse.finished.count
+parse.duration_bucket.count
+
+parse.wait.count
+parse.wait_duration_bucket.count
+
+parse.files.count
+parse.pages.count
+parse.file_size_bucket.count
+parse.pages_bucket.count
+
+parse.invalidate.count
+</code></pre></div>
+<p>口径:</p>
+<ul>
+<li><code>parse.finished.count</code>: <code>POST /parses</code> 请求返回给调用方的状态。</li>
+<li><code>parse.duration_bucket.count</code>: 从进入 doclib parse 请求到 <code>POST /parses</code> 返回的耗时分布。</li>
+<li><code>parse.wait.count</code>: 调用方等待后台 parse task 的结果，由 <code>parse_wait</code> observation 采集。</li>
+<li><code>parse.wait_duration_bucket.count</code>: 调用方等待后台 task 的真实耗时分布，由 <code>parse_wait</code> observation 采集。</li>
+<li><code>parse.files.count</code>: 请求涉及的文件数。第一版通常为 1。</li>
+<li><code>parse.pages.count</code>: 请求涉及的页数，只记录数量，不记录页码列表。</li>
+<li><code>parse.file_size_bucket.count</code>: 请求文件大小分布。</li>
+<li><code>parse.pages_bucket.count</code>: 请求页数分布。</li>
+<li><code>parse.invalidate.count</code>: 用户主动让已完成 parse 结果失效。</li>
+</ul>
+<p>推荐状态:</p>
+<div class="highlight"><pre><span></span><code>parse.finished.count:
+  status = cached | direct | reused | queued | failed
+
+parse.wait.count:
+  status = succeeded | failed | timeout | canceled
+
+parse.invalidate.count:
+  status = succeeded | failed | skipped
+</code></pre></div>
+<p>说明:</p>
+<ul>
+<li><code>cached</code> 表示请求所需内容已在本地 cache 中，<code>POST /parses</code> 立即返回可读取结果。</li>
+<li><code>direct</code> 表示请求无需创建后台 parse task，doclib 直接完成，例如 plain text 文件不需要异步解析。</li>
+<li><code>reused</code> 表示请求复用了已有 pending / parsing task，没有创建新的 parse task。</li>
+<li><code>queued</code> 表示请求创建了新的后台 parse task。</li>
+<li>当前代码映射规则: <code>cache_hit=True</code> -&gt; <code>cached</code>；plain text response -&gt; <code>direct</code>；<code>reused_parse_ids</code> 非空且 <code>created_parse_ids</code> 为空 -&gt; <code>reused</code>；<code>created_parse_ids</code> 非空 -&gt; <code>queued</code>；<code>ParseResponse.status=failed</code> 或 route 抛出异常 -&gt; <code>failed</code>。</li>
+<li><code>parse.finished.count {status=queued}</code> 已表示本次请求需要后台 task，因此不再用 <code>parse.wait.count</code> 记录 <code>required</code> / <code>not_required</code>。</li>
+<li><code>parse.wait.count {status=succeeded|failed|timeout|canceled}</code> 和 <code>parse.wait_duration_bucket.count</code> 只由 <code>parse_wait</code> observation 记录。</li>
+<li><code>parse.wait.*</code> 只覆盖使用 CLI / <code>DoclibClient</code> wait helper 的调用方。直接 HTTP 调用方如果只调用 <code>POST /parses</code> 而不上报 observation，不会产生 wait 指标。</li>
+<li><code>parse.wait.*</code> 不是所有 <code>parse.finished.count {status=queued}</code> 的完整子集统计，只表示客户端明确上报过 observation 的等待行为。</li>
+<li>第一版 <code>parse.wait.*</code> 不带 <code>error_code</code>。</li>
+<li><code>parse.wait_duration_bucket.count</code> 应带 <code>tier</code>、<code>pages_bucket</code>。这两个维度从 <code>parse_ids</code> 对应的 task 中读取。</li>
+<li>同一次 wait observation 包含多个 <code>parse_ids</code> 时，<code>pages_bucket</code> 使用这些 task 页数之和；通常这些 task 属于同一 tier。如果发现多个 tier，<code>tier=unknown</code>。</li>
+<li><code>cached</code>、<code>direct</code>、<code>reused</code> 通常不会产生新的 <code>parse_task.created.count</code>。</li>
+<li><code>force=True</code> 会跳过 cache lookup，通常表现为 <code>queued</code> 或 <code>reused</code>。</li>
+<li><code>parse.files.count</code>、<code>parse.pages.count</code>、<code>parse.file_size_bucket.count</code>、<code>parse.pages_bucket.count</code> 只在对应信息可获得时记录。如果请求在 ingest 或 metadata 可用前失败，缺失的规模指标不记录，不使用 <code>unknown</code> bucket。</li>
+<li><code>parse.finished.count {status=failed}</code> 的 <code>tier</code> 规则:</li>
+<li>调用方显式指定 tier 且请求失败时，使用该显式 tier。</li>
+<li>调用方未显式指定 tier，且在默认 tier 解析完成前就失败时，使用 <code>default</code>。</li>
+<li>调用方未显式指定 tier，但默认选择策略已明确解析到了实体 tier 后才失败时，使用 <code>basic(default)</code>、<code>standard(default)</code> 或 <code>advanced(default)</code>。</li>
+</ul>
+<p>采集点位:</p>
+<ul>
+<li><code>DoclibServer.ensure_parse</code> 进入 handler 后记录 <code>parse.request.count {source, caller}</code>。</li>
+<li><code>DoclibServer.ensure_parse</code> 正常返回后记录 <code>parse.finished.count {source, caller, status, tier}</code>。</li>
+<li><code>DoclibServer.ensure_parse</code> 正常返回或抛出异常时记录 <code>parse.duration_bucket.count {source, caller, status, tier}</code>。</li>
+<li><code>DoclibServer.ensure_parse</code> 抛出异常时，<code>parse.finished.count</code> 的 <code>status=failed</code>，<code>error_code</code> 使用稳定业务错误码；没有则使用 <code>internal_error</code>。</li>
+<li><code>DoclibServer.ensure_parse</code> 能拿到文件 metadata 时记录 <code>parse.files.count</code>、<code>parse.pages.count</code>、<code>parse.file_size_bucket.count</code>、<code>parse.pages_bucket.count</code>。</li>
+<li><code>DoclibServer.invalidate</code> 成功且 <code>invalidated_count &gt; 0</code> 时记录 <code>parse.invalidate.count {status=succeeded}</code>。</li>
+<li><code>DoclibServer.invalidate</code> 成功但 <code>invalidated_count = 0</code> 时记录 <code>parse.invalidate.count {status=skipped}</code>。</li>
+<li><code>DoclibServer.invalidate</code> 抛出异常时记录 <code>parse.invalidate.count {status=failed}</code>，然后重新抛出原异常。</li>
+</ul>
+<h2 id="13-parse">13. 用户满意度: Parse 后台任务层</h2>
+<p><code>parse_task.*</code> 表示 doclib worker 实际执行的异步 parse 任务。它对应 <code>parses</code> 表中的任务实体，不等同于入口请求。</p>
+<div class="highlight"><pre><span></span><code>parse_task.created.count
+parse_task.started.count
+parse_task.finished.count
+parse_task.duration_bucket.count
+
+parse_task.execute.count
+parse_task.execute_duration_bucket.count
+parse_task.write.count
+parse_task.write_duration_bucket.count
+
+parse_task.files.count
+parse_task.pages.count
+</code></pre></div>
+<p>口径:</p>
+<ul>
+<li><code>parse_task.created.count</code>: doclib 创建新的后台 parse task。</li>
+<li><code>parse_task.started.count</code>: worker 获取 task 并开始执行。</li>
+<li><code>parse_task.finished.count</code>: 后台 task 完成，按成功或失败区分。</li>
+<li><code>parse_task.duration_bucket.count</code>: 从 worker 开始执行到 task 完成的耗时分布。</li>
+<li><code>parse_task.execute.count</code>: 实际解析执行步骤结果。</li>
+<li><code>parse_task.execute_duration_bucket.count</code>: 实际解析执行步骤耗时分布。</li>
+<li><code>parse_task.write.count</code>: 写 Middle JSON、更新 FTS、更新 doc metadata 的步骤结果。</li>
+<li><code>parse_task.write_duration_bucket.count</code>: write 步骤耗时分布。</li>
+<li><code>parse_task.files.count</code>: 后台 task 实际处理文件数。第一版通常为 1。</li>
+<li><code>parse_task.pages.count</code>: 后台 task 实际处理页数。</li>
+</ul>
+<p>推荐状态:</p>
+<div class="highlight"><pre><span></span><code>parse_task.finished.count:
+  status = succeeded | failed
+
+parse_task.execute.count:
+  status = succeeded | failed
+
+parse_task.write.count:
+  status = succeeded | failed
+</code></pre></div>
+<p>采集要求:</p>
+<ul>
+<li><code>parse_task.created.count</code> 必须在所有 <code>parses</code> row 创建点记录，包括显式 <code>POST /parses</code> 和 ingest 自动创建的初始 parse task。</li>
+<li><code>parse_task.started.count</code> 应在 worker acquire task 成功后记录。</li>
+<li><code>parse_task.finished.count</code> 应覆盖 service 内失败和 worker fallback 异常处理。</li>
+<li>第一版 <code>parse_task.*</code> 不带 <code>source</code> / <code>caller</code>。不需要为后台 task 增加来源快照存储。</li>
+<li><code>parse_task.execute.*</code> 覆盖 <code>_parse_via_local</code> / <code>_parse_via_api</code> 的实际解析执行。</li>
+<li><code>parse_task.write.*</code> 覆盖解析后所有后续操作，包括 Middle JSON 写入、FTS 更新和 docs metadata 更新。</li>
+<li>如果 FTS 更新或 docs metadata 更新失败，应同时记录 <code>parse_task.write.count {status=failed}</code> 和 <code>parse_task.finished.count {status=failed}</code>。</li>
+<li>step metric 只在 step 已开始后记录。execute 失败时不记录 write；write 未开始时不记录 <code>parse_task.write.*</code>。</li>
+</ul>
+<p><code>parse_task.execute.*</code> 应带 <code>server</code> 维度:</p>
+<div class="highlight"><pre><span></span><code>server = local(flash) | local(managed) | local(self-hosted) | remote(official) | remote(custom) | unknown
+</code></pre></div>
+<p>因此第一版不再单独使用 <code>parse_server.*</code> metric。parse-server 使用情况通过:</p>
+<div class="highlight"><pre><span></span><code>parse_task.execute.count {server=local(managed)}
+parse_task.execute.count {server=remote(official)}
+parse_task.execute_duration_bucket.count {server=local(self-hosted)}
+</code></pre></div>
+<p>表达。</p>
+<p>采集点位:</p>
+<ul>
+<li><code>ParseService.request_parse</code> 新建 <code>parses</code> row 后记录 <code>parse_task.created.count {tier}</code>。</li>
+<li><code>ParseService.ingest_file</code> 自动创建初始 parse row 后记录 <code>parse_task.created.count {tier}</code>。</li>
+<li><code>ParseService.acquire_task</code> 成功返回 task 后记录 <code>parse_task.started.count {tier}</code>。</li>
+<li><code>ParseService.process_doc</code> 从开始执行到 task 成功或失败，记录 <code>parse_task.finished.count {status, tier, error_code}</code>。</li>
+<li><code>parse_task.finished.count {status=failed}</code> 的 <code>error_code</code> 来源优先级:</li>
+<li>如果 execute 步骤失败，使用 execute 步骤的失败码。</li>
+<li>否则如果 write 步骤失败，使用 write 步骤的失败码。</li>
+<li>否则如果 worker fallback 或其它未归类异常导致 task failed，使用 <code>parse_failed</code>；若没有稳定失败码可用，再降级为 <code>internal_error</code>。</li>
+<li><code>ParseService.process_doc</code> 从开始执行到 task 成功或失败，记录 <code>parse_task.duration_bucket.count {status, tier}</code>。</li>
+<li><code>ParseService.process_doc</code> 能拿到 task 页数时记录 <code>parse_task.files.count</code> 和 <code>parse_task.pages.count</code>。</li>
+<li><code>_parse_via_local</code> / <code>_parse_via_api</code> 周围记录 <code>parse_task.execute.count {status, tier, server, error_code}</code>。</li>
+<li><code>_parse_via_local</code> / <code>_parse_via_api</code> 周围记录 <code>parse_task.execute_duration_bucket.count {status, tier, server}</code>。</li>
+<li>JSON 写入、FTS 更新、docs metadata 更新作为一个 write 步骤，记录 <code>parse_task.write.count {status, tier, error_code}</code>。</li>
+<li>write 步骤记录 <code>parse_task.write_duration_bucket.count {status, tier}</code>。</li>
+<li>execute 失败时不记录 write。</li>
+<li>write 未开始时不记录 <code>parse_task.write.*</code>。</li>
+<li>FTS 更新或 docs metadata 更新失败时，同时记录 <code>parse_task.write.count {status=failed}</code> 和 <code>parse_task.finished.count {status=failed}</code>。</li>
+<li><code>ParseWorkerPool</code> fallback exception 路径也必须记录 <code>parse_task.finished.count {status=failed}</code>，避免 service 外异常漏记。</li>
+</ul>
+<h2 id="14-ingest">14. Ingest</h2>
+<p><code>ingest.*</code> 表示 doclib 发现文件后读取文件状态、计算 sha256、提取 metadata、创建 doc/file 记录和默认 parse task 的过程。</p>
+<div class="highlight"><pre><span></span><code>ingest.finished.count
+ingest.duration_bucket.count
+</code></pre></div>
+<p>口径:</p>
+<ul>
+<li><code>ingest.finished.count</code>: ingest 完成结果。</li>
+<li><code>ingest.duration_bucket.count</code>: ingest 耗时分布。</li>
+</ul>
+<p>推荐状态:</p>
+<div class="highlight"><pre><span></span><code>status = succeeded | failed | skipped
+</code></pre></div>
+<p>说明:</p>
+<ul>
+<li>ingest 可由 parse、scan、watch、show file 等路径触发。</li>
+<li>ingest 失败会影响用户是否能 parse / search / read，因此进入第一版。</li>
+<li><code>ingest.*</code> 应带 <code>trigger</code> 维度，表示触发来源: <code>parse | scan | watch | show | background | unknown</code>。</li>
+<li><code>trigger=parse</code>: <code>POST /parses</code> 路径触发同步 ingest。</li>
+<li><code>trigger=scan</code>: scan service 刷新文件时触发 ingest。</li>
+<li><code>trigger=watch</code>: watch filesystem event 直接刷新文件时触发 ingest。</li>
+<li><code>trigger=show</code>: <code>show file</code>、<code>get_file_by_path</code> 或 <code>get_doc_by_path</code> 这类状态查询触发 ingest。</li>
+<li><code>trigger=background</code>: ingest worker 处理 backlog 文件。</li>
+<li>不记录路径、文件名或具体 metadata 内容。</li>
+</ul>
+<p>采集点位:</p>
+<ul>
+<li><code>ParseService.refresh_file</code>、<code>ensure_ingested</code>、<code>ingest_file</code> 增加 keyword-only <code>trigger</code> 参数，默认 <code>unknown</code>。</li>
+<li><code>POST /parses</code> 路径调用 ingest 时传 <code>trigger=parse</code>。</li>
+<li>scan service 刷新文件时传 <code>trigger=scan</code>。</li>
+<li><code>get_doc_by_path</code>、<code>get_file_by_path</code> 等状态查询触发 ingest 时传 <code>trigger=show</code>。</li>
+<li>watch filesystem event 直接 refresh 文件时传 <code>trigger=watch</code>。</li>
+<li>ingest worker 处理 backlog 文件时传 <code>trigger=background</code>。</li>
+<li><code>ingest_file</code> 完成后记录 <code>ingest.finished.count {trigger, status}</code>。</li>
+<li><code>ingest_file</code> 完成后记录 <code>ingest.duration_bucket.count {trigger, status}</code>。</li>
+<li>第一版只在进入 ingest path 后记录 <code>ingest.*</code>。</li>
+<li>不支持、无需 ingest 或已有 sha256 且未变化时，如果已经进入 ingest path，可以记为 <code>status=skipped</code>。</li>
+<li>普通 <code>refresh_file</code> 判断为 known 且未调用 <code>ingest_file</code> 时，不强制记录 <code>ingest.finished.count {status=skipped}</code>，避免 scan 噪音。</li>
+<li>ingest 抛出异常时记录 <code>status=failed</code>，然后重新抛出原异常。</li>
+</ul>
+<h2 id="15-search-find-content">15. Search / Find / Content 体验</h2>
+<p>这些 metric 回答非 parse 请求是否成功、耗时如何、返回规模如何。</p>
+<div class="highlight"><pre><span></span><code>search.finished.count
+search.duration_bucket.count
+search.results_bucket.count
+
+find.finished.count
+find.duration_bucket.count
+find.results_bucket.count
+
+content.finished.count
+content.duration_bucket.count
+</code></pre></div>
+<p>口径:</p>
+<ul>
+<li><code>search.finished.count</code>: 全文搜索请求结果，不记录 query 或结果内容。</li>
+<li><code>search.duration_bucket.count</code>: 全文搜索耗时分布。</li>
+<li><code>search.results_bucket.count</code>: 全文搜索返回数量分布。</li>
+<li><code>find.finished.count</code>: 文件名搜索请求结果，不记录 query 或结果内容。</li>
+<li><code>find.duration_bucket.count</code>: 文件名搜索耗时分布。</li>
+<li><code>find.results_bucket.count</code>: 文件名搜索返回数量分布。</li>
+<li><code>content.finished.count</code>: 内容读取或导出请求结果，不记录内容。</li>
+<li><code>content.duration_bucket.count</code>: 内容读取或导出耗时分布。</li>
+<li>第一版 content 指标不记录输出大小。即使 <code>output_format=image</code> 生成本地 temp asset，也只记录 <code>content_mode</code>、<code>output_format</code>、<code>tier</code>、<code>status</code> 和耗时。</li>
+</ul>
+<p>推荐状态:</p>
+<div class="highlight"><pre><span></span><code>status = succeeded | failed
+</code></pre></div>
+<p><code>content.*</code> 应带:</p>
+<div class="highlight"><pre><span></span><code>tier
+content_mode = read | parse_output | export
+output_format = markdown | image | other
+</code></pre></div>
+<p><code>content_mode=read</code> 表示 <code>/content</code> locator 读取，<code>parse_output</code> 表示 <code>/docs/{sha256}/content</code> 读取 parse 输出，<code>export</code> 表示 <code>/docs/{sha256}/exports</code> 写出文件。</p>
+<p><code>output_format</code> 映射规则:</p>
+<ul>
+<li><code>GET /docs/{sha256}/content</code> 根据调用方传入的 raw format 归一化：<code>markdown -&gt; markdown</code>，<code>image -&gt; image</code>，其它值 -&gt; <code>other</code>。当前实现里只有 <code>markdown</code> 会成功，<code>image</code> 和 <code>other</code> 都会按原逻辑报错。</li>
+<li><code>GET /content</code> 使用 <code>request.format</code>，当前合法值是 <code>markdown | image</code>。</li>
+<li><code>POST /docs/{sha256}/exports</code> 当前实现只支持导出 markdown 文件；<code>request.format=="markdown"</code> 记为 <code>markdown</code>，<code>request.format=="image"</code> 记为 <code>image</code>，其余值记为 <code>other</code>。</li>
+<li><code>other</code> 主要用于 route 已进入 handler，但请求中的 format 不是第一版已知枚举的失败场景；不是一个鼓励成功使用的输出格式。</li>
+</ul>
+<p>采集点位:</p>
+<ul>
+<li><code>DoclibServer.search</code> 进入 handler 后记录 <code>search.request.count {source, caller}</code>。</li>
+<li><code>DoclibServer.search</code> 返回或抛出异常时记录 <code>search.finished.count {source, caller, status}</code>。</li>
+<li><code>DoclibServer.search</code> 返回或抛出异常时记录 <code>search.duration_bucket.count {source, caller, status}</code>。</li>
+<li><code>DoclibServer.search</code> 正常返回后记录 <code>search.results_bucket.count {source, caller, bucket}</code>，bucket 根据返回结果总数计算。</li>
+<li><code>DoclibServer.find</code> 同理记录 <code>find.request.count</code>、<code>find.finished.count</code>、<code>find.duration_bucket.count</code>、<code>find.results_bucket.count</code>。</li>
+<li><code>DoclibServer.get_doc_content</code> 使用 <code>content_mode=parse_output</code>。</li>
+<li><code>DoclibServer.read_content</code> 使用 <code>content_mode=read</code>。</li>
+<li><code>DoclibServer.export_doc_content</code> 使用 <code>content_mode=export</code>。</li>
+<li>content route 进入 handler 后记录 <code>content.request.count {source, caller, content_mode, output_format}</code>。</li>
+<li>content route 返回或抛出异常时记录 <code>content.finished.count {source, caller, content_mode, output_format, tier, status}</code>。</li>
+<li>content route 返回或抛出异常时记录 <code>content.duration_bucket.count {source, caller, content_mode, output_format, tier, status}</code>。</li>
+<li>search / find 不记录 query、snippet、filename、path 或结果内容。</li>
+<li>content 不记录正文、图片内容、输出路径或输出大小。</li>
+</ul>
+<h2 id="16-scan-watch">16. Scan / Watch 轻量体验</h2>
+<p>第一版记录 scan 入口请求、复用、最终结果和文件处理结果。watch 只记录配置请求，不展开完整 watch event 流。</p>
+<div class="highlight"><pre><span></span><code>scan.finished.count
+scan.duration_bucket.count
+scan.reuse.count
+scan.files.count
+
+watch.add.finished.count
+watch.remove.finished.count
+</code></pre></div>
+<p>口径:</p>
+<ul>
+<li><code>scan.finished.count</code>: scan task 完成结果，包括 manual scan 和 watch scan。</li>
+<li><code>scan.duration_bucket.count</code>: scan task 耗时分布。</li>
+<li><code>scan.reuse.count</code>: scan 请求是否复用已有 pending / running scan task。</li>
+<li><code>scan.files.count</code>: scan task 处理的文件数，按结果分类累计。</li>
+<li><code>watch.add.finished.count</code>: watch add 配置请求结果。</li>
+<li><code>watch.remove.finished.count</code>: watch remove 配置请求结果。</li>
+</ul>
+<p>推荐状态:</p>
+<div class="highlight"><pre><span></span><code>scan.finished.count:
+  status = succeeded | failed
+
+scan.reuse.count:
+  status = hit | miss
+
+scan.files.count:
+  result = seen | refreshed | new | changed | deleted | unreachable | error | unsupported | excluded
+
+watch.add.finished.count:
+  status = succeeded | failed
+
+watch.remove.finished.count:
+  status = succeeded | failed
+</code></pre></div>
+<p>说明:</p>
+<ul>
+<li><code>mineru watch rescan</code> 记为 <code>scan.request.count</code> / <code>scan.finished.count</code>，不记为 <code>watch.add.count</code> 或 <code>watch.remove.count</code>。</li>
+<li>watch loop initial scan 也记为 scan，<code>source=watch</code>、<code>caller=system</code>。</li>
+<li>watch filesystem event 直接 refresh 文件，第一版不展开为 <code>watch_task.*</code>。</li>
+<li><code>scan.files.count</code> 的 <code>value</code> 为对应 <code>result</code> 的文件数，不是 scan task 次数。</li>
+</ul>
+<p>采集点位:</p>
+<ul>
+<li><code>DoclibServer.create_scan</code> 进入 handler 后记录 <code>scan.request.count {source, caller}</code>。</li>
+<li>watch initial scan 和 watch rescan 在内部创建 scan task 时也记录 <code>scan.request.count {source=watch, caller=system}</code>。</li>
+<li><code>ScanService.create_scan</code> 发现已有 pending / running scan 并复用时，记录 <code>scan.reuse.count {status=hit}</code>。</li>
+<li><code>ScanService.create_scan</code> 新建 scan row 时，记录 <code>scan.reuse.count {status=miss}</code>。</li>
+<li><code>ScanService.process_scan</code> 完成后记录 <code>scan.finished.count {status=succeeded|failed}</code>。</li>
+<li><code>ScanService.process_scan</code> 完成后记录 <code>scan.duration_bucket.count {status=succeeded|failed}</code>。</li>
+<li><code>ScanService.process_scan</code> 完成后根据 <code>_ScanCounters</code> 记录 <code>scan.files.count {result=...}</code>，value 为对应文件数量。</li>
+<li><code>_ScanCounters.files_seen</code> -&gt; <code>scan.files.count {result=seen}</code>。</li>
+<li><code>_ScanCounters.files_refreshed</code> -&gt; <code>scan.files.count {result=refreshed}</code>。</li>
+<li><code>_ScanCounters.files_new</code> -&gt; <code>scan.files.count {result=new}</code>。</li>
+<li><code>_ScanCounters.files_changed</code> -&gt; <code>scan.files.count {result=changed}</code>。</li>
+<li><code>_ScanCounters.files_deleted</code> -&gt; <code>scan.files.count {result=deleted}</code>。</li>
+<li><code>_ScanCounters.files_unreachable</code> -&gt; <code>scan.files.count {result=unreachable}</code>。</li>
+<li><code>_ScanCounters.files_error</code> -&gt; <code>scan.files.count {result=error}</code>。</li>
+<li><code>_ScanCounters.files_unsupported</code> -&gt; <code>scan.files.count {result=unsupported}</code>。</li>
+<li><code>_ScanCounters.files_excluded</code> -&gt; <code>scan.files.count {result=excluded}</code>。</li>
+<li><code>DoclibServer.add_watch</code> 进入 handler 后记录 <code>watch.add.count {source, caller}</code>。</li>
+<li><code>DoclibServer.add_watch</code> 返回或抛出异常时记录 <code>watch.add.finished.count {source, caller, status}</code>。</li>
+<li><code>DoclibServer.remove_watch</code> 进入 handler 后记录 <code>watch.remove.count {source, caller}</code>。</li>
+<li><code>DoclibServer.remove_watch</code> 返回或抛出异常时记录 <code>watch.remove.finished.count {source, caller, status}</code>。</li>
+</ul>
+<h2 id="17-bucket">17. Bucket</h2>
+<p>耗时:</p>
+<div class="highlight"><pre><span></span><code>lt_1s | 1_5s | 5_30s | 30_120s | 2_10m | gt_10m
+</code></pre></div>
+<p>页数:</p>
+<div class="highlight"><pre><span></span><code>1 | 2_5 | 6_20 | 21_100 | 101_500 | gt_500
+</code></pre></div>
+<p>文件大小:</p>
+<div class="highlight"><pre><span></span><code>lt_1mb | 1_10mb | 10_50mb | 50_200mb | gt_200mb
+</code></pre></div>
+<p>搜索结果数:</p>
+<div class="highlight"><pre><span></span><code>0 | 1_5 | 6_20 | 21_100 | gt_100
+</code></pre></div>
+<p>Bucket 边界统一使用左闭右开区间，最后一个 bucket 右侧无界。例如 <code>1_5s</code> 表示 <code>[1s, 5s)</code>，<code>gt_10m</code> 表示 <code>[10m, +inf)</code>。</p>
+<h2 id="18">18. 测试与验收</h2>
+<p>第一版测试分四层，不要求做真实外网端到端测试。</p>
+<p>Unit tests:</p>
+<ul>
+<li><code>buckets.py</code>: duration、pages、file size、results bucket 边界。</li>
+<li><code>context.py</code> / <code>caller.py</code>: contextvars set/get/reset、missing header 默认值、invalid header 降级、caller 推断失败返回 <code>unknown</code>。</li>
+<li><code>store.py</code>: 初始化生成 <code>installation_id</code>、默认 <code>consent_state=unset</code>、aggregate upsert 累加、disabled 后 record no-op、disable 清空 aggregates 但不删除 <code>installation_id</code>。</li>
+<li><code>payload.py</code>: preview payload schema、dimensions 稳定排序/hash、不包含 forbidden fields、空 metrics 仍返回合法 batch。</li>
+</ul>
+<p>Route / service tests:</p>
+<ul>
+<li>telemetry management API: status、preview、enable、disable、flush 在 unset/disabled 返回 <code>executed=false</code>。</li>
+<li>observations: valid <code>parse_wait</code> -&gt; <code>recorded=true</code>；disabled -&gt; <code>recorded=false, reason=telemetry_disabled</code>；invalid duration / empty parse_ids -&gt; HTTP 4xx；parse_ids 查不到 -&gt; <code>recorded=false, reason=parse_refs_not_found</code>；缺少必要维度 -&gt; <code>recorded=false, reason=missing_dimensions</code>。</li>
+<li>parse route: <code>parse.request.count</code>、<code>parse.finished.count</code> 的 cached/direct/reused/queued/failed 映射、<code>parse.duration_bucket.count</code> 带 status。</li>
+<li>scan/search/content/watch route: request / finished / duration 基本打点、search/find results bucket、content mode 映射、watch add/remove success/failed。</li>
+</ul>
+<p>CLI prompt tests:</p>
+<ul>
+<li>unset + TTY + user -&gt; prompt。</li>
+<li>unset + <code>--help</code> -&gt; no prompt。</li>
+<li>unset + <code>--json</code> -&gt; no prompt。</li>
+<li>unset + CI -&gt; no prompt。</li>
+<li>unset + caller agent -&gt; no prompt。</li>
+<li>user chooses yes / Enter -&gt; calls enable。</li>
+<li>user chooses no -&gt; calls disable。</li>
+<li>EOF / invalid input -&gt; remains unset and continues original command。</li>
+<li>Ctrl-C -&gt; remains unset and exits via original CLI cancellation path。</li>
+</ul>
+<p>Worker / service tests:</p>
+<ul>
+<li>parse task created / started / finished。</li>
+<li>execute succeeded / failed。</li>
+<li>write succeeded / failed。</li>
+<li>FTS 或 docs metadata 失败时同时记录 <code>parse_task.write.count {status=failed}</code> 和 <code>parse_task.finished.count {status=failed}</code>。</li>
+<li>scan files counters 正确映射到 <code>scan.files.count</code>。</li>
+</ul>
+<p>Flush tests:</p>
+<ul>
+<li>unset 不外发。</li>
+<li>disabled 不外发。</li>
+<li>enabled + no metrics 不外发。</li>
+<li>enabled + metrics 调用 fake endpoint。</li>
+<li>2xx 删除 rows。</li>
+<li>5xx 保留 rows。</li>
+<li>4xx 删除对应 batch rows，并更新 <code>last_flush_at</code>，记录 debug log。</li>
+<li>至少一个 batch 2xx 成功时更新 <code>last_flush_at</code>。</li>
+<li>全部 batch 失败时不更新 <code>last_flush_at</code>。</li>
+<li><code>succeeded</code> 和 <code>discarded</code> 只统计 2xx 成功接收或 4xx discard 的 batch 数，<code>attempted</code> 统计实际尝试外送的 batch 数。</li>
+<li>flush lock 存在时跳过。</li>
+<li>一次 flush 最多发送 10 个 period。</li>
+<li>一个 HTTP 请求只包含一个 period。</li>
+</ul>
+<p>验收标准:</p>
+<ul>
+<li>telemetry disabled 时不新增 aggregate rows。</li>
+<li>telemetry unset 时能写 aggregate，但不会外发。</li>
+<li>telemetry enabled 时能 preview 和 flush。</li>
+<li>所有 telemetry 写入失败不影响业务 API。</li>
+<li>external payload 不包含 path、filename、query、sha256、parse_id、exception message、traceback。</li>
+<li>CLI <code>mineru telemetry status|enable|disable|preview|flush</code> 可用。</li>
+<li>CLI <code>parse --wait</code> 成功、失败、超时、取消路径都会尽量提交 <code>parse_wait</code> observation。</li>
+</ul>
+<h2 id="19">19. 第一版不做</h2>
+<p>以下指标延后:</p>
+<ul>
+<li><code>cli.request.count</code>: CLI 进入 doclib 前的入口漏斗和早失败。</li>
+<li><code>rules.*</code>: exclude / parsing rule 命中统计。</li>
+<li><code>cleanup.*</code>: cleanup 用户请求和清理结果。</li>
+<li><code>compaction.*</code>: parse batch compaction 维护指标。</li>
+<li><code>watch_task.*</code>: watch loop 自动事件、文件发现、自动解析。</li>
+<li><code>parse_server.*</code>: 使用 <code>parse_task.execute.*</code> + <code>server</code> 维度替代。</li>
+<li><code>server.shutdown.count</code>、<code>server.recovered_stale_lock.count</code>: server 生命周期补充指标。</li>
+<li>blocking wait API: 第一版用 client polling + <code>/observations</code> 采集等待体验，不让 <code>POST /parses</code> 长时间阻塞。</li>
+</ul>
+<p>这些后续可以作为新增 metric 加入，不影响第一版 schema。</p></div>
+
+
+
+
+
+
+
+
+
+  
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+  <script>var tabs=__md_get("__tabs");if(Array.isArray(tabs))e:for(var set of document.querySelectorAll(".tabbed-set")){var labels=set.querySelector(".tabbed-labels");for(var tab of tabs)for(var label of labels.getElementsByTagName("label"))if(label.innerText.trim()===tab){var input=document.getElementById(label.htmlFor);input.checked=!0;continue e}}</script>
+
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  回到页面顶部
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+    
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+    <div class="md-copyright__highlight">
+      © 2024 - 2025 MinerU. All Rights Reserved.
+    </div>
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+    <a href="https://github.com/opendatalab/MinerU" target="_blank" rel="noopener" title="GitHub" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://x.com/OpenDataLab_AI" target="_blank" rel="noopener" title="X-Twitter" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M357.2 48h70.6L273.6 224.2 455 464H313L201.7 318.6 74.5 464H3.8l164.9-188.5L-5.2 48h145.6l100.5 132.9zm-24.8 373.8h39.1L119.1 88h-42z"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://discord.gg/Tdedn9GTXq" target="_blank" rel="noopener" title="Discord" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M492.5 69.8c-.2-.3-.4-.6-.8-.7-38.1-17.5-78.4-30-119.7-37.1-.4-.1-.8 0-1.1.1s-.6.4-.8.8c-5.5 9.9-10.5 20.2-14.9 30.6-44.6-6.8-89.9-6.8-134.4 0-4.5-10.5-9.5-20.7-15.1-30.6-.2-.3-.5-.6-.8-.8s-.7-.2-1.1-.2C162.5 39 122.2 51.5 84.1 69c-.3.1-.6.4-.8.7C7.1 183.5-13.8 294.6-3.6 404.2c0 .3.1.5.2.8s.3.4.5.6c44.4 32.9 94 58 146.8 74.2.4.1.8.1 1.1 0s.7-.4.9-.7c11.3-15.4 21.4-31.8 30-48.8.1-.2.2-.5.2-.8s0-.5-.1-.8-.2-.5-.4-.6-.4-.3-.7-.4c-15.8-6.1-31.2-13.4-45.9-21.9-.3-.2-.5-.4-.7-.6s-.3-.6-.3-.9 0-.6.2-.9.3-.5.6-.7c3.1-2.3 6.2-4.7 9.1-7.1.3-.2.6-.4.9-.4s.7 0 1 .1c96.2 43.9 200.4 43.9 295.5 0 .3-.1.7-.2 1-.2s.7.2.9.4c2.9 2.4 6 4.9 9.1 7.2.2.2.4.4.6.7s.2.6.2.9-.1.6-.3.9-.4.5-.6.6c-14.7 8.6-30 15.9-45.9 21.8-.2.1-.5.2-.7.4s-.3.4-.4.7-.1.5-.1.8.1.5.2.8c8.8 17 18.8 33.3 30 48.8.2.3.6.6.9.7s.8.1 1.1 0c52.9-16.2 102.6-41.3 147.1-74.2.2-.2.4-.4.5-.6s.2-.5.2-.8c12.3-126.8-20.5-236.9-86.9-334.5zm-302 267.7c-29 0-52.8-26.6-52.8-59.2s23.4-59.2 52.8-59.2c29.7 0 53.3 26.8 52.8 59.2 0 32.7-23.4 59.2-52.8 59.2m195.4 0c-29 0-52.8-26.6-52.8-59.2s23.4-59.2 52.8-59.2c29.7 0 53.3 26.8 52.8 59.2 0 32.7-23.2 59.2-52.8 59.2"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="https://mineru.net/community-portal/?aliasId=3c430f94" target="_blank" rel="noopener" title="WeChat" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 576 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M385.2 167.6c6.4 0 12.6.3 18.8 1.1C387.4 90.3 303.3 32 207.7 32 100.5 32 13 104.8 13 197.4c0 53.4 29.3 97.5 77.9 131.6l-19.3 58.6 68-34.1c24.4 4.8 43.8 9.7 68.2 9.7 6.2 0 12.1-.3 18.3-.8-4-12.9-6.2-26.6-6.2-40.8-.1-84.9 72.9-154 165.3-154m-104.5-52.9c14.5 0 24.2 9.7 24.2 24.4 0 14.5-9.7 24.2-24.2 24.2-14.8 0-29.3-9.7-29.3-24.2.1-14.7 14.6-24.4 29.3-24.4m-136.4 48.6c-14.5 0-29.3-9.7-29.3-24.2 0-14.8 14.8-24.4 29.3-24.4 14.8 0 24.4 9.7 24.4 24.4 0 14.6-9.6 24.2-24.4 24.2M563 319.4c0-77.9-77.9-141.3-165.4-141.3-92.7 0-165.4 63.4-165.4 141.3S305 460.7 397.6 460.7c19.3 0 38.9-5.1 58.6-9.9l53.4 29.3-14.8-48.6C534 402.1 563 363.2 563 319.4m-219.1-24.5c-9.7 0-19.3-9.7-19.3-19.6 0-9.7 9.7-19.3 19.3-19.3 14.8 0 24.4 9.7 24.4 19.3 0 10-9.7 19.6-24.4 19.6m107.1 0c-9.7 0-19.3-9.7-19.3-19.6 0-9.7 9.7-19.3 19.3-19.3 14.5 0 24.4 9.7 24.4 19.3.1 10-9.9 19.6-24.4 19.6"/></svg>
+    </a>
+  
+    
+    
+    
+    
+    <a href="mailto:OpenDataLab@pjlab.org.cn" target="_blank" rel="noopener" title="E-mail" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="m20 8-8 5-8-5V6l8 5 8-5m0-2H4c-1.11 0-2 .89-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../../..", "features": ["content.tabs.link", "content.code.annotate", "content.code.copy", "navigation.expand", "navigation.footer", "navigation.tabs", "navigation.sections", "navigation.path", "navigation.indexes", "navigation.top", "navigation.tracking", "search.suggest", "toc.follow"], "search": "../../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "\u5df2\u590d\u5236", "clipboard.copy": "\u590d\u5236", "search.result.more.one": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.more.other": "\u5728\u8be5\u9875\u4e0a\u8fd8\u6709 # \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.none": "\u6ca1\u6709\u627e\u5230\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.one": "\u627e\u5230 1 \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.other": "# \u4e2a\u7b26\u5408\u6761\u4ef6\u7684\u7ed3\u679c", "search.result.placeholder": "\u952e\u5165\u4ee5\u5f00\u59cb\u641c\u7d22", "search.result.term.missing": "\u7f3a\u5c11", "select.version": "\u9009\u62e9\u5f53\u524d\u7248\u672c"}, "version": null}</script>
+    
+    
+      <script src="../../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
