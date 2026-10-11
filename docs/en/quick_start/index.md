@@ -2,6 +2,8 @@
 
 This guide targets the **MinerU 4.0 stable release**. Existing AMD and vendor accelerator adaptations remain on `<4`; use the [legacy platform guides](../usage/compatibility.md).
 
+See [AMD GPU installation](amd_installation.md) for installing MinerU 4.x, configuring vLLM / llama.cpp, and parsing documents on AMD.
+
 ## Install MinerU
 
 The MinerU package supports Python `>=3.10,<3.15`. Python 3.12 is a practical starting point for a new environment. Optional engines such as vLLM, LMDeploy, and Torch have additional wheel, OS, and driver constraints; the package's Python range does not guarantee every engine supports that entire range.
@@ -94,6 +96,7 @@ Confirm a 4.x version; a development checkout may report a prerelease. For NVIDI
 
 ## Next steps
 
+- [AMD GPU installation](amd_installation.md)
 - [Tiers and runtimes](../usage/tiers.md)
 - [Model downloads and configuration](../usage/model_source.md)
 - [3.x → 4.0 migration](../reference/migration_4.md)

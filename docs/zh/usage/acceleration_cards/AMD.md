@@ -4,3 +4,7 @@
 > 通用说明见[旧平台版本约束](../compatibility.md)。
 
 https://github.com/opendatalab/MinerU/discussions/3662
+
+## MinerU 4.x 安装
+
+新建 MinerU 4.x 环境，请参阅[AMD GPU 安装](../../quick_start/amd_installation.md)；旧版部署继续使用上方的原适配说明。
