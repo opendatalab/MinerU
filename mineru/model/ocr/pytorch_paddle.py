@@ -228,7 +228,7 @@ class PytorchPaddleOCR(TextSystem):
     def __call__(
         self, img: np.ndarray | None, mfd_res: list[dict[str, Any]] | None = None
     ) -> tuple[list[np.ndarray] | None, list[tuple[str, float]] | None]:
-        """执行检测与识别，跳过无效印章裁片时同步移除检测框，避免文字错配。"""
+        """执行检测与识别，跳过无效裁片时同步移除检测框，避免文字错配。"""
         if img is None:
             logger.debug("no valid image provided")
             return None, None
@@ -262,10 +262,17 @@ class PytorchPaddleOCR(TextSystem):
 
             # Standard text OCR rotates tall crops before recognition.
             # Seal OCR keeps its dedicated poly-crop path above.
+            crop_boxes = []
             for bno in range(len(dt_boxes)):
                 tmp_box = copy.deepcopy(dt_boxes[bno])
                 img_crop = get_rotate_crop_image_for_text_rec(ori_im, tmp_box)
+                if img_crop is None:
+                    continue
                 img_crop_list.append(img_crop)
+                crop_boxes.append(dt_boxes[bno])
+            dt_boxes = crop_boxes
+            if not img_crop_list:
+                return [], []
 
         rec_res, elapse = self.text_recognizer(img_crop_list)
         # logger.debug("rec_res num  : {}, elapsed : {}".format(len(rec_res), elapse))
