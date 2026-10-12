@@ -44,6 +44,7 @@ def test_torch_thread_limits(monkeypatch: pytest.MonkeyPatch, env: dict[str, str
     monkeypatch.setattr(cpu_threads, "effective_cpu_count", lambda: 12)
     local = threading.local()
     calls: list[int] = []
+    nnpack_calls: list[bool] = []
 
     def init() -> None:
         """模拟新 OpenMP 工作线程需要显式初始化线程状态。"""
@@ -54,12 +55,18 @@ def test_torch_thread_limits(monkeypatch: pytest.MonkeyPatch, env: dict[str, str
         """只修改当前模拟工作线程，检测配置是否传播。"""
         local.count = count
 
-    fake = SimpleNamespace(init_num_threads=init, get_num_threads=lambda: local.count, set_num_threads=set_threads)
+    fake = SimpleNamespace(
+        init_num_threads=init,
+        get_num_threads=lambda: local.count,
+        set_num_threads=set_threads,
+        backends=SimpleNamespace(nnpack=SimpleNamespace(set_flags=nnpack_calls.append)),
+    )
     monkeypatch.setitem(sys.modules, "torch", fake)
     assert cpu_threads.initialize_torch_threads() == expected
     with ThreadPoolExecutor(max_workers=3) as pool:
         assert pool.submit(cpu_threads.initialize_torch_threads).result() == expected
     assert len(set(calls)) >= 2
+    assert nnpack_calls == [False]
 
 
 def test_thread_module_import_and_uninitialized_stage_are_light() -> None:
@@ -85,12 +92,20 @@ os.environ.pop("MKL_NUM_THREADS",None)
 from mineru.model.runtime.cpu_threads import initialize_torch_threads
 from concurrent.futures import ThreadPoolExecutor
 import torch
+torch.backends.nnpack.set_flags(True)
 initialize_torch_threads()
+assert not torch._C._get_nnpack_enabled()
 def run(_):
     initialize_torch_threads()
     assert torch.get_num_threads() <= 2
+    assert not torch._C._get_nnpack_enabled()
     return (torch.ones(64,64) @ torch.ones(64,64)).sum().item()
 with ThreadPoolExecutor(max_workers=3) as pool:
     assert list(pool.map(run,range(6))) == [262144.0]*6
+with torch.backends.nnpack.flags(enabled=True):
+    with ThreadPoolExecutor(max_workers=1) as pool:
+        pool.submit(initialize_torch_threads).result()
+    assert torch._C._get_nnpack_enabled()
+assert not torch._C._get_nnpack_enabled()
 """
     subprocess.run([sys.executable, "-c", code], check=True, timeout=60)
