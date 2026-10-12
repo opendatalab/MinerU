@@ -1,0 +1,1090 @@
+{
+  "metadata": {
+    "file_suffix": "pdf",
+    "producer": {
+      "name": "mineru",
+      "version": "4.0.12"
+    },
+    "document": {
+      "producer_application": "pypdf",
+      "page_count": 3,
+      "page_count_kind": "physical"
+    }
+  },
+  "extensions": {
+    "mineru": {
+      "tier": "standard",
+      "parse_mode": "txt"
+    },
+    "docvortex_layout": {
+      "version": 1,
+      "pages": [
+        {
+          "page_idx": 0,
+          "width_pt": 432.0,
+          "height_pt": 648.0
+        },
+        {
+          "page_idx": 1,
+          "width_pt": 432.0,
+          "height_pt": 648.0
+        },
+        {
+          "page_idx": 2,
+          "width_pt": 432.0,
+          "height_pt": 648.0
+        }
+      ]
+    }
+  },
+  "pages": [
+    [
+      {
+        "type": "header",
+        "bbox": [
+          0.424,
+          0.166,
+          0.577,
+          0.186
+        ],
+        "content": [
+          {
+            "type": "text",
+            "content": "P R E FA C E"
+          }
+        ]
+      },
+      {
+        "type": "text",
+        "bbox": [
+          0.116,
+          0.367,
+          0.881,
+          0.498
+        ],
+        "content": [
+          {
+            "type": "text",
+            "content": "his book is a practical guide to algorithmic trading strategies that can be readily implemented by both retail and institutional traders. It is not an academic treatise on fi nancial theory. Rather, I hope to make accessible to the reader some of the most useful fi nancial research done in the past few decades, mixing them with insights I gained from actually exploiting some of those theories in live trading."
+          }
+        ],
+        "lines": [
+          {
+            "bbox": [
+              0.164,
+              0.37,
+              0.874,
+              0.388
+            ]
+          },
+          {
+            "bbox": [
+              0.165,
+              0.391,
+              0.876,
+              0.41
+            ]
+          },
+          {
+            "bbox": [
+              0.126,
+              0.414,
+              0.873,
+              0.43
+            ]
+          },
+          {
+            "bbox": [
+              0.123,
+              0.436,
+              0.873,
+              0.452
+            ]
+          },
+          {
+            "bbox": [
+              0.123,
+              0.457,
+              0.874,
+              0.475
+            ]
+          },
+          {
+            "bbox": [
+              0.125,
+              0.478,
+              0.438,
+              0.496
+            ]
+          }
+        ]
+      },
+      {
+        "type": "text",
+        "bbox": [
+          0.117,
+          0.498,
+          0.881,
+          0.65
+        ],
+        "content": [
+          {
+            "type": "text",
+            "content": "Because strategies take a central place in this book, we will cover a wide array of them, broadly divided into the mean-reverting and momentum camps, and we will lay out standard techniques for trading each category of strategies, and equally important, the fundamental reasons why a strategy should work. The emphasis throughout is on simple and linear strategies, as an antidote to the overfi tting and data-snooping biases that often plague complex strategies."
+          }
+        ],
+        "lines": [
+          {
+            "bbox": [
+              0.15,
+              0.499,
+              0.874,
+              0.516
+            ]
+          },
+          {
+            "bbox": [
+              0.125,
+              0.523,
+              0.875,
+              0.538
+            ]
+          },
+          {
+            "bbox": [
+              0.124,
+              0.544,
+              0.874,
+              0.561
+            ]
+          },
+          {
+            "bbox": [
+              0.122,
+              0.564,
+              0.873,
+              0.584
+            ]
+          },
+          {
+            "bbox": [
+              0.124,
+              0.587,
+              0.873,
+              0.604
+            ]
+          },
+          {
+            "bbox": [
+              0.123,
+              0.61,
+              0.873,
+              0.626
+            ]
+          },
+          {
+            "bbox": [
+              0.124,
+              0.632,
+              0.318,
+              0.648
+            ]
+          }
+        ]
+      },
+      {
+        "type": "text",
+        "bbox": [
+          0.117,
+          0.649,
+          0.88,
+          0.822
+        ],
+        "content": [
+          {
+            "type": "text",
+            "content": "In the mean-reverting camp, we will discuss the multiple statistical tech niques (augmented Dickey-Fuller [ADF] test, Hurst exponent, Variance Ratio test, half-life) for detecting “time series” mean reversion or stationarity, and for detecting cointegration of a portfolio of instruments (cointegrated augmented Dickey Fuller [CADF] test, Johansen test). Beyond the mechanical application of these statistical tests to time series, we strive to convey an intuitive understanding of what they are really testing and the simple mathematical equations behind them."
+          }
+        ],
+        "lines": [
+          {
+            "bbox": [
+              0.152,
+              0.652,
+              0.87,
+              0.668
+            ]
+          },
+          {
+            "bbox": [
+              0.124,
+              0.673,
+              0.873,
+              0.689
+            ]
+          },
+          {
+            "bbox": [
+              0.123,
+              0.694,
+              0.873,
+              0.712
+            ]
+          },
+          {
+            "bbox": [
+              0.124,
+              0.716,
+              0.874,
+              0.733
+            ]
+          },
+          {
+            "bbox": [
+              0.125,
+              0.739,
+              0.871,
+              0.754
+            ]
+          },
+          {
+            "bbox": [
+              0.125,
+              0.76,
+              0.874,
+              0.776
+            ]
+          },
+          {
+            "bbox": [
+              0.123,
+              0.782,
+              0.873,
+              0.798
+            ]
+          },
+          {
+            "bbox": [
+              0.124,
+              0.805,
+              0.445,
+              0.818
+            ]
+          }
+        ]
+      },
+      {
+        "type": "text",
+        "bbox": [
+          0.117,
+          0.822,
+          0.881,
+          0.909
+        ],
+        "content": [
+          {
+            "type": "text",
+            "content": "We will explain the simplest techniques and strategies for trading meanreverting portfolios (linear, Bollinger band, Kalman fi lter), and whether us ing raw prices, log prices, or ratios make the most sense as inputs to these tests and strategies. In particular, we show that the Kalman fi lter is useful"
+          }
+        ],
+        "lines": [
+          {
+            "bbox": [
+              0.152,
+              0.824,
+              0.873,
+              0.842
+            ]
+          },
+          {
+            "bbox": [
+              0.123,
+              0.848,
+              0.87,
+              0.861
+            ]
+          },
+          {
+            "bbox": [
+              0.122,
+              0.869,
+              0.873,
+              0.884
+            ]
+          },
+          {
+            "bbox": [
+              0.122,
+              0.89,
+              0.875,
+              0.906
+            ]
+          }
+        ]
+      },
+      {
+        "type": "aside_text",
+        "bbox": [
+          0.928,
+          0.486,
+          0.962,
+          0.504
+        ],
+        "content": [
+          {
+            "type": "text",
+            "content": "ix"
+          }
+        ]
+      }
+    ],
+    [
+      {
+        "type": "aside_text",
+        "bbox": [
+          0.043,
+          0.488,
+          0.068,
+          0.571
+        ],
+        "content": [
+          {
+            "type": "text",
+            "content": "PREFACE | X"
+          }
+        ]
+      },
+      {
+        "type": "text",
+        "bbox": [
+          0.117,
+          0.067,
+          0.88,
+          0.153
+        ],
+        "content": [
+          {
+            "type": "text",
+            "content": "to traders in multiple ways and in multiple strategies. Distinction between time series versus cross-sectional mean reversion will be made. We will debate the pros and cons of “scaling-in” and highlight the danger of data errors in mean-reverting strategies, especially those that deal with spreads."
+          }
+        ],
+        "lines": [
+          {
+            "bbox": [
+              0.125,
+              0.069,
+              0.874,
+              0.084
+            ]
+          },
+          {
+            "bbox": [
+              0.123,
+              0.092,
+              0.871,
+              0.105
+            ]
+          },
+          {
+            "bbox": [
+              0.124,
+              0.113,
+              0.875,
+              0.128
+            ]
+          },
+          {
+            "bbox": [
+              0.121,
+              0.134,
+              0.799,
+              0.15
+            ]
+          }
+        ]
+      },
+      {
+        "type": "text",
+        "bbox": [
+          0.117,
+          0.153,
+          0.882,
+          0.564
+        ],
+        "content": [
+          {
+            "type": "text",
+            "content": "Examples of mean-reverting strategies will be drawn from interday and intraday stocks models, exchange-traded fund (ETF) pairs and triplets, ETFs versus their component stocks, currency pairs, and futures calendar and intermarket spreads. We will explain what makes trading some of these strategies quite challenging in recent years due to the rise of dark pools and high-frequency trading. We will also illustrate how certain fundamental considerations can explain the temporary unhinging of a hitherto very profi table ETF pair and how the same considerations can lead one to construct an improved version of the strategy. When discussing currency trading, we take care to explain why even the calculation of returns may seem foreign to an equity trader, and where such concepts as rollover interest may sometimes be important. Much emphasis will be devoted to the study of spot returns versus roll returns in futures, and several futures trading strategies can be derived or understood from a simple mathematical model of futures prices. The concepts of backwardation and contango will be illustrated graphically as well as mathematically. The chapter on mean reversion of currencies and futures cumulates in the study of a very special future: the volatility (VX) future, and how it can form the basis of some quite lucrative strategies."
+          }
+        ],
+        "lines": [
+          {
+            "bbox": [
+              0.151,
+              0.154,
+              0.876,
+              0.172
+            ]
+          },
+          {
+            "bbox": [
+              0.124,
+              0.177,
+              0.871,
+              0.193
+            ]
+          },
+          {
+            "bbox": [
+              0.123,
+              0.198,
+              0.873,
+              0.215
+            ]
+          },
+          {
+            "bbox": [
+              0.123,
+              0.219,
+              0.876,
+              0.236
+            ]
+          },
+          {
+            "bbox": [
+              0.123,
+              0.241,
+              0.876,
+              0.258
+            ]
+          },
+          {
+            "bbox": [
+              0.122,
+              0.264,
+              0.871,
+              0.278
+            ]
+          },
+          {
+            "bbox": [
+              0.124,
+              0.286,
+              0.873,
+              0.301
+            ]
+          },
+          {
+            "bbox": [
+              0.123,
+              0.307,
+              0.875,
+              0.323
+            ]
+          },
+          {
+            "bbox": [
+              0.123,
+              0.328,
+              0.874,
+              0.345
+            ]
+          },
+          {
+            "bbox": [
+              0.124,
+              0.35,
+              0.874,
+              0.367
+            ]
+          },
+          {
+            "bbox": [
+              0.124,
+              0.373,
+              0.871,
+              0.387
+            ]
+          },
+          {
+            "bbox": [
+              0.123,
+              0.394,
+              0.871,
+              0.407
+            ]
+          },
+          {
+            "bbox": [
+              0.123,
+              0.415,
+              0.872,
+              0.429
+            ]
+          },
+          {
+            "bbox": [
+              0.122,
+              0.437,
+              0.875,
+              0.452
+            ]
+          },
+          {
+            "bbox": [
+              0.123,
+              0.458,
+              0.875,
+              0.474
+            ]
+          },
+          {
+            "bbox": [
+              0.122,
+              0.478,
+              0.875,
+              0.497
+            ]
+          },
+          {
+            "bbox": [
+              0.124,
+              0.502,
+              0.872,
+              0.516
+            ]
+          },
+          {
+            "bbox": [
+              0.125,
+              0.524,
+              0.873,
+              0.538
+            ]
+          },
+          {
+            "bbox": [
+              0.127,
+              0.547,
+              0.378,
+              0.561
+            ]
+          }
+        ]
+      },
+      {
+        "type": "text",
+        "bbox": [
+          0.117,
+          0.563,
+          0.882,
+          0.822
+        ],
+        "content": [
+          {
+            "type": "text",
+            "content": "In the momentum camp, we start by explaining a few statistical tests for times series momentum. The main theme, though, is to explore the four main drivers of momentum in stocks and futures and to propose strategies that can extract time series and cross-sectional momentum. Roll returns in futures is one of those drivers, but it turns out that forced asset sales and purchases is the main driver of stock and ETF momentum in many diverse circumstances. Some of the newer momentum strategies based on news events, news sentiment, leveraged ETFs, order fl ow, and high-frequency trading will be covered. Finally, we will look at the pros and cons of mo mentum versus mean-reverting strategies and discover their diametrically diff erent risk-return characteristics under diff erent market regimes in recent fi nancial history."
+          }
+        ],
+        "lines": [
+          {
+            "bbox": [
+              0.151,
+              0.566,
+              0.874,
+              0.582
+            ]
+          },
+          {
+            "bbox": [
+              0.124,
+              0.588,
+              0.873,
+              0.604
+            ]
+          },
+          {
+            "bbox": [
+              0.122,
+              0.608,
+              0.874,
+              0.626
+            ]
+          },
+          {
+            "bbox": [
+              0.125,
+              0.632,
+              0.874,
+              0.646
+            ]
+          },
+          {
+            "bbox": [
+              0.127,
+              0.653,
+              0.875,
+              0.667
+            ]
+          },
+          {
+            "bbox": [
+              0.122,
+              0.674,
+              0.875,
+              0.691
+            ]
+          },
+          {
+            "bbox": [
+              0.125,
+              0.697,
+              0.875,
+              0.711
+            ]
+          },
+          {
+            "bbox": [
+              0.122,
+              0.717,
+              0.873,
+              0.734
+            ]
+          },
+          {
+            "bbox": [
+              0.127,
+              0.739,
+              0.869,
+              0.753
+            ]
+          },
+          {
+            "bbox": [
+              0.123,
+              0.761,
+              0.871,
+              0.777
+            ]
+          },
+          {
+            "bbox": [
+              0.124,
+              0.781,
+              0.873,
+              0.798
+            ]
+          },
+          {
+            "bbox": [
+              0.125,
+              0.806,
+              0.333,
+              0.819
+            ]
+          }
+        ]
+      },
+      {
+        "type": "text",
+        "bbox": [
+          0.117,
+          0.822,
+          0.882,
+          0.911
+        ],
+        "content": [
+          {
+            "type": "text",
+            "content": "I have always maintained that it is easy to fi nd published, supposedly profi table, strategies in the many books, magazines, or blogs out there, but much harder to see why they may be fl awed and perhaps ultimately doomed. So, despite the emphasis on suggesting prototype strategies, we"
+          }
+        ],
+        "lines": [
+          {
+            "bbox": [
+              0.15,
+              0.823,
+              0.871,
+              0.842
+            ]
+          },
+          {
+            "bbox": [
+              0.125,
+              0.847,
+              0.872,
+              0.863
+            ]
+          },
+          {
+            "bbox": [
+              0.123,
+              0.868,
+              0.872,
+              0.886
+            ]
+          },
+          {
+            "bbox": [
+              0.123,
+              0.889,
+              0.875,
+              0.908
+            ]
+          }
+        ]
+      }
+    ],
+    [
+      {
+        "type": "aside_text",
+        "bbox": [
+          0.042,
+          0.485,
+          0.07,
+          0.671
+        ],
+        "content": [
+          {
+            "type": "text",
+            "content": "50 ALGORITHMIC TRADING"
+          }
+        ]
+      },
+      {
+        "type": "header",
+        "bbox": [
+          0.371,
+          0.073,
+          0.655,
+          0.094
+        ],
+        "content": [
+          {
+            "type": "text",
+            "content": "Example 2.5 (Continued)"
+          }
+        ]
+      },
+      {
+        "type": "text",
+        "bbox": [
+          0.145,
+          0.116,
+          0.843,
+          0.334
+        ],
+        "content": [
+          {
+            "type": "text",
+            "content": "the use of in-sample data to fi nd the half-life and therefore the look back. Furthermore, an unlimited amount of capital may be needed to generate the P&L because there was no maximum imposed on the market value of the portfolio. So I certainly don’t recommend it as a practical trading strategy. (There is a more practical version of this mean-reverting strategy in Chapter 5.) But it does illustrate that a nonstationary price series need not discourage us from trading a mean reversion strategy, and that we don’t need very complicated strategies or technical indicators to extract profi ts from a meanreverting series."
+          }
+        ],
+        "lines": [
+          {
+            "bbox": [
+              0.152,
+              0.118,
+              0.823,
+              0.134
+            ]
+          },
+          {
+            "bbox": [
+              0.152,
+              0.141,
+              0.816,
+              0.156
+            ]
+          },
+          {
+            "bbox": [
+              0.151,
+              0.162,
+              0.802,
+              0.178
+            ]
+          },
+          {
+            "bbox": [
+              0.153,
+              0.184,
+              0.807,
+              0.197
+            ]
+          },
+          {
+            "bbox": [
+              0.151,
+              0.206,
+              0.808,
+              0.221
+            ]
+          },
+          {
+            "bbox": [
+              0.152,
+              0.227,
+              0.815,
+              0.243
+            ]
+          },
+          {
+            "bbox": [
+              0.151,
+              0.247,
+              0.838,
+              0.266
+            ]
+          },
+          {
+            "bbox": [
+              0.152,
+              0.271,
+              0.824,
+              0.285
+            ]
+          },
+          {
+            "bbox": [
+              0.151,
+              0.293,
+              0.79,
+              0.307
+            ]
+          },
+          {
+            "bbox": [
+              0.152,
+              0.316,
+              0.312,
+              0.329
+            ]
+          }
+        ]
+      },
+      {
+        "type": "text",
+        "bbox": [
+          0.117,
+          0.398,
+          0.882,
+          0.725
+        ],
+        "content": [
+          {
+            "type": "text",
+            "content": "Since the goal for traders is ultimately to determine whether the expected return or Sharpe ratio of a mean-reverting trading strategy is good enough, why do we bother to go through the stationarity tests (ADF or Variance Ratio) and the calculation of half-life at all? Can’t we just run a backtest on the trading strategy directly and be done with it? The reason why we went through all these preliminary tests is that their statistical signifi cance is usually higher than a direct backtest of a trading strategy. These preliminary tests make use of every day’s (or, more generally, every bar’s) price data for the test, while a backtest usually generates a signifi cantly smaller number of round trip trades for us to collect performance statistics. Furthermore, the outcome of a backtest is dependent on the specifi cs of a trading strategy, with a specifi c set of trading parameters. However, given a price series that passed the stationarity statistical tests, or at least one with a short enough half-life, we can be assured that we can eventually fi nd a profi table trading strategy, maybe just not the one that we have backtested."
+          }
+        ],
+        "lines": [
+          {
+            "bbox": [
+              0.152,
+              0.401,
+              0.871,
+              0.417
+            ]
+          },
+          {
+            "bbox": [
+              0.124,
+              0.423,
+              0.875,
+              0.439
+            ]
+          },
+          {
+            "bbox": [
+              0.123,
+              0.445,
+              0.872,
+              0.459
+            ]
+          },
+          {
+            "bbox": [
+              0.125,
+              0.466,
+              0.873,
+              0.481
+            ]
+          },
+          {
+            "bbox": [
+              0.124,
+              0.488,
+              0.874,
+              0.503
+            ]
+          },
+          {
+            "bbox": [
+              0.127,
+              0.511,
+              0.874,
+              0.525
+            ]
+          },
+          {
+            "bbox": [
+              0.125,
+              0.532,
+              0.873,
+              0.548
+            ]
+          },
+          {
+            "bbox": [
+              0.123,
+              0.553,
+              0.874,
+              0.568
+            ]
+          },
+          {
+            "bbox": [
+              0.125,
+              0.573,
+              0.873,
+              0.589
+            ]
+          },
+          {
+            "bbox": [
+              0.127,
+              0.596,
+              0.872,
+              0.611
+            ]
+          },
+          {
+            "bbox": [
+              0.124,
+              0.616,
+              0.874,
+              0.635
+            ]
+          },
+          {
+            "bbox": [
+              0.124,
+              0.638,
+              0.875,
+              0.656
+            ]
+          },
+          {
+            "bbox": [
+              0.122,
+              0.66,
+              0.874,
+              0.677
+            ]
+          },
+          {
+            "bbox": [
+              0.122,
+              0.681,
+              0.875,
+              0.7
+            ]
+          },
+          {
+            "bbox": [
+              0.122,
+              0.706,
+              0.689,
+              0.719
+            ]
+          }
+        ]
+      },
+      {
+        "type": "paragraph_title",
+        "bbox": [
+          0.12,
+          0.757,
+          0.387,
+          0.78
+        ],
+        "content": [
+          {
+            "type": "text",
+            "content": "■ Cointegration"
+          }
+        ],
+        "lines": [
+          {
+            "bbox": [
+              0.127,
+              0.756,
+              0.384,
+              0.78
+            ]
+          }
+        ]
+      },
+      {
+        "type": "text",
+        "bbox": [
+          0.117,
+          0.799,
+          0.882,
+          0.909
+        ],
+        "content": [
+          {
+            "type": "text",
+            "content": "As we stated in the introduction of this chapter, most fi nancial price series are not stationary or mean reverting. But, fortunately, we are not confi ned to trading those “prefabricated” fi nancial price series: We can proactively cre ate a portfolio of individual price series so that the market value (or price) series of this portfolio is stationary. This is the notion of cointegration: If we"
+          }
+        ],
+        "lines": [
+          {
+            "bbox": [
+              0.125,
+              0.802,
+              0.875,
+              0.818
+            ]
+          },
+          {
+            "bbox": [
+              0.122,
+              0.826,
+              0.874,
+              0.839
+            ]
+          },
+          {
+            "bbox": [
+              0.124,
+              0.845,
+              0.87,
+              0.862
+            ]
+          },
+          {
+            "bbox": [
+              0.122,
+              0.867,
+              0.873,
+              0.884
+            ]
+          },
+          {
+            "bbox": [
+              0.123,
+              0.889,
+              0.874,
+              0.905
+            ]
+          }
+        ]
+      }
+    ]
+  ],
+  "page_index_map": [],
+  "schema": "docvortex.model",
+  "schema_version": "2.0"
+}
