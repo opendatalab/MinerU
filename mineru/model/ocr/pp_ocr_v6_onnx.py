@@ -28,7 +28,7 @@ from ..runtime.onnx import ort_session
 from .._internal.pytorchocr.data.imaug.operators import DetResizeForTest, NormalizeImage
 from .db_postprocess import DBPostProcess
 from .resources import PPOCRV6_DICT_PATH
-from .seal_crop import CropByPolys, SortPolyBoxes
+from .seal_crop import CropByPolys, SortPolyBoxes, filter_valid_seal_crops
 from .geometry import merge_det_boxes, sorted_boxes, update_det_boxes
 from .image import check_img, get_rotate_crop_image_for_text_rec, preprocess_image, resize_text_recognition_image
 
@@ -496,6 +496,7 @@ class PPOCRv6ONNX:
         if self.is_seal:
             dt_boxes = self._seal_sort_boxes(dt_boxes)
             img_crop_list = self._seal_crop_by_polys(ori_im, dt_boxes)
+            dt_boxes, img_crop_list = filter_valid_seal_crops(dt_boxes, img_crop_list)
         else:
             dt_boxes = sorted_boxes(dt_boxes)
             if self.enable_merge_det_boxes:

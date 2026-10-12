@@ -960,8 +960,24 @@ class DoclibServer(AsyncDoclibInterface):
     async def set_config(self, key: str, request: ConfigSetRequest) -> ConfigSetResponse:
         await self._validate_config_set(key, request.value)
         await self.state.config_svc.set(key, request.value)
+        if key in {"parse_server.local.managed_tier", "parse_server.local.mode"}:
+            await self._refresh_managed_tier_transition()
         value, source = await self._effective_config_value(key)
         return ConfigSetResponse(key=key, value=_mask_config_value(key, value or ""), source=source)
+
+    async def _refresh_managed_tier_transition(self) -> None:
+        """按最新有效配置撤销旧托管服务探测结果，并唤醒串行重启任务。"""
+        mode = await self.state.config_svc.get("parse_server.local.mode")
+        if mode != "managed":
+            return
+        tier = await get_managed_parse_server_tier(self.state.config_svc)
+        health = get_health()
+        if health.local_mode == "managed" and health.managed_tier == tier and health.running_managed_tier == tier:
+            return
+        health.begin_managed_tier_transition(tier)
+        health_check = getattr(self.state, "health_check", None)
+        if health_check is not None:
+            health_check.wakeup()
 
     async def _effective_config_value(self, key: str) -> tuple[str | None, ConfigSource]:
         if key == REMOTE_API_KEY_CONFIG:
@@ -985,6 +1001,8 @@ class DoclibServer(AsyncDoclibInterface):
     @route("DELETE", "/configs/{key}", tags=("config",))
     async def unset_config(self, key: str) -> ConfigUnsetResponse:
         removed = await self.state.config_svc.unset(key)
+        if key in {"parse_server.local.managed_tier", "parse_server.local.mode"}:
+            await self._refresh_managed_tier_transition()
         value, source = await self._effective_config_value(key)
         return ConfigUnsetResponse(key=key, value=_mask_config_value(key, value or ""), source=source, removed=removed)
 
@@ -1682,7 +1700,7 @@ def _parse_server_status(
         local=LocalParseServerStatus(
             mode=local_mode,
             healthy=health.local.probe.healthy,
-            starting=health.local_starting,
+            starting=health.local_starting or (local_mode == "managed" and getattr(health, "managed_tier_transition", False)),
             started_at=health.local_started_at or None,
             url=local_url,
             port=_port_from_url(local_url),

@@ -1,0 +1,195 @@
+[
+  [
+    {
+      "type": "header",
+      "bbox": [
+        0.424,
+        0.166,
+        0.577,
+        0.186
+      ],
+      "angle": 0,
+      "content": null
+    },
+    {
+      "type": "text",
+      "bbox": [
+        0.116,
+        0.367,
+        0.881,
+        0.498
+      ],
+      "angle": 0,
+      "content": null
+    },
+    {
+      "type": "text",
+      "bbox": [
+        0.117,
+        0.498,
+        0.881,
+        0.65
+      ],
+      "angle": 0,
+      "content": null
+    },
+    {
+      "type": "text",
+      "bbox": [
+        0.117,
+        0.649,
+        0.88,
+        0.822
+      ],
+      "angle": 0,
+      "content": null
+    },
+    {
+      "type": "text",
+      "bbox": [
+        0.117,
+        0.822,
+        0.881,
+        0.909
+      ],
+      "angle": 0,
+      "content": null
+    },
+    {
+      "type": "aside_text",
+      "bbox": [
+        0.928,
+        0.486,
+        0.962,
+        0.504
+      ],
+      "angle": 0,
+      "content": "ix"
+    }
+  ],
+  [
+    {
+      "type": "aside_text",
+      "bbox": [
+        0.043,
+        0.488,
+        0.068,
+        0.571
+      ],
+      "angle": 0,
+      "content": "PREFACE | X"
+    },
+    {
+      "type": "text",
+      "bbox": [
+        0.117,
+        0.067,
+        0.88,
+        0.153
+      ],
+      "angle": 0,
+      "content": null
+    },
+    {
+      "type": "text",
+      "bbox": [
+        0.117,
+        0.153,
+        0.882,
+        0.564
+      ],
+      "angle": 0,
+      "content": null
+    },
+    {
+      "type": "text",
+      "bbox": [
+        0.117,
+        0.563,
+        0.882,
+        0.822
+      ],
+      "angle": 0,
+      "content": null
+    },
+    {
+      "type": "text",
+      "bbox": [
+        0.117,
+        0.822,
+        0.882,
+        0.911
+      ],
+      "angle": 0,
+      "content": null
+    }
+  ],
+  [
+    {
+      "type": "aside_text",
+      "bbox": [
+        0.042,
+        0.485,
+        0.07,
+        0.671
+      ],
+      "angle": 0,
+      "content": "50 ALGORITHMIC TRADING"
+    },
+    {
+      "type": "header",
+      "bbox": [
+        0.371,
+        0.073,
+        0.655,
+        0.094
+      ],
+      "angle": 0,
+      "content": null
+    },
+    {
+      "type": "text",
+      "bbox": [
+        0.145,
+        0.116,
+        0.843,
+        0.334
+      ],
+      "angle": 0,
+      "content": null
+    },
+    {
+      "type": "text",
+      "bbox": [
+        0.117,
+        0.398,
+        0.882,
+        0.725
+      ],
+      "angle": 0,
+      "content": null
+    },
+    {
+      "type": "paragraph_title",
+      "bbox": [
+        0.12,
+        0.757,
+        0.387,
+        0.78
+      ],
+      "angle": 0,
+      "content": null
+    },
+    {
+      "type": "text",
+      "bbox": [
+        0.117,
+        0.799,
+        0.882,
+        0.909
+      ],
+      "angle": 0,
+      "content": null
+    }
+  ]
+]
