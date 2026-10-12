@@ -145,6 +145,11 @@ def resize_text_recognition_image(
 
 def get_rotate_crop_image_for_text_rec(img: np.ndarray, points: np.ndarray) -> np.ndarray | None:
     """裁剪四边形文本区域并应用文字识别方向规则。"""
+    # 对边长度截断不足一个像素的退化框没有可识别裁图，避免送入共享 warp 的零尺寸目标。
+    crop_width = max(np.linalg.norm(points[0] - points[1]), np.linalg.norm(points[2] - points[3]))
+    crop_height = max(np.linalg.norm(points[0] - points[3]), np.linalg.norm(points[1] - points[2]))
+    if crop_width < 1 or crop_height < 1:
+        return None
     return rotate_vertical_crop_if_needed(get_rotate_crop_image(img, points))
 
 
