@@ -242,6 +242,37 @@ def test_health_check_discards_stale_config_and_probe_results(
     asyncio.run(_run())
 
 
+def test_health_check_continues_after_interval_timeout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """正常间隔超时后继续探测；Python 3.10 的 asyncio 超时异常不能终止后台任务。"""
+
+    async def _run() -> None:
+        """用零等待间隔触发真实超时，确认无配置唤醒时仍能完成第二轮探测。"""
+        _, _, _, health, checker = await _services(tmp_path, monkeypatch)
+        checker.interval_sec = 0
+        local_probes = 0
+        remote_probes = 0
+
+        async def _probe(url: str, *, api_key: str | None = None) -> ProbeResult:
+            """记录本地与远端探测次数，仅在第二轮本地探测完成时停止循环。"""
+            nonlocal local_probes, remote_probes
+            if url == health.managed_url:
+                local_probes += 1
+                if local_probes == 2:
+                    checker.running = False
+            else:
+                remote_probes += 1
+            return ProbeResult(healthy=True, tiers=["basic"])
+
+        monkeypatch.setattr(checker, "_probe", _probe)
+        await asyncio.wait_for(checker.run(), timeout=2)
+        assert local_probes == 2
+        assert remote_probes == 2
+        assert health.local.probe.healthy is True
+        assert not checker._wakeup_event.is_set()
+
+    asyncio.run(_run())
+
+
 def test_config_change_wakes_sleeping_health_check(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     """健康检查正在等待 30 秒间隔时，配置变更仍能立即触发目标档位重启。"""
 

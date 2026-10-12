@@ -475,7 +475,7 @@ class ParseServerHealthCheck:
                     await asyncio.wait_for(
                         self._wakeup_event.wait(), timeout=self._next_interval_sec(consecutive_local_failures)
                     )
-                except TimeoutError:
+                except asyncio.TimeoutError:
                     pass
 
     def _next_interval_sec(self, consecutive_local_failures: int) -> int:
