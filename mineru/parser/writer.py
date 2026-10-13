@@ -26,7 +26,7 @@ class DataWriter(ABC):
             try:
                 bit_data = data.encode(encoding=method, errors="replace")
                 return bit_data, True
-            except:  # noqa
+            except Exception:  # noqa: BLE001
                 return None, False
 
         for method in ["utf-8", "ascii"]:

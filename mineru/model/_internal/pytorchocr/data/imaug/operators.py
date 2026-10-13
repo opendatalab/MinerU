@@ -271,7 +271,7 @@ class DetResizeForTest(object):
             if int(resize_w) <= 0 or int(resize_h) <= 0:
                 return None, (None, None)
             img = resize_image(img, (int(resize_w), int(resize_h)))
-        except:
+        except Exception:  # noqa: BLE001
             print(img.shape, resize_w, resize_h)
             sys.exit(0)
         ratio_h = resize_h / float(h)
