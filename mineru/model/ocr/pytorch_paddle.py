@@ -194,7 +194,7 @@ class PytorchPaddleOCR(TextSystem):
                         continue
                     if self.is_seal:
                         dt_boxes = self._seal_sort_boxes(dt_boxes)
-                        img_crop_list = self._seal_crop_by_polys(img, dt_boxes)
+                        dt_boxes, img_crop_list = self._seal_crop_by_polys(img, dt_boxes)
                         self._dump_seal_debug_artifacts(img, dt_boxes, img_crop_list)
                     else:
                         dt_boxes = sorted_boxes(dt_boxes)
@@ -239,7 +239,9 @@ class PytorchPaddleOCR(TextSystem):
             # logger.debug("dt_boxes num : {}, elapsed : {}".format(len(dt_boxes), elapse))
         if self.is_seal:
             dt_boxes = self._seal_sort_boxes(dt_boxes)
-            img_crop_list = self._seal_crop_by_polys(ori_im, dt_boxes)
+            dt_boxes, img_crop_list = self._seal_crop_by_polys(ori_im, dt_boxes)
+            if not img_crop_list:
+                return [], []
         else:
             img_crop_list = []
 
