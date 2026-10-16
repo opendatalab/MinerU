@@ -44,25 +44,33 @@ class CropByPolys:
     def __init__(self, det_box_type: str = "quad") -> None:
         self.det_box_type = det_box_type
 
-    def __call__(self, img: np.ndarray, dt_polys: List[list]) -> List[np.ndarray]:
+    def __call__(self, img: np.ndarray, dt_polys: List[list]) -> Tuple[List[np.ndarray], List[np.ndarray]]:
         if self.det_box_type == "quad":
             dt_boxes = np.array(dt_polys)
+            valid_boxes = []
             output_list = []
             for bno in range(len(dt_boxes)):
                 tmp_box = copy.deepcopy(dt_boxes[bno])
                 img_crop = self.get_minarea_rect_crop(img, tmp_box)
+                if img_crop.size == 0:
+                    continue
+                valid_boxes.append(dt_boxes[bno])
                 output_list.append(img_crop)
         elif self.det_box_type == "poly":
+            valid_boxes = []
             output_list = []
             dt_boxes = dt_polys
             for bno in range(len(dt_boxes)):
                 tmp_box = copy.deepcopy(dt_boxes[bno])
                 img_crop = self.get_poly_rect_crop(img.copy(), tmp_box)
+                if img_crop.size == 0:
+                    continue
+                valid_boxes.append(dt_boxes[bno])
                 output_list.append(img_crop)
         else:
             raise NotImplementedError
 
-        return output_list
+        return valid_boxes, output_list
 
     def get_minarea_rect_crop(self, img: np.ndarray, points: np.ndarray) -> np.ndarray:
         bounding_box = minimum_rectangle(np.array(points).astype(np.int32))
@@ -100,6 +108,8 @@ class CropByPolys:
                 np.linalg.norm(points[1] - points[2]),
             )
         )
+        if img_crop_width <= 0 or img_crop_height <= 0:
+            return np.empty((0, 0, *img.shape[2:]), dtype=img.dtype)
         pts_std = np.float32(
             [
                 [0, 0],
@@ -319,6 +329,8 @@ class CropByPolys:
     def get_poly_rect_crop(self, img, points):
         points = np.array(points).astype(np.int32).reshape(-1, 2)
         temp_crop_img, temp_box = self.get_minarea_rect(img, points)
+        if temp_crop_img.size == 0:
+            return temp_crop_img
 
         def get_union(pD, pG):
             return Polygon(pD).union(Polygon(pG)).area
