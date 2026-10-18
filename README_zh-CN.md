@@ -86,6 +86,34 @@ mineru-kit parse document.pdf -o document.md --tier standard
 mineru-kit webui
 ```
 
+### Python SDK
+
+`DoclibClient` 在 Python 中驱动本地文档库。先启动服务（`mineru server start`），然后：
+
+```python
+import time
+
+from mineru import DoclibClient
+from mineru.doclib import ParseRequest
+
+client = DoclibClient()
+submit = client.ensure_parse(ParseRequest(path="paper.pdf", tier="standard"))
+
+# ensure_parse 立即返回；轮询它创建的解析任务。
+for parse_id in submit.wait_parse_ids:
+    parse = client.get_parse(parse_id)
+    while parse.status in ("pending", "parsing"):
+        time.sleep(1)
+        parse = client.get_parse(parse_id)
+    if parse.status != "done":
+        raise RuntimeError(f"parse {parse_id} ended as {parse.status}: {parse.error_code} {parse.error_msg}")
+
+content = client.read_content(f"doc:{submit.short_id}/tier:standard/page:1")
+print(content.content)
+```
+
+`DoclibClient` 还覆盖搜索、监视目录、用于页/块续读的 locator，以及结果失效处理——参见 `help(DoclibClient)` 或 [SDK 与 API 指南](https://opendatalab.github.io/MinerU/zh/usage/sdk_api/)。
+
 默认安装即可开箱即用：小模型使用 ONNX CPU 推理，VLM 以 llama.cpp Vulkan 模式运行，在绝大多数设备上都有良好的兼容性。如果设备配备 NVIDIA GPU，可安装 `mineru[full]>=4.0` 获得最佳吞吐；注意 Windows 的 GPU 版本 torch 需要单独安装，而 macOS 默认安装已是最佳吞吐包，无需额外安装 `[full]`。其他非 NVIDIA 设备需自行安装与硬件匹配的加速版 torch 及 vllm/lmdeploy，才能获得最佳推理速度/吞吐。
 
 文档库与 Agent 阅读使用 `mineru parse document.pdf --json`；PDF 默认前 10 页，后续按返回的 locator 继续。无状态转换使用 `mineru-kit parse`，默认全部页。
