@@ -52,7 +52,7 @@ PP_DOCLAYOUT_V2_LABELS = [
 
 PP_DOCLAYOUT_V2_LABEL_TO_ID = {label: index for index, label in enumerate(PP_DOCLAYOUT_V2_LABELS)}
 
-# Per-class confidence threshold used before reading-order decoding.
+# 模型分类阈值，仅将行内公式提高到 0.45，减少低置信度公式误检。
 DEFAULT_CLASS_THRESHOLDS = [
     0.5,  # 0  abstract
     0.5,  # 1  algorithm
@@ -69,7 +69,7 @@ DEFAULT_CLASS_THRESHOLDS = [
     0.5,  # 12 header
     0.5,  # 13 header_image
     0.5,  # 14 image
-    0.4,  # 15 inline_formula
+    0.45,  # 15 inline_formula
     0.5,  # 16 number
     0.4,  # 17 paragraph_title
     0.5,  # 18 reference

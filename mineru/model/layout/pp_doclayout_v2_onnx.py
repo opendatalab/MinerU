@@ -52,7 +52,7 @@ class PPDocLayoutV2LayoutModelONNX(PPDocLayoutV2PostProcessor):
         intra_op_num_threads: int = 0,
         config_path: str | None = None,
     ) -> None:
-        """加载 CPU 检测图及官方预处理配置，检测筛选使用官方分类阈值。"""
+        """加载 CPU 检测图及官方预处理配置，仅将行内公式分类阈值提高到 0.45。"""
         self.device = "cpu"
         self.use_paddlex_filter_boxes = use_paddlex_filter_boxes
         self.model_path = str(weight)
@@ -102,7 +102,7 @@ class PPDocLayoutV2LayoutModelONNX(PPDocLayoutV2PostProcessor):
 
     @staticmethod
     def _filter_by_class_thresholds(sample: np.ndarray) -> np.ndarray:
-        """按最高分类分数确定候选有效性，再对其各个标签应用官方分类阈值。"""
+        """按最高分类分数确定候选有效性，再应用仅提高行内公式门槛的分类阈值。"""
         if len(sample) == 0:
             return sample
 
