@@ -205,10 +205,13 @@ def test_standard_dependency_errors_survive_startup_wrappers(
     assert doclib_error.value.param == "value"
 
 
-def _resolved_direct_dependencies(platform: str, machine: str, extra: str) -> set[str]:
+def _resolved_direct_dependencies(platform: str, machine: str, extra: str, python: str = "3.14") -> set[str]:
     """按目标平台展开本项目的递归 extra，不使用宿主环境的标记值。"""
     project = tomllib.loads((Path(__file__).resolve().parents[2] / "pyproject.toml").read_text(encoding="utf-8"))["project"]
-    environment = {**default_environment(), "sys_platform": platform, "platform_machine": machine}
+    environment = {
+        **default_environment(), "sys_platform": platform, "platform_machine": machine,
+        "python_version": python, "python_full_version": python + ".0",
+    }
     pending, visited, names = [extra], set(), set()
     while pending:
         current = pending.pop()
@@ -228,13 +231,18 @@ def _resolved_direct_dependencies(platform: str, machine: str, extra: str) -> se
 
 
 @pytest.mark.parametrize(
-    "platform,machine", [("darwin", "arm64"), ("darwin", "x86_64"), ("linux", "x86_64"), ("win32", "AMD64")]
+    "platform,machine",
+    [("darwin", "arm64"), ("darwin", "x86_64"), ("linux", "x86_64"), ("win32", "AMD64"),
+     ("win32", "amd64"), ("win32", "x86_64"), ("win32", "ARM64")],
 )
 @pytest.mark.parametrize("extra", ["", "torch", "full", "all"])
-def test_package_markers(platform: str, machine: str, extra: str) -> None:
+@pytest.mark.parametrize("python", ["3.10", "3.11", "3.12", "3.13", "3.14"])
+def test_package_markers(platform: str, machine: str, extra: str, python: str) -> None:
     """ARM 基础包引入完整 Torch 依赖，其他平台基础包保持 ONNX 与 llama。"""
-    names = _resolved_direct_dependencies(platform, machine, extra)
-    assert {"docvortex", "gradio", "onnxruntime", "mineru-llama-cpp"} <= names
+    names = _resolved_direct_dependencies(platform, machine, extra, python)
+    runtime = "onnxruntime-directml" if platform == "win32" and machine in {"AMD64", "amd64", "x86_64"} else "onnxruntime"
+    assert {"docvortex", "gradio", runtime, "mineru-llama-cpp"} <= names
+    assert not {"onnxruntime", "onnxruntime-directml"} <= names
     # lxml 由 DocVortex 声明，不在 MinerU 运行时 extras 中重复维护。
     assert "lxml" not in names
     expected_torch = (platform, machine) == ("darwin", "arm64") or extra in {"torch", "full", "all"}
@@ -249,7 +257,7 @@ def test_package_markers(platform: str, machine: str, extra: str) -> None:
 
 def test_real_resolution_policy_keeps_explicit_utils_mlx_separate() -> None:
     """真实 wheel 检查允许 ARM 基础 Torch，但不把 utils 的显式 MLX 当成 MinerU 默认安装。"""
-    names = _resolved_direct_dependencies("darwin", "arm64", "")
+    names = _resolved_direct_dependencies("darwin", "arm64", "") | {"mineru-magika"}
     assert check_backend_dependencies(names, "mineru", "base", "macos") == []
     # 完整求解结果允许包含 DocVortex 带入的传递依赖。
     assert check_backend_dependencies(names | {"lxml"}, "mineru", "base", "macos") == []

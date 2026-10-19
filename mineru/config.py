@@ -28,6 +28,7 @@ MINERU_ENV_PREFIX = "MINERU_"
 AutoBool = Literal["auto"] | bool
 ConfigSource = Literal["default", "file", "env"]
 ModelSource = Literal["auto", "huggingface", "modelscope", "local"]
+OnnxDevice = Literal["auto", "cpu", "gpu"]
 LogLevel = Literal["trace", "debug", "info", "warning", "error", "critical"]
 
 _INTERPOLATION_RE = re.compile(r"\$\{(\w+)(?::-([^${}]*))?\}")
@@ -268,7 +269,8 @@ def get_config_file_exists() -> bool:
     return _loaded_config.config_file_exists
 
 
-def update_config_file(patch: dict[str, Any]) -> None:
+def update_config_file(patch: dict[str, Any], *, only_if_onnx_auto: bool = False) -> bool:
+    """Atomically merge a patch, optionally comparing the current ONNX choice under the lock."""
     config_file = get_config_file_path()
     config_dir = os.path.dirname(config_file)
     if config_dir:
@@ -283,6 +285,11 @@ def update_config_file(patch: dict[str, Any]) -> None:
         else:
             current = {}
 
+        if only_if_onnx_auto:
+            model = current.get("model", {})
+            if not isinstance(model, dict) or model.get("onnx_device", "auto") != "auto":
+                return False
+
         updated = _deep_merge(current, patch)
         fd, tmp_path = tempfile.mkstemp(prefix=".config.", suffix=".tmp", dir=config_dir or None)
         try:
@@ -292,6 +299,14 @@ def update_config_file(patch: dict[str, Any]) -> None:
         finally:
             if os.path.exists(tmp_path):
                 os.unlink(tmp_path)
+        return True
+
+
+def read_onnx_device_from_file() -> OnnxDevice:
+    """Re-read only the device choice after acquiring the cross-process selection lock."""
+    path = get_config_file_path()
+    raw = _load_config(path) if os.path.isfile(path) else {}
+    return ModelConfig(**raw.get("model", {})).onnx_device
 
 
 class UDSConfig(BaseModel):
@@ -502,6 +517,7 @@ class ModelConfig(BaseModel):
     base_dir: str = _default_path("models")
     source: str = "auto"
     small_backend: Literal["auto", "onnx", "torch"] = "auto"
+    onnx_device: OnnxDevice = "auto"
     vlm: VlmConfig = Field(default_factory=VlmConfig)
 
     @model_validator(mode="before")
@@ -575,6 +591,8 @@ def PatchedConfig(**kwargs: Any) -> Config:
 
 
 __all__ = [
+    "OnnxDevice",
+    "read_onnx_device_from_file",
     "AutoBool",
     "ConfigSource",
     "LoadedConfig",

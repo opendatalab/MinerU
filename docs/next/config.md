@@ -10,6 +10,10 @@
 
 ## 1. 定位
 
+ONNX 小模型新增 `model.onnx_device: auto | cpu | gpu`，环境变量为
+`MINERU_MODEL_ONNX_DEVICE`。首次实际使用时自动选择并保存，独显优先；
+集显测速、重新选择及 DirectML 厂商预设见 [ONNX 设备选择](onnx-device.md)。
+
 配置体系定义 MinerU 如何在不同启动阶段得到最终行为。
 
 MinerU 有两类配置：

@@ -66,7 +66,7 @@ class PPDocLayoutV2LayoutModelONNX(PPDocLayoutV2PostProcessor):
             self.imgsz = tuple(resize["target_size"])
             self.interpolation = int(resize["interp"])
         self.rescale_factor = 1.0 / 255.0
-        self.session = ort_session(self.model_path, device, intra_op_num_threads)
+        self.session = ort_session(self.model_path, device, intra_op_num_threads, model_kind="layout")
         self._input_names = [i.name for i in self.session.get_inputs()]
         self._output_name = self.session.get_outputs()[0].name
         logger.debug(

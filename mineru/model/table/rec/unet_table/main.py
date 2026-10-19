@@ -44,6 +44,7 @@ BLANK_CELL_REC_DROP_TEXTS = {
 @dataclass
 class WiredTableInput:
     model_path: str
+    small_backend: str | None = None
     device: str = "cpu"
 
 
@@ -261,10 +262,10 @@ def count_table_cells_physical(html_code):
 
 
 class UnetTableModel:
-    def __init__(self, ocr_engine: Any, *, model_path: str | None = None) -> None:
+    def __init__(self, ocr_engine: Any, *, model_path: str | None = None, small_backend: str | None = None) -> None:
         """加载所选模型栈的有线表格资源并共享其 OCR 引擎。"""
-        model_path = model_path or str(small_model_repo().unet_structure.ensure())
-        wired_input_args = WiredTableInput(model_path=model_path)
+        model_path = model_path or str(small_model_repo(small_backend).unet_structure.ensure())
+        wired_input_args = WiredTableInput(model_path=model_path, small_backend=small_backend)
         self.wired_table_model = WiredTableRecognition(wired_input_args, ocr_engine)
         self.ocr_engine = ocr_engine
 

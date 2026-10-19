@@ -13,6 +13,7 @@ ONNX 模型输出 token IDs（int64），不是 logits——自回归循环已 b
 from __future__ import annotations
 
 import math
+import threading
 from pathlib import Path
 from typing import Any, List, Optional, Tuple
 
@@ -51,7 +52,12 @@ class PPFormulaNetPlusMONNX:
     ) -> None:
         """初始化 CPU 公式模型，并复用 Torch Plus-M 的纯 Python 处理器。"""
         self.device = "cpu"
-        self.session = ort_session(model_path, device, intra_op_num_threads)
+        self.session = ort_session(model_path, device, intra_op_num_threads, model_kind="mfr")
+        self.cpu_tail_enabled = "DmlExecutionProvider" in self.session.get_providers()
+        self._cpu_tail_session = None
+        self._cpu_tail_lock = threading.Lock()
+        self._model_path = model_path
+        self._intra_op_num_threads = intra_op_num_threads
         self.input_name = self.session.get_inputs()[0].name
 
         # 从 yml 加载 tokenizer
@@ -177,7 +183,13 @@ class PPFormulaNetPlusMONNX:
             step = min(CPU_BATCH_SIZE, max(1, batch_size))
             for start in range(0, len(valid_inputs), step):
                 inputs = np.concatenate(valid_inputs[start : start + step], axis=0).astype(np.float32)
-                preds = self.session.run(None, {self.input_name: inputs})[0]
+                session = self.session
+                if self.cpu_tail_enabled and inputs.shape[0] < CPU_BATCH_SIZE:
+                    with self._cpu_tail_lock:
+                        if self._cpu_tail_session is None:
+                            self._cpu_tail_session = ort_session(self._model_path, "cpu", self._intra_op_num_threads)
+                        session = self._cpu_tail_session
+                preds = session.run(None, {self.input_name: inputs})[0]
                 if preds.ndim != 2 or preds.shape[0] != inputs.shape[0]:
                     raise ValueError("Formula ONNX output batch does not match input batch")
                 for offset, tokens in enumerate(preds):
