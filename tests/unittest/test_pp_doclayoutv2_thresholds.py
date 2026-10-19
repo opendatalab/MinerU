@@ -76,6 +76,21 @@ def test_class_threshold_boundaries(backend: str, cls_id: int) -> None:
 
 
 @pytest.mark.parametrize("backend", ["torch", "onnx"])
+def test_inline_formula_uses_045_without_changing_other_class_thresholds(backend: str) -> None:
+    """行内公式低于 0.45 时拒绝，行间公式和正文仍保留 0.4 以上的候选。"""
+    probabilities = np.full((7, len(PP_DOCLAYOUT_V2_LABELS)), 0.001, dtype=np.float32)
+    for query, (cls_id, score) in enumerate(
+        [(15, 0.425), (15, 0.449), (15, 0.45), (15, 0.451), (5, 0.425), (22, 0.425), (0, 0.475)]
+    ):
+        probabilities[query, cls_id] = score
+
+    result = _predict(backend, probabilities)
+
+    assert result["labels"].tolist() == [15, 15, 5, 22]
+    np.testing.assert_allclose(result["scores"], [0.45, 0.451, 0.425, 0.425], rtol=0, atol=1e-7)
+
+
+@pytest.mark.parametrize("backend", ["torch", "onnx"])
 def test_invalid_primary_class_cannot_be_reintroduced_by_secondary_label(backend: str) -> None:
     """摘要主类别未达标时，即使次高正文类别达标也不能重新进入输出。"""
     probabilities = np.full((4, len(PP_DOCLAYOUT_V2_LABELS)), 0.001, dtype=np.float32)

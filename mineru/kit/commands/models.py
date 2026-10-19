@@ -148,6 +148,8 @@ def show_cmd(
         f"model.source.source: {get_config_source('model.source')}",
         f"model.small_backend: {config.model.small_backend}",
         f"model.small_backend.source: {get_config_source('model.small_backend')}",
+        f"model.onnx_device: {config.model.onnx_device}",
+        f"model.onnx_device.source: {get_config_source('model.onnx_device')}",
         f"model.vlm.engine: {config.model.vlm.engine}",
         f"model.vlm.engine.source: {get_config_source('model.vlm.engine')}",
         t("Effective small backend: {backend}", backend=effective_small_backend),

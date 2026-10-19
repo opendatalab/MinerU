@@ -3,10 +3,42 @@
 
 import os
 import time
+import threading
 from pathlib import Path
+from typing import Any
 
 import onnxruntime as ort
 from loguru import logger
+
+from .onnx_device import OnnxSelection, confirm_gpu_session, metacommands_enabled, resolve_onnx_device
+from .windows_gpu import GpuAdapter
+
+
+class DirectMLSession:
+    """Serialize Run on a DML session, independently of host inference-lock settings."""
+
+    def __init__(self, session: ort.InferenceSession) -> None:
+        self._session = session
+        self._lock = threading.Lock()
+
+    def run(self, output_names: list[str] | None, input_feed: dict[str, Any], run_options: Any = None) -> list[Any]:
+        with self._lock:
+            return self._session.run(output_names, input_feed, run_options)
+
+    def get_inputs(self) -> list[Any]:
+        return self._session.get_inputs()
+
+    def get_outputs(self) -> list[Any]:
+        return self._session.get_outputs()
+
+    def get_providers(self) -> list[str]:
+        return self._session.get_providers()
+
+    def get_provider_options(self) -> dict[str, dict[str, str]]:
+        return self._session.get_provider_options()
+
+    def end_profiling(self) -> str:
+        return self._session.end_profiling()
 
 
 def get_op_num_threads(env_name: str) -> int:
@@ -43,20 +75,90 @@ def ort_providers(device: str | None = None) -> list[tuple[str, dict[str, object
     return [("CPUExecutionProvider", {"arena_extend_strategy": "kSameAsRequested"})]
 
 
-def ort_session(model_path: str, device: str | None = None, intra_op_num_threads: int = 0) -> ort.InferenceSession:
-    """创建 CPU 会话；显式线程数优先，其次环境配置，默认使用 4/1 线程。"""
+def create_ort_session(
+    model_path: str,
+    *,
+    adapter: GpuAdapter | None = None,
+    model_kind: str = "",
+    intra_op_num_threads: int = 0,
+    inter_op_num_threads: int = 0,
+    profile_prefix: str | None = None,
+) -> ort.InferenceSession | DirectMLSession:
+    """Create an explicit CPU/DML session without selection, downloads or config writes."""
     opts = ort.SessionOptions()
     opts.log_severity_level = 3
     opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-    configure_ort_threads(opts, intra_op_num_threads=intra_op_num_threads)
-    return ort.InferenceSession(model_path, sess_options=opts, providers=ort_providers(device))
+    configure_ort_threads(opts, intra_op_num_threads=intra_op_num_threads, inter_op_num_threads=inter_op_num_threads)
+    providers = ort_providers()
+    if adapter is not None:
+        if "DmlExecutionProvider" not in ort.get_available_providers():
+            raise RuntimeError("DmlExecutionProvider is unavailable")
+        opts.enable_mem_pattern = False
+        opts.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+        options: dict[str, object] = {"device_id": adapter.index}
+        enabled = metacommands_enabled(adapter.vendor, model_kind)
+        if enabled is not None:
+            options["disable_metacommands"] = "false" if enabled else "true"
+        providers = [("DmlExecutionProvider", options), *providers]
+    if profile_prefix is not None:
+        opts.enable_profiling = True
+        opts.profile_file_prefix = profile_prefix
+    session = ort.InferenceSession(model_path, sess_options=opts, providers=providers)
+    if adapter is not None:
+        if session.get_providers()[0] != "DmlExecutionProvider":
+            raise RuntimeError("Requested DML session fell back to CPU during initialization")
+        session.disable_fallback()
+        return DirectMLSession(session)
+    return session
 
 
-def table_ort_session(model_path: str, *, sess_options: ort.SessionOptions | None = None) -> ort.InferenceSession:
+def ort_session(
+    model_path: str,
+    device: str | None = None,
+    intra_op_num_threads: int = 0,
+    *,
+    model_kind: str = "",
+    selection: OnnxSelection | None = None,
+) -> ort.InferenceSession | DirectMLSession:
+    """Use the process ONNX choice only for layout, rec and MFR; other models stay on CPU."""
+    eligible = model_kind in {"layout", "ocr_rec", "mfr"}
+    route = (selection or resolve_onnx_device(intra_op_num_threads=intra_op_num_threads)) if eligible else OnnxSelection()
+    adapter = route.adapter if route.device == "gpu" else None
+    started = time.perf_counter()
+    try:
+        session = create_ort_session(
+            model_path, adapter=adapter, model_kind=model_kind, intra_op_num_threads=intra_op_num_threads
+        )
+    except Exception as error:
+        if adapter is None:
+            raise
+        logger.warning("ONNX {} DML initialization failed; using CPU: {}", model_kind, error)
+        session = create_ort_session(model_path, intra_op_num_threads=intra_op_num_threads)
+    else:
+        if adapter is not None:
+            confirm_gpu_session(route)
+    logger.info(
+        "ONNX session ready: kind={}, providers={}, gpu={}, metacommands={}, init_s={:.3f}",
+        model_kind,
+        session.get_providers(),
+        adapter,
+        metacommands_enabled(adapter.vendor, model_kind) if adapter else None,
+        time.perf_counter() - started,
+    )
+    return session
+
+
+def table_ort_session(
+    model_path: str, *, sess_options: ort.SessionOptions | None = None, small_backend: str | None = None
+) -> ort.InferenceSession:
     """表格默认按可用 provider 选择设备；支持固定 CPU/CUDA，并明确记录 CUDA 失败回退。"""
     device = os.getenv("MINERU_TABLE_DEVICE", "auto").strip().lower()
     if device not in {"auto", "cpu", "cuda"}:
         raise ValueError("MINERU_TABLE_DEVICE must be 'auto', 'cpu' or 'cuda'")
+    from .device import resolve_small_model_backend
+
+    if resolve_small_model_backend(small_backend) == "onnx":
+        device = "cpu"
     opts = sess_options if sess_options is not None else ort.SessionOptions()
     opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
     opts.log_severity_level = 3
@@ -107,4 +209,12 @@ def table_ort_session(model_path: str, *, sess_options: ort.SessionOptions | Non
     return session
 
 
-__all__ = ["configure_ort_threads", "get_op_num_threads", "ort_providers", "ort_session", "table_ort_session"]
+__all__ = [
+    "DirectMLSession",
+    "configure_ort_threads",
+    "create_ort_session",
+    "get_op_num_threads",
+    "ort_providers",
+    "ort_session",
+    "table_ort_session",
+]

@@ -2,7 +2,21 @@
 import json
 from pathlib import Path
 
-from scripts.check_transformers5_dependencies import verify_wheels
+import pytest
+
+from scripts.check_transformers5_dependencies import check_backend_dependencies, verify_wheels
+
+
+@pytest.mark.parametrize("platform", ["windows", "linux", "macos-intel"])
+def test_runtime_and_magika_distribution_identity(platform: str) -> None:
+    """求解成功后仍拒绝共享模块的发行包冲突及旧 Magika 依赖。"""
+    runtime = "onnxruntime-directml" if platform == "windows" else "onnxruntime"
+    other_runtime = "onnxruntime" if platform == "windows" else "onnxruntime-directml"
+    selected = {"gradio", runtime, "mineru-llama-cpp", "mineru-magika"}
+    assert check_backend_dependencies(selected, "mineru", "base", platform) == []
+    assert check_backend_dependencies(selected | {other_runtime}, "mineru", "base", platform)
+    assert check_backend_dependencies(selected | {"magika"}, "mineru", "base", platform)
+    assert check_backend_dependencies(selected - {"mineru-magika"}, "mineru", "base", platform)
 
 
 def test_python_metadata_is_checked_without_binary_wheel_option(tmp_path: Path) -> None:

@@ -122,6 +122,17 @@ def test_explicit_cpu_overrides_available_cuda_provider(monkeypatch: pytest.Monk
     assert factory.call_args.kwargs["providers"] == onnx.ort_providers()
 
 
+def test_explicit_onnx_stack_keeps_tables_cpu_even_with_cuda(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Per-model backend overrides must win over a globally selected Torch backend."""
+    monkeypatch.setenv("MINERU_TABLE_DEVICE", "cuda")
+    monkeypatch.setattr(onnx.ort, "get_available_providers", lambda: ["CUDAExecutionProvider", "CPUExecutionProvider"])
+    session = SimpleNamespace(get_providers=lambda: ["CPUExecutionProvider"])
+    factory = Mock(return_value=session)
+    monkeypatch.setattr(onnx.ort, "InferenceSession", factory)
+    assert onnx.table_ort_session("table.onnx", small_backend="onnx") is session
+    assert factory.call_args.kwargs["providers"] == onnx.ort_providers()
+
+
 @pytest.mark.parametrize("device", ["auto", "cuda"])
 @pytest.mark.parametrize("mode", ["unavailable", "exception", "silent"])
 def test_cuda_failure_is_reported_and_cpu_remains_available(monkeypatch: pytest.MonkeyPatch, mode: str, device: str) -> None:

@@ -107,7 +107,7 @@ def test_ocr_txt_dictionary_ctc_space_and_shape_validation(monkeypatch: pytest.M
         get_inputs=lambda: [SimpleNamespace(name="image")],
         get_outputs=lambda: [SimpleNamespace(shape=["batch", "width", 4])],
     )
-    monkeypatch.setattr(ocr, "ort_session", lambda *args: session)
+    monkeypatch.setattr(ocr, "ort_session", lambda *args, **kwargs: session)
     recognizer = ocr.TextRecognizerONNX("rec.onnx", str(dictionary))
     logits = np.eye(4, dtype=np.float32)[[1, 1, 0, 2, 3, 3, 0, 1]]
     assert recognizer._decode(logits) == ("中A 中", 1.0)
@@ -116,7 +116,7 @@ def test_ocr_txt_dictionary_ctc_space_and_shape_validation(monkeypatch: pytest.M
     dictionary.write_text("中\nA\nB\n", encoding="utf-8")
     with pytest.raises(ValueError, match="dictionary requires"):
         ocr.TextRecognizerONNX("rec.onnx", str(dictionary))
-    assert len(PPOCRV6_DICT_PATH.read_text().splitlines()) == 18708
+    assert len(PPOCRV6_DICT_PATH.read_text(encoding="utf-8").splitlines()) == 18708
 
 
 def test_formula_invalid_boxes_do_not_shift_latex_between_items(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -124,6 +124,7 @@ def test_formula_invalid_boxes_do_not_shift_latex_between_items(monkeypatch: pyt
     from mineru.model.mfr.pp_formulanet_plus_m_onnx import PPFormulaNetPlusMONNX
 
     model = object.__new__(PPFormulaNetPlusMONNX)
+    model.cpu_tail_enabled = False
     monkeypatch.setattr(model, "_infer_batch", lambda crops, batch_size: ["first", "second"])
     source = [
         [{"label": "display_formula", "bbox": [-8, 0, -1, 5]}, {"label": "inline_formula", "bbox": [1, 1, 8, 8]}],
@@ -165,6 +166,7 @@ def test_formula_eos_stops_before_trailing_tokens() -> None:
     from mineru.model.mfr.pp_formulanet_plus_m_onnx import PPFormulaNetPlusMONNX
 
     model = object.__new__(PPFormulaNetPlusMONNX)
+    model.cpu_tail_enabled = False
     model.decoder = Mock(return_value=["x"])
     assert model._decode_tokens(np.array([[0, 17, 2, 99, 1]])) == "x"
     np.testing.assert_array_equal(model.decoder.call_args.args[0], [[0, 17, 2]])
@@ -333,6 +335,7 @@ def test_formula_cpu_batch_eight_sorts_and_restores_order(monkeypatch: pytest.Mo
     from mineru.model.mfr.pp_formulanet_plus_m_onnx import PPFormulaNetPlusMONNX
 
     model = object.__new__(PPFormulaNetPlusMONNX)
+    model.cpu_tail_enabled = False
     model.input_name = "image"
     calls = []
 

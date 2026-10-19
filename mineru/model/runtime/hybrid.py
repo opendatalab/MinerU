@@ -104,7 +104,9 @@ def table_cls_model_init(small_backend: str | None = None) -> PaddleTableClsMode
     """初始化有线与无线表格类型分类模型。"""
     from ..table.cls.paddle_table_cls import PaddleTableClsModel
 
-    return PaddleTableClsModel(model_path=str(small_model_repo(small_backend).paddle_table_cls.ensure()))
+    return PaddleTableClsModel(
+        model_path=str(small_model_repo(small_backend).paddle_table_cls.ensure()), small_backend=small_backend
+    )
 
 
 def wired_table_model_init(
@@ -123,7 +125,9 @@ def wired_table_model_init(
         lang=lang,
         enable_merge_det_boxes=False,
     )
-    table_model = UnetTableModel(ocr_engine, model_path=str(small_model_repo(small_backend).unet_structure.ensure()))
+    table_model = UnetTableModel(
+        ocr_engine, model_path=str(small_model_repo(small_backend).unet_structure.ensure()), small_backend=small_backend
+    )
     return table_model
 
 
@@ -143,7 +147,9 @@ def wireless_table_model_init(
         lang=lang,
         enable_merge_det_boxes=False,
     )
-    table_model = PaddleTableModel(ocr_engine, model_path=str(small_model_repo(small_backend).slanet_plus.ensure()))
+    table_model = PaddleTableModel(
+        ocr_engine, model_path=str(small_model_repo(small_backend).slanet_plus.ensure()), small_backend=small_backend
+    )
     return table_model
 
 
@@ -233,6 +239,10 @@ class AtomModelSingleton:
             key = atom_model_name
 
         key = (small_backend, device, key)
+        if small_backend == "onnx":
+            from .onnx_device import resolve_onnx_device
+
+            key = (*key, resolve_onnx_device())
         with self._lock:
             if key not in self._models:
                 self._models[key] = atom_model_init(model_name=atom_model_name, **kwargs)
@@ -339,7 +349,7 @@ class HybridLocalModelContextSingleton:
     """全局缓存并复用 Hybrid 本地模型上下文。"""
 
     _instance: HybridLocalModelContextSingleton | None = None
-    _models: dict[tuple[str, str], HybridLocalModelContext] = {}
+    _models: dict[tuple[object, ...], HybridLocalModelContext] = {}
     _lock: threading.RLock = LOCAL_MODEL_INIT_LOCK
 
     def __new__(cls, *args: Any, **kwargs: Any) -> HybridLocalModelContextSingleton:
@@ -355,7 +365,9 @@ class HybridLocalModelContextSingleton:
         """按小模型后端与实际设备缓存上下文，避免切换配置后混用模型。"""
         small_backend = resolve_small_model_backend()
         device = "cpu" if small_backend == "onnx" else get_device()
-        key = (small_backend, device)
+        from ...config import config
+
+        key = (small_backend, device, config.model.onnx_device if small_backend == "onnx" else None)
         with self._lock:
             if key not in self._models:
                 self._models[key] = HybridLocalModelContext(device=device, small_backend=small_backend)

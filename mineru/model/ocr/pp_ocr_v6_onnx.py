@@ -262,7 +262,7 @@ class TextRecognizerONNX:
         intra_op_num_threads: int = 0,
     ) -> None:
         """加载 CPU ONNX 会话并设置推理参数。"""
-        self.session = ort_session(model_path, device, intra_op_num_threads)
+        self.session = ort_session(model_path, device, intra_op_num_threads, model_kind="ocr_rec")
         self.input_name = self.session.get_inputs()[0].name
 
         self.img_c, self.img_h, self.img_w = rec_image_shape
