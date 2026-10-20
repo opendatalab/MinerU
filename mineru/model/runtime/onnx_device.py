@@ -18,9 +18,9 @@ from .windows_gpu import GpuAdapter, discover_gpus, preferred_gpu
 # Evidence: docs/next/onnx-selection-validation.md. None disables unvalidated auto-iGPU choices.
 ONNX_GPU_TIME_RATIO_THRESHOLD: float | None = 0.8
 METACOMMANDS: dict[str, dict[str, bool]] = {
-    "intel": {"layout": False, "mfr": True, "ocr_rec": False},
-    "amd": {"layout": True, "mfr": True, "ocr_rec": True},
-    "nvidia": {"layout": True, "mfr": True, "ocr_rec": False},
+    "intel": {"layout": False, "mfr": True, "ocr_rec": False, "unet": False},
+    "amd": {"layout": True, "mfr": True, "ocr_rec": True, "unet": True},
+    "nvidia": {"layout": True, "mfr": True, "ocr_rec": False, "unet": False},
 }
 
 

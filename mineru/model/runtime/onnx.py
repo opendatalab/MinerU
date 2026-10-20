@@ -83,9 +83,10 @@ def create_ort_session(
     intra_op_num_threads: int = 0,
     inter_op_num_threads: int = 0,
     profile_prefix: str | None = None,
+    sess_options: ort.SessionOptions | None = None,
 ) -> ort.InferenceSession | DirectMLSession:
     """Create an explicit CPU/DML session without selection, downloads or config writes."""
-    opts = ort.SessionOptions()
+    opts = sess_options if sess_options is not None else ort.SessionOptions()
     opts.log_severity_level = 3
     opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
     configure_ort_threads(opts, intra_op_num_threads=intra_op_num_threads, inter_op_num_threads=inter_op_num_threads)
@@ -119,21 +120,30 @@ def ort_session(
     *,
     model_kind: str = "",
     selection: OnnxSelection | None = None,
+    sess_options: ort.SessionOptions | None = None,
 ) -> ort.InferenceSession | DirectMLSession:
-    """Use the process ONNX choice only for layout, rec and MFR; other models stay on CPU."""
-    eligible = model_kind in {"layout", "ocr_rec", "mfr"}
-    route = (selection or resolve_onnx_device(intra_op_num_threads=intra_op_num_threads)) if eligible else OnnxSelection()
+    """Use the process ONNX choice for layout, rec, MFR and UNet; other models stay on CPU."""
+    eligible = model_kind in {"layout", "ocr_rec", "mfr", "unet"}
+    selection_threads = intra_op_num_threads
+    if selection_threads <= 0 and sess_options is not None:
+        selection_threads = sess_options.intra_op_num_threads
+    route = (selection or resolve_onnx_device(intra_op_num_threads=selection_threads)) if eligible else OnnxSelection()
     adapter = route.adapter if route.device == "gpu" else None
     started = time.perf_counter()
     try:
         session = create_ort_session(
-            model_path, adapter=adapter, model_kind=model_kind, intra_op_num_threads=intra_op_num_threads
+            model_path,
+            adapter=adapter,
+            model_kind=model_kind,
+            intra_op_num_threads=intra_op_num_threads,
+            sess_options=sess_options,
         )
     except Exception as error:
         if adapter is None:
             raise
         logger.warning("ONNX {} DML initialization failed; using CPU: {}", model_kind, error)
-        session = create_ort_session(model_path, intra_op_num_threads=intra_op_num_threads)
+        session = create_ort_session(model_path, intra_op_num_threads=intra_op_num_threads, sess_options=sess_options)
+        adapter = None
     else:
         if adapter is not None:
             confirm_gpu_session(route)
@@ -149,15 +159,23 @@ def ort_session(
 
 
 def table_ort_session(
-    model_path: str, *, sess_options: ort.SessionOptions | None = None, small_backend: str | None = None
-) -> ort.InferenceSession:
-    """表格默认按可用 provider 选择设备；支持固定 CPU/CUDA，并明确记录 CUDA 失败回退。"""
-    device = os.getenv("MINERU_TABLE_DEVICE", "auto").strip().lower()
-    if device not in {"auto", "cpu", "cuda"}:
-        raise ValueError("MINERU_TABLE_DEVICE must be 'auto', 'cpu' or 'cuda'")
+    model_path: str,
+    *,
+    sess_options: ort.SessionOptions | None = None,
+    small_backend: str | None = None,
+    model_kind: str = "",
+) -> ort.InferenceSession | DirectMLSession:
+    """ONNX 栈的 UNet 复用统一设备选择；其他表格保留原有 CPU/CUDA 策略。"""
     from .device import resolve_small_model_backend
 
-    if resolve_small_model_backend(small_backend) == "onnx":
+    onnx_backend = resolve_small_model_backend(small_backend) == "onnx"
+    unified_unet = onnx_backend and model_kind == "unet"
+    device = "cpu"
+    if not unified_unet:
+        device = os.getenv("MINERU_TABLE_DEVICE", "auto").strip().lower()
+        if device not in {"auto", "cpu", "cuda"}:
+            raise ValueError("MINERU_TABLE_DEVICE must be 'auto', 'cpu' or 'cuda'")
+    if onnx_backend:
         device = "cpu"
     opts = sess_options if sess_options is not None else ort.SessionOptions()
     opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
@@ -168,6 +186,8 @@ def table_ort_session(
         Path(profile_dir).mkdir(parents=True, exist_ok=True)
         opts.enable_profiling = True
         opts.profile_file_prefix = str(Path(profile_dir) / f"{Path(model_path).stem}-{os.getpid()}")
+    if unified_unet:
+        return ort_session(model_path, model_kind="unet", sess_options=opts)
     providers = ort_providers()
     use_cuda = False
     if device != "cpu":

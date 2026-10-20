@@ -33,15 +33,16 @@ Windows 使用 DXGI 高性能顺序、D3D12 UMA 属性和 LUID 匹配；适配�
 
 ## 模型预设
 
-GPU 路线只将 layout、rec、MFR 交给 DML，检测、表格等其他 ONNX 模型保持 CPU。
+GPU 路线将 layout、rec、MFR 和 UNet 有线表格结构模型交给 DML，检测、表格分类和无线表格等其他 ONNX 模型保持 CPU。
+UNet 与其他模型共享 `model.onnx_device` 的进程内选择，不单独测速；ONNX 栈的 UNet 不受旧 `MINERU_TABLE_DEVICE` 覆盖。
 Torch 栈中的表格仍使用其原有 CPU/CUDA 策略。旧实验引擎和实验开关已经移除。
 
-| 厂商 | layout | MFR | rec |
-|---|---|---|---|
-| Intel | 关 | 开 | 关 |
-| AMD | 开 | 开 | 开 |
-| NVIDIA | 开 | 开 | 关 |
-| 其他 | ORT 默认 | ORT 默认 | ORT 默认 |
+| 厂商 | layout | MFR | rec | UNet |
+|---|---|---|---|---|
+| Intel | 关 | 开 | 关 | 关 |
+| AMD | 开 | 开 | 开 | 开 |
+| NVIDIA | 开 | 开 | 关 | 关 |
+| 其他 | ORT 默认 | ORT 默认 | ORT 默认 | ORT 默认 |
 
 表格中的开关指 metacommands，关闭对应 `disable_metacommands=true`。
 Intel layout 优先首轮响应；NVIDIA layout 采用后续补测结论。

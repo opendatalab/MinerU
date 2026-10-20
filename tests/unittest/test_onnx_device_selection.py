@@ -224,3 +224,52 @@ def test_manual_reset_to_auto_recalibrates(config_file: Path) -> None:
     policy._selections.clear()  # New process after the explicit reset.
     policy.resolve_onnx_device()
     assert onnx_calibration.run_calibration.call_count == 2
+
+
+@pytest.mark.parametrize(
+    ("requested", "uma", "gpu_time", "expected"),
+    [
+        ("cpu", True, 1.0, "cpu"),
+        ("gpu", True, 1.0, "gpu"),
+        ("auto", True, 1.0, "gpu"),
+        ("auto", True, 1.6, "cpu"),
+        ("auto", False, 1.0, "gpu"),
+    ],
+)
+def test_unet_first_model_shares_selection_and_persistence(
+    config_file: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    requested: str,
+    uma: bool,
+    gpu_time: float,
+    expected: str,
+) -> None:
+    from mineru.model.runtime import onnx, onnx_calibration
+    from mineru.model.table.rec.unet_table.table_structure_unet import TSRUnet
+
+    monkeypatch.setattr(settings.config.model, "onnx_device", requested)
+    config_file.write_text(f"model:\n  onnx_device: {requested}\n  source: local\n", encoding="utf-8")
+    monkeypatch.setenv("MINERU_TABLE_DEVICE", "cpu" if expected == "gpu" else "cuda")
+    discover = Mock(return_value=(adapter(index=7, uma=uma),))
+    monkeypatch.setattr(policy, "discover_gpus", discover)
+    measure = Mock(return_value={"cpu_elapsed": 2.0, "gpu_elapsed": gpu_time})
+    monkeypatch.setattr(onnx_calibration, "run_calibration", measure)
+    factory = Mock(
+        side_effect=lambda *args, **kwargs: SimpleNamespace(
+            get_providers=lambda: [name for name, options in kwargs["providers"]], disable_fallback=Mock()
+        )
+    )
+    monkeypatch.setattr(onnx.ort, "InferenceSession", factory)
+    model = TSRUnet({"model_path": "unet.onnx", "small_backend": "onnx", "intra_op_num_threads": 2})
+    provider = "DmlExecutionProvider" if expected == "gpu" else "CPUExecutionProvider"
+    assert model.session.session.get_providers()[0] == provider
+    onnx.ort_session("layout.onnx", model_kind="layout")
+    onnx.ort_session("rec.onnx", model_kind="ocr_rec")
+    assert all(call.kwargs["providers"][0][0] == provider for call in factory.call_args_list)
+    assert discover.call_count == (0 if requested == "cpu" else 1)
+    assert measure.call_count == (1 if requested == "auto" and uma else 0)
+    if measure.called:
+        assert measure.call_args.kwargs["intra_op_num_threads"] == 2
+    if expected == "gpu":
+        assert factory.call_args_list[0].kwargs["providers"][0][1] == {"device_id": 7, "disable_metacommands": "true"}
+    assert yaml.safe_load(config_file.read_text())["model"] == {"onnx_device": expected, "source": "local"}
