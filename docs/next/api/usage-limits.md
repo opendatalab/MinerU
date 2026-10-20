@@ -92,8 +92,8 @@ Authorization: Bearer <MINERU_API_KEY>
     "jobs_created": 12
   },
   "limits": {
-    "max_pages_per_file": 1000,
-    "max_file_size_bytes": 209715200,
+    "max_pages_per_file": null,
+    "max_file_size_bytes": null,
     "max_files_per_job": 100,
     "max_concurrent_jobs": 10,
     "max_file_retention_days": 30
@@ -112,8 +112,8 @@ Authorization: Bearer <MINERU_API_KEY>
 | `current.pages_processed` | integer | 当前周期累计处理页数。 |
 | `current.files_processed` | integer | 当前周期累计处理文件数。 |
 | `current.jobs_created` | integer | 当前周期累计创建任务数。 |
-| `limits.max_pages_per_file` | integer | 单文件最大页数。 |
-| `limits.max_file_size_bytes` | integer | 单文件最大字节数。 |
+| `limits.max_pages_per_file` | integer 或 null | 单文件最大页数；null 表示未设置固定上限。 |
+| `limits.max_file_size_bytes` | integer 或 null | 上传文件最大字节数；null 表示未设置固定上限。 |
 | `limits.max_files_per_job` | integer | 单任务最大文件数。 |
 | `limits.max_concurrent_jobs` | integer | 最大并发任务数。 |
 | `limits.max_file_retention_days` | integer 或 null | 文件保留天数。 |
@@ -130,6 +130,8 @@ Authorization: Bearer <MINERU_API_KEY>
 ## 本地 Server 差异
 
 Local Parse Server 的 usage 不表达计费周期，而是表达本地进程视角:
+
+- `max_pages_per_file` 与 `max_file_size_bytes` 为 `null`，本地不套用 SaaS 上传大小或页数策略。URL/inline 来源仍受各自专用配置约束。
 
 - `billing_period.start` 是服务进程启动时间。
 - `billing_period.end` 为 `null`。

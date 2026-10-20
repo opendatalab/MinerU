@@ -7,9 +7,8 @@ import asyncio
 import copy
 import hashlib
 import json
-import secrets
 import time
-from contextlib import ExitStack, asynccontextmanager
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any, AsyncIterator, Literal, get_args
 
@@ -18,8 +17,8 @@ from fastapi import FastAPI, Query, Request
 from fastapi.responses import JSONResponse, Response
 
 from ...filetypes import is_flash_only_parse_extension
-from ...parser.api_server import CreateUploadRequest, OutputFormat
-from ...parser.task_api import TaskUpload, build_task_router
+from ...parser.api_server import ApiServerError, CreateUploadRequest, OutputFormat
+from ...parser.task_api import TaskStore, build_task_router
 from ...types import TIERS, select_default_quality_tier, validate_tier
 from ...utils.async_utils import drain_future
 from ...version import __version__
@@ -191,8 +190,8 @@ def _usage_payload(request: Request, registry: ResourceRegistry, pool: WorkerPoo
             **registry.usage(owner_scope),
         },
         "limits": {
-            "max_pages_per_file": 1000,
-            "max_file_size_bytes": 209715200,
+            "max_pages_per_file": None,
+            "max_file_size_bytes": None,
             "max_files_per_job": 100,
             "max_concurrent_jobs": sum(worker.max_concurrent_jobs for worker in pool.healthy_workers()),
             "max_file_retention_days": None,
@@ -364,6 +363,12 @@ async def _reconcile_jobs_once(registry: ResourceRegistry, pool: WorkerPool) -> 
         worker = pool.get(route.worker_id)
         generation = worker.generation
         try:
+            if route.metadata.get("task_protocol"):
+                from .tasks import read_task_execution
+
+                execution = await read_task_execution(route, pool, registry, headers=headers)
+                await _finalize_terminal_job(route, execution.job, request=None, pool=pool, registry=registry, headers=headers)
+                continue
             response = await request_upstream(
                 pool,
                 worker,
@@ -389,7 +394,7 @@ async def _reconcile_jobs_once(registry: ResourceRegistry, pool: WorkerPool) -> 
                 registry=registry,
                 headers=headers,
             )
-        except RouterProxyError:
+        except (RouterProxyError, ApiServerError):
             continue
 
 
@@ -413,6 +418,7 @@ def create_app(
     resolved_settings = settings or RouterSettings.from_env()
     registry = ResourceRegistry(resolved_settings.retention_seconds)
     source_store = SourceFileStore(resolved_settings.retention_seconds)
+    task_store = TaskStore(resolved_settings.retention_seconds)
 
     async def _invalidate_replaced_worker(worker: WorkerState) -> None:
         """在本地 worker replacement 发布前移除旧 generation 的资源状态。"""
@@ -463,6 +469,7 @@ def create_app(
             if resolved_settings.retention_seconds:
                 collection_task = asyncio.create_task(collection_loop(), name="mineru-router-retention")
             await pool.start()
+            task_store.start()
             if resolved_settings.worker_refresh_interval_seconds > 0:
                 reconcile_task = asyncio.create_task(
                     _job_reconcile_loop(
@@ -483,6 +490,7 @@ def create_app(
                     await reconcile_task
                 except asyncio.CancelledError:
                     pass
+            await task_store.shutdown()
             await pool.close()
             source_store.close()
 
@@ -494,6 +502,7 @@ def create_app(
     application.state.settings = resolved_settings
     application.state.registry = registry
     application.state.source_store = source_store
+    application.state.task_store = task_store
     application.state.worker_pool = pool
     application.state.started_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
@@ -804,11 +813,10 @@ def create_app(
         result["id"] = file_id
         return JSONResponse(result, status_code=upstream.status_code)
 
-    async def submit_job(body: dict[str, Any], request: Request, uploads: dict[int, TaskUpload] | None = None) -> Response:
-        """统一选择并预占 worker，V1 Job 和便捷任务共用上传与副本清理。"""
+    async def submit_job(body: dict[str, Any], request: Request) -> Response:
+        """为既有 V1 Job 选择并预占 worker，继续处理跨 worker 源文件复制。"""
         owner_scope = _caller_scope(request)
         body = copy.deepcopy(body)
-        uploads = uploads or {}
         output_formats = body.get("output_formats", ["markdown"])
         if not isinstance(output_formats, list) or any(not isinstance(fmt, str) for fmt in output_formats):
             raise RouterProxyError(400, "invalid_request", "output_formats must be a list of strings", "output_formats")
@@ -826,9 +834,7 @@ def create_app(
             if not isinstance(source, dict) or not isinstance(source.get("type"), str):
                 raise RouterProxyError(400, "invalid_request", "Each file must contain a typed source", f"files.{index}.source")
             required_sources.add(source["type"])
-            if index in uploads:
-                names.append(uploads[index].filename)
-            elif source["type"] == "file_id":
+            if source["type"] == "file_id":
                 public_file_id = source.get("file_id")
                 if not isinstance(public_file_id, str):
                     raise RouterProxyError(400, "invalid_request", "file_id source requires a string file_id")
@@ -873,92 +879,53 @@ def create_app(
         worker = reservation.worker
         input_aliases: dict[str, str] = {}
         copied_files: list[CopiedInputFile] = []
-        registered_inputs: list[ResourceRoute] = []
-        staged: list[str] = []
         transferred = False
 
         async def rollback() -> None:
             """回收未被任务接管的跨 worker 副本和本次创建的源文件视图。"""
             if worker.generation == reservation.generation and worker.base_url:
                 await _cleanup_copied_files(copied_files, request=request, pool=pool, registry=registry)
-            for route in registered_inputs:
-                try:
-                    if worker.generation == reservation.generation and worker.base_url:
-                        await request_upstream(pool, worker, "DELETE", f"/v1/files/{route.upstream_id}", request=request)
-                except RouterProxyError:
-                    pass
-                registry.remove("file", route.public_id)
-                source_store.delete_file(route.public_id)
 
         try:
-            with ExitStack() as pins:
-                # 哈希命中输入在第一次网络等待前固定缓存引用，避免并发删除原文件。
-                cached_inputs = {}
-                for index, upload in uploads.items():
-                    cached = source_store.find_hash(owner_scope, upload.sha256sum)
-                    if cached is not None:
-                        pins.enter_context(source_store.pin(cached))
-                        cached_inputs[index] = cached
-                for index, upload in uploads.items():
-                    stored = cached_inputs.get(index)
-                    if stored is None:
-                        staging_id = "task-" + secrets.token_hex(12)
-                        staged.append(staging_id)
-                        stored = await source_store.stage_upload(
-                            staging_id, stored_file_chunks(upload.path), mime_type=upload.mime_type, max_bytes=200 * 1024 * 1024
-                        )
-                        pins.enter_context(source_store.pin(stored))
-                    payload = await upload_stored_source(
-                        stored, upload.filename, worker, request=request, pool=pool, generation=reservation.generation
+            for source, route in file_routes:
+                target_file_id = route.upstream_id
+                if route.worker_id != worker.worker_id:
+                    target_file_id = await copy_file_to_worker(
+                        route, worker, request=request, pool=pool, registry=registry, source_store=source_store
                     )
-                    rewritten = rewrite_file_payload(payload["file"], worker, registry, owner_scope)
-                    public_id = str(rewritten["id"])
-                    route = _route_or_404(registry, "file", public_id, owner_scope)
-                    registered_inputs.append(route)
-                    source_store.bind_source(public_id, stored, owner_scope=owner_scope, expires_at=rewritten.get("expires_at"))
-                    input_aliases[route.upstream_id] = public_id
-                    files[index]["source"] = {"type": "file_id", "file_id": route.upstream_id}
-                for source, route in file_routes:
-                    target_file_id = route.upstream_id
-                    if route.worker_id != worker.worker_id:
-                        target_file_id = await copy_file_to_worker(
-                            route, worker, request=request, pool=pool, registry=registry, source_store=source_store
+                    copied_files.append(
+                        CopiedInputFile(
+                            source_public_id=route.public_id,
+                            owner_scope=owner_scope,
+                            worker_id=worker.worker_id,
+                            upstream_file_id=target_file_id,
                         )
-                        copied_files.append(
-                            CopiedInputFile(
-                                source_public_id=route.public_id,
-                                owner_scope=owner_scope,
-                                worker_id=worker.worker_id,
-                                upstream_file_id=target_file_id,
-                            )
-                        )
-                    input_aliases[target_file_id] = route.public_id
-                    source["file_id"] = target_file_id
-                upstream = await request_upstream(pool, worker, "POST", "/v1/parse/jobs", request=request, json_body=body)
-                require_worker_generation(worker, reservation.generation)
-                result = _successful_json(upstream)
-                if isinstance(result, Response):
-                    return result
-                upstream_job_id = result.get("job_id")
-                if not isinstance(upstream_job_id, str):
-                    raise RouterProxyError(502, "invalid_upstream_response", "Created job did not return a job_id")
-                job_route = registry.register(
-                    "job", owner_scope=owner_scope, worker_id=worker.worker_id, upstream_id=upstream_job_id
-                )
-                job_route.metadata.update(
-                    input_aliases=input_aliases,
-                    copied_inputs=copied_files,
-                    active_counted=True,
-                    reservation=reservation,
-                    upstream_headers=_authorization_headers(request),
-                )
-                transferred = True
-                rewritten = rewrite_job_payload(result, worker, registry, pool, owner_scope)
-                await _finalize_terminal_job(job_route, rewritten, request=request, pool=pool, registry=registry)
-                return JSONResponse(rewritten, status_code=upstream.status_code)
+                    )
+                input_aliases[target_file_id] = route.public_id
+                source["file_id"] = target_file_id
+            upstream = await request_upstream(pool, worker, "POST", "/v1/parse/jobs", request=request, json_body=body)
+            require_worker_generation(worker, reservation.generation)
+            result = _successful_json(upstream)
+            if isinstance(result, Response):
+                return result
+            upstream_job_id = result.get("job_id")
+            if not isinstance(upstream_job_id, str):
+                raise RouterProxyError(502, "invalid_upstream_response", "Created job did not return a job_id")
+            job_route = registry.register(
+                "job", owner_scope=owner_scope, worker_id=worker.worker_id, upstream_id=upstream_job_id
+            )
+            job_route.metadata.update(
+                input_aliases=input_aliases,
+                copied_inputs=copied_files,
+                active_counted=True,
+                reservation=reservation,
+                upstream_headers=_authorization_headers(request),
+            )
+            transferred = True
+            rewritten = rewrite_job_payload(result, worker, registry, pool, owner_scope)
+            await _finalize_terminal_job(job_route, rewritten, request=request, pool=pool, registry=registry)
+            return JSONResponse(rewritten, status_code=upstream.status_code)
         finally:
-            for staging_id in staged:
-                source_store.discard_upload(staging_id)
             if not transferred:
                 reservation.release()
                 await drain_future(asyncio.create_task(rollback()))
@@ -995,6 +962,10 @@ def create_app(
         route = _route_or_404(registry, "job", job_id, owner_scope)
         if route.metadata.get("upstream_lost"):
             return JSONResponse(route.metadata["payload"])
+        if route.metadata.get("task_protocol"):
+            execution = await read_task_execution(route, pool, registry, request=request)
+            await _finalize_terminal_job(route, execution.job, request=request, pool=pool, registry=registry)
+            return JSONResponse(execution.job)
         worker = pool.get(route.worker_id)
         generation = worker.generation
         upstream = await request_upstream(pool, worker, "GET", f"/v1/parse/jobs/{route.upstream_id}", request=request)
@@ -1025,6 +996,9 @@ def create_app(
         route = _route_or_404(registry, "job", job_id, _caller_scope(request))
         if route.metadata.get("upstream_lost"):
             raise RouterProxyError(409, "job_already_terminal", "Job is failed")
+        if route.metadata.get("task_protocol"):
+            await task_backend(request).cancel(job_id)
+            return JSONResponse({"job_id": job_id, "status": "canceled", "canceled_at": utc_now_iso()})
         worker = pool.get(route.worker_id)
         upstream = await request_upstream(pool, worker, "DELETE", f"/v1/parse/jobs/{route.upstream_id}", request=request)
         result = _successful_json(upstream)
@@ -1049,11 +1023,15 @@ def create_app(
         """返回当前 Router 进程聚合的 V1 usage。"""
         return _usage_payload(request, registry, pool, _caller_scope(request))
 
-    from .tasks import RouterTaskBackend, install_task_error_handlers
+    from .tasks import RouterTaskBackend, install_task_error_handlers, read_task_execution
+
+    async def finalize_task_job(route: ResourceRoute, payload: dict[str, Any], request: Request | None) -> None:
+        """新任务沿用既有产物元数据补齐及负载释放边界。"""
+        await _finalize_terminal_job(route, payload, request=request, pool=pool, registry=registry)
 
     def task_backend(request: Request) -> RouterTaskBackend:
         """显式组装 Router 适配器，便捷入口不通过 HTTP 请求自身。"""
-        return RouterTaskBackend(request, submit_job, get_job, cancel_job, _caller_scope(request))
+        return RouterTaskBackend(request, _caller_scope(request), finalize_task_job)
 
     install_task_error_handlers(application)
     application.include_router(build_task_router(task_backend))

@@ -90,6 +90,6 @@ mineru-api --host 127.0.0.1 --port 8000 --tier standard
 - `--upstream-url` 可重复，用于接入已有 MinerU V1 API base URL。
 - `--local-gpus` 支持 `auto`、`none` 或 GPU CSV，例如 `0,1,2`。
 - 本地 worker 统一启动 `mineru-kit api-server`；`--worker-tier` 默认 `standard`，`--worker-concurrency` 默认 `1`。
-- Router 完整代理 V1 health、models、tiers、uploads、files、parse jobs 与 usage，并提供 `/v1/tasks`、`/v1/file_parse` 便捷接口；不提供旧根路径。
+- Router 完整代理 V1 health、models、tiers、uploads、files、parse jobs 与 usage，并提供 `/v1/tasks` 表单任务、逐文件上传及结果下载链接；不提供旧根路径。
 - Router 只接受显式声明的参数，不再透传未知模型引擎参数；需要额外调优时应部署独立 upstream。
 - uploads、files 与 jobs 的公共路由状态保存在当前进程内，Router 重启后不保证旧公共 ID 继续可用。

@@ -74,7 +74,7 @@ X-Request-Id: req_01HXYZ123ABCDEF
 
 ## 幂等
 
-`POST` endpoint 支持 `Idempotency-Key`:
+公网部署可以为 `POST` endpoint 提供 `Idempotency-Key`。以下为该能力的契约；当前自部署 tasks 不实现创建请求幂等存储，客户端不自动重试创建，取得 `task_id` 后应继续原任务。
 
 ```http
 Idempotency-Key: 7f5b7f7c-5c5a-4b2f-bb89-0c901c9a2d6a

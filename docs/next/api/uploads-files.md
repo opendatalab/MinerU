@@ -374,8 +374,8 @@ Local Parse Server 保持相同 endpoint 和对象结构，但传输实现可以
 Router 把完成上传的源字节缓存在私有临时存储，并按调用方 scope 与实际 SHA-256 建立索引。
 本地命中时，`POST /v1/uploads` 复用缓存完成选定 worker 的上传并返回 `completed`，客户端跳过 PUT/complete。
 本地未命中时，即使某个 worker 已保存该 blob，Router 仍接收客户端字节以保留跨 worker 转移能力。
-`/v1/tasks` 与 `/v1/file_parse` 的上传共用此缓存；只改变源文件名视图不需要再次发送字节。
-删除一个文件别名不会删除其他别名或正在传输的数据。完整行为见 [V1 便捷解析](tasks.md)。
+`/v1/tasks` 的逐文件上传共用此缓存；清单 hash 命中时，只改变源文件名视图不需要再次发送字节。
+删除一个文件别名不会删除其他别名或正在传输的数据。完整行为见 [V1 tasks](tasks.md)。
 
 ## Local Server 保留期限
 

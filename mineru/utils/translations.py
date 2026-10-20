@@ -143,6 +143,7 @@ ZH_MESSAGES: dict[str, str] = {
     "File retention: {retention}": "文件保留期: {retention}",
     "{start} - ongoing": "{start} - 进行中",
     "not specified": "未指定",
+    "unlimited": "无限制",
     "{days} day": "{days} 天",
     "{days} days": "{days} 天",
     # ------------------------------------------------------------------ list

@@ -30,17 +30,18 @@ import click
 import httpx
 import uvicorn
 from docvortex.assets import validate_image_sidecar_path
-from fastapi import APIRouter, Body, Depends, FastAPI, HTTPException, Path, Query, Request, Response, status
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, Path, Query, Request, Response, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.openapi.docs import get_redoc_html, get_swagger_ui_html, get_swagger_ui_oauth2_redirect_html
 from fastapi_offline import FastAPIOffline
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.security import HTTPBearer
 from filelock import FileLock, Timeout as FileLockTimeout
 from ..utils.retention import resolve_retention_seconds, RETENTION_SCAN_INTERVAL_SECONDS
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.datastructures import State
+from starlette.types import Receive, Scope, Send
 
 from ..config import VlmConfig
 from ..config import config as mineru_config
@@ -83,7 +84,7 @@ from .writer import DataWriter
 _DEFAULT_API_SERVER_TIER: ServerTier = "standard"
 _MAX_INLINE_BYTES_DEFAULT = 1024 * 1024
 _MAX_FILES_PER_JOB_DEFAULT = 100
-_MAX_FILE_SIZE_BYTES_DEFAULT = 209715200
+_MAX_URL_BYTES_DEFAULT = 209715200
 _LOCAL_PARSE_OUTPUT_FORMATS: tuple[OutputFormat, ...] = (
     "markdown",
     "middle_json",
@@ -601,8 +602,8 @@ class UsageCurrent(BaseModel):
 
 class UsageLimits(BaseModel):
     model_config = _PYDANTIC_CONFIG
-    max_pages_per_file: int = 1000
-    max_file_size_bytes: int = _MAX_FILE_SIZE_BYTES_DEFAULT
+    max_pages_per_file: int | None = None
+    max_file_size_bytes: int | None = None
     max_files_per_job: int = _MAX_FILES_PER_JOB_DEFAULT
     max_concurrent_jobs: int = 1
     max_file_retention_days: int | None = None
@@ -634,6 +635,7 @@ class _UploadRecord:
     sha256sum: str | None = None
     status: UploadStatus = "pending"
     file_id: str | None = None  # set on complete
+    write_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
 
 
 @dataclass
@@ -802,7 +804,9 @@ class FileStore:
                 finally:
                     temporary.unlink(missing_ok=True)
 
-    def register_source_file(self, filename: str, path: pathlib.Path, sha256sum: str, file_id: str | None = None) -> str:
+    def register_source_file(
+        self, filename: str, path: pathlib.Path, sha256sum: str, file_id: str | None = None, *, keep_alive: bool = False
+    ) -> str:
         """从已校验的暂存文件原子注册源字节及独立的文件名视图。"""
         with self._lock:
             target = self._blob_abs(sha256sum)
@@ -823,9 +827,98 @@ class FileStore:
                 created_at=now,
                 purpose="parse",
                 sha256sum=sha256sum,
-                expires_at=now + self.retention_seconds if self.retention_seconds else None,
+                expires_at=now + self.retention_seconds if self.retention_seconds and not keep_alive else None,
             )
             return file_id
+
+    def finalize_source_views(self, file_ids: list[str]) -> None:
+        """准备完成后恢复源文件视图的正常保留期，执行所需字节另由 Job 租约保护。"""
+        with self._lock:
+            expires_at = int(time.time()) + self.retention_seconds if self.retention_seconds else None
+            for file_id in file_ids:
+                record = self._files.get(file_id)
+                if record is not None:
+                    record.expires_at = expires_at
+
+    def create_file_for_output_path(self, filename: str, path: pathlib.Path, *, job_id: str) -> str:
+        """从已完成的文件流式登记产物，避免批量 ZIP 再次整体载入内存。"""
+        hasher = hashlib.sha256()
+        with path.open("rb") as source:
+            while chunk := source.read(1024 * 1024):
+                hasher.update(chunk)
+        sha = hasher.hexdigest()
+        with self._lock:
+            file_id = self.register_source_file(filename, path, sha)
+            record = self._files[file_id]
+            record.purpose = "parse_output"
+            record.job_id = job_id
+            record.expires_at = None
+            pins = self._job_output_pins.setdefault(job_id, set())
+            if sha not in pins:
+                pins.add(sha)
+                self._pins[sha] = self._pins.get(sha, 0) + 1
+            return file_id
+
+    def pin_output_file(self, file_id: str) -> tuple[pathlib.Path, str, str]:
+        """检查产物权限并取得下载租约，防止传输途中被保留策略删除。"""
+        with self._lock:
+            rec = self.get_file(file_id)
+            if rec.purpose != "parse_output":
+                _raise_api_error(
+                    403,
+                    error_type="permission_error",
+                    code="feature_requires_api_key",
+                    message="Source files cannot be downloaded",
+                )
+            if rec.sha256sum is None or not self._blob_abs(rec.sha256sum).is_file():
+                _raise_api_error(404, error_type="invalid_request_error", code="file_not_found", message="Output expired")
+            self._pins[rec.sha256sum] = self._pins.get(rec.sha256sum, 0) + 1
+            return self._blob_abs(rec.sha256sum), rec.filename, rec.sha256sum
+
+    async def store_upload_stream(self, upload_id: str, chunks: AsyncIterator[bytes]) -> None:
+        """逐块接收独立 Upload，校验完整大小后才原子替换暂存文件。"""
+        rec = self.get_upload(upload_id)
+        async with rec.write_lock:
+            rec = self.get_upload(upload_id)
+            if rec.status != "pending":
+                _raise_api_error(
+                    409, error_type="invalid_request_error", code="upload_already_terminal", message=f"Upload is {rec.status}"
+                )
+            directory = self._blobs / "_uploads"
+            directory.mkdir(parents=True, exist_ok=True)
+            temporary = directory / f"{upload_id}.{secrets.token_hex(8)}"
+            size = 0
+            try:
+                with temporary.open("wb") as target:
+                    async for chunk in chunks:
+                        size += len(chunk)
+                        if size > rec.bytes:
+                            _raise_api_error(
+                                413,
+                                error_type="invalid_request_error",
+                                code="upload_size_mismatch",
+                                message=f"Upload expects {rec.bytes} bytes, received more",
+                            )
+                        await run_sync(target.write, chunk)
+                with self._lock:
+                    current = self.get_upload(upload_id)
+                    if current.status != "pending":
+                        _raise_api_error(
+                            409,
+                            error_type="invalid_request_error",
+                            code="upload_already_terminal",
+                            message=f"Upload is {current.status}",
+                        )
+                    if size != current.bytes:
+                        _raise_api_error(
+                            413,
+                            error_type="invalid_request_error",
+                            code="upload_size_mismatch",
+                            message=f"Upload expects {current.bytes} bytes, received {size}",
+                        )
+                    os.replace(temporary, directory / upload_id)
+            finally:
+                temporary.unlink(missing_ok=True)
 
     def read_blob(self, sha256hex: str) -> bytes:
         with self._lock:
@@ -907,18 +1000,6 @@ class FileStore:
                 )
             return rec
 
-    def _read_upload_data(self, upload_id: str) -> bytes:
-        with self._lock:
-            p = self._blobs / "_uploads" / upload_id
-            if not p.is_file():
-                _raise_api_error(
-                    409,
-                    error_type="invalid_request_error",
-                    code="upload_not_ready",
-                    message="Upload bytes not yet received",
-                )
-            return p.read_bytes()
-
     def complete_upload(self, upload_id: str, sha256hex: str | None) -> UploadResponse:
         with self._lock:
             rec = self.get_upload(upload_id)
@@ -937,16 +1018,25 @@ class FileStore:
                     message=f"Upload is {rec.status}",
                 )
 
-            # compute sha256 from uploaded data if not provided
-            data = self._read_upload_data(upload_id)
-            if len(data) != rec.bytes:
+            # 流式复核已上传内容，不在完成阶段把大文件整体读入内存。
+            staged = self._blobs / "_uploads" / upload_id
+            if not staged.is_file():
+                _raise_api_error(
+                    409, error_type="invalid_request_error", code="upload_not_ready", message="No uploaded content"
+                )
+            actual_size = staged.stat().st_size
+            if actual_size != rec.bytes:
                 _raise_api_error(
                     413,
                     error_type="invalid_request_error",
                     code="upload_size_mismatch",
-                    message=f"Upload expects {rec.bytes} bytes, received {len(data)}",
+                    message=f"Upload expects {rec.bytes} bytes, received {actual_size}",
                 )
-            actual_sha = hashlib.sha256(data).hexdigest()
+            hasher = hashlib.sha256()
+            with staged.open("rb") as source:
+                while chunk := source.read(1024 * 1024):
+                    hasher.update(chunk)
+            actual_sha = hasher.hexdigest()
 
             if sha256hex and sha256hex != actual_sha:
                 _raise_api_error(
@@ -966,7 +1056,9 @@ class FileStore:
             # move from upload blob to content-addressed blob
             sha = sha256hex or actual_sha
             if not self.blob_exists(sha):
-                self.store_blob(data, sha256hex=sha)
+                destination = self._blob_abs(sha)
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                os.replace(staged, destination)
             # remove temp upload blob
             (self._blobs / "_uploads" / upload_id).unlink(missing_ok=True)
 
@@ -1284,6 +1376,8 @@ class _JobRecord:
     input_blobs: dict[str, str] = field(default_factory=dict)
     file_store: FileStore | None = None
     usage_counted: bool = False
+    task_result_file_id: str | None = None
+    task_error: ErrorDetail | None = None
 
     def __post_init__(self) -> None:
         if self.files is None:
@@ -1412,10 +1506,13 @@ class JobStore:
     def _now() -> str:
         return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    def create(self, req: CreateJobRequest, file_store: FileStore) -> _JobRecord:
+    def create(self, req: CreateJobRequest, file_store: FileStore, *, job_id: str | None = None) -> _JobRecord:
+        """创建唯一执行记录，允许 tasks 使用上传准备阶段预先分配的 ID。"""
         if req.tier is None:
             raise ValueError("CreateJobRequest.tier must be resolved before job creation")
-        job_id = self._new_job_id()
+        job_id = job_id or self._new_job_id()
+        if job_id in self._jobs:
+            _raise_api_error(409, error_type="invalid_request_error", code="job_already_exists", message="Job already exists")
         now = self._now()
         rec = _JobRecord(
             id=job_id,
@@ -1636,7 +1733,7 @@ async def _extract_bytes(
     allow_local_source: bool = False,
     max_inline_bytes: int = _MAX_INLINE_BYTES_DEFAULT,
     allow_http_source: bool = False,
-    max_url_bytes: int = _MAX_FILE_SIZE_BYTES_DEFAULT,
+    max_url_bytes: int = _MAX_URL_BYTES_DEFAULT,
     input_blobs: dict[str, str] | None = None,
 ) -> _ExtractedSource:
     """按既有来源策略读取字节，并保留不会由临时文件替代的来源上下文。"""
@@ -1697,7 +1794,7 @@ async def _run_job(
     allow_local_source: bool = False,
     max_inline_bytes: int = _MAX_INLINE_BYTES_DEFAULT,
     allow_http_source: bool = False,
-    max_url_bytes: int = _MAX_FILE_SIZE_BYTES_DEFAULT,
+    max_url_bytes: int = _MAX_URL_BYTES_DEFAULT,
     flash_enabled: bool = True,
     vlm_config: VlmConfig | None = None,
     job_store: JobStore | None = None,
@@ -1855,7 +1952,7 @@ _router = APIRouter(prefix="/v1")
 
 # OpenAPI tag metadata: drives the group order and descriptions on /docs.
 _OPENAPI_TAGS: list[dict[str, str]] = [
-    {"name": "Tasks", "description": "One-request parsing, asynchronous tasks and inline or ZIP results."},
+    {"name": "Tasks", "description": "Form submissions, per-file uploads and asynchronous ZIP download links."},
     {"name": "Health", "description": "Liveness and server readiness."},
     {"name": "Tiers", "description": "Parsing tiers and runtime capability advertised by this server."},
     {"name": "Models", "description": "VLM models available for parsing."},
@@ -1868,8 +1965,9 @@ _OPENAPI_TAGS: list[dict[str, str]] = [
 _FASTAPI_DESCRIPTION = """\
 Parse documents into structured Middle JSON via self-hosted or remote capacity.
 
-Use `/v1/file_parse` for a synchronous result or `/v1/tasks` for a one-request
-asynchronous submission. Both share the existing parse job lifecycle.
+Submit a form manifest to `/v1/tasks`, upload only missing files to their returned
+URLs, then poll the task and download its `result_url`. Local servers also accept
+one multipart file. Task status contains metadata only, never inline result bytes.
 The resource workflow remains: create an upload, complete it, submit a parse job for the
 resulting file, then poll the job and fetch its outputs. Health and usage
 endpoints report server readiness and quota state. Tiers (`flash`, `basic`,
@@ -2028,14 +2126,20 @@ async def get_upload(
     status_code=status.HTTP_200_OK,
     responses={**_ERR_404, **_ERR_409, **_ERR_413},
     tags=["Uploads"],
+    openapi_extra={
+        "requestBody": {
+            "required": True,
+            "content": {"application/octet-stream": {"schema": {"type": "string", "format": "binary"}}},
+        }
+    },
 )
 async def upload_content(
+    request: Request,
     upload_id: str = Path(description="Upload ID"),
-    data: bytes = Body(media_type="application/octet-stream"),
     store: FileStore = Depends(_get_store),
 ) -> Response:
-    """Upload raw bytes for an upload (OpenAI-compatible)."""
-    store.store_upload_data(upload_id, data)
+    """流式接收原始文件字节，保持独立 Upload 的既有 HTTP 协议。"""
+    await store.store_upload_stream(upload_id, request.stream())
     return Response(status_code=200)
 
 
@@ -2052,7 +2156,7 @@ async def complete_upload(
     store: FileStore = Depends(_get_store),
 ) -> UploadResponse:
     """Complete an upload, creating the File object."""
-    return store.complete_upload(upload_id, body.sha256sum if body else None)
+    return await run_sync(store.complete_upload, upload_id, body.sha256sum if body else None)
 
 
 @_router.post(
@@ -2105,6 +2209,32 @@ async def get_file(
     return store._make_file_object(store.get_file(file_id))
 
 
+class _OutputFileResponse(FileResponse):
+    """把文件租约绑定到 ASGI 响应，正常结束和断连都释放引用。"""
+
+    def __init__(self, store: FileStore, file_id: str) -> None:
+        """在响应头发送之前完成权限检查，并固定实际文件路径。"""
+        path, filename, sha = store.pin_output_file(file_id)
+        self._store = store
+        self._sha = sha
+        try:
+            super().__init__(
+                path,
+                filename=filename,
+                media_type="application/zip" if filename.lower().endswith(".zip") else "application/octet-stream",
+            )
+        except BaseException:
+            store.unpin_cached_blob(sha)
+            raise
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """让文件响应负责分块和 Range，同时确保取消不会泄漏租约。"""
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            self._store.unpin_cached_blob(self._sha)
+
+
 @_router.get(
     "/files/{file_id}/content",
     response_model=None,
@@ -2121,9 +2251,8 @@ async def get_file_content(
     file_id: str = Path(description="File ID"),
     store: FileStore = Depends(_get_store),
 ) -> Response:
-    """Download parse-output content."""
-    data = store.read_file_data(file_id)
-    return Response(content=data, media_type="application/octet-stream")
+    """直接流式发送已保存的产物，下载期间持有文件租约。"""
+    return _OutputFileResponse(store, file_id)
 
 
 @_router.delete(
@@ -2151,6 +2280,9 @@ async def submit_parse_job(
     file_store: FileStore,
     job_store: JobStore,
     access_level: AccessLevel,
+    *,
+    job_id: str | None = None,
+    finalize: Callable[[_JobRecord], Awaitable[None]] | None = None,
 ) -> _JobRecord:
     """统一校验并提交后台解析任务，供 V1 Job 与便捷入口共同调用。"""
     for index, entry in enumerate(body.files):
@@ -2233,7 +2365,7 @@ async def submit_parse_job(
 
     if job_store._closing:
         _raise_api_error(503, error_type="engine_error", code="server_shutting_down", message="Server is shutting down")
-    rec = job_store.create(body, file_store)
+    rec = job_store.create(body, file_store, job_id=job_id)
     url_timeout_val: int = request.app.state.url_timeout
     allow_local_source_val: bool = request.app.state.allow_local_source
     max_inline_bytes_val: int = request.app.state.max_inline_bytes
@@ -2259,6 +2391,8 @@ async def submit_parse_job(
             vlm_config=vlm_config_val,
             job_store=job_store,
         )
+        if finalize is not None and rec.status in {"completed", "partial"}:
+            await finalize(rec)
 
     try:
         job_store.start_task(rec, _bg_run)
@@ -2558,7 +2692,7 @@ def create_app(
     url_timeout: int = 60,
     allow_local_source: bool = False,
     max_inline_bytes: int = _MAX_INLINE_BYTES_DEFAULT,
-    max_url_bytes: int = _MAX_FILE_SIZE_BYTES_DEFAULT,
+    max_url_bytes: int = _MAX_URL_BYTES_DEFAULT,
     allow_http_source: bool = False,
     api_key: str | None = None,
     image_analysis: bool = True,
@@ -2650,6 +2784,7 @@ def create_app(
         job_store: JobStore = application.state.job_store
         file_store: FileStore = application.state.file_store
         file_store.claim_directory()
+        application.state.task_store.start()
         collection_task: asyncio.Task[None] | None = None
 
         async def collect_loop() -> None:
@@ -2694,6 +2829,7 @@ def create_app(
                 collection_task.cancel()
                 await asyncio.gather(collection_task, return_exceptions=True)
             try:
+                await application.state.task_store.shutdown()
                 await job_store.shutdown()
             finally:
                 file_store.release_directory()
@@ -2839,8 +2975,9 @@ def create_app(
 
     application.middleware("http")(_auth_middleware)
     application.include_router(_build_v1_router())
-    from .task_api import ApiTaskBackend, build_task_router
+    from .task_api import ApiTaskBackend, TaskStore, build_task_router
 
+    application.state.task_store = TaskStore(retention_seconds)
     application.include_router(build_task_router(ApiTaskBackend))
     return application
 
@@ -2931,9 +3068,9 @@ def _build_server_log_config(log_level: str) -> dict[str, Any]:
 )
 @click.option(
     "--max-url-bytes",
-    default=_MAX_FILE_SIZE_BYTES_DEFAULT,
+    default=_MAX_URL_BYTES_DEFAULT,
     type=int,
-    help=f"Maximum bytes downloaded for url sources (default: {_MAX_FILE_SIZE_BYTES_DEFAULT})",
+    help=f"Maximum bytes downloaded for url sources (default: {_MAX_URL_BYTES_DEFAULT})",
 )
 @click.option(
     "--allow-http-source",

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
@@ -232,17 +233,24 @@ def test_queued_cancel_releases_input_before_execution(tmp_path: Path, clock: li
 
 
 def test_hash_preflight_rejection_releases_request_lease(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    """哈希命中后的 Content-Length 校验失败不会泄漏请求持有的 blob 引用。"""
+    """清单 hash 命中后的声明大小校验失败不会泄漏准备阶段的 blob 引用。"""
     monkeypatch.setattr(api_server, "_preflight_tier_dependencies", lambda *args: None)
     app = api_server.create_app(upload_dir=str(tmp_path / "files"), tier="flash")
     with TestClient(app) as client:
         _, sha = _source(app.state.file_store, tmp_path)
         response = client.post(
-            f"/v1/tasks?filename=input.pdf&sha256sum={sha}&tier=flash",
-            content=b"bad",
-            headers={"Content-Type": "application/octet-stream"},
+            "/v1/tasks",
+            data={
+                "tier": "flash",
+                "manifest": json.dumps(
+                    [
+                        {"client_file_id": "f1", "filename": "input.pdf", "bytes": 3, "sha256sum": sha},
+                    ]
+                ),
+            },
         )
         assert response.status_code == 400
+        assert response.json()["error"]["code"] == "upload_size_mismatch"
         assert not app.state.file_store._pins and not app.state.job_store._jobs
 
 

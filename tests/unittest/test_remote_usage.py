@@ -279,6 +279,29 @@ def test_usage_human_output_shows_complete_remote_usage(monkeypatch: pytest.Monk
     assert guidance.OFFICIAL_API_KEY_URL in result.stdout
 
 
+def test_usage_preserves_unlimited_local_limits(monkeypatch: pytest.MonkeyPatch) -> None:
+    """本地 API 的 null 上限经过 Doclib 校验、CLI JSON 与文本展示都不丢失语义。"""
+    payload = _usage_response("registered").model_dump()
+    payload["limits"].update(max_pages_per_file=None, max_file_size_bytes=None)
+    validated = RemoteUsageResponse.model_validate(payload)
+
+    class _LocalClient(_UsageClient):
+        """提供真实可空字段形状，保留已有客户端的调用方式。"""
+
+        remote_url = "http://127.0.0.1:8000"
+        response = validated
+
+    monkeypatch.setattr(usage, "DoclibClient", _LocalClient)
+    result = runner.invoke(app, ["usage"])
+    assert result.exit_code == 0, result.output
+    assert "Max pages per file: unlimited" in result.stdout
+    assert "Max file size: unlimited" in result.stdout
+    machine = runner.invoke(app, ["usage", "--json"])
+    assert machine.exit_code == 0, machine.output
+    limits = json.loads(machine.output)["usage"]["limits"]
+    assert limits["max_pages_per_file"] is None and limits["max_file_size_bytes"] is None
+
+
 def test_usage_invalid_api_key_keeps_error_and_adds_required_guidance(monkeypatch: pytest.MonkeyPatch) -> None:
     class _InvalidClient(_UsageClient):
         def get_remote_usage(self) -> RemoteUsageResponse:

@@ -1,50 +1,62 @@
 # V1 HTTP API
 
-The self-hosted V1 API is the same interface the Python SDK and WebUI use. This page explains the request cycle — create an upload, upload the bytes, submit a parse job, poll to a terminal state, download the outputs — and points to a tested example script. For the Python client, see [Python SDK](sdk_api.md).
+HTTP clients can use the tasks form-manifest and download-link protocol. This page first covers that workflow, then the existing Uploads/Jobs resource workflow used by the Python SDK and WebUI. For the Python client, see [Python SDK](sdk_api.md).
 
-Start a local service, or point the examples at any V1 deployment including the official cloud service:
+Start a local service; for SaaS, use a deployment implementing the same tasks contract:
 
 ```bash
 mineru-kit api-server --host 127.0.0.1 --port 8000 --tier standard
 ```
 
-## One-request parsing and asynchronous tasks
+## Tasks: manifests, per-file uploads, and ZIP links
 
-API servers and Routers expose `/v1/tasks` and `/v1/file_parse`, sharing the existing Job lifecycle and IDs:
+API servers, Routers, and SaaS deployments implementing this contract use the same client workflow: submit a manifest, upload missing files, poll status, and download the returned `result_url`.
+SaaS can return an OSS URL; a local service returns its Files URL. Clients use the returned links and do not require SaaS to implement the local Files API.
+See the [complete tasks contract](../../next/api/tasks.md).
 
 ```bash
-curl -sS 'http://127.0.0.1:8000/v1/file_parse?tier=flash&ocr_mode=txt' \
-  -F 'files=@document.pdf' -o result.json
+# One or more files: preflight first and upload only cache misses.
+MINERU_API_URL=http://127.0.0.1:8000 \
+  bash scripts/http_task_example.sh a.pdf b.pdf
 
-curl -sS 'http://127.0.0.1:8000/v1/file_parse?tier=flash&response_format=zip' \
-  -F 'files=@document.pdf' -o result.zip
+# Hashes are optional.
+SEND_HASH=0 MINERU_API_URL=http://127.0.0.1:8000 \
+  bash scripts/http_task_example.sh a.pdf b.pdf
 
-MINERU_API_URL=http://127.0.0.1:8002 MODE=async RESPONSE_FORMAT=zip \
-  bash scripts/http_task_example.sh document.pdf
+# Continue the existing task using the original file list and order.
+TASK_ID=job_... MINERU_API_URL=http://127.0.0.1:8000 \
+  bash scripts/http_task_example.sh a.pdf b.pdf
+
+# Local multipart accepts one file and still returns an asynchronous task.
+curl --fail-with-body 'http://127.0.0.1:8000/v1/tasks' \
+  -F 'tier=flash' -F 'ocr_mode=txt' -F 'files=@document.pdf'
 ```
 
-Synchronous requests wait 300 seconds by default; `wait_timeout` accepts 1–3600 seconds including queue time.
-Timeout returns `202` with `task_id/status_url/result_url`; the task continues after timeout or HTTP disconnection.
-Use `POST /v1/tasks` for asynchronous submission and the returned V1 URLs for status and results.
-JSON results inline requested text/JSON artifacts in `files[].content`, retaining individual statuses, errors and output references.
-Asynchronous ZIP results require `output_formats=zip` at submission; synchronous ZIP requests add it automatically.
-Partial success returns `200` with `partial`; batch ZIPs contain numbered directories and a status manifest.
+All `POST /v1/tasks` parameters belong in the form body. `manifest` is a text field containing a JSON array: each item has a unique `client_file_id`, `filename`, actual `bytes`, and optional `sha256sum` and per-file `page_range`.
+Multi-file requests submit metadata only. Single-file direct uploads may include a one-item manifest to declare a hash.
+Parsing options remain `tier`, `ocr_mode`, `page_range`, and repeated `output_formats`; a final ZIP is always generated.
+POST query parameters return `400`; JSON and raw-byte task creation return `415`. Existing Uploads/Jobs JSON requests remain unchanged.
 
-Use multipart files, raw bytes, or the existing Job JSON source structure. Upload parse options belong in query parameters; JSON options belong in the body.
-The limits are 200 MiB per file and 100 files per task. Batch uploads share a page range; use JSON for per-file options.
-Raw uploads require `filename` and `Content-Length`.
-The example script computes SHA-256 and uses `Expect: 100-continue`; a timely cache-hit response can avoid sending the body.
-Proxy buffering and client wait budgets affect this optimization. Reusing `file_id` or the existing uploads hash preflight reliably avoids repeated client uploads.
+Creation immediately returns a stable `task_id` and `status_url`. `uploads` contains only missing files, with their upload method, URL, headers, and expiration.
+Parsing starts automatically after every file passes validation; no client completion request is needed. Without a supplied hash, the service receives the file and still computes a hash for storage deduplication.
+Each fully uploaded file becomes `ready` independently. If another upload is interrupted, retry only that file on the same task. This is file-level retry, not resumable chunk upload within one file.
 
-Router V1 uploads and convenience uploads share caller-scoped source bytes. Uploads select the lowest load and rotate on ties.
-Jobs reserve their selected worker before upstream network waits; file ownership takes priority only among the lowest-load candidates.
-A hash hit cannot pin a job to a busy worker. One batch stays on one worker; submit separate jobs for parallel work across workers.
-Remote workers currently have capacity weight 1; managed workers use `--worker-concurrency`.
-These convenience routes belong to the self-hosted services; verify cloud support against that deployment's documentation.
+Poll only `status_url`. States are `waiting_upload/queued/running/completed/partial/failed/canceled`.
+`completed/partial` and `result_url` are published only after the ZIP is saved. Status never includes inline document contents; SaaS clients download directly from object storage.
+Batch ZIPs contain numbered directories and a per-file manifest. Packaging failures produce a failed task, not an unusable download link.
 
-## Tested example script
+The complete client is [`scripts/http_task_example.sh`](https://github.com/opendatalab/MinerU/blob/master/scripts/http_task_example.sh) and its adjacent Python file, requiring only Python 3.10+ standard library.
+`UPLOAD_MODE=direct` accepts one file. `RESULT_FILE` defaults to `result.zip`; `MAX_POLLS/POLL_INTERVAL` control polling, and `CONNECT_TIMEOUT/REQUEST_TIMEOUT` control transfer budgets.
+Each file gets at most three upload attempts. Creation is never automatically retried. After an uncertain upload response, query status before retransmitting; refresh expired links by querying the original task.
+The API Key is attached only to same-origin requests, never to OSS, external downloads, or cross-origin redirects.
+Exit codes are `0` for success, `2` for partial success with a saved ZIP, `1` for failure or cancellation, and `124` when the polling budget is exhausted without canceling the task.
 
-The complete cycle — including timeouts, response validation, bounded polling, exit codes, and credential isolation — is maintained as a single tested script in the repository:
+Local services impose no fixed uploaded-file size or PDF page-count limit; the limit remains 100 files per task. Waiting uploads consume no parsing slot or Router worker reservation.
+Router selects by load and reserves before upstream submission; a cache hit cannot pin work to a busy worker. One batch stays on one worker, which produces the ZIP; Router maps resources and streams downloads.
+
+## Existing Uploads / Jobs resource example
+
+For independent Upload, File, and Job resources, continue using the following script. Its protocol and exit codes remain unchanged and are maintained separately from the tasks client above:
 
 > [`scripts/http_api_example.sh`](https://github.com/opendatalab/MinerU/blob/master/scripts/http_api_example.sh)
 
@@ -65,7 +77,7 @@ The script's behavior is verified by `tests/unittest/test_http_api_example_scrip
 | `4` | Job canceled |
 | `124` | Polling budget exhausted; `job_id` printed so polling can resume |
 
-## Authentication and the byte upload
+## Resource API authentication and byte uploads
 
 Requests to `/v1/*` carry `Authorization: Bearer $MINERU_API_KEY` when the service is started with `--api-key`; omit the header for anonymous local access.
 
@@ -78,7 +90,7 @@ The example script implements the same rule as the Python SDK (`api_client._same
 
 Downloads go through `GET /v1/files/{file_id}/content`, which may answer with a `302` redirect. The example follows redirects without `--location-trusted`, so credentials are never re-sent to a different origin (including the same host on a different port; requires curl >= 7.83.0).
 
-## Request-cycle details the script deliberately covers
+## Resource-script request-cycle details
 
 - **Upload lifecycle.** Pass `sha256sum` when creating the upload for integrity checking and instant reuse of an already-known file; in that case the response is `completed` and embeds the `file` object directly, so byte upload and completion are skipped.
 - **A 200 response is not automatically valid.** The script validates JSON structure at every step: IDs must be non-empty strings and statuses must belong to the supported sets; anything else fails immediately instead of entering the polling loop with a `null` ID.
@@ -94,4 +106,4 @@ Downloads go through `GET /v1/files/{file_id}/content`, which may answer with a 
 - `--concurrency` caps concurrent parse jobs; queue growth beyond it shows up as longer `queued` times, not failures.
 - `GET /v1/usage` reports consumption. Use `/v1/health` and the OpenAPI docs at `/docs` (when enabled) to separate service-side failures from client errors; check server logs before retrying a `failed` job.
 
-Convenience parsing uses `/v1/file_parse` and `/v1/tasks`; legacy root routes remain unavailable; see [migration](../reference/migration_4.md) for older clients.
+The convenience workflow uses `/v1/tasks` and its returned links, with no synchronous-wait or inline-result route. Legacy root routes remain unavailable; see [migration](../reference/migration_4.md) for older clients.
