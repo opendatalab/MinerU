@@ -9,8 +9,9 @@ import json
 import threading
 import time
 import zipfile
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Any
 
 import httpx
@@ -24,6 +25,45 @@ from mineru.parser import api_server, task_api
 
 HTML = b"<!doctype html><html><body><h1>Shared tasks</h1><p>Preserved content.</p></body></html>"
 SECOND = b"<h1>Second document</h1><p>Second content.</p>"
+
+
+@pytest.fixture
+def url_downloads(monkeypatch: pytest.MonkeyPatch) -> list[httpx.Request]:
+    """仅替换 worker 的外部下载传输，Router 和客户端仍经过真实 ASGI 协议。"""
+    requests: list[httpx.Request] = []
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        """保留完整签名 URL 和请求头，并提供下载成功及失败来源。"""
+        requests.append(request)
+        if request.url.path == "/timeout":
+            raise httpx.ReadTimeout("source timed out", request=request)
+        return httpx.Response(
+            404 if request.url.path == "/missing" else 200,
+            content=b"" if request.url.path == "/empty" else HTML,
+            headers={"content-type": "text/html; charset=utf-8"},
+        )
+
+    def download_client(**kwargs: Any) -> httpx.AsyncClient:
+        """使用真实 httpx 流式客户端，隔离源站网络而不替换下载业务实现。"""
+        return httpx.AsyncClient(transport=httpx.MockTransport(respond), **kwargs)
+
+    monkeypatch.setattr(api_server, "httpx", SimpleNamespace(AsyncClient=download_client))
+    return requests
+
+
+def _execution_apps(app: FastAPI) -> list[FastAPI]:
+    """取得真正执行 URL 下载的服务，用于验证部署配置及取消后的资源释放。"""
+    return list(app.state.test_transport.apps.values()) if hasattr(app.state, "test_transport") else [app]
+
+
+def _url_manifest(**metadata: Any) -> dict[str, Any]:
+    """构造与下载地址名称无关的逻辑文件条目，默认不声明大小或 hash。"""
+    return {
+        "client_file_id": "remote",
+        "filename": "logical.html",
+        "url": "https://source.example/opaque?signature=a%2Fb&part=1",
+        **metadata,
+    }
 
 
 class _WorkerTransport(httpx.AsyncBaseTransport):
@@ -474,6 +514,265 @@ def test_input_validation_and_openapi(service: tuple[TestClient, FastAPI]) -> No
     limits = client.get("/v1/usage").json()["limits"]
     assert limits["max_file_size_bytes"] is None and limits["max_pages_per_file"] is None
     assert limits["max_files_per_job"] == 100
+
+
+@pytest.mark.parametrize(
+    "metadata",
+    [
+        {},
+        {"bytes": None},
+        {"bytes": len(HTML)},
+        {"sha256sum": hashlib.sha256(HTML).hexdigest()},
+        {"bytes": len(HTML), "sha256sum": hashlib.sha256(HTML).hexdigest()},
+        {"url": "https://source.example/opaque?signature=" + "a" * 3000},
+    ],
+)
+def test_url_inputs_download_in_worker_and_report_actual_metadata(
+    service: tuple[TestClient, FastAPI], url_downloads: list[httpx.Request], metadata: dict[str, Any]
+) -> None:
+    """无扩展名签名 URL 使用逻辑文件名，未知大小在下载后补齐且无需上传。"""
+    client, app = service
+    item = _url_manifest(**metadata)
+    if hasattr(app.state, "worker_pool"):
+        app.state.worker_pool.workers[0].features["sources"] = ["file_id"]
+    response = client.post("/v1/tasks", data={"manifest": json.dumps([item])})
+    assert response.status_code == 202, response.text
+    task = response.json()
+    assert task["status"] == "queued" and task["uploads"] == []
+    assert task["files"][0]["bytes"] == metadata.get("bytes")
+    assert task["files"][0]["upload_status"] == "not_required"
+    result = _terminal(client, task)
+    assert result["status"] == "completed"
+    file = result["files"][0]
+    assert file["filename"] == file["name"] == "logical.html"
+    assert file["bytes"] == len(HTML) and file["sha256sum"] == hashlib.sha256(HTML).hexdigest()
+    assert file["upload_status"] == "not_required" and file["file_id"] is None
+    assert file["url"] == item["url"]
+    assert b"Preserved content" in _archive(client, result)["markdown.md"]
+    assert len(url_downloads) == 1 and str(url_downloads[0].url) == item["url"]
+    assert url_downloads[0].method == "GET" and "authorization" not in url_downloads[0].headers
+    assert client.put(f"/v1/tasks/{task['task_id']}/uploads/remote", content=HTML).status_code == 400
+    if hasattr(app.state, "test_transport"):
+        assert not any(method == "PUT" for _, method, _ in app.state.test_transport.calls)
+        assert all(host == "worker-b" for host, method, path in app.state.test_transport.calls if path == "/v1/tasks")
+
+
+def test_url_manifest_validation(service: tuple[TestClient, FastAPI], url_downloads: list[httpx.Request]) -> None:
+    """大小只对 URL 可选，非法 URL、非正整数字节数及混合直传在接单前拒绝。"""
+    client, app = service
+    invalid = [
+        {"client_file_id": "f1", "filename": "a.html"},
+        {"client_file_id": "f1", "filename": "a.html", "bytes": None},
+        *[_url_manifest(url=value) for value in ("", "file:///tmp/a.html", "https://", "ftp://source/a.html")],
+        *[_url_manifest(bytes=value) for value in (0, -1, True, "10", 10.5)],
+    ]
+    for item in invalid:
+        response = client.post("/v1/tasks", data={"manifest": json.dumps([item])})
+        assert response.status_code == 400, response.text
+    response = client.post("/v1/tasks", data={"manifest": json.dumps([_url_manifest()])}, files={"files": ("a.html", HTML)})
+    assert response.status_code == 400
+    assert _job_count(app) == 0 and url_downloads == []
+    schema = client.get("/openapi.json").json()
+    assert "not_required" in schema["components"]["schemas"]["TaskFileStatus"]["properties"]["upload_status"]["enum"]
+
+
+def test_mixed_url_upload_partial_and_no_early_reservation(
+    service: tuple[TestClient, FastAPI], url_downloads: list[httpx.Request]
+) -> None:
+    """混合批次仅等待本地上传，URL 逐项失败不丢失同名成功项或目录顺序。"""
+    client, app = service
+    manifest = [
+        _url_manifest(filename="same.html"),
+        {"client_file_id": "local", "filename": "same.html", "bytes": len(SECOND)},
+        _url_manifest(client_file_id="bad", url="https://source.example/missing"),
+    ]
+    response = client.post("/v1/tasks", data={"manifest": json.dumps(manifest)})
+    assert response.status_code == 202, response.text
+    task = response.json()
+    assert task["status"] == "waiting_upload"
+    assert [link["client_file_id"] for link in task["uploads"]] == ["local"]
+    assert [file["upload_status"] for file in task["files"]] == ["not_required", "pending", "not_required"]
+    assert _job_count(app) == 0 and url_downloads == []
+    if hasattr(app.state, "worker_pool"):
+        assert all(worker.active_jobs == 0 for worker in app.state.worker_pool.workers)
+    assert client.put(task["uploads"][0]["upload_url"], content=SECOND).status_code == 200
+    result = _terminal(client, task)
+    assert result["status"] == "partial"
+    assert result["progress"] == {"completed": 2, "failed": 1, "total": 3}
+    assert result["files"][0]["bytes"] == len(HTML)
+    assert result["files"][2]["error"] and result["files"][2]["bytes"] is None
+    members = _archive(client, result)
+    assert b"Preserved content" in members["0001/markdown.md"]
+    assert b"Second content" in members["0002/markdown.md"]
+    assert not any(name.startswith("0003/") for name in members)
+    archived_inputs = json.loads(members["manifest.json"])["files"]
+    assert [item["client_file_id"] for item in archived_inputs] == ["remote", "local", "bad"]
+    assert archived_inputs[0]["bytes"] == len(HTML)
+    assert archived_inputs[0]["sha256sum"] == hashlib.sha256(HTML).hexdigest()
+    assert all("url" not in item for item in archived_inputs)
+
+
+@pytest.mark.parametrize(
+    ("metadata", "code"),
+    [
+        ({"bytes": len(HTML) + 1}, "bytes_mismatch"),
+        ({"sha256sum": "0" * 64}, "file_hash_mismatch"),
+        ({"url": "https://source.example/empty"}, "invalid_request"),
+        ({"url": "https://source.example/timeout"}, "parse_failed"),
+    ],
+)
+def test_url_download_failures_are_per_file(
+    service: tuple[TestClient, FastAPI], url_downloads: list[httpx.Request], metadata: dict[str, Any], code: str
+) -> None:
+    """下载及完整性错误进入文件错误；全失败不生成结果链接或实际元数据。"""
+    client, _ = service
+    response = client.post("/v1/tasks", data={"manifest": json.dumps([_url_manifest(**metadata)])})
+    assert response.status_code == 202
+    result = _terminal(client, response.json())
+    assert result["status"] == "failed" and result["result_url"] is None
+    assert result["files"][0]["status"] == "failed" and result["files"][0]["error"]["code"] == code
+    assert result["files"][0]["bytes"] == metadata.get("bytes")
+    assert len(url_downloads) == 1
+
+
+def test_url_hash_does_not_skip_download(service: tuple[TestClient, FastAPI], url_downloads: list[httpx.Request]) -> None:
+    """即使相同 hash 已在上传缓存中，URL 来源仍每次重新读取并校验。"""
+    client, _ = service
+    inputs = [("cached.html", HTML)]
+    cached = _submit(client, inputs)
+    _upload(client, cached, inputs)
+    assert _terminal(client, cached)["status"] == "completed"
+    for _ in range(2):
+        response = client.post(
+            "/v1/tasks", data={"manifest": json.dumps([_url_manifest(sha256sum=hashlib.sha256(HTML).hexdigest())])}
+        )
+        assert response.status_code == 202
+        assert _terminal(client, response.json())["status"] == "completed"
+    assert len(url_downloads) == 2
+
+
+def test_url_download_obeys_worker_policy_and_limit(
+    service: tuple[TestClient, FastAPI], url_downloads: list[httpx.Request]
+) -> None:
+    """HTTP 开关和 URL 下载预算继续由真正执行下载的服务控制。"""
+    client, app = service
+    item = _url_manifest(url="http://source.example/opaque")
+    response = client.post("/v1/tasks", data={"manifest": json.dumps([item])})
+    if hasattr(app.state, "worker_pool"):
+        assert response.status_code == 202
+        assert _terminal(client, response.json())["status"] == "failed"
+    else:
+        assert response.status_code == 400
+    assert url_downloads == []
+    for worker in _execution_apps(app):
+        worker.state.allow_http_source = True
+        worker.state.max_url_bytes = len(HTML) - 1
+        worker.state.url_timeout = 7
+    response = client.post("/v1/tasks", data={"manifest": json.dumps([item])})
+    result = _terminal(client, response.json())
+    assert result["status"] == "failed"
+    assert "max_url_bytes" in result["files"][0]["error"]["message"]
+    assert url_downloads[0].extensions["timeout"]["read"] == 7
+    for worker in _execution_apps(app):
+        worker.state.max_url_bytes = len(HTML)
+    response = client.post("/v1/tasks", data={"manifest": json.dumps([item])})
+    assert _terminal(client, response.json())["status"] == "completed"
+
+
+def test_url_html_preserves_source_context(
+    service: tuple[TestClient, FastAPI], url_downloads: list[httpx.Request], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """URL HTML 解析继续使用源站地址和编码，而不是临时路径作为资源基址。"""
+    client, _ = service
+    contexts: list[Any] = []
+    original = api_server.parse_async
+
+    async def inspect_context(*args: Any, **kwargs: Any) -> api_server.ParseResult:
+        """观察真实解析调用的来源上下文，再继续执行原解析器生成 ZIP。"""
+        contexts.append(kwargs.get("source_context"))
+        return await original(*args, **kwargs)
+
+    monkeypatch.setattr(api_server, "parse_async", inspect_context)
+    response = client.post("/v1/tasks", data={"manifest": json.dumps([_url_manifest()])})
+    assert _terminal(client, response.json())["status"] == "completed"
+    assert len(contexts) == 1 and len(url_downloads) == 1
+    assert contexts[0].source_uri == _url_manifest()["url"]
+    assert contexts[0].transport_encoding == "utf-8"
+    assert contexts[0].local_resource_root is None
+
+
+def test_url_logical_filename_drives_flash_fallback(
+    service: tuple[TestClient, FastAPI], url_downloads: list[httpx.Request]
+) -> None:
+    """逻辑 HTML 文件保留轻量格式回退，不能被 URL 路径的 PDF 后缀误导。"""
+    client, _ = service
+    response = client.post(
+        "/v1/tasks",
+        data={
+            "manifest": json.dumps([_url_manifest(url="https://source.example/document.pdf")]),
+            "tier": "standard",
+        },
+    )
+    assert response.status_code == 202, response.text
+    result = _terminal(client, response.json())
+    assert result["status"] == "completed", result
+    assert result["files"][0]["name"] == "logical.html"
+    assert b"Preserved content" in _archive(client, result)["markdown.md"]
+    assert len(url_downloads) == 1
+
+
+def test_cancel_url_download_closes_stream_and_releases_worker(
+    service: tuple[TestClient, FastAPI], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """下载中取消立即返回，并关闭源站流、释放 Job 与 Router 预占。"""
+    client, app = service
+    started, closed = threading.Event(), threading.Event()
+
+    class SlowSource(httpx.AsyncByteStream):
+        """模拟已经收到部分字节但源站迟迟不结束的下载。"""
+
+        async def __aiter__(self) -> AsyncIterator[bytes]:
+            """收到取消时退出等待，避免后台下载在任务取消后继续运行。"""
+            try:
+                yield HTML[:10]
+                started.set()
+                await asyncio.Future()
+            finally:
+                closed.set()
+
+        async def aclose(self) -> None:
+            """记录 httpx 已关闭下载资源。"""
+            closed.set()
+
+    def respond(request: httpx.Request) -> httpx.Response:
+        """返回实际异步流，使取消发生在读取源字节期间。"""
+        return httpx.Response(200, stream=SlowSource(), headers={"content-type": "text/html"})
+
+    def download_client(**kwargs: Any) -> httpx.AsyncClient:
+        """仅隔离 URL 来源网络，不改变任务和 Router 的生命周期实现。"""
+        return httpx.AsyncClient(transport=httpx.MockTransport(respond), **kwargs)
+
+    monkeypatch.setattr(api_server, "httpx", SimpleNamespace(AsyncClient=download_client))
+    response = client.post("/v1/tasks", data={"manifest": json.dumps([_url_manifest()])})
+    assert response.status_code == 202
+    task = response.json()
+    assert started.wait(5)
+    before = time.monotonic()
+    canceled = client.delete(task["status_url"])
+    assert canceled.status_code == 200 and canceled.json()["status"] == "canceled"
+    assert time.monotonic() - before < 2
+    assert closed.wait(5)
+    deadline = time.monotonic() + 5
+    while any(worker.state.job_store._tasks for worker in _execution_apps(app)):
+        assert time.monotonic() < deadline, "Canceled URL job retained its execution slot"
+        time.sleep(0.01)
+    if hasattr(app.state, "worker_pool"):
+        while any(worker.active_jobs for worker in app.state.worker_pool.workers):
+            assert time.monotonic() < deadline, "Canceled URL task retained its worker reservation"
+            time.sleep(0.01)
+    final = client.get(task["status_url"]).json()
+    assert final["status"] == "canceled" and final["result_url"] is None
+    assert final["files"][0]["bytes"] is None
 
 
 def test_router_private_hash_cache_and_task_scope(tmp_path: Path) -> None:

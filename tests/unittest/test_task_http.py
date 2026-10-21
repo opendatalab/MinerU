@@ -13,7 +13,7 @@ import sys
 import threading
 import time
 import zipfile
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -22,7 +22,7 @@ from urllib.parse import urlsplit
 import httpx
 import pytest
 from fastapi import FastAPI, Request, Response
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse, StreamingResponse
 from pypdf import PdfWriter
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from test_http_api_example_script import _Server
@@ -69,20 +69,25 @@ class _LiveService:
     url: str
     app: FastAPI
     counts: dict[str, int]
+    execution_apps: list[FastAPI]
 
 
 @pytest.fixture(params=["api", "router"])
 def live_service(request: pytest.FixtureRequest, tmp_path: Path) -> Iterator[_LiveService]:
     """启动真实 Uvicorn 服务；Router 的两个 worker 同样使用真实 TCP。"""
     servers: list[_Server] = []
+    execution_apps: list[FastAPI] = []
     try:
         if request.param == "api":
             app = api_server.create_app(upload_dir=str(tmp_path / "api"), tier="flash", api_key="test-key")
+            execution_apps.append(app)
         else:
             for index in range(2):
-                worker = _Server(
-                    api_server.create_app(upload_dir=str(tmp_path / f"worker-{index}"), tier="flash", api_key="test-key")
+                worker_app = api_server.create_app(
+                    upload_dir=str(tmp_path / f"worker-{index}"), tier="flash", api_key="test-key"
                 )
+                execution_apps.append(worker_app)
+                worker = _Server(worker_app)
                 worker.start()
                 servers.append(worker)
             app = create_router(
@@ -97,7 +102,7 @@ def live_service(request: pytest.FixtureRequest, tmp_path: Path) -> Iterator[_Li
         server = _Server(app)
         server.start()
         servers.append(server)
-        yield _LiveService(server.url, app, counts)
+        yield _LiveService(server.url, app, counts, execution_apps)
     finally:
         for server in reversed(servers):
             server.stop()
@@ -395,6 +400,108 @@ def test_real_documents_match_jobs_outputs(live_service: _LiveService, document:
         second = client.get(f"/v1/files/{baseline['files'][0]['output_files']['zip']['file_id']}/content")
         assert first.status_code == second.status_code == 200
         assert _members(first.content) == _members(second.content)
+
+
+@pytest.mark.parametrize("document", ["html", "pdf"])
+def test_url_task_over_http_downloads_chunked_source(live_service: _LiveService, document: str) -> None:
+    """真实 TCP URL 无需 HEAD 或长度头，保留文件页范围且不向源站发送 API Key。"""
+    if document == "pdf":
+        sample = Path(__file__).resolve().parents[2] / "examples" / "demo1.pdf"
+        if sample.is_file():
+            data = sample.read_bytes()
+        else:
+            writer = PdfWriter()
+            for _ in range(3):
+                writer.add_blank_page(width=72, height=72)
+            buffer = io.BytesIO()
+            writer.write(buffer)
+            data = buffer.getvalue()
+    else:
+        data = HTML
+    requests: list[Request] = []
+    source = FastAPI()
+
+    @source.api_route("/opaque", methods=["GET", "HEAD"])
+    async def download(request: Request) -> StreamingResponse:
+        """使用不带 Content-Length 的分块响应，验证只以真实收到的字节计算大小。"""
+        requests.append(request)
+
+        async def chunks() -> AsyncIterator[bytes]:
+            """分段返回源文件，不借助上传入口或提前探测文件长度。"""
+            for offset in range(0, len(data), 8192):
+                yield data[offset : offset + 8192]
+
+        return StreamingResponse(chunks(), media_type="application/pdf" if document == "pdf" else "text/html")
+
+    source_server = _Server(source)
+    source_server.start()
+    try:
+        for worker in live_service.execution_apps:
+            worker.state.allow_http_source = True
+        item = {
+            "client_file_id": "url-1",
+            "filename": f"logical.{document}",
+            "url": f"{source_server.url}/opaque?signature=a%2Fb&part=1",
+            **({"page_range": "2"} if document == "pdf" else {}),
+        }
+        with _client(live_service) as client:
+            response = client.post(
+                "/v1/tasks",
+                data={
+                    "manifest": json.dumps([item]),
+                    "tier": "flash",
+                    "ocr_mode": "txt",
+                    "page_range": "1" if document == "pdf" else "",
+                },
+            )
+            assert response.status_code == 202, response.text
+            task = response.json()
+            assert task["uploads"] == [] and task["files"][0]["upload_status"] == "not_required"
+            result = _wait(client, task)
+            assert result["status"] == "completed", result
+            assert result["files"][0]["bytes"] == len(data)
+            assert result["files"][0]["sha256sum"] == hashlib.sha256(data).hexdigest()
+            members = _members(client.get(result["result_url"]).content)
+            assert live_service.counts == {}
+            assert len(requests) == 1 and requests[0].method == "GET"
+            assert requests[0].scope["query_string"] == b"signature=a%2Fb&part=1"
+            assert "authorization" not in requests[0].headers
+            if document == "html":
+                # HTML 的来源地址参与页面标识，因此与保留相同来源的 Jobs URL 路径比较。
+                response = client.post(
+                    "/v1/parse/jobs",
+                    json={
+                        "tier": "flash",
+                        "ocr_mode": "txt",
+                        "output_formats": ["markdown", "zip"],
+                        "files": [{"source": {"type": "url", "url": item["url"]}}],
+                    },
+                )
+                assert response.status_code == 202, response.text
+                job_id = response.json()["job_id"]
+                deadline = time.monotonic() + 30
+                while True:
+                    baseline_result = client.get(f"/v1/parse/jobs/{job_id}").json()
+                    if baseline_result["status"] in TERMINAL:
+                        break
+                    assert time.monotonic() < deadline
+                    time.sleep(0.02)
+                assert baseline_result["status"] == "completed"
+                output_id = baseline_result["files"][0]["output_files"]["zip"]["file_id"]
+                baseline_url = f"/v1/files/{output_id}/content"
+            else:
+                baseline = _submit(client, [(item["filename"], data)], page_range="2")
+                assert client.put(baseline["uploads"][0]["upload_url"], content=data).status_code == 200
+                baseline_result = _wait(client, baseline)
+                assert baseline_result["status"] == "completed"
+                baseline_url = baseline_result["result_url"]
+            baseline_members = _members(client.get(baseline_url).content)
+            assert members == baseline_members
+            if document == "pdf":
+                middle = json.loads(members["middle_json.json"])
+                assert len(middle["pages"]) == 1 and middle["pages"][0]["page_idx"] == 1
+    finally:
+        source_server.stop()
 
 
 @dataclass

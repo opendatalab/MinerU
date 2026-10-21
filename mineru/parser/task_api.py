@@ -21,7 +21,7 @@ from urllib.parse import quote
 
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import JSONResponse
-from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, ValidationError, model_validator
 from starlette.datastructures import UploadFile
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.requests import ClientDisconnect
@@ -42,9 +42,13 @@ from .api_server import (
     JobProgress,
     JobStore,
     OutputFiles,
+    UrlSource,
+    _JobInputMetadata,
+    _JobInputSpec,
     _JobRecord,
     _raise_api_error,
     _require_model_preload_ready,
+    _validate_source_policy,
     submit_parse_job,
 )
 from .page_range import normalize_page_range_input
@@ -57,14 +61,25 @@ logger = logging.getLogger(__name__)
 
 
 class TaskManifestItem(BaseModel):
-    """按客户端标识关联独立上传，不依赖文件名唯一性。"""
+    """按客户端标识关联上传或 URL 输入，不依赖文件名唯一性。"""
 
     model_config = ConfigDict(extra="forbid")
     client_file_id: str = Field(pattern=r"^[A-Za-z0-9_-]{1,64}$")
     filename: str = Field(min_length=1, max_length=1024)
-    bytes: int = Field(gt=0, strict=True)
+    bytes: int | None = Field(default=None, gt=0, strict=True)
+    url: str | None = None
     sha256sum: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
     page_range: str | None = None
+
+    @model_validator(mode="after")
+    def validate_source(self) -> TaskManifestItem:
+        """上传项必须声明大小；URL 只校验合法性，保留签名地址的原始字符串。"""
+        if self.url is None:
+            if self.bytes is None:
+                raise ValueError("bytes is required when url is not supplied")
+        else:
+            AnyHttpUrl(self.url)
+        return self
 
 
 class UploadTaskOptions(BaseModel):
@@ -92,7 +107,7 @@ class TaskUploadLink(BaseModel):
 class TaskFileStatus(TaskManifestItem):
     """同时提供上传准备情况与逐文件解析状态，禁止内联解析正文。"""
 
-    upload_status: Literal["pending", "ready"]
+    upload_status: Literal["pending", "ready", "not_required"]
     file_id: str | None = None
     name: str
     status: Literal["waiting_upload", "queued", "running", "completed", "failed", "canceled"]
@@ -133,11 +148,12 @@ class TaskUpload:
 
 @dataclass(frozen=True)
 class TaskExecution:
-    """在后台适配器之间传递执行快照及本部署的 ZIP File 标识。"""
+    """在后台适配器之间传递执行快照、实际输入元数据及本部署的 ZIP File 标识。"""
 
     job: dict[str, Any]
     result_file_id: str | None = None
     error: ErrorDetail | None = None
+    input_metadata: dict[int, _JobInputMetadata] = field(default_factory=dict)
 
 
 class TaskBackend(Protocol):
@@ -235,13 +251,13 @@ async def _save_upload(
                 if canceled is not None and canceled():
                     _invalid("Task was canceled during upload", status_code=409, code="task_already_terminal")
                 size += len(chunk)
-                if expected is not None and size > expected.bytes:
+                if expected is not None and expected.bytes is not None and size > expected.bytes:
                     _invalid("Declared size does not match uploaded bytes", code="upload_size_mismatch")
                 await run_sync(target.write, chunk)
                 hasher.update(chunk)
         if size == 0:
             _invalid("Empty files are not supported", param="files")
-        if expected is not None and size != expected.bytes:
+        if expected is not None and expected.bytes is not None and size != expected.bytes:
             _invalid("Declared size does not match uploaded bytes", code="upload_size_mismatch")
         sha = hasher.hexdigest()
         if expected is not None and expected.sha256sum is not None and sha != expected.sha256sum:
@@ -255,7 +271,7 @@ async def _save_upload(
 async def _read_submission(
     request: Request, directory: Path
 ) -> tuple[UploadTaskOptions, list[TaskManifestItem], TaskUpload | None]:
-    """解析表单清单或单文件直传，旧 JSON、原始字节及 URL 业务参数明确拒绝。"""
+    """解析含上传或 URL 来源的表单清单；拒绝旧 JSON、原始字节及查询参数。"""
     if request.query_params:
         _invalid("POST parameters must be supplied in the form body, not the URL")
     media_type = request.headers.get("content-type", "").split(";", 1)[0].strip().lower()
@@ -288,6 +304,8 @@ async def _read_submission(
             if files:
                 if len(files) != 1 or (manifest and len(manifest) != 1):
                     _invalid("Multipart direct upload supports one file; submit a manifest for multiple files", param="files")
+                if manifest and manifest[0].url is not None:
+                    _invalid("url and multipart file bytes cannot be supplied together", param="files")
                 file = files[0]
                 if not isinstance(file, UploadFile) or not file.filename:
                     _invalid("files must contain one named file", param="files")
@@ -410,7 +428,7 @@ class TaskStore:
     async def create(
         self, backend: TaskBackend, options: UploadTaskOptions, manifest: list[TaskManifestItem], direct: TaskUpload | None
     ) -> _TaskRecord:
-        """校验并固定已命中源文件；只有全部就绪才提交后台执行。"""
+        """校验并固定已命中源文件；客户端上传项齐备后提交后台执行。"""
         if self._closing:
             _invalid("Server is shutting down", status_code=503, code="server_shutting_down")
         await backend.validate(options, manifest)
@@ -418,6 +436,8 @@ class TaskStore:
         record = _TaskRecord(task_id, backend, options, manifest, self._root / task_id, int(time.time()) + TASK_UPLOAD_TTL)
         try:
             for index, item in enumerate(manifest):
+                if item.url is not None:
+                    continue
                 upload = (
                     direct
                     if direct is not None
@@ -437,7 +457,9 @@ class TaskStore:
 
     def _maybe_start(self, record: _TaskRecord) -> None:
         """事件循环内原子切换准备状态，最后多个上传并发完成也只创建一个执行句柄。"""
-        if record.status == "waiting_upload" and len(record.uploads) == len(record.manifest):
+        if record.status == "waiting_upload" and all(
+            item.url is not None or index in record.uploads for index, item in enumerate(record.manifest)
+        ):
             record.status = "queued"
             record.operation = asyncio.create_task(self._dispatch(record), name=f"mineru-task-{record.id}")
 
@@ -523,6 +545,8 @@ class TaskStore:
         index = next((index for index, item in enumerate(record.manifest) if item.client_file_id == client_file_id), None)
         if index is None:
             _invalid("Unknown client_file_id", status_code=404, code="upload_not_found")
+        if record.manifest[index].url is not None:
+            _invalid("URL inputs do not accept uploads", status_code=400, code="invalid_request")
         lock = record.upload_locks.setdefault(index, asyncio.Lock())
         async with lock:
             if record.status in {"failed", "canceled"}:
@@ -620,16 +644,18 @@ def task_payload(record: _TaskRecord, request: Request) -> dict[str, Any]:
         file = item.model_dump()
         file.update(
             name=item.filename,
-            upload_status="ready" if upload is not None else "pending",
-            status="queued" if upload else "waiting_upload",
+            upload_status="not_required" if item.url is not None else ("ready" if upload is not None else "pending"),
+            status="queued" if upload is not None or item.url is not None else "waiting_upload",
             file_id=upload.file_id if upload else None,
         )
         if index < len(results):
             file.update(results[index])
+        if record.execution is not None and (metadata := record.execution.input_metadata.get(index)) is not None:
+            file.update(bytes=metadata.bytes, sha256sum=metadata.sha256sum)
         if record.status == "canceled" and file["status"] not in {"completed", "failed"}:
             file["status"] = "canceled"
         files.append(file)
-        if upload is None and record.status == "waiting_upload":
+        if item.url is None and upload is None and record.status == "waiting_upload":
             links.append(
                 {
                     "client_file_id": item.client_file_id,
@@ -666,7 +692,11 @@ def _request_schema() -> dict[str, Any]:
     # 清单使用 JSON 文本表单字段，客户端无需发送 application/json 请求。
     properties["manifest"] = {
         "type": "string",
-        "description": "JSON array of 1-100 files: client_file_id, filename, bytes, optional sha256sum and page_range.",
+        "description": (
+            "JSON array of 1-100 files: client_file_id, filename, optional url, sha256sum and page_range. "
+            "bytes must be a positive integer for uploads; it is optional/null for URL inputs. "
+            "URL inputs have upload_status=not_required and never receive upload links."
+        ),
         "example": '[{"client_file_id":"f1","filename":"document.pdf","bytes":12345}]',
     }
     plain = {"type": "object", "required": ["manifest"], "additionalProperties": False, "properties": properties}
@@ -678,7 +708,7 @@ def _request_schema() -> dict[str, Any]:
         "minItems": 1,
         "maxItems": 1,
         "items": {"type": "string", "format": "binary"},
-        "description": "Local single-file direct upload only; a supplied manifest must also contain exactly one file.",
+        "description": ("Local single-file direct upload only; a supplied manifest must contain exactly one file without url."),
     }
     return {
         "requestBody": {
@@ -756,7 +786,12 @@ def _combine_archives(store: FileStore, job: _JobRecord, path: Path, manifest: l
         # ZIP 可独立消费；不把 worker 的私有 task/file ID 或短期下载地址写入产物。
         "files": [
             {
-                **item.model_dump(),
+                **item.model_dump(exclude={"url"}),
+                **(
+                    {"bytes": job.input_metadata[index].bytes, "sha256sum": job.input_metadata[index].sha256sum}
+                    if index in job.input_metadata
+                    else {}
+                ),
                 "name": result.name,
                 "page_range": result.page_range,
                 "status": result.status,
@@ -811,6 +846,17 @@ class ApiTaskBackend:
         if self.jobs._closing:
             _invalid("Server is shutting down", code="server_shutting_down", status_code=503)
         state = self.request.app.state
+        for index, item in enumerate(manifest):
+            if item.url is not None:
+                try:
+                    _validate_source_policy(
+                        UrlSource(url=item.url),
+                        allow_local_source=False,
+                        max_inline_bytes=state.max_inline_bytes,
+                        allow_http_source=state.allow_http_source,
+                    )
+                except ValueError as exc:
+                    _invalid(str(exc), param=f"manifest.{index}.url")
         options.tier = resolve_task_tier(options, manifest, set(state.tier_runtime_options), state.default_tier)
 
     async def find_upload(self, sha256sum: str, filename: str) -> TaskUpload | None:
@@ -850,7 +896,7 @@ class ApiTaskBackend:
     async def submit(
         self, task_id: str, options: UploadTaskOptions, manifest: list[TaskManifestItem], uploads: dict[int, TaskUpload]
     ) -> TaskExecution:
-        """把已经校验的输入交给现有队列，在发布成功前完成最终 ZIP。"""
+        """把已上传文件和 URL 来源交给现有队列，在发布成功前完成最终 ZIP。"""
         # 接单时已持有源字节；用户删除文件视图也不能破坏尚在等待其他文件的任务。
         for upload in uploads.values():
             await run_sync(
@@ -858,7 +904,10 @@ class ApiTaskBackend:
             )
         body = CreateJobRequest(
             files=[
-                JobFileEntry(source=FileIdSource(file_id=uploads[index].file_id), page_range=item.page_range or None)
+                JobFileEntry(
+                    source=UrlSource(url=item.url) if item.url is not None else FileIdSource(file_id=uploads[index].file_id),
+                    page_range=item.page_range or None,
+                )
                 for index, item in enumerate(manifest)
             ],
             tier=options.tier,
@@ -893,7 +942,18 @@ class ApiTaskBackend:
                     job.status = "failed"
                 logger.exception("Task ZIP creation failed: %s", task_id)
 
-        await submit_parse_job(body, self.request, self.files, self.jobs, self.access, job_id=task_id, finalize=finalize)
+        await submit_parse_job(
+            body,
+            self.request,
+            self.files,
+            self.jobs,
+            self.access,
+            job_id=task_id,
+            finalize=finalize,
+            input_specs={
+                index: _JobInputSpec(item.filename, item.bytes, item.sha256sum) for index, item in enumerate(manifest)
+            },
+        )
         return await self.get(task_id)
 
     async def get(self, task_id: str) -> TaskExecution:
@@ -903,6 +963,7 @@ class ApiTaskBackend:
             self.jobs.build_response(record, access_level=self.access).model_dump(by_alias=True),
             record.task_result_file_id,
             record.task_error,
+            dict(record.input_metadata),
         )
 
     async def cancel(self, task_id: str) -> None:

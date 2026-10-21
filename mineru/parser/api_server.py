@@ -1361,6 +1361,23 @@ def _validate_job_source_policy(
             )
 
 
+@dataclass(frozen=True)
+class _JobInputSpec:
+    """仅在服务内部传递 tasks 的逻辑文件名及可选完整性声明。"""
+
+    filename: str
+    bytes: int | None = None
+    sha256sum: str | None = None
+
+
+@dataclass(frozen=True)
+class _JobInputMetadata:
+    """记录完整下载且校验通过的实际输入信息，不扩展公开 Jobs 协议。"""
+
+    bytes: int
+    sha256sum: str
+
+
 @dataclass
 class _JobRecord:
     id: str
@@ -1374,6 +1391,8 @@ class _JobRecord:
     files: list[JobFileResult] = None  # type: ignore[assignment]
     links: JobLinks | None = None
     input_blobs: dict[str, str] = field(default_factory=dict)
+    input_specs: dict[int, _JobInputSpec] = field(default_factory=dict)
+    input_metadata: dict[int, _JobInputMetadata] = field(default_factory=dict)
     file_store: FileStore | None = None
     usage_counted: bool = False
     task_result_file_id: str | None = None
@@ -1506,7 +1525,14 @@ class JobStore:
     def _now() -> str:
         return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
-    def create(self, req: CreateJobRequest, file_store: FileStore, *, job_id: str | None = None) -> _JobRecord:
+    def create(
+        self,
+        req: CreateJobRequest,
+        file_store: FileStore,
+        *,
+        job_id: str | None = None,
+        input_specs: dict[int, _JobInputSpec] | None = None,
+    ) -> _JobRecord:
         """创建唯一执行记录，允许 tasks 使用上传准备阶段预先分配的 ID。"""
         if req.tier is None:
             raise ValueError("CreateJobRequest.tier must be resolved before job creation")
@@ -1520,13 +1546,14 @@ class JobStore:
             created_at=now,
             tier=req.tier,
             output_formats=req.output_formats,
+            input_specs=dict(input_specs or {}),
             links=JobLinks(
                 self=f"/v1/parse/jobs/{job_id}",
                 cancel=f"/v1/parse/jobs/{job_id}",
             ),
         )
-        for entry in req.files:
-            name = _source_name(entry.source, file_store)
+        for index, entry in enumerate(req.files):
+            name = _source_name(entry.source, file_store, input_spec=rec.input_specs.get(index))
             rec.files.append(
                 JobFileResult(
                     file_id=entry.source.file_id if isinstance(entry.source, FileIdSource) else None,
@@ -1676,7 +1703,10 @@ class JobStore:
 # ── source helpers ───────────────────────────────────────────────────
 
 
-def _source_name(source: FileSource, file_store: FileStore | None = None) -> str:
+def _source_name(source: FileSource, file_store: FileStore | None = None, *, input_spec: _JobInputSpec | None = None) -> str:
+    """优先使用 tasks 的逻辑文件名，普通 Jobs 保持既有来源命名规则。"""
+    if input_spec is not None:
+        return input_spec.filename
     if isinstance(source, FileIdSource) and file_store is not None:
         try:
             return file_store.get_file(source.file_id).filename
@@ -1692,17 +1722,25 @@ def _source_name(source: FileSource, file_store: FileStore | None = None) -> str
     return "unknown"
 
 
-def _job_can_default_to_flash(req: CreateJobRequest, file_store: FileStore) -> bool:
+def _job_can_default_to_flash(
+    req: CreateJobRequest, file_store: FileStore, input_specs: dict[int, _JobInputSpec] | None = None
+) -> bool:
     """判断整批输入是否已知为 Flash-only，或需下载后识别类型的无扩展名 URL。"""
     return all(
-        is_flash_only_parse_extension(_source_name(entry.source, file_store))
-        or (isinstance(entry.source, UrlSource) and not pathlib.Path(_source_name(entry.source)).suffix)
-        for entry in req.files
+        is_flash_only_parse_extension(name) or (isinstance(entry.source, UrlSource) and not pathlib.Path(name).suffix)
+        for index, entry in enumerate(req.files)
+        for name in [_source_name(entry.source, file_store, input_spec=(input_specs or {}).get(index))]
     )
 
 
-def _job_has_any_flash_only_inputs(req: CreateJobRequest, file_store: FileStore) -> bool:
-    return any(is_flash_only_parse_extension(_source_name(entry.source, file_store)) for entry in req.files)
+def _job_has_any_flash_only_inputs(
+    req: CreateJobRequest, file_store: FileStore, input_specs: dict[int, _JobInputSpec] | None = None
+) -> bool:
+    """使用与执行一致的逻辑文件名检查批次中是否包含 Flash-only 格式。"""
+    return any(
+        is_flash_only_parse_extension(_source_name(entry.source, file_store, input_spec=(input_specs or {}).get(index)))
+        for index, entry in enumerate(req.files)
+    )
 
 
 def _page_range_from_result_pages(pages: list[PageInfo]) -> str:
@@ -1812,6 +1850,7 @@ async def _run_job(
             fr = rec.files[i]
             try:
                 file_started = time.monotonic()
+                fr.status = "running"
                 extracted = await _extract_bytes(
                     entry.source,
                     file_store,
@@ -1823,6 +1862,16 @@ async def _run_job(
                     input_blobs=rec.input_blobs,
                 )
                 data = extracted.data
+                input_spec = rec.input_specs.get(i)
+                if input_spec is not None and isinstance(entry.source, UrlSource):
+                    if not data:
+                        raise MineruError("invalid_request", "Empty files are not supported")
+                    if input_spec.bytes is not None and len(data) != input_spec.bytes:
+                        raise MineruError("bytes_mismatch", "Declared size does not match downloaded bytes")
+                    sha = hashlib.sha256(data).hexdigest()
+                    if input_spec.sha256sum is not None and sha != input_spec.sha256sum:
+                        raise MineruError("file_hash_mismatch", "SHA-256 mismatch")
+                    rec.input_metadata[i] = _JobInputMetadata(bytes=len(data), sha256sum=sha)
                 suffix = pathlib.Path(fr.name).suffix
                 stype = _suffix_type(fr.name)
                 if not stype and not suffix and isinstance(entry.source, UrlSource) and extracted.media_type == "text/html":
@@ -1967,7 +2016,9 @@ Parse documents into structured Middle JSON via self-hosted or remote capacity.
 
 Submit a form manifest to `/v1/tasks`, upload only missing files to their returned
 URLs, then poll the task and download its `result_url`. Local servers also accept
-one multipart file. Task status contains metadata only, never inline result bytes.
+one multipart file. Manifest entries can instead provide a source `url`, with
+optional `bytes`; execution workers download these inputs in the background.
+Task status contains metadata only, never inline result bytes.
 The resource workflow remains: create an upload, complete it, submit a parse job for the
 resulting file, then poll the job and fetch its outputs. Health and usage
 endpoints report server readiness and quota state. Tiers (`flash`, `basic`,
@@ -2283,6 +2334,7 @@ async def submit_parse_job(
     *,
     job_id: str | None = None,
     finalize: Callable[[_JobRecord], Awaitable[None]] | None = None,
+    input_specs: dict[int, _JobInputSpec] | None = None,
 ) -> _JobRecord:
     """统一校验并提交后台解析任务，供 V1 Job 与便捷入口共同调用。"""
     for index, entry in enumerate(body.files):
@@ -2320,8 +2372,8 @@ async def submit_parse_job(
 
     # 按请求 tier 选择启动时预先解析好的 runtime；全轻量输入可按 ADR-0024 直接归一到 flash 执行。
     default_tier: Tier | None = request.app.state.default_tier
-    can_default_to_flash = _job_can_default_to_flash(body, file_store)
-    if not request.app.state.flash_enabled and _job_has_any_flash_only_inputs(body, file_store):
+    can_default_to_flash = _job_can_default_to_flash(body, file_store, input_specs)
+    if not request.app.state.flash_enabled and _job_has_any_flash_only_inputs(body, file_store, input_specs):
         _raise_api_error(
             400,
             error_type="invalid_request_error",
@@ -2365,7 +2417,7 @@ async def submit_parse_job(
 
     if job_store._closing:
         _raise_api_error(503, error_type="engine_error", code="server_shutting_down", message="Server is shutting down")
-    rec = job_store.create(body, file_store, job_id=job_id)
+    rec = job_store.create(body, file_store, job_id=job_id, input_specs=input_specs)
     url_timeout_val: int = request.app.state.url_timeout
     allow_local_source_val: bool = request.app.state.allow_local_source
     max_inline_bytes_val: int = request.app.state.max_inline_bytes

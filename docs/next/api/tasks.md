@@ -1,9 +1,10 @@
-# V1 tasks：逐文件上传与结果下载链接
+# V1 tasks：逐文件上传、URL 输入与结果下载链接
 
 状态: Implemented（自部署 API server 与 Router）
 读者: HTTP 客户端、SaaS 接口与自部署服务开发者
 
-共同流程是：**提交文件清单 → 上传缺失文件 → 轮询任务 → 使用返回链接下载 ZIP**。
+共同流程是：**提交文件清单 → 上传缺失的客户端文件 → 轮询任务 → 使用返回链接下载 ZIP**。
+清单也支持 URL 输入，由执行服务在后台下载，无需客户端提前获取文件大小或上传字节。
 SaaS 可以把上传、下载地址指向 OSS，本地服务可以指向自身的文件接口。客户端只使用服务返回的链接，不拼接存储路径，也不要求 SaaS 实现本地 Files API。
 SaaS 的 Go 服务、OSS 配置及部署由其开发方实现；这里定义客户端共同契约。
 
@@ -19,7 +20,8 @@ SaaS 的 Go 服务、OSS 配置及部署由其开发方实现；这里定义客�
 任务首次创建就获得稳定的 `task_id`；执行提交后，它也是当前部署的公开 `job_id`。等待上传阶段使用 tasks 查询，既有 `/v1/parse/jobs` 执行资源尚未创建。
 
 状态为 `waiting_upload`、`queued`、`running`、`completed`、`partial`、`failed`、`canceled`。
-全部文件校验通过后自动启动，不要求客户端发送完成确认。等待上传不占解析并发，也不预占 Router worker。
+全部客户端上传项校验通过后自动启动，不要求客户端发送完成确认。等待上传不占解析并发，也不预占 Router worker。
+纯 URL 任务直接进入 `queued`；URL 下载在后台执行阶段进行，沿用 Job 并发控制。
 `completed/partial` 只在最终 ZIP 已保存后发布；打包时仍为 `running`。`partial` 保留成功文件产物及失败文件的错误。
 
 ## 表单请求
@@ -43,8 +45,9 @@ SaaS 的 Go 服务、OSS 配置及部署由其开发方实现；这里定义客�
 |---|---|---|
 | `client_file_id` | 是 | 一次任务内唯一，1–64 个字母、数字、下划线或短横线。 |
 | `filename` | 是 | 逻辑文件名，保留扩展名；不同条目允许同名。 |
-| `bytes` | 是 | 文件实际字节数，正整数。 |
-| `sha256sum` | 否 | 64 位小写十六进制 SHA-256；省略时视为需要上传。 |
+| `url` | 否 | 文件下载地址，支持 HTTP(S)，具体协议受部署策略约束；省略或 `null` 表示客户端上传。 |
+| `bytes` | 条件 | 上传项必填；URL 项可省略或为 `null`。提供时必须为严格正整数，用于核对实际字节数。 |
+| `sha256sum` | 否 | 64 位小写十六进制 SHA-256；上传项用于缓存预检与完整性校验，URL 项仅用于下载完整性校验。 |
 | `page_range` | 否 | 逐文件页范围，未提供时继承全局值；非 PDF 仍只支持整本解析。 |
 
 用真实文件生成清单，再发送表单：
@@ -82,7 +85,31 @@ curl --fail-with-body "$MINERU_API_URL/v1/tasks" \
 匿名本地服务可省略 Authorization。无需 hash 时从清单中省略 `sha256sum`。
 `client_file_id` 用于关联文件和上传项，不能按文件名判断对应关系。
 
+## URL 提交与混合输入
+
+```bash
+curl --fail-with-body "$MINERU_API_URL/v1/tasks" \
+  -H "Authorization: Bearer $MINERU_API_KEY" \
+  --data-urlencode 'tier=flash' \
+  --data-urlencode 'ocr_mode=txt' \
+  --data-urlencode 'manifest=[{"client_file_id":"f1","filename":"document.pdf","url":"https://example.com/download?signature=example"}]'
+```
+
+`filename` 仍然必填，用于文件类型识别、展示和产物命名，不要求 URL 路径有扩展名。
+URL 项的 `upload_status` 为 `not_required`，不产生上传链接，也不接受 PUT；源 `file_id` 为 `null`。
+未声明的 `bytes` 在下载前为 `null`，完整下载并校验通过后返回实际大小及 SHA-256。
+声明的大小或 hash 不匹配时，该文件失败，不进入解析；空文件同样失败。
+
+同一 manifest 可以混合 URL 与上传项，`uploads` 仅包含需要客户端上传的条目。
+混合任务在这些上传完成后进入执行阶段，URL 下载不需要客户端参与。URL 与 multipart 字节不能同时指定给同一项。
+URL 每次重新下载，即使声明的 hash 已在源文件缓存中，也不跳过下载；不要求 HEAD 或 `Content-Length`。
+
+下载失败、超时或完整性校验失败按文件记录错误，其他文件继续执行；有成功项则返回 `partial` 和 ZIP，全部失败则为 `failed` 且无 `result_url`。
+URL 大小不一致使用 `bytes_mismatch`，hash 不一致使用 `file_hash_mismatch`。请求格式和部署策略错误仍按接单校验处理。
+
 ## 缓存、上传与恢复
+
+以下缓存规则适用于无 `url` 的客户端上传项：
 
 - 全部 hash 命中：返回空 `uploads`，直接提交解析。
 - 部分命中：仅返回未命中文件的上传项，命中文件已经是 `ready`。
@@ -96,7 +123,7 @@ curl --fail-with-body "$MINERU_API_URL/v1/tasks" \
 | 字段 | 说明 |
 |---|---|
 | `task_id`、`status`、`status_url` | 稳定任务 ID、当前状态和查询地址。 |
-| `files` | 按输入顺序返回清单、`upload_status: pending/ready`、逐文件解析状态及错误。 |
+| `files` | 按输入顺序返回清单、`upload_status: pending/ready/not_required`、逐文件解析状态及错误；URL 项始终为 `not_required`。 |
 | `uploads` | 尚需上传的文件，每项包含 `client_file_id`、`upload_url`、`upload_method: PUT`、`upload_headers`、`expires_at`。 |
 | `result_url` | 结果未就绪时为 `null`；`completed/partial` 时为最终 ZIP 下载地址。 |
 | `error` | 任务级错误，例如上传过期或结果打包失败。 |
@@ -134,7 +161,7 @@ curl --fail-with-body "$MINERU_API_URL/v1/tasks" \
 - Router 返回自身的 Files 地址并流式代理 worker 产物，不泄露内部 worker 地址。
 
 所有 tasks 自动生成 ZIP；单文件保留现有自包含产物，批量使用 `0001/`、`0002/` 等目录并包含 `manifest.json`。
-manifest 使用 `client_file_id` 关联输入，`directory` 指向包内目录，不写入 worker 的私有 task/file ID 或短期链接。任务 ID 以 HTTP 响应为准。
+manifest 使用 `client_file_id` 关联输入，`directory` 指向包内目录，不写入 worker 的私有 task/file ID 或短期下载链接，也不写入源 `url` 字段。已校验的 URL 输入记录实际大小与 hash。任务 ID 以 HTTP 响应为准。
 ZIP 在后台只生成一次；重复查询或下载不重新打包。打包失败返回 `failed/result_packaging_failed`，不会发布虚假的下载链接。
 签名链接过期但产物仍在保留期内时，重新查询任务获得有效地址，不重新提交解析。
 
@@ -144,6 +171,7 @@ ZIP 在后台只生成一次；重复查询或下载不重新打包。打包失�
 ## 完整客户端示例
 
 `scripts/http_task_example.sh` 调用同目录的 `http_task_example.py`，只需要 Python 3.10+ 标准库，无需安装 MinerU 或云存储 SDK。
+该脚本接受本地文件路径；URL 提交使用上面的 curl 示例。
 默认顺序上传，每个文件最多尝试三次，仅重试网络及临时服务错误；创建请求不自动重试。
 脚本校验任务身份、状态和文件对应关系，轮询有预算，下载先写临时文件并验证 ZIP 后再保存最终文件。
 
@@ -181,12 +209,14 @@ UPLOAD_MODE=direct MINERU_API_URL=http://127.0.0.1:8000 \
 
 ## 本地限制与 Router 调度
 
-本地不设固定上传字节数或 PDF 页数上限；`usage.limits.max_file_size_bytes` 与 `max_pages_per_file` 为 `null`。
-每任务最多 100 文件。既有 Jobs 的 URL/inline 来源预算仍按其专用配置生效。
+本地不设固定客户端上传字节数或 PDF 页数上限；`usage.limits.max_file_size_bytes` 与 `max_pages_per_file` 为 `null`。
+每任务最多 100 文件。URL 下载沿用 Jobs 的配置：默认只允许 HTTPS，HTTP 需启用 `--allow-http-source`，超时由 `--url-timeout` 控制（默认 60 秒），大小由 `--max-url-bytes` 控制（默认 200 MiB）。这些预算不要求客户端提前声明 `bytes`。
+既有 Jobs 的 inline 来源预算仍按其专用配置生效。
 源文件、上传索引和任务记录仍是进程内状态，重启不保证恢复；完成后的任务及产物沿用部署的保留策略。
 
 Router 的 tasks 与 V1 Uploads 复用按调用方隔离的源字节缓存。
-全部客户端文件齐备后才选择并预占 worker，再向该 worker 提交 tasks 和传输其缺失文件。
+全部客户端上传项齐备后才选择并预占 worker，再向该 worker 提交 tasks 和传输其缺失文件。
+URL 原样交给支持该来源的 worker 下载，Router 不下载源 URL；URL 下载策略由 worker 配置决定。
 worker 负责最终 ZIP，Router 只查询任务与 File 元数据并映射公开下载地址。
 同负载轮询，缓存命中不把任务固定到繁忙 worker；一个批量任务仍交给同一个 worker。
 失败、取消、终态和后台回收通过同一机制释放预占，等待上传不计入执行负载。
@@ -195,5 +225,5 @@ worker 负责最终 ZIP，Router 只查询任务与 File 元数据并映射公�
 
 旧 `/v1/file_parse` 和 `/v1/tasks/{task_id}/result` 已移除；不提供同步等待 HTTP 路由或结果正文路由。
 客户端改为轮询 `status_url` 并下载 `result_url`，删除旧 `MODE=sync`、`RESPONSE_FORMAT`、`wait_timeout` 配置。
-旧 tasks JSON 来源、原始字节创建请求和 POST 查询参数不再接受；URL、inline、local、file_id 等资源来源继续使用既有 `/v1/parse/jobs` 协议。
+旧 tasks JSON 来源、原始字节创建请求和 POST 查询参数不再接受；URL 可通过 tasks 表单 manifest 提交。inline、local、file_id 等资源来源继续使用既有 `/v1/parse/jobs` 协议。
 独立 `/v1/uploads` 与 `/v1/parse/jobs` 的 JSON 请求协议保持不变。
