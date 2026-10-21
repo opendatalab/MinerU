@@ -44,6 +44,7 @@ def test_vendor_presets_and_actual_index(monkeypatch: pytest.MonkeyPatch, vendor
 
 
 def test_cpu_models_do_not_select_gpu(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(onnx, "sys", SimpleNamespace(platform="win32"))
     select = Mock(side_effect=AssertionError("selection"))
     factory = Mock(return_value=SimpleNamespace(get_providers=lambda: ["CPUExecutionProvider"]))
     monkeypatch.setattr(onnx, "resolve_onnx_device", select)
@@ -74,7 +75,7 @@ def test_production_fallback_does_not_save_gpu(monkeypatch: pytest.MonkeyPatch, 
     opts.profile_file_prefix = "unet-profile"
     assert (
         onnx.ort_session(
-            "test.onnx", model_kind=kind, selection=OnnxSelection("gpu", adapter, "discrete_gpu"), sess_options=opts
+            "test.onnx", model_kind=kind, selection=OnnxSelection("gpu", adapter, "discrete_gpu", "dml"), sess_options=opts
         )
         is cpu
     )
@@ -137,12 +138,15 @@ def test_mfr_only_actual_batch_eight_uses_gpu(monkeypatch: pytest.MonkeyPatch, c
 
     model.session = SimpleNamespace(run=lambda names, feeds: run(gpu_calls, feeds))
     factory = Mock(return_value=SimpleNamespace(run=lambda names, feeds: run(cpu_calls, feeds)))
-    monkeypatch.setattr(mfr, "ort_session", factory)
+    monkeypatch.setattr(mfr, "create_ort_session", factory)
     monkeypatch.setattr(model, "_preprocess", lambda crop: np.full((1, 1, 2, 2), crop[0, 0, 0]) if crop.size else None)
     monkeypatch.setattr(model, "_decode_tokens", lambda tokens: str(tokens[0]))
     crops = [np.full((value, value, 3), value, dtype=np.uint8) for value in range(count, 0, -1)]
+    crops.insert(1, np.empty((0, 0, 3), dtype=np.uint8))
+    expected = [str(value) for value in range(count, 0, -1)]
+    expected.insert(1, "")
     for _ in range(2):
-        assert model._infer_batch(crops, batch_size=batch) == [str(value) for value in range(count, 0, -1)]
+        assert model._infer_batch(crops, batch_size=batch) == expected
     assert all(size == 8 for size in gpu_calls)
     assert all(0 < size < 8 for size in cpu_calls)
     assert sum(gpu_calls + cpu_calls) == count * 2

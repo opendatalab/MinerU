@@ -13,10 +13,11 @@ from filelock import FileLock
 from loguru import logger
 
 from .windows_gpu import GpuAdapter, discover_gpus, preferred_gpu
+from .webgpu import WebGPUDevice, discover_webgpu_devices
 
 # Require at least 20% lower GPU inference time; simplified to 0.8 at the user's request.
-# Evidence: docs/next/onnx-selection-validation.md. None disables unvalidated auto-iGPU choices.
-ONNX_GPU_TIME_RATIO_THRESHOLD: float | None = 0.8
+# Evidence: docs/next/onnx-selection-validation.md. Each backend can be calibrated independently.
+ONNX_GPU_TIME_RATIO_THRESHOLDS: dict[str, float | None] = {"dml": 0.8, "webgpu": 0.8}
 METACOMMANDS: dict[str, dict[str, bool]] = {
     "intel": {"layout": False, "mfr": True, "ocr_rec": False, "unet": False},
     "amd": {"layout": True, "mfr": True, "ocr_rec": True, "unet": True},
@@ -29,8 +30,9 @@ class OnnxSelection:
     """Immutable actual route. Adapter identity is valid only in this process."""
 
     device: Literal["cpu", "gpu"] = "cpu"
-    adapter: GpuAdapter | None = None
+    adapter: GpuAdapter | WebGPUDevice | None = None
     reason: str = "cpu"
+    backend: Literal["dml", "webgpu"] | None = None
 
 
 _lock = threading.RLock()
@@ -53,43 +55,52 @@ def choose_gpu(cpu_elapsed: float, gpu_elapsed: float, threshold: float) -> bool
     return gpu_elapsed / cpu_elapsed <= threshold
 
 
-def _select(requested: str, intra_op_num_threads: int) -> tuple[OnnxSelection, bool]:
+def _select(requested: str, intra_op_num_threads: int, inter_op_num_threads: int) -> tuple[OnnxSelection, bool]:
     if requested == "cpu":
         return OnnxSelection(reason="configured_cpu"), False
-    if sys.platform != "win32":
+    if sys.platform not in {"win32", "linux"}:
         if requested == "gpu":
-            logger.warning("ONNX GPU selection requires Windows DirectML; using CPU")
+            logger.warning("ONNX GPU selection requires Windows DirectML or Linux WebGPU; using CPU")
         return OnnxSelection(reason="unsupported_platform"), False
-    import onnxruntime as ort
+    backend: Literal["dml", "webgpu"] = "webgpu" if sys.platform == "linux" else "dml"
+    if backend == "webgpu":
+        devices = discover_webgpu_devices()
+        adapter = devices[0] if devices else None
+    else:
+        import onnxruntime as ort
 
-    if "DmlExecutionProvider" not in ort.get_available_providers():
-        logger.warning("DirectML provider unavailable; using CPU without saving a performance decision")
-        return OnnxSelection(reason="directml_unavailable"), False
-    adapter = preferred_gpu(discover_gpus(classify=requested == "auto"))
+        if "DmlExecutionProvider" not in ort.get_available_providers():
+            logger.warning("DirectML provider unavailable; using CPU without saving a performance decision")
+            return OnnxSelection(reason="directml_unavailable"), False
+        adapter = preferred_gpu(discover_gpus(classify=requested == "auto"))
     if adapter is None:
-        return OnnxSelection(reason="no_hardware_gpu"), requested == "auto"
-    if requested == "gpu" or adapter.uma is False:
-        return OnnxSelection("gpu", adapter, "configured_gpu" if requested == "gpu" else "discrete_gpu"), False
-    if ONNX_GPU_TIME_RATIO_THRESHOLD is None:
-        logger.warning("ONNX integrated-GPU threshold has not completed calibration; using CPU without saving")
+        # A plugin can expose no devices after a driver discovery failure. Do not persist that as a CPU win.
+        return OnnxSelection(reason="no_hardware_gpu"), requested == "auto" and backend == "dml"
+    if requested == "gpu" or (isinstance(adapter, GpuAdapter) and adapter.uma is False):
+        return OnnxSelection("gpu", adapter, "configured_gpu" if requested == "gpu" else "discrete_gpu", backend), False
+    threshold = ONNX_GPU_TIME_RATIO_THRESHOLDS[backend]
+    if threshold is None:
+        logger.warning("ONNX {} threshold has not completed calibration; using CPU without saving", backend)
         return OnnxSelection(reason="calibration_pending"), False
     from ..registry import MINERU_4_MODELS_ONNX
     from .onnx_calibration import run_calibration
 
     # Download follows the normal model lifecycle; it is outside the 15-second worker timeout.
     model = MINERU_4_MODELS_ONNX.ocr_rec.ensure()
-    result = run_calibration(str(model), adapter, intra_op_num_threads=intra_op_num_threads)
-    use_gpu = choose_gpu(result["cpu_elapsed"], result["gpu_elapsed"], ONNX_GPU_TIME_RATIO_THRESHOLD)
+    result = run_calibration(
+        str(model), adapter, intra_op_num_threads=intra_op_num_threads, inter_op_num_threads=inter_op_num_threads
+    )
+    use_gpu = choose_gpu(result["cpu_elapsed"], result["gpu_elapsed"], threshold)
     logger.bind(onnx_calibration=result).info("ONNX rec calibration: {}", result)
-    return OnnxSelection("gpu" if use_gpu else "cpu", adapter if use_gpu else None, "rec_calibration"), True
+    return OnnxSelection("gpu" if use_gpu else "cpu", adapter if use_gpu else None, "rec_calibration", backend), True
 
 
-def _select_and_save(requested: str, source: str, intra_op_num_threads: int) -> OnnxSelection:
+def _select_and_save(requested: str, source: str, intra_op_num_threads: int, inter_op_num_threads: int) -> OnnxSelection:
     from ...config import read_onnx_device_from_file, update_config_file
 
     if requested == "auto" and source != "env":
         requested = read_onnx_device_from_file()
-    selection, completed = _select(requested, intra_op_num_threads)
+    selection, completed = _select(requested, intra_op_num_threads, inter_op_num_threads)
     if completed and requested == "auto" and source != "env":
         try:
             update_config_file({"model": {"onnx_device": selection.device}}, only_if_onnx_auto=True)
@@ -98,7 +109,7 @@ def _select_and_save(requested: str, source: str, intra_op_num_threads: int) -> 
     return selection
 
 
-def resolve_onnx_device(*, intra_op_num_threads: int = 0) -> OnnxSelection:
+def resolve_onnx_device(*, intra_op_num_threads: int = 0, inter_op_num_threads: int = 0) -> OnnxSelection:
     """Resolve at first model use; imports and diagnostic commands never call this function."""
     from ...config import config, get_config_file_path, get_config_source
 
@@ -110,18 +121,18 @@ def resolve_onnx_device(*, intra_op_num_threads: int = 0) -> OnnxSelection:
         if key in _selections:
             return _selections[key]
         try:
-            if requested != "auto" or sys.platform != "win32":
-                selection = _select_and_save(requested, source, intra_op_num_threads)
+            if requested != "auto" or sys.platform not in {"win32", "linux"}:
+                selection = _select_and_save(requested, source, intra_op_num_threads, inter_op_num_threads)
             else:
                 try:
                     Path(path).parent.mkdir(parents=True, exist_ok=True)
                     selection_lock = FileLock(f"{path}.onnx-selection.lock", timeout=30)
                     selection_lock.acquire()
                 except OSError:
-                    selection = _select_and_save(requested, source, intra_op_num_threads)
+                    selection = _select_and_save(requested, source, intra_op_num_threads, inter_op_num_threads)
                 else:
                     try:
-                        selection = _select_and_save(requested, source, intra_op_num_threads)
+                        selection = _select_and_save(requested, source, intra_op_num_threads, inter_op_num_threads)
                     finally:
                         selection_lock.release()
         except Exception as error:
@@ -147,7 +158,7 @@ def confirm_gpu_session(selection: OnnxSelection) -> None:
 
 __all__ = [
     "METACOMMANDS",
-    "ONNX_GPU_TIME_RATIO_THRESHOLD",
+    "ONNX_GPU_TIME_RATIO_THRESHOLDS",
     "OnnxSelection",
     "choose_gpu",
     "confirm_gpu_session",

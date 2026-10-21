@@ -2,7 +2,7 @@
 """ONNX 后端的 PP-FormulaNet-Plus-M 推理封装。
 
 与 ``UnimernetModel``（torch/transformers 后端）公开接口完全一致，
-内部用 onnxruntime CPU 推理从 MinerU Torch 权重导出的 PP-FormulaNet_plus-M ONNX 模型。
+内部用 ONNX Runtime 推理从 MinerU Torch 权重导出的 PP-FormulaNet_plus-M ONNX 模型。
 
 ONNX 模型输出 token IDs（int64），不是 logits——自回归循环已 bake 进计算图，
 一次前向推理即可得到完整 LaTeX token 序列。
@@ -22,7 +22,7 @@ import yaml
 from loguru import logger
 from tqdm import tqdm
 
-from ..runtime.onnx import ort_session
+from ..runtime.onnx import create_ort_session, ort_session
 from .pp_formulanet.processors import LatexImageFormat, UniMERNetDecode, UniMERNetImgDecode, UniMERNetTestTransform
 
 __all__ = ["PPFormulaNetPlusMONNX", "CPU_BATCH_SIZE"]
@@ -50,10 +50,10 @@ class PPFormulaNetPlusMONNX:
         device: Optional[str] = None,
         intra_op_num_threads: int = 0,
     ) -> None:
-        """初始化 CPU 公式模型，并复用 Torch Plus-M 的纯 Python 处理器。"""
+        """初始化统一选型的公式模型，并复用 Plus-M 的纯 Python 处理器。"""
         self.device = "cpu"
         self.session = ort_session(model_path, device, intra_op_num_threads, model_kind="mfr")
-        self.cpu_tail_enabled = "DmlExecutionProvider" in self.session.get_providers()
+        self.cpu_tail_enabled = self.session.get_providers()[0] in {"DmlExecutionProvider", "WebGpuExecutionProvider"}
         self._cpu_tail_session = None
         self._cpu_tail_lock = threading.Lock()
         self._model_path = model_path
@@ -161,7 +161,7 @@ class PPFormulaNetPlusMONNX:
     # 推理
     # ------------------------------------------------------------------
     def _infer_batch(self, crops: List[np.ndarray], batch_size: int = CPU_BATCH_SIZE) -> List[str]:
-        """按原图面积排序，以最多 8 张的 CPU 批次推理，再恢复原顺序。"""
+        """按原图面积排序，以最多 8 张合批；GPU 路线不足 8 张时用 CPU，最后恢复原顺序。"""
         if not crops:
             return []
 
@@ -187,7 +187,9 @@ class PPFormulaNetPlusMONNX:
                 if self.cpu_tail_enabled and inputs.shape[0] < CPU_BATCH_SIZE:
                     with self._cpu_tail_lock:
                         if self._cpu_tail_session is None:
-                            self._cpu_tail_session = ort_session(self._model_path, "cpu", self._intra_op_num_threads)
+                            self._cpu_tail_session = create_ort_session(
+                                self._model_path, intra_op_num_threads=self._intra_op_num_threads
+                            )
                         session = self._cpu_tail_session
                 preds = session.run(None, {self.input_name: inputs})[0]
                 if preds.ndim != 2 or preds.shape[0] != inputs.shape[0]:

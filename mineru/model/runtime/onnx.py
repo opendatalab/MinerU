@@ -2,6 +2,7 @@
 """ONNX Runtime CPU 会话与自动选择设备的表格会话。"""
 
 import os
+import sys
 import time
 import threading
 from pathlib import Path
@@ -12,14 +13,15 @@ from loguru import logger
 
 from .onnx_device import OnnxSelection, confirm_gpu_session, metacommands_enabled, resolve_onnx_device
 from .windows_gpu import GpuAdapter
+from .webgpu import WEBGPU_PROVIDER, WebGPUDevice, attach_webgpu_provider, execution_lock
 
 
-class DirectMLSession:
-    """Serialize Run on a DML session, independently of host inference-lock settings."""
+class _SerializedSession:
+    """Serialize native calls independently of host inference-lock settings."""
 
-    def __init__(self, session: ort.InferenceSession) -> None:
+    def __init__(self, session: ort.InferenceSession, lock: Any) -> None:
         self._session = session
-        self._lock = threading.Lock()
+        self._lock = lock
 
     def run(self, output_names: list[str] | None, input_feed: dict[str, Any], run_options: Any = None) -> list[Any]:
         with self._lock:
@@ -38,7 +40,47 @@ class DirectMLSession:
         return self._session.get_provider_options()
 
     def end_profiling(self) -> str:
-        return self._session.end_profiling()
+        with self._lock:
+            return self._session.end_profiling()
+
+
+class DirectMLSession(_SerializedSession):
+    """DML requires serialization within each session."""
+
+    def __init__(self, session: ort.InferenceSession) -> None:
+        super().__init__(session, threading.Lock())
+
+
+class WebGPUSession(_SerializedSession):
+    """WebGPU sessions share one process-wide Dawn runtime and execution lock."""
+
+    def __init__(self, session: ort.InferenceSession) -> None:
+        super().__init__(session, execution_lock())
+
+
+def _cpu_fallback_options(source: ort.SessionOptions | None) -> ort.SessionOptions:
+    """Preserve the runtime's options without copying a plugin provider attachment."""
+    target = ort.SessionOptions()
+    if source is not None:
+        for name in (
+            "intra_op_num_threads",
+            "inter_op_num_threads",
+            "enable_cpu_mem_arena",
+            "enable_mem_pattern",
+            "enable_mem_reuse",
+            "enable_profiling",
+            "profile_file_prefix",
+            "execution_mode",
+            "execution_order",
+            "graph_optimization_level",
+            "log_severity_level",
+            "log_verbosity_level",
+            "logid",
+            "optimized_model_filepath",
+            "use_deterministic_compute",
+        ):
+            setattr(target, name, getattr(source, name))
+    return target
 
 
 def get_op_num_threads(env_name: str) -> int:
@@ -78,20 +120,20 @@ def ort_providers(device: str | None = None) -> list[tuple[str, dict[str, object
 def create_ort_session(
     model_path: str,
     *,
-    adapter: GpuAdapter | None = None,
+    adapter: GpuAdapter | WebGPUDevice | None = None,
     model_kind: str = "",
     intra_op_num_threads: int = 0,
     inter_op_num_threads: int = 0,
     profile_prefix: str | None = None,
     sess_options: ort.SessionOptions | None = None,
-) -> ort.InferenceSession | DirectMLSession:
-    """Create an explicit CPU/DML session without selection, downloads or config writes."""
+) -> ort.InferenceSession | DirectMLSession | WebGPUSession:
+    """Create an explicit CPU/DML/WebGPU session without selection or config writes."""
     opts = sess_options if sess_options is not None else ort.SessionOptions()
     opts.log_severity_level = 3
     opts.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
     configure_ort_threads(opts, intra_op_num_threads=intra_op_num_threads, inter_op_num_threads=inter_op_num_threads)
     providers = ort_providers()
-    if adapter is not None:
+    if isinstance(adapter, GpuAdapter):
         if "DmlExecutionProvider" not in ort.get_available_providers():
             raise RuntimeError("DmlExecutionProvider is unavailable")
         opts.enable_mem_pattern = False
@@ -104,6 +146,15 @@ def create_ort_session(
     if profile_prefix is not None:
         opts.enable_profiling = True
         opts.profile_file_prefix = profile_prefix
+    if isinstance(adapter, WebGPUDevice):
+        with execution_lock():
+            attach_webgpu_provider(opts, adapter)
+            # Passing providers= here overrides (and removes) the plugin attached to opts.
+            session = ort.InferenceSession(model_path, sess_options=opts)
+            if not session.get_providers() or session.get_providers()[0] != WEBGPU_PROVIDER:
+                raise RuntimeError("Requested WebGPU session fell back to CPU during initialization")
+            session.disable_fallback()
+            return WebGPUSession(session)
     session = ort.InferenceSession(model_path, sess_options=opts, providers=providers)
     if adapter is not None:
         if session.get_providers()[0] != "DmlExecutionProvider":
@@ -121,14 +172,22 @@ def ort_session(
     model_kind: str = "",
     selection: OnnxSelection | None = None,
     sess_options: ort.SessionOptions | None = None,
-) -> ort.InferenceSession | DirectMLSession:
-    """Use the process ONNX choice for layout, rec, MFR and UNet; other models stay on CPU."""
-    eligible = model_kind in {"layout", "ocr_rec", "mfr", "unet"}
+) -> ort.InferenceSession | DirectMLSession | WebGPUSession:
+    """Route supported models through DML/ WebGPU; detection is GPU-eligible only on Linux."""
+    eligible = model_kind in {"layout", "ocr_rec", "mfr", "unet"} or (model_kind == "ocr_det" and sys.platform == "linux")
     selection_threads = intra_op_num_threads
     if selection_threads <= 0 and sess_options is not None:
         selection_threads = sess_options.intra_op_num_threads
-    route = (selection or resolve_onnx_device(intra_op_num_threads=selection_threads)) if eligible else OnnxSelection()
+    route = OnnxSelection()
+    if eligible:
+        route = selection or resolve_onnx_device(
+            intra_op_num_threads=selection_threads,
+            inter_op_num_threads=sess_options.inter_op_num_threads if sess_options is not None else 0,
+        )
     adapter = route.adapter if route.device == "gpu" else None
+    if model_kind == "ocr_det" and not isinstance(adapter, WebGPUDevice):
+        adapter = None
+    fallback_opts = _cpu_fallback_options(sess_options) if isinstance(adapter, WebGPUDevice) else sess_options
     started = time.perf_counter()
     try:
         session = create_ort_session(
@@ -141,8 +200,8 @@ def ort_session(
     except Exception as error:
         if adapter is None:
             raise
-        logger.warning("ONNX {} DML initialization failed; using CPU: {}", model_kind, error)
-        session = create_ort_session(model_path, intra_op_num_threads=intra_op_num_threads, sess_options=sess_options)
+        logger.warning("ONNX {} {} initialization failed; using CPU: {}", model_kind, route.backend, error)
+        session = create_ort_session(model_path, intra_op_num_threads=intra_op_num_threads, sess_options=fallback_opts)
         adapter = None
     else:
         if adapter is not None:
@@ -152,7 +211,7 @@ def ort_session(
         model_kind,
         session.get_providers(),
         adapter,
-        metacommands_enabled(adapter.vendor, model_kind) if adapter else None,
+        metacommands_enabled(adapter.vendor, model_kind) if isinstance(adapter, GpuAdapter) else None,
         time.perf_counter() - started,
     )
     return session
@@ -164,7 +223,7 @@ def table_ort_session(
     sess_options: ort.SessionOptions | None = None,
     small_backend: str | None = None,
     model_kind: str = "",
-) -> ort.InferenceSession | DirectMLSession:
+) -> ort.InferenceSession | DirectMLSession | WebGPUSession:
     """ONNX 栈的 UNet 复用统一设备选择；其他表格保留原有 CPU/CUDA 策略。"""
     from .device import resolve_small_model_backend
 
@@ -231,6 +290,7 @@ def table_ort_session(
 
 __all__ = [
     "DirectMLSession",
+    "WebGPUSession",
     "configure_ort_threads",
     "create_ort_session",
     "get_op_num_threads",

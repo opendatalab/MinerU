@@ -227,7 +227,7 @@ def test_onnx_unet_preserves_options_profile_and_dml_lock(monkeypatch: pytest.Mo
     monkeypatch.setenv("MINERU_TABLE_DEVICE", "cpu")
     monkeypatch.setenv("MINERU_ONNX_PROFILE_DIR", str(tmp_path / "profiles"))
     monkeypatch.setenv("MINERU_INTRA_OP_NUM_THREADS", "8")
-    select = Mock(return_value=OnnxSelection("gpu", GpuAdapter(7, "id", "intel", 0x8086, 1, True, 0)))
+    select = Mock(return_value=OnnxSelection("gpu", GpuAdapter(7, "id", "intel", 0x8086, 1, True, 0), backend="dml"))
     monkeypatch.setattr(onnx, "resolve_onnx_device", select)
     monkeypatch.setattr(onnx.ort, "get_available_providers", lambda: ["DmlExecutionProvider", "CPUExecutionProvider"])
     native = SimpleNamespace(get_providers=lambda: ["DmlExecutionProvider", "CPUExecutionProvider"], disable_fallback=Mock())
@@ -235,7 +235,7 @@ def test_onnx_unet_preserves_options_profile_and_dml_lock(monkeypatch: pytest.Mo
     monkeypatch.setattr(onnx.ort, "InferenceSession", factory)
     model = TSRUnet({"model_path": "unet.onnx", "small_backend": "onnx", "intra_op_num_threads": 2})
     assert isinstance(model.session.session, onnx.DirectMLSession)
-    select.assert_called_once_with(intra_op_num_threads=2)
+    select.assert_called_once_with(intra_op_num_threads=2, inter_op_num_threads=1)
     opts = factory.call_args.kwargs["sess_options"]
     assert (opts.intra_op_num_threads, opts.inter_op_num_threads) == (2, 1)
     assert not opts.enable_cpu_mem_arena and not opts.enable_mem_pattern

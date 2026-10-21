@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict
+from importlib.metadata import version
 import hashlib
 import json
 import math
@@ -14,6 +15,8 @@ import time
 from typing import Any
 
 from .windows_gpu import GpuAdapter
+from .webgpu import WEBGPU_OPTIONS, WEBGPU_PROVIDER, WebGPUDevice
+from .onnx_rec import REC_IDS_OUTPUT, REC_OUTPUT_FORMAT, REC_SCORES_OUTPUT, prepare_rec_model, validate_rec_outputs
 
 CALIBRATION_TIMEOUT_SECONDS = 15
 
@@ -55,13 +58,12 @@ def prepare_input() -> tuple[Any, dict[str, Any]]:
     }
 
 
-def _tokens(outputs: Any) -> list[list[int]]:
+def _tokens(outputs: Any, num_classes: int) -> list[list[int]]:
     import numpy as np
 
-    if outputs.ndim != 3 or outputs.shape[0] != 6 or not np.isfinite(outputs).all():
-        raise ValueError("Invalid rec calibration output")
+    ids, _ = validate_rec_outputs(outputs, batch_size=6, num_classes=num_classes)
     result = []
-    for row in outputs.argmax(axis=-1):
+    for row in ids:
         keep = np.ones(len(row), dtype=bool)
         keep[1:] = row[1:] != row[:-1]
         keep &= row != 0
@@ -71,7 +73,7 @@ def _tokens(outputs: Any) -> list[list[int]]:
 
 def measure_rec(
     model_path: str,
-    adapter: GpuAdapter,
+    adapter: GpuAdapter | WebGPUDevice,
     *,
     intra_op_num_threads: int = 0,
     inter_op_num_threads: int = 0,
@@ -82,27 +84,34 @@ def measure_rec(
     from .onnx import configure_ort_threads, create_ort_session
     from .onnx_device import metacommands_enabled
 
+    compact = prepare_rec_model(model_path)
     tensor, evidence = prepare_input()
     options = ort.SessionOptions()
     configure_ort_threads(options, intra_op_num_threads=intra_op_num_threads, inter_op_num_threads=inter_op_num_threads)
+    backend = "webgpu" if isinstance(adapter, WebGPUDevice) else "dml"
     result: dict[str, Any] = {
-        "schema_version": 1,
+        "schema_version": 3,
+        "backend": backend,
+        "ep_version": version("onnxruntime-ep-webgpu") if backend == "webgpu" else ort.__version__,
+        "webgpu_options": dict(WEBGPU_OPTIONS) if backend == "webgpu" else None,
         "adapter": asdict(adapter),
         "input": evidence,
-        "model_sha256": hashlib.sha256(Path(model_path).read_bytes()).hexdigest(),
+        "model_sha256": compact.model_sha256,
+        "source_model_sha256": compact.source_sha256,
+        "output_format": REC_OUTPUT_FORMAT,
         "ort_version": ort.__version__,
         "ort_path": ort.__file__,
         "python": sys.version,
         "intra_threads": options.intra_op_num_threads,
         "inter_threads": options.inter_op_num_threads,
-        "rec_metacommands": metacommands_enabled(adapter.vendor, "ocr_rec"),
+        "rec_metacommands": metacommands_enabled(adapter.vendor, "ocr_rec") if isinstance(adapter, GpuAdapter) else None,
         "gpu_first": gpu_first,
     }
     decoded: dict[str, list[list[int]]] = {}
     for device in ("gpu", "cpu") if gpu_first else ("cpu", "gpu"):
         started = time.perf_counter()
         session = create_ort_session(
-            model_path,
+            compact.path,
             adapter=adapter if device == "gpu" else None,
             model_kind="ocr_rec",
             intra_op_num_threads=options.intra_op_num_threads,
@@ -114,9 +123,9 @@ def measure_rec(
         reference = None
         for _ in range(3):
             started = time.perf_counter()
-            outputs = session.run(None, {name: tensor})[0]
+            outputs = session.run([REC_IDS_OUTPUT, REC_SCORES_OUTPUT], {name: tensor})
             elapsed.append(time.perf_counter() - started)
-            tokens = _tokens(outputs)
+            tokens = _tokens(outputs, compact.num_classes)
             if reference is not None and tokens != reference:
                 raise ValueError(f"{device} rec calibration output changed between runs")
             reference = tokens
@@ -133,14 +142,18 @@ def measure_rec(
 
 def run_calibration(
     model_path: str,
-    adapter: GpuAdapter,
+    adapter: GpuAdapter | WebGPUDevice,
     *,
     intra_op_num_threads: int = 0,
     inter_op_num_threads: int = 0,
     gpu_first: bool = False,
 ) -> dict[str, Any]:
     """Run a fresh, hidden worker and kill it on timeout; failed measurements are never decisions."""
+    # Build/hash the derived graph outside the bounded inference worker, like model download.
+    prepare_rec_model(model_path)
+    backend = "webgpu" if isinstance(adapter, WebGPUDevice) else "dml"
     request = {
+        "backend": backend,
         "model_path": model_path,
         "adapter": asdict(adapter),
         "intra_op_num_threads": intra_op_num_threads,
@@ -165,8 +178,15 @@ def run_calibration(
     for key in ("cpu_elapsed", "gpu_elapsed"):
         if not isinstance(result.get(key), (float, int)) or not math.isfinite(result[key]) or result[key] <= 0:
             raise ValueError("Calibration worker returned invalid timings")
-    if result.get("outputs_match") is not True or result["gpu"]["providers"][0] != "DmlExecutionProvider":
-        raise ValueError("Calibration worker did not confirm valid DirectML results")
+    provider = WEBGPU_PROVIDER if backend == "webgpu" else "DmlExecutionProvider"
+    if (
+        result.get("backend") != backend
+        or result.get("output_format") != REC_OUTPUT_FORMAT
+        or result.get("outputs_match") is not True
+        or result.get("gpu", {}).get("providers", [])[:1] != [provider]
+        or result.get("cpu", {}).get("providers", [])[:1] != ["CPUExecutionProvider"]
+    ):
+        raise ValueError(f"Calibration worker did not confirm valid {provider} results")
     result["worker_wall_s"] = time.perf_counter() - started
     return result
 
@@ -174,7 +194,15 @@ def run_calibration(
 def main() -> None:
     """Private JSON-over-stdin worker; no user files or global configuration are modified."""
     request = json.load(sys.stdin)
-    adapter = GpuAdapter(**request.pop("adapter"))
+    backend = request.pop("backend")
+    descriptor = request.pop("adapter")
+    if backend == "webgpu":
+        descriptor["metadata"] = tuple(tuple(pair) for pair in descriptor["metadata"])
+        adapter = WebGPUDevice(**descriptor)
+    elif backend == "dml":
+        adapter = GpuAdapter(**descriptor)
+    else:
+        raise ValueError(f"Unknown calibration backend: {backend}")
     result = measure_rec(adapter=adapter, **request)
     print(json.dumps(result, ensure_ascii=True))
 

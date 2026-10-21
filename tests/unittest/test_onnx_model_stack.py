@@ -100,6 +100,7 @@ def test_ort_providers_remain_cpu_on_accelerated_hosts(monkeypatch: pytest.Monke
 def test_ocr_txt_dictionary_ctc_space_and_shape_validation(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     """字符顺序、CTC blank 和尾部空格不得重复或错位。"""
     from mineru.model.ocr import pp_ocr_v6_onnx as ocr
+    from mineru.model.runtime.onnx_rec import CompactRecModel
 
     dictionary = tmp_path / "dict.txt"
     dictionary.write_text("中\nA\n", encoding="utf-8")
@@ -108,11 +109,10 @@ def test_ocr_txt_dictionary_ctc_space_and_shape_validation(monkeypatch: pytest.M
         get_outputs=lambda: [SimpleNamespace(shape=["batch", "width", 4])],
     )
     monkeypatch.setattr(ocr, "ort_session", lambda *args, **kwargs: session)
+    monkeypatch.setattr(ocr, "prepare_rec_model", lambda path: CompactRecModel("compact.onnx", 4, "source", "compact"))
     recognizer = ocr.TextRecognizerONNX("rec.onnx", str(dictionary))
     logits = np.eye(4, dtype=np.float32)[[1, 1, 0, 2, 3, 3, 0, 1]]
-    assert recognizer._decode(logits) == ("中A 中", 1.0)
-    with pytest.raises(ValueError, match="CTC output shape"):
-        recognizer._decode(np.zeros((3, 5)))
+    assert recognizer._decode(logits.argmax(-1), logits.max(-1)) == ("中A 中", 1.0)
     dictionary.write_text("中\nA\nB\n", encoding="utf-8")
     with pytest.raises(ValueError, match="dictionary requires"):
         ocr.TextRecognizerONNX("rec.onnx", str(dictionary))

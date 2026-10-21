@@ -232,17 +232,18 @@ def _resolved_direct_dependencies(platform: str, machine: str, extra: str, pytho
 
 @pytest.mark.parametrize(
     "platform,machine",
-    [("darwin", "arm64"), ("darwin", "x86_64"), ("linux", "x86_64"), ("win32", "AMD64"),
+    [("darwin", "arm64"), ("darwin", "x86_64"), ("linux", "x86_64"), ("linux", "aarch64"), ("win32", "AMD64"),
      ("win32", "amd64"), ("win32", "x86_64"), ("win32", "ARM64")],
 )
 @pytest.mark.parametrize("extra", ["", "torch", "full", "all"])
-@pytest.mark.parametrize("python", ["3.10", "3.11", "3.12", "3.13", "3.14"])
+@pytest.mark.parametrize("python", ["3.11", "3.12", "3.13", "3.14"])
 def test_package_markers(platform: str, machine: str, extra: str, python: str) -> None:
     """ARM 基础包引入完整 Torch 依赖，其他平台基础包保持 ONNX 与 llama。"""
     names = _resolved_direct_dependencies(platform, machine, extra, python)
     runtime = "onnxruntime-directml" if platform == "win32" and machine in {"AMD64", "amd64", "x86_64"} else "onnxruntime"
     assert {"docvortex", "gradio", runtime, "mineru-llama-cpp"} <= names
     assert not {"onnxruntime", "onnxruntime-directml"} <= names
+    assert ("onnxruntime-ep-webgpu" in names) == (platform == "linux" and machine == "x86_64")
     # lxml 由 DocVortex 声明，不在 MinerU 运行时 extras 中重复维护。
     assert "lxml" not in names
     expected_torch = (platform, machine) == ("darwin", "arm64") or extra in {"torch", "full", "all"}

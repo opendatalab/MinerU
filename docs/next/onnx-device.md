@@ -1,6 +1,6 @@
-# ONNX 设备选择与 DirectML
+# ONNX 设备选择、DirectML 与 WebGPU
 
-`model.onnx_device` 控制 ONNX 小模型栈的 CPU / Windows DirectML 选择：
+`model.onnx_device` 控制 ONNX 小模型栈的 CPU / Windows DirectML / Linux WebGPU 选择：
 
 ```yaml
 model:
@@ -11,21 +11,28 @@ model:
 环境变量 `MINERU_MODEL_ONNX_DEVICE` 高于文件配置。`small_backend=auto` 仍按原有规则选择
 Torch 或 ONNX；此选项不强制切换模型栈，也不改变 Torch / VLM 的设备。
 
-| 值 | 行为 |
-|---|---|
-| `cpu` | ONNX 小模型全部使用 CPU，不枚举显卡、不测速 |
-| `gpu` | 每个进程首次用模型时重新发现 GPU，独显优先，再选高性能排序中的集显，不测速 |
-| `auto` | 独显直接选 GPU；仅有集显时执行一次 rec 测速；没有硬件 GPU 时选 CPU |
+| 值 | Windows DML | Linux WebGPU |
+|---|---|---|
+| `cpu` | 全部使用 CPU，不枚举显卡、不测速 | 全部使用 CPU，不加载插件、不探测 GPU |
+| `gpu` | 首次使用时发现 GPU，独显优先，不测速 | 首次使用时加载插件，使用默认高性能适配器，不测速 |
+| `auto` | 独显直接使用；集显执行 rec 测速 | 集显和独显均执行 rec 测速 |
 
 Windows 使用 DXGI 高性能顺序、D3D12 UMA 属性和 LUID 匹配；适配器编号不写入配置。
 已保存的 `gpu` 使用 Windows 高性能排序及无设备创建的 D3D12 能力检查，避免逐张创建设备查询 UMA；
 `auto` 才需要 UMA 分类。旧系统缺少高性能排序接口时仍执行分类以保证独显优先。
 `gpu` 模式下移除显卡会在本次使用 CPU，仍保留配置中的 `gpu`。
-非 Windows、驱动探测错误、运行时缺少 DML 或 GPU 会话初始化失败时，日志会说明 CPU 回退原因。
+其他操作系统、驱动探测错误、运行时缺少所需 EP 或 GPU 会话初始化失败时，日志会说明 CPU 回退原因。
+
+Linux 使用原生 `onnxruntime-ep-webgpu`，通过 Dawn/Vulkan 执行。
+插件在每个进程首次需要 GPU 时注册；只保留可哈希、可序列化的设备描述，原生 EP 句柄在创建会话时重新获取。
+WebGPU 0.4 的 ORT 设备枚举项用于注册 EP，并不绑定 Dawn 的物理显卡；使用 `powerPreference=high-performance`
+选择默认适配器，不提供逐卡选优或手动编号选择。参数固定为 `preferredLayout=NHWC`、`enableGraphCapture=0`、
+`dawnBackendType=Vulkan`，其他 WebGPU 参数沿用运行时默认值。
 
 首次实际使用模型时才选型。界面启动、导入 SDK、查询配置和模型列表不会运行测速。
 自动决策成功后原子更新有效配置文件中的 `model.onnx_device`，保留其余键；进程间通过文件锁协调。
 环境变量覆盖不写入文件；只读配置保留本进程选择。测速失败不保存为 CPU 性能优胜，同进程不重复尝试。
+Linux 插件缺失、Vulkan/设备发现失败（包括未发现可用硬件设备）、校准超时或输出不一致时保留 `auto`。
 通过环境变量强制 `auto` 时，每个新进程重新选择，并使用选择锁避免同时测速。
 显式或已保存的 `cpu` 不会因后来接入独显而改变。
 
@@ -33,7 +40,13 @@ Windows 使用 DXGI 高性能顺序、D3D12 UMA 属性和 LUID 匹配；适配�
 
 ## 模型预设
 
-GPU 路线将 layout、rec、MFR 和 UNet 有线表格结构模型交给 DML，检测、表格分类和无线表格等其他 ONNX 模型保持 CPU。
+| 模型 | Windows DML | Linux WebGPU |
+|---|---|---|
+| layout / OCR rec / MFR / UNet | GPU | GPU |
+| 普通 OCR det | CPU | GPU |
+| 印章检测 / 表格分类 / SLANet Plus | CPU | CPU |
+
+普通文字检测和印章检测在模型入口通过 `ocr_det` / `seal_det` 明确区分。
 UNet 与其他模型共享 `model.onnx_device` 的进程内选择，不单独测速；ONNX 栈的 UNet 不受旧 `MINERU_TABLE_DEVICE` 覆盖。
 Torch 栈中的表格仍使用其原有 CPU/CUDA 策略。旧实验引擎和实验开关已经移除。
 
@@ -44,26 +57,51 @@ Torch 栈中的表格仍使用其原有 CPU/CUDA 策略。旧实验引擎和实�
 | NVIDIA | 开 | 开 | 关 | 关 |
 | 其他 | ORT 默认 | ORT 默认 | ORT 默认 | ORT 默认 |
 
-表格中的开关指 metacommands，关闭对应 `disable_metacommands=true`。
+厂商表中的开关只适用于 DML 的 metacommands，关闭对应 `disable_metacommands=true`；WebGPU 不使用这些预设。
 Intel layout 优先首轮响应；NVIDIA layout 采用后续补测结论。
-MFR 只有实际批量为 8 时使用 DML，1–7 张使用惰性创建、复用的 CPU 会话，不补齐。
+MFR 只有实际批量为 8 时使用 DML/WebGPU，1–7 张使用惰性创建、复用的 CPU 会话，不补齐。
+自定义批量小于 8 时全部使用 CPU；依据实际 EP 判断是否分流，GPU 初始化已回退 CPU 时不创建多余尾批会话。
 每个 DML 会话的 `run` 都串行化，不依赖宿主是否打开全局推理锁。
+WebGPU 的所有会话创建和 `run` 共用进程内锁，因为多个会话共享 Dawn 状态；CPU 会话不使用此锁。
+参见 [上游并发问题](https://github.com/microsoft/onnxruntime/issues/32561)。
+GPU 会话必须实际启用目标 EP，关闭 Python 层整会话静默回退；不支持的图中算子仍可由 ORT 分配给 CPU。
+WebGPU 初始化失败时使用未绑定插件的新 SessionOptions 创建 CPU 会话，并保留线程、内存及 profiling 设置。
 
 ## 六图测速和阈值
+
+### OCR rec 精简输出
+
+CPU、DML 和 WebGPU 的 ONNX rec 共用 `ctc-ids-scores-v1` 派生图。保留原始 Softmax，在图末端增加
+ArgMax / ReduceMax，只返回 `[batch,time]` 的 int64 字符 ID 与 float32 最大置信度。
+CTC 去重、blank 删除、置信度平均和输入顺序还原继续由识别器处理；Torch 路径保持现有实现。
+对于 `[6,3,48,320]` 输入，原始 `[6,40,18710]` 概率输出约 17.13 MiB，精简输出仅 2.81 KiB。
+
+原始下载权重不被修改。首次使用时惰性加载 `onnx`，在 `model.base_dir/.derived/ocr-rec/` 中按
+源文件 SHA256 和输出格式版本生成派生模型；文件锁、校验值和原子替换保护并发创建与缓存复用，
+损坏的缓存会重建。当前转换支持内嵌权重的 float32、三维概率输出、固定字符数和 opset ≥ 11 的 rec 图。
+正常会话和 CPU 回退都使用同一输出契约；精简模型不是 ORT 特定 EP 的预编译文件。
+
+自动选型也使用该派生图，图转换发生在 15 秒 worker 预算之外。报告记录源模型、派生模型 SHA256
+及 `output_format`，阈值工具拒绝混合完整概率输出和精简输出的报告。已有保存的 cpu/gpu 不会被覆盖；
+需要重新测速时设置 `auto`。历史完整概率输出测速保留作为优化前对照，不据此重新推导精简图阈值。
+本机阶段耗时、输出一致性和 EP 验证见 [精简 rec 生产验证](onnx-compact-rec-validation.md)。
+
+### 测量协议
 
 图片和 manifest 位于包内 `resources/onnx_calibration`，包含原始中英数字句子、来源和 SHA256。
 重新生成工具 `scripts.make_onnx_calibration_samples` 需要显式提供字体；部署时直接读取固定 PNG，
 不需要系统字体。输入复用生产 rec 的 BGR、动态宽度和归一化逻辑；CPU/GPU 使用同一份 batch6。
 
 每种设备预热一次，再计时两次。默认线程为 4/1；生产显式线程配置同时应用于测速。
-比较 `ratio = gpu_elapsed / cpu_elapsed`，当 `ratio <= ONNX_GPU_TIME_RATIO_THRESHOLD` 时选 GPU。
+比较 `ratio = gpu_elapsed / cpu_elapsed`，当 `ratio <= ONNX_GPU_TIME_RATIO_THRESHOLDS[backend]` 时选 GPU。
 阈值在 `mineru.model.runtime.onnx_device` 中集中维护。
-当前阈值按用户要求简化为 **0.8**，即 GPU 推理耗时至少比 CPU 低 20%。
+阈值按后端独立维护：`dml=0.8`、`webgpu=0.8`，即 GPU 推理耗时至少比 CPU 低 20%。
+Linux 8060S 六图预检比值为 0.420、0.502、0.523，解码一致；目前没有跨硬件证据支持另设 WebGPU 数值。
 原三机校准推导值为 0.69639683662382，保留为历史参考；已有 24 次记录按 0.8 判断仍得到相同选择。
-详细数据见 [三机校准报告](onnx-selection-validation.md)。
+详细数据见 [DML 三机校准报告](onnx-selection-validation.md) 和 [Linux WebGPU 生产验证](onnx-webgpu-validation.md)。
 
 下载和设备发现不计入 worker 预算。独立隐藏子进程的总超时为 15 秒，包含解释器启动、加载及推理；
-1–2 秒只是小样本推理目标。结果记录模型/输入校验值、ORT 版本与路径、provider、初始化、预热和正式计时。
+1–2 秒只是小样本推理目标。结果记录 backend、模型/输入校验值、ORT/EP 版本、参数、provider、初始化、预热和正式计时。
 CPU/GPU 解码 token 必须一致，整会话回退 CPU 或计时无效都视为失败。
 
 ### 发布前校准
@@ -90,10 +128,36 @@ CPU/GPU 解码 token 必须一致，整会话回退 CPU 或计时无效都视为
 独立验证进程，要求 Ultra 5、MAX395 全部选 GPU，i7 全部选 CPU。没有有效区间或验证失败时不发布阈值。
 阈值为 `None` 表示三机校准尚未完成；此时自动集显路径使用 CPU、保留 `auto`，显式 GPU 及独显仍可使用。
 
+Linux 使用同一个工具（从项目根目录运行）：
+
+```bash
+.venv/bin/python -m scripts.benchmark_onnx_selection devices
+.venv/bin/python -m scripts.benchmark_onnx_selection run --label linux-8060s --expect gpu --output output/webgpu-calibration
+.venv/bin/python -m scripts.benchmark_onnx_selection run --label linux-8060s --threshold 0.8 --expect gpu --output output/webgpu-validation
+```
+
+第一条 run 启动 5 个新进程、交替 CPU/GPU 顺序；第二条启动 3 个独立验证进程。
+Linux 标签可自定义，独立验证必须显式提供 `--expect cpu|gpu`；`--luid` 仅用于 DML。
+WebGPU 推导新阈值需要至少三台不同标签机器的完整五进程报告，同时有 CPU/GPU 优胜组，
+各组通过 `--expect` 按独立性能证据标记。不能混合 DML/WebGPU、EP 版本或 WebGPU 参数来推导阈值。
+报告 schema v2 增加 backend/EP 字段；推导工具仍接受历史 v1 DML 报告。
+WebGPU 阈值为 `None` 时，所有 auto GPU 路径保留 `auto` 并临时使用 CPU，显式 `gpu` 不受此限制。
+
 ## 安装
 
-Windows x64 的直接依赖为 `onnxruntime-directml>=1.23,<2`，其他平台保留 CPU 包约束，
+Windows x64 的直接依赖为 `onnxruntime-directml>=1.23,<2`，其他平台使用 `onnxruntime>=1.24.4,<2`，
 不按 Python 版本拆分条件。DirectML 包本身包含 CPU provider。
+
+项目要求 Python >=3.11。Linux x86_64 同时安装 `onnxruntime-ep-webgpu>=0.4.0,<1`；
+这是与 ORT 并存的插件，不替换 `onnxruntime`。Linux ARM64、macOS 和 Windows 不安装此插件。
+Linux 还需系统提供 `libvulkan.so.1` 和可用的 GPU Vulkan 驱动。使用 uv 管理环境：
+
+```bash
+.venv/bin/uv pip install --python .venv/bin/python -e .
+.venv/bin/uv pip check --python .venv/bin/python
+```
+
+插件注册前，`ort.get_available_providers()` 不一定列出 WebGPU；用上面的 `devices` 命令检查插件发现能力。
 
 已有环境从 CPU 包迁移时，先卸载 `onnxruntime`，再安装 DirectML，避免两个发行包覆盖同一模块。
 安装后用 `import onnxruntime; print(onnxruntime.__version__, onnxruntime.get_available_providers())` 检查实际能力。

@@ -105,3 +105,10 @@ manifest、正式阈值及互斥的平台运行时依赖。
 完整依赖验收，`uv pip check` 通过，两个共享模块各自只有一个发行包所有者。
 DocVortex 的同版本 PyPI 元数据尚未更新；本次源码构建来源、回归与平台求解结果见
 [依赖验收报告](onnx-dependency-validation.md)。
+
+## Linux WebGPU 后续验证
+
+2026-10-21 已增加独立的 WebGPU 自动校准路径；集显、独显均执行六图 rec 测速。
+DML 与 WebGPU 的阈值分开维护，当前均为 0.8，不能混合两种后端的报告推导新阈值。
+Linux 本机的五次新进程校准、19 页完整解析、MFR CPU 尾批和 24 张表格 UNet 结果见
+[Linux WebGPU 生产验证](onnx-webgpu-validation.md)。上文保留原 Windows 验证记录。

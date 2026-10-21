@@ -14,11 +14,19 @@ import pytest
 
 from mineru.model.runtime import onnx_calibration as calibration
 from mineru.model.runtime.windows_gpu import GpuAdapter
+from mineru.model.runtime.webgpu import WEBGPU_PROVIDER, WebGPUDevice
+from mineru.model.runtime.onnx_rec import CompactRecModel, REC_OUTPUT_FORMAT
 from scripts.benchmark_onnx_selection import derive_threshold
 
 
 def gpu() -> GpuAdapter:
     return GpuAdapter(2, "id", "test", 0x8086, 1, True, 0)
+
+
+@pytest.fixture(autouse=True)
+def fake_rec_preparation(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Protocol tests mock sessions; real graph conversion is covered separately."""
+    monkeypatch.setattr(calibration, "prepare_rec_model", lambda path: CompactRecModel("compact.onnx", 4, "raw", "compact"))
 
 
 def test_installed_samples_are_fixed_and_complete() -> None:
@@ -62,7 +70,8 @@ def test_measurement_reuses_input_and_excludes_warmup(tmp_path: Path, monkeypatc
 
         def run(names: object, feed: dict[str, np.ndarray]) -> list[np.ndarray]:
             feeds.append(feed["image"])
-            return [np.ones((6, 3, 4), dtype=np.float32)]
+            assert names == ["mineru_rec_ids", "mineru_rec_scores"]
+            return [np.ones((6, 3), dtype=np.int64), np.ones((6, 3), dtype=np.float32)]
 
         return SimpleNamespace(get_inputs=lambda: [SimpleNamespace(name="image")], run=run, get_providers=lambda: [provider])
 
@@ -74,6 +83,8 @@ def test_measurement_reuses_input_and_excludes_warmup(tmp_path: Path, monkeypatc
     assert result["gpu_elapsed"] == 3
     assert result["cpu"]["first_s"] == result["gpu"]["first_s"] == 100
     assert result["cpu"]["init_s"] == 4 and result["gpu"]["init_s"] == 8
+    assert result["output_format"] == REC_OUTPUT_FORMAT
+    assert result["model_sha256"] == "compact" and result["source_model_sha256"] == "raw"
 
 
 def test_worker_timeout_is_bounded(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -90,7 +101,7 @@ def test_worker_silent_fallback_is_not_a_measurement(monkeypatch: pytest.MonkeyP
     monkeypatch.setattr(
         calibration.subprocess, "run", Mock(return_value=SimpleNamespace(returncode=0, stdout=json.dumps(output)))
     )
-    with pytest.raises(ValueError, match="DirectML"):
+    with pytest.raises(ValueError, match="DmlExecutionProvider"):
         calibration.run_calibration("rec.onnx", gpu())
 
 
@@ -143,4 +154,62 @@ def test_invalid_calibration_set_is_rejected(failure: str) -> None:
     else:
         data[0]["runs"][0]["gpu_elapsed"] = 1.5
     with pytest.raises(ValueError):
+        derive_threshold(data)
+
+
+@pytest.mark.parametrize("failure", [None, "fallback", "wrong_backend", "wrong_output_format", "nan", "mismatch"])
+def test_webgpu_worker_protocol(monkeypatch: pytest.MonkeyPatch, failure: str | None) -> None:
+    output = {
+        "backend": "webgpu",
+        "output_format": REC_OUTPUT_FORMAT,
+        "cpu_elapsed": 1,
+        "gpu_elapsed": 0.4,
+        "outputs_match": True,
+        "gpu": {"providers": [WEBGPU_PROVIDER, "CPUExecutionProvider"]},
+        "cpu": {"providers": ["CPUExecutionProvider"]},
+    }
+    if failure == "fallback":
+        output["gpu"]["providers"] = ["CPUExecutionProvider"]
+    elif failure == "wrong_backend":
+        output["backend"] = "dml"
+    elif failure == "wrong_output_format":
+        output["output_format"] = "full-probabilities"
+    elif failure == "nan":
+        output["gpu_elapsed"] = float("nan")
+    elif failure == "mismatch":
+        output["outputs_match"] = False
+    runner = Mock(return_value=SimpleNamespace(returncode=0, stdout=json.dumps(output)))
+    monkeypatch.setattr(calibration.subprocess, "run", runner)
+    descriptor = WebGPUDevice(1, 2, (("pci_bus_id", "test"),))
+    if failure:
+        with pytest.raises(ValueError):
+            calibration.run_calibration("rec.onnx", descriptor)
+    else:
+        assert calibration.run_calibration("rec.onnx", descriptor)["backend"] == "webgpu"
+    request = json.loads(runner.call_args.kwargs["input"])
+    assert request["backend"] == "webgpu"
+    assert request["adapter"]["metadata"] == [["pci_bus_id", "test"]]
+
+
+def test_threshold_derivation_rejects_mixed_backends_and_ep_options() -> None:
+    data = reports()
+    data[0]["backend"] = "webgpu"
+    with pytest.raises(ValueError, match="mix"):
+        derive_threshold(data)
+    for report in data:
+        report["backend"] = "webgpu"
+        report["expected"] = "cpu" if report["label"] == "i7" else "gpu"
+        for run in report["runs"]:
+            run.update(backend="webgpu", ep_version="0.4.0", webgpu_options={"preferredLayout": "NHWC"})
+            run["gpu"]["providers"] = [WEBGPU_PROVIDER]
+    assert derive_threshold(data)["backend"] == "webgpu"
+    data[0]["runs"][0]["webgpu_options"] = {"preferredLayout": "NCHW"}
+    with pytest.raises(ValueError, match="EP version/options"):
+        derive_threshold(data)
+
+
+def test_threshold_derivation_rejects_mixed_output_contracts() -> None:
+    data = reports()
+    data[0]["runs"][0]["output_format"] = REC_OUTPUT_FORMAT
+    with pytest.raises(ValueError, match="differ"):
         derive_threshold(data)
