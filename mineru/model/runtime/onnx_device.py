@@ -13,7 +13,7 @@ from filelock import FileLock
 from loguru import logger
 
 from .windows_gpu import GpuAdapter, discover_gpus, preferred_gpu
-from .webgpu import WebGPUDevice, discover_webgpu_devices
+from .webgpu import WebGPUDevice, discover_webgpu_devices, select_webgpu_device
 
 # Require at least 20% lower GPU inference time; simplified to 0.8 at the user's request.
 # Evidence: docs/next/onnx-selection-validation.md. Each backend can be calibrated independently.
@@ -65,7 +65,10 @@ def _select(requested: str, intra_op_num_threads: int, inter_op_num_threads: int
     backend: Literal["dml", "webgpu"] = "webgpu" if sys.platform == "linux" else "dml"
     if backend == "webgpu":
         devices = discover_webgpu_devices()
-        adapter = devices[0] if devices else None
+        adapter = select_webgpu_device(devices)
+        if devices and adapter is None:
+            logger.info("Linux WebGPU Intel architecture policy selected CPU; no eligible visible GPU")
+            return OnnxSelection(reason="webgpu_architecture_policy", backend=backend), False
     else:
         import onnxruntime as ort
 
@@ -88,10 +91,17 @@ def _select(requested: str, intra_op_num_threads: int, inter_op_num_threads: int
     # Download follows the normal model lifecycle; it is outside the 15-second worker timeout.
     model = MINERU_4_MODELS_ONNX.ocr_rec.ensure()
     result = run_calibration(
-        str(model), adapter, intra_op_num_threads=intra_op_num_threads, inter_op_num_threads=inter_op_num_threads
+        str(model),
+        adapter,
+        intra_op_num_threads=intra_op_num_threads,
+        inter_op_num_threads=inter_op_num_threads,
+        threshold=threshold,
     )
-    use_gpu = choose_gpu(result["cpu_elapsed"], result["gpu_elapsed"], threshold)
     logger.bind(onnx_calibration=result).info("ONNX rec calibration: {}", result)
+    if result["decision_valid"] is not True:
+        logger.warning("ONNX calibration remained unstable after extended sampling; using CPU without saving")
+        return OnnxSelection(reason="calibration_unstable", backend=backend), False
+    use_gpu = choose_gpu(result["cpu_elapsed"], result["gpu_elapsed"], threshold)
     return OnnxSelection("gpu" if use_gpu else "cpu", adapter if use_gpu else None, "rec_calibration", backend), True
 
 

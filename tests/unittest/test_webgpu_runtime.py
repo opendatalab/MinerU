@@ -55,7 +55,12 @@ def test_production_options_resolve_native_handles_locally(monkeypatch: pytest.M
     webgpu.attach_webgpu_provider(options, device())
     options.add_provider_for_devices.assert_called_once_with([ep], webgpu.WEBGPU_OPTIONS)
     descriptor = json.loads(json.dumps(asdict(device())))
-    assert descriptor == {"vendor_id": 0x1002, "device_id": 1, "metadata": [["pci_bus_id", "0000:00:01.0"]]}
+    assert descriptor == {
+        "vendor_id": 0x1002,
+        "device_id": 1,
+        "metadata": [["pci_bus_id", "0000:00:01.0"]],
+        "vulkan_device": None,
+    }
     with pytest.raises(RuntimeError, match="no longer available"):
         webgpu.attach_webgpu_provider(options, webgpu.WebGPUDevice(1, 2))
 

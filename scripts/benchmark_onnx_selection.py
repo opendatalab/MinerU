@@ -14,7 +14,7 @@ from typing import Any
 from mineru.model.runtime.onnx_calibration import run_calibration
 from mineru.model.runtime.onnx_device import choose_gpu
 from mineru.model.runtime.windows_gpu import discover_gpus, preferred_gpu
-from mineru.model.runtime.webgpu import WEBGPU_PROVIDER, discover_webgpu_devices
+from mineru.model.runtime.webgpu import WEBGPU_PROVIDER, discover_webgpu_devices, select_webgpu_device
 
 
 def write_json(path: Path, data: dict[str, Any]) -> None:
@@ -80,6 +80,9 @@ def derive_threshold(reports: list[dict[str, Any]]) -> dict[str, Any]:
             provider = WEBGPU_PROVIDER if backend == "webgpu" else "DmlExecutionProvider"
             if run.get("backend", "dml") != backend or not run.get("outputs_match") or run["gpu"]["providers"][0] != provider:
                 raise ValueError("Missing matching backend execution evidence")
+            adaptive = run.get("measurement", {}).get("strategy") == "adaptive-v1"
+            if run.get("decision_valid", not adaptive) is not True:
+                raise ValueError("Unstable adaptive calibration cannot be used to derive a threshold")
             signatures.add(
                 (
                     run["input"]["manifest_sha256"],
@@ -92,13 +95,17 @@ def derive_threshold(reports: list[dict[str, Any]]) -> dict[str, Any]:
                     backend,
                     run.get("ep_version", run["ort_version"]),
                     json.dumps(run.get("webgpu_options"), sort_keys=True),
+                    json.dumps(run.get("measurement", {"warmup_runs": 1, "timed_runs": 2, "statistic": "sum"}), sort_keys=True),
+                    run.get("decision_threshold"),
                 )
             )
             ratio = run["gpu_elapsed"] / run["cpu_elapsed"]
             choose_gpu(run["cpu_elapsed"], run["gpu_elapsed"], 0.5)  # Validate finite positive timings only.
             ratios[label].append(ratio)
     if len(signatures) != 1:
-        raise ValueError("Samples, weights, ORT, EP version/options or thread settings differ across calibration runs")
+        raise ValueError(
+            "Samples, weights, ORT, EP version/options, thread settings or measurement protocols differ across runs"
+        )
     if set(expected.values()) != {"cpu", "gpu"}:
         raise ValueError("Threshold derivation requires both CPU-winning and GPU-winning hosts")
     lower = max(value for label, values in ratios.items() if expected[label] == "gpu" for value in values)
@@ -122,7 +129,7 @@ def run(args: argparse.Namespace) -> None:
         if args.luid:
             raise ValueError("--luid is only supported by DirectML; WebGPU uses the default high-performance adapter")
         adapters = discover_webgpu_devices()
-        adapter = adapters[0] if adapters else None
+        adapter = select_webgpu_device(adapters)
         if args.threshold is not None and args.expect is None:
             raise ValueError("WebGPU independent validation requires --expect cpu or gpu")
     else:
@@ -162,12 +169,15 @@ def run(args: argparse.Namespace) -> None:
                 intra_op_num_threads=4,
                 inter_op_num_threads=1,
                 gpu_first=args.threshold is None and index % 2 == 1,
+                threshold=args.threshold,
             )
+            report["runs"].append(result)
+            if not result["decision_valid"]:
+                raise ValueError("Calibration remained unstable after 3+7; no performance decision")
             if args.threshold is not None:
                 result["selected"] = (
                     "gpu" if choose_gpu(result["cpu_elapsed"], result["gpu_elapsed"], args.threshold) else "cpu"
                 )
-            report["runs"].append(result)
             print(
                 f"{args.label} {index + 1}/{count}: ratio={result['ratio']:.6f}, wall={result['worker_wall_s']:.3f}s",
                 flush=True,

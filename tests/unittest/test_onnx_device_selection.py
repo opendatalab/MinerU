@@ -40,7 +40,9 @@ def config_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 
     monkeypatch.setattr(onnxruntime, "get_available_providers", lambda: ["DmlExecutionProvider", "CPUExecutionProvider"])
     monkeypatch.setattr(registry, "MINERU_4_MODELS_ONNX", SimpleNamespace(ocr_rec=SimpleNamespace(ensure=lambda: "rec.onnx")))
-    monkeypatch.setattr(onnx_calibration, "run_calibration", Mock(return_value={"cpu_elapsed": 2.0, "gpu_elapsed": 1.0}))
+    monkeypatch.setattr(
+        onnx_calibration, "run_calibration", Mock(return_value={"decision_valid": True, "cpu_elapsed": 2.0, "gpu_elapsed": 1.0})
+    )
     return target
 
 
@@ -112,7 +114,7 @@ def test_cpu_never_discovers_or_benchmarks(config_file: Path, monkeypatch: pytes
 def test_calibration_saved_once(config_file: Path, monkeypatch: pytest.MonkeyPatch, gpu_time: float, expected: str) -> None:
     from mineru.model.runtime import onnx_calibration
 
-    measure = Mock(return_value={"cpu_elapsed": 2.0, "gpu_elapsed": gpu_time})
+    measure = Mock(return_value={"decision_valid": True, "cpu_elapsed": 2.0, "gpu_elapsed": gpu_time})
     monkeypatch.setattr(onnx_calibration, "run_calibration", measure)
     assert policy.resolve_onnx_device().device == expected
     assert policy.resolve_onnx_device().device == expected
@@ -253,7 +255,7 @@ def test_unet_first_model_shares_selection_and_persistence(
     monkeypatch.setenv("MINERU_TABLE_DEVICE", "cpu" if expected == "gpu" else "cuda")
     discover = Mock(return_value=(adapter(index=7, uma=uma),))
     monkeypatch.setattr(policy, "discover_gpus", discover)
-    measure = Mock(return_value={"cpu_elapsed": 2.0, "gpu_elapsed": gpu_time})
+    measure = Mock(return_value={"decision_valid": True, "cpu_elapsed": 2.0, "gpu_elapsed": gpu_time})
     monkeypatch.setattr(onnx_calibration, "run_calibration", measure)
     factory = Mock(
         side_effect=lambda *args, **kwargs: SimpleNamespace(
@@ -292,12 +294,12 @@ def test_linux_calibrates_both_gpu_types_and_uses_own_threshold(
 
     descriptor = WebGPUDevice(0x1002, 1, (("type", hardware),))
     monkeypatch.setattr(policy, "discover_webgpu_devices", Mock(return_value=(descriptor,)))
-    measure = Mock(return_value={"cpu_elapsed": 2.0, "gpu_elapsed": gpu_time})
+    measure = Mock(return_value={"decision_valid": True, "cpu_elapsed": 2.0, "gpu_elapsed": gpu_time})
     monkeypatch.setattr(onnx_calibration, "run_calibration", measure)
     selection = policy.resolve_onnx_device()
     assert selection.device == expected and selection.backend == "webgpu"
     assert policy.resolve_onnx_device() is selection
-    measure.assert_called_once_with("rec.onnx", descriptor, intra_op_num_threads=0, inter_op_num_threads=0)
+    measure.assert_called_once_with("rec.onnx", descriptor, intra_op_num_threads=0, inter_op_num_threads=0, threshold=0.8)
     assert yaml.safe_load(linux_config.read_text())["model"] == {"onnx_device": expected, "source": "local"}
 
 
@@ -358,3 +360,18 @@ def test_linux_waiting_process_rechecks_saved_choice(linux_config: Path, monkeyp
     monkeypatch.setattr(policy, "FileLock", lambda *args, **kwargs: OtherProcessSaved())
     assert policy.resolve_onnx_device().device == "cpu"
     policy.discover_webgpu_devices.assert_not_called()
+
+
+@pytest.mark.parametrize("platform", ["linux", "win32"])
+def test_unstable_calibration_keeps_auto(config_file: Path, monkeypatch: pytest.MonkeyPatch, platform: str) -> None:
+    from mineru.model.runtime import onnx_calibration
+
+    monkeypatch.setattr(policy, "sys", SimpleNamespace(platform=platform))
+    monkeypatch.setattr(policy, "discover_webgpu_devices", lambda: (WebGPUDevice(0x8086, 0x7D51),))
+    measure = Mock(return_value={"decision_valid": False, "cpu_elapsed": 2.0, "gpu_elapsed": 1.0})
+    monkeypatch.setattr(onnx_calibration, "run_calibration", measure)
+    selected = policy.resolve_onnx_device()
+    assert selected.device == "cpu" and selected.reason == "calibration_unstable"
+    assert yaml.safe_load(config_file.read_text())["model"]["onnx_device"] == "auto"
+    assert policy.resolve_onnx_device() == selected
+    measure.assert_called_once()

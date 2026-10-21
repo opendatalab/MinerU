@@ -13,7 +13,7 @@ from loguru import logger
 
 from .onnx_device import OnnxSelection, confirm_gpu_session, metacommands_enabled, resolve_onnx_device
 from .windows_gpu import GpuAdapter
-from .webgpu import WEBGPU_PROVIDER, WebGPUDevice, attach_webgpu_provider, execution_lock
+from .webgpu import WEBGPU_PROVIDER, WebGPUDevice, attach_webgpu_provider, execution_lock, webgpu_session_scope
 
 
 class _SerializedSession:
@@ -147,7 +147,7 @@ def create_ort_session(
         opts.enable_profiling = True
         opts.profile_file_prefix = profile_prefix
     if isinstance(adapter, WebGPUDevice):
-        with execution_lock():
+        with webgpu_session_scope(adapter):
             attach_webgpu_provider(opts, adapter)
             # Passing providers= here overrides (and removes) the plugin attached to opts.
             session = ort.InferenceSession(model_path, sess_options=opts)
