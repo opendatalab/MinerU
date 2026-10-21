@@ -320,6 +320,6 @@ def test_vulkan_query_reads_pci_identity_without_creating_logical_device_and_cle
         with pytest.raises(RuntimeError, match="count devices"):
             vulkan.enumerate_vulkan_devices()
     else:
-        assert vulkan.enumerate_vulkan_devices() == (vulkan.VulkanDevice(0x10DE, 0x2489, 2, "NVIDIA"),)
+        assert vulkan.enumerate_vulkan_devices() == (vulkan.VulkanDevice(0x10DE, 0x2489, 2, "NVIDIA", 0),)
     lib.vkDestroyInstance.assert_called_once()
     assert ct.sizeof(vulkan._PropertiesStorage) >= 824

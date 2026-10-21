@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 """No-compute Vulkan enumeration and scoped physical-device restrictions for Dawn.
 
 Uses the stable Vulkan 1.0 C ABI. No logical device, shader or GPU work is created.
@@ -9,6 +10,15 @@ from contextlib import contextmanager
 import ctypes as ct
 from dataclasses import dataclass
 import os
+import sys
+import threading
+
+_environment_lock = threading.RLock()
+
+
+def vulkan_environment_lock() -> threading.RLock:
+    """跨 ONNX/llama 原生初始化串行化进程级 Vulkan 过滤环境。"""
+    return _environment_lock
 
 
 @dataclass(frozen=True)
@@ -17,6 +27,7 @@ class VulkanDevice:
     device_id: int
     device_type: int
     name: str
+    index: int = -1
 
 
 class _ApplicationInfo(ct.Structure):
@@ -69,7 +80,7 @@ def _check(result: int, operation: str) -> None:
 
 def enumerate_vulkan_devices() -> tuple[VulkanDevice, ...]:
     """Enumerate GPUs visible to the loader, honoring the user's ICD/layer filters."""
-    library = ct.CDLL("libvulkan.so.1")
+    library = ct.WinDLL("vulkan-1.dll") if sys.platform == "win32" else ct.CDLL("libvulkan.so.1")
     create = library.vkCreateInstance
     create.argtypes = [ct.POINTER(_InstanceCreateInfo), ct.c_void_p, ct.POINTER(ct.c_void_p)]
     create.restype = ct.c_int32
@@ -96,14 +107,18 @@ def enumerate_vulkan_devices() -> tuple[VulkanDevice, ...]:
                 continue
             _check(status, "enumerate devices")
             result = []
-            for handle in handles[: count.value]:
+            for index, handle in enumerate(handles[: count.value]):
                 storage = _PropertiesStorage()
                 properties(handle, ct.byref(storage))
                 value = storage.prefix
                 if value.deviceType in (1, 2, 3):  # integrated, discrete, virtual GPU; exclude software CPU
                     result.append(
                         VulkanDevice(
-                            value.vendorID, value.deviceID, value.deviceType, value.deviceName.decode("utf-8", errors="replace")
+                            value.vendorID,
+                            value.deviceID,
+                            value.deviceType,
+                            value.deviceName.decode("utf-8", errors="replace"),
+                            index,
                         )
                     )
             return tuple(result)
@@ -114,16 +129,17 @@ def enumerate_vulkan_devices() -> tuple[VulkanDevice, ...]:
 
 @contextmanager
 def _environment(values: dict[str, str]) -> Iterator[None]:
-    previous = {name: os.environ.get(name) for name in values}
-    try:
-        os.environ.update(values)
-        yield
-    finally:
-        for name, value in previous.items():
-            if value is None:
-                os.environ.pop(name, None)
-            else:
-                os.environ[name] = value
+    with vulkan_environment_lock():
+        previous = {name: os.environ.get(name) for name in values}
+        try:
+            os.environ.update(values)
+            yield
+        finally:
+            for name, value in previous.items():
+                if value is None:
+                    os.environ.pop(name, None)
+                else:
+                    os.environ[name] = value
 
 
 @contextmanager
@@ -150,4 +166,4 @@ def restrict_vulkan_device(vendor_id: int, device_id: int) -> Iterator[None]:
     raise RuntimeError("Cannot restrict Dawn to the supported GPU; update Vulkan loader or enable Mesa device-select")
 
 
-__all__ = ["VulkanDevice", "enumerate_vulkan_devices", "restrict_vulkan_device"]
+__all__ = ["VulkanDevice", "enumerate_vulkan_devices", "restrict_vulkan_device", "vulkan_environment_lock"]

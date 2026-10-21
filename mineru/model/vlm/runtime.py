@@ -155,11 +155,6 @@ class ModelSingleton:
             model_path = str(MINERU_2_5_PRO_2605_1_2B.ensure())
 
         if backend == "llama-cpp-engine":
-            try:
-                from mineru_llama_cpp import Engine
-            except ImportError:
-                raise ImportError("Please install mineru-llama-cpp to use the llama-cpp-engine backend.")
-
             # The GGUF repo carries two files: the main model and its
             # multi-modal projector (mmproj). ModelRepo.paths is
             # {"main": "...", "mmproj": "..."} — resolve each to its
@@ -177,7 +172,17 @@ class ModelSingleton:
                 if key in kwargs:
                     engine_kwargs[key] = kwargs.pop(key)
 
-            llama_cpp_engine = Engine(model_gguf, mmproj_gguf, **engine_kwargs)
+            from ..runtime.llama_device import llama_engine_scope, resolve_llama_device
+
+            selection = resolve_llama_device(n_gpu_layers=engine_kwargs.get("n_gpu_layers"))
+            if selection.device == "cpu":
+                engine_kwargs["n_gpu_layers"] = 0
+            try:
+                from mineru_llama_cpp import Engine
+            except ImportError:
+                raise ImportError("Please install mineru-llama-cpp to use the llama-cpp-engine backend.")
+            with llama_engine_scope(selection):
+                llama_cpp_engine = Engine(model_gguf, mmproj_gguf, **engine_kwargs)
 
         elif backend == "transformers":
             from ..runtime.cpu_threads import initialize_torch_threads

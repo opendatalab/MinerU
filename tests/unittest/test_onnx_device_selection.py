@@ -125,6 +125,22 @@ def test_calibration_saved_once(config_file: Path, monkeypatch: pytest.MonkeyPat
     assert measure.call_count == 1
 
 
+def test_offline_calibration_never_downloads_or_poison_online_cache(config_file: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from mineru.model import registry
+
+    def ensure(*, source: str | None = None) -> str:
+        if source == "local":
+            raise FileNotFoundError("not cached")
+        return "rec.onnx"
+
+    loader = Mock(side_effect=ensure)
+    monkeypatch.setattr(registry, "MINERU_4_MODELS_ONNX", SimpleNamespace(ocr_rec=SimpleNamespace(ensure=loader)))
+    assert policy.resolve_onnx_device(allow_download=False).device == "cpu"
+    loader.assert_called_once_with(source="local")
+    assert yaml.safe_load(config_file.read_text())["model"]["onnx_device"] == "auto"
+    assert policy.resolve_onnx_device().device == "gpu"
+
+
 def test_discrete_skips_calibration_and_persists_only_after_session(config_file: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     from mineru.model.runtime import onnx_calibration
 

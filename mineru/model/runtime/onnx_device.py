@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 """Process-local ONNX selection, with a single persisted cpu/gpu preference."""
 
 from __future__ import annotations
@@ -36,7 +37,7 @@ class OnnxSelection:
 
 
 _lock = threading.RLock()
-_selections: dict[tuple[int, str, str, str], OnnxSelection] = {}
+_selections: dict[tuple[int, str, str, str, bool], OnnxSelection] = {}
 
 
 def metacommands_enabled(vendor: str, model_kind: str) -> bool | None:
@@ -55,7 +56,9 @@ def choose_gpu(cpu_elapsed: float, gpu_elapsed: float, threshold: float) -> bool
     return gpu_elapsed / cpu_elapsed <= threshold
 
 
-def _select(requested: str, intra_op_num_threads: int, inter_op_num_threads: int) -> tuple[OnnxSelection, bool]:
+def _select(
+    requested: str, intra_op_num_threads: int, inter_op_num_threads: int, *, allow_download: bool = True
+) -> tuple[OnnxSelection, bool]:
     if requested == "cpu":
         return OnnxSelection(reason="configured_cpu"), False
     if sys.platform not in {"win32", "linux"}:
@@ -89,7 +92,7 @@ def _select(requested: str, intra_op_num_threads: int, inter_op_num_threads: int
     from .onnx_calibration import run_calibration
 
     # Download follows the normal model lifecycle; it is outside the 15-second worker timeout.
-    model = MINERU_4_MODELS_ONNX.ocr_rec.ensure()
+    model = MINERU_4_MODELS_ONNX.ocr_rec.ensure() if allow_download else MINERU_4_MODELS_ONNX.ocr_rec.ensure(source="local")
     result = run_calibration(
         str(model),
         adapter,
@@ -105,12 +108,14 @@ def _select(requested: str, intra_op_num_threads: int, inter_op_num_threads: int
     return OnnxSelection("gpu" if use_gpu else "cpu", adapter if use_gpu else None, "rec_calibration", backend), True
 
 
-def _select_and_save(requested: str, source: str, intra_op_num_threads: int, inter_op_num_threads: int) -> OnnxSelection:
+def _select_and_save(
+    requested: str, source: str, intra_op_num_threads: int, inter_op_num_threads: int, *, allow_download: bool = True
+) -> OnnxSelection:
     from ...config import read_onnx_device_from_file, update_config_file
 
     if requested == "auto" and source != "env":
         requested = read_onnx_device_from_file()
-    selection, completed = _select(requested, intra_op_num_threads, inter_op_num_threads)
+    selection, completed = _select(requested, intra_op_num_threads, inter_op_num_threads, allow_download=allow_download)
     if completed and requested == "auto" and source != "env":
         try:
             update_config_file({"model": {"onnx_device": selection.device}}, only_if_onnx_auto=True)
@@ -119,30 +124,38 @@ def _select_and_save(requested: str, source: str, intra_op_num_threads: int, int
     return selection
 
 
-def resolve_onnx_device(*, intra_op_num_threads: int = 0, inter_op_num_threads: int = 0) -> OnnxSelection:
+def resolve_onnx_device(
+    *, intra_op_num_threads: int = 0, inter_op_num_threads: int = 0, allow_download: bool = True
+) -> OnnxSelection:
     """Resolve at first model use; imports and diagnostic commands never call this function."""
     from ...config import config, get_config_file_path, get_config_source
 
     requested = config.model.onnx_device
     source = get_config_source("model.onnx_device")
     path = get_config_file_path()
-    key = (os.getpid(), path, requested, source)
+    key = (os.getpid(), path, requested, source, allow_download)
     with _lock:
         if key in _selections:
             return _selections[key]
         try:
             if requested != "auto" or sys.platform not in {"win32", "linux"}:
-                selection = _select_and_save(requested, source, intra_op_num_threads, inter_op_num_threads)
+                selection = _select_and_save(
+                    requested, source, intra_op_num_threads, inter_op_num_threads, allow_download=allow_download
+                )
             else:
                 try:
                     Path(path).parent.mkdir(parents=True, exist_ok=True)
                     selection_lock = FileLock(f"{path}.onnx-selection.lock", timeout=30)
                     selection_lock.acquire()
                 except OSError:
-                    selection = _select_and_save(requested, source, intra_op_num_threads, inter_op_num_threads)
+                    selection = _select_and_save(
+                        requested, source, intra_op_num_threads, inter_op_num_threads, allow_download=allow_download
+                    )
                 else:
                     try:
-                        selection = _select_and_save(requested, source, intra_op_num_threads, inter_op_num_threads)
+                        selection = _select_and_save(
+                            requested, source, intra_op_num_threads, inter_op_num_threads, allow_download=allow_download
+                        )
                     finally:
                         selection_lock.release()
         except Exception as error:
