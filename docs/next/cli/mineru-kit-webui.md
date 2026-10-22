@@ -6,7 +6,7 @@
 
 ## PDF 预览与版本要求
 
-Gradio 界面要求 `gradio>=6.8,<7`，不再支持 Gradio 5，也不再需要安装 `gradio-pdf`。
+Gradio 界面要求 `gradio>=6.21,<7`，使用 6.21 修复后的纯前端事件链式触发，不再需要安装 `gradio-pdf`。
 PDF 预览使用独立 iframe 和随 MinerU 分发的 PDF.js 6.3.289，支持连续阅读、翻页、页码跳转、缩放和适应宽度。
 核心模块、worker、CMap、标准字体及解码资源均从当前 Gradio 站点加载，预览无需外部 CDN 或 npm。
 
@@ -15,9 +15,9 @@ PDF 预览使用独立 iframe 和随 MinerU 分发的 PDF.js 6.3.289，支持连
 需要密码或损坏的 PDF 会显示预览错误。文字搜索、编辑、打印和缩略图不在当前预览功能范围内。
 静态资源和文件沿用 Gradio 的认证与文件路由，支持反向代理子路径；自定义挂载仍需传入自己的结果目录 `allowed_paths`。
 
-Gradio 6.26 的 `huggingface-hub>=1.16` 与当前 Transformers 4 的依赖范围不兼容。
-使用最新 Gradio 时，将 UI 安装在独立环境，通过 `--api-url` 连接推理服务；与本地模型同环境安装时，
-让依赖解析器选择兼容的 Gradio 6.x，当前相关约束可解析到 6.17.3，无需升级 Transformers。
+Gradio 6.21 要求 `starlette>=1.0.1,<2` 和 `huggingface-hub>=1.16,<2`，与当前 MinerU 的 Transformers 5 依赖范围兼容。
+安装时让依赖解析器同时处理 MinerU 和推理后端，无需为 WebUI 单独提高 Transformers、vLLM 或 LMDeploy 的下限。
+UI 也可安装在独立环境，通过 `--api-url` 连接推理服务。
 
 维护预览资源时执行 `python scripts/vendor_pdfjs.py`，脚本会校验固定上游压缩包并生成逐文件 SHA-256 清单。
 构建后使用 `python scripts/verify_pdfjs_distribution.py dist/*.whl dist/*.tar.gz` 检查资源和许可证是否完整。

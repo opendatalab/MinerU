@@ -464,8 +464,8 @@ ZH_MESSAGES: dict[str, str] = {
     "Gradio is a base dependency; repair the installation with `pip install 'mineru'`.": (
         "Gradio 是基础依赖;请用 `pip install 'mineru'` 修复安装。"
     ),
-    "Gradio >=6.8,<7 is required; upgrade with `pip install --upgrade 'mineru'`.": (
-        "需要 Gradio >=6.8,<7;请用 `pip install --upgrade 'mineru'` 升级。"
+    "Gradio >=6.21,<7 is required; upgrade with `pip install --upgrade 'mineru'`.": (
+        "需要 Gradio >=6.21,<7;请用 `pip install --upgrade 'mineru'` 升级。"
     ),
     "Unsupported API server tier '{tier}'. Supported tiers: {tiers}": "不支持的 API server 档位 '{tier}'。支持的档位: {tiers}",
     "{name} must be greater than zero": "{name} 必须大于零",

@@ -168,7 +168,7 @@ _KIT_MENU_CSS = """
 }
 #mineru-kit-download-options :is(button, a):hover { background: var(--background-fill-secondary, #f3f4f6); }
 .mineru-kit-empty-preview { min-height: 160px; display: grid; place-items: center; opacity: .65; }
-/* Gradio 6.8 会按逗号拆分并重写选择器，PDF/源文档预览使用独立选择器避免破坏 :has。 */
+/* Gradio 6.x 仍按逗号拆分并重写选择器，PDF/源文档预览使用独立选择器避免破坏 :has。 */
 /* PDF/源文档预览直接贴合面板边框，独立预览不再沿用旧组件的标签留白与额外高度。 */
 .mineru-kit-preview:has(.mineru-pdf-frame),
 .mineru-kit-preview:has(.mineru-source-frame),
@@ -663,15 +663,15 @@ def build_gradio_app(
         clear_button.click(fn=None, inputs=[], outputs=pdf_viewer, js=pdf_preview_js("clear"), **private_event_kwargs)
 
         source_script = _resource_text("gradio_source_preview.js")
-        input_file.change(
+        begin_source_preview = input_file.change(
             fn=None,
             inputs=input_file,
             outputs=[source_ticket, source_preview],
             js=f"(...args) => ({source_script})('begin', ...args)",
             **private_event_kwargs,
         )
-        # Gradio 6.8 的纯前端事件不可靠地触发 then；通过请求值变化启动后台转换。
-        render_source_preview = source_ticket.change(
+        # 前端先失效旧预览并生成票据，再串联后端；票据仍用于丢弃迟到回执。
+        render_source_preview = begin_source_preview.then(
             fn=prepare_source_preview,
             inputs=[input_file, source_ticket],
             outputs=source_receipt,
@@ -789,7 +789,7 @@ def build_gradio_app(
         )
 
         def read_page_metadata(file_path: str | None) -> str:
-            """把页数元数据编码为稳定的 JSON 文本，供两个 Gradio 主版本共用。"""
+            """把页数元数据编码为 JSON 文本，保持前端状态输入契约稳定。"""
             return json.dumps(pdf_page_metadata(file_path), ensure_ascii=False)
 
         input_file.change(
@@ -1052,8 +1052,8 @@ def build_gradio_app(
 
         for callback in (read_conversion_status, cancel_ui_conversion, unload_session, convert_ui):
             callback.__annotations__["request"] = gr.Request
-        # 纯前端开始事件通过票据 change 发起转换，兼容旧版 Gradio 的 then 限制。
-        convert_button.click(
+        # 前端先建立任务身份并重置界面，再串联后端提交。
+        begin_conversion = convert_button.click(
             fn=None,
             inputs=[],
             outputs=[*begin_conversion_outputs, conversion_ticket, status_poll, html_output, json_output],
@@ -1065,7 +1065,7 @@ def build_gradio_app(
             ),
             **private_event_kwargs,
         )
-        ui_convert_event = conversion_ticket.change(
+        ui_convert_event = begin_conversion.then(
             fn=convert_ui,
             inputs=[input_file, tier, page_range, force_ocr, conversion_ticket],
             outputs=conversion_receipt,
@@ -1192,18 +1192,10 @@ def build_gradio_app(
 
         for format_name, label in _DOWNLOAD_FORMATS:
             begin_download = download_buttons[format_name].click(
-                fn=_download_request_handler,
-                inputs=active_run_id,
-                outputs=download_requests[format_name],
-                js=f"(...args) => [({download_js('begin', format_name, label)})(...args)[0]]",
-                **private_event_kwargs,
-            )
-            # 开始回执也必须经过前端令牌校验，避免慢请求在清除后重新显示旧的“准备中”。
-            begin_download.success(
                 fn=None,
-                inputs=[download_requests[format_name], active_run_id],
-                outputs=[download_buttons[format_name], download_notice],
-                js=download_js("busy", format_name, label),
+                inputs=active_run_id,
+                outputs=[download_requests[format_name], download_buttons[format_name], download_notice],
+                js=download_js("begin", format_name, label),
                 **private_event_kwargs,
             )
             download_handler = session_download_handler(format_name)
@@ -1355,11 +1347,6 @@ def _build_office_preview_html(file_path: str | Path, request: object | None = N
         f'<iframe class="office-preview-frame" src="{html.escape(viewer_url, quote=True)}" frameborder="0"></iframe>'
         "</div>"
     )
-
-
-def _download_request_handler(request_token: str) -> str:
-    """传回前端下载令牌以可靠触发后续事件，不直接修改可能已属于新文档的按钮。"""
-    return request_token if isinstance(request_token, str) else ""
 
 
 def _download_handler(format_name: str, output_root: Path) -> Callable[..., tuple[str | None, str]]:

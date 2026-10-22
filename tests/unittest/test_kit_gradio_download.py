@@ -88,6 +88,10 @@ def test_download_receipt_keeps_request_on_success_and_failure(tmp_path: Path, m
     path, receipt = handler(artifacts.as_state(), json.dumps({"run_id": "old-run", "sequence": 3}))
     assert path is None and "已变更" in json.loads(receipt)["error"]
     render.assert_not_called()
+    # 被前端拒绝的重复点击只携带空令牌，不能进入导出逻辑。
+    path, receipt = handler(artifacts.as_state(), "")
+    assert path is None and json.loads(receipt)["request"] == ""
+    render.assert_not_called()
 
 
 def test_download_event_chain_and_pdf_transport(tmp_path: Path) -> None:
@@ -111,7 +115,7 @@ def test_download_event_chain_and_pdf_transport(tmp_path: Path) -> None:
     assert reset()[2]["visible"] is False
     assert reset()[7] == ""
     conversion = next(fn for fn in app.fns.values() if fn.name == "convert_handler")
-    # 浏览器通过票据变化启动普通请求；公开 API 仍保留四个输入与原生文件输出。
+    # 浏览器先生成票据再串联普通请求；公开 API 仍保留四个输入与原生文件输出。
     assert len(conversion.inputs) == 4
     ui_conversion = next(fn for fn in app.fns.values() if fn.name == "convert_ui")
     ticket = ui_conversion.inputs[-1]
@@ -130,11 +134,17 @@ def test_download_event_chain_and_pdf_transport(tmp_path: Path) -> None:
     assert reset_on_upload["js"] and reset_on_upload["backend_fn"] is False
     handlers = [fn for fn in app.fns.values() if fn.name == "handler"]
     assert len(handlers) == 7
+    dependencies = {dep["id"]: dep for dep in app.config["dependencies"]}
     files = []
     for handler in handlers:
         file, receipt = handler.outputs
         assert file.__class__.__name__ == "File" and file.visible is False
         files.append(file._id)
+        begin = dependencies[dependencies[handler._id]["trigger_after"]]
+        assert begin["backend_fn"] is False and begin["queue"] is False
+        assert len(begin["outputs"]) == 3 and begin["outputs"][0] == handler.inputs[1]._id
+        assert '"begin"' in begin["js"]
+        assert [dep["id"] for dep in dependencies.values() if dep.get("trigger_after") == begin["id"]] == [handler._id]
         success = next(dep for dep in app.config["dependencies"] if dep.get("trigger_after") == handler._id)
         assert success["trigger_only_on_success"] is True
         assert success["backend_fn"] is False and success["queue"] is False

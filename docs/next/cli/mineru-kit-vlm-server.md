@@ -124,7 +124,7 @@ Qwen 模型通过 mineru-vl-utils 的公开路径准备接口生成独立兼容�
 原始配置和权重不变，临时目录在服务退出后清理。MLX server 不修改上游函数。
 
 Gradio 已包含在 MinerU 基础包；手动添加 MLX 时请同时解析 `mineru` 与 `mlx-vlm>=0.7.0,<0.8.0`。
-mlx-vlm 0.7.0 要求 Starlette 1.x，Gradio 6.8.0 与其不兼容；本次验收使用 Gradio 6.26.0。
+mlx-vlm 0.7.0 要求 Starlette 1.x，与当前 `gradio>=6.21,<7` 的依赖范围兼容；此前验收使用 Gradio 6.26.0。
 
 ## 8. 推理服务与 Parse API 的接口区别
 
