@@ -1,5 +1,5 @@
 # Copyright (c) Opendatalab. All rights reserved.
-"""llama.cpp 实际设备选择、集显 ONNX 决策复用与旧 Intel Vulkan 提交策略。"""
+"""llama.cpp 实际设备选择、集显 ONNX 决策复用与 Intel Vulkan 串行提交策略。"""
 
 from __future__ import annotations
 
@@ -67,13 +67,13 @@ def discover_llama_devices(environment: Mapping[str, str] | None = None) -> tupl
 
 
 def needs_serialized_submissions(device: LlamaDevice) -> bool:
-    """仅 Linux Vulkan 的明确 Xe-LP/更早 PCI 架构触发规避；未知型号不猜测。"""
+    """仅 Linux Vulkan 的 Xe-LPG、Xe-LP 及更早 PCI 架构触发规避，不推断后续架构。"""
     return (
         sys.platform == "linux"
         and device.backend == "vulkan"
         and device.vendor_id == INTEL_VENDOR_ID
         and device.device_id is not None
-        and intel_architecture(device.device_id) in {"legacy", "xe_lp"}
+        and intel_architecture(device.device_id) in {"legacy", "xe_lp", "xe_lpg"}
     )
 
 
@@ -99,7 +99,9 @@ def _bind(selection: LlamaSelection) -> LlamaSelection:
     selected = selection.devices
     if not selected or any(d.backend != "vulkan" or d.vulkan_index is None for d in selected):
         if any(needs_serialized_submissions(d) for d in selected):
-            raise RuntimeError("Cannot safely bind the legacy Intel Vulkan device; use a verified device filter")
+            raise RuntimeError(
+                "Cannot safely bind the Intel Vulkan device requiring serialization; use a verified device filter"
+            )
         return replace(selection, device_aliases=tuple((d.name, d.name) for d in selected))
     changes = dict(selection.environment)
     changes["GGML_VK_VISIBLE_DEVICES"] = ",".join(str(d.vulkan_index) for d in selected)
@@ -171,15 +173,15 @@ def _resolve(
         if len(matches) != 1:
             return LlamaSelection("cpu", reason="onnx_gpu_identity_unconfirmed")
         selected, reason = matches, f"onnx_{choice.backend}_{choice.reason}"
-    old = tuple(d for d in selected if needs_serialized_submissions(d))
-    if old and len(old) != len(selected):
+    serialized_devices = tuple(d for d in selected if needs_serialized_submissions(d))
+    if serialized_devices and len(serialized_devices) != len(selected):
         if manual:
-            raise ValueError("Legacy Intel and other GPUs need different Vulkan submission policies; select one device group")
-        # The global ggml switch cannot be restricted per device. Prefer the other
-        # discrete GPUs over mixing Xe-LP DG1 with AMD/NVIDIA/modern Intel.
+            raise ValueError("Selected GPUs need different Vulkan submission policies; select one compatible device group")
+        # The global ggml switch cannot be restricted per device. Keep only the
+        # selected GPUs that do not require serialization when policies differ.
         selected = tuple(d for d in selected if not needs_serialized_submissions(d))
-        old = ()
-    changes = {SERIALIZE_ENV: "1"} if old and SERIALIZE_ENV not in os.environ else {}
+        serialized_devices = ()
+    changes = {SERIALIZE_ENV: "1"} if serialized_devices and SERIALIZE_ENV not in os.environ else {}
     return _bind(LlamaSelection("gpu", selected, reason, tuple(changes.items())))
 
 

@@ -38,10 +38,12 @@ llama.cpp 自动模式优先使用原生 ggml 实际可见的独显；没有可�
 包括已保存的 CPU/GPU 选择、输出一致性检查失败及架构回退。ONNX 决策涉及的 GPU 必须与 llama.cpp 的设备身份匹配，不能用另一张卡的成绩替集显决策。
 因此 Linux 上 Xe-LP 及以前的 Intel 默认随现有 WebGPU 架构策略走 CPU；显式 `MINERU_LLAMA_CPP_BACKEND=vulkan`、GPU 层数或 server `--device` 仍可强制使用 GPU。
 
-解析与 `mineru-kit vlm-server` 的 llama 入口共用设备策略。仅当 Linux Vulkan 实际选中明确 PCI 映射中的 Intel Xe-LP/更早架构时，
-自动启用 `GGML_VK_SERIALIZE_SUBMISSIONS=1`，规避已复现的 i915 请求取消。AMD、NVIDIA、较新 Intel 和 Windows 不自动开启该开关。
+解析与 `mineru-kit vlm-server` 的 llama 入口共用设备策略。仅当 Linux Vulkan 实际选中明确 PCI 映射中的 Intel Xe-LP/更早架构，
+或 Xe-LPG（`7dxx`、`b6xx`，包含 `8086:7d51`）时，自动启用 `GGML_VK_SERIALIZE_SUBMISSIONS=1`，
+规避已复现的 i915 请求取消、设备丢失及异常视觉结果。该规则对 standard、advanced 等档位统一生效。
+Xe-HPG、Xe2/Xe3 LPG 和其他后续架构、AMD、NVIDIA 及 Windows 不自动开启该开关。Xe-LPG 的 ONNX WebGPU 自适应校准策略不变。
 多卡机器先确认原生设备，再隔离所选 GPU 并复核身份；不能仅因机器里存在 Intel 集显就给独显开启串行提交。
-自动选择也不会混用需要串行提交的旧 Intel 独显和其他独显；显式要求此类混合设备组会报错，因为 ggml 的环境开关无法逐卡设置。
+自动选择也不会混用需要串行提交的设备和其他设备；显式要求此类混合设备组会报错，因为 ggml 的环境开关无法逐卡设置。
 
 已有的显式 `GGML_VK_SERIALIZE_SUBMISSIONS` 环境值保持不变：该开关检查变量是否存在，设为 `0` 同样会开启，撤销须 `unset`。
 进程内初始化结束后会恢复临时环境；ggml 已缓存设备状态时，变更可见显卡或提交策略须使用新进程。

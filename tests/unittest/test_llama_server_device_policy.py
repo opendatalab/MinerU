@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import Mock
 
 import pytest
 
 from mineru.kit.vlm_server import llama_cpp_server as server
+from mineru.model.runtime import llama_device as policy
 from mineru.model.runtime.llama_device import LlamaSelection, SERIALIZE_ENV
 from mineru.model.runtime.llama_probe import LlamaDevice
 
@@ -143,3 +145,46 @@ def test_exec_remaps_environment_before_native_parser_validates_it(monkeypatch: 
     server._exec_server(args, plan())
     assert os.environ["LLAMA_ARG_DEVICE"] == "Vulkan1"
     assert os.environ["MTMD_BACKEND_DEVICE"] == "Vulkan1"
+
+
+@pytest.mark.parametrize(
+    "platform,chip,serialize",
+    [("linux", 0x7D51, True), ("linux", 0xB640, True), ("linux", 0x56A0, False), ("win32", 0x7D51, False)],
+)
+@pytest.mark.parametrize("projector_only", [False, True])
+def test_actual_device_policy_reaches_server_environment(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, platform: str, chip: int, serialize: bool, projector_only: bool
+) -> None:
+    """复用真实设备策略，验证模型或仅视觉编码选中 Xe-LPG 时的启动环境。"""
+    for name in (
+        *policy._BACKEND_ENV,
+        "MINERU_LLAMA_CPP_BACKEND",
+        "LLAMA_ARG_DEVICE",
+        "LLAMA_ARG_N_GPU_LAYERS",
+        "MTMD_BACKEND_DEVICE",
+        "LLAMA_ARG_MMPROJ_OFFLOAD",
+    ):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(policy, "sys", SimpleNamespace(platform=platform))
+    device = LlamaDevice("Vulkan0", "Intel", "vulkan", chip != 0x56A0, 0x8086, chip, 0)
+    monkeypatch.setattr(policy, "discover_llama_devices", Mock(return_value=(device,)))
+    args = ["-ngl", "0", "--mmproj-device", "Vulkan0", "--mmproj-offload"] if projector_only else ["--device", "Vulkan0"]
+    selected = server._device_policy(args)
+    assert selected.cpu_model is projector_only
+    assert dict(selected.environment).get(SERIALIZE_ENV) == ("1" if serialize else None)
+    server._apply_device_policy(args, selected)
+
+    binary = tmp_path / "llama-server"
+    binary.touch()
+    monkeypatch.setattr(server, "llama_server_binary", lambda: binary)
+
+    def execute(path: str, argv: list[str]) -> None:
+        assert os.environ.get(SERIALIZE_ENV) == ("1" if serialize else None)
+        assert os.environ["GGML_VK_VISIBLE_DEVICES"] == "0"
+        if projector_only:
+            assert server._flag_value(argv, "--n-gpu-layers") == "0"
+            assert server._flag_value(argv, "--mmproj-device") == "Vulkan0"
+
+    monkeypatch.setattr(server.os, "execv", execute)
+    server._exec_server(args, selected)
+    assert SERIALIZE_ENV not in os.environ and "GGML_VK_VISIBLE_DEVICES" not in os.environ
