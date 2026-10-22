@@ -11,6 +11,7 @@ import tempfile
 import time
 from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field, replace
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal, NoReturn, Protocol
 from urllib.parse import quote
@@ -474,6 +475,15 @@ class TaskStore:
     ) -> TaskListResponse:
         """对父任务应用稳定排序和游标；同秒创建的任务以 ID 明确排序。"""
         self.collect_expired()
+        cutoff: datetime | None = None
+        if created_after is not None:
+            try:
+                cutoff = datetime.fromisoformat(created_after.replace("Z", "+00:00"))
+                if cutoff.tzinfo is None:
+                    raise ValueError("Timezone is required")
+                cutoff = cutoff.astimezone(timezone.utc)
+            except (ValueError, OverflowError):
+                _invalid("created_after must be an ISO-8601 timestamp with a timezone", param="created_after")
         allowed = set(status_filter.split(",")) if status_filter else None
         if allowed is not None and not allowed.issubset({"waiting_upload", "queued", "running", *TERMINAL_TASK_STATUSES}):
             _invalid("Unknown task status", param="status")
@@ -493,7 +503,8 @@ class TaskStore:
         records = [
             record
             for record in records
-            if (allowed is None or record.status in allowed) and (created_after is None or record.created_at >= created_after)
+            if (allowed is None or record.status in allowed)
+            and (cutoff is None or datetime.fromisoformat(record.created_at.replace("Z", "+00:00")) >= cutoff)
         ]
         page = records[:limit]
         return TaskListResponse(

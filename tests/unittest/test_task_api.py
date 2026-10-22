@@ -1083,3 +1083,102 @@ def test_model_output_option_reaches_worker_and_result(
         },
     )
     assert rejected.status_code == 400
+
+
+@pytest.mark.parametrize(
+    "cutoff,count",
+    [
+        ("2026-10-23T00:00:00Z", 1),
+        ("2026-10-23T08:00:00+08:00", 1),
+        ("2026-10-23T00:00:00.000Z", 1),
+        ("2026-10-23T01:00:00.001Z", 0),
+        ("2026-10-23T01:00:00Z", 1),
+    ],
+)
+def test_task_list_compares_timestamp_instants(service: tuple[TestClient, FastAPI], cutoff: str, count: int) -> None:
+    """等价时区及小数秒按真实时间过滤，保留既有包含边界的语义。"""
+    client, app = service
+    task = _submit(client, [("a.html", HTML)], hashes=False)
+    app.state.task_store._records[task["task_id"]].created_at = "2026-10-23T01:00:00Z"
+    response = client.get("/v1/tasks", params={"created_after": cutoff})
+    assert response.status_code == 200
+    assert len(response.json()["data"]) == count
+
+
+@pytest.mark.parametrize("cutoff", ["", "garbage", "2026-10-23", "2026-10-23T00:00:00", "2026-13-23T00:00:00Z"])
+def test_task_list_rejects_invalid_timestamp(service: tuple[TestClient, FastAPI], cutoff: str) -> None:
+    """非法时间或缺失时区统一返回参数错误，不静默返回空列表。"""
+    client, _ = service
+    response = client.get("/v1/tasks", params={"created_after": cutoff})
+    assert response.status_code == 400
+    assert response.json()["error"]["param"] == "created_after"
+
+
+def test_router_lease_timeout_does_not_expire_other_worker_results(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """多个失联任务不能阻塞健康 worker 续租，较短的 worker 保留期也不提前删除产物。"""
+    from mineru.kit.router import tasks as router_tasks
+
+    workers = {
+        host: api_server.create_app(upload_dir=str(tmp_path / host), tier="flash", retention_seconds=1)
+        for host in ("worker-a", "worker-b")
+    }
+    transport = _WorkerTransport(workers)
+    app = create_router(
+        RouterSettings(
+            upstream_urls=("http://worker-a", "http://worker-b"),
+            local_gpus="none",
+            worker_refresh_interval_seconds=0,
+            retention_seconds=3600,
+        ),
+        transport=transport,
+    )
+    with TestClient(app) as client:
+        pool = app.state.worker_pool
+        pool.workers[1].healthy = False
+        for index in range(2):
+            task = _submit(client, [(f"a{index}.html", HTML)])
+            _upload(client, task, [(f"a{index}.html", HTML)])
+            _terminal(client, task)
+        pool.workers[0].healthy = False
+        pool.workers[1].healthy = True
+        task = _submit(client, [("b.html", HTML)])
+        _upload(client, task, [("b.html", HTML)])
+        result = _terminal(client, task)
+
+        async def check_renewal() -> None:
+            """缩短测试超时预算，验证健康续租完成时另一 worker 仍在等待响应。"""
+            await asyncio.gather(*(record.operation for record in app.state.task_store._records.values()))
+            original = transport.handle_async_request
+            stalled = asyncio.Event()
+            renewed = asyncio.Event()
+            calls: list[str] = []
+
+            async def handle(request: httpx.Request) -> httpx.Response:
+                """只阻塞故障 worker，其他请求继续使用真实 ASGI 服务及结果租约。"""
+                if request.url.path.startswith("/v1/tasks/"):
+                    calls.append(request.url.host)
+                    if request.url.host == "worker-a":
+                        stalled.set()
+                        await asyncio.Event().wait()
+                    else:
+                        await stalled.wait()
+                        response = await original(request)
+                        assert response.status_code == 200
+                        renewed.set()
+                        return response
+                return await original(request)
+
+            worker_record = next(iter(workers["worker-b"].state.task_store._records.values()))
+            worker_record.lease_expires_at = time.time() + 0.1
+            with monkeypatch.context() as scoped:
+                scoped.setattr(transport, "handle_async_request", handle)
+                scoped.setattr(router_tasks, "_TASK_LEASE_REFRESH_TIMEOUT_SECONDS", 0.05)
+                await asyncio.wait_for(router_tasks.maintain_task_result_leases(app.state.registry, pool), timeout=1)
+            assert renewed.is_set()
+            assert calls.count("worker-a") == 1
+            assert worker_record.lease_expires_at > time.time() + 100
+            assert worker_record.retention_epoch is None
+
+        client.portal.call(check_renewal)
+        assert client.get(result["status_url"]).json()["status"] == "completed"
+        assert client.get(result["files"][0]["result_url"]).status_code == 200

@@ -114,6 +114,8 @@ def test_tasks_sdk_upload_cache_and_lost_response(
             return httpx.Response(202, json=copy.deepcopy(state))
         if request.method == "PUT":
             assert request.content == source.read_bytes()
+            assert request.headers["content-length"] == str(source.stat().st_size)
+            assert "transfer-encoding" not in request.headers
             assert "authorization" not in request.headers
             state.update(task_snapshot())
             if lost_upload_response:
@@ -346,3 +348,84 @@ def test_task_model_output_changes_wrapper_identity() -> None:
     assert fingerprint("a.pdf", 3, "a" * 64, ordinary) != fingerprint("a.pdf", 3, "a" * 64, with_model)
     with pytest.raises(ValueError, match="requires default"):
         ParseOptions(output_formats=["docx"], include_model_output=True)
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+@pytest.mark.parametrize("status,failures,expected_queries", [(429, 1, 2), (503, 1, 2), (429, 5, 3), (503, 5, 3), (400, 1, 1)])
+def test_tasks_sdk_retries_transient_poll_responses(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    asynchronous: bool,
+    status: int,
+    failures: int,
+    expected_queries: int,
+) -> None:
+    """轮询按 Retry-After 重试临时响应，耗尽后保留错误，永久错误不重试。"""
+    source = tmp_path / "input.pdf"
+    source.write_bytes(b"pdf")
+    counts = {"post": 0, "query": 0}
+    delays: list[float] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        """首次创建成功，按预算注入轮询故障，之后返回可读取的完整结果。"""
+        if request.method == "POST":
+            counts["post"] += 1
+            return httpx.Response(202, json=task_snapshot("queued"))
+        if request.url.host == "api.test":
+            counts["query"] += 1
+            if counts["query"] <= failures:
+                return httpx.Response(
+                    status, headers={"Retry-After": "2"}, json={"error": {"code": "temporary", "message": "retry later"}}
+                )
+            return httpx.Response(200, json=task_snapshot())
+        return httpx.Response(200, content=zip_output())
+
+    async def sleep(delay: float) -> None:
+        """记录异步退避时间，不让协议测试实际等待。"""
+        delays.append(delay)
+
+    bind_transport(monkeypatch, handle)
+    monkeypatch.setattr(api_client.time, "sleep", delays.append)
+    monkeypatch.setattr(api_client.asyncio, "sleep", sleep)
+    parser = MinerUApiParser(api_url="https://api.test", tier="flash")
+    if status == 400 or failures > 3:
+        with pytest.raises(api_client._V1APIError) as error:
+            parse(parser, source, asynchronous)
+        assert error.value.code == "temporary"
+    else:
+        assert len(parse(parser, source, asynchronous).pages) == 1
+    assert counts == {"post": 1, "query": expected_queries}
+    assert [delay for delay in delays if delay] == [2] * (expected_queries - 1)
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_tasks_sdk_does_not_retry_http_submission_failure(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, asynchronous: bool
+) -> None:
+    """即使服务端建议重试，非幂等创建的 HTTP 503 也不能触发重复任务。"""
+    source = tmp_path / "input.pdf"
+    source.write_bytes(b"pdf")
+    calls: list[str] = []
+
+    def handle(request: httpx.Request) -> httpx.Response:
+        """模拟创建响应不确定，记录是否重复发送 POST。"""
+        calls.append(request.method)
+        return httpx.Response(503, headers={"Retry-After": "0"}, json={"error": {"code": "busy", "message": "busy"}})
+
+    bind_transport(monkeypatch, handle)
+    with pytest.raises(api_client._V1APIError):
+        parse(MinerUApiParser(api_url="https://api.test"), source, asynchronous)
+    assert calls == ["POST"]
+
+
+@pytest.mark.parametrize(
+    "header,expected",
+    [("2", 2), ("Thu, 22 Oct 2026 00:00:05 GMT", 5), ("bad", 0.25), ("-2", 0.25), ("61", None), ("9" * 5000, None)],
+)
+def test_tasks_sdk_retry_after_formats(monkeypatch: pytest.MonkeyPatch, header: str, expected: float | None) -> None:
+    """支持 HTTP 日期与秒数；非法值退避，过长等待返回原错误且不提前重试。"""
+    from datetime import datetime, timezone
+
+    monkeypatch.setattr(api_client.time, "time", lambda: datetime(2026, 10, 22, tzinfo=timezone.utc).timestamp())
+    monkeypatch.setattr(api_client, "_transport_retry_delay", lambda _: 0.25)
+    assert api_client._http_retry_delay(httpx.Response(429, headers={"Retry-After": header}), 1) == expected

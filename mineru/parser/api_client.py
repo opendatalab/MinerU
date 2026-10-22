@@ -24,6 +24,7 @@ import time
 import tempfile
 import zipfile
 from collections.abc import Callable, Iterator, AsyncIterator
+from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any, Literal, cast
 from urllib.parse import unquote, urlparse, urljoin
@@ -41,6 +42,8 @@ _TERMINAL_JOB_STATUSES = {"completed", "partial", "failed", "canceled"}
 _TRANSPORT_MAX_ATTEMPTS = 3
 _TRANSPORT_RETRY_BASE_DELAY_SECONDS = 0.25
 _TRANSPORT_RETRY_MAX_DELAY_SECONDS = 2.0
+_HTTP_RETRY_MAX_DELAY_SECONDS = 60.0
+_RETRYABLE_HTTP_STATUSES = frozenset({408, 429, 500, 502, 503, 504})
 
 _VISUAL_HTML_BLOCK_TYPES = frozenset({"image_body", "table_body", "chart_body"})
 _HTML_IMAGE_SOURCE_RE = re.compile(
@@ -234,7 +237,7 @@ class MinerUApiParser(DocumentParser):
             )
             task = self._snapshot(response)
             _notify_job_status(task, status_callback)
-            task = self._upload_input(cli, task, file_path, status_callback)
+            task = self._upload_input(cli, task, file_path, status_callback, size=payload["manifest"][0]["bytes"])
             for _ in range(_POLL_MAX_ATTEMPTS):
                 if task["status"] in _TERMINAL_JOB_STATUSES:
                     break
@@ -271,6 +274,8 @@ class MinerUApiParser(DocumentParser):
         task: dict[str, Any],
         path: Path,
         callback: Callable[[ApiTaskStatus], None] | None,
+        *,
+        size: int,
     ) -> dict[str, Any]:
         """首次上传失败先核实是否已确认，再重新打开文件流；缓存命中完全不传字节。"""
         for attempt in range(1, _TRANSPORT_MAX_ATTEMPTS + 1):
@@ -282,6 +287,9 @@ class MinerUApiParser(DocumentParser):
                 raise _V1APIError("invalid_response", "Missing task upload link")
             url = self._resolve(link["upload_url"])
             headers = _same_origin_upload_headers(self._base_url, url, link.get("upload_headers", {}), self._headers())
+            headers = dict(httpx.Headers(headers))
+            headers.pop("transfer-encoding", None)
+            headers["content-length"] = str(size)
             try:
                 response = _request_once(
                     cli,
@@ -386,7 +394,7 @@ class MinerUApiParser(DocumentParser):
             )
             task = self._snapshot(response)
             _notify_job_status(task, status_callback)
-            task = await self._async_upload_input(cli, task, file_path, status_callback)
+            task = await self._async_upload_input(cli, task, file_path, status_callback, size=payload["manifest"][0]["bytes"])
             for _ in range(_POLL_MAX_ATTEMPTS):
                 if task["status"] in _TERMINAL_JOB_STATUSES:
                     break
@@ -423,6 +431,8 @@ class MinerUApiParser(DocumentParser):
         task: dict[str, Any],
         path: Path,
         callback: Callable[[ApiTaskStatus], None] | None,
+        *,
+        size: int,
     ) -> dict[str, Any]:
         """首次上传失败先核实是否已确认，再重新打开文件流；缓存命中完全不传字节。"""
         for attempt in range(1, _TRANSPORT_MAX_ATTEMPTS + 1):
@@ -434,6 +444,9 @@ class MinerUApiParser(DocumentParser):
                 raise _V1APIError("invalid_response", "Missing task upload link")
             url = self._resolve(link["upload_url"])
             headers = _same_origin_upload_headers(self._base_url, url, link.get("upload_headers", {}), self._headers())
+            headers = dict(httpx.Headers(headers))
+            headers.pop("transfer-encoding", None)
+            headers["content-length"] = str(size)
             try:
                 response = await _async_request_once(
                     cli,
@@ -570,9 +583,15 @@ def _request(
     content: bytes | Iterator[bytes] | AsyncIterator[bytes] | None,
     max_attempts: int,
 ) -> httpx.Response:
+    """仅对安全 GET 重试临时 HTTP 错误，创建与上传沿用各自的一次请求边界。"""
     for attempt in range(1, max_attempts + 1):
         try:
-            return _send_request(client, method, url, headers=headers, json_body=json_body, content=content)
+            response = _send_request(client, method, url, headers=headers, json_body=json_body, content=content)
+            delay = _http_retry_delay(response, attempt) if method == "GET" and attempt < max_attempts else None
+            if delay is None:
+                return response
+            response.close()
+            time.sleep(delay)
         except httpx.TransportError as exc:
             if attempt >= max_attempts:
                 raise _APITransportError(stage=stage, method=method, attempts=attempt, cause=exc) from exc
@@ -643,9 +662,15 @@ async def _async_request(
     content: bytes | Iterator[bytes] | AsyncIterator[bytes] | None,
     max_attempts: int,
 ) -> httpx.Response:
+    """仅对安全 GET 重试临时 HTTP 错误，创建与上传沿用各自的一次请求边界。"""
     for attempt in range(1, max_attempts + 1):
         try:
-            return await _async_send_request(client, method, url, headers=headers, json_body=json_body, content=content)
+            response = await _async_send_request(client, method, url, headers=headers, json_body=json_body, content=content)
+            delay = _http_retry_delay(response, attempt) if method == "GET" and attempt < max_attempts else None
+            if delay is None:
+                return response
+            await response.aclose()
+            await asyncio.sleep(delay)
         except httpx.TransportError as exc:
             if attempt >= max_attempts:
                 raise _APITransportError(stage=stage, method=method, attempts=attempt, cause=exc) from exc
@@ -703,6 +728,26 @@ def _transport_retry_delay(attempt: int) -> float:
         _TRANSPORT_RETRY_BASE_DELAY_SECONDS * (2 ** (attempt - 1)),
     )
     return exponential * (0.5 + random.random())
+
+
+def _http_retry_delay(response: httpx.Response, attempt: int) -> float | None:
+    """解析秒数或 HTTP 日期的 Retry-After；超过等待预算时返回原错误，不提前重试。"""
+    if response.status_code not in _RETRYABLE_HTTP_STATUSES:
+        return None
+    value = response.headers.get("retry-after", "").strip()
+    if value.isascii() and value.isdigit():
+        # 避免超长数字转换，并保留服务端要求的最短等待时间。
+        seconds = value.lstrip("0") or "0"
+        delay = float(seconds) if len(seconds) <= 3 else _HTTP_RETRY_MAX_DELAY_SECONDS + 1
+    else:
+        try:
+            stamp = parsedate_to_datetime(value)
+            if stamp.tzinfo is None:
+                raise ValueError("Retry-After date must have a timezone")
+            delay = max(0.0, stamp.timestamp() - time.time())
+        except (ValueError, TypeError, OverflowError):
+            delay = _transport_retry_delay(attempt)
+    return delay if delay <= _HTTP_RETRY_MAX_DELAY_SECONDS else None
 
 
 def _check_download_length(response: httpx.Response, received: int) -> None:

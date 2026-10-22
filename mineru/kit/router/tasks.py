@@ -541,34 +541,50 @@ def install_task_error_handlers(app: FastAPI) -> None:
         )
 
 
+_TASK_LEASE_REFRESH_TIMEOUT_SECONDS = 10.0
+
+
 async def maintain_task_result_leases(registry: ResourceRegistry, pool: WorkerPool, *, release: bool = False) -> None:
-    """续租已结束父任务的子产物，进程关闭或公开保留期结束时释放上游租约。"""
+    """按 worker 隔离续租，并把整轮网络等待限制在远小于 120 秒租约的预算内。"""
+    groups: dict[str, list[ResourceRoute]] = {}
     for route in registry.list("job", include_expired=True):
-        if not route.metadata.get("task_result_held"):
-            continue
-        if not release and "task_result_retain_until" not in route.metadata:
-            continue
-        until = route.metadata.get("task_result_retain_until")
-        ended = release or (until is not None and until <= time.time())
-        worker = pool.get(route.worker_id)
-        headers = dict(route.metadata.get("upstream_headers") or {})
-        headers["x-mineru-task-lease-seconds"] = "0" if ended else "120"
+        if route.metadata.get("task_result_held") and (release or "task_result_retain_until" in route.metadata):
+            groups.setdefault(route.worker_id, []).append(route)
+
+    async def maintain_worker(worker_id: str, routes: list[ResourceRoute]) -> None:
+        """单个 worker 超时不拖延其他 worker；优先处理最久未续租的任务，避免队尾饥饿。"""
+        worker = pool.get(worker_id)
+        routes.sort(key=lambda route: route.metadata.get("task_lease_refreshed_at", 0))
         try:
-            response = await _worker_request(pool, worker, "GET", f"/v1/tasks/{route.upstream_id}", headers=headers)
-            if response.status_code >= 400 and response.status_code != 404 and not ended:
-                continue
-        except ApiServerError:
-            if not ended:
-                continue
-        if ended:
-            route.metadata["task_result_held"] = False
-            route.metadata.pop("upstream_headers", None)
-            result_id = route.metadata.get("task_result_file_id")
-            result_route = next(
-                (item for item in registry.list("file", include_expired=True) if item.public_id == result_id), None
-            )
-            if result_route is not None:
-                result_route.metadata["task_result_held"] = False
+            async with asyncio.timeout(_TASK_LEASE_REFRESH_TIMEOUT_SECONDS):
+                for route in routes:
+                    until = route.metadata.get("task_result_retain_until")
+                    ended = release or (until is not None and until <= time.time())
+                    headers = dict(route.metadata.get("upstream_headers") or {})
+                    headers["x-mineru-task-lease-seconds"] = "0" if ended else "120"
+                    try:
+                        response = await _worker_request(pool, worker, "GET", f"/v1/tasks/{route.upstream_id}", headers=headers)
+                        if response.status_code < 400:
+                            route.metadata["task_lease_refreshed_at"] = time.monotonic()
+                    except ApiServerError:
+                        continue
+        except TimeoutError:
+            pass
+        finally:
+            # 上游释放超时也必须结束已经到期的本地保留，避免路由永久占用资源。
+            for route in routes:
+                until = route.metadata.get("task_result_retain_until")
+                if release or (until is not None and until <= time.time()):
+                    route.metadata["task_result_held"] = False
+                    route.metadata.pop("upstream_headers", None)
+                    result_id = route.metadata.get("task_result_file_id")
+                    result_route = next(
+                        (item for item in registry.list("file", include_expired=True) if item.public_id == result_id), None
+                    )
+                    if result_route is not None:
+                        result_route.metadata["task_result_held"] = False
+
+    await asyncio.gather(*(maintain_worker(worker_id, routes) for worker_id, routes in groups.items()))
 
 
 __all__ = ["RouterTaskBackend", "install_task_error_handlers", "read_task_execution", "maintain_task_result_leases"]

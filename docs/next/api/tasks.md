@@ -219,7 +219,7 @@ Router 按就绪文件独立选择 worker 并预占负载，同一父 Task 可�
 URL 交给 worker 下载，客户端上传字节按 worker 的缓存预检结果传输。
 健康接口的 `features.task_output_formats` 声明 Tasks 格式，`sources` 为 `upload/url`，`task_model_output` 声明模型输出能力。
 不声明新 Tasks 能力的旧 worker 不参与 Tasks 调度，更新时应先更新 worker，再更新 Router 和客户端。
-Router 使用有界、可续租的内部结果租约保护 worker 产物，上传窗口不受结果租约影响；Router 丢失后租约会自行结束。
+Router 使用有界、可续租的内部结果租约保护 worker 产物，上传窗口不受结果租约影响；Router 丢失后租约会自行结束。已完成任务按 worker 并行续租，每轮网络等待最多 10 秒，避免失联 worker 阻塞其他 worker 的结果保留。
 
 本次协议不保留旧表单、直传或 `markdown/middle_json/structured_content/zip` Tasks 格式别名。
 客户端应改用 JSON、`files[].result_url` 及逐文件保存方式。
@@ -229,7 +229,7 @@ SaaS Go 服务和对象存储配置由部署方按此共同契约实现，不属
 
 ## 父任务列表与缓存
 
-`GET /v1/tasks` 返回当前调用方的父任务摘要。支持 `status`（逗号分隔）、`limit`（默认 20，上限 100）、`after`（上一页 last_id）、`order`（默认 desc）、`created_after`。按 created_at 和 task_id 稳定排序；游标不存在、过期或属于其他调用方时返回 404。
+`GET /v1/tasks` 返回当前调用方的父任务摘要。支持 `status`（逗号分隔）、`limit`（默认 20，上限 100）、`after`（上一页 last_id）、`order`（默认 desc）、`created_after`。`created_after` 必须是带时区的 ISO-8601 时间，按实际时间过滤（包含边界），支持 UTC、时区偏移和小数秒；非法值返回 400。按 created_at 和 task_id 稳定排序；游标不存在、过期或属于其他调用方时返回 404。
 
 响应为 `object=list/data/first_id/last_id/has_more`；每项包含 `task_id/status/created_at/file_count`，不展示内部子执行。
 
