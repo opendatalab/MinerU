@@ -221,5 +221,6 @@ Router 使用有界、可续租的内部结果租约保护 worker 产物，上�
 本次协议不保留旧表单、直传或 `markdown/middle_json/structured_content/zip` Tasks 格式别名。
 客户端应改用 JSON、`files[].result_url` 及逐文件保存方式。
 独立 `/v1/uploads`、`/v1/parse/jobs` 与 SDK 的现有请求及输出协议保持不变。
-`/v1/file_parse`、`/v1/tasks/{task_id}/result` 不恢复。
+API Server 和 Router 不提供 `/v1/file_parse`、`/v1/tasks/{task_id}/result`。
+需要同步单文件调用时，独立启动 [file_parse 包装服务](file-parse.md)，由它调用本页的共同 Tasks 契约。
 SaaS Go 服务和对象存储配置由部署方按此共同契约实现，不属于本地 Python 服务代码。

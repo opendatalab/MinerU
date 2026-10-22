@@ -22,6 +22,7 @@ from starlette.requests import ClientDisconnect
 
 from ..errors import MineruError
 from ..filetypes import is_flash_only_parse_extension
+from ..task_types import TaskOutputFormat
 from ..types import Tier
 from ..utils.async_utils import drain_future, run_sync
 from .api_server import (
@@ -44,7 +45,6 @@ from .api_server import (
     submit_parse_job,
 )
 from .page_range import normalize_page_range_input
-from .task_outputs import TaskOutputFormat
 
 MAX_TASK_FILES = 100
 TASK_UPLOAD_TTL = 3600

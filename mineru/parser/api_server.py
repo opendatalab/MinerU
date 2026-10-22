@@ -80,7 +80,7 @@ from .tier import (
     runtime_options_for_tier,
 )
 from .writer import DataWriter
-from .task_outputs import TASK_OUTPUT_FORMATS, TaskOutputFormat
+from ..task_types import TASK_OUTPUT_FORMATS, TaskOutputFormat
 
 _DEFAULT_API_SERVER_TIER: ServerTier = "standard"
 _MAX_INLINE_BYTES_DEFAULT = 1024 * 1024

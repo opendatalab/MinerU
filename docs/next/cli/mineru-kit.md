@@ -25,6 +25,7 @@
 | `mineru-kit parse` | 无状态文件/目录批处理解析 | [mineru-kit parse](mineru-kit-parse.md) |
 | `mineru-kit webui` | 基于 V1 API 的本地文档解析 Web UI | [mineru-kit webui](mineru-kit-webui.md) |
 | `mineru-kit api-server` | 启动兼容统一 API 的本地解析服务 | [mineru-kit api-server](mineru-kit-api-server.md) |
+| `mineru-kit file-parse-server` | 单文件直传、同步附件和超时恢复，连接既有 Tasks 服务 | [file_parse](../api/file-parse.md) |
 | `mineru-kit vlm-server` | 本地 VLM 服务，兼容 OpenAI Chat Completions 协议 | [mineru-kit vlm-server](mineru-kit-vlm-server.md) |
 | `mineru-kit router` | 启动 V1 路由服务，转发到已有 upstream 或管理本地 worker | 仅暴露 `/v1/*` |
 
@@ -50,7 +51,7 @@ mineru-api --host 127.0.0.1 --port 8000 --tier standard
 
 | 能力 | `mineru` | `mineru-kit` |
 |------|----------|--------------|
-| 本地数据库 | 有 | 无 |
+| 本地文档库 | 有 | 无；file-parse-server 仅保存独立请求恢复记录 |
 | SHA256 缓存 | 有 | 无 |
 | STDOUT 默认阅读 | 有 | 不是默认重点 |
 | 目录批处理 | 非首要 | 核心能力 |

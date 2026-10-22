@@ -68,6 +68,8 @@ ID 使用 OpenAI 风格的前缀加随机串。官方 API 使用 24 字符 base6
 
 JSON、逐文件上传、独立结果链接与 Router 负载规则见 [V1 tasks](tasks.md)。SaaS 可以独立实现同一契约，并返回 OSS 直链；客户端不要求其实现本地 Files 下载路由。
 
+需要单文件直传和同步附件响应时，可另外启动 [file_parse 包装服务](file-parse.md)，它提供自己的 `/v1/file_parse`、查询和下载接口，并通过上面的 Tasks 协议连接任意部署。
+
 ## 认证
 
 官方 API 使用 Bearer Token:

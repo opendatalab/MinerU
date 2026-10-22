@@ -5,12 +5,9 @@ from __future__ import annotations
 import json
 import zipfile
 from pathlib import Path
-from typing import Literal
 
+from ..task_types import TASK_OUTPUT_FORMATS, TaskOutputFormat
 from .base import ParseResult
-
-TaskOutputFormat = Literal["default", "docx", "html", "latex"]
-TASK_OUTPUT_FORMATS: tuple[TaskOutputFormat, ...] = ("default", "docx", "html", "latex")
 
 
 def build_task_output(result: ParseResult, formats: list[TaskOutputFormat], directory: Path) -> Path:

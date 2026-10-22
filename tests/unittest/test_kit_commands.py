@@ -400,6 +400,7 @@ def test_kit_root_commands_keep_product_order() -> None:
         "parse",
         "webui",
         "api-server",
+        "file-parse-server",
         "vlm-server",
         "router",
         "models",
