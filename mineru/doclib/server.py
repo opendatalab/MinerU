@@ -21,7 +21,7 @@ from pydantic import ValidationError
 
 from ..config import config
 from ..errors import InvalidRequestError, MineruError, NotFoundError, error_response, http_status_for
-from ..filetypes import IMAGE_EXTENSIONS, TEXT_EXTENSIONS, TEXT_FILE_TYPES
+from ..filetypes import IMAGE_EXTENSIONS, TEXT_EXTENSIONS, TEXT_FILE_TYPES, is_page_range_parse_extension
 from ..parser.page_range import (
     count_pages_in_range,
     expand_page_range as _expand_page_range,
@@ -683,7 +683,9 @@ class DoclibServer(AsyncDoclibInterface):
         limit = max(1, limit)
         doc = await self._doc_for_ref(doc_ref, param="doc_ref")
 
-        normalized_page_range = _normalize_content_page_range(page_range, after, doc)
+        # 非 PDF 的省略范围表示整本，逻辑分节数不应触发 PDF 的前十页默认限制。
+        full_document = not is_page_range_parse_extension(doc["file_type"]) and not normalize_page_range_input(page_range)
+        normalized_page_range = None if full_document else _normalize_content_page_range(page_range, after, doc)
         after_cursor = _parse_after_cursor(after)
         if after_cursor:
             _validate_cursor_for_doc(after_cursor, doc, tier, normalized_page_range)
@@ -1353,6 +1355,14 @@ class DoclibServer(AsyncDoclibInterface):
 
         page_count = doc["page_count"] if doc else None
         paginated = _is_paginated_doc(doc) if doc else True
+        if (
+            plan.next_mode == "parse"
+            and plan.page_range is None
+            and doc
+            and not is_page_range_parse_extension(doc["file_type"])
+        ):
+            # 整本格式仅用内容游标续读，避免生成它不接受的 --pages 解析参数。
+            paginated = False
         if plan.next_mode == "range":
             next_request = _next_range_read_request(rendered, plan.locator)
         elif plan.next_mode == "read":
