@@ -50,7 +50,7 @@ dependencies = [
     "requests",
     "httpx",
     "pillow>=11.0.0",
-    "pypdfium2>=5.10.1,<6",
+    "pypdfium2>=5.13.0,<6",
     "PyYAML>=6.0.1,<7",
     "packaging",
     "modelscope>=1.26.0",

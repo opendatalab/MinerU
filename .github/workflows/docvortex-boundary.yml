@@ -21,7 +21,6 @@ permissions:
 
 env:
   PYTHONUTF8: '1'
-  DOCVORTEX_COMPUTE_BACKEND: rust
   DOCVORTEX_PDF_RENDER_BACKEND: legacy
 
 jobs:
@@ -87,8 +86,6 @@ jobs:
           toolchain: ${{ steps.rust-version.outputs.toolchain }}
       - name: Build the selected native wheel
         if: ${{ inputs.docvortex-ref != '' }}
-        env:
-          DOCVORTEX_BUILD_NATIVE: '1'
         run: |
           uv build --wheel --python "$(python -c 'import sys; print(sys.executable)')" \
             --out-dir "$GITHUB_WORKSPACE/.boundary/wheelhouse" .boundary/docvortex-src
