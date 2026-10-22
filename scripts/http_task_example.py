@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""仅使用 Python 标准库的 tasks HTTP 示例：清单、逐文件上传、轮询与 ZIP 下载。"""
+"""仅使用 Python 标准库的 tasks HTTP 示例：JSON 清单、逐文件上传、轮询与独立结果下载。"""
 
 from __future__ import annotations
 
@@ -7,7 +7,6 @@ import hashlib
 import http.client
 import json
 import os
-import secrets
 import socket
 import sys
 import tempfile
@@ -18,7 +17,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
-from urllib.parse import quote, urlencode, urljoin, urlsplit
+from urllib.parse import quote, urljoin, urlsplit
 
 TERMINAL = frozenset({"completed", "partial", "failed", "canceled"})
 STATUSES = TERMINAL | {"waiting_upload", "queued", "running"}
@@ -49,7 +48,7 @@ class InputFile:
     sha256sum: str | None
 
     def manifest(self) -> dict[str, Any]:
-        """生成表单清单条目；关闭 hash 时完全省略该可选字段。"""
+        """生成 JSON 清单条目；关闭 hash 时完全省略该可选字段。"""
         item: dict[str, Any] = {"client_file_id": self.client_file_id, "filename": self.path.name, "bytes": self.size}
         if self.sha256sum is not None:
             item["sha256sum"] = self.sha256sum
@@ -67,7 +66,7 @@ def _file_body(path: Path) -> Generator[bytes, None, None]:
 
 
 def _bytes_body(data: bytes) -> Generator[bytes, None, None]:
-    """为小型表单主体提供可重新创建的发送迭代器。"""
+    """为小型 JSON 主体提供可重新创建的发送迭代器。"""
     yield data
 
 
@@ -115,6 +114,7 @@ class TaskClient:
             raise ClientError("POLL_INTERVAL must be a non-negative finite number")
         self.task_id: str | None = None
         self.status_url: str | None = None
+        self.saved_ids: set[str] = set()
 
     def resolve(self, url: str) -> str:
         """解析服务返回的绝对或相对链接，保留 OSS 签名查询串。"""
@@ -215,7 +215,7 @@ class TaskClient:
         if data is not None:
 
             def data_body() -> Generator[bytes, None, None]:
-                """闭包固定本次表单字节，避免把文件内容放进 JSON 请求。"""
+                """闭包固定本次 JSON 元数据字节，不把源文件主体放入创建请求。"""
                 yield from _bytes_body(data)
 
             body, length = data_body, len(data)
@@ -258,7 +258,7 @@ class TaskClient:
                 raise ClientError("Task manifest differs from local inputs; use the original file list and order")
             if local.sha256sum is not None and item.get("sha256sum") not in {None, local.sha256sum}:
                 raise ClientError("Task hash differs from the local file")
-            if item.get("upload_status") not in {"pending", "ready"}:
+            if item.get("upload_status") not in {"pending", "ready", "expired"}:
                 raise ClientError("Unknown upload_status")
         uploads = payload.get("uploads")
         if not isinstance(uploads, list):
@@ -276,68 +276,47 @@ class TaskClient:
                 raise ClientError("Invalid upload URL or method")
             if not isinstance(link.get("upload_headers"), dict):
                 raise ClientError("Invalid upload headers")
-        if payload["status"] == "waiting_upload":
-            if seen_uploads != pending:
-                raise ClientError("Upload descriptors do not match pending files")
-        elif seen_uploads:
-            raise ClientError("Task no longer accepts uploads but still returns upload URLs")
-        if payload["status"] in {"queued", "running", "completed", "partial"} and pending:
-            raise ClientError("Task started before all files became ready")
-        if payload["status"] in {"completed", "partial"}:
-            if not isinstance(payload.get("result_url"), str) or not payload["result_url"]:
-                raise ClientError("Completed task has no ZIP download URL")
+        if not seen_uploads.issubset(pending):
+            raise ClientError("Upload descriptors do not match pending files")
+        if payload["status"] in TERMINAL and seen_uploads:
+            raise ClientError("Terminal task still returns upload URLs")
+        formats = payload.get("output_formats")
+        if (
+            not isinstance(formats, list)
+            or not formats
+            or any(value not in {"default", "docx", "html", "latex"} for value in formats)
+        ):
+            raise ClientError("Invalid task output_formats")
+        for item in files:
+            if item.get("status") not in {"waiting_upload", "queued", "running", "completed", "failed", "canceled"}:
+                raise ClientError("Unknown file status")
+            if item["status"] == "completed":
+                if not isinstance(item.get("result_url"), str) or not item["result_url"]:
+                    raise ClientError("Completed file has no download URL")
+            elif item.get("result_url") is not None:
+                raise ClientError("Unfinished file has a download URL")
         self.task_id = task_id
         self.status_url = self.resolve(payload["status_url"])
         return payload
 
-    def _form(self) -> list[tuple[str, str]]:
-        """所有解析参数都编码到表单，包括 JSON 文本形式的 manifest。"""
-        values = [
-            ("manifest", json.dumps([file.manifest() for file in self.files], ensure_ascii=False)),
-            ("ocr_mode", os.environ.get("OCR_MODE", "auto")),
-            ("page_range", os.environ.get("PAGE_RANGE", "")),
-        ]
+    def create(self) -> dict[str, Any]:
+        """用一次 JSON 请求创建清单，文件主体只发送到服务返回的上传链接。"""
+        formats = [value.strip() for value in os.environ.get("OUTPUT_FORMATS", "default").split(",")]
+        if not formats or any(value not in {"default", "docx", "html", "latex"} for value in formats):
+            raise ClientError("OUTPUT_FORMATS must contain default/docx/html/latex")
+        body: dict[str, Any] = {
+            "manifest": [file.manifest() for file in self.files],
+            "ocr_mode": os.environ.get("OCR_MODE", "auto"),
+            "page_range": os.environ.get("PAGE_RANGE", ""),
+            "output_formats": list(dict.fromkeys(formats)),
+        }
         if os.environ.get("MINERU_TIER"):
-            values.append(("tier", os.environ["MINERU_TIER"]))
-        formats = [value.strip() for value in os.environ.get("OUTPUT_FORMATS", "markdown").split(",")]
-        if not all(formats):
-            raise ClientError("OUTPUT_FORMATS contains an empty entry")
-        values.extend(("output_formats", value) for value in dict.fromkeys([*formats, "zip"]))
-        return values
-
-    def create(self, mode: str) -> dict[str, Any]:
-        """创建只执行一次；单文件直传也返回异步任务，不等待服务端同步解析。"""
-        values = self._form()
-        if mode == "preflight":
-            return self.json_request(
-                "POST",
-                self.base + "/v1/tasks",
-                data=urlencode(values).encode(),
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
-            )
-        boundary = "mineru-" + secrets.token_hex(16)
-        prefix = bytearray()
-        for name, value in values:
-            prefix.extend(f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"\r\n\r\n{value}\r\n'.encode())
-        # 逻辑文件名来自 manifest；固定 part 文件名避免引号、换行等字符破坏 MIME 头。
-        prefix.extend(
-            f'--{boundary}\r\nContent-Disposition: form-data; name="files"; filename="upload.bin"\r\n'
-            "Content-Type: application/octet-stream\r\n\r\n".encode()
-        )
-        suffix = f"\r\n--{boundary}--\r\n".encode()
-
-        def multipart_body() -> Generator[bytes, None, None]:
-            """只在内存保留小型表单元数据，文件主体仍从磁盘分块发送。"""
-            yield bytes(prefix)
-            yield from _file_body(self.files[0].path)
-            yield suffix
-
+            body["tier"] = os.environ["MINERU_TIER"]
         return self.json_request(
             "POST",
             self.base + "/v1/tasks",
-            body=multipart_body,
-            length=len(prefix) + self.files[0].size + len(suffix),
-            headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
+            data=json.dumps(body, ensure_ascii=False).encode(),
+            headers={"Content-Type": "application/json"},
         )
 
     def refresh(self) -> dict[str, Any]:
@@ -381,15 +360,15 @@ class TaskClient:
                             raise self._http_error(response)
                     break
                 except ClientError as exc:
-                    if not exc.retryable and exc.status != 403:
+                    if not exc.retryable and exc.status not in {403, 410}:
                         raise
                     # 请求可能已经落盘但响应丢失；先看状态，再决定是否重传。
                     current = self.refresh_after_transfer_error()
                     remote = next(item for item in current["files"] if item["client_file_id"] == client_id)
                     if remote["upload_status"] == "ready":
                         break
-                    if current["status"] != "waiting_upload":
-                        return current
+                    if remote["status"] in {"failed", "canceled"}:
+                        break
                     replacement = next((item for item in current["uploads"] if item["client_file_id"] == client_id), None)
                     if replacement is None:
                         raise ClientError("Pending file has no upload URL") from exc
@@ -401,13 +380,13 @@ class TaskClient:
                     time.sleep(attempt + 1)
         return self.refresh()
 
-    def download(self, task: dict[str, Any], output: Path) -> None:
-        """只访问返回的 ZIP 链接，支持过期链接刷新和安全的跨源重定向。"""
+    def download(self, task: dict[str, Any], file: dict[str, Any], output: Path) -> None:
+        """下载一个已完成文件，按所选格式校验，并安全刷新过期下载链接。"""
         output.parent.mkdir(parents=True, exist_ok=True)
         descriptor, name = tempfile.mkstemp(prefix=output.name + ".", suffix=".part", dir=output.parent)
         os.close(descriptor)
         temporary = Path(name)
-        url = self.resolve(task["result_url"])
+        url = self.resolve(file["result_url"])
         try:
             for attempt in range(3):
                 try:
@@ -426,24 +405,35 @@ class TaskClient:
                                     try:
                                         target.write(chunk)
                                     except OSError as exc:
-                                        raise ClientError(f"Cannot save ZIP: {exc}") from exc
+                                        raise ClientError(f"Cannot save result: {exc}") from exc
                             expected = response.getheader("Content-Length")
                             if expected is not None and temporary.stat().st_size != int(expected):
-                                raise ClientError("Incomplete ZIP download", retryable=True)
+                                raise ClientError("Incomplete result download", retryable=True)
                         break
                     else:
                         raise ClientError("Too many download redirects")
-                    if not zipfile.is_zipfile(temporary):
-                        raise ClientError("Downloaded result is not a ZIP archive")
+                    formats = list(dict.fromkeys(task["output_formats"]))
+                    if formats == ["html"]:
+                        if "<html" not in temporary.read_text(encoding="utf-8").lower():
+                            raise ClientError("Downloaded result is not an HTML document")
+                    else:
+                        if not zipfile.is_zipfile(temporary):
+                            raise ClientError("Downloaded result is not a ZIP archive")
+                        with zipfile.ZipFile(temporary) as archive:
+                            if archive.testzip() is not None:
+                                raise ClientError("Downloaded ZIP is corrupt")
+                            if formats == ["docx"] and "word/document.xml" not in archive.namelist():
+                                raise ClientError("Downloaded result is not a DOCX document")
                     temporary.replace(output)
                     return
                 except ClientError as exc:
                     if attempt == 2 or (not exc.retryable and exc.status not in {401, 403, 404}):
                         raise
                     current = self.refresh_after_transfer_error()
-                    if current["status"] not in {"completed", "partial"}:
-                        raise ClientError("Task no longer has a downloadable result") from exc
-                    replacement = self.resolve(current["result_url"])
+                    remote = next(item for item in current["files"] if item["client_file_id"] == file["client_file_id"])
+                    if remote["status"] != "completed":
+                        raise ClientError("File no longer has a downloadable result") from exc
+                    replacement = self.resolve(remote["result_url"])
                     if exc.status in {401, 403, 404} and replacement == url:
                         raise
                     url = replacement
@@ -451,18 +441,36 @@ class TaskClient:
         finally:
             temporary.unlink(missing_ok=True)
 
-    def run(self, mode: str, output: Path) -> int:
-        """一条命令等待异步任务并保存 ZIP，超时保留任务供后续恢复。"""
+    def download_completed(self, task: dict[str, Any], output: Path) -> None:
+        """按 client_file_id 保存独立结果，同名输入和多次轮询不会相互覆盖。"""
+        formats = list(dict.fromkeys(task["output_formats"]))
+        extension = formats[0] if len(formats) == 1 and formats[0] in {"html", "docx"} else "zip"
+        for file in task["files"]:
+            client_id = file["client_file_id"]
+            if file["status"] != "completed" or client_id in self.saved_ids:
+                continue
+            destination = output / client_id / (self.by_id[client_id].path.stem + "." + extension)
+            self.download(task, file, destination)
+            self.saved_ids.add(client_id)
+            print(f"Saved {destination}")
+
+    def run(self, output: Path) -> int:
+        """上传缺失文件并逐个下载成功结果，失败与取消也保留已经完成的产物。"""
         resume = os.environ.get("TASK_ID", "")
         if resume:
             self.task_id = resume
             self.status_url = self.base + "/v1/tasks/" + quote(resume, safe="")
             task = self.refresh()
         else:
-            task = self.create(mode)
+            task = self.create()
         print(f"task_id={self.task_id}", file=sys.stderr)
-        if task["status"] == "waiting_upload":
-            task = self.upload_missing(task)
+        self.download_completed(task, output)
+        for link in list(task["uploads"]):
+            current_links = [item for item in task["uploads"] if item["client_file_id"] == link["client_file_id"]]
+            if not current_links:
+                continue
+            task = self.upload_missing({**task, "uploads": current_links})
+            self.download_completed(task, output)
         polls = 0
         while task["status"] not in TERMINAL:
             if polls >= self.max_polls:
@@ -475,14 +483,14 @@ class TaskClient:
             except ClientError as exc:
                 if not exc.retryable:
                     raise
+                continue
+            self.download_completed(task, output)
         if task["status"] in {"failed", "canceled"}:
             print(
                 json.dumps({"status": task["status"], "error": task.get("error"), "files": task["files"]}, ensure_ascii=False),
                 file=sys.stderr,
             )
             return 1
-        self.download(task, output)
-        print(f"Saved {output}")
         return 2 if task["status"] == "partial" else 0
 
 
@@ -492,11 +500,8 @@ def main(arguments: list[str]) -> int:
     try:
         if not arguments:
             raise ClientError("usage: bash scripts/http_task_example.sh <file> [file ...]")
-        mode = os.environ.get("UPLOAD_MODE", "preflight")
-        if mode not in {"preflight", "direct"}:
-            raise ClientError("UPLOAD_MODE must be preflight or direct")
-        if mode == "direct" and len(arguments) != 1:
-            raise ClientError("Direct multipart upload accepts one file; use preflight for multiple files")
+        if os.environ.get("UPLOAD_MODE") or os.environ.get("RESULT_FILE"):
+            raise ClientError("UPLOAD_MODE and RESULT_FILE were removed; use JSON preflight and RESULT_DIR")
         send_hash = os.environ.get("SEND_HASH", "1")
         if send_hash not in {"0", "1"}:
             raise ClientError("SEND_HASH must be 0 or 1")
@@ -511,7 +516,7 @@ def main(arguments: list[str]) -> int:
                     hasher.update(chunk)
             inputs.append(InputFile(path, f"f{index + 1}", path.stat().st_size, hasher.hexdigest() if hasher else None))
         client = TaskClient(inputs)
-        return client.run(mode, Path(os.environ.get("RESULT_FILE", "result.zip")))
+        return client.run(Path(os.environ.get("RESULT_DIR", "results")))
     except (ClientError, OSError, ValueError) as exc:
         print(f"error: {exc}", file=sys.stderr)
         if client is not None and client.task_id:

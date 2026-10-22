@@ -54,8 +54,8 @@ ID 使用 OpenAI 风格的前缀加随机串。官方 API 使用 24 字符 base6
 | `GET` | `/v1/files/{file_id}` | 查询文件元信息 |
 | `GET` | `/v1/files/{file_id}/content` | 下载解析产物 |
 | `DELETE` | `/v1/files/{file_id}` | 删除文件 |
-| `POST` | `/v1/tasks` | 表单清单或本地单文件直传，返回异步任务 |
-| `GET` | `/v1/tasks/{task_id}` | 查询上传与解析状态，取得 ZIP 下载链接 |
+| `POST` | `/v1/tasks` | JSON 清单创建任务，返回缺失文件上传链接 |
+| `GET` | `/v1/tasks/{task_id}` | 查询总状态和逐文件状态，取得每个成功文件的下载链接 |
 | `PUT` | 返回的上传链接 | 每个链接上传一个文件 |
 | `DELETE` | `/v1/tasks/{task_id}` | 取消任务 |
 | `POST` | `/v1/parse/jobs` | 创建解析任务 |
@@ -66,7 +66,7 @@ ID 使用 OpenAI 风格的前缀加随机串。官方 API 使用 24 字符 base6
 | `POST` | `/v1/responses` | Responses 文档对话 |
 | `GET` | `/v1/usage` | 查询用量 |
 
-表单、逐文件上传、结果链接与 Router 负载规则见 [V1 tasks](tasks.md)。SaaS 可以独立实现同一契约，并返回 OSS 直链；客户端不要求其实现本地 Files 下载路由。
+JSON、逐文件上传、独立结果链接与 Router 负载规则见 [V1 tasks](tasks.md)。SaaS 可以独立实现同一契约，并返回 OSS 直链；客户端不要求其实现本地 Files 下载路由。
 
 ## 认证
 
@@ -84,7 +84,7 @@ Local Parse Server 默认监听 loopback 且不启用鉴权。启用 `--api-key`
 
 - 成功响应直接返回资源对象，没有外层 envelope。
 - 错误响应使用 OpenAI-compatible envelope，详见 [响应与错误](responses.md)。
-- 资源级接口使用 JSON；`POST /v1/tasks` 使用表单，上传字节使用返回链接要求的内容类型。
+- 资源级接口及 `POST /v1/tasks` 使用 JSON，上传字节使用返回链接要求的内容类型。
 - 时间字段按 endpoint 语义选择 ISO-8601 UTC 字符串或 Unix 秒级时间戳。
 - 成功和失败响应都应携带 `X-Request-Id`。
 - `Idempotency-Key` 支持属于部署能力；当前自部署 tasks 不提供创建请求幂等重试保证，恢复操作应使用原 `task_id`。

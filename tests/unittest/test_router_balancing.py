@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import threading
 import time
 from pathlib import Path
@@ -62,7 +61,7 @@ def test_task_auth_preflight_uses_a_capable_worker_without_reservation() -> None
         if request.url.path == "/v1/health":
             response = await (first if request.url.host == "worker-a" else second).handle(request)
             payload = response.json()
-            payload["features"]["output_formats"].append("zip")
+            payload["features"]["task_output_formats"] = ["default", "docx", "html", "latex"]
             return httpx.Response(200, json=payload, request=request)
         if request.url.path == "/v1/files":
             checked.append(request.url.host)
@@ -89,20 +88,18 @@ def test_task_auth_preflight_uses_a_capable_worker_without_reservation() -> None
     )
     form = {
         "tier": "standard",
-        "manifest": json.dumps(
-            [
-                {
-                    "client_file_id": "f1",
-                    "filename": "source.pdf",
-                    "bytes": 3,
-                }
-            ]
-        ),
+        "manifest": [
+            {
+                "client_file_id": "f1",
+                "filename": "source.pdf",
+                "bytes": 3,
+            }
+        ],
     }
     with TestClient(app) as client:
         cursors = dict(app.state.worker_pool._selection_cursors)
-        assert client.post("/v1/tasks", data=form).status_code == 401
-        accepted = client.post("/v1/tasks", data=form, headers={"authorization": "Bearer owner"})
+        assert client.post("/v1/tasks", json=form).status_code == 401
+        accepted = client.post("/v1/tasks", json=form, headers={"authorization": "Bearer owner"})
         assert accepted.status_code == 202, accepted.text
         assert checked == ["worker-b", "worker-b"]
         assert app.state.worker_pool._selection_cursors == cursors
@@ -212,7 +209,7 @@ def test_cached_tasks_still_balance(tmp_path: Path, monkeypatch: pytest.MonkeyPa
                     assert task["uploads"] == []
                 tasks.append(task)
                 deadline = time.monotonic() + 5
-                while not app.state.task_store._records[task["task_id"]].submitted:
+                while not app.state.task_store._records[task["task_id"]].files[0].submitted:
                     assert time.monotonic() < deadline
                     time.sleep(0.01)
             assert [worker.active_jobs for worker in app.state.worker_pool.workers] == [5, 5]
@@ -378,7 +375,7 @@ def test_task_submission_failure_and_replacement_release_only_owned_load(
             task = _submit(client, [("source.html", HTML)])
             _upload(client, task, [("source.html", HTML)])
             failed = _terminal(client, task)
-            assert failed["status"] == "failed" and failed["result_url"] is None
+            assert failed["status"] == "failed" and failed["files"][0]["result_url"] is None
             assert not app.state.registry.list("job")
             assert not app.state.source_store._files and not app.state.source_store._uploads
             assert app.state.worker_pool.workers[0].active_jobs == (1 if replacement else 0)

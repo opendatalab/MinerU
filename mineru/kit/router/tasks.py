@@ -1,17 +1,16 @@
-"""Router 的逐文件任务适配器；worker 负责解析与最终 ZIP，Router 仅映射资源。"""
+"""Router 的逐文件任务适配器；worker 负责解析与单文件产物，Router 仅映射资源。"""
 
 from __future__ import annotations
 
 import asyncio
 import copy
-import json
 import secrets
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable, Mapping
 from contextlib import ExitStack
 from dataclasses import replace
 from typing import Any
-from urllib.parse import SplitResult, quote, unquote, urlencode, urljoin, urlsplit
+from urllib.parse import SplitResult, quote, unquote, urljoin, urlsplit
 
 import httpx
 from fastapi import FastAPI, Request
@@ -84,11 +83,14 @@ async def _worker_request(
     *,
     request: Request | None = None,
     content: bytes | AsyncIterator[bytes] | None = None,
+    json_body: dict[str, Any] | None = None,
     headers: Mapping[str, str] | None = None,
 ) -> httpx.Response:
     """把网络错误转换成共享 tasks 错误，监控阶段可识别临时失败并继续查询。"""
     try:
-        return await request_upstream(pool, worker, method, path, request=request, content=content, headers=headers)
+        return await request_upstream(
+            pool, worker, method, path, request=request, content=content, json_body=json_body, headers=headers
+        )
     except RouterProxyError as exc:
         _raise_api_error(exc.status_code, error_type="api_error", code=exc.code, message=exc.message, param=exc.param)
 
@@ -124,7 +126,7 @@ def _job_payload(payload: dict[str, Any], upstream_id: str, *, authenticated: bo
         "started_at": payload.get("started_at"),
         "finished_at": payload.get("finished_at"),
         "tier": payload["tier"],
-        "output_formats": payload["output_formats"],
+        "output_formats": [],
         "progress": payload["progress"],
         "access_level": "registered" if authenticated else "anonymous",
         "files": files,
@@ -153,7 +155,7 @@ async def read_task_execution(
     request: Request | None = None,
     headers: Mapping[str, str] | None = None,
 ) -> TaskExecution:
-    """查询 worker 的轻量任务状态，并把最终 ZIP 登记为 Router 的公共 File。"""
+    """查询 worker 的轻量任务状态，并把单文件产物登记为 Router 的公共 File。"""
     if route.metadata.get("upstream_lost"):
         return _lost_execution(route, pool)
     worker = pool.get(route.worker_id)
@@ -164,7 +166,10 @@ async def read_task_execution(
         "GET",
         f"/v1/tasks/{quote(route.upstream_id, safe='')}",
         request=request,
-        headers=headers,
+        headers={
+            **(headers or {}),
+            **({"x-mineru-task-lease-seconds": "120"} if route.metadata.get("task_result_held") else {}),
+        },
     )
     if response.status_code == 404 or worker.generation != generation or route.metadata.get("upstream_lost"):
         return _lost_execution(route, pool)
@@ -175,14 +180,16 @@ async def read_task_execution(
     if payload["task_id"] != route.upstream_id:
         _raise_api_error(502, error_type="api_error", code="invalid_upstream_response", message="Upstream task ID changed")
     result_file_id: str | None = None
-    if payload["status"] in {"completed", "partial"}:
-        result_url = payload.get("result_url")
+    if len(payload["files"]) != 1:
+        _raise_api_error(502, error_type="api_error", code="invalid_upstream_response", message="Expected one task file")
+    if payload["files"][0]["status"] == "completed":
+        result_url = payload["files"][0].get("result_url")
         if not isinstance(result_url, str):
-            _raise_api_error(502, error_type="api_error", code="invalid_upstream_response", message="Missing ZIP URL")
+            _raise_api_error(502, error_type="api_error", code="invalid_upstream_response", message="Missing result URL")
         path = _worker_path(worker, result_url)
         parts = path.strip("/").split("/")
         if len(parts) != 4 or parts[:2] != ["v1", "files"] or parts[-1] != "content":
-            _raise_api_error(502, error_type="api_error", code="invalid_upstream_response", message="Invalid ZIP File URL")
+            _raise_api_error(502, error_type="api_error", code="invalid_upstream_response", message="Invalid result File URL")
         upstream_file_id = unquote(parts[2])
         existing = registry.find_upstream("file", route.owner_scope, worker.worker_id, upstream_file_id)
         if existing is None or not isinstance(existing.metadata.get("payload"), dict):
@@ -199,11 +206,14 @@ async def read_task_execution(
             require_worker_generation(worker, generation)
             if metadata.get("id") != upstream_file_id or metadata.get("purpose") != "parse_output":
                 _raise_api_error(
-                    502, error_type="api_error", code="invalid_upstream_response", message="Invalid ZIP File metadata"
+                    502, error_type="api_error", code="invalid_upstream_response", message="Invalid result File metadata"
                 )
             result_file_id = rewrite_file_payload(metadata, worker, registry, route.owner_scope)["id"]
         else:
             result_file_id = existing.public_id
+        result_route = registry.find("file", result_file_id)
+        if result_route is not None:
+            result_route.metadata["task_result_held"] = bool(route.metadata.get("task_result_held"))
     authenticated = bool(request.headers.get("authorization") if request is not None else (headers or {}).get("authorization"))
     rewritten = rewrite_job_payload(
         _job_payload(payload, route.upstream_id, authenticated=authenticated),
@@ -227,7 +237,7 @@ class RouterTaskBackend:
     """客户端上传项就绪后才选择 worker；URL 原样交由 worker 下载。"""
 
     def __init__(self, request: Request, owner_scope: str, finalize: FinalizeJob) -> None:
-        """保存轻量上下文与显式收尾回调，不跨请求保存上传表单。"""
+        """保存轻量上下文与显式收尾回调，不跨请求保存上传主体。"""
         self.request = Request(dict(request.scope))
         self.owner_scope = owner_scope
         self.finalize = finalize
@@ -237,26 +247,51 @@ class RouterTaskBackend:
         self._pins = ExitStack()
         self._owned_files: list[str] = []
 
+    def fork(self) -> RouterTaskBackend:
+        """每个输入文件拥有独立暂存引用和 worker 调度上下文。"""
+        return RouterTaskBackend(self.request, self.owner_scope, self.finalize)
+
+    async def release_result(self, task_id: str, finished: float) -> None:
+        """父任务完成后记录公开保留期限，后台续租直到该期限再释放 worker。"""
+        route = self.registry.find("job", task_id)
+        if route is None:
+            return
+        route.metadata["task_result_retain_until"] = (
+            finished + self.registry.retention_seconds if self.registry.retention_seconds else None
+        )
+        route.metadata["finalized_at"] = utc_now_iso()
+        result_id = route.metadata.get("task_result_file_id")
+        result_route = self.registry.find("file", result_id) if result_id else None
+        if result_route is not None:
+            result_route.metadata["payload"]["expires_at"] = route.metadata["task_result_retain_until"]
+            result_route.metadata["task_result_retain_until"] = route.metadata["task_result_retain_until"]
+
     async def validate(self, options: UploadTaskOptions, manifest: list[TaskManifestItem]) -> None:
         """能力预检不推进轮询游标，也不为尚未上传的任务预占 worker。"""
         tiers = self.pool.available_tiers()
         options.tier = resolve_task_tier(options, manifest, tiers, select_default_quality_tier(tiers))
-        lightweight = [is_flash_only_parse_extension(item.filename) for item in manifest]
-        selection_tier = "flash" if all(lightweight) and options.tier not in tiers else options.tier
-        candidates = self.pool.capable_workers(
-            tier=selection_tier,
-            required_sources={"url" if item.url is not None else "file_id" for item in manifest},
-            required_outputs=set(options.output_formats),
-            require_flash=any(lightweight),
-        )
-        if not candidates:
-            _raise_api_error(
-                503, error_type="api_error", code="quality_tier_unavailable", message="No worker supports requested formats"
+        checked_workers: set[str] = set()
+        for item in manifest:
+            lightweight = is_flash_only_parse_extension(item.filename)
+            selection_tier = "flash" if lightweight else options.tier
+            candidates = self.pool.capable_workers(
+                tier=selection_tier,
+                required_sources={"url" if item.url is not None else "file_id"},
+                required_task_outputs=set(options.output_formats),
+                require_flash=lightweight,
             )
-
-        # 沿用 worker 的认证边界；只读检查不推进调度游标，也不预占解析容量。
-        worker = candidates[0]
-        _checked_json(await _worker_request(self.pool, worker, "GET", "/v1/files?limit=1", request=self.request))
+            if not candidates:
+                _raise_api_error(
+                    503,
+                    error_type="api_error",
+                    code="quality_tier_unavailable",
+                    message="No worker supports requested task formats",
+                )
+            # 能力预检不预占名额，不推进轮询游标；认证沿用所选部署的服务认证。
+            worker = candidates[0]
+            if worker.worker_id not in checked_workers:
+                _checked_json(await _worker_request(self.pool, worker, "GET", "/v1/files?limit=1", request=self.request))
+                checked_workers.add(worker.worker_id)
 
     async def find_upload(self, sha256sum: str, filename: str) -> TaskUpload | None:
         """仅复用当前调用方持有的 Router 源字节，worker 哈希命中不能替代本地缓存。"""
@@ -296,11 +331,11 @@ class RouterTaskBackend:
     ) -> TaskExecution:
         """预占后提交 worker 任务，只向 worker 上传它实际缺失的文件。"""
         lightweight = all(is_flash_only_parse_extension(item.filename) for item in manifest)
-        tier = "flash" if lightweight and options.tier not in self.pool.available_tiers() else options.tier
+        tier = "flash" if lightweight else options.tier
         reservation = self.pool.reserve_job(
             tier=tier,
             required_sources={"url" if item.url is not None else "file_id" for item in manifest},
-            required_outputs=set(options.output_formats),
+            required_task_outputs=set(options.output_formats),
             require_flash=any(is_flash_only_parse_extension(item.filename) for item in manifest),
         )
         if reservation is None:
@@ -319,16 +354,19 @@ class RouterTaskBackend:
                 else {**item.model_dump(exclude_none=True), "sha256sum": uploads[index].sha256sum}
                 for index, item in enumerate(manifest)
             ]
-            form = [("manifest", json.dumps(worker_manifest)), ("tier", options.tier), ("ocr_mode", options.ocr_mode)]
-            form.extend(("output_formats", value) for value in options.output_formats)
             response = await _worker_request(
                 self.pool,
                 worker,
                 "POST",
                 "/v1/tasks",
                 request=self.request,
-                content=urlencode(form).encode(),
-                headers={"content-type": "application/x-www-form-urlencoded"},
+                json_body={
+                    "manifest": worker_manifest,
+                    "tier": options.tier,
+                    "ocr_mode": options.ocr_mode,
+                    "output_formats": options.output_formats,
+                },
+                headers={"x-mineru-task-lease-seconds": "120"},
             )
             require_worker_generation(worker, reservation.generation)
             payload = TaskStatusResponse.model_validate(_checked_json(response)).model_dump()
@@ -343,6 +381,7 @@ class RouterTaskBackend:
             authorization = self.request.headers.get("authorization")
             route.metadata.update(
                 task_protocol=True,
+                task_result_held=True,
                 active_counted=True,
                 reservation=reservation,
                 upstream_headers={"authorization": authorization} if authorization else {},
@@ -368,7 +407,11 @@ class RouterTaskBackend:
                     path,
                     request=self.request,
                     content=file_chunks(uploads[index].path),
-                    headers={**link["upload_headers"], "content-length": str(uploads[index].bytes)},
+                    headers={
+                        **link["upload_headers"],
+                        "content-length": str(uploads[index].bytes),
+                        "x-mineru-task-lease-seconds": "120",
+                    },
                 )
                 if response.status_code >= 400:
                     _checked_json(response)
@@ -435,7 +478,7 @@ class RouterTaskBackend:
                     route.metadata.update(
                         payload={"job_id": task_id, "status": "failed", "files": []}, finalized_at=utc_now_iso()
                     )
-                    route.metadata.pop("upstream_headers", None)
+                    route.metadata["task_result_retain_until"] = time.time()
                 else:
                     reservation.release()
                 for public_id in registered_inputs:
@@ -460,7 +503,7 @@ class RouterTaskBackend:
         return route
 
     async def get(self, task_id: str) -> TaskExecution:
-        """只查询 worker 元数据并登记结果引用，ZIP 字节走已有 Files 流式代理。"""
+        """只查询 worker 元数据并登记结果引用，产物字节走已有 Files 流式代理。"""
         route = self._route(task_id)
         execution = await read_task_execution(route, self.pool, self.registry, request=self.request)
         await self.finalize(route, execution.job, self.request)
@@ -468,7 +511,9 @@ class RouterTaskBackend:
 
     async def cancel(self, task_id: str) -> None:
         """通过 worker tasks 取消准备或执行，成功后沿用一次性负载释放。"""
-        route = self._route(task_id)
+        route = self.registry.find("job", task_id)
+        if route is None:
+            return
         if route.metadata.get("upstream_lost"):
             release_job_load(route, self.pool)
             return
@@ -491,11 +536,41 @@ def install_task_error_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(RequestValidationError)
     async def validation_error(_request: Request, exc: RequestValidationError) -> JSONResponse:
-        """把路径及表单校验错误统一转换成 400。"""
+        """把路径及 JSON 校验错误统一转换成 400。"""
         return JSONResponse(
             {"error": {"type": "invalid_request_error", "code": "invalid_request", "message": str(exc)}},
             status_code=400,
         )
 
 
-__all__ = ["RouterTaskBackend", "install_task_error_handlers", "read_task_execution"]
+async def maintain_task_result_leases(registry: ResourceRegistry, pool: WorkerPool, *, release: bool = False) -> None:
+    """续租已结束父任务的子产物，进程关闭或公开保留期结束时释放上游租约。"""
+    for route in registry.list("job", include_expired=True):
+        if not route.metadata.get("task_result_held"):
+            continue
+        if not release and "task_result_retain_until" not in route.metadata:
+            continue
+        until = route.metadata.get("task_result_retain_until")
+        ended = release or (until is not None and until <= time.time())
+        worker = pool.get(route.worker_id)
+        headers = dict(route.metadata.get("upstream_headers") or {})
+        headers["x-mineru-task-lease-seconds"] = "0" if ended else "120"
+        try:
+            response = await _worker_request(pool, worker, "GET", f"/v1/tasks/{route.upstream_id}", headers=headers)
+            if response.status_code >= 400 and response.status_code != 404 and not ended:
+                continue
+        except ApiServerError:
+            if not ended:
+                continue
+        if ended:
+            route.metadata["task_result_held"] = False
+            route.metadata.pop("upstream_headers", None)
+            result_id = route.metadata.get("task_result_file_id")
+            result_route = next(
+                (item for item in registry.list("file", include_expired=True) if item.public_id == result_id), None
+            )
+            if result_route is not None:
+                result_route.metadata["task_result_held"] = False
+
+
+__all__ = ["RouterTaskBackend", "install_task_error_handlers", "read_task_execution", "maintain_task_result_leases"]

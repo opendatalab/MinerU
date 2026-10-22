@@ -80,6 +80,7 @@ from .tier import (
     runtime_options_for_tier,
 )
 from .writer import DataWriter
+from .task_outputs import TASK_OUTPUT_FORMATS, TaskOutputFormat
 
 _DEFAULT_API_SERVER_TIER: ServerTier = "standard"
 _MAX_INLINE_BYTES_DEFAULT = 1024 * 1024
@@ -302,6 +303,7 @@ class HealthFeatures(BaseModel):
     model_config = _PYDANTIC_CONFIG
     webhook: bool = False
     output_formats: list[OutputFormat] = Field(default_factory=lambda: list(_LOCAL_PARSE_OUTPUT_FORMATS))
+    task_output_formats: list[TaskOutputFormat] = Field(default_factory=lambda: list(TASK_OUTPUT_FORMATS))
     sources: list[SourceType] = Field(default_factory=lambda: list(_BASE_PARSE_SOURCES))
 
 
@@ -1396,7 +1398,9 @@ class _JobRecord:
     file_store: FileStore | None = None
     usage_counted: bool = False
     task_result_file_id: str | None = None
-    task_error: ErrorDetail | None = None
+    task_output_formats: list[TaskOutputFormat] | None = None
+    retention_held: bool = False
+    retention_epoch: float | None = None
 
     def __post_init__(self) -> None:
         if self.files is None:
@@ -1473,7 +1477,8 @@ class JobStore:
             self._tasks.pop(rec.id, None)
             rec.finished_at = self._now()
             if rec.file_store is not None:
-                rec.file_store.finalize_outputs(rec.id, int(time.time()))
+                if not rec.retention_held:
+                    rec.file_store.finalize_outputs(rec.id, int(rec.retention_epoch or time.time()))
                 rec.file_store.release_inputs(rec.input_blobs)
             if not task.cancelled():
                 error = task.exception()
@@ -1577,13 +1582,23 @@ class JobStore:
             return
         now = time.time()
         for job_id, rec in tuple(self._jobs.items()):
-            if job_id in self._tasks or rec.finished_at is None:
+            if job_id in self._tasks or rec.finished_at is None or rec.retention_held:
                 continue
-            finished = datetime.fromisoformat(rec.finished_at.replace("Z", "+00:00")).timestamp()
+            finished = rec.retention_epoch or datetime.fromisoformat(rec.finished_at.replace("Z", "+00:00")).timestamp()
             if finished + self.retention_seconds <= now:
                 self._record_usage(rec)
                 self._jobs.pop(job_id)
                 self._completion_events.pop(job_id, None)
+
+    def release_task_result(self, job_id: str, finished: float) -> None:
+        """父 Task 收尾后才开始子作业与产物的保留期，不更改真实完成时间。"""
+        rec = self._jobs.get(job_id)
+        if rec is None:
+            return
+        rec.retention_held = False
+        rec.retention_epoch = finished
+        if rec.file_store is not None:
+            rec.file_store.finalize_outputs(job_id, int(finished))
 
     def get(self, job_id: str) -> _JobRecord:
         self.collect_expired()
@@ -1911,7 +1926,25 @@ async def _run_job(
 
                 if rec.status in {"canceled", "failed"}:
                     break
-                # collect outputs
+                if rec.task_output_formats is not None:
+                    from .task_outputs import build_task_output
+
+                    try:
+                        artifact = await run_sync(
+                            build_task_output, result, rec.task_output_formats, pathlib.Path(tmpdir) / f"outputs_{i}"
+                        )
+                        if rec.status in {"canceled", "failed"}:
+                            break
+                        rec.task_result_file_id = await run_sync(
+                            file_store.create_file_for_output_path,
+                            pathlib.Path(fr.name).stem + artifact.suffix,
+                            artifact,
+                            job_id=rec.id,
+                        )
+                    except Exception as exc:
+                        raise MineruError("result_packaging_failed", str(exc)) from exc
+
+                # Jobs 的原有产物策略与 Tasks 独立，不能向普通 Jobs 暴露 default 等产品选项。
                 out_formats = set(rec.output_formats)
                 output_files = OutputFiles()
 
@@ -2014,11 +2047,12 @@ _OPENAPI_TAGS: list[dict[str, str]] = [
 _FASTAPI_DESCRIPTION = """\
 Parse documents into structured Middle JSON via self-hosted or remote capacity.
 
-Submit a form manifest to `/v1/tasks`, upload only missing files to their returned
-URLs, then poll the task and download its `result_url`. Local servers also accept
-one multipart file. Manifest entries can instead provide a source `url`, with
-optional `bytes`; execution workers download these inputs in the background.
-Task status contains metadata only, never inline result bytes.
+Submit a JSON manifest to `/v1/tasks`, upload missing files to their one-hour URLs,
+then poll the task and download each completed file's `result_url`. Each file runs
+as soon as it is ready; other files may still be waiting for upload. Manifest
+entries can instead provide a source `url`, with optional `bytes`; workers download
+these inputs in the background. Choose one or more of default/docx/html/latex in
+`output_formats`. Task status contains metadata only, never inline result bytes.
 The resource workflow remains: create an upload, complete it, submit a parse job for the
 resulting file, then poll the job and fetch its outputs. Health and usage
 endpoints report server readiness and quota state. Tiers (`flash`, `basic`,
@@ -2272,7 +2306,11 @@ class _OutputFileResponse(FileResponse):
             super().__init__(
                 path,
                 filename=filename,
-                media_type="application/zip" if filename.lower().endswith(".zip") else "application/octet-stream",
+                media_type={
+                    ".zip": "application/zip",
+                    ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    ".html": "text/html",
+                }.get(pathlib.Path(filename).suffix.lower(), "application/octet-stream"),
             )
         except BaseException:
             store.unpin_cached_blob(sha)
@@ -2335,6 +2373,7 @@ async def submit_parse_job(
     job_id: str | None = None,
     finalize: Callable[[_JobRecord], Awaitable[None]] | None = None,
     input_specs: dict[int, _JobInputSpec] | None = None,
+    task_output_formats: list[TaskOutputFormat] | None = None,
 ) -> _JobRecord:
     """统一校验并提交后台解析任务，供 V1 Job 与便捷入口共同调用。"""
     for index, entry in enumerate(body.files):
@@ -2418,6 +2457,8 @@ async def submit_parse_job(
     if job_store._closing:
         _raise_api_error(503, error_type="engine_error", code="server_shutting_down", message="Server is shutting down")
     rec = job_store.create(body, file_store, job_id=job_id, input_specs=input_specs)
+    rec.task_output_formats = task_output_formats
+    rec.retention_held = task_output_formats is not None
     url_timeout_val: int = request.app.state.url_timeout
     allow_local_source_val: bool = request.app.state.allow_local_source
     max_inline_bytes_val: int = request.app.state.max_inline_bytes

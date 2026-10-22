@@ -116,7 +116,7 @@ def _submit(
     headers: dict[str, str] | None = None,
     **options: str | list[str],
 ) -> dict[str, Any]:
-    """只用表单提交真实大小及可选 SHA-256，绝不在创建请求中发送多个文件。"""
+    """只用 JSON 提交真实大小及可选 SHA-256，绝不在创建请求中发送多个文件。"""
     manifest = [
         {
             "client_file_id": f"f{index + 1}",
@@ -126,7 +126,7 @@ def _submit(
         }
         for index, (name, data) in enumerate(inputs)
     ]
-    response = client.post("/v1/tasks", data={"manifest": json.dumps(manifest), "tier": "flash", **options}, headers=headers)
+    response = client.post("/v1/tasks", json={"manifest": manifest, "tier": "flash", **options}, headers=headers)
     assert response.status_code == 202, response.text
     return response.json()
 
@@ -144,7 +144,7 @@ def _upload(
 
 
 def _terminal(client: TestClient, task: dict[str, Any], *, headers: dict[str, str] | None = None) -> dict[str, Any]:
-    """只轮询状态接口；成功前必须一直没有 result_url。"""
+    """只轮询状态接口；未完成的文件不能发布 result_url。"""
     deadline = time.monotonic() + 20
     while time.monotonic() < deadline:
         response = client.get(task["status_url"], headers=headers)
@@ -152,15 +152,26 @@ def _terminal(client: TestClient, task: dict[str, Any], *, headers: dict[str, st
         payload = response.json()
         if payload["status"] in task_api.TERMINAL_TASK_STATUSES:
             return payload
-        assert payload["result_url"] is None
+        assert all(file["result_url"] is None for file in payload["files"] if file["status"] != "completed")
         time.sleep(0.01)
     pytest.fail("Task did not reach a terminal state")
 
 
-def _archive(client: TestClient, task: dict[str, Any]) -> dict[str, bytes]:
+def _file_done(client: TestClient, task: dict[str, Any], index: int) -> dict[str, Any]:
+    """只等待指定文件完成，父任务可继续等待其他上传。"""
+    deadline = time.monotonic() + 20
+    while time.monotonic() < deadline:
+        payload = client.get(task["status_url"]).json()
+        if payload["files"][index]["status"] in {"completed", "failed", "canceled"}:
+            return payload
+        time.sleep(0.01)
+    pytest.fail("File did not finish")
+
+
+def _archive(client: TestClient, task: dict[str, Any], index: int = 0) -> dict[str, bytes]:
     """从返回的独立 Files 链接下载并读取真实 ZIP 成员。"""
-    assert "/v1/files/" in task["result_url"]
-    response = client.get(task["result_url"])
+    assert "/v1/files/" in task["files"][index]["result_url"]
+    response = client.get(task["files"][index]["result_url"])
     assert response.status_code == 200, response.text
     assert response.headers["content-type"] == "application/zip"
     with zipfile.ZipFile(io.BytesIO(response.content)) as archive:
@@ -176,84 +187,45 @@ def _job_count(app: FastAPI) -> int:
 
 @pytest.mark.parametrize("hashes", [False, True])
 def test_manifest_uploads_and_zip_only_status(service: tuple[TestClient, FastAPI], hashes: bool) -> None:
-    """单文件与批量都经过共同协议，状态只给元数据，ZIP 保留输入次序。"""
+    """先上传文件立即执行并可下载，同名文件通过客户端标识保持独立。"""
     client, app = service
     inputs = [("同名 文档.html", HTML), ("同名 文档.html", SECOND)]
-    task = _submit(client, inputs, hashes=hashes, output_formats=["markdown", "middle_json"])
-    assert task["status"] == "waiting_upload" and task["result_url"] is None
+    task = _submit(client, inputs, hashes=hashes, output_formats=["default"])
+    assert task["status"] == "waiting_upload" and "result_url" not in task
     assert len(task["uploads"]) == 2 and _job_count(app) == 0
-    if hasattr(app.state, "worker_pool"):
-        assert [worker.active_jobs for worker in app.state.worker_pool.workers] == [0, 0]
-    first = client.put(task["uploads"][0]["upload_url"], content=HTML)
-    assert first.status_code == 200
-    ready = client.get(task["status_url"]).json()
+    assert client.put(task["uploads"][0]["upload_url"], content=HTML).status_code == 200
+    ready = _file_done(client, task, 0)
     assert ready["status"] == "waiting_upload"
     assert [file["upload_status"] for file in ready["files"]] == ["ready", "pending"]
     assert [link["client_file_id"] for link in ready["uploads"]] == ["f2"]
-    assert _job_count(app) == 0
+    assert _job_count(app) == 1
+    assert b"Preserved content" in _archive(client, ready)["markdown.md"]
     _upload(client, ready, inputs)
     result = _terminal(client, task)
-    assert result["status"] == "completed"
-    assert result["task_id"] == task["task_id"] and _job_count(app) == 1
-    assert all("content" not in file for file in result["files"])
-    assert client.get(f"/v1/parse/jobs/{task['task_id']}").json()["job_id"] == task["task_id"]
+    assert result["status"] == "completed" and _job_count(app) == 2
+    assert result["task_id"] == task["task_id"]
+    assert all("content" not in file and "output_files" not in file for file in result["files"])
+    assert client.get(f"/v1/parse/jobs/{task['task_id']}").status_code == 404
+    assert b"Second content" in _archive(client, result, 1)["markdown.md"]
     members = _archive(client, result)
-    assert b"Preserved content" in members["0001/markdown.md"]
-    assert b"Second content" in members["0002/markdown.md"]
-    manifest = json.loads(members["manifest.json"])
-    assert manifest["status"] == "completed"
-    assert [item["client_file_id"] for item in manifest["files"]] == ["f1", "f2"]
-    assert [item["directory"] for item in manifest["files"]] == ["0001/", "0002/"]
-    assert "task_id" not in manifest
-    assert all("file_id" not in item and "output_files" not in item for item in manifest["files"])
-    assert json.loads(members["0001/middle_json.json"])["schema"] == "docvortex.middle"
+    assert "manifest.json" not in members and "model_output.json" not in members
+    assert json.loads(members["middle_json.json"])["schema"] == "docvortex.middle"
     assert client.get(f"/v1/tasks/{task['task_id']}/result").status_code == 404
     assert client.post("/v1/file_parse").status_code == 404
     assert client.post("/tasks").status_code == 404
     assert client.get(f"/v1/files/{result['files'][0]['file_id']}/content").status_code == 403
 
 
-@pytest.mark.parametrize("hashes", [False, True])
-def test_single_multipart_is_asynchronous_and_checks_hash(service: tuple[TestClient, FastAPI], hashes: bool) -> None:
-    """单文件直传保留便利性，实际发送的字节必须经过 hash 检查。"""
+def test_direct_and_form_submissions_are_rejected(service: tuple[TestClient, FastAPI]) -> None:
+    """无论单文件还是批量，创建请求都不能携带表单或文件主体。"""
     client, app = service
-    form: dict[str, Any] = {"tier": "flash"}
-    if hashes:
-        form["manifest"] = json.dumps(
-            [
-                {
-                    "client_file_id": "f1",
-                    "filename": "logical.html",
-                    "bytes": len(HTML),
-                    "sha256sum": hashlib.sha256(HTML).hexdigest(),
-                }
-            ]
-        )
-    response = client.post("/v1/tasks", data=form, files={"files": ("source.html", HTML)})
-    assert response.status_code == 202, response.text
-    result = _terminal(client, response.json())
-    assert result["status"] == "completed"
-    assert result["files"][0]["filename"] == ("logical.html" if hashes else "source.html")
-    assert b"Shared tasks" in _archive(client, result)["markdown.md"]
-    before = _job_count(app)
-    invalid = client.post(
-        "/v1/tasks",
-        data={
-            "manifest": json.dumps(
-                [
-                    {
-                        "client_file_id": "f1",
-                        "filename": "source.html",
-                        "bytes": len(HTML),
-                        "sha256sum": hashlib.sha256(HTML).hexdigest(),
-                    }
-                ]
-            )
-        },
-        files={"files": ("source.html", HTML.replace(b"Shared", b"Broken"))},
-    )
-    assert invalid.status_code == 400 and invalid.json()["error"]["code"] == "file_hash_mismatch"
-    assert _job_count(app) == before
+    for response in (
+        client.post("/v1/tasks", data={"tier": "flash"}),
+        client.post("/v1/tasks", files={"files": ("a.html", HTML)}),
+        client.post("/v1/tasks", content=HTML, headers={"content-type": "application/octet-stream"}),
+    ):
+        assert response.status_code == 415
+    assert _job_count(app) == 0
 
 
 class _UnreadableBody(httpx.SyncByteStream):
@@ -288,7 +260,7 @@ def test_mixed_cache_hit_survives_source_deletion(service: tuple[TestClient, Fas
     cached = _submit(client, inputs)
     assert cached["uploads"] == [] and cached["status"] == "queued"
     assert _terminal(client, cached)["status"] == "completed"
-    assert _job_count(app) == 3
+    assert _job_count(app) == 5
 
 
 def test_no_hash_still_deduplicates_source_storage(service: tuple[TestClient, FastAPI]) -> None:
@@ -302,31 +274,25 @@ def test_no_hash_still_deduplicates_source_storage(service: tuple[TestClient, Fa
     _upload(client, second, [("second.html", HTML)])
     assert _terminal(client, second)["status"] == "completed"
     records = app.state.task_store._records
-    assert records[first["task_id"]].uploads[0].path == records[second["task_id"]].uploads[0].path
+    assert records[first["task_id"]].files[0].upload.path == records[second["task_id"]].files[0].upload.path
 
 
 def test_waiting_upload_retains_deleted_source_views(service: tuple[TestClient, FastAPI]) -> None:
-    """等待其他文件期间删除源视图，不影响任务已经取得的字节引用。"""
+    """删除已解析源视图不影响已生成结果，也不阻止其他文件继续上传。"""
     client, app = service
     inputs = [("a.html", HTML), ("b.html", SECOND)]
     task = _submit(client, inputs, hashes=False)
     assert client.put(task["uploads"][0]["upload_url"], content=HTML).status_code == 200
-    record = app.state.task_store._records[task["task_id"]]
-    if hasattr(app.state, "file_store"):
-        file_id = record.uploads[0].file_id
-        assert app.state.file_store.get_file(file_id).expires_at is None
-        assert client.delete(f"/v1/files/{file_id}").status_code == 200
-    else:
-        app.state.source_store.delete_file(record.backend._owned_files[0])
-    assert record.uploads[0].path.is_file()
+    ready = _file_done(client, task, 0)
+    assert client.delete(f"/v1/files/{ready['files'][0]['file_id']}").status_code == 200
     assert client.put(task["uploads"][1]["upload_url"], content=SECOND).status_code == 200
     result = _terminal(client, task)
     assert result["status"] == "completed", result
-    assert b"Preserved content" in _archive(client, result)["0001/markdown.md"]
+    assert b"Preserved content" in _archive(client, result)["markdown.md"]
 
 
 def test_failed_upload_can_retry_without_reuploading_ready_file(service: tuple[TestClient, FastAPI]) -> None:
-    """一个文件校验失败只影响该项，其他成功文件保持 ready 且不提前创建 Job。"""
+    """校验失败可在期限内重传，不影响已经执行的其他文件。"""
     client, app = service
     inputs = [("a.html", HTML), ("b.html", SECOND)]
     task = _submit(client, inputs)
@@ -335,16 +301,16 @@ def test_failed_upload_can_retry_without_reuploading_ready_file(service: tuple[T
     assert failed.status_code == 400 and failed.json()["error"]["code"] == "file_hash_mismatch"
     mismatch = client.put(task["uploads"][1]["upload_url"], content=SECOND + b"x")
     assert mismatch.status_code == 400 and mismatch.json()["error"]["code"] == "upload_size_mismatch"
-    pending = client.get(task["status_url"]).json()
-    assert pending["status"] == "waiting_upload" and _job_count(app) == 0
+    pending = _file_done(client, task, 0)
+    assert pending["status"] == "waiting_upload" and _job_count(app) == 1
     assert [file["upload_status"] for file in pending["files"]] == ["ready", "pending"]
     assert list(app.state.task_store._records[task["task_id"]].directory.iterdir()) == []
     _upload(client, pending, inputs)
-    assert _terminal(client, task)["status"] == "completed" and _job_count(app) == 1
+    assert _terminal(client, task)["status"] == "completed" and _job_count(app) == 2
 
 
 def test_concurrent_last_uploads_and_duplicate_put_submit_once(service: tuple[TestClient, FastAPI]) -> None:
-    """并发上传与重复 PUT 共用提交门闩，批量文件只产生一个 Job。"""
+    """并发上传与重复 PUT 共用提交门闩，每个文件只产生一个 Job。"""
     client, app = service
     task = _submit(client, [("a.html", HTML), ("b.html", SECOND)])
 
@@ -360,30 +326,43 @@ def test_concurrent_last_uploads_and_duplicate_put_submit_once(service: tuple[Te
     responses = client.portal.call(upload_all)
     assert all(response.status_code == 200 for response in responses)
     assert _terminal(client, task)["status"] == "completed"
-    assert _job_count(app) == 1
+    assert _job_count(app) == 2
     if hasattr(app.state, "worker_pool"):
         assert sum(worker.active_jobs for worker in app.state.worker_pool.workers) == 0
 
 
-def test_cancel_and_expire_waiting_upload_release_inputs(service: tuple[TestClient, FastAPI]) -> None:
-    """取消和过期不需要 worker，准备阶段保存的文件视图及引用都被释放。"""
+@pytest.mark.parametrize("expired", [False, True])
+def test_cancel_and_expire_waiting_upload_release_inputs(service: tuple[TestClient, FastAPI], expired: bool) -> None:
+    """取消或上传过期只终结未完成文件，已生成结果继续可下载。"""
     client, app = service
-    for expired in (False, True):
-        task = _submit(client, [("a.html", HTML), ("b.html", SECOND)])
-        assert client.put(task["uploads"][0]["upload_url"], content=HTML).status_code == 200
-        record = app.state.task_store._records[task["task_id"]]
-        if expired:
-            record.expires_at = int(time.time()) - 1
-            response = client.get(task["status_url"])
-            assert response.json()["error"]["code"] == "upload_expired"
-        else:
-            response = client.delete(task["status_url"])
-        assert response.status_code == 200
-        assert response.json()["status"] == ("failed" if expired else "canceled")
-        assert response.json()["uploads"] == [] and _job_count(app) == 0
-        assert not record.directory.exists()
-        assert record.backend._owned_files == []
-        assert client.put(task["uploads"][1]["upload_url"], content=SECOND).status_code == 409
+    task = _submit(client, [("a.html", HTML), ("b.html", SECOND)])
+    assert client.put(task["uploads"][0]["upload_url"], content=HTML).status_code == 200
+    ready = _file_done(client, task, 0)
+    record = app.state.task_store._records[task["task_id"]]
+    if expired:
+        record.expires_at = int(time.time()) - 1
+        response = client.get(task["status_url"])
+        assert response.json()["files"][1]["error"]["code"] == "upload_expired"
+        assert response.json()["files"][1]["upload_status"] == "expired"
+    else:
+        response = client.delete(task["status_url"])
+    assert response.status_code == 200
+    assert response.json()["status"] == ("partial" if expired else "canceled")
+    assert response.json()["uploads"] == [] and _job_count(app) == 1
+    assert response.json()["files"][0]["result_url"] == ready["files"][0]["result_url"]
+    assert b"Preserved content" in _archive(client, response.json())["markdown.md"]
+    rejected = client.put(task["uploads"][1]["upload_url"], content=SECOND)
+    assert rejected.status_code == (410 if expired else 409)
+    if expired:
+        assert client.put(task["uploads"][0]["upload_url"], content=HTML).status_code == 410
+
+    async def wait_cleanup() -> None:
+        """等待父任务持有的清理句柄，避免按定时猜测引用是否已释放。"""
+        await record.operation
+
+    client.portal.call(wait_cleanup)
+    assert not record.directory.exists()
+    assert all(file.backend._owned_files == [] for file in record.files)
 
 
 def test_cancel_running_task_releases_execution_slot(
@@ -405,7 +384,7 @@ def test_cancel_running_task_releases_execution_slot(
     response = client.delete(task["status_url"])
     assert response.status_code == 200, response.text
     assert response.json()["status"] == "canceled"
-    assert client.get(task["status_url"]).json()["result_url"] is None
+    assert client.get(task["status_url"]).json()["files"][0]["result_url"] is None
     deadline = time.monotonic() + 5
     operation = app.state.task_store._records[task["task_id"]].operation
     while operation is not None and not operation.done():
@@ -418,65 +397,73 @@ def test_cancel_running_task_releases_execution_slot(
 
 
 def test_status_never_reads_or_rebuilds_zip(service: tuple[TestClient, FastAPI], monkeypatch: pytest.MonkeyPatch) -> None:
-    """批量 ZIP 在后台只构建一次，状态与流式下载均不调用整包读取方法。"""
+    """产物按输入各构建一次，多次状态查询和下载不读取整包或重新渲染。"""
+    from mineru.parser import task_outputs
+
     client, _ = service
-    combine = task_api._combine_archives
+    build = task_outputs.build_task_output
     calls = 0
 
-    def counted(*args: Any, **kwargs: Any) -> str:
-        """统计实际后台打包次数，确认多次查询及下载不重新构建。"""
+    def counted(*args: Any, **kwargs: Any) -> Path:
+        """统计逐文件产物构建，避免轮询触发重复导出。"""
         nonlocal calls
         calls += 1
-        return combine(*args, **kwargs)
+        return build(*args, **kwargs)
 
-    monkeypatch.setattr(task_api, "_combine_archives", counted)
+    monkeypatch.setattr(task_outputs, "build_task_output", counted)
     inputs = [("a.html", HTML), ("b.html", SECOND)]
     task = _submit(client, inputs)
     _upload(client, task, inputs)
     result = _terminal(client, task)
-    assert result["status"] == "completed" and calls == 1
+    assert result["status"] == "completed" and calls == 2
 
     def forbid_read(*args: Any, **kwargs: Any) -> bytes:
-        """完成后的状态与下载必须使用元数据或文件流，禁止 read_blob 整包读取。"""
+        """状态与流式下载禁止把完整结果读入内存。"""
         raise AssertionError("Result body was read into memory")
 
     monkeypatch.setattr(api_server.FileStore, "read_blob", forbid_read)
     monkeypatch.setattr(api_server.FileStore, "read_file_data", forbid_read)
     for _ in range(3):
-        assert client.get(task["status_url"]).json()["result_url"] == result["result_url"]
-        assert "manifest.json" in _archive(client, result)
-    assert calls == 1
+        assert client.get(task["status_url"]).json()["files"] == result["files"]
+        assert "markdown.md" in _archive(client, result)
+        assert "markdown.md" in _archive(client, result, 1)
+    assert calls == 2
 
 
 def test_partial_and_packaging_failure_have_honest_results(
     service: tuple[TestClient, FastAPI], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """部分解析成功保留错误，打包失败不能发布 completed 或虚假的下载链接。"""
+    """解析或打包失败都按文件报告，不发布不可用链接，其他文件继续。"""
+    from mineru.parser import task_outputs
+
     client, _ = service
     inputs = [("same.html", HTML), ("broken.pdf", b"not a pdf")]
     task = _submit(client, inputs)
     _upload(client, task, inputs)
     result = _terminal(client, task)
     assert result["status"] == "partial" and result["files"][1]["error"]
-    members = _archive(client, result)
-    assert json.loads(members["manifest.json"])["status"] == "partial"
-    assert not any(name.startswith("0002/") for name in members)
+    assert result["files"][1]["result_url"] is None
+    assert "markdown.md" in _archive(client, result)
+    original = task_outputs.build_task_output
 
-    def fail_packaging(*args: Any, **kwargs: Any) -> str:
-        """模拟 ZIP 落盘失败，执行状态必须反映产物不可用。"""
-        raise OSError("simulated full disk")
+    def fail_packaging(result: Any, formats: Any, directory: Path) -> Path:
+        """仅让第二个输入导出失败，验证文件级隔离及诚实的成功状态。"""
+        if "Second content" in result.markdown():
+            raise OSError("simulated full disk")
+        return original(result, formats, directory)
 
-    monkeypatch.setattr(task_api, "_combine_archives", fail_packaging)
+    monkeypatch.setattr(task_outputs, "build_task_output", fail_packaging)
     good = [("a.html", HTML), ("b.html", SECOND)]
     task = _submit(client, good)
     _upload(client, task, good)
     failed = _terminal(client, task)
-    assert failed["status"] == "failed" and failed["result_url"] is None
-    assert failed["error"]["code"] == "result_packaging_failed"
+    assert failed["status"] == "partial" and failed["files"][1]["result_url"] is None
+    assert failed["files"][1]["error"]["code"] == "result_packaging_failed"
+    assert "markdown.md" in _archive(client, failed)
 
 
 def test_input_validation_and_openapi(service: tuple[TestClient, FastAPI]) -> None:
-    """新协议只接受表单和单文件直传，OpenAPI 不再宣传旧入口及大小限制。"""
+    """请求与 OpenAPI 都使用严格 JSON 数组，旧格式与额外字段在接单前拒绝。"""
     client, app = service
     valid = {"client_file_id": "f1", "filename": "a.html", "bytes": len(HTML)}
     for manifest in (
@@ -486,31 +473,25 @@ def test_input_validation_and_openapi(service: tuple[TestClient, FastAPI]) -> No
         [{**valid, "bytes": 0}],
         [{**valid, "sha256sum": "invalid"}],
         [{**valid, "page_range": "invalid"}],
+        json.dumps([valid]),
     ):
-        response = client.post("/v1/tasks", data={"manifest": json.dumps(manifest)})
-        assert response.status_code == 400, response.text
-    for response in (
-        client.post("/v1/tasks?tier=flash", data={"manifest": json.dumps([valid])}),
-        client.post("/v1/tasks", files=[("files", ("a.html", HTML)), ("files", ("b.html", SECOND))]),
-        client.post(
-            "/v1/tasks",
-            data={"manifest": json.dumps([valid, {**valid, "client_file_id": "f2"}])},
-            files={"files": ("a.html", HTML)},
-        ),
-        client.post("/v1/tasks", files={"files": ("a.html", b"")}),
-        client.post("/v1/tasks", data={"manifest": json.dumps([valid]), "wait_timeout": "300"}),
-    ):
-        assert response.status_code == 400, response.text
-    assert client.post("/v1/tasks", json={"files": []}).status_code == 415
-    assert client.post("/v1/tasks", content=HTML, headers={"content-type": "application/octet-stream"}).status_code == 415
+        assert client.post("/v1/tasks", json={"manifest": manifest}).status_code == 400
+    for formats in ([], "default", ["markdown"], ["zip"], ["pdf"], [None]):
+        assert client.post("/v1/tasks", json={"manifest": [valid], "output_formats": formats}).status_code == 400
+    assert client.post("/v1/tasks?tier=flash", json={"manifest": [valid]}).status_code == 400
+    assert client.post("/v1/tasks", json={"manifest": [valid], "wait_timeout": 300}).status_code == 400
+    assert client.post("/v1/tasks", json={"files": []}).status_code == 400
+    assert client.post("/v1/tasks", content=b"{", headers={"content-type": "application/json"}).status_code == 400
     assert _job_count(app) == 0
     spec = client.get("/openapi.json").json()
-    assert "/v1/file_parse" not in spec["paths"]
-    assert "/v1/tasks/{task_id}/result" not in spec["paths"]
+    assert "/v1/file_parse" not in spec["paths"] and "/v1/tasks/{task_id}/result" not in spec["paths"]
     creation = spec["paths"]["/v1/tasks"]["post"]
     assert not creation.get("parameters")
-    assert set(creation["requestBody"]["content"]) == {"application/x-www-form-urlencoded", "multipart/form-data"}
-    assert "209715200" not in json.dumps(creation)
+    assert set(creation["requestBody"]["content"]) == {"application/json"}
+    assert creation["requestBody"]["content"]["application/json"]["schema"]["properties"]["manifest"]["type"] == "array"
+    assert "result_url" not in spec["components"]["schemas"]["TaskStatusResponse"]["properties"]
+    assert "result_url" in spec["components"]["schemas"]["TaskFileStatus"]["properties"]
+    assert "output_files" not in spec["components"]["schemas"]["TaskFileStatus"]["properties"]
     limits = client.get("/v1/usage").json()["limits"]
     assert limits["max_file_size_bytes"] is None and limits["max_pages_per_file"] is None
     assert limits["max_files_per_job"] == 100
@@ -535,7 +516,7 @@ def test_url_inputs_download_in_worker_and_report_actual_metadata(
     item = _url_manifest(**metadata)
     if hasattr(app.state, "worker_pool"):
         app.state.worker_pool.workers[0].features["sources"] = ["file_id"]
-    response = client.post("/v1/tasks", data={"manifest": json.dumps([item])})
+    response = client.post("/v1/tasks", json={"manifest": [item]})
     assert response.status_code == 202, response.text
     task = response.json()
     assert task["status"] == "queued" and task["uploads"] == []
@@ -567,10 +548,10 @@ def test_url_manifest_validation(service: tuple[TestClient, FastAPI], url_downlo
         *[_url_manifest(bytes=value) for value in (0, -1, True, "10", 10.5)],
     ]
     for item in invalid:
-        response = client.post("/v1/tasks", data={"manifest": json.dumps([item])})
+        response = client.post("/v1/tasks", json={"manifest": [item]})
         assert response.status_code == 400, response.text
-    response = client.post("/v1/tasks", data={"manifest": json.dumps([_url_manifest()])}, files={"files": ("a.html", HTML)})
-    assert response.status_code == 400
+    response = client.post("/v1/tasks", files={"files": ("a.html", HTML)})
+    assert response.status_code == 415
     assert _job_count(app) == 0 and url_downloads == []
     schema = client.get("/openapi.json").json()
     assert "not_required" in schema["components"]["schemas"]["TaskFileStatus"]["properties"]["upload_status"]["enum"]
@@ -579,37 +560,29 @@ def test_url_manifest_validation(service: tuple[TestClient, FastAPI], url_downlo
 def test_mixed_url_upload_partial_and_no_early_reservation(
     service: tuple[TestClient, FastAPI], url_downloads: list[httpx.Request]
 ) -> None:
-    """混合批次仅等待本地上传，URL 逐项失败不丢失同名成功项或目录顺序。"""
+    """URL 文件不等待客户端上传，错误和完成结果都按清单顺序独立返回。"""
     client, app = service
     manifest = [
         _url_manifest(filename="same.html"),
         {"client_file_id": "local", "filename": "same.html", "bytes": len(SECOND)},
         _url_manifest(client_file_id="bad", url="https://source.example/missing"),
     ]
-    response = client.post("/v1/tasks", data={"manifest": json.dumps(manifest)})
+    response = client.post("/v1/tasks", json={"manifest": manifest})
     assert response.status_code == 202, response.text
     task = response.json()
-    assert task["status"] == "waiting_upload"
+    assert task["status"] == "queued"
     assert [link["client_file_id"] for link in task["uploads"]] == ["local"]
-    assert [file["upload_status"] for file in task["files"]] == ["not_required", "pending", "not_required"]
-    assert _job_count(app) == 0 and url_downloads == []
-    if hasattr(app.state, "worker_pool"):
-        assert all(worker.active_jobs == 0 for worker in app.state.worker_pool.workers)
+    ready = _file_done(client, task, 0)
+    assert b"Preserved content" in _archive(client, ready)["markdown.md"]
+    assert ready["files"][1]["status"] == "waiting_upload"
     assert client.put(task["uploads"][0]["upload_url"], content=SECOND).status_code == 200
     result = _terminal(client, task)
-    assert result["status"] == "partial"
-    assert result["progress"] == {"completed": 2, "failed": 1, "total": 3}
+    assert result["status"] == "partial" and result["progress"] == {"completed": 2, "failed": 1, "total": 3}
     assert result["files"][0]["bytes"] == len(HTML)
-    assert result["files"][2]["error"] and result["files"][2]["bytes"] is None
-    members = _archive(client, result)
-    assert b"Preserved content" in members["0001/markdown.md"]
-    assert b"Second content" in members["0002/markdown.md"]
-    assert not any(name.startswith("0003/") for name in members)
-    archived_inputs = json.loads(members["manifest.json"])["files"]
-    assert [item["client_file_id"] for item in archived_inputs] == ["remote", "local", "bad"]
-    assert archived_inputs[0]["bytes"] == len(HTML)
-    assert archived_inputs[0]["sha256sum"] == hashlib.sha256(HTML).hexdigest()
-    assert all("url" not in item for item in archived_inputs)
+    assert result["files"][2]["error"] and result["files"][2]["result_url"] is None
+    assert b"Second content" in _archive(client, result, 1)["markdown.md"]
+    assert [item["client_file_id"] for item in result["files"]] == ["remote", "local", "bad"]
+    assert _job_count(app) == 3
 
 
 @pytest.mark.parametrize(
@@ -626,10 +599,10 @@ def test_url_download_failures_are_per_file(
 ) -> None:
     """下载及完整性错误进入文件错误；全失败不生成结果链接或实际元数据。"""
     client, _ = service
-    response = client.post("/v1/tasks", data={"manifest": json.dumps([_url_manifest(**metadata)])})
+    response = client.post("/v1/tasks", json={"manifest": [_url_manifest(**metadata)]})
     assert response.status_code == 202
     result = _terminal(client, response.json())
-    assert result["status"] == "failed" and result["result_url"] is None
+    assert result["status"] == "failed" and result["files"][0]["result_url"] is None
     assert result["files"][0]["status"] == "failed" and result["files"][0]["error"]["code"] == code
     assert result["files"][0]["bytes"] == metadata.get("bytes")
     assert len(url_downloads) == 1
@@ -643,9 +616,7 @@ def test_url_hash_does_not_skip_download(service: tuple[TestClient, FastAPI], ur
     _upload(client, cached, inputs)
     assert _terminal(client, cached)["status"] == "completed"
     for _ in range(2):
-        response = client.post(
-            "/v1/tasks", data={"manifest": json.dumps([_url_manifest(sha256sum=hashlib.sha256(HTML).hexdigest())])}
-        )
+        response = client.post("/v1/tasks", json={"manifest": [_url_manifest(sha256sum=hashlib.sha256(HTML).hexdigest())]})
         assert response.status_code == 202
         assert _terminal(client, response.json())["status"] == "completed"
     assert len(url_downloads) == 2
@@ -657,7 +628,7 @@ def test_url_download_obeys_worker_policy_and_limit(
     """HTTP 开关和 URL 下载预算继续由真正执行下载的服务控制。"""
     client, app = service
     item = _url_manifest(url="http://source.example/opaque")
-    response = client.post("/v1/tasks", data={"manifest": json.dumps([item])})
+    response = client.post("/v1/tasks", json={"manifest": [item]})
     if hasattr(app.state, "worker_pool"):
         assert response.status_code == 202
         assert _terminal(client, response.json())["status"] == "failed"
@@ -668,14 +639,14 @@ def test_url_download_obeys_worker_policy_and_limit(
         worker.state.allow_http_source = True
         worker.state.max_url_bytes = len(HTML) - 1
         worker.state.url_timeout = 7
-    response = client.post("/v1/tasks", data={"manifest": json.dumps([item])})
+    response = client.post("/v1/tasks", json={"manifest": [item]})
     result = _terminal(client, response.json())
     assert result["status"] == "failed"
     assert "max_url_bytes" in result["files"][0]["error"]["message"]
     assert url_downloads[0].extensions["timeout"]["read"] == 7
     for worker in _execution_apps(app):
         worker.state.max_url_bytes = len(HTML)
-    response = client.post("/v1/tasks", data={"manifest": json.dumps([item])})
+    response = client.post("/v1/tasks", json={"manifest": [item]})
     assert _terminal(client, response.json())["status"] == "completed"
 
 
@@ -693,7 +664,7 @@ def test_url_html_preserves_source_context(
         return await original(*args, **kwargs)
 
     monkeypatch.setattr(api_server, "parse_async", inspect_context)
-    response = client.post("/v1/tasks", data={"manifest": json.dumps([_url_manifest()])})
+    response = client.post("/v1/tasks", json={"manifest": [_url_manifest()]})
     assert _terminal(client, response.json())["status"] == "completed"
     assert len(contexts) == 1 and len(url_downloads) == 1
     assert contexts[0].source_uri == _url_manifest()["url"]
@@ -708,8 +679,8 @@ def test_url_logical_filename_drives_flash_fallback(
     client, _ = service
     response = client.post(
         "/v1/tasks",
-        data={
-            "manifest": json.dumps([_url_manifest(url="https://source.example/document.pdf")]),
+        json={
+            "manifest": [_url_manifest(url="https://source.example/document.pdf")],
             "tier": "standard",
         },
     )
@@ -753,7 +724,7 @@ def test_cancel_url_download_closes_stream_and_releases_worker(
         return httpx.AsyncClient(transport=httpx.MockTransport(respond), **kwargs)
 
     monkeypatch.setattr(api_server, "httpx", SimpleNamespace(AsyncClient=download_client))
-    response = client.post("/v1/tasks", data={"manifest": json.dumps([_url_manifest()])})
+    response = client.post("/v1/tasks", json={"manifest": [_url_manifest()]})
     assert response.status_code == 202
     task = response.json()
     assert started.wait(5)
@@ -771,7 +742,7 @@ def test_cancel_url_download_closes_stream_and_releases_worker(
             assert time.monotonic() < deadline, "Canceled URL task retained its worker reservation"
             time.sleep(0.01)
     final = client.get(task["status_url"]).json()
-    assert final["status"] == "canceled" and final["result_url"] is None
+    assert final["status"] == "canceled" and final["files"][0]["result_url"] is None
     assert final["files"][0]["bytes"] is None
 
 
@@ -788,7 +759,7 @@ def test_router_private_hash_cache_and_task_scope(tmp_path: Path) -> None:
         _upload(client, task, [("a.html", HTML)], headers=owner)
         result = _terminal(client, task, headers=owner)
         assert client.get(task["status_url"], headers=stranger).status_code == 404
-        assert client.get(result["result_url"], headers=stranger).status_code == 404
+        assert client.get(result["files"][0]["result_url"], headers=stranger).status_code == 404
         other = _submit(client, [("a.html", HTML)], headers=stranger)
         assert len(other["uploads"]) == 1
         assert client.delete(other["status_url"], headers=stranger).status_code == 200
@@ -803,11 +774,202 @@ def test_task_links_respect_proxy_root(tmp_path: Path, root: str) -> None:
     app = api_server.create_app(upload_dir=str(tmp_path), tier="flash", api_key="secret")
     with TestClient(app, root_path=root, headers={"Authorization": "Bearer secret"}) as client:
         manifest = [{"client_file_id": "f1", "filename": "a.html", "bytes": len(HTML)}]
-        response = client.post(root + "/v1/tasks", data={"manifest": json.dumps(manifest), "tier": "flash"})
+        response = client.post(root + "/v1/tasks", json={"manifest": manifest, "tier": "flash"})
         assert response.status_code == 202
         task = response.json()
         assert task["status_url"].startswith("http://testserver" + root + "/v1/tasks/")
         _upload(client, task, [("a.html", HTML)])
         result = _terminal(client, task)
-        assert result["result_url"].startswith("http://testserver" + root + "/v1/files/")
+        assert result["files"][0]["result_url"].startswith("http://testserver" + root + "/v1/files/")
         assert "markdown.md" in _archive(client, result)
+
+
+@pytest.mark.parametrize("interrupted", [False, True])
+def test_inflight_upload_may_finish_after_deadline(service: tuple[TestClient, FastAPI], interrupted: bool) -> None:
+    """截止前受理的流可以传完；若跨截止时间断连，该文件失败且不能续传。"""
+    from starlette.requests import ClientDisconnect
+
+    client, app = service
+    task = _submit(client, [("a.html", HTML), ("b.html", SECOND)], hashes=False)
+    record = app.state.task_store._records[task["task_id"]]
+    expires_at = task["uploads"][0]["expires_at"]
+    assert 3598 <= expires_at - time.time() <= 3600
+    assert client.get(task["status_url"]).json()["uploads"][0]["expires_at"] == expires_at
+
+    async def cross_deadline() -> httpx.Response:
+        """让真实 ASGI 上传跨过时限，并在受理流中途并发查询和尝试新 PUT。"""
+        async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://testserver") as transport:
+
+            async def body() -> AsyncIterator[bytes]:
+                """第一块已经被接收后模拟到期，仍在传输的文件不能被清理。"""
+                yield HTML[:10]
+                assert record.files[0].upload_active
+                record.expires_at = int(time.time()) - 1
+                state = (await transport.get(task["status_url"])).json()
+                assert state["files"][0]["status"] == "waiting_upload"
+                assert state["files"][1]["status"] == "failed"
+                assert state["uploads"] == []
+                rejected = await transport.put(task["uploads"][1]["upload_url"], content=SECOND)
+                assert rejected.status_code == 410
+                if interrupted:
+                    raise ClientDisconnect
+                yield HTML[10:]
+
+            return await transport.put(task["uploads"][0]["upload_url"], content=body())
+
+    response = client.portal.call(cross_deadline)
+    result = _terminal(client, task)
+    if interrupted:
+        assert response.status_code == 400
+        assert result["status"] == "failed"
+        assert all(file["error"]["code"] == "upload_expired" for file in result["files"])
+    else:
+        assert response.status_code == 200
+        assert result["status"] == "partial"
+        assert b"Preserved content" in _archive(client, result)["markdown.md"]
+    assert client.put(task["uploads"][0]["upload_url"], content=HTML).status_code == 410
+
+
+def test_expired_upload_rejects_before_reading_body(service: tuple[TestClient, FastAPI]) -> None:
+    """链接截止后连重传主体也不读取，查询不能延长或重建上传窗口。"""
+    client, app = service
+    task = _submit(client, [("a.html", HTML)], hashes=False)
+    app.state.task_store._records[task["task_id"]].expires_at = int(time.time()) - 1
+    response = client.put(task["uploads"][0]["upload_url"], content=_UnreadableBody())
+    assert response.status_code == 410 and response.json()["error"]["code"] == "upload_expired"
+    for _ in range(2):
+        state = client.get(task["status_url"]).json()
+        assert state["status"] == "failed" and state["uploads"] == []
+        assert state["files"][0]["upload_status"] == "expired"
+    assert _job_count(app) == 0
+
+
+def test_completed_child_retention_starts_after_parent_finishes(service: tuple[TestClient, FastAPI]) -> None:
+    """子结果不能在父任务仍等待上传时过期，父任务完成后才开始统一保留期。"""
+    client, app = service
+    app.state.task_store.retention_seconds = 1
+    if hasattr(app.state, "registry"):
+        app.state.registry.retention_seconds = 1
+    for worker in _execution_apps(app):
+        worker.state.task_store.retention_seconds = 1
+        worker.state.job_store.retention_seconds = 1
+        worker.state.file_store.retention_seconds = 1
+    task = _submit(client, [("a.html", HTML), ("b.html", SECOND)], hashes=False)
+    assert client.put(task["uploads"][0]["upload_url"], content=HTML).status_code == 200
+    ready = _file_done(client, task, 0)
+    result_url = ready["files"][0]["result_url"]
+    time.sleep(1.05)
+    for worker in _execution_apps(app):
+        worker.state.job_store.collect_expired()
+        worker.state.file_store.collect_expired()
+    assert client.get(task["status_url"]).json()["files"][0]["status"] == "completed"
+    assert client.get(result_url).status_code == 200
+    assert client.put(task["uploads"][1]["upload_url"], content=SECOND).status_code == 200
+    assert _terminal(client, task)["status"] == "completed"
+    record = app.state.task_store._records[task["task_id"]]
+
+    async def finish_retention() -> None:
+        """等待统一保留起点，确保测试不依赖后台轮询间隔。"""
+        await record.operation
+
+    client.portal.call(finish_retention)
+    assert client.get(result_url).status_code == 200
+    time.sleep(1.05)
+    assert client.get(task["status_url"]).status_code == 404
+    assert client.get(result_url).status_code == 404
+
+
+def test_router_batch_uses_independent_workers_and_task_capabilities(tmp_path: Path) -> None:
+    """单个父任务的文件按负载分发，旧 worker 即使声明 zip 也不能接新 Tasks。"""
+    workers = {host: api_server.create_app(upload_dir=str(tmp_path / host), tier="flash") for host in ("worker-a", "worker-b")}
+    app = create_router(
+        RouterSettings(
+            upstream_urls=("http://worker-a", "http://worker-b"), local_gpus="none", worker_refresh_interval_seconds=0
+        ),
+        transport=_WorkerTransport(workers),
+    )
+    with TestClient(app) as client:
+        task = _submit(client, [("a.html", HTML), ("b.html", SECOND)])
+        _upload(client, task, [("a.html", HTML), ("b.html", SECOND)])
+        assert _terminal(client, task)["status"] == "completed"
+        assert {route.worker_id for route in app.state.registry.list("job")} == {
+            worker.worker_id for worker in app.state.worker_pool.workers
+        }
+        assert all(worker.active_jobs == 0 for worker in app.state.worker_pool.workers)
+        for worker in app.state.worker_pool.workers:
+            worker.features.pop("task_output_formats")
+        response = client.post(
+            "/v1/tasks", json={"manifest": [{"client_file_id": "f1", "filename": "a.html", "bytes": len(HTML)}]}
+        )
+        assert response.status_code == 503
+        assert all(worker.active_jobs == 0 for worker in app.state.worker_pool.workers)
+
+
+def test_worker_upload_renews_result_lease_after_long_transfer(tmp_path: Path) -> None:
+    """Router 转传超过内部租约长度时，上传完成会保护刚生成的子结果。"""
+    app = api_server.create_app(upload_dir=str(tmp_path), tier="flash")
+    with TestClient(app) as client:
+        task = _submit(client, [("a.html", HTML)], hashes=False)
+        record = app.state.task_store._records[task["task_id"]]
+
+        async def upload_long_stream() -> None:
+            """在流中模拟内部租约已到期，不改变独立的一小时上传窗口。"""
+
+            async def content() -> AsyncIterator[bytes]:
+                """接收第一块后推进租约边界，余下数据仍正常上传。"""
+                yield HTML[:10]
+                record.lease_expires_at = time.time() - 1
+                yield HTML[10:]
+
+            async with httpx.AsyncClient(transport=httpx.ASGITransport(app=app), base_url="http://testserver") as transport:
+                response = await transport.put(
+                    task["uploads"][0]["upload_url"], content=content(), headers={"x-mineru-task-lease-seconds": "120"}
+                )
+                assert response.status_code == 200
+                assert record.lease_expires_at > time.time() + 110
+
+        client.portal.call(upload_long_stream)
+        result = _terminal(client, task)
+        assert result["status"] == "completed" and record.retention_epoch is None
+        assert client.get(result["files"][0]["result_url"]).status_code == 200
+        assert client.get(task["status_url"], headers={"x-mineru-task-lease-seconds": "0"}).status_code == 200
+
+
+def test_router_ends_local_result_lease_even_if_worker_rejects_release(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """保留期结束后 worker 拒绝释放请求也不能永久保留过期的本地路由。"""
+    from mineru.kit.router.tasks import maintain_task_result_leases
+
+    worker = api_server.create_app(upload_dir=str(tmp_path), tier="flash")
+    transport = _WorkerTransport({"worker-a": worker})
+    app = create_router(
+        RouterSettings(upstream_urls=("http://worker-a",), local_gpus="none", worker_refresh_interval_seconds=0),
+        transport=transport,
+    )
+    with TestClient(app) as client:
+        task = _submit(client, [("a.html", HTML)])
+        _upload(client, task, [("a.html", HTML)])
+        result = _terminal(client, task)
+        record = app.state.task_store._records[task["task_id"]]
+
+        async def prepare() -> None:
+            """等待父任务清理，并把其子路由保留期限推进到过去。"""
+            await record.operation
+            for route in app.state.registry.list("job"):
+                route.metadata["task_result_retain_until"] = time.time() - 1
+
+        client.portal.call(prepare)
+        original = transport.handle_async_request
+
+        async def reject_release(request: httpx.Request) -> httpx.Response:
+            """模拟 worker 的凭证轮换，结果租约释放返回明确的认证错误。"""
+            if request.headers.get("x-mineru-task-lease-seconds") == "0":
+                return httpx.Response(403, request=request)
+            return await original(request)
+
+        monkeypatch.setattr(transport, "handle_async_request", reject_release)
+        client.portal.call(maintain_task_result_leases, app.state.registry, app.state.worker_pool)
+        assert all(not route.metadata.get("task_result_held") for route in app.state.registry.list("job", include_expired=True))
+        assert all(
+            not route.metadata.get("task_result_held") for route in app.state.registry.list("file", include_expired=True)
+        )
+        assert result["files"][0]["result_url"]

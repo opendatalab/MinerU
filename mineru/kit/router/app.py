@@ -322,7 +322,8 @@ async def _finalize_terminal_job(
             route.metadata["copied_inputs"] = pending
         else:
             route.metadata.pop("copied_inputs", None)
-            route.metadata.pop("upstream_headers", None)
+            if not route.metadata.get("task_result_held"):
+                route.metadata.pop("upstream_headers", None)
             route.metadata.setdefault("finalized_at", utc_now_iso())
 
 
@@ -458,6 +459,15 @@ def create_app(
         application.state.started_at = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
         reconcile_task: asyncio.Task[None] | None = None
         collection_task: asyncio.Task[None] | None = None
+        lease_task: asyncio.Task[None] | None = None
+
+        async def task_lease_loop() -> None:
+            """独立维护 Tasks 的结果租约，禁用 worker 刷新时也保证下载保留期。"""
+            from .tasks import maintain_task_result_leases
+
+            while True:
+                await asyncio.sleep(30)
+                await maintain_task_result_leases(registry, pool)
 
         async def collection_loop() -> None:
             """每五分钟同步回收过期公共路由与无引用源文件缓存。"""
@@ -470,6 +480,7 @@ def create_app(
                 collection_task = asyncio.create_task(collection_loop(), name="mineru-router-retention")
             await pool.start()
             task_store.start()
+            lease_task = asyncio.create_task(task_lease_loop(), name="mineru-router-task-result-leases")
             if resolved_settings.worker_refresh_interval_seconds > 0:
                 reconcile_task = asyncio.create_task(
                     _job_reconcile_loop(
@@ -491,6 +502,12 @@ def create_app(
                 except asyncio.CancelledError:
                     pass
             await task_store.shutdown()
+            if lease_task is not None:
+                lease_task.cancel()
+                await asyncio.gather(lease_task, return_exceptions=True)
+            from .tasks import maintain_task_result_leases
+
+            await maintain_task_result_leases(registry, pool, release=True)
             await pool.close()
             source_store.close()
 
@@ -527,11 +544,19 @@ def create_app(
         output_formats = sorted(
             {output_format for worker in workers for output_format in worker.features.get("output_formats") or []}
         )
+        task_output_formats = sorted(
+            {output_format for worker in workers for output_format in worker.features.get("task_output_formats") or []}
+        )
         return JSONResponse(
             {
                 "status": "ok",
                 "version": __version__,
-                "features": {"webhook": False, "output_formats": output_formats, "sources": sources},
+                "features": {
+                    "webhook": False,
+                    "output_formats": output_formats,
+                    "task_output_formats": task_output_formats,
+                    "sources": sources,
+                },
             }
         )
 

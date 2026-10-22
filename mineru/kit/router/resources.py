@@ -289,6 +289,9 @@ class ResourceRegistry:
 
     def is_expired(self, route: ResourceRoute) -> bool:
         """优先沿用上游显式期限；任务从清理完成时间开始计算保留期限。"""
+        if route.metadata.get("task_result_held"):
+            until = route.metadata.get("task_result_retain_until")
+            return until is not None and until <= time.time()
         payload = route.metadata.get("payload") or {}
         if route.kind == "job":
             if payload.get("status") not in {"completed", "partial", "failed", "canceled"}:
@@ -328,6 +331,7 @@ class ResourceRegistry:
                     or public_id in protected
                     or route.metadata.get("copied_inputs")
                     or route.metadata.get("pins")
+                    or route.metadata.get("task_result_held")
                 ):
                     continue
                 self.remove(kind, public_id)

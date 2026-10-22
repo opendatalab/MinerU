@@ -22,7 +22,7 @@ Unified API 文档描述两类部署形态下的同一套 API:
 3. [Health、Models 与 Tiers](api/health-models.md): 服务能力、模型列表、解析档位。
 4. [Uploads 与 Files](api/uploads-files.md): 上传生命周期、文件对象、产物下载。
 5. [Parse Jobs](api/parse-jobs.md): 解析任务、轮询。
-   [V1 tasks](api/tasks.md): 表单清单、逐文件上传、结果 ZIP 下载链接和 Router 调度。
+   [V1 tasks](api/tasks.md): JSON 清单、逐文件上传、独立结果下载链接和 Router 调度。
 6. [Chat 与 Responses](api/chat.md): OpenAI-compatible 文档对话接口。
 7. [Webhooks](api/webhooks.md): 异步回调协议。
 8. [Usage 与 Limits](api/usage-limits.md): access level、限流、用量查询。

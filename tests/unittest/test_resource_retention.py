@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
@@ -240,13 +239,9 @@ def test_hash_preflight_rejection_releases_request_lease(tmp_path: Path, monkeyp
         _, sha = _source(app.state.file_store, tmp_path)
         response = client.post(
             "/v1/tasks",
-            data={
+            json={
                 "tier": "flash",
-                "manifest": json.dumps(
-                    [
-                        {"client_file_id": "f1", "filename": "input.pdf", "bytes": 3, "sha256sum": sha},
-                    ]
-                ),
+                "manifest": [{"client_file_id": "f1", "filename": "input.pdf", "bytes": 3, "sha256sum": sha}],
             },
         )
         assert response.status_code == 400
