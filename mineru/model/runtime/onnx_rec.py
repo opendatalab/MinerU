@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 """Content-addressed ONNX CTC output reduction shared by CPU, DML and WebGPU."""
 
 from __future__ import annotations

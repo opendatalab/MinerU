@@ -315,10 +315,7 @@ def test_seal_rejects_removed_mode(mode: str) -> None:
 
 def test_base_dependencies_exclude_opencv_and_keep_product_extras() -> None:
     """基础声明移除 OpenCV，ONNX、llama.cpp、Torch/full 和苹果自动 extra 保持原样。"""
-    try:
-        import tomllib
-    except ModuleNotFoundError:
-        import tomli as tomllib
+    import tomllib
     from packaging.requirements import Requirement
 
     project = tomllib.loads((_ROOT / "pyproject.toml").read_text())["project"]

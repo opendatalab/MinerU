@@ -1,6 +1,6 @@
 # Copyright (c) Opendatalab. All rights reserved.
 # /// script
-# requires-python = ">=3.10"
+# requires-python = ">=3.11"
 # dependencies = ["packaging", "PyYAML>=6,<7"]
 # ///
 """依据已发布 wheel 的元数据更新 issue 表单中的最新正式版本提示。"""

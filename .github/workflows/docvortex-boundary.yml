@@ -30,7 +30,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        python: ['3.10', '3.13', '3.14']
+        python: ['3.11', '3.12', '3.13', '3.14']
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -72,7 +72,7 @@ jobs:
           import os
           from pathlib import Path
           import re
-          # 使用引擎所声明的工具链；Python 3.10 无需为读取单一字段额外安装 TOML 包。
+          # 使用引擎所声明的工具链，只提取构建所需的 channel 字段。
           text = Path(".boundary/docvortex-src/rust-toolchain.toml").read_text(encoding="utf-8")
           match = re.search(r'^\s*channel\s*=\s*["\']([A-Za-z0-9][A-Za-z0-9.+-]*)["\']', text, re.MULTILINE)
           if match is None:

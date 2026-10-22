@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 """Explicit PCI architecture families for the Linux WebGPU product policy."""
 
 from typing import Literal

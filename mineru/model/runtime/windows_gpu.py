@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 """Lazy Windows GPU discovery; DXGI indices are never persisted."""
 
 from __future__ import annotations

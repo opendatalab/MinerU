@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 """Bounded rec calibration worker, shared by automatic selection and the release benchmark."""
 
 from __future__ import annotations

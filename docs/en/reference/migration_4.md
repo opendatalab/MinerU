@@ -13,7 +13,7 @@
 | Old HTTP parsing calls | V1 uploads → parse jobs → output files |
 | Extras such as `mineru[core]` and `mineru[pipeline]` | Base package, `mineru[torch]`, or `mineru[full]` |
 
-Install stable with `"mineru>=4.0,<5"`, inserting extras after the package name when needed. The package requires Python `>=3.10,<3.15`; optional engines also require suitable wheels and drivers. Stop services in the original environment before upgrading and check `mineru version --json` afterwards. Do not replace legacy platform images or installation commands with mainline 4.0 instructions.
+Install stable with `"mineru>=4.0,<5"`, inserting extras after the package name when needed. The package requires Python `>=3.11,<3.15`; optional engines also require suitable wheels and drivers. Stop services in the original environment before upgrading and check `mineru version --json` afterwards. Do not replace legacy platform images or installation commands with mainline 4.0 instructions.
 
 ## Tiers, pages, and outputs
 

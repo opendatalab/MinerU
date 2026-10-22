@@ -106,13 +106,12 @@ body:
     id: python_version
     attributes:
       label: Python version | Python 版本
-      description: Python >=3.10,<3.15; see python --version. | 支持 Python >=3.10,<3.15，可通过 python --version 查看。
+      description: Python >=3.11,<3.15; see python --version. | 支持 Python >=3.11,<3.15，可通过 python --version 查看。
       options:
         - "3.14"
         - "3.13"
         - "3.12"
         - "3.11"
-        - "3.10"
         - Other / unknown | 其他或不清楚
     validations:
       required: true

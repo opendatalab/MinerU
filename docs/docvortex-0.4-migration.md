@@ -36,4 +36,4 @@ MinerU 使用 `docvortex>=0.4.0,<0.5.0`。本轮调整 Python 模块边界，保
 
 `tools/validate_docvortex_boundary.py` 可对指定两仓库源码或当前安装包捕获真实 PDF 的中间协议与全部渲染。记录实际导入路径、样本 SHA256 和页数；比较时只允许忽略 DocVortex producer 版本、DOCX/EPUB 容器时间字段，以及经独立复算确认由 producer 版本派生的 EPUB 标识。
 
-MinerU 的 `DocVortex boundary integration` 手动工作流接受未发布的 0.4 wheel URL，以及可选的 mineru-vl-utils 配套 wheel URL，在三种操作系统及 Python 3.10、3.13、3.14 上验证边界、协议和固定推理结果。DocVortex 自身 CI 验证独立安装与基础算法。配置工作流不代表已经通过远端 CI。
+MinerU 的 `DocVortex boundary integration` 手动工作流接受未发布的 0.4 wheel URL，以及可选的 mineru-vl-utils 配套 wheel URL，在三种操作系统及 Python 3.11–3.14 上验证边界、协议和固定推理结果。DocVortex 自身 CI 验证独立安装与基础算法。配置工作流不代表已经通过远端 CI。

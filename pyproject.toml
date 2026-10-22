@@ -93,7 +93,6 @@ test = [
     "pytest-cov",
     "coverage",
     "fuzzywuzzy",
-    "tomli; python_version < '3.11'",
 ]
 torch = [
     "torch>=2.7.0,<3",

@@ -1,3 +1,4 @@
+# Copyright (c) Opendatalab. All rights reserved.
 """Lazy native WebGPU registration and process-wide session serialization."""
 
 from __future__ import annotations

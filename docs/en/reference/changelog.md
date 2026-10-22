@@ -4,6 +4,8 @@ This document records the release history of MinerU, including major capability 
 
 ## Unreleased
 
+- Raised the minimum Python version to 3.11; the supported range is `>=3.11,<3.15`. Starting with the next stable release, stop MinerU services in the old environment, create a new virtual environment with Python 3.11–3.14, reinstall dependencies, and update interpreter paths in service startup configuration. Python 3.12 remains the recommended starting point. Verify the installed versions with `mineru version --json`.
+
 - Image naming change: newly materialized CLI/API ZIP images now use Gradio visual-parent names, inline ordinals count all img src attributes, and collisions receive `_duplicate_n`. References update together; image bytes and MiddleJson 2.0 are unchanged. Historical ZIPs retain their stored references. Requires `docvortex>=0.4.19,<1`.
 
 - Breaking change: removed the `--backend` option from `mineru-kit parse` (introduced during the 4.0 alphas). The option only inferred a tier and had no independent effect, so use `--tier` instead: `pipeline` → `--tier basic`; `vlm-engine`, `vlm-auto-engine`, and `vlm-http-client` → `--tier advanced`; `hybrid-engine` and `hybrid-auto-engine` → `--tier standard` (or omit the option); `flash` → `--tier flash`. Parsing with a remote VLM service is configured through the VLM server settings and is unrelated to this option.

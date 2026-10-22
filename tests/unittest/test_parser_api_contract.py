@@ -396,10 +396,7 @@ def test_standard_dependency_error_recommends_backend_extra(monkeypatch: pytest.
     """各后端缺依赖时保留模块名称，并且只推荐项目中真实存在的安装 extra。"""
     import re
 
-    try:
-        import tomllib
-    except ModuleNotFoundError:
-        import tomli as tomllib
+    import tomllib
 
     monkeypatch.setattr(parser_tier, "installed_distribution_name", lambda: "mineru")
 

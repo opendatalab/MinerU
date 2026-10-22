@@ -13,7 +13,7 @@
 | 旧 API 调用 | V1 上传 → 解析任务 → 文件产物 |
 | `mineru[core]`、`mineru[pipeline]` 等 extras | 基础包、`mineru[torch]` 或 `mineru[full]` |
 
-正式版安装使用 `"mineru>=4.0,<5"`（需要 extras 时加在包名后）。Python 包要求 `>=3.10,<3.15`；可选引擎按实际 wheel 和驱动选择版本。升级前停止原环境中的服务，升级后检查 `mineru version --json`。不要把旧平台的镜像和安装命令替换成主线 4.0。
+正式版安装使用 `"mineru>=4.0,<5"`（需要 extras 时加在包名后）。Python 包要求 `>=3.11,<3.15`；可选引擎按实际 wheel 和驱动选择版本。升级前停止原环境中的服务，升级后检查 `mineru version --json`。不要把旧平台的镜像和安装命令替换成主线 4.0。
 
 ## 档位、页码与输出
 

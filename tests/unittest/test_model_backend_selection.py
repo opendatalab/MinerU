@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import tomllib
 from pathlib import Path
 from unittest.mock import Mock
 
@@ -18,11 +19,6 @@ from mineru.model.runtime import device
 from mineru.model.vlm import selector
 from mineru.parser import tier as parser_tier
 from scripts.check_transformers5_dependencies import check_backend_dependencies
-
-try:
-    import tomllib
-except ModuleNotFoundError:
-    import tomli as tomllib
 
 
 @pytest.mark.parametrize(
