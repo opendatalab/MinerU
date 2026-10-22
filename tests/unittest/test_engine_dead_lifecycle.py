@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+from task_test_utils import submit_task, wait_task
+
 import asyncio
-import base64
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -60,29 +61,43 @@ def test_api_engine_failure_drains_running_and_queued_jobs(tmp_path: Path, monke
         client.portal.call(make_gate)
         jobs = []
         for name in ("fatal", "running", "queued", "user-cancel"):
-            body = {
-                "tier": "flash",
-                "files": [
-                    {"source": {"type": "inline", "name": f"{name}.pdf", "data": base64.b64encode(name.encode()).decode()}}
-                ],
-            }
-            response = client.post("/v1/parse/jobs", json=body)
-            assert response.status_code == 202, response.text
-            jobs.append(response.json()["job_id"])
-        assert client.delete(f"/v1/parse/jobs/{jobs[-1]}").status_code == 200
+            source = tmp_path / f"{name}.pdf"
+            source.write_bytes(name.encode())
+            jobs.append(submit_task(client, source, tier="flash"))
+        assert client.delete(jobs[-1]["status_url"]).status_code == 200
         client.portal.call(gate.set)
         for job in jobs:
-            client.portal.call(app.state.job_store.wait_for_terminal, job, 2.0)
+            wait_task(client, job)
+
+        async def drain_tasks() -> None:
+            """等待公开父任务完成资源清理后检查内部执行槽。"""
+            await asyncio.gather(
+                *(
+                    app.state.job_store.wait_for_terminal(file.execution_id, 2)
+                    for record in app.state.task_store._records.values()
+                    for file in record.files
+                )
+            )
+            await asyncio.gather(*(record.operation for record in app.state.task_store._records.values()))
+
+        client.portal.call(drain_tasks)
         assert entered == ["fatal", "running"]
         assert set(cleanup) == {"fatal", "running"}
-        assert [client.get(f"/v1/parse/jobs/{job}").json()["status"] for job in jobs] == [
+        assert [client.get(job["status_url"]).json()["status"] for job in jobs] == [
             "failed",
             "failed",
             "failed",
             "canceled",
         ]
-        for path, method in (("/v1/health", "get"), ("/v1/parse/jobs", "post")):
-            response = getattr(client, method)(path, **({"json": body} if method == "post" else {}))
+        for path, method in (("/v1/health", "get"), ("/v1/tasks", "post")):
+            response = getattr(client, method)(
+                path,
+                **(
+                    {"json": {"tier": "flash", "manifest": [{"client_file_id": "file", "filename": "new.pdf", "bytes": 3}]}}
+                    if method == "post"
+                    else {}
+                ),
+            )
             assert response.status_code == 503 and response.json()["error"]["code"] == "engine_dead"
         assert app.state.job_store._semaphore._value == 2
         assert not app.state.job_store._tasks
@@ -175,28 +190,20 @@ def test_old_generation_failure_snapshot_remains_queryable() -> None:
             "progress": {"total": 1, "completed": 0},
         }
         client.portal.call(pool.refresh, state)
-        response = client.get(f"/v1/parse/jobs/{route.public_id}")
-        assert response.status_code == 200
-        assert response.json()["status"] == "failed"
-        assert response.json()["files"][0]["error"]["code"] == "engine_dead"
-        assert client.delete(f"/v1/parse/jobs/{route.public_id}").status_code == 409
+        from mineru.kit.router.tasks import read_task_execution
+
+        async def snapshot() -> Any:
+            """旧执行只读取已保存的失败信息，不请求替换后的 worker。"""
+            return await read_task_execution(route, pool, registry)
+
+        execution = client.portal.call(snapshot)
+        assert execution.job["status"] == "failed"
+        assert execution.job["files"][0]["error"]["code"] == "upstream_task_lost"
         pool._workers = {state.worker_id: state}
-        created = client.post(
-            "/v1/parse/jobs",
-            json={
-                "tier": "standard",
-                "files": [{"source": {"type": "inline", "name": "recovered.pdf", "data": base64.b64encode(b"pdf").decode()}}],
-            },
-        )
-        assert created.status_code == 202, created.text
-        new_job = created.json()["job_id"]
-        assert registry.get("job", new_job).worker_id == state.worker_id
-        completed = client.get(f"/v1/parse/jobs/{new_job}")
-        assert completed.json()["status"] == "completed"
-        output = completed.json()["files"][0]["output_files"]["markdown"]["file_id"]
-        assert client.get(f"/v1/files/{output}/content").content == b"result"
+        reservation = pool.reserve_job(tier="standard", required_sources={"upload"})
+        assert reservation is not None and reservation.worker is state
+        reservation.release()
         assert state.active_jobs == 0
-        assert client.get(f"/v1/parse/jobs/{route.public_id}").json()["status"] == "failed"
 
 
 def test_old_generation_engine_dead_response_does_not_kill_replacement() -> None:

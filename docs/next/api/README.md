@@ -15,17 +15,15 @@ MinerU v1 API 以 `mineru.net` 官方远程 API 为主线，同时让 Local Pars
 
 | 资源 | 含义 |
 |------|------|
-| `file` | 平台中的文件，由不透明 `file_id` 标识。可表示用户上传的源文件、Chat/Responses 的图片输入，或解析产物。 |
-| `upload` | OpenAI Uploads API 风格的上传会话，用来管理上传生命周期。 |
-| `job` | 一次解析任务，可包含一个或多个输入文件。 |
+| `file` | 源文件视图或已生成的解析产物。 |
+| `task` | 父解析任务，聚合独立文件状态和结果链接。 |
 
 ID 使用 OpenAI 风格的前缀加随机串。官方 API 使用 24 字符 base62 随机串；本地 server 可以用同长度 hex 随机串降低实现复杂度。ID 是不透明标识，客户端不得从中推断时间、租户或存储路径。
 
 | 资源 | 示例 |
 |------|------|
 | `file` | `file-r9NSmHLJE6flShV5vQ0Y60Rd` |
-| `upload` | `upload_r9NSmHLJE6flShV5vQ0Y60Rd` |
-| `job` | `job_r9NSmHLJE6flShV5vQ0Y60Rd` |
+| `task` | `job_01HXYZ123ABCDEF`（不透明标识） |
 
 ## Base URL
 
@@ -46,22 +44,15 @@ ID 使用 OpenAI 风格的前缀加随机串。官方 API 使用 24 字符 base6
 | `GET` | `/v1/models` | 列出模型 |
 | `GET` | `/v1/models/{model}` | 查询单个模型 |
 | `GET` | `/v1/tiers` | 列出解析档位 |
-| `POST` | `/v1/uploads` | 创建 upload |
-| `POST` | `/v1/uploads/{upload_id}/complete` | 完成 upload |
-| `POST` | `/v1/uploads/{upload_id}/cancel` | 取消 upload |
-| `GET` | `/v1/uploads/{upload_id}` | 查询 upload |
 | `GET` | `/v1/files` | 列出文件 |
 | `GET` | `/v1/files/{file_id}` | 查询文件元信息 |
 | `GET` | `/v1/files/{file_id}/content` | 下载解析产物 |
 | `DELETE` | `/v1/files/{file_id}` | 删除文件 |
 | `POST` | `/v1/tasks` | JSON 清单创建任务，返回缺失文件上传链接 |
+| `GET` | `/v1/tasks` | 列出当前调用方的父任务，支持筛选和分页 |
+| `DELETE` | `/v1/tasks/{task_id}` | 取消未完成文件 |
 | `GET` | `/v1/tasks/{task_id}` | 查询总状态和逐文件状态，取得每个成功文件的下载链接 |
 | `PUT` | 返回的上传链接 | 每个链接上传一个文件 |
-| `DELETE` | `/v1/tasks/{task_id}` | 取消任务 |
-| `POST` | `/v1/parse/jobs` | 创建解析任务 |
-| `GET` | `/v1/parse/jobs/{job_id}` | 查询任务 |
-| `GET` | `/v1/parse/jobs` | 列出任务 |
-| `DELETE` | `/v1/parse/jobs/{job_id}` | 取消任务 |
 | `POST` | `/v1/chat/completions` | Chat Completions 文档对话 |
 | `POST` | `/v1/responses` | Responses 文档对话 |
 | `GET` | `/v1/usage` | 查询用量 |
@@ -101,4 +92,3 @@ Local Parse Server 的目标是复用客户端协议，而不是完整模拟公�
 - 不支持 Webhook。
 - 上传 URL 可以指向本地 server 的临时上传 endpoint，而不是 OSS。
 - 文件产物下载可以直接返回 `200 + body`，不必返回 CDN 重定向。
-- 支持 `local` source，但必须通过 `--allow-local-source` 显式开启；客户端应以 `health.features.sources` 判断当前部署是否允许。

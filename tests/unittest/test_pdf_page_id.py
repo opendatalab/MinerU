@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from task_test_utils import stored_source
+
 import asyncio
 import io
 from pathlib import Path
@@ -150,8 +152,7 @@ def test_remote_clients_validate_before_network(tmp_path: Path, monkeypatch: pyt
     parser = MinerUApiParser(api_url="http://example.test", tier="flash")
     build_source = Mock(side_effect=AssertionError("must not upload"))
     async_build_source = AsyncMock(side_effect=AssertionError("must not upload"))
-    monkeypatch.setattr(parser, "_build_source", build_source)
-    monkeypatch.setattr(parser, "_async_build_source", async_build_source)
+    monkeypatch.setattr(parser, "_payload", build_source)
     with pytest.raises(InvalidRequestError):
         parser.parse(source, page_range=raw)
     with pytest.raises(InvalidRequestError):
@@ -168,25 +169,25 @@ def test_remote_clients_validate_before_network(tmp_path: Path, monkeypatch: pyt
 
 def test_api_rejects_bad_ranges_before_creating_jobs(tmp_path: Path) -> None:
     """直接 HTTP 请求校验共享语法，错误定位到批量请求的具体文件。"""
-    app = api_server.create_app(upload_dir=str(tmp_path / "api"), tier="flash", allow_local_source=True)
+    app = api_server.create_app(upload_dir=str(tmp_path / "api"), tier="flash")
     with TestClient(app) as client:
         for raw in INVALID_RANGES:
             response = client.post(
-                "/v1/parse/jobs",
+                "/v1/tasks",
                 json={
                     "tier": "flash",
-                    "files": [
-                        {"source": {"type": "local", "path": "/unused.pdf"}},
-                        {"source": {"type": "local", "path": "/unused.pdf"}, "page_range": raw},
+                    "manifest": [
+                        {"client_file_id": "first", "filename": "a.pdf", "bytes": 1},
+                        {"client_file_id": "second", "filename": "b.pdf", "bytes": 1, "page_range": raw},
                     ],
                 },
             )
             assert response.status_code == 400
             error = response.json()["error"]
             assert error["code"] == "page_range_invalid"
-            assert error["param"] == "files.1.page_range"
+            assert error["param"] == "manifest.1.page_range"
         schema = client.get("/openapi.json").json()
-        assert "r1" in schema["components"]["schemas"]["JobFileEntry"]["properties"]["page_range"]["description"]
+        assert "r1" in schema["components"]["schemas"]["TaskFileStatus"]["properties"]["page_range"]["description"]
 
 
 def test_cli_rejects_old_syntax_and_kit_preserves_range_error(tmp_path: Path) -> None:
@@ -251,18 +252,18 @@ def test_async_job_resolves_relative_ranges_and_reports_file_errors(tmp_path: Pa
     source = tmp_path / "numbered.pdf"
     _numbered_pdf(source)
     store = api_server.FileStore(tmp_path / "files")
-    request = api_server.CreateJobRequest.model_validate(
+    request = api_server._ParseRequest.model_validate(
         {
             "tier": "flash",
-            "output_formats": ["middle_json"],
+            "output_formats": ["default"],
             "files": [
-                {"source": {"type": "local", "path": str(source)}, "page_range": "1,r2-r1"},
-                {"source": {"type": "local", "path": str(source)}, "page_range": "20"},
+                {"source": stored_source(store, source), "page_range": "1,r2-r1"},
+                {"source": stored_source(store, source), "page_range": "20"},
             ],
         }
     )
     record = api_server.JobStore().create(request, store)
-    asyncio.run(api_server._run_job(record, request, store, image_analysis=True, allow_local_source=True))
+    asyncio.run(api_server._run_job(record, request, store, image_analysis=True))
     assert record.status == "partial"
     assert record.files[0].page_range == "1,4-5"
     assert record.files[0].status == "completed"

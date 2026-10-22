@@ -2,7 +2,7 @@
 
 状态: Accepted，已实现
 日期: 2026-07-09
-相关文档: ../tiers.md, ../cli/mineru-parse.md, ../cli/mineru-kit-parse.md, ../api/parse-jobs.md, 0022-doclib-file-type-tier-remote-semantics.md, 0028-csv-structured-flash-parsing.md
+相关文档: ../tiers.md, ../cli/mineru-parse.md, ../cli/mineru-kit-parse.md, ../api/tasks.md, 0022-doclib-file-type-tier-remote-semantics.md, 0028-csv-structured-flash-parsing.md
 
 ## 背景
 

@@ -533,7 +533,7 @@ Local Parse Server 默认不按公网 access level 做售卖或配额区分。
 | `via` | 实际执行路径 |
 | `source` | API 输入来源 |
 | `file_id` | API file 资源 ID |
-| `job_id` | API job 资源 ID |
+| `task_id` | API 父任务 ID |
 
 ## 12. 易混用法对照
 

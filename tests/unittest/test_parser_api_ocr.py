@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from test_tasks_sdk import task_snapshot, zip_output
+from mineru.parser.task_api import CreateTaskRequest
+
 import asyncio
 import json
 from pathlib import Path
 from typing import Any, Literal
-from unittest.mock import AsyncMock, Mock
 
 import httpx
 import pytest
@@ -30,14 +32,15 @@ def test_api_parser_serializes_request_ocr_mode(
     source = tmp_path / "demo.pdf"
     source.write_bytes(b"%PDF-1.7\n")
     parser = MinerUApiParser(api_url="http://localhost:8000", tier="flash", ocr_mode=ocr_mode)
-    parser._source_features = {"local"}
     payloads: list[dict[str, Any]] = []
 
     def respond(request: httpx.Request) -> httpx.Response:
         """记录完整任务请求，在产物下载前返回已完成任务。"""
-        assert request.method == "POST" and request.url.path == "/v1/parse/jobs"
+        if request.method == "GET":
+            return httpx.Response(200, content=zip_output())
+        assert request.method == "POST" and request.url.path == "/v1/tasks"
         payloads.append(json.loads(request.content))
-        return httpx.Response(202, json={"job_id": "job_test", "status": "completed"})
+        return httpx.Response(202, json={**task_snapshot(), "status_url": "http://localhost:8000/v1/tasks/task-one"})
 
     transport = httpx.MockTransport(respond)
     sync_client, async_client = httpx.Client, httpx.AsyncClient
@@ -52,17 +55,24 @@ def test_api_parser_serializes_request_ocr_mode(
 
     monkeypatch.setattr(api_client.httpx, "Client", create_sync_client)
     monkeypatch.setattr(api_client.httpx, "AsyncClient", create_async_client)
-    monkeypatch.setattr(parser, "_build_result", Mock())
-    monkeypatch.setattr(parser, "_async_build_result", AsyncMock())
     if use_async:
         asyncio.run(parser.parse_async(source, page_range="1"))
     else:
         parser.parse(source, page_range="1")
 
     expected: dict[str, Any] = {
-        "files": [{"source": {"type": "local", "path": str(source)}, "page_range": "1"}],
+        "manifest": [
+            {
+                "client_file_id": "file",
+                "filename": source.name,
+                "bytes": source.stat().st_size,
+                "sha256sum": api_client._sha256_file(source),
+                "page_range": "1",
+            }
+        ],
         "tier": "flash",
-        "output_formats": ["middle_json"],
+        "output_formats": ["default"],
+        "include_model_output": False,
     }
     if ocr_mode is not None:
         expected["ocr_mode"] = ocr_mode
@@ -82,9 +92,9 @@ def test_api_server_rejects_invalid_request_ocr_mode(tmp_path: Path, value: obje
     app = api_server.create_app(upload_dir=str(tmp_path), tier="flash")
     with TestClient(app) as client:
         response = client.post(
-            "/v1/parse/jobs",
+            "/v1/tasks",
             json={
-                "files": [{"source": {"type": "inline", "name": "demo.pdf", "data": "JVBERi0xLjcK"}}],
+                "manifest": [{"client_file_id": "file", "filename": "demo.pdf", "bytes": 9}],
                 "ocr_mode": value,
             },
         )
@@ -96,7 +106,7 @@ def test_api_server_rejects_invalid_request_ocr_mode(tmp_path: Path, value: obje
 
 def test_api_server_ocr_defaults_to_request_auto_without_startup_configuration(tmp_path: Path) -> None:
     """请求缺省值固定为 auto，应用生命周期不保存全局 OCR 模式。"""
-    request = api_server.CreateJobRequest.model_validate({"files": [{"source": {"type": "local", "path": "/tmp/demo.pdf"}}]})
+    request = CreateTaskRequest.model_validate({"manifest": [{"client_file_id": "file", "filename": "demo.pdf", "bytes": 9}]})
     assert request.ocr_mode == "auto"
     app = api_server.create_app(upload_dir=str(tmp_path), tier="flash")
     assert not hasattr(app.state, "ocr_mode")

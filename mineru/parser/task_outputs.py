@@ -10,7 +10,13 @@ from ..task_types import TASK_OUTPUT_FORMATS, TaskOutputFormat
 from .base import ParseResult
 
 
-def build_task_output(result: ParseResult, formats: list[TaskOutputFormat], directory: Path) -> Path:
+def build_task_output(
+    result: ParseResult,
+    formats: list[TaskOutputFormat],
+    directory: Path,
+    *,
+    include_model_output: bool = False,
+) -> Path:
     """一次物化并渲染所选格式，全部成功后才返回主产物路径。"""
     from docvortex.export import embed_html_images, materialize_middle, validate_materialized_assets
 
@@ -20,6 +26,15 @@ def build_task_output(result: ParseResult, formats: list[TaskOutputFormat], dire
     validate_materialized_assets(middle, assets)
     exported = ParseResult(middle_json=middle)
     entries: dict[str, bytes] = {}
+    if include_model_output:
+        if "default" not in formats:
+            raise ValueError("include_model_output requires default output format")
+        if result._model_output is not None:
+            entries["model_output.json"] = json.dumps(
+                result._model_output.to_dict(skip_defaults=False),
+                ensure_ascii=False,
+                indent=2,
+            ).encode("utf-8", errors="replace")
     if "default" in formats:
         entries.update(
             {

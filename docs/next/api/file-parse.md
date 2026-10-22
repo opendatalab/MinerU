@@ -35,6 +35,7 @@ MINERU_API_URL=https://mineru.net/api MINERU_API_KEY=your-key \
 | `ocr_mode` | `auto` | `auto/txt/ocr`。 |
 | `page_range` | 整本 | 与 Tasks 一致，PDF 支持 `1-5`、`r1`、`all`；格式支持范围由上游校验。 |
 | `output_formats` | `default` | `default/docx/html/latex`；重复同名字段表达列表，重复值按首次出现去重。 |
+| `include_model_output` | `false` | 附加可用原始模型输出；开启时 output_formats 必须包含 default，参与 request_id 的解析身份。 |
 | `wait_timeout` | `3600` | 整数秒，范围 `0–3600`。 |
 | `request_id` | 自动生成 | 1–64 个字母、数字、下划线或短横线。提前指定并保存它，可在连接中断后查询。 |
 

@@ -10,6 +10,7 @@ import os
 import socket
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import zipfile
@@ -350,54 +351,45 @@ def test_large_page_count_pdf_is_not_rejected(live_service: _LiveService, page_c
 
 
 @pytest.mark.parametrize("document", ["html", "pdf"])
-def test_real_documents_match_jobs_outputs(live_service: _LiveService, document: str) -> None:
-    """真实 HTML/PDF 的任务 ZIP 与既有 Jobs 产物逐项一致，不改变中间协议或素材。"""
+def test_real_documents_match_local_parser_outputs(live_service: _LiveService, document: str) -> None:
+    """真实 HTML/PDF 的 Tasks 产物与直接解析逐项一致，检查中间协议和图片字节。"""
     if document == "pdf":
-        path = Path(__file__).resolve().parents[2] / "examples" / "demo1.pdf"
+        path = Path(__file__).resolve().parents[2] / "demo" / "pdfs" / "demo1.pdf"
         if not path.is_file():
-            pytest.skip("Local real PDF examples/demo1.pdf is unavailable")
+            pytest.skip("Real PDF demo/pdfs/demo1.pdf is unavailable")
         data, name, page_range = path.read_bytes(), path.name, "1-2"
     else:
         data, name, page_range = HTML, "source.html", ""
-    formats = ["markdown", "middle_json", "structured_content", "zip"]
+    with tempfile.TemporaryDirectory() as directory:
+        source = Path(directory) / name
+        source.write_bytes(data)
+        from mineru.parser import parse
+        from mineru.parser.task_outputs import build_task_output
+        from docvortex.document.contracts import HtmlSourceContext
+
+        baseline = parse(
+            source,
+            tier="flash",
+            ocr_mode="txt",
+            page_range=page_range,
+            source_context=HtmlSourceContext() if document == "html" else None,
+        )
+        expected = build_task_output(baseline, ["default"], Path(directory) / "outputs").read_bytes()
     with _client(live_service) as client:
         task = _submit(client, [(name, data)], page_range=page_range, output_formats=["default"])
         assert client.put(task["uploads"][0]["upload_url"], content=data).status_code == 200
         result = _wait(client, task)
         assert result["status"] == "completed", result
-        submitted = client.post(
-            "/v1/parse/jobs",
-            json={
-                "tier": "flash",
-                "ocr_mode": "txt",
-                "output_formats": formats,
-                "files": [
-                    {"source": {"type": "file_id", "file_id": result["files"][0]["file_id"]}, "page_range": page_range or None}
-                ],
-            },
-        )
-        assert submitted.status_code == 202, submitted.text
-        deadline = time.monotonic() + 60
-        while True:
-            baseline = client.get(f"/v1/parse/jobs/{submitted.json()['job_id']}").json()
-            if baseline["status"] in TERMINAL:
-                break
-            assert time.monotonic() < deadline
-            time.sleep(0.02)
-        assert baseline["status"] == "completed", baseline
-        first = client.get(result["files"][0]["result_url"])
-        second = client.get(f"/v1/files/{baseline['files'][0]['output_files']['zip']['file_id']}/content")
-        assert first.status_code == second.status_code == 200
-        assert {k: v for k, v in _members(first.content).items() if k != "images/"} == {
-            k: v for k, v in _members(second.content).items() if k != "model_output.json"
-        }
+        output = client.get(result["files"][0]["result_url"])
+        assert output.status_code == 200
+        assert _members(output.content) == _members(expected)
 
 
 @pytest.mark.parametrize("document", ["html", "pdf"])
 def test_url_task_over_http_downloads_chunked_source(live_service: _LiveService, document: str) -> None:
     """真实 TCP URL 无需 HEAD 或长度头，保留文件页范围且不向源站发送 API Key。"""
     if document == "pdf":
-        sample = Path(__file__).resolve().parents[2] / "examples" / "demo1.pdf"
+        sample = Path(__file__).resolve().parents[2] / "demo" / "pdfs" / "demo1.pdf"
         if sample.is_file():
             data = sample.read_bytes()
         else:
@@ -458,28 +450,12 @@ def test_url_task_over_http_downloads_chunked_source(live_service: _LiveService,
             assert requests[0].scope["query_string"] == b"signature=a%2Fb&part=1"
             assert "authorization" not in requests[0].headers
             if document == "html":
-                # HTML 的来源地址参与页面标识，因此与保留相同来源的 Jobs URL 路径比较。
-                response = client.post(
-                    "/v1/parse/jobs",
-                    json={
-                        "tier": "flash",
-                        "ocr_mode": "txt",
-                        "output_formats": ["markdown", "zip"],
-                        "files": [{"source": {"type": "url", "url": item["url"]}}],
-                    },
-                )
+                # 同一原始 URL 保留 HTML 来源上下文，重复执行的产物应完全一致。
+                response = client.post("/v1/tasks", json={"tier": "flash", "ocr_mode": "txt", "manifest": [item]})
                 assert response.status_code == 202, response.text
-                job_id = response.json()["job_id"]
-                deadline = time.monotonic() + 30
-                while True:
-                    baseline_result = client.get(f"/v1/parse/jobs/{job_id}").json()
-                    if baseline_result["status"] in TERMINAL:
-                        break
-                    assert time.monotonic() < deadline
-                    time.sleep(0.02)
+                baseline_result = _wait(client, response.json())
                 assert baseline_result["status"] == "completed"
-                output_id = baseline_result["files"][0]["output_files"]["zip"]["file_id"]
-                baseline_url = f"/v1/files/{output_id}/content"
+                baseline_url = baseline_result["files"][0]["result_url"]
             else:
                 baseline = _submit(client, [(item["filename"], data)], page_range="2")
                 assert client.put(baseline["uploads"][0]["upload_url"], content=data).status_code == 200
@@ -768,3 +744,52 @@ def test_client_does_not_renew_expired_upload(cloud: _CloudState, tmp_path: Path
     assert result.returncode == 1, result.stdout + result.stderr
     assert len(cloud.tasks) == 1 and cloud.upload_attempts == {"cloud_1/f1": 1}
     assert not (tmp_path / "results/f1/a.zip").exists()
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_real_sdk_hash_cache_skips_second_upload(live_service: _LiveService, tmp_path: Path, asynchronous: bool) -> None:
+    """真实 SDK 经 TCP 解析相同文件两次，第二次命中源缓存且没有任何额外 PUT 字节。"""
+    from mineru.parser import MinerUApiParser
+
+    source = tmp_path / "sdk.html"
+    source.write_bytes(HTML)
+    parser = MinerUApiParser(api_url=live_service.url, api_key="test-key", tier="flash", include_images=True)
+    first = asyncio.run(parser.parse_async(source)) if asynchronous else parser.parse(source)
+    uploaded = sum(live_service.counts.values())
+    second = asyncio.run(parser.parse_async(source)) if asynchronous else parser.parse(source)
+    assert uploaded == len(HTML) and sum(live_service.counts.values()) == uploaded
+    assert first.to_dict() == second.to_dict()
+    assert first.markdown() == second.markdown() and "Same source and output" in first.markdown()
+
+
+@pytest.mark.parametrize("document", ["pdf", "html"])
+def test_real_gradio_handler_uses_tasks_and_saves_artifacts(live_service: _LiveService, tmp_path: Path, document: str) -> None:
+    """真实界面转换处理器经过 TCP Tasks，检查 PDF 页码、HTML 正文和实际下载文件。"""
+    from mineru.kit.gradio.app import build_gradio_app
+    from mineru.kit.gradio.client import V1ArtifactClient
+    from mineru.kit.gradio.artifacts import render_download
+    from mineru.parser.base import ParseResult
+
+    if document == "pdf":
+        source = Path(__file__).resolve().parents[2] / "demo/pdfs/demo1.pdf"
+        assert source.is_file(), "The real PDF fixture is required for the migration smoke test"
+    else:
+        source = tmp_path / "gradio.html"
+        source.write_bytes(HTML)
+    client = V1ArtifactClient(api_url=live_service.url, api_key="test-key")
+    capabilities = asyncio.run(client.discover())
+    demo = build_gradio_app(client, capabilities, output_root=tmp_path / "gradio", enable_example=False)
+    try:
+        handler = next(function.fn for function in demo.fns.values() if function.name == "convert_handler")
+        converted = asyncio.run(handler(str(source), 0, "1" if document == "pdf" else "", False))
+        state = converted[6]
+        assert state, converted[0]
+        restored = ParseResult.from_json(Path(state["middle_json_path"]).read_text())
+        assert len(restored.pages) == 1 and restored.markdown().strip()
+        assert restored.pages[0].page_idx == 0
+        assert Path(render_download(state, "docx")).is_file()
+        if document == "html":
+            assert "Same source and output" in restored.markdown()
+        assert sum(live_service.counts.values()) == source.stat().st_size
+    finally:
+        demo.close()

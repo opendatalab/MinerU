@@ -1,5 +1,8 @@
 """验证解析 API 任务取消、排队和关闭的真实生命周期。"""
 
+from task_test_utils import stored_source
+
+
 import asyncio
 from pathlib import Path
 
@@ -161,18 +164,18 @@ def test_late_parser_result_is_not_published_after_cancel(tmp_path: Path, monkey
         monkeypatch.setattr(api_server, "parse_async", parse)
         store = JobStore()
         files = api_server.FileStore(tmp_path / "storage")
-        request = api_server.CreateJobRequest.model_validate(
+        request = api_server._ParseRequest.model_validate(
             {
                 "tier": "standard",
-                "output_formats": ["middle_json"],
-                "files": [{"source": {"type": "local", "path": str(source)}}],
+                "output_formats": ["default"],
+                "files": [{"source": stored_source(files, source)}],
             }
         )
         rec = store.create(request, files)
 
         async def work() -> None:
             """执行真实任务循环，避免只测试状态赋值。"""
-            await api_server._run_job(rec, request, files, image_analysis=True, allow_local_source=True)
+            await api_server._run_job(rec, request, files, image_analysis=True)
 
         store.start_task(rec, work)
         await entered.wait()
@@ -180,7 +183,7 @@ def test_late_parser_result_is_not_published_after_cancel(tmp_path: Path, monkey
         store.cancel(rec.id)
         await task
         assert rec.status == "canceled"
-        assert rec.files[0].output_files is None
+        assert rec.task_result_file_id is None
         assert rec.progress.completed == 0
         assert not rendered
         await store.shutdown()

@@ -82,9 +82,9 @@
   │
   └─ v1 API 调用
       -> Official API 或 Local Parse Server
-      -> upload/file/job
+      -> Tasks manifest / hash preflight / optional upload
       -> parse-server
-      -> job result / requested formats
+      -> per-file result_url / requested formats
 ```
 
 ## 5. 流程 A: Watch 自动发现与索引
@@ -396,13 +396,13 @@ marker 不应依赖自然语言提示。具体 marker 格式可在 CLI 或 Agent
 
 ### 8.2 Official API 主线
 
-1. 客户端创建 upload 或提供已有 `file_id`。
-2. 客户端创建 parse job。
+1. 客户端提交 Tasks 清单和可选 hash，得到父任务及缺失文件上传链接。
+2. 客户端仅上传缓存未命中的文件；各文件就绪即独立排队。
 3. 请求可以携带 `tier`；省略或传 JSON `null` 时，PDF/image 使用默认选择策略，OFD/EPUB/Office/HTML/MHTML/CSV/TSV 按批量规则归一为 `flash`；其它 text 不作为解析输入。
 4. API service 做鉴权、配额和输入校验。
 5. 调度到可用解析能力。
 6. 解析服务生成 Middle JSON 和请求的输出格式。
-7. job 进入终态。
+7. 父 Task 聚合逐文件终态，成功文件通过 result_url 下载。
 8. 客户端通过轮询或 webhook 获取结果。
 
 ### 8.3 Local Parse Server 差异
@@ -412,7 +412,7 @@ Local Parse Server 复用同一套客户端协议，但可以简化:
 - 鉴权默认可关闭。
 - Webhook 可以不实现。
 - 上传可以使用本地临时存储。
-- `local` source 只有在 `features.sources` 包含 `local` 时可用；开启后可以引用 server 进程权限范围内的本地路径。
+- 同机 HTTP 请求也使用 hash 预检和按需上传，不传服务端路径。
 - 文件下载可以直接返回 body。
 
 ### 8.4 与 doclib 的关系

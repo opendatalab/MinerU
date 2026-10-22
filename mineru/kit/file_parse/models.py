@@ -47,10 +47,13 @@ class ParseOptions(BaseModel):
     ocr_mode: Literal["auto", "txt", "ocr"] = "auto"
     page_range: str = ""
     output_formats: list[TaskOutputFormat] = Field(default_factory=lambda: ["default"], min_length=1)
+    include_model_output: bool = False
 
     @model_validator(mode="after")
     def normalize(self) -> ParseOptions:
         """按首次出现去重格式，并统一整本页范围的等价写法。"""
+        if self.include_model_output and "default" not in self.output_formats:
+            raise ValueError("include_model_output requires default output format")
         self.output_formats = list(dict.fromkeys(self.output_formats))
         self.page_range = self.page_range.strip()
         if self.page_range.lower() == "all":
@@ -129,7 +132,11 @@ class Record:
 
 def fingerprint(filename: str, size: int, sha256sum: str, options: ParseOptions) -> str:
     """用文件内容、逻辑名称与归一化参数区分同 ID 的冲突提交。"""
-    value = {"filename": filename, "size": size, "sha256sum": sha256sum, "options": options.model_dump()}
+    normalized = options.model_dump()
+    # 缺省关闭不改变此前已持久化请求的身份；显式启用才引入新的结果选项。
+    if not normalized["include_model_output"]:
+        normalized.pop("include_model_output")
+    value = {"filename": filename, "size": size, "sha256sum": sha256sum, "options": normalized}
     return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
 
 

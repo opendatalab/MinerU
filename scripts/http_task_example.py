@@ -310,6 +310,13 @@ class TaskClient:
             "page_range": os.environ.get("PAGE_RANGE", ""),
             "output_formats": list(dict.fromkeys(formats)),
         }
+        model_output = os.environ.get("INCLUDE_MODEL_OUTPUT", "0")
+        if model_output not in {"0", "1"}:
+            raise ClientError("INCLUDE_MODEL_OUTPUT must be 0 or 1")
+        if model_output == "1":
+            if "default" not in formats:
+                raise ClientError("INCLUDE_MODEL_OUTPUT requires default output format")
+            body["include_model_output"] = True
         if os.environ.get("MINERU_TIER"):
             body["tier"] = os.environ["MINERU_TIER"]
         return self.json_request(

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from task_test_utils import stored_source, execution_output
+
 import asyncio
 import json
 import subprocess
@@ -21,7 +23,7 @@ from mineru.doclib.core.fts import FTSManager
 from mineru.doclib.services.parse_svc import ParseService
 from mineru.errors import InvalidRequestError
 from mineru.parser import MinerUParser, api_server, parse, parse_async
-from mineru.parser.api_server import CreateJobRequest, FileStore
+from mineru.parser.api_server import _ParseRequest, FileStore
 from mineru.render import render_docx, render_html, render_markdown, render_structured_content
 from mineru.types import BlockType
 
@@ -159,11 +161,11 @@ def test_epub_local_parse_job_emits_spine_aligned_flash_outputs(tmp_path: Path) 
     source = tmp_path / "book.epub"
     source.write_bytes(build_epub_fixture())
     file_store = FileStore(tmp_path / "api-files")
-    request = CreateJobRequest.model_validate(
+    request = _ParseRequest.model_validate(
         {
-            "files": [{"source": {"type": "local", "path": str(source)}}],
+            "files": [{"source": stored_source(file_store, source)}],
             "tier": "standard",
-            "output_formats": ["markdown", "middle_json", "structured_content", "zip"],
+            "output_formats": ["default"],
         }
     )
     record = api_server.JobStore().create(request, file_store)
@@ -173,16 +175,12 @@ def test_epub_local_parse_job_emits_spine_aligned_flash_outputs(tmp_path: Path) 
             request,
             file_store,
             image_analysis=True,
-            allow_local_source=True,
         )
     )
     parsed_file = record.files[0]
     assert parsed_file.status == "completed"
-    assert parsed_file.output_files is not None
-    assert parsed_file.output_files.zip is not None
-    middle_record = file_store.get_file(parsed_file.output_files.middle_json.file_id)  # type: ignore[union-attr]
-    assert middle_record.sha256sum is not None
-    payload = json.loads(file_store.read_blob(middle_record.sha256sum))
+    middle_data = execution_output(file_store, record, "middle_json.json")
+    payload = json.loads(middle_data)
     assert payload["metadata"]["file_suffix"] == "epub"
     assert payload["extensions"]["mineru"]["tier"] == "flash"
     assert payload["extensions"]["mineru"]["parse_mode"] == "txt"
@@ -195,11 +193,11 @@ def test_epub_local_parse_job_preserves_page_range_error_code(tmp_path: Path) ->
     source = tmp_path / "book.epub"
     source.write_bytes(build_epub_fixture())
     file_store = FileStore(tmp_path / "api-files")
-    request = CreateJobRequest.model_validate(
+    request = _ParseRequest.model_validate(
         {
-            "files": [{"source": {"type": "local", "path": str(source)}, "page_range": "2"}],
+            "files": [{"source": stored_source(file_store, source), "page_range": "2"}],
             "tier": "flash",
-            "output_formats": ["middle_json"],
+            "output_formats": ["default"],
         }
     )
     record = api_server.JobStore().create(request, file_store)
@@ -209,7 +207,6 @@ def test_epub_local_parse_job_preserves_page_range_error_code(tmp_path: Path) ->
             request,
             file_store,
             image_analysis=True,
-            allow_local_source=True,
         )
     )
     assert record.files[0].status == "failed"

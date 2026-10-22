@@ -2,7 +2,7 @@
 
 状态: Accepted
 日期: 2026-06-09
-相关文档: ../cli/mineru-parse.md, ../api/parse-jobs.md, ../sdk/parse-result.md, ../middle-json.md
+相关文档: ../cli/mineru-parse.md, ../api/tasks.md, ../sdk/parse-result.md, ../middle-json.md
 
 ## 背景
 

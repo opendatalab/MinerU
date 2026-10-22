@@ -15,10 +15,9 @@ from pathlib import Path
 from typing import Any, Iterator, Literal
 from ...utils.retention import resolve_retention_seconds
 
-ResourceKind = Literal["upload", "file", "job"]
+ResourceKind = Literal["file", "job"]
 
 _PUBLIC_ID_PREFIXES: dict[ResourceKind, str] = {
-    "upload": "upload_",
     "file": "file-",
     "job": "job_",
 }
@@ -50,16 +49,6 @@ class StoredSourceFile:
     bytes: int
     sha256sum: str
     mime_type: str
-
-
-@dataclass(frozen=True)
-class CopiedInputFile:
-    """记录一个 Job 为 cross-worker 执行创建的目标 worker 输入副本。"""
-
-    source_public_id: str
-    owner_scope: str
-    worker_id: str
-    upstream_file_id: str
 
 
 class SourceFileStore:
@@ -178,14 +167,6 @@ class SourceFileStore:
             return
         path.unlink(missing_ok=True)
 
-    def is_bound_upload(self, upload_id: str) -> bool:
-        """判断 Upload 的暂存路径是否已经绑定到完成后的公共 File。"""
-        return upload_id in self._bound_uploads
-
-    def find_upload(self, upload_id: str) -> StoredSourceFile | None:
-        """读取公共 Upload 对应的私有暂存输入，不存在时返回 None。"""
-        return self._uploads.get(upload_id)
-
     def find_file(self, file_id: str) -> StoredSourceFile | None:
         """读取公共 File 对应的私有暂存输入，不存在时返回 None。"""
         return self._files.get(file_id)
@@ -232,13 +213,12 @@ async def stored_file_chunks(path: Path, chunk_size: int = 1024 * 1024) -> Async
 
 
 class ResourceRegistry:
-    """维护当前 Router 进程创建或发现的 uploads、files 与 jobs。"""
+    """维护当前 Router 进程的文件与私有执行路由。"""
 
     def __init__(self, retention_seconds: int | None = None) -> None:
         """初始化按公共标识和 upstream 标识建立的双向索引。"""
         self.retention_seconds = resolve_retention_seconds(retention_seconds)
         self._by_public: dict[ResourceKind, dict[str, ResourceRoute]] = {
-            "upload": {},
             "file": {},
             "job": {},
         }
@@ -298,8 +278,6 @@ class ResourceRegistry:
                 return False
             if not self.retention_seconds:
                 return False
-            if route.metadata.get("copied_inputs"):
-                return False
             origin = route.metadata.setdefault("finalized_at", utc_now_iso())
         else:
             explicit = payload.get("expires_at")
@@ -319,17 +297,13 @@ class ResourceRegistry:
         protected: set[str] = set()
         for route in self._by_public["job"].values():
             payload = route.metadata.get("payload") or {}
-            if payload.get("status") not in {"completed", "partial", "failed", "canceled"} or route.metadata.get(
-                "copied_inputs"
-            ):
+            if payload.get("status") not in {"completed", "partial", "failed", "canceled"}:
                 protected.update(file.get("file_id") for file in payload.get("files", []) if file.get("file_id"))
-                protected.update(copy.source_public_id for copy in route.metadata.get("copied_inputs", []))
         for kind, routes in self._by_public.items():
             for public_id, route in tuple(routes.items()):
                 if (
                     not self.is_expired(route)
                     or public_id in protected
-                    or route.metadata.get("copied_inputs")
                     or route.metadata.get("pins")
                     or route.metadata.get("task_result_held")
                 ):
@@ -337,8 +311,6 @@ class ResourceRegistry:
                 self.remove(kind, public_id)
                 if kind == "file":
                     sources.delete_file(public_id)
-                elif kind == "upload":
-                    sources.discard_upload(public_id)
 
     def get(self, kind: ResourceKind, public_id: str) -> ResourceRoute:
         """按公共标识读取资源路由，不存在时抛出 KeyError。"""
@@ -438,7 +410,6 @@ class ResourceRegistry:
 
 
 __all__ = [
-    "CopiedInputFile",
     "ResourceKind",
     "ResourceRegistry",
     "ResourceRoute",

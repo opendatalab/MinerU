@@ -15,7 +15,7 @@ from pathlib import Path
 from typing import Any, Literal, NoReturn, Protocol
 from urllib.parse import quote
 
-from fastapi import APIRouter, Request, Response
+from fastapi import APIRouter, Query, Request, Response
 from fastapi.responses import JSONResponse
 from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, ValidationError, model_validator
 from starlette.requests import ClientDisconnect
@@ -26,25 +26,24 @@ from ..task_types import TaskOutputFormat
 from ..types import Tier
 from ..utils.async_utils import drain_future, run_sync
 from .api_server import (
-    AccessLevel,
     ApiServerError,
-    CreateJobRequest,
+    _ParseRequest,
     ErrorDetail,
-    FileIdSource,
+    _StoredSource,
     FileParseInfo,
     FileStore,
-    JobFileEntry,
-    JobProgress,
+    _ParseInput,
+    TaskProgress,
     JobStore,
-    UrlSource,
+    _UrlSource,
     _JobInputMetadata,
     _JobInputSpec,
     _raise_api_error,
     _require_model_preload_ready,
     _validate_source_policy,
-    submit_parse_job,
+    submit_execution,
 )
-from .page_range import normalize_page_range_input
+from .page_range import PAGE_RANGE_DESCRIPTION, normalize_page_range_input
 
 MAX_TASK_FILES = 100
 TASK_UPLOAD_TTL = 3600
@@ -63,7 +62,7 @@ class TaskManifestItem(BaseModel):
     bytes: int | None = Field(default=None, gt=0, strict=True)
     url: str | None = None
     sha256sum: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
-    page_range: str | None = None
+    page_range: str | None = Field(default=None, description=PAGE_RANGE_DESCRIPTION)
 
     @model_validator(mode="after")
     def validate_source(self) -> TaskManifestItem:
@@ -84,6 +83,14 @@ class UploadTaskOptions(BaseModel):
     ocr_mode: Literal["auto", "txt", "ocr"] = "auto"
     page_range: str = ""
     output_formats: list[TaskOutputFormat] = Field(default_factory=lambda: ["default"], min_length=1)
+    include_model_output: bool = False
+
+    @model_validator(mode="after")
+    def validate_model_output(self) -> UploadTaskOptions:
+        """模型输出只能附加到 default 结果包，不改变单文件 HTML/DOCX 的交付类型。"""
+        if self.include_model_output and "default" not in self.output_formats:
+            raise ValueError("include_model_output requires default output format")
+        return self
 
 
 class CreateTaskRequest(UploadTaskOptions):
@@ -125,10 +132,30 @@ class TaskStatusResponse(BaseModel):
     finished_at: str | None = None
     tier: Tier | None = None
     output_formats: list[TaskOutputFormat]
-    progress: JobProgress
+    include_model_output: bool = False
+    progress: TaskProgress
     files: list[TaskFileStatus]
     uploads: list[TaskUploadLink] = Field(default_factory=list)
     error: ErrorDetail | None = None
+
+
+class TaskListItem(BaseModel):
+    """任务列表只公开父任务摘要，不暴露内部逐文件执行。"""
+
+    task_id: str
+    status: TaskStatus
+    created_at: str
+    file_count: int
+
+
+class TaskListResponse(BaseModel):
+    """保持统一的游标分页结构，列表数据按调用方隔离。"""
+
+    object: Literal["list"] = "list"
+    data: list[TaskListItem]
+    first_id: str | None = None
+    last_id: str | None = None
+    has_more: bool = False
 
 
 @dataclass(frozen=True)
@@ -281,14 +308,22 @@ async def _read_submission(request: Request) -> tuple[UploadTaskOptions, list[Ta
         options = UploadTaskOptions.model_validate(body.model_dump(exclude={"manifest"}))
         options.page_range = normalize_page_range_input(options.page_range)
         options.output_formats = list(dict.fromkeys(options.output_formats))
-        for item in body.manifest:
-            item.page_range = normalize_page_range_input(item.page_range if item.page_range is not None else options.page_range)
+        for index, item in enumerate(body.manifest):
+            try:
+                item.page_range = normalize_page_range_input(
+                    item.page_range if item.page_range is not None else options.page_range
+                )
+            except MineruError as exc:
+                _invalid(str(exc), code=exc.code, param=f"manifest.{index}.page_range")
         return options, body.manifest
     except ClientDisconnect:
         _invalid("Request interrupted", code="request_interrupted")
     except MineruError as exc:
         _invalid(str(exc), code=exc.code, param=exc.param)
-    except (ValidationError, ValueError) as exc:
+    except ValidationError as exc:
+        location = exc.errors()[0]["loc"]
+        _invalid("Invalid request: " + str(exc), param=".".join(map(str, location)) or None)
+    except ValueError as exc:
         _invalid(str(exc))
 
 
@@ -426,6 +461,47 @@ class TaskStore:
         if record is None or record.backend.owner_scope != owner_scope:
             _invalid(f"Task {task_id} not found", status_code=404, code="task_not_found")
         return record
+
+    def list_tasks(
+        self,
+        owner_scope: str,
+        *,
+        status_filter: str | None,
+        limit: int,
+        after: str | None,
+        order: Literal["asc", "desc"],
+        created_after: str | None,
+    ) -> TaskListResponse:
+        """对父任务应用稳定排序和游标；同秒创建的任务以 ID 明确排序。"""
+        self.collect_expired()
+        allowed = set(status_filter.split(",")) if status_filter else None
+        if allowed is not None and not allowed.issubset({"waiting_upload", "queued", "running", *TERMINAL_TASK_STATUSES}):
+            _invalid("Unknown task status", param="status")
+        records = sorted(
+            (record for record in self._records.values() if record.backend.owner_scope == owner_scope),
+            key=lambda record: (record.created_at, record.id),
+            reverse=order == "desc",
+        )
+        if after:
+            cursor = self.lookup(after, owner_scope)
+            key = (cursor.created_at, cursor.id)
+            records = [
+                record
+                for record in records
+                if ((record.created_at, record.id) > key if order == "asc" else (record.created_at, record.id) < key)
+            ]
+        records = [
+            record
+            for record in records
+            if (allowed is None or record.status in allowed) and (created_after is None or record.created_at >= created_after)
+        ]
+        page = records[:limit]
+        return TaskListResponse(
+            data=[TaskListItem(task_id=r.id, status=r.status, created_at=r.created_at, file_count=len(r.files)) for r in page],
+            first_id=page[0].id if page else None,
+            last_id=page[-1].id if page else None,
+            has_more=len(records) > limit,
+        )
 
     def update_lease(self, record: _TaskRecord, seconds: int | None) -> None:
         """续租只保护结果保留期，从不延长上传窗口，也不复活已释放的结果。"""
@@ -774,6 +850,7 @@ def task_payload(record: _TaskRecord, request: Request) -> dict[str, Any]:
         "finished_at": record.finished_at,
         "tier": record.options.tier,
         "output_formats": record.options.output_formats,
+        "include_model_output": record.options.include_model_output,
         "progress": {
             "completed": sum(file.status == "completed" for file in record.files),
             "failed": sum(file.status == "failed" for file in record.files),
@@ -807,6 +884,26 @@ def _request_schema() -> dict[str, Any]:
 def build_task_router(factory: Callable[[Request], TaskBackend]) -> APIRouter:
     """两类部署使用同一任务协议，下载交给已有 Files 入口。"""
     router = APIRouter(prefix="/v1", tags=["Tasks"])
+
+    @router.get("/tasks", response_model=TaskListResponse)
+    async def list_tasks(
+        request: Request,
+        status_filter: str | None = Query(None, alias="status"),
+        limit: int = Query(20, ge=1, le=100),
+        after: str | None = None,
+        order: Literal["asc", "desc"] = "desc",
+        created_after: str | None = None,
+    ) -> TaskListResponse:
+        """读取当前调用方的父任务列表，子任务不进入公开列表。"""
+        backend = factory(request)
+        return request.app.state.task_store.list_tasks(
+            backend.owner_scope,
+            status_filter=status_filter,
+            limit=limit,
+            after=after,
+            order=order,
+            created_after=created_after,
+        )
 
     @router.post("/tasks", status_code=202, response_model=TaskStatusResponse, openapi_extra=_request_schema())
     async def create_task(request: Request) -> Response:
@@ -875,7 +972,6 @@ class ApiTaskBackend:
         self.files: FileStore = request.app.state.file_store
         self.jobs: JobStore = request.app.state.job_store
         self.owner_scope = "local"
-        self.access: AccessLevel = "registered" if request.app.state.api_key else "anonymous"
         self._pins: list[str] = []
         self._owned_files: list[str] = []
 
@@ -897,9 +993,7 @@ class ApiTaskBackend:
             if item.url is not None:
                 try:
                     _validate_source_policy(
-                        UrlSource(url=item.url),
-                        allow_local_source=False,
-                        max_inline_bytes=state.max_inline_bytes,
+                        _UrlSource(url=item.url),
                         allow_http_source=state.allow_http_source,
                     )
                 except ValueError as exc:
@@ -949,27 +1043,26 @@ class ApiTaskBackend:
             await run_sync(
                 self.files.register_source_file, upload.filename, upload.path, upload.sha256sum, upload.file_id, keep_alive=True
             )
-        body = CreateJobRequest(
+        body = _ParseRequest(
             files=[
-                JobFileEntry(
-                    source=UrlSource(url=item.url) if item.url is not None else FileIdSource(file_id=uploads[index].file_id),
+                _ParseInput(
+                    source=_UrlSource(url=item.url) if item.url is not None else _StoredSource(file_id=uploads[index].file_id),
                     page_range=item.page_range or None,
                 )
                 for index, item in enumerate(manifest)
             ],
             tier=options.tier,
             ocr_mode=options.ocr_mode,
-            output_formats=[],
+            output_formats=options.output_formats,
+            include_model_output=options.include_model_output,
         )
 
-        await submit_parse_job(
+        await submit_execution(
             body,
             self.request,
             self.files,
             self.jobs,
-            self.access,
             job_id=task_id,
-            task_output_formats=options.output_formats,
             input_specs={
                 index: _JobInputSpec(item.filename, item.bytes, item.sha256sum) for index, item in enumerate(manifest)
             },
@@ -980,7 +1073,7 @@ class ApiTaskBackend:
         """只读取 Job 与最终 File 的标识，不在状态请求中访问产物正文。"""
         record = self.jobs.get(task_id)
         return TaskExecution(
-            self.jobs.build_response(record, access_level=self.access).model_dump(by_alias=True),
+            self.jobs.snapshot(record),
             record.task_result_file_id,
             None,
             dict(record.input_metadata),
@@ -1002,6 +1095,8 @@ __all__ = [
     "TaskBackend",
     "TaskExecution",
     "TaskManifestItem",
+    "TaskListItem",
+    "TaskListResponse",
     "TaskStatusResponse",
     "TaskStore",
     "TaskUpload",

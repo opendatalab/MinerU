@@ -11,7 +11,7 @@
 
 ```json
 {
-  "job_id": "job_01HXYZ123ABCDEF",
+  "task_id": "job_01HXYZ123ABCDEF",
   "status": "queued"
 }
 ```
@@ -127,6 +127,5 @@ Idempotency-Key: 7f5b7f7c-5c5a-4b2f-bb89-0c901c9a2d6a
 Local Parse Server 使用同一套错误 envelope。差异主要体现在错误来源:
 
 - 未启用 API Key 时，不会产生 `invalid_api_key`。
-- 请求 `local` source 但本地 server 未开启 `--allow-local-source`，应返回 `400 unsupported_source`。
 - PDF/image 省略 `tier` 或传 `null` 且无法解析到非 `flash` 质量 tier 时，应返回 tier 相关错误，不能降级到 `flash`。OFD/EPUB/Office/HTML/MHTML/CSV 按 [ADR-0024](../decisions/0024-file-type-tier-normalization.md) 与 [ADR-0028](../decisions/0028-csv-structured-flash-parsing.md) 归一为 `flash`，其它 text 不作为解析输入。
 - 解析能力缺失时，应优先返回可操作的 `engine_error`，而不是泛化为 `internal_error`。

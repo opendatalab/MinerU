@@ -446,7 +446,7 @@ def test_partial_and_packaging_failure_have_honest_results(
     assert "markdown.md" in _archive(client, result)
     original = task_outputs.build_task_output
 
-    def fail_packaging(result: Any, formats: Any, directory: Path) -> Path:
+    def fail_packaging(result: Any, formats: Any, directory: Path, *, include_model_output: bool = False) -> Path:
         """仅让第二个输入导出失败，验证文件级隔离及诚实的成功状态。"""
         if "Second content" in result.markdown():
             raise OSError("simulated full disk")
@@ -973,3 +973,113 @@ def test_router_ends_local_result_lease_even_if_worker_rejects_release(tmp_path:
             not route.metadata.get("task_result_held") for route in app.state.registry.list("file", include_expired=True)
         )
         assert result["files"][0]["result_url"]
+
+
+@pytest.mark.parametrize("order", ["asc", "desc"])
+def test_parent_task_listing_filters_and_stable_pagination(
+    service: tuple[TestClient, FastAPI],
+    monkeypatch: pytest.MonkeyPatch,
+    order: str,
+) -> None:
+    """同秒父任务按 ID 稳定分页，过滤状态和调用方后不泄露子执行。"""
+    client, app = service
+    monkeypatch.setattr(api_server.JobStore, "_now", staticmethod(lambda: "2026-10-22T00:00:00Z"))
+    tasks = [_submit(client, [(f"input-{index}.html", HTML)], hashes=False) for index in range(4)]
+    for task in tasks:
+        app.state.task_store._records[task["task_id"]].created_at = "2026-10-22T00:00:00Z"
+    expected = sorted([task["task_id"] for task in tasks], reverse=order == "desc")
+    first = client.get("/v1/tasks", params={"limit": 2, "order": order, "status": "waiting_upload"}).json()
+    assert [item["task_id"] for item in first["data"]] == expected[:2]
+    assert first["has_more"] is True and first["first_id"] == expected[0]
+    assert all(
+        item["file_count"] == 1 and set(item) == {"task_id", "created_at", "status", "file_count"} for item in first["data"]
+    )
+    second = client.get("/v1/tasks", params={"limit": 2, "order": order, "after": first["last_id"]}).json()
+    assert [item["task_id"] for item in second["data"]] == expected[2:]
+    assert not second["has_more"]
+    assert client.get("/v1/tasks", params={"status": "completed"}).json()["data"] == []
+    assert client.get("/v1/tasks", params={"created_after": "2027-01-01T00:00:00Z"}).json()["data"] == []
+    assert client.get("/v1/tasks", params={"status": "unknown"}).status_code == 400
+    assert client.get("/v1/tasks", params={"after": "missing"}).status_code == 404
+    assert client.get("/v1/tasks", params={"limit": 101}).status_code == 400
+    if hasattr(app.state, "registry"):
+        assert client.get("/v1/tasks", headers={"authorization": "Bearer other"}).json()["data"] == []
+        assert (
+            client.get("/v1/tasks", params={"after": expected[0]}, headers={"authorization": "Bearer other"}).status_code == 404
+        )
+
+
+def test_tasks_only_routes_and_health(service: tuple[TestClient, FastAPI]) -> None:
+    """所有旧入口均消失，嵌套 Task 上传及独立 Files 仍然存在。"""
+    client, _ = service
+    schema = client.get("/openapi.json").json()
+    assert not any(path.startswith(("/v1/uploads", "/v1/parse/jobs")) for path in schema["paths"])
+    for method, path in [
+        ("POST", "/v1/uploads"),
+        ("GET", "/v1/uploads/a"),
+        ("PUT", "/v1/uploads/a/content"),
+        ("POST", "/v1/uploads/a/complete"),
+        ("POST", "/v1/uploads/a/cancel"),
+        ("POST", "/v1/parse/jobs"),
+        ("GET", "/v1/parse/jobs"),
+        ("GET", "/v1/parse/jobs/a"),
+        ("DELETE", "/v1/parse/jobs/a"),
+    ]:
+        assert client.request(method, path).status_code == 404
+    features = client.get("/v1/health").json()["features"]
+    assert set(features["sources"]) == {"upload", "url"}
+    assert "output_formats" not in features and features["task_model_output"] is True
+    assert set(features["task_output_formats"]) == {"default", "html", "docx", "latex"}
+    assert "get" in schema["paths"]["/v1/tasks"]
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_model_output_option_reaches_worker_and_result(
+    service: tuple[TestClient, FastAPI],
+    monkeypatch: pytest.MonkeyPatch,
+    enabled: bool,
+) -> None:
+    """开关经过 Router 到实际 worker，默认结果包不含原始模型数据。"""
+    from test_tasks_sdk import middle
+    from mineru.parser.base import ParseResult
+    from mineru.types import ModelJson
+
+    async def infer(*args: Any, **kwargs: Any) -> ParseResult:
+        """替代推理但保留真实执行、导出、结果映射与下载。"""
+        document = middle()
+        return ParseResult(
+            middle_json=document,
+            _model_output=ModelJson(
+                pages=[[{"raw": "model"}]],
+                page_index_map=[0],
+                metadata=document.metadata,
+            ),
+        )
+
+    client, _ = service
+    monkeypatch.setattr(api_server, "parse_async", infer)
+    response = client.post(
+        "/v1/tasks",
+        json={
+            "manifest": [{"client_file_id": "file", "filename": "input.html", "bytes": len(HTML)}],
+            "tier": "flash",
+            "include_model_output": enabled,
+        },
+    )
+    assert response.status_code == 202, response.text
+    task = response.json()
+    assert task["include_model_output"] is enabled
+    client.put(task["uploads"][0]["upload_url"], content=HTML)
+    done = _terminal(client, task)
+    assert done["status"] == "completed" and done["include_model_output"] is enabled
+    with zipfile.ZipFile(io.BytesIO(client.get(done["files"][0]["result_url"]).content)) as archive:
+        assert ("model_output.json" in archive.namelist()) is enabled
+    rejected = client.post(
+        "/v1/tasks",
+        json={
+            "manifest": [{"client_file_id": "file", "filename": "input.html", "bytes": len(HTML)}],
+            "output_formats": ["html"],
+            "include_model_output": True,
+        },
+    )
+    assert rejected.status_code == 400

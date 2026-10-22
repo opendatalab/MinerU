@@ -16,7 +16,7 @@ from typing import Any, Literal, cast
 
 import httpx
 
-from ...parser.api_client import ApiJobStatus, MinerUApiParser, should_trust_env_for_url
+from ...parser.api_client import ApiTaskStatus, MinerUApiParser, should_trust_env_for_url
 from ...parser.base import ParseResult
 from ...parser.page_range import normalize_page_range_input
 from ...parser.process_control import ManagedProcessControl
@@ -31,6 +31,7 @@ from .status import (
     STATUS_PROCESSING_OUTPUT,
     STATUS_QUEUED_ON_SERVER,
     STATUS_SUBMITTING_TASK,
+    STATUS_UPLOADING_FILE,
     ParseStatusUpdate,
 )
 
@@ -52,6 +53,7 @@ class V1ServerCapabilities:
     tiers: tuple[str, ...]
     output_formats: tuple[str, ...]
     sources: tuple[str, ...]
+    model_output: bool = False
 
 
 def normalize_v1_base_url(value: str) -> str:
@@ -145,16 +147,16 @@ class V1ArtifactClient:
             raise V1ArtifactError("V1 health response did not report status=ok", code="invalid_response")
         if not isinstance(features, dict):
             raise V1ArtifactError("V1 health response is missing features", code="invalid_response")
-        output_formats = _string_tuple(features.get("output_formats"), "features.output_formats")
+        output_formats = _string_tuple(features.get("task_output_formats"), "features.task_output_formats")
         sources = _string_tuple(features.get("sources"), "features.sources")
-        if "zip" not in output_formats:
+        if "default" not in output_formats:
             raise V1ArtifactError(
-                "The configured V1 API server does not advertise zip output, which is required by Gradio.",
+                "The configured V1 API server does not advertise default task output, which is required by Gradio.",
                 code="unsupported_output_format",
             )
-        if "file_id" not in sources:
+        if "upload" not in sources:
             raise V1ArtifactError(
-                "The configured V1 API server does not advertise file_id uploads, which are required by Gradio.",
+                "The configured V1 API server does not advertise task uploads, which are required by Gradio.",
                 code="unsupported_source",
             )
 
@@ -174,6 +176,7 @@ class V1ArtifactClient:
             tiers=tuple(tiers),
             output_formats=output_formats,
             sources=sources,
+            model_output=features.get("task_model_output") is True,
         )
         self._capabilities = capabilities
         return capabilities
@@ -209,12 +212,13 @@ class V1ArtifactClient:
             tier=cast(Tier, tier),
             ocr_mode=ocr_mode,
             include_images=True,
-            include_model_output=True,
+            include_model_output=self._capabilities.model_output,
         )
 
-        def on_job_status(status: ApiJobStatus) -> None:
+        def on_job_status(status: ApiTaskStatus) -> None:
             """将真实 V1 状态映射到卡片阶段，服务端完成仅代表开始下载。"""
-            messages: dict[ApiJobStatus, str] = {
+            messages: dict[ApiTaskStatus, str] = {
+                "waiting_upload": STATUS_UPLOADING_FILE,
                 "queued": STATUS_QUEUED_ON_SERVER,
                 "running": STATUS_PROCESSING_ON_SERVER,
                 "completed": STATUS_DOWNLOADING_RESULT,

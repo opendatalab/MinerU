@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+
 import asyncio
 import hashlib
 import os
@@ -13,7 +14,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from mineru.parser import api_server
-from mineru.parser.api_server import ApiServerError, CreateJobRequest, FileStore, JobStore
+from mineru.parser.api_server import ApiServerError, _ParseRequest, FileStore, JobStore
 from mineru.kit.router.resources import ResourceRegistry, SourceFileStore, StoredSourceFile
 from mineru.utils.retention import resolve_retention_seconds
 
@@ -67,7 +68,7 @@ def test_shared_hash_and_queue_leases_survive_expired_views(tmp_path: Path, cloc
     store.release_inputs(leases[0])
     store.collect_expired()
     assert store._blob_abs(sha).is_file()
-    data = asyncio.run(api_server._extract_bytes(api_server.FileIdSource(file_id=second), store, input_blobs=leases[1]))
+    data = asyncio.run(api_server._extract_bytes(api_server._StoredSource(file_id=second), store, input_blobs=leases[1]))
     assert data.data == b"document"
     store.release_inputs(leases[1])
     store.collect_expired()
@@ -82,7 +83,7 @@ def test_output_retention_starts_after_cleanup(tmp_path: Path, clock: list[int])
         files = FileStore(tmp_path / "files", retention_seconds=10)
         source, sha = _source(files, tmp_path)
         jobs = JobStore(concurrency=1, retention_seconds=10)
-        req = CreateJobRequest.model_validate({"tier": "flash", "files": [{"source": {"type": "file_id", "file_id": source}}]})
+        req = _ParseRequest.model_validate({"tier": "flash", "files": [{"source": {"type": "file_id", "file_id": source}}]})
         gate = asyncio.Event()
         records = [jobs.create(req, files) for _ in range(2)]
         outputs: list[str] = []
@@ -211,7 +212,7 @@ def test_queued_cancel_releases_input_before_execution(tmp_path: Path, clock: li
         files = FileStore(tmp_path / "files", retention_seconds=10)
         source, sha = _source(files, tmp_path)
         jobs = JobStore(retention_seconds=10)
-        req = CreateJobRequest.model_validate({"tier": "flash", "files": [{"source": {"type": "file_id", "file_id": source}}]})
+        req = _ParseRequest.model_validate({"tier": "flash", "files": [{"source": {"type": "file_id", "file_id": source}}]})
         rec = jobs.create(req, files)
 
         async def forbidden() -> None:
@@ -271,94 +272,40 @@ def test_gc_interleaves_with_blob_writes_and_downloads(tmp_path: Path, clock: li
     assert not files._files and not files._pins
 
 
-def test_router_pending_copy_cleanup_keeps_terminal_job_visible(clock: list[int]) -> None:
-    """副本尚未清理完成时，任务不应开始保留期或从用户列表消失。"""
-    from mineru.kit.router.resources import CopiedInputFile
-
+def test_router_task_result_lease_keeps_terminal_execution_visible(clock: list[int]) -> None:
+    """父任务持有结果租约时，内部执行终态不会提前被回收。"""
     registry = ResourceRegistry(retention_seconds=10)
-    route = registry.register("job", owner_scope="one", worker_id="worker", upstream_id="job-up")
-    route.metadata["payload"] = {"status": "failed", "finished_at": JobStore._now()}
-    route.metadata["copied_inputs"] = [CopiedInputFile("file-one", "one", "worker", "file-copy")]
-    clock[0] += 11
+    route = registry.register("job", owner_scope="one", worker_id="worker", upstream_id="child")
+    route.metadata.update(payload={"status": "completed"}, task_result_held=True)
+    clock[0] += 20
     assert registry.find("job", route.public_id) is route
-    assert registry.list("job") == [route]
-    assert registry.list("job", include_expired=True) == [route]
-
-
-def test_router_retention_starts_after_copy_cleanup_retry(clock: list[int]) -> None:
-    """上游早已结束但副本删除失败时，重试成功后仍享有完整保留期。"""
-    from test_v1_router import _FakeV1Upstream, _make_router, _upload_file
-    from mineru.kit.router.app import _reconcile_jobs_once
-
-    first = _FakeV1Upstream("worker-a", ("standard",))
-    second = _FakeV1Upstream("worker-b", ("advanced",))
-    app, _ = _make_router(first, second)
-    app.state.registry.retention_seconds = 10
-    headers = {"authorization": "Bearer retained-copy"}
-    with TestClient(app) as client:
-        source = _upload_file(client, token="retained-copy", content=b"pdf")
-        created = client.post(
-            "/v1/parse/jobs",
-            headers=headers,
-            json={"tier": "advanced", "files": [{"source": {"type": "file_id", "file_id": source}}]},
-        )
-        assert created.status_code == 202
-        job_id = created.json()["job_id"]
-        route = app.state.registry.get("job", job_id)
-        copied = route.metadata["copied_inputs"][0]
-        second.fail_file_delete_once.add(copied.upstream_file_id)
-        assert client.get(f"/v1/parse/jobs/{job_id}", headers=headers).status_code == 200
-        route.metadata["payload"]["finished_at"] = JobStore._now()
-        assert route.metadata.get("copied_inputs")
-        clock[0] += 11
-        app.state.registry.collect_expired(app.state.source_store)
-        assert app.state.registry.find("job", job_id) is route
-        assert client.get("/v1/parse/jobs", headers=headers).json()["data"][0]["job_id"] == job_id
-        client.portal.call(_reconcile_jobs_once, app.state.registry, app.state.worker_pool)
-        assert not route.metadata.get("copied_inputs")
-        assert copied.upstream_file_id not in second.files
-        clock[0] += 9
-        assert client.get(f"/v1/parse/jobs/{job_id}", headers=headers).status_code == 200
-        clock[0] += 1
-        assert client.get(f"/v1/parse/jobs/{job_id}", headers=headers).status_code == 404
+    route.metadata["task_result_retain_until"] = clock[0] + 10
+    clock[0] += 11
+    assert registry.find("job", route.public_id) is None
 
 
 def test_router_usage_survives_expiry_collection_and_worker_removal(clock: list[int]) -> None:
-    """过期隐藏、重复扫描与 worker 移除均不能减少或重复累计调用方用量。"""
-    from test_v1_router import _FakeV1Upstream, _make_router
-
-    app, _ = _make_router(_FakeV1Upstream("worker-a", ("standard",)))
-    app.state.registry.retention_seconds = 10
-    headers = {"authorization": "Bearer lifetime"}
-    body = {"tier": "standard", "files": [{"source": {"type": "inline", "name": "demo.pdf", "data": "cGRm"}}]}
-    with TestClient(app) as client:
-        for _ in range(2):
-            created = client.post("/v1/parse/jobs", headers=headers, json=body)
-            assert created.status_code == 202
-            job_id = created.json()["job_id"]
-            assert client.get(f"/v1/parse/jobs/{job_id}", headers=headers).status_code == 200
-        before = client.get("/v1/usage", headers=headers).json()["current"]
-        assert before == {"pages_processed": 0, "files_processed": 2, "jobs_created": 2}
+    """内部逐文件执行计数在过期和 worker 移除后仍保留，并隔离调用方。"""
+    registry = ResourceRegistry(retention_seconds=10)
+    sources = SourceFileStore(retention_seconds=10)
+    try:
+        for index in range(2):
+            route = registry.register("job", owner_scope="owner", worker_id="worker", upstream_id=str(index))
+            route.metadata.update(
+                payload={"status": "completed", "files": [{"status": "completed"}]}, finalized_at=JobStore._now()
+            )
+        before = registry.usage("owner")
+        assert before == {"jobs_created": 2, "files_processed": 2}
         clock[0] += 11
-        assert client.get("/v1/parse/jobs", headers=headers).json()["data"] == []
-        assert client.get("/v1/usage", headers=headers).json()["current"] == before
-        for _ in range(2):
-            app.state.registry.collect_expired(app.state.source_store)
-        assert not app.state.registry.list("job", include_expired=True)
-        assert client.get("/v1/usage", headers=headers).json()["current"] == before
-        created = client.post("/v1/parse/jobs", headers=headers, json=body)
-        assert created.status_code == 202
-        route = app.state.registry.get("job", created.json()["job_id"])
-        app.state.registry.remove_worker(route.worker_id)
-        assert client.get("/v1/usage", headers=headers).json()["current"] == {
-            **before,
-            "jobs_created": 3,
-        }
-        assert client.get("/v1/usage").json()["current"] == {
-            "pages_processed": 0,
-            "files_processed": 0,
-            "jobs_created": 0,
-        }
+        registry.collect_expired(sources)
+        assert registry.usage("owner") == before and not registry.list("job", include_expired=True)
+        route = registry.register("job", owner_scope="owner", worker_id="worker", upstream_id="new")
+        route.metadata["payload"] = {"status": "running", "files": [{"status": "running"}]}
+        registry.remove_worker("worker")
+        assert registry.usage("owner") == {"jobs_created": 3, "files_processed": 2}
+        assert registry.usage("anonymous") == {"jobs_created": 0, "files_processed": 0}
+    finally:
+        sources.close()
 
 
 def test_retention_keeps_cumulative_usage(tmp_path: Path, clock: list[int]) -> None:
@@ -366,7 +313,7 @@ def test_retention_keeps_cumulative_usage(tmp_path: Path, clock: list[int]) -> N
     files = FileStore(tmp_path / "files", retention_seconds=10)
     source, _ = _source(files, tmp_path)
     jobs = JobStore(retention_seconds=10)
-    request = CreateJobRequest.model_validate({"tier": "flash", "files": [{"source": {"type": "file_id", "file_id": source}}]})
+    request = _ParseRequest.model_validate({"tier": "flash", "files": [{"source": {"type": "file_id", "file_id": source}}]})
     rec = jobs.create(request, files)
     rec.status = rec.files[0].status = "completed"
     rec.files[0].page_range = "1-3"
@@ -396,55 +343,21 @@ def test_kit_cli_forwards_explicit_retention(monkeypatch: pytest.MonkeyPatch) ->
 
 
 def test_external_worker_lost_task_releases_load_and_keeps_snapshot() -> None:
-    """外部 worker 重启丢失内存任务时，Router 不得永久占用名额或丢弃失败历史。"""
+    """worker Tasks 返回 404 时后台收敛负载，并保存失败执行快照。"""
     from test_v1_router import _FakeV1Upstream, _make_router
     from mineru.kit.router.app import _reconcile_jobs_once
 
-    upstream = _FakeV1Upstream("worker-a", ("standard",))
-    app, _ = _make_router(upstream)
+    app, _ = _make_router(_FakeV1Upstream("worker-a", ("standard",)))
     with TestClient(app) as client:
-        created = client.post(
-            "/v1/parse/jobs",
-            json={"tier": "standard", "files": [{"source": {"type": "inline", "name": "demo.pdf", "data": "cGRm"}}]},
+        pool = app.state.worker_pool
+        reservation = pool.reserve_job(tier="standard", required_sources={"upload"})
+        route = app.state.registry.register(
+            "job", owner_scope="anonymous", worker_id=reservation.worker.worker_id, upstream_id="lost-task"
         )
-        assert created.status_code == 202
-        job_id = created.json()["job_id"]
-        route = app.state.registry.get("job", job_id)
-        worker = app.state.worker_pool.get(route.worker_id)
-        assert worker.active_jobs == 1
-        upstream.jobs.clear()
-        client.portal.call(_reconcile_jobs_once, app.state.registry, app.state.worker_pool)
-        assert worker.active_jobs == 0
-        response = client.get(f"/v1/parse/jobs/{job_id}")
-        assert response.status_code == 200 and response.json()["status"] == "failed"
-        assert response.json()["files"][0]["error"]["code"] == "upstream_job_lost"
-
-
-def test_lost_task_retries_failed_cross_worker_copy_cleanup() -> None:
-    """上游任务丢失后副本删除失败一次，后续后台轮次仍继续回收并释放 alias。"""
-    from test_v1_router import _FakeV1Upstream, _make_router, _upload_file
-    from mineru.kit.router.app import _reconcile_jobs_once
-
-    first = _FakeV1Upstream("worker-a", ("standard",))
-    second = _FakeV1Upstream("worker-b", ("advanced",))
-    app, _ = _make_router(first, second)
-    headers = {"authorization": "Bearer lost-copy"}
-    with TestClient(app) as client:
-        source = _upload_file(client, token="lost-copy", content=b"pdf")
-        response = client.post(
-            "/v1/parse/jobs",
-            headers=headers,
-            json={"tier": "advanced", "files": [{"source": {"type": "file_id", "file_id": source}}]},
+        route.metadata.update(
+            active_counted=True, reservation=reservation, payload={"status": "running", "files": [{"status": "queued"}]}
         )
-        assert response.status_code == 202
-        route = app.state.registry.get("job", response.json()["job_id"])
-        copied = route.metadata["copied_inputs"][0]
-        second.jobs.clear()
-        second.fail_file_delete_once.add(copied.upstream_file_id)
-        client.portal.call(_reconcile_jobs_once, app.state.registry, app.state.worker_pool)
-        assert route.metadata["upstream_lost"] and route.metadata["copied_inputs"]
-        assert second.files.get(copied.upstream_file_id) is not None
-        client.portal.call(_reconcile_jobs_once, app.state.registry, app.state.worker_pool)
-        assert not route.metadata.get("copied_inputs")
-        assert copied.upstream_file_id not in second.files
-        assert app.state.registry.find_upstream("file", copied.owner_scope, copied.worker_id, copied.upstream_file_id) is None
+        client.portal.call(_reconcile_jobs_once, app.state.registry, pool)
+        assert reservation.worker.active_jobs == 0
+        assert route.metadata["payload"]["status"] == "failed"
+        assert route.metadata["payload"]["files"][0]["error"]["code"] == "upstream_task_lost"

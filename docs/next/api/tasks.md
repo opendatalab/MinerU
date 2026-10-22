@@ -17,7 +17,7 @@
 创建请求不再接受表单、multipart 或文件字节，其他 Content-Type 返回 `415`。
 业务参数必须放在 JSON 主体中，POST 查询参数、未知字段、非法值返回 `400 invalid_request`。
 上传文件的 PUT 仍发送原始字节，使用返回的 `upload_headers`；签名 URL 必须原样使用。
-Task ID 是父任务标识，不承诺同时是 `/v1/parse/jobs` 的 Job ID。
+Task ID 是父任务标识；内部逐文件执行 ID 不属于公共契约。
 
 | JSON 字段 | 默认值 | 说明 |
 |---|---|---|
@@ -26,6 +26,8 @@ Task ID 是父任务标识，不承诺同时是 `/v1/parse/jobs` 的 Job ID。
 | `ocr_mode` | `auto` | `auto/txt/ocr`。 |
 | `page_range` | 整本 | 全局 PDF 页范围，支持 `1-5`、`r1`、`all` 等现有语法。 |
 | `output_formats` | `["default"]` | 非空列表，值为 `default/docx/html/latex` 中一个或多个；重复值按首次出现去重。 |
+
+`include_model_output` 默认为 `false`。为 `true` 时必须包含 `default` 输出格式，存在原始模型输出时在结果 ZIP 中增加 `model_output.json`；其他格式组合不满足条件时返回 400。创建和查询响应都携带该选项。
 
 每个清单条目包含：
 
@@ -197,6 +199,7 @@ TASK_ID=job_... MINERU_API_URL=http://127.0.0.1:8000 \
 | `SEND_HASH` | `1` | `0` 时不计算或提交 hash。 |
 | `TASK_ID` | 空 | 恢复已有任务，跳过 ready 文件。 |
 | `MINERU_TIER`、`OCR_MODE`、`PAGE_RANGE` | 服务默认 / `auto` / 整本 | 解析参数。 |
+| `INCLUDE_MODEL_OUTPUT` | `0` | `1` 时附加可用模型输出，必须包含 default 格式。 |
 | `OUTPUT_FORMATS` | `default` | 逗号分隔，转为 JSON 数组。 |
 | `RESULT_DIR` | `results` | 逐文件结果目录。 |
 | `MAX_POLLS`、`POLL_INTERVAL` | `300`、`1` | 查询预算和间隔秒数。 |
@@ -209,18 +212,25 @@ TASK_ID=job_... MINERU_API_URL=http://127.0.0.1:8000 \
 ## 部署、Router 与迁移
 
 本地不设固定客户端上传大小或 PDF 页数上限；`usage.limits.max_file_size_bytes/max_pages_per_file` 为 `null`。
-URL 下载沿用 Jobs 的策略：默认 HTTPS；HTTP 需启用 `--allow-http-source`，下载超时默认 60 秒、大小默认 200 MiB。
+URL 下载沿用服务的来源策略：默认 HTTPS；HTTP 需启用 `--allow-http-source`，下载超时默认 60 秒、大小默认 200 MiB。
 任务记录和上传索引仍为进程内状态，重启不保证恢复。
 
 Router 按就绪文件独立选择 worker 并预占负载，同一父 Task 可使用多个 worker。
 URL 交给 worker 下载，客户端上传字节按 worker 的缓存预检结果传输。
-健康接口的 `features.task_output_formats` 单独声明 Tasks 格式；原 `features.output_formats` 继续描述 Jobs。
+健康接口的 `features.task_output_formats` 声明 Tasks 格式，`sources` 为 `upload/url`，`task_model_output` 声明模型输出能力。
 不声明新 Tasks 能力的旧 worker 不参与 Tasks 调度，更新时应先更新 worker，再更新 Router 和客户端。
 Router 使用有界、可续租的内部结果租约保护 worker 产物，上传窗口不受结果租约影响；Router 丢失后租约会自行结束。
 
 本次协议不保留旧表单、直传或 `markdown/middle_json/structured_content/zip` Tasks 格式别名。
 客户端应改用 JSON、`files[].result_url` 及逐文件保存方式。
-独立 `/v1/uploads`、`/v1/parse/jobs` 与 SDK 的现有请求及输出协议保持不变。
 API Server 和 Router 不提供 `/v1/file_parse`、`/v1/tasks/{task_id}/result`。
 需要同步单文件调用时，独立启动 [file_parse 包装服务](file-parse.md)，由它调用本页的共同 Tasks 契约。
 SaaS Go 服务和对象存储配置由部署方按此共同契约实现，不属于本地 Python 服务代码。
+
+## 父任务列表与缓存
+
+`GET /v1/tasks` 返回当前调用方的父任务摘要。支持 `status`（逗号分隔）、`limit`（默认 20，上限 100）、`after`（上一页 last_id）、`order`（默认 desc）、`created_after`。按 created_at 和 task_id 稳定排序；游标不存在、过期或属于其他调用方时返回 404。
+
+响应为 `object=list/data/first_id/last_id/has_more`；每项包含 `task_id/status/created_at/file_count`，不展示内部子执行。
+
+SDK 即使连接同机也计算 hash 并提交清单。缓存有效且已完成上传的同 hash 后续免传；并发首次上传允许重复传输但源字节去重。默认缓存保留 24 小时、每 5 分钟扫描，沿用 retention 配置；活动任务与传输引用保护字节。缓存过期或服务重启后允许重新上传。

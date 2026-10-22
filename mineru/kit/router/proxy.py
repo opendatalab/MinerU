@@ -3,17 +3,15 @@
 
 from __future__ import annotations
 
-import asyncio
 import copy
 from collections.abc import AsyncIterator, Mapping
-from typing import Any, cast
+from typing import Any
 
 import httpx
 from fastapi import Request
 from fastapi.responses import JSONResponse, Response, StreamingResponse
 
-from ...utils.async_utils import drain_future
-from .resources import ResourceRegistry, ResourceRoute, SourceFileStore, StoredSourceFile, stored_file_chunks
+from .resources import ResourceRegistry, ResourceRoute
 from .workers import JobReservation, WorkerPool, WorkerState
 
 _HOP_BY_HOP_HEADERS = frozenset(
@@ -202,92 +200,6 @@ def rewrite_file_payload(
     return rewritten
 
 
-def rewrite_upload_payload(
-    payload: dict[str, Any],
-    worker: WorkerState,
-    registry: ResourceRegistry,
-    owner_scope: str,
-) -> dict[str, Any]:
-    """注册 upload 与完成后的 file，并重写 upload URL 和资源标识。"""
-    rewritten = copy.deepcopy(payload)
-    upstream_id = str(rewritten.get("id") or "")
-    if not upstream_id:
-        return rewritten
-    route = registry.register(
-        "upload",
-        owner_scope=owner_scope,
-        worker_id=worker.worker_id,
-        upstream_id=upstream_id,
-    )
-    rewritten["id"] = route.public_id
-    if rewritten.get("upload_url") is not None:
-        rewritten["upload_url"] = f"/v1/uploads/{route.public_id}/content"
-    if isinstance(rewritten.get("file"), dict):
-        rewritten["file"] = rewrite_file_payload(rewritten["file"], worker, registry, owner_scope)
-    route.metadata["payload"] = copy.deepcopy(rewritten)
-    return rewritten
-
-
-def rewrite_job_payload(
-    payload: dict[str, Any],
-    worker: WorkerState,
-    registry: ResourceRegistry,
-    pool: WorkerPool,
-    owner_scope: str,
-) -> dict[str, Any]:
-    """注册 job、输入/输出 files，重写 links，并在终态归还 worker 负载。"""
-    rewritten = copy.deepcopy(payload)
-    upstream_id = str(rewritten.get("job_id") or "")
-    if not upstream_id:
-        return rewritten
-    route = registry.register(
-        "job",
-        owner_scope=owner_scope,
-        worker_id=worker.worker_id,
-        upstream_id=upstream_id,
-    )
-    rewritten["job_id"] = route.public_id
-    input_aliases = cast(dict[str, str], route.metadata.get("input_aliases") or {})
-    for file_result in rewritten.get("files") or []:
-        if not isinstance(file_result, dict):
-            continue
-        upstream_file_id = file_result.get("file_id")
-        if isinstance(upstream_file_id, str):
-            alias = input_aliases.get(upstream_file_id)
-            if alias is not None:
-                file_result["file_id"] = alias
-            else:
-                file_route = registry.register(
-                    "file",
-                    owner_scope=owner_scope,
-                    worker_id=worker.worker_id,
-                    upstream_id=upstream_file_id,
-                )
-                file_result["file_id"] = file_route.public_id
-        output_files = file_result.get("output_files")
-        if isinstance(output_files, dict):
-            for output in output_files.values():
-                if not isinstance(output, dict) or not isinstance(output.get("file_id"), str):
-                    continue
-                output_route = registry.register(
-                    "file",
-                    owner_scope=owner_scope,
-                    worker_id=worker.worker_id,
-                    upstream_id=output["file_id"],
-                )
-                output["file_id"] = output_route.public_id
-    links = rewritten.get("links")
-    if isinstance(links, dict):
-        links["self"] = f"/v1/parse/jobs/{route.public_id}"
-        if links.get("cancel") is not None:
-            links["cancel"] = f"/v1/parse/jobs/{route.public_id}"
-    status = str(rewritten.get("status") or "")
-    if status in _TERMINAL_JOB_STATUSES:
-        release_job_load(route, pool)
-    route.metadata["payload"] = copy.deepcopy(rewritten)
-    return rewritten
-
-
 def release_job_load(route: ResourceRoute, pool: WorkerPool) -> None:
     """所有终态入口共用一次性释放，预占对象校验 worker generation。"""
     if route.metadata.pop("active_counted", False):
@@ -298,264 +210,21 @@ def release_job_load(route: ResourceRoute, pool: WorkerPool) -> None:
             pool.mark_job_finished(route.worker_id)
 
 
-async def upload_stored_source(
-    stored: StoredSourceFile,
-    filename: str,
-    target: WorkerState,
-    *,
-    request: Request,
-    pool: WorkerPool,
-    declaration: dict[str, Any] | None = None,
-    generation: int | None = None,
-) -> dict[str, Any]:
-    """使用已经校验的缓存字节完成 worker 上传，失败和取消均清理中间资源。"""
-    generation = target.generation if generation is None else generation
-    require_worker_generation(target, generation)
-    body = dict(declaration or {})
-    body.update(
-        filename=filename, bytes=stored.bytes, mime_type=body.get("mime_type") or stored.mime_type, sha256sum=stored.sha256sum
-    )
-    body.setdefault("purpose", "parse")
-    response = await request_upstream(pool, target, "POST", "/v1/uploads", request=request, json_body=body)
-    payload = json_or_error(response)
-    require_worker_generation(target, generation)
-    if isinstance(payload.get("file"), dict):
-        return payload
-    upload_id = payload.get("id")
-    if not isinstance(upload_id, str):
-        raise RouterProxyError(502, "invalid_upstream_response", "Upload did not return an ID")
-    try:
-        response = await request_upstream(
-            pool,
-            target,
-            "PUT",
-            f"/v1/uploads/{upload_id}/content",
-            request=request,
-            content=stored_file_chunks(stored.path),
-            headers={"content-type": "application/octet-stream"},
-        )
-        if response.status_code >= 400:
-            json_or_error(response)
-        require_worker_generation(target, generation)
-        response = await request_upstream(
-            pool,
-            target,
-            "POST",
-            f"/v1/uploads/{upload_id}/complete",
-            request=request,
-            json_body={"sha256sum": stored.sha256sum},
-        )
-        payload = json_or_error(response)
-        require_worker_generation(target, generation)
-        if not isinstance(payload.get("file"), dict) or not isinstance(payload["file"].get("id"), str):
-            raise RouterProxyError(502, "invalid_upstream_response", "Completed upload did not return a file")
-        return payload
-    except (Exception, asyncio.CancelledError):
-        if target.generation == generation and target.base_url:
-            await drain_future(
-                asyncio.create_task(
-                    _cleanup_failed_target_transfer(target, upload_id, request=request, pool=pool, generation=generation)
-                )
-            )
-        raise
-
-
 def require_worker_generation(worker: WorkerState, generation: int) -> None:
     """阻止 replacement 期间的迟到响应发布旧进程的资源标识。"""
     if worker.generation != generation or not worker.base_url:
         raise RouterProxyError(503, "upstream_unavailable", "Worker changed while the request was being submitted")
 
 
-async def _cleanup_failed_target_transfer(
-    target: WorkerState,
-    upload_id: str,
-    *,
-    request: Request,
-    pool: WorkerPool,
-    generation: int | None = None,
-) -> None:
-    """尽力取消失败 transfer 的 Upload，或删除已完成但响应丢失的 File。"""
-    generation = target.generation if generation is None else generation
-    if target.generation != generation or not target.base_url:
-        return
-    try:
-        lookup = await request_upstream(
-            pool,
-            target,
-            "GET",
-            f"/v1/uploads/{upload_id}",
-            request=request,
-        )
-        if target.generation != generation or not target.base_url:
-            return
-        if lookup.status_code == 200:
-            try:
-                payload = lookup.json()
-            except ValueError:
-                payload = {}
-            file_payload = payload.get("file") if isinstance(payload, dict) else None
-            if isinstance(file_payload, dict) and isinstance(file_payload.get("id"), str):
-                await request_upstream(
-                    pool,
-                    target,
-                    "DELETE",
-                    f"/v1/files/{file_payload['id']}",
-                    request=request,
-                )
-                return
-    except RouterProxyError:
-        pass
-    if target.generation != generation or not target.base_url:
-        return
-    try:
-        await request_upstream(
-            pool,
-            target,
-            "POST",
-            f"/v1/uploads/{upload_id}/cancel",
-            request=request,
-        )
-    except RouterProxyError:
-        pass
-
-
-async def copy_file_to_worker(
-    route: ResourceRoute,
-    target: WorkerState,
-    *,
-    request: Request,
-    pool: WorkerPool,
-    registry: ResourceRegistry,
-    source_store: SourceFileStore,
-) -> str:
-    """优先使用 Router 私有暂存输入，通过 Upload API 复制到目标 worker。"""
-    generation = target.generation
-    source = pool.get(route.worker_id)
-    metadata = route.metadata.get("payload")
-    if not isinstance(metadata, dict):
-        metadata_response = await request_upstream(
-            pool,
-            source,
-            "GET",
-            f"/v1/files/{route.upstream_id}",
-            request=request,
-        )
-        metadata = json_or_error(metadata_response)
-    stored = source_store.find_file(route.public_id)
-    if stored is not None:
-        with source_store.pin(stored):
-            payload = await upload_stored_source(
-                stored,
-                str(metadata.get("filename") or "input.bin"),
-                target,
-                request=request,
-                pool=pool,
-                generation=generation,
-                declaration={
-                    "purpose": metadata.get("purpose") if metadata.get("purpose") in {"parse", "input_image"} else "parse"
-                },
-            )
-        target_file_id = str(payload["file"]["id"])
-        registry.alias_upstream(route, worker_id=target.worker_id, upstream_id=target_file_id)
-        return target_file_id
-    else:
-        if metadata.get("purpose") != "parse_output":
-            raise RouterProxyError(
-                409,
-                "source_file_unavailable",
-                f"Router source bytes for {route.public_id} are no longer available",
-            )
-        content_response = await request_upstream(
-            pool,
-            source,
-            "GET",
-            f"/v1/files/{route.upstream_id}/content",
-            request=request,
-        )
-        if content_response.status_code >= 400:
-            json_or_error(content_response)
-        content = content_response.content
-        content_size = len(content_response.content)
-        content_sha256 = str(metadata.get("sha256sum") or "")
-        content_type = content_response.headers.get("content-type") or "application/octet-stream"
-    purpose = metadata.get("purpose") if metadata.get("purpose") in {"parse", "input_image"} else "parse"
-    create_payload = {
-        "filename": metadata.get("filename") or "input.bin",
-        "bytes": content_size,
-        "mime_type": content_type,
-        "purpose": purpose,
-        **({"sha256sum": content_sha256} if content_sha256 else {}),
-    }
-    require_worker_generation(target, generation)
-    upload_response = await request_upstream(
-        pool,
-        target,
-        "POST",
-        "/v1/uploads",
-        request=request,
-        json_body=create_payload,
-    )
-    upload_payload = json_or_error(upload_response)
-    require_worker_generation(target, generation)
-    if isinstance(upload_payload.get("file"), dict):
-        target_file_id = str(upload_payload["file"]["id"])
-        registry.alias_upstream(route, worker_id=target.worker_id, upstream_id=target_file_id)
-        return target_file_id
-    upload_id = upload_payload.get("id")
-    if not isinstance(upload_id, str):
-        raise RouterProxyError(502, "invalid_upstream_response", "Target upload response did not return an upload ID")
-    try:
-        put_response = await request_upstream(
-            pool,
-            target,
-            "PUT",
-            f"/v1/uploads/{upload_id}/content",
-            request=request,
-            content=content,
-            headers={"content-type": "application/octet-stream"},
-        )
-        if put_response.status_code >= 400:
-            json_or_error(put_response)
-        complete_response = await request_upstream(
-            pool,
-            target,
-            "POST",
-            f"/v1/uploads/{upload_id}/complete",
-            request=request,
-            json_body={"sha256sum": content_sha256} if content_sha256 else {},
-        )
-        complete_payload = json_or_error(complete_response)
-        require_worker_generation(target, generation)
-        file_payload = complete_payload.get("file")
-        if not isinstance(file_payload, dict) or not isinstance(file_payload.get("id"), str):
-            raise RouterProxyError(502, "invalid_upstream_response", "Completed upload did not return a file")
-        target_file_id = file_payload["id"]
-    except (Exception, asyncio.CancelledError):
-        await _cleanup_failed_target_transfer(
-            target,
-            upload_id,
-            request=request,
-            pool=pool,
-            generation=generation,
-        )
-        raise
-    registry.alias_upstream(route, worker_id=target.worker_id, upstream_id=target_file_id)
-    return target_file_id
-
-
 __all__ = [
     "RouterProxyError",
-    "copy_file_to_worker",
     "forwarded_headers",
     "json_or_error",
     "passthrough_response",
     "request_upstream",
     "require_worker_generation",
     "release_job_load",
-    "upload_stored_source",
     "rewrite_file_payload",
-    "rewrite_job_payload",
-    "rewrite_upload_payload",
     "router_error_response",
     "stream_upstream",
 ]

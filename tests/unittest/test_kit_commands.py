@@ -1047,11 +1047,13 @@ def test_parse_remote_requests_image_cache(monkeypatch: Any, tmp_path: Path) -> 
             api_key: str | None,
             tier: str | None,
             include_images: bool,
+            ocr_mode: str,
         ) -> None:
             seen["api_url"] = api_url
             seen["api_key"] = api_key
             seen["tier"] = tier
             seen["include_images"] = include_images
+            seen["ocr_mode"] = ocr_mode
 
         def parse(self, path: Path, *, page_range: str) -> _Result:
             seen["path"] = path
@@ -1085,6 +1087,7 @@ def test_parse_remote_requests_image_cache(monkeypatch: Any, tmp_path: Path) -> 
         "api_key": "test-key",
         "tier": "standard",
         "include_images": True,
+        "ocr_mode": "auto",
         "path": source,
         "page_range": "1",
     }

@@ -518,8 +518,8 @@ class WorkerPool:
         tier: Tier | None,
         required_sources: set[str] | None = None,
         preferred_worker_id: str | None = None,
-        required_outputs: set[str] | None = None,
         required_task_outputs: set[str] | None = None,
+        require_model_output: bool = False,
         require_flash: bool = False,
         selection_kind: Literal["upload", "job"] = "job",
     ) -> WorkerState | None:
@@ -527,8 +527,8 @@ class WorkerPool:
         eligible = self.capable_workers(
             tier=tier,
             required_sources=required_sources,
-            required_outputs=required_outputs,
             required_task_outputs=required_task_outputs,
+            require_model_output=require_model_output,
             require_flash=require_flash,
         )
         if not eligible:
@@ -554,8 +554,8 @@ class WorkerPool:
         *,
         tier: Tier | None,
         required_sources: set[str] | None = None,
-        required_outputs: set[str] | None = None,
         required_task_outputs: set[str] | None = None,
+        require_model_output: bool = False,
         require_flash: bool = False,
     ) -> list[WorkerState]:
         """只读过滤完整能力组合，供预检复用；不改变轮询游标或预占负载。"""
@@ -564,8 +564,8 @@ class WorkerPool:
             for worker in self.healthy_workers()
             if (tier is None or tier in worker.tiers)
             and (required_sources or set()).issubset(set(worker.features.get("sources") or []))
-            and (required_outputs or set()).issubset(set(worker.features.get("output_formats") or []))
             and (required_task_outputs or set()).issubset(set(worker.features.get("task_output_formats") or []))
+            and (not require_model_output or worker.features.get("task_model_output") is True)
             and (not require_flash or "flash" in worker.tiers)
         ]
 
@@ -575,8 +575,8 @@ class WorkerPool:
         tier: Tier,
         required_sources: set[str],
         preferred_worker_id: str | None = None,
-        required_outputs: set[str] | None = None,
         required_task_outputs: set[str] | None = None,
+        require_model_output: bool = False,
         require_flash: bool = False,
     ) -> JobReservation | None:
         """在第一次网络等待前同步选择并预占解析 worker。"""
@@ -584,8 +584,8 @@ class WorkerPool:
             tier=tier,
             required_sources=required_sources,
             preferred_worker_id=preferred_worker_id,
-            required_outputs=required_outputs,
             required_task_outputs=required_task_outputs,
+            require_model_output=require_model_output,
             require_flash=require_flash,
         )
         if worker is None:

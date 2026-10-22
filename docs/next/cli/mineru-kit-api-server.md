@@ -87,7 +87,7 @@ mineru-kit api-server --tier standard --disable-image-analysis
 
 未传 `--tier` 时暴露 `flash`、`basic`、`standard`、`advanced`；PDF/image 请求未指定 tier 时默认 `standard`。
 
-OCR 模式通过每次 `POST /v1/parse/jobs` 请求的 `ocr_mode` 设置，可选 `auto`、`txt`、`ocr`，省略时为 `auto`。启动参数 `--ocr-mode` 已移除，传入会报错；Python `create_app()` 同样不再接受该参数。
+OCR 模式通过每次 `POST /v1/tasks` 请求的 `ocr_mode` 设置，可选 `auto`、`txt`、`ocr`，省略时为 `auto`。启动参数 `--ocr-mode` 已移除，传入会报错；Python `create_app()` 同样不再接受该参数。
 
 模型默认在首次解析时懒加载。`--preload-models` 会在 Basic 或 Standard 服务启动时提前初始化所需模型或 VLM 客户端，并在失败时让能力接口返回明确错误；Flash 没有本地模型，该参数对 Flash 无操作。Doclib managed parse-server 会自动启用模型预加载。
 
@@ -176,8 +176,6 @@ Python 可使用 `create_app(vlm_config=VlmConfig(...))` 完整覆盖全局配�
 - upload-dir
 - retention-seconds（默认 86400 秒，0 关闭自动回收）
 - url-timeout
-- allow-local-source
-- max-inline-bytes
 - allow-http-source
 
 ### 专家参数

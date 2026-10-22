@@ -17,11 +17,11 @@
 | 并发任务 | 10+ | 10+ |
 | 队列优先级 | 默认 | 优先 |
 | `tier` | 当前服务可用 tier。`mineru.net/api` 当前为 `standard`；可省略或传 `null` | 当前服务可用 tier。`mineru.net/api` 当前为 `standard`；可省略或传 `null` |
-| 高级输出格式 | 不支持 `html`、`latex`、`docx` | 支持 |
-| `callback` | 不支持 | 支持 |
+| Tasks 输出格式 | default/docx/html/latex | default/docx/html/latex |
+| Tasks callback | 不支持 | 不支持 |
 | 产物保留期 | 30 天 | 30 天 |
 
-anonymous 与 registered 的主要差异是限流、高级输出格式和 callback。请求高级输出格式或 callback 但没有 API Key 时，返回 `403 feature_requires_api_key`。
+Tasks 四种输出格式不设置额外权限门槛；服务启用认证后所有解析请求均需有效 API Key。Tasks 不接受 callback。部署方可独立配置限流。
 
 ## 限流
 
@@ -29,8 +29,7 @@ anonymous 与 registered 的主要差异是限流、高级输出格式和 callba
 
 | 类别 | 范围 | anonymous | registered |
 |------|------|-----------|------------|
-| `parse` | `POST /v1/parse/jobs` | 5/min | 30/min |
-| `upload` | `POST /v1/uploads`、complete、cancel | 10/min | 60/min |
+| `parse` | `POST /v1/tasks` | 5/min | 30/min |
 | `chat` | `POST /v1/chat/completions`、`POST /v1/responses` | 10/min | 60/min |
 | `read` | 其他 GET/DELETE endpoint | 60/min | 300/min |
 
@@ -141,3 +140,5 @@ Local Parse Server 的 usage 不表达计费周期，而是表达本地进程视
 - `access_level` 取决于是否启用并通过 API Key 鉴权。
 
 本地 server 可以不实现公网同等级别的限流。若实现限流，也应复用同一错误 envelope、`Retry-After` 和 `X-RateLimit-*` 响应头。
+
+当前本地服务和 Router 的 jobs_created/max_concurrent_jobs 保持字段名，计数对象是内部逐文件执行，不能作为父 Task 数量；max_files_per_job 对应清单文件数上限。

@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import asyncio
+from task_test_utils import build_default_zip
+
 import base64
 import json
 import zipfile
 from io import BytesIO
 from pathlib import Path
-from unittest.mock import AsyncMock
 
 import pytest
 from bs4 import BeautifulSoup
@@ -18,7 +18,7 @@ from reportlab.pdfgen.canvas import Canvas
 
 from mineru.kit.common import save_parse_result
 from mineru.kit.gradio import artifacts as gradio_artifacts
-from mineru.parser import api_client, api_server
+from mineru.parser import api_client
 from mineru.parser.base import ParseResult
 from mineru.parser.writer import DataWriter
 from mineru.render import PdfLayout, render_pdf
@@ -78,15 +78,15 @@ def _entries(payload: bytes) -> dict[str, bytes]:
     """读取完整 ZIP 文件集合以比较多次保存的实际内容。"""
     with zipfile.ZipFile(BytesIO(payload)) as archive:
         assert len(archive.namelist()) == len(set(archive.namelist()))
-        return {name: archive.read(name) for name in archive.namelist()}
+        return {name: archive.read(name) for name in archive.namelist() if not name.endswith("/")}
 
 
 def test_save_externalizes_assets_without_changing_json_only_contract(tmp_path: Path) -> None:
     """API 与 CLI 使用相同保存入口，协议与所有消费格式均引用同一份素材。"""
     result, image, _ = _result()
     before = result.middle_json.to_json()
-    entries = _entries(api_server._build_self_contained_zip_output(result))
-    assert entries == _entries(api_server._build_self_contained_zip_output(result))
+    entries = _entries(build_default_zip(result))
+    assert entries == _entries(build_default_zip(result))
     assert set(entries) == {
         "middle_json.json",
         "markdown.md",
@@ -118,20 +118,11 @@ def test_server_zip_roundtrip_restores_direct_and_markup_images(
 ) -> None:
     """同步异步均消费真实服务端 ZIP，恢复 HTML 时保持属性、引号和字节。"""
     result, image, markup = _result()
-    payload = api_server._build_self_contained_zip_output(result)
-    monkeypatch.setattr(api_client, "_download_bytes", lambda *args: payload)
-    monkeypatch.setattr(api_client, "_async_download_bytes", AsyncMock(return_value=payload))
-    parser = api_client.MinerUApiParser(
-        api_url="http://localhost:8000",
-        tier="basic",
+    payload = build_default_zip(result)
+    restored = api_client._parse_result_from_zip_bytes(
+        payload,
         include_images=include_images,
         include_model_output=True,
-    )
-    job = {"status": "completed", "files": [{"output_files": {"zip": {"file_id": "file-test"}}}]}
-    restored = (
-        asyncio.run(api_client._async_parse_result_from_job(job, "sample.pdf", parser))
-        if asynchronous
-        else api_client._parse_result_from_job(job, "sample.pdf", parser)
     )
     assert restored._model_output is None
     assert restored.middle_json.extensions == result.middle_json.extensions
@@ -140,7 +131,7 @@ def test_server_zip_roundtrip_restores_direct_and_markup_images(
         assert body.image_path is None
         assert base64.b64decode(body.image_base64.split(",", 1)[1]) == image
         assert body.content == markup
-        assert _entries(api_server._build_self_contained_zip_output(restored)) == _entries(payload)
+        assert _entries(build_default_zip(restored)) == _entries(payload)
     else:
         assert body.image_base64 is None and body.image_path == "images/page_4_table_2.png"
         assert "images/page_4_table_image_2_1.png" in body.content
@@ -155,7 +146,7 @@ def test_gradio_pdf_uses_packaged_images_without_cropping(
     """API 往返及 Gradio 物化后，在源 PDF 不可用时仍保持原布局像素。"""
     result, image, _ = _result(angle)
     restored = api_client._parse_result_from_zip_bytes(
-        api_server._build_self_contained_zip_output(result),
+        build_default_zip(result),
         include_images=True,
         include_model_output=False,
     )
@@ -275,7 +266,7 @@ def test_save_and_restore_leave_code_image_literals_unchanged() -> None:
             }
         )
     )
-    packed = api_server._build_self_contained_zip_output(result)
+    packed = build_default_zip(result)
     assert len([name for name in _entries(packed) if name.startswith("images/")]) == 2
     restored = api_client._parse_result_from_zip_bytes(packed, include_images=True, include_model_output=False)
     assert restored.pages[1].blocks[0].content[0].content == literal

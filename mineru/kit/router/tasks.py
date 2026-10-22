@@ -38,7 +38,6 @@ from .proxy import (
     request_upstream,
     require_worker_generation,
     rewrite_file_payload,
-    rewrite_job_payload,
 )
 from .resources import ResourceRegistry, ResourceRoute, SourceFileStore, StoredSourceFile, utc_now_iso
 from .workers import WorkerPool, WorkerState
@@ -112,9 +111,9 @@ def _worker_path(worker: WorkerState, url: str) -> str:
     return target.path[len(prefix) :]
 
 
-def _job_payload(payload: dict[str, Any], upstream_id: str, *, authenticated: bool) -> dict[str, Any]:
-    """把 worker 的 tasks 元数据转换成既有 Router Job 视图，不泄露上传或 worker 链接。"""
-    file_keys = ("file_id", "name", "page_range", "status", "parse", "output_files", "error")
+def _job_payload(payload: dict[str, Any], upstream_id: str) -> dict[str, Any]:
+    """把 worker Tasks 转换为私有执行快照，不包含旧 Jobs 公开协议。"""
+    file_keys = ("file_id", "name", "page_range", "status", "parse", "error")
     files = [{key: item.get(key) for key in file_keys} for item in payload["files"]]
     for file in files:
         if file["status"] in {"waiting_upload", "canceled"}:
@@ -126,11 +125,8 @@ def _job_payload(payload: dict[str, Any], upstream_id: str, *, authenticated: bo
         "started_at": payload.get("started_at"),
         "finished_at": payload.get("finished_at"),
         "tier": payload["tier"],
-        "output_formats": [],
         "progress": payload["progress"],
-        "access_level": "registered" if authenticated else "anonymous",
         "files": files,
-        "links": {"self": f"/v1/parse/jobs/{upstream_id}", "cancel": f"/v1/parse/jobs/{upstream_id}"},
     }
 
 
@@ -214,14 +210,14 @@ async def read_task_execution(
         result_route = registry.find("file", result_file_id)
         if result_route is not None:
             result_route.metadata["task_result_held"] = bool(route.metadata.get("task_result_held"))
-    authenticated = bool(request.headers.get("authorization") if request is not None else (headers or {}).get("authorization"))
-    rewritten = rewrite_job_payload(
-        _job_payload(payload, route.upstream_id, authenticated=authenticated),
-        worker,
-        registry,
-        pool,
-        route.owner_scope,
-    )
+    rewritten = _job_payload(payload, route.public_id)
+    aliases = route.metadata.get("input_aliases") or {}
+    for item in rewritten["files"]:
+        if item.get("file_id") in aliases:
+            item["file_id"] = aliases[item["file_id"]]
+    if rewritten["status"] in TERMINAL_TASK_STATUSES:
+        release_job_load(route, pool)
+    route.metadata["payload"] = copy.deepcopy(rewritten)
     route.metadata["task_result_file_id"] = result_file_id
     error = ErrorDetail.model_validate(payload["error"]) if payload.get("error") else None
     input_metadata = {
@@ -276,8 +272,9 @@ class RouterTaskBackend:
             selection_tier = "flash" if lightweight else options.tier
             candidates = self.pool.capable_workers(
                 tier=selection_tier,
-                required_sources={"url" if item.url is not None else "file_id"},
+                required_sources={"url" if item.url is not None else "upload"},
                 required_task_outputs=set(options.output_formats),
+                require_model_output=options.include_model_output,
                 require_flash=lightweight,
             )
             if not candidates:
@@ -334,8 +331,9 @@ class RouterTaskBackend:
         tier = "flash" if lightweight else options.tier
         reservation = self.pool.reserve_job(
             tier=tier,
-            required_sources={"url" if item.url is not None else "file_id" for item in manifest},
+            required_sources={"url" if item.url is not None else "upload" for item in manifest},
             required_task_outputs=set(options.output_formats),
+            require_model_output=options.include_model_output,
             require_flash=any(is_flash_only_parse_extension(item.filename) for item in manifest),
         )
         if reservation is None:
@@ -365,6 +363,7 @@ class RouterTaskBackend:
                     "tier": options.tier,
                     "ocr_mode": options.ocr_mode,
                     "output_formats": options.output_formats,
+                    "include_model_output": options.include_model_output,
                 },
                 headers={"x-mineru-task-lease-seconds": "120"},
             )
@@ -380,7 +379,6 @@ class RouterTaskBackend:
             )
             authorization = self.request.headers.get("authorization")
             route.metadata.update(
-                task_protocol=True,
                 task_result_held=True,
                 active_counted=True,
                 reservation=reservation,

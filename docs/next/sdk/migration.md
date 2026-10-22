@@ -24,7 +24,7 @@ SDK 迁移的目标不是重写现有 parser，而是稳定已经成形的边界
 | `DocumentParser` | 已有 sync/async/batch/context manager 接口。 |
 | `ParseResult` | 已有输出方法，`from_dict()` / `from_json()` 已实现；仍需稳定 envelope 兼容边界。 |
 | Tier 参数 | `parse()` 已以 `tier` 为主参数（默认 `standard`），并接受 `ocr_mode` / `image_analysis` / `page_range`；`backend` 专家覆盖保留在 `mineru-kit parse` CLI 层。 |
-| API-backed parser | 已有 `MinerUApiParser`，使用 v1 uploads/jobs/files。 |
+| API-backed parser | 已有 `MinerUApiParser`，使用 v1 Tasks 和逐文件结果链接。 |
 | parse-server runtime | 已有 `mineru.parser.api_server`。 |
 | Doclib SDK | 已有 `DoclibClient`，继承 `DoclibInterface` 并返回 typed Pydantic response。 |
 | 错误模型 | 已有 `mineru.errors`；仍需确认 SDK exception 是否暴露 `user_action` 等扩展字段。 |
@@ -110,7 +110,7 @@ SDK 迁移的目标不是重写现有 parser，而是稳定已经成形的边界
 - Import 不加载 heavy backend。
 - `parse()` 后缀分派。
 - `ParseResult` round-trip。
-- `MinerUApiParser` upload/job/files mock。
+- `MinerUApiParser` Tasks/hash/upload/result_url mock。
 - `DoclibClient` UDS error 映射。
 - 默认选择不回退 `flash`。
 
