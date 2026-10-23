@@ -323,6 +323,41 @@ class RouterTaskBackend:
         self._owned_files.clear()
         self._pins.close()
 
+    async def _wait_for_input_files(
+        self, worker: WorkerState, upstream_id: str, generation: int, manifest: list[TaskManifestItem]
+    ) -> dict[str, Any]:
+        """等待已上传项生成公共 File；级联 Router 的上传就绪可能早于下游引用交接。"""
+        while True:
+            response = await _worker_request(
+                self.pool,
+                worker,
+                "GET",
+                f"/v1/tasks/{quote(upstream_id, safe='')}",
+                request=self.request,
+                headers={"x-mineru-task-lease-seconds": "120"},
+            )
+            require_worker_generation(worker, generation)
+            ready = TaskStatusResponse.model_validate(_checked_json(response)).model_dump()
+            if ready["task_id"] != upstream_id or len(ready["files"]) != len(manifest) or ready["status"] == "waiting_upload":
+                _raise_api_error(
+                    502, error_type="api_error", code="invalid_upstream_response", message="Worker inputs are not ready"
+                )
+            if any(item["client_file_id"] != source.client_file_id for item, source in zip(ready["files"], manifest)):
+                _raise_api_error(
+                    502, error_type="api_error", code="invalid_upstream_response", message="Worker input order changed"
+                )
+            pending = any(
+                source.url is None
+                and item["upload_status"] == "ready"
+                and item["file_id"] is None
+                and item["status"] in {"queued", "running"}
+                for item, source in zip(ready["files"], manifest)
+            )
+            if not pending:
+                return ready
+            # 只等待合法的中间状态；取消、worker replacement 和终态仍走原有清理边界。
+            await asyncio.sleep(1)
+
     async def submit(
         self, task_id: str, options: UploadTaskOptions, manifest: list[TaskManifestItem], uploads: dict[int, TaskUpload]
     ) -> TaskExecution:
@@ -414,20 +449,9 @@ class RouterTaskBackend:
                 if response.status_code >= 400:
                     _checked_json(response)
                 require_worker_generation(worker, reservation.generation)
-            # 上传就绪即可获取源 File 引用，后台 Job 尚未启动也不影响缓存交接。
-            response = await _worker_request(self.pool, worker, "GET", f"/v1/tasks/{upstream_id}", request=self.request)
-            require_worker_generation(worker, reservation.generation)
-            ready = TaskStatusResponse.model_validate(_checked_json(response)).model_dump()
-            if len(ready["files"]) != len(manifest) or ready["status"] == "waiting_upload":
-                _raise_api_error(
-                    502, error_type="api_error", code="invalid_upstream_response", message="Worker inputs are not ready"
-                )
+            ready = await self._wait_for_input_files(worker, upstream_id, reservation.generation, manifest)
             aliases: dict[str, str] = {}
             for index, item in enumerate(ready["files"]):
-                if item["client_file_id"] != manifest[index].client_file_id:
-                    _raise_api_error(
-                        502, error_type="api_error", code="invalid_upstream_response", message="Worker input order changed"
-                    )
                 if manifest[index].url is not None:
                     if item["upload_status"] != "not_required":
                         _raise_api_error(
@@ -548,7 +572,8 @@ async def maintain_task_result_leases(registry: ResourceRegistry, pool: WorkerPo
     """按 worker 隔离续租，并把整轮网络等待限制在远小于 120 秒租约的预算内。"""
     groups: dict[str, list[ResourceRoute]] = {}
     for route in registry.list("job", include_expired=True):
-        if route.metadata.get("task_result_held") and (release or "task_result_retain_until" in route.metadata):
+        # 父任务运行或等待外部租约时尚无本地保留期限，但下游结果同样需要持续保护。
+        if route.metadata.get("task_result_held"):
             groups.setdefault(route.worker_id, []).append(route)
 
     async def maintain_worker(worker_id: str, routes: list[ResourceRoute]) -> None:
