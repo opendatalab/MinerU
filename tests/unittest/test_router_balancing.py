@@ -128,8 +128,9 @@ def test_cached_tasks_still_balance(tmp_path: Path, monkeypatch: pytest.MonkeyPa
                 else:
                     assert pending_files(task) == []
                 tasks.append(task)
+                # submitted 只表示 Router 开始转发；等待上游实际建好 job，包含仍在排队的任务。
                 deadline = time.monotonic() + 5
-                while not app.state.task_store._records[task["task_id"]].file_states[0].submitted:
+                while sum(len(worker.state.job_store._jobs) for worker in workers.values()) < len(tasks):
                     assert time.monotonic() < deadline
                     time.sleep(0.01)
             assert [worker.active_jobs for worker in app.state.worker_pool.workers] == [5, 5]
