@@ -28,6 +28,7 @@ _HOP_BY_HOP_HEADERS = frozenset(
         "content-length",
     }
 )
+_PROXY_REQUEST_HEADERS = frozenset({"forwarded", "x-real-ip"})
 _TERMINAL_JOB_STATUSES = frozenset({"completed", "partial", "failed", "canceled"})
 
 
@@ -56,8 +57,14 @@ def router_error_response(exc: RouterProxyError) -> JSONResponse:
 
 
 def forwarded_headers(request: Request) -> dict[str, str]:
-    """选择可安全传给 upstream 的入站请求头，包括 Authorization。"""
-    return {name: value for name, value in request.headers.items() if name.lower() not in _HOP_BY_HOP_HEADERS}
+    """保留认证和业务请求头，移除属于客户端到 Router 这一跳的代理来源信息。"""
+    return {
+        name: value
+        for name, value in request.headers.items()
+        if name.lower() not in _HOP_BY_HOP_HEADERS
+        and name.lower() not in _PROXY_REQUEST_HEADERS
+        and not name.lower().startswith("x-forwarded-")
+    }
 
 
 def response_headers(headers: Mapping[str, str]) -> dict[str, str]:

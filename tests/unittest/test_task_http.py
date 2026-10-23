@@ -63,6 +63,21 @@ class _UploadCounter:
             await self.app(scope, receive, send)
 
 
+class _WorkerRequests:
+    """记录真实 HTTP worker 收到的请求头，验证内外两跳的代理来源边界。"""
+
+    def __init__(self, app: ASGIApp, calls: list[tuple[str, str, dict[str, str]]]) -> None:
+        """由测试保存观测结果，不改变应用或 Uvicorn 的代理头处理。"""
+        self.app = app
+        self.calls = calls
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """原样执行 worker，只读取实际抵达的 HTTP 请求头。"""
+        if scope["type"] == "http":
+            self.calls.append((scope["method"], scope["path"], dict(Request(scope).headers)))
+        await self.app(scope, receive, send)
+
+
 @dataclass
 class _LiveService:
     """保留真实网络地址与应用对象，便于核对上传量和唯一任务记录。"""
@@ -148,6 +163,75 @@ def _members(data: bytes) -> dict[str, bytes]:
     """比较 ZIP 成员而非时间戳或压缩包装，验证语义与素材保持不变。"""
     with zipfile.ZipFile(io.BytesIO(data)) as archive:
         return {name: archive.read(name) for name in archive.namelist()}
+
+
+def test_router_keeps_tls_proxy_headers_on_the_public_hop_only(tmp_path: Path) -> None:
+    """TLS 终止代理后的上传、hash 复用及下载保持可用，worker 不继承客户端来源头。"""
+    calls: list[tuple[str, str, dict[str, str]]] = []
+    worker_app = api_server.create_app(upload_dir=str(tmp_path / "worker"), tier="flash", api_key="test-key")
+    worker_app.add_middleware(_WorkerRequests, calls=calls)
+    worker = _Server(worker_app)
+    servers = [worker]
+    proxy_headers = {
+        "Forwarded": 'for=203.0.113.10;proto=https;host="mineru.example"',
+        "X-Forwarded-Proto": "https",
+        "X-Forwarded-For": "203.0.113.10",
+        "X-Forwarded-Host": "mineru.example",
+        "X-Forwarded-Port": "443",
+        "X-Forwarded-Prefix": "/mineru",
+        "X-Real-IP": "203.0.113.10",
+    }
+    try:
+        worker.start()
+        router = _Server(
+            create_router(RouterSettings(upstream_urls=(worker.url,), local_gpus="none", worker_refresh_interval_seconds=0))
+        )
+        servers.append(router)
+        router.start()
+        with httpx.Client(
+            base_url=router.url,
+            trust_env=False,
+            timeout=30,
+            headers={**proxy_headers, "Authorization": "Bearer test-key", "X-Request-ID": "proxy-regression"},
+        ) as client:
+            for index in range(2):
+                task = _submit(client, [(f"document-{index}.html", HTML)])
+                assert urlsplit(task["status_url"]).scheme == "https"
+                assert len(task["uploads"]) == (1 if index == 0 else 0)
+                for upload in task["uploads"]:
+                    # 以本地 HTTP 模拟 TLS 终止代理到 Router 的后段连接，保留真实入站代理头。
+                    response = client.put(urlsplit(upload["upload_url"]).path, content=HTML)
+                    assert response.status_code == 200, response.text
+                deadline = time.monotonic() + 10
+                while time.monotonic() < deadline:
+                    response = client.get(urlsplit(task["status_url"]).path)
+                    assert response.status_code == 200, response.text
+                    result = response.json()
+                    if result["status"] in TERMINAL:
+                        break
+                    time.sleep(0.01)
+                else:
+                    pytest.fail("Task did not finish through the TLS proxy hop")
+                assert result["status"] == "completed", result
+                result_url = result["files"][0]["result_url"]
+                assert urlsplit(result_url).scheme == "https"
+                response = client.get(urlsplit(result_url).path)
+                assert response.status_code == 200, response.text
+                assert b"Same source and output" in _members(response.content)["markdown.md"]
+                ranged = client.get(urlsplit(result_url).path, headers={"Range": "bytes=0-31"})
+                assert ranged.status_code == 206
+                assert ranged.content == response.content[:32]
+        forwarded_calls = [call for call in calls if call[2].get("x-request-id") == "proxy-regression"]
+        assert any(method == "POST" and path == "/v1/tasks" for method, path, _ in forwarded_calls)
+        assert any(method == "PUT" for method, _, _ in forwarded_calls)
+        assert any(path.endswith("/content") for _, path, _ in forwarded_calls)
+        assert any(headers.get("range") == "bytes=0-31" for _, _, headers in forwarded_calls)
+        for _, _, headers in forwarded_calls:
+            assert headers["authorization"] == "Bearer test-key"
+            assert not set(headers).intersection(key.lower() for key in proxy_headers)
+    finally:
+        for server in reversed(servers):
+            server.stop()
 
 
 def _script_env(tmp_path: Path, base: str, **extra: str) -> dict[str, str]:
