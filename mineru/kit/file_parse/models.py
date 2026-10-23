@@ -7,12 +7,12 @@ import json
 from dataclasses import asdict, dataclass
 from typing import Any, Literal
 
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
-from ...task_types import TaskOutputFormat
+from ...task_types import TaskFileState, TaskOutputFormat, TaskStatus, task_status_url
 
 TERMINAL = frozenset({"completed", "failed", "canceled", "submission_unknown"})
-FileStatus = Literal["waiting_upload", "queued", "running", "completed", "failed", "canceled"]
+FileStatus = TaskFileState
 
 
 class GatewayError(Exception):
@@ -43,17 +43,16 @@ class GatewayError(Exception):
 class ParseOptions(BaseModel):
     """保持与 Tasks 一致的解析参数，等待时间不属于解析身份。"""
 
+    model_config = ConfigDict(extra="forbid")
+
     tier: Literal["flash", "basic", "standard", "advanced"] | None = None
     ocr_mode: Literal["auto", "txt", "ocr"] = "auto"
     page_range: str = ""
     output_formats: list[TaskOutputFormat] = Field(default_factory=lambda: ["default"], min_length=1)
-    include_model_output: bool = False
 
     @model_validator(mode="after")
     def normalize(self) -> ParseOptions:
         """按首次出现去重格式，并统一整本页范围的等价写法。"""
-        if self.include_model_output and "default" not in self.output_formats:
-            raise ValueError("include_model_output requires default output format")
         self.output_formats = list(dict.fromkeys(self.output_formats))
         self.page_range = self.page_range.strip()
         if self.page_range.lower() == "all":
@@ -61,47 +60,64 @@ class ParseOptions(BaseModel):
         return self
 
 
+class UploadLink(BaseModel):
+    """保留文件内嵌上传地址、请求头和固定截止时间。"""
+
+    url: str
+    headers: dict[str, str]
+    expires_at: int
+
+
 class RemoteFile(BaseModel):
     """仅消费共同 Tasks 契约，不依赖本地 Files 或 Job 实现。"""
 
-    client_file_id: str
+    file_id: str = Field(min_length=1)
+    file_name: str
+    bytes: int
     status: FileStatus
-    upload_status: Literal["pending", "ready", "not_required", "expired"]
+    upload: UploadLink | None = None
     result_url: str | None = None
     error: dict[str, Any] | None = None
 
 
-class UploadLink(BaseModel):
-    """保留原始上传地址、请求头和固定截止时间。"""
-
-    client_file_id: str
-    upload_url: str
-    upload_method: Literal["PUT"]
-    upload_headers: dict[str, str]
-    expires_at: int
-
-
 class RemoteTask(BaseModel):
-    """校验单文件任务的身份和产物契约，允许上游添加其他元数据。"""
+    """保存客户端私有上下文，标记是否已经取得查询详情以支持创建后立即恢复。"""
 
     task_id: str = Field(min_length=1)
-    status: Literal["waiting_upload", "queued", "running", "completed", "partial", "failed", "canceled"]
-    status_url: str = Field(min_length=1)
+    status: TaskStatus
     files: list[RemoteFile] = Field(min_length=1, max_length=1)
-    uploads: list[UploadLink] = Field(default_factory=list, max_length=1)
     output_formats: list[TaskOutputFormat] = Field(min_length=1)
+    details_loaded: bool = True
 
     @model_validator(mode="after")
     def validate_file(self) -> RemoteTask:
         """确保返回的文件和链接仍对应本次唯一清单项。"""
         item = self.files[0]
-        if item.client_file_id != "file" or any(link.client_file_id != "file" for link in self.uploads):
-            raise ValueError("Unexpected client_file_id")
-        if item.status == "completed" and not item.result_url:
+        task_status_url("", self.task_id)
+        if item.upload is not None and item.status != "waiting-file":
+            raise ValueError("Only waiting-file accepts uploads")
+        if self.details_loaded and item.status == "completed" and not item.result_url:
             raise ValueError("Completed file has no result_url")
         if item.status != "completed" and item.result_url is not None:
             raise ValueError("Unfinished file has a result_url")
         return self
+
+
+class RemoteCreatedFile(BaseModel):
+    """只消费创建回执中的文件身份、状态与上传描述。"""
+
+    file_id: str = Field(min_length=1)
+    file_name: str
+    status: FileStatus
+    upload: UploadLink | None = None
+
+
+class RemoteCreatedTask(BaseModel):
+    """单独校验创建回执，不要求它包含大小、输出格式或结果链接。"""
+
+    task_id: str = Field(min_length=1)
+    status: TaskStatus
+    files: list[RemoteCreatedFile] = Field(min_length=1, max_length=1)
 
 
 @dataclass
@@ -125,6 +141,11 @@ class Record:
         """读取已校验远端快照，空值表示尚未确认创建结果。"""
         return RemoteTask.model_validate(self.remote) if self.remote is not None else None
 
+    @property
+    def needs_details(self) -> bool:
+        """创建已报告完成但首次查询失败时，重启或重复请求仍需补取结果详情。"""
+        return self.status == "completed" and self.remote is not None and self.remote.get("details_loaded") is False
+
     def to_json(self) -> str:
         """把完整记录序列化为 SQLite 单行快照。"""
         return json.dumps(asdict(self), ensure_ascii=False)
@@ -133,11 +154,8 @@ class Record:
 def fingerprint(filename: str, size: int, sha256sum: str, options: ParseOptions) -> str:
     """用文件内容、逻辑名称与归一化参数区分同 ID 的冲突提交。"""
     normalized = options.model_dump()
-    # 缺省关闭不改变此前已持久化请求的身份；显式启用才引入新的结果选项。
-    if not normalized["include_model_output"]:
-        normalized.pop("include_model_output")
     value = {"filename": filename, "size": size, "sha256sum": sha256sum, "options": normalized}
     return hashlib.sha256(json.dumps(value, ensure_ascii=False, sort_keys=True).encode()).hexdigest()
 
 
-__all__ = ["GatewayError", "ParseOptions", "Record", "RemoteTask", "TERMINAL", "UploadLink", "fingerprint"]
+__all__ = ["GatewayError", "ParseOptions", "Record", "RemoteCreatedTask", "RemoteTask", "TERMINAL", "UploadLink", "fingerprint"]

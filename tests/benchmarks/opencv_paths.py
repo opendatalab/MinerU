@@ -187,7 +187,6 @@ def main() -> None:
             continue
         middle = result.middle_json.model_dump_json()
         (args.out / "middle.json").write_text(middle)
-        (args.out / "model.json").write_text(result._model_output.model_dump_json())
         digests = {}
         for output_format in RenderFormat:
             value = render(result.middle_json, output_format)

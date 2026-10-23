@@ -122,9 +122,8 @@ def test_server_zip_roundtrip_restores_direct_and_markup_images(
     restored = api_client._parse_result_from_zip_bytes(
         payload,
         include_images=include_images,
-        include_model_output=True,
     )
-    assert restored._model_output is None
+    assert not hasattr(restored, "_model_output")
     assert restored.middle_json.extensions == result.middle_json.extensions
     body = restored.pages[0].blocks[0].content[0]
     if include_images:
@@ -148,7 +147,6 @@ def test_gradio_pdf_uses_packaged_images_without_cropping(
     restored = api_client._parse_result_from_zip_bytes(
         build_default_zip(result),
         include_images=True,
-        include_model_output=False,
     )
     source = tmp_path / "source.pdf"
     buffer = BytesIO()
@@ -224,7 +222,7 @@ def test_client_rejects_missing_or_unsafe_markup_asset(source: str) -> None:
     with zipfile.ZipFile(buffer, "w") as archive:
         archive.writestr("middle_json.json", result.to_json())
     with pytest.raises(api_client._V1APIError, match="image sidecar"):
-        api_client._parse_result_from_zip_bytes(buffer.getvalue(), include_images=True, include_model_output=False)
+        api_client._parse_result_from_zip_bytes(buffer.getvalue(), include_images=True)
 
 
 def test_client_preserves_markup_attributes_and_code_literals() -> None:
@@ -268,6 +266,6 @@ def test_save_and_restore_leave_code_image_literals_unchanged() -> None:
     )
     packed = build_default_zip(result)
     assert len([name for name in _entries(packed) if name.startswith("images/")]) == 2
-    restored = api_client._parse_result_from_zip_bytes(packed, include_images=True, include_model_output=False)
+    restored = api_client._parse_result_from_zip_bytes(packed, include_images=True)
     assert restored.pages[1].blocks[0].content[0].content == literal
     assert result.pages[1].blocks[0].content[0].content == literal

@@ -37,10 +37,12 @@ def test_api_parser_serializes_request_ocr_mode(
     def respond(request: httpx.Request) -> httpx.Response:
         """记录完整任务请求，在产物下载前返回已完成任务。"""
         if request.method == "GET":
-            return httpx.Response(200, content=zip_output())
+            if request.url.host == "storage.test":
+                return httpx.Response(200, content=zip_output())
+            return httpx.Response(200, json=task_snapshot(file_name=source.name, size=source.stat().st_size))
         assert request.method == "POST" and request.url.path == "/v1/tasks"
         payloads.append(json.loads(request.content))
-        return httpx.Response(202, json={**task_snapshot(), "status_url": "http://localhost:8000/v1/tasks/task-one"})
+        return httpx.Response(202, json=task_snapshot(file_name=source.name, size=source.stat().st_size))
 
     transport = httpx.MockTransport(respond)
     sync_client, async_client = httpx.Client, httpx.AsyncClient
@@ -63,7 +65,6 @@ def test_api_parser_serializes_request_ocr_mode(
     expected: dict[str, Any] = {
         "files": [
             {
-                "client_file_id": "file",
                 "file_name": source.name,
                 "bytes": source.stat().st_size,
                 "sha256sum": api_client._sha256_file(source),
@@ -72,7 +73,6 @@ def test_api_parser_serializes_request_ocr_mode(
         ],
         "tier": "flash",
         "output_formats": ["default"],
-        "include_model_output": False,
     }
     if ocr_mode is not None:
         expected["ocr_mode"] = ocr_mode
@@ -94,19 +94,19 @@ def test_api_server_rejects_invalid_request_ocr_mode(tmp_path: Path, value: obje
         response = client.post(
             "/v1/tasks",
             json={
-                "files": [{"client_file_id": "file", "file_name": "demo.pdf", "bytes": 9}],
+                "files": [{"file_name": "demo.pdf", "bytes": 9}],
                 "ocr_mode": value,
             },
         )
     assert response.status_code == 400
-    assert response.json()["error"]["code"] == "invalid_request"
-    assert response.json()["error"]["param"] == "ocr_mode"
+    assert response.json().get("error")["code"] == "invalid_request"
+    assert response.json().get("error")["param"] == "ocr_mode"
     assert app.state.job_store._jobs == {}
 
 
 def test_api_server_ocr_defaults_to_request_auto_without_startup_configuration(tmp_path: Path) -> None:
     """请求缺省值固定为 auto，应用生命周期不保存全局 OCR 模式。"""
-    request = CreateTaskRequest.model_validate({"files": [{"client_file_id": "file", "file_name": "demo.pdf", "bytes": 9}]})
+    request = CreateTaskRequest.model_validate({"files": [{"file_name": "demo.pdf", "bytes": 9}]})
     assert request.ocr_mode == "auto"
     app = api_server.create_app(upload_dir=str(tmp_path), tier="flash")
     assert not hasattr(app.state, "ocr_mode")

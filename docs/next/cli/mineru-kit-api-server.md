@@ -239,3 +239,9 @@ Torch 小模型首次初始化时限制 CPU 线程，并传播到后续工作线
 配置优先，否则依次使用 `MINERU_CPU_NUM_THREADS`、`MINERU_INTRA_OP_NUM_THREADS`、8。
 按 CPU 亲和性及 cgroup 配额裁剪，且不调高已有更低值。单独设置 OpenBLAS 不视为 Torch
 线程限制。纯 ONNX/Flash 的启动路径保持惰性加载。
+
+### 文件准备与解析排队
+
+Tasks 使用 waiting-file 表示等待上传、服务端下载或校验，准备完成后进入 pending，取得解析名额后进入 running。
+URL 输入由独立准备阶段处理，其并发上限沿用 concurrency；等待解析名额的已准备输入也占准备预算，防止源字节无界缓冲。准备阶段不占解析名额，已上传就绪的文件可以正常执行。
+文件 duration_ms 包含实际下载、校验、解析和导出耗时，不包含准备或解析队列等待时间。

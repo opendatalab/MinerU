@@ -22,10 +22,14 @@ from ...filetypes import is_flash_only_parse_extension
 from ...parser.api_server import ApiServerError, ErrorDetail, _JobInputMetadata, _raise_api_error
 from ...parser.task_api import (
     TERMINAL_TASK_STATUSES,
+    CreateTaskResponse,
+    CancelTaskResponse,
     TaskExecution,
+    TaskFileInput,
     TaskFileItem,
-    TaskStatusResponse,
+    TaskDetailResponse,
     TaskUpload,
+    UploadFileResponse,
     UploadTaskOptions,
     file_chunks,
     resolve_task_tier,
@@ -39,7 +43,7 @@ from .proxy import (
     require_worker_generation,
     rewrite_file_payload,
 )
-from .resources import ResourceRegistry, ResourceRoute, SourceFileStore, StoredSourceFile, utc_now_iso
+from .resources import ResourceRegistry, ResourceRoute, SourceFileStore, utc_now_iso
 from .workers import WorkerPool, WorkerState
 
 FinalizeJob = Callable[[ResourceRoute, dict[str, Any], Request | None], Awaitable[None]]
@@ -113,18 +117,14 @@ def _worker_path(worker: WorkerState, url: str) -> str:
 
 def _job_payload(payload: dict[str, Any], upstream_id: str) -> dict[str, Any]:
     """把 worker Tasks 转换为私有执行快照，不包含旧 Jobs 公开协议。"""
-    file_keys = ("file_id", "name", "page_range", "status", "parse", "error")
+    file_keys = ("status", "parse", "error")
     files = [{key: item.get(key) for key in file_keys} for item in payload["files"]]
-    for file in files:
-        if file["status"] in {"waiting_upload", "canceled"}:
-            file["status"] = "queued"
     return {
         "job_id": upstream_id,
-        "status": "queued" if payload["status"] == "waiting_upload" else payload["status"],
+        "status": payload["status"],
         "created_at": payload["created_at"],
         "started_at": payload.get("started_at"),
         "finished_at": payload.get("finished_at"),
-        "tier": payload["tier"],
         "progress": payload["progress"],
         "files": files,
     }
@@ -170,7 +170,7 @@ async def read_task_execution(
     if response.status_code == 404 or worker.generation != generation or route.metadata.get("upstream_lost"):
         return _lost_execution(route, pool)
     try:
-        payload = TaskStatusResponse.model_validate(_checked_json(response)).model_dump()
+        payload = TaskDetailResponse.model_validate(_checked_json(response)).model_dump()
     except ValidationError as exc:
         _raise_api_error(502, error_type="api_error", code="invalid_upstream_response", message=str(exc))
     if payload["task_id"] != route.upstream_id:
@@ -178,6 +178,10 @@ async def read_task_execution(
     result_file_id: str | None = None
     if len(payload["files"]) != 1:
         _raise_api_error(502, error_type="api_error", code="invalid_upstream_response", message="Expected one task file")
+    upstream_file_id = payload["files"][0]["file_id"]
+    public_file_id = route.metadata["file_ids"].get(upstream_file_id)
+    if public_file_id is None or payload["files"][0]["file_name"] != route.metadata["file_names"].get(upstream_file_id):
+        _raise_api_error(502, error_type="api_error", code="invalid_upstream_response", message="Worker file identity changed")
     if payload["files"][0]["status"] == "completed":
         result_url = payload["files"][0].get("result_url")
         if not isinstance(result_url, str):
@@ -186,9 +190,13 @@ async def read_task_execution(
         parts = path.strip("/").split("/")
         if len(parts) != 4 or parts[:2] != ["v1", "files"] or parts[-1] != "content":
             _raise_api_error(502, error_type="api_error", code="invalid_upstream_response", message="Invalid result File URL")
-        upstream_file_id = unquote(parts[2])
+        if unquote(parts[2]) != upstream_file_id:
+            _raise_api_error(502, error_type="api_error", code="invalid_upstream_response", message="Result file ID changed")
         existing = registry.find_upstream("file", route.owner_scope, worker.worker_id, upstream_file_id)
-        if existing is None or not isinstance(existing.metadata.get("payload"), dict):
+        if existing is None and not registry.is_file_reserved(public_file_id):
+            # 取消、删除或过期的结果不因迟到响应重新登记；任务保持已发布的终态。
+            result_file_id = public_file_id
+        elif existing is None or not isinstance(existing.metadata.get("payload"), dict):
             metadata = _checked_json(
                 await _worker_request(
                     pool,
@@ -204,26 +212,26 @@ async def read_task_execution(
                 _raise_api_error(
                     502, error_type="api_error", code="invalid_upstream_response", message="Invalid result File metadata"
                 )
-            result_file_id = rewrite_file_payload(metadata, worker, registry, route.owner_scope)["id"]
+            result_file_id = rewrite_file_payload(metadata, worker, registry, route.owner_scope, public_id=public_file_id)["id"]
         else:
+            if existing.public_id != public_file_id:
+                _raise_api_error(
+                    502, error_type="api_error", code="invalid_upstream_response", message="Public file ID changed"
+                )
             result_file_id = existing.public_id
         result_route = registry.find("file", result_file_id)
         if result_route is not None:
             result_route.metadata["task_result_held"] = bool(route.metadata.get("task_result_held"))
     rewritten = _job_payload(payload, route.public_id)
-    aliases = route.metadata.get("input_aliases") or {}
-    for item in rewritten["files"]:
-        if item.get("file_id") in aliases:
-            item["file_id"] = aliases[item["file_id"]]
     if rewritten["status"] in TERMINAL_TASK_STATUSES:
         release_job_load(route, pool)
     route.metadata["payload"] = copy.deepcopy(rewritten)
     route.metadata["task_result_file_id"] = result_file_id
     error = ErrorDetail.model_validate(payload["error"]) if payload.get("error") else None
     input_metadata = {
-        index: _JobInputMetadata(item["bytes"], item["sha256sum"])
+        index: _JobInputMetadata(item["bytes"])
         for index, item in enumerate(payload["files"])
-        if item.get("url") is not None and item["bytes"] is not None and item["sha256sum"] is not None
+        if item.get("url") is not None and item["bytes"] is not None
     }
     route.metadata["task_input_metadata"] = input_metadata
     return TaskExecution(rewritten, result_file_id, error, input_metadata)
@@ -241,14 +249,31 @@ class RouterTaskBackend:
         self.registry: ResourceRegistry = request.app.state.registry
         self.pool: WorkerPool = request.app.state.worker_pool
         self._pins = ExitStack()
-        self._owned_files: list[str] = []
+        self._prepared_sources: list[str] = []
+        self._task_sources: list[str] = []
 
     def fork(self) -> RouterTaskBackend:
         """每个输入文件拥有独立暂存引用和 worker 调度上下文。"""
         return RouterTaskBackend(self.request, self.owner_scope, self.finalize)
 
+    def reserve_file_id(self) -> str:
+        """每层 Router 独立预留公共 ID，通过内部映射关联下游生成的标识。"""
+        return self.registry.reserve_file_id()
+
+    def discard_file_id(self, file_id: str) -> None:
+        """取消本层预留或尚未发布的结果映射，不触碰共享源缓存。"""
+        self.registry.discard_file_id(file_id)
+
+    def forget_file_id(self, file_id: str) -> None:
+        """父任务记录过期后回收本层 ID 索引，不依赖 worker 路由仍然存在。"""
+        self.registry.forget_file_id(file_id)
+
     async def release_result(self, task_id: str, finished: float) -> None:
         """父任务完成后记录公开保留期限，后台续租直到该期限再释放 worker。"""
+        # 私有源缓存独立于 worker 路由，即使 worker 已丢失也必须开始回收倒计时。
+        for reference_id in self._task_sources:
+            self.sources.release_reference(reference_id, finished)
+        self._task_sources.clear()
         route = self.registry.find("job", task_id)
         if route is None:
             return
@@ -262,7 +287,7 @@ class RouterTaskBackend:
             result_route.metadata["payload"]["expires_at"] = route.metadata["task_result_retain_until"]
             result_route.metadata["task_result_retain_until"] = route.metadata["task_result_retain_until"]
 
-    async def validate(self, options: UploadTaskOptions, inputs: list[TaskFileItem]) -> None:
+    async def validate(self, options: UploadTaskOptions, inputs: list[TaskFileInput]) -> None:
         """能力预检不推进轮询游标，也不为尚未上传的任务预占 worker。"""
         tiers = self.pool.available_tiers()
         options.tier = resolve_task_tier(options, inputs, tiers, select_default_quality_tier(tiers))
@@ -274,7 +299,6 @@ class RouterTaskBackend:
                 tier=selection_tier,
                 required_sources={"url" if item.url is not None else "upload"},
                 required_task_outputs=set(options.output_formats),
-                require_model_output=options.include_model_output,
                 require_flash=lightweight,
             )
             if not candidates:
@@ -287,7 +311,7 @@ class RouterTaskBackend:
             # 能力预检不预占名额，不推进轮询游标；认证沿用所选部署的服务认证。
             worker = candidates[0]
             if worker.worker_id not in checked_workers:
-                _checked_json(await _worker_request(self.pool, worker, "GET", "/v1/files?limit=1", request=self.request))
+                _checked_json(await _worker_request(self.pool, worker, "GET", "/v1/usage", request=self.request))
                 checked_workers.add(worker.worker_id)
 
     async def find_upload(self, sha256sum: str, filename: str) -> TaskUpload | None:
@@ -302,7 +326,7 @@ class RouterTaskBackend:
         """为已校验文件建立准备引用，同一调用方相同内容复用现有暂存字节。"""
         async with self.request.app.state.task_store.storage_lock:
             private_id = "task-source-" + secrets.token_hex(12)
-            self._owned_files.append(private_id)
+            self._prepared_sources.append(private_id)
             stored = self.sources.find_hash(self.owner_scope, upload.sha256sum)
             if stored is None:
                 staging_id = "task-" + secrets.token_hex(12)
@@ -313,20 +337,22 @@ class RouterTaskBackend:
                     self.sources.discard_upload(staging_id)
             else:
                 self.sources.bind_source(private_id, stored, owner_scope=self.owner_scope)
+            self.sources.hold_reference(private_id)
             self._pins.enter_context(self.sources.pin(stored))
             return replace(upload, path=stored.path, file_id=None)
 
     def release_uploads(self, *, rollback: bool) -> None:
-        """关闭准备引用；成功提交后公开 File 绑定继续持有可复用源字节。"""
-        for file_id in self._owned_files:
-            self.sources.delete_file(file_id)
-        self._owned_files.clear()
+        """回滚未交接的源引用并释放传输租约，成功提交的缓存由父任务持有。"""
+        if rollback:
+            for reference_id in self._prepared_sources:
+                self.sources.delete_file(reference_id)
+            self._prepared_sources.clear()
         self._pins.close()
 
-    async def _wait_for_input_files(
-        self, worker: WorkerState, upstream_id: str, generation: int, inputs: list[TaskFileItem]
+    async def _wait_for_uploads_ready(
+        self, worker: WorkerState, upstream_id: str, generation: int, inputs: list[TaskFileItem], file_ids: dict[str, str]
     ) -> dict[str, Any]:
-        """等待已上传项生成公共 File；级联 Router 的上传就绪可能早于下游引用交接。"""
+        """只等待上传确认，不要求下游暴露源 File 或完成内部引用交接。"""
         while True:
             response = await _worker_request(
                 self.pool,
@@ -337,22 +363,27 @@ class RouterTaskBackend:
                 headers={"x-mineru-task-lease-seconds": "120"},
             )
             require_worker_generation(worker, generation)
-            ready = TaskStatusResponse.model_validate(_checked_json(response)).model_dump()
-            if ready["task_id"] != upstream_id or len(ready["files"]) != len(inputs) or ready["status"] == "waiting_upload":
+            ready = TaskDetailResponse.model_validate(_checked_json(response)).model_dump()
+            if ready["task_id"] != upstream_id or len(ready["files"]) != len(inputs):
                 _raise_api_error(
                     502, error_type="api_error", code="invalid_upstream_response", message="Worker inputs are not ready"
                 )
-            if any(item["client_file_id"] != source.client_file_id for item, source in zip(ready["files"], inputs)):
+            if any(
+                file_ids.get(item["file_id"]) != source.file_id or item["file_name"] != source.file_name
+                for item, source in zip(ready["files"], inputs)
+            ):
                 _raise_api_error(
                     502, error_type="api_error", code="invalid_upstream_response", message="Worker input order changed"
                 )
-            pending = any(
-                source.url is None
-                and item["upload_status"] == "ready"
-                and item["file_id"] is None
-                and item["status"] in {"queued", "running"}
-                for item, source in zip(ready["files"], inputs)
-            )
+            pending = False
+            for item, source in zip(ready["files"], inputs):
+                if source.url is not None:
+                    if item["upload"] is not None:
+                        _raise_api_error(
+                            502, error_type="api_error", code="invalid_upstream_response", message="URL input requests upload"
+                        )
+                    continue
+                pending = pending or item["status"] == "waiting-file"
             if not pending:
                 return ready
             # 只等待合法的中间状态；取消、worker replacement 和终态仍走原有清理边界。
@@ -368,7 +399,6 @@ class RouterTaskBackend:
             tier=tier,
             required_sources={"url" if item.url is not None else "upload" for item in inputs},
             required_task_outputs=set(options.output_formats),
-            require_model_output=options.include_model_output,
             require_flash=any(is_flash_only_parse_extension(item.file_name) for item in inputs),
         )
         if reservation is None:
@@ -378,13 +408,12 @@ class RouterTaskBackend:
         worker = reservation.worker
         upstream_id: str | None = None
         route: ResourceRoute | None = None
-        registered_inputs: list[str] = []
         transferred = False
         try:
             worker_inputs = [
-                item.model_dump(exclude_none=True)
+                item.model_dump(exclude_none=True, exclude={"file_id"})
                 if item.url is not None
-                else {**item.model_dump(exclude_none=True), "sha256sum": uploads[index].sha256sum}
+                else {**item.model_dump(exclude_none=True, exclude={"file_id"}), "sha256sum": uploads[index].sha256sum}
                 for index, item in enumerate(inputs)
             ]
             response = await _worker_request(
@@ -398,12 +427,11 @@ class RouterTaskBackend:
                     "tier": options.tier,
                     "ocr_mode": options.ocr_mode,
                     "output_formats": options.output_formats,
-                    "include_model_output": options.include_model_output,
                 },
                 headers={"x-mineru-task-lease-seconds": "120"},
             )
             require_worker_generation(worker, reservation.generation)
-            payload = TaskStatusResponse.model_validate(_checked_json(response)).model_dump()
+            payload = CreateTaskResponse.model_validate(_checked_json(response)).model_dump()
             upstream_id = payload["task_id"]
             route = self.registry.register(
                 "job",
@@ -414,21 +442,32 @@ class RouterTaskBackend:
             )
             authorization = self.request.headers.get("authorization")
             route.metadata.update(
+                file_ids={item["file_id"]: source.file_id for item, source in zip(payload["files"], inputs)},
+                file_names={item["file_id"]: source.file_name for item, source in zip(payload["files"], inputs)},
                 task_result_held=True,
                 active_counted=True,
                 reservation=reservation,
                 upstream_headers={"authorization": authorization} if authorization else {},
-                payload={"job_id": task_id, "status": "queued", "files": []},
+                payload={"job_id": task_id, "status": "pending", "files": []},
             )
-            by_client_id = {item.client_file_id: index for index, item in enumerate(inputs)}
-            for link in payload["uploads"]:
-                index = by_client_id.get(link["client_file_id"])
-                if index not in uploads or link["upload_method"] != "PUT":
+            if (
+                len(payload["files"]) != len(inputs)
+                or len(route.metadata["file_ids"]) != len(inputs)
+                or any(item["file_name"] != source.file_name for item, source in zip(payload["files"], inputs))
+            ):
+                _raise_api_error(
+                    502, error_type="api_error", code="invalid_upstream_response", message="Worker input order changed"
+                )
+            for index, item in enumerate(payload["files"]):
+                link = item["upload"]
+                if link is None:
+                    continue
+                if index not in uploads:
                     _raise_api_error(
                         502, error_type="api_error", code="invalid_upstream_response", message="Unexpected worker upload"
                     )
-                path = _worker_path(worker, link["upload_url"])
-                expected_path = f"/v1/tasks/{quote(upstream_id, safe='')}/uploads/{quote(link['client_file_id'], safe='')}"
+                path = _worker_path(worker, link["url"])
+                expected_path = f"/v1/tasks/{quote(upstream_id, safe='')}/uploads/{quote(item['file_id'], safe='')}"
                 if path != expected_path:
                     _raise_api_error(
                         502, error_type="api_error", code="invalid_upstream_response", message="Invalid worker upload path"
@@ -441,54 +480,27 @@ class RouterTaskBackend:
                     request=self.request,
                     content=file_chunks(uploads[index].path),
                     headers={
-                        **link["upload_headers"],
+                        **link["headers"],
                         "content-length": str(uploads[index].bytes),
                         "x-mineru-task-lease-seconds": "120",
                     },
                 )
-                if response.status_code >= 400:
-                    _checked_json(response)
-                require_worker_generation(worker, reservation.generation)
-            ready = await self._wait_for_input_files(worker, upstream_id, reservation.generation, inputs)
-            aliases: dict[str, str] = {}
-            for index, item in enumerate(ready["files"]):
-                if inputs[index].url is not None:
-                    if item["upload_status"] != "not_required":
-                        _raise_api_error(
-                            502, error_type="api_error", code="invalid_upstream_response", message="Unexpected URL upload"
-                        )
-                    continue
-                upstream_file_id = item.get("file_id")
-                if not isinstance(upstream_file_id, str):
+                try:
+                    acknowledged = UploadFileResponse.model_validate(_checked_json(response))
+                except ValidationError as exc:
+                    _raise_api_error(502, error_type="api_error", code="invalid_upstream_response", message=str(exc))
+                if acknowledged.task_id != upstream_id or acknowledged.file_id != item["file_id"]:
                     _raise_api_error(
-                        502, error_type="api_error", code="invalid_upstream_response", message="Missing worker source File"
+                        502,
+                        error_type="api_error",
+                        code="invalid_upstream_response",
+                        message="Upload acknowledgement ID changed",
                     )
-                upload = uploads[index]
-                rewritten = rewrite_file_payload(
-                    {
-                        "id": upstream_file_id,
-                        "object": "file",
-                        "file_name": upload.filename,
-                        "bytes": upload.bytes,
-                        "sha256sum": upload.sha256sum,
-                        "purpose": "parse",
-                        "created_at": int(time.time()),
-                        "expires_at": None,
-                    },
-                    worker,
-                    self.registry,
-                    self.owner_scope,
-                )
-                public_id = rewritten["id"]
-                registered_inputs.append(public_id)
-                self.sources.bind_source(
-                    public_id,
-                    StoredSourceFile(upload.path, upload.bytes, upload.sha256sum, upload.mime_type),
-                    owner_scope=self.owner_scope,
-                )
-                aliases[upstream_file_id] = public_id
-            route.metadata["input_aliases"] = aliases
+                require_worker_generation(worker, reservation.generation)
+            await self._wait_for_uploads_ready(worker, upstream_id, reservation.generation, inputs, route.metadata["file_ids"])
             result = await self.get(task_id)
+            self._task_sources.extend(self._prepared_sources)
+            self._prepared_sources.clear()
             transferred = True
             return result
         finally:
@@ -503,14 +515,13 @@ class RouterTaskBackend:
                     route.metadata["task_result_retain_until"] = time.time()
                 else:
                     reservation.release()
-                for public_id in registered_inputs:
-                    self.registry.remove("file", public_id)
-                    self.sources.delete_file(public_id)
 
     async def _cancel_remote(self, worker: WorkerState, upstream_id: str) -> None:
         """尽力取消已经创建的 worker 任务，清理失败不覆盖最初的提交错误。"""
         try:
-            await _worker_request(self.pool, worker, "DELETE", f"/v1/tasks/{upstream_id}", request=self.request)
+            await _worker_request(
+                self.pool, worker, "POST", f"/v1/tasks/{quote(upstream_id, safe='')}/cancel", request=self.request
+            )
         except Exception:
             # worker 已不可达或被替换时，原始错误及任务保留策略仍负责后续诊断。
             return
@@ -540,9 +551,22 @@ class RouterTaskBackend:
             release_job_load(route, self.pool)
             return
         worker = self.pool.get(route.worker_id)
-        response = await _worker_request(self.pool, worker, "DELETE", f"/v1/tasks/{route.upstream_id}", request=self.request)
+        response = await _worker_request(
+            self.pool, worker, "POST", f"/v1/tasks/{quote(route.upstream_id, safe='')}/cancel", request=self.request
+        )
         if response.status_code not in {404, 409}:
-            _checked_json(response)
+            try:
+                canceled = CancelTaskResponse.model_validate(_checked_json(response))
+            except ValidationError as exc:
+                _raise_api_error(502, error_type="api_error", code="invalid_upstream_response", message=str(exc))
+            if (
+                canceled.task_id != route.upstream_id
+                or [item.file_id for item in canceled.files] != list(route.metadata["file_ids"])
+                or any(item.file_name != route.metadata["file_names"].get(item.file_id) for item in canceled.files)
+            ):
+                _raise_api_error(
+                    502, error_type="api_error", code="invalid_upstream_response", message="Cancellation file identity changed"
+                )
         execution = await self.get(task_id)
         if execution.job["status"] in TERMINAL_TASK_STATUSES:
             release_job_load(route, self.pool)

@@ -187,6 +187,8 @@ def rewrite_file_payload(
     worker: WorkerState,
     registry: ResourceRegistry,
     owner_scope: str,
+    *,
+    public_id: str | None = None,
 ) -> dict[str, Any]:
     """注册 upstream file 并把响应中的 file ID 改成 Router 公共 ID。"""
     rewritten = copy.deepcopy(payload)
@@ -198,6 +200,7 @@ def rewrite_file_payload(
         owner_scope=owner_scope,
         worker_id=worker.worker_id,
         upstream_id=upstream_id,
+        public_id=public_id,
     )
     if "id" in rewritten:
         rewritten["id"] = route.public_id

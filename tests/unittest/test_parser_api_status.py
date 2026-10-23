@@ -23,12 +23,13 @@ from mineru.types import MiddleJson
 @pytest.mark.parametrize(
     "statuses",
     [
-        ("queued", "running", "running", "completed"),
+        ("waiting-file", "pending", "running", "completed"),
+        ("pending", "running", "running", "completed"),
         ("completed",),
-        ("queued", "completed"),
-        ("queued", "partial"),
-        ("queued", "running", "failed"),
-        ("queued", "canceled"),
+        ("pending", "completed"),
+        ("pending", "partial"),
+        ("pending", "running", "failed"),
+        ("pending", "canceled"),
     ],
 )
 def test_parse_notifies_submission_and_polls_before_result_building(
@@ -68,18 +69,19 @@ def test_parse_notifies_submission_and_polls_before_result_building(
             assert durations == [250.0]
             return httpx.Response(200, content=build_default_zip(result))
         methods.append(request.method)
-        status = next(replies)
+        status = next(replies, statuses[-1])
         return httpx.Response(
             200,
             json={
                 "task_id": "task_test",
-                "status_url": "/v1/tasks/task_test",
                 "status": status,
                 "output_formats": ["default"],
                 "files": [
                     {
-                        "client_file_id": "file",
-                        "upload_status": "ready",
+                        "file_id": "file-one",
+                        "file_name": source.name,
+                        "bytes": source.stat().st_size,
+                        "upload": None,
                         "status": "completed" if status == "partial" else status,
                         "parse": {"duration_ms": 250},
                         "result_url": "/result",
@@ -126,8 +128,8 @@ def test_parse_notifies_submission_and_polls_before_result_building(
     else:
         assert parse().middle_json == result.middle_json
     assert notifications == list(statuses)
-    assert methods == ["POST", *(["GET"] * (len(statuses) - 1))]
-    assert delays == [1] * (len(statuses) - 1)
+    assert methods == ["POST", *(["GET"] * max(1, len(statuses) - 1))]
+    assert delays == [1] * max(0, len(statuses) - 2)
     assert callback_errors == (["Parse job status callback failed"] * len(statuses) if callback_raises else [])
 
 

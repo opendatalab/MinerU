@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from task_test_utils import pending_files, task_url
+
 import asyncio
 import hashlib
 import io
@@ -133,12 +135,11 @@ def _submit(client: httpx.Client, files: list[tuple[str, bytes]], *, hashes: boo
     """以 JSON 提交文件清单，hash 缺省时不放入任何替代标识。"""
     manifest = [
         {
-            "client_file_id": f"f{index + 1}",
             "file_name": name,
             "bytes": len(data),
             **({"sha256sum": hashlib.sha256(data).hexdigest()} if hashes else {}),
         }
-        for index, (name, data) in enumerate(files)
+        for name, data in files
     ]
     response = client.post("/v1/tasks", json={"files": manifest, "tier": "flash", "ocr_mode": "txt", **options})
     assert response.status_code == 202, response.text
@@ -149,12 +150,12 @@ def _wait(client: httpx.Client, task: dict[str, Any], timeout: float = 60) -> di
     """有界轮询任务元数据，不能调用已删除的 result 路由。"""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        response = client.get(task["status_url"])
+        response = client.get(task_url(client, task))
         assert response.status_code == 200, response.text
         payload = response.json()
         if payload["status"] in TERMINAL:
             return payload
-        assert all(file["result_url"] is None for file in payload["files"] if file["status"] != "completed")
+        assert all(file.get("result_url") is None for file in payload["files"] if file["status"] != "completed")
         time.sleep(0.02)
     pytest.fail("Task did not complete over HTTP")
 
@@ -165,7 +166,7 @@ def _members(data: bytes) -> dict[str, bytes]:
         return {name: archive.read(name) for name in archive.namelist()}
 
 
-def test_pdf_without_client_id_keeps_metadata_and_cached_results(live_service: _LiveService, tmp_path: Path) -> None:
+def test_pdf_without_file_id_keeps_metadata_and_cached_results(live_service: _LiveService, tmp_path: Path) -> None:
     """真实 TCP 上传 PDF，确认自动标识、Files 元数据、附件命名及缓存命中后的正文均正确。"""
     from reportlab.pdfgen.canvas import Canvas
 
@@ -185,18 +186,21 @@ def test_pdf_without_client_id_keeps_metadata_and_cached_results(live_service: _
         response = client.post("/v1/tasks", json=payload)
         assert response.status_code == 202, response.text
         task = response.json()
-        assert task["files"][0]["client_file_id"] == task["uploads"][0]["client_file_id"] == "f1"
-        link = task["uploads"][0]
+        assert task["files"][0]["file_id"] == pending_files(task)[0]["file_id"]
+        assert task["files"][0]["file_id"].startswith("file-")
+        link = pending_files(task)[0]
         for _ in range(2):
-            upload = client.put(link["upload_url"], content=data, headers=link["upload_headers"])
+            upload = client.put(link.get("upload").get("url"), content=data, headers=link.get("upload")["headers"])
             assert upload.status_code == 200, upload.text
         completed = _wait(client, task)
         assert completed["status"] == "completed", completed
         item = completed["files"][0]
-        assert item["client_file_id"] == "f1" and item["file_name"] == "report.v2.pdf" and "filename" not in item
-        result = client.get(item["result_url"].removesuffix("/content"))
+        assert (
+            item["file_id"] == task["files"][0]["file_id"] and item["file_name"] == "report.v2.pdf" and "filename" not in item
+        )
+        result = client.get(item.get("result_url").removesuffix("/content"))
         assert result.status_code == 200 and result.json()["file_name"] == "report.v2.zip"
-        download = client.get(item["result_url"])
+        download = client.get(item.get("result_url"))
         assert download.status_code == 200
         assert download.headers["content-disposition"] == 'attachment; filename="report.v2.zip"'
         (tmp_path / "report.v2.zip").write_bytes(download.content)
@@ -207,11 +211,11 @@ def test_pdf_without_client_id_keeps_metadata_and_cached_results(live_service: _
         cached = client.post("/v1/tasks", json=payload)
         assert cached.status_code == 202, cached.text
         cached_task = cached.json()
-        assert cached_task["uploads"] == [] and cached_task["files"][0]["client_file_id"] == "f1"
-        assert cached_task["files"][0]["upload_status"] == "ready"
+        assert pending_files(cached_task) == [] and cached_task["files"][0]["file_id"] != task["files"][0]["file_id"]
+        assert cached_task["files"][0]["status"] == "pending" and cached_task["files"][0].get("upload") is None
         cached_result = _wait(client, cached_task)
         assert cached_result["status"] == "completed", cached_result
-        cached_download = client.get(cached_result["files"][0]["result_url"])
+        cached_download = client.get(cached_result["files"][0].get("result_url"))
         assert cached_download.status_code == 200
         assert _members(cached_download.content)["markdown.md"] == members["markdown.md"]
 
@@ -247,15 +251,16 @@ def test_router_keeps_tls_proxy_headers_on_the_public_hop_only(tmp_path: Path) -
         ) as client:
             for index in range(2):
                 task = _submit(client, [(f"document-{index}.html", HTML)])
-                assert urlsplit(task["status_url"]).scheme == "https"
-                assert len(task["uploads"]) == (1 if index == 0 else 0)
-                for upload in task["uploads"]:
+                assert "status_url" not in task
+                assert all(urlsplit(item.get("upload").get("url")).scheme == "https" for item in pending_files(task))
+                assert len(pending_files(task)) == (1 if index == 0 else 0)
+                for upload in pending_files(task):
                     # 以本地 HTTP 模拟 TLS 终止代理到 Router 的后段连接，保留真实入站代理头。
-                    response = client.put(urlsplit(upload["upload_url"]).path, content=HTML)
+                    response = client.put(urlsplit(upload.get("upload").get("url")).path, content=HTML)
                     assert response.status_code == 200, response.text
                 deadline = time.monotonic() + 10
                 while time.monotonic() < deadline:
-                    response = client.get(urlsplit(task["status_url"]).path)
+                    response = client.get(urlsplit(task_url(client, task)).path)
                     assert response.status_code == 200, response.text
                     result = response.json()
                     if result["status"] in TERMINAL:
@@ -264,7 +269,7 @@ def test_router_keeps_tls_proxy_headers_on_the_public_hop_only(tmp_path: Path) -
                 else:
                     pytest.fail("Task did not finish through the TLS proxy hop")
                 assert result["status"] == "completed", result
-                result_url = result["files"][0]["result_url"]
+                result_url = result["files"][0].get("result_url")
                 assert urlsplit(result_url).scheme == "https"
                 response = client.get(urlsplit(result_url).path)
                 assert response.status_code == 200, response.text
@@ -326,9 +331,9 @@ def test_documented_client_script(live_service: _LiveService, tmp_path: Path, fo
     result = _run_script(_script_env(tmp_path, live_service.url, OUTPUT_FORMATS=formats, SEND_HASH=hashes), *paths)
     assert result.returncode == 0, result.stdout + result.stderr
     assert "task_id=" in result.stderr
-    for index, path in enumerate(paths):
+    for path in paths:
         extension = formats if formats in {"html", "docx"} else "zip"
-        output = tmp_path / "results" / f"f{index + 1}" / (path.stem + "." + extension)
+        output = next((tmp_path / "results").glob(f"*/{path.stem}.{extension}"))
         assert output.is_file()
         if extension == "zip":
             assert "中文内容".encode() in _members(output.read_bytes())["markdown.md"]
@@ -342,18 +347,18 @@ def test_hash_preflight_sends_only_missing_file_bytes(live_service: _LiveService
     """真实网络计数证明混合命中仅上传缺失文件，全命中不发送任何文件 PUT。"""
     with _client(live_service) as client:
         first = _submit(client, [("a.html", HTML)])
-        assert client.put(first["uploads"][0]["upload_url"], content=HTML).status_code == 200
+        assert client.put(pending_files(first)[0].get("upload").get("url"), content=HTML).status_code == 200
         assert _wait(client, first)["status"] == "completed"
         second_data = b"<h1>second</h1>"
         mixed = _submit(client, [("renamed.html", HTML), ("b.html", second_data)])
-        assert [link["client_file_id"] for link in mixed["uploads"]] == ["f2"]
-        assert client.put(mixed["uploads"][0]["upload_url"], content=second_data).status_code == 200
+        assert [link["file_id"] for link in pending_files(mixed)] == [mixed["files"][1]["file_id"]]
+        assert client.put(pending_files(mixed)[0].get("upload").get("url"), content=second_data).status_code == 200
         assert _wait(client, mixed)["status"] == "completed"
         base = f"/v1/tasks/{mixed['task_id']}/uploads/"
-        assert live_service.counts.get(base + "f1", 0) == 0
-        assert live_service.counts[base + "f2"] == len(second_data)
+        assert live_service.counts.get(base + mixed["files"][0]["file_id"], 0) == 0
+        assert live_service.counts[base + mixed["files"][1]["file_id"]] == len(second_data)
         hit = _submit(client, [("a.html", HTML), ("b.html", second_data)])
-        assert hit["uploads"] == []
+        assert pending_files(hit) == []
         assert _wait(client, hit)["status"] == "completed"
         assert not any(hit["task_id"] in path for path in live_service.counts)
         denied = client.post(
@@ -361,7 +366,7 @@ def test_hash_preflight_sends_only_missing_file_bytes(live_service: _LiveService
             headers={"Authorization": "Bearer wrong"},
             json={
                 "files": [
-                    {"client_file_id": "f1", "file_name": "a.html", "bytes": len(HTML)},
+                    {"file_name": "a.html", "bytes": len(HTML)},
                 ]
             },
         )
@@ -376,8 +381,8 @@ def test_disconnect_then_resume_keeps_uploaded_files(live_service: _LiveService,
     second_path.write_bytes(second)
     with _client(live_service) as client:
         task = _submit(client, [(first_path.name, HTML), (second_path.name, second)])
-        assert client.put(task["uploads"][0]["upload_url"], content=HTML).status_code == 200
-        target = urlsplit(task["uploads"][1]["upload_url"])
+        assert client.put(pending_files(task)[0].get("upload").get("url"), content=HTML).status_code == 200
+        target = urlsplit(pending_files(task)[1].get("upload").get("url"))
         connection = socket.create_connection((target.hostname, target.port), timeout=5)
         prefix = second[:4096]
         try:
@@ -392,17 +397,18 @@ def test_disconnect_then_resume_keeps_uploaded_files(live_service: _LiveService,
             assert live_service.counts[target.path] == len(prefix)
         finally:
             connection.close()
-        pending = client.get(task["status_url"]).json()
-        assert pending["status"] in {"waiting_upload", "queued", "running"}
-        assert [item["upload_status"] for item in pending["files"]] == ["ready", "pending"]
+        pending = client.get(task_url(client, task)).json()
+        assert pending["status"] in {"waiting-file", "pending", "running"}
+        assert pending["files"][0]["status"] in {"pending", "running", "completed"}
+        assert pending["files"][1]["status"] == "waiting-file"
         result = _run_script(_script_env(tmp_path, live_service.url, TASK_ID=task["task_id"]), first_path, second_path)
         assert result.returncode == 0, result.stdout + result.stderr
-        assert live_service.counts[urlsplit(task["uploads"][0]["upload_url"]).path] == len(HTML)
+        assert live_service.counts[urlsplit(pending_files(task)[0].get("upload").get("url")).path] == len(HTML)
         assert live_service.counts[target.path] == len(prefix) + len(second)
         assert len(live_service.app.state.task_store._records) == 1
-        members = _members((tmp_path / "results/f2/b.zip").read_bytes())
+        members = _members((tmp_path / "results" / task["files"][1]["file_id"] / "b.zip").read_bytes())
         assert b"Resumed file" in members["markdown.md"]
-        final = client.get(task["status_url"]).json()
+        final = client.get(task_url(client, task)).json()
         assert final["task_id"] == task["task_id"] and final["status"] == "completed"
 
 
@@ -422,12 +428,12 @@ def test_cancel_response_does_not_wait_for_native_thread_cleanup(
     try:
         with _client(live_service) as client:
             task = _submit(client, [("a.html", HTML)])
-            assert client.put(task["uploads"][0]["upload_url"], content=HTML).status_code == 200
+            assert client.put(pending_files(task)[0].get("upload").get("url"), content=HTML).status_code == 200
             assert entered.wait(5)
-            canceled = client.delete(task["status_url"], timeout=2)
+            canceled = client.post(task_url(client, task) + "/cancel", timeout=2)
             assert canceled.status_code == 200 and canceled.json()["status"] == "canceled"
             assert not release.is_set()
-            assert client.get(task["status_url"]).json()["files"][0]["result_url"] is None
+            assert client.get(task_url(client, task)).json()["files"][0].get("result_url") is None
     finally:
         release.set()
 
@@ -452,17 +458,19 @@ def test_upload_over_200_mib_is_accepted(live_service: _LiveService, tmp_path: P
     with _client(live_service) as client:
         response = client.post(
             "/v1/tasks",
-            json={"tier": "flash", "files": [{"client_file_id": "large", "file_name": source.name, "bytes": size}]},
+            json={"tier": "flash", "files": [{"file_name": source.name, "bytes": size}]},
         )
         assert response.status_code == 202, response.text
         task = response.json()
         with source.open("rb") as stream:
-            uploaded = client.put(task["uploads"][0]["upload_url"], content=stream, headers={"Content-Length": str(size)})
+            uploaded = client.put(
+                pending_files(task)[0].get("upload").get("url"), content=stream, headers={"Content-Length": str(size)}
+            )
         assert uploaded.status_code == 200, uploaded.text
-        assert live_service.counts[urlsplit(task["uploads"][0]["upload_url"]).path] == size
+        assert live_service.counts[urlsplit(pending_files(task)[0].get("upload").get("url")).path] == size
         assert started.wait(60)
-        assert client.get(task["status_url"]).json()["files"][0]["upload_status"] == "ready"
-        assert client.delete(task["status_url"]).json()["status"] == "canceled"
+        assert client.get(task_url(client, task)).json()["files"][0]["status"] in {"pending", "running", "completed"}
+        assert client.post(task_url(client, task) + "/cancel").json()["status"] == "canceled"
 
 
 @pytest.mark.parametrize("page_count", [601, 1001])
@@ -476,10 +484,10 @@ def test_large_page_count_pdf_is_not_rejected(live_service: _LiveService, page_c
     data = buffer.getvalue()
     with _client(live_service) as client:
         task = _submit(client, [("many-pages.pdf", data)])
-        assert client.put(task["uploads"][0]["upload_url"], content=data).status_code == 200
+        assert client.put(pending_files(task)[0].get("upload").get("url"), content=data).status_code == 200
         result = _wait(client, task, timeout=90)
         assert result["status"] == "completed", result
-        download = client.get(result["files"][0]["result_url"])
+        download = client.get(result["files"][0].get("result_url"))
         middle = json.loads(_members(download.content)["middle_json.json"])
         assert len(middle["pages"]) == page_count
         assert middle["pages"][-1]["page_idx"] == page_count - 1
@@ -512,10 +520,10 @@ def test_real_documents_match_local_parser_outputs(live_service: _LiveService, d
         expected = build_task_output(baseline, ["default"], Path(directory) / "outputs").read_bytes()
     with _client(live_service) as client:
         task = _submit(client, [(name, data)], page_range=page_range, output_formats=["default"])
-        assert client.put(task["uploads"][0]["upload_url"], content=data).status_code == 200
+        assert client.put(pending_files(task)[0].get("upload").get("url"), content=data).status_code == 200
         result = _wait(client, task)
         assert result["status"] == "completed", result
-        output = client.get(result["files"][0]["result_url"])
+        output = client.get(result["files"][0].get("result_url"))
         assert output.status_code == 200
         assert _members(output.content) == _members(expected)
 
@@ -557,7 +565,6 @@ def test_url_task_over_http_downloads_chunked_source(live_service: _LiveService,
         for worker in live_service.execution_apps:
             worker.state.allow_http_source = True
         item = {
-            "client_file_id": "url-1",
             "file_name": f"logical.{document}",
             "url": f"{source_server.url}/opaque?signature=a%2Fb&part=1",
             **({"page_range": "2"} if document == "pdf" else {}),
@@ -574,12 +581,12 @@ def test_url_task_over_http_downloads_chunked_source(live_service: _LiveService,
             )
             assert response.status_code == 202, response.text
             task = response.json()
-            assert task["uploads"] == [] and task["files"][0]["upload_status"] == "not_required"
+            assert pending_files(task) == [] and task["files"][0]["status"] == "waiting-file"
             result = _wait(client, task)
             assert result["status"] == "completed", result
-            assert result["files"][0]["bytes"] == len(data)
-            assert result["files"][0]["sha256sum"] == hashlib.sha256(data).hexdigest()
-            members = _members(client.get(result["files"][0]["result_url"]).content)
+            assert result["files"][0].get("bytes") == len(data)
+            assert "sha256sum" not in result["files"][0]
+            members = _members(client.get(result["files"][0].get("result_url")).content)
             assert live_service.counts == {}
             assert len(requests) == 1 and requests[0].method == "GET"
             assert requests[0].scope["query_string"] == b"signature=a%2Fb&part=1"
@@ -590,13 +597,13 @@ def test_url_task_over_http_downloads_chunked_source(live_service: _LiveService,
                 assert response.status_code == 202, response.text
                 baseline_result = _wait(client, response.json())
                 assert baseline_result["status"] == "completed"
-                baseline_url = baseline_result["files"][0]["result_url"]
+                baseline_url = baseline_result["files"][0].get("result_url")
             else:
                 baseline = _submit(client, [(item["file_name"], data)], page_range="2")
-                assert client.put(baseline["uploads"][0]["upload_url"], content=data).status_code == 200
+                assert client.put(pending_files(baseline)[0].get("upload").get("url"), content=data).status_code == 200
                 baseline_result = _wait(client, baseline)
                 assert baseline_result["status"] == "completed"
-                baseline_url = baseline_result["files"][0]["result_url"]
+                baseline_url = baseline_result["files"][0].get("result_url")
             baseline_members = _members(client.get(baseline_url).content)
             assert {k: v for k, v in members.items() if k != "images/"} == {
                 k: v for k, v in baseline_members.items() if k not in {"model_output.json", "images/"}
@@ -633,24 +640,32 @@ class _CloudState:
         ready, expired = record["ready"], record["expired"]
         files = []
         for index, item in enumerate(record["files"]):
-            client_id = item["client_file_id"]
-            status = "completed" if client_id in ready else "waiting_upload"
-            if client_id in expired:
+            file_id = item["file_id"]
+            status = "completed" if file_id in ready else "waiting-file"
+            if file_id in expired:
                 status = "failed"
-            if client_id in ready and self.forced_status in {"failed", "running"}:
+            if file_id in ready and self.forced_status in {"failed", "running"}:
                 status = self.forced_status
-            if self.forced_status == "partial" and index == len(record["files"]) - 1 and client_id in ready:
+            if self.forced_status == "partial" and index == len(record["files"]) - 1 and file_id in ready:
                 status = "failed"
             result_url = None
             if status == "completed":
-                result_url = f"{self.storage_url}/download/{task_id}/{client_id}?signature={record['download_version']}"
+                result_url = f"{self.storage_url}/download/{task_id}/{file_id}?signature={record['download_version']}"
                 if self.api_download_redirect:
-                    result_url = f"{self.gateway_url}/redirect/{task_id}/{client_id}"
+                    result_url = f"{self.gateway_url}/redirect/{task_id}/{file_id}"
             files.append(
                 {
-                    **item,
-                    "name": item["file_name"],
-                    "upload_status": "ready" if client_id in ready else ("expired" if client_id in expired else "pending"),
+                    "file_id": file_id,
+                    "file_name": item["file_name"],
+                    "bytes": item.get("bytes"),
+                    "url": item.get("url"),
+                    "upload": None
+                    if file_id in ready | expired
+                    else {
+                        "url": f"{self.storage_url}/objects/{task_id}/{file_id}?signature=0",
+                        "headers": {"Content-Type": "application/octet-stream", "X-Upload-Token": "storage-token"},
+                        "expires_at": record["expires_at"],
+                    },
                     "status": status,
                     "result_url": result_url,
                 }
@@ -658,32 +673,18 @@ class _CloudState:
         states = [item["status"] for item in files]
         if "running" in states:
             status = "running"
-        elif "waiting_upload" in states:
-            status = "waiting_upload"
+        elif "waiting-file" in states:
+            status = "waiting-file"
         else:
             status = (
                 "completed"
                 if all(value == "completed" for value in states)
                 else ("partial" if "completed" in states else "failed")
             )
-        uploads = [
-            {
-                "client_file_id": item["client_file_id"],
-                "upload_method": "PUT",
-                "upload_url": f"{self.storage_url}/objects/{task_id}/{item['client_file_id']}?signature=0",
-                "upload_headers": {"Content-Type": "application/octet-stream", "X-Upload-Token": "storage-token"},
-                "expires_at": record["expires_at"],
-            }
-            for item in record["files"]
-            if item["client_file_id"] not in ready | expired
-        ]
         payload = {
             "task_id": task_id,
             "status": status,
-            "status_url": f"{self.gateway_url}/v1/tasks/{task_id}",
-            "files": files,
-            "uploads": uploads,
-            "error": None,
+            "files": [{key: value for key, value in item.items() if value is not None} for item in files],
             "output_formats": record["output_formats"],
         }
         if self.invalid_response == "missing_id":
@@ -716,27 +717,40 @@ def _cloud_apps(state: _CloudState) -> tuple[FastAPI, FastAPI]:
         submitted = await request.json()
         manifest = submitted["files"]
         task_id = f"cloud_{len(state.tasks) + 1}"
+        assert all({"client_file_id", "file_id"}.isdisjoint(item) for item in manifest)
+        manifest = [{**item, "file_id": f"file-{task_id}-{index + 1}"} for index, item in enumerate(manifest)]
         state.tasks[task_id] = {
             "files": manifest,
-            "ready": {item["client_file_id"] for item in manifest if item.get("sha256sum") in state.cache},
+            "ready": {item["file_id"] for item in manifest if item.get("sha256sum") in state.cache},
             "upload_version": 0,
             "download_version": 0,
             "expired": set(),
             "expires_at": int(time.time()) + 3600,
             "output_formats": submitted["output_formats"],
         }
-        return JSONResponse(state.payload(task_id), status_code=202)
+        detail = state.payload(task_id)
+        return JSONResponse(
+            {
+                "task_id": detail["task_id"],
+                "status": detail["status"],
+                "files": [
+                    {key: value for key, value in item.items() if key in {"file_id", "file_name", "status", "upload"}}
+                    for item in detail["files"]
+                ],
+            },
+            status_code=202,
+        )
 
     @gateway.get("/v1/tasks/{task_id}")
     async def get_task(task_id: str) -> Response:
         """仅返回元数据和 OSS 下载链接，不回源读取或代理 ZIP 内容。"""
         return JSONResponse(state.payload(task_id))
 
-    @gateway.get("/redirect/{task_id}/{client_file_id}")
-    async def redirect(task_id: str, client_file_id: str) -> Response:
+    @gateway.get("/redirect/{task_id}/{file_id}")
+    async def redirect(task_id: str, file_id: str) -> Response:
         """模拟同源下载地址重定向到同主机不同端口，检查客户端凭据隔离。"""
         return RedirectResponse(
-            f"{state.storage_url}/download/{task_id}/{client_file_id}?signature={state.tasks[task_id]['download_version']}",
+            f"{state.storage_url}/download/{task_id}/{file_id}?signature={state.tasks[task_id]['download_version']}",
             status_code=302,
         )
 
@@ -747,33 +761,33 @@ def _cloud_apps(state: _CloudState) -> tuple[FastAPI, FastAPI]:
         assert request.headers.get("authorization") is None
         return await call_next(request)
 
-    @storage.put("/objects/{task_id}/{client_file_id}")
-    async def upload(task_id: str, client_file_id: str, request: Request) -> Response:
+    @storage.put("/objects/{task_id}/{file_id}")
+    async def upload(task_id: str, file_id: str, request: Request) -> Response:
         """只在对象存储接收文件字节，并模拟临时错误、链接过期和提交后响应丢失。"""
         assert request.headers.get("x-upload-token") == "storage-token"
-        key = task_id + "/" + client_file_id
+        key = task_id + "/" + file_id
         state.upload_attempts[key] = state.upload_attempts.get(key, 0) + 1
         record = state.tasks[task_id]
         if request.query_params.get("signature") != str(record["upload_version"]):
             return Response(status_code=403)
         if state.expired_upload and record["upload_version"] == 0:
-            record["expired"].add(client_file_id)
+            record["expired"].add(file_id)
             return Response(status_code=410)
         if state.transient_upload and state.upload_attempts[key] == 1:
             return Response(status_code=503)
         data = await request.body()
-        item = next(item for item in record["files"] if item["client_file_id"] == client_file_id)
-        assert len(data) == item["bytes"]
+        item = next(item for item in record["files"] if item["file_id"] == file_id)
+        assert len(data) == item.get("bytes")
         actual = hashlib.sha256(data).hexdigest()
         assert item.get("sha256sum") in {None, actual}
         state.cache[actual] = data
-        record["ready"].add(client_file_id)
+        record["ready"].add(file_id)
         if state.lost_upload_response:
             return Response(status_code=503)
         return Response(status_code=200)
 
-    @storage.get("/download/{task_id}/{client_file_id}")
-    async def download(task_id: str, client_file_id: str, request: Request) -> Response:
+    @storage.get("/download/{task_id}/{file_id}")
+    async def download(task_id: str, file_id: str, request: Request) -> Response:
         """结果字节仅由对象存储返回；过期地址通过再次查询原任务刷新。"""
         record = state.tasks[task_id]
         if request.query_params.get("signature") != str(record["download_version"]):
@@ -783,7 +797,7 @@ def _cloud_apps(state: _CloudState) -> tuple[FastAPI, FastAPI]:
             return Response(status_code=403)
         output = io.BytesIO()
         with zipfile.ZipFile(output, "w") as archive:
-            archive.writestr("markdown.md", f"# OSS result {client_file_id}\n")
+            archive.writestr("markdown.md", f"# OSS result {file_id}\n")
         return Response(output.getvalue(), media_type="application/zip")
 
     return gateway, storage
@@ -824,7 +838,7 @@ def test_same_client_works_with_saas_and_oss(cloud: _CloudState, tmp_path: Path,
     assert not any(surface == "gateway" and method == "PUT" for surface, method, _, _ in cloud.requests)
     assert not any(path.endswith("/result") for _, _, path, _ in cloud.requests)
     assert all(auth is None for surface, _, _, auth in cloud.requests if surface == "storage")
-    assert _members((tmp_path / "results/f1/a.zip").read_bytes())["markdown.md"] == b"# OSS result f1\n"
+    assert _members((tmp_path / "results/file-cloud_1-1/a.zip").read_bytes())["markdown.md"] == b"# OSS result file-cloud_1-1\n"
 
 
 @pytest.mark.parametrize("failure", ["transient_upload", "lost_upload_response", "expired_download", "api_download_redirect"])
@@ -836,9 +850,9 @@ def test_client_recovers_links_and_uncertain_uploads(cloud: _CloudState, tmp_pat
     result = _run_script(_script_env(tmp_path, cloud.gateway_url), source)
     assert result.returncode == 0, result.stdout + result.stderr
     assert len(cloud.tasks) == 1
-    assert cloud.upload_attempts["cloud_1/f1"] == (2 if failure == "transient_upload" else 1)
+    assert cloud.upload_attempts["cloud_1/file-cloud_1-1"] == (2 if failure == "transient_upload" else 1)
     assert all(auth is None for surface, _, _, auth in cloud.requests if surface == "storage")
-    assert (tmp_path / "results/f1/a.zip").is_file()
+    assert (tmp_path / "results/file-cloud_1-1/a.zip").is_file()
 
 
 @pytest.mark.parametrize("invalid", ["missing_id", "unknown_status"])
@@ -851,7 +865,7 @@ def test_invalid_success_response_does_not_upload_or_poll(cloud: _CloudState, tm
     assert result.returncode == 1
     assert not cloud.upload_attempts
     assert not any(method == "GET" for _, method, _, _ in cloud.requests)
-    assert not (tmp_path / "results/f1/a.zip").exists()
+    assert not (tmp_path / "results/file-cloud_1-1/a.zip").exists()
 
 
 @pytest.mark.parametrize("status,exit_code", [("partial", 2), ("failed", 1), ("running", 124)])
@@ -865,7 +879,7 @@ def test_client_exit_codes_and_poll_budget(cloud: _CloudState, tmp_path: Path, s
     result = _run_script(_script_env(tmp_path, cloud.gateway_url, MAX_POLLS="2"), source, second)
     assert result.returncode == exit_code, result.stdout + result.stderr
     assert len(cloud.tasks) == 1 and "task_id=cloud_1" in result.stderr
-    assert (tmp_path / "results/f1/a.zip").exists() == (status == "partial")
+    assert (tmp_path / "results/file-cloud_1-1/a.zip").exists() == (status == "partial")
     if status == "running":
         assert "continues running" in result.stderr
 
@@ -877,8 +891,8 @@ def test_client_does_not_renew_expired_upload(cloud: _CloudState, tmp_path: Path
     source.write_bytes(HTML)
     result = _run_script(_script_env(tmp_path, cloud.gateway_url), source)
     assert result.returncode == 1, result.stdout + result.stderr
-    assert len(cloud.tasks) == 1 and cloud.upload_attempts == {"cloud_1/f1": 1}
-    assert not (tmp_path / "results/f1/a.zip").exists()
+    assert len(cloud.tasks) == 1 and cloud.upload_attempts == {"cloud_1/file-cloud_1-1": 1}
+    assert not (tmp_path / "results/file-cloud_1-1/a.zip").exists()
 
 
 @pytest.mark.parametrize("asynchronous", [False, True])

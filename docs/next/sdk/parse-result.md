@@ -23,7 +23,6 @@
 | `middle_json` | `MiddleJson`，schema 2.0 结构化中间表示，是结果的主字段。 |
 | `pages` | property，返回 `list[PageInfo]`，委托给 `middle_json.pages`，不是 dataclass 字段。 |
 | `_pdf_doc` | PDF/image 结果用于裁剪图片的文档对象，可选。 |
-| `_model_output` | backend 原始模型输出，可选。 |
 | `_image_cache` | 顶层图片缓存（`ImagePayloadCache`），初始化时规范化，不再从 span 携带图片字节。 |
 
 `ParseResult` 通过持有的 `middle_json` 携带 schema 2.0 顶层字段（`is_full_document`、`file_suffix`、`effort`、`parse_mode`、`mineru_version`）；`ParseResult` 自身不额外维护 backend 或版本字段。
@@ -145,10 +144,9 @@ writer.write(path: str, data: bytes) -> None
 | `markdown.md` | `markdown()` 输出。 |
 | `middle_json.json` | `to_json()`。 |
 | `structured_content.json` | `structured_content()` 的 JSON。 |
-| `model_output.json` | 原始模型输出，仅 `_model_output` 存在时写出。 |
 | image paths | `images()` 返回的图片 bytes，路径即 `images()` 的 key。 |
 
-以上文件名由 `save()` 内部固定，调用方无需（也不能）通过参数调整。
+以上文件名由 `save()` 内部固定，调用方无需（也不能）通过参数调整。ModelJson 仅在解析和后处理内部使用，不附加到 `ParseResult`，也不写入结果目录或 ZIP。
 
 ## 与 Middle JSON
 

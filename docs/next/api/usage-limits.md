@@ -31,7 +31,7 @@ Tasks 四种输出格式不设置额外权限门槛；服务启用认证后所�
 |------|------|-----------|------------|
 | `parse` | `POST /v1/tasks` | 5/min | 30/min |
 | `chat` | `POST /v1/chat/completions`、`POST /v1/responses` | 10/min | 60/min |
-| `read` | 其他 GET/DELETE endpoint | 60/min | 300/min |
+| `read` | 其他 GET endpoint，以及 `POST /v1/tasks/{task_id}/cancel`（取消沿用控制请求配额） | 60/min | 300/min |
 
 响应头携带当前 endpoint 类别的限流状态:
 

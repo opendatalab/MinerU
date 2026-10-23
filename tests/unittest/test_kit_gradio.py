@@ -116,11 +116,6 @@ def _middle_json(
     )
 
 
-def _model_json() -> ModelJson:
-    """为真实 API/ZIP 测试提供完整分析协议而不是旧任意字典。"""
-    return ModelJson(pages=[[{"raw": "model"}]], page_index_map=[], metadata=_middle_json().metadata.model_copy(deep=True))
-
-
 def _httpx_proxy_for_test_client(
     test_client: TestClient,
     request_log: list[tuple[str, str, str | None]],
@@ -426,7 +421,7 @@ def test_v1_client_full_asgi_upload_job_poll_and_zip(
         """替代模型推理，同时保留 server 的真实 job 和打包流程。"""
         parse_calls.append({"path": path, **kwargs})
         clock[0] += 0.25
-        return ParseResult(middle_json=_middle_json(with_image=False), _model_output=_model_json())
+        return ParseResult(middle_json=_middle_json(with_image=False))
 
     from mineru.parser import task_outputs
 
@@ -465,7 +460,7 @@ def test_v1_client_full_asgi_upload_job_poll_and_zip(
     assert any(path.startswith("/v1/files/file-") and path.endswith("/content") for path in paths)
     protected_requests = [item for item in request_log if item[1] not in {"/v1/health", "/v1/tiers"}]
     assert protected_requests and all(authorization == "Bearer secret" for _method, _path, authorization in protected_requests)
-    assert result._model_output.pages == [[{"raw": "model"}]]
+    assert not hasattr(result, "_model_output")
     assert parse_calls[0]["page_range"] == "1"
 
 
@@ -478,7 +473,7 @@ def test_gradio_routes_real_v1_jobs_and_isolates_remote_auth(monkeypatch: pytest
 
     async def fake_parse_async(path: str, **kwargs: Any) -> ParseResult:
         """只替换模型推理，保留两套服务各自的上传、任务和 ZIP 打包流程。"""
-        return ParseResult(middle_json=_middle_json(with_image=False), _model_output=_model_json())
+        return ParseResult(middle_json=_middle_json(with_image=False))
 
     monkeypatch.setattr(parser_api_server, "parse_async", fake_parse_async)
     remote_api = parser_api_server.create_app(
@@ -526,13 +521,13 @@ def test_gradio_routes_real_v1_jobs_and_isolates_remote_auth(monkeypatch: pytest
             requests.clear()
 
             flash_result = asyncio.run(routed.parse_file(source, tier="flash", page_range=""))
-            assert flash_result._model_output.pages == [[{"raw": "model"}]]
+            assert not hasattr(flash_result, "_model_output")
             assert requests and all(host == "local.test" and auth is None for host, _method, _path, auth in requests)
             assert any(method == "POST" and path == "/v1/tasks" for _host, method, path, _auth in requests)
             requests.clear()
 
             remote_result = asyncio.run(routed.parse_file(source, tier="standard", page_range="1"))
-            assert remote_result._model_output.pages == [[{"raw": "model"}]]
+            assert not hasattr(remote_result, "_model_output")
             assert requests and all(
                 host == "remote.test" and auth == "Bearer remote-secret" for host, _method, _path, auth in requests
             )
@@ -688,7 +683,7 @@ def test_v1_client_preserves_v1_error_code(monkeypatch: pytest.MonkeyPatch, tmp_
 def test_v1_client_parse_uses_api_parser_zip_contract(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path, ocr_mode: str, observe_running: bool
 ) -> None:
-    """验证 Gradio client 固定请求带图片和模型输出的 V1 ZIP 结果。"""
+    """验证 Gradio client 请求语义结果和图片，不请求模型输出。"""
     source = tmp_path / "demo.pdf"
     source.write_bytes(_pdf_bytes())
     calls: dict[str, Any] = {}
@@ -708,7 +703,7 @@ def test_v1_client_parse_uses_api_parser_zip_contract(
             calls["page_range"] = page_range
             assert statuses == ["Preparing request...", "Submitting task..."]
             assert status_callback is not None
-            status_callback("queued")
+            status_callback("pending")
             if observe_running:
                 status_callback("running")
             status_callback("completed")
@@ -724,7 +719,6 @@ def test_v1_client_parse_uses_api_parser_zip_contract(
         ("standard",),
         ("default",),
         ("upload",),
-        model_output=True,
     )
     statuses: list[str | ParseStatusUpdate] = []
     result = asyncio.run(
@@ -732,7 +726,7 @@ def test_v1_client_parse_uses_api_parser_zip_contract(
     )
     assert isinstance(result, ParseResult)
     assert calls["include_images"] is True
-    assert calls["include_model_output"] is True
+    assert "include_model_output" not in calls
     assert calls["tier"] == "standard"
     assert calls["ocr_mode"] == ocr_mode
     assert calls["page_range"] == "1-2"
@@ -872,7 +866,7 @@ def test_persist_and_render_all_gradio_download_formats(tmp_path: Path) -> None:
     """验证严格 Middle JSON、布局 PDF 和七种下载产物。"""
     source = tmp_path / "报告.pdf"
     source.write_bytes(_pdf_bytes())
-    result = ParseResult(middle_json=_middle_json(), _model_output=_model_json())
+    result = ParseResult(middle_json=_middle_json())
     artifacts = persist_parse_result(result, source, output_root=tmp_path / "output", page_range="")
 
     assert artifacts.middle_json_path.read_text(encoding="utf-8").find('"schema_version": "2.0"') >= 0
@@ -880,6 +874,7 @@ def test_persist_and_render_all_gradio_download_formats(tmp_path: Path) -> None:
     assert artifacts.layout_pdf_path == artifacts.root / "layout.pdf"
     assert artifacts.origin_pdf_path is not None and artifacts.origin_pdf_path.is_file()
     assert artifacts.layout_pdf_path is not None and artifacts.layout_pdf_path.is_file()
+    assert not (artifacts.root / "model_output.json").exists()
     assert not list(artifacts.root.glob("*.zip"))
     assert list((artifacts.root / "images").glob("*.jpg"))
     for format_name, extension in (("markdown", "md"), ("json", "json")):

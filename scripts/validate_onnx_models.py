@@ -244,8 +244,6 @@ def parse_documents(args: argparse.Namespace) -> dict[str, Any]:
                 save_parse_result(result, document_dir / "result.zip", "zip")
                 save_parse_result(result, document_dir / "markdown.md", "markdown")
                 save_parse_result(result, document_dir / "middle_json.json", "middle_json")
-                if result._model_output is not None:
-                    write_json(document_dir / "model_output.json", result._model_output.to_dict())
         report["documents"].append(
             {
                 "input": str(path),

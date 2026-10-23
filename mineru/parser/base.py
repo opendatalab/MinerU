@@ -11,7 +11,7 @@ from typing import Any
 
 from ..render import render_markdown, render_structured_content
 from ..render.contracts import ImageRenderer, RenderMode
-from ..types import MiddleJson, ModelJson, PageInfo
+from ..types import MiddleJson, PageInfo
 from .writer import DataWriter
 
 MIDDLE_JSON_SCHEMA_VERSION: str = MiddleJson.model_fields["schema_version"].default
@@ -26,14 +26,6 @@ class ParseResult:
     """
 
     middle_json: MiddleJson
-    _model_output: ModelJson | None = None
-
-    def __post_init__(self) -> None:
-        """要求可选分析结果为共享类型，禁止把任意旧列表重新导出为 Model JSON。"""
-        if self._model_output is not None:
-            if not isinstance(self._model_output, ModelJson):
-                raise TypeError("model output must be a ModelJson document")
-            validate_mineru_metadata(self._model_output)
 
     @property
     def pages(self) -> list[PageInfo]:
@@ -97,11 +89,6 @@ class ParseResult:
             "middle_json.json": exported.to_json(),
             "structured_content.json": json.dumps(exported.structured_content(), ensure_ascii=False, indent=2),
         }
-
-        if self._model_output is not None:
-            validate_mineru_metadata(self._model_output)
-            model_output = self._model_output.to_dict(skip_defaults=False)
-            text_files["model_output.json"] = json.dumps(model_output, ensure_ascii=False, indent=2)
 
         # 所有引用和序列化均先完成，避免缺失素材时写出貌似完整的结果包。
         for path, content in text_files.items():

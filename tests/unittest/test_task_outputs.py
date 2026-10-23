@@ -74,6 +74,7 @@ def _illustrated_result() -> tuple[ParseResult, bytes]:
         ],
         is_full_document=True,
         metadata={"file_suffix": "docx", "producer": {"name": "mineru", "version": "test"}},
+        extensions={"mineru": {"tier": "flash", "parse_mode": "txt"}},
     )
     return ParseResult(middle_json=middle), png
 
@@ -122,7 +123,7 @@ def test_all_task_output_combinations(
     finished = _terminal(client, task)
     assert finished["status"] == "completed", finished
     assert calls == 1 and result.middle_json == original
-    downloaded = client.get(finished["files"][0]["result_url"])
+    downloaded = client.get(finished["files"][0].get("result_url"))
     assert downloaded.status_code == 200
     if formats == ["html"]:
         assert downloaded.headers["content-type"].startswith("text/html")
@@ -172,7 +173,7 @@ def test_task_formats_use_only_service_authentication(tmp_path: Path, formats: l
     """启用 Key 时四种格式都需要服务认证，通过认证后都可执行。"""
     app = api_server.create_app(upload_dir=str(tmp_path), tier="flash", api_key="secret")
     with TestClient(app) as client:
-        body = {"files": [{"client_file_id": "f1", "file_name": "a.html", "bytes": len(HTML)}], "output_formats": formats}
+        body = {"files": [{"file_name": "a.html", "bytes": len(HTML)}], "output_formats": formats}
         assert client.post("/v1/tasks", json=body).status_code == 401
         headers = {"Authorization": "Bearer secret"}
         task = _submit(client, [("a.html", HTML)], output_formats=formats, headers=headers)
@@ -187,7 +188,7 @@ def test_duplicate_formats_and_missing_images(service: tuple[TestClient, FastAPI
     assert task["output_formats"] == ["html"]
     _upload(client, task, [("a.html", HTML)])
     completed = _terminal(client, task)
-    assert client.get(completed["files"][0]["result_url"]).headers["content-type"].startswith("text/html")
+    assert client.get(completed["files"][0].get("result_url")).headers["content-type"].startswith("text/html")
     broken, _ = _illustrated_result()
     block = broken.middle_json.pages[0].blocks[1].content[0]
     block.image_base64 = None
@@ -202,5 +203,5 @@ def test_duplicate_formats_and_missing_images(service: tuple[TestClient, FastAPI
     _upload(client, task, [("a.html", HTML)])
     failed = _terminal(client, task)
     assert failed["status"] == "failed"
-    assert failed["files"][0]["result_url"] is None
-    assert failed["files"][0]["error"]["code"] == "result_packaging_failed"
+    assert failed["files"][0].get("result_url") is None
+    assert failed["files"][0].get("error")["code"] == "result_packaging_failed"

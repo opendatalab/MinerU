@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import io
 import itertools
 import json
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -14,6 +16,7 @@ import zipfile
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 import pytest
@@ -70,33 +73,29 @@ class Upstream:
         ready = task["ready"] and time.monotonic() >= task["uploaded_at"] + self.ready_delay
         complete = ready and self.complete and time.monotonic() >= task["uploaded_at"] + self.complete_delay
         expired = not ready and task["expires_at"] <= time.time()
-        status = "failed" if expired else "completed" if complete else "running" if ready else "waiting_upload"
+        status = "failed" if expired else "completed" if complete else "running" if ready else "waiting-file"
         result_url = f"{self.storage_url}/result/{task_id}?signature=a%2Fb&version={task['version']}" if complete else None
         if result_url and self.redirect:
             result_url = f"{self.api_url}/redirect/{task_id}"
         return {
             "task_id": task_id,
             "status": status,
-            "status_url": f"{self.api_url}/v1/tasks/{task_id}",
             "output_formats": task["options"]["output_formats"],
             "files": [
                 {
-                    "client_file_id": "file",
+                    "file_id": f"file-{task_id}",
+                    "file_name": task["options"]["files"][0]["file_name"],
+                    "bytes": task["options"]["files"][0]["bytes"],
                     "status": status,
-                    "upload_status": "expired" if expired else "ready" if ready else "pending",
+                    "upload": None
+                    if task["ready"] or expired
+                    else {
+                        "url": f"{self.storage_url}/upload/{task_id}",
+                        "headers": {"x-upload-token": "storage-token"},
+                        "expires_at": task["expires_at"],
+                    },
                     "result_url": result_url,
                     "error": {"code": "upload_expired"} if expired else None,
-                }
-            ],
-            "uploads": []
-            if ready or expired
-            else [
-                {
-                    "client_file_id": "file",
-                    "upload_method": "PUT",
-                    "upload_url": f"{self.storage_url}/upload/{task_id}",
-                    "upload_headers": {"x-upload-token": "storage-token"},
-                    "expires_at": task["expires_at"],
                 }
             ],
         }
@@ -115,6 +114,7 @@ class Upstream:
                 return httpx.Response(401, json={"error": {"code": "invalid_api_key", "message": "Bad upstream key"}})
             body = json.loads(await request.aread())
             assert len(body["files"]) == 1
+            assert {"client_file_id", "file_id"}.isdisjoint(body["files"][0])
             task_id = f"task_{len(self.tasks) + 1}"
             self.tasks[task_id] = {
                 "options": body,
@@ -128,7 +128,20 @@ class Upstream:
             payload = self.payload(task_id)
             if self.create_failure == "malformed":
                 payload["task_id"] = None
-            return httpx.Response(202, json=payload)
+            return httpx.Response(
+                202,
+                json={
+                    "task_id": payload["task_id"],
+                    "status": payload["status"],
+                    "files": [
+                        {
+                            key: value
+                            for key, value in payload["files"][0].items()
+                            if key in {"file_id", "file_name", "status", "upload"} and value is not None
+                        }
+                    ],
+                },
+            )
         task_id = request.url.path.rsplit("/", 1)[-1]
         task = self.tasks[task_id]
         if request.method == "PUT":
@@ -160,6 +173,16 @@ class Upstream:
             self.download_interrupted = False
             return httpx.Response(200, stream=InterruptedStream())
         return httpx.Response(200, content=artifact_bytes(task["options"]["output_formats"]))
+
+
+def assert_no_upstream_cancellation(upstream: Upstream) -> None:
+    """超时、断连和关闭包装服务均不得发送新取消请求或旧 DELETE 请求。"""
+    cancellations = [
+        (method, url)
+        for method, url, _authorization in upstream.calls
+        if method == "DELETE" or (method == "POST" and urlsplit(url).path.endswith("/cancel"))
+    ]
+    assert not cancellations
 
 
 class InterruptedStream(httpx.AsyncByteStream):
@@ -255,9 +278,10 @@ def test_expired_wait_does_not_cancel_upstream(tmp_path: Path) -> None:
         response = submit(client, wait_timeout=1)
         assert response.status_code == 202
         assert 0.9 <= time.monotonic() - started < 3
-        assert not any(method == "DELETE" for method, _, _ in upstream.calls)
+        assert_no_upstream_cancellation(upstream)
         upstream.complete = True
         assert client.get(response.json()["status_url"]).json()["status"] == "completed"
+    assert_no_upstream_cancellation(upstream)
 
 
 def test_wait_budget_excludes_storage_notification_delay(tmp_path: Path) -> None:
@@ -380,6 +404,55 @@ def test_restart_uses_existing_task_and_isolates_upstream(tmp_path: Path) -> Non
         assert client.get("/v1/file_parse/request_1").status_code == 404
 
 
+def test_new_protocol_preserves_but_does_not_restore_legacy_records(tmp_path: Path) -> None:
+    """新协议隔离旧数据库和源文件，同名请求只恢复新空间中已确认的任务。"""
+    upstream = Upstream()
+    settings = FileParseSettings(upstream.api_url, "secret", tmp_path)
+    legacy_namespace = hashlib.sha256(f"{settings.api_url}\0secret".encode()).hexdigest()
+    assert settings.namespace == "tasks-v5-" + legacy_namespace
+    legacy = tmp_path / ("tasks-v4-" + legacy_namespace)
+    source = legacy / "sources" / "old-input"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"old source")
+    result = legacy / "results" / "old-result.zip"
+    result.parent.mkdir()
+    result.write_bytes(b"old result")
+    old_options = {**ParseOptions().model_dump(), "include_model_output": True}
+    old_record = Record("request_1", "report.pdf", 10, "a" * 64, old_options, str(source), "old-fingerprint")
+    database = legacy / "requests.sqlite3"
+    with sqlite3.connect(database) as connection:
+        connection.execute("CREATE TABLE requests (request_id TEXT PRIMARY KEY, data TEXT NOT NULL)")
+        connection.execute("INSERT INTO requests VALUES (?, ?)", (old_record.request_id, old_record.to_json()))
+    before = {path: path.read_bytes() for path in legacy.rglob("*") if path.is_file()}
+
+    with TestClient(application(tmp_path, upstream)) as client:
+        assert client.get("/v1/file_parse/request_1").status_code == 404
+        assert upstream.calls == []
+        assert submit(client).status_code == 200
+        assert "include_model_output" not in upstream.tasks["task_1"]["options"]
+    with TestClient(application(tmp_path, upstream)) as client:
+        assert client.get("/v1/file_parse/request_1").json()["task_id"] == "task_1"
+        assert client.get("/v1/file_parse/request_1/result").status_code == 200
+    assert len(upstream.tasks) == 1
+    assert {path: path.read_bytes() for path in legacy.rglob("*") if path.is_file()} == before
+
+
+@pytest.mark.parametrize("enabled", ["false", "true"])
+def test_removed_model_output_form_field_is_rejected(tmp_path: Path, enabled: str) -> None:
+    """旧表单字段无论取值都报错，不创建上游任务或恢复记录。"""
+    upstream = Upstream()
+    app = application(tmp_path, upstream)
+    with TestClient(app) as client:
+        response = client.post(
+            "/v1/file_parse",
+            files={"file": ("report.pdf", b"source", "application/pdf")},
+            data={"request_id": "removed-option", "include_model_output": enabled},
+        )
+        assert response.status_code == 400
+        assert response.json()["error"]["code"] == "invalid_request"
+        assert not app.state.service.records and not upstream.calls
+
+
 @pytest.mark.parametrize("stage", ["prepared", "pending", "expired", "submitting"])
 def test_restart_at_upload_boundaries(tmp_path: Path, stage: str) -> None:
     """覆盖崩溃前尚未创建、已创建待上传、上传过期和提交不确定四个恢复边界。"""
@@ -407,7 +480,7 @@ def test_restart_at_upload_boundaries(tmp_path: Path, stage: str) -> None:
             try:
                 task = await remote.create(record)
                 record.remote = task.model_dump()
-                record.status = "waiting_upload"
+                record.status = "waiting-file"
                 if stage == "expired":
                     upstream.tasks[task.task_id]["expires_at"] = int(time.time()) - 1
             finally:
@@ -490,6 +563,7 @@ def test_disconnect_does_not_cancel_upload(tmp_path: Path) -> None:
             assert not list(app.state.service.store.sources.iterdir())
 
     asyncio.run(exercise())
+    assert_no_upstream_cancellation(upstream)
 
 
 def test_attachment_cleanup_after_send_disconnect(tmp_path: Path) -> None:
@@ -652,3 +726,42 @@ def test_cli_configuration_and_environment(tmp_path: Path, monkeypatch: pytest.M
     )
     assert result.exit_code == 0, result.output
     assert captured[0][1] == {"host": "127.0.0.1", "port": 8003}
+
+
+@pytest.mark.parametrize("cached", [False, True])
+def test_restart_after_creation_receipt_and_failed_first_query(tmp_path: Path, cached: bool) -> None:
+    """创建成功后查询失败仍先持久化 ID，重启仅恢复原任务，包括已完成的缓存回执。"""
+
+    class FailingQueries(Upstream):
+        """把首次进程的详情查询固定为临时失败，保留创建和对象存储行为。"""
+
+        fail_queries = True
+
+        async def handle(self, request: httpx.Request) -> httpx.Response:
+            """让失败发生在已确认创建之后，避免测试误走创建结果未知分支。"""
+            if self.fail_queries and request.method == "GET" and "/v1/tasks/" in request.url.path:
+                return httpx.Response(503, json={"error": {"code": "temporary", "message": "retry query"}})
+            return await super().handle(request)
+
+    upstream = FailingQueries()
+    upstream.cache_hit = cached
+    app = application(tmp_path, upstream)
+    with TestClient(app) as client:
+        app.state.service.client.retry_delay = 0
+        response = submit(client)
+        assert response.status_code == 502, response.text
+        record = app.state.service.records["request_1"]
+        assert record.task.task_id == "task_1"
+        assert record.task.files[0].file_id == "file-task_1"
+        assert not record.task.details_loaded
+        assert record.status != "submission_unknown"
+        if not cached:
+            assert Path(record.source_path).is_file()
+    upstream.fail_queries = False
+    with TestClient(application(tmp_path, upstream)) as client:
+        response = submit(client)
+        assert response.status_code == 200, response.text
+        assert response.content == artifact_bytes(["default"])
+        state = client.get("/v1/file_parse/request_1").json()
+        assert state["task_id"] == "task_1" and state["status"] == "completed"
+    assert len(upstream.tasks) == 1 and upstream.uploads == (0 if cached else 1)

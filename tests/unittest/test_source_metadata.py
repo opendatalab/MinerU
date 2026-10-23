@@ -41,7 +41,7 @@ def test_parser_preserves_source_metadata_before_selection(tmp_path: Path, async
     assert (props.title, props.authors, props.page_count) == ("Original title", ["Source author"], 2)
     assert result.middle_json.pages[0].page_idx == 1
     assert result.middle_json.metadata.producer.name == "mineru"
-    assert result._model_output.metadata.document == props
+    assert not hasattr(result, "_model_output")
     assert ParseResult.from_json(result.to_json()).middle_json.metadata.document == props
     assert result.structured_content()["metadata"]["document"]["title"] == "Original title"
 

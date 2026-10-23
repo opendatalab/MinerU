@@ -24,6 +24,7 @@ import time
 import tempfile
 import zipfile
 from collections.abc import Callable, Iterator, AsyncIterator
+from dataclasses import dataclass
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -32,6 +33,7 @@ from urllib.parse import unquote, urlparse, urljoin
 import httpx
 from docvortex.assets import validate_image_sidecar_path
 
+from ..task_types import TaskStatus, task_status_url
 from ..types import PageInfo, Tier, validate_tier
 from .base import DocumentParser, ParseResult
 from .page_range import normalize_page_range_input
@@ -55,9 +57,17 @@ _HTML_IMAGE_SOURCE_RE = re.compile(
 logger = logging.getLogger("mineru.api_client")
 
 _RequestMethod = Literal["GET", "POST", "PUT"]
-ApiTaskStatus = Literal["waiting_upload", "queued", "running", "completed", "partial", "failed", "canceled"]
+ApiTaskStatus = TaskStatus
 ApiJobStatus = ApiTaskStatus
-_JOB_STATUSES = {"waiting_upload", "queued", "running", *_TERMINAL_JOB_STATUSES}
+_JOB_STATUSES = {"waiting-file", "pending", "running", *_TERMINAL_JOB_STATUSES}
+
+
+@dataclass
+class _UploadState:
+    """跨轮询保留上传成功标记与重试次数，等待服务确认时不重复发送文件。"""
+
+    attempts: int = 0
+    accepted: bool = False
 
 
 def _notify_job_status(job: dict[str, Any], callback: Callable[[ApiJobStatus], None] | None) -> None:
@@ -117,7 +127,6 @@ class MinerUApiParser(DocumentParser):
         tier: Tier | None = None,
         ocr_mode: Literal["auto", "txt", "ocr"] | None = None,
         include_images: bool = False,
-        include_model_output: bool = False,
     ) -> None:
         """只保存显式配置，不在构造时联网或读取文件。"""
         if ocr_mode is not None and ocr_mode not in ("auto", "txt", "ocr"):
@@ -128,7 +137,6 @@ class MinerUApiParser(DocumentParser):
         self.tier = validate_tier(tier) if tier is not None else None
         self.ocr_mode = ocr_mode
         self.include_images = include_images
-        self.include_model_output = include_model_output
 
     def _headers(self) -> dict[str, str]:
         """生成仅用于 API 同源地址的认证头。"""
@@ -164,7 +172,6 @@ class MinerUApiParser(DocumentParser):
         payload: dict[str, Any] = {
             "files": [
                 {
-                    "client_file_id": "file",
                     "file_name": path.name,
                     "bytes": path.stat().st_size,
                     "sha256sum": _sha256_file(path),
@@ -172,7 +179,6 @@ class MinerUApiParser(DocumentParser):
                 }
             ],
             "output_formats": ["default"],
-            "include_model_output": self.include_model_output,
         }
         if self.tier is not None:
             payload["tier"] = self.tier
@@ -180,8 +186,8 @@ class MinerUApiParser(DocumentParser):
             payload["ocr_mode"] = self.ocr_mode
         return payload
 
-    def _snapshot(self, response: httpx.Response, expected: dict[str, Any] | None = None) -> dict[str, Any]:
-        """校验稳定任务身份、唯一文件映射和产物选项，不依赖文件名或数组位置。"""
+    def _task_identity(self, response: httpx.Response, expected: dict[str, Any] | None = None) -> dict[str, Any]:
+        """校验创建和查询共有的身份字段，只把服务端确认的文件 ID 用于后续请求。"""
         task = self._check(response)
         files = task.get("files")
         if (
@@ -189,29 +195,44 @@ class MinerUApiParser(DocumentParser):
             or not task["task_id"]
             or not isinstance(task.get("status"), str)
             or task.get("status") not in _JOB_STATUSES
-            or task.get("output_formats") != ["default"]
-            or task.get("include_model_output", False) != self.include_model_output
             or not isinstance(files, list)
             or len(files) != 1
             or not isinstance(files[0], dict)
-            or files[0].get("client_file_id") != "file"
+            or not isinstance(files[0].get("file_id"), str)
+            or not files[0]["file_id"]
+            or not isinstance(files[0].get("file_name"), str)
             or (expected is not None and task["task_id"] != expected["task_id"])
         ):
             raise _V1APIError("invalid_response", "Inconsistent Tasks response")
         item = files[0]
-        if item.get("upload_status") not in ("pending", "ready", "expired") or item.get("status") not in (
-            "waiting_upload",
-            "queued",
-            "running",
-            "completed",
-            "failed",
-            "canceled",
-        ):
+        if item.get("status") not in ("waiting-file", "pending", "running", "completed", "failed", "canceled"):
             raise _V1APIError("invalid_response", "Invalid task file state")
-        if not isinstance(task.get("status_url"), str):
-            raise _V1APIError("invalid_response", "Task status URL is missing")
-        task["status_url"] = self._resolve(task["status_url"], metadata=True)
-        if files[0].get("status") == "completed" and not isinstance(files[0].get("result_url"), str):
+        link = item.get("upload")
+        if link is not None and (not isinstance(link, dict) or item["status"] != "waiting-file"):
+            raise _V1APIError("invalid_response", "Invalid task upload descriptor")
+        if expected is not None and any(item.get(key) != expected["files"][0].get(key) for key in ("file_id", "file_name")):
+            raise _V1APIError("invalid_response", "Task input identity changed")
+        try:
+            task_status_url(self._base_url, task["task_id"])
+        except ValueError as exc:
+            raise _V1APIError("invalid_response", str(exc)) from exc
+        return task
+
+    def _created_task(self, response: httpx.Response, request: dict[str, Any]) -> dict[str, Any]:
+        """创建回执无需携带详情；本地请求大小保留为首次 GET 的身份校验依据。"""
+        task = self._task_identity(response)
+        item = task["files"][0]
+        if item["file_name"] != request["files"][0]["file_name"]:
+            raise _V1APIError("invalid_response", "Created task input identity changed")
+        return {**task, "files": [{**item, "bytes": request["files"][0]["bytes"]}]}
+
+    def _snapshot(self, response: httpx.Response, expected: dict[str, Any]) -> dict[str, Any]:
+        """GET 独立校验完整详情，缺失可选字段不沿用上一快照的旧值。"""
+        task = self._task_identity(response, expected)
+        item = task["files"][0]
+        if task.get("output_formats") != ["default"] or item.get("bytes") != expected["files"][0]["bytes"]:
+            raise _V1APIError("invalid_response", "Task input size or output formats changed")
+        if item["status"] == "completed" and not isinstance(item.get("result_url"), str):
             raise _V1APIError("invalid_response", "Completed file is missing result_url")
         return task
 
@@ -235,15 +256,25 @@ class MinerUApiParser(DocumentParser):
                 headers=self._headers(),
                 json_body=payload,
             )
-            task = self._snapshot(response)
+            task = self._created_task(response, payload)
             _notify_job_status(task, status_callback)
-            task = self._upload_input(cli, task, file_path, status_callback, size=payload["files"][0]["bytes"])
+            created_status = task["status"]
+            task = self._query(cli, task)
+            if task["status"] != created_status:
+                _notify_job_status(task, status_callback)
+            upload_state = _UploadState()
+            task = self._upload_input(
+                cli, task, file_path, status_callback, size=payload["files"][0]["bytes"], upload_state=upload_state
+            )
             for _ in range(_POLL_MAX_ATTEMPTS):
                 if task["status"] in _TERMINAL_JOB_STATUSES:
                     break
                 time.sleep(_POLL_INTERVAL_SECONDS)
                 task = self._query(cli, task)
                 _notify_job_status(task, status_callback)
+                task = self._upload_input(
+                    cli, task, file_path, status_callback, size=payload["files"][0]["bytes"], upload_state=upload_state
+                )
             if task["status"] not in _TERMINAL_JOB_STATUSES:
                 raise _V1APIError("timeout", f"Task {task['task_id']} did not complete within timeout")
             _raise_for_terminal_job_error(task)
@@ -253,16 +284,14 @@ class MinerUApiParser(DocumentParser):
             with tempfile.TemporaryDirectory(prefix="mineru-api-client-") as directory:
                 target = Path(directory) / "result.zip"
                 self._download_task(cli, task, target)
-                return _parse_result_from_zip_bytes(
-                    target, include_images=self.include_images, include_model_output=self.include_model_output
-                )
+                return _parse_result_from_zip_bytes(target, include_images=self.include_images)
 
     def _query(self, cli: httpx.Client, task: dict[str, Any]) -> dict[str, Any]:
-        """按服务返回的同源状态链接查询，保留元数据请求的有限重试。"""
+        """按配置的 API 基址和任务 ID 查询，保留元数据请求的有限重试。"""
         response = _request_with_retry(
             cli,
             "GET",
-            task["status_url"],
+            task_status_url(self._base_url, task["task_id"]),
             stage="task polling",
             headers=self._headers(),
         )
@@ -276,47 +305,46 @@ class MinerUApiParser(DocumentParser):
         callback: Callable[[ApiTaskStatus], None] | None,
         *,
         size: int,
+        upload_state: _UploadState,
     ) -> dict[str, Any]:
-        """首次上传失败先核实是否已确认，再重新打开文件流；缓存命中完全不传字节。"""
-        for attempt in range(1, _TRANSPORT_MAX_ATTEMPTS + 1):
-            if task["files"][0].get("upload_status") != "pending":
+        """只有明确待上传时才发 PUT，上传成功及等待确认均不消耗重复传输。"""
+        if task["files"][0]["status"] != "waiting-file":
+            upload_state.accepted = True
+        if upload_state.accepted or task["files"][0].get("upload") is None:
+            return task
+        while upload_state.attempts < _TRANSPORT_MAX_ATTEMPTS:
+            link = task["files"][0].get("upload")
+            if link is None:
                 return task
-            links = task.get("uploads", [])
-            link = next((item for item in links if isinstance(item, dict) and item.get("client_file_id") == "file"), None)
-            if not link or link.get("upload_method") != "PUT":
-                raise _V1APIError("invalid_response", "Missing task upload link")
-            url = self._resolve(link["upload_url"])
-            headers = _same_origin_upload_headers(self._base_url, url, link.get("upload_headers", {}), self._headers())
+            url = self._resolve(link["url"])
+            headers = _same_origin_upload_headers(self._base_url, url, link.get("headers", {}), self._headers())
             headers = dict(httpx.Headers(headers))
             headers.pop("transfer-encoding", None)
             headers["content-length"] = str(size)
+            upload_state.attempts += 1
             try:
-                response = _request_once(
-                    cli,
-                    "PUT",
-                    url,
-                    stage="upload content",
-                    headers=headers,
-                    content=_file_chunks(path),
-                )
+                response = _request_once(cli, "PUT", url, stage="upload content", headers=headers, content=_file_chunks(path))
                 if response.status_code >= 400:
                     self._check(response)
             except (_APITransportError, _V1APIError) as exc:
                 task = self._query(cli, task)
                 _notify_job_status(task, callback)
-                if task["files"][0].get("upload_status") != "pending":
+                if task["files"][0]["status"] != "waiting-file":
+                    upload_state.accepted = True
+                    return task
+                if task["files"][0].get("upload") is None:
                     return task
                 if isinstance(exc, _V1APIError) and response.status_code not in {408, 429, 500, 502, 503, 504}:
                     raise
-                if attempt == _TRANSPORT_MAX_ATTEMPTS:
+                if upload_state.attempts == _TRANSPORT_MAX_ATTEMPTS:
                     raise
-                time.sleep(_transport_retry_delay(attempt))
+                time.sleep(_transport_retry_delay(upload_state.attempts))
                 continue
+            upload_state.accepted = True
             task = self._query(cli, task)
             _notify_job_status(task, callback)
-            if task["files"][0].get("upload_status") != "pending":
-                return task
-        raise _V1APIError("upload_failed", "Upload was not confirmed")
+            return task
+        raise _V1APIError("upload_failed", "Upload retry budget exhausted")
 
     def _download_task(self, cli: httpx.Client, task: dict[str, Any], target: Path) -> None:
         """流式下载和校验完整包；重定向逐跳选择认证，签名失效后重新查询任务。"""
@@ -392,15 +420,25 @@ class MinerUApiParser(DocumentParser):
                 headers=self._headers(),
                 json_body=payload,
             )
-            task = self._snapshot(response)
+            task = self._created_task(response, payload)
             _notify_job_status(task, status_callback)
-            task = await self._async_upload_input(cli, task, file_path, status_callback, size=payload["files"][0]["bytes"])
+            created_status = task["status"]
+            task = await self._async_query(cli, task)
+            if task["status"] != created_status:
+                _notify_job_status(task, status_callback)
+            upload_state = _UploadState()
+            task = await self._async_upload_input(
+                cli, task, file_path, status_callback, size=payload["files"][0]["bytes"], upload_state=upload_state
+            )
             for _ in range(_POLL_MAX_ATTEMPTS):
                 if task["status"] in _TERMINAL_JOB_STATUSES:
                     break
                 await asyncio.sleep(_POLL_INTERVAL_SECONDS)
                 task = await self._async_query(cli, task)
                 _notify_job_status(task, status_callback)
+                task = await self._async_upload_input(
+                    cli, task, file_path, status_callback, size=payload["files"][0]["bytes"], upload_state=upload_state
+                )
             if task["status"] not in _TERMINAL_JOB_STATUSES:
                 raise _V1APIError("timeout", f"Task {task['task_id']} did not complete within timeout")
             _raise_for_terminal_job_error(task)
@@ -410,16 +448,14 @@ class MinerUApiParser(DocumentParser):
             with tempfile.TemporaryDirectory(prefix="mineru-api-client-") as directory:
                 target = Path(directory) / "result.zip"
                 await self._async_download_task(cli, task, target)
-                return _parse_result_from_zip_bytes(
-                    target, include_images=self.include_images, include_model_output=self.include_model_output
-                )
+                return _parse_result_from_zip_bytes(target, include_images=self.include_images)
 
     async def _async_query(self, cli: httpx.AsyncClient, task: dict[str, Any]) -> dict[str, Any]:
-        """按服务返回的同源状态链接查询，保留元数据请求的有限重试。"""
+        """按配置的 API 基址和任务 ID 查询，保留元数据请求的有限重试。"""
         response = await _async_request_with_retry(
             cli,
             "GET",
-            task["status_url"],
+            task_status_url(self._base_url, task["task_id"]),
             stage="task polling",
             headers=self._headers(),
         )
@@ -433,47 +469,48 @@ class MinerUApiParser(DocumentParser):
         callback: Callable[[ApiTaskStatus], None] | None,
         *,
         size: int,
+        upload_state: _UploadState,
     ) -> dict[str, Any]:
-        """首次上传失败先核实是否已确认，再重新打开文件流；缓存命中完全不传字节。"""
-        for attempt in range(1, _TRANSPORT_MAX_ATTEMPTS + 1):
-            if task["files"][0].get("upload_status") != "pending":
+        """只有明确待上传时才发 PUT，上传成功及等待确认均不消耗重复传输。"""
+        if task["files"][0]["status"] != "waiting-file":
+            upload_state.accepted = True
+        if upload_state.accepted or task["files"][0].get("upload") is None:
+            return task
+        while upload_state.attempts < _TRANSPORT_MAX_ATTEMPTS:
+            link = task["files"][0].get("upload")
+            if link is None:
                 return task
-            links = task.get("uploads", [])
-            link = next((item for item in links if isinstance(item, dict) and item.get("client_file_id") == "file"), None)
-            if not link or link.get("upload_method") != "PUT":
-                raise _V1APIError("invalid_response", "Missing task upload link")
-            url = self._resolve(link["upload_url"])
-            headers = _same_origin_upload_headers(self._base_url, url, link.get("upload_headers", {}), self._headers())
+            url = self._resolve(link["url"])
+            headers = _same_origin_upload_headers(self._base_url, url, link.get("headers", {}), self._headers())
             headers = dict(httpx.Headers(headers))
             headers.pop("transfer-encoding", None)
             headers["content-length"] = str(size)
+            upload_state.attempts += 1
             try:
                 response = await _async_request_once(
-                    cli,
-                    "PUT",
-                    url,
-                    stage="upload content",
-                    headers=headers,
-                    content=_async_file_chunks(path),
+                    cli, "PUT", url, stage="upload content", headers=headers, content=_async_file_chunks(path)
                 )
                 if response.status_code >= 400:
                     self._check(response)
             except (_APITransportError, _V1APIError) as exc:
                 task = await self._async_query(cli, task)
                 _notify_job_status(task, callback)
-                if task["files"][0].get("upload_status") != "pending":
+                if task["files"][0]["status"] != "waiting-file":
+                    upload_state.accepted = True
+                    return task
+                if task["files"][0].get("upload") is None:
                     return task
                 if isinstance(exc, _V1APIError) and response.status_code not in {408, 429, 500, 502, 503, 504}:
                     raise
-                if attempt == _TRANSPORT_MAX_ATTEMPTS:
+                if upload_state.attempts == _TRANSPORT_MAX_ATTEMPTS:
                     raise
-                await asyncio.sleep(_transport_retry_delay(attempt))
+                await asyncio.sleep(_transport_retry_delay(upload_state.attempts))
                 continue
+            upload_state.accepted = True
             task = await self._async_query(cli, task)
             _notify_job_status(task, callback)
-            if task["files"][0].get("upload_status") != "pending":
-                return task
-        raise _V1APIError("upload_failed", "Upload was not confirmed")
+            return task
+        raise _V1APIError("upload_failed", "Upload retry budget exhausted")
 
     async def _async_download_task(self, cli: httpx.AsyncClient, task: dict[str, Any], target: Path) -> None:
         """流式下载和校验完整包；重定向逐跳选择认证，签名失效后重新查询任务。"""
@@ -785,41 +822,12 @@ def _sha256_file(path: Path) -> str:
     return h.hexdigest()
 
 
-def _extract_model_output_from_archive(archive: zipfile.ZipFile) -> Any | None:
-    """从已打开的 zip 读取原始模型输出。"""
-    names = set(archive.namelist())
-    local_name = "model_output.json"
-    if local_name in names:
-        model_output_name = local_name
-    else:
-        legacy_names = sorted(name for name in names if Path(name).name.endswith("_model.json"))
-        if not legacy_names:
-            return None
-        if len(legacy_names) > 1:
-            available = ", ".join(legacy_names)
-            raise _V1APIError("invalid_model_output", f"ZIP output contained multiple model outputs: {available}")
-        model_output_name = legacy_names[0]
-
-    from ..types import ModelJson
-
-    raw = archive.read(model_output_name)
-    try:
-        model = ModelJson.from_json(raw)
-        from ..integrations.docvortex import validate_mineru_metadata
-
-        validate_mineru_metadata(model)
-        return model
-    except (ValueError, TypeError) as exc:
-        raise _V1APIError("invalid_model_output", f"Invalid Model JSON document: {exc}") from exc
-
-
 def _parse_result_from_zip_bytes(
     zip_bytes: bytes | Path,
     *,
     include_images: bool,
-    include_model_output: bool,
 ) -> ParseResult:
-    """解析自包含 zip 包：读取 middle_json、图片 sidecar 和可选 model_output。"""
+    """解析自包含 zip 包，只读取 Middle JSON 和图片素材。"""
     try:
         with zipfile.ZipFile(zip_bytes if isinstance(zip_bytes, Path) else io.BytesIO(zip_bytes)) as archive:
             mid_json = _read_middle_json_from_zip(archive)
@@ -827,12 +835,7 @@ def _parse_result_from_zip_bytes(
                 images = _read_image_sidecars_from_zip(archive, mid_json)
                 if images:
                     _inline_image_sidecars(mid_json, images)
-            result = _parse_result_from_middle_json(mid_json)
-            if include_model_output:
-                model_output = _extract_model_output_from_archive(archive)
-                if model_output is not None:
-                    result._model_output = model_output
-            return result
+            return _parse_result_from_middle_json(mid_json)
     except zipfile.BadZipFile as exc:
         raise _V1APIError("invalid_zip_output", "zip output is not a valid ZIP archive") from exc
     except ValueError as exc:
@@ -980,7 +983,7 @@ def _same_origin_upload_headers(
     if not isinstance(upload_headers, dict) or any(
         not isinstance(key, str) or not isinstance(value, str) for key, value in upload_headers.items()
     ):
-        raise _V1APIError("invalid_response", "upload_headers must be a string mapping")
+        raise _V1APIError("invalid_response", "upload.headers must be a string mapping")
     headers = dict(upload_headers)
     if _http_origin(base_url) == _http_origin(upload_url):
         headers.update(auth_headers)

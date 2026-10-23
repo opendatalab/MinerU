@@ -46,7 +46,7 @@ class FileParseService:
                 await self._remember_error(
                     record, GatewayError("submission_unknown", "Task creation outcome is unknown; not resubmitting")
                 )
-            elif record.status not in TERMINAL:
+            elif record.status not in TERMINAL or record.needs_details:
                 self._prepare_in_background(record)
         await self.collect()
         self._monitor = asyncio.create_task(self._monitor_records(), name="file-parse-monitor")
@@ -94,7 +94,7 @@ class FileParseService:
                 source.unlink(missing_ok=True)
                 if existing.fingerprint != identity:
                     raise GatewayError("request_id_conflict", "request_id already identifies a different request", 409)
-                if existing.status not in TERMINAL:
+                if existing.status not in TERMINAL or existing.needs_details:
                     self._prepare_in_background(existing)
                 return existing
             record = Record(request_id, filename, size, sha256sum, options.model_dump(), str(source), identity)
@@ -145,15 +145,13 @@ class FileParseService:
             if record.remote is not None and record.status in TERMINAL and item.status not in TERMINAL:
                 return
             updated = replace(record, remote=task.model_dump(), status=item.status)
-            if item.upload_status == "ready" or item.status in TERMINAL:
+            if item.status != "waiting-file":
                 updated.error = item.error
             if item.status in {"failed", "canceled"} and updated.error is None:
                 updated.error = {"code": f"task_{item.status}", "message": f"Upstream task {item.status}"}
             if updated.status in TERMINAL and updated.terminal_at is None:
                 updated.terminal_at = time.time()
-            await self._save_and_cleanup(
-                record, updated, remove_source=item.upload_status == "ready" or item.status in TERMINAL
-            )
+            await self._save_and_cleanup(record, updated, remove_source=item.status != "waiting-file")
 
     async def _remember_error(self, record: Record, error: GatewayError) -> None:
         """无任务 ID 的失败是本地终态；已知任务的传输错误保留后续查询能力。"""
@@ -181,9 +179,11 @@ class FileParseService:
                 await self.store.save(record)
                 task = await self.client.create(record)
                 await self._apply(record, task)
+                # 创建身份已持久化；首次查询失败也只能恢复此任务，不能重新提交。
+                task = await self.refresh(record)
             else:
                 task = await self.refresh(record)
-            if task.files[0].upload_status == "pending" and task.files[0].status not in TERMINAL:
+            if task.files[0].status == "waiting-file":
                 if record.source_path is None or not Path(record.source_path).is_file():
                     raise GatewayError("source_unavailable", "The retained source is unavailable")
                 task = await self.client.upload(task, Path(record.source_path), record.size)
@@ -221,7 +221,7 @@ class FileParseService:
                 record
                 for record in self.records.values()
                 if record.remote is not None
-                and record.status not in TERMINAL
+                and (record.status not in TERMINAL or record.needs_details)
                 and (record.request_id not in self.preparations or self.preparations[record.request_id].done())
             ]
             try:
@@ -265,9 +265,9 @@ class FileParseService:
             changed.clear()
             self.raise_record_error(record)
             task = record.task
-            if record.status in TERMINAL or (task is not None and task.files[0].upload_status == "ready"):
+            if record.status in TERMINAL or (task is not None and task.files[0].status != "waiting-file"):
                 break
-            # 对象存储 PUT 成功后，网关可能稍后才确认 ready；这段等待仍属于上传准备。
+            # 文件准备包括上传确认与服务端下载；进入 pending 后才启动解析等待预算。
             await changed.wait()
         if timeout == 0:
             return False

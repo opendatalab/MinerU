@@ -14,7 +14,8 @@ from urllib.parse import urljoin
 import httpx
 from pydantic import ValidationError
 
-from .models import GatewayError, Record, RemoteTask
+from ...task_types import task_status_url
+from .models import GatewayError, Record, RemoteCreatedTask, RemoteFile, RemoteTask
 from .settings import FileParseSettings, origin
 
 CHUNK_BYTES = 1024 * 1024
@@ -121,19 +122,45 @@ class TaskClient:
     def _snapshot(self, body: bytes, expected: RemoteTask | None, formats: list[str]) -> RemoteTask:
         """校验任务 ID、单文件映射和输出格式，拒绝不匹配的任务响应。"""
         try:
-            task = RemoteTask.model_validate_json(body)
+            task = RemoteTask.model_validate({**json.loads(body), "details_loaded": True})
             if expected is not None and task.task_id != expected.task_id:
                 raise ValueError("Task identity changed")
             if list(dict.fromkeys(task.output_formats)) != formats:
                 raise ValueError("Task output formats changed")
-            task.status_url = self.resolve(task.status_url, metadata=True)
-            for link in task.uploads:
-                link.upload_url = self.resolve(link.upload_url)
+            if expected is not None and (
+                task.files[0].file_id != expected.files[0].file_id
+                or task.files[0].file_name != expected.files[0].file_name
+                or task.files[0].bytes != expected.files[0].bytes
+            ):
+                raise ValueError("Task input identity changed")
+            for item in task.files:
+                if item.upload is not None:
+                    item.upload.url = self.resolve(item.upload.url)
             if task.files[0].result_url:
                 task.files[0].result_url = self.resolve(task.files[0].result_url)
             return task
-        except (ValidationError, ValueError) as exc:
+        except (ValidationError, ValueError, TypeError) as exc:
             raise GatewayError("upstream_protocol_error", "Upstream returned inconsistent task metadata") from exc
+
+    def _created_snapshot(self, body: bytes, request: dict[str, Any]) -> RemoteTask:
+        """用创建回执和本地请求构造恢复上下文，查询详情之前即可安全持久化 ID。"""
+        try:
+            created = RemoteCreatedTask.model_validate_json(body)
+            item = created.files[0]
+            source = request["files"][0]
+            if item.file_name != source["file_name"]:
+                raise ValueError("Created task input identity changed")
+            if item.upload is not None:
+                item.upload.url = self.resolve(item.upload.url)
+            return RemoteTask(
+                task_id=created.task_id,
+                status=created.status,
+                files=[RemoteFile(**item.model_dump(), bytes=source["bytes"])],
+                output_formats=request["output_formats"],
+                details_loaded=False,
+            )
+        except (ValidationError, ValueError) as exc:
+            raise GatewayError("upstream_protocol_error", "Upstream returned inconsistent creation metadata") from exc
 
     async def _json_request(
         self,
@@ -154,6 +181,9 @@ class TaskClient:
                         if method == "POST" and (response.status_code >= 500 or response.status_code == 408):
                             raise GatewayError("submission_unknown", "Task creation outcome is unknown; not resubmitting")
                         raise error
+                if method == "POST":
+                    assert payload is not None
+                    return self._created_snapshot(body, payload)
                 return self._snapshot(body, expected, formats)
             except (httpx.HTTPError, GatewayError) as exc:
                 error = (
@@ -177,7 +207,6 @@ class TaskClient:
             **options,
             "files": [
                 {
-                    "client_file_id": "file",
                     "file_name": record.filename,
                     "bytes": record.size,
                     "sha256sum": record.sha256sum,
@@ -189,48 +218,53 @@ class TaskClient:
         )
 
     async def query(self, task: RemoteTask) -> RemoteTask:
-        """按服务给出的地址查询原任务，失败不会触发创建操作。"""
-        return await self._json_request("GET", task.status_url, task.output_formats, expected=task)
+        """保留部署前缀并按稳定任务 ID 查询，失败不会触发创建操作。"""
+        return await self._json_request(
+            "GET", task_status_url(self.settings.api_url, task.task_id), task.output_formats, expected=task
+        )
 
     async def upload(self, task: RemoteTask, path: Path, size: int) -> RemoteTask:
-        """上传失败先查询确认，最多重传三次，绝不续期或创建替代任务。"""
-        for attempt in range(3):
-            item = task.files[0]
-            if item.upload_status == "ready" or item.status in {"completed", "failed", "canceled"}:
-                return task
-            if not task.uploads:
-                raise GatewayError("upstream_protocol_error", "Pending file has no upload link")
-            link = task.uploads[0]
+        """文件准备期间只轮询，明确出现上传目标后才发送，最多重试三次。"""
+        attempts = 0
+        uploaded = False
+        last_error: GatewayError | None = None
+        while task.files[0].status == "waiting-file":
+            link = task.files[0].upload
+            if link is None or uploaded:
+                await asyncio.sleep(self.settings.poll_interval)
+                task = await self.query(task)
+                continue
+            if attempts >= 3:
+                raise last_error or GatewayError("upload_failed", "Upload retry budget exhausted")
             if link.expires_at <= time.time():
                 raise GatewayError("upload_expired", "The task upload link has expired", 410)
+            attempts += 1
             try:
-                headers = self.headers(link.upload_url, link.upload_headers)
+                headers = self.headers(link.url, link.headers)
                 headers["content-length"] = str(size)
                 async with self.client.stream(
-                    link.upload_method,
-                    link.upload_url,
-                    headers=headers,
-                    content=file_chunks(path),
-                    timeout=self.transfer_timeout,
+                    "PUT", link.url, headers=headers, content=file_chunks(path), timeout=self.transfer_timeout
                 ) as response:
                     body = await self._read_metadata(response)
                     if not 200 <= response.status_code < 300:
                         raise self._http_error(response.status_code, body)
-                return await self.query(task)
+                uploaded = True
+                task = await self.query(task)
             except (httpx.HTTPError, GatewayError) as exc:
-                error = (
+                last_error = (
                     exc
                     if isinstance(exc, GatewayError)
-                    else GatewayError("upload_interrupted", "Upstream upload was interrupted", retryable=True)
+                    else GatewayError("upload_interrupted", "The task upload was interrupted", retryable=True)
                 )
                 task = await self.query(task)
-                item = task.files[0]
-                if item.upload_status == "ready" or item.status in {"completed", "failed", "canceled"}:
+                if task.files[0].status != "waiting-file":
                     return task
-                if attempt == 2 or not error.retryable:
-                    raise error from exc
-                await asyncio.sleep(self.retry_delay * (attempt + 1))
-        raise AssertionError("unreachable")
+                if task.files[0].upload is None:
+                    continue
+                if attempts == 3 or not last_error.retryable:
+                    raise last_error from exc
+                await asyncio.sleep(self.retry_delay * attempts)
+        return task
 
     async def _download_once(self, url: str, path: Path) -> None:
         """逐跳重新决定认证并流式写盘，在完整接收前不向调用者发送成功响应。"""
