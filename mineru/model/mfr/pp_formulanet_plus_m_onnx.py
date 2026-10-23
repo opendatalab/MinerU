@@ -1,7 +1,7 @@
 # Copyright (c) Opendatalab. All rights reserved.
 """ONNX 后端的 PP-FormulaNet-Plus-M 推理封装。
 
-与 ``UnimernetModel``（torch/transformers 后端）公开接口完全一致，
+与 ``FormulaRecognizer``（torch/transformers 后端）公开接口完全一致，
 内部用 ONNX Runtime 推理从 MinerU Torch 权重导出的 PP-FormulaNet_plus-M ONNX 模型。
 
 ONNX 模型输出 token IDs（int64），不是 logits——自回归循环已 bake 进计算图，
@@ -35,7 +35,7 @@ _EOS_TOKEN_ID = 2
 class PPFormulaNetPlusMONNX:
     """PP-FormulaNet-Plus-M 的 ONNX 推理封装。
 
-    与 ``UnimernetModel`` 的 ``predict`` / ``batch_predict`` 接口完全一致。
+    与 ``FormulaRecognizer`` 的 ``predict`` / ``batch_predict`` 接口完全一致。
 
     差异：
     - 构造函数接收 onnx 文件路径 + yml 配置路径，而非 HF 模型目录
@@ -78,7 +78,7 @@ class PPFormulaNetPlusMONNX:
         )
 
     # ------------------------------------------------------------------
-    # bbox 工具（与 UnimernetModel._normalize_bbox 一致）
+    # bbox 工具（与 FormulaRecognizer._normalize_bbox 一致）
     # ------------------------------------------------------------------
     @staticmethod
     def _normalize_bbox(bbox: Any, image: np.ndarray) -> Optional[Tuple[int, int, int, int]]:
@@ -201,7 +201,7 @@ class PPFormulaNetPlusMONNX:
         return results
 
     # ------------------------------------------------------------------
-    # 公开接口（与 UnimernetModel 一致）
+    # 公开接口（与 FormulaRecognizer 一致）
     # ------------------------------------------------------------------
     def predict(
         self,
